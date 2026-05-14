@@ -608,6 +608,20 @@ namespace Nethermind.Evm.TransactionProcessing
                 return TransactionResult.TransactionSizeOverMaxInitCodeSize;
             }
 
+            if (tx.SupportsAuthorizationList)
+            {
+                if (tx.IsContractCreation)
+                {
+                    TraceLogInvalidTx(tx, "SETCODE_TX_CREATE");
+                    return TransactionResult.ErrorType.MalformedTransaction.WithDetail($"{TxErrorMessages.NotAllowedCreateTransaction} (sender {tx.SenderAddress})");
+                }
+                if (!tx.HasAuthorizationList)
+                {
+                    TraceLogInvalidTx(tx, "EMPTY_AUTHORIZATION_LIST");
+                    return TransactionResult.ErrorType.MalformedTransaction.WithDetail($"{TxErrorMessages.MissingAuthorizationList} (sender {tx.SenderAddress})");
+                }
+            }
+
             TGasPolicy standard = intrinsicGas.Standard;
             TGasPolicy minimal = intrinsicGas.MinimalGas;
             long minGasRequired = spec.IsEip8037Enabled

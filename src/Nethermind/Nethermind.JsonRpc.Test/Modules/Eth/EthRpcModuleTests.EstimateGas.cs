@@ -24,6 +24,7 @@ using Newtonsoft.Json.Linq;
 using NUnit.Framework;
 using System.Text;
 using Nethermind.Abi;
+using Nethermind.Core.Messages;
 
 namespace Nethermind.JsonRpc.Test.Modules.Eth;
 
@@ -666,6 +667,36 @@ public partial class EthRpcModuleTests
         string serialized = await ctx.Test.TestEthRpc("eth_estimateGas", transaction, "latest", stateOverride, blockOverride);
         JToken.Parse(serialized)["error"]!["message"]!.Value<string>()
             .Should().StartWith("intrinsic gas too low");
+    }
+
+    [Test]
+    public async Task Eth_estimateGas_setCode_empty_authorization_list_returns_error()
+    {
+        TestSpecProvider specProvider = new(Prague.Instance);
+        using Context ctx = await Context.Create(specProvider);
+
+        object transaction = JsonSerializer.Deserialize<object>(
+            """{"from":"0x0001020304050607080910111213141516171819","to":"0x0000000000000000000000000000000000000000","value":"0x0","type":"0x4","authorizationList":[]}""")!;
+
+        string serialized = await ctx.Test.TestEthRpc("eth_estimateGas", transaction, "latest");
+
+        JToken.Parse(serialized)["error"]!["message"]!.Value<string>()
+            .Should().Be($"failed with {ctx.Test.BlockTree.Head!.GasLimit} gas: {TxErrorMessages.MissingAuthorizationList} (sender 0x0001020304050607080910111213141516171819)");
+    }
+
+    [Test]
+    public async Task Eth_estimateGas_setCode_contract_creation_returns_error()
+    {
+        TestSpecProvider specProvider = new(Prague.Instance);
+        using Context ctx = await Context.Create(specProvider);
+
+        object transaction = JsonSerializer.Deserialize<object>(
+            """{"from":"0x0001020304050607080910111213141516171819","value":"0x0","type":"0x4","data":"0x60006000f3","authorizationList":[{"chainId":"0x1","address":"0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045","nonce":"0x1","yParity":"0x1","r":"0xa8f2b4c1d3e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1","s":"0x1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2"}]}""")!;
+
+        string serialized = await ctx.Test.TestEthRpc("eth_estimateGas", transaction, "latest");
+
+        JToken.Parse(serialized)["error"]!["message"]!.Value<string>()
+            .Should().Be($"failed with {ctx.Test.BlockTree.Head!.GasLimit} gas: {TxErrorMessages.NotAllowedCreateTransaction} (sender 0x0001020304050607080910111213141516171819)");
     }
 
 }
