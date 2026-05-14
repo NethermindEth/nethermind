@@ -53,7 +53,7 @@ public class StateCompositionConfig : IStateCompositionConfig
 {
     public bool Enabled { get; set; }
     public int ScanQueueTimeoutSeconds { get; set; } = 5;
-    public int ScanParallelism { get; set; } = Math.Clamp(Environment.ProcessorCount / 2, 1, 16);
+    public int ScanParallelism { get; set; } = Math.Clamp(Environment.ProcessorCount, 1, 32);
     public long ScanMemoryBudgetBytes { get; set; } = 1_000_000_000;
     public int TopNContracts { get; set; } = 20;
     public bool ExcludeStorage { get; set; }

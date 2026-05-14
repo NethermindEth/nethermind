@@ -37,7 +37,11 @@ internal sealed class StateCompositionVisitor(
     private volatile bool _missingNodesObserved;
 
     public bool IsFullDbScan => true;
-    public ReadFlags ExtraReadFlag => ReadFlags.HintCacheMiss;
+    // Let PatriciaTree's full-scan dispatch pick the right flags per key scheme
+    // (HintReadAhead for HalfPath, HintCacheMiss for Hash). Hard-coding
+    // HintCacheMiss here defeats the block-cache warmup on every read; on a
+    // multi-hour scan with idle RAM that is strictly slower.
+    public ReadFlags ExtraReadFlag => ReadFlags.None;
     public bool ExpectAccounts => true;
 
     public bool MissingNodesObserved => _missingNodesObserved;
@@ -288,7 +292,22 @@ internal sealed class StateCompositionVisitor(
         if (_aggregated is not null)
             return _aggregated;
 
+        // Pre-size the merge destination dictionaries. The default Dictionary
+        // doubles capacity through 25+ rehashes to absorb ~24M slot-owners on
+        // the bloatnet; each rehash allocates a multi-GB LOH array and pegs
+        // Server GC for tens of minutes. One up-front EnsureCapacity collapses
+        // the rehash storm into a single allocation.
+        int slotCapHint = 0, codeCapHint = 0;
+        foreach (VisitorCounters local in _localCounters.Values)
+        {
+            slotCapHint += local.SlotCountsByOwner.Count;
+            codeCapHint += local.CodeHashRefcounts.Count;
+        }
+
         VisitorCounters agg = new(topN);
+        agg.SlotCountsByOwner.EnsureCapacity(slotCapHint);
+        agg.CodeHashRefcounts.EnsureCapacity(codeCapHint);
+
         foreach (VisitorCounters local in _localCounters.Values)
         {
             local.Flush(); // Finalize last contract's storage trie per thread

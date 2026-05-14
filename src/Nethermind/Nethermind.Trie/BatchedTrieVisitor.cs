@@ -87,12 +87,12 @@ public class BatchedTrieVisitor<TNodeContext>
         _partitionCount = recordCount / _maxBatchSize;
         if (_partitionCount == 0) _partitionCount = 1;
 
-        long expectedDbSize = 240.GiB; // Unpruned size
+        long expectedDbSize = 800.GiB; // Unpruned size; bloatnet runs around this scale.
 
         // Get estimated num of file (expected db size / 64MiB), multiplied by a reasonable num of thread we want to
         // confine to a file. If its too high, the overhead of looping through the stack can get a bit high at the end
         // of the visit. But then again its probably not much.
-        long maxPartitionCount = (expectedDbSize / 64.MiB) * Math.Min(4, visitingOptions.MaxDegreeOfParallelism);
+        long maxPartitionCount = (expectedDbSize / 64.MiB) * Math.Min(8, visitingOptions.MaxDegreeOfParallelism);
 
         if (_partitionCount > maxPartitionCount)
         {
