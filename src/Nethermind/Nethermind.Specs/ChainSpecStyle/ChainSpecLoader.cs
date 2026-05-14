@@ -5,7 +5,9 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Linq.Expressions;
 using System.Numerics;
+using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Text.Json;
 using Nethermind.Config;
@@ -254,64 +256,92 @@ public class ChainSpecLoader(IJsonSerializer serializer, ILogManager logManager)
     /// Resolves at JSON-load time so the rest of the pipeline keeps reading individual
     /// <c>EipXxxTransitionTimestamp</c> fields and stays unaware of the shorthand.
     /// </remarks>
+    /// <summary>
+    /// Map from a hardfork label (the JSON shorthand key) to the per-EIP timestamp properties that
+    /// label expands to. The label getter is the first element; the constituent EIPs follow.
+    /// </summary>
+    /// <remarks>
+    /// Each entry is a property-access expression of the form <c>p =&gt; p.Eip1234TransitionTimestamp</c>.
+    /// <see cref="ApplyHardforkLabel"/> extracts the property name (for error messages) and the
+    /// underlying <see cref="PropertyInfo"/> (for read/write) from the same expression, so adding a
+    /// new EIP to a fork only requires one new line — no manual <c>nameof</c>/getter/setter triple.
+    /// </remarks>
+    private static readonly IReadOnlyDictionary<Expression<Func<ChainSpecParamsJson, ulong?>>, Expression<Func<ChainSpecParamsJson, ulong?>>[]> HardforkLabelMap =
+        new Dictionary<Expression<Func<ChainSpecParamsJson, ulong?>>, Expression<Func<ChainSpecParamsJson, ulong?>>[]>
+        {
+            [p => p.Shanghai] =
+            [
+                p => p.Eip3651TransitionTimestamp,
+                p => p.Eip3855TransitionTimestamp,
+                p => p.Eip3860TransitionTimestamp,
+                p => p.Eip4895TransitionTimestamp,
+            ],
+            [p => p.Cancun] =
+            [
+                p => p.Eip1153TransitionTimestamp,
+                p => p.Eip4788TransitionTimestamp,
+                p => p.Eip4844TransitionTimestamp,
+                p => p.Eip5656TransitionTimestamp,
+                p => p.Eip6780TransitionTimestamp,
+            ],
+            [p => p.Prague] =
+            [
+                p => p.Eip2537TransitionTimestamp,
+                p => p.Eip2935TransitionTimestamp,
+                p => p.Eip6110TransitionTimestamp,
+                p => p.Eip7002TransitionTimestamp,
+                p => p.Eip7251TransitionTimestamp,
+                p => p.Eip7623TransitionTimestamp,
+                p => p.Eip7702TransitionTimestamp,
+            ],
+            [p => p.Osaka] =
+            [
+                p => p.Eip7594TransitionTimestamp,
+                p => p.Eip7823TransitionTimestamp,
+                p => p.Eip7825TransitionTimestamp,
+                p => p.Eip7883TransitionTimestamp,
+                p => p.Eip7918TransitionTimestamp,
+                p => p.Eip7934TransitionTimestamp,
+                p => p.Eip7939TransitionTimestamp,
+                p => p.Eip7951TransitionTimestamp,
+            ],
+        };
+
     private static void ExpandHardforkLabels(ChainSpecParamsJson p)
     {
-        if (p.Shanghai is { } shanghai)
+        foreach ((Expression<Func<ChainSpecParamsJson, ulong?>> labelExpr, Expression<Func<ChainSpecParamsJson, ulong?>>[] eipExprs) in HardforkLabelMap)
         {
-            ApplyHardforkLabel(nameof(p.Shanghai), shanghai,
-                (nameof(p.Eip3651TransitionTimestamp), p.Eip3651TransitionTimestamp, v => p.Eip3651TransitionTimestamp = v),
-                (nameof(p.Eip3855TransitionTimestamp), p.Eip3855TransitionTimestamp, v => p.Eip3855TransitionTimestamp = v),
-                (nameof(p.Eip3860TransitionTimestamp), p.Eip3860TransitionTimestamp, v => p.Eip3860TransitionTimestamp = v),
-                (nameof(p.Eip4895TransitionTimestamp), p.Eip4895TransitionTimestamp, v => p.Eip4895TransitionTimestamp = v));
-        }
-
-        if (p.Cancun is { } cancun)
-        {
-            ApplyHardforkLabel(nameof(p.Cancun), cancun,
-                (nameof(p.Eip1153TransitionTimestamp), p.Eip1153TransitionTimestamp, v => p.Eip1153TransitionTimestamp = v),
-                (nameof(p.Eip4788TransitionTimestamp), p.Eip4788TransitionTimestamp, v => p.Eip4788TransitionTimestamp = v),
-                (nameof(p.Eip4844TransitionTimestamp), p.Eip4844TransitionTimestamp, v => p.Eip4844TransitionTimestamp = v),
-                (nameof(p.Eip5656TransitionTimestamp), p.Eip5656TransitionTimestamp, v => p.Eip5656TransitionTimestamp = v),
-                (nameof(p.Eip6780TransitionTimestamp), p.Eip6780TransitionTimestamp, v => p.Eip6780TransitionTimestamp = v));
-        }
-
-        if (p.Prague is { } prague)
-        {
-            ApplyHardforkLabel(nameof(p.Prague), prague,
-                (nameof(p.Eip2537TransitionTimestamp), p.Eip2537TransitionTimestamp, v => p.Eip2537TransitionTimestamp = v),
-                (nameof(p.Eip2935TransitionTimestamp), p.Eip2935TransitionTimestamp, v => p.Eip2935TransitionTimestamp = v),
-                (nameof(p.Eip6110TransitionTimestamp), p.Eip6110TransitionTimestamp, v => p.Eip6110TransitionTimestamp = v),
-                (nameof(p.Eip7002TransitionTimestamp), p.Eip7002TransitionTimestamp, v => p.Eip7002TransitionTimestamp = v),
-                (nameof(p.Eip7251TransitionTimestamp), p.Eip7251TransitionTimestamp, v => p.Eip7251TransitionTimestamp = v),
-                (nameof(p.Eip7623TransitionTimestamp), p.Eip7623TransitionTimestamp, v => p.Eip7623TransitionTimestamp = v),
-                (nameof(p.Eip7702TransitionTimestamp), p.Eip7702TransitionTimestamp, v => p.Eip7702TransitionTimestamp = v));
-        }
-
-        if (p.Osaka is { } osaka)
-        {
-            ApplyHardforkLabel(nameof(p.Osaka), osaka,
-                (nameof(p.Eip7594TransitionTimestamp), p.Eip7594TransitionTimestamp, v => p.Eip7594TransitionTimestamp = v),
-                (nameof(p.Eip7823TransitionTimestamp), p.Eip7823TransitionTimestamp, v => p.Eip7823TransitionTimestamp = v),
-                (nameof(p.Eip7825TransitionTimestamp), p.Eip7825TransitionTimestamp, v => p.Eip7825TransitionTimestamp = v),
-                (nameof(p.Eip7883TransitionTimestamp), p.Eip7883TransitionTimestamp, v => p.Eip7883TransitionTimestamp = v),
-                (nameof(p.Eip7918TransitionTimestamp), p.Eip7918TransitionTimestamp, v => p.Eip7918TransitionTimestamp = v),
-                (nameof(p.Eip7934TransitionTimestamp), p.Eip7934TransitionTimestamp, v => p.Eip7934TransitionTimestamp = v),
-                (nameof(p.Eip7939TransitionTimestamp), p.Eip7939TransitionTimestamp, v => p.Eip7939TransitionTimestamp = v),
-                (nameof(p.Eip7951TransitionTimestamp), p.Eip7951TransitionTimestamp, v => p.Eip7951TransitionTimestamp = v));
+            PropertyInfo labelProp = GetProperty(labelExpr);
+            if ((ulong?)labelProp.GetValue(p) is not { } labelValue) continue;
+            ApplyHardforkLabel(p, labelProp.Name, labelValue, eipExprs);
         }
     }
 
-    private static void ApplyHardforkLabel(string label, ulong labelValue, params (string Name, ulong? Current, Action<ulong?> Setter)[] eips)
+    private static void ApplyHardforkLabel(ChainSpecParamsJson p, string label, ulong labelValue, Expression<Func<ChainSpecParamsJson, ulong?>>[] eipExprs)
     {
-        foreach ((string name, ulong? current, Action<ulong?> setter) in eips)
+        foreach (Expression<Func<ChainSpecParamsJson, ulong?>> eipExpr in eipExprs)
         {
+            PropertyInfo prop = GetProperty(eipExpr);
+            ulong? current = (ulong?)prop.GetValue(p);
             if (current is null)
-                setter(labelValue);
+            {
+                prop.SetValue(p, labelValue);
+            }
             else if (current.Value != labelValue)
+            {
                 throw new InvalidConfigurationException(
-                    $"Chainspec hardfork label '{label}' = 0x{labelValue:x} conflicts with explicit {name} = 0x{current.Value:x}. Either remove the conflicting field or align both values.",
+                    $"Chainspec hardfork label '{label}' = 0x{labelValue:x} conflicts with explicit {prop.Name} = 0x{current.Value:x}. Either remove the conflicting field or align both values.",
                     ExitCodes.MissingChainspecEipConfiguration);
+            }
         }
+    }
+
+    private static PropertyInfo GetProperty(Expression<Func<ChainSpecParamsJson, ulong?>> expr)
+    {
+        Expression body = expr.Body;
+        // Nullable<ulong> reads sometimes come through as `Convert(p.Prop, ulong?)`; unwrap them.
+        if (body is UnaryExpression { NodeType: ExpressionType.Convert } unary) body = unary.Operand;
+        return (PropertyInfo)((MemberExpression)body).Member;
     }
 
     private static void ValidateParams(ChainSpecParamsJson parameters)
