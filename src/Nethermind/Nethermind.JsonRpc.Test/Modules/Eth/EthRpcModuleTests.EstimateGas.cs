@@ -680,7 +680,9 @@ public partial class EthRpcModuleTests
 
         string serialized = await ctx.Test.TestEthRpc("eth_estimateGas", transaction, "latest");
 
-        JToken.Parse(serialized)["error"]!["message"]!.Value<string>()
+        JToken parsed = JToken.Parse(serialized);
+        parsed["error"]!["code"]!.Value<int>().Should().Be(-32000);
+        parsed["error"]!["message"]!.Value<string>()
             .Should().Be($"{TxErrorMessages.MissingAuthorizationList} (sender 0x0001020304050607080910111213141516171819)");
     }
 
@@ -691,11 +693,13 @@ public partial class EthRpcModuleTests
         using Context ctx = await Context.Create(specProvider);
 
         object transaction = JsonSerializer.Deserialize<object>(
-            """{"from":"0x0001020304050607080910111213141516171819","value":"0x0","type":"0x4","data":"0x60006000f3","authorizationList":[{"chainId":"0x1","address":"0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045","nonce":"0x1","yParity":"0x1","r":"0xa8f2b4c1d3e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1","s":"0x1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2"}]}""")!;
+            $$$"""{"from":"0x0001020304050607080910111213141516171819","value":"0x0","type":"0x4","data":"0x60006000f3","authorizationList":[{"chainId":"0x1","address":"{{{TestItem.AddressA}}}","nonce":"0x1","yParity":"0x0","r":"0x0101010101010101010101010101010101010101010101010101010101010101","s":"0x0101010101010101010101010101010101010101010101010101010101010101"}]}""")!;
 
         string serialized = await ctx.Test.TestEthRpc("eth_estimateGas", transaction, "latest");
 
-        JToken.Parse(serialized)["error"]!["message"]!.Value<string>()
+        JToken parsed = JToken.Parse(serialized);
+        parsed["error"]!["code"]!.Value<int>().Should().Be(-32000);
+        parsed["error"]!["message"]!.Value<string>()
             .Should().Be($"{TxErrorMessages.NotAllowedCreateTransaction} (sender 0x0001020304050607080910111213141516171819)");
     }
 
