@@ -30,7 +30,8 @@ public static class PersistedSnapshotBuilder
 {
     private const int TopPathThreshold = 7;
     private const int CompactPathThreshold = 15;
-    private const int StorageHashPrefixLength = 20;
+    private const int AddressKeyLength = PersistedSnapshot.AddressKeyLength;          // 20 — column 0x01 outer key
+    private const int AddressHashPrefixLength = PersistedSnapshot.AddressHashPrefixLength;  // 20 — column 0x02 outer key
 
     private static readonly Comparison<TreePath> StateNodeComparer = (a, b) =>
     {
@@ -38,45 +39,45 @@ public static class PersistedSnapshotBuilder
         return cmp != 0 ? cmp : a.Length.CompareTo(b.Length);
     };
 
-    // Sorts storage-trie node keys by 20-byte address-hash prefix (matching the column-0x01
-    // outer key) and then by encoded path so per-address slices are contiguous and the
+    // Sorts storage-trie node keys by 20-byte address-hash prefix (matching the column-0x02
+    // outer key) and then by encoded path so per-addressHash slices are contiguous and the
     // inner HSST keys are in sorted order.
     private static readonly Comparison<(ValueHash256 AddrHash, TreePath Path)> StorageNodeComparer = (a, b) =>
     {
-        int cmp = a.AddrHash.Bytes[..StorageHashPrefixLength].SequenceCompareTo(b.AddrHash.Bytes[..StorageHashPrefixLength]);
+        int cmp = a.AddrHash.Bytes[..AddressHashPrefixLength].SequenceCompareTo(b.AddrHash.Bytes[..AddressHashPrefixLength]);
         if (cmp != 0) return cmp;
         cmp = a.Path.Path.Bytes.SequenceCompareTo(b.Path.Path.Bytes);
         return cmp != 0 ? cmp : a.Path.Length.CompareTo(b.Path.Length);
     };
 
-    private static readonly Comparison<((ValueHash256 AddrHash, UInt256 Slot) Key, SlotValue? Value)> StoragesByAddrHashComparer = (a, b) =>
+    // Sorts slot entries by raw Address bytes (matching the column-0x01 outer key) then by
+    // slot value, so per-address slices are contiguous and slot keys within a slice are in
+    // sorted big-endian order.
+    private static readonly Comparison<((ValueAddress Addr, UInt256 Slot) Key, SlotValue? Value)> StoragesByAddressComparer = (a, b) =>
     {
-        int cmp = a.Key.AddrHash.Bytes[..StorageHashPrefixLength].SequenceCompareTo(b.Key.AddrHash.Bytes[..StorageHashPrefixLength]);
+        int cmp = a.Key.Addr.AsSpan.SequenceCompareTo(b.Key.Addr.AsSpan);
         if (cmp != 0) return cmp;
         return a.Key.Slot.CompareTo(b.Key.Slot);
     };
+
+    private static readonly Comparison<ValueAddress> ValueAddressComparer = (a, b) =>
+        a.AsSpan.SequenceCompareTo(b.AsSpan);
 
     public static void Build<TWriter, TReader, TPin>(Snapshot snapshot, ref TWriter writer, BlobArenaWriter blobWriter, BloomFilter? bloom = null, BloomFilter? trieBloom = null) where TWriter : IByteBufferWriterWithReader<TReader, TPin> where TReader : IHsstByteReader<TPin>, allows ref struct where TPin : struct, IBufferPin, allows ref struct
     {
         // To stay off the LOH, we keep only the unmanaged sort keys in NativeMemoryList
         // (off-heap) and re-fetch the TrieNode value from the source ConcurrentDictionary
-        // at column-write time. PooledDictionary is used for the small Address ↔ hash maps
-        // so their backing entry arrays are pool-rented rather than freshly allocated each
-        // block.
+        // at column-write time.
         NativeMemoryList<TreePath> stateTopKeys = null!, stateCompactKeys = null!, stateFallbackKeys = null!;
         NativeMemoryList<(ValueHash256 AddrHash, TreePath Path)> storTopKeys = null!, storCompactKeys = null!, storFallbackKeys = null!;
-        // Storages carry the address hash inline so the sort comparator does not need any
-        // dict lookup, and column-write iteration can match by hash directly.
-        NativeMemoryList<((ValueHash256 AddrHash, UInt256 Slot) Key, SlotValue? Value)> sortedStorages = null!;
-        // Per-address column 0x01 needs a sorted list of unique address-hashes plus a way
-        // to recover the Address bytes for account / SD lookups. uniqueAddressHashes is
-        // sorted by full ValueHash256 (a strict refinement of the 20-byte prefix sort the
-        // column key requires). hashToAddr is also sorted by hash and contains a (hash,
-        // 20-byte address) entry for every hash that originated from accounts / SD / slots
-        // (i.e. every hash with a known Address); storage-trie-only hashes are absent. We
-        // walk uniqueAddressHashes and hashToAddr in lock-step at write time.
-        NativeMemoryList<ValueHash256> uniqueAddressHashes = null!;
-        NativeMemoryList<(ValueHash256 Hash, ValueAddress Addr)> hashToAddr = null!;
+        // Slot entries sorted by raw 20-byte Address bytes (matching the column-0x01 outer
+        // key), then by big-endian slot. No address hashing during build — column 0x01 is
+        // keyed by raw Address, and slot bloom keys derive from raw address bytes too.
+        NativeMemoryList<((ValueAddress Addr, UInt256 Slot) Key, SlotValue? Value)> sortedStorages = null!;
+        // Sorted list of unique raw 20-byte Addresses covering accounts / SD / storages.
+        // Drives the column-0x01 outer iteration; per-address slots are matched by raw
+        // address equality with sortedStorages.
+        NativeMemoryList<ValueAddress> uniqueAddresses = null!;
 
         // Parallel extraction + sort: three independent jobs over disjoint dictionaries.
         Parallel.Invoke(
@@ -134,67 +135,33 @@ public static class PersistedSnapshotBuilder
             () =>
             {
                 // Job C: account column prep — collect Address-keyed sources (accounts /
-                // SD / slots), pre-hash each address once into uniqueAddressHashes, and
-                // build hashToAddr. Storages carry the address hash inline so we do not
-                // need a separate addrToHash dict for the sort comparator.
+                // SD / slots) as raw Address bytes. No hashing here; column 0x01 keys
+                // directly on the 20 raw Address bytes.
                 using PooledSet<HashedKey<Address>> seen = new();
                 foreach (KeyValuePair<HashedKey<Address>, Account?> kv in snapshot.Accounts)
                     seen.Add(kv.Key);
                 foreach (KeyValuePair<HashedKey<Address>, bool> kv in snapshot.SelfDestructedStorageAddresses)
                     seen.Add(kv.Key);
 
-                NativeMemoryList<((ValueHash256 AddrHash, UInt256 Slot) Key, SlotValue? Value)> storages =
+                NativeMemoryList<((ValueAddress Addr, UInt256 Slot) Key, SlotValue? Value)> storages =
                     new(Math.Max(1, snapshot.StoragesCount));
                 foreach (KeyValuePair<HashedKey<(Address, UInt256)>, SlotValue?> kv in snapshot.Storages)
                 {
                     (Address addr, UInt256 slot) = kv.Key.Key;
-                    ValueHash256 addrHash = ValueKeccak.Compute(addr.Bytes);
-                    storages.Add(((addrHash, slot), kv.Value));
+                    storages.Add(((new ValueAddress(addr.Bytes), slot), kv.Value));
                     seen.Add(addr);
                 }
 
-                NativeMemoryList<ValueHash256> hashes = new(Math.Max(1, seen.Count));
-                NativeMemoryList<(ValueHash256 Hash, ValueAddress Addr)> addrMap = new(Math.Max(1, seen.Count));
+                NativeMemoryList<ValueAddress> addrs = new(Math.Max(1, seen.Count));
                 foreach (HashedKey<Address> addr in seen)
-                {
-                    ValueHash256 vh = ValueKeccak.Compute(addr.Key.Bytes);
-                    hashes.Add(vh);
-                    addrMap.Add((vh, new ValueAddress(addr.Key.Bytes)));
-                }
-                addrMap.Sort(static (a, b) => a.Hash.CompareTo(b.Hash));
+                    addrs.Add(new ValueAddress(addr.Key.Bytes));
+                addrs.Sort(ValueAddressComparer);
 
-                storages.Sort(StoragesByAddrHashComparer);
+                storages.Sort(StoragesByAddressComparer);
 
                 sortedStorages = storages;
-                uniqueAddressHashes = hashes;
-                hashToAddr = addrMap;
+                uniqueAddresses = addrs;
             });
-
-        // After Parallel.Invoke: merge in storage-trie-only address-hashes (those that
-        // appear in StorageNodes but not in Accounts/SD/Slots, so Job C didn't see them).
-        // We append everything to uniqueAddressHashes, sort, and dedupe in place.
-        // Sorting by full ValueHash256 is a strict refinement of the 20-byte prefix order
-        // that column 0x01 outer keys require, so downstream emit order is preserved.
-        {
-            int extraCapacity = storTopKeys.Count + storCompactKeys.Count + storFallbackKeys.Count;
-            uniqueAddressHashes.EnsureCapacity(uniqueAddressHashes.Count + extraCapacity);
-            for (int i = 0; i < storTopKeys.Count; i++) uniqueAddressHashes.Add(storTopKeys[i].AddrHash);
-            for (int i = 0; i < storCompactKeys.Count; i++) uniqueAddressHashes.Add(storCompactKeys[i].AddrHash);
-            for (int i = 0; i < storFallbackKeys.Count; i++) uniqueAddressHashes.Add(storFallbackKeys[i].AddrHash);
-            uniqueAddressHashes.Sort((a, b) => a.CompareTo(b));
-
-            // Linear in-place dedupe: keep first of each consecutive run.
-            Span<ValueHash256> span = uniqueAddressHashes.AsSpan();
-            int write = 0;
-            for (int read = 0; read < span.Length; read++)
-            {
-                if (write == 0 || !span[read].Equals(span[write - 1]))
-                {
-                    span[write++] = span[read];
-                }
-            }
-            uniqueAddressHashes.Truncate(write);
-        }
 
         HsstDenseByteIndexBuilder<TWriter> outer = new(ref writer);
         try
@@ -202,12 +169,15 @@ public static class PersistedSnapshotBuilder
             // Column 0x00: Metadata
             WriteMetadataColumn<TWriter, TReader, TPin>(ref outer, snapshot, blobWriter.BlobArenaId);
 
-            // Column 0x01: Unified per-address column. Sub-tags 0x01 (storage trie top),
-            // 0x02 (storage trie compact), 0x03 (storage trie fallback), 0x04 (slots),
-            // 0x05 (account RLP), 0x06 (SD).
-            WriteAccountColumn<TWriter, TReader, TPin>(ref outer, snapshot, sortedStorages, uniqueAddressHashes,
-                hashToAddr,
-                storTopKeys, storCompactKeys, storFallbackKeys, blobWriter, bloom, trieBloom);
+            // Column 0x01: Per-Address column. Sub-tags 0x04 (slots), 0x05 (account RLP),
+            // 0x06 (SD). Outer key is the raw 20-byte Address.
+            WriteAccountColumn<TWriter, TReader, TPin>(ref outer, snapshot, sortedStorages, uniqueAddresses,
+                blobWriter, bloom);
+
+            // Column 0x02: Per-AddressHash storage trie column. Sub-tags 0x01 (top),
+            // 0x02 (compact), 0x03 (fallback). Outer key is the 20-byte address-hash prefix.
+            WriteStorageTrieColumn<TWriter, TReader, TPin>(ref outer, snapshot,
+                storTopKeys, storCompactKeys, storFallbackKeys, blobWriter, trieBloom);
 
             // Column 0x03: State nodes (compact, path length 6-15)
             WriteStateNodesColumnCompact<TWriter, TReader, TPin>(ref outer, snapshot, stateCompactKeys, blobWriter, trieBloom);
@@ -224,8 +194,7 @@ public static class PersistedSnapshotBuilder
         {
             outer.Dispose();
             sortedStorages?.Dispose();
-            uniqueAddressHashes?.Dispose();
-            hashToAddr?.Dispose();
+            uniqueAddresses?.Dispose();
             stateTopKeys?.Dispose();
             stateCompactKeys?.Dispose();
             stateFallbackKeys?.Dispose();
@@ -281,35 +250,26 @@ public static class PersistedSnapshotBuilder
 
     private static void WriteAccountColumn<TWriter, TReader, TPin>(
         ref HsstDenseByteIndexBuilder<TWriter> outer, Snapshot snapshot,
-        NativeMemoryList<((ValueHash256 AddrHash, UInt256 Slot) Key, SlotValue? Value)> sortedStorages,
-        NativeMemoryList<ValueHash256> uniqueAddressHashes,
-        NativeMemoryList<(ValueHash256 Hash, ValueAddress Addr)> hashToAddr,
-        NativeMemoryList<(ValueHash256 AddrHash, TreePath Path)> storTop,
-        NativeMemoryList<(ValueHash256 AddrHash, TreePath Path)> storCompact,
-        NativeMemoryList<(ValueHash256 AddrHash, TreePath Path)> storFallback,
+        NativeMemoryList<((ValueAddress Addr, UInt256 Slot) Key, SlotValue? Value)> sortedStorages,
+        NativeMemoryList<ValueAddress> uniqueAddresses,
         BlobArenaWriter blobWriter,
-        BloomFilter? bloom = null,
-        BloomFilter? trieBloom = null) where TWriter : IByteBufferWriterWithReader<TReader, TPin> where TReader : IHsstByteReader<TPin>, allows ref struct where TPin : struct, IBufferPin, allows ref struct
+        BloomFilter? bloom = null) where TWriter : IByteBufferWriterWithReader<TReader, TPin> where TReader : IHsstByteReader<TPin>, allows ref struct where TPin : struct, IBufferPin, allows ref struct
     {
         const int slotPrefixLength = 30;
         const int slotSuffixLength = 32 - slotPrefixLength;
 
-        // Address-level HSST keyed by 20-byte address-hash prefix.
+        // Address-level HSST keyed by 20 raw Address bytes.
         ref TWriter addressWriter = ref outer.BeginValueWrite();
-        using HsstBTreeBuilder<TWriter, TReader, TPin> addressLevel = new(ref addressWriter, StorageHashPrefixLength, new HsstBTreeOptions
+        using HsstBTreeBuilder<TWriter, TReader, TPin> addressLevel = new(ref addressWriter, AddressKeyLength, new HsstBTreeOptions
         {
             MinSeparatorLength = 4,
-        }, expectedKeyCount: uniqueAddressHashes.Count);
+        }, expectedKeyCount: uniqueAddresses.Count);
         // Slim-account RLP for any single account fits comfortably in 256 bytes (4×u256 fields
         // plus framing). Pool the scratch so it doesn't allocate per WriteAccountColumn call.
         byte[] rlpBuffer = ArrayPool<byte>.Shared.Rent(256);
         RlpStream rlpStream = new(rlpBuffer);
         Span<byte> slotKey = stackalloc byte[32];
         Span<byte> currentPrefixBuf = stackalloc byte[slotPrefixLength];
-        Span<byte> topPathKey = stackalloc byte[4];
-        Span<byte> compactPathKey = stackalloc byte[8];
-        Span<byte> fallbackPathKey = stackalloc byte[33];
-        Span<byte> nrBuf = stackalloc byte[NodeRef.Size];
         // Reusable work buffer for the slot prefix (30-byte) HSST BTree builder.
         // Constructed once per address. Sharing the buffer struct across every
         // iteration of the address loop avoids the rent/return churn that would
@@ -319,151 +279,43 @@ public static class PersistedSnapshotBuilder
         // The slot suffix layer now uses TwoByteSlotValue[Large] which pool internally.
         HsstBTreeBuilderBuffers slotPrefixBuffers = new();
         int storageIdx = 0;
-        int storTopIdx = 0;
-        int storCompactIdx = 0;
-        int storFallbackIdx = 0;
-        // hashToAddr is sorted by hash and is a subset of uniqueAddressHashes (also sorted
-        // by hash), so we can resolve hash → Address with a forward-only walk instead of
-        // a per-iteration lookup. hashToAddrIdx is left pointing at the next unconsumed
-        // entry; when it matches the current addressHash we materialize an Address ref
-        // (single Gen0 alloc per outer iteration that has account-side data).
-        int hashToAddrIdx = 0;
 
-        for (int addrIdx = 0; addrIdx < uniqueAddressHashes.Count; addrIdx++)
+        for (int addrIdx = 0; addrIdx < uniqueAddresses.Count; addrIdx++)
         {
-            ValueHash256 addressHash = uniqueAddressHashes[addrIdx];
-            // address is null when this column key was contributed only by storage-trie
-            // nodes (Hash256 → TrieNode). In that case slots/account/SD lookups are
-            // skipped because all three are keyed by raw Address.
-            Address? address = null;
-            if (hashToAddrIdx < hashToAddr.Count && hashToAddr[hashToAddrIdx].Hash.Equals(addressHash))
-            {
-                address = hashToAddr[hashToAddrIdx].Addr.ToAddress();
-                hashToAddrIdx++;
-            }
-            ReadOnlySpan<byte> addressHashPrefix = addressHash.Bytes[..StorageHashPrefixLength];
+            ValueAddress vaddr = uniqueAddresses[addrIdx];
+            ReadOnlySpan<byte> addressBytes = vaddr.AsSpan;
+            // uniqueAddresses came from accounts/SD/storages only, so every entry has a real
+            // Address; no null-guard needed for account/SD/slot lookups below.
+            Address address = vaddr.ToAddress();
 
             ulong addrBloomKey = 0;
             if (bloom is not null)
             {
-                addrBloomKey = PersistedSnapshotBloomBuilder.AddressKey(in addressHash);
+                addrBloomKey = PersistedSnapshotBloomBuilder.AddressKey(addressBytes);
                 bloom.Add(addrBloomKey);
             }
 
-            // Begin per-address HSST. Up to 6 sub-tags 0x01..0x06; DenseByteIndex addresses
+            // Begin per-address HSST. Sub-tags 0x04/0x05/0x06; DenseByteIndex addresses
             // entries by tag-byte directly and gap-fills missing positions with length-0
             // values. Sub-tag value-presence semantics:
-            //   0x01 storage top: nested HSST(4-byte path → RLP)
-            //   0x02 storage compact: nested HSST(8-byte path → RLP)
-            //   0x03 storage fallback: nested HSST(33-byte path → RLP)
             //   0x04 slots: nested HSST(SlotPrefix(30) → nested HSST(SlotSuffix(2) → bytes))
             //   0x05 account: [] absent / [0x00] deleted / RLP-bytes present
             //   0x06 SD: [] absent / [0x00] destructed / [0x01] new account
+            // (Storage-trie sub-tags 0x01..0x03 live in column 0x02 now, keyed by addressHash.)
             ref TWriter perAddrWriter = ref addressLevel.BeginValueWrite();
             using HsstDenseByteIndexBuilder<TWriter> perAddr = new(ref perAddrWriter);
 
-            // Hash256 needed only when there are storage-trie nodes for this address; the
-            // map has an entry iff at least one storTop/storCompact/storFallback key
-            // referenced it during Job B.
-            Hash256? addrRefForStorageNode = null;
-
-            // Sub-tag 0x01: Storage trie nodes (top, 3-byte path keys, length 0-5).
-            // Storage-trie partitions are pre-sorted by address-hash prefix and path so a
-            // single advance through storTop / storCompact / storFallback covers the run
-            // for this address-hash.
-            int topStart = storTopIdx;
-            while (storTopIdx < storTop.Count &&
-                storTop[storTopIdx].AddrHash.Bytes[..StorageHashPrefixLength].SequenceEqual(addressHashPrefix))
-                storTopIdx++;
-            if (topStart < storTopIdx)
-            {
-                addrRefForStorageNode ??= new Hash256(in addressHash);
-                ref TWriter topWriter = ref perAddr.BeginValueWrite();
-                using HsstBTreeBuilder<TWriter, TReader, TPin> topLevel = new(ref topWriter, keyLength: 4, new HsstBTreeOptions { MinSeparatorLength = 4 },
-                    expectedKeyCount: storTopIdx - topStart);
-                for (int i = topStart; i < storTopIdx; i++)
-                {
-                    (ValueHash256 _, TreePath path) = storTop[i];
-                    snapshot.TryGetStorageNode((addrRefForStorageNode, path), out TrieNode? node);
-                    path.EncodeWith4Byte(topPathKey);
-                    ReadOnlySpan<byte> topRlp = node!.FullRlp.AsSpan();
-                    NodeRef topNr = blobWriter.WriteRlp(topRlp);
-                    NodeRef.Write(nrBuf, in topNr);
-                    ref TWriter topValueWriter = ref topLevel.BeginValueWrite();
-                    IByteBufferWriter.Copy(ref topValueWriter, nrBuf);
-                    topLevel.FinishValueWrite(topPathKey, NodeRef.Size);
-                    trieBloom?.Add(PersistedSnapshotBloomBuilder.StorageNodeKey(in addressHash, in path));
-                }
-                topLevel.Build();
-                perAddr.FinishValueWrite(PersistedSnapshot.StorageTopSubTag);
-            }
-
-            // Sub-tag 0x02: Storage trie nodes (compact, 8-byte path keys, length 6-15).
-            int compactStart = storCompactIdx;
-            while (storCompactIdx < storCompact.Count &&
-                storCompact[storCompactIdx].AddrHash.Bytes[..StorageHashPrefixLength].SequenceEqual(addressHashPrefix))
-                storCompactIdx++;
-            if (compactStart < storCompactIdx)
-            {
-                addrRefForStorageNode ??= new Hash256(in addressHash);
-                ref TWriter compactWriter = ref perAddr.BeginValueWrite();
-                using HsstBTreeBuilder<TWriter, TReader, TPin> compactLevel = new(ref compactWriter, keyLength: 8, new HsstBTreeOptions { MinSeparatorLength = 8 },
-                    expectedKeyCount: storCompactIdx - compactStart);
-                for (int i = compactStart; i < storCompactIdx; i++)
-                {
-                    (ValueHash256 _, TreePath path) = storCompact[i];
-                    snapshot.TryGetStorageNode((addrRefForStorageNode, path), out TrieNode? node);
-                    path.EncodeWith8Byte(compactPathKey);
-                    ReadOnlySpan<byte> compactRlp = node!.FullRlp.AsSpan();
-                    NodeRef compactNr = blobWriter.WriteRlp(compactRlp);
-                    NodeRef.Write(nrBuf, in compactNr);
-                    ref TWriter compactValueWriter = ref compactLevel.BeginValueWrite();
-                    IByteBufferWriter.Copy(ref compactValueWriter, nrBuf);
-                    compactLevel.FinishValueWrite(compactPathKey, NodeRef.Size);
-                    trieBloom?.Add(PersistedSnapshotBloomBuilder.StorageNodeKey(in addressHash, in path));
-                }
-                compactLevel.Build();
-                perAddr.FinishValueWrite(PersistedSnapshot.StorageCompactSubTag);
-            }
-
-            // Sub-tag 0x03: Storage trie nodes (fallback, 33-byte path keys, length 16+).
-            int fallbackStart = storFallbackIdx;
-            while (storFallbackIdx < storFallback.Count &&
-                storFallback[storFallbackIdx].AddrHash.Bytes[..StorageHashPrefixLength].SequenceEqual(addressHashPrefix))
-                storFallbackIdx++;
-            if (fallbackStart < storFallbackIdx)
-            {
-                addrRefForStorageNode ??= new Hash256(in addressHash);
-                ref TWriter fbWriter = ref perAddr.BeginValueWrite();
-                using HsstBTreeBuilder<TWriter, TReader, TPin> fbLevel = new(ref fbWriter, keyLength: 33, expectedKeyCount: storFallbackIdx - fallbackStart);
-                for (int i = fallbackStart; i < storFallbackIdx; i++)
-                {
-                    (ValueHash256 _, TreePath path) = storFallback[i];
-                    snapshot.TryGetStorageNode((addrRefForStorageNode, path), out TrieNode? node);
-                    path.Path.Bytes.CopyTo(fallbackPathKey);
-                    fallbackPathKey[32] = (byte)path.Length;
-                    ReadOnlySpan<byte> fbRlp = node!.FullRlp.AsSpan();
-                    NodeRef fbNr = blobWriter.WriteRlp(fbRlp);
-                    NodeRef.Write(nrBuf, in fbNr);
-                    ref TWriter fbValueWriter = ref fbLevel.BeginValueWrite();
-                    IByteBufferWriter.Copy(ref fbValueWriter, nrBuf);
-                    fbLevel.FinishValueWrite(fallbackPathKey, NodeRef.Size);
-                    trieBloom?.Add(PersistedSnapshotBloomBuilder.StorageNodeKey(in addressHash, in path));
-                }
-                fbLevel.Build();
-                perAddr.FinishValueWrite(PersistedSnapshot.StorageFallbackSubTag);
-            }
-
-            // Sub-tag 0x04: Slots — skipped when no Address is known for this hash key.
-            bool hasStorage = address is not null && storageIdx < sortedStorages.Count &&
-                sortedStorages[storageIdx].Key.AddrHash.Equals(addressHash);
+            // Sub-tag 0x04: Slots — sortedStorages is sorted by raw Address; advance the
+            // cursor over the contiguous slot run for this address.
+            bool hasStorage = storageIdx < sortedStorages.Count &&
+                sortedStorages[storageIdx].Key.Addr.AsSpan.SequenceEqual(addressBytes);
             if (hasStorage)
             {
                 ref TWriter slotWriter = ref perAddr.BeginValueWrite();
                 using HsstBTreeBuilder<TWriter, TReader, TPin> prefixLevel = new(ref slotWriter, ref slotPrefixBuffers, slotPrefixLength, new HsstBTreeOptions { MinSeparatorLength = 4 });
 
                 while (storageIdx < sortedStorages.Count &&
-                    sortedStorages[storageIdx].Key.AddrHash.Equals(addressHash))
+                    sortedStorages[storageIdx].Key.Addr.AsSpan.SequenceEqual(addressBytes))
                 {
                     sortedStorages[storageIdx].Key.Slot.ToBigEndian(slotKey);
                     slotKey[..slotPrefixLength].CopyTo(currentPrefixBuf);
@@ -478,7 +330,7 @@ public static class PersistedSnapshotBuilder
                     int groupEnd = groupStart;
                     long groupValueBytes = 0;
                     while (groupEnd < sortedStorages.Count &&
-                        sortedStorages[groupEnd].Key.AddrHash.Equals(addressHash))
+                        sortedStorages[groupEnd].Key.Addr.AsSpan.SequenceEqual(addressBytes))
                     {
                         sortedStorages[groupEnd].Key.Slot.ToBigEndian(slotKey);
                         if (!slotKey[..slotPrefixLength].SequenceEqual(currentPrefix))
@@ -534,7 +386,7 @@ public static class PersistedSnapshotBuilder
             // Sub-tag 0x05: Account. Present-marker encoding: [0x00] deleted, RLP-bytes
             // present; length 0 = absent (gap-filled). Slim account RLP starts with a
             // list header (0xc0+) so 0x00 first-byte is unambiguous.
-            if (address is not null && snapshot.TryGetAccount(address, out Account? account))
+            if (snapshot.TryGetAccount(address, out Account? account))
             {
                 if (account is null)
                 {
@@ -551,19 +403,202 @@ public static class PersistedSnapshotBuilder
 
             // Sub-tag 0x06: Self-destruct. Present-marker encoding: [0x00] destructed,
             // [0x01] new account; length 0 = absent (gap-filled by DenseByteIndex).
-            if (address is not null && snapshot.Content.SelfDestructedStorageAddresses.TryGetValue(address, out bool sdValue))
+            if (snapshot.Content.SelfDestructedStorageAddresses.TryGetValue(address, out bool sdValue))
             {
                 perAddr.Add(PersistedSnapshot.SelfDestructSubTag, sdValue ? [0x01] : [0x00]);
             }
 
             perAddr.Build();
-            addressLevel.FinishValueWrite(addressHashPrefix);
+            addressLevel.FinishValueWrite(addressBytes);
         }
 
         addressLevel.Build();
         outer.FinishValueWrite(PersistedSnapshot.AccountColumnTag);
         ArrayPool<byte>.Shared.Return(rlpBuffer);
         slotPrefixBuffers.Dispose();
+    }
+
+    /// <summary>
+    /// Write the storage-trie column (outer tag 0x02) keyed by 20-byte address-hash prefix.
+    /// Per addressHash the inner HSST carries sub-tags 0x01 (top, 4-byte path), 0x02 (compact,
+    /// 8-byte path), and 0x03 (fallback, 33-byte path) — values are 6-byte <see cref="NodeRef"/>s
+    /// pointing into the blob arena. Inputs are pre-sorted by 20-byte hash prefix then by
+    /// encoded path.
+    /// </summary>
+    private static void WriteStorageTrieColumn<TWriter, TReader, TPin>(
+        ref HsstDenseByteIndexBuilder<TWriter> outer, Snapshot snapshot,
+        NativeMemoryList<(ValueHash256 AddrHash, TreePath Path)> storTop,
+        NativeMemoryList<(ValueHash256 AddrHash, TreePath Path)> storCompact,
+        NativeMemoryList<(ValueHash256 AddrHash, TreePath Path)> storFallback,
+        BlobArenaWriter blobWriter,
+        BloomFilter? trieBloom = null) where TWriter : IByteBufferWriterWithReader<TReader, TPin> where TReader : IHsstByteReader<TPin>, allows ref struct where TPin : struct, IBufferPin, allows ref struct
+    {
+        // Pre-count unique address-hash prefixes by N-way-walking the three sorted lists.
+        // Used to size the BTree builder and to early-return when there are no storage-trie
+        // nodes at all (we still emit an empty column entry to keep outer offsets stable).
+        int uniqueAddrHashCount = CountUniqueStorageAddrHashes(storTop, storCompact, storFallback);
+
+        ref TWriter columnWriter = ref outer.BeginValueWrite();
+        using HsstBTreeBuilder<TWriter, TReader, TPin> addressLevel = new(ref columnWriter, AddressHashPrefixLength, new HsstBTreeOptions
+        {
+            MinSeparatorLength = 4,
+        }, expectedKeyCount: uniqueAddrHashCount);
+
+        Span<byte> topPathKey = stackalloc byte[4];
+        Span<byte> compactPathKey = stackalloc byte[8];
+        Span<byte> fallbackPathKey = stackalloc byte[33];
+        Span<byte> nrBuf = stackalloc byte[NodeRef.Size];
+
+        int storTopIdx = 0, storCompactIdx = 0, storFallbackIdx = 0;
+
+        while (storTopIdx < storTop.Count || storCompactIdx < storCompact.Count || storFallbackIdx < storFallback.Count)
+        {
+            // Pick the smallest 20-byte hash prefix across the three sorted lists.
+            ValueHash256 addressHash = PickMinAddrHash(
+                storTop, storTopIdx,
+                storCompact, storCompactIdx,
+                storFallback, storFallbackIdx);
+            ReadOnlySpan<byte> addressHashPrefix = addressHash.Bytes[..AddressHashPrefixLength];
+            Hash256 addrRefForStorageNode = new(in addressHash);
+
+            ref TWriter perAddrHashWriter = ref addressLevel.BeginValueWrite();
+            using HsstDenseByteIndexBuilder<TWriter> perAddrHash = new(ref perAddrHashWriter);
+
+            // Sub-tag 0x01: top (4-byte path keys).
+            int topStart = storTopIdx;
+            while (storTopIdx < storTop.Count &&
+                storTop[storTopIdx].AddrHash.Bytes[..AddressHashPrefixLength].SequenceEqual(addressHashPrefix))
+                storTopIdx++;
+            if (topStart < storTopIdx)
+            {
+                ref TWriter topWriter = ref perAddrHash.BeginValueWrite();
+                using HsstBTreeBuilder<TWriter, TReader, TPin> topLevel = new(ref topWriter, keyLength: 4, new HsstBTreeOptions { MinSeparatorLength = 4 },
+                    expectedKeyCount: storTopIdx - topStart);
+                for (int i = topStart; i < storTopIdx; i++)
+                {
+                    (ValueHash256 _, TreePath path) = storTop[i];
+                    snapshot.TryGetStorageNode((addrRefForStorageNode, path), out TrieNode? node);
+                    path.EncodeWith4Byte(topPathKey);
+                    ReadOnlySpan<byte> topRlp = node!.FullRlp.AsSpan();
+                    NodeRef topNr = blobWriter.WriteRlp(topRlp);
+                    NodeRef.Write(nrBuf, in topNr);
+                    ref TWriter topValueWriter = ref topLevel.BeginValueWrite();
+                    IByteBufferWriter.Copy(ref topValueWriter, nrBuf);
+                    topLevel.FinishValueWrite(topPathKey, NodeRef.Size);
+                    trieBloom?.Add(PersistedSnapshotBloomBuilder.StorageNodeKey(in addressHash, in path));
+                }
+                topLevel.Build();
+                perAddrHash.FinishValueWrite(PersistedSnapshot.StorageTopSubTag);
+            }
+
+            // Sub-tag 0x02: compact (8-byte path keys).
+            int compactStart = storCompactIdx;
+            while (storCompactIdx < storCompact.Count &&
+                storCompact[storCompactIdx].AddrHash.Bytes[..AddressHashPrefixLength].SequenceEqual(addressHashPrefix))
+                storCompactIdx++;
+            if (compactStart < storCompactIdx)
+            {
+                ref TWriter compactWriter = ref perAddrHash.BeginValueWrite();
+                using HsstBTreeBuilder<TWriter, TReader, TPin> compactLevel = new(ref compactWriter, keyLength: 8, new HsstBTreeOptions { MinSeparatorLength = 8 },
+                    expectedKeyCount: storCompactIdx - compactStart);
+                for (int i = compactStart; i < storCompactIdx; i++)
+                {
+                    (ValueHash256 _, TreePath path) = storCompact[i];
+                    snapshot.TryGetStorageNode((addrRefForStorageNode, path), out TrieNode? node);
+                    path.EncodeWith8Byte(compactPathKey);
+                    ReadOnlySpan<byte> compactRlp = node!.FullRlp.AsSpan();
+                    NodeRef compactNr = blobWriter.WriteRlp(compactRlp);
+                    NodeRef.Write(nrBuf, in compactNr);
+                    ref TWriter compactValueWriter = ref compactLevel.BeginValueWrite();
+                    IByteBufferWriter.Copy(ref compactValueWriter, nrBuf);
+                    compactLevel.FinishValueWrite(compactPathKey, NodeRef.Size);
+                    trieBloom?.Add(PersistedSnapshotBloomBuilder.StorageNodeKey(in addressHash, in path));
+                }
+                compactLevel.Build();
+                perAddrHash.FinishValueWrite(PersistedSnapshot.StorageCompactSubTag);
+            }
+
+            // Sub-tag 0x03: fallback (33-byte path keys).
+            int fallbackStart = storFallbackIdx;
+            while (storFallbackIdx < storFallback.Count &&
+                storFallback[storFallbackIdx].AddrHash.Bytes[..AddressHashPrefixLength].SequenceEqual(addressHashPrefix))
+                storFallbackIdx++;
+            if (fallbackStart < storFallbackIdx)
+            {
+                ref TWriter fbWriter = ref perAddrHash.BeginValueWrite();
+                using HsstBTreeBuilder<TWriter, TReader, TPin> fbLevel = new(ref fbWriter, keyLength: 33, expectedKeyCount: storFallbackIdx - fallbackStart);
+                for (int i = fallbackStart; i < storFallbackIdx; i++)
+                {
+                    (ValueHash256 _, TreePath path) = storFallback[i];
+                    snapshot.TryGetStorageNode((addrRefForStorageNode, path), out TrieNode? node);
+                    path.Path.Bytes.CopyTo(fallbackPathKey);
+                    fallbackPathKey[32] = (byte)path.Length;
+                    ReadOnlySpan<byte> fbRlp = node!.FullRlp.AsSpan();
+                    NodeRef fbNr = blobWriter.WriteRlp(fbRlp);
+                    NodeRef.Write(nrBuf, in fbNr);
+                    ref TWriter fbValueWriter = ref fbLevel.BeginValueWrite();
+                    IByteBufferWriter.Copy(ref fbValueWriter, nrBuf);
+                    fbLevel.FinishValueWrite(fallbackPathKey, NodeRef.Size);
+                    trieBloom?.Add(PersistedSnapshotBloomBuilder.StorageNodeKey(in addressHash, in path));
+                }
+                fbLevel.Build();
+                perAddrHash.FinishValueWrite(PersistedSnapshot.StorageFallbackSubTag);
+            }
+
+            perAddrHash.Build();
+            addressLevel.FinishValueWrite(addressHashPrefix);
+        }
+
+        addressLevel.Build();
+        outer.FinishValueWrite(PersistedSnapshot.StorageTrieColumnTag);
+    }
+
+    /// <summary>
+    /// Count distinct 20-byte address-hash prefixes across the three pre-sorted
+    /// storage-trie partition lists by N-way walking them.
+    /// </summary>
+    private static int CountUniqueStorageAddrHashes(
+        NativeMemoryList<(ValueHash256 AddrHash, TreePath Path)> storTop,
+        NativeMemoryList<(ValueHash256 AddrHash, TreePath Path)> storCompact,
+        NativeMemoryList<(ValueHash256 AddrHash, TreePath Path)> storFallback)
+    {
+        int topIdx = 0, compactIdx = 0, fallbackIdx = 0;
+        int unique = 0;
+        ValueHash256 last = default;
+        bool haveLast = false;
+        while (topIdx < storTop.Count || compactIdx < storCompact.Count || fallbackIdx < storFallback.Count)
+        {
+            ValueHash256 next = PickMinAddrHash(storTop, topIdx, storCompact, compactIdx, storFallback, fallbackIdx);
+            if (!haveLast || !next.Bytes[..AddressHashPrefixLength].SequenceEqual(last.Bytes[..AddressHashPrefixLength]))
+            {
+                unique++;
+                last = next;
+                haveLast = true;
+            }
+            ReadOnlySpan<byte> prefix = next.Bytes[..AddressHashPrefixLength];
+            while (topIdx < storTop.Count && storTop[topIdx].AddrHash.Bytes[..AddressHashPrefixLength].SequenceEqual(prefix)) topIdx++;
+            while (compactIdx < storCompact.Count && storCompact[compactIdx].AddrHash.Bytes[..AddressHashPrefixLength].SequenceEqual(prefix)) compactIdx++;
+            while (fallbackIdx < storFallback.Count && storFallback[fallbackIdx].AddrHash.Bytes[..AddressHashPrefixLength].SequenceEqual(prefix)) fallbackIdx++;
+        }
+        return unique;
+    }
+
+    private static ValueHash256 PickMinAddrHash(
+        NativeMemoryList<(ValueHash256 AddrHash, TreePath Path)> a, int aIdx,
+        NativeMemoryList<(ValueHash256 AddrHash, TreePath Path)> b, int bIdx,
+        NativeMemoryList<(ValueHash256 AddrHash, TreePath Path)> c, int cIdx)
+    {
+        bool hasA = aIdx < a.Count;
+        bool hasB = bIdx < b.Count;
+        bool hasC = cIdx < c.Count;
+        ValueHash256 best = default;
+        bool haveBest = false;
+        if (hasA) { best = a[aIdx].AddrHash; haveBest = true; }
+        if (hasB && (!haveBest || b[bIdx].AddrHash.Bytes[..AddressHashPrefixLength].SequenceCompareTo(best.Bytes[..AddressHashPrefixLength]) < 0))
+        { best = b[bIdx].AddrHash; haveBest = true; }
+        if (hasC && (!haveBest || c[cIdx].AddrHash.Bytes[..AddressHashPrefixLength].SequenceCompareTo(best.Bytes[..AddressHashPrefixLength]) < 0))
+            best = c[cIdx].AddrHash;
+        return best;
     }
 
     private static void WriteStateTopNodesColumn<TWriter, TReader, TPin>(ref HsstDenseByteIndexBuilder<TWriter> outer, Snapshot snapshot, NativeMemoryList<TreePath> stateNodeKeys, BlobArenaWriter blobWriter, BloomFilter? trieBloom = null) where TWriter : IByteBufferWriterWithReader<TReader, TPin> where TReader : IHsstByteReader<TPin>, allows ref struct where TPin : struct, IBufferPin, allows ref struct

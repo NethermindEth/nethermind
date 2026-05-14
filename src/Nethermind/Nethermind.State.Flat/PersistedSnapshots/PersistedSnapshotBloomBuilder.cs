@@ -33,16 +33,16 @@ internal static class PersistedSnapshotBloomBuilder
 
         BloomFilter bloom = new(capacity, bitsPerKey);
 
-        // Pass 2: add keys. Only AddressHash/Slot decoded — Account/SlotValue skipped.
+        // Pass 2: add keys. Only Address/Slot decoded — Account/SlotValue skipped.
         foreach (PersistedSnapshotScanner.AccountEntry entry in scanner.Accounts)
-            bloom.Add(AddressKey(entry.AddressHash));
+            bloom.Add(AddressKey(entry.Address));
 
         foreach (PersistedSnapshotScanner.SelfDestructEntry entry in scanner.SelfDestructedStorageAddresses)
-            bloom.Add(AddressKey(entry.AddressHash));
+            bloom.Add(AddressKey(entry.Address));
 
         foreach (PersistedSnapshotScanner.StorageEntry entry in scanner.Storages)
         {
-            ulong addrKey = AddressKey(entry.AddressHash);
+            ulong addrKey = AddressKey(entry.Address);
             bloom.Add(addrKey);
             bloom.Add(SlotKey(addrKey, entry.Slot));
         }
@@ -80,8 +80,17 @@ internal static class PersistedSnapshotBloomBuilder
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    internal static ulong AddressKey(in ValueHash256 addressHash) =>
-        MemoryMarshal.Read<ulong>(addressHash.Bytes);
+    internal static ulong AddressKey(Address address) =>
+        MemoryMarshal.Read<ulong>(address.Bytes);
+
+    /// <summary>
+    /// Bloom-key seed from the first 8 bytes of a raw 20-byte Address span. Inlined
+    /// hot path used by both the build loop and the merger byte-copy fast paths
+    /// (which already have the address bytes pinned).
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal static ulong AddressKey(scoped ReadOnlySpan<byte> addressBytes) =>
+        MemoryMarshal.Read<ulong>(addressBytes);
 
     /// <summary>
     /// Slot bloom hash: XORs the full 32-byte big-endian slot into the address key.

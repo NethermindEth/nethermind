@@ -20,23 +20,42 @@ public static class PersistedSnapshotReader
 {
     private const int TopPathThreshold = 7;
     private const int CompactPathThreshold = 15;
-    private const int StorageHashPrefixLength = 20;
+    private const int StorageHashPrefixLength = PersistedSnapshot.AddressHashPrefixLength;
     private const int SlotPrefixLength = 30;
 
     /// <summary>
-    /// Seek the per-address inner-HSST bound:
-    /// AccountColumnTag → addressHash.Bytes[..StorageHashPrefixLength].
-    /// On success outs the inner-HSST bound that <see cref="HsstReader{TReader,TPin}"/>
-    /// can be re-entered with to do sub-tag lookups (account, slots, self-destruct,
-    /// storage trie) without re-walking the outer column. Used by
-    /// <see cref="PersistedSnapshot"/> to populate its address-hash→bound LRU.
+    /// Seek the per-address inner-HSST bound under <see cref="PersistedSnapshot.AccountColumnTag"/>:
+    /// AccountColumnTag → address.Bytes. On success outs the inner-HSST bound that
+    /// <see cref="HsstReader{TReader,TPin}"/> can be re-entered with to do sub-tag
+    /// lookups (account, slots, self-destruct) without re-walking the outer column.
     /// </summary>
-    internal static bool TryGetAddressHsstBound<TReader, TPin>(scoped in TReader reader, in ValueHash256 addressHash, out Bound addressBound)
+    internal static bool TryGetAddressHsstBound<TReader, TPin>(scoped in TReader reader, Address address, out Bound addressBound)
         where TPin : struct, IBufferPin, allows ref struct
         where TReader : IHsstByteReader<TPin>, allows ref struct
     {
         using HsstReader<TReader, TPin> r = new(in reader);
         if (!r.TrySeek(PersistedSnapshot.AccountColumnTag, out _) ||
+            !r.TrySeek(address.Bytes, out _))
+        {
+            addressBound = default;
+            return false;
+        }
+        addressBound = r.GetBound();
+        return true;
+    }
+
+    /// <summary>
+    /// Seek the per-addressHash inner-HSST bound under <see cref="PersistedSnapshot.StorageTrieColumnTag"/>:
+    /// StorageTrieColumnTag → addressHash.Bytes[..AddressHashPrefixLength]. On success outs the
+    /// storage-trie inner-HSST bound for the address; caller then dispatches into
+    /// <see cref="TryLoadStorageNodeRlpInBound"/> for the actual node lookup.
+    /// </summary>
+    internal static bool TryGetStorageTrieAddressHsstBound<TReader, TPin>(scoped in TReader reader, in ValueHash256 addressHash, out Bound addressBound)
+        where TPin : struct, IBufferPin, allows ref struct
+        where TReader : IHsstByteReader<TPin>, allows ref struct
+    {
+        using HsstReader<TReader, TPin> r = new(in reader);
+        if (!r.TrySeek(PersistedSnapshot.StorageTrieColumnTag, out _) ||
             !r.TrySeek(addressHash.Bytes[..StorageHashPrefixLength], out _))
         {
             addressBound = default;
@@ -226,7 +245,7 @@ public static class PersistedSnapshotReader
         TreePath.DecodeWith8Byte(key);
 
     /// <summary>
-    /// Pre-touch outer column 0x01's BTree index nodes (the address-hash directory)
+    /// Pre-touch outer column 0x01's BTree index nodes (the address directory)
     /// through the standard reader so each touched page is registered with the
     /// arena's <see cref="PageResidencyTracker"/>. Caller is expected to have just
     /// dropped the snapshot pages via <c>AdviseDontNeed</c>; this brings the index

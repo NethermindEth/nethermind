@@ -54,13 +54,12 @@ public interface IPersistence
         void SetStateTrieNode(in TreePath path, ReadOnlySpan<byte> rlp);
         void SetStorageTrieNode(Hash256 address, in TreePath path, ReadOnlySpan<byte> rlp);
 
+        // Hash-keyed Set entrypoints — used by snap-sync / Importer paths that already
+        // hold pre-hashed keys (the snap protocol streams Keccak(address) / Keccak(slot)
+        // directly). Account/slot deletion is handled via the Address-keyed entrypoints
+        // (SetAccount(addr, null) / SelfDestruct(addr)).
         void SetStorageRaw(in ValueHash256 addrHash, in ValueHash256 slotHash, in SlotValue? value);
         void SetAccountRaw(in ValueHash256 addrHash, Account account);
-        // Hash-keyed variants used when the original Address is not available — e.g.
-        // re-persisting a PersistedSnapshot whose column 0x01 keys are 20-byte address-
-        // hash prefixes. Implementations that don't service this path may throw.
-        void RemoveAccountRaw(in ValueHash256 addrHash) => throw new NotSupportedException();
-        void SelfDestructRaw(in ValueHash256 addrHash) => throw new NotSupportedException();
 
         void DeleteAccountRange(in ValueHash256 fromPath, in ValueHash256 toPath);
         void DeleteStorageRange(in ValueHash256 addressHash, in ValueHash256 fromPath, in ValueHash256 toPath);

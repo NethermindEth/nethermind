@@ -622,27 +622,14 @@ public class PersistenceManager(
             foreach (PersistedSnapshotScanner.SelfDestructEntry entry in scanner.SelfDestructedStorageAddresses)
             {
                 if (entry.IsNew) continue;
-                // PersistedSnapshot only stores the 20-byte address-hash prefix as the
-                // column 0x01 key — the original Address is unrecoverable. Use the hash-
-                // keyed batch entrypoint, which is what the underlying flat layer uses
-                // anyway (Address-keyed methods just hash internally).
-                batch.SelfDestructRaw(entry.AddressHash);
+                batch.SelfDestruct(entry.Address);
             }
 
             foreach (PersistedSnapshotScanner.AccountEntry entry in scanner.Accounts)
-            {
-                if (entry.Account is { } account)
-                    batch.SetAccountRaw(entry.AddressHash, account);
-                else
-                    batch.RemoveAccountRaw(entry.AddressHash);
-            }
+                batch.SetAccount(entry.Address, entry.Account);
 
             foreach (PersistedSnapshotScanner.StorageEntry entry in scanner.Storages)
-            {
-                ValueHash256 slotHash = ValueKeccak.Zero;
-                StorageTree.ComputeKeyWithLookup(entry.Slot, ref slotHash);
-                batch.SetStorageRaw(entry.AddressHash, slotHash, entry.Value);
-            }
+                batch.SetStorage(entry.Address, entry.Slot, entry.Value);
 
             foreach (PersistedSnapshotScanner.StateNodeEntry entry in scanner.StateNodes)
                 batch.SetStateTrieNode(entry.Path, entry.Rlp);
