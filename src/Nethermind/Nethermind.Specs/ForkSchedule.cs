@@ -84,19 +84,16 @@ public sealed class ForkSchedule : IEnumerable<ForkSpec>
     public ForkActivation[] ToTransitionActivations(
         long postMergeBlock = 0L,
         bool incrementBlockPerTimestampFork = true,
-        long[]? excludeBlocks = null,
-        ForkActivation[]? prepend = null)
+        ReadOnlySpan<long> excludeBlocks = default,
+        ReadOnlySpan<ForkActivation> prepend = default)
     {
-        ReadOnlySpan<long> excludedBlocks = excludeBlocks.AsSpan();
-        int prependLength = prepend?.Length ?? 0;
-
-        int count = prependLength;
+        int count = prepend.Length;
         for (int i = 1; i < _entries.Count; i++)
         {
             ForkSpec fork = _entries[i];
             if (fork.Block is { } block)
             {
-                if (!excludedBlocks.Contains(block)) count++;
+                if (!excludeBlocks.Contains(block)) count++;
             }
             else if (fork.Timestamp.HasValue)
             {
@@ -105,15 +102,15 @@ public sealed class ForkSchedule : IEnumerable<ForkSpec>
         }
 
         ForkActivation[] result = new ForkActivation[count];
-        prepend.AsSpan().CopyTo(result);
-        int index = prependLength;
+        prepend.CopyTo(result);
+        int index = prepend.Length;
         int timestampIndex = 0;
         for (int i = 1; i < _entries.Count; i++)
         {
             ForkSpec fork = _entries[i];
             if (fork.Block is { } block)
             {
-                if (!excludedBlocks.Contains(block))
+                if (!excludeBlocks.Contains(block))
                     result[index++] = (ForkActivation)block;
             }
             else if (fork.Timestamp is { } timestamp)
