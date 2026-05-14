@@ -1411,8 +1411,7 @@ namespace Nethermind.Blockchain
         /// </summary>
         /// <param name="number"></param>
         /// <returns></returns>
-        private bool ShouldCache(long number) =>
-            number == _genesisBlockNumber || Head is null || number >= Head.Number - BlockStore.CacheSize;
+        private bool ShouldCache(long number) => true;
 
         public ChainLevelInfo? FindLevel(long number) => _chainLevelInfoRepository.LoadLevel(number);
 
@@ -1491,13 +1490,7 @@ namespace Nethermind.Blockchain
                 }
             }
 
-            // Cache every block read by FindBlock, not just those near head.
-            // Matches geth's policy (flat LRU, no recency heuristic): RPC workloads
-            // that re-read the same historical block (indexers, explorers) now
-            // get cache hits. Head data stays hot naturally via the per-new-block
-            // activity, so removing the gate doesn't risk evicting hot entries
-            // in practice. See task 22 / discussion 2026-05-14.
-            if (block is not null)
+            if (block is not null && ShouldCache(block.Number))
             {
                 _blockStore.Cache(block);
                 _headerStore.Cache(block.Header);
