@@ -19,7 +19,7 @@ COPY nuget.config .
 
 RUN arch=$([ "$TARGETARCH" = "amd64" ] && echo "x64" || echo "$TARGETARCH") && \
   cd src/Nethermind/Nethermind.Runner && \
-  dotnet restore --locked-mode && \
+  dotnet restore && \
   dotnet publish -c $BUILD_CONFIG -a $arch -o /publish --no-restore --no-self-contained \
   -p:SourceRevisionId=$COMMIT_HASH
 
