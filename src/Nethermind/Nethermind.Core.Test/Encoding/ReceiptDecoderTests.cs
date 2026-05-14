@@ -59,10 +59,10 @@ namespace Nethermind.Core.Test.Encoding
 
             TxReceipt txReceipt = BuildReceipt();
 
-            ReceiptStorageDecoder encoder = new(encodeWithTxHash);
-            Rlp rlp = Rlp.Encode(encoder, txReceipt, encodeBehaviors);
+            IRlpStreamEncoder<TxReceipt> encoder = new ReceiptStorageDecoder(encodeWithTxHash);
+            Rlp rlp = encoder.Encode(txReceipt, encodeBehaviors);
 
-            ReceiptStorageDecoder decoder = new();
+            IRlpValueDecoder<TxReceipt> decoder = new ReceiptStorageDecoder();
             Rlp.ValueDecoderContext valueContext = rlp.Bytes.AsRlpValueContext();
             TxReceipt deserialized = decoder.DecodeComplete(ref valueContext, RlpBehaviors.Storage);
 
@@ -86,8 +86,8 @@ namespace Nethermind.Core.Test.Encoding
             txReceipt.PostTransactionState = TestItem.KeccakH;
             txReceipt.StatusCode = 1;
 
-            ReceiptStorageDecoder decoder = new();
-            Rlp rlp = Rlp.Encode(decoder, txReceipt, RlpBehaviors.Storage | RlpBehaviors.Eip658Receipts);
+            IRlpValueDecoder<TxReceipt> decoder = new ReceiptStorageDecoder();
+            Rlp rlp = decoder.Encode(txReceipt, RlpBehaviors.Storage | RlpBehaviors.Eip658Receipts);
             Rlp.ValueDecoderContext ctx = rlp.Bytes.AsRlpValueContext();
             TxReceipt? deserialized = decoder.Decode(ref ctx, RlpBehaviors.Storage | RlpBehaviors.Eip658Receipts);
 
@@ -110,8 +110,8 @@ namespace Nethermind.Core.Test.Encoding
             txReceipt.Index = 2;
             txReceipt.PostTransactionState = TestItem.KeccakH;
 
-            ReceiptStorageDecoder decoder = new();
-            Rlp rlp = Rlp.Encode(decoder, txReceipt);
+            IRlpValueDecoder<TxReceipt> decoder = new ReceiptStorageDecoder();
+            Rlp rlp = decoder.Encode(txReceipt);
             Rlp.ValueDecoderContext ctx = rlp.Bytes.AsRlpValueContext();
             TxReceipt? deserialized = decoder.Decode(ref ctx);
 
@@ -144,9 +144,9 @@ namespace Nethermind.Core.Test.Encoding
             txReceipt.Index = 2;
             txReceipt.PostTransactionState = TestItem.KeccakH;
 
-            ReceiptStorageDecoder decoder = new();
+            IRlpValueDecoder<TxReceipt> decoder = new ReceiptStorageDecoder();
 
-            byte[] rlpStreamResult = Rlp.Encode(decoder, txReceipt, RlpBehaviors.Storage).Bytes;
+            byte[] rlpStreamResult = decoder.Encode(txReceipt, RlpBehaviors.Storage).Bytes;
             Rlp.ValueDecoderContext ctx = new(rlpStreamResult);
             TxReceipt? deserialized = decoder.Decode(ref ctx, RlpBehaviors.Storage);
 
@@ -207,8 +207,8 @@ namespace Nethermind.Core.Test.Encoding
             txReceipt.StatusCode = 1;
             txReceipt.TxType = TxType.AccessList;
 
-            ReceiptStorageDecoder decoder = new();
-            Rlp rlp = Rlp.Encode(decoder, txReceipt, RlpBehaviors.Storage | RlpBehaviors.Eip658Receipts);
+            IRlpValueDecoder<TxReceipt> decoder = new ReceiptStorageDecoder();
+            Rlp rlp = decoder.Encode(txReceipt, RlpBehaviors.Storage | RlpBehaviors.Eip658Receipts);
             Rlp.ValueDecoderContext ctx = rlp.Bytes.AsRlpValueContext();
             TxReceipt? deserialized = decoder.Decode(ref ctx, RlpBehaviors.Storage | RlpBehaviors.Eip658Receipts);
 
@@ -224,8 +224,8 @@ namespace Nethermind.Core.Test.Encoding
                 Build.A.Receipt.WithAllFieldsFilled.TestObject
             };
 
-            ReceiptStorageDecoder decoder = new();
-            Rlp rlp = Rlp.Encode(decoder, receipts);
+            IRlpStreamEncoder<TxReceipt> decoder = new ReceiptStorageDecoder();
+            Rlp rlp = decoder.Encode(receipts);
             using (NettyRlpStream nettyRlpStream = decoder.EncodeToNewNettyStream(receipts))
             {
                 byte[] nettyBytes = nettyRlpStream.AsSpan().ToArray();
@@ -248,8 +248,8 @@ namespace Nethermind.Core.Test.Encoding
         {
             TxReceipt txReceipt = testCase.TxReceipt;
 
-            ReceiptStorageDecoder decoder = new();
-            Rlp rlp = Rlp.Encode(decoder, txReceipt, RlpBehaviors.Storage | RlpBehaviors.Eip658Receipts);
+            IRlpValueDecoder<TxReceipt> decoder = new ReceiptStorageDecoder();
+            Rlp rlp = decoder.Encode(txReceipt, RlpBehaviors.Storage | RlpBehaviors.Eip658Receipts);
             Rlp.ValueDecoderContext ctx = rlp.Bytes.AsRlpValueContext();
             TxReceipt? deserialized = decoder.Decode(ref ctx, RlpBehaviors.Storage | RlpBehaviors.Eip658Receipts);
 

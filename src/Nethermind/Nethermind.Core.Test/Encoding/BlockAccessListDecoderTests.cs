@@ -848,6 +848,8 @@ public class BlockAccessListDecoderTests
             return value;
         }
 
+        public void Encode(RlpStream stream, byte item, RlpBehaviors rlpBehaviors = RlpBehaviors.None) => stream.Encode(item);
+
         public int GetLength(byte item, RlpBehaviors rlpBehaviors = RlpBehaviors.None) => 1;
     }
 
@@ -875,6 +877,8 @@ public class BlockAccessListDecoderTests
             return new DisposableElement();
         }
 
+        public void Encode(RlpStream stream, DisposableElement item, RlpBehaviors rlpBehaviors = RlpBehaviors.None) => stream.Encode(0);
+
         public int GetLength(DisposableElement item, RlpBehaviors rlpBehaviors = RlpBehaviors.None) => 1;
     }
 
@@ -895,6 +899,8 @@ public class BlockAccessListDecoderTests
             return new DisposableElement();
         }
 
+        public void Encode(RlpStream stream, object item, RlpBehaviors rlpBehaviors = RlpBehaviors.None) => stream.Encode(0);
+
         public int GetLength(object item, RlpBehaviors rlpBehaviors = RlpBehaviors.None) => 1;
     }
 
@@ -905,6 +911,8 @@ public class BlockAccessListDecoderTests
             decoderContext.DecodeByte();
             throw new ArgumentException("semantic argument failure");
         }
+
+        public void Encode(RlpStream stream, byte item, RlpBehaviors rlpBehaviors = RlpBehaviors.None) => stream.Encode(item);
 
         public int GetLength(byte item, RlpBehaviors rlpBehaviors = RlpBehaviors.None) => 1;
     }

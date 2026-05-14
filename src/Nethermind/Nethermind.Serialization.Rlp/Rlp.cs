@@ -13,13 +13,11 @@ using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading;
 using Nethermind.Core;
-using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 using Nethermind.Logging;
-using Nethermind.Serialization.Rlp.Eip7928;
 
 namespace Nethermind.Serialization.Rlp
 {
@@ -73,7 +71,7 @@ namespace Nethermind.Serialization.Rlp
 
         public int Length => Bytes.Length;
 
-        private static readonly Dictionary<RlpDecoderKey, IRlpDecoder> _decoderBuilder = new();
+        private static readonly Dictionary<RlpDecoderKey, IRlpDecoder> _decoderBuilder = [];
         private static readonly Lock _decoderLock = new();
 
         public static void ResetDecoders()
@@ -126,25 +124,7 @@ namespace Nethermind.Serialization.Rlp
             return span.ToArray();
         }
 
-        internal static ArrayPoolList<byte> ByteSpanToArrayPool(ReadOnlySpan<byte> span)
-        {
-            if (span.Length == 0)
-            {
-                return ArrayPoolList<byte>.Empty();
-            }
-
-            if (span.Length == 1)
-            {
-                int value = span[0];
-                byte[][] arrays = RlpStream.SingleByteArrays;
-                if ((uint)value < (uint)arrays.Length)
-                {
-                    return arrays[value].ToPooledList();
-                }
-            }
-
-            return span.ToPooledList();
-        }
+        internal static ArrayPoolList<byte> ByteSpanToArrayPool(ReadOnlySpan<byte> span) => span.Length == 0 ? ArrayPoolList<byte>.Empty() : span.ToPooledList();
 
         public static IRlpValueDecoder<T>? GetValueDecoder<T>(string key = RlpDecoderKey.Default) => Decoders.TryGetValue(new(typeof(T), key), out IRlpDecoder value) ? value as IRlpValueDecoder<T> : null;
         public static IRlpStreamEncoder<T>? GetStreamEncoder<T>(string key = RlpDecoderKey.Default) => Decoders.TryGetValue(new(typeof(T), key), out IRlpDecoder value) ? value as IRlpStreamEncoder<T> : null;
@@ -262,52 +242,19 @@ namespace Nethermind.Serialization.Rlp
             return result;
         }
 
-        public static Rlp Encode(Account item, RlpBehaviors behaviors = RlpBehaviors.None)
-            => Encode<Account>(item, behaviors);
-
-        public static Rlp Encode(LogEntry item, RlpBehaviors behaviors = RlpBehaviors.None)
-            => Encode<LogEntry>(item, behaviors);
-
-        public static Rlp Encode(BlockAccessList item, RlpBehaviors behaviors = RlpBehaviors.None)
-            => new(BlockAccessListDecoder.EncodeToBytes(item, behaviors));
-
         public static Rlp Encode<T>(T item, RlpBehaviors behaviors = RlpBehaviors.None)
             => item is Rlp rlp
                 ? rlp
                 : GetStreamEncoder<T>() is { } rlpStreamEncoder
-                    ? Encode(rlpStreamEncoder, item, behaviors)
+                    ? rlpStreamEncoder.Encode(item, behaviors)
                     : throw new RlpException($"{nameof(Rlp)} does not support encoding {typeof(T).Name}");
-
-        public static Rlp Encode<T>(IRlpStreamEncoder<T> rlpStreamEncoder, T item, RlpBehaviors behaviors = RlpBehaviors.None)
-            => EncodeWithStreamEncoder(rlpStreamEncoder, item, behaviors);
 
         public static Rlp Encode<T>(T[] items, RlpBehaviors behaviors = RlpBehaviors.None)
             => items is []
                 ? OfEmptyList
                 : GetStreamEncoder<T>() is { } rlpStreamEncoder
-                    ? Encode(rlpStreamEncoder, items, behaviors)
+                    ? rlpStreamEncoder.Encode(items, behaviors)
                     : throw new RlpException($"{nameof(Rlp)} does not support encoding {typeof(T).Name}");
-
-        public static Rlp Encode<T>(IRlpStreamEncoder<T> rlpStreamEncoder, T[] items, RlpBehaviors behaviors = RlpBehaviors.None)
-            => EncodeWithStreamEncoder(rlpStreamEncoder, items, behaviors);
-
-        private static Rlp EncodeWithStreamEncoder<T>(IRlpStreamEncoder<T> rlpStreamEncoder, T item, RlpBehaviors behaviors)
-        {
-            ArgumentNullException.ThrowIfNull(rlpStreamEncoder);
-
-            byte[] bytes = new byte[rlpStreamEncoder.GetLength(item, behaviors)];
-            rlpStreamEncoder.Encode(new RlpStream(bytes), item, behaviors);
-            return new Rlp(bytes);
-        }
-
-        private static Rlp EncodeWithStreamEncoder<T>(IRlpStreamEncoder<T> rlpStreamEncoder, T[] items, RlpBehaviors behaviors)
-        {
-            ArgumentNullException.ThrowIfNull(rlpStreamEncoder);
-
-            byte[] bytes = new byte[rlpStreamEncoder.GetLength(items, behaviors)];
-            rlpStreamEncoder.Encode(new RlpStream(bytes), items, behaviors);
-            return new Rlp(bytes);
-        }
 
         public static Rlp Encode(int[] integers)
         {
@@ -340,14 +287,14 @@ namespace Nethermind.Serialization.Rlp
             < 0 => Encode(new BigInteger(value), 8),
             0L => OfZero,
             < 0x80 => new((byte)value),
-            < 0x100 => new(new byte[] { 129, (byte)value }),
-            < 0x1_0000 => new(new byte[] { 130, (byte)(value >> 8), (byte)value }),
-            < 0x100_0000 => new(new byte[] { 131, (byte)(value >> 16), (byte)(value >> 8), (byte)value }),
-            < 0x1_0000_0000 => new(new byte[] { 132, (byte)(value >> 24), (byte)(value >> 16), (byte)(value >> 8), (byte)value }),
-            < 0x100_0000_0000 => new(new byte[] { 133, (byte)(value >> 32), (byte)(value >> 24), (byte)(value >> 16), (byte)(value >> 8), (byte)value }),
-            < 0x1_0000_0000_0000 => new(new byte[] { 134, (byte)(value >> 40), (byte)(value >> 32), (byte)(value >> 24), (byte)(value >> 16), (byte)(value >> 8), (byte)value }),
-            < 0x100_0000_0000_0000 => new(new byte[] { 135, (byte)(value >> 48), (byte)(value >> 40), (byte)(value >> 32), (byte)(value >> 24), (byte)(value >> 16), (byte)(value >> 8), (byte)value }),
-            _ => new(new byte[] { 136, (byte)(value >> 56), (byte)(value >> 48), (byte)(value >> 40), (byte)(value >> 32), (byte)(value >> 24), (byte)(value >> 16), (byte)(value >> 8), (byte)value }),
+            < 0x100 => new([129, (byte)value]),
+            < 0x1_0000 => new([130, (byte)(value >> 8), (byte)value]),
+            < 0x100_0000 => new([131, (byte)(value >> 16), (byte)(value >> 8), (byte)value]),
+            < 0x1_0000_0000 => new([132, (byte)(value >> 24), (byte)(value >> 16), (byte)(value >> 8), (byte)value]),
+            < 0x100_0000_0000 => new([133, (byte)(value >> 32), (byte)(value >> 24), (byte)(value >> 16), (byte)(value >> 8), (byte)value]),
+            < 0x1_0000_0000_0000 => new([134, (byte)(value >> 40), (byte)(value >> 32), (byte)(value >> 24), (byte)(value >> 16), (byte)(value >> 8), (byte)value]),
+            < 0x100_0000_0000_0000 => new([135, (byte)(value >> 48), (byte)(value >> 40), (byte)(value >> 32), (byte)(value >> 24), (byte)(value >> 16), (byte)(value >> 8), (byte)value]),
+            _ => new([136, (byte)(value >> 56), (byte)(value >> 48), (byte)(value >> 40), (byte)(value >> 32), (byte)(value >> 24), (byte)(value >> 16), (byte)(value >> 8), (byte)value]),
         };
 
         // caller is responsible for allocating buffer large enough (max 9 bytes)

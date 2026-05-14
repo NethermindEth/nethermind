@@ -4,6 +4,7 @@
 using System;
 using Autofac.Features.AttributeFilters;
 using Nethermind.Core;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Db;
@@ -60,7 +61,16 @@ namespace Nethermind.Consensus.AuRa.Validators
                 Rlp.ValueDecoderContext ctx = new(_db.Get(PendingValidatorsKey) ?? Rlp.OfEmptyList.Bytes);
                 return PendingValidatorsDecoder.Decode(ref ctx);
             }
-            set => _db.Set(PendingValidatorsKey, Rlp.Encode(value).Bytes);
+            set => StorePendingValidators(value);
+        }
+
+        private void StorePendingValidators(PendingValidators value)
+        {
+            int length = PendingValidatorsDecoder.GetLength(value, RlpBehaviors.None);
+            using ArrayPoolDisposableReturn bufferReturn = ArrayPoolDisposableReturn.Rent(length, out byte[] bytes);
+            CappedArray<byte> buffer = new(bytes, length);
+            PendingValidatorsDecoder.Encode(buffer.AsRlpStream(), value);
+            _db.PutSpan(PendingValidatorsKey.Bytes, buffer.AsSpan());
         }
 
         private ValidatorInfo FindValidatorInfo(in long blockNumber)

@@ -19,9 +19,28 @@ namespace Nethermind.Serialization.Rlp
     public interface IRlpStreamEncoder<in T> : IRlpDecoder<T>
     {
         void Encode(RlpStream stream, T item, RlpBehaviors rlpBehaviors = RlpBehaviors.None);
+
+        Rlp Encode(T item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        {
+            byte[] bytes = new byte[GetLength(item, rlpBehaviors)];
+            Encode(new RlpStream(bytes), item, rlpBehaviors);
+            return new Rlp(bytes);
+        }
+
+        Rlp Encode(T[] items, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        {
+            if (items is [])
+            {
+                return Rlp.OfEmptyList;
+            }
+
+            byte[] bytes = new byte[RlpDecoderExtensions.GetLength(this, items, rlpBehaviors)];
+            RlpDecoderExtensions.Encode(this, new RlpStream(bytes), items, rlpBehaviors);
+            return new Rlp(bytes);
+        }
     }
 
-    public interface IRlpValueDecoder<T> : IRlpDecoder<T>
+    public interface IRlpValueDecoder<T> : IRlpStreamEncoder<T>
     {
         T Decode(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None);
     }
