@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using Nethermind.Core.Collections;
 
 namespace Nethermind.Consensus.Processing;
@@ -18,6 +19,8 @@ namespace Nethermind.Consensus.Processing;
 public static class PerTxTimingCollector
 {
     private static bool _enabled;
+    // Backing buffer rented from ArrayPool<long>.Shared. The pool may return an array
+    // larger than the requested length, so we track the in-use count separately.
     private static long[]? _ticksPerTx;
     private static int _count;
 
@@ -30,12 +33,18 @@ public static class PerTxTimingCollector
     /// <summary>Called by the tx executor before processing transactions.</summary>
     public static void Prepare(int txCount)
     {
-        // _ticksPerTx is reused across blocks; only reallocates when capacity must grow.
+        // The buffer is reused across blocks; only re-rent when capacity must grow.
         // The 256-slot floor amortizes the first few blocks before steady-state size is reached.
         if (_ticksPerTx is null || _ticksPerTx.Length < txCount)
         {
-            _ticksPerTx = new long[Math.Max(txCount, 256)];
+            if (_ticksPerTx is not null)
+            {
+                ArrayPool<long>.Shared.Return(_ticksPerTx);
+            }
+            _ticksPerTx = ArrayPool<long>.Shared.Rent(Math.Max(txCount, 256));
         }
+        // Clear the slice we're about to use so stale entries from prior blocks don't bleed in.
+        _ticksPerTx.AsSpan(0, txCount).Clear();
         _count = txCount;
     }
 
