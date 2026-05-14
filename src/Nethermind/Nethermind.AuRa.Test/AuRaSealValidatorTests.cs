@@ -172,6 +172,52 @@ namespace Nethermind.AuRa.Test
             return (validateParams, cause);
         }
 
+        [Test]
+        public void validate_params_out_of_order()
+        {
+            _auRaStepCalculator.CurrentStep.Returns(15L);
+            _validSealerStrategy.IsValidSealer(Arg.Any<IList<Address>>(), Arg.Any<Address>(), Arg.Any<long>(), out _).Returns(true);
+
+            object cause = null;
+            _reportingValidator.ReportMalicious(Arg.Any<Address>(), Arg.Any<long>(), Arg.Any<byte[]>(),
+                Arg.Do<IReportingValidator.MaliciousCause>(c => cause ??= c));
+
+            // step 15 arrives first
+            BlockHeader parent14 = Build.A.BlockHeader.WithAura(14, []).WithBeneficiary(TestItem.AddressB).TestObject;
+            BlockHeader block15 = Build.A.BlockHeader
+                .WithAura(15, []).WithBeneficiary(TestItem.AddressA)
+                .WithDifficulty(AuraDifficultyCalculator.CalculateDifficulty(14, 15))
+                .TestObject;
+
+            // step 12 arrives second
+            BlockHeader parent11 = Build.A.BlockHeader.WithAura(11, []).WithBeneficiary(TestItem.AddressB).TestObject;
+            BlockHeader block12 = Build.A.BlockHeader
+                .WithAura(12, []).WithBeneficiary(TestItem.AddressA)
+                .WithDifficulty(AuraDifficultyCalculator.CalculateDifficulty(11, 12))
+                .TestObject;
+
+            // step 13 arrives third — triggers ClearOldCache
+            BlockHeader parent12 = Build.A.BlockHeader.WithAura(12, []).WithBeneficiary(TestItem.AddressB).TestObject;
+            BlockHeader block13 = Build.A.BlockHeader
+                .WithAura(13, []).WithBeneficiary(TestItem.AddressA)
+                .WithDifficulty(AuraDifficultyCalculator.CalculateDifficulty(12, 13))
+                .TestObject;
+
+            // sibling at step 15 with different hash — must be detected
+            BlockHeader sibling15 = Build.A.BlockHeader
+                .WithAura(15, []).WithBeneficiary(TestItem.AddressA)
+                .WithDifficulty(AuraDifficultyCalculator.CalculateDifficulty(14, 15))
+                .TestObject;
+            sibling15.Hash = Keccak.Compute("sibling15");
+
+            _sealValidator.ValidateParams(parent14, block15); // [15]
+            _sealValidator.ValidateParams(parent11, block12); // [15,12]
+            _sealValidator.ValidateParams(parent12, block13); // [15,12,13] → ClearOldCache may wrongly evict step 15
+            _sealValidator.ValidateParams(parent14, sibling15);
+
+            Assert.That(cause, Is.EqualTo(IReportingValidator.MaliciousCause.SiblingBlocksInSameStep));
+        }
+
         private static IEnumerable ValidateSealTests
         {
             get

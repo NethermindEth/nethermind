@@ -403,6 +403,21 @@ namespace Nethermind.Core.Test
             Assert.Throws<RlpLimitException>(() => { Rlp.ValueDecoderContext ctx = new(data); ctx.DecodeByteArray(); });
         }
 
+        [Test]
+        public void Encode_stream_with_null_items_produces_empty_list()
+        {
+            RlpStream stream = new(Rlp.OfEmptyList.Length);
+            TxDecoder.Instance.Encode(stream, (Transaction[]?)null);
+            Assert.That(stream.Data.ToArray(), Is.EqualTo(Rlp.OfEmptyList.Bytes));
+        }
+
+        [Test]
+        public void Encode_object_with_null_items_produces_empty_list()
+        {
+            Rlp result = AccountDecoder.Instance.Encode((Account[]?)null);
+            Assert.That(result, Is.EqualTo(Rlp.OfEmptyList));
+        }
+
         private static HashSet<long> LongValues()
         {
             const long minusBit = 1L << 63;
@@ -565,6 +580,17 @@ namespace Nethermind.Core.Test
             cLen2.Should().Be(contentLength, $"ValueRlpStream content length for {prefix}");
         }
 
+        [TestCase(new byte[] { 0xBB, 0x7F, 0xFF, 0xFF, 0xFF }, TestName = "LongString_4ByteLength_Int32Max")]
+        [TestCase(new byte[] { 0xFB, 0x7F, 0xFF, 0xFF, 0xFF }, TestName = "LongList_4ByteLength_Int32Max")]
+        [TestCase(new byte[] { 0xB8, 0x64, 0x01, 0x02 }, TestName = "LongString_1ByteLength_100")]
+        [TestCase(new byte[] { 0xF8, 0x64, 0x01, 0x02 }, TestName = "LongList_1ByteLength_100")]
+        public void PeekPrefixAndContentLength_invalid(byte[] data) =>
+            Assert.Throws<RlpException>(() =>
+            {
+                Rlp.ValueDecoderContext ctx = new(data);
+                ctx.PeekPrefixAndContentLength();
+            });
+
         [Test]
         public void PeekNumberOfItemsRemaining_mixed_items()
         {
@@ -598,6 +624,33 @@ namespace Nethermind.Core.Test
             items.CopyTo(rlp.AsSpan(2));
 
             AssertItemCount(rlp, 3);
+        }
+
+        [TestCase(2, 56)]
+        [TestCase(2, 198)]
+        [TestCase(3, 256)]
+        [TestCase(3, 65535)]
+        [TestCase(4, 65536)]
+        public void ReadPrefixAndContentLength_List(int prefixLength, int contentLength)
+        {
+            byte[] data = Rlp.Encode(Rlp.Encode(new byte[contentLength])).Bytes;
+
+            Rlp.ValueDecoderContext ctx = new(data.AsSpan());
+            Assert.That(ctx.ReadPrefixAndContentLength(), Is.EqualTo((prefixLength, contentLength)));
+            Assert.That(ctx.Position, Is.EqualTo(prefixLength));
+        }
+
+        [TestCase(2, 56)]
+        [TestCase(2, 255)]
+        [TestCase(3, 256)]
+        [TestCase(4, 65536)]
+        public void ReadPrefixAndContentLength_String(int prefixLength, int contentLength)
+        {
+            byte[] data = Rlp.Encode(new byte[contentLength]).Bytes;
+
+            Rlp.ValueDecoderContext ctx = new(data.AsSpan());
+            Assert.That(ctx.ReadPrefixAndContentLength(), Is.EqualTo((prefixLength, contentLength)));
+            Assert.That(ctx.Position, Is.EqualTo(prefixLength));
         }
 
         private static void AssertItemCount(byte[] rlp, int expected)

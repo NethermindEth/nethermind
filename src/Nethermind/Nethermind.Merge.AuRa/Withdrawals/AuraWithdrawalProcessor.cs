@@ -30,7 +30,7 @@ public class AuraWithdrawalProcessor : IWithdrawalProcessor
 
     public void ProcessWithdrawals(Block block, IReleaseSpec spec)
     {
-        if (!spec.WithdrawalsEnabled || block.Withdrawals is null) // The second check seems redundant
+        if (!spec.WithdrawalsEnabled || block.IsGenesis || block.Withdrawals is null)
             return;
 
         if (_logger.IsTrace) _logger.Trace($"Applying withdrawals for block {block}");
