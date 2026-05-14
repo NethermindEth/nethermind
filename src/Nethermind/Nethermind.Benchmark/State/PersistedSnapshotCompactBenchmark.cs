@@ -18,7 +18,7 @@ using Nethermind.State.Flat.Storage;
 namespace Nethermind.Benchmarks.State;
 
 /// <summary>
-/// Microbenchmark for <see cref="PersistedSnapshotBuilder.NWayMergeSnapshots"/> — the
+/// Microbenchmark for <see cref="PersistedSnapshotMerger.NWayMergeSnapshots"/> — the
 /// dominant cost in persisted-snapshot compaction. Parameterised over N (the snapshot
 /// count being merged); at default <c>CompactSize=32</c> the large-tier compactor sees
 /// N up to ~32 sources at <c>compactSize=1024</c>. Each synthetic snapshot carries one
@@ -100,7 +100,7 @@ public class PersistedSnapshotCompactBenchmark : IDisposable
         // measured without disk I/O or arena bookkeeping. Initial capacity matches the
         // sum-of-sources upper bound (the same hint PersistedSnapshotCompactor uses).
         using PooledByteBufferWriter pooled = new(checked((int)Math.Min(_estimatedSize, int.MaxValue)));
-        PersistedSnapshotBuilder.NWayMergeSnapshots<PooledByteBufferWriter.Writer, PooledByteBufferWriter.WriterReader, NoOpPin>(
+        PersistedSnapshotMerger.NWayMergeSnapshots<PooledByteBufferWriter.Writer, PooledByteBufferWriter.WriterReader, NoOpPin>(
             _snapshots, ref pooled.GetWriter(), _referencedBlobArenaIds);
         return pooled.GetWriter().Written;
     }

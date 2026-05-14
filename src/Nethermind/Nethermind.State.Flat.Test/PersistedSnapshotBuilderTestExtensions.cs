@@ -60,7 +60,7 @@ internal static class PersistedSnapshotBuilderTestExtensions
         totalSize += 4096;
 
         using PooledByteBufferWriter pooled = new(checked((int)totalSize));
-        PersistedSnapshotBuilder.NWayMergeSnapshots<PooledByteBufferWriter.Writer, PooledByteBufferWriter.WriterReader, NoOpPin>(
+        PersistedSnapshotMerger.NWayMergeSnapshots<PooledByteBufferWriter.Writer, PooledByteBufferWriter.WriterReader, NoOpPin>(
             snapshots, ref pooled.GetWriter(), referencedIds);
         return pooled.WrittenSpan.ToArray();
     }
