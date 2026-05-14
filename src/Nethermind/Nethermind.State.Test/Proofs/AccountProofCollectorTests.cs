@@ -577,7 +577,7 @@ storage: 10075208144087594565017167249218046892267736431914869828855077415926031
 
             for (int j = 0; j < accountProof.StorageProofs.Length; j++)
             {
-                TrieNode node = new TrieNodePlaceholder(accountProof.StorageProofs[j].Proof.Last());
+                TrieNode node = new TrieSyncNode(accountProof.StorageProofs[j].Proof.Last());
                 TreePath proofPath = TreePath.Empty;
                 TrieNode.ResolveNode(ref node, new RawScopedTrieStore(memDb), in proofPath);
                 if (node.Value.Length != 1)
@@ -656,7 +656,7 @@ storage: 10075208144087594565017167249218046892267736431914869828855077415926031
                     addressesWithStorage[i].StorageCells[j].Index.ToBigEndian(indexBytes.AsSpan());
                     accountProof.StorageProofs[j].Key!.Should().Be(indexBytes.ToHexString(true, true), $"{i} {j}");
 
-                    TrieNode node = new TrieNodePlaceholder(accountProof.StorageProofs[j].Proof.Last());
+                    TrieNode node = new TrieSyncNode(accountProof.StorageProofs[j].Proof.Last());
                     TreePath proofPath = TreePath.Empty;
                     TrieNode.ResolveNode(ref node, null, in proofPath);
                     // TestContext.Write($"|[{i},{j}]");

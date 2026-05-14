@@ -72,7 +72,7 @@ internal sealed class BlockCacheTrieStore(IScopedTrieStore inner, Dictionary<Tre
             Interlocked.Increment(ref _nodeHits);
             return node!;
         }
-        return _nodeCache.GetOrAdd(hash, static h => new TrieNodePlaceholder(h));
+        return _nodeCache.GetOrAdd(hash, static h => new TrieSyncNode(h));
     }
 
     public byte[]? LoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None)

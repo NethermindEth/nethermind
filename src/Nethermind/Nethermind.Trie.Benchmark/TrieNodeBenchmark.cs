@@ -50,7 +50,7 @@ namespace Nethermind.Trie.Benchmark
         // public Param Input { get; set; }
 
         [Benchmark]
-        public TrieNode Just_trie_node_56B() => new TrieNodePlaceholder();
+        public TrieNode Just_trie_node_56B() => new TrieSyncNode();
 
         [Benchmark]
         public Keccak Just_keccak_80B() => Keccak.Compute(_bytes);
@@ -63,12 +63,12 @@ namespace Nethermind.Trie.Benchmark
         public TrieNode Just_trie_node_with_hash_136B()
         {
             BinaryPrimitives.WriteInt64BigEndian(_bytes, _i);
-            TrieNode trieNode = new TrieNodePlaceholder(Keccak.Compute(_bytes));
+            TrieNode trieNode = new TrieSyncNode(Keccak.Compute(_bytes));
             return trieNode;
         }
 
         [Benchmark]
-        public TrieNode Just_trie_node_with_rlp_120B() => new TrieNodePlaceholder(new byte[7]);
+        public TrieNode Just_trie_node_with_rlp_120B() => new TrieSyncNode(new byte[7]);
 
         [Benchmark]
         public TrieNode Just_extension_with_child_96B()

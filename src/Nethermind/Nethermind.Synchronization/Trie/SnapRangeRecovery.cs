@@ -209,7 +209,7 @@ public class SnapRangeRecovery(ISyncPeerPool peerPool, ILogManager logManager) :
 
             result.Add((currentPath, rlp));
 
-            TrieNode node = new TrieNodePlaceholder(rlp);
+            TrieNode node = new TrieSyncNode(rlp);
             TrieNode.ResolveNode(ref node, emptyResolver, in currentPath);
 
             if (_logger.IsTrace) _logger.Trace($"Traversing path {currentPath} with hash {currentHash}");

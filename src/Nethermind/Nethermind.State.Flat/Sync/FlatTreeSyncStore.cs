@@ -43,7 +43,7 @@ public class FlatTreeSyncStore(IPersistence persistence, IPersistenceManager per
         using IPersistence.IPersistenceReader reader = persistence.CreateReader(ReaderFlags.Sync);
         using IPersistence.IWriteBatch writeBatch = persistence.CreateWriteBatch(StateId.Sync, StateId.Sync, WriteFlags.DisableWAL);
 
-        TrieNode node = new TrieNodePlaceholder(data.ToArray());
+        TrieNode node = new TrieSyncNode(data.ToArray());
         TrieNode.ResolveNode(ref node, NullTrieNodeResolver.Instance, in path);
 
         TrieNode? existingNode = ReadExistingNode(reader, address, path);
@@ -71,7 +71,7 @@ public class FlatTreeSyncStore(IPersistence persistence, IPersistenceManager per
             : reader.TryLoadStorageRlp(address, path, ReadFlags.None);
         if (existingData is null) return null;
 
-        TrieNode existingNode = new TrieNodePlaceholder(existingData);
+        TrieNode existingNode = new TrieSyncNode(existingData);
         TrieNode.ResolveNode(ref existingNode, NullTrieNodeResolver.Instance, in path);
         return existingNode;
     }

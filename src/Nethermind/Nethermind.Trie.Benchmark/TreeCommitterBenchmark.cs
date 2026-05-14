@@ -52,7 +52,7 @@ namespace Nethermind.Trie.Benchmark
         [Benchmark]
         public TrieStore Trie_committer_with_one_node()
         {
-            TrieNode trieNode = new TrieNodePlaceholder(); // 56B
+            TrieNode trieNode = new TrieSyncNode(); // 56B
 
             ITrieNodeCache trieNodeCache = new TrieNodeCache(_logManager);
             TrieStore treeStore = new(

@@ -83,7 +83,7 @@ public class ReceiptTrieTests
 
     private void VerifyProof(byte[][] proof, Hash256 receiptRoot)
     {
-        TrieNode node = new TrieNodePlaceholder(proof.Last());
+        TrieNode node = new TrieSyncNode(proof.Last());
         TreePath emptyPath = TreePath.Empty;
         TrieNode.ResolveNode(ref node, Substitute.For<ITrieNodeResolver>(), in emptyPath);
         Rlp.ValueDecoderContext ctx = node.Value.ToArray().AsRlpValueContext();

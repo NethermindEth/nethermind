@@ -305,7 +305,7 @@ namespace Nethermind.Synchronization.SnapSync
             for (int i = 0; i < proofs.Count; i++)
             {
                 byte[] proof = proofs[i].ToArray();
-                TrieNode node = new TrieNodePlaceholder(proof, isDirty: true);
+                TrieNode node = new TrieSyncNode(proof, isDirty: true);
                 node.IsBoundaryProofNode = true;
 
                 TreePath emptyPath = TreePath.Empty;

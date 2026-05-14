@@ -51,33 +51,33 @@ namespace Nethermind.Trie
     /// constructor for the unknown case while resolver / cache / sync layers that still
     /// publish unresolved node identities have a concrete type to allocate.
     /// </summary>
-    public sealed class TrieNodePlaceholder : TrieNode
+    public sealed class TrieSyncNode : TrieNode
     {
-        public TrieNodePlaceholder() { }
+        public TrieSyncNode() { }
 
-        public TrieNodePlaceholder(in ValueHash256 keccak) : base(in keccak) => IsPersisted = true;
+        public TrieSyncNode(in ValueHash256 keccak) : base(in keccak) => IsPersisted = true;
 
-        public TrieNodePlaceholder(Hash256 keccak) : base(in (keccak ?? throw new ArgumentNullException(nameof(keccak))).ValueHash256) => IsPersisted = true;
+        public TrieSyncNode(Hash256 keccak) : base(in (keccak ?? throw new ArgumentNullException(nameof(keccak))).ValueHash256) => IsPersisted = true;
 
-        public TrieNodePlaceholder(CappedArray<byte> rlp, bool isDirty = false) : base(rlp, isDirty) { }
+        public TrieSyncNode(CappedArray<byte> rlp, bool isDirty = false) : base(rlp, isDirty) { }
 
-        public TrieNodePlaceholder(byte[]? rlp, bool isDirty = false)
+        public TrieSyncNode(byte[]? rlp, bool isDirty = false)
             : base(new CappedArray<byte>(rlp), isDirty) { }
 
-        public TrieNodePlaceholder(Hash256 keccak, ReadOnlySpan<byte> rlp)
+        public TrieSyncNode(Hash256 keccak, ReadOnlySpan<byte> rlp)
             : base(new CappedArray<byte>(rlp.ToArray()), in (keccak ?? throw new ArgumentNullException(nameof(keccak))).ValueHash256) => IsPersisted = true;
 
-        public TrieNodePlaceholder(Hash256 keccak, CappedArray<byte> rlp)
+        public TrieSyncNode(Hash256 keccak, CappedArray<byte> rlp)
             : base(rlp, in (keccak ?? throw new ArgumentNullException(nameof(keccak))).ValueHash256) => IsPersisted = true;
 
-        public TrieNodePlaceholder(in ValueHash256 keccak, CappedArray<byte> rlp)
+        public TrieSyncNode(in ValueHash256 keccak, CappedArray<byte> rlp)
             : base(rlp, in keccak) => IsPersisted = true;
 
         // Copy ctor for CloneTyped: preserves the unknown shape; the caller is expected
         // to ResolveNode the clone before treating it as a typed node.
-        private TrieNodePlaceholder(TrieNodePlaceholder source) : base(source) { }
+        private TrieSyncNode(TrieSyncNode source) : base(source) { }
 
-        internal override TrieNode CloneTyped() => new TrieNodePlaceholder(this);
+        internal override TrieNode CloneTyped() => new TrieSyncNode(this);
 
         public override NodeType NodeType => NodeType.Unknown;
     }

@@ -589,7 +589,7 @@ namespace Nethermind.Trie
         }
 
         // The public legacy NodeType-taking constructors are gone. TrieNode is abstract;
-        // unresolved by-hash placeholders allocate TrieNodePlaceholder; resolved nodes
+        // unresolved by-hash placeholders allocate TrieSyncNode; resolved nodes
         // are TrieNodeBranch / TrieNodeLeaf / TrieNodeExtension produced by DecodeNode.
 
         /// <summary>

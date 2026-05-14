@@ -81,7 +81,7 @@ internal class TrieStoreDirtyNodesCache
 
     /// <summary>
     /// Returns the cached typed node for <paramref name="key"/>, or <see langword="null"/>
-    /// if no resolved entry exists. Never fabricates a <see cref="TrieNodePlaceholder"/>;
+    /// if no resolved entry exists. Never fabricates a <see cref="TrieSyncNode"/>;
     /// callers handle the miss by loading RLP and decoding directly.
     /// </summary>
     public TrieNode? FindCachedNode(in Key key)

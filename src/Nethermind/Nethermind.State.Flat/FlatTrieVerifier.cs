@@ -808,7 +808,7 @@ public class FlatTrieVerifier
                 if (_logger.IsInfo) _logger.Info($"  Path: {currentPath} | ZeroHash lookup found data | ActualHash: {actualHash.ToShortString()}");
 
                 // Try to decode and show node info
-                TrieNode node = new TrieNodePlaceholder(actualHash, zeroHashRlp);
+                TrieNode node = new TrieSyncNode(actualHash, zeroHashRlp);
                 try
                 {
                     TrieNode.ResolveNode(ref node, trieStore, in currentPath);
