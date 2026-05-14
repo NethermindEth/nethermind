@@ -25,6 +25,7 @@ BFLAT_REFS := \
   -r $(BIN_DIR)/Nethermind.Int256.dll \
   -r $(BIN_DIR)/Nethermind.Logging.dll \
   -r $(BIN_DIR)/Nethermind.Serialization.Rlp.dll \
+  -r $(BIN_DIR)/Nethermind.Serialization.Ssz.dll \
   -r $(BIN_DIR)/Nethermind.Specs.dll \
   -r $(BIN_DIR)/Nethermind.State.dll \
   -r $(BIN_DIR)/Nethermind.Stateless.Executor.dll \
@@ -42,7 +43,7 @@ build: dotnet-build
 		-w $(SRC_DIR) \
 		--mount type=bind,source="$(ARTIFACTS_DIR)/Nethermind.Stateless.ZiskGuest/release",target=$(BIN_DIR) \
 		--mount type=bind,source="$(GUEST_DIR)",target=$(SRC_DIR) \
-		nethermindeth/bflat-riscv64:036bebe11d27c3ccf50c82c2c099599ac21c5b92 \
+		nethermindeth/bflat-riscv64:6e34b93fa5c614a2e3d7c6f6852adaefd7f62171 \
 		bflat build --arch riscv64 --os linux --stdlib dotnet --libc zisk \
 		--no-pie \
 		--no-pthread \
