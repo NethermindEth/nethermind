@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core.Threading;
@@ -12,8 +13,11 @@ namespace Nethermind.Consensus.Processing;
 
 /// <summary>
 /// Dedicated thread pool for prewarming work. Keeps prewarmer threads off
-/// the shared .NET ThreadPool so they don't compete with block processing,
-/// RPC, networking, and post-tx parallel work (blooms, receipts root, state root).
+/// the shared .NET ThreadPool so they don't compete with block processing.
+///
+/// On Linux, pins prewarmer threads to the upper half of available CPUs
+/// (leaving the lower half for block processing). This prevents L1/L2
+/// cache thrashing between prewarmer EVM and real block processing EVM.
 /// </summary>
 public sealed class PrewarmerTaskScheduler : TaskScheduler, IDisposable
 {
@@ -26,7 +30,8 @@ public sealed class PrewarmerTaskScheduler : TaskScheduler, IDisposable
         _threads = new Thread[threadCount];
         for (int i = 0; i < threadCount; i++)
         {
-            _threads[i] = new Thread(WorkerLoop)
+            int threadIndex = i;
+            _threads[i] = new Thread(() => WorkerLoop(threadIndex))
             {
                 IsBackground = true,
                 Name = $"Prewarmer-{i}",
@@ -36,14 +41,43 @@ public sealed class PrewarmerTaskScheduler : TaskScheduler, IDisposable
         }
     }
 
-    private void WorkerLoop()
+    private void WorkerLoop(int threadIndex)
     {
         ProcessingThread.IsBlockProcessingThread = false;
+        TrySetCpuAffinity(threadIndex);
         foreach (Task task in _tasks.GetConsumingEnumerable())
         {
             TryExecuteTask(task);
         }
     }
+
+    private static void TrySetCpuAffinity(int threadIndex)
+    {
+        if (!RuntimeInformation.IsOSPlatform(OSPlatform.Linux)) return;
+
+        try
+        {
+            // Pin prewarmer threads to the upper half of available CPUs.
+            // Block processing (main thread) naturally runs on lower CPUs,
+            // so this creates physical separation and prevents cache thrashing.
+            int cpuCount = Environment.ProcessorCount;
+            int targetCpu = (cpuCount / 2) + (threadIndex % (cpuCount / 2));
+
+            ulong mask = 1UL << targetCpu;
+            int tid = Gettid(); // current thread's kernel TID
+            SchedSetaffinity(tid, (nuint)sizeof(ulong), ref mask);
+        }
+        catch
+        {
+            // Affinity is best-effort — don't fail if not supported
+        }
+    }
+
+    [DllImport("libc", EntryPoint = "sched_setaffinity", SetLastError = true)]
+    private static extern int SchedSetaffinity(int pid, nuint cpusetsize, ref ulong mask);
+
+    [DllImport("libc", EntryPoint = "gettid")]
+    private static extern int Gettid();
 
     protected override void QueueTask(Task task) => _tasks.Add(task);
 
