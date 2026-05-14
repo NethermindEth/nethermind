@@ -28,18 +28,6 @@ public static class PersistedSnapshotMerger
     // a single TryResolveAll per source to retrieve every sub-tag bound at once.
     private const int PerAddrSubTagCount = 7;
 
-    // Outer HSST column tags in iteration order, used by NWayMergeSnapshots.
-    // Storage-trie data lives inside the per-address column 0x01 as sub-tags, so
-    // 0x07/0x08 are gone from the on-disk layout.
-    private static readonly byte[][] s_columnTags =
-    [
-        PersistedSnapshot.MetadataTag,
-        PersistedSnapshot.AccountColumnTag,
-        PersistedSnapshot.StateNodeTag,
-        PersistedSnapshot.StateTopNodesTag,
-        PersistedSnapshot.StateNodeFallbackTag,
-    ];
-
     // Cached raw view fields for an open WholeReadSession. Used by the N-way merge helpers
     // to amortise the per-call ObjectDisposedException check + interface-dispatch cost of
     // WholeReadSession.GetReader over the entire merge loop. Callers populate one entry per
@@ -94,42 +82,41 @@ public static class PersistedSnapshotMerger
         SortedSet<ushort> referencedBlobArenaIds, BloomFilter? bloom) where TWriter : IByteBufferWriterWithReader<TReader, TPin> where TReader : IHsstByteReader<TPin>, allows ref struct where TPin : struct, IBufferPin, allows ref struct
     {
         // All snapshots are blob-backed (values in trie columns are NodeRefs), so we can
-        // merge them directly without any Full→Linked pre-conversion stage.
+        // merge them directly without any Full→Linked pre-conversion stage. Columns are
+        // emitted in the on-disk order the DenseByteIndex outer expects: metadata (0x00),
+        // account (0x01), state-node (0x03), state-top-nodes (0x05), state-fallback (0x06).
+        // Storage-trie data rides along inside the per-address column 0x01 as sub-tags, so
+        // 0x07/0x08 are gone from the layout.
         using HsstDenseByteIndexBuilder<TWriter> outerBuilder = new(ref writer);
 
-        foreach (byte[] tag in s_columnTags)
         {
             ref TWriter valueWriter = ref outerBuilder.BeginValueWrite();
-            switch (tag[0])
-            {
-                case 0x00:
-                    NWayMetadataMerge<TWriter, TReader, TPin>(views, ref valueWriter, referencedBlobArenaIds);
-                    break;
-                case 0x01:
-                    NWayMergeAccountColumn<TWriter, TReader, TPin>(views, tag, ref valueWriter, bloom);
-                    break;
-                case 0x03:
-                    NWayStreamingMerge<TWriter, TReader, TPin>(views, tag, ref valueWriter, keySize: 8);
-                    break;
-                case 0x05:
-                    NWayStreamingMerge<TWriter, TReader, TPin>(views, tag, ref valueWriter, keySize: 4);
-                    break;
-                case 0x06:
-                    NWayStreamingMerge<TWriter, TReader, TPin>(views, tag, ref valueWriter, keySize: 33);
-                    break;
-                default:
-                    throw new InvalidOperationException($"Unknown tag 0x{tag[0]:X2}");
-            }
-            outerBuilder.FinishValueWrite(tag);
+            NWayMetadataMerge<TWriter, TReader, TPin>(views, ref valueWriter, referencedBlobArenaIds);
+            outerBuilder.FinishValueWrite(PersistedSnapshot.MetadataTag);
+        }
+        {
+            ref TWriter valueWriter = ref outerBuilder.BeginValueWrite();
+            NWayMergeAccountColumn<TWriter, TReader, TPin>(views, PersistedSnapshot.AccountColumnTag, ref valueWriter, bloom);
+            outerBuilder.FinishValueWrite(PersistedSnapshot.AccountColumnTag);
+        }
+        {
+            ref TWriter valueWriter = ref outerBuilder.BeginValueWrite();
+            NWayStreamingMerge<TWriter, TReader, TPin>(views, PersistedSnapshot.StateNodeTag, ref valueWriter, keySize: 8);
+            outerBuilder.FinishValueWrite(PersistedSnapshot.StateNodeTag);
+        }
+        {
+            ref TWriter valueWriter = ref outerBuilder.BeginValueWrite();
+            NWayStreamingMerge<TWriter, TReader, TPin>(views, PersistedSnapshot.StateTopNodesTag, ref valueWriter, keySize: 4);
+            outerBuilder.FinishValueWrite(PersistedSnapshot.StateTopNodesTag);
+        }
+        {
+            ref TWriter valueWriter = ref outerBuilder.BeginValueWrite();
+            NWayStreamingMerge<TWriter, TReader, TPin>(views, PersistedSnapshot.StateNodeFallbackTag, ref valueWriter, keySize: 33);
+            outerBuilder.FinishValueWrite(PersistedSnapshot.StateNodeFallbackTag);
         }
 
         outerBuilder.Build();
     }
-
-    private static int SpanOffset(ReadOnlySpan<byte> outer, ReadOnlySpan<byte> inner) =>
-        inner.IsEmpty ? 0 : (int)Unsafe.ByteOffset(
-            ref Unsafe.AsRef(in MemoryMarshal.GetReference(outer)),
-            ref Unsafe.AsRef(in MemoryMarshal.GetReference(inner)));
 
     // --- N-Way merge methods ---
 
