@@ -36,60 +36,52 @@ public class ChainSpecHardforkLabelTests
         return loader.Load(new MemoryStream(Encoding.UTF8.GetBytes(json)));
     }
 
-    [Test]
-    public void Cancun_label_expands_to_all_constituent_eips()
+    [TestCase("shanghai", "0x100", new[]
     {
-        ChainSpec spec = Load("\"cancun\": \"0x65687fd0\"");
-
-        ulong expected = 0x65687fd0;
-        spec.Parameters.Eip1153TransitionTimestamp.Should().Be(expected);
-        spec.Parameters.Eip4788TransitionTimestamp.Should().Be(expected);
-        spec.Parameters.Eip4844TransitionTimestamp.Should().Be(expected);
-        spec.Parameters.Eip5656TransitionTimestamp.Should().Be(expected);
-        spec.Parameters.Eip6780TransitionTimestamp.Should().Be(expected);
-    }
-
-    [Test]
-    public void Shanghai_label_expands_to_all_constituent_eips()
+        nameof(ChainParameters.Eip3651TransitionTimestamp),
+        nameof(ChainParameters.Eip3855TransitionTimestamp),
+        nameof(ChainParameters.Eip3860TransitionTimestamp),
+        nameof(ChainParameters.Eip4895TransitionTimestamp),
+    })]
+    [TestCase("cancun", "0x65687fd0", new[]
     {
-        ChainSpec spec = Load("\"shanghai\": \"0x100\"");
-
-        ulong expected = 0x100;
-        spec.Parameters.Eip3651TransitionTimestamp.Should().Be(expected);
-        spec.Parameters.Eip3855TransitionTimestamp.Should().Be(expected);
-        spec.Parameters.Eip3860TransitionTimestamp.Should().Be(expected);
-        spec.Parameters.Eip4895TransitionTimestamp.Should().Be(expected);
-    }
-
-    [Test]
-    public void Prague_label_expands_to_all_constituent_eips()
+        nameof(ChainParameters.Eip1153TransitionTimestamp),
+        nameof(ChainParameters.Eip4788TransitionTimestamp),
+        nameof(ChainParameters.Eip4844TransitionTimestamp),
+        nameof(ChainParameters.Eip5656TransitionTimestamp),
+        nameof(ChainParameters.Eip6780TransitionTimestamp),
+    })]
+    [TestCase("prague", "0x200", new[]
     {
-        ChainSpec spec = Load("\"prague\": \"0x200\"");
-
-        ulong expected = 0x200;
-        spec.Parameters.Eip2537TransitionTimestamp.Should().Be(expected);
-        spec.Parameters.Eip2935TransitionTimestamp.Should().Be(expected);
-        spec.Parameters.Eip6110TransitionTimestamp.Should().Be(expected);
-        spec.Parameters.Eip7002TransitionTimestamp.Should().Be(expected);
-        spec.Parameters.Eip7251TransitionTimestamp.Should().Be(expected);
-        spec.Parameters.Eip7623TransitionTimestamp.Should().Be(expected);
-        spec.Parameters.Eip7702TransitionTimestamp.Should().Be(expected);
-    }
-
-    [Test]
-    public void Osaka_label_expands_to_all_constituent_eips()
+        nameof(ChainParameters.Eip2537TransitionTimestamp),
+        nameof(ChainParameters.Eip2935TransitionTimestamp),
+        nameof(ChainParameters.Eip6110TransitionTimestamp),
+        nameof(ChainParameters.Eip7002TransitionTimestamp),
+        nameof(ChainParameters.Eip7251TransitionTimestamp),
+        nameof(ChainParameters.Eip7623TransitionTimestamp),
+        nameof(ChainParameters.Eip7702TransitionTimestamp),
+    })]
+    [TestCase("osaka", "0x300", new[]
     {
-        ChainSpec spec = Load("\"osaka\": \"0x300\"");
+        nameof(ChainParameters.Eip7594TransitionTimestamp),
+        nameof(ChainParameters.Eip7823TransitionTimestamp),
+        nameof(ChainParameters.Eip7825TransitionTimestamp),
+        nameof(ChainParameters.Eip7883TransitionTimestamp),
+        nameof(ChainParameters.Eip7918TransitionTimestamp),
+        nameof(ChainParameters.Eip7934TransitionTimestamp),
+        nameof(ChainParameters.Eip7939TransitionTimestamp),
+        nameof(ChainParameters.Eip7951TransitionTimestamp),
+    })]
+    public void Label_expands_to_all_constituent_eips(string labelKey, string labelValueHex, string[] expectedEipProperties)
+    {
+        ChainSpec spec = Load($"\"{labelKey}\": \"{labelValueHex}\"");
 
-        ulong expected = 0x300;
-        spec.Parameters.Eip7594TransitionTimestamp.Should().Be(expected);
-        spec.Parameters.Eip7823TransitionTimestamp.Should().Be(expected);
-        spec.Parameters.Eip7825TransitionTimestamp.Should().Be(expected);
-        spec.Parameters.Eip7883TransitionTimestamp.Should().Be(expected);
-        spec.Parameters.Eip7918TransitionTimestamp.Should().Be(expected);
-        spec.Parameters.Eip7934TransitionTimestamp.Should().Be(expected);
-        spec.Parameters.Eip7939TransitionTimestamp.Should().Be(expected);
-        spec.Parameters.Eip7951TransitionTimestamp.Should().Be(expected);
+        ulong expected = Convert.ToUInt64(labelValueHex, 16);
+        foreach (string propName in expectedEipProperties)
+        {
+            ulong? actual = (ulong?)typeof(ChainParameters).GetProperty(propName)!.GetValue(spec.Parameters);
+            actual.Should().Be(expected, $"{propName} should match the {labelKey} label");
+        }
     }
 
     [Test]
