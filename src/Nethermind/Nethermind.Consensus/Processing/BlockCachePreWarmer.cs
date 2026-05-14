@@ -120,12 +120,13 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
     {
         if (_preBlockCaches is not null && ShouldPreWarm(spec))
         {
-            // Don't clear SeqlockCaches between blocks — entries from the previous block
-            // that haven't changed are still valid and save trie reads. The prewarmer's first
-            // pass overwrites entries it touches with fresh values from the current state root.
-            // Stale entries (accounts/slots modified since last block) would produce wrong reads,
-            // but the state root check at end of block catches any inconsistency.
+            CacheType result = _preBlockCaches.ClearCaches();
+            _nodeStorageCache.ClearCaches();
             _nodeStorageCache.Enabled = true;
+            if (result != default)
+            {
+                if (_logger.IsWarn) _logger.Warn($"Caches {result} are not empty. Clearing them.");
+            }
 
             if (parent is not null && _concurrencyLevel > 1 && !cancellationToken.IsCancellationRequested)
             {
@@ -166,14 +167,8 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
     public CacheType ClearCaches()
     {
         if (_logger.IsDebug) _logger.Debug("Clearing caches");
-        // Keep SeqlockCache entries across blocks — many accounts/slots repeat in
-        // consecutive blocks. Only clear the precompile cache (input-dependent).
-        // NodeStorageCache (trie nodes) also persists — nodes are content-addressed.
-        CacheType cachesCleared = CacheType.None;
-        if (_preBlockCaches is not null)
-        {
-            _preBlockCaches.PrecompileCache.NoResizeClear();
-        }
+        CacheType cachesCleared = _preBlockCaches?.ClearCaches() ?? default;
+        cachesCleared |= _nodeStorageCache.ClearCaches() ? CacheType.Rlp : CacheType.None;
         if (_logger.IsDebug) _logger.Debug($"Cleared caches: {cachesCleared}");
         return cachesCleared;
     }
