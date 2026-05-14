@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Threading;
 using Nethermind.Blockchain;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Facade.Eth;
@@ -26,15 +27,26 @@ public class TaikoEthSyncingInfoTests
     }
 
     [Test]
-    public void UpdateAndGetSyncTime_DelegatesToInner()
+    public void UpdateAndGetSyncTime_TracksTaikoIsSyncing_NotInner()
     {
+        // Regression: inner.UpdateAndGetSyncTime() keys off the inner's beacon-unaware
+        // IsSyncing(), which is `false` during the very plateau this decorator exists
+        // to fix. The stopwatch must run on the decorator's corrected IsSyncing().
+        IBlockTree blockTree = Substitute.For<IBlockTree>();
+        blockTree.BestSuggestedBeaconHeader.Returns(Build.A.BlockHeader.WithNumber(1000L).TestObject);
+        blockTree.Head.Returns(Build.A.Block.WithHeader(Build.A.BlockHeader.WithNumber(500L).TestObject).TestObject);
+
         IEthSyncingInfo inner = Substitute.For<IEthSyncingInfo>();
-        inner.UpdateAndGetSyncTime().Returns(TimeSpan.FromSeconds(42));
+        TaikoEthSyncingInfo info = new(blockTree, inner);
 
-        TaikoEthSyncingInfo info = new(Substitute.For<IBlockTree>(), inner);
+        Assert.That(info.UpdateAndGetSyncTime(), Is.EqualTo(TimeSpan.Zero), "first call: starts the stopwatch");
+        Thread.Sleep(10);
+        Assert.That(info.UpdateAndGetSyncTime(), Is.GreaterThan(TimeSpan.Zero), "subsequent call while syncing: elapsed");
 
-        Assert.That(info.UpdateAndGetSyncTime(), Is.EqualTo(TimeSpan.FromSeconds(42)));
-        inner.Received(1).UpdateAndGetSyncTime();
+        // Head catches the beacon pivot — decorator now reports not-syncing, stopwatch stops.
+        blockTree.Head.Returns(Build.A.Block.WithHeader(Build.A.BlockHeader.WithNumber(1000L).TestObject).TestObject);
+        Assert.That(info.UpdateAndGetSyncTime(), Is.EqualTo(TimeSpan.Zero), "after catch-up: stops");
+        inner.DidNotReceive().UpdateAndGetSyncTime();
     }
 
     [Test]

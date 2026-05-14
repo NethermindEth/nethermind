@@ -19,6 +19,8 @@ namespace Nethermind.Facade.Eth
         ISyncProgressResolver syncProgressResolver,
         ILogManager logManager) : IEthSyncingInfo
     {
+        public const int MaxDistanceForSynced = 8;
+
         private readonly IBlockTree _blockTree = blockTree;
         private readonly ISyncConfig _syncConfig = syncConfig;
         private readonly ILogger _logger = logManager.GetClassLogger<EthSyncingInfo>();
@@ -28,7 +30,7 @@ namespace Nethermind.Facade.Eth
 
         public SyncingResult GetFullInfo()
         {
-            (bool isSyncing, long headNumberOrZero, long bestSuggestedNumber) = _blockTree.IsSyncing(maxDistanceForSynced: 8);
+            (bool isSyncing, long headNumberOrZero, long bestSuggestedNumber) = _blockTree.IsSyncing(maxDistanceForSynced: MaxDistanceForSynced);
             SyncMode syncMode = _syncModeSelector.Current;
 
             if (_logger.IsTrace) _logger.Trace($"Start - EthSyncingInfo - BestSuggestedNumber: {bestSuggestedNumber}, HeadNumberOrZero: {headNumberOrZero}, IsSyncing: {isSyncing} {_syncConfig}. LowestInsertedBodyNumber: {_syncPointers.LowestInsertedBodyNumber} LowestInsertedReceiptBlockNumber: {_syncPointers.LowestInsertedReceiptBlockNumber}");
