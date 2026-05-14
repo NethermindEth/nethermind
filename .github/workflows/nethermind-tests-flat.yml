@@ -281,13 +281,9 @@ jobs:
           # Variant matrix entries set `matrix.filter` to scope to a specific Amsterdam
           # parallel-variant fixture. Default Pyspec chunks instead exclude the variant
           # classes by name so they don't double-run the heavy Amsterdam fixture set.
-          if [ "$IS_PYSPEC" = "true" ]; then
-            dotnet build ${{ matrix.project }}.csproj -c release
-            dotnet build-server shutdown
-            run_test --no-build --no-restore
-          else
-            run_test
-          fi
+          dotnet build ${{ matrix.project }}.csproj -c release
+          dotnet build-server shutdown || true  # macOS VB/C# server sometimes fails to shut down; harmless
+          run_test --no-build --no-restore
 
   tests-summary:
     name: Tests summary

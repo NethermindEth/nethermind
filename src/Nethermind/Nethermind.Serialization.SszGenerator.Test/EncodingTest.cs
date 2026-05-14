@@ -60,14 +60,19 @@ public class EncodingTest
         Assert.That(decoded.Second, Is.Empty);
     }
 
-    [Test]
-    public void Decode_bitvector_preserves_declared_length()
+    private static BitArray MakeSampleBits10()
     {
         BitArray bits = new(10);
         bits[0] = true;
         bits[3] = true;
         bits[9] = true;
-        BitVectorContainer container = new() { Bits = bits };
+        return bits;
+    }
+
+    [Test]
+    public void Decode_bitvector_preserves_declared_length()
+    {
+        BitVectorContainer container = new() { Bits = MakeSampleBits10() };
 
         byte[] encoded = Encode(container);
         Decode(encoded, out BitVectorContainer decoded);
@@ -204,10 +209,7 @@ public class EncodingTest
     [Test]
     public void Encode_and_decode_progressive_bitlist_round_trip()
     {
-        BitArray bits = new(10);
-        bits[0] = true;
-        bits[3] = true;
-        bits[9] = true;
+        BitArray bits = MakeSampleBits10();
         ProgressiveBitlistContainer container = new() { Bits = bits };
 
         byte[] encoded = Encode(container);
@@ -221,10 +223,7 @@ public class EncodingTest
     [Test]
     public void Merkleize_progressive_bitlist_uses_progressive_merkleization()
     {
-        BitArray bits = new(10);
-        bits[0] = true;
-        bits[3] = true;
-        bits[9] = true;
+        BitArray bits = MakeSampleBits10();
         ProgressiveBitlistContainer container = new() { Bits = bits };
 
         Merkleize(container, out UInt256 actual);
@@ -235,6 +234,44 @@ public class EncodingTest
         Merkle.MixIn(ref expected, bits.Length);
 
         Assert.That(actual, Is.EqualTo(expected));
+    }
+
+    [Test]
+    public void Shadowing_uses_derived_property_type_not_base()
+    {
+        ShadowDerived value = new() { A = 0UL, X = 0u };
+
+        byte[] encoded = Encode(value);
+
+        Assert.That(encoded.Length, Is.EqualTo(12),
+            "derived uint X (4 bytes) must be used instead of base ulong X (8 bytes)");
+    }
+
+    [Test]
+    public void Shadowing_preserves_field_order_from_base_declaration()
+    {
+        ShadowDerived value = new() { A = 0xAABBCCDDEEFF0011UL, X = 0x12345678u };
+
+        byte[] encoded = Encode(value);
+
+        ulong encodedA = BitConverter.ToUInt64(encoded, 0);
+        uint encodedX = BitConverter.ToUInt32(encoded, 8);
+        Assert.That(encodedA, Is.EqualTo(value.A),
+            "A must be at offset 0 (first field in ShadowBase)");
+        Assert.That(encodedX, Is.EqualTo(value.X),
+            "X must be at offset 8 (second field in ShadowBase), using derived uint type");
+    }
+
+    [Test]
+    public void Shadowing_encode_decode_round_trip()
+    {
+        ShadowDerived original = new() { A = 0xDEADBEEFCAFEBABEUL, X = 0xC0FFEE01u };
+
+        byte[] encoded = Encode(original);
+        Decode(encoded, out ShadowDerived decoded);
+
+        Assert.That(decoded.A, Is.EqualTo(original.A));
+        Assert.That(decoded.X, Is.EqualTo(original.X));
     }
 
     [TestCaseSource(nameof(InvalidInputCases))]

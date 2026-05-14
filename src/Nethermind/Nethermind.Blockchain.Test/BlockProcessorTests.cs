@@ -678,7 +678,7 @@ public class BlockProcessorTests
     {
         // CREATE tx GasLimit sized to pass the EIP-8037 worst-case inclusion check
         // (worst-case state = GasLimit - intrinsic.regular must <= state_available
-        // = 200_000 - 60_000 = 140_000). A 165_000 limit gives worst-case state of
+        // = 250_000 - 60_000 = 190_000). A 165_000 limit gives worst-case state of
         // ~135_000, which fits. Actual post-execution state is GasCostOf.CreateState
         // (the AccountCreationCost) so the post-exec max(R,S) check still ends up
         // verifying the state dimension drives block.Header.GasUsed.
@@ -695,7 +695,7 @@ public class BlockProcessorTests
             .TestObject;
         Block block = Build.A.Block
             .WithNumber(1)
-            .WithGasLimit(200_000)
+            .WithGasLimit(250_000)
             .WithTransactions(firstTx, createTx)
             .WithBlockAccessList(new BlockAccessList())
             .TestObject;

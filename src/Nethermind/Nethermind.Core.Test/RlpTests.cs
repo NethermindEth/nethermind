@@ -580,6 +580,17 @@ namespace Nethermind.Core.Test
             cLen2.Should().Be(contentLength, $"ValueRlpStream content length for {prefix}");
         }
 
+        [TestCase(new byte[] { 0xBB, 0x7F, 0xFF, 0xFF, 0xFF }, TestName = "LongString_4ByteLength_Int32Max")]
+        [TestCase(new byte[] { 0xFB, 0x7F, 0xFF, 0xFF, 0xFF }, TestName = "LongList_4ByteLength_Int32Max")]
+        [TestCase(new byte[] { 0xB8, 0x64, 0x01, 0x02 }, TestName = "LongString_1ByteLength_100")]
+        [TestCase(new byte[] { 0xF8, 0x64, 0x01, 0x02 }, TestName = "LongList_1ByteLength_100")]
+        public void PeekPrefixAndContentLength_invalid(byte[] data) =>
+            Assert.Throws<RlpException>(() =>
+            {
+                Rlp.ValueDecoderContext ctx = new(data);
+                ctx.PeekPrefixAndContentLength();
+            });
+
         [Test]
         public void PeekNumberOfItemsRemaining_mixed_items()
         {

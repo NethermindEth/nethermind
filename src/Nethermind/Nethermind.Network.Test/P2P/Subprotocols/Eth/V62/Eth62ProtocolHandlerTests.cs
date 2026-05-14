@@ -602,6 +602,21 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
         }
 
         [Test]
+        public void Queued_headers_request_is_cancelled_on_dispose()
+        {
+            HandleIncomingStatusMessage();
+
+            Task request1 = ((ISyncPeer)_handler).GetBlockHeaders(1, 1, 0, CancellationToken.None);
+            // request1 is in-flight; request2 gets queued and is never sent to the peer
+            Task request2 = ((ISyncPeer)_handler).GetBlockHeaders(2, 1, 0, CancellationToken.None);
+
+            _handler.Dispose();
+
+            Assert.ThrowsAsync<TaskCanceledException>(async () => await request1);
+            Assert.ThrowsAsync<TaskCanceledException>(async () => await request2);
+        }
+
+        [Test]
         public void Add_remove_listener()
         {
             static void HandlerOnSubprotocolRequested(object sender, ProtocolEventArgs e) { }

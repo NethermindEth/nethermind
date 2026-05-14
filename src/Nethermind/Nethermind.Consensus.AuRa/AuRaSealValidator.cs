@@ -226,7 +226,7 @@ namespace Nethermind.Consensus.AuRa
                 }
                 else
                 {
-                    _list.Add(new AuthorBlockForStep(step, item));
+                    _list.Insert(~index, new AuthorBlockForStep(step, item));
                 }
 
                 ClearOldCache(step, validatorCount);
