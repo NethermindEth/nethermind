@@ -54,41 +54,25 @@ public class ProcessingStatsTests
     }
 
     [Test]
-    public void Slow_block_produces_valid_JSON_with_all_sections()
+    public void Slow_block_JSON_matches_schema()
     {
         ProcessingStats stats = CreateStats();
-        Block block = Build.A.Block.WithNumber(12345).WithGasUsed(21_000_000)
+        Block block = Build.A.Block.WithNumber(12345).WithGasUsed(21_000_000).WithGasLimit(30_000_000)
             .WithTransactions(Build.A.Transaction.TestObject, Build.A.Transaction.TestObject).TestObject;
 
         SlowBlockLogEntry? entry = EmitAndParse(stats, block, 1_500_000);
+        string json = _slowBlockLogger.LogList.Last();
 
+        AssertSlowBlockSchema(json);
+
+        // Spot-check a few values that the schema can't express (presence + type only).
         Assert.That(entry, Is.Not.Null);
         Assert.That(entry!.Level, Is.EqualTo("warn"));
         Assert.That(entry.Msg, Is.EqualTo("Slow block"));
         Assert.That(entry.Block.Number, Is.EqualTo(12345));
         Assert.That(entry.Block.GasUsed, Is.EqualTo(21_000_000));
+        Assert.That(entry.Block.GasLimit, Is.EqualTo(30_000_000));
         Assert.That(entry.Block.TxCount, Is.EqualTo(2));
-        Assert.That(entry.Block.Hash, Is.Not.Empty);
-        Assert.That(entry.Timing.TotalMs, Is.GreaterThan(0));
-        Assert.That(entry.Throughput, Is.Not.Null);
-        Assert.That(entry.StateReads, Is.Not.Null);
-        Assert.That(entry.StateWrites, Is.Not.Null);
-        Assert.That(entry.Cache, Is.Not.Null);
-        Assert.That(entry.Cache.Account, Is.Not.Null);
-        Assert.That(entry.Cache.Storage, Is.Not.Null);
-        Assert.That(entry.Cache.Code, Is.Not.Null);
-        Assert.That(entry.Evm, Is.Not.Null);
-    }
-
-    [Test]
-    public void EIP7702_fields_present_in_JSON()
-    {
-        ProcessingStats stats = CreateStats();
-        SlowBlockLogEntry? entry = EmitAndParse(stats, Build.A.Block.WithNumber(1).TestObject, 100_000);
-        string json = _slowBlockLogger.LogList.Last();
-
-        Assert.That(json, Does.Contain("eip7702_delegations_set"));
-        Assert.That(json, Does.Contain("eip7702_delegations_cleared"));
     }
 
     [TestCase(500_000, 1000, false, TestName = "Below_threshold_no_log")]
@@ -131,25 +115,80 @@ public class ProcessingStatsTests
         Assert.That(entry.Timing.StateRootMs, Is.GreaterThanOrEqualTo(0));
     }
 
-    [Test]
-    public void Extended_block_and_evm_fields_present()
-    {
-        ProcessingStats stats = CreateStats();
-        SlowBlockLogEntry? entry = EmitAndParse(stats, Build.A.Block.WithNumber(1).WithGasLimit(30_000_000).TestObject, 100_000);
-        string json = _slowBlockLogger.LogList.Last();
+    // Declarative schema for the slow-block log JSON. Each entry asserts a dotted property path
+    // is present with the expected JSON value kind. Drives <see cref="AssertSlowBlockSchema"/>.
+    private static readonly (string Path, JsonValueKind Kind)[] SlowBlockSchema =
+    [
+        ("level", JsonValueKind.String),
+        ("msg", JsonValueKind.String),
+        ("block.number", JsonValueKind.Number),
+        ("block.hash", JsonValueKind.String),
+        ("block.gas_used", JsonValueKind.Number),
+        ("block.gas_limit", JsonValueKind.Number),
+        ("block.tx_count", JsonValueKind.Number),
+        ("block.blob_count", JsonValueKind.Number),
+        ("timing.execution_ms", JsonValueKind.Number),
+        ("timing.evm_ms", JsonValueKind.Number),
+        ("timing.blooms_ms", JsonValueKind.Number),
+        ("timing.receipts_root_ms", JsonValueKind.Number),
+        ("timing.commit_ms", JsonValueKind.Number),
+        ("timing.storage_merkle_ms", JsonValueKind.Number),
+        ("timing.state_root_ms", JsonValueKind.Number),
+        ("timing.state_hash_ms", JsonValueKind.Number),
+        ("timing.total_ms", JsonValueKind.Number),
+        ("throughput.mgas_per_sec", JsonValueKind.Number),
+        ("state_reads.accounts", JsonValueKind.Number),
+        ("state_reads.storage_slots", JsonValueKind.Number),
+        ("state_reads.code", JsonValueKind.Number),
+        ("state_reads.code_bytes", JsonValueKind.Number),
+        ("state_writes.accounts", JsonValueKind.Number),
+        ("state_writes.accounts_deleted", JsonValueKind.Number),
+        ("state_writes.storage_slots", JsonValueKind.Number),
+        ("state_writes.storage_slots_deleted", JsonValueKind.Number),
+        ("state_writes.code", JsonValueKind.Number),
+        ("state_writes.code_bytes", JsonValueKind.Number),
+        ("state_writes.eip7702_delegations_set", JsonValueKind.Number),
+        ("state_writes.eip7702_delegations_cleared", JsonValueKind.Number),
+        ("cache.account.hits", JsonValueKind.Number),
+        ("cache.account.misses", JsonValueKind.Number),
+        ("cache.account.hit_rate", JsonValueKind.Number),
+        ("cache.storage.hits", JsonValueKind.Number),
+        ("cache.storage.misses", JsonValueKind.Number),
+        ("cache.storage.hit_rate", JsonValueKind.Number),
+        ("cache.code.hits", JsonValueKind.Number),
+        ("cache.code.misses", JsonValueKind.Number),
+        ("cache.code.hit_rate", JsonValueKind.Number),
+        ("evm.opcodes", JsonValueKind.Number),
+        ("evm.sload", JsonValueKind.Number),
+        ("evm.sstore", JsonValueKind.Number),
+        ("evm.calls", JsonValueKind.Number),
+        ("evm.empty_calls", JsonValueKind.Number),
+        ("evm.creates", JsonValueKind.Number),
+        ("evm.self_destructs", JsonValueKind.Number),
+        ("evm.contracts_analyzed", JsonValueKind.Number),
+        ("evm.cached_contracts_used", JsonValueKind.Number),
+    ];
 
-        Assert.That(entry, Is.Not.Null);
-        Assert.That(entry!.Block.GasLimit, Is.EqualTo(30_000_000));
-        Assert.That(entry.Block.BlobCount, Is.GreaterThanOrEqualTo(0));
-        Assert.That(json, Does.Contain("opcodes"));
-        Assert.That(json, Does.Contain("empty_calls"));
-        Assert.That(json, Does.Contain("self_destructs"));
-        Assert.That(json, Does.Contain("contracts_analyzed"));
-        Assert.That(json, Does.Contain("cached_contracts_used"));
-        Assert.That(json, Does.Contain("evm_ms"));
-        Assert.That(json, Does.Contain("blooms_ms"));
-        Assert.That(json, Does.Contain("receipts_root_ms"));
-        Assert.That(json, Does.Contain("storage_merkle_ms"));
-        Assert.That(json, Does.Contain("state_root_ms"));
+    private static void AssertSlowBlockSchema(string json)
+    {
+        using JsonDocument doc = JsonDocument.Parse(json);
+        Assert.That(doc.RootElement.ValueKind, Is.EqualTo(JsonValueKind.Object), "Root must be an object");
+        foreach ((string path, JsonValueKind kind) in SlowBlockSchema)
+        {
+            AssertJsonPath(doc.RootElement, path, kind);
+        }
+    }
+
+    private static void AssertJsonPath(JsonElement root, string path, JsonValueKind expectedKind)
+    {
+        JsonElement current = root;
+        foreach (string segment in path.Split('.'))
+        {
+            Assert.That(current.TryGetProperty(segment, out JsonElement next), Is.True,
+                $"Missing JSON property: {path}");
+            current = next;
+        }
+        Assert.That(current.ValueKind, Is.EqualTo(expectedKind),
+            $"Wrong JSON value kind at {path}: expected {expectedKind}, got {current.ValueKind}");
     }
 }

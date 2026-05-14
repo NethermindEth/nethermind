@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Buffers;
+using Nethermind.Core.Collections;
 
 namespace Nethermind.Consensus.Processing;
 
@@ -49,28 +49,16 @@ public static class PerTxTimingCollector
     }
 
     /// <summary>
-    /// Takes a snapshot of per-tx timing data. Returns null if no data was captured.
-    /// The returned array is rented from <see cref="ArrayPool{T}.Shared"/> and MUST be
-    /// returned via <see cref="ReturnSnapshot"/> when the caller is done with it.
-    /// The valid range is <c>[0, count)</c>; the pooled array may be larger than <paramref name="count"/>.
+    /// Takes a snapshot of per-tx timing data, or null if no data was captured.
+    /// The returned list rents its backing array from the shared pool and MUST be disposed
+    /// when the caller is done (see <see cref="ArrayPoolList{T}.Dispose"/>).
     /// </summary>
-    public static long[]? Snapshot(out int count)
+    public static ArrayPoolList<long>? Snapshot()
     {
-        if (!_enabled || _ticksPerTx is null || _count == 0)
-        {
-            count = 0;
-            return null;
-        }
+        if (!_enabled || _ticksPerTx is null || _count == 0) return null;
 
-        count = _count;
-        long[] copy = ArrayPool<long>.Shared.Rent(_count);
-        Array.Copy(_ticksPerTx, copy, _count);
+        ArrayPoolList<long> copy = new(capacity: _count, count: _count);
+        _ticksPerTx.AsSpan(0, _count).CopyTo(copy.AsSpan());
         return copy;
-    }
-
-    /// <summary>Returns a snapshot array to the shared pool.</summary>
-    public static void ReturnSnapshot(long[]? snapshot)
-    {
-        if (snapshot is not null) ArrayPool<long>.Shared.Return(snapshot);
     }
 }

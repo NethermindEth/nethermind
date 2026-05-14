@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Diagnostics;
 using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Threading;
@@ -16,6 +15,7 @@ using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
+using Nethermind.Core.Metric;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Threading;
 using Nethermind.Crypto;
@@ -181,41 +181,35 @@ public partial class BlockProcessor(
 
     private void CommitState(IReleaseSpec spec)
     {
-        long start = Stopwatch.GetTimestamp();
+        using MetricsTimer<CommitTimeSink> _ = new();
         _stateProvider.Commit(spec, commitRoots: false);
-        Evm.Metrics.IncrementCommitTime(Stopwatch.GetElapsedTime(start).Ticks);
     }
 
     private void CommitStateAndStorageRoots(IReleaseSpec spec)
     {
-        long start = Stopwatch.GetTimestamp();
+        using MetricsTimer<StorageMerkleTimeSink> _ = new();
         _stateProvider.Commit(spec, commitRoots: true);
-        long ticks = Stopwatch.GetElapsedTime(start).Ticks;
-        Evm.Metrics.IncrementStateHashTime(ticks);
-        Evm.Metrics.IncrementStorageMerkleTime(ticks);
     }
 
     private void ComputeStateRoot(BlockHeader header)
     {
-        long start = Stopwatch.GetTimestamp();
-        _stateProvider.RecalculateStateRoot();
-        long ticks = Stopwatch.GetElapsedTime(start).Ticks;
-        Evm.Metrics.IncrementStateHashTime(ticks);
-        Evm.Metrics.IncrementStateRootTime(ticks);
+        using (MetricsTimer<StateRootTimeSink> _ = new())
+        {
+            _stateProvider.RecalculateStateRoot();
+        }
         header.StateRoot = _stateProvider.StateRoot;
     }
 
     private static void SetReceiptsRoot(BlockHeader header, TxReceipt[] receipts, IReleaseSpec spec, Block block)
     {
-        long start = Stopwatch.GetTimestamp();
+        using MetricsTimer<ReceiptsRootTimeSink> _ = new();
         header.ReceiptsRoot = ReceiptsRootCalculator.Instance.GetReceiptsRoot(receipts, spec, block.ReceiptsRoot);
-        Evm.Metrics.IncrementReceiptsRootTime(Stopwatch.GetElapsedTime(start).Ticks);
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
     private static void CalculateBlooms(TxReceipt[] receipts)
     {
-        long start = Stopwatch.GetTimestamp();
+        using MetricsTimer<BloomsTimeSink> _ = new();
         ParallelUnbalancedWork.For(
             0,
             receipts.Length,
@@ -226,7 +220,42 @@ public partial class BlockProcessor(
                 receipts[i].CalculateBloom();
                 return receipts;
             });
-        Evm.Metrics.IncrementBloomsTime(Stopwatch.GetElapsedTime(start).Ticks);
+    }
+
+    // Timing sinks — forward elapsed ticks into the appropriate EVM metric counters.
+    // CommitStateAndStorageRoots and ComputeStateRoot both feed StateHashTime (sum of the two),
+    // so each sink also bumps StateHashTime alongside its specific metric.
+    private readonly struct CommitTimeSink : IMetricSink
+    {
+        public static void AddTicks(long ticks) => Evm.Metrics.IncrementCommitTime(ticks);
+    }
+
+    private readonly struct StorageMerkleTimeSink : IMetricSink
+    {
+        public static void AddTicks(long ticks)
+        {
+            Evm.Metrics.IncrementStateHashTime(ticks);
+            Evm.Metrics.IncrementStorageMerkleTime(ticks);
+        }
+    }
+
+    private readonly struct StateRootTimeSink : IMetricSink
+    {
+        public static void AddTicks(long ticks)
+        {
+            Evm.Metrics.IncrementStateHashTime(ticks);
+            Evm.Metrics.IncrementStateRootTime(ticks);
+        }
+    }
+
+    private readonly struct ReceiptsRootTimeSink : IMetricSink
+    {
+        public static void AddTicks(long ticks) => Evm.Metrics.IncrementReceiptsRootTime(ticks);
+    }
+
+    private readonly struct BloomsTimeSink : IMetricSink
+    {
+        public static void AddTicks(long ticks) => Evm.Metrics.IncrementBloomsTime(ticks);
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]

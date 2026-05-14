@@ -12,6 +12,7 @@ using Microsoft.Extensions.ObjectPool;
 using Nethermind.Blockchain;
 using Nethermind.Config;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -272,10 +273,9 @@ namespace Nethermind.Consensus.Processing
                 blockData.DeltaBloomsTime = Evm.Metrics.MainThreadBloomsTime - _startBloomsTime;
                 blockData.DeltaReceiptsRootTime = Evm.Metrics.MainThreadReceiptsRootTime - _startReceiptsRootTime;
 
-                // Snapshot per-tx timing (rents pooled array for ThreadPool use, null when disabled).
-                // The pooled array is returned to the pool in BlockDataPolicy.Return.
-                blockData.PerTxTicks = PerTxTimingCollector.Snapshot(out int perTxTicksCount);
-                blockData.PerTxTicksCount = perTxTicksCount;
+                // Snapshot per-tx timing (rents a pooled list for ThreadPool use, null when disabled).
+                // The list is disposed (returning its array to the pool) in BlockDataPolicy.Return.
+                blockData.PerTxTicks = PerTxTimingCollector.Snapshot();
             }
 
             CaptureReportData(blockData);
@@ -686,17 +686,16 @@ namespace Nethermind.Consensus.Processing
                     writer.WriteEndObject();
 
                     // Per-transaction timing breakdown (when enabled).
-                    // perTxTicks is rented from ArrayPool — iterate up to PerTxTicksCount, not Length.
-                    long[]? perTxTicks = data.PerTxTicks;
-                    int perTxTicksCount = data.PerTxTicksCount;
-                    if (perTxTicks is not null && perTxTicksCount > 0 && txs.Length > 0)
+                    ArrayPoolList<long>? perTxTicks = data.PerTxTicks;
+                    if (perTxTicks is not null && perTxTicks.Count > 0 && txs.Length > 0)
                     {
                         long perTxThresholdTicks = _slowBlockPerTxThresholdMs * TimeSpan.TicksPerMillisecond;
+                        ReadOnlySpan<long> ticks = perTxTicks.AsSpan();
 
                         writer.WriteStartArray("transactions");
-                        for (int i = 0; i < perTxTicksCount && i < txs.Length; i++)
+                        for (int i = 0; i < ticks.Length && i < txs.Length; i++)
                         {
-                            long txTicks = perTxTicks[i];
+                            long txTicks = ticks[i];
                             if (txTicks < perTxThresholdTicks) continue;
 
                             double txMs = txTicks / (double)TimeSpan.TicksPerMillisecond;
@@ -764,14 +763,13 @@ namespace Nethermind.Consensus.Processing
             public BlockData Create() => new();
             public bool Return(BlockData data)
             {
-                // Return the pooled per-tx ticks array before clearing the reference
-                PerTxTimingCollector.ReturnSnapshot(data.PerTxTicks);
+                // Dispose the pooled per-tx ticks list (returns its backing array to the pool)
+                data.PerTxTicks?.Dispose();
 
                 // Release the object references so we don't hold them from being GC'd
                 data.Block = null;
                 data.BaseBlock = null;
                 data.PerTxTicks = null;
-                data.PerTxTicksCount = 0;
                 data.BlockCount = 0;
                 data.FirstBlockNumber = 0;
                 data.GasUsed = 0;
@@ -837,8 +835,7 @@ namespace Nethermind.Consensus.Processing
             public long DeltaStateRootTime;
             public long DeltaBloomsTime;
             public long DeltaReceiptsRootTime;
-            public long[]? PerTxTicks;
-            public int PerTxTicksCount;
+            public ArrayPoolList<long>? PerTxTicks;
         }
     }
 }
