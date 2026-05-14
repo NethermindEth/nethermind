@@ -22,6 +22,10 @@ namespace Nethermind.Merge.Plugin.Synchronization;
 public class StartingSyncPivotUpdater : IDisposable
 {
     private const string Pivot = "pivot";
+
+    /// <summary>Sentinel for <see cref="ISyncConfig.MaxAttemptsToUpdatePivot"/> meaning "retry forever, never fall back to the static pivot".</summary>
+    public const int InfiniteAttempts = -1;
+
     private readonly IBlockTree _blockTree;
     private readonly ISyncModeSelector _syncModeSelector;
     private readonly ISyncPeerPool _syncPeerPool;
@@ -74,16 +78,20 @@ public class StartingSyncPivotUpdater : IDisposable
             {
                 _syncModeSelector.Changed -= OnSyncModeChanged;
             }
-            else if (_attemptsLeft-- > 0)
-            {
-                Interlocked.CompareExchange(ref _updateInProgress, 0, 1);
-            }
             else
             {
-                _syncModeSelector.Changed -= OnSyncModeChanged;
-                _syncConfig.MaxAttemptsToUpdatePivot = 0;
-                _beaconSyncStrategy.AllowBeaconHeaderSync();
-                if (_logger.IsInfo) _logger.Info("Failed to update pivot block, skipping it and using pivot from config file.");
+                _attemptsLeft--;
+                if (_maxAttempts != InfiniteAttempts && _attemptsLeft < 0)
+                {
+                    _syncModeSelector.Changed -= OnSyncModeChanged;
+                    _syncConfig.MaxAttemptsToUpdatePivot = 0;
+                    _beaconSyncStrategy.AllowBeaconHeaderSync();
+                    if (_logger.IsInfo) _logger.Info("Failed to update pivot block, skipping it and using pivot from config file.");
+                }
+                else
+                {
+                    Interlocked.CompareExchange(ref _updateInProgress, 0, 1);
+                }
             }
         }
 
@@ -103,7 +111,11 @@ public class StartingSyncPivotUpdater : IDisposable
 
         if (potentialPivotData is null)
         {
-            if (_logger.IsInfo && (_maxAttempts - _attemptsLeft) % 10 == 0) _logger.Info($"Waiting for Forkchoice message from Consensus Layer to set fresh pivot block [{_maxAttempts - _attemptsLeft}s]");
+            if (_logger.IsInfo)
+            {
+                int attemptsMade = _maxAttempts == InfiniteAttempts ? InfiniteAttempts - _attemptsLeft : _maxAttempts - _attemptsLeft;
+                if (attemptsMade % 10 == 0) _logger.Info($"Waiting for Forkchoice message from Consensus Layer to set fresh pivot block [{attemptsMade}s]");
+            }
             return false;
         }
 
