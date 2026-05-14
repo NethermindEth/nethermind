@@ -244,4 +244,19 @@ internal class SnapshotManagerTests
 
         result.Should().BeNull();
     }
+
+    [Test]
+    public void TryRecoverSnapshot_ReturnsNull_WhenNotSnapshotBlock()
+    {
+        // Block 100 is not a snapshot block (100 % 900 != 450)
+        XdcBlockHeader header = Build.A.XdcBlockHeader()
+            .WithGeneratedExtraConsensusData(1)
+            .WithNumber(100).TestObject;
+        _blockTree.FindHeader(100).Returns(header);
+
+        Snapshot? result = _snapshotManager.GetSnapshotByGapNumber(100);
+
+        result.Should().BeNull();
+        _stateReader.DidNotReceiveWithAnyArgs().HasStateForBlock(default);
+    }
 }

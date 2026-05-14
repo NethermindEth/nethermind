@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
@@ -12,7 +13,6 @@ using Nethermind.Xdc.Contracts;
 using Nethermind.Xdc.RLP;
 using Nethermind.Xdc.Spec;
 using Nethermind.Xdc.Types;
-using System;
 using Nethermind.Logging;
 using Nethermind.State;
 
@@ -29,7 +29,6 @@ internal abstract class BaseSnapshotManager<TSnapshot> : ISnapshotManager
     private readonly ISpecProvider _specProvider;
     private readonly IStateReader _stateReader;
     private readonly ILogger _logger;
-
 
     protected BaseSnapshotManager(
         IDb snapshotDb,
@@ -144,9 +143,15 @@ internal abstract class BaseSnapshotManager<TSnapshot> : ISnapshotManager
         if (!ISnapshotManager.IsTimeForSnapshot(gapBlockHeader.Number, _specProvider.GetXdcSpec(gapBlockHeader)))
             return null;
 
-        if (!_stateReader.HasStateForBlock(gapBlockHeader) || !_blockTree.WasProcessed(gapBlockHeader.Number, gapBlockHeader.Hash))
+        if (gapBlockHeader.Hash is null || !_blockTree.WasProcessed(gapBlockHeader.Number, gapBlockHeader.Hash))
         {
-            if (_logger.IsDebug) _logger.Debug($"Cannot recover snapshot for block {gapBlockHeader.Number} ({gapBlockHeader.Hash}): state or processing unavailable");
+            if (_logger.IsDebug) _logger.Debug($"Cannot recover snapshot for block {gapBlockHeader.Number} ({gapBlockHeader.Hash}): block not processed");
+            return null;
+        }
+
+        if (!_stateReader.HasStateForBlock(gapBlockHeader))
+        {
+            if (_logger.IsDebug) _logger.Debug($"Cannot recover snapshot for block {gapBlockHeader.Number} ({gapBlockHeader.Hash}): state unavailable");
             return null;
         }
 
@@ -160,7 +165,7 @@ internal abstract class BaseSnapshotManager<TSnapshot> : ISnapshotManager
             return null;
         }
 
-        TSnapshot? snapshot = GetSnapshot(gapBlockHeader.Hash);
+        TSnapshot? snapshot = GetSnapshot(gapBlockHeader.Hash!);
 
         if (snapshot is null)
         {
