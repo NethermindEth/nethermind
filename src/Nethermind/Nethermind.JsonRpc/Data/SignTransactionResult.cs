@@ -5,14 +5,12 @@ using System;
 using System.Text.Json.Serialization;
 using Nethermind.Core.Collections;
 using Nethermind.Facade.Eth.RpcTransaction;
-using Nethermind.Serialization.Json;
 
 namespace Nethermind.JsonRpc.Data;
 
 public class SignTransactionResult : IDisposable
 {
     [JsonPropertyName("raw")]
-    [JsonConverter(typeof(ArrayPoolListByteHexConverter))]
     public required ArrayPoolList<byte> Raw { get; init; }
 
     [JsonPropertyName("tx")]
