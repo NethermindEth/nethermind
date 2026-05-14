@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
@@ -16,72 +17,15 @@ namespace Nethermind.Taiko.Test;
 [Parallelizable(ParallelScope.All)]
 public class TaikoEthSyncingInfoTests
 {
-    /// <summary>
-    /// Regression: on Taiko, BeaconSync inserts headers without bumping BestSuggestedHeader.
-    /// Once Head catches the beacon pivot, isSyncing must return false even though
-    /// FindBestSuggestedHeader() lags or returns null.
-    /// </summary>
-    [Test]
-    public void GetFullInfo_BeaconPivot_HeadCaughtUp_NotSyncing()
+    [TestCaseSource(nameof(GetFullInfoCases))]
+    public void GetFullInfo_ReturnsExpected(long? suggested, long? beacon, long? head, SyncMode innerMode, SyncingResult expected)
     {
-        IBlockTree blockTree = Substitute.For<IBlockTree>();
-        blockTree.FindBestSuggestedHeader().Returns((BlockHeader?)null);
-        blockTree.BestSuggestedBeaconHeader.Returns(Build.A.BlockHeader.WithNumber(1000L).TestObject);
-        blockTree.Head.Returns(Build.A.Block.WithHeader(Build.A.BlockHeader.WithNumber(1000L).TestObject).TestObject);
-
-        TaikoEthSyncingInfo info = new(blockTree, Substitute.For<IEthSyncingInfo>());
-        SyncingResult result = info.GetFullInfo();
-
-        Assert.That(result.IsSyncing, Is.False);
-        Assert.That(result, Is.EqualTo(SyncingResult.NotSyncing));
-    }
-
-    [Test]
-    public void GetFullInfo_BeaconPivot_HeadBehind_Syncing()
-    {
-        IBlockTree blockTree = Substitute.For<IBlockTree>();
-        blockTree.FindBestSuggestedHeader().Returns((BlockHeader?)null);
-        blockTree.BestSuggestedBeaconHeader.Returns(Build.A.BlockHeader.WithNumber(1000L).TestObject);
-        blockTree.Head.Returns(Build.A.Block.WithHeader(Build.A.BlockHeader.WithNumber(500L).TestObject).TestObject);
-
         IEthSyncingInfo inner = Substitute.For<IEthSyncingInfo>();
-        inner.SyncMode.Returns(SyncMode.FastSync);
+        inner.SyncMode.Returns(innerMode);
 
-        SyncingResult result = new TaikoEthSyncingInfo(blockTree, inner).GetFullInfo();
+        SyncingResult result = new TaikoEthSyncingInfo(BlockTreeWith(suggested, beacon, head), inner).GetFullInfo();
 
-        Assert.That(result.IsSyncing, Is.True);
-        Assert.That(result.CurrentBlock, Is.EqualTo(500L));
-        Assert.That(result.HighestBlock, Is.EqualTo(1000L));
-        Assert.That(result.SyncMode, Is.EqualTo(SyncMode.FastSync));
-    }
-
-    [Test]
-    public void GetFullInfo_Genesis_Syncing()
-    {
-        IBlockTree blockTree = Substitute.For<IBlockTree>();
-        blockTree.FindBestSuggestedHeader().Returns((BlockHeader?)null);
-        blockTree.BestSuggestedBeaconHeader.Returns((BlockHeader?)null);
-        blockTree.Head.Returns((Block?)null);
-
-        SyncingResult result = new TaikoEthSyncingInfo(blockTree, Substitute.For<IEthSyncingInfo>()).GetFullInfo();
-
-        Assert.That(result.IsSyncing, Is.True);
-        Assert.That(result.CurrentBlock, Is.Zero);
-        Assert.That(result.HighestBlock, Is.Zero);
-    }
-
-    [Test]
-    public void GetFullInfo_TakesMaxOfBothPointers()
-    {
-        IBlockTree blockTree = Substitute.For<IBlockTree>();
-        blockTree.FindBestSuggestedHeader().Returns(Build.A.BlockHeader.WithNumber(2000L).TestObject);
-        blockTree.BestSuggestedBeaconHeader.Returns(Build.A.BlockHeader.WithNumber(1000L).TestObject);
-        blockTree.Head.Returns(Build.A.Block.WithHeader(Build.A.BlockHeader.WithNumber(500L).TestObject).TestObject);
-
-        SyncingResult result = new TaikoEthSyncingInfo(blockTree, Substitute.For<IEthSyncingInfo>()).GetFullInfo();
-
-        Assert.That(result.IsSyncing, Is.True);
-        Assert.That(result.HighestBlock, Is.EqualTo(2000L));
+        Assert.That(result, Is.EqualTo(expected));
     }
 
     [Test]
@@ -103,5 +47,41 @@ public class TaikoEthSyncingInfoTests
         inner.SyncMode.Returns(SyncMode.WaitingForBlock);
 
         Assert.That(new TaikoEthSyncingInfo(Substitute.For<IBlockTree>(), inner).SyncMode, Is.EqualTo(SyncMode.WaitingForBlock));
+    }
+
+    private static IBlockTree BlockTreeWith(long? suggested, long? beacon, long? head)
+    {
+        IBlockTree blockTree = Substitute.For<IBlockTree>();
+        blockTree.FindBestSuggestedHeader().Returns(suggested is long s ? Build.A.BlockHeader.WithNumber(s).TestObject : null);
+        blockTree.BestSuggestedBeaconHeader.Returns(beacon is long b ? Build.A.BlockHeader.WithNumber(b).TestObject : null);
+        blockTree.Head.Returns(head is long h ? Build.A.Block.WithHeader(Build.A.BlockHeader.WithNumber(h).TestObject).TestObject : null);
+        return blockTree;
+    }
+
+    private static IEnumerable<TestCaseData> GetFullInfoCases()
+    {
+        // Regression: BeaconSync inserts headers via BestSuggestedBeaconHeader only, so
+        // FindBestSuggestedHeader can lag (or be null) even after Head reaches the pivot.
+        // Before the fix, isSyncing stuck at true once Head caught up.
+        yield return new TestCaseData(
+            (long?)null, (long?)1000L, (long?)1000L, SyncMode.None,
+            SyncingResult.NotSyncing
+        ).SetName("BeaconPivot_HeadCaughtUp_NotSyncing");
+
+        yield return new TestCaseData(
+            (long?)null, (long?)1000L, (long?)500L, SyncMode.FastSync,
+            new SyncingResult { IsSyncing = true, CurrentBlock = 500L, HighestBlock = 1000L, SyncMode = SyncMode.FastSync }
+        ).SetName("BeaconPivot_HeadBehind_Syncing");
+
+        yield return new TestCaseData(
+            (long?)null, (long?)null, (long?)null, SyncMode.None,
+            new SyncingResult { IsSyncing = true, CurrentBlock = 0L, HighestBlock = 0L, SyncMode = SyncMode.None }
+        ).SetName("Genesis_Syncing");
+
+        // Both pointers populated — decorator must take max(suggested, beacon).
+        yield return new TestCaseData(
+            (long?)2000L, (long?)1000L, (long?)500L, SyncMode.None,
+            new SyncingResult { IsSyncing = true, CurrentBlock = 500L, HighestBlock = 2000L, SyncMode = SyncMode.None }
+        ).SetName("TakesMaxOfBothPointers");
     }
 }
