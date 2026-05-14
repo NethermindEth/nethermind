@@ -163,7 +163,7 @@ namespace Nethermind.Evm.Test
         [TestCase(MainnetSpecProvider.ParisBlockNumber + 2, MainnetSpecProvider.CancunBlockTimestamp)]
         [TestCase(MainnetSpecProvider.ParisBlockNumber + 3, MainnetSpecProvider.PragueBlockTimestamp)]
         [TestCase(MainnetSpecProvider.ParisBlockNumber + 4, MainnetSpecProvider.OsakaBlockTimestamp)]
-        [TestCase(MainnetSpecProvider.ParisBlockNumber + 10, MainnetSpecProvider.AmsterdamBlockTimestamp)]
+        [TestCase(MainnetSpecProvider.ParisBlockNumber + 7, MainnetSpecProvider.AmsterdamBlockTimestamp)]
         public void Test(long blockNumber, ulong? timestamp = null)
         {
             ILogger logger = _logManager.GetClassLogger<InvalidOpcodeTests>();
