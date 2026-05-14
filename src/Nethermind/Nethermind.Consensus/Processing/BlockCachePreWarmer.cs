@@ -301,79 +301,134 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
             int txCount = block.Transactions.Length;
             if (txCount == 0) return;
 
+            int firstPassLimit = (int)(txCount * _firstPassRatio);
             Volatile.Write(ref _nextWarmupIndex, 0);
             Volatile.Write(ref MainThreadTxIndex, -1);
+            _firstPassDone.Reset();
             _mainThreadAdvanced.Reset();
 
             int threadCount = Math.Min(_concurrencyLevel, txCount);
             BlockCachePreWarmer preWarmer = this;
             CancellationToken token = parallelOptions.CancellationToken;
             PreWarmRetryMode retryMode = _retryMode;
+            PreWarmFirstPassMode firstPassMode = _firstPassMode;
 
             Thread[] workers = new Thread[threadCount];
-            for (int t = 0; t < threadCount; t++)
+            SenderGroups senderGroups = firstPassMode == PreWarmFirstPassMode.SenderGrouped
+                ? SenderGroups.Build(block, firstPassLimit)
+                : default;
+            int firstPassWorkItems = firstPassMode == PreWarmFirstPassMode.SenderGrouped ? senderGroups.Count : firstPassLimit;
+            try
             {
-                workers[t] = new Thread(() =>
+                for (int t = 0; t < threadCount; t++)
                 {
-                    IReadOnlyTxProcessorSource env = _envPool.Get();
-                    try
+                    workers[t] = new Thread(() =>
                     {
-                        while (!token.IsCancellationRequested)
+                        IReadOnlyTxProcessorSource env = _envPool.Get();
+                        try
                         {
-                            int myTx = Interlocked.Increment(ref _nextWarmupIndex) - 1;
-                            if (myTx >= txCount)
+                            // Phase 1: one execution per tx, no retry.
+                            while (!token.IsCancellationRequested)
                             {
-                                // All txs claimed — wrap around for another pass
-                                if (retryMode == PreWarmRetryMode.None) break;
-                                Interlocked.CompareExchange(ref _nextWarmupIndex, 0, txCount + threadCount);
-                                continue;
-                            }
+                                int workItem = Interlocked.Increment(ref _nextWarmupIndex) - 1;
+                                if (workItem >= firstPassWorkItems) break;
 
-                            if (Volatile.Read(ref MainThreadTxIndex) >= myTx) continue;
-
-                            WarmupTransactionByIndex(env, blockState, block, preWarmer, myTx);
-
-                            if (retryMode == PreWarmRetryMode.Hammer)
-                            {
-                                while (!token.IsCancellationRequested)
+                                if (firstPassMode == PreWarmFirstPassMode.SenderGrouped)
                                 {
-                                    if (Volatile.Read(ref MainThreadTxIndex) >= myTx) break;
-                                    WarmupTransactionByIndex(env, blockState, block, preWarmer, myTx);
+                                    WarmupSenderGroup(
+                                        env,
+                                        senderGroups[workItem],
+                                        blockState,
+                                        block,
+                                        preWarmer,
+                                        token);
+                                }
+                                else
+                                {
+                                    int txIndex = firstPassMode == PreWarmFirstPassMode.Lookahead
+                                        ? txCount - 1 - workItem
+                                        : workItem;
+                                    WarmupTransactionByIndex(env, blockState, block, preWarmer, txIndex);
                                 }
                             }
-                            else if (retryMode == PreWarmRetryMode.StateGated)
+
+                            if (firstPassLimit > 0) preWarmer._firstPassDone.Set();
+
+                            if (!token.CanBeCanceled || retryMode == PreWarmRetryMode.None) return;
+
+                            // Phase 2: retry mode, re-warm txs with fresher state.
+                            Interlocked.CompareExchange(ref _nextWarmupIndex, 0, firstPassWorkItems + threadCount);
+
+                            while (!token.IsCancellationRequested)
                             {
-                                int lastSeenMain = Volatile.Read(ref MainThreadTxIndex);
-                                while (!token.IsCancellationRequested && lastSeenMain < myTx)
+                                int myTx = Interlocked.Increment(ref _nextWarmupIndex) - 1;
+                                if (myTx >= txCount)
                                 {
-                                    _mainThreadAdvanced.Reset();
-                                    int current = Volatile.Read(ref MainThreadTxIndex);
-                                    if (current > lastSeenMain)
+                                    Interlocked.CompareExchange(ref _nextWarmupIndex, 0, txCount + threadCount);
+                                    continue;
+                                }
+
+                                int lastSeenMain = Volatile.Read(ref MainThreadTxIndex);
+                                if (lastSeenMain >= myTx) continue;
+
+                                WarmupTransactionByIndex(env, blockState, block, preWarmer, myTx);
+
+                                if (retryMode == PreWarmRetryMode.Hammer)
+                                {
+                                    // Hammer: keep re-executing until main thread passes.
+                                    // Each retry uses a fresh scope so read-through fallback can observe newer state.
+                                    while (!token.IsCancellationRequested)
                                     {
-                                        lastSeenMain = current;
-                                        if (lastSeenMain >= myTx) break;
+                                        if (Volatile.Read(ref MainThreadTxIndex) >= myTx) break;
+
                                         WarmupTransactionByIndex(env, blockState, block, preWarmer, myTx);
                                     }
-                                    else
+                                }
+                                else
+                                {
+                                    // State-gated: re-execute only when main thread advances
+                                    while (!token.IsCancellationRequested)
                                     {
-                                        _mainThreadAdvanced.Wait(token);
+                                        if (lastSeenMain >= myTx) break;
+
+                                        while (!token.IsCancellationRequested)
+                                        {
+                                            int current = Volatile.Read(ref MainThreadTxIndex);
+                                            if (current > lastSeenMain) { lastSeenMain = current; break; }
+                                            if (current >= myTx) { lastSeenMain = current; break; }
+
+                                            _mainThreadAdvanced.Reset();
+                                            current = Volatile.Read(ref MainThreadTxIndex);
+                                            if (current > lastSeenMain) { lastSeenMain = current; break; }
+                                            if (current >= myTx) { lastSeenMain = current; break; }
+
+                                            _mainThreadAdvanced.Wait(token);
+                                        }
+
+                                        if (lastSeenMain >= myTx) break;
+
+                                        WarmupTransactionByIndex(env, blockState, block, preWarmer, myTx);
                                     }
                                 }
                             }
                         }
-                    }
-                    catch (OperationCanceledException) { }
-                    catch (Exception) { }
-                    finally
-                    {
-                        _envPool.Return(env);
-                    }
-                }) { IsBackground = true, Name = "PrewarmWorker" };
-                workers[t].Start();
-            }
+                        catch (OperationCanceledException) { }
+                        catch (Exception) { }
+                        finally
+                        {
+                            _envPool.Return(env);
+                        }
+                    }) { IsBackground = true, Name = "PrewarmWorker" };
+                    workers[t].Start();
+                }
 
-            for (int t = 0; t < threadCount; t++)
-                workers[t].Join();
+                for (int t = 0; t < threadCount; t++)
+                    workers[t].Join();
+            }
+            finally
+            {
+                senderGroups.Dispose();
+            }
         }
         catch (OperationCanceledException)
         {
