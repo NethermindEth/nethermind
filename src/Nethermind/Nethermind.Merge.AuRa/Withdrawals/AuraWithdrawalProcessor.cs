@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -30,7 +30,7 @@ public class AuraWithdrawalProcessor : IWithdrawalProcessor
 
     public void ProcessWithdrawals(Block block, IReleaseSpec spec)
     {
-        if (!spec.WithdrawalsEnabled || block.Withdrawals is null) // The second check seems redundant
+        if (!spec.WithdrawalsEnabled || block.IsGenesis || block.Withdrawals is null)
             return;
 
         if (_logger.IsTrace) _logger.Trace($"Applying withdrawals for block {block}");
