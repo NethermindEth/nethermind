@@ -45,6 +45,7 @@ namespace Nethermind.State
         {
             if (source is not WorldState srcWs) return;
             _stateProvider._readFallback = srcWs._stateProvider._blockChanges;
+            _persistentStorageProvider._storageFallback = srcWs._persistentStorageProvider;
         }
         private readonly TransientStorageProvider _transientStorageProvider;
         private IWorldStateScopeProvider.IScope? _currentScope;

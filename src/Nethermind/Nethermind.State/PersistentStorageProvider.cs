@@ -35,6 +35,12 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
     private readonly Dictionary<AddressAsKey, bool> _toUpdateRoots = [];
 
     /// <summary>
+    /// Optional read-through fallback to another PersistentStorageProvider's committed storage.
+    /// Used by prewarmer to read from the main thread's storage state without copying.
+    /// </summary>
+    internal PersistentStorageProvider? _storageFallback;
+
+    /// <summary>
     /// <see href="https://eips.ethereum.org/EIPS/eip-1283"/>
     /// </summary>
     private readonly Dictionary<StorageCell, byte[]> _originalValues = [];
@@ -68,8 +74,32 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
     /// </summary>
     /// <param name="storageCell">Storage location</param>
     /// <returns>Value at location</returns>
-    protected override ReadOnlySpan<byte> GetCurrentValue(in StorageCell storageCell) =>
-        TryGetCachedValue(storageCell, out byte[]? bytes) ? bytes! : LoadFromTree(storageCell);
+    protected override ReadOnlySpan<byte> GetCurrentValue(in StorageCell storageCell)
+    {
+        if (TryGetCachedValue(storageCell, out byte[]? bytes))
+            return bytes!;
+
+        // Check fallback (main thread's committed storage) before going to trie
+        if (_storageFallback is not null)
+        {
+            try
+            {
+                if (_storageFallback._storages.TryGetValue(storageCell.Address, out PerContractState? fallbackContract))
+                {
+                    ReadOnlySpan<byte> fallbackValue = fallbackContract.TryLoadFromBlockChange(storageCell.Index);
+                    if (!fallbackValue.IsEmpty)
+                    {
+                        Db.Metrics.IncrementStorageTreeCache();
+                        PushToRegistryOnly(storageCell, fallbackValue.ToArray());
+                        return fallbackValue;
+                    }
+                }
+            }
+            catch { /* concurrent access — fall through to trie */ }
+        }
+
+        return LoadFromTree(storageCell);
+    }
 
     /// <summary>
     /// Return the original persistent storage value from the storage cell
@@ -336,6 +366,9 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
             _dictionary.Clear();
         }
 
+        public bool TryGetValue(UInt256 key, out StorageChangeTrace value) =>
+            _dictionary.TryGetValue(key, out value);
+
         public ref StorageChangeTrace GetValueRefOrAddDefault(UInt256 storageCellIndex, out bool exists)
         {
             ref StorageChangeTrace value = ref CollectionsMarshal.GetValueRefOrAddDefault(_dictionary, storageCellIndex, out exists);
@@ -470,6 +503,21 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
                 EnsureStorageTree();
                 _backend.HintSet(storageCell.Index, value);
             }
+        }
+
+        /// <summary>
+        /// Read-only check of BlockChange for a storage slot. Does NOT mutate.
+        /// Used by prewarmer to read from the main thread's committed storage.
+        /// </summary>
+        /// <summary>
+        /// Read-only check of BlockChange for a storage slot. Does NOT mutate.
+        /// Used by prewarmer to read from the main thread's committed storage.
+        /// </summary>
+        public ReadOnlySpan<byte> TryLoadFromBlockChange(in UInt256 index)
+        {
+            if (BlockChange.TryGetValue(index, out StorageChangeTrace trace))
+                return trace.After;
+            return ReadOnlySpan<byte>.Empty;
         }
 
         public ReadOnlySpan<byte> LoadFromTree(in StorageCell storageCell)
