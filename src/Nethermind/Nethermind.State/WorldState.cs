@@ -37,22 +37,14 @@ namespace Nethermind.State
         /// Used by prewarmer to see main thread's committed state (unsafe concurrent read).
         /// </summary>
         /// <summary>
-        /// Unsafe copy of committed account state from another WorldState into this one.
-        /// The source is the main thread's live state — concurrent Dictionary reads may
-        /// occasionally throw or return stale data, which is acceptable for prefetching.
+        /// Set up a read-through fallback to another WorldState's committed block changes.
+        /// Reads: this._blockChanges → source._blockChanges → trie
+        /// Writes: this._blockChanges only (never touches source)
         /// </summary>
-        public void UnsafeCopyBlockChangesFrom(IWorldState source)
+        public void SetReadFallback(IWorldState source)
         {
             if (source is not WorldState srcWs) return;
-            try
-            {
-                foreach (KeyValuePair<AddressAsKey, StateProvider.ChangeTrace> kvp in srcWs._stateProvider._blockChanges)
-                {
-                    if (kvp.Value.After is not null)
-                        _stateProvider._blockChanges[kvp.Key] = kvp.Value;
-                }
-            }
-            catch { }
+            _stateProvider._readFallback = srcWs._stateProvider._blockChanges;
         }
         private readonly TransientStorageProvider _transientStorageProvider;
         private IWorldStateScopeProvider.IScope? _currentScope;

@@ -242,6 +242,11 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
                         BlockExecutionContext context = new(block.Header, blockState.Spec);
                         scope.TransactionProcessor.SetBlockExecutionContext(context);
 
+                        // Set up read-through fallback: reads go to own state → main thread's state → trie.
+                        // Writes only go to own state (never touches main thread).
+                        if (preWarmer.MainThreadWorldState is not null)
+                            (scope.WorldState as WorldState)?.SetReadFallback(preWarmer.MainThreadWorldState);
+
                         while (!token.IsCancellationRequested)
                         {
                             int mainPos = Volatile.Read(ref MainThreadTxIndex);
@@ -252,9 +257,6 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
 
                             // Skip txs the main thread already processed
                             if (myTx <= mainPos) continue;
-
-                            // Copy committed state from main thread (unsafe concurrent read)
-                            (scope.WorldState as WorldState)?.UnsafeCopyBlockChangesFrom(preWarmer.MainThreadWorldState);
 
                             WarmupSingleTransaction(scope, block.Transactions[myTx], myTx, blockState);
                         }

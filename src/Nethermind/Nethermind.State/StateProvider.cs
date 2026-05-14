@@ -42,6 +42,13 @@ internal class StateProvider(ILogManager logManager) : IJournal<int>
     private readonly AssociativeKeyCache<ValueHash256> _blockCodeInsertFilter = new(256);
     internal readonly Dictionary<AddressAsKey, ChangeTrace> _blockChanges = new(4_096);
 
+    /// <summary>
+    /// Optional read-through fallback to another StateProvider's block changes.
+    /// Used by prewarmer to read from the main thread's committed state without copying.
+    /// Writes always go to this instance's own _blockChanges.
+    /// </summary>
+    internal Dictionary<AddressAsKey, ChangeTrace>? _readFallback;
+
     private readonly List<Change> _keptInCache = [];
     private readonly ILogger _logger = logManager?.GetClassLogger<StateProvider>() ?? throw new ArgumentNullException(nameof(logManager));
     private Dictionary<Hash256AsKey, byte[]>? _codeBatch;
@@ -721,6 +728,21 @@ internal class StateProvider(ILogManager logManager) : IJournal<int>
         ref ChangeTrace accountChanges = ref CollectionsMarshal.GetValueRefOrAddDefault(_blockChanges, addressAsKey, out bool exists);
         if (!exists)
         {
+            // Check fallback (main thread's block changes) before going to trie
+            if (_readFallback is not null)
+            {
+                try
+                {
+                    if (_readFallback.TryGetValue(addressAsKey, out ChangeTrace fallbackTrace) && fallbackTrace.After is not null)
+                    {
+                        accountChanges = fallbackTrace;
+                        Metrics.IncrementStateTreeCacheHits();
+                        return accountChanges.After;
+                    }
+                }
+                catch { /* concurrent modification — fall through to trie */ }
+            }
+
             Metrics.IncrementStateTreeReads();
             EvmMetrics.IncrementAccountReads();
             Account? account = _tree.Get(address);
