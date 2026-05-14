@@ -12,6 +12,7 @@ using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading;
+using Nethermind.Core.Buffers;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -73,6 +74,7 @@ namespace Nethermind.Serialization.Rlp
 
         private static readonly Dictionary<RlpDecoderKey, IRlpDecoder> _decoderBuilder = [];
         private static readonly Lock _decoderLock = new();
+        private static readonly CappedArray<byte>[] s_intPreEncodes = CreatePreEncodes();
 
         public static void ResetDecoders()
         {
@@ -264,6 +266,19 @@ namespace Nethermind.Serialization.Rlp
             }
 
             return Encode(rlpSequence);
+        }
+
+        public static CappedArray<byte> EncodeToCappedArray(int item, ICappedArrayPool? bufferPool = null)
+        {
+            CappedArray<byte>[] cache = s_intPreEncodes;
+            if ((uint)item < (uint)cache.Length)
+            {
+                return cache[item];
+            }
+
+            CappedArray<byte> buffer = bufferPool.SafeRent(LengthOf(item));
+            buffer.AsRlpStream().Encode(item);
+            return buffer;
         }
 
         public static Rlp Encode(Transaction transaction) => Encode(transaction, false);
@@ -1829,6 +1844,23 @@ namespace Nethermind.Serialization.Rlp
         [StackTraceHidden]
         private static void ThrowBufferTooSmall(Span<byte> buffer, int minLength) =>
             throw new ArgumentException($"Buffer is too small. Minimal length: {minLength}, actual length: {buffer.Length}");
+
+        private static CappedArray<byte>[] CreatePreEncodes()
+        {
+            const int MaxCache = 1024;
+
+            CappedArray<byte>[] cache = new CappedArray<byte>[MaxCache];
+
+            for (int i = 0; i < cache.Length; i++)
+            {
+                int size = LengthOf(i);
+                byte[] buffer = new byte[size];
+                buffer.AsRlpStream().Encode(i);
+                cache[i] = new CappedArray<byte>(buffer);
+            }
+
+            return cache;
+        }
     }
 
     public readonly partial struct RlpDecoderKey(Type type, string key = RlpDecoderKey.Default) : IEquatable<RlpDecoderKey>

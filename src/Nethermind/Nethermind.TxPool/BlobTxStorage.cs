@@ -19,7 +19,7 @@ namespace Nethermind.TxPool;
 public class BlobTxStorage : IBlobTxStorage
 {
     private const int MaxPooledKeys = 128;
-    private static readonly TxDecoder _txDecoder = TxDecoder.Instance;
+    private static readonly IRlpDecoder<Transaction> _txDecoder = TxDecoder.Instance;
     private readonly ConcurrentQueue<byte[]> _keyPool = new();
     private readonly IDb _fullBlobTxsDb;
     private readonly IDb _lightBlobTxsDb;

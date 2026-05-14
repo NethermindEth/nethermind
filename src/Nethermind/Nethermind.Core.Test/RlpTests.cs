@@ -407,7 +407,7 @@ namespace Nethermind.Core.Test
         public void Encode_stream_with_null_items_produces_empty_list()
         {
             RlpStream stream = new(Rlp.OfEmptyList.Length);
-            TxDecoder.Instance.Encode(stream, (Transaction[]?)null);
+            ((IRlpDecoder<Transaction>)TxDecoder.Instance).Encode(stream, (Transaction[]?)null);
             Assert.That(stream.Data.ToArray(), Is.EqualTo(Rlp.OfEmptyList.Bytes));
         }
 

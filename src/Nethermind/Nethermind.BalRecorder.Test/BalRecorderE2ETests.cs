@@ -42,6 +42,7 @@ public class BalRecorderE2ETests
 {
     private const int BlocksToBuild = 3;
     private static readonly TimeSpan TestTimeout = TimeSpan.FromSeconds(60);
+    private static readonly IRlpDecoder<BlockAccessList> BalDecoder = BlockAccessListDecoder.Instance;
 
     [Test]
     public async Task Record_Then_Replay_RoundTrip()
@@ -66,7 +67,7 @@ public class BalRecorderE2ETests
             {
                 BlockAccessList? reread = store.Get(number);
                 reread.Should().NotBeNull();
-                using NettyRlpStream reencoded = BlockAccessListDecoder.Instance.EncodeToNewNettyStream(reread!);
+                using NettyRlpStream reencoded = BalDecoder.EncodeToNewNettyStream(reread!);
                 reencoded.AsSpan().ToArray().Should().BeEquivalentTo(expected);
             }
         }
@@ -87,7 +88,7 @@ public class BalRecorderE2ETests
             block.Should().NotBeNull();
             BlockAccessList? bal = store.Get(block!.Number);
             bal.Should().NotBeNull($"block {i} should have a recorded BAL");
-            using NettyRlpStream encoded = BlockAccessListDecoder.Instance.EncodeToNewNettyStream(bal!);
+            using NettyRlpStream encoded = BalDecoder.EncodeToNewNettyStream(bal!);
             result.Add((block.Number, encoded.AsSpan().ToArray()));
         }
         return result;

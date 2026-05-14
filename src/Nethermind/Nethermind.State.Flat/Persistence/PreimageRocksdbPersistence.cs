@@ -149,7 +149,7 @@ public class PreimageRocksdbPersistence(IColumnsDb<FlatDbColumns> db) : IPersist
                 return;
             }
 
-            using NettyRlpStream stream = AccountDecoder.Slim.EncodeToNewNettyStream(account);
+            using NettyRlpStream stream = ((IRlpDecoder<Account?>)AccountDecoder.Slim).EncodeToNewNettyStream(account);
             _flatWriteBatch.SetAccount(fakeAddrHash, stream.AsSpan());
         }
 

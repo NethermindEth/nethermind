@@ -103,7 +103,7 @@ public class ReceiptsIteratorTests
 
     private ReceiptsIterator CreateIterator(TxReceipt[] receipts, Block block)
     {
-        using NettyRlpStream stream = _decoder.EncodeToNewNettyStream(receipts, RlpBehaviors.Storage);
+        using NettyRlpStream stream = ((IRlpDecoder<TxReceipt[]>)_decoder).EncodeToNewNettyStream(receipts, RlpBehaviors.Storage);
         Span<byte> span = stream.AsSpan();
         TestMemDb blockDb = new();
         ReceiptsRecovery recovery = new(

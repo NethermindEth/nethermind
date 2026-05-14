@@ -1,19 +1,27 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
 
 namespace Nethermind.Core.Test.Encoding;
 
-public class RlpDecoderExtensionsTests
+public class IRlpDecoderTests
 {
+    [Test]
+    public void Decode_complete_not_null_decodes_item()
+    {
+        IRlpDecoder<Withdrawal> decoder = new WithdrawalDecoder();
+        Rlp rlp = decoder.Encode(TestItem.WithdrawalA_1Eth);
+
+        Assert.That(decoder.DecodeCompleteNotNull(rlp.Bytes), Is.Not.Null);
+    }
+
     [Test]
     public void Array_encoding_uses_empty_list_for_null_withdrawals()
     {
-        WithdrawalDecoder decoder = new();
+        IRlpDecoder<Withdrawal> decoder = new WithdrawalDecoder();
         Withdrawal?[] withdrawals = [TestItem.WithdrawalA_1Eth, null, TestItem.WithdrawalB_2Eth];
 
         int contentLength = decoder.GetContentLength(withdrawals);

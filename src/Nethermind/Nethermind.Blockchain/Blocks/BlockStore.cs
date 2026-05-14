@@ -40,7 +40,7 @@ public class BlockStore([KeyFilter(DbNames.Blocks)] IDb blockDb, IHeaderDecoder 
 
         // if we carry Rlp from the network message all the way here we could avoid encoding back to RLP here
         // Although cpu is the main bottleneck since NettyRlpStream uses pooled memory which avoid unnecessary allocations..
-        using NettyRlpStream newRlp = _blockDecoder.EncodeToNewNettyStream(block);
+        using NettyRlpStream newRlp = ((IRlpDecoder<Block>)_blockDecoder).EncodeToNewNettyStream(block);
 
         blockDb.Set(block.Number, block.Hash, newRlp.AsSpan(), writeFlags);
     }

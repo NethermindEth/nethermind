@@ -21,7 +21,7 @@ namespace Nethermind.Era1;
 /// </summary>
 public class EraReader(E2StoreReader e2) : IAsyncEnumerable<(Block, TxReceipt[])>, IDisposable
 {
-    private readonly ReceiptMessageDecoder _receiptDecoder = new();
+    private readonly IRlpDecoder<TxReceipt> _receiptDecoder = new ReceiptMessageDecoder();
     private readonly BlockBodyDecoder _blockBodyDecoder = BlockBodyDecoder.Instance;
     private readonly HeaderDecoder _headerDecoder = new();
     private readonly E2StoreReader _fileReader = e2;
@@ -194,7 +194,7 @@ public class EraReader(E2StoreReader e2) : IAsyncEnumerable<(Block, TxReceipt[])
     private TxReceipt[] DecodeReceipts(Memory<byte> buffer)
     {
         Rlp.ValueDecoderContext ctx = new(buffer.Span);
-        return RlpDecoderExtensions.DecodeArray(_receiptDecoder, ref ctx, RlpBehaviors.None);
+        return _receiptDecoder.DecodeArray(ref ctx, RlpBehaviors.None);
     }
 
     public ValueHash256 CalculateChecksum() => _fileReader.CalculateChecksum();

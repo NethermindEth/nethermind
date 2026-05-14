@@ -17,7 +17,7 @@ namespace Nethermind.ExternalSigner.Plugin
 {
     public class ClefWallet(IJsonRpcClient rpcClient) : IWallet
     {
-        private readonly HeaderDecoder _headerDecoder = new();
+        private readonly IRlpDecoder<BlockHeader> _headerDecoder = new HeaderDecoder();
 
         public event EventHandler<AccountLockedEventArgs> AccountLocked
         {

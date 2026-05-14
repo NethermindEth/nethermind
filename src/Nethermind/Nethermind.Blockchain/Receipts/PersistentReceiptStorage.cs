@@ -275,7 +275,7 @@ namespace Nethermind.Blockchain.Receipts
             long blockNumber = block.Number;
             RlpBehaviors behaviors = spec.IsEip658Enabled ? RlpBehaviors.Eip658Receipts | RlpBehaviors.Storage : RlpBehaviors.Storage;
 
-            using (NettyRlpStream stream = _storageDecoder.EncodeToNewNettyStream(txReceipts, behaviors))
+            using (NettyRlpStream stream = ((IRlpDecoder<TxReceipt[]>)_storageDecoder).EncodeToNewNettyStream(txReceipts, behaviors))
             {
                 Span<byte> blockNumPrefixed = stackalloc byte[40];
                 GetBlockNumPrefixedKey(blockNumber, block.Hash!, blockNumPrefixed);

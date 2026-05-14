@@ -323,7 +323,7 @@ namespace Nethermind.Serialization.Rlp
         public void DecodeLogEntryStructRef(scoped ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors behaviour,
             out LogEntryStructRef current) => LogEntryDecoder.DecodeStructRef(ref decoderContext, behaviour, out current);
 
-        public Hash256[] DecodeTopics(Rlp.ValueDecoderContext valueDecoderContext) => KeccakDecoder.Instance.DecodeArray(ref valueDecoderContext);
+        public Hash256[] DecodeTopics(Rlp.ValueDecoderContext valueDecoderContext) => ((IRlpDecoder<Hash256>)KeccakDecoder.Instance).DecodeArray(ref valueDecoderContext);
 
         public bool CanDecodeBloom => true;
     }
