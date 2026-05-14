@@ -296,39 +296,66 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
     private CancellationToken CancellationToken
         => _loopCancellationSource?.Token ?? CancellationTokenExtensions.AlreadyCancelledToken;
 
-    private async Task RunProcessing()
+    private Task RunProcessing()
     {
-        try
+        TaskCompletionSource tcs = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        Thread thread = new(() =>
         {
-            await RunProcessingLoop();
-            if (_logger.IsDebug) _logger.Debug($"{nameof(BlockchainProcessor)} complete.");
-        }
-        catch (OperationCanceledException)
+            try
+            {
+                RunProcessingLoop();
+                if (_logger.IsDebug) _logger.Debug($"{nameof(BlockchainProcessor)} complete.");
+                tcs.TrySetResult();
+            }
+            catch (OperationCanceledException)
+            {
+                if (_logger.IsDebug) _logger.Debug($"{nameof(BlockchainProcessor)} stopped.");
+                tcs.TrySetResult();
+            }
+            catch (Exception ex)
+            {
+                if (_logger.IsError) _logger.Error($"{nameof(BlockchainProcessor)} encountered an exception.", ex);
+                tcs.TrySetException(ex);
+            }
+        })
         {
-            if (_logger.IsDebug) _logger.Debug($"{nameof(BlockchainProcessor)} stopped.");
-        }
-        catch (Exception ex)
-        {
-            if (_logger.IsError) _logger.Error($"{nameof(BlockchainProcessor)} encountered an exception.", ex);
-        }
+            IsBackground = true,
+            Name = "Block Processor",
+            Priority = ThreadPriority.Highest
+        };
+        thread.Start();
+        return tcs.Task;
     }
 
     private bool IsProcessingBlock { get => _isProcessingBlock; set { _isProcessingBlock = value; _blockTree.IsProcessingBlock = value; } }
 
-    private async Task RunProcessingLoop()
+    private void RunProcessingLoop()
     {
-        if (_logger.IsDebug) _logger.Debug($"Starting block processor - {_blockQueue.Reader.Count} blocks waiting in the queue.");
+        if (_logger.IsDebug) _logger.Debug($"Starting block processor on dedicated thread (ManagedThreadId={Thread.CurrentThread.ManagedThreadId}).");
 
         FireProcessingQueueEmpty();
 
         GCScheduler.Instance.SwitchOnBackgroundGC(0);
-        while (await _blockQueue.Reader.WaitToReadAsync(CancellationToken))
+        while (!CancellationToken.IsCancellationRequested)
         {
-            using ThreadExtensions.Disposable handle = Thread.CurrentThread.SetHighestPriority();
-            // Have block, switch off background GC timer
+            // Block the dedicated thread until a block arrives — no thread pool involvement.
+            // WaitToReadAsync returns a ValueTask that completes synchronously when data is
+            // already available, so .AsTask().GetAwaiter().GetResult() is the lightest blocking
+            // pattern for a Channel with SingleReader=true.
+            bool hasData;
+            try
+            {
+                hasData = _blockQueue.Reader.WaitToReadAsync(CancellationToken).AsTask().GetAwaiter().GetResult();
+            }
+            catch (OperationCanceledException)
+            {
+                break;
+            }
+
+            if (!hasData) break;
+
             GCScheduler.Instance.SwitchOffBackgroundGC(_blockQueue.Reader.Count);
             IsProcessingBlock = true;
-            bool previousMainThread = IsBlockProcessingThread;
             IsBlockProcessingThread = IsMainProcessor;
             try
             {
@@ -336,7 +363,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
             }
             finally
             {
-                IsBlockProcessingThread = previousMainThread;
+                IsBlockProcessingThread = false;
                 IsProcessingBlock = false;
             }
 
