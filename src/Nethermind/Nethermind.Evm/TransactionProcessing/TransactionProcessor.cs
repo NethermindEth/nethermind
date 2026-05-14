@@ -188,7 +188,7 @@ namespace Nethermind.Evm.TransactionProcessing
         {
             // In warmup mode, limit opcodes to reduce CPU contention with real block processing.
             // Most state accesses (SLOAD, CALL targets) are discovered in the first few thousand opcodes.
-            VirtualMachine.WarmupOpcodeBudget = opts.HasFlag(ExecutionOptions.Warmup) ? 4000 : 0;
+            VirtualMachine.WarmupOpcodeBudget = opts.HasFlag(ExecutionOptions.Warmup) ? 50_000 : 0;
 
             // restore is CallAndRestore - previous call, we will restore state after the execution
             bool restore = opts.HasFlag(ExecutionOptions.Restore);

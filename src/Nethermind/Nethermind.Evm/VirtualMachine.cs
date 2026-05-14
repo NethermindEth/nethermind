@@ -1252,27 +1252,11 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
                 programCounter++;
                 opCodeCount++;
 
-                // --- Warmup mode optimizations ---
-                // Skip allocation-heavy opcodes and yield after state reads to reduce
-                // CPU/cache contention with the main block processing thread.
-                if (WarmupOpcodeBudget > 0)
+                // Warmup budget: bail out once we've executed enough opcodes.
+                if (WarmupOpcodeBudget > 0 && opCodeCount >= WarmupOpcodeBudget)
                 {
-                    // Skip LOG0-LOG4: allocate topic arrays + data buffers, zero state access value.
-                    // Just pop the correct number of stack items (2 + number of topics).
-                    if (instruction >= Instruction.LOG0 && instruction <= Instruction.LOG4)
-                    {
-                        int popCount = 2 + (instruction - Instruction.LOG0);
-                        stack.Head -= popCount;
-                        continue;
-                    }
-
-                    // Skip SSTORE: the slot's trie nodes are loaded by preceding SLOADs.
-                    // Pop key and value from stack without writing to state.
-                    if (instruction == Instruction.SSTORE)
-                    {
-                        stack.Head -= 2;
-                        continue;
-                    }
+                    OpCodeCount += opCodeCount;
+                    return default;
                 }
 
                 // For the very common POP opcode, use an inlined implementation to reduce overhead.
