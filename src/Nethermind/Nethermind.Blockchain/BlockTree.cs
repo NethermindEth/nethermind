@@ -622,7 +622,7 @@ namespace Nethermind.Blockchain
                 }
             }
 
-            if (header is not null && ShouldCache(header.Number))
+            if (header is not null)
             {
                 _headerStore.Cache(header);
             }
@@ -952,11 +952,8 @@ namespace Nethermind.Blockchain
             for (int i = 0; i < blocks.Count; i++)
             {
                 Block block = blocks[i];
-                if (ShouldCache(block.Number))
-                {
-                    _blockStore.Cache(block);
-                    _headerStore.Cache(block.Header);
-                }
+                _blockStore.Cache(block, isNearHead: IsNearHead(block.Number));
+                _headerStore.Cache(block.Header);
 
                 ChainLevelInfo? level = LoadLevel(block.Number);
                 int? index = (level?.FindIndex(block.Hash)) ?? throw new InvalidOperationException($"Cannot mark unknown block {block.ToString(Block.Format.FullHashAndNumber)} as processed");
@@ -1030,11 +1027,8 @@ namespace Nethermind.Blockchain
                 Block block = blocks[i];
                 _balStore.InsertFromBlock(block);
 
-                if (ShouldCache(block.Number))
-                {
-                    _blockStore.Cache(block);
-                    _headerStore.Cache(block.Header);
-                }
+                _blockStore.Cache(block, isNearHead: IsNearHead(block.Number));
+                _headerStore.Cache(block.Header);
 
                 // we only force update head block for last block in processed blocks
                 bool lastProcessedBlock = i == blocks.Count - 1;
@@ -1407,11 +1401,14 @@ namespace Nethermind.Blockchain
                 : _chainLevelInfoRepository.LoadLevel(number);
 
         /// <summary>
-        /// To make cache useful even when we handle sync requests
+        /// Selects which BlockStore pool a block belongs in. Blocks within
+        /// <see cref="BlockStore.HeadCacheSize"/> of head go into the reserved
+        /// head pool (immune to eviction by historical RPC reads); older blocks
+        /// go into the historical LRU pool. With the hybrid cache, all reads
+        /// are cached — this only decides the pool.
         /// </summary>
-        /// <param name="number"></param>
-        /// <returns></returns>
-        private bool ShouldCache(long number) => true;
+        private bool IsNearHead(long number) =>
+            number == _genesisBlockNumber || Head is null || number >= Head.Number - BlockStore.HeadCacheSize;
 
         public ChainLevelInfo? FindLevel(long number) => _chainLevelInfoRepository.LoadLevel(number);
 
@@ -1490,9 +1487,9 @@ namespace Nethermind.Blockchain
                 }
             }
 
-            if (block is not null && ShouldCache(block.Number))
+            if (block is not null)
             {
-                _blockStore.Cache(block);
+                _blockStore.Cache(block, isNearHead: IsNearHead(block.Number));
                 _headerStore.Cache(block.Header);
             }
 

@@ -15,13 +15,19 @@ namespace Nethermind.Blockchain.Blocks;
 public class BlockStore([KeyFilter(DbNames.Blocks)] IDb blockDb, IHeaderDecoder headerDecoder = null) : IBlockStore, IClearableCache
 {
     private readonly BlockDecoder _blockDecoder = new(headerDecoder ?? new HeaderDecoder());
-    // Matches geth's blockCacheLimit (core/blockchain.go:125) for a fair
-    // baseline. RPC workloads scanning recent history benefit from the larger
-    // window; memory cost is negligible (~10 KB/block × 256 ≈ 2.5 MB).
-    public const int CacheSize = 256;
 
-    private readonly AssociativeCache<ValueHash256, Block>
-        _blockCache = new(CacheSize);
+    // Hybrid cache to balance two workloads:
+    //   - Head-adjacent blocks (block processor parent lookups, reorg, head RPCs)
+    //     stay in a reserved pool that historical reads cannot evict.
+    //   - Historical RPC reads (indexers, explorers) populate a separate LRU
+    //     pool so repeated reads of the same old block hit cache.
+    // Total capacity matches geth's blockCacheLimit (core/blockchain.go:125).
+    public const int HeadCacheSize = 128;
+    public const int HistoricalCacheSize = 128;
+    public const int CacheSize = HeadCacheSize + HistoricalCacheSize;
+
+    private readonly AssociativeCache<ValueHash256, Block> _headBlockCache = new(HeadCacheSize);
+    private readonly AssociativeCache<ValueHash256, Block> _historicalBlockCache = new(HistoricalCacheSize);
 
     public void SetMetadata(byte[] key, byte[] value) => blockDb.Set(key, value);
 
@@ -50,16 +56,22 @@ public class BlockStore([KeyFilter(DbNames.Blocks)] IDb blockDb, IHeaderDecoder 
 
     public void Delete(long blockNumber, Hash256 blockHash)
     {
-        _blockCache.Delete(in blockHash.ValueHash256);
+        _headBlockCache.Delete(in blockHash.ValueHash256);
+        _historicalBlockCache.Delete(in blockHash.ValueHash256);
         blockDb.Delete(blockNumber, blockHash);
         blockDb.Remove(blockHash.Bytes);
     }
 
     public Block? Get(long blockNumber, Hash256 blockHash, RlpBehaviors rlpBehaviors = RlpBehaviors.None, bool shouldCache = false)
     {
-        Block? b = blockDb.Get(blockNumber, blockHash, _blockDecoder, _blockCache, rlpBehaviors, shouldCache);
+        // Check the head-reserved pool first — most likely hit for hot blocks.
+        if (_headBlockCache.TryGet(in blockHash.ValueHash256, out Block? cached) && cached is not null)
+            return cached;
+
+        // Fall through to historical cache (checked inside blockDb.Get) + DB.
+        Block? b = blockDb.Get(blockNumber, blockHash, _blockDecoder, _historicalBlockCache, rlpBehaviors, shouldCache);
         if (b is not null) return b;
-        return blockDb.Get(blockHash, _blockDecoder, _blockCache, rlpBehaviors, shouldCache);
+        return blockDb.Get(blockHash, _blockDecoder, _historicalBlockCache, rlpBehaviors, shouldCache);
     }
 
     public byte[]? GetRlp(long blockNumber, Hash256 blockHash)
@@ -83,12 +95,22 @@ public class BlockStore([KeyFilter(DbNames.Blocks)] IDb blockDb, IHeaderDecoder 
         return _blockDecoder.DecodeToReceiptRecoveryBlock(memoryOwner, memoryOwner.Memory, RlpBehaviors.None);
     }
 
-    public void Cache(Block block) =>
+    public void Cache(Block block, bool isNearHead = false)
+    {
         // Cache a sanitized copy to avoid retaining large BAL/account-change
         // structures, without mutating the original block instance which may
         // still be used by downstream consumers (e.g., TxPool reads and
         // disposes AccountChanges after this call).
-        _blockCache.Set(in block.Hash.ValueHash256, new(block.Header, block.Body));
+        Block sanitized = new(block.Header, block.Body);
+        if (isNearHead)
+            _headBlockCache.Set(in block.Hash.ValueHash256, sanitized);
+        else
+            _historicalBlockCache.Set(in block.Hash.ValueHash256, sanitized);
+    }
 
-    void IClearableCache.ClearCache() => _blockCache.Clear();
+    void IClearableCache.ClearCache()
+    {
+        _headBlockCache.Clear();
+        _historicalBlockCache.Clear();
+    }
 }

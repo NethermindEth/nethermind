@@ -18,6 +18,12 @@ public interface IBlockStore
     Block? Get(long blockNumber, Hash256 blockHash, RlpBehaviors rlpBehaviors = RlpBehaviors.None, bool shouldCache = true);
     byte[]? GetRlp(long blockNumber, Hash256 blockHash);
     ReceiptRecoveryBlock? GetReceiptRecoveryBlock(long blockNumber, Hash256 blockHash);
-    void Cache(Block block);
+    /// <param name="isNearHead">
+    /// When true, the block goes into a reserved head-adjacent pool that
+    /// historical reads cannot evict. When false, it enters the historical
+    /// LRU pool. Callers that don't know or care can omit this; the default
+    /// treats the block as historical.
+    /// </param>
+    void Cache(Block block, bool isNearHead = false);
     bool HasBlock(long blockNumber, Hash256 blockHash);
 }

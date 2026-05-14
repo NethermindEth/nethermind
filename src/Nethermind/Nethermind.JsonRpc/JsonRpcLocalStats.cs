@@ -45,7 +45,8 @@ public class JsonRpcLocalStats(ITimestamper timestamper, IJsonRpcConfig jsonRpcC
             return Task.CompletedTask;
         }
 
-        return ReportCallInternal(report, elapsedMicroseconds, size);
+        ReportCallInternal(report, elapsedMicroseconds, size);
+        return Task.CompletedTask;
     }
 
     private record MetricLabel(string method, bool success) : IMetricLabels
@@ -53,11 +54,14 @@ public class JsonRpcLocalStats(ITimestamper timestamper, IJsonRpcConfig jsonRpcC
         public string[] Labels => [method, success ? "success" : "fail"];
     }
 
-    private async Task ReportCallInternal(RpcReport report, long elapsedMicroseconds, long? size)
+    private void ReportCallInternal(RpcReport report, long elapsedMicroseconds, long? size)
     {
-        // we don't want to block RPC calls any longer than required
-        await Task.Yield();
-
+        // Runs synchronously on the caller's thread. All callers fire-and-forget
+        // the returned Task (`_ = stats.ReportCall(...)`), so the prior
+        // `await Task.Yield()` was offloading work to the thread pool with no
+        // observer waiting for completion — pure overhead per call. Stats work
+        // is cheap (dict GetOrAdd + brief lock), so doing it inline avoids the
+        // thread-pool hop at high RPS. See task 22 / discussion 2026-05-14.
         if (_enablePerMethodMetrics)
         {
             Metrics.JsonRpcCallLatencyMicros.Observe(elapsedMicroseconds, new MetricLabel(report.Method, report.Success));

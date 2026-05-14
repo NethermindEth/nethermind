@@ -57,7 +57,10 @@ public class SimulateDictionaryBlockStore(IBlockStore readonlyBaseBlockStore) : 
             ? new ReceiptRecoveryBlock(block)
             : readonlyBaseBlockStore.GetReceiptRecoveryBlock(blockNumber, blockHash);
 
-    public void Cache(Block block)
+    public void Cache(Block block, bool isNearHead = false)
+        // Simulate store does not distinguish head vs historical — it's an
+        // in-memory dict for in-flight simulation. The flag is accepted for
+        // interface conformance and ignored.
         => Insert(block);
 
     public bool HasBlock(long blockNumber, Hash256 blockHash)
