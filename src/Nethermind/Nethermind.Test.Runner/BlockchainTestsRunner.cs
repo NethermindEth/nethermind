@@ -11,66 +11,34 @@ using Nethermind.Serialization.Json;
 
 namespace Nethermind.Test.Runner;
 
-public class BlockchainTestsRunner : BlockchainTestBase, IBlockchainTestRunner
+public readonly record struct BlockchainTestsRunnerOptions(
+    string? Filter = null,
+    ulong ChainId = 0,
+    bool Trace = false,
+    bool TraceMemory = false,
+    bool ExcludeStack = false,
+    bool JsonOutput = false,
+    bool SuppressOutput = false,
+    Func<bool, string?>? ProgressUpdateFactory = null);
+
+public class BlockchainTestsRunner(in BlockchainTestsRunnerOptions options, ITestSourceLoader? testsSource = null) : BlockchainTestBase, IBlockchainTestRunner
 {
-    protected override ILogManager? ComponentLogManagerOverride => suppressOutput ? new TestLogManager(LogLevel.Error) : null;
-
+    protected override ILogManager? ComponentLogManagerOverride => _suppressOutput ? new TestLogManager(LogLevel.Error) : null;
     private readonly ConsoleColor _defaultColor = Console.ForegroundColor;
-    private readonly ITestSourceLoader? _testsSource;
+    private readonly ITestSourceLoader? _testsSource = testsSource;
     private static readonly IJsonSerializer _serializer = new EthereumJsonSerializer();
-    private readonly Regex? _filterRegex;
-    private readonly ulong chainId;
-    private readonly bool trace;
-    private readonly bool traceMemory;
-    private readonly bool traceNoStack;
-    private readonly bool jsonOutput;
-    private readonly bool suppressOutput;
-    private readonly Func<bool, string?>? progressUpdateFactory;
+    private readonly Regex? _filterRegex = options.Filter is not null ? new Regex($"^({options.Filter})", RegexOptions.Compiled) : null;
+    private readonly ulong _chainId = options.ChainId;
+    private readonly bool _trace = options.Trace;
+    private readonly bool _traceMemory = options.TraceMemory;
+    private readonly bool _excludeStack = options.ExcludeStack;
+    private readonly bool _jsonOutput = options.JsonOutput;
+    private readonly bool _suppressOutput = options.SuppressOutput;
+    private readonly Func<bool, string?>? _progressUpdateFactory = options.ProgressUpdateFactory;
 
-    public BlockchainTestsRunner(
-        ITestSourceLoader testsSource,
-        string? filter,
-        ulong chainId,
-        bool trace = false,
-        bool traceMemory = false,
-        bool traceNoStack = false,
-        bool jsonOutput = false,
-        bool suppressOutput = false,
-        Func<bool, string?>? progressUpdateFactory = null)
+    public BlockchainTestsRunner(ITestSourceLoader testsSource, in BlockchainTestsRunnerOptions options)
+        : this(options, testsSource ?? throw new ArgumentNullException(nameof(testsSource)))
     {
-        _testsSource = testsSource ?? throw new ArgumentNullException(nameof(testsSource));
-        _filterRegex = filter is not null ? new Regex($"^({filter})", RegexOptions.Compiled) : null;
-        this.chainId = chainId;
-        this.trace = trace;
-        this.traceMemory = traceMemory;
-        this.traceNoStack = traceNoStack;
-        this.jsonOutput = jsonOutput;
-        this.suppressOutput = suppressOutput;
-        this.progressUpdateFactory = progressUpdateFactory;
-    }
-
-    /// <summary>
-    /// Lightweight constructor for RunSingleTestAsync — skips ITestSourceLoader allocation.
-    /// </summary>
-    public BlockchainTestsRunner(
-        string? filter,
-        ulong chainId,
-        bool trace = false,
-        bool traceMemory = false,
-        bool traceNoStack = false,
-        bool jsonOutput = false,
-        bool suppressOutput = false,
-        Func<bool, string?>? progressUpdateFactory = null)
-    {
-        _testsSource = null;
-        _filterRegex = filter is not null ? new Regex($"^({filter})", RegexOptions.Compiled) : null;
-        this.chainId = chainId;
-        this.trace = trace;
-        this.traceMemory = traceMemory;
-        this.traceNoStack = traceNoStack;
-        this.jsonOutput = jsonOutput;
-        this.suppressOutput = suppressOutput;
-        this.progressUpdateFactory = progressUpdateFactory;
     }
 
     public async Task<IEnumerable<EthereumTestResult>> RunTestsAsync()
@@ -82,74 +50,15 @@ public class BlockchainTestsRunner : BlockchainTestBase, IBlockchainTestRunner
         IEnumerable<EthereumTest> tests = _testsSource.LoadTests<EthereumTest>();
         foreach (EthereumTest loadedTest in tests)
         {
-            if (loadedTest is FailedToLoadTest)
-            {
-                if (!jsonOutput && !suppressOutput) WriteRed(loadedTest.LoadFailure);
-                testResults.Add(new EthereumTestResult(loadedTest.Name, loadedTest.LoadFailure));
-                if (suppressOutput)
-                    WriteStatus("EXCEPTION", progressUpdateFactory?.Invoke(true), loadedTest.LoadFailure, false);
-                continue;
-            }
-
-            if (loadedTest is not BlockchainTest test)
+            EthereumTestResult? result = await ExecuteTestAsync(loadedTest);
+            if (result is null)
                 continue;
 
-            // Create a streaming tracer once for all tests if tracing is enabled
-            using BlockchainTestStreamingTracer? tracer = trace
-                ? new BlockchainTestStreamingTracer(new() { EnableMemory = traceMemory, DisableStack = traceNoStack })
-                : null;
-
-            if (_filterRegex is not null && test.Name is not null && !_filterRegex.IsMatch(test.Name))
-                continue;
-
-            if (!jsonOutput && !suppressOutput) Console.Write($"{test,-120} ");
-            if (test.LoadFailure is not null)
-            {
-                if (!jsonOutput && !suppressOutput) WriteRed(test.LoadFailure);
-                testResults.Add(new EthereumTestResult(test.Name, test.LoadFailure));
-                if (suppressOutput)
-                    WriteStatus("EXCEPTION", progressUpdateFactory?.Invoke(true), test.LoadFailure, false);
-            }
-            else
-            {
-                test.ChainId = chainId;
-
-                try
-                {
-                    EthereumTestResult result = await RunTest(test, tracer: tracer);
-                    testResults.Add(result);
-                    if (suppressOutput)
-                    {
-                        string? progress = progressUpdateFactory?.Invoke(!result.Pass);
-                        if (result.Pass)
-                        {
-                            WriteProgress(progress);
-                        }
-                        else
-                        {
-                            WriteStatus("FAIL", progress, test.Name, false);
-                        }
-                    }
-                    else if (!jsonOutput)
-                    {
-                        if (result.Pass)
-                            WriteGreen("PASS");
-                        else
-                            WriteRed("FAIL");
-                    }
-                }
-                catch (Exception ex)
-                {
-                    testResults.Add(new EthereumTestResult(test.Name, test.ForkName, ex.Message));
-                    if (suppressOutput)
-                        WriteStatus("EXCEPTION", progressUpdateFactory?.Invoke(true), $"{test.Name} — {ex.Message}", false);
-                    else if (!jsonOutput)
-                        WriteRed($"EXCEPTION: {ex.Message}");
-                }
-            }
+            testResults.Add(result);
+            ReportResult(result);
         }
 
-        if (jsonOutput && !suppressOutput)
+        if (_jsonOutput && !_suppressOutput)
         {
             Console.Out.Write(_serializer.Serialize(testResults, true));
         }
@@ -159,8 +68,74 @@ public class BlockchainTestsRunner : BlockchainTestBase, IBlockchainTestRunner
 
     public async Task<EthereumTestResult> RunSingleTestAsync(BlockchainTest test)
     {
-        test.ChainId = chainId;
+        test.ChainId = _chainId;
         return await RunTest(test);
+    }
+
+    private async Task<EthereumTestResult?> ExecuteTestAsync(EthereumTest loadedTest)
+    {
+        if (loadedTest is FailedToLoadTest)
+            return new EthereumTestResult(loadedTest.Name, loadedTest.LoadFailure);
+
+        if (loadedTest is not BlockchainTest test)
+            return null;
+
+        if (_filterRegex is not null && test.Name is not null && !_filterRegex.IsMatch(test.Name))
+            return null;
+
+        if (test.LoadFailure is not null)
+            return new EthereumTestResult(test.Name, test.LoadFailure);
+
+        test.ChainId = _chainId;
+
+        try
+        {
+            using BlockchainTestStreamingTracer? tracer = _trace
+                ? new BlockchainTestStreamingTracer(new() { EnableMemory = _traceMemory, DisableStack = _excludeStack })
+                : null;
+
+            return await RunTest(test, tracer: tracer);
+        }
+        catch (Exception ex)
+        {
+            return new EthereumTestResult(test.Name, test.ForkName, ex.Message);
+        }
+    }
+
+    private void ReportResult(EthereumTestResult result)
+    {
+        if (_suppressOutput)
+        {
+            ReportSuppressedResult(result);
+            return;
+        }
+
+        if (_jsonOutput)
+            return;
+
+        Console.Write($"{result.Name,-120} ");
+        if (result.Pass)
+            WriteGreen("PASS");
+        else if (result.LoadFailure is not null)
+            WriteRed(result.LoadFailure);
+        else if (result.Error is not null)
+            WriteRed($"EXCEPTION: {result.Error}");
+        else
+            WriteRed("FAIL");
+    }
+
+    private void ReportSuppressedResult(EthereumTestResult result)
+    {
+        string? progress = _progressUpdateFactory?.Invoke(!result.Pass);
+        if (result.Pass)
+        {
+            WriteProgress(progress);
+            return;
+        }
+
+        string status = result.LoadFailure is not null ? "EXCEPTION" : "FAIL";
+        string message = result.LoadFailure ?? result.Name;
+        WriteStatus(status, progress, message, false);
     }
 
     private void WriteRed(string text)

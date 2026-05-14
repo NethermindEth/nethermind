@@ -141,10 +141,8 @@ internal class Program
 
             if (isEngineTest || isBlockTest)
             {
-                bool forceJson = isEngineTest || isBlockTest || jsonOutput;
-                List<EthereumTestResult> results = await RunBlockTestFiles(files, filter, chainId, trace, traceMemory, excludeStack, forceJson, workers);
-                if (forceJson)
-                    Console.Out.Write(_serializer.Serialize(results, true));
+                List<EthereumTestResult> results = await RunBlockTestFiles(files, filter, chainId, trace, traceMemory, excludeStack, jsonOutput: true, workers);
+                Console.Out.Write(_serializer.Serialize(results, true));
             }
             else if (isStateTest)
             {
@@ -191,16 +189,15 @@ internal class Program
         int effectiveWorkers = trace ? 1 : workers;
         int completedTests = 0;
         long lastProgressReportTicks = DateTime.UtcNow.Ticks;
-        int totalTests = CountBlockTestCases(files, filter, effectiveWorkers);
         string? UpdateProgress(bool forceReport)
         {
             int completed = Interlocked.Increment(ref completedTests);
             long nowTicks = DateTime.UtcNow.Ticks;
             bool timeToReport = nowTicks - Volatile.Read(ref lastProgressReportTicks) >= ProgressReportTimeInterval.Ticks;
-            if (forceReport || timeToReport || completed % ProgressReportTestInterval == 0 || completed == totalTests)
+            if (forceReport || timeToReport || completed % ProgressReportTestInterval == 0)
             {
                 Interlocked.Exchange(ref lastProgressReportTicks, nowTicks);
-                return $"[{completed}/{totalTests}]";
+                return $"[{completed}]";
             }
 
             return null;
@@ -220,7 +217,15 @@ internal class Program
                 try
                 {
                     TestsSourceLoader source = new(new LoadBlockchainTestFileStrategy(), file);
-                    BlockchainTestsRunner runner = new(source, filter, chainId, trace, traceMemory, excludeStack, jsonOutput: jsonOutput, suppressOutput: true, progressUpdateFactory: UpdateProgress);
+                    BlockchainTestsRunner runner = new(source, new BlockchainTestsRunnerOptions(
+                        Filter: filter,
+                        ChainId: chainId,
+                        Trace: trace,
+                        TraceMemory: traceMemory,
+                        ExcludeStack: excludeStack,
+                        JsonOutput: jsonOutput,
+                        SuppressOutput: true,
+                        ProgressUpdateFactory: UpdateProgress));
                     IEnumerable<EthereumTestResult> results = await runner.RunTestsAsync();
                     allResults.AddRange(results);
                 }
@@ -249,7 +254,15 @@ internal class Program
                 try
                 {
                     TestsSourceLoader source = new(new LoadBlockchainTestFileStrategy(), item.file);
-                    BlockchainTestsRunner runner = new(source, filter, chainId, trace, traceMemory, excludeStack, jsonOutput: true, suppressOutput: true, progressUpdateFactory: UpdateProgress);
+                    BlockchainTestsRunner runner = new(source, new BlockchainTestsRunnerOptions(
+                        Filter: filter,
+                        ChainId: chainId,
+                        Trace: trace,
+                        TraceMemory: traceMemory,
+                        ExcludeStack: excludeStack,
+                        JsonOutput: true,
+                        SuppressOutput: true,
+                        ProgressUpdateFactory: UpdateProgress));
                     IEnumerable<EthereumTestResult> results = await runner.RunTestsAsync();
                     resultsByFile[item.index] = results;
                 }
@@ -269,65 +282,6 @@ internal class Program
 
         return combinedResults;
     }
-
-    private static int CountBlockTestCases(List<string> files, string filter, int workers)
-    {
-        Regex? filterRegex = filter is not null ? new Regex($"^({filter})", RegexOptions.Compiled) : null;
-
-        if (workers <= 1)
-        {
-            int total = 0;
-            foreach (string file in files)
-            {
-                total += CountBlockTestCasesInFile(file, filterRegex);
-            }
-            return total;
-        }
-
-        int totalTests = 0;
-        Parallel.ForEach(
-            files,
-            new ParallelOptions { MaxDegreeOfParallelism = workers },
-            file =>
-            {
-                int testsInFile = CountBlockTestCasesInFile(file, filterRegex);
-                Interlocked.Add(ref totalTests, testsInFile);
-            });
-
-        return totalTests;
-    }
-
-    private static int CountBlockTestCasesInFile(string file, Regex? filterRegex)
-    {
-        try
-        {
-            int count = 0;
-            TestsSourceLoader source = new(new LoadBlockchainTestFileStrategy(), file);
-            foreach (EthereumTest loadedTest in source.LoadTests<EthereumTest>())
-            {
-                if (loadedTest is FailedToLoadTest)
-                {
-                    count++;
-                    continue;
-                }
-
-                if (loadedTest is not BlockchainTest test)
-                    continue;
-
-                if (filterRegex is not null && test.Name is not null && !filterRegex.IsMatch(test.Name))
-                    continue;
-
-                count++;
-            }
-
-            return count;
-        }
-        catch (Exception)
-        {
-            return 1;
-        }
-    }
-
 
     private static List<EthereumTestResult> RunStateTestFiles(
         List<string> files, WhenTrace whenTrace, bool traceMemory, bool traceStack,

@@ -3,7 +3,7 @@
 
 using System;
 using System.Collections.Generic;
-using System.Linq;
+using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
@@ -56,7 +56,7 @@ namespace Nethermind.Test.Runner
         {
             foreach (StateTestTxTraceEntry entry in txTrace.Entries)
             {
-                string stackJson = string.Join(",", entry.Stack.Select(s => $"\"{s}\""));
+                string stackJson = BuildStackJson(entry.Stack);
                 Console.Error.Write($"{{\"pc\":{entry.Pc},\"op\":{entry.Operation},\"gas\":\"0x{entry.Gas:x}\",\"gasCost\":\"0x{entry.GasCost:x}\",\"stack\":[{stackJson}],\"depth\":{entry.Depth},\"memSize\":{entry.MemSize}");
                 if (!string.IsNullOrEmpty(entry.Error))
                     Console.Error.Write($",\"error\":{System.Text.Json.JsonSerializer.Serialize(entry.Error)}");
@@ -65,6 +65,22 @@ namespace Nethermind.Test.Runner
 
             Console.Error.WriteLine(_serializer.Serialize(txTrace.Result));
             Console.Error.WriteLine(_serializer.Serialize(txTrace.State));
+        }
+
+        private static string BuildStackJson(List<string> stack)
+        {
+            StringBuilder builder = new();
+            for (int i = 0; i < stack.Count; i++)
+            {
+                if (i != 0)
+                    builder.Append(',');
+
+                builder.Append('"');
+                builder.Append(stack[i]);
+                builder.Append('"');
+            }
+
+            return builder.ToString();
         }
 
         public IEnumerable<EthereumTestResult> RunTests()
@@ -77,39 +93,7 @@ namespace Nethermind.Test.Runner
                     continue;
                 test.ChainId = _chainId;
 
-                EthereumTestResult result = null;
-                if (_whenTrace != WhenTrace.Always)
-                {
-                    if (_enableWarmup)
-                    {
-                        // Warm up only when benchmarking
-                        Parallel.For(0, 30, (i, s) =>
-                        {
-                            _ = RunTest(test, NullTxTracer.Instance);
-                        });
-
-                        // Give time to Jit optimized version
-                        Thread.Sleep(20);
-                        GC.Collect(GC.MaxGeneration);
-                    }
-                    result = RunTest(test, NullTxTracer.Instance);
-                }
-
-                if (_whenTrace != WhenTrace.Never && !(result?.Pass ?? false))
-                {
-                    StateTestTxTracer txTracer = new();
-                    txTracer.IsTracingDetailedMemory = _traceMemory;
-                    txTracer.IsTracingStack = _traceStack;
-                    result = RunTest(test, txTracer);
-
-                    StateTestTxTrace txTrace = txTracer.BuildResult();
-                    txTrace.Result.Time = result.TimeInMs;
-                    txTrace.State.StateRoot = result.StateRoot;
-                    txTrace.Result.GasUsed -= IntrinsicGasCalculator.Calculate(test.Transaction, test.Fork).Standard;
-                    WriteErr(txTrace);
-                }
-
-                results.Add(result);
+                results.Add(ExecuteWithOptionalTrace(test));
             }
 
             WriteOut(results);
@@ -120,21 +104,15 @@ namespace Nethermind.Test.Runner
         public EthereumTestResult RunSingleTest(GeneralStateTest test)
         {
             test.ChainId = _chainId;
+            return ExecuteWithOptionalTrace(test);
+        }
 
+        private EthereumTestResult ExecuteWithOptionalTrace(GeneralStateTest test)
+        {
             EthereumTestResult? result = null;
             if (_whenTrace != WhenTrace.Always)
             {
-                if (_enableWarmup)
-                {
-                    Parallel.For(0, 30, (i, s) =>
-                    {
-                        _ = RunTest(test, NullTxTracer.Instance);
-                    });
-
-                    Thread.Sleep(20);
-                    GC.Collect(GC.MaxGeneration);
-                }
-
+                WarmUp(test);
                 result = RunTest(test, NullTxTracer.Instance);
             }
 
@@ -155,6 +133,22 @@ namespace Nethermind.Test.Runner
             }
 
             return result!;
+        }
+
+        private void WarmUp(GeneralStateTest test)
+        {
+            if (!_enableWarmup)
+                return;
+
+            // Warm up only when benchmarking.
+            Parallel.For(0, 30, (i, s) =>
+            {
+                _ = RunTest(test, NullTxTracer.Instance);
+            });
+
+            // Give time to JIT optimized version.
+            Thread.Sleep(20);
+            GC.Collect(GC.MaxGeneration);
         }
     }
 }
