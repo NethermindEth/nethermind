@@ -292,14 +292,22 @@ public class PageResidencyTrackerTests
             tracker.TryTouch(0, i, out _, out _);
         tracker.ResidentBytes.Should().BeLessOrEqualTo((long)tracker.MaxCapacity * pageSize);
 
-        // Forget intentionally does NOT decrement the counter — residency reflects only
-        // bulk-cleared state, not slot-level removals.
+        // Forget on a present key drops occupancy by one page.
+        int presentKey = -1;
+        for (int i = 4 * Ways - 1; i >= 0 && presentKey < 0; i--)
+            if (tracker.ContainsPage(0, i)) presentKey = i;
+        presentKey.Should().BeGreaterOrEqualTo(0, "the set should still hold at least one streamed key");
         long beforeForget = tracker.ResidentBytes;
-        tracker.Forget(0, 4 * Ways - 1);
+        tracker.Forget(0, presentKey);
+        tracker.ResidentBytes.Should().Be(beforeForget - pageSize);
+
+        // Re-inserting into the freed slot restores occupancy without raising the GC-reported
+        // high-water mark — only the counter changes; pressure already covered this level.
+        tracker.TryTouch(0, presentKey, out _, out _).Should().Be(TouchOutcome.Inserted);
         tracker.ResidentBytes.Should().Be(beforeForget);
 
-        // Dispose settles the residual back to zero (cannot observe GC pressure directly,
-        // but the dispose path must not throw and must be idempotent).
+        // Dispose releases the reported pressure (cannot observe GC pressure directly, but
+        // the dispose path must not throw and must be idempotent).
         tracker.Dispose();
         tracker.Dispose();
     }
