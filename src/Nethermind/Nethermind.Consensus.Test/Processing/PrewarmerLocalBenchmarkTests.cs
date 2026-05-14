@@ -56,9 +56,11 @@ public class PrewarmerLocalBenchmarkTests
             CreateDefaultCase("current-default"),
             new("no-prewarm", Enabled: false, Concurrency: 0, FirstPassRatio: 1.0, RetryMode: "Hammer", HeadStartMs: 0),
             new("auto-100-none", Enabled: true, Concurrency: 0, FirstPassRatio: 1.0, RetryMode: "None", HeadStartMs: 0),
+            new("auto-100-lookahead", Enabled: true, Concurrency: 0, FirstPassRatio: 1.0, RetryMode: "StateGated", HeadStartMs: 0, FirstPassMode: "Lookahead"),
             new("auto-100-hammer-32k", Enabled: true, Concurrency: 0, FirstPassRatio: 1.0, RetryMode: "Hammer", HeadStartMs: 0, StorageCacheCapacity: SeqlockCache<StorageCell, byte[]>.DefaultCapacity),
             new("auto-100-hammer", Enabled: true, Concurrency: 0, FirstPassRatio: 1.0, RetryMode: "Hammer", HeadStartMs: 0),
             new("4t-100-none", Enabled: true, Concurrency: 4, FirstPassRatio: 1.0, RetryMode: "None", HeadStartMs: 0),
+            new("4t-100-lookahead", Enabled: true, Concurrency: 4, FirstPassRatio: 1.0, RetryMode: "StateGated", HeadStartMs: 0, FirstPassMode: "Lookahead"),
             new("2t-100-hammer", Enabled: true, Concurrency: 2, FirstPassRatio: 1.0, RetryMode: "Hammer", HeadStartMs: 0),
             new("4t-100-hammer", Enabled: true, Concurrency: 4, FirstPassRatio: 1.0, RetryMode: "Hammer", HeadStartMs: 0),
             new("4t-100-gated", Enabled: true, Concurrency: 4, FirstPassRatio: 1.0, RetryMode: "StateGated", HeadStartMs: 0),
@@ -162,11 +164,12 @@ public class PrewarmerLocalBenchmarkTests
         double FirstPassRatio,
         string RetryMode,
         int HeadStartMs,
+        string FirstPassMode = "SenderGrouped",
         int StorageCacheCapacity = 0,
         bool UseDefaults = false);
 
     private static BenchmarkCase CreateDefaultCase(string name) =>
-        new(name, Enabled: true, Concurrency: 0, FirstPassRatio: 1.0, RetryMode: "", HeadStartMs: 0, UseDefaults: true);
+        new(name, Enabled: true, Concurrency: 0, FirstPassRatio: 1.0, RetryMode: "", HeadStartMs: 0, FirstPassMode: "", UseDefaults: true);
 
     private sealed class BenchmarkRun(BenchmarkCase benchmarkCase, BenchmarkContext context) : IDisposable
     {
@@ -283,6 +286,7 @@ public class PrewarmerLocalBenchmarkTests
                     PreWarmStateConcurrency = benchmarkCase.Concurrency,
                     PreWarmFirstPassRatio = benchmarkCase.FirstPassRatio,
                     PreWarmRetryMode = benchmarkCase.RetryMode,
+                    PreWarmFirstPassMode = benchmarkCase.FirstPassMode,
                     PreWarmHeadStartMs = benchmarkCase.HeadStartMs,
                     SlowBlockThresholdMs = -1,
                     SlowBlockPerTxThresholdMs = -1,
@@ -299,6 +303,7 @@ public class PrewarmerLocalBenchmarkTests
                     config.PreWarmStateConcurrency = benchmarkCase.Concurrency;
                     config.PreWarmFirstPassRatio = benchmarkCase.FirstPassRatio;
                     config.PreWarmRetryMode = benchmarkCase.RetryMode;
+                    config.PreWarmFirstPassMode = benchmarkCase.FirstPassMode;
                     config.PreWarmHeadStartMs = benchmarkCase.HeadStartMs;
                     return config;
                 });

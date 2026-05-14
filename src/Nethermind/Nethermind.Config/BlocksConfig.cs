@@ -112,6 +112,8 @@ namespace Nethermind.Config
 
         public string PreWarmRetryMode { get; set; } = "StateGated";
 
+        public string PreWarmFirstPassMode { get; set; } = "SenderGrouped";
+
         public int PreWarmHeadStartMs { get; set; } = 0;
     }
 }

@@ -402,6 +402,7 @@ public class BlockCachePreWarmerTests
             parallelExecutionBatchRead: parallelExecutionBatchRead,
             firstPassRatio: 1.0,
             retryMode: BlockCachePreWarmer.PreWarmRetryMode.Hammer,
+            firstPassMode: BlockCachePreWarmer.PreWarmFirstPassMode.SenderGrouped,
             headStartMs: 0,
             nodeStorageCache,
             preBlockCaches,

@@ -103,6 +103,12 @@ public interface IBlocksConfig : IConfig
     string PreWarmRetryMode { get; set; }
 
     [ConfigItem(
+        Description = "Prewarmer first pass mode: 'SenderGrouped' (same-sender txs stay ordered), 'Forward' (transaction order), or 'Lookahead' (later txs first).",
+        DefaultValue = "SenderGrouped",
+        HiddenFromDocs = true)]
+    string PreWarmFirstPassMode { get; set; }
+
+    [ConfigItem(
         Description = "Max milliseconds the main thread waits for the prewarmer first pass to complete before starting EVM execution. 0 = no wait.",
         DefaultValue = "0",
         HiddenFromDocs = true)]
