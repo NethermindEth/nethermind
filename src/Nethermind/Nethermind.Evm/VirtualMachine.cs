@@ -120,6 +120,14 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
     public int OpCodeCount { get; set; }
 
     /// <summary>
+    /// Maximum opcodes to execute per transaction in warmup mode.
+    /// 0 = unlimited (normal execution). When exceeded, execution
+    /// bails out — the prewarmer has discovered enough state accesses
+    /// to prefetch without burning CPU on the full computation.
+    /// </summary>
+    public int WarmupOpcodeBudget { get; set; }
+
+    /// <summary>
     /// Executes a transaction by iteratively processing call frames until a top-level call returns
     /// or a failure condition is reached. This method handles both precompiled contracts and regular
     /// EVM calls, along with proper state management, tracing, and error handling.
@@ -1242,6 +1250,14 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
                 // Advance the program counter to point to the next instruction.
                 programCounter++;
                 opCodeCount++;
+
+                // Warmup budget: bail out once we've executed enough opcodes to discover
+                // most state accesses. Avoids burning CPU on the long tail of computation.
+                if (WarmupOpcodeBudget > 0 && opCodeCount >= WarmupOpcodeBudget)
+                {
+                    OpCodeCount += opCodeCount;
+                    return default;
+                }
 
                 // For the very common POP opcode, use an inlined implementation to reduce overhead.
                 if (Instruction.POP == instruction)
