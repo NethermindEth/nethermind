@@ -403,6 +403,19 @@ public sealed class SeqlockCache<TKey, TValue>
     /// Clears all cached entries by incrementing the global epoch tag (O(1)).
     /// Entries with stale epochs are treated as empty on subsequent lookups.
     /// </summary>
+    public int ApproximateCount()
+    {
+        long epochTag = Volatile.Read(ref _shiftedEpoch);
+        int count = 0;
+        for (int i = 0; i < _entries.Length; i++)
+        {
+            long header = Volatile.Read(ref _entries[i].HashEpochSeqLock);
+            if ((header & OccupiedBit) != 0 && (header & EpochMask) == epochTag)
+                count++;
+        }
+        return count;
+    }
+
     public void Clear()
     {
         long oldShifted = Volatile.Read(ref _shiftedEpoch);

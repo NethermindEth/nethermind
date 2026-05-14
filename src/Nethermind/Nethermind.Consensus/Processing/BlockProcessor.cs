@@ -6,6 +6,7 @@ using System.Diagnostics;
 using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Threading;
+using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Blocks;
@@ -16,6 +17,7 @@ using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Threading;
 using Nethermind.Crypto;
@@ -72,6 +74,12 @@ public partial class BlockProcessor(
     {
         if (_blockTransactionsExecutor is BlockValidationTransactionsExecutor executor)
             executor.OnTxExecuted = callback;
+    }
+
+    internal void SetTxStartingCallback(Action<int>? callback)
+    {
+        if (_blockTransactionsExecutor is BlockValidationTransactionsExecutor executor)
+            executor.OnTxStarting = callback;
     }
 
     public (Block Block, TxReceipt[] Receipts) ProcessOne(Block suggestedBlock, ProcessingOptions options, IBlockTracer blockTracer, IReleaseSpec spec, CancellationToken token)
@@ -147,13 +155,16 @@ public partial class BlockProcessor(
         CommitState(spec);
 
         CalculateBlooms(receipts);
+        // Receipts are immutable after transaction execution. Compute their root while
+        // finalization does miner rewards, withdrawals, execution requests, and state roots.
+        Task<Hash256>? receiptsRootTask = receipts.Length > 1
+            ? Task.Run(() => CalculateReceiptsRoot(receipts, spec, block))
+            : null;
 
         if (spec.IsEip4844Enabled)
         {
             header.BlobGasUsed = BlobGasCalculator.CalculateBlobGas(block.Transactions);
         }
-
-        SetReceiptsRoot(header, receipts, spec, block);
 
         ApplyMinerRewards(block, blockTracer, spec);
         _systemContractHandler.ProcessWithdrawals(block, spec);
@@ -180,6 +191,8 @@ public partial class BlockProcessor(
 
         _balManager.SetBlockAccessList(block);
 
+        header.ReceiptsRoot = receiptsRootTask?.GetAwaiter().GetResult()
+            ?? CalculateReceiptsRoot(receipts, spec, block);
         header.Hash = header.CalculateHash();
 
         return receipts;
@@ -211,11 +224,12 @@ public partial class BlockProcessor(
         header.StateRoot = _stateProvider.StateRoot;
     }
 
-    private static void SetReceiptsRoot(BlockHeader header, TxReceipt[] receipts, IReleaseSpec spec, Block block)
+    private static Hash256 CalculateReceiptsRoot(TxReceipt[] receipts, IReleaseSpec spec, Block block)
     {
         long start = Stopwatch.GetTimestamp();
-        header.ReceiptsRoot = ReceiptsRootCalculator.Instance.GetReceiptsRoot(receipts, spec, block.ReceiptsRoot);
+        Hash256 receiptsRoot = ReceiptsRootCalculator.Instance.GetReceiptsRoot(receipts, spec, block.ReceiptsRoot);
         Evm.Metrics.IncrementReceiptsRootTime(Stopwatch.GetElapsedTime(start).Ticks);
+        return receiptsRoot;
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]

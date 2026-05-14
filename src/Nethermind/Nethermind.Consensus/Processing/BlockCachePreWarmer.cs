@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.ObjectPool;
@@ -29,6 +30,7 @@ namespace Nethermind.Consensus.Processing;
 public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
 {
     private const int AutoConcurrencyLimit = 4;
+    private const int SmallBlockLinearDedupThreshold = 8;
     private readonly int _concurrencyLevel;
     private readonly bool _parallelExecutionBatchRead;
     private readonly ObjectPool<IReadOnlyTxProcessorSource> _envPool;
@@ -130,6 +132,11 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
 
             if (parent is not null && _concurrencyLevel > 1 && !cancellationToken.IsCancellationRequested)
             {
+                int txCount = suggestedBlock.Transactions.Length;
+                DiagPrewarmerCompletedAt = new long[txCount];
+                DiagMainThreadStartedAt = new long[txCount];
+                DiagBlockStartTicks = Stopwatch.GetTimestamp();
+
                 BlockState blockState = new(this, suggestedBlock, parent, spec);
                 ParallelOptions parallelOptions = new() { MaxDegreeOfParallelism = _concurrencyLevel, CancellationToken = cancellationToken };
 
@@ -261,6 +268,58 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
     /// </summary>
     internal IWorldState? MainThreadWorldState;
 
+    // Diagnostic: timestamps (Stopwatch ticks) when prewarmer completes each tx
+    internal long[]? DiagPrewarmerCompletedAt;
+    // Diagnostic: timestamp when main thread starts processing each tx
+    internal long[]? DiagMainThreadStartedAt;
+    internal long DiagBlockStartTicks;
+
+    internal static long DiagTxStartedCallCount;
+
+    internal void ReportMainThreadTxStarted(int txIndex)
+    {
+        Interlocked.Increment(ref DiagTxStartedCallCount);
+        long[]? arr = DiagMainThreadStartedAt;
+        if (arr is not null && (uint)txIndex < (uint)arr.Length)
+            arr[txIndex] = Stopwatch.GetTimestamp();
+    }
+
+    internal string GetDiagTimingReport(int maxTxs = 20)
+    {
+        long[]? pw = DiagPrewarmerCompletedAt;
+        long[]? mt = DiagMainThreadStartedAt;
+        if (pw is null || mt is null) return "no timing data";
+
+        long start = DiagBlockStartTicks;
+        double ticksToMs = 1000.0 / Stopwatch.Frequency;
+        System.Text.StringBuilder sb = new();
+        sb.AppendLine("tx | prewarm_ms | main_ms | lead_ms | status");
+        int count = Math.Min(Math.Min(pw.Length, mt.Length), maxTxs);
+        int ahead = 0, behind = 0, notWarmed = 0;
+        for (int i = 0; i < count; i++)
+        {
+            double pwMs = pw[i] == 0 ? -1 : (pw[i] - start) * ticksToMs;
+            double mtMs = mt[i] == 0 ? -1 : (mt[i] - start) * ticksToMs;
+            double lead = (mtMs >= 0 && pwMs >= 0) ? mtMs - pwMs : 0;
+            string status = pw[i] == 0 ? "NOT_WARMED" : (lead > 0 ? "AHEAD" : "BEHIND");
+            if (pw[i] == 0) notWarmed++; else if (lead > 0) ahead++; else behind++;
+            sb.AppendLine($"{i,3} | {pwMs,10:F3} | {mtMs,8:F3} | {lead,8:F3} | {status}");
+        }
+        if (pw.Length > maxTxs)
+        {
+            for (int i = maxTxs; i < pw.Length; i++)
+            {
+                if (pw[i] == 0) notWarmed++;
+                else if (mt[i] != 0 && mt[i] > pw[i]) ahead++;
+                else behind++;
+            }
+        }
+        int storCount = _preBlockCaches?.DiagStorageCacheCount() ?? 0;
+        int acctCount = _preBlockCaches?.DiagAccountCacheCount() ?? 0;
+        sb.AppendLine($"Summary: {ahead} ahead, {behind} behind, {notWarmed} not warmed (of {pw.Length} txs). TxStartedCallCount={Volatile.Read(ref DiagTxStartedCallCount)} SeqlockCache: acct={acctCount} stor={storCount}");
+        return sb.ToString();
+    }
+
     private readonly ManualResetEventSlim _firstPassDone = new(false);
 
     /// <summary>
@@ -301,52 +360,142 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
             int txCount = block.Transactions.Length;
             if (txCount == 0) return;
 
-            // Start from the end so the prewarmer builds a lead over the main thread
-            // (which processes tx[0,1,2,...]). By the time the main thread reaches tx[N],
-            // the prewarmer has already warmed tx[N..txCount-1].
-            Volatile.Write(ref _nextWarmupIndex, txCount);
+            int firstPassLimit = (int)(txCount * _firstPassRatio);
+            Volatile.Write(ref _nextWarmupIndex, 0);
             Volatile.Write(ref MainThreadTxIndex, -1);
+            _firstPassDone.Reset();
             _mainThreadAdvanced.Reset();
 
             int threadCount = Math.Min(_concurrencyLevel, txCount);
             BlockCachePreWarmer preWarmer = this;
             CancellationToken token = parallelOptions.CancellationToken;
+            PreWarmRetryMode retryMode = _retryMode;
+            PreWarmFirstPassMode firstPassMode = _firstPassMode;
 
             Thread[] workers = new Thread[threadCount];
-            for (int t = 0; t < threadCount; t++)
+            SenderGroups senderGroups = firstPassMode == PreWarmFirstPassMode.SenderGrouped
+                ? SenderGroups.Build(block, firstPassLimit)
+                : default;
+            int firstPassWorkItems = firstPassMode == PreWarmFirstPassMode.SenderGrouped ? senderGroups.Count : firstPassLimit;
+            try
             {
-                workers[t] = new Thread(() =>
+                for (int t = 0; t < threadCount; t++)
                 {
-                    IReadOnlyTxProcessorSource env = _envPool.Get();
-                    try
+                    workers[t] = new Thread(() =>
                     {
-                        while (!token.IsCancellationRequested)
+                        IReadOnlyTxProcessorSource env = _envPool.Get();
+                        try
                         {
-                            int myTx = Interlocked.Decrement(ref _nextWarmupIndex);
-                            if (myTx < 0)
+                            // Phase 1: one execution per tx, no retry.
+                            while (!token.IsCancellationRequested)
                             {
-                                // Wrapped past the start — reset to end for another pass
-                                Interlocked.CompareExchange(ref _nextWarmupIndex, txCount, myTx);
-                                continue;
+                                int workItem = Interlocked.Increment(ref _nextWarmupIndex) - 1;
+                                if (workItem >= firstPassWorkItems) break;
+
+                                if (firstPassMode == PreWarmFirstPassMode.SenderGrouped)
+                                {
+                                    WarmupSenderGroup(
+                                        env,
+                                        senderGroups[workItem],
+                                        blockState,
+                                        block,
+                                        preWarmer,
+                                        token);
+                                }
+                                else
+                                {
+                                    int txIndex = firstPassMode == PreWarmFirstPassMode.Lookahead
+                                        ? txCount - 1 - workItem
+                                        : workItem;
+                                    WarmupTransactionByIndex(env, blockState, block, preWarmer, txIndex);
+
+                                    long[]? completedAt = preWarmer.DiagPrewarmerCompletedAt;
+                                    if (completedAt is not null && (uint)txIndex < (uint)completedAt.Length && completedAt[txIndex] == 0)
+                                        completedAt[txIndex] = Stopwatch.GetTimestamp();
+                                }
                             }
 
-                            if (Volatile.Read(ref MainThreadTxIndex) >= myTx) continue;
+                            if (firstPassLimit > 0) preWarmer._firstPassDone.Set();
 
-                            WarmupTransactionByIndex(env, blockState, block, preWarmer, myTx);
+                            if (!token.CanBeCanceled || retryMode == PreWarmRetryMode.None) return;
+
+                            // Phase 2: retry mode, re-warm txs with fresher state.
+                            Interlocked.CompareExchange(ref _nextWarmupIndex, 0, firstPassWorkItems + threadCount);
+
+                            while (!token.IsCancellationRequested)
+                            {
+                                int myTx = Interlocked.Increment(ref _nextWarmupIndex) - 1;
+                                if (myTx >= txCount)
+                                {
+                                    Interlocked.CompareExchange(ref _nextWarmupIndex, 0, txCount + threadCount);
+                                    continue;
+                                }
+
+                                int lastSeenMain = Volatile.Read(ref MainThreadTxIndex);
+                                if (lastSeenMain >= myTx) continue;
+
+                                WarmupTransactionByIndex(env, blockState, block, preWarmer, myTx);
+
+                                long[]? completedAt = preWarmer.DiagPrewarmerCompletedAt;
+                                if (completedAt is not null && (uint)myTx < (uint)completedAt.Length && completedAt[myTx] == 0)
+                                    completedAt[myTx] = Stopwatch.GetTimestamp();
+
+                                if (retryMode == PreWarmRetryMode.Hammer)
+                                {
+                                    // Hammer: keep re-executing until main thread passes.
+                                    // Each retry uses a fresh scope so read-through fallback can observe newer state.
+                                    while (!token.IsCancellationRequested)
+                                    {
+                                        if (Volatile.Read(ref MainThreadTxIndex) >= myTx) break;
+
+                                        WarmupTransactionByIndex(env, blockState, block, preWarmer, myTx);
+                                    }
+                                }
+                                else
+                                {
+                                    // State-gated: re-execute only when main thread advances.
+                                    while (!token.IsCancellationRequested)
+                                    {
+                                        if (lastSeenMain >= myTx) break;
+
+                                        while (!token.IsCancellationRequested)
+                                        {
+                                            int current = Volatile.Read(ref MainThreadTxIndex);
+                                            if (current > lastSeenMain) { lastSeenMain = current; break; }
+                                            if (current >= myTx) { lastSeenMain = current; break; }
+
+                                            _mainThreadAdvanced.Reset();
+                                            current = Volatile.Read(ref MainThreadTxIndex);
+                                            if (current > lastSeenMain) { lastSeenMain = current; break; }
+                                            if (current >= myTx) { lastSeenMain = current; break; }
+
+                                            _mainThreadAdvanced.Wait(token);
+                                        }
+
+                                        if (lastSeenMain >= myTx) break;
+
+                                        WarmupTransactionByIndex(env, blockState, block, preWarmer, myTx);
+                                    }
+                                }
+                            }
                         }
-                    }
-                    catch (OperationCanceledException) { }
-                    catch (Exception) { }
-                    finally
-                    {
-                        _envPool.Return(env);
-                    }
-                }) { IsBackground = true, Name = "PrewarmWorker" };
-                workers[t].Start();
-            }
+                        catch (OperationCanceledException) { }
+                        catch (Exception) { }
+                        finally
+                        {
+                            _envPool.Return(env);
+                        }
+                    }) { IsBackground = true, Name = "PrewarmWorker" };
+                    workers[t].Start();
+                }
 
-            for (int t = 0; t < threadCount; t++)
-                workers[t].Join();
+                for (int t = 0; t < threadCount; t++)
+                    workers[t].Join();
+            }
+            finally
+            {
+                senderGroups.Dispose();
+            }
         }
         catch (OperationCanceledException)
         {
@@ -575,27 +724,77 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
                 }
                 else
                 {
-                    WarmingState<Block> baseState = new(envPool, block, parent);
+                    using ArrayPoolList<AddressAsKey> addresses = CollectWarmupAddresses(block);
+                    if (addresses.Count == 0) return;
+
+                    WarmingState<ArrayPoolList<AddressAsKey>> baseState = new(envPool, addresses, parent);
 
                     ParallelUnbalancedWork.For(
                         0,
-                        block.Transactions.Length,
+                        addresses.Count,
                         parallelOptions,
                         baseState.InitThreadState,
                     static (i, state) =>
                     {
-                        Transaction tx = state.Payload.Transactions[i];
-                        WarmupSender(tx.SenderAddress, tx.To, state.Scope!.WorldState);
+                        WarmupAddress(state.Payload.GetRef(i), state.Scope!.WorldState);
 
                         return state;
                     },
-                    WarmingState<Block>.FinallyAction);
+                    WarmingState<ArrayPoolList<AddressAsKey>>.FinallyAction);
                 }
             }
             catch (OperationCanceledException)
             {
                 // Ignore, block completed cancel
             }
+        }
+
+        private static ArrayPoolList<AddressAsKey> CollectWarmupAddresses(Block block)
+        {
+            Transaction[] transactions = block.Transactions;
+            int estimatedAddressCount = transactions.Length * 2;
+            ArrayPoolList<AddressAsKey> addresses = new(estimatedAddressCount);
+            HashSet<AddressAsKey>? seen = transactions.Length > SmallBlockLinearDedupThreshold
+                ? new(estimatedAddressCount)
+                : null;
+
+            for (int i = 0; i < transactions.Length; i++)
+            {
+                Transaction tx = transactions[i];
+                AddWarmupAddress(addresses, seen, tx.SenderAddress);
+                AddWarmupAddress(addresses, seen, tx.To);
+            }
+
+            return addresses;
+        }
+
+        private static void AddWarmupAddress(ArrayPoolList<AddressAsKey> addresses, HashSet<AddressAsKey>? seen, Address? address)
+        {
+            if (address is null)
+            {
+                return;
+            }
+
+            AddressAsKey addressKey = address;
+            if (seen is not null)
+            {
+                if (seen.Add(addressKey))
+                {
+                    addresses.Add(addressKey);
+                }
+
+                return;
+            }
+
+            for (int i = 0; i < addresses.Count; i++)
+            {
+                if (addresses[i].Equals(addressKey))
+                {
+                    return;
+                }
+            }
+
+            addresses.Add(addressKey);
         }
 
         private void WarmupFromBal(ParallelOptions parallelOptions, ObjectPool<IReadOnlyTxProcessorSource> envPool)
@@ -662,19 +861,11 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
             }
         }
 
-        private static void WarmupSender(Address? sender, Address? to, IWorldState worldState)
+        private static void WarmupAddress(AddressAsKey address, IWorldState worldState)
         {
             try
             {
-                if (sender is not null)
-                {
-                    worldState.WarmUp(sender);
-                }
-
-                if (to is not null)
-                {
-                    worldState.WarmUp(to);
-                }
+                worldState.WarmUp(address);
             }
             catch (MissingTrieNodeException)
             {

@@ -151,6 +151,13 @@ public class PrewarmerLocalBenchmarkTests
                         $"{run.Case.Name},{run.TotalMilliseconds:F2},{run.TotalMilliseconds / MeasurementIterations:F2}," +
                         $"{delta.AccountHitRate:F1},{delta.StorageHitRate:F1},{delta.AccountHits},{delta.AccountReads},{delta.StorageHits},{delta.StorageReads}," +
                         $"{run.DiagAcctSets},{run.DiagAcctHits},{run.DiagAcctMisses},{run.DiagStorSets},{run.DiagStorHits},{run.DiagStorMisses}"));
+
+                string timing = run.Context.GetPrewarmerTimingReport();
+                if (timing != "no prewarmer")
+                {
+                    WriteReportLine(report, $"  [{run.Case.Name} timing]");
+                    WriteReportLine(report, timing);
+                }
             }
         }
         finally
@@ -393,6 +400,13 @@ public class PrewarmerLocalBenchmarkTests
             {
                 ProcessingThread.IsBlockProcessingThread = previousIsBlockProcessingThread;
             }
+        }
+
+        public string GetPrewarmerTimingReport()
+        {
+            if (!_processingScope.IsRegistered<IBlockCachePreWarmer>()) return "no prewarmer";
+            IBlockCachePreWarmer pw = _processingScope.Resolve<IBlockCachePreWarmer>();
+            return pw is BlockCachePreWarmer bcpw ? bcpw.GetDiagTimingReport() : "no prewarmer";
         }
 
         public void Dispose()

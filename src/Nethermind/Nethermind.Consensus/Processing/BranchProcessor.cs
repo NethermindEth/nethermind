@@ -85,6 +85,7 @@ public class BranchProcessor(
         {
             bcpw.MainThreadWorldState = stateProvider;
             bp.SetTxExecutedCallback(bcpw.ReportMainThreadTxExecuted);
+            bp.SetTxStartingCallback(bcpw.ReportMainThreadTxStarted);
             blockProcessorWithTxCallback = bp;
         }
 

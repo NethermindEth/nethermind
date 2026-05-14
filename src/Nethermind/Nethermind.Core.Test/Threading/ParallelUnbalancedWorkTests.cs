@@ -54,7 +54,7 @@ public class ParallelUnbalancedWorkTests
     [Test]
     public void For_WhenManyWorkersThrow_RethrowsExactlyOneException()
     {
-        // Every iteration throws — only the first captured exception should surface.
+        // Every iteration throws - only the first captured exception should surface.
         Action act = () => ParallelUnbalancedWork.For(0, 10_000, FourThreads,
             i => throw new InvalidOperationException($"boom-{i}"));
 
@@ -66,7 +66,7 @@ public class ParallelUnbalancedWorkTests
     {
         // If the throwing worker raced ahead of the others, MarkThreadCompleted would not yet have been
         // called for them and the calling thread would either rethrow with workers still in flight or
-        // hang on the semaphore. Use init/finally to count actual thread arrivals — with the new
+        // hang on the semaphore. Use init/finally to count actual thread arrivals - with the new
         // capture/rethrow path, every thread that ran init must run finally before For returns.
         int initCount = 0;
         int finallyCount = 0;
@@ -102,7 +102,7 @@ public class ParallelUnbalancedWorkTests
     [Test]
     public void For_WithThreadLocal_WhenInitThrows_FinallyIsNotCalled()
     {
-        // Matches BCL Parallel.For<TLocal>: localFinally must not run if localInit threw — otherwise
+        // Matches BCL Parallel.For<TLocal>: localFinally must not run if localInit threw, otherwise
         // a reference-typed TLocal with non-trivial cleanup would NPE on default(TLocal).
         int finallyCalls = 0;
 
@@ -184,6 +184,40 @@ public class ParallelUnbalancedWorkTests
         }
 
         unhandled.Should().Be(0);
+    }
+
+    [TestCase(0, 0, 16, 1)]
+    [TestCase(0, 1, 16, 1)]
+    [TestCase(0, 3, 16, 3)]
+    [TestCase(2, 5, 16, 3)]
+    [TestCase(0, 32, 16, 16)]
+    public void Effective_thread_count_is_capped_by_work_items(int fromInclusive, int toExclusive, int maxDegreeOfParallelism, int expected)
+    {
+        ParallelOptions parallelOptions = new() { MaxDegreeOfParallelism = maxDegreeOfParallelism };
+
+        int actual = ParallelUnbalancedWork.GetEffectiveThreadCount(fromInclusive, toExclusive, parallelOptions);
+
+        actual.Should().Be(expected);
+    }
+
+    [Test]
+    public void Thread_local_loop_uses_only_needed_workers()
+    {
+        int initialized = 0;
+
+        ParallelUnbalancedWork.For(
+            0,
+            3,
+            new ParallelOptions { MaxDegreeOfParallelism = 16 },
+            () =>
+            {
+                Interlocked.Increment(ref initialized);
+                return 0;
+            },
+            static (_, state) => state,
+            static _ => { });
+
+        initialized.Should().Be(3);
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
