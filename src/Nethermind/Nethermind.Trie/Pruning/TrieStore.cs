@@ -561,9 +561,12 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
         return node;
     }
 
-    public bool TryGetOrLoadNode(Hash256? address, in TreePath path, in ValueHash256 hash, [NotNullWhen(true)] out TrieNode? node, ReadFlags flags = ReadFlags.None)
+    public bool TryGetOrLoadNode(Hash256? address, in TreePath path, in ValueHash256 hash, [NotNullWhen(true)] out TrieNode? node, ReadFlags flags = ReadFlags.None) =>
+        TryGetOrLoadNode(address, in path, in hash, isReadOnly: false, out node, flags);
+
+    internal bool TryGetOrLoadNode(Hash256? address, in TreePath path, in ValueHash256 hash, bool isReadOnly, [NotNullWhen(true)] out TrieNode? node, ReadFlags flags = ReadFlags.None)
     {
-        TrieNode candidate = GetCachedOrPlaceholder(address, in path, in hash, isReadOnly: false);
+        TrieNode candidate = GetCachedOrPlaceholder(address, in path, in hash, isReadOnly);
         if (candidate.NodeType != NodeType.Unknown)
         {
             node = candidate;

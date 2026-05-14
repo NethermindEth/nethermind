@@ -18,6 +18,14 @@ namespace Nethermind.Trie.Pruning
         public TrieNode GetOrLoadNode(Hash256? address, in TreePath treePath, in ValueHash256 hash, ReadFlags flags = ReadFlags.None) =>
             _trieStore.GetOrLoadNode(address, in treePath, in hash, isReadOnly: true, flags);
 
+        // The default IScopableTrieStore.TryGetOrLoadNode implementation only consults
+        // TryGetCachedNode (which defaults to false here) and otherwise falls back to
+        // TryLoadRlp - that bypasses the dirty cache entirely, so transient (not yet
+        // persisted) nodes show up as missing. Route through the underlying TrieStore's
+        // read-only path so cached nodes are cloned and returned just like GetOrLoadNode.
+        public bool TryGetOrLoadNode(Hash256? address, in TreePath treePath, in ValueHash256 hash, [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out TrieNode? node, ReadFlags flags = ReadFlags.None) =>
+            _trieStore.TryGetOrLoadNode(address, in treePath, in hash, isReadOnly: true, out node, flags);
+
         public byte[] LoadRlp(Hash256? address, in TreePath treePath, in ValueHash256 hash, ReadFlags flags) =>
             _trieStore.LoadRlp(address, treePath, in hash, flags);
         public byte[]? TryLoadRlp(Hash256? address, in TreePath treePath, in ValueHash256 hash, ReadFlags flags) =>
