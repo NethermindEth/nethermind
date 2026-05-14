@@ -200,6 +200,14 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
     /// </summary>
     internal IWorldState? MainThreadWorldState;
 
+    /// <summary>
+    /// Incremented by the main block processor after each tx.
+    /// Workers abandon their current tx when the main thread passes it.
+    /// </summary>
+    internal int MainThreadTxIndex = -1;
+
+    private int _nextWarmupIndex;
+
     private void WarmupTransactions(BlockState blockState, ParallelOptions parallelOptions)
     {
         if (parallelOptions.CancellationToken.IsCancellationRequested) return;
@@ -207,59 +215,59 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         try
         {
             Block block = blockState.Block;
-            if (block.Transactions.Length == 0) return;
+            int txCount = block.Transactions.Length;
+            if (txCount == 0) return;
 
-            Dictionary<AddressAsKey, ArrayPoolList<(int Index, Transaction Tx)>>? senderGroups = GroupTransactionsBySender(block);
+            Volatile.Write(ref _nextWarmupIndex, 0);
+            Volatile.Write(ref MainThreadTxIndex, -1);
 
-            try
+            int threadCount = Math.Min(_concurrencyLevel, txCount);
+            BlockCachePreWarmer preWarmer = this;
+            CancellationToken token = parallelOptions.CancellationToken;
+
+            Thread[] workers = new Thread[threadCount];
+            for (int t = 0; t < threadCount; t++)
             {
-                using ArrayPoolList<ArrayPoolList<(int Index, Transaction Tx)>> groupArray = senderGroups.Values.ToPooledList();
-                BlockCachePreWarmer preWarmer = this;
-
-                // Loop until cancelled (block processing complete). Each pass uses a fresh
-                // scope so the read fallback picks up the main thread's latest committed state.
-                while (!parallelOptions.CancellationToken.IsCancellationRequested)
+                workers[t] = new Thread(() =>
                 {
-                    ParallelUnbalancedWork.For(
-                        0,
-                        groupArray.Count,
-                        parallelOptions,
-                        (blockState, groupArray, parallelOptions.CancellationToken, preWarmer),
-                        static (groupIndex, tupleState) =>
+                    IReadOnlyTxProcessorSource env = _envPool.Get();
+                    try
+                    {
+                        while (!token.IsCancellationRequested)
                         {
-                            (BlockState blockState, ArrayPoolList<ArrayPoolList<(int Index, Transaction Tx)>> groups, CancellationToken token, BlockCachePreWarmer preWarmer) = tupleState;
-                            ArrayPoolList<(int Index, Transaction Tx)> txList = groups[groupIndex];
+                            int myTx = Interlocked.Increment(ref _nextWarmupIndex) - 1;
+                            if (myTx >= txCount) break;
 
-                            IReadOnlyTxProcessorSource env = blockState.PreWarmer._envPool.Get();
-                            try
+                            // Hammer this tx until main thread passes it
+                            while (!token.IsCancellationRequested)
                             {
-                                using IReadOnlyTxProcessingScope scope = env.Build(blockState.Parent);
-                                BlockExecutionContext context = new(blockState.Block.Header, blockState.Spec);
-                                scope.TransactionProcessor.SetBlockExecutionContext(context);
+                                if (Volatile.Read(ref MainThreadTxIndex) >= myTx) break;
 
-                                if (preWarmer.MainThreadWorldState is not null)
-                                    (scope.WorldState as WorldState)?.SetReadFallback(preWarmer.MainThreadWorldState);
-
-                                foreach ((int txIndex, Transaction tx) in txList.AsSpan())
+                                using (IReadOnlyTxProcessingScope scope = env.Build(blockState.Parent))
                                 {
-                                    if (token.IsCancellationRequested) return tupleState;
-                                    WarmupSingleTransaction(scope, tx, txIndex, blockState);
+                                    BlockExecutionContext context = new(block.Header, blockState.Spec);
+                                    scope.TransactionProcessor.SetBlockExecutionContext(context);
+
+                                    if (preWarmer.MainThreadWorldState is not null)
+                                        (scope.WorldState as WorldState)?.SetReadFallback(preWarmer.MainThreadWorldState);
+
+                                    WarmupSingleTransaction(scope, block.Transactions[myTx], myTx, blockState);
                                 }
                             }
-                            finally
-                            {
-                                blockState.PreWarmer._envPool.Return(env);
-                            }
+                        }
+                    }
+                    catch (OperationCanceledException) { }
+                    catch (Exception) { }
+                    finally
+                    {
+                        _envPool.Return(env);
+                    }
+                }) { IsBackground = true, Name = "PrewarmWorker" };
+                workers[t].Start();
+            }
 
-                            return tupleState;
-                        });
-                }
-            }
-            finally
-            {
-                foreach (KeyValuePair<AddressAsKey, ArrayPoolList<(int Index, Transaction Tx)>> kvp in senderGroups)
-                    kvp.Value.Dispose();
-            }
+            for (int t = 0; t < threadCount; t++)
+                workers[t].Join();
         }
         catch (OperationCanceledException)
         {

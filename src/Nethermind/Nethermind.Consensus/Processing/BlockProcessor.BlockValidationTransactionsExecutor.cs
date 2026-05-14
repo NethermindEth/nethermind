@@ -25,6 +25,7 @@ public partial class BlockProcessor
     {
         protected IWorldState _stateProvider = stateProvider;
         protected ITransactionProcessedEventHandler? _transactionProcessedEventHandler = transactionProcessedEventHandler;
+        internal Action<int>? OnTxExecuted;
         private bool _enableTxTimingMetrics = false;
 
         public virtual void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext) => transactionProcessor.SetBlockExecutionContext(in blockExecutionContext);
@@ -61,6 +62,7 @@ public partial class BlockProcessor
             TransactionResult result = transactionProcessor.ProcessTransaction(currentTx, receiptsTracer, processingOptions, _stateProvider);
             StopTxTimer(index, txStart);
             if (!result) ThrowInvalidTransactionException(result, block.Header, currentTx, index);
+            OnTxExecuted?.Invoke(index);
             _transactionProcessedEventHandler?.OnTransactionProcessed(new TxProcessedEventArgs(index, currentTx, block.Header, receiptsTracer.TxReceipts[index]));
         }
 
