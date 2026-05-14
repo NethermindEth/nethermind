@@ -201,11 +201,10 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
     internal int MainThreadTxIndex = -1;
 
     /// <summary>
-    /// Reference to the main thread's WorldState. Prewarmer reads from its internal
-    /// _blockChanges to see committed state from earlier txs (better than parent state).
-    /// Unsafe concurrent read — acceptable for prefetching (wrong value = warm wrong trie node).
+    /// Thread-safe snapshot of the main thread's committed state.
+    /// Main thread publishes after each tx; prewarmer reads before each warmup tx.
     /// </summary>
-    internal IWorldState? MainThreadWorldState;
+    internal PrewarmerStateSnapshot? StateSnapshot;
 
     /// <summary>Atomic counter for prewarmer threads to claim the next tx to warm.</summary>
     private int _nextWarmupIndex;
@@ -254,10 +253,11 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
                             // Skip txs the main thread already processed
                             if (myTx <= mainPos) continue;
 
-                            // Sync committed state from main thread into prewarmer's scope.
-                            // Unsafe concurrent read of Dictionary — acceptable for prefetching.
-                            try { SyncStateFromMainThread(scope.WorldState, preWarmer.MainThreadWorldState); }
-                            catch { /* torn read — ignore */ }
+                            // Import committed state from main thread's snapshot
+                            if (preWarmer.StateSnapshot is not null)
+                            {
+                                (scope.WorldState as WorldState)?.ImportFromSnapshot(preWarmer.StateSnapshot);
+                            }
 
                             WarmupSingleTransaction(scope, block.Transactions[myTx], myTx, blockState);
                         }
@@ -568,9 +568,6 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
     /// instead of always reading stale parent state.
     /// Unsafe: reads from main thread's Dictionary concurrently. Acceptable for prefetching.
     /// </summary>
-    private static void SyncStateFromMainThread(IWorldState prewarmState, IWorldState? mainState) =>
-        (mainState as WorldState)?.CopyBlockChangesTo(prewarmState);
-
     /// <summary>
     /// Pool policy for <see cref="IReadOnlyTxProcessorSource"/> envs used by the prewarmer.
     /// </summary>

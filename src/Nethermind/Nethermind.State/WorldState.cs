@@ -36,27 +36,29 @@ namespace Nethermind.State
         /// Copy committed account state into another WorldState's block changes cache.
         /// Used by prewarmer to see main thread's committed state (unsafe concurrent read).
         /// </summary>
-        public void CopyBlockChangesTo(IWorldState target)
+        /// <summary>
+        /// Publish all committed account+storage state to a thread-safe snapshot.
+        /// Called by the main block processor after each tx commit.
+        /// </summary>
+        public void PublishToSnapshot(PrewarmerStateSnapshot snapshot)
         {
-            if (target is not WorldState targetWs) return;
-            try
+            foreach (KeyValuePair<AddressAsKey, StateProvider.ChangeTrace> kvp in _stateProvider._blockChanges)
             {
-                // Copy committed account state (nonces, balances)
-                foreach (KeyValuePair<AddressAsKey, StateProvider.ChangeTrace> kvp in _stateProvider._blockChanges)
-                {
-                    if (kvp.Value.After is not null)
-                        targetWs._stateProvider._blockChanges[kvp.Key] = kvp.Value;
-                }
-
-                // Share storage references — prewarmer sees committed storage from earlier txs.
-                // Shares the PerContractState objects directly (same reference, not copy).
-                // The prewarmer's LoadFromTree will check BlockChange first and find committed values.
-                foreach (KeyValuePair<AddressAsKey, PersistentStorageProvider.PerContractState> kvp in _persistentStorageProvider._storages)
-                {
-                    targetWs._persistentStorageProvider._storages[kvp.Key] = kvp.Value;
-                }
+                if (kvp.Value.After is not null)
+                    snapshot.CommitAccount(kvp.Key, kvp.Value.After);
             }
-            catch { /* concurrent modification — acceptable for prefetching */ }
+        }
+
+        /// <summary>
+        /// Import committed state from the snapshot into this WorldState's block changes.
+        /// Called by prewarmer threads before each warmup tx.
+        /// </summary>
+        public void ImportFromSnapshot(PrewarmerStateSnapshot snapshot)
+        {
+            foreach (KeyValuePair<AddressAsKey, Account> kvp in snapshot.Accounts)
+            {
+                _stateProvider._blockChanges[kvp.Key] = new StateProvider.ChangeTrace(kvp.Value, kvp.Value);
+            }
         }
         private readonly TransientStorageProvider _transientStorageProvider;
         private IWorldStateScopeProvider.IScope? _currentScope;

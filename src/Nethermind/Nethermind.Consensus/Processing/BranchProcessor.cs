@@ -13,6 +13,7 @@ using Nethermind.Evm;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
+using Nethermind.State;
 
 namespace Nethermind.Consensus.Processing;
 
@@ -80,11 +81,17 @@ public class BranchProcessor(
         blockProcessor.TransactionsExecuted += CancelBackgroundWork;
 
         // Wire prewarmer's moving window to track main thread progress
+        PrewarmerStateSnapshot? snapshot = null;
         if (preWarmer is BlockCachePreWarmer bcpw && blockProcessor is BlockProcessor bp)
         {
-            bp.SetTxExecutedCallback((txIndex) => Volatile.Write(ref bcpw.MainThreadTxIndex, txIndex));
-            // Share main thread's WorldState so prewarmer can read committed state
-            bcpw.MainThreadWorldState = stateProvider;
+            snapshot = new PrewarmerStateSnapshot();
+            bcpw.StateSnapshot = snapshot;
+            bp.SetTxExecutedCallback((txIndex) =>
+            {
+                Volatile.Write(ref bcpw.MainThreadTxIndex, txIndex);
+                // Publish committed state to snapshot after each tx
+                (stateProvider as WorldState)?.PublishToSnapshot(snapshot);
+            });
         }
 
         try
