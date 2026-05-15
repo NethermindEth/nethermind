@@ -1,16 +1,19 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
+using System.Text.Json;
 using Nethermind.Core;
 using Nethermind.Int256;
+using Nethermind.Specs.Forks;
 
 namespace Nethermind.Specs.ChainSpecStyle.Json;
 
 /// <summary>
 /// Represents the config object in a Geth-style genesis.json file as defined in EIP-7949.
 /// </summary>
-public class GethGenesisConfigJson
+public class GethGenesisConfigJson : IHasNamedForks
 {
     public ulong ChainId { get; set; }
 
@@ -77,4 +80,31 @@ public class GethGenesisConfigJson
     public Address? DepositContractAddress { get; set; }
 
     public Dictionary<string, GethBlobScheduleEntry>? BlobSchedule { get; set; }
+
+    /// <summary>
+    /// Synthesizes a <see cref="HardforkLabels"/>-shaped fork dictionary from the typed
+    /// <c>&lt;fork&gt;Time</c> properties so the Parity-style label expansion machinery can be
+    /// reused on Geth-genesis input. Only the post-merge timestamp forks participate; pre-Shanghai
+    /// block fan-outs and BPO blob-schedule timestamps are handled separately by the loader.
+    /// </summary>
+    IReadOnlyDictionary<string, JsonElement>? IHasNamedForks.NamedForks
+    {
+        get
+        {
+            Dictionary<string, JsonElement>? dict = null;
+            Add(ref dict, nameof(Shanghai), ShanghaiTime);
+            Add(ref dict, nameof(Cancun), CancunTime);
+            Add(ref dict, nameof(Prague), PragueTime);
+            Add(ref dict, nameof(Osaka), OsakaTime);
+            Add(ref dict, nameof(Amsterdam), AmsterdamTime);
+            return dict;
+
+            static void Add(ref Dictionary<string, JsonElement>? dict, string forkName, ulong? value)
+            {
+                if (value is null) return;
+                dict ??= new Dictionary<string, JsonElement>(StringComparer.OrdinalIgnoreCase);
+                dict[forkName] = JsonSerializer.SerializeToElement(value.Value);
+            }
+        }
+    }
 }

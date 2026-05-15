@@ -93,7 +93,7 @@ public class ChainSpecLoader(IJsonSerializer serializer, ILogManager logManager)
             return GetTransitions(builtInName, GetForInnerPathExistence);
         }
 
-        HardforkLabels.ExpandAll(chainSpecJson.Params);
+        HardforkLabels.ExpandAll(chainSpecJson.Params, chainSpecJson.Params);
         ValidateParams(chainSpecJson.Params);
 
         chainSpec.Parameters = new ChainParameters

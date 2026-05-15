@@ -14,7 +14,7 @@ using Nethermind.Int256;
 [assembly: InternalsVisibleTo("Nethermind.TxPool.Test")]
 namespace Nethermind.Specs.ChainSpecStyle.Json;
 
-public class ChainSpecParamsJson
+public class ChainSpecParamsJson : IEipTransitionFields, IHasNamedForks
 {
     public ulong? ChainId { get; set; }
     public ulong? NetworkId { get; set; }
@@ -205,4 +205,6 @@ public class ChainSpecParamsJson
     /// </summary>
     [JsonExtensionData]
     public Dictionary<string, JsonElement>? NamedForks { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+
+    IReadOnlyDictionary<string, JsonElement>? IHasNamedForks.NamedForks => NamedForks;
 }
