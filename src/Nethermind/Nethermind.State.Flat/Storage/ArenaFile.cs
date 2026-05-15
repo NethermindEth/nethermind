@@ -164,24 +164,6 @@ public sealed unsafe class ArenaFile : RefCountingDisposable
     }
 
     /// <summary>
-    /// Pre-fault the page-aligned subrange by issuing a one-byte
-    /// <see cref="RandomAccess.Read(SafeFileHandle, Span{byte}, long)"/> per page through the
-    /// file handle. The bytes land in the kernel page cache without faulting them into our
-    /// process resident set; the next mmap access takes only a minor fault. Cross-platform.
-    /// </summary>
-    public void PopulateRead(long offset, long size)
-    {
-        nuint pageSize = PageSize;
-        nuint start = ((nuint)offset + pageSize - 1) & ~(pageSize - 1);
-        nuint end = ((nuint)offset + (nuint)size) & ~(pageSize - 1);
-        if (end <= start) return;
-
-        Span<byte> oneByte = stackalloc byte[1];
-        for (nuint p = start; p < end; p += pageSize)
-            RandomAccess.Read(_handle, oneByte, (long)p);
-    }
-
-    /// <summary>
     /// posix_fadvise(POSIX_FADV_DONTNEED) on the underlying file descriptor for the
     /// page-aligned subrange of <c>[offset, offset+size)</c>. Drops the corresponding
     /// pages from the OS file cache. Redundant with <see cref="AdviseDontNeed"/> on
@@ -204,9 +186,11 @@ public sealed unsafe class ArenaFile : RefCountingDisposable
     /// <summary>
     /// Open a fresh per-reservation mmap view over <c>[offset, offset+size)</c> with
     /// <c>MADV_NORMAL</c> hint, distinct from the global random-access view used by point
-    /// queries. Disposing the returned view applies <c>MADV_DONTNEED</c> to the range.
+    /// queries. When <paramref name="adviseDontNeedOnDispose"/> is true, disposing the
+    /// returned view applies <c>MADV_DONTNEED</c> to the range before releasing the
+    /// mapping; when false the disposer just unmaps.
     /// </summary>
-    public IArenaWholeView OpenWholeView(long offset, long size)
+    public IArenaWholeView OpenWholeView(long offset, long size, bool adviseDontNeedOnDispose)
     {
         MemoryMappedViewAccessor accessor = _mmf.CreateViewAccessor(offset, size, MemoryMappedFileAccess.Read);
         byte* ptr = null;
@@ -216,18 +200,18 @@ public sealed unsafe class ArenaFile : RefCountingDisposable
         byte* dataPtr = ptr + accessor.PointerOffset;
         if (OperatingSystem.IsLinux())
             Madvise(dataPtr, (nuint)size, MADV_NORMAL);
-        return new MmapWholeView(accessor, dataPtr, size);
+        return new MmapWholeView(accessor, dataPtr, size, adviseDontNeedOnDispose);
     }
 
     private sealed unsafe class MmapWholeView(
-        MemoryMappedViewAccessor accessor, byte* dataPtr, long size) : IArenaWholeView
+        MemoryMappedViewAccessor accessor, byte* dataPtr, long size, bool adviseDontNeedOnDispose) : IArenaWholeView
     {
         public byte* DataPtr => dataPtr;
         public long Size => size;
 
         public void Dispose()
         {
-            if (OperatingSystem.IsLinux())
+            if (adviseDontNeedOnDispose && OperatingSystem.IsLinux())
             {
                 // Round to full pages around the data range.
                 // NOTE: MADV_DONTNEED on a file-backed shared mapping drops the affected

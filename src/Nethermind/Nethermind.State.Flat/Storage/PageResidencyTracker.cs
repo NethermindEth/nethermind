@@ -296,10 +296,10 @@ public sealed unsafe class PageResidencyTracker : IDisposable
     /// <summary>
     /// Atomically remove <c>(arenaId, pageIdx)</c> from the tracker if present. Used by the
     /// whole-range <c>madvise(MADV_DONTNEED)</c> paths so that a snapshot's pages aren't left
-    /// "tracked" after the kernel drops them — otherwise the next reader would see a false
-    /// <see cref="TouchOutcome.Hit"/>, skip <c>PopulateRead</c>, and synchronously page-fault.
-    /// Lock-free CAS-with-retry; a concurrent hot-path REF arm or a miss-path replacement
-    /// races cleanly (we either clear the matching slot or observe the new occupant and stop).
+    /// "tracked" after the kernel drops them — keeps the tracker in sync with actual page
+    /// residency. Lock-free CAS-with-retry; a concurrent hot-path REF arm or a miss-path
+    /// replacement races cleanly (we either clear the matching slot or observe the new
+    /// occupant and stop).
     /// </summary>
     public void Forget(int arenaId, int pageIdx)
     {

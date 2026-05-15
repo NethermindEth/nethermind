@@ -39,7 +39,7 @@ public unsafe struct ArenaBufferWriter(Stream stream, long firstOffset, ArenaBuf
     /// Opens a read view over the writer-relative range
     /// <c>[relativeOffset, relativeOffset + size)</c> of the just-written data.
     /// Implementations are expected to dispose the returned view when the caller
-    /// disposes it (e.g. mmap accessor + MADV_DONTNEED on Linux).
+    /// disposes it (e.g. release the mmap accessor on Linux).
     /// </summary>
     public delegate IArenaWholeView OpenViewDelegate(long relativeOffset, long size);
 

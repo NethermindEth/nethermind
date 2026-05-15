@@ -29,7 +29,7 @@ public sealed class ArenaWriter : IDisposable
         // The writer already owns the file ref — open the pending read view on it directly
         // instead of round-tripping through the manager's id→file dict lookup.
         _writer = new ArenaBufferWriter(stream, firstOffset,
-            (relOffset, size) => file.OpenWholeView(startOffset + relOffset, size));
+            (relOffset, size) => file.OpenWholeView(startOffset + relOffset, size, adviseDontNeedOnDispose: false));
     }
 
     internal int ArenaId => _file.Id;

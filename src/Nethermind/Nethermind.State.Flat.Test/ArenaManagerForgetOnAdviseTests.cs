@@ -14,8 +14,8 @@ namespace Nethermind.State.Flat.Test;
 /// <see cref="ArenaReservation"/> (its <see cref="ArenaReservation.AdviseDontNeed"/> entry
 /// point and its disposal path through <see cref="ArenaManager.MarkDead(ArenaFile, long)"/>)
 /// clear the corresponding page entries from the per-arena
-/// <see cref="PageResidencyTracker"/>. Without this, stale entries would make the next
-/// reader's <c>TryTouch</c> return <c>Hit</c> and skip the <c>PopulateRead</c> pre-fault.
+/// <see cref="PageResidencyTracker"/>, keeping the tracker in sync with actual page
+/// residency after the kernel drops the pages.
 /// </summary>
 public class ArenaManagerForgetOnAdviseTests
 {

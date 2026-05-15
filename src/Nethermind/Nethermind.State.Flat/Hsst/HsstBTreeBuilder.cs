@@ -334,9 +334,7 @@ public ref struct HsstBTreeBuilder<TWriter, TReader, TPin>
             // Release the data-section view eagerly. The writer can outlive this Build()
             // call and host further HSSTs whose data sections will need to OpenReader on
             // the same writer; the single-reader-at-a-time contract requires the prior
-            // view to be released first. On Linux this also applies MADV_DONTNEED to the
-            // just-swept range right when sweeping ends, instead of waiting until the
-            // writer itself is disposed.
+            // view to be released first.
             _writer.DisposeActiveReader();
         }
 
