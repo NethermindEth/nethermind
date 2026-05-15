@@ -355,13 +355,7 @@ public readonly ref struct BSearchIndexReader
                     8 => UniformKeySearch.Uniform8LE(q, _keys, count),
                     _ => throw new InvalidDataException($"Invalid LE keySize: {keySize}")
                 }
-                : keySize switch
-                {
-                    2 => UniformKeySearch.Uniform2BE(q, _keys, count),
-                    4 => UniformKeySearch.Uniform4BE(q, _keys, count),
-                    8 => UniformKeySearch.Uniform8BE(q, _keys, count),
-                    _ => UniformKeySearch.UniformBE(q, _keys, count, keySize)
-                },
+                : UniformKeySearch.UniformBE(q, _keys, count, keySize),
             0 => FindFloorIndexVariable(q, _keys, count),
             _ => throw new InvalidDataException($"Unknown KeyType: {_metadata.KeyType}")
         };
