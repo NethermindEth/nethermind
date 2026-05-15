@@ -210,33 +210,23 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
             int txCount = block.Transactions.Length;
             if (txCount == 0) return;
 
-            // Moving window: each worker takes one tx, executes, moves to next
+            // Moving window: each worker takes one tx, executes, moves to next.
+            // WarmingState pattern: env+scope acquired once per thread, reused across txs.
+            WarmingState<BlockState> baseState = new(_envPool, blockState, blockState.Parent);
+
             ParallelUnbalancedWork.For(
                 0,
                 txCount,
                 parallelOptions,
-                (blockState, parallelOptions.CancellationToken),
-                static (txIndex, tupleState) =>
+                baseState.InitThreadState,
+                static (txIndex, state) =>
                 {
-                    (BlockState blockState, CancellationToken token) = tupleState;
-
-                    IReadOnlyTxProcessorSource env = blockState.PreWarmer._envPool.Get();
-                    try
-                    {
-                        using IReadOnlyTxProcessingScope scope = env.Build(blockState.Parent);
-                        BlockExecutionContext context = new(blockState.Block.Header, blockState.Spec);
-                        scope.TransactionProcessor.SetBlockExecutionContext(context);
-
-                        WarmupSingleTransaction(scope, blockState.Block.Transactions[txIndex], txIndex, blockState);
-                    }
-                    catch (MissingTrieNodeException) { }
-                    finally
-                    {
-                        blockState.PreWarmer._envPool.Return(env);
-                    }
-
-                    return tupleState;
-                });
+                    BlockExecutionContext context = new(state.Payload.Block.Header, state.Payload.Spec);
+                    state.Scope!.TransactionProcessor.SetBlockExecutionContext(context);
+                    WarmupSingleTransaction(state.Scope!, state.Payload.Block.Transactions[txIndex], txIndex, state.Payload);
+                    return state;
+                },
+                WarmingState<BlockState>.FinallyAction);
         }
         catch (OperationCanceledException)
         {
