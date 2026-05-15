@@ -236,12 +236,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
                         while (!token.IsCancellationRequested)
                         {
                             int myTx = Interlocked.Increment(ref _nextWarmupIndex) - 1;
-                            if (myTx >= txCount)
-                            {
-                                // Wrap around — re-warm with fresher fallback state
-                                Interlocked.CompareExchange(ref _nextWarmupIndex, 0, myTx + 1);
-                                continue;
-                            }
+                            if (myTx >= txCount) break;
 
                             if (Volatile.Read(ref MainThreadTxIndex) >= myTx) continue;
 
