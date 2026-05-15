@@ -17,14 +17,10 @@ public class ChainParametersTests
     public void ChainParameters_should_have_same_properties_as_chainSpecParamsJson()
     {
         string[] chainParametersExceptions = [];
-        // Hardfork shorthand labels expand at the JSON parse boundary (see HardforkLabels) and
-        // intentionally have no counterpart in ChainParameters — derive the exception list from
-        // HardforkLabels itself so adding a new fork label doesn't require editing this test.
-        string[] chainSpecParamsJsonExceptions =
-        [
-            "ChainId", "NetworkId",
-            .. HardforkLabels.All.Select(l => l.LabelName),
-        ];
+        // Hardfork shorthand labels enter via ChainSpecParamsJson.ExtensionData and expand at the
+        // JSON parse boundary (see HardforkLabels); the JSON-only catch-all property has no
+        // counterpart on ChainParameters.
+        string[] chainSpecParamsJsonExceptions = ["ChainId", "NetworkId", "ExtensionData"];
         IEnumerable<string> chainParametersProperties = typeof(ChainParameters).GetProperties()
             .Where(x => !chainParametersExceptions.Contains(x.Name))
             .Select(x => x.Name);
