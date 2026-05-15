@@ -42,7 +42,7 @@ internal abstract class BaseSnapshotManager<TSnapshot> : ISnapshotManager
     )
     {
         _blockTree = blockTree;
-        _blockTree.BlockAddedToMain += OnBlockAddedToMain;
+        _blockTree.OnUpdateMainChain += OnUpdateMainChain;
         _snapshotDb = snapshotDb;
         _votingContract = votingContract;
         _specProvider = specProvider;
@@ -121,11 +121,12 @@ internal abstract class BaseSnapshotManager<TSnapshot> : ISnapshotManager
         _snapshotCache.Set(snapshot.HeaderHash, snapshot);
     }
 
-    private void OnBlockAddedToMain(object? sender, BlockReplacementEventArgs e)
+    private void OnUpdateMainChain(object? sender, OnUpdateMainChainArgs e)
     {
-        if (e.Block.Hash is null || !_blockTree.WasProcessed(e.Block.Number, e.Block.Hash))
+        if (!e.WereProcessed)
             return;
-        UpdateMasterNodes((XdcBlockHeader)e.Block.Header);
+        foreach (Block block in e.Blocks)
+            UpdateMasterNodes((XdcBlockHeader)block.Header);
     }
 
     private void UpdateMasterNodes(XdcBlockHeader header)
@@ -181,5 +182,5 @@ internal abstract class BaseSnapshotManager<TSnapshot> : ISnapshotManager
 
     protected abstract TSnapshot CreateSnapshot(XdcBlockHeader header, IXdcReleaseSpec spec);
 
-    public void Dispose() => _blockTree.BlockAddedToMain -= OnBlockAddedToMain;
+    public void Dispose() => _blockTree.OnUpdateMainChain -= OnUpdateMainChain;
 }

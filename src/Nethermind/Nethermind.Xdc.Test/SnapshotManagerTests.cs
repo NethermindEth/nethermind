@@ -167,7 +167,7 @@ internal class SnapshotManagerTests
 
     [TestCase(450)]
     [TestCase(1350)]
-    public void BlockAddedToMain_ShouldStoreSnapshot(int gapNumber)
+    public void OnUpdateMainChain_ShouldStoreSnapshot(int gapNumber)
     {
         IBlockTree blockTree = Substitute.For<IBlockTree>();
         ISpecProvider specProvider = Substitute.For<ISpecProvider>();
@@ -178,9 +178,8 @@ internal class SnapshotManagerTests
             .WithGeneratedExtraConsensusData(1)
             .WithNumber(gapNumber).TestObject;
         blockTree.FindHeader(Arg.Any<long>()).Returns(header);
-        blockTree.WasProcessed(Arg.Any<long>(), Arg.Any<Hash256>()).Returns(true);
 
-        blockTree.BlockAddedToMain += Raise.EventWith(new BlockReplacementEventArgs(new Block(header)));
+        blockTree.OnUpdateMainChain += Raise.EventWith(new OnUpdateMainChainArgs([new Block(header)], true));
         snapshotManager.GetSnapshotByGapNumber(header.Number)!.HeaderHash.Should().Be(header.Hash!);
     }
 
