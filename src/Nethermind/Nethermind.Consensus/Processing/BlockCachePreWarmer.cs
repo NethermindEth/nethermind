@@ -243,8 +243,6 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
 
                             if (Volatile.Read(ref MainThreadTxIndex) >= myTx) continue;
 
-                            // Execute once and move on. Even reverted txs warm the RocksDB
-                            // block cache and trie node caches for the main thread.
                             WarmupSingleTransaction(scope, block.Transactions[myTx], myTx, blockState);
                             scope.WorldState.Reset();
                         }
