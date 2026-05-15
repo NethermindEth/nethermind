@@ -12,7 +12,6 @@ using FluentAssertions;
 using Nethermind.Core.Exceptions;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
-using Nethermind.Specs;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Specs.ChainSpecStyle.Json;
 using Nethermind.Specs.Forks;
