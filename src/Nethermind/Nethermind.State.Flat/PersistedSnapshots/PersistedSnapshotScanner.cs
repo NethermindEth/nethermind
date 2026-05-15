@@ -25,6 +25,7 @@ public sealed class PersistedSnapshotScanner(WholeReadSession session, Persisted
 {
     private const int SlotPrefixLength = 30;
     private const int SlotSuffixLength = 32 - SlotPrefixLength;
+    private const int AddressHashPrefixLength = PersistedSnapshot.AddressHashPrefixLength;
 
     private readonly WholeReadSession _session = session;
     private readonly PersistedSnapshot _snapshot = snapshot;
@@ -41,19 +42,21 @@ public sealed class PersistedSnapshotScanner(WholeReadSession session, Persisted
 
     /// <summary>
     /// One row's worth of per-address data from column 0x01. The on-disk format bundles
-    /// the self-destruct flag (sub-tag 0x06), account RLP (0x05), and the slot HSST
-    /// (0x04) under a single per-address inner HSST, so a single outer walk yields all
-    /// three sub-tags at once. The <see cref="Address"/> is materialised once per row by
-    /// the enumerator and reused across sub-tag access and nested slot iteration.
+    /// all seven sub-tags (storage-trie 0x01/0x02/0x03, slots 0x04, account 0x05, SD 0x06,
+    /// raw-address preimage 0x07) under a single per-address inner HSST, so a single outer
+    /// walk yields every sub-tag at once. The <see cref="Address"/> is materialised once
+    /// per row from sub-tag 0x07 and reused across sub-tag access and nested iteration.
     /// </summary>
     public readonly ref struct PerAddressEntry(
-        WholeReadSessionReader reader, Address address, Bound slotBound, Bound accountBound, Bound sdBound)
+        WholeReadSessionReader reader, ValueHash256 addressHash, Address address,
+        Bound slotBound, Bound accountBound, Bound sdBound)
     {
         private readonly WholeReadSessionReader _reader = reader;
         private readonly Bound _slotBound = slotBound;
         private readonly Bound _accountBound = accountBound;
         private readonly Bound _sdBound = sdBound;
 
+        public ValueHash256 AddressHash { get; } = addressHash;
         public Address Address { get; } = address;
 
         /// <summary>
@@ -110,18 +113,17 @@ public sealed class PersistedSnapshotScanner(WholeReadSession session, Persisted
 
     public ref struct PerAddressEnumerator : IDisposable
     {
-        // Per-address inner DenseByteIndex tags range 0x01..0x06; pin every entry with one
-        // TryResolveAll call (sized to max tag + 1 = 7). Sub-tags 0x01/0x02/0x03 only exist
-        // in column 0x02 (storage trie), not here, but the dense index gap-fills them with
-        // length-0 absences and we read them as such without complaint.
-        private const int PerAddrSubTagCount = 7;
+        // Per-address inner DenseByteIndex tags range 0x01..0x07; pin every entry with one
+        // TryResolveAll call (sized to max tag + 1 = 8).
+        private const int PerAddrSubTagCount = 8;
 
         private readonly WholeReadSessionReader _reader;
         private HsstRefEnumerator<WholeReadSessionReader, NoOpPin> _addrEnum;
-        // _curAddress is allocated exactly once per outer row and reused for every sub-tag
-        // access and every yielded SlotEntry. Per-row cost: one 20-byte managed array plus
-        // one Address object.
+        // _curAddress is materialised once per outer row from sub-tag 0x07 (raw 20-byte
+        // preimage) and reused across every sub-tag access and yielded SlotEntry. Per-row
+        // cost: one Address object plus its backing 20-byte array.
         private Address? _curAddress;
+        private ValueHash256 _curAddressHash;
         private Bound _slotBound;
         private Bound _accountBound;
         private Bound _sdBound;
@@ -136,6 +138,7 @@ public sealed class PersistedSnapshotScanner(WholeReadSession session, Persisted
 
         public bool MoveNext()
         {
+            Span<byte> hashBuf = stackalloc byte[AddressHashPrefixLength];
             Span<byte> addrBuf = stackalloc byte[Address.Size];
             Span<Bound> sub = stackalloc Bound[PerAddrSubTagCount];
             while (_addrEnum.MoveNext())
@@ -147,12 +150,26 @@ public sealed class PersistedSnapshotScanner(WholeReadSession session, Persisted
                 Bound slot = sub[PersistedSnapshot.SlotSubTag[0]];
                 Bound account = sub[PersistedSnapshot.AccountSubTag[0]];
                 Bound sd = sub[PersistedSnapshot.SelfDestructSubTag[0]];
-                // Defensive: skip rows where every sub-tag is gap-filled. The builder never
-                // emits such a row, but DenseByteIndex tolerates it.
-                if (slot.Length == 0 && account.Length == 0 && sd.Length == 0)
+                Bound addr = sub[PersistedSnapshot.AddressSubTag[0]];
+                // Defensive: skip rows where every account-side sub-tag is gap-filled —
+                // those are storage-trie-only rows enumerated separately via StorageNodes.
+                if (slot.Length == 0 && account.Length == 0 && sd.Length == 0 && addr.Length == 0)
                     continue;
-                ReadOnlySpan<byte> key = _addrEnum.CopyCurrentLogicalKey(addrBuf);
-                _curAddress = new Address(key.ToArray());
+                ReadOnlySpan<byte> hashKey = _addrEnum.CopyCurrentLogicalKey(hashBuf);
+                _curAddressHash = default;
+                hashKey.CopyTo(_curAddressHash.BytesAsSpan[..hashKey.Length]);
+                if (addr.Length == Address.Size)
+                {
+                    _reader.TryRead(addr.Offset, addrBuf);
+                    _curAddress = new Address(addrBuf.ToArray());
+                }
+                else
+                {
+                    // Storage-trie-only addresses (no preimage in this snapshot) — caller
+                    // works off AddressHash; Address is null until a later snapshot
+                    // contributes the preimage via sub-tag 0x07.
+                    _curAddress = null;
+                }
                 _slotBound = slot;
                 _accountBound = account;
                 _sdBound = sd;
@@ -162,7 +179,7 @@ public sealed class PersistedSnapshotScanner(WholeReadSession session, Persisted
         }
 
         public readonly PerAddressEntry Current =>
-            new(_reader, _curAddress!, _slotBound, _accountBound, _sdBound);
+            new(_reader, _curAddressHash, _curAddress!, _slotBound, _accountBound, _sdBound);
 
         public void Dispose() => _addrEnum.Dispose();
     }
@@ -391,9 +408,10 @@ public sealed class PersistedSnapshotScanner(WholeReadSession session, Persisted
     {
         private readonly PersistedSnapshot _snapshot;
         private readonly WholeReadSessionReader _reader;
-        // Walks column 0x02 (per-addressHash storage trie). For each address-hash we open
-        // the inner storage-trie sub-tags in order: top (0x01), compact (0x02), then
-        // fallback (0x03).
+        // Walks the unified column 0x01 keyed by addressHash. For each row we open the
+        // storage-trie sub-tags in order: top (0x01), compact (0x02), then fallback (0x03).
+        // Other sub-tags (slots 0x04, account 0x05, SD 0x06, address preimage 0x07) are
+        // ignored here — those are surfaced via PerAddresses.
         private HsstRefEnumerator<WholeReadSessionReader, NoOpPin> _addrEnum;
         private HsstRefEnumerator<WholeReadSessionReader, NoOpPin> _pathEnum;
         // _stage: 0 = current address-hash's top sub-tag, 1 = its compact sub-tag,
@@ -419,7 +437,7 @@ public sealed class PersistedSnapshotScanner(WholeReadSession session, Persisted
             _level = 0;
             _curHash = default;
             HsstReader<WholeReadSessionReader, NoOpPin> r = new(in _reader);
-            Bound colBound = r.TrySeek(PersistedSnapshot.StorageTrieColumnTag, out Bound matched) ? matched : default;
+            Bound colBound = r.TrySeek(PersistedSnapshot.AccountColumnTag, out Bound matched) ? matched : default;
             _addrEnum = new HsstRefEnumerator<WholeReadSessionReader, NoOpPin>(in _reader, colBound);
         }
 

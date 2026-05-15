@@ -20,18 +20,17 @@ namespace Nethermind.State.Flat.PersistedSnapshots;
 /// 8-byte <see cref="NodeRef"/> pointing into a blob arena. The reservation
 /// owned by this snapshot stores the metadata bytes only.
 ///
-/// The outer HSST has 6 column entries, each containing an inner HSST.
+/// The outer HSST has 5 column entries, each containing an inner HSST.
 /// Inner HSST keys are the entity keys without the tag prefix:
 ///   Column 0x00: Metadata — String key → version, block range, ref_ids list, state root values
-///   Column 0x01: Address (20 raw Address bytes) → per-address HSST {
-///       0x04 (SlotSubTag):            nested HSST (SlotPrefix(30) → nested HSST(SlotSuffix(2) → SlotValue))
-///       0x05 (AccountSubTag):         raw account slim RLP bytes (empty = deleted account)
-///       0x06 (SelfDestructSubTag):    raw SD flag bytes (empty = destructed, 0x01 = new account)
-///   }
-///   Column 0x02: AddressHash (20 bytes) → per-addressHash HSST {
+///   Column 0x01: AddressHash (20 bytes, = Keccak(address)[..20]) → per-address HSST {
 ///       0x01 (StorageTopSubTag):      nested HSST (TreePath (3 bytes) → NodeRef, path length 0-5)
 ///       0x02 (StorageCompactSubTag):  nested HSST (TreePath (8 bytes compact) → NodeRef, path length 8-15)
 ///       0x03 (StorageFallbackSubTag): nested HSST (TreePath.Path (33 bytes) → NodeRef, path length 16+)
+///       0x04 (SlotSubTag):            nested HSST (SlotPrefix(30) → nested HSST(SlotSuffix(2) → SlotValue))
+///       0x05 (AccountSubTag):         raw account slim RLP bytes (empty = deleted account)
+///       0x06 (SelfDestructSubTag):    raw SD flag bytes (empty = destructed, 0x01 = new account)
+///       0x07 (AddressSubTag):         raw 20-byte Address bytes — preimage of the outer addressHash
 ///   }
 ///   Column 0x03: TreePath (8 bytes compact) → NodeRef (path length 6-15)
 ///   Column 0x05: TreePath (3 bytes) → NodeRef (path length 0-5)
@@ -42,23 +41,21 @@ public sealed class PersistedSnapshot : RefCountingDisposable
     // Tag prefixes for outer HSST columns
     internal static readonly byte[] MetadataTag = [0x00];
     internal static readonly byte[] AccountColumnTag = [0x01];
-    internal static readonly byte[] StorageTrieColumnTag = [0x02];
     internal static readonly byte[] StateNodeTag = [0x03];
     internal static readonly byte[] StateTopNodesTag = [0x05];
     internal static readonly byte[] StateNodeFallbackTag = [0x06];
 
-    // Outer-key widths for the per-address and per-addressHash columns.
-    internal const int AddressKeyLength = Address.Size;          // 20 — column 0x01
-    internal const int AddressHashPrefixLength = 20;             // column 0x02 outer key
+    // Per-address column 0x01 outer key width — first 20 bytes of Keccak(address).
+    internal const int AddressHashPrefixLength = 20;
 
-    // Sub-tags within per-address HSST (column 0x01). Storage-trie sub-tags
-    // 0x01..0x03 live under StorageTrieColumnTag (column 0x02) instead.
+    // Sub-tags within per-address HSST (column 0x01), sorted byte order.
     internal static readonly byte[] StorageTopSubTag = [0x01];
     internal static readonly byte[] StorageCompactSubTag = [0x02];
     internal static readonly byte[] StorageFallbackSubTag = [0x03];
     internal static readonly byte[] SlotSubTag = [0x04];
     internal static readonly byte[] AccountSubTag = [0x05];
     internal static readonly byte[] SelfDestructSubTag = [0x06];
+    internal static readonly byte[] AddressSubTag = [0x07];
 
     // Metadata column keys. The HSST builder requires uniform key length per HSST,
     // so the original ASCII keys are NUL-padded to a fixed 10 bytes (the longest
@@ -224,16 +221,13 @@ public sealed class PersistedSnapshot : RefCountingDisposable
         return ReadBlobArenaRlp(nodeRef.BlobArenaId, nodeRef.RlpDataOffset);
     }
 
-    private bool TryGetAddressBound(in ArenaByteReader reader, Address address, out Bound addressBound) =>
-        PersistedSnapshotReader.TryGetAddressHsstBound<ArenaByteReader, NoOpPin>(in reader, address, out addressBound);
+    private bool TryGetAddressBound(in ArenaByteReader reader, in ValueHash256 addressHash, out Bound addressBound) =>
+        PersistedSnapshotReader.TryGetAddressHsstBound<ArenaByteReader, NoOpPin>(in reader, in addressHash, out addressBound);
 
-    private bool TryGetStorageTrieAddressBound(in ArenaByteReader reader, in ValueHash256 addressHash, out Bound addressBound) =>
-        PersistedSnapshotReader.TryGetStorageTrieAddressHsstBound<ArenaByteReader, NoOpPin>(in reader, in addressHash, out addressBound);
-
-    public bool TryGetAccount(Address address, out Account? account)
+    public bool TryGetAccount(in ValueHash256 addressHash, out Account? account)
     {
         ArenaByteReader reader = CreateReader();
-        if (!TryGetAddressBound(in reader, address, out Bound addrBound) ||
+        if (!TryGetAddressBound(in reader, in addressHash, out Bound addrBound) ||
             !PersistedSnapshotReader.TryGetAccount<ArenaByteReader, NoOpPin>(in reader, addrBound, out Bound b))
         {
             account = null;
@@ -253,10 +247,10 @@ public sealed class PersistedSnapshot : RefCountingDisposable
         return true;
     }
 
-    public bool TryGetSlot(Address address, in UInt256 index, ref SlotValue slotValue)
+    public bool TryGetSlot(in ValueHash256 addressHash, in UInt256 index, ref SlotValue slotValue)
     {
         ArenaByteReader reader = CreateReader();
-        if (!TryGetAddressBound(in reader, address, out Bound addrBound) ||
+        if (!TryGetAddressBound(in reader, in addressHash, out Bound addrBound) ||
             !PersistedSnapshotReader.TryGetSlot<ArenaByteReader, NoOpPin>(in reader, addrBound, in index, out Bound b))
             return false;
         Span<byte> buf = stackalloc byte[32];
@@ -266,10 +260,10 @@ public sealed class PersistedSnapshot : RefCountingDisposable
         return true;
     }
 
-    public bool? TryGetSelfDestructFlag(Address address)
+    public bool? TryGetSelfDestructFlag(in ValueHash256 addressHash)
     {
         ArenaByteReader reader = CreateReader();
-        if (!TryGetAddressBound(in reader, address, out Bound addrBound))
+        if (!TryGetAddressBound(in reader, in addressHash, out Bound addrBound))
             return null;
         return PersistedSnapshotReader.TryGetSelfDestructFlag<ArenaByteReader, NoOpPin>(in reader, addrBound);
     }
@@ -289,7 +283,7 @@ public sealed class PersistedSnapshot : RefCountingDisposable
     public bool TryLoadStorageNodeRlp(in ValueHash256 addressHash, in TreePath path, out byte[]? nodeRlp)
     {
         ArenaByteReader reader = CreateReader();
-        if (!TryGetStorageTrieAddressBound(in reader, in addressHash, out Bound addrBound) ||
+        if (!TryGetAddressBound(in reader, in addressHash, out Bound addrBound) ||
             !PersistedSnapshotReader.TryLoadStorageNodeRlpInBound<ArenaByteReader, NoOpPin>(in reader, addrBound, in path, out Bound bound))
         {
             nodeRlp = null;

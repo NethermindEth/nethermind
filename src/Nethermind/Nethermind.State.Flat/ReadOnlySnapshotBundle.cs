@@ -71,16 +71,17 @@ public sealed class ReadOnlySnapshotBundle(
         }
 
         // Check persisted snapshots (newest-first). PersistedSnapshot's per-address column
-        // is keyed by raw 20-byte Address bytes, so the bloom seed and the bound seek both
-        // operate on address.Bytes directly — no hashing in this layer.
+        // is keyed by the 20-byte addressHash prefix; compute the hash once here and reuse
+        // it for both the bloom seed and the bound seek.
         long psw = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
         if (persistedSnapshots.Count > 0)
         {
-            ulong addrBloomKey = PersistedSnapshotBloomBuilder.AddressKey(address);
+            ValueHash256 addressHash = ValueKeccak.Compute(address.Bytes);
+            ulong addrBloomKey = PersistedSnapshotBloomBuilder.AddressKey(in addressHash);
             for (int i = persistedSnapshots.Count - 1; i >= 0; i--)
             {
                 if (!persistedBlooms[i].KeyBloom.MightContain(addrBloomKey)) continue;
-                if (persistedSnapshots[i].TryGetAccount(address, out Account? acc))
+                if (persistedSnapshots[i].TryGetAccount(in addressHash, out Account? acc))
                 {
                     if (recordDetailedMetrics) Metrics.ReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - psw, _readAccountPersistedLabel);
                     return acc;
@@ -114,11 +115,12 @@ public sealed class ReadOnlySnapshotBundle(
 
         if (persistedSnapshots.Count > 0)
         {
-            ulong addrBloomKey = PersistedSnapshotBloomBuilder.AddressKey(address);
+            ValueHash256 addressHash = ValueKeccak.Compute(address.Bytes);
+            ulong addrBloomKey = PersistedSnapshotBloomBuilder.AddressKey(in addressHash);
             for (int i = persistedSnapshots.Count - 1; i >= 0; i--)
             {
                 if (!persistedBlooms[i].KeyBloom.MightContain(addrBloomKey)) continue;
-                bool? flag = persistedSnapshots[i].TryGetSelfDestructFlag(address);
+                bool? flag = persistedSnapshots[i].TryGetSelfDestructFlag(in addressHash);
                 if (flag.HasValue)
                     return i;
             }
@@ -153,11 +155,12 @@ public sealed class ReadOnlySnapshotBundle(
 
         long psw = Stopwatch.GetTimestamp();
         // Bloom checks both the address-key and the per-slot key before paying for a
-        // column seek into the persisted snapshot. PersistedSnapshot is keyed by raw
-        // Address; the bloom seed and TryGetSlot both consume address bytes directly.
+        // column seek into the persisted snapshot. PersistedSnapshot is keyed by addressHash;
+        // hash the address once and reuse it for bloom + bound lookup.
         if (persistedSnapshots.Count > 0)
         {
-            ulong addrBloomKey = PersistedSnapshotBloomBuilder.AddressKey(address);
+            ValueHash256 addressHash = ValueKeccak.Compute(address.Bytes);
+            ulong addrBloomKey = PersistedSnapshotBloomBuilder.AddressKey(in addressHash);
             ulong slotBloomKey = PersistedSnapshotBloomBuilder.SlotKey(addrBloomKey, in index);
             for (int i = persistedSnapshots.Count - 1; i >= 0; i--)
             {
@@ -165,7 +168,7 @@ public sealed class ReadOnlySnapshotBundle(
                 if (bloom.KeyBloom.MightContain(addrBloomKey) && bloom.KeyBloom.MightContain(slotBloomKey))
                 {
                     SlotValue slotValue = default;
-                    if (persistedSnapshots[i].TryGetSlot(address, in index, ref slotValue))
+                    if (persistedSnapshots[i].TryGetSlot(in addressHash, in index, ref slotValue))
                     {
                         if (recordDetailedMetrics) Metrics.ReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - sw, _readStoragePersistedLabel);
                         return slotValue.ToEvmBytes();

@@ -177,7 +177,8 @@ internal static class PersistedSnapshotUtils
             foreach (KeyValuePair<HashedKey<Address>, Account?> kv in snapshot.Accounts)
             {
                 Address address = kv.Key;
-                if (!persisted.TryGetAccount(address, out Account? acc))
+                ValueHash256 addressHash = ValueKeccak.Compute(address.Bytes);
+                if (!persisted.TryGetAccount(in addressHash, out Account? acc))
                     throw new InvalidOperationException($"Account {address} not found in persisted snapshot");
 
                 if (kv.Value is null)
@@ -199,8 +200,9 @@ internal static class PersistedSnapshotUtils
             foreach (KeyValuePair<HashedKey<(Address, UInt256)>, SlotValue?> kv in snapshot.Storages)
             {
                 (Address addr, UInt256 slot) = kv.Key.Key;
+                ValueHash256 addressHash = ValueKeccak.Compute(addr.Bytes);
                 SlotValue slotValue = default;
-                if (!persisted.TryGetSlot(addr, slot, ref slotValue))
+                if (!persisted.TryGetSlot(in addressHash, slot, ref slotValue))
                     throw new InvalidOperationException($"Storage {addr}:{slot} not found in persisted snapshot");
 
                 SlotValue expected = kv.Value ?? default;
@@ -212,7 +214,8 @@ internal static class PersistedSnapshotUtils
             foreach (KeyValuePair<HashedKey<Address>, bool> kv in snapshot.SelfDestructedStorageAddresses)
             {
                 Address address = kv.Key;
-                bool? flag = persisted.TryGetSelfDestructFlag(address) ?? throw new InvalidOperationException($"SelfDestruct {address} not found in persisted snapshot");
+                ValueHash256 addressHash = ValueKeccak.Compute(address.Bytes);
+                bool? flag = persisted.TryGetSelfDestructFlag(in addressHash) ?? throw new InvalidOperationException($"SelfDestruct {address} not found in persisted snapshot");
                 if (flag.Value != kv.Value)
                     throw new InvalidOperationException($"SelfDestruct {address} mismatch: expected {kv.Value}, got {flag.Value}");
             }

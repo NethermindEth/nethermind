@@ -64,7 +64,7 @@ public class PersistedSnapshotRepositoryTests
         Assert.That(repo.TryLeaseSnapshotTo(s1, out PersistedSnapshot? persisted), Is.True);
         Assert.That(persisted!.From, Is.EqualTo(s0));
         Assert.That(persisted.To, Is.EqualTo(s1));
-        Assert.That(persisted.TryGetAccount(TestItem.AddressA, out Account? decoded), Is.True);
+        Assert.That(persisted.TryGetAccount(TestItem.AddressA.ToAccountPath, out Account? decoded), Is.True);
         Assert.That(decoded!.Balance, Is.EqualTo((UInt256)1000));
         persisted.Dispose();
     }
@@ -173,17 +173,17 @@ public class PersistedSnapshotRepositoryTests
         using PersistedSnapshot _ = persisted!;
 
         // 1. Account
-        Assert.That(persisted!.TryGetAccount(acctAddr, out Account? account), Is.True);
+        Assert.That(persisted!.TryGetAccount(acctAddr.ToAccountPath, out Account? account), Is.True);
         Assert.That(account, Is.Not.Null);
         Assert.That(account!.Balance, Is.EqualTo((UInt256)500));
 
         // 2. Storage slot
         SlotValue readSlot = default;
-        Assert.That(persisted.TryGetSlot(storageAddr, slotIndex, ref readSlot), Is.True);
+        Assert.That(persisted.TryGetSlot(storageAddr.ToAccountPath, slotIndex, ref readSlot), Is.True);
         Assert.That(readSlot.AsReadOnlySpan.ToArray(), Is.EqualTo(slotBytes));
 
         // 3. Self-destruct flag
-        Assert.That(persisted.TryGetSelfDestructFlag(selfDestructAddr), Is.Not.Null);
+        Assert.That(persisted.TryGetSelfDestructFlag(selfDestructAddr.ToAccountPath), Is.Not.Null);
 
         // 4. State trie node
         Assert.That(persisted.TryLoadStateNodeRlp(statePath, out byte[]? stateResult), Is.True);
