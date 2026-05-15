@@ -10,6 +10,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
 using Nethermind.Consensus.Producers;
+using Nethermind.Consensus.Stateless;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.SszRest;
 using NUnit.Framework;
@@ -648,4 +649,102 @@ public class SszCodecTests
             decoded.Commitments![i].AsSpan().ToArray().Should().BeEquivalentTo(proofs[i],
                 $"commitment {i} bytes must round-trip exactly");
     }
+
+    [Test]
+    public void PayloadStatusWire_ValidationError_accepts_8192_bytes()
+    {
+        string longError = new('x', 8192);
+        PayloadStatusV1 ps = new() { Status = PayloadStatus.Invalid, ValidationError = longError };
+
+        Action act = () => Encode(ps, SszCodec.EncodePayloadStatus);
+
+        act.Should().NotThrow("ValidationError SSZ list must accommodate 8192 bytes per spec");
+    }
+
+    [Test]
+    public void PayloadStatusWire_ValidationError_is_truncated_to_8192_bytes_not_1024()
+    {
+        string oversized = new('a', 9000);
+        PayloadStatusV1 ps = new() { Status = PayloadStatus.Invalid, ValidationError = oversized };
+
+        byte[] encoded = Encode(ps, SszCodec.EncodePayloadStatus);
+
+        PayloadStatusWire.Decode(encoded, out PayloadStatusWire wire);
+        wire.ValidationError.Should().NotBeNull();
+        wire.ValidationError!.Length.Should().Be(8192,
+            "oversized ValidationError must be truncated to VALIDATION_ERROR_MAX=8192, not 1024");
+    }
+
+    [Test]
+    public void EncodePayloadStatus_truncation_does_not_split_multibyte_utf8_codepoint()
+    {
+        string error = new string('a', 8190) + "€"; // 8190 + 3 = 8193 UTF-8 bytes
+        PayloadStatusV1 ps = new() { Status = PayloadStatus.Invalid, ValidationError = error };
+
+        byte[] encoded = Encode(ps, SszCodec.EncodePayloadStatus);
+
+        PayloadStatusWire.Decode(encoded, out PayloadStatusWire wire);
+        wire.ValidationError.Should().NotBeNull();
+
+        Action decode = () => System.Text.Encoding.UTF8.GetString(wire.ValidationError!);
+        decode.Should().NotThrow("truncated ValidationError bytes must be valid UTF-8");
+
+        wire.ValidationError!.Length.Should().Be(8190,
+            "TruncateUtf8 must drop the whole multi-byte codepoint, not split it");
+    }
+
+    [Test]
+    public void EncodeNewPayloadWithWitnessResponse_non_valid_status_always_encodes_empty_witness()
+    {
+        using Witness nonNullWitness = MakeMinimalWitness();
+
+        foreach (string nonValidStatus in new[] { PayloadStatus.Invalid, PayloadStatus.Syncing, PayloadStatus.Accepted })
+        {
+            PayloadStatusV1 ps = new() { Status = nonValidStatus };
+
+            byte[] encoded = Encode(
+                (ps, (Witness?)nonNullWitness),
+                static (t, w) => SszCodec.EncodeNewPayloadWithWitnessResponse(t.Item1, t.Item2, w));
+
+            NewPayloadWithWitnessResponseV1Wire.Decode(encoded, out NewPayloadWithWitnessResponseV1Wire wire);
+            wire.Witness.Should().BeNullOrEmpty(
+                $"witness must be None (empty list) when status is {nonValidStatus}, not {PayloadStatus.Valid}");
+        }
+    }
+
+    [Test]
+    public void EncodeNewPayloadWithWitnessResponse_valid_status_with_witness_encodes_witness_field()
+    {
+        using Witness witness = MakeMinimalWitness();
+        PayloadStatusV1 ps = new() { Status = PayloadStatus.Valid, LatestValidHash = TestItem.KeccakA };
+
+        byte[] encoded = Encode(
+            (ps, (Witness?)witness),
+            static (t, w) => SszCodec.EncodeNewPayloadWithWitnessResponse(t.Item1, t.Item2, w));
+
+        NewPayloadWithWitnessResponseV1Wire.Decode(encoded, out NewPayloadWithWitnessResponseV1Wire wire);
+        wire.Witness.Should().HaveCount(1, "VALID status with a witness must encode the witness field");
+        wire.Status.Should().Be(0, "VALID maps to SSZ byte 0");
+    }
+
+    [Test]
+    public void EncodeNewPayloadWithWitnessResponse_valid_status_null_witness_encodes_empty_witness()
+    {
+        PayloadStatusV1 ps = new() { Status = PayloadStatus.Valid };
+
+        byte[] encoded = Encode(
+            (ps, (Witness?)null),
+            static (t, w) => SszCodec.EncodeNewPayloadWithWitnessResponse(t.Item1, t.Item2, w));
+
+        NewPayloadWithWitnessResponseV1Wire.Decode(encoded, out NewPayloadWithWitnessResponseV1Wire wire);
+        wire.Witness.Should().BeNullOrEmpty("null witness must encode as None regardless of status");
+    }
+
+    private static Witness MakeMinimalWitness() => new()
+    {
+        State = new Core.Collections.ArrayPoolList<byte[]>(0),
+        Codes = new Core.Collections.ArrayPoolList<byte[]>(0),
+        Keys = new Core.Collections.ArrayPoolList<byte[]>(0),
+        Headers = new Core.Collections.ArrayPoolList<byte[]>(0),
+    };
 }

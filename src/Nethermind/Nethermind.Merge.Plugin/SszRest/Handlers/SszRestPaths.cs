@@ -19,6 +19,8 @@ public static class SszRestPaths
 
     public const string Blobs = "blobs";
 
+    public const string NewPayloadWithWitness = "new-payload-with-witness";
+
     public const string PostV1Payloads = "POST /engine/v1/payloads";
     public const string GetV1Payloads = "GET /engine/v1/payloads/{payload_id}";
     public const string PostV1Forkchoice = "POST /engine/v1/forkchoice";
@@ -53,4 +55,5 @@ public static class SszRestPaths
     public const string PostV4Forkchoice = "POST /engine/v4/forkchoice";
     public const string PostV2PayloadBodiesByHash = "POST /engine/v2/payloads/bodies/by-hash";
     public const string PostV2PayloadBodiesByRange = "POST /engine/v2/payloads/bodies/by-range";
+    public const string RestEngineNewPayloadWithWitness = "rest_engine_newPayloadWithWitness";
 }

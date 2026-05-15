@@ -11,6 +11,8 @@ using FluentAssertions;
 using Microsoft.AspNetCore.Http;
 using Nethermind.Config;
 using Nethermind.Consensus.Producers;
+using Nethermind.Consensus.Stateless;
+using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Authentication;
 using Nethermind.Core.Crypto;
@@ -31,6 +33,8 @@ namespace Nethermind.Merge.Plugin.Test.SszRest;
 public class SszMiddlewareTests
 {
     private IEngineRpcModule _engineModule = null!;
+    private IBlockTree _blockTree = null!;
+    private IWitnessGeneratingBlockProcessingEnvFactory _witnessEnvFactory = null!;
 
     private IJsonRpcUrlCollection _urlCollection = null!;
     private IRpcAuthentication _auth = null!;
@@ -48,6 +52,8 @@ public class SszMiddlewareTests
     public void SetUp()
     {
         _engineModule = Substitute.For<IEngineRpcModule>();
+        _blockTree = Substitute.For<IBlockTree>();
+        _witnessEnvFactory = Substitute.For<IWitnessGeneratingBlockProcessingEnvFactory>();
 
         _urlCollection = Substitute.For<IJsonRpcUrlCollection>();
         _auth = Substitute.For<IRpcAuthentication>();
@@ -98,6 +104,7 @@ public class SszMiddlewareTests
 
             new ClientVersionSszHandler(_engineModule),
             new CapabilitiesSszHandler(_engineModule),
+            new NewPayloadWithWitnessSszHandler(_engineModule, _blockTree, _witnessEnvFactory),
         ];
 
         return new SszMiddleware(
@@ -134,6 +141,15 @@ public class SszMiddlewareTests
         DefaultHttpContext ctx = MakeBaseContext("GET", path, port);
         ctx.Request.Headers.Accept = OctetStream;
         ctx.Request.Body = Stream.Null;
+        return ctx;
+    }
+
+    private static DefaultHttpContext MakeJsonPostContext(string path, byte[] body, int port = AuthenticatedPort)
+    {
+        DefaultHttpContext ctx = MakeBaseContext("POST", path, port);
+        ctx.Request.ContentType = "application/json";
+        ctx.Request.ContentLength = body.Length;
+        ctx.Request.Body = new MemoryStream(body);
         return ctx;
     }
 
@@ -606,6 +622,170 @@ public class SszMiddlewareTests
         BitConverter.TryWriteBytes(request.AsSpan(0, 4), (uint)4);
         Buffer.BlockCopy(clientVersion, 0, request, 4, clientVersion.Length);
         return request;
+    }
+
+    [Test]
+    public async Task Error_responses_use_application_json_content_type()
+    {
+        DefaultHttpContext ctx = MakePostContext("/engine/v1/unknown-resource", []);
+
+        await _middleware.InvokeAsync(ctx);
+
+        ctx.Response.StatusCode.Should().Be(StatusCodes.Status404NotFound);
+        ctx.Response.ContentType.Should().Contain("application/json",
+            "spec mandates Content-Type: application/json for all error responses");
+    }
+
+    [Test]
+    public async Task Error_response_body_is_json_object_with_code_and_message()
+    {
+        DefaultHttpContext ctx = MakePostContext("/engine/v1/unknown-resource", []);
+
+        await _middleware.InvokeAsync(ctx);
+
+        string body = System.Text.Encoding.UTF8.GetString(ResponseBytes(ctx));
+        body.Should().Contain("\"code\"", "error body must have a 'code' field");
+        body.Should().Contain("\"message\"", "error body must have a 'message' field");
+
+        Action parse = () => System.Text.Json.JsonDocument.Parse(body);
+        parse.Should().NotThrow("error body must be valid JSON");
+    }
+
+    [Test]
+    public async Task Auth_failure_error_response_is_application_json()
+    {
+        _auth.Authenticate(Arg.Any<string>()).Returns(false);
+        DefaultHttpContext ctx = MakePostContext("/engine/v1/payloads", BuildMinimalV1NewPayloadRequest());
+
+        await _middleware.InvokeAsync(ctx);
+
+        ctx.Response.StatusCode.Should().Be(StatusCodes.Status401Unauthorized);
+        ctx.Response.ContentType.Should().Contain("application/json");
+        string body = System.Text.Encoding.UTF8.GetString(ResponseBytes(ctx));
+        body.Should().Contain("\"code\"");
+    }
+
+    [Test]
+    public async Task NewPayloadWithWitness_returns_200_for_valid_status()
+    {
+        PayloadStatusV1 status = new() { Status = PayloadStatus.Valid, LatestValidHash = TestItem.KeccakA };
+        _engineModule.engine_newPayloadV5(
+                Arg.Any<ExecutionPayloadV4>(), Arg.Any<byte[]?[]>(), Arg.Any<Hash256?>(), Arg.Any<byte[][]?>())
+            .Returns(ResultWrapper<PayloadStatusV1>.Success(status));
+
+        byte[] body = BuildMinimalWitnessRequestBody();
+        DefaultHttpContext ctx = MakeJsonPostContext("/new-payload-with-witness", body);
+
+        await _middleware.InvokeAsync(ctx);
+
+        await _engineModule.Received(1).engine_newPayloadV5(
+            Arg.Any<ExecutionPayloadV4>(), Arg.Any<byte[]?[]>(), Arg.Any<Hash256?>(), Arg.Any<byte[][]?>());
+        ctx.Response.StatusCode.Should().NotBe(StatusCodes.Status404NotFound,
+            "the witness handler must be registered — 404 means Bug 5 is not fixed");
+    }
+
+    [Test]
+    public async Task NewPayloadWithWitness_non_valid_status_returns_200_with_ssz_body()
+    {
+        PayloadStatusV1 status = new() { Status = PayloadStatus.Syncing };
+        _engineModule.engine_newPayloadV5(
+                Arg.Any<ExecutionPayloadV4>(), Arg.Any<byte[]?[]>(), Arg.Any<Hash256?>(), Arg.Any<byte[][]?>())
+            .Returns(ResultWrapper<PayloadStatusV1>.Success(status));
+
+        byte[] body = BuildMinimalWitnessRequestBody();
+        DefaultHttpContext ctx = MakeJsonPostContext("/new-payload-with-witness", body);
+
+        await _middleware.InvokeAsync(ctx);
+
+        ctx.Response.StatusCode.Should().Be(StatusCodes.Status200OK,
+            "SYNCING is a normal processing outcome and must return 200, not an HTTP error");
+        ctx.Response.ContentType.Should().Contain(OctetStream);
+        ResponseBytes(ctx).Should().NotBeEmpty("the SSZ body must contain the status fields");
+    }
+
+    [Test]
+    public async Task NewPayloadWithWitness_malformed_json_returns_400_application_json()
+    {
+        byte[] badBody = System.Text.Encoding.UTF8.GetBytes("not json at all");
+        DefaultHttpContext ctx = MakeJsonPostContext("/new-payload-with-witness", badBody);
+
+        await _middleware.InvokeAsync(ctx);
+
+        ctx.Response.StatusCode.Should().Be(StatusCodes.Status400BadRequest);
+        ctx.Response.ContentType.Should().Contain("application/json",
+            "error responses must be application/json per spec");
+        string responseBody = System.Text.Encoding.UTF8.GetString(ResponseBytes(ctx));
+        responseBody.Should().Contain("\"code\"");
+    }
+
+    [Test]
+    public async Task NewPayloadWithWitness_non_post_method_returns_405()
+    {
+        DefaultHttpContext ctx = MakeGetContext("/new-payload-with-witness");
+
+        await _middleware.InvokeAsync(ctx);
+
+        ctx.Response.StatusCode.Should().Be(StatusCodes.Status405MethodNotAllowed,
+            "spec mandates 405 for any method other than POST on this endpoint");
+        ctx.Response.ContentType.Should().Contain("application/json");
+    }
+
+    [Test]
+    public async Task NewPayloadWithWitness_unsupported_fork_returns_400_with_correct_code()
+    {
+        _engineModule.engine_newPayloadV5(
+                Arg.Any<ExecutionPayloadV4>(), Arg.Any<byte[]?[]>(), Arg.Any<Hash256?>(), Arg.Any<byte[][]?>())
+            .Returns(ResultWrapper<PayloadStatusV1>.Fail("Unsupported fork", MergeErrorCodes.UnsupportedFork));
+
+        byte[] body = BuildMinimalWitnessRequestBody();
+        DefaultHttpContext ctx = MakeJsonPostContext("/new-payload-with-witness", body);
+
+        await _middleware.InvokeAsync(ctx);
+
+        ctx.Response.StatusCode.Should().Be(StatusCodes.Status400BadRequest);
+        ctx.Response.ContentType.Should().Contain("application/json");
+        string responseBody = System.Text.Encoding.UTF8.GetString(ResponseBytes(ctx));
+        responseBody.Should().Contain(MergeErrorCodes.UnsupportedFork.ToString(),
+            "the JSON-RPC error code -38005 must be present in the error body");
+    }
+
+    private static byte[] BuildMinimalWitnessRequestBody()
+    {
+        ExecutionPayloadV4 payload = new()
+        {
+            ParentHash = TestItem.KeccakA,
+            FeeRecipient = TestItem.AddressA,
+            StateRoot = TestItem.KeccakB,
+            ReceiptsRoot = TestItem.KeccakC,
+            LogsBloom = Bloom.Empty,
+            PrevRandao = TestItem.KeccakD,
+            BlockNumber = 1,
+            GasLimit = 1_000_000,
+            GasUsed = 0,
+            Timestamp = 1_700_000_000,
+            ExtraData = [],
+            BaseFeePerGas = 1,
+            BlockHash = TestItem.KeccakE,
+            Transactions = [],
+            Withdrawals = [],
+            BlobGasUsed = 0,
+            ExcessBlobGas = 0,
+            ParentBeaconBlockRoot = TestItem.KeccakA,
+            ExecutionRequests = [],
+            BlockAccessList = []
+        };
+
+        string json = System.Text.Json.JsonSerializer.Serialize(
+            new object?[]
+            {
+                payload,
+                Array.Empty<string>(),
+                TestItem.KeccakA,
+                Array.Empty<string>()
+            },
+            Serialization.Json.EthereumJsonSerializer.JsonOptions);
+
+        return System.Text.Encoding.UTF8.GetBytes(json);
     }
 
 }

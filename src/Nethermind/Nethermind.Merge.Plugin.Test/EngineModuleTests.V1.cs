@@ -1848,6 +1848,7 @@ public partial class EngineModuleTests
         "POST /engine/v4/forkchoice",
         "POST /engine/v2/payloads/bodies/by-hash",
         "POST /engine/v2/payloads/bodies/by-range",
+        "rest_engine_newPayloadWithWitness",
     ];
 
     public static IEnumerable<TestCaseData> SszRestPathsAdvertisedCases()

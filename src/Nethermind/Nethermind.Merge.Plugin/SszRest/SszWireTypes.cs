@@ -33,7 +33,7 @@ public partial struct PayloadStatusWire
 {
     public byte Status { get; set; }
     [SszList(1)] public Hash256[]? LatestValidHash { get; set; }
-    [SszList(1024)] public byte[]? ValidationError { get; set; }
+    [SszList(8192)] public byte[]? ValidationError { get; set; }
 }
 
 [SszContainer]
@@ -368,3 +368,25 @@ public partial struct GetBlobsV3ResponseWire
     [SszList(128)] public NullableBlobAndProofV2Wire[]? BlobsAndProofs { get; set; }
 }
 
+[SszContainer(isCollectionItself: true)]
+public partial struct SszWitnessItem
+{
+    [SszList(1048576)] public byte[]? Bytes { get; set; }
+}
+
+[SszContainer]
+public partial struct ExecutionWitnessV1Wire
+{
+    [SszList(1048576)] public SszWitnessItem[]? State { get; set; }
+    [SszList(1048576)] public SszWitnessItem[]? Codes { get; set; }
+    [SszList(1048576)] public SszWitnessItem[]? Headers { get; set; }
+}
+
+[SszContainer]
+public partial struct NewPayloadWithWitnessResponseV1Wire
+{
+    public byte Status { get; set; }
+    [SszList(1)] public Hash256[]? LatestValidHash { get; set; }
+    [SszList(8192)] public byte[]? ValidationError { get; set; }
+    [SszList(1)] public ExecutionWitnessV1Wire[]? Witness { get; set; }
+}

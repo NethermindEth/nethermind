@@ -74,7 +74,7 @@ public abstract class SszEndpointHandlerBase : ISszEndpointHandler
         {
             await (result switch
             {
-                { Result.ResultType: not ResultType.Success } => WriteErrorAsync(ctx, ErrorCodeToHttpStatus(result.ErrorCode), result.Result.Error ?? "Unknown error"),
+                { Result.ResultType: not ResultType.Success } => WriteErrorAsync(ctx, ErrorCodeToHttpStatus(result.ErrorCode), result.Result.Error ?? "Unknown error", result.ErrorCode),
                 { Data: null } => SetNoContent(ctx),
                 { Data: var data } => WriteSszAsync(ctx, data, encode)
             });
@@ -87,11 +87,12 @@ public abstract class SszEndpointHandlerBase : ISszEndpointHandler
         return Task.CompletedTask;
     }
 
-    public static async Task WriteErrorAsync(HttpContext ctx, int status, string message)
+    public static async Task WriteErrorAsync(HttpContext ctx, int status, string message, int jsonRpcCode = ErrorCodes.InternalError)
     {
         ctx.Response.StatusCode = status;
-        ctx.Response.ContentType = "text/plain";
-        await ctx.Response.WriteAsync(message, ctx.RequestAborted);
+        ctx.Response.ContentType = "application/json";
+        string json = $"{{\"code\":{jsonRpcCode},\"message\":{System.Text.Json.JsonSerializer.Serialize(message)}}}";
+        await ctx.Response.WriteAsync(json, ctx.RequestAborted);
     }
 
     private static int ErrorCodeToHttpStatus(int errorCode) => errorCode switch

@@ -5,7 +5,9 @@ using System;
 using System.Buffers;
 using System.Collections.Generic;
 using System.Text;
+using Nethermind.Consensus.Stateless;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Consensus.Producers;
@@ -31,6 +33,54 @@ public static class SszCodec
 
     public static int EncodePayloadStatus(PayloadStatusV1 ps, IBufferWriter<byte> writer)
         => EncodeToWriter(BuildPayloadStatusWire(ps), writer);
+
+    public static int EncodeNewPayloadWithWitnessResponse(PayloadStatusV1 ps, Witness? witness, IBufferWriter<byte> writer)
+    {
+        const int ValidationErrorMax = 8192;
+        byte[] errorBytes = ps.ValidationError is not null
+            ? Encoding.UTF8.GetBytes(ps.ValidationError)
+            : [];
+        if (errorBytes.Length > ValidationErrorMax)
+            errorBytes = TruncateUtf8(errorBytes, ValidationErrorMax);
+
+        ExecutionWitnessV1Wire[]? witnessField = witness is not null && ps.Status == PayloadStatus.Valid
+            ? [BuildExecutionWitnessV1Wire(witness)]
+            : [];
+
+        return EncodeToWriter(new NewPayloadWithWitnessResponseV1Wire
+        {
+            Status = EngineStatusToSsz(ps.Status),
+            LatestValidHash = ps.LatestValidHash is not null ? [ps.LatestValidHash] : [],
+            ValidationError = errorBytes,
+            Witness = witnessField
+        }, writer);
+    }
+
+    private static ExecutionWitnessV1Wire BuildExecutionWitnessV1Wire(Witness witness)
+    {
+        return new ExecutionWitnessV1Wire
+        {
+            State = ToWitnessItems(witness.State),
+            Codes = ToWitnessItems(witness.Codes),
+            Headers = ToWitnessItems(witness.Headers)
+        };
+
+        static SszWitnessItem[] ToWitnessItems(IOwnedReadOnlyList<byte[]> items)
+        {
+            SszWitnessItem[] result = new SszWitnessItem[items.Count];
+            for (int i = 0; i < items.Count; i++)
+                result[i] = new SszWitnessItem { Bytes = items[i] };
+            return result;
+        }
+    }
+
+    private static byte[] TruncateUtf8(byte[] utf8, int maxBytes)
+    {
+        int i = maxBytes;
+        while (i > 0 && (utf8[i] & 0xC0) == 0x80)
+            i--;
+        return utf8[..i];
+    }
 
     public static int EncodeForkchoiceUpdatedResponse(ForkchoiceUpdatedV1Result resp, IBufferWriter<byte> writer)
     {
@@ -252,17 +302,18 @@ public static class SszCodec
         PayloadStatus.Invalid => 1,
         PayloadStatus.Syncing => 2,
         PayloadStatus.Accepted => 3,
+        PayloadStatus.InvalidBlockHash => 4,
         _ => throw new InvalidOperationException($"Unknown payload status '{status}': cannot map to SSZ wire byte")
     };
 
     private static PayloadStatusWire BuildPayloadStatusWire(PayloadStatusV1 ps)
     {
-        const int MaxErrorBytes = 1024;
+        const int MaxErrorBytes = 8192;
         byte[] errorBytes = ps.ValidationError is not null
             ? Encoding.UTF8.GetBytes(ps.ValidationError)
             : [];
         if (errorBytes.Length > MaxErrorBytes)
-            errorBytes = errorBytes[..MaxErrorBytes];
+            errorBytes = TruncateUtf8(errorBytes, MaxErrorBytes);
 
         return new()
         {

@@ -118,6 +118,7 @@ public class EngineRpcCapabilitiesProvider(ISpecProvider specProvider) : IRpcCap
         Configure(nameof(IEngineRpcModule.engine_forkchoiceUpdatedV4), SszRestPaths.PostV4Forkchoice, GateWithWarn(spec.IsEip7843Enabled));
         Configure(nameof(IEngineRpcModule.engine_getPayloadBodiesByHashV2), SszRestPaths.PostV2PayloadBodiesByHash, GateWithWarn(spec.IsEip7928Enabled));
         Configure(nameof(IEngineRpcModule.engine_getPayloadBodiesByRangeV2), SszRestPaths.PostV2PayloadBodiesByRange, GateWithWarn(spec.IsEip7928Enabled));
+        sszLocal[SszRestPaths.RestEngineNewPayloadWithWitness] = GateWithWarn(spec.IsEip7928Enabled);
 
         json = jsonLocal;
         ssz = sszLocal;
