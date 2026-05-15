@@ -16,6 +16,7 @@ using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.State;
 using Nethermind.Evm.State;
 using Nethermind.Core.Eip2930;
 using Nethermind.Core.BlockAccessLists;
@@ -34,6 +35,14 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
     private readonly PreBlockCaches _preBlockCaches;
     private readonly NodeStorageCache _nodeStorageCache;
     private readonly bool _parallelExecutionEnabled;
+
+    /// <summary>Main thread's live WorldState for read-through fallback.</summary>
+    internal IWorldState? MainThreadWorldState;
+
+    /// <summary>Incremented by main thread after each tx. Workers skip passed txs.</summary>
+    internal int MainThreadTxIndex = -1;
+
+    private int _nextWarmupIndex;
 
     public BlockCachePreWarmer(
         PrewarmerEnvFactory envFactory,
@@ -200,60 +209,73 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         try
         {
             Block block = blockState.Block;
-            if (block.Transactions.Length == 0) return;
+            int txCount = block.Transactions.Length;
+            if (txCount == 0) return;
 
-            // Group transactions by sender to process same-sender transactions sequentially
-            // This ensures state changes (balance, storage) from tx[N] are visible to tx[N+1]
-            Dictionary<AddressAsKey, ArrayPoolList<(int Index, Transaction Tx)>>? senderGroups = GroupTransactionsBySender(block);
+            Volatile.Write(ref _nextWarmupIndex, 0);
+            Volatile.Write(ref MainThreadTxIndex, -1);
 
-            try
+            int threadCount = Math.Min(_concurrencyLevel, txCount);
+            BlockCachePreWarmer preWarmer = this;
+            CancellationToken token = parallelOptions.CancellationToken;
+
+            Thread[] workers = new Thread[threadCount];
+            for (int t = 0; t < threadCount; t++)
             {
-                // Convert to array for parallel iteration
-                using ArrayPoolList<ArrayPoolList<(int Index, Transaction Tx)>> groupArray = senderGroups.Values.ToPooledList();
-
-                // Parallel across different senders, sequential within the same sender
-                ParallelUnbalancedWork.For(
-                    0,
-                    groupArray.Count,
-                    parallelOptions,
-                    (blockState, groupArray, parallelOptions.CancellationToken),
-                    static (groupIndex, tupleState) =>
+                workers[t] = new Thread(() =>
+                {
+                    IReadOnlyTxProcessorSource env = _envPool.Get();
+                    try
                     {
-                        (BlockState? blockState, ArrayPoolList<ArrayPoolList<(int Index, Transaction Tx)>> groups, CancellationToken token) = tupleState;
-                        ArrayPoolList<(int Index, Transaction Tx)>? txList = groups[groupIndex];
-
-                        // Get thread-local processing state for this sender's transactions
-                        IReadOnlyTxProcessorSource env = blockState.PreWarmer._envPool.Get();
-                        try
+                        while (!token.IsCancellationRequested)
                         {
+                            int myTx = Interlocked.Increment(ref _nextWarmupIndex) - 1;
+                            if (myTx >= txCount) break;
+
+                            // Skip txs the main thread already processed
+                            if (Volatile.Read(ref MainThreadTxIndex) >= myTx) continue;
+
+                            // Execute with fresh scope + read fallback to main thread's state
                             using IReadOnlyTxProcessingScope scope = env.Build(blockState.Parent);
-                            BlockExecutionContext context = new(blockState.Block.Header, blockState.Spec);
+                            BlockExecutionContext context = new(block.Header, blockState.Spec);
                             scope.TransactionProcessor.SetBlockExecutionContext(context);
 
-                            // Sequential within the same sender-state changes propagate correctly
-                            foreach ((int txIndex, Transaction? tx) in txList.AsSpan())
+                            if (preWarmer.MainThreadWorldState is not null)
+                                (scope.WorldState as WorldState)?.SetReadFallback(preWarmer.MainThreadWorldState);
+
+                            bool succeeded = WarmupSingleTransaction(scope, block.Transactions[myTx], myTx, blockState);
+
+                            // If tx reverted, hammer it until main thread passes or state changes
+                            if (!succeeded)
                             {
-                                if (token.IsCancellationRequested) return tupleState;
-                                WarmupSingleTransaction(scope, tx, txIndex, blockState);
+                                while (!token.IsCancellationRequested && Volatile.Read(ref MainThreadTxIndex) < myTx)
+                                {
+                                    using IReadOnlyTxProcessingScope retryScope = env.Build(blockState.Parent);
+                                    retryScope.TransactionProcessor.SetBlockExecutionContext(new BlockExecutionContext(block.Header, blockState.Spec));
+                                    if (preWarmer.MainThreadWorldState is not null)
+                                        (retryScope.WorldState as WorldState)?.SetReadFallback(preWarmer.MainThreadWorldState);
+
+                                    if (WarmupSingleTransaction(retryScope, block.Transactions[myTx], myTx, blockState))
+                                        break; // Succeeded — move on
+                                }
                             }
                         }
-                        finally
-                        {
-                            blockState.PreWarmer._envPool.Return(env);
-                        }
+                    }
+                    catch (OperationCanceledException) { }
+                    catch (Exception) { }
+                    finally
+                    {
+                        _envPool.Return(env);
+                    }
+                }) { IsBackground = true, Name = "PrewarmWorker" };
+                workers[t].Start();
+            }
 
-                        return tupleState;
-                    });
-            }
-            finally
-            {
-                foreach (KeyValuePair<AddressAsKey, ArrayPoolList<(int Index, Transaction Tx)>> kvp in senderGroups)
-                    kvp.Value.Dispose();
-            }
+            for (int t = 0; t < threadCount; t++)
+                workers[t].Join();
         }
         catch (OperationCanceledException)
         {
-            // Ignore, block completed cancel
         }
         catch (Exception ex)
         {
@@ -281,7 +303,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         return groups;
     }
 
-    private static void WarmupSingleTransaction(
+    private static bool WarmupSingleTransaction(
         IReadOnlyTxProcessingScope scope,
         Transaction tx,
         int txIndex,
@@ -305,14 +327,16 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
             TransactionResult result = scope.TransactionProcessor.Warmup(tx, NullTxTracer.Instance);
 
             if (blockState.PreWarmer._logger.IsTrace) blockState.PreWarmer._logger.Trace($"Finished pre-warming cache for tx[{txIndex}] {tx.Hash} with {result}");
+            return result;
         }
         catch (Exception ex) when (ex is EvmException or OverflowException)
         {
-            // Ignore, regular tx processing exceptions
+            return false;
         }
         catch (Exception ex)
         {
             blockState.PreWarmer._logger.DebugError($"Error pre-warming cache {tx.Hash}", ex);
+            return false;
         }
     }
 
