@@ -42,14 +42,9 @@ public class TestingRpcModule(
     private readonly ILogger _logger = logManager.GetClassLogger<TestingRpcModule>();
     private readonly SemaphoreSlim _commitLock = new(1, 1);
 
-    // Reused across calls: serialised by _commitLock, so a single instance is safe.
-    private readonly BlockReceiptsTracer _receiptsTracer = new();
-
-    // Persistent producer env is safe across concurrent build/commit because
-    // BranchProcessor.Process opens a fresh world-state scope on entry, so no
-    // mutable state leaks across calls. Lazy<T> guards the singleton init race.
-    private readonly Lazy<IBlockProducerEnv> _env = new(blockProducerEnvFactory.CreatePersistent);
-    private IBlockProducerEnv Env => _env.Value;
+    // Persistent producer env is safe across calls because BranchProcessor.Process opens
+    // a fresh world-state scope on entry, so no mutable state leaks between commits.
+    private readonly IBlockProducerEnv _env = blockProducerEnvFactory.CreatePersistent();
 
     public void Dispose() => _commitLock.Dispose();
 
@@ -100,9 +95,9 @@ public class TestingRpcModule(
                 | ProcessingOptions.StoreReceipts;
 
             ResultWrapper<ProducedBlock> produced = ProduceBlock(
-                Env, chainHead, payloadAttributes, txRlps, extraData,
+                _env, chainHead, payloadAttributes, txRlps, extraData,
                 nameof(testing_commitBlockV1), exitToken,
-                _receiptsTracer, ProducerOptions);
+                NullBlockTracer.Instance, ProducerOptions);
             if (produced.Result.ResultType == ResultType.Failure)
                 return ResultWrapper<Hash256>.Fail(produced.Result.Error!, produced.ErrorCode);
 

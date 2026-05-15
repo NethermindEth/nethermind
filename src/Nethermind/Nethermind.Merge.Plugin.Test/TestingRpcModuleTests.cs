@@ -249,7 +249,7 @@ public class TestingRpcModuleTests
         object?[] updateMainChainArgs = blockTree.ReceivedCalls()
             .Single(c => c.GetMethodInfo().Name == nameof(IBlockTree.UpdateMainChain))
             .GetArguments();
-        System.Collections.IList updatedBlocks = (System.Collections.IList)updateMainChainArgs[0]!;
+        IReadOnlyList<Block> updatedBlocks = (IReadOnlyList<Block>)updateMainChainArgs[0]!;
         bool wereProcessed = (bool)updateMainChainArgs[1]!;
         bool forceHeadBlock = (bool)updateMainChainArgs[2]!;
         updatedBlocks.Count.Should().Be(1);
