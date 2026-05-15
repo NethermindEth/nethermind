@@ -37,13 +37,13 @@ namespace Nethermind.Trie
         public static readonly TrieNode NullNode = new TrieNodeNullSentinel();
         private static readonly AccountDecoder _accountDecoder = new();
 
-        private const byte _dirtyMask = 0b0001;
-        private const byte _persistedMask = 0b0010;
-        private const byte _boundaryProof = 0b0100;
-        private const byte _hasKeccakMask = 0b1000;
-        private const byte _rlpStaleMask = 0b1_0000;
+        private const uint _dirtyMask = 0b0001;
+        private const uint _persistedMask = 0b0010;
+        private const uint _boundaryProof = 0b0100;
+        private const uint _hasKeccakMask = 0b1000;
+        private const uint _rlpStaleMask = 0b1_0000;
 
-        private byte _blockAndFlags = 0;
+        private uint _blockAndFlags = 0;
         // Seqlock for _keccakValue (32 B, not atomic on x64). Odd = write in progress.
         private uint _keccakSeq;
         // Seqlock for _rlpArray + _rlpSeqAndLength (CappedArray is 12 B, not atomic).
@@ -177,46 +177,30 @@ namespace Nethermind.Trie
         public bool IsPersisted
         {
             get => (Volatile.Read(ref _blockAndFlags) & _persistedMask) != 0;
-            set => SetBlockAndFlagsBit(_persistedMask, value);
+            set { if (value) Interlocked.Or(ref _blockAndFlags, _persistedMask); else Interlocked.And(ref _blockAndFlags, ~_persistedMask); }
         }
 
         public bool IsBoundaryProofNode
         {
             get => (Volatile.Read(ref _blockAndFlags) & _boundaryProof) != 0;
-            set => SetBlockAndFlagsBit(_boundaryProof, value);
+            set { if (value) Interlocked.Or(ref _blockAndFlags, _boundaryProof); else Interlocked.And(ref _blockAndFlags, ~_boundaryProof); }
         }
 
         public bool IsDirty => (Volatile.Read(ref _blockAndFlags) & _dirtyMask) != 0;
 
         internal bool IsRlpStale => (Volatile.Read(ref _blockAndFlags) & _rlpStaleMask) != 0;
 
-        // Not safe for the keccak / rlp-seq seqlock dances - those need the flag flip to
-        // happen while the seq is held odd, otherwise concurrent readers can observe
-        // HasKeccak == true against a torn _keccakValue.
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private void SetBlockAndFlagsBit(byte mask, bool set)
-        {
-            byte previousValue = Volatile.Read(ref _blockAndFlags);
-            byte currentValue;
-            do
-            {
-                currentValue = previousValue;
-                bool currentlySet = (currentValue & mask) != 0;
-                if (currentlySet == set) return;
-                byte newValue = set ? (byte)(currentValue | mask) : (byte)(currentValue & ~mask);
-                previousValue = Interlocked.CompareExchange(ref _blockAndFlags, newValue, currentValue);
-            } while (previousValue != currentValue);
-        }
+        private void MarkRlpStale() => Interlocked.Or(ref _blockAndFlags, _rlpStaleMask);
 
-        private void MarkRlpStale() => SetBlockAndFlagsBit(_rlpStaleMask, set: true);
-
-        private void MarkRlpFresh() => SetBlockAndFlagsBit(_rlpStaleMask, set: false);
+        private void MarkRlpFresh() => Interlocked.And(ref _blockAndFlags, ~_rlpStaleMask);
 
         /// <summary>Node will no longer be mutable.</summary>
         public void Seal()
         {
-            if ((Volatile.Read(ref _blockAndFlags) & _dirtyMask) == 0) ThrowAlreadySealed();
-            SetBlockAndFlagsBit(_dirtyMask, set: false);
+            // Dirty -> sealed is one-shot; Interlocked.And returns the OLD value so we can
+            // detect double-seal even if a race cleared the bit first.
+            uint previous = Interlocked.And(ref _blockAndFlags, ~_dirtyMask);
+            if ((previous & _dirtyMask) == 0) ThrowAlreadySealed();
 
             [DoesNotReturn, StackTraceHidden]
             void ThrowAlreadySealed() => throw new InvalidOperationException($"{nameof(TrieNode)} {this} is already sealed.");
@@ -241,7 +225,7 @@ namespace Nethermind.Trie
             SpinWait spin = default;
             while (true)
             {
-                byte flags = Volatile.Read(ref _blockAndFlags);
+                uint flags = Volatile.Read(ref _blockAndFlags);
                 if ((flags & _hasKeccakMask) == 0)
                 {
                     keccak = default;
@@ -336,19 +320,10 @@ namespace Nethermind.Trie
                 if (Interlocked.CompareExchange(ref _keccakSeq, current | 1, current) == current)
                 {
                     _keccakValue = keccak;
-
-                    // Set the has-keccak bit while seq is locked so any concurrent reader
-                    // either sees the in-progress odd seq or the completed even seq with
+                    // Set the has-keccak bit while seq is held odd so concurrent readers
+                    // either see the in-progress odd seq or the completed even seq with
                     // both bit and value coherent.
-                    byte flags = Volatile.Read(ref _blockAndFlags);
-                    while (true)
-                    {
-                        byte newFlags = (byte)(flags | _hasKeccakMask);
-                        byte prev = Interlocked.CompareExchange(ref _blockAndFlags, newFlags, flags);
-                        if (prev == flags) break;
-                        flags = prev;
-                    }
-
+                    Interlocked.Or(ref _blockAndFlags, _hasKeccakMask);
                     Volatile.Write(ref _keccakSeq, (current + 2) & 0xFFFFFFFE);
                     return;
                 }
@@ -376,16 +351,7 @@ namespace Nethermind.Trie
 
                 if (Interlocked.CompareExchange(ref _keccakSeq, current | 1, current) == current)
                 {
-                    byte flags = Volatile.Read(ref _blockAndFlags);
-                    while (true)
-                    {
-                        if ((flags & _hasKeccakMask) == 0) break;
-                        byte newFlags = (byte)(flags & ~_hasKeccakMask);
-                        byte prev = Interlocked.CompareExchange(ref _blockAndFlags, newFlags, flags);
-                        if (prev == flags) break;
-                        flags = prev;
-                    }
-
+                    Interlocked.And(ref _blockAndFlags, ~_hasKeccakMask);
                     Volatile.Write(ref _keccakSeq, (current + 2) & 0xFFFFFFFE);
                     return;
                 }
@@ -404,15 +370,15 @@ namespace Nethermind.Trie
         /// </summary>
         internal void CopyFlagsFrom(TrieNode source, bool markPersisted)
         {
-            byte sourceFlags = (byte)(Volatile.Read(ref source._blockAndFlags) & (_dirtyMask | _persistedMask | _boundaryProof | _rlpStaleMask));
+            uint sourceFlags = Volatile.Read(ref source._blockAndFlags) & (_dirtyMask | _persistedMask | _boundaryProof | _rlpStaleMask);
             if (markPersisted) sourceFlags |= _persistedMask;
 
-            byte previous = Volatile.Read(ref _blockAndFlags);
-            byte current;
+            uint previous = Volatile.Read(ref _blockAndFlags);
+            uint current;
             do
             {
                 current = previous;
-                byte next = (byte)((current & _hasKeccakMask) | sourceFlags);
+                uint next = (current & _hasKeccakMask) | sourceFlags;
                 if (next == current) return;
                 previous = Interlocked.CompareExchange(ref _blockAndFlags, next, current);
             } while (previous != current);
@@ -546,7 +512,7 @@ namespace Nethermind.Trie
         // Copy constructor shared by the typed CloneTyped overrides. Sets the
         // dirty flag; subclasses copy their own shape fields after the base ctor runs.
         private protected TrieNode(TrieNode node) =>
-            _blockAndFlags = (byte)(_dirtyMask | (Volatile.Read(ref node._blockAndFlags) & _rlpStaleMask));
+            _blockAndFlags = _dirtyMask | (Volatile.Read(ref node._blockAndFlags) & _rlpStaleMask);
 
         // Internal-only constructors used by the typed subclasses to plumb the
         // initial Keccak and / or RLP through the seqlocked fields. The shape
