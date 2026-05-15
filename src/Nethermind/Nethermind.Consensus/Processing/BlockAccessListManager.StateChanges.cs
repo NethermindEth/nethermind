@@ -12,6 +12,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
+using Nethermind.Serialization.Rlp.Eip7928;
 
 namespace Nethermind.Consensus.Processing;
 
@@ -100,7 +101,10 @@ public partial class BlockAccessListManager
 
             MergeAndReturnBal(uint.MaxValue);
             block.GeneratedBlockAccessList = GeneratedBlockAccessList;
-            block.EncodedBlockAccessList = Rlp.Encode(GeneratedBlockAccessList).Bytes;
+            // EncodeToBytes precomputes per-account RLP sub-lengths once via a rented ArrayPool
+            // buffer and reuses them across the encode pass — avoids re-walking each account's
+            // sub-collections (slot changes, storage reads, balance/nonce/code) twice.
+            block.EncodedBlockAccessList = BlockAccessListDecoder.EncodeToBytes(GeneratedBlockAccessList);
             block.Header.BlockAccessListHash = new(ValueKeccak.Compute(block.EncodedBlockAccessList).Bytes);
         }
     }

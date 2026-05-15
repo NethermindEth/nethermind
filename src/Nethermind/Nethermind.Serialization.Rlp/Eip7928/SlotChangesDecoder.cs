@@ -16,8 +16,7 @@ public class SlotChangesDecoder :
     IRlpStreamEncoder<ReadOnlySlotChanges>,
     IRlpStreamEncoder<GeneratedSlotChanges>
 {
-    private static SlotChangesDecoder? _instance;
-    public static SlotChangesDecoder Instance => _instance ??= new();
+    public static readonly SlotChangesDecoder Instance = new();
 
     private static readonly RlpLimit _txLimit = new(Eip7928Constants.MaxTxs, "", ReadOnlyMemory<char>.Empty);
 
