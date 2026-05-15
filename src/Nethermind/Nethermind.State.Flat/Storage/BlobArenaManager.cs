@@ -57,7 +57,7 @@ public sealed class BlobArenaManager : IBlobArenaManager
     /// Construct a blob arena manager rooted at <paramref name="basePath"/> with a per-file
     /// size cap of <paramref name="maxFileSize"/>. <paramref name="tier"/> is the
     /// pool-tier label (small / large); passed through to every <see cref="BlobArenaFile"/>
-    /// for its <see cref="Metrics.ArenaFileCountByTier"/> / <see cref="Metrics.ArenaMappedBytesByTier"/>
+    /// for its <see cref="Metrics.BlobFileCountByTier"/> / <see cref="Metrics.BlobAllocatedBytesByTier"/>
     /// contributions.
     /// </summary>
     public BlobArenaManager(string basePath, long maxFileSize, PersistedSnapshotTier tier)
@@ -182,15 +182,32 @@ public sealed class BlobArenaManager : IBlobArenaManager
 
     /// <summary>
     /// Called by <see cref="BlobArenaWriter.Complete"/> after the writer has set the file's
-    /// new frontier directly. The manager just learns whether the id should be a packing
-    /// candidate for the next writer — no file lookup.
+    /// new frontier directly. The manager learns whether the id should be a packing
+    /// candidate for the next writer and pushes the post-write frontier delta to
+    /// <c>Metrics.BlobAllocatedBytesByTier</c>.
     /// </summary>
-    internal void OnWriteCompleted(ushort blobArenaId, bool hasHeadroom)
+    internal void OnWriteCompleted(BlobArenaFile file, bool hasHeadroom)
     {
         lock (_lock)
         {
-            if (hasHeadroom) _mutableFiles.Add(blobArenaId);
+            if (hasHeadroom) _mutableFiles.Add(file.BlobArenaId);
+            PushFrontierDelta(file);
         }
+    }
+
+    // Ratchet BlobAllocatedBytesByTier up to file.Frontier. Matches ArenaManager.PushFrontierDelta's
+    // semantics: push the delta since the last report, bring ReportedFrontier in sync. Bytes are
+    // **allocated** (Frontier), not mapped (MaxSize) — sparse-file zeros after the frontier are
+    // excluded.
+    private void PushFrontierDelta(BlobArenaFile file)
+    {
+        long current = file.Frontier;
+        long reported = file.ReportedFrontier;
+        long delta = current - reported;
+        if (delta == 0) return;
+        file.ReportedFrontier = current;
+        Metrics.BlobAllocatedBytesByTier.AddOrUpdate(_tier,
+            static (_, d) => d, static (_, b, d) => b + d, delta);
     }
 
     /// <summary>

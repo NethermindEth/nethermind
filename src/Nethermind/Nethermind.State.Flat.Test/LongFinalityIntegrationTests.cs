@@ -69,7 +69,7 @@ public class LongFinalityIntegrationTests
     private PersistedSnapshot CreatePersistedSnapshot(StateId from, StateId to, byte[] data,
         PersistedSnapshot[]? referencedSnapshots = null)
     {
-        using ArenaWriter writer = _memArena.CreateWriter(data.Length, ArenaReservationTags.Test);
+        using ArenaWriter writer = _memArena.CreateWriter(data.Length);
         Span<byte> span = writer.GetWriter().GetSpan(data.Length);
         data.CopyTo(span);
         writer.GetWriter().Advance(data.Length);

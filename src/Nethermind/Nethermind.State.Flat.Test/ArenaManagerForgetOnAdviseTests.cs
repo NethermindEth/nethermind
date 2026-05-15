@@ -62,7 +62,7 @@ public class ArenaManagerForgetOnAdviseTests
         // Reservation covering [0, 10*pageSize) — 10 fully-covered pages.
         using ArenaFile syntheticFile = NewSyntheticFile(arenaId, 10L * pageSize);
         using ArenaReservation reservation = new(manager, syntheticFile, arenaId,
-            offset: 0, size: 10L * pageSize, tag: "test");
+            offset: 0, size: 10L * pageSize);
 
         reservation.AdviseDontNeed();
 
@@ -86,7 +86,7 @@ public class ArenaManagerForgetOnAdviseTests
         // straddle the boundary and must remain.
         using ArenaFile syntheticFile = NewSyntheticFile(arenaId, 5L * pageSize);
         using ArenaReservation reservation = new(manager, syntheticFile, arenaId,
-            offset: pageSize / 2, size: 3L * pageSize, tag: "test");
+            offset: pageSize / 2, size: 3L * pageSize);
 
         reservation.AdviseDontNeed();
 
@@ -106,7 +106,7 @@ public class ArenaManagerForgetOnAdviseTests
         // Materialise a real arena via a writer so the dispose-driven MarkDead has the dict
         // entry it expects to mutate. Write 4 pages of zeros.
         const int pages = 4;
-        ArenaWriter writer = manager.CreateWriter(estimatedSize: pages * pageSize, tag: "test");
+        ArenaWriter writer = manager.CreateWriter(estimatedSize: pages * pageSize);
         ref ArenaBufferWriter buf = ref writer.GetWriter();
         Span<byte> sink = buf.GetSpan(pages * pageSize);
         sink[..(pages * pageSize)].Clear();

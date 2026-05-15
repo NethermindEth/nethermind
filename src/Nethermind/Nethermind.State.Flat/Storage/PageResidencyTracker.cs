@@ -86,6 +86,10 @@ public sealed unsafe class PageResidencyTracker : IDisposable
     private readonly long _metadataBytes;
     private readonly long _pageBytes;
     private long _residentPages;
+    // High-water mark of resident pages whose footprint has been reported to the GC via
+    // AddMemoryPressure. Monotonically non-decreasing during the tracker's lifetime,
+    // bounded by MaxCapacity. Forget never shrinks it; Dispose releases it in one call.
+    private long _reportedPages;
 
     public int MaxCapacity => _setCount * Ways;
 
@@ -217,7 +221,20 @@ public sealed unsafe class PageResidencyTracker : IDisposable
                     Volatile.Write(ref setBase[w], key | RefBit);
                     long resident = Interlocked.Increment(ref _residentPages);
                     Debug.Assert(resident <= MaxCapacity, "_residentPages exceeds MaxCapacity");
-                    GC.AddMemoryPressure(_pageBytes);
+                    // Ratchet the GC-reported high-water mark up to current occupancy. The CAS
+                    // bumps _reportedPages directly to `resident` and reports the delta. Racing
+                    // Inserts either short-circuit (high-water already past `resident`) or retry
+                    // once with the residual delta — total reported pressure tracks the peak
+                    // _residentPages reached, bounded by MaxCapacity * _pageBytes.
+                    long reported;
+                    while ((reported = Volatile.Read(ref _reportedPages)) < resident)
+                    {
+                        if (Interlocked.CompareExchange(ref _reportedPages, resident, reported) == reported)
+                        {
+                            GC.AddMemoryPressure((resident - reported) * _pageBytes);
+                            break;
+                        }
+                    }
                     return TouchOutcome.Inserted;
                 }
             }
@@ -299,7 +316,15 @@ public sealed unsafe class PageResidencyTracker : IDisposable
                 // Not (or no longer) our key — either never matched, or a miss-path evictor
                 // overwrote it; either way the slot is no longer ours to clear.
                 if ((observed & KeyMask) != key) break;
-                if (Interlocked.CompareExchange(ref setBase[w], 0L, observed) == observed) return;
+                if (Interlocked.CompareExchange(ref setBase[w], 0L, observed) == observed)
+                {
+                    // Slot cleared — decrement the resident-pages gauge so it tracks actual
+                    // occupancy. GC pressure is a high-water mark of peak occupancy, not the
+                    // current value: Forget never shrinks it, so a Forget+Insert cycle on the
+                    // same slot won't add more pressure (the high-water already covers it).
+                    Interlocked.Decrement(ref _residentPages);
+                    return;
+                }
                 // Lost the race against a REF flip — re-read and retry; CAS will succeed once
                 // we observe the new (key | newRef) state.
                 spinner.SpinOnce();
@@ -331,11 +356,11 @@ public sealed unsafe class PageResidencyTracker : IDisposable
             NativeMemory.AlignedFree(_meta);
             _meta = null;
         }
-        long residual = Interlocked.Exchange(ref _residentPages, 0);
-        if (residual > 0)
-            GC.RemoveMemoryPressure(residual * _pageBytes);
-        if (_metadataBytes > 0)
-            GC.RemoveMemoryPressure(_metadataBytes);
+        long reported = Interlocked.Exchange(ref _reportedPages, 0);
+        Interlocked.Exchange(ref _residentPages, 0);
+        long pressure = _metadataBytes + reported * _pageBytes;
+        if (pressure > 0)
+            GC.RemoveMemoryPressure(pressure);
         GC.SuppressFinalize(this);
     }
 

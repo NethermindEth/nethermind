@@ -131,10 +131,11 @@ public sealed class BlobArenaWriter : IDisposable
         _stream.Flush();
         _stream.Dispose();
         _completed = true;
-        // Writer mutates the file directly. Manager just learns whether the id is still
-        // a candidate for the next writer's packing scan.
+        // Writer mutates the file directly. Manager learns whether the id is still a
+        // candidate for the next writer's packing scan and pushes the post-write
+        // frontier delta to the per-tier allocated-bytes gauge.
         _file.Frontier = _written;
-        _manager.OnWriteCompleted(_blobArenaId, hasHeadroom: _file.Frontier < _file.MaxSize);
+        _manager.OnWriteCompleted(_file, hasHeadroom: _file.Frontier < _file.MaxSize);
     }
 
     public void Dispose()

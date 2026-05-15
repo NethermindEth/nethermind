@@ -53,8 +53,7 @@ public class PersistedSnapshotCompactorTests
                 repo, smallArena, config, Nethermind.Logging.LimboLogs.Instance, new PersistedSnapshotBloomFilterManager(),
                 minCompactSize: config.CompactSize * 2,
                 maxCompactSize: config.PersistedSnapshotMaxCompactSize,
-                tier: PersistedSnapshotTier.Large,
-                reservationTag: ArenaReservationTags.BlobBackedLarge);
+                tier: PersistedSnapshotTier.Large);
 
             StateId s0 = new(0, Keccak.EmptyTreeHash);
             StateId s1 = new(1, Keccak.Compute("1"));
@@ -152,8 +151,7 @@ public class PersistedSnapshotCompactorTests
                 repo, smallArena, config, Nethermind.Logging.LimboLogs.Instance, new PersistedSnapshotBloomFilterManager(),
                 minCompactSize: config.CompactSize * 2,
                 maxCompactSize: config.PersistedSnapshotMaxCompactSize,
-                tier: PersistedSnapshotTier.Large,
-                reservationTag: ArenaReservationTags.BlobBackedLarge);
+                tier: PersistedSnapshotTier.Large);
 
             StateId prev = new(0, Keccak.EmptyTreeHash);
             for (int i = 1; i <= n; i++)
@@ -235,8 +233,7 @@ public class PersistedSnapshotCompactorTests
                 repo, smallArena, config, Nethermind.Logging.LimboLogs.Instance, new PersistedSnapshotBloomFilterManager(),
                 minCompactSize: config.CompactSize * 2,
                 maxCompactSize: config.PersistedSnapshotMaxCompactSize,
-                tier: PersistedSnapshotTier.Large,
-                reservationTag: ArenaReservationTags.BlobBackedLarge);
+                tier: PersistedSnapshotTier.Large);
 
             StateId prev = new(0, Keccak.EmptyTreeHash);
             for (int i = 1; i <= 8; i++)
@@ -288,8 +285,7 @@ public class PersistedSnapshotCompactorTests
                 repo, smallArena, config, Nethermind.Logging.LimboLogs.Instance, new PersistedSnapshotBloomFilterManager(),
                 minCompactSize: config.CompactSize * 2,
                 maxCompactSize: config.PersistedSnapshotMaxCompactSize,
-                tier: PersistedSnapshotTier.Large,
-                reservationTag: ArenaReservationTags.BlobBackedLarge);
+                tier: PersistedSnapshotTier.Large);
 
             StateId prev = new(0, Keccak.EmptyTreeHash);
             StateId[] states = new StateId[9];
@@ -566,8 +562,7 @@ public class PersistedSnapshotCompactorTests
                 repo, smallArena, config, Nethermind.Logging.LimboLogs.Instance, new PersistedSnapshotBloomFilterManager(),
                 minCompactSize: 2,
                 maxCompactSize: 2,
-                tier: PersistedSnapshotTier.Small,
-                reservationTag: ArenaReservationTags.BlobBackedLarge);
+                tier: PersistedSnapshotTier.Small);
 
             StateId[] states = new StateId[contents.Length + 1];
             states[0] = new StateId(0, Keccak.EmptyTreeHash);
@@ -637,8 +632,7 @@ public class PersistedSnapshotCompactorTests
                 repo, smallArena, config, Nethermind.Logging.LimboLogs.Instance, new PersistedSnapshotBloomFilterManager(),
                 minCompactSize: config.CompactSize * 2,
                 maxCompactSize: config.PersistedSnapshotMaxCompactSize,
-                tier: PersistedSnapshotTier.Large,
-                reservationTag: ArenaReservationTags.BlobBackedLarge);
+                tier: PersistedSnapshotTier.Large);
 
             StateId[] states = new StateId[9];
             states[0] = new StateId(0, Keccak.EmptyTreeHash);
@@ -700,8 +694,7 @@ public class PersistedSnapshotCompactorTests
                 repo, smallArena, config, Nethermind.Logging.LimboLogs.Instance, new PersistedSnapshotBloomFilterManager(),
                 minCompactSize: config.CompactSize * 2,
                 maxCompactSize: config.PersistedSnapshotMaxCompactSize,
-                tier: PersistedSnapshotTier.Large,
-                reservationTag: ArenaReservationTags.BlobBackedLarge);
+                tier: PersistedSnapshotTier.Large);
 
             TreePath sharedStatePath = new(Keccak.Compute("shared_state"), 4);
             TreePath onlyOldStatePath = new(Keccak.Compute("only_old_state"), 4);

@@ -60,10 +60,11 @@ public class PageResidencyTrackerTests
         private readonly Dictionary<int, ArenaFile> _files = [];
 
         public PageResidencyTracker PageTracker => tracker;
+        public PersistedSnapshotTier Tier => PersistedSnapshotTier.Small;
         public void QueueEviction(int arenaId, int pageIdx) => handler.OnPageEvicted(arenaId, pageIdx);
-        public ArenaWriter CreateWriter(long estimatedSize, string tag) => throw new NotSupportedException();
+        public ArenaWriter CreateWriter(long estimatedSize) => throw new NotSupportedException();
         public void Initialize(IReadOnlyList<SnapshotCatalog.CatalogEntry> entries) => throw new NotSupportedException();
-        public ArenaReservation Open(in SnapshotLocation location, string tag) => throw new NotSupportedException();
+        public ArenaReservation Open(in SnapshotLocation location) => throw new NotSupportedException();
         // No-op so reservation disposal doesn't blow up in tests.
         public void MarkDead(ArenaFile file, long deadSize) { }
         public void ForgetTrackerRange(int arenaId, long byteOffset, long byteSize) { }
@@ -292,20 +293,28 @@ public class PageResidencyTrackerTests
             tracker.TryTouch(0, i, out _, out _);
         tracker.ResidentBytes.Should().BeLessOrEqualTo((long)tracker.MaxCapacity * pageSize);
 
-        // Forget intentionally does NOT decrement the counter — residency reflects only
-        // bulk-cleared state, not slot-level removals.
+        // Forget on a present key drops occupancy by one page.
+        int presentKey = -1;
+        for (int i = 4 * Ways - 1; i >= 0 && presentKey < 0; i--)
+            if (tracker.ContainsPage(0, i)) presentKey = i;
+        presentKey.Should().BeGreaterOrEqualTo(0, "the set should still hold at least one streamed key");
         long beforeForget = tracker.ResidentBytes;
-        tracker.Forget(0, 4 * Ways - 1);
+        tracker.Forget(0, presentKey);
+        tracker.ResidentBytes.Should().Be(beforeForget - pageSize);
+
+        // Re-inserting into the freed slot restores occupancy without raising the GC-reported
+        // high-water mark — only the counter changes; pressure already covered this level.
+        tracker.TryTouch(0, presentKey, out _, out _).Should().Be(TouchOutcome.Inserted);
         tracker.ResidentBytes.Should().Be(beforeForget);
 
-        // Dispose settles the residual back to zero (cannot observe GC pressure directly,
-        // but the dispose path must not throw and must be idempotent).
+        // Dispose releases the reported pressure (cannot observe GC pressure directly, but
+        // the dispose path must not throw and must be idempotent).
         tracker.Dispose();
         tracker.Dispose();
     }
 
-    private static ArenaReservation MakeReservation(StubArenaManager manager, int arenaId, long offset, long size, string tag = "test") =>
-        new(manager, manager.GetOrCreateFile(arenaId), arenaId, offset, size, tag);
+    private static ArenaReservation MakeReservation(StubArenaManager manager, int arenaId, long offset, long size) =>
+        new(manager, manager.GetOrCreateFile(arenaId), arenaId, offset, size);
 
     [Test]
     public unsafe void ArenaByteReader_TryRead_TouchesAllSpannedPages()
@@ -367,8 +376,8 @@ public class PageResidencyTrackerTests
         byte[] data = new byte[pageSize * (Ways + 1)];
         fixed (byte* dataPtr = data)
         {
-            using ArenaReservation r5 = MakeReservation(manager, arenaId: 5, offset: 0, size: data.Length, tag: "r5");
-            using ArenaReservation r6 = MakeReservation(manager, arenaId: 6, offset: 0, size: data.Length, tag: "r6");
+            using ArenaReservation r5 = MakeReservation(manager, arenaId: 5, offset: 0, size: data.Length);
+            using ArenaReservation r6 = MakeReservation(manager, arenaId: 6, offset: 0, size: data.Length);
             ArenaByteReader reader5 = new(dataPtr, data.Length, r5);
             ArenaByteReader reader6 = new(dataPtr, data.Length, r6);
 
