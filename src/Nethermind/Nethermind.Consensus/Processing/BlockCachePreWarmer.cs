@@ -756,6 +756,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
                             if (ws.HasCode(addr))
                             {
                                 ws.GetCode(addr);
+                                ws.IsStorageEmpty(addr);
                             }
                         }
                         catch (MissingTrieNodeException) { }
