@@ -616,7 +616,7 @@ public class SyncServerTests
             LimboLogs.Instance);
 
         Hash256 nodeKey = TestItem.KeccakA;
-        TrieNode node = TrieNode.CreateLeafTyped(nodeKey, TestItem.KeccakB.Bytes);
+        TrieNode node = TrieNode.CreateLeafTyped(nodeKey, new CappedArray<byte>(TestItem.KeccakB.Bytes.ToArray()));
         IScopedTrieStore scopedTrieStore = trieStore.GetTrieStore(null);
         using (IBlockCommitter _ = trieStore.BeginBlockCommit(1))
         {
