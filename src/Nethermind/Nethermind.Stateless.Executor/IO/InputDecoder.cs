@@ -2,7 +2,10 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Buffers.Binary;
+using Nethermind.Core.Crypto;
+using Nethermind.Int256;
 using Nethermind.Merge.Plugin.SszRest;
+using Nethermind.Serialization.Ssz;
 
 namespace Nethermind.Stateless.Execution.IO;
 
@@ -14,31 +17,23 @@ internal static class InputDecoder
 
         return schemaVersion switch
         {
-            0 => DecodeV0(data[sizeof(ushort)..]),
-            1 => DecodeV1(data[sizeof(ushort)..]),
+            0 => DecodeV1<SszExecutionPayloadV3>(data[sizeof(ushort)..]),
+            1 => DecodeV1<SszExecutionPayloadV4>(data[sizeof(ushort)..]),
             _ => throw new ArgumentException($"Unsupported schema version: {schemaVersion}", nameof(data))
         };
     }
 
-    private static StatelessPayload DecodeV0(ReadOnlySpan<byte> data)
+    private static StatelessPayload DecodeV1<TExecutionPayload>(ReadOnlySpan<byte> data)
+        where TExecutionPayload : SszExecutionPayloadV1, ISszCodec<TExecutionPayload>, new()
     {
-        StatelessInput<SszExecutionPayloadV3>.Decode(data, out StatelessInput<SszExecutionPayloadV3> input);
+        StatelessInput<TExecutionPayload>.Decode(data, out StatelessInput<TExecutionPayload> input);
+        NewPayloadRequest<TExecutionPayload>.Merkleize(input.NewPayloadRequest, out UInt256 root);
 
         return new(
             Block: input.NewPayloadRequest.ToBlock()!,
             Witness: input.Witness,
-            ChainConfig: input.ChainConfig
-        );
-    }
-
-    private static StatelessPayload DecodeV1(ReadOnlySpan<byte> data)
-    {
-        StatelessInput<SszExecutionPayloadV4>.Decode(data, out StatelessInput<SszExecutionPayloadV4> input);
-
-        return new(
-            Block: input.NewPayloadRequest.ToBlock()!,
-            Witness: input.Witness,
-            ChainConfig: input.ChainConfig
+            ChainConfig: input.ChainConfig,
+            NewPayloadRequestRoot: new Hash256(root.ToLittleEndian())
         );
     }
 }

@@ -24,6 +24,7 @@ BFLAT_REFS := \
   -r $(BIN_DIR)/Nethermind.Evm.Precompiles.dll \
   -r $(BIN_DIR)/Nethermind.Int256.dll \
   -r $(BIN_DIR)/Nethermind.Logging.dll \
+  -r $(BIN_DIR)/Nethermind.Merkleization.dll \
   -r $(BIN_DIR)/Nethermind.Serialization.Rlp.dll \
   -r $(BIN_DIR)/Nethermind.Serialization.Ssz.dll \
   -r $(BIN_DIR)/Nethermind.Specs.dll \

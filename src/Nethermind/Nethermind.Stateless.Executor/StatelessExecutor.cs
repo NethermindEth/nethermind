@@ -34,7 +34,7 @@ public static class StatelessExecutor
         bool success = Execute(payload.Block, witness, specProvider);
         StatelessValidationResult result = new()
         {
-            NewPayloadRequestRoot = payload.Block.Hash!,
+            NewPayloadRequestRoot = payload.NewPayloadRequestRoot,
             IsSuccess = success,
             ChainConfig = payload.ChainConfig
         };
