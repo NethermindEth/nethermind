@@ -3,11 +3,11 @@
 
 namespace Nethermind.Specs.Forks;
 
-public class ConstantinopleFix() : NamedReleaseSpec<ConstantinopleFix>(Constantinople.Instance)
+public class Petersburg() : NamedReleaseSpec<Petersburg>(Constantinople.Instance)
 {
     public override void Apply(NamedReleaseSpec spec)
     {
-        spec.Name = "Constantinople Fix";
+        spec.Name = "Petersburg";
         spec.IsEip1283Enabled = false;
     }
 }

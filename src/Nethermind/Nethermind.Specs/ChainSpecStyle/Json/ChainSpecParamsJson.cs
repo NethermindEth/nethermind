@@ -9,7 +9,7 @@ using System.Text.Json.Serialization;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
-using Nethermind.Specs.ChainSpecStyle;
+using Nethermind.Serialization.Json;
 
 [assembly: InternalsVisibleTo("Nethermind.Specs.Test")]
 [assembly: InternalsVisibleTo("Nethermind.TxPool.Test")]
@@ -199,7 +199,7 @@ public class ChainSpecParamsJson : IEipTransitionFields, IHasNamedForks
     /// Catch-all for top-level chainspec params keys that don't map to an explicit property —
     /// in practice the hardfork shorthand labels (<c>shanghai</c>, <c>cancun</c>, <c>prague</c>,
     /// <c>osaka</c>, <c>amsterdam</c>, <c>homestead</c>, <c>tangerineWhistle</c>,
-    /// <c>spuriousDragon</c>, <c>byzantium</c>, <c>constantinople</c>, <c>constantinopleFix</c>,
+    /// <c>spuriousDragon</c>, <c>byzantium</c>, <c>constantinople</c>, <c>petersburg</c>,
     /// <c>istanbul</c>, <c>berlin</c>, <c>london</c>). <see cref="HardforkLabels.ExpandAll"/>
     /// consumes each recognized entry and expands it into the per-EIP transition fields above;
     /// anything still present after expansion is an unknown/typo key.
@@ -212,10 +212,7 @@ public class ChainSpecParamsJson : IEipTransitionFields, IHasNamedForks
 
     /// <summary>
     /// Parses the <c>[JsonExtensionData]</c> entries whose keys match a <see cref="HardforkLabels"/>
-    /// label of the given <paramref name="kind"/> into a typed lookup. Conversion goes through
-    /// <see cref="Nethermind.Serialization.Json.EthereumJsonSerializer.JsonOptions"/> so hex strings
-    /// (<c>"0x65687fd0"</c>) and decimal numbers are parsed identically to the explicit per-EIP
-    /// transition fields on this class.
+    /// label of the given <paramref name="kind"/> into a typed lookup.
     /// </summary>
     private Dictionary<string, T>? Project<T>(HardforkLabelKind kind) where T : struct
     {
@@ -223,10 +220,11 @@ public class ChainSpecParamsJson : IEipTransitionFields, IHasNamedForks
         Dictionary<string, T>? result = null;
         foreach (IHardforkLabel label in HardforkLabels.All)
         {
-            if (label.Kind != kind) continue;
-            if (!NamedForks.TryGetValue(label.LabelName, out JsonElement element)) continue;
-            (result ??= new Dictionary<string, T>(StringComparer.OrdinalIgnoreCase))[label.LabelName] =
-                element.Deserialize<T>(Nethermind.Serialization.Json.EthereumJsonSerializer.JsonOptions);
+            if (label.Kind == kind && NamedForks.TryGetValue(label.LabelName, out JsonElement element))
+            {
+                result ??= new Dictionary<string, T>(StringComparer.OrdinalIgnoreCase);
+                result[label.LabelName] = element.Deserialize<T>(EthereumJsonSerializer.JsonOptions);
+            }
         }
         return result;
     }

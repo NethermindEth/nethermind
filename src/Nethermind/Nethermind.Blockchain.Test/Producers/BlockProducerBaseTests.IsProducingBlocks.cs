@@ -176,7 +176,7 @@ public partial class BlockProducerBaseTests
     private async Task<TestRpcBlockchain> CreateTestRpc()
     {
         Address address = TestItem.Addresses[0];
-        TestSingleReleaseSpecProvider spec = new(ConstantinopleFix.Instance);
+        TestSingleReleaseSpecProvider spec = new(Petersburg.Instance);
         TestRpcBlockchain testRpc = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
             .Build(spec);
         testRpc.TestWallet.UnlockAccount(address, new SecureString());

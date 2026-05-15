@@ -40,9 +40,7 @@ public class GethGenesisConfigJson : IHasNamedForks
     public long? SpuriousDragonBlock { get => GetBlock(nameof(SpuriousDragon)); set => SetBlock(nameof(SpuriousDragon), value); }
     public long? ByzantiumBlock { get => GetBlock(nameof(Byzantium)); set => SetBlock(nameof(Byzantium), value); }
     public long? ConstantinopleBlock { get => GetBlock(nameof(Constantinople)); set => SetBlock(nameof(Constantinople), value); }
-    // Geth calls it Petersburg; the Nethermind fork class is ConstantinopleFix — store under the latter
-    // so HardforkLabels.ExpandAll matches.
-    public long? PetersburgBlock { get => GetBlock(nameof(ConstantinopleFix)); set => SetBlock(nameof(ConstantinopleFix), value); }
+    public long? PetersburgBlock { get => GetBlock(nameof(Petersburg)); set => SetBlock(nameof(Petersburg), value); }
     public long? IstanbulBlock { get => GetBlock(nameof(Istanbul)); set => SetBlock(nameof(Istanbul), value); }
     public long? MuirGlacierBlock { get => GetBlock(nameof(MuirGlacier)); set => SetBlock(nameof(MuirGlacier), value); }
     public long? BerlinBlock { get => GetBlock(nameof(Berlin)); set => SetBlock(nameof(Berlin), value); }

@@ -35,7 +35,7 @@ public class RewardCalculatorTests
 
     [MaxTime(Timeout.MaxTestTime)]
     [TestCase("Byzantium", 3187500000000000000L, 2250000000000000000L, TestName = "Byzantium_reward_two_uncles")]
-    [TestCase("ConstantinopleFix", 2125000000000000000L, 1500000000000000000L, TestName = "Constantinople_reward_two_uncles")]
+    [TestCase("Petersburg", 2125000000000000000L, 1500000000000000000L, TestName = "Constantinople_reward_two_uncles")]
     public void Post_frontier_two_uncle_rewards(string fork, long expectedMinerReward, long expectedUncleReward)
     {
         long blockNumber = fork == "Byzantium"
