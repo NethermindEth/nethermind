@@ -482,20 +482,20 @@ public class BlockValidator(
 
         foreach (ReadOnlyAccountChanges accountChanges in bal.AccountChanges)
         {
-            if (!ValidateBounds(block, accountChanges.BalanceChanges, maxAllowed, ref error)) return false;
-            if (!ValidateBounds(block, accountChanges.NonceChanges, maxAllowed, ref error)) return false;
-            if (!ValidateBounds(block, accountChanges.CodeChanges, maxAllowed, ref error)) return false;
+            if (!ValidateBlockLevelAccessListIndexBounds(block, accountChanges.BalanceChanges, maxAllowed, ref error)) return false;
+            if (!ValidateBlockLevelAccessListIndexBounds(block, accountChanges.NonceChanges, maxAllowed, ref error)) return false;
+            if (!ValidateBlockLevelAccessListIndexBounds(block, accountChanges.CodeChanges, maxAllowed, ref error)) return false;
             foreach (ReadOnlySlotChanges slotChanges in accountChanges.StorageChanges)
             {
-                if (!ValidateBounds(block, slotChanges.Changes, maxAllowed, ref error)) return false;
+                if (!ValidateBlockLevelAccessListIndexBounds(block, slotChanges.Changes, maxAllowed, ref error)) return false;
             }
         }
 
         return true;
     }
 
-    private bool ValidateBounds<T>(Block block, T[] changes, uint maxAllowed, ref string? error)
-        where T : struct, IIndexedChange
+    private bool ValidateBlockLevelAccessListIndexBounds<T>(Block block, T[] changes, uint maxAllowed, ref string? error)
+        where T : IIndexedChange
     {
         for (int i = 0; i < changes.Length; i++)
         {
