@@ -91,50 +91,46 @@ public class TraceStoreRpcModule(ITraceRpcModule traceModule,
             traceFilterForRpc.FromBlock ?? BlockParameter.Latest,
             traceFilterForRpc.ToBlock ?? BlockParameter.Latest);
 
-        SearchResult<Block>? error = null;
-        bool missingTraces = false;
-
-        IEnumerable<SearchResult<Block>> blocks = _parallelization switch
+        IEnumerable<(SearchResult<Block> BlockSearch, List<ParityLikeTxTrace>? Traces)> blockResults = _parallelization switch
         {
-            0 => blocksSearch.AsParallel().AsOrdered(),
-            1 => blocksSearch,
-            var n => blocksSearch.AsParallel().WithDegreeOfParallelism(n).AsOrdered()
+            0 => blocksSearch.AsParallel().AsOrdered().Select(GetBlockTraces),
+            1 => blocksSearch.Select(GetBlockTraces),
+            var n => blocksSearch.AsParallel().AsOrdered().WithDegreeOfParallelism(n).Select(GetBlockTraces)
         };
 
-        IEnumerable<ParityTxTraceFromStore> txTraces = blocks
-            .SelectMany(blockSearch =>
+        List<List<ParityLikeTxTrace>>? blockTraces = null;
+        foreach ((SearchResult<Block> blockSearch, List<ParityLikeTxTrace>? traces) in blockResults)
+        {
+            if (blockSearch.IsError)
             {
-                if (blockSearch.IsError)
-                {
-                    error = blockSearch;
-                    return [];
-                }
+                return ResultWrapper<IEnumerable<ParityTxTraceFromStore>>.Fail(blockSearch);
+            }
 
-                Block block = blockSearch.Object!;
-                if (TryGetBlockTraces(block.Header, out List<ParityLikeTxTrace>? traces) && traces is not null)
-                {
-                    return traces.SelectMany(ParityTxTraceFromStore.FromTxTrace);
-                }
-                else
-                {
-                    missingTraces = true;
-                    return [];
-                }
-            });
+            if (traces is null)
+            {
+                // fallback when we miss any traces in db
+                return _traceModule.trace_filter(traceFilterForRpc);
+            }
 
-        if (error is not null)
-        {
-            return ResultWrapper<IEnumerable<ParityTxTraceFromStore>>.Fail(error.Value);
+            (blockTraces ??= []).Add(traces);
         }
-        else if (missingTraces)
+
+        IEnumerable<ParityTxTraceFromStore> txTraces = blockTraces is null
+            ? []
+            : blockTraces.SelectMany(static traces => traces.SelectMany(ParityTxTraceFromStore.FromTxTrace));
+        TxTraceFilter txTracerFilter = new(traceFilterForRpc.FromAddress, traceFilterForRpc.ToAddress, traceFilterForRpc.After, traceFilterForRpc.Count);
+        return ResultWrapper<IEnumerable<ParityTxTraceFromStore>>.Success(txTracerFilter.FilterTxTraces(txTraces));
+
+        (SearchResult<Block> BlockSearch, List<ParityLikeTxTrace>? Traces) GetBlockTraces(SearchResult<Block> blockSearch)
         {
-            // fallback when we miss any traces in db
-            return _traceModule.trace_filter(traceFilterForRpc);
-        }
-        else
-        {
-            TxTraceFilter txTracerFilter = new(traceFilterForRpc.FromAddress, traceFilterForRpc.ToAddress, traceFilterForRpc.After, traceFilterForRpc.Count);
-            return ResultWrapper<IEnumerable<ParityTxTraceFromStore>>.Success(txTracerFilter.FilterTxTraces(txTraces));
+            if (blockSearch.IsError)
+            {
+                return (blockSearch, null);
+            }
+
+            Block block = blockSearch.Object!;
+            TryGetBlockTraces(block.Header, out List<ParityLikeTxTrace>? traces);
+            return (blockSearch, traces);
         }
     }
 
