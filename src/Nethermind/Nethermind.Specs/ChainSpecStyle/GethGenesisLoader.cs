@@ -143,56 +143,21 @@ public class GethGenesisLoader(IJsonSerializer serializer) : IChainSpecLoader
             MergeForkIdTransition = config.MergeNetsplitBlock,
             TerminalTotalDifficulty = config.TerminalTotalDifficulty,
 
-            Eip3651TransitionTimestamp = config.ShanghaiTime,
-            Eip3855TransitionTimestamp = config.ShanghaiTime,
-            Eip3860TransitionTimestamp = config.ShanghaiTime,
-            Eip4895TransitionTimestamp = config.ShanghaiTime,
-
-            Eip1153TransitionTimestamp = config.CancunTime,
-            Eip4844TransitionTimestamp = config.CancunTime,
-            Eip4788TransitionTimestamp = config.CancunTime,
+            // Post-merge per-EIP timestamp fan-out is driven off `HardforkLabels.All` below; only
+            // the side-effects that don't fit the bulk-label pattern stay here as conditional gates.
             Eip4788ContractAddress = config.CancunTime is null ? null : Eip4788Constants.BeaconRootsAddress,
-            Eip5656TransitionTimestamp = config.CancunTime,
-            Eip6780TransitionTimestamp = config.CancunTime,
-
-            Eip2537TransitionTimestamp = config.PragueTime,
-            Eip2935TransitionTimestamp = config.PragueTime,
             Eip2935ContractAddress = config.PragueTime is null ? null : Eip2935Constants.BlockHashHistoryAddress,
-
-            Eip6110TransitionTimestamp = config.PragueTime,
             DepositContractAddress = config.PragueTime is null ? null : config.DepositContractAddress ?? Eip6110Constants.MainnetDepositContractAddress,
-
-            Eip7002TransitionTimestamp = config.PragueTime,
             Eip7002ContractAddress = config.PragueTime is null ? null : Eip7002Constants.WithdrawalRequestPredeployAddress,
-
-            Eip7251TransitionTimestamp = config.PragueTime,
             Eip7251ContractAddress = config.PragueTime is null ? null : Eip7251Constants.ConsolidationRequestPredeployAddress,
-
-            Eip7623TransitionTimestamp = config.PragueTime,
-            Eip7702TransitionTimestamp = config.PragueTime,
-
-            Eip7594TransitionTimestamp = config.OsakaTime,
-            Eip7823TransitionTimestamp = config.OsakaTime,
-            Eip7825TransitionTimestamp = config.OsakaTime,
-            Eip7883TransitionTimestamp = config.OsakaTime,
-            Eip7918TransitionTimestamp = config.OsakaTime,
-            Eip7934TransitionTimestamp = config.OsakaTime,
             Eip7934MaxRlpBlockSize = Eip7934Constants.DefaultMaxRlpBlockSize,
-            Eip7939TransitionTimestamp = config.OsakaTime,
-            Eip7951TransitionTimestamp = config.OsakaTime,
-
-            Eip7708TransitionTimestamp = config.AmsterdamTime,
-            Eip7778TransitionTimestamp = config.AmsterdamTime,
-            Eip7843TransitionTimestamp = config.AmsterdamTime,
-            Eip7928TransitionTimestamp = config.AmsterdamTime,
-            Eip7954TransitionTimestamp = config.AmsterdamTime,
-            Eip7976TransitionTimestamp = config.AmsterdamTime,
-            Eip7981TransitionTimestamp = config.AmsterdamTime,
-            Eip8024TransitionTimestamp = config.AmsterdamTime,
-            Eip8037TransitionTimestamp = config.AmsterdamTime,
 
             BlobSchedule = blobSchedule
         };
+
+        // Fan out Shanghai/Cancun/Prague/Osaka/Amsterdam timestamps via the shared HardforkLabels
+        // table — same source of truth as the Parity loader, driven by Forks/*.cs.
+        HardforkLabels.ExpandAll(chainSpec.Parameters, config);
     }
 
     private readonly Dictionary<string, Func<GethGenesisConfigJson, ulong?>> _hardforkTimestampGetters =

@@ -9,7 +9,7 @@ using Nethermind.Specs.ChainSpecStyle.Json;
 
 namespace Nethermind.Specs.ChainSpecStyle;
 
-public class ChainParameters
+public class ChainParameters : IEipTransitionFields
 {
     public long? MaxCodeSize { get; set; }
     public long? MaxCodeSizeTransition { get; set; }
