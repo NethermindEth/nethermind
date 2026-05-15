@@ -88,12 +88,11 @@ internal static class BSearchIndexLayoutPlanner
             else if (len != secondLen) allSameLenExceptFirst = false;
         }
 
-        // Slot widening: pick the smallest SIMD-eligible Uniform slot width that fits
-        // every input separator, provided every key has that many bytes available. After
-        // widening the planner proceeds as if all separators were uniform `target` bytes;
-        // the caller's AddKey provides those bytes from the key's data section. Works for
-        // mixed-length inputs too. The strip-gate below may still pull lcp > 0, dropping
-        // the slot below `target` for non-trivial crossEntryLcp.
+        // Slot widening: when every natural separator fits in {2, 4} and the keyLength
+        // budget allows, pretend they're all `target` bytes — the builder pads each slot
+        // from key data. The downstream Uniform branch then snaps to a power-of-2 SIMD
+        // slot when the post-strip budget allows; cases where the budget is too tight
+        // keep a non-SIMD slot rather than sacrificing lcp.
         int target = 0;
         if (firstLen > 0)
         {
@@ -110,11 +109,27 @@ internal static class BSearchIndexLayoutPlanner
             allSameLenExceptFirst = count >= 2;
         }
 
-        int lcp = Math.Min(minLen, crossEntryLcp);
+        // BSearchIndexWriter takes `keySlotSize` bytes per entry from
+        // currKey.Slice(prefixLen, slot) (see HsstIndexBuilder.cs:317 and
+        // KeySliceLength at :336), pulling pad bytes from the data section past each
+        // entry's natural separator length. So:
+        //   * lcp may equal minLen — the shortest separator becomes pure padding for
+        //     that entry's slot, still a valid (longer) prefix of its key.
+        //   * Uniform slots may be widened to any power-of-2 ≤ keyLength - lcp without
+        //     dropping lcp; non-SIMD widths can be snapped to {2, 4, 8} simply by
+        //     enlarging the slot, since the extra bytes come from the key data section.
+        //     No need for a separate "drop lcp to recover SIMD" rescue.
+        //
+        // Clamp by minLen (caller invariant — crossEntryLcp ≤ shortest sep), then by
+        // keyLength - 1 to reserve at least one byte per slot, then by the header's u8
+        // prefix-length field.
+        int lcp = Math.Min(crossEntryLcp, minLen);
+        if (lcp > keyLength - 1) lcp = keyLength - 1;
         if (lcp > MaxCommonKeyPrefixLen) lcp = MaxCommonKeyPrefixLen;
 
-        // Strip-gate: positive savings, no key collapses to empty.
-        if (lcp == 0 || lcp >= minLen || lcp * (count - 1) - 1 <= 0)
+        // Strip-gate: strictly positive net savings.
+        // Block cost = 1 + lcp; per-entry saving = lcp; net = lcp * (count - 1) - 1.
+        if (lcp <= 0 || lcp * (count - 1) - 1 <= 0)
             lcp = 0;
 
         if (disablePrefix) lcp = 0;
@@ -136,16 +151,16 @@ internal static class BSearchIndexLayoutPlanner
         else if (allSameLen && effFirstLen > 0)
         {
             keyType = 1;
-            keySlotSize = effFirstLen;
-            // Off-SIMD slot=3 → upgrade to SIMD slot=4 by dropping the prefix-strip.
-            // Safe because firstLen ≤ 4 (we only land here with firstLen ∈ {3, 4} when
-            // effFirstLen == 3) and keyLength ≥ 4 (post-widening guarantees it or the
-            // natural firstLen already implies it).
-            if (keySlotSize == 3 && firstLen <= 4 && keyLength >= 4)
-            {
-                lcp = 0;
-                keySlotSize = 4;
-            }
+            // Snap to the next SIMD-eligible Uniform slot {2, 4, 8} when the budget
+            // (keyLength - lcp) accommodates it. Extra bytes per entry come from the
+            // data section past the natural separator (see the lcp comment above);
+            // tight-budget cases keep the natural width rather than sacrificing lcp.
+            int budget = keyLength - lcp;
+            keySlotSize =
+                effFirstLen <= 2 && budget >= 2 ? 2 :
+                effFirstLen <= 4 && budget >= 4 ? 4 :
+                effFirstLen <= 8 && budget >= 8 ? 8 :
+                effFirstLen;
         }
         else if (effMaxLen <= 3)
         {

@@ -825,6 +825,102 @@ public class BSearchIndexTests
         Assert.That(keyLittleEndian, Is.EqualTo(expectedLe));
     }
 
+    // Build a `lengths` span for a [firstLen, otherLen, otherLen, …] separator profile.
+    private static int[] BuildLengthsProfile(int firstLen, int otherLen, int count)
+    {
+        int[] lens = new int[count];
+        lens[0] = firstLen;
+        for (int i = 1; i < count; i++) lens[i] = otherLen;
+        return lens;
+    }
+
+    /// <summary>
+    /// lcp can take the full <c>crossEntryLcp</c> (clamped only by minLen, keyLength-1,
+    /// and the MaxCommonKeyPrefixLen header field) because the builder pads each slot
+    /// from the key's data section past the natural separator. The user-observed leaf
+    /// (firstLen=4, others=5, crossEntryLcp=4, 105 entries) lands at UniformWithLen
+    /// slot=2 rather than slot=3, saving ~100 B per leaf vs the previous min(minLen-1)
+    /// cap. Last row exercises a tight-budget case (keyLength == minLen) where the
+    /// keyLength-1 clamp binds and the snap can't reach a SIMD slot — proves we don't
+    /// sacrifice lcp to chase SIMD.
+    /// </summary>
+    [TestCase(4, 5, 105, 4, 32, 4, 2, 2, TestName = "Plan_FullLcp_UserScenario_105Entries")]
+    [TestCase(4, 5, 2, 10, 32, 4, 2, 2, TestName = "Plan_FullLcp_TwoEntries_ClampedByMinLen")]
+    [TestCase(5, 6, 10, 5, 32, 5, 2, 2, TestName = "Plan_FullLcp_MinLen5_FirstShorter")]
+    [TestCase(5, 5, 10, 5, 5, 4, 1, 1, TestName = "Plan_FullLcp_AllSameLen_TightBudget_NoSimd")]
+    public void LayoutPlanner_FullLcpPlusUniformWithLenShrink(
+        int firstLen, int otherLen, int count, int crossEntryLcp, int keyLength,
+        int expectedLcp, int expectedKeyType, int expectedKeySlotSize)
+    {
+        int[] lengths = BuildLengthsProfile(firstLen, otherLen, count);
+        BSearchIndexLayoutPlanner.Plan(lengths, crossEntryLcp, keyLength,
+            out int lcp, out int keyType, out int keySlotSize, out _);
+        Assert.That(lcp, Is.EqualTo(expectedLcp));
+        Assert.That(keyType, Is.EqualTo(expectedKeyType));
+        Assert.That(keySlotSize, Is.EqualTo(expectedKeySlotSize));
+    }
+
+    /// <summary>
+    /// Power-of-2 snap in the Uniform branch: when the post-strip budget
+    /// (<c>keyLength - lcp</c>) accommodates a SIMD-eligible slot {2, 4, 8}, the
+    /// planner enlarges the slot rather than dropping the strip — the extra bytes
+    /// per entry are padded from key data. Rows cover the slot=3→4 upgrade with
+    /// preserved lcp, plus snap targets 4 and 8 for larger natural lengths, plus
+    /// the lcp=0 no-op case, plus a tight-budget case where no snap fits.
+    /// </summary>
+    [TestCase(4, 4, 10, 1, 5, 1, 4, true, TestName = "Plan_Snap_Slot3To4_KeepsLcp")]
+    [TestCase(8, 8, 10, 5, 16, 5, 4, true, TestName = "Plan_Snap_Eff3_To4")]
+    [TestCase(8, 8, 10, 3, 16, 3, 8, true, TestName = "Plan_Snap_Eff5_To8")]
+    [TestCase(4, 4, 10, 0, 4, 0, 4, true, TestName = "Plan_Snap_NoStrip_Slot4Native")]
+    [TestCase(3, 3, 10, 0, 3, 0, 3, false, TestName = "Plan_Snap_TightBudget_NoSimd")]
+    public void LayoutPlanner_UniformSlot_SnapsToPowerOfTwo_WhenBudgetAllows(
+        int firstLen, int otherLen, int count, int crossEntryLcp, int keyLength,
+        int expectedLcp, int expectedKeySlotSize, bool expectedLe)
+    {
+        int[] lengths = BuildLengthsProfile(firstLen, otherLen, count);
+        BSearchIndexLayoutPlanner.Plan(lengths, crossEntryLcp, keyLength,
+            out int lcp, out int keyType, out int keySlotSize, out bool keyLittleEndian);
+        Assert.That(keyType, Is.EqualTo(1), "Uniform expected for allSameLen profiles");
+        Assert.That(lcp, Is.EqualTo(expectedLcp));
+        Assert.That(keySlotSize, Is.EqualTo(expectedKeySlotSize));
+        Assert.That(keyLittleEndian, Is.EqualTo(expectedLe));
+    }
+
+    /// <summary>
+    /// Intermediate-node niche (leftmost-empty separator): <c>minLen = 0</c> drives
+    /// the <c>minLen - 1</c> cap to a negative <c>lcp</c>, which the savings gate
+    /// zeroes. The planner must take the <c>emptyFirst &amp;&amp; allSameLenExceptFirst</c>
+    /// branch and emit <c>UniformWithLen</c> with <c>slot = secondLen + 1</c>.
+    /// </summary>
+    [Test]
+    public void LayoutPlanner_EmptyLeftmostSeparator_DoesNotStrip()
+    {
+        ReadOnlySpan<int> lengths = stackalloc int[4] { 0, 5, 5, 5 };
+        BSearchIndexLayoutPlanner.Plan(lengths, crossEntryLcp: 3, keyLength: 32,
+            out int lcp, out int keyType, out int keySlotSize, out _);
+        Assert.That(lcp, Is.EqualTo(0));
+        Assert.That(keyType, Is.EqualTo(2));
+        Assert.That(keySlotSize, Is.EqualTo(6));
+    }
+
+    /// <summary>
+    /// Cap-vs-MaxCommonKeyPrefixLen ordering: when both <c>crossEntryLcp</c> and
+    /// <c>minLen - 1</c> exceed <see cref="BSearchIndexLayoutPlanner.MaxCommonKeyPrefixLen"/>,
+    /// the planner clamps to that ceiling (128) and the savings gate keeps the strip.
+    /// </summary>
+    [Test]
+    public void LayoutPlanner_LcpExceedsMaxCommonKeyPrefixLen_ClampedToCap()
+    {
+        const int count = 50;
+        const int len = 256;
+        int[] lengths = BuildLengthsProfile(len, len, count);
+        BSearchIndexLayoutPlanner.Plan(lengths, crossEntryLcp: 200, keyLength: 256,
+            out int lcp, out int keyType, out int keySlotSize, out _);
+        Assert.That(lcp, Is.EqualTo(BSearchIndexLayoutPlanner.MaxCommonKeyPrefixLen));
+        Assert.That(keyType, Is.EqualTo(1));
+        Assert.That(keySlotSize, Is.EqualTo(len - BSearchIndexLayoutPlanner.MaxCommonKeyPrefixLen));
+    }
+
     /// <summary>
     /// Round-trip a UniformWithLen LE-encoded leaf with slotSize=4 covering payload lengths
     /// {0,1,2,3}: header bit 5 is set, raw on-disk slot bytes are byte-reversed,
