@@ -5,7 +5,6 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Linq.Expressions;
-using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using Nethermind.Config;
@@ -55,31 +54,22 @@ public static partial class HardforkLabels
     }
 
     /// <param name="name">Fork class name (e.g. <c>Cancun</c>); the JSON wire key is its camelCase form.</param>
+    /// <remarks>
+    /// Parsing dispatches through <see cref="EthereumJsonSerializer.JsonOptions"/> so hex strings
+    /// (<c>"0x65687fd0"</c>) and decimal numbers go through the same <c>LongConverter</c> /
+    /// <c>ULongConverter</c> the rest of <see cref="ChainSpecParamsJson"/> uses for its explicit
+    /// EIP transition fields — one number-parsing code path, not two.
+    /// </remarks>
     internal static HardforkLabel<long> Block(
         string name,
-        params Expression<Func<ChainSpecParamsJson, long?>>[] eips) => new(name, JsonElementParsers.Long, eips);
+        params Expression<Func<ChainSpecParamsJson, long?>>[] eips) =>
+        new(name, static e => e.Deserialize<long>(EthereumJsonSerializer.JsonOptions), eips);
 
     /// <inheritdoc cref="Block"/>
     internal static HardforkLabel<ulong> Time(
         string name,
-        params Expression<Func<ChainSpecParamsJson, ulong?>>[] eips) => new(name, JsonElementParsers.ULong, eips);
-
-    private static class JsonElementParsers
-    {
-        public static long Long(JsonElement e) => e.ValueKind switch
-        {
-            JsonValueKind.Number => e.GetInt64(),
-            JsonValueKind.String => LongConverter.FromString(e.GetString()!),
-            _ => throw new JsonException($"Hardfork label value must be a number or hex/decimal string, got {e.ValueKind}."),
-        };
-
-        public static ulong ULong(JsonElement e) => e.ValueKind switch
-        {
-            JsonValueKind.Number => e.GetUInt64(),
-            JsonValueKind.String => ULongConverter.FromString(Encoding.UTF8.GetBytes(e.GetString()!)),
-            _ => throw new JsonException($"Hardfork label value must be a number or hex/decimal string, got {e.ValueKind}."),
-        };
-    }
+        params Expression<Func<ChainSpecParamsJson, ulong?>>[] eips) =>
+        new(name, static e => e.Deserialize<ulong>(EthereumJsonSerializer.JsonOptions), eips);
 }
 
 public interface IHardforkLabel
