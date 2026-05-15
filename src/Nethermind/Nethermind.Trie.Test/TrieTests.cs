@@ -586,6 +586,48 @@ namespace Nethermind.Trie.Test
         }
 
         [Test]
+        public void Commit_after_update_root_hash_keeps_root_hash_and_reuses_root_rlp()
+        {
+            Hash256 expectedRootHash;
+
+            {
+                MemDb memDb = new();
+                using IPruningTrieStore trieStore = CreateTrieStore(memDb);
+                PatriciaTree patriciaTree = CreateTreeWithBranch(trieStore);
+
+                patriciaTree.UpdateRootHash();
+                expectedRootHash = patriciaTree.RootHash;
+                TrieNode root = patriciaTree.Root!;
+                CappedArray<byte> rootRlp = root.FullRlp;
+
+                rootRlp.IsNotNull.Should().BeTrue();
+                trieStore.CommitPatriciaTrie(0, patriciaTree);
+
+                patriciaTree.RootHash.Should().Be(expectedRootHash);
+                root.FullRlp.UnderlyingArray.Should().BeSameAs(rootRlp.UnderlyingArray);
+            }
+
+            {
+                MemDb memDb = new();
+                using IPruningTrieStore trieStore = CreateTrieStore(memDb);
+                PatriciaTree patriciaTree = CreateTreeWithBranch(trieStore);
+
+                trieStore.CommitPatriciaTrie(0, patriciaTree);
+
+                patriciaTree.RootHash.Should().Be(expectedRootHash);
+            }
+
+            PatriciaTree CreateTreeWithBranch(ITrieStore trieStore)
+            {
+                PatriciaTree patriciaTree = new(trieStore, _logManager);
+                patriciaTree.Set(_keyA, _longLeaf1);
+                patriciaTree.Set(_keyB, _longLeaf2);
+                patriciaTree.Set(_keyC, _longLeaf3);
+                return patriciaTree;
+            }
+        }
+
+        [Test]
         public void Extension_with_branch_with_two_different_children()
         {
             MemDb memDb = new();

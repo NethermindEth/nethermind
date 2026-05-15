@@ -43,6 +43,7 @@ namespace Nethermind.Trie
         private const byte _persistedMask = 0b0010;
         private const byte _boundaryProof = 0b0100;
         private const byte _hasKeccakMask = 0b1000;
+        private const byte _rlpStaleMask = 0b1_0000;
 
         private byte _blockAndFlags = 0;
         // Seqlock counter for torn-read safety on _keccakValue (32 bytes, not atomically
@@ -146,6 +147,7 @@ namespace Nethermind.Trie
                     // Advance sequence by 2 and clear lock bit (even), store final length
                     uint doneSeq = (seq + 2) & 0xFFFFFFFE;
                     Volatile.Write(ref _rlpSeqAndLength, CreateRlpMetadata(value, doneSeq));
+                    MarkRlpFresh();
                     return;
                 }
                 spin.SpinOnce(); // CAS failed — another writer raced; back off before retry
@@ -217,6 +219,42 @@ namespace Nethermind.Trie
         }
 
         public bool IsDirty => (Volatile.Read(ref _blockAndFlags) & _dirtyMask) != 0;
+
+        internal bool IsRlpStale => (Volatile.Read(ref _blockAndFlags) & _rlpStaleMask) != 0;
+
+        private void MarkRlpStale()
+        {
+            byte previousValue = Volatile.Read(ref _blockAndFlags);
+            byte currentValue;
+            do
+            {
+                currentValue = previousValue;
+                if ((currentValue & _rlpStaleMask) != 0)
+                {
+                    return;
+                }
+
+                byte newValue = (byte)(currentValue | _rlpStaleMask);
+                previousValue = Interlocked.CompareExchange(ref _blockAndFlags, newValue, currentValue);
+            } while (previousValue != currentValue);
+        }
+
+        private void MarkRlpFresh()
+        {
+            byte previousValue = Volatile.Read(ref _blockAndFlags);
+            byte currentValue;
+            do
+            {
+                currentValue = previousValue;
+                if ((currentValue & _rlpStaleMask) == 0)
+                {
+                    return;
+                }
+
+                byte newValue = (byte)(currentValue & ~_rlpStaleMask);
+                previousValue = Interlocked.CompareExchange(ref _blockAndFlags, newValue, currentValue);
+            } while (previousValue != currentValue);
+        }
 
         /// <summary>
         /// Node will no longer be mutable
@@ -415,14 +453,15 @@ namespace Nethermind.Trie
 
         /// <summary>
         /// Copy non-keccak flags (<see cref="_dirtyMask"/>, <see cref="_persistedMask"/>,
-        /// <see cref="_boundaryProof"/>) from <paramref name="source"/> onto <c>this</c>.
+        /// <see cref="_boundaryProof"/>, and <see cref="_rlpStaleMask"/>) from
+        /// <paramref name="source"/> onto <c>this</c>.
         /// Used by the typed-resolve path so a freshly-allocated derived instance inherits
         /// dirty / boundary-proof state from the placeholder it replaces. Optionally OR-in
         /// <see cref="_persistedMask"/> when the caller pulled RLP from the backing store.
         /// </summary>
         internal void CopyFlagsFrom(TrieNode source, bool markPersisted)
         {
-            byte sourceFlags = (byte)(Volatile.Read(ref source._blockAndFlags) & (_dirtyMask | _persistedMask | _boundaryProof));
+            byte sourceFlags = (byte)(Volatile.Read(ref source._blockAndFlags) & (_dirtyMask | _persistedMask | _boundaryProof | _rlpStaleMask));
             if (markPersisted) sourceFlags |= _persistedMask;
 
             byte previous = Volatile.Read(ref _blockAndFlags);
@@ -482,6 +521,7 @@ namespace Nethermind.Trie
                 }
 
                 KeyInternal = value;
+                MarkRlpStale();
                 ClearKeccak();
 
                 [DoesNotReturn, StackTraceHidden]
@@ -526,6 +566,8 @@ namespace Nethermind.Trie
                 }
 
                 leafNode._value = value;
+                MarkRlpStale();
+                ClearKeccak();
 
                 [DoesNotReturn, StackTraceHidden]
                 void ThrowAlreadySealed() => throw new InvalidOperationException(
@@ -560,7 +602,8 @@ namespace Nethermind.Trie
 
         // Copy constructor shared by the typed CloneTyped overrides. Sets the
         // dirty flag; subclasses copy their own shape fields after the base ctor runs.
-        private protected TrieNode(TrieNode node) => _blockAndFlags = _dirtyMask;
+        private protected TrieNode(TrieNode node) =>
+            _blockAndFlags = (byte)(_dirtyMask | (Volatile.Read(ref node._blockAndFlags) & _rlpStaleMask));
 
         // Internal-only constructors used by the typed subclasses to plumb the
         // initial Keccak and / or RLP through the seqlocked fields. The shape
@@ -1137,7 +1180,7 @@ namespace Nethermind.Trie
         {
             bool isRoot = path.Length == 0;
             CappedArray<byte> rlp = ReadRlp();
-            if (rlp.IsNull || IsDirty)
+            if (rlp.IsNull || IsRlpStale)
             {
                 CappedArray<byte> oldRlp = rlp.IsNotNull ? rlp : CappedArray<byte>.Empty;
                 CappedArray<byte> fullRlp = NodeType == NodeType.Branch
@@ -1152,12 +1195,23 @@ namespace Nethermind.Trie
 
                 WriteRlp(rlp = fullRlp);
             }
+#if DEBUG
+            else if (rlp.IsNotNull && IsDirty)
+            {
+                AssertRlpFresh(tree, ref path, rlp, bufferPool, canBeParallel);
+            }
+#endif
 
             /* nodes that are descendants of other nodes are stored inline
              * if their serialized length is less than Keccak length
              * */
             if (rlp.Length >= 32 || isRoot)
             {
+                if (TryGetKeccak(out keccak))
+                {
+                    return true;
+                }
+
                 Metrics.TreeNodeHashCalculations++;
                 keccak = ValueKeccak.Compute(rlp.AsSpan());
                 return true;
@@ -1166,6 +1220,23 @@ namespace Nethermind.Trie
             keccak = default;
             return false;
         }
+
+#if DEBUG
+        private void AssertRlpFresh(ITrieNodeResolver tree, ref TreePath path, CappedArray<byte> rlp,
+            ICappedArrayPool? bufferPool, bool canBeParallel)
+        {
+            CappedArray<byte> fullRlp = NodeType == NodeType.Branch
+                ? TrieNodeDecoder.RlpEncodeBranch(this, tree, ref path, bufferPool,
+                    canBeParallel: path.Length == 0 && canBeParallel)
+                : RlpEncode(tree, ref path, bufferPool, canBeParallel);
+
+            Debug.Assert(
+                rlp.AsSpan().SequenceEqual(fullRlp.AsSpan()),
+                "Fresh trie node RLP does not match a newly encoded value.");
+
+            bufferPool.SafeReturn(fullRlp);
+        }
+#endif
 
         public Hash256? GenerateKey(ITrieNodeResolver tree, ref TreePath path,
             ICappedArrayPool? bufferPool = null, bool canBeParallel = true) =>
@@ -1382,6 +1453,8 @@ namespace Nethermind.Trie
             // The hash argument is preserved for caller introspection / future asserts.
             _ = hash;
             Volatile.Write(ref GetSlotRef(childIndex), null);
+            MarkRlpStale();
+            ClearKeccak();
 
             [DoesNotReturn, StackTraceHidden]
             static void ThrowNotABranch() => throw new TrieException(
@@ -1462,6 +1535,8 @@ namespace Nethermind.Trie
             }
 
             SetItem(i, child);
+            MarkRlpStale();
+            ClearKeccak();
         }
 
         public void SetChild(int i, TrieNode? node)
@@ -1472,6 +1547,7 @@ namespace Nethermind.Trie
             }
 
             SetItem(i, node);
+            MarkRlpStale();
             ClearKeccak();
 
             [DoesNotReturn, StackTraceHidden]
@@ -1502,6 +1578,7 @@ namespace Nethermind.Trie
             TrieNodeLeaf placeholder = new(in hash.ValueHash256);
             placeholder.IsPersisted = true;
             Volatile.Write(ref GetSlotRef(i), placeholder);
+            MarkRlpStale();
             ClearKeccak();
 
             [DoesNotReturn, StackTraceHidden]
