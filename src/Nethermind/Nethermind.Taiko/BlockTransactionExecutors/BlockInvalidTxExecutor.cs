@@ -79,9 +79,7 @@ public class BlockInvalidTxExecutor(ITransactionProcessorAdapter txProcessor, IW
                 if (!txProcessor.Execute(tx, receiptsTracer))
                 {
                     // if the transaction was invalid, we ignore it and continue.
-                    // CancelTransaction clears any IsLimitExceeded set by the intrinsic
-                    // charge in StartNewTxTrace so it does not trip the pre-loop guard
-                    // on the next iteration and prematurely terminate block production.
+                    // CancelTransaction clears IsLimitExceeded set by the intrinsic charge.
                     worldState.Restore(snap);
                     receiptsTracer.Restore(receiptsSnap);
                     if (enforceZkGas) zkGasMeterHolder!.Meter?.CancelTransaction();

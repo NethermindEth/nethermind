@@ -59,8 +59,6 @@ public class TaikoBlockProcessor(
         balManager)
 {
     private readonly ZkGasMeterHolder? _zkGasMeterHolder = zkGasMeterHolder;
-    private readonly ulong _blockZkGasLimit = ZkGasSchedule.ResolveBlockZkGasLimit(specProvider.ChainId);
-    private readonly ulong _txIntrinsicZkGas = ZkGasSchedule.ResolveTxIntrinsicZkGas(specProvider.ChainId);
 
     /// <summary>
     /// Wraps the incoming block tracer with ZK gas metering, delegates to
@@ -75,11 +73,16 @@ public class TaikoBlockProcessor(
         IReleaseSpec spec,
         CancellationToken token)
     {
-        ZkGasBlockTracer zkGasTracer = new(blockTracer, _zkGasMeterHolder, _blockZkGasLimit, _txIntrinsicZkGas);
+        ITaikoReleaseSpec? taikoSpec = spec as ITaikoReleaseSpec;
+        ZkGasBlockTracer zkGasTracer = new(
+            blockTracer,
+            _zkGasMeterHolder,
+            taikoSpec?.UnzenBlockZkGasLimit ?? ZkGasSchedule.BlockZkGasLimit,
+            taikoSpec?.UnzenTxIntrinsicZkGas ?? ZkGasSchedule.TxIntrinsicZkGas);
 
         TxReceipt[] receipts = base.ProcessBlock(block, zkGasTracer, options, spec, token);
 
-        if (spec is ITaikoReleaseSpec { IsUnzenEnabled: true })
+        if (taikoSpec is { IsUnzenEnabled: true })
         {
             // During validation (NewPayload), reject blocks that exceed the ZK gas limit.
             // During production (ProducingBlock), the executor already stopped adding

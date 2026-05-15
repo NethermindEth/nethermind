@@ -50,22 +50,9 @@ public sealed class ZkGasBlockTracer : IBlockTracer
         _inner.StartNewBlockTrace(block);
     }
 
-    /// <summary>
-    /// Resets in-flight transaction gas, charges the flat per-transaction intrinsic ZK gas
-    /// (taiko-mono PR #21669), obtains the inner per-tx tracer, creates a
-    /// <see cref="ZkGasTxTracer"/>, and returns a composite of both.
-    /// If the intrinsic charge alone exceeds the block budget, <see cref="ZkGasMeter.IsLimitExceeded"/>
-    /// is set and <see cref="BlockTransactionExecutors.BlockInvalidTxExecutor"/> will roll back
-    /// the transaction after execution.
-    /// </summary>
     public ITxTracer StartNewTxTrace(Transaction? tx)
     {
         _meter.ResetTransaction();
-        // Charge the flat per-transaction intrinsic ZK gas before any opcode runs.
-        // Mirrors charge_tx_intrinsic_zk_gas in alethia-reth PR #180 (executor.rs).
-        // A value of 0 (Masaya) makes this a no-op, preserving historical consensus.
-        // Return value is intentionally discarded: failure sets IsLimitExceeded, which
-        // BlockInvalidTxExecutor checks post-execution and responds to via CancelTransaction.
         _ = _meter.ChargeTxIntrinsic();
         ITxTracer innerTxTracer = _inner.StartNewTxTrace(tx);
         ZkGasTxTracer zkTracer = new(_meter);

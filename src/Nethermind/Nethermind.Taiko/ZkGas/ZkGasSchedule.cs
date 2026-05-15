@@ -7,11 +7,6 @@ namespace Nethermind.Taiko.ZkGas;
 
 /// <summary>
 /// Consensus-owned ZK gas schedule for the Unzen hardfork.
-/// All values (multipliers, spawn estimates, and <see cref="BlockZkGasLimit"/>) are
-/// taken verbatim from the canonical Taiko protocol specification:
-/// <see href="https://github.com/taikoxyz/taiko-mono/blob/main/packages/protocol/docs/zk_gas_spec.md"/>.
-/// The alethia-reth reference implementation lives in
-/// <c>crates/evm/src/zk_gas/unzen.rs</c> in the alethia-reth repository.
 /// Each opcode/precompile has a multiplier: zkGas = rawGas × multiplier.
 /// </summary>
 public static class ZkGasSchedule
@@ -28,58 +23,20 @@ public static class ZkGasSchedule
     /// <summary>Chain id of the Taiko Hoodi testnet.</summary>
     public const ulong TaikoHoodiChainId = 167_013;
 
-    /// <summary>
-    /// Default Unzen block ZK gas limit applied to Devnet, Hoodi and Mainnet.
-    /// </summary>
+    /// <summary>Default Unzen block ZK gas limit.</summary>
     public const ulong BlockZkGasLimit = 100_000_000;
 
-    /// <summary>
-    /// Masaya-specific Unzen block ZK gas limit. Masaya runs with a larger ZK budget
-    /// (1B) so that load tests can drive the chain near its execution gas ceiling
-    /// without the prover budget becoming the binding constraint.
-    /// Mirrors <c>MASAYA_BLOCK_ZK_GAS_LIMIT</c> in alethia-reth's
-    /// <c>crates/evm/src/zk_gas/unzen.rs</c>.
-    /// </summary>
+    /// <summary>Masaya-specific block ZK gas limit (1B). Masaya activated Unzen with a larger budget for load testing.</summary>
     public const ulong MasayaBlockZkGasLimit = 1_000_000_000;
 
-    /// <summary>
-    /// Fixed ZK gas charged once per transaction before any opcode or precompile runs,
-    /// applied on Devnet, Hoodi, and Mainnet (Unzen). Covers the proving cost of
-    /// per-transaction sender ecrecovery.
-    /// Sourced from taiko-mono PR #21669; mirrors <c>TX_INTRINSIC_ZK_GAS</c> in
-    /// alethia-reth PR #180 (<c>crates/evm/src/zk_gas/unzen.rs</c>).
-    /// </summary>
+    /// <summary>Fixed ZK gas charged per transaction before any opcode runs; covers proving cost of sender ecrecovery.</summary>
     public const ulong TxIntrinsicZkGas = 243_000;
 
     /// <summary>
-    /// Per-transaction intrinsic ZK gas for Taiko Masaya. Pinned at 0 because Masaya
-    /// activated Unzen before taiko-mono PR #21669 landed; charging the non-zero value
-    /// retroactively would break consensus on already-finalized blocks whose
-    /// <c>difficulty</c> header field encodes the finalized block ZK gas.
-    /// Mirrors <c>MASAYA_TX_INTRINSIC_ZK_GAS</c> in alethia-reth PR #180.
+    /// Per-transaction intrinsic ZK gas for Masaya. Pinned at 0 because Masaya activated Unzen before
+    /// this constant landed; retroactively charging would break consensus on finalized blocks.
     /// </summary>
     public const ulong MasayaTxIntrinsicZkGas = 0;
-
-    /// <summary>
-    /// Returns the per-transaction intrinsic ZK gas for the given chain id.
-    /// <see cref="TaikoMasayaChainId"/> returns 0 to preserve historical block consensus;
-    /// all other networks return <see cref="TxIntrinsicZkGas"/> (243 000).
-    /// </summary>
-    /// <param name="chainId">Chain id from <see cref="Nethermind.Core.Specs.ISpecProvider.ChainId"/>.</param>
-    /// <returns>The flat intrinsic ZK gas charged once per transaction.</returns>
-    public static ulong ResolveTxIntrinsicZkGas(ulong chainId) =>
-        chainId == TaikoMasayaChainId ? MasayaTxIntrinsicZkGas : TxIntrinsicZkGas;
-
-    /// <summary>
-    /// Returns the Unzen block ZK gas limit for the given chain id. Masaya
-    /// (<see cref="TaikoMasayaChainId"/>) uses <see cref="MasayaBlockZkGasLimit"/>;
-    /// every other network uses <see cref="BlockZkGasLimit"/>. Opcode multipliers,
-    /// precompile multipliers and spawn estimates are identical across all networks.
-    /// </summary>
-    /// <param name="chainId">Chain id from <see cref="Nethermind.Core.Specs.ISpecProvider.ChainId"/>.</param>
-    /// <returns>The block ZK gas limit in ZK gas units.</returns>
-    public static ulong ResolveBlockZkGasLimit(ulong chainId) =>
-        chainId == TaikoMasayaChainId ? MasayaBlockZkGasLimit : BlockZkGasLimit;
 
     /// <summary>
     /// Mainnet batch-lookup threshold: the first allowed block id (first Shasta block).

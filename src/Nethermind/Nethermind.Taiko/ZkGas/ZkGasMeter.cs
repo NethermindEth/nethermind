@@ -7,27 +7,13 @@ namespace Nethermind.Taiko.ZkGas;
 /// Checked ZK gas accounting for a single block execution.
 /// Tracks per-transaction and per-block ZK gas usage, enforcing the block limit.
 /// </summary>
-/// <remarks>
-/// Production code should resolve both limits via
-/// <see cref="ZkGasSchedule.ResolveBlockZkGasLimit(ulong)"/> and
-/// <see cref="ZkGasSchedule.ResolveTxIntrinsicZkGas(ulong)"/> using the chain id from the
-/// active spec provider so Masaya gets its larger block budget and zero intrinsic while
-/// every other network gets the canonical 100M cap and 243 000 intrinsic. The defaults
-/// are used when the meter is constructed without explicit values (tests and
-/// network-agnostic call sites).
-/// </remarks>
 /// <param name="blockZkGasLimit">Maximum ZK gas permitted within a single block.</param>
-/// <param name="txIntrinsicZkGas">
-/// Flat ZK gas charged once per transaction before any opcode runs. Pass 0 for Masaya
-/// to preserve historical consensus; use <see cref="ZkGasSchedule.TxIntrinsicZkGas"/>
-/// (243 000) for all other networks.
-/// </param>
+/// <param name="txIntrinsicZkGas">Flat ZK gas charged once per transaction before any opcode runs.</param>
 public class ZkGasMeter(ulong blockZkGasLimit = ZkGasSchedule.BlockZkGasLimit, ulong txIntrinsicZkGas = ZkGasSchedule.TxIntrinsicZkGas)
 {
     /// <summary>Per-block ZK gas ceiling captured at construction time.</summary>
     private readonly ulong _blockZkGasLimit = blockZkGasLimit;
 
-    /// <summary>Flat ZK gas charged once per transaction before EVM execution begins.</summary>
     private readonly ulong _txIntrinsicZkGas = txIntrinsicZkGas;
 
     /// <summary>Finalized ZK gas accumulated from fully committed transactions.</summary>
@@ -103,13 +89,7 @@ public class ZkGasMeter(ulong blockZkGasLimit = ZkGasSchedule.BlockZkGasLimit, u
         IsLimitExceeded = false;
     }
 
-    /// <summary>
-    /// Charges the flat per-transaction intrinsic ZK gas before EVM execution begins.
-    /// Mirrors <c>charge_tx_intrinsic</c> in alethia-reth PR #180 (<c>meter.rs</c>).
-    /// When <see cref="_txIntrinsicZkGas"/> is 0 (Masaya) the call is a true no-op and
-    /// returns <c>true</c>. Returns <c>false</c> and sets <see cref="IsLimitExceeded"/>
-    /// when the charge would push the projected block total past the limit.
-    /// </summary>
+    /// <summary>Charges the flat per-transaction intrinsic ZK gas before EVM execution begins.</summary>
     public bool ChargeTxIntrinsic() => ChargeAmount(_txIntrinsicZkGas, 1);
 
     /// <summary>
