@@ -42,25 +42,10 @@ public sealed class HardforkLabelsGenerator : IIncrementalGenerator
                 transform: static (ctx, _) => TryExtractFork(ctx))
             .Where(static f => f is not null);
 
-        IncrementalValueProvider<(Compilation Compilation, ImmutableArray<ForkInfo?> Forks)> combined =
-            context.CompilationProvider.Combine(forks.Collect());
-
-        context.RegisterSourceOutput(combined, static (spc, payload) =>
+        context.RegisterSourceOutput(forks.Collect(), static (spc, collected) =>
         {
-            ImmutableArray<ForkInfo> all = payload.Forks.Where(f => f is not null).Select(f => f!).ToImmutableArray();
+            ImmutableArray<ForkInfo> all = collected.Where(f => f is not null).Select(f => f!).ToImmutableArray();
             if (all.IsEmpty) return;
-
-            // Only emit labels for forks that have a corresponding label property on
-            // ChainSpecParamsJson. This auto-skips Olympic/Frontier/Dao/MuirGlacier/ArrowGlacier/
-            // GrayGlacier/Paris/BPO* without a hard-coded denylist — those forks contribute to the
-            // runtime EIP state via the Apply chain but aren't user-facing chainspec shortcuts.
-            INamedTypeSymbol? paramsJson = payload.Compilation.GetTypeByMetadataName(
-                "Nethermind.Specs.ChainSpecStyle.Json.ChainSpecParamsJson");
-            HashSet<string> labelProperties = paramsJson is null
-                ? new HashSet<string>(StringComparer.Ordinal)
-                : new HashSet<string>(
-                    paramsJson.GetMembers().OfType<IPropertySymbol>().Select(p => p.Name),
-                    StringComparer.Ordinal);
 
             // The Apply body only records this fork's delta. Walk the parent chain to materialize
             // cumulative state for IsPostMerge (set on Paris, inherited by all descendants).
@@ -75,7 +60,7 @@ public sealed class HardforkLabelsGenerator : IIncrementalGenerator
                 }
             }
 
-            spc.AddSource("HardforkLabels.g.cs", SourceText.From(Emit(all, labelProperties), Encoding.UTF8));
+            spc.AddSource("HardforkLabels.g.cs", SourceText.From(Emit(all), Encoding.UTF8));
         });
     }
 
@@ -168,7 +153,7 @@ public sealed class HardforkLabelsGenerator : IIncrementalGenerator
         return result;
     }
 
-    private static string Emit(ImmutableArray<ForkInfo> forks, HashSet<string> labelProperties)
+    private static string Emit(ImmutableArray<ForkInfo> forks)
     {
         List<ForkInfo> ordered = TopologicallyOrder(forks);
 
@@ -189,15 +174,17 @@ public sealed class HardforkLabelsGenerator : IIncrementalGenerator
 
         foreach (ForkInfo fork in ordered)
         {
-            // No matching ChainSpecParamsJson label property → fork is not user-facing as a shorthand.
-            if (!labelProperties.Contains(fork.Name)) continue;
+            // Root forks (no parent) and forks whose EIP set has no JSON-visible fields (Olympic /
+            // glaciers / Paris / BPO*) are silently skipped — they contribute to the runtime EIP
+            // state via the Apply chain but aren't user-facing chainspec shortcuts.
+            if (fork.ParentName is null) continue;
 
             List<string> jsonFields = ResolveJsonFields(fork);
             if (jsonFields.Count == 0) continue;
 
             string factory = fork.IsPostMerge ? "Time" : "Block";
 
-            sb.Append("        ").Append(factory).Append("(p => p.").Append(fork.Name).AppendLine(",");
+            sb.Append("        ").Append(factory).Append("(\"").Append(fork.Name).AppendLine("\",");
             for (int i = 0; i < jsonFields.Count; i++)
             {
                 sb.Append("            p => p.").Append(jsonFields[i]);
