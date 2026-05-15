@@ -65,34 +65,26 @@ public class GethGenesisLoader(IJsonSerializer serializer) : IChainSpecLoader
         GethGenesisConfigJson config = gethGenesis.Config;
 
         Dictionary<ulong, OrderedBlobScheduleSettings> blobSchedulesByTimestamp = [];
-        if (config.BlobSchedule is not null)
+        IReadOnlyDictionary<string, ulong>? timestamps = ((IHasNamedForks)config).NamedForkTimestamps;
+        if (config.BlobSchedule is not null && timestamps is not null)
         {
             foreach ((string forkName, GethBlobScheduleEntry blobSettings) in config.BlobSchedule)
             {
-                if (!_blobScheduleForks.TryGetValue(forkName, out BlobScheduleFork fork))
-                {
-                    continue;
-                }
-
-                ulong? timestamp = fork.TimestampGetter(config);
-
-                if (timestamp is null)
-                {
-                    continue;
-                }
+                if (!_blobScheduleForks.TryGetValue(forkName, out BlobScheduleFork fork)) continue;
+                if (!timestamps.TryGetValue(forkName, out ulong timestamp)) continue;
 
                 BlobScheduleSettings settings = new()
                 {
-                    Timestamp = timestamp.Value,
+                    Timestamp = timestamp,
                     Target = blobSettings.Target,
                     Max = blobSettings.Max,
                     BaseFeeUpdateFraction = blobSettings.BaseFeeUpdateFraction
                 };
 
-                if (!blobSchedulesByTimestamp.TryGetValue(timestamp.Value, out OrderedBlobScheduleSettings existing)
+                if (!blobSchedulesByTimestamp.TryGetValue(timestamp, out OrderedBlobScheduleSettings existing)
                     || fork.Order > existing.ForkOrder)
                 {
-                    blobSchedulesByTimestamp[timestamp.Value] = new OrderedBlobScheduleSettings(fork.Order, settings);
+                    blobSchedulesByTimestamp[timestamp] = new OrderedBlobScheduleSettings(fork.Order, settings);
                 }
             }
         }
@@ -177,6 +169,7 @@ public class GethGenesisLoader(IJsonSerializer serializer) : IChainSpecLoader
         HardforkLabels.ExpandAll(chainSpec.Parameters, config);
     }
 
+<<<<<<< HEAD
     private readonly record struct BlobScheduleFork(int Order, Func<GethGenesisConfigJson, ulong?> TimestampGetter);
 
     private readonly record struct OrderedBlobScheduleSettings(int ForkOrder, BlobScheduleSettings Settings);
@@ -195,6 +188,8 @@ public class GethGenesisLoader(IJsonSerializer serializer) : IChainSpecLoader
             [nameof(BPO5)] = new(8, static c => c.Bpo5Time),
         };
 
+=======
+>>>>>>> 34a7ca9ef3 (review: type IHasNamedForks dicts; route Geth typed props through them)
     private static void LoadGenesis(GethGenesisJson gethGenesisJson, ChainSpec chainSpec)
     {
         UInt256 nonce = gethGenesisJson.Nonce;
