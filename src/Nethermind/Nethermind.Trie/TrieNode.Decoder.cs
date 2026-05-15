@@ -382,6 +382,7 @@ namespace Nethermind.Trie
                 path.TruncateOne();
             }
 
+            [SkipLocalsInit]
             private static void WriteRecordedChildrenRlpBranch(TrieNode item, ReadOnlySpan<byte> parentRlp, Span<BranchChildRlpMetadata> children, Span<byte> destination)
             {
                 int position = 0;

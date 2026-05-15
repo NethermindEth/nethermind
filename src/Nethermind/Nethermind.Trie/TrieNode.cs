@@ -610,6 +610,8 @@ namespace Nethermind.Trie
         /// <summary>Ref-returning access to a child slot. Branches expose 16 slots;
         /// extensions expose one (index 0) which actually stores the child reference.
         /// Leaves have no slots.</summary>
+        /// <remarks>Returned ref is non-volatile. Reader paths that may race with
+        /// <see cref="PublishChild"/> must wrap with <c>Volatile.Read</c>; commit-walk callers may dereference directly.</remarks>
         [MethodImpl(MethodImplOptions.NoInlining)]
         internal virtual ref TrieNode? GetSlotRef(int index) =>
             throw new InvalidOperationException($"GetSlotRef called on an unresolved TrieNode ({this}).");
@@ -1299,6 +1301,7 @@ namespace Nethermind.Trie
                     "An attempt was made to ask about whether a child is null on a non-branch node.");
         }
 
+        // Commit-walk only. Plain slot read is fine - subsequent IsDirty is volatile.
         public bool TryGetDirtyChild(int i, [NotNullWhen(true)] out TrieNode? dirtyChild)
         {
             if (IsExtension)
@@ -1306,8 +1309,7 @@ namespace Nethermind.Trie
                 i++;
             }
 
-            ref TrieNode? data = ref GetSlotRef(i);
-            TrieNode? observed = Volatile.Read(ref data);
+            TrieNode? observed = GetSlotRef(i);
             if (observed is null || ReferenceEquals(observed, NullNode))
             {
                 dirtyChild = null;
