@@ -12,29 +12,32 @@ namespace Nethermind.State.Flat.Hsst;
 /// Stateless static methods so <see cref="HsstReader{TReader,TPin}"/> and
 /// <see cref="HsstEnumerator{TReader,TPin}"/> can dispatch into them without copying
 /// their ref-struct state.
+///
+/// Wire shape (keys-first):
+/// <c>[KeyCount: u16 LE][Keys: N·2][Offsets: (N-1)·2][Values][IndexType: u8]</c>.
 /// </summary>
 internal static class HsstTwoByteSlotValueReader
 {
     public const int KeyLength = HsstTwoByteSlotValueBuilder<SpanBufferWriter>.KeyLength;
     private const int OffsetSize = 2;
 
-    /// <summary>Parsed footer of a TwoByteSlotValue HSST.</summary>
+    /// <summary>Parsed header of a TwoByteSlotValue HSST.</summary>
     internal struct Layout
     {
-        /// <summary>Absolute offset of byte 0 of the HSST (= start of the value region).</summary>
-        public long DataStart;
         /// <summary>Number of entries (N; Offset_0 is implicit zero).</summary>
         public int Count;
         /// <summary>Absolute offset of the keys array (<c>Count · 2</c> bytes).</summary>
         public long KeysStart;
         /// <summary>Absolute offset of the explicit offsets array (<c>(Count − 1) · 2</c> bytes).</summary>
         public long OffsetsStart;
-        /// <summary>Absolute one-past-end of the data region (= start of offsets section).</summary>
-        public long DataEnd;
+        /// <summary>Absolute offset of the values section (byte after offsets).</summary>
+        public long ValuesStart;
+        /// <summary>Absolute one-past-end of the values section (= byte before <see cref="IndexType"/>).</summary>
+        public long ValuesEnd;
     }
 
     /// <summary>
-    /// Parse the TwoByteSlotValue trailer. Returns false on truncation or invalid count.
+    /// Parse the TwoByteSlotValue header. Returns false on truncation or invalid count.
     /// Caller must have already verified the trailing <see cref="IndexType"/> byte equals
     /// <see cref="IndexType.TwoByteSlotValue"/>.
     /// </summary>
@@ -43,24 +46,27 @@ internal static class HsstTwoByteSlotValueReader
         where TReader : IHsstByteReader<TPin>, allows ref struct
     {
         layout = default;
-        // Smallest valid HSST: 1 entry with empty value = 0 (data) + 0 (offsets) + 2 (key) + 2 (count) + 1 (type) = 5 bytes.
+        // Smallest valid HSST: 1 entry with empty value = 2 (count) + 2 (key) + 0 (offsets) + 0 (values) + 1 (type) = 5 bytes.
         if (bound.Length < 5) return false;
 
         Span<byte> countBuf = stackalloc byte[2];
-        if (!reader.TryRead(bound.Offset + bound.Length - 3, countBuf)) return false;
+        if (!reader.TryRead(bound.Offset, countBuf)) return false;
         int count = BinaryPrimitives.ReadUInt16LittleEndian(countBuf) + 1;
 
-        long trailerLen = 4L * count + 1L;
-        if (trailerLen > bound.Length) return false;
+        // Header + keys + offsets + IndexType = 4N + 1; reject if it exceeds the blob.
+        long overhead = 4L * count + 1L;
+        if (overhead > bound.Length) return false;
 
-        long keysStart = bound.Offset + bound.Length - 3 - (long)count * KeyLength;
-        long offsetsStart = keysStart - (long)(count - 1) * OffsetSize;
+        long keysStart = bound.Offset + 2;
+        long offsetsStart = keysStart + (long)count * KeyLength;
+        long valuesStart = offsetsStart + (long)(count - 1) * OffsetSize;
+        long valuesEnd = bound.Offset + bound.Length - 1;
 
-        layout.DataStart = bound.Offset;
         layout.Count = count;
         layout.KeysStart = keysStart;
         layout.OffsetsStart = offsetsStart;
-        layout.DataEnd = offsetsStart;
+        layout.ValuesStart = valuesStart;
+        layout.ValuesEnd = valuesEnd;
         return true;
     }
 
@@ -130,10 +136,10 @@ internal static class HsstTwoByteSlotValueReader
         entryBound = default;
         long start = idx == 0 ? 0L : ReadU16LE<TReader, TPin>(in reader, L.OffsetsStart + (long)(idx - 1) * OffsetSize);
         long end = idx == L.Count - 1
-            ? L.DataEnd - L.DataStart
+            ? L.ValuesEnd - L.ValuesStart
             : ReadU16LE<TReader, TPin>(in reader, L.OffsetsStart + (long)idx * OffsetSize);
         if (end < start) return false;
-        entryBound = new Bound(L.DataStart + start, end - start);
+        entryBound = new Bound(L.ValuesStart + start, end - start);
         return true;
     }
 
@@ -146,7 +152,7 @@ internal static class HsstTwoByteSlotValueReader
         if (L.Count > dst.Length) return 0;
         if (L.Count == 1)
         {
-            dst[0] = new Bound(L.DataStart, L.DataEnd - L.DataStart);
+            dst[0] = new Bound(L.ValuesStart, L.ValuesEnd - L.ValuesStart);
             return 1;
         }
 
@@ -158,10 +164,10 @@ internal static class HsstTwoByteSlotValueReader
         for (int i = 0; i < L.Count - 1; i++)
         {
             long nextStart = BinaryPrimitives.ReadUInt16LittleEndian(offsets[(i * OffsetSize)..]);
-            dst[i] = new Bound(L.DataStart + prevStart, nextStart - prevStart);
+            dst[i] = new Bound(L.ValuesStart + prevStart, nextStart - prevStart);
             prevStart = nextStart;
         }
-        dst[L.Count - 1] = new Bound(L.DataStart + prevStart, L.DataEnd - L.DataStart - prevStart);
+        dst[L.Count - 1] = new Bound(L.ValuesStart + prevStart, L.ValuesEnd - L.ValuesStart - prevStart);
         return L.Count;
     }
 

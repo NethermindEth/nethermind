@@ -9,81 +9,81 @@ namespace Nethermind.State.Flat.Hsst;
 
 /// <summary>
 /// Builds a <see cref="IndexType.TwoByteSlotValue"/> HSST: fixed 2-byte keys, variable
-/// values, packed start-offset trailer. Keys are added in strictly ascending byte order.
+/// values, packed start-offset section, with a keys-first wire shape that lets the
+/// reader prefetch keys/offsets ahead of the bulk values.
 ///
 /// Output:
-/// <c>[Value_0]…[Value_{N-1}][Offset_1: u16 LE]…[Offset_{N-1}: u16 LE][Key_0: 2 bytes]…[Key_{N-1}: 2 bytes][KeyCount: u16 LE = N − 1][IndexType: u8 = 0x05]</c>.
+/// <c>[KeyCount: u16 LE = N − 1][Key_0: 2 bytes]…[Key_{N-1}: 2 bytes][Offset_1: u16 LE]…[Offset_{N-1}: u16 LE][Value_0]…[Value_{N-1}][IndexType: u8 = 0x05]</c>.
 ///
-/// <c>Offset_i</c> is the start offset of <c>Value_i</c> measured from byte 0 of the
-/// HSST (= first data byte). <c>Offset_0</c> is omitted because it is always 0;
-/// <c>Offset_N</c> (one-past-end of the data region) is derived by the reader from the
-/// trailer length. Hence per-entry value bounds are <c>[Offset_i, Offset_{i+1})</c>.
+/// <c>Offset_i</c> is the exclusive start offset of <c>Value_i</c> measured from the
+/// start of the values section (= byte after the offsets array). <c>Offset_0</c> is
+/// omitted because it is always 0; <c>Offset_N</c> (one-past-end of the values section)
+/// is derived by the reader from the blob length minus the trailing
+/// <see cref="IndexType"/> byte. Hence per-entry value bounds are
+/// <c>[Offset_i, Offset_{i+1})</c> within the values section.
 ///
-/// Fixed u16 offsets cap the cumulative data region at <c>ushort.MaxValue</c>
+/// Fixed u16 offsets cap the cumulative value bytes at <c>ushort.MaxValue</c>
 /// (65,535 bytes). <see cref="Build"/> throws when the cap is exceeded — the caller
 /// is expected to gate on <see cref="FitsInOffsetWidth"/> before choosing this format.
+///
+/// Unlike the previous tail-metadata variant, values must be known up-front because
+/// the offset section is emitted ahead of them. The builder buffers value bytes into
+/// pooled scratch during <see cref="Add"/> and flushes them in <see cref="Build"/>.
 /// </summary>
 public ref struct HsstTwoByteSlotValueBuilder<TWriter>
     where TWriter : IByteBufferWriter
 {
     /// <summary>Fixed key length for this format. Single 2-byte slot suffix.</summary>
     public const int KeyLength = 2;
-    /// <summary>Maximum addressable data-region size with u16 offsets.</summary>
+    /// <summary>Maximum addressable cumulative value bytes with u16 offsets.</summary>
     public const int MaxDataBytes = ushort.MaxValue;
     /// <summary>Maximum number of entries (<c>KeyCount</c> stores <c>N − 1</c> in a u16).</summary>
     public const int MaxEntries = 65536;
 
     private const int InitialCapacity = 16;
+    private const int InitialValueCapacity = 256;
 
     private ref TWriter _writer;
-    private readonly long _baseOffset;
-    private long _writtenBeforeValue;
     private int _count;
+    private int _valueBytes;
     private ushort[]? _starts;
     private byte[]? _keys;
+    private byte[]? _values;
 
     public HsstTwoByteSlotValueBuilder(ref TWriter writer)
     {
         _writer = ref writer;
-        _baseOffset = _writer.Written;
         _count = 0;
+        _valueBytes = 0;
     }
 
     public void Dispose()
     {
         if (_starts is not null) { ArrayPool<ushort>.Shared.Return(_starts); _starts = null; }
         if (_keys is not null) { ArrayPool<byte>.Shared.Return(_keys); _keys = null; }
+        if (_values is not null) { ArrayPool<byte>.Shared.Return(_values); _values = null; }
     }
 
     /// <summary>
-    /// Pre-check whether a planned data-region size fits this format's u16 offset cap.
+    /// Pre-check whether a planned cumulative value size fits this format's u16 offset cap.
     /// Callers use this to decide between <see cref="HsstTwoByteSlotValueBuilder{TWriter}"/>
-    /// and a wider-offset fallback (e.g. <see cref="HsstBTreeBuilder{TWriter,TReader,TPin}"/>).
+    /// and a wider-offset fallback (e.g. <see cref="HsstTwoByteSlotValueLargeBuilder{TWriter}"/>).
     /// </summary>
     public static bool FitsInOffsetWidth(long totalValueBytes)
         => (ulong)totalValueBytes <= ushort.MaxValue;
 
     /// <summary>
-    /// Begin writing a value. After writing the value bytes via the returned writer,
-    /// call <see cref="FinishValueWrite"/> with the entry's 2-byte key.
+    /// Append a key/value entry. <paramref name="key"/> must be exactly 2 bytes and
+    /// strictly greater (byte-lex) than every previously added key. The value bytes
+    /// are copied into pooled scratch and flushed to the underlying writer in
+    /// <see cref="Build"/>; callers may reuse the source span after the call returns.
     /// </summary>
-    public ref TWriter BeginValueWrite()
-    {
-        _writtenBeforeValue = _writer.Written;
-        return ref _writer;
-    }
-
-    /// <summary>
-    /// Finish a value previously begun with <see cref="BeginValueWrite"/>. <paramref name="key"/>
-    /// must be exactly 2 bytes and strictly greater (byte-lex) than every previously
-    /// written key.
-    /// </summary>
-    public void FinishValueWrite(scoped ReadOnlySpan<byte> key)
+    public void Add(scoped ReadOnlySpan<byte> key, scoped ReadOnlySpan<byte> value)
     {
         if (key.Length != KeyLength)
             throw new ArgumentException($"TwoByteSlotValue requires {KeyLength}-byte keys; got length {key.Length}", nameof(key));
 
-        EnsureCapacity(_count + 1);
+        EnsureKeysCapacity(_count + 1);
 
         if (_count > 0)
         {
@@ -92,24 +92,24 @@ public ref struct HsstTwoByteSlotValueBuilder<TWriter>
                 throw new ArgumentException($"Keys must be strictly ascending; got 0x{key[0]:X2}{key[1]:X2} after 0x{prev[0]:X2}{prev[1]:X2}", nameof(key));
         }
 
-        long start = _writtenBeforeValue - _baseOffset;
-        if ((ulong)start > ushort.MaxValue)
-            throw new InvalidOperationException($"TwoByteSlotValue data region exceeded {MaxDataBytes} bytes at entry {_count}");
+        long newTotal = (long)_valueBytes + value.Length;
+        if ((ulong)newTotal > ushort.MaxValue)
+            throw new InvalidOperationException($"TwoByteSlotValue values would exceed {MaxDataBytes} bytes at entry {_count}");
 
-        _starts![_count] = (ushort)start;
+        _starts![_count] = (ushort)_valueBytes;
         key.CopyTo(_keys.AsSpan(_count * KeyLength, KeyLength));
+
+        if (value.Length > 0)
+        {
+            EnsureValuesCapacity(_valueBytes + value.Length);
+            value.CopyTo(_values.AsSpan(_valueBytes, value.Length));
+        }
+
+        _valueBytes = (int)newTotal;
         _count++;
     }
 
-    /// <summary>Convenience: write a (key, value) pair in one call.</summary>
-    public void Add(scoped ReadOnlySpan<byte> key, scoped ReadOnlySpan<byte> value)
-    {
-        _writtenBeforeValue = _writer.Written;
-        IByteBufferWriter.Copy(ref _writer, value);
-        FinishValueWrite(key);
-    }
-
-    private void EnsureCapacity(int needed)
+    private void EnsureKeysCapacity(int needed)
     {
         int current = _starts?.Length ?? 0;
         if (needed <= current) return;
@@ -133,10 +133,26 @@ public ref struct HsstTwoByteSlotValueBuilder<TWriter>
         _keys = newKeys;
     }
 
+    private void EnsureValuesCapacity(int needed)
+    {
+        int current = _values?.Length ?? 0;
+        if (needed <= current) return;
+
+        int newCap = current == 0 ? InitialValueCapacity : current * 2;
+        if (newCap < needed) newCap = needed;
+
+        byte[] newValues = ArrayPool<byte>.Shared.Rent(newCap);
+        if (_values is not null)
+        {
+            Array.Copy(_values, newValues, _valueBytes);
+            ArrayPool<byte>.Shared.Return(_values);
+        }
+        _values = newValues;
+    }
+
     /// <summary>
-    /// Append the trailer (<c>[Offsets][Keys][KeyCount][IndexType]</c>). The writer is
-    /// already advanced through every value at this point. Throws on empty maps and on
-    /// data-region overflow.
+    /// Emit the HSST: <c>[KeyCount][Keys][Offsets][Values][IndexType]</c>. Throws on empty
+    /// maps and on values-section overflow.
     /// </summary>
     public void Build()
     {
@@ -144,9 +160,27 @@ public ref struct HsstTwoByteSlotValueBuilder<TWriter>
         if (n == 0)
             throw new InvalidOperationException("TwoByteSlotValue cannot encode an empty map; the caller must omit Build for zero-entry maps");
 
-        long dataSize = _writer.Written - _baseOffset;
-        if ((ulong)dataSize > ushort.MaxValue)
-            throw new InvalidOperationException($"TwoByteSlotValue data region {dataSize} bytes exceeds {MaxDataBytes}");
+        if ((ulong)_valueBytes > ushort.MaxValue)
+            throw new InvalidOperationException($"TwoByteSlotValue values {_valueBytes} bytes exceeds {MaxDataBytes}");
+
+        // Header: KeyCount (N − 1) u16 LE at byte 0.
+        Span<byte> header = _writer.GetSpan(2);
+        BinaryPrimitives.WriteUInt16LittleEndian(header, (ushort)(n - 1));
+        _writer.Advance(2);
+
+        // Keys: N · 2 bytes, byte-reversed on the way out (LE-stored convention — a native
+        // u16 load over a stored key now recovers the BE numeric value, letting SIMD
+        // scans compare numerically; see UniformKeySearch.LowerBound2LE). _keys is logical
+        // (BE) during build for the strict-ascending compare in Add().
+        int keysBytes = n * KeyLength;
+        Span<byte> keysSpan = _writer.GetSpan(keysBytes);
+        ReadOnlySpan<byte> logicalKeys = _keys.AsSpan(0, keysBytes);
+        for (int i = 0; i < n; i++)
+        {
+            keysSpan[i * 2 + 0] = logicalKeys[i * 2 + 1];
+            keysSpan[i * 2 + 1] = logicalKeys[i * 2 + 0];
+        }
+        _writer.Advance(keysBytes);
 
         // Offsets: N − 1 u16 LE values (Offset_1..Offset_{N-1}); Offset_0 is omitted.
         int offsetsBytes = (n - 1) * 2;
@@ -158,24 +192,18 @@ public ref struct HsstTwoByteSlotValueBuilder<TWriter>
             _writer.Advance(offsetsBytes);
         }
 
-        // Keys: N · 2 bytes, byte-reversed on the way out (LE-stored convention — a native
-        // u16 load over a stored key now recovers the BE numeric value, letting SIMD
-        // scans compare numerically; see UniformKeySearch.LowerBound2LE). _keys is logical
-        // (BE) during build for the strict-ascending compare in FinishValueWrite.
-        int keysBytes = n * KeyLength;
-        Span<byte> keysSpan = _writer.GetSpan(keysBytes);
-        ReadOnlySpan<byte> logicalKeys = _keys.AsSpan(0, keysBytes);
-        for (int i = 0; i < n; i++)
+        // Values: buffered during Add(); flush as a single contiguous block.
+        if (_valueBytes > 0)
         {
-            keysSpan[i * 2 + 0] = logicalKeys[i * 2 + 1];
-            keysSpan[i * 2 + 1] = logicalKeys[i * 2 + 0];
+            Span<byte> valuesSpan = _writer.GetSpan(_valueBytes);
+            _values.AsSpan(0, _valueBytes).CopyTo(valuesSpan);
+            _writer.Advance(_valueBytes);
         }
-        _writer.Advance(keysBytes);
 
-        // Trailer: KeyCount (N − 1) u16 LE + IndexType byte.
-        Span<byte> trailer = _writer.GetSpan(3);
-        BinaryPrimitives.WriteUInt16LittleEndian(trailer, (ushort)(n - 1));
-        trailer[2] = (byte)IndexType.TwoByteSlotValue;
-        _writer.Advance(3);
+        // Trailer: single IndexType byte. Stays at the tail so HsstReader still
+        // dispatches on the last byte.
+        Span<byte> trailer = _writer.GetSpan(1);
+        trailer[0] = (byte)IndexType.TwoByteSlotValue;
+        _writer.Advance(1);
     }
 }

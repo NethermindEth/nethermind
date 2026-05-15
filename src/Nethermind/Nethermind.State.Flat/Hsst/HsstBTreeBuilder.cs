@@ -14,33 +14,45 @@ namespace Nethermind.State.Flat.Hsst;
 /// Builds an HSST (Hierarchical Static Sorted Table) from key-value entries.
 /// Entries MUST be added in sorted key order. No internal sorting is performed.
 ///
-/// Binary layout (BTree):
+/// Two data-region entry layouts are supported, selected by the <c>keyFirst</c>
+/// constructor flag:
+///
+/// Binary layout (BTree, <c>keyFirst = false</c>; trailer <c>IndexType = 0x01</c>):
 ///   [Data Region: entries...][Index Region: B-tree nodes...][RootSize: u16 LE][KeyLength: u8][IndexType: u8 = 0x01]
 ///   The root node's start is computed as (HSST end - 4 - RootSize); its header sits at that
 ///   first byte. Per-node fields run header → keys → values (low → high) so a forward read of
 ///   the metadata pulls the keys/values into cache via the hardware prefetcher.
 ///
-/// Entry format (normal, value first, ValueLength forward-readable from MetadataStart):
+/// Entry format (key-after-value):
 ///   [optional pad][Value][ValueLength: LEB128][FullKey]
 /// MetadataStart points at the ValueLength LEB128. Key length is invariant per HSST and
 /// lives in the trailer (single byte, 0–255 by format contract), so the data-section
-/// entry does not repeat it. The leaf B-tree node also stores a separator (a min-length
-/// prefix of the full key) for binary-search navigation, but the data-region entry is
-/// self-describing — the full key lives in the entry tail and the reader does not need
-/// to consult the leaf to recover it. (ValueLength uses LEB128 because values are
-/// unbounded; the LEB128 terminator chain is forward-readable only, so the length sits
-/// after the value and the index aims at it.)
-/// The reader recovers the value via ValueStart = MetadataStart - ValueLength, so any
-/// leading pad bytes a caller inserts between BeginValueWrite and the real value (e.g.
-/// to keep the value within a 4 KiB page) are inert gap data — no index entry points at
-/// them. Use the <see cref="HsstBTreeBuilder{TWriter,TReader,TPin}.FinishValueWrite(System.ReadOnlySpan{byte},int)"/>
-/// overload to declare the real value length when padding has been inserted.
+/// entry does not repeat it. The reader recovers the value via
+/// <c>ValueStart = MetadataStart − ValueLength</c>. Leading pad bytes inserted between
+/// <see cref="BeginValueWrite"/> and the real value are inert; use
+/// <see cref="FinishValueWrite(System.ReadOnlySpan{byte},long)"/> to declare the real
+/// value length.
+///
+/// Binary layout (BTreeKeyFirst, <c>keyFirst = true</c>; trailer <c>IndexType = 0x07</c>):
+///   Same overall shape, but per-entry layout is keys-first to mirror the keys-first
+///   sub-slot HSST: the entry's per-entry metadata (key + length) sits at the entry's
+///   front, so a forward scan crossing nested HSSTs walks key → length → value
+///   throughout.
+///
+/// Entry format (key-first):
+///   [FullKey: KeyLength bytes][ValueLength: LEB128][Value: V bytes]
+/// The leaf index pointer targets <c>EntryStart</c> (FullKey byte 0). The reader walks
+/// forward: <c>KeyLength</c> from the trailer locates the LEB128; the LEB128 yields the
+/// value length; the value follows. Streaming writes are not supported in this mode —
+/// the value length must be known when the entry is laid down, so callers must use
+/// <see cref="Add(System.ReadOnlySpan{byte},System.ReadOnlySpan{byte})"/>.
 ///
 /// Memory: while the data section is being written, the only per-key state held in
-/// memory is one <c>long</c> per entry (the metadata position). Separators and the
-/// previous key are not buffered — at <see cref="Build"/> time the index builder is
-/// handed a reader over the just-written data section and recomputes separators
-/// on-demand from the flushed bytes.
+/// memory is one <c>long</c> per entry (the entry's index pointer target — MetadataStart
+/// in key-after-value mode, EntryStart in key-first mode). Separators and the previous
+/// key are not buffered — at <see cref="Build"/> time the index builder is handed a
+/// reader over the just-written data section and recomputes separators on-demand from
+/// the flushed bytes.
 /// </summary>
 public ref struct HsstBTreeBuilder<TWriter, TReader, TPin>
     where TWriter : IByteBufferWriterWithReader<TReader, TPin>
@@ -51,6 +63,7 @@ public ref struct HsstBTreeBuilder<TWriter, TReader, TPin>
     private long _writtenBeforeValue;
     private readonly long _baseOffset;
     private readonly HsstBTreeOptions _options;
+    private readonly bool _keyFirst;
     private int _keyLength;
 
     // Per-key metadata-position list owned by this builder in the auto-owned constructor.
@@ -78,8 +91,13 @@ public ref struct HsstBTreeBuilder<TWriter, TReader, TPin>
     /// can rely on the trailer value.
     /// <paramref name="expectedKeyCount"/> sizes the entry-positions buffer up front;
     /// pass an estimate when known to avoid resize allocations. The buffer still grows on demand.
+    /// When <paramref name="keyFirst"/> is true, the data-region entries are written
+    /// key-first (<c>[FullKey][LEB128][Value]</c>) and the trailer carries
+    /// <see cref="IndexType.BTreeKeyFirst"/>; <see cref="BeginValueWrite"/> is rejected
+    /// because the value length must be known up front, so callers must use
+    /// <see cref="Add"/>.
     /// </summary>
-    public HsstBTreeBuilder(ref TWriter writer, int keyLength, HsstBTreeOptions? options = null, int expectedKeyCount = 16)
+    public HsstBTreeBuilder(ref TWriter writer, int keyLength, HsstBTreeOptions? options = null, int expectedKeyCount = 16, bool keyFirst = false)
     {
         ArgumentOutOfRangeException.ThrowIfLessThan(keyLength, -1);
         ArgumentOutOfRangeException.ThrowIfGreaterThan(keyLength, 255);
@@ -90,6 +108,7 @@ public ref struct HsstBTreeBuilder<TWriter, TReader, TPin>
         _baseOffset = _writer.Written;
         _options = opts;
         _keyLength = keyLength;
+        _keyFirst = keyFirst;
 
         _ownedEntryPositions = new NativeMemoryListRef<long>(expectedKeyCount);
         _useExternalBuffers = false;
@@ -104,8 +123,9 @@ public ref struct HsstBTreeBuilder<TWriter, TReader, TPin>
     /// <paramref name="buffers"/> is reset for this build via
     /// <see cref="HsstBTreeBuilderBuffers.ResetForBuild"/>; it remains the caller's
     /// responsibility to dispose.
+    /// See the primary constructor for <paramref name="keyFirst"/> semantics.
     /// </summary>
-    public unsafe HsstBTreeBuilder(ref TWriter writer, scoped ref HsstBTreeBuilderBuffers buffers, int keyLength, HsstBTreeOptions? options = null, int expectedKeyCount = 16)
+    public unsafe HsstBTreeBuilder(ref TWriter writer, scoped ref HsstBTreeBuilderBuffers buffers, int keyLength, HsstBTreeOptions? options = null, int expectedKeyCount = 16, bool keyFirst = false)
     {
         ArgumentOutOfRangeException.ThrowIfLessThan(keyLength, -1);
         ArgumentOutOfRangeException.ThrowIfGreaterThan(keyLength, 255);
@@ -116,6 +136,7 @@ public ref struct HsstBTreeBuilder<TWriter, TReader, TPin>
         _baseOffset = _writer.Written;
         _options = opts;
         _keyLength = keyLength;
+        _keyFirst = keyFirst;
 
         buffers.ResetForBuild(expectedKeyCount);
         _externalBuffers = Unsafe.AsPointer(ref buffers);
@@ -151,9 +172,14 @@ public ref struct HsstBTreeBuilder<TWriter, TReader, TPin>
     /// the BeginValueWrite snapshot and (Written - valueLength); the reader recovers
     /// the value via ValueStart = MetadataStart - ValueLength, so leading pad bytes
     /// are inert gap data that no index entry points at.
+    ///
+    /// Not supported in key-first mode (the value length must be known when the entry
+    /// is laid down). Callers in key-first mode must use <see cref="Add"/>.
     /// </summary>
     public ref TWriter BeginValueWrite()
     {
+        if (_keyFirst)
+            throw new InvalidOperationException("Key-first BTree requires Add(key, value); BeginValueWrite/FinishValueWrite streaming is not supported.");
         _writtenBeforeValue = _writer.Written;
         return ref _writer;
     }
@@ -164,6 +190,7 @@ public ref struct HsstBTreeBuilder<TWriter, TReader, TPin>
     /// Use <see cref="FinishValueWrite(ReadOnlySpan{byte}, long)"/> to declare a
     /// value length smaller than the writer delta when leading padding was inserted.
     /// Key must be greater than previous key (sorted order).
+    /// Not supported in key-first mode — use <see cref="Add"/>.
     /// </summary>
     public void FinishValueWrite(scoped ReadOnlySpan<byte> key)
     {
@@ -178,9 +205,13 @@ public ref struct HsstBTreeBuilder<TWriter, TReader, TPin>
     /// as padding and become inert gap data that no index entry points at. Use this
     /// to keep a value from crossing a 4 KiB page boundary by padding ahead of it.
     /// Key must be greater than previous key (sorted order).
+    /// Not supported in key-first mode — use <see cref="Add"/>.
     /// </summary>
     public void FinishValueWrite(scoped ReadOnlySpan<byte> key, long valueLength)
     {
+        if (_keyFirst)
+            throw new InvalidOperationException("Key-first BTree requires Add(key, value); BeginValueWrite/FinishValueWrite streaming is not supported.");
+
         if (_keyLength < 0)
         {
             ArgumentOutOfRangeException.ThrowIfGreaterThan(key.Length, 255);
@@ -216,6 +247,11 @@ public ref struct HsstBTreeBuilder<TWriter, TReader, TPin>
 
     /// <summary>
     /// Convenience: add key-value pair in one call.
+    /// In key-after-value mode the layout written is <c>[Value][LEB128 ValueLength][FullKey]</c>
+    /// and the recorded entry position aims at the LEB128 byte (MetadataStart).
+    /// In key-first mode (<c>keyFirst = true</c> at construction) the layout is
+    /// <c>[FullKey][LEB128 ValueLength][Value]</c> and the recorded entry position aims at
+    /// FullKey byte 0 (EntryStart).
     /// </summary>
     public void Add(scoped ReadOnlySpan<byte> key, scoped ReadOnlySpan<byte> value)
     {
@@ -226,6 +262,22 @@ public ref struct HsstBTreeBuilder<TWriter, TReader, TPin>
         }
         else if (key.Length != _keyLength)
             throw new ArgumentException($"key length {key.Length} != declared keyLength {_keyLength}", nameof(key));
+
+        if (_keyFirst)
+        {
+            // Entry layout: [FullKey][LEB128 ValueLength][Value]. EntryStart = FullKey byte 0.
+            long entryStart = _writer.Written - _baseOffset;
+            if (key.Length > 0)
+                IByteBufferWriter.Copy(ref _writer, key);
+            Span<byte> leb = _writer.GetSpan(10);
+            int lebLen = Leb128.Write(leb, 0, value.Length);
+            _writer.Advance(lebLen);
+            if (value.Length > 0)
+                IByteBufferWriter.Copy(ref _writer, value);
+            EntryPositions.Add(entryStart);
+            return;
+        }
+
         _writtenBeforeValue = _writer.Written;
         IByteBufferWriter.Copy(ref _writer, value);
         FinishValueWrite(key);
@@ -257,7 +309,7 @@ public ref struct HsstBTreeBuilder<TWriter, TReader, TPin>
             {
                 ref HsstBTreeBuilderBuffers bufs = ref Unsafe.AsRef<HsstBTreeBuilderBuffers>(_externalBuffers);
                 HsstIndexBuilder<TWriter, TReader, TPin> indexBuilder = new(
-                    ref _writer, reader, bufs.EntryPositions.AsSpan(), _keyLength, ref bufs);
+                    ref _writer, reader, bufs.EntryPositions.AsSpan(), _keyLength, ref bufs, _keyFirst);
                 rootSize = indexBuilder.Build(absoluteIndexStart, maxLeafEntries, maxIntermediateEntries, minLeafEntries, maxIntermediateBytes, minIntermediateChildren, minIntermediateBytes);
             }
             else
@@ -268,7 +320,7 @@ public ref struct HsstBTreeBuilder<TWriter, TReader, TPin>
                 try
                 {
                     HsstIndexBuilder<TWriter, TReader, TPin> indexBuilder = new(
-                        ref _writer, reader, _ownedEntryPositions.AsSpan(), _keyLength, ref localBufs);
+                        ref _writer, reader, _ownedEntryPositions.AsSpan(), _keyLength, ref localBufs, _keyFirst);
                     rootSize = indexBuilder.Build(absoluteIndexStart, maxLeafEntries, maxIntermediateEntries, minLeafEntries, maxIntermediateBytes, minIntermediateChildren, minIntermediateBytes);
                 }
                 finally
@@ -299,7 +351,7 @@ public ref struct HsstBTreeBuilder<TWriter, TReader, TPin>
         tail[0] = (byte)rootSize;
         tail[1] = (byte)(rootSize >> 8);
         tail[2] = (byte)trailerKeyLength;
-        tail[3] = (byte)IndexType.BTree;
+        tail[3] = (byte)(_keyFirst ? IndexType.BTreeKeyFirst : IndexType.BTree);
         _writer.Advance(4);
     }
 }

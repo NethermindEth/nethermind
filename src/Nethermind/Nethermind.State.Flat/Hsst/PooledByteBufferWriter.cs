@@ -13,6 +13,13 @@ public sealed class PooledByteBufferWriter(int initialCapacity, long firstOffset
     public ref Writer GetWriter() => ref _writer;
     public ReadOnlySpan<byte> WrittenSpan => _writer.WrittenSpan;
 
+    /// <summary>
+    /// Reset the writer cursor to byte 0 without releasing the backing buffer. Use when
+    /// the same pooled buffer is reused across iterations (e.g. per-prefix sub-slot
+    /// staging) so the underlying allocation amortizes across the loop.
+    /// </summary>
+    public void Reset() => _writer.Reset();
+
     public void Dispose() => _writer.ReturnBuffer();
 
     public unsafe struct Writer : IByteBufferWriterWithReader<PooledByteBufferWriter.WriterReader, NoOpPin>
@@ -40,6 +47,9 @@ public sealed class PooledByteBufferWriter(int initialCapacity, long firstOffset
         public readonly long Written => _written;
         public readonly long FirstOffset => _firstOffset;
         public readonly ReadOnlySpan<byte> WrittenSpan => new(_buffer, _written);
+
+        /// <summary>Rewind the cursor to 0; keeps the backing buffer for reuse.</summary>
+        public void Reset() => _written = 0;
 
         /// <summary>
         /// Reader covering [Written − pastSize, Written). The reader resolves the

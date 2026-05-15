@@ -9,20 +9,24 @@ using Nethermind.Core.Utils;
 namespace Nethermind.State.Flat.Hsst;
 
 /// <summary>
-/// Read-side helpers for the <see cref="IndexType.BTree"/> layout. Stateless static
-/// methods so <see cref="HsstReader{TReader,TPin}"/> can dispatch into them without
-/// copying its ref-struct state.
+/// Read-side helpers for the <see cref="IndexType.BTree"/> and
+/// <see cref="IndexType.BTreeKeyFirst"/> layouts. Stateless static methods so
+/// <see cref="HsstReader{TReader,TPin}"/> can dispatch into them without copying its
+/// ref-struct state.
 /// </summary>
 internal static class HsstBTreeReader
 {
     /// <summary>
     /// Exact-match or floor lookup over a BTree HSST. On success sets
     /// <paramref name="resultBound"/> to the value region of the matched entry. Caller
-    /// has already read the trailing <see cref="IndexType"/> byte.
+    /// has already read the trailing <see cref="IndexType"/> byte and signals the entry
+    /// layout via <paramref name="keyFirst"/>:
+    /// <c>false</c> = <c>[Value][LEB128][FullKey]</c> with pointer at LEB128;
+    /// <c>true</c> = <c>[FullKey][LEB128][Value]</c> with pointer at FullKey byte 0.
     /// </summary>
     public static bool TrySeek<TReader, TPin>(
         scoped in TReader reader, Bound bound, scoped ReadOnlySpan<byte> key,
-        bool exactMatch, out Bound resultBound)
+        bool exactMatch, bool keyFirst, out Bound resultBound)
         where TPin : struct, IBufferPin, allows ref struct
         where TReader : IHsstByteReader<TPin>, allows ref struct
     {
@@ -79,35 +83,63 @@ internal static class HsstBTreeReader
                     if (!key.StartsWith(p) || !key[p.Length..].StartsWith(separator)) return false;
                 }
 
-                long metaStart = (long)(BSearchIndex.BSearchIndexReader.ReadUInt64LE(metaBytes) + node.Metadata.BaseOffset);
-                long absMetaStart = bound.Offset + metaStart;
+                long entryRel = (long)(BSearchIndex.BSearchIndexReader.ReadUInt64LE(metaBytes) + node.Metadata.BaseOffset);
+                long absEntryStart = bound.Offset + entryRel;
 
-                // Read up to 10 bytes from absMetaStart for the ValueLength LEB128 (max
-                // 10 bytes for a 64-bit varint). The key length comes from the trailer,
-                // not from per-entry storage.
-                long available = bound.Offset + bound.Length - absMetaStart;
-                if (available <= 0) return false;
-                Span<byte> lebBuf = stackalloc byte[10];
-                int lebRead = (int)Math.Min(10, available);
-                if (!reader.TryRead(absMetaStart, lebBuf[..lebRead])) return false;
-
-                int pos = 0;
-                long valueLength = Leb128.Read(lebBuf, ref pos);
-
-                if (exactMatch)
+                if (keyFirst)
                 {
-                    // trailerKeyLength == key.Length was already enforced at the top of
-                    // TrySeek; compare the stored key bytes against the input. Stored key
-                    // fits in 255 bytes — single read + compare, no chunking.
-                    Span<byte> stored = stackalloc byte[255];
-                    Span<byte> storedSlice = stored[..trailerKeyLength];
-                    if (!reader.TryRead(absMetaStart + pos, storedSlice)) return false;
-                    if (!storedSlice.SequenceEqual(key)) return false;
-                }
+                    // Entry: [FullKey: trailerKeyLength bytes][LEB128 ValueLength][Value].
+                    // absEntryStart points at FullKey byte 0.
+                    long absLebStart = absEntryStart + trailerKeyLength;
+                    long available = bound.Offset + bound.Length - absLebStart;
+                    if (available <= 0) return false;
+                    Span<byte> lebBuf = stackalloc byte[10];
+                    int lebRead = (int)Math.Min(10, available);
+                    if (!reader.TryRead(absLebStart, lebBuf[..lebRead])) return false;
+                    int pos = 0;
+                    long valueLength = Leb128.Read(lebBuf, ref pos);
 
-                // value bytes are immediately before the metaStart
-                resultBound = new Bound(absMetaStart - valueLength, valueLength);
-                return true;
+                    if (exactMatch)
+                    {
+                        Span<byte> stored = stackalloc byte[255];
+                        Span<byte> storedSlice = stored[..trailerKeyLength];
+                        if (!reader.TryRead(absEntryStart, storedSlice)) return false;
+                        if (!storedSlice.SequenceEqual(key)) return false;
+                    }
+
+                    resultBound = new Bound(absLebStart + pos, valueLength);
+                    return true;
+                }
+                else
+                {
+                    // Entry: [Value][LEB128 ValueLength][FullKey]. absEntryStart points at
+                    // the LEB128 byte (MetadataStart). Read up to 10 bytes for the LEB128
+                    // (max 10 bytes for a 64-bit varint). The key length comes from the
+                    // trailer, not from per-entry storage.
+                    long available = bound.Offset + bound.Length - absEntryStart;
+                    if (available <= 0) return false;
+                    Span<byte> lebBuf = stackalloc byte[10];
+                    int lebRead = (int)Math.Min(10, available);
+                    if (!reader.TryRead(absEntryStart, lebBuf[..lebRead])) return false;
+
+                    int pos = 0;
+                    long valueLength = Leb128.Read(lebBuf, ref pos);
+
+                    if (exactMatch)
+                    {
+                        // trailerKeyLength == key.Length was already enforced at the top of
+                        // TrySeek; compare the stored key bytes against the input. Stored
+                        // key fits in 255 bytes — single read + compare, no chunking.
+                        Span<byte> stored = stackalloc byte[255];
+                        Span<byte> storedSlice = stored[..trailerKeyLength];
+                        if (!reader.TryRead(absEntryStart + pos, storedSlice)) return false;
+                        if (!storedSlice.SequenceEqual(key)) return false;
+                    }
+
+                    // value bytes are immediately before the metaStart
+                    resultBound = new Bound(absEntryStart - valueLength, valueLength);
+                    return true;
+                }
             }
         }
     }

@@ -38,7 +38,7 @@ public struct HsstEnumerator<TReader, TPin> : IDisposable
     where TPin : struct, IBufferPin, allows ref struct
     where TReader : IHsstByteReader<TPin>, allows ref struct
 {
-    private enum VariantKind : byte { Empty, PackedArray, BTree, TwoByteSlotValue, TwoByteSlotValueLarge }
+    private enum VariantKind : byte { Empty, PackedArray, BTree, BTreeKeyFirst, TwoByteSlotValue, TwoByteSlotValueLarge }
 
     // Struct envelope: only thing that needs to live on the value is the
     // discriminator and the variant references. All mutable
@@ -74,8 +74,12 @@ public struct HsstEnumerator<TReader, TPin> : IDisposable
                 _kind = _packed is not null ? VariantKind.PackedArray : VariantKind.Empty;
                 break;
             case IndexType.BTree:
-                _btree = new BTreeVariant(in reader, scope);
+                _btree = new BTreeVariant(in reader, scope, keyFirst: false);
                 _kind = VariantKind.BTree;
+                break;
+            case IndexType.BTreeKeyFirst:
+                _btree = new BTreeVariant(in reader, scope, keyFirst: true);
+                _kind = VariantKind.BTreeKeyFirst;
                 break;
             case IndexType.TwoByteSlotValue:
                 _tbsv = TwoByteSlotValueVariant.TryCreate(in reader, scope);
@@ -100,6 +104,7 @@ public struct HsstEnumerator<TReader, TPin> : IDisposable
     {
         VariantKind.PackedArray => _packed!.Count,
         VariantKind.BTree => _btree!.Count,
+        VariantKind.BTreeKeyFirst => _btree!.Count,
         VariantKind.TwoByteSlotValue => _tbsv!.Count,
         VariantKind.TwoByteSlotValueLarge => _tbsvLarge!.Count,
         _ => 0,
@@ -109,6 +114,7 @@ public struct HsstEnumerator<TReader, TPin> : IDisposable
     {
         VariantKind.PackedArray => _packed!.MoveNext(),
         VariantKind.BTree => _btree!.MoveNext(in reader),
+        VariantKind.BTreeKeyFirst => _btree!.MoveNext(in reader),
         VariantKind.TwoByteSlotValue => _tbsv!.MoveNext(in reader),
         VariantKind.TwoByteSlotValueLarge => _tbsvLarge!.MoveNext(in reader),
         _ => false,
@@ -123,6 +129,7 @@ public struct HsstEnumerator<TReader, TPin> : IDisposable
     {
         VariantKind.PackedArray => _packed!.CurrentKey,
         VariantKind.BTree => _btree!.CurrentKey,
+        VariantKind.BTreeKeyFirst => _btree!.CurrentKey,
         VariantKind.TwoByteSlotValue => _tbsv!.CurrentKey,
         VariantKind.TwoByteSlotValueLarge => _tbsvLarge!.CurrentKey,
         _ => default,
@@ -175,6 +182,7 @@ public struct HsstEnumerator<TReader, TPin> : IDisposable
     {
         VariantKind.PackedArray => _packed!.CurrentValue,
         VariantKind.BTree => _btree!.CurrentValue,
+        VariantKind.BTreeKeyFirst => _btree!.CurrentValue,
         VariantKind.TwoByteSlotValue => _tbsv!.CurrentValue,
         VariantKind.TwoByteSlotValueLarge => _tbsvLarge!.CurrentValue,
         _ => default,
@@ -184,6 +192,7 @@ public struct HsstEnumerator<TReader, TPin> : IDisposable
     {
         VariantKind.PackedArray => _packed!.CurrentMetadataStart,
         VariantKind.BTree => _btree!.CurrentMetadataStart,
+        VariantKind.BTreeKeyFirst => _btree!.CurrentMetadataStart,
         VariantKind.TwoByteSlotValue => _tbsv!.CurrentMetadataStart,
         VariantKind.TwoByteSlotValueLarge => _tbsvLarge!.CurrentMetadataStart,
         _ => 0,
@@ -267,6 +276,10 @@ public struct HsstEnumerator<TReader, TPin> : IDisposable
         // Fixed key length read from the BTree trailer. Every entry in the HSST has a
         // key of exactly this many bytes — the data-section entry no longer repeats it.
         private readonly int _keyLength;
+        // True for IndexType.BTreeKeyFirst: per-entry layout is [FullKey][LEB128][Value]
+        // with the index pointer at FullKey byte 0. False for IndexType.BTree:
+        // [Value][LEB128][FullKey] with the pointer at the LEB128 byte.
+        private readonly bool _keyFirst;
         private readonly Ancestor[] _ancestors = new Ancestor[MaxDepth];
 
         // Current leaf state. _depth: -1 = not started, -2 = exhausted, ≥0 = leaf depth in tree.
@@ -283,10 +296,11 @@ public struct HsstEnumerator<TReader, TPin> : IDisposable
         private long _currentValueLength;
         private long _currentMetaStart;
 
-        public BTreeVariant(scoped in TReader reader, Bound scope)
+        public BTreeVariant(scoped in TReader reader, Bound scope, bool keyFirst)
         {
             _scopeStart = scope.Offset;
             _scopeEnd = scope.Offset + scope.Length;
+            _keyFirst = keyFirst;
             // BTree trailer is [RootSize u16 LE][KeyLength u8][IndexType u8];
             // root starts at scopeEnd - 4 - rootSize.
             if (scope.Length >= 4 + 12)
@@ -455,42 +469,69 @@ public struct HsstEnumerator<TReader, TPin> : IDisposable
         }
 
         /// <summary>
-        /// Read entry _leafIdx's metaStart from the buffered leaf table, then pin a small
-        /// window at metaStart to decode value/key lengths. Sets _currentKeyOffset/Length and
+        /// Read entry _leafIdx's index pointer from the buffered leaf table, then pin a
+        /// small window to decode the value length. Sets _currentKeyOffset/Length and
         /// _currentValueOffset/Length to absolute reader-space bounds.
+        ///
+        /// Key-after-value mode (<c>_keyFirst = false</c>): the pointer aims at the LEB128
+        /// byte (MetadataStart); value sits before, key after.
+        /// Key-first mode (<c>_keyFirst = true</c>): the pointer aims at FullKey byte 0
+        /// (EntryStart); the LEB128 follows the key, value follows the LEB128.
         /// </summary>
         private bool LoadCurrentEntry(scoped in TReader reader)
         {
-            long metaStart = _leafMetaStarts[_leafIdx];
+            long entryPos = _leafMetaStarts[_leafIdx];
 
-            // Entry layout: [Value][ValueLength: LEB128][FullKey].
-            // metaStart points at the ValueLength LEB128 — value sits before, key after.
-            // Long LEB128 occupies up to 10 bytes; the key length comes from the trailer,
-            // not from per-entry storage.
+            // Long LEB128 occupies up to 10 bytes; the key length comes from the trailer.
             const int ValueLenMaxBytes = 10;
-            int lebWindow = (int)Math.Min(ValueLenMaxBytes, _scopeEnd - metaStart);
-            int pos;
-            long valueLength;
-            using (TPin lebPin = reader.PinBuffer(metaStart, lebWindow))
-            {
-                ReadOnlySpan<byte> leb = lebPin.Buffer;
-                pos = 0;
-                valueLength = Leb128.Read(leb, ref pos);
-            }
 
-            _currentMetaStart = metaStart;
-            _currentKeyOffset = metaStart + pos;
-            _currentKeyLength = _keyLength;
-            _currentValueOffset = metaStart - valueLength;
-            _currentValueLength = valueLength;
-            return true;
+            if (_keyFirst)
+            {
+                long lebStart = entryPos + _keyLength;
+                int lebWindow = (int)Math.Min(ValueLenMaxBytes, _scopeEnd - lebStart);
+                int pos;
+                long valueLength;
+                using (TPin lebPin = reader.PinBuffer(lebStart, lebWindow))
+                {
+                    ReadOnlySpan<byte> leb = lebPin.Buffer;
+                    pos = 0;
+                    valueLength = Leb128.Read(leb, ref pos);
+                }
+
+                _currentMetaStart = entryPos;
+                _currentKeyOffset = entryPos;
+                _currentKeyLength = _keyLength;
+                _currentValueOffset = lebStart + pos;
+                _currentValueLength = valueLength;
+                return true;
+            }
+            else
+            {
+                int lebWindow = (int)Math.Min(ValueLenMaxBytes, _scopeEnd - entryPos);
+                int pos;
+                long valueLength;
+                using (TPin lebPin = reader.PinBuffer(entryPos, lebWindow))
+                {
+                    ReadOnlySpan<byte> leb = lebPin.Buffer;
+                    pos = 0;
+                    valueLength = Leb128.Read(leb, ref pos);
+                }
+
+                _currentMetaStart = entryPos;
+                _currentKeyOffset = entryPos + pos;
+                _currentKeyLength = _keyLength;
+                _currentValueOffset = entryPos - valueLength;
+                _currentValueLength = valueLength;
+                return true;
+            }
         }
     }
 
     // -----------------------------------------------------------------------
-    // TwoByteSlotValue: fixed 2-byte keys, variable values, packed start-offset
-    // trailer. Forward iteration is a flat index walk; bounds are derived from
-    // a single u16 offset read per entry (or zero / data-end for the endpoints).
+    // TwoByteSlotValue: fixed 2-byte keys, variable values, keys-first wire
+    // shape with the offsets section between keys and values. Forward iteration
+    // is a flat index walk; bounds derived from a single u16 offset read per
+    // entry (or zero / values-end for the endpoints).
     // -----------------------------------------------------------------------
 
     private sealed class TwoByteSlotValueVariant
@@ -518,12 +559,12 @@ public struct HsstEnumerator<TReader, TPin> : IDisposable
             _index = next;
             // Start of this entry: 0 if first, else Offset_{index} stored at offsetsStart + 2*(index-1).
             long start = _index == 0 ? 0L : ReadU16LE(in reader, _layout.OffsetsStart + (long)(_index - 1) * 2);
-            // End of this entry: data end if last, else Offset_{index+1} stored at offsetsStart + 2*index.
+            // End of this entry: values-section end if last, else Offset_{index+1} stored at offsetsStart + 2*index.
             long end = _index == _layout.Count - 1
-                ? _layout.DataEnd - _layout.DataStart
+                ? _layout.ValuesEnd - _layout.ValuesStart
                 : ReadU16LE(in reader, _layout.OffsetsStart + (long)_index * 2);
-            _currentValueStart = _layout.DataStart + start;
-            _currentValueEnd = _layout.DataStart + end;
+            _currentValueStart = _layout.ValuesStart + start;
+            _currentValueEnd = _layout.ValuesStart + end;
             return true;
         }
 
@@ -569,10 +610,10 @@ public struct HsstEnumerator<TReader, TPin> : IDisposable
             _index = next;
             long start = _index == 0 ? 0L : HsstTwoByteSlotValueLargeReader.ReadU24LE<TReader, TPin>(in reader, _layout.OffsetsStart + (long)(_index - 1) * HsstTwoByteSlotValueLargeReader.OffsetSize);
             long end = _index == _layout.Count - 1
-                ? _layout.DataEnd - _layout.DataStart
+                ? _layout.ValuesEnd - _layout.ValuesStart
                 : HsstTwoByteSlotValueLargeReader.ReadU24LE<TReader, TPin>(in reader, _layout.OffsetsStart + (long)_index * HsstTwoByteSlotValueLargeReader.OffsetSize);
-            _currentValueStart = _layout.DataStart + start;
-            _currentValueEnd = _layout.DataStart + end;
+            _currentValueStart = _layout.ValuesStart + start;
+            _currentValueEnd = _layout.ValuesStart + end;
             return true;
         }
 

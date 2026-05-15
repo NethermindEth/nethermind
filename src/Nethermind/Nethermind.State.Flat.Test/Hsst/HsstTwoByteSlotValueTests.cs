@@ -68,9 +68,9 @@ public class HsstTwoByteSlotValueTests
 
         byte[] data = Build(keys, vals);
 
-        // Trailer pin: last byte = IndexType, prev 2 bytes = N-1 u16 LE.
+        // Wire-format pins: last byte = IndexType; first 2 bytes = N-1 u16 LE KeyCount.
         Assert.That(data[^1], Is.EqualTo((byte)IndexType.TwoByteSlotValue));
-        Assert.That(BinaryPrimitives.ReadUInt16LittleEndian(data.AsSpan(data.Length - 3)), Is.EqualTo((ushort)(n - 1)));
+        Assert.That(BinaryPrimitives.ReadUInt16LittleEndian(data.AsSpan(0, 2)), Is.EqualTo((ushort)(n - 1)));
 
         // Hits — every key returns the stored value.
         for (int i = 0; i < n; i++)
@@ -201,36 +201,38 @@ public class HsstTwoByteSlotValueTests
     }
 
     [Test]
-    public void DataOverflow_AddThrows_WhenStartCrossesU16()
+    public void DataOverflow_AddThrows_WhenCumulativeCrossesU16()
     {
-        // Push the running writer past ushort.MaxValue, then attempt one more Add —
-        // the next FinishValueWrite must reject because its start offset overflows u16.
-        bool threw = false;
-        using PooledByteBufferWriter pooled = new(128 * 1024);
-        using HsstTwoByteSlotValueBuilder<PooledByteBufferWriter.Writer> b = new(ref pooled.GetWriter());
-        b.Add([0x00, 0x01], new byte[30000]);
-        b.Add([0x00, 0x02], new byte[30000]);
-        b.Add([0x00, 0x03], new byte[5600]); // running total = 65600 > 65535
-        try { b.Add([0x00, 0x04], new byte[10]); } catch (InvalidOperationException) { threw = true; }
-        Assert.That(threw, Is.True, "Add must throw once start offset crosses ushort.MaxValue");
+        // Push the cumulative payload past ushort.MaxValue — Add itself rejects (the
+        // builder needs every offset to fit u16, so the trip-wire fires the moment a
+        // new entry would push the running total above the cap rather than waiting
+        // for Build).
+        bool addedTwo = false, threwOnThird = false, threwOnSingleOverflow = false;
+        using (PooledByteBufferWriter pooled = new(128 * 1024))
+        {
+            using HsstTwoByteSlotValueBuilder<PooledByteBufferWriter.Writer> b = new(ref pooled.GetWriter());
+            b.Add([0x00, 0x01], new byte[30000]);
+            b.Add([0x00, 0x02], new byte[30000]);
+            addedTwo = true;
+            // Cumulative would be 65600 > 65535: Add throws.
+            try { b.Add([0x00, 0x03], new byte[5600]); } catch (InvalidOperationException) { threwOnThird = true; }
+        }
+        // Single value larger than the u16 cap: Add rejects on the first entry.
+        using (PooledByteBufferWriter pooled = new(128 * 1024))
+        {
+            using HsstTwoByteSlotValueBuilder<PooledByteBufferWriter.Writer> b = new(ref pooled.GetWriter());
+            try { b.Add([0x00, 0x01], new byte[ushort.MaxValue + 1]); } catch (InvalidOperationException) { threwOnSingleOverflow = true; }
+        }
+        Assert.That(addedTwo, Is.True, "first two Adds must succeed");
+        Assert.That(threwOnThird, Is.True, "Add must throw once cumulative crosses ushort.MaxValue");
+        Assert.That(threwOnSingleOverflow, Is.True, "Add must throw on a single value > ushort.MaxValue");
     }
 
     [Test]
-    public void DataOverflow_BuildThrows_WhenDataSizeOverflows()
+    public void WireFormat_KeysFirst_PinsBytes()
     {
-        // One entry whose value already exceeds the u16 data cap → Build must reject.
-        bool threw = false;
-        using PooledByteBufferWriter pooled = new(128 * 1024);
-        using HsstTwoByteSlotValueBuilder<PooledByteBufferWriter.Writer> b = new(ref pooled.GetWriter());
-        b.Add([0x00, 0x01], new byte[ushort.MaxValue + 1]);
-        try { b.Build(); } catch (InvalidOperationException) { threw = true; }
-        Assert.That(threw, Is.True, "Build must reject data region > ushort.MaxValue");
-    }
-
-    [Test]
-    public void Trailer_Shape_PinsWireFormat()
-    {
-        // Three entries, 2-byte values. Validate every byte of the trailer.
+        // Three entries, 2-byte values. Validate every byte of the keys-first layout:
+        // header (KeyCount) + keys + offsets + values + IndexType trailer.
         byte[][] keys =
         [
             [0x00, 0x10],
@@ -246,18 +248,18 @@ public class HsstTwoByteSlotValueTests
 
         byte[] data = Build(keys, vals);
 
-        // Expected wire format (data: 6 bytes; trailer: 2 offsets · 2 + 3 keys · 2 + 2 keycount + 1 type = 13 bytes; total 19):
-        //   data:        aa bb cc dd ee ff
-        //   offsets:     02 00 04 00          (Offset_1 = 2, Offset_2 = 4)
-        //   keys:        10 00 20 00 30 00    (LE-stored: input 00:10 → 10 00, etc.)
+        // Expected wire format (total 19 bytes):
         //   keycount:    02 00                (N − 1 = 2)
+        //   keys:        10 00 20 00 30 00    (LE-stored: input 00:10 → 10 00, etc.)
+        //   offsets:     02 00 04 00          (Offset_1 = 2, Offset_2 = 4, relative to values start)
+        //   values:      aa bb cc dd ee ff
         //   indextype:   05
         byte[] expected =
         [
-            0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff,
-            0x02, 0x00, 0x04, 0x00,
-            0x10, 0x00, 0x20, 0x00, 0x30, 0x00,
             0x02, 0x00,
+            0x10, 0x00, 0x20, 0x00, 0x30, 0x00,
+            0x02, 0x00, 0x04, 0x00,
+            0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff,
             0x05,
         ];
         Assert.That(data, Is.EqualTo(expected));

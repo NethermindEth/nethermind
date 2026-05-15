@@ -43,18 +43,23 @@ public ref struct HsstIndexBuilder<TWriter, TReader, TPin>
     // byte). Used directly wherever we previously tracked minKeyLen — those collapse
     // to this single scalar.
     private readonly int _keyLength;
+    // When true, entryPositions point to EntryStart (FullKey byte 0) and entry bytes
+    // are [FullKey][LEB128 ValueLength][Value]. When false (default), entryPositions
+    // point to MetadataStart (LEB128 byte) and bytes are [Value][LEB128][FullKey].
+    private readonly bool _keyFirst;
     // Pointer to the caller-supplied buffers struct holding the work arrays/lists
     // (CommonPrefixArr, LeafFirstKeys, CurrentLevel, NextLevel, ValueScratch, SegTree,
     // DfsStack). Stored as void* because HsstBTreeBuilderBuffers is a ref struct and
     // therefore not eligible for ordinary T* / managed-pointer fields.
     private readonly unsafe void* _buffersPtr;
 
-    public unsafe HsstIndexBuilder(ref TWriter writer, TReader reader, ReadOnlySpan<long> entryPositions, int keyLength, scoped ref HsstBTreeBuilderBuffers buffers)
+    public unsafe HsstIndexBuilder(ref TWriter writer, TReader reader, ReadOnlySpan<long> entryPositions, int keyLength, scoped ref HsstBTreeBuilderBuffers buffers, bool keyFirst = false)
     {
         _writer = ref writer;
         _reader = reader;
         _entryPositions = entryPositions;
         _keyLength = keyLength;
+        _keyFirst = keyFirst;
         _buffersPtr = Unsafe.AsPointer(ref buffers);
     }
 
@@ -581,22 +586,26 @@ public ref struct HsstIndexBuilder<TWriter, TReader, TPin>
 
     /// <summary>
     /// Read the full key for entry index <paramref name="idx"/> into <paramref name="dest"/>.
-    /// Walks the LEB128 ValueLength header byte-by-byte (so end-of-data-section reads
-    /// stay in bounds), then reads the key bytes — key length is uniform per HSST and
-    /// stored in the trailer, not per entry. Returns the key length (≤ 255).
+    /// In key-after-value mode walks the LEB128 ValueLength header byte-by-byte then reads
+    /// the key. In key-first mode the entry position already points at FullKey byte 0, so
+    /// the key bytes are read directly. Key length is uniform per HSST and stored in the
+    /// trailer, not per entry. Returns the key length (≤ 255).
     /// </summary>
     private int ReadKey(int idx, scoped Span<byte> dest)
     {
         long pos = _entryPositions[idx];
-        Span<byte> oneByte = stackalloc byte[1];
 
-        // Skip LEB128 ValueLength.
         long offset = pos;
-        do
+        if (!_keyFirst)
         {
-            if (!_reader.TryRead(offset, oneByte)) ThrowReadFailed();
-            offset++;
-        } while ((oneByte[0] & 0x80) != 0);
+            // Skip LEB128 ValueLength (the entry position aims at the LEB128 byte).
+            Span<byte> oneByte = stackalloc byte[1];
+            do
+            {
+                if (!_reader.TryRead(offset, oneByte)) ThrowReadFailed();
+                offset++;
+            } while ((oneByte[0] & 0x80) != 0);
+        }
 
         int keyLen = _keyLength;
         if (keyLen > 0)

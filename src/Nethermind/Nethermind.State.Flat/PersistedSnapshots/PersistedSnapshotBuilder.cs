@@ -278,6 +278,15 @@ public static class PersistedSnapshotBuilder
         // the builder constructor — the compiler forbids `ref` on `using` variables.
         // The slot suffix layer now uses TwoByteSlotValue[Large] which pool internally.
         HsstBTreeBuilderBuffers slotPrefixBuffers = new();
+
+        // Pooled staging buffer for the per-prefix sub-slot HSST. The slot-prefix
+        // BTree is built in key-first mode (IndexType.BTreeKeyFirst) so its outer
+        // entry layout is [FullKey][LEB128][Value] — the value length must be known
+        // before laying down the LEB128, which means the sub-slot bytes have to be
+        // staged in their entirety first. The buffer is Reset() between iterations
+        // so the underlying NativeMemory allocation amortizes across the address
+        // and prefix loops.
+        using PooledByteBufferWriter slotSuffixBuffer = new(4096);
         int storageIdx = 0;
 
         for (int addrIdx = 0; addrIdx < uniqueAddresses.Count; addrIdx++)
@@ -312,7 +321,7 @@ public static class PersistedSnapshotBuilder
             if (hasStorage)
             {
                 ref TWriter slotWriter = ref perAddr.BeginValueWrite();
-                using HsstBTreeBuilder<TWriter, TReader, TPin> prefixLevel = new(ref slotWriter, ref slotPrefixBuffers, slotPrefixLength, new HsstBTreeOptions { MinSeparatorLength = 4 });
+                using HsstBTreeBuilder<TWriter, TReader, TPin> prefixLevel = new(ref slotWriter, ref slotPrefixBuffers, slotPrefixLength, new HsstBTreeOptions { MinSeparatorLength = 4 }, keyFirst: true);
 
                 while (storageIdx < sortedStorages.Count &&
                     sortedStorages[storageIdx].Key.Addr.AsSpan.SequenceEqual(addressBytes))
@@ -340,10 +349,11 @@ public static class PersistedSnapshotBuilder
                         groupEnd++;
                     }
 
-                    ref TWriter suffixWriter = ref prefixLevel.BeginValueWrite();
-                    if (HsstTwoByteSlotValueBuilder<TWriter>.FitsInOffsetWidth(groupValueBytes))
+                    slotSuffixBuffer.Reset();
+                    ref PooledByteBufferWriter.Writer suffixWriter = ref slotSuffixBuffer.GetWriter();
+                    if (HsstTwoByteSlotValueBuilder<PooledByteBufferWriter.Writer>.FitsInOffsetWidth(groupValueBytes))
                     {
-                        using HsstTwoByteSlotValueBuilder<TWriter> suffixLevel = new(ref suffixWriter);
+                        using HsstTwoByteSlotValueBuilder<PooledByteBufferWriter.Writer> suffixLevel = new(ref suffixWriter);
                         for (int i = groupStart; i < groupEnd; i++)
                         {
                             sortedStorages[i].Key.Slot.ToBigEndian(slotKey);
@@ -360,7 +370,7 @@ public static class PersistedSnapshotBuilder
                     }
                     else
                     {
-                        using HsstTwoByteSlotValueLargeBuilder<TWriter> suffixLevel = new(ref suffixWriter);
+                        using HsstTwoByteSlotValueLargeBuilder<PooledByteBufferWriter.Writer> suffixLevel = new(ref suffixWriter);
                         for (int i = groupStart; i < groupEnd; i++)
                         {
                             sortedStorages[i].Key.Slot.ToBigEndian(slotKey);
@@ -376,7 +386,7 @@ public static class PersistedSnapshotBuilder
                         suffixLevel.Build();
                     }
                     storageIdx = groupEnd;
-                    prefixLevel.FinishValueWrite(currentPrefix);
+                    prefixLevel.Add(currentPrefix, slotSuffixBuffer.WrittenSpan);
                 }
 
                 prefixLevel.Build();

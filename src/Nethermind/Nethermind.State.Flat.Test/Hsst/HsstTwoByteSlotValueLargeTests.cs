@@ -68,7 +68,7 @@ public class HsstTwoByteSlotValueLargeTests
         byte[] data = Build(keys, vals);
 
         Assert.That(data[^1], Is.EqualTo((byte)IndexType.TwoByteSlotValueLarge));
-        Assert.That(BinaryPrimitives.ReadUInt16LittleEndian(data.AsSpan(data.Length - 3)), Is.EqualTo((ushort)(n - 1)));
+        Assert.That(BinaryPrimitives.ReadUInt16LittleEndian(data.AsSpan(0, 2)), Is.EqualTo((ushort)(n - 1)));
 
         for (int i = 0; i < n; i++)
         {
@@ -198,9 +198,9 @@ public class HsstTwoByteSlotValueLargeTests
     }
 
     [Test]
-    public void Trailer_Shape_PinsWireFormat()
+    public void WireFormat_KeysFirst_PinsBytes()
     {
-        // Three entries, 2-byte values. Validate every byte of the trailer.
+        // Three entries, 2-byte values. Validate every byte of the keys-first layout.
         byte[][] keys =
         [
             [0x00, 0x10],
@@ -216,19 +216,18 @@ public class HsstTwoByteSlotValueLargeTests
 
         byte[] data = Build(keys, vals);
 
-        // Expected wire format:
-        //   data:        aa bb cc dd ee ff           (6)
-        //   offsets:     02 00 00 04 00 00           (2·3 = 6 bytes for Offset_1, Offset_2)
-        //   keys:        10 00 20 00 30 00           (LE-stored: 3·2 = 6)
-        //   keycount:    02 00                       (2)
+        // Expected wire format (total 21 bytes):
+        //   keycount:    02 00                       (N − 1 = 2)
+        //   keys:        10 00 20 00 30 00           (LE-stored, 3·2)
+        //   offsets:     02 00 00 04 00 00           (2·3 = 6, Offset_1 = 2 u24 LE, Offset_2 = 4 u24 LE)
+        //   values:      aa bb cc dd ee ff           (6)
         //   indextype:   06                          (1)
-        //                Total: 21 bytes
         byte[] expected =
         [
-            0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff,
-            0x02, 0x00, 0x00, 0x04, 0x00, 0x00,
-            0x10, 0x00, 0x20, 0x00, 0x30, 0x00,
             0x02, 0x00,
+            0x10, 0x00, 0x20, 0x00, 0x30, 0x00,
+            0x02, 0x00, 0x00, 0x04, 0x00, 0x00,
+            0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff,
             0x06,
         ];
         Assert.That(data, Is.EqualTo(expected));

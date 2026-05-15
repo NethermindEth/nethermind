@@ -667,7 +667,12 @@ public static class PersistedSnapshotMerger
         const int OuterKeyLen = 30;
         const int OuterStride = 32;
         const int InnerKeyLen = 2;
-        using HsstBTreeBuilder<TWriter, TReader, TPin> outerBuilder = new(ref writer, ref slotPrefixBuffers, OuterKeyLen, new HsstBTreeOptions { MinSeparatorLength = 4 });
+        using HsstBTreeBuilder<TWriter, TReader, TPin> outerBuilder = new(ref writer, ref slotPrefixBuffers, OuterKeyLen, new HsstBTreeOptions { MinSeparatorLength = 4 }, keyFirst: true);
+        // Per-prefix staging buffer for the sub-slot HSST. The outer BTree is built
+        // key-first, so its outer entry layout requires the value length up front —
+        // each sub-slot must be fully materialised in this buffer before Add. Reused
+        // across prefix iterations via Reset() to amortize the backing allocation.
+        using PooledByteBufferWriter innerStaging = new(4096);
 
         // Prime outer 30-byte keys (stride 32 for alignment). The outerEnums have already
         // been MoveNext'd once by the caller; we just copy the first key per still-live
@@ -721,32 +726,34 @@ public static class PersistedSnapshotMerger
             if (outerMatchCount == 1)
             {
                 // 1 matching source for this outer key: byte-copy its suffix HSST blob
-                // verbatim. HSST internal pointers are blob-relative so the relocated
-                // blob stays readable at the destination writer position. Streamed via
-                // the long-aware IByteBufferWriter.Copy so >2 GiB suffix HSSTs stay safe.
+                // verbatim into the staging buffer. HSST internal pointers are
+                // blob-relative so the relocated blob stays readable at the destination
+                // writer position. Streamed via the long-aware IByteBufferWriter.Copy so
+                // >2 GiB suffix HSSTs stay safe.
                 int srcIdx = outerMatches[0];
                 Bound vb = outerEnums[srcIdx].CurrentValue;
                 WholeReadSessionReader srcReader = Reader(views[srcIdx]);
-                ref TWriter innerWriter = ref outerBuilder.BeginValueWrite();
-                IByteBufferWriter.Copy<TWriter, WholeReadSessionReader, NoOpPin>(
-                    ref innerWriter, in srcReader, vb);
+                innerStaging.Reset();
+                ref PooledByteBufferWriter.Writer stagingWriter = ref innerStaging.GetWriter();
+                IByteBufferWriter.Copy<PooledByteBufferWriter.Writer, WholeReadSessionReader, NoOpPin>(
+                    ref stagingWriter, in srcReader, vb);
                 if (bloom is not null)
                 {
-                    // Walk the just-written inner suffix HSST through the writer's own
-                    // OpenReader. The blob is a single 2-byte-keyed HSST (no nesting) so
-                    // one enumerator pass suffices; compose the 32-byte slot from
-                    // outerKey || innerSuffix and emit a per-slot bloom add.
-                    TReader dstReader = innerWriter.OpenReader(vb.Length);
-                    HsstEnumerator<TReader, TPin> suffixEnum = new(in dstReader, new Bound(0, vb.Length));
+                    // Walk the buffered inner suffix HSST through the staging writer's
+                    // own OpenReader. The blob is a single 2-byte-keyed HSST (no
+                    // nesting) so one enumerator pass suffices; compose the 32-byte
+                    // slot from outerKey || innerSuffix and emit a per-slot bloom add.
+                    PooledByteBufferWriter.WriterReader dstReader = stagingWriter.OpenReader(vb.Length);
+                    HsstEnumerator<PooledByteBufferWriter.WriterReader, NoOpPin> suffixEnum = new(in dstReader, new Bound(0, vb.Length));
                     while (suffixEnum.MoveNext(in dstReader))
                     {
                         suffixEnum.CopyCurrentLogicalKey(in dstReader, slotKeyBuf.Slice(OuterKeyLen, InnerKeyLen));
                         bloom.Add(PersistedSnapshotBloomBuilder.SlotKey(addrBloomKey, slotKeyBuf));
                     }
                     suffixEnum.Dispose();
-                    innerWriter.DisposeActiveReader();
+                    stagingWriter.DisposeActiveReader();
                 }
-                outerBuilder.FinishValueWrite(outerKey);
+                outerBuilder.Add(outerKey, innerStaging.WrittenSpan);
             }
             else
             {
@@ -810,13 +817,14 @@ public static class PersistedSnapshotMerger
                         innerCursor.AdvanceMatching();
                     }
 
-                    ref TWriter innerWriter = ref outerBuilder.BeginValueWrite();
+                    innerStaging.Reset();
+                    ref PooledByteBufferWriter.Writer stagingWriter = ref innerStaging.GetWriter();
                     ReadOnlySpan<byte> mergedValues = scratchValues.AsSpan();
                     ReadOnlySpan<byte> mergedKeys = scratchKeys.AsSpan();
                     ReadOnlySpan<int> mergedLens = scratchLens.AsSpan();
-                    if (HsstTwoByteSlotValueBuilder<TWriter>.FitsInOffsetWidth(mergedValues.Length))
+                    if (HsstTwoByteSlotValueBuilder<PooledByteBufferWriter.Writer>.FitsInOffsetWidth(mergedValues.Length))
                     {
-                        using HsstTwoByteSlotValueBuilder<TWriter> innerBuilder = new(ref innerWriter);
+                        using HsstTwoByteSlotValueBuilder<PooledByteBufferWriter.Writer> innerBuilder = new(ref stagingWriter);
                         int valOff = 0;
                         for (int i = 0; i < mergedLens.Length; i++)
                         {
@@ -827,7 +835,7 @@ public static class PersistedSnapshotMerger
                     }
                     else
                     {
-                        using HsstTwoByteSlotValueLargeBuilder<TWriter> innerBuilder = new(ref innerWriter);
+                        using HsstTwoByteSlotValueLargeBuilder<PooledByteBufferWriter.Writer> innerBuilder = new(ref stagingWriter);
                         int valOff = 0;
                         for (int i = 0; i < mergedLens.Length; i++)
                         {
@@ -836,7 +844,7 @@ public static class PersistedSnapshotMerger
                         }
                         innerBuilder.Build();
                     }
-                    outerBuilder.FinishValueWrite(outerKey);
+                    outerBuilder.Add(outerKey, innerStaging.WrittenSpan);
                 }
                 finally
                 {
