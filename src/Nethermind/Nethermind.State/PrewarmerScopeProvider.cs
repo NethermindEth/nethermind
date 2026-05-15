@@ -149,7 +149,12 @@ public class PrewarmerScopeProvider(
             }
         }
 
-        public void HintGet(Address address, Account? account) => baseScope.HintGet(address, account);
+        public void HintGet(Address address, Account? account)
+        {
+            if (populatePreBlockCache)
+                preBlockCache.Set(address, account);
+            baseScope.HintGet(address, account);
+        }
 
         private Account? GetFromBaseTree(in AddressAsKey address) => baseScope.Get(address);
     }
@@ -205,7 +210,12 @@ public class PrewarmerScopeProvider(
             }
         }
 
-        public void HintSet(in UInt256 index, byte[]? value) => baseStorageTree.HintSet(in index, value);
+        public void HintSet(in UInt256 index, byte[]? value)
+        {
+            if (populatePreBlockCache && value is not null)
+                preBlockCache.Set(new StorageCell(address, in index), value);
+            baseStorageTree.HintSet(in index, value);
+        }
 
         private byte[] LoadFromTreeStorage(in StorageCell storageCell)
         {

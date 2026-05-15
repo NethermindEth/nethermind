@@ -750,6 +750,10 @@ internal class StateProvider(ILogManager logManager) : IJournal<int>
         else
         {
             Metrics.IncrementStateTreeCacheHits();
+            // Propagate cached account to SeqlockCache so the main thread can find it.
+            // Without this, the prewarmer's _blockChanges short-circuits the scope,
+            // and the SeqlockCache never gets populated for re-read accounts.
+            _tree?.HintGet(address, accountChanges.After);
         }
         return accountChanges.After;
     }

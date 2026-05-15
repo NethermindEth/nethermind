@@ -528,6 +528,8 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
             else
             {
                 Db.Metrics.IncrementStorageTreeCache();
+                // Propagate cached value to SeqlockCache so the main thread can find it.
+                _backend?.HintSet(storageCell.Index, valueChange.After);
             }
 
             if (!storageCell.IsHash) _provider.PushToRegistryOnly(storageCell, valueChange.After);
