@@ -320,19 +320,17 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
             BlockCachePreWarmer preWarmer = this;
             CancellationToken token = parallelOptions.CancellationToken;
 
+            Thread[] workers = new Thread[threadCount];
             SenderGroups senderGroups = firstPassMode == PreWarmFirstPassMode.SenderGrouped
                 ? SenderGroups.Build(block, firstPassLimit)
                 : default;
             int firstPassWorkItems = firstPassMode == PreWarmFirstPassMode.SenderGrouped ? senderGroups.Count : firstPassLimit;
-            using CountdownEvent workersDone = new(threadCount);
             try
             {
                 for (int t = 0; t < threadCount; t++)
                 {
-                    ThreadPool.UnsafeQueueUserWorkItem<object?>(_ =>
+                    workers[t] = new Thread(() =>
                     {
-                        bool previousIsBlockProcessingThread = ProcessingThread.IsBlockProcessingThread;
-                        ProcessingThread.IsBlockProcessingThread = false;
                         IReadOnlyTxProcessorSource env = _envPool.Get();
                         try
                         {
@@ -426,13 +424,13 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
                         finally
                         {
                             _envPool.Return(env);
-                            ProcessingThread.IsBlockProcessingThread = previousIsBlockProcessingThread;
-                            workersDone.Signal();
                         }
-                    }, null, preferLocal: false);
+                    }) { IsBackground = true, Name = "PrewarmWorker" };
+                    workers[t].Start();
                 }
 
-                workersDone.Wait();
+                for (int t = 0; t < threadCount; t++)
+                    workers[t].Join();
             }
             finally
             {
