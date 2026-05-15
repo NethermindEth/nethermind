@@ -76,7 +76,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             ExampleResponse = "0x3b9aca00")]
         ResultWrapper<UInt256?> eth_baseFee();
 
-        [JsonRpcMethod(IsImplemented = false,
+        [JsonRpcMethod(IsImplemented = true,
             Description = "Returns a list of addresses owned by the client",
             IsSharable = true,
             ExampleResponse = "[\"0x9b96a7841d6e0b76872c85c86082959189a27342\"]")]
