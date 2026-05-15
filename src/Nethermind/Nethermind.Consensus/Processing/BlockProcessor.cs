@@ -76,12 +76,6 @@ public partial class BlockProcessor(
             executor.OnTxExecuted = callback;
     }
 
-    internal void SetTxStartingCallback(Action<int>? callback)
-    {
-        if (_blockTransactionsExecutor is BlockValidationTransactionsExecutor executor)
-            executor.OnTxStarting = callback;
-    }
-
     public (Block Block, TxReceipt[] Receipts) ProcessOne(Block suggestedBlock, ProcessingOptions options, IBlockTracer blockTracer, IReleaseSpec spec, CancellationToken token)
     {
         if (_logger.IsTrace) _logger.Trace($"Processing block {suggestedBlock.ToString(Block.Format.Short)} ({options})");

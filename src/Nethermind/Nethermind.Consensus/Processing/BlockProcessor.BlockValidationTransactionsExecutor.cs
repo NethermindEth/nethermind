@@ -56,11 +56,8 @@ public partial class BlockProcessor
             static void ThrowInvalidBlockForGasLimit(Block block) => throw new InvalidBlockException(block, Core.Messages.BlockErrorMessages.ExceededGasLimit);
         }
 
-        internal Action<int>? OnTxStarting;
-
         protected virtual void ProcessTransaction(Block block, Transaction currentTx, int index, BlockReceiptsTracer receiptsTracer, ProcessingOptions processingOptions)
         {
-            OnTxStarting?.Invoke(index);
             long txStart = StartTxTimer();
             TransactionResult result = transactionProcessor.ProcessTransaction(currentTx, receiptsTracer, processingOptions, _stateProvider);
             StopTxTimer(index, txStart);

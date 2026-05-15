@@ -3,7 +3,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.ObjectPool;
@@ -133,11 +132,6 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
 
             if (parent is not null && _concurrencyLevel > 1 && !cancellationToken.IsCancellationRequested)
             {
-                int txCount = suggestedBlock.Transactions.Length;
-                DiagPrewarmerCompletedAt = new long[txCount];
-                DiagMainThreadStartedAt = new long[txCount];
-                DiagBlockStartTicks = Stopwatch.GetTimestamp();
-
                 BlockState blockState = new(this, suggestedBlock, parent, spec);
                 ParallelOptions parallelOptions = new() { MaxDegreeOfParallelism = _concurrencyLevel, CancellationToken = cancellationToken };
 
@@ -268,58 +262,6 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
     /// </summary>
     internal IWorldState? MainThreadWorldState;
 
-    // Diagnostic: timestamps (Stopwatch ticks) when prewarmer completes each tx
-    internal long[]? DiagPrewarmerCompletedAt;
-    // Diagnostic: timestamp when main thread starts processing each tx
-    internal long[]? DiagMainThreadStartedAt;
-    internal long DiagBlockStartTicks;
-
-    internal static long DiagTxStartedCallCount;
-
-    internal void ReportMainThreadTxStarted(int txIndex)
-    {
-        Interlocked.Increment(ref DiagTxStartedCallCount);
-        long[]? arr = DiagMainThreadStartedAt;
-        if (arr is not null && (uint)txIndex < (uint)arr.Length)
-            arr[txIndex] = Stopwatch.GetTimestamp();
-    }
-
-    internal string GetDiagTimingReport(int maxTxs = 20)
-    {
-        long[]? pw = DiagPrewarmerCompletedAt;
-        long[]? mt = DiagMainThreadStartedAt;
-        if (pw is null || mt is null) return "no timing data";
-
-        long start = DiagBlockStartTicks;
-        double ticksToMs = 1000.0 / Stopwatch.Frequency;
-        System.Text.StringBuilder sb = new();
-        sb.AppendLine("tx | prewarm_ms | main_ms | lead_ms | status");
-        int count = Math.Min(Math.Min(pw.Length, mt.Length), maxTxs);
-        int ahead = 0, behind = 0, notWarmed = 0;
-        for (int i = 0; i < count; i++)
-        {
-            double pwMs = pw[i] == 0 ? -1 : (pw[i] - start) * ticksToMs;
-            double mtMs = mt[i] == 0 ? -1 : (mt[i] - start) * ticksToMs;
-            double lead = (mtMs >= 0 && pwMs >= 0) ? mtMs - pwMs : 0;
-            string status = pw[i] == 0 ? "NOT_WARMED" : (lead > 0 ? "AHEAD" : "BEHIND");
-            if (pw[i] == 0) notWarmed++; else if (lead > 0) ahead++; else behind++;
-            sb.AppendLine($"{i,3} | {pwMs,10:F3} | {mtMs,8:F3} | {lead,8:F3} | {status}");
-        }
-        if (pw.Length > maxTxs)
-        {
-            for (int i = maxTxs; i < pw.Length; i++)
-            {
-                if (pw[i] == 0) notWarmed++;
-                else if (mt[i] != 0 && mt[i] > pw[i]) ahead++;
-                else behind++;
-            }
-        }
-        int storCount = _preBlockCaches?.DiagStorageCacheCount() ?? 0;
-        int acctCount = _preBlockCaches?.DiagAccountCacheCount() ?? 0;
-        sb.AppendLine($"Summary: {ahead} ahead, {behind} behind, {notWarmed} not warmed (of {pw.Length} txs). TxStartedCallCount={Volatile.Read(ref DiagTxStartedCallCount)} SeqlockCache: acct={acctCount} stor={storCount}");
-        return sb.ToString();
-    }
-
     private readonly ManualResetEventSlim _firstPassDone = new(false);
 
     /// <summary>
@@ -408,10 +350,6 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
                                         ? txCount - 1 - workItem
                                         : workItem;
                                     WarmupTransactionByIndex(env, blockState, block, preWarmer, txIndex);
-
-                                    long[]? completedAt = preWarmer.DiagPrewarmerCompletedAt;
-                                    if (completedAt is not null && (uint)txIndex < (uint)completedAt.Length && completedAt[txIndex] == 0)
-                                        completedAt[txIndex] = Stopwatch.GetTimestamp();
                                 }
                             }
 
@@ -435,10 +373,6 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
                                 if (lastSeenMain >= myTx) continue;
 
                                 WarmupTransactionByIndex(env, blockState, block, preWarmer, myTx);
-
-                                long[]? completedAt = preWarmer.DiagPrewarmerCompletedAt;
-                                if (completedAt is not null && (uint)myTx < (uint)completedAt.Length && completedAt[myTx] == 0)
-                                    completedAt[myTx] = Stopwatch.GetTimestamp();
 
                                 if (retryMode == PreWarmRetryMode.Hammer)
                                 {
