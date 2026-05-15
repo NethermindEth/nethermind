@@ -5,6 +5,8 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
+using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using FluentAssertions;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Extensions;
@@ -86,45 +88,12 @@ public class NativeMemoryListTests
     }
 
     [Test]
-    public void GetRef_returns_writable_reference()
-    {
-        using NativeMemoryList<int> list = new(2, 2);
-        ref int slot = ref list.GetRef(1);
-        slot = 42;
-        list[1].Should().Be(42);
-    }
-
-    [Test]
     public void AsSpan_reflects_count()
     {
         using NativeMemoryList<int> list = new(4);
         list.AddRange(stackalloc int[] { 1, 2, 3 });
         list.AsSpan().Length.Should().Be(3);
         list.AsSpan()[1].Should().Be(2);
-    }
-
-    [Test]
-    public void Sort_and_Reverse()
-    {
-        using NativeMemoryList<int> list = new(4, [3, 1, 4, 1, 5, 9, 2, 6]);
-        list.Sort((a, b) => a.CompareTo(b));
-        list.Should().BeEquivalentTo(new[] { 1, 1, 2, 3, 4, 5, 6, 9 }, o => o.WithStrictOrdering());
-        list.Reverse();
-        list.Should().BeEquivalentTo(new[] { 9, 6, 5, 4, 3, 2, 1, 1 }, o => o.WithStrictOrdering());
-    }
-
-    [Test]
-    public void Truncate_and_ReduceCount()
-    {
-        using NativeMemoryList<int> list = new(64);
-        list.AddRange(Enumerable.Range(0, 50).ToArray());
-
-        list.Truncate(10);
-        list.Count.Should().Be(10);
-
-        list.ReduceCount(2);
-        list.Count.Should().Be(2);
-        list.Should().BeEquivalentTo(new[] { 0, 1 }, o => o.WithStrictOrdering());
     }
 
     [Test]
@@ -164,59 +133,6 @@ public class NativeMemoryListTests
     }
 
     [Test]
-    public void Ref_struct_round_trip()
-    {
-        NativeMemoryListRef<int> r = new(4);
-        try
-        {
-            r.AddRange(stackalloc int[] { 1, 2, 3 });
-            r.Count.Should().Be(3);
-            r[1].Should().Be(2);
-            r.AsSpan().ToArray().Should().BeEquivalentTo(new[] { 1, 2, 3 }, o => o.WithStrictOrdering());
-            r.Add(4);
-            r.AsSpan()[3].Should().Be(4);
-            r.Insert(0, 0);
-            r.AsSpan().ToArray().Should().BeEquivalentTo(new[] { 0, 1, 2, 3, 4 }, o => o.WithStrictOrdering());
-            r.RemoveAt(0);
-            r.AsSpan().ToArray().Should().BeEquivalentTo(new[] { 1, 2, 3, 4 }, o => o.WithStrictOrdering());
-            r.Clear();
-            r.Count.Should().Be(0);
-        }
-        finally
-        {
-            r.Dispose();
-            r.Dispose(); // idempotent
-        }
-    }
-
-    [Test]
-    public void Ref_struct_growth_past_initial_capacity()
-    {
-        NativeMemoryListRef<long> r = new(2);
-        try
-        {
-            for (int i = 0; i < 1000; i++) r.Add(i);
-            r.Count.Should().Be(1000);
-            r.Capacity.Should().BeGreaterThanOrEqualTo(1000);
-            r[0].Should().Be(0L);
-            r[999].Should().Be(999L);
-        }
-        finally { r.Dispose(); }
-    }
-
-    [Test]
-    public void Ref_struct_EnsureCapacity()
-    {
-        NativeMemoryListRef<byte> r = new(4);
-        try
-        {
-            r.EnsureCapacity(4096);
-            r.Capacity.Should().BeGreaterThanOrEqualTo(4096);
-        }
-        finally { r.Dispose(); }
-    }
-
-    [Test]
     public void Empty_constructor_returns_disposable_zero_capacity()
     {
         using NativeMemoryList<int> empty = NativeMemoryList<int>.Empty();
@@ -248,9 +164,29 @@ public class NativeMemoryListTests
 
         list.RemoveAt(0);
         list.AsSpan().ToArray().Should().BeEquivalentTo(Bytes.FromHexString("deadbeef"), o => o.WithStrictOrdering());
+    }
 
-        list.Reverse();
-        list[0].Should().Be(0xef);
+    // sizeof(long) == 8 is a power of two, so the native path must route through
+    // AlignedAlloc(sizeof(T)) instead of plain malloc — the returned buffer address must
+    // be aligned to sizeof(T).
+    [TestCase(typeof(long), 256)]   // 2 KiB → native
+    [TestCase(typeof(int), 512)]    // 2 KiB → native
+    public unsafe void Native_path_buffer_is_aligned_to_sizeof_T_for_pow2_sizes(Type elementType, int capacity)
+    {
+        if (elementType == typeof(long))
+        {
+            using NativeMemoryList<long> list = new(capacity);
+            for (int i = 0; i < capacity; i++) list.Add(i);
+            nuint addr = (nuint)Unsafe.AsPointer(ref MemoryMarshal.GetReference(list.AsSpan()));
+            (addr % (nuint)sizeof(long)).Should().Be((nuint)0);
+        }
+        else
+        {
+            using NativeMemoryList<int> list = new(capacity);
+            for (int i = 0; i < capacity; i++) list.Add(i);
+            nuint addr = (nuint)Unsafe.AsPointer(ref MemoryMarshal.GetReference(list.AsSpan()));
+            (addr % (nuint)sizeof(int)).Should().Be((nuint)0);
+        }
     }
 
     // Cross the pool/native boundary inside one list lifetime: start in the pool (16 bytes),
@@ -267,19 +203,5 @@ public class NativeMemoryListTests
         list.Count.Should().Be(payload.Length);
         list.Capacity.Should().BeGreaterThanOrEqualTo(payload.Length);
         list.AsSpan().ToArray().Should().BeEquivalentTo(payload, o => o.WithStrictOrdering());
-    }
-
-    // ReduceCount shrinks below the byte threshold; the internal reallocation must route to
-    // ArrayPool and the data must remain readable.
-    [Test]
-    public void ReduceCount_downgrades_native_to_pool_when_under_threshold()
-    {
-        using NativeMemoryList<long> list = new(256);  // 256 * 8 = 2 KiB → native
-        for (int i = 0; i < 256; i++) list.Add(i);
-
-        list.ReduceCount(8);  // 8 * 8 = 64 bytes → pool
-        list.Count.Should().Be(8);
-        list[0].Should().Be(0L);
-        list[7].Should().Be(7L);
     }
 }

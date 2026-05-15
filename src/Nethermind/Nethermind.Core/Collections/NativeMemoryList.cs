@@ -46,8 +46,6 @@ public sealed unsafe class NativeMemoryList<T> : IList<T>, IList, IOwnedReadOnly
         foreach (T item in enumerable) Add(item);
     }
 
-    public NativeMemoryList(ReadOnlySpan<T> span) : this(span.Length) => AddRange(span);
-
     public int Count => _count;
     public int Capacity => _capacity;
 
@@ -97,15 +95,6 @@ public sealed unsafe class NativeMemoryList<T> : IList<T>, IList, IOwnedReadOnly
         NativeMemoryListCore<T>.AddRange(ref _ptr, ref _capacity, ref _pooledArray, ref _pinHandle, ref _count, items);
     }
 
-    public void EnsureCapacity(int capacity)
-    {
-        GuardDispose();
-        if (capacity > _capacity)
-        {
-            NativeMemoryListCore<T>.GuardResize(ref _ptr, ref _capacity, ref _pooledArray, ref _pinHandle, _count, capacity - _count);
-        }
-    }
-
     public void Clear()
     {
         GuardDispose();
@@ -139,30 +128,6 @@ public sealed unsafe class NativeMemoryList<T> : IList<T>, IList, IOwnedReadOnly
         [StackTraceHidden]
         static void ThrowUnsupportedArrayType() =>
             throw new ArgumentException($"Only {typeof(T[])} arrays are supported.", nameof(array));
-    }
-
-    public void ReduceCount(int count)
-    {
-        GuardDispose();
-        NativeMemoryListCore<T>.ReduceCount(ref _ptr, ref _capacity, ref _pooledArray, ref _pinHandle, ref _count, count);
-    }
-
-    public void Sort(Comparison<T> comparison)
-    {
-        GuardDispose();
-        NativeMemoryListCore<T>.Sort(_ptr, _count, comparison);
-    }
-
-    public void Sort<TComparer>(TComparer comparer) where TComparer : IComparer<T>
-    {
-        GuardDispose();
-        NativeMemoryListCore<T>.Sort(_ptr, _count, comparer);
-    }
-
-    public void Reverse()
-    {
-        GuardDispose();
-        NativeMemoryListCore<T>.Reverse(_ptr, _count);
     }
 
     bool IList.IsFixedSize => false;
@@ -206,18 +171,6 @@ public sealed unsafe class NativeMemoryList<T> : IList<T>, IList, IOwnedReadOnly
     {
         GuardDispose();
         NativeMemoryListCore<T>.RemoveAt(_ptr, ref _count, index, shouldThrow: true);
-    }
-
-    public void Truncate(int newLength)
-    {
-        GuardDispose();
-        NativeMemoryListCore<T>.Truncate(newLength, ref _count);
-    }
-
-    public ref T GetRef(int index)
-    {
-        GuardDispose();
-        return ref NativeMemoryListCore<T>.GetRef(_ptr, index, _count);
     }
 
     public T this[int index]

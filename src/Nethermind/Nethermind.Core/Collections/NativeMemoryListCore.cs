@@ -6,6 +6,7 @@ using System.Buffers;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
+using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 
@@ -18,6 +19,12 @@ internal static unsafe class NativeMemoryListCore<T> where T : unmanaged
     // short-lived collections. The decision is made on the requested capacity; the pool
     // may overshoot, but we stay on pool until a resize would push us above the threshold.
     internal const int PoolThresholdBytes = 1024;
+
+    // When sizeof(T) is a power of two, the native path uses NativeMemory.AlignedAlloc with
+    // alignment = sizeof(T) so element loads/stores hit naturally aligned addresses. malloc
+    // (used otherwise) only guarantees max_align_t (~16B on x86-64), which is insufficient
+    // for types like Vector256-bearing structs whose alignment exceeds malloc's default.
+    private static bool UseAlignedAlloc => BitOperations.IsPow2(sizeof(T));
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static T* AllocateBuffer(int capacity, out T[]? pooledArray, out GCHandle pinHandle, out int actualCapacity)
@@ -43,7 +50,9 @@ internal static unsafe class NativeMemoryListCore<T> where T : unmanaged
         pooledArray = null;
         pinHandle = default;
         actualCapacity = capacity;
-        return (T*)NativeMemory.Alloc((nuint)capacity, (nuint)sizeof(T));
+        return UseAlignedAlloc
+            ? (T*)NativeMemory.AlignedAlloc((nuint)capacity * (nuint)sizeof(T), (nuint)sizeof(T))
+            : (T*)NativeMemory.Alloc((nuint)capacity, (nuint)sizeof(T));
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -56,7 +65,8 @@ internal static unsafe class NativeMemoryListCore<T> where T : unmanaged
         }
         else if (ptr is not null)
         {
-            NativeMemory.Free(ptr);
+            if (UseAlignedAlloc) NativeMemory.AlignedFree(ptr);
+            else NativeMemory.Free(ptr);
         }
     }
 
@@ -118,48 +128,6 @@ internal static unsafe class NativeMemoryListCore<T> where T : unmanaged
     public static void Clear(ref int count) => count = 0;
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static void ReduceCount(ref T* ptr, ref int capacity, ref T[]? pooledArray, ref GCHandle pinHandle, ref int count, int newCount)
-    {
-        if (newCount == count) return;
-        if (newCount > count) ThrowOnlyReduce(newCount, count);
-
-        count = newCount;
-
-        if (newCount < capacity / 2 && newCount > 0)
-        {
-            T* newPtr = AllocateBuffer(newCount, out T[]? newPooled, out GCHandle newPin, out int newActual);
-            Buffer.MemoryCopy(ptr, newPtr, (long)newActual * sizeof(T), (long)newCount * sizeof(T));
-            FreeBuffer(ptr, pooledArray, pinHandle);
-            ptr = newPtr;
-            pooledArray = newPooled;
-            pinHandle = newPin;
-            capacity = newActual;
-        }
-
-        [DoesNotReturn]
-        [StackTraceHidden]
-        static void ThrowOnlyReduce(int newCount, int oldCount) =>
-            throw new ArgumentException($"Count can only be reduced. {newCount} is larger than {oldCount}", nameof(count));
-    }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static void Sort(T* ptr, int count, Comparison<T> comparison)
-    {
-        ArgumentNullException.ThrowIfNull(comparison);
-        if (count > 1) new Span<T>(ptr, count).Sort(comparison);
-    }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static void Sort<TComparer>(T* ptr, int count, TComparer comparer)
-        where TComparer : IComparer<T>
-    {
-        if (count > 1) new Span<T>(ptr, count).Sort(comparer);
-    }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static void Reverse(T* ptr, int count) => new Span<T>(ptr, count).Reverse();
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static int IndexOf(T* ptr, int count, T item) =>
         new ReadOnlySpan<T>(ptr, count).IndexOf(item);
 
@@ -205,18 +173,6 @@ internal static unsafe class NativeMemoryListCore<T> where T : unmanaged
     public static bool Remove(T* ptr, ref int count, T item) =>
         RemoveAt(ptr, ref count, IndexOf(ptr, count, item), shouldThrow: false);
 
-    public static T? RemoveLast(T* ptr, ref int count)
-    {
-        if (count > 0)
-        {
-            int index = count - 1;
-            T item = ptr[index];
-            count--;
-            return item;
-        }
-        return default;
-    }
-
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static void Insert(ref T* ptr, ref int capacity, ref T[]? pooledArray, ref GCHandle pinHandle, ref int count, int index, T item)
     {
@@ -228,20 +184,6 @@ internal static unsafe class NativeMemoryListCore<T> where T : unmanaged
         }
         ptr[index] = item;
         count++;
-    }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static void Truncate(int newLength, ref int count)
-    {
-        GuardIndex(newLength, count, shouldThrow: true, allowEqualToCount: true);
-        count = newLength;
-    }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static ref T GetRef(T* ptr, int index, int count)
-    {
-        GuardIndex(index, count);
-        return ref ptr[index];
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -259,8 +201,11 @@ internal static unsafe class NativeMemoryListCore<T> where T : unmanaged
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static void Dispose(ref T* ptr, ref T[]? pooledArray, ref GCHandle pinHandle, ref int count, ref int capacity)
+    public static void Dispose(ref T* ptr, ref T[]? pooledArray, ref GCHandle pinHandle, ref int count, ref int capacity, ref bool disposed)
     {
+        if (disposed) return;
+        disposed = true;
+
         T* localPtr = ptr;
         T[]? localPool = pooledArray;
         GCHandle localPin = pinHandle;
@@ -270,15 +215,5 @@ internal static unsafe class NativeMemoryListCore<T> where T : unmanaged
         FreeBuffer(localPtr, localPool, localPin);
         count = 0;
         capacity = 0;
-    }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static void Dispose(ref T* ptr, ref T[]? pooledArray, ref GCHandle pinHandle, ref int count, ref int capacity, ref bool disposed)
-    {
-        if (!disposed)
-        {
-            disposed = true;
-            Dispose(ref ptr, ref pooledArray, ref pinHandle, ref count, ref capacity);
-        }
     }
 }
