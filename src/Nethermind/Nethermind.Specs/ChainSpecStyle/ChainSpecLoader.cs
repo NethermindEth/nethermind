@@ -218,10 +218,7 @@ public class ChainSpecLoader(IJsonSerializer serializer, ILogManager logManager)
             Eip7954TransitionTimestamp = chainSpecJson.Params.Eip7954TransitionTimestamp,
         };
 
-        // Apply hardfork labels first so they win over the pricing-derived and genesis-default
-        // fallbacks below (precedence: explicit per-EIP field > hardfork label > legacy pricing
-        // inference / genesis default).
-        HardforkLabels.ExpandAll(chainSpec.Parameters, chainSpecJson.Params);
+        chainSpec.Parameters.ExpandAll(chainSpecJson.Params);
         ValidateParams(chainSpec.Parameters);
 
         // Pre-Shanghai EIPs that are part of the genesis baseline for chains without explicit

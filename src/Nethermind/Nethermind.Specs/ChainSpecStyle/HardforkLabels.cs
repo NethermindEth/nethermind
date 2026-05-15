@@ -51,7 +51,7 @@ public static partial class HardforkLabels
     /// interfaces). Geth-style genesis loaders pass the destination <see cref="ChainParameters"/>
     /// as target and the parsed config as source.
     /// </remarks>
-    public static void ExpandAll(ChainParameters target, IHasNamedForks source)
+    public static void ExpandAll(this ChainParameters target, IHasNamedForks source)
     {
         foreach (IHardforkLabel label in All) label.Apply(target, source);
     }
