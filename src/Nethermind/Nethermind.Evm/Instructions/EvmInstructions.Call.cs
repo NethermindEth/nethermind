@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
@@ -197,19 +198,24 @@ public static partial class EvmInstructions
         // CALL frame will be entered and the target's code will execute.
         CodeInfo codeInfo = vm.CodeInfoRepository.GetCachedCodeInfo(codeSource, spec);
 
-        // Get remaining gas for 63/64 calculation
         long gasAvailable = TGasPolicy.GetRemainingGas(in gas);
+        long gasLimitUl;
 
-        // Apply the 63/64 gas rule if enabled.
         if (spec.Use63Over64Rule)
         {
-            gasLimit = UInt256.Min((UInt256)(gasAvailable - gasAvailable / 64), gasLimit);
+            // EIP-150: cap is a non-negative long, so min(gasLimit, cap) fits without 256-bit math.
+            Debug.Assert(gasAvailable >= 0, "GetRemainingGas must be non-negative; (ulong)cap below would otherwise wrap.");
+            long cap = gasAvailable - gasAvailable / 64;
+            gasLimitUl = gasLimit.IsUint64 && gasLimit.u0 <= (ulong)cap
+                ? (long)gasLimit.u0
+                : cap;
+        }
+        else
+        {
+            if (!gasLimit.IsUint64 || gasLimit.u0 >= long.MaxValue) goto OutOfGas;
+            gasLimitUl = (long)gasLimit.u0;
         }
 
-        // If gasLimit exceeds the host's representable range, treat as out-of-gas.
-        if (gasLimit >= long.MaxValue) goto OutOfGas;
-
-        long gasLimitUl = (long)gasLimit;
         if (!TGasPolicy.UpdateGas(ref gas, gasLimitUl)) goto OutOfGas;
 
         // Add call stipend if value is being transferred.
