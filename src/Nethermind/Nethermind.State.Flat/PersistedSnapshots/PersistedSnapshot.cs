@@ -74,9 +74,15 @@ public sealed class PersistedSnapshot : RefCountingDisposable
     internal static readonly byte[] MetadataVersionKey = "version\0\0\0"u8.ToArray();
 
     // Direct-mapped lock-free address-bound cache. Each slot is a single long:
-    //   high 16 bits = first 2 bytes of the address-hash (tag)
+    //   high 16 bits = bytes 4..6 of the address-hash (tag)
     //   low  48 bits = absolute offset of the LEB128 value-length byte in the outer
     //                  column 0x01 entry. 48 bits = 256 TiB, plenty.
+    // Bucket index = bytes 0..4 of the address-hash (as uint32) masked by
+    // (slotCount - 1). Bucket bits and tag bits are drawn from disjoint slices of
+    // the Keccak hash so the tag's full 16 bits stay discriminating regardless of
+    // cache size — if both came from the same slice, the tag's effective filtering
+    // would shrink to (16 - log2(slotCount)) bits. The 32-bit bucket field
+    // supports caches up to 2^32 slots without aliasing into the tag bytes.
     // Single-long Interlocked is intrinsic on every platform (no CMPXCHG16B needed).
     // Layout: keyFirst=false BTree entry shape is [Value][LEB128][FullKey]. On hit we
     // read 26 bytes at lebStart in one shot covering the LEB128 (≤ 6 bytes for any
@@ -276,10 +282,14 @@ public sealed class PersistedSnapshot : RefCountingDisposable
         // is only called after a successful Interlocked.Exchange to null in Demote,
         // which races at most with reads that already captured the live ref).
         NativeMemoryList<long>? cache = Volatile.Read(ref _addressBoundCache);
-        ushort hashTag = MemoryMarshal.Read<ushort>(addressHash.Bytes);
+        // Disjoint slices of the address-hash: bytes 0..4 (uint32) select the
+        // bucket, bytes 4..6 (ushort) are the tag stored alongside the offset.
+        // Disjoint bits keep the tag's full 16-bit entropy regardless of cache size.
+        uint bucketBits = MemoryMarshal.Read<uint>(addressHash.Bytes);
+        ushort hashTag = MemoryMarshal.Read<ushort>(addressHash.Bytes[4..]);
         if (cache is not null)
         {
-            int idx = hashTag & _addressBoundCacheMask;
+            int idx = (int)(bucketBits & (uint)_addressBoundCacheMask);
             ref long slot = ref cache.GetRef(idx);
 
             long cached = Interlocked.Read(ref slot);
@@ -312,7 +322,7 @@ public sealed class PersistedSnapshot : RefCountingDisposable
         {
             // keyFirst=false bound is (lebStart - valueLength, valueLength), so
             // lebStart = bound.Offset + bound.Length.
-            int idx = hashTag & _addressBoundCacheMask;
+            int idx = (int)(bucketBits & (uint)_addressBoundCacheMask);
             long newLebStart = addressBound.Offset + addressBound.Length;
             long newSlot = ((long)hashTag << AddressBoundCacheTagShift) | (newLebStart & AddressBoundCacheOffsetMask);
             Interlocked.Exchange(ref cache.GetRef(idx), newSlot);
