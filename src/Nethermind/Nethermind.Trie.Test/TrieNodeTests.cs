@@ -744,32 +744,25 @@ public class TrieNodeTests
         trieNode.RlpEncode(NullTrieStore.Instance, ref emptyPath);
     }
 
-    [Test]
-    public void Extension_child_as_keccak_memory_size()
+    // Shared setup: extension carrying an unresolved by-hash child, then pruned. Without
+    // parent RLP, PrunePersistedRecursively cannot drop the typed child (the hash would
+    // be lost), so the slot retains the typed reference.
+    private static TrieNode BuildPrunedExtensionWithUnknownChild()
     {
         TrieNode child = new TrieSyncNode(Keccak.Zero);
         TrieNode trieNode = TrieNode.CreateExtensionTyped();
         trieNode.SetChild(0, child);
-
-        // Without parent RLP, PrunePersistedRecursively cannot drop the typed child
-        // (the hash would be lost). Slot retains the typed reference.
         trieNode.PrunePersistedRecursively(1);
-        // The exact byte count is shape-data only (no RLP, no Hash256 slot).
-        trieNode.GetMemorySize(false).Should().BeGreaterThan(0);
+        return trieNode;
     }
 
     [Test]
-    public void Extension_child_as_keccak_clone()
-    {
-        TrieNode child = new TrieSyncNode(Keccak.Zero);
-        TrieNode trieNode = TrieNode.CreateExtensionTyped();
-        trieNode.SetChild(0, child);
+    public void Extension_child_as_keccak_memory_size() =>
+        BuildPrunedExtensionWithUnknownChild().GetMemorySize(false).Should().BeGreaterThan(0);
 
-        trieNode.PrunePersistedRecursively(1);
-        TrieNode cloned = trieNode.Clone();
-
-        cloned.GetMemorySize(false).Should().BeGreaterThan(0);
-    }
+    [Test]
+    public void Extension_child_as_keccak_clone() =>
+        BuildPrunedExtensionWithUnknownChild().Clone().GetMemorySize(false).Should().BeGreaterThan(0);
 
     [Test]
     public void Unresolve_of_persisted()
@@ -811,27 +804,16 @@ public class TrieNodeTests
     }
 
     [Test]
-    public void Extension_child_as_keccak_not_dirty()
-    {
-        TrieNode child = new TrieSyncNode(Keccak.Zero);
-        TrieNode trieNode = TrieNode.CreateExtensionTyped();
-        trieNode.SetChild(0, child);
-
-        trieNode.PrunePersistedRecursively(1);
-        trieNode.TryGetDirtyChild(0, out TrieNode? dirtyChild).Should().Be(false);
-    }
+    public void Extension_child_as_keccak_not_dirty() =>
+        BuildPrunedExtensionWithUnknownChild().TryGetDirtyChild(0, out _).Should().Be(false);
 
     [TestCase(true)]
     [TestCase(false)]
     public void Extension_child_as_keccak_call_recursively(bool skipPersisted)
     {
-        TrieNode child = new TrieSyncNode(Keccak.Zero);
-        TrieNode trieNode = TrieNode.CreateExtensionTyped();
-        trieNode.SetChild(0, child);
-
         // Without parent RLP, PrunePersistedRecursively cannot drop the typed child;
         // CallRecursively therefore visits both the extension and its (Unknown) child.
-        trieNode.PrunePersistedRecursively(1);
+        TrieNode trieNode = BuildPrunedExtensionWithUnknownChild();
         int count = 0;
         TreePath emptyPath = TreePath.Empty;
         trieNode.CallRecursively((n, s, p) => count++, null, ref emptyPath, NullTrieStore.Instance, skipPersisted, LimboTraceLogger.Instance);
