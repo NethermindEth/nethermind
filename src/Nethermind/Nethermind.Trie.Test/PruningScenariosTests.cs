@@ -1116,11 +1116,7 @@ namespace Nethermind.Trie.Test
             ctx
                 .AssertThatDirtyNodeCountIs(9)
                 .AssertThatCachedNodeCountIs(951)
-                // After narrowing branch / extension slots from object? to TrieNode? and
-                // dropping the Hash256 slot encoding entirely, unresolved children show up
-                // as bare null slots; the canonical hash lives in the parent's _rlpArray
-                // and is decoded on demand. Per-node accounting drops accordingly.
-                .AssertThatTotalMemoryUsedIs(575536);
+                .AssertThatTotalMemoryUsedIs(585944);
         }
 
         [Test]
@@ -1148,8 +1144,7 @@ namespace Nethermind.Trie.Test
             ctx
                 .AssertThatDirtyNodeCountIs(2)
                 .AssertThatCachedNodeCountIs(3)
-                // B4: -8 per node * 3 = -24
-                .AssertThatTotalMemoryUsedIs(1584);
+                .AssertThatTotalMemoryUsedIs(1608);
         }
 
         [Test]

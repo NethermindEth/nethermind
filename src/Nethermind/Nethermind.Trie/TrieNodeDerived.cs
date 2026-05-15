@@ -165,7 +165,7 @@ namespace Nethermind.Trie
             MemorySizes.RefSize + // storage root reference
             MemorySizes.RefSize + // key reference
             (_key is not null ? (int)MemorySizes.Align(_key.Length + MemorySizes.ArrayOverhead) : 0) +
-            MemorySizes.RefSize + // value array reference
+            MemorySizes.RefSize + sizeof(int) * 2 + // CappedArray<byte>: value array reference + offset + length
             (_value.IsNotNullOrEmpty ? (int)MemorySizes.Align(_value.UnderlyingLength + MemorySizes.ArrayOverhead) : 0);
 
         internal TrieNodeLeaf CloneWithNewValue(CappedArray<byte> value)

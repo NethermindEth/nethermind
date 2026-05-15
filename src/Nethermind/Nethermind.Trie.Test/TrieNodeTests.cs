@@ -589,15 +589,14 @@ public class TrieNodeTests
     public void Size_of_a_heavy_leaf_is_correct()
     {
         Context ctx = new();
-        // B4: -8 (no _nodeData reference, shape fields are inline on TrieNodeLeaf)
-        ctx.HeavyLeaf.GetMemorySize(false).Should().Be(232);
+        ctx.HeavyLeaf.GetMemorySize(false).Should().Be(240);
     }
 
     [Test]
     public void Size_of_a_tiny_leaf_is_correct()
     {
         Context ctx = new();
-        ctx.TiniestLeaf.GetMemorySize(false).Should().Be(160);
+        ctx.TiniestLeaf.GetMemorySize(false).Should().Be(168);
     }
 
     [Test]
@@ -610,8 +609,7 @@ public class TrieNodeTests
             node.SetChild(i, ctx.AccountLeaf);
         }
 
-        // B4: branch self -8, plus -8 per child leaf (16) = -136 for recursive total
-        node.GetMemorySize(true).Should().Be(3784);
+        node.GetMemorySize(true).Should().Be(3912);
         node.GetMemorySize(false).Should().Be(200);
     }
 
@@ -634,7 +632,7 @@ public class TrieNodeTests
         trieNode.Key = new byte[] { 1 };
         trieNode.SetChild(0, ctx.TiniestLeaf);
 
-        trieNode.GetMemorySize(true).Should().Be(280);
+        trieNode.GetMemorySize(true).Should().Be(288);
         trieNode.GetMemorySize(false).Should().Be(120);
     }
 
@@ -673,7 +671,7 @@ public class TrieNodeTests
     {
         TrieNode trieNode = TrieNode.CreateLeafTyped();
         trieNode.Value = new byte[7];
-        trieNode.GetMemorySize(false).Should().Be(128);
+        trieNode.GetMemorySize(false).Should().Be(136);
     }
 
     [Test]
@@ -681,6 +679,13 @@ public class TrieNodeTests
     {
         TrieNode trieNode = new TrieSyncNode(new byte[7]);
         trieNode.GetMemorySize(false).Should().Be(104);
+    }
+
+    [Test]
+    public void Size_of_an_unknown_node_with_unaligned_full_rlp_is_correct()
+    {
+        TrieNode trieNode = new TrieSyncNode(new byte[9]);
+        trieNode.GetMemorySize(false).Should().Be(112);
     }
 
     [Test]

@@ -1599,7 +1599,7 @@ namespace Nethermind.Trie
             int keccakSize = ValueHash256.MemorySize + sizeof(uint);
             CappedArray<byte> rlp = ReadRlp();
             bool isRlpSlice = IsRlpSlice(Volatile.Read(ref _rlpSeqAndLength));
-            long rlpSize = MemorySizes.RefSize + (rlp.IsNotNull && !isRlpSlice ? MemorySizes.ArrayOverhead + rlp.UnderlyingLength : 0);
+            long rlpSize = MemorySizes.RefSize + (rlp.IsNotNull && !isRlpSlice ? MemorySizes.Align(MemorySizes.ArrayOverhead + rlp.UnderlyingLength) : 0);
             // B4: shape data lives inline on the typed subclass; no longer a separate INodeData heap object.
             long dataSize = MemorySizeOfData;
             int objectOverhead = MemorySizes.ObjectHeaderMethodTable;
