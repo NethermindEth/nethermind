@@ -15,6 +15,7 @@ namespace Nethermind.Merge.Plugin.Data;
     IncludeFields = true)]
 [JsonSerializable(typeof(ExecutionPayload))]
 [JsonSerializable(typeof(ExecutionPayloadV3))]
+[JsonSerializable(typeof(ExecutionPayloadV4))]
 [JsonSerializable(typeof(PayloadStatusV1))]
 [JsonSerializable(typeof(byte[][]))]
 [JsonSerializable(typeof(ForkchoiceStateV1))]
