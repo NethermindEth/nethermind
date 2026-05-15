@@ -166,6 +166,9 @@ public class DebugBridge : IDebugBridge
     public IReadOnlyCollection<GethLikeTxTrace> GetBlockTrace(Block block, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions = null) =>
         _tracer.TraceBlock(block, gethTraceOptions ?? GethTraceOptions.Default, cancellationToken);
 
+    public IReadOnlyCollection<Hash256> GetBlockIntermediateRoots(Hash256 blockHash, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions = null) =>
+        _tracer.TraceBlockIntermediateRoots(blockHash, gethTraceOptions ?? GethTraceOptions.Default, cancellationToken);
+
     public byte[]? GetBlockRlp(BlockParameter parameter)
     {
         if (parameter.BlockNumber is long number)
