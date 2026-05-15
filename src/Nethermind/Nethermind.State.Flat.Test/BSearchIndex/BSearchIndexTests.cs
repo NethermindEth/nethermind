@@ -838,26 +838,55 @@ public class BSearchIndexTests
     /// lcp can take the full <c>crossEntryLcp</c> (clamped only by minLen, keyLength-1,
     /// and the MaxCommonKeyPrefixLen header field) because the builder pads each slot
     /// from the key's data section past the natural separator. The user-observed leaf
-    /// (firstLen=4, others=5, crossEntryLcp=4, 105 entries) lands at UniformWithLen
-    /// slot=2 rather than slot=3, saving ~100 B per leaf vs the previous min(minLen-1)
-    /// cap. Last row exercises a tight-budget case (keyLength == minLen) where the
-    /// keyLength-1 clamp binds and the snap can't reach a SIMD slot — proves we don't
-    /// sacrifice lcp to chase SIMD.
+    /// (firstLen=4, others=5, crossEntryLcp=4, 105 entries) lands at Uniform slot=2
+    /// (SIMD-eligible) rather than UWL slot=2, unlocking the SIMD floor-scan path
+    /// at the same on-disk size. Last row exercises a tight-budget case
+    /// (keyLength == minLen) where the keyLength-1 clamp binds and the snap can't
+    /// reach a SIMD slot — proves we don't sacrifice lcp to chase SIMD.
     /// </summary>
-    [TestCase(4, 5, 105, 4, 32, 4, 2, 2, TestName = "Plan_FullLcp_UserScenario_105Entries")]
-    [TestCase(4, 5, 2, 10, 32, 4, 2, 2, TestName = "Plan_FullLcp_TwoEntries_ClampedByMinLen")]
-    [TestCase(5, 6, 10, 5, 32, 5, 2, 2, TestName = "Plan_FullLcp_MinLen5_FirstShorter")]
-    [TestCase(5, 5, 10, 5, 5, 4, 1, 1, TestName = "Plan_FullLcp_AllSameLen_TightBudget_NoSimd")]
-    public void LayoutPlanner_FullLcpPlusUniformWithLenShrink(
+    [TestCase(4, 5, 105, 4, 32, 4, 1, 2, true, TestName = "Plan_FullLcp_UserScenario_105Entries")]
+    [TestCase(4, 5, 2, 10, 32, 4, 1, 2, true, TestName = "Plan_FullLcp_TwoEntries_ClampedByMinLen")]
+    [TestCase(5, 6, 10, 5, 32, 5, 1, 2, true, TestName = "Plan_FullLcp_MinLen5_FirstShorter")]
+    [TestCase(5, 5, 10, 5, 5, 4, 1, 1, false, TestName = "Plan_FullLcp_AllSameLen_TightBudget_NoSimd")]
+    public void LayoutPlanner_FullLcpPlusUniformSnap(
         int firstLen, int otherLen, int count, int crossEntryLcp, int keyLength,
-        int expectedLcp, int expectedKeyType, int expectedKeySlotSize)
+        int expectedLcp, int expectedKeyType, int expectedKeySlotSize, bool expectedLe)
     {
         int[] lengths = BuildLengthsProfile(firstLen, otherLen, count);
         BSearchIndexLayoutPlanner.Plan(lengths, crossEntryLcp, keyLength,
-            out int lcp, out int keyType, out int keySlotSize, out _);
+            out int lcp, out int keyType, out int keySlotSize, out bool keyLittleEndian);
         Assert.That(lcp, Is.EqualTo(expectedLcp));
         Assert.That(keyType, Is.EqualTo(expectedKeyType));
         Assert.That(keySlotSize, Is.EqualTo(expectedKeySlotSize));
+        Assert.That(keyLittleEndian, Is.EqualTo(expectedLe));
+    }
+
+    /// <summary>
+    /// Mixed-length suffix profiles (firstLen != otherLen) with small <c>effMaxLen</c>
+    /// now land in Uniform — the non-niche UWL branch is gone. The builder pads each
+    /// slot from key data past the natural separator, so the slot can exceed the
+    /// individual entry's tail without losing correctness. Last row pins the
+    /// <c>effMaxLen &gt; 8</c> boundary: mixed-length large suffixes still fall to
+    /// Variable, not Uniform with a bloated slot. All rows pick firstLen ≥ 5 so
+    /// slot-widening (maxLen ≤ 4) doesn't fire and the mixed-length path is the
+    /// load-bearing route through the planner.
+    /// </summary>
+    [TestCase(5, 6, 10, 4, 32, 4, 1, 2, true, TestName = "Plan_Mixed_EffMax2_UniformSnap2")]
+    [TestCase(6, 7, 10, 4, 32, 4, 1, 4, true, TestName = "Plan_Mixed_EffMax3_UniformSnap4")]
+    [TestCase(7, 8, 10, 4, 32, 4, 1, 4, true, TestName = "Plan_Mixed_EffMax4_UniformSnap4")]
+    [TestCase(8, 9, 10, 1, 32, 1, 1, 8, true, TestName = "Plan_Mixed_EffMax8_UniformSnap8")]
+    [TestCase(9, 10, 10, 0, 32, 0, 0, 0, true, TestName = "Plan_Mixed_EffMax10_FallsToVariable")]
+    public void LayoutPlanner_MixedLength_LandsInUniformNotUwl(
+        int firstLen, int otherLen, int count, int crossEntryLcp, int keyLength,
+        int expectedLcp, int expectedKeyType, int expectedKeySlotSize, bool expectedLe)
+    {
+        int[] lengths = BuildLengthsProfile(firstLen, otherLen, count);
+        BSearchIndexLayoutPlanner.Plan(lengths, crossEntryLcp, keyLength,
+            out int lcp, out int keyType, out int keySlotSize, out bool keyLittleEndian);
+        Assert.That(lcp, Is.EqualTo(expectedLcp));
+        Assert.That(keyType, Is.EqualTo(expectedKeyType));
+        Assert.That(keySlotSize, Is.EqualTo(expectedKeySlotSize));
+        Assert.That(keyLittleEndian, Is.EqualTo(expectedLe));
     }
 
     /// <summary>

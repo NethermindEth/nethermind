@@ -118,7 +118,9 @@ internal static class BSearchIndexLayoutPlanner
         //   * Uniform slots may be widened to any power-of-2 ≤ keyLength - lcp without
         //     dropping lcp; non-SIMD widths can be snapped to {2, 4, 8} simply by
         //     enlarging the slot, since the extra bytes come from the key data section.
-        //     No need for a separate "drop lcp to recover SIMD" rescue.
+        //   * Mixed-length leaves with effMaxLen ≤ 8 also land in Uniform: the slot
+        //     accommodates the longest entry, and shorter entries pad from key data.
+        //     UWL is reserved for the intermediate-node niche (no key to pad from).
         //
         // Clamp by minLen (caller invariant — crossEntryLcp ≤ shortest sep), then by
         // keyLength - 1 to reserve at least one byte per slot, then by the header's u8
@@ -142,36 +144,39 @@ internal static class BSearchIndexLayoutPlanner
 
         if (emptyFirst && count > 1 && allSameLenExceptFirst && effSecondLen > 0)
         {
-            // Intermediate-node niche: leftmost child has no separator (covers
-            // everything before any explicit one) and every other separator has
-            // the same length — store as UniformWithLen with slot = secondLen + 1.
+            // Intermediate-node niche: leftmost child has no key to pad from, so
+            // UniformWithLen with explicit length=0 for entry 0 is the right marker.
+            // Every other separator shares a length, so slot = secondLen + 1.
             keyType = 2;
             keySlotSize = effSecondLen + 1;
         }
-        else if (allSameLen && effFirstLen > 0)
+        else if (effMaxLen <= 0)
         {
+            // Degenerate (e.g. keyLength=0 with a single empty entry): store a
+            // single [length=0] byte. Uniform can't represent a 0-byte payload —
+            // the builder slice would read past the empty key.
+            keyType = 2;
+            keySlotSize = 1;
+        }
+        else if (allSameLen || effMaxLen <= 8)
+        {
+            // Uniform. The builder pads each slot from currKey.Slice(prefixLen, slot)
+            // past the natural separator length, so mixed-length leaves with small
+            // effMaxLen drop in here too — replacing the old `effMaxLen <= 3 → UWL`
+            // branch and unlocking SIMD when the snap lands on {2, 4, 8}.
             keyType = 1;
-            // Snap to the next SIMD-eligible Uniform slot {2, 4, 8} when the budget
-            // (keyLength - lcp) accommodates it. Extra bytes per entry come from the
-            // data section past the natural separator (see the lcp comment above);
-            // tight-budget cases keep the natural width rather than sacrificing lcp.
             int budget = keyLength - lcp;
             keySlotSize =
-                effFirstLen <= 2 && budget >= 2 ? 2 :
-                effFirstLen <= 4 && budget >= 4 ? 4 :
-                effFirstLen <= 8 && budget >= 8 ? 8 :
-                effFirstLen;
-        }
-        else if (effMaxLen <= 3)
-        {
-            // Variable layout costs 4 bytes/entry (prefixArr 2B + offsetArr 2B, no sentinel) —
-            // UniformWithLen wins for tiny suffixes since each slot is contiguous and
-            // SIMD-scannable, with smaller per-entry overhead at maxLen ≤ 3.
-            keyType = 2;
-            keySlotSize = effMaxLen + 1;
+                effMaxLen <= 2 && budget >= 2 ? 2 :
+                effMaxLen <= 4 && budget >= 4 ? 4 :
+                effMaxLen <= 8 && budget >= 8 ? 8 :
+                effMaxLen;
         }
         else
         {
+            // Mixed-length with effMaxLen > 8: Variable is cheaper than padding
+            // every entry up to effMaxLen. The splitter's `gap > 4` quality gate
+            // keeps within-leaf length variance small, so this path is rare.
             keyType = 0;
             keySlotSize = 0;
         }
