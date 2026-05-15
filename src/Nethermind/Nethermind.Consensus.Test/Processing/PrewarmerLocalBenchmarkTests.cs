@@ -6,7 +6,6 @@ using System.Diagnostics;
 using System.Globalization;
 using System.IO;
 using System.Text;
-using System.Threading;
 using Autofac;
 using FluentAssertions;
 using Nethermind.Blockchain;
@@ -115,13 +114,6 @@ public class PrewarmerLocalBenchmarkTests
             {
                 for (int i = 0; i < runs.Length; i++)
                 {
-                    Interlocked.Exchange(ref PreBlockCaches.DiagAccountSets, 0);
-                    Interlocked.Exchange(ref PreBlockCaches.DiagAccountHits, 0);
-                    Interlocked.Exchange(ref PreBlockCaches.DiagAccountMisses, 0);
-                    Interlocked.Exchange(ref PreBlockCaches.DiagStorageSets, 0);
-                    Interlocked.Exchange(ref PreBlockCaches.DiagStorageHits, 0);
-                    Interlocked.Exchange(ref PreBlockCaches.DiagStorageMisses, 0);
-
                     MetricSnapshot before = MetricSnapshot.Capture();
                     Stopwatch stopwatch = Stopwatch.StartNew();
 
@@ -131,12 +123,6 @@ public class PrewarmerLocalBenchmarkTests
                     MetricSnapshot after = MetricSnapshot.Capture();
                     runs[i].Add(stopwatch.Elapsed.TotalMilliseconds, after - before);
 
-                    runs[i].DiagAcctSets += Volatile.Read(ref PreBlockCaches.DiagAccountSets);
-                    runs[i].DiagAcctHits += Volatile.Read(ref PreBlockCaches.DiagAccountHits);
-                    runs[i].DiagAcctMisses += Volatile.Read(ref PreBlockCaches.DiagAccountMisses);
-                    runs[i].DiagStorSets += Volatile.Read(ref PreBlockCaches.DiagStorageSets);
-                    runs[i].DiagStorHits += Volatile.Read(ref PreBlockCaches.DiagStorageHits);
-                    runs[i].DiagStorMisses += Volatile.Read(ref PreBlockCaches.DiagStorageMisses);
                 }
             }
 
@@ -149,15 +135,8 @@ public class PrewarmerLocalBenchmarkTests
                     string.Create(
                         CultureInfo.InvariantCulture,
                         $"{run.Case.Name},{run.TotalMilliseconds:F2},{run.TotalMilliseconds / MeasurementIterations:F2}," +
-                        $"{delta.AccountHitRate:F1},{delta.StorageHitRate:F1},{delta.AccountHits},{delta.AccountReads},{delta.StorageHits},{delta.StorageReads}," +
-                        $"{run.DiagAcctSets},{run.DiagAcctHits},{run.DiagAcctMisses},{run.DiagStorSets},{run.DiagStorHits},{run.DiagStorMisses}"));
+                        $"{delta.AccountHitRate:F1},{delta.StorageHitRate:F1},{delta.AccountHits},{delta.AccountReads},{delta.StorageHits},{delta.StorageReads}"));
 
-                string timing = run.Context.GetPrewarmerTimingReport();
-                if (timing != "no prewarmer")
-                {
-                    WriteReportLine(report, $"  [{run.Case.Name} timing]");
-                    WriteReportLine(report, timing);
-                }
             }
         }
         finally
@@ -203,9 +182,6 @@ public class PrewarmerLocalBenchmarkTests
         public double TotalMilliseconds { get; private set; }
 
         public MetricDelta Delta { get; private set; }
-
-        public long DiagAcctSets, DiagAcctHits, DiagAcctMisses;
-        public long DiagStorSets, DiagStorHits, DiagStorMisses;
 
         public void Add(double elapsedMilliseconds, MetricDelta delta)
         {
@@ -400,13 +376,6 @@ public class PrewarmerLocalBenchmarkTests
             {
                 ProcessingThread.IsBlockProcessingThread = previousIsBlockProcessingThread;
             }
-        }
-
-        public string GetPrewarmerTimingReport()
-        {
-            if (!_processingScope.IsRegistered<IBlockCachePreWarmer>()) return "no prewarmer";
-            IBlockCachePreWarmer pw = _processingScope.Resolve<IBlockCachePreWarmer>();
-            return pw is BlockCachePreWarmer bcpw ? bcpw.GetDiagTimingReport() : "no prewarmer";
         }
 
         public void Dispose()

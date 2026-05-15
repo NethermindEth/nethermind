@@ -18,17 +18,6 @@ public class PreBlockCaches
     public const int DefaultStorageCacheCapacity = PrecompileCacheInitialCapacity * 2;
     private static int LockPartitions => CollectionExtensions.LockPartitions;
 
-    public int DiagStorageCacheCount() => _storageCache.ApproximateCount();
-    public int DiagAccountCacheCount() => _stateCache.ApproximateCount();
-
-    // Diagnostic counters — track SeqlockCache population vs consumption
-    public static long DiagStorageSets;
-    public static long DiagStorageHits;
-    public static long DiagStorageMisses;
-    public static long DiagAccountSets;
-    public static long DiagAccountHits;
-    public static long DiagAccountMisses;
-
     private readonly Func<CacheType>[] _clearCaches;
 
     private readonly SeqlockCache<StorageCell, byte[]> _storageCache;
