@@ -529,9 +529,6 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
             else
             {
                 Db.Metrics.IncrementStorageTreeCache();
-                // Prewarmer: propagate cached storage to SeqlockCache for the main thread.
-                if (!ProcessingThread.IsBlockProcessingThread)
-                    _backend?.HintSet(storageCell.Index, valueChange.After);
             }
 
             if (!storageCell.IsHash) _provider.PushToRegistryOnly(storageCell, valueChange.After);
