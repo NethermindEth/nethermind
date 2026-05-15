@@ -98,7 +98,7 @@ public class TraceStoreRpcModule(ITraceRpcModule traceModule,
             var n => blocksSearch.AsParallel().AsOrdered().WithDegreeOfParallelism(n).Select(GetBlockTraces)
         };
 
-        List<List<ParityLikeTxTrace>> blockTraces = [];
+        List<List<ParityLikeTxTrace>>? blockTraces = null;
         foreach ((SearchResult<Block> blockSearch, List<ParityLikeTxTrace>? traces) in blockResults)
         {
             if (blockSearch.IsError)
@@ -112,10 +112,12 @@ public class TraceStoreRpcModule(ITraceRpcModule traceModule,
                 return _traceModule.trace_filter(traceFilterForRpc);
             }
 
-            blockTraces.Add(traces);
+            (blockTraces ??= []).Add(traces);
         }
 
-        IEnumerable<ParityTxTraceFromStore> txTraces = blockTraces.SelectMany(static traces => traces.SelectMany(ParityTxTraceFromStore.FromTxTrace));
+        IEnumerable<ParityTxTraceFromStore> txTraces = blockTraces is null
+            ? []
+            : blockTraces.SelectMany(static traces => traces.SelectMany(ParityTxTraceFromStore.FromTxTrace));
         TxTraceFilter txTracerFilter = new(traceFilterForRpc.FromAddress, traceFilterForRpc.ToAddress, traceFilterForRpc.After, traceFilterForRpc.Count);
         return ResultWrapper<IEnumerable<ParityTxTraceFromStore>>.Success(txTracerFilter.FilterTxTraces(txTraces));
 
