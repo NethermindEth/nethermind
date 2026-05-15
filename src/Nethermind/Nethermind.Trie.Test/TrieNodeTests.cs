@@ -577,14 +577,14 @@ public class TrieNodeTests
     public void Size_of_a_heavy_leaf_is_correct()
     {
         Context ctx = new();
-        ctx.HeavyLeaf.GetMemorySize(false).Should().Be(240);
+        ctx.HeavyLeaf.GetMemorySize(false).Should().Be(232);
     }
 
     [Test]
     public void Size_of_a_tiny_leaf_is_correct()
     {
         Context ctx = new();
-        ctx.TiniestLeaf.GetMemorySize(false).Should().Be(168);
+        ctx.TiniestLeaf.GetMemorySize(false).Should().Be(160);
     }
 
     [Test]
@@ -597,8 +597,8 @@ public class TrieNodeTests
             node.SetChild(i, ctx.AccountLeaf);
         }
 
-        node.GetMemorySize(true).Should().Be(3912);
-        node.GetMemorySize(false).Should().Be(200);
+        node.GetMemorySize(true).Should().Be(3776);
+        node.GetMemorySize(false).Should().Be(192);
     }
 
     [Test]
@@ -609,7 +609,7 @@ public class TrieNodeTests
         trieNode.Key = new byte[] { 1 };
         trieNode.SetChild(0, ctx.TiniestLeaf);
 
-        Assert.That(trieNode.GetMemorySize(false), Is.EqualTo(120));
+        Assert.That(trieNode.GetMemorySize(false), Is.EqualTo(112));
     }
 
     [Test]
@@ -620,22 +620,22 @@ public class TrieNodeTests
         trieNode.Key = new byte[] { 1 };
         trieNode.SetChild(0, ctx.TiniestLeaf);
 
-        trieNode.GetMemorySize(true).Should().Be(288);
-        trieNode.GetMemorySize(false).Should().Be(120);
+        trieNode.GetMemorySize(true).Should().Be(272);
+        trieNode.GetMemorySize(false).Should().Be(112);
     }
 
     [Test]
     public void Size_of_an_unknown_empty_node_is_correct()
     {
         TrieNode trieNode = new TrieSyncNode();
-        trieNode.GetMemorySize(false).Should().Be(72);
+        trieNode.GetMemorySize(false).Should().Be(64);
     }
 
     [Test]
     public void Size_of_an_unknown_node_with_keccak_is_correct()
     {
         TrieNode trieNode = new TrieSyncNode(Keccak.Zero);
-        trieNode.GetMemorySize(false).Should().Be(72);
+        trieNode.GetMemorySize(false).Should().Be(64);
     }
 
     [Test]
@@ -643,7 +643,7 @@ public class TrieNodeTests
     {
         TrieNode trieNode = TrieNode.CreateExtensionTyped();
         trieNode.SetChild(0, null);
-        trieNode.GetMemorySize(false).Should().Be(88);
+        trieNode.GetMemorySize(false).Should().Be(80);
     }
 
     [Test]
@@ -651,7 +651,7 @@ public class TrieNodeTests
     {
         TrieNode trieNode = TrieNode.CreateBranchTyped();
         trieNode.SetChild(0, null);
-        trieNode.GetMemorySize(false).Should().Be(200);
+        trieNode.GetMemorySize(false).Should().Be(192);
     }
 
     [Test]
@@ -659,11 +659,11 @@ public class TrieNodeTests
     {
         TrieNode trieNode = TrieNode.CreateLeafTyped();
         trieNode.Value = new byte[7];
-        trieNode.GetMemorySize(false).Should().Be(136);
+        trieNode.GetMemorySize(false).Should().Be(128);
     }
 
-    [TestCase(7, 104)]
-    [TestCase(9, 112)]
+    [TestCase(7, 96)]
+    [TestCase(9, 104)]
     public void Size_of_an_unknown_node_with_full_rlp_is_correct(int rlpLength, long expectedSize)
     {
         TrieNode trieNode = new TrieSyncNode(new byte[rlpLength]);
@@ -1041,6 +1041,57 @@ public class TrieNodeTests
         }
 
         await Task.WhenAll(tasks);
+    }
+
+    [Test]
+    public void Trie_node_concurrent_keccak_set_clear_reads_are_safe()
+    {
+        TrieNode trieNode = TrieNode.CreateLeafTyped(TestItem.Keccaks[0]);
+        ValueHash256 keccakA = TestItem.Keccaks[0].ValueHash256;
+        ValueHash256 keccakB = TestItem.Keccaks[1].ValueHash256;
+        ValueHash256 keccakC = TestItem.Keccaks[2].ValueHash256;
+        bool failed = false;
+        const int iterations = 100_000;
+
+        Parallel.Invoke(
+            () =>
+            {
+                for (int i = 0; i < iterations && !Volatile.Read(ref failed); i++)
+                {
+                    ValueHash256 keccak = (i & 1) == 0 ? keccakA : keccakB;
+                    trieNode.SetKeccak(in keccak);
+                }
+            },
+            () =>
+            {
+                for (int i = 0; i < iterations && !Volatile.Read(ref failed); i++)
+                {
+                    if ((i & 3) == 0)
+                    {
+                        trieNode.ClearKeccak();
+                    }
+                    else
+                    {
+                        trieNode.SetKeccak(in keccakC);
+                    }
+                }
+            },
+            () =>
+            {
+                for (int i = 0; i < iterations && !Volatile.Read(ref failed); i++)
+                {
+                    if (trieNode.TryGetKeccak(out ValueHash256 keccak) && !IsExpected(in keccak, in keccakA, in keccakB, in keccakC))
+                    {
+                        Volatile.Write(ref failed, true);
+                        break;
+                    }
+                }
+            });
+
+        failed.Should().BeFalse("concurrent keccak readers must not observe torn values");
+
+        static bool IsExpected(in ValueHash256 actual, in ValueHash256 keccakA, in ValueHash256 keccakB, in ValueHash256 keccakC) =>
+            actual == keccakA || actual == keccakB || actual == keccakC;
     }
 
     [Test]

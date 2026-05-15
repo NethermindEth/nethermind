@@ -144,7 +144,7 @@ namespace Nethermind.Trie.Test.Pruning
                 committer.CommitNode(ref emptyPath, trieNode3);
             }
             fullTrieStore.WaitForPruning();
-            fullTrieStore.MemoryUsedByDirtyCache.Should().Be(scheme == INodeStorage.KeyScheme.HalfPath ? 840 : 612);
+            fullTrieStore.MemoryUsedByDirtyCache.Should().Be(scheme == INodeStorage.KeyScheme.HalfPath ? 816 : 588);
         }
 
         [Test]
@@ -237,7 +237,7 @@ namespace Nethermind.Trie.Test.Pruning
                 tree.Commit();
             }
 
-            fullTrieStore.MemoryUsedByDirtyCache.Should().Be(scheme == INodeStorage.KeyScheme.Hash ? 521580 : 624104L);
+            fullTrieStore.MemoryUsedByDirtyCache.Should().Be(scheme == INodeStorage.KeyScheme.Hash ? 510788 : 613312L);
             fullTrieStore.CommittedNodesCount.Should().Be(1349);
         }
 
@@ -1466,7 +1466,7 @@ namespace Nethermind.Trie.Test.Pruning
             }
 
             memDb.Count.Should().Be(1);
-            fullTrieStore.MemoryUsedByDirtyCache.Should().Be(scheme == INodeStorage.KeyScheme.Hash ? 11008 : 15872);
+            fullTrieStore.MemoryUsedByDirtyCache.Should().Be(scheme == INodeStorage.KeyScheme.Hash ? 10496 : 15360);
 
             fullTrieStore.PersistCache(default);
             memDb.Count.Should().Be(64);
