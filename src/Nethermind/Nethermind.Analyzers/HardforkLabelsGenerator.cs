@@ -1,10 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
-using System.Collections.Generic;
 using System.Collections.Immutable;
-using System.Linq;
 using System.Text;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
@@ -19,21 +16,15 @@ namespace Nethermind.Analyzers;
 /// the single source of truth for per-fork EIP membership.
 /// </summary>
 /// <remarks>
-/// <para>
 /// For every concrete subclass of <c>NamedReleaseSpec&lt;TSelf&gt;</c> the generator scans the
 /// <c>Apply</c> method body for <c>spec.IsEip{N}Enabled = literal;</c> assignments, extracts the
 /// parent fork from the primary-constructor base argument
-/// (<c>NamedReleaseSpec&lt;Cancun&gt;(Shanghai.Instance)</c> → parent <c>Shanghai</c>), and emits a
-/// <c>Block</c> or <c>Time</c> registration. The hand-written <c>HardforkLabels.cs</c> declares
-/// <c>partial class HardforkLabels</c> with a partial <c>BuildAll</c> method; this generator
-/// provides the implementation.
-/// </para>
+/// (<c>NamedReleaseSpec&lt;Cancun&gt;(Shanghai.Instance)</c> → parent <c>Shanghai</c>), and emits
+/// a <c>Block</c> or <c>Time</c> registration.
 /// </remarks>
 [Generator]
 public sealed class HardforkLabelsGenerator : IIncrementalGenerator
 {
-    private const string NamedReleaseSpecBaseName = "NamedReleaseSpec";
-
     public void Initialize(IncrementalGeneratorInitializationContext context)
     {
         IncrementalValuesProvider<ForkInfo?> forks = context.SyntaxProvider
@@ -44,21 +35,15 @@ public sealed class HardforkLabelsGenerator : IIncrementalGenerator
 
         context.RegisterSourceOutput(forks.Collect(), static (spc, collected) =>
         {
-            ImmutableArray<ForkInfo> all = collected.Where(f => f is not null).Select(f => f!).ToImmutableArray();
+            ImmutableArray<ForkInfo> all = [.. collected.Where(f => f is not null).Select(f => f!)];
             if (all.IsEmpty) return;
 
-            // The Apply body only records this fork's delta. Walk the parent chain to materialize
-            // cumulative state for IsPostMerge (set on Paris, inherited by all descendants).
+            // Apply only records this fork's own delta. Walk the parent chain to materialize
+            // cumulative IsPostMerge (set on Paris, inherited by all descendants).
             Dictionary<string, ForkInfo> byName = all.ToDictionary(f => f.Name);
             foreach (ForkInfo fork in all)
-            {
-                ForkInfo? cursor = fork;
-                while (cursor is not null)
-                {
-                    if (cursor.SetsIsPostMerge) { fork.IsPostMerge = true; break; }
-                    cursor = cursor.ParentName is { } pn && byName.TryGetValue(pn, out ForkInfo p) ? p : null;
-                }
-            }
+                for (ForkInfo? c = fork; c is not null; c = c.ParentName is { } pn && byName.TryGetValue(pn, out ForkInfo p) ? p : null)
+                    if (c.SetsIsPostMerge) { fork.IsPostMerge = true; break; }
 
             spc.AddSource("HardforkLabels.g.cs", SourceText.From(Emit(all), Encoding.UTF8));
         });
@@ -67,97 +52,72 @@ public sealed class HardforkLabelsGenerator : IIncrementalGenerator
     private static ForkInfo? TryExtractFork(GeneratorSyntaxContext ctx)
     {
         ClassDeclarationSyntax cls = (ClassDeclarationSyntax)ctx.Node;
-        if (ctx.SemanticModel.GetDeclaredSymbol(cls) is not INamedTypeSymbol symbol) return null;
-        if (symbol.IsAbstract) return null;
-
         // Immediate base must be NamedReleaseSpec<TSelf> (not NamedGnosisReleaseSpec or any other
         // intermediate). Only mainnet forks contribute to the public HardforkLabels list.
-        INamedTypeSymbol? baseType = symbol.BaseType;
-        if (baseType is null || baseType.Name != NamedReleaseSpecBaseName) return null;
-
-        string? parentName = ExtractParentName(cls);
-        ApplyAnalysis? analysis = AnalyzeApplyMethod(cls);
-        if (analysis is null) return null;
+        if (ctx.SemanticModel.GetDeclaredSymbol(cls) is not INamedTypeSymbol { IsAbstract: false, BaseType: { Name: "NamedReleaseSpec" } } symbol) return null;
+        if (AnalyzeApplyMethod(cls) is not { } analysis) return null;
 
         return new ForkInfo
         {
             Name = symbol.Name,
-            FullyQualifiedName = symbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
-            ParentName = parentName,
+            ParentName = ExtractParentName(cls),
             EipDelta = analysis.EipDelta,
             SetsIsPostMerge = analysis.SetsIsPostMerge,
         };
     }
 
-    private static string? ExtractParentName(ClassDeclarationSyntax cls)
-    {
-        // `: NamedReleaseSpec<TSelf>(parentExpr)` — parentExpr is `Shanghai.Instance`, or `null` for the root.
-        if (cls.BaseList is not { Types: { Count: > 0 } types }) return null;
-        foreach (BaseTypeSyntax bt in types)
-        {
-            if (bt is not PrimaryConstructorBaseTypeSyntax primary) continue;
-            if (primary.ArgumentList.Arguments.Count == 0) return null;
-
-            ExpressionSyntax firstArg = primary.ArgumentList.Arguments[0].Expression;
-            if (firstArg is MemberAccessExpressionSyntax { Expression: IdentifierNameSyntax idn })
-                return idn.Identifier.ValueText;
-            return null;
-        }
-        return null;
-    }
+    /// <summary>
+    /// Parse the parent fork from <c>: NamedReleaseSpec&lt;TSelf&gt;(Shanghai.Instance)</c> — the
+    /// argument to the primary-constructor base list is a <c>MemberAccessExpression</c> of the form
+    /// <c>&lt;ForkName&gt;.Instance</c>, or <c>null</c> for the root fork (Olympic).
+    /// </summary>
+    private static string? ExtractParentName(ClassDeclarationSyntax cls) =>
+        cls.BaseList?.Types
+            .OfType<PrimaryConstructorBaseTypeSyntax>()
+            .Select(b => b.ArgumentList.Arguments.FirstOrDefault()?.Expression)
+            .OfType<MemberAccessExpressionSyntax>()
+            .Select(m => (m.Expression as IdentifierNameSyntax)?.Identifier.ValueText)
+            .FirstOrDefault();
 
     private sealed class ApplyAnalysis
     {
-        public List<(int Eip, bool Enabled)> EipDelta { get; } = new();
+        public List<(int Eip, bool Enabled)> EipDelta { get; set; } = new();
         public bool SetsIsPostMerge { get; set; }
     }
 
     private static ApplyAnalysis? AnalyzeApplyMethod(ClassDeclarationSyntax cls)
     {
-        MethodDeclarationSyntax? apply = null;
-        foreach (MemberDeclarationSyntax m in cls.Members)
-        {
-            if (m is MethodDeclarationSyntax method &&
-                method.Identifier.ValueText == "Apply" &&
-                method.Modifiers.Any(SyntaxKind.OverrideKeyword))
-            {
-                apply = method;
-                break;
-            }
-        }
+        MethodDeclarationSyntax? apply = cls.Members
+            .OfType<MethodDeclarationSyntax>()
+            .FirstOrDefault(m => m.Identifier.ValueText == "Apply" && m.Modifiers.Any(SyntaxKind.OverrideKeyword));
         if (apply is null) return null;
 
-        ApplyAnalysis result = new();
+        List<(int, bool)> delta = new();
+        bool setsIsPostMerge = false;
         foreach (AssignmentExpressionSyntax asn in apply.DescendantNodes().OfType<AssignmentExpressionSyntax>())
         {
-            // Pattern: `spec.<Property> = <literal>`
-            if (asn.Left is not MemberAccessExpressionSyntax ma) continue;
-            if (ma.Expression is not IdentifierNameSyntax id || id.Identifier.ValueText != "spec") continue;
-            string propName = ma.Name.Identifier.ValueText;
-
-            if (propName == "IsPostMerge")
-            {
-                if (asn.Right is LiteralExpressionSyntax lit && lit.Token.IsKind(SyntaxKind.TrueKeyword))
-                    result.SetsIsPostMerge = true;
-                continue;
-            }
-
-            if (!propName.StartsWith("IsEip", StringComparison.Ordinal) ||
-                !propName.EndsWith("Enabled", StringComparison.Ordinal)) continue;
-            string middle = propName.Substring("IsEip".Length, propName.Length - "IsEip".Length - "Enabled".Length);
-            if (!int.TryParse(middle, out int eipNumber)) continue;
+            // Match `spec.<Property> = <bool literal>`; anything else is consensus-engine or non-EIP setup.
+            if (asn.Left is not MemberAccessExpressionSyntax { Expression: IdentifierNameSyntax { Identifier.ValueText: "spec" } } ma) continue;
             if (asn.Right is not LiteralExpressionSyntax rhs) continue;
 
-            if (rhs.Token.IsKind(SyntaxKind.TrueKeyword)) result.EipDelta.Add((eipNumber, true));
-            else if (rhs.Token.IsKind(SyntaxKind.FalseKeyword)) result.EipDelta.Add((eipNumber, false));
+            string propName = ma.Name.Identifier.ValueText;
+            if (propName == "IsPostMerge")
+            {
+                if (rhs.Token.IsKind(SyntaxKind.TrueKeyword)) setsIsPostMerge = true;
+                continue;
+            }
+            if (!propName.StartsWith("IsEip", StringComparison.Ordinal) || !propName.EndsWith("Enabled", StringComparison.Ordinal)) continue;
+            string middle = propName.Substring("IsEip".Length, propName.Length - "IsEip".Length - "Enabled".Length);
+            if (!int.TryParse(middle, out int eip)) continue;
+
+            if (rhs.Token.IsKind(SyntaxKind.TrueKeyword)) delta.Add((eip, true));
+            else if (rhs.Token.IsKind(SyntaxKind.FalseKeyword)) delta.Add((eip, false));
         }
-        return result;
+        return new ApplyAnalysis { EipDelta = delta, SetsIsPostMerge = setsIsPostMerge };
     }
 
     private static string Emit(ImmutableArray<ForkInfo> forks)
     {
-        List<ForkInfo> ordered = TopologicallyOrder(forks);
-
         StringBuilder sb = new();
         sb.AppendLine("// <auto-generated/>");
         sb.AppendLine("// Generated by Nethermind.Analyzers.HardforkLabelsGenerator.");
@@ -173,28 +133,23 @@ public sealed class HardforkLabelsGenerator : IIncrementalGenerator
         sb.AppendLine("    private static partial IReadOnlyList<IHardforkLabel> BuildAll() =>");
         sb.AppendLine("    [");
 
-        foreach (ForkInfo fork in ordered)
+        // Root forks (no parent) and forks whose EIP set has no JSON-visible fields (Olympic /
+        // glaciers / Paris / BPO*) are silently skipped — they contribute to the runtime EIP
+        // state via the Apply chain but aren't user-facing chainspec shortcuts.
+        //
+        // Emit `nameof(global::Nethermind.Specs.Forks.Cancun)` rather than a raw string literal —
+        // pins the label name to the actual fork type at compile time, so renaming or removing
+        // Forks/Cancun.cs surfaces as a compile error on the generated file.
+        foreach (ForkInfo fork in forks.OrderBy(f => f.Name, StringComparer.Ordinal))
         {
-            // Root forks (no parent) and forks whose EIP set has no JSON-visible fields (Olympic /
-            // glaciers / Paris / BPO*) are silently skipped — they contribute to the runtime EIP
-            // state via the Apply chain but aren't user-facing chainspec shortcuts.
             if (fork.ParentName is null) continue;
-
             List<string> jsonFields = ResolveJsonFields(fork);
             if (jsonFields.Count == 0) continue;
 
             string factory = fork.IsPostMerge ? "Time" : "Block";
-
-            // Emit `nameof(global::Nethermind.Specs.Forks.Cancun)` rather than a raw "Cancun"
-            // string literal — pins the label to the actual fork type at compile time, so renaming
-            // or removing Forks/Cancun.cs surfaces as a compile error on the generated file
-            // (which then re-runs and either resolves to the new name or stops emitting).
-            sb.Append("        ").Append(factory).Append("(nameof(").Append(fork.FullyQualifiedName).AppendLine("),");
+            sb.Append("        ").Append(factory).Append("(nameof(global::Nethermind.Specs.Forks.").Append(fork.Name).AppendLine("),");
             for (int i = 0; i < jsonFields.Count; i++)
-            {
-                sb.Append("            p => p.").Append(jsonFields[i]);
-                sb.AppendLine(i == jsonFields.Count - 1 ? ")," : ",");
-            }
+                sb.Append("            p => p.").Append(jsonFields[i]).AppendLine(i == jsonFields.Count - 1 ? ")," : ",");
         }
 
         sb.AppendLine("    ];");
@@ -203,17 +158,17 @@ public sealed class HardforkLabelsGenerator : IIncrementalGenerator
     }
 
     /// <summary>
-    /// EIPs whose JSON representation differs from the conventional
+    /// EIPs whose JSON representation doesn't follow the conventional
     /// <c>Eip&lt;N&gt;Transition[Timestamp]</c> on <c>ChainSpecParamsJson</c>:
     /// </summary>
     /// <remarks>
     /// <list type="bullet">
-    ///   <item>EIPs with no JSON transition field at all (block-reward, difficulty bomb, Byzantium
-    ///         precompile activations, EIP-170 MaxCodeSize, Homestead EIP-2 difficulty curve) are
-    ///         silently dropped from the label.</item>
+    ///   <item>No JSON transition field at all (block-reward, difficulty bomb, Byzantium precompile
+    ///         activations, EIP-170 MaxCodeSize, Homestead EIP-2 difficulty curve) — dropped from
+    ///         the label silently.</item>
     ///   <item>EIP-158 is Parity-split into <c>Eip161abcTransition</c> + <c>Eip161dTransition</c>.</item>
     ///   <item>Disables (<c>spec.IsEipNEnabled = false</c>) map to <c>Eip&lt;N&gt;DisableTransition</c>
-    ///         — only ConstantinopleFix/Petersburg does this.</item>
+    ///         — only ConstantinopleFix does this.</item>
     /// </list>
     /// </remarks>
     private static readonly HashSet<int> NoJsonField = new()
@@ -228,7 +183,6 @@ public sealed class HardforkLabelsGenerator : IIncrementalGenerator
     {
         List<string> result = new();
         string suffix = fork.IsPostMerge ? "TransitionTimestamp" : "Transition";
-
         foreach ((int eip, bool enabled) in fork.EipDelta)
         {
             if (!enabled) { result.Add($"Eip{eip}DisableTransition"); continue; }
@@ -238,30 +192,11 @@ public sealed class HardforkLabelsGenerator : IIncrementalGenerator
         }
         return result;
     }
-
-    private static List<ForkInfo> TopologicallyOrder(ImmutableArray<ForkInfo> forks)
-    {
-        Dictionary<string, ForkInfo> byName = forks.ToDictionary(f => f.Name);
-        List<ForkInfo> ordered = new();
-        HashSet<string> emitted = new();
-
-        void Visit(ForkInfo f)
-        {
-            if (!emitted.Add(f.Name)) return;
-            if (f.ParentName is { } pn && byName.TryGetValue(pn, out ForkInfo parent)) Visit(parent);
-            ordered.Add(f);
-        }
-
-        foreach (ForkInfo f in forks.OrderBy(f => f.Name)) Visit(f);
-        return ordered;
-    }
 }
 
 internal sealed class ForkInfo
 {
     public string Name { get; set; } = "";
-    /// <summary>Fully-qualified type name (e.g. <c>global::Nethermind.Specs.Forks.Cancun</c>) used for <c>nameof(...)</c> emission.</summary>
-    public string FullyQualifiedName { get; set; } = "";
     public string? ParentName { get; set; }
     public List<(int Eip, bool Enabled)> EipDelta { get; set; } = new();
     public bool SetsIsPostMerge { get; set; }
