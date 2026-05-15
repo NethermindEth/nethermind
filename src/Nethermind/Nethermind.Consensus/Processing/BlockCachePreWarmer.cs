@@ -123,7 +123,8 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         if (_preBlockCaches is not null && ShouldPreWarm(spec))
         {
             CacheType result = _preBlockCaches.ClearCaches();
-            _nodeStorageCache.ClearCaches();
+            // NodeStorageCache stores trie nodes keyed by content hash —
+            // always valid regardless of block, so skip the clear.
             _nodeStorageCache.Enabled = true;
             if (result != default)
             {
@@ -175,7 +176,6 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
     {
         if (_logger.IsDebug) _logger.Debug("Clearing caches");
         CacheType cachesCleared = _preBlockCaches?.ClearCaches() ?? default;
-        cachesCleared |= _nodeStorageCache.ClearCaches() ? CacheType.Rlp : CacheType.None;
         if (_logger.IsDebug) _logger.Debug($"Cleared caches: {cachesCleared}");
         return cachesCleared;
     }
