@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
@@ -34,6 +35,12 @@ namespace Nethermind.Trie
 
         private static readonly object _nullNode = new();
         private static readonly AccountDecoder _accountDecoder = new();
+
+        // Thread-local pool for BranchData reuse. BranchData (16 object-ref slots, ~144 B) is the
+        // largest single allocation in DecodeRlp. A pooled instance is rented by TryPop in DecodeRlp
+        // and returned via ReturnNodeDataToPool() once the caller has sole ownership of the node.
+        [ThreadStatic]
+        private static Stack<BranchData>? s_branchDataPool;
 
         private const byte _dirtyMask = 0b001;
         private const byte _persistedMask = 0b010;
@@ -376,6 +383,27 @@ namespace Nethermind.Trie
 #endif
 
 
+        /// <summary>
+        /// Returns this node's <c>BranchData</c> to the thread-local pool so it can be rented
+        /// by the next <c>DecodeRlp</c> call on the same thread, avoiding a heap allocation.
+        /// No-op for non-branch nodes.
+        /// </summary>
+        /// <remarks>
+        /// <b>Thread-safety:</b> the caller must have exclusive ownership of this node — no other
+        /// thread may concurrently access <c>_nodeData</c>. Wiring this to the dirty-node-cache
+        /// eviction path (<c>TrieStoreDirtyNodesCache.Remove</c>) is unsafe while the prewarmer
+        /// may hold concurrent references; that integration is a follow-up task.
+        /// </remarks>
+        public void ReturnNodeDataToPool()
+        {
+            if (_nodeData is BranchData bd)
+            {
+                _nodeData = null;
+                bd.Clear();
+                (s_branchDataPool ??= new Stack<BranchData>()).Push(bd);
+            }
+        }
+
         public void ResolveNode(ITrieNodeResolver tree, in TreePath path, ReadFlags readFlags = ReadFlags.None,
             ICappedArrayPool? bufferPool = null)
         {
@@ -496,7 +524,11 @@ namespace Nethermind.Trie
             }
             else if (numberOfItems > 2)
             {
-                _nodeData = new BranchData();
+                Stack<BranchData>? pool = s_branchDataPool;
+                BranchData branchData = (pool is not null && pool.TryPop(out BranchData? pooled))
+                    ? pooled
+                    : new BranchData();
+                _nodeData = branchData;
             }
             else
             {

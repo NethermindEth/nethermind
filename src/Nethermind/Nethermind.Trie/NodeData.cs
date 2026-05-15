@@ -3,6 +3,7 @@
 
 using System;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using Nethermind.Core.Buffers;
 using Nethermind.Core;
 using System.Diagnostics.CodeAnalysis;
@@ -40,6 +41,10 @@ public class BranchData : INodeData
 
     public ref readonly BranchArray Branches => ref _branches;
     public ref object this[int index] => ref _branches[index];
+
+    /// <remarks>Zeroes all 16 branch slots so the object can be safely re-used from a pool.</remarks>
+    internal void Clear() =>
+        MemoryMarshal.CreateSpan(ref _branches[0], BranchArray.Length).Clear();
 
     INodeData INodeData.Clone() => new BranchData(in _branches);
 
