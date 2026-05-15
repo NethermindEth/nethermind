@@ -741,6 +741,26 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
                         return state;
                     },
                     WarmingState<ArrayPoolList<AddressAsKey>>.FinallyAction);
+
+                    // Fast access list warmup: warm EIP-2930 storage slots for all txs.
+                    // Much faster than full EVM execution and builds a lead on storage reads.
+                    if (spec.UseTxAccessLists)
+                    {
+                        WarmingState<Block> alState = new(envPool, block, parent);
+                        ParallelUnbalancedWork.For(
+                            0,
+                            block.Transactions.Length,
+                            parallelOptions,
+                            alState.InitThreadState,
+                            static (i, state) =>
+                            {
+                                Transaction tx = state.Payload.Transactions[i];
+                                if (tx.AccessList is not null)
+                                    state.Scope!.WorldState.WarmUp(tx.AccessList);
+                                return state;
+                            },
+                            WarmingState<Block>.FinallyAction);
+                    }
                 }
             }
             catch (OperationCanceledException)
