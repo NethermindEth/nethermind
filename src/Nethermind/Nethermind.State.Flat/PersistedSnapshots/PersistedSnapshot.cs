@@ -91,13 +91,19 @@ public sealed class PersistedSnapshot : RefCountingDisposable
     // Bound is (lebStart - valueLength, valueLength).
     //
     // The slot array lives off-heap in a <see cref="NativeMemoryList{Int64}"/> sized
-    // to the next power of two ≥ the snapshot's block span; small-tier snapshots get
-    // no cache at all (field stays null). Demote atomically swaps the field to null
+    // to the next power of two ≥ the snapshot's block span, capped at
+    // AddressBoundCacheMaxSlots so the cache always fits in one 4 KiB page;
+    // small-tier snapshots get no cache at all (field stays null). Demote
+    // atomically swaps the field to null
     // and disposes — readers Volatile.Read once into a local so an in-flight call
     // can complete safely against the live array even if Demote runs concurrently.
     private const long AddressBoundCacheOffsetMask = (1L << 48) - 1;
     private const int AddressBoundCacheTagShift = 48;
     private const int AddressBoundCacheProbeBytes = 6 + AddressHashPrefixLength;
+    // Cap the slot count so the cache fits in a single 4 KiB page (512 × 8 bytes).
+    // Larger caches would smear lookups across multiple TLB entries with diminishing
+    // hit-rate returns; the disk double-check picks up wherever the cache can't reach.
+    private const int AddressBoundCacheMaxSlots = 512;
     private readonly int _addressBoundCacheMask;
     private NativeMemoryList<long>? _addressBoundCache;
 
@@ -143,8 +149,9 @@ public sealed class PersistedSnapshot : RefCountingDisposable
     /// <paramref name="tier"/> controls whether the address-bound cache is allocated.
     /// Only <see cref="PersistedSnapshotTier.Large"/> snapshots get a cache; small-tier
     /// snapshots (and small-tier compacted outputs) skip the allocation entirely. The
-    /// cache slot count is the next power of two ≥ <c>to.BlockNumber - from.BlockNumber</c>
-    /// so longer-range snapshots get proportionally more slots.
+    /// cache slot count is the next power of two ≥ <c>to.BlockNumber - from.BlockNumber</c>,
+    /// capped at <see cref="AddressBoundCacheMaxSlots"/> so longer-range snapshots scale
+    /// up to the page-sized cap and no further.
     /// </remarks>
     public PersistedSnapshot(StateId from, StateId to, ArenaReservation reservation,
         IBlobArenaManager blobManager, PersistedSnapshotTier tier)
@@ -197,7 +204,9 @@ public sealed class PersistedSnapshot : RefCountingDisposable
             long blockSpan = to.BlockNumber - from.BlockNumber;
             if (blockSpan > 0)
             {
-                int slotCount = (int)BitOperations.RoundUpToPowerOf2((uint)blockSpan);
+                int slotCount = Math.Min(
+                    AddressBoundCacheMaxSlots,
+                    (int)BitOperations.RoundUpToPowerOf2((uint)blockSpan));
                 _addressBoundCache = new NativeMemoryList<long>(slotCount, slotCount);
                 _addressBoundCacheMask = slotCount - 1;
             }
