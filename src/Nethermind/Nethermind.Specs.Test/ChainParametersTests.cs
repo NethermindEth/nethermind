@@ -18,12 +18,12 @@ public class ChainParametersTests
     {
         string[] chainParametersExceptions = [];
         // Hardfork shorthand labels expand at the JSON parse boundary (see HardforkLabels) and
-        // intentionally have no counterpart in ChainParameters.
-        string[] chainSpecParamsJsonExceptions = [
+        // intentionally have no counterpart in ChainParameters — derive the exception list from
+        // HardforkLabels itself so adding a new fork label doesn't require editing this test.
+        string[] chainSpecParamsJsonExceptions =
+        [
             "ChainId", "NetworkId",
-            "Homestead", "TangerineWhistle", "SpuriousDragon", "Byzantium", "Constantinople",
-            "ConstantinopleFix", "Istanbul", "Berlin", "London",
-            "Shanghai", "Cancun", "Prague", "Osaka", "Amsterdam",
+            .. HardforkLabels.All.Select(l => l.LabelName),
         ];
         IEnumerable<string> chainParametersProperties = typeof(ChainParameters).GetProperties()
             .Where(x => !chainParametersExceptions.Contains(x.Name))

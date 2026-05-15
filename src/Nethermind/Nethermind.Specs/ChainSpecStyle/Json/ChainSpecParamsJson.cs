@@ -191,67 +191,117 @@ public class ChainSpecParamsJson
     public ulong? Eip7843TransitionTimestamp { get; set; }
     public ulong? Eip7954TransitionTimestamp { get; set; }
 
-    /// <summary>Shorthand activation block for the full Homestead hardfork (EIP 7).</summary>
+    /// <summary>Shorthand activation block for the full Homestead hardfork.</summary>
     /// <remarks>
-    /// Equivalent to setting each constituent <c>EipXxxTransition</c> field. If this label and an
-    /// explicit constituent both specify different values the chainspec is rejected at load. See
-    /// <see cref="HardforkLabels"/> for the canonical fork-to-EIP mapping.
+    /// Expands to <see cref="Eip7Transition"/>. If this label and an explicit constituent both
+    /// specify different values the chainspec is rejected at load. See <see cref="HardforkLabels"/>
+    /// for the canonical fork-to-EIP mapping.
     /// </remarks>
     public long? Homestead { get; set; }
 
-    /// <summary>Shorthand activation block for the full Tangerine Whistle hardfork (EIP 150).</summary>
-    /// <inheritdoc cref="Homestead"/>
+    /// <summary>Shorthand activation block for the full Tangerine Whistle hardfork.</summary>
+    /// <remarks>Expands to <see cref="Eip150Transition"/>. <inheritdoc cref="Homestead"/></remarks>
     public long? TangerineWhistle { get; set; }
 
-    /// <summary>Shorthand activation block for the full Spurious Dragon hardfork (EIPs 155, 160, 161abc, 161d).</summary>
+    /// <summary>Shorthand activation block for the full Spurious Dragon hardfork.</summary>
+    /// <remarks>
+    /// Expands to <see cref="Eip155Transition"/>, <see cref="Eip160Transition"/>,
+    /// <see cref="Eip161abcTransition"/>, <see cref="Eip161dTransition"/>.
     /// <inheritdoc cref="Homestead"/>
+    /// </remarks>
     public long? SpuriousDragon { get; set; }
 
-    /// <summary>Shorthand activation block for the full Byzantium hardfork (EIPs 140, 211, 214, 658).</summary>
+    /// <summary>Shorthand activation block for the full Byzantium hardfork.</summary>
+    /// <remarks>
+    /// Expands to <see cref="Eip140Transition"/>, <see cref="Eip211Transition"/>,
+    /// <see cref="Eip214Transition"/>, <see cref="Eip658Transition"/>.
     /// <inheritdoc cref="Homestead"/>
+    /// </remarks>
     public long? Byzantium { get; set; }
 
-    /// <summary>Shorthand activation block for the full Constantinople hardfork (EIPs 145, 1014, 1052, 1283).</summary>
+    /// <summary>Shorthand activation block for the full Constantinople hardfork.</summary>
+    /// <remarks>
+    /// Expands to <see cref="Eip145Transition"/>, <see cref="Eip1014Transition"/>,
+    /// <see cref="Eip1052Transition"/>, <see cref="Eip1283Transition"/>.
     /// <inheritdoc cref="Homestead"/>
+    /// </remarks>
     public long? Constantinople { get; set; }
 
-    /// <summary>Shorthand activation block for the Constantinople-fix / Petersburg hardfork (EIP 1283 disable).</summary>
-    /// <inheritdoc cref="Homestead"/>
+    /// <summary>Shorthand activation block for the Constantinople-fix / Petersburg hardfork (EIP-1283 disable).</summary>
+    /// <remarks>Expands to <see cref="Eip1283DisableTransition"/>. <inheritdoc cref="Homestead"/></remarks>
     public long? ConstantinopleFix { get; set; }
 
-    /// <summary>Shorthand activation block for the full Istanbul hardfork (EIPs 152, 1108, 1344, 1884, 2028, 2200).</summary>
+    /// <summary>Shorthand activation block for the full Istanbul hardfork.</summary>
+    /// <remarks>
+    /// Expands to <see cref="Eip152Transition"/>, <see cref="Eip1108Transition"/>,
+    /// <see cref="Eip1344Transition"/>, <see cref="Eip1884Transition"/>,
+    /// <see cref="Eip2028Transition"/>, <see cref="Eip2200Transition"/>.
     /// <inheritdoc cref="Homestead"/>
+    /// </remarks>
     public long? Istanbul { get; set; }
 
-    /// <summary>Shorthand activation block for the full Berlin hardfork (EIPs 2565, 2929, 2930).</summary>
+    /// <summary>Shorthand activation block for the full Berlin hardfork.</summary>
+    /// <remarks>
+    /// Expands to <see cref="Eip2565Transition"/>, <see cref="Eip2929Transition"/>,
+    /// <see cref="Eip2930Transition"/>.
     /// <inheritdoc cref="Homestead"/>
+    /// </remarks>
     public long? Berlin { get; set; }
 
-    /// <summary>Shorthand activation block for the full London hardfork (EIPs 1559, 3198, 3529, 3541).</summary>
+    /// <summary>Shorthand activation block for the full London hardfork.</summary>
+    /// <remarks>
+    /// Expands to <see cref="Eip1559Transition"/>, <see cref="Eip3198Transition"/>,
+    /// <see cref="Eip3529Transition"/>, <see cref="Eip3541Transition"/>.
     /// <inheritdoc cref="Homestead"/>
+    /// </remarks>
     public long? London { get; set; }
 
-    /// <summary>Shorthand activation timestamp for the full Shanghai hardfork (EIPs 3651, 3855, 3860, 4895).</summary>
+    /// <summary>Shorthand activation timestamp for the full Shanghai hardfork.</summary>
     /// <remarks>
-    /// Equivalent to setting each constituent <c>EipXxxTransitionTimestamp</c> field. If this
+    /// Expands to <see cref="Eip3651TransitionTimestamp"/>, <see cref="Eip3855TransitionTimestamp"/>,
+    /// <see cref="Eip3860TransitionTimestamp"/>, <see cref="Eip4895TransitionTimestamp"/>. If this
     /// label and an explicit constituent both specify different values the chainspec is rejected
     /// at load. See <see cref="HardforkLabels"/> for the canonical fork-to-EIP mapping.
     /// </remarks>
     public ulong? Shanghai { get; set; }
 
-    /// <summary>Shorthand activation timestamp for the full Cancun hardfork (EIPs 1153, 4788, 4844, 5656, 6780).</summary>
+    /// <summary>Shorthand activation timestamp for the full Cancun hardfork.</summary>
+    /// <remarks>
+    /// Expands to <see cref="Eip1153TransitionTimestamp"/>, <see cref="Eip4788TransitionTimestamp"/>,
+    /// <see cref="Eip4844TransitionTimestamp"/>, <see cref="Eip5656TransitionTimestamp"/>,
+    /// <see cref="Eip6780TransitionTimestamp"/>.
     /// <inheritdoc cref="Shanghai"/>
+    /// </remarks>
     public ulong? Cancun { get; set; }
 
-    /// <summary>Shorthand activation timestamp for the full Prague hardfork (EIPs 2537, 2935, 6110, 7002, 7251, 7623, 7702).</summary>
+    /// <summary>Shorthand activation timestamp for the full Prague hardfork.</summary>
+    /// <remarks>
+    /// Expands to <see cref="Eip2537TransitionTimestamp"/>, <see cref="Eip2935TransitionTimestamp"/>,
+    /// <see cref="Eip6110TransitionTimestamp"/>, <see cref="Eip7002TransitionTimestamp"/>,
+    /// <see cref="Eip7251TransitionTimestamp"/>, <see cref="Eip7623TransitionTimestamp"/>,
+    /// <see cref="Eip7702TransitionTimestamp"/>.
     /// <inheritdoc cref="Shanghai"/>
+    /// </remarks>
     public ulong? Prague { get; set; }
 
-    /// <summary>Shorthand activation timestamp for the full Osaka hardfork (EIPs 7594, 7823, 7825, 7883, 7918, 7934, 7939, 7951).</summary>
+    /// <summary>Shorthand activation timestamp for the full Osaka hardfork.</summary>
+    /// <remarks>
+    /// Expands to <see cref="Eip7594TransitionTimestamp"/>, <see cref="Eip7823TransitionTimestamp"/>,
+    /// <see cref="Eip7825TransitionTimestamp"/>, <see cref="Eip7883TransitionTimestamp"/>,
+    /// <see cref="Eip7918TransitionTimestamp"/>, <see cref="Eip7934TransitionTimestamp"/>,
+    /// <see cref="Eip7939TransitionTimestamp"/>, <see cref="Eip7951TransitionTimestamp"/>.
     /// <inheritdoc cref="Shanghai"/>
+    /// </remarks>
     public ulong? Osaka { get; set; }
 
-    /// <summary>Shorthand activation timestamp for the full Amsterdam hardfork (EIPs 7708, 7778, 7843, 7928, 7954, 7976, 7981, 8024, 8037).</summary>
+    /// <summary>Shorthand activation timestamp for the full Amsterdam hardfork.</summary>
+    /// <remarks>
+    /// Expands to <see cref="Eip7708TransitionTimestamp"/>, <see cref="Eip7778TransitionTimestamp"/>,
+    /// <see cref="Eip7843TransitionTimestamp"/>, <see cref="Eip7928TransitionTimestamp"/>,
+    /// <see cref="Eip7954TransitionTimestamp"/>, <see cref="Eip7976TransitionTimestamp"/>,
+    /// <see cref="Eip7981TransitionTimestamp"/>, <see cref="Eip8024TransitionTimestamp"/>,
+    /// <see cref="Eip8037TransitionTimestamp"/>.
     /// <inheritdoc cref="Shanghai"/>
+    /// </remarks>
     public ulong? Amsterdam { get; set; }
 }
