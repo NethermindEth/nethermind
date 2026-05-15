@@ -21,10 +21,10 @@ namespace Nethermind.State.Flat.BSearchIndex;
 ///
 /// IsKeyLittleEndian (bit 5) marks that fixed-width key slots are stored byte-reversed so an
 /// x86 LE integer load of a slot equals its semantic numeric/lex value. Set for Uniform
-/// with KeySize ∈ {2,4,8}, UniformWithLen with slotSize=4, and unconditionally for Variable
-/// (KeyType=0) where the prefixArr is uniformly 2 bytes/slot — the SIMD floor scan exploits
-/// this to drop its per-lane byte-swap shuffle. Stored slots are LE-reversed under this flag;
-/// <see cref="GetFullKey"/> always emits lex/original-order bytes.
+/// with KeySize ∈ {2,4,8}, and unconditionally for Variable (KeyType=0) where the prefixArr
+/// is uniformly 2 bytes/slot — the SIMD floor scan exploits this to drop its per-lane
+/// byte-swap shuffle. Stored slots are LE-reversed under this flag; <see cref="GetFullKey"/>
+/// always emits lex/original-order bytes.
 ///
 /// All header fields are fixed-width — no varint decoding on parse. With the 64 KiB
 /// node-size cap, every count/size field fits in u16. Header at the front lets the hardware
@@ -45,7 +45,6 @@ namespace Nethermind.State.Flat.BSearchIndex;
 ///           the cursor (offset == next tag-11 entry's offset). 14-bit tailOffset caps
 ///           remainingkeys at 16 KiB per section.
 ///   1 = Uniform: packed fixed-width entries
-///   2 = UniformWithLen: fixed slot size, last byte = actual length
 ///
 /// When HasCommonKeyPrefix is set, every stored key equals (CommonKeyPrefix || stored slot i);
 /// the keys section holds suffixes only — use <see cref="GetFullKey"/> to reconstruct lex bytes.
@@ -138,21 +137,18 @@ public readonly ref struct BSearchIndexReader
 
     /// <summary>
     /// Raw stored slot at <paramref name="index"/>, zero-copy. Bytes are in storage order, which
-    /// for Variable is the 2-byte prefix slot, and for LE-stored Uniform/UniformWithLen is the
-    /// byte-reversed form of the original key. Only meaningful as a comparison token in the
-    /// stored encoding — external callers wanting lex-order key bytes use <see cref="GetFullKey"/>.
+    /// for Variable is the 2-byte prefix slot and for LE-stored Uniform is the byte-reversed
+    /// form of the original key. Only meaningful as a comparison token in the stored encoding —
+    /// external callers wanting lex-order key bytes use <see cref="GetFullKey"/>.
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private ReadOnlySpan<byte> GetRawSlot(int index) => _metadata.KeyType switch
     {
         // Variable: SoA layout, prefix slot is byte-reversed (LE-stored). Returning the raw
-        // 2-byte slot follows the same convention as LE-stored Uniform/UniformWithLen — callers
-        // that need the full key in lex order use GetFullKey with a destination buffer.
+        // 2-byte slot follows the same convention as LE-stored Uniform — callers that need
+        // the full key in lex order use GetFullKey with a destination buffer.
         0 => _keys.Slice(index * 2, 2),
         1 => _keys.Slice(index * _metadata.KeySize, _metadata.KeySize),
-        2 => _metadata.IsKeyLittleEndian
-            ? GetUniformWithLenEntryLe(_keys, index, _metadata.KeySize)
-            : GetUniformWithLenEntry(_keys, index, _metadata.KeySize),
         _ => throw new InvalidDataException($"Unknown KeyType: {_metadata.KeyType}")
     };
 
@@ -164,7 +160,6 @@ public readonly ref struct BSearchIndexReader
     {
         0 => GetVariableEntry(_values, index, _metadata.KeyCount),
         1 => _values.Slice(index * _metadata.ValueSize, _metadata.ValueSize),
-        2 => GetUniformWithLenEntry(_values, index, _metadata.ValueSize),
         _ => throw new InvalidDataException($"Unknown ValueType: {_metadata.ValueType}")
     };
 
@@ -304,28 +299,6 @@ public readonly ref struct BSearchIndexReader
         return q[2..].SequenceCompareTo(tail);
     }
 
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static ReadOnlySpan<byte> GetUniformWithLenEntry(ReadOnlySpan<byte> section, int index, int slotSize)
-    {
-        int slotStart = index * slotSize;
-        int actualLen = section[slotStart + slotSize - 1]; // Last byte is actual length
-        return section.Slice(slotStart, actualLen);
-    }
-
-    /// <summary>
-    /// LE-stored UniformWithLen slot reader. The original [p0 p1 p2 len] was reversed on write
-    /// to [len p2 p1 p0], so the length byte sits at slot[0] and the payload occupies the
-    /// trailing <c>actualLen</c> bytes in reverse order. Returns the reversed payload as raw
-    /// stored bytes; callers wanting lex order use <see cref="GetFullKey"/>.
-    /// </summary>
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static ReadOnlySpan<byte> GetUniformWithLenEntryLe(ReadOnlySpan<byte> section, int index, int slotSize)
-    {
-        int slotStart = index * slotSize;
-        int actualLen = section[slotStart];
-        return section.Slice(slotStart + slotSize - actualLen, actualLen);
-    }
-
     /// <summary>
     /// Strip the common key prefix from <paramref name="key"/>. Returns the residual span
     /// to binary-search against suffixes, or signals via <paramref name="shortcutResult"/>
@@ -389,12 +362,6 @@ public readonly ref struct BSearchIndexReader
                     8 => UniformKeySearch.Uniform8BE(q, _keys, count),
                     _ => UniformKeySearch.UniformBE(q, _keys, count, keySize)
                 },
-            2 => (keyLe, keySize) switch
-            {
-                (true, 4) => UniformKeySearch.UniformWithLen4LE(q, _keys, count),
-                (false, 4) => UniformKeySearch.UniformWithLen4BE(q, _keys, count),
-                _ => UniformKeySearch.UniformWithLenBE(q, _keys, count, keySize)
-            },
             0 => FindFloorIndexVariable(q, _keys, count),
             _ => throw new InvalidDataException($"Unknown KeyType: {_metadata.KeyType}")
         };
@@ -534,10 +501,9 @@ public readonly ref struct BSearchIndexReader
         public int ValueType => (Flags >> 3) & 0x03;
         /// <summary>
         /// True when fixed-width key slots are stored byte-reversed (Flags bit 5). Honored by
-        /// readers for Uniform with <see cref="KeySize"/> ∈ {2,4,8}, UniformWithLen with
-        /// <see cref="KeySize"/> = 4, and unconditionally for Variable (<see cref="KeyType"/>=0)
-        /// where the prefixArr slot is uniformly 2 bytes. See <see cref="BSearchIndexReader"/>
-        /// docs for details.
+        /// readers for Uniform with <see cref="KeySize"/> ∈ {2,4,8}, and unconditionally for
+        /// Variable (<see cref="KeyType"/>=0) where the prefixArr slot is uniformly 2 bytes.
+        /// See <see cref="BSearchIndexReader"/> docs for details.
         /// </summary>
         public bool IsKeyLittleEndian => (Flags & 0x20) != 0;
         public bool HasCommonKeyPrefix => (Flags & 0x40) != 0;
@@ -547,7 +513,6 @@ public readonly ref struct BSearchIndexReader
         {
             0 => KeySize,              // Variable: KeySize IS the section size
             1 => KeyCount * KeySize,   // Uniform: count * fixed length
-            2 => KeyCount * KeySize,   // UniformWithLen: count * slot size
             _ => throw new InvalidDataException()
         };
 
@@ -556,7 +521,6 @@ public readonly ref struct BSearchIndexReader
         {
             0 => ValueSize,              // Variable: ValueSize IS the section size
             1 => KeyCount * ValueSize,   // Uniform: count * fixed length
-            2 => KeyCount * ValueSize,   // UniformWithLen: count * slot size
             _ => throw new InvalidDataException()
         };
     }

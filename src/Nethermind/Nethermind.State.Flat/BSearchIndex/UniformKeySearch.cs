@@ -22,9 +22,8 @@ namespace Nethermind.State.Flat.BSearchIndex;
 ///   <item><c>UniformN[LE|BE]</c>: contiguous fixed-width keys, N bytes per slot. Floor lookup.</item>
 ///   <item><c>UniformN[LE|BE]Strided</c>: same as above but each slot is followed by a value
 ///         (slot stride &gt; keySize), e.g. HSST PackedArray data section.</item>
-///   <item><c>UniformWithLen4[LE|BE]</c>: 3-byte payload + 1-byte length (slotSize=4). Floor lookup.</item>
 ///   <item><c>LowerBound2LE</c>: 2-byte LE-stored lower_bound (different semantics from floor).</item>
-///   <item>Generic <c>UniformBE</c> / <c>UniformBEStrided</c> / <c>UniformWithLenBE</c>: lex
+///   <item>Generic <c>UniformBE</c> / <c>UniformBEStrided</c>: lex
 ///         <see cref="MemoryExtensions.SequenceCompareTo{T}"/> binary search for keySizes
 ///         outside {2,3,4,8} (or 3-byte BE, which has no SIMD specialization).</item>
 /// </list>
@@ -290,42 +289,6 @@ public static class UniformKeySearch
     }
 
     // =====================================================================================
-    //  UniformWithLen variants — 3-byte payload + 1-byte length, slotSize=4 has SIMD path.
-    //  Lex+length ordering invariant: within equal lengths, the payload prefix dominates the
-    //  compare; for keys sharing a prefix but differing in length, the shorter key has zero-
-    //  padded bytes followed by a smaller length byte, giving the correct "shorter is less"
-    //  ordering. The writer guarantees unused payload bytes are zero.
-    // =====================================================================================
-
-    /// <summary>Floor index over LE-stored UniformWithLen keys (slotSize=4).</summary>
-    public static int UniformWithLen4LE(ReadOnlySpan<byte> key, ReadOnlySpan<byte> keys, int count)
-    {
-        if (count == 0) return -1;
-        if (Enabled && Vector512.IsHardwareAccelerated && count >= 2 && count <= LinearScanMaxCount)
-            return FloorScanWithLen4(key, keys, count, isLittleEndian: true);
-        return BinarySearchWithLen4LE(key, keys, count);
-    }
-
-    /// <summary>Floor index over BE-stored UniformWithLen keys (slotSize=4).</summary>
-    public static int UniformWithLen4BE(ReadOnlySpan<byte> key, ReadOnlySpan<byte> keys, int count)
-    {
-        if (count == 0) return -1;
-        if (Enabled && Vector512.IsHardwareAccelerated && count >= 2 && count <= LinearScanMaxCount)
-            return FloorScanWithLen4(key, keys, count, isLittleEndian: false);
-        return BinarySearchWithLenLex(key, keys, count, slotSize: 4);
-    }
-
-    /// <summary>
-    /// Floor index over BE-stored UniformWithLen keys of arbitrary <paramref name="slotSize"/>.
-    /// Always scalar.
-    /// </summary>
-    public static int UniformWithLenBE(ReadOnlySpan<byte> key, ReadOnlySpan<byte> keys, int count, int slotSize)
-    {
-        if (count == 0) return -1;
-        return BinarySearchWithLenLex(key, keys, count, slotSize);
-    }
-
-    // =====================================================================================
     //  Lower-bound on 2-byte LE-stored keys (smallest i where keys[i] >= target; count if
     //  none). Different semantics from floor; used by HsstTwoByteSlotValue{,Large}Reader.
     // =====================================================================================
@@ -545,25 +508,6 @@ public static class UniformKeySearch
             i += 8;
         }
         return ScalarTail64(search, ref src, i, count, isLittleEndian);
-    }
-
-    /// <summary>
-    /// SIMD floor scan for UniformWithLen slotSize=4. The search key is encoded into the
-    /// same 4-byte slot format (first min(3, keyLen) bytes of payload, zero-padded, then a
-    /// length byte = min(keyLen, 255)). The lex+length ordering invariant (see the type-level
-    /// doc on this method's group) holds in either layout, so a single u32 compare suffices.
-    /// </summary>
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static int FloorScanWithLen4(ReadOnlySpan<byte> key, ReadOnlySpan<byte> keys, int count, bool isLittleEndian)
-    {
-        Span<byte> encoded = stackalloc byte[4];
-        int payloadLen = Math.Min(key.Length, 3);
-        if (payloadLen > 0) key[..payloadLen].CopyTo(encoded);
-        encoded[3] = (byte)Math.Min(key.Length, 255);
-        // FloorScan32 broadcasts ReverseEndianness(LE-load(encoded)), which equals BE-load(encoded).
-        // For BE-stored slots [p0 p1 p2 len] FloorScan32 byte-swaps each lane to recover that
-        // integer; for LE-stored slots [len p2 p1 p0] the native LE-load already IS that integer.
-        return FloorScan32(encoded, keys, count, isLittleEndian);
     }
 
     // ---- Strided SIMD kernels ----
@@ -886,29 +830,6 @@ public static class UniformKeySearch
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static int BinarySearchWithLen4LE(ReadOnlySpan<byte> key, ReadOnlySpan<byte> keys, int count)
-    {
-        Span<byte> encoded = stackalloc byte[4];
-        int payloadLen = Math.Min(key.Length, 3);
-        if (payloadLen > 0) key[..payloadLen].CopyTo(encoded);
-        encoded[3] = (byte)Math.Min(key.Length, 255);
-        uint search = BinaryPrimitives.ReverseEndianness(
-            Unsafe.ReadUnaligned<uint>(ref MemoryMarshal.GetReference(encoded)));
-
-        ref byte src = ref MemoryMarshal.GetReference(keys);
-        int result = -1;
-        int lo = 0, hi = count - 1;
-        while (lo <= hi)
-        {
-            int mid = (lo + hi) >>> 1;
-            uint midKey = Unsafe.ReadUnaligned<uint>(ref Unsafe.Add(ref src, (nint)(mid * 4)));
-            if (search >= midKey) { result = mid; lo = mid + 1; }
-            else { hi = mid - 1; }
-        }
-        return result;
-    }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static int BinarySearchLex(ReadOnlySpan<byte> key, ReadOnlySpan<byte> keys, int count, int keySize)
     {
         int result = -1;
@@ -940,21 +861,4 @@ public static class UniformKeySearch
         return result;
     }
 
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static int BinarySearchWithLenLex(ReadOnlySpan<byte> key, ReadOnlySpan<byte> keys, int count, int slotSize)
-    {
-        int result = -1;
-        int lo = 0, hi = count - 1;
-        while (lo <= hi)
-        {
-            int mid = (lo + hi) >>> 1;
-            int slotStart = mid * slotSize;
-            int actualLen = keys[slotStart + slotSize - 1];
-            ReadOnlySpan<byte> midKey = keys.Slice(slotStart, actualLen);
-            int cmp = key.SequenceCompareTo(midKey);
-            if (cmp >= 0) { result = mid; lo = mid + 1; }
-            else { hi = mid - 1; }
-        }
-        return result;
-    }
 }

@@ -125,7 +125,7 @@ public ref struct HsstIndexBuilder<TWriter, TReader, TPin>
         // struct (sized on demand in its constructor). Leaf sizes stream out via
         // MoveNext / Current, one at a time, directly into the emission loop.
         using LeafBoundaryEnumerator iter = new(
-            commonPrefixArr, _entryPositions, n, minLeafEntries, maxLeafEntries, ref bufs);
+            commonPrefixArr, _entryPositions, n, minLeafEntries, maxLeafEntries, _keyLength, ref bufs);
 
         int entryIdx = 0;
         int leafIdx = 0;
@@ -285,8 +285,8 @@ public ref struct HsstIndexBuilder<TWriter, TReader, TPin>
         Span<byte> commonPrefixBuf = stackalloc byte[prefixLen];
 
         // keyBuf must fit the widest per-entry payload across layouts: Uniform takes
-        // keySlotSize bytes, Variable/UniformWithLen take the per-entry natural sep
-        // length (up to _keyLength - prefixLen). Use the max so all paths fit.
+        // keySlotSize bytes, Variable takes the per-entry natural sep length
+        // (up to _keyLength - prefixLen). Use the max so all paths fit.
         int perEntryKeyBytes = Math.Max(keySlotSize, _keyLength - prefixLen);
         int keyBufSize = count * (2 + perEntryKeyBytes);
         Span<byte> keyBuf = stackalloc byte[keyBufSize];
@@ -328,7 +328,7 @@ public ref struct HsstIndexBuilder<TWriter, TReader, TPin>
     /// <summary>
     /// Slice the per-entry key bytes for the writer based on layout:
     /// Uniform (keyType=1) takes a fixed <paramref name="keySlotSize"/> bytes;
-    /// Variable (0) and UniformWithLen (2) take the entry's natural sep length
+    /// Variable (keyType=0) takes the entry's natural sep length
     /// (<paramref name="sepLength"/>), prefix-stripped. Both are sliced from
     /// <paramref name="key"/> starting at <paramref name="prefixLen"/>.
     /// </summary>
@@ -739,11 +739,12 @@ public ref struct HsstIndexBuilder<TWriter, TReader, TPin>
 /// <see cref="HsstBTreeBuilderBuffers"/> — the arrays are sized on demand in the
 /// constructor and stay rented across builds for reuse. Caller pattern is
 /// <c>using LeafBoundaryEnumerator iter = new(...)</c> then <c>while (iter.MoveNext()) ...</c>;
-/// each <see cref="MoveNext"/> call runs the DFS loop body until a leaf size would
-/// emit, captures it in <see cref="Current"/>, and returns <c>true</c>.
-///
-/// Per-range decision (mirrors the prior <c>PlanLeafBoundaries</c> in
-/// <see cref="HsstIndexBuilder{TWriter,TReader,TPin}"/>):
+/// each <see cref="MoveNext"/> call drains the DFS until it can emit a (possibly merged)
+/// leaf, captures it in <see cref="Current"/>, and returns <c>true</c>.
+/// </summary>
+/// <remarks>
+/// Per-range decision in <see cref="TryGetNextRawSplit"/> (mirrors the prior
+/// <c>PlanLeafBoundaries</c> in <see cref="HsstIndexBuilder{TWriter,TReader,TPin}"/>):
 /// <list type="bullet">
 /// <item><description><c>count ≤ minLeafEntries</c> — base case, emit.</description></item>
 /// <item><description><c>count &gt; maxLeafEntries</c> — forced split; only the pivot scan
@@ -754,17 +755,30 @@ public ref struct HsstIndexBuilder<TWriter, TReader, TPin>
 /// <c>maxVal − minVal &gt; 2²⁴</c>, or the estimated node size (header +
 /// <c>count · (keySlot + valueSlot)</c>) exceeds <see cref="MaxLeafBytes"/>.</description></item>
 /// </list>
-///
 /// Pivot rule: rightmost position in <c>[lo+1, lo + count/2]</c> with <c>LCP == minLcp</c>,
 /// with a leftmost-in-second-half fallback. Push right-half then left-half so the LIFO
 /// stack pops them in left-to-right order and leaves emit sorted.
-/// </summary>
-file ref struct LeafBoundaryEnumerator
+///
+/// <para>On top of the raw splitter, <see cref="MoveNext"/> runs a streaming buffer-and-merge
+/// pass: each raw split is tried against the most recently buffered (possibly already-merged)
+/// split via <see cref="TryMergeIntoBuffer"/>. Two adjacent splits coalesce iff their individual
+/// <see cref="BSearchIndexLayoutPlanner"/> outputs (<c>keyType</c>, <c>keySlotSize</c>,
+/// <c>commonKeyPrefixLen</c>, <c>keyLittleEndian</c>) and value-slot widths match, the bridging
+/// LCP (<c>commonPrefixArr[nextStart]</c>) is at least the buffered prefix length, the merged
+/// entry count stays within <c>maxLeafEntries</c>, the merged value range still fits the same
+/// value-slot width, and the estimated merged byte size stays within <see cref="MaxLeafBytes"/>.
+/// The bridging-LCP requirement guarantees that next-side entries share enough leading bytes
+/// with buffer entry 0 for the buffered common prefix to still be a valid prefix of every
+/// merged-leaf entry; downstream the writer re-plans on the merged data and may pick a tighter
+/// layout, but never a looser one, so the size estimate above remains an upper bound.</para>
+/// </remarks>
+internal ref struct LeafBoundaryEnumerator
 {
     private readonly byte[] _lcp;
     private readonly ReadOnlySpan<long> _entryPositions;
     private readonly int _minLeafEntries;
     private readonly int _maxLeafEntries;
+    private readonly int _keyLength;
     private readonly int _segTreeBase;
 
     // SegTree / DfsStack live on the buffers struct; these locals are aliases set in
@@ -773,6 +787,22 @@ file ref struct LeafBoundaryEnumerator
     private readonly byte[] _segTree;
     private readonly int[] _stack;
     private int _sp;
+
+    // Buffered split state. Empty buffer ⇒ _bufCount == 0.
+    private int _bufStart;
+    private int _bufCount;
+
+    // Buffered planner output (cached so we can compare against the next split's
+    // plan without re-running PlanFromProfile on the buffered range).
+    private int _bufKeyType;
+    private int _bufKeySlotSize;
+    private int _bufPrefixLen;
+    private bool _bufKeyLittleEndian;
+
+    // Buffered value-range state.
+    private long _bufMinVal;
+    private long _bufMaxVal;
+    private int _bufValueSlotSize;
 
     /// <summary>Number of <c>(lo, hi)</c> pairs of pending pending depth × branching that
     /// the DFS stack must accommodate. 1024 pairs is far above the practical peak
@@ -800,13 +830,16 @@ file ref struct LeafBoundaryEnumerator
         int n,
         int minLeafEntries,
         int maxLeafEntries,
+        int keyLength,
         scoped ref HsstBTreeBuilderBuffers buffers)
     {
         _lcp = commonPrefixArr;
         _entryPositions = entryPositions;
         _minLeafEntries = minLeafEntries;
         _maxLeafEntries = maxLeafEntries;
+        _keyLength = keyLength;
         Current = 0;
+        _bufCount = 0;
 
         // Min-segment tree over commonPrefixArr. Leaves at [base..base+n); tail filled
         // with byte.MaxValue so queries past entry n don't pull the min down.
@@ -838,7 +871,51 @@ file ref struct LeafBoundaryEnumerator
         }
     }
 
+    /// <summary>
+    /// Drains raw splits from the inner DFS through the merge buffer, emitting one
+    /// (possibly coalesced) leaf per call. Each call either:
+    /// <list type="bullet">
+    /// <item><description>flushes the current buffer because the next raw split won't merge into it
+    /// (then re-seeds the buffer with that next split and returns), or</description></item>
+    /// <item><description>reaches end-of-DFS and flushes the trailing buffer one last time, or</description></item>
+    /// <item><description>returns <c>false</c> when both the DFS and the buffer are empty.</description></item>
+    /// </list>
+    /// </summary>
     public bool MoveNext()
+    {
+        while (TryGetNextRawSplit(out int rawStart, out int rawCount))
+        {
+            if (_bufCount == 0)
+            {
+                InitBuffer(rawStart, rawCount);
+                continue;
+            }
+
+            if (TryMergeIntoBuffer(rawStart, rawCount)) continue;
+
+            // Flush buffer; replace with the new split.
+            Current = _bufCount;
+            InitBuffer(rawStart, rawCount);
+            return true;
+        }
+
+        if (_bufCount > 0)
+        {
+            Current = _bufCount;
+            _bufCount = 0;
+            return true;
+        }
+        return false;
+    }
+
+    /// <summary>
+    /// Underlying DFS body — pops one frame per call until a raw split is ready to
+    /// emit. Splits-or-pushes-halves logic is unchanged from the prior single-method
+    /// implementation; the only difference is that the start index <c>lo</c> is now
+    /// surfaced so the merge pass can probe entry-level state (LCPs, value positions)
+    /// without re-deriving it from a running cumulative counter.
+    /// </summary>
+    private bool TryGetNextRawSplit(out int rawStart, out int rawCount)
     {
         const long ValueRangeLimit = 1L << 24;
 
@@ -856,7 +933,8 @@ file ref struct LeafBoundaryEnumerator
 
             if (count <= minLeafEntries)
             {
-                Current = count;
+                rawStart = lo;
+                rawCount = count;
                 return true;
             }
 
@@ -911,7 +989,8 @@ file ref struct LeafBoundaryEnumerator
                     estimatedSize > MaxLeafBytes;
                 if (!splitNeeded)
                 {
-                    Current = count;
+                    rawStart = lo;
+                    rawCount = count;
                     return true;
                 }
             }
@@ -941,7 +1020,168 @@ file ref struct LeafBoundaryEnumerator
             stack[_sp++] = lo;
             stack[_sp++] = split - 1;
         }
+
+        rawStart = 0;
+        rawCount = 0;
         return false;
+    }
+
+    /// <summary>
+    /// Seed the merge buffer from a fresh raw split: derive the planner profile
+    /// from <c>commonPrefixArr</c>, call
+    /// <see cref="BSearchIndexLayoutPlanner.PlanFromProfile"/>, compute the value
+    /// range, and cache the plan + value-slot fields on <c>_buf*</c>.
+    /// </summary>
+    private void InitBuffer(int start, int count)
+    {
+        ComputeSplitPlan(start, count,
+            out int keyType, out int keySlotSize, out int prefixLen, out bool keyLittleEndian,
+            out long minVal, out long maxVal, out int valueSlotSize);
+
+        _bufStart = start;
+        _bufCount = count;
+        _bufKeyType = keyType;
+        _bufKeySlotSize = keySlotSize;
+        _bufPrefixLen = prefixLen;
+        _bufKeyLittleEndian = keyLittleEndian;
+        _bufMinVal = minVal;
+        _bufMaxVal = maxVal;
+        _bufValueSlotSize = valueSlotSize;
+    }
+
+    /// <summary>
+    /// Probe whether the raw split at <c>[nextStart, nextStart + nextCount)</c> can be
+    /// coalesced into the buffered split. A merge succeeds iff:
+    /// <list type="number">
+    /// <item><description><c>_bufCount + nextCount ≤ _maxLeafEntries</c> — splitter's hard cap.</description></item>
+    /// <item><description>The next split's planner output matches the buffer's exactly
+    /// (<c>keyType</c>, <c>keySlotSize</c>, <c>commonKeyPrefixLen</c>, <c>keyLittleEndian</c>).</description></item>
+    /// <item><description>The bridging LCP <c>commonPrefixArr[nextStart]</c> ≥ the buffered
+    /// prefix length, guaranteeing the prefix *bytes* still align across the cut so
+    /// stripping is still valid.</description></item>
+    /// <item><description>The next split's value-slot equals the buffer's, and the merged
+    /// value range still fits that same slot.</description></item>
+    /// <item><description>The estimated merged byte size, using the buffered plan, stays
+    /// within <see cref="MaxLeafBytes"/>.</description></item>
+    /// </list>
+    /// The merged leaf is encoded by <see cref="HsstIndexBuilder{TWriter,TReader,TPin}.WriteLeafIndexNode"/>,
+    /// which re-Plans on the merged data — it may pick a tighter prefix (smaller leaf)
+    /// than the buffered plan suggested, but never a looser one given the bridging-LCP
+    /// guarantee, so the size-estimate upper bound holds.
+    /// </summary>
+    private bool TryMergeIntoBuffer(int nextStart, int nextCount)
+    {
+        int mergedCount = _bufCount + nextCount;
+        if (mergedCount > _maxLeafEntries) return false;
+
+        // Bridging LCP between buf's last key and next's first key. When this is
+        // < _bufPrefixLen the merged leaf can't safely use the buffered prefix
+        // (some of next's entries don't share enough leading bytes with buf's
+        // entry 0), so the merge is unsafe regardless of next's own plan.
+        int bridgeLcp = _lcp[nextStart];
+        if (bridgeLcp < _bufPrefixLen) return false;
+
+        ComputeSplitPlan(nextStart, nextCount,
+            out int nextKeyType, out int nextKeySlotSize, out int nextPrefixLen, out bool nextKeyLittleEndian,
+            out long nextMinVal, out long nextMaxVal, out int nextValueSlotSize);
+
+        if (nextKeyType != _bufKeyType ||
+            nextKeySlotSize != _bufKeySlotSize ||
+            nextPrefixLen != _bufPrefixLen ||
+            nextKeyLittleEndian != _bufKeyLittleEndian ||
+            nextValueSlotSize != _bufValueSlotSize)
+        {
+            return false;
+        }
+
+        // Merged value-slot. Mirrors WriteLeafIndexNode's baseOffset+valueSlotSize formula.
+        long mergedMinVal = Math.Min(_bufMinVal, nextMinVal);
+        long mergedMaxVal = Math.Max(_bufMaxVal, nextMaxVal);
+        long mergedBaseOffset = 0;
+        if (mergedCount > 1 && mergedMinVal > 0 && mergedMinVal < mergedMaxVal) mergedBaseOffset = mergedMinVal;
+        long mergedRange = mergedMaxVal - mergedBaseOffset;
+        int mergedValueSlotSize = mergedRange == 0 ? 1 : (BitOperations.Log2((ulong)mergedRange) >> 3) + 1;
+
+        if (mergedValueSlotSize != _bufValueSlotSize) return false;
+
+        // Byte-size budget. Use the buffered plan as the upper bound: the writer's
+        // re-Plan on merged data can only shrink the leaf (longer prefix, smaller
+        // slot), never grow it, given the bridging-LCP guarantee above. For
+        // Variable layout (keyType=0) we'd need per-entry length to estimate but
+        // this branch is unreachable here because the merge predicate requires
+        // matching keyType / keySlotSize, and the planner only picks Variable for
+        // effMaxLen > 8 (where keySlotSize == 0); _bufKeySlotSize == 0 would fail
+        // the equality check against any next that's non-Variable. Treat
+        // keyType=0 conservatively by using a generous per-entry cost.
+        int perEntryKeyBytes = _bufKeyType == 0 ? _keyLength + 2 : _bufKeySlotSize;
+        int prefixOverhead = _bufPrefixLen > 0 ? 1 + _bufPrefixLen : 0;
+        int estimated = LeafNodeHeaderOverheadBytes + prefixOverhead +
+                        mergedCount * (perEntryKeyBytes + _bufValueSlotSize);
+        if (estimated > MaxLeafBytes) return false;
+
+        // Commit.
+        _bufCount = mergedCount;
+        _bufMinVal = mergedMinVal;
+        _bufMaxVal = mergedMaxVal;
+        // Plan/value-slot fields unchanged (verified equal above).
+        return true;
+    }
+
+    /// <summary>
+    /// One-pass computation of the planner profile + value range for the range
+    /// <c>[start, start+count)</c>, followed by a single call to
+    /// <see cref="BSearchIndexLayoutPlanner.PlanFromProfile"/>. Mirrors the planner-input
+    /// derivation that <c>HsstIndexBuilder.WriteLeafIndexNode</c> does (sepLengths from
+    /// <c>commonPrefixArr</c>, value range from <c>_entryPositions</c>) so the merger
+    /// and the writer agree on what the per-split plan would be.
+    /// </summary>
+    private void ComputeSplitPlan(
+        int start, int count,
+        out int keyType, out int keySlotSize, out int prefixLen, out bool keyLittleEndian,
+        out long minVal, out long maxVal, out int valueSlotSize)
+    {
+        byte[] lcp = _lcp;
+        ReadOnlySpan<long> entryPos = _entryPositions;
+        int keyLength = _keyLength;
+
+        int firstLen = Math.Min(lcp[start] + 1, keyLength);
+        int minLen = firstLen;
+        int maxLen = firstLen;
+        bool allSameLen = true;
+        int secondLen = -1;
+        bool allSameLenExceptFirst = count >= 2;
+        // ComputeCrossEntryLcpLeaf convention: singleton ⇒ MaxKeyLen (255) so the
+        // planner's `min(crossEntryLcp, minLen)` short-circuits to minLen.
+        int crossEntryLcp = 255;
+
+        minVal = entryPos[start];
+        maxVal = minVal;
+
+        for (int i = 1; i < count; i++)
+        {
+            byte cp = lcp[start + i];
+            if (cp < crossEntryLcp) crossEntryLcp = cp;
+            int len = Math.Min(cp + 1, keyLength);
+            if (len < minLen) minLen = len;
+            if (len > maxLen) maxLen = len;
+            if (len != firstLen) allSameLen = false;
+            if (i == 1) secondLen = len;
+            else if (len != secondLen) allSameLenExceptFirst = false;
+
+            long ep = entryPos[start + i];
+            if (ep < minVal) minVal = ep;
+            if (ep > maxVal) maxVal = ep;
+        }
+
+        BSearchIndexLayoutPlanner.PlanFromProfile(
+            count, firstLen, secondLen, minLen, maxLen, allSameLen, allSameLenExceptFirst,
+            crossEntryLcp, keyLength,
+            out prefixLen, out keyType, out keySlotSize, out keyLittleEndian);
+
+        long baseOffset = 0;
+        if (count > 1 && minVal > 0 && minVal < maxVal) baseOffset = minVal;
+        long range = maxVal - baseOffset;
+        valueSlotSize = range == 0 ? 1 : (BitOperations.Log2((ulong)range) >> 3) + 1;
     }
 
     /// <summary>
