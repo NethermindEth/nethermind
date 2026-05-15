@@ -191,16 +191,10 @@ public partial class BlockAccessListManager
             }
 
             // Generated has the account, suggested doesn't. Tolerated only when there are no
-            // changes at this index AND the entry is one of:
-            //  - a system-user read at index 0 (Address.SystemUser is never in the suggested BAL);
-            //  - a generic storage-read-only entry (records a slot access without modification);
-            //  - a pure tracking artifact with no value/storage changes anywhere and no reads —
-            //    produced by AddAccountRead (e.g. EVM BALANCE on an unrelated address) or by a
-            //    zero-net-change AddBalanceChange (e.g. EIP-1559 zero-tip coinbase credit).
+            // changes at this index AND the entry is either a system-user read at index 0 or
+            // a generic storage-read-only entry.
             if (gen.HasNoChangesAtIndex(index) &&
-                ((index == 0 && gen.Address == Address.SystemUser && genReads == 0)
-                 || genReads > 0
-                 || (genReads == 0 && gen.HasNoValueOrStorageChanges)))
+                ((index == 0 && gen.Address == Address.SystemUser && genReads == 0) || genReads > 0))
             {
                 continue;
             }
