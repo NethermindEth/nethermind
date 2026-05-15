@@ -14,9 +14,7 @@ namespace Nethermind.Blockchain.Spec
     {
         private readonly ISpecProvider _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
         private readonly IBlockFinder _blockFinder = blockFinder ?? throw new ArgumentNullException(nameof(blockFinder));
-        private long _lastHeader = -1;
-        private IReleaseSpec? _headerSpec;
-        private readonly Lock _lock = new();
+        private CachedSpec? _cache;
 
         public void UpdateMergeTransitionInfo(long? blockNumber, UInt256? terminalTotalDifficulty = null) =>
             _specProvider.UpdateMergeTransitionInfo(blockNumber, terminalTotalDifficulty);
@@ -46,26 +44,25 @@ namespace Nethermind.Blockchain.Spec
             BlockHeader? header = _blockFinder.FindBestSuggestedHeader();
             long headerNumber = header?.Number ?? 0;
 
-            // we are fine with potential concurrency issue here, that the spec will change
-            // between this if and getting actual header spec
-            // this is used only in tx pool and this is not a problem there
-            if (headerNumber == _lastHeader)
+            // Lock-free fast path: a single reference read returns a fully constructed
+            // (number, spec) pair, so readers never observe a torn pairing.
+            CachedSpec? snapshot = Volatile.Read(ref _cache);
+            if (snapshot is not null && snapshot.Number == headerNumber)
             {
-                IReleaseSpec releaseSpec = _headerSpec;
-                if (releaseSpec is not null)
-                {
-                    return releaseSpec;
-                }
+                return snapshot.Spec;
             }
 
-            // we want to make sure updates to both fields are consistent though
-            lock (_lock)
-            {
-                _lastHeader = headerNumber;
-                return _headerSpec = header is not null
-                    ? _specProvider.GetSpec(header)
-                    : _specProvider.GetSpec((ForkActivation)headerNumber);
-            }
+            IReleaseSpec spec = header is not null
+                ? _specProvider.GetSpec(header)
+                : _specProvider.GetSpec((ForkActivation)headerNumber);
+
+            // Concurrent writers race to publish a snapshot for the same headerNumber.
+            // Because GetSpec is deterministic per (number, header), every winner stores
+            // an equivalent value, so a last-writer-wins publish is safe.
+            Volatile.Write(ref _cache, new CachedSpec(headerNumber, spec));
+            return spec;
         }
+
+        private sealed record CachedSpec(long Number, IReleaseSpec Spec);
     }
 }
