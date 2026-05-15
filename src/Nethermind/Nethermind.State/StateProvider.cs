@@ -17,6 +17,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Resettables;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Threading;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing.State;
 using Nethermind.Int256;
@@ -750,10 +751,9 @@ internal class StateProvider(ILogManager logManager) : IJournal<int>
         else
         {
             Metrics.IncrementStateTreeCacheHits();
-            // Propagate cached account to SeqlockCache so the main thread can find it.
-            // Without this, the prewarmer's _blockChanges short-circuits the scope,
-            // and the SeqlockCache never gets populated for re-read accounts.
-            _tree?.HintGet(address, accountChanges.After);
+            // Prewarmer: propagate cached account to SeqlockCache for the main thread.
+            if (!ProcessingThread.IsBlockProcessingThread)
+                _tree?.HintGet(address, accountChanges.After);
         }
         return accountChanges.After;
     }

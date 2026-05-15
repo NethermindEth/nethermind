@@ -14,6 +14,7 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Resettables;
+using Nethermind.Core.Threading;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing.State;
 using Nethermind.Int256;
@@ -528,8 +529,9 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
             else
             {
                 Db.Metrics.IncrementStorageTreeCache();
-                // Propagate cached value to SeqlockCache so the main thread can find it.
-                _backend?.HintSet(storageCell.Index, valueChange.After);
+                // Prewarmer: propagate cached storage to SeqlockCache for the main thread.
+                if (!ProcessingThread.IsBlockProcessingThread)
+                    _backend?.HintSet(storageCell.Index, valueChange.After);
             }
 
             if (!storageCell.IsHash) _provider.PushToRegistryOnly(storageCell, valueChange.After);
