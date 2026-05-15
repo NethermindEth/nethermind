@@ -111,9 +111,14 @@ public sealed class PersistedSnapshot : RefCountingDisposable
     internal ArenaReservation Reservation => _reservation;
 
     /// <summary>
-    /// Begin a scoped whole-buffer read over this snapshot's reservation.
+    /// Begin a scoped whole-buffer read over this snapshot's reservation. By default the
+    /// session madvises the mmap range cold on dispose; callers that perform their own
+    /// explicit eviction (e.g. the compactor, which lets <see cref="Demote"/> own this
+    /// for sources) can pass <paramref name="adviseDontNeedOnDispose"/> = <c>false</c>
+    /// to avoid a redundant <c>madvise</c> syscall.
     /// </summary>
-    public WholeReadSession BeginWholeReadSession() => _reservation.BeginWholeReadSession();
+    public WholeReadSession BeginWholeReadSession(bool adviseDontNeedOnDispose = true) =>
+        _reservation.BeginWholeReadSession(adviseDontNeedOnDispose);
 
     /// <summary>
     /// Construct a reader over this snapshot's bytes.
@@ -442,50 +447,60 @@ public sealed class PersistedSnapshot : RefCountingDisposable
 
     /// <summary>
     /// Transfer this snapshot's address-bound cache entries into <paramref name="target"/>
-    /// (typically a freshly-built compacted snapshot that supersedes this one), then dispose
-    /// the local cache to release its native-memory allocation. For each non-empty source
-    /// slot we read the stored 20-byte address-hash from this snapshot's mmap and resolve it
-    /// through <paramref name="target"/>'s normal lookup, which warms the target's cache as
-    /// a side effect of the seek+populate path in <see cref="TryGetAddressBound"/>.
+    /// (typically a freshly-built compacted snapshot that supersedes this one), zero and
+    /// dispose the local cache, then advise this snapshot's mmap pages cold. For each
+    /// non-empty source slot we read the stored 20-byte address-hash from this snapshot's
+    /// mmap and resolve it through <paramref name="target"/>'s normal lookup, which warms
+    /// the target's cache as a side effect of the seek+populate path in
+    /// <see cref="TryGetAddressBound"/>.
     /// </summary>
     /// <remarks>
     /// Safe to call once per snapshot. The cache field is atomically swapped to null before
     /// the walk so concurrent <see cref="TryGetAddressBound"/> calls that race with Demote
     /// either see the live cache (and complete normally against it) or see null and fall
     /// straight through to the seek path. Subsequent reads after Demote returns are
-    /// cache-cold for this snapshot. No-op when no cache was allocated (small tier) or when
-    /// <paramref name="target"/> has no cache of its own (in which case the inner
-    /// <c>TryGetAddressBound</c> calls just resolve without writing anywhere).
+    /// cache-cold for this snapshot. <see cref="ArenaReservation.AdviseDontNeed"/> at the
+    /// end issues <c>madvise(MADV_DONTNEED)</c> on the mmap range and clears the per-arena
+    /// page-tracker entries — runs unconditionally so small-tier sources (no cache) still
+    /// cold their pages on demote. No-op transfer when no cache was allocated.
     /// </remarks>
     public void Demote(PersistedSnapshot target)
     {
         NativeMemoryList<long>? cache = Interlocked.Exchange(ref _addressBoundCache, null);
-        if (cache is null) return;
-        try
+        if (cache is not null)
         {
-            ArenaByteReader sourceReader = CreateReader();
-            ArenaByteReader targetReader = target.CreateReader();
-            int n = cache.Count;
-            Span<byte> probe = stackalloc byte[AddressBoundCacheProbeBytes];
-            for (int i = 0; i < n; i++)
+            try
             {
-                long entry = cache[i];
-                long lebOffset = entry & AddressBoundCacheOffsetMask;
-                if (lebOffset == 0) continue;
+                ArenaByteReader sourceReader = CreateReader();
+                ArenaByteReader targetReader = target.CreateReader();
+                int n = cache.Count;
+                Span<byte> probe = stackalloc byte[AddressBoundCacheProbeBytes];
+                for (int i = 0; i < n; i++)
+                {
+                    long entry = cache[i];
+                    long lebOffset = entry & AddressBoundCacheOffsetMask;
+                    if (lebOffset == 0) continue;
 
-                if (!sourceReader.TryRead(lebOffset, probe)) continue;
-                int pos = 0;
-                _ = Leb128.Read(probe, ref pos);
+                    if (!sourceReader.TryRead(lebOffset, probe)) continue;
+                    int pos = 0;
+                    _ = Leb128.Read(probe, ref pos);
 
-                ValueHash256 addressHash = default;
-                probe.Slice(pos, AddressHashPrefixLength).CopyTo(addressHash.BytesAsSpan);
-                target.TryGetAddressBound(in targetReader, in addressHash, out _);
+                    ValueHash256 addressHash = default;
+                    probe.Slice(pos, AddressHashPrefixLength).CopyTo(addressHash.BytesAsSpan);
+                    target.TryGetAddressBound(in targetReader, in addressHash, out _);
+                }
+            }
+            finally
+            {
+                // Zero the backing before NativeMemoryList.Dispose hands the (possibly
+                // pinned ArrayPool) array back to the shared pool — pool consumers
+                // expect a clean buffer.
+                cache.AsSpan().Clear();
+                cache.Dispose();
             }
         }
-        finally
-        {
-            cache.Dispose();
-        }
+
+        _reservation.AdviseDontNeed();
     }
 
     protected override void CleanUp()

@@ -69,11 +69,17 @@ public sealed class ArenaReservation : RefCountingDisposable
 
     /// <summary>
     /// Begin a scoped whole-buffer read. The returned session holds a lease on this
-    /// reservation; disposing it releases the lease.
+    /// reservation; disposing it releases the lease and (by default) issues
+    /// <c>madvise(MADV_DONTNEED)</c> on the mapped range. Pass
+    /// <paramref name="adviseDontNeedOnDispose"/> = <c>false</c> when the caller has
+    /// arranged an explicit eviction elsewhere (e.g. <see cref="PersistedSnapshots.PersistedSnapshot.Demote"/>)
+    /// and a redundant madvise on session close would be wasteful.
     /// </summary>
-    public WholeReadSession BeginWholeReadSession() => new(this);
+    public WholeReadSession BeginWholeReadSession(bool adviseDontNeedOnDispose = true) =>
+        new(this, adviseDontNeedOnDispose);
 
-    internal IArenaWholeView OpenWholeView() => _arenaFile.OpenWholeView(Offset, Size, adviseDontNeedOnDispose: true);
+    internal IArenaWholeView OpenWholeView(bool adviseDontNeedOnDispose) =>
+        _arenaFile.OpenWholeView(Offset, Size, adviseDontNeedOnDispose);
 
     /// <summary>
     /// Construct an <see cref="ArenaByteReader"/> over this reservation's bytes. The reader

@@ -132,7 +132,10 @@ public class PersistedSnapshotCompactor(
             long bloomCapacity = 0;
             for (int i = 0; i < n; i++)
             {
-                sessionArr[i] = snapshots[i].BeginWholeReadSession();
+                // Demote will issue MADV_DONTNEED on each source's mmap range explicitly
+                // after the merge, so suppress the session-dispose madvise to avoid a
+                // redundant syscall over the same pages.
+                sessionArr[i] = snapshots[i].BeginWholeReadSession(adviseDontNeedOnDispose: false);
                 views[i] = sessionArr[i].GetRawView();
 
                 estimatedSize += snapshots[i].Size;
@@ -158,18 +161,6 @@ public class PersistedSnapshotCompactor(
                 PersistedSnapshotMerger.NWayMergeSnapshotsWithViews<ArenaBufferWriter, ArenaBufferReader, NoOpPin>(
                     views, ref arenaWriter.GetWriter(), mergedBloom);
 
-                for (int i = 0; i < n; i++)
-                {
-                    PersistedSnapshot s = snapshots[i];
-                    bool isPersistableSize = s.To.BlockNumber - s.From.BlockNumber == _compactSize;
-                    // The per-source WholeReadSession we still hold open will MADV_DONTNEED
-                    // its mmap range on dispose at the end of this try block, so just clear
-                    // the per-arena page tracker entries here — re-issuing AdviseDontNeed
-                    // would madvise a second time.
-                    if (!isPersistableSize)
-                        s.ForgetTracker();
-                }
-
                 long len = arenaWriter.GetWriter().Written;
                 (Histogram.Child sizeChild, Histogram.Child timeChild) = GetSizeMetrics(compactSize);
                 sizeChild.Observe(len);
@@ -184,11 +175,12 @@ public class PersistedSnapshotCompactor(
             PersistedSnapshot compacted = persistedSnapshotRepository.AddCompactedSnapshot(from, to, location, reservation, mergedBloom);
 
             // Hand each source snapshot's address-bound cache off to the new compacted
-            // snapshot before its mmap pages get advised away — Demote walks the source
-            // cache, resolves each cached address through the compacted snapshot (which
-            // populates its own cache as a side effect), then disposes the source's
-            // native-memory allocation. No-op on small-tier (no source cache, no target
-            // cache); on large-tier this preserves lookup warmth across compaction.
+            // snapshot, then evict the source. Demote walks the source cache, resolves
+            // each cached address through the compacted snapshot (which populates its
+            // own cache as a side effect), zeroes and disposes the source's native-memory
+            // allocation, and finally issues MADV_DONTNEED on the source mmap range with
+            // tracker-clear. With sessions opened above as adviseDontNeedOnDispose: false,
+            // Demote is the single point where the source goes cold.
             for (int i = 0; i < n; i++) snapshots[i].Demote(compacted);
 
             // The freshly-written compacted bytes are warm in the kernel page cache from the write
