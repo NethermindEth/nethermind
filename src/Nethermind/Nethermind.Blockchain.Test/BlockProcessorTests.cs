@@ -875,6 +875,43 @@ public class BlockProcessorTests
     }
 
     [Test]
+    public void Parallel_validation_forwards_tx_executed_callback_to_inner_executor_when_bal_disabled()
+    {
+        const int txCount = 3;
+        IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
+        BlockProcessor.BlockValidationTransactionsExecutor inner = new(new SuccessfulTransactionProcessorAdapter(), stateProvider);
+        BlockProcessor.ParallelBlockValidationTransactionsExecutor executor = new(
+            inner,
+            stateProvider,
+            new TestSingleReleaseSpecProvider(Osaka.Instance),
+            NullBlockAccessListManager.Instance,
+            LimboLogs.Instance);
+        List<int> executed = [];
+        executor.SetTxExecutedCallback(executed.Add);
+
+        Block block = Build.A.Block
+            .WithNumber(1)
+            .WithGasLimit(txCount * 21_000)
+            .WithTransactions(CreateParallelValidationTransactions(txCount))
+            .TestObject;
+        BlockReceiptsTracer receiptsTracer = new();
+        receiptsTracer.StartNewBlockTrace(block);
+
+        TxReceipt[] receipts = executor.ProcessTransactions(
+            block,
+            ProcessingOptions.None,
+            receiptsTracer,
+            CancellationToken.None);
+        receiptsTracer.EndBlockTrace();
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(receipts, Has.Length.EqualTo(txCount));
+            Assert.That(executed, Is.EqualTo(new[] { 0, 1, 2 }));
+        });
+    }
+
+    [Test]
     public void Parallel_validation_execution_order_keeps_canonical_lead_and_sorts_tail_by_gas_limit()
     {
         Transaction[] transactions =
@@ -1270,6 +1307,20 @@ public class BlockProcessorTests
             transaction.BlockGasUsed = gasUsed;
             txTracer.MarkAsSuccess(Address.Zero, gasUsed, [], []);
 
+            return TransactionResult.Ok;
+        }
+
+        public void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext)
+        {
+        }
+    }
+
+    private sealed class SuccessfulTransactionProcessorAdapter : ITransactionProcessorAdapter
+    {
+        public TransactionResult Execute(Transaction transaction, ITxTracer txTracer)
+        {
+            transaction.BlockGasUsed = 21_000;
+            txTracer.MarkAsSuccess(Address.Zero, 21_000, [], []);
             return TransactionResult.Ok;
         }
 

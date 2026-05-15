@@ -43,6 +43,8 @@ public partial class BlockProcessor
             inner.SetBlockExecutionContext(blockExecutionContext);
         }
 
+        public void SetTxExecutedCallback(Action<int>? callback) => inner.SetTxExecutedCallback(callback);
+
         public TxReceipt[] ProcessTransactions(Block block, ProcessingOptions processingOptions, BlockReceiptsTracer receiptsTracer, CancellationToken token)
         {
             if (!balManager.Enabled)
