@@ -4,6 +4,8 @@
 using System;
 using System.Collections.Generic;
 using Nethermind.Api;
+using Nethermind.Blockchain;
+using Nethermind.Consensus.Stateless;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.JsonRpc;
@@ -34,15 +36,20 @@ public partial class EngineRpcModule(
     IEngineRequestsTracker engineRequestsTracker,
     ISpecProvider specProvider,
     GCKeeper gcKeeper,
+    IBlockTree blockTree,
+    IWitnessGeneratingBlockProcessingEnvFactory witnessEnvFactory,
     ILogManager logManager) : IEngineRpcModule
 {
 
     private readonly IHandler<HashSet<string>, IReadOnlyList<string>> _capabilitiesHandler = capabilitiesHandler ?? throw new ArgumentNullException(nameof(capabilitiesHandler));
     protected readonly ISpecProvider _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
     protected readonly ILogger _logger = logManager.GetClassLogger<EngineRpcModule>();
+    protected readonly IBlockTree _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
+    protected readonly IWitnessGeneratingBlockProcessingEnvFactory _witnessEnvFactory = witnessEnvFactory ?? throw new ArgumentNullException(nameof(witnessEnvFactory));
 
     public ResultWrapper<IReadOnlyList<string>> engine_exchangeCapabilities(IEnumerable<string> methods)
         => _capabilitiesHandler.Handle(methods as HashSet<string> ?? [.. methods]);
 
-    public ResultWrapper<ClientVersionV1[]> engine_getClientVersionV1(ClientVersionV1 clientVersionV1) => ResultWrapper<ClientVersionV1[]>.Success([new ClientVersionV1()]);
+    public ResultWrapper<ClientVersionV1[]> engine_getClientVersionV1(ClientVersionV1 clientVersionV1)
+        => ResultWrapper<ClientVersionV1[]>.Success([new ClientVersionV1()]);
 }

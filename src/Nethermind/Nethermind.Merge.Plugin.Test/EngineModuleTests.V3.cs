@@ -30,6 +30,7 @@ using Nethermind.JsonRpc.Test;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.GC;
+using Nethermind.Consensus.Stateless;
 using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Merge.Plugin.Synchronization;
 using Nethermind.Serialization.Json;
@@ -392,6 +393,8 @@ public partial class EngineModuleTests
                 Substitute.For<IEngineRequestsTracker>(),
                 chain.SpecProvider,
                 new GCKeeper(NoGCStrategy.Instance, chain.LogManager),
+                chain.BlockTree,
+                Substitute.For<IWitnessGeneratingBlockProcessingEnvFactory>(),
                 Substitute.For<ILogManager>()));
         }
 

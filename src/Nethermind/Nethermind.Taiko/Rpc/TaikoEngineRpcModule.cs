@@ -10,6 +10,7 @@ using System.Threading.Tasks;
 using Microsoft.IO;
 using Nethermind.Api;
 using Nethermind.Blockchain;
+using Nethermind.Consensus.Stateless;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
@@ -55,6 +56,8 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
         IEngineRequestsTracker engineRequestsTracker,
         ISpecProvider specProvider,
         GCKeeper gcKeeper,
+        IBlockTree blockTree,
+        IWitnessGeneratingBlockProcessingEnvFactory witnessEnvFactory,
         ILogManager logManager,
         ITxPool txPool,
         IBlockFinder blockFinder,
@@ -81,6 +84,8 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
                 engineRequestsTracker,
                 specProvider,
                 gcKeeper,
+                blockTree,
+                witnessEnvFactory,
                 logManager), ITaikoEngineRpcModule
 {
     /// <summary>

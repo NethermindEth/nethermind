@@ -3,6 +3,7 @@
 
 using System.Text.Json.Serialization;
 using Nethermind.Consensus.Producers;
+using Nethermind.Consensus.Stateless;
 using Nethermind.Merge.Plugin.Handlers;
 
 namespace Nethermind.Merge.Plugin.Data;
@@ -33,4 +34,6 @@ namespace Nethermind.Merge.Plugin.Data;
 [JsonSerializable(typeof(ExecutionPayloadBodyV1Result))]
 [JsonSerializable(typeof(TransitionConfigurationV1))]
 [JsonSerializable(typeof(ClientVersionV1))]
+[JsonSerializable(typeof(NewPayloadWithWitnessV1Result))]
+[JsonSerializable(typeof(Witness))]
 internal partial class EngineApiJsonContext : JsonSerializerContext;
