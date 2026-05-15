@@ -213,7 +213,7 @@ public sealed class HardforkLabelsGenerator : IIncrementalGenerator
     ///         silently dropped from the label.</item>
     ///   <item>EIP-158 is Parity-split into <c>Eip161abcTransition</c> + <c>Eip161dTransition</c>.</item>
     ///   <item>Disables (<c>spec.IsEipNEnabled = false</c>) map to <c>Eip&lt;N&gt;DisableTransition</c>
-    ///         — only Petersburg does this.</item>
+    ///         — only ConstantinopleFix/Petersburg does this.</item>
     /// </list>
     /// </remarks>
     private static readonly HashSet<int> NoJsonField = new()

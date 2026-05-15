@@ -59,7 +59,7 @@ namespace Nethermind.Evm.Test
                     Instruction.RETURNDATASIZE
                 }).ToArray();
 
-        private static readonly Instruction[] PetersburgInstructions =
+        private static readonly Instruction[] ConstantinopleFixInstructions =
             ByzantiumInstructions.Union(
                 new[]
                 {
@@ -68,7 +68,7 @@ namespace Nethermind.Evm.Test
                 }).ToArray();
 
         private static readonly Instruction[] IstanbulInstructions =
-            PetersburgInstructions.Union(
+            ConstantinopleFixInstructions.Union(
                 new[] { Instruction.SELFBALANCE, Instruction.CHAINID }).ToArray();
 
         private static readonly Instruction[] LondonInstructions =
@@ -126,7 +126,7 @@ namespace Nethermind.Evm.Test
                 {(ForkActivation)MainnetSpecProvider.SpuriousDragonBlockNumber, HomesteadInstructions},
                 {(ForkActivation)MainnetSpecProvider.TangerineWhistleBlockNumber, HomesteadInstructions},
                 {(ForkActivation)MainnetSpecProvider.ByzantiumBlockNumber, ByzantiumInstructions},
-                {(ForkActivation)MainnetSpecProvider.ConstantinopleFixBlockNumber, PetersburgInstructions},
+                {(ForkActivation)MainnetSpecProvider.ConstantinopleFixBlockNumber, ConstantinopleFixInstructions},
                 {(ForkActivation)MainnetSpecProvider.IstanbulBlockNumber, IstanbulInstructions},
                 {(ForkActivation)MainnetSpecProvider.MuirGlacierBlockNumber, IstanbulInstructions},
                 {(ForkActivation)MainnetSpecProvider.BerlinBlockNumber, IstanbulInstructions},
