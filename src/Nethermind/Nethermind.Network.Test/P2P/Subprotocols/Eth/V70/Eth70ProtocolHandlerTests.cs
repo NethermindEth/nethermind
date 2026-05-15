@@ -696,6 +696,25 @@ public class Eth70ProtocolHandlerTests
     }
 
     [Test]
+    public void Should_reject_null_receipt_payload_when_requesting_from_peer()
+    {
+        TxReceipt[] receipts = [null!];
+
+        _session.When(s => s.DeliverMessage(Arg.Any<GetReceiptsMessage70>())).Do(call =>
+        {
+            GetReceiptsMessage70 sent = (GetReceiptsMessage70)call[0];
+            ReceiptsMessage70 response = new(sent.RequestId, new[] { receipts }.ToPooledList(), false);
+            HandleZeroMessage(response, Eth70MessageCode.Receipts);
+        });
+
+        HandleIncomingStatusMessage();
+        Func<Task> act = async () => await _handler.GetReceipts(new[] { Keccak.Zero }, CancellationToken.None);
+
+        SubprotocolException? exception = Assert.ThrowsAsync<SubprotocolException>(async () => await act());
+        Assert.That(exception?.Message, Is.EqualTo("Unexpected null receipt payload"));
+    }
+
+    [Test]
     public async Task Should_return_immediately_when_peer_returns_fewer_blocks_than_requested()
     {
         // Scenario: Handler requests N blocks, peer returns fewer with LastBlockIncomplete = false
