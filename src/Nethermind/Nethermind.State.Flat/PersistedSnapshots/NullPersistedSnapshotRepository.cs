@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Diagnostics.CodeAnalysis;
 using Nethermind.State.Flat.Persistence.BloomFilter;
 using Nethermind.State.Flat.Storage;
@@ -18,7 +19,8 @@ public sealed class NullPersistedSnapshotRepository : IPersistedSnapshotReposito
     public long CompactedSnapshotMemory => 0;
     public void LoadFromCatalog() { }
     public void ConvertSnapshotToPersistedSnapshot(Snapshot snapshot) { }
-    public void AddCompactedSnapshot(StateId from, StateId to, SnapshotLocation location, ArenaReservation reservation, BloomFilter? bloom = null) { }
+    public PersistedSnapshot AddCompactedSnapshot(StateId from, StateId to, SnapshotLocation location, ArenaReservation reservation, BloomFilter? bloom = null)
+        => throw new NotSupportedException($"{nameof(NullPersistedSnapshotRepository)} cannot host compacted snapshots.");
     public PersistedSnapshotList AssembleSnapshotsForCompaction(StateId toStateId, long minBlockNumber) => PersistedSnapshotList.Empty();
     public PersistedSnapshot? TryGetSnapshotFrom(StateId fromState) => null;
     public bool TryLeaseSnapshotTo(StateId toState, [NotNullWhen(true)] out PersistedSnapshot? snapshot) { snapshot = null; return false; }

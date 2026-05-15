@@ -49,7 +49,7 @@ public class PersistedSnapshotTests
         writer.GetWriter().Advance(data.Length);
         (_, ArenaReservation reservation) = writer.Complete();
         TestFixtureHelpers.LeaseBlobIdsFromHsst(reservation, _blobs);
-        return new PersistedSnapshot(from, to, reservation, _blobs);
+        return new PersistedSnapshot(from, to, reservation, _blobs, PersistedSnapshotTier.Small);
     }
 
     private static IEnumerable<TestCaseData> RoundTripTestCases()

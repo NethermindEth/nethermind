@@ -2,6 +2,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Buffers.Binary;
+using System.Numerics;
+using System.Runtime.InteropServices;
+using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -70,6 +73,28 @@ public sealed class PersistedSnapshot : RefCountingDisposable
     internal static readonly byte[] MetadataToHashKey = "to_hash\0\0\0"u8.ToArray();
     internal static readonly byte[] MetadataVersionKey = "version\0\0\0"u8.ToArray();
 
+    // Direct-mapped lock-free address-bound cache. Each slot is a single long:
+    //   high 16 bits = first 2 bytes of the address-hash (tag)
+    //   low  48 bits = absolute offset of the LEB128 value-length byte in the outer
+    //                  column 0x01 entry. 48 bits = 256 TiB, plenty.
+    // Single-long Interlocked is intrinsic on every platform (no CMPXCHG16B needed).
+    // Layout: keyFirst=false BTree entry shape is [Value][LEB128][FullKey]. On hit we
+    // read 26 bytes at lebStart in one shot covering the LEB128 (≤ 6 bytes for any
+    // realistic value length) followed by the 20-byte stored address-hash, then
+    // compare to the lookup hash to catch tag collisions / layout drift. The cached
+    // Bound is (lebStart - valueLength, valueLength).
+    //
+    // The slot array lives off-heap in a <see cref="NativeMemoryList{Int64}"/> sized
+    // to the next power of two ≥ the snapshot's block span; small-tier snapshots get
+    // no cache at all (field stays null). Demote atomically swaps the field to null
+    // and disposes — readers Volatile.Read once into a local so an in-flight call
+    // can complete safely against the live array even if Demote runs concurrently.
+    private const long AddressBoundCacheOffsetMask = (1L << 48) - 1;
+    private const int AddressBoundCacheTagShift = 48;
+    private const int AddressBoundCacheProbeBytes = 6 + AddressHashPrefixLength;
+    private readonly int _addressBoundCacheMask;
+    private NativeMemoryList<long>? _addressBoundCache;
+
     private readonly ArenaReservation _reservation;
     // Manager that owns the per-id blob arena slots. The repository acquires one lease per
     // referenced id before this ctor runs and releases them in CleanUp / PersistOnShutdown,
@@ -103,8 +128,15 @@ public sealed class PersistedSnapshot : RefCountingDisposable
     /// leases back on construction failure. This ctor just bumps the metadata reservation
     /// lease and stashes the manager ref for later id → file resolution.
     /// </summary>
+    /// <remarks>
+    /// <paramref name="tier"/> controls whether the address-bound cache is allocated.
+    /// Only <see cref="PersistedSnapshotTier.Large"/> snapshots get a cache; small-tier
+    /// snapshots (and small-tier compacted outputs) skip the allocation entirely. The
+    /// cache slot count is the next power of two ≥ <c>to.BlockNumber - from.BlockNumber</c>
+    /// so longer-range snapshots get proportionally more slots.
+    /// </remarks>
     public PersistedSnapshot(StateId from, StateId to, ArenaReservation reservation,
-        IBlobArenaManager blobManager)
+        IBlobArenaManager blobManager, PersistedSnapshotTier tier)
     {
         From = from;
         To = to;
@@ -147,6 +179,17 @@ public sealed class PersistedSnapshot : RefCountingDisposable
             finally { e.Dispose(); }
             _reservation.Dispose();
             throw;
+        }
+
+        if (tier == PersistedSnapshotTier.Large)
+        {
+            long blockSpan = to.BlockNumber - from.BlockNumber;
+            if (blockSpan > 0)
+            {
+                int slotCount = (int)BitOperations.RoundUpToPowerOf2((uint)blockSpan);
+                _addressBoundCache = new NativeMemoryList<long>(slotCount, slotCount);
+                _addressBoundCacheMask = slotCount - 1;
+            }
         }
     }
 
@@ -221,8 +264,56 @@ public sealed class PersistedSnapshot : RefCountingDisposable
         return ReadBlobArenaRlp(nodeRef.BlobArenaId, nodeRef.RlpDataOffset);
     }
 
-    private bool TryGetAddressBound(in ArenaByteReader reader, in ValueHash256 addressHash, out Bound addressBound) =>
-        PersistedSnapshotReader.TryGetAddressHsstBound<ArenaByteReader, NoOpPin>(in reader, in addressHash, out addressBound);
+    private bool TryGetAddressBound(in ArenaByteReader reader, in ValueHash256 addressHash, out Bound addressBound)
+    {
+        // Snapshot the cache reference once: Demote may swap it to null concurrently,
+        // but the NativeMemoryList instance we read here stays alive (its Dispose
+        // is only called after a successful Interlocked.Exchange to null in Demote,
+        // which races at most with reads that already captured the live ref).
+        NativeMemoryList<long>? cache = Volatile.Read(ref _addressBoundCache);
+        ushort hashTag = MemoryMarshal.Read<ushort>(addressHash.Bytes);
+        if (cache is not null)
+        {
+            int idx = hashTag & _addressBoundCacheMask;
+            ref long slot = ref cache.GetRef(idx);
+
+            long cached = Interlocked.Read(ref slot);
+            ushort cachedTag = (ushort)(cached >>> AddressBoundCacheTagShift);
+            long lebOffset = cached & AddressBoundCacheOffsetMask;
+            if (cachedTag == hashTag && lebOffset != 0)
+            {
+                // Single read covers [LEB128 (≤ 6 bytes)][FullKey (20 bytes)]. The
+                // LEB128 decodes the value length; the FullKey at probe[pos..pos+20]
+                // is the stored 20-byte address-hash we double-check against.
+                Span<byte> probe = stackalloc byte[AddressBoundCacheProbeBytes];
+                if (reader.TryRead(lebOffset, probe))
+                {
+                    int pos = 0;
+                    long valueLength = Leb128.Read(probe, ref pos);
+                    if (probe.Slice(pos, AddressHashPrefixLength)
+                            .SequenceEqual(addressHash.Bytes[..AddressHashPrefixLength]))
+                    {
+                        addressBound = new Bound(lebOffset - valueLength, valueLength);
+                        return true;
+                    }
+                }
+            }
+        }
+
+        if (!PersistedSnapshotReader.TryGetAddressHsstBound<ArenaByteReader, NoOpPin>(in reader, in addressHash, out addressBound))
+            return false;
+
+        if (cache is not null)
+        {
+            // keyFirst=false bound is (lebStart - valueLength, valueLength), so
+            // lebStart = bound.Offset + bound.Length.
+            int idx = hashTag & _addressBoundCacheMask;
+            long newLebStart = addressBound.Offset + addressBound.Length;
+            long newSlot = ((long)hashTag << AddressBoundCacheTagShift) | (newLebStart & AddressBoundCacheOffsetMask);
+            Interlocked.Exchange(ref cache.GetRef(idx), newSlot);
+        }
+        return true;
+    }
 
     public bool TryGetAccount(in ValueHash256 addressHash, out Account? account)
     {
@@ -349,8 +440,60 @@ public sealed class PersistedSnapshot : RefCountingDisposable
             _blobManager.GetFile(id).PersistOnShutdown();
     }
 
+    /// <summary>
+    /// Transfer this snapshot's address-bound cache entries into <paramref name="target"/>
+    /// (typically a freshly-built compacted snapshot that supersedes this one), then dispose
+    /// the local cache to release its native-memory allocation. For each non-empty source
+    /// slot we read the stored 20-byte address-hash from this snapshot's mmap and resolve it
+    /// through <paramref name="target"/>'s normal lookup, which warms the target's cache as
+    /// a side effect of the seek+populate path in <see cref="TryGetAddressBound"/>.
+    /// </summary>
+    /// <remarks>
+    /// Safe to call once per snapshot. The cache field is atomically swapped to null before
+    /// the walk so concurrent <see cref="TryGetAddressBound"/> calls that race with Demote
+    /// either see the live cache (and complete normally against it) or see null and fall
+    /// straight through to the seek path. Subsequent reads after Demote returns are
+    /// cache-cold for this snapshot. No-op when no cache was allocated (small tier) or when
+    /// <paramref name="target"/> has no cache of its own (in which case the inner
+    /// <c>TryGetAddressBound</c> calls just resolve without writing anywhere).
+    /// </remarks>
+    public void Demote(PersistedSnapshot target)
+    {
+        NativeMemoryList<long>? cache = Interlocked.Exchange(ref _addressBoundCache, null);
+        if (cache is null) return;
+        try
+        {
+            ArenaByteReader sourceReader = CreateReader();
+            ArenaByteReader targetReader = target.CreateReader();
+            int n = cache.Count;
+            Span<byte> probe = stackalloc byte[AddressBoundCacheProbeBytes];
+            for (int i = 0; i < n; i++)
+            {
+                long entry = cache[i];
+                long lebOffset = entry & AddressBoundCacheOffsetMask;
+                if (lebOffset == 0) continue;
+
+                if (!sourceReader.TryRead(lebOffset, probe)) continue;
+                int pos = 0;
+                _ = Leb128.Read(probe, ref pos);
+
+                ValueHash256 addressHash = default;
+                probe.Slice(pos, AddressHashPrefixLength).CopyTo(addressHash.BytesAsSpan);
+                target.TryGetAddressBound(in targetReader, in addressHash, out _);
+            }
+        }
+        finally
+        {
+            cache.Dispose();
+        }
+    }
+
     protected override void CleanUp()
     {
+        // Free the cache eagerly if Demote didn't already. Interlocked.Exchange matches
+        // Demote's swap pattern; the ?.Dispose() handles both the post-Demote (null) and
+        // never-allocated (small-tier) cases.
+        Interlocked.Exchange(ref _addressBoundCache, null)?.Dispose();
         // Drain the iterator before disposing the reservation — the iterator owns a
         // WholeReadSession on _reservation, and this snapshot's own lease keeps the mmap
         // alive until both leases drop. GetFile is a lock-free array read; the lease we

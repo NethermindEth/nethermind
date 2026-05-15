@@ -93,7 +93,7 @@ public sealed class PersistedSnapshotRepository(
         // The PersistedSnapshot ctor walks its own ref_ids metadata and leases each blob
         // arena file; on partial failure it releases what it took and disposes the
         // reservation lease before rethrowing — no repository-side cleanup needed.
-        PersistedSnapshot snapshot = new(entry.From, entry.To, reservation, _blobs);
+        PersistedSnapshot snapshot = new(entry.From, entry.To, reservation, _blobs, _arena.Tier);
         RegisterBlooms(snapshot);
 
         if (range > _compactSize)
@@ -151,7 +151,7 @@ public sealed class PersistedSnapshotRepository(
             _catalog.Add(new SnapshotCatalog.CatalogEntry(snapshot.From, snapshot.To, location));
             _catalog.Save();
 
-            PersistedSnapshot persisted = new(snapshot.From, snapshot.To, reservation, _blobs);
+            PersistedSnapshot persisted = new(snapshot.From, snapshot.To, reservation, _blobs, _arena.Tier);
             RegisterBlooms(persisted, bloom, trieBloom);
             if (_validatePersistedSnapshot)
                 PersistedSnapshotUtils.ValidatePersistedSnapshot(snapshot, persisted, _bloomManager);
@@ -174,20 +174,22 @@ public sealed class PersistedSnapshotRepository(
     /// <see cref="PersistedSnapshot"/> ctor, which leases each one and rolls back on
     /// partial failure.
     /// </summary>
-    public void AddCompactedSnapshot(StateId from, StateId to, SnapshotLocation location, ArenaReservation reservation, BloomFilter? bloom = null)
+    public PersistedSnapshot AddCompactedSnapshot(StateId from, StateId to, SnapshotLocation location, ArenaReservation reservation, BloomFilter? bloom = null)
     {
+        PersistedSnapshot snapshot;
         lock (_catalogLock)
         {
             _catalog.Add(new SnapshotCatalog.CatalogEntry(from, to, location));
             _catalog.Save();
 
-            PersistedSnapshot snapshot = new(from, to, reservation, _blobs);
+            snapshot = new PersistedSnapshot(from, to, reservation, _blobs, _arena.Tier);
             RegisterBlooms(snapshot, bloom, trieBloom: null);
             _compactedSnapshots[to] = snapshot;
         }
 
         // Release the caller's "creation" lease — see ConvertSnapshotToPersistedSnapshot.
         reservation.Dispose();
+        return snapshot;
     }
 
     /// <summary>

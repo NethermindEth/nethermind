@@ -181,7 +181,15 @@ public class PersistedSnapshotCompactor(
             // PersistedSnapshot's ctor (called from inside AddCompactedSnapshot) reads
             // the merged ref_ids back from its own metadata and leases each blob arena
             // file via a ref-struct iterator — no ushort[] materialisation here.
-            persistedSnapshotRepository.AddCompactedSnapshot(from, to, location, reservation, mergedBloom);
+            PersistedSnapshot compacted = persistedSnapshotRepository.AddCompactedSnapshot(from, to, location, reservation, mergedBloom);
+
+            // Hand each source snapshot's address-bound cache off to the new compacted
+            // snapshot before its mmap pages get advised away — Demote walks the source
+            // cache, resolves each cached address through the compacted snapshot (which
+            // populates its own cache as a side effect), then disposes the source's
+            // native-memory allocation. No-op on small-tier (no source cache, no target
+            // cache); on large-tier this preserves lookup warmth across compaction.
+            for (int i = 0; i < n; i++) snapshots[i].Demote(compacted);
 
             // The freshly-written compacted bytes are warm in the kernel page cache from the write
             // path; drop them so they don't crowd out the random-access read working set. Subsequent

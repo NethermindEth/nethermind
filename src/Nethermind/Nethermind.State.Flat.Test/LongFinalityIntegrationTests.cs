@@ -75,7 +75,7 @@ public class LongFinalityIntegrationTests
         writer.GetWriter().Advance(data.Length);
         (_, ArenaReservation reservation) = writer.Complete();
         TestFixtureHelpers.LeaseBlobIdsFromHsst(reservation, _helperBlobs);
-        return new PersistedSnapshot(from, to, reservation, _helperBlobs);
+        return new PersistedSnapshot(from, to, reservation, _helperBlobs, PersistedSnapshotTier.Small);
     }
 
     [Test]
