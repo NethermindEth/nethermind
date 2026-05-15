@@ -381,7 +381,6 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
             {
                 for (int t = 0; t < threadCount; t++)
                 {
-                    int workerSlot = t;
                     workers[t] = new Thread(() =>
                     {
                         IReadOnlyTxProcessorSource env = _envPool.Get();
@@ -421,12 +420,6 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
                             if (!token.CanBeCanceled || retryMode == PreWarmRetryMode.None) return;
 
                             // Phase 2: retry mode, re-warm txs with fresher state.
-                            if (retryMode == PreWarmRetryMode.StateGated)
-                            {
-                                WarmupStateGatedWindow(env, blockState, block, preWarmer, workerSlot, token);
-                                return;
-                            }
-
                             Interlocked.CompareExchange(ref _nextWarmupIndex, 0, firstPassWorkItems + threadCount);
 
                             while (!token.IsCancellationRequested)
@@ -446,13 +439,43 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
                                 long[]? completedAt = preWarmer.DiagPrewarmerCompletedAt;
                                 if (completedAt is not null && (uint)myTx < (uint)completedAt.Length && completedAt[myTx] == 0)
                                     completedAt[myTx] = Stopwatch.GetTimestamp();
-                                // Hammer: keep re-executing until main thread passes.
-                                // Each retry uses a fresh scope so read-through fallback can observe newer state.
-                                while (!token.IsCancellationRequested)
-                                {
-                                    if (Volatile.Read(ref MainThreadTxIndex) >= myTx) break;
 
-                                    WarmupTransactionByIndex(env, blockState, block, preWarmer, myTx);
+                                if (retryMode == PreWarmRetryMode.Hammer)
+                                {
+                                    // Hammer: keep re-executing until main thread passes.
+                                    // Each retry uses a fresh scope so read-through fallback can observe newer state.
+                                    while (!token.IsCancellationRequested)
+                                    {
+                                        if (Volatile.Read(ref MainThreadTxIndex) >= myTx) break;
+
+                                        WarmupTransactionByIndex(env, blockState, block, preWarmer, myTx);
+                                    }
+                                }
+                                else
+                                {
+                                    // State-gated: re-execute only when main thread advances.
+                                    while (!token.IsCancellationRequested)
+                                    {
+                                        if (lastSeenMain >= myTx) break;
+
+                                        while (!token.IsCancellationRequested)
+                                        {
+                                            int current = Volatile.Read(ref MainThreadTxIndex);
+                                            if (current > lastSeenMain) { lastSeenMain = current; break; }
+                                            if (current >= myTx) { lastSeenMain = current; break; }
+
+                                            _mainThreadAdvanced.Reset();
+                                            current = Volatile.Read(ref MainThreadTxIndex);
+                                            if (current > lastSeenMain) { lastSeenMain = current; break; }
+                                            if (current >= myTx) { lastSeenMain = current; break; }
+
+                                            _mainThreadAdvanced.Wait(token);
+                                        }
+
+                                        if (lastSeenMain >= myTx) break;
+
+                                        WarmupTransactionByIndex(env, blockState, block, preWarmer, myTx);
+                                    }
                                 }
                             }
                         }
@@ -480,65 +503,6 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         catch (Exception ex)
         {
             _logger.DebugError("Error pre-warming transactions", ex);
-        }
-    }
-
-    private static void WarmupStateGatedWindow(
-        IReadOnlyTxProcessorSource env,
-        BlockState blockState,
-        Block block,
-        BlockCachePreWarmer preWarmer,
-        int workerSlot,
-        CancellationToken token)
-    {
-        int txCount = block.Transactions.Length;
-        int lastSeenMain = Volatile.Read(ref preWarmer.MainThreadTxIndex);
-
-        while (!token.IsCancellationRequested)
-        {
-            int txIndex = lastSeenMain + 1 + workerSlot;
-            if ((uint)txIndex < (uint)txCount)
-            {
-                WarmupTransactionByIndex(env, blockState, block, preWarmer, txIndex);
-
-                long[]? completedAt = preWarmer.DiagPrewarmerCompletedAt;
-                if (completedAt is not null && completedAt[txIndex] == 0)
-                    completedAt[txIndex] = Stopwatch.GetTimestamp();
-            }
-            else if (lastSeenMain >= txCount - 1)
-            {
-                return;
-            }
-
-            while (!token.IsCancellationRequested)
-            {
-                int current = Volatile.Read(ref preWarmer.MainThreadTxIndex);
-                if (current > lastSeenMain)
-                {
-                    lastSeenMain = current;
-                    break;
-                }
-
-                if (current >= txCount - 1)
-                {
-                    return;
-                }
-
-                preWarmer._mainThreadAdvanced.Reset();
-                current = Volatile.Read(ref preWarmer.MainThreadTxIndex);
-                if (current > lastSeenMain)
-                {
-                    lastSeenMain = current;
-                    break;
-                }
-
-                if (current >= txCount - 1)
-                {
-                    return;
-                }
-
-                preWarmer._mainThreadAdvanced.Wait(token);
-            }
         }
     }
 
