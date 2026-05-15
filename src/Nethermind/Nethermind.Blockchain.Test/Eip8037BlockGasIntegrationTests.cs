@@ -18,7 +18,6 @@ using Nethermind.Specs.Forks;
 using NSubstitute;
 using NUnit.Framework;
 using System.Threading;
-using System.Threading.Tasks;
 
 namespace Nethermind.Blockchain.Test;
 

@@ -14,7 +14,6 @@ using Nethermind.Evm;
 using Nethermind.Evm.State;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
-using Nethermind.State;
 
 namespace Nethermind.Consensus.Processing;
 
@@ -30,11 +29,10 @@ namespace Nethermind.Consensus.Processing;
 ///   * BlockAccessListManager.TxProcessorPool.cs       — nested pool / processor / world-state types
 /// </summary>
 /// <remarks>
-/// Parent-state reads (for values the suggested BAL doesn't carry at the current index) flow
-/// through a pooled <see cref="IReadOnlyTxProcessingEnvFactory"/>. Each parallel worker rents
-/// its own snapshot scope of the parent state, scoped against the state root captured at
-/// <see cref="PrepareForProcessing"/>. The factory is supplied via DI; passing <c>null</c>
-/// disables parent-reader-based parallel execution.
+/// Parent-state fallbacks (for slots the suggested BAL doesn't cover) flow through a pooled
+/// <see cref="IReadOnlyTxProcessingEnvFactory"/>: each parallel worker rents a snapshot scoped
+/// to the state root captured in <see cref="PrepareForProcessing"/>. Passing <c>null</c>
+/// disables this and thus parallel execution.
 /// </remarks>
 public partial class BlockAccessListManager(
     IWorldState stateProvider,
@@ -59,10 +57,8 @@ public partial class BlockAccessListManager(
     private bool _isBuilding;
     private bool _blockAccessListsEnabled;
 
-    // State root captured at PrepareForProcessing — the snapshot point against which each
-    // parallel worker's parent-reader scope is opened. Captured only when ParallelExecutionEnabled
-    // (which itself requires stateProvider.IsInScope). Null on the sequential path so attempts
-    // to build a parent-reader scope without an active state scope fail fast.
+    // Snapshot point for parallel workers' parent-reader scopes. Set only when
+    // ParallelExecutionEnabled; null on the sequential path so a stray scope opens fail fast.
     private Hash256? _parentStateRoot;
 
     // Column-oriented validation index used by the fast path in ValidateBlockAccessList. The
@@ -79,12 +75,9 @@ public partial class BlockAccessListManager(
     private int _suggestedChargeableStorageReads;
     private int _generatedChargeableStorageReads;
     private bool _hasGeneratedValidationIndexUpdates;
-    // Latched true if any tx-level slice introduces an account that has no state changes
-    // and isn't a tolerated read-only entry (system-user at index 0 or any storage-read row),
-    // and that account isn't declared in the suggested BAL. The column-index fast path can't
-    // detect this — no lane data lands for such an account on either side, so ChangesEqual
-    // says "equal". The flag forces ValidateBlockAccessList's fallback walk, which produces
-    // the same "missing account changes" error the sequential path surfaces.
+    // Latched when a per-tx slice surfaces a generated-only account that the column index
+    // can't see (no lane data on either side). Forces the validator's fallback walk so the
+    // same "missing account changes" error fires as on the sequential path.
     private bool _hasGeneratedRequiredReadAccountMismatch;
 
     public class ParallelExecutionException(InvalidBlockException innerException)
@@ -105,10 +98,8 @@ public partial class BlockAccessListManager(
         Enabled = _blockAccessListsEnabled && !suggestedBlock.IsGenesis;
         _isBuilding = options.ContainsFlag(ProcessingOptions.ProducingBlock);
 
-        // Parallel execution requires:
-        //  * the BAL body to be present on the block (RLP-only fixtures only carry the hash);
-        //  * the state provider to be scoped, so we can capture the parent state root for the
-        //    per-worker snapshot reader.
+        // Parallel execution needs the decoded BAL body (RLP fixtures only carry the hash)
+        // and an active state scope (so we can capture the parent state root for workers).
         ParallelExecutionEnabled = Enabled
             && blocksConfig.ParallelExecution
             && !_isBuilding
@@ -121,16 +112,12 @@ public partial class BlockAccessListManager(
             _gasRemaining = suggestedBlock.GasUsed;
             _parentStateRoot = ParallelExecutionEnabled ? stateProvider.StateRoot : null;
 
-            // Build the column-oriented validation index used by ValidateBlockAccessList's
-            // fast path. Runs once per block; subsequent per-tx ChangesEqual calls become
-            // row-aligned span compares. Tally suggested-side chargeable storage reads here
-            // so the per-tx surplus-reads gas check can avoid re-walking the BAL.
-            //
-            // Only the parallel path feeds the generated index (via RegisterGeneratedSlice
-            // wired into MergeAndReturnBal). The sequential path's NextTransaction merges
-            // BALs directly through WorldState.MergeGeneratingBal without going through the
-            // callback, so _hasGeneratedValidationIndexUpdates would never flip and the
-            // fast path would never trigger — skip the O(n) build entirely there.
+            // Build the column-oriented validation index once per block; per-tx ChangesEqual
+            // then collapses to row-aligned span compares. Tally suggested chargeable storage
+            // reads here so the per-tx surplus-reads gas check avoids re-walking the BAL.
+            // Only the parallel path feeds the generated side (via RegisterGeneratedSlice in
+            // MergeAndReturnBal); the sequential NextTransaction merges directly into
+            // GeneratedBlockAccessList, so the fast path never fires there — skip the build.
             if (ParallelExecutionEnabled && suggestedBlock.BlockAccessList is not null)
             {
                 BlockAccessListValidationIndex.AddressIndex addressIndex = new();
@@ -176,7 +163,7 @@ public partial class BlockAccessListManager(
         if (Enabled)
         {
             CheckInitialized();
-            _txProcessorWithWorldStateManager.Get().WorldState.MergeGeneratingBal(GeneratedBlockAccessList);
+            MergeTxBal();
             _txProcessorWithWorldStateManager.NextTransaction();
         }
     }
@@ -215,6 +202,11 @@ public partial class BlockAccessListManager(
     /// so the column-index fast path and read-only-account mismatch flag stay in sync.</summary>
     private void MergeAndReturnBal(uint balIndex)
         => _txProcessorWithWorldStateManager!.MergeAndReturnBal(balIndex, GeneratedBlockAccessList, RegisterGeneratedSlice);
+
+    /// <summary>Sequential counterpart to <see cref="MergeAndReturnBal"/>: merges the active
+    /// worldstate's BAL directly, without the parallel path's detach + slice-hook step.</summary>
+    private void MergeTxBal()
+        => _txProcessorWithWorldStateManager!.Get().WorldState.MergeGeneratingBal(GeneratedBlockAccessList);
 
     private void CheckInitialized()
     {
