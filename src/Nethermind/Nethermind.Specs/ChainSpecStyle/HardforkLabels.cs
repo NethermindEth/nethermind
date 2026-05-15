@@ -50,16 +50,16 @@ public static partial class HardforkLabels
     public static void ExpandAll(ChainSpecParamsJson parameters)
     {
         if (parameters.NamedForks is null or { Count: 0 }) return;
+
+        // System.Text.Json populates NamedForks with a case-sensitive Dictionary; re-key as
+        // OrdinalIgnoreCase so `"cancun"`, `"Cancun"`, and `"CANCUN"` all match a label.
+        if (parameters.NamedForks.Comparer != StringComparer.OrdinalIgnoreCase)
+            parameters.NamedForks = new Dictionary<string, JsonElement>(parameters.NamedForks, StringComparer.OrdinalIgnoreCase);
+
         foreach (IHardforkLabel label in All) label.Apply(parameters);
     }
 
     /// <param name="name">Fork class name (e.g. <c>Cancun</c>); the JSON wire key is its camelCase form.</param>
-    /// <remarks>
-    /// Parsing dispatches through <see cref="EthereumJsonSerializer.JsonOptions"/> so hex strings
-    /// (<c>"0x65687fd0"</c>) and decimal numbers go through the same <c>LongConverter</c> /
-    /// <c>ULongConverter</c> the rest of <see cref="ChainSpecParamsJson"/> uses for its explicit
-    /// EIP transition fields — one number-parsing code path, not two.
-    /// </remarks>
     internal static HardforkLabel<long> Block(
         string name,
         params Expression<Func<ChainSpecParamsJson, long?>>[] eips) =>
@@ -128,7 +128,7 @@ internal sealed class HardforkLabel<T> : IHardforkLabel
     public void Apply(ChainSpecParamsJson parameters)
     {
         if (parameters.NamedForks is null) return;
-        if (!TryTakeLabelValue(parameters.NamedForks, out JsonElement element)) return;
+        if (!parameters.NamedForks.Remove(_jsonKey, out JsonElement element)) return;
 
         T labelValue = _parse(element);
 
@@ -146,25 +146,6 @@ internal sealed class HardforkLabel<T> : IHardforkLabel
                     ExitCodes.ConflictingChainspecEipConfiguration);
             }
         }
-    }
-
-    private bool TryTakeLabelValue(Dictionary<string, JsonElement> extension, out JsonElement value)
-    {
-        // Try the canonical camelCase key first (the wire format we document); fall back to a
-        // case-insensitive scan so hand-written chainspecs with `"Cancun"` or `"CANCUN"` still work.
-        if (extension.Remove(_jsonKey, out value)) return true;
-
-        foreach (KeyValuePair<string, JsonElement> kvp in extension)
-        {
-            if (string.Equals(kvp.Key, _jsonKey, StringComparison.OrdinalIgnoreCase))
-            {
-                value = kvp.Value;
-                extension.Remove(kvp.Key);
-                return true;
-            }
-        }
-        value = default;
-        return false;
     }
 
     private static int ParseCanonicalEip(string propertyName)
