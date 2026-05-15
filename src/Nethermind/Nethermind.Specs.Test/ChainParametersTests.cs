@@ -17,9 +17,14 @@ public class ChainParametersTests
     public void ChainParameters_should_have_same_properties_as_chainSpecParamsJson()
     {
         string[] chainParametersExceptions = [];
-        string[] chainSpecParamsJsonExceptions = {
-            "ChainId", "NetworkId"
-        };
+        // Hardfork shorthand labels expand at the JSON parse boundary (see HardforkLabels) and
+        // intentionally have no counterpart in ChainParameters.
+        string[] chainSpecParamsJsonExceptions = [
+            "ChainId", "NetworkId",
+            "Homestead", "TangerineWhistle", "SpuriousDragon", "Byzantium", "Constantinople",
+            "ConstantinopleFix", "Istanbul", "Berlin", "London",
+            "Shanghai", "Cancun", "Prague", "Osaka", "Amsterdam",
+        ];
         IEnumerable<string> chainParametersProperties = typeof(ChainParameters).GetProperties()
             .Where(x => !chainParametersExceptions.Contains(x.Name))
             .Select(x => x.Name);
