@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
@@ -266,11 +267,26 @@ public class OptimismEthRpcModule(
             {
                 _blockchainBridge.RecoverTxSenders(block);
                 TxReceipt[] receipts = _receiptFinder.Get(block);
+                Dictionary<Hash256, TxReceipt> receiptsByTxHash = new(receipts.Length);
+                for (int i = 0; i < receipts.Length; i++)
+                {
+                    TxReceipt receipt = receipts[i];
+                    if (receipt.TxHash is Hash256 txHash)
+                    {
+                        // Keep first occurrence to preserve previous FirstOrDefault semantics.
+                        receiptsByTxHash.TryAdd(txHash, receipt);
+                    }
+                }
                 Transaction[] transactions = block.Transactions;
                 TransactionForRpc[] txs = new TransactionForRpc[transactions.Length];
                 for (int i = 0; i < txs.Length; i++)
                 {
                     Transaction tx = transactions[i];
+                    TxReceipt? receipt = null;
+                    if (tx.Hash is Hash256 txHash)
+                    {
+                        receiptsByTxHash.TryGetValue(txHash, out receipt);
+                    }
                     TransactionForRpc rpcTx = TransactionForRpc.FromTransaction(
                         tx,
                         new(
@@ -280,12 +296,11 @@ public class OptimismEthRpcModule(
                             txIndex: i,
                             blockTimestamp: block.Timestamp,
                             baseFee: block.BaseFeePerGas,
-                            receipt: receipts.FirstOrDefault(r => r.TxHash?.Equals(tx.Hash) ?? false)));
+                            receipt: receipt));
 
                     if (rpcTx is DepositTransactionForRpc depositTx)
                     {
-                        OptimismTxReceipt? receipt = receipts.FirstOrDefault(r => r.TxHash?.Equals(tx.Hash) ?? false) as OptimismTxReceipt;
-                        depositTx.DepositReceiptVersion = receipt?.DepositReceiptVersion;
+                        depositTx.DepositReceiptVersion = (receipt as OptimismTxReceipt)?.DepositReceiptVersion;
                     }
 
                     txs[i] = rpcTx;
