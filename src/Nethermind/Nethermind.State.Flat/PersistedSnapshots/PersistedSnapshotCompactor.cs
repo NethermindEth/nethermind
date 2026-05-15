@@ -31,8 +31,7 @@ public class PersistedSnapshotCompactor(
     PersistedSnapshotBloomFilterManager bloomManager,
     int minCompactSize,
     int maxCompactSize,
-    PersistedSnapshotTier tier,
-    string reservationTag) : IPersistedSnapshotCompactor
+    PersistedSnapshotTier tier) : IPersistedSnapshotCompactor
 {
     private readonly ILogger _logger = logManager.GetClassLogger<PersistedSnapshotCompactor>();
     private readonly int _minCompactSize = Math.Max(minCompactSize, 2);
@@ -42,7 +41,6 @@ public class PersistedSnapshotCompactor(
     private readonly double _bloomBitsPerKey = config.PersistedSnapshotBloomBitsPerKey;
     private readonly long _maxCompactedSourceBytes = config.PersistedSnapshotMaxCompactedSourceBytes;
     private readonly PersistedSnapshotTier _tier = tier;
-    private readonly string _reservationTag = reservationTag;
 
     /// <summary>
     /// Try to compact persisted snapshots using logarithmic compaction. Walks
@@ -154,7 +152,7 @@ public class PersistedSnapshotCompactor(
                 : null;
             SnapshotLocation location;
             ArenaReservation reservation;
-            using (ArenaWriter arenaWriter = arenaManager.CreateWriter(estimatedSize, _reservationTag))
+            using (ArenaWriter arenaWriter = arenaManager.CreateWriter(estimatedSize))
             {
                 long sw = Stopwatch.GetTimestamp();
                 PersistedSnapshotMerger.NWayMergeSnapshotsWithViews<ArenaBufferWriter, ArenaBufferReader, NoOpPin>(

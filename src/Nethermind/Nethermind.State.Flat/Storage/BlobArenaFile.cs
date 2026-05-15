@@ -21,11 +21,13 @@ namespace Nethermind.State.Flat.Storage;
 /// </para>
 ///
 /// <para>
-/// Owns its own contribution to <see cref="Metrics.ArenaFileCountByTier"/> /
-/// <see cref="Metrics.ArenaMappedBytesByTier"/> under <see cref="_tier"/>: count +1 and
-/// bytes <c>+MaxSize</c> on construction; symmetric -1 / -<c>MaxSize</c> on
-/// <see cref="CleanUp"/>. The bytes gauge reports disk allocation per tier, matching
-/// <see cref="ArenaManager"/>'s file-add metric semantics.
+/// Owns its own contribution to <see cref="Metrics.BlobFileCountByTier"/> /
+/// <see cref="Metrics.BlobAllocatedBytesByTier"/> under <see cref="Tier"/>: count +1 on
+/// construction (plus the initial <see cref="Frontier"/> as allocated bytes for rehydrated
+/// files); symmetric -1 / -<see cref="ReportedFrontier"/> on <see cref="CleanUp"/>.
+/// <see cref="BlobArenaManager.OnWriteCompleted"/> pushes frontier deltas as writes
+/// advance. Bytes are reported as **allocated** (Frontier-based), not the pre-extended
+/// sparse <see cref="MaxSize"/>.
 /// </para>
 /// </summary>
 public sealed class BlobArenaFile : RefCountingDisposable
@@ -34,7 +36,7 @@ public sealed class BlobArenaFile : RefCountingDisposable
     // PersistOnShutdown via Interlocked.Exchange so it is safe to call from any path.
     private int _preserveOnDispose;
 
-    private readonly PersistedSnapshotTier _tier;
+    internal PersistedSnapshotTier Tier { get; }
 
     /// <summary>Stable file id, narrowed from int to ushort. Embedded in every <see cref="NodeRef"/>.</summary>
     public ushort BlobArenaId { get; }
@@ -51,9 +53,16 @@ public sealed class BlobArenaFile : RefCountingDisposable
     /// <summary>Next-write offset. Mutated under the manager's lock during writer registration.</summary>
     internal long Frontier { get; set; }
 
+    /// <summary>
+    /// Last value of <see cref="Frontier"/> reported to <c>Metrics.BlobAllocatedBytesByTier</c>.
+    /// Lets <see cref="BlobArenaManager"/> push frontier deltas on
+    /// <see cref="BlobArenaWriter.Complete"/> without re-counting bytes it already reported.
+    /// </summary>
+    internal long ReportedFrontier { get; set; }
+
     internal BlobArenaFile(PersistedSnapshotTier tier, ushort id, string path, long maxSize, long frontier)
     {
-        _tier = tier;
+        Tier = tier;
         BlobArenaId = id;
         Path = path;
         MaxSize = maxSize;
@@ -63,9 +72,11 @@ public sealed class BlobArenaFile : RefCountingDisposable
         if (RandomAccess.GetLength(Handle) < maxSize)
             RandomAccess.SetLength(Handle, maxSize);
         Frontier = frontier;
-        Metrics.ArenaFileCountByTier.AddOrUpdate(tier, 1L, static (_, c) => c + 1);
-        Metrics.ArenaMappedBytesByTier.AddOrUpdate(tier,
-            static (_, m) => m, static (_, b, m) => b + m, maxSize);
+        ReportedFrontier = frontier;
+        Metrics.BlobFileCountByTier.AddOrUpdate(tier, 1L, static (_, c) => c + 1);
+        if (frontier > 0)
+            Metrics.BlobAllocatedBytesByTier.AddOrUpdate(tier,
+                static (_, f) => f, static (_, b, f) => b + f, frontier);
     }
 
     /// <summary>
@@ -132,9 +143,12 @@ public sealed class BlobArenaFile : RefCountingDisposable
         {
             try { File.Delete(Path); } catch { /* best-effort */ }
         }
-        Metrics.ArenaFileCountByTier.AddOrUpdate(_tier,
+        Metrics.BlobFileCountByTier.AddOrUpdate(Tier,
             0L, static (_, c) => Math.Max(0, c - 1));
-        Metrics.ArenaMappedBytesByTier.AddOrUpdate(_tier,
-            static (_, _) => 0L, static (_, b, m) => Math.Max(0, b - m), MaxSize);
+        long reported = ReportedFrontier;
+        ReportedFrontier = 0;
+        if (reported > 0)
+            Metrics.BlobAllocatedBytesByTier.AddOrUpdate(Tier,
+                static (_, _) => 0L, static (_, b, r) => Math.Max(0, b - r), reported);
     }
 }

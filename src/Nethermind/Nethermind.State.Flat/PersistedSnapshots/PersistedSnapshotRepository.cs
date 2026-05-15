@@ -23,18 +23,17 @@ namespace Nethermind.State.Flat.PersistedSnapshots;
 ///   its compactor merges these into 2×, 4×, ... CompactSize spans.</item>
 /// </list>
 /// Each instance owns its <c>(ArenaManager, BlobArenaManager,
-/// SnapshotCatalog)</c> set plus a reservation tag (<paramref name="metaTag"/>) used
-/// for the metadata-arena reservation label. Blob arena ids are unique within a repo,
-/// not across repos; <c>PersistedSnapshot</c>s only ever resolve <c>NodeRef</c>s through
-/// their own repo's blob manager.
+/// SnapshotCatalog)</c> set. The pool tier is read off the arena manager
+/// (<see cref="IArenaManager.Tier"/>) for histogram labelling. Blob arena ids are unique
+/// within a repo, not across repos; <c>PersistedSnapshot</c>s only ever resolve <c>NodeRef</c>s
+/// through their own repo's blob manager.
 /// </summary>
 public sealed class PersistedSnapshotRepository(
     IArenaManager arenaManager,
     IBlobArenaManager blobArenaManager,
     IDb catalogDb,
     IFlatDbConfig config,
-    PersistedSnapshotBloomFilterManager bloomManager,
-    string metaTag = ArenaReservationTags.BlobBackedSmall) : IPersistedSnapshotRepository
+    PersistedSnapshotBloomFilterManager bloomManager) : IPersistedSnapshotRepository
 {
     private readonly IArenaManager _arena = arenaManager;
     private readonly IBlobArenaManager _blobs = blobArenaManager;
@@ -43,7 +42,7 @@ public sealed class PersistedSnapshotRepository(
     private readonly bool _validatePersistedSnapshot = config.ValidatePersistedSnapshot;
     private readonly double _bloomBitsPerKey = config.PersistedSnapshotBloomBitsPerKey;
     private readonly double _trieBloomBitsPerKey = config.PersistedSnapshotTrieBloomBitsPerKey;
-    private readonly string _metaTag = metaTag;
+    private readonly string _tierLabel = arenaManager.Tier.Name;
     private readonly ConcurrentDictionary<StateId, PersistedSnapshot> _baseSnapshots = new();
     private readonly ConcurrentDictionary<StateId, PersistedSnapshot> _compactedSnapshots = new();
     // Shared across both per-tier repos. Owned by the DI container, not this repo —
@@ -89,7 +88,7 @@ public sealed class PersistedSnapshotRepository(
     private void LoadSnapshot(SnapshotCatalog.CatalogEntry entry)
     {
         long range = entry.To.BlockNumber - entry.From.BlockNumber;
-        ArenaReservation reservation = _arena.Open(entry.Location, _metaTag);
+        ArenaReservation reservation = _arena.Open(entry.Location);
 
         // The PersistedSnapshot ctor walks its own ref_ids metadata and leases each blob
         // arena file; on partial failure it releases what it took and disposes the
@@ -103,7 +102,7 @@ public sealed class PersistedSnapshotRepository(
             _baseSnapshots[entry.To] = snapshot;
     }
 
-    private readonly Histogram _persistedSnapshotSize = Prometheus.Metrics.CreateHistogram("persisted_snapshot_size", "persisted_snapshot_size", "type");
+    private readonly Histogram _persistedSnapshotSize = Prometheus.Metrics.CreateHistogram("persisted_snapshot_size", "persisted_snapshot_size", "tier");
 
     /// <summary>
     /// Persist an in-memory snapshot to this tier as a base input. Caller is
@@ -135,11 +134,11 @@ public sealed class PersistedSnapshotRepository(
         SnapshotLocation location;
         ArenaReservation reservation;
         using BlobArenaWriter blobWriter = _blobs.CreateWriter(estimatedSize);
-        using (ArenaWriter arenaWriter = _arena.CreateWriter(estimatedSize, _metaTag))
+        using (ArenaWriter arenaWriter = _arena.CreateWriter(estimatedSize))
         {
             PersistedSnapshotBuilder.Build<ArenaBufferWriter, ArenaBufferReader, NoOpPin>(
                 snapshot, ref arenaWriter.GetWriter(), blobWriter, bloom, trieBloom);
-            _persistedSnapshotSize.WithLabels(_metaTag).Observe(arenaWriter.GetWriter().Written);
+            _persistedSnapshotSize.WithLabels(_tierLabel).Observe(arenaWriter.GetWriter().Written);
             (location, reservation) = arenaWriter.Complete();
         }
         blobWriter.Complete();

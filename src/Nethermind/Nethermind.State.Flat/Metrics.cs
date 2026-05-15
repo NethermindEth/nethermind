@@ -141,17 +141,32 @@ public static class Metrics
     [Description("Number of persisted snapshot prunes")]
     public static long PersistedSnapshotPrunes { get; set; }
 
-    // Push-style gauges: ArenaManager increments/decrements these on every file add, remove,
-    // and resize. Keyed by the typed PersistedSnapshotTier singleton so the small and large
-    // arena pools surface separately in Prometheus; the metrics controller dispatches on
+    // Push-style gauges keyed by the typed PersistedSnapshotTier singleton so the small and
+    // large pools surface separately in Prometheus; the metrics controller dispatches on
     // IMetricLabels to produce the wire-format "small"/"large" label.
-    [Description("Number of arena files backing persisted snapshots, by tier")]
+    //
+    // Two separate gauge families: arena files (mmap-backed metadata) versus blob files
+    // (pread-only RLP). They had been mixed under a single Arena*ByTier pair, which made it
+    // impossible to attribute per-tier bytes to one or the other from the dashboard.
+    //
+    // Bytes are reported as **allocated** (sum of `Frontier` across open files) — i.e. bytes
+    // actually written, not the pre-extended sparse mmap region. Arena/Blob managers push
+    // deltas on every writer.Complete + on file open/close.
+    [Description("Number of arena (mmap metadata) files backing persisted snapshots, by tier")]
     [KeyIsLabel("tier")]
     public static ConcurrentDictionary<PersistedSnapshotTier, long> ArenaFileCountByTier { get; } = new();
 
-    [Description("Total mmap size of arena files backing persisted snapshots in bytes, by tier")]
+    [Description("Allocated bytes in arena files (sum of per-file Frontier), by tier")]
     [KeyIsLabel("tier")]
-    public static ConcurrentDictionary<PersistedSnapshotTier, long> ArenaMappedBytesByTier { get; } = new();
+    public static ConcurrentDictionary<PersistedSnapshotTier, long> ArenaAllocatedBytesByTier { get; } = new();
+
+    [Description("Number of blob (pread RLP) files backing persisted snapshots, by tier")]
+    [KeyIsLabel("tier")]
+    public static ConcurrentDictionary<PersistedSnapshotTier, long> BlobFileCountByTier { get; } = new();
+
+    [Description("Allocated bytes in blob files (sum of per-file Frontier), by tier")]
+    [KeyIsLabel("tier")]
+    public static ConcurrentDictionary<PersistedSnapshotTier, long> BlobAllocatedBytesByTier { get; } = new();
 
     // Per-tier PageResidencyTracker gauges. ResidentBytes is refreshed by ArenaManager on a
     // 1-second System.Threading.Timer so the tracker's hot path stays untouched; the gauge
@@ -169,12 +184,12 @@ public static class Metrics
     public static ConcurrentDictionary<PersistedSnapshotTier, long> PageTrackerMaxBytesByTier { get; } = new();
 
     [DetailedMetric]
-    [Description("Live arena reservations by tag")]
-    [KeyIsLabel("tag")]
-    public static ConcurrentDictionary<string, long> ArenaReservationCountByTag { get; } = new();
+    [Description("Live arena reservations, by tier")]
+    [KeyIsLabel("tier")]
+    public static ConcurrentDictionary<PersistedSnapshotTier, long> ArenaReservationCountByTier { get; } = new();
 
     [DetailedMetric]
-    [Description("Live arena reservation bytes by tag")]
-    [KeyIsLabel("tag")]
-    public static ConcurrentDictionary<string, long> ArenaReservationBytesByTag { get; } = new();
+    [Description("Live arena reservation bytes, by tier")]
+    [KeyIsLabel("tier")]
+    public static ConcurrentDictionary<PersistedSnapshotTier, long> ArenaReservationBytesByTier { get; } = new();
 }

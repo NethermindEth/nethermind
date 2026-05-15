@@ -68,6 +68,13 @@ public sealed unsafe class ArenaFile : RefCountingDisposable
     /// </summary>
     internal long DeadBytes { get; set; }
 
+    /// <summary>
+    /// Last value of <see cref="Frontier"/> reported to <c>Metrics.ArenaAllocatedBytesByTier</c>.
+    /// Lets <see cref="ArenaManager"/> push frontier deltas on writer.Complete without
+    /// keeping a parallel dict and without re-counting bytes it already reported.
+    /// </summary>
+    internal long ReportedFrontier { get; set; }
+
     public ArenaFile(int id, string path, long mappedSize)
     {
         Id = id;

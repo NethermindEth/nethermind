@@ -16,14 +16,14 @@ public sealed class ArenaReservation : RefCountingDisposable
     // ArenaFile dictionary lookup.
     private readonly ArenaFile _arenaFile;
     private readonly long _initialSize;
+    private readonly PersistedSnapshotTier _tier;
 
     internal int ArenaId { get; }
     internal long Offset { get; }
     public long Size { get; internal set; }
-    private string Tag { get; }
 
     public ArenaReservation(IArenaManager arenaManager, ArenaFile arenaFile,
-                            int arenaId, long offset, long size, string tag)
+                            int arenaId, long offset, long size)
         : base(1)
     {
         // Pin the arena file so it can't be torn down while this reservation is alive.
@@ -35,13 +35,14 @@ public sealed class ArenaReservation : RefCountingDisposable
                 $"Cannot construct ArenaReservation for arena {arenaId}: the underlying ArenaFile is already being disposed.");
         _arenaManager = arenaManager;
         _arenaFile = arenaFile;
+        _tier = arenaManager.Tier;
         ArenaId = arenaId;
         Offset = offset;
         Size = size;
-        Tag = tag;
         _initialSize = size;
-        Metrics.ArenaReservationCountByTag.AddOrUpdate(tag, 1L, static (_, c) => c + 1);
-        Metrics.ArenaReservationBytesByTag.AddOrUpdate(tag, static (_, s) => s, static (_, b, s) => b + s, size);
+        Metrics.ArenaReservationCountByTier.AddOrUpdate(_tier, 1L, static (_, c) => c + 1);
+        Metrics.ArenaReservationBytesByTier.AddOrUpdate(_tier,
+            static (_, s) => s, static (_, b, s) => b + s, size);
     }
 
     /// <summary>
@@ -121,8 +122,10 @@ public sealed class ArenaReservation : RefCountingDisposable
             _arenaFile.FadviseDontNeed(Offset, Size);
         _arenaManager.MarkDead(_arenaFile, Size);
         _arenaManager.ForgetTrackerRange(ArenaId, Offset, Size);
-        Metrics.ArenaReservationCountByTag.AddOrUpdate(Tag, 0L, static (_, c) => Math.Max(0, c - 1));
-        Metrics.ArenaReservationBytesByTag.AddOrUpdate(Tag, static (_, _) => 0L, static (_, b, s) => Math.Max(0, b - s), _initialSize);
+        Metrics.ArenaReservationCountByTier.AddOrUpdate(_tier,
+            0L, static (_, c) => Math.Max(0, c - 1));
+        Metrics.ArenaReservationBytesByTier.AddOrUpdate(_tier,
+            static (_, _) => 0L, static (_, b, s) => Math.Max(0, b - s), _initialSize);
         _arenaFile.Dispose();
     }
 }

@@ -5,10 +5,16 @@ namespace Nethermind.State.Flat.Storage;
 
 public unsafe interface IArenaManager : IDisposable
 {
+    /// <summary>
+    /// Pool tier (small / large) — exposed so callers (e.g. <see cref="ArenaReservation"/>)
+    /// can attribute per-reservation metrics without piping a separate label through.
+    /// </summary>
+    PersistedSnapshotTier Tier { get; }
+
     void Initialize(IReadOnlyList<SnapshotCatalog.CatalogEntry> entries);
 
-    ArenaWriter CreateWriter(long estimatedSize, string tag);
-    ArenaReservation Open(in SnapshotLocation location, string tag);
+    ArenaWriter CreateWriter(long estimatedSize);
+    ArenaReservation Open(in SnapshotLocation location);
 
     /// <summary>
     /// Drop <paramref name="deadSize"/> bytes of <paramref name="file"/> as dead. The caller

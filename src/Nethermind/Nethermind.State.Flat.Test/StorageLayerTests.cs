@@ -137,7 +137,7 @@ public class StorageLayerTests
         byte[] data = [1, 2, 3, 4, 5, 6, 7, 8];
 
         SnapshotLocation location;
-        using (ArenaWriter arenaWriter = manager.CreateWriter(data.Length, ArenaReservationTags.Test))
+        using (ArenaWriter arenaWriter = manager.CreateWriter(data.Length))
         {
             Span<byte> span = arenaWriter.GetWriter().GetSpan(data.Length);
             data.CopyTo(span);
@@ -146,7 +146,7 @@ public class StorageLayerTests
         }
 
         // Read back and verify
-        using (WholeReadSession session = manager.Open(location, ArenaReservationTags.Test).BeginWholeReadSession())
+        using (WholeReadSession session = manager.Open(location).BeginWholeReadSession())
             Assert.That(session.AsSpanIntBounded().ToArray(), Is.EqualTo(data));
         Assert.That(location.Size, Is.EqualTo(data.Length));
     }
@@ -161,7 +161,7 @@ public class StorageLayerTests
         // First write some data to establish a baseline
         byte[] baseline = [0xAA];
         SnapshotLocation baselineLoc;
-        using (ArenaWriter bw = manager.CreateWriter(baseline.Length, ArenaReservationTags.Test))
+        using (ArenaWriter bw = manager.CreateWriter(baseline.Length))
         {
             Span<byte> span = bw.GetWriter().GetSpan(baseline.Length);
             baseline.CopyTo(span);
@@ -170,7 +170,7 @@ public class StorageLayerTests
         }
 
         // Create writer and then dispose without completing (cancel)
-        using (ArenaWriter arenaWriter = manager.CreateWriter(0, ArenaReservationTags.Test))
+        using (ArenaWriter arenaWriter = manager.CreateWriter(0))
         {
             // Don't call Complete — Dispose will call CancelWrite
         }
@@ -178,7 +178,7 @@ public class StorageLayerTests
         // Write again — should reuse from the baseline offset
         byte[] data = new byte[50];
         SnapshotLocation loc;
-        using (ArenaWriter w = manager.CreateWriter(data.Length, ArenaReservationTags.Test))
+        using (ArenaWriter w = manager.CreateWriter(data.Length))
         {
             Span<byte> span = w.GetWriter().GetSpan(data.Length);
             data.CopyTo(span);
@@ -198,7 +198,7 @@ public class StorageLayerTests
         // Write small data via ArenaWriter
         byte[] data = [1, 2, 3];
         SnapshotLocation location;
-        using (ArenaWriter arenaWriter = manager.CreateWriter(data.Length, ArenaReservationTags.Test))
+        using (ArenaWriter arenaWriter = manager.CreateWriter(data.Length))
         {
             Span<byte> span = arenaWriter.GetWriter().GetSpan(data.Length);
             data.CopyTo(span);
@@ -211,7 +211,7 @@ public class StorageLayerTests
         // Next write should start right after the written data
         byte[] next = [4, 5];
         SnapshotLocation nextLoc;
-        using (ArenaWriter w = manager.CreateWriter(next.Length, ArenaReservationTags.Test))
+        using (ArenaWriter w = manager.CreateWriter(next.Length))
         {
             Span<byte> span = w.GetWriter().GetSpan(next.Length);
             next.CopyTo(span);
@@ -234,7 +234,7 @@ public class StorageLayerTests
 
         SnapshotLocation location;
         string dedicatedFile;
-        using (ArenaWriter writer = manager.CreateWriter(estimate, ArenaReservationTags.Test))
+        using (ArenaWriter writer = manager.CreateWriter(estimate))
         {
             data.CopyTo(writer.GetWriter().GetSpan(data.Length));
             writer.GetWriter().Advance(data.Length);
@@ -243,7 +243,7 @@ public class StorageLayerTests
         }
 
         Assert.That(new FileInfo(dedicatedFile).Length, Is.EqualTo(data.Length));
-        using WholeReadSession session = manager.Open(location, ArenaReservationTags.Test).BeginWholeReadSession();
+        using WholeReadSession session = manager.Open(location).BeginWholeReadSession();
         Assert.That(session.AsSpanIntBounded().ToArray(), Is.EqualTo(data));
     }
 
@@ -258,9 +258,9 @@ public class StorageLayerTests
         byte[] data = [1, 2, 3];
 
         // First writer takes the arena
-        using ArenaWriter w1 = manager.CreateWriter(data.Length, ArenaReservationTags.Test);
+        using ArenaWriter w1 = manager.CreateWriter(data.Length);
         // Second writer should use a different arena since the first arena is reserved
-        using ArenaWriter w2 = manager.CreateWriter(data.Length, ArenaReservationTags.Test);
+        using ArenaWriter w2 = manager.CreateWriter(data.Length);
         data.CopyTo(w1.GetWriter().GetSpan(data.Length));
         w1.GetWriter().Advance(data.Length);
         data.CopyTo(w2.GetWriter().GetSpan(data.Length));

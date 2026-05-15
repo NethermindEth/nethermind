@@ -60,6 +60,8 @@ public sealed class ArenaManager : IArenaManager
 
     public PageResidencyTracker PageTracker => _pageTracker;
 
+    public PersistedSnapshotTier Tier => _tier;
+
     public ArenaManager(string basePath, long pageCacheBytes, long maxArenaSize = 1L * 1024 * 1024 * 1024, bool fadviseOnEviction = false, long dedicatedArenaThreshold = DefaultDedicatedArenaThreshold, PersistedSnapshotTier? tier = null)
     {
         _basePath = basePath;
@@ -106,7 +108,9 @@ public sealed class ArenaManager : IArenaManager
     {
         lock (_lock)
         {
-            // Open existing arena files
+            // Open existing arena files. Defer the per-file metric push until after frontier
+            // computation so the initial ArenaAllocatedBytesByTier delta reflects the
+            // catalog-derived high-water mark, not 0.
             foreach (string file in Directory.GetFiles(_basePath, $"*{ArenaFileExtension}"))
             {
                 string fileName = Path.GetFileName(file);
@@ -124,7 +128,6 @@ public sealed class ArenaManager : IArenaManager
                 ArenaFile arena = new(arenaId, file, mappedSize);
                 _arenas[arenaId] = arena;
                 _nextArenaId = Math.Max(_nextArenaId, arenaId + 1);
-                OnArenaAdded(mappedSize);
 
                 if (isDedicated)
                     _standaloneFiles.Add(arenaId);
@@ -146,11 +149,14 @@ public sealed class ArenaManager : IArenaManager
                 liveSizes[aid] = live + entry.Location.Size;
             }
 
-            // Dead bytes = frontier - live sizes (stored on the file itself)
+            // Dead bytes = frontier - live sizes (stored on the file itself). Now that
+            // frontiers reflect the catalog's high-water mark, push the per-file count + bytes
+            // gauges in one go (seeds ReportedFrontier).
             foreach (KeyValuePair<int, ArenaFile> kv in _arenas)
             {
                 liveSizes.TryGetValue(kv.Key, out long live);
                 kv.Value.DeadBytes = kv.Value.Frontier - live;
+                OnArenaAdded(kv.Value);
             }
         }
     }
@@ -162,7 +168,7 @@ public sealed class ArenaManager : IArenaManager
     /// duration of the write and signals back via <see cref="OnWriteCompleted"/> /
     /// <see cref="OnWriteCancelledShared"/> / <see cref="OnWriteCancelledDedicated"/>.
     /// </summary>
-    public ArenaWriter CreateWriter(long estimatedSize, string tag)
+    public ArenaWriter CreateWriter(long estimatedSize)
     {
         lock (_lock)
         {
@@ -177,7 +183,7 @@ public sealed class ArenaManager : IArenaManager
             // mutable pool (they live in _standaloneFiles).
             if (!dedicated) _mutableArenas.Remove(file.Id);
             FileStream stream = file.CreateWriteStream(offset);
-            return new ArenaWriter(this, file, dedicated, offset, stream, tag);
+            return new ArenaWriter(this, file, dedicated, offset, stream);
         }
     }
 
@@ -187,12 +193,12 @@ public sealed class ArenaManager : IArenaManager
     /// the manager does NOT touch the file here. <paramref name="hasHeadroom"/> is true for
     /// shared writes whose post-frontier still leaves room for further packing.
     /// </summary>
-    internal void OnWriteCompleted(int arenaId, bool hasHeadroom, long resizeDelta)
+    internal void OnWriteCompleted(ArenaFile file, bool hasHeadroom)
     {
         lock (_lock)
         {
-            if (hasHeadroom) _mutableArenas.Add(arenaId);
-            if (resizeDelta != 0) OnArenaResized(resizeDelta);
+            if (hasHeadroom) _mutableArenas.Add(file.Id);
+            PushFrontierDelta(file);
         }
     }
 
@@ -210,15 +216,16 @@ public sealed class ArenaManager : IArenaManager
     /// Bookkeeping after a cancelled write on a dedicated arena. The writer has already
     /// dropped the file's manager-ref (triggering <see cref="ArenaFile.CleanUp"/> →
     /// close + delete on disk); the manager just clears its dict / state and updates
-    /// the byte metric.
+    /// the byte metric. <paramref name="file"/> is readable post-dispose (Id /
+    /// ReportedFrontier are plain fields).
     /// </summary>
-    internal void OnWriteCancelledDedicated(int arenaId, long mappedSize)
+    internal void OnWriteCancelledDedicated(ArenaFile file)
     {
         lock (_lock)
         {
-            _standaloneFiles.Remove(arenaId);
-            _arenas.TryRemove(arenaId, out _);
-            OnArenaRemoved(mappedSize);
+            _standaloneFiles.Remove(file.Id);
+            _arenas.TryRemove(file.Id, out _);
+            OnArenaRemoved(file);
         }
     }
 
@@ -229,11 +236,11 @@ public sealed class ArenaManager : IArenaManager
     /// by <see cref="ArenaFile.TryAcquireLease"/> inside the reservation's ctor — if the file has
     /// already started its CleanUp, the ctor surfaces an <see cref="InvalidOperationException"/>.
     /// </summary>
-    public ArenaReservation Open(in SnapshotLocation location, string tag)
+    public ArenaReservation Open(in SnapshotLocation location)
     {
         if (!_arenas.TryGetValue(location.ArenaId, out ArenaFile? arenaFile))
             throw new InvalidOperationException($"Arena {location.ArenaId} is not registered with this manager.");
-        return new ArenaReservation(this, arenaFile, location.ArenaId, location.Offset, location.Size, tag);
+        return new ArenaReservation(this, arenaFile, location.ArenaId, location.Offset, location.Size);
     }
 
     /// <summary>
@@ -257,7 +264,7 @@ public sealed class ArenaManager : IArenaManager
             _mutableArenas.Remove(file.Id);
             if (_arenas.TryRemove(file.Id, out _))
             {
-                OnArenaRemoved(file.MappedSize);
+                OnArenaRemoved(file);
                 file.Dispose();
             }
         }
@@ -393,32 +400,51 @@ public sealed class ArenaManager : IArenaManager
         if (dedicated) _standaloneFiles.Add(id);
         // Fresh shared file isn't added to _mutableArenas — the writer that just took it
         // is its "owner". The writer's Complete / Cancel adds it (if room remains).
-        OnArenaAdded(mappedSize);
+        OnArenaAdded(arena);
         return arena;
     }
 
-    // Push-style gauge updates. Called under _lock at every file add / remove / resize site so
-    // Metrics.ArenaFileCountByTier / ArenaMappedBytesByTier stay consistent with _arenas without
-    // periodic iteration. ConcurrentDictionary.AddOrUpdate is atomic.
-    private void OnArenaAdded(long mappedSize)
+    // Push-style gauge updates. Called under _lock at every file add / remove site so
+    // Metrics.ArenaFileCountByTier / ArenaAllocatedBytesByTier stay consistent with _arenas
+    // without periodic iteration. ConcurrentDictionary.AddOrUpdate is atomic.
+    //
+    // The bytes gauge tracks **allocated** bytes (file.Frontier — what's actually been written),
+    // not the pre-extended mmap region. Fresh files have Frontier=0 (no-op on the bytes gauge);
+    // catalog-loaded files seed Frontier from the on-disk high-water mark.
+    private void OnArenaAdded(ArenaFile file)
     {
-        Metrics.ArenaFileCountByTier.AddOrUpdate(_tier,
-            static (_, _) => 1L, static (_, c, _) => c + 1, mappedSize);
-        Metrics.ArenaMappedBytesByTier.AddOrUpdate(_tier,
-            static (_, m) => m, static (_, b, m) => b + m, mappedSize);
+        Metrics.ArenaFileCountByTier.AddOrUpdate(_tier, 1L, static (_, c) => c + 1);
+        long frontier = file.Frontier;
+        file.ReportedFrontier = frontier;
+        if (frontier > 0)
+            Metrics.ArenaAllocatedBytesByTier.AddOrUpdate(_tier,
+                static (_, f) => f, static (_, b, f) => b + f, frontier);
     }
 
-    private void OnArenaRemoved(long mappedSize)
+    private void OnArenaRemoved(ArenaFile file)
     {
         Metrics.ArenaFileCountByTier.AddOrUpdate(_tier,
-            static (_, _) => 0L, static (_, c, _) => Math.Max(0, c - 1), mappedSize);
-        Metrics.ArenaMappedBytesByTier.AddOrUpdate(_tier,
-            static (_, _) => 0L, static (_, b, m) => Math.Max(0, b - m), mappedSize);
+            0L, static (_, c) => Math.Max(0, c - 1));
+        long reported = file.ReportedFrontier;
+        file.ReportedFrontier = 0;
+        if (reported > 0)
+            Metrics.ArenaAllocatedBytesByTier.AddOrUpdate(_tier,
+                static (_, _) => 0L, static (_, b, r) => Math.Max(0, b - r), reported);
     }
 
-    private void OnArenaResized(long delta) =>
-        Metrics.ArenaMappedBytesByTier.AddOrUpdate(_tier,
+    // Ratchet ArenaAllocatedBytesByTier up to file.Frontier. Called from OnWriteCompleted —
+    // the writer has just advanced file.Frontier to the post-write high-water; push the delta
+    // since the last time we reported and bring file.ReportedFrontier in sync.
+    private void PushFrontierDelta(ArenaFile file)
+    {
+        long current = file.Frontier;
+        long reported = file.ReportedFrontier;
+        long delta = current - reported;
+        if (delta == 0) return;
+        file.ReportedFrontier = current;
+        Metrics.ArenaAllocatedBytesByTier.AddOrUpdate(_tier,
             static (_, d) => d, static (_, b, d) => b + d, delta);
+    }
 
     // Mirror the tracker's resident-bytes counter into the per-tier gauge. Runs on the
     // ThreadPool from a 1s System.Threading.Timer; ResidentBytes is a single Volatile.Read
@@ -468,7 +494,7 @@ public sealed class ArenaManager : IArenaManager
         {
             foreach (KeyValuePair<int, ArenaFile> kv in _arenas)
             {
-                OnArenaRemoved(kv.Value.MappedSize);
+                OnArenaRemoved(kv.Value);
                 kv.Value.Dispose();
             }
             _arenas.Clear();

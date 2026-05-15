@@ -27,11 +27,13 @@ public sealed class MemoryArenaManager : IArenaManager
 
     public PageResidencyTracker PageTracker => _inner.PageTracker;
 
+    public PersistedSnapshotTier Tier => _inner.Tier;
+
     public void Initialize(IReadOnlyList<SnapshotCatalog.CatalogEntry> entries) => _inner.Initialize(entries);
 
-    public ArenaWriter CreateWriter(long estimatedSize, string tag) => _inner.CreateWriter(estimatedSize, tag);
+    public ArenaWriter CreateWriter(long estimatedSize) => _inner.CreateWriter(estimatedSize);
 
-    public ArenaReservation Open(in SnapshotLocation location, string tag) => _inner.Open(location, tag);
+    public ArenaReservation Open(in SnapshotLocation location) => _inner.Open(location);
 
     public void QueueEviction(int arenaId, int pageIdx) => _inner.QueueEviction(arenaId, pageIdx);
 

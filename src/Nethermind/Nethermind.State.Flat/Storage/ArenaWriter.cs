@@ -17,10 +17,9 @@ public sealed class ArenaWriter : IDisposable
     private readonly ArenaFile _file;
     private readonly bool _dedicated;
     private readonly long _startOffset;
-    private readonly string _tag;
     private bool _completed;
 
-    internal ArenaWriter(ArenaManager manager, ArenaFile file, bool dedicated, long startOffset, Stream stream, string tag)
+    internal ArenaWriter(ArenaManager manager, ArenaFile file, bool dedicated, long startOffset, Stream stream)
     {
         _manager = manager;
         _file = file;
@@ -31,7 +30,6 @@ public sealed class ArenaWriter : IDisposable
         // instead of round-tripping through the manager's id→file dict lookup.
         _writer = new ArenaBufferWriter(stream, firstOffset,
             (relOffset, size) => file.OpenWholeView(startOffset + relOffset, size));
-        _tag = tag;
     }
 
     internal int ArenaId => _file.Id;
@@ -47,24 +45,21 @@ public sealed class ArenaWriter : IDisposable
         long newFrontier = _startOffset + actualSize;
         _file.Frontier = newFrontier;
 
-        long resizeDelta = 0;
         if (_dedicated && newFrontier > 0 && newFrontier < _file.MappedSize)
         {
             // Dedicated arenas are pre-sized to the writer's estimate; trim the file down
             // to the actual frontier so the on-disk length and mmap footprint match what
             // was written. Dedicated files reach this path before any reservation is
             // constructed against them, so it's safe to shrink the mapping in place.
-            long oldMapped = _file.MappedSize;
             _file.Truncate(newFrontier);
-            resizeDelta = newFrontier - oldMapped;
         }
 
         SnapshotLocation location = new(_file.Id, _startOffset, actualSize);
-        ArenaReservation reservation = new(_manager, _file, _file.Id, _startOffset, actualSize, _tag);
+        ArenaReservation reservation = new(_manager, _file, _file.Id, _startOffset, actualSize);
         // Dedicated arenas are one-shot — they never return to the mutable pool. Shared
         // arenas re-enter the pool iff there's still room for the next packing scan.
         bool hasHeadroom = !_dedicated && newFrontier < _file.MappedSize;
-        _manager.OnWriteCompleted(_file.Id, hasHeadroom, resizeDelta);
+        _manager.OnWriteCompleted(_file, hasHeadroom);
         return (location, reservation);
     }
 
@@ -76,10 +71,10 @@ public sealed class ArenaWriter : IDisposable
         {
             // Drop the manager's count=1 lease on the file — its own CleanUp closes the
             // mmap + handle and deletes the on-disk file. Then notify the manager to clear
-            // its dict / state. The manager NEVER touches the file in this path.
-            long mappedSize = _file.MappedSize;
+            // its dict / metric state. The file ref is still readable post-dispose (Id /
+            // ReportedFrontier are just fields); the manager NEVER reopens it.
             _file.Dispose();
-            _manager.OnWriteCancelledDedicated(_file.Id, mappedSize);
+            _manager.OnWriteCancelledDedicated(_file);
         }
         else
         {
