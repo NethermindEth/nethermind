@@ -194,14 +194,14 @@ public class ChainSpecParamsJson
     public ulong? Eip7954TransitionTimestamp { get; set; }
 
     /// <summary>
-    /// Captures top-level chainspec params keys that don't map to an explicit property. The
-    /// hardfork shorthand labels (<c>shanghai</c>, <c>cancun</c>, <c>prague</c>, <c>osaka</c>,
-    /// <c>amsterdam</c>, <c>homestead</c>, <c>tangerineWhistle</c>, <c>spuriousDragon</c>,
-    /// <c>byzantium</c>, <c>constantinople</c>, <c>constantinopleFix</c>, <c>istanbul</c>,
-    /// <c>berlin</c>, <c>london</c>) land here and are consumed by
-    /// <see cref="HardforkLabels.ExpandAll"/>, which expands each into the per-EIP transition
-    /// fields above. Anything still present after expansion is an unknown/typo key.
+    /// Catch-all for top-level chainspec params keys that don't map to an explicit property —
+    /// in practice the hardfork shorthand labels (<c>shanghai</c>, <c>cancun</c>, <c>prague</c>,
+    /// <c>osaka</c>, <c>amsterdam</c>, <c>homestead</c>, <c>tangerineWhistle</c>,
+    /// <c>spuriousDragon</c>, <c>byzantium</c>, <c>constantinople</c>, <c>constantinopleFix</c>,
+    /// <c>istanbul</c>, <c>berlin</c>, <c>london</c>). <see cref="HardforkLabels.ExpandAll"/>
+    /// consumes each recognized entry and expands it into the per-EIP transition fields above;
+    /// anything still present after expansion is an unknown/typo key.
     /// </summary>
     [JsonExtensionData]
-    public Dictionary<string, JsonElement>? ExtensionData { get; set; }
+    public Dictionary<string, JsonElement>? NamedForks { get; set; }
 }
