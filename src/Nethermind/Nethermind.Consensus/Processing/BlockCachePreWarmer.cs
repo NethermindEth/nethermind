@@ -148,7 +148,9 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
                 AddressWarmer addressWarmer = new(parallelOptions, suggestedBlock, parent, spec, systemAccessLists, this, bal);
                 ThreadPool.UnsafeQueueUserWorkItem(addressWarmer, preferLocal: false);
                 // Do not pass the cancellation token to the task, we don't want exceptions to be thrown in the main processing thread
-                return Task.Run(() => PreWarmCachesParallel(blockState, suggestedBlock, parent, spec, parallelOptions, addressWarmer, cancellationToken));
+                Task task = Task.Run(() => PreWarmCachesParallel(blockState, suggestedBlock, parent, spec, parallelOptions, addressWarmer, cancellationToken));
+                ActiveTask = task;
+                return task;
             }
         }
 
@@ -267,6 +269,12 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
     /// account/storage state from it via read-through fallback (unsafe concurrent read).
     /// </summary>
     internal IWorldState? MainThreadWorldState;
+
+    /// <summary>
+    /// The running prewarmer task. BlockProcessor can await this after cancellation
+    /// to ensure prewarmer threads are fully stopped before merkle computation.
+    /// </summary>
+    internal Task? ActiveTask;
 
     // Diagnostic: timestamps (Stopwatch ticks) when prewarmer completes each tx
     internal long[]? DiagPrewarmerCompletedAt;
