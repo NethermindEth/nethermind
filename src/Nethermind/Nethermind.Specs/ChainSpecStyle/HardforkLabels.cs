@@ -5,13 +5,10 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Linq.Expressions;
-using System.Text.Json;
 using System.Text.RegularExpressions;
 using Nethermind.Config;
 using Nethermind.Core.Exceptions;
 using Nethermind.Core.Extensions;
-using Nethermind.Serialization.Json;
-using Nethermind.Specs.ChainSpecStyle.Json;
 
 namespace Nethermind.Specs.ChainSpecStyle;
 
@@ -22,11 +19,11 @@ namespace Nethermind.Specs.ChainSpecStyle;
 /// time to the full set of per-EIP transition fields that make up that fork.
 /// </summary>
 /// <remarks>
-/// Labels are sourced from <see cref="IHasNamedForks.NamedForks"/> (populated by
-/// <c>[JsonExtensionData]</c> on the Parity side and synthesized from typed <c>&lt;fork&gt;Time</c>
-/// properties on the Geth side) and applied to an <see cref="IEipTransitionFields"/> target.
-/// A label and an explicit per-EIP field may coexist with matching values (redundant);
-/// conflicting values are rejected at load.
+/// Labels are sourced from <see cref="IHasNamedForks"/> — populated by <c>[JsonExtensionData]</c>
+/// on the Parity side and by typed <c>&lt;fork&gt;Time</c> / <c>&lt;fork&gt;Block</c> property
+/// setters on the Geth side — and applied to an <see cref="IEipTransitionFields"/> target. A
+/// label and an explicit per-EIP field may coexist with matching values (redundant); conflicting
+/// values are rejected at load.
 /// </remarks>
 public static partial class HardforkLabels
 {
@@ -42,10 +39,12 @@ public static partial class HardforkLabels
     private static partial IReadOnlyList<IHardforkLabel> BuildAll();
 
     /// <summary>
-    /// Expands every hardfork label present in <paramref name="source"/>'s
-    /// <see cref="IHasNamedForks.NamedForks"/> into the constituent per-EIP transition fields on
-    /// <paramref name="target"/>. Throws <see cref="InvalidConfigurationException"/> when a label
-    /// disagrees with an explicit per-EIP value already on the target.
+    /// Expands every hardfork label that <paramref name="source"/> carries — looked up in either
+    /// <see cref="IHasNamedForks.NamedForkBlocks"/> or <see cref="IHasNamedForks.NamedForkTimestamps"/>
+    /// depending on each label's <see cref="IHardforkLabel.Kind"/> — into the constituent per-EIP
+    /// transition fields on <paramref name="target"/>. Throws
+    /// <see cref="InvalidConfigurationException"/> when a label disagrees with an explicit per-EIP
+    /// value already on the target.
     /// </summary>
     /// <remarks>
     /// Parity-style chainspecs pass the same instance for both parameters (it implements both
@@ -54,39 +53,48 @@ public static partial class HardforkLabels
     /// </remarks>
     public static void ExpandAll(IEipTransitionFields target, IHasNamedForks source)
     {
-        if (source.NamedForks is null or { Count: 0 }) return;
-        foreach (IHardforkLabel label in All) label.Apply(target, source.NamedForks);
+        foreach (IHardforkLabel label in All) label.Apply(target, source);
     }
 
     /// <param name="name">Fork class name (e.g. <c>Cancun</c>); the JSON wire key is its camelCase form.</param>
     internal static HardforkLabel<long> Block(
         string name,
         params Expression<Func<IEipTransitionFields, long?>>[] eips) =>
-        new(name, static e => e.Deserialize<long>(EthereumJsonSerializer.JsonOptions), eips);
+        new(name, HardforkLabelKind.Block,
+            (s, k) => s.NamedForkBlocks is { } d && d.TryGetValue(k, out long v) ? v : null,
+            eips);
 
     /// <inheritdoc cref="Block"/>
     internal static HardforkLabel<ulong> Time(
         string name,
         params Expression<Func<IEipTransitionFields, ulong?>>[] eips) =>
-        new(name, static e => e.Deserialize<ulong>(EthereumJsonSerializer.JsonOptions), eips);
+        new(name, HardforkLabelKind.Timestamp,
+            (s, k) => s.NamedForkTimestamps is { } d && d.TryGetValue(k, out ulong v) ? v : null,
+            eips);
 }
 
 /// <summary>
-/// Wire-format object that exposes the chainspec's hardfork shorthand keys as a JSON-element-keyed
-/// dictionary. <see cref="HardforkLabels.ExpandAll"/> consumes recognized entries; unknown entries
-/// stay in the dictionary for upstream typo detection.
+/// Wire-format object that surfaces hardfork shorthand keys as strongly-typed lookups.
+/// <see cref="HardforkLabels.ExpandAll"/> consumes recognized entries to populate the per-EIP
+/// transition fields on an <see cref="IEipTransitionFields"/> target.
 /// </summary>
 public interface IHasNamedForks
 {
-    /// <summary>
-    /// Dictionary of fork shorthand entries keyed by canonical fork name (case-insensitive).
-    /// Values are <see cref="JsonElement"/>; numeric tokens and hex strings are both accepted.
-    /// </summary>
-    IReadOnlyDictionary<string, JsonElement>? NamedForks { get; }
+    /// <summary>Pre-merge fork → activation block number. Case-insensitive lookup.</summary>
+    IReadOnlyDictionary<string, long>? NamedForkBlocks { get; }
+
+    /// <summary>Post-merge fork → activation timestamp. Case-insensitive lookup.</summary>
+    IReadOnlyDictionary<string, ulong>? NamedForkTimestamps { get; }
 }
+
+/// <summary>Whether a label fans out to block-number EIPs (<see cref="Block"/>) or timestamp EIPs (<see cref="Timestamp"/>).</summary>
+public enum HardforkLabelKind { Block, Timestamp }
 
 public interface IHardforkLabel
 {
+    /// <summary>Whether this label is read from <see cref="IHasNamedForks.NamedForkBlocks"/> or <see cref="IHasNamedForks.NamedForkTimestamps"/>.</summary>
+    HardforkLabelKind Kind { get; }
+
     /// <summary>Fork class name in PascalCase, e.g. <c>Shanghai</c>. The JSON wire key is its camelCase form.</summary>
     string LabelName { get; }
 
@@ -104,12 +112,13 @@ public interface IHardforkLabel
     IReadOnlyList<int> Eips { get; }
 
     /// <summary>
-    /// If <paramref name="namedForks"/> carries this label's key, copies the value into each
-    /// constituent EIP field on <paramref name="target"/> that is still unset. Throws
+    /// If <paramref name="source"/> exposes this label's key in the dictionary matching
+    /// <see cref="Kind"/>, copies the value into each constituent EIP field on
+    /// <paramref name="target"/> that is still unset. Throws
     /// <see cref="InvalidConfigurationException"/> when an EIP field is already set to a
     /// different value.
     /// </summary>
-    void Apply(IEipTransitionFields target, IReadOnlyDictionary<string, JsonElement> namedForks);
+    void Apply(IEipTransitionFields target, IHasNamedForks source);
 }
 
 internal sealed class HardforkLabel<T> : IHardforkLabel
@@ -120,41 +129,44 @@ internal sealed class HardforkLabel<T> : IHardforkLabel
     private static readonly Regex EipPropertyPattern =
         new(@"^Eip(?<eip>\d+)(?<split>abc|d)?(?:Disable)?Transition(?:Timestamp)?$", RegexOptions.Compiled);
 
-    private readonly Func<JsonElement, T> _parse;
-    private readonly string _jsonKey;
+    private readonly Func<IHasNamedForks, string, T?> _readValue;
     private readonly EipAccessor[] _eips;
 
+    public HardforkLabelKind Kind { get; }
     public string LabelName { get; }
     public IReadOnlyList<string> EipPropertyNames { get; }
     public IReadOnlyList<int> Eips { get; }
 
-    public HardforkLabel(string labelName, Func<JsonElement, T> parse, Expression<Func<IEipTransitionFields, T?>>[] eips)
+    public HardforkLabel(
+        string labelName,
+        HardforkLabelKind kind,
+        Func<IHasNamedForks, string, T?> readValue,
+        Expression<Func<IEipTransitionFields, T?>>[] eips)
     {
         LabelName = labelName;
-        _jsonKey = ToCamelCase(labelName);
-        _parse = parse;
+        Kind = kind;
+        _readValue = readValue;
         _eips = [.. eips.Select(static e => new EipAccessor(e.GetName(), e.Compile(), e.GetSetter()))];
         EipPropertyNames = [.. _eips.Select(static e => e.Name)];
         Eips = [.. EipPropertyNames.Select(ParseCanonicalEip).Distinct()];
     }
 
-    public void Apply(IEipTransitionFields target, IReadOnlyDictionary<string, JsonElement> namedForks)
+    public void Apply(IEipTransitionFields target, IHasNamedForks source)
     {
-        if (!namedForks.TryGetValue(_jsonKey, out JsonElement element)) return;
-
-        T labelValue = _parse(element);
+        T? labelValue = _readValue(source, LabelName);
+        if (labelValue is null) return;
 
         foreach (EipAccessor eip in _eips)
         {
             T? current = eip.Read(target);
             if (current is null)
             {
-                eip.Write(target, labelValue);
+                eip.Write(target, labelValue.Value);
             }
-            else if (!current.Value.Equals(labelValue))
+            else if (!current.Value.Equals(labelValue.Value))
             {
                 throw new InvalidConfigurationException(
-                    $"Chainspec hardfork label '{_jsonKey}' = 0x{labelValue.ToString("x", null)} conflicts with explicit {eip.Name} = 0x{current.Value.ToString("x", null)}. Either remove the conflicting field or align both values.",
+                    $"Chainspec hardfork label '{LabelName}' = 0x{labelValue.Value.ToString("x", null)} conflicts with explicit {eip.Name} = 0x{current.Value.ToString("x", null)}. Either remove the conflicting field or align both values.",
                     ExitCodes.ConflictingChainspecEipConfiguration);
             }
         }
@@ -169,9 +181,6 @@ internal sealed class HardforkLabel<T> : IHardforkLabel
         // Parity chainspecs split EIP-158 (state-clearing) into Eip161abc + Eip161d; both map to EIP-158.
         return m.Groups["split"].Success ? 158 : int.Parse(m.Groups["eip"].Value);
     }
-
-    private static string ToCamelCase(string name) =>
-        name.Length == 0 ? name : char.ToLowerInvariant(name[0]) + name[1..];
 
     private readonly record struct EipAccessor(string Name, Func<IEipTransitionFields, T?> Read, Action<IEipTransitionFields, T?> Write);
 }

@@ -9,6 +9,7 @@ using System.Text.Json.Serialization;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
+using Nethermind.Specs.ChainSpecStyle;
 
 [assembly: InternalsVisibleTo("Nethermind.Specs.Test")]
 [assembly: InternalsVisibleTo("Nethermind.TxPool.Test")]
@@ -206,5 +207,27 @@ public class ChainSpecParamsJson : IEipTransitionFields, IHasNamedForks
     [JsonExtensionData]
     public Dictionary<string, JsonElement>? NamedForks { get; set; } = new(StringComparer.OrdinalIgnoreCase);
 
-    IReadOnlyDictionary<string, JsonElement>? IHasNamedForks.NamedForks => NamedForks;
+    IReadOnlyDictionary<string, long>? IHasNamedForks.NamedForkBlocks => Project<long>(HardforkLabelKind.Block);
+    IReadOnlyDictionary<string, ulong>? IHasNamedForks.NamedForkTimestamps => Project<ulong>(HardforkLabelKind.Timestamp);
+
+    /// <summary>
+    /// Parses the <c>[JsonExtensionData]</c> entries whose keys match a <see cref="HardforkLabels"/>
+    /// label of the given <paramref name="kind"/> into a typed lookup. Conversion goes through
+    /// <see cref="Nethermind.Serialization.Json.EthereumJsonSerializer.JsonOptions"/> so hex strings
+    /// (<c>"0x65687fd0"</c>) and decimal numbers are parsed identically to the explicit per-EIP
+    /// transition fields on this class.
+    /// </summary>
+    private Dictionary<string, T>? Project<T>(HardforkLabelKind kind) where T : struct
+    {
+        if (NamedForks is null or { Count: 0 }) return null;
+        Dictionary<string, T>? result = null;
+        foreach (IHardforkLabel label in HardforkLabels.All)
+        {
+            if (label.Kind != kind) continue;
+            if (!NamedForks.TryGetValue(label.LabelName, out JsonElement element)) continue;
+            (result ??= new Dictionary<string, T>(StringComparer.OrdinalIgnoreCase))[label.LabelName] =
+                element.Deserialize<T>(Nethermind.Serialization.Json.EthereumJsonSerializer.JsonOptions);
+        }
+        return result;
+    }
 }

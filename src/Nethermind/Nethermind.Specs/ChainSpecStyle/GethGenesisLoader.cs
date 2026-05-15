@@ -65,20 +65,16 @@ public class GethGenesisLoader(IJsonSerializer serializer) : IChainSpecLoader
         GethGenesisConfigJson config = gethGenesis.Config;
 
         SortedSet<BlobScheduleSettings> blobSchedule = [];
-        if (config.BlobSchedule is not null)
+        IReadOnlyDictionary<string, ulong>? timestamps = ((IHasNamedForks)config).NamedForkTimestamps;
+        if (config.BlobSchedule is not null && timestamps is not null)
         {
             foreach ((string forkName, GethBlobScheduleEntry blobSettings) in config.BlobSchedule)
             {
-                ulong? timestamp = GetHardforkTimestamp(config, forkName);
-
-                if (timestamp is null)
-                {
-                    continue;
-                }
+                if (!timestamps.TryGetValue(forkName, out ulong timestamp)) continue;
 
                 blobSchedule.Add(new BlobScheduleSettings
                 {
-                    Timestamp = timestamp.Value,
+                    Timestamp = timestamp,
                     Target = blobSettings.Target,
                     Max = blobSettings.Max,
                     BaseFeeUpdateFraction = blobSettings.BaseFeeUpdateFraction
@@ -159,23 +155,6 @@ public class GethGenesisLoader(IJsonSerializer serializer) : IChainSpecLoader
         // table — same source of truth as the Parity loader, driven by Forks/*.cs.
         HardforkLabels.ExpandAll(chainSpec.Parameters, config);
     }
-
-    private readonly Dictionary<string, Func<GethGenesisConfigJson, ulong?>> _hardforkTimestampGetters =
-        new(StringComparer.OrdinalIgnoreCase)
-        {
-            [nameof(Amsterdam)] = static c => c.AmsterdamTime,
-            [nameof(Cancun)] = static c => c.CancunTime,
-            [nameof(Prague)] = static c => c.PragueTime,
-            [nameof(Osaka)] = static c => c.OsakaTime,
-            [nameof(BPO1)] = static c => c.Bpo1Time,
-            [nameof(BPO2)] = static c => c.Bpo2Time,
-            [nameof(BPO3)] = static c => c.Bpo3Time,
-            [nameof(BPO4)] = static c => c.Bpo4Time,
-            [nameof(BPO5)] = static c => c.Bpo5Time,
-        };
-
-    private ulong? GetHardforkTimestamp(GethGenesisConfigJson config, string hardforkName) =>
-        _hardforkTimestampGetters.TryGetValue(hardforkName, out Func<GethGenesisConfigJson, ulong?> getter) ? getter(config) : null;
 
     private static void LoadGenesis(GethGenesisJson gethGenesisJson, ChainSpec chainSpec)
     {
