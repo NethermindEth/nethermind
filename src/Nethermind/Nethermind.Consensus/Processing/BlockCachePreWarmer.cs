@@ -224,6 +224,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
                     BlockExecutionContext context = new(state.Payload.Block.Header, state.Payload.Spec);
                     state.Scope!.TransactionProcessor.SetBlockExecutionContext(context);
                     WarmupSingleTransaction(state.Scope!, state.Payload.Block.Transactions[txIndex], txIndex, state.Payload);
+                    state.Scope!.WorldState.Reset(resetBlockChanges: false);
                     return state;
                 },
                 WarmingState<BlockState>.FinallyAction);
