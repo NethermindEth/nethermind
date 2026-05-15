@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using System.Text.Json;
@@ -202,6 +203,12 @@ public class ChainSpecParamsJson
     /// consumes each recognized entry and expands it into the per-EIP transition fields above;
     /// anything still present after expansion is an unknown/typo key.
     /// </summary>
+    /// <remarks>
+    /// Initialized with <see cref="StringComparer.OrdinalIgnoreCase"/> so System.Text.Json keys
+    /// chainspec entries case-insensitively (<c>"Cancun"</c>, <c>"cancun"</c>, and <c>"CANCUN"</c>
+    /// all collide on the same label). System.Text.Json reuses a non-null instance when populating
+    /// extension data; the comparer survives.
+    /// </remarks>
     [JsonExtensionData]
-    public Dictionary<string, JsonElement>? NamedForks { get; set; }
+    public Dictionary<string, JsonElement>? NamedForks { get; set; } = new(StringComparer.OrdinalIgnoreCase);
 }
