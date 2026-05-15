@@ -40,7 +40,6 @@ public class AuRaGasLimitOverrideFactory(
                     .ToArray<IBlockGasLimitContract>(),
                 gasLimitOverrideCache,
                 auraConfig.Minimum2MlnGasPerBlockWhenUsingBlockGasLimitContract,
-                specProvider,
                 new TargetAdjustedGasLimitCalculator(specProvider, blocksConfig),
                 logManager);
 

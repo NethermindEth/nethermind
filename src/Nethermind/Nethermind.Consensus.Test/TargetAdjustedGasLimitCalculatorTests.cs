@@ -48,9 +48,7 @@ namespace Nethermind.Consensus.Test
         public void Is_calculating_correct_gasLimit(long parentGasLimit, long configTarget, long expected)
             => Calc(Prague.Instance, parentGasLimit, configTarget: configTarget).Should().Be(expected);
 
-        // Config target would decrease, override pushes up — confirms override drives the direction.
         [TestCase(30_000_000, 20_000_000, 50_000_000, 30029295)]
-        // Config target would increase, override pulls down — confirms override drives the direction.
         [TestCase(30_000_000, 100_000_000, 20_000_000, 29970705)]
         public void Override_takes_precedence_over_config_target(long parentGasLimit, long configTarget, long overrideTarget, long expected)
             => Calc(Prague.Instance, parentGasLimit, configTarget, overrideTarget).Should().Be(expected);

@@ -48,7 +48,6 @@ namespace Nethermind.AuRa.Test
                 new List<IBlockGasLimitContract> { blockGasLimitContract1, blockGasLimitContract2, blockGasLimitContract3 },
                 new AuRaContractGasLimitOverride.Cache(),
                 minimum2MlnGasPerBlockWhenUsingBlockGasLimit,
-                MainnetSpecProvider.Instance,
                 new TargetAdjustedGasLimitCalculator(MainnetSpecProvider.Instance, config),
                 LimboLogs.Instance);
 

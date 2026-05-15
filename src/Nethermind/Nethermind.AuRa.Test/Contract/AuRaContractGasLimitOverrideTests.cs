@@ -85,21 +85,20 @@ public class AuRaContractGasLimitOverrideTests
         inner.Received(1).GetGasLimit(parent, overrideTarget);
     }
 
-    // Mirrors the GetGasLimit precedence: a producer using a CL targetGasLimit may emit a
-    // block whose gas limit differs from the contract value but still respects parent ± delta.
-    // IsGasLimitValid must accept such blocks; otherwise validation would reject what the
-    // producer legitimately built.
     [Test]
     public void IsGasLimitValid_accepts_within_parent_delta_when_contract_differs()
     {
         const long parentGasLimit = 30_000_000;
         const long contractGasLimit = 42_000_000;
-        (AuRaContractGasLimitOverride calculator, _) = BuildOverride(contractGasLimit, innerResult: 0);
+        AuRaContractGasLimitOverride calculator = new(
+            [StubContract(contractGasLimit)],
+            new AuRaContractGasLimitOverride.Cache(),
+            minimum2MlnGasPerBlockWhenUsingBlockGasLimitContract: false,
+            new TargetAdjustedGasLimitCalculator(new TestSpecProvider(Prague.Instance), new BlocksConfig()),
+            LimboLogs.Instance);
         BlockHeader parent = Build.A.BlockHeader.WithNumber(10).WithGasLimit(parentGasLimit).TestObject;
 
-        // parent / 1024 ~= 29_296 — within range
         bool inRange = calculator.IsGasLimitValid(parent, parentGasLimit + 29_000, out long? expected);
-        // way beyond delta — outside range
         bool outOfRange = calculator.IsGasLimitValid(parent, parentGasLimit + 10_000_000, out _);
 
         inRange.Should().BeTrue();
@@ -131,7 +130,6 @@ public class AuRaContractGasLimitOverrideTests
             contracts,
             new AuRaContractGasLimitOverride.Cache(),
             minimum2MlnGasPerBlockWhenUsingBlockGasLimitContract: false,
-            new TestSpecProvider(Prague.Instance),
             inner,
             LimboLogs.Instance);
         return (calculator, inner);
@@ -172,7 +170,7 @@ public class AuRaContractGasLimitOverrideTests
                 blockGasLimitContractTransition.Key,
                 txProcessingEnvFactory.Create());
 
-            return new AuRaContractGasLimitOverride(new[] { gasLimitContract }, gasLimitOverrideCache, false, specProvider, new FollowOtherMiners(specProvider), LimboLogs.Instance);
+            return new AuRaContractGasLimitOverride(new[] { gasLimitContract }, gasLimitOverrideCache, false, new FollowOtherMiners(specProvider), LimboLogs.Instance);
         }
 
         protected override ContainerBuilder ConfigureContainer(ContainerBuilder builder, IConfigProvider configProvider) =>

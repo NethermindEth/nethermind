@@ -28,20 +28,8 @@ public class PayloadAttributes
 
     public ulong? SlotNumber { get; set; }
 
-    /// <summary>
-    /// Target gas limit the CL wants the EL to aim for when building a local payload, as defined by
-    /// PayloadAttributesV4 (Amsterdam). The EL applies the standard gas-limit adjustment relative to
-    /// the parent block, so the resulting <see cref="BlockHeader.GasLimit"/> may differ from this
-    /// target. Replaces the static EL-side target configuration for V4+ FCUs.
-    /// </summary>
     public long? TargetGasLimit { get; set; }
 
-    /// <summary>
-    /// Resolves the gas limit for the block being built from these attributes. The default
-    /// implementation routes <see cref="TargetGasLimit"/> through <paramref name="gasLimitCalculator"/>
-    /// so the standard parent ± delta adjustment is applied. Subclasses that supply an unadjusted
-    /// value directly (e.g. Boost, Optimism, Taiko) override this.
-    /// </summary>
     public virtual long GetGasLimit(BlockHeader parent, IGasLimitCalculator gasLimitCalculator)
         => gasLimitCalculator.GetGasLimit(parent, TargetGasLimit);
 
