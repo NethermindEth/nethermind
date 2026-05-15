@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Reflection;
 using System.Text;
 using System.Text.RegularExpressions;
 using FluentAssertions;
@@ -46,8 +47,32 @@ public class ChainSpecHardforkLabelTests
         return loader.Load(new MemoryStream(Encoding.UTF8.GetBytes(json)));
     }
 
+    /// <remarks>
+    /// Label keys in <see cref="HardforkLabels.All"/> intentionally use the fork's class name
+    /// (e.g. <c>ConstantinopleFix</c>), so we resolve each label to its <see cref="NamedReleaseSpec"/>
+    /// by type-name lookup in the <see cref="Nethermind.Specs.Forks"/> namespace and reading the
+    /// static <c>Instance</c> property. No hand-maintained label→fork dictionary needed.
+    /// </remarks>
+    private static NamedReleaseSpec ForkFor(IHardforkLabel label) =>
+        // FlattenHierarchy is required: Instance is declared on NamedReleaseSpec<TSelf>, the
+        // generic base, and reflection treats statics as belonging to the declaring type.
+        typeof(NamedReleaseSpec).Assembly.GetType($"Nethermind.Specs.Forks.{label.LabelName}")
+            ?.GetProperty("Instance", BindingFlags.Public | BindingFlags.Static | BindingFlags.FlattenHierarchy)
+            ?.GetValue(null) as NamedReleaseSpec
+        ?? throw new InvalidOperationException(
+            $"No public Nethermind.Specs.Forks.{label.LabelName}.Instance — fork class is missing or renamed.");
+
     private static IEnumerable<TestCaseData> AllLabels() =>
         HardforkLabels.All.Select(l => new TestCaseData(l).SetArgDisplayNames(l.LabelName));
+
+    private static IEnumerable<TestCaseData> LabelForkPairs() =>
+        HardforkLabels.All.Select(l => new TestCaseData(l, ForkFor(l)).SetArgDisplayNames(l.LabelName));
+
+    private static IEnumerable<TestCaseData> PostMergeLabels() =>
+        HardforkLabels.All
+            .Select(l => (Label: l, Fork: ForkFor(l)))
+            .Where(p => p.Fork.IsPostMerge)
+            .Select(p => new TestCaseData(p.Label, p.Fork).SetArgDisplayNames(p.Label.LabelName));
 
     [TestCaseSource(nameof(AllLabels))]
     public void Label_expands_to_all_constituent_transition_fields(IHardforkLabel label)
@@ -61,91 +86,53 @@ public class ChainSpecHardforkLabelTests
         }
     }
 
-    private static IEnumerable<TestCaseData> LabelForkPairs() => new TestCaseData[]
-    {
-        new("Homestead", Homestead.Instance),
-        new("TangerineWhistle", TangerineWhistle.Instance),
-        new("SpuriousDragon", SpuriousDragon.Instance),
-        new("Byzantium", Byzantium.Instance),
-        new("Constantinople", Constantinople.Instance),
-        new("ConstantinopleFix", ConstantinopleFix.Instance),
-        new("Istanbul", Istanbul.Instance),
-        new("Berlin", Berlin.Instance),
-        new("London", London.Instance),
-        new("Shanghai", Shanghai.Instance),
-        new("Cancun", Cancun.Instance),
-        new("Prague", Prague.Instance),
-        new("Osaka", Osaka.Instance),
-        new("Amsterdam", Amsterdam.Instance),
-    }.Select(d => d.SetArgDisplayNames((string)d.Arguments[0]!));
-
     /// <remarks>
-    /// Pins every <see cref="IHardforkLabel.EipPropertyNames"/> entry against the
-    /// <see cref="NamedReleaseSpec"/> for its fork: the EIP number parsed from the JSON property
-    /// must be enabled (or, for <c>Eip…DisableTransition</c>, disabled) on the named spec. Catches
-    /// drift when a new EIP is added to a fork class but not to <see cref="HardforkLabels"/>.
+    /// Pins every <see cref="IHardforkLabel.Eips"/> entry against the
+    /// <see cref="NamedReleaseSpec"/> for its fork: each canonical EIP must be enabled (or, for
+    /// <c>Eip…DisableTransition</c> labels, disabled) on the named spec. Catches drift when a new
+    /// EIP joins a fork class but not <see cref="HardforkLabels"/>.
     /// </remarks>
     [TestCaseSource(nameof(LabelForkPairs))]
-    public void Label_eip_properties_align_with_named_fork(string labelName, NamedReleaseSpec fork)
+    public void Label_eips_align_with_named_fork(IHardforkLabel label, NamedReleaseSpec fork)
     {
-        IHardforkLabel label = HardforkLabels.All.Single(l => l.LabelName == labelName);
+        bool isDisableLabel = label.EipPropertyNames.All(p => p.Contains("Disable", StringComparison.Ordinal));
 
-        foreach (string prop in label.EipPropertyNames)
+        foreach (int eip in label.Eips)
         {
-            Match match = EipPropertyPattern.Match(prop);
-            match.Success.Should().BeTrue($"label property {prop} should follow the Eip<N>[Disable]Transition[Timestamp] convention");
-
-            int eipFromName = int.Parse(match.Groups["eip"].Value);
-            bool isParitySplit = match.Groups["split"].Success;       // Eip161abc / Eip161d → EIP-158
-            bool isDisable = match.Groups["disable"].Success;
-
-            int releaseSpecEip = isParitySplit ? 158 : eipFromName;
-            string releaseProperty = $"IsEip{releaseSpecEip}Enabled";
-
-            bool? enabled = (bool?)typeof(ReleaseSpec).GetProperty(releaseProperty)?.GetValue(fork);
-            enabled.Should().NotBeNull($"IReleaseSpec should expose {releaseProperty} for label '{labelName}'");
-            enabled!.Value.Should().Be(!isDisable,
-                $"label '{labelName}' maps {prop} → EIP-{releaseSpecEip}, but {fork.Name} has {releaseProperty}={enabled}");
+            string releaseProperty = $"IsEip{eip}Enabled";
+            PropertyInfo? prop = typeof(ReleaseSpec).GetProperty(releaseProperty);
+            prop.Should().NotBeNull($"ReleaseSpec should expose {releaseProperty} for label '{label.LabelName}'");
+            ((bool)prop!.GetValue(fork)!).Should().Be(!isDisableLabel,
+                $"label '{label.LabelName}' covers EIP-{eip}, but {fork.Name}.{releaseProperty} is {prop.GetValue(fork)}");
         }
     }
 
     /// <remarks>
     /// Reverse direction (post-merge only — pre-merge forks have too many irregular JSON names to
-    /// pattern-match reliably): every EIP newly enabled in <paramref name="fork"/> over its
-    /// <paramref name="parent"/> that has a regular <c>Eip&lt;N&gt;TransitionTimestamp</c> field
-    /// must be referenced by the label. Catches drift when a new timestamp-EIP joins a fork
-    /// class but the label forgets to expand it.
+    /// pattern-match reliably): every EIP newly enabled by <paramref name="fork"/> over its parent
+    /// that has a regular <c>Eip&lt;N&gt;TransitionTimestamp</c> field must be referenced by the
+    /// label. Catches drift when a new timestamp-EIP joins a fork class but the label forgets to
+    /// expand it.
     /// </remarks>
-    private static IEnumerable<TestCaseData> PostMergeForkPairs() => new TestCaseData[]
+    [TestCaseSource(nameof(PostMergeLabels))]
+    public void Post_merge_label_covers_every_eip_introduced_by_named_fork(IHardforkLabel label, NamedReleaseSpec fork)
     {
-        new("Shanghai", Shanghai.Instance, Paris.Instance),
-        new("Cancun", Cancun.Instance, Shanghai.Instance),
-        new("Prague", Prague.Instance, Cancun.Instance),
-        new("Osaka", Osaka.Instance, Prague.Instance),
-        new("Amsterdam", Amsterdam.Instance, BPO5.Instance),
-    }.Select(d => d.SetArgDisplayNames((string)d.Arguments[0]!));
+        NamedReleaseSpec parent = fork.Parent ?? throw new InvalidOperationException($"{fork.Name} has no parent");
+        HashSet<int> labelEips = [.. label.Eips];
 
-    [TestCaseSource(nameof(PostMergeForkPairs))]
-    public void Post_merge_label_covers_every_eip_introduced_by_named_fork(string labelName, NamedReleaseSpec fork, NamedReleaseSpec parent)
-    {
-        IHardforkLabel label = HardforkLabels.All.Single(l => l.LabelName == labelName);
-        HashSet<string> labelProperties = [.. label.EipPropertyNames];
-
-        foreach (System.Reflection.PropertyInfo isEipEnabled in typeof(ReleaseSpec).GetProperties())
+        foreach (PropertyInfo isEipEnabled in typeof(ReleaseSpec).GetProperties())
         {
             Match match = IsEipEnabledPattern.Match(isEipEnabled.Name);
             if (!match.Success) continue;
-
-            bool inFork = (bool)isEipEnabled.GetValue(fork)!;
-            bool inParent = (bool)isEipEnabled.GetValue(parent)!;
-            if (!inFork || inParent) continue;
+            if ((bool)isEipEnabled.GetValue(fork)! == (bool)isEipEnabled.GetValue(parent)!) continue;
+            if (!(bool)isEipEnabled.GetValue(fork)!) continue;     // only newly enabled
 
             int eip = int.Parse(match.Groups["eip"].Value);
-            string expectedJsonField = $"Eip{eip}TransitionTimestamp";
-            if (typeof(ChainSpecParamsJson).GetProperty(expectedJsonField) is null) continue;
+            // Skip EIPs that don't have a regular Eip{N}TransitionTimestamp counterpart on the JSON side.
+            if (typeof(ChainSpecParamsJson).GetProperty($"Eip{eip}TransitionTimestamp") is null) continue;
 
-            labelProperties.Should().Contain(expectedJsonField,
-                $"{fork.Name} introduces EIP-{eip} over {parent.Name} — label '{labelName}' should expand {expectedJsonField}");
+            labelEips.Should().Contain(eip,
+                $"{fork.Name} introduces EIP-{eip} over {parent.Name} — label '{label.LabelName}' should expand it");
         }
     }
 
@@ -182,9 +169,6 @@ public class ChainSpecHardforkLabelTests
 
     private static string ToCamelCase(string name) =>
         char.ToLowerInvariant(name[0]) + name[1..];
-
-    private static readonly Regex EipPropertyPattern =
-        new(@"^Eip(?<eip>\d+)(?<split>abc|d)?(?<disable>Disable)?Transition(Timestamp)?$", RegexOptions.Compiled);
 
     private static readonly Regex IsEipEnabledPattern =
         new(@"^IsEip(?<eip>\d+)Enabled$", RegexOptions.Compiled);

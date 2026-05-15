@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Linq.Expressions;
+using System.Text.RegularExpressions;
 using Nethermind.Config;
 using Nethermind.Core.Exceptions;
 using Nethermind.Core.Extensions;
@@ -141,6 +142,16 @@ public interface IHardforkLabel
     IReadOnlyList<string> EipPropertyNames { get; }
 
     /// <summary>
+    /// Canonical EIP numbers activated (or, for <c>Eip&lt;N&gt;DisableTransition</c>, revoked) by
+    /// this label, parsed from <see cref="EipPropertyNames"/> and deduplicated.
+    /// </summary>
+    /// <remarks>
+    /// Parity-split fields (<c>Eip161abcTransition</c>, <c>Eip161dTransition</c>) both fold to
+    /// EIP-158 — the canonical EIP number that the runtime <c>IsEip158Enabled</c> flag tracks.
+    /// </remarks>
+    IReadOnlyList<int> Eips { get; }
+
+    /// <summary>
     /// Copies the label value (if set) into each constituent EIP field that is still unset.
     /// Throws <see cref="InvalidConfigurationException"/> when an EIP field is already set to a
     /// different value.
@@ -151,11 +162,17 @@ public interface IHardforkLabel
 internal sealed class HardforkLabel<T> : IHardforkLabel
     where T : struct, IEquatable<T>, IFormattable
 {
+    // Eip{N}[abc|d][Disable]Transition[Timestamp] — captures the EIP number and the Parity-split
+    // marker so EipPropertyNames can be normalized to canonical EIPs in `Eips`.
+    private static readonly Regex EipPropertyPattern =
+        new(@"^Eip(?<eip>\d+)(?<split>abc|d)?(?:Disable)?Transition(?:Timestamp)?$", RegexOptions.Compiled);
+
     private readonly Func<ChainSpecParamsJson, T?> _readLabel;
     private readonly EipAccessor[] _eips;
 
     public string LabelName { get; }
     public IReadOnlyList<string> EipPropertyNames { get; }
+    public IReadOnlyList<int> Eips { get; }
 
     public HardforkLabel(
         Expression<Func<ChainSpecParamsJson, T?>> label,
@@ -165,6 +182,7 @@ internal sealed class HardforkLabel<T> : IHardforkLabel
         _readLabel = label.Compile();
         _eips = [.. eips.Select(static e => new EipAccessor(e.GetName(), e.Compile(), e.GetSetter()))];
         EipPropertyNames = [.. _eips.Select(static e => e.Name)];
+        Eips = [.. EipPropertyNames.Select(ParseCanonicalEip).Distinct()];
     }
 
     public void Apply(ChainSpecParamsJson parameters)
@@ -182,9 +200,19 @@ internal sealed class HardforkLabel<T> : IHardforkLabel
             {
                 throw new InvalidConfigurationException(
                     $"Chainspec hardfork label '{LabelName}' = 0x{labelValue.ToString("x", null)} conflicts with explicit {eip.Name} = 0x{current.Value.ToString("x", null)}. Either remove the conflicting field or align both values.",
-                    ExitCodes.MissingChainspecEipConfiguration);
+                    ExitCodes.ConflictingChainspecEipConfiguration);
             }
         }
+    }
+
+    private static int ParseCanonicalEip(string propertyName)
+    {
+        Match m = EipPropertyPattern.Match(propertyName);
+        if (!m.Success) throw new ArgumentException(
+            $"Property name '{propertyName}' does not follow the Eip<N>[abc|d][Disable]Transition[Timestamp] convention.",
+            nameof(propertyName));
+        // Parity chainspecs split EIP-158 (state-clearing) into Eip161abc + Eip161d; both map to EIP-158.
+        return m.Groups["split"].Success ? 158 : int.Parse(m.Groups["eip"].Value);
     }
 
     private readonly record struct EipAccessor(string Name, Func<ChainSpecParamsJson, T?> Read, Action<ChainSpecParamsJson, T?> Write);
