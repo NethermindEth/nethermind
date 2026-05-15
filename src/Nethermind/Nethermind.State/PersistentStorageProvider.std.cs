@@ -1,7 +1,10 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
+using System.Threading;
+using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Cpu;
@@ -13,6 +16,14 @@ namespace Nethermind.State;
 
 internal sealed partial class PersistentStorageProvider
 {
+    // Merkle root computation benefits from maximum parallelism (logical CPUs).
+    // Unlike the prewarmer which competes with the main thread, merkle runs after
+    // tx execution is complete so all CPU resources are available.
+    private static readonly ParallelOptions s_merkleParallelOptions = new()
+    {
+        MaxDegreeOfParallelism = Math.Min(Environment.ProcessorCount, 16)
+    };
+
     private partial void UpdateRootHashes(IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch)
     {
         if (_toUpdateRoots.Count >= 3)
@@ -43,7 +54,7 @@ internal sealed partial class PersistentStorageProvider
         ParallelUnbalancedWork.For(
             0,
             storages.Count,
-            RuntimeInformation.ParallelOptionsPhysicalCoresUpTo16,
+            s_merkleParallelOptions,
             (storages, toUpdateRoots: _toUpdateRoots, writes: 0, skips: 0),
             static (i, state) =>
             {
