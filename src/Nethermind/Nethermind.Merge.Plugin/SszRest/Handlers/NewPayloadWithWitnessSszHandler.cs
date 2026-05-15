@@ -95,11 +95,11 @@ public sealed class NewPayloadWithWitnessSszHandler(
     {
         using Witness? w = witness;
 
-        System.IO.Pipelines.PipeWriter pipe = ctx.Response.BodyWriter;
+        ArrayBufferWriter<byte> buffer = new();
         int length;
         try
         {
-            length = SszCodec.EncodeNewPayloadWithWitnessResponse(status, w, pipe);
+            length = SszCodec.EncodeNewPayloadWithWitnessResponse(status, w, buffer);
         }
         catch
         {
@@ -116,7 +116,18 @@ public sealed class NewPayloadWithWitnessSszHandler(
         ctx.Response.ContentType = "application/octet-stream";
         ctx.Response.ContentLength = length;
         ctx.Response.StatusCode = StatusCodes.Status200OK;
-        await pipe.FlushAsync(ctx.RequestAborted);
+
+        System.IO.Pipelines.PipeWriter pipe = ctx.Response.BodyWriter;
+        try
+        {
+            await pipe.WriteAsync(buffer.WrittenMemory, ctx.RequestAborted);
+        }
+        catch
+        {
+            ctx.Abort();
+            throw;
+        }
+
         await ctx.Response.CompleteAsync();
     }
 
