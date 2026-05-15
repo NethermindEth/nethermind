@@ -44,8 +44,8 @@ namespace Nethermind.Blockchain.Spec
             BlockHeader? header = _blockFinder.FindBestSuggestedHeader();
             long headerNumber = header?.Number ?? 0;
 
-            // Lock-free fast path: a single reference read returns a fully constructed
-            // (number, spec) pair, so readers never observe a torn pairing.
+            // Reference-type record keeps the (number, spec) publication atomic.
+            // Don't change to a record struct — 16-byte writes are not atomic.
             CachedSpec? snapshot = Volatile.Read(ref _cache);
             if (snapshot is not null && snapshot.Number == headerNumber)
             {
@@ -56,9 +56,6 @@ namespace Nethermind.Blockchain.Spec
                 ? _specProvider.GetSpec(header)
                 : _specProvider.GetSpec((ForkActivation)headerNumber);
 
-            // Concurrent writers race to publish a snapshot for the same headerNumber.
-            // Because GetSpec is deterministic per (number, header), every winner stores
-            // an equivalent value, so a last-writer-wins publish is safe.
             Volatile.Write(ref _cache, new CachedSpec(headerNumber, spec));
             return spec;
         }
