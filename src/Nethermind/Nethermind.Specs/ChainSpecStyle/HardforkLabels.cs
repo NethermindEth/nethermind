@@ -21,7 +21,7 @@ namespace Nethermind.Specs.ChainSpecStyle;
 /// <remarks>
 /// Labels are sourced from <see cref="IHasNamedForks"/> — populated by <c>[JsonExtensionData]</c>
 /// on the Parity side and by typed <c>&lt;fork&gt;Time</c> / <c>&lt;fork&gt;Block</c> property
-/// setters on the Geth side — and applied to an <see cref="IEipTransitionFields"/> target. A
+/// setters on the Geth side — and applied to an <see cref="ChainParameters"/> target. A
 /// label and an explicit per-EIP field may coexist with matching values (redundant); conflicting
 /// values are rejected at load.
 /// </remarks>
@@ -51,7 +51,7 @@ public static partial class HardforkLabels
     /// interfaces). Geth-style genesis loaders pass the destination <see cref="ChainParameters"/>
     /// as target and the parsed config as source.
     /// </remarks>
-    public static void ExpandAll(IEipTransitionFields target, IHasNamedForks source)
+    public static void ExpandAll(ChainParameters target, IHasNamedForks source)
     {
         foreach (IHardforkLabel label in All) label.Apply(target, source);
     }
@@ -59,7 +59,7 @@ public static partial class HardforkLabels
     /// <param name="name">Fork class name (e.g. <c>Cancun</c>); the JSON wire key is its camelCase form.</param>
     internal static HardforkLabel<long> Block(
         string name,
-        params Expression<Func<IEipTransitionFields, long?>>[] eips) =>
+        params Expression<Func<ChainParameters, long?>>[] eips) =>
         new(name, HardforkLabelKind.Block,
             (s, k) => s.NamedForkBlocks is { } d && d.TryGetValue(k, out long v) ? v : null,
             eips);
@@ -67,7 +67,7 @@ public static partial class HardforkLabels
     /// <inheritdoc cref="Block"/>
     internal static HardforkLabel<ulong> Time(
         string name,
-        params Expression<Func<IEipTransitionFields, ulong?>>[] eips) =>
+        params Expression<Func<ChainParameters, ulong?>>[] eips) =>
         new(name, HardforkLabelKind.Timestamp,
             (s, k) => s.NamedForkTimestamps is { } d && d.TryGetValue(k, out ulong v) ? v : null,
             eips);
@@ -76,7 +76,7 @@ public static partial class HardforkLabels
 /// <summary>
 /// Wire-format object that surfaces hardfork shorthand keys as strongly-typed lookups.
 /// <see cref="HardforkLabels.ExpandAll"/> consumes recognized entries to populate the per-EIP
-/// transition fields on an <see cref="IEipTransitionFields"/> target.
+/// transition fields on an <see cref="ChainParameters"/> target.
 /// </summary>
 public interface IHasNamedForks
 {
@@ -118,7 +118,7 @@ public interface IHardforkLabel
     /// <see cref="InvalidConfigurationException"/> when an EIP field is already set to a
     /// different value.
     /// </summary>
-    void Apply(IEipTransitionFields target, IHasNamedForks source);
+    void Apply(ChainParameters target, IHasNamedForks source);
 }
 
 internal sealed class HardforkLabel<T> : IHardforkLabel
@@ -141,7 +141,7 @@ internal sealed class HardforkLabel<T> : IHardforkLabel
         string labelName,
         HardforkLabelKind kind,
         Func<IHasNamedForks, string, T?> readValue,
-        Expression<Func<IEipTransitionFields, T?>>[] eips)
+        Expression<Func<ChainParameters, T?>>[] eips)
     {
         LabelName = labelName;
         Kind = kind;
@@ -151,7 +151,7 @@ internal sealed class HardforkLabel<T> : IHardforkLabel
         Eips = [.. EipPropertyNames.Select(ParseCanonicalEip).Distinct()];
     }
 
-    public void Apply(IEipTransitionFields target, IHasNamedForks source)
+    public void Apply(ChainParameters target, IHasNamedForks source)
     {
         T? labelValue = _readValue(source, LabelName);
         if (labelValue is null) return;
@@ -182,5 +182,5 @@ internal sealed class HardforkLabel<T> : IHardforkLabel
         return m.Groups["split"].Success ? 158 : int.Parse(m.Groups["eip"].Value);
     }
 
-    private readonly record struct EipAccessor(string Name, Func<IEipTransitionFields, T?> Read, Action<IEipTransitionFields, T?> Write);
+    private readonly record struct EipAccessor(string Name, Func<ChainParameters, T?> Read, Action<ChainParameters, T?> Write);
 }

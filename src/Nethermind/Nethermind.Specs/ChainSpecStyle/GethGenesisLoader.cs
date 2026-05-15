@@ -7,7 +7,6 @@ using Nethermind.Core.ExecutionRequest;
 using Nethermind.Int256;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs.ChainSpecStyle.Json;
-using Nethermind.Specs.Forks;
 using System;
 using System.Collections.Generic;
 using System.IO;

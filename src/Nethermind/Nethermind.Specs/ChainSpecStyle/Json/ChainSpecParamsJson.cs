@@ -15,7 +15,7 @@ using Nethermind.Serialization.Json;
 [assembly: InternalsVisibleTo("Nethermind.TxPool.Test")]
 namespace Nethermind.Specs.ChainSpecStyle.Json;
 
-public class ChainSpecParamsJson : IEipTransitionFields, IHasNamedForks
+public class ChainSpecParamsJson : IHasNamedForks
 {
     public ulong? ChainId { get; set; }
     public ulong? NetworkId { get; set; }

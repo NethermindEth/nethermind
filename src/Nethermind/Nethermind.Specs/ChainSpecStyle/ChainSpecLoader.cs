@@ -93,9 +93,6 @@ public class ChainSpecLoader(IJsonSerializer serializer, ILogManager logManager)
             return GetTransitions(builtInName, GetForInnerPathExistence);
         }
 
-        HardforkLabels.ExpandAll(chainSpecJson.Params, chainSpecJson.Params);
-        ValidateParams(chainSpecJson.Params);
-
         chainSpec.Parameters = new ChainParameters
         {
             GasLimitBoundDivisor = chainSpecJson.Params.GasLimitBoundDivisor ?? 0x0400,
@@ -109,12 +106,12 @@ public class ChainSpecLoader(IJsonSerializer serializer, ILogManager logManager)
             ForkBlock = chainSpecJson.Params.ForkBlock,
             ForkCanonHash = chainSpecJson.Params.ForkCanonHash,
             Eip7Transition = chainSpecJson.Params.Eip7Transition,
-            Eip150Transition = chainSpecJson.Params.Eip150Transition ?? 0,
+            Eip150Transition = chainSpecJson.Params.Eip150Transition,
             Eip152Transition = chainSpecJson.Params.Eip152Transition,
-            Eip160Transition = chainSpecJson.Params.Eip160Transition ?? 0,
-            Eip161abcTransition = chainSpecJson.Params.Eip161abcTransition ?? 0,
-            Eip161dTransition = chainSpecJson.Params.Eip161dTransition ?? 0,
-            Eip155Transition = chainSpecJson.Params.Eip155Transition ?? 0,
+            Eip160Transition = chainSpecJson.Params.Eip160Transition,
+            Eip161abcTransition = chainSpecJson.Params.Eip161abcTransition,
+            Eip161dTransition = chainSpecJson.Params.Eip161dTransition,
+            Eip155Transition = chainSpecJson.Params.Eip155Transition,
             Eip140Transition = chainSpecJson.Params.Eip140Transition,
             Eip211Transition = chainSpecJson.Params.Eip211Transition,
             Eip214Transition = chainSpecJson.Params.Eip214Transition,
@@ -221,6 +218,20 @@ public class ChainSpecLoader(IJsonSerializer serializer, ILogManager logManager)
             Eip7954TransitionTimestamp = chainSpecJson.Params.Eip7954TransitionTimestamp,
         };
 
+        // Apply hardfork labels first so they win over the pricing-derived and genesis-default
+        // fallbacks below (precedence: explicit per-EIP field > hardfork label > legacy pricing
+        // inference / genesis default).
+        HardforkLabels.ExpandAll(chainSpec.Parameters, chainSpecJson.Params);
+        ValidateParams(chainSpec.Parameters);
+
+        // Pre-Shanghai EIPs that are part of the genesis baseline for chains without explicit
+        // transitions. Applied AFTER ExpandAll so an explicit chainspec field or fork label wins.
+        chainSpec.Parameters.Eip150Transition ??= 0;
+        chainSpec.Parameters.Eip160Transition ??= 0;
+        chainSpec.Parameters.Eip161abcTransition ??= 0;
+        chainSpec.Parameters.Eip161dTransition ??= 0;
+        chainSpec.Parameters.Eip155Transition ??= 0;
+
         chainSpec.Parameters.Eip152Transition ??= GetTransitionForExpectedPricing("blake2_f", "price.blake2_f.gas_per_round", 1);
         chainSpec.Parameters.Eip1108Transition ??= GetTransitionForExpectedPricing("alt_bn128_add", "price.alt_bn128_const_operations.price", 150)
                                                    ?? GetTransitionForExpectedPricing("alt_bn128_mul", "price.alt_bn128_const_operations.price", 6000)
@@ -245,7 +256,7 @@ public class ChainSpecLoader(IJsonSerializer serializer, ILogManager logManager)
                 : value
             : default;
 
-    private static void ValidateParams(ChainSpecParamsJson parameters)
+    private static void ValidateParams(ChainParameters parameters)
     {
         if (parameters.Eip1283ReenableTransition != parameters.Eip1706Transition
             && parameters.Eip1283DisableTransition.HasValue)
