@@ -9,6 +9,7 @@ using Nethermind.Consensus.AuRa.Contracts;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using Nethermind.Logging;
 
@@ -16,8 +17,9 @@ namespace Nethermind.Consensus.AuRa
 {
     public class AuRaContractGasLimitOverride(
         IList<IBlockGasLimitContract> contracts,
-AuRaContractGasLimitOverride.Cache cache,
+        AuRaContractGasLimitOverride.Cache cache,
         bool minimum2MlnGasPerBlockWhenUsingBlockGasLimitContract,
+        ISpecProvider specProvider,
         IGasLimitCalculator innerCalculator,
         ILogManager logManager) : IGasLimitCalculator
     {
@@ -34,6 +36,7 @@ AuRaContractGasLimitOverride.Cache cache,
         private readonly IList<IBlockGasLimitContract> _contracts = contracts ?? throw new ArgumentNullException(nameof(contracts));
         private readonly Cache _cache = cache ?? throw new ArgumentNullException(nameof(cache));
         private readonly bool _minimum2MlnGasPerBlockWhenUsingBlockGasLimitContract = minimum2MlnGasPerBlockWhenUsingBlockGasLimitContract;
+        private readonly ISpecProvider _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
         private readonly IGasLimitCalculator _innerCalculator = innerCalculator ?? throw new ArgumentNullException(nameof(innerCalculator));
         private readonly ILogger _logger = logManager?.GetClassLogger<AuRaContractGasLimitOverride>() ?? throw new ArgumentNullException(nameof(logManager));
 
@@ -100,7 +103,18 @@ AuRaContractGasLimitOverride.Cache cache,
         public bool IsGasLimitValid(BlockHeader parentHeader, in long gasLimit, out long? expectedGasLimit)
         {
             expectedGasLimit = GetGasLimitFromContract(parentHeader);
-            return expectedGasLimit is null || expectedGasLimit == gasLimit;
+            if (expectedGasLimit is null || expectedGasLimit == gasLimit)
+            {
+                return true;
+            }
+
+            // CL-supplied targetGasLimit (PayloadAttributesV4) lets producers deviate from the
+            // on-chain contract value (see GetGasLimit precedence above). Accept any block gas
+            // limit that respects the standard parent ± delta bound — wider consensus rules are
+            // enforced separately by HeaderValidator.
+            IReleaseSpec spec = _specProvider.GetSpec(parentHeader.Number + 1, parentHeader.Timestamp);
+            long maxDelta = parentHeader.GasLimit / spec.GasLimitBoundDivisor;
+            return Math.Abs(gasLimit - parentHeader.GasLimit) <= maxDelta;
         }
     }
 }
