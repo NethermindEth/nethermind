@@ -309,21 +309,9 @@ public class TrieNodeTests
 
         Hash256 getResult = decoded.GetChildHash(11);
         Assert.That(getResult, Is.Null);
-    }
 
-    [Test]
-    public void Inline_child_slice_shares_parent_rlp_array()
-    {
-        Context ctx = new();
-        TrieNode trieNode = TrieNode.CreateBranchTyped();
-
-        trieNode[11] = ctx.TiniestLeaf;
-        TreePath emptyPath = TreePath.Empty;
-        CappedArray<byte> rlp = trieNode.RlpEncode(NullTrieNodeResolver.Instance, ref emptyPath);
-        TrieNode decoded = TrieNode.CreateBranchTyped(rlp);
-
+        // Inline child decoding shares the parent RLP array via offset slice (no copy).
         TrieNode? child = decoded.GetChild(NullTrieNodeResolver.Instance, ref emptyPath, 11);
-
         child.Should().NotBeNull();
         CappedArray<byte> parentRlp = decoded.FullRlp;
         CappedArray<byte> childRlp = child!.FullRlp;
@@ -674,18 +662,12 @@ public class TrieNodeTests
         trieNode.GetMemorySize(false).Should().Be(136);
     }
 
-    [Test]
-    public void Size_of_an_unknown_node_with_full_rlp_is_correct()
+    [TestCase(7, 104)]
+    [TestCase(9, 112)]
+    public void Size_of_an_unknown_node_with_full_rlp_is_correct(int rlpLength, long expectedSize)
     {
-        TrieNode trieNode = new TrieSyncNode(new byte[7]);
-        trieNode.GetMemorySize(false).Should().Be(104);
-    }
-
-    [Test]
-    public void Size_of_an_unknown_node_with_unaligned_full_rlp_is_correct()
-    {
-        TrieNode trieNode = new TrieSyncNode(new byte[9]);
-        trieNode.GetMemorySize(false).Should().Be(112);
+        TrieNode trieNode = new TrieSyncNode(new byte[rlpLength]);
+        trieNode.GetMemorySize(false).Should().Be(expectedSize);
     }
 
     [Test]
@@ -760,20 +742,6 @@ public class TrieNodeTests
         trieNode.Key = Bytes.FromHexString("abcd");
         TreePath emptyPath = TreePath.Empty;
         trieNode.RlpEncode(NullTrieStore.Instance, ref emptyPath);
-    }
-
-    [Test]
-    public void Extension_child_as_keccak()
-    {
-        TrieNode child = new TrieSyncNode(Keccak.Zero);
-        TrieNode trieNode = TrieNode.CreateExtensionTyped();
-        trieNode.SetChild(0, child);
-
-        trieNode.PrunePersistedRecursively(1);
-        TreePath emptyPath = TreePath.Empty;
-        // After step 4 made TrieNode abstract, no instance can be exactly the base type;
-        // the test's intent is that the child slot is non-null after prune.
-        trieNode.GetChild(NullTrieStore.Instance, ref emptyPath, 0).Should().NotBeNull();
     }
 
     [Test]

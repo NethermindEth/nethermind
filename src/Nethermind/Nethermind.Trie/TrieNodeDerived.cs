@@ -228,15 +228,10 @@ namespace Nethermind.Trie
 
     public partial class TrieNode
     {
-        /// <summary>
-        /// Allocate a typed dirty branch node.
-        /// </summary>
+        // Branch factories.
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static TrieNode CreateBranchTyped() => new TrieNodeBranch();
 
-        /// <summary>
-        /// Allocate a typed sealed branch node carrying a known Keccak.
-        /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static TrieNode CreateBranchTyped(Hash256 keccak)
         {
@@ -244,36 +239,22 @@ namespace Nethermind.Trie
             return new TrieNodeBranch(in keccak.ValueHash256);
         }
 
-        /// <summary>
-        /// Allocate a typed branch node initialized from RLP.
-        /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static TrieNode CreateBranchTyped(byte[]? rlp, bool isDirty = false)
             => new TrieNodeBranch(new CappedArray<byte>(rlp), isDirty);
 
-        /// <summary>
-        /// Allocate a typed branch node initialized from RLP wrapped in a CappedArray.
-        /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static TrieNode CreateBranchTyped(CappedArray<byte> rlp, bool isDirty = false)
             => new TrieNodeBranch(rlp, isDirty);
 
-        /// <summary>
-        /// Allocate a typed leaf node from an already hex-prefixed key and a value.
-        /// </summary>
+        // Leaf factories.
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         internal static TrieNode CreateLeafTyped(byte[] hexPrefixedKey, CappedArray<byte> value)
             => new TrieNodeLeaf(hexPrefixedKey, value);
 
-        /// <summary>
-        /// Allocate a typed empty leaf node. The key and value are filled in by the caller.
-        /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static TrieNode CreateLeafTyped() => new TrieNodeLeaf();
 
-        /// <summary>
-        /// Allocate a typed sealed leaf node carrying a known Keccak.
-        /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static TrieNode CreateLeafTyped(Hash256 keccak)
         {
@@ -281,23 +262,14 @@ namespace Nethermind.Trie
             return new TrieNodeLeaf(in keccak.ValueHash256);
         }
 
-        /// <summary>
-        /// Allocate a typed leaf node initialized from RLP.
-        /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static TrieNode CreateLeafTyped(byte[]? rlp, bool isDirty = false)
             => new TrieNodeLeaf(new CappedArray<byte>(rlp), isDirty);
 
-        /// <summary>
-        /// Allocate a typed leaf node initialized from RLP wrapped in a CappedArray.
-        /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static TrieNode CreateLeafTyped(CappedArray<byte> rlp, bool isDirty = false)
             => new TrieNodeLeaf(rlp, isDirty);
 
-        /// <summary>
-        /// Allocate a typed leaf node carrying a known Keccak and the corresponding RLP.
-        /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static TrieNode CreateLeafTyped(Hash256 keccak, CappedArray<byte> rlp)
         {
@@ -305,40 +277,18 @@ namespace Nethermind.Trie
             return new TrieNodeLeaf(in keccak.ValueHash256, rlp);
         }
 
-        /// <summary>
-        /// Allocate a typed leaf node carrying a known Keccak and the corresponding RLP bytes.
-        /// </summary>
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static TrieNode CreateLeafTyped(Hash256 keccak, ReadOnlySpan<byte> rlp)
-        {
-            ArgumentNullException.ThrowIfNull(keccak);
-            return new TrieNodeLeaf(in keccak.ValueHash256, new CappedArray<byte>(rlp.ToArray()));
-        }
-
-        /// <summary>
-        /// Allocate a typed extension node carrying an already hex-prefixed key.
-        /// </summary>
+        // Extension factories.
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         internal static TrieNode CreateExtensionTyped(byte[] hexPrefixedKey)
             => new TrieNodeExtension(hexPrefixedKey);
 
-        /// <summary>
-        /// Allocate a typed extension node carrying an already hex-prefixed key
-        /// and an in-memory child reference.
-        /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         internal static TrieNode CreateExtensionTyped(byte[] hexPrefixedKey, TrieNode child)
             => new TrieNodeExtension(hexPrefixedKey, child);
 
-        /// <summary>
-        /// Allocate a typed empty extension node.
-        /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static TrieNode CreateExtensionTyped() => new TrieNodeExtension();
 
-        /// <summary>
-        /// Allocate a typed sealed extension node carrying a known Keccak.
-        /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static TrieNode CreateExtensionTyped(Hash256 keccak)
         {
@@ -346,16 +296,10 @@ namespace Nethermind.Trie
             return new TrieNodeExtension(in keccak.ValueHash256);
         }
 
-        /// <summary>
-        /// Allocate a typed extension node initialized from RLP.
-        /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static TrieNode CreateExtensionTyped(byte[]? rlp, bool isDirty = false)
             => new TrieNodeExtension(new CappedArray<byte>(rlp), isDirty);
 
-        /// <summary>
-        /// Allocate a typed extension node initialized from RLP wrapped in a CappedArray.
-        /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static TrieNode CreateExtensionTyped(CappedArray<byte> rlp, bool isDirty = false)
             => new TrieNodeExtension(rlp, isDirty);
