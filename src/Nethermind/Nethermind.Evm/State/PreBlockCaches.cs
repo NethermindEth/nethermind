@@ -15,7 +15,7 @@ namespace Nethermind.Evm.State;
 public class PreBlockCaches
 {
     private const int PrecompileCacheInitialCapacity = 4096 * 8;
-    public const int DefaultStorageCacheCapacity = PrecompileCacheInitialCapacity * 4;
+    public const int DefaultStorageCacheCapacity = PrecompileCacheInitialCapacity * 2;
     private static int LockPartitions => CollectionExtensions.LockPartitions;
 
     private readonly Func<CacheType>[] _clearCaches;
