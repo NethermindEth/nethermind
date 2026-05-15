@@ -23,9 +23,7 @@ namespace Nethermind.Trie.Pruning
                 return cached;
             }
 
-            byte[]? rlp = LoadRlp(in path, in hash, flags)
-                ?? throw new MissingTrieNodeException("Node missing", null, path, new Hash256(in hash));
-
+            byte[] rlp = LoadRlp(in path, in hash, flags) ?? MissingTrieNodeException.ThrowMissing(null, in path, in hash);
             return TrieNode.DecodeNode(in path, in hash, rlp);
         }
 

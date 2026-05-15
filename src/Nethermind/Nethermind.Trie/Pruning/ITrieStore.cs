@@ -40,64 +40,9 @@ namespace Nethermind.Trie.Pruning
     {
         ICommitter BeginCommit(Hash256? address, TrieNode? root, WriteFlags writeFlags);
 
-        /// <summary>
-        /// Returns a fully resolved <see cref="TrieNode"/>: cache hit if the node is cached
-        /// with RLP, otherwise loads RLP through <see cref="LoadRlp"/> and decodes it.
-        /// Throws <see cref="MissingTrieNodeException"/> when the node is absent.
-        /// </summary>
-        TrieNode GetOrLoadNode(Hash256? address, in TreePath path, in ValueHash256 hash, ReadFlags flags = ReadFlags.None)
-        {
-            if (TryGetCachedNode(address, in path, in hash, out TrieNode? cached))
-            {
-                return cached;
-            }
-
-            byte[]? rlp = LoadRlp(address, in path, in hash, flags)
-                ?? throw new MissingTrieNodeException("Node missing", address, path, new Hash256(in hash));
-
-            return TrieNode.DecodeNode(in path, in hash, rlp);
-        }
-
-        /// <summary>
-        /// Try-style sibling of <see cref="GetOrLoadNode"/>; returns <c>false</c> when RLP cannot
-        /// be loaded or decoded, leaving <paramref name="node"/> <see langword="null"/>.
-        /// </summary>
-        bool TryGetOrLoadNode(Hash256? address, in TreePath path, in ValueHash256 hash, [NotNullWhen(true)] out TrieNode? node, ReadFlags flags = ReadFlags.None)
-        {
-            if (TryGetCachedNode(address, in path, in hash, out node))
-            {
-                return true;
-            }
-
-            byte[]? rlp = TryLoadRlp(address, in path, in hash, flags);
-            if (rlp is null)
-            {
-                node = null;
-                return false;
-            }
-
-            try
-            {
-                node = TrieNode.DecodeNode(in path, in hash, rlp);
-                return true;
-            }
-            catch (TrieException)
-            {
-                node = null;
-                return false;
-            }
-        }
-
-        /// <summary>
-        /// Cache-only lookup. Returns <c>true</c> with the cached resolved node when one
-        /// exists. Never allocates a placeholder, never loads RLP. Default returns <c>false</c>;
-        /// stores that maintain a node cache override.
-        /// </summary>
-        bool TryGetCachedNode(Hash256? address, in TreePath path, in ValueHash256 hash, [NotNullWhen(true)] out TrieNode? node)
-        {
-            node = null;
-            return false;
-        }
+        TrieNode GetOrLoadNode(Hash256? address, in TreePath path, in ValueHash256 hash, ReadFlags flags = ReadFlags.None);
+        bool TryGetOrLoadNode(Hash256? address, in TreePath path, in ValueHash256 hash, [NotNullWhen(true)] out TrieNode? node, ReadFlags flags = ReadFlags.None);
+        bool TryGetCachedNode(Hash256? address, in TreePath path, in ValueHash256 hash, [NotNullWhen(true)] out TrieNode? node);
 
         byte[]? LoadRlp(Hash256? address, in TreePath path, in ValueHash256 hash, ReadFlags flags = ReadFlags.None);
         byte[]? TryLoadRlp(Hash256? address, in TreePath path, in ValueHash256 hash, ReadFlags flags = ReadFlags.None);

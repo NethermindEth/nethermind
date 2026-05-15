@@ -17,8 +17,7 @@ public class OverlayTrieStore(IKeyValueStoreWithBatching keyValueStore, IReadOnl
     private readonly IReadOnlyTrieStore _baseStore = baseStore;
 
     public override byte[]? LoadRlp(Hash256? address, in TreePath path, in ValueHash256 hash, ReadFlags flags = ReadFlags.None) =>
-        TryLoadRlp(address, in path, in hash, flags)
-        ?? throw new MissingTrieNodeException("Missing RLP node", address, path, new Hash256(in hash));
+        TryLoadRlp(address, in path, in hash, flags) ?? MissingTrieNodeException.ThrowMissing(address, in path, in hash, "Missing RLP node");
 
     public override byte[]? TryLoadRlp(Hash256? address, in TreePath path, in ValueHash256 hash, ReadFlags flags = ReadFlags.None) =>
         _nodeStorage.Get(address, in path, hash, flags) ?? _baseStore.TryLoadRlp(address, in path, in hash, flags);

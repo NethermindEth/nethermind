@@ -15,8 +15,7 @@ public class RawScopedTrieStore(INodeStorage nodeStorage, Hash256? address = nul
     }
 
     public byte[]? LoadRlp(in TreePath path, in ValueHash256 hash, ReadFlags flags = ReadFlags.None) =>
-        nodeStorage.Get(address, path, hash, flags)
-        ?? throw new MissingTrieNodeException("Node missing", address, path, new Hash256(in hash));
+        nodeStorage.Get(address, path, hash, flags) ?? MissingTrieNodeException.ThrowMissing(address, in path, in hash);
 
     public byte[]? TryLoadRlp(in TreePath path, in ValueHash256 hash, ReadFlags flags = ReadFlags.None) =>
         nodeStorage.Get(address, path, hash, flags);

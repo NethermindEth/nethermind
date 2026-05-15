@@ -9,11 +9,11 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.Trie
 {
-    /// <summary>16-slot inline storage for branch children. Each slot holds one of:
-    /// <see langword="null"/> (unresolved - decode from parent RLP on read),
-    /// the empty sentinel (<see cref="TrieNode.NullNode"/>), or a resolved
-    /// <see cref="TrieNode"/>. The unresolved-by-hash shape is gone:
-    /// hashes live in the parent's retained <c>_rlpArray</c> only.</summary>
+    /// <summary>
+    /// 16-slot inline storage for branch children. Slots hold null (unresolved - decode from
+    /// parent RLP on read), the empty sentinel <see cref="TrieNode.NullNode"/>, or a resolved
+    /// <see cref="TrieNode"/>. Unresolved-by-hash slots live in the parent's retained RLP only.
+    /// </summary>
     [InlineArray(Length)]
     internal struct BranchArray
     {
@@ -34,15 +34,10 @@ namespace Nethermind.Trie
     }
 
     /// <summary>
-    /// Transient typed-node wrapper for RLP bytes received from a peer during sync.
-    /// Carries the RLP payload; the shape (branch / leaf / extension) is determined
-    /// later by <see cref="TrieNode.ResolveNode"/>, which decodes the RLP into a
-    /// typed derived class and rebinds the caller's reference.
-    ///
-    /// This class is for sync code only. The hash-only constructors that previously
-    /// existed marked themselves <c>IsPersisted = true</c> without verifying the node
-    /// was actually in the backing store. Do not reintroduce a production hash-only
-    /// constructor; cache misses must return <see langword="null"/>.
+    /// Transient typed-node wrapper for sync RLP. Shape is determined later by
+    /// <see cref="TrieNode.ResolveNode"/> which decodes the RLP and rebinds the caller's ref.
+    /// Sync-only: do not add a production hash-only ctor (the prior one falsely marked
+    /// nodes IsPersisted before storage confirmation, polluting the cache).
     /// </summary>
     internal sealed class TrieSyncNode : TrieNode
     {
@@ -53,14 +48,11 @@ namespace Nethermind.Trie
         internal TrieSyncNode(byte[]? rlp, bool isDirty = false)
             : base(new CappedArray<byte>(rlp), isDirty) { }
 
-        // Test-only hash stub for unresolved child-slot semantics. This deliberately
-        // does not set IsPersisted.
+        // Test-only hash stub. Does not set IsPersisted.
         internal TrieSyncNode(in ValueHash256 keccak) : base(in keccak) { }
 
-        internal TrieSyncNode(Hash256 keccak) : base(in (keccak ?? throw new ArgumentNullException(nameof(keccak))).ValueHash256) { }
+        internal TrieSyncNode(Hash256 keccak) : base(in keccak.ValueHash256) { }
 
-        // Copy ctor for CloneTyped: preserves the unknown shape; the caller is expected
-        // to ResolveNode the clone before treating it as a typed node.
         private TrieSyncNode(TrieSyncNode source) : base(source) { }
 
         internal override TrieNode CloneTyped() => new TrieSyncNode(this);
@@ -78,10 +70,8 @@ namespace Nethermind.Trie
         internal TrieNodeBranch(in ValueHash256 keccak, CappedArray<byte> rlp)
             : base(rlp, in keccak) { }
 
-        // Clone constructor: copy each branch slot and the dirty mask.
         private TrieNodeBranch(TrieNodeBranch source) : base(source)
         {
-            // Shallow copy of the 16 slots — TrieNode references are shared
             for (int i = 0; i < BranchArray.Length; i++)
             {
                 _branches[i] = source._branches[i];
@@ -141,10 +131,7 @@ namespace Nethermind.Trie
 
         internal override ref TrieNode? StorageRootRef => ref _storageRoot;
 
-        // Leaf has no indexed child slots; slot 0 is the value-only Path used by some
-        // decoders that walk extension/leaf children uniformly. Leaf RLP encoding uses
-        // Key + Value, not slot-based child decoding, so callers should never invoke
-        // GetSlotRef on a leaf. Throw to surface accidental misuse.
+        // Leaves have no indexed child slots; callers should never invoke this.
         [MethodImpl(MethodImplOptions.NoInlining)]
         internal override ref TrieNode? GetSlotRef(int index) => throw new IndexOutOfRangeException();
 
@@ -201,9 +188,7 @@ namespace Nethermind.Trie
             set => _key = value;
         }
 
-        // Extension stores the child reference at slot 0. Index is ignored — callers
-        // pass 0 when handling extensions explicitly and (i + 1) when iterating uniformly
-        // with branches (i is always 0 in that case).
+        // Extension stores its single child at _child; index is ignored.
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         internal override ref TrieNode? GetSlotRef(int index) => ref _child;
 
@@ -220,11 +205,7 @@ namespace Nethermind.Trie
         public static TrieNode CreateBranchTyped() => new TrieNodeBranch();
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static TrieNode CreateBranchTyped(Hash256 keccak)
-        {
-            ArgumentNullException.ThrowIfNull(keccak);
-            return new TrieNodeBranch(in keccak.ValueHash256);
-        }
+        public static TrieNode CreateBranchTyped(Hash256 keccak) => new TrieNodeBranch(in keccak.ValueHash256);
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static TrieNode CreateBranchTyped(byte[]? rlp, bool isDirty = false)
@@ -243,11 +224,7 @@ namespace Nethermind.Trie
         public static TrieNode CreateLeafTyped() => new TrieNodeLeaf();
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static TrieNode CreateLeafTyped(Hash256 keccak)
-        {
-            ArgumentNullException.ThrowIfNull(keccak);
-            return new TrieNodeLeaf(in keccak.ValueHash256);
-        }
+        public static TrieNode CreateLeafTyped(Hash256 keccak) => new TrieNodeLeaf(in keccak.ValueHash256);
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static TrieNode CreateLeafTyped(byte[]? rlp, bool isDirty = false)
@@ -258,11 +235,7 @@ namespace Nethermind.Trie
             => new TrieNodeLeaf(rlp, isDirty);
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static TrieNode CreateLeafTyped(Hash256 keccak, CappedArray<byte> rlp)
-        {
-            ArgumentNullException.ThrowIfNull(keccak);
-            return new TrieNodeLeaf(in keccak.ValueHash256, rlp);
-        }
+        public static TrieNode CreateLeafTyped(Hash256 keccak, CappedArray<byte> rlp) => new TrieNodeLeaf(in keccak.ValueHash256, rlp);
 
         // Extension factories.
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -277,11 +250,7 @@ namespace Nethermind.Trie
         public static TrieNode CreateExtensionTyped() => new TrieNodeExtension();
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static TrieNode CreateExtensionTyped(Hash256 keccak)
-        {
-            ArgumentNullException.ThrowIfNull(keccak);
-            return new TrieNodeExtension(in keccak.ValueHash256);
-        }
+        public static TrieNode CreateExtensionTyped(Hash256 keccak) => new TrieNodeExtension(in keccak.ValueHash256);
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static TrieNode CreateExtensionTyped(byte[]? rlp, bool isDirty = false)

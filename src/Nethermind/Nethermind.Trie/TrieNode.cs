@@ -33,9 +33,7 @@ namespace Nethermind.Trie
         public int Id = Interlocked.Increment(ref _idCounter);
 #endif
 
-        // Empty-child sentinel: a typed TrieNode published into branch / extension
-        // slots when the parent RLP encoded an empty entry. Compared by reference;
-        // never resolved or visited. See TrieNodeNullSentinel.
+        // Empty-child sentinel published into branch/extension slots; compared by reference.
         public static readonly TrieNode NullNode = new TrieNodeNullSentinel();
         private static readonly AccountDecoder _accountDecoder = new();
 
@@ -46,18 +44,12 @@ namespace Nethermind.Trie
         private const byte _rlpStaleMask = 0b1_0000;
 
         private byte _blockAndFlags = 0;
-        // Seqlock counter for torn-read safety on _keccakValue (32 bytes, not atomically
-        // readable on x64). Writers set bit 0 to indicate in-progress, advance by 2 on
-        // completion. Readers retry on observed odd value or before/after mismatch.
-        // Fits in alignment padding after _blockAndFlags so adds no object size.
+        // Seqlock for _keccakValue (32 B, not atomic on x64). Odd = write in progress.
         private uint _keccakSeq;
-        // Seqlock for torn-read safety: CappedArray<byte> is 12 bytes (ref + int),
-        // not atomically readable on x64. Split into two 8-byte fields that are
-        // individually atomic, with a sequence counter to detect concurrent writes.
+        // Seqlock for _rlpArray + _rlpSeqAndLength (CappedArray is 12 B, not atomic).
         private byte[]? _rlpArray;
-        private ulong _rlpSeqAndLength; // normal: bits 0-31 length, 32-63 sequence. slice: bit 63, bits 0-31 length, bits 32-62 offset.
-        // Inline node hash. Access only via TryGetKeccak / KeccakValue / HasKeccak; raw
-        // reads are not torn-safe under concurrent writes.
+        private ulong _rlpSeqAndLength; // normal: bits 0-31 length, 32-63 seq. slice: bit 63, bits 0-31 length, bits 32-62 offset.
+        // Access only via TryGetKeccak / KeccakValue / HasKeccak.
         private ValueHash256 _keccakValue;
 
         // In normal mode, the sequence counter shares bit 63 with the slice flag. After about

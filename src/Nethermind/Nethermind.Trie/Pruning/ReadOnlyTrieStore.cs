@@ -18,13 +18,11 @@ namespace Nethermind.Trie.Pruning
         public TrieNode GetOrLoadNode(Hash256? address, in TreePath treePath, in ValueHash256 hash, ReadFlags flags = ReadFlags.None) =>
             _trieStore.GetOrLoadNode(address, in treePath, in hash, isReadOnly: true, flags);
 
-        // The default IScopableTrieStore.TryGetOrLoadNode implementation only consults
-        // TryGetCachedNode (which defaults to false here) and otherwise falls back to
-        // TryLoadRlp - that bypasses the dirty cache entirely, so transient (not yet
-        // persisted) nodes show up as missing. Route through the underlying TrieStore's
-        // read-only path so cached nodes are cloned and returned just like GetOrLoadNode.
         public bool TryGetOrLoadNode(Hash256? address, in TreePath treePath, in ValueHash256 hash, [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out TrieNode? node, ReadFlags flags = ReadFlags.None) =>
             _trieStore.TryGetOrLoadNode(address, in treePath, in hash, isReadOnly: true, out node, flags);
+
+        public bool TryGetCachedNode(Hash256? address, in TreePath treePath, in ValueHash256 hash, [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out TrieNode? node) =>
+            _trieStore.TryGetCachedNode(address, in treePath, in hash, out node);
 
         public byte[] LoadRlp(Hash256? address, in TreePath treePath, in ValueHash256 hash, ReadFlags flags) =>
             _trieStore.LoadRlp(address, treePath, in hash, flags);
@@ -76,11 +74,7 @@ namespace Nethermind.Trie.Pruning
                 byte[]? rlp = fullTrieStore._trieStore.TryLoadRlp(Address, in path, in hash, flags);
                 if (rlp is null)
                 {
-                    if (throwOnMissing)
-                    {
-                        throw new MissingTrieNodeException("Node missing", Address, path, new Hash256(in hash));
-                    }
-
+                    if (throwOnMissing) MissingTrieNodeException.ThrowMissing(Address, in path, in hash);
                     node = null;
                     return false;
                 }

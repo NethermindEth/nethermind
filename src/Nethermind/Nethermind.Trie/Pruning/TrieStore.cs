@@ -508,19 +508,9 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
         return rlp;
     }
 
-    public byte[] LoadRlp(Hash256? address, in TreePath path, in ValueHash256 keccak, ReadFlags readFlags = ReadFlags.None)
-    {
-        byte[]? rlp = TryLoadRlp(address, path, in keccak, readFlags);
-        if (rlp is null)
-        {
-            ThrowMissingNode(address, path, in keccak);
-        }
-
-        return rlp;
-
-        [DoesNotReturn, StackTraceHidden]
-        static void ThrowMissingNode(Hash256? address, in TreePath path, in ValueHash256 keccak) => throw new MissingTrieNodeException($"Node A:{address} P:{path} H:{keccak} is missing from the DB", address, path, new Hash256(in keccak));
-    }
+    public byte[] LoadRlp(Hash256? address, in TreePath path, in ValueHash256 keccak, ReadFlags readFlags = ReadFlags.None) =>
+        TryLoadRlp(address, path, in keccak, readFlags) ?? MissingTrieNodeException.ThrowMissing(address, in path, in keccak,
+            $"Node A:{address} P:{path} H:{keccak} is missing from the DB");
 
     public IReadOnlyTrieStore AsReadOnly() => new ReadOnlyTrieStore(this);
 
@@ -2000,6 +1990,12 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
                 return false;
             }
             return TrieNode.TryDecodeNode(in path, in hash, rlp, out node);
+        }
+
+        public bool TryGetCachedNode(Hash256? address, in TreePath path, in ValueHash256 hash, [NotNullWhen(true)] out TrieNode? node)
+        {
+            node = baseTrieStore.DirtyNodesFindCached(new TrieStoreDirtyNodesCache.Key(address, path, hash));
+            return node is not null;
         }
 
         public ICommitter BeginCommit(Hash256? address, TrieNode? root, WriteFlags writeFlags) => NullCommitter.Instance;
