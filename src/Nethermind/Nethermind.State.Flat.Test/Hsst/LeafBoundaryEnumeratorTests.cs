@@ -1,0 +1,151 @@
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
+using System.Collections.Generic;
+using Nethermind.State.Flat.Hsst;
+using NUnit.Framework;
+
+namespace Nethermind.State.Flat.Test;
+
+/// <summary>
+/// Directly drives <see cref="LeafBoundaryEnumerator"/> with synthetic
+/// <c>commonPrefixArr</c> / <c>entryPositions</c> inputs to exercise the merge pass.
+/// The synthetic inputs allow <c>commonPrefixArr[0]</c> to be non-zero (which is
+/// impossible in real builds, where entry 0 has no predecessor), which removes the
+/// "first leaf is encoded differently" wrinkle and makes adjacent splits planner-
+/// compatible.
+/// </summary>
+[TestFixture]
+public class LeafBoundaryEnumeratorTests
+{
+    /// <summary>Drive the enumerator to completion and collect the counts it yields.</summary>
+    private static List<int> Yields(
+        byte[] commonPrefixArr, long[] entryPositions,
+        int minLeafEntries, int maxLeafEntries, int keyLength)
+    {
+        HsstBTreeBuilderBuffers buffers = new();
+        try
+        {
+            using LeafBoundaryEnumerator iter = new(
+                commonPrefixArr, entryPositions, entryPositions.Length,
+                minLeafEntries, maxLeafEntries, keyLength, ref buffers);
+            List<int> counts = [];
+            while (iter.MoveNext()) counts.Add(iter.Current);
+            return counts;
+        }
+        finally
+        {
+            buffers.Dispose();
+        }
+    }
+
+    [Test]
+    public void EmptyInput_YieldsNothing()
+    {
+        List<int> counts = Yields([], [], minLeafEntries: 2, maxLeafEntries: 15, keyLength: 15);
+        Assert.That(counts, Is.Empty);
+    }
+
+    [Test]
+    public void SingleLeafFitsBudgets_YieldsOne()
+    {
+        byte[] cp = new byte[10];
+        for (int i = 0; i < cp.Length; i++) cp[i] = 8;
+        long[] pos = new long[10];
+
+        List<int> counts = Yields(cp, pos, minLeafEntries: 2, maxLeafEntries: 20, keyLength: 15);
+
+        Assert.That(counts, Is.EqualTo(new[] { 10 }));
+    }
+
+    /// <summary>
+    /// Spike-triggered gap split produces five raw leaves; the first two have identical
+    /// planner output (Uniform slot=2, prefix=8) and identical valueSlot (1, since
+    /// positions are all 0), so the merger coalesces them. The three middle splits
+    /// around the spike at index 9 have plans driven by the spike (slot=9, slot=5),
+    /// which differ from each other and from the surrounding uniform splits, so no
+    /// further merges fire.
+    /// </summary>
+    [Test]
+    public void GapSplitWithMatchingNeighbours_CoalescesAdjacentIdenticalPlans()
+    {
+        byte[] cp = new byte[20];
+        for (int i = 0; i < cp.Length; i++) cp[i] = 8;
+        cp[9] = 13; // gap = 5 over the spike → splitter cuts
+        long[] pos = new long[20];
+
+        List<int> counts = Yields(cp, pos, minLeafEntries: 2, maxLeafEntries: 25, keyLength: 15);
+
+        // Raw splits would be: [0..3]=4, [4..6]=3, [7..7]=1, [8..9]=2, [10..19]=10.
+        // [0..3] and [4..6] both plan as Uniform slot=2 (sepLens all 9, lcp=8, effMax=1)
+        // and both have valueSlot=1; they coalesce into a single 7-entry leaf.
+        Assert.That(counts, Is.EqualTo(new[] { 7, 1, 2, 10 }));
+    }
+
+    /// <summary>
+    /// Same shape as the merge-succeeds case, but <c>maxLeafEntries</c> is small enough
+    /// that the merged count would exceed the splitter's hard cap. The merger must refuse,
+    /// preserving the raw split sequence.
+    /// </summary>
+    [Test]
+    public void CardinalityBudgetBlocksMerge()
+    {
+        byte[] cp = new byte[20];
+        for (int i = 0; i < cp.Length; i++) cp[i] = 8;
+        long[] pos = new long[20];
+
+        // maxLeafEntries=5 forces cardinality splits and bars any merge across them.
+        List<int> counts = Yields(cp, pos, minLeafEntries: 2, maxLeafEntries: 5, keyLength: 15);
+
+        // The splitter cuts [0..19] into four 5-entry leaves with planner-compatible
+        // plans (slot=2, prefix=8, valueSlot=1), but 5+5=10 > maxLeafEntries=5 so
+        // every merge probe is blocked by cardinality.
+        Assert.That(counts, Is.EqualTo(new[] { 5, 5, 5, 5 }));
+    }
+
+    /// <summary>
+    /// Positions span a 2^24 boundary so the splitter's value-range gate triggers a cut.
+    /// Each half's value range fits in a 1-byte slot, but the merged range needs 4 bytes —
+    /// so the merger's value-slot equivalence check must reject the merge.
+    /// </summary>
+    [Test]
+    public void ValueSlotWideningBlocksMerge()
+    {
+        byte[] cp = new byte[20];
+        for (int i = 0; i < cp.Length; i++) cp[i] = 8;
+        long[] pos = new long[20];
+        for (int i = 0; i < 10; i++) pos[i] = i;
+        for (int i = 10; i < 20; i++) pos[i] = 100_000_000L + (i - 10);
+
+        List<int> counts = Yields(cp, pos, minLeafEntries: 2, maxLeafEntries: 25, keyLength: 15);
+
+        // Raw splits [0..9]=10, [10..19]=10 have matching plans (slot=2, prefix=8) and
+        // each individually has valueSlot=1, but the merged value range is 100M+9 →
+        // valueSlot=4. The merger refuses.
+        Assert.That(counts, Is.EqualTo(new[] { 10, 10 }));
+    }
+
+    /// <summary>
+    /// When the bridging LCP between two splits is shorter than the buffered prefix,
+    /// merging would require stripping bytes that aren't shared across the cut. The
+    /// merger must refuse even if the individual plans look identical otherwise.
+    /// </summary>
+    [Test]
+    public void BridgeLcpShorterThanBufferedPrefixBlocksMerge()
+    {
+        // First six entries share prefix length 8; the 7th drops the prefix to 3
+        // (cp[6]=3) but the entries after it stabilize back at cp=8. The forced
+        // cardinality split at maxLeafEntries=6 puts the dip exactly at the cut.
+        byte[] cp = [8, 8, 8, 8, 8, 8, 3, 8, 8, 8, 8, 8];
+        long[] pos = new long[cp.Length];
+
+        List<int> counts = Yields(cp, pos, minLeafEntries: 2, maxLeafEntries: 6, keyLength: 15);
+
+        // [0..5]=6: plan with prefix=8 (Uniform slot=2).
+        // [6..11]=6: cp[6]=3 makes firstLen=4 (much smaller than the lcp the buffered
+        //   plan strips), and the planner picks a different plan altogether.
+        // Even if plans coincidentally matched, bridgeLcp = cp[6] = 3 < buffered prefixLen
+        // would block the merge.
+        Assert.That(counts, Is.EqualTo(new[] { 6, 6 }));
+    }
+}

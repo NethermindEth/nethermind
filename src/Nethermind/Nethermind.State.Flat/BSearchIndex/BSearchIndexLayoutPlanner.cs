@@ -88,6 +88,37 @@ internal static class BSearchIndexLayoutPlanner
             else if (len != secondLen) allSameLenExceptFirst = false;
         }
 
+        PlanFromProfile(
+            count, firstLen, secondLen, minLen, maxLen, allSameLen, allSameLenExceptFirst,
+            crossEntryLcp, keyLength,
+            out commonKeyPrefixLen, out keyType, out keySlotSize, out keyLittleEndian,
+            disablePrefix);
+    }
+
+    /// <summary>
+    /// Profile-based overload of <see cref="Plan"/>. Takes the per-entry-length summary
+    /// directly so callers that already maintain the profile incrementally (e.g. the
+    /// HSST leaf-merger probing whether two adjacent splits coalesce into a single
+    /// node) can re-decide layout without rescanning a <c>lengths</c> span.
+    /// </summary>
+    /// <param name="count">Entry count. Must be &gt; 0.</param>
+    /// <param name="firstLen">Length of entry 0's separator.</param>
+    /// <param name="secondLen">Length of entry 1's separator, or -1 if <paramref name="count"/> &lt; 2.</param>
+    /// <param name="minLen">Minimum length across all entries.</param>
+    /// <param name="maxLen">Maximum length across all entries.</param>
+    /// <param name="allSameLen">True iff every entry's length equals <paramref name="firstLen"/>.</param>
+    /// <param name="allSameLenExceptFirst">True iff <paramref name="count"/> &gt;= 2 and entries [1..] all equal <paramref name="secondLen"/>.</param>
+    internal static void PlanFromProfile(
+        int count,
+        int firstLen, int secondLen, int minLen, int maxLen,
+        bool allSameLen, bool allSameLenExceptFirst,
+        int crossEntryLcp, int keyLength,
+        out int commonKeyPrefixLen,
+        out int keyType,
+        out int keySlotSize,
+        out bool keyLittleEndian,
+        bool disablePrefix = false)
+    {
         // Slot widening: when every natural separator fits in {2, 4} and the keyLength
         // budget allows, pretend they're all `target` bytes — the builder pads each slot
         // from key data. The downstream Uniform branch then snaps to a power-of-2 SIMD
