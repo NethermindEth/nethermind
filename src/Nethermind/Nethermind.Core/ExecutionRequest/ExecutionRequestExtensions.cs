@@ -129,7 +129,7 @@ public static class ExecutionRequestExtensions
                     consolidationRequests = DecodeRequests(encoded, ConsolidationRequestsBytesSize, type, nameof(ExecutionRequestType.ConsolidationRequest), nameof(requests));
                     break;
                 default:
-                    throw new InvalidOperationException($"Unknown execution request type: {type}");
+                    throw new ArgumentOutOfRangeException(nameof(requests), type, "Unknown execution request type.");
             }
         }
 
