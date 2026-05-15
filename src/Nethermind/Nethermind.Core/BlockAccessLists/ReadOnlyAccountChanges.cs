@@ -33,9 +33,9 @@ public class ReadOnlyAccountChanges : IEquatable<ReadOnlyAccountChanges>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
     public ReadOnlySlotChanges[] StorageChanges { get; }
 
-    /// <summary>Slot keys, sorted ascending — exposed as <see cref="IList{T}"/> for indexed access.</summary>
+    /// Slot keys, sorted ascending
     [JsonIgnore]
-    public IList<UInt256> ChangedSlots { get; }
+    public UInt256[] ChangedSlots { get; }
 
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
     public UInt256[] StorageReads { get; }
