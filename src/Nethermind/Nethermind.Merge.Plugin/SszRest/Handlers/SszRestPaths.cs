@@ -55,5 +55,9 @@ public static class SszRestPaths
     public const string PostV4Forkchoice = "POST /engine/v4/forkchoice";
     public const string PostV2PayloadBodiesByHash = "POST /engine/v2/payloads/bodies/by-hash";
     public const string PostV2PayloadBodiesByRange = "POST /engine/v2/payloads/bodies/by-range";
-    public const string RestEngineNewPayloadWithWitness = "rest_engine_newPayloadWithWitness";
+}
+
+public static class SszRestCapabilities
+{
+    public const string NewPayloadWithWitness = "rest_engine_newPayloadWithWitness";
 }

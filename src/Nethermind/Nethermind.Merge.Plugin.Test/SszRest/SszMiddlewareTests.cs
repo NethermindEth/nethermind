@@ -26,6 +26,9 @@ using Nethermind.Merge.Plugin.SszRest;
 using Nethermind.Merge.Plugin.SszRest.Handlers;
 using NSubstitute;
 using NUnit.Framework;
+using Nethermind.Core.BlockAccessLists;
+using Nethermind.Core.Collections;
+using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Merge.Plugin.Test.SszRest;
 
@@ -104,7 +107,7 @@ public class SszMiddlewareTests
 
             new ClientVersionSszHandler(_engineModule),
             new CapabilitiesSszHandler(_engineModule),
-            new NewPayloadWithWitnessSszHandler(_engineModule, _blockTree, _witnessEnvFactory),
+            new NewPayloadWithWitnessSszHandler(_engineModule, _blockTree, _witnessEnvFactory, LimboLogs.Instance),
         ];
 
         return new SszMiddleware(
@@ -666,12 +669,40 @@ public class SszMiddlewareTests
     }
 
     [Test]
-    public async Task NewPayloadWithWitness_returns_200_for_valid_status()
+    public async Task NewPayloadWithWitness_returns_200_with_octet_stream_and_decodable_ssz_for_valid_status()
     {
         PayloadStatusV1 status = new() { Status = PayloadStatus.Valid, LatestValidHash = TestItem.KeccakA };
         _engineModule.engine_newPayloadV5(
                 Arg.Any<ExecutionPayloadV4>(), Arg.Any<byte[]?[]>(), Arg.Any<Hash256?>(), Arg.Any<byte[][]?>())
             .Returns(ResultWrapper<PayloadStatusV1>.Success(status));
+
+        ArrayPoolList<byte[]> stateList = new(1)
+        {
+            new byte[] { 0xDE, 0xAD, 0xBE, 0xEF }
+        };
+        Witness stubWitness = new()
+        {
+            State = stateList,
+            Codes = new ArrayPoolList<byte[]>(0),
+            Keys = new ArrayPoolList<byte[]>(0),
+            Headers = new ArrayPoolList<byte[]>(0),
+        };
+
+        IExistingBlockWitnessCollector stubCollector = Substitute.For<IExistingBlockWitnessCollector>();
+        stubCollector
+            .GetWitnessForExistingBlock(Arg.Any<BlockHeader>(), Arg.Any<Block>())
+            .Returns(stubWitness);
+
+        IWitnessGeneratingBlockProcessingEnv stubEnv = Substitute.For<IWitnessGeneratingBlockProcessingEnv>();
+        stubEnv.CreateExistingBlockWitnessCollector().Returns(stubCollector);
+
+        IWitnessGeneratingBlockProcessingEnvScope stubScope = Substitute.For<IWitnessGeneratingBlockProcessingEnvScope>();
+        stubScope.Env.Returns(stubEnv);
+
+        _witnessEnvFactory.CreateScope().Returns(stubScope);
+
+        _blockTree.FindHeader(Arg.Any<Hash256>(), Arg.Any<BlockTreeLookupOptions>())
+            .Returns(Build.A.BlockHeader.TestObject);
 
         byte[] body = BuildMinimalWitnessRequestBody();
         DefaultHttpContext ctx = MakeJsonPostContext("/new-payload-with-witness", body);
@@ -680,8 +711,64 @@ public class SszMiddlewareTests
 
         await _engineModule.Received(1).engine_newPayloadV5(
             Arg.Any<ExecutionPayloadV4>(), Arg.Any<byte[]?[]>(), Arg.Any<Hash256?>(), Arg.Any<byte[][]?>());
-        ctx.Response.StatusCode.Should().NotBe(StatusCodes.Status404NotFound,
-            "the witness handler must be registered — 404 means Bug 5 is not fixed");
+        ctx.Response.StatusCode.Should().Be(StatusCodes.Status200OK,
+            "VALID with a successfully generated witness must return 200 OK");
+        ctx.Response.ContentType.Should().Contain(OctetStream,
+            "successful SSZ responses must use application/octet-stream");
+
+        byte[] responseBody = ResponseBytes(ctx);
+        responseBody.Should().NotBeEmpty("the SSZ body must contain the encoded response");
+
+        (byte decodedStatus, Hash256? decodedLvh, bool witnessPresent) = SszCodec.DecodeNewPayloadWithWitnessResponse(responseBody);
+        decodedStatus.Should().Be(0,
+            "decoded status byte must match VALID");
+        decodedLvh.Should().Be(TestItem.KeccakA,
+            "latest_valid_hash Union Some variant must round-trip the hash correctly");
+        witnessPresent.Should().BeTrue(
+            "a VALID response with a generated witness must encode the witness as Union Some (selector 0x01)");
+    }
+
+    [Test]
+    public async Task NewPayloadWithWitness_valid_status_but_witness_generation_fails_returns_200_with_null_witness()
+    {
+        PayloadStatusV1 status = new() { Status = PayloadStatus.Valid, LatestValidHash = TestItem.KeccakA };
+        _engineModule.engine_newPayloadV5(
+                Arg.Any<ExecutionPayloadV4>(), Arg.Any<byte[]?[]>(), Arg.Any<Hash256?>(), Arg.Any<byte[][]?>())
+            .Returns(ResultWrapper<PayloadStatusV1>.Success(status));
+
+        _blockTree.FindHeader(Arg.Any<Hash256>(), Arg.Any<BlockTreeLookupOptions>())
+            .Returns((BlockHeader?)null);
+
+        byte[] body = BuildMinimalWitnessRequestBody();
+        DefaultHttpContext ctx = MakeJsonPostContext("/new-payload-with-witness", body);
+
+        await _middleware.InvokeAsync(ctx);
+
+        ctx.Response.StatusCode.Should().Be(StatusCodes.Status200OK,
+            "the block is accepted even when witness generation fails; CL must not see 500");
+        ctx.Response.ContentType.Should().Contain(OctetStream);
+
+        byte[] responseBody = ResponseBytes(ctx);
+        responseBody.Should().NotBeEmpty();
+        (byte decodedStatus, _, bool witnessPresent) = SszCodec.DecodeNewPayloadWithWitnessResponse(responseBody);
+        decodedStatus.Should().Be(0);
+        witnessPresent.Should().BeFalse(
+            "when witness generation fails the witness Union field must be None (selector 0x00)");
+    }
+
+    [Test]
+    public async Task NewPayloadWithWitness_wrong_content_type_post_returns_415()
+    {
+        DefaultHttpContext ctx = MakeBaseContext("POST", "/new-payload-with-witness", AuthenticatedPort);
+        ctx.Request.ContentType = "text/plain";
+        ctx.Request.Body = System.IO.Stream.Null;
+        ctx.Response.Body = new System.IO.MemoryStream();
+
+        await _middleware.InvokeAsync(ctx);
+
+        ctx.Response.StatusCode.Should().Be(StatusCodes.Status415UnsupportedMediaType,
+            "a POST with wrong Content-Type must receive 415, not fall through to 404");
+        ctx.Response.ContentType.Should().Contain("application/json");
     }
 
     [Test]
@@ -749,6 +836,40 @@ public class SszMiddlewareTests
             "the JSON-RPC error code -38005 must be present in the error body");
     }
 
+    [Test]
+    public async Task NewPayloadWithWitness_via_versioned_engine_path_returns_404()
+    {
+        byte[] body = BuildMinimalWitnessRequestBody();
+        DefaultHttpContext ctx = MakePostContext("/engine/v1/new-payload-with-witness", body);
+
+        await _middleware.InvokeAsync(ctx);
+
+        ctx.Response.StatusCode.Should().Be(StatusCodes.Status404NotFound,
+            "the witness endpoint has no versioned /engine/vN/ path; the versioned URL must return 404");
+        ctx.Response.ContentType.Should().Contain("application/json",
+            "error responses must always be application/json");
+    }
+
+    [Test]
+    public async Task NewPayloadWithWitness_non_UnsupportedFork_engine_error_returns_500()
+    {
+        _engineModule.engine_newPayloadV5(
+                Arg.Any<ExecutionPayloadV4>(), Arg.Any<byte[]?[]>(), Arg.Any<Hash256?>(), Arg.Any<byte[][]?>())
+            .Returns(ResultWrapper<PayloadStatusV1>.Fail("Something exploded", ErrorCodes.InternalError));
+
+        byte[] body = BuildMinimalWitnessRequestBody();
+        DefaultHttpContext ctx = MakeJsonPostContext("/new-payload-with-witness", body);
+
+        await _middleware.InvokeAsync(ctx);
+
+        ctx.Response.StatusCode.Should().Be(StatusCodes.Status500InternalServerError,
+            "non-UnsupportedFork engine errors must map to 500 Internal Server Error");
+        ctx.Response.ContentType.Should().Contain("application/json");
+        string responseBody = System.Text.Encoding.UTF8.GetString(ResponseBytes(ctx));
+        responseBody.Should().Contain("\"code\"");
+        responseBody.Should().Contain(ErrorCodes.InternalError.ToString());
+    }
+
     private static byte[] BuildMinimalWitnessRequestBody()
     {
         ExecutionPayloadV4 payload = new()
@@ -772,7 +893,7 @@ public class SszMiddlewareTests
             ExcessBlobGas = 0,
             ParentBeaconBlockRoot = TestItem.KeccakA,
             ExecutionRequests = [],
-            BlockAccessList = []
+            BlockAccessList = Rlp.Encode(new BlockAccessList()).Bytes
         };
 
         string json = System.Text.Json.JsonSerializer.Serialize(

@@ -11,6 +11,7 @@ using Nethermind.Consensus.Stateless;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.JsonRpc;
+using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Serialization.Json;
 
@@ -24,8 +25,11 @@ namespace Nethermind.Merge.Plugin.SszRest.Handlers;
 public sealed class NewPayloadWithWitnessSszHandler(
     IEngineRpcModule engineModule,
     IBlockTree blockTree,
-    IWitnessGeneratingBlockProcessingEnvFactory witnessEnvFactory) : SszEndpointHandlerBase
+    IWitnessGeneratingBlockProcessingEnvFactory witnessEnvFactory,
+    ILogManager logManager) : SszEndpointHandlerBase
 {
+    private readonly ILogger _logger = logManager.GetClassLogger<NewPayloadWithWitnessSszHandler>();
+
     public override string HttpMethod => "POST";
 
     // This handler uses a non-versioned path outside /engine/v{N}/.
@@ -37,6 +41,15 @@ public sealed class NewPayloadWithWitnessSszHandler(
 
     public override async Task HandleAsync(HttpContext ctx, int version, ReadOnlyMemory<char> extra, ReadOnlySequence<byte> body)
     {
+        string? contentType = ctx.Request.ContentType;
+        if (contentType is null || !contentType.Contains("application/json", StringComparison.OrdinalIgnoreCase))
+        {
+            ctx.Response.Headers["Accept"] = "application/json";
+            await WriteErrorAsync(ctx, StatusCodes.Status415UnsupportedMediaType,
+                "Content-Type must be application/json", ErrorCodes.ParseError);
+            return;
+        }
+
         NewPayloadV5Params? request = DeserializeRequest(body);
         if (request is null)
         {
@@ -77,13 +90,11 @@ public sealed class NewPayloadWithWitnessSszHandler(
 
                 if (witness is null)
                 {
-                    await WriteErrorAsync(
-                        ctx,
-                        StatusCodes.Status500InternalServerError,
-                        "Payload executed with VALID status but the execution witness could not be generated. " +
-                        "This is an internal server error; the block has been accepted.",
-                        ErrorCodes.InternalError);
-                    return;
+                    if (_logger.IsError)
+                        _logger.Error(
+                            $"Payload executed with VALID status but the execution witness could " +
+                            $"not be generated for block {request.ExecutionPayload.BlockHash}. " +
+                            $"The block has been accepted; returning witness=None per spec Union[None, T] arm.");
                 }
             }
 
@@ -105,12 +116,6 @@ public sealed class NewPayloadWithWitnessSszHandler(
         {
             ctx.Abort();
             throw;
-        }
-
-        if (length == 0)
-        {
-            ctx.Response.StatusCode = StatusCodes.Status204NoContent;
-            return;
         }
 
         ctx.Response.ContentType = "application/octet-stream";
@@ -135,10 +140,22 @@ public sealed class NewPayloadWithWitnessSszHandler(
     {
         BlockDecodingResult decodingResult = executionPayload.TryGetBlock();
         Block? block = decodingResult.Block;
-        if (block is null) return null;
+        if (block is null)
+        {
+            if (_logger.IsWarn)
+                _logger.Warn($"Witness generation skipped: could not decode block from ExecutionPayloadV4 " +
+                             $"(hash={executionPayload.BlockHash}). Decode error: {decodingResult.Error}");
+            return null;
+        }
 
         BlockHeader? parent = blockTree.FindHeader(block.ParentHash!, BlockTreeLookupOptions.DoNotCreateLevelIfMissing);
-        if (parent is null) return null;
+        if (parent is null)
+        {
+            if (_logger.IsWarn)
+                _logger.Warn($"Witness generation skipped: parent header not found for block " +
+                             $"{block.Hash} (parentHash={block.ParentHash}).");
+            return null;
+        }
 
         try
         {
@@ -146,8 +163,16 @@ public sealed class NewPayloadWithWitnessSszHandler(
             IExistingBlockWitnessCollector collector = scope.Env.CreateExistingBlockWitnessCollector();
             return collector.GetWitnessForExistingBlock(parent, block);
         }
-        catch
+        catch (OperationCanceledException ex)
         {
+            if (_logger.IsWarn)
+                _logger.Warn($"Witness generation cancelled for block {block.Hash}: {ex.Message}");
+            return null;
+        }
+        catch (Exception ex)
+        {
+            if (_logger.IsError)
+                _logger.Error($"Witness generation failed for block {block.Hash}: {ex.Message}", ex);
             return null;
         }
     }

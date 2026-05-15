@@ -94,6 +94,9 @@ public sealed class SszMiddleware
 
         foreach (ISszEndpointHandler h in handlers)
         {
+            if (h.Resource.Equals(SszRestPaths.NewPayloadWithWitness, StringComparison.OrdinalIgnoreCase))
+                continue;
+
             string resource = h.Resource.ToLowerInvariant();
             Dictionary<string, List<ISszEndpointHandler>> dict =
                 h.HttpMethod.Equals("GET", StringComparison.OrdinalIgnoreCase)
@@ -147,7 +150,7 @@ public sealed class SszMiddleware
             {
                 Metrics.SszRestRequestsClientErrorTotal++;
                 await SszEndpointHandlerBase.WriteErrorAsync(ctx, StatusCodes.Status401Unauthorized,
-                    "Authentication error", ErrorCodes.InternalError);
+                    "Authentication error", ErrorCodes.InvalidRequest);
             }
             else if (IsWitnessPath(ctx.Request.Path.Value ?? string.Empty))
             {
@@ -246,16 +249,23 @@ public sealed class SszMiddleware
 
     private async Task DispatchWitnessAsync(HttpContext ctx)
     {
-        // BUG FIX: The spec requires HTTP 405 for any method other than POST on this endpoint.
-        // Previously, non-POST requests fell through IsSszRequest (which returned false for them)
-        // and were passed to the next middleware, resulting in a 404 rather than the spec-mandated
-        // 405. Now IsSszRequest intercepts ALL methods to this path; we reject non-POST here.
+        // Reject any method other than POST with 405.
         if (!string.Equals(ctx.Request.Method, "POST", StringComparison.OrdinalIgnoreCase))
         {
             Metrics.SszRestRequestsClientErrorTotal++;
             ctx.Response.Headers.Allow = "POST";
             await SszEndpointHandlerBase.WriteErrorAsync(ctx, StatusCodes.Status405MethodNotAllowed,
                 $"Method '{ctx.Request.Method}' is not allowed on {WitnessPath}. Only POST is supported.", ErrorCodes.MethodNotFound);
+            return;
+        }
+
+        string? contentType = ctx.Request.ContentType;
+        if (contentType is null || !contentType.Contains("application/json", StringComparison.OrdinalIgnoreCase))
+        {
+            Metrics.SszRestRequestsClientErrorTotal++;
+            ctx.Response.Headers["Accept"] = "application/json";
+            await SszEndpointHandlerBase.WriteErrorAsync(ctx, StatusCodes.Status415UnsupportedMediaType,
+                $"Content-Type must be application/json for {WitnessPath}.", ErrorCodes.ParseError);
             return;
         }
 
@@ -452,13 +462,7 @@ public sealed class SszMiddleware
         // non-POST instead of falling through and returning a confusing 404.
         if (path.Equals(WitnessPath, StringComparison.OrdinalIgnoreCase))
         {
-            // For non-POST we always intercept (DispatchWitnessAsync will reject with 405).
-            if (!string.Equals(ctx.Request.Method, "POST", StringComparison.OrdinalIgnoreCase))
-                return true;
-
-            // For POST, require application/json Content-Type as per the spec.
-            string? ct = ctx.Request.ContentType;
-            return ct is not null && ct.Contains("application/json", StringComparison.OrdinalIgnoreCase);
+            return true;
         }
 
         if (!path.StartsWith("/engine/", StringComparison.OrdinalIgnoreCase))

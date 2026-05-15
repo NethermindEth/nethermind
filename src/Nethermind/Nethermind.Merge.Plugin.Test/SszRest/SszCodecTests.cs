@@ -694,7 +694,7 @@ public class SszCodecTests
     }
 
     [Test]
-    public void EncodeNewPayloadWithWitnessResponse_non_valid_status_always_encodes_empty_witness()
+    public void EncodeNewPayloadWithWitnessResponse_non_valid_status_always_encodes_witness_as_none()
     {
         using Witness nonNullWitness = MakeMinimalWitness();
 
@@ -706,14 +706,15 @@ public class SszCodecTests
                 (ps, (Witness?)nonNullWitness),
                 static (t, w) => SszCodec.EncodeNewPayloadWithWitnessResponse(t.Item1, t.Item2, w));
 
-            NewPayloadWithWitnessResponseV1Wire.Decode(encoded, out NewPayloadWithWitnessResponseV1Wire wire);
-            wire.Witness.Should().BeNullOrEmpty(
-                $"witness must be None (empty list) when status is {nonValidStatus}, not {PayloadStatus.Valid}");
+            (byte decodedStatus, _, bool witnessPresent) = SszCodec.DecodeNewPayloadWithWitnessResponse(encoded);
+            witnessPresent.Should().BeFalse(
+                $"witness Union must be None (selector 0x00) when status is {nonValidStatus}, not {PayloadStatus.Valid}");
+            _ = decodedStatus;
         }
     }
 
     [Test]
-    public void EncodeNewPayloadWithWitnessResponse_valid_status_with_witness_encodes_witness_field()
+    public void EncodeNewPayloadWithWitnessResponse_valid_status_with_witness_encodes_witness_as_some()
     {
         using Witness witness = MakeMinimalWitness();
         PayloadStatusV1 ps = new() { Status = PayloadStatus.Valid, LatestValidHash = TestItem.KeccakA };
@@ -722,13 +723,16 @@ public class SszCodecTests
             (ps, (Witness?)witness),
             static (t, w) => SszCodec.EncodeNewPayloadWithWitnessResponse(t.Item1, t.Item2, w));
 
-        NewPayloadWithWitnessResponseV1Wire.Decode(encoded, out NewPayloadWithWitnessResponseV1Wire wire);
-        wire.Witness.Should().HaveCount(1, "VALID status with a witness must encode the witness field");
-        wire.Status.Should().Be(0, "VALID maps to SSZ byte 0");
+        (byte decodedStatus, Hash256? lvh, bool witnessPresent) = SszCodec.DecodeNewPayloadWithWitnessResponse(encoded);
+        decodedStatus.Should().Be(0, "VALID maps to SSZ status byte 0");
+        lvh.Should().Be(TestItem.KeccakA,
+            "latest_valid_hash Union Some variant must round-trip the 32-byte hash");
+        witnessPresent.Should().BeTrue(
+            "VALID status with a non-null witness must encode the witness Union as Some (selector 0x01)");
     }
 
     [Test]
-    public void EncodeNewPayloadWithWitnessResponse_valid_status_null_witness_encodes_empty_witness()
+    public void EncodeNewPayloadWithWitnessResponse_valid_status_null_witness_encodes_witness_as_none()
     {
         PayloadStatusV1 ps = new() { Status = PayloadStatus.Valid };
 
@@ -736,8 +740,40 @@ public class SszCodecTests
             (ps, (Witness?)null),
             static (t, w) => SszCodec.EncodeNewPayloadWithWitnessResponse(t.Item1, t.Item2, w));
 
-        NewPayloadWithWitnessResponseV1Wire.Decode(encoded, out NewPayloadWithWitnessResponseV1Wire wire);
-        wire.Witness.Should().BeNullOrEmpty("null witness must encode as None regardless of status");
+        (byte decodedStatus, _, bool witnessPresent) = SszCodec.DecodeNewPayloadWithWitnessResponse(encoded);
+        decodedStatus.Should().Be(0, "VALID maps to SSZ status byte 0");
+        witnessPresent.Should().BeFalse(
+            "null witness must encode the witness Union as None (selector 0x00) regardless of status");
+    }
+
+    [Test]
+    public void EncodeNewPayloadWithWitnessResponse_container_header_is_13_bytes_and_offsets_are_correct()
+    {
+        PayloadStatusV1 ps = new() { Status = PayloadStatus.Valid, LatestValidHash = TestItem.KeccakA };
+
+        byte[] encoded = Encode(
+            (ps, (Witness?)null),
+            static (t, w) => SszCodec.EncodeNewPayloadWithWitnessResponse(t.Item1, t.Item2, w));
+
+        ReadOnlySpan<byte> buf = encoded;
+
+        buf[0].Should().Be(0, "VALID encodes as status byte 0x00");
+
+        int off1 = System.Buffers.Binary.BinaryPrimitives.ReadInt32LittleEndian(buf.Slice(1, 4));
+        off1.Should().Be(13, "latest_valid_hash Union starts immediately after the 13-byte fixed header");
+
+        buf[off1].Should().Be(0x01, "latest_valid_hash Union selector must be 0x01 (Some) when hash is present");
+        buf.Slice(off1 + 1, 32).ToArray().Should()
+            .BeEquivalentTo(TestItem.KeccakA.Bytes.ToArray(),
+                "latest_valid_hash bytes must follow immediately after the 0x01 selector");
+
+        int off2 = System.Buffers.Binary.BinaryPrimitives.ReadInt32LittleEndian(buf.Slice(5, 4));
+        off2.Should().Be(46, "validation_error Union starts after latest_valid_hash (13 header + 33 lvh bytes)");
+        buf[off2].Should().Be(0x00, "validation_error Union selector must be 0x00 (None) when no error");
+
+        int off3 = System.Buffers.Binary.BinaryPrimitives.ReadInt32LittleEndian(buf.Slice(9, 4));
+        off3.Should().Be(47, "witness Union starts after validation_error (46 + 1 None byte)");
+        buf[off3].Should().Be(0x00, "witness Union selector must be 0x00 (None) when no witness was generated");
     }
 
     private static Witness MakeMinimalWitness() => new()
