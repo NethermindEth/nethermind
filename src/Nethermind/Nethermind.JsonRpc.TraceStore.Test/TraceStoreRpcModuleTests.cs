@@ -110,6 +110,7 @@ public class TraceStoreRpcModuleTests
             .Should().BeEquivalentTo(ResultWrapper<IEnumerable<ParityTxTraceFromStore>>.Success(test.DbTraces.SelectMany(ParityTxTraceFromStore.FromTxTrace)));
     }
 
+    [TestCase(0)]
     [TestCase(1)]
     [TestCase(2)]
     public void trace_filter_returns_from_inner_module_when_any_block_trace_is_missing(int parallelization)
