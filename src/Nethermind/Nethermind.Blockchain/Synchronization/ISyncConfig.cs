@@ -10,6 +10,9 @@ namespace Nethermind.Blockchain.Synchronization;
 
 public interface ISyncConfig : IConfig
 {
+    /// <summary>Sentinel for <see cref="MaxAttemptsToUpdatePivot"/> meaning "retry forever, never fall back to the static pivot".</summary>
+    public const int InfiniteAttempts = -1;
+
     [ConfigItem(Description = "Whether to connect to peers and sync.", DefaultValue = "true")]
     bool NetworkingEnabled { get; set; }
 

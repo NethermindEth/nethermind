@@ -131,7 +131,7 @@ namespace Nethermind.Merge.Plugin.Test.Synchronization
         [Test]
         public void Infinite_attempts_never_fall_back_to_static_pivot()
         {
-            _syncConfig!.MaxAttemptsToUpdatePivot = StartingSyncPivotUpdater.InfiniteAttempts;
+            _syncConfig!.MaxAttemptsToUpdatePivot = ISyncConfig.InfiniteAttempts;
             _beaconSyncStrategy!.GetFinalizedHash().Returns((Hash256?)null);
 
             _ = new StartingSyncPivotUpdater(
@@ -151,7 +151,7 @@ namespace Nethermind.Merge.Plugin.Test.Synchronization
             }
 
             _beaconSyncStrategy.DidNotReceive().AllowBeaconHeaderSync();
-            _syncConfig.MaxAttemptsToUpdatePivot.Should().Be(StartingSyncPivotUpdater.InfiniteAttempts);
+            _syncConfig.MaxAttemptsToUpdatePivot.Should().Be(ISyncConfig.InfiniteAttempts);
         }
 
         [Test]

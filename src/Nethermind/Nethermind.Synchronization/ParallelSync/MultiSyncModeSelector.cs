@@ -321,8 +321,8 @@ namespace Nethermind.Synchronization.ParallelSync
 
         private bool ShouldBeInUpdatingPivot()
         {
-            // 0 means pivot updating is finished/disabled; any non-zero value (including -1 for infinite) keeps it active.
-            bool updateRequestedAndNotFinished = _syncConfig.MaxAttemptsToUpdatePivot != 0;
+            bool updateRequestedAndNotFinished = _syncConfig.MaxAttemptsToUpdatePivot > 0
+                                                 || _syncConfig.MaxAttemptsToUpdatePivot == ISyncConfig.InfiniteAttempts;
             bool isPostMerge = _beaconSyncStrategy.MergeTransitionFinished;
             bool stateSyncNotFinished = _syncProgressResolver.FindBestFullState() == 0;
 
