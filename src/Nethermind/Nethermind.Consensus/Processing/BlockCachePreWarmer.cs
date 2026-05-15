@@ -210,21 +210,15 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
             int txCount = block.Transactions.Length;
             if (txCount == 0) return;
 
-            Volatile.Write(ref MainThreadTxIndex, -1);
-
-            BlockCachePreWarmer preWarmer = this;
-
-            // Moving window: each worker claims next tx via shared counter
+            // Moving window: each worker takes one tx, executes, moves to next
             ParallelUnbalancedWork.For(
                 0,
                 txCount,
                 parallelOptions,
-                (blockState, preWarmer, parallelOptions.CancellationToken),
+                (blockState, parallelOptions.CancellationToken),
                 static (txIndex, tupleState) =>
                 {
-                    (BlockState blockState, BlockCachePreWarmer preWarmer, CancellationToken token) = tupleState;
-
-                    if (Volatile.Read(ref preWarmer.MainThreadTxIndex) >= txIndex) return tupleState;
+                    (BlockState blockState, CancellationToken token) = tupleState;
 
                     IReadOnlyTxProcessorSource env = blockState.PreWarmer._envPool.Get();
                     try
@@ -232,9 +226,6 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
                         using IReadOnlyTxProcessingScope scope = env.Build(blockState.Parent);
                         BlockExecutionContext context = new(blockState.Block.Header, blockState.Spec);
                         scope.TransactionProcessor.SetBlockExecutionContext(context);
-
-                        if (preWarmer.MainThreadWorldState is not null)
-                            (scope.WorldState as WorldState)?.SetReadFallback(preWarmer.MainThreadWorldState);
 
                         WarmupSingleTransaction(scope, blockState.Block.Transactions[txIndex], txIndex, blockState);
                     }

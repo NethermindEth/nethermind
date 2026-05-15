@@ -79,13 +79,6 @@ public class BranchProcessor(
         void CancelBackgroundWork() => backgroundCancellation?.Cancel();
         blockProcessor.TransactionsExecuted += CancelBackgroundWork;
 
-        // Wire prewarmer to track main thread progress and read live state
-        if (preWarmer is BlockCachePreWarmer bcpw && blockProcessor is BlockProcessor bp)
-        {
-            bcpw.MainThreadWorldState = stateProvider;
-            bp.SetTxExecutedCallback((txIndex) => Volatile.Write(ref bcpw.MainThreadTxIndex, txIndex));
-        }
-
         try
         {
             // Start prewarming as early as possible
