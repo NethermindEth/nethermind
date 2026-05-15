@@ -604,6 +604,28 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
             ? ShareOrCloneForReadOnly(key, cached)
             : null;
 
+    internal TrieNode PublishSharedReadOnly(Hash256? address, in TreePath path, in ValueHash256 hash, TrieNode node)
+    {
+        TrieStoreDirtyNodesCache.Key key = new(address, path, hash);
+        return Volatile.Read(ref _commitBuffer) is { } commitBuffer
+            ? commitBuffer.PublishSharedReadOnly(key, node)
+            : PublishSharedReadOnly(GetDirtyNodeShard(key), key, node);
+    }
+
+    private TrieNode PublishSharedReadOnly(TrieStoreDirtyNodesCache shard, in TrieStoreDirtyNodesCache.Key key, TrieNode node)
+    {
+        Debug.Assert(node.NodeType != NodeType.Unknown, "Read-only decode should publish a resolved node.");
+        Debug.Assert(node.Keccak == key.Keccak, "Cache key/Keccak mismatch.");
+        Debug.Assert(node.IsPersisted, "Decoded DB nodes must be marked persisted.");
+
+        if (shard.TryAdd(key, new TrieStoreDirtyNodesCache.NodeRecord(node, -1)))
+        {
+            return node;
+        }
+
+        return GetSharedCachedNode(key) ?? node;
+    }
+
     private sealed class ScopedResolver(TrieStore inner, Hash256? address) : ITrieNodeResolver
     {
         public TrieNode GetOrLoadNode(in TreePath path, in ValueHash256 hash, ReadFlags flags = ReadFlags.None) =>
@@ -1890,6 +1912,12 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
             }
 
             return null;
+        }
+
+        public TrieNode PublishSharedReadOnly(TrieStoreDirtyNodesCache.Key key, TrieNode node)
+        {
+            TrieStoreDirtyNodesCache shard = _dirtyNodesBuffer[_trieStore.GetNodeShardIdx(key.Path, in key.Keccak)];
+            return _trieStore.PublishSharedReadOnly(shard, key, node);
         }
 
         private bool CanImportFromMainCache(TrieStoreDirtyNodesCache.NodeRecord nodeRecord) =>

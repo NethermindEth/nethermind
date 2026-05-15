@@ -873,6 +873,8 @@ namespace Nethermind.Trie.Test.Pruning
 
         public enum ReadOnlyVariant { Direct, PreCached, Cached }
 
+        public enum ReadOnlyMissLoadVariant { GetOrLoad, TryGetOrLoad }
+
         private TrieNode BuildAndCommitSealedBranch(TrieStore fullTrieStore)
         {
             TrieNode node = TrieNode.CreateBranchTyped();
@@ -890,6 +892,24 @@ namespace Nethermind.Trie.Test.Pruning
             {
                 committer.CommitNode(ref emptyPath, node);
             }
+
+            return node;
+        }
+
+        private TrieNode BuildAndPersistSealedBranch(IKeyValueStoreWithBatching kvStore)
+        {
+            TrieNode node = TrieNode.CreateBranchTyped();
+            for (int i = 0; i < 16; i++)
+            {
+                node.SetChildHash(i, TestItem.Keccaks[i]);
+            }
+
+            TreePath emptyPath = TreePath.Empty;
+            node.ResolveKey(NullTrieNodeResolver.Instance, ref emptyPath);
+            node.Seal();
+
+            NodeStorage storage = new(kvStore, scheme, requirePath: scheme == INodeStorage.KeyScheme.HalfPath);
+            storage.Set(null, emptyPath, node.Keccak!.ValueHash256, node.FullRlp.AsSpan());
 
             return node;
         }
@@ -999,6 +1019,53 @@ namespace Nethermind.Trie.Test.Pruning
             node.Should().BeNull();
             fullTrieStore.FallbackNotShareableCount.Should().Be(fallbacksBefore);
             fullTrieStore.CloneForReadOnlyCount.Should().Be(clonesBefore);
+        }
+
+        [Test]
+        [NonParallelizable]
+        [TestCase(ReadOnlyMissLoadVariant.GetOrLoad)]
+        [TestCase(ReadOnlyMissLoadVariant.TryGetOrLoad)]
+        public void Shared_read_only_db_miss_publishes_decoded_node(ReadOnlyMissLoadVariant variant)
+        {
+            TestMemDb memDb = new();
+            TrieNode persistedNode = BuildAndPersistSealedBranch(memDb);
+            using TrieStore fullTrieStore = CreateTrieStore(kvStore: memDb);
+
+            IScopedTrieStore readOnlyScopedTrieStore = fullTrieStore.AsReadOnly().GetTrieStore(null);
+            ITrieNodeResolver sharedResolver = ((ITrieNodeResolverSource)readOnlyScopedTrieStore).GetReadOnlyTraversalResolver()!;
+            TreePath emptyPath = TreePath.Empty;
+            ValueHash256 hash = persistedNode.Keccak!.ValueHash256;
+
+            long memoryBefore = fullTrieStore.MemoryUsedByDirtyCache;
+            long dirtyMemoryBefore = fullTrieStore.DirtyMemoryUsedByDirtyCache;
+            long sharedHitsBefore = fullTrieStore.SharedNodeHitCount;
+            long clonesBefore = fullTrieStore.CloneForReadOnlyCount;
+
+            TrieNode firstNode = variant switch
+            {
+                ReadOnlyMissLoadVariant.GetOrLoad => sharedResolver.GetOrLoadNode(emptyPath, in hash),
+                ReadOnlyMissLoadVariant.TryGetOrLoad => LoadWithTry(sharedResolver, emptyPath, in hash),
+                _ => throw new ArgumentOutOfRangeException(nameof(variant))
+            };
+
+            firstNode.FullRlp.AsSpan().ToArray().Should().Equal(persistedNode.FullRlp.AsSpan().ToArray());
+            fullTrieStore.IsNodeCached(null, emptyPath, in hash).Should().BeTrue();
+            fullTrieStore.MemoryUsedByDirtyCache.Should().BeGreaterThan(memoryBefore);
+            fullTrieStore.DirtyMemoryUsedByDirtyCache.Should().Be(dirtyMemoryBefore);
+            fullTrieStore.SharedNodeHitCount.Should().Be(sharedHitsBefore);
+            fullTrieStore.CloneForReadOnlyCount.Should().Be(clonesBefore);
+
+            TrieNode secondNode = sharedResolver.GetOrLoadNode(emptyPath, in hash);
+
+            secondNode.Should().BeSameAs(firstNode);
+            fullTrieStore.SharedNodeHitCount.Should().BeGreaterThan(sharedHitsBefore);
+            fullTrieStore.CloneForReadOnlyCount.Should().Be(clonesBefore);
+
+            static TrieNode LoadWithTry(ITrieNodeResolver resolver, in TreePath path, in ValueHash256 hash)
+            {
+                resolver.TryGetOrLoadNode(in path, in hash, out TrieNode? node).Should().BeTrue();
+                return node!;
+            }
         }
 
         [Test]

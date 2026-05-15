@@ -62,7 +62,8 @@ namespace Nethermind.Trie.Pruning
 
                 byte[]? rlp = fullTrieStore._trieStore.TryLoadRlp(Address, in path, in hash, flags)
                     ?? throw new MissingTrieNodeException("Node missing", Address, path, new Hash256(in hash));
-                return TrieNode.DecodeNode(in path, in hash, rlp);
+                TrieNode node = TrieNode.DecodeNode(in path, in hash, rlp);
+                return fullTrieStore._trieStore.PublishSharedReadOnly(Address, in path, in hash, node);
             }
 
             public override bool TryGetOrLoadNode(in TreePath path, in ValueHash256 hash, [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out TrieNode? node, ReadFlags flags = ReadFlags.None)
@@ -82,6 +83,7 @@ namespace Nethermind.Trie.Pruning
                 try
                 {
                     node = TrieNode.DecodeNode(in path, in hash, rlp);
+                    node = fullTrieStore._trieStore.PublishSharedReadOnly(Address, in path, in hash, node);
                     return true;
                 }
                 catch (TrieException)

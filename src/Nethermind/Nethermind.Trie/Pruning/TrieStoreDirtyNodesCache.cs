@@ -161,6 +161,20 @@ internal class TrieStoreDirtyNodesCache
             ? GetOrAdd(_byHashObjectCache, key.Keccak, record)
             : GetOrAdd(_byKeyObjectCache, key, record);
 
+    public bool TryAdd(in Key key, NodeRecord record)
+    {
+        bool added = _storeByHash
+            ? _byHashObjectCache.TryAdd(key.Keccak, record)
+            : _byKeyObjectCache.TryAdd(key, record);
+
+        if (added)
+        {
+            IncrementMemory(record.Node);
+        }
+
+        return added;
+    }
+
     private static NodeRecord GetOrAdd<TKey>(ConcurrentDictionary<TKey, NodeRecord> dictionary, TKey key, NodeRecord record)
         where TKey : notnull
     {
