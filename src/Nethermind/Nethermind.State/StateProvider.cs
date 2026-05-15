@@ -22,6 +22,7 @@ using Nethermind.Evm.Tracing.State;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Metrics = Nethermind.Db.Metrics;
+using EvmMetrics = Nethermind.Evm.Metrics;
 using static Nethermind.State.StateProvider;
 
 namespace Nethermind.State;
@@ -140,6 +141,9 @@ internal class StateProvider(ILogManager logManager) : IJournal<int>
 
             _blockCodeInsertFilter.Set(codeHash);
             inserted = true;
+
+            EvmMetrics.IncrementCodeWrites();
+            EvmMetrics.IncrementCodeBytesWritten(code.Length);
         }
 
         Account? account = GetThroughCache(address) ?? ThrowIfNull(address);
@@ -738,6 +742,7 @@ internal class StateProvider(ILogManager logManager) : IJournal<int>
             }
 
             Metrics.IncrementStateTreeReads();
+            EvmMetrics.IncrementAccountReads();
             Account? account = _tree.Get(address);
 
             accountChanges = new(account, account);
@@ -751,6 +756,12 @@ internal class StateProvider(ILogManager logManager) : IJournal<int>
 
     internal void SetState(Address address, Account? account)
     {
+        EvmMetrics.IncrementAccountWrites();
+        if (account is null)
+        {
+            EvmMetrics.IncrementAccountDeleted();
+        }
+
         ref ChangeTrace accountChanges = ref CollectionsMarshal.GetValueRefOrAddDefault(_blockChanges, address, out _);
         accountChanges.After = account;
         _needsStateRootUpdate = true;
