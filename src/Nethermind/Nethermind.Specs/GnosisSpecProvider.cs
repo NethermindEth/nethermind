@@ -31,7 +31,7 @@ public class GnosisSpecProvider : ISpecProvider
     {
         < ConstantinopleBlockNumber => GenesisSpec,
         < ConstantinopleFixBlockNumber => Constantinople.Instance,
-        < IstanbulBlockNumber => Petersburg.Instance,
+        < IstanbulBlockNumber => ConstantinopleFix.Instance,
         < BerlinBlockNumber => Istanbul.Instance,
         < LondonBlockNumber => Berlin.Instance,
         _ => forkActivation.Timestamp switch

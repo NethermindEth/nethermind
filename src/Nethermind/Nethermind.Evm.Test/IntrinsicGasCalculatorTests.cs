@@ -97,7 +97,7 @@ namespace Nethermind.Evm.Test
             Test(TangerineWhistle.Instance, false);
             Test(Byzantium.Instance, false);
             Test(Constantinople.Instance, false);
-            Test(Petersburg.Instance, false);
+            Test(ConstantinopleFix.Instance, false);
             Test(Istanbul.Instance, false);
             Test(MuirGlacier.Instance, false);
             Test(Berlin.Instance, true);
@@ -133,7 +133,7 @@ namespace Nethermind.Evm.Test
             Test(TangerineWhistle.Instance, GasOptions.None);
             Test(Byzantium.Instance, GasOptions.None);
             Test(Constantinople.Instance, GasOptions.None);
-            Test(Petersburg.Instance, GasOptions.None);
+            Test(ConstantinopleFix.Instance, GasOptions.None);
             Test(Istanbul.Instance, GasOptions.AfterRepricing);
             Test(MuirGlacier.Instance, GasOptions.AfterRepricing);
             Test(Berlin.Instance, GasOptions.AfterRepricing);

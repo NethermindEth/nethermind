@@ -44,7 +44,7 @@ public class MainnetSpecProvider : ISpecProvider
             { BlockNumber: < SpuriousDragonBlockNumber } => TangerineWhistle.Instance,
             { BlockNumber: < ByzantiumBlockNumber } => SpuriousDragon.Instance,
             { BlockNumber: < ConstantinopleFixBlockNumber } => Byzantium.Instance,
-            { BlockNumber: < IstanbulBlockNumber } => Petersburg.Instance,
+            { BlockNumber: < IstanbulBlockNumber } => ConstantinopleFix.Instance,
             { BlockNumber: < MuirGlacierBlockNumber } => Istanbul.Instance,
             { BlockNumber: < BerlinBlockNumber } => MuirGlacier.Instance,
             { BlockNumber: < LondonBlockNumber } => Berlin.Instance,
