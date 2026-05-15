@@ -3,14 +3,11 @@
 
 using System;
 using System.Collections.Generic;
-using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Logging;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
-
-[assembly: InternalsVisibleTo("Nethermind.Synchronization.Test")]
 
 namespace Nethermind.Synchronization.SnapSync
 {
@@ -152,9 +149,9 @@ namespace Nethermind.Synchronization.SnapSync
                     // Scan the whole window first so the single-peer guard cannot fire
                     // prematurely when a healthy peer's entries sit further back in the log
                     // than the analyzed peer's recent failures.
-                    foreach ((PeerInfo p, AddRangeResult _) probe in _resultLog)
+                    foreach ((PeerInfo peer, AddRangeResult _) probe in _resultLog)
                     {
-                        if (probe.p != peer)
+                        if (probe.peer != peer)
                         {
                             seenOtherPeer = true;
                             break;
