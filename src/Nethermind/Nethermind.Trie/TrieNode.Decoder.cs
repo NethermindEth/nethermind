@@ -149,15 +149,20 @@ namespace Nethermind.Trie
             {
                 Metrics.TreeNodeRlpEncodings++;
 
+                if (!UseParallel(canBeParallel, item))
+                {
+                    return RlpEncodeBranchSerial(item, tree, ref path, pool, canBeParallel);
+                }
+
                 const int valueRlpLength = 1;
-                int contentLength = valueRlpLength + (UseParallel(canBeParallel, item) ? GetChildrenRlpLengthForBranchParallel(tree, ref path, item, pool, canBeParallel) : GetChildrenRlpLengthForBranch(tree, ref path, item, pool, canBeParallel));
+                int childrenRlpLength = GetChildrenRlpLengthForBranchParallel(tree, ref path, item, pool, canBeParallel);
+                int contentLength = valueRlpLength + childrenRlpLength;
                 int sequenceLength = Rlp.LengthOfSequence(contentLength);
                 CappedArray<byte> result = pool.SafeRent(sequenceLength);
                 Span<byte> resultSpan = result.AsSpan();
                 int position = Rlp.StartSequence(resultSpan, 0, contentLength);
-                WriteChildrenRlpBranch(tree, ref path, item, resultSpan.Slice(position, contentLength - valueRlpLength), pool, canBeParallel);
-                position = sequenceLength - valueRlpLength;
-                resultSpan[position] = 128;
+                WriteChildrenRlpBranch(tree, ref path, item, resultSpan.Slice(position, childrenRlpLength), pool, canBeParallel);
+                resultSpan[sequenceLength - valueRlpLength] = Rlp.EmptyByteArrayByte;
 
                 return result;
 
@@ -183,11 +188,41 @@ namespace Nethermind.Trie
                 }
             }
 
-            private static int GetChildrenRlpLengthForBranch(ITrieNodeResolver tree, ref TreePath path, TrieNode item, ICappedArrayPool? bufferPool, bool canBeParallel) =>
-                // Tail call optimized.
-                item.HasRlp
-                    ? GetChildrenRlpLengthForBranchRlp(tree, ref path, item, bufferPool, canBeParallel)
-                    : GetChildrenRlpLengthForBranchNonRlp(tree, ref path, item, bufferPool, canBeParallel);
+            private enum BranchChildRlpKind : byte
+            {
+                Empty,
+                ParentRlpSlice,
+                Keccak,
+                Inline
+            }
+
+            private readonly struct BranchChildRlpMetadata(BranchChildRlpKind kind, int length, int parentRlpOffset = 0)
+            {
+                public readonly BranchChildRlpKind Kind = kind;
+                public readonly int Length = length;
+                public readonly int ParentRlpOffset = parentRlpOffset;
+            }
+
+            [SkipLocalsInit]
+            private static CappedArray<byte> RlpEncodeBranchSerial(TrieNode item, ITrieNodeResolver tree, ref TreePath path, ICappedArrayPool? pool, bool canBeParallel)
+            {
+                const int valueRlpLength = 1;
+                Span<BranchChildRlpMetadata> children = stackalloc BranchChildRlpMetadata[BranchesCount];
+                CappedArray<byte> parentRlp = item.FullRlp;
+                int childrenRlpLength = parentRlp.IsNotNull
+                    ? RecordChildrenRlpBranchRlp(tree, ref path, item, parentRlp, children, pool, canBeParallel)
+                    : RecordChildrenRlpBranchNonRlp(tree, ref path, item, children, pool, canBeParallel);
+                int contentLength = valueRlpLength + childrenRlpLength;
+                int sequenceLength = Rlp.LengthOfSequence(contentLength);
+                CappedArray<byte> result = pool.SafeRent(sequenceLength);
+                Span<byte> resultSpan = result.AsSpan();
+                int position = Rlp.StartSequence(resultSpan, 0, contentLength);
+                ReadOnlySpan<byte> parentRlpSpan = parentRlp.IsNotNull ? parentRlp.AsSpan() : default;
+                WriteRecordedChildrenRlpBranch(item, parentRlpSpan, children, resultSpan.Slice(position, childrenRlpLength));
+                resultSpan[sequenceLength - valueRlpLength] = Rlp.EmptyByteArrayByte;
+
+                return result;
+            }
 
             private static int GetChildrenRlpLengthForBranchParallel(ITrieNodeResolver tree, ref TreePath path, TrieNode item, ICappedArrayPool? bufferPool, bool canBeParallel) =>
                 // Tail call optimized.
@@ -227,7 +262,7 @@ namespace Nethermind.Trie
                 return totalLength;
             }
 
-            private static int GetChildrenRlpLengthForBranchNonRlp(ITrieNodeResolver tree, ref TreePath path, TrieNode item, ICappedArrayPool bufferPool, bool canBeParallel)
+            private static int RecordChildrenRlpBranchNonRlp(ITrieNodeResolver tree, ref TreePath path, TrieNode item, Span<BranchChildRlpMetadata> children, ICappedArrayPool? bufferPool, bool canBeParallel)
             {
                 int totalLength = 0;
                 for (int i = 0; i < BranchesCount; i++)
@@ -235,14 +270,12 @@ namespace Nethermind.Trie
                     TrieNode? data = item.GetSlotRef(i);
                     if (data is null || ReferenceEquals(data, NullNode))
                     {
+                        children[i] = new BranchChildRlpMetadata(BranchChildRlpKind.Empty, Rlp.OfEmptyByteArray.Length);
                         totalLength++;
                     }
                     else
                     {
-                        path.AppendMut(i);
-                        data.ResolveKey(tree, ref path, bufferPool: bufferPool, canBeParallel: canBeParallel);
-                        path.TruncateOne();
-                        totalLength += data.HasKeccak ? Rlp.LengthOfKeccakRlp : data.FullRlp.Length;
+                        totalLength += RecordResolvedBranchChild(tree, ref path, i, data, children, bufferPool, canBeParallel);
                     }
                 }
                 return totalLength;
@@ -285,42 +318,129 @@ namespace Nethermind.Trie
                 return totalLength;
             }
 
-            private static int GetChildrenRlpLengthForBranchRlp(ITrieNodeResolver tree, ref TreePath path, TrieNode item, ICappedArrayPool? bufferPool, bool canBeParallel)
+            private static int RecordChildrenRlpBranchRlp(ITrieNodeResolver tree, ref TreePath path, TrieNode item, CappedArray<byte> parentRlp, Span<BranchChildRlpMetadata> children, ICappedArrayPool? bufferPool, bool canBeParallel)
             {
                 int totalLength = 0;
-                ValueRlpStream rlpStream = item.RlpStream;
-                item.SeekChild(ref rlpStream, 0);
+                ValueRlpStream rlpStream = new(parentRlp);
+                rlpStream.Reset();
+                rlpStream.SkipLength();
                 for (int i = 0; i < BranchesCount; i++)
                 {
+                    int parentRlpOffset = rlpStream.Position;
+                    int parentRlpLength = rlpStream.PeekNextRlpLength();
                     TrieNode? data = item.GetSlotRef(i);
                     if (data is null)
                     {
-                        // Unresolved slot; canonical bytes live in the parent RLP at the
-                        // current stream position. Take the same length the source has.
-                        int length = rlpStream.PeekNextRlpLength();
-                        totalLength += length;
-                        rlpStream.SkipBytes(length);
+                        children[i] = new BranchChildRlpMetadata(BranchChildRlpKind.ParentRlpSlice, parentRlpLength, parentRlpOffset);
+                        totalLength += parentRlpLength;
+                    }
+                    else if (ReferenceEquals(data, NullNode))
+                    {
+                        children[i] = new BranchChildRlpMetadata(BranchChildRlpKind.Empty, Rlp.OfEmptyByteArray.Length);
+                        totalLength++;
                     }
                     else
                     {
-                        if (ReferenceEquals(data, NullNode))
-                        {
-                            totalLength++;
-                        }
-                        else
-                        {
-                            path.AppendMut(i);
-                            data.ResolveKey(tree, ref path, bufferPool: bufferPool, canBeParallel: canBeParallel);
-                            path.TruncateOne();
-                            totalLength += data.HasKeccak ? Rlp.LengthOfKeccakRlp : data.FullRlp.Length;
-                        }
-
-                        rlpStream.SkipItem();
+                        totalLength += RecordResolvedBranchChild(tree, ref path, i, data, children, bufferPool, canBeParallel);
                     }
+
+                    rlpStream.SkipBytes(parentRlpLength);
                 }
 
                 return totalLength;
             }
+
+            private static int RecordResolvedBranchChild(
+                ITrieNodeResolver tree,
+                ref TreePath path,
+                int childIndex,
+                TrieNode data,
+                Span<BranchChildRlpMetadata> children,
+                ICappedArrayPool? bufferPool,
+                bool canBeParallel)
+            {
+                path.AppendMut(childIndex);
+                data.ResolveKey(tree, ref path, bufferPool: bufferPool, canBeParallel: canBeParallel);
+                path.TruncateOne();
+
+                if (data.HasKeccak)
+                {
+                    children[childIndex] = new BranchChildRlpMetadata(BranchChildRlpKind.Keccak, Rlp.LengthOfKeccakRlp);
+                    return Rlp.LengthOfKeccakRlp;
+                }
+
+                int length = data.FullRlp.Length;
+                children[childIndex] = new BranchChildRlpMetadata(BranchChildRlpKind.Inline, length);
+                return length;
+            }
+
+            private static void WriteRecordedChildrenRlpBranch(TrieNode item, ReadOnlySpan<byte> parentRlp, Span<BranchChildRlpMetadata> children, Span<byte> destination)
+            {
+                int position = 0;
+                for (int i = 0; i < BranchesCount; i++)
+                {
+                    BranchChildRlpMetadata child = children[i];
+                    switch (child.Kind)
+                    {
+                        case BranchChildRlpKind.Empty:
+                            destination[position++] = Rlp.EmptyByteArrayByte;
+                            break;
+                        case BranchChildRlpKind.ParentRlpSlice:
+                            parentRlp.Slice(child.ParentRlpOffset, child.Length).CopyTo(destination.Slice(position, child.Length));
+                            position += child.Length;
+                            break;
+                        case BranchChildRlpKind.Keccak:
+                            {
+                                TrieNode data = GetRecordedChild(item, i);
+                                if (!data.TryGetKeccak(out ValueHash256 childKeccak))
+                                {
+                                    ThrowMissingRecordedKeccak();
+                                }
+
+                                position = Rlp.Encode(destination, position, in childKeccak);
+                                break;
+                            }
+                        case BranchChildRlpKind.Inline:
+                            {
+                                TrieNode data = GetRecordedChild(item, i);
+                                Span<byte> fullRlp = data.FullRlp.AsSpan();
+                                if (fullRlp.Length != child.Length)
+                                {
+                                    ThrowChangedRecordedLength(child.Length, fullRlp.Length);
+                                }
+
+                                fullRlp.CopyTo(destination.Slice(position, child.Length));
+                                position += child.Length;
+                                break;
+                            }
+                    }
+                }
+
+                Debug.Assert(position == destination.Length);
+            }
+
+            private static TrieNode GetRecordedChild(TrieNode item, int childIndex)
+            {
+                TrieNode? data = item.GetSlotRef(childIndex);
+                if (data is null || ReferenceEquals(data, NullNode))
+                {
+                    ThrowMissingRecordedChild();
+                }
+
+                return data;
+            }
+
+            [DoesNotReturn, StackTraceHidden]
+            private static void ThrowMissingRecordedChild() =>
+                throw new TrieException("Recorded branch child was removed during RLP encoding.");
+
+            [DoesNotReturn, StackTraceHidden]
+            private static void ThrowMissingRecordedKeccak() =>
+                throw new TrieException("Recorded branch child lost its keccak during RLP encoding.");
+
+            [DoesNotReturn, StackTraceHidden]
+            private static void ThrowChangedRecordedLength(int expected, int actual) =>
+                throw new TrieException($"Recorded branch child RLP length changed during encoding. Expected {expected}, actual {actual}.");
 
             private static void WriteChildrenRlpBranch(ITrieNodeResolver tree, ref TreePath path, TrieNode item, Span<byte> destination, ICappedArrayPool? bufferPool, bool canBeParallel)
             {

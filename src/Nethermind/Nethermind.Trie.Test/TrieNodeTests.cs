@@ -954,6 +954,25 @@ public class TrieNodeTests
     }
 
     [Test]
+    public void Branch_reencode_preserves_unresolved_inline_child()
+    {
+        Context ctx = new();
+        TrieNode source = TrieNode.CreateBranchTyped();
+        source.SetChild(11, ctx.TiniestLeaf);
+
+        TreePath emptyPath = TreePath.Empty;
+        CappedArray<byte> canonicalRlp = source.RlpEncode(NullTrieNodeResolver.Instance, ref emptyPath);
+        TrieNode decoded = TrieNode.CreateBranchTyped(canonicalRlp);
+
+        decoded.GetRawChildRef(11).Should().BeNull("the decoded inline child should remain parent-RLP backed until requested");
+
+        CappedArray<byte> reEncoded = decoded.RlpEncode(NullTrieNodeResolver.Instance, ref emptyPath);
+
+        reEncoded.AsSpan().ToArray().Should().Equal(canonicalRlp.AsSpan().ToArray());
+        decoded.GetRawChildRef(11).Should().BeNull("serial branch encoding should copy the parent-RLP slice without materializing the child");
+    }
+
+    [Test]
     public void Branch_child_as_keccak_resolved()
     {
         TrieNode child = new TrieSyncNode(Keccak.Zero);
