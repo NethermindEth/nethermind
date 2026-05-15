@@ -78,14 +78,7 @@ public class BranchProcessor(
         // Subscribe to cancel background work (prewarmer, prefetch) once transactions finish,
         // freeing the thread pool for parallel post-tx work (blooms, receipts root, state root).
         // The handler captures backgroundCancellation by reference, so it always cancels the current CTS.
-        void CancelBackgroundWork()
-        {
-            backgroundCancellation?.Cancel();
-            // Clear prewarmer caches before merkle starts — the prewarmer's SeqlockCache
-            // entries cause cache line contention during parallel merkle (2.8ms → 7.7ms).
-            // EVM is done so the entries are no longer needed.
-            preWarmer?.ClearCaches();
-        }
+        void CancelBackgroundWork() => backgroundCancellation?.Cancel();
         blockProcessor.TransactionsExecuted += CancelBackgroundWork;
 
         if (preWarmer is BlockCachePreWarmer bcpw && blockProcessor is BlockProcessor bp)
