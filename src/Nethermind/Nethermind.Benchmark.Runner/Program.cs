@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2022-2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
@@ -12,6 +12,7 @@ using BenchmarkDotNet.Reports;
 using BenchmarkDotNet.Running;
 using System.Linq;
 using BenchmarkDotNet.Columns;
+using Nethermind.FastRpc.Benchmark;
 using Nethermind.Merge.Plugin.Benchmark;
 using Nethermind.Precompiles.Benchmark;
 
@@ -56,6 +57,7 @@ namespace Nethermind.Benchmark.Runner
                 typeof(JsonRpc.Benchmark.EthModuleBenchmarks).Assembly,
                 typeof(Benchmarks.Core.Keccak256Benchmarks).Assembly,
                 typeof(Evm.Benchmark.EvmStackBenchmarks).Assembly,
+                typeof(FastRpcTransportBenchmarks).Assembly,
                 typeof(Network.Benchmarks.DiscoveryBenchmarks).Assembly,
                 typeof(NewPayloadSerializationBenchmarks).Assembly,
             ];

@@ -21,6 +21,7 @@
     <Project Path="Nethermind.Evm.Test/Nethermind.Evm.Test.csproj" />
     <Project Path="Nethermind.Evm/Nethermind.Evm.csproj" />
     <Project Path="Nethermind.Evm.Precompiles/Nethermind.Evm.Precompiles.csproj" />
+    <Project Path="Nethermind.FastRpc/Nethermind.FastRpc.csproj" />
     <Project Path="Nethermind.Facade/Nethermind.Facade.csproj" />
     <Project Path="Nethermind.Grpc/Nethermind.Grpc.csproj" />
     <Project Path="Nethermind.History/Nethermind.History.csproj" />
@@ -56,6 +57,7 @@
   <Project Path="Nethermind.Benchmark/Nethermind.Benchmark.csproj" />
   <Project Path="Nethermind.EthereumTests.Benchmark/Nethermind.EthereumTests.Benchmark.csproj" />
   <Project Path="Nethermind.Evm.Benchmark/Nethermind.Evm.Benchmark.csproj" />
+  <Project Path="Nethermind.FastRpc.Benchmark/Nethermind.FastRpc.Benchmark.csproj" />
   <Project Path="Nethermind.JsonRpc.Benchmark/Nethermind.JsonRpc.Benchmark.csproj" />
   <Project Path="Nethermind.Merge.Plugin.Benchmark/Nethermind.Merge.Plugin.Benchmark.csproj" />
   <Project Path="Nethermind.Network.Benchmark/Nethermind.Network.Benchmark.csproj" />

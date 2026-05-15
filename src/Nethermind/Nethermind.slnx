@@ -113,6 +113,7 @@
   <Project Path="Nethermind.EthStats/Nethermind.EthStats.csproj" />
   <Project Path="Nethermind.Evm.Precompiles/Nethermind.Evm.Precompiles.csproj" />
   <Project Path="Nethermind.Evm/Nethermind.Evm.csproj" />
+  <Project Path="Nethermind.FastRpc/Nethermind.FastRpc.csproj" />
   <Project Path="Nethermind.Facade/Nethermind.Facade.csproj" />
   <Project Path="Nethermind.Grpc/Nethermind.Grpc.csproj" />
   <Project Path="Nethermind.HealthChecks/Nethermind.HealthChecks.csproj" />
