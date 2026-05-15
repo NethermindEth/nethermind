@@ -737,6 +737,9 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
 
                     WarmingState<ArrayPoolList<AddressAsKey>> baseState = new(envPool, addresses, parent);
 
+                    // Warm accounts, code, and storage trie roots in one pass.
+                    // This pre-fetches trie paths from RocksDB into block cache so both
+                    // the prewarmer's EVM execution and the main thread are faster.
                     ParallelUnbalancedWork.For(
                         0,
                         addresses.Count,
@@ -744,7 +747,17 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
                         baseState.InitThreadState,
                     static (i, state) =>
                     {
-                        WarmupAddress(state.Payload.GetRef(i), state.Scope!.WorldState);
+                        Address addr = state.Payload.GetRef(i);
+                        IWorldState ws = state.Scope!.WorldState;
+                        try
+                        {
+                            ws.WarmUp(addr);
+                            if (ws.HasCode(addr))
+                            {
+                                ws.GetCode(addr);
+                            }
+                        }
+                        catch (MissingTrieNodeException) { }
 
                         return state;
                     },
