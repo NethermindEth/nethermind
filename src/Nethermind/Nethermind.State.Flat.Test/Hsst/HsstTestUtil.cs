@@ -38,4 +38,34 @@ internal static class HsstTestUtil
             builder.Dispose();
         }
     }
+
+    /// <summary>Test helper: dispatcher-style lookup over an HSST byte blob via <see cref="HsstReader{TReader,TPin}"/>.</summary>
+    public static bool TryGet(ReadOnlySpan<byte> data, scoped ReadOnlySpan<byte> key, out byte[] value)
+    {
+        SpanByteReader reader = new(data);
+        using HsstReader<SpanByteReader, NoOpPin> r = new(in reader);
+        if (!r.TrySeek(key, out _)) { value = []; return false; }
+        Bound b = r.GetBound();
+        value = b.Length == 0 ? [] : data.Slice((int)b.Offset, (int)b.Length).ToArray();
+        return true;
+    }
+
+    /// <summary>Test helper: floor-seek variant of <see cref="TryGet(ReadOnlySpan{byte},ReadOnlySpan{byte},out byte[])"/>.</summary>
+    public static bool TryGetFloor(ReadOnlySpan<byte> data, scoped ReadOnlySpan<byte> key, out byte[] value)
+    {
+        SpanByteReader reader = new(data);
+        using HsstReader<SpanByteReader, NoOpPin> r = new(in reader);
+        if (!r.TrySeekFloor(key, out _)) { value = []; return false; }
+        Bound b = r.GetBound();
+        value = b.Length == 0 ? [] : data.Slice((int)b.Offset, (int)b.Length).ToArray();
+        return true;
+    }
+
+    /// <summary>Test helper: single-byte-key overload for the dense-byte-index format.</summary>
+    public static bool TryGet(ReadOnlySpan<byte> data, byte key, out byte[] value) =>
+        TryGet(data, [key], out value);
+
+    /// <summary>Test helper: floor-seek single-byte-key overload for the dense-byte-index format.</summary>
+    public static bool TryGetFloor(ReadOnlySpan<byte> data, byte key, out byte[] value) =>
+        TryGetFloor(data, [key], out value);
 }

@@ -23,25 +23,11 @@ public class HsstTwoByteSlotValueLargeTests
         return pooled.WrittenSpan.ToArray();
     }
 
-    private static bool TryGet(ReadOnlySpan<byte> data, ReadOnlySpan<byte> key, out byte[] value)
-    {
-        SpanByteReader reader = new(data);
-        using HsstReader<SpanByteReader, NoOpPin> r = new(in reader);
-        if (!r.TrySeek(key, out _)) { value = []; return false; }
-        Bound b = r.GetBound();
-        value = b.Length == 0 ? [] : data.Slice((int)b.Offset, (int)b.Length).ToArray();
-        return true;
-    }
+    private static bool TryGet(ReadOnlySpan<byte> data, ReadOnlySpan<byte> key, out byte[] value) =>
+        HsstTestUtil.TryGet(data, key, out value);
 
-    private static bool TryGetFloor(ReadOnlySpan<byte> data, ReadOnlySpan<byte> key, out byte[] value)
-    {
-        SpanByteReader reader = new(data);
-        using HsstReader<SpanByteReader, NoOpPin> r = new(in reader);
-        if (!r.TrySeekFloor(key, out _)) { value = []; return false; }
-        Bound b = r.GetBound();
-        value = b.Length == 0 ? [] : data.Slice((int)b.Offset, (int)b.Length).ToArray();
-        return true;
-    }
+    private static bool TryGetFloor(ReadOnlySpan<byte> data, ReadOnlySpan<byte> key, out byte[] value) =>
+        HsstTestUtil.TryGetFloor(data, key, out value);
 
     [TestCase(1)]
     [TestCase(2)]

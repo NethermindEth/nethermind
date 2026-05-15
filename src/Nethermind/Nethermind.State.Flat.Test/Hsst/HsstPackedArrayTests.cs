@@ -38,25 +38,11 @@ public class HsstPackedArrayTests
         }
     }
 
-    private static bool TryGet(ReadOnlySpan<byte> data, scoped ReadOnlySpan<byte> key, out byte[] value)
-    {
-        SpanByteReader reader = new(data);
-        using HsstReader<SpanByteReader, NoOpPin> r = new(in reader);
-        if (!r.TrySeek(key, out _)) { value = []; return false; }
-        Bound b = r.GetBound();
-        value = data.Slice((int)b.Offset, (int)b.Length).ToArray();
-        return true;
-    }
+    private static bool TryGet(ReadOnlySpan<byte> data, scoped ReadOnlySpan<byte> key, out byte[] value) =>
+        HsstTestUtil.TryGet(data, key, out value);
 
-    private static bool TryGetFloor(ReadOnlySpan<byte> data, scoped ReadOnlySpan<byte> key, out byte[] value)
-    {
-        SpanByteReader reader = new(data);
-        using HsstReader<SpanByteReader, NoOpPin> r = new(in reader);
-        if (!r.TrySeekFloor(key, out _)) { value = []; return false; }
-        Bound b = r.GetBound();
-        value = data.Slice((int)b.Offset, (int)b.Length).ToArray();
-        return true;
-    }
+    private static bool TryGetFloor(ReadOnlySpan<byte> data, scoped ReadOnlySpan<byte> key, out byte[] value) =>
+        HsstTestUtil.TryGetFloor(data, key, out value);
 
     private static List<(byte[] Key, byte[] Value)> Materialize(ReadOnlySpan<byte> data)
     {

@@ -255,25 +255,6 @@ public class PersistedSnapshotTests
     }
 
     [Test]
-    [Explicit]
-    public void DiagnosticJsonFile_RoundTrip_ViaHsst()
-    {
-        StateId from = new(0, Keccak.EmptyTreeHash);
-        StateId to = new(100, Keccak.Compute("100"));
-
-        // Dump to JSON using the DumpSnapshotToJson method
-        string jsonPath = "/home/amirul/repo/nethermind/broken.23447047.23447048.json";
-        SnapshotContent content = PersistedSnapshotUtils.ReadSnapshotFromJson(jsonPath);
-
-        // Build HSST from original snapshot
-        Snapshot snapshot = new(from, to, content, _resourcePool, ResourcePool.Usage.MainBlockProcessing);
-        byte[] data = PersistedSnapshotBuilderTestExtensions.Build(snapshot, _blobs);
-        PersistedSnapshot persisted = CreatePersistedSnapshot(from, to, data);
-
-        PersistedSnapshotUtils.ValidatePersistedSnapshot(snapshot, persisted, new PersistedSnapshotBloomFilterManager(), dumpWhenFailed: false);
-    }
-
-    [Test]
     public void Storage_NestedMerge_OverlappingAddresses()
     {
         StateId s0 = new(0, Keccak.EmptyTreeHash);
@@ -322,24 +303,63 @@ public class PersistedSnapshotTests
         Assert.That(slot5.ToEvmBytes()[0], Is.EqualTo(0x02));
     }
 
-    [Test]
-    public void Storage_NullSlot_Merge_OverridesValue()
+    private static IEnumerable<TestCaseData> NullSlotMergeCases()
+    {
+        byte[] nonZero = new byte[32];
+        nonZero[31] = 0xFF;
+
+        yield return new TestCaseData(
+            (Action<SnapshotContent>)(c => c.Storages[(TestItem.AddressA, (UInt256)1)] = new SlotValue(nonZero)),
+            (Action<SnapshotContent>)(c => c.Storages[(TestItem.AddressA, (UInt256)1)] = null),
+            (Action<PersistedSnapshot>)(persisted =>
+            {
+                SlotValue slot = default;
+                Assert.That(persisted.TryGetSlot(TestItem.AddressA.ToAccountPath, (UInt256)1, ref slot), Is.True);
+                Assert.That(slot.AsReadOnlySpan.IndexOfAnyExcept((byte)0), Is.EqualTo(-1), "Null slot should override value after merge");
+            })).SetName("NullOverridesValue");
+
+        yield return new TestCaseData(
+            (Action<SnapshotContent>)(c => c.Storages[(TestItem.AddressA, (UInt256)1)] = null),
+            (Action<SnapshotContent>)(c => c.Storages[(TestItem.AddressA, (UInt256)1)] = new SlotValue(nonZero)),
+            (Action<PersistedSnapshot>)(persisted =>
+            {
+                SlotValue slot = default;
+                Assert.That(persisted.TryGetSlot(TestItem.AddressA.ToAccountPath, (UInt256)1, ref slot), Is.True);
+                Assert.That(slot.ToEvmBytes().Length, Is.GreaterThan(0), "Value should override null slot after merge");
+            })).SetName("ValueOverridesNull");
+
+        yield return new TestCaseData(
+            (Action<SnapshotContent>)(c => c.Storages[(TestItem.AddressA, (UInt256)1)] = null),
+            (Action<SnapshotContent>)(c => c.Storages[(TestItem.AddressA, (UInt256)2)] = new SlotValue(nonZero)),
+            (Action<PersistedSnapshot>)(persisted =>
+            {
+                SlotValue slot1 = default;
+                Assert.That(persisted.TryGetSlot(TestItem.AddressA.ToAccountPath, (UInt256)1, ref slot1), Is.True);
+                Assert.That(slot1.AsReadOnlySpan.IndexOfAnyExcept((byte)0), Is.EqualTo(-1), "Null slot from older should be preserved");
+
+                SlotValue slot2 = default;
+                Assert.That(persisted.TryGetSlot(TestItem.AddressA.ToAccountPath, (UInt256)2, ref slot2), Is.True);
+                Assert.That(slot2.AsReadOnlySpan.IndexOfAnyExcept((byte)0), Is.GreaterThanOrEqualTo(0), "Value from newer should be present");
+            })).SetName("NullPreservedAndValueCarried");
+    }
+
+    [TestCaseSource(nameof(NullSlotMergeCases))]
+    public void Storage_NullSlot_Merge(
+        Action<SnapshotContent> populateOlder,
+        Action<SnapshotContent> populateNewer,
+        Action<PersistedSnapshot> verify)
     {
         StateId s0 = new(0, Keccak.EmptyTreeHash);
         StateId s1 = new(1, Keccak.Compute("1"));
         StateId s2 = new(2, Keccak.Compute("2"));
-        Address addr = TestItem.AddressA;
 
-        // Older: slot 1 has a value
-        byte[] val = new byte[32]; val[31] = 0xFF;
         SnapshotContent olderContent = new();
-        olderContent.Storages[(addr, (UInt256)1)] = new SlotValue(val);
+        populateOlder(olderContent);
         Snapshot older = new(s0, s1, olderContent, _resourcePool, ResourcePool.Usage.MainBlockProcessing);
         byte[] dataOlder = PersistedSnapshotBuilderTestExtensions.Build(older, _blobs);
 
-        // Newer: slot 1 set to null (deleted)
         SnapshotContent newerContent = new();
-        newerContent.Storages[(addr, (UInt256)1)] = null;
+        populateNewer(newerContent);
         Snapshot newer = new(s1, s2, newerContent, _resourcePool, ResourcePool.Usage.MainBlockProcessing);
         byte[] dataNewer = PersistedSnapshotBuilderTestExtensions.Build(newer, _blobs);
 
@@ -349,101 +369,6 @@ public class PersistedSnapshotTests
         byte[] merged = PersistedSnapshotBuilderTestExtensions.MergeSnapshots(toMerge);
         PersistedSnapshot persisted = CreatePersistedSnapshot(s0, s2, merged);
 
-        SlotValue slot = default;
-        Assert.That(persisted.TryGetSlot(addr.ToAccountPath, (UInt256)1, ref slot), Is.True);
-        Assert.That(slot.AsReadOnlySpan.IndexOfAnyExcept((byte)0), Is.EqualTo(-1), "Null slot should override value after merge");
+        verify(persisted);
     }
-
-    [Test]
-    public void Storage_NullSlot_Merge_ValueOverridesNull()
-    {
-        StateId s0 = new(0, Keccak.EmptyTreeHash);
-        StateId s1 = new(1, Keccak.Compute("1"));
-        StateId s2 = new(2, Keccak.Compute("2"));
-        Address addr = TestItem.AddressA;
-
-        // Older: slot 1 is null (deleted)
-        SnapshotContent olderContent = new();
-        olderContent.Storages[(addr, (UInt256)1)] = null;
-        Snapshot older = new(s0, s1, olderContent, _resourcePool, ResourcePool.Usage.MainBlockProcessing);
-        byte[] dataOlder = PersistedSnapshotBuilderTestExtensions.Build(older, _blobs);
-
-        // Newer: slot 1 has a value
-        byte[] val = new byte[32]; val[31] = 0xFF;
-        SnapshotContent newerContent = new();
-        newerContent.Storages[(addr, (UInt256)1)] = new SlotValue(val);
-        Snapshot newer = new(s1, s2, newerContent, _resourcePool, ResourcePool.Usage.MainBlockProcessing);
-        byte[] dataNewer = PersistedSnapshotBuilderTestExtensions.Build(newer, _blobs);
-
-        PersistedSnapshotList toMerge = new(2);
-        toMerge.Add(CreatePersistedSnapshot(s0, s1, dataOlder));
-        toMerge.Add(CreatePersistedSnapshot(s1, s2, dataNewer));
-        byte[] merged = PersistedSnapshotBuilderTestExtensions.MergeSnapshots(toMerge);
-        PersistedSnapshot persisted = CreatePersistedSnapshot(s0, s2, merged);
-
-        SlotValue slot = default;
-        Assert.That(persisted.TryGetSlot(addr.ToAccountPath, (UInt256)1, ref slot), Is.True);
-        Assert.That(slot.ToEvmBytes().Length, Is.GreaterThan(0), "Value should override null slot after merge");
-    }
-
-    [Test]
-    public void Storage_NullSlot_Merge_PreservesFromOlder()
-    {
-        StateId s0 = new(0, Keccak.EmptyTreeHash);
-        StateId s1 = new(1, Keccak.Compute("1"));
-        StateId s2 = new(2, Keccak.Compute("2"));
-        Address addr = TestItem.AddressA;
-
-        // Older: slot 1 is null (deleted)
-        SnapshotContent olderContent = new();
-        olderContent.Storages[(addr, (UInt256)1)] = null;
-        Snapshot older = new(s0, s1, olderContent, _resourcePool, ResourcePool.Usage.MainBlockProcessing);
-        byte[] dataOlder = PersistedSnapshotBuilderTestExtensions.Build(older, _blobs);
-
-        // Newer: slot 2 has a value (different slot, doesn't touch slot 1)
-        byte[] val = new byte[32]; val[31] = 0xFF;
-        SnapshotContent newerContent = new();
-        newerContent.Storages[(addr, (UInt256)2)] = new SlotValue(val);
-        Snapshot newer = new(s1, s2, newerContent, _resourcePool, ResourcePool.Usage.MainBlockProcessing);
-        byte[] dataNewer = PersistedSnapshotBuilderTestExtensions.Build(newer, _blobs);
-
-        PersistedSnapshotList toMerge = new(2);
-        toMerge.Add(CreatePersistedSnapshot(s0, s1, dataOlder));
-        toMerge.Add(CreatePersistedSnapshot(s1, s2, dataNewer));
-        byte[] merged = PersistedSnapshotBuilderTestExtensions.MergeSnapshots(toMerge);
-        PersistedSnapshot persisted = CreatePersistedSnapshot(s0, s2, merged);
-
-        SlotValue slot1 = default;
-        Assert.That(persisted.TryGetSlot(addr.ToAccountPath, (UInt256)1, ref slot1), Is.True);
-        Assert.That(slot1.AsReadOnlySpan.IndexOfAnyExcept((byte)0), Is.EqualTo(-1), "Null slot from older should be preserved");
-
-        SlotValue slot2 = default;
-        Assert.That(persisted.TryGetSlot(addr.ToAccountPath, (UInt256)2, ref slot2), Is.True);
-        Assert.That(slot2.AsReadOnlySpan.IndexOfAnyExcept((byte)0), Is.GreaterThanOrEqualTo(0), "Value from newer should be present");
-    }
-
-    [Test]
-    [Explicit]
-    public void DiagnosticCompactedJsonFile()
-    {
-        string jsonPath = "/home/amirul/repo/nethermind/broken.compacted.23447048.23447052.json";
-        List<string> base64List = System.Text.Json.JsonSerializer.Deserialize<List<string>>(System.IO.File.ReadAllText(jsonPath))!;
-
-        PersistedSnapshotList snapshots = new(base64List.Count);
-        for (int i = 0; i < base64List.Count; i++)
-        {
-            byte[] data = Convert.FromBase64String(base64List[i]);
-            StateId snapFrom = new(23447048 + i, Keccak.Compute($"{i}"));
-            StateId snapTo = new(23447048 + i + 1, Keccak.Compute($"{i + 1}"));
-            snapshots.Add(CreatePersistedSnapshot(snapFrom, snapTo, data));
-        }
-
-        byte[] merged = PersistedSnapshotBuilderTestExtensions.MergeSnapshots(snapshots);
-
-        StateId compFrom = snapshots[0].From;
-        StateId compTo = snapshots[snapshots.Count - 1].To;
-        PersistedSnapshot compacted = CreatePersistedSnapshot(compFrom, compTo, merged);
-        // Removed in pass 2:         PersistedSnapshotUtils.ValidateCompactedPersistedSnapshot(compacted, snapshots, true);
-    }
-
 }

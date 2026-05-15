@@ -109,50 +109,34 @@ public class ArenaBufferWriterReaderTests
         }
     }
 
-    [Test]
-    public unsafe void DisposeActiveReader_BufferUnderThreshold_DoesNotFlush_OverThreshold_Flushes()
+    [TestCase(false, TestName = "Under threshold (< 3/4) — dispose keeps bytes buffered")]
+    [TestCase(true, TestName = "Over threshold (>= 3/4) — dispose flushes")]
+    public unsafe void DisposeActiveReader_FlushesOnlyWhenBufferOverThreshold(bool overThreshold)
     {
-        // Under threshold (< 3/4 of BufferSize) — dispose must keep bytes in buffer.
-        using (FileStream fs = NewFile())
+        using FileStream fs = NewFile();
+        ArenaBufferWriter writer = new(fs, firstOffset: 0,
+            (_, _) => throw new InvalidOperationException("fast path expected"));
+        try
         {
-            ArenaBufferWriter writer = new(fs, firstOffset: 0,
-                (_, _) => throw new InvalidOperationException("fast path expected"));
-            try
-            {
-                int under = (BufferSize / 4) * 3 - 1;
-                byte[] payload = MakePattern(under);
-                WriteAll(ref writer, payload);
+            int payloadSize = overThreshold
+                ? (BufferSize / 4) * 3 + 1
+                : (BufferSize / 4) * 3 - 1;
+            byte[] payload = MakePattern(payloadSize);
+            WriteAll(ref writer, payload);
 
-                ArenaBufferReader reader = writer.OpenReader(64);
-                ReadOnlySpan<byte> tail = payload.AsSpan(payload.Length - 64);
-                ReadAndAssert(reader, tail.ToArray());
+            ArenaBufferReader reader = writer.OpenReader(64);
+            ReadOnlySpan<byte> tail = payload.AsSpan(payload.Length - 64);
+            ReadAndAssert(reader, tail.ToArray());
 
-                writer.DisposeActiveReader();
-                fs.Position.Should().Be(0, "buffered < 3/4 of buffer — dispose must not flush");
-            }
-            finally { writer.Dispose(); }
+            writer.DisposeActiveReader();
+
+            long expectedPosition = overThreshold ? payloadSize : 0;
+            fs.Position.Should().Be(expectedPosition,
+                overThreshold
+                    ? "buffered >= 3/4 of buffer — dispose must flush"
+                    : "buffered < 3/4 of buffer — dispose must not flush");
         }
-
-        // Over threshold (>= 3/4 of BufferSize) — dispose must flush.
-        using (FileStream fs = NewFile())
-        {
-            ArenaBufferWriter writer = new(fs, firstOffset: 0,
-                (_, _) => throw new InvalidOperationException("fast path expected"));
-            try
-            {
-                int over = (BufferSize / 4) * 3 + 1;
-                byte[] payload = MakePattern(over);
-                WriteAll(ref writer, payload);
-
-                ArenaBufferReader reader = writer.OpenReader(64);
-                ReadOnlySpan<byte> tail = payload.AsSpan(payload.Length - 64);
-                ReadAndAssert(reader, tail.ToArray());
-
-                writer.DisposeActiveReader();
-                fs.Position.Should().Be(over, "buffered >= 3/4 of buffer — dispose must flush");
-            }
-            finally { writer.Dispose(); }
-        }
+        finally { writer.Dispose(); }
     }
 
     [Test]
