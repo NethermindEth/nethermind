@@ -258,16 +258,15 @@ internal static class HsstPackedArrayReader
         using (TPin dataPin = reader.PinBuffer(L.EntryAbsStart(rangeStart), count * L.EntryStride))
         {
             ReadOnlySpan<byte> dataSpan = dataPin.Buffer;
-            int localFloor = (L.IsLittleEndian, L.KeySize) switch
-            {
-                (true, 2) => UniformKeySearch.Uniform2LEStrided(key, dataSpan, (int)count, L.EntryStride),
-                (true, 4) => UniformKeySearch.Uniform4LEStrided(key, dataSpan, (int)count, L.EntryStride),
-                (true, 8) => UniformKeySearch.Uniform8LEStrided(key, dataSpan, (int)count, L.EntryStride),
-                (false, 2) => UniformKeySearch.Uniform2BEStrided(key, dataSpan, (int)count, L.EntryStride),
-                (false, 4) => UniformKeySearch.Uniform4BEStrided(key, dataSpan, (int)count, L.EntryStride),
-                (false, 8) => UniformKeySearch.Uniform8BEStrided(key, dataSpan, (int)count, L.EntryStride),
-                _ => UniformKeySearch.UniformBEStrided(key, dataSpan, (int)count, L.KeySize, L.EntryStride),
-            };
+            int localFloor = L.IsLittleEndian
+                ? L.KeySize switch
+                {
+                    2 => UniformKeySearch.Uniform2LEStrided(key, dataSpan, (int)count, L.EntryStride),
+                    4 => UniformKeySearch.Uniform4LEStrided(key, dataSpan, (int)count, L.EntryStride),
+                    8 => UniformKeySearch.Uniform8LEStrided(key, dataSpan, (int)count, L.EntryStride),
+                    _ => UniformKeySearch.UniformBEStrided(key, dataSpan, (int)count, L.KeySize, L.EntryStride),
+                }
+                : UniformKeySearch.UniformBEStrided(key, dataSpan, (int)count, L.KeySize, L.EntryStride);
 
             if (localFloor >= 0)
             {
@@ -324,13 +323,7 @@ internal static class HsstPackedArrayReader
                 // ParseMetadata rejects LE with other sizes; unreachable in practice.
                 _ => -1
             }
-            : keySize switch
-            {
-                2 => UniformKeySearch.Uniform2BE(key, span, (int)count),
-                4 => UniformKeySearch.Uniform4BE(key, span, (int)count),
-                8 => UniformKeySearch.Uniform8BE(key, span, (int)count),
-                _ => UniformKeySearch.UniformBE(key, span, (int)count, keySize)
-            };
+            : UniformKeySearch.UniformBE(key, span, (int)count, keySize);
 
         if (localFloor < 0) return lo;
         ReadOnlySpan<byte> floorKey = span.Slice(localFloor * keySize, keySize);

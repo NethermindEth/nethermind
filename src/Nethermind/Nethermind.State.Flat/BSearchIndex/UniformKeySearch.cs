@@ -12,25 +12,27 @@ using System.Runtime.Intrinsics.X86;
 namespace Nethermind.State.Flat.BSearchIndex;
 
 /// <summary>
-/// Unified uniform-width key search utility. One public method per (size, endian) combo,
-/// each internally choosing an AVX-512 linear scan vs. scalar binary search based on
-/// hardware support and the <see cref="Enabled"/> / <see cref="LinearScanMaxCount"/> toggles.
+/// Unified uniform-width key search utility. SIMD specialisations exist only for the
+/// LE-stored fast path; BE-stored keys go through the scalar lex catch-all regardless
+/// of width. Each entry point internally picks AVX-512 linear scan vs. scalar binary
+/// search based on hardware support and the <see cref="Enabled"/> / <see cref="LinearScanMaxCount"/>
+/// toggles.
 /// </summary>
 /// <remarks>
 /// Layouts covered:
 /// <list type="bullet">
-///   <item><c>UniformN[LE|BE]</c>: contiguous fixed-width keys, N bytes per slot. Floor lookup.</item>
-///   <item><c>UniformN[LE|BE]Strided</c>: same as above but each slot is followed by a value
-///         (slot stride &gt; keySize), e.g. HSST PackedArray data section.</item>
+///   <item><c>UniformNLE</c>: contiguous fixed-width keys, N bytes per slot (N ∈ {2,3,4,8}). Floor lookup.</item>
+///   <item><c>UniformNLEStrided</c>: same as above but each slot is followed by a value
+///         (slot stride &gt; keySize), e.g. HSST PackedArray data section. N ∈ {2,4,8}.</item>
 ///   <item><c>LowerBound2LE</c>: 2-byte LE-stored lower_bound (different semantics from floor).</item>
-///   <item>Generic <c>UniformBE</c> / <c>UniformBEStrided</c>: lex
-///         <see cref="MemoryExtensions.SequenceCompareTo{T}"/> binary search for keySizes
-///         outside {2,3,4,8} (or 3-byte BE, which has no SIMD specialization).</item>
+///   <item><c>UniformBE</c> / <c>UniformBEStrided</c>: lex
+///         <see cref="MemoryExtensions.SequenceCompareTo{T}"/> binary search for any
+///         BE-stored width. No SIMD path — the planner / builder auto-pick LE for every
+///         width that has one, so the BE side only fires for widths outside {2,4,8}.</item>
 /// </list>
 /// LE-stored fixed-width keys are byte-reversed on disk so a native unsigned integer load
 /// recovers the BE numeric value of the original lex key — that makes unsigned integer
 /// compare equivalent to lex byte compare and unlocks the SIMD <c>GreaterThan</c> fast path.
-/// LE-stored is only valid for keySizes 2/4/8 (and 3 in the HSST PackedArray summary level).
 /// </remarks>
 public static class UniformKeySearch
 {
@@ -48,58 +50,6 @@ public static class UniformKeySearch
     public static int LinearScanMaxCount = 1024;
 
     // ---- AVX-512 shuffle masks (private) ----
-
-    private static readonly Vector512<byte> ByteSwap16Mask512 = Vector512.Create(
-        (byte)1, 0,
-        3, 2,
-        5, 4,
-        7, 6,
-        9, 8,
-        11, 10,
-        13, 12,
-        15, 14,
-        17, 16,
-        19, 18,
-        21, 20,
-        23, 22,
-        25, 24,
-        27, 26,
-        29, 28,
-        31, 30,
-        33, 32,
-        35, 34,
-        37, 36,
-        39, 38,
-        41, 40,
-        43, 42,
-        45, 44,
-        47, 46,
-        49, 48,
-        51, 50,
-        53, 52,
-        55, 54,
-        57, 56,
-        59, 58,
-        61, 60,
-        63, 62);
-
-    private static readonly Vector512<byte> ByteSwap32Mask512 = Vector512.Create(
-        (byte)3, 2, 1, 0,
-        7, 6, 5, 4,
-        11, 10, 9, 8,
-        15, 14, 13, 12,
-        19, 18, 17, 16,
-        23, 22, 21, 20,
-        27, 26, 25, 24,
-        31, 30, 29, 28,
-        35, 34, 33, 32,
-        39, 38, 37, 36,
-        43, 42, 41, 40,
-        47, 46, 45, 44,
-        51, 50, 49, 48,
-        55, 54, 53, 52,
-        59, 58, 57, 56,
-        63, 62, 61, 60);
 
     // 3-byte LE packed-key gather: each output u32 lane pulls (3n, 3n+1, 3n+2) from the
     // raw 64-byte load and forces the high byte to zero via an out-of-range index (>=64
@@ -123,15 +73,15 @@ public static class UniformKeySearch
         42, 43, 44, 0xFF,
         45, 46, 47, 0xFF);
 
-    private static readonly Vector512<byte> ByteSwap64Mask512 = Vector512.Create(
-        (byte)7, 6, 5, 4, 3, 2, 1, 0,
-        15, 14, 13, 12, 11, 10, 9, 8,
-        23, 22, 21, 20, 19, 18, 17, 16,
-        31, 30, 29, 28, 27, 26, 25, 24,
-        39, 38, 37, 36, 35, 34, 33, 32,
-        47, 46, 45, 44, 43, 42, 41, 40,
-        55, 54, 53, 52, 51, 50, 49, 48,
-        63, 62, 61, 60, 59, 58, 57, 56);
+    // Per-lane index vectors. Combined with Vector512.LessThan(idx, broadcast(remaining))
+    // they produce the lane mask consumed by Avx512{BW,F}.MaskLoad for the trailing
+    // (<N keys) iteration of the FloorScan kernels.
+    private static readonly Vector512<ushort> LaneIdx16 = Vector512.Create(
+        (ushort)0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15,
+        16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31);
+    private static readonly Vector512<uint> LaneIdx32 = Vector512.Create(
+        0u, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15);
+    private static readonly Vector512<ulong> LaneIdx64 = Vector512.Create(0ul, 1, 2, 3, 4, 5, 6, 7);
 
     // =====================================================================================
     //  Contiguous floor index (largest i in [0, count) where keys[i] <= search; -1 if none)
@@ -142,17 +92,8 @@ public static class UniformKeySearch
     {
         if (count == 0) return -1;
         if (Enabled && Vector512.IsHardwareAccelerated && count >= 2 && count <= LinearScanMaxCount)
-            return FloorScan16(key, keys, count, isLittleEndian: true);
+            return FloorScan16(key, keys, count);
         return BinarySearch2LE(key, keys, count);
-    }
-
-    /// <summary>Floor index over 2-byte BE-stored (lex-ordered) keys.</summary>
-    public static int Uniform2BE(ReadOnlySpan<byte> key, ReadOnlySpan<byte> keys, int count)
-    {
-        if (count == 0) return -1;
-        if (Enabled && Vector512.IsHardwareAccelerated && key.Length == 2 && count >= 2 && count <= LinearScanMaxCount)
-            return FloorScan16(key, keys, count, isLittleEndian: false);
-        return BinarySearchLex(key, keys, count, keySize: 2);
     }
 
     /// <summary>
@@ -173,17 +114,8 @@ public static class UniformKeySearch
     {
         if (count == 0) return -1;
         if (Enabled && Vector512.IsHardwareAccelerated && count >= 2 && count <= LinearScanMaxCount)
-            return FloorScan32(key, keys, count, isLittleEndian: true);
+            return FloorScan32(key, keys, count);
         return BinarySearch4LE(key, keys, count);
-    }
-
-    /// <summary>Floor index over 4-byte BE-stored (lex-ordered) keys.</summary>
-    public static int Uniform4BE(ReadOnlySpan<byte> key, ReadOnlySpan<byte> keys, int count)
-    {
-        if (count == 0) return -1;
-        if (Enabled && Vector512.IsHardwareAccelerated && key.Length == 4 && count >= 2 && count <= LinearScanMaxCount)
-            return FloorScan32(key, keys, count, isLittleEndian: false);
-        return BinarySearchLex(key, keys, count, keySize: 4);
     }
 
     /// <summary>Floor index over 8-byte LE-stored keys.</summary>
@@ -191,22 +123,14 @@ public static class UniformKeySearch
     {
         if (count == 0) return -1;
         if (Enabled && Vector512.IsHardwareAccelerated && count >= 2 && count <= LinearScanMaxCount)
-            return FloorScan64(key, keys, count, isLittleEndian: true);
+            return FloorScan64(key, keys, count);
         return BinarySearch8LE(key, keys, count);
-    }
-
-    /// <summary>Floor index over 8-byte BE-stored (lex-ordered) keys.</summary>
-    public static int Uniform8BE(ReadOnlySpan<byte> key, ReadOnlySpan<byte> keys, int count)
-    {
-        if (count == 0) return -1;
-        if (Enabled && Vector512.IsHardwareAccelerated && key.Length == 8 && count >= 2 && count <= LinearScanMaxCount)
-            return FloorScan64(key, keys, count, isLittleEndian: false);
-        return BinarySearchLex(key, keys, count, keySize: 8);
     }
 
     /// <summary>
     /// Floor index over BE-stored (lex-ordered) keys of arbitrary <paramref name="keySize"/>.
-    /// Always scalar; use the size-specialised methods when applicable.
+    /// Always scalar; the planner / builder pick LE for every width with a SIMD specialisation,
+    /// so BE only fires for widths outside {2,4,8} where no fast path exists anyway.
     /// </summary>
     public static int UniformBE(ReadOnlySpan<byte> key, ReadOnlySpan<byte> keys, int count, int keySize)
     {
@@ -225,18 +149,8 @@ public static class UniformKeySearch
         if (count == 0) return -1;
         if (stride == 2) return Uniform2LE(key, src, count);
         if (Enabled && Vector512.IsHardwareAccelerated && count >= 2 && count <= LinearScanMaxCount)
-            return FloorScan16Strided(key, src, count, stride, isLittleEndian: true);
+            return FloorScan16Strided(key, src, count, stride);
         return BinarySearch2LEStrided(key, src, count, stride);
-    }
-
-    /// <summary>Floor index over 2-byte BE-stored keys with a strided layout.</summary>
-    public static int Uniform2BEStrided(ReadOnlySpan<byte> key, ReadOnlySpan<byte> src, int count, int stride)
-    {
-        if (count == 0) return -1;
-        if (stride == 2) return Uniform2BE(key, src, count);
-        if (Enabled && Vector512.IsHardwareAccelerated && key.Length == 2 && count >= 2 && count <= LinearScanMaxCount)
-            return FloorScan16Strided(key, src, count, stride, isLittleEndian: false);
-        return BinarySearchLexStrided(key, src, count, keySize: 2, stride);
     }
 
     /// <summary>Floor index over 4-byte LE-stored keys with a strided layout.</summary>
@@ -245,18 +159,8 @@ public static class UniformKeySearch
         if (count == 0) return -1;
         if (stride == 4) return Uniform4LE(key, src, count);
         if (Enabled && Vector512.IsHardwareAccelerated && count >= 2 && count <= LinearScanMaxCount)
-            return FloorScan32Strided(key, src, count, stride, isLittleEndian: true);
+            return FloorScan32Strided(key, src, count, stride);
         return BinarySearch4LEStrided(key, src, count, stride);
-    }
-
-    /// <summary>Floor index over 4-byte BE-stored keys with a strided layout.</summary>
-    public static int Uniform4BEStrided(ReadOnlySpan<byte> key, ReadOnlySpan<byte> src, int count, int stride)
-    {
-        if (count == 0) return -1;
-        if (stride == 4) return Uniform4BE(key, src, count);
-        if (Enabled && Vector512.IsHardwareAccelerated && key.Length == 4 && count >= 2 && count <= LinearScanMaxCount)
-            return FloorScan32Strided(key, src, count, stride, isLittleEndian: false);
-        return BinarySearchLexStrided(key, src, count, keySize: 4, stride);
     }
 
     /// <summary>Floor index over 8-byte LE-stored keys with a strided layout.</summary>
@@ -265,22 +169,14 @@ public static class UniformKeySearch
         if (count == 0) return -1;
         if (stride == 8) return Uniform8LE(key, src, count);
         if (Enabled && Vector512.IsHardwareAccelerated && count >= 2 && count <= LinearScanMaxCount)
-            return FloorScan64Strided(key, src, count, stride, isLittleEndian: true);
+            return FloorScan64Strided(key, src, count, stride);
         return BinarySearch8LEStrided(key, src, count, stride);
-    }
-
-    /// <summary>Floor index over 8-byte BE-stored keys with a strided layout.</summary>
-    public static int Uniform8BEStrided(ReadOnlySpan<byte> key, ReadOnlySpan<byte> src, int count, int stride)
-    {
-        if (count == 0) return -1;
-        if (stride == 8) return Uniform8BE(key, src, count);
-        if (Enabled && Vector512.IsHardwareAccelerated && key.Length == 8 && count >= 2 && count <= LinearScanMaxCount)
-            return FloorScan64Strided(key, src, count, stride, isLittleEndian: false);
-        return BinarySearchLexStrided(key, src, count, keySize: 8, stride);
     }
 
     /// <summary>
     /// Strided floor index over BE-stored (lex-ordered) keys of arbitrary <paramref name="keySize"/>.
+    /// Always scalar; the planner / builder pick LE for every width with a SIMD specialisation,
+    /// so BE only fires for widths outside {2,4,8} where no fast path exists anyway.
     /// </summary>
     public static int UniformBEStrided(ReadOnlySpan<byte> key, ReadOnlySpan<byte> src, int count, int keySize, int stride)
     {
@@ -388,11 +284,10 @@ public static class UniformKeySearch
     // =====================================================================================
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static int FloorScan16(ReadOnlySpan<byte> key, ReadOnlySpan<byte> keys, int count, bool isLittleEndian)
+    private static int FloorScan16(ReadOnlySpan<byte> key, ReadOnlySpan<byte> keys, int count)
     {
-        // search arrives lex-ordered. ReverseEndianness produces the value of a native LE load
-        // applied to the BE-stored bytes — equivalent to the value of a native LE load applied
-        // to LE-stored bytes — so the same broadcast works for both layouts.
+        // search arrives lex-ordered. ReverseEndianness produces the BE-numeric value of the
+        // 2-byte key, which equals the value of a native LE load applied to the LE-stored bytes.
         ushort search = BinaryPrimitives.ReverseEndianness(
             Unsafe.ReadUnaligned<ushort>(ref MemoryMarshal.GetReference(key)));
         ref byte src = ref MemoryMarshal.GetReference(keys);
@@ -402,12 +297,7 @@ public static class UniformKeySearch
         // 32 keys per iteration.
         while (i + 32 <= count)
         {
-            Vector512<ushort> raw = Vector512.LoadUnsafe(ref src, (nuint)(i * 2)).AsUInt16();
-            // BE-stored: shuffle each lane to recover the native integer value. LE-stored:
-            // raw already IS the native integer value — skip the shuffle.
-            Vector512<ushort> lanes = isLittleEndian
-                ? raw
-                : Vector512.Shuffle(raw.AsByte(), ByteSwap16Mask512).AsUInt16();
+            Vector512<ushort> lanes = Vector512.LoadUnsafe(ref src, (nuint)(i * 2)).AsUInt16();
             Vector512<ushort> gt = Vector512.GreaterThan(lanes, searchVec);
             ulong mask = gt.ExtractMostSignificantBits();
             if (mask != 0)
@@ -417,7 +307,9 @@ public static class UniformKeySearch
             }
             i += 32;
         }
-        return ScalarTail16(search, ref src, i, count, isLittleEndian);
+        return Avx512BW.IsSupported
+            ? MaskedTail16(search, keys, i, count)
+            : ScalarTail16(search, ref src, i, count);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -455,7 +347,7 @@ public static class UniformKeySearch
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static int FloorScan32(ReadOnlySpan<byte> key, ReadOnlySpan<byte> keys, int count, bool isLittleEndian)
+    private static int FloorScan32(ReadOnlySpan<byte> key, ReadOnlySpan<byte> keys, int count)
     {
         uint search = BinaryPrimitives.ReverseEndianness(
             Unsafe.ReadUnaligned<uint>(ref MemoryMarshal.GetReference(key)));
@@ -466,10 +358,7 @@ public static class UniformKeySearch
         // 16 keys per iteration.
         while (i + 16 <= count)
         {
-            Vector512<uint> raw = Vector512.LoadUnsafe(ref src, (nuint)(i * 4)).AsUInt32();
-            Vector512<uint> lanes = isLittleEndian
-                ? raw
-                : Vector512.Shuffle(raw.AsByte(), ByteSwap32Mask512).AsUInt32();
+            Vector512<uint> lanes = Vector512.LoadUnsafe(ref src, (nuint)(i * 4)).AsUInt32();
             Vector512<uint> gt = Vector512.GreaterThan(lanes, searchVec);
             ulong mask = gt.ExtractMostSignificantBits();
             if (mask != 0)
@@ -479,11 +368,13 @@ public static class UniformKeySearch
             }
             i += 16;
         }
-        return ScalarTail32(search, ref src, i, count, isLittleEndian);
+        return Avx512F.IsSupported
+            ? MaskedTail32(search, keys, i, count)
+            : ScalarTail32(search, ref src, i, count);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static int FloorScan64(ReadOnlySpan<byte> key, ReadOnlySpan<byte> keys, int count, bool isLittleEndian)
+    private static int FloorScan64(ReadOnlySpan<byte> key, ReadOnlySpan<byte> keys, int count)
     {
         ulong search = BinaryPrimitives.ReverseEndianness(
             Unsafe.ReadUnaligned<ulong>(ref MemoryMarshal.GetReference(key)));
@@ -494,10 +385,7 @@ public static class UniformKeySearch
         // 8 keys per iteration.
         while (i + 8 <= count)
         {
-            Vector512<ulong> raw = Vector512.LoadUnsafe(ref src, (nuint)(i * 8)).AsUInt64();
-            Vector512<ulong> lanes = isLittleEndian
-                ? raw
-                : Vector512.Shuffle(raw.AsByte(), ByteSwap64Mask512).AsUInt64();
+            Vector512<ulong> lanes = Vector512.LoadUnsafe(ref src, (nuint)(i * 8)).AsUInt64();
             Vector512<ulong> gt = Vector512.GreaterThan(lanes, searchVec);
             ulong mask = gt.ExtractMostSignificantBits();
             if (mask != 0)
@@ -507,7 +395,9 @@ public static class UniformKeySearch
             }
             i += 8;
         }
-        return ScalarTail64(search, ref src, i, count, isLittleEndian);
+        return Avx512F.IsSupported
+            ? MaskedTail64(search, keys, i, count)
+            : ScalarTail64(search, ref src, i, count);
     }
 
     // ---- Strided SIMD kernels ----
@@ -518,7 +408,7 @@ public static class UniformKeySearch
     // the win comes from removing the branch mispredicts of binary search.
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static int FloorScan16Strided(ReadOnlySpan<byte> key, ReadOnlySpan<byte> src, int count, int stride, bool isLittleEndian)
+    private static int FloorScan16Strided(ReadOnlySpan<byte> key, ReadOnlySpan<byte> src, int count, int stride)
     {
         ushort search = BinaryPrimitives.ReverseEndianness(
             Unsafe.ReadUnaligned<ushort>(ref MemoryMarshal.GetReference(key)));
@@ -530,10 +420,7 @@ public static class UniformKeySearch
         while (i + 32 <= count)
         {
             for (int j = 0; j < 32; j++)
-            {
-                ushort raw = Unsafe.ReadUnaligned<ushort>(ref Unsafe.Add(ref s, (nint)((i + j) * stride)));
-                lanes[j] = isLittleEndian ? raw : BinaryPrimitives.ReverseEndianness(raw);
-            }
+                lanes[j] = Unsafe.ReadUnaligned<ushort>(ref Unsafe.Add(ref s, (nint)((i + j) * stride)));
             Vector512<ushort> v = Vector512.LoadUnsafe(ref MemoryMarshal.GetReference(lanes));
             Vector512<ushort> gt = Vector512.GreaterThan(v, searchVec);
             ulong mask = gt.ExtractMostSignificantBits();
@@ -544,11 +431,11 @@ public static class UniformKeySearch
             }
             i += 32;
         }
-        return ScalarTail16Strided(search, ref s, i, count, stride, isLittleEndian);
+        return ScalarTail16Strided(search, ref s, i, count, stride);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static int FloorScan32Strided(ReadOnlySpan<byte> key, ReadOnlySpan<byte> src, int count, int stride, bool isLittleEndian)
+    private static int FloorScan32Strided(ReadOnlySpan<byte> key, ReadOnlySpan<byte> src, int count, int stride)
     {
         uint search = BinaryPrimitives.ReverseEndianness(
             Unsafe.ReadUnaligned<uint>(ref MemoryMarshal.GetReference(key)));
@@ -560,10 +447,7 @@ public static class UniformKeySearch
         while (i + 16 <= count)
         {
             for (int j = 0; j < 16; j++)
-            {
-                uint raw = Unsafe.ReadUnaligned<uint>(ref Unsafe.Add(ref s, (nint)((i + j) * stride)));
-                lanes[j] = isLittleEndian ? raw : BinaryPrimitives.ReverseEndianness(raw);
-            }
+                lanes[j] = Unsafe.ReadUnaligned<uint>(ref Unsafe.Add(ref s, (nint)((i + j) * stride)));
             Vector512<uint> v = Vector512.LoadUnsafe(ref MemoryMarshal.GetReference(lanes));
             Vector512<uint> gt = Vector512.GreaterThan(v, searchVec);
             ulong mask = gt.ExtractMostSignificantBits();
@@ -574,11 +458,11 @@ public static class UniformKeySearch
             }
             i += 16;
         }
-        return ScalarTail32Strided(search, ref s, i, count, stride, isLittleEndian);
+        return ScalarTail32Strided(search, ref s, i, count, stride);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static int FloorScan64Strided(ReadOnlySpan<byte> key, ReadOnlySpan<byte> src, int count, int stride, bool isLittleEndian)
+    private static int FloorScan64Strided(ReadOnlySpan<byte> key, ReadOnlySpan<byte> src, int count, int stride)
     {
         ulong search = BinaryPrimitives.ReverseEndianness(
             Unsafe.ReadUnaligned<ulong>(ref MemoryMarshal.GetReference(key)));
@@ -590,10 +474,7 @@ public static class UniformKeySearch
         while (i + 8 <= count)
         {
             for (int j = 0; j < 8; j++)
-            {
-                ulong raw = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref s, (nint)((i + j) * stride)));
-                lanes[j] = isLittleEndian ? raw : BinaryPrimitives.ReverseEndianness(raw);
-            }
+                lanes[j] = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref s, (nint)((i + j) * stride)));
             Vector512<ulong> v = Vector512.LoadUnsafe(ref MemoryMarshal.GetReference(lanes));
             Vector512<ulong> gt = Vector512.GreaterThan(v, searchVec);
             ulong mask = gt.ExtractMostSignificantBits();
@@ -604,18 +485,70 @@ public static class UniformKeySearch
             }
             i += 8;
         }
-        return ScalarTail64Strided(search, ref s, i, count, stride, isLittleEndian);
+        return ScalarTail64Strided(search, ref s, i, count, stride);
+    }
+
+    // ---- AVX-512 masked-load tails (private; replace the scalar tail when Avx512{BW,F}
+    //      is supported). Hardware masked load (vmovdqu16/32/64 zmm{k}{z}) reads only
+    //      the lanes selected by the mask, so no padding past `count` is required.
+    //      Lanes outside the mask are zeroed and therefore never compare greater under
+    //      unsigned GT — no explicit mask of the gt-result is needed. ----
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static unsafe int MaskedTail16(ushort search, ReadOnlySpan<byte> keys, int i, int count)
+    {
+        int remaining = count - i;
+        if (remaining == 0) return count - 1;
+        Vector512<ushort> mask = Vector512.LessThan(LaneIdx16, Vector512.Create((ushort)remaining));
+        // `fixed` pins for the duration of the masked load — callers pass arbitrary
+        // spans (ArrayPool buffers, mmap'd FlatDB pages), so Unsafe.AsPointer would be GC-unsafe.
+        fixed (byte* p = keys)
+        {
+            Vector512<ushort> lanes = Avx512BW.MaskLoad((ushort*)(p + i * 2), mask, Vector512<ushort>.Zero);
+            ulong gtMask = Vector512.GreaterThan(lanes, Vector512.Create(search)).ExtractMostSignificantBits();
+            if (gtMask != 0) return i + BitOperations.TrailingZeroCount(gtMask) - 1;
+        }
+        return count - 1;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static unsafe int MaskedTail32(uint search, ReadOnlySpan<byte> keys, int i, int count)
+    {
+        int remaining = count - i;
+        if (remaining == 0) return count - 1;
+        Vector512<uint> mask = Vector512.LessThan(LaneIdx32, Vector512.Create((uint)remaining));
+        fixed (byte* p = keys)
+        {
+            Vector512<uint> lanes = Avx512F.MaskLoad((uint*)(p + i * 4), mask, Vector512<uint>.Zero);
+            ulong gtMask = Vector512.GreaterThan(lanes, Vector512.Create(search)).ExtractMostSignificantBits();
+            if (gtMask != 0) return i + BitOperations.TrailingZeroCount(gtMask) - 1;
+        }
+        return count - 1;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static unsafe int MaskedTail64(ulong search, ReadOnlySpan<byte> keys, int i, int count)
+    {
+        int remaining = count - i;
+        if (remaining == 0) return count - 1;
+        Vector512<ulong> mask = Vector512.LessThan(LaneIdx64, Vector512.Create((ulong)remaining));
+        fixed (byte* p = keys)
+        {
+            Vector512<ulong> lanes = Avx512F.MaskLoad((ulong*)(p + i * 8), mask, Vector512<ulong>.Zero);
+            ulong gtMask = Vector512.GreaterThan(lanes, Vector512.Create(search)).ExtractMostSignificantBits();
+            if (gtMask != 0) return i + BitOperations.TrailingZeroCount(gtMask) - 1;
+        }
+        return count - 1;
     }
 
     // ---- Scalar tails (private; finish the SIMD scan over the leftover < 32/16/8 keys). ----
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static int ScalarTail16(ushort search, ref byte src, int i, int count, bool isLittleEndian)
+    private static int ScalarTail16(ushort search, ref byte src, int i, int count)
     {
         for (; i < count; i++)
         {
-            ushort raw = Unsafe.ReadUnaligned<ushort>(ref Unsafe.Add(ref src, (nint)(i * 2)));
-            ushort k = isLittleEndian ? raw : BinaryPrimitives.ReverseEndianness(raw);
+            ushort k = Unsafe.ReadUnaligned<ushort>(ref Unsafe.Add(ref src, (nint)(i * 2)));
             if (k > search) return i - 1;
         }
         return count - 1;
@@ -635,60 +568,55 @@ public static class UniformKeySearch
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static int ScalarTail32(uint search, ref byte src, int i, int count, bool isLittleEndian)
+    private static int ScalarTail32(uint search, ref byte src, int i, int count)
     {
         for (; i < count; i++)
         {
-            uint raw = Unsafe.ReadUnaligned<uint>(ref Unsafe.Add(ref src, (nint)(i * 4)));
-            uint k = isLittleEndian ? raw : BinaryPrimitives.ReverseEndianness(raw);
+            uint k = Unsafe.ReadUnaligned<uint>(ref Unsafe.Add(ref src, (nint)(i * 4)));
             if (k > search) return i - 1;
         }
         return count - 1;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static int ScalarTail64(ulong search, ref byte src, int i, int count, bool isLittleEndian)
+    private static int ScalarTail64(ulong search, ref byte src, int i, int count)
     {
         for (; i < count; i++)
         {
-            ulong raw = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref src, (nint)(i * 8)));
-            ulong k = isLittleEndian ? raw : BinaryPrimitives.ReverseEndianness(raw);
+            ulong k = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref src, (nint)(i * 8)));
             if (k > search) return i - 1;
         }
         return count - 1;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static int ScalarTail16Strided(ushort search, ref byte s, int i, int count, int stride, bool isLittleEndian)
+    private static int ScalarTail16Strided(ushort search, ref byte s, int i, int count, int stride)
     {
         for (; i < count; i++)
         {
-            ushort raw = Unsafe.ReadUnaligned<ushort>(ref Unsafe.Add(ref s, (nint)(i * stride)));
-            ushort k = isLittleEndian ? raw : BinaryPrimitives.ReverseEndianness(raw);
+            ushort k = Unsafe.ReadUnaligned<ushort>(ref Unsafe.Add(ref s, (nint)(i * stride)));
             if (k > search) return i - 1;
         }
         return count - 1;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static int ScalarTail32Strided(uint search, ref byte s, int i, int count, int stride, bool isLittleEndian)
+    private static int ScalarTail32Strided(uint search, ref byte s, int i, int count, int stride)
     {
         for (; i < count; i++)
         {
-            uint raw = Unsafe.ReadUnaligned<uint>(ref Unsafe.Add(ref s, (nint)(i * stride)));
-            uint k = isLittleEndian ? raw : BinaryPrimitives.ReverseEndianness(raw);
+            uint k = Unsafe.ReadUnaligned<uint>(ref Unsafe.Add(ref s, (nint)(i * stride)));
             if (k > search) return i - 1;
         }
         return count - 1;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static int ScalarTail64Strided(ulong search, ref byte s, int i, int count, int stride, bool isLittleEndian)
+    private static int ScalarTail64Strided(ulong search, ref byte s, int i, int count, int stride)
     {
         for (; i < count; i++)
         {
-            ulong raw = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref s, (nint)(i * stride)));
-            ulong k = isLittleEndian ? raw : BinaryPrimitives.ReverseEndianness(raw);
+            ulong k = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref s, (nint)(i * stride)));
             if (k > search) return i - 1;
         }
         return count - 1;
