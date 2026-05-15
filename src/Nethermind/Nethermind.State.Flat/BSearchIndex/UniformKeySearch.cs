@@ -133,6 +133,16 @@ public static class UniformKeySearch
         55, 54, 53, 52, 51, 50, 49, 48,
         63, 62, 61, 60, 59, 58, 57, 56);
 
+    // Per-lane index vectors. Combined with Vector512.LessThan(idx, broadcast(remaining))
+    // they produce the lane mask consumed by Avx512{BW,F}.MaskLoad for the trailing
+    // (<N keys) iteration of the FloorScan kernels.
+    private static readonly Vector512<ushort> LaneIdx16 = Vector512.Create(
+        (ushort)0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15,
+        16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31);
+    private static readonly Vector512<uint> LaneIdx32 = Vector512.Create(
+        0u, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15);
+    private static readonly Vector512<ulong> LaneIdx64 = Vector512.Create(0ul, 1, 2, 3, 4, 5, 6, 7);
+
     // =====================================================================================
     //  Contiguous floor index (largest i in [0, count) where keys[i] <= search; -1 if none)
     // =====================================================================================
@@ -417,7 +427,9 @@ public static class UniformKeySearch
             }
             i += 32;
         }
-        return ScalarTail16(search, ref src, i, count, isLittleEndian);
+        return Avx512BW.IsSupported
+            ? MaskedTail16(search, keys, i, count, isLittleEndian)
+            : ScalarTail16(search, ref src, i, count, isLittleEndian);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -479,7 +491,9 @@ public static class UniformKeySearch
             }
             i += 16;
         }
-        return ScalarTail32(search, ref src, i, count, isLittleEndian);
+        return Avx512F.IsSupported
+            ? MaskedTail32(search, keys, i, count, isLittleEndian)
+            : ScalarTail32(search, ref src, i, count, isLittleEndian);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -507,7 +521,9 @@ public static class UniformKeySearch
             }
             i += 8;
         }
-        return ScalarTail64(search, ref src, i, count, isLittleEndian);
+        return Avx512F.IsSupported
+            ? MaskedTail64(search, keys, i, count, isLittleEndian)
+            : ScalarTail64(search, ref src, i, count, isLittleEndian);
     }
 
     // ---- Strided SIMD kernels ----
@@ -605,6 +621,68 @@ public static class UniformKeySearch
             i += 8;
         }
         return ScalarTail64Strided(search, ref s, i, count, stride, isLittleEndian);
+    }
+
+    // ---- AVX-512 masked-load tails (private; replace the scalar tail when Avx512{BW,F}
+    //      is supported). Hardware masked load (vmovdqu16/32/64 zmm{k}{z}) reads only
+    //      the lanes selected by the mask, so no padding past `count` is required.
+    //      Lanes outside the mask are zeroed and therefore never compare greater under
+    //      unsigned GT — no explicit mask of the gt-result is needed. ----
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static unsafe int MaskedTail16(ushort search, ReadOnlySpan<byte> keys, int i, int count, bool isLittleEndian)
+    {
+        int remaining = count - i;
+        if (remaining == 0) return count - 1;
+        Vector512<ushort> mask = Vector512.LessThan(LaneIdx16, Vector512.Create((ushort)remaining));
+        // `fixed` pins for the duration of the masked load — callers pass arbitrary
+        // spans (ArrayPool buffers, mmap'd FlatDB pages), so Unsafe.AsPointer would be GC-unsafe.
+        fixed (byte* p = keys)
+        {
+            Vector512<ushort> raw = Avx512BW.MaskLoad((ushort*)(p + i * 2), mask, Vector512<ushort>.Zero);
+            Vector512<ushort> lanes = isLittleEndian
+                ? raw
+                : Vector512.Shuffle(raw.AsByte(), ByteSwap16Mask512).AsUInt16();
+            ulong gtMask = Vector512.GreaterThan(lanes, Vector512.Create(search)).ExtractMostSignificantBits();
+            if (gtMask != 0) return i + BitOperations.TrailingZeroCount(gtMask) - 1;
+        }
+        return count - 1;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static unsafe int MaskedTail32(uint search, ReadOnlySpan<byte> keys, int i, int count, bool isLittleEndian)
+    {
+        int remaining = count - i;
+        if (remaining == 0) return count - 1;
+        Vector512<uint> mask = Vector512.LessThan(LaneIdx32, Vector512.Create((uint)remaining));
+        fixed (byte* p = keys)
+        {
+            Vector512<uint> raw = Avx512F.MaskLoad((uint*)(p + i * 4), mask, Vector512<uint>.Zero);
+            Vector512<uint> lanes = isLittleEndian
+                ? raw
+                : Vector512.Shuffle(raw.AsByte(), ByteSwap32Mask512).AsUInt32();
+            ulong gtMask = Vector512.GreaterThan(lanes, Vector512.Create(search)).ExtractMostSignificantBits();
+            if (gtMask != 0) return i + BitOperations.TrailingZeroCount(gtMask) - 1;
+        }
+        return count - 1;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static unsafe int MaskedTail64(ulong search, ReadOnlySpan<byte> keys, int i, int count, bool isLittleEndian)
+    {
+        int remaining = count - i;
+        if (remaining == 0) return count - 1;
+        Vector512<ulong> mask = Vector512.LessThan(LaneIdx64, Vector512.Create((ulong)remaining));
+        fixed (byte* p = keys)
+        {
+            Vector512<ulong> raw = Avx512F.MaskLoad((ulong*)(p + i * 8), mask, Vector512<ulong>.Zero);
+            Vector512<ulong> lanes = isLittleEndian
+                ? raw
+                : Vector512.Shuffle(raw.AsByte(), ByteSwap64Mask512).AsUInt64();
+            ulong gtMask = Vector512.GreaterThan(lanes, Vector512.Create(search)).ExtractMostSignificantBits();
+            if (gtMask != 0) return i + BitOperations.TrailingZeroCount(gtMask) - 1;
+        }
+        return count - 1;
     }
 
     // ---- Scalar tails (private; finish the SIMD scan over the leftover < 32/16/8 keys). ----
