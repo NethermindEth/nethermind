@@ -6,6 +6,7 @@ using System.Buffers;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
+using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 
@@ -18,6 +19,29 @@ internal static unsafe class NativeMemoryListCore<T> where T : unmanaged
     // short-lived collections. The decision is made on the requested capacity; the pool
     // may overshoot, but we stay on pool until a resize would push us above the threshold.
     internal const int PoolThresholdBytes = 1024;
+
+    // When sizeof(T) is a power of two we route the native-alloc path through
+    // NativeMemory.AlignedAlloc so the returned pointer is aligned to the element
+    // size. This makes element accesses naturally aligned (SIMD loads, Interlocked
+    // ops on multi-word structs, cache-line packing for slot tables, etc.) — the
+    // common case for primitives and tightly-packed value types. Non-power-of-two
+    // sizes fall back to NativeMemory.Alloc, which only guarantees malloc-default
+    // alignment. The branch is on a `sizeof(T)`-derived constant so the JIT folds
+    // it away per generic instantiation. ArrayPool-backed allocations are pinned
+    // to a managed array and stay on the unaligned path; callers that need element
+    // alignment should size the buffer above PoolThresholdBytes.
+    //
+    // ZK_EVM omits AlignedAlloc entirely because the runtime in those environments
+    // can fault on aligned-alloc — same carve-out KeccakCache uses.
+#if ZK_EVM
+    private const bool UseAlignedAlloc = false;
+#else
+    private static bool UseAlignedAlloc
+    {
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        get => BitOperations.IsPow2(sizeof(T));
+    }
+#endif
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static T* AllocateBuffer(int capacity, out T[]? pooledArray, out GCHandle pinHandle, out int actualCapacity)
@@ -43,6 +67,8 @@ internal static unsafe class NativeMemoryListCore<T> where T : unmanaged
         pooledArray = null;
         pinHandle = default;
         actualCapacity = capacity;
+        if (UseAlignedAlloc)
+            return (T*)NativeMemory.AlignedAlloc((nuint)((long)capacity * sizeof(T)), (nuint)sizeof(T));
         return (T*)NativeMemory.Alloc((nuint)capacity, (nuint)sizeof(T));
     }
 
@@ -56,7 +82,10 @@ internal static unsafe class NativeMemoryListCore<T> where T : unmanaged
         }
         else if (ptr is not null)
         {
-            NativeMemory.Free(ptr);
+            if (UseAlignedAlloc)
+                NativeMemory.AlignedFree(ptr);
+            else
+                NativeMemory.Free(ptr);
         }
     }
 
