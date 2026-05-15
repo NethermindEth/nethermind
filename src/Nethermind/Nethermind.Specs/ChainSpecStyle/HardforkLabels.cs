@@ -29,90 +29,18 @@ namespace Nethermind.Specs.ChainSpecStyle;
 /// <see cref="ExpressionExtensions"/>).
 /// </para>
 /// </remarks>
-public static class HardforkLabels
+public static partial class HardforkLabels
 {
     /// <summary>All labels in canonical fork order. Exposed for tests and tooling.</summary>
-    public static readonly IReadOnlyList<IHardforkLabel> All =
-    [
-        // Pre-Shanghai (block-number activated).
-        Block(p => p.Homestead,
-            p => p.Eip7Transition),
-        Block(p => p.TangerineWhistle,
-            p => p.Eip150Transition),
-        Block(p => p.SpuriousDragon,
-            p => p.Eip155Transition,
-            p => p.Eip160Transition,
-            p => p.Eip161abcTransition,
-            p => p.Eip161dTransition),
-        Block(p => p.Byzantium,
-            p => p.Eip140Transition,
-            p => p.Eip211Transition,
-            p => p.Eip214Transition,
-            p => p.Eip658Transition),
-        Block(p => p.Constantinople,
-            p => p.Eip145Transition,
-            p => p.Eip1014Transition,
-            p => p.Eip1052Transition,
-            p => p.Eip1283Transition),
-        Block(p => p.ConstantinopleFix,
-            p => p.Eip1283DisableTransition),
-        Block(p => p.Istanbul,
-            p => p.Eip152Transition,
-            p => p.Eip1108Transition,
-            p => p.Eip1344Transition,
-            p => p.Eip1884Transition,
-            p => p.Eip2028Transition,
-            p => p.Eip2200Transition),
-        Block(p => p.Berlin,
-            p => p.Eip2565Transition,
-            p => p.Eip2929Transition,
-            p => p.Eip2930Transition),
-        Block(p => p.London,
-            p => p.Eip1559Transition,
-            p => p.Eip3198Transition,
-            p => p.Eip3529Transition,
-            p => p.Eip3541Transition),
+    /// <remarks>
+    /// The contents are produced by <c>Nethermind.Analyzers.HardforkLabelsGenerator</c> from the
+    /// <c>Nethermind.Specs.Forks.*</c> <see cref="Nethermind.Specs.Forks.NamedReleaseSpec"/>
+    /// subclasses — Forks/*.cs is the single source of truth for the per-fork EIP set.
+    /// </remarks>
+    public static IReadOnlyList<IHardforkLabel> All { get; } = BuildAll();
 
-        // Post-merge (timestamp activated).
-        Time(p => p.Shanghai,
-            p => p.Eip3651TransitionTimestamp,
-            p => p.Eip3855TransitionTimestamp,
-            p => p.Eip3860TransitionTimestamp,
-            p => p.Eip4895TransitionTimestamp),
-        Time(p => p.Cancun,
-            p => p.Eip1153TransitionTimestamp,
-            p => p.Eip4788TransitionTimestamp,
-            p => p.Eip4844TransitionTimestamp,
-            p => p.Eip5656TransitionTimestamp,
-            p => p.Eip6780TransitionTimestamp),
-        Time(p => p.Prague,
-            p => p.Eip2537TransitionTimestamp,
-            p => p.Eip2935TransitionTimestamp,
-            p => p.Eip6110TransitionTimestamp,
-            p => p.Eip7002TransitionTimestamp,
-            p => p.Eip7251TransitionTimestamp,
-            p => p.Eip7623TransitionTimestamp,
-            p => p.Eip7702TransitionTimestamp),
-        Time(p => p.Osaka,
-            p => p.Eip7594TransitionTimestamp,
-            p => p.Eip7823TransitionTimestamp,
-            p => p.Eip7825TransitionTimestamp,
-            p => p.Eip7883TransitionTimestamp,
-            p => p.Eip7918TransitionTimestamp,
-            p => p.Eip7934TransitionTimestamp,
-            p => p.Eip7939TransitionTimestamp,
-            p => p.Eip7951TransitionTimestamp),
-        Time(p => p.Amsterdam,
-            p => p.Eip7708TransitionTimestamp,
-            p => p.Eip7778TransitionTimestamp,
-            p => p.Eip7843TransitionTimestamp,
-            p => p.Eip7928TransitionTimestamp,
-            p => p.Eip7954TransitionTimestamp,
-            p => p.Eip7976TransitionTimestamp,
-            p => p.Eip7981TransitionTimestamp,
-            p => p.Eip8024TransitionTimestamp,
-            p => p.Eip8037TransitionTimestamp),
-    ];
+    /// <summary>Implemented by the source generator; emits the explicit <c>Block</c>/<c>Time</c> registrations.</summary>
+    private static partial IReadOnlyList<IHardforkLabel> BuildAll();
 
     /// <summary>
     /// Expands every set hardfork label on <paramref name="parameters"/> into its constituent
@@ -124,11 +52,11 @@ public static class HardforkLabels
         foreach (IHardforkLabel label in All) label.Apply(parameters);
     }
 
-    private static HardforkLabel<long> Block(
+    internal static HardforkLabel<long> Block(
         Expression<Func<ChainSpecParamsJson, long?>> label,
         params Expression<Func<ChainSpecParamsJson, long?>>[] eips) => new(label, eips);
 
-    private static HardforkLabel<ulong> Time(
+    internal static HardforkLabel<ulong> Time(
         Expression<Func<ChainSpecParamsJson, ulong?>> label,
         params Expression<Func<ChainSpecParamsJson, ulong?>>[] eips) => new(label, eips);
 }
