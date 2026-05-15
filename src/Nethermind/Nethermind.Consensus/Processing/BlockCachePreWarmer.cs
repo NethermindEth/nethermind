@@ -262,8 +262,6 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
     /// </summary>
     internal IWorldState? MainThreadWorldState;
 
-    private readonly ManualResetEventSlim _firstPassDone = new(false);
-
     /// <summary>
     /// Block until the prewarmer's first pass completes or timeout expires.
     /// Called by the main thread before starting EVM execution.
@@ -310,7 +308,6 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
             PreWarmFirstPassMode firstPassMode = _firstPassMode;
             Volatile.Write(ref _nextWarmupIndex, 0);
             Volatile.Write(ref MainThreadTxIndex, -1);
-            _firstPassDone.Reset();
             if (retryMode == PreWarmRetryMode.StateGated)
             {
                 _mainThreadAdvanced.Reset();
@@ -358,8 +355,6 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
                                     WarmupTransactionByIndex(env, blockState, block, preWarmer, txIndex);
                                 }
                             }
-
-                            if (firstPassLimit > 0) preWarmer._firstPassDone.Set();
 
                             if (!token.CanBeCanceled || retryMode == PreWarmRetryMode.None) return;
 
