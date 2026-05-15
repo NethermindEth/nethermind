@@ -212,10 +212,7 @@ public ref struct TrieLeafIterator
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private void Pop()
-    {
-        _stackDepth--;
-    }
+    private void Pop() => _stackDepth--;
 
     private static void ThrowStackOverflow() => throw new InvalidOperationException("TrieLeafIterator stack overflow - trie depth exceeds maximum");
 }

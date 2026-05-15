@@ -40,7 +40,7 @@ public sealed record TimeMetrics
         {
             double average = times.Average(t => t.Ticks);
             double sumOfSquares = times.Sum(t => Math.Pow(t.Ticks - average, 2));
-            var stdDev = Math.Sqrt(sumOfSquares / times.Count);
+            double stdDev = Math.Sqrt(sumOfSquares / times.Count);
             return TimeSpan.FromTicks((long)stdDev);
         }
     }

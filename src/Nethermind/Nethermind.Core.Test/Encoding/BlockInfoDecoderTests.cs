@@ -14,10 +14,7 @@ public class BlockInfoDecoderTests
 {
     [TestCase(true)]
     [TestCase(false)]
-    public void Can_do_roundtrip(bool valueDecode)
-    {
-        Roundtrip(valueDecode);
-    }
+    public void Can_do_roundtrip(bool valueDecode) => Roundtrip(valueDecode);
 
     [TestCase(true, true, true)]
     [TestCase(true, true, false)]
@@ -27,10 +24,7 @@ public class BlockInfoDecoderTests
     [TestCase(false, true, false)]
     [TestCase(false, false, true)]
     [TestCase(false, false, false)]
-    public void Is_Backwards_compatible(bool valueDecode, bool chainWithFinalization, bool isFinalized)
-    {
-        RoundtripBackwardsCompatible(valueDecode, chainWithFinalization, isFinalized);
-    }
+    public void Is_Backwards_compatible(bool valueDecode, bool chainWithFinalization, bool isFinalized) => RoundtripBackwardsCompatible(valueDecode, chainWithFinalization, isFinalized);
 
     [Test]
     public void Can_handle_nulls()

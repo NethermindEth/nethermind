@@ -103,7 +103,7 @@ public class T8nExecutionResult
     {
         if (!stateProvider.AccountExists(address)) return null;
 
-        stateProvider.TryGetAccount(address, out var account);
+        stateProvider.TryGetAccount(address, out AccountStruct account);
         var code = stateProvider.GetCode(address);
         var accountState = new AccountState
         {

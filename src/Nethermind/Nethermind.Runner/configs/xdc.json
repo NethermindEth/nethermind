@@ -5,12 +5,25 @@
     "BaseDbPath": "nethermind_db/xdc",
     "LogFileName": "xdc.log"
   },
+  "Network": {
+    "FilterDiscoveryNodesByRecentIp": false,
+    "EnableEnrDiscovery": false
+  },
+  "Discovery": {
+    "DiscoveryVersion": "V4"
+  },
   "TxPool": {
     "BlobsSupport": "Disabled"
   },
   "Sync": {
     "FastSync": true,
-    "SnapSync": true
+    "NeedToWaitForHeader": true,
+    "PivotNumber": 102300000,
+    "PivotHash": "0xc8fc61ed7c7a411cb9cf1383a556bc5dc3f61b32841f4cb1a7c539705521caa2",
+    "PivotTotalDifficulty": 7445921484,
+    "VerifyTrieOnStateSyncFinished": true,
+    "AncientBodiesBarrier": 80368000,
+    "AncientReceiptsBarrier": 80368000
   },
   "Merge": {
     "Enabled": false

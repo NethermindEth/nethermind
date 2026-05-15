@@ -22,8 +22,5 @@ public class GetPayloadV5Handler(
     ICensorshipDetector? censorshipDetector = null)
     : GetPayloadHandlerBase<GetPayloadV5Result>(EngineApiVersions.GetPayload.V5, payloadPreparationService, specProvider, logManager, censorshipDetector)
 {
-    protected override GetPayloadV5Result GetPayloadResultFromBlock(IBlockProductionContext context)
-    {
-        return new(context.CurrentBestBlock!, context.BlockFees, new BlobsBundleV2(context.CurrentBestBlock!), context.CurrentBestBlock!.ExecutionRequests!, ShouldOverrideBuilder(context.CurrentBestBlock!));
-    }
+    protected override GetPayloadV5Result GetPayloadResultFromBlock(IBlockProductionContext context) => new(context.CurrentBestBlock!, context.BlockFees, new BlobsBundleV2(context.CurrentBestBlock!), context.CurrentBestBlock!.ExecutionRequests!, ShouldOverrideBuilder(context.CurrentBestBlock!));
 }

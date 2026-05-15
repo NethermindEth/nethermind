@@ -27,7 +27,7 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
             )
             : base(jsonRpcDuplexClient)
         {
-            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+            _logger = logManager?.GetClassLogger<PeerEventsSubscription>() ?? throw new ArgumentNullException(nameof(logManager));
             _peerPool = peerPool ?? throw new ArgumentNullException(nameof(peerPool));
             _rlpxHost = rlpxHost ?? throw new ArgumentNullException(nameof(rlpxHost));
 
@@ -48,7 +48,7 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
         private void OnPeerAdded(object? sender, PeerEventArgs args)
         {
             (string localHost, string remoteAddress, PublicKey? peerId) = GetPeerEventInfo(args.Node);
-            var response = new PeerEventResponse
+            PeerEventResponse response = new()
             {
                 Type = PeerEventType.Add,
                 Peer = peerId,
@@ -67,7 +67,7 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
         private void OnPeerRemoved(object? sender, PeerEventArgs args)
         {
             (string localHost, string remoteAddress, PublicKey peerId) = GetPeerEventInfo(args.Node);
-            var response = new PeerEventResponse
+            PeerEventResponse response = new()
             {
                 Type = PeerEventType.Drop,
                 Peer = peerId,
@@ -86,7 +86,7 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
         private void OnMsgReceived(object? sender, PeerEventArgs args)
         {
             (string localHost, string remoteAddress, PublicKey peerId) = GetPeerEventInfo(args.Node);
-            var response = new PeerEventResponse
+            PeerEventResponse response = new()
             {
                 Type = PeerEventType.MsgRecv,
                 Peer = peerId,
@@ -108,7 +108,7 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
         private void OnMsgDelivered(object? sender, PeerEventArgs args)
         {
             (string localHost, string remoteAddress, PublicKey peerId) = GetPeerEventInfo(args.Node);
-            var response = new PeerEventResponse
+            PeerEventResponse response = new()
             {
                 Type = PeerEventType.MsgSend,
                 Peer = peerId,

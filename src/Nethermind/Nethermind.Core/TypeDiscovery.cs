@@ -73,7 +73,7 @@ public static class TypeDiscovery
             LoadOnce(loadedAssemblies, considered);
 
             foreach (KeyValuePair<string, Assembly> kv in considered.Where(static kv =>
-                         kv.Key.StartsWith("Nethermind") || (_pluginType is not null && FindNethermindBasedTypes(kv.Value, _pluginType).Any())))
+                kv.Key.StartsWith("Nethermind") || (_pluginType is not null && FindNethermindBasedTypes(kv.Value, _pluginType).Any())))
             {
                 _assembliesWithNethermindTypes.Add(kv.Value);
             }
@@ -119,12 +119,9 @@ public static class TypeDiscovery
             missingRefs.AddRange(newRefs);
         }
 
-        static bool Filter(Dictionary<string, Assembly> considered, AssemblyName an)
-        {
-            return an.Name is not null
+        static bool Filter(Dictionary<string, Assembly> considered, AssemblyName an) => an.Name is not null
                     && !considered.ContainsKey(an.Name)
                     && an.Name.StartsWith("Nethermind");
-        }
     }
 
     public static IEnumerable<Type> FindNethermindBasedTypes(Type baseType)

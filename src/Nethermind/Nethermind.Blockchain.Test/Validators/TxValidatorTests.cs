@@ -546,7 +546,7 @@ public class TxValidatorTests
     [TestCaseSource(nameof(NonSetCodeTypes))]
     public void IsWellFormed_NonSetCodeTxHasAuthorizationList_ReturnsFalse(TxType type)
     {
-        var x = Enum.GetValues<TxType>().Where(static t => t != TxType.SetCode);
+        IEnumerable<TxType> x = Enum.GetValues<TxType>().Where(static t => t != TxType.SetCode);
         TransactionBuilder<Transaction> txBuilder = Build.A.Transaction
             .WithType(type)
             .WithTo(TestItem.AddressA)

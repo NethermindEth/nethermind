@@ -14,10 +14,7 @@ namespace Nethermind.Network
     {
         private static readonly RlpLimit RlpLimit = RlpLimit.For<NetworkNode>((int)1.KiB, nameof(NetworkNode.HostIp));
 
-        static NetworkNodeDecoder()
-        {
-            Rlp.RegisterDecoder(typeof(NetworkNode), new NetworkNodeDecoder());
-        }
+        static NetworkNodeDecoder() => Rlp.RegisterDecoder(typeof(NetworkNode), new NetworkNodeDecoder());
 
         protected override NetworkNode DecodeInternal(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
@@ -65,24 +62,15 @@ namespace Nethermind.Network
             return new Rlp(stream.Data.ToArray());
         }
 
-        public void Encode(MemoryStream stream, NetworkNode item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-        {
-            throw new NotImplementedException();
-        }
+        public void Encode(MemoryStream stream, NetworkNode item, RlpBehaviors rlpBehaviors = RlpBehaviors.None) => throw new NotImplementedException();
 
-        public override int GetLength(NetworkNode item, RlpBehaviors rlpBehaviors)
-        {
-            return Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors));
-        }
+        public override int GetLength(NetworkNode item, RlpBehaviors rlpBehaviors) => Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors));
 
-        private static int GetContentLength(NetworkNode item, RlpBehaviors rlpBehaviors)
-        {
-            return Rlp.LengthOf(item.NodeId.Bytes)
+        private static int GetContentLength(NetworkNode item, RlpBehaviors rlpBehaviors) => Rlp.LengthOf(item.NodeId.Bytes)
                    + Rlp.LengthOf(item.Host)
                    + Rlp.LengthOf(item.Port)
                    + 1
                    + Rlp.LengthOf(item.Reputation);
-        }
 
         public static void Init()
         {

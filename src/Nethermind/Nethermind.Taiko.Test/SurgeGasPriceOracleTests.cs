@@ -35,16 +35,14 @@ public class SurgeGasPriceOracleTests
     /// Creates a mock CoreState response.
     /// CoreState: nextProposalId (word 0), lastProposalBlockId (word 1), lastFinalizedProposalId (word 2), ...
     /// </summary>
-    private static string CreateCoreStateResponse(ulong nextProposalId, ulong lastFinalizedProposalId)
-    {
-        return "0x" +
+    private static string CreateCoreStateResponse(ulong nextProposalId, ulong lastFinalizedProposalId) =>
+        "0x" +
             CreatePaddedHex(nextProposalId) +           // word 0: nextProposalId
             CreatePaddedHex(0) +                        // word 1: lastProposalBlockId
             CreatePaddedHex(lastFinalizedProposalId) +  // word 2: lastFinalizedProposalId
             CreatePaddedHex(0) +                        // word 3: lastFinalizedTimestamp
             CreatePaddedHex(0) +                        // word 4: lastCheckpointTimestamp
             CreatePaddedHex(0);                         // word 5: lastFinalizedBlockHash
-    }
 
     /// <summary>
     /// Creates a mock Config response with ringBufferSize at word 10.
@@ -135,7 +133,7 @@ public class SurgeGasPriceOracleTests
     {
         SetupBlockFinderWithBlocks(10);
 
-        var feeHistory = new L1FeeHistoryResults
+        L1FeeHistoryResults feeHistory = new()
         {
             BaseFeePerGas = [],
             BaseFeePerBlobGas = []
@@ -156,7 +154,7 @@ public class SurgeGasPriceOracleTests
 
         // Scenario 1: Low L1 base fee (10 Gwei average)
         SetupBlockFinderWithBlocks(10, 1000000);
-        var lowFeeHistory = new L1FeeHistoryResults
+        L1FeeHistoryResults lowFeeHistory = new()
         {
             BaseFeePerGas = [UInt256.Parse("10000000000")],
             BaseFeePerBlobGas = [UInt256.Parse("1000000000")]
@@ -165,13 +163,13 @@ public class SurgeGasPriceOracleTests
         _l1RpcClient.Post<L1FeeHistoryResults?>("eth_feeHistory", _surgeConfig.FeeHistoryBlockCount, BlockParameter.Latest, null)
             .Returns(Task.FromResult<L1FeeHistoryResults?>(lowFeeHistory));
 
-        var oracleLowFee = new SurgeGasPriceOracle(
+        SurgeGasPriceOracle oracleLowFee = new(
             _blockFinder, _logManager, _specProvider, MinGasPrice, _l1RpcClient, _surgeConfig);
         UInt256 gasPriceLowL1Fee = await oracleLowFee.GetGasPriceEstimate();
 
         // Scenario 2: High L1 base fee (50 Gwei average)
         SetupBlockFinderWithBlocks(20, 1000000);
-        var highFeeHistory = new L1FeeHistoryResults
+        L1FeeHistoryResults highFeeHistory = new()
         {
             BaseFeePerGas = [UInt256.Parse("50000000000")],
             BaseFeePerBlobGas = [UInt256.Parse("1000000000")]
@@ -180,7 +178,7 @@ public class SurgeGasPriceOracleTests
         _l1RpcClient.Post<L1FeeHistoryResults?>("eth_feeHistory", _surgeConfig.FeeHistoryBlockCount, BlockParameter.Latest, null)
             .Returns(Task.FromResult<L1FeeHistoryResults?>(highFeeHistory));
 
-        var oracleHighFee = new SurgeGasPriceOracle(
+        SurgeGasPriceOracle oracleHighFee = new(
             _blockFinder, _logManager, _specProvider, MinGasPrice, _l1RpcClient, _surgeConfig);
         UInt256 gasPriceHighL1Fee = await oracleHighFee.GetGasPriceEstimate();
 
@@ -194,7 +192,7 @@ public class SurgeGasPriceOracleTests
         SetupBlockFinderWithBlocks(10, 0);
         SetupInboxContractMocks();
 
-        var feeHistory = new L1FeeHistoryResults
+        L1FeeHistoryResults feeHistory = new()
         {
             BaseFeePerGas =
             [
@@ -223,7 +221,7 @@ public class SurgeGasPriceOracleTests
         SetupBlockFinderWithBlocks(10);
         SetupInboxContractMocks();
 
-        var feeHistory = new L1FeeHistoryResults
+        L1FeeHistoryResults feeHistory = new()
         {
             BaseFeePerGas = [UInt256.Parse("20000000000")],
             BaseFeePerBlobGas = [UInt256.Parse("1000000000")]
@@ -248,7 +246,7 @@ public class SurgeGasPriceOracleTests
         SetupBlockFinderWithBlocks(10);
         SetupInboxContractMocks();
 
-        var feeHistory = new L1FeeHistoryResults
+        L1FeeHistoryResults feeHistory = new()
         {
             BaseFeePerGas = [UInt256.Parse("20000000000")],
             BaseFeePerBlobGas = [UInt256.Parse("1000000000")]
@@ -272,7 +270,7 @@ public class SurgeGasPriceOracleTests
     public async ValueTask GetGasPriceEstimate_WhenInboxBufferFull_UsesReducedProposalGas()
     {
         // Create two separate oracles with different inbox buffer states
-        var feeHistory = new L1FeeHistoryResults
+        L1FeeHistoryResults feeHistory = new()
         {
             BaseFeePerGas = [UInt256.Parse("20000000000")],
             BaseFeePerBlobGas = [UInt256.Parse("1000000000")]
@@ -285,7 +283,7 @@ public class SurgeGasPriceOracleTests
         SetupBlockFinderWithBlocks(10);
         SetupInboxContractMocks(ringBufferSize: 100, nextProposalId: 50, lastFinalizedProposalId: 40);
 
-        var oracleNotFull = new SurgeGasPriceOracle(
+        SurgeGasPriceOracle oracleNotFull = new(
             _blockFinder, _logManager, _specProvider, MinGasPrice, _l1RpcClient, _surgeConfig);
         UInt256 gasPriceNotFull = await oracleNotFull.GetGasPriceEstimate();
 
@@ -293,7 +291,7 @@ public class SurgeGasPriceOracleTests
         SetupBlockFinderWithBlocks(11);
         SetupInboxContractMocks(ringBufferSize: 100, nextProposalId: 150, lastFinalizedProposalId: 50);
 
-        var oracleFull = new SurgeGasPriceOracle(
+        SurgeGasPriceOracle oracleFull = new(
             _blockFinder, _logManager, _specProvider, MinGasPrice, _l1RpcClient, _surgeConfig);
         UInt256 gasPriceFull = await oracleFull.GetGasPriceEstimate();
 
@@ -304,7 +302,7 @@ public class SurgeGasPriceOracleTests
     [Test]
     public async ValueTask GetGasPriceEstimate_ComputesAverageGasFromRecentBlocks()
     {
-        var feeHistory = new L1FeeHistoryResults
+        L1FeeHistoryResults feeHistory = new()
         {
             BaseFeePerGas = [UInt256.Parse("20000000000")],
             BaseFeePerBlobGas = [UInt256.Parse("1000000000")]
@@ -324,7 +322,7 @@ public class SurgeGasPriceOracleTests
                 .Returns(Build.A.Block.WithNumber(headBlockNumber1 - i).WithGasUsed(100000).TestObject);
         }
 
-        var oracleLowGas = new SurgeGasPriceOracle(
+        SurgeGasPriceOracle oracleLowGas = new(
             _blockFinder, _logManager, _specProvider, MinGasPrice, _l1RpcClient, _surgeConfig);
         UInt256 gasPriceLowUsage = await oracleLowGas.GetGasPriceEstimate();
 
@@ -337,7 +335,7 @@ public class SurgeGasPriceOracleTests
                 .Returns(Build.A.Block.WithNumber(headBlockNumber2 - i).WithGasUsed(500000).TestObject);
         }
 
-        var oracleHighGas = new SurgeGasPriceOracle(
+        SurgeGasPriceOracle oracleHighGas = new(
             _blockFinder, _logManager, _specProvider, MinGasPrice, _l1RpcClient, _surgeConfig);
         UInt256 gasPriceHighUsage = await oracleHighGas.GetGasPriceEstimate();
 

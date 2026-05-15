@@ -5,30 +5,53 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using Nethermind.Int256;
-using Nethermind.Serialization;
+using Nethermind.Serialization.Ssz;
 using NUnit.Framework;
+
 namespace Ethereum.Ssz.Test;
 
 [TestFixture]
 public class SszContainerTests
 {
-    private static readonly HashSet<string> KnownContainers =
-    [
-        "SingleFieldTestStruct",
-        "SmallTestStruct",
-        "FixedTestStruct",
-        "VarTestStruct",
-        "ComplexTestStruct",
-        "BitsStruct"
-    ];
+    private interface IContainerHandler
+    {
+        void RunValid(byte[] ssz, UInt256 expectedRoot);
+        void RunInvalid(byte[] ssz);
+    }
 
-    // These must be listed explicitly. If the specs add a new type
-    // then we should add it here if its not implemented or the build will fail.
-    private static readonly HashSet<string> UnsupportedContainers =
-    [
-        "ProgressiveTestStruct",
-        "ProgressiveBitsStruct"
-    ];
+    private sealed class ContainerHandler<T> : IContainerHandler where T : ISszCodec<T>
+    {
+        public void RunValid(byte[] ssz, UInt256 expectedRoot)
+        {
+            T.Decode(ssz, out T decoded);
+            Assert.That(T.Encode(decoded), Is.EqualTo(ssz), "Re-encoded SSZ does not match original");
+
+            T.Merkleize(decoded, out UInt256 root);
+            Assert.That(root, Is.EqualTo(expectedRoot), "Hash tree root mismatch");
+        }
+
+        public void RunInvalid(byte[] ssz) =>
+            Assert.That(() => T.Decode(ssz, out T _), Throws.InstanceOf<InvalidDataException>());
+    }
+
+    private sealed class HandlerMap() : Dictionary<string, IContainerHandler>(StringComparer.Ordinal)
+    {
+        public HandlerMap Add<T>() where T : ISszCodec<T>
+        {
+            this[typeof(T).Name] = new ContainerHandler<T>();
+            return this;
+        }
+    }
+
+    private static readonly IReadOnlyDictionary<string, IContainerHandler> Handlers = new HandlerMap()
+        .Add<SingleFieldTestStruct>()
+        .Add<SmallTestStruct>()
+        .Add<FixedTestStruct>()
+        .Add<VarTestStruct>()
+        .Add<ComplexTestStruct>()
+        .Add<BitsStruct>()
+        .Add<ProgressiveTestStruct>()
+        .Add<ProgressiveBitsStruct>();
 
     [TestCaseSource(nameof(ValidContainerCases))]
     public void Container_valid_roundtrip_and_root(string casePath, string containerType)
@@ -36,69 +59,9 @@ public class SszContainerTests
         byte[] ssz = SszConsensusTestLoader.ReadSszSnappy(Path.Combine(casePath, "serialized.ssz_snappy"));
         UInt256 expectedRoot = SszConsensusTestLoader.ParseRoot(Path.Combine(casePath, "meta.yaml"));
 
-        switch (containerType)
-        {
-            case "SingleFieldTestStruct":
-                {
-                    SszEncoding.Decode(ssz, out SingleFieldTestStruct decoded);
-                    byte[] reEncoded = SszEncoding.Encode(decoded);
-                    Assert.That(reEncoded, Is.EqualTo(ssz), "Re-encoded SSZ does not match original");
-                    SszEncoding.Merkleize(decoded, out UInt256 root);
-                    Assert.That(root, Is.EqualTo(expectedRoot), "Hash tree root mismatch");
-                    break;
-                }
-            case "SmallTestStruct":
-                {
-                    SszEncoding.Decode(ssz, out SmallTestStruct decoded);
-                    byte[] reEncoded = SszEncoding.Encode(decoded);
-                    Assert.That(reEncoded, Is.EqualTo(ssz), "Re-encoded SSZ does not match original");
-                    SszEncoding.Merkleize(decoded, out UInt256 root);
-                    Assert.That(root, Is.EqualTo(expectedRoot), "Hash tree root mismatch");
-                    break;
-                }
-            case "FixedTestStruct":
-                {
-                    SszEncoding.Decode(ssz, out FixedTestStruct decoded);
-                    byte[] reEncoded = SszEncoding.Encode(decoded);
-                    Assert.That(reEncoded, Is.EqualTo(ssz), "Re-encoded SSZ does not match original");
-                    SszEncoding.Merkleize(decoded, out UInt256 root);
-                    Assert.That(root, Is.EqualTo(expectedRoot), "Hash tree root mismatch");
-                    break;
-                }
-            case "VarTestStruct":
-                {
-                    SszEncoding.Decode(ssz, out VarTestStruct decoded);
-                    byte[] reEncoded = SszEncoding.Encode(decoded);
-                    Assert.That(reEncoded, Is.EqualTo(ssz), "Re-encoded SSZ does not match original");
-                    SszEncoding.Merkleize(decoded, out UInt256 root);
-                    Assert.That(root, Is.EqualTo(expectedRoot), "Hash tree root mismatch");
-                    break;
-                }
-            case "ComplexTestStruct":
-                {
-                    SszEncoding.Decode(ssz, out ComplexTestStruct decoded);
-                    byte[] reEncoded = SszEncoding.Encode(decoded);
-                    Assert.That(reEncoded, Is.EqualTo(ssz), "Re-encoded SSZ does not match original");
-                    SszEncoding.Merkleize(decoded, out UInt256 root);
-                    Assert.That(root, Is.EqualTo(expectedRoot), "Hash tree root mismatch");
-                    break;
-                }
-            case "BitsStruct":
-                {
-                    SszEncoding.Decode(ssz, out BitsStruct decoded);
-                    byte[] reEncoded = SszEncoding.Encode(decoded);
-                    Assert.That(reEncoded, Is.EqualTo(ssz), "Re-encoded SSZ does not match original");
-                    SszEncoding.Merkleize(decoded, out UInt256 root);
-                    Assert.That(root, Is.EqualTo(expectedRoot), "Hash tree root mismatch");
-                    break;
-                }
-            default:
-                if (UnsupportedContainers.Contains(containerType))
-                    Assert.Ignore($"Unsupported container type (not yet implemented): {containerType}");
-                else
-                    Assert.Fail($"Unrecognized container type: {containerType} — add it to KnownContainers or UnsupportedContainers");
-                break;
-        }
+        Assert.That(Handlers.TryGetValue(containerType, out IContainerHandler? handler), Is.True,
+            $"Unrecognized container type: {containerType} - add test support for it in {nameof(SszContainerTests)}");
+        handler!.RunValid(ssz, expectedRoot);
     }
 
     [TestCaseSource(nameof(InvalidContainerCases))]
@@ -106,56 +69,18 @@ public class SszContainerTests
     {
         byte[] ssz = SszConsensusTestLoader.ReadSszSnappy(Path.Combine(casePath, "serialized.ssz_snappy"));
 
-        switch (containerType)
-        {
-            case "SingleFieldTestStruct":
-                Assert.That(() => SszEncoding.Decode(ssz, out SingleFieldTestStruct _), Throws.InstanceOf<Exception>());
-                break;
-            case "SmallTestStruct":
-                Assert.That(() => SszEncoding.Decode(ssz, out SmallTestStruct _), Throws.InstanceOf<Exception>());
-                break;
-            case "FixedTestStruct":
-                Assert.That(() => SszEncoding.Decode(ssz, out FixedTestStruct _), Throws.InstanceOf<Exception>());
-                break;
-            case "VarTestStruct":
-                Assert.That(() => SszEncoding.Decode(ssz, out VarTestStruct _), Throws.InstanceOf<Exception>());
-                break;
-            case "ComplexTestStruct":
-                Assert.That(() => SszEncoding.Decode(ssz, out ComplexTestStruct _), Throws.InstanceOf<Exception>());
-                break;
-            case "BitsStruct":
-                Assert.That(() => SszEncoding.Decode(ssz, out BitsStruct _), Throws.InstanceOf<Exception>());
-                break;
-            default:
-                if (UnsupportedContainers.Contains(containerType))
-                    Assert.Ignore($"Unsupported container type (not yet implemented): {containerType}");
-                else
-                    Assert.Fail($"Unrecognized container type: {containerType} — add it to KnownContainers or UnsupportedContainers");
-                break;
-        }
+        Assert.That(Handlers.TryGetValue(containerType, out IContainerHandler? handler), Is.True,
+            $"Unrecognized container type: {containerType} - add test support for it in {nameof(SszContainerTests)}");
+        handler!.RunInvalid(ssz);
     }
 
-    // --- Helpers ---
-
-
     /// <summary>
-    /// Extracts the container type from a case name like "BitsStruct_lengthy_0" → "BitsStruct".
-    /// Matches against both known and explicitly unsupported types.
-    /// Returns null only for truly unrecognized types (which should fail the test).
+    /// Extracts the container type from a case name like "BitsStruct_lengthy_0".
     /// </summary>
-    private static string? ExtractContainerType(string caseName)
+    private static string ExtractContainerType(string caseName)
     {
-        foreach (string container in KnownContainers)
-        {
-            if (caseName.StartsWith(container, StringComparison.Ordinal))
-                return container;
-        }
-        foreach (string container in UnsupportedContainers)
-        {
-            if (caseName.StartsWith(container, StringComparison.Ordinal))
-                return container;
-        }
-        return null;
+        int separatorIndex = caseName.IndexOf('_');
+        return separatorIndex >= 0 ? caseName[..separatorIndex] : caseName;
     }
 
     // --- Test case sources ---
@@ -175,10 +100,9 @@ public class SszContainerTests
         foreach (string casePath in Directory.GetDirectories(validityPath))
         {
             string caseName = Path.GetFileName(casePath);
-            string? containerType = ExtractContainerType(caseName);
+            string containerType = ExtractContainerType(caseName);
 
-            // Unrecognized type — yield it so the test fails loudly
-            yield return new TestCaseData(casePath, containerType ?? caseName)
+            yield return new TestCaseData(casePath, containerType)
                 .SetName($"containers/{validity}/{caseName}");
         }
     }

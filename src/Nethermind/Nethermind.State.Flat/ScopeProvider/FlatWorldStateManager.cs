@@ -7,7 +7,6 @@ using Nethermind.Db;
 using Nethermind.Evm.State;
 using Nethermind.Logging;
 using Nethermind.State.Flat.Persistence;
-using Nethermind.State.Flat.Sync;
 using Nethermind.State.Flat.Sync.Snap;
 using Nethermind.State.SnapServer;
 using Nethermind.Trie.Pruning;
@@ -41,7 +40,7 @@ public class FlatWorldStateManager(
 
     public IWorldStateScopeProvider GlobalWorldState => _mainWorldState;
     public IStateReader GlobalStateReader => flatStateReader;
-    public ISnapServer? SnapServer => _snapServer ??= new FlatSnapServer(
+    public ISnapServer SnapServer => _snapServer ??= new FlatSnapServer(
         flatDbManager,
         codeDb,
         flatStateRootIndex,
@@ -63,6 +62,8 @@ public class FlatWorldStateManager(
         add => flatDbManager.ReorgBoundaryReached += value;
         remove => flatDbManager.ReorgBoundaryReached -= value;
     }
+
+    public IReadOnlyTrieStore CreateReadOnlyTrieStore() => new FlatReadOnlyTrieStore(flatDbManager);
 
     public IOverridableWorldScope CreateOverridableWorldScope() =>
         overridableWorldScopeFactory();

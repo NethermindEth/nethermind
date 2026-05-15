@@ -76,7 +76,7 @@ namespace Nethermind.JsonRpc.Modules.Admin
 
         private void SetProtocols(IReadOnlyList<Capability> capabilities)
         {
-            var protocols = new Dictionary<string, object>();
+            Dictionary<string, object> protocols = new();
 
             int ethVersion = 0;
             int snapVersion = 0;

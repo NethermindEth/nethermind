@@ -131,7 +131,7 @@ internal class FundsDistributor
             ? []
             : File.ReadAllLines(_keyFilePath).Select(k => new Signer(_chainId, new PrivateKey(k), _logManager));
 
-        ILogger log = _logManager.GetClassLogger();
+        ILogger log = _logManager.GetClassLogger<FundsDistributor>();
         List<string> txHashes = [];
         foreach (var signer in privateSigners)
         {

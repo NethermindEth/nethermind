@@ -19,7 +19,6 @@ using Nethermind.Serialization.Rlp;
 using Nethermind.State.Proofs;
 using Nethermind.State.Repositories;
 using Nethermind.Db.Blooms;
-using Nethermind.Evm;
 using Nethermind.Int256;
 using NSubstitute;
 using NUnit.Framework;

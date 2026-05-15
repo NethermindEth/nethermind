@@ -22,14 +22,9 @@ public sealed class GaugeMetricAttribute : Attribute { }
 /// Mark that the attribute is a dictionary whose key is used as a label of name LabelName.
 /// </summary>
 [AttributeUsage(AttributeTargets.Property | AttributeTargets.Field)]
-public sealed class KeyIsLabelAttribute : Attribute
+public sealed class KeyIsLabelAttribute(params string[] labelNames) : Attribute
 {
-    public string[] LabelNames { get; }
-
-    public KeyIsLabelAttribute(params string[] labelNames)
-    {
-        LabelNames = labelNames;
-    }
+    public string[] LabelNames { get; } = labelNames;
 }
 
 [AttributeUsage(AttributeTargets.Property | AttributeTargets.Field)]

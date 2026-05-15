@@ -8,10 +8,7 @@ namespace Nethermind.Core.Test.Builders
 {
     public class AccountChangesBuilder : BuilderBase<AccountChanges>
     {
-        public AccountChangesBuilder()
-        {
-            TestObjectInternal = new AccountChanges(Address.Zero);
-        }
+        public AccountChangesBuilder() => TestObjectInternal = new AccountChanges(Address.Zero);
 
         public AccountChangesBuilder WithAddress(Address address)
         {
@@ -34,7 +31,7 @@ namespace Nethermind.Core.Test.Builders
             SlotChanges slotChanges = TestObjectInternal.GetOrAddSlotChanges(key);
             foreach (StorageChange storageChange in storageChanges)
             {
-                slotChanges.Changes.Add(storageChange.BlockAccessIndex, storageChange);
+                slotChanges.Changes.Add(storageChange.Index, storageChange);
             }
             return this;
         }

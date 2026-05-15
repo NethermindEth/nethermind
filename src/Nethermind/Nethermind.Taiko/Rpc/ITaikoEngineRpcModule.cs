@@ -115,4 +115,16 @@ public interface ITaikoEngineRpcModule : IEngineRpcModule
         IsSharable = true,
         IsImplemented = true)]
     Task<ResultWrapper<UInt256?>> taikoAuth_lastBlockIDByBatchID(UInt256 batchId);
+
+    [JsonRpcMethod(
+        Description = "Returns the ID of the last block for the given batch from the database only, without blockchain traversal fallback.",
+        IsSharable = true,
+        IsImplemented = true)]
+    ResultWrapper<UInt256?> taikoAuth_lastCertainBlockIDByBatchID(UInt256 batchId);
+
+    [JsonRpcMethod(
+        Description = "Returns the L1 origin of the last block for the given batch from the database only, without blockchain traversal fallback.",
+        IsSharable = true,
+        IsImplemented = true)]
+    ResultWrapper<L1Origin?> taikoAuth_lastCertainL1OriginByBatchID(UInt256 batchId);
 }

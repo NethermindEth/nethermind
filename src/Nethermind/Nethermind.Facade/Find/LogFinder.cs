@@ -97,7 +97,7 @@ namespace Nethermind.Facade.Find
                 IBloomEnumeration enumeration = _bloomStorage.GetBlooms(from, to);
                 foreach (Bloom bloom in enumeration)
                 {
-                    if (f.Matches(bloom) && enumeration.TryGetBlockNumber(out var blockNumber))
+                    if (f.Matches(bloom) && enumeration.TryGetBlockNumber(out long blockNumber))
                     {
                         yield return blockNumber;
                     }
@@ -183,7 +183,7 @@ namespace Nethermind.Facade.Find
             int count = 0;
             while (count < maxBlockDepth && fromBlock.Number <= (toBlock?.Number ?? fromBlock.Number))
             {
-                foreach (var filterLog in FindLogsInBlock(filter, fromBlock, cancellationToken))
+                foreach (FilterLog filterLog in FindLogsInBlock(filter, fromBlock, cancellationToken))
                 {
                     yield return filterLog;
                 }
@@ -204,7 +204,7 @@ namespace Nethermind.Facade.Find
         {
             if (blockHash is not null)
             {
-                return _receiptFinder.TryGetReceiptsIterator(blockNumber, blockHash, out var iterator)
+                return _receiptFinder.TryGetReceiptsIterator(blockNumber, blockHash, out ReceiptsIterator iterator)
                     ? FilterLogsInBlockLowMemoryAllocation(filter, ref iterator, blockTimestamp, cancellationToken)
                     : FilterLogsInBlockHighMemoryAllocation(filter, blockHash, blockNumber, blockTimestamp, cancellationToken);
             }
@@ -218,14 +218,14 @@ namespace Nethermind.Facade.Find
             try
             {
                 long logIndexInBlock = 0;
-                while (iterator.TryGetNext(out var receipt))
+                while (iterator.TryGetNext(out TxReceiptStructRef receipt))
                 {
                     cancellationToken.ThrowIfCancellationRequested();
 
                     LogEntriesIterator logsIterator = iterator.IterateLogs(receipt);
                     if (!iterator.CanDecodeBloom || filter.Matches(ref receipt.Bloom))
                     {
-                        while (logsIterator.TryGetNext(out var log))
+                        while (logsIterator.TryGetNext(out LogEntryStructRef log))
                         {
                             cancellationToken.ThrowIfCancellationRequested();
 
@@ -276,14 +276,14 @@ namespace Nethermind.Facade.Find
         {
             TxReceipt[]? GetReceipts(Hash256 hash, long number)
             {
-                var canUseHash = _receiptFinder.CanGetReceiptsByHash(number);
+                bool canUseHash = _receiptFinder.CanGetReceiptsByHash(number);
                 if (canUseHash)
                 {
                     return _receiptFinder.Get(hash);
                 }
                 else
                 {
-                    var block = _blockFinder.FindBlock(blockHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
+                    Block block = _blockFinder.FindBlock(blockHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
                     return block is null ? null : _receiptFinder.Get(block);
                 }
             }
@@ -292,7 +292,7 @@ namespace Nethermind.Facade.Find
             {
                 if (_receiptsRecovery.NeedRecover(receipts))
                 {
-                    var block = _blockFinder.FindBlock(hash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
+                    Block block = _blockFinder.FindBlock(hash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
                     if (block is not null)
                     {
                         if (_receiptsRecovery.TryRecover(block, receipts) == ReceiptsRecoveryResult.NeedReinsert)
@@ -305,23 +305,23 @@ namespace Nethermind.Facade.Find
 
             cancellationToken.ThrowIfCancellationRequested();
 
-            var receipts = GetReceipts(blockHash, blockNumber);
+            TxReceipt[] receipts = GetReceipts(blockHash, blockNumber);
             long logIndexInBlock = 0;
             if (receipts is not null)
             {
-                for (var i = 0; i < receipts.Length; i++)
+                for (int i = 0; i < receipts.Length; i++)
                 {
                     cancellationToken.ThrowIfCancellationRequested();
 
-                    var receipt = receipts[i];
+                    TxReceipt receipt = receipts[i];
 
                     if (filter.Matches(receipt.Bloom))
                     {
-                        for (var j = 0; j < receipt.Logs.Length; j++)
+                        for (int j = 0; j < receipt.Logs.Length; j++)
                         {
                             cancellationToken.ThrowIfCancellationRequested();
 
-                            var log = receipt.Logs[j];
+                            LogEntry log = receipt.Logs[j];
                             if (filter.Accepts(log))
                             {
                                 RecoverReceiptsData(blockHash, receipts);

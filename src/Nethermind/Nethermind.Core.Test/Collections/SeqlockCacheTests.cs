@@ -7,6 +7,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Core.Collections;
+using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 using NUnit.Framework;
 
@@ -398,15 +399,30 @@ public class SeqlockCacheTests
     public void AddressAsKey_works_with_cache()
     {
         SeqlockCache<AddressAsKey, Account> cache = new();
-        Address address = new Address("0x1234567890123456789012345678901234567890");
+        Address address = new("0x1234567890123456789012345678901234567890");
         AddressAsKey key = address;
-        Account account = new Account(100, 1);
+        Account account = new(100, 1);
 
         cache.Set(in key, account);
         bool found = cache.TryGetValue(in key, out Account? result);
 
         found.Should().BeTrue();
         result.Should().BeSameAs(account);
+    }
+
+    [Test]
+    public void Hash256AsKey_works_with_cache()
+    {
+        SeqlockCache<Hash256AsKey, byte[]> cache = new();
+        Hash256 hash = new("0x1234567890123456789012345678901234567890123456789012345678901234");
+        Hash256AsKey key = hash;
+        byte[] value = CreateValue(3);
+
+        cache.Set(in key, value);
+        bool found = cache.TryGetValue(in key, out byte[]? result);
+
+        found.Should().BeTrue();
+        result.Should().BeSameAs(value);
     }
 
     [Test]

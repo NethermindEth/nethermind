@@ -62,10 +62,7 @@ namespace Nethermind.Blockchain.Visitors
             return Task.FromResult(LevelVisitOutcome.None);
         }
 
-        Task<bool> IBlockTreeVisitor.VisitMissing(Hash256 hash, CancellationToken cancellationToken)
-        {
-            throw new InvalidDataException($"Block {hash} is missing from the database when loading blocks.");
-        }
+        Task<bool> IBlockTreeVisitor.VisitMissing(Hash256 hash, CancellationToken cancellationToken) => throw new InvalidDataException($"Block {hash} is missing from the database when loading blocks.");
 
         Task<HeaderVisitOutcome> IBlockTreeVisitor.VisitHeader(BlockHeader header, CancellationToken cancellationToken)
         {
@@ -97,10 +94,7 @@ namespace Nethermind.Blockchain.Visitors
             return BlockVisitOutcome.Suggest;
         }
 
-        Task<LevelVisitOutcome> IBlockTreeVisitor.VisitLevelEnd(ChainLevelInfo chainLevelInfo, long levelNumber, CancellationToken cancellationToken)
-        {
-            return Task.FromResult(LevelVisitOutcome.None);
-        }
+        Task<LevelVisitOutcome> IBlockTreeVisitor.VisitLevelEnd(ChainLevelInfo chainLevelInfo, long levelNumber, CancellationToken cancellationToken) => Task.FromResult(LevelVisitOutcome.None);
 
         private void LogPlannedOperation()
         {
@@ -114,9 +108,6 @@ namespace Nethermind.Blockchain.Visitors
             }
         }
 
-        public void Dispose()
-        {
-            _blockTreeSuggestPacer.Dispose();
-        }
+        public void Dispose() => _blockTreeSuggestPacer.Dispose();
     }
 }

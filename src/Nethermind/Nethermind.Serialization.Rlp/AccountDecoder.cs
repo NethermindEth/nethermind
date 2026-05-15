@@ -19,10 +19,7 @@ namespace Nethermind.Serialization.Rlp
         public AccountDecoder() { }
 
         [DynamicDependency(DynamicallyAccessedMemberTypes.PublicConstructors, typeof(AccountDecoder))]
-        public AccountDecoder(bool slimFormat = false)
-        {
-            _slimFormat = slimFormat;
-        }
+        public AccountDecoder(bool slimFormat = false) => _slimFormat = slimFormat;
 
         public (Hash256 CodeHash, Hash256 StorageRoot) DecodeHashesOnly(ref Rlp.ValueDecoderContext context)
         {
@@ -132,7 +129,7 @@ namespace Nethermind.Serialization.Rlp
                 return 0;
             }
 
-            var contentLength = Rlp.LengthOf(item.Nonce);
+            int contentLength = Rlp.LengthOf(item.Nonce);
             contentLength += Rlp.LengthOf(item.Balance);
 
             if (_slimFormat && !item.HasStorage)

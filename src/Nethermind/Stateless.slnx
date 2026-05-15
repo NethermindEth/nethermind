@@ -1,0 +1,27 @@
+<Solution>
+  <Folder Name="/Nethermind/">
+    <Project Path="Nethermind.Abi/Nethermind.Abi.csproj" />
+    <Project Path="Nethermind.Analyzers/Nethermind.Analyzers.csproj" />
+    <Project Path="Nethermind.Blockchain/Nethermind.Blockchain.csproj" />
+    <Project Path="Nethermind.Config/Nethermind.Config.csproj" />
+    <Project Path="Nethermind.Consensus/Nethermind.Consensus.csproj" />
+    <Project Path="Nethermind.Core/Nethermind.Core.csproj" />
+    <Project Path="Nethermind.Crypto/Nethermind.Crypto.csproj" />
+    <Project Path="Nethermind.Db/Nethermind.Db.csproj" />
+    <Project Path="Nethermind.Evm.Precompiles/Nethermind.Evm.Precompiles.csproj" />
+    <Project Path="Nethermind.Evm/Nethermind.Evm.csproj" />
+    <Project Path="Nethermind.History/Nethermind.History.csproj" />
+    <Project Path="Nethermind.Logging/Nethermind.Logging.csproj" />
+    <Project Path="Nethermind.Network.Contract/Nethermind.Network.Contract.csproj" />
+    <Project Path="Nethermind.Network.Stats/Nethermind.Network.Stats.csproj" />
+    <Project Path="Nethermind.Serialization.Json/Nethermind.Serialization.Json.csproj" />
+    <Project Path="Nethermind.Serialization.Rlp/Nethermind.Serialization.Rlp.csproj" />
+    <Project Path="Nethermind.Specs/Nethermind.Specs.csproj" />
+    <Project Path="Nethermind.State/Nethermind.State.csproj" />
+    <Project Path="Nethermind.Synchronization/Nethermind.Synchronization.csproj" />
+    <Project Path="Nethermind.Trie/Nethermind.Trie.csproj" />
+    <Project Path="Nethermind.TxPool/Nethermind.TxPool.csproj" />
+  </Folder>
+  <Project Path="Nethermind.Stateless.Executor/Nethermind.Stateless.Executor.csproj" />
+  <Project Path="Nethermind.Stateless.ZiskGuest/Nethermind.Stateless.ZiskGuest.csproj" />
+</Solution>

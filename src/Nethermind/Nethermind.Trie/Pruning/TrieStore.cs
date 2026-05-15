@@ -11,6 +11,7 @@ using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
 using Nethermind.Core;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Cpu;
 using Nethermind.Core.Crypto;
@@ -56,10 +57,10 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
 
     // Only one scope can be active at the same time. Any mutation to trieStore as part of block processing need to
     // acquire _scopeLock.
-    private readonly Lock _scopeLock = new Lock();
+    private readonly Lock _scopeLock = new();
 
     // Protect _dirtyNodes from mutation. Used during memory pruning or WorldState scope.
-    private readonly Lock _pruningLock = new Lock();
+    private readonly Lock _pruningLock = new();
 
     private readonly bool _deleteOldNodes = false;
     private readonly bool _pastKeyTrackingEnabled = false;
@@ -101,10 +102,11 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
         _dirtyNodes = new TrieStoreDirtyNodesCache[_shardedDirtyNodeCount];
         _dirtyNodesTasks = new Task[_shardedDirtyNodeCount];
         _persistedHashes = new ConcurrentDictionary<HashAndTinyPath, Hash256?>[_shardedDirtyNodeCount];
+        TrieStoreDirtyNodesCache.GetDictionarySizing(out int concurrencyLevel, out int initialBuckets);
         for (int i = 0; i < _shardedDirtyNodeCount; i++)
         {
             _dirtyNodes[i] = new TrieStoreDirtyNodesCache(this, !_nodeStorage.RequirePath, keepRoot: _deleteOldNodes, _logger);
-            _persistedHashes[i] = new ConcurrentDictionary<HashAndTinyPath, Hash256>();
+            _persistedHashes[i] = new ConcurrentDictionary<HashAndTinyPath, Hash256?>(concurrencyLevel, initialBuckets);
         }
     }
 
@@ -180,10 +182,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
         }
     }
 
-    private void IncrementCommittedNodesCount()
-    {
-        Metrics.CommittedNodesCount = Interlocked.Increment(ref _committedNodesCount);
-    }
+    private void IncrementCommittedNodesCount() => Metrics.CommittedNodesCount = Interlocked.Increment(ref _committedNodesCount);
 
     public int PersistedNodesCount
     {
@@ -195,10 +194,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
         }
     }
 
-    private void IncrementPersistedNodesCount()
-    {
-        Metrics.PersistedNodeCount = Interlocked.Increment(ref _persistedNodesCount);
-    }
+    private void IncrementPersistedNodesCount() => Metrics.PersistedNodeCount = Interlocked.Increment(ref _persistedNodesCount);
 
     public long CachedNodesCount
     {
@@ -242,10 +238,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
         return node;
 
         [MethodImpl(MethodImplOptions.NoInlining)]
-        void Trace(long blockNumber, in TrieNode node)
-        {
-            _logger.Trace($"Committing {node} at {blockNumber}");
-        }
+        void Trace(long blockNumber, in TrieNode node) => _logger.Trace($"Committing {node} at {blockNumber}");
 
         [DoesNotReturn, StackTraceHidden]
         static void ThrowUnknownHash(TrieNode node) => throw new TrieStoreException($"The hash of {node} should be known at the time of committing.");
@@ -332,7 +325,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
     {
         _scopeLock.Enter();
 
-        SpinWait spinWait = new SpinWait();
+        SpinWait spinWait = new();
         while (true)
         {
             if (_pruningLock.TryEnter())
@@ -456,7 +449,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
         if (_logger.IsDebug) _logger.Debug($"Beginning new {nameof(BlockCommitSet)} - {blockNumber}");
         VerifyNewCommitSet(blockNumber);
 
-        BlockCommitSet commitSet = new BlockCommitSet(blockNumber);
+        BlockCommitSet commitSet = new(blockNumber);
 
         _currentBlockCommitter = new BlockCommitter(this, commitSet);
         return _currentBlockCommitter;
@@ -516,10 +509,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
         return rlp;
 
         [DoesNotReturn, StackTraceHidden]
-        static void ThrowMissingNode(Hash256? address, in TreePath path, Hash256 keccak)
-        {
-            throw new MissingTrieNodeException($"Node A:{address} P:{path} H:{keccak} is missing from the DB", address, path, keccak);
-        }
+        static void ThrowMissingNode(Hash256? address, in TreePath path, Hash256 keccak) => throw new MissingTrieNodeException($"Node A:{address} P:{path} H:{keccak} is missing from the DB", address, path, keccak);
     }
 
     public IReadOnlyTrieStore AsReadOnly() => new ReadOnlyTrieStore(this);
@@ -533,16 +523,13 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
     {
         ArgumentNullException.ThrowIfNull(hash);
 
-        TrieStoreDirtyNodesCache.Key key = new TrieStoreDirtyNodesCache.Key(address, path, hash);
+        TrieStoreDirtyNodesCache.Key key = new(address, path, hash);
         return _commitBuffer is { } commitBuffer
             ? commitBuffer.FindCachedOrUnknown(key, isReadOnly)
             : FindCachedOrUnknown(key, isReadOnly);
     }
 
-    private TrieNode FindCachedOrUnknown(TrieStoreDirtyNodesCache.Key key, bool isReadOnly)
-    {
-        return isReadOnly ? DirtyNodesFromCachedRlpOrUnknown(key) : DirtyNodesFindCachedOrUnknown(key);
-    }
+    private TrieNode FindCachedOrUnknown(TrieStoreDirtyNodesCache.Key key, bool isReadOnly) => isReadOnly ? DirtyNodesFromCachedRlpOrUnknown(key) : DirtyNodesFindCachedOrUnknown(key);
 
     // Used only in tests
     public void Dump()
@@ -553,11 +540,8 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
         }
     }
 
-    private TrieStoreState CaptureCurrentState()
-    {
-        return new TrieStoreState(PersistedMemoryUsedByDirtyCache, DirtyMemoryUsedByDirtyCache,
+    private TrieStoreState CaptureCurrentState() => new(PersistedMemoryUsedByDirtyCache, DirtyMemoryUsedByDirtyCache,
             LatestCommittedBlockNumber, LastPersistedBlockNumber);
-    }
 
     public void Prune()
     {
@@ -583,7 +567,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
         }
         else
         {
-            await Task.Delay(pruneDelayMs);
+            if (!await Nethermind.Core.Extensions.TaskExtensions.DelaySafe(pruneDelayMs, _pruningTaskCancellationTokenSource.Token)) return;
         }
 
         using (_pruningLock.EnterScope())
@@ -599,7 +583,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
     // Testing purpose only
     internal void SyncPruneQueue()
     {
-        using (var _ = _pruningLock.EnterScope())
+        using (Lock.Scope _ = _pruningLock.EnterScope())
         {
             SyncPruneNonLocked();
         }
@@ -702,7 +686,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
         if (count == 0) return;
 
         (ArrayPoolList<BlockCommitSet> candidateSets, long? finalizedBlockNumber) = DetermineCommitSetToPersistInSnapshot(count);
-        using var _ = candidateSets;
+        using ArrayPoolList<BlockCommitSet> _ = candidateSets;
 
         bool shouldTrackPastKey =
             // Its disabled
@@ -867,25 +851,32 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
             int shardIdx = GetNodeShardIdx(treePath, tn.Keccak);
 
             HashAndTinyPath key = new(address, new TinyTreePath(treePath));
+            RecordPersistedHash(_persistedHashes[shardIdx], key, tn.Keccak, _deleteOldNodes);
+        }
+    }
 
-            if (_deleteOldNodes)
+    internal static void RecordPersistedHash(
+        ConcurrentDictionary<HashAndTinyPath, Hash256?> persistedHashes,
+        in HashAndTinyPath key,
+        Hash256 hash,
+        bool deleteOldNodes)
+    {
+        if (persistedHashes.TryAdd(key, hash) || !deleteOldNodes)
+        {
+            return;
+        }
+
+        // If TryGetValue returns false the key was removed by NoResizeClear, which runs after (not
+        // during) PruneCache has finished consuming the dictionary. The sentinel is no longer needed
+        // once that pass has completed, so exiting the loop is safe.
+        while (persistedHashes.TryGetValue(key, out Hash256? existingHash))
+        {
+            // When deleting old nodes, the first revisit marks the key as ambiguous by switching it to null.
+            // After that, additional revisits are pure read-only probes, so we retry only until that
+            // one-way state transition succeeds instead of routing every revisit through AddOrUpdate.
+            if (existingHash is null || persistedHashes.TryUpdate(key, null, existingHash))
             {
-                _persistedHashes[shardIdx].AddOrUpdate(
-                    key,
-                    static (_, newHash) => newHash,
-                    static (_, hash, _) => null,
-                    tn.Keccak);
-            }
-            else
-            {
-                _persistedHashes[shardIdx].AddOrUpdate(
-                    key,
-                    static (_, newHash) => newHash,
-                    // When not deleting old nodes, key tracking is used to prune in memory cache. It is
-                    // safe to accidentally remove key by taking non-canon block as canon as it will just load
-                    // from disk again.
-                    static (_, hash, _) => hash,
-                    tn.Keccak);
+                return;
             }
         }
     }
@@ -1016,18 +1007,15 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
 
     private void FlushNonBlockingBuffer()
     {
-        using var _ = _scopeLock.EnterScope();
+        using Lock.Scope _ = _scopeLock.EnterScope();
         if (_commitBuffer is null) return;
 
-        using var _2 = _pruningLock.EnterScope();
+        using Lock.Scope _2 = _pruningLock.EnterScope();
 
         FlushCommitBufferNoLock();
     }
 
-    public void WaitForPruning()
-    {
-        _pruningTask.Wait();
-    }
+    public void WaitForPruning() => _pruningTask.Wait();
 
     private readonly INodeStorage _nodeStorage;
 
@@ -1039,7 +1027,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
 
     private readonly ILogger _logger;
 
-    private CommitSetQueue _commitSetQueue = new CommitSetQueue();
+    private CommitSetQueue _commitSetQueue = new();
     public CommitSetQueue CommitSetQueue => _commitSetQueue;
 
     private BlockCommitSet? _lastCommitSet = null;
@@ -1068,6 +1056,12 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
 
             if (_lastCommitSet.BlockNumber != blockNumber - 1 && blockNumber != 0 && _lastCommitSet.BlockNumber != 0)
             {
+                if (_lastCommitSet.BlockNumber == blockNumber)
+                {
+                    if (_logger.IsDebug) _logger.Debug($"Duplicate block-number commit. Last block commit: {_lastCommitSet.BlockNumber}. New block commit: {blockNumber}.");
+                    return;
+                }
+
                 if (_logger.IsInfo) _logger.Info($"Non consecutive block commit. This is likely a reorg. Last block commit: {_lastCommitSet.BlockNumber}. New block commit: {blockNumber}.");
             }
         }
@@ -1190,7 +1184,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
 
         if (currentNode.Keccak is not null)
         {
-            TrieStoreDirtyNodesCache.Key key = new TrieStoreDirtyNodesCache.Key(address, path, currentNode.Keccak);
+            TrieStoreDirtyNodesCache.Key key = new(address, path, currentNode.Keccak);
             // Unpersisted note may have lower commit number than its parent. This can when its child is created
             // on a different block than its parent.
             GetDirtyNodeShard(key).GetOrAdd(key, new TrieStoreDirtyNodesCache.NodeRecord(currentNode, blockNumber));
@@ -1207,11 +1201,8 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
         }
     }
 
-    public bool IsNoLongerNeeded(long lastCommit)
-    {
-        return lastCommit < LastPersistedBlockNumber
+    public bool IsNoLongerNeeded(long lastCommit) => lastCommit < LastPersistedBlockNumber
                && lastCommit < LatestCommittedBlockNumber - _maxDepth;
-    }
 
     private void AnnounceReorgBoundaries()
     {
@@ -1257,7 +1248,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
         if (_commitSetQueue.IsEmpty) return;
 
         (ArrayPoolList<BlockCommitSet> candidateSets, long? finalizedBlockNumber) = DetermineCommitSetToPersistInSnapshot(_commitSetQueue.Count);
-        using var _ = candidateSets;
+        using ArrayPoolList<BlockCommitSet> _ = candidateSets;
         if (LastPersistedBlockNumber == 0 && candidateSets.Count == 0 && _commitSetQueue.TryDequeue(out BlockCommitSet anyCommitSet))
         {
             // No commit set to persist, likely as not enough block was processed to reached prune boundary
@@ -1291,7 +1282,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
     public void PersistCache(CancellationToken cancellationToken)
     {
         if (_logger.IsInfo) _logger.Info("Full Pruning Persist Cache started.");
-        using var _ = _pruningLock.EnterScope();
+        using Lock.Scope _ = _pruningLock.EnterScope();
 
         long start = Stopwatch.GetTimestamp();
         int commitSetCount = 0;
@@ -1372,8 +1363,8 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
 
     public StableLockScope PrepareStableState(CancellationToken cancellationToken)
     {
-        var scopeLockScope = _scopeLock.EnterScope();
-        var pruneLockScope = _pruningLock.EnterScope();
+        Lock.Scope scopeLockScope = _scopeLock.EnterScope();
+        Lock.Scope pruneLockScope = _pruningLock.EnterScope();
 
         try
         {
@@ -1448,10 +1439,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
         internal TrieNode? StateRoot;
         private int _concurrency = Environment.ProcessorCount;
 
-        public void Dispose()
-        {
-            trieStore.FinishBlockCommit(commitSet, StateRoot);
-        }
+        public void Dispose() => trieStore.FinishBlockCommit(commitSet, StateRoot);
 
         public ICommitter GetTrieCommitter(Hash256? address, TrieNode? root, WriteFlags writeFlags)
         {
@@ -1650,15 +1638,9 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
             }
         }
 
-        public void Reset(long minCommitBlockNumber)
-        {
-            _minCommitBlockNumber = minCommitBlockNumber;
-        }
+        public void Reset(long minCommitBlockNumber) => _minCommitBlockNumber = minCommitBlockNumber;
 
-        public void EnqueueCommitSet(BlockCommitSet set)
-        {
-            _commitSetQueueBuffer.Enqueue(set);
-        }
+        public void EnqueueCommitSet(BlockCommitSet set) => _commitSetQueueBuffer.Enqueue(set);
 
         public void FlushToDirtyNodes()
         {
@@ -1696,7 +1678,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
             TrieStoreDirtyNodesCache bufferShard = _dirtyNodesBuffer[shardIdx];
             TrieStoreDirtyNodesCache mainShard = _trieStore._dirtyNodes[shardIdx];
 
-            var hasInBuffer = bufferShard.TryGetValue(key, out TrieNode bufferNode);
+            bool hasInBuffer = bufferShard.TryGetValue(key, out TrieNode bufferNode);
             if (isReadOnly)
             {
                 if (hasInBuffer)
@@ -1734,15 +1716,17 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
 
     internal TrieNode CloneForReadOnly(in TrieStoreDirtyNodesCache.Key key, TrieNode node)
     {
-        if (node!.FullRlp.IsNull)
+        CappedArray<byte> fullRlp = node!.FullRlp;
+        if (fullRlp.IsNull)
         {
             // // this happens in SyncProgressResolver
             // throw new InvalidAsynchronousStateException("Read only trie store is trying to read a transient node.");
             return new TrieNode(NodeType.Unknown, key.Keccak);
         }
 
-        // we returning a copy to avoid multithreaded access
-        var trieNode = new TrieNode(NodeType.Unknown, key.Keccak, node.FullRlp);
+        // AsSpan forces an owned copy via the ReadOnlySpan ctor overload: node.FullRlp may be
+        // pool-backed and returned to the pool while this read-only clone is still in use.
+        TrieNode trieNode = new(NodeType.Unknown, key.Keccak, fullRlp.AsSpan());
         trieNode.ResolveNode(GetTrieStore(key.Address), key.Path);
         trieNode.Keccak = key.Keccak;
         return trieNode;
@@ -1758,7 +1742,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
         {
             ArgumentNullException.ThrowIfNull(hash);
 
-            TrieStoreDirtyNodesCache.Key key = new TrieStoreDirtyNodesCache.Key(address, path, hash);
+            TrieStoreDirtyNodesCache.Key key = new(address, path, hash);
             return baseTrieStore.FindCachedOrUnknown(key, false);
         }
 

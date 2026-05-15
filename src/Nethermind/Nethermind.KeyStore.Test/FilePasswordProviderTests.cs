@@ -3,6 +3,7 @@
 
 using System.Collections.Generic;
 using System.IO;
+using System.Security;
 using Nethermind.Core;
 using Nethermind.Crypto;
 using NUnit.Framework;
@@ -11,7 +12,7 @@ namespace Nethermind.KeyStore.Test;
 
 public class FilePasswordProviderTests
 {
-    private static readonly List<(string Name, string Content)> _files = new List<(string Name, string Content)>()
+    private static readonly List<(string Name, string Content)> _files = new()
     {
         ("TestingPasswordProviderFileF1", "PF1"),
         ("TestingPasswordProviderFileF2", "P    F2"),
@@ -23,9 +24,9 @@ public class FilePasswordProviderTests
     [SetUp]
     public void SetUp()
     {
-        foreach (var (Name, Content) in _files)
+        foreach ((string Name, string Content) in _files)
         {
-            var filePath = Path.Combine(TestDir, Name);
+            string filePath = Path.Combine(TestDir, Name);
             if (!File.Exists(filePath))
             {
                 File.Create(filePath).Close();
@@ -37,9 +38,9 @@ public class FilePasswordProviderTests
     [TearDown]
     public void TearDown()
     {
-        foreach (var (Name, _) in _files)
+        foreach ((string Name, string _) in _files)
         {
-            var filePath = Path.Combine(TestDir, Name);
+            string filePath = Path.Combine(TestDir, Name);
             if (File.Exists(filePath))
             {
                 File.Delete(filePath);
@@ -51,9 +52,9 @@ public class FilePasswordProviderTests
     public void GetPassword([ValueSource(nameof(PasswordProviderTestCases))]
         FilePasswordProviderTest test)
     {
-        var passwordProvider = new FilePasswordProvider(address => Path.Combine(TestDir, test.FileName));
+        FilePasswordProvider passwordProvider = new(address => Path.Combine(TestDir, test.FileName));
 
-        var password = passwordProvider.GetPassword(Address.Zero);
+        SecureString password = passwordProvider.GetPassword(Address.Zero);
         Assert.That(password.IsReadOnly(), Is.True);
         Assert.That(password.Unsecure(), Is.EqualTo(test.ExpectedPassword));
     }
@@ -61,7 +62,7 @@ public class FilePasswordProviderTests
     [Test]
     public void Return_null_when_file_not_exists()
     {
-        var passwordProvider = new FilePasswordProvider(static address =>
+        FilePasswordProvider passwordProvider = new(static address =>
         {
             if (address == Address.Zero)
             {
@@ -73,7 +74,7 @@ public class FilePasswordProviderTests
             }
         });
 
-        var password = passwordProvider.GetPassword(Address.Zero);
+        SecureString password = passwordProvider.GetPassword(Address.Zero);
         Assert.That(password, Is.EqualTo(null));
         password = passwordProvider.GetPassword(Address.Zero);
         Assert.That(password, Is.EqualTo(null));
@@ -82,10 +83,10 @@ public class FilePasswordProviderTests
     [Test]
     public void Correctly_use_alternative_provider()
     {
-        var passwordProvider = new FilePasswordProvider(static a => string.Empty)
+        BasePasswordProvider passwordProvider = new FilePasswordProvider(static a => string.Empty)
             .OrReadFromFile(Path.Combine(TestDir, _files[0].Name));
 
-        var password = passwordProvider.GetPassword(Address.Zero);
+        SecureString password = passwordProvider.GetPassword(Address.Zero);
         Assert.That(password.IsReadOnly(), Is.True);
         Assert.That(password.Unsecure(), Is.EqualTo(_files[0].Content.Trim()));
     }

@@ -3,42 +3,52 @@
 
 using System;
 using System.Collections.Generic;
-using System.Diagnostics.CodeAnalysis;
-using System.Linq;
+using System.Text.Json.Serialization;
 using Nethermind.Int256;
 
 namespace Nethermind.Core.BlockAccessLists;
 
-public record SlotChanges(UInt256 Slot, SortedList<ushort, StorageChange> Changes)
+public record SlotChanges(UInt256 Key, IndexedChanges<StorageChange> Changes)
 {
-    public SlotChanges(UInt256 slot) : this(slot, []) { }
+    public SlotChanges(UInt256 slot) : this(slot, new IndexedChanges<StorageChange>()) { }
 
-    public virtual bool Equals(SlotChanges? other) =>
-        other is not null &&
-        Slot.Equals(other.Slot) &&
-        Changes.SequenceEqual(other.Changes);
+    public SlotChanges(UInt256 slot, SortedList<uint, StorageChange> changes) : this(slot, (IndexedChanges<StorageChange>)changes) { }
 
-    public override int GetHashCode() =>
-        HashCode.Combine(Slot, Changes);
-
-    public override string ToString() => $"{Slot}:[{string.Join(", ", Changes.Values)}]";
-
-    public bool TryPopStorageChange(ushort index, [NotNullWhen(true)] out StorageChange? storageChange)
+    public virtual bool Equals(SlotChanges? other)
     {
-        storageChange = null;
-
-        if (Changes.Count == 0)
+        if (other is null || !Key.Equals(other.Key) || Changes.Count != other.Changes.Count)
             return false;
 
-        StorageChange lastChange = Changes.Values.Last();
-
-        if (lastChange.BlockAccessIndex == index)
+        for (int i = 0; i < Changes.Count; i++)
         {
-            Changes.RemoveAt(Changes.Count - 1);
-            storageChange = lastChange;
-            return true;
+            if (Changes.Keys[i] != other.Changes.Keys[i] ||
+                !Changes.Values[i].Equals(other.Changes.Values[i]))
+            {
+                return false;
+            }
         }
 
-        return false;
+        return true;
     }
+
+    public override int GetHashCode() =>
+        HashCode.Combine(Key, Changes);
+
+    public override string ToString() => $"{Key}:[{string.Join(", ", Changes.Values)}]";
+
+
+    public void Merge(SlotChanges other)
+        => Changes.SetRange(other.Changes);
+
+    public void AddStorageChange(StorageChange storageChange)
+        => Changes.Add(storageChange);
+
+    [JsonIgnore]
+    public bool HasChanges => Changes.HasChanges;
+
+    public bool TryGetLastBefore(uint blockAccessIndex, out StorageChange storageChange)
+        => Changes.TryGetLastBefore(blockAccessIndex, out storageChange);
+
+    internal bool TryPopStorageChangeDirect(uint index, out StorageChange storageChange)
+        => Changes.TryPopLast(index, out storageChange);
 }

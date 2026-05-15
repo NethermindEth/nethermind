@@ -43,16 +43,13 @@ namespace Nethermind.Runner.Test
             _memoryHintMan = new MemoryHintMan(LimboLogs.Instance, _mallocHelper);
         }
 
-        private void SetMemoryAllowances(uint cpuCount)
-        {
-            _memoryHintMan.SetMemoryAllowances(
+        private void SetMemoryAllowances(uint cpuCount) => _memoryHintMan.SetMemoryAllowances(
                 _dbConfig,
                 _initConfig,
                 _networkConfig,
                 _syncConfig,
                 _txPoolConfig,
                 cpuCount);
-        }
 
         [TestCase(4 * GB, 2u, 4u, 11)]
         [TestCase(4 * GB, 4u, 8u, 11)]
@@ -91,7 +88,7 @@ namespace Nethermind.Runner.Test
             _initConfig.MemoryHint = memoryHint;
             SetMemoryAllowances(cpuCount);
 
-            SyncConfig syncConfig = new SyncConfig();
+            SyncConfig syncConfig = new();
             syncConfig.FastSync = fastSync;
 
             _memoryHintMan.DbMemory.Should().BeGreaterThan((long)((memoryHint - 100.MB) * 0.5));

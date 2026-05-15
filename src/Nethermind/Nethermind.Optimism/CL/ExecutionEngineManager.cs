@@ -7,6 +7,7 @@ using System.Threading.Tasks;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Optimism.CL.Derivation;
+using Nethermind.Optimism.Rpc;
 
 namespace Nethermind.Optimism.CL;
 
@@ -15,7 +16,7 @@ public class ExecutionEngineManager(
     ILogManager logManager) : IExecutionEngineManager
 {
     private readonly DerivedBlocksVerifier _derivedBlocksVerifier = new(logManager);
-    private readonly ILogger _logger = logManager.GetClassLogger();
+    private readonly ILogger _logger = logManager.GetClassLogger<ExecutionEngineManager>();
 
     private BlockId _currentHead;
     private BlockId _currentFinalizedHead;
@@ -23,9 +24,9 @@ public class ExecutionEngineManager(
 
     public async Task Initialize()
     {
-        var headBlock = await l2Api.GetHeadBlock();
-        var finalizedBlock = await l2Api.GetFinalizedBlock();
-        var safeBlock = await l2Api.GetSafeBlock();
+        L2Block headBlock = await l2Api.GetHeadBlock();
+        L2Block? finalizedBlock = await l2Api.GetFinalizedBlock();
+        L2Block? safeBlock = await l2Api.GetSafeBlock();
 
         _currentHead = BlockId.FromL2Block(headBlock);
         _currentFinalizedHead = BlockId.FromL2Block(finalizedBlock);
@@ -57,7 +58,7 @@ public class ExecutionEngineManager(
             }
 
             if (_logger.IsInfo) _logger.Info($"Derived payload. Number: {payloadAttributes.Number}");
-            ExecutionPayloadV3? executionPayload = await BuildBlockWithPayloadAttributes(payloadAttributes);
+            ExecutionPayloadV3? executionPayload = await BuildBlockWithPayloadAttributes(payloadAttributes, token);
             if (executionPayload is null)
             {
                 return null;
@@ -131,7 +132,7 @@ public class ExecutionEngineManager(
                     }
             }
 
-            var fcuResult = await l2Api.ForkChoiceUpdatedV3(executionPayload.BlockHash, _currentFinalizedHead.Hash,
+            ForkchoiceUpdatedV1Result fcuResult = await l2Api.ForkChoiceUpdatedV3(executionPayload.BlockHash, _currentFinalizedHead.Hash,
                 _currentSafeHead.Hash);
             switch (fcuResult.PayloadStatus.Status)
             {
@@ -171,9 +172,9 @@ public class ExecutionEngineManager(
         }
     }
 
-    private async Task<ExecutionPayloadV3?> BuildBlockWithPayloadAttributes(PayloadAttributesRef payloadAttributes)
+    private async Task<ExecutionPayloadV3?> BuildBlockWithPayloadAttributes(PayloadAttributesRef payloadAttributes, CancellationToken token)
     {
-        var fcuResult = await l2Api.ForkChoiceUpdatedV3(
+        ForkchoiceUpdatedV1Result fcuResult = await l2Api.ForkChoiceUpdatedV3(
             _currentHead.Hash, _currentFinalizedHead.Hash, _currentSafeHead.Hash,
             payloadAttributes.PayloadAttributes);
 
@@ -183,15 +184,15 @@ public class ExecutionEngineManager(
             return null;
         }
 
-        var getPayloadResult = await l2Api.GetPayloadV3(fcuResult.PayloadId!);
-        if (!await SendNewPayload(getPayloadResult.ExecutionPayload))
+        OptimismGetPayloadV3Result getPayloadResult = await l2Api.GetPayloadV3(fcuResult.PayloadId!);
+        if (!await SendNewPayload(getPayloadResult.ExecutionPayload, token))
         {
             return null;
         }
         return getPayloadResult.ExecutionPayload;
     }
 
-    private async Task<bool> SendNewPayload(ExecutionPayloadV3 executionPayload)
+    private async Task<bool> SendNewPayload(ExecutionPayloadV3 executionPayload, CancellationToken token)
     {
         PayloadStatusV1 npResult = await l2Api.NewPayloadV3(executionPayload, executionPayload.ParentBeaconBlockRoot);
 
@@ -199,7 +200,7 @@ public class ExecutionEngineManager(
         {
             // retry after delay
             if (_logger.IsWarn) _logger.Warn($"Got Syncing after NewPayload. {executionPayload.BlockNumber}");
-            await Task.Delay(100);
+            await Task.Delay(100, token);
             npResult = await l2Api.NewPayloadV3(executionPayload, executionPayload.ParentBeaconBlockRoot);
         }
 
@@ -223,7 +224,7 @@ public class ExecutionEngineManager(
             return true;
         }
 
-        var result = await l2Api.ForkChoiceUpdatedV3(headBlock.Hash, finalizedBlock.Hash, safeBlock.Hash);
+        ForkchoiceUpdatedV1Result result = await l2Api.ForkChoiceUpdatedV3(headBlock.Hash, finalizedBlock.Hash, safeBlock.Hash);
 
         if (result.PayloadStatus.Status != PayloadStatus.Valid)
         {

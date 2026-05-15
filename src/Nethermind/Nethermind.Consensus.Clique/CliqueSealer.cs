@@ -23,7 +23,7 @@ namespace Nethermind.Consensus.Clique
 
         public CliqueSealer(ISigner signer, ICliqueConfig config, ISnapshotManager snapshotManager, ILogManager logManager)
         {
-            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+            _logger = logManager?.GetClassLogger<CliqueSealer>() ?? throw new ArgumentNullException(nameof(logManager));
             _snapshotManager = snapshotManager ?? throw new ArgumentNullException(nameof(snapshotManager));
             _config = config ?? throw new ArgumentNullException(nameof(config));
             _signer = signer ?? throw new ArgumentNullException(nameof(signer));

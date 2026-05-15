@@ -22,7 +22,6 @@ using Nethermind.Network.P2P.Subprotocols.Eth.V65;
 using Nethermind.Network.P2P.Subprotocols.Eth.V65.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V66;
 using Nethermind.Network.Rlpx;
-using Nethermind.Serialization.Rlp;
 using Nethermind.Network.Test.Builders;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
@@ -177,7 +176,7 @@ public class PooledTransactionsRequestingTests
 
     private void HandleIncomingStatusMessage(Eth66ProtocolHandler handler)
     {
-        using var statusMsg = new StatusMessage();
+        using StatusMessage statusMsg = new();
         statusMsg.GenesisHash = _genesisBlock.Hash;
         statusMsg.BestHash = _genesisBlock.Hash;
 

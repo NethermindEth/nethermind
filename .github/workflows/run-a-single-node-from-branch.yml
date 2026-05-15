@@ -17,7 +17,7 @@ on:
           - op-mainnet
           - op-sepolia
           - base-mainnet
-          - base-sepolia          
+          - base-sepolia
           - world-sepolia
           - world-mainnet
           - joc-mainnet
@@ -166,7 +166,7 @@ jobs:
 
       - name: Authenticate App
         id: gh-app
-        uses: actions/create-github-app-token@v2
+        uses: actions/create-github-app-token@v3
         with:
           app-id: ${{ vars.APP_ID }}
           private-key: ${{ secrets.APP_PRIVATE_KEY }}
@@ -264,7 +264,7 @@ jobs:
 
       - name: Authenticate App
         id: gh-app
-        uses: actions/create-github-app-token@v2
+        uses: actions/create-github-app-token@v3
         with:
           app-id: ${{ vars.APP_ID }}
           private-key: ${{ secrets.APP_PRIVATE_KEY }}
@@ -358,7 +358,7 @@ jobs:
           echo "${{ env.RPC_URL }}" > rpc_url%${{ env.CLEAN_REF }}%${{ inputs.custom_run_id }}.txt
 
       - name: Upload RPC URL
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         if: inputs.custom_run_id != ''
         with:
           name: rpc-url___${{ env.CLEAN_REF }}___${{ inputs.custom_run_id }}

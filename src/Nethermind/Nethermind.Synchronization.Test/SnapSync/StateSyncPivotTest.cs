@@ -31,7 +31,7 @@ public class StateSyncPivotTest
         blockTree.FindHeader(Arg.Any<long>())
             .Returns(static (ci) => Build.A.BlockHeader.WithNumber((long)ci[0]).TestObject);
 
-        Synchronization.FastSync.StateSyncPivot stateSyncPivot = new Synchronization.FastSync.StateSyncPivot(blockTree,
+        Synchronization.FastSync.StateSyncPivot stateSyncPivot = new(blockTree,
             new TestSyncConfig()
             {
                 PivotNumber = syncPivot,

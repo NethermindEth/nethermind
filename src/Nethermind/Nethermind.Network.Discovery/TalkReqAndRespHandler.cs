@@ -11,15 +11,11 @@ internal class TalkReqAndRespHandler : ITalkReqAndRespHandler
     //Must send an empty response if no protocols are matched
     private static readonly byte[][] EmptyProtocolResponse = [[]];
 
-    public byte[][]? HandleRequest(byte[] protocol, byte[] request)
-    {
+    public byte[][]? HandleRequest(byte[] protocol, byte[] request) =>
         //We currently don't advertise any supported protocols
-        return EmptyProtocolResponse;
-    }
+        EmptyProtocolResponse;
 
-    public byte[]? HandleResponse(byte[] response)
-    {
+    public byte[]? HandleResponse(byte[] response) =>
         //We don't care about anything returned here at the moment
-        return Array.Empty<byte>();
-    }
+        Array.Empty<byte>();
 }

@@ -31,25 +31,19 @@ namespace Nethermind.Network
 
         public SessionMonitor(INetworkConfig config, ILogManager logManager)
         {
-            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+            _logger = logManager?.GetClassLogger<SessionMonitor>() ?? throw new ArgumentNullException(nameof(logManager));
             _networkConfig = config ?? throw new ArgumentNullException(nameof(config));
 
             _pingInterval = TimeSpan.FromMilliseconds(_networkConfig.P2PPingInterval);
             _onDisconnected = OnDisconnected;
         }
 
-        public void Start()
-        {
-            StartPingTimer();
-        }
+        public void Start() => StartPingTimer();
 
-        public void Stop()
-        {
-            StopPingTimer();
-        }
+        public void Stop() => StopPingTimer();
 
         private readonly ConcurrentDictionary<Guid, ISession> _sessions = new();
-        public IEnumerable<ISession> Sessions => _sessions.Values;
+        public IEnumerable<ISession> Sessions => _sessions.Select(static kvp => kvp.Value);
 
         public void AddSession(ISession session)
         {
@@ -73,15 +67,16 @@ namespace Nethermind.Network
 
         private async Task SendPingMessagesAsync()
         {
-            var token = _cancellationTokenSource.Token;
+            CancellationToken token = _cancellationTokenSource.Token;
             while (!token.IsCancellationRequested
                 && await _pingTimer.WaitForNextTickAsync(token))
             {
                 try
                 {
                     _pingTasks.Clear();
-                    foreach (ISession session in _sessions.Values)
+                    foreach (KeyValuePair<Guid, ISession> kvp in _sessions)
                     {
+                        ISession session = kvp.Value;
                         if (session.State == SessionState.Initialized && DateTime.UtcNow - session.LastPingUtc > _pingInterval)
                         {
                             Task<bool> pingTask = SendPingMessage(session);
@@ -110,7 +105,7 @@ namespace Nethermind.Network
                 }
                 catch (Exception ex)
                 {
-                    _logger.Error($"DEBUG/ERROR Error during send ping messages: {ex}");
+                    _logger.DebugError($"Error during send ping messages: {ex}");
                 }
             }
         }
@@ -165,12 +160,13 @@ namespace Nethermind.Network
         {
             try
             {
+                _pingTimer.Dispose();
                 if (_logger.IsTrace) _logger.Trace("Stopping session monitor");
                 CancellationTokenExtensions.CancelDisposeAndClear(ref _cancellationTokenSource);
             }
             catch (Exception e)
             {
-                if (_logger.IsDebug) _logger.Error("DEBUG/ERROR Error during ping timer stop", e);
+                _logger.DebugError("Error during ping timer stop", e);
             }
         }
     }

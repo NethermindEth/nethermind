@@ -15,7 +15,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
         public void Roundtrip()
         {
             ArrayPoolList<byte[]> data = new(2) { new byte[] { 0xde, 0xad, 0xc0, 0xde }, new byte[] { 0xfe, 0xed, 0xbe, 0xef } };
-            using var ethMessage = new Network.P2P.Subprotocols.Eth.V63.Messages.NodeDataMessage(new ByteArrayListAdapter(data));
+            using Network.P2P.Subprotocols.Eth.V63.Messages.NodeDataMessage ethMessage = new(new ByteArrayListAdapter(data));
 
             NodeDataMessage message = new(1111, ethMessage);
 

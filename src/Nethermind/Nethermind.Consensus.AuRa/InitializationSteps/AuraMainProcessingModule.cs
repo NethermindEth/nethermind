@@ -25,10 +25,7 @@ public class AuraMainProcessingModule(
     AuRaChainSpecEngineParameters chainSpecAuRa
 ) : Module, IMainProcessingModule
 {
-    protected override void Load(ContainerBuilder builder)
-    {
-        builder.AddSingleton<IAuRaValidator, AuRaNethermindApi, IWorldState, ITransactionProcessor>(CreateAuRaValidator);
-    }
+    protected override void Load(ContainerBuilder builder) => builder.AddSingleton<IAuRaValidator, AuRaNethermindApi, IWorldState, ITransactionProcessor>(CreateAuRaValidator);
 
     private IAuRaValidator CreateAuRaValidator(AuRaNethermindApi api, IWorldState worldState, ITransactionProcessor transactionProcessor)
     {

@@ -16,10 +16,7 @@ namespace Nethermind.Core.Test.Caching
     [TestFixture]
     public class ClockCacheTests
     {
-        private static Cache Create()
-        {
-            return new Cache(Capacity)!;
-        }
+        private static Cache Create() => new Cache(Capacity)!;
 
         private const int Capacity = 32;
 
@@ -115,7 +112,7 @@ namespace Nethermind.Core.Test.Caching
         {
             Random random = new();
             Cache cache = Create();
-            for (var iter = 0; iter < Capacity; iter++)
+            for (int iter = 0; iter < Capacity; iter++)
             {
                 for (int ii = 0; ii < Capacity; ii++)
                 {
@@ -127,20 +124,20 @@ namespace Nethermind.Core.Test.Caching
                     for (int ii = i - 1; ii < i - 1 + Capacity; ii++)
                     {
                         // Fuzz the order of the addresses
-                        var index = random.Next(i - 1, i - 1 + Capacity);
+                        int index = random.Next(i - 1, i - 1 + Capacity);
                         cache.Delete(_addresses[index]).Should().BeTrue();
                         cache.Set(_addresses[index], _accounts[index]).Should().BeTrue();
                     }
                     for (int ii = i - 1; ii < i - 1 + Capacity; ii++)
                     {
                         // Fuzz the order of the addresses
-                        var index = random.Next(i - 1, i - 1 + Capacity);
+                        int index = random.Next(i - 1, i - 1 + Capacity);
                         cache.Set(_addresses[index], _accounts[index]).Should().BeFalse();
                     }
                     for (int ii = i - 1; ii < i - 1 + Capacity; ii++)
                     {
                         // Fuzz the order of the addresses
-                        var index = random.Next(i - 1, i - 1 + Capacity);
+                        int index = random.Next(i - 1, i - 1 + Capacity);
                         cache.Get(_addresses[index]).Should().BeEquivalentTo(_accounts[index]);
                     }
                     for (int ii = i; ii < i + Capacity; ii++)
@@ -293,7 +290,7 @@ namespace Nethermind.Core.Test.Caching
             for (int i = 0; i < iterations; i++)
             {
                 cache.Set(i, i).Should().BeTrue();
-                var remove = i - itemsToKeep;
+                int remove = i - itemsToKeep;
                 if (remove >= 0)
                     cache.Delete(remove).Should().BeTrue();
             }

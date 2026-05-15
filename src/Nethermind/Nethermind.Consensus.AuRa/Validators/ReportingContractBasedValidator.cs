@@ -21,6 +21,7 @@ using Nethermind.Evm.State;
 
 namespace Nethermind.Consensus.AuRa.Validators
 {
+#pragma warning disable IDE0290 // Constructor has unused DI parameters (txPool, blocksConfig)
     public partial class ReportingContractBasedValidator : IAuRaValidator, IReportingValidator
     {
         private delegate Transaction CreateReportTransactionDelegate(Address validator, long block, byte[] proof);
@@ -61,10 +62,7 @@ namespace Nethermind.Consensus.AuRa.Validators
 
         private IReportingValidatorContract ValidatorContract { get; }
 
-        public void ReportMalicious(Address validator, long blockNumber, byte[] proof, IReportingValidator.MaliciousCause cause)
-        {
-            Report(ReportType.Malicious, validator, blockNumber, proof, cause, CreateReportMaliciousTransaction);
-        }
+        public void ReportMalicious(Address validator, long blockNumber, byte[] proof, IReportingValidator.MaliciousCause cause) => Report(ReportType.Malicious, validator, blockNumber, proof, cause, CreateReportMaliciousTransaction);
 
         private Transaction CreateReportMaliciousTransaction(Address validator, long blockNumber, byte[] proof)
         {
@@ -74,7 +72,7 @@ namespace Nethermind.Consensus.AuRa.Validators
                 return null;
             }
 
-            var persistentReport = new PersistentReport(validator, (UInt256)blockNumber, proof);
+            PersistentReport persistentReport = new(validator, (UInt256)blockNumber, proof);
 
             if (IsPosdao(blockNumber))
             {
@@ -87,15 +85,12 @@ namespace Nethermind.Consensus.AuRa.Validators
 
         private Transaction CreateReportMaliciousTransactionCore(PersistentReport persistentReport)
         {
-            var transaction = ValidatorContract.ReportMalicious(persistentReport.MaliciousValidator, persistentReport.BlockNumber, persistentReport.Proof);
+            Transaction transaction = ValidatorContract.ReportMalicious(persistentReport.MaliciousValidator, persistentReport.BlockNumber, persistentReport.Proof);
             transaction.Nonce = _stateProvider.GetNonce(ValidatorContract.NodeAddress);
             return transaction;
         }
 
-        public void ReportBenign(Address validator, long blockNumber, IReportingValidator.BenignCause cause)
-        {
-            Report(ReportType.Benign, validator, blockNumber, [], cause.ToString(), CreateReportBenignTransaction);
-        }
+        public void ReportBenign(Address validator, long blockNumber, IReportingValidator.BenignCause cause) => Report(ReportType.Benign, validator, blockNumber, [], cause.ToString(), CreateReportBenignTransaction);
 
         private Transaction CreateReportBenignTransaction(Address validator, long blockNumber, byte[] proof) => ValidatorContract.ReportBenign(validator, (UInt256)blockNumber);
 
@@ -169,8 +164,8 @@ namespace Nethermind.Consensus.AuRa.Validators
                 return;
             }
 
-            var areThereSkipped = header.AuRaStep > parent.AuRaStep + 1;
-            var firstBlock = header.Number == 1;
+            bool areThereSkipped = header.AuRaStep > parent.AuRaStep + 1;
+            bool firstBlock = header.Number == 1;
             if (areThereSkipped && !firstBlock)
             {
                 Address[] validators = Validators;
@@ -207,17 +202,14 @@ namespace Nethermind.Consensus.AuRa.Validators
 
         public Address[] Validators => _contractValidator.Validators;
 
-        public void OnBlockProcessingStart(Block block, ProcessingOptions options = ProcessingOptions.None)
-        {
-            _contractValidator.OnBlockProcessingStart(block, options);
-        }
+        public void OnBlockProcessingStart(Block block, ProcessingOptions options = ProcessingOptions.None) => _contractValidator.OnBlockProcessingStart(block, options);
 
         public void OnBlockProcessingEnd(Block block, TxReceipt[] receipts, ProcessingOptions options = ProcessingOptions.None)
         {
             _contractValidator.OnBlockProcessingEnd(block, receipts, options);
             if (!_contractValidator.ForSealing)
             {
-                var parentHeader = _contractValidator.BlockTree.FindParentHeader(block.Header, BlockTreeLookupOptions.None);
+                BlockHeader parentHeader = _contractValidator.BlockTree.FindParentHeader(block.Header, BlockTreeLookupOptions.None);
                 if (parentHeader is not null)
                 {
                     ResendPersistedReports(parentHeader);

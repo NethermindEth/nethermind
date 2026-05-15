@@ -55,10 +55,7 @@ public static class BitmapHelper
         }
     }
 
-    private static void Set1(this Span<byte> bitVector, int pos)
-    {
-        bitVector[pos / 8] |= (byte)(1 << (pos % 8));
-    }
+    private static void Set1(this Span<byte> bitVector, int pos) => bitVector[pos / 8] |= (byte)(1 << (pos % 8));
 
     private static void SetN(this Span<byte> bitVector, int pos, ushort flag)
     {

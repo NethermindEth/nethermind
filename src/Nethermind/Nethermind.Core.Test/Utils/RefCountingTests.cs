@@ -25,7 +25,7 @@ public class RefCountingTests
 
         protected override void CleanUp()
         {
-            var existing = Interlocked.Exchange(ref _cleaned, Cleaned);
+            int existing = Interlocked.Exchange(ref _cleaned, Cleaned);
 
             // should be called only once and set it to used
             existing.Should().Be(Used);
@@ -37,10 +37,10 @@ public class RefCountingTests
     {
         const int sleepInMs = 100;
 
-        var counter = new TestRefCounting();
+        TestRefCounting counter = new();
 
-        var thread1 = new Thread(LeaseRelease);
-        var thread2 = new Thread(LeaseRelease);
+        Thread thread1 = new(LeaseRelease);
+        Thread thread2 = new(LeaseRelease);
 
         thread1.Start();
         thread2.Start();

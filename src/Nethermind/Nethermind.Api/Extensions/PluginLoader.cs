@@ -90,7 +90,7 @@ public class PluginLoader(string pluginPath, IFileSystem fileSystem, ILogger log
 
     public void OrderPlugins(IPluginConfig pluginConfig)
     {
-        var pluginPriorities = pluginConfig.PluginOrder
+        Dictionary<string, int> pluginPriorities = pluginConfig.PluginOrder
             .Select((name, index) => (name: name + "plugin", index))
             .ToDictionary(x => x.name, x => x.index, StringComparer.OrdinalIgnoreCase);
 
@@ -116,7 +116,7 @@ public class PluginLoader(string pluginPath, IFileSystem fileSystem, ILogger log
             .AddSingleton(chainSpec)
             .AddSource(new ConfigRegistrationSource());
 
-        foreach (var pluginType in PluginTypes)
+        foreach (Type pluginType in PluginTypes)
         {
             builder
                 .RegisterType(pluginType)

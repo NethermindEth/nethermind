@@ -26,7 +26,7 @@ namespace Nethermind.Core
 
         public static void Start(ILogManager logManager)
         {
-            _logger = logManager.GetClassLogger();
+            _logger = logManager.GetClassLogger(typeof(NetworkDiagTracer));
             Timer timer = new()
             {
                 Interval = 60000

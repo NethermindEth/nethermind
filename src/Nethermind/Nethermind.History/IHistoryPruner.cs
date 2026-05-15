@@ -13,4 +13,6 @@ public interface IHistoryPruner
     public BlockHeader? OldestBlockHeader { get; }
 
     event EventHandler<OnNewOldestBlockArgs> NewOldestBlock;
+
+    void SchedulePruneHistory();
 }

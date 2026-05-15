@@ -316,10 +316,8 @@ public class AbiTests
     [TestCase(256 + 8, 19)]
     [TestCase(8, 128)]
     [TestCase(9, 8)]
-    public void Test_ufixed_exception(int length, int precision)
-    {
+    public void Test_ufixed_exception(int length, int precision) =>
         Assert.Throws<ArgumentOutOfRangeException>(() => _ = new AbiUFixed(length, precision));
-    }
 
     [TestCase(0, 0)]
     [TestCase(0, 19)]
@@ -327,34 +325,26 @@ public class AbiTests
     [TestCase(256 + 8, 19)]
     [TestCase(8, 128)]
     [TestCase(9, 8)]
-    public void Test_fixed_exception(int length, int precision)
-    {
+    public void Test_fixed_exception(int length, int precision) =>
         Assert.Throws<ArgumentOutOfRangeException>(() => _ = new AbiFixed(length, precision));
-    }
 
     [TestCase(0)]
     [TestCase(7)]
     [TestCase(264)]
-    public void Test_int_exception(int length)
-    {
+    public void Test_int_exception(int length) =>
         Assert.Throws<ArgumentOutOfRangeException>(() => _ = new AbiInt(length));
-    }
 
     [TestCase(0)]
     [TestCase(7)]
     [TestCase(264)]
-    public void Test_uint_exception(int length)
-    {
+    public void Test_uint_exception(int length) =>
         Assert.Throws<ArgumentOutOfRangeException>(() => _ = new AbiUInt(length));
-    }
 
     [TestCase("uint64[abc]")]
     [TestCase("bytes32[xyz]")]
     [TestCase("address[!@#]")]
-    public void Test_invalid_array_syntax_exception(string type)
-    {
+    public void Test_invalid_array_syntax_exception(string type) =>
         Assert.Throws<ArgumentException>(() => System.Text.Json.JsonSerializer.Deserialize<AbiType>($"\"{type}\""));
-    }
 
     [TestCase(AbiEncodingStyle.IncludeSignature)]
     [TestCase(AbiEncodingStyle.IncludeSignature | AbiEncodingStyle.Packed)]
@@ -556,14 +546,14 @@ public class AbiTests
     [Test]
     public void Should_encode_arrays_and_lists_equally()
     {
-        var abi = new AbiArray(AbiType.UInt256);
-        var array = new UInt256[] { 1, 2, 3, UInt256.MaxValue };
-        var list = new List<UInt256>() { 1, 2, 3, UInt256.MaxValue };
-        using var pool = new ArrayPoolList<UInt256>(4);
+        AbiArray abi = new(AbiType.UInt256);
+        UInt256[] array = new UInt256[] { 1, 2, 3, UInt256.MaxValue };
+        List<UInt256> list = new() { 1, 2, 3, UInt256.MaxValue };
+        using ArrayPoolList<UInt256> pool = new(4);
 
         pool.AddRange(array);
 
-        var encoded = abi.Encode(array, false);
+        byte[] encoded = abi.Encode(array, false);
 
         abi.Encode(list, false).Should().BeEquivalentTo(encoded);
         abi.Encode(pool, false).Should().BeEquivalentTo(encoded);
@@ -572,7 +562,7 @@ public class AbiTests
     [Test]
     public void Should_throw_on_malformed_abi()
     {
-        var abi = new AbiSignature(
+        AbiSignature abi = new(
             "DepositEvent",
             AbiType.DynamicBytes,
             AbiType.DynamicBytes,

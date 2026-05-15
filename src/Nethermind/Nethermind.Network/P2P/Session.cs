@@ -28,7 +28,7 @@ namespace Nethermind.Network.P2P
     public class Session : ISession
     {
         private static readonly ConcurrentDictionary<string, AdaptiveCodeResolver> _resolvers = new();
-        private readonly ConcurrentDictionary<string, IProtocolHandler> _protocols = new();
+        private readonly ConcurrentDictionary<string, IProtocolHandler> _protocols = new(concurrencyLevel: 1, capacity: 4);
 
         private readonly ILogger _logger;
         private readonly ILogManager _logManager;
@@ -38,6 +38,7 @@ namespace Nethermind.Network.P2P
         private readonly IChannel _channel;
         private readonly IDisconnectsAnalyzer _disconnectsAnalyzer;
         private IChannelHandlerContext? _context;
+        private volatile bool _isChannelClosed;
 
         public Session(
             int localPort,
@@ -79,6 +80,7 @@ namespace Nethermind.Network.P2P
 
         public bool IsClosing => State > SessionState.Initialized;
         private bool IsClosed => State > SessionState.DisconnectingProtocols;
+        public bool IsChannelClosed => _isChannelClosed;
         public bool IsNetworkIdMatched { get; set; }
         public int LocalPort { get; set; }
         public PublicKey? RemoteNodeId { get; set; }
@@ -264,10 +266,7 @@ namespace Nethermind.Network.P2P
             void TraceDeliverMessage(T msg) => _logger.Trace($"P2P to deliver {msg.Protocol}.{msg.PacketType} on {this}");
         }
 
-        public bool TryGetProtocolHandler(string protocolCode, out IProtocolHandler handler)
-        {
-            return _protocols.TryGetValue(protocolCode, out handler);
-        }
+        public bool TryGetProtocolHandler(string protocolCode, out IProtocolHandler handler) => _protocols.TryGetValue(protocolCode, out handler);
 
         public void Init(byte p2PVersion, IChannelHandlerContext context, IPacketSender packetSender)
         {
@@ -368,15 +367,12 @@ namespace Nethermind.Network.P2P
         {
             EthDisconnectReason ethDisconnectReason = disconnectReason.ToEthDisconnectReason();
 
-            bool ShouldDisconnectStaticNode()
+            bool ShouldDisconnectStaticNode() => ethDisconnectReason switch
             {
-                return ethDisconnectReason switch
-                {
-                    EthDisconnectReason.DisconnectRequested or EthDisconnectReason.TcpSubSystemError or EthDisconnectReason.UselessPeer or EthDisconnectReason.TooManyPeers or EthDisconnectReason.Other => false,
-                    EthDisconnectReason.ReceiveMessageTimeout or EthDisconnectReason.BreachOfProtocol or EthDisconnectReason.AlreadyConnected or EthDisconnectReason.IncompatibleP2PVersion or EthDisconnectReason.NullNodeIdentityReceived or EthDisconnectReason.ClientQuitting or EthDisconnectReason.UnexpectedIdentity or EthDisconnectReason.IdentitySameAsSelf => true,
-                    _ => true,
-                };
-            }
+                EthDisconnectReason.DisconnectRequested or EthDisconnectReason.TcpSubSystemError or EthDisconnectReason.UselessPeer or EthDisconnectReason.TooManyPeers or EthDisconnectReason.Other => false,
+                EthDisconnectReason.ReceiveMessageTimeout or EthDisconnectReason.BreachOfProtocol or EthDisconnectReason.AlreadyConnected or EthDisconnectReason.IncompatibleP2PVersion or EthDisconnectReason.NullNodeIdentityReceived or EthDisconnectReason.ClientQuitting or EthDisconnectReason.UnexpectedIdentity or EthDisconnectReason.IdentitySameAsSelf => true,
+                _ => true,
+            };
 
             if (Node?.IsStatic == true && !ShouldDisconnectStaticNode())
             {
@@ -407,8 +403,9 @@ namespace Nethermind.Network.P2P
             //Trigger disconnect on each protocol handler (if p2p is initialized it will send disconnect message to the peer)
             if (!_protocols.IsEmpty)
             {
-                foreach (IProtocolHandler protocolHandler in _protocols.Values)
+                foreach (KeyValuePair<string, IProtocolHandler> kvp in _protocols)
                 {
+                    IProtocolHandler protocolHandler = kvp.Value;
                     try
                     {
                         if (_logger.IsTrace) TraceDisconnectingProtocol(protocolHandler, disconnectReason, details);
@@ -446,7 +443,7 @@ namespace Nethermind.Network.P2P
 
             [MethodImpl(MethodImplOptions.NoInlining)]
             void DebugDisconnectProtocolFailed(IProtocolHandler handler, Exception e)
-                => _logger.Error($"DEBUG/ERROR Failed to disconnect {handler.Name} correctly", e);
+                => _logger.DebugError($"Failed to disconnect {handler.Name} correctly", e);
         }
 
         private readonly Lock _sessionStateLock = new();
@@ -542,8 +539,10 @@ namespace Nethermind.Network.P2P
 
             [MethodImpl(MethodImplOptions.NoInlining)]
             void DebugNoDisconnectedSubscriptions()
-                => _logger.Error($"DEBUG/ERROR  No subscriptions for session disconnected event on {this}");
+                => _logger.DebugError($"No subscriptions for session disconnected event on {this}");
         }
+
+        internal void MarkChannelClosed() => _isChannelClosed = true;
 
         private async Task DisconnectAsync(DisconnectType disconnectType)
         {
@@ -742,10 +741,7 @@ namespace Nethermind.Network.P2P
 
         private bool _isTracked = false;
 
-        public void StartTrackingSession()
-        {
-            _isTracked = true;
-        }
+        public void StartTrackingSession() => _isTracked = true;
 
         private void RecordOutgoingMessageMetric<T>(T message, int size) where T : P2PMessage
         {
@@ -753,7 +749,7 @@ namespace Nethermind.Network.P2P
                 ? handler!.ProtocolVersion
                 : (byte)0;
 
-            P2PMessageKey metricKey = new P2PMessageKey(new VersionedProtocol(message.Protocol, version), message.PacketType);
+            P2PMessageKey metricKey = new(new VersionedProtocol(message.Protocol, version), message.PacketType);
             Metrics.OutgoingP2PMessages.AddOrUpdate(metricKey, 0, IncrementMetric);
             Metrics.OutgoingP2PMessageBytes.AddOrUpdate(metricKey, ZeroMetric, AddMetric, size);
         }
@@ -764,25 +760,16 @@ namespace Nethermind.Network.P2P
             byte version = _protocols.TryGetValue(protocol, out IProtocolHandler? handler)
                 ? handler!.ProtocolVersion
                 : (byte)0;
-            P2PMessageKey metricKey = new P2PMessageKey(new VersionedProtocol(protocol, version), packetType);
+            P2PMessageKey metricKey = new(new VersionedProtocol(protocol, version), packetType);
             Metrics.IncomingP2PMessages.AddOrUpdate(metricKey, 0, IncrementMetric);
             Metrics.IncomingP2PMessageBytes.AddOrUpdate(metricKey, ZeroMetric, AddMetric, size);
         }
 
-        private static long IncrementMetric(P2PMessageKey _, long value)
-        {
-            return value + 1;
-        }
+        private static long IncrementMetric(P2PMessageKey _, long value) => value + 1;
 
-        private static long ZeroMetric(P2PMessageKey _, int i)
-        {
-            return 0;
-        }
+        private static long ZeroMetric(P2PMessageKey _, int i) => 0;
 
-        private static long AddMetric(P2PMessageKey _, long value, int toAdd)
-        {
-            return value + toAdd;
-        }
+        private static long AddMetric(P2PMessageKey _, long value, int toAdd) => value + toAdd;
 
         [DoesNotReturn, StackTraceHidden]
         private void ThrowInvalidSessionState([CallerMemberName] string caller = "")
@@ -800,7 +787,7 @@ namespace Nethermind.Network.P2P
 
             public bool HasHandlers
             {
-                get { lock (_lock) { return _count != 0; }; }
+                get { lock (_lock) { return _count != 0; } }
             }
 
             public void Add(EventHandler<DisconnectEventArgs> handler)

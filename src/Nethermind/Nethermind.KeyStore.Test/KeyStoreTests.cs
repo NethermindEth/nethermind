@@ -59,11 +59,11 @@ public class KeyStoreTests
     [TestCase("{\"address\":\"25dead29c683c5db3e0fabcf8f3757cdb0abe549\",\"crypto\":{\"cipher\":\"aes-128-ctr\",\"ciphertext\":\"4fd59f3a3fa1bed32774b29a40886d5489c0c06a8da014cb44b25792f6c32cb2\",\"cipherparams\":{\"iv\":\"6b850162043a0a879726839cfca55220\"},\"kdf\":\"scrypt\",\"kdfparams\":{\"dklen\":32,\"n\":262144,\"p\":1,\"r\":8,\"salt\":\"cafbe520e0d711cf32d9a2e6b2ecbd231cc7aed09018c5032c637436e02754d1\"},\"mac\":\"379f51c673f1f355a6ffc92b31b37381670eea2e0e23604a2572f5df650d148e\"},\"id\":\"fc7ff6bf-c51e-4e02-bb7c-0c91a3eeab4c\",\"version\":3}")]
     public void Can_unlock_test_accounts(string keyJson)
     {
-        TestContext test = new TestContext();
-        EthereumJsonSerializer serializer = new EthereumJsonSerializer();
+        TestContext test = new();
+        EthereumJsonSerializer serializer = new();
         KeyStoreItem item = serializer.Deserialize<KeyStoreItem>(keyJson);
 
-        SecureString securePassword = new SecureString();
+        SecureString securePassword = new();
         string password = "testpuppeth";
         for (int i = 0; i < password.Length; i++)
         {
@@ -91,18 +91,18 @@ public class KeyStoreTests
     [TestCase("{\"address\":\"25dead29c683c5db3e0fabcf8f3757cdb0abe549\",\"crypto\":{\"cipher\":\"aes-128-ctr\",\"ciphertext\":\"4fd59f3a3fa1bed32774b29a40886d5489c0c06a8da014cb44b25792f6c32cb2\",\"cipherparams\":{\"iv\":\"6b850162043a0a879726839cfca55220\"},\"kdf\":\"scrypt\",\"kdfparams\":{\"dklen\":32,\"n\":262144,\"p\":1,\"r\":8,\"salt\":\"cafbe520e0d711cf32d9a2e6b2ecbd231cc7aed09018c5032c637436e02754d1\"},\"mac\":\"379f51c673f1f355a6ffc92b31b37381670eea2e0e23604a2572f5df650d148e\"},\"id\":\"fc7ff6bf-c51e-4e02-bb7c-0c91a3eeab4c\",\"version\":3}", Ignore = "Order of fields changed from geth to mycryptowallet.")]
     public void Same_storage_format_as_in_geth(string keyJson)
     {
-        TestContext test = new TestContext();
-        EthereumJsonSerializer serializer = new EthereumJsonSerializer();
+        TestContext test = new();
+        EthereumJsonSerializer serializer = new();
         KeyStoreItem item = serializer.Deserialize<KeyStoreItem>(keyJson);
 
-        SecureString securePassword = new SecureString();
+        SecureString securePassword = new();
         string password = "testpuppeth";
         for (int i = 0; i < password.Length; i++)
         {
             securePassword.AppendChar(password[i]);
         }
 
-        Address address = new Address(item.Address);
+        Address address = new(item.Address);
         test.Store.StoreKey(address, item);
 
         try
@@ -121,14 +121,14 @@ public class KeyStoreTests
     [Test]
     public void GenerateKeyAddressesTest()
     {
-        TestContext test = new TestContext();
+        TestContext test = new();
 
         PrivateKey key1;
         PrivateKey key2;
 
         string notAKeyPath = Path.Combine(test.KeyStoreConfig.KeyStoreDirectory, "not_a_key");
 
-        using (var stream = File.Create(notAKeyPath))
+        using (FileStream stream = File.Create(notAKeyPath))
         {
         }
 
@@ -162,7 +162,7 @@ public class KeyStoreTests
     [Test]
     public void GenerateKeyTest()
     {
-        TestContext test = new TestContext();
+        TestContext test = new();
         (PrivateKey, Result) key = test.Store.GenerateKey(test.TestPasswordSecured);
         Assert.That(key.Item2.ResultType, Is.EqualTo(ResultType.Success));
 
@@ -181,7 +181,7 @@ public class KeyStoreTests
     [Test]
     public void KeyStoreVersionMismatchTest()
     {
-        TestContext test = new TestContext();
+        TestContext test = new();
         //generate key
         (PrivateKey key, Result storeResult) = test.Store.GenerateKey(test.TestPasswordSecured);
         Assert.That(storeResult.ResultType, Is.EqualTo(ResultType.Success), "generate result");
@@ -205,7 +205,7 @@ public class KeyStoreTests
     [Test]
     public void WrongPasswordTest()
     {
-        TestContext test = new TestContext();
+        TestContext test = new();
         (PrivateKey key, Result generateResult) = test.Store.GenerateKey(test.TestPasswordSecured);
         Assert.That(generateResult.ResultType, Is.EqualTo(ResultType.Success));
 
@@ -224,16 +224,16 @@ public class KeyStoreTests
     [Test]
     public void ShouldSaveFileWithoutBom()
     {
-        TestContext test = new TestContext();
+        TestContext test = new();
         const string bomBytesHex = "efbbbf";
         const string validBytesHex = "7b2276";
-        var (key, _) = test.Store.GenerateKey(test.TestPasswordSecured);
-        var directory = test.KeyStoreConfig.KeyStoreDirectory.GetApplicationResourcePath();
-        var addressHex = key.Address.ToString(false, false);
-        var file = Directory.GetFiles(directory).SingleOrDefault(f => f.Contains(addressHex));
-        var bytes = File.ReadAllBytes(file);
+        (PrivateKey key, Result _) = test.Store.GenerateKey(test.TestPasswordSecured);
+        string directory = test.KeyStoreConfig.KeyStoreDirectory.GetApplicationResourcePath();
+        string addressHex = key.Address.ToString(false, false);
+        string file = Directory.GetFiles(directory).SingleOrDefault(f => f.Contains(addressHex));
+        byte[] bytes = File.ReadAllBytes(file);
         test.Store.DeleteKey(key.Address);
-        var bytesHex = bytes.ToHexString();
+        string bytesHex = bytes.ToHexString();
         bytesHex.Should().NotStartWith(bomBytesHex);
         bytesHex.Should().StartWith(validBytesHex);
     }

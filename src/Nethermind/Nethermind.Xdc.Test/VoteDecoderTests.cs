@@ -50,20 +50,20 @@ public class VoteDecoderTests
     [TestCaseSource(nameof(VoteCases))]
     public void EncodeDecode_RoundTrip_Matches_AllFields(Vote vote, bool useRlpStream)
     {
-        var decoder = new VoteDecoder();
+        VoteDecoder decoder = new();
 
         Rlp encoded = decoder.Encode(vote);
-        var stream = new RlpStream(encoded.Bytes);
+        RlpStream stream = new(encoded.Bytes);
         Vote decoded;
 
         if (useRlpStream)
         {
-            Rlp.ValueDecoderContext decoderContext = new Rlp.ValueDecoderContext(stream.Data.AsSpan());
+            Rlp.ValueDecoderContext decoderContext = new(stream.Data.AsSpan());
             decoded = decoder.Decode(ref decoderContext);
         }
         else
         {
-            Rlp.ValueDecoderContext decoderContext = new Rlp.ValueDecoderContext(stream.Data.AsSpan());
+            Rlp.ValueDecoderContext decoderContext = new(stream.Data.AsSpan());
             decoded = decoder.Decode(ref decoderContext);
         }
 
@@ -80,14 +80,14 @@ public class VoteDecoderTests
         );
 
         VoteDecoder decoder = new();
-        RlpStream stream = new RlpStream(decoder.GetLength(vote));
+        RlpStream stream = new(decoder.GetLength(vote));
         decoder.Encode(stream, vote);
         stream.Position = 0;
 
-        Rlp.ValueDecoderContext streamCtx = new Rlp.ValueDecoderContext(stream.Data.AsSpan());
+        Rlp.ValueDecoderContext streamCtx = new(stream.Data.AsSpan());
         Vote decodedStream = decoder.Decode(ref streamCtx);
 
-        Rlp.ValueDecoderContext decoderContext = new Rlp.ValueDecoderContext(stream.Data.AsSpan());
+        Rlp.ValueDecoderContext decoderContext = new(stream.Data.AsSpan());
         Vote decodedContext = decoder.Decode(ref decoderContext);
 
         decodedStream.Should().BeEquivalentTo(vote, options => options.Excluding(v => v.Signer));
@@ -104,7 +104,7 @@ public class VoteDecoderTests
             new Signature(new byte[64], 0)
         );
 
-        var decoder = new VoteDecoder();
+        VoteDecoder decoder = new();
         Rlp encoded = decoder.Encode(vote);
 
         int expectedTotal = decoder.GetLength(vote, RlpBehaviors.None);
@@ -121,7 +121,7 @@ public class VoteDecoderTests
             new Signature(new byte[64], 0)
         );
 
-        var decoder = new VoteDecoder();
+        VoteDecoder decoder = new();
 
         Rlp normalEncoded = decoder.Encode(vote, RlpBehaviors.None);
 
@@ -141,7 +141,7 @@ public class VoteDecoderTests
     [Test]
     public void Encode_Null_ReturnsEmptySequence()
     {
-        var decoder = new VoteDecoder();
+        VoteDecoder decoder = new();
 
         Rlp encoded = decoder.Encode(null!);
 
@@ -151,7 +151,7 @@ public class VoteDecoderTests
     [Test]
     public void Decode_Null_ReturnsNull()
     {
-        var decoder = new VoteDecoder();
+        VoteDecoder decoder = new();
         Vote decoded = decoder.Decode((ReadOnlySpan<byte>)Rlp.OfEmptyList.Bytes);
 
         Assert.That(decoded, Is.Null);
@@ -160,8 +160,8 @@ public class VoteDecoderTests
     [Test]
     public void Decode_EmptyByteArray_ValueDecoderContext_ReturnsNull()
     {
-        var decoder = new VoteDecoder();
-        Rlp.ValueDecoderContext decoderContext = new Rlp.ValueDecoderContext(Rlp.OfEmptyList.Bytes);
+        VoteDecoder decoder = new();
+        Rlp.ValueDecoderContext decoderContext = new(Rlp.OfEmptyList.Bytes);
 
         Vote decoded = decoder.Decode(ref decoderContext);
 
@@ -177,7 +177,7 @@ public class VoteDecoderTests
             new Signature(new byte[64], 0)
         );
 
-        var decoder = new VoteDecoder();
+        VoteDecoder decoder = new();
 
         int normalLength = decoder.GetLength(vote, RlpBehaviors.None);
         int sealingLength = decoder.GetLength(vote, RlpBehaviors.ForSealing);
@@ -195,7 +195,7 @@ public class VoteDecoderTests
             new Signature(new byte[64], 0)
         );
 
-        var (round, hash) = vote.PoolKey();
+        (ulong round, Hash256? hash) = vote.PoolKey();
 
         Assert.That(round, Is.EqualTo(1UL));
         Assert.That(hash, Is.Not.EqualTo(Hash256.Zero)); // Should be computed hash

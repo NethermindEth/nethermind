@@ -87,7 +87,7 @@ namespace Nethermind.Core.Test
 
         public Task<IOwnedReadOnlyList<BlockHeader>?> GetBlockHeaders(Hash256 blockHash, int maxBlocks, int skip, CancellationToken token)
         {
-            ArrayPoolList<BlockHeader> result = new ArrayPoolList<BlockHeader>(maxBlocks, maxBlocks);
+            ArrayPoolList<BlockHeader> result = new(maxBlocks, maxBlocks);
             long? firstNumber = _remoteTree.FindHeader(blockHash, BlockTreeLookupOptions.RequireCanonical)?.Number;
             if (!firstNumber.HasValue)
             {
@@ -104,7 +104,7 @@ namespace Nethermind.Core.Test
 
         public Task<IOwnedReadOnlyList<BlockHeader>?> GetBlockHeaders(long number, int maxBlocks, int skip, CancellationToken token)
         {
-            ArrayPoolList<BlockHeader> result = new ArrayPoolList<BlockHeader>(maxBlocks, maxBlocks);
+            ArrayPoolList<BlockHeader> result = new(maxBlocks, maxBlocks);
             long? firstNumber = _remoteTree.FindHeader(number, BlockTreeLookupOptions.RequireCanonical)?.Number;
             if (!firstNumber.HasValue)
             {
@@ -127,10 +127,7 @@ namespace Nethermind.Core.Test
             return Task.FromResult<IOwnedReadOnlyList<BlockHeader>>(result)!;
         }
 
-        public Task<BlockHeader?> GetHeadBlockHeader(Hash256? hash, CancellationToken token)
-        {
-            return Task.FromResult(_remoteTree.Head?.Header);
-        }
+        public Task<BlockHeader?> GetHeadBlockHeader(Hash256? hash, CancellationToken token) => Task.FromResult(_remoteTree.Head?.Header);
 
         private readonly BlockingCollection<Action> _sendQueue = new();
 
@@ -146,15 +143,9 @@ namespace Nethermind.Core.Test
             }
         }
 
-        private void SendNewBlock(Block block)
-        {
-            _sendQueue.Add(() => _remoteSyncServer?.AddNewBlock(block, this));
-        }
+        private void SendNewBlock(Block block) => _sendQueue.Add(() => _remoteSyncServer?.AddNewBlock(block, this));
 
-        private void HintNewBlock(Hash256 blockHash, long number)
-        {
-            _sendQueue.Add(() => _remoteSyncServer?.HintBlock(blockHash, number, this));
-        }
+        private void HintNewBlock(Hash256 blockHash, long number) => _sendQueue.Add(() => _remoteSyncServer?.HintBlock(blockHash, number, this));
 
         public PublicKey Id => Node.Id;
 
@@ -174,10 +165,7 @@ namespace Nethermind.Core.Test
         public Task<IByteArrayList> GetNodeData(IReadOnlyList<Hash256> hashes, CancellationToken token) =>
             Task.FromResult(_remoteSyncServer?.GetNodeData(hashes, token)!);
 
-        public void RegisterSatelliteProtocol<T>(string protocol, T protocolHandler) where T : class
-        {
-            throw new NotImplementedException();
-        }
+        public void RegisterSatelliteProtocol<T>(string protocol, T protocolHandler) where T : class => throw new NotImplementedException();
 
         public bool TryGetSatelliteProtocol<T>(string protocol, out T protocolHandler) where T : class
         {

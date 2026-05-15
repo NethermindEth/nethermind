@@ -18,7 +18,7 @@ public class XdcGenesisBuilder(
     {
         Block builtBlock = genesisBuilder.Build();
 
-        var finalSpec = (IXdcReleaseSpec)specProvider.GetFinalSpec();
+        IXdcReleaseSpec finalSpec = (IXdcReleaseSpec)specProvider.GetFinalSpec();
         snapshotManager.StoreSnapshot(new Types.Snapshot(builtBlock.Number, builtBlock.Hash!, finalSpec.GenesisMasterNodes));
 
         return builtBlock;

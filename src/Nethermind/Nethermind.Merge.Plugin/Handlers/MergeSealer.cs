@@ -9,18 +9,12 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.Merge.Plugin.Handlers
 {
-    public class MergeSealer : ISealer
+    public class MergeSealer(
+        ISealer preMergeSealer,
+        IPoSSwitcher poSSwitcher) : ISealer
     {
-        private readonly ISealer _preMergeSealer;
-        private readonly IPoSSwitcher _poSSwitcher;
-
-        public MergeSealer(
-            ISealer preMergeSealer,
-            IPoSSwitcher poSSwitcher)
-        {
-            _preMergeSealer = preMergeSealer;
-            _poSSwitcher = poSSwitcher;
-        }
+        private readonly ISealer _preMergeSealer = preMergeSealer;
+        private readonly IPoSSwitcher _poSSwitcher = poSSwitcher;
 
         public Task<Block> SealBlock(Block block, CancellationToken cancellationToken)
         {

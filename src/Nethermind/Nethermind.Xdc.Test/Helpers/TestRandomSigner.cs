@@ -6,6 +6,7 @@ using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
+using Nethermind.Xdc.Types;
 using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
@@ -14,8 +15,8 @@ namespace Nethermind.Xdc.Test.Helpers;
 
 internal class TestRandomSigner(List<PrivateKey> masternodeCandidates, IBlockTree blockTree, IEpochSwitchManager epochSwitchManager) : ISigner
 {
-    private readonly Random _rnd = new Random();
-    private readonly EthereumEcdsa _ecdsa = new EthereumEcdsa(0);
+    private readonly Random _rnd = new();
+    private readonly EthereumEcdsa _ecdsa = new(0);
     public PrivateKey? Key { get; private set; }
 
     public Address Address => Key!.Address;
@@ -24,14 +25,12 @@ internal class TestRandomSigner(List<PrivateKey> masternodeCandidates, IBlockTre
 
     public Signature Sign(in ValueHash256 message)
     {
-        var switchInfo = epochSwitchManager.GetEpochSwitchInfo((XdcBlockHeader)blockTree.Head!.Header)!;
-        var c = switchInfo.Masternodes[_rnd.Next(switchInfo.Masternodes.Length)];
+        EpochSwitchInfo switchInfo = epochSwitchManager.GetEpochSwitchInfo((XdcBlockHeader)blockTree.Head!.Header)!;
+        Address c = switchInfo.Masternodes[_rnd.Next(switchInfo.Masternodes.Length)];
         Key = masternodeCandidates.Find(k => k.Address == c)!;
         return _ecdsa.Sign(Key, in message);
     }
 
-    public ValueTask Sign(Transaction tx)
-    {
+    public ValueTask Sign(Transaction tx) =>
         throw new NotImplementedException();
-    }
 }

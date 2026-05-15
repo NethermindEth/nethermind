@@ -8,14 +8,9 @@ using Nethermind.Int256;
 
 namespace Nethermind.Evm.Tracing;
 
-public readonly struct TraceStack
+public readonly struct TraceStack(ReadOnlyMemory<byte> stack)
 {
-    private readonly ReadOnlyMemory<byte> _stack;
-
-    public TraceStack(ReadOnlyMemory<byte> stack)
-    {
-        _stack = stack;
-    }
+    private readonly ReadOnlyMemory<byte> _stack = stack;
 
     public ReadOnlyMemory<byte> this[int index]
     {

@@ -316,7 +316,7 @@ public class TxPriorityContractTests
 
         public override async Task<Block> AddBlock(params Transaction[] transactions)
         {
-            var b = await base.AddBlock(transactions);
+            Block b = await base.AddBlock(transactions);
 
             // ContractDataStore track item from block async.
             await Task.Delay(100);
@@ -432,10 +432,8 @@ public class TxPriorityContractTests
             await fileSemaphore.WaitAsync(100);
         }
 
-        private void WriteFile(TxPriorityContract.LocalData localData)
-        {
+        private void WriteFile(TxPriorityContract.LocalData localData) =>
             File.WriteAllText(TempFile.Path, new EthereumJsonSerializer().Serialize(localData));
-        }
     }
 
     private class TxPermissionContractBlockchainWithBlocksAndLocalDataBeforeStart : TxPermissionContractBlockchainWithBlocksAndLocalData

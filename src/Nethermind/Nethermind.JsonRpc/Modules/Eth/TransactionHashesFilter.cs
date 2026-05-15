@@ -23,7 +23,7 @@ public class TransactionHashesFilter : IJsonRpcParam
                 throw new ArgumentException("Cannot subscribe to more than 200 transaction hashes at once.");
             }
 
-            var hashes = new HashSet<ValueHash256>();
+            HashSet<ValueHash256> hashes = new();
 
             foreach (JsonElement hashElement in hashesElement.EnumerateArray())
             {

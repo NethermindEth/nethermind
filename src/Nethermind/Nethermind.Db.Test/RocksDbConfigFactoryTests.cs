@@ -17,8 +17,8 @@ public class RocksDbConfigFactoryTests
     [Test]
     public void CanFetchNormally()
     {
-        var dbConfig = new DbConfig();
-        var factory = new RocksDbConfigFactory(dbConfig, new PruningConfig(), new TestHardwareInfo(0), LimboLogs.Instance);
+        DbConfig dbConfig = new();
+        RocksDbConfigFactory factory = new(dbConfig, new PruningConfig(), new TestHardwareInfo(0), LimboLogs.Instance);
         IRocksDbConfig config = factory.GetForDatabase("State0", null);
         config.RocksDbOptions.Should().Be(dbConfig.RocksDbOptions + dbConfig.StateDbRocksDbOptions);
     }
@@ -26,10 +26,10 @@ public class RocksDbConfigFactoryTests
     [Test]
     public void WillOverrideStateConfigOnArchiveMode()
     {
-        var dbConfig = new DbConfig();
-        var pruningConfig = new PruningConfig();
+        DbConfig dbConfig = new();
+        PruningConfig pruningConfig = new();
         pruningConfig.Mode = PruningMode.Full;
-        var factory = new RocksDbConfigFactory(dbConfig, pruningConfig, new TestHardwareInfo(0), LimboLogs.Instance);
+        RocksDbConfigFactory factory = new(dbConfig, pruningConfig, new TestHardwareInfo(0), LimboLogs.Instance);
         IRocksDbConfig config = factory.GetForDatabase("State0", null);
         config.RocksDbOptions.Should().Be(dbConfig.RocksDbOptions + dbConfig.StateDbRocksDbOptions + dbConfig.StateDbArchiveModeRocksDbOptions);
     }
@@ -37,8 +37,8 @@ public class RocksDbConfigFactoryTests
     [Test]
     public void WillOverrideStateConfigWhenMemoryIsHigh()
     {
-        var dbConfig = new DbConfig();
-        var factory = new RocksDbConfigFactory(dbConfig, new PruningConfig(), new TestHardwareInfo(100.GiB), LimboLogs.Instance);
+        DbConfig dbConfig = new();
+        RocksDbConfigFactory factory = new(dbConfig, new PruningConfig(), new TestHardwareInfo(100.GiB), LimboLogs.Instance);
         IRocksDbConfig config = factory.GetForDatabase("State0", null);
         config.RocksDbOptions.Should().Be(dbConfig.RocksDbOptions + dbConfig.StateDbRocksDbOptions + dbConfig.StateDbLargeMemoryRocksDbOptions);
     }
@@ -46,11 +46,11 @@ public class RocksDbConfigFactoryTests
     [Test]
     public void WillOverrideStateConfigWhenDirtyCachesTooHigh()
     {
-        var dbConfig = new DbConfig();
-        var pruningConfig = new PruningConfig();
+        DbConfig dbConfig = new();
+        PruningConfig pruningConfig = new();
         pruningConfig.CacheMb = 20000;
         pruningConfig.DirtyCacheMb = 10000;
-        var factory = new RocksDbConfigFactory(dbConfig, pruningConfig, new TestHardwareInfo(0), LimboLogs.Instance);
+        RocksDbConfigFactory factory = new(dbConfig, pruningConfig, new TestHardwareInfo(0), LimboLogs.Instance);
         IRocksDbConfig config = factory.GetForDatabase("State0", null);
         config.WriteBufferSize.Should().Be((ulong)500.MB);
     }
@@ -66,16 +66,16 @@ public class RocksDbConfigFactoryTests
     public int? MaxOpenFilesIsSetCorrectly(int? systemLimit, int? userConfigured = null)
     {
         DbConfig dbConfig = new() { MaxOpenFiles = userConfigured };
-        RocksDbConfigFactory factory = new RocksDbConfigFactory(dbConfig, new PruningConfig(), new TestHardwareInfo(0, systemLimit), LimboLogs.Instance);
+        RocksDbConfigFactory factory = new(dbConfig, new PruningConfig(), new TestHardwareInfo(0, systemLimit), LimboLogs.Instance);
         return factory.GetForDatabase("State0", null).MaxOpenFiles;
     }
 
     [Test]
     public void WillApplySkipSstFileSizeChecksWhenConfigExplicitlyEnabled()
     {
-        var dbConfig = new DbConfig();
+        DbConfig dbConfig = new();
         dbConfig.SkipCheckingSstFileSizesOnDbOpen = true;
-        var factory = new RocksDbConfigFactory(dbConfig, new PruningConfig(), new TestHardwareInfo(0), LimboLogs.Instance);
+        RocksDbConfigFactory factory = new(dbConfig, new PruningConfig(), new TestHardwareInfo(0), LimboLogs.Instance);
         IRocksDbConfig config = factory.GetForDatabase("State0", null);
         config.RocksDbOptions.Should().Contain("skip_checking_sst_file_sizes_on_db_open=true;");
     }
@@ -83,9 +83,9 @@ public class RocksDbConfigFactoryTests
     [Test]
     public void WillNotApplySkipSstFileSizeChecksWhenConfigExplicitlyDisabled()
     {
-        var dbConfig = new DbConfig();
+        DbConfig dbConfig = new();
         dbConfig.SkipCheckingSstFileSizesOnDbOpen = false;
-        var factory = new RocksDbConfigFactory(dbConfig, new PruningConfig(), new TestHardwareInfo(0), LimboLogs.Instance);
+        RocksDbConfigFactory factory = new(dbConfig, new PruningConfig(), new TestHardwareInfo(0), LimboLogs.Instance);
         IRocksDbConfig config = factory.GetForDatabase("State0", null);
         config.RocksDbOptions.Should().NotContain("skip_checking_sst_file_sizes_on_db_open");
     }

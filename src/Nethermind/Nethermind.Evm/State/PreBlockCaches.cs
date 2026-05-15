@@ -24,15 +24,12 @@ public class PreBlockCaches
     private readonly SeqlockCache<NodeKey, byte[]?> _rlpCache = new();
     private readonly ConcurrentDictionary<PrecompileCacheKey, Result<byte[]>> _precompileCache = new(LockPartitions, InitialCapacity);
 
-    public PreBlockCaches()
-    {
-        _clearCaches =
+    public PreBlockCaches() => _clearCaches =
         [
             () => { _storageCache.Clear(); return CacheType.None; },
             () => { _stateCache.Clear(); return CacheType.None; },
             () => { _precompileCache.NoResizeClear(); return CacheType.None; }
         ];
-    }
 
     public SeqlockCache<StorageCell, byte[]> StorageCache => _storageCache;
     public SeqlockCache<AddressAsKey, Account> StateCache => _stateCache;

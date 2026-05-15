@@ -65,9 +65,7 @@ namespace Ethereum.Difficulty.Test
 
         private static UInt256 ToUInt256(string hex) => Bytes.FromHexString(hex.Replace("0x", "0")).ToUInt256();
 
-        private static DifficultyTests ToTest(string fileName, string name, DifficultyTestHexJson json)
-        {
-            return new DifficultyTests(
+        private static DifficultyTests ToTest(string fileName, string name, DifficultyTestHexJson json) => new(
                 fileName,
                 name,
                 (ulong)ToUInt256(json.ParentTimestamp),
@@ -76,7 +74,6 @@ namespace Ethereum.Difficulty.Test
                 (long)ToUInt256(json.CurrentBlockNumber),
                 ToUInt256(json.CurrentDifficulty),
                 HasUncles(json.ParentUncles));
-        }
 
         private static bool HasUncles(string parentUncles) =>
             parentUncles switch

@@ -28,26 +28,23 @@ public class LogIndexRpcModule(ILogIndexStorage storage, ILogIndexBuilder builde
         return ResultWrapper<IEnumerable<long>>.Success(storage.EnumerateBlockNumbersFor(logFilter, from, to));
     }
 
-    public ResultWrapper<LogIndexStatus> logIndex_status()
+    public ResultWrapper<LogIndexStatus> logIndex_status() => ResultWrapper<LogIndexStatus>.Success(new()
     {
-        return ResultWrapper<LogIndexStatus>.Success(new()
+        Current = new()
         {
-            Current = new()
-            {
-                FromBlock = storage.MinBlockNumber,
-                ToBlock = storage.MaxBlockNumber
-            },
-            Target = new()
-            {
-                FromBlock = builder.MinTargetBlockNumber,
-                ToBlock = builder.MaxTargetBlockNumber
-            },
-            IsRunning = builder.IsRunning,
-            LastUpdate = builder.LastUpdate,
-            LastError = builder.LastError?.ToString(),
-            DbSize = storage.GetDbSize()
-        });
-    }
+            FromBlock = storage.MinBlockNumber,
+            ToBlock = storage.MaxBlockNumber
+        },
+        Target = new()
+        {
+            FromBlock = builder.MinTargetBlockNumber,
+            ToBlock = builder.MaxTargetBlockNumber
+        },
+        IsRunning = builder.IsRunning,
+        LastUpdate = builder.LastUpdate,
+        LastError = builder.LastError?.ToString(),
+        DbSize = storage.GetDbSize()
+    });
 
     private long? GetBlockNumber(BlockParameter parameter) =>
         parameter.BlockNumber ?? blockFinder.FindBlock(parameter)?.Number;

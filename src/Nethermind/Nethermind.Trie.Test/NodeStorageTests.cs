@@ -19,8 +19,8 @@ public class NodeStorageTests(INodeStorage.KeyScheme currentKeyScheme)
     [Test]
     public void Should_StoreAndRead()
     {
-        TestMemDb testDb = new TestMemDb();
-        NodeStorage nodeStorage = new NodeStorage(testDb, currentKeyScheme);
+        TestMemDb testDb = new();
+        NodeStorage nodeStorage = new(testDb, currentKeyScheme);
 
         nodeStorage.KeyExists(null, TreePath.Empty, TestItem.KeccakA).Should().BeFalse();
         nodeStorage.Set(null, TreePath.Empty, TestItem.KeccakA, TestItem.KeccakA.BytesToArray());
@@ -40,8 +40,8 @@ public class NodeStorageTests(INodeStorage.KeyScheme currentKeyScheme)
     [Test]
     public void Should_StoreAndRead_WithStorage()
     {
-        TestMemDb testDb = new TestMemDb();
-        NodeStorage nodeStorage = new NodeStorage(testDb, currentKeyScheme);
+        TestMemDb testDb = new();
+        NodeStorage nodeStorage = new(testDb, currentKeyScheme);
 
         nodeStorage.KeyExists(TestItem.KeccakB, TreePath.Empty, TestItem.KeccakA).Should().BeFalse();
         nodeStorage.Set(TestItem.KeccakB, TreePath.Empty, TestItem.KeccakA, TestItem.KeccakA.BytesToArray());
@@ -61,8 +61,8 @@ public class NodeStorageTests(INodeStorage.KeyScheme currentKeyScheme)
     [Test]
     public void When_KeyNotExist_Should_TryBothKeyType()
     {
-        TestMemDb testDb = new TestMemDb();
-        NodeStorage nodeStorage = new NodeStorage(testDb, currentKeyScheme);
+        TestMemDb testDb = new();
+        NodeStorage nodeStorage = new(testDb, currentKeyScheme);
 
         nodeStorage.Get(TestItem.KeccakB, TreePath.Empty, TestItem.KeccakA).Should().BeNull();
 
@@ -73,8 +73,8 @@ public class NodeStorageTests(INodeStorage.KeyScheme currentKeyScheme)
     [Test]
     public void When_EntryOfDifferentScheme_Should_StillBeAbleToRead()
     {
-        TestMemDb testDb = new TestMemDb();
-        NodeStorage nodeStorage = new NodeStorage(testDb, currentKeyScheme);
+        TestMemDb testDb = new();
+        NodeStorage nodeStorage = new(testDb, currentKeyScheme);
 
         if (currentKeyScheme == INodeStorage.KeyScheme.Hash)
         {
@@ -111,10 +111,10 @@ public class NodeStorageTests(INodeStorage.KeyScheme currentKeyScheme)
             address = new Hash256("1111111111111111111111111111111111111111111111111111111111111111");
         }
 
-        TreePath path = new TreePath(new Hash256("2222222222222222222222222222222222222222222222222222222222222222"), 64);
+        TreePath path = new(new Hash256("2222222222222222222222222222222222222222222222222222222222222222"), 64);
         path.TruncateMut(pathLength);
 
-        Hash256? hash = new Hash256("3333333333333333333333333333333333333333333333333333333333333333");
+        Hash256? hash = new("3333333333333333333333333333333333333333333333333333333333333333");
 
         NodeStorage.GetHalfPathNodeStoragePath(address, path, hash).ToHexString().Should().Be(expectedKey);
     }
@@ -126,8 +126,8 @@ public class NodeStorageTests(INodeStorage.KeyScheme currentKeyScheme)
     {
         if (currentKeyScheme == INodeStorage.KeyScheme.Hash) return;
 
-        TestMemDb testDb = new TestMemDb();
-        NodeStorage nodeStorage = new NodeStorage(testDb, currentKeyScheme);
+        TestMemDb testDb = new();
+        NodeStorage nodeStorage = new(testDb, currentKeyScheme);
 
         Hash256? address = null;
         if (hasAddress)
@@ -135,7 +135,7 @@ public class NodeStorageTests(INodeStorage.KeyScheme currentKeyScheme)
             address = new Hash256("1111111111111111111111111111111111111111111111111111111111111111");
         }
 
-        TreePath path = new TreePath(new Hash256("2222222222222222222222222222222222222222222222222222222222222222"), 64);
+        TreePath path = new(new Hash256("2222222222222222222222222222222222222222222222222222222222222222"), 64);
         path.TruncateMut(pathLength);
 
         nodeStorage.Get(address, path, Keccak.Zero, ReadFlags.HintReadAhead);

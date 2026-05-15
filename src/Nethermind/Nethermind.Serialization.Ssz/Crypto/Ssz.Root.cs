@@ -20,10 +20,7 @@ public static partial class Ssz
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static void Encode(Span<byte> span, Root value)
-    {
-        Encode(span, value.AsSpan());
-    }
+    public static void Encode(Span<byte> span, Root value) => Encode(span, value.AsSpan());
 
     //        public static void Encode(Span<byte> span, ReadOnlySpan<Hash32> value)
     //        {
@@ -49,10 +46,7 @@ public static partial class Ssz
         return hash32;
     }
 
-    public static Root DecodeRoot(ReadOnlySpan<byte> span)
-    {
-        return new Root(span);
-    }
+    public static Root DecodeRoot(ReadOnlySpan<byte> span) => new(span);
 
 
 

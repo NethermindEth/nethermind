@@ -13,10 +13,8 @@ namespace Nethermind.Synchronization.Test.FastSync
     [TestFixture]
     public class PendingSyncItemsTests
     {
-        private IPendingSyncItems Init(bool isSnapSync = false)
-        {
-            return new PendingSyncItems(isSnapSync);
-        }
+        private IPendingSyncItems Init(bool isSnapSync = false) =>
+            new PendingSyncItems(isSnapSync);
 
         [Test]
         public void At_start_count_is_zero()
@@ -189,20 +187,14 @@ namespace Nethermind.Synchronization.Test.FastSync
             batch[2].Rightness.Should().Be(15);
         }
 
-        private static StateSyncItem PushCode(IPendingSyncItems items, int progress = 0)
-        {
-            return PushItem(items, NodeDataType.Code, 0, 0, progress);
-        }
+        private static StateSyncItem PushCode(IPendingSyncItems items, int progress = 0) =>
+            PushItem(items, NodeDataType.Code, 0, 0, progress);
 
-        private static StateSyncItem PushStorage(IPendingSyncItems items, int level, uint rightness, int progress = 0)
-        {
-            return PushItem(items, NodeDataType.Storage, level, rightness, progress);
-        }
+        private static StateSyncItem PushStorage(IPendingSyncItems items, int level, uint rightness, int progress = 0) =>
+            PushItem(items, NodeDataType.Storage, level, rightness, progress);
 
-        private static StateSyncItem PushState(IPendingSyncItems items, int level, uint rightness, int progress = 0)
-        {
-            return PushItem(items, NodeDataType.State, level, rightness, progress);
-        }
+        private static StateSyncItem PushState(IPendingSyncItems items, int level, uint rightness, int progress = 0) =>
+            PushItem(items, NodeDataType.State, level, rightness, progress);
 
         private static StateSyncItem PushItem(IPendingSyncItems items, NodeDataType nodeDataType, int level, uint rightness, int progress = 0)
         {

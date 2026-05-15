@@ -38,7 +38,7 @@ namespace Nethermind.Synchronization.Test.SnapSync.SnapSyncFeed
             feed.AnalyzeResponsePerPeer(AddRangeResult.DifferentRootHash, peer1);
             feed.AnalyzeResponsePerPeer(AddRangeResult.OK, peer2);
 
-            var result = feed.AnalyzeResponsePerPeer(AddRangeResult.ExpiredRootHash, peer1);
+            SyncResponseHandlingResult result = feed.AnalyzeResponsePerPeer(AddRangeResult.ExpiredRootHash, peer1);
 
             Assert.That(result, Is.EqualTo(SyncResponseHandlingResult.LesserQuality));
 
@@ -72,7 +72,7 @@ namespace Nethermind.Synchronization.Test.SnapSync.SnapSyncFeed
             feed.AnalyzeResponsePerPeer(AddRangeResult.DifferentRootHash, peer1);
             feed.AnalyzeResponsePerPeer(AddRangeResult.OK, peer2);
 
-            var result = feed.AnalyzeResponsePerPeer(AddRangeResult.ExpiredRootHash, peer1);
+            SyncResponseHandlingResult result = feed.AnalyzeResponsePerPeer(AddRangeResult.ExpiredRootHash, peer1);
 
             Assert.That(result, Is.EqualTo(SyncResponseHandlingResult.LesserQuality));
 
@@ -100,7 +100,7 @@ namespace Nethermind.Synchronization.Test.SnapSync.SnapSyncFeed
             feed.AnalyzeResponsePerPeer(AddRangeResult.ExpiredRootHash, peer1);
             feed.AnalyzeResponsePerPeer(AddRangeResult.ExpiredRootHash, peer1);
             feed.AnalyzeResponsePerPeer(AddRangeResult.ExpiredRootHash, peer1);
-            var result = feed.AnalyzeResponsePerPeer(AddRangeResult.DifferentRootHash, peer1);
+            SyncResponseHandlingResult result = feed.AnalyzeResponsePerPeer(AddRangeResult.DifferentRootHash, peer1);
             Assert.That(result, Is.EqualTo(SyncResponseHandlingResult.OK));
 
             snapProvider.Received(1).UpdatePivot();

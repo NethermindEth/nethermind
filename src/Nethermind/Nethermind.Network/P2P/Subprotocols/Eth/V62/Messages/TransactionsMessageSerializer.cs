@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using DotNetty.Buffers;
@@ -46,7 +46,25 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
 
         public static IOwnedReadOnlyList<Transaction> DeserializeTxs(ref Rlp.ValueDecoderContext ctx)
         {
-            return Rlp.DecodeArrayPool<Transaction>(ref ctx, RlpBehaviors.InMempoolForm, limit: RlpLimit);
+            int checkPosition = ctx.ReadSequenceLength() + ctx.Position;
+            int length = ctx.PeekNumberOfItemsRemaining(checkPosition);
+            ctx.GuardLimit(length, RlpLimit);
+
+            ArrayPoolList<Transaction> result = new(length);
+            try
+            {
+                for (int i = 0; i < length; i++)
+                {
+                    result.Add(TxDecoder.Instance.DecodeGuardNotNull(ref ctx, RlpBehaviors.InMempoolForm));
+                }
+                ctx.Check(checkPosition);
+                return result;
+            }
+            catch
+            {
+                result.Dispose();
+                throw;
+            }
         }
     }
 }

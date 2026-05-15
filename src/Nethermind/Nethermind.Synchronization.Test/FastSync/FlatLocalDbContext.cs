@@ -43,7 +43,7 @@ public class FlatLocalDbContext(IPersistence persistence, ILogManager logManager
         WritableTrieStore adapter = new(reader, writeBatch);
         StateTree tree = new(adapter, logManager);
 
-        foreach (var (address, account) in accounts)
+        foreach ((Hash256? address, Account? account) in accounts)
             tree.Set(address, account);
         tree.Commit();
     }

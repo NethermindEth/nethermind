@@ -34,7 +34,7 @@ internal class XdcBlockProducerTest
         xdcReleaseSpec.EpochLength.Returns(900);
         xdcReleaseSpec.GasLimitBoundDivisor.Returns(1);
         specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(xdcReleaseSpec);
-        var epochManager = Substitute.For<IEpochSwitchManager>();
+        IEpochSwitchManager epochManager = Substitute.For<IEpochSwitchManager>();
         IWorldState stateProvider = Substitute.For<IWorldState>();
         stateProvider.HasStateForBlock(Arg.Any<BlockHeader>()).Returns(true);
 
@@ -47,17 +47,17 @@ internal class XdcBlockProducerTest
 
         XdcBlockHeader parent = Build.A.XdcBlockHeader().TestObject;
 
-        var xdcContext = new XdcConsensusContext();
+        XdcConsensusContext xdcContext = new();
         xdcContext.SetNewRound(1);
         xdcContext.HighestQC = XdcTestHelper.CreateQc(new Types.BlockRoundInfo(parent.Hash!, 0, parent.Number), 0, masterNodes);
 
-        var quorumCertificateManager = Substitute.For<IQuorumCertificateManager>();
+        IQuorumCertificateManager quorumCertificateManager = Substitute.For<IQuorumCertificateManager>();
         quorumCertificateManager.VerifyCertificate(Arg.Any<QuorumCertificate>(), Arg.Any<XdcBlockHeader>(), out _).Returns(true);
 
         IBlockchainProcessor processor = Substitute.For<IBlockchainProcessor>();
         processor.Process(Arg.Any<Block>(), Arg.Any<ProcessingOptions>(), Arg.Any<IBlockTracer>()).Returns(args => args.ArgAt<Block>(0));
 
-        XdcBlockProducer producer = new XdcBlockProducer(
+        XdcBlockProducer producer = new(
             epochManager,
             Substitute.For<IMasternodesCalculator>(),
             xdcContext,
@@ -72,7 +72,7 @@ internal class XdcBlockProducerTest
             Substitute.For<ILogManager>(),
             Substitute.For<IDifficultyCalculator>(),
             Substitute.For<IBlocksConfig>());
-        XdcHeaderValidator headerValidator = new XdcHeaderValidator(Substitute.For<IBlockTree>(), quorumCertificateManager, new XdcSealValidator(Substitute.For<IMasternodesCalculator>(), epochManager, specProvider), specProvider, NullLogManager.Instance);
+        XdcHeaderValidator headerValidator = new(Substitute.For<IBlockTree>(), quorumCertificateManager, new XdcSealValidator(Substitute.For<IMasternodesCalculator>(), epochManager, specProvider), specProvider, NullLogManager.Instance);
 
         Block? block = await producer.BuildBlock(parent);
 

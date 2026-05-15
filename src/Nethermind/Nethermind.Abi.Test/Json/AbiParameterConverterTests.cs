@@ -71,14 +71,14 @@ namespace Nethermind.Abi.Test.Json
         {
             AbiParameterConverter.RegisterFactory(new AbiTypeFactory(new AbiTuple<CustomAbiType>()));
 
-            var converter = new AbiParameterConverter();
+            AbiParameterConverter converter = new();
             var model = new { name = "theName", type, components };
             byte[] json = Encoding.UTF8.GetBytes(JsonSerializer.Serialize(model));
-            Utf8JsonReader jsonReader = new Utf8JsonReader(json);
+            Utf8JsonReader jsonReader = new(json);
             try
             {
-                var result = converter.Read(ref jsonReader, typeof(AbiParameter), JsonSerializerOptions.Default);
-                var expectation = new AbiParameter() { Name = "theName", Type = expectedType };
+                AbiParameter result = converter.Read(ref jsonReader, typeof(AbiParameter), JsonSerializerOptions.Default);
+                AbiParameter expectation = new() { Name = "theName", Type = expectedType };
                 expectedException.Should().BeNull();
                 result.Should().BeEquivalentTo(expectation);
             }

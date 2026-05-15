@@ -10,16 +10,10 @@ using Nethermind.Evm.TransactionProcessing;
 
 namespace Nethermind.Optimism;
 
-public class OptimismBlockReceiptTracer : BlockReceiptsTracer
+public class OptimismBlockReceiptTracer(IOptimismSpecHelper opSpecHelper, IWorldState worldState) : BlockReceiptsTracer
 {
-    private readonly IOptimismSpecHelper _opSpecHelper;
-    private readonly IWorldState _worldState;
-
-    public OptimismBlockReceiptTracer(IOptimismSpecHelper opSpecHelper, IWorldState worldState)
-    {
-        _opSpecHelper = opSpecHelper;
-        _worldState = worldState;
-    }
+    private readonly IOptimismSpecHelper _opSpecHelper = opSpecHelper;
+    private readonly IWorldState _worldState = worldState;
 
     private (ulong?, ulong?) GetDepositReceiptData(BlockHeader header)
     {

@@ -15,7 +15,7 @@ public class VisitorProgressTrackerTests
     public void OnNodeVisited_TracksProgress_AtLevel0()
     {
         // Arrange
-        var tracker = new VisitorProgressTracker("Test", LimboLogs.Instance, reportingInterval: 1000);
+        VisitorProgressTracker tracker = new("Test", LimboLogs.Instance, reportingInterval: 1000);
 
         // Act - visit leaf paths with single nibble, each covers 16^3 = 4096 level-3 nodes
         // Visit half the keyspace (8 out of 16) = 8 * 4096 = 32768 out of 65536 = 50%
@@ -34,7 +34,7 @@ public class VisitorProgressTrackerTests
     public void OnNodeVisited_UsesDeepestLevelWithCoverage()
     {
         // Arrange
-        var tracker = new VisitorProgressTracker("Test", LimboLogs.Instance, reportingInterval: 100000);
+        VisitorProgressTracker tracker = new("Test", LimboLogs.Instance, reportingInterval: 100000);
 
         // Act - visit leaf nodes at 2-nibble depth
         // Each leaf at depth 2 covers 16^(3-2+1) = 16^2 = 256 level-3 nodes
@@ -54,7 +54,7 @@ public class VisitorProgressTrackerTests
     public void OnNodeVisited_IsThreadSafe()
     {
         // Arrange
-        var tracker = new VisitorProgressTracker("Test", LimboLogs.Instance, reportingInterval: 100000);
+        VisitorProgressTracker tracker = new("Test", LimboLogs.Instance, reportingInterval: 100000);
         const int threadCount = 8;
         const int nodesPerThread = 1000;
 
@@ -80,7 +80,7 @@ public class VisitorProgressTrackerTests
     public void OnNodeVisited_ProgressIncreases_WithinLevel()
     {
         // Arrange
-        var tracker = new VisitorProgressTracker("Test", LimboLogs.Instance, reportingInterval: 100000);
+        VisitorProgressTracker tracker = new("Test", LimboLogs.Instance, reportingInterval: 100000);
 
         // Act - visit leaf nodes with single nibble paths
         // Each covers 16^3 = 4096 level-3 nodes
@@ -103,7 +103,7 @@ public class VisitorProgressTrackerTests
     public void Finish_SetsProgressTo100()
     {
         // Arrange
-        var tracker = new VisitorProgressTracker("Test", LimboLogs.Instance, reportingInterval: 100000);
+        VisitorProgressTracker tracker = new("Test", LimboLogs.Instance, reportingInterval: 100000);
         TreePath path = TreePath.FromNibble(new byte[] { 0, 0, 0, 0 });
         tracker.OnNodeVisited(path);
 
@@ -119,7 +119,7 @@ public class VisitorProgressTrackerTests
     public void OnNodeVisited_HandlesShortPaths()
     {
         // Arrange
-        var tracker = new VisitorProgressTracker("Test", LimboLogs.Instance, reportingInterval: 100000);
+        VisitorProgressTracker tracker = new("Test", LimboLogs.Instance, reportingInterval: 100000);
 
         // Act - visit paths with fewer than 4 nibbles
         TreePath path1 = TreePath.FromNibble(new byte[] { 0 });
@@ -138,7 +138,7 @@ public class VisitorProgressTrackerTests
     public void OnNodeVisited_HandlesEmptyPath()
     {
         // Arrange
-        var tracker = new VisitorProgressTracker("Test", LimboLogs.Instance, reportingInterval: 100000);
+        VisitorProgressTracker tracker = new("Test", LimboLogs.Instance, reportingInterval: 100000);
 
         // Act
         TreePath path = TreePath.Empty;

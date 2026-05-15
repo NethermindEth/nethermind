@@ -15,7 +15,7 @@ public static class LogIndexStorageTestExtensions
     {
         public List<int> GetBlockNumbersFor(Address address, int from, int to)
         {
-            var result = new List<int>();
+            List<int> result = new();
             using IEnumerator<int> enumerator = storage.GetEnumerator(address, from, to);
 
             while (enumerator.MoveNext())
@@ -26,7 +26,7 @@ public static class LogIndexStorageTestExtensions
 
         public List<int> GetBlockNumbersFor(int index, Hash256 topic, int from, int to)
         {
-            var result = new List<int>();
+            List<int> result = new();
             using IEnumerator<int> enumerator = storage.GetEnumerator(index, topic, from, to);
 
             while (enumerator.MoveNext())

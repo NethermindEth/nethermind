@@ -11,8 +11,8 @@ Type[] types = [
     ..Directory.GetFiles(Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location) ?? ".", "Nethermind.*.dll").SelectMany(f => GetConfigTypes(Assembly.LoadFrom(f))),
     ];
 
-var assemblyName = new AssemblyName("Nethermind.Config");
-var assemblyBuilder = AssemblyBuilder.DefineDynamicAssembly(assemblyName, AssemblyBuilderAccess.Run);
+AssemblyName assemblyName = new AssemblyName("Nethermind.Config");
+AssemblyBuilder assemblyBuilder = AssemblyBuilder.DefineDynamicAssembly(assemblyName, AssemblyBuilderAccess.Run);
 ModuleBuilder moduleBuilder = assemblyBuilder.DefineDynamicModule("MainModule");
 
 TypeBuilder typeBuilder = moduleBuilder.DefineType("NethermindConfig", TypeAttributes.Public);

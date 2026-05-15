@@ -27,7 +27,7 @@ public static class Extensions
         {
             AddPrecompile<BN254AddPrecompile>();
             AddPrecompile<BN254MulPrecompile>();
-            AddPrecompile<BN254PairingPrecompile>();
+            AddPrecompile<BN254PairingCheckPrecompile>();
         }
 
         if (spec.BlakeEnabled)
@@ -54,11 +54,6 @@ public static class Extensions
         if (spec.IsEip7951Enabled)
         {
             AddPrecompile<SecP256r1Precompile>();
-        }
-
-        if (spec.IsRip7728Enabled)
-        {
-            AddPrecompile<L1SloadPrecompile>();
         }
 
         return precompiles;

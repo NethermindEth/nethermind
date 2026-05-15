@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -15,36 +15,30 @@ using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
+using Nethermind.Core.Exceptions;
 using Nethermind.JsonRpc.Exceptions;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using Nethermind.State;
+using Nethermind.Trie;
 using static Nethermind.JsonRpc.Modules.RpcModuleProvider;
 using static Nethermind.JsonRpc.Modules.RpcModuleProvider.ResolvedMethodInfo;
 
 namespace Nethermind.JsonRpc;
 
-public sealed class JsonRpcService : IJsonRpcService
+public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogManager logManager, IJsonRpcConfig jsonRpcConfig) : IJsonRpcService
 {
     private readonly static Lock _reparseLock = new();
     private static Dictionary<TypeAsKey, bool> _reparseReflectionCache = new();
 
-    private readonly ILogger _logger;
-    private readonly IRpcModuleProvider _rpcModuleProvider;
-    private readonly HashSet<string> _methodsLoggingFiltering;
+    private readonly ILogger _logger = logManager.GetClassLogger<JsonRpcService>();
+    private readonly IRpcModuleProvider _rpcModuleProvider = rpcModuleProvider;
+    private readonly HashSet<string> _methodsLoggingFiltering = (jsonRpcConfig.MethodsLoggingFiltering ?? []).ToHashSet();
     private readonly Lock _propertyInfoModificationLock = new();
-    private readonly int _maxLoggedRequestParametersCharacters;
+    private readonly int _maxLoggedRequestParametersCharacters = jsonRpcConfig.MaxLoggedRequestParametersCharacters ?? int.MaxValue;
 
     private Dictionary<TypeAsKey, PropertyInfo?> _propertyInfoCache = [];
-
-    public JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogManager logManager, IJsonRpcConfig jsonRpcConfig)
-    {
-        _logger = logManager.GetClassLogger<JsonRpcService>();
-        _rpcModuleProvider = rpcModuleProvider;
-        _methodsLoggingFiltering = (jsonRpcConfig.MethodsLoggingFiltering ?? []).ToHashSet();
-        _maxLoggedRequestParametersCharacters = jsonRpcConfig.MaxLoggedRequestParametersCharacters ?? int.MaxValue;
-    }
 
     public async Task<JsonRpcResponse> SendRequestAsync(JsonRpcRequest rpcRequest, JsonRpcContext context)
     {
@@ -70,29 +64,18 @@ public sealed class JsonRpcService : IJsonRpcService
 
     private JsonRpcErrorResponse ReturnErrorResponse(JsonRpcRequest rpcRequest, Exception ex)
     {
-        int errorCode;
-        string errorText;
-        if (ex is TargetInvocationException tx)
+        // Unwrap reflection-wrapped exceptions so the switch below sees the real type.
+        if (ex is TargetInvocationException { InnerException: { } inner })
         {
-            errorCode = ErrorCodes.InternalError;
-            ex = tx.InnerException;
-            errorText = "Internal error";
+            ex = inner;
         }
-        else if (ex is LimitExceededException)
+
+        (int errorCode, string errorText) = ex switch
         {
-            errorCode = ErrorCodes.LimitExceeded;
-            errorText = "Too many requests";
-        }
-        else if (ex is ModuleRentalTimeoutException)
-        {
-            errorCode = ErrorCodes.ModuleTimeout;
-            errorText = "Timeout";
-        }
-        else
-        {
-            errorCode = ErrorCodes.InternalError;
-            errorText = "Internal error";
-        }
+            LimitExceededException or ConcurrencyLimitReachedException => (ErrorCodes.LimitExceeded, "Too many requests"),
+            ModuleRentalTimeoutException => (ErrorCodes.ModuleTimeout, "Timeout"),
+            _ => (ErrorCodes.InternalError, "Internal error"),
+        };
 
         if (_logger.IsError) _logger.Error($"Error during method execution, request: {rpcRequest}", ex);
         return GetErrorResponse(rpcRequest.Method, errorCode, errorText, ex.ToString(), rpcRequest.Id);
@@ -183,7 +166,7 @@ public sealed class JsonRpcService : IJsonRpcService
 
         if (_logger.IsTrace) LogRequest(methodName, providedParameters, method.ExpectedParameters);
 
-        var providedParametersLength = providedParameters.ValueKind == JsonValueKind.Array ? providedParameters.GetArrayLength() : 0;
+        int providedParametersLength = providedParameters.ValueKind == JsonValueKind.Array ? providedParameters.GetArrayLength() : 0;
         int missingParamsCount = method.ExpectedParameters.Length - providedParametersLength;
         int initialMissingParamsCount = missingParamsCount;
 
@@ -207,6 +190,7 @@ public sealed class JsonRpcService : IJsonRpcService
         if (missingParamsCount != 0)
         {
             bool hasIncorrectParameters = true;
+            int firstMissingRequiredIndex = -1;
             if (missingParamsCount > 0)
             {
                 hasIncorrectParameters = false;
@@ -223,9 +207,10 @@ public sealed class JsonRpcService : IJsonRpcService
                     {
                         explicitNullableParamsCount += 1;
                     }
-                    if (!method.ExpectedParameters[method.ExpectedParameters.Length - missingParamsCount + i].IsOptional && !nullable)
+                    if (!method.ExpectedParameters[parameterIndex].IsOptional && !nullable)
                     {
                         hasIncorrectParameters = true;
+                        firstMissingRequiredIndex = parameterIndex;
                         break;
                     }
                 }
@@ -233,7 +218,10 @@ public sealed class JsonRpcService : IJsonRpcService
 
             if (hasIncorrectParameters)
             {
-                return GetErrorResponse(methodName, ErrorCodes.InvalidParams, "Invalid params", $"Incorrect parameters count, expected: {method.ExpectedParameters.Length}, actual: {method.ExpectedParameters.Length - missingParamsCount}", request.Id);
+                string message = firstMissingRequiredIndex >= 0
+                    ? $"missing value for required argument {firstMissingRequiredIndex}"
+                    : "Invalid params";
+                return GetErrorResponse(methodName, ErrorCodes.InvalidParams, message, null, request.Id);
             }
         }
 
@@ -270,17 +258,25 @@ public sealed class JsonRpcService : IJsonRpcService
                 GetErrorResponse(methodName, ErrorCodes.Timeout,
                     $"{methodName} request was canceled due to enabled timeout.", null, request.Id, returnAction),
 
+            LimitExceededException or ConcurrencyLimitReachedException
+                or { InnerException: LimitExceededException }
+                or { InnerException: ConcurrencyLimitReachedException } =>
+                GetErrorResponse(methodName, ErrorCodes.LimitExceeded, "Too many requests", null, request.Id, returnAction),
+
             { InnerException: InsufficientBalanceException } =>
                 GetErrorResponse(methodName, ErrorCodes.InvalidInput, ex.InnerException.Message, ex.ToString(), request.Id, returnAction),
 
-            { InnerException: InvalidTransactionException e } =>
-                GetErrorResponse(methodName, ErrorCodes.Default, e.Reason.ErrorDescription, null, request.Id, returnAction),
-
-            InvalidTransactionException e =>
-                GetErrorResponse(methodName, ErrorCodes.Default, e.Reason.ErrorDescription, null, request.Id, returnAction),
+            InvalidTransactionException or { InnerException: InvalidTransactionException } when (ex as InvalidTransactionException ?? ex.InnerException as InvalidTransactionException) is { Reason.ErrorDescription: var description } =>
+                GetErrorResponse(methodName, ErrorCodes.Default, description, null, request.Id, returnAction),
 
             InvalidBlockException or { InnerException: InvalidBlockException } =>
                 GetErrorResponse(methodName, ErrorCodes.Default, ex.Message, null, request.Id, returnAction),
+
+            MissingTrieNodeException e =>
+                HandleMissingTrieNode(e, methodName, request, returnAction),
+
+            TargetInvocationException { InnerException: MissingTrieNodeException e } =>
+                HandleMissingTrieNode(e, methodName, request, returnAction),
 
             _ => HandleException(ex, methodName, request, returnAction)
         };
@@ -289,6 +285,15 @@ public sealed class JsonRpcService : IJsonRpcService
         {
             if (_logger.IsError) _logger.Error($"Error during method execution, request: {request}", ex);
             return GetErrorResponse(methodName, ErrorCodes.InternalError, "Internal error", ex.ToString(), request.Id, returnAction);
+        }
+
+        JsonRpcErrorResponse HandleMissingTrieNode(MissingTrieNodeException ex, string methodName, JsonRpcRequest request, Action? returnAction)
+        {
+            // HasStateForBlock only checks the state root; subtree nodes can still be pruned out
+            // after a successful guard. Surface as -32000 (Geth wire parity) and warn so operators
+            // can investigate whether it's a legitimate pruning gap or a deeper issue.
+            if (_logger.IsWarn) _logger.Warn($"Missing trie node during {methodName}: {ex.Message}");
+            return GetErrorResponse(methodName, ErrorCodes.ResourceNotFound, ex.Message, ex.ToString(), request.Id, returnAction);
         }
     }
 
@@ -332,7 +337,7 @@ public sealed class JsonRpcService : IJsonRpcService
     {
         if (_logger.IsTrace && !_methodsLoggingFiltering.Contains(methodName))
         {
-            StringBuilder builder = new StringBuilder();
+            StringBuilder builder = new();
             builder.Append("Executing JSON RPC call ");
             builder.Append(methodName);
             builder.Append(" with params [");
@@ -443,7 +448,7 @@ public sealed class JsonRpcService : IJsonRpcService
             reparseString = converter.GetType().Namespace.StartsWith("System.", StringComparison.Ordinal);
 
             // Copy-on-write: create a new dictionary so we don't mutate
-            Dictionary<TypeAsKey, bool> reparseReflectionCache = new Dictionary<TypeAsKey, bool>(_reparseReflectionCache)
+            Dictionary<TypeAsKey, bool> reparseReflectionCache = new(_reparseReflectionCache)
             {
                 [paramType] = reparseString
             };
@@ -461,21 +466,25 @@ public sealed class JsonRpcService : IJsonRpcService
         int missingParamsCount)
     {
         int totalLength = providedParametersLength + missingParamsCount;
-        if (totalLength == 0) return (Array.Empty<object>(), false);
+        if (totalLength == 0) return ([], false);
 
         object[] executionParameters = new object[totalLength];
 
         bool hasMissing = missingParamsCount != 0;
         int i = 0;
-        var enumerator = providedParameters.EnumerateArray();
-        while (enumerator.MoveNext())
-        {
-            ExpectedParameter expectedParameter = expectedParameters[i];
 
-            object? parameter = DeserializeParameter(enumerator.Current, expectedParameter);
-            executionParameters[i] = parameter;
-            hasMissing |= ReferenceEquals(parameter, Type.Missing);
-            i++;
+        if (providedParametersLength > 0)
+        {
+            JsonElement.ArrayEnumerator enumerator = providedParameters.EnumerateArray();
+            while (enumerator.MoveNext())
+            {
+                ExpectedParameter expectedParameter = expectedParameters[i];
+
+                object? parameter = DeserializeParameter(enumerator.Current, expectedParameter);
+                executionParameters[i] = parameter;
+                hasMissing |= ReferenceEquals(parameter, Type.Missing);
+                i++;
+            }
         }
 
         for (i = providedParametersLength; i < totalLength; i++)
@@ -551,18 +560,15 @@ public sealed class JsonRpcService : IJsonRpcService
         return GetErrorResult(methodName, context, result, module);
 
         [MethodImpl(MethodImplOptions.NoInlining)]
-        static (int? ErrorType, string ErrorMessage) GetErrorResult(string methodName, JsonRpcContext context, ModuleResolution result, string module)
+        static (int? ErrorType, string ErrorMessage) GetErrorResult(string methodName, JsonRpcContext context, ModuleResolution result, string module) => result switch
         {
-            return result switch
-            {
-                ModuleResolution.Unknown => (ErrorCodes.MethodNotFound, $"The method '{methodName}' is not supported."),
-                ModuleResolution.Disabled => (ErrorCodes.InvalidRequest,
-                    $"The method '{methodName}' is found but the namespace '{module}' is disabled for {context.Url?.ToString() ?? "n/a"}. Consider adding the namespace '{module}' to JsonRpc.AdditionalRpcUrls for an additional URL, or to JsonRpc.EnabledModules for the default URL."),
-                ModuleResolution.EndpointDisabled => (ErrorCodes.InvalidRequest,
-                    $"The method '{methodName}' is found in namespace '{module}' for {context.Url?.ToString() ?? "n/a"}' but is disabled for {context.RpcEndpoint}."),
-                ModuleResolution.NotAuthenticated => (ErrorCodes.InvalidRequest, $"The method '{methodName}' must be authenticated."),
-                _ => (null, null)
-            };
-        }
+            ModuleResolution.Unknown => (ErrorCodes.MethodNotFound, $"The method '{methodName}' is not supported."),
+            ModuleResolution.Disabled => (ErrorCodes.InvalidRequest,
+                $"The method '{methodName}' is found but the namespace '{module}' is disabled for {context.Url?.ToString() ?? "n/a"}. Consider adding the namespace '{module}' to JsonRpc.AdditionalRpcUrls for an additional URL, or to JsonRpc.EnabledModules for the default URL."),
+            ModuleResolution.EndpointDisabled => (ErrorCodes.InvalidRequest,
+                $"The method '{methodName}' is found in namespace '{module}' for {context.Url?.ToString() ?? "n/a"}' but is disabled for {context.RpcEndpoint}."),
+            ModuleResolution.NotAuthenticated => (ErrorCodes.InvalidRequest, $"The method '{methodName}' must be authenticated."),
+            _ => (null, null)
+        };
     }
 }

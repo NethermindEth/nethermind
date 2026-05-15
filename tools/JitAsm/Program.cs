@@ -95,7 +95,7 @@ internal static class Program
         int exitCode = 0;
         rootCommand.SetAction(parseResult =>
         {
-            var assembly = parseResult.GetValue(AssemblyOption)!;
+            FileInfo assembly = parseResult.GetValue(AssemblyOption)!;
             var typeName = parseResult.GetValue(TypeOption);
             var methodName = parseResult.GetValue(MethodOption)!;
             var typeParams = parseResult.GetValue(TypeParamsOption);
@@ -252,7 +252,7 @@ internal static class Program
 
         AnsiConsole.MarkupLine($"[blue]Building instruction database for {arch}...[/]");
         var stopwatch = System.Diagnostics.Stopwatch.StartNew();
-        var builtDb = InstructionDbBuilder.Build(xmlPath, arch);
+        InstructionDb builtDb = InstructionDbBuilder.Build(xmlPath, arch);
         stopwatch.Stop();
 
         AnsiConsole.MarkupLine($"[blue]Built {builtDb.Count} instruction entries in {stopwatch.Elapsed.TotalSeconds:F1}s[/]");
@@ -321,7 +321,7 @@ internal static class Program
         // This resolves both project references (in the same directory) and
         // NuGet packages (from the global packages cache).
         var assemblyDir = Path.GetDirectoryName(Path.GetFullPath(assemblyPath))!;
-        var assemblyMap = BuildAssemblyMap(assemblyPath, assemblyDir, verbose);
+        Dictionary<string, string> assemblyMap = BuildAssemblyMap(assemblyPath, assemblyDir, verbose);
 
         AssemblyLoadContext.Default.Resolving += (context, name) =>
         {
@@ -349,7 +349,7 @@ internal static class Program
 
         try
         {
-            var assembly = AssemblyLoadContext.Default.LoadFromAssemblyPath(Path.GetFullPath(assemblyPath));
+            Assembly assembly = AssemblyLoadContext.Default.LoadFromAssemblyPath(Path.GetFullPath(assemblyPath));
 
             if (verbose)
             {
@@ -363,7 +363,7 @@ internal static class Program
             // Initialize static constructors if requested
             foreach (var cctorTypeName in cctorsToInit)
             {
-                var cctorType = ResolveType(assembly, cctorTypeName, verbose);
+                Type? cctorType = ResolveType(assembly, cctorTypeName, verbose);
                 if (cctorType is not null)
                 {
                     if (verbose)
@@ -378,13 +378,13 @@ internal static class Program
 
             // Resolve the method
             var resolver = new MethodResolver(assembly);
-            var method = resolver.ResolveMethod(typeName, methodName, typeParams, classTypeParams);
+            MethodInfo? method = resolver.ResolveMethod(typeName, methodName, typeParams, classTypeParams);
 
             if (method is null)
             {
                 if (verbose)
                 {
-                    var types = assembly.GetTypes().Where(t => t.Name.Contains(typeName ?? "")).Take(5);
+                    IEnumerable<Type> types = assembly.GetTypes().Where(t => t.Name.Contains(typeName ?? "")).Take(5);
                     Console.Error.WriteLine($"[DEBUG] Possible types: {string.Join(", ", types.Select(t => t.FullName))}");
                 }
                 Console.Error.WriteLine($"Could not resolve method: {methodName}");
@@ -393,7 +393,7 @@ internal static class Program
 
             if (tier1)
             {
-                var parameters = method.GetParameters();
+                ParameterInfo[] parameters = method.GetParameters();
                 var invokeArgs = new object?[parameters.Length];
                 object? target = method.IsStatic ? null : TryCreateInstance(method.DeclaringType!);
 
@@ -430,7 +430,7 @@ internal static class Program
                 // Also invoke the method to ensure all code paths are JIT-compiled.
                 // PrepareMethod alone may not trigger DOTNET_JitDisasm output for
                 // methods from dynamically loaded assemblies.
-                var parameters = method.GetParameters();
+                ParameterInfo[] parameters = method.GetParameters();
                 var invokeArgs = new object?[parameters.Length];
                 object? target = method.IsStatic ? null : TryCreateInstance(method.DeclaringType!);
                 try { method.Invoke(target, invokeArgs); }
@@ -463,11 +463,11 @@ internal static class Program
     private static Type? ResolveType(Assembly assembly, string typeName, bool verbose = false)
     {
         // Try direct lookup in target assembly first
-        var type = assembly.GetType(typeName);
+        Type? type = assembly.GetType(typeName);
         if (type is not null) return type;
 
         // Try searching all types in target assembly
-        foreach (var t in assembly.GetTypes())
+        foreach (Type t in assembly.GetTypes())
         {
             if (t.FullName == typeName || t.Name == typeName)
             {
@@ -477,7 +477,7 @@ internal static class Program
 
         // Search referenced assemblies (types often come from other assemblies,
         // e.g., Nethermind.Core types referenced from Nethermind.Evm)
-        foreach (var refName in assembly.GetReferencedAssemblies())
+        foreach (AssemblyName refName in assembly.GetReferencedAssemblies())
         {
             try
             {
@@ -491,7 +491,7 @@ internal static class Program
                 }
 
                 // Try by short name
-                foreach (var t in refAssembly.GetTypes())
+                foreach (Type t in refAssembly.GetTypes())
                 {
                     if (t.FullName == typeName || t.Name == typeName)
                     {
@@ -527,22 +527,22 @@ internal static class Program
 
         try
         {
-            using var stream = File.OpenRead(depsPath);
+            using FileStream stream = File.OpenRead(depsPath);
             using var doc = JsonDocument.Parse(stream);
 
-            var root = doc.RootElement;
-            if (!root.TryGetProperty("targets", out var targets))
+            JsonElement root = doc.RootElement;
+            if (!root.TryGetProperty("targets", out JsonElement targets))
                 return map;
 
             // Get the first (and usually only) target
-            foreach (var target in targets.EnumerateObject())
+            foreach (JsonProperty target in targets.EnumerateObject())
             {
-                foreach (var package in target.Value.EnumerateObject())
+                foreach (JsonProperty package in target.Value.EnumerateObject())
                 {
-                    if (!package.Value.TryGetProperty("runtime", out var runtime))
+                    if (!package.Value.TryGetProperty("runtime", out JsonElement runtime))
                         continue;
 
-                    foreach (var dll in runtime.EnumerateObject())
+                    foreach (JsonProperty dll in runtime.EnumerateObject())
                     {
                         string dllRelativePath = dll.Name; // e.g. "lib/net10.0/Nethermind.Int256.dll"
                         string asmName = Path.GetFileNameWithoutExtension(dllRelativePath);

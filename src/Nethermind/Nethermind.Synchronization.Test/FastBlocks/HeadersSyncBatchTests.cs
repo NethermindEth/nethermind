@@ -12,7 +12,7 @@ public class HeadersSyncBatchTests
     [Test]
     public void TestMinNumberIsCorrect()
     {
-        HeadersSyncBatch batch = new HeadersSyncBatch()
+        HeadersSyncBatch batch = new()
         {
             StartNumber = 10,
             RequestSize = 20,

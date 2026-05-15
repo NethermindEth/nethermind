@@ -11,26 +11,17 @@ namespace Nethermind.Network.Enr;
 /// <summary>
 /// https://eips.ethereum.org/EIPS/eip-778
 /// </summary>
-public class NodeRecordSigner : INodeRecordSigner
+public class NodeRecordSigner(IEcdsa? ethereumEcdsa, PrivateKey? privateKey) : INodeRecordSigner
 {
-    private readonly IEcdsa _ecdsa;
+    private readonly IEcdsa _ecdsa = ethereumEcdsa ?? throw new ArgumentNullException(nameof(ethereumEcdsa));
 
-    private readonly PrivateKey _privateKey;
-
-    public NodeRecordSigner(IEcdsa? ethereumEcdsa, PrivateKey? privateKey)
-    {
-        _ecdsa = ethereumEcdsa ?? throw new ArgumentNullException(nameof(ethereumEcdsa));
-        _privateKey = privateKey ?? throw new ArgumentNullException(nameof(privateKey));
-    }
+    private readonly PrivateKey _privateKey = privateKey ?? throw new ArgumentNullException(nameof(privateKey));
 
     /// <summary>
     /// Signs the node record with own private key.
     /// </summary>
     /// <param name="nodeRecord"></param>
-    public void Sign(NodeRecord nodeRecord)
-    {
-        nodeRecord.Signature = _ecdsa.Sign(_privateKey, in nodeRecord.ContentHash.ValueHash256);
-    }
+    public void Sign(NodeRecord nodeRecord) => nodeRecord.Signature = _ecdsa.Sign(_privateKey, in nodeRecord.ContentHash.ValueHash256);
 
     /// <summary>
     /// Deserializes a <see cref="NodeRecord"/> from an <see cref="RlpStream"/>.
@@ -85,11 +76,11 @@ public class NodeRecordSigner : INodeRecordSigner
                     nodeRecord.SetEntry(new EthEntry(forkHash, nextBlock));
                     break;
                 case 3 when key.SequenceEqual(EnrContentKey.TcpU8):
-                    int tcpPort = ctx.DecodeInt();
+                    int tcpPort = ctx.DecodePositiveInt();
                     nodeRecord.SetEntry(new TcpEntry(tcpPort));
                     break;
                 case 3 when key.SequenceEqual(EnrContentKey.UdpU8):
-                    int udpPort = ctx.DecodeInt();
+                    int udpPort = ctx.DecodePositiveInt();
                     nodeRecord.SetEntry(new UdpEntry(udpPort));
                     break;
                 case 9 when key.SequenceEqual(EnrContentKey.SecP256k1U8):

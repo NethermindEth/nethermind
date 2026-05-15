@@ -4,7 +4,7 @@
     "ChainSpecPath": "chainspec/sepolia.json",
     "GenesisHash": "0x25a5cc106eea7138acab33231d7160d69cb777ee0c2c553fcddf5138993e6dd9",
     "BaseDbPath": "nethermind_db/sepolia_archive",
-    "LogFileName": "sepolia.log",
+    "LogFileName": "sepolia_archive.log",
     "MemoryHint": 1024000000
   },
   "TxPool": {
@@ -32,6 +32,9 @@
   "Merge": {
     "Enabled": true,
     "FinalTotalDifficulty": "17000018015853232"
+  },
+  "Discovery": {
+    "DiscoveryVersion": "V5"
   },
   "Pruning": {
     "Mode": "None"

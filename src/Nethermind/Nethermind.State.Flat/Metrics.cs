@@ -6,7 +6,6 @@ using Nethermind.Core.Attributes;
 using Nethermind.Core.Metric;
 using NonBlocking;
 
-using StringLabel = Nethermind.Core.Attributes.StringLabel;
 
 namespace Nethermind.State.Flat;
 

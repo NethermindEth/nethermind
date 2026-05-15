@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Consensus;
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Logging;
@@ -18,11 +19,11 @@ internal class XdcSealerTests
     public async Task SealBlock_ShouldSignXdcBlockHeader()
     {
         // Arrange
-        var sealer = new XdcSealer(new Signer(0, Build.A.PrivateKey.TestObject, NullLogManager.Instance));
-        var block = Build.A.Block.WithHeader(Build.A.XdcBlockHeader().TestObject).TestObject;
+        XdcSealer sealer = new(new Signer(0, Build.A.PrivateKey.TestObject, NullLogManager.Instance));
+        Block block = Build.A.Block.WithHeader(Build.A.XdcBlockHeader().TestObject).TestObject;
 
         // Act
-        var sealedBlock = await sealer.SealBlock(block, CancellationToken.None);
+        Block sealedBlock = await sealer.SealBlock(block, CancellationToken.None);
         XdcBlockHeader sealedHeader = (XdcBlockHeader)sealedBlock.Header;
 
         // Assert

@@ -112,25 +112,13 @@ public class SszBitTests
     // Structure: handler/valid/{case_name}/ and handler/invalid/{case_name}/
     // Case names: "bitvec_{N}_{descriptor}" for bitvectors, "bitlist_{N}_{descriptor}" for bitlists
 
-    private static IEnumerable<TestCaseData> BitvectorValidCases()
-    {
-        return GetBitCases("bitvector", "valid", "bitvec_");
-    }
+    private static IEnumerable<TestCaseData> BitvectorValidCases() => GetBitCases("bitvector", "valid", "bitvec_");
 
-    private static IEnumerable<TestCaseData> BitvectorInvalidCases()
-    {
-        return GetBitCases("bitvector", "invalid", "bitvec_");
-    }
+    private static IEnumerable<TestCaseData> BitvectorInvalidCases() => GetBitCases("bitvector", "invalid", "bitvec_");
 
-    private static IEnumerable<TestCaseData> BitlistValidCases()
-    {
-        return GetBitCases("bitlist", "valid", "bitlist_");
-    }
+    private static IEnumerable<TestCaseData> BitlistValidCases() => GetBitCases("bitlist", "valid", "bitlist_");
 
-    private static IEnumerable<TestCaseData> BitlistInvalidCases()
-    {
-        return GetBitCases("bitlist", "invalid", "bitlist_");
-    }
+    private static IEnumerable<TestCaseData> BitlistInvalidCases() => GetBitCases("bitlist", "invalid", "bitlist_");
 
     private static IEnumerable<TestCaseData> GetBitCases(string handler, string validity, string casePrefix)
     {

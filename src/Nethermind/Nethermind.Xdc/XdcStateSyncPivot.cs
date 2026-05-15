@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using ConcurrentCollections;
 using Nethermind.Blockchain;
@@ -12,27 +13,20 @@ using Nethermind.Synchronization.FastSync;
 
 namespace Nethermind.Xdc;
 
-public class XdcStateSyncPivot : IStateSyncPivot
+public class XdcStateSyncPivot(
+    IBlockTree blockTree,
+    ISyncConfig syncConfig,
+    IStateReader stateReader,
+    IXdcStateSyncSnapshotManager syncSnapshotManager) : IStateSyncPivot
 {
-    private readonly IBlockTree _blockTree;
-    private readonly ISyncConfig _syncConfig;
-    private readonly IStateReader _stateReader;
+    private readonly IBlockTree _blockTree = blockTree;
+    private readonly ISyncConfig _syncConfig = syncConfig;
+    private readonly IStateReader _stateReader = stateReader;
     private readonly Queue<XdcBlockHeader> _targets = new();
     private XdcBlockHeader? _pivotHeader;
     private bool _initialized;
 
-    private readonly XdcStateSyncSnapshotManager _syncSnapshotManager;
-    public XdcStateSyncPivot(
-        IBlockTree blockTree,
-        ISyncConfig syncConfig,
-        IStateReader stateReader,
-        XdcStateSyncSnapshotManager syncSnapshotManager)
-    {
-        _blockTree = blockTree;
-        _syncConfig = syncConfig;
-        _stateReader = stateReader;
-        _syncSnapshotManager = syncSnapshotManager;
-    }
+    private readonly IXdcStateSyncSnapshotManager _syncSnapshotManager = syncSnapshotManager;
 
     public BlockHeader? GetPivotHeader()
     {
@@ -55,6 +49,11 @@ public class XdcStateSyncPivot : IStateSyncPivot
     public void UpdateHeaderForcefully() { }
     public ConcurrentHashSet<Hash256> UpdatedStorages { get; } = new();
     public long Diff => (_blockTree.BestSuggestedHeader?.Number ?? 0) - (_pivotHeader?.Number ?? 0);
+    public bool CanFinalize(BlockHeader pivot)
+    {
+        EnsureInitialized();
+        return _pivotHeader is not null && pivot.Hash == _pivotHeader.Hash;
+    }
 
     private void EnsureInitialized()
     {
@@ -64,7 +63,8 @@ public class XdcStateSyncPivot : IStateSyncPivot
         long pivotNumber = _syncConfig.PivotNumber;
         if (pivotNumber == 0) return;
 
-        XdcBlockHeader pivotHeader = (XdcBlockHeader)_blockTree.FindHeader(pivotNumber);
+        XdcBlockHeader pivotHeader = _blockTree.FindHeader(pivotNumber) as XdcBlockHeader
+            ?? throw new InvalidOperationException($"Pivot block {pivotNumber} not found in block tree.");
 
         XdcBlockHeader[] gapBlockHeaders = _syncSnapshotManager.GetGapBlocks(pivotHeader);
 

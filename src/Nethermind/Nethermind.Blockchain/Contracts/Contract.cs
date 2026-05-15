@@ -56,7 +56,7 @@ namespace Nethermind.Blockchain.Contracts
 
         protected Transaction GenerateTransaction<T>(Address? contractAddress, byte[] transactionData, Address? sender, long gasLimit = DefaultContractGasLimit) where T : Transaction, new()
         {
-            var transaction = new T()
+            T transaction = new()
             {
                 Value = UInt256.Zero,
                 Data = transactionData,

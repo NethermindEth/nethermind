@@ -80,10 +80,8 @@ namespace Nethermind.AuRa.Test
                 }
             }
 
-            public TimeSpan TimeToStep(long step)
-            {
+            public TimeSpan TimeToStep(long step) =>
                 throw new NotImplementedException();
-            }
 
             public long CurrentStepDuration => throw new NotImplementedException();
 

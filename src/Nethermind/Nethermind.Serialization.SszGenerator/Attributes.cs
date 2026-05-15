@@ -4,9 +4,18 @@
 namespace Nethermind.Serialization.Ssz;
 
 [AttributeUsage(AttributeTargets.Class | AttributeTargets.Struct)]
-public class SszSerializableAttribute(bool isCollectionItself = false) : Attribute
+public class SszContainerAttribute(bool isCollectionItself = false) : Attribute
 {
     public bool IsCollectionItself { get; } = isCollectionItself;
+}
+
+[AttributeUsage(AttributeTargets.Class | AttributeTargets.Struct)]
+public class SszCompatibleUnionAttribute : Attribute;
+
+[AttributeUsage(AttributeTargets.Property)]
+public class SszFieldAttribute(int index) : Attribute
+{
+    public int Index { get; } = index;
 }
 
 [AttributeUsage(AttributeTargets.Property)]
@@ -16,7 +25,13 @@ public class SszListAttribute(int limit) : Attribute
 }
 
 [AttributeUsage(AttributeTargets.Property)]
+public class SszProgressiveListAttribute : Attribute;
+
+[AttributeUsage(AttributeTargets.Property)]
 public class SszVectorAttribute(int length) : Attribute
 {
     public int Length { get; } = length;
 }
+
+[AttributeUsage(AttributeTargets.Property)]
+public class SszProgressiveBitlistAttribute : Attribute;

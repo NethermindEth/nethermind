@@ -26,10 +26,7 @@ public class ProofTxTracer(bool treatZeroAccountDifferently) : TxTracer
     public override bool IsTracingState => true;
     public override bool IsTracingStorage => true;
 
-    public override void ReportBlockHash(Hash256 blockHash)
-    {
-        BlockHashes.Add(blockHash);
-    }
+    public override void ReportBlockHash(Hash256 blockHash) => BlockHashes.Add(blockHash);
 
     public override void ReportBalanceChange(Address address, UInt256? before, UInt256? after)
     {
@@ -62,34 +59,21 @@ public class ProofTxTracer(bool treatZeroAccountDifferently) : TxTracer
         Accounts.Add(address);
     }
 
-    public override void ReportStorageChange(in StorageCell storageCell, byte[] before, byte[] after)
-    {
+    public override void ReportStorageChange(in StorageCell storageCell, byte[] before, byte[] after) =>
         // implicit knowledge here that if we read storage then for sure we have at least asked for the account's balance
         // and so we do not need to add account to Accounts
         Storages.Add(storageCell);
-    }
 
-    public override void ReportStorageRead(in StorageCell storageCell)
-    {
+    public override void ReportStorageRead(in StorageCell storageCell) =>
         // implicit knowledge here that if we read storage then for sure we have at least asked for the account's balance
         // and so we do not need to add account to Accounts
         Storages.Add(storageCell);
-    }
 
-    public override void ReportAccountRead(Address address)
-    {
-        Accounts.Add(address);
-    }
+    public override void ReportAccountRead(Address address) => Accounts.Add(address);
 
     public override void MarkAsSuccess(Address recipient, in GasConsumed gasSpent, byte[] output, LogEntry[] logs,
-        Hash256? stateRoot = null)
-    {
-        Output = output;
-    }
+        Hash256? stateRoot = null) => Output = output;
 
     public override void MarkAsFailed(Address recipient, in GasConsumed gasSpent, byte[] output, string? error,
-        Hash256? stateRoot = null)
-    {
-        Output = output;
-    }
+        Hash256? stateRoot = null) => Output = output;
 }

@@ -43,17 +43,17 @@ public class VisitingTests
 
         using (trieStore.BeginBlockCommit(0)) { patriciaTree.Commit(); }
 
-        var visitor = new AppendingVisitor(false);
+        AppendingVisitor visitor = new(false);
 
         patriciaTree.Accept(visitor, patriciaTree.RootHash, options);
 
-        var setNibbles = new HashSet<int>(Enumerable.Range(0, 64));
+        HashSet<int> setNibbles = new(Enumerable.Range(0, 64));
 
-        foreach (var path in visitor.LeafPaths)
+        foreach (byte[] path in visitor.LeafPaths)
         {
             path.Length.Should().Be(64);
 
-            var index = path.AsSpan().IndexOfAnyExcept((byte)0);
+            int index = path.AsSpan().IndexOfAnyExcept((byte)0);
 
             path.AsSpan(index + 1).IndexOfAnyExcept((byte)0).Should()
                 .Be(-1, "Shall not found other values than the one nibble set");
@@ -72,7 +72,7 @@ public class VisitingTests
         byte[] value = Enumerable.Range(1, 32).Select(static i => (byte)i).ToArray();
         Hash256 stateRootHash = Keccak.Zero;
 
-        var blockCommit = trieStore.BeginBlockCommit(0);
+        IBlockCommitter blockCommit = trieStore.BeginBlockCommit(0);
 
         for (int outerIndex = 0; outerIndex < 64; outerIndex++)
         {
@@ -106,13 +106,13 @@ public class VisitingTests
         stateTree.Commit();
         blockCommit.Dispose();
 
-        var visitor = new AppendingVisitor(true);
+        AppendingVisitor visitor = new(true);
 
         stateTree.Accept(visitor, stateTree.RootHash, options);
 
         int totalPath = 0;
 
-        foreach (var path in visitor.LeafPaths)
+        foreach (byte[] path in visitor.LeafPaths)
         {
             totalPath++;
             if (path.Length == 64)
@@ -123,8 +123,8 @@ public class VisitingTests
             {
                 path.Length.Should().Be(128);
 
-                var accountPart = path.Slice(0, 64);
-                var storagePart = path.Slice(64);
+                byte[] accountPart = path.Slice(0, 64);
+                byte[] storagePart = path.Slice(64);
 
                 AssertPath(accountPart);
                 AssertPath(storagePart);
@@ -137,7 +137,7 @@ public class VisitingTests
 
         static void AssertPath(ReadOnlySpan<byte> path)
         {
-            var index = path.IndexOfAnyExcept((byte)0);
+            int index = path.IndexOfAnyExcept((byte)0);
             path[(index + 1)..].IndexOfAnyExcept((byte)0).Should()
                 .Be(-1, "Shall not found other values than the one nibble set");
             path[index].Should().Be(1, "The given set should be 1 as this is the only nibble");
@@ -180,7 +180,7 @@ public class VisitingTests
 
             public readonly PathGatheringContext Add(ReadOnlySpan<byte> nibblePath)
             {
-                var @new = new byte[Nibbles.Length + nibblePath.Length];
+                byte[] @new = new byte[Nibbles.Length + nibblePath.Length];
                 Nibbles.CopyTo(@new, 0);
                 nibblePath.CopyTo(@new.AsSpan(Nibbles.Length));
 
@@ -189,17 +189,14 @@ public class VisitingTests
 
             public readonly PathGatheringContext Add(byte nibble)
             {
-                var @new = new byte[Nibbles.Length + 1];
+                byte[] @new = new byte[Nibbles.Length + 1];
                 Nibbles.CopyTo(@new, 0);
                 @new[Nibbles.Length] = nibble;
 
                 return new PathGatheringContext(@new);
             }
 
-            public PathGatheringContext AddStorage(in ValueHash256 storage)
-            {
-                return this;
-            }
+            public PathGatheringContext AddStorage(in ValueHash256 storage) => this;
         }
 
         public bool IsFullDbScan => true;
@@ -210,10 +207,7 @@ public class VisitingTests
         {
         }
 
-        public void VisitMissingNode(in PathGatheringContext nodeContext, in ValueHash256 nodeHash)
-        {
-            throw new System.Exception("Should not happen");
-        }
+        public void VisitMissingNode(in PathGatheringContext nodeContext, in ValueHash256 nodeHash) => throw new System.Exception("Should not happen");
 
         public void VisitBranch(in PathGatheringContext nodeContext, TrieNode node)
         {

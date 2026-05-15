@@ -19,10 +19,7 @@ public class ZeroNettyFrameMergerTests
     {
         private readonly IChannelHandlerContext _context = Substitute.For<IChannelHandlerContext>();
 
-        public void Encode(IByteBuffer input, IByteBuffer output)
-        {
-            base.Encode(_context, input, output);
-        }
+        public void Encode(IByteBuffer input, IByteBuffer output) => base.Encode(_context, input, output);
 
         public TestFrameHelper() : base()
         {

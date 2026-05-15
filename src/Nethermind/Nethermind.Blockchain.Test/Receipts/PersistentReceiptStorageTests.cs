@@ -53,10 +53,7 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
     }
 
     [TearDown]
-    public void TearDown()
-    {
-        _receiptsDb.Dispose();
-    }
+    public void TearDown() => _receiptsDb.Dispose();
 
     private void CreateStorage()
     {
@@ -96,15 +93,13 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
-    public void Get_returns_empty_on_empty_span()
-    {
+    public void Get_returns_empty_on_empty_span() =>
         _storage.Get(Keccak.Zero).Should().BeEquivalentTo(Array.Empty<TxReceipt>());
-    }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void Adds_and_retrieves_receipts_for_block()
     {
-        var (block, receipts) = InsertBlock();
+        (Block? block, TxReceipt[]? receipts) = InsertBlock();
 
         _storage.ClearCache();
         _storage.Get(block).Should().BeEquivalentTo(receipts, ReceiptCompareOpt);
@@ -141,7 +136,7 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void Get_receipts_for_block_without_recovering_sender()
     {
-        var (block, receipts) = InsertBlock();
+        (Block? block, TxReceipt[]? receipts) = InsertBlock();
         foreach (Transaction tx in block.Transactions)
         {
             tx.SenderAddress = null;
@@ -211,7 +206,7 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void Adds_and_retrieves_receipts_for_block_with_iterator_from_cache_after_insert()
     {
-        var (block, receipts) = InsertBlock();
+        (Block? block, TxReceipt[]? receipts) = InsertBlock();
 
         _storage.TryGetReceiptsIterator(0, block.Hash!, out ReceiptsIterator iterator).Should().BeTrue();
         iterator.TryGetNext(out TxReceiptStructRef receiptStructRef).Should().BeTrue();
@@ -223,7 +218,7 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void Adds_and_retrieves_receipts_for_block_with_iterator()
     {
-        var (block, _) = InsertBlock();
+        (Block? block, TxReceipt[] _) = InsertBlock();
 
         _storage.ClearCache();
         _storage.TryGetReceiptsIterator(block.Number, block.Hash!, out ReceiptsIterator iterator).Should().BeTrue();
@@ -237,7 +232,7 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void Adds_and_retrieves_receipts_for_block_with_iterator_from_cache_after_get()
     {
-        var (block, receipts) = InsertBlock();
+        (Block? block, TxReceipt[]? receipts) = InsertBlock();
 
         _storage.ClearCache();
         _storage.Get(block);
@@ -256,15 +251,13 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
-    public void HasBlock_should_returnFalseForMissingHash()
-    {
+    public void HasBlock_should_returnFalseForMissingHash() =>
         _storage.HasBlock(0, Keccak.Compute("missing-value")).Should().BeFalse();
-    }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void HasBlock_should_returnTrueForKnownHash()
     {
-        var (block, _) = InsertBlock();
+        (Block? block, TxReceipt[] _) = InsertBlock();
         _storage.HasBlock(block.Number, block.Hash!).Should().BeTrue();
     }
 
@@ -501,9 +494,6 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
         return (block, receipts);
     }
 
-    private EquivalencyAssertionOptions<TxReceipt> ReceiptCompareOpt(EquivalencyAssertionOptions<TxReceipt> opts)
-    {
-        return opts
-            .Excluding(static su => su.Error);
-    }
+    private EquivalencyAssertionOptions<TxReceipt> ReceiptCompareOpt(EquivalencyAssertionOptions<TxReceipt> opts) =>
+        opts.Excluding(static su => su.Error);
 }

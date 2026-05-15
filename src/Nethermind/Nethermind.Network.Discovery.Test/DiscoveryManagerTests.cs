@@ -19,7 +19,6 @@ using Nethermind.Core.Timers;
 using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Logging;
-using Nethermind.Network;
 using Nethermind.Network.Config;
 using Nethermind.Network.Discovery.Lifecycle;
 using Nethermind.Network.Discovery.Messages;
@@ -48,10 +47,7 @@ namespace Nethermind.Network.Discovery.Test
         private PublicKey _publicKey = null!;
 
         [SetUp]
-        public void Initialize()
-        {
-            SetupDiscoveryManager();
-        }
+        public void Initialize() => SetupDiscoveryManager();
 
         private void SetupDiscoveryManager(IDiscoveryConfig? config = null)
         {

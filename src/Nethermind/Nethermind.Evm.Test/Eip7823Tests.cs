@@ -72,7 +72,7 @@ public class Eip7823Tests
             yield return new object[] { true, true, inputBaseLength, inputExpLength, inputModulusLength };
             yield return new object[] { false, true, inputBaseLength, inputExpLength, inputModulusLength };
 
-            for (var i = 0b001; i <= 0b111; i++)
+            for (int i = 0b001; i <= 0b111; i++)
             {
                 inputBaseLength = (i & 0b001) != 0 ? ModExpMaxInputSizeEip7823PlusOne : ModExpMaxInputSizeEip7823;
                 inputExpLength = (i & 0b010) != 0 ? ModExpMaxInputSizeEip7823PlusOne : ModExpMaxInputSizeEip7823;

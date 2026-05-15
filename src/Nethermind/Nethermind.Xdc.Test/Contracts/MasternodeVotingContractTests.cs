@@ -70,7 +70,7 @@ internal class MasternodeVotingContractTests
         VirtualMachine virtualMachine = new(new TestBlockhashProvider(specProvider), specProvider, LimboLogs.Instance);
         EthereumTransactionProcessor transactionProcessor = new(BlobBaseFeeCalculator.Instance, specProvider, stateProvider, virtualMachine, codeInfoRepository, LimboLogs.Instance);
 
-        AutoReadOnlyTxProcessingEnv autoReadOnlyTxProcessingEnv = new AutoReadOnlyTxProcessingEnv(transactionProcessor, stateProvider, Substitute.For<ILifetimeScope>());
+        AutoReadOnlyTxProcessingEnv autoReadOnlyTxProcessingEnv = new(transactionProcessor, stateProvider, Substitute.For<ILifetimeScope>());
 
         IReadOnlyTxProcessingEnvFactory readOnlyTxProcessingEnvFactory = Substitute.For<IReadOnlyTxProcessingEnvFactory>();
 
@@ -89,7 +89,7 @@ internal class MasternodeVotingContractTests
     }
 
     private static Dictionary<string, string> GenesisAllocation =
-        new Dictionary<string, string>
+        new()
         {
             ["0x0000000000000000000000000000000000000000000000000000000000000007"] = "0x0000000000000000000000000000000000000000000000000000000000000001",
             ["0x0000000000000000000000000000000000000000000000000000000000000008"] = "0x0000000000000000000000000000000000000000000000000000000000000003",

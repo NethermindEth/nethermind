@@ -3,8 +3,11 @@
 
 using Nethermind.Core;
 using Nethermind.Core.Specs;
+using Nethermind.Int256;
 using Nethermind.Specs;
+using System;
 using System.Collections.Generic;
+using System.Reflection;
 
 namespace Nethermind.Xdc.Spec;
 
@@ -23,9 +26,9 @@ public class XdcReleaseSpec : ReleaseSpec, IXdcReleaseSpec
     public int TimeoutSyncThreshold { get; set; }        // send syncInfo after number of timeout
     public int TimeoutPeriod { get; set; }               // Duration in ms
     public double CertificateThreshold { get; set; }            // Necessary number of messages from master nodes to form a certificate
-    public double MasternodeReward { get; set; }         // Block reward per master node (core validator) - unit Ether
-    public double ProtectorReward { get; set; }          // Block reward per protector - unit Ether
-    public double ObserverReward { get; set; }           // Block reward per observer - unit Ether
+    public UInt256 MasternodeReward { get; set; }        // Block reward per masternode (core validator) in Wei
+    public UInt256 ProtectorReward { get; set; }         // Block reward per protector in Wei
+    public UInt256 ObserverReward { get; set; }          // Block reward per observer in Wei
     public int MinimumMinerBlockPerEpoch { get; set; }   // Minimum block per epoch for a miner to not be penalized
     public long LimitPenaltyEpoch { get; set; }           // Epochs in a row that a penalty node needs to be penalized
     public long LimitPenaltyEpochV2 { get; set; }           // Epochs in a row that a penalty node needs to be penalized
@@ -44,6 +47,7 @@ public class XdcReleaseSpec : ReleaseSpec, IXdcReleaseSpec
     public long TIP2019Block { get; set; }
     public Address FoundationWallet { get; set; }
     public Address MasternodeVotingContract { get; set; }
+    public bool IsTipUpgradeRewardEnabled { get; set; }
     public bool IsTipUpgradePenaltyEnabled { get; set; }
     public bool IsTipTrc21FeeEnabled { get; set; }
     public bool IsBlackListingEnabled { get; set; }
@@ -78,15 +82,15 @@ public class XdcReleaseSpec : ReleaseSpec, IXdcReleaseSpec
 
     public static XdcReleaseSpec FromReleaseSpec(IReleaseSpec spec)
     {
-        var xdcSpec = new XdcReleaseSpec();
+        XdcReleaseSpec xdcSpec = new();
 
-        var baseType = typeof(ReleaseSpec);
-        var properties = baseType.GetProperties();
-        foreach (var property in properties)
+        Type baseType = typeof(ReleaseSpec);
+        PropertyInfo[] properties = baseType.GetProperties();
+        foreach (PropertyInfo property in properties)
         {
             if (property.CanRead && property.CanWrite)
             {
-                var value = property.GetValue(spec);
+                object value = property.GetValue(spec);
                 property.SetValue(xdcSpec, value);
             }
         }
@@ -110,9 +114,9 @@ public interface IXdcReleaseSpec : IReleaseSpec
     public int TimeoutSyncThreshold { get; set; }    // send syncInfo after number of timeout
     public int TimeoutPeriod { get; set; }           // Duration in ms
     public double CertificateThreshold { get; set; }        // Necessary number of messages from master nodes to form a certificate
-    public double MasternodeReward { get; set; }     // Block reward per master node (core validator) - unit Ether
-    public double ProtectorReward { get; set; }      // Block reward per protector - unit Ether
-    public double ObserverReward { get; set; }       // Block reward per observer - unit Ether
+    public UInt256 MasternodeReward { get; set; }    // Block reward per masternode (core validator) in Wei
+    public UInt256 ProtectorReward { get; set; }     // Block reward per protector in Wei
+    public UInt256 ObserverReward { get; set; }      // Block reward per observer in Wei
     public int MinimumMinerBlockPerEpoch { get; set; }   // Minimum block per epoch for a miner to not be penalized
     public long LimitPenaltyEpoch { get; set; }           // Epochs in a row that a penalty node needs to be penalized
     public long LimitPenaltyEpochV2 { get; set; }           // Epochs in a row that a penalty node needs to be penalized
@@ -131,6 +135,7 @@ public interface IXdcReleaseSpec : IReleaseSpec
     public HashSet<Address> BlackListedAddresses { get; set; }
     public Address FoundationWallet { get; set; }
     public Address MasternodeVotingContract { get; set; }
+    public bool IsTipUpgradeRewardEnabled { get; set; }
     public bool IsTipTrc21FeeEnabled { get; set; }
     public bool IsBlackListingEnabled { get; set; }
     public bool IsTIP2019 { get; set; }

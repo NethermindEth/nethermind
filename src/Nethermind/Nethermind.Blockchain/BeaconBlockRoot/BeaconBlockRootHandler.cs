@@ -37,7 +37,7 @@ public class BeaconBlockRootHandler(ITransactionProcessor processor, IWorldState
             return (null, null);
         }
 
-        var builder = new AccessList.Builder()
+        AccessList.Builder builder = new AccessList.Builder()
             .AddAddress(eip4788ContractAddress);
 
         if (includeStorageCells)

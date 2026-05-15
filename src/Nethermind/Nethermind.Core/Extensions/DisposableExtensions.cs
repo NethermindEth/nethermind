@@ -35,10 +35,7 @@ public static class DisposableExtensions
     /// <summary>
     /// Constrained overload for known-disposable types. Avoids boxing and the ITuple check.
     /// </summary>
-    public static void TryDispose<T>(this T item) where T : IDisposable
-    {
-        item?.Dispose();
-    }
+    public static void TryDispose<T>(this T item) where T : IDisposable => item?.Dispose();
 
     /// <summary>
     /// Overload for 2-element value tuples where the first element is <see cref="IDisposable"/>.

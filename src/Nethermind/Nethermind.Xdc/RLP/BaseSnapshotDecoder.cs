@@ -90,10 +90,7 @@ internal abstract class BaseSnapshotDecoder<T> : RlpValueDecoder<T> where T : Sn
         }
     }
 
-    public override int GetLength(T item, RlpBehaviors rlpBehaviors)
-    {
-        return Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors));
-    }
+    public override int GetLength(T item, RlpBehaviors rlpBehaviors) => Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors));
     protected virtual int GetContentLength(T item, RlpBehaviors rlpBehaviors)
     {
         if (item is null)

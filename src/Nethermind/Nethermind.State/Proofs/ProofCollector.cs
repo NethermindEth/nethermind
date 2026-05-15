@@ -67,10 +67,7 @@ namespace Nethermind.State.Proofs
             _pathIndex += node.Key.Length;
         }
 
-        protected virtual void AddProofBits(TrieNode node)
-        {
-            _proofBits.Add(node.FullRlp.ToArray());
-        }
+        protected virtual void AddProofBits(TrieNode node) => _proofBits.Add(node.FullRlp.ToArray());
 
         public void VisitLeaf(in EmptyContext _, TrieNode node)
         {

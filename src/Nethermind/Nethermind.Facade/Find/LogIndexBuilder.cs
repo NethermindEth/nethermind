@@ -255,7 +255,7 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
 
     private ProcessingQueue BuildQueue(bool isForward)
     {
-        var aggregateBlock = new TransformBlock<IReadOnlyList<BlockReceipts>, LogIndexAggregate>(
+        TransformBlock<IReadOnlyList<BlockReceipts>, LogIndexAggregate> aggregateBlock = new(
             batch => Aggregate(batch, isForward),
             new()
             {
@@ -266,7 +266,7 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
             }
         );
 
-        var addReceiptsBlock = new ActionBlock<LogIndexAggregate>(
+        ActionBlock<LogIndexAggregate> addReceiptsBlock = new(
             aggr => AddReceiptsAsync(aggr, isForward),
             new()
             {
@@ -361,11 +361,11 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
                 end = Math.Min(end, MaxTargetBlockNumber);
 
                 // from - inclusive, to - exclusive
-                var (from, to) = isForward
+                (int from, int to) = isForward
                     ? (start, end + 1)
                     : (end, start + 1);
 
-                var timestamp = Stopwatch.GetTimestamp();
+                long timestamp = Stopwatch.GetTimestamp();
                 Array.Clear(buffer);
                 ReadOnlySpan<BlockReceipts> batch = GetNextBatch(from, to, buffer, isForward, CancellationToken);
 
@@ -394,7 +394,7 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
     private void UpdateProgress()
     {
         if (!_pivotTask.IsCompletedSuccessfully) return;
-        var pivotNumber = _pivotTask.Result;
+        int pivotNumber = _pivotTask.Result;
 
         DirectionState forward = Direction(isForward: true);
         if (forward.Progress is { HasEnded: false } forwardProgress)

@@ -7,7 +7,6 @@ using System.Linq;
 using System.Runtime.CompilerServices;
 using FluentAssertions;
 using Nethermind.Core.Collections;
-using Nethermind.Core.Extensions;
 using Nethermind.Db;
 using Bytes = Nethermind.Core.Extensions.Bytes;
 
@@ -133,10 +132,7 @@ public class TestMemDb : MemDb, ITunableDb, ISortedKeyValueStore
     {
         private int idx = -1;
 
-        public void Dispose()
-        {
-            list.Dispose();
-        }
+        public void Dispose() => list.Dispose();
 
         public bool StartBefore(ReadOnlySpan<byte> value)
         {

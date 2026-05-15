@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Config;
@@ -23,6 +24,7 @@ public class FlatDbManagerTests
     private ISnapshotRepository _snapshotRepository = null!;
     private IPersistenceManager _persistenceManager = null!;
     private IFlatDbConfig _config = null!;
+    private IBlocksConfig _blocksConfig = null!;
     private CancellationTokenSource _cts = null!;
 
     [SetUp]
@@ -37,6 +39,8 @@ public class FlatDbManagerTests
         _snapshotRepository = Substitute.For<ISnapshotRepository>();
         _persistenceManager = Substitute.For<IPersistenceManager>();
         _config = new FlatDbConfig { CompactSize = 16, MaxInFlightCompactJob = 4, InlineCompaction = true };
+        _blocksConfig = Substitute.For<IBlocksConfig>();
+        _blocksConfig.SecondsPerSlot.Returns(12UL);
     }
 
     [TearDown]
@@ -54,6 +58,7 @@ public class FlatDbManagerTests
         _snapshotRepository,
         _persistenceManager,
         _config,
+        _blocksConfig,
         LimboLogs.Instance,
         enableDetailedMetrics: false);
 
@@ -138,6 +143,37 @@ public class FlatDbManagerTests
         manager.AddSnapshot(snapshot, transientResource);
 
         _snapshotRepository.Received(1).TryAddSnapshot(snapshot);
+    }
+
+    [Test]
+    public async Task GatherReadOnlySnapshotBundle_CacheClearedPeriodically()
+    {
+        StateId stateId = CreateStateId(10);
+
+        IPersistence.IPersistenceReader mockReader = Substitute.For<IPersistence.IPersistenceReader>();
+        mockReader.CurrentState.Returns(stateId);
+
+        _persistenceManager.LeaseReader().Returns(mockReader);
+        _snapshotRepository.AssembleSnapshots(stateId, stateId, Arg.Any<int>())
+            .Returns(new SnapshotPooledList(0));
+
+        await using FlatDbManager manager = CreateManager();
+
+        // First call populates the cache
+        using (ReadOnlySnapshotBundle bundle1 = manager.GatherReadOnlySnapshotBundle(stateId)) { }
+
+        // Second call should hit cache (no new LeaseReader call)
+        _persistenceManager.ClearReceivedCalls();
+        using (ReadOnlySnapshotBundle bundle2 = manager.GatherReadOnlySnapshotBundle(stateId)) { }
+        _persistenceManager.DidNotReceive().LeaseReader();
+
+        // Wait for periodic clear (15s + margin)
+        await Task.Delay(TimeSpan.FromSeconds(17));
+
+        // After cache clear, next call needs a new reader
+        _persistenceManager.ClearReceivedCalls();
+        using (ReadOnlySnapshotBundle bundle3 = manager.GatherReadOnlySnapshotBundle(stateId)) { }
+        _persistenceManager.Received(1).LeaseReader();
     }
 
     [Test]

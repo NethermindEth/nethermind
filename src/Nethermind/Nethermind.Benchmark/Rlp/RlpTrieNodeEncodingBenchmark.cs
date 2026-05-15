@@ -22,7 +22,7 @@ public class RlpTrieNodeEncodingBenchmark
     public RlpTrieNodeEncodingBenchmark()
     {
         _store = new RawScopedTrieStore(new NodeStorage(new MemDb()), null);
-        var tree = new PatriciaTree(_store, NullLogManager.Instance);
+        PatriciaTree tree = new(_store, NullLogManager.Instance);
 
         // Some simple nodes to create E->B->L1, ...
         tree.Set([0b0000_0000], [1, 2, 3, 4, 5, 6, 7, 1]);
@@ -36,7 +36,7 @@ public class RlpTrieNodeEncodingBenchmark
 
         tree.Commit();
 
-        var extension = tree.Root;
+        TrieNode extension = tree.Root;
 
         _extension = extension;
         _extension.NodeType.Should().Be(NodeType.Extension);

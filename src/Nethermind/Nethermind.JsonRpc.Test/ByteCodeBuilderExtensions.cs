@@ -1,3 +1,4 @@
+using System;
 using System.Text;
 using Nethermind.Core.Extensions;
 using Nethermind.Evm;
@@ -68,6 +69,26 @@ public static class ByteCodeBuilderExtensions
             // REVERT(offset=0, length=totalLength)
             .PushData(totalLength)
             .PushData(0)
+            .Op(Instruction.REVERT);
+
+        return prepare;
+    }
+
+    public static Prepare RevertWithCustomError(this Prepare prepare, byte[] selector)
+    {
+        if (selector.Length != 4)
+            throw new ArgumentException("Custom error selector must be exactly 4 bytes", nameof(selector));
+
+        // Push the 4-byte selector right-aligned into a 32-byte word, store at memory 0,
+        // then REVERT(offset=28, length=4) — returning only the 4 selector bytes.
+        prepare
+            .PushData(selector)
+            .PushData(224)              // shift left 224 bits to put selector at bytes 0-3
+            .Op(Instruction.SHL)
+            .PushData(0)
+            .Op(Instruction.MSTORE)
+            .PushData(4)                // length = 4
+            .PushData(0)                // offset = 0
             .Op(Instruction.REVERT);
 
         return prepare;

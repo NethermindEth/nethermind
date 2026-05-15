@@ -17,7 +17,7 @@ public class EvictionManager : IEvictionManager
 
     public EvictionManager(INodeTable nodeTable, ILogManager logManager)
     {
-        _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+        _logger = logManager?.GetClassLogger<EvictionManager>() ?? throw new ArgumentNullException(nameof(logManager));
         _nodeTable = nodeTable;
         _onStateChange = OnStateChange;
     }

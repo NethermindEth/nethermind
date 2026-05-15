@@ -216,7 +216,7 @@ namespace Nethermind.Blockchain.Test
                     higherPriorityTransactionsSelected.Transactions.Where(tx => tx.GetBlobCount() == 1)
                     .OrderByDescending(t => t.MaxFeePerGas).Take(5));
 
-                var rnd = new Random(12345);
+                Random rnd = new(12345);
                 for (int i = 0; i < 20; i++)
                 {
                     yield return new TestCaseData(higherPriorityTransactionsSelected)
@@ -231,9 +231,9 @@ namespace Nethermind.Blockchain.Test
         private static Transaction CreateBlobTransaction(Address address, PrivateKey key, UInt256 maxFee, int blobCount)
             => CreateBlobTransaction(address, key, maxFee, blobCount, nonce: 1);
 
-        private static Transaction CreateBlobTransaction(Address address, PrivateKey key, UInt256 maxFee, int blobCount, UInt256 nonce, uint priority = 1)
-        {
-            return Build.A.Transaction
+        private static Transaction CreateBlobTransaction(
+            Address address, PrivateKey key, UInt256 maxFee, int blobCount, UInt256 nonce, uint priority = 1) =>
+            Build.A.Transaction
                 .WithSenderAddress(address)
                 .WithShardBlobTxTypeAndFields(blobCount)
                 .WithNonce(nonce)
@@ -241,7 +241,6 @@ namespace Nethermind.Blockchain.Test
                 .WithMaxPriorityFeePerGas(priority)
                 .WithGasLimit(20)
                 .SignedAndResolved(key).TestObject;
-        }
 
         public static IEnumerable BlobTransactionOrderingTestCases
         {
@@ -284,7 +283,7 @@ namespace Nethermind.Blockchain.Test
                 }
                 {
                     ProperTransactionsSelectedTestCase blobTxs = CreateTestCase();
-                    var txs = new List<Transaction>();
+                    List<Transaction> txs = new();
 
                     UInt256 nonce = 1;
                     AddTxs(txCount: 5, blobsPerTx: 5, account: 0, txs, ref nonce);

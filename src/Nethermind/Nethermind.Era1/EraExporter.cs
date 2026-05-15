@@ -111,15 +111,12 @@ public class EraExporter(
             ValueHash256 sha256;
 
             // Scoped using so the writer is disposed before File.Move — Windows locks open files.
-            using (EraWriter eraWriter = new EraWriter(fileSystem.File.Create(filePath), specProvider))
+            using (EraWriter eraWriter = new(fileSystem.File.Create(filePath), specProvider))
             {
-                for (var y = startingIndex; y < startingIndex + _era1Size && y <= to; y++)
+                for (long y = startingIndex; y < startingIndex + _era1Size && y <= to; y++)
                 {
-                    Block? block = blockTree.FindBlock(y, BlockTreeLookupOptions.DoNotCreateLevelIfMissing);
-                    if (block is null)
-                    {
-                        throw new EraException($"Could not find a block with number {y}.");
-                    }
+                    Block? block = blockTree.FindBlock(y, BlockTreeLookupOptions.DoNotCreateLevelIfMissing)
+                        ?? throw new EraException($"Could not find a block with number {y}.");
 
                     TxReceipt[]? receipts = receiptStorage.Get(block, true, false);
                     if (receipts is null || (block.Header.ReceiptsRoot != Keccak.EmptyTreeHash && receipts.Length == 0))

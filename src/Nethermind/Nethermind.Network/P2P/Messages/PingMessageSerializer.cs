@@ -8,14 +8,8 @@ namespace Nethermind.Network.P2P.Messages
 {
     public class PingMessageSerializer : IZeroMessageSerializer<PingMessage>
     {
-        public void Serialize(IByteBuffer byteBuffer, PingMessage message)
-        {
-            byteBuffer.WriteBytes(Rlp.OfEmptyList.Bytes);
-        }
+        public void Serialize(IByteBuffer byteBuffer, PingMessage message) => byteBuffer.WriteBytes(Rlp.OfEmptyList.Bytes);
 
-        public PingMessage Deserialize(IByteBuffer byteBuffer)
-        {
-            return PingMessage.Instance;
-        }
+        public PingMessage Deserialize(IByteBuffer byteBuffer) => PingMessage.Instance;
     }
 }

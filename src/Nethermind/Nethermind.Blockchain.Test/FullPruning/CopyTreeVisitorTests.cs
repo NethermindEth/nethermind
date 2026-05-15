@@ -65,7 +65,7 @@ public class CopyTreeVisitorTests(INodeStorage.KeyScheme scheme)
         MemDb clonedDb = new();
         IPruningContext pruningContext = StartPruning(trieDb, clonedDb);
 
-        CancellationTokenSource cts = new CancellationTokenSource();
+        CancellationTokenSource cts = new();
         cts.Cancel();
 
         CopyDb(pruningContext, cts.Token, trieDb);
@@ -89,14 +89,14 @@ public class CopyTreeVisitorTests(INodeStorage.KeyScheme scheme)
         BlockHeader? baseBlock = Build.A.BlockHeader.WithStateRoot(trie.RootHash).TestObject;
         if (scheme == INodeStorage.KeyScheme.Hash)
         {
-            NodeStorage nodeStorage = new NodeStorage(pruningContext, scheme);
+            NodeStorage nodeStorage = new(pruningContext, scheme);
             using CopyTreeVisitor<NoopTreePathContextWithStorage> copyTreeVisitor = new(nodeStorage, writeFlags, logManager, cancellationToken);
             stateReader.RunTreeVisitor(copyTreeVisitor, baseBlock, visitingOptions);
             copyTreeVisitor.Finish();
         }
         else
         {
-            NodeStorage nodeStorage = new NodeStorage(pruningContext, scheme);
+            NodeStorage nodeStorage = new(pruningContext, scheme);
             using CopyTreeVisitor<TreePathContextWithStorage> copyTreeVisitor = new(nodeStorage, writeFlags, logManager, cancellationToken);
             stateReader.RunTreeVisitor(copyTreeVisitor, baseBlock, visitingOptions);
             copyTreeVisitor.Finish();

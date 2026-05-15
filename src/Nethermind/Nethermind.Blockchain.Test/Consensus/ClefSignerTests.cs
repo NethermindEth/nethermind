@@ -24,11 +24,11 @@ namespace Nethermind.Blockchain.Test.Consensus
             IJsonRpcClient client = Substitute.For<IJsonRpcClient>();
             client.Post<string[]>("account_list").Returns(Task.FromResult<string[]?>([TestItem.AddressA!.ToString()]));
             Task<string?> postMethod = client.Post<string>("account_signData", "text/plain", Arg.Any<string>(), Keccak.Zero);
-            var returnValue = (new byte[65]).ToHexString();
+            string returnValue = (new byte[65]).ToHexString();
             postMethod.Returns(returnValue);
             ClefSigner sut = ClefSigner.Create(new ClefWallet(client));
 
-            var result = sut.Sign(Keccak.Zero);
+            Signature result = sut.Sign(Keccak.Zero);
 
             Assert.That(new Signature(returnValue).Bytes.SequenceEqual(result.Bytes));
         }
@@ -39,7 +39,7 @@ namespace Nethermind.Blockchain.Test.Consensus
             IJsonRpcClient client = Substitute.For<IJsonRpcClient>();
             client.Post<string[]>("account_list").Returns(Task.FromResult<string[]?>([TestItem.AddressA!.ToString()]));
             Task<string?> postMethod = client.Post<string>(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>());
-            var returnValue = (new byte[65]).ToHexString();
+            string returnValue = (new byte[65]).ToHexString();
             postMethod.Returns(returnValue);
             BlockHeader blockHeader = Build.A.BlockHeader.TestObject;
             ClefSigner sut = ClefSigner.Create(new ClefWallet(client));
@@ -57,13 +57,13 @@ namespace Nethermind.Blockchain.Test.Consensus
             IJsonRpcClient client = Substitute.For<IJsonRpcClient>();
             client.Post<string[]>("account_list").Returns(Task.FromResult<string[]?>([TestItem.AddressA!.ToString()]));
             Task<string?> postMethod = client.Post<string>("account_signData", "application/x-clique-header", Arg.Any<string>(), Arg.Any<string>());
-            var returnValue = (new byte[65]);
+            byte[] returnValue = (new byte[65]);
             returnValue[64] = recId;
             postMethod.Returns(returnValue.ToHexString());
             BlockHeader blockHeader = Build.A.BlockHeader.TestObject;
             ClefSigner sut = ClefSigner.Create(new ClefWallet(client));
 
-            var result = sut.Sign(blockHeader);
+            Signature result = sut.Sign(blockHeader);
 
             Assert.That(result.V, Is.EqualTo(expected));
         }

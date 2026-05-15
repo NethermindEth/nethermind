@@ -5,7 +5,6 @@ using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Xdc.Types;
 using System;
-using System.Linq;
 
 namespace Nethermind.Xdc.RLP;
 
@@ -23,9 +22,7 @@ public sealed class TimeoutCertificateDecoder : RlpValueDecoder<TimeoutCertifica
 
         ulong round = decoderContext.DecodeULong();
 
-        byte[][]? signatureBytes = decoderContext.DecodeByteArrays();
-        if (signatureBytes is not null && signatureBytes.Any(s => s.Length != 65))
-            throw new RlpException("One or more invalid signature lengths in timeout certificate.");
+        byte[][]? signatureBytes = decoderContext.DecodeByteArrays(innerSize: Signature.Size);
         Signature[]? signatures = null;
         if (signatureBytes is not null)
         {
@@ -74,17 +71,18 @@ public sealed class TimeoutCertificateDecoder : RlpValueDecoder<TimeoutCertifica
         else
         {
             stream.StartSequence(SignaturesLength(item));
+            Span<byte> sigBuffer = stackalloc byte[Signature.Size];
             foreach (Signature sig in item.Signatures)
-                stream.Encode(sig.BytesWithRecovery);
+            {
+                sig.WriteBytesWithRecoveryTo(sigBuffer);
+                stream.Encode(sigBuffer);
+            }
         }
 
         stream.Encode(item.GapNumber);
     }
 
-    public override int GetLength(TimeoutCertificate item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-    {
-        return Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors));
-    }
+    public override int GetLength(TimeoutCertificate item, RlpBehaviors rlpBehaviors = RlpBehaviors.None) => Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors));
     private int GetContentLength(TimeoutCertificate? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (item is null)
@@ -95,8 +93,5 @@ public sealed class TimeoutCertificateDecoder : RlpValueDecoder<TimeoutCertifica
                + Rlp.LengthOf(item.GapNumber);
     }
 
-    private static int SignaturesLength(TimeoutCertificate item)
-    {
-        return item.Signatures is not null ? item.Signatures.Length * Rlp.LengthOfSequence(Signature.Size) : 0;
-    }
+    private static int SignaturesLength(TimeoutCertificate item) => item.Signatures is not null ? item.Signatures.Length * Rlp.LengthOfSequence(Signature.Size) : 0;
 }

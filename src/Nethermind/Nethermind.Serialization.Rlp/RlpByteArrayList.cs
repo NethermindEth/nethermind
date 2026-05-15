@@ -11,15 +11,9 @@ public sealed class RlpByteArrayList : IByteArrayList, IRlpWrapper
 {
     private readonly IRlpItemList _inner;
 
-    public RlpByteArrayList(IMemoryOwner<byte> memoryOwner, Memory<byte> rlpRegion)
-    {
-        _inner = new RlpItemList(memoryOwner, rlpRegion);
-    }
+    public RlpByteArrayList(IMemoryOwner<byte> memoryOwner, Memory<byte> rlpRegion) => _inner = new RlpItemList(memoryOwner, rlpRegion);
 
-    public RlpByteArrayList(IRlpItemList inner)
-    {
-        _inner = inner;
-    }
+    public RlpByteArrayList(IRlpItemList inner) => _inner = inner;
 
     public int Count => _inner.Count;
 

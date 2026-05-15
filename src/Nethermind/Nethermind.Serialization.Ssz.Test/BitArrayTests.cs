@@ -19,14 +19,14 @@ namespace Nethermind.Serialization.Ssz.Test
         public void Can_serialize_bitarray_bitvector(bool[] value, string expectedByteString, byte[] expectedHashTreeRoot)
         {
             // Arrange
-            var input = new BitArray(value);
+            BitArray input = new(value);
 
             // Act
-            var encoded = new byte[(input.Length + 7) / 8];
+            byte[] encoded = new byte[(input.Length + 7) / 8];
             Ssz.EncodeVector(encoded, input);
 
             // Assert
-            var byteString = Bytes.ToHexString(encoded);
+            string byteString = Bytes.ToHexString(encoded);
             byteString.ShouldBe(expectedByteString);
         }
 
@@ -34,14 +34,14 @@ namespace Nethermind.Serialization.Ssz.Test
         public void Can_deserialize_bitarray_bitvector(bool[] value, string expectedByteString, byte[] expectedHashTreeRoot)
         {
             // Arrange
-            var encoded = Bytes.FromHexString(expectedByteString);
-            var vectorLength = value.Length;
+            byte[] encoded = Bytes.FromHexString(expectedByteString);
+            int vectorLength = value.Length;
 
             // Act
             BitArray decoded = Ssz.DecodeBitvector(encoded, vectorLength);
 
             // Assert
-            BitArray expected = new BitArray(value);
+            BitArray expected = new(value);
             decoded.ShouldBe(expected);
         }
 
@@ -49,10 +49,10 @@ namespace Nethermind.Serialization.Ssz.Test
         public void Can_merkleize_bitarray_bitvector(bool[] value, string expectedByteString, byte[] expectedHashTreeRoot)
         {
             // Arrange
-            var input = new BitArray(value);
+            BitArray input = new(value);
 
             // Act
-            var hashTreeRoot = new byte[32];
+            byte[] hashTreeRoot = new byte[32];
             Merkle.Merkleize(out UInt256 root, input);
             root.ToLittleEndian(hashTreeRoot);
 
@@ -64,14 +64,14 @@ namespace Nethermind.Serialization.Ssz.Test
         public void Can_serialize_bitarray_bitlist(bool[] value, ulong limit, string expectedByteString, byte[] expectedHashTreeRoot)
         {
             // Arrange
-            var input = new BitArray(value);
+            BitArray input = new(value);
 
             // Act
-            var encoded = new byte[(input.Length + 8) / 8];
+            byte[] encoded = new byte[(input.Length + 8) / 8];
             Ssz.EncodeList(encoded, input);
 
             // Assert
-            var byteString = Bytes.ToHexString(encoded);
+            string byteString = Bytes.ToHexString(encoded);
             byteString.ShouldBe(expectedByteString);
         }
 
@@ -79,13 +79,13 @@ namespace Nethermind.Serialization.Ssz.Test
         public void Can_deserialize_bitarray_bitlist(bool[] value, ulong limit, string expectedByteString, byte[] expectedHashTreeRoot)
         {
             // Arrange
-            var encoded = Bytes.FromHexString(expectedByteString);
+            byte[] encoded = Bytes.FromHexString(expectedByteString);
 
             // Act
             BitArray decoded = Ssz.DecodeBitlist(encoded);
 
             // Assert
-            BitArray expected = new BitArray(value);
+            BitArray expected = new(value);
             decoded.ShouldBe(expected);
         }
 
@@ -93,10 +93,10 @@ namespace Nethermind.Serialization.Ssz.Test
         public void Can_merkleize_bitarray_bitlist(bool[] value, ulong maximumBitlistLength, string expectedByteString, byte[] expectedHashTreeRoot)
         {
             // Arrange
-            var input = new BitArray(value);
+            BitArray input = new(value);
 
             // Act
-            var hashTreeRoot = new byte[32];
+            byte[] hashTreeRoot = new byte[32];
             Merkle.Merkleize(out UInt256 root, input, maximumBitlistLength);
             root.ToLittleEndian(hashTreeRoot);
 

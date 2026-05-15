@@ -26,10 +26,8 @@ public static class SszConsensusTestLoader
     /// Returns the path to the ssz_generic test directory for a given type handler.
     /// e.g. GetHandlerPath("uints") returns .../tests/general/phase0/ssz_generic/uints
     /// </summary>
-    public static string GetHandlerPath(string handler)
-    {
-        return Path.Combine(GetTestsRoot(), "tests", "general", "phase0", "ssz_generic", handler);
-    }
+    public static string GetHandlerPath(string handler) =>
+        Path.Combine(GetTestsRoot(), "tests", "general", "phase0", "ssz_generic", handler);
 
     /// <summary>
     /// Reads and decompresses a .ssz_snappy file.

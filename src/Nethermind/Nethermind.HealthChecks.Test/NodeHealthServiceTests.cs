@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections.Frozen;
 using System.Collections.Generic;
 using System.IO.Abstractions;
 using System.Linq;
@@ -380,7 +381,7 @@ public class NodeHealthServiceTests
     {
         if (messages.Any(static x => !string.IsNullOrWhiteSpace(x)))
         {
-            var joined = string.Join(". ", messages.Where(static x => !string.IsNullOrWhiteSpace(x)));
+            string joined = string.Join(". ", messages.Where(static x => !string.IsNullOrWhiteSpace(x)));
             if (!string.IsNullOrWhiteSpace(joined))
             {
                 return joined + ".";
@@ -392,24 +393,17 @@ public class NodeHealthServiceTests
 
     private class CustomRpcCapabilitiesProvider : IRpcCapabilitiesProvider
     {
-        private readonly Dictionary<string, (bool Enabled, bool WarnIfMissing)> _capabilities = new();
+        private readonly Dictionary<string, RpcCapabilityOptions> _capabilities = new();
 
         public CustomRpcCapabilitiesProvider(IReadOnlyList<string> enabledCapabilities, IReadOnlyList<string> disabledCapabilities)
         {
             foreach (string capability in enabledCapabilities)
-            {
-                _capabilities[capability] = (true, true);
-            }
+                _capabilities[capability] = RpcCapabilityOptions.Enabled | RpcCapabilityOptions.WarnIfMissing;
 
             foreach (string capability in disabledCapabilities)
-            {
-                _capabilities[capability] = (false, false);
-            }
+                _capabilities[capability] = RpcCapabilityOptions.None;
         }
 
-        public IReadOnlyDictionary<string, (bool Enabled, bool WarnIfMissing)> GetEngineCapabilities()
-        {
-            return _capabilities;
-        }
+        public FrozenDictionary<string, RpcCapabilityOptions> GetEngineCapabilities() => _capabilities.ToFrozenDictionary();
     }
 }

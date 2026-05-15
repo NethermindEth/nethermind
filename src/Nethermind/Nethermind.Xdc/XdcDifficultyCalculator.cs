@@ -9,8 +9,5 @@ namespace Nethermind.Xdc;
 
 internal class XdcDifficultyCalculator : IDifficultyCalculator
 {
-    public UInt256 Calculate(BlockHeader header, BlockHeader parent)
-    {
-        return UInt256.One;
-    }
+    public UInt256 Calculate(BlockHeader header, BlockHeader parent) => UInt256.One;
 }

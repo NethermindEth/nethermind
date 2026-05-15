@@ -17,7 +17,7 @@ public class SupportsCachingTests
         yield return new TestCaseData(Ripemd160Precompile.Instance).SetName(nameof(Ripemd160Precompile));
         yield return new TestCaseData(BN254AddPrecompile.Instance).SetName(nameof(BN254AddPrecompile));
         yield return new TestCaseData(BN254MulPrecompile.Instance).SetName(nameof(BN254MulPrecompile));
-        yield return new TestCaseData(BN254PairingPrecompile.Instance).SetName(nameof(BN254PairingPrecompile));
+        yield return new TestCaseData(BN254PairingCheckPrecompile.Instance).SetName(nameof(BN254PairingCheckPrecompile));
         yield return new TestCaseData(ModExpPrecompile.Instance).SetName(nameof(ModExpPrecompile));
         yield return new TestCaseData(Blake2FPrecompile.Instance).SetName(nameof(Blake2FPrecompile));
         yield return new TestCaseData(Bls12381G1AddPrecompile.Instance).SetName(nameof(Bls12381G1AddPrecompile));
@@ -32,14 +32,8 @@ public class SupportsCachingTests
     }
 
     [TestCaseSource(nameof(PrecompilesWithCachingEnabled))]
-    public void Precompile_SupportsCaching_ReturnsTrue_ByDefault(IPrecompile precompile)
-    {
-        Assert.That(precompile.SupportsCaching, Is.True);
-    }
+    public void Precompile_SupportsCaching_ReturnsTrue_ByDefault(IPrecompile precompile) => Assert.That(precompile.SupportsCaching, Is.True);
 
     [Test]
-    public void IdentityPrecompile_SupportsCaching_ReturnsFalse()
-    {
-        Assert.That(IdentityPrecompile.Instance.SupportsCaching, Is.False);
-    }
+    public void IdentityPrecompile_SupportsCaching_ReturnsFalse() => Assert.That(IdentityPrecompile.Instance.SupportsCaching, Is.False);
 }

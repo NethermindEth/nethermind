@@ -217,8 +217,5 @@ public class MessageQueueTests
         inner.Received().Dispose();
     }
 
-    private static Request<GetBlockHeadersMessage, IOwnedReadOnlyList<BlockHeader>> CreateRequest()
-    {
-        return new(new GetBlockHeadersMessage());
-    }
+    private static Request<GetBlockHeadersMessage, IOwnedReadOnlyList<BlockHeader>> CreateRequest() => new(new GetBlockHeadersMessage());
 }

@@ -212,12 +212,9 @@ public class NodeFilterTests
     [TestCase("192.0.2.1", "192.0.3.1", false, Description = "Different /24 IPv4")]
     [TestCase("2001:db8::1", "2001:db8::ffff", true, Description = "Same /64 IPv6")]
     [TestCase("2001:db8::1", "2001:db8:0:1::1", false, Description = "Different /64 IPv6")]
-    public void IpSubnetKey_AreInSameSubnet(string a, string b, bool expected)
-    {
-        NodeFilter.IpSubnetKey.AreInSameSubnet(
+    public void IpSubnetKey_AreInSameSubnet(string a, string b, bool expected) => NodeFilter.IpSubnetKey.AreInSameSubnet(
             IPAddress.Parse(a), IPAddress.Parse(b),
             v4PrefixBits: 24, v6PrefixBits: 64).Should().Be(expected);
-    }
 
     [TestCase("127.0.0.1", true, Description = "IPv4 loopback")]
     [TestCase("::1", true, Description = "IPv6 loopback")]
@@ -231,10 +228,7 @@ public class NodeFilterTests
     [TestCase("fe80::1", true, Description = "IPv6 link-local")]
     [TestCase("8.8.8.8", false, Description = "Public IPv4")]
     [TestCase("2001:4860:4860::8888", false, Description = "Public IPv6")]
-    public void IpSubnetKey_IsLoopbackOrPrivateOrLinkLocal(string address, bool expected)
-    {
-        NodeFilter.IpSubnetKey.IsLoopbackOrPrivateOrLinkLocal(IPAddress.Parse(address)).Should().Be(expected);
-    }
+    public void IpSubnetKey_IsLoopbackOrPrivateOrLinkLocal(string address, bool expected) => NodeFilter.IpSubnetKey.IsLoopbackOrPrivateOrLinkLocal(IPAddress.Parse(address)).Should().Be(expected);
 
     [TestCase("192.168.1.10", "192.168.1.20", "203.0.113.1", false, Description = "Private addresses use exact keying")]
     [TestCase("203.0.113.1", "203.0.113.50", "198.51.100.1", true, Description = "Public addresses in same /24 use subnet bucketing")]

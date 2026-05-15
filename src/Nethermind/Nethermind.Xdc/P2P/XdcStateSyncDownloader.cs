@@ -9,8 +9,5 @@ namespace Nethermind.Xdc;
 
 internal class XdcStateSyncDownloader(ILogManager logManager) : StateSyncDownloader(logManager)
 {
-    protected override bool ProtocolSupportsNodeData(ISyncPeer peer)
-    {
-        return peer.ProtocolVersion < 101;
-    }
+    protected override bool ProtocolSupportsNodeData(ISyncPeer peer) => peer.ProtocolVersion < 101;
 }

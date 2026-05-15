@@ -53,7 +53,7 @@ namespace Nethermind.TxPool.Test.Collections
         {
             for (int i = 0; i < _transactions.Length; i++)
             {
-                var tx = _transactions[^(i + 1)];
+                Transaction tx = _transactions[^(i + 1)];
                 tx.Hash = tx.CalculateHash();
                 _sortedPool.TryInsert(tx.Hash, tx);
                 Assert.That(_sortedPool.TryGetValue(tx.Hash, out Transaction txOther) ? txOther : null, Is.EqualTo(i > 15 ? null : tx));
@@ -76,7 +76,7 @@ namespace Nethermind.TxPool.Test.Collections
         {
             for (int i = 0; i < _transactions.Length; i++)
             {
-                var tx = _transactions[i];
+                Transaction tx = _transactions[i];
                 tx.Hash = tx.CalculateHash();
                 _sortedPool.TryInsert(tx.Hash, tx);
                 Assert.That(_sortedPool.Count, Is.EqualTo(Math.Min(16, i + 1)));

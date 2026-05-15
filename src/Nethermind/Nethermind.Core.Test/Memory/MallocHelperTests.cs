@@ -11,14 +11,8 @@ namespace Nethermind.Core.Test.Memory;
 public class MallocHelperTests
 {
     [Test]
-    public void TestMallOpts()
-    {
-        MallocHelper.Instance.MallOpt(MallocHelper.Option.M_MMAP_THRESHOLD, (int)128.KiB).Should().BeTrue();
-    }
+    public void TestMallOpts() => MallocHelper.Instance.MallOpt(MallocHelper.Option.M_MMAP_THRESHOLD, (int)128.KiB).Should().BeTrue();
 
     [Test]
-    public void TestMallocTrim()
-    {
-        MallocHelper.Instance.MallocTrim(0).Should().BeTrue();
-    }
+    public void TestMallocTrim() => MallocHelper.Instance.MallocTrim(0).Should().BeTrue();
 }

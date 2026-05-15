@@ -17,13 +17,13 @@ public class ChainLevelInfoRepositoryTests
     [Test]
     public void TestMultiGet()
     {
-        ChainLevelInfoRepository repository = new ChainLevelInfoRepository(new MemDb());
+        ChainLevelInfoRepository repository = new(new MemDb());
 
-        ChainLevelInfo level1 = new ChainLevelInfo(false, new BlockInfo(TestItem.KeccakA, 0));
-        ChainLevelInfo level10 = new ChainLevelInfo(false, new BlockInfo(TestItem.KeccakB, 0));
+        ChainLevelInfo level1 = new(false, new BlockInfo(TestItem.KeccakA, 0));
+        ChainLevelInfo level10 = new(false, new BlockInfo(TestItem.KeccakB, 0));
 
         {
-            using var _ = repository.StartBatch();
+            using BatchWrite _ = repository.StartBatch();
             repository.PersistLevel(1, level1);
             repository.PersistLevel(10, level10);
         }
@@ -36,13 +36,13 @@ public class ChainLevelInfoRepositoryTests
     [Test]
     public void TestClearCache_removes_cached_levels()
     {
-        MemDb db = new MemDb();
-        ChainLevelInfoRepository repository = new ChainLevelInfoRepository(db);
+        MemDb db = new();
+        ChainLevelInfoRepository repository = new(db);
 
-        ChainLevelInfo level1 = new ChainLevelInfo(false, new BlockInfo(TestItem.KeccakA, 0));
+        ChainLevelInfo level1 = new(false, new BlockInfo(TestItem.KeccakA, 0));
 
         {
-            using var _ = repository.StartBatch();
+            using BatchWrite _ = repository.StartBatch();
             repository.PersistLevel(1, level1);
         }
 

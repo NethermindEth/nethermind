@@ -39,7 +39,7 @@ namespace Nethermind.TxPool.Collections
         {
             // ReSharper disable once VirtualMemberCallInConstructor
             _comparer = GetReplacementComparer(comparer ?? throw new ArgumentNullException(nameof(comparer)));
-            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+            _logger = logManager?.GetClassLogger(typeof(DistinctValueSortedPool<,,>)) ?? throw new ArgumentNullException(nameof(logManager));
             _distinctDictionary = new Dictionary<TValue, KeyValuePair<TKey, TValue>>(distinctComparer);
         }
 
@@ -84,7 +84,7 @@ namespace Nethermind.TxPool.Collections
             // if it would go after old value in order, we ignore it and wont add it
             if (AllowSameKeyReplacement || base.CanInsert(key, value))
             {
-                bool isDuplicate = _distinctDictionary.TryGetValue(value, out var oldKvp);
+                bool isDuplicate = _distinctDictionary.TryGetValue(value, out KeyValuePair<TKey, TValue> oldKvp);
                 if (isDuplicate)
                 {
                     bool isHigher = _comparer.Compare(value, oldKvp.Value) <= 0;

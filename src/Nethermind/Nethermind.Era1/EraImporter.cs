@@ -102,11 +102,11 @@ public class EraImporter(
 
         using IEraStore _ = eraStore;
 
-        ProgressLogger progressLogger = new ProgressLogger("Era import", logManager);
+        ProgressLogger progressLogger = new("Era import", logManager);
         progressLogger.Reset(0, to - from + 1);
         long blocksProcessed = 0;
 
-        using BlockTreeSuggestPacer pacer = new BlockTreeSuggestPacer(blockTree, eraConfig.ImportBlocksBufferSize, eraConfig.ImportBlocksBufferSize - 1024);
+        using BlockTreeSuggestPacer pacer = new(blockTree, eraConfig.ImportBlocksBufferSize, eraConfig.ImportBlocksBufferSize - 1024);
         long blockNumber = from;
 
         long suggestFromBlock = (blockTree.Head?.Number ?? 0) + 1;
@@ -132,7 +132,7 @@ public class EraImporter(
         long partitionSize = _maxEra1Size;
         if (blockNumber + partitionSize < suggestFromBlock)
         {
-            ConcurrentQueue<long> partitionStartBlocks = new ConcurrentQueue<long>();
+            ConcurrentQueue<long> partitionStartBlocks = new();
             for (; blockNumber + partitionSize < suggestFromBlock && blockNumber + partitionSize < to; blockNumber += partitionSize)
             {
                 partitionStartBlocks.Enqueue(blockNumber);
@@ -231,7 +231,7 @@ public class EraImporter(
             throw new EraVerificationException($"Block validation failed: {error}");
         }
 
-        var addResult = await blockTree.SuggestBlockAsync(block, BlockTreeSuggestOptions.ShouldProcess);
+        AddBlockResult addResult = await blockTree.SuggestBlockAsync(block, BlockTreeSuggestOptions.ShouldProcess);
         switch (addResult)
         {
             case AddBlockResult.AlreadyKnown:

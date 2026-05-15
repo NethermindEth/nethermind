@@ -2,15 +2,15 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Rlp;
+using Nethermind.Serialization.Rlp.TxDecoders;
 
 namespace Nethermind.TxPool;
 
 public class LightTxDecoder : TxDecoder<Transaction>
 {
-    private static int GetLength(Transaction tx)
-    {
-        return Rlp.LengthOf(tx.Timestamp)
+    private static int GetLength(Transaction tx) => Rlp.LengthOf(tx.Timestamp)
                + Rlp.LengthOf(tx.SenderAddress)
                + Rlp.LengthOf(tx.Nonce)
                + Rlp.LengthOf(tx.Hash)
@@ -23,7 +23,6 @@ public class LightTxDecoder : TxDecoder<Transaction>
                + Rlp.LengthOf(tx.PoolIndex)
                + Rlp.LengthOf(tx.GetLength())
                + Rlp.LengthOf(sizeof(byte));
-    }
 
     public static byte[] Encode(Transaction tx)
     {
@@ -50,18 +49,18 @@ public class LightTxDecoder : TxDecoder<Transaction>
     {
         Rlp.ValueDecoderContext ctx = new(data);
         return new LightTransaction(
-            ctx.DecodeUInt256(),
-            ctx.DecodeAddress()!,
-            ctx.DecodeUInt256(),
-            ctx.DecodeKeccak()!,
-            ctx.DecodeUInt256(),
-            ctx.DecodeLong(),
-            ctx.DecodeUInt256(),
-            ctx.DecodeUInt256(),
-            ctx.DecodeUInt256(),
-            ctx.DecodeByteArrays(),
-            ctx.DecodeULong(),
-            ctx.DecodeInt(),
-            ctx.PeekNumberOfItemsRemaining(maxSearch: 1) == 1 ? (ProofVersion)ctx.ReadByte() : default);
+            timestamp: ctx.DecodeUInt256(),
+            sender: ctx.DecodeAddress()!,
+            nonce: ctx.DecodeUInt256(),
+            hash: ctx.DecodeKeccak()!,
+            value: ctx.DecodeUInt256(),
+            gasLimit: ctx.DecodeLong(),
+            gasPrice: ctx.DecodeUInt256(),
+            maxFeePerGas: ctx.DecodeUInt256(),
+            maxFeePerBlobGas: ctx.DecodeUInt256(),
+            blobVersionHashes: ctx.DecodeByteArrays(BlobTxDecoder<Transaction>.BlobVersionedHashesCountLimit, innerSize: Hash256.Size),
+            poolIndex: ctx.DecodeULong(),
+            size: ctx.DecodePositiveInt(),
+            proofVersion: ctx.PeekNumberOfItemsRemaining(maxSearch: 1) == 1 ? (ProofVersion)ctx.ReadByte() : default);
     }
 }

@@ -97,7 +97,7 @@ public class OptimismReceiptMessageDecoder(bool isEncodedForTrie = false, bool s
                 : Rlp.LengthOf(item.PostTransactionState);
         }
 
-        if (item.IsOptimismTxReceipt(out var opItem))
+        if (item.IsOptimismTxReceipt(out OptimismTxReceipt? opItem))
         {
             if (opItem.DepositNonce is not null && (opItem.DepositReceiptVersion is not null || !isEncodedForTrie))
             {
@@ -116,7 +116,7 @@ public class OptimismReceiptMessageDecoder(bool isEncodedForTrie = false, bool s
     public static int GetLogsLength(TxReceipt item)
     {
         int logsLength = 0;
-        for (var i = 0; i < item.Logs?.Length; i++)
+        for (int i = 0; i < item.Logs?.Length; i++)
         {
             logsLength += Rlp.LengthOf(item.Logs[i]);
         }
@@ -172,12 +172,12 @@ public class OptimismReceiptMessageDecoder(bool isEncodedForTrie = false, bool s
         rlpStream.Encode(item.Bloom);
 
         rlpStream.StartSequence(logsLength);
-        for (var i = 0; i < item.Logs?.Length; i++)
+        for (int i = 0; i < item.Logs?.Length; i++)
         {
             rlpStream.Encode(item.Logs[i]);
         }
 
-        if (item.IsOptimismTxReceipt(out var opItem))
+        if (item.IsOptimismTxReceipt(out OptimismTxReceipt? opItem))
         {
             if (opItem.DepositNonce is not null && (opItem.DepositReceiptVersion is not null || !isEncodedForTrie))
             {

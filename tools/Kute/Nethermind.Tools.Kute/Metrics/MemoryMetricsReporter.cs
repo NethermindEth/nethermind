@@ -27,7 +27,7 @@ public sealed class MemoryMetricsReporter
 
     public Task Batch(JsonRpc.Request.Batch batch, TimeSpan elapsed, CancellationToken token = default)
     {
-        var id = batch.Id;
+        string? id = batch.Id;
         if (id is not null)
         {
             _batches[id] = elapsed;
@@ -38,8 +38,8 @@ public sealed class MemoryMetricsReporter
 
     public Task Single(JsonRpc.Request.Single single, TimeSpan elapsed, CancellationToken token = default)
     {
-        var id = single.Id;
-        var methodName = single.MethodName;
+        string? id = single.Id;
+        string? methodName = single.MethodName;
         if (id is not null && methodName is not null)
         {
             var newMethodDict = new ConcurrentDictionary<string, TimeSpan>

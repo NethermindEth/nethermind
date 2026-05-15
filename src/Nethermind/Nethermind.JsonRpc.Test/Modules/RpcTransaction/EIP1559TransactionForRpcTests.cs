@@ -92,7 +92,7 @@ public static class EIP1559TransactionForRpcTests
         json.GetProperty("maxPriorityFeePerGas").GetString().Should().MatchRegex("^0x([1-9a-f]+[0-9a-f]*|0)$");
         json.GetProperty("maxFeePerGas").GetString().Should().MatchRegex("^0x([1-9a-f]+[0-9a-f]*|0)$");
         json.GetProperty("gasPrice").GetString().Should().MatchRegex("^0x([1-9a-f]+[0-9a-f]*|0)$");
-        var accessList = json.GetProperty("accessList").EnumerateArray();
+        JsonElement.ArrayEnumerator accessList = json.GetProperty("accessList").EnumerateArray();
         if (accessList.Any())
         {
             accessList.Should().AllSatisfy(static item =>
@@ -104,9 +104,9 @@ public static class EIP1559TransactionForRpcTests
             });
         }
         json.GetProperty("chainId").GetString().Should().MatchRegex("^0x([1-9a-f]+[0-9a-f]*|0)$");
-        var yParity = json.GetProperty("yParity").GetString();
+        string? yParity = json.GetProperty("yParity").GetString();
         yParity.Should().MatchRegex("^0x([1-9a-f]+[0-9a-f]*|0)$");
-        if (json.TryGetProperty("v", out var v))
+        if (json.TryGetProperty("v", out JsonElement v))
         {
             v.GetString().Should().Be(yParity);
         }

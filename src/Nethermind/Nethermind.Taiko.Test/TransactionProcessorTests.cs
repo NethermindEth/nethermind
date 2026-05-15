@@ -55,10 +55,8 @@ public class TransactionProcessorTests
     }
 
     [TearDown]
-    public void TearDown()
-    {
+    public void TearDown() =>
         _worldStateCloser.Dispose();
-    }
 
     [TestCaseSource(nameof(FeesDistributionTests))]
     public void Fees_distributed_correctly(byte basefeeSharingPct, UInt256 goesToTreasury, UInt256 goesToBeneficiary, ulong gasPrice)
@@ -72,7 +70,7 @@ public class TransactionProcessorTests
             .WithGasLimit(gasLimit)
             .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
 
-        var extraData = new byte[32];
+        byte[] extraData = new byte[32];
         extraData[31] = basefeeSharingPct;
 
         Block block = Build.A.Block.WithNumber(1).WithTransactions(tx)
@@ -192,7 +190,7 @@ public class TransactionProcessorTests
             .WithCode(byteCode)
             .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyB).TestObject;
 
-        var extraData = new byte[32];
+        byte[] extraData = new byte[32];
         extraData[31] = defaultBaseFeeSharingPct;
 
         Block block = Build.A.Block.WithNumber(1)

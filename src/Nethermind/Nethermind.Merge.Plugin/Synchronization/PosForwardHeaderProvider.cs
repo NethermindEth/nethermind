@@ -58,20 +58,14 @@ public class PosForwardHeaderProvider(
         return Task.FromResult<IOwnedReadOnlyList<BlockHeader?>?>(headers.ToPooledList(headers.Length));
     }
 
-    private void TryUpdateTerminalBlock(BlockHeader currentHeader)
-    {
+    private void TryUpdateTerminalBlock(BlockHeader currentHeader) =>
         // Needed to know what is the terminal block so in fast sync, for each
         // header, it calls this.
         poSSwitcher.TryUpdateTerminalBlock(currentHeader);
-    }
 
     // Used only in get block header in pre merge forward header provider, this hook stops pre merge forward header provider.
-    protected override bool ImprovementRequirementSatisfied(PeerInfo? bestPeer)
-    {
-        return
-            (bestPeer!.TotalDifficulty is null || bestPeer.TotalDifficulty > (_blockTree.BestSuggestedHeader?.TotalDifficulty ?? UInt256.Zero)) &&
+    protected override bool ImprovementRequirementSatisfied(PeerInfo? bestPeer) => (bestPeer!.TotalDifficulty is null || bestPeer.TotalDifficulty > (_blockTree.BestSuggestedHeader?.TotalDifficulty ?? UInt256.Zero)) &&
             !poSSwitcher.HasEverReachedTerminalBlock();
-    }
 
     protected override IOwnedReadOnlyList<BlockHeader> FilterPosHeader(IOwnedReadOnlyList<BlockHeader> response)
     {

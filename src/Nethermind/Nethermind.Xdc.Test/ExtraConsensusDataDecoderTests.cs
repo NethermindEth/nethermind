@@ -20,7 +20,7 @@ internal class ExtraConsensusDataDecoderTests
     public void Decode_XdcExtraDataRlp_IsEquivalentAfterReencoding(string extraDataRlp)
     {
         ExtraConsensusDataDecoder decoder = new();
-        Rlp.ValueDecoderContext context = new Rlp.ValueDecoderContext(Bytes.FromHexString(extraDataRlp));
+        Rlp.ValueDecoderContext context = new(Bytes.FromHexString(extraDataRlp));
         ExtraFieldsV2 decodedExtraData = decoder.Decode(ref context);
 
         Rlp encodedExtraData = decoder.Encode(decodedExtraData);
@@ -34,20 +34,20 @@ internal class ExtraConsensusDataDecoderTests
     [TestCase(false)]
     public void Decode_XdcExtraDataRlp_IsEquivalentAfterReencoding(bool useRlpStream)
     {
-        ExtraFieldsV2 extraFields = new ExtraFieldsV2(1, new QuorumCertificate(new BlockRoundInfo(Hash256.Zero, 1, 1), [new Signature(new byte[64], 0), new Signature(new byte[64], 0), new Signature(new byte[64], 0)], 0));
+        ExtraFieldsV2 extraFields = new(1, new QuorumCertificate(new BlockRoundInfo(Hash256.Zero, 1, 1), [new Signature(new byte[64], 0), new Signature(new byte[64], 0), new Signature(new byte[64], 0)], 0));
         ExtraConsensusDataDecoder decoder = new();
-        var stream = new RlpStream(decoder.GetLength(extraFields));
+        RlpStream stream = new(decoder.GetLength(extraFields));
         decoder.Encode(stream, extraFields);
 
         ExtraFieldsV2 decodedExtraData;
         if (useRlpStream)
         {
-            Rlp.ValueDecoderContext context = new Rlp.ValueDecoderContext(stream.Data);
+            Rlp.ValueDecoderContext context = new(stream.Data);
             decodedExtraData = decoder.Decode(ref context);
         }
         else
         {
-            Rlp.ValueDecoderContext context = new Rlp.ValueDecoderContext(stream.Data);
+            Rlp.ValueDecoderContext context = new(stream.Data);
             decodedExtraData = decoder.Decode(ref context);
         }
 
@@ -57,7 +57,7 @@ internal class ExtraConsensusDataDecoderTests
     [Test]
     public void Decode_QCIsNull_CanDecodeNormally()
     {
-        ExtraFieldsV2 extraFieldsV2 = new ExtraFieldsV2(1, null!);
+        ExtraFieldsV2 extraFieldsV2 = new(1, null!);
         ExtraConsensusDataDecoder decoder = new();
 
         Rlp encodedExtraData = decoder.Encode(extraFieldsV2);

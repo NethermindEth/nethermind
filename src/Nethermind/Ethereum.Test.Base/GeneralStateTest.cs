@@ -41,9 +41,6 @@ namespace Ethereum.Test.Base
 
         public Hash256? RequestsHash { get; set; }
 
-        public override string ToString()
-        {
-            return $"{Path.GetFileName(Category)}.{Name}_{ForkName}";
-        }
+        public override string ToString() => $"{Path.GetFileName(Category)}.{Name}_{ForkName}";
     }
 }

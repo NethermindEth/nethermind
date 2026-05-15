@@ -18,40 +18,19 @@ public class OptimismEngineRpcModule(
     private readonly IEngineRpcModule _engineRpcModule = engineRpcModule;
     private readonly IOptimismSignalSuperchainV1Handler _signalSuperchainHandler = signalSuperchainHandler;
 
-    public async Task<ResultWrapper<ForkchoiceUpdatedV1Result>> engine_forkchoiceUpdatedV1(ForkchoiceStateV1 forkchoiceState, OptimismPayloadAttributes? payloadAttributes = null)
-    {
-        return await _engineRpcModule.engine_forkchoiceUpdatedV1(forkchoiceState, payloadAttributes);
-    }
+    public async Task<ResultWrapper<ForkchoiceUpdatedV1Result>> engine_forkchoiceUpdatedV1(ForkchoiceStateV1 forkchoiceState, OptimismPayloadAttributes? payloadAttributes = null) => await _engineRpcModule.engine_forkchoiceUpdatedV1(forkchoiceState, payloadAttributes);
 
-    public Task<ResultWrapper<ExecutionPayload?>> engine_getPayloadV1(byte[] payloadId)
-    {
-        return _engineRpcModule.engine_getPayloadV1(payloadId);
-    }
+    public Task<ResultWrapper<ExecutionPayload?>> engine_getPayloadV1(byte[] payloadId) => _engineRpcModule.engine_getPayloadV1(payloadId);
 
-    public Task<ResultWrapper<PayloadStatusV1>> engine_newPayloadV1(ExecutionPayload executionPayload)
-    {
-        return _engineRpcModule.engine_newPayloadV1(executionPayload);
-    }
+    public Task<ResultWrapper<PayloadStatusV1>> engine_newPayloadV1(ExecutionPayload executionPayload) => _engineRpcModule.engine_newPayloadV1(executionPayload);
 
-    public async Task<ResultWrapper<ForkchoiceUpdatedV1Result>> engine_forkchoiceUpdatedV2(ForkchoiceStateV1 forkchoiceState, OptimismPayloadAttributes? payloadAttributes = null)
-    {
-        return await _engineRpcModule.engine_forkchoiceUpdatedV2(forkchoiceState, payloadAttributes);
-    }
+    public async Task<ResultWrapper<ForkchoiceUpdatedV1Result>> engine_forkchoiceUpdatedV2(ForkchoiceStateV1 forkchoiceState, OptimismPayloadAttributes? payloadAttributes = null) => await _engineRpcModule.engine_forkchoiceUpdatedV2(forkchoiceState, payloadAttributes);
 
-    public Task<ResultWrapper<GetPayloadV2Result?>> engine_getPayloadV2(byte[] payloadId)
-    {
-        return _engineRpcModule.engine_getPayloadV2(payloadId);
-    }
+    public Task<ResultWrapper<GetPayloadV2Result?>> engine_getPayloadV2(byte[] payloadId) => _engineRpcModule.engine_getPayloadV2(payloadId);
 
-    public Task<ResultWrapper<PayloadStatusV1>> engine_newPayloadV2(ExecutionPayload executionPayload)
-    {
-        return _engineRpcModule.engine_newPayloadV2(executionPayload);
-    }
+    public Task<ResultWrapper<PayloadStatusV1>> engine_newPayloadV2(ExecutionPayload executionPayload) => _engineRpcModule.engine_newPayloadV2(executionPayload);
 
-    public async Task<ResultWrapper<ForkchoiceUpdatedV1Result>> engine_forkchoiceUpdatedV3(ForkchoiceStateV1 forkchoiceState, OptimismPayloadAttributes? payloadAttributes = null)
-    {
-        return await _engineRpcModule.engine_forkchoiceUpdatedV3(forkchoiceState, payloadAttributes);
-    }
+    public async Task<ResultWrapper<ForkchoiceUpdatedV1Result>> engine_forkchoiceUpdatedV3(ForkchoiceStateV1 forkchoiceState, OptimismPayloadAttributes? payloadAttributes = null) => await _engineRpcModule.engine_forkchoiceUpdatedV3(forkchoiceState, payloadAttributes);
 
     public async Task<ResultWrapper<OptimismGetPayloadV3Result?>> engine_getPayloadV3(byte[] payloadId)
     {
@@ -59,16 +38,10 @@ public class OptimismEngineRpcModule(
         return ResultWrapper<OptimismGetPayloadV3Result?>.From(result, result.Data is null ? null : new OptimismGetPayloadV3Result(result.Data));
     }
 
-    public Task<ResultWrapper<PayloadStatusV1>> engine_newPayloadV3(ExecutionPayloadV3 executionPayload, byte[]?[] blobVersionedHashes, Hash256? parentBeaconBlockRoot)
-    {
-        return _engineRpcModule.engine_newPayloadV3(executionPayload, blobVersionedHashes, parentBeaconBlockRoot);
-    }
+    public Task<ResultWrapper<PayloadStatusV1>> engine_newPayloadV3(ExecutionPayloadV3 executionPayload, byte[]?[] blobVersionedHashes, Hash256? parentBeaconBlockRoot) => _engineRpcModule.engine_newPayloadV3(executionPayload, blobVersionedHashes, parentBeaconBlockRoot);
 
     public Task<ResultWrapper<PayloadStatusV1>> engine_newPayloadV4(OptimismExecutionPayloadV3 executionPayload, byte[]?[] blobVersionedHashes,
-        Hash256? parentBeaconBlockRoot, byte[][]? executionRequests)
-    {
-        return _engineRpcModule.engine_newPayloadV4(executionPayload, blobVersionedHashes, parentBeaconBlockRoot, executionRequests);
-    }
+        Hash256? parentBeaconBlockRoot, byte[][]? executionRequests) => _engineRpcModule.engine_newPayloadV4(executionPayload, blobVersionedHashes, parentBeaconBlockRoot, executionRequests);
 
     public async Task<ResultWrapper<OptimismGetPayloadV4Result?>> engine_getPayloadV4(byte[] payloadId)
     {

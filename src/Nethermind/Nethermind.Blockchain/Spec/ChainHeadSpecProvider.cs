@@ -18,10 +18,8 @@ namespace Nethermind.Blockchain.Spec
         private IReleaseSpec? _headerSpec;
         private readonly Lock _lock = new();
 
-        public void UpdateMergeTransitionInfo(long? blockNumber, UInt256? terminalTotalDifficulty = null)
-        {
+        public void UpdateMergeTransitionInfo(long? blockNumber, UInt256? terminalTotalDifficulty = null) =>
             _specProvider.UpdateMergeTransitionInfo(blockNumber, terminalTotalDifficulty);
-        }
 
         public ForkActivation? MergeBlockNumber => _specProvider.MergeBlockNumber;
 

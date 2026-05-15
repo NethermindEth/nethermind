@@ -84,7 +84,7 @@ namespace Nethermind.Network.Benchmarks
         {
             public IByteBuffer Decode(IByteBuffer input)
             {
-                var result = new List<object>();
+                List<object> result = new();
                 base.Decode(null, input, result);
                 return (IByteBuffer)result[0];
             }
@@ -94,7 +94,7 @@ namespace Nethermind.Network.Benchmarks
         {
             public IByteBuffer Decode(IByteBuffer input)
             {
-                var result = new List<object>();
+                List<object> result = new();
                 base.Decode(null, input, result);
                 return (IByteBuffer)result[0];
             }

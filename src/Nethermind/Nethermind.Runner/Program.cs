@@ -11,6 +11,7 @@ using System.IO;
 using System.Linq;
 using System.Reflection;
 using System.Runtime;
+using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
@@ -51,7 +52,7 @@ BlocksConfig.SetDefaultExtraDataWithVersion();
 ManualResetEventSlim exit = new(true);
 ILogger logger = new(SimpleConsoleLogger.Instance);
 ProcessExitSource? processExitSource = default;
-var unhandledError = "A critical error has occurred";
+string unhandledError = "A critical error has occurred";
 Option<string>[] deprecatedOptions =
 [
     BasicOptions.ConfigurationDirectory,
@@ -168,7 +169,7 @@ async Task<int> RunAsync(ParseResult parseResult, PluginLoader pluginLoader, Can
     DotNettyLeakDetector.Level = DotNettyLeakDetector.DetectionLevel.Disabled;
 #endif
 
-    logger = logManager.GetClassLogger();
+    logger = logManager.GetClassLogger<Program>();
 
     ConfigureSeqLogger(configProvider);
     ResolveDatabaseDirectory(parseResult.GetValue(BasicOptions.DatabasePath), initConfig);
@@ -185,6 +186,34 @@ async Task<int> RunAsync(ParseResult parseResult, PluginLoader pluginLoader, Can
     logger.Info("Configuration complete");
 
     EthereumJsonSerializer serializer = new();
+
+    if (logger.IsInfo)
+    {
+        StringBuilder nonDefaults = new();
+        int count = 0;
+        Action<Type, Exception> onConfigError = (configType, error) =>
+        {
+            if (logger.IsWarn) logger.Warn($"Skipped {configType.Name} in non-default config diff: {error.Message}");
+        };
+
+        foreach (NonDefaultConfigValue entry in configProvider.GetNonDefaultValues(onConfigError))
+        {
+            nonDefaults.Append("\n  ");
+            if (entry.Category is not null) nonDefaults.Append(entry.Category).Append('.');
+            nonDefaults.Append(entry.Name).Append(" = ").Append(serializer.Serialize(entry.CurrentValue));
+            count++;
+        }
+
+        if (count == 0)
+        {
+            logger.Info("Configuration: all values at defaults.");
+        }
+        else
+        {
+            nonDefaults.Insert(0, $"Configuration: {count} non-default value(s):");
+            logger.Info(nonDefaults.ToString());
+        }
+    }
 
     if (logger.IsDebug)
     {
@@ -233,7 +262,7 @@ void AddConfigurationOptions(Command command)
 {
     static Option CreateOption<T>(Type configType, string name, string? alias)
     {
-        var category = ConfigExtensions.GetCategoryName(configType);
+        string category = ConfigExtensions.GetCategoryName(configType);
         alias = string.IsNullOrWhiteSpace(alias) ? name : alias;
 
         return new Option<T>($"--{category}.{name}", $"--{category}-{alias}".ToLowerInvariant());
@@ -318,7 +347,7 @@ void ConfigureLogger(ParseResult parseResult)
 
     using NLogManager logManager = new();
 
-    logger = logManager.GetClassLogger();
+    logger = logManager.GetClassLogger<Program>();
 
     string? logLevel = parseResult.GetValue(BasicOptions.LogLevel);
 
@@ -354,8 +383,8 @@ IConfigProvider CreateConfigProvider(ParseResult parseResult)
     {
         if (child is OptionResult result && !result.Implicit)
         {
-            var isBoolean = result.Option.GetType().GenericTypeArguments.SingleOrDefault() == typeof(bool);
-            var value = isBoolean
+            bool isBoolean = result.Option.GetType().GenericTypeArguments.SingleOrDefault() == typeof(bool);
+            string value = isBoolean
                 ? result.GetValueOrDefault<bool>().ToString().ToLowerInvariant()
                 : result.GetValueOrDefault<string>();
 
@@ -385,7 +414,7 @@ IConfigProvider CreateConfigProvider(ParseResult parseResult)
         {
             string? fallback;
 
-            foreach (var ext in new[] { ".json", ".cfg" })
+            foreach (string ext in new[] { ".json", ".cfg" })
             {
                 fallback = $"{configFile}{ext}";
 
@@ -399,7 +428,7 @@ IConfigProvider CreateConfigProvider(ParseResult parseResult)
         // For backward compatibility. To be removed in the future.
         else if (Path.GetExtension(configFile).Equals(".cfg", StringComparison.Ordinal))
         {
-            var name = Path.GetFileNameWithoutExtension(configFile)!;
+            string name = Path.GetFileNameWithoutExtension(configFile)!;
 
             configFile = $"{configFile[..^4]}.json";
 
@@ -418,7 +447,7 @@ IConfigProvider CreateConfigProvider(ParseResult parseResult)
     configProvider.AddSource(new JsonConfigSource(configFile));
     configProvider.Initialize();
 
-    var (ErrorMsg, Errors) = configProvider.FindIncorrectSettings();
+    (string ErrorMsg, IList<(IConfigSource Source, string? Category, string Name)> Errors) = configProvider.FindIncorrectSettings();
 
     if (Errors.Any())
         logger.Warn($"Invalid configuration settings:\n{ErrorMsg}");
@@ -443,7 +472,7 @@ RootCommand CreateRootCommand()
 
     rootCommand.Description = "Nethermind Ethereum execution client";
 
-    var versionOption = (VersionOption)rootCommand.Children.SingleOrDefault(c => c is VersionOption);
+    VersionOption versionOption = (VersionOption)rootCommand.Children.SingleOrDefault(c => c is VersionOption);
 
     if (versionOption is not null)
     {
@@ -468,7 +497,7 @@ ILogger GetCriticalLogger()
 {
     try
     {
-        return new NLogManager("nethermind.log").GetClassLogger();
+        return new NLogManager("nethermind.log").GetClassLogger<Program>();
     }
     catch
     {

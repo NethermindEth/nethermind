@@ -46,10 +46,7 @@ public class SnappyTests
             return result.ReadAllBytesAsArray();
         }
 
-        public void TestEncode(IByteBuffer input, IByteBuffer output)
-        {
-            Encode(null, input, output);
-        }
+        public void TestEncode(IByteBuffer input, IByteBuffer output) => Encode(null, input, output);
     }
 
     [TestCase("block.go.snappy")]

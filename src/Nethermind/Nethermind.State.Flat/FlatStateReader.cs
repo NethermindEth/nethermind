@@ -56,15 +56,12 @@ public class FlatStateReader(
     {
         StateId stateId = new(baseBlock);
 
-        using ReadOnlySnapshotBundle? reader = flatDbManager.GatherReadOnlySnapshotBundle(stateId);
-        if (reader is null)
-        {
-            throw new InvalidOperationException($"State at {baseBlock} not found");
-        }
+        using ReadOnlySnapshotBundle reader = flatDbManager.GatherReadOnlySnapshotBundle(stateId)
+            ?? throw new InvalidOperationException($"State at {baseBlock} not found");
 
         ReadOnlyStateTrieStoreAdapter trieStoreAdapter = new(reader);
 
-        PatriciaTree patriciaTree = new PatriciaTree(trieStoreAdapter, logManager);
+        PatriciaTree patriciaTree = new(trieStoreAdapter, logManager);
         patriciaTree.Accept(treeVisitor, stateId.StateRoot.ToCommitment(), visitingOptions);
     }
 

@@ -15,7 +15,7 @@ namespace Nethermind.Core.Extensions
             CancellationTokenRegistration tokenRegistration = default;
             try
             {
-                var tcs = new TaskCompletionSource<bool>();
+                TaskCompletionSource<bool> tcs = new();
                 registeredHandle = ThreadPool.RegisterWaitForSingleObject(
                     handle,
                     static (state, timedOut) => ((TaskCompletionSource<bool>)state!).TrySetResult(!timedOut),
@@ -25,7 +25,7 @@ namespace Nethermind.Core.Extensions
                 tokenRegistration = cancellationToken.Register(
                     static state =>
                     {
-                        var (tcs, ct) = ((TaskCompletionSource<bool> tcs, CancellationToken ct))state!;
+                        (TaskCompletionSource<bool>? tcs, CancellationToken ct) = ((TaskCompletionSource<bool> tcs, CancellationToken ct))state!;
                         tcs.TrySetCanceled(ct);
                     },
                     (tcs, cancellationToken));
@@ -39,14 +39,8 @@ namespace Nethermind.Core.Extensions
             }
         }
 
-        public static Task<bool> WaitOneAsync(this WaitHandle handle, TimeSpan timeout, CancellationToken cancellationToken)
-        {
-            return handle.WaitOneAsync((int)timeout.TotalMilliseconds, cancellationToken);
-        }
+        public static Task<bool> WaitOneAsync(this WaitHandle handle, TimeSpan timeout, CancellationToken cancellationToken) => handle.WaitOneAsync((int)timeout.TotalMilliseconds, cancellationToken);
 
-        public static Task<bool> WaitOneAsync(this WaitHandle handle, CancellationToken cancellationToken)
-        {
-            return handle.WaitOneAsync(Timeout.Infinite, cancellationToken);
-        }
+        public static Task<bool> WaitOneAsync(this WaitHandle handle, CancellationToken cancellationToken) => handle.WaitOneAsync(Timeout.Infinite, cancellationToken);
     }
 }

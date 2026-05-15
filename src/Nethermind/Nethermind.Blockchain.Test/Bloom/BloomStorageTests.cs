@@ -167,20 +167,17 @@ public class BloomStorageTests
     [TestCase(ushort.MaxValue, Explicit = true)]
     [TestCase(ushort.MaxValue * 8 + 7, Explicit = true)]
     [TestCase(ushort.MaxValue * 128 + 127, Explicit = true)]
-    public void Can_safely_insert_concurrently(int maxBlock)
+    public void Can_safely_insert_concurrently(int maxBlock) => RunInsertAndVerify(maxBlock, (storage, count) =>
     {
-        RunInsertAndVerify(maxBlock, (storage, count) =>
-        {
-            Parallel.For(0, count,
-                new ParallelOptions { MaxDegreeOfParallelism = Environment.ProcessorCount * 16 },
-                i =>
-                {
-                    Core.Bloom bloom = new();
-                    bloom.Set(i % Core.Bloom.BitLength);
-                    storage.Store(i, bloom);
-                });
-        });
-    }
+        Parallel.For(0, count,
+            new ParallelOptions { MaxDegreeOfParallelism = Environment.ProcessorCount * 16 },
+            i =>
+            {
+                Core.Bloom bloom = new();
+                bloom.Set(i % Core.Bloom.BitLength);
+                storage.Store(i, bloom);
+            });
+    });
 
     [MaxTime(Timeout.MaxTestTime)]
     [TestCase(byte.MaxValue)]
@@ -188,20 +185,17 @@ public class BloomStorageTests
     [TestCase(ushort.MaxValue, Explicit = true)]
     [TestCase(ushort.MaxValue * 8 + 7, Explicit = true)]
     [TestCase(ushort.MaxValue * 128 + 127, Explicit = true)]
-    public void Can_safely_insert_in_batch(int maxBlock)
+    public void Can_safely_insert_in_batch(int maxBlock) => RunInsertAndVerify(maxBlock, (storage, count) =>
     {
-        RunInsertAndVerify(maxBlock, (storage, count) =>
+        using ArrayPoolList<(long, Core.Bloom)> bloomInsertions = new(count);
+        for (int i = 0; i < count; i++)
         {
-            using ArrayPoolList<(long, Core.Bloom)> bloomInsertions = new(count);
-            for (int i = 0; i < count; i++)
-            {
-                Core.Bloom bloom = new();
-                bloom.Set(i % Core.Bloom.BitLength);
-                bloomInsertions.Add((i, bloom));
-            }
-            storage.Store(bloomInsertions);
-        });
-    }
+            Core.Bloom bloom = new();
+            bloom.Set(i % Core.Bloom.BitLength);
+            bloomInsertions.Add((i, bloom));
+        }
+        storage.Store(bloomInsertions);
+    });
 
     private static void RunInsertAndVerify(int maxBlock, Action<BloomStorage, int> insertAction)
     {

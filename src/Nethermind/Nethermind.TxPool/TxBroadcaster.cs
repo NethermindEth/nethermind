@@ -84,7 +84,7 @@ namespace Nethermind.TxPool
             _txGossipPolicy = transactionsGossipPolicy ?? ShouldGossip.Instance;
             // Allocate closure once
             _gossipFilter = _txGossipPolicy.ShouldGossipTransaction;
-            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+            _logger = logManager?.GetClassLogger<TxBroadcaster>() ?? throw new ArgumentNullException(nameof(logManager));
             _persistentTxs = new TxDistinctSortedPool(txPoolConfig.Size, comparer, logManager);
             _accumulatedTemporaryTxs = new ResettableList<Transaction>(512, 4);
             _txsToSend = new ResettableList<Transaction>(512, 4);
@@ -318,26 +318,32 @@ namespace Nethermind.TxPool
             _timer.Enabled = true;
         }
 
+        private bool CanGossipTransactions => _txGossipPolicy.CanGossipTransactions;
 
         private void Notify(ITxPoolPeer peer, IEnumerable<Transaction> txs, bool sendFullTx)
         {
-            if (_txGossipPolicy.CanGossipTransactions)
+            if (CanGossipTransactions)
             {
                 try
                 {
                     peer.SendNewTransactions(txs.Where(_gossipFilter), sendFullTx);
-                    if (_logger.IsTrace) _logger.Trace($"Notified {peer} about transactions.");
+                    if (_logger.IsTrace) TracePeerSend(peer);
                 }
                 catch (Exception e)
                 {
-                    if (_logger.IsError) _logger.Error($"Failed to notify {peer} about transactions.", e);
+                    if (_logger.IsError) ErrorPeerSend(peer, e);
                 }
             }
+
+            [MethodImpl(MethodImplOptions.NoInlining)]
+            void TracePeerSend(ITxPoolPeer peer) => _logger.Trace($"Notified {peer} about transactions.");
+            [MethodImpl(MethodImplOptions.NoInlining)]
+            void ErrorPeerSend(ITxPoolPeer peer, Exception e) => _logger.Error($"Failed to notify {peer} about transactions.", e);
         }
 
         private void NotifyPeersAboutLocalTx(Transaction tx)
         {
-            if (!_txGossipPolicy.CanGossipTransactions || !_txGossipPolicy.ShouldGossipTransaction(tx)) return;
+            if (!CanGossipTransactions || !_txGossipPolicy.ShouldGossipTransaction(tx)) return;
 
             if (_logger.IsTrace) _logger.Trace($"Broadcasting new local transaction {tx.Hash} to all peers");
 
@@ -368,19 +374,10 @@ namespace Nethermind.TxPool
 
         public bool ContainsTx(Hash256 hash) => _persistentTxs.ContainsKey(hash);
 
-        public bool AddPeer(ITxPoolPeer peer)
-        {
-            return _peers.TryAdd(peer.Id, peer);
-        }
+        public bool AddPeer(ITxPoolPeer peer) => _peers.TryAdd(peer.Id, peer);
 
-        public bool RemovePeer(PublicKey nodeId)
-        {
-            return _peers.TryRemove(nodeId, out _);
-        }
+        public bool RemovePeer(PublicKey nodeId) => _peers.TryRemove(nodeId, out _);
 
-        public void Dispose()
-        {
-            _timer.Dispose();
-        }
+        public void Dispose() => _timer.Dispose();
     }
 }

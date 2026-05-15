@@ -22,9 +22,9 @@ namespace Nethermind.TxPool.Test
     [TestFixture(false)]
     [Parallelizable(ParallelScope.All)]
     [FixtureLifeCycle(LifeCycle.InstancePerTestCase)]
-    public class ReceiptStorageTests
+    public class ReceiptStorageTests(bool useEip2718)
     {
-        private readonly bool _useEip2718;
+        private readonly bool _useEip2718 = useEip2718;
         private ISpecProvider _specProvider;
         private IEthereumEcdsa _ethereumEcdsa;
         private IReceiptStorage _persistentStorage;
@@ -32,11 +32,6 @@ namespace Nethermind.TxPool.Test
         private IReceiptStorage _inMemoryStorage;
         private IBlockTree _blockTree;
         private IBlockStore _blockStore;
-
-        public ReceiptStorageTests(bool useEip2718)
-        {
-            _useEip2718 = useEip2718;
-        }
 
         [SetUp]
         public void Setup()

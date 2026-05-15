@@ -10,20 +10,14 @@ using Nethermind.Logging.NLog;
 
 namespace Nethermind.Blockchain.Test.Runner
 {
-    public class StateTestsBugHunter : GeneralStateTestBase, IStateTestRunner
+    public class StateTestsBugHunter(ITestSourceLoader testsSource) : GeneralStateTestBase, IStateTestRunner
     {
-        private ITestSourceLoader _testsSource;
-        private ConsoleColor _defaultColor;
-
-        public StateTestsBugHunter(ITestSourceLoader testsSource)
-        {
-            _testsSource = testsSource ?? throw new ArgumentNullException(nameof(testsSource));
-            _defaultColor = Console.ForegroundColor;
-        }
+        private ITestSourceLoader _testsSource = testsSource ?? throw new ArgumentNullException(nameof(testsSource));
+        private ConsoleColor _defaultColor = Console.ForegroundColor;
 
         public IEnumerable<EthereumTestResult> RunTests()
         {
-            List<EthereumTestResult> testResults = new List<EthereumTestResult>();
+            List<EthereumTestResult> testResults = new();
             string directoryName = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Desktop), "FailingTests");
             IEnumerable<GeneralStateTest> tests = _testsSource.LoadTests<GeneralStateTest>();
             foreach (GeneralStateTest test in tests)
@@ -48,7 +42,7 @@ namespace Nethermind.Blockchain.Test.Runner
                     else
                     {
                         WriteRed("FAIL");
-                        NLogManager manager = new NLogManager(string.Concat(test.Category, "_", test.Name, ".txt"), directoryName);
+                        NLogManager manager = new(string.Concat(test.Category, "_", test.Name, ".txt"), directoryName);
                         if (!Directory.Exists(directoryName))
                         {
                             Directory.CreateDirectory(directoryName);

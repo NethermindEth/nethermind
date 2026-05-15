@@ -29,10 +29,7 @@ public class StandardDbInitializerTests
     private string _folderWithDbs = null!;
 
     [OneTimeSetUp]
-    public void Initialize()
-    {
-        _folderWithDbs = Guid.NewGuid().ToString();
-    }
+    public void Initialize() => _folderWithDbs = Guid.NewGuid().ToString();
 
     [TestCase(false)]
     [TestCase(true)]

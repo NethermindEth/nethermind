@@ -10,17 +10,11 @@ using Nethermind.Api.Steps;
 
 namespace Nethermind.Init.Steps
 {
-    public class EthereumStepsLoader : IEthereumStepsLoader
+    public class EthereumStepsLoader(IConsensusPlugin consensusPlugin, IEnumerable<StepInfo> stepsInfo) : IEthereumStepsLoader
     {
-        private readonly IEnumerable<StepInfo> _stepsInfo;
+        private readonly IEnumerable<StepInfo> _stepsInfo = stepsInfo;
         private readonly Type _baseApiType = typeof(INethermindApi);
-        private readonly Type _apiType;
-
-        public EthereumStepsLoader(IConsensusPlugin consensusPlugin, IEnumerable<StepInfo> stepsInfo)
-        {
-            _stepsInfo = stepsInfo;
-            _apiType = consensusPlugin.ApiType;
-        }
+        private readonly Type _apiType = consensusPlugin.ApiType;
 
         public IEnumerable<StepInfo> ResolveStepsImplementations()
         {
@@ -36,11 +30,8 @@ namespace Nethermind.Init.Steps
                 .Select(s => s!);
         }
 
-        private static bool HasConstructorWithParameter(Type type, Type parameterType)
-        {
-            return type.GetConstructors().Any(
+        private static bool HasConstructorWithParameter(Type type, Type parameterType) => type.GetConstructors().Any(
                 c => c.GetParameters().Select(p => p.ParameterType).Any(pType => pType == parameterType));
-        }
 
         private StepInfo? SelectImplementation(StepInfo[] stepsWithTheSameBase)
         {

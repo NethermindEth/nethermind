@@ -60,10 +60,8 @@ namespace Nethermind.Abi
             }
 
             [DoesNotReturn, StackTraceHidden]
-            static void Throw()
-            {
+            static void Throw() =>
                 throw new ArgumentOutOfRangeException(nameof(length), $"{nameof(length)} of {nameof(AbiUInt)} has to be a multiple of 8");
-            }
         }
     }
 }
@@ -173,43 +171,38 @@ namespace Nethermind.Blockchain.Contracts.Json
                 return (length, precision);
             }
 
-            static AbiType GetType(string? type)
+            static AbiType GetType(string? type) => type switch
             {
-                return type switch
-                {
-                    "address" => AbiType.Address,
-                    "function" => AbiType.Function,
-                    "bool" => AbiType.Bool,
-                    "int8" => AbiType.Int8,
-                    "int16" => AbiType.Int16,
-                    "int32" => AbiType.Int32,
-                    "int64" => AbiType.Int64,
-                    "int96" => AbiType.Int96,
-                    "int256" => AbiType.Int256,
-                    { } when type.StartsWith("int") => new AbiInt(int.Parse(type.AsSpan(3))),
-                    "uint8" => AbiType.UInt8,
-                    "uint16" => AbiType.UInt16,
-                    "uint32" => AbiType.UInt32,
-                    "uint64" => AbiType.UInt64,
-                    "uint96" => AbiType.UInt96,
-                    "uint256" => AbiType.UInt256,
-                    { } when type.StartsWith("uint") => new AbiUInt(int.Parse(type.AsSpan(4))),
-                    "string" => AbiType.String,
-                    "bytes" => AbiType.DynamicBytes,
-                    "bytes32" => AbiType.Bytes32,
-                    { } when type.StartsWith("bytes") => new AbiBytes(int.Parse(type.AsSpan(5))),
-                    "fixed128x18" => AbiType.Fixed,
-                    "ufixed128x18" => AbiType.UFixed,
-                    { } when type.StartsWith("fixed") => ParseFixed(type),
-                    { } when type.StartsWith("ufixed") => ParseUFixed(type),
-                    _ => throw new NotSupportedException($"ABI type {type} is not supported.")
-                };
-            }
+                "address" => AbiType.Address,
+                "function" => AbiType.Function,
+                "bool" => AbiType.Bool,
+                "int8" => AbiType.Int8,
+                "int16" => AbiType.Int16,
+                "int32" => AbiType.Int32,
+                "int64" => AbiType.Int64,
+                "int96" => AbiType.Int96,
+                "int256" => AbiType.Int256,
+                { } when type.StartsWith("int") => new AbiInt(int.Parse(type.AsSpan(3))),
+                "uint8" => AbiType.UInt8,
+                "uint16" => AbiType.UInt16,
+                "uint32" => AbiType.UInt32,
+                "uint64" => AbiType.UInt64,
+                "uint96" => AbiType.UInt96,
+                "uint256" => AbiType.UInt256,
+                { } when type.StartsWith("uint") => new AbiUInt(int.Parse(type.AsSpan(4))),
+                "string" => AbiType.String,
+                "bytes" => AbiType.DynamicBytes,
+                "bytes32" => AbiType.Bytes32,
+                { } when type.StartsWith("bytes") => new AbiBytes(int.Parse(type.AsSpan(5))),
+                "fixed128x18" => AbiType.Fixed,
+                "ufixed128x18" => AbiType.UFixed,
+                { } when type.StartsWith("fixed") => ParseFixed(type),
+                { } when type.StartsWith("ufixed") => ParseUFixed(type),
+                _ => throw new NotSupportedException($"ABI type {type} is not supported.")
+            };
         }
 
-        public override void Write(Utf8JsonWriter writer, AbiType value, JsonSerializerOptions options)
-        {
+        public override void Write(Utf8JsonWriter writer, AbiType value, JsonSerializerOptions options) =>
             writer.WriteStringValue(value.Name);
-        }
     }
 }

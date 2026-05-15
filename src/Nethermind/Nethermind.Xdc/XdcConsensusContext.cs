@@ -15,14 +15,15 @@ public class XdcConsensusContext : IXdcConsensusContext
     public XdcConsensusContext()
     {
         HighestQC = new QuorumCertificate(new BlockRoundInfo(Hash256.Zero, 0, 0), [], 0);
+        HighestTC = new TimeoutCertificate(0, [], 0);
     }
 
-    public DateTime RoundStarted { get; private set; }
+    public DateTime? RoundStarted { get; private set; }
     public int TimeoutCounter { get; set; }
     public ulong CurrentRound { get => _currentRound; set => _currentRound = value; }
     public QuorumCertificate HighestQC { get; set; }
     public QuorumCertificate? LockQC { get; set; }
-    public TimeoutCertificate? HighestTC { get; set; }
+    public TimeoutCertificate HighestTC { get; set; }
     public BlockRoundInfo HighestCommitBlock { get; set; }
 
     public event EventHandler<NewRoundEventArgs> NewRoundSetEvent;
@@ -34,7 +35,7 @@ public class XdcConsensusContext : IXdcConsensusContext
         ulong last = CurrentRound;
         CurrentRound = round;
         TimeoutCounter = 0;
-        DateTime lastRoundStarted = RoundStarted;
+        DateTime? lastRoundStarted = RoundStarted;
         RoundStarted = DateTime.UtcNow;
 
         // timer should be reset outside

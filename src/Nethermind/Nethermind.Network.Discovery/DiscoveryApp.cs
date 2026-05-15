@@ -24,20 +24,20 @@ namespace Nethermind.Network.Discovery;
 public class DiscoveryApp : IDiscoveryApp
 {
     private readonly IDiscoveryConfig _discoveryConfig;
-    private readonly ITimestamper _timestamper;
+    protected readonly ITimestamper _timestamper;
     private readonly INodesLocator _nodesLocator;
-    private readonly IDiscoveryManager _discoveryManager;
+    protected readonly IDiscoveryManager _discoveryManager;
     private readonly INodeTable _nodeTable;
-    private readonly ILogManager _logManager;
+    protected readonly ILogManager _logManager;
     private readonly ILogger _logger;
-    private readonly IMessageSerializationService _messageSerializationService;
+    protected readonly IMessageSerializationService _messageSerializationService;
     private readonly ICryptoRandom _cryptoRandom;
     private readonly INetworkStorage _discoveryStorage;
     private readonly DiscoveryPersistenceManager _persistenceManager;
     private readonly IProcessExitSource _processExitSource;
     private readonly INetworkConfig _networkConfig;
     private readonly CancellationTokenSource _stopCts;
-    private readonly NodeFilter? _inboundMessageFilter;
+    protected readonly NodeFilter? _inboundMessageFilter;
 
     private NettyDiscoveryHandler? _discoveryHandler;
     private Task? _runningTask;
@@ -59,7 +59,7 @@ public class DiscoveryApp : IDiscoveryApp
         NodeFilter? inboundMessageFilter = null)
     {
         _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
-        _logger = _logManager.GetClassLogger();
+        _logger = _logManager.GetClassLogger<DiscoveryApp>();
         _discoveryConfig = discoveryConfig ?? throw new ArgumentNullException(nameof(discoveryConfig));
         _timestamper = timestamper ?? throw new ArgumentNullException(nameof(timestamper));
         _nodesLocator = nodesLocator ?? throw new ArgumentNullException(nameof(nodesLocator));
@@ -154,10 +154,7 @@ public class DiscoveryApp : IDiscoveryApp
 
     string IStoppableService.Description => "discv4";
 
-    public void AddNodeToDiscovery(Node node)
-    {
-        _discoveryManager.GetNodeLifecycleManager(node);
-    }
+    public void AddNodeToDiscovery(Node node) => _discoveryManager.GetNodeLifecycleManager(node);
 
     private void Initialize()
     {
@@ -181,10 +178,12 @@ public class DiscoveryApp : IDiscoveryApp
         }
     }
 
+    protected virtual NettyDiscoveryHandler CreateDiscoveryHandler(IChannel channel) =>
+        new(_discoveryManager, channel, _messageSerializationService, _timestamper, _logManager, _inboundMessageFilter);
+
     public void InitializeChannel(IChannel channel)
     {
-        _discoveryHandler = new NettyDiscoveryHandler(_discoveryManager, channel, _messageSerializationService,
-            _timestamper, _logManager, _inboundMessageFilter);
+        _discoveryHandler = CreateDiscoveryHandler(channel);
         _discoveryManager.MsgSender = _discoveryHandler;
         _discoveryHandler.OnChannelActivated += OnChannelActivated;
 
@@ -281,7 +280,7 @@ public class DiscoveryApp : IDiscoveryApp
         }
         catch (Exception e)
         {
-            if (_logger.IsDebug) _logger.Error("DEBUG/ERROR Error during discovery initialization", e);
+            _logger.DebugError("Error during discovery initialization", e);
         }
     }
 
@@ -385,7 +384,7 @@ public class DiscoveryApp : IDiscoveryApp
     {
         byte[] randomId = new byte[64];
         CancellationToken cancellationToken = _stopCts.Token;
-        PeriodicTimer timer = new(TimeSpan.FromMilliseconds(10));
+        using PeriodicTimer timer = new(TimeSpan.FromMilliseconds(10));
 
         long lastTickMs = Environment.TickCount64;
         long waitTimeTimeMs = 10;
@@ -446,10 +445,7 @@ public class DiscoveryApp : IDiscoveryApp
         }
     }
 
-    private void OnNodeDiscovered(object? sender, NodeEventArgs e)
-    {
-        NodeAdded?.Invoke(this, e);
-    }
+    private void OnNodeDiscovered(object? sender, NodeEventArgs e) => NodeAdded?.Invoke(this, e);
 
     public event EventHandler<NodeEventArgs>? NodeAdded;
 

@@ -16,7 +16,7 @@ public static class EvmCalculations
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static long Div32Ceiling(in UInt256 length, out bool outOfGas)
     {
-        if (length.IsLargerThanULong())
+        if (!length.IsUint64)
         {
             outOfGas = true;
             return 0;

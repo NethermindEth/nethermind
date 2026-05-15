@@ -14,8 +14,5 @@ public class AlwaysOkBlockProductionCondition : IBlockProductionCondition
 {
     public static IBlockProductionCondition Instance = new AlwaysOkBlockProductionCondition();
 
-    public bool CanProduce(BlockHeader parentHeader)
-    {
-        return true;
-    }
+    public bool CanProduce(BlockHeader parentHeader) => true;
 }

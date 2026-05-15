@@ -72,13 +72,10 @@ public class GenesisLoaderTests
         );
     }
 
-    private void SimulateSuccessfulBlockProcessing()
+    private void SimulateSuccessfulBlockProcessing() => _blockTree.When(x => x.SuggestBlock(Arg.Any<Block>())).Do(_ =>
     {
-        _blockTree.When(x => x.SuggestBlock(Arg.Any<Block>())).Do(_ =>
-        {
-            _blockTree.NewHeadBlock += Raise.EventWith(_blockTree, new BlockEventArgs(_genesisBlock));
-        });
-    }
+        _blockTree.NewHeadBlock += Raise.EventWith(_blockTree, new BlockEventArgs(_genesisBlock));
+    });
 
     [Test]
     public void Load_ShouldFlushCacheAfterSuccessfulGenesisProcessing()

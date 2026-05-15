@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
@@ -17,28 +17,23 @@ using Nethermind.Xdc.Spec;
 
 namespace Nethermind.Xdc;
 
-internal class XdcTransactionProcessor : EthereumTransactionProcessorBase
+internal class XdcTransactionProcessor(
+    ITransactionProcessor.IBlobBaseFeeCalculator blobBaseFeeCalculator,
+    ISpecProvider? specProvider,
+    IWorldState? worldState,
+    IVirtualMachine? virtualMachine,
+    ICodeInfoRepository? codeInfoRepository,
+    ILogManager? logManager,
+    IMasternodeVotingContract masternodeVotingContract) : EthereumTransactionProcessorBase(
+        blobBaseFeeCalculator,
+        specProvider,
+        worldState,
+        virtualMachine,
+        codeInfoRepository,
+        logManager)
 {
-    private readonly IMasternodeVotingContract _masternodeVotingContract;
-
-    public XdcTransactionProcessor(
-        ITransactionProcessor.IBlobBaseFeeCalculator blobBaseFeeCalculator,
-        ISpecProvider? specProvider,
-        IWorldState? worldState,
-        IVirtualMachine? virtualMachine,
-        ICodeInfoRepository? codeInfoRepository,
-        ILogManager? logManager,
-        IMasternodeVotingContract masternodeVotingContract)
-        : base(
-            blobBaseFeeCalculator,
-            specProvider,
-            worldState,
-            virtualMachine,
-            codeInfoRepository,
-            logManager)
-    {
-        _masternodeVotingContract = masternodeVotingContract;
-    }
+    private readonly IMasternodeVotingContract _masternodeVotingContract = masternodeVotingContract;
+    internal IWorldState RewardWorldState => WorldState;
 
     protected override void PayFees(
         Transaction tx,
@@ -91,7 +86,7 @@ internal class XdcTransactionProcessor : EthereumTransactionProcessorBase
 
     protected override TransactionResult ValidateSender(Transaction tx, BlockHeader header, IReleaseSpec spec, ITxTracer tracer, ExecutionOptions opts)
     {
-        var xdcSpec = spec as XdcReleaseSpec;
+        XdcReleaseSpec xdcSpec = spec as XdcReleaseSpec;
         Address target = tx.To;
         Address sender = tx.SenderAddress;
 
@@ -107,10 +102,7 @@ internal class XdcTransactionProcessor : EthereumTransactionProcessorBase
         return base.ValidateSender(tx, header, spec, tracer, opts);
     }
 
-    private bool IsBlackListed(IXdcReleaseSpec spec, Address sender)
-    {
-        return spec.BlackListedAddresses.Contains(sender);
-    }
+    private bool IsBlackListed(IXdcReleaseSpec spec, Address sender) => spec.BlackListedAddresses.Contains(sender);
 
     protected override TransactionResult Execute(Transaction tx, ITxTracer tracer, ExecutionOptions opts)
     {
@@ -125,12 +117,12 @@ internal class XdcTransactionProcessor : EthereumTransactionProcessorBase
 
     protected override TransactionResult IncrementNonce(Transaction tx, BlockHeader header, IReleaseSpec spec, ITxTracer tracer, ExecutionOptions opts)
     {
-        var xdcSpec = (IXdcReleaseSpec)spec;
+        IXdcReleaseSpec xdcSpec = (IXdcReleaseSpec)spec;
         if (tx.RequiresSpecialHandling(xdcSpec))
         {
             if (tx.IsSignTransaction(xdcSpec))
             {
-                var nonce = WorldState.GetNonce(tx.SenderAddress);
+                UInt256 nonce = WorldState.GetNonce(tx.SenderAddress);
 
                 if (nonce < tx.Nonce)
                 {
@@ -150,14 +142,14 @@ internal class XdcTransactionProcessor : EthereumTransactionProcessorBase
         return base.IncrementNonce(tx, header, spec, tracer, opts);
     }
 
-    protected override TransactionResult ValidateGas(Transaction tx, BlockHeader header, long minGasRequired)
+    protected override TransactionResult ValidateGas(Transaction tx, BlockHeader header, IReleaseSpec _, in EthereumGasPolicy intrinsicGas, long minGasRequired, bool validate)
     {
-        var spec = SpecProvider.GetXdcSpec((XdcBlockHeader)header);
+        IXdcReleaseSpec spec = SpecProvider.GetXdcSpec((XdcBlockHeader)header);
         if (tx.RequiresSpecialHandling(spec))
         {
             return TransactionResult.Ok;
         }
-        return base.ValidateGas(tx, header, minGasRequired);
+        return base.ValidateGas(tx, header, spec, in intrinsicGas, minGasRequired, validate);
     }
 
     protected override UInt256 CalculateEffectiveGasPrice(Transaction tx, bool eip1559Enabled, in UInt256 baseFee, out UInt256 opcodeGasPrice)
@@ -178,10 +170,10 @@ internal class XdcTransactionProcessor : EthereumTransactionProcessorBase
         return base.CalculateEffectiveGasPrice(tx, eip1559Enabled, in baseFee, out opcodeGasPrice);
     }
 
-    protected override IntrinsicGas<EthereumGasPolicy> CalculateIntrinsicGas(Transaction tx, IReleaseSpec spec) =>
+    protected override IntrinsicGas<EthereumGasPolicy> CalculateIntrinsicGas(Transaction tx, IReleaseSpec spec, long blockGasLimit) =>
         tx.RequiresSpecialHandling((IXdcReleaseSpec)spec)
             ? new IntrinsicGas<EthereumGasPolicy>()
-            : base.CalculateIntrinsicGas(tx, spec);
+            : base.CalculateIntrinsicGas(tx, spec, blockGasLimit);
 
     private TransactionResult ExecuteSpecialTransaction(Transaction tx, ITxTracer tracer, ExecutionOptions opts)
     {
@@ -193,11 +185,11 @@ internal class XdcTransactionProcessor : EthereumTransactionProcessorBase
         // maybe a better approach would be adding an XdcGasPolicy
         TransactionResult result;
         _ = RecoverSenderIfNeeded(tx, spec, opts, UInt256.Zero);
-        IntrinsicGas<EthereumGasPolicy> intrinsicGas = CalculateIntrinsicGas(tx, spec);
+        IntrinsicGas<EthereumGasPolicy> intrinsicGas = CalculateIntrinsicGas(tx, spec, header.GasLimit);
 
         if (!(result = ValidateSender(tx, header, spec, tracer, opts))
             || !(result = IncrementNonce(tx, header, spec, tracer, opts))
-            || !(result = ValidateStatic(tx, header, spec, opts, intrinsicGas)))
+            || !(result = ValidateStatic(tx, header, spec, opts, in intrinsicGas)))
         {
             if (restore)
             {
@@ -223,7 +215,7 @@ internal class XdcTransactionProcessor : EthereumTransactionProcessorBase
                 stateRoot = WorldState.StateRoot;
             }
 
-            var log = new LogEntry(tx.To, [], []);
+            LogEntry log = new(tx.To, [], []);
             tracer.MarkAsSuccess(tx.To, 0, [], [log], stateRoot);
         }
 

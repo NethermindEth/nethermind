@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -22,17 +22,19 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Modules;
 using Nethermind.Db;
+using Nethermind.History;
 using Nethermind.Int256;
 using Nethermind.Logging;
-using Nethermind.Specs;
-using Nethermind.Stats.Model;
 using Nethermind.Merge.Plugin;
+using Nethermind.Specs;
+using Nethermind.Stats;
+using Nethermind.Stats.Model;
+using Nethermind.Stats.SyncLimits;
 using Nethermind.Synchronization.Blocks;
 using Nethermind.Synchronization.Peers;
 using Nethermind.Synchronization.Test.ParallelSync;
 using NSubstitute;
 using NUnit.Framework;
-using Nethermind.History;
 
 namespace Nethermind.Synchronization.Test;
 
@@ -46,6 +48,7 @@ namespace Nethermind.Synchronization.Test;
 public class SynchronizerTests(SynchronizerType synchronizerType)
 {
     private const int SyncBatchSizeMax = 128;
+    private const int BatchSyncDynamicTimeout = 60000;
 
     private readonly SynchronizerType _synchronizerType = synchronizerType;
     private static readonly Block _genesisBlock = Build.A.Block
@@ -78,6 +81,7 @@ public class SynchronizerTests(SynchronizerType synchronizerType)
             Blocks.Add(_genesisBlock);
             UpdateHead();
             ClientId = peerName;
+            Node.ClientId = "Nethermind/v1.31.0/X64-Linux/10.0.0";
         }
 
         private void UpdateHead()
@@ -89,10 +93,8 @@ public class SynchronizerTests(SynchronizerType synchronizerType)
 
         public override Node Node { get; set; } = new Node(Build.A.PrivateKey.TestObject.PublicKey, "127.0.0.1", 1234);
 
-        public override void Disconnect(DisconnectReason reason, string details)
-        {
+        public override void Disconnect(DisconnectReason reason, string details) =>
             Disconnected?.Invoke(this, EventArgs.Empty);
-        }
 
         public override Task<OwnedBlockBodies> GetBlockBodies(IReadOnlyList<Hash256> blockHashes, CancellationToken token)
         {
@@ -125,7 +127,7 @@ public class SynchronizerTests(SynchronizerType synchronizerType)
 
             int filled = 0;
             bool started = false;
-            ArrayPoolList<BlockHeader> result = new ArrayPoolList<BlockHeader>(maxBlocks, maxBlocks);
+            ArrayPoolList<BlockHeader> result = new(maxBlocks, maxBlocks);
             foreach (Block block in Blocks)
             {
                 if (block.Number == number)
@@ -212,10 +214,8 @@ public class SynchronizerTests(SynchronizerType synchronizerType)
             UpdateHead();
         }
 
-        public override string ToString()
-        {
-            return $"SyncPeerMock:{ClientId}";
-        }
+        public override string ToString() =>
+            $"SyncPeerMock:{ClientId}";
     }
 
     private WhenImplementation When => new(_synchronizerType);
@@ -225,6 +225,8 @@ public class SynchronizerTests(SynchronizerType synchronizerType)
         private readonly SynchronizerType _synchronizerType = synchronizerType;
 
         public SyncingContext Syncing => new(_synchronizerType);
+
+        public SyncingContext SyncingWithMaxRequestLimits => new(_synchronizerType, useMaxRequestLimits: true);
     }
 
     public class SyncingContext : IAsyncDisposable
@@ -255,7 +257,7 @@ public class SynchronizerTests(SynchronizerType synchronizerType)
 
         private readonly ILogger _logger;
 
-        public SyncingContext(SynchronizerType synchronizerType)
+        public SyncingContext(SynchronizerType synchronizerType, bool useMaxRequestLimits = false)
         {
             ISyncConfig GetSyncConfig() =>
                 synchronizerType switch
@@ -269,7 +271,7 @@ public class SynchronizerTests(SynchronizerType synchronizerType)
                     _ => throw new ArgumentOutOfRangeException(nameof(synchronizerType), synchronizerType, null)
                 };
 
-            _logger = _logManager.GetClassLogger();
+            _logger = _logManager.GetClassLogger<ContainerDependencies>();
             ISyncConfig syncConfig = GetSyncConfig();
             IMergeConfig mergeConfig = new MergeConfig();
             IPruningConfig pruningConfig = new PruningConfig()
@@ -294,6 +296,11 @@ public class SynchronizerTests(SynchronizerType synchronizerType)
                 .AddSingleton<ContainerDependencies>()
                 .AddSingleton(_logManager);
 
+            if (useMaxRequestLimits)
+            {
+                builder.AddSingleton(CreateMaxRequestLimitNodeStatsManager());
+            }
+
             if (IsMerge(synchronizerType))
             {
                 builder.RegisterModule(new TestMergeModule(configProvider));
@@ -305,6 +312,21 @@ public class SynchronizerTests(SynchronizerType synchronizerType)
             SyncPeerPool.Start();
             Synchronizer.Start();
             AllInstances.Enqueue(this);
+        }
+
+        private static INodeStatsManager CreateMaxRequestLimitNodeStatsManager()
+        {
+            INodeStats nodeStats = Substitute.For<INodeStats>();
+            nodeStats.GetCurrentRequestLimit(RequestType.Headers).Returns(NethermindSyncLimits.MaxHeaderFetch);
+            nodeStats.GetCurrentRequestLimit(RequestType.Bodies).Returns(NethermindSyncLimits.MaxBodyFetch);
+            nodeStats.GetCurrentRequestLimit(RequestType.Receipts).Returns(NethermindSyncLimits.MaxReceiptFetch);
+            nodeStats.GetCurrentRequestLimit(RequestType.BlockAccessLists).Returns(GethSyncLimits.MaxBodyFetch);
+            nodeStats.GetAverageTransferSpeed(Arg.Any<TransferSpeedType>()).Returns((long?)null);
+
+            INodeStatsManager nodeStatsManager = Substitute.For<INodeStatsManager>();
+            nodeStatsManager.GetOrAdd(Arg.Any<Node>()).Returns(nodeStats);
+            nodeStatsManager.IsConnectionDelayed(Arg.Any<Node>()).Returns((false, null));
+            return nodeStatsManager;
         }
 
         public SyncingContext BestKnownNumberIs(long number)
@@ -321,11 +343,11 @@ public class SynchronizerTests(SynchronizerType synchronizerType)
 
         private const int DynamicTimeout = 10000;
 
-        public SyncingContext BestSuggestedHeaderIs(BlockHeader header)
+        public SyncingContext BestSuggestedHeaderIs(BlockHeader header, int timeout = DynamicTimeout)
         {
             Assert.That(
                 () => BlockTree.BestSuggestedHeader,
-                Is.EqualTo(header).After(DynamicTimeout, 10), "header");
+                Is.EqualTo(header).After(timeout, 10), "header");
 
             _blockHeader = BlockTree.BestSuggestedHeader!;
             return this;
@@ -441,10 +463,8 @@ public class SynchronizerTests(SynchronizerType synchronizerType)
             await Container.DisposeAsync();
         }
 
-        public async ValueTask DisposeAsync()
-        {
+        public async ValueTask DisposeAsync() =>
             await StopAsync();
-        }
 
         public SyncingContext WaitALittle()
         {
@@ -468,15 +488,13 @@ public class SynchronizerTests(SynchronizerType synchronizerType)
     }
 
     [Test, Retry(3)]
-    public async Task Init_condition_are_as_expected()
-    {
+    public async Task Init_condition_are_as_expected() =>
         await When.Syncing
             .AfterProcessingGenesis()
             .BestKnownNumberIs(0)
             .Genesis.BlockIsKnown()
             .BestSuggested.BlockIsSameAsGenesis()
             .StopAsync();
-    }
 
     [Test, Retry(3)]
     public async Task Can_sync_with_one_peer_straight()
@@ -720,12 +738,12 @@ public class SynchronizerTests(SynchronizerType synchronizerType)
         SyncPeerMock peerB = new("B");
         peerB.AddBlocksUpTo(SyncBatchSizeMax * 2, 0, 1);
 
-        await When.Syncing
+        await When.SyncingWithMaxRequestLimits
             .AfterProcessingGenesis()
             .AfterPeerIsAdded(peerA)
-            .BestSuggestedHeaderIs(peerA.HeadHeader)
+            .BestSuggestedHeaderIs(peerA.HeadHeader, BatchSyncDynamicTimeout)
             .AfterPeerIsAdded(peerB)
-            .BestSuggestedHeaderIs(peerB.HeadHeader)
+            .BestSuggestedHeaderIs(peerB.HeadHeader, BatchSyncDynamicTimeout)
             .StopAsync();
     }
 

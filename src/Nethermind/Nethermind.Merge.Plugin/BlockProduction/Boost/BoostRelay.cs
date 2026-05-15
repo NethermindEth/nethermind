@@ -8,19 +8,13 @@ using Nethermind.Facade.Proxy;
 
 namespace Nethermind.Merge.Plugin.BlockProduction.Boost;
 
-public class BoostRelay : IBoostRelay
+public class BoostRelay(IHttpClient httpClient, string relayUrl) : IBoostRelay
 {
     public const string GetPayloadAttributesPath = "/eth/v1/relay/payload_attributes";
     public const string SendPayloadPath = "/eth/v1/relay/submit_block";
 
-    private readonly IHttpClient _httpClient;
-    private readonly string _relayUrl;
-
-    public BoostRelay(IHttpClient httpClient, string relayUrl)
-    {
-        _httpClient = httpClient;
-        _relayUrl = relayUrl;
-    }
+    private readonly IHttpClient _httpClient = httpClient;
+    private readonly string _relayUrl = relayUrl;
 
     public Task<BoostPayloadAttributes> GetPayloadAttributes(PayloadAttributes payloadAttributes, CancellationToken cancellationToken) =>
         _httpClient.PostJsonAsync<BoostPayloadAttributes>(GetUri(_relayUrl, GetPayloadAttributesPath), payloadAttributes, cancellationToken);

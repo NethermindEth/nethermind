@@ -342,22 +342,16 @@ namespace Nethermind.Store.Test.Proofs
         }
 
         [Test]
-        public void Storage_proofs_have_values_set_complex_2_setup()
-        {
-            Storage_proofs_have_values_set_complex_5_keys(
+        public void Storage_proofs_have_values_set_complex_2_setup() => Storage_proofs_have_values_set_complex_5_keys(
                 Bytes.FromHexString("0x0000000000cccccccccccccccccccccccccccccccccccccccccccccccccccccc"),
                 Bytes.FromHexString("0x0000000000dddddddddddddddddddddddddddddddddddddddddddddddddddddd"),
                 Bytes.FromHexString("0x0000000000eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"));
-        }
 
         [Test]
-        public void Storage_proofs_have_values_set_complex_3_setup()
-        {
-            Storage_proofs_have_values_set_complex_5_keys(
+        public void Storage_proofs_have_values_set_complex_3_setup() => Storage_proofs_have_values_set_complex_5_keys(
                 Bytes.FromHexString("0x00000000001ccccccccccccccccccccccccccccccccccccccccccccccccccccc"),
                 Bytes.FromHexString("0x00000000001ddddddddddddddddddddddddddddddddddddddddddddddddddddd"),
                 Bytes.FromHexString("0x00000000001eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"));
-        }
 
         [Test]
         public void Storage_proofs_when_values_are_missing_setup()
@@ -461,7 +455,7 @@ namespace Nethermind.Store.Test.Proofs
 
             AccountProofCollector accountProofCollector = new(
                 TestItem.AddressA.ToAccountPath.ToCommitment().Bytes,
-                new ValueHash256[] { new ValueHash256(Bytes.FromHexString("3000000000000000000000000000000000000000000000000000000000000000")) }
+                new ValueHash256[] { new(Bytes.FromHexString("3000000000000000000000000000000000000000000000000000000000000000")) }
             );
             tree.Accept(accountProofCollector, tree.RootHash);
             AccountProof proof = accountProofCollector.BuildResult();

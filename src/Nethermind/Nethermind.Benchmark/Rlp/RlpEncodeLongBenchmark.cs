@@ -11,9 +11,7 @@ namespace Nethermind.Benchmarks.Rlp
     {
         private long[] _scenarios;
 
-        public RlpEncodeLongBenchmark()
-        {
-            _scenarios = new[]
+        public RlpEncodeLongBenchmark() => _scenarios = new[]
             {
                 long.MinValue,
                 -1,
@@ -29,7 +27,6 @@ namespace Nethermind.Benchmarks.Rlp
                 256 * 256 * 256 * 256L * 256 * 256 * 256,
                 long.MaxValue
             };
-        }
 
         private long _value;
 
@@ -58,15 +55,9 @@ namespace Nethermind.Benchmarks.Rlp
         }
 
         [Benchmark]
-        public Serialization.Rlp.Rlp Improved()
-        {
-            return Serialization.Rlp.Rlp.Encode(_value);
-        }
+        public Serialization.Rlp.Rlp Improved() => Serialization.Rlp.Rlp.Encode(_value);
 
         [Benchmark]
-        public Serialization.Rlp.Rlp Current()
-        {
-            return Serialization.Rlp.Rlp.Encode(_value);
-        }
+        public Serialization.Rlp.Rlp Current() => Serialization.Rlp.Rlp.Encode(_value);
     }
 }

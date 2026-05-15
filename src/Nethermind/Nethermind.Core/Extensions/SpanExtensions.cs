@@ -82,7 +82,7 @@ namespace Nethermind.Core.Extensions
 
             fixed (byte* input = &Unsafe.Add(ref MemoryMarshal.GetReference(bytes), leadingZeros / 2))
             {
-                var createParams = new StringParams(input, bytes.Length, leadingZeros, withZeroX);
+                StringParams createParams = new(input, bytes.Length, leadingZeros, withZeroX);
                 return string.Create(length, createParams, static (chars, state) =>
                 {
 
@@ -157,7 +157,7 @@ namespace Nethermind.Core.Extensions
                             : char2;
             }
 
-            string result = new string(charArray.AsSpan(0, length));
+            string result = new(charArray.AsSpan(0, length));
             ArrayPool<char>.Shared.Return(charArray);
 
             return result;
@@ -636,9 +636,19 @@ namespace Nethermind.Core.Extensions
                 Vector128<byte> key = Unsafe.As<byte, Vector128<byte>>(ref start);
                 Vector128<byte> data = Unsafe.As<byte, Vector128<byte>>(ref Unsafe.Add(ref start, 16));
                 key ^= Vector128.CreateScalar(seed).AsByte();
-                Vector128<byte> mixed = x64.Aes.IsSupported
-                    ? x64.Aes.Encrypt(data, key)
-                    : Arm.Aes.MixColumns(Arm.Aes.Encrypt(data, key));
+                // Two AES rounds for full diffusion: after round 1, variation spreads to one column;
+                // after round 2, every output byte depends on every input byte.
+                Vector128<byte> mixed;
+                if (x64.Aes.IsSupported)
+                {
+                    mixed = x64.Aes.Encrypt(data, key);
+                    mixed = x64.Aes.Encrypt(mixed, key);
+                }
+                else
+                {
+                    mixed = Arm.Aes.MixColumns(Arm.Aes.Encrypt(data, key));
+                    mixed = Arm.Aes.MixColumns(Arm.Aes.Encrypt(mixed, key));
+                }
                 return (long)(mixed.AsUInt64().GetElement(0) ^ mixed.AsUInt64().GetElement(1));
             }
 
@@ -669,9 +679,20 @@ namespace Nethermind.Core.Extensions
                 uint last4 = Unsafe.ReadUnaligned<uint>(ref Unsafe.Add(ref start, 16));
                 Vector128<byte> data = Vector128.CreateScalar(last4).AsByte();
                 key ^= Vector128.CreateScalar(seed).AsByte();
-                Vector128<byte> mixed = x64.Aes.IsSupported
-                    ? x64.Aes.Encrypt(data, key)
-                    : Arm.Aes.MixColumns(Arm.Aes.Encrypt(data, key));
+                // Two AES rounds for full diffusion: a single round only spreads the varying
+                // bytes (16-19) to one column, leaving the low 32 bits of the output constant
+                // when bytes 0-15 are constant (e.g., zero-padded small-integer addresses).
+                Vector128<byte> mixed;
+                if (x64.Aes.IsSupported)
+                {
+                    mixed = x64.Aes.Encrypt(data, key);
+                    mixed = x64.Aes.Encrypt(mixed, key);
+                }
+                else
+                {
+                    mixed = Arm.Aes.MixColumns(Arm.Aes.Encrypt(data, key));
+                    mixed = Arm.Aes.MixColumns(Arm.Aes.Encrypt(mixed, key));
+                }
                 return (long)(mixed.AsUInt64().GetElement(0) ^ mixed.AsUInt64().GetElement(1));
             }
 

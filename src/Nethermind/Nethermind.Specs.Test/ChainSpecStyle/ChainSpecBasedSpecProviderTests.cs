@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Config;
@@ -7,12 +7,13 @@ using Nethermind.Core;
 using Nethermind.Core.Exceptions;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
-using Nethermind.Evm;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Specs.ChainSpecStyle.Json;
+using Nethermind.Specs.Forks;
+using Nethermind.Specs.GnosisForks;
 using NSubstitute;
 using NUnit.Framework;
 using System;
@@ -31,10 +32,7 @@ public class ChainSpecBasedSpecProviderTests
     private const double GnosisBlockTime = 5;
 
     [SetUp]
-    public void Setup()
-    {
-        Eip4844Constants.OverrideIfAny(1);
-    }
+    public void Setup() => Eip4844Constants.OverrideIfAny(1);
 
     [TestCase(0, null, false)]
     [TestCase(0, 0ul, false)]
@@ -47,13 +45,13 @@ public class ChainSpecBasedSpecProviderTests
     [NonParallelizable]
     public void Timestamp_activation_equal_to_genesis_timestamp_loads_correctly(long blockNumber, ulong? timestamp, bool isEip3855Enabled)
     {
-        var loader = new ChainSpecFileLoader(new EthereumJsonSerializer(), LimboLogs.Instance);
+        ChainSpecFileLoader loader = new(new EthereumJsonSerializer(), LimboLogs.Instance);
         string path = Path.Combine(TestContext.CurrentContext.WorkDirectory,
             $"../../../../{Assembly.GetExecutingAssembly().GetName().Name}/Specs/Timestamp_activation_equal_to_genesis_timestamp_test.json");
         ChainSpec chainSpec = loader.LoadEmbeddedOrFromFile(path);
         Assert.That(chainSpec.Parameters.Eip2537Transition, Is.Null);
         ILogger logger = new(Substitute.ForPartsOf<LimboTraceLogger>());
-        var logManager = Substitute.For<ILogManager>();
+        ILogManager logManager = Substitute.For<ILogManager>();
         logManager.GetClassLogger<ChainSpecBasedSpecProvider>().Returns(logger);
         ChainSpecBasedSpecProvider provider = new(chainSpec);
         ReleaseSpec expectedSpec = ((ReleaseSpec)MainnetSpecProvider.Instance.GetSpec((MainnetSpecProvider.GrayGlacierBlockNumber, null))).Clone();
@@ -76,7 +74,7 @@ public class ChainSpecBasedSpecProviderTests
     [Test]
     public void Missing_dependent_property()
     {
-        var loader = new ChainSpecFileLoader(new EthereumJsonSerializer(), LimboLogs.Instance);
+        ChainSpecFileLoader loader = new(new EthereumJsonSerializer(), LimboLogs.Instance);
         string path = Path.Combine(TestContext.CurrentContext.WorkDirectory,
             $"../../../../{Assembly.GetExecutingAssembly().GetName().Name}/Specs/hoodi_no_deposit_contract.json");
         InvalidDataException? exception = Assert.Throws<InvalidDataException>(() => loader.LoadEmbeddedOrFromFile(path));
@@ -104,7 +102,7 @@ public class ChainSpecBasedSpecProviderTests
     [NonParallelizable]
     public void Logs_warning_when_timestampActivation_happens_before_blockActivation(long blockNumber, ulong? timestamp, bool isEip3855Enabled, bool isEip3198Enabled, bool receivesWarning)
     {
-        var loader = new ChainSpecFileLoader(new EthereumJsonSerializer(), LimboLogs.Instance);
+        ChainSpecFileLoader loader = new(new EthereumJsonSerializer(), LimboLogs.Instance);
         string path = Path.Combine(TestContext.CurrentContext.WorkDirectory,
             $"../../../../{Assembly.GetExecutingAssembly().GetName().Name}/Specs/Logs_warning_when_timestampActivation_happens_before_blockActivation_test.json");
         ChainSpec chainSpec = loader.LoadEmbeddedOrFromFile(path);
@@ -112,7 +110,7 @@ public class ChainSpecBasedSpecProviderTests
         InterfaceLogger iLogger = Substitute.For<InterfaceLogger>();
         iLogger.IsWarn.Returns(true);
         ILogger logger = new(iLogger);
-        var logManager = Substitute.For<ILogManager>();
+        ILogManager logManager = Substitute.For<ILogManager>();
         logManager.GetClassLogger<ChainSpecBasedSpecProvider>().Returns(logger);
         ChainSpecBasedSpecProvider provider = new(chainSpec, logManager);
         ReleaseSpec expectedSpec = ((ReleaseSpec)MainnetSpecProvider
@@ -344,6 +342,7 @@ public class ChainSpecBasedSpecProviderTests
             Assert.That(provider.TerminalTotalDifficulty, Is.EqualTo(ChiadoSpecProvider.Instance.TerminalTotalDifficulty));
             Assert.That(provider.ChainId, Is.EqualTo(BlockchainIds.Chiado));
             Assert.That(provider.NetworkId, Is.EqualTo(BlockchainIds.Chiado));
+            Assert.That(chiado.TransitionActivations, Is.EqualTo(provider.TransitionActivations));
         }
 
         IReleaseSpec? preShanghaiSpec = provider.GetSpec((1, ChiadoSpecProvider.ShanghaiTimestamp - 1));
@@ -418,6 +417,7 @@ public class ChainSpecBasedSpecProviderTests
             Assert.That(provider.TerminalTotalDifficulty, Is.EqualTo(GnosisSpecProvider.Instance.TerminalTotalDifficulty));
             Assert.That(provider.ChainId, Is.EqualTo(BlockchainIds.Gnosis));
             Assert.That(provider.NetworkId, Is.EqualTo(BlockchainIds.Gnosis));
+            Assert.That(gnosisSpecProvider.TransitionActivations, Is.EqualTo(provider.TransitionActivations));
         }
 
         VerifyGnosisPreShanghaiSpecifics(provider);
@@ -427,10 +427,12 @@ public class ChainSpecBasedSpecProviderTests
         IReleaseSpec? postCancunSpec = provider.GetSpec((1, GnosisSpecProvider.CancunTimestamp));
         IReleaseSpec? prePragueSpec = provider.GetSpec((1, GnosisSpecProvider.PragueTimestamp - 1));
         IReleaseSpec? postPragueSpec = provider.GetSpec((1, GnosisSpecProvider.PragueTimestamp));
+        IReleaseSpec? postOsakaSpec = provider.GetSpec((1, GnosisSpecProvider.OsakaTimestamp));
 
         VerifyGnosisShanghaiSpecifics(preShanghaiSpec, postShanghaiSpec);
         VerifyGnosisCancunSpecifics(postCancunSpec);
         VerifyGnosisPragueSpecifics(prePragueSpec, postPragueSpec, GnosisSpecProvider.FeeCollector);
+        VerifyGnosisOsakaSpecifics(postOsakaSpec, GnosisSpecProvider.FeeCollector);
 
         using (Assert.EnterMultipleScope())
         {
@@ -671,7 +673,7 @@ public class ChainSpecBasedSpecProviderTests
 
     private ChainSpec LoadChainSpecFromChainFolder(string chain)
     {
-        var loader = new ChainSpecFileLoader(new EthereumJsonSerializer(), LimboLogs.Instance);
+        ChainSpecFileLoader loader = new(new EthereumJsonSerializer(), LimboLogs.Instance);
         string path = Path.Combine(TestContext.CurrentContext.WorkDirectory, $"../../../../Chains/{chain}.json");
         ChainSpec chainSpec = loader.LoadEmbeddedOrFromFile(path);
         return chainSpec;
@@ -710,6 +712,33 @@ public class ChainSpecBasedSpecProviderTests
         Assert.That(provider.DaoBlockNumber, Is.EqualTo(23));
     }
 
+    [TestCase(nameof(Berlin), BlockchainIds.Mainnet, typeof(Berlin))]
+    [TestCase(nameof(Prague), BlockchainIds.Mainnet, typeof(Prague))]
+    [TestCase(nameof(Osaka), BlockchainIds.Gnosis, typeof(OsakaGnosis))]
+    [TestCase(nameof(Osaka), BlockchainIds.Chiado, typeof(OsakaGnosis))]
+    [TestCase(nameof(Cancun), BlockchainIds.Sepolia, typeof(Cancun))]
+    [TestCase(nameof(Prague), BlockchainIds.Sepolia, typeof(Prague))]
+    [TestCase(nameof(Osaka), BlockchainIds.Hoodi, typeof(Osaka))]
+    public void Named_forks_are_available_for_chain_spec_based_provider(string forkName, ulong chainId, Type expectedSpecType)
+    {
+        ChainSpec chainSpec = new()
+        {
+            ChainId = chainId,
+            Parameters = new ChainParameters(),
+            EngineChainSpecParametersProvider = TestChainSpecParametersProvider.NethDev
+        };
+
+        ChainSpecBasedSpecProvider provider = new(chainSpec);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(provider, Is.InstanceOf<IForkAwareSpecProvider>());
+            Assert.That(provider.AvailableForks, Does.Contain(forkName));
+            Assert.That(provider.TryGetForkSpec(forkName.ToLowerInvariant(), out IReleaseSpec? spec), Is.True);
+            Assert.That(spec, Is.InstanceOf(expectedSpecType));
+        }
+    }
+
     [Test]
     public void Max_code_transition_loaded_correctly()
     {
@@ -732,6 +761,34 @@ public class ChainSpecBasedSpecProviderTests
             Assert.That(provider.GetSpec((ForkActivation)(maxCodeTransition - 1)).MaxCodeSize, Is.EqualTo(long.MaxValue), "one before");
             Assert.That(provider.GetSpec((ForkActivation)maxCodeTransition).MaxCodeSize, Is.EqualTo(maxCodeSize), "at transition");
             Assert.That(provider.GetSpec((ForkActivation)(maxCodeTransition + 1)).MaxCodeSize, Is.EqualTo(maxCodeSize), "one after");
+        }
+    }
+
+    [Test]
+    public void Amsterdam_timestamp_enables_bundled_floor_pricing_eips_when_individual_transitions_are_missing()
+    {
+        const ulong amsterdamTimestamp = 15;
+        ChainSpec chainSpec = new()
+        {
+            Parameters = new ChainParameters
+            {
+                Eip7623TransitionTimestamp = 0,
+                Eip7928TransitionTimestamp = amsterdamTimestamp,
+            },
+            AmsterdamTimestamp = amsterdamTimestamp,
+            EngineChainSpecParametersProvider = TestChainSpecParametersProvider.NethDev
+        };
+
+        ChainSpecBasedSpecProvider provider = new(chainSpec);
+        IReleaseSpec preAmsterdam = provider.GetSpec(ForkActivation.TimestampOnly(amsterdamTimestamp - 1));
+        IReleaseSpec amsterdam = provider.GetSpec(ForkActivation.TimestampOnly(amsterdamTimestamp));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(preAmsterdam.IsEip7976Enabled, Is.False);
+            Assert.That(preAmsterdam.IsEip7981Enabled, Is.False);
+            Assert.That(amsterdam.IsEip7976Enabled, Is.True);
+            Assert.That(amsterdam.IsEip7981Enabled, Is.True);
         }
     }
 

@@ -104,7 +104,7 @@ namespace Nethermind.Serialization.Ssz.Test
         [Test]
         public void Can_roundtrip_uint128_asymmetric()
         {
-            UInt128 value = new UInt128(0x0000000000000001, 0x0000000000000002);
+            UInt128 value = new(0x0000000000000001, 0x0000000000000002);
             Span<byte> output = stackalloc byte[16];
             Ssz.Encode(output, value);
             Assert.That(output.ToHexString(), Is.EqualTo("02000000000000000100000000000000"));
@@ -127,6 +127,11 @@ namespace Nethermind.Serialization.Ssz.Test
             byte[] twoBytes = [0x1F, 0x00];
             Assert.Throws<InvalidDataException>(() => Ssz.DecodeBitvector(twoBytes, 5));
         }
+
+        [TestCase(0)]
+        [TestCase(-1)]
+        public void DecodeBitvector_rejects_non_positive_vector_length(int vectorLength) =>
+            Assert.Throws<ArgumentOutOfRangeException>(() => Ssz.DecodeBitvector(ReadOnlySpan<byte>.Empty, vectorLength));
 
         [Test]
         public void DecodeBitvector_rejects_set_high_bits()
@@ -173,11 +178,9 @@ namespace Nethermind.Serialization.Ssz.Test
         }
 
         [Test]
-        public void DecodeBitlist_rejects_empty_input()
-        {
+        public void DecodeBitlist_rejects_empty_input() =>
             // missing sentinel
             Assert.Throws<InvalidDataException>(() => Ssz.DecodeBitlist(ReadOnlySpan<byte>.Empty));
-        }
 
         [Test]
         public void DecodeBitlist_rejects_zero_last_byte()

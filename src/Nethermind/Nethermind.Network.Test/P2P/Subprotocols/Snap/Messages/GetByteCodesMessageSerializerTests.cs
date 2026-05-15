@@ -58,7 +58,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.Messages
             };
 
             GetByteCodesMessageSerializer serializer = new();
-            var serialized = serializer.Serialize(msg);
+            byte[] serialized = serializer.Serialize(msg);
 
             Assert.Throws<RlpLimitException>(() => serializer.Deserialize(serialized));
         }

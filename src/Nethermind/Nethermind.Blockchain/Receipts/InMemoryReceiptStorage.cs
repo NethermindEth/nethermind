@@ -38,7 +38,7 @@ namespace Nethermind.Blockchain.Receipts
 
         public Hash256 FindBlockHash(Hash256 txHash)
         {
-            _transactions.TryGetValue(txHash, out var receipt);
+            _transactions.TryGetValue(txHash, out TxReceipt receipt);
             return receipt?.BlockHash;
         }
 
@@ -50,7 +50,7 @@ namespace Nethermind.Blockchain.Receipts
         public bool CanGetReceiptsByHash(long blockNumber) => true;
         public bool TryGetReceiptsIterator(long blockNumber, Hash256 blockHash, out ReceiptsIterator iterator)
         {
-            if (_allowReceiptIterator && _receipts.TryGetValue(blockHash, out var receipts))
+            if (_allowReceiptIterator && _receipts.TryGetValue(blockHash, out TxReceipt[] receipts))
             {
 #pragma warning disable 618
                 iterator = new ReceiptsIterator(receipts);

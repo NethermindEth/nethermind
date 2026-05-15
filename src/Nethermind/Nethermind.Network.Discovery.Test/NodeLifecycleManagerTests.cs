@@ -176,13 +176,13 @@ public class NodeLifecycleManagerTests
             .Take(firstCount)
             .Select(createNode)
             .ToArray();
-        NeighborsMsg firstNodeMsg = new NeighborsMsg(TestItem.PublicKeyA, 1, firstNodes);
+        NeighborsMsg firstNodeMsg = new(TestItem.PublicKeyA, 1, firstNodes);
         Node[] secondNodes = TestItem.PublicKeys
             .Skip(firstCount)
             .Take(secondCount)
             .Select((pubkey, i) => createNode(pubkey, i + firstCount + 2))
             .ToArray();
-        NeighborsMsg secondNodeMsg = new NeighborsMsg(TestItem.PublicKeyA, 1, secondNodes);
+        NeighborsMsg secondNodeMsg = new(TestItem.PublicKeyA, 1, secondNodes);
 
         nodeManager.ProcessNeighborsMsg(firstNodeMsg);
         nodeManager.ProcessNeighborsMsg(secondNodeMsg);
@@ -414,10 +414,10 @@ public class NodeLifecycleManagerTests
     [Test]
     public async Task ProcessEnrResponseMsg_WhenBondedWithRemoteNode_StoresEnrAndSendsEnrEvent()
     {
-        var (manager, _) = await CreateBondedNodeLifecycleManager();
-        var context = new EnrTestContext(manager);
+        (NodeLifecycleManager? manager, Node _) = await CreateBondedNodeLifecycleManager();
+        EnrTestContext context = new(manager);
 
-        var response = context.CreateEnrResponse(1, TestItem.KeccakA);
+        EnrResponseMsg response = context.CreateEnrResponse(1, TestItem.KeccakA);
         manager.ProcessEnrResponseMsg(response);
 
         context.AssertEnrAccepted(response);
@@ -426,11 +426,11 @@ public class NodeLifecycleManagerTests
     [Test]
     public void ProcessEnrResponseMsg_WhenNotBondedWithRemoteNode_IgnoresEnrAndMaintainsState()
     {
-        var manager = CreateNodeLifecycleManager(TestItem.PublicKeyA, "192.168.1.100");
-        var context = new EnrTestContext(manager);
+        NodeLifecycleManager manager = CreateNodeLifecycleManager(TestItem.PublicKeyA, "192.168.1.100");
+        EnrTestContext context = new(manager);
 
         // Process ENR from unbonded node (using different key)
-        var response = CreateEnrResponseMsg(TestItem.PublicKeyC, TestItem.PrivateKeyC, "192.168.1.102", 30303, 1, TestItem.KeccakB);
+        EnrResponseMsg response = CreateEnrResponseMsg(TestItem.PublicKeyC, TestItem.PrivateKeyC, "192.168.1.102", 30303, 1, TestItem.KeccakB);
         manager.ProcessEnrResponseMsg(response);
 
         AssertInitialState(manager);
@@ -440,8 +440,8 @@ public class NodeLifecycleManagerTests
     [Test]
     public async Task ProcessEnrResponseMsg_WhenBondedNodeSendsUpdatedEnr_UpdatesStoredEnrAndSendsEvent()
     {
-        var (manager, _) = await CreateBondedNodeLifecycleManager();
-        var context = new EnrTestContext(manager);
+        (NodeLifecycleManager? manager, Node _) = await CreateBondedNodeLifecycleManager();
+        EnrTestContext context = new(manager);
 
         // Process initial ENR
         context.ProcessEnrResponse(1, TestItem.KeccakA);
@@ -450,7 +450,7 @@ public class NodeLifecycleManagerTests
 
         // Process updated ENR
         context.CaptureStateChanges();
-        var updatedResponse = context.CreateEnrResponse(2, TestItem.KeccakB, 30304);
+        EnrResponseMsg updatedResponse = context.CreateEnrResponse(2, TestItem.KeccakB, 30304);
         manager.ProcessEnrResponseMsg(updatedResponse);
 
         Assert.That(manager.ManagedNode.Enr, Is.Not.EqualTo(initialEnrString));
@@ -460,8 +460,8 @@ public class NodeLifecycleManagerTests
     [Test]
     public async Task ProcessEnrResponseMsg_WhenReceivingOlderSequenceNumber_IgnoresOutdatedEnr()
     {
-        var (manager, _) = await CreateBondedNodeLifecycleManager();
-        var context = new EnrTestContext(manager);
+        (NodeLifecycleManager? manager, Node _) = await CreateBondedNodeLifecycleManager();
+        EnrTestContext context = new(manager);
 
         // Process ENR with sequence 5
         context.ProcessEnrResponse(5, TestItem.KeccakA);
@@ -477,8 +477,8 @@ public class NodeLifecycleManagerTests
     [Test]
     public async Task ProcessEnrResponseMsg_WhenReceivingEqualSequenceNumber_IgnoresEnr()
     {
-        var (manager, _) = await CreateBondedNodeLifecycleManager();
-        var context = new EnrTestContext(manager);
+        (NodeLifecycleManager? manager, Node _) = await CreateBondedNodeLifecycleManager();
+        EnrTestContext context = new(manager);
 
         // Process initial ENR with sequence 3
         context.ProcessEnrResponse(3, TestItem.KeccakA);
@@ -494,10 +494,10 @@ public class NodeLifecycleManagerTests
     [Test]
     public async Task ProcessEnrResponseMsg_WhenInitialSequenceIsZero_AcceptsFirstEnrAndSendsEvent()
     {
-        var (manager, _) = await CreateBondedNodeLifecycleManager();
-        var context = new EnrTestContext(manager);
+        (NodeLifecycleManager? manager, Node _) = await CreateBondedNodeLifecycleManager();
+        EnrTestContext context = new(manager);
 
-        var response = context.CreateEnrResponse(1, TestItem.KeccakA);
+        EnrResponseMsg response = context.CreateEnrResponse(1, TestItem.KeccakA);
         manager.ProcessEnrResponseMsg(response);
 
         context.AssertEnrAccepted(response);
@@ -506,15 +506,15 @@ public class NodeLifecycleManagerTests
     [Test]
     public async Task ProcessEnrResponseMsg_WhenSequenceNumberWrapsAround_HandlesCorrectly()
     {
-        var (manager, _) = await CreateBondedNodeLifecycleManager();
-        var context = new EnrTestContext(manager);
+        (NodeLifecycleManager? manager, Node _) = await CreateBondedNodeLifecycleManager();
+        EnrTestContext context = new(manager);
 
         // Process ENR with very high sequence number
         context.ProcessEnrResponse(long.MaxValue - 1, TestItem.KeccakA);
 
         // Process max sequence ENR
         context.CaptureStateChanges();
-        var maxSeqResponse = context.CreateEnrResponse(long.MaxValue, TestItem.KeccakB, 30304);
+        EnrResponseMsg maxSeqResponse = context.CreateEnrResponse(long.MaxValue, TestItem.KeccakB, 30304);
         manager.ProcessEnrResponseMsg(maxSeqResponse);
 
         context.AssertEnrAccepted(maxSeqResponse);
@@ -547,14 +547,11 @@ public class NodeLifecycleManagerTests
             _manager.OnStateChanged += _currentHandler;
         }
 
-        public EnrResponseMsg CreateEnrResponse(long sequence, Hash256 requestHash, int port = 30303)
-        {
-            return CreateEnrResponseMsg(_remotePublicKey, _remotePrivateKey, _remoteIp, port, sequence, requestHash);
-        }
+        public EnrResponseMsg CreateEnrResponse(long sequence, Hash256 requestHash, int port = 30303) => CreateEnrResponseMsg(_remotePublicKey, _remotePrivateKey, _remoteIp, port, sequence, requestHash);
 
         public void ProcessEnrResponse(long sequence, Hash256 requestHash, int port = 30303)
         {
-            var response = CreateEnrResponse(sequence, requestHash, port);
+            EnrResponseMsg response = CreateEnrResponse(sequence, requestHash, port);
             _manager.ProcessEnrResponseMsg(response);
         }
 
