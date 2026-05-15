@@ -5,9 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using System.Linq.Expressions;
 using System.Numerics;
-using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Text.Json;
 using Nethermind.Config;
@@ -95,7 +93,7 @@ public class ChainSpecLoader(IJsonSerializer serializer, ILogManager logManager)
             return GetTransitions(builtInName, GetForInnerPathExistence);
         }
 
-        ExpandHardforkLabels(chainSpecJson.Params);
+        HardforkLabels.ExpandAll(chainSpecJson.Params);
         ValidateParams(chainSpecJson.Params);
 
         chainSpec.Parameters = new ChainParameters
@@ -246,103 +244,6 @@ public class ChainSpecLoader(IJsonSerializer serializer, ILogManager logManager)
                     ExitCodes.MissingChainspecEipConfiguration)
                 : value
             : default;
-
-    /// <summary>
-    /// Expands hardfork shorthand labels (Shanghai/Cancun/Prague/Osaka) into their constituent
-    /// per-EIP transition timestamps. A label and an explicit EIP timestamp set to different
-    /// values is rejected.
-    /// </summary>
-    /// <remarks>
-    /// Resolves at JSON-load time so the rest of the pipeline keeps reading individual
-    /// <c>EipXxxTransitionTimestamp</c> fields and stays unaware of the shorthand.
-    /// </remarks>
-    /// <summary>
-    /// Map from a hardfork label (the JSON shorthand key) to the per-EIP timestamp properties that
-    /// label expands to. The label getter is the first element; the constituent EIPs follow.
-    /// </summary>
-    /// <remarks>
-    /// Each entry is a property-access expression of the form <c>p =&gt; p.Eip1234TransitionTimestamp</c>.
-    /// <see cref="ApplyHardforkLabel"/> extracts the property name (for error messages) and the
-    /// underlying <see cref="PropertyInfo"/> (for read/write) from the same expression, so adding a
-    /// new EIP to a fork only requires one new line — no manual <c>nameof</c>/getter/setter triple.
-    /// </remarks>
-    private static readonly IReadOnlyDictionary<Expression<Func<ChainSpecParamsJson, ulong?>>, Expression<Func<ChainSpecParamsJson, ulong?>>[]> HardforkLabelMap =
-        new Dictionary<Expression<Func<ChainSpecParamsJson, ulong?>>, Expression<Func<ChainSpecParamsJson, ulong?>>[]>
-        {
-            [p => p.Shanghai] =
-            [
-                p => p.Eip3651TransitionTimestamp,
-                p => p.Eip3855TransitionTimestamp,
-                p => p.Eip3860TransitionTimestamp,
-                p => p.Eip4895TransitionTimestamp,
-            ],
-            [p => p.Cancun] =
-            [
-                p => p.Eip1153TransitionTimestamp,
-                p => p.Eip4788TransitionTimestamp,
-                p => p.Eip4844TransitionTimestamp,
-                p => p.Eip5656TransitionTimestamp,
-                p => p.Eip6780TransitionTimestamp,
-            ],
-            [p => p.Prague] =
-            [
-                p => p.Eip2537TransitionTimestamp,
-                p => p.Eip2935TransitionTimestamp,
-                p => p.Eip6110TransitionTimestamp,
-                p => p.Eip7002TransitionTimestamp,
-                p => p.Eip7251TransitionTimestamp,
-                p => p.Eip7623TransitionTimestamp,
-                p => p.Eip7702TransitionTimestamp,
-            ],
-            [p => p.Osaka] =
-            [
-                p => p.Eip7594TransitionTimestamp,
-                p => p.Eip7823TransitionTimestamp,
-                p => p.Eip7825TransitionTimestamp,
-                p => p.Eip7883TransitionTimestamp,
-                p => p.Eip7918TransitionTimestamp,
-                p => p.Eip7934TransitionTimestamp,
-                p => p.Eip7939TransitionTimestamp,
-                p => p.Eip7951TransitionTimestamp,
-            ],
-        };
-
-    private static void ExpandHardforkLabels(ChainSpecParamsJson p)
-    {
-        foreach ((Expression<Func<ChainSpecParamsJson, ulong?>> labelExpr, Expression<Func<ChainSpecParamsJson, ulong?>>[] eipExprs) in HardforkLabelMap)
-        {
-            PropertyInfo labelProp = GetProperty(labelExpr);
-            if ((ulong?)labelProp.GetValue(p) is not { } labelValue) continue;
-            ApplyHardforkLabel(p, labelProp.Name, labelValue, eipExprs);
-        }
-    }
-
-    private static void ApplyHardforkLabel(ChainSpecParamsJson p, string label, ulong labelValue, Expression<Func<ChainSpecParamsJson, ulong?>>[] eipExprs)
-    {
-        foreach (Expression<Func<ChainSpecParamsJson, ulong?>> eipExpr in eipExprs)
-        {
-            PropertyInfo prop = GetProperty(eipExpr);
-            ulong? current = (ulong?)prop.GetValue(p);
-            if (current is null)
-            {
-                prop.SetValue(p, labelValue);
-            }
-            else if (current.Value != labelValue)
-            {
-                throw new InvalidConfigurationException(
-                    $"Chainspec hardfork label '{label}' = 0x{labelValue:x} conflicts with explicit {prop.Name} = 0x{current.Value:x}. Either remove the conflicting field or align both values.",
-                    ExitCodes.MissingChainspecEipConfiguration);
-            }
-        }
-    }
-
-    private static PropertyInfo GetProperty(Expression<Func<ChainSpecParamsJson, ulong?>> expr)
-    {
-        Expression body = expr.Body;
-        // Nullable<ulong> reads sometimes come through as `Convert(p.Prop, ulong?)`; unwrap them.
-        if (body is UnaryExpression { NodeType: ExpressionType.Convert } unary) body = unary.Operand;
-        return (PropertyInfo)((MemberExpression)body).Member;
-    }
 
     private static void ValidateParams(ChainSpecParamsJson parameters)
     {

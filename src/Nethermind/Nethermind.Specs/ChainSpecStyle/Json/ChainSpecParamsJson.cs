@@ -191,8 +191,52 @@ public class ChainSpecParamsJson
     public ulong? Eip7843TransitionTimestamp { get; set; }
     public ulong? Eip7954TransitionTimestamp { get; set; }
 
+    /// <summary>Shorthand activation block for the full Homestead hardfork (EIP 7).</summary>
+    /// <remarks>
+    /// Equivalent to setting each constituent <c>EipXxxTransition</c> field. If this label and an
+    /// explicit constituent both specify different values the chainspec is rejected at load. See
+    /// <see cref="HardforkLabels"/> for the canonical fork-to-EIP mapping.
+    /// </remarks>
+    public long? Homestead { get; set; }
+
+    /// <summary>Shorthand activation block for the full Tangerine Whistle hardfork (EIP 150).</summary>
+    /// <inheritdoc cref="Homestead"/>
+    public long? TangerineWhistle { get; set; }
+
+    /// <summary>Shorthand activation block for the full Spurious Dragon hardfork (EIPs 155, 160, 161abc, 161d).</summary>
+    /// <inheritdoc cref="Homestead"/>
+    public long? SpuriousDragon { get; set; }
+
+    /// <summary>Shorthand activation block for the full Byzantium hardfork (EIPs 140, 211, 214, 658).</summary>
+    /// <inheritdoc cref="Homestead"/>
+    public long? Byzantium { get; set; }
+
+    /// <summary>Shorthand activation block for the full Constantinople hardfork (EIPs 145, 1014, 1052, 1283).</summary>
+    /// <inheritdoc cref="Homestead"/>
+    public long? Constantinople { get; set; }
+
+    /// <summary>Shorthand activation block for the Constantinople-fix / Petersburg hardfork (EIP 1283 disable).</summary>
+    /// <inheritdoc cref="Homestead"/>
+    public long? ConstantinopleFix { get; set; }
+
+    /// <summary>Shorthand activation block for the full Istanbul hardfork (EIPs 152, 1108, 1344, 1884, 2028, 2200).</summary>
+    /// <inheritdoc cref="Homestead"/>
+    public long? Istanbul { get; set; }
+
+    /// <summary>Shorthand activation block for the full Berlin hardfork (EIPs 2565, 2929, 2930).</summary>
+    /// <inheritdoc cref="Homestead"/>
+    public long? Berlin { get; set; }
+
+    /// <summary>Shorthand activation block for the full London hardfork (EIPs 1559, 3198, 3529, 3541).</summary>
+    /// <inheritdoc cref="Homestead"/>
+    public long? London { get; set; }
+
     /// <summary>Shorthand activation timestamp for the full Shanghai hardfork (EIPs 3651, 3855, 3860, 4895).</summary>
-    /// <remarks>Equivalent to setting each constituent <c>EipXxxTransitionTimestamp</c>. If both this label and a constituent are set to different values the chainspec is rejected at load.</remarks>
+    /// <remarks>
+    /// Equivalent to setting each constituent <c>EipXxxTransitionTimestamp</c> field. If this
+    /// label and an explicit constituent both specify different values the chainspec is rejected
+    /// at load. See <see cref="HardforkLabels"/> for the canonical fork-to-EIP mapping.
+    /// </remarks>
     public ulong? Shanghai { get; set; }
 
     /// <summary>Shorthand activation timestamp for the full Cancun hardfork (EIPs 1153, 4788, 4844, 5656, 6780).</summary>
@@ -206,4 +250,8 @@ public class ChainSpecParamsJson
     /// <summary>Shorthand activation timestamp for the full Osaka hardfork (EIPs 7594, 7823, 7825, 7883, 7918, 7934, 7939, 7951).</summary>
     /// <inheritdoc cref="Shanghai"/>
     public ulong? Osaka { get; set; }
+
+    /// <summary>Shorthand activation timestamp for the full Amsterdam hardfork (EIPs 7708, 7778, 7843, 7928, 7954, 7976, 7981, 8024, 8037).</summary>
+    /// <inheritdoc cref="Shanghai"/>
+    public ulong? Amsterdam { get; set; }
 }
