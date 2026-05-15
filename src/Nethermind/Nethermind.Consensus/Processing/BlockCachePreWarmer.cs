@@ -227,38 +227,37 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
                     IReadOnlyTxProcessorSource env = _envPool.Get();
                     try
                     {
+                        // One scope per worker — reuse across txs to avoid GC pressure.
+                        // Reset() clears local state between txs; read fallback provides
+                        // cross-tx state from the main thread.
+                        using IReadOnlyTxProcessingScope scope = env.Build(blockState.Parent);
+                        scope.TransactionProcessor.SetBlockExecutionContext(new BlockExecutionContext(block.Header, blockState.Spec));
+
+                        if (preWarmer.MainThreadWorldState is not null)
+                            (scope.WorldState as WorldState)?.SetReadFallback(preWarmer.MainThreadWorldState);
+
                         while (!token.IsCancellationRequested)
                         {
                             int myTx = Interlocked.Increment(ref _nextWarmupIndex) - 1;
                             if (myTx >= txCount) break;
 
-                            // Skip txs the main thread already processed
                             if (Volatile.Read(ref MainThreadTxIndex) >= myTx) continue;
-
-                            // Execute with fresh scope + read fallback to main thread's state
-                            using IReadOnlyTxProcessingScope scope = env.Build(blockState.Parent);
-                            BlockExecutionContext context = new(block.Header, blockState.Spec);
-                            scope.TransactionProcessor.SetBlockExecutionContext(context);
-
-                            if (preWarmer.MainThreadWorldState is not null)
-                                (scope.WorldState as WorldState)?.SetReadFallback(preWarmer.MainThreadWorldState);
 
                             bool succeeded = WarmupSingleTransaction(scope, block.Transactions[myTx], myTx, blockState);
 
-                            // If tx reverted, hammer it until main thread passes or state changes
+                            // If tx reverted, hammer with fresh scope each retry
+                            // (need fresh state to pick up main thread's advances)
                             if (!succeeded)
                             {
                                 while (!token.IsCancellationRequested && Volatile.Read(ref MainThreadTxIndex) < myTx)
                                 {
-                                    using IReadOnlyTxProcessingScope retryScope = env.Build(blockState.Parent);
-                                    retryScope.TransactionProcessor.SetBlockExecutionContext(new BlockExecutionContext(block.Header, blockState.Spec));
-                                    if (preWarmer.MainThreadWorldState is not null)
-                                        (retryScope.WorldState as WorldState)?.SetReadFallback(preWarmer.MainThreadWorldState);
-
-                                    if (WarmupSingleTransaction(retryScope, block.Transactions[myTx], myTx, blockState))
-                                        break; // Succeeded — move on
+                                    scope.WorldState.Reset();
+                                    if (WarmupSingleTransaction(scope, block.Transactions[myTx], myTx, blockState))
+                                        break;
                                 }
                             }
+
+                            scope.WorldState.Reset();
                         }
                     }
                     catch (OperationCanceledException) { }
