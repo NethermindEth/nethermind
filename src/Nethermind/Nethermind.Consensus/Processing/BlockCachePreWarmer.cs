@@ -124,10 +124,8 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         {
             CacheType result = _preBlockCaches.ClearCaches();
             _nodeStorageCache.ClearCaches();
-            // Keep NodeStorageCache disabled — it helps the prewarmer but hurts
-            // merkle by 5ms through cache line contention during parallel trie hashing.
-            // RocksDB block cache still provides trie node caching.
-            _nodeStorageCache.Enabled = false;
+            _nodeStorageCache.ClearCaches();
+            _nodeStorageCache.Enabled = true;
             if (result != default)
             {
                 if (_logger.IsWarn) _logger.Warn($"Caches {result} are not empty. Clearing them.");
