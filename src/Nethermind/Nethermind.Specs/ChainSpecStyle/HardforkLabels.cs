@@ -50,12 +50,6 @@ public static partial class HardforkLabels
     public static void ExpandAll(ChainSpecParamsJson parameters)
     {
         if (parameters.NamedForks is null or { Count: 0 }) return;
-
-        // System.Text.Json populates NamedForks with a case-sensitive Dictionary; re-key as
-        // OrdinalIgnoreCase so `"cancun"`, `"Cancun"`, and `"CANCUN"` all match a label.
-        if (parameters.NamedForks.Comparer != StringComparer.OrdinalIgnoreCase)
-            parameters.NamedForks = new Dictionary<string, JsonElement>(parameters.NamedForks, StringComparer.OrdinalIgnoreCase);
-
         foreach (IHardforkLabel label in All) label.Apply(parameters);
     }
 

@@ -145,6 +145,18 @@ public class ChainSpecHardforkLabelTests
         spec.Parameters.Eip1153TransitionTimestamp.Should().Be(0x100);
     }
 
+    // NamedForks is initialized with StringComparer.OrdinalIgnoreCase — these all resolve to the same label.
+    [TestCase("\"cancun\": \"0x100\"")]
+    [TestCase("\"Cancun\": \"0x100\"")]
+    [TestCase("\"CANCUN\": \"0x100\"")]
+    public void Label_key_match_is_case_insensitive(string paramsJson)
+    {
+        ChainSpec spec = Load(paramsJson);
+
+        spec.Parameters.Eip4844TransitionTimestamp.Should().Be(0x100);
+        spec.Parameters.Eip1153TransitionTimestamp.Should().Be(0x100);
+    }
+
     [Test]
     public void Label_conflicting_with_explicit_eip_throws()
     {
