@@ -24,7 +24,7 @@ namespace Nethermind.Specs.ChainSpecStyle;
 /// </summary>
 /// <remarks>
 /// Labels are captured during JSON deserialization by
-/// <see cref="ChainSpecParamsJson.ExtensionData"/>; <see cref="ExpandAll"/> consumes them after
+/// <see cref="ChainSpecParamsJson.NamedForks"/>; <see cref="ExpandAll"/> consumes them after
 /// parsing so downstream code keeps reading the individual per-EIP fields and stays unaware of
 /// the shorthand. A label and an explicit per-EIP field may coexist with matching values
 /// (redundant); conflicting values are rejected at load.
@@ -43,14 +43,14 @@ public static partial class HardforkLabels
     private static partial IReadOnlyList<IHardforkLabel> BuildAll();
 
     /// <summary>
-    /// Expands every hardfork label present in <see cref="ChainSpecParamsJson.ExtensionData"/>
+    /// Expands every hardfork label present in <see cref="ChainSpecParamsJson.NamedForks"/>
     /// into its constituent per-EIP transition fields, consuming the entries on success. Throws
     /// <see cref="InvalidConfigurationException"/> when a label disagrees with an explicit per-EIP
     /// value.
     /// </summary>
     public static void ExpandAll(ChainSpecParamsJson parameters)
     {
-        if (parameters.ExtensionData is null or { Count: 0 }) return;
+        if (parameters.NamedForks is null or { Count: 0 }) return;
         foreach (IHardforkLabel label in All) label.Apply(parameters);
     }
 
@@ -101,7 +101,7 @@ public interface IHardforkLabel
     IReadOnlyList<int> Eips { get; }
 
     /// <summary>
-    /// If <see cref="ChainSpecParamsJson.ExtensionData"/> carries this label's key, copies the
+    /// If <see cref="ChainSpecParamsJson.NamedForks"/> carries this label's key, copies the
     /// value into each constituent EIP field that is still unset and removes the entry. Throws
     /// <see cref="InvalidConfigurationException"/> when an EIP field is already set to a
     /// different value.
@@ -137,8 +137,8 @@ internal sealed class HardforkLabel<T> : IHardforkLabel
 
     public void Apply(ChainSpecParamsJson parameters)
     {
-        if (parameters.ExtensionData is null) return;
-        if (!TryTakeLabelValue(parameters.ExtensionData, out JsonElement element)) return;
+        if (parameters.NamedForks is null) return;
+        if (!TryTakeLabelValue(parameters.NamedForks, out JsonElement element)) return;
 
         T labelValue = _parse(element);
 

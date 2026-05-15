@@ -82,6 +82,7 @@ public sealed class HardforkLabelsGenerator : IIncrementalGenerator
         return new ForkInfo
         {
             Name = symbol.Name,
+            FullyQualifiedName = symbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
             ParentName = parentName,
             EipDelta = analysis.EipDelta,
             SetsIsPostMerge = analysis.SetsIsPostMerge,
@@ -184,7 +185,11 @@ public sealed class HardforkLabelsGenerator : IIncrementalGenerator
 
             string factory = fork.IsPostMerge ? "Time" : "Block";
 
-            sb.Append("        ").Append(factory).Append("(\"").Append(fork.Name).AppendLine("\",");
+            // Emit `nameof(global::Nethermind.Specs.Forks.Cancun)` rather than a raw "Cancun"
+            // string literal — pins the label to the actual fork type at compile time, so renaming
+            // or removing Forks/Cancun.cs surfaces as a compile error on the generated file
+            // (which then re-runs and either resolves to the new name or stops emitting).
+            sb.Append("        ").Append(factory).Append("(nameof(").Append(fork.FullyQualifiedName).AppendLine("),");
             for (int i = 0; i < jsonFields.Count; i++)
             {
                 sb.Append("            p => p.").Append(jsonFields[i]);
@@ -255,6 +260,8 @@ public sealed class HardforkLabelsGenerator : IIncrementalGenerator
 internal sealed class ForkInfo
 {
     public string Name { get; set; } = "";
+    /// <summary>Fully-qualified type name (e.g. <c>global::Nethermind.Specs.Forks.Cancun</c>) used for <c>nameof(...)</c> emission.</summary>
+    public string FullyQualifiedName { get; set; } = "";
     public string? ParentName { get; set; }
     public List<(int Eip, bool Enabled)> EipDelta { get; set; } = new();
     public bool SetsIsPostMerge { get; set; }
