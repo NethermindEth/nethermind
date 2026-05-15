@@ -24,7 +24,6 @@ public class FullPrunerFactory(
     IPruningConfig pruningConfig,
     IDbProvider dbProvider,
     IBlockTree blockTree,
-    OldestStateBlockStore oldestStateBlockStore,
     INodeStorageFactory nodeStorageFactory,
     INodeStorage mainNodeStorage,
     IProcessExitSource processExit,
@@ -37,7 +36,7 @@ public class FullPrunerFactory(
 {
     private readonly ILogger _logger = logManager.GetClassLogger<FullPrunerFactory>();
 
-    public FullPruner? Create(IStateReader stateReader, IPruningTrieStore trieStore)
+    public FullPruner? Create(IWorldStateManager worldStateManager, IPruningTrieStore trieStore)
     {
         IDb stateDb = dbProvider.StateDb;
 
@@ -61,8 +60,8 @@ public class FullPrunerFactory(
             compositePruningTrigger,
             pruningConfig,
             blockTree,
-            oldestStateBlockStore,
-            stateReader,
+            worldStateManager,
+            worldStateManager.GlobalStateReader,
             processExit,
             ChainSizes.CreateChainSizeInfo(chainSpec.ChainId),
             drive,

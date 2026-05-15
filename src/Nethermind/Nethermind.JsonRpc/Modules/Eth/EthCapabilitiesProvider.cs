@@ -14,8 +14,7 @@ namespace Nethermind.JsonRpc.Modules.Eth;
 
 public sealed class EthCapabilitiesProvider(
     IReadOnlyBlockTree blockTree,
-    IWorldStateManager worldStateManager,
-    OldestStateBlockStore oldestStateBlockStore,
+    IStateBoundary stateBoundary,
     ISyncConfig syncConfig,
     ISyncPointers syncPointers,
     IHistoryConfig historyConfig,
@@ -60,12 +59,12 @@ public sealed class EthCapabilitiesProvider(
 
     private ResourceAvailability BuildState(BlockHeader head, bool fastSyncing)
     {
-        long? oldestStateBlock = oldestStateBlockStore.Value;
+        long? oldestStateBlock = stateBoundary.OldestStateBlock;
         // During fast sync, state isn't queryable until StateSyncRunner writes the pivot floor.
         if (fastSyncing && oldestStateBlock is null) return Disabled;
 
         long stateFloor = oldestStateBlock ?? 0L;
-        long? retention = worldStateManager.RetentionWindowBlocks;
+        long? retention = stateBoundary.RetentionWindowBlocks;
         long? windowOldest = retention is { } r ? Math.Max(0L, head.Number - r) : (long?)null;
         long stateOldest = Math.Max(stateFloor, windowOldest ?? 0L);
         // Emit the window only when it's the binding constraint, and report the configured

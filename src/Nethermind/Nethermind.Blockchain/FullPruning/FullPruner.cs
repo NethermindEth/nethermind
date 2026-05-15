@@ -29,7 +29,7 @@ namespace Nethermind.Blockchain.FullPruning
         private readonly IPruningTrigger _pruningTrigger;
         private readonly IPruningConfig _pruningConfig;
         private readonly IBlockTree _blockTree;
-        private readonly OldestStateBlockStore _oldestStateBlockStore;
+        private readonly IStateBoundary _stateBoundary;
         private readonly IStateReader _stateReader;
         private readonly IProcessExitSource _processExitSource;
         private readonly ILogManager _logManager;
@@ -47,7 +47,7 @@ namespace Nethermind.Blockchain.FullPruning
             IPruningTrigger pruningTrigger,
             IPruningConfig pruningConfig,
             IBlockTree blockTree,
-            OldestStateBlockStore oldestStateBlockStore,
+            IStateBoundary stateBoundary,
             IStateReader stateReader,
             IProcessExitSource processExitSource,
             IChainEstimations chainEstimations,
@@ -61,7 +61,7 @@ namespace Nethermind.Blockchain.FullPruning
             _pruningTrigger = pruningTrigger;
             _pruningConfig = pruningConfig;
             _blockTree = blockTree;
-            _oldestStateBlockStore = oldestStateBlockStore;
+            _stateBoundary = stateBoundary;
             _stateReader = stateReader;
             _processExitSource = processExitSource;
             _logManager = logManager;
@@ -183,7 +183,7 @@ namespace Nethermind.Blockchain.FullPruning
             if (_logger.IsInfo) _logger.Info($"Full Pruning Ready to start: pruning garbage before state {stateToCopy} with root {header.StateRoot}");
             if (CopyTrie(pruningContext, header, cancellationToken))
             {
-                _oldestStateBlockStore.Value = stateToCopy;
+                _stateBoundary.OldestStateBlock = stateToCopy;
             }
         }
 

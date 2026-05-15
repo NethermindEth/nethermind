@@ -9,7 +9,6 @@ using Nethermind.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Db;
 using Nethermind.History;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.Serialization.Json;
@@ -41,11 +40,9 @@ public partial class EthRpcModuleTests
         blockTree.Head.Returns(head);
         blockTree.BestSuggestedHeader.Returns(head.Header);
 
-        IWorldStateManager wsm = Substitute.For<IWorldStateManager>();
-        wsm.RetentionWindowBlocks.Returns(retentionWindow);
-
-        OldestStateBlockStore floor = new(new MemDb());
-        floor.Value = oldestStateBlock;
+        IStateBoundary boundary = Substitute.For<IStateBoundary>();
+        boundary.OldestStateBlock.Returns(oldestStateBlock);
+        boundary.RetentionWindowBlocks.Returns(retentionWindow);
 
         ISyncPointers syncPointers = Substitute.For<ISyncPointers>();
         syncPointers.LowestInsertedBodyNumber.Returns(lowestInsertedBody);
@@ -53,8 +50,7 @@ public partial class EthRpcModuleTests
 
         return new EthCapabilitiesProvider(
             blockTree,
-            wsm,
-            floor,
+            boundary,
             syncConfig ?? new SyncConfig(),
             syncPointers,
             historyConfig ?? Substitute.For<IHistoryConfig>(),
@@ -289,12 +285,10 @@ public partial class EthRpcModuleTests
     {
         IReadOnlyBlockTree blockTree = Substitute.For<IReadOnlyBlockTree>();
         blockTree.Head.Returns((Block?)null);
-        IWorldStateManager wsm = Substitute.For<IWorldStateManager>();
 
         EthCapabilities caps = new EthCapabilitiesProvider(
             blockTree,
-            wsm,
-            new OldestStateBlockStore(new MemDb()),
+            Substitute.For<IStateBoundary>(),
             new SyncConfig(),
             Substitute.For<ISyncPointers>(),
             Substitute.For<IHistoryConfig>(),
@@ -307,7 +301,6 @@ public partial class EthRpcModuleTests
         Assert.That(caps.Blocks, Is.EqualTo(Disabled));
         Assert.That(caps.Tx, Is.EqualTo(Disabled));
         Assert.That(caps.Logs, Is.EqualTo(Disabled));
-        _ = wsm.DidNotReceive().RetentionWindowBlocks;
     }
 
     [TestCaseSource(nameof(CapabilitiesScenarios))]

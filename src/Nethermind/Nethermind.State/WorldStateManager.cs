@@ -20,6 +20,7 @@ public class WorldStateManager : IWorldStateManager
     private readonly ILogManager _logManager;
     private readonly ReadOnlyDb _readaOnlyCodeCb;
     private readonly IDbProvider _dbProvider;
+    private readonly StateBoundaryStore _boundaryStore;
     private readonly BlockingVerifyTrie? _blockingVerifyTrie;
     private readonly ILastNStateRootTracker _lastNStateRootTracker;
 
@@ -37,6 +38,8 @@ public class WorldStateManager : IWorldStateManager
         _trieStore = trieStore;
         _readOnlyTrieStore = trieStore.AsReadOnly();
         _logManager = logManager;
+        // OldestStateBlock is co-located with state nodes — wiping the state DB drops it too.
+        _boundaryStore = new StateBoundaryStore(dbProvider.StateDb);
 
         IReadOnlyDbProvider readOnlyDbProvider = dbProvider.AsReadOnly(false);
         _readaOnlyCodeCb = readOnlyDbProvider.GetDb<IDb>(DbNames.Code).AsReadOnly(true);
@@ -51,6 +54,12 @@ public class WorldStateManager : IWorldStateManager
     }
 
     public long? RetentionWindowBlocks { get; }
+
+    public long? OldestStateBlock
+    {
+        get => _boundaryStore.OldestStateBlock;
+        set => _boundaryStore.OldestStateBlock = value;
+    }
 
     public IWorldStateScopeProvider GlobalWorldState => _worldState;
 

@@ -22,7 +22,6 @@ using Nethermind.History;
 using Nethermind.JsonRpc.Modules.Eth.FeeHistory;
 using Nethermind.JsonRpc.Modules.Eth.GasPrice;
 using Nethermind.Config;
-using Nethermind.Db;
 using Nethermind.Db.LogIndex;
 using Nethermind.Network;
 using Nethermind.State;
@@ -65,8 +64,7 @@ namespace Nethermind.JsonRpc.Test.Modules
                 Substitute.For<ILogIndexConfig>(),
                 new EthCapabilitiesProvider(
                     blockTree.AsReadOnly(),
-                    Substitute.For<IWorldStateManager>(),
-                    new OldestStateBlockStore(new MemDb()),
+                    Substitute.For<IStateBoundary>(),
                     new SyncConfig(),
                     Substitute.For<ISyncPointers>(),
                     Substitute.For<IHistoryConfig>(),

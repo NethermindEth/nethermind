@@ -27,7 +27,6 @@ using Nethermind.JsonRpc.Test.Modules;
 using Nethermind.Logging;
 using Nethermind.Optimism.Rpc;
 using Nethermind.Serialization.Rlp;
-using Nethermind.State;
 using Nethermind.Synchronization;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.TxPool;
@@ -603,7 +602,6 @@ internal static class TestRpcBlockchainExt
             new EthCapabilitiesProvider(
                 blockchain.BlockTree.AsReadOnly(),
                 blockchain.WorldStateManager,
-                blockchain.Container.Resolve<OldestStateBlockStore>(),
                 blockchain.Container.Resolve<ISyncConfig>(),
                 Substitute.For<ISyncPointers>(),
                 Substitute.For<IHistoryConfig>(),
