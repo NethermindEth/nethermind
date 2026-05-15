@@ -243,20 +243,9 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
 
                             if (Volatile.Read(ref MainThreadTxIndex) >= myTx) continue;
 
-                            bool succeeded = WarmupSingleTransaction(scope, block.Transactions[myTx], myTx, blockState);
-
-                            // If tx reverted, hammer with fresh scope each retry
-                            // (need fresh state to pick up main thread's advances)
-                            if (!succeeded)
-                            {
-                                while (!token.IsCancellationRequested && Volatile.Read(ref MainThreadTxIndex) < myTx)
-                                {
-                                    scope.WorldState.Reset();
-                                    if (WarmupSingleTransaction(scope, block.Transactions[myTx], myTx, blockState))
-                                        break;
-                                }
-                            }
-
+                            // Execute once and move on. Even reverted txs warm the RocksDB
+                            // block cache and trie node caches for the main thread.
+                            WarmupSingleTransaction(scope, block.Transactions[myTx], myTx, blockState);
                             scope.WorldState.Reset();
                         }
                     }
