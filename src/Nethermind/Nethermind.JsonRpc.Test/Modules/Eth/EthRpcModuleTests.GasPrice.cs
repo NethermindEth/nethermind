@@ -184,11 +184,12 @@ public partial class EthRpcModuleTests
         {
             static string Success(UInt256 result) => $"{{\"jsonrpc\":\"2.0\",\"result\":\"{result.ToHexString(true)}\",\"id\":67}}";
             static string Fail() => $"{{\"jsonrpc\":\"2.0\",\"error\":{{\"code\":-32603,\"message\":\"Unable to calculate the current blob base fee\"}},\"id\":67}}";
+            const string NullResult = "{\"jsonrpc\":\"2.0\",\"result\":null,\"id\":67}";
 
             yield return new TestCaseData((ulong?)null)
             {
                 TestName = "Pre-Cancun block",
-                ExpectedResult = Success(0)
+                ExpectedResult = NullResult
             };
             yield return new TestCaseData(0ul)
             {

@@ -118,7 +118,7 @@ public partial class EthRpcModule(
     {
         if (_blockFinder.Head?.Header?.ExcessBlobGas is null)
         {
-            return ResultWrapper<UInt256?>.Success(UInt256.Zero);
+            return ResultWrapper<UInt256?>.Success(null);
         }
 
         IReleaseSpec spec = _specProvider.GetSpec(_blockFinder.Head?.Header!);
