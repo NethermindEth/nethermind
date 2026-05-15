@@ -287,7 +287,10 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
     internal void ReportMainThreadTxExecuted(int txIndex)
     {
         Volatile.Write(ref MainThreadTxIndex, txIndex);
-        _mainThreadAdvanced.Set();
+        if (_retryMode == PreWarmRetryMode.StateGated)
+        {
+            _mainThreadAdvanced.Set();
+        }
     }
 
     private int _nextWarmupIndex;
@@ -303,16 +306,19 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
             if (txCount == 0) return;
 
             int firstPassLimit = (int)(txCount * _firstPassRatio);
+            PreWarmRetryMode retryMode = _retryMode;
+            PreWarmFirstPassMode firstPassMode = _firstPassMode;
             Volatile.Write(ref _nextWarmupIndex, 0);
             Volatile.Write(ref MainThreadTxIndex, -1);
             _firstPassDone.Reset();
-            _mainThreadAdvanced.Reset();
+            if (retryMode == PreWarmRetryMode.StateGated)
+            {
+                _mainThreadAdvanced.Reset();
+            }
 
             int threadCount = Math.Min(_concurrencyLevel, txCount);
             BlockCachePreWarmer preWarmer = this;
             CancellationToken token = parallelOptions.CancellationToken;
-            PreWarmRetryMode retryMode = _retryMode;
-            PreWarmFirstPassMode firstPassMode = _firstPassMode;
 
             Thread[] workers = new Thread[threadCount];
             SenderGroups senderGroups = firstPassMode == PreWarmFirstPassMode.SenderGrouped
