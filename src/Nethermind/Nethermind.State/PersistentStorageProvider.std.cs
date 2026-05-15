@@ -16,14 +16,6 @@ namespace Nethermind.State;
 
 internal sealed partial class PersistentStorageProvider
 {
-    // Merkle root computation benefits from maximum parallelism (logical CPUs).
-    // Unlike the prewarmer which competes with the main thread, merkle runs after
-    // tx execution is complete so all CPU resources are available.
-    private static readonly ParallelOptions s_merkleParallelOptions = new()
-    {
-        MaxDegreeOfParallelism = Math.Min(Environment.ProcessorCount, 16)
-    };
-
     private partial void UpdateRootHashes(IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch)
     {
         if (_toUpdateRoots.Count >= 3)
@@ -54,7 +46,7 @@ internal sealed partial class PersistentStorageProvider
         ParallelUnbalancedWork.For(
             0,
             storages.Count,
-            s_merkleParallelOptions,
+            RuntimeInformation.ParallelOptionsPhysicalCoresUpTo16,
             (storages, toUpdateRoots: _toUpdateRoots, writes: 0, skips: 0),
             static (i, state) =>
             {
