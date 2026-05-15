@@ -103,7 +103,7 @@ public interface IBlocksConfig : IConfig
     string PreWarmRetryMode { get; set; }
 
     [ConfigItem(
-        Description = "Prewarmer first pass mode: 'SenderGrouped' (same-sender txs stay ordered), 'Forward' (transaction order), or 'Lookahead' (later txs first).",
+        Description = "Prewarmer first pass mode: 'SenderGrouped' (same-sender txs stay ordered), 'SenderGroupedByGas' (same-sender groups sorted by estimated gas), 'Forward' (transaction order), or 'Lookahead' (later txs first).",
         DefaultValue = "SenderGrouped",
         HiddenFromDocs = true)]
     string PreWarmFirstPassMode { get; set; }

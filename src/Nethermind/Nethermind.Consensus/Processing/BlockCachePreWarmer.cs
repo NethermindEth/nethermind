@@ -114,6 +114,12 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
             return PreWarmFirstPassMode.Lookahead;
         }
 
+        if (string.Equals(firstPassMode, "SenderGroupedByGas", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(firstPassMode, "GasGrouped", StringComparison.OrdinalIgnoreCase))
+        {
+            return PreWarmFirstPassMode.SenderGroupedByGas;
+        }
+
         return PreWarmFirstPassMode.SenderGrouped;
     }
 
@@ -321,10 +327,11 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
             CancellationToken token = parallelOptions.CancellationToken;
 
             Thread[] workers = new Thread[threadCount];
-            SenderGroups senderGroups = firstPassMode == PreWarmFirstPassMode.SenderGrouped
-                ? SenderGroups.Build(block, firstPassLimit)
+            bool useSenderGroups = firstPassMode is PreWarmFirstPassMode.SenderGrouped or PreWarmFirstPassMode.SenderGroupedByGas;
+            SenderGroups senderGroups = useSenderGroups
+                ? SenderGroups.Build(block, firstPassLimit, sortByGas: firstPassMode == PreWarmFirstPassMode.SenderGroupedByGas)
                 : default;
-            int firstPassWorkItems = firstPassMode == PreWarmFirstPassMode.SenderGrouped ? senderGroups.Count : firstPassLimit;
+            int firstPassWorkItems = useSenderGroups ? senderGroups.Count : firstPassLimit;
             try
             {
                 for (int t = 0; t < threadCount; t++)
@@ -340,7 +347,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
                                 int workItem = Interlocked.Increment(ref _nextWarmupIndex) - 1;
                                 if (workItem >= firstPassWorkItems) break;
 
-                                if (firstPassMode == PreWarmFirstPassMode.SenderGrouped)
+                                if (useSenderGroups)
                                 {
                                     WarmupSenderGroup(
                                         env,
@@ -526,10 +533,27 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
 
         public ArrayPoolList<(int Index, Transaction Tx)> this[int index] => _groups![index];
 
-        public static SenderGroups Build(Block block, int txLimit)
+        public static SenderGroups Build(Block block, int txLimit, bool sortByGas = false)
         {
             Dictionary<AddressAsKey, ArrayPoolList<(int Index, Transaction Tx)>> bySender = GroupTransactionsBySender(block, txLimit);
-            return new(bySender, bySender.Values.ToPooledList());
+            ArrayPoolList<ArrayPoolList<(int Index, Transaction Tx)>> groups = bySender.Values.ToPooledList();
+            if (sortByGas)
+            {
+                groups.Sort(static (a, b) => EstimateWork(b).CompareTo(EstimateWork(a)));
+            }
+
+            return new(bySender, groups);
+        }
+
+        private static long EstimateWork(ArrayPoolList<(int Index, Transaction Tx)> txList)
+        {
+            long work = 0;
+            foreach ((_, Transaction tx) in txList.AsSpan())
+            {
+                work = work <= long.MaxValue - tx.GasLimit ? work + tx.GasLimit : long.MaxValue;
+            }
+
+            return work;
         }
 
         public void Dispose()
@@ -873,6 +897,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
     internal enum PreWarmFirstPassMode
     {
         SenderGrouped,
+        SenderGroupedByGas,
         Forward,
         Lookahead,
     }
