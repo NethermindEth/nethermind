@@ -210,9 +210,8 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
             int txCount = block.Transactions.Length;
             if (txCount == 0) return;
 
-            Volatile.Write(ref MainThreadTxIndex, -1);
-            BlockCachePreWarmer preWarmer = this;
-
+            // Moving window: each worker takes one tx, executes, moves to next.
+            // WarmingState pattern: env+scope acquired once per thread, reused across txs.
             WarmingState<BlockState> baseState = new(_envPool, blockState, blockState.Parent);
 
             ParallelUnbalancedWork.For(
@@ -222,15 +221,8 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
                 baseState.InitThreadState,
                 static (txIndex, state) =>
                 {
-                    if (Volatile.Read(ref state.Payload.PreWarmer.MainThreadTxIndex) >= txIndex)
-                        return state;
-
                     BlockExecutionContext context = new(state.Payload.Block.Header, state.Payload.Spec);
                     state.Scope!.TransactionProcessor.SetBlockExecutionContext(context);
-
-                    if (state.Payload.PreWarmer.MainThreadWorldState is not null)
-                        (state.Scope!.WorldState as WorldState)?.SetReadFallback(state.Payload.PreWarmer.MainThreadWorldState);
-
                     WarmupSingleTransaction(state.Scope!, state.Payload.Block.Transactions[txIndex], txIndex, state.Payload);
                     return state;
                 },

@@ -79,12 +79,6 @@ public class BranchProcessor(
         void CancelBackgroundWork() => backgroundCancellation?.Cancel();
         blockProcessor.TransactionsExecuted += CancelBackgroundWork;
 
-        if (preWarmer is BlockCachePreWarmer bcpw && blockProcessor is BlockProcessor bp)
-        {
-            bcpw.MainThreadWorldState = stateProvider;
-            bp.SetTxExecutedCallback((txIndex) => Volatile.Write(ref bcpw.MainThreadTxIndex, txIndex));
-        }
-
         try
         {
             // Start prewarming as early as possible
