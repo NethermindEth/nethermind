@@ -239,8 +239,9 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
                                 scope.TransactionProcessor.SetBlockExecutionContext(
                                     new BlockExecutionContext(block.Header, blockState.Spec));
 
-                                if (preWarmer.MainThreadWorldState is not null)
-                                    (scope.WorldState as WorldState)?.SetReadFallback(preWarmer.MainThreadWorldState);
+                                // Read fallback disabled for debugging — testing if it causes startup crash
+                                // if (preWarmer.MainThreadWorldState is not null)
+                                //     (scope.WorldState as WorldState)?.SetReadFallback(preWarmer.MainThreadWorldState);
 
                                 bool ok = WarmupSingleTransaction(scope, block.Transactions[myTx], myTx, blockState);
 
@@ -260,8 +261,9 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
                                 scope.TransactionProcessor.SetBlockExecutionContext(
                                     new BlockExecutionContext(block.Header, blockState.Spec));
 
-                                if (preWarmer.MainThreadWorldState is not null)
-                                    (scope.WorldState as WorldState)?.SetReadFallback(preWarmer.MainThreadWorldState);
+                                // Read fallback disabled for debugging — testing if it causes startup crash
+                                // if (preWarmer.MainThreadWorldState is not null)
+                                //     (scope.WorldState as WorldState)?.SetReadFallback(preWarmer.MainThreadWorldState);
 
                                 WarmupSingleTransaction(scope, block.Transactions[i], i, blockState);
                             }
