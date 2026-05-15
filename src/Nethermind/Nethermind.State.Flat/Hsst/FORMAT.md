@@ -365,8 +365,8 @@ total cheaper than always-4-byte slots. There is no flag bit gating it.
 | Bit  | Meaning |
 |------|---------|
 | 0    | `IsIntermediate` — 1 = intermediate B-tree node, 0 = leaf |
-| 1–2  | `KeyType`        — 0 Variable / 1 Uniform / 2 UniformWithLen |
-| 3–4  | `ValueType`      — 0 Variable / 1 Uniform / 2 UniformWithLen |
+| 1–2  | `KeyType`        — 0 Variable / 1 Uniform (value 2 reserved/unused) |
+| 3–4  | `ValueType`      — 0 Variable / 1 Uniform (value 2 reserved/unused) |
 | 5    | reserved (was `HasBaseOffset`; BaseOffset is now mandatory). Writers MUST emit 0; readers MUST ignore. |
 | 6    | `HasCommonKeyPrefix` — 1 = `CommonKeyPrefixLen` (u8) + prefix bytes follow |
 | 7    | `HasFlagsContinuation` — 1 = a second flags byte follows the first, reserved for future expansion. Current writers always emit 0; current readers may reject `1` as unsupported. |
@@ -374,10 +374,10 @@ total cheaper than always-4-byte slots. There is no flag bit gating it.
 When `HasCommonKeyPrefix` is set, every stored key in the node equals
 `CommonKeyPrefix || suffix_i` where `suffix_i` is what the keys section
 encodes. `KeySize` / slot semantics apply to the *suffixes* — `Uniform` slot
-size is `commonSuffixLen`, `UniformWithLen` slot is `maxSuffixLen + 1`,
-`Variable` section size covers only suffix LEB-prefixed bytes plus the
-offset table. The prefix bytes live entirely inside metadata; section size
-math is unchanged. Writers cap the prefix at **128 bytes** so the metadata
+size is `commonSuffixLen`, `Variable` section size covers only suffix
+LEB-prefixed bytes plus the offset table. The prefix bytes live entirely
+inside metadata; section size math is unchanged. Writers cap the prefix at
+**128 bytes** so the metadata
 stays well under the `MetadataLength` u8 ceiling, and only emit it when
 `prefixLen × (count − 1) > 1` (i.e. it strictly pays back its
 `1 + prefixLen` overhead) and when at least one suffix is non-empty.
@@ -393,8 +393,10 @@ stays well under the `MetadataLength` u8 ceiling, and only emit it when
   exceed it.
 - **Uniform (1)** — packed fixed-width entries. Each entry is exactly
   `KeySize` (or `ValueSize`) bytes; section size is `KeyCount * size`.
-- **UniformWithLen (2)** — fixed slot size, but the last byte of each slot
-  records the actual byte length used. Section size still `KeyCount * size`.
+
+`KeyType` / `ValueType` value `2` is reserved/unused — it once selected a
+`UniformWithLen` layout (fixed slot with a trailing length byte), now
+removed. Readers fail with `InvalidDataException` if they encounter it.
 
 `BaseOffset`, when present, is added to every integer value read out of the
 node. The writer picks `BaseOffset = min(values)` (when there's more than one
@@ -453,7 +455,7 @@ Writers / encoders:
 - `BSearchIndex/BSearchIndexWriter.cs` — alternate node writer used by
   the merge path; must stay byte-compatible with `HsstIndexNodeWriter`.
 - `BSearchIndex/BSearchIndexLayoutPlanner.cs` — picks key/value section
-  encodings (Variable / Uniform / UniformWithLen) and section sizes.
+  encodings (Variable / Uniform) and section sizes.
 - `Hsst/IndexType.cs` — enum of valid index-type byte values.
 - `Hsst/HsstPackedArrayBuilder.cs` / `Hsst/HsstPackedArrayReader.cs` — `PackedArray`
   writer / reader (recursive summary index, optional hash table).

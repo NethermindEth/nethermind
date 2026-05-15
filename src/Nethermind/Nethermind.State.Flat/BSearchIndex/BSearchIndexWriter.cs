@@ -14,7 +14,7 @@ internal struct BSearchIndexMetadata
 {
     /// <summary>True if this is an internal (non-leaf) node.</summary>
     public bool IsIntermediate;
-    /// <summary>0=Variable, 1=Uniform, 2=UniformWithLen.</summary>
+    /// <summary>0=Variable, 1=Uniform.</summary>
     public int KeyType;
     /// <summary>
     /// Base offset subtracted from values before writing. 0 means no base offset.
@@ -23,14 +23,14 @@ internal struct BSearchIndexMetadata
     /// </summary>
     public ulong BaseOffset;
     /// <summary>
-    /// Uniform/UniformWithLen: fixed key length or slot size.
+    /// Uniform: fixed key length or slot size.
     /// Variable: ignored.
     /// </summary>
     public int KeySlotSize;
-    /// <summary>0=Variable, 1=Uniform, 2=UniformWithLen. Default: Uniform.</summary>
+    /// <summary>0=Variable, 1=Uniform. Default: Uniform.</summary>
     public int ValueType = 1;
     /// <summary>
-    /// Uniform/UniformWithLen: fixed value size or slot size in bytes (1..8 for Uniform offsets).
+    /// Uniform: fixed value size or slot size in bytes (1..8 for Uniform offsets).
     /// Default: 4 bytes.
     /// </summary>
     public int ValueSlotSize = 4;
@@ -38,8 +38,8 @@ internal struct BSearchIndexMetadata
     /// When true, fixed-width key slots are written byte-reversed on disk so that an x86
     /// little-endian integer load of a slot equals its semantic numeric/lex value. The SIMD
     /// floor scan can then drop the per-lane byte-swap shuffle. Honored only for Uniform with
-    /// <see cref="KeySlotSize"/> ∈ {2,4,8} and UniformWithLen with <see cref="KeySlotSize"/> = 4;
-    /// ignored for other shapes. Encoded as Flags bit 5 in the on-disk header.
+    /// <see cref="KeySlotSize"/> ∈ {2,4,8}; ignored for other shapes. Encoded as Flags bit 5
+    /// in the on-disk header.
     /// </summary>
     public bool IsKeyLittleEndian = false;
 
@@ -175,7 +175,6 @@ internal ref struct BSearchIndexWriter<TWriter>
         switch (_metadata.KeyType)
         {
             case 1: WriteUniformKeys(); break;
-            case 2: WriteUniformWithLenKeys(); break;
             default: WriteVariableKeys(); break;
         }
 
@@ -183,7 +182,6 @@ internal ref struct BSearchIndexWriter<TWriter>
         switch (_metadata.ValueType)
         {
             case 1: WriteUniformValues(); break;
-            case 2: WriteUniformWithLenValues(); break;
             default: WriteVariableValues(); break;
         }
 
@@ -337,10 +335,9 @@ internal ref struct BSearchIndexWriter<TWriter>
         if (_metadata.KeyType == 0) return true;
         if (!_metadata.IsKeyLittleEndian) return false;
         // Honored only for the shapes the SIMD direct-compare fast path supports: Uniform with
-        // KeySlotSize ∈ {2,4,8} and UniformWithLen with slotSize=4. GetKey returns raw stored
-        // bytes (LE-reversed) under this flag; GetFullKey reverses back into a caller dest.
-        return (_metadata.KeyType == 1 && _metadata.KeySlotSize is 2 or 4 or 8)
-            || (_metadata.KeyType == 2 && _metadata.KeySlotSize == 4);
+        // KeySlotSize ∈ {2,4,8}. GetKey returns raw stored bytes (LE-reversed) under this flag;
+        // GetFullKey reverses back into a caller dest.
+        return _metadata.KeyType == 1 && _metadata.KeySlotSize is 2 or 4 or 8;
     }
 
     private void WriteUniformKeys()
@@ -363,31 +360,6 @@ internal ref struct BSearchIndexWriter<TWriter>
                 IByteBufferWriter.Copy(ref _writer, src);
             }
             keySrc += keyLen;
-        }
-    }
-
-    private void WriteUniformWithLenKeys()
-    {
-        int slotSize = _metadata.KeySlotSize;
-        bool reverse = ShouldEncodeKeyLittleEndian();
-        int keySrc = 0;
-        for (int i = 0; i < _count; i++)
-        {
-            int len = BinaryPrimitives.ReadUInt16LittleEndian(_keyBuf[keySrc..]);
-            keySrc += 2;
-            Span<byte> slot = _writer.GetSpan(slotSize);
-            slot[..slotSize].Clear();
-            if (len > 0)
-                _keyBuf.Slice(keySrc, len).CopyTo(slot);
-            slot[slotSize - 1] = (byte)len;
-            // LE encoding (slotSize=4 only): reverse the finalized [p0 p1 p2 len] in place to
-            // [len p2 p1 p0]. x86 LE-load of the reversed slot as uint32 yields
-            // (p0<<24)|(p1<<16)|(p2<<8)|len — the same numeric value the BE-load path produces,
-            // preserving the lex+length ordering invariant.
-            if (reverse)
-                slot[..slotSize].Reverse();
-            _writer.Advance(slotSize);
-            keySrc += len;
         }
     }
 
@@ -480,24 +452,6 @@ internal ref struct BSearchIndexWriter<TWriter>
                 IByteBufferWriter.Copy(ref _writer, _valueBuf.Slice(valSrc, valLen));
             }
             valSrc += valLen;
-        }
-    }
-
-    private void WriteUniformWithLenValues()
-    {
-        int slotSize = _metadata.ValueSlotSize;
-        int valSrc = 0;
-        for (int i = 0; i < _count; i++)
-        {
-            int len = BinaryPrimitives.ReadUInt16LittleEndian(_valueBuf[valSrc..]);
-            valSrc += 2;
-            Span<byte> slot = _writer.GetSpan(slotSize);
-            slot[..slotSize].Clear();
-            if (len > 0)
-                _valueBuf.Slice(valSrc, len).CopyTo(slot);
-            slot[slotSize - 1] = (byte)len;
-            _writer.Advance(slotSize);
-            valSrc += len;
         }
     }
 

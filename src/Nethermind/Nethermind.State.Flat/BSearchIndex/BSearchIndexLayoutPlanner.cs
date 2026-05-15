@@ -44,12 +44,13 @@ internal static class BSearchIndexLayoutPlanner
     /// the post-strip total <c>prefixLen + keySlotSize</c> stays within this budget.
     /// </param>
     /// <param name="commonKeyPrefixLen">Out: post-gating LCP. 0 if not worth stripping.</param>
-    /// <param name="keyType">Out: 0=Variable, 1=Uniform, 2=UniformWithLen.</param>
-    /// <param name="keySlotSize">Out: post-strip slot size for Uniform/UniformWithLen; 0 for Variable.</param>
+    /// <param name="keyType">Out: 0=Variable, 1=Uniform.</param>
+    /// <param name="keySlotSize">Out: post-strip slot size for Uniform; 0 for Variable.</param>
     /// <param name="keyLittleEndian">
     /// Out: when true, callers should set <c>BSearchIndexMetadata.IsKeyLittleEndian</c> so each
-    /// fixed-width key slot is byte-reversed on disk (Flags bit 5). Set only for the SIMD-eligible
-    /// shape: Uniform with <paramref name="keySlotSize"/> ∈ {2,4,8}.
+    /// fixed-width key slot is byte-reversed on disk (Flags bit 5). Set for the SIMD-eligible
+    /// shapes: Uniform with <paramref name="keySlotSize"/> ∈ {2,4,8} and Variable (whose 2-byte
+    /// prefixArr is uniformly LE-encoded).
     /// </param>
     public static void Plan(
         ReadOnlySpan<int> lengths,
@@ -151,7 +152,6 @@ internal static class BSearchIndexLayoutPlanner
         //     enlarging the slot, since the extra bytes come from the key data section.
         //   * Mixed-length leaves with effMaxLen ≤ 8 also land in Uniform: the slot
         //     accommodates the longest entry, and shorter entries pad from key data.
-        //     UWL is reserved for the intermediate-node niche (no key to pad from).
         //
         // Clamp by minLen (caller invariant — crossEntryLcp ≤ shortest sep), then by
         // keyLength - 1 to reserve at least one byte per slot, then by the header's u8
@@ -167,34 +167,17 @@ internal static class BSearchIndexLayoutPlanner
 
         if (disablePrefix) lcp = 0;
 
-        // KeyType selection on effective (post-strip) lengths.
-        int effFirstLen = firstLen - lcp;
+        // KeyType selection on effective (post-strip) lengths. Two outcomes:
+        //   * Uniform: every slot is the same fixed width; mixed-length entries pad
+        //     from the key data section past the natural separator.
+        //   * Variable: only chosen when effMaxLen > 8 and lengths actually vary,
+        //     where padding every entry up to effMaxLen would cost more than the
+        //     Variable layout's 4 B/entry overhead. The splitter's `gap > 4` quality
+        //     gate keeps within-leaf length variance small, so this path is rare.
         int effMaxLen = maxLen - lcp;
-        int effSecondLen = secondLen < 0 ? 0 : secondLen - lcp;
-        bool emptyFirst = firstLen == 0;
 
-        if (emptyFirst && count > 1 && allSameLenExceptFirst && effSecondLen > 0)
+        if (allSameLen || effMaxLen <= 8)
         {
-            // Intermediate-node niche: leftmost child has no key to pad from, so
-            // UniformWithLen with explicit length=0 for entry 0 is the right marker.
-            // Every other separator shares a length, so slot = secondLen + 1.
-            keyType = 2;
-            keySlotSize = effSecondLen + 1;
-        }
-        else if (effMaxLen <= 0)
-        {
-            // Degenerate (e.g. keyLength=0 with a single empty entry): store a
-            // single [length=0] byte. Uniform can't represent a 0-byte payload —
-            // the builder slice would read past the empty key.
-            keyType = 2;
-            keySlotSize = 1;
-        }
-        else if (allSameLen || effMaxLen <= 8)
-        {
-            // Uniform. The builder pads each slot from currKey.Slice(prefixLen, slot)
-            // past the natural separator length, so mixed-length leaves with small
-            // effMaxLen drop in here too — replacing the old `effMaxLen <= 3 → UWL`
-            // branch and unlocking SIMD when the snap lands on {2, 4, 8}.
             keyType = 1;
             int budget = keyLength - lcp;
             keySlotSize =
@@ -205,19 +188,15 @@ internal static class BSearchIndexLayoutPlanner
         }
         else
         {
-            // Mixed-length with effMaxLen > 8: Variable is cheaper than padding
-            // every entry up to effMaxLen. The splitter's `gap > 4` quality gate
-            // keeps within-leaf length variance small, so this path is rare.
             keyType = 0;
             keySlotSize = 0;
         }
 
         commonKeyPrefixLen = lcp;
         // Auto-enable LE storage where the SIMD/integer-compare floor scan can exploit it:
-        // Uniform 2/4/8, UniformWithLen slotSize=4, and Variable (prefixArr is uniformly 2B/slot).
+        // Uniform 2/4/8, and Variable (prefixArr is uniformly 2B/slot).
         keyLittleEndian =
             keyType == 0 ||
-            (keyType == 1 && keySlotSize is 2 or 4 or 8) ||
-            (keyType == 2 && keySlotSize == 4);
+            (keyType == 1 && keySlotSize is 2 or 4 or 8);
     }
 }

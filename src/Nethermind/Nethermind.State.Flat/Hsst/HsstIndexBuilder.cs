@@ -285,8 +285,8 @@ public ref struct HsstIndexBuilder<TWriter, TReader, TPin>
         Span<byte> commonPrefixBuf = stackalloc byte[prefixLen];
 
         // keyBuf must fit the widest per-entry payload across layouts: Uniform takes
-        // keySlotSize bytes, Variable/UniformWithLen take the per-entry natural sep
-        // length (up to _keyLength - prefixLen). Use the max so all paths fit.
+        // keySlotSize bytes, Variable takes the per-entry natural sep length
+        // (up to _keyLength - prefixLen). Use the max so all paths fit.
         int perEntryKeyBytes = Math.Max(keySlotSize, _keyLength - prefixLen);
         int keyBufSize = count * (2 + perEntryKeyBytes);
         Span<byte> keyBuf = stackalloc byte[keyBufSize];
@@ -328,7 +328,7 @@ public ref struct HsstIndexBuilder<TWriter, TReader, TPin>
     /// <summary>
     /// Slice the per-entry key bytes for the writer based on layout:
     /// Uniform (keyType=1) takes a fixed <paramref name="keySlotSize"/> bytes;
-    /// Variable (0) and UniformWithLen (2) take the entry's natural sep length
+    /// Variable (keyType=0) takes the entry's natural sep length
     /// (<paramref name="sepLength"/>), prefix-stripped. Both are sliced from
     /// <paramref name="key"/> starting at <paramref name="prefixLen"/>.
     /// </summary>
