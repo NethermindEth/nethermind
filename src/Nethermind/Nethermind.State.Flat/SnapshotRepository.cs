@@ -145,14 +145,14 @@ public class SnapshotRepository(ILogManager logManager) : ISnapshotRepository
         return false;
     }
 
-    public ArrayPoolList<StateId> GetStatesAtBlockNumber(long blockNumber)
+    public NativeMemoryList<StateId> GetStatesAtBlockNumber(long blockNumber)
     {
         using ReadWriteLockBox<SortedSet<StateId>>.Lock _ = _sortedSnapshotStateIds.EnterReadLock(out SortedSet<StateId> sortedSnapshots);
 
         StateId min = new(blockNumber, ValueKeccak.Zero);
         StateId max = new(blockNumber, ValueKeccak.MaxValue);
 
-        return sortedSnapshots.GetViewBetween(min, max).ToPooledList(0);
+        return sortedSnapshots.GetViewBetween(min, max).ToNativeMemoryList(0);
     }
 
     public StateId? GetLastSnapshotId()
@@ -200,21 +200,21 @@ public class SnapshotRepository(ILogManager logManager) : ISnapshotRepository
 
     public bool HasState(in StateId stateId) => _snapshots.ContainsKey(stateId);
 
-    public ArrayPoolList<StateId> GetSnapshotBeforeStateId(StateId stateId)
+    public NativeMemoryList<StateId> GetSnapshotBeforeStateId(StateId stateId)
     {
         if (stateId.BlockNumber < 0)
-            return ArrayPoolList<StateId>.Empty();
+            return NativeMemoryList<StateId>.Empty();
 
         using ReadWriteLockBox<SortedSet<StateId>>.Lock _ = _sortedSnapshotStateIds.EnterReadLock(out SortedSet<StateId> sortedSnapshots);
 
         return sortedSnapshots
             .GetViewBetween(new StateId(0, Hash256.Zero), new StateId(stateId.BlockNumber, Keccak.MaxValue))
-            .ToPooledList(0);
+            .ToNativeMemoryList(0);
     }
 
     public void RemoveStatesUntil(in StateId currentPersistedStateId)
     {
-        using ArrayPoolList<StateId> statesBeforeStateId = GetSnapshotBeforeStateId(currentPersistedStateId);
+        using NativeMemoryList<StateId> statesBeforeStateId = GetSnapshotBeforeStateId(currentPersistedStateId);
         foreach (StateId stateToRemove in statesBeforeStateId)
         {
             RemoveAndReleaseCompactedKnownState(stateToRemove);

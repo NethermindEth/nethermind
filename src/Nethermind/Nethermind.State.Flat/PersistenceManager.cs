@@ -50,7 +50,7 @@ public class PersistenceManager(
     private Snapshot? GetFinalizedSnapshotAtBlockNumber(long blockNumber, StateId currentPersistedState, bool compactedSnapshot)
     {
         Hash256? finalizedStateRoot = finalizedStateProvider.GetFinalizedStateRootAt(blockNumber);
-        using ArrayPoolList<StateId> states = snapshotRepository.GetStatesAtBlockNumber(blockNumber);
+        using NativeMemoryList<StateId> states = snapshotRepository.GetStatesAtBlockNumber(blockNumber);
         foreach (StateId stateId in states)
         {
             if (stateId.StateRoot != finalizedStateRoot) continue;
@@ -80,7 +80,7 @@ public class PersistenceManager(
 
     private Snapshot? GetFirstSnapshotAtBlockNumber(long blockNumber, StateId currentPersistedState, bool compactedSnapshot)
     {
-        using ArrayPoolList<StateId> states = snapshotRepository.GetStatesAtBlockNumber(blockNumber);
+        using NativeMemoryList<StateId> states = snapshotRepository.GetStatesAtBlockNumber(blockNumber);
         foreach (StateId stateId in states)
         {
             Snapshot? snapshot;
