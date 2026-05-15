@@ -200,8 +200,6 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         }
     }
 
-    private int _nextWarmupIndex;
-
     private void WarmupTransactions(BlockState blockState, ParallelOptions parallelOptions)
     {
         if (parallelOptions.CancellationToken.IsCancellationRequested) return;
@@ -212,75 +210,42 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
             int txCount = block.Transactions.Length;
             if (txCount == 0) return;
 
-            Volatile.Write(ref _nextWarmupIndex, 0);
             Volatile.Write(ref MainThreadTxIndex, -1);
 
-            int threadCount = Math.Min(_concurrencyLevel, txCount);
             BlockCachePreWarmer preWarmer = this;
-            CancellationToken token = parallelOptions.CancellationToken;
-            int[] reverted = new int[txCount];
 
-            Thread[] workers = new Thread[threadCount];
-            for (int t = 0; t < threadCount; t++)
-            {
-                workers[t] = new Thread(() =>
+            // Moving window: each worker claims next tx via shared counter
+            ParallelUnbalancedWork.For(
+                0,
+                txCount,
+                parallelOptions,
+                (blockState, preWarmer, parallelOptions.CancellationToken),
+                static (txIndex, tupleState) =>
                 {
-                    IReadOnlyTxProcessorSource env = _envPool.Get();
+                    (BlockState blockState, BlockCachePreWarmer preWarmer, CancellationToken token) = tupleState;
+
+                    if (Volatile.Read(ref preWarmer.MainThreadTxIndex) >= txIndex) return tupleState;
+
+                    IReadOnlyTxProcessorSource env = blockState.PreWarmer._envPool.Get();
                     try
                     {
-                        while (!token.IsCancellationRequested)
-                        {
-                            int myTx = Interlocked.Increment(ref _nextWarmupIndex) - 1;
-                            if (myTx >= txCount) break;
-                            if (Volatile.Read(ref MainThreadTxIndex) >= myTx) continue;
+                        using IReadOnlyTxProcessingScope scope = env.Build(blockState.Parent);
+                        BlockExecutionContext context = new(blockState.Block.Header, blockState.Spec);
+                        scope.TransactionProcessor.SetBlockExecutionContext(context);
 
-                            using (IReadOnlyTxProcessingScope scope = env.Build(blockState.Parent))
-                            {
-                                scope.TransactionProcessor.SetBlockExecutionContext(
-                                    new BlockExecutionContext(block.Header, blockState.Spec));
+                        if (preWarmer.MainThreadWorldState is not null)
+                            (scope.WorldState as WorldState)?.SetReadFallback(preWarmer.MainThreadWorldState);
 
-                                // Read fallback disabled for debugging — testing if it causes startup crash
-                                // if (preWarmer.MainThreadWorldState is not null)
-                                //     (scope.WorldState as WorldState)?.SetReadFallback(preWarmer.MainThreadWorldState);
-
-                                bool ok = WarmupSingleTransaction(scope, block.Transactions[myTx], myTx, blockState);
-
-                                if (!ok && (uint)myTx < (uint)reverted.Length)
-                                    Volatile.Write(ref reverted[myTx], 1);
-                            }
-                        }
-
-                        // Selective retry: re-warm reverted txs with fresher fallback state
-                        for (int i = 0; i < txCount && !token.IsCancellationRequested; i++)
-                        {
-                            if (Volatile.Read(ref reverted[i]) == 0) continue;
-                            if (Volatile.Read(ref MainThreadTxIndex) >= i) continue;
-
-                            using (IReadOnlyTxProcessingScope scope = env.Build(blockState.Parent))
-                            {
-                                scope.TransactionProcessor.SetBlockExecutionContext(
-                                    new BlockExecutionContext(block.Header, blockState.Spec));
-
-                                // Read fallback disabled for debugging — testing if it causes startup crash
-                                // if (preWarmer.MainThreadWorldState is not null)
-                                //     (scope.WorldState as WorldState)?.SetReadFallback(preWarmer.MainThreadWorldState);
-
-                                WarmupSingleTransaction(scope, block.Transactions[i], i, blockState);
-                            }
-                        }
+                        WarmupSingleTransaction(scope, blockState.Block.Transactions[txIndex], txIndex, blockState);
                     }
-                    catch (OperationCanceledException) { }
-                    catch (Exception) { }
+                    catch (MissingTrieNodeException) { }
                     finally
                     {
-                        _envPool.Return(env);
+                        blockState.PreWarmer._envPool.Return(env);
                     }
-                }) { IsBackground = true, Name = "PrewarmWorker" };
-                workers[t].Start();
-            }
 
-            for (int t = 0; t < threadCount; t++)
-                workers[t].Join();
+                    return tupleState;
+                });
         }
         catch (OperationCanceledException)
         {
