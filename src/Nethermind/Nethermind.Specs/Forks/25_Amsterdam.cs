@@ -6,11 +6,13 @@ using Nethermind.Core.Specs;
 
 namespace Nethermind.Specs.Forks;
 
-public class Amsterdam() : NamedReleaseSpec<Amsterdam>(BPO5.Instance)
+public class Amsterdam() : NamedReleaseSpec<Amsterdam>(BPO2.Instance)
 {
     public override void Apply(NamedReleaseSpec spec)
     {
         spec.Name = "Amsterdam";
+        spec.IsEip7976Enabled = true;
+        spec.IsEip7981Enabled = true;
         spec.IsEip7708Enabled = true;
         spec.IsEip7778Enabled = true;
         spec.IsEip7843Enabled = true;

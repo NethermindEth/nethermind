@@ -142,7 +142,7 @@ namespace Nethermind.Core
             return false;
         }
 
-        public Address(ReadOnlySpan<byte> bytes)
+        public Address(scoped ReadOnlySpan<byte> bytes)
         {
             if (bytes.Length != Size)
             {
@@ -281,6 +281,7 @@ namespace Nethermind.Core
         internal long GetHashCode64() => SpanExtensions.FastHash64For20Bytes(ref Unsafe.AsRef(in FirstByte));
     }
 
+    [JsonConverter(typeof(AddressAsKeyConverter))]
     public readonly struct AddressAsKey(Address key) : IEquatable<AddressAsKey>, IHash64bit<AddressAsKey>
     {
         public static GenericEqualityComparer<AddressAsKey> EqualityComparer { get; } = new();

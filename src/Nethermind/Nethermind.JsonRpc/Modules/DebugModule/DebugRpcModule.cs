@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.IO;
 using System.Linq;
 using System.Threading;
@@ -231,7 +232,7 @@ public class DebugRpcModule(
 
             if (_logger.IsTrace) _logger.Trace($"{nameof(debug_traceBlock)} request {blockRlp.ToHexString()}, result: {blockTrace}");
 
-            return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Success(blockTrace);
+            return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Success(new GethLikeTxTraceStreamingResult(blockTrace));
         }
         catch (RlpException)
         {
@@ -263,7 +264,7 @@ public class DebugRpcModule(
 
             if (_logger.IsTrace) _logger.Trace($"{nameof(debug_traceBlockByNumber)} request {blockNumber}, result: {blockTrace}");
 
-            return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Success(blockTrace);
+            return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Success(new GethLikeTxTraceStreamingResult(blockTrace));
         }
         catch (ArgumentNullException)
         {
@@ -290,7 +291,7 @@ public class DebugRpcModule(
 
             if (_logger.IsTrace) _logger.Trace($"{nameof(debug_traceBlockByHash)} request {blockHash}, result: {blockTrace}");
 
-            return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Success(blockTrace);
+            return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Success(new GethLikeTxTraceStreamingResult(blockTrace));
         }
         catch (ArgumentNullException)
         {
@@ -369,6 +370,21 @@ public class DebugRpcModule(
 
     public ResultWrapper<byte[]> debug_getRawBlock(BlockParameter blockParameter) =>
         GetBlockRlpOrFail(blockParameter);
+
+    public ResultWrapper<OwnedByteMemory> debug_getRawBlockAccessList(BlockParameter blockParameter)
+    {
+        Block? block = debugBridge.GetBlock(blockParameter);
+        if (block is null || block.BlockAccessListHash is null)
+        {
+            return ResultWrapper<OwnedByteMemory>.Fail("Resource not found", ErrorCodes.BlockAccessListResourceNotFound);
+        }
+
+        MemoryManager<byte>? balRlp = blockchainBridge.GetBlockAccessListRlp(block.Hash);
+
+        return balRlp is null
+            ? ResultWrapper<OwnedByteMemory>.Fail("Pruned history unavailable", ErrorCodes.PrunedHistoryUnavailable)
+            : ResultWrapper<OwnedByteMemory>.Success(new OwnedByteMemory(balRlp));
+    }
 
     public ResultWrapper<byte[]> debug_getRawHeader(BlockParameter blockParameter)
     {

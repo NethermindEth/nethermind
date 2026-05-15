@@ -415,7 +415,7 @@ namespace Nethermind.Synchronization.FastBlocks
             return batch;
         }
 
-        private HeadersSyncBatch BuildNewBatch(int requestSize)
+        private HeadersSyncBatch? BuildNewBatch(int requestSize)
         {
             HeadersSyncBatch batch = new();
             batch.StartNumber = Math.Max(HeadersDestinationNumber, _lowestRequestedHeaderNumber - requestSize);

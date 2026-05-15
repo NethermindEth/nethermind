@@ -30,11 +30,12 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
     bool HasStateForBlock(BlockHeader? baseBlock);
 
     /// <summary>
-    /// Return the original persistent storage value from the storage cell
+    /// Return the original persistent storage value from the storage cell.
+    /// Span is valid until the next call on this <see cref="IWorldState"/> instance.
     /// </summary>
     /// <param name="storageCell"></param>
     /// <returns></returns>
-    byte[] GetOriginal(in StorageCell storageCell);
+    ReadOnlySpan<byte> GetOriginal(in StorageCell storageCell);
 
     /// <summary>
     /// Get the persistent storage value at the specified storage cell

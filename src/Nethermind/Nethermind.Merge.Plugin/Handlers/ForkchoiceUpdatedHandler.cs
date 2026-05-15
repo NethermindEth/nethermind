@@ -64,18 +64,18 @@ public class ForkchoiceUpdatedHandler(
             ?? StartBuildingPayload(newHeadHeader!, forkchoiceState, payloadAttributes);
     }
 
-    protected virtual bool IsOnMainChainBehindHead(BlockHeader newHeadHeader, ForkchoiceStateV1 forkchoiceState,
-       [NotNullWhen(false)] out ResultWrapper<ForkchoiceUpdatedV1Result>? errorResult)
+    protected virtual bool IsOnMainChainBehindFinalized(BlockHeader newHeadHeader, ForkchoiceStateV1 forkchoiceState,
+        [NotNullWhen(true)] out ResultWrapper<ForkchoiceUpdatedV1Result>? result)
     {
-        if (_blockTree.IsOnMainChainBehindHead(newHeadHeader))
+        if (_blockTree.IsOnMainChainBehindFinalized(newHeadHeader))
         {
-            if (_logger.IsInfo) _logger.Info($"Valid. ForkChoiceUpdated ignored - already in canonical chain.");
-            errorResult = ForkchoiceUpdatedV1Result.Valid(null, forkchoiceState.HeadBlockHash);
-            return false;
+            if (_logger.IsInfo) _logger.Info($"Valid. ForkChoiceUpdated skipped - head is a valid ancestor of the latest known finalized block.");
+            result = ForkchoiceUpdatedV1Result.Valid(null, forkchoiceState.HeadBlockHash);
+            return true;
         }
 
-        errorResult = null;
-        return true;
+        result = null;
+        return false;
     }
 
     // Rejects a finalized/safe entry that fails the request-local numeric bounds
@@ -160,7 +160,7 @@ public class ForkchoiceUpdatedHandler(
 
         if (!blockInfo.WasProcessed)
         {
-            if (!IsOnMainChainBehindHead(newHeadHeader, forkchoiceState, out ResultWrapper<ForkchoiceUpdatedV1Result>? errorResult))
+            if (IsOnMainChainBehindFinalized(newHeadHeader, forkchoiceState, out ResultWrapper<ForkchoiceUpdatedV1Result>? errorResult))
             {
                 return errorResult;
             }
@@ -239,7 +239,7 @@ public class ForkchoiceUpdatedHandler(
             return ForkchoiceUpdatedV1Result.Error(setHeadErrorMsg, ErrorCodes.InvalidParams);
         }
 
-        if (!IsOnMainChainBehindHead(newHeadHeader, forkchoiceState, out ResultWrapper<ForkchoiceUpdatedV1Result>? result))
+        if (IsOnMainChainBehindFinalized(newHeadHeader, forkchoiceState, out ResultWrapper<ForkchoiceUpdatedV1Result>? result))
         {
             return result;
         }

@@ -13,11 +13,13 @@ using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading;
 using Nethermind.Core;
+using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Serialization.Rlp.Eip7928;
 
 namespace Nethermind.Serialization.Rlp
 {
@@ -158,21 +160,78 @@ namespace Nethermind.Serialization.Rlp
 
         public static ArrayPoolList<T> DecodeArrayPool<T>(ref ValueDecoderContext decoderContext, IRlpValueDecoder<T> rlpDecoder, RlpBehaviors rlpBehaviors = RlpBehaviors.None, RlpLimit? limit = null)
         {
-            int checkPosition = decoderContext.ReadSequenceLength() + decoderContext.Position;
-            int length = decoderContext.PeekNumberOfItemsRemaining(checkPosition);
-            decoderContext.GuardLimit(length, limit);
-            ArrayPoolList<T> result = new(length);
-            for (int i = 0; i < length; i++)
+            ArrayPoolList<T>? result = null;
+            try
             {
-                result.Add(rlpDecoder.Decode(ref decoderContext, rlpBehaviors));
+                int checkPosition = decoderContext.ReadSequenceLength() + decoderContext.Position;
+                int length = decoderContext.PeekNumberOfItemsRemaining(checkPosition);
+                decoderContext.GuardLimit(length, limit);
+                result = new(length);
+                for (int i = 0; i < length; i++)
+                {
+                    result.Add(rlpDecoder.Decode(ref decoderContext, rlpBehaviors));
+                }
+
+                if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) != RlpBehaviors.AllowExtraBytes)
+                {
+                    decoderContext.Check(checkPosition);
+                }
+
+                return result;
+            }
+            catch (RlpException)
+            {
+                DisposeDecodedItemsAndList(result, result?.Count ?? 0);
+                throw;
+            }
+            catch (Exception e)
+            {
+                DisposeDecodedItemsAndList(result, result?.Count ?? 0);
+                throw new RlpException($"Error decoding array of {typeof(T).Name}.", e);
+            }
+        }
+
+        private static void DisposeDecodedItemsAndList<T>(ArrayPoolList<T>? list, int count)
+        {
+            if (list is null)
+            {
+                return;
             }
 
-            if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) != RlpBehaviors.AllowExtraBytes)
+            try
             {
-                decoderContext.Check(checkPosition);
+                DisposeDecodedItems(list, count);
+            }
+            finally
+            {
+                list.Dispose();
+            }
+        }
+
+        private static void DisposeDecodedItems<T>(ArrayPoolList<T> list, int count)
+        {
+            if (typeof(IDisposable).IsAssignableFrom(typeof(T)))
+            {
+                for (int i = 0; i < count; i++)
+                {
+                    ((IDisposable?)list[i])?.Dispose();
+                }
+
+                return;
             }
 
-            return result;
+            if (typeof(T).IsValueType || typeof(T).IsSealed)
+            {
+                return;
+            }
+
+            for (int i = 0; i < count; i++)
+            {
+                if (list[i] is IDisposable disposable)
+                {
+                    disposable.Dispose();
+                }
+            }
         }
 
         public static T Decode<T>(ref ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
@@ -181,9 +240,25 @@ namespace Nethermind.Serialization.Rlp
                 throw new RlpException($"{nameof(Rlp)} does not support decoding {typeof(T).Name}");
 
             bool shouldCheckStream = decoderContext.Position == 0 && (rlpBehaviors & RlpBehaviors.AllowExtraBytes) != RlpBehaviors.AllowExtraBytes;
-            T? result = shouldCheckStream
-                ? rlpDecoder.DecodeComplete(ref decoderContext, rlpBehaviors)
-                : rlpDecoder.Decode(ref decoderContext, rlpBehaviors);
+            T? result;
+            try
+            {
+                result = shouldCheckStream
+                    ? rlpDecoder.DecodeComplete(ref decoderContext, rlpBehaviors)
+                    : rlpDecoder.Decode(ref decoderContext, rlpBehaviors);
+            }
+            catch (Exception e) when (e is IndexOutOfRangeException or ArgumentOutOfRangeException)
+            {
+                throw new RlpException($"Truncated or out-of-bounds RLP while decoding {typeof(T).Name}.", e);
+            }
+            catch (RlpException)
+            {
+                throw;
+            }
+            catch (Exception e)
+            {
+                throw new RlpException($"Error decoding {typeof(T).Name}.", e);
+            }
 
             return result;
         }
@@ -193,6 +268,9 @@ namespace Nethermind.Serialization.Rlp
 
         public static Rlp Encode(LogEntry item, RlpBehaviors behaviors = RlpBehaviors.None)
             => LogEntryDecoder.Instance.Encode(item, behaviors);
+
+        public static Rlp Encode(BlockAccessList item, RlpBehaviors behaviors = RlpBehaviors.None)
+            => new(BlockAccessListDecoder.EncodeToBytes(item, behaviors));
 
         public static Rlp Encode<T>(T item, RlpBehaviors behaviors = RlpBehaviors.None)
         {
@@ -584,7 +662,7 @@ namespace Nethermind.Serialization.Rlp
 
             public readonly bool IsSequenceNext() => Data[Position] >= 192;
 
-            public int PeekNumberOfItemsRemaining(int? beforePosition = null, int maxSearch = int.MaxValue)
+            public readonly int PeekNumberOfItemsRemaining(int? beforePosition = null, int maxSearch = int.MaxValue)
                 => RlpHelpers.CountItems(Data, Position, beforePosition ?? Data.Length, maxSearch);
 
             public void SkipLength() => Position += PeekPrefixLength();
@@ -918,6 +996,30 @@ namespace Nethermind.Serialization.Rlp
                 }
 
                 return new UInt256(byteSpan, true);
+            }
+
+            public EvmWord DecodeEvmWord()
+            {
+                int position = Position;
+                if (PeekByte() == 0)
+                {
+                    RlpHelpers.ThrowNonCanonicalInteger(position);
+                }
+
+                ReadOnlySpan<byte> byteSpan = DecodeByteArraySpan(RlpLimit.L32);
+                if (byteSpan.Length > 32)
+                {
+                    RlpHelpers.ThrowUnexpectedIntegerLength(position, byteSpan.Length);
+                }
+                if (byteSpan.Length > 1 && byteSpan[0] == 0)
+                {
+                    RlpHelpers.ThrowNonCanonicalInteger(position);
+                }
+
+                EvmWord result = default;
+                Span<byte> dest = MemoryMarshal.CreateSpan(ref Unsafe.As<EvmWord, byte>(ref result), 32);
+                byteSpan.CopyTo(dest.Slice(32 - byteSpan.Length));
+                return result;
             }
 
             public BigInteger DecodeUBigInt()
@@ -1280,7 +1382,8 @@ namespace Nethermind.Serialization.Rlp
                 }
 
                 int checkPosition = Position + length;
-                int itemsCount = PeekNumberOfItemsRemaining(checkPosition);
+                int itemsCountMax = (limit ?? RlpLimit.DefaultLimit).Limit + 1;
+                int itemsCount = PeekNumberOfItemsRemaining(checkPosition, itemsCountMax);
                 GuardLimit(itemsCount, limit);
                 byte[][] result = new byte[itemsCount][];
 
@@ -1453,29 +1556,15 @@ namespace Nethermind.Serialization.Rlp
 
                     return result;
                 }
-                catch
+                catch (RlpException)
                 {
-                    try
-                    {
-                        DisposeDecodedItems(result, i);
-                    }
-                    finally
-                    {
-                        result.Dispose();
-                    }
-
+                    DisposeDecodedItemsAndList(result, i);
                     throw;
                 }
-
-                static void DisposeDecodedItems(ArrayPoolList<T> list, int count)
+                catch (Exception e)
                 {
-                    for (int j = 0; j < count; j++)
-                    {
-                        if (list[j] is IDisposable disposable)
-                        {
-                            disposable.Dispose();
-                        }
-                    }
+                    DisposeDecodedItemsAndList(result, i);
+                    throw new RlpException($"Error decoding array of {typeof(T).Name}.", e);
                 }
             }
 
@@ -1508,6 +1597,17 @@ namespace Nethermind.Serialization.Rlp
         public string ToString(bool withZeroX) => Bytes.ToHexString(withZeroX);
 
         public static int LengthOf(UInt256? item) => item is null ? LengthOfNull : LengthOf(item.Value);
+
+        public static int LengthOf(in EvmWord value)
+        {
+            ReadOnlySpan<byte> bytes = MemoryMarshal.CreateReadOnlySpan(
+                ref Unsafe.As<EvmWord, byte>(ref Unsafe.AsRef(in value)), 32);
+            int nonZero = bytes.IndexOfAnyExcept((byte)0);
+            if (nonZero < 0) return 1;
+            int len = 32 - nonZero;
+            if (len == 1 && bytes[nonZero] < 128) return 1;
+            return 1 + len;
+        }
 
         public static int LengthOf(in UInt256 item)
         {
@@ -1590,6 +1690,8 @@ namespace Nethermind.Serialization.Rlp
         }
 
         public static int LengthOf(int value) => LengthOf((long)value);
+
+        public static int LengthOf(uint value) => LengthOf((ulong)value);
 
         public static int LengthOf(ushort value) => LengthOf((long)value);
 
