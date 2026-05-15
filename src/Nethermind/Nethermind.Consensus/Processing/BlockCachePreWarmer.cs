@@ -137,6 +137,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
                 DiagPrewarmerCompletedAt = new long[txCount];
                 DiagMainThreadStartedAt = new long[txCount];
                 DiagBlockStartTicks = Stopwatch.GetTimestamp();
+                SpeculativeGasUsed = new long[txCount];
 
                 BlockState blockState = new(this, suggestedBlock, parent, spec);
                 ParallelOptions parallelOptions = new() { MaxDegreeOfParallelism = _concurrencyLevel, CancellationToken = cancellationToken };
@@ -283,6 +284,9 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
     internal long[]? DiagMainThreadStartedAt;
     internal long DiagBlockStartTicks;
 
+    // Speculative result: gas used by prewarmer for each tx (0 = not completed or failed)
+    internal long[]? SpeculativeGasUsed;
+
     internal static long DiagTxStartedCallCount;
 
     internal void ReportMainThreadTxStarted(int txIndex)
@@ -325,7 +329,10 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         }
         int storCount = _preBlockCaches?.DiagStorageCacheCount() ?? 0;
         int acctCount = _preBlockCaches?.DiagAccountCacheCount() ?? 0;
-        sb.AppendLine($"Summary: {ahead} ahead, {behind} behind, {notWarmed} not warmed (of {pw.Length} txs). TxStartedCallCount={Volatile.Read(ref DiagTxStartedCallCount)} SeqlockCache: acct={acctCount} stor={storCount}");
+        int specSuccess = 0;
+        long[]? spec = SpeculativeGasUsed;
+        if (spec is not null) { for (int i = 0; i < spec.Length; i++) { if (spec[i] > 0) specSuccess++; } }
+        sb.AppendLine($"Summary: {ahead} ahead, {behind} behind, {notWarmed} not warmed (of {pw.Length} txs). Speculative: {specSuccess}/{spec?.Length ?? 0} succeeded. SeqlockCache: acct={acctCount} stor={storCount}");
         return sb.ToString();
     }
 
@@ -636,6 +643,13 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
             }
 
             TransactionResult result = scope.TransactionProcessor.Warmup(tx, NullTxTracer.Instance);
+
+            // Record speculative success for adoption measurement
+            long[]? specGas = blockState.PreWarmer.SpeculativeGasUsed;
+            if (result && specGas is not null && (uint)txIndex < (uint)specGas.Length)
+            {
+                specGas[txIndex] = 1; // Mark as successfully speculated
+            }
 
             if (blockState.PreWarmer._logger.IsTrace) blockState.PreWarmer._logger.Trace($"Finished pre-warming cache for tx[{txIndex}] {tx.Hash} with {result}");
             return result;
