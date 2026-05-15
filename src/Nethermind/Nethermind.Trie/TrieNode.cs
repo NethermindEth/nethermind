@@ -189,91 +189,46 @@ namespace Nethermind.Trie
         public bool IsPersisted
         {
             get => (Volatile.Read(ref _blockAndFlags) & _persistedMask) != 0;
-            set
-            {
-                byte previousValue = Volatile.Read(ref _blockAndFlags);
-                byte currentValue;
-                do
-                {
-                    currentValue = previousValue;
-                    byte newValue = (byte)(value ? (currentValue | _persistedMask) : (currentValue & ~_persistedMask));
-                    previousValue = Interlocked.CompareExchange(ref _blockAndFlags, newValue, currentValue);
-                } while (previousValue != currentValue);
-            }
+            set => SetBlockAndFlagsBit(_persistedMask, value);
         }
 
         public bool IsBoundaryProofNode
         {
             get => (Volatile.Read(ref _blockAndFlags) & _boundaryProof) != 0;
-            set
-            {
-                byte previousValue = Volatile.Read(ref _blockAndFlags);
-                byte currentValue;
-                do
-                {
-                    currentValue = previousValue;
-                    byte newValue = (byte)(value ? (currentValue | _boundaryProof) : (currentValue & ~_boundaryProof));
-                    previousValue = Interlocked.CompareExchange(ref _blockAndFlags, newValue, currentValue);
-                } while (previousValue != currentValue);
-            }
+            set => SetBlockAndFlagsBit(_boundaryProof, value);
         }
 
         public bool IsDirty => (Volatile.Read(ref _blockAndFlags) & _dirtyMask) != 0;
 
         internal bool IsRlpStale => (Volatile.Read(ref _blockAndFlags) & _rlpStaleMask) != 0;
 
-        private void MarkRlpStale()
+        // Not safe for the keccak / rlp-seq seqlock dances - those need the flag flip to
+        // happen while the seq is held odd, otherwise concurrent readers can observe
+        // HasKeccak == true against a torn _keccakValue.
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private void SetBlockAndFlagsBit(byte mask, bool set)
         {
             byte previousValue = Volatile.Read(ref _blockAndFlags);
             byte currentValue;
             do
             {
                 currentValue = previousValue;
-                if ((currentValue & _rlpStaleMask) != 0)
-                {
-                    return;
-                }
-
-                byte newValue = (byte)(currentValue | _rlpStaleMask);
+                bool currentlySet = (currentValue & mask) != 0;
+                if (currentlySet == set) return;
+                byte newValue = set ? (byte)(currentValue | mask) : (byte)(currentValue & ~mask);
                 previousValue = Interlocked.CompareExchange(ref _blockAndFlags, newValue, currentValue);
             } while (previousValue != currentValue);
         }
 
-        private void MarkRlpFresh()
-        {
-            byte previousValue = Volatile.Read(ref _blockAndFlags);
-            byte currentValue;
-            do
-            {
-                currentValue = previousValue;
-                if ((currentValue & _rlpStaleMask) == 0)
-                {
-                    return;
-                }
+        private void MarkRlpStale() => SetBlockAndFlagsBit(_rlpStaleMask, set: true);
 
-                byte newValue = (byte)(currentValue & ~_rlpStaleMask);
-                previousValue = Interlocked.CompareExchange(ref _blockAndFlags, newValue, currentValue);
-            } while (previousValue != currentValue);
-        }
+        private void MarkRlpFresh() => SetBlockAndFlagsBit(_rlpStaleMask, set: false);
 
-        /// <summary>
-        /// Node will no longer be mutable
-        /// </summary>
+        /// <summary>Node will no longer be mutable.</summary>
         public void Seal()
         {
-            byte previousValue = Volatile.Read(ref _blockAndFlags);
-            byte currentValue;
-            do
-            {
-                if ((previousValue & _dirtyMask) == 0)
-                {
-                    ThrowAlreadySealed();
-                }
-
-                currentValue = previousValue;
-                byte newValue = (byte)(currentValue & ~_dirtyMask);
-                previousValue = Interlocked.CompareExchange(ref _blockAndFlags, newValue, currentValue);
-            } while (previousValue != currentValue);
+            if ((Volatile.Read(ref _blockAndFlags) & _dirtyMask) == 0) ThrowAlreadySealed();
+            SetBlockAndFlagsBit(_dirtyMask, set: false);
 
             [DoesNotReturn, StackTraceHidden]
             void ThrowAlreadySealed() => throw new InvalidOperationException($"{nameof(TrieNode)} {this} is already sealed.");

@@ -12,65 +12,35 @@ using Nethermind.Trie.Pruning;
 
 namespace Nethermind.Trie;
 
-public sealed class PreCachedTrieStore : ITrieStore, IScopedReadOnlyTraversalProvider
+public sealed class PreCachedTrieStore : WrappingTrieStore, IScopedReadOnlyTraversalProvider
 {
-    private readonly ITrieStore _inner;
     private readonly NodeStorageCache _preBlockCache;
     private readonly SeqlockCache<NodeKey, byte[]>.ValueFactory _loadRlp;
     private readonly SeqlockCache<NodeKey, byte[]>.ValueFactory _tryLoadRlp;
 
-    public PreCachedTrieStore(ITrieStore inner, NodeStorageCache cache)
+    public PreCachedTrieStore(ITrieStore inner, NodeStorageCache cache) : base(inner)
     {
-        _inner = inner;
         _preBlockCache = cache;
 
         // Capture the delegate once for default path to avoid the allocation of the lambda per call
-        _loadRlp = (in NodeKey key) => _inner.LoadRlp(key.Address, in key.Path, key.Hash, flags: ReadFlags.None);
-        _tryLoadRlp = (in NodeKey key) => _inner.TryLoadRlp(key.Address, in key.Path, key.Hash, flags: ReadFlags.None);
+        _loadRlp = (in NodeKey key) => Inner.LoadRlp(key.Address, in key.Path, key.Hash, flags: ReadFlags.None);
+        _tryLoadRlp = (in NodeKey key) => Inner.TryLoadRlp(key.Address, in key.Path, key.Hash, flags: ReadFlags.None);
     }
 
-    public void Dispose() => _inner.Dispose();
+    public override IScopedTrieStore GetTrieStore(Hash256? address) => new ScopedTrieStore(this, address);
 
-    public ICommitter BeginCommit(Hash256? address, TrieNode? root, WriteFlags writeFlags) => _inner.BeginCommit(address, root, writeFlags);
-
-    public IBlockCommitter BeginBlockCommit(long blockNumber) => _inner.BeginBlockCommit(blockNumber);
-
-    public bool HasRoot(Hash256 stateRoot) => _inner.HasRoot(stateRoot);
-
-    public bool HasRoot(Hash256 stateRoot, long blockNumber) => _inner.HasRoot(stateRoot, blockNumber);
-
-    public IDisposable BeginScope(BlockHeader? baseBlock) => _inner.BeginScope(baseBlock);
-
-    public IScopedTrieStore GetTrieStore(Hash256? address) => new ScopedTrieStore(this, address);
-
-    public byte[]? LoadRlp(Hash256? address, in TreePath path, in ValueHash256 hash, ReadFlags flags = ReadFlags.None) =>
+    public override byte[]? LoadRlp(Hash256? address, in TreePath path, in ValueHash256 hash, ReadFlags flags = ReadFlags.None) =>
         _preBlockCache.GetOrAdd(new(address, in path, in hash),
             flags == ReadFlags.None ? _loadRlp :
-            (in NodeKey key) => _inner.LoadRlp(key.Address, in key.Path, key.Hash, flags));
+            (in NodeKey key) => Inner.LoadRlp(key.Address, in key.Path, key.Hash, flags));
 
-    public byte[]? TryLoadRlp(Hash256? address, in TreePath path, in ValueHash256 hash, ReadFlags flags = ReadFlags.None) =>
+    public override byte[]? TryLoadRlp(Hash256? address, in TreePath path, in ValueHash256 hash, ReadFlags flags = ReadFlags.None) =>
         _preBlockCache.GetOrAdd(new(address, in path, in hash),
             flags == ReadFlags.None ? _tryLoadRlp :
-            (in key) => _inner.TryLoadRlp(key.Address, in key.Path, key.Hash, flags));
-
-    // Forward resolved-node lookups to the inner TrieStore so its dirty-cache and
-    // commit-buffer are consulted. The IScopableTrieStore default impl would only
-    // check our own (always-false) TryGetCachedNode and then LoadRlp, which goes
-    // straight to the per-block RLP cache and DB - skipping the underlying dirty
-    // cache where freshly-committed nodes live until they flush.
-    public TrieNode GetOrLoadNode(Hash256? address, in TreePath path, in ValueHash256 hash, ReadFlags flags = ReadFlags.None) =>
-        _inner.GetOrLoadNode(address, in path, in hash, flags);
-
-    public bool TryGetOrLoadNode(Hash256? address, in TreePath path, in ValueHash256 hash, [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out TrieNode? node, ReadFlags flags = ReadFlags.None) =>
-        _inner.TryGetOrLoadNode(address, in path, in hash, out node, flags);
-
-    public bool TryGetCachedNode(Hash256? address, in TreePath path, in ValueHash256 hash, [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out TrieNode? node) =>
-        _inner.TryGetCachedNode(address, in path, in hash, out node);
-
-    public INodeStorage.KeyScheme Scheme => _inner.Scheme;
+            (in key) => Inner.TryLoadRlp(key.Address, in key.Path, key.Hash, flags));
 
     public ITrieNodeResolver? GetReadOnlyTraversalResolver(Hash256? address) =>
-        _inner.GetTrieStore(address) is ITrieNodeResolverSource source
+        Inner.GetTrieStore(address) is ITrieNodeResolverSource source
             && source.GetReadOnlyTraversalResolver() is { } readOnlyResolver
                 ? new PreCachedReadOnlyTraversalResolver(this, address, readOnlyResolver)
                 : null;

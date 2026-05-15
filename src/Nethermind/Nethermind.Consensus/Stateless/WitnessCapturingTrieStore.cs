@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
@@ -12,73 +11,51 @@ using Nethermind.Trie.Pruning;
 
 namespace Nethermind.Consensus.Stateless;
 
-/// <remarks>
-/// Delegates all logic to base store except for writing trie nodes (readonly!)
-/// Adds logic for capturing trie nodes accessed during execution and state root recomputation.
-/// </remarks>
-public class WitnessCapturingTrieStore(IReadOnlyTrieStore baseStore) : ITrieStore, IScopedReadOnlyTraversalProvider
+/// <summary>
+/// Read-only wrapper that records every trie node touched during execution / state-root recomputation
+/// for later witness emission. Writes are no-ops.
+/// </summary>
+public class WitnessCapturingTrieStore(IReadOnlyTrieStore baseStore)
+    : WrappingTrieStore(baseStore), IScopedReadOnlyTraversalProvider
 {
     private readonly IReadOnlyTrieStore _baseStore = baseStore;
     private readonly ConcurrentDictionary<Hash256AsKey, byte[]> _rlpCollector = new();
 
     public IEnumerable<byte[]> TouchedNodesRlp => _rlpCollector.Select(static kvp => kvp.Value);
 
-    public void Dispose() => _baseStore.Dispose();
-
-    public byte[]? LoadRlp(Hash256? address, in TreePath path, in ValueHash256 hash, ReadFlags flags = ReadFlags.None) =>
+    public override byte[]? LoadRlp(Hash256? address, in TreePath path, in ValueHash256 hash, ReadFlags flags = ReadFlags.None) =>
         TryLoadRlp(address, in path, in hash, flags)
         ?? throw new MissingTrieNodeException("Missing RLP node", address, path, new Hash256(in hash));
 
-    public byte[]? TryLoadRlp(Hash256? address, in TreePath path, in ValueHash256 hash, ReadFlags flags = ReadFlags.None)
+    public override byte[]? TryLoadRlp(Hash256? address, in TreePath path, in ValueHash256 hash, ReadFlags flags = ReadFlags.None)
     {
         byte[]? rlp = _baseStore.TryLoadRlp(address, in path, in hash, flags);
         CaptureRlp(in hash, rlp);
         return rlp;
     }
 
-    // Forward resolved-node lookups to the inner ReadOnlyTrieStore so its dirty-cache
-    // path is consulted. The IScopableTrieStore default would only check our own
-    // (always-false) TryGetCachedNode then LoadRlp, which here goes straight to the
-    // persistent store and misses any node still in the underlying dirty cache or
-    // commit buffer. Same fix pattern as PreCachedTrieStore.GetOrLoadNode.
-    public TrieNode GetOrLoadNode(Hash256? address, in TreePath path, in ValueHash256 hash, ReadFlags flags = ReadFlags.None)
+    public override TrieNode GetOrLoadNode(Hash256? address, in TreePath path, in ValueHash256 hash, ReadFlags flags = ReadFlags.None)
     {
         TrieNode node = _baseStore.GetOrLoadNode(address, in path, in hash, flags);
         CaptureNode(node);
         return node;
     }
 
-    public bool TryGetOrLoadNode(Hash256? address, in TreePath path, in ValueHash256 hash, [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out TrieNode? node, ReadFlags flags = ReadFlags.None)
+    public override bool TryGetOrLoadNode(Hash256? address, in TreePath path, in ValueHash256 hash, [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out TrieNode? node, ReadFlags flags = ReadFlags.None)
     {
-        if (!_baseStore.TryGetOrLoadNode(address, in path, in hash, out node, flags))
-        {
-            return false;
-        }
+        if (!_baseStore.TryGetOrLoadNode(address, in path, in hash, out node, flags)) return false;
         CaptureNode(node);
         return true;
     }
 
-    public bool TryGetCachedNode(Hash256? address, in TreePath path, in ValueHash256 hash, [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out TrieNode? node) =>
-        _baseStore.TryGetCachedNode(address, in path, in hash, out node);
+    public override IBlockCommitter BeginBlockCommit(long blockNumber) => NullCommitter.Instance;
 
-    public bool HasRoot(Hash256 stateRoot) => _baseStore.HasRoot(stateRoot);
-
-    public IDisposable BeginScope(BlockHeader? baseBlock) => _baseStore.BeginScope(baseBlock);
-
-    public IScopedTrieStore GetTrieStore(Hash256? address) => new ScopedTrieStore(this, address);
-
-    public INodeStorage.KeyScheme Scheme => _baseStore.Scheme;
-
-    public IBlockCommitter BeginBlockCommit(long blockNumber) => NullCommitter.Instance;
-
-    // WitnessCapturingTrieStore is read-only, so we return a no-op committer that doesn't persist any trie nodes
-    public ICommitter BeginCommit(Hash256? address, TrieNode? root, WriteFlags writeFlags) => NullCommitter.Instance;
+    public override ICommitter BeginCommit(Hash256? address, TrieNode? root, WriteFlags writeFlags) => NullCommitter.Instance;
 
     private void CaptureNode(TrieNode node)
     {
         if (node.NodeType != NodeType.Unknown && node.TryGetKeccak(out ValueHash256 keccak))
         {
-            // Keep Hash256AsKey externally; the collector is consumed as a witness lookup outside the trie cache.
             _rlpCollector.TryAdd(new Hash256(in keccak), node.FullRlp.ToArray());
         }
     }

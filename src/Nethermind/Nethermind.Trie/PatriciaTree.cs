@@ -87,48 +87,24 @@ namespace Nethermind.Trie
         {
             get
             {
-                TrieNode? local = Volatile.Read(ref _rootRef);
-                if (!ReferenceEquals(local, _unresolvedSentinel))
-                {
-                    return local;
-                }
-
-                lock (_rootRefLock)
-                {
-                    local = _rootRef;
-                    if (!ReferenceEquals(local, _unresolvedSentinel))
-                    {
-                        return local;
-                    }
-
-                    Hash256 rootHash = _rootHash;
-                    TrieNode? resolved = null;
-                    if (!ReferenceEquals(rootHash, Keccak.EmptyTreeHash))
-                    {
-                        // Throwing variant: a non-empty _rootHash that cannot be resolved
-                        // is an invariant violation (state root missing from the store).
-                        // The silent Try-shape would convert that into "trie appears empty",
-                        // which corrupts downstream reads (account balances return 0,
-                        // transactions fail with bogus "insufficient funds", etc.). Let the
-                        // MissingTrieNodeException propagate so the caller sees the real fault.
-                        resolved = _readResolver.GetOrLoadNode(in TreePath.Empty, in rootHash.ValueHash256);
-                    }
-                    Volatile.Write(ref _rootRef, resolved);
-                    return resolved;
-                }
+                TryResolveRoot(out TrieNode? root, throwOnMissing: true);
+                return root;
             }
             set => Volatile.Write(ref _rootRef, value);
         }
 
         /// <summary>
-        /// Non-throwing sibling of the <see cref="RootRef"/> getter. Returns the cached
-        /// typed root, or attempts to lazy-resolve via the read resolver's Try-shape.
-        /// Yields <c>true</c> with a possibly-null <paramref name="rootRef"/> when the
-        /// trie is empty or the root has been resolved; <c>false</c> when the non-empty
-        /// root is not in the store. Used by visitor/sync paths that explicitly handle
-        /// "missing node" instead of treating it as an invariant violation.
+        /// Non-throwing sibling of <see cref="RootRef"/>. Returns <c>true</c> with a possibly-null
+        /// <paramref name="rootRef"/> when the trie is empty or the root resolves; <c>false</c>
+        /// when a non-empty root is missing from the store. Used by visitor/sync paths that handle
+        /// "missing node" explicitly via <c>VisitMissingNode</c>.
         /// </summary>
-        public bool TryGetRootRef(out TrieNode? rootRef)
+        public bool TryGetRootRef(out TrieNode? rootRef) => TryResolveRoot(out rootRef, throwOnMissing: false);
+
+        // Shared lazy-resolve core. Throwing variant surfaces MissingTrieNodeException for non-empty
+        // roots that aren't in the store - silently degrading to "empty trie" would corrupt downstream
+        // reads (zero balances, bogus "insufficient funds"). Try-variant returns false instead.
+        private bool TryResolveRoot(out TrieNode? rootRef, bool throwOnMissing)
         {
             TrieNode? local = Volatile.Read(ref _rootRef);
             if (!ReferenceEquals(local, _unresolvedSentinel))
@@ -154,15 +130,20 @@ namespace Nethermind.Trie
                     return true;
                 }
 
-                if (_readResolver.TryGetOrLoadNode(in TreePath.Empty, in rootHash.ValueHash256, out TrieNode? resolved))
+                TrieNode? resolved;
+                if (throwOnMissing)
                 {
-                    Volatile.Write(ref _rootRef, resolved);
-                    rootRef = resolved;
-                    return true;
+                    resolved = _readResolver.GetOrLoadNode(in TreePath.Empty, in rootHash.ValueHash256);
+                }
+                else if (!_readResolver.TryGetOrLoadNode(in TreePath.Empty, in rootHash.ValueHash256, out resolved))
+                {
+                    rootRef = null;
+                    return false;
                 }
 
-                rootRef = null;
-                return false;
+                Volatile.Write(ref _rootRef, resolved);
+                rootRef = resolved;
+                return true;
             }
         }
 
