@@ -76,7 +76,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         PreBlockCaches preBlockCaches,
         ILogManager logManager)
     {
-        _concurrencyLevel = concurrency == 0 ? Math.Clamp(Environment.ProcessorCount - 2, 1, AutoConcurrencyLimit) : concurrency;
+        _concurrencyLevel = concurrency == 0 ? Math.Min(Environment.ProcessorCount - 1, 16) : concurrency;
         _parallelExecutionBatchRead = parallelExecutionBatchRead;
         _firstPassRatio = Math.Clamp(firstPassRatio, 0.0, 1.0);
         _retryMode = retryMode;

@@ -6,7 +6,6 @@ using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Runtime.CompilerServices;
-using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
@@ -297,119 +296,39 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
     private CancellationToken CancellationToken
         => _loopCancellationSource?.Token ?? CancellationTokenExtensions.AlreadyCancelledToken;
 
-    [DllImport("libc", SetLastError = true)]
-    private static extern int sched_getaffinity(int pid, nint cpusetsize, ref ulong mask);
-
-    [DllImport("libc", SetLastError = true)]
-    private static extern int sched_setaffinity(int pid, nint cpusetsize, ref ulong mask);
-
-    [DllImport("kernel32.dll")]
-    private static extern nint GetCurrentThread();
-
-    [DllImport("kernel32.dll")]
-    private static extern nuint SetThreadAffinityMask(nint hThread, nuint dwThreadAffinityMask);
-
-    private static bool TryPinToTwoLogicalCpus()
+    private async Task RunProcessing()
     {
         try
         {
-            if (OperatingSystem.IsLinux())
-            {
-                ulong available = 0;
-                if (sched_getaffinity(0, sizeof(ulong), ref available) != 0) return false;
-                ulong pin = PickFirstNBits(available, 2);
-                if (pin == 0) return false;
-                return sched_setaffinity(0, sizeof(ulong), ref pin) == 0;
-            }
-
-            if (OperatingSystem.IsWindows())
-            {
-                ulong available = (ulong)(nint)System.Diagnostics.Process.GetCurrentProcess().ProcessorAffinity;
-                ulong pin = PickFirstNBits(available, 2);
-                if (pin == 0) return false;
-                return SetThreadAffinityMask(GetCurrentThread(), (nuint)pin) != 0;
-            }
+            await RunProcessingLoop();
+            if (_logger.IsDebug) _logger.Debug($"{nameof(BlockchainProcessor)} complete.");
         }
-        catch { /* fall through */ }
-        return false;
-    }
-
-    private static ulong PickFirstNBits(ulong mask, int count)
-    {
-        ulong result = 0;
-        int found = 0;
-        for (int bit = 0; bit < 64 && found < count; bit++)
+        catch (OperationCanceledException)
         {
-            if ((mask & (1UL << bit)) != 0)
-            {
-                result |= 1UL << bit;
-                found++;
-            }
+            if (_logger.IsDebug) _logger.Debug($"{nameof(BlockchainProcessor)} stopped.");
         }
-        return found >= count ? result : 0;
-    }
-
-    private Task RunProcessing()
-    {
-        TaskCompletionSource tcs = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        Thread thread = new(() =>
+        catch (Exception ex)
         {
-            bool pinned = TryPinToTwoLogicalCpus();
-            try
-            {
-                RunProcessingLoop();
-                if (_logger.IsDebug) _logger.Debug($"{nameof(BlockchainProcessor)} complete.");
-                tcs.TrySetResult();
-            }
-            catch (OperationCanceledException)
-            {
-                if (_logger.IsDebug) _logger.Debug($"{nameof(BlockchainProcessor)} stopped.");
-                tcs.TrySetResult();
-            }
-            catch (Exception ex)
-            {
-                if (_logger.IsError) _logger.Error($"{nameof(BlockchainProcessor)} encountered an exception.", ex);
-                tcs.TrySetException(ex);
-            }
-        })
-        {
-            IsBackground = true,
-            Name = "Block Processor",
-            Priority = ThreadPriority.Highest
-        };
-        thread.Start();
-        return tcs.Task;
+            if (_logger.IsError) _logger.Error($"{nameof(BlockchainProcessor)} encountered an exception.", ex);
+        }
     }
 
     private bool IsProcessingBlock { get => _isProcessingBlock; set { _isProcessingBlock = value; _blockTree.IsProcessingBlock = value; } }
 
-    private void RunProcessingLoop()
+    private async Task RunProcessingLoop()
     {
-        if (_logger.IsDebug) _logger.Debug($"Starting block processor on dedicated thread (ManagedThreadId={Thread.CurrentThread.ManagedThreadId}).");
+        if (_logger.IsDebug) _logger.Debug($"Starting block processor - {_blockQueue.Reader.Count} blocks waiting in the queue.");
 
         FireProcessingQueueEmpty();
 
         GCScheduler.Instance.SwitchOnBackgroundGC(0);
-        while (!CancellationToken.IsCancellationRequested)
+        while (await _blockQueue.Reader.WaitToReadAsync(CancellationToken))
         {
-            // Block the dedicated thread until a block arrives — no thread pool involvement.
-            // WaitToReadAsync returns a ValueTask that completes synchronously when data is
-            // already available, so .AsTask().GetAwaiter().GetResult() is the lightest blocking
-            // pattern for a Channel with SingleReader=true.
-            bool hasData;
-            try
-            {
-                hasData = _blockQueue.Reader.WaitToReadAsync(CancellationToken).AsTask().GetAwaiter().GetResult();
-            }
-            catch (OperationCanceledException)
-            {
-                break;
-            }
-
-            if (!hasData) break;
-
+            using ThreadExtensions.Disposable handle = Thread.CurrentThread.SetHighestPriority();
+            // Have block, switch off background GC timer
             GCScheduler.Instance.SwitchOffBackgroundGC(_blockQueue.Reader.Count);
             IsProcessingBlock = true;
+            bool previousMainThread = IsBlockProcessingThread;
             IsBlockProcessingThread = IsMainProcessor;
             try
             {
@@ -417,7 +336,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
             }
             finally
             {
-                IsBlockProcessingThread = false;
+                IsBlockProcessingThread = previousMainThread;
                 IsProcessingBlock = false;
             }
 
