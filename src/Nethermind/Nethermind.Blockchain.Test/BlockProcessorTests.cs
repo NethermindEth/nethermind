@@ -335,7 +335,7 @@ public class BlockProcessorTests
     public async Task Process_long_running_branch(int blocksAmount)
     {
         Address address = TestItem.Addresses[0];
-        TestSingleReleaseSpecProvider spec = new(ConstantinopleFix.Instance);
+        TestSingleReleaseSpecProvider spec = new(Petersburg.Instance);
         TestRpcBlockchain testRpc = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
             .Build(spec);
         testRpc.TestWallet.UnlockAccount(address, new SecureString());

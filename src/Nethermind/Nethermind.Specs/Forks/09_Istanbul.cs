@@ -3,7 +3,7 @@
 
 namespace Nethermind.Specs.Forks;
 
-public class Istanbul() : NamedReleaseSpec<Istanbul>(ConstantinopleFix.Instance)
+public class Istanbul() : NamedReleaseSpec<Istanbul>(Petersburg.Instance)
 {
     public override void Apply(NamedReleaseSpec spec)
     {

@@ -63,7 +63,7 @@ public class BlobGasCalculatorTests
             (TangerineWhistle.Instance, false),
             (Byzantium.Instance, false),
             (Constantinople.Instance, false),
-            (ConstantinopleFix.Instance, false),
+            (Petersburg.Instance, false),
             (Istanbul.Instance, false),
             (MuirGlacier.Instance, false),
             (Berlin.Instance, false),
