@@ -13,15 +13,36 @@ namespace Nethermind.Trie.Pruning;
 /// preserved on the read path) and asks the derived class for the cached-node lookup and the
 /// per-address rebuild.
 /// </summary>
-public abstract class ReadOnlyTraversalResolverBase(IScopableTrieStore fullTrieStore, Hash256? address) : ITrieNodeResolver
+public abstract class ReadOnlyTraversalResolver(
+    IScopableTrieStore fullTrieStore,
+    Hash256? address,
+    ITrieNodeResolver? inner = null) : ITrieNodeResolver
 {
     protected Hash256? Address => address;
+    protected ITrieNodeResolver? InnerResolver => inner;
 
-    public virtual TrieNode GetOrLoadNode(in TreePath path, in ValueHash256 hash, ReadFlags flags = ReadFlags.None) =>
-        fullTrieStore.GetOrLoadNode(address, in path, in hash, flags);
+    public virtual TrieNode GetOrLoadNode(in TreePath path, in ValueHash256 hash, ReadFlags flags = ReadFlags.None)
+    {
+        TrieNode node = inner is null
+            ? fullTrieStore.GetOrLoadNode(address, in path, in hash, flags)
+            : inner.GetOrLoadNode(in path, in hash, flags);
+        OnNodeLoaded(node);
+        return node;
+    }
 
-    public virtual bool TryGetOrLoadNode(in TreePath path, in ValueHash256 hash, [NotNullWhen(true)] out TrieNode? node, ReadFlags flags = ReadFlags.None) =>
-        fullTrieStore.TryGetOrLoadNode(address, in path, in hash, out node, flags);
+    public virtual bool TryGetOrLoadNode(in TreePath path, in ValueHash256 hash, [NotNullWhen(true)] out TrieNode? node, ReadFlags flags = ReadFlags.None)
+    {
+        bool loaded = inner is null
+            ? fullTrieStore.TryGetOrLoadNode(address, in path, in hash, out node, flags)
+            : inner.TryGetOrLoadNode(in path, in hash, out node, flags);
+
+        if (loaded)
+        {
+            OnNodeLoaded(node);
+        }
+
+        return loaded;
+    }
 
     public byte[]? LoadRlp(in TreePath path, in ValueHash256 hash, ReadFlags flags = ReadFlags.None) =>
         fullTrieStore.LoadRlp(address, path, in hash, flags);
@@ -33,6 +54,8 @@ public abstract class ReadOnlyTraversalResolverBase(IScopableTrieStore fullTrieS
 
     public ITrieNodeResolver GetStorageTrieNodeResolver(Hash256? address1) =>
         address1 == address ? this : WithAddress(address1);
+
+    protected virtual void OnNodeLoaded(TrieNode node) { }
 
     protected abstract ITrieNodeResolver WithAddress(Hash256? address1);
 }

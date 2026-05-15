@@ -9,13 +9,6 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.Trie
 {
-    // B4 endpoint: branch / leaf / extension state now lives directly on the
-    // derived sealed types. Base TrieNode no longer carries _nodeData; bare
-    // TrieNode instances are placeholder Unknown nodes produced by legacy
-    // FindCachedOrUnknown contracts (TrieStore / SnapshotBundle / CommitSetQueue).
-    // Once every resolver in the tree exposes typed load/decode APIs (and only
-    // when), TrieNode can become abstract; that work is out of scope here.
-
     /// <summary>16-slot inline storage for branch children. Each slot holds one of:
     /// <see langword="null"/> (unresolved - decode from parent RLP on read),
     /// the empty sentinel (<see cref="TrieNode.NullNode"/>), or a resolved
@@ -48,11 +41,8 @@ namespace Nethermind.Trie
     ///
     /// This class is for sync code only. The hash-only constructors that previously
     /// existed marked themselves <c>IsPersisted = true</c> without verifying the node
-    /// was actually in the backing store - that lie allowed by-hash placeholders to
-    /// be treated as authoritative cache entries, which is the corruption vector that
-    /// motivated removing the placeholder pattern from cache paths. Do not reintroduce
-    /// a hash-only constructor; cache misses must return <see langword="null"/>, not
-    /// fabricate a TrieSyncNode.
+    /// was actually in the backing store. Do not reintroduce a production hash-only
+    /// constructor; cache misses must return <see langword="null"/>.
     /// </summary>
     internal sealed class TrieSyncNode : TrieNode
     {
@@ -63,11 +53,8 @@ namespace Nethermind.Trie
         internal TrieSyncNode(byte[]? rlp, bool isDirty = false)
             : base(new CappedArray<byte>(rlp), isDirty) { }
 
-        // Hash-only stub: internal-visible to test assemblies via [InternalsVisibleTo] so
-        // unit tests can construct an unresolved-by-hash node for testing ResolveNode /
-        // child-slot semantics. NOT for production use - the old public hash-only
-        // constructor lied about IsPersisted and that lie was the cache-pollution
-        // corruption vector. This overload deliberately does not set IsPersisted.
+        // Test-only hash stub for unresolved child-slot semantics. This deliberately
+        // does not set IsPersisted.
         internal TrieSyncNode(in ValueHash256 keccak) : base(in keccak) { }
 
         internal TrieSyncNode(Hash256 keccak) : base(in (keccak ?? throw new ArgumentNullException(nameof(keccak))).ValueHash256) { }

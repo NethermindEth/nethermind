@@ -897,10 +897,8 @@ namespace Nethermind.Trie
             if (oldChild is null && newChild is null) return false;
             if (!ReferenceEquals(oldChild, newChild))
             {
-                // B3b: ResolveNode rebinds the caller's reference to a typed instance,
-                // so a placeholder->typed resolve looks like a "different child" by ref
-                // identity. Treat both as the same child when both carry the same keccak;
-                // the structural payload is identical and a re-encode would be wasteful.
+                // Treat resolved and unresolved references with the same keccak as the
+                // same child; the structural payload is identical and re-encode is wasteful.
                 if (oldChild is not null && newChild is not null
                     && oldChild.TryGetKeccak(out ValueHash256 oldKeccak)
                     && newChild.TryGetKeccak(out ValueHash256 newKeccak)

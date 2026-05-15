@@ -38,6 +38,31 @@ public abstract class AbstractMinimalTrieStore : IScopedTrieStore
 
     public INodeStorage.KeyScheme Scheme => INodeStorage.KeyScheme.HalfPath;
 
+    protected static bool TryReturnCachedNode(
+        TrieNode? candidate,
+        Hash256 hash,
+        in TreePath path,
+        [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out TrieNode? node,
+        Hash256? address = null)
+    {
+        if (candidate is null)
+        {
+            node = null;
+            return false;
+        }
+
+        if (candidate.Keccak != hash)
+        {
+            string location = address is null
+                ? $"Path: {path}."
+                : $"Address {address}. Path: {path}.";
+            throw new NodeHashMismatchException($"Node hash mismatch. {location} Hash: {candidate.Keccak} vs Requested: {hash}");
+        }
+
+        node = candidate;
+        return true;
+    }
+
     public abstract class AbstractMinimalCommitter(ConcurrencyController quota) : ICommitter
     {
         public void Dispose() { }

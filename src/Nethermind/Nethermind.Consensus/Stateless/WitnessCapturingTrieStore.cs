@@ -3,7 +3,6 @@
 
 using System.Collections.Concurrent;
 using System.Collections.Generic;
-using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Trie;
@@ -21,7 +20,16 @@ public class WitnessCapturingTrieStore(IReadOnlyTrieStore baseStore)
     private readonly IReadOnlyTrieStore _baseStore = baseStore;
     private readonly ConcurrentDictionary<Hash256AsKey, byte[]> _rlpCollector = new();
 
-    public IEnumerable<byte[]> TouchedNodesRlp => _rlpCollector.Select(static kvp => kvp.Value);
+    public IEnumerable<byte[]> TouchedNodesRlp
+    {
+        get
+        {
+            foreach (KeyValuePair<Hash256AsKey, byte[]> item in _rlpCollector)
+            {
+                yield return item.Value;
+            }
+        }
+    }
 
     public override byte[]? LoadRlp(Hash256? address, in TreePath path, in ValueHash256 hash, ReadFlags flags = ReadFlags.None) =>
         TryLoadRlp(address, in path, in hash, flags)
@@ -77,23 +85,11 @@ public class WitnessCapturingTrieStore(IReadOnlyTrieStore baseStore)
     private sealed class WitnessCapturingReadOnlyTraversalResolver(
         WitnessCapturingTrieStore fullTrieStore,
         Hash256? address,
-        ITrieNodeResolver inner) : ReadOnlyTraversalResolverBase(fullTrieStore, address)
+        ITrieNodeResolver inner) : ReadOnlyTraversalResolver(fullTrieStore, address, inner)
     {
-        public override TrieNode GetOrLoadNode(in TreePath path, in ValueHash256 hash, ReadFlags flags = ReadFlags.None)
-        {
-            TrieNode node = inner.GetOrLoadNode(in path, in hash, flags);
-            fullTrieStore.CaptureNode(node);
-            return node;
-        }
-
-        public override bool TryGetOrLoadNode(in TreePath path, in ValueHash256 hash, [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out TrieNode? node, ReadFlags flags = ReadFlags.None)
-        {
-            if (!inner.TryGetOrLoadNode(in path, in hash, out node, flags)) return false;
-            fullTrieStore.CaptureNode(node);
-            return true;
-        }
+        protected override void OnNodeLoaded(TrieNode node) => fullTrieStore.CaptureNode(node);
 
         protected override ITrieNodeResolver WithAddress(Hash256? address1) =>
-            new WitnessCapturingReadOnlyTraversalResolver(fullTrieStore, address1, inner.GetStorageTrieNodeResolver(address1));
+            new WitnessCapturingReadOnlyTraversalResolver(fullTrieStore, address1, InnerResolver!.GetStorageTrieNodeResolver(address1));
     }
 }

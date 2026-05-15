@@ -49,24 +49,23 @@ namespace Nethermind.Trie.Pruning
             new SharedReadOnlyTraversalResolver(this, address);
 
         private sealed class SharedReadOnlyTraversalResolver(ReadOnlyTrieStore fullTrieStore, Hash256? address)
-            : ReadOnlyTraversalResolverBase(fullTrieStore, address)
+            : ReadOnlyTraversalResolver(fullTrieStore, address)
         {
             public override TrieNode GetOrLoadNode(in TreePath path, in ValueHash256 hash, ReadFlags flags = ReadFlags.None)
             {
-                // Cache hit on the shared dirty cache returns the shared / cloned node directly;
-                // miss falls through to LoadRlp + decode.
-                if (fullTrieStore._trieStore.GetSharedCachedNode(Address, in path, in hash) is { } cached)
-                {
-                    return cached;
-                }
-
-                byte[]? rlp = fullTrieStore._trieStore.TryLoadRlp(Address, in path, in hash, flags)
-                    ?? throw new MissingTrieNodeException("Node missing", Address, path, new Hash256(in hash));
-                TrieNode node = TrieNode.DecodeNode(in path, in hash, rlp);
-                return fullTrieStore._trieStore.PublishSharedReadOnly(Address, in path, in hash, node);
+                _ = TryGetOrLoadShared(in path, in hash, out TrieNode? node, flags, throwOnMissing: true);
+                return node!;
             }
 
             public override bool TryGetOrLoadNode(in TreePath path, in ValueHash256 hash, [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out TrieNode? node, ReadFlags flags = ReadFlags.None)
+                => TryGetOrLoadShared(in path, in hash, out node, flags, throwOnMissing: false);
+
+            private bool TryGetOrLoadShared(
+                in TreePath path,
+                in ValueHash256 hash,
+                [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out TrieNode? node,
+                ReadFlags flags,
+                bool throwOnMissing)
             {
                 if (fullTrieStore._trieStore.GetSharedCachedNode(Address, in path, in hash) is { } cached)
                 {
@@ -77,16 +76,22 @@ namespace Nethermind.Trie.Pruning
                 byte[]? rlp = fullTrieStore._trieStore.TryLoadRlp(Address, in path, in hash, flags);
                 if (rlp is null)
                 {
+                    if (throwOnMissing)
+                    {
+                        throw new MissingTrieNodeException("Node missing", Address, path, new Hash256(in hash));
+                    }
+
                     node = null;
                     return false;
                 }
+
                 try
                 {
                     node = TrieNode.DecodeNode(in path, in hash, rlp);
                     node = fullTrieStore._trieStore.PublishSharedReadOnly(Address, in path, in hash, node);
                     return true;
                 }
-                catch (TrieException)
+                catch (TrieException) when (!throwOnMissing)
                 {
                     node = null;
                     return false;

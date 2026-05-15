@@ -18,22 +18,13 @@ namespace Nethermind.Trie;
 /// <param name="base"></param>
 public class CachedTrieStore(IScopedTrieStore @base) : IScopedTrieStore, ITrieNodeResolverSource
 {
-    // Explicit comparer: ZK_EVM / bflat builds have no working
-    // EqualityComparer<(TreePath, ValueHash256)>.Default — both components
-    // are reflection-resolved value types under the BCL default path.
-    private readonly NonBlocking.ConcurrentDictionary<(TreePath path, ValueHash256 hash), TrieNode> _cachedNode =
-        new(GenericEqualityComparer.GetOptimized<(TreePath path, ValueHash256 hash)>());
+    private readonly NodeLookupCache _nodeCache = new();
 
     public TrieNode GetOrLoadNode(in TreePath path, in ValueHash256 hash, ReadFlags flags = ReadFlags.None) =>
-        _cachedNode.GetOrAdd((path, hash), (key, state) => state.@base.GetOrLoadNode(key.path, key.hash, state.flags), (@base, flags));
+        _nodeCache.GetOrLoad(@base, in path, in hash, flags);
 
     public bool TryGetOrLoadNode(in TreePath path, in ValueHash256 hash, [NotNullWhen(true)] out TrieNode? node, ReadFlags flags = ReadFlags.None)
-    {
-        if (_cachedNode.TryGetValue((path, hash), out node)) return true;
-        if (!@base.TryGetOrLoadNode(in path, in hash, out node, flags)) return false;
-        node = _cachedNode.GetOrAdd((path, hash), node);
-        return true;
-    }
+        => _nodeCache.TryGetOrLoad(@base, in path, in hash, out node, flags);
 
     public byte[]? LoadRlp(in TreePath path, in ValueHash256 hash, ReadFlags flags = ReadFlags.None) =>
         @base.LoadRlp(in path, in hash, flags);
@@ -57,20 +48,13 @@ public class CachedTrieStore(IScopedTrieStore @base) : IScopedTrieStore, ITrieNo
 
     private sealed class CachedTrieNodeResolver(ITrieNodeResolver inner) : ITrieNodeResolver
     {
-        // See note on outer _cachedNode for the comparer rationale (ZK_EVM / bflat).
-        private readonly NonBlocking.ConcurrentDictionary<(TreePath path, ValueHash256 hash), TrieNode> _cachedNode =
-            new(GenericEqualityComparer.GetOptimized<(TreePath path, ValueHash256 hash)>());
+        private readonly NodeLookupCache _nodeCache = new();
 
         public TrieNode GetOrLoadNode(in TreePath path, in ValueHash256 hash, ReadFlags flags = ReadFlags.None) =>
-            _cachedNode.GetOrAdd((path, hash), (key, state) => state.inner.GetOrLoadNode(key.path, key.hash, state.flags), (inner, flags));
+            _nodeCache.GetOrLoad(inner, in path, in hash, flags);
 
         public bool TryGetOrLoadNode(in TreePath path, in ValueHash256 hash, [NotNullWhen(true)] out TrieNode? node, ReadFlags flags = ReadFlags.None)
-        {
-            if (_cachedNode.TryGetValue((path, hash), out node)) return true;
-            if (!inner.TryGetOrLoadNode(in path, in hash, out node, flags)) return false;
-            node = _cachedNode.GetOrAdd((path, hash), node);
-            return true;
-        }
+            => _nodeCache.TryGetOrLoad(inner, in path, in hash, out node, flags);
 
         public byte[]? LoadRlp(in TreePath path, in ValueHash256 hash, ReadFlags flags = ReadFlags.None) =>
             inner.LoadRlp(in path, in hash, flags);
@@ -82,5 +66,28 @@ public class CachedTrieStore(IScopedTrieStore @base) : IScopedTrieStore, ITrieNo
             new CachedTrieNodeResolver(inner.GetStorageTrieNodeResolver(address));
 
         public INodeStorage.KeyScheme Scheme => inner.Scheme;
+    }
+
+    private sealed class NodeLookupCache
+    {
+        // Explicit comparer: ZK_EVM / bflat builds have no working
+        // EqualityComparer<(TreePath, ValueHash256)>.Default because both components
+        // are reflection-resolved value types under the BCL default path.
+        private readonly NonBlocking.ConcurrentDictionary<(TreePath path, ValueHash256 hash), TrieNode> _cachedNode =
+            new(GenericEqualityComparer.GetOptimized<(TreePath path, ValueHash256 hash)>());
+
+        public TrieNode GetOrLoad(ITrieNodeResolver resolver, in TreePath path, in ValueHash256 hash, ReadFlags flags) =>
+            _cachedNode.GetOrAdd(
+                (path, hash),
+                static (key, state) => state.resolver.GetOrLoadNode(key.path, key.hash, state.flags),
+                (resolver, flags));
+
+        public bool TryGetOrLoad(ITrieNodeResolver resolver, in TreePath path, in ValueHash256 hash, [NotNullWhen(true)] out TrieNode? node, ReadFlags flags)
+        {
+            if (_cachedNode.TryGetValue((path, hash), out node)) return true;
+            if (!resolver.TryGetOrLoadNode(in path, in hash, out node, flags)) return false;
+            node = _cachedNode.GetOrAdd((path, hash), node);
+            return true;
+        }
     }
 }

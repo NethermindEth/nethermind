@@ -57,11 +57,7 @@ namespace Nethermind.Trie
         private byte[]? _rlpArray;
         private ulong _rlpSeqAndLength; // normal: bits 0-31 length, 32-63 sequence. slice: bit 63, bits 0-31 length, bits 32-62 offset.
         // Inline node hash. Access only via TryGetKeccak / KeccakValue / HasKeccak; raw
-        // reads are not torn-safe under concurrent writes. After B4 the shape data
-        // (branches / key / value / storage root) moved onto the typed derived classes,
-        // so cache-line 1 of TrieNode now holds only the hot flag / RLP fields plus
-        // this 32-byte hash that eliminates the separate Hash256 object the pre-A1
-        // design allocated.
+        // reads are not torn-safe under concurrent writes.
         private ValueHash256 _keccakValue;
 
         // In normal mode, the sequence counter shares bit 63 with the slice flag. After about
@@ -694,9 +690,7 @@ namespace Nethermind.Trie
         /// rebinds the caller's reference rather than mutating <paramref name="node"/>
         /// in place. The <c>ref</c> parameter forces every caller to surface the
         /// rebind, which keeps the cache slot, branch child slot, root ref, snap-stitch
-        /// holder, or local in sync with the typed result. The B3 invariant is: every
-        /// <see cref="TrieNode"/> reachable past a successful resolve is one of the
-        /// typed derived classes. Throws <see cref="TrieNodeException"/> wrapping the
+        /// holder, or local in sync with the typed result. Throws <see cref="TrieNodeException"/> wrapping the
         /// underlying <see cref="RlpException"/> on malformed input or a
         /// <see cref="TrieException"/> when RLP is missing entirely.
         /// </remarks>
@@ -1555,7 +1549,6 @@ namespace Nethermind.Trie
             CappedArray<byte> rlp = ReadRlp();
             bool isRlpSlice = IsRlpSlice(Volatile.Read(ref _rlpSeqAndLength));
             long rlpSize = MemorySizes.RefSize + (rlp.IsNotNull && !isRlpSlice ? MemorySizes.Align(MemorySizes.ArrayOverhead + rlp.UnderlyingLength) : 0);
-            // B4: shape data lives inline on the typed subclass; no longer a separate INodeData heap object.
             long dataSize = MemorySizeOfData;
             int objectOverhead = MemorySizes.ObjectHeaderMethodTable;
             int blockAndFlagsSize = sizeof(long);

@@ -48,16 +48,10 @@ public sealed class PreCachedTrieStore : WrappingTrieStore, IScopedReadOnlyTrave
     private sealed class PreCachedReadOnlyTraversalResolver(
         PreCachedTrieStore fullTrieStore,
         Hash256? address,
-        ITrieNodeResolver inner) : ReadOnlyTraversalResolverBase(fullTrieStore, address)
+        ITrieNodeResolver inner) : ReadOnlyTraversalResolver(fullTrieStore, address, inner)
     {
-        public override TrieNode GetOrLoadNode(in TreePath path, in ValueHash256 hash, ReadFlags flags = ReadFlags.None) =>
-            inner.GetOrLoadNode(in path, in hash, flags);
-
-        public override bool TryGetOrLoadNode(in TreePath path, in ValueHash256 hash, [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out TrieNode? node, ReadFlags flags = ReadFlags.None) =>
-            inner.TryGetOrLoadNode(in path, in hash, out node, flags);
-
         protected override ITrieNodeResolver WithAddress(Hash256? address1) =>
-            new PreCachedReadOnlyTraversalResolver(fullTrieStore, address1, inner.GetStorageTrieNodeResolver(address1));
+            new PreCachedReadOnlyTraversalResolver(fullTrieStore, address1, InnerResolver!.GetStorageTrieNodeResolver(address1));
     }
 }
 

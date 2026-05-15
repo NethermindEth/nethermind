@@ -23,22 +23,18 @@ public class OverlayTrieStore(IKeyValueStoreWithBatching keyValueStore, IReadOnl
     public override byte[]? TryLoadRlp(Hash256? address, in TreePath path, in ValueHash256 hash, ReadFlags flags = ReadFlags.None) =>
         _nodeStorage.Get(address, in path, hash, flags) ?? _baseStore.TryLoadRlp(address, in path, in hash, flags);
 
-    public override TrieNode GetOrLoadNode(Hash256? address, in TreePath path, in ValueHash256 hash, ReadFlags flags = ReadFlags.None)
-    {
-        byte[]? rlp = _nodeStorage.Get(address, in path, hash, flags);
-        return rlp is not null
-            ? TrieNode.DecodeNode(in path, in hash, rlp)
+    public override TrieNode GetOrLoadNode(Hash256? address, in TreePath path, in ValueHash256 hash, ReadFlags flags = ReadFlags.None) =>
+        TryGetOverlayNode(address, in path, in hash, out TrieNode? node, flags)
+            ? node
             : _baseStore.GetOrLoadNode(address, in path, in hash, flags);
-    }
 
     public override bool TryGetOrLoadNode(Hash256? address, in TreePath path, in ValueHash256 hash, [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out TrieNode? node, ReadFlags flags = ReadFlags.None)
     {
-        byte[]? rlp = _nodeStorage.Get(address, in path, hash, flags);
-        if (rlp is not null)
+        if (TryGetOverlayNode(address, in path, in hash, out node, flags))
         {
-            node = TrieNode.DecodeNode(in path, in hash, rlp);
             return true;
         }
+
         return _baseStore.TryGetOrLoadNode(address, in path, in hash, out node, flags);
     }
 
@@ -56,27 +52,36 @@ public class OverlayTrieStore(IKeyValueStoreWithBatching keyValueStore, IReadOnl
             address,
             _baseStore.GetTrieStore(address).AsReadOnlyTraversal());
 
+    private bool TryGetOverlayNode(Hash256? address, in TreePath path, in ValueHash256 hash, [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out TrieNode? node, ReadFlags flags)
+    {
+        byte[]? rlp = _nodeStorage.Get(address, in path, hash, flags);
+        if (rlp is null)
+        {
+            node = null;
+            return false;
+        }
+
+        node = TrieNode.DecodeNode(in path, in hash, rlp);
+        return true;
+    }
+
     private sealed class SharedOverlayTraversalResolver(
         OverlayTrieStore fullTrieStore,
         Hash256? address,
-        ITrieNodeResolver baseReadResolver) : ReadOnlyTraversalResolverBase(fullTrieStore, address)
+        ITrieNodeResolver baseReadResolver) : ReadOnlyTraversalResolver(fullTrieStore, address)
     {
-        public override TrieNode GetOrLoadNode(in TreePath path, in ValueHash256 hash, ReadFlags flags = ReadFlags.None)
-        {
-            byte[]? rlp = fullTrieStore._nodeStorage.Get(Address, in path, hash, flags);
-            return rlp is not null
-                ? TrieNode.DecodeNode(in path, in hash, rlp)
+        public override TrieNode GetOrLoadNode(in TreePath path, in ValueHash256 hash, ReadFlags flags = ReadFlags.None) =>
+            fullTrieStore.TryGetOverlayNode(Address, in path, in hash, out TrieNode? node, flags)
+                ? node
                 : baseReadResolver.GetOrLoadNode(in path, in hash, flags);
-        }
 
         public override bool TryGetOrLoadNode(in TreePath path, in ValueHash256 hash, [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out TrieNode? node, ReadFlags flags = ReadFlags.None)
         {
-            byte[]? rlp = fullTrieStore._nodeStorage.Get(Address, in path, hash, flags);
-            if (rlp is not null)
+            if (fullTrieStore.TryGetOverlayNode(Address, in path, in hash, out node, flags))
             {
-                node = TrieNode.DecodeNode(in path, in hash, rlp);
                 return true;
             }
+
             return baseReadResolver.TryGetOrLoadNode(in path, in hash, out node, flags);
         }
 

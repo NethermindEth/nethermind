@@ -17,18 +17,7 @@ internal sealed class StateTrieStoreAdapter(
     public override bool TryGetCachedNode(in TreePath path, in ValueHash256 hash, [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out TrieNode? node)
     {
         Hash256 hashRef = new(in hash);
-        TrieNode? candidate = bundle.FindStateNode(path, hashRef);
-        if (candidate is null)
-        {
-            node = null;
-            return false;
-        }
-        if (candidate.Keccak != hashRef)
-        {
-            throw new NodeHashMismatchException($"Node hash mismatch. Path: {path}. Hash: {candidate.Keccak} vs Requested: {hashRef}");
-        }
-        node = candidate;
-        return true;
+        return TryReturnCachedNode(bundle.FindStateNode(path, hashRef), hashRef, in path, out node);
     }
 
     public override byte[]? TryLoadRlp(in TreePath path, in ValueHash256 hash, ReadFlags flags = ReadFlags.None) =>
@@ -60,18 +49,7 @@ internal sealed class StateTrieStoreWarmerAdapter(
     public override bool TryGetCachedNode(in TreePath path, in ValueHash256 hash, [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out TrieNode? node)
     {
         Hash256 hashRef = new(in hash);
-        TrieNode? candidate = bundle.FindStateNodeForTrieWarmer(path, hashRef);
-        if (candidate is null)
-        {
-            node = null;
-            return false;
-        }
-        if (candidate.Keccak != hashRef)
-        {
-            throw new NodeHashMismatchException($"Node hash mismatch. Path: {path}. Hash: {candidate.Keccak} vs Requested: {hashRef}");
-        }
-        node = candidate;
-        return true;
+        return TryReturnCachedNode(bundle.FindStateNodeForTrieWarmer(path, hashRef), hashRef, in path, out node);
     }
 
     public override byte[]? TryLoadRlp(in TreePath path, in ValueHash256 hash, ReadFlags flags = ReadFlags.None) =>
@@ -93,18 +71,7 @@ internal sealed class StorageTrieStoreAdapter(
     public override bool TryGetCachedNode(in TreePath path, in ValueHash256 hash, [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out TrieNode? node)
     {
         Hash256 hashRef = new(in hash);
-        TrieNode? candidate = bundle.FindStorageNode(addressHash, path, hashRef);
-        if (candidate is null)
-        {
-            node = null;
-            return false;
-        }
-        if (candidate.Keccak != hashRef)
-        {
-            throw new NodeHashMismatchException($"Node hash mismatch. Address {addressHash.Value}. Path: {path}. Hash: {candidate.Keccak} vs Requested: {hashRef}");
-        }
-        node = candidate;
-        return true;
+        return TryReturnCachedNode(bundle.FindStorageNode(addressHash, path, hashRef), hashRef, in path, out node, addressHash.Value);
     }
 
     public override byte[]? TryLoadRlp(in TreePath path, in ValueHash256 hash, ReadFlags flags = ReadFlags.None) =>
@@ -131,18 +98,7 @@ internal sealed class StorageTrieStoreWarmerAdapter(
     public override bool TryGetCachedNode(in TreePath path, in ValueHash256 hash, [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out TrieNode? node)
     {
         Hash256 hashRef = new(in hash);
-        TrieNode? candidate = bundle.FindStorageNodeForTrieWarmer(addressHash, path, hashRef);
-        if (candidate is null)
-        {
-            node = null;
-            return false;
-        }
-        if (candidate.Keccak != hashRef)
-        {
-            throw new NodeHashMismatchException($"Node hash mismatch. Address {addressHash.Value}. Path: {path}. Hash: {candidate.Keccak} vs Requested: {hashRef}");
-        }
-        node = candidate;
-        return true;
+        return TryReturnCachedNode(bundle.FindStorageNodeForTrieWarmer(addressHash, path, hashRef), hashRef, in path, out node, addressHash.Value);
     }
 
     public override byte[]? TryLoadRlp(in TreePath path, in ValueHash256 hash, ReadFlags flags = ReadFlags.None) =>
