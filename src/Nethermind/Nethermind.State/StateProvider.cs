@@ -39,7 +39,13 @@ internal class StateProvider(ILogManager logManager) : IJournal<int>
     // False positives would be problematic as the code _must_ be persisted
     private readonly AssociativeKeyCache<ValueHash256> _persistedCodeInsertFilter = new(1_024);
     private readonly AssociativeKeyCache<ValueHash256> _blockCodeInsertFilter = new(256);
-    private readonly Dictionary<AddressAsKey, ChangeTrace> _blockChanges = new(4_096);
+    internal readonly Dictionary<AddressAsKey, ChangeTrace> _blockChanges = new(4_096);
+
+    /// <summary>
+    /// Read-through fallback to another StateProvider's block changes.
+    /// Used by prewarmer to read from the main thread's committed state.
+    /// </summary>
+    internal Dictionary<AddressAsKey, ChangeTrace>? _readFallback;
 
     private readonly List<Change> _keptInCache = [];
     private readonly ILogger _logger = logManager?.GetClassLogger<StateProvider>() ?? throw new ArgumentNullException(nameof(logManager));
@@ -717,6 +723,20 @@ internal class StateProvider(ILogManager logManager) : IJournal<int>
         ref ChangeTrace accountChanges = ref CollectionsMarshal.GetValueRefOrAddDefault(_blockChanges, addressAsKey, out bool exists);
         if (!exists)
         {
+            if (_readFallback is not null)
+            {
+                try
+                {
+                    if (_readFallback.TryGetValue(addressAsKey, out ChangeTrace fallbackTrace))
+                    {
+                        accountChanges = fallbackTrace;
+                        Metrics.IncrementStateTreeCacheHits();
+                        return accountChanges.After;
+                    }
+                }
+                catch { /* concurrent modification — fall through to trie */ }
+            }
+
             Metrics.IncrementStateTreeReads();
             Account? account = _tree.Get(address);
 

@@ -30,6 +30,20 @@ namespace Nethermind.State
     {
         internal readonly StateProvider _stateProvider;
         internal readonly PersistentStorageProvider _persistentStorageProvider;
+
+        /// <summary>
+        /// Set up a read-through fallback to another WorldState's committed block changes.
+        /// The prewarmer calls this to read from the main thread's live state.
+        /// Reads: this._blockChanges → source._blockChanges → trie
+        /// Writes: this._blockChanges only (never touches source)
+        /// </summary>
+        public void SetReadFallback(IWorldState source)
+        {
+            if (source is not WorldState srcWs) return;
+            _stateProvider._readFallback = srcWs._stateProvider._blockChanges;
+            _persistentStorageProvider._storageFallback = srcWs._persistentStorageProvider;
+        }
+
         private readonly TransientStorageProvider _transientStorageProvider;
         private IWorldStateScopeProvider.IScope? _currentScope;
         private bool _isInScope;

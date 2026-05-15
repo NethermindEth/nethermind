@@ -30,8 +30,14 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
 {
     private IWorldStateScopeProvider.IScope _currentScope;
     private readonly StateProvider _stateProvider = stateProvider;
-    private readonly Dictionary<AddressAsKey, PerContractState> _storages = new(4_096);
+    internal readonly Dictionary<AddressAsKey, PerContractState> _storages = new(4_096);
     private readonly Dictionary<AddressAsKey, bool> _toUpdateRoots = [];
+
+    /// <summary>
+    /// Read-through fallback to another PersistentStorageProvider's committed storage.
+    /// Used by prewarmer to read from the main thread's storage state.
+    /// </summary>
+    internal PersistentStorageProvider? _storageFallback;
 
     /// <summary>
     /// <see href="https://eips.ethereum.org/EIPS/eip-1283"/>
@@ -61,8 +67,28 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
     /// </summary>
     /// <param name="storageCell">Storage location</param>
     /// <returns>Value at location</returns>
-    protected override ReadOnlySpan<byte> GetCurrentValue(in StorageCell storageCell) =>
-        TryGetCachedValue(storageCell, out byte[]? bytes) ? bytes! : LoadFromTree(storageCell);
+    protected override ReadOnlySpan<byte> GetCurrentValue(in StorageCell storageCell)
+    {
+        if (TryGetCachedValue(storageCell, out byte[]? bytes))
+            return bytes!;
+
+        if (_storageFallback is not null)
+        {
+            try
+            {
+                if (_storageFallback._storages.TryGetValue(storageCell.Address, out PerContractState? fallbackContract) &&
+                    fallbackContract.TryLoadFromBlockChange(storageCell.Index, out byte[]? fallbackValue))
+                {
+                    Db.Metrics.IncrementStorageTreeCache();
+                    PushToRegistryOnly(storageCell, fallbackValue);
+                    return fallbackValue;
+                }
+            }
+            catch { /* concurrent modification — fall through to trie */ }
+        }
+
+        return LoadFromTree(storageCell);
+    }
 
     /// <summary>
     /// Return the original persistent storage value from the storage cell
@@ -339,6 +365,13 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
             return ref value;
         }
 
+        public bool TryGetValue(in UInt256 key, out StorageChangeTrace value)
+        {
+            if (_dictionary.TryGetValue(key, out value)) return true;
+            if (_missingAreDefault) { value = StorageChangeTrace.ZeroBytes; return true; }
+            return false;
+        }
+
         public ref StorageChangeTrace GetValueRefOrNullRef(UInt256 storageCellIndex)
             => ref CollectionsMarshal.GetValueRefOrNullRef(_dictionary, storageCellIndex);
 
@@ -365,7 +398,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         public void UnmarkClear() => _missingAreDefault = false;
     }
 
-    private sealed class PerContractState : IReturnable
+    internal sealed class PerContractState : IReturnable
     {
         private IWorldStateScopeProvider.IStorageTree? _backend;
 
@@ -383,6 +416,17 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         }
 
         public int EstimatedChanges => BlockChange.EstimatedSize;
+
+        internal bool TryLoadFromBlockChange(in UInt256 index, out byte[]? value)
+        {
+            if (BlockChange.TryGetValue(index, out StorageChangeTrace trace))
+            {
+                value = trace.After;
+                return true;
+            }
+            value = null;
+            return false;
+        }
 
         public Hash256 StorageRoot
         {
