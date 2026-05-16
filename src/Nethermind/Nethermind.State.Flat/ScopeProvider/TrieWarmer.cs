@@ -270,32 +270,23 @@ public sealed class TrieWarmer : ITrieWarmer, IAsyncDisposable
         return _jobBufferMultiThreaded.TryDequeue(out job);
     }
 
-    private static void HandleJob(Job job)
+    private static void HandleJob(in Job job)
     {
-        (object scopeOrStorageTree,
-            Address? address,
-            UInt256 index,
-            int sequenceId) = job;
-
         try
         {
-            if (scopeOrStorageTree is ITrieWarmer.IAddressWarmer scope)
+            if (job.scopeOrStorageTree is ITrieWarmer.IAddressWarmer scope)
             {
-                scope.WarmUpStateTrie(address!, sequenceId);
+                scope.WarmUpStateTrie(job.path!, job.sequenceId);
             }
             else
             {
-                ITrieWarmer.IStorageWarmer storageTree = (ITrieWarmer.IStorageWarmer)scopeOrStorageTree;
-                storageTree.WarmUpStorageTrie(index, sequenceId);
+                ITrieWarmer.IStorageWarmer storageTree = (ITrieWarmer.IStorageWarmer)job.scopeOrStorageTree;
+                storageTree.WarmUpStorageTrie(job.index, job.sequenceId);
             }
         }
-        // It can be missing when the warmer lags so much behind that the node is now gone.
         catch (TrieNodeException) { }
-        // Because it runs in parallel, it could happen that the bundle changed, which causes this.
         catch (NodeHashMismatchException) { }
-        // Because it runs in parallel, it could be that the scope is disposed of early.
         catch (ObjectDisposedException) { }
-        // When the scope is disposed, it set some of the dictionary to null to prevent corrupting later state
         catch (NullReferenceException) { }
     }
 
