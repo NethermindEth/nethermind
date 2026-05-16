@@ -11,6 +11,7 @@ using Nethermind.Int256;
 using Nethermind.Db;
 using Nethermind.State.Flat.Hsst;
 using Nethermind.State.Flat.PersistedSnapshots;
+using Nethermind.State.Flat.Persistence.BloomFilter;
 using Nethermind.State.Flat.Storage;
 using Nethermind.Trie;
 using NUnit.Framework;
@@ -112,6 +113,94 @@ public class PersistedSnapshotCompactorTests
                 }
             }
             finally { compacted!.Dispose(); }
+        }
+        finally
+        {
+            if (Directory.Exists(testDir))
+                Directory.Delete(testDir, recursive: true);
+        }
+    }
+
+    /// <summary>
+    /// Regression for the matchCount==1 byte-copy fast path in NWayMergePerAddressColumn.
+    /// Each successful <c>HsstReader.TrySeek</c> narrows the reader's internal bound to
+    /// the matched sub-tag's value scope, so sibling sub-tag seeks must reset the bound
+    /// between calls — otherwise only the first hit (SlotSubTag) succeeds and the three
+    /// storage-trie sub-tag bloom adds silently never run, even though the underlying
+    /// nodes ride along in the byte-copied per-address blob. We pack AddressA into one
+    /// source with slots plus storage-trie nodes at every depth tier (top / compact /
+    /// fallback) and pair it with an unrelated address in the second source so that
+    /// matchCount==1 for AddressA. The bloom manager is shared with the compactor so
+    /// <c>bloomCapacity</c> is non-zero and the merger produces a real (non-AlwaysTrue)
+    /// bloom we can probe.
+    /// </summary>
+    [Test]
+    public void Compact_ByteCopyFastPath_AddsAllSubTagBloomKeys()
+    {
+        string testDir = Path.Combine(Path.GetTempPath(), $"nethermind_test_{Guid.NewGuid():N}");
+        Directory.CreateDirectory(testDir);
+        try
+        {
+            using ArenaManager smallArena = new(Path.Combine(testDir, "arenas", "base"), 0, maxArenaSize: 64 * 1024);
+            using BlobArenaManager smallBlobs = new(Path.Combine(testDir, "blobs", "small"), 1024 * 1024, PersistedSnapshotTier.Small);
+            using PersistedSnapshotBloomFilterManager bloomManager = new();
+            using PersistedSnapshotRepository repo = new(smallArena, smallBlobs, new MemDb(), new FlatDbConfig(), bloomManager);
+            repo.LoadFromCatalog();
+
+            IFlatDbConfig config = new FlatDbConfig { CompactSize = 1, MinCompactSize = 2 };
+            PersistedSnapshotCompactor compactor = new(
+                repo, smallArena, config, Nethermind.Logging.LimboLogs.Instance, bloomManager,
+                minCompactSize: 2, maxCompactSize: 2, tier: PersistedSnapshotTier.Small);
+
+            Hash256 addrHash256 = Keccak.Compute(TestItem.AddressA.Bytes);
+            TreePath topPath = new(Keccak.Compute("trie_top"), 4);          // → StorageTopSubTag (4-byte key)
+            TreePath compactPath = new(Keccak.Compute("trie_compact"), 10); // → StorageCompactSubTag (8-byte key)
+            TreePath fallbackPath = new(Keccak.Compute("trie_fb"), 20);     // → StorageFallbackSubTag (33-byte key)
+            UInt256 slotIndex = 7;
+
+            SnapshotContent c0 = new();
+            c0.Accounts[TestItem.AddressA] = Build.An.Account.WithBalance(100).TestObject;
+            c0.Storages[(TestItem.AddressA, slotIndex)] = new SlotValue(new byte[] { 0x42 });
+            c0.StorageNodes[(addrHash256, topPath)] = new TrieNode(NodeType.Leaf, [0xC1, 0x80]);
+            c0.StorageNodes[(addrHash256, compactPath)] = new TrieNode(NodeType.Leaf, [0xC1, 0x81]);
+            c0.StorageNodes[(addrHash256, fallbackPath)] = new TrieNode(NodeType.Leaf, [0xC1, 0x82]);
+
+            // Different address in the second source so AddressA has matchCount==1 (triggers
+            // the per-address byte-copy fast path) while still having ≥ 2 sources to compact.
+            SnapshotContent c1 = new();
+            c1.Accounts[TestItem.AddressB] = Build.An.Account.WithBalance(200).TestObject;
+
+            StateId s0 = new(0, Keccak.EmptyTreeHash);
+            StateId s1 = new(1, Keccak.Compute("s1"));
+            StateId s2 = new(2, Keccak.Compute("s2"));
+            repo.ConvertSnapshotToPersistedSnapshot(new Snapshot(s0, s1, c0, _pool, ResourcePool.Usage.MainBlockProcessing));
+            repo.ConvertSnapshotToPersistedSnapshot(new Snapshot(s1, s2, c1, _pool, ResourcePool.Usage.MainBlockProcessing));
+
+            compactor.DoCompactSnapshot(s2);
+
+            Assert.That(repo.TryLeaseCompactedSnapshotTo(s2, out PersistedSnapshot? compacted), Is.True);
+            using (compacted)
+            {
+                using PersistedSnapshotBloom bloomLease = bloomManager.LeaseOrSentinel(s2);
+                Assert.That(bloomLease, Is.Not.SameAs(PersistedSnapshotBloom.AlwaysTrue),
+                    "Compacted snapshot must have a real bloom — test requires shared bloomManager so bloomCapacity > 0");
+
+                BloomFilter bloom = bloomLease.Bloom;
+                ValueHash256 addrHash = ValueKeccak.Compute(TestItem.AddressA.Bytes);
+                ulong addrKey = PersistedSnapshotBloomBuilder.AddressKey(in addrHash);
+
+                Assert.Multiple(() =>
+                {
+                    Assert.That(bloom.MightContain(addrKey), Is.True, "Address key");
+                    Assert.That(bloom.MightContain(PersistedSnapshotBloomBuilder.SlotKey(addrKey, slotIndex)), Is.True, "Slot key");
+                    Assert.That(bloom.MightContain(PersistedSnapshotBloomBuilder.StorageNodeKey(in addrHash, in topPath)), Is.True,
+                        "Storage-trie top — fails when sibling TrySeek bound isn't reset between sub-tag seeks");
+                    Assert.That(bloom.MightContain(PersistedSnapshotBloomBuilder.StorageNodeKey(in addrHash, in compactPath)), Is.True,
+                        "Storage-trie compact");
+                    Assert.That(bloom.MightContain(PersistedSnapshotBloomBuilder.StorageNodeKey(in addrHash, in fallbackPath)), Is.True,
+                        "Storage-trie fallback");
+                });
+            }
         }
         finally
         {
