@@ -4,9 +4,10 @@
 using System.CommandLine;
 using RpcTestsGen;
 
-Option<string> requestsOption = new("--requests", "-r")
+Option<string[]> requestsOption = new("--requests", "-r")
 {
-    Description = "Comma-separated list of request files, use :123 at the end of the file path to specify starting line",
+    Description = "Request file(s), use :123 at the end of the file path to specify starting line",
+    AllowMultipleArgumentsPerToken = true,
     Required = true
 };
 
@@ -20,9 +21,10 @@ Option<string?> excludeOption = new("--exclude")
     Description = "Exclude lines containing this string, takes precedence over inclusion"
 };
 
-Option<string> clientsOption = new("--clients", "-c")
+Option<string[]> clientsOption = new("--client", "-c")
 {
-    Description = "Comma-separated list of client URLs",
+    Description = "Client URL(s) to fetch responses from",
+    AllowMultipleArgumentsPerToken = true,
     Required = true
 };
 
@@ -43,13 +45,8 @@ RootCommand rootCommand = new("Generates RPC test files from JSONL request files
 
 rootCommand.SetAction(async (parseResult, ct) =>
 {
-    FileLocation[] requestFiles = parseResult.GetRequiredValue(requestsOption)
-        .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-        .Select(FileLocation.Parse)
-        .ToArray();
-
-    string[] clientUrls = parseResult.GetRequiredValue(clientsOption)
-        .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+    FileLocation[] requestFiles = parseResult.GetRequiredValue(requestsOption).Select(FileLocation.Parse).ToArray();
+    Uri[] clientUrls = parseResult.GetRequiredValue(clientsOption).Select(static s => new Uri(s)).ToArray();
 
     string? include = parseResult.GetValue(includeOption);
     string? exclude = parseResult.GetValue(excludeOption);
@@ -61,6 +58,5 @@ rootCommand.SetAction(async (parseResult, ct) =>
     string[] result = await executor.RunAsync(ct);
     Console.WriteLine($"Generated test files: {string.Join(", ", result)}");
 });
-
 
 return await rootCommand.Parse(args).InvokeAsync();

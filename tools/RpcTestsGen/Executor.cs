@@ -5,7 +5,7 @@ using System.Threading.Tasks.Dataflow;
 
 namespace RpcTestsGen;
 
-public class Executor(FileLocation[] sources, string[] clientUrls, int parallelism, string? include, string? exclude)
+public class Executor(FileLocation[] sources, Uri[] clientUrls, int parallelism, string? include, string? exclude)
 {
     public async Task<string[]> RunAsync(CancellationToken ct)
     {

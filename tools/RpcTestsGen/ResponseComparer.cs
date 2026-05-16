@@ -5,7 +5,7 @@ using System.Text.Json.Nodes;
 
 namespace RpcTestsGen;
 
-public class ResponseComparer(string[] clientUrls)
+public class ResponseComparer(Uri[] clientUrls)
 {
     public IEnumerable<TestCase> Compare(ResponseInfo info)
     {
@@ -21,7 +21,7 @@ public class ResponseComparer(string[] clientUrls)
             Console.Error.WriteLine(
                 $"""
                  Mismatch
-                   Request: {info.Request.Data}
+                   Request: {info.Request.Data.ToCompactString()}
                    Clients: {clientUrls[0]}, {clientUrls[i]}
                  """
             );

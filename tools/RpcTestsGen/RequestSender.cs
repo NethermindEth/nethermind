@@ -7,15 +7,16 @@ using System.Text.Json.Nodes;
 
 namespace RpcTestsGen;
 
-public class RequestSender(string[] clientUrls, HttpClient httpClient)
+public class RequestSender(Uri[] clientUrls, HttpClient httpClient)
 {
     public async Task<ResponseInfo> SendAsync(RequestInfo request)
     {
+        Console.WriteLine($"Sending: {request.Data.ToCompactString()}");
         JsonNode[] responses = await Task.WhenAll(clientUrls.Select(url => SendToClientAsync(url, request.Data)));
         return new ResponseInfo(request, responses);
     }
 
-    private async Task<JsonNode> SendToClientAsync(string url, JsonNode requestData)
+    private async Task<JsonNode> SendToClientAsync(Uri url, JsonNode requestData)
     {
         try
         {
@@ -28,7 +29,7 @@ public class RequestSender(string[] clientUrls, HttpClient httpClient)
         }
         catch (Exception ex)
         {
-            await Console.Error.WriteLineAsync($"HTTP error for {url}: {ex.Message}");
+            await Console.Error.WriteLineAsync($"Request error for {url}: {ex.Message}");
             return string.Empty;
         }
     }
