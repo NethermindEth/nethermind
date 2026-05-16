@@ -142,6 +142,9 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
 
     void ResetTransient();
 
+    void PauseTrieWarmer() { }
+    void ResumeTrieWarmer() { }
+
     public void AddAccountRead(Address address) { }
 
     public IDisposable? BeginSystemAccountReadSuppression() => null;

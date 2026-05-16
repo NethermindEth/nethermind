@@ -20,6 +20,8 @@ public interface ITrieWarmer
 
     void OnEnterScope();
     void OnExitScope();
+    void Pause() { }
+    void Resume() { }
 
     public interface IAddressWarmer
     {

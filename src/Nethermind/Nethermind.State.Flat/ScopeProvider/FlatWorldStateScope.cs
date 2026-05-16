@@ -189,6 +189,9 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     public IWorldStateScopeProvider.IWorldStateWriteBatch StartWriteBatch(int estimatedAccountNum) =>
         new WriteBatch(this, estimatedAccountNum, _logManager.GetClassLogger<WriteBatch>());
 
+    public void PauseTrieWarmer() => _warmer.Pause();
+    public void ResumeTrieWarmer() => _warmer.Resume();
+
     public void Commit(long blockNumber)
     {
         _pausePrewarmer = true;
