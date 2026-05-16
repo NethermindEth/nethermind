@@ -1,22 +1,30 @@
-name: Code Lint
+name: '[reusable] Code quality'
 
 on:
-  pull_request:
-  push:
-    branches:
-      - master
-  workflow_dispatch:
+  workflow_call:
 
-concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+permissions:
+  contents: read
 
 jobs:
-  code-quality:
+  format:
+    name: Check whitespaces
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v5
+
+      - name: Check whitespaces
+        run: |
+          dotnet format whitespace src/Nethermind/ --folder --verify-no-changes
+          dotnet format whitespace tools/ --folder --verify-no-changes
+
+  lint:
     name: Check code lint
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
     steps:
       - name: Free up disk space
         uses: jlumbroso/free-disk-space@v1.3.1
@@ -48,3 +56,15 @@ jobs:
             -p:GenerateDocumentationFile=true \
             -p:NoWarn=CS0419%3BCS1570%3BCS1572%3BCS1573%3BCS1574%3BCS1584%3BCS1587%3BCS1591%3BCS1658%3BCS1711%3BCS1712%3BCS1723%3BCS1734%3BCS1735%3BNU1701%3BNUnit1032 2>&1 | awk '!seen[$0]++' | tee /tmp/build.log
           ! grep -qP "warning (IDE|CA)\d+" /tmp/build.log
+
+  spellcheck:
+    name: Check spelling
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Check spelling
+        uses: streetsidesoftware/cspell-action@v8
+        with:
+          incremental_files_only: true
