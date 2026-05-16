@@ -16,13 +16,26 @@ public class Filter(ExecutionArgs args)
         return true;
     }
 
+    private static JsonNode? GetParams(JsonNode request) => request["params"] switch
+    {
+        JsonObject paramsObject => paramsObject,
+        JsonArray {Count: 0} => null,
+        JsonArray {Count: 1} paramsArray => paramsArray[0],
+        _ => null
+    };
+
     public bool IncludeRequest(JsonNode request)
     {
+        if (GetParams(request) is not {} @params)
+        {
+            return true;
+        }
+
         if ((args.MinBlocks is not null || args.MaxBlocks is not null) &&
             request["method"]?.ToString() == "eth_getLogs")
         {
-            int? fromBlock = request["fromBlock"] is {} fromBlockJson ? Convert.ToInt32(fromBlockJson.ToString(), 16) : null;
-            int? toBlock = request["toBlock"] is {} toBlockJson ? Convert.ToInt32(toBlockJson.ToString(), 16) : null;
+            int? fromBlock = @params["fromBlock"] is {} fromBlockJson ? Convert.ToInt32(fromBlockJson.ToString(), 16) : null;
+            int? toBlock = @params["toBlock"] is {} toBlockJson ? Convert.ToInt32(toBlockJson.ToString(), 16) : null;
             int range = fromBlock is null || toBlock is null ? 0 : toBlock.Value - fromBlock.Value;
 
             if (args.MinBlocks is {} minBlocks && range < minBlocks) return false;

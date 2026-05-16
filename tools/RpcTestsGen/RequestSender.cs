@@ -9,7 +9,7 @@ namespace RpcTestsGen;
 
 public class RequestSender(Uri[] clientUrls, HttpClient httpClient)
 {
-    private const int LogPerRequests = 100;
+    private const int LogPerRequests = 10;
     private int _requestN;
 
     public async Task<ResponseInfo> SendAsync(RequestInfo request)
@@ -32,8 +32,8 @@ public class RequestSender(Uri[] clientUrls, HttpClient httpClient)
             JsonNode responseData = await JsonNode.ParseAsync(await response.Content.ReadAsStreamAsync())
                 ?? throw new JsonException("Empty response received.");
 
-            if (responseData["error"]?.ToString() is {} error)
-                throw new Exception(error);
+            if (responseData["error"] is {} error)
+                throw new Exception(error.ToCompactString());
 
             return responseData;
         }

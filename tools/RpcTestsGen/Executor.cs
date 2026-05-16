@@ -20,7 +20,7 @@ public class Executor(ExecutionArgs args)
 
         BufferBlock<RequestInfo> requestsBuffer = new(new DataflowBlockOptions
         {
-            BoundedCapacity = 200_000
+            BoundedCapacity = 100_000
         });
 
         TransformBlock<RequestInfo, ResponseInfo> senderBlock = new(
