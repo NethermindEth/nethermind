@@ -227,63 +227,24 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
             int txCount = block.Transactions.Length;
             if (txCount == 0) return;
 
-            // Phase 1: Bulk-warm all EIP-2930 access list entries across ALL txs in one parallel pass.
-            // This populates the SeqlockCache with known storage slots before speculative execution begins,
-            // giving the main thread immediate cache hits for access-listed entries.
-            if (blockState.Spec.UseTxAccessLists)
-            {
-                WarmupAllAccessLists(blockState, parallelOptions);
-            }
-
-            if (parallelOptions.CancellationToken.IsCancellationRequested) return;
-
-            // Phase 2: Moving window that stays ahead of the main thread. Workers claim txs
-            // via an atomic counter, always targeting txs LookaheadOffset positions ahead of
-            // the main thread. This gives the prewarmer time to finish before the main thread
-            // arrives. After reaching the end, workers loop back to re-execute txs the main
-            // thread still hasn't processed — each pass warms deeper cache entries.
-            int nextTx = 0;
+            // Moving window — workers claim txs via atomic counter. Each tx is
+            // executed at most once. Workers skip txs the main thread already processed.
+            // No wrap-around to avoid CPU contention with the main thread.
             WarmingState<BlockState> baseState = new(_envPool, blockState, blockState.Parent);
 
             ParallelUnbalancedWork.For(
                 0,
-                _concurrencyLevel,
+                txCount,
                 parallelOptions,
                 baseState.InitThreadState,
-                (workerIndex, state) =>
+                static (txIndex, state) =>
                 {
+                    if (txIndex <= state.Payload.PreWarmer.MainThreadTxIndex)
+                        return state;
+
                     BlockExecutionContext context = new(state.Payload.Block.Header, state.Payload.Spec);
                     state.Scope!.TransactionProcessor.SetBlockExecutionContext(context);
-                    Transaction[] txs = state.Payload.Block.Transactions;
-                    BlockCachePreWarmer pw = state.Payload.PreWarmer;
-                    CancellationToken ct = parallelOptions.CancellationToken;
-
-                    while (!ct.IsCancellationRequested)
-                    {
-                        int txIndex = Interlocked.Increment(ref nextTx) - 1;
-
-                        // Past the end — wrap around to just ahead of main thread + offset
-                        if (txIndex >= txCount)
-                        {
-                            int mainAt = pw.MainThreadTxIndex;
-                            if (mainAt >= txCount - 1) break; // main thread done
-
-                            // Reset to ahead of main thread; only one thread resets
-                            int desired = mainAt + 1;
-                            Interlocked.CompareExchange(ref nextTx, desired, txIndex + 1);
-                            continue;
-                        }
-
-                        // Skip txs the main thread already processed
-                        if (txIndex <= pw.MainThreadTxIndex)
-                            continue;
-
-                        if (Nethermind.Logging.DiagnosticLogger.IsEnabled)
-                            Nethermind.Logging.DiagnosticLogger.Log($"PREWARM tx[{txIndex}] start (main at {pw.MainThreadTxIndex})");
-
-                        WarmupSingleTransaction(state.Scope!, txs[txIndex], txIndex, state.Payload);
-                    }
-
+                    WarmupSingleTransaction(state.Scope!, state.Payload.Block.Transactions[txIndex], txIndex, state.Payload);
                     return state;
                 },
                 WarmingState<BlockState>.FinallyAction);
@@ -295,48 +256,6 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         {
             _logger.DebugError("Error pre-warming transactions", ex);
         }
-    }
-
-    /// <summary>
-    /// Bulk-warm all EIP-2930 access list entries from every tx in the block in parallel.
-    /// Each worker claims a tx, reads its sender+to accounts and all access list storage slots
-    /// into the SeqlockCache via WorldState.WarmUp. This runs before speculative tx execution
-    /// so the cache is pre-populated with known entries for immediate main-thread hits.
-    /// </summary>
-    private void WarmupAllAccessLists(BlockState blockState, ParallelOptions parallelOptions)
-    {
-        Block block = blockState.Block;
-        Transaction[] txs = block.Transactions;
-        if (txs.Length == 0) return;
-
-        WarmingState<BlockState> baseState = new(_envPool, blockState, blockState.Parent);
-
-        ParallelUnbalancedWork.For(
-            0,
-            txs.Length,
-            parallelOptions,
-            baseState.InitThreadState,
-            static (txIndex, state) =>
-            {
-                Transaction tx = state.Payload.Block.Transactions[txIndex];
-                IWorldState worldState = state.Scope!.WorldState;
-
-                try
-                {
-                    if (tx.SenderAddress is not null)
-                        worldState.WarmUp(tx.SenderAddress);
-                    if (tx.To is not null)
-                        worldState.WarmUp(tx.To);
-                    worldState.WarmUp(tx.AccessList);
-                }
-                catch (Exception) when (state.Scope is not null)
-                {
-                    // Swallow trie/state exceptions during warmup
-                }
-
-                return state;
-            },
-            WarmingState<BlockState>.FinallyAction);
     }
 
     private static bool WarmupSingleTransaction(
