@@ -176,30 +176,22 @@ public sealed unsafe class PersistedSnapshot : RefCountingDisposable
         try
         {
             RefIdsEnumerator e = GetRefIdsEnumerator();
-            try
+            while (e.MoveNext())
             {
-                while (e.MoveNext())
-                {
-                    if (!_blobManager.TryLeaseFile(e.Current, out _))
-                        throw new InvalidOperationException($"Blob arena {e.Current} not registered in this tier");
-                    acquired++;
-                }
+                if (!_blobManager.TryLeaseFile(e.Current, out _))
+                    throw new InvalidOperationException($"Blob arena {e.Current} not registered in this tier");
+                acquired++;
             }
-            finally { e.Dispose(); }
         }
         catch
         {
             int released = 0;
             RefIdsEnumerator e = GetRefIdsEnumerator();
-            try
+            while (released < acquired && e.MoveNext())
             {
-                while (released < acquired && e.MoveNext())
-                {
-                    _blobManager.GetFile(e.Current).Dispose();
-                    released++;
-                }
+                _blobManager.GetFile(e.Current).Dispose();
+                released++;
             }
-            finally { e.Dispose(); }
             _reservation.Dispose();
             throw;
         }
@@ -215,11 +207,18 @@ public sealed unsafe class PersistedSnapshot : RefCountingDisposable
 
     /// <summary>
     /// Forward iterator over this snapshot's referenced blob arena ids. Reads
-    /// the ref_ids HSST value little-endian-ushort at a time from a temporary
-    /// <see cref="WholeReadSession"/>; the session is owned by the enumerator and
-    /// released on <see cref="RefIdsEnumerator.Dispose"/> (called automatically by
-    /// <c>foreach</c>).
+    /// the ref_ids HSST value little-endian-ushort at a time.
     /// </summary>
+    /// <remarks>
+    /// Backed by a plain <see cref="ArenaByteReader"/> over the snapshot's reservation
+    /// rather than a <see cref="WholeReadSession"/>: ref_ids is a tiny, frequently-accessed
+    /// metadata entry that fits in a single OS page, so the page-residency tracker (touched
+    /// on each <c>ArenaByteReader.TryRead</c>) is the right consumer of these reads. A
+    /// session would either bypass the tracker and drop pages from the kernel page cache on
+    /// dispose, or skip the dispose-time <c>MADV_DONTNEED</c> only to keep paying for the
+    /// per-session mmap view + lease bookkeeping for a 2-byte read. The reader holds no
+    /// resources of its own; the surrounding snapshot's lease keeps the mmap alive.
+    /// </remarks>
     public RefIdsEnumerator GetRefIdsEnumerator() => new(this);
 
     /// <summary>
@@ -229,16 +228,15 @@ public sealed unsafe class PersistedSnapshot : RefCountingDisposable
     /// </summary>
     public ref struct RefIdsEnumerator
     {
-        private WholeReadSession? _session;
+        private ArenaByteReader _reader;
         private long _cursor;
         private long _end;
         private ushort _current;
 
         internal RefIdsEnumerator(PersistedSnapshot snapshot)
         {
-            _session = snapshot._reservation.BeginWholeReadSession();
-            WholeReadSessionReader r = _session.GetReader();
-            HsstReader<WholeReadSessionReader, NoOpPin> root = new(in r, new Bound(0, r.Length));
+            _reader = snapshot._reservation.CreateReader();
+            HsstReader<ArenaByteReader, NoOpPin> root = new(in _reader, new Bound(0, _reader.Length));
             if (root.TrySeek(MetadataTag, out _) &&
                 root.TrySeek(MetadataRefIdsKey, out Bound rb) &&
                 rb.Length > 0 && rb.Length % 2 == 0)
@@ -252,22 +250,15 @@ public sealed unsafe class PersistedSnapshot : RefCountingDisposable
 
         public bool MoveNext()
         {
-            if (_session is null || _cursor >= _end) return false;
+            if (_cursor >= _end) return false;
             Span<byte> buf = stackalloc byte[2];
-            WholeReadSessionReader r = _session.GetReader();
-            if (!r.TryRead(_cursor, buf)) return false;
+            if (!_reader.TryRead(_cursor, buf)) return false;
             _current = BinaryPrimitives.ReadUInt16LittleEndian(buf);
             _cursor += 2;
             return true;
         }
 
         public RefIdsEnumerator GetEnumerator() => this;
-
-        public void Dispose()
-        {
-            _session?.Dispose();
-            _session = null;
-        }
     }
 
     /// <summary>
@@ -568,10 +559,11 @@ public sealed unsafe class PersistedSnapshot : RefCountingDisposable
         // Free the cache eagerly if Demote didn't already. The Interlocked swap matches
         // Demote's pattern and the null check covers both post-Demote and small-tier paths.
         FreeAddressBoundCache();
-        // Drain the iterator before disposing the reservation — the iterator owns a
-        // WholeReadSession on _reservation, and this snapshot's own lease keeps the mmap
-        // alive until both leases drop. GetFile is a lock-free array read; the lease we
-        // acquired at construction kept the slot alive until now.
+        // Drain the iterator before disposing the reservation — the iterator reads through
+        // the reservation's mmap via an ArenaByteReader, and this snapshot's own lease
+        // (acquired at construction) keeps the mmap alive until it drops at the end of
+        // CleanUp. GetFile is a lock-free array read; the lease we acquired at construction
+        // kept the slot alive until now.
         foreach (ushort id in GetRefIdsEnumerator())
             _blobManager.GetFile(id).Dispose();
         _reservation.Dispose();

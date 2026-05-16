@@ -127,10 +127,8 @@ public class PersistedSnapshotCompactorTests
         Directory.CreateDirectory(testDir);
         try
         {
-            // Disabled tracker on the base arena (we don't care about source-side residency);
-            // a real, sized tracker on the compacted arena so we can observe what
-            // WarmAddressIndex registers after AdviseDontNeed. Budget = 1024 OS pages so the
-            // tracker materialises at the expected capacity regardless of system page size.
+            // Tracker is enabled on the base arena. Budget = 1024 OS pages so it materialises
+            // at the expected capacity regardless of system page size.
             long largeBudget = 1024L * Environment.SystemPageSize;
             using ArenaManager smallArena = new(Path.Combine(testDir, "arenas", "base"), pageCacheBytes: largeBudget, maxArenaSize: 64 * 1024);
             using BlobArenaManager smallBlobs = new(Path.Combine(testDir, "blobs", "small"), 1024 * 1024, PersistedSnapshotTier.Small);
@@ -139,8 +137,8 @@ public class PersistedSnapshotCompactorTests
             repo.LoadFromCatalog();
 
             // Validation off so the post-compaction validate path doesn't itself populate the
-            // tracker via reads. Then any non-zero tracker count after DoCompactSnapshot must
-            // come from WarmAddressIndex.
+            // tracker via reads. After we capture the baseline below, any new entries in the
+            // tracker must come from compaction work — specifically WarmAddressIndex.
             IFlatDbConfig config = new FlatDbConfig { CompactSize = 4, MinCompactSize = 2, ValidatePersistedSnapshot = false };
             PersistedSnapshotCompactor compactor = new(
                 repo, smallArena, config, Nethermind.Logging.LimboLogs.Instance, new PersistedSnapshotBloomFilterManager(),
@@ -148,21 +146,32 @@ public class PersistedSnapshotCompactorTests
                 maxCompactSize: config.PersistedSnapshotMaxCompactSize,
                 tier: PersistedSnapshotTier.Large);
 
+            // Pack enough accounts per snapshot that the compacted column-0x01 BTree index
+            // ends up spanning several OS pages — distinct from the metadata page touched
+            // by the compacted snapshot's ctor ref_ids read. 8 * 30 = 240 unique addresses
+            // (fits inside TestItem.Addresses[255]).
+            const int accountsPerSnapshot = 30;
             StateId prev = new(0, Keccak.EmptyTreeHash);
             for (int i = 1; i <= 8; i++)
             {
                 StateId next = new(i, Keccak.Compute($"s{i}"));
                 SnapshotContent c = new();
-                c.Accounts[TestItem.Addresses[i - 1]] = Build.An.Account.WithBalance((UInt256)(i * 100)).TestObject;
+                for (int j = 0; j < accountsPerSnapshot; j++)
+                {
+                    int addrIdx = (i - 1) * accountsPerSnapshot + j;
+                    c.Accounts[TestItem.Addresses[addrIdx]] = Build.An.Account.WithBalance((UInt256)(i * 1000 + j)).TestObject;
+                }
                 repo.ConvertSnapshotToPersistedSnapshot(new Snapshot(prev, next, c, _pool, ResourcePool.Usage.MainBlockProcessing));
                 prev = next;
             }
 
-            Assert.That(largeTracker.Count, Is.Zero);
+            // Baseline includes any pages the base snapshot ctors touched while reading
+            // metadata (ref_ids etc.) through the tracker-aware ArenaByteReader path.
+            int baselineCount = largeTracker.Count;
 
             compactor.DoCompactSnapshot(prev);
 
-            Assert.That(largeTracker.Count, Is.GreaterThan(0),
+            Assert.That(largeTracker.Count, Is.GreaterThan(baselineCount),
                 "WarmAddressIndex should register column-0x01 BTree index pages after compaction.");
 
             Assert.That(repo.TryLeaseCompactedSnapshotTo(prev, out PersistedSnapshot? compacted), Is.True);
