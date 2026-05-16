@@ -98,6 +98,9 @@ public class PrewarmerScopeProvider(
             _metricObserver.Observe(Stopwatch.GetTimestamp() - sw, _labels.Commit);
         }
 
+        public void PauseTrieWarmer() => baseScope.PauseTrieWarmer();
+        public void ResumeTrieWarmer() => baseScope.ResumeTrieWarmer();
+
         public Hash256 RootHash => baseScope.RootHash;
 
         public void UpdateRootHash()

@@ -21,6 +21,16 @@ public interface ITrieWarmer
     void OnEnterScope();
     void OnExitScope();
 
+    /// <summary>
+    /// Pause worker threads to free CPU for tx processing. Jobs remain queued.
+    /// </summary>
+    void Pause() { }
+
+    /// <summary>
+    /// Resume worker threads to drain queued jobs before merkle phase.
+    /// </summary>
+    void Resume() { }
+
     public interface IAddressWarmer
     {
         bool WarmUpStateTrie(Address address, int sequenceId);

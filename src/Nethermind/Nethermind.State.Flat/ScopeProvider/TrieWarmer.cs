@@ -53,6 +53,8 @@ public sealed class TrieWarmer : ITrieWarmer, IAsyncDisposable
     private int _activeSecondaryWorker = 0;
     private int _shouldWakeUpPrimaryWorker = 0;
     private readonly ManualResetEventSlim _primaryWorkerLatch = new();
+    private readonly ManualResetEventSlim _pauseGate = new(initialState: true);
+    private volatile bool _isPaused;
 
     // Use a full semaphore instead of the slim variant to reduce the spin used and prefer to not wake up thread until
     // needed. Only the main worker spin.
@@ -123,6 +125,13 @@ public sealed class TrieWarmer : ITrieWarmer, IAsyncDisposable
             {
                 if (cancellationToken.IsCancellationRequested) break;
 
+                // Yield CPU when paused (during tx processing)
+                if (_isPaused)
+                {
+                    _pauseGate.Wait(cancellationToken);
+                    continue;
+                }
+
                 if (TryDequeue(out Job job))
                 {
                     spinWait.Reset();
@@ -161,6 +170,15 @@ public sealed class TrieWarmer : ITrieWarmer, IAsyncDisposable
             while (true)
             {
                 if (cancellationToken.IsCancellationRequested) break;
+
+                // Yield CPU when paused (during tx processing)
+                if (_isPaused)
+                {
+                    Interlocked.Decrement(ref _activeSecondaryWorker);
+                    _pauseGate.Wait(cancellationToken);
+                    Interlocked.Increment(ref _activeSecondaryWorker);
+                    continue;
+                }
 
                 if (TryDequeue(out Job job))
                 {
@@ -303,6 +321,18 @@ public sealed class TrieWarmer : ITrieWarmer, IAsyncDisposable
     public void OnEnterScope() => _primaryWorkerLatch.Set();
 
     public void OnExitScope() { }
+
+    public void Pause()
+    {
+        _isPaused = true;
+        _pauseGate.Reset();
+    }
+
+    public void Resume()
+    {
+        _isPaused = false;
+        _pauseGate.Set();
+    }
 
     public async ValueTask DisposeAsync()
     {

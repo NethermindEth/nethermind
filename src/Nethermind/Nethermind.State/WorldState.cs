@@ -375,5 +375,8 @@ namespace Nethermind.State
             DebugGuardInScope();
             _transientStorageProvider.Reset();
         }
+
+        public void PauseTrieWarmer() => _currentScope?.PauseTrieWarmer();
+        public void ResumeTrieWarmer() => _currentScope?.ResumeTrieWarmer();
     }
 }

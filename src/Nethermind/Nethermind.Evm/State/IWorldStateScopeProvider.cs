@@ -38,6 +38,12 @@ public interface IWorldStateScopeProvider
         /// <param name="account"></param>
         void HintGet(Address address, Account? account);
 
+        /// <summary>Pause background trie warming to free CPU for tx processing.</summary>
+        void PauseTrieWarmer() { }
+
+        /// <summary>Resume background trie warming to drain queued jobs before merkle phase.</summary>
+        void ResumeTrieWarmer() { }
+
         /// <summary>
         /// The code db
         /// </summary>
