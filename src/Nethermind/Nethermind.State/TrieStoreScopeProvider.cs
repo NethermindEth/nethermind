@@ -12,6 +12,7 @@ using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Threading;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -234,6 +235,13 @@ public class TrieStoreScopeProvider(ITrieStore trieStore, IKeyValueStoreWithBatc
         public readonly bool Commit = commit;
     }
 
+    private readonly struct StorageRootWorkItemByEstimatedWeightDescendingComparer : IComparer<StorageRootWorkItem>
+    {
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public int Compare(StorageRootWorkItem left, StorageRootWorkItem right) =>
+            right.EstimatedWeight.CompareTo(left.EstimatedWeight);
+    }
+
     public static void CompletePendingStorageRoots(
         ConcurrentQueue<StorageRootWorkItem> pending,
         Action<AddressAsKey, Hash256> markDirty)
@@ -242,20 +250,50 @@ public class TrieStoreScopeProvider(ITrieStore trieStore, IKeyValueStoreWithBatc
 
         using ArrayPoolList<StorageRootWorkItem> storageRoots = new(pending.Count);
         while (pending.TryDequeue(out StorageRootWorkItem workItem)) storageRoots.Add(workItem);
+        if (storageRoots.Count > 1)
+        {
+            storageRoots.Sort<StorageRootWorkItemByEstimatedWeightDescendingComparer>(default);
+        }
 
         using ArrayPoolList<TrieRootHashWorkItem> rootHashWork = new(storageRoots.Count);
+        int commitCount = 0;
         for (int i = 0; i < storageRoots.Count; i++)
         {
             ref StorageRootWorkItem item = ref storageRoots.GetRef(i);
             rootHashWork.Add(new TrieRootHashWorkItem(item.Tree, item.EstimatedWeight, item.FirstNibbleWeights));
+            if (item.Commit) commitCount++;
         }
 
         PatriciaTree.UpdateRootHashes(rootHashWork.AsSpan());
 
+        if (commitCount > 1)
+        {
+            ParallelUnbalancedWork.For(
+                0,
+                storageRoots.Count,
+                Nethermind.Core.Cpu.RuntimeInformation.ParallelOptionsPhysicalCoresUpTo16,
+                i =>
+                {
+                    ref StorageRootWorkItem item = ref storageRoots.GetRef(i);
+                    if (item.Commit) item.Tree.Commit();
+                });
+        }
+        else if (commitCount == 1)
+        {
+            for (int i = 0; i < storageRoots.Count; i++)
+            {
+                ref StorageRootWorkItem item = ref storageRoots.GetRef(i);
+                if (item.Commit)
+                {
+                    item.Tree.Commit();
+                    break;
+                }
+            }
+        }
+
         for (int i = 0; i < storageRoots.Count; i++)
         {
             ref StorageRootWorkItem item = ref storageRoots.GetRef(i);
-            if (item.Commit) item.Tree.Commit();
             markDirty(item.Address, item.Tree.RootHash);
         }
     }
