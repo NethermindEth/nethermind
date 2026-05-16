@@ -670,6 +670,30 @@ public partial class EthRpcModuleTests
     }
 
     [Test]
+    public async Task Eth_estimateGas_blob_transaction_sufficient_balance_succeeds()
+    {
+        ISpecProvider specProvider = new TestSpecProvider(Cancun.Instance);
+        Block[] blocks = [Build.A.Block.WithNumber(0).WithGasLimit(30_000_000).WithExcessBlobGas(1ul).TestObject];
+        BlockTree blockTree = Build.A.BlockTree(blocks[0]).WithBlocks(blocks).TestObject;
+        using TestRpcBlockchain test = await TestRpcBlockchain
+            .ForTest(SealEngineType.NethDev)
+            .WithBlockFinder(blockTree)
+            .Build(specProvider);
+
+        object? transaction = JsonSerializer.Deserialize<object>(
+            """{"from":"0xa9Ac1233699BDae25abeBae4f9Fb54DbB1b44700","to":"0x252568abdeb9de59fd8963dfcd87be2db65f1ce1","type":"0x3","maxFeePerGas":"0x3B9ACA00","maxPriorityFeePerGas":"0x3B9ACA00","maxFeePerBlobGas":"0x3B9ACA00","blobVersionedHashes":["0x0122000000000000000000000000000000000000000000000000000000000000"]}""");
+
+        object? stateOverride = JsonSerializer.Deserialize<object>(
+            """{"0xa9ac1233699bdae25abebae4f9fb54dbb1b44700":{"balance":"0x7700000000002","nonce":"0x0"}}""");
+
+        string serialized = await test.TestEthRpc("eth_estimateGas", transaction, "latest", stateOverride);
+
+        JToken parsed = JToken.Parse(serialized);
+        parsed["error"]?.Should().BeNull();
+        parsed["result"]!.Value<string>().Should().Be("0x5208");
+    }
+
+    [Test]
     public async Task Eth_estimateGas_blob_transaction_insufficient_balance_for_blob_gas()
     {
         // Sender has 100 wei — enough for value=0 but not for blob gas:
