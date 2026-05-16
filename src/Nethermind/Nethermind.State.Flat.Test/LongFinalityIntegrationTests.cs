@@ -79,7 +79,6 @@ public class LongFinalityIntegrationTests
     }
 
     [Test]
-    [Ignore("Pre-blob-arena synthetic-bytes test; needs redesign — see blob-arena-pass-3.md")]
     public void FullStack_PersistAndQuery_AccountsStorageAndTrieNodes()
     {
         using ArenaManager smallArena = new(Path.Combine(_testDir, "arenas", "base"), 0, maxArenaSize: 4096);
@@ -93,7 +92,7 @@ public class LongFinalityIntegrationTests
         TreePath statePath = new(Keccak.Compute("state_path"), 4);
         Hash256 storageAddr = Keccak.Compute("storage_address");
         TreePath storagePath = new(Keccak.Compute("storage_path"), 6);
-        byte[] stateRlp = [0xC0, 0x80, 0x80];
+        byte[] stateRlp = [0xC2, 0x80, 0x80];
         byte[] storageRlp = [0xC1, 0x80];
 
         Snapshot snap = CreateSnapshot(s0, s1, c =>
@@ -174,7 +173,6 @@ public class LongFinalityIntegrationTests
 
 
     [Test]
-    [Ignore("Pre-blob-arena synthetic-bytes test; needs redesign — see blob-arena-pass-3.md")]
     public void MergeSnapshotData_AllEntryTypes()
     {
         StateId s0 = new(0, Keccak.EmptyTreeHash);
@@ -248,7 +246,6 @@ public class LongFinalityIntegrationTests
 
 
     [Test]
-    [Ignore("Pre-blob-arena synthetic-bytes test; needs redesign — see blob-arena-pass-3.md")]
     public async Task FlatDbManager_EndToEnd_WithPersistedSnapshots()
     {
         using ArenaManager smallArena = new(Path.Combine(_testDir, "arenas", "base"), 0, maxArenaSize: 4096);
@@ -259,7 +256,7 @@ public class LongFinalityIntegrationTests
         StateId s0 = new(0, Keccak.EmptyTreeHash);
         StateId s1 = new(1, Keccak.Compute("1"));
         TreePath path = new(Keccak.Compute("e2e_path"), 4);
-        byte[] nodeRlp = [0xC0, 0x80];
+        byte[] nodeRlp = [0xC1, 0x80];
 
         // Persist a snapshot with a state node
         repo.ConvertSnapshotToPersistedSnapshot(CreateSnapshot(s0, s1, c =>

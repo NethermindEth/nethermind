@@ -63,7 +63,6 @@ public class PersistenceManagerPersistedTests
     }
 
     [Test]
-    [Ignore("Pre-blob-arena synthetic-bytes test; needs redesign — see blob-arena-pass-3.md")]
     public void PrunePersistedSnapshots_RemovesOldSnapshots()
     {
         using ArenaManager smallArena = new(Path.Combine(_testDir, "arenas", "base"), 0, maxArenaSize: 4096);

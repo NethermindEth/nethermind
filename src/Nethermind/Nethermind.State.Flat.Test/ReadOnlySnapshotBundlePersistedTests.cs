@@ -44,14 +44,13 @@ public class ReadOnlySnapshotBundlePersistedTests
     }
 
     [Test]
-    [Ignore("Pre-blob-arena synthetic-bytes test; needs redesign — see blob-arena-pass-3.md")]
     public void TryLoadStateRlp_ReturnsFromPersistedSnapshot_BeforePersistence()
     {
         StateId s0 = new(0, Keccak.EmptyTreeHash);
         StateId s1 = new(1, Keccak.Compute("1"));
 
         TreePath path = new(Keccak.Compute("path"), 4);
-        byte[] nodeRlp = [0xC0, 0x80, 0x80];
+        byte[] nodeRlp = [0xC2, 0x80, 0x80];
 
         // Build persisted snapshot with a state trie node
         SnapshotContent content = new();
@@ -82,7 +81,6 @@ public class ReadOnlySnapshotBundlePersistedTests
     }
 
     [Test]
-    [Ignore("Pre-blob-arena synthetic-bytes test; needs redesign — see blob-arena-pass-3.md")]
     public void TryLoadStorageRlp_ReturnsFromPersistedSnapshot_BeforePersistence()
     {
         StateId s0 = new(0, Keccak.EmptyTreeHash);

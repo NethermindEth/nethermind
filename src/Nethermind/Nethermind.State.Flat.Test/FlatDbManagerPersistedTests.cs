@@ -76,7 +76,6 @@ public class FlatDbManagerPersistedTests
     }
 
     [Test]
-    [Ignore("Pre-blob-arena synthetic-bytes test; needs redesign — see blob-arena-pass-3.md")]
     public async Task GatherReadOnlySnapshotBundle_IncludesPersistedSnapshots()
     {
         StateId s0 = new(0, Keccak.EmptyTreeHash);
@@ -84,7 +83,7 @@ public class FlatDbManagerPersistedTests
 
         // Build a persisted snapshot with a known state trie node
         TreePath path = new(Keccak.Compute("path"), 4);
-        byte[] nodeRlp = [0xC0, 0x80, 0x80];
+        byte[] nodeRlp = [0xC2, 0x80, 0x80];
         SnapshotContent content = new();
         content.StateNodes[path] = new TrieNode(NodeType.Leaf, nodeRlp);
         Snapshot snap = new(s0, s1, content, _pool, ResourcePool.Usage.MainBlockProcessing);

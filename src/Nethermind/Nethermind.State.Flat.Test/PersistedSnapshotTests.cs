@@ -67,13 +67,13 @@ public class PersistedSnapshotTests
         yield return new TestCaseData((Action<SnapshotContent>)(c =>
         {
             TreePath path = new(Keccak.Compute("path"), 4);
-            c.StateNodes[path] = new TrieNode(NodeType.Leaf, [0xC0, 0x80, 0x80]);
+            c.StateNodes[path] = new TrieNode(NodeType.Leaf, [0xC2, 0x80, 0x80]);
         })).SetName("StateNode_TopPath");
 
         yield return new TestCaseData((Action<SnapshotContent>)(c =>
         {
             TreePath path = new(Keccak.Compute("path"), 8);
-            c.StateNodes[path] = new TrieNode(NodeType.Leaf, [0xC0, 0x80, 0x80]);
+            c.StateNodes[path] = new TrieNode(NodeType.Leaf, [0xC2, 0x80, 0x80]);
         })).SetName("StateNode_CompactPath");
 
         yield return new TestCaseData((Action<SnapshotContent>)(c =>
@@ -155,17 +155,17 @@ public class PersistedSnapshotTests
             c.SelfDestructedStorageAddresses[TestItem.AddressE] = true;
 
             TreePath topStatePath = new(Keccak.Compute("tp"), 3);
-            c.StateNodes[topStatePath] = new TrieNode(NodeType.Leaf, [0xBF, 0x80]);
+            c.StateNodes[topStatePath] = new TrieNode(NodeType.Leaf, [0xC1, 0x80]);
 
             TreePath shortStatePath = new(Keccak.Compute("sp"), 8);
-            c.StateNodes[shortStatePath] = new TrieNode(NodeType.Leaf, [0xC0, 0x80, 0x80]);
+            c.StateNodes[shortStatePath] = new TrieNode(NodeType.Leaf, [0xC2, 0x80, 0x80]);
 
             TreePath longStatePath = new(Keccak.Compute("lp"), 20);
             c.StateNodes[longStatePath] = new TrieNode(NodeType.Extension, [0xC2, 0x80, 0x81]);
 
             Hash256 storageAddr = Keccak.Compute("storageAddr");
             TreePath topStoragePath = new(Keccak.Compute("tsp"), 3);
-            c.StorageNodes[(storageAddr, topStoragePath)] = new TrieNode(NodeType.Leaf, [0xBE, 0x80]);
+            c.StorageNodes[(storageAddr, topStoragePath)] = new TrieNode(NodeType.Leaf, [0xC1, 0x80]);
 
             TreePath shortStoragePath = new(Keccak.Compute("ssp"), 6);
             c.StorageNodes[(storageAddr, shortStoragePath)] = new TrieNode(NodeType.Branch, [0xC1, 0x80]);
@@ -176,7 +176,6 @@ public class PersistedSnapshotTests
     }
 
     [TestCaseSource(nameof(RoundTripTestCases))]
-    [Ignore("Pre-blob-arena synthetic-bytes test; needs redesign — see blob-arena-pass-3.md")]
     public void RoundTrip(Action<SnapshotContent> populateContent)
     {
         StateId from = new(0, Keccak.EmptyTreeHash);
@@ -208,7 +207,6 @@ public class PersistedSnapshotTests
     }
 
     [Test]
-    [Ignore("Pre-blob-arena synthetic-bytes test; needs redesign — see blob-arena-pass-3.md")]
     public void PersistedSnapshotList_Queries_NewestFirst()
     {
         StateId s0 = new(0, Keccak.EmptyTreeHash);
