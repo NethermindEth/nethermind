@@ -7,18 +7,23 @@ namespace Nethermind.State.Flat.Storage;
 /// Scoped whole-buffer view over an <see cref="ArenaReservation"/>. Opens a fresh
 /// per-reservation mmap view with <c>MADV_NORMAL</c> hint (distinct from the global
 /// random-access view used by point queries) and acquires a lease on the reservation.
-/// Disposing releases the lease; whether disposal also applies <c>MADV_DONTNEED</c> to
-/// the range is controlled by the <c>adviseDontNeedOnDispose</c> ctor flag.
+/// Disposing releases the lease; when <c>adviseDontNeedOnDispose</c> is <c>true</c> it
+/// also issues <c>madvise(MADV_DONTNEED)</c> on the range and clears the matching
+/// entries from the per-arena <see cref="PageResidencyTracker"/> — kernel-side and
+/// tracker-side drops travel together so the tracker never holds ghost entries for
+/// pages the kernel has already released.
 /// </summary>
 public sealed class WholeReadSession : IDisposable
 {
     private readonly ArenaReservation _reservation;
     private readonly IArenaWholeView _view;
+    private readonly bool _adviseDontNeedOnDispose;
     private bool _disposed;
 
     internal WholeReadSession(ArenaReservation reservation, bool adviseDontNeedOnDispose)
     {
         _reservation = reservation;
+        _adviseDontNeedOnDispose = adviseDontNeedOnDispose;
         _reservation.AcquireLease();
         _view = _reservation.OpenWholeView(adviseDontNeedOnDispose);
     }
@@ -68,7 +73,12 @@ public sealed class WholeReadSession : IDisposable
     {
         if (_disposed) return;
         _disposed = true;
+        // _view.Dispose() issues madvise(MADV_DONTNEED) on the mmap range when the flag
+        // is set; pair that with ForgetTracker so the page-residency tracker doesn't
+        // keep ghost entries for pages the kernel just dropped.
         _view.Dispose();
+        if (_adviseDontNeedOnDispose)
+            _reservation.ForgetTracker();
         _reservation.Dispose();
     }
 }
