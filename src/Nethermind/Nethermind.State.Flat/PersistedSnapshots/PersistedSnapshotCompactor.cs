@@ -183,21 +183,6 @@ public class PersistedSnapshotCompactor(
             // single point where the source goes cold.
             for (int i = 0; i < n; i++) snapshots[i].Demote();
 
-            // The freshly-written compacted bytes are warm in the kernel page cache from the write
-            // path; drop them so they don't crowd out the random-access read working set. Subsequent
-            // reads will fault them back in on demand.
-            reservation.AdviseDontNeed();
-
-            // Bring the address-index BTree (outer column 0x01) back through the standard reader
-            // so the PageResidencyTracker registers each index page. Bypassing via
-            // RandomAccess.Read would warm the kernel cache but leave the tracker blind, letting
-            // the next legitimate reader access collision-evict pages it never saw. The walk
-            // touches index nodes only — per-address inner HSSTs stay cold. The new
-            // PersistedSnapshot installed by AddCompactedSnapshot holds the reservation's
-            // ArenaFile lease, so no extra session is needed to keep the mmap alive here.
-            ArenaByteReader mergedReader = reservation.CreateReader();
-            PersistedSnapshotReader.WarmAddressIndex<ArenaByteReader, NoOpPin>(in mergedReader);
-
             Metrics.PersistedSnapshotCompactions++;
             Metrics.PersistedSnapshotCount = persistedSnapshotRepository.SnapshotCount;
             Metrics.PersistedSnapshotMemory = persistedSnapshotRepository.BaseSnapshotMemory;

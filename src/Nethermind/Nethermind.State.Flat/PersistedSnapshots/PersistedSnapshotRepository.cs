@@ -171,10 +171,6 @@ public sealed class PersistedSnapshotRepository(
             _baseSnapshots[snapshot.To] = persisted;
         }
 
-        // Drop freshly-written pages from the kernel page cache — not on the
-        // read working set yet.
-        reservation.AdviseDontNeed();
-
         // Release the metadata writer's creation lease (PersistedSnapshot took its own in
         // the ctor). The blob writer's creation lease is dropped automatically when its
         // `using` scope exits — BlobArenaWriter.Dispose calls BlobArenaFile.Dispose.
