@@ -1002,12 +1002,21 @@ internal ref struct LeafBoundaryEnumerator
                 // writer's current offset, force a split — but only while count is
                 // still above minLeafEntries, so a single oversized leaf at the
                 // minimum count is allowed to cross (fallback policy).
+                //
+                // estimatedSize omits the planner's common-prefix overhead (CPL
+                // byte is already in LeafNodeHeaderOverheadBytes but the prefix
+                // bytes themselves are not). Without compensating, this gate would
+                // let a leaf cross by up to prefixLen bytes. prefixLen is bounded
+                // by min(minLcp + 1, keyLength) — adding that as a per-leaf upper
+                // bound matches what BSearchIndexWriter and the merger actually
+                // account for.
+                int prefixOverheadUB = Math.Min(minLcp + 1, _keyLength);
                 bool splitNeeded =
                     gap > 4 ||
                     gap == 3 ||
                     vr > ValueRangeLimit ||
                     estimatedSize > MaxLeafBytes ||
-                    (pageOff + estimatedSize > 4096 && count > minLeafEntries);
+                    (pageOff + estimatedSize + prefixOverheadUB > 4096 && count > minLeafEntries);
                 if (!splitNeeded)
                 {
                     rawStart = lo;
