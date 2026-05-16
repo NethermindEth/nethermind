@@ -7,7 +7,7 @@ using System.Text.Json.Nodes;
 namespace RpcTestsGen;
 
 // not thread-safe
-public sealed class TestWriter : IAsyncDisposable
+public sealed class TestWriter(Filter filter): IAsyncDisposable
 {
     private string? _currentFile;
     private FileStream? _fileStream;
@@ -18,7 +18,9 @@ public sealed class TestWriter : IAsyncDisposable
 
     public async Task WriteAsync(TestCase testCase)
     {
-        string testFile = testCase.Location.FilePath;
+        if (!filter.IncludeResponse(testCase.Response)) return;
+
+        string testFile = testCase.Pos.FilePath;
         if (_currentFile != testFile)
         {
             await CloseCurrentFileAsync();

@@ -5,17 +5,18 @@ using System.Threading.Tasks.Dataflow;
 
 namespace RpcTestsGen;
 
-public class Executor(FileLocation[] sources, Uri[] clientUrls, int parallelism, string? include, string? exclude)
+public class Executor(ExecutionArgs args)
 {
     public async Task<string[]> RunAsync(CancellationToken ct)
     {
         using HttpClient httpClient = new();
         httpClient.Timeout = TimeSpan.FromMinutes(5);
 
-        RequestLoader loader = new(sources, include, exclude);
-        RequestSender sender = new(clientUrls, httpClient);
-        ResponseComparer comparer = new(clientUrls);
-        await using TestWriter writer = new();
+        Filter filter = new(args);
+        RequestReader reader = new(args.Sources, filter);
+        RequestSender sender = new(args.Clients, httpClient);
+        ResponseComparer comparer = new(args.Clients);
+        await using TestWriter writer = new(filter);
 
         BufferBlock<RequestInfo> requestsBuffer = new(new DataflowBlockOptions
         {
@@ -24,12 +25,12 @@ public class Executor(FileLocation[] sources, Uri[] clientUrls, int parallelism,
 
         TransformBlock<RequestInfo, ResponseInfo> senderBlock = new(
             sender.SendAsync,
-            new ExecutionDataflowBlockOptions {MaxDegreeOfParallelism = parallelism, BoundedCapacity = 10}
+            new ExecutionDataflowBlockOptions {MaxDegreeOfParallelism = args.Parallelism, BoundedCapacity = 1}
         );
 
         TransformManyBlock<ResponseInfo, TestCase> comparatorBlock = new(
             comparer.Compare,
-            new ExecutionDataflowBlockOptions {MaxDegreeOfParallelism = 1, BoundedCapacity = 10}
+            new ExecutionDataflowBlockOptions {MaxDegreeOfParallelism = 1, BoundedCapacity = 1}
         );
 
         ActionBlock<TestCase> writerBlock = new(
@@ -41,7 +42,7 @@ public class Executor(FileLocation[] sources, Uri[] clientUrls, int parallelism,
         senderBlock.LinkTo(comparatorBlock, new DataflowLinkOptions {PropagateCompletion = true});
         comparatorBlock.LinkTo(writerBlock, new DataflowLinkOptions {PropagateCompletion = true});
 
-        await loader.LoadIntoAsync(requestsBuffer, ct);
+        await reader.ReadIntoAsync(requestsBuffer, ct);
         await writerBlock.Completion;
 
         return writer.OutputFiles.ToArray();

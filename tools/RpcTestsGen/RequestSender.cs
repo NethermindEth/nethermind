@@ -9,9 +9,14 @@ namespace RpcTestsGen;
 
 public class RequestSender(Uri[] clientUrls, HttpClient httpClient)
 {
+    private const int LogPerRequests = 100;
+    private int _requestN;
+
     public async Task<ResponseInfo> SendAsync(RequestInfo request)
     {
-        Console.WriteLine($"Sending: {request.Data.ToCompactString()}");
+        if (++_requestN % LogPerRequests == 0)
+            await Console.Out.WriteLineAsync($"Sending request #{_requestN}");
+
         JsonNode[] responses = await Task.WhenAll(clientUrls.Select(url => SendToClientAsync(url, request.Data)));
         return new ResponseInfo(request, responses);
     }
@@ -24,28 +29,41 @@ public class RequestSender(Uri[] clientUrls, HttpClient httpClient)
             using HttpResponseMessage response = await httpClient.PostAsync(url, content);
             response.EnsureSuccessStatusCode();
 
-            return await JsonNode.ParseAsync(await response.Content.ReadAsStreamAsync())
+            JsonNode responseData = await JsonNode.ParseAsync(await response.Content.ReadAsStreamAsync())
                 ?? throw new JsonException("Empty response received.");
+
+            if (responseData["error"]?.ToString() is {} error)
+                throw new Exception(error);
+
+            return responseData;
         }
         catch (Exception ex)
         {
-            await Console.Error.WriteLineAsync($"Request error for {url}: {ex.Message}");
-            return string.Empty;
+            await Console.Error.WriteLineAsync(
+                $"""
+                 Request error: {ex.Message}
+                   Client: {url}
+                   Request: {requestData.ToCompactString()}
+                 """
+            );
+
+            //return;
+            throw;
         }
     }
 }
 
-public readonly record struct FileLocation(string FilePath, int LineNumber)
+public readonly record struct FilePos(string FilePath, int LineNumber)
 {
     public override string ToString() => LineNumber == 0 ? FilePath : $"{FilePath}:{LineNumber}";
 
-    public static FileLocation Parse(string location)
+    public static FilePos Parse(string location)
     {
         int splitIndex = location.LastIndexOf(':');
 
         return splitIndex != -1 && int.TryParse(location[(splitIndex + 1)..], out int lineNumber)
-            ? new FileLocation(location[..splitIndex], lineNumber)
-            : new FileLocation(location, 0);
+            ? new FilePos(location[..splitIndex], lineNumber)
+            : new FilePos(location, 0);
     }
 }
 

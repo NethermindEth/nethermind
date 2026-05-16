@@ -28,8 +28,8 @@ public class ResponseComparer(Uri[] clientUrls)
             yield break;
         }
 
-        yield return new TestCase(info.Request.Location, request, response0);
+        yield return new TestCase(info.Request.Pos, request, response0);
     }
 }
 
-public record TestCase(FileLocation Location, JsonNode Request, JsonNode Response);
+public record TestCase(FilePos Pos, JsonNode Request, JsonNode Response);
