@@ -859,9 +859,29 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
     {
         try
         {
-            // MultiGet loads all keys into the block cache in a single batch,
-            // reducing per-call overhead compared to individual Get calls.
             _db.MultiGet(keys);
+        }
+        catch (RocksDbSharpException e)
+        {
+            CreateMarkerIfCorrupt(e);
+            throw;
+        }
+    }
+
+    internal void PrefetchWithColumnFamily(byte[][] keys, ColumnFamilyHandle? columnFamily)
+    {
+        try
+        {
+            if (columnFamily is null)
+            {
+                _db.MultiGet(keys);
+            }
+            else
+            {
+                ColumnFamilyHandle[] cfs = new ColumnFamilyHandle[keys.Length];
+                Array.Fill(cfs, columnFamily);
+                _db.MultiGet(keys, cfs);
+            }
         }
         catch (RocksDbSharpException e)
         {
