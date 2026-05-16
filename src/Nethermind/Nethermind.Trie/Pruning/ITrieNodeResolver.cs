@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Crypto;
@@ -42,5 +43,11 @@ namespace Nethermind.Trie.Pruning
         ITrieNodeResolver GetStorageTrieNodeResolver(Hash256? address);
 
         INodeStorage.KeyScheme Scheme { get; }
+
+        /// <summary>
+        /// Batch-prefetch RLP for multiple trie paths into the block cache via MultiGet.
+        /// Individual <see cref="LoadRlp"/> calls afterwards hit the cache instead of I/O.
+        /// </summary>
+        void PrefetchRlp(ReadOnlySpan<TreePath> paths) { }
     }
 }

@@ -230,6 +230,23 @@ public partial class PatriciaTree
                 jobs[nib] = (GetSpanOffset(originalEntriesArray, jobEntry), jobEntry.Length, nib, childPath, child, null);
             }
 
+            // Batch-prefetch all child trie nodes into RocksDB block cache before the
+            // parallel loop. Individual ResolveNode calls inside BulkSet then hit cache.
+            Span<TreePath> prefetchPaths = stackalloc TreePath[16];
+            int prefetchCount = 0;
+            for (int pi = 0; pi < TrieNode.BranchesCount; pi++)
+            {
+                (_, int count, _, TreePath childPath, TrieNode? child, _) = jobs[pi];
+                if (count > 0 && child is { NodeType: NodeType.Unknown })
+                {
+                    prefetchPaths[prefetchCount++] = childPath;
+                }
+            }
+            if (prefetchCount > 0)
+            {
+                TrieStore.PrefetchRlp(prefetchPaths[..prefetchCount]);
+            }
+
             Parallel.For(0, TrieNode.BranchesCount, ParallelUnbalancedWork.DefaultOptions,
                 GetTraverseStack,
                 (i, _, workerTraverseStack) =>

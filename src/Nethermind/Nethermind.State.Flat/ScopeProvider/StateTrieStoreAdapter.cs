@@ -77,6 +77,9 @@ internal sealed class StorageTrieStoreAdapter(
     public override byte[]? TryLoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) =>
         bundle.TryLoadStorageRlp(addressHash, in path, hash, flags);
 
+    public void PrefetchRlp(ReadOnlySpan<TreePath> paths) =>
+        bundle.PrefetchStorageNodes(addressHash, paths);
+
     public override ICommitter BeginCommit(TrieNode? root, WriteFlags writeFlags = WriteFlags.None) =>
         new Committer(bundle, addressHash, concurrencyQuota);
 
