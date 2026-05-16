@@ -26,7 +26,7 @@ internal static class XdcConstants
 
     public const int BlockSignersCacheLimit = 9000;
 
-    public const long DefaultTargetGasLimit = 84000000; // XDC default gas limit per block
+    public const long DefaultTargetGasLimit = 420_000_000; // XDC default gas limit per block
 
     public const byte ConsensusVersion = 0x02;
 
