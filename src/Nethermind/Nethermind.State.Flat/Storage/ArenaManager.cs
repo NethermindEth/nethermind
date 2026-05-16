@@ -311,6 +311,7 @@ public sealed class ArenaManager : IArenaManager
         // enough to fill 10% of the residency cap should be rare; if seen in practice, raise
         // the ring fraction or the per-arena budget.
         Interlocked.Increment(ref _evictionsInlineFallback);
+        Metrics.PageTrackerEvictionsInlineFallbackByTier.AddOrUpdate(_tier, 1L, static (_, c) => c + 1);
         DispatchEvictionInline(arenaId, pageIdx);
     }
 
@@ -348,6 +349,7 @@ public sealed class ArenaManager : IArenaManager
             return;
         }
         Interlocked.Increment(ref _evictionsDispatched);
+        Metrics.PageTrackerEvictionsDispatchedByTier.AddOrUpdate(_tier, 1L, static (_, c) => c + 1);
         DispatchEvictionInline(arenaId, pageIdx);
     }
 

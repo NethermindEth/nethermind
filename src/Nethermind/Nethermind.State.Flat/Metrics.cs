@@ -184,6 +184,18 @@ public static class Metrics
     public static ConcurrentDictionary<PersistedSnapshotTier, long> PageTrackerMaxBytesByTier { get; } = new();
 
     [DetailedMetric]
+    [CounterMetric]
+    [Description("Page-tracker evictions dispatched off the drain ring (madvise issued), by tier")]
+    [KeyIsLabel("tier")]
+    public static ConcurrentDictionary<PersistedSnapshotTier, long> PageTrackerEvictionsDispatchedByTier { get; } = new();
+
+    [DetailedMetric]
+    [CounterMetric]
+    [Description("Page-tracker evictions dispatched inline because the drain ring was full, by tier")]
+    [KeyIsLabel("tier")]
+    public static ConcurrentDictionary<PersistedSnapshotTier, long> PageTrackerEvictionsInlineFallbackByTier { get; } = new();
+
+    [DetailedMetric]
     [Description("Live arena reservations, by tier")]
     [KeyIsLabel("tier")]
     public static ConcurrentDictionary<PersistedSnapshotTier, long> ArenaReservationCountByTier { get; } = new();
