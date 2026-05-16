@@ -32,7 +32,6 @@ namespace Nethermind.State.Flat.Storage;
 /// </summary>
 public sealed class BlobArenaWriter : IDisposable
 {
-    private const int PageSize = 4096;
     private const int BufferSize = 1024 * 1024;
 
     private readonly BlobArenaManager _manager;
@@ -90,10 +89,10 @@ public sealed class BlobArenaWriter : IDisposable
         if (_completed || _disposed)
             throw new InvalidOperationException("BlobArenaWriter is closed.");
 
-        long offsetInPage = _written & (PageSize - 1);
-        if (rlp.Length <= PageSize && offsetInPage != 0 && offsetInPage + rlp.Length > PageSize)
+        long offsetInPage = _written & PageLayout.PageMask;
+        if (rlp.Length <= PageLayout.PageSize && offsetInPage != 0 && offsetInPage + rlp.Length > PageLayout.PageSize)
         {
-            int pad = (int)(PageSize - offsetInPage);
+            int pad = (int)(PageLayout.PageSize - offsetInPage);
             EnsureBufferSpace(pad)[..pad].Clear();
             _buffered += pad;
             _written += pad;

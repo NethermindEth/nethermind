@@ -25,7 +25,7 @@ public sealed class ArenaWriter : IDisposable
         _file = file;
         _dedicated = dedicated;
         _startOffset = startOffset;
-        long firstOffset = (-startOffset) & 4095L;
+        long firstOffset = (-startOffset) & PageLayout.PageMask;
         // The writer already owns the file ref — open the pending read view on it directly
         // instead of round-tripping through the manager's id→file dict lookup.
         _writer = new ArenaBufferWriter(stream, firstOffset,

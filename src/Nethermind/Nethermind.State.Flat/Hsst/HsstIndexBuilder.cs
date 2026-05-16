@@ -9,6 +9,7 @@ using System.Runtime.CompilerServices;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Utils;
 using Nethermind.State.Flat.BSearchIndex;
+using Nethermind.State.Flat.Storage;
 
 namespace Nethermind.State.Flat.Hsst;
 
@@ -146,12 +147,12 @@ public ref struct HsstIndexBuilder<TWriter, TReader, TPin>
             // leaf splitter so it can force-split a leaf that would otherwise
             // straddle a page boundary (mirrors the intermediate-node path's
             // WouldCrossNewPage gate). Computed pre-pad — over-triggers in the
-            // ≤ PageAlignPadThreshold close-to-edge case, which is benign.
-            long pageOff = (_writer.Written - firstOffset) & 4095L;
+            // ≤ PageLayout.PadThreshold close-to-edge case, which is benign.
+            long pageOff = (_writer.Written - firstOffset) & PageLayout.PageMask;
             if (!iter.MoveNext(pageOff)) break;
             int count = iter.Current;
 
-            // Pad to a fresh page if we're within PageAlignPadThreshold of
+            // Pad to a fresh page if we're within PageLayout.PadThreshold of
             // the boundary. Skipped on the first node — there's nothing to
             // pad away from yet.
             if (!firstNode) MaybePadToNextPage();
@@ -667,40 +668,31 @@ public ref struct HsstIndexBuilder<TWriter, TReader, TPin>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static bool WouldCrossNewPage(long nodeStart, long firstOffset, int committedSize, int candidateSize)
     {
-        long pageOff = (nodeStart - firstOffset) & 4095L;
-        bool committedCrosses = pageOff + committedSize > 4096;
-        bool candidateCrosses = pageOff + candidateSize > 4096;
+        long pageOff = (nodeStart - firstOffset) & PageLayout.PageMask;
+        bool committedCrosses = pageOff + committedSize > PageLayout.PageSize;
+        bool candidateCrosses = pageOff + candidateSize > PageLayout.PageSize;
         return candidateCrosses && !committedCrosses;
     }
 
     /// <summary>
-    /// Bytes-to-next-page threshold below which the builder pads up to the page
-    /// boundary before writing the next node. Companion to <see cref="WouldCrossNewPage"/>:
-    /// the page-crossing heuristic stops a node growing into the next page, but
-    /// the next node would then start at the seam and be guaranteed to cross.
-    /// Padding eats the small leftover (≤<see cref="PageAlignPadThreshold"/> bytes)
-    /// so the next node opens on a fresh page. Threshold is intentionally large
-    /// so most splits earn the alignment; nodes finalised well inside their page
-    /// (gap > threshold) skip padding to avoid writing kilobytes of zeros.
-    /// </summary>
-    private const int PageAlignPadThreshold = 64;
-
-    /// <summary>
-    /// If the writer is within <see cref="PageAlignPadThreshold"/> bytes of the
+    /// If the writer is within <see cref="PageLayout.PadThreshold"/> bytes of the
     /// next 4 KiB boundary, pad up to that boundary so the next node starts on a
-    /// fresh page. Padding bytes are inert: parent nodes record exact child
-    /// offsets, so readers never look at the padding region. Caller must avoid
-    /// invoking this after the very last node (root) — the trailer formula
-    /// <c>root_start = HSST_end - 4 - rootSize</c> assumes the trailer abuts the
-    /// root, and any padding between them would offset the computed root start.
+    /// fresh page. Companion to <see cref="WouldCrossNewPage"/>: the page-crossing
+    /// heuristic stops a node growing into the next page, but the next node would
+    /// then start at the seam and be guaranteed to cross. Padding bytes are inert:
+    /// parent nodes record exact child offsets, so readers never look at the
+    /// padding region. Caller must avoid invoking this after the very last node
+    /// (root) — the trailer formula <c>root_start = HSST_end - 4 - rootSize</c>
+    /// assumes the trailer abuts the root, and any padding between them would
+    /// offset the computed root start.
     /// </summary>
     private void MaybePadToNextPage()
     {
         long firstOffset = _writer.FirstOffset;
-        long pageOff = (_writer.Written - firstOffset) & 4095L;
+        long pageOff = (_writer.Written - firstOffset) & PageLayout.PageMask;
         if (pageOff == 0) return;
-        long remaining = 4096L - pageOff;
-        if (remaining > PageAlignPadThreshold) return;
+        long remaining = PageLayout.PageSize - pageOff;
+        if (remaining > PageLayout.PadThreshold) return;
         int len = (int)remaining;
         Span<byte> pad = _writer.GetSpan(len);
         pad[..len].Clear();
@@ -907,7 +899,7 @@ internal ref struct LeafBoundaryEnumerator
         // pageOff. Skip when the buffer is already at minLeafEntries — splitter would
         // immediately re-emit the same range and we'd loop; fall through to the
         // fallback (allow cross).
-        if (_bufCount > _minLeafEntries && (pageOff + EstimateBufSize() > 4096))
+        if (_bufCount > _minLeafEntries && (pageOff + EstimateBufSize() > PageLayout.PageSize))
         {
             if (_sp + 2 > _stack.Length)
                 throw new InvalidOperationException(
@@ -1034,7 +1026,7 @@ internal ref struct LeafBoundaryEnumerator
                     gap == 3 ||
                     vr > ValueRangeLimit ||
                     estimatedSize > MaxLeafBytes ||
-                    (pageOff + estimatedSize + prefixOverheadUB > 4096 && count > minLeafEntries);
+                    (pageOff + estimatedSize + prefixOverheadUB > PageLayout.PageSize && count > minLeafEntries);
                 if (!splitNeeded)
                 {
                     rawStart = lo;
@@ -1171,7 +1163,7 @@ internal ref struct LeafBoundaryEnumerator
         // raw split would push the buffered leaf across a 4 KiB page boundary from
         // the writer's current offset, refuse the merge so the buffered leaf is
         // flushed standalone and the next split starts a fresh buffer.
-        if (pageOff + estimated > 4096) return false;
+        if (pageOff + estimated > PageLayout.PageSize) return false;
 
         // Commit.
         _bufCount = mergedCount;

@@ -17,7 +17,7 @@ public interface IByteBufferWriter
     /// Smallest writer-local offset (in the same coordinate system as
     /// <see cref="Written"/>) that maps to a 4 KiB-aligned byte in the writer's
     /// eventual destination. Callers can pad to the next 4 KiB boundary with
-    /// <c>(-(Written - FirstOffset)) &amp; 4095L</c>. For writers whose backing
+    /// <c>(-(Written - FirstOffset)) &amp; PageLayout.PageMask</c>. For writers whose backing
     /// destination has no inherent alignment (e.g. transient in-memory buffers),
     /// implementations may return <c>0</c>.
     /// </summary>
