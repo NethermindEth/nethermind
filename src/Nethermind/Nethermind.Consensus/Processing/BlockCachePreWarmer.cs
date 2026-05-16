@@ -232,6 +232,17 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
             int txCount = block.Transactions.Length;
             if (txCount == 0) return;
 
+            // Phase 1: Bulk-warm all EIP-2930 access list entries across ALL txs in one parallel pass.
+            // This populates the SeqlockCache with known storage slots before speculative execution begins,
+            // giving the main thread immediate cache hits for access-listed entries.
+            if (blockState.Spec.UseTxAccessLists)
+            {
+                WarmupAllAccessLists(blockState, parallelOptions);
+            }
+
+            if (parallelOptions.CancellationToken.IsCancellationRequested) return;
+
+            // Phase 2: Moving window speculative tx execution for dynamic storage accesses.
             PrewarmerCompleted = new int[txCount];
             WarmingState<BlockState> baseState = new(_envPool, blockState, blockState.Parent);
 
@@ -262,6 +273,48 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         {
             _logger.DebugError("Error pre-warming transactions", ex);
         }
+    }
+
+    /// <summary>
+    /// Bulk-warm all EIP-2930 access list entries from every tx in the block in parallel.
+    /// Each worker claims a tx, reads its sender+to accounts and all access list storage slots
+    /// into the SeqlockCache via WorldState.WarmUp. This runs before speculative tx execution
+    /// so the cache is pre-populated with known entries for immediate main-thread hits.
+    /// </summary>
+    private void WarmupAllAccessLists(BlockState blockState, ParallelOptions parallelOptions)
+    {
+        Block block = blockState.Block;
+        Transaction[] txs = block.Transactions;
+        if (txs.Length == 0) return;
+
+        WarmingState<BlockState> baseState = new(_envPool, blockState, blockState.Parent);
+
+        ParallelUnbalancedWork.For(
+            0,
+            txs.Length,
+            parallelOptions,
+            baseState.InitThreadState,
+            static (txIndex, state) =>
+            {
+                Transaction tx = state.Payload.Block.Transactions[txIndex];
+                IWorldState worldState = state.Scope!.WorldState;
+
+                try
+                {
+                    if (tx.SenderAddress is not null)
+                        worldState.WarmUp(tx.SenderAddress);
+                    if (tx.To is not null)
+                        worldState.WarmUp(tx.To);
+                    worldState.WarmUp(tx.AccessList);
+                }
+                catch (Exception) when (state.Scope is not null)
+                {
+                    // Swallow trie/state exceptions during warmup
+                }
+
+                return state;
+            },
+            WarmingState<BlockState>.FinallyAction);
     }
 
     private static Dictionary<AddressAsKey, ArrayPoolList<(int Index, Transaction Tx)>> GroupTransactionsBySender(Block block)
