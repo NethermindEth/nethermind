@@ -107,7 +107,7 @@ public class PersistedSnapshotCompactBenchmark : IDisposable
                 views[i] = sessionArr[i].GetRawView();
             }
             PersistedSnapshotMerger.NWayMergeSnapshotsWithViews<PooledByteBufferWriter.Writer, PooledByteBufferWriter.WriterReader, NoOpPin>(
-                views, ref pooled.GetWriter(), bloom: null);
+                views, ref pooled.GetWriter(), bloom: Nethermind.State.Flat.Persistence.BloomFilter.BloomFilter.AlwaysTrue());
         }
         finally
         {

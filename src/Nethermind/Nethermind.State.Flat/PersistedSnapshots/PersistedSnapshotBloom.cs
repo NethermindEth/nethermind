@@ -7,45 +7,43 @@ using Nethermind.State.Flat.Persistence.BloomFilter;
 namespace Nethermind.State.Flat.PersistedSnapshots;
 
 /// <summary>
-/// Refcounted wrapper holding the key + trie blooms that cover a single state range
-/// (<see cref="From"/>, <see cref="To"/>]. Owned by
-/// <see cref="PersistedSnapshotBloomFilterManager"/>; the manager and any read-side
-/// lessees each hold one lease, so the underlying <see cref="BloomFilter"/>s are
-/// only released when every slot and every reader has disposed its lease.
+/// Refcounted wrapper holding the single bloom that covers a state range
+/// (<see cref="From"/>, <see cref="To"/>]. The bloom carries every key type
+/// (address / slot / self-destruct / state-trie path / storage-trie path)
+/// in one filter — query call sites compute the type-specific hash and probe
+/// this one <see cref="Bloom"/>. Owned by
+/// <see cref="PersistedSnapshotBloomFilterManager"/>; the manager and any
+/// read-side lessees each hold one lease, so the underlying
+/// <see cref="BloomFilter"/> is only released when every slot and every reader
+/// has disposed its lease.
 ///
 /// On construction/cleanup the wrapper updates
-/// <see cref="Metrics.PersistedSnapshotKeyBloomMemory"/> and
-/// <see cref="Metrics.PersistedSnapshotTrieBloomMemory"/> incrementally, so the
-/// gauges always reflect the live bloom set without a polling pass.
+/// <see cref="Metrics.PersistedSnapshotBloomMemory"/> incrementally, so the
+/// gauge always reflects the live bloom set without a polling pass.
 /// </summary>
 public sealed class PersistedSnapshotBloom : RefCountingDisposable
 {
-    public BloomFilter KeyBloom { get; }
-    public BloomFilter TrieBloom { get; }
+    public BloomFilter Bloom { get; }
     public StateId From { get; }
     public StateId To { get; }
 
-    public PersistedSnapshotBloom(StateId from, StateId to, BloomFilter keyBloom, BloomFilter trieBloom)
+    public PersistedSnapshotBloom(StateId from, StateId to, BloomFilter bloom)
     {
         From = from;
         To = to;
-        KeyBloom = keyBloom;
-        TrieBloom = trieBloom;
-        Interlocked.Add(ref Metrics._persistedSnapshotKeyBloomMemory, keyBloom.DataBytes);
-        Interlocked.Add(ref Metrics._persistedSnapshotTrieBloomMemory, trieBloom.DataBytes);
+        Bloom = bloom;
+        Interlocked.Add(ref Metrics._persistedSnapshotBloomMemory, bloom.DataBytes);
     }
 
     /// <summary>Lease for an additional concurrent user. Returns false if already disposed.</summary>
     public bool TryAcquire() => TryAcquireLease();
 
-    public long KeyBloomCount => KeyBloom.Count;
+    public long BloomCount => Bloom.Count;
 
     protected override void CleanUp()
     {
-        Interlocked.Add(ref Metrics._persistedSnapshotKeyBloomMemory, -KeyBloom.DataBytes);
-        Interlocked.Add(ref Metrics._persistedSnapshotTrieBloomMemory, -TrieBloom.DataBytes);
-        KeyBloom.Dispose();
-        TrieBloom.Dispose();
+        Interlocked.Add(ref Metrics._persistedSnapshotBloomMemory, -Bloom.DataBytes);
+        Bloom.Dispose();
     }
 
     private static readonly PersistedSnapshotBloom s_alwaysTrue = CreateAlwaysTrue();
@@ -55,28 +53,17 @@ public sealed class PersistedSnapshotBloom : RefCountingDisposable
     /// query. Used when the manager has no entry for a snapshot's <c>To</c> (race
     /// against compaction/prune, or never-registered). The instance is initialised
     /// with a lease count high enough that <see cref="RefCountingDisposable.CleanUp"/>
-    /// can never run, so its underlying <see cref="BloomFilter"/>s live forever.
+    /// can never run, so its underlying <see cref="BloomFilter"/> lives forever.
     /// </summary>
     public static PersistedSnapshotBloom AlwaysTrue => s_alwaysTrue;
 
     private static PersistedSnapshotBloom CreateAlwaysTrue()
     {
-        // Saturate two minimum-size (1-block, 64B) bloom filters so every probe hits.
-        BloomFilter keyBloom = new(capacity: 1, bitsPerKey: 1.0);
-        BloomFilter trieBloom = new(capacity: 1, bitsPerKey: 1.0);
-        SaturateAllBits(keyBloom);
-        SaturateAllBits(trieBloom);
-        PersistedSnapshotBloom sentinel = new(StateId.PreGenesis, StateId.PreGenesis, keyBloom, trieBloom);
+        PersistedSnapshotBloom sentinel = new(StateId.PreGenesis, StateId.PreGenesis, BloomFilter.AlwaysTrue());
         // Set leases very high so all decrement paths never reach zero.
         // Direct field write is safe here: this is called inside the static
         // initialiser before any thread has access to the instance.
         sentinel._leases.Value = long.MaxValue / 2;
         return sentinel;
-    }
-
-    private static unsafe void SaturateAllBits(BloomFilter bloom)
-    {
-        byte* data = bloom.DangerousGetDataPointer();
-        for (long i = 0; i < bloom.DataBytes; i++) data[i] = 0xFF;
     }
 }

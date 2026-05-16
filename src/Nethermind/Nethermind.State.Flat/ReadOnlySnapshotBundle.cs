@@ -80,7 +80,7 @@ public sealed class ReadOnlySnapshotBundle(
             ulong addrBloomKey = PersistedSnapshotBloomBuilder.AddressKey(in addressHash);
             for (int i = persistedSnapshots.Count - 1; i >= 0; i--)
             {
-                if (!persistedBlooms[i].KeyBloom.MightContain(addrBloomKey)) continue;
+                if (!persistedBlooms[i].Bloom.MightContain(addrBloomKey)) continue;
                 if (persistedSnapshots[i].TryGetAccount(in addressHash, out Account? acc))
                 {
                     if (recordDetailedMetrics) Metrics.ReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - psw, _readAccountPersistedLabel);
@@ -119,7 +119,7 @@ public sealed class ReadOnlySnapshotBundle(
             ulong addrBloomKey = PersistedSnapshotBloomBuilder.AddressKey(in addressHash);
             for (int i = persistedSnapshots.Count - 1; i >= 0; i--)
             {
-                if (!persistedBlooms[i].KeyBloom.MightContain(addrBloomKey)) continue;
+                if (!persistedBlooms[i].Bloom.MightContain(addrBloomKey)) continue;
                 bool? flag = persistedSnapshots[i].TryGetSelfDestructFlag(in addressHash);
                 if (flag.HasValue)
                     return i;
@@ -165,7 +165,7 @@ public sealed class ReadOnlySnapshotBundle(
             for (int i = persistedSnapshots.Count - 1; i >= 0; i--)
             {
                 PersistedSnapshotBloom bloom = persistedBlooms[i];
-                if (bloom.KeyBloom.MightContain(addrBloomKey) && bloom.KeyBloom.MightContain(slotBloomKey))
+                if (bloom.Bloom.MightContain(addrBloomKey) && bloom.Bloom.MightContain(slotBloomKey))
                 {
                     SlotValue slotValue = default;
                     if (persistedSnapshots[i].TryGetSlot(in addressHash, in index, ref slotValue))
@@ -258,7 +258,7 @@ public sealed class ReadOnlySnapshotBundle(
         ulong statePathBloomKey = PersistedSnapshotBloomBuilder.StatePathKey(in path);
         for (int i = persistedSnapshots.Count - 1; i >= 0; i--)
         {
-            if (!persistedBlooms[i].TrieBloom.MightContain(statePathBloomKey)) continue;
+            if (!persistedBlooms[i].Bloom.MightContain(statePathBloomKey)) continue;
             if (persistedSnapshots[i].TryLoadStateNodeRlp(in path, out byte[]? rlp))
             {
                 if (recordDetailedMetrics) Metrics.ReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - sw, _readStateRlpPersistedLabel);
@@ -286,7 +286,7 @@ public sealed class ReadOnlySnapshotBundle(
         ulong storageBloomKey = PersistedSnapshotBloomBuilder.StorageNodeKey(in addressHash, in path);
         for (int i = persistedSnapshots.Count - 1; i >= 0; i--)
         {
-            if (!persistedBlooms[i].TrieBloom.MightContain(storageBloomKey)) continue;
+            if (!persistedBlooms[i].Bloom.MightContain(storageBloomKey)) continue;
             if (persistedSnapshots[i].TryLoadStorageNodeRlp(in addressHash, in path, out byte[]? rlp))
             {
                 if (recordDetailedMetrics) Metrics.ReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - sw, _readStorageRlpPersistedLabel);

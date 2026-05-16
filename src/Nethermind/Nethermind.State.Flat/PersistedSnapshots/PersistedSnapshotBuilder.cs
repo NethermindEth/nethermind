@@ -66,7 +66,7 @@ public static class PersistedSnapshotBuilder
     private static readonly Comparison<(ValueHash256 Hash, ValueAddress Addr)> HashToAddrComparer = (a, b) =>
         a.Hash.CompareTo(b.Hash);
 
-    public static void Build<TWriter, TReader, TPin>(Snapshot snapshot, ref TWriter writer, BlobArenaWriter blobWriter, BloomFilter? bloom = null, BloomFilter? trieBloom = null) where TWriter : IByteBufferWriterWithReader<TReader, TPin> where TReader : IHsstByteReader<TPin>, allows ref struct where TPin : struct, IBufferPin, allows ref struct
+    public static void Build<TWriter, TReader, TPin>(Snapshot snapshot, ref TWriter writer, BlobArenaWriter blobWriter, BloomFilter bloom) where TWriter : IByteBufferWriterWithReader<TReader, TPin> where TReader : IHsstByteReader<TPin>, allows ref struct where TPin : struct, IBufferPin, allows ref struct
     {
         // To stay off the LOH, we keep only the unmanaged sort keys in NativeMemoryList
         // (off-heap) and re-fetch the TrieNode value from the source ConcurrentDictionary
@@ -219,16 +219,16 @@ public static class PersistedSnapshotBuilder
             // 0x06 (SD), 0x07 (raw 20-byte Address preimage). Outer key is the 20-byte
             // addressHash prefix.
             WritePerAddressColumn<TWriter, TReader, TPin>(ref outer, snapshot, sortedStorages, uniqueAddressHashes,
-                hashToAddr, storTopKeys, storCompactKeys, storFallbackKeys, blobWriter, bloom, trieBloom);
+                hashToAddr, storTopKeys, storCompactKeys, storFallbackKeys, blobWriter, bloom);
 
             // Column 0x03: State nodes (compact, path length 6-15)
-            WriteStateNodesColumnCompact<TWriter, TReader, TPin>(ref outer, snapshot, stateCompactKeys, blobWriter, trieBloom);
+            WriteStateNodesColumnCompact<TWriter, TReader, TPin>(ref outer, snapshot, stateCompactKeys, blobWriter, bloom);
 
             // Column 0x05: State top nodes (path length 0-5)
-            WriteStateTopNodesColumn<TWriter, TReader, TPin>(ref outer, snapshot, stateTopKeys, blobWriter, trieBloom);
+            WriteStateTopNodesColumn<TWriter, TReader, TPin>(ref outer, snapshot, stateTopKeys, blobWriter, bloom);
 
             // Column 0x06: State nodes fallback (path length 16+)
-            WriteStateNodesColumnFallback<TWriter, TReader, TPin>(ref outer, snapshot, stateFallbackKeys, blobWriter, trieBloom);
+            WriteStateNodesColumnFallback<TWriter, TReader, TPin>(ref outer, snapshot, stateFallbackKeys, blobWriter, bloom);
 
             outer.Build();
         }
@@ -300,8 +300,7 @@ public static class PersistedSnapshotBuilder
         NativeMemoryList<(ValueHash256 AddrHash, TreePath Path)> storCompact,
         NativeMemoryList<(ValueHash256 AddrHash, TreePath Path)> storFallback,
         BlobArenaWriter blobWriter,
-        BloomFilter? bloom = null,
-        BloomFilter? trieBloom = null) where TWriter : IByteBufferWriterWithReader<TReader, TPin> where TReader : IHsstByteReader<TPin>, allows ref struct where TPin : struct, IBufferPin, allows ref struct
+        BloomFilter bloom) where TWriter : IByteBufferWriterWithReader<TReader, TPin> where TReader : IHsstByteReader<TPin>, allows ref struct where TPin : struct, IBufferPin, allows ref struct
     {
         const int slotPrefixLength = 30;
         const int slotSuffixLength = 32 - slotPrefixLength;
@@ -365,12 +364,8 @@ public static class PersistedSnapshotBuilder
             }
             ReadOnlySpan<byte> addressHashPrefix = addressHash.Bytes[..AddressHashPrefixLength];
 
-            ulong addrBloomKey = 0;
-            if (bloom is not null)
-            {
-                addrBloomKey = PersistedSnapshotBloomBuilder.AddressKey(in addressHash);
-                bloom.Add(addrBloomKey);
-            }
+            ulong addrBloomKey = PersistedSnapshotBloomBuilder.AddressKey(in addressHash);
+            bloom.Add(addrBloomKey);
 
             // Begin per-address HSST. Up to 7 sub-tags 0x01..0x07; DenseByteIndex addresses
             // entries by tag-byte directly and gap-fills missing positions with length-0
@@ -415,7 +410,7 @@ public static class PersistedSnapshotBuilder
                     ref TWriter topValueWriter = ref topLevel.BeginValueWrite();
                     IByteBufferWriter.Copy(ref topValueWriter, nrBuf);
                     topLevel.FinishValueWrite(topPathKey, NodeRef.Size);
-                    trieBloom?.Add(PersistedSnapshotBloomBuilder.StorageNodeKey(in addressHash, in path));
+                    bloom.Add(PersistedSnapshotBloomBuilder.StorageNodeKey(in addressHash, in path));
                 }
                 topLevel.Build();
                 perAddr.FinishValueWrite(PersistedSnapshot.StorageTopSubTag);
@@ -443,7 +438,7 @@ public static class PersistedSnapshotBuilder
                     ref TWriter compactValueWriter = ref compactLevel.BeginValueWrite();
                     IByteBufferWriter.Copy(ref compactValueWriter, nrBuf);
                     compactLevel.FinishValueWrite(compactPathKey, NodeRef.Size);
-                    trieBloom?.Add(PersistedSnapshotBloomBuilder.StorageNodeKey(in addressHash, in path));
+                    bloom.Add(PersistedSnapshotBloomBuilder.StorageNodeKey(in addressHash, in path));
                 }
                 compactLevel.Build();
                 perAddr.FinishValueWrite(PersistedSnapshot.StorageCompactSubTag);
@@ -471,7 +466,7 @@ public static class PersistedSnapshotBuilder
                     ref TWriter fbValueWriter = ref fbLevel.BeginValueWrite();
                     IByteBufferWriter.Copy(ref fbValueWriter, nrBuf);
                     fbLevel.FinishValueWrite(fallbackPathKey, NodeRef.Size);
-                    trieBloom?.Add(PersistedSnapshotBloomBuilder.StorageNodeKey(in addressHash, in path));
+                    bloom.Add(PersistedSnapshotBloomBuilder.StorageNodeKey(in addressHash, in path));
                 }
                 fbLevel.Build();
                 perAddr.FinishValueWrite(PersistedSnapshot.StorageFallbackSubTag);
@@ -519,7 +514,6 @@ public static class PersistedSnapshotBuilder
                         for (int i = groupStart; i < groupEnd; i++)
                         {
                             sortedStorages[i].Key.Slot.ToBigEndian(slotKey);
-                            if (bloom is not null)
                                 bloom.Add(PersistedSnapshotBloomBuilder.SlotKey(addrBloomKey, slotKey));
                             SlotValue? value = sortedStorages[i].Value;
                             ReadOnlySpan<byte> suffixKey = slotKey.Slice(slotPrefixLength, slotSuffixLength);
@@ -536,7 +530,6 @@ public static class PersistedSnapshotBuilder
                         for (int i = groupStart; i < groupEnd; i++)
                         {
                             sortedStorages[i].Key.Slot.ToBigEndian(slotKey);
-                            if (bloom is not null)
                                 bloom.Add(PersistedSnapshotBloomBuilder.SlotKey(addrBloomKey, slotKey));
                             SlotValue? value = sortedStorages[i].Value;
                             ReadOnlySpan<byte> suffixKey = slotKey.Slice(slotPrefixLength, slotSuffixLength);
@@ -599,7 +592,7 @@ public static class PersistedSnapshotBuilder
         slotPrefixBuffers.Dispose();
     }
 
-    private static void WriteStateTopNodesColumn<TWriter, TReader, TPin>(ref HsstDenseByteIndexBuilder<TWriter> outer, Snapshot snapshot, NativeMemoryList<TreePath> stateNodeKeys, BlobArenaWriter blobWriter, BloomFilter? trieBloom = null) where TWriter : IByteBufferWriterWithReader<TReader, TPin> where TReader : IHsstByteReader<TPin>, allows ref struct where TPin : struct, IBufferPin, allows ref struct
+    private static void WriteStateTopNodesColumn<TWriter, TReader, TPin>(ref HsstDenseByteIndexBuilder<TWriter> outer, Snapshot snapshot, NativeMemoryList<TreePath> stateNodeKeys, BlobArenaWriter blobWriter, BloomFilter bloom) where TWriter : IByteBufferWriterWithReader<TReader, TPin> where TReader : IHsstByteReader<TPin>, allows ref struct where TPin : struct, IBufferPin, allows ref struct
     {
         ref TWriter innerWriter = ref outer.BeginValueWrite();
         using HsstBTreeBuilder<TWriter, TReader, TPin> inner = new(ref innerWriter, keyLength: 4, new HsstBTreeOptions
@@ -619,14 +612,14 @@ public static class PersistedSnapshotBuilder
             ref TWriter valueWriter = ref inner.BeginValueWrite();
             IByteBufferWriter.Copy(ref valueWriter, nrBuf);
             inner.FinishValueWrite(keyBuffer, NodeRef.Size);
-            trieBloom?.Add(PersistedSnapshotBloomBuilder.StatePathKey(in path));
+            bloom.Add(PersistedSnapshotBloomBuilder.StatePathKey(in path));
         }
 
         inner.Build();
         outer.FinishValueWrite(PersistedSnapshot.StateTopNodesTag);
     }
 
-    private static void WriteStateNodesColumnCompact<TWriter, TReader, TPin>(ref HsstDenseByteIndexBuilder<TWriter> outer, Snapshot snapshot, NativeMemoryList<TreePath> stateNodeKeys, BlobArenaWriter blobWriter, BloomFilter? trieBloom = null) where TWriter : IByteBufferWriterWithReader<TReader, TPin> where TReader : IHsstByteReader<TPin>, allows ref struct where TPin : struct, IBufferPin, allows ref struct
+    private static void WriteStateNodesColumnCompact<TWriter, TReader, TPin>(ref HsstDenseByteIndexBuilder<TWriter> outer, Snapshot snapshot, NativeMemoryList<TreePath> stateNodeKeys, BlobArenaWriter blobWriter, BloomFilter bloom) where TWriter : IByteBufferWriterWithReader<TReader, TPin> where TReader : IHsstByteReader<TPin>, allows ref struct where TPin : struct, IBufferPin, allows ref struct
     {
         ref TWriter innerWriter = ref outer.BeginValueWrite();
         using HsstBTreeBuilder<TWriter, TReader, TPin> inner = new(ref innerWriter, keyLength: 8, new HsstBTreeOptions
@@ -646,14 +639,14 @@ public static class PersistedSnapshotBuilder
             ref TWriter valueWriter = ref inner.BeginValueWrite();
             IByteBufferWriter.Copy(ref valueWriter, nrBuf);
             inner.FinishValueWrite(keyBuffer, NodeRef.Size);
-            trieBloom?.Add(PersistedSnapshotBloomBuilder.StatePathKey(in path));
+            bloom.Add(PersistedSnapshotBloomBuilder.StatePathKey(in path));
         }
 
         inner.Build();
         outer.FinishValueWrite(PersistedSnapshot.StateNodeTag);
     }
 
-    private static void WriteStateNodesColumnFallback<TWriter, TReader, TPin>(ref HsstDenseByteIndexBuilder<TWriter> outer, Snapshot snapshot, NativeMemoryList<TreePath> stateNodeKeys, BlobArenaWriter blobWriter, BloomFilter? trieBloom = null) where TWriter : IByteBufferWriterWithReader<TReader, TPin> where TReader : IHsstByteReader<TPin>, allows ref struct where TPin : struct, IBufferPin, allows ref struct
+    private static void WriteStateNodesColumnFallback<TWriter, TReader, TPin>(ref HsstDenseByteIndexBuilder<TWriter> outer, Snapshot snapshot, NativeMemoryList<TreePath> stateNodeKeys, BlobArenaWriter blobWriter, BloomFilter bloom) where TWriter : IByteBufferWriterWithReader<TReader, TPin> where TReader : IHsstByteReader<TPin>, allows ref struct where TPin : struct, IBufferPin, allows ref struct
     {
         ref TWriter innerWriter = ref outer.BeginValueWrite();
         using HsstBTreeBuilder<TWriter, TReader, TPin> inner = new(ref innerWriter, keyLength: 33, expectedKeyCount: stateNodeKeys.Count);
@@ -671,7 +664,7 @@ public static class PersistedSnapshotBuilder
             ref TWriter valueWriter = ref inner.BeginValueWrite();
             IByteBufferWriter.Copy(ref valueWriter, nrBuf);
             inner.FinishValueWrite(keyBuffer, NodeRef.Size);
-            trieBloom?.Add(PersistedSnapshotBloomBuilder.StatePathKey(in path));
+            bloom.Add(PersistedSnapshotBloomBuilder.StatePathKey(in path));
         }
 
         inner.Build();

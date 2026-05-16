@@ -106,24 +106,15 @@ public static class Metrics
     [Description("Estimated memory used by compacted persisted snapshots in bytes")]
     public static long CompactedPersistedSnapshotMemory { get; set; }
 
-    // Backed by fields so callers can update via Interlocked.Add(ref ...).
-    internal static long _persistedSnapshotKeyBloomMemory;
-    internal static long _persistedSnapshotTrieBloomMemory;
+    // Backed by a field so callers can update via Interlocked.Add(ref ...).
+    internal static long _persistedSnapshotBloomMemory;
 
     [GaugeMetric]
-    [Description("Memory used by per-snapshot key bloom filters (address/slot/self-destruct) in bytes")]
-    public static long PersistedSnapshotKeyBloomMemory
+    [Description("Memory used by per-snapshot blooms (address/slot/self-destruct/trie) in bytes")]
+    public static long PersistedSnapshotBloomMemory
     {
-        get => Volatile.Read(ref _persistedSnapshotKeyBloomMemory);
-        set => Volatile.Write(ref _persistedSnapshotKeyBloomMemory, value);
-    }
-
-    [GaugeMetric]
-    [Description("Memory used by per-snapshot trie bloom filters (state and storage trie nodes) in bytes")]
-    public static long PersistedSnapshotTrieBloomMemory
-    {
-        get => Volatile.Read(ref _persistedSnapshotTrieBloomMemory);
-        set => Volatile.Write(ref _persistedSnapshotTrieBloomMemory, value);
+        get => Volatile.Read(ref _persistedSnapshotBloomMemory);
+        set => Volatile.Write(ref _persistedSnapshotBloomMemory, value);
     }
 
     [DetailedMetric]

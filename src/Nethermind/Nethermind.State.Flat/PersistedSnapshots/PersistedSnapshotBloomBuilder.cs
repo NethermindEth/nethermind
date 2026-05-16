@@ -15,21 +15,16 @@ namespace Nethermind.State.Flat.PersistedSnapshots;
 internal static class PersistedSnapshotBloomBuilder
 {
     /// <summary>
-    /// Build the address/slot/self-destruct bloom for <paramref name="snapshot"/>, reading
-    /// its bytes through the caller-owned <paramref name="session"/>.
+    /// Build the unified bloom for <paramref name="snapshot"/> — covers address /
+    /// slot / self-destruct keys plus state-trie and storage-trie paths in a single
+    /// filter. Reads bytes through the caller-owned <paramref name="session"/>; this
+    /// method does not dispose it.
     /// </summary>
-    /// <remarks>
-    /// The session belongs to the caller — this method does not dispose it. Callers that
-    /// also need <see cref="BuildTrieBloom"/> for the same snapshot should pass the same
-    /// session so both passes share one mmap view and one MADV_DONTNEED on dispose.
-    /// </remarks>
     internal static BloomFilter Build(WholeReadSession session, PersistedSnapshot snapshot, double bitsPerKey)
     {
         PersistedSnapshotScanner scanner = new(session, snapshot);
 
-        // Pass 1: count keys to size the bloom accurately. Lazy entries: no decoding.
-        // One walk over column 0x01 reaches all three sub-tags per address, so the
-        // counting cost drops from 3× to 1× per row (vs the pre-refactor 3 enumerables).
+        // Pass 1: count keys to size the bloom accurately.
         long capacity = 0;
         foreach (PersistedSnapshotScanner.PerAddressEntry entry in scanner.PerAddresses)
         {
@@ -38,14 +33,17 @@ internal static class PersistedSnapshotBloomBuilder
             foreach (PersistedSnapshotScanner.SlotEntry _ in entry.Slots)
                 capacity += 2; // address key + (address, slot) key
         }
+        foreach (PersistedSnapshotScanner.StateNodeEntry _ in scanner.StateNodes)
+            capacity++;
+        foreach (PersistedSnapshotScanner.StorageNodeEntry _ in scanner.StorageNodes)
+            capacity++;
 
         if (capacity == 0)
             capacity = 1;
 
         BloomFilter bloom = new(capacity, bitsPerKey);
 
-        // Pass 2: add keys. AddressHash is read once per row from the outer key — the
-        // bloom-key derivation is allocation-free per slot.
+        // Pass 2: populate. Address/slot/SD keys.
         foreach (PersistedSnapshotScanner.PerAddressEntry entry in scanner.PerAddresses)
         {
             ValueHash256 addressHash = entry.AddressHash;
@@ -60,33 +58,9 @@ internal static class PersistedSnapshotBloomBuilder
                 bloom.Add(SlotKey(addrKey, slot.Slot));
             }
         }
-
-        return bloom;
-    }
-
-    /// <summary>
-    /// Build a bloom filter covering the trie-node columns (state-trie paths and
-    /// storage-trie (addressHash, path) keys). Sized from a scanner count pass. The
-    /// caller owns <paramref name="session"/>; this method does not dispose it.
-    /// </summary>
-    internal static BloomFilter BuildTrieBloom(WholeReadSession session, PersistedSnapshot snapshot, double bitsPerKey)
-    {
-        PersistedSnapshotScanner scanner = new(session, snapshot);
-
-        long capacity = 0;
-        foreach (PersistedSnapshotScanner.StateNodeEntry _ in scanner.StateNodes)
-            capacity++;
-        foreach (PersistedSnapshotScanner.StorageNodeEntry _ in scanner.StorageNodes)
-            capacity++;
-
-        if (capacity == 0)
-            capacity = 1;
-
-        BloomFilter bloom = new(capacity, bitsPerKey);
-
+        // Trie-node keys (state + storage).
         foreach (PersistedSnapshotScanner.StateNodeEntry entry in scanner.StateNodes)
             bloom.Add(StatePathKey(entry.Path));
-
         foreach (PersistedSnapshotScanner.StorageNodeEntry entry in scanner.StorageNodes)
             bloom.Add(StorageNodeKey(entry.AddressHash, entry.Path));
 
@@ -162,4 +136,24 @@ internal static class PersistedSnapshotBloomBuilder
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal static ulong StorageNodeKey(in ValueHash256 addressHash, in TreePath path) =>
         MemoryMarshal.Read<ulong>(addressHash.Bytes) ^ StatePathKey(in path);
+
+    /// <summary>
+    /// Span-based <see cref="StatePathKey(in TreePath)"/> for callers (the merger) that
+    /// see raw encoded column keys rather than reconstructed <see cref="TreePath"/>s.
+    /// Byte-equivalent to the <see cref="TreePath"/> overload: 4-byte and 8-byte
+    /// compact keys are exactly what <c>EncodeWith4Byte</c>/<c>EncodeWith8Byte</c>
+    /// produce, and the 33-byte fallback key already carries <c>[path.Path.Bytes][length]</c>.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal static ulong StatePathKey(scoped ReadOnlySpan<byte> encodedKey)
+    {
+        Span<byte> encoded = stackalloc byte[33];
+        encoded.Clear();
+        encodedKey.CopyTo(encoded);
+        ulong p0 = MemoryMarshal.Read<ulong>(encoded);
+        ulong p1 = MemoryMarshal.Read<ulong>(encoded[8..]);
+        ulong p2 = MemoryMarshal.Read<ulong>(encoded[16..]);
+        ulong p3 = MemoryMarshal.Read<ulong>(encoded[24..]);
+        return p0 ^ p1 ^ p2 ^ p3 ^ encoded[32];
+    }
 }

@@ -41,7 +41,6 @@ public sealed class PersistedSnapshotRepository(
     private readonly int _compactSize = config.CompactSize;
     private readonly bool _validatePersistedSnapshot = config.ValidatePersistedSnapshot;
     private readonly double _bloomBitsPerKey = config.PersistedSnapshotBloomBitsPerKey;
-    private readonly double _trieBloomBitsPerKey = config.PersistedSnapshotTrieBloomBitsPerKey;
     private readonly string _tierLabel = arenaManager.Tier.Name;
     private readonly ConcurrentDictionary<StateId, PersistedSnapshot> _baseSnapshots = new();
     private readonly ConcurrentDictionary<StateId, PersistedSnapshot> _compactedSnapshots = new();
@@ -50,7 +49,7 @@ public sealed class PersistedSnapshotRepository(
     private readonly PersistedSnapshotBloomFilterManager _bloomManager = bloomManager;
     private readonly Lock _catalogLock = new();
 
-    private bool BloomEnabled => _bloomBitsPerKey > 0 && _trieBloomBitsPerKey > 0;
+    private bool BloomEnabled => _bloomBitsPerKey > 0;
 
     public int SnapshotCount => _baseSnapshots.Count + _compactedSnapshots.Count;
     public long BaseSnapshotMemory => SumMemory(_baseSnapshots);
@@ -95,22 +94,19 @@ public sealed class PersistedSnapshotRepository(
         // reservation lease before rethrowing — no repository-side cleanup needed.
         PersistedSnapshot snapshot = new(entry.From, entry.To, reservation, _blobs, _arena.Tier);
 
-        // Share one WholeReadSession across both bloom builds — the alternative (each
-        // builder opening its own) wastes an mmap+madvise pair per loaded snapshot.
-        BloomFilter keyBloom;
-        BloomFilter trieBloom;
+        // One WholeReadSession, one Build call. The bloom covers all key flavours
+        // (address / slot / SD / state-trie / storage-trie) in a single filter.
+        BloomFilter bloom;
         if (BloomEnabled)
         {
             using WholeReadSession session = snapshot.BeginWholeReadSession();
-            keyBloom = PersistedSnapshotBloomBuilder.Build(session, snapshot, _bloomBitsPerKey);
-            trieBloom = PersistedSnapshotBloomBuilder.BuildTrieBloom(session, snapshot, _trieBloomBitsPerKey);
+            bloom = PersistedSnapshotBloomBuilder.Build(session, snapshot, _bloomBitsPerKey);
         }
         else
         {
-            keyBloom = BloomFilter.AlwaysTrue();
-            trieBloom = BloomFilter.AlwaysTrue();
+            bloom = BloomFilter.AlwaysTrue();
         }
-        RegisterBlooms(snapshot, keyBloom, trieBloom);
+        RegisterBlooms(snapshot, bloom);
 
         if (range > _compactSize)
             _compactedSnapshots[entry.To] = snapshot;
@@ -129,20 +125,21 @@ public sealed class PersistedSnapshotRepository(
     /// </summary>
     public void ConvertSnapshotToPersistedSnapshot(Snapshot snapshot)
     {
-        BloomFilter? bloom = null;
-        if (_bloomBitsPerKey > 0)
+        // One unified bloom covering account/slot/SD keys + state-trie + storage-trie paths.
+        // Sized as the union of both expected key counts at the configured bits-per-key.
+        BloomFilter bloom;
+        if (BloomEnabled)
         {
             long capacity = (long)snapshot.AccountsCount
                           + snapshot.Content.SelfDestructedStorageAddresses.Count
-                          + 2L * snapshot.StoragesCount;
+                          + 2L * snapshot.StoragesCount
+                          + snapshot.StateNodesCount
+                          + snapshot.StorageNodesCount;
             bloom = new BloomFilter(Math.Max(capacity, 1), _bloomBitsPerKey);
         }
-
-        BloomFilter? trieBloom = null;
-        if (_trieBloomBitsPerKey > 0)
+        else
         {
-            long trieCapacity = (long)snapshot.StateNodesCount + snapshot.StorageNodesCount;
-            trieBloom = new BloomFilter(Math.Max(trieCapacity, 1), _trieBloomBitsPerKey);
+            bloom = BloomFilter.AlwaysTrue();
         }
 
         long estimatedSize = PersistedSnapshotBuilder.EstimateSize(snapshot);
@@ -153,7 +150,7 @@ public sealed class PersistedSnapshotRepository(
         using (ArenaWriter arenaWriter = _arena.CreateWriter(estimatedSize))
         {
             PersistedSnapshotBuilder.Build<ArenaBufferWriter, ArenaBufferReader, NoOpPin>(
-                snapshot, ref arenaWriter.GetWriter(), blobWriter, bloom, trieBloom);
+                snapshot, ref arenaWriter.GetWriter(), blobWriter, bloom);
             _persistedSnapshotSize.WithLabels(_tierLabel).Observe(arenaWriter.GetWriter().Written);
             (location, reservation) = arenaWriter.Complete();
         }
@@ -168,7 +165,7 @@ public sealed class PersistedSnapshotRepository(
             _catalog.Save();
 
             PersistedSnapshot persisted = new(snapshot.From, snapshot.To, reservation, _blobs, _arena.Tier);
-            RegisterBlooms(persisted, bloom ?? BloomFilter.AlwaysTrue(), trieBloom ?? BloomFilter.AlwaysTrue());
+            RegisterBlooms(persisted, bloom);
             if (_validatePersistedSnapshot)
                 PersistedSnapshotUtils.ValidatePersistedSnapshot(snapshot, persisted, _bloomManager);
             _baseSnapshots[snapshot.To] = persisted;
@@ -199,18 +196,7 @@ public sealed class PersistedSnapshotRepository(
             _catalog.Save();
 
             snapshot = new PersistedSnapshot(from, to, reservation, _blobs, _arena.Tier);
-
-            BloomFilter trieBloom;
-            if (BloomEnabled)
-            {
-                using WholeReadSession session = snapshot.BeginWholeReadSession();
-                trieBloom = PersistedSnapshotBloomBuilder.BuildTrieBloom(session, snapshot, _trieBloomBitsPerKey);
-            }
-            else
-            {
-                trieBloom = BloomFilter.AlwaysTrue();
-            }
-            RegisterBlooms(snapshot, bloom, trieBloom);
+            RegisterBlooms(snapshot, bloom);
 
             _compactedSnapshots[to] = snapshot;
         }
@@ -388,13 +374,14 @@ public sealed class PersistedSnapshotRepository(
     public bool HasBaseSnapshot(in StateId stateId) => _baseSnapshots.ContainsKey(stateId);
 
     /// <summary>
-    /// Register the supplied blooms with the bloom manager. Pure handoff — the caller
-    /// is responsible for producing both filters (either built from the on-disk image
-    /// via <see cref="PersistedSnapshotBloomBuilder"/> or sentinel
-    /// <see cref="BloomFilter.AlwaysTrue"/> instances when the bloom feature is off).
+    /// Register the supplied bloom with the bloom manager. Pure handoff — the caller
+    /// is responsible for producing the filter (either built from the on-disk image
+    /// via <see cref="PersistedSnapshotBloomBuilder"/>, populated inline by the writer /
+    /// merger, or a <see cref="BloomFilter.AlwaysTrue"/> sentinel when the bloom feature
+    /// is off).
     /// </summary>
-    private void RegisterBlooms(PersistedSnapshot snapshot, BloomFilter keyBloom, BloomFilter trieBloom) =>
-        _bloomManager.Register(new PersistedSnapshotBloom(snapshot.From, snapshot.To, keyBloom, trieBloom));
+    private void RegisterBlooms(PersistedSnapshot snapshot, BloomFilter bloom) =>
+        _bloomManager.Register(new PersistedSnapshotBloom(snapshot.From, snapshot.To, bloom));
 
     private void RemoveFromCatalog(in StateId to)
     {

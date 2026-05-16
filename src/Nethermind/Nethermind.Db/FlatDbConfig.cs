@@ -30,7 +30,6 @@ public class FlatDbConfig : IFlatDbConfig
     public bool PersistedSnapshotFadviseOnPageEviction { get; set; } = false;
     public int PersistedSnapshotMaxCompactSize { get; set; } = 1024 * 8;
     public bool ValidatePersistedSnapshot { get; set; } = false;
-    public double PersistedSnapshotBloomBitsPerKey { get; set; } = 10.0;
-    public double PersistedSnapshotTrieBloomBitsPerKey { get; set; } = 10.0;
+    public double PersistedSnapshotBloomBitsPerKey { get; set; } = 14.0;
     public long PersistedSnapshotMaxCompactedSourceBytes { get; set; } = 2L * 1024 * 1024 * 1024;
 }

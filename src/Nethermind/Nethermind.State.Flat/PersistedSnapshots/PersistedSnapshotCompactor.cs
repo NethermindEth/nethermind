@@ -140,7 +140,7 @@ public class PersistedSnapshotCompactor(
 
                 estimatedSize += snapshots[i].Size;
                 using PersistedSnapshotBloom srcBloom = bloomManager.LeaseOrSentinel(snapshots[i].To);
-                bloomCapacity += srcBloom.KeyBloomCount;
+                bloomCapacity += srcBloom.BloomCount;
             }
 
             if (estimatedSize > _maxCompactedSourceBytes)

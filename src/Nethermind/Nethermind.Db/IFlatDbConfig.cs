@@ -76,11 +76,8 @@ public interface IFlatDbConfig : IConfig
     [ConfigItem(Description = "Validate persisted snapshots against in-memory snapshots after conversion (debug/diagnostic only)", DefaultValue = "false")]
     bool ValidatePersistedSnapshot { get; set; }
 
-    [ConfigItem(Description = "Bits per key for the per-snapshot in-memory bloom filter (address/slot/self-destruct). Higher = lower false-positive rate but more RAM. 0 disables the filter.", DefaultValue = "10.0")]
+    [ConfigItem(Description = "Bits per key for the per-snapshot in-memory bloom filter. One unified filter covers address/slot/self-destruct keys plus state-trie and storage-trie node paths. Higher = lower false-positive rate but more RAM. 0 disables the filter (lookups behave as full sweeps).", DefaultValue = "14.0")]
     double PersistedSnapshotBloomBitsPerKey { get; set; }
-
-    [ConfigItem(Description = "Bits per key for the per-snapshot trie-node bloom filter (state and storage trie nodes). Sized independently of the address/slot bloom because trie nodes vastly outnumber accounts. Higher = lower false-positive rate but more RAM. 0 disables the filter.", DefaultValue = "10.0")]
-    double PersistedSnapshotTrieBloomBitsPerKey { get; set; }
 
     [ConfigItem(Description = "Maximum total source bytes the compactor will merge into a single Linked compacted snapshot. If the sum of input PersistedSnapshot sizes exceeds this, the compactor halves compactSize and retries. Keeps the merged output safely below int.MaxValue and the underlying arena ceiling.", DefaultValue = "2147483648")]
     long PersistedSnapshotMaxCompactedSourceBytes { get; set; }
