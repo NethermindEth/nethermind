@@ -121,25 +121,6 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITr
         }
     }
 
-    /// <summary>
-    /// Warm multiple storage slot trie paths in a single batched traversal.
-    /// Uses MultiGet at each trie level for reduced per-node overhead.
-    /// </summary>
-    public void WarmUpStorageTrieBatched(ReadOnlySpan<UInt256> slots, int sequenceId)
-    {
-        if (_scope.HintSequenceId != sequenceId || _scope._pausePrewarmer) return;
-
-        byte[][] keys = new byte[slots.Length][];
-        for (int i = 0; i < slots.Length; i++)
-        {
-            ValueHash256 key = ValueKeccak.Zero;
-            StorageTree.ComputeKeyWithLookup(slots[i], ref key);
-            keys[i] = key.Bytes.ToArray();
-        }
-
-        _warmupStorageTree.WarmUpPathsBatched(keys);
-    }
-
     public byte[] Get(in ValueHash256 hash) => throw new NotSupportedException("Not supported");
 
     private void Set(UInt256 slot, byte[] value) => _bundle.SetChangedSlot(_address, slot, value);

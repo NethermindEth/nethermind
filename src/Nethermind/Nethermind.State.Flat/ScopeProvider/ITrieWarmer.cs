@@ -31,6 +31,5 @@ public interface ITrieWarmer
     public interface IStorageWarmer
     {
         bool WarmUpStorageTrie(UInt256 index, int sequenceId);
-        void WarmUpStorageTrieBatched(ReadOnlySpan<UInt256> slots, int sequenceId) { }
     }
 }
