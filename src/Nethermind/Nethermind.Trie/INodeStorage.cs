@@ -20,6 +20,7 @@ public interface INodeStorage
 
     byte[]? Get(Hash256? address, in TreePath path, in ValueHash256 keccak, ReadFlags readFlags = ReadFlags.None);
     void Set(Hash256? address, in TreePath path, in ValueHash256 hash, ReadOnlySpan<byte> data, WriteFlags writeFlags = WriteFlags.None);
+    void PrefetchNodes(ReadOnlySpan<(Hash256? Address, TreePath Path, ValueHash256 Keccak)> nodes) { }
     IWriteBatch StartWriteBatch();
 
     /// <summary>

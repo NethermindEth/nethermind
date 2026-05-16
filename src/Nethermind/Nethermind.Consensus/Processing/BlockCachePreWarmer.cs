@@ -23,6 +23,7 @@ using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Extensions;
 using Nethermind.Trie;
+using Nethermind.Trie.Pruning;
 
 namespace Nethermind.Consensus.Processing;
 
@@ -35,6 +36,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
     private readonly PreBlockCaches _preBlockCaches;
     private readonly NodeStorageCache _nodeStorageCache;
     private readonly bool _parallelExecutionEnabled;
+    private readonly IReadOnlyTrieStore? _trieStore;
 
     /// <summary>Main thread's live WorldState for read-through fallback.</summary>
     internal IWorldState? MainThreadWorldState;
@@ -42,11 +44,17 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
     /// <summary>Incremented by main thread after each tx. Workers skip passed txs.</summary>
     internal int MainThreadTxIndex = -1;
 
+    /// <summary>Tracks which txs were completed by the prewarmer (1=done, 0=not done).</summary>
+    internal int[]? PrewarmerCompleted;
+    internal static long TotalAdoptable;
+    internal static long TotalTxs;
+
     public BlockCachePreWarmer(
         PrewarmerEnvFactory envFactory,
         IBlocksConfig blocksConfig,
         NodeStorageCache nodeStorageCache,
         PreBlockCaches preBlockCaches,
+        IWorldStateManager worldStateManager,
         ILogManager logManager
     ) : this(
         new ReadOnlyTxProcessingEnvPooledObjectPolicy(envFactory, preBlockCaches),
@@ -55,7 +63,11 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         blocksConfig.ParallelExecutionBatchRead,
         nodeStorageCache,
         preBlockCaches,
-        logManager) => _parallelExecutionEnabled = blocksConfig.ParallelExecution;
+        logManager)
+    {
+        _parallelExecutionEnabled = blocksConfig.ParallelExecution;
+        _trieStore = worldStateManager.CreateReadOnlyTrieStore();
+    }
 
     internal BlockCachePreWarmer(
         IPooledObjectPolicy<IReadOnlyTxProcessorSource> poolPolicy,
@@ -79,7 +91,8 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         if (_preBlockCaches is not null && ShouldPreWarm(spec))
         {
             CacheType result = _preBlockCaches.ClearCaches();
-            _nodeStorageCache.ClearCaches();
+            // NodeStorageCache is NOT cleared between blocks: trie nodes are immutable
+            // and content-addressed, so cached RLP from the previous block is still valid.
             _nodeStorageCache.Enabled = true;
             if (result != default)
             {
@@ -126,7 +139,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
     {
         if (_logger.IsDebug) _logger.Debug("Clearing caches");
         CacheType cachesCleared = _preBlockCaches?.ClearCaches() ?? default;
-        cachesCleared |= _nodeStorageCache.ClearCaches() ? CacheType.Rlp : CacheType.None;
+        // NodeStorageCache is kept alive: trie nodes are immutable, content-addressed data.
         if (_logger.IsDebug) _logger.Debug($"Cleared caches: {cachesCleared}");
         return cachesCleared;
     }
@@ -144,6 +157,11 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
             if (cancellationToken.IsCancellationRequested) return;
 
             if (_logger.IsDebug) _logger.Debug($"Started pre-warming caches for block {suggestedBlock.Number}.");
+
+            if (parent?.StateRoot is not null)
+            {
+                _trieStore?.PrefetchUpperStateTrie(parent.StateRoot, maxDepth: 2);
+            }
 
             if (!addressWarmer.HasBal)
             {
@@ -214,8 +232,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
             int txCount = block.Transactions.Length;
             if (txCount == 0) return;
 
-            // Moving window: each worker takes one tx, executes, moves to next.
-            // WarmingState pattern: env+scope acquired once per thread, reused across txs.
+            PrewarmerCompleted = new int[txCount];
             WarmingState<BlockState> baseState = new(_envPool, blockState, blockState.Parent);
 
             ParallelUnbalancedWork.For(
@@ -227,7 +244,13 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
                 {
                     BlockExecutionContext context = new(state.Payload.Block.Header, state.Payload.Spec);
                     state.Scope!.TransactionProcessor.SetBlockExecutionContext(context);
-                    WarmupSingleTransaction(state.Scope!, state.Payload.Block.Transactions[txIndex], txIndex, state.Payload);
+                    bool ok = WarmupSingleTransaction(state.Scope!, state.Payload.Block.Transactions[txIndex], txIndex, state.Payload);
+                    if (ok)
+                    {
+                        int[]? completed = state.Payload.PreWarmer.PrewarmerCompleted;
+                        if (completed is not null && (uint)txIndex < (uint)completed.Length)
+                            Volatile.Write(ref completed[txIndex], 1);
+                    }
                     return state;
                 },
                 WarmingState<BlockState>.FinallyAction);

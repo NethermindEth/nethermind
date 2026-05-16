@@ -514,6 +514,67 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
 
     public IReadOnlyTrieStore AsReadOnly() => new ReadOnlyTrieStore(this);
 
+    /// <summary>
+    /// Prefetch upper levels of the state trie (rooted at <paramref name="stateRoot"/>) into the
+    /// RocksDB block cache via MultiGet. Resolves the root, then batch-reads level-1 and level-2
+    /// branch children. Upper trie nodes are shared across all account lookups, so pre-loading them
+    /// before parallel address warming eliminates thousands of individual point reads.
+    /// </summary>
+    public void PrefetchUpperStateTrie(Hash256 stateRoot, int maxDepth = 2)
+    {
+        IScopedTrieStore resolver = GetTrieStore(null);
+
+        TrieNode root = resolver.FindCachedOrUnknown(TreePath.Empty, stateRoot);
+        root.ResolveNode(resolver, TreePath.Empty);
+        if (!root.IsBranch) return;
+
+        (Hash256? Address, TreePath Path, ValueHash256 Keccak)[] batch = new (Hash256?, TreePath, ValueHash256)[16];
+        int count = 0;
+
+        for (int i = 0; i < 16; i++)
+        {
+            if (root.GetChildHashAsValueKeccak(i, out ValueHash256 childHash))
+            {
+                TreePath childPath = TreePath.Empty;
+                childPath.AppendMut(i);
+                batch[count++] = (null, childPath, childHash);
+            }
+        }
+
+        if (count > 0)
+        {
+            _nodeStorage.PrefetchNodes(batch.AsSpan(0, count));
+        }
+
+        if (maxDepth < 2) return;
+
+        (Hash256?, TreePath, ValueHash256)[] level2 = new (Hash256?, TreePath, ValueHash256)[256];
+        int level2Count = 0;
+
+        for (int i = 0; i < count; i++)
+        {
+            TreePath parentPath = batch[i].Path;
+            TrieNode child = resolver.FindCachedOrUnknown(parentPath, new Hash256(batch[i].Keccak.Bytes));
+            child.ResolveNode(resolver, parentPath);
+            if (!child.IsBranch) continue;
+
+            for (int j = 0; j < 16; j++)
+            {
+                if (child.GetChildHashAsValueKeccak(j, out ValueHash256 grandChildHash))
+                {
+                    TreePath grandPath = parentPath;
+                    grandPath.AppendMut(j);
+                    level2[level2Count++] = (null, grandPath, grandChildHash);
+                }
+            }
+        }
+
+        if (level2Count > 0)
+        {
+            _nodeStorage.PrefetchNodes(level2.AsSpan(0, level2Count));
+        }
+    }
+
     public bool IsNodeCached(Hash256? address, in TreePath path, Hash256? hash) => DirtyNodesIsNodeCached(new TrieStoreDirtyNodesCache.Key(address, path, hash));
 
     public TrieNode FindCachedOrUnknown(Hash256? address, in TreePath path, Hash256? hash) =>

@@ -42,6 +42,7 @@ namespace Nethermind.Trie.Pruning
         byte[]? LoadRlp(Hash256? address, in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None);
         byte[]? TryLoadRlp(Hash256? address, in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None);
         INodeStorage.KeyScheme Scheme { get; }
+        void PrefetchUpperStateTrie(Hash256 stateRoot, int maxDepth = 2) { }
     }
 
     public interface IPruningTrieStore : ITrieStore

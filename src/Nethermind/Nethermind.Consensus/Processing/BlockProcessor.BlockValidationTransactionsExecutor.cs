@@ -57,8 +57,19 @@ public partial class BlockProcessor
             static void ThrowInvalidBlockForGasLimit(Block block) => throw new InvalidBlockException(block, Core.Messages.BlockErrorMessages.ExceededGasLimit);
         }
 
+        /// <summary>Set by BranchProcessor to count how many txs could be adopted from prewarmer.</summary>
+        internal BlockCachePreWarmer? PreWarmerRef;
+
         protected virtual void ProcessTransaction(Block block, Transaction currentTx, int index, BlockReceiptsTracer receiptsTracer, ProcessingOptions processingOptions)
         {
+            // Count adoptable txs: prewarmer completed this tx before main thread started it
+            int[]? completed = PreWarmerRef?.PrewarmerCompleted;
+            if (completed is not null && (uint)index < (uint)completed.Length && Volatile.Read(ref completed[index]) == 1)
+            {
+                Interlocked.Increment(ref BlockCachePreWarmer.TotalAdoptable);
+            }
+            Interlocked.Increment(ref BlockCachePreWarmer.TotalTxs);
+
             long txStart = StartTxTimer();
             TransactionResult result;
             try

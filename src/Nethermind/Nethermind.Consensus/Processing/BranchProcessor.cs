@@ -79,6 +79,12 @@ public class BranchProcessor(
         void CancelBackgroundWork() => backgroundCancellation?.Cancel();
         blockProcessor.TransactionsExecuted += CancelBackgroundWork;
 
+        // Wire speculative adoption measurement
+        if (preWarmer is BlockCachePreWarmer bcpw && blockProcessor is BlockProcessor bp)
+        {
+            bp.SetPreWarmerRef(bcpw);
+        }
+
         try
         {
             // Start prewarming as early as possible

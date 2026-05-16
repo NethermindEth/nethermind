@@ -343,6 +343,7 @@ public class BlockCachePreWarmerTests
         PrewarmerEnvFactory envFactory = _processingScope.Resolve<PrewarmerEnvFactory>();
         PreBlockCaches preBlockCaches = _processingScope.Resolve<PreBlockCaches>();
         NodeStorageCache nodeStorageCache = _processingScope.Resolve<NodeStorageCache>();
+        IWorldStateManager worldStateManager = _processingScope.Resolve<IWorldStateManager>();
 
         BlocksConfig config = new()
         {
@@ -352,7 +353,7 @@ public class BlockCachePreWarmerTests
             ParallelExecutionBatchRead = parallelExecutionBatchRead
         };
 
-        return new BlockCachePreWarmer(envFactory, config, nodeStorageCache, preBlockCaches, LimboLogs.Instance);
+        return new BlockCachePreWarmer(envFactory, config, nodeStorageCache, preBlockCaches, worldStateManager, LimboLogs.Instance);
     }
 
     private (BlockCachePreWarmer, ConcurrentBag<IReadOnlyTxProcessorSource> created, ConcurrentBag<IReadOnlyTxProcessorSource> disposed) CreatePreWarmer(int maxPoolSize, bool parallelExecutionBatchRead = true)
