@@ -41,43 +41,12 @@ public static class PersistedSnapshotMerger
     }
 
     /// <summary>
-    /// N-way merge of N persisted snapshots (oldest-first) into output buffer.
-    /// Pre-converts all Full snapshots to Linked so the merge only handles Linked snapshots
-    /// (all trie values are already NodeRefs). This eliminates the dual code path in trie merges.
-    /// </summary>
-    internal static void NWayMergeSnapshots<TWriter, TReader, TPin>(PersistedSnapshotList snapshots, ref TWriter writer, BloomFilter? bloom = null) where TWriter : IByteBufferWriterWithReader<TReader, TPin> where TReader : IHsstByteReader<TPin>, allows ref struct where TPin : struct, IBufferPin, allows ref struct
-    {
-        // Open one WholeReadSession per source for the whole merge — every column helper
-        // reads through these without re-opening per-helper sessions (which would mmap +
-        // MADV_NORMAL on open and MADV_DONTNEED on close between columns, dropping pages
-        // we'd then re-fault for the next column). One open per source, one close at the
-        // end, regardless of how many columns we walk.
-        int n = snapshots.Count;
-        using ArrayPoolList<WholeReadSession> sessionsList = new(n, n);
-        using NativeMemoryList<(IntPtr Ptr, long Len)> viewsList = new(n, n);
-        WholeReadSession[] sessions = sessionsList.UnsafeGetInternalArray();
-        Span<(IntPtr Ptr, long Len)> views = viewsList.AsSpan();
-        try
-        {
-            for (int i = 0; i < n; i++)
-            {
-                sessions[i] = snapshots[i].BeginWholeReadSession();
-                views[i] = sessions[i].GetRawView();
-            }
-
-            NWayMergeSnapshotsWithViews<TWriter, TReader, TPin>(views, ref writer, bloom);
-        }
-        finally
-        {
-            for (int i = 0; i < n; i++) sessions[i]?.Dispose();
-        }
-    }
-
-    /// <summary>
-    /// Variant of <see cref="NWayMergeSnapshots"/> that takes pre-opened mmap views instead
-    /// of opening (and closing) one <see cref="WholeReadSession"/> per source. Used by the
-    /// compactor, which opens the sessions once at the top of <c>CompactRange</c> so the
-    /// ref-ids read and the merge share the same mmap views.
+    /// N-way merge of N persisted snapshots (oldest-first) into <paramref name="writer"/>.
+    /// Callers (the compactor in production, the test/benchmark helpers otherwise) own the
+    /// session lifecycle: open one <see cref="WholeReadSession"/> per source up front, pass
+    /// the raw views in here, dispose the sessions after the merge returns. One mmap +
+    /// <c>MADV_NORMAL</c> on open and one <c>MADV_DONTNEED</c> on close per source — the
+    /// per-column helpers walk these pre-opened views and do not re-open anything inside.
     /// </summary>
     internal static void NWayMergeSnapshotsWithViews<TWriter, TReader, TPin>(
         ReadOnlySpan<(IntPtr Ptr, long Len)> views, ref TWriter writer,
@@ -762,7 +731,7 @@ public static class PersistedSnapshotMerger
     /// Merge a single storage-trie sub-tag (0x01 top, 0x02 compact, or 0x03 fallback) across the M
     /// matching per-address sources into <paramref name="perAddrBuilder"/>. Each source's
     /// sub-tag value is an inner HSST(BTree) keyed by encoded TreePath; values are
-    /// NodeRefs (NWayMergeSnapshots converts every Full input to Linked first). When
+    /// NodeRefs (all snapshots are blob-backed by the time the N-way merge runs). When
     /// only one source has the sub-tag, copies its bytes verbatim. With multiple sources,
     /// runs an N-way streaming merge into a fixed-size <see cref="HsstPackedArrayBuilder{TWriter}"/>
     /// (innerKeySize → NodeRef.Size). Newest wins on key collision; storage trie nodes

@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.IO;
 using BenchmarkDotNet.Attributes;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
@@ -18,7 +19,7 @@ using Nethermind.State.Flat.Storage;
 namespace Nethermind.Benchmarks.State;
 
 /// <summary>
-/// Microbenchmark for <see cref="PersistedSnapshotMerger.NWayMergeSnapshots"/> — the
+/// Microbenchmark for <see cref="PersistedSnapshotMerger.NWayMergeSnapshotsWithViews"/> — the
 /// dominant cost in persisted-snapshot compaction. Parameterised over N (the snapshot
 /// count being merged); at default <c>CompactSize=32</c> the large-tier compactor sees
 /// N up to ~32 sources at <c>compactSize=1024</c>. Each synthetic snapshot carries one
@@ -93,8 +94,25 @@ public class PersistedSnapshotCompactBenchmark : IDisposable
         // measured without disk I/O or arena bookkeeping. Initial capacity matches the
         // sum-of-sources upper bound (the same hint PersistedSnapshotCompactor uses).
         using PooledByteBufferWriter pooled = new(checked((int)Math.Min(_estimatedSize, int.MaxValue)));
-        PersistedSnapshotMerger.NWayMergeSnapshots<PooledByteBufferWriter.Writer, PooledByteBufferWriter.WriterReader, NoOpPin>(
-            _snapshots, ref pooled.GetWriter());
+        int n = _snapshots.Count;
+        using ArrayPoolList<WholeReadSession> sessionsList = new(n, n);
+        using NativeMemoryList<(IntPtr Ptr, long Len)> viewsList = new(n, n);
+        WholeReadSession[] sessionArr = sessionsList.UnsafeGetInternalArray();
+        Span<(IntPtr Ptr, long Len)> views = viewsList.AsSpan();
+        try
+        {
+            for (int i = 0; i < n; i++)
+            {
+                sessionArr[i] = _snapshots[i].BeginWholeReadSession();
+                views[i] = sessionArr[i].GetRawView();
+            }
+            PersistedSnapshotMerger.NWayMergeSnapshotsWithViews<PooledByteBufferWriter.Writer, PooledByteBufferWriter.WriterReader, NoOpPin>(
+                views, ref pooled.GetWriter(), bloom: null);
+        }
+        finally
+        {
+            for (int i = 0; i < n; i++) sessionArr[i]?.Dispose();
+        }
         return pooled.GetWriter().Written;
     }
 

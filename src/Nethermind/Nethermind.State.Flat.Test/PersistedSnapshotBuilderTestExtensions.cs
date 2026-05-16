@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using Nethermind.Core.Collections;
 using Nethermind.State.Flat.Hsst;
 using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.State.Flat.Storage;
@@ -51,8 +52,25 @@ internal static class PersistedSnapshotBuilderTestExtensions
         totalSize += 4096;
 
         using PooledByteBufferWriter pooled = new(checked((int)totalSize));
-        PersistedSnapshotMerger.NWayMergeSnapshots<PooledByteBufferWriter.Writer, PooledByteBufferWriter.WriterReader, NoOpPin>(
-            snapshots, ref pooled.GetWriter());
+        int n = snapshots.Count;
+        using ArrayPoolList<WholeReadSession> sessionsList = new(n, n);
+        using NativeMemoryList<(IntPtr Ptr, long Len)> viewsList = new(n, n);
+        WholeReadSession[] sessionArr = sessionsList.UnsafeGetInternalArray();
+        Span<(IntPtr Ptr, long Len)> views = viewsList.AsSpan();
+        try
+        {
+            for (int i = 0; i < n; i++)
+            {
+                sessionArr[i] = snapshots[i].BeginWholeReadSession();
+                views[i] = sessionArr[i].GetRawView();
+            }
+            PersistedSnapshotMerger.NWayMergeSnapshotsWithViews<PooledByteBufferWriter.Writer, PooledByteBufferWriter.WriterReader, NoOpPin>(
+                views, ref pooled.GetWriter(), bloom: null);
+        }
+        finally
+        {
+            for (int i = 0; i < n; i++) sessionArr[i]?.Dispose();
+        }
         return pooled.WrittenSpan.ToArray();
     }
 }
