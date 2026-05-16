@@ -196,4 +196,51 @@ public class LeafBoundaryEnumeratorTests
 
         Assert.That(counts, Is.EqualTo(new[] { 2, 2 }));
     }
+
+    /// <summary>
+    /// Regression: the buffer reseeded after a failed merge persists across MoveNext
+    /// calls. If the writer advances enough between calls that the carry-over now
+    /// straddles a new 4 KiB page, the splitter must requeue the range and re-split
+    /// against the new pageOff — not blindly flush the stale size. Pre-fix, the
+    /// terminal leftover-flush bypassed the gate entirely and emitted the carry-over
+    /// untouched, producing pageOff+leafSize &gt; 4096 crossings.
+    ///
+    /// Setup: 100 entries, maxLeafEntries=50 forces a cardinality split into two
+    /// 50-entry raw splits. At pageOff=0 the first half emits and the second tries
+    /// to merge; cardinality (50+50 &gt; 50) blocks the merge, the buf is flushed,
+    /// and the second half reseeds the buf. Call 2 is invoked with pageOff=4000:
+    /// the carry-over (50 entries, ~125 B estimated) no longer fits, so it gets
+    /// requeued and re-split into two 25-entry leaves under the new pageOff.
+    /// </summary>
+    [Test]
+    public void PageFitGate_RequeuesCarryOverAtAdvancedPageOff()
+    {
+        byte[] cp = new byte[100];
+        for (int i = 0; i < cp.Length; i++) cp[i] = 8;
+        long[] pos = new long[100];
+
+        HsstBTreeBuilderBuffers buffers = new();
+        try
+        {
+            using LeafBoundaryEnumerator iter = new(
+                cp, pos, n: 100,
+                minLeafEntries: 2, maxLeafEntries: 50, keyLength: 15,
+                ref buffers);
+            List<int> counts = [];
+
+            // Call 1: pageOff=0. Cardinality split → emit 50, reseed with (50, 50).
+            Assert.That(iter.MoveNext(0), Is.True);
+            counts.Add(iter.Current);
+
+            // Calls 2+: pageOff=4000. Carry-over re-check fires (4000 + ~125 > 4096),
+            // splitter sub-splits the requeued range into 25-entry halves.
+            while (iter.MoveNext(4000)) counts.Add(iter.Current);
+
+            Assert.That(counts, Is.EqualTo(new[] { 50, 25, 25 }));
+        }
+        finally
+        {
+            buffers.Dispose();
+        }
+    }
 }

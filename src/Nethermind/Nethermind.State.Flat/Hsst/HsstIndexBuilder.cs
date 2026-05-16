@@ -899,6 +899,24 @@ internal ref struct LeafBoundaryEnumerator
     /// </summary>
     public bool MoveNext(long pageOff)
     {
+        // Carry-over buffer from a prior MoveNext call (the reseed after a failed
+        // merge) was sized against that call's pageOff. The writer has since advanced
+        // by the previously-flushed leaf, so the new pageOff may put the carry-over
+        // across a 4 KiB boundary that the original gate never saw. Requeue its range
+        // onto the DFS so the splitter can sub-split it against the up-to-date
+        // pageOff. Skip when the buffer is already at minLeafEntries — splitter would
+        // immediately re-emit the same range and we'd loop; fall through to the
+        // fallback (allow cross).
+        if (_bufCount > _minLeafEntries && (pageOff + EstimateBufSize() > 4096))
+        {
+            if (_sp + 2 > _stack.Length)
+                throw new InvalidOperationException(
+                    "HSST leaf-splitter DFS stack exceeded — pathological key distribution.");
+            _stack[_sp++] = _bufStart;
+            _stack[_sp++] = _bufStart + _bufCount - 1;
+            _bufCount = 0;
+        }
+
         while (TryGetNextRawSplit(pageOff, out int rawStart, out int rawCount))
         {
             if (_bufCount == 0)
@@ -1161,6 +1179,22 @@ internal ref struct LeafBoundaryEnumerator
         _bufMaxVal = mergedMaxVal;
         // Plan/value-slot fields unchanged (verified equal above).
         return true;
+    }
+
+    /// <summary>
+    /// Upper-bound estimate of the buffered leaf's serialized size, using the cached
+    /// planner profile (<c>_bufKeyType</c>, <c>_bufKeySlotSize</c>, <c>_bufPrefixLen</c>,
+    /// <c>_bufValueSlotSize</c>). Mirrors <see cref="TryMergeIntoBuffer"/>'s estimator so
+    /// the page-fit gate at <see cref="MoveNext"/>'s carry-over check matches what the
+    /// merger would have used. Conservative for Variable layout (keyType=0): assumes the
+    /// widest per-entry payload, matching the comment in TryMergeIntoBuffer.
+    /// </summary>
+    private readonly int EstimateBufSize()
+    {
+        int perEntryKeyBytes = _bufKeyType == 0 ? _keyLength + 2 : _bufKeySlotSize;
+        int prefixOverhead = _bufPrefixLen > 0 ? 1 + _bufPrefixLen : 0;
+        return LeafNodeHeaderOverheadBytes + prefixOverhead +
+               _bufCount * (perEntryKeyBytes + _bufValueSlotSize);
     }
 
     /// <summary>
