@@ -270,18 +270,45 @@ public sealed class TrieWarmer : ITrieWarmer, IAsyncDisposable
         return _jobBufferMultiThreaded.TryDequeue(out job);
     }
 
-    private static void HandleJob(in Job job)
+    private void HandleJob(in Job firstJob)
     {
         try
         {
-            if (job.scopeOrStorageTree is ITrieWarmer.IAddressWarmer scope)
+            if (firstJob.scopeOrStorageTree is ITrieWarmer.IAddressWarmer scope)
             {
-                scope.WarmUpStateTrie(job.path!, job.sequenceId);
+                scope.WarmUpStateTrie(firstJob.path!, firstJob.sequenceId);
+                return;
             }
-            else
+
+            ITrieWarmer.IStorageWarmer storageTree = (ITrieWarmer.IStorageWarmer)firstJob.scopeOrStorageTree;
+
+            // Drain additional slot jobs for the same tree to batch them.
+            // Each WarmUpStorageTrie call still walks root→leaf, but batching
+            // ensures upper trie nodes (shared across slots) are cached by the
+            // first call, making subsequent calls faster (cache hits).
+            storageTree.WarmUpStorageTrie(firstJob.index, firstJob.sequenceId);
+
+            // Process more slots for same tree while available
+            int extra = 0;
+            while (extra < 32 && _slotJobBuffer.TryDequeue(out SlotJob slotJob))
             {
-                ITrieWarmer.IStorageWarmer storageTree = (ITrieWarmer.IStorageWarmer)job.scopeOrStorageTree;
-                storageTree.WarmUpStorageTrie(job.index, job.sequenceId);
+                if (ReferenceEquals(slotJob.storageTree, storageTree) && slotJob.sequenceId == firstJob.sequenceId)
+                {
+                    try
+                    {
+                        storageTree.WarmUpStorageTrie(slotJob.index, slotJob.sequenceId);
+                    }
+                    catch (TrieNodeException) { }
+                    catch (NodeHashMismatchException) { }
+                    catch (ObjectDisposedException) { }
+                    catch (NullReferenceException) { }
+                    extra++;
+                }
+                else
+                {
+                    _jobBufferMultiThreaded.TryEnqueue(new Job(slotJob.storageTree, null, slotJob.index, slotJob.sequenceId));
+                    break;
+                }
             }
         }
         catch (TrieNodeException) { }
