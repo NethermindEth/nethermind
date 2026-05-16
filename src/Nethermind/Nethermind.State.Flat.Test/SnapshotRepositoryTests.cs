@@ -249,10 +249,9 @@ public class SnapshotRepositoryTests
     {
         StateId target = CreateStateId(10);
 
-        NativeMemoryList<StateId> states = _repository.GetSnapshotBeforeStateId(target);
+        using NativeMemoryList<StateId> states = _repository.GetSnapshotBeforeStateId(target);
 
         Assert.That(states.Count, Is.EqualTo(0));
-        states.Dispose();
     }
 
     [Test]
@@ -262,10 +261,9 @@ public class SnapshotRepositoryTests
         _repository.AddStateId(state10);
 
         StateId target = CreateStateId(5);
-        NativeMemoryList<StateId> states = _repository.GetSnapshotBeforeStateId(target);
+        using NativeMemoryList<StateId> states = _repository.GetSnapshotBeforeStateId(target);
 
         Assert.That(states.Count, Is.EqualTo(0));
-        states.Dispose();
     }
 
     [Test]
@@ -284,10 +282,9 @@ public class SnapshotRepositoryTests
         _repository.AddStateId(state10);
 
         StateId target = CreateStateId(6);
-        NativeMemoryList<StateId> states = _repository.GetSnapshotBeforeStateId(target);
+        using NativeMemoryList<StateId> states = _repository.GetSnapshotBeforeStateId(target);
 
         Assert.That(states.Count, Is.EqualTo(3));
-        states.Dispose();
     }
 
     [TestCase(-1)]
@@ -297,10 +294,9 @@ public class SnapshotRepositoryTests
         _repository.AddStateId(CreateStateId(1));
 
         StateId target = new(blockNumber, Keccak.EmptyTreeHash);
-        NativeMemoryList<StateId> states = _repository.GetSnapshotBeforeStateId(target);
+        using NativeMemoryList<StateId> states = _repository.GetSnapshotBeforeStateId(target);
 
         Assert.That(states.Count, Is.EqualTo(0));
-        states.Dispose();
     }
 
     #endregion
