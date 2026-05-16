@@ -94,7 +94,23 @@ public sealed class PersistedSnapshotRepository(
         // arena file; on partial failure it releases what it took and disposes the
         // reservation lease before rethrowing — no repository-side cleanup needed.
         PersistedSnapshot snapshot = new(entry.From, entry.To, reservation, _blobs, _arena.Tier);
-        RegisterBlooms(snapshot);
+
+        // Share one WholeReadSession across both bloom builds — the alternative (each
+        // builder opening its own) wastes an mmap+madvise pair per loaded snapshot.
+        BloomFilter keyBloom;
+        BloomFilter trieBloom;
+        if (BloomEnabled)
+        {
+            using WholeReadSession session = snapshot.BeginWholeReadSession();
+            keyBloom = PersistedSnapshotBloomBuilder.Build(session, snapshot, _bloomBitsPerKey);
+            trieBloom = PersistedSnapshotBloomBuilder.BuildTrieBloom(session, snapshot, _trieBloomBitsPerKey);
+        }
+        else
+        {
+            keyBloom = BloomFilter.AlwaysTrue();
+            trieBloom = BloomFilter.AlwaysTrue();
+        }
+        RegisterBlooms(snapshot, keyBloom, trieBloom);
 
         if (range > _compactSize)
             _compactedSnapshots[entry.To] = snapshot;
@@ -152,7 +168,7 @@ public sealed class PersistedSnapshotRepository(
             _catalog.Save();
 
             PersistedSnapshot persisted = new(snapshot.From, snapshot.To, reservation, _blobs, _arena.Tier);
-            RegisterBlooms(persisted, bloom, trieBloom);
+            RegisterBlooms(persisted, bloom ?? BloomFilter.AlwaysTrue(), trieBloom ?? BloomFilter.AlwaysTrue());
             if (_validatePersistedSnapshot)
                 PersistedSnapshotUtils.ValidatePersistedSnapshot(snapshot, persisted, _bloomManager);
             _baseSnapshots[snapshot.To] = persisted;
@@ -174,7 +190,7 @@ public sealed class PersistedSnapshotRepository(
     /// <see cref="PersistedSnapshot"/> ctor, which leases each one and rolls back on
     /// partial failure.
     /// </summary>
-    public PersistedSnapshot AddCompactedSnapshot(StateId from, StateId to, SnapshotLocation location, ArenaReservation reservation, BloomFilter? bloom = null)
+    public PersistedSnapshot AddCompactedSnapshot(StateId from, StateId to, SnapshotLocation location, ArenaReservation reservation, BloomFilter bloom)
     {
         PersistedSnapshot snapshot;
         lock (_catalogLock)
@@ -183,7 +199,19 @@ public sealed class PersistedSnapshotRepository(
             _catalog.Save();
 
             snapshot = new PersistedSnapshot(from, to, reservation, _blobs, _arena.Tier);
-            RegisterBlooms(snapshot, bloom, trieBloom: null);
+
+            BloomFilter trieBloom;
+            if (BloomEnabled)
+            {
+                using WholeReadSession session = snapshot.BeginWholeReadSession();
+                trieBloom = PersistedSnapshotBloomBuilder.BuildTrieBloom(session, snapshot, _trieBloomBitsPerKey);
+            }
+            else
+            {
+                trieBloom = BloomFilter.AlwaysTrue();
+            }
+            RegisterBlooms(snapshot, bloom, trieBloom);
+
             _compactedSnapshots[to] = snapshot;
         }
 
@@ -360,26 +388,13 @@ public sealed class PersistedSnapshotRepository(
     public bool HasBaseSnapshot(in StateId stateId) => _baseSnapshots.ContainsKey(stateId);
 
     /// <summary>
-    /// Build any missing blooms (key/trie) for <paramref name="snapshot"/> and register
-    /// the resulting <see cref="PersistedSnapshotBloom"/> wrapper with the bloom manager.
-    /// Pre-built blooms (e.g. populated inline by the writer or compactor) can be passed
-    /// in via <paramref name="keyBloom"/> / <paramref name="trieBloom"/>; nulls are
-    /// rebuilt from the on-disk image via <see cref="PersistedSnapshotBloomBuilder"/>.
-    /// No-op when the bloom feature is disabled in config.
+    /// Register the supplied blooms with the bloom manager. Pure handoff — the caller
+    /// is responsible for producing both filters (either built from the on-disk image
+    /// via <see cref="PersistedSnapshotBloomBuilder"/> or sentinel
+    /// <see cref="BloomFilter.AlwaysTrue"/> instances when the bloom feature is off).
     /// </summary>
-    private void RegisterBlooms(PersistedSnapshot snapshot, BloomFilter? keyBloom = null, BloomFilter? trieBloom = null)
-    {
-        if (!BloomEnabled)
-        {
-            keyBloom?.Dispose();
-            trieBloom?.Dispose();
-            return;
-        }
-
-        keyBloom ??= PersistedSnapshotBloomBuilder.Build(snapshot, _bloomBitsPerKey);
-        trieBloom ??= PersistedSnapshotBloomBuilder.BuildTrieBloom(snapshot, _trieBloomBitsPerKey);
+    private void RegisterBlooms(PersistedSnapshot snapshot, BloomFilter keyBloom, BloomFilter trieBloom) =>
         _bloomManager.Register(new PersistedSnapshotBloom(snapshot.From, snapshot.To, keyBloom, trieBloom));
-    }
 
     private void RemoveFromCatalog(in StateId to)
     {

@@ -14,9 +14,17 @@ namespace Nethermind.State.Flat.PersistedSnapshots;
 
 internal static class PersistedSnapshotBloomBuilder
 {
-    internal static BloomFilter Build(PersistedSnapshot snapshot, double bitsPerKey)
+    /// <summary>
+    /// Build the address/slot/self-destruct bloom for <paramref name="snapshot"/>, reading
+    /// its bytes through the caller-owned <paramref name="session"/>.
+    /// </summary>
+    /// <remarks>
+    /// The session belongs to the caller — this method does not dispose it. Callers that
+    /// also need <see cref="BuildTrieBloom"/> for the same snapshot should pass the same
+    /// session so both passes share one mmap view and one MADV_DONTNEED on dispose.
+    /// </remarks>
+    internal static BloomFilter Build(WholeReadSession session, PersistedSnapshot snapshot, double bitsPerKey)
     {
-        using WholeReadSession session = snapshot.BeginWholeReadSession();
         PersistedSnapshotScanner scanner = new(session, snapshot);
 
         // Pass 1: count keys to size the bloom accurately. Lazy entries: no decoding.
@@ -58,11 +66,11 @@ internal static class PersistedSnapshotBloomBuilder
 
     /// <summary>
     /// Build a bloom filter covering the trie-node columns (state-trie paths and
-    /// storage-trie (addressHash, path) keys). Sized from a scanner count pass.
+    /// storage-trie (addressHash, path) keys). Sized from a scanner count pass. The
+    /// caller owns <paramref name="session"/>; this method does not dispose it.
     /// </summary>
-    internal static BloomFilter BuildTrieBloom(PersistedSnapshot snapshot, double bitsPerKey)
+    internal static BloomFilter BuildTrieBloom(WholeReadSession session, PersistedSnapshot snapshot, double bitsPerKey)
     {
-        using WholeReadSession session = snapshot.BeginWholeReadSession();
         PersistedSnapshotScanner scanner = new(session, snapshot);
 
         long capacity = 0;

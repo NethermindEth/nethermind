@@ -150,9 +150,11 @@ public class PersistedSnapshotCompactor(
                 return false;
             }
 
-            BloomFilter? mergedBloom = _bloomBitsPerKey > 0 && bloomCapacity > 0
+            // Bloom-disabled or empty-capacity case uses an AlwaysTrue sentinel so the
+            // downstream AddCompactedSnapshot receives a non-null bloom uniformly.
+            BloomFilter mergedBloom = _bloomBitsPerKey > 0 && bloomCapacity > 0
                 ? new BloomFilter(bloomCapacity, _bloomBitsPerKey)
-                : null;
+                : BloomFilter.AlwaysTrue();
             SnapshotLocation location;
             ArenaReservation reservation;
             using (ArenaWriter arenaWriter = arenaManager.CreateWriter(estimatedSize))
