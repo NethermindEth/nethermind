@@ -12,6 +12,9 @@
   "Discovery": {
     "DiscoveryVersion": "V4"
   },
+  "Blocks": {
+    "TargetBlockGasLimit": 420000000
+  },
   "TxPool": {
     "BlobsSupport": "Disabled"
   },
