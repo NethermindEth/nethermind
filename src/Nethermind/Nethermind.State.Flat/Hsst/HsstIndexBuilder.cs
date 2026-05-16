@@ -140,8 +140,15 @@ public ref struct HsstIndexBuilder<TWriter, TReader, TPin>
         // the trailer formula assumes [...root...][trailer] with no gap.
         bool firstNode = true;
 
-        while (iter.MoveNext())
+        while (true)
         {
+            // Bytes already written into the current 4 KiB page, fed into the
+            // leaf splitter so it can force-split a leaf that would otherwise
+            // straddle a page boundary (mirrors the intermediate-node path's
+            // WouldCrossNewPage gate). Computed pre-pad — over-triggers in the
+            // ≤ PageAlignPadThreshold close-to-edge case, which is benign.
+            long pageOff = (_writer.Written - firstOffset) & 4095L;
+            if (!iter.MoveNext(pageOff)) break;
             int count = iter.Current;
 
             // Pad to a fresh page if we're within PageAlignPadThreshold of
@@ -890,9 +897,9 @@ internal ref struct LeafBoundaryEnumerator
     /// <item><description>returns <c>false</c> when both the DFS and the buffer are empty.</description></item>
     /// </list>
     /// </summary>
-    public bool MoveNext()
+    public bool MoveNext(long pageOff)
     {
-        while (TryGetNextRawSplit(out int rawStart, out int rawCount))
+        while (TryGetNextRawSplit(pageOff, out int rawStart, out int rawCount))
         {
             if (_bufCount == 0)
             {
@@ -900,7 +907,7 @@ internal ref struct LeafBoundaryEnumerator
                 continue;
             }
 
-            if (TryMergeIntoBuffer(rawStart, rawCount)) continue;
+            if (TryMergeIntoBuffer(pageOff, rawStart, rawCount)) continue;
 
             // Flush buffer; replace with the new split.
             Current = _bufCount;
@@ -924,7 +931,7 @@ internal ref struct LeafBoundaryEnumerator
     /// surfaced so the merge pass can probe entry-level state (LCPs, value positions)
     /// without re-deriving it from a running cumulative counter.
     /// </summary>
-    private bool TryGetNextRawSplit(out int rawStart, out int rawCount)
+    private bool TryGetNextRawSplit(long pageOff, out int rawStart, out int rawCount)
     {
         const long ValueRangeLimit = 1L << 24;
 
@@ -991,11 +998,16 @@ internal ref struct LeafBoundaryEnumerator
                 int valueSlot = vr == 0 ? 1 : (BitOperations.Log2((ulong)vr) >> 3) + 1;
                 int estimatedSize = LeafNodeHeaderOverheadBytes + count * (gap + 1 + valueSlot);
 
+                // Page-fit gate: if the leaf would straddle a 4 KiB page from the
+                // writer's current offset, force a split — but only while count is
+                // still above minLeafEntries, so a single oversized leaf at the
+                // minimum count is allowed to cross (fallback policy).
                 bool splitNeeded =
                     gap > 4 ||
                     gap == 3 ||
                     vr > ValueRangeLimit ||
-                    estimatedSize > MaxLeafBytes;
+                    estimatedSize > MaxLeafBytes ||
+                    (pageOff + estimatedSize > 4096 && count > minLeafEntries);
                 if (!splitNeeded)
                 {
                     rawStart = lo;
@@ -1078,7 +1090,7 @@ internal ref struct LeafBoundaryEnumerator
     /// than the buffered plan suggested, but never a looser one given the bridging-LCP
     /// guarantee, so the size-estimate upper bound holds.
     /// </summary>
-    private bool TryMergeIntoBuffer(int nextStart, int nextCount)
+    private bool TryMergeIntoBuffer(long pageOff, int nextStart, int nextCount)
     {
         int mergedCount = _bufCount + nextCount;
         if (mergedCount > _maxLeafEntries) return false;
@@ -1127,6 +1139,12 @@ internal ref struct LeafBoundaryEnumerator
         int estimated = LeafNodeHeaderOverheadBytes + prefixOverhead +
                         mergedCount * (perEntryKeyBytes + _bufValueSlotSize);
         if (estimated > MaxLeafBytes) return false;
+
+        // Page-fit gate (companion to TryGetNextRawSplit's): if absorbing the next
+        // raw split would push the buffered leaf across a 4 KiB page boundary from
+        // the writer's current offset, refuse the merge so the buffered leaf is
+        // flushed standalone and the next split starts a fresh buffer.
+        if (pageOff + estimated > 4096) return false;
 
         // Commit.
         _bufCount = mergedCount;
