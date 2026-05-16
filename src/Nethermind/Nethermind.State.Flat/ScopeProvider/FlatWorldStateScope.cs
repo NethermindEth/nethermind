@@ -109,7 +109,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     }
 
     public Hash256 RootHash => _stateTree.RootHash;
-    public void UpdateRootHash() => _stateTree.UpdateRootHashParallel();
+    public void UpdateRootHash() => _stateTree.UpdateRootHash();
 
     public Account? Get(Address address)
     {
@@ -230,7 +230,6 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     {
         private readonly Dictionary<AddressAsKey, Account?> _dirtyAccounts = new(estimatedAccountCount);
         private readonly ConcurrentQueue<(AddressAsKey, Hash256)> _dirtyStorageTree = new();
-        private readonly ConcurrentQueue<TrieStoreScopeProvider.StorageRootWorkItem> _pendingStorageRoots = new();
 
         public event EventHandler<IWorldStateScopeProvider.AccountUpdated>? OnAccountUpdated;
 
@@ -252,20 +251,15 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
                 .CreateStorageTreeImpl(address)
                 .CreateWriteBatch(
                     estimatedEntries: estimatedEntries,
-                    registerRootWork: RegisterStorageRootWork);
+                    onRootUpdated: (address, newRoot) => MarkDirty(address, newRoot));
 
         private void MarkDirty(AddressAsKey address, Hash256 storageTreeRootHash) =>
             _dirtyStorageTree.Enqueue((address, storageTreeRootHash));
-
-        private void RegisterStorageRootWork(TrieStoreScopeProvider.StorageRootWorkItem workItem) =>
-            _pendingStorageRoots.Enqueue(workItem);
 
         public void Dispose()
         {
             try
             {
-                TrieStoreScopeProvider.CompletePendingStorageRoots(_pendingStorageRoots, MarkDirty);
-
                 while (_dirtyStorageTree.TryDequeue(out (AddressAsKey, Hash256) entry))
                 {
                     (AddressAsKey key, Hash256 storageRoot) = entry;
@@ -273,7 +267,8 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
                     if (account is null)
                     {
                         if (storageRoot == Keccak.EmptyTreeHash) continue;
-                        scope.CreateStorageTreeImpl(key).SelfDestruct();
+                        using IWorldStateScopeProvider.IStorageWriteBatch wb = CreateStorageWriteBatch(entry.Item1, 0);
+                        wb.Clear();
                         continue;
                     }
                     account = account.WithChangedStorageRoot(storageRoot);
@@ -302,6 +297,5 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
             void Trace(Address address, Hash256 storageRoot, Account? account) =>
                 logger.Trace($"Update {address} S {account?.StorageRoot} -> {storageRoot}");
         }
-
     }
 }

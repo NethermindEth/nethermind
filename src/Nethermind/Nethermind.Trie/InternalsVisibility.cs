@@ -7,7 +7,6 @@ using System.Runtime.CompilerServices;
 // TrieSyncNode is internal to enforce the "sync code only" contract; widening this
 // list should be reviewed carefully.
 [assembly: InternalsVisibleTo("Nethermind.Synchronization")]
-[assembly: InternalsVisibleTo("Nethermind.State")]
 [assembly: InternalsVisibleTo("Nethermind.State.Flat")]
 [assembly: InternalsVisibleTo("Nethermind.Benchmark")]
 

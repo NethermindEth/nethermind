@@ -55,7 +55,7 @@ public class TrieStoreScopeProvider(ITrieStore trieStore, IKeyValueStoreWithBatc
         }
 
         public Hash256 RootHash => _backingStateTree.RootHash;
-        public void UpdateRootHash() => _backingStateTree.UpdateRootHashParallel();
+        public void UpdateRootHash() => _backingStateTree.UpdateRootHash();
 
         public Account? Get(Address address)
         {
@@ -150,38 +150,18 @@ public class TrieStoreScopeProvider(ITrieStore trieStore, IKeyValueStoreWithBatc
     {
         private readonly Dictionary<AddressAsKey, Account?> _dirtyAccounts = new(estimatedAccountCount);
         private readonly ConcurrentQueue<(AddressAsKey, Hash256)> _dirtyStorageTree = new();
-        private readonly ConcurrentQueue<StorageRootWorkItem> _pendingStorageRoots = new();
 
         public event EventHandler<IWorldStateScopeProvider.AccountUpdated>? OnAccountUpdated;
 
         public void Set(Address key, Account? account) => _dirtyAccounts[key] = account;
 
-        public IWorldStateScopeProvider.IStorageWriteBatch CreateStorageWriteBatch(Address address, int estimatedEntries)
-        {
-            StorageTree storageTree = scope.LookupStorageTree(address);
-#if ZK_EVM
-            return new StorageTreeBulkWriteBatch(
-                estimatedEntries,
-                storageTree,
-                (address, rootHash) => MarkDirty(address, rootHash),
-                address);
-#else
-            return new StorageTreeBulkWriteBatch(
-                estimatedEntries,
-                storageTree,
-                RegisterStorageRootWork,
-                address);
-#endif
-        }
+        public IWorldStateScopeProvider.IStorageWriteBatch CreateStorageWriteBatch(Address address, int estimatedEntries) => new StorageTreeBulkWriteBatch(estimatedEntries, scope.LookupStorageTree(address),
+                (address, rootHash) => MarkDirty(address, rootHash), address);
 
         public void MarkDirty(AddressAsKey address, Hash256 storageTreeRootHash) => _dirtyStorageTree.Enqueue((address, storageTreeRootHash));
 
-        private void RegisterStorageRootWork(StorageRootWorkItem workItem) => _pendingStorageRoots.Enqueue(workItem);
-
         public void Dispose()
         {
-            CompletePendingStorageRoots(_pendingStorageRoots, MarkDirty);
-
             while (_dirtyStorageTree.TryDequeue(out (AddressAsKey, Hash256) entry))
             {
                 (AddressAsKey key, Hash256 storageRoot) = entry;
@@ -213,119 +193,38 @@ public class TrieStoreScopeProvider(ITrieStore trieStore, IKeyValueStoreWithBatc
             void Trace(Address address, Hash256 storageRoot, Account? account)
                 => logger.Trace($"Update {address} S {account?.StorageRoot} -> {storageRoot}");
         }
-
     }
 
-    public readonly struct StorageRootWorkItem(
+    public class StorageTreeBulkWriteBatch(
+        int estimatedEntries,
+        StorageTree storageTree,
+        Action<Address, Hash256> onRootUpdated,
         AddressAsKey address,
-        StorageTree tree,
-        int writeCount,
-        int estimatedWeight,
-        int[]? firstNibbleWeights,
-        bool wasCleared,
-        bool commit)
-    {
-        public readonly AddressAsKey Address = address;
-        public readonly StorageTree Tree = tree;
-        public readonly int WriteCount = writeCount;
-        public readonly int EstimatedWeight = estimatedWeight;
-        public readonly int[]? FirstNibbleWeights = firstNibbleWeights;
-        public readonly bool WasCleared = wasCleared;
-        public readonly bool Commit = commit;
-    }
-
-    public static void CompletePendingStorageRoots(
-        ConcurrentQueue<StorageRootWorkItem> pending,
-        Action<AddressAsKey, Hash256> markDirty)
-    {
-        if (pending.IsEmpty) return;
-
-        using ArrayPoolList<StorageRootWorkItem> storageRoots = new(pending.Count);
-        while (pending.TryDequeue(out StorageRootWorkItem workItem)) storageRoots.Add(workItem);
-
-        using ArrayPoolList<TrieRootHashWorkItem> rootHashWork = new(storageRoots.Count);
-        for (int i = 0; i < storageRoots.Count; i++)
-        {
-            ref StorageRootWorkItem item = ref storageRoots.GetRef(i);
-            rootHashWork.Add(new TrieRootHashWorkItem(item.Tree, item.EstimatedWeight, item.FirstNibbleWeights));
-        }
-
-        PatriciaTree.UpdateRootHashes(rootHashWork.AsSpan());
-
-        for (int i = 0; i < storageRoots.Count; i++)
-        {
-            ref StorageRootWorkItem item = ref storageRoots.GetRef(i);
-            if (item.Commit) item.Tree.Commit();
-            markDirty(item.Address, item.Tree.RootHash);
-        }
-    }
-
-    public class StorageTreeBulkWriteBatch : IWorldStateScopeProvider.IStorageWriteBatch
+        bool commit = false) : IWorldStateScopeProvider.IStorageWriteBatch
     {
         // Slight optimization on small contract as the index hash can be precalculated in some case.
         public const int MIN_ENTRIES_TO_BATCH = 16;
 
-        private readonly int _estimatedEntries;
-        private readonly StorageTree _storageTree;
-        private readonly Action<Address, Hash256>? _onRootUpdated;
-        private readonly Action<StorageRootWorkItem>? _registerRootWork;
-        private readonly AddressAsKey _address;
-        private readonly bool _commit;
-
         private bool _hasSelfDestruct;
-        private bool _wasSetCalled;
-        private int _writeCount;
-        private int[]? _firstNibbleWeights;
+        private bool _wasSetCalled = false;
 
-        private ArrayPoolList<PatriciaTree.BulkSetEntry>? _bulkWrite;
+        private ArrayPoolList<PatriciaTree.BulkSetEntry>? _bulkWrite =
+            estimatedEntries > MIN_ENTRIES_TO_BATCH
+                ? new(estimatedEntries)
+                : null;
 
-        private ValueHash256 _keyBuff;
-
-        public StorageTreeBulkWriteBatch(
-            int estimatedEntries,
-            StorageTree storageTree,
-            Action<Address, Hash256> onRootUpdated,
-            AddressAsKey address,
-            bool commit = false)
-        {
-            _estimatedEntries = estimatedEntries;
-            _storageTree = storageTree;
-            _onRootUpdated = onRootUpdated;
-            _address = address;
-            _commit = commit;
-            _bulkWrite = estimatedEntries > MIN_ENTRIES_TO_BATCH ? new(estimatedEntries) : null;
-        }
-
-        public StorageTreeBulkWriteBatch(
-            int estimatedEntries,
-            StorageTree storageTree,
-            Action<StorageRootWorkItem> registerRootWork,
-            AddressAsKey address,
-            bool commit = false)
-        {
-            _estimatedEntries = estimatedEntries;
-            _storageTree = storageTree;
-            _registerRootWork = registerRootWork;
-            _address = address;
-            _commit = commit;
-            _bulkWrite = estimatedEntries > MIN_ENTRIES_TO_BATCH ? new(estimatedEntries) : null;
-        }
+        private ValueHash256 _keyBuff = new();
 
         public void Set(in UInt256 index, byte[] value)
         {
             _wasSetCalled = true;
-            _writeCount++;
-            StorageTree.ComputeKeyWithLookup(index, ref _keyBuff);
             if (_bulkWrite is null)
             {
-                _storageTree.Set(in _keyBuff, value);
+                storageTree.Set(index, value);
             }
             else
             {
-                if (_registerRootWork is not null)
-                {
-                    RecordFirstNibbleWeight();
-                }
+                StorageTree.ComputeKeyWithLookup(index, ref _keyBuff);
                 _bulkWrite.Add(StorageTree.CreateBulkSetEntry(_keyBuff, value));
             }
         }
@@ -334,7 +233,7 @@ public class TrieStoreScopeProvider(ITrieStore trieStore, IKeyValueStoreWithBatc
         {
             if (_bulkWrite is null)
             {
-                _storageTree.RootHash = Keccak.EmptyTreeHash;
+                storageTree.RootHash = Keccak.EmptyTreeHash;
             }
 
             if (_wasSetCalled) throw new InvalidOperationException("Must call clear first in a storage write batch");
@@ -349,48 +248,26 @@ public class TrieStoreScopeProvider(ITrieStore trieStore, IKeyValueStoreWithBatc
             {
                 if (_hasSelfDestruct)
                 {
-                    _storageTree.RootHash = Keccak.EmptyTreeHash;
+                    storageTree.RootHash = Keccak.EmptyTreeHash;
                 }
 
                 bulkCount = _bulkWrite.Count;
                 using ArrayPoolListRef<PatriciaTree.BulkSetEntry> asRef = _bulkWrite.ToRef();
-                PatriciaTree.Flags flags = _registerRootWork is null ? PatriciaTree.Flags.None : PatriciaTree.Flags.DoNotParallelize;
-                _storageTree.BulkSet(asRef, flags);
+                storageTree.BulkSet(asRef);
             }
 
             if (hasSet)
             {
-                if (_registerRootWork is not null)
+                if (commit)
                 {
-                    int actualWrites = Math.Max(1, _writeCount);
-                    _registerRootWork(new StorageRootWorkItem(
-                        _address,
-                        _storageTree,
-                        actualWrites,
-                        Math.Max(actualWrites, _estimatedEntries),
-                        _firstNibbleWeights,
-                        _hasSelfDestruct,
-                        _commit));
-                    return;
-                }
-
-                if (_commit)
-                {
-                    _storageTree.Commit();
+                    storageTree.Commit();
                 }
                 else
                 {
-                    _storageTree.UpdateRootHash(bulkCount > 64);
+                    storageTree.UpdateRootHash(bulkCount > 64);
                 }
-
-                _onRootUpdated!(_address, _storageTree.RootHash);
+                onRootUpdated(address, storageTree.RootHash);
             }
-        }
-
-        private void RecordFirstNibbleWeight()
-        {
-            _firstNibbleWeights ??= new int[16];
-            _firstNibbleWeights[(_keyBuff.BytesAsSpan[0] & 0xf0) >> 4]++;
         }
     }
 

@@ -134,12 +134,12 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITr
 
     public void CommitTree() => _tree.Commit();
 
-    public IWorldStateScopeProvider.IStorageWriteBatch CreateWriteBatch(int estimatedEntries, Action<TrieStoreScopeProvider.StorageRootWorkItem> registerRootWork)
+    public IWorldStateScopeProvider.IStorageWriteBatch CreateWriteBatch(int estimatedEntries, Action<Address, Hash256> onRootUpdated)
     {
         TrieStoreScopeProvider.StorageTreeBulkWriteBatch storageTreeBulkWriteBatch = new(
                 estimatedEntries,
                 _tree,
-                registerRootWork,
+                onRootUpdated,
                 _address,
                 commit: true);
 

@@ -244,22 +244,15 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
         static void ThrowUnknownHash(TrieNode node) => throw new TrieStoreException($"The hash of {node} should be known at the time of committing.");
     }
 
-    internal int GetNodeShardIdx(Hash256? address, in TreePath path, in ValueHash256 hash)
+    private int GetNodeShardIdx(in TreePath path, in ValueHash256 hash)
     {
-        int mask = _shardedDirtyNodeCount - 1;
-        if (!_pastKeyTrackingEnabled)
+        // Path-tracked: shard by leading path bits so same-path / different-hash maps to the same shard.
+        if (_pastKeyTrackingEnabled)
         {
-            return (int)((uint)hash.GetHashCode() & (uint)mask);
+            return GetPathPrefixShardIdx(in path, _shardBit);
         }
 
-        int prefix = GetPathPrefixShardIdx(in path, _shardBit);
-        if (address is null)
-        {
-            return prefix;
-        }
-
-        int salt = (int)address.ValueHash256.GetHashCode64();
-        return (prefix ^ salt) & mask;
+        return (int)((uint)hash.GetHashCode() & (uint)(_shardedDirtyNodeCount - 1));
     }
 
     /// <summary>Returns the leading <paramref name="shardBit"/> bits of <paramref name="path"/> as a shard index.</summary>
@@ -270,7 +263,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
         return (int)(top >> (32 - shardBit));
     }
 
-    private TrieStoreDirtyNodesCache GetDirtyNodeShard(in TrieStoreDirtyNodesCache.Key key) => _dirtyNodes[GetNodeShardIdx(key.Address, key.Path, in key.Keccak)];
+    private TrieStoreDirtyNodesCache GetDirtyNodeShard(in TrieStoreDirtyNodesCache.Key key) => _dirtyNodes[GetNodeShardIdx(key.Path, in key.Keccak)];
 
     private long NodesCount()
     {
@@ -315,7 +308,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
         // shard select still works in that mode; the dirty-cache key with default keccak will
         // be an orphan but matches the original (best-effort) behavior.
         node.TryGetKeccak(out ValueHash256 nodeKeccak);
-        TrieStoreDirtyNodesCache shard = _dirtyNodes[GetNodeShardIdx(address, path, in nodeKeccak)];
+        TrieStoreDirtyNodesCache shard = _dirtyNodes[GetNodeShardIdx(path, in nodeKeccak)];
         return SaveOrReplaceInDirtyNodesCache(shard, address, ref path, node, blockNumber);
     }
 
@@ -987,7 +980,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
         }
     }
 
-    private void PersistedNodeRecorder(TreePath treePath, Hash256? address, TrieNode tn)
+    private void PersistedNodeRecorder(TreePath treePath, Hash256 address, TrieNode tn)
     {
         // Skip nodes that have no separate keccak (inline children stored within the parent
         // RLP). Pre-A1 this path tolerated null silently when past-key tracking was on because
@@ -996,7 +989,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
         if (treePath.Length > TinyTreePath.MaxNibbleLength) return;
         if (!tn.TryGetKeccak(out ValueHash256 tnKeccak)) return;
 
-        int shardIdx = GetNodeShardIdx(address, treePath, in tnKeccak);
+        int shardIdx = GetNodeShardIdx(treePath, in tnKeccak);
         HashAndTinyPath key = new(address, new TinyTreePath(treePath));
         RecordPersistedHash(_persistedHashes[shardIdx], key, new Hash256(in tnKeccak), _deleteOldNodes);
     }
@@ -1840,18 +1833,18 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
             if (_logger.IsDebug) _logger.Debug($"Flushed {count} commit buffers in {elapsed.Milliseconds}ms");
         }
 
-        private TrieStoreDirtyNodesCache GetDirtyNodeShard(Hash256? address, in TreePath path, in ValueHash256 keccak) => _dirtyNodesBuffer[_trieStore.GetNodeShardIdx(address, path, in keccak)];
+        private TrieStoreDirtyNodesCache GetDirtyNodeShard(in TreePath path, in ValueHash256 keccak) => _dirtyNodesBuffer[_trieStore.GetNodeShardIdx(path, in keccak)];
 
         public TrieNode SaveOrReplaceInDirtyNodesCache(Hash256? address, ref TreePath path, in TrieNode node, long blockNumber)
         {
             // Change the shard to the one from commit buffer.
-            TrieStoreDirtyNodesCache shard = GetDirtyNodeShard(address, path, node.Keccak);
+            TrieStoreDirtyNodesCache shard = GetDirtyNodeShard(path, node.Keccak);
             return _trieStore.SaveOrReplaceInDirtyNodesCache(shard, address, ref path, node, blockNumber);
         }
 
         public TrieNode? FindCachedNode(TrieStoreDirtyNodesCache.Key key, bool isReadOnly)
         {
-            int shardIdx = _trieStore.GetNodeShardIdx(key.Address, key.Path, in key.Keccak);
+            int shardIdx = _trieStore.GetNodeShardIdx(key.Path, in key.Keccak);
             TrieStoreDirtyNodesCache bufferShard = _dirtyNodesBuffer[shardIdx];
             TrieStoreDirtyNodesCache mainShard = _trieStore._dirtyNodes[shardIdx];
 
@@ -1896,7 +1889,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
 
         public TrieNode? FindCachedShared(TrieStoreDirtyNodesCache.Key key)
         {
-            int shardIdx = _trieStore.GetNodeShardIdx(key.Address, key.Path, in key.Keccak);
+            int shardIdx = _trieStore.GetNodeShardIdx(key.Path, in key.Keccak);
             TrieStoreDirtyNodesCache bufferShard = _dirtyNodesBuffer[shardIdx];
             TrieStoreDirtyNodesCache mainShard = _trieStore._dirtyNodes[shardIdx];
 
@@ -1921,7 +1914,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
 
         public TrieNode PublishSharedReadOnly(TrieStoreDirtyNodesCache.Key key, TrieNode node)
         {
-            TrieStoreDirtyNodesCache shard = _dirtyNodesBuffer[_trieStore.GetNodeShardIdx(key.Address, key.Path, in key.Keccak)];
+            TrieStoreDirtyNodesCache shard = _dirtyNodesBuffer[_trieStore.GetNodeShardIdx(key.Path, in key.Keccak)];
             return _trieStore.PublishSharedReadOnly(shard, key, node);
         }
 
@@ -1930,7 +1923,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
 
         public bool HasCachedRlp(TrieStoreDirtyNodesCache.Key key)
         {
-            int shardIdx = _trieStore.GetNodeShardIdx(key.Address, key.Path, in key.Keccak);
+            int shardIdx = _trieStore.GetNodeShardIdx(key.Path, in key.Keccak);
             return TrieStore.HasCachedRlp(_dirtyNodesBuffer[shardIdx], key) || TrieStore.HasCachedRlp(_trieStore._dirtyNodes[shardIdx], key);
         }
     }
