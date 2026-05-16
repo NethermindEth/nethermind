@@ -17,7 +17,9 @@ public class HsstDenseByteIndexTests
         Assert.That(tags.Length, Is.EqualTo(values.Length));
         using PooledByteBufferWriter pooled = new(64 * 1024);
         using HsstDenseByteIndexBuilder<PooledByteBufferWriter.Writer> b = new(ref pooled.GetWriter());
-        for (int i = 0; i < tags.Length; i++) b.Add(tags[i], values[i]);
+        // Tests pass tags in ascending (semantic) order for readability. The builder
+        // requires strictly descending insertion, so the helper feeds them tail-first.
+        for (int i = tags.Length - 1; i >= 0; i--) b.Add(tags[i], values[i]);
         b.Build();
         return pooled.WrittenSpan.ToArray();
     }
@@ -110,18 +112,22 @@ public class HsstDenseByteIndexTests
         Assert.That(TryGetFloor(data, 0x01, out _), Is.False);
     }
 
-    [Test]
-    public void RejectsUnsortedAndMultiByteAndEmpty()
+    [TestCase((byte)0x05, (byte)0x05, TestName = "Reject_DuplicateTag")]
+    [TestCase((byte)0x05, (byte)0x06, TestName = "Reject_AscendingTag")]
+    public void RejectsNonDescendingTag(byte firstTag, byte secondTag)
     {
-        bool ooo = false;
-        using (PooledByteBufferWriter p = new(1024))
-        {
-            using HsstDenseByteIndexBuilder<PooledByteBufferWriter.Writer> b = new(ref p.GetWriter());
-            b.Add(0x05, [0x01]);
-            try { b.Add(0x05, [0x02]); } catch (ArgumentException) { ooo = true; }
-        }
-        Assert.That(ooo, Is.True, "duplicate / non-ascending tag must throw");
+        bool threw = false;
+        using PooledByteBufferWriter p = new(1024);
+        using HsstDenseByteIndexBuilder<PooledByteBufferWriter.Writer> b = new(ref p.GetWriter());
+        b.Add(firstTag, [0x01]);
+        try { b.Add(secondTag, [0x02]); } catch (ArgumentException) { threw = true; }
+        Assert.That(threw, Is.True,
+            $"Add(0x{secondTag:X2}) after Add(0x{firstTag:X2}) must throw (strictly-descending invariant)");
+    }
 
+    [Test]
+    public void RejectsMultiByteTagAndEmptyBuild()
+    {
         bool multi = false;
         using (PooledByteBufferWriter p = new(1024))
         {
@@ -143,26 +149,29 @@ public class HsstDenseByteIndexTests
     public void TrailerLayout_NoTagsArray_ThreeEntryFixture()
     {
         // Three entries at positions 0x00, 0x02, 0x03 → values "AB", "Z", "" (empty).
+        // Insertion happens high → low (0x03 → 0x02 → 0x00) so physical layout is
+        // [empty][Z][AB] (data section reads high-tag first).
         // Position 0x01 is gap-filled empty → N = 4. valuesTotal = 3 ≤ 255 → OffsetSize = 1.
         byte[] data = Build([0x00, 0x02, 0x03], ["AB"u8.ToArray(), "Z"u8.ToArray(), []]);
 
-        // Layout: [Value_0=2][Value_2=1][Ends: 4·1][Count:1][OffsetSize:1][IndexType:1]
-        //       = 2 + 1 + 4 + 3 = 10
+        // Layout: [Value_3=0][Value_2=1][Value_0=2][Ends: 4·1][Count:1][OffsetSize:1][IndexType:1]
+        //       = 0 + 1 + 2 + 4 + 3 = 10
         Assert.That(data.Length, Is.EqualTo(2 + 1 + 4 + 3));
         Assert.That(data[^1], Is.EqualTo((byte)IndexType.DenseByteIndex));
         Assert.That(data[^2], Is.EqualTo((byte)1)); // OffsetSize
         Assert.That(data[^3], Is.EqualTo((byte)3)); // N - 1
 
-        // Ends sit immediately before the trailer; cumulative ends 2, 2, 3, 3 (1 byte each).
+        // Ends indexed by tag value (still ascending): Ends[0]=3, Ends[1]=1 (below-range gap-fill,
+        // = Ends[2]), Ends[2]=1, Ends[3]=0 (highest tag was first written, prevEnd = 0).
         ReadOnlySpan<byte> endsSpan = data.AsSpan(data.Length - 3 - 4, 4);
-        Assert.That(endsSpan[0], Is.EqualTo((byte)2));
-        Assert.That(endsSpan[1], Is.EqualTo((byte)2));
-        Assert.That(endsSpan[2], Is.EqualTo((byte)3));
-        Assert.That(endsSpan[3], Is.EqualTo((byte)3));
+        Assert.That(endsSpan[0], Is.EqualTo((byte)3));
+        Assert.That(endsSpan[1], Is.EqualTo((byte)1));
+        Assert.That(endsSpan[2], Is.EqualTo((byte)1));
+        Assert.That(endsSpan[3], Is.EqualTo((byte)0));
 
-        // Values up front.
-        Assert.That(data[..2], Is.EqualTo("AB"u8.ToArray()));
-        Assert.That(data[2], Is.EqualTo((byte)'Z'));
+        // Physical layout: empty Value_3 (0 bytes), then Value_2 = 'Z', then Value_0 = "AB".
+        Assert.That(data[0], Is.EqualTo((byte)'Z'));
+        Assert.That(data[1..3], Is.EqualTo("AB"u8.ToArray()));
     }
 
     /// <summary>
@@ -207,18 +216,21 @@ public class HsstDenseByteIndexTests
         // ends: ~2.15 GiB, ~4.29 GiB, ~6.44 GiB. The last end exceeds uint.MaxValue, so
         // ChooseOffsetSize must select 6 (u48 LE) — exercising the >4 GiB DenseByteIndex
         // format that the long-finality compactor relies on.
+        //
+        // Insertion is high-tag → low-tag: tag 2 first (Ends[2] = step), then tag 1
+        // (Ends[1] = 2·step), then tag 0 (Ends[0] = 3·step).
         byte[] scratch = new byte[4096];
         LongAdvanceOnlyWriter writer = new(scratch);
         long step = int.MaxValue; // 2_147_483_647
-        long[] expectedEnds = [step, step * 2, step * 3];
+        long[] expectedEnds = [step * 3, step * 2, step];
 
         using (HsstDenseByteIndexBuilder<LongAdvanceOnlyWriter> b = new(ref writer))
         {
-            for (int i = 0; i < 3; i++)
+            for (int tag = 2; tag >= 0; tag--)
             {
                 b.BeginValueWrite();
                 writer.Advance(int.MaxValue);
-                b.FinishValueWrite((byte)i);
+                b.FinishValueWrite((byte)tag);
             }
             b.Build();
         }
@@ -299,8 +311,9 @@ public class HsstDenseByteIndexTests
     public void TrySeek_ResolvesColumnAbove2GiB_Regression()
     {
         // Build a 2-entry DenseByteIndex via the no-alloc writer:
+        //   tag 0x01 → value of 1024 bytes (small, written first under the descending contract)
         //   tag 0x00 → value of 2_500_000_000 bytes (> int.MaxValue, triggers the bug)
-        //   tag 0x01 → value of 1024 bytes (small follow-up; its prevEnd is also > int.MaxValue)
+        // Tag 0x00's prevEnd = Ends[1] = 1024 (small); tag 0x01's prevEnd = 0 (highest tag).
         const long BigValueSize = 2_500_000_000L;
         const int SmallValueSize = 1024;
         byte[] scratch = new byte[64];
@@ -309,14 +322,14 @@ public class HsstDenseByteIndexTests
         using (HsstDenseByteIndexBuilder<LongAdvanceOnlyWriter> b = new(ref writer))
         {
             b.BeginValueWrite();
+            writer.Advance(SmallValueSize);
+            b.FinishValueWrite(0x01);
+
+            b.BeginValueWrite();
             // Advance is int-typed; cover BigValueSize in two hops.
             writer.Advance(int.MaxValue);
             writer.Advance(checked((int)(BigValueSize - int.MaxValue)));
             b.FinishValueWrite(0x00);
-
-            b.BeginValueWrite();
-            writer.Advance(SmallValueSize);
-            b.FinishValueWrite(0x01);
 
             b.Build();
         }
@@ -333,21 +346,21 @@ public class HsstDenseByteIndexTests
         long total = writer.Written;
         TrailerOnlyLongReader reader = new(total, trailer);
 
-        // tag 0x00: value occupies [0, BigValueSize) — Length > int.MaxValue.
+        // tag 0x01 was written first → physically at offset 0, length 1024.
+        using (HsstReader<TrailerOnlyLongReader, NoOpPin> r = new(in reader))
+        {
+            Assert.That(r.TrySeek([0x01], out Bound b1), Is.True);
+            Assert.That(b1.Offset, Is.EqualTo(0L));
+            Assert.That(b1.Length, Is.EqualTo((long)SmallValueSize));
+        }
+
+        // tag 0x00 occupies [SmallValueSize, SmallValueSize + BigValueSize); its Length > int.MaxValue.
         using (HsstReader<TrailerOnlyLongReader, NoOpPin> r = new(in reader))
         {
             Assert.That(r.TrySeek([0x00], out Bound b0), Is.True,
                 "TrySeek(0x00) must succeed for a column whose value exceeds int.MaxValue");
-            Assert.That(b0.Offset, Is.EqualTo(0L));
+            Assert.That(b0.Offset, Is.EqualTo((long)SmallValueSize));
             Assert.That(b0.Length, Is.EqualTo(BigValueSize));
-        }
-
-        // tag 0x01: value at [BigValueSize, BigValueSize + 1024) — prevEnd also > int.MaxValue.
-        using (HsstReader<TrailerOnlyLongReader, NoOpPin> r = new(in reader))
-        {
-            Assert.That(r.TrySeek([0x01], out Bound b1), Is.True);
-            Assert.That(b1.Offset, Is.EqualTo(BigValueSize));
-            Assert.That(b1.Length, Is.EqualTo((long)SmallValueSize));
         }
     }
 

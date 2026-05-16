@@ -84,7 +84,7 @@ public static class PersistedSnapshotBuilder
         // 20-byte address) entry for every hash that originated from accounts / SD / slots
         // (i.e. every hash with a known Address); storage-trie-only hashes are absent. We
         // walk uniqueAddressHashes and hashToAddr in lock-step at write time so the writer
-        // can emit the new AddressSubTag (0x07 — raw 20-byte preimage) for every row whose
+        // can emit the new AddressSubTag (0x01 — raw 20-byte preimage) for every row whose
         // hash has a known address.
         NativeMemoryList<ValueHash256> uniqueAddressHashes = null!;
         NativeMemoryList<(ValueHash256 Hash, ValueAddress Addr)> hashToAddr = null!;
@@ -211,24 +211,27 @@ public static class PersistedSnapshotBuilder
         HsstDenseByteIndexBuilder<TWriter> outer = new(ref writer);
         try
         {
-            // Column 0x00: Metadata
-            WriteMetadataColumn<TWriter, TReader, TPin>(ref outer, snapshot, blobWriter.BlobArenaId);
+            // Columns are emitted in strictly descending tag order, as the outer
+            // DenseByteIndex requires (writer streams high-tag → low-tag so the
+            // small/hot Metadata column ends up adjacent to the lookup table).
 
-            // Column 0x01: Unified per-address column. Sub-tags 0x01 (storage top), 0x02
-            // (storage compact), 0x03 (storage fallback), 0x04 (slots), 0x05 (account RLP),
-            // 0x06 (SD), 0x07 (raw 20-byte Address preimage). Outer key is the 20-byte
-            // addressHash prefix.
-            WritePerAddressColumn<TWriter, TReader, TPin>(ref outer, snapshot, sortedStorages, uniqueAddressHashes,
-                hashToAddr, storTopKeys, storCompactKeys, storFallbackKeys, blobWriter, bloom);
-
-            // Column 0x03: State nodes (compact, path length 6-15)
-            WriteStateNodesColumnCompact<TWriter, TReader, TPin>(ref outer, snapshot, stateCompactKeys, blobWriter, bloom);
+            // Column 0x06: State nodes fallback (path length 16+)
+            WriteStateNodesColumnFallback<TWriter, TReader, TPin>(ref outer, snapshot, stateFallbackKeys, blobWriter, bloom);
 
             // Column 0x05: State top nodes (path length 0-5)
             WriteStateTopNodesColumn<TWriter, TReader, TPin>(ref outer, snapshot, stateTopKeys, blobWriter, bloom);
 
-            // Column 0x06: State nodes fallback (path length 16+)
-            WriteStateNodesColumnFallback<TWriter, TReader, TPin>(ref outer, snapshot, stateFallbackKeys, blobWriter, bloom);
+            // Column 0x03: State nodes (compact, path length 6-15)
+            WriteStateNodesColumnCompact<TWriter, TReader, TPin>(ref outer, snapshot, stateCompactKeys, blobWriter, bloom);
+
+            // Column 0x01: Unified per-address column. Inner sub-tags 0x01..0x07 cover
+            // address preimage, account RLP, SD, slots, and storage-trie nodes (fallback /
+            // compact / top). Outer key is the 20-byte addressHash prefix.
+            WritePerAddressColumn<TWriter, TReader, TPin>(ref outer, snapshot, sortedStorages, uniqueAddressHashes,
+                hashToAddr, storTopKeys, storCompactKeys, storFallbackKeys, blobWriter, bloom);
+
+            // Column 0x00: Metadata
+            WriteMetadataColumn<TWriter, TReader, TPin>(ref outer, snapshot, blobWriter.BlobArenaId);
 
             outer.Build();
         }
@@ -355,7 +358,7 @@ public static class PersistedSnapshotBuilder
             // address is null when this column key was contributed only by storage-trie
             // nodes (Hash256 → TrieNode). In that case slots / account / SD lookups are
             // skipped because all three are keyed by raw Address. The AddressSubTag
-            // (0x07) is also skipped — its absence signals "no preimage available".
+            // (0x01) is also skipped — its absence signals "no preimage available".
             Address? address = null;
             if (hashToAddrIdx < hashToAddr.Count && hashToAddr[hashToAddrIdx].Hash.Equals(addressHash))
             {
@@ -367,16 +370,17 @@ public static class PersistedSnapshotBuilder
             ulong addrBloomKey = PersistedSnapshotBloomBuilder.AddressKey(in addressHash);
             bloom.Add(addrBloomKey);
 
-            // Begin per-address HSST. Up to 7 sub-tags 0x01..0x07; DenseByteIndex addresses
-            // entries by tag-byte directly and gap-fills missing positions with length-0
-            // values. Sub-tag value-presence semantics:
-            //   0x01 storage top: nested HSST(4-byte path → NodeRef)
-            //   0x02 storage compact: nested HSST(8-byte path → NodeRef)
-            //   0x03 storage fallback: nested HSST(33-byte path → NodeRef)
+            // Begin per-address HSST. Up to 7 sub-tags 0x01..0x07 written in strictly
+            // descending tag order (DenseByteIndex contract); the writer streams high-tag
+            // entries first so small/hot tags (low byte values) land adjacent to the
+            // trailing Ends[] table. Sub-tag value-presence semantics:
+            //   0x07 storage top: nested HSST(4-byte path → NodeRef)
+            //   0x06 storage compact: nested HSST(8-byte path → NodeRef)
+            //   0x05 storage fallback: nested HSST(33-byte path → NodeRef)
             //   0x04 slots: nested HSST(SlotPrefix(30) → nested HSST(SlotSuffix(2) → bytes))
-            //   0x05 account: [] absent / [0x00] deleted / RLP-bytes present
-            //   0x06 SD: [] absent / [0x00] destructed / [0x01] new account
-            //   0x07 address preimage: [] absent / 20 raw Address bytes
+            //   0x03 SD: [] absent / [0x00] destructed / [0x01] new account
+            //   0x02 account: [] absent / [0x00] deleted / RLP-bytes present
+            //   0x01 address preimage: [] absent / 20 raw Address bytes
             ref TWriter perAddrWriter = ref addressLevel.BeginValueWrite();
             using HsstDenseByteIndexBuilder<TWriter> perAddr = new(ref perAddrWriter);
 
@@ -385,7 +389,7 @@ public static class PersistedSnapshotBuilder
             // referenced it during Job B.
             Hash256? addrRefForStorageNode = null;
 
-            // Sub-tag 0x01: Storage trie nodes (top, 4-byte path keys, length 0-5).
+            // Sub-tag 0x07: Storage trie nodes (top, 4-byte path keys, length 0-5).
             // Storage-trie partitions are pre-sorted by address-hash prefix and path so a
             // single advance through storTop / storCompact / storFallback covers the run
             // for this address-hash.
@@ -416,7 +420,7 @@ public static class PersistedSnapshotBuilder
                 perAddr.FinishValueWrite(PersistedSnapshot.StorageTopSubTag);
             }
 
-            // Sub-tag 0x02: Storage trie nodes (compact, 8-byte path keys, length 6-15).
+            // Sub-tag 0x06: Storage trie nodes (compact, 8-byte path keys, length 6-15).
             int compactStart = storCompactIdx;
             while (storCompactIdx < storCompact.Count &&
                 storCompact[storCompactIdx].AddrHash.Bytes[..AddressHashPrefixLength].SequenceEqual(addressHashPrefix))
@@ -444,7 +448,7 @@ public static class PersistedSnapshotBuilder
                 perAddr.FinishValueWrite(PersistedSnapshot.StorageCompactSubTag);
             }
 
-            // Sub-tag 0x03: Storage trie nodes (fallback, 33-byte path keys, length 16+).
+            // Sub-tag 0x05: Storage trie nodes (fallback, 33-byte path keys, length 16+).
             int fallbackStart = storFallbackIdx;
             while (storFallbackIdx < storFallback.Count &&
                 storFallback[storFallbackIdx].AddrHash.Bytes[..AddressHashPrefixLength].SequenceEqual(addressHashPrefix))
@@ -514,7 +518,7 @@ public static class PersistedSnapshotBuilder
                         for (int i = groupStart; i < groupEnd; i++)
                         {
                             sortedStorages[i].Key.Slot.ToBigEndian(slotKey);
-                                bloom.Add(PersistedSnapshotBloomBuilder.SlotKey(addrBloomKey, slotKey));
+                            bloom.Add(PersistedSnapshotBloomBuilder.SlotKey(addrBloomKey, slotKey));
                             SlotValue? value = sortedStorages[i].Value;
                             ReadOnlySpan<byte> suffixKey = slotKey.Slice(slotPrefixLength, slotSuffixLength);
                             ReadOnlySpan<byte> payload = value.HasValue
@@ -530,7 +534,7 @@ public static class PersistedSnapshotBuilder
                         for (int i = groupStart; i < groupEnd; i++)
                         {
                             sortedStorages[i].Key.Slot.ToBigEndian(slotKey);
-                                bloom.Add(PersistedSnapshotBloomBuilder.SlotKey(addrBloomKey, slotKey));
+                            bloom.Add(PersistedSnapshotBloomBuilder.SlotKey(addrBloomKey, slotKey));
                             SlotValue? value = sortedStorages[i].Value;
                             ReadOnlySpan<byte> suffixKey = slotKey.Slice(slotPrefixLength, slotSuffixLength);
                             ReadOnlySpan<byte> payload = value.HasValue
@@ -548,7 +552,16 @@ public static class PersistedSnapshotBuilder
                 perAddr.FinishValueWrite(PersistedSnapshot.SlotSubTag);
             }
 
-            // Sub-tag 0x05: Account. Present-marker encoding: [0x00] deleted, RLP-bytes
+            // Sub-tag 0x03: Self-destruct. Present-marker encoding: [0x00] destructed,
+            // [0x01] new account; length 0 = absent (gap-filled by DenseByteIndex).
+            // Written before Account so the per-address DenseByteIndex receives tags in
+            // strictly descending order (0x03 > 0x02).
+            if (address is not null && snapshot.Content.SelfDestructedStorageAddresses.TryGetValue(address, out bool sdValue))
+            {
+                perAddr.Add(PersistedSnapshot.SelfDestructSubTag, sdValue ? [0x01] : [0x00]);
+            }
+
+            // Sub-tag 0x02: Account. Present-marker encoding: [0x00] deleted, RLP-bytes
             // present; length 0 = absent (gap-filled). Slim account RLP starts with a
             // list header (0xc0+) so 0x00 first-byte is unambiguous.
             if (address is not null && snapshot.TryGetAccount(address, out Account? account))
@@ -566,14 +579,7 @@ public static class PersistedSnapshotBuilder
                 }
             }
 
-            // Sub-tag 0x06: Self-destruct. Present-marker encoding: [0x00] destructed,
-            // [0x01] new account; length 0 = absent (gap-filled by DenseByteIndex).
-            if (address is not null && snapshot.Content.SelfDestructedStorageAddresses.TryGetValue(address, out bool sdValue))
-            {
-                perAddr.Add(PersistedSnapshot.SelfDestructSubTag, sdValue ? [0x01] : [0x00]);
-            }
-
-            // Sub-tag 0x07: Raw 20-byte Address preimage. Written whenever we know the
+            // Sub-tag 0x01: Raw 20-byte Address preimage. Written whenever we know the
             // preimage (i.e. the row originated from accounts / SD / slots). Storage-trie-
             // only rows leave this absent (length 0 gap-fill); a later snapshot that
             // touches the same account will supply the preimage.

@@ -55,26 +55,16 @@ public static class PersistedSnapshotMerger
         ArgumentNullException.ThrowIfNull(bloom);
         // All snapshots are blob-backed (values in trie columns are NodeRefs), so we can
         // merge them directly without any Full→Linked pre-conversion stage. Columns are
-        // emitted in the on-disk order the DenseByteIndex outer expects: metadata (0x00),
-        // per-address (0x01), state-node (0x03), state-top-nodes (0x05), state-fallback
-        // (0x06). Column 0x01 carries per-addressHash {storage-trie top/compact/fallback,
-        // slots, account, SD, raw-address preimage}.
+        // emitted in strictly descending tag order, as the outer DenseByteIndex requires:
+        // state-fallback (0x06), state-top-nodes (0x05), state-node (0x03), per-address
+        // (0x01), metadata (0x00). Column 0x01 carries per-addressHash {address-preimage,
+        // account, SD, slots, storage-trie fallback/compact/top}.
         using HsstDenseByteIndexBuilder<TWriter> outerBuilder = new(ref writer);
 
         {
             ref TWriter valueWriter = ref outerBuilder.BeginValueWrite();
-            NWayMetadataMerge<TWriter, TReader, TPin>(views, ref valueWriter);
-            outerBuilder.FinishValueWrite(PersistedSnapshot.MetadataTag);
-        }
-        {
-            ref TWriter valueWriter = ref outerBuilder.BeginValueWrite();
-            NWayMergePerAddressColumn<TWriter, TReader, TPin>(views, PersistedSnapshot.AccountColumnTag, ref valueWriter, bloom);
-            outerBuilder.FinishValueWrite(PersistedSnapshot.AccountColumnTag);
-        }
-        {
-            ref TWriter valueWriter = ref outerBuilder.BeginValueWrite();
-            NWayStreamingMerge<TWriter, TReader, TPin>(views, PersistedSnapshot.StateNodeTag, ref valueWriter, keySize: 8, bloom);
-            outerBuilder.FinishValueWrite(PersistedSnapshot.StateNodeTag);
+            NWayStreamingMerge<TWriter, TReader, TPin>(views, PersistedSnapshot.StateNodeFallbackTag, ref valueWriter, keySize: 33, bloom);
+            outerBuilder.FinishValueWrite(PersistedSnapshot.StateNodeFallbackTag);
         }
         {
             ref TWriter valueWriter = ref outerBuilder.BeginValueWrite();
@@ -83,8 +73,18 @@ public static class PersistedSnapshotMerger
         }
         {
             ref TWriter valueWriter = ref outerBuilder.BeginValueWrite();
-            NWayStreamingMerge<TWriter, TReader, TPin>(views, PersistedSnapshot.StateNodeFallbackTag, ref valueWriter, keySize: 33, bloom);
-            outerBuilder.FinishValueWrite(PersistedSnapshot.StateNodeFallbackTag);
+            NWayStreamingMerge<TWriter, TReader, TPin>(views, PersistedSnapshot.StateNodeTag, ref valueWriter, keySize: 8, bloom);
+            outerBuilder.FinishValueWrite(PersistedSnapshot.StateNodeTag);
+        }
+        {
+            ref TWriter valueWriter = ref outerBuilder.BeginValueWrite();
+            NWayMergePerAddressColumn<TWriter, TReader, TPin>(views, PersistedSnapshot.AccountColumnTag, ref valueWriter, bloom);
+            outerBuilder.FinishValueWrite(PersistedSnapshot.AccountColumnTag);
+        }
+        {
+            ref TWriter valueWriter = ref outerBuilder.BeginValueWrite();
+            NWayMetadataMerge<TWriter, TReader, TPin>(views, ref valueWriter);
+            outerBuilder.FinishValueWrite(PersistedSnapshot.MetadataTag);
         }
 
         outerBuilder.Build();
@@ -160,9 +160,9 @@ public static class PersistedSnapshotMerger
     /// Outer: 20-byte addressHash prefix keys (minSep=4). Addresses with a single matching
     /// source byte-copy the per-address HSST blob verbatim (every internal pointer is
     /// HSST-relative, so a relocation stays readable); collisions go through
-    /// <see cref="NWayMergePerAddressHsst"/>. Per-address inner sub-tags are 0x01/0x02/0x03
-    /// (storage-trie nodes), 0x04 (slots), 0x05 (account RLP), 0x06 (self-destruct),
-    /// 0x07 (raw 20-byte Address preimage).
+    /// <see cref="NWayMergePerAddressHsst"/>. Per-address inner sub-tags are 0x01 (raw
+    /// 20-byte Address preimage), 0x02 (account RLP), 0x03 (self-destruct), 0x04 (slots),
+    /// 0x05/0x06/0x07 (storage-trie nodes fallback/compact/top).
     /// </summary>
     private static void NWayMergePerAddressColumn<TWriter, TReader, TPin>(
         ReadOnlySpan<(IntPtr Ptr, long Len)> views, byte[] tag, ref TWriter writer, BloomFilter bloom) where TWriter : IByteBufferWriterWithReader<TReader, TPin> where TReader : IHsstByteReader<TPin>, allows ref struct where TPin : struct, IBufferPin, allows ref struct
@@ -314,14 +314,14 @@ public static class PersistedSnapshotMerger
 
     /// <summary>
     /// N-way merge of per-address HSSTs from M sources (oldest-first by matchingSources order).
-    /// All seven column-0x01 inner sub-tags emitted in ascending byte order so the
-    /// DenseByteIndex builder accepts them:
-    /// - 0x01/0x02/0x03 Storage trie (top/compact/fallback): newest wins on key collision
+    /// All seven column-0x01 inner sub-tags emitted in <b>descending</b> byte order so the
+    /// DenseByteIndex builder accepts them (writer streams high-tag → low-tag):
+    /// - 0x07/0x06/0x05 Storage trie (top/compact/fallback): newest wins on key collision
     ///   (storage nodes are content-addressable so duplicate keys are byte-identical in practice)
     /// - 0x04 Slots: find newest destruct barrier, merge slots from barrier..M-1 via nested streaming merge
-    /// - 0x05 Account: newest wins (walk M-1..0, first with AccountSubTag)
-    /// - 0x06 SelfDestruct: iterate 0..M-1, apply TryAdd semantics
-    /// - 0x07 Address preimage: first non-empty wins (Keccak is a function, so every
+    /// - 0x03 SelfDestruct: iterate 0..M-1, apply TryAdd semantics
+    /// - 0x02 Account: newest wins (walk M-1..0, first with AccountSubTag)
+    /// - 0x01 Address preimage: first non-empty wins (Keccak is a function, so every
     ///   source's preimage for this hash is byte-identical)
     /// </summary>
     private static void NWayMergePerAddressHsst<TWriter, TReader, TPin>(
@@ -379,11 +379,12 @@ public static class PersistedSnapshotMerger
                     destructBarrier = j;
             }
 
-            // Sub-tags 0x01 / 0x02 / 0x03: Storage-trie nodes (top / compact / fallback).
+            // Sub-tags 0x07 / 0x06 / 0x05: Storage-trie nodes (top / compact / fallback).
             // No destruct barrier is required here — orphan nodes are unreachable from the
             // new storage root after a self-destruct, so newest-wins on key collision is
             // the correct semantic. Inner values are NodeRefs; MergeStorageTrieSubTag
-            // dispatches the inner BTree merge into a PackedArray builder.
+            // dispatches the inner BTree merge into a PackedArray builder. The per-address
+            // DenseByteIndex requires strictly descending insertion, so these emit first.
             MergeStorageTrieSubTag<TWriter, TReader, TPin>(matchingSources, matchCount, views, subTagBounds,
                 ref perAddrBuilder, PersistedSnapshot.StorageTopSubTag,
                 subTagIdx: PersistedSnapshot.StorageTopSubTag[0], innerKeySize: 4, perSourceStride: PerAddrSubTagCount,
@@ -477,25 +478,12 @@ public static class PersistedSnapshotMerger
                 }
             }
 
-            // Sub-tag 0x05: Account — newest wins (walk M-1..0, first present (length>0)).
-            {
-                int acctTag = PersistedSnapshot.AccountSubTag[0];
-                for (int j = matchCount - 1; j >= 0; j--)
-                {
-                    Bound ab = subTagBounds[j * PerAddrSubTagCount + acctTag];
-                    if (ab.Length == 0) continue;
-                    WholeReadSessionReader r = Reader(views[matchingSources[j]]);
-                    using NoOpPin acctPin = r.PinBuffer(ab.Offset, ab.Length);
-                    perAddrBuilder.Add(PersistedSnapshot.AccountSubTag, acctPin.Buffer);
-                    break;
-                }
-            }
-
-            // Sub-tag 0x06: SelfDestruct — iterate 0..M-1, apply TryAdd semantics. Presence
+            // Sub-tag 0x03: SelfDestruct — iterate 0..M-1, apply TryAdd semantics. Presence
             // is signalled by length>0 ([0x00]=destructed, [0x01]=new); absent entries (gap-
-            // filled length 0 under DenseByteIndex) are ignored. Track the winning bound
-            // snapshot-absolute so we can re-pin at the end without holding a span across
-            // iterations.
+            // filled length 0 under DenseByteIndex) are ignored. Emitted before Account so
+            // the DenseByteIndex insertion order stays strictly descending. Track the
+            // winning bound snapshot-absolute so we can re-pin at the end without holding a
+            // span across iterations.
             {
                 int sdSrcJ = -1;
                 long sdValOff = 0;
@@ -534,7 +522,21 @@ public static class PersistedSnapshotMerger
                 }
             }
 
-            // Sub-tag 0x07: Address preimage — first non-empty wins. Keccak is a function,
+            // Sub-tag 0x02: Account — newest wins (walk M-1..0, first present (length>0)).
+            {
+                int acctTag = PersistedSnapshot.AccountSubTag[0];
+                for (int j = matchCount - 1; j >= 0; j--)
+                {
+                    Bound ab = subTagBounds[j * PerAddrSubTagCount + acctTag];
+                    if (ab.Length == 0) continue;
+                    WholeReadSessionReader r = Reader(views[matchingSources[j]]);
+                    using NoOpPin acctPin = r.PinBuffer(ab.Offset, ab.Length);
+                    perAddrBuilder.Add(PersistedSnapshot.AccountSubTag, acctPin.Buffer);
+                    break;
+                }
+            }
+
+            // Sub-tag 0x01: Address preimage — first non-empty wins. Keccak is a function,
             // so every source's 20-byte preimage for this addressHash is byte-identical.
             // Walk 0..M-1 looking for the first non-empty sub-tag value and copy it.
             {

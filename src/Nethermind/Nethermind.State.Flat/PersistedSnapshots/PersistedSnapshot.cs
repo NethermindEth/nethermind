@@ -28,14 +28,19 @@ namespace Nethermind.State.Flat.PersistedSnapshots;
 /// Inner HSST keys are the entity keys without the tag prefix:
 ///   Column 0x00: Metadata — String key → version, block range, ref_ids list, state root values
 ///   Column 0x01: AddressHash (20 bytes, = Keccak(address)[..20]) → per-address HSST {
-///       0x01 (StorageTopSubTag):      nested HSST (TreePath (3 bytes) → NodeRef, path length 0-5)
-///       0x02 (StorageCompactSubTag):  nested HSST (TreePath (8 bytes compact) → NodeRef, path length 8-15)
-///       0x03 (StorageFallbackSubTag): nested HSST (TreePath.Path (33 bytes) → NodeRef, path length 16+)
+///       0x01 (AddressSubTag):         raw 20-byte Address bytes — preimage of the outer addressHash
+///       0x02 (AccountSubTag):         raw account slim RLP bytes (empty = deleted account)
+///       0x03 (SelfDestructSubTag):    raw SD flag bytes (empty = destructed, 0x01 = new account)
 ///       0x04 (SlotSubTag):            nested HSST (SlotPrefix(30) → nested HSST(SlotSuffix(2) → SlotValue))
-///       0x05 (AccountSubTag):         raw account slim RLP bytes (empty = deleted account)
-///       0x06 (SelfDestructSubTag):    raw SD flag bytes (empty = destructed, 0x01 = new account)
-///       0x07 (AddressSubTag):         raw 20-byte Address bytes — preimage of the outer addressHash
+///       0x05 (StorageFallbackSubTag): nested HSST (TreePath.Path (33 bytes) → NodeRef, path length 16+)
+///       0x06 (StorageCompactSubTag):  nested HSST (TreePath (8 bytes compact) → NodeRef, path length 8-15)
+///       0x07 (StorageTopSubTag):      nested HSST (TreePath (3 bytes) → NodeRef, path length 0-5)
 ///   }
+///   Sub-tag values are arranged so the small, hot metadata (Address/Account/SelfDestruct)
+///   gets the lowest byte values. The per-address inner HSST is built as a dense-byte-index
+///   whose value blobs are streamed high-tag → low-tag (descending) so the storage-trie
+///   blobs land at the front of the data section and the hot metadata blobs land adjacent
+///   to the trailing Ends[] table, sharing OS pages with the lookup-time read.
 ///   Column 0x03: TreePath (8 bytes compact) → NodeRef (path length 6-15)
 ///   Column 0x05: TreePath (3 bytes) → NodeRef (path length 0-5)
 ///   Column 0x06: TreePath.Path (32 bytes) + PathLength (1 byte) → NodeRef (path length 16+)
@@ -52,14 +57,17 @@ public sealed unsafe class PersistedSnapshot : RefCountingDisposable
     // Per-address column 0x01 outer key width — first 20 bytes of Keccak(address).
     internal const int AddressHashPrefixLength = 20;
 
-    // Sub-tags within per-address HSST (column 0x01), sorted byte order.
-    internal static readonly byte[] StorageTopSubTag = [0x01];
-    internal static readonly byte[] StorageCompactSubTag = [0x02];
-    internal static readonly byte[] StorageFallbackSubTag = [0x03];
+    // Sub-tags within per-address HSST (column 0x01). The per-address HSST is built as a
+    // dense-byte-index whose writer streams entries in strictly descending tag order, so the
+    // value blobs for the hot small metadata (low tag values) end up adjacent to the trailing
+    // Ends[] table — see the class-level remarks for the layout rationale.
+    internal static readonly byte[] AddressSubTag = [0x01];
+    internal static readonly byte[] AccountSubTag = [0x02];
+    internal static readonly byte[] SelfDestructSubTag = [0x03];
     internal static readonly byte[] SlotSubTag = [0x04];
-    internal static readonly byte[] AccountSubTag = [0x05];
-    internal static readonly byte[] SelfDestructSubTag = [0x06];
-    internal static readonly byte[] AddressSubTag = [0x07];
+    internal static readonly byte[] StorageFallbackSubTag = [0x05];
+    internal static readonly byte[] StorageCompactSubTag = [0x06];
+    internal static readonly byte[] StorageTopSubTag = [0x07];
 
     // Metadata column keys. The HSST builder requires uniform key length per HSST,
     // so the original ASCII keys are NUL-padded to a fixed 10 bytes (the longest

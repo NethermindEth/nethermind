@@ -135,7 +135,10 @@ internal static class HsstDenseByteIndexReader
     private static bool TryResolveLocal(Layout L, ReadOnlySpan<byte> ends, int idx, out Bound entryBound)
     {
         entryBound = default;
-        long prevEnd = idx == 0 ? 0 : ReadEnd(ends, (idx - 1) * L.OffsetSize, L.OffsetSize);
+        // Producer streams values high-tag → low-tag, so the physical predecessor of tag idx
+        // is the next-higher in-array tag (idx + 1). The highest tag (idx == Count − 1) was
+        // the first written and starts at DataStart, so its prevEnd is 0.
+        long prevEnd = idx == L.Count - 1 ? 0 : ReadEnd(ends, (idx + 1) * L.OffsetSize, L.OffsetSize);
         long thisEnd = ReadEnd(ends, idx * L.OffsetSize, L.OffsetSize);
         if (thisEnd < prevEnd) return false;
         long valueLen = thisEnd - prevEnd;

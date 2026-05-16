@@ -42,10 +42,10 @@ public sealed class PersistedSnapshotScanner(WholeReadSession session, Persisted
 
     /// <summary>
     /// One row's worth of per-address data from column 0x01. The on-disk format bundles
-    /// all seven sub-tags (storage-trie 0x01/0x02/0x03, slots 0x04, account 0x05, SD 0x06,
-    /// raw-address preimage 0x07) under a single per-address inner HSST, so a single outer
+    /// all seven sub-tags (raw-address preimage 0x01, account 0x02, SD 0x03, slots 0x04,
+    /// storage-trie 0x05/0x06/0x07) under a single per-address inner HSST, so a single outer
     /// walk yields every sub-tag at once. The <see cref="Address"/> is materialised once
-    /// per row from sub-tag 0x07 and reused across sub-tag access and nested iteration.
+    /// per row from sub-tag 0x01 and reused across sub-tag access and nested iteration.
     /// </summary>
     public readonly ref struct PerAddressEntry(
         WholeReadSessionReader reader, ValueHash256 addressHash, Address address,

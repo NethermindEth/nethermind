@@ -187,7 +187,8 @@ public class HsstLargeBuildTests
                 case IndexType.DenseByteIndex:
                     {
                         using HsstDenseByteIndexBuilder<ArenaBufferWriter> hsst = new(ref writer);
-                        for (int i = 0; i < ByteKeyEntryCount; i++)
+                        // Builder requires strictly descending insertion order.
+                        for (int i = ByteKeyEntryCount - 1; i >= 0; i--)
                         {
                             FillLargeValuePattern((byte)i, valueBuf);
                             hsst.Add((byte)i, valueBuf);
