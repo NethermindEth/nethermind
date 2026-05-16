@@ -227,59 +227,27 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
             int txCount = block.Transactions.Length;
             if (txCount == 0) return;
 
-            // Split strategy: prewarmer starts from later txs so it finishes them before
-            // the main thread arrives. The main thread handles early txs without prewarmer help
-            // (they're faster due to warm RocksDB block cache). Workers skip txs already processed.
-            int startOffset = Math.Min(txCount / 3, txCount);
+            // Moving window from tx 0. Workers skip txs the main thread already processed.
+            // Benchmark data: more threads = better (default ~15 beats 4/2), starting from
+            // tx 0 beats starting from N/3 (early-tx partial warmup helps later txs).
             WarmingState<BlockState> baseState = new(_envPool, blockState, blockState.Parent);
 
-            // Warm later txs first (offset to end)
-            if (startOffset < txCount)
-            {
-                ParallelUnbalancedWork.For(
-                    startOffset,
-                    txCount,
-                    parallelOptions,
-                    baseState.InitThreadState,
-                    static (txIndex, state) =>
-                    {
-                        if (txIndex <= state.Payload.PreWarmer.MainThreadTxIndex)
-                            return state;
-
-                        BlockExecutionContext context = new(state.Payload.Block.Header, state.Payload.Spec);
-                        state.Scope!.TransactionProcessor.SetBlockExecutionContext(context);
-                        WarmupSingleTransaction(state.Scope!, state.Payload.Block.Transactions[txIndex], txIndex, state.Payload);
-                        return state;
-                    },
-                    WarmingState<BlockState>.FinallyAction);
-            }
-
-            // Then warm early txs if main thread hasn't reached them yet
-            if (startOffset > 0 && !parallelOptions.CancellationToken.IsCancellationRequested)
-            {
-                int earlyEnd = Math.Min(startOffset, blockState.PreWarmer.MainThreadTxIndex + 1);
-                if (earlyEnd < startOffset)
+            ParallelUnbalancedWork.For(
+                0,
+                txCount,
+                parallelOptions,
+                baseState.InitThreadState,
+                static (txIndex, state) =>
                 {
-                    WarmingState<BlockState> earlyState = new(_envPool, blockState, blockState.Parent);
+                    if (txIndex <= state.Payload.PreWarmer.MainThreadTxIndex)
+                        return state;
 
-                    ParallelUnbalancedWork.For(
-                        earlyEnd > 0 ? earlyEnd : 0,
-                        startOffset,
-                        parallelOptions,
-                        earlyState.InitThreadState,
-                        static (txIndex, state) =>
-                        {
-                            if (txIndex <= state.Payload.PreWarmer.MainThreadTxIndex)
-                                return state;
-
-                            BlockExecutionContext context = new(state.Payload.Block.Header, state.Payload.Spec);
-                            state.Scope!.TransactionProcessor.SetBlockExecutionContext(context);
-                            WarmupSingleTransaction(state.Scope!, state.Payload.Block.Transactions[txIndex], txIndex, state.Payload);
-                            return state;
-                        },
-                        WarmingState<BlockState>.FinallyAction);
-                }
-            }
+                    BlockExecutionContext context = new(state.Payload.Block.Header, state.Payload.Spec);
+                    state.Scope!.TransactionProcessor.SetBlockExecutionContext(context);
+                    WarmupSingleTransaction(state.Scope!, state.Payload.Block.Transactions[txIndex], txIndex, state.Payload);
+                    return state;
+                },
+                WarmingState<BlockState>.FinallyAction);
         }
         catch (OperationCanceledException)
         {
