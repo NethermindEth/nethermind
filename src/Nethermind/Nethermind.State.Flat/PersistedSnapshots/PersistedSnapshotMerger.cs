@@ -240,13 +240,21 @@ public static class PersistedSnapshotMerger
                         // already hot in cache and the fast path hands back a pinned pointer
                         // with no syscall. Reader window is [0, vb.Length).
                         TReader dstReader = perAddrWriter.OpenReader(vb.Length);
+                        // Each successful TrySeek mutates HsstReader._bound to the matched
+                        // value scope. For sibling sub-tag seeks we save the root bound
+                        // before each call and restore after — otherwise only the first
+                        // sub-tag would be found.
                         HsstReader<TReader, TPin> outer = new(in dstReader, new Bound(0, vb.Length));
+                        Bound outerRoot = outer.GetBound();
                         if (outer.TrySeek(PersistedSnapshot.SlotSubTag, out Bound slotBound))
                             AddSlotKeysToBloom<TReader, TPin>(in dstReader, slotBound, addrKey, bloom);
+                        outer.SetBound(outerRoot);
                         if (outer.TrySeek(PersistedSnapshot.StorageTopSubTag, out Bound stb))
                             AddStorageTrieKeysToBloom<TReader, TPin>(in dstReader, stb, addrKey, bloom);
+                        outer.SetBound(outerRoot);
                         if (outer.TrySeek(PersistedSnapshot.StorageCompactSubTag, out Bound scb))
                             AddStorageTrieKeysToBloom<TReader, TPin>(in dstReader, scb, addrKey, bloom);
+                        outer.SetBound(outerRoot);
                         if (outer.TrySeek(PersistedSnapshot.StorageFallbackSubTag, out Bound sfb))
                             AddStorageTrieKeysToBloom<TReader, TPin>(in dstReader, sfb, addrKey, bloom);
                         perAddrWriter.DisposeActiveReader();
