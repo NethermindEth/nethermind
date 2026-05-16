@@ -38,16 +38,11 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
     private readonly bool _parallelExecutionEnabled;
     private readonly IReadOnlyTrieStore? _trieStore;
 
-    /// <summary>Main thread's live WorldState for read-through fallback.</summary>
-    internal IWorldState? MainThreadWorldState;
-
-    /// <summary>Incremented by main thread after each tx. Workers skip passed txs.</summary>
-    internal int MainThreadTxIndex = -1;
-
-    /// <summary>Tracks which txs were completed by the prewarmer (1=done, 0=not done).</summary>
-    internal int[]? PrewarmerCompleted;
-    internal static long TotalAdoptable;
-    internal static long TotalTxs;
+    /// <summary>
+    /// Updated by main thread after each tx via <see cref="SetTxExecutedCallback"/>.
+    /// Prewarmer threads read this to skip txs the main thread already processed.
+    /// </summary>
+    internal volatile int MainThreadTxIndex = -1;
 
     public BlockCachePreWarmer(
         PrewarmerEnvFactory envFactory,
@@ -242,26 +237,53 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
 
             if (parallelOptions.CancellationToken.IsCancellationRequested) return;
 
-            // Phase 2: Moving window speculative tx execution for dynamic storage accesses.
-            PrewarmerCompleted = new int[txCount];
+            // Phase 2: Moving window that stays ahead of the main thread. Workers claim txs
+            // via an atomic counter, always targeting txs LookaheadOffset positions ahead of
+            // the main thread. This gives the prewarmer time to finish before the main thread
+            // arrives. After reaching the end, workers loop back to re-execute txs the main
+            // thread still hasn't processed — each pass warms deeper cache entries.
+            int nextTx = 0;
             WarmingState<BlockState> baseState = new(_envPool, blockState, blockState.Parent);
 
             ParallelUnbalancedWork.For(
                 0,
-                txCount,
+                _concurrencyLevel,
                 parallelOptions,
                 baseState.InitThreadState,
-                static (txIndex, state) =>
+                (workerIndex, state) =>
                 {
                     BlockExecutionContext context = new(state.Payload.Block.Header, state.Payload.Spec);
                     state.Scope!.TransactionProcessor.SetBlockExecutionContext(context);
-                    bool ok = WarmupSingleTransaction(state.Scope!, state.Payload.Block.Transactions[txIndex], txIndex, state.Payload);
-                    if (ok)
+                    Transaction[] txs = state.Payload.Block.Transactions;
+                    BlockCachePreWarmer pw = state.Payload.PreWarmer;
+                    CancellationToken ct = parallelOptions.CancellationToken;
+
+                    while (!ct.IsCancellationRequested)
                     {
-                        int[]? completed = state.Payload.PreWarmer.PrewarmerCompleted;
-                        if (completed is not null && (uint)txIndex < (uint)completed.Length)
-                            Volatile.Write(ref completed[txIndex], 1);
+                        int txIndex = Interlocked.Increment(ref nextTx) - 1;
+
+                        // Past the end — wrap around to just ahead of main thread + offset
+                        if (txIndex >= txCount)
+                        {
+                            int mainAt = pw.MainThreadTxIndex;
+                            if (mainAt >= txCount - 1) break; // main thread done
+
+                            // Reset to ahead of main thread; only one thread resets
+                            int desired = mainAt + 1;
+                            Interlocked.CompareExchange(ref nextTx, desired, txIndex + 1);
+                            continue;
+                        }
+
+                        // Skip txs the main thread already processed
+                        if (txIndex <= pw.MainThreadTxIndex)
+                            continue;
+
+                        if (Nethermind.Logging.DiagnosticLogger.IsEnabled)
+                            Nethermind.Logging.DiagnosticLogger.Log($"PREWARM tx[{txIndex}] start (main at {pw.MainThreadTxIndex})");
+
+                        WarmupSingleTransaction(state.Scope!, txs[txIndex], txIndex, state.Payload);
                     }
+
                     return state;
                 },
                 WarmingState<BlockState>.FinallyAction);
@@ -315,26 +337,6 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
                 return state;
             },
             WarmingState<BlockState>.FinallyAction);
-    }
-
-    private static Dictionary<AddressAsKey, ArrayPoolList<(int Index, Transaction Tx)>> GroupTransactionsBySender(Block block)
-    {
-        Dictionary<AddressAsKey, ArrayPoolList<(int, Transaction)>> groups = new();
-
-        for (int i = 0; i < block.Transactions.Length; i++)
-        {
-            Transaction tx = block.Transactions[i];
-            Address sender = tx.SenderAddress!;
-
-            if (!groups.TryGetValue(sender, out ArrayPoolList<(int, Transaction)> list))
-            {
-                list = new(4);
-                groups[sender] = list;
-            }
-            list.Add((i, tx));
-        }
-
-        return groups;
     }
 
     private static bool WarmupSingleTransaction(

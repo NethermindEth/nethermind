@@ -79,10 +79,11 @@ public class BranchProcessor(
         void CancelBackgroundWork() => backgroundCancellation?.Cancel();
         blockProcessor.TransactionsExecuted += CancelBackgroundWork;
 
-        // Wire speculative adoption measurement
+        // Wire main thread tx progress so prewarmer skips already-processed txs
         if (preWarmer is BlockCachePreWarmer bcpw && blockProcessor is BlockProcessor bp)
         {
-            bp.SetPreWarmerRef(bcpw);
+            bcpw.MainThreadTxIndex = -1;
+            bp.SetTxExecutedCallback(txIndex => bcpw.MainThreadTxIndex = txIndex);
         }
 
         try
@@ -137,14 +138,6 @@ public class BranchProcessor(
                 }
 
                 (Block processedBlock, TxReceipt[] receipts) = blockProcessor.ProcessOne(suggestedBlock, options, blockTracer, spec, token);
-
-                // Log prewarmer adoption stats (how many txs the prewarmer finished before main thread)
-                long adoptable = Interlocked.Read(ref BlockCachePreWarmer.TotalAdoptable);
-                long totalTxs = Interlocked.Read(ref BlockCachePreWarmer.TotalTxs);
-                if (totalTxs > 0 && _logger.IsWarn)
-                {
-                    _logger.Warn($"Prewarmer adoption: {adoptable}/{totalTxs} ({(adoptable * 100.0 / totalTxs):F1}%) txs finished before main thread");
-                }
 
                 // Block is processed, ensure background tasks are cancelled (may already be via TransactionsExecuted event)
                 CancellationTokenExtensions.CancelDisposeAndClear(ref backgroundCancellation);
