@@ -115,14 +115,11 @@ public class GasEstimator(
 
         if (spec.IsEip4844Enabled && tx.BlobVersionedHashes?.Length > 0)
         {
-            // EIP-4844: total blob cost = num_blobs × GAS_PER_BLOB × max_fee_per_blob_gas
-            bool overflow = UInt256.MultiplyOverflow(
-                (UInt256)((ulong)tx.BlobVersionedHashes.Length * Eip4844Constants.GasPerBlob),
-                tx.MaxFeePerBlobGas ?? UInt256.Zero,
-                out UInt256 blobUsage);
-
-            if (overflow || blobUsage > available)
+            if (!Eip4844Constants.TryGetTotalBlobFee(tx.BlobVersionedHashes.Length, tx.MaxFeePerBlobGas ?? UInt256.Zero, out UInt256 blobUsage)
+                || blobUsage > available)
+            {
                 return EstimationResult.Failure(GetError(gasTracer, InsufficientFundsForGas));
+            }
 
             available -= blobUsage;
         }

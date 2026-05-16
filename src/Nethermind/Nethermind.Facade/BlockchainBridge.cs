@@ -224,19 +224,18 @@ namespace Nethermind.Facade
             // Cap tx.GasLimit to the sender's affordable allowance before the initial probe,
             // mirroring Geth's hi = min(hi, (balance - value - blobFee(eip4844)) / gasFeeCap). This ensures
             // BuyGas never sees a gas limit that makes gasLimit * feeCap + blobFee exceed the sender's balance.
-            IReleaseSpec spec = specProvider.GetSpec(header);
+            IReleaseSpec spec = specProvider.GetSpec(header.Number + 1, header.Timestamp + blocksConfig.SecondsPerSlot);
             UInt256 senderBalance = worldState.GetBalance(tx.SenderAddress ?? Address.Zero);
             UInt256 feeCap = tx.CalculateFeeCap();
             if (feeCap > UInt256.Zero && !UInt256.SubtractUnderflow(senderBalance, tx.Value, out UInt256 availableForGas))
             {
                 if (spec.IsEip4844Enabled && tx.BlobVersionedHashes?.Length > 0)
                 {
-                    bool overflow = UInt256.MultiplyOverflow(
-                        (UInt256)((ulong)tx.BlobVersionedHashes.Length * Eip4844Constants.GasPerBlob),
-                        tx.MaxFeePerBlobGas ?? UInt256.Zero,
-                        out UInt256 blobFee);
-                    if (overflow || UInt256.SubtractUnderflow(availableForGas, blobFee, out availableForGas))
+                    if (!Eip4844Constants.TryGetTotalBlobFee(tx.BlobVersionedHashes.Length, tx.MaxFeePerBlobGas ?? UInt256.Zero, out UInt256 blobFee)
+                        || UInt256.SubtractUnderflow(availableForGas, blobFee, out availableForGas))
+                    {
                         availableForGas = UInt256.Zero;
+                    }
                 }
 
                 long allowance = (long)UInt256.Min(availableForGas / feeCap, (UInt256)long.MaxValue);
