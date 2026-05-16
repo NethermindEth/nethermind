@@ -855,6 +855,21 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
     };
 
 
+    public void Prefetch(byte[][] keys)
+    {
+        try
+        {
+            // MultiGet loads all keys into the block cache in a single batch,
+            // reducing per-call overhead compared to individual Get calls.
+            _db.MultiGet(keys);
+        }
+        catch (RocksDbSharpException e)
+        {
+            CreateMarkerIfCorrupt(e);
+            throw;
+        }
+    }
+
     public KeyValuePair<byte[], byte[]?>[] this[byte[][] keys]
     {
         get

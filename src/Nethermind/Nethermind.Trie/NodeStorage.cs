@@ -130,6 +130,29 @@ public class NodeStorage(
                ?? _keyValueStore.Get(GetHalfPathNodeStoragePathSpan(storagePathSpan, address, path, keccak), readFlags);
     }
 
+    /// <summary>
+    /// Batch-prefetch multiple trie node keys into the RocksDB block cache.
+    /// Uses MultiGet internally for efficient IO merging.
+    /// </summary>
+    public void PrefetchNodes(ReadOnlySpan<(Hash256? Address, TreePath Path, ValueHash256 Keccak)> nodes)
+    {
+        if (nodes.Length == 0) return;
+
+        byte[][] keys = new byte[nodes.Length][];
+        for (int i = 0; i < nodes.Length; i++)
+        {
+            keys[i] = Scheme == INodeStorage.KeyScheme.HalfPath
+                ? GetHalfPathNodeStoragePath(nodes[i].Address, nodes[i].Path, nodes[i].Keccak)
+                : new byte[StoragePathLength];
+            if (Scheme != INodeStorage.KeyScheme.HalfPath)
+            {
+                GetHashBasedStoragePath(keys[i], nodes[i].Keccak);
+            }
+        }
+
+        _keyValueStore.Prefetch(keys);
+    }
+
     public bool KeyExists(in ValueHash256? address, in TreePath path, in ValueHash256 keccak)
     {
         if (keccak == Keccak.EmptyTreeHash.ValueHash256)

@@ -24,6 +24,12 @@ namespace Nethermind.Core
         byte[]? Get(scoped ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None);
 
         /// <summary>
+        /// Prefetch multiple keys into the block cache using MultiGet.
+        /// Default no-op; overridden by RocksDB-backed stores.
+        /// </summary>
+        void Prefetch(byte[][] keys) { }
+
+        /// <summary>
         /// Return span. Must call <see cref="DangerousReleaseMemory"/> after use to avoid memory leaks.
         /// Prefer using <see cref="GetOwnedMemory"/> which handles release automatically via disposal.
         /// </summary>
