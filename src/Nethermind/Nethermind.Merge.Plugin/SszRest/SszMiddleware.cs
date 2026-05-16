@@ -69,11 +69,14 @@ public sealed class SszMiddleware
         _auth = auth;
         _logger = logManager.GetClassLogger<SszMiddleware>();
         _processExitToken = processExitSource.Token;
-        (_postRoutes, _getRoutes, _postPrefixRoutes, _getPrefixRoutes) = BuildRoutes(handlers);
+
+        IReadOnlyList<ISszEndpointHandler> hs = handlers as IReadOnlyList<ISszEndpointHandler> ?? [.. handlers];
+
+        (_postRoutes, _getRoutes, _postPrefixRoutes, _getPrefixRoutes) = BuildRoutes(hs);
         _postLookup = _postRoutes.GetAlternateLookup<ReadOnlySpan<char>>();
         _getLookup = _getRoutes.GetAlternateLookup<ReadOnlySpan<char>>();
 
-        foreach (ISszEndpointHandler h in handlers)
+        foreach (ISszEndpointHandler h in hs)
         {
             if (h.Resource.Equals(SszRestPaths.NewPayloadWithWitness, StringComparison.OrdinalIgnoreCase))
             {
@@ -87,7 +90,7 @@ public sealed class SszMiddleware
                     FrozenDictionary<string, List<ISszEndpointHandler>> get,
                     (string, List<ISszEndpointHandler>)[] postPrefix,
                     (string, List<ISszEndpointHandler>)[] getPrefix)
-        BuildRoutes(IEnumerable<ISszEndpointHandler> handlers)
+        BuildRoutes(IReadOnlyList<ISszEndpointHandler> handlers)
     {
         Dictionary<string, List<ISszEndpointHandler>> postDict = [];
         Dictionary<string, List<ISszEndpointHandler>> getDict = [];

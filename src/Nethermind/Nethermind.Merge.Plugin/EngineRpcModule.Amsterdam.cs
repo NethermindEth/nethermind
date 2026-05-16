@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
@@ -24,7 +25,7 @@ public partial class EngineRpcModule : IEngineRpcModule
     public Task<ResultWrapper<GetPayloadV6Result?>> engine_getPayloadV6(byte[] payloadId)
         => _getPayloadHandlerV6.HandleAsync(payloadId);
 
-    public Task<ResultWrapper<PayloadStatusV1>> engine_newPayloadV5(
+    public virtual Task<ResultWrapper<PayloadStatusV1>> engine_newPayloadV5(
         ExecutionPayloadV4 executionPayload,
         byte[]?[] blobVersionedHashes,
         Hash256? parentBeaconBlockRoot,
@@ -57,8 +58,10 @@ public partial class EngineRpcModule : IEngineRpcModule
             if (payloadStatus.Status == PayloadStatus.Valid)
             {
                 witness = TryGenerateWitnessForBlock(executionPayload);
-                if (witness is null && _logger.IsWarn)
-                    _logger.Warn("engine_newPayloadWithWitness: payload is VALID but execution witness could not be generated.");
+                if (witness is null && _logger.IsError)
+                    _logger.Error(
+                        $"engine_newPayloadWithWitness: payload is VALID but execution witness could not be generated " +
+                        $"for block {executionPayload.BlockHash}. The block has been accepted; returning witness=None per spec Union[None, T] arm.");
             }
 
             return ResultWrapper<NewPayloadWithWitnessV1Result>.Success(
@@ -84,12 +87,24 @@ public partial class EngineRpcModule : IEngineRpcModule
     {
         BlockDecodingResult decodingResult = executionPayload.TryGetBlock();
         Block? block = decodingResult.Block;
-        if (block is null) return null;
+        if (block is null)
+        {
+            if (_logger.IsWarn)
+                _logger.Warn($"engine_newPayloadWithWitness: witness generation skipped — could not decode block from ExecutionPayloadV4 " +
+                             $"(hash={executionPayload.BlockHash}). Decode error: {decodingResult.Error}");
+            return null;
+        }
 
         BlockHeader? parent = _blockTree.FindHeader(
             block.ParentHash!,
             BlockTreeLookupOptions.DoNotCreateLevelIfMissing);
-        if (parent is null) return null;
+        if (parent is null)
+        {
+            if (_logger.IsWarn)
+                _logger.Warn($"engine_newPayloadWithWitness: witness generation skipped — parent header not found for block " +
+                             $"{block.Hash} (parentHash={block.ParentHash}).");
+            return null;
+        }
 
         try
         {
@@ -97,8 +112,16 @@ public partial class EngineRpcModule : IEngineRpcModule
             IExistingBlockWitnessCollector collector = scope.Env.CreateExistingBlockWitnessCollector();
             return collector.GetWitnessForExistingBlock(parent, block);
         }
-        catch
+        catch (OperationCanceledException ex)
         {
+            if (_logger.IsWarn)
+                _logger.Warn($"engine_newPayloadWithWitness: witness generation cancelled for block {block.Hash}: {ex.Message}");
+            return null;
+        }
+        catch (Exception ex)
+        {
+            if (_logger.IsError)
+                _logger.Error($"engine_newPayloadWithWitness: witness generation failed for block {block.Hash}: {ex.Message}", ex);
             return null;
         }
     }

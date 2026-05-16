@@ -21,7 +21,6 @@ public class NewPayloadWithWitnessV1Result
     [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
     public Hash256? LatestValidHash { get; set; }
 
-
     [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
     public string? ValidationError { get; set; }
 
