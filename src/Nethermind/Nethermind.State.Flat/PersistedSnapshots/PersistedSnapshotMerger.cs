@@ -230,6 +230,30 @@ public static class PersistedSnapshotMerger
                     Bound vb = enums[srcIdx].CurrentValue;
                     WholeReadSessionReader srcReader = Reader(views[srcIdx]);
                     ref TWriter perAddrWriter = ref builder.BeginValueWrite();
+
+                    // 4 KiB alignment for the inner HSST blob: when the blob is no
+                    // bigger than a page yet would straddle the next page boundary,
+                    // and a small pad (≤ PadThreshold) would push its start onto a
+                    // fresh page, insert leading pad bytes so the blob lives entirely
+                    // in one page. Blobs larger than a page cross regardless of
+                    // alignment so padding can't help — skip. The pad sits between
+                    // the BeginValueWrite snapshot and the actual value start;
+                    // FinishValueWrite(key, vb.Length) below tells the outer leaf
+                    // entry to ignore it. Mirrors the in-HSST policy in
+                    // HsstIndexBuilder.MaybePadToNextPage.
+                    long pageOff = (perAddrWriter.Written - perAddrWriter.FirstOffset) & PageLayout.PageMask;
+                    if (pageOff != 0 && vb.Length <= PageLayout.PageSize && pageOff + vb.Length > PageLayout.PageSize)
+                    {
+                        long padLen = PageLayout.PageSize - pageOff;
+                        if (padLen <= PageLayout.PadThreshold)
+                        {
+                            int padInt = (int)padLen;
+                            Span<byte> pad = perAddrWriter.GetSpan(padInt);
+                            pad[..padInt].Clear();
+                            perAddrWriter.Advance(padInt);
+                        }
+                    }
+
                     IByteBufferWriter.Copy<TWriter, WholeReadSessionReader, NoOpPin>(ref perAddrWriter, in srcReader, vb);
                     {
                         ulong addrKey = MemoryMarshal.Read<ulong>(minKey);
@@ -259,7 +283,9 @@ public static class PersistedSnapshotMerger
                             AddStorageTrieKeysToBloom<TReader, TPin>(in dstReader, sfb, addrKey, bloom);
                         perAddrWriter.DisposeActiveReader();
                     }
-                    builder.FinishValueWrite(minKey);
+                    // Explicit valueLength so any leading pad bytes inserted above are
+                    // treated as inert gap data outside the recorded value range.
+                    builder.FinishValueWrite(minKey, vb.Length);
                 }
                 else
                 {

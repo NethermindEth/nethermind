@@ -210,6 +210,100 @@ public class PersistedSnapshotCompactorTests
     }
 
     /// <summary>
+    /// Regression for the 4 KiB page-alignment pad inserted in the
+    /// <c>matchCount == 1</c> fast path of <c>NWayMergePerAddressColumn</c>. The pad
+    /// pushes an about-to-straddle inner-HSST blob onto a fresh page so it lives in
+    /// one OS page; the leading pad bytes must be inert — recorded as gap data via
+    /// <c>FinishValueWrite(key, vb.Length)</c> rather than absorbed into the value
+    /// range, otherwise the outer leaf's <c>ValueStart = MetadataStart − ValueLength</c>
+    /// derivation would land in the pad and decoding would fail. Drives many
+    /// distinct addresses through the fast path with non-trivial inner HSSTs (slots
+    /// + a storage-trie node each) so positions sweep across multiple page
+    /// boundaries — at least some inner HSSTs will trigger the pad code path, and
+    /// all must round-trip read intact post-compaction.
+    /// </summary>
+    [TestCase(40)]
+    [TestCase(120)]
+    public void Compact_ByteCopyFastPath_PageAlignPaddingPreservesValues(int accountCount)
+    {
+        string testDir = Path.Combine(Path.GetTempPath(), $"nethermind_test_{Guid.NewGuid():N}");
+        Directory.CreateDirectory(testDir);
+        try
+        {
+            using ArenaManager smallArena = new(Path.Combine(testDir, "arenas", "base"), 0, maxArenaSize: 256 * 1024);
+            using BlobArenaManager smallBlobs = new(Path.Combine(testDir, "blobs", "small"), 4 * 1024 * 1024, PersistedSnapshotTier.Small);
+            using PersistedSnapshotRepository repo = new(smallArena, smallBlobs, new MemDb(), new FlatDbConfig(), new PersistedSnapshotBloomFilterManager());
+            repo.LoadFromCatalog();
+
+            IFlatDbConfig config = new FlatDbConfig { CompactSize = 1, MinCompactSize = 2 };
+            PersistedSnapshotCompactor compactor = new(
+                repo, smallArena, config, Nethermind.Logging.LimboLogs.Instance, new PersistedSnapshotBloomFilterManager(),
+                minCompactSize: 2, maxCompactSize: 2, tier: PersistedSnapshotTier.Small);
+
+            // Source 0: accountCount addresses with varying slot counts so inner-HSST
+            // sizes span ~tens to ~hundreds of bytes — repeated fast-path writes
+            // sweep across 4 KiB page boundaries in the destination arena.
+            SnapshotContent c0 = new();
+            for (int i = 0; i < accountCount; i++)
+            {
+                Address addr = TestItem.Addresses[i];
+                c0.Accounts[addr] = Build.An.Account.WithBalance((UInt256)(i + 1)).TestObject;
+                int slots = 1 + (i % 7);
+                for (int s = 0; s < slots; s++)
+                    c0.Storages[(addr, (UInt256)(s + 1))] = new SlotValue(new byte[] { (byte)((i * 13 + s) & 0xFF) });
+                c0.StorageNodes[(Keccak.Compute(addr.Bytes), new TreePath(Keccak.Compute($"p{i}"), 4))]
+                    = new TrieNode(NodeType.Leaf, [0xC1, (byte)(i & 0xFF)]);
+            }
+
+            // Source 1: a single unrelated address so matchCount == 1 for every
+            // address in source 0 (drives them all through the fast path).
+            SnapshotContent c1 = new();
+            c1.Accounts[TestItem.AddressB] = Build.An.Account.WithBalance(999).TestObject;
+
+            StateId s0 = new(0, Keccak.EmptyTreeHash);
+            StateId s1 = new(1, Keccak.Compute("p1"));
+            StateId s2 = new(2, Keccak.Compute("p2"));
+            repo.ConvertSnapshotToPersistedSnapshot(new Snapshot(s0, s1, c0, _pool, ResourcePool.Usage.MainBlockProcessing));
+            repo.ConvertSnapshotToPersistedSnapshot(new Snapshot(s1, s2, c1, _pool, ResourcePool.Usage.MainBlockProcessing));
+
+            compactor.DoCompactSnapshot(s2);
+
+            Assert.That(repo.TryLeaseCompactedSnapshotTo(s2, out PersistedSnapshot? compacted), Is.True);
+            using (compacted)
+            {
+                Assert.Multiple(() =>
+                {
+                    for (int i = 0; i < accountCount; i++)
+                    {
+                        Address addr = TestItem.Addresses[i];
+                        Assert.That(compacted!.TryGetAccount(addr.ToAccountPath, out Account? a), Is.True,
+                            $"Account {i} must survive fast-path compaction");
+                        Assert.That(a!.Balance, Is.EqualTo((UInt256)(i + 1)),
+                            $"Account {i} balance mismatch — pad bytes leaked into the value range");
+
+                        int slots = 1 + (i % 7);
+                        for (int s = 0; s < slots; s++)
+                        {
+                            SlotValue slot = default;
+                            Assert.That(compacted.TryGetSlot(addr.ToAccountPath, (UInt256)(s + 1), ref slot), Is.True,
+                                $"Slot {s + 1} for account {i} must survive fast-path compaction");
+                            SlotValue expected = new(new byte[] { (byte)((i * 13 + s) & 0xFF) });
+                            Assert.That(slot.AsReadOnlySpan.ToArray(),
+                                Is.EqualTo(expected.AsReadOnlySpan.ToArray()),
+                                $"Slot value mismatch for account {i} slot {s + 1}");
+                        }
+                    }
+                });
+            }
+        }
+        finally
+        {
+            if (Directory.Exists(testDir))
+                Directory.Delete(testDir, recursive: true);
+        }
+    }
+
+    /// <summary>
     /// Metadata invariants for the blob-arena layout: base snapshots carry no
     /// <c>noderefs</c> flag and a single <c>ref_ids</c> entry (their own blob arena id);
     /// the compacted snapshot carries the <c>noderefs</c> flag and a <c>ref_ids</c> set
