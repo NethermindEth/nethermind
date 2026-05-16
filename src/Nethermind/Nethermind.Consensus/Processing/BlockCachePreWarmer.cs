@@ -73,7 +73,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         PreBlockCaches preBlockCaches,
         ILogManager logManager)
     {
-        _concurrencyLevel = concurrency == 0 ? Math.Min(Environment.ProcessorCount - 1, 16) : concurrency;
+        _concurrencyLevel = concurrency == 0 ? Math.Min(Environment.ProcessorCount + 8, 24) : concurrency;
         _parallelExecutionBatchRead = parallelExecutionBatchRead;
         _envPool = new DefaultObjectPoolProvider { MaximumRetained = maxPoolSize }.Create(poolPolicy);
         _logger = logManager.GetClassLogger<BlockCachePreWarmer>();
