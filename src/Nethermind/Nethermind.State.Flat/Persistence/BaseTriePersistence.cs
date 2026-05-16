@@ -281,5 +281,26 @@ public static class BaseTriePersistence
             path.Length <= ShortenedPathThreshold
                 ? storageNodes.Get(EncodeShortenedStorageNodeKey(stackalloc byte[ShortenedStorageNodesKeyLength], address, in path), flags: flags)
                 : fallbackNodes.Get(EncodeFullStorageNodeKey(stackalloc byte[FullStorageNodesKeyLength], address, in path), flags: flags);
+
+        /// <summary>
+        /// Batch-prefetch storage trie node keys into the RocksDB block cache via MultiGet.
+        /// Call before individual <see cref="TryLoadStorageRlp"/> to reduce per-call overhead.
+        /// </summary>
+        public void PrefetchStorageNodes(Hash256 address, ReadOnlySpan<TreePath> paths)
+        {
+            if (paths.Length == 0) return;
+
+            byte[][] keys = new byte[paths.Length][];
+            Span<byte> shortBuf = stackalloc byte[ShortenedStorageNodesKeyLength];
+            Span<byte> fullBuf = stackalloc byte[FullStorageNodesKeyLength];
+            for (int i = 0; i < paths.Length; i++)
+            {
+                keys[i] = paths[i].Length <= ShortenedPathThreshold
+                    ? EncodeShortenedStorageNodeKey(shortBuf, address, in paths[i]).ToArray()
+                    : EncodeFullStorageNodeKey(fullBuf, address, in paths[i]).ToArray();
+            }
+
+            storageNodes.Prefetch(keys);
+        }
     }
 }
