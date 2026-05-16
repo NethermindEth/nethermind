@@ -124,7 +124,7 @@ public class GasEstimator(
                 return EstimationResult.Failure(GetError(gasTracer, InsufficientFundsForGas));
 
             available -= blobUsage;
-        } 
+        }
 
         return null;
     }
