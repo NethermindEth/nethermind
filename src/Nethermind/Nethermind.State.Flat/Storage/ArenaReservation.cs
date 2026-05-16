@@ -47,15 +47,22 @@ public sealed class ArenaReservation : RefCountingDisposable
 
     /// <summary>
     /// Record a single OS-page access by a reader of this reservation. Records the page in the
-    /// per-manager <see cref="PageResidencyTracker"/>. On a displacement, hands the evicted
-    /// key to <see cref="IArenaManager.QueueEviction"/>, which enqueues it onto an MPSC ring
-    /// drained by a background worker — the actual <c>madvise(MADV_DONTNEED)</c> syscall
-    /// happens off the producer thread.
+    /// per-manager <see cref="PageResidencyTracker"/>. On a non-<see cref="TouchOutcome.Hit"/>
+    /// outcome the page just entered the working set, so we pre-fault it via
+    /// <c>madvise(MADV_POPULATE_READ)</c> on the local <see cref="ArenaFile"/> — the next read
+    /// finds the page resident instead of taking a minor fault inline. On a displacement, the
+    /// evicted key is handed to <see cref="IArenaManager.QueueEviction"/>, which enqueues it
+    /// onto an MPSC ring drained by a background worker — the actual <c>madvise(MADV_DONTNEED)</c>
+    /// syscall happens off the producer thread.
     /// </summary>
     internal void TouchPage(int pageIdx)
     {
         TouchOutcome outcome = _arenaManager.PageTracker.TryTouch(ArenaId, pageIdx,
             out int evictedArenaId, out int evictedPageIdx);
+        if (outcome == TouchOutcome.Hit) return;
+
+        _arenaFile.PopulateRead((long)pageIdx * Environment.SystemPageSize, Environment.SystemPageSize);
+
         if (outcome == TouchOutcome.Evicted)
             _arenaManager.QueueEviction(evictedArenaId, evictedPageIdx);
     }

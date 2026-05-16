@@ -29,6 +29,7 @@ public sealed unsafe class ArenaFile : RefCountingDisposable
     private const int MADV_NORMAL = 0;
     private const int MADV_RANDOM = 1;
     private const int MADV_DONTNEED = 4;
+    private const int MADV_POPULATE_READ = 22;
     private const int POSIX_FADV_DONTNEED = 4;
     private static readonly nuint PageSize = (nuint)Environment.SystemPageSize;
 
@@ -162,6 +163,32 @@ public sealed unsafe class ArenaFile : RefCountingDisposable
 
         Madvise(_basePtr + start, end - start, MADV_DONTNEED);
     }
+
+    /// <summary>
+    /// madvise(MADV_POPULATE_READ) on the page-aligned subrange of <c>[offset, offset+size)</c>.
+    /// On Linux ≥ 5.14 the kernel pre-faults the pages so the next read does not block on a page
+    /// fault. On older kernels the call returns <c>EINVAL</c>, which is benign and ignored.
+    /// </summary>
+    public void PopulateRead(long offset, long size)
+    {
+        if (!OperatingSystem.IsLinux()) return;
+
+        nuint pageSize = PageSize;
+        nuint start = ((nuint)offset + pageSize - 1) & ~(pageSize - 1);
+        nuint end = ((nuint)offset + (nuint)size) & ~(pageSize - 1);
+        if (end <= start) return;
+
+        Madvise(_basePtr + start, end - start, MADV_POPULATE_READ);
+    }
+
+    /// <summary>
+    /// Volatile single-byte read at <paramref name="offset"/> within this arena's mmap. Used by
+    /// the keep-warm path to refresh the kernel's LRU position on a resident page. Caller must
+    /// hold a lease (<see cref="TryAcquireLease"/>) so <see cref="BasePtr"/> stays valid for the
+    /// duration of the read — unlike <see cref="AdviseDontNeed"/>, a userspace load on a torn-down
+    /// mapping would SIGSEGV instead of returning a syscall error.
+    /// </summary>
+    public byte TouchByte(long offset) => Volatile.Read(ref *(_basePtr + offset));
 
     /// <summary>
     /// posix_fadvise(POSIX_FADV_DONTNEED) on the underlying file descriptor for the

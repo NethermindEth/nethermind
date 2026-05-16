@@ -75,6 +75,9 @@ public sealed unsafe class PageResidencyTracker : IDisposable
     private const int CacheLineBytes = 64;
     private const int MetaLockBit = 1 << 7;
     private const int MetaHandMask = 0x7;
+    // Cap on slots the keep-warm hand will probe in a single TryPickResidentPage call before
+    // giving up — bounds the cost when the tracker is mostly empty.
+    private const int MaxWarmProbe = 16;
 
     // _slots: _setCount sets, each Ways longs (one cache line). 64-byte aligned.
     private long* _slots;
@@ -90,6 +93,9 @@ public sealed unsafe class PageResidencyTracker : IDisposable
     // AddMemoryPressure. Monotonically non-decreasing during the tracker's lifetime,
     // bounded by MaxCapacity. Forget never shrinks it; Dispose releases it in one call.
     private long _reportedPages;
+    // Monotonically-incrementing slot index advanced by TryPickResidentPage. Modded by total
+    // slot count to wrap; producers race cleanly via Interlocked.Increment.
+    private long _warmHand;
 
     public int MaxCapacity => _setCount * Ways;
 
@@ -340,6 +346,40 @@ public sealed unsafe class PageResidencyTracker : IDisposable
         long* setBase = _slots + ((nint)setIdx << WayShift);
         for (int w = 0; w < Ways; w++)
             if ((Volatile.Read(ref setBase[w]) & KeyMask) == key) return true;
+        return false;
+    }
+
+    /// <summary>
+    /// Advance the keep-warm hand and surface the next slot whose <c>VALID</c> bit is set,
+    /// returning its <c>(arenaId, pageIdx)</c>. Every VALID slot is, by definition, a page the
+    /// tracker is bookkeeping as resident — i.e. a page we don't want the kernel to drop — so any
+    /// hit is a fine warming target. Returns <c>false</c> when the probe budget
+    /// (<see cref="MaxWarmProbe"/>) runs out without finding a resident slot or when the tracker
+    /// is disabled.
+    /// </summary>
+    /// <remarks>
+    /// Lock-free: a single <see cref="Interlocked.Increment(ref long)"/> on the global hand plus
+    /// one <see cref="Volatile.Read(ref long)"/> per probed slot. Concurrent callers receive
+    /// disjoint slot indices on each call. Racing with a miss-path replacement may surface a key
+    /// whose arena has just been disposed; the caller's dict + lease checks handle that cleanly.
+    /// </remarks>
+    public bool TryPickResidentPage(out int arenaId, out int pageIdx)
+    {
+        arenaId = 0;
+        pageIdx = 0;
+        if (_setCount == 0) return false;
+
+        int totalSlots = _setCount << WayShift;
+        int mask = totalSlots - 1; // _setCount is power-of-two ⇒ totalSlots is power-of-two
+        for (int probe = 0; probe < MaxWarmProbe; probe++)
+        {
+            long hand = Interlocked.Increment(ref _warmHand);
+            long slot = Volatile.Read(ref _slots[(int)((ulong)hand & (uint)mask)]);
+            if ((slot & ValidBit) == 0) continue;
+            arenaId = (int)((slot >> 32) & ArenaIdMask);
+            pageIdx = (int)slot;
+            return true;
+        }
         return false;
     }
 

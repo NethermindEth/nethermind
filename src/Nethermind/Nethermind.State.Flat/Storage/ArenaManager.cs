@@ -286,8 +286,16 @@ public sealed class ArenaManager : IArenaManager
         int pageSize = Environment.SystemPageSize;
         long startPage = (byteOffset + pageSize - 1) / pageSize;
         long endPageExclusive = (byteOffset + byteSize) / pageSize;
+        long pageCount = endPageExclusive - startPage;
+        if (pageCount <= 0) return;
         for (long p = startPage; p < endPageExclusive; p++)
             _pageTracker.Forget(arenaId, (int)p);
+        // Whole-range Forget is paired with a whole-range MADV_DONTNEED at the call sites
+        // (ArenaReservation.AdviseDontNeed / CleanUp; ForgetTracker piggybacks on a kernel-side
+        // drop arranged elsewhere). Either way, the kernel has just dropped many pages at once —
+        // refresh resident pages proportionally so its LRU doesn't bleed into our working set.
+        // Same 1:2 drop-to-warm ratio used by the single-page dispatch path.
+        TouchWarmPages((int)Math.Min(int.MaxValue, pageCount * 2));
     }
 
     public void QueueEviction(int arenaId, int pageIdx)
@@ -361,6 +369,30 @@ public sealed class ArenaManager : IArenaManager
         arena.AdviseDontNeed(offset, pageSize);
         if (_fadviseOnEviction)
             arena.FadviseDontNeed(offset, pageSize);
+
+        // 1:2 drop-to-warm ratio (one dropped page → two refreshed pages).
+        TouchWarmPages(2);
+    }
+
+    // Refresh up to <paramref name="targetTouches"/> resident pages' kernel-side LRU position
+    // so MADV_DONTNEED on a sibling doesn't pull them out of the page cache under memory
+    // pressure. Called from the single-page dispatch path (background drain + ring-full inline
+    // fallback) and from the bulk ForgetTrackerRange path, with the count scaled to the number
+    // of pages just dropped. Exits early if the tracker has nothing to pick.
+    private void TouchWarmPages(int targetTouches)
+    {
+        for (int i = 0; i < targetTouches; i++)
+        {
+            if (!_pageTracker.TryPickResidentPage(out int warmArenaId, out int warmPageIdx)) return;
+            if (!_arenas.TryGetValue(warmArenaId, out ArenaFile? warmArena)) continue;
+            long warmOffset = (long)warmPageIdx * Environment.SystemPageSize;
+            if (warmOffset >= warmArena.MappedSize) continue;
+            // Userspace load on a torn-down mapping would SIGSEGV (madvise tolerates a bad
+            // pointer; a raw load does not) — pin the file for the duration of the read.
+            if (!warmArena.TryAcquireLease()) continue;
+            try { warmArena.TouchByte(warmOffset); }
+            finally { warmArena.Dispose(); }
+        }
     }
 
     private ArenaFile GetOrCreateArena(long requiredSize)

@@ -254,6 +254,43 @@ public class PageResidencyTrackerTests
     }
 
     [Test]
+    public void TryPickResidentPage_DisabledOrEmpty_ReturnsFalse()
+    {
+        // Disabled tracker: immediate false, no allocation needed for the probe.
+        using (PageResidencyTracker disabled = new(maxCapacity: 0))
+            disabled.TryPickResidentPage(out _, out _).Should().BeFalse();
+
+        // Empty tracker: probe budget runs out on VALID=0 slots.
+        PageResidencyTracker tracker = new(maxCapacity: OneSetCapacity);
+        tracker.TryPickResidentPage(out _, out _).Should().BeFalse();
+
+        // Insert + Forget — slot is back to 0, so picks miss again.
+        tracker.TryTouch(5, 3, out _, out _);
+        tracker.Forget(5, 3);
+        tracker.TryPickResidentPage(out _, out _).Should().BeFalse();
+    }
+
+    [Test]
+    public void TryPickResidentPage_ReturnsOnlyInsertedKeys()
+    {
+        // Fully populate a single set with a known key set, then make many picks. Every result
+        // must be one of the inserted keys (hand wraps via Interlocked.Increment + mask).
+        PageResidencyTracker tracker = new(maxCapacity: OneSetCapacity);
+        HashSet<(int, int)> inserted = [];
+        for (int i = 0; i < Ways; i++)
+        {
+            tracker.TryTouch(7, i, out _, out _);
+            inserted.Add((7, i));
+        }
+
+        for (int i = 0; i < 100; i++)
+        {
+            tracker.TryPickResidentPage(out int aid, out int pid).Should().BeTrue();
+            inserted.Should().Contain((aid, pid));
+        }
+    }
+
+    [Test]
     public void GcMemoryPressure_AccountsForMetadataAndResidentPages()
     {
         long pageSize = Environment.SystemPageSize;

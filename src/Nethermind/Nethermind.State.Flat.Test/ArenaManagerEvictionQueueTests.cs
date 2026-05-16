@@ -94,6 +94,46 @@ public class ArenaManagerEvictionQueueTests
     }
 
     [Test]
+    public void WarmTouch_FiresOnDispatch_WithStaleArenaIdsDoesNotThrow()
+    {
+        // Touch a couple of pages so the tracker has VALID slots for the warm-hand to pick;
+        // their arenaIds (777, 778) are NOT in _arenas — TouchWarmPages must skip them via
+        // TryGetValue and not crash. Pair with a queue eviction whose arenaId is also stale,
+        // exercising the full DispatchEvictionInline → TouchWarmPages path.
+        long budget = 1024L * Environment.SystemPageSize;
+        using ArenaManager manager = NewManager(budget);
+        manager.PageTracker.TryTouch(arenaId: 777, pageIdx: 0, out _, out _);
+        manager.PageTracker.TryTouch(arenaId: 778, pageIdx: 1, out _, out _);
+
+        for (int i = 0; i < 8; i++)
+            manager.QueueEviction(arenaId: 42, pageIdx: i);
+
+        WaitFor(() => manager.EvictionsDispatched + manager.EvictionsSkippedRetouched == 8);
+        // The point is that no crash occurred — warm-touch tolerated the missing arenas.
+        manager.EvictionsDispatched.Should().Be(8);
+    }
+
+    [Test]
+    public void WarmTouch_FiresOnForgetTrackerRange_WithEmptyTrackerDoesNotThrow()
+    {
+        long budget = 1024L * Environment.SystemPageSize;
+        using ArenaManager manager = NewManager(budget);
+
+        // Empty tracker → warm-hand probe budget runs out → TouchWarmPages early-returns.
+        // ForgetTrackerRange's per-page Forget is a no-op on an empty tracker.
+        manager.ForgetTrackerRange(arenaId: 5, byteOffset: 0, byteSize: 16L * Environment.SystemPageSize);
+
+        // Now populate the tracker and Forget the range again — warm-hand picks must skip the
+        // stale arena id (no entry in _arenas) and not crash.
+        manager.PageTracker.TryTouch(arenaId: 9, pageIdx: 0, out _, out _);
+        manager.ForgetTrackerRange(arenaId: 5, byteOffset: 0, byteSize: 16L * Environment.SystemPageSize);
+
+        // Zero-byte / non-positive ranges are a no-op.
+        manager.ForgetTrackerRange(arenaId: 5, byteOffset: 0, byteSize: 0);
+        manager.ForgetTrackerRange(arenaId: 5, byteOffset: 0, byteSize: -1);
+    }
+
+    [Test]
     public void Dispose_DrainsRemainingEntries()
     {
         long budget = 1024L * Environment.SystemPageSize;
