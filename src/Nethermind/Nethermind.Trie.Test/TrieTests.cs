@@ -64,6 +64,29 @@ namespace Nethermind.Trie.Test
 
         private IPruningTrieStore CreateTrieStore(IDb? memDb = null) => TestTrieStoreFactory.Build(memDb ?? new MemDb(), Prune.WhenCacheReaches(1.MB), Persist.EveryBlock, _logManager);
 
+        public enum ParallelRootHashScenario
+        {
+            SingleInlineLeaf,
+            SharedPrefixBranch,
+            RootBranchChildren,
+            MutatedPersistedBranch,
+            DominantNestedBranch
+        }
+
+        private static IEnumerable<TestCaseData> ParallelRootHashEquivalenceScenarios()
+        {
+            yield return new TestCaseData(ParallelRootHashScenario.SingleInlineLeaf)
+                .SetName("UpdateRootHashParallel_matches_serial_root_hash_for_single_inline_leaf");
+            yield return new TestCaseData(ParallelRootHashScenario.SharedPrefixBranch)
+                .SetName("UpdateRootHashParallel_matches_serial_root_hash_for_shared_prefix_branch");
+            yield return new TestCaseData(ParallelRootHashScenario.RootBranchChildren)
+                .SetName("UpdateRootHashParallel_matches_serial_root_hash_for_root_branch_children");
+            yield return new TestCaseData(ParallelRootHashScenario.MutatedPersistedBranch)
+                .SetName("UpdateRootHashParallel_matches_serial_root_hash_for_mutated_persisted_branch");
+            yield return new TestCaseData(ParallelRootHashScenario.DominantNestedBranch)
+                .SetName("UpdateRootHashParallel_matches_serial_root_hash_for_dominant_nested_branch");
+        }
+
         [Test]
         public void Single_leaf()
         {
@@ -583,6 +606,162 @@ namespace Nethermind.Trie.Test
             PatriciaTree checkTree = new(trieStore.GetTrieStore(null), LimboLogs.Instance);
             checkTree.RootHash = patriciaTree.RootHash;
             return checkTree;
+        }
+
+        [TestCaseSource(nameof(ParallelRootHashEquivalenceScenarios))]
+        public void UpdateRootHashParallel_matches_serial_root_hash(ParallelRootHashScenario scenario)
+        {
+            Hash256 serialRootHash = CalculateRootHash(scenario, static tree => tree.UpdateRootHash(canBeParallel: false));
+            Hash256 parallelRootHash = CalculateRootHash(scenario, static tree => tree.UpdateRootHashParallel(estimatedWeight: 256));
+
+            parallelRootHash.Should().Be(serialRootHash);
+        }
+
+        [Test]
+        // Line 64 of PatriciaTree.ParallelHash.cs: empty-span fast path. No partitions,
+        // no jobs, no allocations, no scheduler invocation. Must not throw.
+        public void UpdateRootHashes_with_empty_span_is_a_noop() =>
+            PatriciaTree.UpdateRootHashes(ReadOnlySpan<TrieRootHashWorkItem>.Empty);
+
+        [Test]
+        public void UpdateRootHashParallel_on_empty_tree_publishes_EmptyTreeHash()
+        {
+            // PartitionForParallelHash returns isEmptyRoot=true when RootRef is null; FinalizeParallelHash
+            // resolves RootRef?.Keccak ?? EmptyTreeHash. The pipeline must not throw on a freshly-built
+            // tree with no writes and must publish the canonical empty-tree marker.
+            using IPruningTrieStore trieStore = CreateTrieStore();
+            PatriciaTree tree = new(trieStore, _logManager);
+
+            tree.UpdateRootHashParallel();
+
+            tree.RootHash.Should().Be(Keccak.EmptyTreeHash);
+        }
+
+        [Test]
+        public void UpdateRootHashParallel_on_already_finalised_tree_is_a_noop()
+        {
+            // Lines 126-128 of PatriciaTree.ParallelHash.cs: when RootRef is not dirty AND already has a keccak,
+            // the partition returns no jobs and no top finalisation. A second call must NOT recompute or change
+            // the root hash. This pins the "partition early-exit on clean root" branch which the existing
+            // equivalence scenarios bypass (they all start dirty).
+            using IPruningTrieStore trieStore = CreateTrieStore();
+            PatriciaTree tree = CreateParallelRootHashTree(trieStore, ParallelRootHashScenario.SharedPrefixBranch);
+            tree.UpdateRootHashParallel(estimatedWeight: 256);
+            Hash256 firstRoot = tree.RootHash;
+
+            tree.UpdateRootHashParallel(estimatedWeight: 256);
+
+            tree.RootHash.Should().Be(firstRoot, "a second parallel UpdateRootHash on an unmodified tree must be a no-op (no re-encode, no shard churn)");
+        }
+
+        [Test]
+        public void UpdateRootHashParallel_with_zero_estimated_weight_still_matches_serial()
+        {
+            // The planner's weight estimator defensively uses Math.Max(1, estimatedWeight) at lines 135, 142, 145, 197
+            // of ParallelHash.cs. A caller passing 0 (the std.cs sort-by-EstimatedChanges path can produce 0 for
+            // freshly-touched empty contracts) must not produce a divergent root vs the serial path.
+            Hash256 serialRootHash = CalculateRootHash(
+                ParallelRootHashScenario.DominantNestedBranch,
+                static tree => tree.UpdateRootHash(canBeParallel: false));
+            Hash256 parallelRootHash = CalculateRootHash(
+                ParallelRootHashScenario.DominantNestedBranch,
+                static tree => tree.UpdateRootHashParallel(estimatedWeight: 0));
+
+            parallelRootHash.Should().Be(serialRootHash);
+        }
+
+        [Test]
+        public void UpdateRootHashes_matches_serial_root_hashes_for_mixed_batch()
+        {
+            using IPruningTrieStore serialSharedPrefixStore = CreateTrieStore();
+            using IPruningTrieStore serialRootBranchStore = CreateTrieStore();
+            using IPruningTrieStore serialDominantBranchStore = CreateTrieStore();
+            PatriciaTree serialSharedPrefixTree = CreateParallelRootHashTree(serialSharedPrefixStore, ParallelRootHashScenario.SharedPrefixBranch);
+            PatriciaTree serialRootBranchTree = CreateParallelRootHashTree(serialRootBranchStore, ParallelRootHashScenario.RootBranchChildren);
+            PatriciaTree serialDominantBranchTree = CreateParallelRootHashTree(serialDominantBranchStore, ParallelRootHashScenario.DominantNestedBranch);
+
+            serialSharedPrefixTree.UpdateRootHash(canBeParallel: false);
+            serialRootBranchTree.UpdateRootHash(canBeParallel: false);
+            serialDominantBranchTree.UpdateRootHash(canBeParallel: false);
+
+            using IPruningTrieStore parallelSharedPrefixStore = CreateTrieStore();
+            using IPruningTrieStore parallelRootBranchStore = CreateTrieStore();
+            using IPruningTrieStore parallelDominantBranchStore = CreateTrieStore();
+            PatriciaTree parallelSharedPrefixTree = CreateParallelRootHashTree(parallelSharedPrefixStore, ParallelRootHashScenario.SharedPrefixBranch);
+            PatriciaTree parallelRootBranchTree = CreateParallelRootHashTree(parallelRootBranchStore, ParallelRootHashScenario.RootBranchChildren);
+            PatriciaTree parallelDominantBranchTree = CreateParallelRootHashTree(parallelDominantBranchStore, ParallelRootHashScenario.DominantNestedBranch);
+
+            int[] dominantBranchWeights = new int[TrieNode.BranchesCount];
+            dominantBranchWeights[0] = 1024;
+            dominantBranchWeights[1] = 1;
+            TrieRootHashWorkItem[] workItems =
+            [
+                new(parallelSharedPrefixTree, 64),
+                new(parallelRootBranchTree, 128),
+                new(parallelDominantBranchTree, 1025, dominantBranchWeights)
+            ];
+
+            PatriciaTree.UpdateRootHashes(workItems);
+
+            parallelSharedPrefixTree.RootHash.Should().Be(serialSharedPrefixTree.RootHash);
+            parallelRootBranchTree.RootHash.Should().Be(serialRootBranchTree.RootHash);
+            parallelDominantBranchTree.RootHash.Should().Be(serialDominantBranchTree.RootHash);
+        }
+
+        private Hash256 CalculateRootHash(ParallelRootHashScenario scenario, Action<PatriciaTree> updateRootHash)
+        {
+            using IPruningTrieStore trieStore = CreateTrieStore();
+            PatriciaTree tree = CreateParallelRootHashTree(trieStore, scenario);
+            updateRootHash(tree);
+
+            return tree.RootHash;
+        }
+
+        private PatriciaTree CreateParallelRootHashTree(ITrieStore trieStore, ParallelRootHashScenario scenario)
+        {
+            PatriciaTree tree = new(trieStore, _logManager);
+            ApplyParallelRootHashScenario(trieStore, tree, scenario);
+
+            return tree;
+        }
+
+        private static void ApplyParallelRootHashScenario(ITrieStore trieStore, PatriciaTree tree, ParallelRootHashScenario scenario)
+        {
+            switch (scenario)
+            {
+                case ParallelRootHashScenario.SingleInlineLeaf:
+                    tree.Set(Bytes.FromHexString("01"), [1]);
+                    break;
+                case ParallelRootHashScenario.SharedPrefixBranch:
+                    tree.Set(_keyA, _longLeaf1);
+                    tree.Set(_keyB, _longLeaf2);
+                    tree.Set(_keyC, _longLeaf3);
+                    tree.Set(_keyD, _longLeaf1);
+                    break;
+                case ParallelRootHashScenario.RootBranchChildren:
+                    tree.Set(Bytes.FromHexString("00"), _longLeaf1);
+                    tree.Set(Bytes.FromHexString("10"), _longLeaf2);
+                    tree.Set(Bytes.FromHexString("20"), _longLeaf3);
+                    tree.Set(Bytes.FromHexString("f0"), _longLeaf1);
+                    break;
+                case ParallelRootHashScenario.MutatedPersistedBranch:
+                    tree.Set(_keyA, _longLeaf1);
+                    tree.Set(_keyB, _longLeaf2);
+                    tree.Set(_keyC, _longLeaf3);
+                    trieStore.CommitPatriciaTrie(0, tree);
+                    tree.Set(_keyA, _longLeaf3);
+                    tree.Set(_keyD, _longLeaf1);
+                    break;
+                case ParallelRootHashScenario.DominantNestedBranch:
+                    tree.Set(Bytes.FromHexString("0010"), _longLeaf1);
+                    tree.Set(Bytes.FromHexString("0020"), _longLeaf2);
+                    tree.Set(Bytes.FromHexString("0030"), _longLeaf3);
+                    tree.Set(Bytes.FromHexString("0040"), _longLeaf1);
+                    tree.Set(Bytes.FromHexString("10f0"), _longLeaf2);
+                    break;
+                default:
+                    throw new ArgumentOutOfRangeException(nameof(scenario), scenario, null);
+            }
         }
 
         [Test]
