@@ -246,13 +246,21 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
 
     private int GetNodeShardIdx(in TreePath path, in ValueHash256 hash)
     {
-        // When enabled, the shard have dictionaries for tracking past path hash also.
-        // So the same path need to be in the same shard for the remove logic to work.
-        uint hashCode = (uint)(_pastKeyTrackingEnabled
-            ? path.GetHashCode()
-            : hash.GetHashCode());
+        // Path-tracked: shard by leading path bits so same-path / different-hash maps to the same shard.
+        if (_pastKeyTrackingEnabled)
+        {
+            return GetPathPrefixShardIdx(in path, _shardBit);
+        }
 
-        return (int)(hashCode % _shardedDirtyNodeCount);
+        return (int)((uint)hash.GetHashCode() & (uint)(_shardedDirtyNodeCount - 1));
+    }
+
+    /// <summary>Returns the leading <paramref name="shardBit"/> bits of <paramref name="path"/> as a shard index.</summary>
+    internal static int GetPathPrefixShardIdx(in TreePath path, int shardBit)
+    {
+        Debug.Assert(shardBit is > 0 and <= 30);
+        uint top = System.Buffers.Binary.BinaryPrimitives.ReadUInt32BigEndian(path.Span);
+        return (int)(top >> (32 - shardBit));
     }
 
     private TrieStoreDirtyNodesCache GetDirtyNodeShard(in TrieStoreDirtyNodesCache.Key key) => _dirtyNodes[GetNodeShardIdx(key.Path, in key.Keccak)];
