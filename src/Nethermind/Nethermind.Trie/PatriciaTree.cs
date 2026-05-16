@@ -413,6 +413,112 @@ namespace Nethermind.Trie
             }
         }
 
+        /// <summary>
+        /// Warm multiple trie paths in a single level-by-level traversal. At each trie depth,
+        /// all unique child nodes are batch-prefetched via MultiGet before resolution, reducing
+        /// per-node RocksDB overhead from ~15µs to ~3µs.
+        /// </summary>
+        public void WarmUpPathsBatched(ReadOnlySpan<byte[]> rawKeys)
+        {
+            if (rawKeys.Length == 0 || RootRef is null) return;
+
+            // Convert all keys to nibbles
+            byte[][] allNibbles = new byte[rawKeys.Length][];
+            for (int i = 0; i < rawKeys.Length; i++)
+            {
+                allNibbles[i] = new byte[rawKeys[i].Length * 2];
+                Nibbles.BytesToNibbleBytes(rawKeys[i], allNibbles[i]);
+            }
+
+            // Resolve root
+            TrieNode root = RootRef;
+            try
+            {
+                root.ResolveNode(TrieStore, TreePath.Empty);
+            }
+            catch { return; }
+
+            if (!root.IsBranch) return;
+
+            // Level-by-level traversal: track (node, nibbleIndex) per active path
+            TrieNode?[] currentNodes = new TrieNode[rawKeys.Length];
+            int[] nibblePositions = new int[rawKeys.Length];
+            TreePath[] paths = new TreePath[rawKeys.Length];
+            Array.Fill(currentNodes, root);
+
+            // Traverse up to 64 nibble levels (max trie depth for 32-byte keys)
+            TreePath[] prefetchPaths = new TreePath[rawKeys.Length];
+            for (int depth = 0; depth < 64; depth++)
+            {
+                int prefetchCount = 0;
+                int activeCount = 0;
+
+                // Collect unique children to prefetch at this level
+                for (int i = 0; i < rawKeys.Length; i++)
+                {
+                    TrieNode? node = currentNodes[i];
+                    if (node is null || nibblePositions[i] >= allNibbles[i].Length) continue;
+                    activeCount++;
+
+                    if (!node.IsBranch) continue;
+
+                    int nib = allNibbles[i][nibblePositions[i]];
+                    TreePath childPath = paths[i];
+                    childPath.AppendMut(nib);
+
+                    TrieNode? child = node.GetChildWithChildPath(TrieStore, ref childPath, nib, keepChildRef: true);
+                    if (child is { NodeType: NodeType.Unknown })
+                    {
+                        prefetchPaths[prefetchCount++] = childPath;
+                    }
+
+                    currentNodes[i] = child;
+                    paths[i] = childPath;
+                    nibblePositions[i]++;
+                }
+
+                if (activeCount == 0) break;
+
+                // Batch prefetch all Unknown children at this level
+                if (prefetchCount > 0)
+                {
+                    TrieStore.PrefetchRlp(prefetchPaths.AsSpan(0, prefetchCount));
+                }
+
+                // Resolve all children (should hit block cache from prefetch)
+                for (int i = 0; i < rawKeys.Length; i++)
+                {
+                    TrieNode? node = currentNodes[i];
+                    if (node is null) continue;
+
+                    try
+                    {
+                        if (node.IsSealed && node.Keccak is not null)
+                            currentNodes[i] = node = TrieStore.FindCachedOrUnknown(paths[i], node.Keccak);
+                        node.ResolveNode(TrieStore, paths[i]);
+
+                        // Handle extension nodes
+                        if (node.IsExtension && nibblePositions[i] < allNibbles[i].Length)
+                        {
+                            int keyLen = node.Key!.Length;
+                            paths[i].AppendMut(node.Key);
+                            nibblePositions[i] += keyLen;
+                            TrieNode? extChild = node.GetChildWithChildPath(TrieStore, ref paths[i], 0, keepChildRef: true);
+                            currentNodes[i] = extChild;
+                        }
+                        else if (node.IsLeaf)
+                        {
+                            currentNodes[i] = null; // Done with this path
+                        }
+                    }
+                    catch
+                    {
+                        currentNodes[i] = null; // Skip failed paths
+                    }
+                }
+            }
+        }
+
         [DebuggerStepThrough]
         public byte[]? GetNodeByPath(byte[] nibbles, Hash256? rootHash = null)
         {

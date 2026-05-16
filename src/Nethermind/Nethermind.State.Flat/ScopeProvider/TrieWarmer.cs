@@ -270,7 +270,7 @@ public sealed class TrieWarmer : ITrieWarmer, IAsyncDisposable
         return _jobBufferMultiThreaded.TryDequeue(out job);
     }
 
-    private static void HandleJob(in Job job)
+    private void HandleJob(in Job job)
     {
         try
         {
@@ -281,13 +281,48 @@ public sealed class TrieWarmer : ITrieWarmer, IAsyncDisposable
             else
             {
                 ITrieWarmer.IStorageWarmer storageTree = (ITrieWarmer.IStorageWarmer)job.scopeOrStorageTree;
-                storageTree.WarmUpStorageTrie(job.index, job.sequenceId);
+
+                // Drain additional slot jobs for the same storage tree to batch them
+                UInt256[] batchSlots = DrainSlotsForTree(storageTree, job.index, job.sequenceId);
+                if (batchSlots.Length > 1)
+                {
+                    storageTree.WarmUpStorageTrieBatched(batchSlots, job.sequenceId);
+                }
+                else
+                {
+                    storageTree.WarmUpStorageTrie(job.index, job.sequenceId);
+                }
             }
         }
         catch (TrieNodeException) { }
         catch (NodeHashMismatchException) { }
         catch (ObjectDisposedException) { }
         catch (NullReferenceException) { }
+    }
+
+    private UInt256[] DrainSlotsForTree(ITrieWarmer.IStorageWarmer targetTree, UInt256 firstSlot, int sequenceId)
+    {
+        // Start with the first slot, then drain up to 64 more from the slot buffer for the same tree
+        const int maxBatch = 64;
+        UInt256[] slots = new UInt256[maxBatch];
+        slots[0] = firstSlot;
+        int count = 1;
+
+        while (count < maxBatch && _slotJobBuffer.TryDequeue(out SlotJob slotJob))
+        {
+            if (ReferenceEquals(slotJob.storageTree, targetTree) && slotJob.sequenceId == sequenceId)
+            {
+                slots[count++] = slotJob.index;
+            }
+            else
+            {
+                // Different tree or sequence — put it back as a regular job and stop draining
+                _jobBufferMultiThreaded.TryEnqueue(new Job(slotJob.storageTree, null, slotJob.index, slotJob.sequenceId));
+                break;
+            }
+        }
+
+        return count == 1 ? [firstSlot] : slots[..count];
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
