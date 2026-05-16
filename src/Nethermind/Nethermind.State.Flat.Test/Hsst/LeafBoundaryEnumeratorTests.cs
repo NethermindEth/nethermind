@@ -19,9 +19,15 @@ namespace Nethermind.State.Flat.Test;
 public class LeafBoundaryEnumeratorTests
 {
     /// <summary>Drive the enumerator to completion and collect the counts it yields.</summary>
+    /// <remarks>
+    /// <paramref name="pageOff"/> simulates the writer's current offset within a 4 KiB
+    /// page; the enumerator uses it to force a page-fit split. Default 0 (fresh page) keeps
+    /// the page-fit gate quiescent so pre-page-gate tests still cover the planner-only path.
+    /// </remarks>
     private static List<int> Yields(
         byte[] commonPrefixArr, long[] entryPositions,
-        int minLeafEntries, int maxLeafEntries, int keyLength)
+        int minLeafEntries, int maxLeafEntries, int keyLength,
+        long pageOff = 0)
     {
         HsstBTreeBuilderBuffers buffers = new();
         try
@@ -30,7 +36,7 @@ public class LeafBoundaryEnumeratorTests
                 commonPrefixArr, entryPositions, entryPositions.Length,
                 minLeafEntries, maxLeafEntries, keyLength, ref buffers);
             List<int> counts = [];
-            while (iter.MoveNext()) counts.Add(iter.Current);
+            while (iter.MoveNext(pageOff)) counts.Add(iter.Current);
             return counts;
         }
         finally
@@ -147,5 +153,94 @@ public class LeafBoundaryEnumeratorTests
         // Even if plans coincidentally matched, bridgeLcp = cp[6] = 3 < buffered prefixLen
         // would block the merge.
         Assert.That(counts, Is.EqualTo(new[] { 6, 6 }));
+    }
+
+    /// <summary>
+    /// A 100-entry input with uniform LCP and zero value range fits in a single leaf
+    /// when the writer is page-aligned (pageOff=0). With the writer 4000 bytes into a
+    /// 4 KiB page, the page-fit gate fires repeatedly until each emitted leaf's
+    /// estimated size (16 + count·2) fits in the remaining 96 bytes — so the splitter
+    /// emits four 25-entry leaves and the merger refuses to coalesce them (a merged
+    /// 50-entry leaf would straddle the page).
+    /// </summary>
+    [TestCase(0L, new[] { 100 }, TestName = "PageGate_Inactive_AtPageStart_YieldsSingleLeaf")]
+    [TestCase(4000L, new[] { 25, 25, 25, 25 }, TestName = "PageGate_Active_NearPageTail_ForcesSplit")]
+    public void PageFitGate_SplitsWhenLeafWouldCrossPageBoundary(long pageOff, int[] expected)
+    {
+        byte[] cp = new byte[100];
+        for (int i = 0; i < cp.Length; i++) cp[i] = 8;
+        long[] pos = new long[100];
+
+        List<int> counts = Yields(cp, pos, minLeafEntries: 2, maxLeafEntries: 200, keyLength: 15, pageOff: pageOff);
+
+        Assert.That(counts, Is.EqualTo(expected));
+    }
+
+    /// <summary>
+    /// Even with the page-fit gate active, a leaf already at <c>minLeafEntries</c> must
+    /// emit rather than recurse to zero. With minLeafEntries=2, 4 entries, and a writer
+    /// offset that leaves no slack for any leaf, the splitter still produces two 2-entry
+    /// leaves — the gate is policy, not a hard wall.
+    /// </summary>
+    [Test]
+    public void PageFitGate_StopsAtMinLeafEntries()
+    {
+        byte[] cp = new byte[4];
+        for (int i = 0; i < cp.Length; i++) cp[i] = 8;
+        long[] pos = new long[4];
+
+        // pageOff=4095 → only 1 byte of slack on the page; every leaf "crosses".
+        // The gate's `count > minLeafEntries` guard prevents an infinite split:
+        // raw splits drop to size 2 (=minLeafEntries) and emit.
+        List<int> counts = Yields(cp, pos, minLeafEntries: 2, maxLeafEntries: 200, keyLength: 15, pageOff: 4095L);
+
+        Assert.That(counts, Is.EqualTo(new[] { 2, 2 }));
+    }
+
+    /// <summary>
+    /// Regression: the buffer reseeded after a failed merge persists across MoveNext
+    /// calls. If the writer advances enough between calls that the carry-over now
+    /// straddles a new 4 KiB page, the splitter must requeue the range and re-split
+    /// against the new pageOff — not blindly flush the stale size. Pre-fix, the
+    /// terminal leftover-flush bypassed the gate entirely and emitted the carry-over
+    /// untouched, producing pageOff+leafSize &gt; 4096 crossings.
+    ///
+    /// Setup: 100 entries, maxLeafEntries=50 forces a cardinality split into two
+    /// 50-entry raw splits. At pageOff=0 the first half emits and the second tries
+    /// to merge; cardinality (50+50 &gt; 50) blocks the merge, the buf is flushed,
+    /// and the second half reseeds the buf. Call 2 is invoked with pageOff=4000:
+    /// the carry-over (50 entries, ~125 B estimated) no longer fits, so it gets
+    /// requeued and re-split into two 25-entry leaves under the new pageOff.
+    /// </summary>
+    [Test]
+    public void PageFitGate_RequeuesCarryOverAtAdvancedPageOff()
+    {
+        byte[] cp = new byte[100];
+        for (int i = 0; i < cp.Length; i++) cp[i] = 8;
+        long[] pos = new long[100];
+
+        HsstBTreeBuilderBuffers buffers = new();
+        try
+        {
+            using LeafBoundaryEnumerator iter = new(
+                cp, pos, n: 100,
+                minLeafEntries: 2, maxLeafEntries: 50, keyLength: 15,
+                ref buffers);
+            List<int> counts = [];
+
+            // Call 1: pageOff=0. Cardinality split → emit 50, reseed with (50, 50).
+            Assert.That(iter.MoveNext(0), Is.True);
+            counts.Add(iter.Current);
+
+            // Calls 2+: pageOff=4000. Carry-over re-check fires (4000 + ~125 > 4096),
+            // splitter sub-splits the requeued range into 25-entry halves.
+            while (iter.MoveNext(4000)) counts.Add(iter.Current);
+
+            Assert.That(counts, Is.EqualTo(new[] { 50, 25, 25 }));
+        }
+        finally
+        {
+            buffers.Dispose();
+        }
     }
 }

@@ -140,8 +140,15 @@ public ref struct HsstIndexBuilder<TWriter, TReader, TPin>
         // the trailer formula assumes [...root...][trailer] with no gap.
         bool firstNode = true;
 
-        while (iter.MoveNext())
+        while (true)
         {
+            // Bytes already written into the current 4 KiB page, fed into the
+            // leaf splitter so it can force-split a leaf that would otherwise
+            // straddle a page boundary (mirrors the intermediate-node path's
+            // WouldCrossNewPage gate). Computed pre-pad — over-triggers in the
+            // ≤ PageAlignPadThreshold close-to-edge case, which is benign.
+            long pageOff = (_writer.Written - firstOffset) & 4095L;
+            if (!iter.MoveNext(pageOff)) break;
             int count = iter.Current;
 
             // Pad to a fresh page if we're within PageAlignPadThreshold of
@@ -890,9 +897,27 @@ internal ref struct LeafBoundaryEnumerator
     /// <item><description>returns <c>false</c> when both the DFS and the buffer are empty.</description></item>
     /// </list>
     /// </summary>
-    public bool MoveNext()
+    public bool MoveNext(long pageOff)
     {
-        while (TryGetNextRawSplit(out int rawStart, out int rawCount))
+        // Carry-over buffer from a prior MoveNext call (the reseed after a failed
+        // merge) was sized against that call's pageOff. The writer has since advanced
+        // by the previously-flushed leaf, so the new pageOff may put the carry-over
+        // across a 4 KiB boundary that the original gate never saw. Requeue its range
+        // onto the DFS so the splitter can sub-split it against the up-to-date
+        // pageOff. Skip when the buffer is already at minLeafEntries — splitter would
+        // immediately re-emit the same range and we'd loop; fall through to the
+        // fallback (allow cross).
+        if (_bufCount > _minLeafEntries && (pageOff + EstimateBufSize() > 4096))
+        {
+            if (_sp + 2 > _stack.Length)
+                throw new InvalidOperationException(
+                    "HSST leaf-splitter DFS stack exceeded — pathological key distribution.");
+            _stack[_sp++] = _bufStart;
+            _stack[_sp++] = _bufStart + _bufCount - 1;
+            _bufCount = 0;
+        }
+
+        while (TryGetNextRawSplit(pageOff, out int rawStart, out int rawCount))
         {
             if (_bufCount == 0)
             {
@@ -900,7 +925,7 @@ internal ref struct LeafBoundaryEnumerator
                 continue;
             }
 
-            if (TryMergeIntoBuffer(rawStart, rawCount)) continue;
+            if (TryMergeIntoBuffer(pageOff, rawStart, rawCount)) continue;
 
             // Flush buffer; replace with the new split.
             Current = _bufCount;
@@ -924,7 +949,7 @@ internal ref struct LeafBoundaryEnumerator
     /// surfaced so the merge pass can probe entry-level state (LCPs, value positions)
     /// without re-deriving it from a running cumulative counter.
     /// </summary>
-    private bool TryGetNextRawSplit(out int rawStart, out int rawCount)
+    private bool TryGetNextRawSplit(long pageOff, out int rawStart, out int rawCount)
     {
         const long ValueRangeLimit = 1L << 24;
 
@@ -991,11 +1016,25 @@ internal ref struct LeafBoundaryEnumerator
                 int valueSlot = vr == 0 ? 1 : (BitOperations.Log2((ulong)vr) >> 3) + 1;
                 int estimatedSize = LeafNodeHeaderOverheadBytes + count * (gap + 1 + valueSlot);
 
+                // Page-fit gate: if the leaf would straddle a 4 KiB page from the
+                // writer's current offset, force a split — but only while count is
+                // still above minLeafEntries, so a single oversized leaf at the
+                // minimum count is allowed to cross (fallback policy).
+                //
+                // estimatedSize omits the planner's common-prefix overhead (CPL
+                // byte is already in LeafNodeHeaderOverheadBytes but the prefix
+                // bytes themselves are not). Without compensating, this gate would
+                // let a leaf cross by up to prefixLen bytes. prefixLen is bounded
+                // by min(minLcp + 1, keyLength) — adding that as a per-leaf upper
+                // bound matches what BSearchIndexWriter and the merger actually
+                // account for.
+                int prefixOverheadUB = Math.Min(minLcp + 1, _keyLength);
                 bool splitNeeded =
                     gap > 4 ||
                     gap == 3 ||
                     vr > ValueRangeLimit ||
-                    estimatedSize > MaxLeafBytes;
+                    estimatedSize > MaxLeafBytes ||
+                    (pageOff + estimatedSize + prefixOverheadUB > 4096 && count > minLeafEntries);
                 if (!splitNeeded)
                 {
                     rawStart = lo;
@@ -1078,7 +1117,7 @@ internal ref struct LeafBoundaryEnumerator
     /// than the buffered plan suggested, but never a looser one given the bridging-LCP
     /// guarantee, so the size-estimate upper bound holds.
     /// </summary>
-    private bool TryMergeIntoBuffer(int nextStart, int nextCount)
+    private bool TryMergeIntoBuffer(long pageOff, int nextStart, int nextCount)
     {
         int mergedCount = _bufCount + nextCount;
         if (mergedCount > _maxLeafEntries) return false;
@@ -1128,12 +1167,34 @@ internal ref struct LeafBoundaryEnumerator
                         mergedCount * (perEntryKeyBytes + _bufValueSlotSize);
         if (estimated > MaxLeafBytes) return false;
 
+        // Page-fit gate (companion to TryGetNextRawSplit's): if absorbing the next
+        // raw split would push the buffered leaf across a 4 KiB page boundary from
+        // the writer's current offset, refuse the merge so the buffered leaf is
+        // flushed standalone and the next split starts a fresh buffer.
+        if (pageOff + estimated > 4096) return false;
+
         // Commit.
         _bufCount = mergedCount;
         _bufMinVal = mergedMinVal;
         _bufMaxVal = mergedMaxVal;
         // Plan/value-slot fields unchanged (verified equal above).
         return true;
+    }
+
+    /// <summary>
+    /// Upper-bound estimate of the buffered leaf's serialized size, using the cached
+    /// planner profile (<c>_bufKeyType</c>, <c>_bufKeySlotSize</c>, <c>_bufPrefixLen</c>,
+    /// <c>_bufValueSlotSize</c>). Mirrors <see cref="TryMergeIntoBuffer"/>'s estimator so
+    /// the page-fit gate at <see cref="MoveNext"/>'s carry-over check matches what the
+    /// merger would have used. Conservative for Variable layout (keyType=0): assumes the
+    /// widest per-entry payload, matching the comment in TryMergeIntoBuffer.
+    /// </summary>
+    private readonly int EstimateBufSize()
+    {
+        int perEntryKeyBytes = _bufKeyType == 0 ? _keyLength + 2 : _bufKeySlotSize;
+        int prefixOverhead = _bufPrefixLen > 0 ? 1 + _bufPrefixLen : 0;
+        return LeafNodeHeaderOverheadBytes + prefixOverhead +
+               _bufCount * (perEntryKeyBytes + _bufValueSlotSize);
     }
 
     /// <summary>
