@@ -8,7 +8,6 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.ObjectPool;
-using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
@@ -47,19 +46,6 @@ namespace Nethermind.Init.Steps.Migrations
         private readonly IDb _txIndexDb;
         private readonly IDb _receiptsBlockDb;
         private readonly IReceiptsRecovery _recovery;
-
-        public ReceiptMigration(IApiWithNetwork api) : this(
-            api.ReceiptStorage!,
-            api.BlockTree!,
-            api.SyncModeSelector!,
-            api.ChainLevelInfoRepository!,
-            api.Config<IReceiptConfig>(),
-            api.DbProvider?.ReceiptsDb!,
-            new ReceiptsRecovery(api.EthereumEcdsa, api.SpecProvider),
-            api.LogManager
-        )
-        {
-        }
 
         public ReceiptMigration(
             IReceiptStorage receiptStorage,

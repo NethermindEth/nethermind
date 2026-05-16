@@ -78,7 +78,7 @@ public class MonitoringService : IMonitoringService, IAsyncDisposable
                         if (_logger.IsError) _logger.Error($"Cannot reach Pushgateway at {_pushGatewayUrl}", ex);
                         return;
                     }
-                    if (_logger.IsTrace) _logger.Error(ex.Message, ex); // keeping it as Error to log the exception details with it.
+                    _logger.TraceError(ex.Message, ex); // keeping it at Error severity to log exception details
                 }
             };
             MetricPusher metricPusher = new(pusherOptions);

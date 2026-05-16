@@ -88,9 +88,9 @@ public class WalletTests
 
     [OneTimeTearDown]
     public void TearDown() => Parallel.ForEach(_wallets, static wallet =>
-                                   {
-                                       wallet.Dispose();
-                                   });
+    {
+        wallet.Dispose();
+    });
 
     public enum WalletType
     {

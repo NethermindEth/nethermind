@@ -84,10 +84,9 @@ public static unsafe partial class EvmInstructions
         lookup[(int)Instruction.CALLVALUE] = &InstructionEnvUInt256<TGasPolicy, OpCallValue<TGasPolicy>, TTracingInst>;
         lookup[(int)Instruction.CALLDATALOAD] = &InstructionCallDataLoad<TGasPolicy, TTracingInst>;
         lookup[(int)Instruction.CALLDATASIZE] = &InstructionEnvUInt32<TGasPolicy, OpCallDataSize<TGasPolicy>, TTracingInst>;
-        lookup[(int)Instruction.CALLDATACOPY] =
-            &InstructionCodeCopy<TGasPolicy, OpCallDataCopy<TGasPolicy>, TTracingInst>;
-        lookup[(int)Instruction.CODESIZE] = &InstructionEnvUInt32<TGasPolicy, OpCodeSize<TGasPolicy>, TTracingInst>;
-        lookup[(int)Instruction.CODECOPY] = &InstructionCodeCopy<TGasPolicy, OpCodeCopy<TGasPolicy>, TTracingInst>;
+        lookup[(int)Instruction.CALLDATACOPY] = &InstructionCallDataCopy<TGasPolicy, TTracingInst>;
+        lookup[(int)Instruction.CODESIZE] = &InstructionCodeSize<TGasPolicy, TTracingInst>;
+        lookup[(int)Instruction.CODECOPY] = &InstructionCodeCopy<TGasPolicy, TTracingInst>;
         lookup[(int)Instruction.GASPRICE] = &InstructionBlkUInt256<TGasPolicy, OpGasPrice<TGasPolicy>, TTracingInst>;
 
         lookup[(int)Instruction.EXTCODESIZE] = &InstructionExtCodeSize<TGasPolicy, TTracingInst>;

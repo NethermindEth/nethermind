@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -227,6 +227,22 @@ public partial class EngineModuleTests
     }
 
     [Test]
+    public async Task NewPayloadV3_EmptyRlpListTransaction_IsRejectedAsInvalid()
+    {
+        (IEngineRpcModule prevRpcModule, string? payloadId, Transaction[] transactions, _) = await BuildAndGetPayloadV3Result(Cancun.Instance, 1);
+        ExecutionPayloadV3 payload = (await prevRpcModule.engine_getPayloadV3(Bytes.FromHexString(payloadId!))).Data!.ExecutionPayload;
+
+        payload.Transactions = [[0xC0]];
+
+        byte[]?[] blobVersionedHashes = transactions.SelectMany(static tx => tx.BlobVersionedHashes ?? []).ToArray();
+        ResultWrapper<PayloadStatusV1> result = await prevRpcModule.engine_newPayloadV3(payload, blobVersionedHashes, payload.ParentBeaconBlockRoot);
+
+        Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.None));
+        result.Data.Status.Should().Be("INVALID");
+        Assert.That(result.Data.ValidationError, Does.StartWith("Transaction 0 is not valid"));
+    }
+
+    [Test]
     public async Task NewPayloadV3_should_decline_null_blobversionedhashes()
     {
         (JsonRpcService jsonRpcService, JsonRpcContext context, EthereumJsonSerializer serializer, ExecutionPayloadV3 executionPayload)
@@ -365,13 +381,13 @@ public partial class EngineModuleTests
                 Substitute.For<IAsyncHandler<byte[], GetPayloadV6Result?>>(),
                 newPayloadHandlerMock,
                 Substitute.For<IForkchoiceUpdatedHandler>(),
-                Substitute.For<IHandler<IReadOnlyList<Hash256>, IEnumerable<ExecutionPayloadBodyV1Result?>>>(),
+                Substitute.For<IHandler<IReadOnlyList<Hash256>, IReadOnlyList<ExecutionPayloadBodyV1Result?>>>(),
                 Substitute.For<IGetPayloadBodiesByRangeV1Handler>(),
                 Substitute.For<IHandler<TransitionConfigurationV1, TransitionConfigurationV1>>(),
-                Substitute.For<IHandler<IEnumerable<string>, IEnumerable<string>>>(),
-                Substitute.For<IAsyncHandler<byte[][], IEnumerable<BlobAndProofV1?>>>(),
-                Substitute.For<IAsyncHandler<GetBlobsHandlerV2Request, IEnumerable<BlobAndProofV2?>?>>(),
-                Substitute.For<IHandler<IReadOnlyList<Hash256>, IEnumerable<ExecutionPayloadBodyV2Result?>>>(),
+                Substitute.For<IHandler<IEnumerable<string>, IReadOnlyList<string>>>(),
+                Substitute.For<IAsyncHandler<byte[][], IReadOnlyList<BlobAndProofV1?>>>(),
+                Substitute.For<IAsyncHandler<GetBlobsHandlerV2Request, IReadOnlyList<BlobAndProofV2?>?>>(),
+                Substitute.For<IHandler<IReadOnlyList<Hash256>, IReadOnlyList<ExecutionPayloadBodyV2Result?>>>(),
                 Substitute.For<IGetPayloadBodiesByRangeV2Handler>(),
                 Substitute.For<IEngineRequestsTracker>(),
                 chain.SpecProvider,
@@ -407,7 +423,7 @@ public partial class EngineModuleTests
                     txBlobVersionedHashes[txHashIndex][1] = hashByte;
                     txHashIndex++;
                 }
-                transactions[txIndex] = Build.A.Transaction.WithNonce((ulong)txIndex)
+                transactions[txIndex] = Build.A.Transaction.WithNonce(txIndex)
                     .WithType(TxType.Blob)
                     .WithTimestamp(Timestamper.UnixTime.Seconds)
                     .WithTo(TestItem.AddressB)
@@ -525,6 +541,41 @@ public partial class EngineModuleTests
     }
 
     [Test]
+    public async Task ForkChoiceUpdatedV3_should_allow_lower_finalized_than_previous_when_building_payload()
+    {
+        using MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: Cancun.Instance, mergeConfig: new MergeConfig()
+        {
+            NewPayloadBlockProcessingTimeout = 1000
+        });
+        IEngineRpcModule rpcModule = chain.EngineRpcModule;
+
+        ExecutionPayloadV3 block1 = await AddNewBlockV3(rpcModule, chain);
+        ExecutionPayloadV3 block2 = await AddNewBlockV3(rpcModule, chain);
+        ExecutionPayloadV3 block3 = await AddNewBlockV3(rpcModule, chain);
+
+        PayloadAttributes payloadAttributes = new()
+        {
+            Timestamp = block3.Timestamp + 1,
+            PrevRandao = TestItem.KeccakH,
+            SuggestedFeeRecipient = TestItem.AddressF,
+            Withdrawals = [],
+            ParentBeaconBlockRoot = TestItem.KeccakE
+        };
+
+        ForkchoiceStateV1 higherFinalized = new(headBlockHash: block3.BlockHash, finalizedBlockHash: block2.BlockHash, safeBlockHash: block2.BlockHash);
+        ResultWrapper<ForkchoiceUpdatedV1Result> higherFinalizedResult = await rpcModule.engine_forkchoiceUpdatedV3(higherFinalized, null);
+        higherFinalizedResult.ErrorCode.Should().Be(0);
+        higherFinalizedResult.Data.PayloadStatus.Status.Should().Be(PayloadStatus.Valid);
+
+        ForkchoiceStateV1 repeatedHead = new(headBlockHash: block3.BlockHash, finalizedBlockHash: block1.BlockHash, safeBlockHash: block2.BlockHash);
+        ResultWrapper<ForkchoiceUpdatedV1Result> result = await rpcModule.engine_forkchoiceUpdatedV3(repeatedHead, payloadAttributes);
+
+        result.ErrorCode.Should().Be(0);
+        result.Data.PayloadStatus.Status.Should().Be(PayloadStatus.Valid);
+        result.Data.PayloadId.Should().NotBeNull();
+    }
+
+    [Test]
     public async Task GetBlobsV1_should_throw_if_more_than_128_requested_blobs([Values(128, 129)] int requestSize)
     {
         MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: Cancun.Instance, mergeConfig: new MergeConfig()
@@ -539,7 +590,7 @@ public partial class EngineModuleTests
             request.Add(Bytes.FromHexString(i.ToString("X64")));
         }
 
-        ResultWrapper<IEnumerable<BlobAndProofV1?>> result = await rpcModule.engine_getBlobsV1(request.ToArray());
+        ResultWrapper<IReadOnlyList<BlobAndProofV1?>> result = await rpcModule.engine_getBlobsV1(request.ToArray());
 
         if (requestSize > 128)
         {
@@ -562,7 +613,7 @@ public partial class EngineModuleTests
         });
         IEngineRpcModule rpcModule = chain.EngineRpcModule;
 
-        ResultWrapper<IEnumerable<BlobAndProofV1?>> result = await rpcModule.engine_getBlobsV1([]);
+        ResultWrapper<IReadOnlyList<BlobAndProofV1?>> result = await rpcModule.engine_getBlobsV1([]);
 
         result.Result.Should().Be(Result.Success);
         result.Data.Should().BeEquivalentTo(ArraySegment<BlobAndProofV1?>.Empty);
@@ -586,7 +637,7 @@ public partial class EngineModuleTests
 
         chain.TxPool.SubmitTx(blobTx, TxHandlingOptions.None).Should().Be(AcceptTxResult.Accepted);
 
-        ResultWrapper<IEnumerable<BlobAndProofV1?>> result = await rpcModule.engine_getBlobsV1(blobTx.BlobVersionedHashes!);
+        ResultWrapper<IReadOnlyList<BlobAndProofV1?>> result = await rpcModule.engine_getBlobsV1(blobTx.BlobVersionedHashes!);
 
         ShardBlobNetworkWrapper wrapper = (ShardBlobNetworkWrapper)blobTx.NetworkWrapper!;
         result.Data.Select(static b => b!.Blob).Should().BeEquivalentTo(wrapper.Blobs);
@@ -611,7 +662,7 @@ public partial class EngineModuleTests
             .SignedAndResolved(chain.EthereumEcdsa, TestItem.PrivateKeyA).TestObject;
 
         // requesting hashes that are not present in TxPool
-        ResultWrapper<IEnumerable<BlobAndProofV1?>> result = await rpcModule.engine_getBlobsV1(blobTx.BlobVersionedHashes!);
+        ResultWrapper<IReadOnlyList<BlobAndProofV1?>> result = await rpcModule.engine_getBlobsV1(blobTx.BlobVersionedHashes!);
 
         result.Data.Should().HaveCount(numberOfRequestedBlobs);
         result.Data.Should().AllBeEquivalentTo<BlobAndProofV1?>(null);
@@ -651,7 +702,7 @@ public partial class EngineModuleTests
             blobVersionedHashesRequest.Add(addActualHash ? blobTx.BlobVersionedHashes![actualIndex++]! : Bytes.FromHexString(i.ToString("X64")));
         }
 
-        ResultWrapper<IEnumerable<BlobAndProofV1?>> result = await rpcModule.engine_getBlobsV1(blobVersionedHashesRequest.ToArray());
+        ResultWrapper<IReadOnlyList<BlobAndProofV1?>> result = await rpcModule.engine_getBlobsV1(blobVersionedHashesRequest.ToArray());
 
         result.Data.Should().BeEquivalentTo(blobsAndProofs);
         BlobAndProofV1?[] resultBlobsAndProofs = result.Data.ToArray();

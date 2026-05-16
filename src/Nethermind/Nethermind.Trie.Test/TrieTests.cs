@@ -1299,5 +1299,34 @@ namespace Nethermind.Trie.Test
             patriciaTree.Invoking(t => t.WarmUpPath(Bytes.FromHexString("00000000000cc"))).Should().NotThrow();  // Non-existent key
             patriciaTree.Invoking(t => t.WarmUpPath(Bytes.FromHexString("fffffffffffff"))).Should().NotThrow();  // Completely different path
         }
+
+        [Test]
+        public void Commit_DoesNotDeadlock_WhenRunOnBoundedScheduler()
+        {
+            // Commit should not deadlock on a bounded scheduler (e.g. NewBlock P2P message on BackgroundTaskScheduler).
+            ConcurrentExclusiveSchedulerPair schedulerPair = new(TaskScheduler.Default, maxConcurrencyLevel: 1);
+
+            Task task = Task.Factory.StartNew(() =>
+            {
+                MemDb memDb = new();
+                using IPruningTrieStore trieStore = CreateTrieStore(memDb);
+                PatriciaTree tree = new(trieStore, _logManager);
+
+                Span<byte> buffer = stackalloc byte[32];
+                for (int i = 0; i < 100; i++)
+                {
+                    BinaryPrimitives.WriteInt32BigEndian(buffer, i);
+                    Hash256 key = Keccak.Compute(buffer);
+                    tree.Set(key.Bytes, key.BytesToArray());
+                }
+
+                using (trieStore.BeginBlockCommit(0))
+                {
+                    tree.Commit();
+                }
+            }, CancellationToken.None, TaskCreationOptions.None, schedulerPair.ConcurrentScheduler);
+
+            task.Wait(TimeSpan.FromSeconds(10)).Should().BeTrue("Commit deadlocked on bounded scheduler");
+        }
     }
 }

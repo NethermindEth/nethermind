@@ -5,11 +5,13 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Config;
 using Nethermind.Core;
+using Nethermind.Core.Test;
 using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State.Flat.ScopeProvider;
 using NSubstitute;
+using NSubstitute.Exceptions;
 using NUnit.Framework;
 
 namespace Nethermind.State.Flat.Test;
@@ -45,9 +47,7 @@ public class TrieWarmerTests
 
         warmer.PushAddressJob(addressWarmer, address, sequenceId: 1);
 
-        await Task.Delay(200);
-
-        addressWarmer.Received().WarmUpStateTrie(address, 1);
+        await Eventually.AssertAsync<ReceivedCallsException>(() => addressWarmer.Received().WarmUpStateTrie(address, 1));
 
         _cts.Cancel();
         await warmer.DisposeAsync();
@@ -63,9 +63,7 @@ public class TrieWarmerTests
 
         warmer.PushSlotJob(storageWarmer, index, sequenceId: 5);
 
-        await Task.Delay(200);
-
-        storageWarmer.Received().WarmUpStorageTrie(index, 5);
+        await Eventually.AssertAsync<ReceivedCallsException>(() => storageWarmer.Received().WarmUpStorageTrie(index, 5));
 
         _cts.Cancel();
         await warmer.DisposeAsync();
@@ -81,9 +79,7 @@ public class TrieWarmerTests
 
         warmer.PushAddressJob(addressWarmer, address, sequenceId: 999);
 
-        await Task.Delay(200);
-
-        addressWarmer.Received().WarmUpStateTrie(address, 999);
+        await Eventually.AssertAsync<ReceivedCallsException>(() => addressWarmer.Received().WarmUpStateTrie(address, 999));
 
         _cts.Cancel();
         await warmer.DisposeAsync();

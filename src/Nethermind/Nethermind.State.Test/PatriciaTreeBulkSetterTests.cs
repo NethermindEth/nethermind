@@ -304,7 +304,7 @@ public class PatriciaTreeBulkSetterTests
                 if (pTree.RootHash != root)
                 {
                     TestContext.Error.WriteLine($"Baseline {originalDump}");
-                    TestContext.Error.WriteLine($"But got {td.ToString()}");
+                    TestContext.Error.WriteLine($"But got {td}");
                 }
             }
 
@@ -390,7 +390,7 @@ public class PatriciaTreeBulkSetterTests
                 if (pTree.RootHash != root)
                 {
                     TestContext.Error.WriteLine($"Baseline {originalDump}");
-                    TestContext.Error.WriteLine($"But in sorted got {td.ToString()}");
+                    TestContext.Error.WriteLine($"But in sorted got {td}");
                 }
             }
 
@@ -446,7 +446,7 @@ public class PatriciaTreeBulkSetterTests
                 if (pTree.RootHash != root)
                 {
                     TestContext.Error.WriteLine($"Baseline {originalDump}");
-                    TestContext.Error.WriteLine($"But in multiple set one got {td.ToString()}");
+                    TestContext.Error.WriteLine($"But in multiple set one got {td}");
                 }
             }
 

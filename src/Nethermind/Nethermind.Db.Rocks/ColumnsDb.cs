@@ -140,7 +140,6 @@ public class ColumnsDb<T> : DbOnTheRocks, IColumnsDb<T> where T : struct, Enum
         private readonly Snapshot _snapshot;
         private readonly ReadOptions _sharedReadOptions;
         private readonly ReadOptions _sharedCacheMissReadOptions;
-        private readonly RocksDbSharp.Native _rocksDbNative;
         private int _disposed;
 
         // Use a flat array indexed by enum ordinal instead of Dictionary<T, IReadOnlyKeyValueStore>.
@@ -150,7 +149,6 @@ public class ColumnsDb<T> : DbOnTheRocks, IColumnsDb<T> where T : struct, Enum
         public ColumnDbSnapshot(ColumnsDb<T> columnsDb, Snapshot snapshot)
         {
             _snapshot = snapshot;
-            _rocksDbNative = columnsDb._rocksDbNative;
 
             // Create two shared ReadOptions for all column readers instead of 2 per reader.
             // ReadOptions in RocksDbSharp has a finalizer but no IDisposable — creating many
@@ -247,16 +245,10 @@ public class ColumnsDb<T> : DbOnTheRocks, IColumnsDb<T> where T : struct, Enum
 
             // Explicitly destroy native ReadOptions handles to prevent finalizer queue buildup.
             // GC.SuppressFinalize prevents the finalizer from running on already-destroyed handles.
-            DestroyReadOptions(_sharedReadOptions);
-            DestroyReadOptions(_sharedCacheMissReadOptions);
+            RocksDbReader.DestroyReadOptions(_sharedReadOptions);
+            RocksDbReader.DestroyReadOptions(_sharedCacheMissReadOptions);
 
             _snapshot.Dispose();
-        }
-
-        private void DestroyReadOptions(ReadOptions options)
-        {
-            _rocksDbNative.rocksdb_readoptions_destroy(options.Handle);
-            GC.SuppressFinalize(options);
         }
 
         // Non-boxing enum-to-int conversion. JIT eliminates dead branches at

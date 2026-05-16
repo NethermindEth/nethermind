@@ -435,6 +435,72 @@ public class Eip7778Tests : VirtualMachineTestsBase
     }
 
     [Test]
+    public void Transaction_allowance_uses_post_refund_receipt_gas_when_eip7778_enabled()
+    {
+        TestState.CreateAccount(TestItem.AddressA, 1.Ether);
+        TestState.CreateAccount(Recipient, 1.Ether);
+        TestState.Set(new StorageCell(Recipient, 0), new byte[] { 1 });
+        TestState.Commit(SpecProvider.GetSpec((1, 0)));
+
+        _processor = new EthereumTransactionProcessor(BlobBaseFeeCalculator.Instance, SpecProvider, TestState, Machine, CodeInfoRepository, LimboLogs.Instance);
+
+        byte[] refundCode = Prepare.EvmCode
+            .PushData(0)
+            .PushData(0)
+            .Op(Instruction.SSTORE)
+            .Done;
+
+        TestState.InsertCode(Recipient, refundCode, SpecProvider.GenesisSpec);
+        TestState.Commit(SpecProvider.GetSpec((1, 0)));
+
+        Transaction tx1 = Build.A.Transaction
+            .WithGasLimit(100000)
+            .WithGasPrice(1)
+            .WithNonce(TestState.GetNonce(TestItem.PrivateKeyA.Address))
+            .To(Recipient)
+            .SignedAndResolved(TestItem.PrivateKeyA)
+            .TestObject;
+
+        Block block = Build.A.Block.WithNumber(1)
+            .WithTimestamp(0)
+            .WithTransactions(tx1)
+            .WithGasLimit(1_000_000)
+            .TestObject;
+        block.Header.GasUsed = 0;
+
+        BlockReceiptsTracer tracer = new();
+        tracer.StartNewBlockTrace(block);
+
+        tracer.StartNewTxTrace(tx1);
+        TransactionResult result1 = _processor.Execute(tx1, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer);
+        tracer.EndTxTrace();
+
+        Assert.That(result1, Is.EqualTo(TransactionResult.Ok));
+
+        long blockGasAfterTx1 = block.Header.GasUsed;
+        long receiptGasAfterTx1 = tracer.TxReceipts[0].GasUsedTotal;
+        Assert.That(blockGasAfterTx1, Is.GreaterThan(receiptGasAfterTx1), "First transaction should create a refund gap between block gas and receipt gas");
+
+        block.Header.GasLimit = blockGasAfterTx1 + GasCostOf.Transaction - 1;
+
+        Transaction tx2 = Build.A.Transaction
+            .WithGasLimit(GasCostOf.Transaction)
+            .WithGasPrice(1)
+            .WithNonce(TestState.GetNonce(TestItem.PrivateKeyA.Address))
+            .To(TestItem.AddressB)
+            .SignedAndResolved(TestItem.PrivateKeyA)
+            .TestObject;
+
+        tracer.StartNewTxTrace(tx2);
+        TransactionResult result2 = _processor.Execute(tx2, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer);
+        tracer.EndTxTrace();
+        tracer.EndBlockTrace();
+
+        Assert.That(result2, Is.EqualTo(TransactionResult.Ok), "Second transaction should be admitted based on post-refund receipt gas");
+        Assert.That(block.Header.GasUsed, Is.GreaterThan(block.Header.GasLimit), "Block gas should overflow only after the second transaction executes");
+    }
+
+    [Test]
     public void Multiple_transactions_cumulative_gas_uses_post_refund_values()
     {
         // After the revert, cumulative receipt gas uses post-refund values

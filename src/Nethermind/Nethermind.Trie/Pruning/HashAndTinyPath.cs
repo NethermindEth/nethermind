@@ -15,9 +15,5 @@ internal readonly struct HashAndTinyPath(Hash256? hash, in TinyTreePath path) : 
 
     public bool Equals(HashAndTinyPath other) => addr == other.addr && path.Equals(in other.path);
     public override bool Equals(object? obj) => obj is HashAndTinyPath other && Equals(other);
-    public override int GetHashCode()
-    {
-        int addressHash = addr?.GetHashCode() ?? 0x55555555;
-        return path.GetHashCode() ^ addressHash;
-    }
+    public override int GetHashCode() => path.GetChainedHashCode((uint)(addr?.GetHashCode() ?? 0x55555555));
 }

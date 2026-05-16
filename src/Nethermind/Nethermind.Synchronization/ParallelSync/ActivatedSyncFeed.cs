@@ -7,7 +7,7 @@ namespace Nethermind.Synchronization.ParallelSync
 {
     public abstract class ActivatedSyncFeed<T> : SyncFeed<T>, IDisposable
     {
-        private readonly bool _disposed = false;
+        private bool _disposed;
 
         protected ActivatedSyncFeed() => StateChanged += OnStateChanged;
 
@@ -42,7 +42,11 @@ namespace Nethermind.Synchronization.ParallelSync
 
         protected abstract SyncMode ActivationSyncModes { get; }
 
-        public virtual void Dispose() => StateChanged -= OnStateChanged;
+        public virtual void Dispose()
+        {
+            _disposed = true;
+            StateChanged -= OnStateChanged;
+        }
 
         public virtual void InitializeFeed() { }
     }

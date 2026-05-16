@@ -7,6 +7,7 @@ using Autofac;
 using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
+using Nethermind.Config;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Container;
@@ -28,6 +29,7 @@ public class MainProcessingContext : IMainProcessingContext, BlockProcessor.Bloc
         IWorldStateManager worldStateManager,
         CompositeBlockPreprocessorStep compositeBlockPreprocessorStep,
         IBlockTree blockTree,
+        IProcessExitSource processExitSource,
         ILogManager logManager)
     {
 
@@ -72,6 +74,16 @@ public class MainProcessingContext : IMainProcessingContext, BlockProcessor.Bloc
         });
 
         _components = innerScope.Resolve<Components>();
+
+        if (initConfig.ExitOnInvalidBlock)
+        {
+            ILogger exitLogger = logManager.GetClassLogger<MainProcessingContext>();
+            _components.BlockchainProcessor.InvalidBlock += (_, _) =>
+            {
+                if (exitLogger.IsInfo) exitLogger.Info("Exiting on invalid block");
+                processExitSource.Exit(ExitCodes.InvalidBlock);
+            };
+        }
 
         LifetimeScope = innerScope;
     }

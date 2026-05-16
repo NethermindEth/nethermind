@@ -83,6 +83,7 @@ public class PowForwardHeaderProvider(
         else
         {
             if (_logger.IsTrace) _logger.Trace($"No header received");
+            _currentBestPeer = null;
         }
 
         if (headers is not null && headers?.Count > MinCachedHeaderBatchSize) LastResponseBatch = headers.ToPooledList(headers.Count);

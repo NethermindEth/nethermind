@@ -14,6 +14,6 @@ public partial class SecP256r1Precompile
     {
         Metrics.SecP256r1Precompile++;
 
-        return Secp256r1.VerifySignature(inputData) ? _successResult : [];
+        return SecP256r1.VerifySignature(inputData) ? _successResult : [];
     }
 }

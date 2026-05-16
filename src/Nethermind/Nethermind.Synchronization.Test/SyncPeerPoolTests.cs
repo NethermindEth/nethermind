@@ -345,7 +345,7 @@ public class SyncPeerPoolTests
         await Task.Delay(100);
 
         Assert.That(() =>
-                syncPeer.ReceivedCalls().Count(call => call.GetMethodInfo().Name == "GetHeadBlockHeader"),
+            syncPeer.ReceivedCalls().Count(call => call.GetMethodInfo().Name == "GetHeadBlockHeader"),
             Is.EqualTo(2).After(1000, 100)
         );
     }

@@ -45,7 +45,7 @@ public static class EraPathUtils
         ArgumentNullException.ThrowIfNull(root);
         ArgumentOutOfRangeException.ThrowIfLessThan(epoch, 0);
 
-        return $"{network}-{epoch.ToString("D5")}-{root.ToString(true)[2..10]}.era1";
+        return $"{network}-{epoch:D5}-{root.ToString(true)[2..10]}.era1";
     }
 
     public static ValueHash256 ExtractHashFromAccumulatorAndCheckSumEntry(string s)

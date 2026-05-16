@@ -147,6 +147,29 @@ public class BlockHeader
         _ => Hash is null ? $"{Number} null" : $"{Number} ({Hash.ToShortString()})",
     };
 
+    /// <summary>
+    /// Creates the child header used for simulated execution.
+    /// </summary>
+    /// <param name="timestamp">Timestamp assigned to the simulated child header.</param>
+    /// <returns>A simulated child header with explicit default execution fields.</returns>
+    public virtual BlockHeader CreateSimulatedChild(ulong timestamp)
+    {
+        Hash256? requestsHash = RequestsHash;
+        return new BlockHeader(
+            Hash!,
+            Keccak.OfAnEmptySequenceRlp,
+            Beneficiary!,
+            UInt256.Zero,
+            Number + 1,
+            GasLimit,
+            timestamp,
+            [],
+            requestsHash: requestsHash)
+        {
+            MixHash = Hash256.Zero,
+        };
+    }
+
     [Todo(Improve.Refactor, "Use IFormattable here")]
     public enum Format
     {

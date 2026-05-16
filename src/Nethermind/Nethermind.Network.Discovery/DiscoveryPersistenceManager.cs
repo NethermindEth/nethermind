@@ -62,9 +62,7 @@ namespace Nethermind.Network.Discovery
                 }
                 catch (Exception)
                 {
-                    if (_logger.IsDebug)
-                        _logger.Error(
-                            $"ERROR/DEBUG peer could not be loaded for {networkNode.NodeId}@{networkNode.Host}:{networkNode.Port}");
+                    _logger.DebugError($"peer could not be loaded for {networkNode.NodeId}@{networkNode.Host}:{networkNode.Port}");
                     continue;
                 }
 

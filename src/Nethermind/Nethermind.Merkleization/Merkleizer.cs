@@ -10,6 +10,7 @@ using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
+using Nethermind.Serialization.Ssz;
 
 namespace Nethermind.Merkleization;
 
@@ -236,6 +237,27 @@ public ref struct Merkleizer
         Feed(MemoryMarshal.Cast<byte, UInt256>(value.AsSpan())[0]);
 
     public void Feed(Root value) => Feed(MemoryMarshal.Cast<byte, UInt256>(value.AsSpan())[0]);
+
+    public void Feed(SszBytes32 value) => Feed(MemoryMarshal.Cast<byte, UInt256>(value.Hash.BytesAsSpan)[0]);
+
+    public void Feed(IReadOnlyList<SszBytes32> value)
+    {
+        using ArrayPoolSpan<UInt256> input = new(value.Count);
+        for (int i = 0; i < value.Count; i++)
+            input[i] = MemoryMarshal.Cast<byte, UInt256>(value[i].Hash.BytesAsSpan)[0];
+        Merkle.Merkleize(out _chunks[^1], input);
+        Feed(_chunks[^1]);
+    }
+
+    public void Feed(IReadOnlyList<SszBytes32> value, ulong maxLength)
+    {
+        using ArrayPoolSpan<UInt256> subRoots = new(value.Count);
+        for (int i = 0; i < value.Count; i++)
+            subRoots[i] = MemoryMarshal.Cast<byte, UInt256>(value[i].Hash.BytesAsSpan)[0];
+        Merkle.Merkleize(out _chunks[^1], subRoots, maxLength);
+        Merkle.MixIn(ref _chunks[^1], value.Count);
+        Feed(_chunks[^1]);
+    }
 
     public void Feed(IReadOnlyList<Bytes32> value)
     {

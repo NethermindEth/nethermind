@@ -194,7 +194,7 @@ public class ShutterP2P : IShutterP2P
         }
         catch (InvalidProtocolBufferException e)
         {
-            if (_logger.IsDebug) _logger.Warn($"DEBUG/ERROR Could not parse Shutter decryption keys: {e}");
+            _logger.DebugWarn($"Could not parse Shutter decryption keys: {e}");
         }
     }
 }

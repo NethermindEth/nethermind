@@ -506,6 +506,12 @@ namespace Nethermind.Trie.Test
                 return this;
             }
 
+            public PruningContext AssertThatCachedNodeCountLessThan(long cachedNodeCount)
+            {
+                _trieStore.CachedNodesCount.Should().BeLessThan(cachedNodeCount);
+                return this;
+            }
+
             public PruningContext AssertThatDirtyNodeCountIs(long dirtyNodeCount)
             {
                 _trieStore.DirtyCachedNodesCount.Should().Be(dirtyNodeCount);
@@ -1054,32 +1060,41 @@ namespace Nethermind.Trie.Test
         }
 
         [Test]
+        [NonParallelizable]
         public void When_Reorg_OldValueIsNotRemoved()
         {
+            long previousMaxDepth = Reorganization.MaxDepth;
             Reorganization.MaxDepth = 2;
 
-            PruningContext.InMemoryAlwaysPrune
-                .SetAccountBalance(1, 100)
-                .SetAccountBalance(2, 100)
-                .Commit()
+            try
+            {
+                PruningContext.InMemoryAlwaysPrune
+                    .SetAccountBalance(1, 100)
+                    .SetAccountBalance(2, 100)
+                    .Commit()
 
-                .SetAccountBalance(3, 100)
-                .SetAccountBalance(4, 100)
-                .Commit()
+                    .SetAccountBalance(3, 100)
+                    .SetAccountBalance(4, 100)
+                    .Commit()
 
-                .SaveBranchingPoint("revert_main")
+                    .SaveBranchingPoint("revert_main")
 
-                .SetAccountBalance(4, 200)
-                .Commit()
+                    .SetAccountBalance(4, 200)
+                    .Commit()
 
-                .RestoreBranchingPoint("revert_main")
+                    .RestoreBranchingPoint("revert_main")
 
-                .Commit()
-                .Commit()
-                .Commit()
-                .Commit()
+                    .Commit()
+                    .Commit()
+                    .Commit()
+                    .Commit()
 
-                .VerifyAccountBalance(4, 100);
+                    .VerifyAccountBalance(4, 100);
+            }
+            finally
+            {
+                Reorganization.MaxDepth = previousMaxDepth;
+            }
         }
 
         [Test]
@@ -1142,6 +1157,7 @@ namespace Nethermind.Trie.Test
                 .TurnOnPrune()
                 .TurnOffAlwaysPrunePersistedNode();
 
+            long retentionFloor = (long)(200.KiB * 0.1);
             bool thresholdReached = false;
             for (int i = 0; i < 256; i++)
             {
@@ -1151,7 +1167,7 @@ namespace Nethermind.Trie.Test
 
                 if (thresholdReached)
                 {
-                    ctx.AssertThatTotalMemoryUsedIsNoLessThan((long)(200.KiB * 0.1));
+                    ctx.AssertThatTotalMemoryUsedIsNoLessThan(retentionFloor);
                 }
                 else if (ctx.TotalMemoryUsage > 190.KiB)
                 {
@@ -1159,9 +1175,11 @@ namespace Nethermind.Trie.Test
                 }
             }
 
+            thresholdReached.Should().BeTrue();
+
             ctx
                 .AssertThatDirtyNodeCountIs(9)
-                .AssertThatCachedNodeCountMoreThan(275);
+                .AssertThatCachedNodeCountLessThan(951);
         }
 
         [Test]

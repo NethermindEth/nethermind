@@ -13,6 +13,8 @@ namespace Nethermind.State.Flat.Persistence;
 public class FlatInTriePersistence(IColumnsDb<FlatDbColumns> db) : IPersistence
 {
     private readonly WriteBufferAdjuster _adjuster = new(db);
+    private int _layoutPersisted = BasePersistence.ValidateLayoutReturnFlag(db, FlatLayout.FlatInTrie);
+
     public void Flush() => db.Flush();
 
     public void Clear() => BasePersistence.ClearAllColumns(db);
@@ -99,6 +101,7 @@ public class FlatInTriePersistence(IColumnsDb<FlatDbColumns> db) : IPersistence
             {
                 if (fromCopy != StateId.Sync && toCopy != StateId.Sync)
                     BasePersistence.SetCurrentState(batch.GetColumnBatch(FlatDbColumns.Metadata), toCopy);
+                BasePersistence.RecordLayoutOnFirstBatch(batch.GetColumnBatch(FlatDbColumns.Metadata), ref _layoutPersisted, FlatLayout.FlatInTrie);
                 batch.Dispose();
                 dbSnap.Dispose();
                 _adjuster.OnBatchDisposed();

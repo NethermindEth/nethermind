@@ -92,7 +92,7 @@ public class E2EDiscoveryTests(DiscoveryVersion discoveryVersion)
             HashSet<PublicKey> expectedKeys = new(nodeKeys);
             expectedKeys.Remove(node.Resolve<IEnode>().PublicKey);
 
-            Assert.That(() => pool.Peers.Values.Select((p) => p.Node.Id).ToHashSet(),
+            Assert.That(() => pool.Peers.Select(static kvp => kvp.Value.Node.Id).ToHashSet(),
                 Is.EquivalentTo(expectedKeys).After(15000, 100));
         }
     }

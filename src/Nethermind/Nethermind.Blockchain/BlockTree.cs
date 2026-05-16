@@ -1028,6 +1028,8 @@ namespace Nethermind.Blockchain
             for (int i = 0; i < blocks.Count; i++)
             {
                 Block block = blocks[i];
+                _balStore.InsertFromBlock(block);
+
                 if (ShouldCache(block.Number))
                 {
                     _blockStore.Cache(block);
@@ -1079,9 +1081,9 @@ namespace Nethermind.Blockchain
             SyncPivot = newSyncPivot;
         }
 
-        public void UpdateBeaconMainChain(BlockInfo[]? blockInfos, long clearBeaconMainChainStartPoint)
+        public void UpdateBeaconMainChain(IReadOnlyList<BlockInfo>? blockInfos, long clearBeaconMainChainStartPoint)
         {
-            if (blockInfos is null || blockInfos.Length == 0)
+            if (blockInfos is null || blockInfos.Count == 0)
                 return;
 
             using BatchWrite batch = _chainLevelInfoRepository.StartBatch();

@@ -401,7 +401,7 @@ public class GethGenesisLoaderTests
     /// </summary>
     private static IEnumerable<(Type type, NamedReleaseSpec instance)> GetAllForkInstances()
     {
-        IEnumerable<Type> GetNameReleaseSpecs() => typeof(NamedReleaseSpec).Assembly.GetTypes()
+        static IEnumerable<Type> GetNameReleaseSpecs() => typeof(NamedReleaseSpec).Assembly.GetTypes()
             .Where(t => t.IsSubclassOf(typeof(NamedReleaseSpec))
                         && t is { IsAbstract: false, IsGenericType: false }
                         && t.Namespace == typeof(NamedReleaseSpec).Namespace);

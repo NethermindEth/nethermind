@@ -25,6 +25,11 @@ public interface IHistoryConfig : IConfig
         DefaultValue = "8")]
     uint PruningInterval { get; set; }
 
+    [ConfigItem(
+        Description = "Maximum time in seconds allowed for a single history pruning pass. Set to 0 to disable the timeout.",
+        DefaultValue = "2")]
+    uint PruningTimeoutSeconds { get; set; }
+
     // This member needs to be a method instead of a property
     // not to be picked up by the configuration handler
     bool Enabled() => Pruning != PruningModes.Disabled;

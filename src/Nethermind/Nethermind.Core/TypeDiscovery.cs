@@ -73,7 +73,7 @@ public static class TypeDiscovery
             LoadOnce(loadedAssemblies, considered);
 
             foreach (KeyValuePair<string, Assembly> kv in considered.Where(static kv =>
-                         kv.Key.StartsWith("Nethermind") || (_pluginType is not null && FindNethermindBasedTypes(kv.Value, _pluginType).Any())))
+                kv.Key.StartsWith("Nethermind") || (_pluginType is not null && FindNethermindBasedTypes(kv.Value, _pluginType).Any())))
             {
                 _assembliesWithNethermindTypes.Add(kv.Value);
             }

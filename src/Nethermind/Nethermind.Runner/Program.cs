@@ -11,6 +11,7 @@ using System.IO;
 using System.Linq;
 using System.Reflection;
 using System.Runtime;
+using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
@@ -185,6 +186,34 @@ async Task<int> RunAsync(ParseResult parseResult, PluginLoader pluginLoader, Can
     logger.Info("Configuration complete");
 
     EthereumJsonSerializer serializer = new();
+
+    if (logger.IsInfo)
+    {
+        StringBuilder nonDefaults = new();
+        int count = 0;
+        Action<Type, Exception> onConfigError = (configType, error) =>
+        {
+            if (logger.IsWarn) logger.Warn($"Skipped {configType.Name} in non-default config diff: {error.Message}");
+        };
+
+        foreach (NonDefaultConfigValue entry in configProvider.GetNonDefaultValues(onConfigError))
+        {
+            nonDefaults.Append("\n  ");
+            if (entry.Category is not null) nonDefaults.Append(entry.Category).Append('.');
+            nonDefaults.Append(entry.Name).Append(" = ").Append(serializer.Serialize(entry.CurrentValue));
+            count++;
+        }
+
+        if (count == 0)
+        {
+            logger.Info("Configuration: all values at defaults.");
+        }
+        else
+        {
+            nonDefaults.Insert(0, $"Configuration: {count} non-default value(s):");
+            logger.Info(nonDefaults.ToString());
+        }
+    }
 
     if (logger.IsDebug)
     {
@@ -418,7 +447,7 @@ IConfigProvider CreateConfigProvider(ParseResult parseResult)
     configProvider.AddSource(new JsonConfigSource(configFile));
     configProvider.Initialize();
 
-    (string ErrorMsg, IList<(IConfigSource Source, string Category, string Name)> Errors) = configProvider.FindIncorrectSettings();
+    (string ErrorMsg, IList<(IConfigSource Source, string? Category, string Name)> Errors) = configProvider.FindIncorrectSettings();
 
     if (Errors.Any())
         logger.Warn($"Invalid configuration settings:\n{ErrorMsg}");

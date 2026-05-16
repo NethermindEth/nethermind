@@ -61,5 +61,11 @@ public readonly struct SlotValue
     /// <summary>
     /// Currently, the worldstate that the evm use expect the bytes to be without leading zeros
     /// </summary>
-    public byte[] ToEvmBytes() => AsReadOnlySpan.WithoutLeadingZeros().ToArray();
+    private static readonly byte[] ZeroBytes = [0];
+
+    public byte[] ToEvmBytes()
+    {
+        if (_bytes == Vector256<byte>.Zero) return ZeroBytes;
+        return AsReadOnlySpan.WithoutLeadingZeros().ToArray();
+    }
 }

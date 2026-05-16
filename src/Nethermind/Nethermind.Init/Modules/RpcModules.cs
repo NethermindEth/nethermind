@@ -6,7 +6,6 @@ using Autofac;
 using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Filters;
-using Nethermind.Blockchain.Receipts;
 using Nethermind.Config;
 using Nethermind.Consensus.Stateless;
 using Nethermind.Consensus.Tracing;
@@ -15,7 +14,7 @@ using Nethermind.Core.Timers;
 using Nethermind.Facade;
 using Nethermind.Facade.Eth;
 using Nethermind.Facade.Simulate;
-using Nethermind.Init.Steps.Migrations;
+using Nethermind.State.OverridableEnv;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.Admin;
@@ -80,7 +79,10 @@ public class RpcModules(IJsonRpcConfig jsonRpcConfig) : Module
 
             // Eth and its dependencies
             .RegisterBoundedJsonRpcModule<IEthRpcModule, EthModuleFactory>(jsonRpcConfig.EthModuleConcurrentInstances ?? Environment.ProcessorCount, jsonRpcConfig.Timeout)
-                .AddSingleton<IBlockchainBridgeFactory, BlockchainBridgeFactory>()
+                .AddSingleton<IBlockchainBridgeFactory, ISimulateReadOnlyBlocksProcessingEnvFactory, IOverridableEnvFactory, ILifetimeScope>(
+                    (simEnvFactory, overridableEnvFactory, lifetimeScope) =>
+                        new BlockchainBridgeFactory(simEnvFactory, overridableEnvFactory, lifetimeScope,
+                            jsonRpcConfig.EthModuleConcurrentInstances ?? Environment.ProcessorCount))
                 .AddScoped<IBlockchainBridge>((ctx) => ctx.Resolve<IBlockchainBridgeFactory>().CreateBlockchainBridge())
                     .AddSingleton<IFeeHistoryOracle, FeeHistoryOracle>()
                     .AddSingleton<FilterStore, ITimerFactory, IJsonRpcConfig>((timerFactory, rpcConfig) => new FilterStore(timerFactory, rpcConfig.FiltersTimeout))
@@ -102,7 +104,6 @@ public class RpcModules(IJsonRpcConfig jsonRpcConfig) : Module
                 .AddScoped<IDebugBridge, DebugBridge>()
                 .AddScoped<IDebugRpcModule, DebugRpcModule>()
                 .AddScoped<IGethStyleTracer, GethStyleTracer>()
-                .AddScoped<IReceiptsMigration, ReceiptMigration>()
 
             ;
     }
@@ -117,5 +118,6 @@ public class RpcModules(IJsonRpcConfig jsonRpcConfig) : Module
             ctx.Resolve<IInitConfig>().BaseDbPath, // IInitConfig not accessible from IAdminRpcModule, so we construct it manually here
             ctx.Resolve<ChainSpec>().Parameters,
             ctx.Resolve<ITrustedNodesManager>(),
-            ctx.Resolve<ISubscriptionManager>());
+            ctx.Resolve<ISubscriptionManager>(),
+            ctx.Resolve<IJsonRpcConfig>());
 }

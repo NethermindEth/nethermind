@@ -373,7 +373,7 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
         }
         else if (t.IsFaulted)
         {
-            if (_logger.IsDebug) _logger.Error("DEBUG/ERROR Block improvement failed", t.Exception);
+            _logger.DebugError("Block improvement failed", t.Exception);
         }
         else if (t.IsCanceled)
         {

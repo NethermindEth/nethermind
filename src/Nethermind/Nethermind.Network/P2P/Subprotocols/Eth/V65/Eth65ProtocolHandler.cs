@@ -48,9 +48,9 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
 
         private const int MaxNumberOfTxsInOneMsg = 256;
 
-        public override void HandleMessage(ZeroPacket message)
+        protected override void HandleMessageCore(ZeroPacket message)
         {
-            base.HandleMessage(message);
+            base.HandleMessageCore(message);
 
             int size = message.Content.ReadableBytes;
             switch (message.PacketType)

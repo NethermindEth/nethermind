@@ -93,7 +93,7 @@ public class DataFeed
         }
         catch (Exception e)
         {
-            if (_logger.IsDebug) _logger.Error($"DEBUG/ERROR Http request {nameof(DataFeed)} errored", e);
+            _logger.DebugError($"Http request {nameof(DataFeed)} errored", e);
         }
         finally
         {

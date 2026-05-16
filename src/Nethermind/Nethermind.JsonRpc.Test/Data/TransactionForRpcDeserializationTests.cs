@@ -112,13 +112,19 @@ public class TransactionForRpcDeserializationTests
             yield return Make(TxType.AccessList, """{"accessList":[]}""", Istanbul.Instance);
             yield return Make(TxType.EIP1559, """{"maxFeePerGas":"0x0"}""", Istanbul.Instance);
 
-            // gasPrice → Legacy, not defaulted
+            // gasPrice → Legacy: defaulted, but downgrade is a no-op so result is Legacy on any spec
             yield return Make(TxType.Legacy, """{"gasPrice":"0x1"}""", London.Instance);
+            yield return Make(TxType.Legacy, """{"gasPrice":"0x1"}""", Istanbul.Instance);
 
             // No spec (null) → keeps defaulted EIP1559
             yield return Make(TxType.EIP1559, """{}""", null);
         }
     }
+
+    [TestCase("""{"input":"0x23e52","gasPrice":"0x1"}""", TestName = "Legacy tx odd-length input")]
+    [TestCase("""{"data":"0xABC","gasPrice":"0x1"}""", TestName = "Legacy tx odd-length data")]
+    [TestCase("""{"input":"0x1ab"}""", TestName = "EIP1559 tx odd-length input")]
+    public void Test_OddLengthInputOrData_ThrowsJsonException(string txJson) => Assert.Throws<JsonException>(() => _serializer.Deserialize<TransactionForRpc>(txJson));
 
     [TestCaseSource(nameof(DefaultedTypeResolutionCases))]
     public TxType Test_DefaultedType_ResolvesCorrectly(IReleaseSpec spec, bool hasAccessList)

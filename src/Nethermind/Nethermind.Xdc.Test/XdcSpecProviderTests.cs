@@ -6,6 +6,9 @@ using Nethermind.Xdc.Spec;
 using NUnit.Framework;
 using System;
 using System.Collections.Generic;
+using Nethermind.Logging;
+using Nethermind.Specs.ChainSpecStyle;
+using NSubstitute;
 
 namespace Nethermind.Xdc.Test;
 
@@ -79,5 +82,40 @@ public class XdcSpecProviderTests
         V2ConfigParams cfg = XdcReleaseSpec.GetConfigAtRound(v2Configs, round);
 
         cfg.SwitchRound.Should().Be(expectedSwitchRound);
+    }
+
+    [Test]
+    public void GetXdcSpec_ReturnsDifferentSpecInstances()
+    {
+        ChainSpec chainSpec = new()
+        {
+            Parameters = new ChainParameters
+            {
+                Eip1559Transition = 5,
+            },
+            EngineChainSpecParametersProvider = Substitute.For<IChainSpecParametersProvider>(),
+        };
+        XdcChainSpecEngineParameters parameters = new()
+        {
+            SwitchBlock = 1,
+            V2Configs =
+            {
+                new() { SwitchRound = 0 },
+                new() { SwitchRound = 10 },
+            }
+        };
+
+
+        XdcChainSpecBasedSpecProvider specProvider = new(chainSpec, parameters, Substitute.For<ILogManager>());
+
+        IXdcReleaseSpec specA = specProvider.GetXdcSpec(6, 6);
+        specA.SwitchRound.Should().Be(0);
+
+        IXdcReleaseSpec specB = specProvider.GetXdcSpec(11, 11);
+        specB.SwitchRound.Should().Be(10);
+
+        specA.SwitchRound.Should().Be(0);
+
+        ReferenceEquals(specA, specB).Should().BeFalse();
     }
 }

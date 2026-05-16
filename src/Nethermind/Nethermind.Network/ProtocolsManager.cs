@@ -28,7 +28,6 @@ namespace Nethermind.Network
         public static readonly IEnumerable<Capability> DefaultCapabilities = new Capability[]
         {
             new(Protocol.Eth, 68),
-            new(Protocol.NodeData, 1)
         };
 
         private readonly ConcurrentDictionary<Guid, SyncPeerProtocolHandlerBase> _syncPeers = new();

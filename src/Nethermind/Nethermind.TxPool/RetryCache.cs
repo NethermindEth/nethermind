@@ -79,7 +79,7 @@ public sealed class RetryCache<TMessage, TResourceId> : IAsyncDisposable
                                         }
                                         catch (Exception ex)
                                         {
-                                            if (_logger.IsTrace) _logger.Error($"Failed to send retry request to {retryHandler} for {item.ResourceId}", ex);
+                                            _logger.TraceError($"Failed to send retry request to {retryHandler} for {item.ResourceId}", ex);
                                         }
                                     }
                                 }
@@ -111,7 +111,7 @@ public sealed class RetryCache<TMessage, TResourceId> : IAsyncDisposable
 
         if (_expiringQueueCounter > _expiringQueueLimit)
         {
-            if (_logger.IsDebug) _logger.Warn($"{typeof(TResourceId)} retry queue is full");
+            _logger.TraceWarn($"{typeof(TResourceId)} retry queue is full");
 
             return AnnounceResult.RequestRequired;
         }
@@ -179,8 +179,9 @@ public sealed class RetryCache<TMessage, TResourceId> : IAsyncDisposable
         _expiringQueue.Clear();
         _requestingResources.Clear();
 
-        foreach (HandlerBag<TMessage> bag in _retryRequests.Values)
+        foreach (KeyValuePair<TResourceId, HandlerBag<TMessage>> kvp in _retryRequests)
         {
+            HandlerBag<TMessage> bag = kvp.Value;
             bag.Deactivate();
             _handlerBagsPool.Return(bag);
         }

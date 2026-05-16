@@ -56,7 +56,7 @@ internal static class NumericConverterHelper
     [SkipLocalsInit]
     internal static void Write<T>(Utf8JsonWriter writer, T value) where T : struct, INumberBase<T>
     {
-        switch (ForcedNumberConversion.GetFinalConversion())
+        switch (ForcedNumberConversion.Value)
         {
             case NumberConversion.Hex:
                 if (value == T.Zero)

@@ -5,7 +5,7 @@ namespace Nethermind.Specs.Forks;
 
 public class Frontier() : NamedReleaseSpec<Frontier>(Olympic.Instance)
 {
-    public override void Apply(ReleaseSpec spec)
+    public override void Apply(NamedReleaseSpec spec)
     {
         spec.Name = "Frontier";
         spec.IsTimeAdjustmentPostOlympic = true;

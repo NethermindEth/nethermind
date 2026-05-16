@@ -45,7 +45,7 @@ internal sealed class StorageValuesResultConverter : JsonConverter<StorageValues
         keyBytes[1] = (byte)'x';
         foreach (KeyValuePair<Address, Memory<byte>[]> entry in value.Slots)
         {
-            entry.Key.Bytes.AsSpan().OutputBytesToByteHex(keyBytes[2..], false);
+            entry.Key.Bytes.OutputBytesToByteHex(keyBytes[2..], false);
             writer.WritePropertyName(keyBytes);
             writer.WriteStartArray();
             foreach (Memory<byte> slot in entry.Value)

@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -20,7 +20,6 @@ using Nethermind.Logging;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages;
-using Nethermind.Serialization.Rlp;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using Nethermind.Synchronization;
@@ -31,7 +30,8 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
 {
     public abstract class SyncPeerProtocolHandlerBase : ZeroProtocolHandlerBase, ISyncPeer
     {
-        internal static ulong SoftOutgoingMessageSizeLimit = (ulong)2.MB;
+        internal static ulong SoftOutgoingMessageSizeLimit = (ulong)2.MiB;
+        internal static ulong HardOutgoingReceiptsMessageSizeLimit = (ulong)10.MiB;
         public Node Node => Session?.Node;
         public string ClientId => Node?.ClientId;
         public virtual UInt256? TotalDifficulty { get; set; } = UInt256.Zero; // for compatibility with old code, which relies on 0 being the default value
@@ -330,7 +330,13 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
                     break;
                 }
 
-                Block block = SyncServer.Find(hashes[i]);
+                Block? block = SyncServer.Find(hashes[i]);
+                if (block is null)
+                {
+                    // GetBlockBodies responses are sparse: unavailable hashes are omitted from the response.
+                    continue;
+                }
+
                 sizeEstimate += MessageSizeEstimator.EstimateSize(block);
 
                 if (sizeEstimate > SoftOutgoingMessageSizeLimit)
@@ -370,7 +376,13 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
                     break;
                 }
 
-                TxReceipt[] blockTxReceipts = SyncServer.GetReceipts(getReceiptsMessage.Hashes[i]);
+                Hash256 blockHash = getReceiptsMessage.Hashes[i];
+                if (SyncServer.FindHeader(blockHash) is null)
+                {
+                    break;
+                }
+
+                TxReceipt[] blockTxReceipts = SyncServer.GetReceipts(blockHash);
                 sizeEstimate += MessageSizeEstimator.EstimateSize(blockTxReceipts);
 
                 if (sizeEstimate > SoftOutgoingMessageSizeLimit)

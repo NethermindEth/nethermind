@@ -164,16 +164,18 @@ public class E2StoreReader : IDisposable
         }
     }
 
-    public ValueHash256 CalculateChecksum()
+    public ValueHash256 CalculateChecksum() => ComputeChecksum(_file, _fileLength);
+
+    public static ValueHash256 ComputeChecksum(SafeFileHandle file, long fileLength)
     {
         using IncrementalHash sha = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
         const int bufferSize = 81920;
         byte[] buffer = new byte[bufferSize];
         long offset = 0;
-        while (offset < _fileLength)
+        while (offset < fileLength)
         {
-            int toRead = (int)Math.Min(bufferSize, _fileLength - offset);
-            int read = RandomAccess.Read(_file, buffer.AsSpan(0, toRead), offset);
+            int toRead = (int)Math.Min(bufferSize, fileLength - offset);
+            int read = RandomAccess.Read(file, buffer.AsSpan(0, toRead), offset);
             if (read == 0) break;
             sha.AppendData(buffer, 0, read);
             offset += read;

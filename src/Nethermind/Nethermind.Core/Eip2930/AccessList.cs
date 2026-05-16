@@ -23,6 +23,9 @@ public class AccessList : IEnumerable<(Address Address, AccessList.StorageKeysEn
         _keys = keys;
     }
 
+    /// <summary>Serialized byte size of a single storage key.</summary>
+    public const int StorageKeySize = 32;
+
     public static AccessList Empty { get; } = new(new List<(Address, int)>(), new List<UInt256>());
 
     public bool IsEmpty => _addresses.Count == 0;

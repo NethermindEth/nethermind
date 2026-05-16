@@ -77,7 +77,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
             // Clear Events if set
             ProtocolInitialized = null;
 
-        public override void HandleMessage(ZeroPacket message)
+        protected override void HandleMessageCore(ZeroPacket message)
         {
             int size = message.Content.ReadableBytes;
 

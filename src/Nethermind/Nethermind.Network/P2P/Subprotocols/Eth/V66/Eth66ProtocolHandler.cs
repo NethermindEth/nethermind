@@ -59,7 +59,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
         public static byte Version => EthVersions.Eth66;
         public override byte ProtocolVersion => Version;
 
-        public override void HandleMessage(ZeroPacket message)
+        protected override void HandleMessageCore(ZeroPacket message)
         {
             int size = message.Content.ReadableBytes;
 
@@ -115,7 +115,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
                     Handle(nodeDataMessage, size);
                     break;
                 default:
-                    base.HandleMessage(message);
+                    base.HandleMessageCore(message);
                     break;
             }
         }

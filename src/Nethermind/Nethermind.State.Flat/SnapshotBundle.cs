@@ -353,11 +353,11 @@ public sealed class SnapshotBundle : IDisposable
         {
             // Collect keys first to avoid modifying during iteration
             using ArrayPoolListRef<HashedKey<(Hash256, TreePath)>> storageKeysToRemove = new(16);
-            foreach (HashedKey<(Hash256, TreePath)> key in _changedStorageNodes.Keys)
+            foreach (KeyValuePair<HashedKey<(Hash256, TreePath)>, TrieNode> kvp in _changedStorageNodes)
             {
-                if (key.Key.Item1 == addressHash)
+                if (kvp.Key.Key.Item1 == addressHash)
                 {
-                    storageKeysToRemove.Add(key);
+                    storageKeysToRemove.Add(kvp.Key);
                 }
             }
 
@@ -367,11 +367,11 @@ public sealed class SnapshotBundle : IDisposable
             }
 
             using ArrayPoolListRef<HashedKey<(Address, UInt256)>> slotKeysToRemove = new(16);
-            foreach (HashedKey<(Address, UInt256)> key in _changedSlots.Keys)
+            foreach (KeyValuePair<HashedKey<(Address, UInt256)>, SlotValue?> kvp in _changedSlots)
             {
-                if (key.Key.Item1 == address)
+                if (kvp.Key.Key.Item1 == address)
                 {
-                    slotKeysToRemove.Add(key);
+                    slotKeysToRemove.Add(kvp.Key);
                 }
             }
 

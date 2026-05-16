@@ -64,4 +64,10 @@ public class AccessTxTracer(params Address[] addressesToOptimize) : TxTracer
 
     public long GasSpent { get; set; }
     public AccessList? AccessList { get; private set; }
+
+    public void Reset()
+    {
+        GasSpent = 0;
+        AccessList = null;
+    }
 }

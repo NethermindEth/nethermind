@@ -234,7 +234,7 @@ public class BlockTreeOverlay(IReadOnlyBlockTree baseTree, IBlockTree overlayTre
 
     public bool IsBetterThanHead(BlockHeader? header) => _overlayTree.IsBetterThanHead(header) || _baseTree.IsBetterThanHead(header);
 
-    public void UpdateBeaconMainChain(BlockInfo[]? blockInfos, long clearBeaconMainChainStartPoint) =>
+    public void UpdateBeaconMainChain(IReadOnlyList<BlockInfo>? blockInfos, long clearBeaconMainChainStartPoint) =>
         _overlayTree.UpdateBeaconMainChain(blockInfos, clearBeaconMainChainStartPoint);
 
     public void RecalculateTreeLevels() => _overlayTree.RecalculateTreeLevels();

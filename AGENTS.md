@@ -1,6 +1,6 @@
 # AGENTS instructions
 
-This guide helps to get started with the Nethermind Ethereum execution client repository. It covers the project structure, how to build and test the code, and follow the PR workflow.
+This guide helps to get started with the Nethermind Ethereum execution client repository, which targets `net10.0` and uses C# language version `14.0`. It covers the project structure, how to build and test the code, and follow the PR workflow.
 
 ## Repo structure
 
@@ -15,6 +15,17 @@ This guide helps to get started with the Nethermind Ethereum execution client re
 - Keep changes minimal and focused — don't touch unrelated code
 - When fixing a bug, always add a regression test
 - Do not alter [src/bench_precompiles](./src/bench_precompiles/) or [src/tests](./src/tests/)
+- Prefer self-documenting code — clear names and structure should remove the need for most comments. Emit a comment only when it captures context that is not obvious from the code itself: the _why_ behind a non-obvious choice, an invariant, a workaround, an EIP/Yellow-Paper reference, a subtle edge case, etc. Comments that merely restate the code are noise — don't add them, and remove them when you encounter them.
+- For member-level documentation (methods, constructors, properties, types), prefer XML doc comments over in-line comments whenever the explanation applies to the member as a whole:
+  - `<summary>` — one or two sentences describing _what_ the member does from the caller's perspective: its contract, purpose, and what it returns/represents. Keep it short enough to be useful in IntelliSense; do not describe implementation details or rationale here.
+  - `<remarks>` — the longer-form explanation that does not belong in the summary. Use it for any of: algorithmic approach, design rationale, pre/postconditions and invariants, thread-safety guarantees, performance characteristics, side effects, edge cases, EIP / Yellow-Paper / spec references, and notable caveats for callers.
+  - Use `<param>`, `<returns>`, `<exception>`, and `<typeparam>` for parameter/return/exception/type-parameter specifics rather than stuffing them into `<summary>` or `<remarks>`.
+  - For interface implementations and overrides, prefer `<inheritdoc/>` (optionally with `cref=`) to propagate the contract from the base/interface instead of duplicating it. Add `<remarks>` only when the implementation introduces caller-visible behavior beyond the inherited contract.
+  - Reserve in-line comments for implementation-specific details that cannot reasonably live on the member header — e.g. why a particular branch is taken, why a value is computed this way at this exact spot, or a local workaround for a bug elsewhere.
+- Avoid code duplication, especially in tests:
+  - When tests differ only by inputs and expected outputs, parameterize a single test with `[TestCase(...)]` or `[TestCaseSource(...)]` rather than copy-pasting the body. Before adding a new test, check whether an existing one can be extended with another `[TestCase]`.
+  - When only _parts_ of tests are similar (shared setup, common assertions, recurring scenarios), factor those parts into helper methods or helper types (e.g. a builder, a shared static helper, a test fixture base). Keep each test body focused on what makes the case unique.
+  - See [`.agents/rules/test-infrastructure.md`](./.agents/rules/test-infrastructure.md) "Test guidelines" for details.
 
 ---
 
@@ -134,8 +145,10 @@ This repository contains a dedicated workflow for reproducible payload benchmark
 - Installs `expb` via `uv tool install --force --from ... expb`.
 - Runs `expb execute-scenarios` with per-payload metrics and logs.
 - Handles termination gracefully with cleanup grace period.
-- On successful `master` push runs, caches per-payload timing aggregates extracted from the `processing_ms` table.
-- On labeled PR runs, restores latest cached `master` metrics and posts a PR comment with PR vs master comparison.
+- Metrics source: prefers SSE client metrics (`[payload-server] client_metric` lines — Nethermind internal processing times) over K6 TTFB. Falls back to the per-payload pipe table when SSE data is unavailable.
+- On successful `master` push runs, caches timing aggregates (AVG/MEDIAN/P90-P99/MIN/MAX). On PR runs, posts a comparison comment.
+- The `single-summary` job aggregates across runs and payload sets into `GITHUB_STEP_SUMMARY` (per-run table + mean/best/worst when `run_count > 1`).
+- When `dottrace` input is enabled, passes `--dottrace` to expb. dotTrace snapshots (`.dtp` + chunk files) are zipped and uploaded as artifacts. A downstream Windows job (`generate-dottrace-reports`) runs Reporter.exe to produce XML reports (`*-report.xml`) uploaded as the `dottrace-reports` artifact. Each report contains `<Function>` nodes with `FQN`, `TotalTime`, `OwnTime`, `Calls`, and full call stacks — sort by `OwnTime` for hot spots, use `CallStack` attributes for call tree analysis.
 
 ### What to inspect in run output
 
@@ -187,5 +200,6 @@ This repository contains a dedicated workflow for reproducible payload benchmark
 ### Notes for agents
 
 - The benchmark config is rendered to a temporary file and removed afterward; no source config revert is required.
-- For `pull_request` and `push` auto-runs, default mode is currently `halfpath + superblocks`.
+- For `pull_request` and `push` auto-runs, default mode is `flat` layout with both `superblocks` and `realblocks` payload sets.
 - Keep benchmark-related changes isolated to the workflow and benchmark guidance unless explicitly asked otherwise.
+- dotTrace XML reports are 50-70MB. **Never load full XML into context.** Use [`scripts/dottrace-report.sh`](./scripts/dottrace-report.sh): `top <report.xml> [N]` for hot spots, `compare <a.xml> <b.xml> [N]` for regressions/improvements. Runs in <2 seconds via grep+awk.

@@ -95,7 +95,7 @@ public static class ExecutionRequestExtensions
         {
             byte[] output = new byte[System.Security.Cryptography.SHA256.HashSizeInBytes];
 
-            ZiskBindings.Crypto.sha256_c(data, (nuint)data.Length, output);
+            Nethermind.Zkvm.Abstractions.Accelerators.Sha256(data, output);
 
             return output;
         }

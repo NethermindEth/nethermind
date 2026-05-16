@@ -48,6 +48,8 @@ public static partial class Ssz
 
     public static BitArray DecodeBitvector(ReadOnlySpan<byte> span, int vectorLength)
     {
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(vectorLength, nameof(vectorLength));
+
         int expectedBytes = (vectorLength + 7) / 8;
         if (span.Length != expectedBytes)
         {

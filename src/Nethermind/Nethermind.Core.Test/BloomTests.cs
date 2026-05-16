@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using FluentAssertions;
 using Nethermind.Core.Crypto;
@@ -66,6 +67,17 @@ namespace Nethermind.Core.Test
             bloom.Add(GetLogEntries(count, topicMax));
 
             bloom.ToString().Should().Be(expectedValue);
+        }
+
+        [Test]
+        [SuppressMessage("ReSharper", "SuspiciousTypeConversion.Global")]
+        public void Equals_object_returns_true_for_equal_bloom()
+        {
+            Bloom bloom = new();
+            bloom.Set(Keccak.OfAnEmptyString.Bytes);
+            BloomStructRef bloomStructRef = new(bloom.Bytes);
+
+            Assert.That(bloomStructRef.Equals((object)bloom), Is.True);
         }
 
         private static LogEntry[] GetLogEntries(int count, int topicsMax, int start = 0)

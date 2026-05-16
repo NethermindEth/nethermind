@@ -3,7 +3,14 @@
   "Init": {
     "ChainSpecPath": "chainspec/xdc-testnet.json",
     "BaseDbPath": "nethermind_db/xdc-testnet",
-    "LogFileName": "xdc.log"
+    "LogFileName": "xdc-testnet.log"
+  },
+  "Network": {
+    "FilterDiscoveryNodesByRecentIp": false,
+    "EnableEnrDiscovery": false
+  },
+  "Discovery": {
+    "DiscoveryVersion": "V4"
   },
   "TxPool": {
     "BlobsSupport": "Disabled"

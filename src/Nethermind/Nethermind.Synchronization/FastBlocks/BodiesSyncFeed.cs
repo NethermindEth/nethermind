@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -26,14 +26,15 @@ namespace Nethermind.Synchronization.FastBlocks
     {
         protected override long? LowestInsertedNumber => _syncPointers.LowestInsertedBodyNumber;
         protected override int BarrierWhenStartedMetadataDbKey => MetadataDbKeys.BodiesBarrierWhenStarted;
-        protected override long SyncConfigBarrierCalc
+        protected override long SyncConfigBarrierCalc => ComputeBarrier(_blockTree.SyncPivot.BlockNumber);
+
+        private long ComputeBarrier(long pivotNumber)
         {
-            get
-            {
-                long? cutoffBlockNumber = _historyPruner.CutoffBlockNumber;
-                return cutoffBlockNumber is null ? _syncConfig.AncientBodiesBarrierCalc : long.Max(_syncConfig.AncientBodiesBarrierCalc, cutoffBlockNumber.Value);
-            }
+            long clamped = Math.Max(1, Math.Min(pivotNumber, _syncConfig.AncientBodiesBarrier));
+            long? cutoffBlockNumber = _historyPruner.CutoffBlockNumber;
+            return cutoffBlockNumber is null ? clamped : long.Max(clamped, cutoffBlockNumber.Value);
         }
+
         protected override Func<bool> HasPivot =>
             () => _syncPointers.LowestInsertedBodyNumber is not null && _syncPointers.LowestInsertedBodyNumber <= _blockTree.SyncPivot.BlockNumber;
 
@@ -96,23 +97,25 @@ namespace Nethermind.Synchronization.FastBlocks
 
         public override void InitializeFeed()
         {
-            if (_pivotNumber != _blockTree.SyncPivot.BlockNumber || _barrier != _syncConfig.AncientBodiesBarrierCalc)
+            long newPivotNumber = _blockTree.SyncPivot.BlockNumber;
+            long newBarrier = ComputeBarrier(newPivotNumber);
+            if (_pivotNumber != newPivotNumber || _barrier != newBarrier)
             {
-                _pivotNumber = _blockTree.SyncPivot.BlockNumber;
-                _barrier = _syncConfig.AncientBodiesBarrierCalc;
+                _pivotNumber = newPivotNumber;
+                _barrier = newBarrier;
                 if (_logger.IsInfo) _logger.Info($"Changed pivot in bodies sync. Now using pivot {_pivotNumber} and barrier {_barrier}");
                 ResetSyncStatusList();
                 InitializeMetadataDb();
             }
             base.InitializeFeed();
-            _syncReport.FastBlocksBodies.Reset(0, _pivotNumber - _syncConfig.AncientBodiesBarrierCalc);
+            _syncReport.FastBlocksBodies.Reset(0, _pivotNumber - _barrier);
         }
 
         private void ResetSyncStatusList() => _syncStatusList = new SyncStatusList(
                 _blockTree,
                 _pivotNumber,
                 _syncPointers.LowestInsertedBodyNumber,
-                _syncConfig.AncientBodiesBarrier);
+                _barrier);
 
         protected override SyncMode ActivationSyncModes { get; } = SyncMode.FastBodies & ~SyncMode.FastBlocks;
 
@@ -237,16 +240,16 @@ namespace Nethermind.Synchronization.FastBlocks
 
         private int InsertBodies(BodiesSyncBatch batch)
         {
-            bool hasBreachedProtocol = false;
             int validResponsesCount = 0;
             BlockBody[]? responses = batch.Response?.Bodies ?? [];
+            int responseIndex = 0;
 
             for (int i = 0; i < batch.Infos.Length; i++)
             {
                 BlockInfo? blockInfo = batch.Infos[i];
-                BlockBody? body = responses.Length <= i
+                BlockBody? body = responses.Length <= responseIndex
                     ? null
-                    : responses[i];
+                    : responses[responseIndex];
 
                 // last batch
                 if (blockInfo is null)
@@ -254,31 +257,37 @@ namespace Nethermind.Synchronization.FastBlocks
                     break;
                 }
 
-                if (body is not null)
+                if (body is null)
                 {
-                    Block? block = null;
-                    bool isValid = !hasBreachedProtocol && TryPrepareBlock(blockInfo, body, out block);
-                    if (isValid)
+                    if (responseIndex < responses.Length)
                     {
-                        validResponsesCount++;
-                        InsertOneBlock(block!);
+                        responseIndex++;
                     }
-                    else
-                    {
-                        hasBreachedProtocol = true;
-                        if (_logger.IsDebug) _logger.Debug($"{batch} - reporting INVALID - tx or uncles");
 
-                        if (batch.ResponseSourcePeer is not null)
-                        {
-                            _syncPeerPool.ReportBreachOfProtocol(batch.ResponseSourcePeer, DisconnectReason.InvalidTxOrUncle, "invalid tx or uncles root");
-                        }
+                    _syncStatusList.MarkPending(blockInfo);
+                    continue;
+                }
 
-                        _syncStatusList.MarkPending(blockInfo);
-                    }
+                if (TryPrepareBlock(blockInfo, body, out Block? block))
+                {
+                    responseIndex++;
+                    validResponsesCount++;
+                    InsertOneBlock(block!);
                 }
                 else
                 {
+                    // Body responses can be sparse, so an invalid body may belong to a later requested header.
                     _syncStatusList.MarkPending(blockInfo);
+                }
+            }
+
+            if (responseIndex < responses.Length)
+            {
+                if (_logger.IsDebug) _logger.Debug($"{batch} - reporting INVALID - tx or uncles");
+
+                if (batch.ResponseSourcePeer is not null)
+                {
+                    _syncPeerPool.ReportBreachOfProtocol(batch.ResponseSourcePeer, DisconnectReason.InvalidTxOrUncle, "invalid tx or uncles root");
                 }
             }
 

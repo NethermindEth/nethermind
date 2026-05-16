@@ -27,6 +27,7 @@ using Nethermind.Network.P2P.Subprotocols.Eth.V67;
 using Nethermind.Network.P2P.Subprotocols.Eth.V68;
 using Nethermind.Network.P2P.Subprotocols.Eth.V69;
 using Nethermind.Network.P2P.Subprotocols.Eth.V70;
+using Nethermind.Network.P2P.Subprotocols.Eth.V71;
 using Nethermind.Network.Rlpx;
 using Nethermind.Specs;
 using Nethermind.Stats;
@@ -152,7 +153,11 @@ public class ProtocolsManagerTests
                 new ReusableProtocolHandlerFactory<Eth70ProtocolHandler>(
                     session => new Eth70ProtocolHandler(session, _serializer, _nodeStatsManager, _syncServer, RunImmediatelyScheduler.Instance, _txPool, _gossipPolicy, _forkInfo, LimboLogs.Instance, _txPoolConfig, _specProvider),
                     Protocol.Eth,
-                    70)
+                    70),
+                new ReusableProtocolHandlerFactory<Eth71ProtocolHandler>(
+                    session => new Eth71ProtocolHandler(session, _serializer, _nodeStatsManager, _syncServer, RunImmediatelyScheduler.Instance, _txPool, _gossipPolicy, _forkInfo, LimboLogs.Instance, _txPoolConfig, _specProvider),
+                    Protocol.Eth,
+                    71)
             ];
 
         public Context CreateIncomingSession()

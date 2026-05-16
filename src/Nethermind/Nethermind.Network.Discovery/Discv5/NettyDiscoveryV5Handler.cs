@@ -50,7 +50,7 @@ public class NettyDiscoveryV5Handler(ILogManager loggerManager) : NettyDiscovery
         }
         catch (SocketException exception)
         {
-            if (_logger.IsDebug) _logger.Error("DEBUG/ERROR Error sending data", exception);
+            _logger.DebugError("Error sending data", exception);
             throw;
         }
     }

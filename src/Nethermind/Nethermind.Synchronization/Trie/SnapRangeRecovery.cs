@@ -189,8 +189,7 @@ public class SnapRangeRecovery(ISyncPeerPool peerPool, ILogManager logManager) :
             TreePath currentPath = item.Item1;
             Hash256 currentHash = item.Item2;
 
-            byte[]? rlp = null;
-            if (!nodes.TryGetValue(currentHash, out rlp))
+            if (!nodes.TryGetValue(currentHash, out byte[]? rlp))
             {
                 if (slotPathAsTreePath.Truncate(currentPath.Length) == currentPath)
                 {

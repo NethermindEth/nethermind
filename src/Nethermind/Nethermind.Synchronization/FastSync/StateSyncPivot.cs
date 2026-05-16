@@ -55,5 +55,7 @@ namespace Nethermind.Synchronization.FastSync
         }
 
         public ConcurrentHashSet<Hash256> UpdatedStorages { get; } = new();
+
+        public bool CanFinalize(BlockHeader pivot) => true;
     }
 }

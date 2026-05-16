@@ -45,7 +45,7 @@ public class ShutterTxSource(
         }
         catch (SlotTime.SlotCalculationException e)
         {
-            if (_logger.IsDebug) _logger.Warn($"DEBUG/ERROR Could not calculate Shutter building slot: {e}");
+            _logger.DebugWarn($"Could not calculate Shutter building slot: {e}");
             return [];
         }
 

@@ -55,7 +55,7 @@ public class ExecutionPayloadV4 : ExecutionPayloadV3, IExecutionPayloadFactory<E
     }
 
     public override bool ValidateFork(ISpecProvider specProvider)
-         => specProvider.GetSpec(BlockNumber, Timestamp).IsEip7928Enabled;
+         => specProvider.GetSpec(BlockNumber, Timestamp).BlockLevelAccessListsEnabled;
 
 
     /// <summary>

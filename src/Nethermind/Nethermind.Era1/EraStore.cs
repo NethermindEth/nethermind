@@ -102,8 +102,7 @@ public class EraStore : IEraStore
         foreach (string file in EraPathUtils.GetAllEraFiles(directory, networkName, fileSystem))
         {
             string[] parts = Path.GetFileName(file).Split(_eraSeparator);
-            int epoch;
-            if (parts.Length != 3 || !int.TryParse(parts[1], out epoch) || epoch < 0)
+            if (parts.Length != 3 || !int.TryParse(parts[1], out int epoch) || epoch < 0)
                 throw new ArgumentException($"Malformed Era1 file '{file}'.", file);
             _epochs[epoch] = file;
             hasEraFile = true;

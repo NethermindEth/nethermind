@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Buffers;
 using System.Diagnostics;
 using System.IO.Compression;
 using System.Runtime.InteropServices;
@@ -68,4 +69,23 @@ public class E2StoreWriter(Stream stream) : IDisposable
     }
 
     public ValueHash256 FinalizeChecksum() => new(_checksumCalculator.GetHashAndReset());
+
+    /// <summary>
+    /// Compresses <paramref name="bytes"/> using Snappy framing and returns the result
+    /// in a rented <see cref="ArrayPool{T}"/> buffer. The caller must return the buffer
+    /// via <c>ArrayPool&lt;byte&gt;.Shared.Return</c> after use.
+    /// </summary>
+    public static async Task<(byte[] Buffer, int Length)> Compress(
+        ReadOnlyMemory<byte> bytes, CancellationToken cancellation = default)
+    {
+        using RecyclableMemoryStream ms = RecyclableStream.GetStream(nameof(E2StoreWriter));
+        using SnappyStream compressor = new(ms, CompressionMode.Compress, leaveOpen: true);
+        await compressor.WriteAsync(bytes, cancellation);
+        await compressor.FlushAsync(cancellation);
+        bool ok = ms.TryGetBuffer(out ArraySegment<byte> segment);
+        Debug.Assert(ok);
+        byte[] rented = ArrayPool<byte>.Shared.Rent(segment.Count);
+        segment.AsSpan().CopyTo(rented);
+        return (rented, segment.Count);
+    }
 }

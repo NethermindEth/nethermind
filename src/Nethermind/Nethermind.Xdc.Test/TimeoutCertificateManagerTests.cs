@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Blockchain;
@@ -23,7 +23,6 @@ namespace Nethermind.Xdc.Test;
 [Parallelizable(ParallelScope.All)]
 public class TimeoutCertificateManagerTests
 {
-
     [Test]
     public void VerifyTC_NullCert_Throws()
     {
@@ -102,22 +101,30 @@ public class TimeoutCertificateManagerTests
         PrivateKeyGenerator keyBuilder = new();
         PrivateKey[] keys = keyBuilder.Generate(20).ToArray();
         IEnumerable<Address> masterNodes = keys.Select(k => k.Address);
+        int quorumCount = (int)Math.Ceiling(keys.Length * 0.667);
 
         // Base case
         yield return new TestCaseData(BuildTimeoutCertificate(keys), masterNodes, true);
 
         // Insufficient signature count
-        PrivateKey[] notEnoughKeys = keys.Take(13).ToArray();
+        PrivateKey[] notEnoughKeys = [.. keys.Take(quorumCount - 1)];
         yield return new TestCaseData(BuildTimeoutCertificate(notEnoughKeys), masterNodes, false);
 
         // Duplicated signatures still should fail if not enough
-        yield return new TestCaseData(BuildTimeoutCertificate(notEnoughKeys.Concat(notEnoughKeys).ToArray()), masterNodes, false);
+        yield return new TestCaseData(BuildTimeoutCertificate([.. notEnoughKeys, .. notEnoughKeys]), masterNodes, false);
 
         // Sufficient signature count
-        yield return new TestCaseData(BuildTimeoutCertificate(keys.Take(14).ToArray()), masterNodes, true);
+        yield return new TestCaseData(BuildTimeoutCertificate([.. keys.Take(quorumCount)]), masterNodes, true);
 
         // Signer not in master nodes
         yield return new TestCaseData(BuildTimeoutCertificate(keys), keys.Skip(1).Select(k => k.Address), false);
+
+        //N byte-distinct signatures but only N-1 unique signer addresses (keys[0] signs twice via ECDSA malleability)
+        EthereumEcdsa ecdsa = new(0);
+        ValueHash256 msgHash = TimeoutCertificateManager.ComputeTimeoutMsgHash(1, 0);
+        Signature[] sigs = [.. keys.Take(quorumCount - 1).Select(k => ecdsa.Sign(k, msgHash))];
+        Signature malleable = XdcTestHelper.CreateMalleableSignature(sigs[0]);
+        yield return new TestCaseData(new TimeoutCertificate(1, [.. sigs, malleable], 0), masterNodes, false);
     }
 
     [TestCaseSource(nameof(TcCases))]
