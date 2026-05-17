@@ -174,12 +174,10 @@ public class BackgroundTaskScheduler : IBackgroundTaskScheduler, IAsyncDisposabl
 
     public bool TryScheduleTask<TReq>(TReq request, Func<TReq, CancellationToken, Task> fulfillFunc, TimeSpan? timeout = null, string? source = null)
     {
-        IActivity activity = new Activity<TReq>
-        {
-            Deadline = DateTimeOffset.UtcNow + (timeout ?? DefaultTimeout),
-            Request = request,
-            FulfillFunc = fulfillFunc,
-        };
+        Activity<TReq> activity = Activity<TReq>.Rent(
+            DateTimeOffset.UtcNow + (timeout ?? DefaultTimeout),
+            request,
+            fulfillFunc);
 
         Evm.Metrics.IncrementTotalBackgroundTasksQueued();
 
@@ -204,6 +202,7 @@ public class BackgroundTaskScheduler : IBackgroundTaskScheduler, IAsyncDisposabl
         }
         Interlocked.Decrement(ref _queueCount);
         request.TryDispose();
+        activity.Return();
         return false;
     }
 
@@ -225,39 +224,77 @@ public class BackgroundTaskScheduler : IBackgroundTaskScheduler, IAsyncDisposabl
         _scheduler.Dispose();
     }
 
-    private readonly struct Activity<TReq> : IActivity
+    private sealed class Activity<TReq> : IActivity
     {
-        public DateTimeOffset Deadline { get; init; }
-        public TReq Request { get; init; }
-        public Func<TReq, CancellationToken, Task> FulfillFunc { get; init; }
+        private const int MaxPooled = 1024;
+        private static readonly ConcurrentQueue<Activity<TReq>> Pool = new();
+        private static int _poolCount;
+
+        private TReq _request = default!;
+        private Func<TReq, CancellationToken, Task>? _fulfillFunc;
+
+        public DateTimeOffset Deadline { get; private set; }
+
+        public static Activity<TReq> Rent(DateTimeOffset deadline, TReq request, Func<TReq, CancellationToken, Task> fulfillFunc)
+        {
+            if (Pool.TryDequeue(out Activity<TReq>? activity))
+            {
+                Interlocked.Decrement(ref _poolCount);
+            }
+            else
+            {
+                activity = new Activity<TReq>();
+            }
+
+            activity.Deadline = deadline;
+            activity._request = request;
+            activity._fulfillFunc = fulfillFunc;
+            return activity;
+        }
+
+        public void Return()
+        {
+            Deadline = default;
+            _request = default!;
+            _fulfillFunc = null;
+
+            if (Interlocked.Increment(ref _poolCount) <= MaxPooled)
+            {
+                Pool.Enqueue(this);
+            }
+            else
+            {
+                Interlocked.Decrement(ref _poolCount);
+            }
+        }
 
         public int CompareTo(IActivity? other) => Deadline.CompareTo(other?.Deadline ?? DateTimeOffset.MaxValue);
 
         public async Task Do(CancellationToken cancellationToken)
         {
-            TimeSpan timeToComplete = Deadline - DateTimeOffset.UtcNow;
-
             CancellationTokenSource? cts = null;
-            CancellationToken token;
-            if (timeToComplete <= TimeSpan.Zero)
-            {
-                // Cancel immediately. Got no time left.
-                token = CancellationTokenExtensions.AlreadyCancelledToken;
-            }
-            else
-            {
-                cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-                cts.CancelAfter(timeToComplete);
-                token = cts.Token;
-            }
-
             try
             {
-                await FulfillFunc.Invoke(Request, token);
+                TimeSpan timeToComplete = Deadline - DateTimeOffset.UtcNow;
+                CancellationToken token;
+                if (timeToComplete <= TimeSpan.Zero)
+                {
+                    // Cancel immediately. Got no time left.
+                    token = CancellationTokenExtensions.AlreadyCancelledToken;
+                }
+                else
+                {
+                    cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+                    cts.CancelAfter(timeToComplete);
+                    token = cts.Token;
+                }
+
+                await _fulfillFunc!.Invoke(_request, token);
             }
             finally
             {
                 cts?.Dispose();
+                Return();
             }
         }
     }
