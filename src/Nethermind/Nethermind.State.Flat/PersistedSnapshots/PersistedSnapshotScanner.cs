@@ -37,12 +37,12 @@ public sealed class PersistedSnapshotScanner(WholeReadSession session, Persisted
     private static NoOpPin Pin(scoped in WholeReadSessionReader reader, Bound b) =>
         reader.PinBuffer(b.Offset, b.Length);
 
-    // ---------------- PerAddress (column 0x01: SD + Account + Slots) ----------------
+    // ---------------- PerAddress (column 0x01: Account + SD + Slots) ----------------
 
     /// <summary>
     /// One row's worth of per-address data from column 0x01. The on-disk format keys this
-    /// column by raw 20-byte Address; the inner DenseByteIndex carries sub-tags 0x04 (slots),
-    /// 0x05 (account), 0x06 (self-destruct). Storage-trie nodes live in column 0x02 keyed
+    /// column by raw 20-byte Address; the inner DenseByteIndex carries sub-tags 0x00 (account),
+    /// 0x01 (self-destruct), 0x02 (slots). Storage-trie nodes live in column 0x05 keyed
     /// by addressHash and are surfaced via <see cref="StorageNodes"/>.
     /// </summary>
     public readonly ref struct PerAddressEntry(
@@ -95,7 +95,7 @@ public sealed class PersistedSnapshotScanner(WholeReadSession session, Persisted
         public bool HasSlots => _slotBound.Length > 0;
 
         /// <summary>
-        /// Nested enumerable over the slot HSST (sub-tag 0x04). Empty when <see cref="HasSlots"/>
+        /// Nested enumerable over the slot HSST (sub-tag 0x02). Empty when <see cref="HasSlots"/>
         /// is false. The yielded <see cref="SlotEntry"/> values carry only <c>Slot</c> and
         /// <c>Value</c>; the address is on this entry and lives one foreach scope up.
         /// </summary>
@@ -384,8 +384,8 @@ public sealed class PersistedSnapshotScanner(WholeReadSession session, Persisted
     {
         private readonly PersistedSnapshot _snapshot;
         private readonly WholeReadSessionReader _reader;
-        // Walks column 0x02 (storage-trie) keyed by addressHash. For each row we open the
-        // storage-trie sub-tags in order: top (0x01), compact (0x02), then fallback (0x03).
+        // Walks column 0x05 (storage-trie) keyed by addressHash. For each row we open the
+        // storage-trie sub-tags in order: top (0x00), compact (0x01), then fallback (0x02).
         private HsstRefEnumerator<WholeReadSessionReader, NoOpPin> _addrEnum;
         private HsstRefEnumerator<WholeReadSessionReader, NoOpPin> _pathEnum;
         // _stage: 0 = current address-hash's top sub-tag, 1 = its compact sub-tag,
