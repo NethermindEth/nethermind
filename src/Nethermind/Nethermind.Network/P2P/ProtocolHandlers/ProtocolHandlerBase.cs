@@ -187,13 +187,12 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
         protected void HandleInBackground<TReq, TRes>(ZeroPacket message, Func<TReq, CancellationToken, Task<TRes>> handle) where TReq : P2PMessage where TRes : P2PMessage =>
             BackgroundTaskScheduler.TryScheduleSyncServe(DeserializeAndReport<TReq>(message), handle);
 
-        protected void HandleInBackground<THandler, TReq, TRes>(
-            ZeroPacket message,
-            Func<THandler, TReq, CancellationToken, Task<TRes>> handle)
+        protected void HandleInBackground<THandler, TReq, TRes, TRequestHandler>(ZeroPacket message)
             where THandler : ProtocolHandlerBase
             where TReq : P2PMessage
-            where TRes : P2PMessage =>
-            BackgroundTaskScheduler.TryScheduleSyncServe((THandler)this, DeserializeAndReport<TReq>(message), handle);
+            where TRes : P2PMessage
+            where TRequestHandler : struct, ISyncServeRequestHandler<THandler, TReq, TRes> =>
+            BackgroundTaskScheduler.TryScheduleSyncServe<THandler, TReq, TRes, TRequestHandler>((THandler)this, DeserializeAndReport<TReq>(message));
 
         /// <inheritdoc cref="HandleInBackground{TReq, TRes}(ZeroPacket, Func{TReq, CancellationToken, Task{TRes}})"/>
         protected void HandleInBackground<TReq, TRes>(ZeroPacket message, Func<TReq, CancellationToken, ValueTask<TRes>> handle) where TReq : P2PMessage where TRes : P2PMessage =>
