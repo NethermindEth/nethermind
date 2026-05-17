@@ -47,7 +47,7 @@ public static class PersistedSnapshotReader
     /// Seek the per-addressHash storage-trie inner-HSST bound under
     /// <see cref="PersistedSnapshotTags.StorageTrieColumnTag"/>:
     /// StorageTrieColumnTag → addressHash.Bytes[..AddressHashPrefixLength]. The bound carries
-    /// the per-addressHash DenseByteIndex with sub-tags 0x01/0x02/0x03 (top/compact/fallback).
+    /// the per-addressHash DenseByteIndex with sub-tags 0x00/0x01/0x02 (top/compact/fallback).
     /// </summary>
     internal static bool TryGetStorageTrieAddressHsstBound<TReader, TPin>(scoped in TReader reader, in ValueHash256 addressHash, out Bound addressBound)
         where TPin : struct, IBufferPin, allows ref struct
