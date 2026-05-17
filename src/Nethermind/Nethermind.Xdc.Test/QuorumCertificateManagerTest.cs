@@ -82,7 +82,8 @@ public class QuorumCertificateManagerTest
             Substitute.For<IBlockTree>(),
             specProvider,
             epochSwitchManager,
-            Substitute.For<ILogManager>());
+            Substitute.For<ILogManager>(),
+            Substitute.For<IForensicsProcessor>());
 
         Assert.That(quorumCertificateManager.VerifyCertificate(quorumCert, headerBuilder.TestObject, out string? error), Is.False);
         Assert.That(error, Does.Contain("does not meet threshold"));

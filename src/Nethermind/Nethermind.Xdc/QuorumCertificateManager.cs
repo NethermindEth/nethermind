@@ -34,6 +34,7 @@ internal class QuorumCertificateManager(
 
     private ISpecProvider _specProvider { get; } = xdcConfig;
     private static readonly VoteDecoder _voteDecoder = new();
+    private static readonly EthereumEcdsa _ethereumEcdsa = new(0);
 
     public QuorumCertificate HighestKnownCertificate => _context.HighestQC;
     public QuorumCertificate LockCertificate => _context.LockQC;
@@ -173,29 +174,13 @@ internal class QuorumCertificateManager(
         IXdcReleaseSpec spec = _specProvider.GetXdcSpec(certificateTarget, qcRound);
         double certificateThreshold = spec.CertificateThreshold;
         double required = Math.Ceiling(epochSwitchInfo.Masternodes.Length * certificateThreshold);
-<<<<<<< Updated upstream
 
-        if (qcRound > 0)
+        if (qcRound > 0 && qc.Signatures.Length < required)
         {
-            (Address[] masternodes, Signature[] signatures) = (epochSwitchInfo.Masternodes, qc.Signatures);
-            if (signatures.Length < required)
-            {
-                error = $"Number of signatures ({signatures.Length}) does not meet threshold of {required}";
-                return false;
-            }
+            error = $"Number of signatures ({qc.Signatures.Length}) does not meet threshold of {required}";
+            return false;
+        }
 
-            ValueHash256 voteHash = VoteHash(qc.ProposedBlockInfo, qc.GapNumber);
-            if (VotesManager.CountValidSignatures(masternodes, signatures, voteHash, out error) is not { } signCount)
-            {
-                return false;
-            }
-
-            if (signCount < required)
-            {
-                error = $"Number of votes ({signCount}/{masternodes.Length}) does not meet threshold of {certificateThreshold}";
-                return false;
-            }
-=======
         HashSet<Address> masternodes = [.. epochSwitchInfo.Masternodes];
         HashSet<Address> uniqueSigners = [];
         ValueHash256 voteHash = VoteHash(qc.ProposedBlockInfo, qc.GapNumber);
@@ -214,7 +199,6 @@ internal class QuorumCertificateManager(
         {
             error = $"Number of votes ({uniqueSigners.Count}/{epochSwitchInfo.Masternodes.Length}) does not meet threshold of {certificateThreshold}";
             return false;
->>>>>>> Stashed changes
         }
 
         long epochSwitchNumber = epochSwitchInfo.EpochSwitchBlockInfo.BlockNumber;

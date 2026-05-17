@@ -136,11 +136,7 @@ public class TimeoutCertificateManager : ITimeoutCertificateManager
             errorMessage = "Empty master node list from snapshot";
             return false;
         }
-<<<<<<< Updated upstream
-=======
         HashSet<Address> nextEpochCandidates = new(snapshot.NextEpochCandidates);
-
->>>>>>> Stashed changes
         XdcBlockHeader xdcHeader = _blockTree.Head?.Header as XdcBlockHeader;
         IXdcReleaseSpec spec = _specProvider.GetXdcSpec(xdcHeader, timeoutCertificate.Round);
         EpochSwitchInfo epochInfo = _epochSwitchManager.GetTimeoutCertificateEpochInfo(timeoutCertificate);
@@ -149,26 +145,14 @@ public class TimeoutCertificateManager : ITimeoutCertificateManager
             errorMessage = $"Failed to get epoch switch info for timeout certificate with round {timeoutCertificate.Round}";
             return false;
         }
-<<<<<<< Updated upstream
 
         double required = epochInfo.Masternodes.Length * spec.CertificateThreshold;
-        (Address[] candidates, Signature[] signatures) = (snapshot.NextEpochCandidates, timeoutCertificate.Signatures);
-        if (signatures.Length < required)
+        if (timeoutCertificate.Signatures.Length < required)
         {
-            errorMessage = $"Number of signatures ({signatures.Length}) does not meet threshold of {required}";
+            errorMessage = $"Number of signatures ({timeoutCertificate.Signatures.Length}) does not meet threshold of {required}";
             return false;
         }
 
-        ValueHash256 timeoutMsgHash = ComputeTimeoutMsgHash(timeoutCertificate.Round, timeoutCertificate.GapNumber);
-        if (VotesManager.CountValidSignatures(candidates, signatures, timeoutMsgHash, out errorMessage) is not { } signCount)
-        {
-            return false;
-        }
-
-        if (signCount < epochInfo.Masternodes.Length * spec.CertificateThreshold)
-        {
-            errorMessage = $"Number of unique signers {signCount} does not meet threshold of {epochInfo.Masternodes.Length * spec.CertificateThreshold}";
-=======
         HashSet<Address> uniqueSigners = [];
         ValueHash256 timeoutMsgHash = ComputeTimeoutMsgHash(timeoutCertificate.Round, timeoutCertificate.GapNumber);
         foreach (Signature signature in timeoutCertificate.Signatures)
@@ -185,7 +169,6 @@ public class TimeoutCertificateManager : ITimeoutCertificateManager
         if (uniqueSigners.Count < epochInfo.Masternodes.Length * spec.CertificateThreshold)
         {
             errorMessage = $"Number of unique signers {uniqueSigners.Count} does not meet threshold of {epochInfo.Masternodes.Length * spec.CertificateThreshold}";
->>>>>>> Stashed changes
             return false;
         }
 
