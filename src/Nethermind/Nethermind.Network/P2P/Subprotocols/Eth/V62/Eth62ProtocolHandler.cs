@@ -33,7 +33,9 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
         private readonly ITxGossipPolicy _txGossipPolicy;
         private LruKeyCache<Hash256AsKey>? _lastBlockNotificationCache;
         private LruKeyCache<Hash256AsKey> LastBlockNotificationCache => _lastBlockNotificationCache ??= new(10, "LastBlockNotificationCache");
-        private readonly Func<(IOwnedReadOnlyList<Transaction> txs, int startIndex), CancellationToken, ValueTask> _handleSlow;
+        private readonly Func<TransactionsRequest, CancellationToken, ValueTask> _handleSlow;
+
+        protected readonly record struct TransactionsRequest(IOwnedReadOnlyList<Transaction> Transactions, int StartIndex);
 
         public Eth62ProtocolHandler(ISession session,
             IMessageSerializationService serializer,
@@ -239,19 +241,19 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
         protected void Handle(TransactionsMessage msg)
         {
             IOwnedReadOnlyList<Transaction> iList = msg.Transactions;
-            if (!BackgroundTaskScheduler.TryScheduleBackgroundTask((iList, 0), _handleSlow, "Transactions"))
+            if (!BackgroundTaskScheduler.TryScheduleBackgroundTask(new TransactionsRequest(iList, 0), _handleSlow, "Transactions"))
             {
                 iList.Dispose();
             }
         }
 
-        protected virtual ValueTask HandleSlow((IOwnedReadOnlyList<Transaction> txs, int startIndex) request, CancellationToken cancellationToken)
+        protected virtual ValueTask HandleSlow(TransactionsRequest request, CancellationToken cancellationToken)
         {
-            IOwnedReadOnlyList<Transaction> transactions = request.txs;
+            IOwnedReadOnlyList<Transaction> transactions = request.Transactions;
             ReadOnlySpan<Transaction> transactionsSpan = transactions.AsSpan();
             try
             {
-                int startIdx = request.startIndex;
+                int startIdx = request.StartIndex;
                 bool isTrace = Logger.IsTrace;
 
                 for (int i = startIdx; i < transactionsSpan.Length; i++)
@@ -267,7 +269,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
                         }
 
                         // Reschedule remaining transactions with a different start index
-                        if (!BackgroundTaskScheduler.TryScheduleBackgroundTask((transactions, i), _handleSlow, "Transactions"))
+                        if (!BackgroundTaskScheduler.TryScheduleBackgroundTask(new TransactionsRequest(transactions, i), _handleSlow, "Transactions"))
                         {
                             transactions.Dispose();
                         }
