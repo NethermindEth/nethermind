@@ -63,10 +63,6 @@ public class P2PProtocolHandler(
     public PublicKey LocalNodeId { get; } = localNodeId;
     private string RemoteClientId { get; set; }
 
-    public override event EventHandler<ProtocolInitializedEventArgs>? ProtocolInitialized;
-
-    public override event EventHandler<ProtocolEventArgs>? SubprotocolRequested;
-
     public bool HasAvailableCapability(Capability capability) => _availableCapabilities.Contains(capability);
     public bool HasAgreedCapability(Capability capability) => _agreedCapabilities.Contains(capability);
     public void AddSupportedCapability(Capability capability)
@@ -79,7 +75,11 @@ public class P2PProtocolHandler(
         _supportedCapabilities.Add(capability);
     }
 
-    public override void RegisterWith(ISession session, IProtocolRegistrar registrar) => registrar.Register(session, this);
+    public override void RegisterWith(ISession session, IProtocolRegistrar registrar)
+    {
+        SetProtocolRegistrar(registrar);
+        registrar.Register(session, this);
+    }
 
     public override void Init()
     {
@@ -116,7 +116,7 @@ public class P2PProtocolHandler(
                         _agreedCapabilities.GroupBy(static c => c.ProtocolCode).Select(static c => c.OrderBy(static v => v.Version).Last()).OrderBy(static c => c.ProtocolCode))
                     {
                         if (Logger.IsTrace) TraceStartingProtocolHandler(capability);
-                        SubprotocolRequested?.Invoke(this, new ProtocolEventArgs(capability.ProtocolCode, capability.Version));
+                        NotifySubprotocolRequested(capability.ProtocolCode, capability.Version);
                     }
 
                     break;
@@ -175,7 +175,7 @@ public class P2PProtocolHandler(
 
                     _agreedCapabilities.Add(capability);
                     if (Logger.IsTrace) TraceStartingHandler(capability);
-                    SubprotocolRequested?.Invoke(this, new ProtocolEventArgs(capability.ProtocolCode, capability.Version));
+                    NotifySubprotocolRequested(capability.ProtocolCode, capability.Version);
                     break;
                 }
             default:
@@ -287,7 +287,7 @@ public class P2PProtocolHandler(
             ListenPort = hello.ListenPort
         };
 
-        ProtocolInitialized?.Invoke(this, eventArgs);
+        NotifyProtocolInitialized(eventArgs);
 
         [MethodImpl(MethodImplOptions.NoInlining)]
         void TraceReceivedHello()
@@ -459,12 +459,7 @@ public class P2PProtocolHandler(
             => Logger.Trace($"{Session} sending P2P pong");
     }
 
-    public override void Dispose()
-    {
-        // Clear Events if set
-        ProtocolInitialized = null;
-        SubprotocolRequested = null;
-    }
+    public override void Dispose() => ClearProtocolEvents();
 
     public IReadOnlyList<Capability> GetCapabilities() =>
         _agreedCapabilities.Count > 0 ? _agreedCapabilities : _supportedCapabilities;

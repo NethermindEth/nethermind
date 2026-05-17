@@ -154,58 +154,13 @@ namespace Nethermind.Network
 
         private void InitHandler(ISession session, IProtocolHandler handler)
         {
-            handler.SubprotocolRequested += (s, e) => InitProtocol(session, e.ProtocolCode, e.Version);
             session.AddProtocolHandler(handler);
             handler.RegisterWith(session, this);
             handler.Init();
         }
 
-        void IProtocolRegistrar.Register(ISession session, ProtocolHandlerBase handler)
-        {
+        void IProtocolRegistrar.Register(ISession session, ProtocolHandlerBase handler) =>
             session.Node.EthDetails = handler.Name;
-            handler.ProtocolInitialized += (_, args) =>
-            {
-                if (!RunBasicChecks(session, handler.ProtocolCode, handler.ProtocolVersion)) return;
-                // SyncPeerProtocolInitializedEventArgs typedArgs = (SyncPeerProtocolInitializedEventArgs)args;
-                // _stats.ReportSyncPeerInitializeEvent(handler.ProtocolCode, session.Node, new SyncPeerNodeDetails
-                // {
-                //     NetworkId = typedArgs.NetworkId,
-                //     BestHash = typedArgs.BestHash,
-                //     GenesisHash = typedArgs.GenesisHash,
-                //     ProtocolVersion = typedArgs.ProtocolVersion,
-                //     TotalDifficulty = (BigInteger)typedArgs.TotalDifficulty
-                // });
-                bool isValid = _protocolValidator.DisconnectOnInvalid(handler.ProtocolCode, session, args);
-                if (isValid)
-                {
-                    PeerInfo? peer = _syncPool.GetPeer(session.Node);
-                    if (peer is not null)
-                    {
-                        peer.SyncPeer.RegisterSatelliteProtocol(handler.ProtocolCode, handler);
-                        if (handler.IsPriority) _syncPool.SetPeerPriority(session.Node.Id);
-                        if (_logger.IsTrace) _logger.Trace($"{handler.ProtocolCode} satellite protocol registered for sync peer {session}.");
-                    }
-                    else
-                    {
-                        _hangingSatelliteProtocols.AddOrUpdate(session.Node,
-                            _ => new ConcurrentDictionary<Guid, ProtocolHandlerBase> { [session.SessionId] = handler },
-                            (_, dict) =>
-                            {
-                                dict[session.SessionId] = handler;
-                                return dict;
-                            });
-
-                        if (_logger.IsTrace) _logger.Trace($"{handler.ProtocolCode} satellite protocol sync peer {session} not found.");
-                    }
-
-                    if (_logger.IsTrace) _logger.Trace($"Finalized {handler.ProtocolCode.ToUpper()} protocol initialization on {session} - adding sync peer {session.Node:s}");
-                }
-                else
-                {
-                    if (_logger.IsTrace) _logger.Trace($"|NetworkTrace| {handler.ProtocolCode}{handler.ProtocolVersion} is invalid on {session}");
-                }
-            };
-        }
 
         void IProtocolRegistrar.Register(ISession session, P2PProtocolHandler handler)
         {
@@ -215,88 +170,140 @@ namespace Nethermind.Network
             {
                 session.AddSupportedCapability(capability);
             }
-
-            handler.ProtocolInitialized += (_, args) =>
-            {
-                P2PProtocolInitializedEventArgs typedArgs = (P2PProtocolInitializedEventArgs)args;
-                if (!RunBasicChecks(session, Protocol.P2P, handler.ProtocolVersion)) return;
-
-                if (handler.ProtocolVersion >= 5)
-                {
-                    if (_logger.IsTrace) _logger.Trace($"{handler.ProtocolCode}.{handler.ProtocolVersion} established on {session} - enabling snappy");
-                    session.EnableSnappy();
-                }
-                else
-                {
-                    if (_logger.IsTrace) _logger.Trace($"{handler.ProtocolCode}.{handler.ProtocolVersion} established on {session} - disabling snappy");
-                }
-
-                _stats.ReportP2PInitializationEvent(session.Node, new P2PNodeDetails
-                {
-                    ClientId = typedArgs.ClientId,
-                    Capabilities = typedArgs.Capabilities,
-                    P2PVersion = typedArgs.P2PVersion,
-                    ListenPort = typedArgs.ListenPort
-                });
-
-                AddNodeToDiscovery(session, typedArgs);
-
-                _protocolValidator.DisconnectOnInvalid(Protocol.P2P, session, args);
-
-                if (_logger.IsTrace) _logger.Trace($"Finalized P2P protocol initialization on {session}");
-            };
         }
 
-        void IProtocolRegistrar.Register(ISession session, SyncPeerProtocolHandlerBase handler)
-        {
+        void IProtocolRegistrar.Register(ISession session, SyncPeerProtocolHandlerBase handler) =>
             session.Node.EthDetails = handler.Name;
-            handler.ProtocolInitialized += (_, args) =>
+
+        void IProtocolRegistrar.OnProtocolInitialized(ISession session, ProtocolHandlerBase handler, ProtocolInitializedEventArgs args)
+        {
+            switch (handler)
             {
-                if (!RunBasicChecks(session, handler.ProtocolCode, handler.ProtocolVersion)) return;
-                SyncPeerProtocolInitializedEventArgs typedArgs = (SyncPeerProtocolInitializedEventArgs)args;
-                _stats.ReportSyncPeerInitializeEvent(handler.ProtocolCode, session.Node, new SyncPeerNodeDetails
+                case P2PProtocolHandler p2pProtocolHandler:
+                    OnP2PProtocolInitialized(session, p2pProtocolHandler, (P2PProtocolInitializedEventArgs)args);
+                    break;
+                case SyncPeerProtocolHandlerBase syncPeerProtocolHandler:
+                    OnSyncPeerProtocolInitialized(session, syncPeerProtocolHandler, (SyncPeerProtocolInitializedEventArgs)args);
+                    break;
+                default:
+                    OnSatelliteProtocolInitialized(session, handler, args);
+                    break;
+            }
+        }
+
+        void IProtocolRegistrar.OnSubprotocolRequested(ISession session, ProtocolHandlerBase handler, string protocolCode, int version) =>
+            InitProtocol(session, protocolCode, version);
+
+        private void OnSatelliteProtocolInitialized(ISession session, ProtocolHandlerBase handler, ProtocolInitializedEventArgs args)
+        {
+            if (!RunBasicChecks(session, handler.ProtocolCode, handler.ProtocolVersion)) return;
+
+            bool isValid = _protocolValidator.DisconnectOnInvalid(handler.ProtocolCode, session, args);
+            if (isValid)
+            {
+                PeerInfo? peer = _syncPool.GetPeer(session.Node);
+                if (peer is not null)
                 {
-                    NetworkId = typedArgs.NetworkId,
-                    BestHash = typedArgs.BestHash,
-                    GenesisHash = typedArgs.GenesisHash,
-                    ProtocolVersion = typedArgs.ProtocolVersion,
-                    TotalDifficulty = (BigInteger)typedArgs.TotalDifficulty
-                });
-                bool isValid = _protocolValidator.DisconnectOnInvalid(handler.ProtocolCode, session, args);
-                if (isValid)
-                {
-                    if (_syncPeers.TryAdd(session.SessionId, handler))
-                    {
-                        if (_hangingSatelliteProtocols.TryGetValue(handler.Node, out ConcurrentDictionary<Guid, ProtocolHandlerBase> handlerDictionary))
-                        {
-                            foreach (KeyValuePair<Guid, ProtocolHandlerBase> registration in handlerDictionary)
-                            {
-                                handler.RegisterSatelliteProtocol(registration.Value);
-                                if (registration.Value.IsPriority) handler.IsPriority = true;
-                                if (_logger.IsTrace) _logger.Trace($"{handler.ProtocolCode} satellite protocol registered for sync peer {session}. Sync peer has priority: {handler.IsPriority}");
-                            }
-                        }
-
-                        _syncPool.AddPeer(handler);
-                        if (handler.IncludeInTxPool) _txPool.AddPeer(handler);
-                        if (_logger.IsTrace) _logger.Trace($"{handler.ClientId} sync peer {session} created.");
-                    }
-                    else
-                    {
-                        if (_logger.IsTrace) _logger.Trace($"Not able to add a sync peer on {session} for {session.Node:s}");
-                        session.InitiateDisconnect(DisconnectReason.SessionIdAlreadyExists, "sync peer");
-                    }
-
-                    if (_logger.IsTrace) _logger.Trace($"Finalized {handler.ProtocolCode.ToUpper()} protocol initialization on {session} - adding sync peer {session.Node:s}");
-
-                    //Add/Update peer to the storage and to sync manager
-                    _peerStorage.UpdateNode(new NetworkNode(session.Node.Id, session.Node.Host, session.Node.Port, _stats.GetOrAdd(session.Node).NewPersistedNodeReputation(DateTime.UtcNow)));
+                    peer.SyncPeer.RegisterSatelliteProtocol(handler.ProtocolCode, handler);
+                    if (handler.IsPriority) _syncPool.SetPeerPriority(session.Node.Id);
+                    if (_logger.IsTrace) _logger.Trace($"{handler.ProtocolCode} satellite protocol registered for sync peer {session}.");
                 }
                 else
                 {
-                    if (_logger.IsTrace) _logger.Trace($"|NetworkTrace| {handler.ProtocolCode}{handler.ProtocolVersion} is invalid on {session}");
+                    _hangingSatelliteProtocols.AddOrUpdate(session.Node,
+                        _ => new ConcurrentDictionary<Guid, ProtocolHandlerBase> { [session.SessionId] = handler },
+                        (_, dict) =>
+                        {
+                            dict[session.SessionId] = handler;
+                            return dict;
+                        });
+
+                    if (_logger.IsTrace) _logger.Trace($"{handler.ProtocolCode} satellite protocol sync peer {session} not found.");
                 }
-            };
+
+                if (_logger.IsTrace) _logger.Trace($"Finalized {handler.ProtocolCode.ToUpper()} protocol initialization on {session} - adding sync peer {session.Node:s}");
+            }
+            else
+            {
+                if (_logger.IsTrace) _logger.Trace($"|NetworkTrace| {handler.ProtocolCode}{handler.ProtocolVersion} is invalid on {session}");
+            }
+        }
+
+        private void OnP2PProtocolInitialized(ISession session, P2PProtocolHandler handler, P2PProtocolInitializedEventArgs args)
+        {
+            if (!RunBasicChecks(session, Protocol.P2P, handler.ProtocolVersion)) return;
+
+            if (handler.ProtocolVersion >= 5)
+            {
+                if (_logger.IsTrace) _logger.Trace($"{handler.ProtocolCode}.{handler.ProtocolVersion} established on {session} - enabling snappy");
+                session.EnableSnappy();
+            }
+            else
+            {
+                if (_logger.IsTrace) _logger.Trace($"{handler.ProtocolCode}.{handler.ProtocolVersion} established on {session} - disabling snappy");
+            }
+
+            _stats.ReportP2PInitializationEvent(session.Node, new P2PNodeDetails
+            {
+                ClientId = args.ClientId,
+                Capabilities = args.Capabilities,
+                P2PVersion = args.P2PVersion,
+                ListenPort = args.ListenPort
+            });
+
+            AddNodeToDiscovery(session, args);
+
+            _protocolValidator.DisconnectOnInvalid(Protocol.P2P, session, args);
+
+            if (_logger.IsTrace) _logger.Trace($"Finalized P2P protocol initialization on {session}");
+        }
+
+        private void OnSyncPeerProtocolInitialized(ISession session, SyncPeerProtocolHandlerBase handler, SyncPeerProtocolInitializedEventArgs args)
+        {
+            if (!RunBasicChecks(session, handler.ProtocolCode, handler.ProtocolVersion)) return;
+
+            _stats.ReportSyncPeerInitializeEvent(handler.ProtocolCode, session.Node, new SyncPeerNodeDetails
+            {
+                NetworkId = args.NetworkId,
+                BestHash = args.BestHash,
+                GenesisHash = args.GenesisHash,
+                ProtocolVersion = args.ProtocolVersion,
+                TotalDifficulty = (BigInteger)args.TotalDifficulty
+            });
+            bool isValid = _protocolValidator.DisconnectOnInvalid(handler.ProtocolCode, session, args);
+            if (isValid)
+            {
+                if (_syncPeers.TryAdd(session.SessionId, handler))
+                {
+                    if (_hangingSatelliteProtocols.TryGetValue(handler.Node, out ConcurrentDictionary<Guid, ProtocolHandlerBase> handlerDictionary))
+                    {
+                        foreach (KeyValuePair<Guid, ProtocolHandlerBase> registration in handlerDictionary)
+                        {
+                            handler.RegisterSatelliteProtocol(registration.Value);
+                            if (registration.Value.IsPriority) handler.IsPriority = true;
+                            if (_logger.IsTrace) _logger.Trace($"{handler.ProtocolCode} satellite protocol registered for sync peer {session}. Sync peer has priority: {handler.IsPriority}");
+                        }
+                    }
+
+                    _syncPool.AddPeer(handler);
+                    if (handler.IncludeInTxPool) _txPool.AddPeer(handler);
+                    if (_logger.IsTrace) _logger.Trace($"{handler.ClientId} sync peer {session} created.");
+                }
+                else
+                {
+                    if (_logger.IsTrace) _logger.Trace($"Not able to add a sync peer on {session} for {session.Node:s}");
+                    session.InitiateDisconnect(DisconnectReason.SessionIdAlreadyExists, "sync peer");
+                }
+
+                if (_logger.IsTrace) _logger.Trace($"Finalized {handler.ProtocolCode.ToUpper()} protocol initialization on {session} - adding sync peer {session.Node:s}");
+
+                //Add/Update peer to the storage and to sync manager
+                _peerStorage.UpdateNode(new NetworkNode(session.Node.Id, session.Node.Host, session.Node.Port, _stats.GetOrAdd(session.Node).NewPersistedNodeReputation(DateTime.UtcNow)));
+            }
+            else
+            {
+                if (_logger.IsTrace) _logger.Trace($"|NetworkTrace| {handler.ProtocolCode}{handler.ProtocolVersion} is invalid on {session}");
+            }
         }
 
         private bool RunBasicChecks(ISession session, string protocolCode, int protocolVersion)

@@ -70,7 +70,11 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
             _bodiesRequests = new MessageQueue<GetBlockBodiesMessage, (OwnedBlockBodies, long)>(Send);
         }
 
-        public override void RegisterWith(ISession session, IProtocolRegistrar registrar) => registrar.Register(session, this);
+        public override void RegisterWith(ISession session, IProtocolRegistrar registrar)
+        {
+            SetProtocolRegistrar(registrar);
+            registrar.Register(session, this);
+        }
 
         public void Disconnect(DisconnectReason reason, string details)
         {

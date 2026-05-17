@@ -64,18 +64,9 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
             SnapMessageLimits.GetTrieNodesPathsPerGroupRlpLimit = RlpLimit.For<PathGroup>(syncConfig.SnapServingMaxPathsPerGroup, nameof(PathGroup.Group));
         }
 
-        public override event EventHandler<ProtocolInitializedEventArgs>? ProtocolInitialized;
-        public override event EventHandler<ProtocolEventArgs>? SubprotocolRequested
-        {
-            add { }
-            remove { }
-        }
+        public override void Init() => NotifyProtocolInitialized(new ProtocolInitializedEventArgs(this));
 
-        public override void Init() => ProtocolInitialized?.Invoke(this, new ProtocolInitializedEventArgs(this));
-
-        public override void Dispose() =>
-            // Clear Events if set
-            ProtocolInitialized = null;
+        public override void Dispose() => ClearProtocolEvents();
 
         protected override void HandleMessageCore(ZeroPacket message)
         {

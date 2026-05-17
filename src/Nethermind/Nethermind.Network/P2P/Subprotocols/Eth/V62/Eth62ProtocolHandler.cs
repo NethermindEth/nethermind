@@ -67,14 +67,6 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
         protected override TimeSpan InitTimeout => Timeouts.Eth62Status;
         protected bool CanReceiveTransactions => _txGossipPolicy.ShouldListenToGossipedTransactions;
 
-        public override event EventHandler<ProtocolInitializedEventArgs>? ProtocolInitialized;
-
-        public override event EventHandler<ProtocolEventArgs>? SubprotocolRequested
-        {
-            add { }
-            remove { }
-        }
-
         protected virtual void EnrichStatusMessage(StatusMessage statusMessage) { }
 
         public override void Init()
@@ -235,7 +227,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
             Session.IsNetworkIdMatched = SyncServer.NetworkId == (ulong)status.NetworkId;
             HeadHash = status.BestHash;
             TotalDifficulty = status.TotalDifficulty;
-            ProtocolInitialized?.Invoke(this, eventArgs);
+            NotifyProtocolInitialized(eventArgs);
         }
 
         protected void Handle(TransactionsMessage msg)
@@ -395,8 +387,6 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
             Send(msg);
         }
 
-        protected override void OnDisposed() =>
-            // Clear Events
-            ProtocolInitialized = null;
+        protected override void OnDisposed() => ClearProtocolEvents();
     }
 }
