@@ -1440,6 +1440,8 @@ namespace Nethermind.Evm.TransactionProcessing
 
         // Devirtualised wrapper over Address.CompareTo (sealed -> already devirt'd inside) so the EIP-7708
         // destroy-list sort goes through Sort<TComparer> instead of Comparer<Address>.Default's virtual call.
+        // The IComparer<Address> contract declares nullable parameters; the destroy-list source
+        // (JournalSet<Address>) never contains null entries, so the `!` dereference is safe here.
         private readonly struct AddressByBytesComparer : IComparer<Address>
         {
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
