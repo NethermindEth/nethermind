@@ -35,8 +35,8 @@ internal static class HsstBTreeReader
         // Trailer: [RootPrefix bytes][RootPrefixLen u8][RootSize u16 LE][KeyLength u8][IndexType u8].
         // Read the fixed 5-byte tail first to learn RootPrefixLen / RootSize / KeyLength;
         // the prefix bytes (if any) sit immediately before that.
-        // Smallest valid HSST: trailer (5 bytes) + root header (13 bytes).
-        if (bound.Length < 5 + 13) return false;
+        // Smallest valid HSST: trailer (5 bytes) + root header (12 bytes).
+        if (bound.Length < 5 + 12) return false;
         Span<byte> tailBuf = stackalloc byte[5];
         if (!reader.TryRead(bound.Offset + bound.Length - 5, tailBuf)) return false;
         int rootPrefixLen = tailBuf[0];
@@ -202,8 +202,8 @@ internal static class HsstBTreeReader
         pin = default;
 
         long available = scopeEnd - absStart;
-        // 13 = fixed header bytes (12 base + CommonPrefixLen u8).
-        if (available < 13) return false;
+        // 12 = fixed header bytes.
+        if (available < 12) return false;
 
         int winLen = (int)Math.Min(SpeculativePinSize, available);
 
@@ -216,15 +216,15 @@ internal static class HsstBTreeReader
             byte flags = win[0];
             int keyCount = BinaryPrimitives.ReadUInt16LittleEndian(win[1..]);
             int keySize = BinaryPrimitives.ReadUInt16LittleEndian(win[3..]);
-            int valueSize = win[5];
-            // BaseOffset (6 bytes) at win[6..12]; we don't need it here, just the size.
-            // CommonPrefixLen is always at win[12]; the actual prefix bytes ride in via
-            // parentSeparator (caller supplies them from the parent's separator at descent,
-            // or from the HSST trailer for the root).
-            int headerSize = 13;
+            // CommonPrefixLen at win[5]; BaseOffset at win[6..12] (not needed for sizing).
+            // ValueSize is decoded from the 2-bit ValueSizeCode field in Flags bits 3-4
+            // ({2, 3, 4, 6}). Actual prefix bytes ride in via parentSeparator (caller
+            // supplies them from the parent's separator at descent, or from the HSST
+            // trailer for the root).
+            int valueSize = ((flags >> 3) & 0b11) switch { 0 => 2, 1 => 3, 2 => 4, _ => 6 };
+            int headerSize = 12;
             int keyType = (flags >> 1) & 0x03;
             int keySectionSize = keyType switch { 0 => keySize, _ => keyCount * keySize };
-            // Values are always Uniform — bits 3-4 of flags are reserved/zero.
             int valueSectionSize = keyCount * valueSize;
             totalNodeSize = headerSize + keySectionSize + valueSectionSize;
 

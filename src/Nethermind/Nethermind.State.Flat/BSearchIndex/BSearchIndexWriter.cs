@@ -28,8 +28,10 @@ internal struct BSearchIndexMetadata
     /// </summary>
     public int KeySlotSize;
     /// <summary>
-    /// Fixed value size in bytes (1..8 for Uniform offsets). B-tree index nodes always use
-    /// Uniform values; there is no Variable-value shape. Default: 4 bytes.
+    /// Fixed value size in bytes. The on-disk Flags byte encodes the slot width in 2 bits
+    /// (bits 3-4), so only the four widths <c>{2, 3, 4, 6}</c> are valid; the writer rejects
+    /// anything else. B-tree index nodes always use Uniform values; there is no
+    /// Variable-value shape. Default: 4 bytes.
     /// </summary>
     public int ValueSlotSize = 4;
     /// <summary>
@@ -48,22 +50,25 @@ internal struct BSearchIndexMetadata
 /// Writes B-tree index nodes using an AddKey/Finalize builder pattern.
 ///
 /// Index node layout (low → high address):
-///   [Flags: u8][KeyCount: u16 LE][KeySize: u16 LE][ValueSize: u8][BaseOffset: 6-byte LE]
-///   [CommonPrefixLen: u8]
+///   [Flags: u8][KeyCount: u16 LE][KeySize: u16 LE][CommonPrefixLen: u8][BaseOffset: 6-byte LE]
 ///   [Keys section][Values section]
 ///
-/// Header is a fixed 13 bytes. The trailing <c>CommonPrefixLen</c> may be 0 — meaning no
-/// prefix optimization for this node. When non-zero, the actual prefix bytes are supplied
-/// by the descending caller (via the parent's separator — the builder guarantees every
-/// separator length ≥ the matching child's prefix length). Readers parse forward from the
-/// first byte; the parent stores the child's first-byte offset. Putting the metadata header
-/// before the keys/values section lets the hardware prefetcher pull the entry data into
-/// L1/L2 while the search code is still parsing the header — the previous metadata-at-end
-/// layout fought the prefetcher's forward stride.
+/// Header is a fixed 12 bytes. <c>BaseOffset</c> sits at the end of the header so that the
+/// fields needed to parse the keys section (KeyCount, KeySize, KeyType / IsKeyLittleEndian
+/// from Flags, CommonPrefixLen) live in the first 6 bytes; the cold-cache parse of the
+/// key-section layout completes before paying for the BaseOffset read, which is only
+/// consumed by value resolution after a successful floor match. The trailing
+/// <c>CommonPrefixLen</c> may be 0 — meaning no prefix optimization for this node. When
+/// non-zero, the actual prefix bytes are supplied by the descending caller (via the
+/// parent's separator — the builder guarantees every separator length ≥ the matching
+/// child's prefix length). Readers parse forward from the first byte; the parent stores
+/// the child's first-byte offset. Putting the metadata header before the keys/values
+/// section lets the hardware prefetcher pull the entry data into L1/L2 while the search
+/// code is still parsing the header.
 ///
-/// Values are always Uniform: each entry's value slot is a fixed-width 1..8 byte LE integer
-/// sized by <see cref="BSearchIndexMetadata.ValueSlotSize"/>. There is no Variable-value
-/// shape in b-tree index nodes.
+/// Values are always Uniform: each entry's value slot is a fixed-width LE integer whose
+/// width is one of <c>{2, 3, 4, 6}</c> — encoded as the 2-bit field at Flags bits 3-4
+/// (00→2, 01→3, 10→4, 11→6). There is no Variable-value shape in b-tree index nodes.
 ///
 /// Variable-encoded KEYS (KeyType=0) use a Structure-of-Arrays layout that inlines the
 /// first 2 bytes of every key for cache-friendly binary search:
@@ -192,23 +197,45 @@ internal ref struct BSearchIndexWriter<TWriter>
         }
     }
 
-    private int HeaderSize() => 13; // 12 base + 1 always-present CommonPrefixLen u8.
+    private int HeaderSize() => 12;
+
+    /// <summary>
+    /// Map a <see cref="BSearchIndexMetadata.ValueSlotSize"/> to its 2-bit Flags encoding
+    /// (bits 3-4): 2→00, 3→01, 4→10, 6→11. Throws if <paramref name="slot"/> is anything
+    /// else — values must already be quantized by the caller (see
+    /// <c>HsstValueSlot.MinBytesFor</c>).
+    /// </summary>
+    private static byte EncodeValueSizeCode(int slot) => slot switch
+    {
+        2 => 0,
+        3 => 1,
+        4 => 2,
+        6 => 3,
+        _ => throw new InvalidOperationException(
+            $"Unsupported ValueSlotSize {slot}; supported widths are {{2, 3, 4, 6}}")
+    };
 
     private void WriteEmptyNode()
     {
-        // Empty header: flags only (leaf/intermediate), key/value sizes & count = 0.
-        // BaseOffset is preserved from the caller — for an empty intermediate
-        // node (single-child b-tree intermediate, no separators) BaseOffset
-        // names the lone child's absolute offset and the reader's no-floor
-        // fallback descends to it. CommonPrefixLen is always present and is 0 here.
-        // [Flags u8][KeyCount=0 u16][KeySize=0 u16][ValueSize=0 u8][BaseOffset 6 bytes][CommonPrefixLen=0 u8]
+        // Empty header: flags only (leaf/intermediate), KeyCount = KeySize = 0,
+        // CommonPrefixLen = 0. BaseOffset is preserved from the caller — for an
+        // empty intermediate node (single-child b-tree intermediate, no separators)
+        // BaseOffset names the lone child's absolute offset and the reader's
+        // no-floor fallback descends to it. ValueSlotSize is encoded into the flags
+        // byte but is meaningless when KeyCount = 0; default to 2 (the smallest
+        // supported width).
+        // [Flags u8][KeyCount=0 u16][KeySize=0 u16][CommonPrefixLen=0 u8][BaseOffset 6 bytes LE]
         if (_metadata.BaseOffset > 0xFFFF_FFFF_FFFFUL)
             throw new InvalidOperationException(
                 $"BaseOffset {_metadata.BaseOffset} exceeds 6-byte (48-bit) header field");
-        byte flags = (byte)(_metadata.IsIntermediate ? 0x01 : 0x00);
-        Span<byte> span = _writer.GetSpan(13);
+        int emptyValueSlot = _metadata.ValueSlotSize == 0 ? 2 : _metadata.ValueSlotSize;
+        byte flags = (byte)(
+            (_metadata.IsIntermediate ? 0x01 : 0x00) |
+            (EncodeValueSizeCode(emptyValueSlot) << 3));
+        Span<byte> span = _writer.GetSpan(12);
         span[0] = flags;
-        span[1..6].Clear();
+        span[1..5].Clear();   // KeyCount(2) + KeySize(2) = 0
+        span[5] = 0;          // CommonPrefixLen
         ulong v = _metadata.BaseOffset;
         span[6] = (byte)v;
         span[7] = (byte)(v >> 8);
@@ -216,8 +243,7 @@ internal ref struct BSearchIndexWriter<TWriter>
         span[9] = (byte)(v >> 24);
         span[10] = (byte)(v >> 32);
         span[11] = (byte)(v >> 40);
-        span[12] = 0; // CommonPrefixLen
-        _writer.Advance(13);
+        _writer.Advance(12);
     }
 
     /// <summary>14-bit tailOffset cap for the prefix-inlined Variable key section.</summary>
@@ -243,42 +269,40 @@ internal ref struct BSearchIndexWriter<TWriter>
 
     private void WriteHeader(int keySize, int valueSize, scoped ReadOnlySpan<byte> commonKeyPrefix)
     {
-        // Header fields are sized for the 64 KiB per-node cap; ValueSize is u8 since
-        // per-entry value slots are 1..8 bytes for Uniform offsets (the only value
-        // shape b-tree index nodes use). Reject anything beyond the encodable range
-        // up-front rather than silently truncating.
+        // Header fields are sized for the 64 KiB per-node cap. ValueSize is encoded as a
+        // 2-bit code in Flags bits 3-4 (only {2,3,4,6} are valid); reject anything beyond
+        // the encodable range up-front rather than silently truncating.
         if ((uint)_count > ushort.MaxValue)
             throw new InvalidOperationException($"Index node entry count {_count} exceeds u16 header field");
         if ((uint)keySize > ushort.MaxValue)
             throw new InvalidOperationException($"Index node KeySize {keySize} exceeds u16 header field (node > 64 KiB)");
-        if ((uint)valueSize > byte.MaxValue)
-            throw new InvalidOperationException($"Index node ValueSize {valueSize} exceeds u8 header field");
 
         int prefixLen = commonKeyPrefix.Length;
         if ((uint)prefixLen > byte.MaxValue)
             throw new InvalidOperationException($"Common key prefix length {prefixLen} exceeds u8 header field");
 
         bool keyLe = ShouldEncodeKeyLittleEndian();
-        // Flags bits 3-4 (formerly ValueType) and bits 6-7 (formerly prefix-block markers)
-        // are reserved and always emitted as 0.
+        // Bit 0 = IsIntermediate, bits 1-2 = KeyType, bits 3-4 = ValueSize code,
+        // bit 5 = IsKeyLittleEndian. Bits 6-7 stay reserved (must be 0).
         byte flags = (byte)(
             (_metadata.IsIntermediate ? 0x01 : 0x00) |
             (_metadata.KeyType << 1) |
+            (EncodeValueSizeCode(valueSize) << 3) |
             (keyLe ? 0x20 : 0x00));
 
         if (_metadata.BaseOffset > 0xFFFF_FFFF_FFFFUL)
             throw new InvalidOperationException(
                 $"BaseOffset {_metadata.BaseOffset} exceeds 6-byte (48-bit) header field");
 
-        // Fixed 13-byte header: [Flags u8][KeyCount u16][KeySize u16][ValueSize u8][BaseOffset 6 bytes][CommonPrefixLen u8].
-        // CommonPrefixLen may be 0 — meaning no prefix optimization for this node. When non-zero
-        // the actual prefix bytes are supplied at read time by the descending caller via the
-        // parent's separator (the builder guarantees parent.sepLen ≥ child.prefixLen).
-        Span<byte> head = _writer.GetSpan(13);
+        // Fixed 12-byte header:
+        //   [Flags u8][KeyCount u16][KeySize u16][CommonPrefixLen u8][BaseOffset 6 bytes LE]
+        // BaseOffset sits at the end so the key-parse-critical bytes are grouped first;
+        // BaseOffset is only consumed after a successful floor match.
+        Span<byte> head = _writer.GetSpan(12);
         head[0] = flags;
         BinaryPrimitives.WriteUInt16LittleEndian(head[1..], (ushort)_count);
         BinaryPrimitives.WriteUInt16LittleEndian(head[3..], (ushort)keySize);
-        head[5] = (byte)valueSize;
+        head[5] = (byte)prefixLen;
         ulong v = _metadata.BaseOffset;
         head[6] = (byte)v;
         head[7] = (byte)(v >> 8);
@@ -286,8 +310,7 @@ internal ref struct BSearchIndexWriter<TWriter>
         head[9] = (byte)(v >> 24);
         head[10] = (byte)(v >> 32);
         head[11] = (byte)(v >> 40);
-        head[12] = (byte)prefixLen;
-        _writer.Advance(13);
+        _writer.Advance(12);
     }
 
     /// <summary>

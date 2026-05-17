@@ -159,12 +159,17 @@ public class LeafBoundaryEnumeratorTests
     /// A 100-entry input with uniform LCP and zero value range fits in a single leaf
     /// when the writer is page-aligned (pageOff=0). With the writer 4000 bytes into a
     /// 4 KiB page, the page-fit gate fires repeatedly until each emitted leaf's
-    /// estimated size (16 + count·2) fits in the remaining 96 bytes — so the splitter
-    /// emits four 25-entry leaves and the merger refuses to coalesce them (a merged
-    /// 50-entry leaf would straddle the page).
+    /// estimated size (16 + count · 3) — where the per-entry term is gap+1 (key) +
+    /// quantized valueSlot (2 bytes minimum, see <c>HsstValueSlot.MinBytesFor</c>) —
+    /// plus a prefixOverheadUB of 9 fits in the remaining 96 bytes. Net budget for
+    /// count·3 is 96 − 16 − 9 = 71 bytes → count ≤ 23. The splitter binary-halves
+    /// 100 → 50 → 25, then 25 is still too big and splits into a 12+13 pair (rightmost
+    /// pivot in the first half), so four 25-entry segments end up as eight (12, 13)
+    /// pairs. The merger refuses to coalesce them (a merged 25-entry leaf would
+    /// straddle the page).
     /// </summary>
     [TestCase(0L, new[] { 100 }, TestName = "PageGate_Inactive_AtPageStart_YieldsSingleLeaf")]
-    [TestCase(4000L, new[] { 25, 25, 25, 25 }, TestName = "PageGate_Active_NearPageTail_ForcesSplit")]
+    [TestCase(4000L, new[] { 12, 13, 12, 13, 12, 13, 12, 13 }, TestName = "PageGate_Active_NearPageTail_ForcesSplit")]
     public void PageFitGate_SplitsWhenLeafWouldCrossPageBoundary(long pageOff, int[] expected)
     {
         byte[] cp = new byte[100];
@@ -209,8 +214,9 @@ public class LeafBoundaryEnumeratorTests
     /// 50-entry raw splits. At pageOff=0 the first half emits and the second tries
     /// to merge; cardinality (50+50 &gt; 50) blocks the merge, the buf is flushed,
     /// and the second half reseeds the buf. Call 2 is invoked with pageOff=4000:
-    /// the carry-over (50 entries, ~125 B estimated) no longer fits, so it gets
-    /// requeued and re-split into two 25-entry leaves under the new pageOff.
+    /// the carry-over (50 entries, ~166 B estimated with the quantized 2-byte
+    /// value slot) no longer fits, gets requeued, and sub-splits to 25 which still
+    /// doesn't fit (page slack only allows ≤23 entries) so 25 → (12, 13).
     /// </summary>
     [Test]
     public void PageFitGate_RequeuesCarryOverAtAdvancedPageOff()
@@ -232,11 +238,11 @@ public class LeafBoundaryEnumeratorTests
             Assert.That(iter.MoveNext(0), Is.True);
             counts.Add(iter.Current);
 
-            // Calls 2+: pageOff=4000. Carry-over re-check fires (4000 + ~125 > 4096),
-            // splitter sub-splits the requeued range into 25-entry halves.
+            // Calls 2+: pageOff=4000. Carry-over re-check fires; the splitter
+            // requeues the 50-entry range and sub-splits through 25 → (12, 13).
             while (iter.MoveNext(4000)) counts.Add(iter.Current);
 
-            Assert.That(counts, Is.EqualTo(new[] { 50, 25, 25 }));
+            Assert.That(counts, Is.EqualTo(new[] { 50, 12, 13, 12, 13 }));
         }
         finally
         {

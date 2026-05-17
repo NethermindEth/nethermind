@@ -13,12 +13,20 @@ namespace Nethermind.State.Flat.BSearchIndex;
 /// fixed-width metadata header at the front, followed by the keys and values sections.
 ///
 /// Layout (low → high address):
-///   [Flags: u8][KeyCount: u16 LE][KeySize: u16 LE][ValueSize: u8][BaseOffset: 6-byte LE]
-///   [CommonPrefixLen: u8]
+///   [Flags: u8][KeyCount: u16 LE][KeySize: u16 LE][CommonPrefixLen: u8][BaseOffset: 6-byte LE]
 ///   [Keys section][Values section]
 ///
-/// Flags: bit0=IsIntermediate, bits1-2=KeyType, bits3-4=reserved (must be 0),
-/// bit5=IsKeyLittleEndian. Bits 6-7 are reserved.
+/// Header is a fixed 12 bytes. <c>BaseOffset</c> sits at the end of the header so the
+/// fields needed to parse keys (KeyCount, KeySize, KeyType / IsKeyLittleEndian from Flags,
+/// CommonPrefixLen) group into the first 6 bytes; BaseOffset is only consumed by
+/// <see cref="GetUInt64Value"/> after a successful floor match.
+///
+/// Flags: bit0=IsIntermediate, bits1-2=KeyType, bits3-4=ValueSizeCode, bit5=IsKeyLittleEndian.
+/// Bits 6-7 are reserved.
+///
+/// ValueSizeCode (bits 3-4) packs the per-entry value width into 2 bits: 00→2, 01→3,
+/// 10→4, 11→6. There is no Variable-value shape for b-tree index nodes; widths outside
+/// the supported set are not encodable.
 ///
 /// IsKeyLittleEndian (bit 5) marks that fixed-width key slots are stored byte-reversed so an
 /// x86 LE integer load of a slot equals its semantic numeric/lex value. Set for Uniform
@@ -31,10 +39,6 @@ namespace Nethermind.State.Flat.BSearchIndex;
 /// node-size cap, every count/size field fits in u16. Header at the front lets the hardware
 /// prefetcher pull the keys/values forward into cache while the search code is still parsing
 /// the header.
-///
-/// Values are always Uniform: each entry is a fixed-width <c>ValueSize</c>-byte LE integer
-/// (1..8 bytes, with <see cref="IndexMetadata.BaseOffset"/> added on read). There is no
-/// Variable-value shape for b-tree index nodes.
 ///
 /// KeyType:
 ///   0 = Variable: SoA layout — [prefixArr: N×u16 LE][offsetArr: N×u16 LE][remainingkeys].
@@ -101,15 +105,15 @@ public readonly ref struct BSearchIndexReader
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static BSearchIndexReader ReadFromStart(ReadOnlySpan<byte> data, int nodeStart, ReadOnlySpan<byte> parentSeparator = default)
     {
-        // 13-byte fixed header minimum (12 base + CommonPrefixLen u8).
-        if (data.Length - nodeStart < 13)
+        // 12-byte fixed header minimum.
+        if (data.Length - nodeStart < 12)
             return default;
 
         int pos = nodeStart;
         byte flags = data[pos];
         int keyCount = BinaryPrimitives.ReadUInt16LittleEndian(data[(pos + 1)..]);
         int keySize = BinaryPrimitives.ReadUInt16LittleEndian(data[(pos + 3)..]);
-        int valueSize = data[pos + 5];
+        int prefixLen = data[pos + 5];
         ReadOnlySpan<byte> bo = data.Slice(pos + 6, 6);
         ulong baseOffset = (ulong)bo[0]
                          | ((ulong)bo[1] << 8)
@@ -117,8 +121,7 @@ public readonly ref struct BSearchIndexReader
                          | ((ulong)bo[3] << 24)
                          | ((ulong)bo[4] << 32)
                          | ((ulong)bo[5] << 40);
-        int prefixLen = data[pos + 12];
-        pos += 13;
+        pos += 12;
 
         // When prefixLen > 0 the prefix bytes ride in from the caller's parentSeparator.
         // An insufficient parentSeparator (typical of value-only enumerators) leaves
@@ -133,7 +136,6 @@ public readonly ref struct BSearchIndexReader
             Flags = flags,
             KeyCount = keyCount,
             KeySize = keySize,
-            ValueSize = valueSize,
             BaseOffset = baseOffset
         };
 
@@ -483,6 +485,19 @@ public readonly ref struct BSearchIndexReader
     }
 
     /// <summary>
+    /// Decode the value-slot width from <paramref name="flags"/>'s ValueSizeCode field
+    /// (bits 3-4): 00→2, 01→3, 10→4, 11→6.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static int DecodeValueSize(byte flags) => ((flags >> 3) & 0b11) switch
+    {
+        0 => 2,
+        1 => 3,
+        2 => 4,
+        _ => 6,
+    };
+
+    /// <summary>
     /// Metadata for a B-tree index block, parsed from the Metadata section.
     /// </summary>
     public readonly struct IndexMetadata
@@ -491,13 +506,16 @@ public readonly ref struct BSearchIndexReader
         public int KeyCount { get; init; }
         /// <summary>KeyType=0: section size. KeyType=1: fixed key length.</summary>
         public int KeySize { get; init; }
-        /// <summary>Fixed value length (1..8 for Uniform offsets). Values are always Uniform.</summary>
-        public int ValueSize { get; init; }
         /// <summary>Base offset added to every Uniform value read. 0 when absent. Encoded on disk as 6-byte LE.</summary>
         public ulong BaseOffset { get; init; }
 
         public bool IsIntermediate => (Flags & 0x01) != 0;
         public int KeyType => (Flags >> 1) & 0x03;
+        /// <summary>
+        /// Fixed value width in bytes (one of {2, 3, 4, 6}). Decoded from Flags bits 3-4.
+        /// Values are always Uniform.
+        /// </summary>
+        public int ValueSize => DecodeValueSize(Flags);
         /// <summary>
         /// True when fixed-width key slots are stored byte-reversed (Flags bit 5). Honored by
         /// readers for Uniform with <see cref="KeySize"/> ∈ {2,4,8}, and unconditionally for

@@ -299,7 +299,10 @@ public ref struct HsstIndexBuilder<TWriter, TReader, TPin>
             KeyType = 0,
             BaseOffset = 0,
             KeySlotSize = 1,
-            ValueSlotSize = 1,
+            // Empty leaf has no values; ValueSlotSize = 2 is the smallest supported width
+            // and the size that gets encoded into the Flags byte. The values section is
+            // 0 bytes either way (KeyCount * ValueSize = 0 * 2 = 0).
+            ValueSlotSize = 2,
         }, default, default);
         indexWriter.FinalizeNode();
         return checked((int)(_writer.Written - nodeStart));
@@ -739,14 +742,10 @@ public ref struct HsstIndexBuilder<TWriter, TReader, TPin>
     }
 
     /// <summary>
-    /// Smallest 1..8 byte width that can encode <paramref name="value"/>. Returns 1 for 0.
+    /// Forwarding shim — see <see cref="HsstValueSlot.MinBytesFor"/>.
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static int MinBytesFor(long value)
-    {
-        if (value == 0) return 1;
-        return (BitOperations.Log2((ulong)value) >> 3) + 1;
-    }
+    private static int MinBytesFor(long value) => HsstValueSlot.MinBytesFor(value);
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static void WriteUInt64LE(Span<byte> dest, long value, int width)
@@ -1016,12 +1015,14 @@ internal ref struct LeafBoundaryEnumerator
 
                 // Node-size estimate. Post-strip Uniform key slot ≈ gap + 1 (the widest
                 // entry's natural sep len minus the leaf-wide common prefix); value slot is
-                // MinBytesFor(valueRange) inlined. With the gap and value-range gates
-                // bounding both factors, count · (keySlot + valueSlot) + header is a tight
-                // upper bound on the actual leaf bytes — bigger than 2 KiB and we split.
+                // the {2,3,4,6} quantized width from HsstValueSlot.MinBytesFor — matches
+                // what the writer will actually emit, not the natural 1..6 width. With the
+                // gap and value-range gates bounding both factors, count · (keySlot +
+                // valueSlot) + header is a tight upper bound on the actual leaf bytes —
+                // bigger than 2 KiB and we split.
                 int gap = maxLcp - minLcp;
                 long vr = maxVal - minVal;
-                int valueSlot = vr == 0 ? 1 : (BitOperations.Log2((ulong)vr) >> 3) + 1;
+                int valueSlot = HsstValueSlot.MinBytesFor(vr);
                 int estimatedSize = LeafNodeHeaderOverheadBytes + count * (gap + 1 + valueSlot);
 
                 // Page-fit gate: if the leaf would straddle a 4 KiB page from the
@@ -1154,13 +1155,14 @@ internal ref struct LeafBoundaryEnumerator
             return false;
         }
 
-        // Merged value-slot. Mirrors WriteLeafIndexNode's baseOffset+valueSlotSize formula.
+        // Merged value-slot. Mirrors WriteLeafIndexNode's baseOffset+valueSlotSize formula,
+        // including the {2,3,4,6} quantization the writer applies.
         long mergedMinVal = Math.Min(_bufMinVal, nextMinVal);
         long mergedMaxVal = Math.Max(_bufMaxVal, nextMaxVal);
         long mergedBaseOffset = 0;
         if (mergedCount > 1 && mergedMinVal > 0 && mergedMinVal < mergedMaxVal) mergedBaseOffset = mergedMinVal;
         long mergedRange = mergedMaxVal - mergedBaseOffset;
-        int mergedValueSlotSize = mergedRange == 0 ? 1 : (BitOperations.Log2((ulong)mergedRange) >> 3) + 1;
+        int mergedValueSlotSize = HsstValueSlot.MinBytesFor(mergedRange);
 
         if (mergedValueSlotSize != _bufValueSlotSize) return false;
 
@@ -1263,7 +1265,7 @@ internal ref struct LeafBoundaryEnumerator
         long baseOffset = 0;
         if (count > 1 && minVal > 0 && minVal < maxVal) baseOffset = minVal;
         long range = maxVal - baseOffset;
-        valueSlotSize = range == 0 ? 1 : (BitOperations.Log2((ulong)range) >> 3) + 1;
+        valueSlotSize = HsstValueSlot.MinBytesFor(range);
     }
 
     /// <summary>
@@ -1294,5 +1296,34 @@ internal ref struct LeafBoundaryEnumerator
     {
         // SegTree and DfsStack are owned by the caller's HsstBTreeBuilderBuffers — they
         // stay rented until that struct itself is disposed.
+    }
+}
+
+/// <summary>
+/// Shared helpers for BSearchIndex value-slot encoding.
+///
+/// The BSearchIndex header packs the value-slot width into 2 bits of the Flags byte
+/// (bits 3-4), so the format only encodes the four widths <c>{2, 3, 4, 6}</c>. The
+/// <see cref="MinBytesFor"/> helper rounds an arbitrary natural width up to the next
+/// supported value. Lives in its own non-generic class so the leaf-boundary
+/// enumerator (which sits outside <see cref="HsstIndexBuilder{TWriter,TReader,TPin}"/>'s
+/// generic instantiation) can call it without specifying type arguments.
+/// </summary>
+internal static class HsstValueSlot
+{
+    /// <summary>
+    /// Smallest supported value-slot width that can encode <paramref name="value"/>:
+    /// returns 2 for 0/1/2-byte naturals, 3 for 3, 4 for 4, and 6 for 5/6. Naturals
+    /// larger than 6 bytes never occur in practice because <c>BaseOffset</c> already
+    /// caps the encodable delta range at 2⁴⁸ − 1.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static int MinBytesFor(long value)
+    {
+        int natural = value == 0 ? 1 : (BitOperations.Log2((ulong)value) >> 3) + 1;
+        return natural <= 2 ? 2
+            : natural == 3 ? 3
+            : natural == 4 ? 4
+            : 6; // 5 and 6 both pad up to 6
     }
 }
