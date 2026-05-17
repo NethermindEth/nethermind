@@ -267,9 +267,10 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
         {
             using DeferredRlpItemList.Builder builder = new();
             DeferredRlpItemList.Builder.Writer rootWriter = builder.BeginRootContainer();
-            for (int i = 0; i < request.Paths.Count; i++)
+            ReadOnlySpan<AccountWithStorageStartingHash> paths = request.Paths.AsSpan();
+            for (int i = 0; i < paths.Length; i++)
             {
-                AccountWithStorageStartingHash path = request.Paths[i];
+                AccountWithStorageStartingHash path = paths[i];
                 using DeferredRlpItemList.Builder.Writer groupWriter = rootWriter.BeginContainer();
                 groupWriter.WriteValue(path.PathAndAccount.Path.Bytes);
                 groupWriter.WriteValue(_emptyBytes);
