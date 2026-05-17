@@ -50,10 +50,11 @@ public class MultiBlockDownloader : ISyncDownloader<BlocksRequest>
 
     private static ArrayPoolList<Hash256> BuildHashList(IOwnedReadOnlyList<BlockHeader> headers)
     {
-        ArrayPoolList<Hash256> hashes = new(headers.Count);
-        for (int i = 0; i < headers.Count; i++)
+        ReadOnlySpan<BlockHeader> headersSpan = headers.AsSpan();
+        ArrayPoolList<Hash256> hashes = new(headersSpan.Length);
+        for (int i = 0; i < headersSpan.Length; i++)
         {
-            hashes.Add(headers[i].Hash!);
+            hashes.Add(headersSpan[i].Hash!);
         }
 
         return hashes;
