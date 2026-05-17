@@ -139,8 +139,6 @@ namespace Nethermind.Network.Rlpx
                     .Option(ChannelOption.Allocator, NethermindBuffers.RlpxAllocator)
                     .Option(ChannelOption.SoBacklog, 100)
                     .ChildOption(ChannelOption.Allocator, NethermindBuffers.RlpxAllocator)
-                    .ChildOption(ChannelOption.TcpNodelay, true)
-                    .ChildOption(ChannelOption.SoKeepalive, true)
                     .ChildOption(ChannelOption.WriteBufferHighWaterMark, (int)3.MB)
                     .ChildOption(ChannelOption.WriteBufferLowWaterMark, (int)1.MB)
                     .Handler(new LoggingHandler("BOSS", LogLevel.TRACE))
@@ -204,8 +202,6 @@ namespace Nethermind.Network.Rlpx
                 .Group(_workerGroup)
                 .ChannelFactory(_createClientChannel)
                 .Option(ChannelOption.Allocator, NethermindBuffers.RlpxAllocator)
-                .Option(ChannelOption.TcpNodelay, true)
-                .Option(ChannelOption.SoKeepalive, true)
                 .Option(ChannelOption.WriteBufferHighWaterMark, (int)3.MB)
                 .Option(ChannelOption.WriteBufferLowWaterMark, (int)1.MB)
                 .Option(ChannelOption.MessageSizeEstimator, DefaultMessageSizeEstimator.Default)
@@ -299,6 +295,8 @@ namespace Nethermind.Network.Rlpx
                 return;
             }
 
+            SetTcpSocketOptions(channel);
+
             SessionActivitySubscription sessionActivitySubscription = TrackSessionActivity(session);
             _sessionMonitor.AddSession(session);
             sessionActivitySubscription.AttachDisconnected();
@@ -318,6 +316,27 @@ namespace Nethermind.Network.Rlpx
                 CancellationToken.None,
                 TaskContinuationOptions.ExecuteSynchronously,
                 TaskScheduler.Default);
+        }
+
+        private void SetTcpSocketOptions(IChannel channel)
+        {
+            SetChannelOption(channel, ChannelOption.TcpNodelay, true);
+            SetChannelOption(channel, ChannelOption.SoKeepalive, true);
+        }
+
+        private void SetChannelOption<T>(IChannel channel, ChannelOption<T> option, T value)
+        {
+            try
+            {
+                if (!channel.Configuration.SetOption(option, value) && _logger.IsWarn)
+                {
+                    _logger.Warn($"Failed to set channel option {option}");
+                }
+            }
+            catch (Exception ex)
+            {
+                if (_logger.IsWarn) _logger.Warn($"Failed to set channel option {option}: {ex.Message}");
+            }
         }
 
         private void DisconnectConnectedChannel(Task<IChannel> connectTask, object? _)
