@@ -600,7 +600,7 @@ public class TxValidatorTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.AsBool, Is.False);
-            Assert.That(result.Error, Does.StartWith("TxGasLimitCapExceeded:"));
+            Assert.That(result.Error, Does.StartWith("intrinsic gas too low"));
         }
     }
 
