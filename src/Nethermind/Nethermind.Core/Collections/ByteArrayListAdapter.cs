@@ -9,7 +9,7 @@ public sealed class ByteArrayListAdapter(IOwnedReadOnlyList<byte[]> inner) : IBy
 {
     public int Count => inner.Count;
 
-    public ReadOnlySpan<byte> this[int index] => inner.AsSpan()[index];
+    public ReadOnlySpan<byte> this[int index] => inner[index];
 
     public void Dispose() => inner.Dispose();
 }
