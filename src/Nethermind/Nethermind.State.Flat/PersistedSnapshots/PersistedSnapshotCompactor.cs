@@ -132,10 +132,10 @@ public class PersistedSnapshotCompactor(
             long bloomCapacity = 0;
             for (int i = 0; i < n; i++)
             {
-                // Demote will issue MADV_DONTNEED on each source's mmap range explicitly
-                // after the merge, so suppress the session-dispose madvise to avoid a
-                // redundant syscall over the same pages.
-                sessionArr[i] = snapshots[i].BeginWholeReadSession(adviseDontNeedOnDispose: false);
+                // Session dispose madvises the source's mmap range cold — the compacted
+                // snapshot that supersedes these sources warms its own cache lazily on the
+                // first read of each address, so there's no value in keeping these pages.
+                sessionArr[i] = snapshots[i].BeginWholeReadSession();
                 views[i] = sessionArr[i].GetRawView();
 
                 estimatedSize += snapshots[i].Size;
@@ -175,13 +175,6 @@ public class PersistedSnapshotCompactor(
             // the merged ref_ids back from its own metadata and leases each blob arena
             // file via a ref-struct iterator — no ushort[] materialisation here.
             _ = persistedSnapshotRepository.AddCompactedSnapshot(from, to, location, reservation, mergedBloom);
-
-            // Demote each source: drops its address-bound cache and issues MADV_DONTNEED on
-            // its mmap range with tracker-clear. The compacted snapshot warms its own cache
-            // lazily on the first read of each address — no source-to-target pre-warm pass.
-            // With sessions opened above as adviseDontNeedOnDispose: false, Demote is the
-            // single point where the source goes cold.
-            for (int i = 0; i < n; i++) snapshots[i].Demote();
 
             Metrics.PersistedSnapshotCompactions++;
             Metrics.PersistedSnapshotCount = persistedSnapshotRepository.SnapshotCount;

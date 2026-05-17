@@ -5,6 +5,7 @@ using System.Buffers.Binary;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using System.Runtime.Intrinsics;
 using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
@@ -45,7 +46,7 @@ namespace Nethermind.State.Flat.PersistedSnapshots;
 ///   Column 0x05: TreePath (3 bytes) → NodeRef (path length 0-5)
 ///   Column 0x06: TreePath.Path (32 bytes) + PathLength (1 byte) → NodeRef (path length 16+)
 /// </summary>
-public sealed unsafe class PersistedSnapshot : RefCountingDisposable
+public sealed class PersistedSnapshot : RefCountingDisposable
 {
     // Tag prefixes for outer HSST columns
     internal static readonly byte[] MetadataTag = [0x00];
@@ -84,7 +85,15 @@ public sealed unsafe class PersistedSnapshot : RefCountingDisposable
 
     // Single 8-way set-associative clock (second-chance) address-bound cache mirroring
     // <see cref="PageResidencyTracker"/>'s hot/miss-path split. One set ⇒ 8 ways × 8 bytes
-    // = 64 bytes (one cache line). Each slot packs:
+    // = 64 bytes stored inline as a <see cref="Vector512{T}"/> field directly on the
+    // snapshot — no separate heap allocation. The runtime gives <see cref="Vector512{T}"/>
+    // its natural 64-byte alignment for the field offset within the object, matching the
+    // single-cache-line layout the previous <see cref="NativeMemory.AlignedAlloc(nuint,nuint)"/>
+    // -based variant relied on. The <see cref="Vector512{T}"/> is never used as a SIMD
+    // vector here — it is purely an alignment-bearing 64-byte storage cell, reinterpreted
+    // as <c>Span&lt;long&gt;</c> via <see cref="MemoryMarshal.CreateSpan{T}(ref T,int)"/>.
+    //
+    // Each slot packs:
     //   bit 63: REF — armed on every hit and insert, cleared by the clock hand on a miss-pass.
     //   bit 62: VALID — distinguishes an empty (0L) slot from a stored (tag=0, offset=0) entry.
     //   bits 46..61: 16-bit tag (bytes 4..6 of the address-hash).
@@ -100,12 +109,6 @@ public sealed unsafe class PersistedSnapshot : RefCountingDisposable
     // 1-bit spin-lock in <see cref="_addressBoundCacheMeta"/> (also holding the 3-bit clock
     // hand), re-scan for an existing matching entry, then for an empty way, then advance
     // the clock hand clearing REF bits until an unreferenced way is evicted.
-    //
-    // The slot line is 64-byte aligned via <see cref="NativeMemory.AlignedAlloc(nuint,nuint)"/>
-    // so it sits on its own cache line. Small-tier snapshots get no cache at all (pointer
-    // stays null). <see cref="Demote"/> atomically swaps the pointer to null and frees;
-    // readers Volatile.Read once into a local so an in-flight call can complete safely
-    // even if Demote races (the same hand-off pattern the previous variant relied on).
     private const long AddressBoundCacheRefBit = unchecked((long)0x8000_0000_0000_0000UL);
     private const long AddressBoundCacheValidBit = 0x4000_0000_0000_0000L;
     private const long AddressBoundCacheKeyMask = ~AddressBoundCacheRefBit;
@@ -113,13 +116,11 @@ public sealed unsafe class PersistedSnapshot : RefCountingDisposable
     private const int AddressBoundCacheTagShift = 46;
     private const int AddressBoundCacheWays = 8;
     private const int AddressBoundCacheWayMask = AddressBoundCacheWays - 1;
-    private const int AddressBoundCacheCacheLineBytes = 64;
     private const int AddressBoundCacheMetaLockBit = 1 << 7;
     private const int AddressBoundCacheMetaHandMask = 0x7;
     private const int AddressBoundCacheProbeBytes = 6 + AddressHashPrefixLength;
-    // Stored as nint (not long*) so Interlocked.Exchange's generic ref overload is reachable;
-    // cast back to long* at each use site. Null when no cache is allocated or after Demote.
-    private nint _addressBoundCache;
+
+    private Vector512<long> _addressBoundCache;
     private int _addressBoundCacheMeta;
 
     private readonly ArenaReservation _reservation;
@@ -140,8 +141,7 @@ public sealed unsafe class PersistedSnapshot : RefCountingDisposable
     /// <summary>
     /// Begin a scoped whole-buffer read over this snapshot's reservation. By default the
     /// session madvises the mmap range cold on dispose; callers that perform their own
-    /// explicit eviction (e.g. the compactor, which lets <see cref="Demote"/> own this
-    /// for sources) can pass <paramref name="adviseDontNeedOnDispose"/> = <c>false</c>
+    /// explicit eviction can pass <paramref name="adviseDontNeedOnDispose"/> = <c>false</c>
     /// to avoid a redundant <c>madvise</c> syscall.
     /// </summary>
     public WholeReadSession BeginWholeReadSession(bool adviseDontNeedOnDispose = true) =>
@@ -161,10 +161,10 @@ public sealed unsafe class PersistedSnapshot : RefCountingDisposable
     /// lease and stashes the manager ref for later id → file resolution.
     /// </summary>
     /// <remarks>
-    /// <paramref name="tier"/> controls whether the address-bound cache is allocated.
-    /// Only <see cref="PersistedSnapshotTier.Large"/> snapshots get a cache; small-tier
-    /// snapshots (and small-tier compacted outputs) skip the allocation entirely. The
-    /// cache is a fixed single 8-way set (64 bytes, one cache line) regardless of block span.
+    /// The address-bound cache is enabled on every snapshot regardless of <paramref name="tier"/>:
+    /// the slot storage is inline as a <see cref="Vector512{T}"/> field (64-byte aligned)
+    /// so there is no per-snapshot allocation to skip. <paramref name="tier"/> is retained
+    /// for caller compatibility but no longer affects the cache.
     /// </remarks>
     public PersistedSnapshot(StateId from, StateId to, ArenaReservation reservation,
         IBlobArenaManager blobManager, PersistedSnapshotTier tier)
@@ -202,14 +202,6 @@ public sealed unsafe class PersistedSnapshot : RefCountingDisposable
             }
             _reservation.Dispose();
             throw;
-        }
-
-        if (tier == PersistedSnapshotTier.Large)
-        {
-            nuint slotBytes = AddressBoundCacheWays * sizeof(long);
-            long* slots = (long*)NativeMemory.AlignedAlloc(slotBytes, AddressBoundCacheCacheLineBytes);
-            NativeMemory.Clear(slots, slotBytes);
-            _addressBoundCache = (nint)slots;
         }
     }
 
@@ -285,60 +277,54 @@ public sealed unsafe class PersistedSnapshot : RefCountingDisposable
 
     private bool TryGetAddressBound(in ArenaByteReader reader, in ValueHash256 addressHash, out Bound addressBound)
     {
-        // Snapshot the cache pointer once: Demote may swap it to null concurrently, but the
-        // 64-byte allocation we read here stays alive long enough for in-flight callers that
-        // already captured the pointer to finish — same hand-off pattern Demote/CleanUp rely on.
-        long* slots = (long*)Volatile.Read(ref _addressBoundCache);
+        Span<long> slots = MemoryMarshal.CreateSpan(
+            ref Unsafe.As<Vector512<long>, long>(ref _addressBoundCache), AddressBoundCacheWays);
         ushort hashTag = MemoryMarshal.Read<ushort>(addressHash.Bytes[4..6]);
-        if (slots is not null)
+        // Lock-free 8-way scan: a tag match is a candidate, still verified against the
+        // 20-byte stored address-hash on disk to filter out the inevitable collisions.
+        for (int w = 0; w < AddressBoundCacheWays; w++)
         {
-            // Lock-free 8-way scan: a tag match is a candidate, still verified against the
-            // 20-byte stored address-hash on disk to filter out the inevitable collisions.
-            for (int w = 0; w < AddressBoundCacheWays; w++)
-            {
-                long s = Volatile.Read(ref slots[w]);
-                if ((s & AddressBoundCacheValidBit) == 0) continue;
-                if ((ushort)((s >>> AddressBoundCacheTagShift) & 0xFFFF) != hashTag) continue;
+            long s = Volatile.Read(ref slots[w]);
+            if ((s & AddressBoundCacheValidBit) == 0) continue;
+            if ((ushort)((s >>> AddressBoundCacheTagShift) & 0xFFFF) != hashTag) continue;
 
-                long lebOffset = s & AddressBoundCacheOffsetMask;
-                Span<byte> probe = stackalloc byte[AddressBoundCacheProbeBytes];
-                if (!reader.TryRead(lebOffset, probe)) continue;
-                int pos = 0;
-                long valueLength = Leb128.Read(probe, ref pos);
-                if (!probe.Slice(pos, AddressHashPrefixLength)
-                        .SequenceEqual(addressHash.Bytes[..AddressHashPrefixLength]))
-                    continue;
+            long lebOffset = s & AddressBoundCacheOffsetMask;
+            Span<byte> probe = stackalloc byte[AddressBoundCacheProbeBytes];
+            if (!reader.TryRead(lebOffset, probe)) continue;
+            int pos = 0;
+            long valueLength = Leb128.Read(probe, ref pos);
+            if (!probe.Slice(pos, AddressHashPrefixLength)
+                    .SequenceEqual(addressHash.Bytes[..AddressHashPrefixLength]))
+                continue;
 
-                if ((s & AddressBoundCacheRefBit) == 0)
-                    Interlocked.Or(ref slots[w], AddressBoundCacheRefBit);
-                addressBound = new Bound(lebOffset - valueLength, valueLength);
-                return true;
-            }
+            if ((s & AddressBoundCacheRefBit) == 0)
+                Interlocked.Or(ref slots[w], AddressBoundCacheRefBit);
+            addressBound = new Bound(lebOffset - valueLength, valueLength);
+            return true;
         }
 
         if (!PersistedSnapshotReader.TryGetAddressHsstBound<ArenaByteReader, NoOpPin>(in reader, in addressHash, out addressBound))
             return false;
 
-        if (slots is not null)
-        {
-            // keyFirst=false bound is (lebStart - valueLength, valueLength), so
-            // lebStart = bound.Offset + bound.Length.
-            long newLebStart = addressBound.Offset + addressBound.Length;
-            long newEntry = AddressBoundCacheValidBit
-                          | AddressBoundCacheRefBit
-                          | ((long)hashTag << AddressBoundCacheTagShift)
-                          | (newLebStart & AddressBoundCacheOffsetMask);
-            InsertAddressBound(slots, newEntry);
-        }
+        // keyFirst=false bound is (lebStart - valueLength, valueLength), so
+        // lebStart = bound.Offset + bound.Length.
+        long newLebStart = addressBound.Offset + addressBound.Length;
+        long newEntry = AddressBoundCacheValidBit
+                      | AddressBoundCacheRefBit
+                      | ((long)hashTag << AddressBoundCacheTagShift)
+                      | (newLebStart & AddressBoundCacheOffsetMask);
+        InsertAddressBound(newEntry);
         return true;
     }
 
-    private void InsertAddressBound(long* slots, long newEntry)
+    private void InsertAddressBound(long newEntry)
     {
         ref int meta = ref _addressBoundCacheMeta;
         AcquireAddressBoundCacheLock(ref meta);
         try
         {
+            Span<long> slots = MemoryMarshal.CreateSpan(
+                ref Unsafe.As<Vector512<long>, long>(ref _addressBoundCache), AddressBoundCacheWays);
             // Re-scan under the lock — another miss-path racer may already have installed
             // this exact (tag, offset) pair, in which case just re-arm its REF bit.
             for (int w = 0; w < AddressBoundCacheWays; w++)
@@ -521,6 +507,21 @@ public sealed unsafe class PersistedSnapshot : RefCountingDisposable
     public bool TryAcquire() => TryAcquireLease();
 
     /// <summary>
+    /// Advise this snapshot's mmap range cold (<c>madvise(MADV_DONTNEED)</c>) and clear
+    /// the per-arena page-tracker entries that cover it. Intended as a hook for callers
+    /// that have superseded this snapshot but want to drop its resident pages eagerly
+    /// rather than waiting for full disposal — e.g. the compactor releasing sources
+    /// after merging them into a new snapshot.
+    /// </summary>
+    /// <remarks>
+    /// Does not touch the inline address-bound cache: its 64 bytes stay on the snapshot
+    /// and the cached offsets remain content-verified against the (now-cold) mmap range,
+    /// so subsequent reads still hit the cache and simply pay a cold-page fault on first
+    /// access. Idempotent and safe to call from any thread.
+    /// </remarks>
+    public void Demote() => _reservation.AdviseDontNeed();
+
+    /// <summary>
     /// Mark every file this snapshot references (its metadata <see cref="ArenaReservation"/>'s
     /// <see cref="ArenaFile"/> and every leased <see cref="BlobArenaFile"/>) for
     /// shutdown-preservation. Called by <see cref="PersistedSnapshotRepository.Dispose"/>
@@ -535,38 +536,8 @@ public sealed unsafe class PersistedSnapshot : RefCountingDisposable
             _blobManager.GetFile(id).PersistOnShutdown();
     }
 
-    /// <summary>
-    /// Drop this snapshot's address-bound cache and advise its mmap pages cold. The
-    /// compacted snapshot that supersedes this one warms its own cache lazily on first
-    /// read of each address — no pre-walk needed.
-    /// </summary>
-    /// <remarks>
-    /// Safe to call once per snapshot. The cache pointer is atomically swapped to null
-    /// before the free so concurrent <see cref="TryGetAddressBound"/> calls that race
-    /// with Demote either see the live cache (and complete normally against it) or see
-    /// null and fall straight through to the seek path. Subsequent reads after Demote
-    /// returns are cache-cold for this snapshot. <see cref="ArenaReservation.AdviseDontNeed"/>
-    /// at the end issues <c>madvise(MADV_DONTNEED)</c> on the mmap range and clears the
-    /// per-arena page-tracker entries — runs unconditionally so small-tier sources (no
-    /// cache) still cold their pages on demote.
-    /// </remarks>
-    public void Demote()
-    {
-        FreeAddressBoundCache();
-        _reservation.AdviseDontNeed();
-    }
-
-    private void FreeAddressBoundCache()
-    {
-        long* old = (long*)Interlocked.Exchange(ref _addressBoundCache, 0);
-        if (old is not null) NativeMemory.AlignedFree(old);
-    }
-
     protected override void CleanUp()
     {
-        // Free the cache eagerly if Demote didn't already. The Interlocked swap matches
-        // Demote's pattern and the null check covers both post-Demote and small-tier paths.
-        FreeAddressBoundCache();
         // Drain the iterator before disposing the reservation — the iterator reads through
         // the reservation's mmap via an ArenaByteReader, and this snapshot's own lease
         // (acquired at construction) keeps the mmap alive until it drops at the end of
