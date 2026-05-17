@@ -4,7 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.Linq;
+using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
@@ -112,9 +112,10 @@ public class P2PProtocolHandler(
                     // which should be constant for the whole session. Some protocols (like Eth) are sending messages
                     // on initialization and we need to avoid changing theirs AdaptiveId by initializing protocols,
                     // which are alphabetically before already initialized ones.
-                    foreach (Capability capability in
-                        _agreedCapabilities.GroupBy(static c => c.ProtocolCode).Select(static c => c.OrderBy(static v => v.Version).Last()).OrderBy(static c => c.ProtocolCode))
+                    string? previousProtocolCode = null;
+                    while (TryGetNextAgreedCapability(previousProtocolCode, out Capability? capability))
                     {
+                        previousProtocolCode = capability.ProtocolCode;
                         if (Logger.IsTrace) TraceStartingProtocolHandler(capability);
                         NotifySubprotocolRequested(capability.ProtocolCode, capability.Version);
                     }
@@ -224,6 +225,34 @@ public class P2PProtocolHandler(
         [MethodImpl(MethodImplOptions.NoInlining)]
         void TraceUnhandledPacket(int packetType)
             => Logger.Trace($"{Session.RemoteNodeId} Unhandled packet type: {packetType}");
+    }
+
+    private bool TryGetNextAgreedCapability(string? previousProtocolCode, [NotNullWhen(true)] out Capability? nextCapability)
+    {
+        nextCapability = null;
+        for (int i = 0; i < _agreedCapabilities.Count; i++)
+        {
+            Capability candidate = _agreedCapabilities[i];
+            string candidateProtocolCode = candidate.ProtocolCode;
+            if (previousProtocolCode is not null && string.CompareOrdinal(candidateProtocolCode, previousProtocolCode) <= 0)
+            {
+                continue;
+            }
+
+            if (nextCapability is null)
+            {
+                nextCapability = candidate;
+                continue;
+            }
+
+            int protocolComparison = string.CompareOrdinal(candidateProtocolCode, nextCapability.ProtocolCode);
+            if (protocolComparison < 0 || (protocolComparison == 0 && candidate.Version > nextCapability.Version))
+            {
+                nextCapability = candidate;
+            }
+        }
+
+        return nextCapability is not null;
     }
 
     private void HandleHello(HelloMessage hello)
