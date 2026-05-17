@@ -14,10 +14,23 @@ using Nethermind.Synchronization;
 
 namespace Nethermind.Network.P2P.Utils;
 
-internal interface ISyncServeRequestHandler<THandler, TReq, TRes>
+/// <summary>
+/// Executes a typed sync request for a protocol handler without allocating a delegate per handler instance.
+/// </summary>
+/// <typeparam name="THandler">The protocol handler type that owns the request logic.</typeparam>
+/// <typeparam name="TReq">The request message type.</typeparam>
+/// <typeparam name="TRes">The response message type.</typeparam>
+public interface ISyncServeRequestHandler<THandler, TReq, TRes>
     where THandler : ProtocolHandlerBase
     where TRes : P2PMessage
 {
+    /// <summary>
+    /// Executes the request and returns the response message to send back to the peer.
+    /// </summary>
+    /// <param name="handler">The protocol handler instance.</param>
+    /// <param name="request">The request message. The implementation owns and must dispose it.</param>
+    /// <param name="cancellationToken">The cancellation token for scheduler shutdown or session closing.</param>
+    /// <returns>The response message.</returns>
     static abstract Task<TRes> Execute(THandler handler, TReq request, CancellationToken cancellationToken);
 }
 
