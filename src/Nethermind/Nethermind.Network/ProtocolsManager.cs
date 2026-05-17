@@ -311,7 +311,7 @@ namespace Nethermind.Network
         {
             if (session.IsClosing)
             {
-                if (_logger.IsTrace) _logger.Trace($"|NetworkTrace| {protocolCode}.{protocolVersion} initialized in {session}");
+                if (_logger.IsTrace) _logger.Trace($"|NetworkTrace| {protocolCode}.{protocolVersion} skipping init, session closing: {session}");
                 return false;
             }
 
