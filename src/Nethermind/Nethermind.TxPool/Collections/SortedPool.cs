@@ -126,7 +126,7 @@ namespace Nethermind.TxPool.Collections
                 }
             }
 
-            _snapshot = snapshot;
+            Volatile.Write(ref _snapshot, snapshot);
             return snapshot;
         }
 
@@ -287,7 +287,7 @@ namespace Nethermind.TxPool.Collections
                         UpdateSortedValues(bucketSet, last);
                     }
 
-                    _snapshot = null;
+                    Volatile.Write(ref _snapshot, null);
                     return true;
                 }
             }
@@ -463,7 +463,7 @@ namespace Nethermind.TxPool.Collections
                 _cacheMap[key] = value;
                 UpdateIsFull();
                 UpdateSortedValues(bucket, last);
-                _snapshot = null;
+                Volatile.Write(ref _snapshot, null);
                 Inserted?.Invoke(this, new SortedPoolEventArgs(key, value));
                 return true;
             }
@@ -499,7 +499,7 @@ namespace Nethermind.TxPool.Collections
             if (_cacheMap.Remove(key, out value))
             {
                 UpdateIsFull();
-                _snapshot = null;
+                Volatile.Write(ref _snapshot, null);
                 return true;
             }
 
