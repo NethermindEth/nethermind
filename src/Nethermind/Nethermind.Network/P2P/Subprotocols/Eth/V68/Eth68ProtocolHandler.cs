@@ -110,7 +110,11 @@ public class Eth68ProtocolHandler(ISession session,
 
     protected void RequestPooledTransactions(IOwnedReadOnlyList<Hash256> hashes, IOwnedReadOnlyList<int> sizes, IOwnedReadOnlyList<byte> types)
     {
-        using ArrayPoolListRef<int> newTxHashesIndexes = AddMarkUnknownHashes(hashes.AsSpan());
+        ReadOnlySpan<Hash256> hashesSpan = hashes.AsSpan();
+        ReadOnlySpan<int> sizesSpan = sizes.AsSpan();
+        ReadOnlySpan<byte> typesSpan = types.AsSpan();
+
+        using ArrayPoolListRef<int> newTxHashesIndexes = AddMarkUnknownHashes(hashesSpan);
 
         if (newTxHashesIndexes.Count == 0)
         {
@@ -129,9 +133,9 @@ public class Eth68ProtocolHandler(ISession session,
 
         foreach (int index in newTxHashesIndexes.AsSpan())
         {
-            Hash256 hash = hashes[index];
-            int txSize = sizes[index];
-            TxType txType = (TxType)types[index];
+            Hash256 hash = hashesSpan[index];
+            int txSize = sizesSpan[index];
+            TxType txType = (TxType)typesSpan[index];
             TxShapeAnnouncements.Set(hash, (txSize, txType));
 
             long maxTxSize = txType.SupportsBlobs() ? _configuredMaxBlobTxSize : _configuredMaxTxSize;
