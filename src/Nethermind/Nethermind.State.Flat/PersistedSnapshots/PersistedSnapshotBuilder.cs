@@ -341,6 +341,15 @@ public static class PersistedSnapshotBuilder
         // so the underlying NativeMemory allocation amortizes across the address
         // and prefix loops.
         using PooledByteBufferWriter slotSuffixBuffer = new(4096);
+        // Pooled staging buffer for the no-storage fast path: when an address has no
+        // storage slots and no storage-trie nodes, the per-address inner HSST collapses
+        // to at most {SD, Account, Address} sub-tags plus the DenseByteIndex trailer
+        // — well under 256 bytes for any realistic slim account. Staging into a known-
+        // length buffer lets the outer leaf entry apply 4 KiB page alignment via
+        // MaybePadInnerHsstToNextPage + FinishValueWrite(key, length), keeping each
+        // EOA's per-address blob on a single OS page (mirrors the compaction fast
+        // path at PersistedSnapshotMerger.NWayMergePerAddressColumn).
+        using PooledByteBufferWriter noStorageBuffer = new(256);
         int storageIdx = 0;
         int storTopIdx = 0;
         int storCompactIdx = 0;
@@ -369,6 +378,63 @@ public static class PersistedSnapshotBuilder
 
             ulong addrBloomKey = PersistedSnapshotBloomBuilder.AddressKey(in addressHash);
             bloom.Add(addrBloomKey);
+
+            // No-storage fast path: when this address has neither slots nor storage-trie
+            // nodes, the per-address inner HSST has bounded length (≤ 3 small sub-tags
+            // + trailer). Stage it into a pooled buffer so the outer entry's value
+            // length is known up-front; the leaf-write then applies the same 4 KiB
+            // page-alignment pad used by the compaction fast path. The peek-aheads
+            // below check whether the next entry in each pre-sorted storage-trie /
+            // sortedStorages partition belongs to this address without advancing the
+            // indices (consumed naturally further down on the streaming path).
+            bool hasTopNodes = storTopIdx < storTop.Count &&
+                storTop[storTopIdx].AddrHash.Bytes[..AddressHashPrefixLength].SequenceEqual(addressHashPrefix);
+            bool hasCompactNodes = storCompactIdx < storCompact.Count &&
+                storCompact[storCompactIdx].AddrHash.Bytes[..AddressHashPrefixLength].SequenceEqual(addressHashPrefix);
+            bool hasFallbackNodes = storFallbackIdx < storFallback.Count &&
+                storFallback[storFallbackIdx].AddrHash.Bytes[..AddressHashPrefixLength].SequenceEqual(addressHashPrefix);
+            bool hasSlots = address is not null && storageIdx < sortedStorages.Count &&
+                sortedStorages[storageIdx].Key.AddrHash.Equals(addressHash);
+            // The fast path is conditioned on `address is not null` so the staged
+            // DenseByteIndex always emits at least the AddressSubTag (Build() rejects
+            // an empty builder). An address-hash with no preimage AND no storage-side
+            // contribution would not appear in uniqueAddressHashes at all, so excluding
+            // address-null here also avoids resurrecting a degenerate-record path.
+            if (address is not null && !hasTopNodes && !hasCompactNodes && !hasFallbackNodes && !hasSlots)
+            {
+                noStorageBuffer.Reset();
+                ref PooledByteBufferWriter.Writer stagingWriter = ref noStorageBuffer.GetWriter();
+                using (HsstDenseByteIndexBuilder<PooledByteBufferWriter.Writer> stagedPerAddr = new(ref stagingWriter))
+                {
+                    if (snapshot.Content.SelfDestructedStorageAddresses.TryGetValue(address, out bool stagedSdValue))
+                        stagedPerAddr.Add(PersistedSnapshot.SelfDestructSubTag, stagedSdValue ? [0x01] : [0x00]);
+
+                    if (snapshot.TryGetAccount(address, out Account? stagedAccount))
+                    {
+                        if (stagedAccount is null)
+                        {
+                            stagedPerAddr.Add(PersistedSnapshot.AccountSubTag, [0x00]);
+                        }
+                        else
+                        {
+                            int len = AccountDecoder.Slim.GetLength(stagedAccount);
+                            rlpStream.Reset();
+                            AccountDecoder.Slim.Encode(rlpStream, stagedAccount);
+                            stagedPerAddr.Add(PersistedSnapshot.AccountSubTag, rlpBuffer.AsSpan(0, len));
+                        }
+                    }
+
+                    stagedPerAddr.Add(PersistedSnapshot.AddressSubTag, address.Bytes);
+                    stagedPerAddr.Build();
+                }
+
+                ReadOnlySpan<byte> staged = noStorageBuffer.WrittenSpan;
+                ref TWriter outerWriter = ref addressLevel.BeginValueWrite();
+                PersistedSnapshotMerger.MaybePadInnerHsstToNextPage(ref outerWriter, staged.Length);
+                IByteBufferWriter.Copy(ref outerWriter, staged);
+                addressLevel.FinishValueWrite(addressHashPrefix, staged.Length);
+                continue;
+            }
 
             // Begin per-address HSST. Up to 7 sub-tags 0x01..0x07 written in strictly
             // descending tag order (DenseByteIndex contract); the writer streams high-tag

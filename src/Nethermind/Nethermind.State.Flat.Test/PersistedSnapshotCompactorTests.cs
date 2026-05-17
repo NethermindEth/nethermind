@@ -803,4 +803,160 @@ public class PersistedSnapshotCompactorTests
                 Directory.Delete(testDir, recursive: true);
         }
     }
+
+    /// <summary>
+    /// Regression for the builder no-storage fast path in
+    /// <c>PersistedSnapshotBuilder.WritePerAddressColumn</c>: when an address has no
+    /// slots and no storage-trie nodes the per-address inner HSST is staged into a
+    /// pooled buffer so its length is known up-front, and the outer leaf entry applies
+    /// 4 KiB page-alignment padding. Drives many EOAs so writer positions sweep across
+    /// page boundaries; every address must round-trip read intact and every self-destruct
+    /// flag must survive the staging path. A mix of plain EOAs, EOA-with-SD and a few
+    /// contracts (which take the streaming path) confirms both branches coexist.
+    /// </summary>
+    [TestCase(40)]
+    [TestCase(120)]
+    public void WritePerAddressColumn_NoStorageFastPath_RoundTripsEoaSnapshot(int accountCount)
+    {
+        string testDir = Path.Combine(Path.GetTempPath(), $"nethermind_test_{Guid.NewGuid():N}");
+        Directory.CreateDirectory(testDir);
+        try
+        {
+            using ArenaManager smallArena = new(Path.Combine(testDir, "arenas", "base"), 0, maxArenaSize: 256 * 1024);
+            using BlobArenaManager smallBlobs = new(Path.Combine(testDir, "blobs", "small"), 4 * 1024 * 1024, PersistedSnapshotTier.Small);
+            using PersistedSnapshotRepository repo = new(smallArena, smallBlobs, new MemDb(), new FlatDbConfig(), new PersistedSnapshotBloomFilterManager());
+            repo.LoadFromCatalog();
+
+            // Every 7th address gets storage (so the streaming path also fires) and the
+            // routing decision flips per-address; every 5th address gets a self-destruct
+            // flag (so the SD sub-tag is exercised on the staged DenseByteIndex).
+            SnapshotContent c = new();
+            for (int i = 0; i < accountCount; i++)
+            {
+                Address addr = TestItem.Addresses[i];
+                c.Accounts[addr] = Build.An.Account.WithBalance((UInt256)(i + 1)).TestObject;
+                if (i % 5 == 0)
+                    c.SelfDestructedStorageAddresses[addr] = (i % 10 == 0);
+                if (i % 7 == 0)
+                    c.Storages[(addr, 1)] = new SlotValue(new byte[] { (byte)(i & 0xFF) });
+            }
+
+            StateId s0 = new(0, Keccak.EmptyTreeHash);
+            StateId s1 = new(1, Keccak.Compute("p1"));
+            repo.ConvertSnapshotToPersistedSnapshot(new Snapshot(s0, s1, c, _pool, ResourcePool.Usage.MainBlockProcessing));
+
+            Assert.That(repo.TryLeaseSnapshotTo(s1, out PersistedSnapshot? built), Is.True);
+            using (built)
+            {
+                Assert.Multiple(() =>
+                {
+                    for (int i = 0; i < accountCount; i++)
+                    {
+                        Address addr = TestItem.Addresses[i];
+                        Assert.That(built!.TryGetAccount(addr.ToAccountPath, out Account? a), Is.True,
+                            $"Account {i} ({(i % 7 == 0 ? "with-storage" : "no-storage")}) must survive WritePerAddressColumn");
+                        Assert.That(a!.Balance, Is.EqualTo((UInt256)(i + 1)),
+                            $"Account {i} balance mismatch — pad bytes leaked into the value range");
+                        if (i % 5 == 0)
+                        {
+                            Assert.That(built.TryGetSelfDestructFlag(addr.ToAccountPath), Is.EqualTo((bool?)(i % 10 == 0)),
+                                $"Self-destruct flag for account {i} must survive the staged DenseByteIndex path");
+                        }
+                        if (i % 7 == 0)
+                        {
+                            SlotValue slot = default;
+                            Assert.That(built.TryGetSlot(addr.ToAccountPath, 1, ref slot), Is.True,
+                                $"Slot for storage-bearing account {i} must come back from the streaming path");
+                            SlotValue expected = new(new byte[] { (byte)(i & 0xFF) });
+                            Assert.That(slot.AsReadOnlySpan.ToArray(), Is.EqualTo(expected.AsReadOnlySpan.ToArray()));
+                        }
+                    }
+                });
+            }
+        }
+        finally
+        {
+            if (Directory.Exists(testDir))
+                Directory.Delete(testDir, recursive: true);
+        }
+    }
+
+    /// <summary>
+    /// Regression for the merger no-storage fast path in
+    /// <c>PersistedSnapshotMerger.NWayMergePerAddressColumn</c>: two snapshots covering
+    /// the SAME set of EOAs collide on every address (<c>matchCount &gt; 1</c>) without any
+    /// source contributing slots or storage-trie nodes, so the staged-and-padded helper
+    /// runs for every cursor address. Newest-wins on Account / first-non-empty on Address
+    /// preimage / TryAdd on SD must all hold after the staged DenseByteIndex round-trips.
+    /// </summary>
+    [TestCase(40)]
+    [TestCase(120)]
+    public void Compact_MultiSourceMerge_NoStorageFastPath_RoundTrips(int accountCount)
+    {
+        string testDir = Path.Combine(Path.GetTempPath(), $"nethermind_test_{Guid.NewGuid():N}");
+        Directory.CreateDirectory(testDir);
+        try
+        {
+            using ArenaManager smallArena = new(Path.Combine(testDir, "arenas", "base"), 0, maxArenaSize: 256 * 1024);
+            using BlobArenaManager smallBlobs = new(Path.Combine(testDir, "blobs", "small"), 4 * 1024 * 1024, PersistedSnapshotTier.Small);
+            using PersistedSnapshotRepository repo = new(smallArena, smallBlobs, new MemDb(), new FlatDbConfig(), new PersistedSnapshotBloomFilterManager());
+            repo.LoadFromCatalog();
+
+            IFlatDbConfig config = new FlatDbConfig { CompactSize = 1, MinCompactSize = 2 };
+            PersistedSnapshotCompactor compactor = new(
+                repo, smallArena, config, Nethermind.Logging.LimboLogs.Instance, new PersistedSnapshotBloomFilterManager(),
+                minCompactSize: 2, maxCompactSize: 2, tier: PersistedSnapshotTier.Small);
+
+            // Both sources touch every address with a different balance — collision on
+            // every cursor address forces matchCount==2, and the absence of slots /
+            // storage-trie nodes in either source flips the no-storage routing on.
+            SnapshotContent c0 = new();
+            SnapshotContent c1 = new();
+            for (int i = 0; i < accountCount; i++)
+            {
+                Address addr = TestItem.Addresses[i];
+                c0.Accounts[addr] = Build.An.Account.WithBalance((UInt256)(i + 1)).TestObject;
+                c1.Accounts[addr] = Build.An.Account.WithBalance((UInt256)((i + 1) * 1000)).TestObject;
+                // Every 5th address: set the destruct flag only in c0 (older). TryAdd
+                // semantics must preserve it through the merge with c1 (which doesn't set
+                // it), and the staged DenseByteIndex must emit it as sub-tag 0x03.
+                if (i % 5 == 0)
+                    c0.SelfDestructedStorageAddresses[addr] = false;
+            }
+
+            StateId s0 = new(0, Keccak.EmptyTreeHash);
+            StateId s1 = new(1, Keccak.Compute("p1"));
+            StateId s2 = new(2, Keccak.Compute("p2"));
+            repo.ConvertSnapshotToPersistedSnapshot(new Snapshot(s0, s1, c0, _pool, ResourcePool.Usage.MainBlockProcessing));
+            repo.ConvertSnapshotToPersistedSnapshot(new Snapshot(s1, s2, c1, _pool, ResourcePool.Usage.MainBlockProcessing));
+
+            compactor.DoCompactSnapshot(s2);
+
+            Assert.That(repo.TryLeaseCompactedSnapshotTo(s2, out PersistedSnapshot? compacted), Is.True);
+            using (compacted)
+            {
+                Assert.Multiple(() =>
+                {
+                    for (int i = 0; i < accountCount; i++)
+                    {
+                        Address addr = TestItem.Addresses[i];
+                        Assert.That(compacted!.TryGetAccount(addr.ToAccountPath, out Account? a), Is.True,
+                            $"Account {i} must survive the staged multi-source merge");
+                        Assert.That(a!.Balance, Is.EqualTo((UInt256)((i + 1) * 1000)),
+                            $"Account {i}: newest balance (c1) must win — pad bytes must not leak into the value range");
+                        if (i % 5 == 0)
+                        {
+                            Assert.That(compacted.TryGetSelfDestructFlag(addr.ToAccountPath), Is.False,
+                                $"Self-destruct flag for account {i} must survive the staged DenseByteIndex merge");
+                        }
+                    }
+                });
+            }
+        }
+        finally
+        {
+            if (Directory.Exists(testDir))
+                Directory.Delete(testDir, recursive: true);
+        }
+    }
 }
