@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using DotNetty.Buffers;
+using System;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -112,8 +113,10 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
                     {
                         int accountSlotsLength = 0;
 
-                        foreach (ref readonly PathWithStorageSlot slot in slotsSpan[i].AsSpan())
+                        ReadOnlySpan<PathWithStorageSlot> accountSlots = slotsSpan[i].AsSpan();
+                        for (int j = 0; j < accountSlots.Length; j++)
                         {
+                            PathWithStorageSlot slot = accountSlots[j];
                             int slotLength = Rlp.LengthOf(slot.Path) + Rlp.LengthOf(slot.SlotRlpValue);
                             accountSlotsLength += Rlp.LengthOfSequence(slotLength);
                         }
