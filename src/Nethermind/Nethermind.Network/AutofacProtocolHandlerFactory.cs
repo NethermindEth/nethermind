@@ -14,6 +14,14 @@ using Nethermind.Network.P2P.ProtocolHandlers;
 
 namespace Nethermind.Network;
 
+/// <summary>
+/// Creates protocol handlers with a cached constructor activator.
+/// </summary>
+/// <remarks>
+/// Non-<see cref="ISession"/> constructor dependencies of <typeparamref name="THandler"/>
+/// are resolved once and reused across all sessions; protocol handlers registered through this
+/// factory must only depend on singleton-safe services outside the session parameter.
+/// </remarks>
 internal sealed class AutofacProtocolHandlerFactory<THandler>(
     ILifetimeScope lifetimeScope,
     string protocolCode,
@@ -42,11 +50,6 @@ internal sealed class AutofacProtocolHandlerFactory<THandler>(
         return true;
     }
 
-    /// <remarks>
-    /// Non-<see cref="ISession"/> constructor dependencies of <typeparamref name="THandler"/>
-    /// are resolved once and reused across all sessions; per-dependency or per-scope lifetimes
-    /// are silently promoted to singleton semantics.
-    /// </remarks>
     private object?[] GetDependencies()
     {
         object?[]? dependencies = Volatile.Read(ref _dependencies);
