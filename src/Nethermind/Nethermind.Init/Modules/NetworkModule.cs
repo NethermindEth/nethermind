@@ -144,7 +144,7 @@ public class NetworkModule(IConfigProvider configProvider) : Module
 
             .AddSingleton<State.SnapServer.ISnapServer, State.IWorldStateManager>(wsm => wsm.SnapServer)
 
-            // Protocol handler factories (using clean DSL with Autofac Func auto-generation)
+            // Protocol handler factories
             .AddProtocolHandler<Subprotocols.Snap.SnapProtocolHandler>()
             .AddProtocolHandler<Subprotocols.Eth.V66.Eth66ProtocolHandler>()
             .AddProtocolHandler<Subprotocols.Eth.V67.Eth67ProtocolHandler>()
