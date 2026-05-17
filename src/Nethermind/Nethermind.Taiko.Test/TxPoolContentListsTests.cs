@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using Nethermind.Consensus.Stateless;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core.Specs;
 using Nethermind.JsonRpc;
@@ -259,11 +258,11 @@ public class TxPoolContentListsTests
             Substitute.For<IAsyncHandler<GetBlobsHandlerV2Request, IReadOnlyList<BlobAndProofV2?>?>>(),
             Substitute.For<IHandler<IReadOnlyList<Hash256>, IReadOnlyList<ExecutionPayloadBodyV2Result?>>>(),
             Substitute.For<IGetPayloadBodiesByRangeV2Handler>(),
+            Substitute.For<INewPayloadWithWitnessHandler>(),
             Substitute.For<IEngineRequestsTracker>(),
             Substitute.For<ISpecProvider>(),
             null!,
             Substitute.For<IBlockTree>(),
-            Substitute.For<IWitnessGeneratingBlockProcessingEnvFactory>(),
             Substitute.For<ILogManager>(),
             txPool,
             blockFinder,

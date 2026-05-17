@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
-using Nethermind.Consensus.Stateless;
 using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
@@ -321,11 +320,11 @@ public class CertainBatchLookupTests
         Substitute.For<IAsyncHandler<GetBlobsHandlerV2Request, IReadOnlyList<BlobAndProofV2?>?>>(),
         Substitute.For<IHandler<IReadOnlyList<Hash256>, IReadOnlyList<ExecutionPayloadBodyV2Result?>>>(),
         Substitute.For<IGetPayloadBodiesByRangeV2Handler>(),
+        Substitute.For<INewPayloadWithWitnessHandler>(),
         Substitute.For<IEngineRequestsTracker>(),
         specProvider,
         null!,
         Substitute.For<IBlockTree>(),
-        Substitute.For<IWitnessGeneratingBlockProcessingEnvFactory>(),
         Substitute.For<ILogManager>(),
         Substitute.For<ITxPool>(),
         blockFinder ?? Substitute.For<IBlockFinder>(),
