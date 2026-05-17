@@ -622,6 +622,12 @@ namespace Nethermind.Evm.TransactionProcessing
                 }
             }
 
+            if (spec.IsEip8037Enabled && intrinsicGas.ExceedsCap(Eip7825Constants.DefaultTxGasLimitCap, out long regular, out long floor))
+            {
+                TraceLogInvalidTx(tx, $"TX_INTRINSIC_REGULAR_GAS_EXCEEDS_MAX {Math.Max(regular, floor)} > {Eip7825Constants.DefaultTxGasLimitCap}");
+                return TransactionResult.ErrorType.GasLimitBelowIntrinsicGas;
+            }
+
             TGasPolicy standard = intrinsicGas.Standard;
             TGasPolicy minimal = intrinsicGas.MinimalGas;
             long minGasRequired = spec.IsEip8037Enabled
@@ -636,8 +642,7 @@ namespace Nethermind.Evm.TransactionProcessing
             if (tx.GasLimit < minGasRequired)
             {
                 TraceLogInvalidTx(tx, $"GAS_LIMIT_BELOW_INTRINSIC_GAS {tx.GasLimit} < {minGasRequired}");
-                return TransactionResult.ErrorType.GasLimitBelowIntrinsicGas.WithDetail(
-                    $"intrinsic gas too low: have {tx.GasLimit}, want {minGasRequired}");
+                return TransactionResult.ErrorType.GasLimitBelowIntrinsicGas;
             }
 
             if (validate)

@@ -36,6 +36,39 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
             ? Prepare.EvmCode.Create2(initCode, salt ?? DefaultCreate2Salt, value)
             : Prepare.EvmCode.Create(initCode, value);
 
+    [Test]
+    public void Eip8037_rejects_tx_when_calldata_floor_exceeds_tx_max_regular_gas()
+    {
+        byte[] calldata = new byte[262_000];
+        Array.Fill(calldata, (byte)0xff);
+
+        Transaction transaction = Build.A.Transaction
+            .WithGasLimit(20_000_000)
+            .WithGasPrice(1)
+            .WithData(calldata)
+            .To(Recipient)
+            .SignedAndResolved(new EthereumEcdsa(SpecProvider.ChainId), SenderKey)
+            .TestObject;
+        (Block block, _) = PrepareTx(
+            Activation,
+            transaction.GasLimit,
+            transaction: transaction,
+            blockGasLimit: DynamicStatePricingBlockGasLimit);
+
+        IntrinsicGas<EthereumGasPolicy> intrinsicGas = EthereumGasPolicy.CalculateIntrinsicGas(transaction, Spec);
+        Assert.That(intrinsicGas.FloorGas.Value, Is.GreaterThan(Eip7825Constants.DefaultTxGasLimitCap));
+
+        TestAllTracerWithOutput tracer = CreateTracer();
+        TransactionResult result = _processor.Execute(
+            transaction,
+            new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)),
+            tracer);
+
+        Assert.That(result.TransactionExecuted, Is.False);
+        Assert.That(result.Error, Is.EqualTo(TransactionResult.ErrorType.GasLimitBelowIntrinsicGas));
+        Assert.That(TestState.GetNonce(Sender), Is.EqualTo(UInt256.Zero));
+    }
+
     /// <summary>
     /// When a nested CREATE's child frame has too little regular gas to cover both
     /// the regular code deposit cost AND the state-gas spill, the CREATE must fail.
