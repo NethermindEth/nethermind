@@ -30,7 +30,6 @@ public static class PersistedSnapshotBuilder
 {
     private const int TopPathThreshold = 7;
     private const int CompactPathThreshold = 15;
-    private const int AddressHashPrefixLength = PersistedSnapshot.AddressHashPrefixLength;  // 20 — column 0x01 outer key
 
     private static readonly Comparison<TreePath> StateNodeComparer = (a, b) =>
     {
@@ -43,7 +42,7 @@ public static class PersistedSnapshotBuilder
     // inner HSST keys are in sorted order.
     private static readonly Comparison<(ValueHash256 AddrHash, TreePath Path)> StorageNodeComparer = (a, b) =>
     {
-        int cmp = a.AddrHash.Bytes[..AddressHashPrefixLength].SequenceCompareTo(b.AddrHash.Bytes[..AddressHashPrefixLength]);
+        int cmp = a.AddrHash.Bytes[..PersistedSnapshotTags.AddressHashPrefixLength].SequenceCompareTo(b.AddrHash.Bytes[..PersistedSnapshotTags.AddressHashPrefixLength]);
         if (cmp != 0) return cmp;
         cmp = a.Path.Path.Bytes.SequenceCompareTo(b.Path.Path.Bytes);
         return cmp != 0 ? cmp : a.Path.Length.CompareTo(b.Path.Length);
@@ -55,7 +54,7 @@ public static class PersistedSnapshotBuilder
     // (Job C) so the comparator does no dict lookup.
     private static readonly Comparison<((ValueHash256 AddrHash, UInt256 Slot) Key, SlotValue? Value)> StoragesByAddrHashComparer = (a, b) =>
     {
-        int cmp = a.Key.AddrHash.Bytes[..AddressHashPrefixLength].SequenceCompareTo(b.Key.AddrHash.Bytes[..AddressHashPrefixLength]);
+        int cmp = a.Key.AddrHash.Bytes[..PersistedSnapshotTags.AddressHashPrefixLength].SequenceCompareTo(b.Key.AddrHash.Bytes[..PersistedSnapshotTags.AddressHashPrefixLength]);
         if (cmp != 0) return cmp;
         return a.Key.Slot.CompareTo(b.Key.Slot);
     };
@@ -270,28 +269,28 @@ public static class PersistedSnapshotBuilder
         // its trie RLPs into. Compactor's NWayMetadataMerge replaces this with the union
         // of input snapshots' referenced ids.
         ref TWriter innerWriter = ref outer.BeginValueWrite();
-        using HsstBTreeBuilder<TWriter, TReader, TPin> inner = new(ref innerWriter, PersistedSnapshot.MetadataKeyLength, expectedKeyCount: 6);
+        using HsstBTreeBuilder<TWriter, TReader, TPin> inner = new(ref innerWriter, PersistedSnapshotTags.MetadataKeyLength, expectedKeyCount: 6);
 
         Span<byte> blockNumBytes = stackalloc byte[8];
         Span<byte> refIdsBytes = stackalloc byte[2];
 
         BitConverter.TryWriteBytes(blockNumBytes, snapshot.From.BlockNumber);
-        inner.Add(PersistedSnapshot.MetadataFromBlockKey, blockNumBytes);
+        inner.Add(PersistedSnapshotTags.MetadataFromBlockKey, blockNumBytes);
 
-        inner.Add(PersistedSnapshot.MetadataFromHashKey, snapshot.From.StateRoot.Bytes);
+        inner.Add(PersistedSnapshotTags.MetadataFromHashKey, snapshot.From.StateRoot.Bytes);
 
         BinaryPrimitives.WriteUInt16LittleEndian(refIdsBytes, blobArenaId);
-        inner.Add(PersistedSnapshot.MetadataRefIdsKey, refIdsBytes);
+        inner.Add(PersistedSnapshotTags.MetadataRefIdsKey, refIdsBytes);
 
         BitConverter.TryWriteBytes(blockNumBytes, snapshot.To.BlockNumber);
-        inner.Add(PersistedSnapshot.MetadataToBlockKey, blockNumBytes);
+        inner.Add(PersistedSnapshotTags.MetadataToBlockKey, blockNumBytes);
 
-        inner.Add(PersistedSnapshot.MetadataToHashKey, snapshot.To.StateRoot.Bytes);
+        inner.Add(PersistedSnapshotTags.MetadataToHashKey, snapshot.To.StateRoot.Bytes);
 
-        inner.Add(PersistedSnapshot.MetadataVersionKey, [0x01]);
+        inner.Add(PersistedSnapshotTags.MetadataVersionKey, PersistedSnapshotTags.MetadataFormatVersion);
 
         inner.Build();
-        outer.FinishValueWrite(PersistedSnapshot.MetadataTag);
+        outer.FinishValueWrite(PersistedSnapshotTags.MetadataTag);
     }
 
     private static void WritePerAddressColumn<TWriter, TReader, TPin>(
@@ -310,7 +309,7 @@ public static class PersistedSnapshotBuilder
 
         // Address-level HSST keyed by 20-byte address-hash prefix.
         ref TWriter addressWriter = ref outer.BeginValueWrite();
-        using HsstBTreeBuilder<TWriter, TReader, TPin> addressLevel = new(ref addressWriter, AddressHashPrefixLength, expectedKeyCount: uniqueAddressHashes.Count);
+        using HsstBTreeBuilder<TWriter, TReader, TPin> addressLevel = new(ref addressWriter, PersistedSnapshotTags.AddressHashPrefixLength, expectedKeyCount: uniqueAddressHashes.Count);
         // Slim-account RLP for any single account fits comfortably in 256 bytes (4×u256 fields
         // plus framing). Pool the scratch so it doesn't allocate per WritePerAddressColumn call.
         byte[] rlpBuffer = ArrayPool<byte>.Shared.Rent(256);
@@ -370,7 +369,7 @@ public static class PersistedSnapshotBuilder
                 address = hashToAddr[hashToAddrIdx].Addr.ToAddress();
                 hashToAddrIdx++;
             }
-            ReadOnlySpan<byte> addressHashPrefix = addressHash.Bytes[..AddressHashPrefixLength];
+            ReadOnlySpan<byte> addressHashPrefix = addressHash.Bytes[..PersistedSnapshotTags.AddressHashPrefixLength];
 
             ulong addrBloomKey = PersistedSnapshotBloomBuilder.AddressKey(in addressHash);
             bloom.Add(addrBloomKey);
@@ -384,11 +383,11 @@ public static class PersistedSnapshotBuilder
             // sortedStorages partition belongs to this address without advancing the
             // indices (consumed naturally further down on the streaming path).
             bool hasTopNodes = storTopIdx < storTop.Count &&
-                storTop[storTopIdx].AddrHash.Bytes[..AddressHashPrefixLength].SequenceEqual(addressHashPrefix);
+                storTop[storTopIdx].AddrHash.Bytes[..PersistedSnapshotTags.AddressHashPrefixLength].SequenceEqual(addressHashPrefix);
             bool hasCompactNodes = storCompactIdx < storCompact.Count &&
-                storCompact[storCompactIdx].AddrHash.Bytes[..AddressHashPrefixLength].SequenceEqual(addressHashPrefix);
+                storCompact[storCompactIdx].AddrHash.Bytes[..PersistedSnapshotTags.AddressHashPrefixLength].SequenceEqual(addressHashPrefix);
             bool hasFallbackNodes = storFallbackIdx < storFallback.Count &&
-                storFallback[storFallbackIdx].AddrHash.Bytes[..AddressHashPrefixLength].SequenceEqual(addressHashPrefix);
+                storFallback[storFallbackIdx].AddrHash.Bytes[..PersistedSnapshotTags.AddressHashPrefixLength].SequenceEqual(addressHashPrefix);
             bool hasSlots = address is not null && storageIdx < sortedStorages.Count &&
                 sortedStorages[storageIdx].Key.AddrHash.Equals(addressHash);
             // The fast path is conditioned on `address is not null` so the staged
@@ -403,24 +402,25 @@ public static class PersistedSnapshotBuilder
                 using (HsstDenseByteIndexBuilder<PooledByteBufferWriter.Writer> stagedPerAddr = new(ref stagingWriter))
                 {
                     if (snapshot.Content.SelfDestructedStorageAddresses.TryGetValue(address, out bool stagedSdValue))
-                        stagedPerAddr.Add(PersistedSnapshot.SelfDestructSubTag, stagedSdValue ? [0x01] : [0x00]);
+                        stagedPerAddr.Add(PersistedSnapshotTags.SelfDestructSubTag,
+                            stagedSdValue ? PersistedSnapshotTags.SelfDestructNewMarker : PersistedSnapshotTags.SelfDestructDestructedMarker);
 
                     if (snapshot.TryGetAccount(address, out Account? stagedAccount))
                     {
                         if (stagedAccount is null)
                         {
-                            stagedPerAddr.Add(PersistedSnapshot.AccountSubTag, [0x00]);
+                            stagedPerAddr.Add(PersistedSnapshotTags.AccountSubTag, PersistedSnapshotTags.AccountDeletedMarker);
                         }
                         else
                         {
                             int len = AccountDecoder.Slim.GetLength(stagedAccount);
                             rlpStream.Reset();
                             AccountDecoder.Slim.Encode(rlpStream, stagedAccount);
-                            stagedPerAddr.Add(PersistedSnapshot.AccountSubTag, rlpBuffer.AsSpan(0, len));
+                            stagedPerAddr.Add(PersistedSnapshotTags.AccountSubTag, rlpBuffer.AsSpan(0, len));
                         }
                     }
 
-                    stagedPerAddr.Add(PersistedSnapshot.AddressSubTag, address.Bytes);
+                    stagedPerAddr.Add(PersistedSnapshotTags.AddressSubTag, address.Bytes);
                     stagedPerAddr.Build();
                 }
 
@@ -453,7 +453,7 @@ public static class PersistedSnapshotBuilder
             // for this address-hash.
             int topStart = storTopIdx;
             while (storTopIdx < storTop.Count &&
-                storTop[storTopIdx].AddrHash.Bytes[..AddressHashPrefixLength].SequenceEqual(addressHashPrefix))
+                storTop[storTopIdx].AddrHash.Bytes[..PersistedSnapshotTags.AddressHashPrefixLength].SequenceEqual(addressHashPrefix))
                 storTopIdx++;
             if (topStart < storTopIdx)
             {
@@ -475,13 +475,13 @@ public static class PersistedSnapshotBuilder
                     bloom.Add(PersistedSnapshotBloomBuilder.StorageNodeKey(in addressHash, in path));
                 }
                 topLevel.Build();
-                perAddr.FinishValueWrite(PersistedSnapshot.StorageTopSubTag);
+                perAddr.FinishValueWrite(PersistedSnapshotTags.StorageTopSubTag);
             }
 
             // Sub-tag 0x06: Storage trie nodes (compact, 8-byte path keys, length 6-15).
             int compactStart = storCompactIdx;
             while (storCompactIdx < storCompact.Count &&
-                storCompact[storCompactIdx].AddrHash.Bytes[..AddressHashPrefixLength].SequenceEqual(addressHashPrefix))
+                storCompact[storCompactIdx].AddrHash.Bytes[..PersistedSnapshotTags.AddressHashPrefixLength].SequenceEqual(addressHashPrefix))
                 storCompactIdx++;
             if (compactStart < storCompactIdx)
             {
@@ -503,13 +503,13 @@ public static class PersistedSnapshotBuilder
                     bloom.Add(PersistedSnapshotBloomBuilder.StorageNodeKey(in addressHash, in path));
                 }
                 compactLevel.Build();
-                perAddr.FinishValueWrite(PersistedSnapshot.StorageCompactSubTag);
+                perAddr.FinishValueWrite(PersistedSnapshotTags.StorageCompactSubTag);
             }
 
             // Sub-tag 0x05: Storage trie nodes (fallback, 33-byte path keys, length 16+).
             int fallbackStart = storFallbackIdx;
             while (storFallbackIdx < storFallback.Count &&
-                storFallback[storFallbackIdx].AddrHash.Bytes[..AddressHashPrefixLength].SequenceEqual(addressHashPrefix))
+                storFallback[storFallbackIdx].AddrHash.Bytes[..PersistedSnapshotTags.AddressHashPrefixLength].SequenceEqual(addressHashPrefix))
                 storFallbackIdx++;
             if (fallbackStart < storFallbackIdx)
             {
@@ -531,7 +531,7 @@ public static class PersistedSnapshotBuilder
                     bloom.Add(PersistedSnapshotBloomBuilder.StorageNodeKey(in addressHash, in path));
                 }
                 fbLevel.Build();
-                perAddr.FinishValueWrite(PersistedSnapshot.StorageFallbackSubTag);
+                perAddr.FinishValueWrite(PersistedSnapshotTags.StorageFallbackSubTag);
             }
 
             // Sub-tag 0x04: Slots — skipped when no Address is known for this hash key.
@@ -607,7 +607,7 @@ public static class PersistedSnapshotBuilder
                 }
 
                 prefixLevel.Build();
-                perAddr.FinishValueWrite(PersistedSnapshot.SlotSubTag);
+                perAddr.FinishValueWrite(PersistedSnapshotTags.SlotSubTag);
             }
 
             // Sub-tag 0x03: Self-destruct. Present-marker encoding: [0x00] destructed,
@@ -616,7 +616,8 @@ public static class PersistedSnapshotBuilder
             // strictly descending order (0x03 > 0x02).
             if (address is not null && snapshot.Content.SelfDestructedStorageAddresses.TryGetValue(address, out bool sdValue))
             {
-                perAddr.Add(PersistedSnapshot.SelfDestructSubTag, sdValue ? [0x01] : [0x00]);
+                perAddr.Add(PersistedSnapshotTags.SelfDestructSubTag,
+                    sdValue ? PersistedSnapshotTags.SelfDestructNewMarker : PersistedSnapshotTags.SelfDestructDestructedMarker);
             }
 
             // Sub-tag 0x02: Account. Present-marker encoding: [0x00] deleted, RLP-bytes
@@ -626,14 +627,14 @@ public static class PersistedSnapshotBuilder
             {
                 if (account is null)
                 {
-                    perAddr.Add(PersistedSnapshot.AccountSubTag, [0x00]);
+                    perAddr.Add(PersistedSnapshotTags.AccountSubTag, PersistedSnapshotTags.AccountDeletedMarker);
                 }
                 else
                 {
                     int len = AccountDecoder.Slim.GetLength(account);
                     rlpStream.Reset();
                     AccountDecoder.Slim.Encode(rlpStream, account);
-                    perAddr.Add(PersistedSnapshot.AccountSubTag, rlpBuffer.AsSpan(0, len));
+                    perAddr.Add(PersistedSnapshotTags.AccountSubTag, rlpBuffer.AsSpan(0, len));
                 }
             }
 
@@ -643,7 +644,7 @@ public static class PersistedSnapshotBuilder
             // touches the same account will supply the preimage.
             if (address is not null)
             {
-                perAddr.Add(PersistedSnapshot.AddressSubTag, address.Bytes);
+                perAddr.Add(PersistedSnapshotTags.AddressSubTag, address.Bytes);
             }
 
             perAddr.Build();
@@ -651,7 +652,7 @@ public static class PersistedSnapshotBuilder
         }
 
         addressLevel.Build();
-        outer.FinishValueWrite(PersistedSnapshot.AccountColumnTag);
+        outer.FinishValueWrite(PersistedSnapshotTags.AccountColumnTag);
         ArrayPool<byte>.Shared.Return(rlpBuffer);
         slotPrefixBuffers.Dispose();
     }
@@ -677,7 +678,7 @@ public static class PersistedSnapshotBuilder
         }
 
         inner.Build();
-        outer.FinishValueWrite(PersistedSnapshot.StateTopNodesTag);
+        outer.FinishValueWrite(PersistedSnapshotTags.StateTopNodesTag);
     }
 
     private static void WriteStateNodesColumnCompact<TWriter, TReader, TPin>(ref HsstDenseByteIndexBuilder<TWriter> outer, Snapshot snapshot, NativeMemoryList<TreePath> stateNodeKeys, BlobArenaWriter blobWriter, BloomFilter bloom) where TWriter : IByteBufferWriterWithReader<TReader, TPin> where TReader : IHsstByteReader<TPin>, allows ref struct where TPin : struct, IBufferPin, allows ref struct
@@ -701,7 +702,7 @@ public static class PersistedSnapshotBuilder
         }
 
         inner.Build();
-        outer.FinishValueWrite(PersistedSnapshot.StateNodeTag);
+        outer.FinishValueWrite(PersistedSnapshotTags.StateNodeTag);
     }
 
     private static void WriteStateNodesColumnFallback<TWriter, TReader, TPin>(ref HsstDenseByteIndexBuilder<TWriter> outer, Snapshot snapshot, NativeMemoryList<TreePath> stateNodeKeys, BlobArenaWriter blobWriter, BloomFilter bloom) where TWriter : IByteBufferWriterWithReader<TReader, TPin> where TReader : IHsstByteReader<TPin>, allows ref struct where TPin : struct, IBufferPin, allows ref struct
@@ -726,6 +727,6 @@ public static class PersistedSnapshotBuilder
         }
 
         inner.Build();
-        outer.FinishValueWrite(PersistedSnapshot.StateNodeFallbackTag);
+        outer.FinishValueWrite(PersistedSnapshotTags.StateNodeFallbackTag);
     }
 }

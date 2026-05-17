@@ -24,74 +24,13 @@ namespace Nethermind.State.Flat.PersistedSnapshots;
 /// values are not stored inline — every trie-node slot in the HSST holds an
 /// 8-byte <see cref="NodeRef"/> pointing into a blob arena. The reservation
 /// owned by this snapshot stores the metadata bytes only.
-///
-/// The outer HSST has 5 column entries, each containing an inner HSST.
-/// Inner HSST keys are the entity keys without the tag prefix:
-///   Column 0x00: Metadata — String key → version, block range, ref_ids list, state root values
-///   Column 0x01: AddressHash (20 bytes, = Keccak(address)[..20]) → per-address HSST {
-///       0x01 (AddressSubTag):         raw 20-byte Address bytes — preimage of the outer addressHash
-///       0x02 (AccountSubTag):         raw account slim RLP bytes (empty = deleted account)
-///       0x03 (SelfDestructSubTag):    raw SD flag bytes (empty = destructed, 0x01 = new account)
-///       0x04 (SlotSubTag):            nested HSST (SlotPrefix(30) → nested HSST(SlotSuffix(2) → SlotValue))
-///       0x05 (StorageFallbackSubTag): nested HSST (TreePath.Path (33 bytes) → NodeRef, path length 16+)
-///       0x06 (StorageCompactSubTag):  nested HSST (TreePath (8 bytes compact) → NodeRef, path length 8-15)
-///       0x07 (StorageTopSubTag):      nested HSST (TreePath (3 bytes) → NodeRef, path length 0-5)
-///   }
-///   Sub-tag values are arranged so the small, hot metadata (Address/Account/SelfDestruct)
-///   gets the lowest byte values. The per-address inner HSST is built as a dense-byte-index
-///   whose value blobs are streamed high-tag → low-tag (descending) so the storage-trie
-///   blobs land at the front of the data section and the hot metadata blobs land adjacent
-///   to the trailing Ends[] table, sharing OS pages with the lookup-time read.
-///   Column 0x03: TreePath (8 bytes compact) → NodeRef (path length 6-15)
-///   Column 0x05: TreePath (3 bytes) → NodeRef (path length 0-5)
-///   Column 0x06: TreePath.Path (32 bytes) + PathLength (1 byte) → NodeRef (path length 16+)
 /// </summary>
+/// <remarks>
+/// On-disk vocabulary (column tags, sub-tags, metadata keys, value markers) is defined in
+/// <see cref="PersistedSnapshotTags"/>; the columnar layout is documented there.
+/// </remarks>
 public sealed class PersistedSnapshot : RefCountingDisposable
 {
-    // Tag prefixes for outer HSST columns
-    internal static readonly byte[] MetadataTag = [0x00];
-    internal static readonly byte[] AccountColumnTag = [0x01];
-    internal static readonly byte[] StateNodeTag = [0x03];
-    internal static readonly byte[] StateTopNodesTag = [0x05];
-    internal static readonly byte[] StateNodeFallbackTag = [0x06];
-
-    // Per-address column 0x01 outer key width — first 20 bytes of Keccak(address).
-    internal const int AddressHashPrefixLength = 20;
-
-    // Sub-tags within per-address HSST (column 0x01). The per-address HSST is built as a
-    // dense-byte-index whose writer streams entries in strictly descending tag order, so the
-    // value blobs for the hot small metadata (low tag values) end up adjacent to the trailing
-    // Ends[] table — see the class-level remarks for the layout rationale.
-    internal static readonly byte[] AddressSubTag = [0x01];
-    internal static readonly byte[] AccountSubTag = [0x02];
-    internal static readonly byte[] SelfDestructSubTag = [0x03];
-    internal static readonly byte[] SlotSubTag = [0x04];
-    internal static readonly byte[] StorageFallbackSubTag = [0x05];
-    internal static readonly byte[] StorageCompactSubTag = [0x06];
-    internal static readonly byte[] StorageTopSubTag = [0x07];
-
-    // Single-byte companions of the sub-tag arrays above, consumed by the fast-path
-    // <see cref="HsstDenseByteIndexReader.TryResolveSingleTag{TReader, TPin}"/> resolver which
-    // takes the tag as a <see cref="byte"/> rather than a one-element <see cref="ReadOnlySpan{T}"/>.
-    internal const byte AccountSubTagByte = 0x02;
-    internal const byte SelfDestructSubTagByte = 0x03;
-    internal const byte SlotSubTagByte = 0x04;
-    internal const byte StorageFallbackSubTagByte = 0x05;
-    internal const byte StorageCompactSubTagByte = 0x06;
-    internal const byte StorageTopSubTagByte = 0x07;
-
-    // Metadata column keys. The HSST builder requires uniform key length per HSST,
-    // so the original ASCII keys are NUL-padded to a fixed 10 bytes (the longest
-    // original key, "from_block"). NUL-padding preserves the original sort order
-    // because no original key is a prefix of any other.
-    internal const int MetadataKeyLength = 10;
-    internal static readonly byte[] MetadataFromBlockKey = "from_block"u8.ToArray();
-    internal static readonly byte[] MetadataFromHashKey = "from_hash\0"u8.ToArray();
-    internal static readonly byte[] MetadataNodeRefsKey = "noderefs\0\0"u8.ToArray();
-    internal static readonly byte[] MetadataRefIdsKey = "ref_ids\0\0\0"u8.ToArray();
-    internal static readonly byte[] MetadataToBlockKey = "to_block\0\0"u8.ToArray();
-    internal static readonly byte[] MetadataToHashKey = "to_hash\0\0\0"u8.ToArray();
-    internal static readonly byte[] MetadataVersionKey = "version\0\0\0"u8.ToArray();
 
     // Single 8-way set-associative clock (second-chance) address-bound cache mirroring
     // <see cref="PageResidencyTracker"/>'s hot/miss-path split. One set ⇒ 8 ways × 8 bytes
@@ -128,7 +67,7 @@ public sealed class PersistedSnapshot : RefCountingDisposable
     private const int AddressBoundCacheWayMask = AddressBoundCacheWays - 1;
     private const int AddressBoundCacheMetaLockBit = 1 << 7;
     private const int AddressBoundCacheMetaHandMask = 0x7;
-    private const int AddressBoundCacheProbeBytes = 6 + AddressHashPrefixLength;
+    private const int AddressBoundCacheProbeBytes = 6 + PersistedSnapshotTags.AddressHashPrefixLength;
 
     private Vector512<long> _addressBoundCache;
     private int _addressBoundCacheMeta;
@@ -247,8 +186,8 @@ public sealed class PersistedSnapshot : RefCountingDisposable
         {
             _reader = snapshot._reservation.CreateReader();
             HsstReader<ArenaByteReader, NoOpPin> root = new(in _reader, new Bound(0, _reader.Length));
-            if (root.TrySeek(MetadataTag, out _) &&
-                root.TrySeek(MetadataRefIdsKey, out Bound rb) &&
+            if (root.TrySeek(PersistedSnapshotTags.MetadataTag, out _) &&
+                root.TrySeek(PersistedSnapshotTags.MetadataRefIdsKey, out Bound rb) &&
                 rb.Length > 0 && rb.Length % 2 == 0)
             {
                 _cursor = rb.Offset;
@@ -303,8 +242,8 @@ public sealed class PersistedSnapshot : RefCountingDisposable
             if (!reader.TryRead(lebOffset, probe)) continue;
             int pos = 0;
             long valueLength = Leb128.Read(probe, ref pos);
-            if (!probe.Slice(pos, AddressHashPrefixLength)
-                    .SequenceEqual(addressHash.Bytes[..AddressHashPrefixLength]))
+            if (!probe.Slice(pos, PersistedSnapshotTags.AddressHashPrefixLength)
+                    .SequenceEqual(addressHash.Bytes[..PersistedSnapshotTags.AddressHashPrefixLength]))
                 continue;
 
             if ((s & AddressBoundCacheRefBit) == 0)
@@ -419,7 +358,7 @@ public sealed class PersistedSnapshot : RefCountingDisposable
         Span<byte> buf = bLenInt <= 256 ? stackalloc byte[256] : new byte[bLenInt];
         Span<byte> rlp = buf[..bLenInt];
         reader.TryRead(b.Offset, rlp);
-        if (rlp.Length == 1 && rlp[0] == 0x00)
+        if (rlp.Length == 1 && rlp[0] == PersistedSnapshotTags.AccountDeletedMarkerByte)
         {
             account = null;
             return true;

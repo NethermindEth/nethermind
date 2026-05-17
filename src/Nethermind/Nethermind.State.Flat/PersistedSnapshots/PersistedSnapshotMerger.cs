@@ -23,13 +23,6 @@ namespace Nethermind.State.Flat.PersistedSnapshots;
 /// </summary>
 public static class PersistedSnapshotMerger
 {
-    private const int AddressHashPrefixLength = PersistedSnapshot.AddressHashPrefixLength; // column 0x01 outer key
-
-    // Per-address (column 0x01) DenseByteIndex max tag + 1: sub-tags 0x01..0x07.
-    // Sized to max tag + 1 so TryResolveAll fills every slot 0..7 with one pass; the
-    // zero slot (sub-tag 0x00) is never populated and comes back as a length-0 absence.
-    private const int PerAddrSubTagCount = 8;
-
     // Cached raw view fields for an open WholeReadSession. Used by the N-way merge helpers
     // to amortise the per-call ObjectDisposedException check + interface-dispatch cost of
     // WholeReadSession.GetReader over the entire merge loop. Callers populate one entry per
@@ -63,28 +56,28 @@ public static class PersistedSnapshotMerger
 
         {
             ref TWriter valueWriter = ref outerBuilder.BeginValueWrite();
-            NWayPackedArrayMerge<TWriter, TReader, TPin>(views, PersistedSnapshot.StateNodeFallbackTag, ref valueWriter, keySize: 33, bloom);
-            outerBuilder.FinishValueWrite(PersistedSnapshot.StateNodeFallbackTag);
+            NWayPackedArrayMerge<TWriter, TReader, TPin>(views, PersistedSnapshotTags.StateNodeFallbackTag, ref valueWriter, keySize: 33, bloom);
+            outerBuilder.FinishValueWrite(PersistedSnapshotTags.StateNodeFallbackTag);
         }
         {
             ref TWriter valueWriter = ref outerBuilder.BeginValueWrite();
-            NWayPackedArrayMerge<TWriter, TReader, TPin>(views, PersistedSnapshot.StateTopNodesTag, ref valueWriter, keySize: 4, bloom);
-            outerBuilder.FinishValueWrite(PersistedSnapshot.StateTopNodesTag);
+            NWayPackedArrayMerge<TWriter, TReader, TPin>(views, PersistedSnapshotTags.StateTopNodesTag, ref valueWriter, keySize: 4, bloom);
+            outerBuilder.FinishValueWrite(PersistedSnapshotTags.StateTopNodesTag);
         }
         {
             ref TWriter valueWriter = ref outerBuilder.BeginValueWrite();
-            NWayPackedArrayMerge<TWriter, TReader, TPin>(views, PersistedSnapshot.StateNodeTag, ref valueWriter, keySize: 8, bloom);
-            outerBuilder.FinishValueWrite(PersistedSnapshot.StateNodeTag);
+            NWayPackedArrayMerge<TWriter, TReader, TPin>(views, PersistedSnapshotTags.StateNodeTag, ref valueWriter, keySize: 8, bloom);
+            outerBuilder.FinishValueWrite(PersistedSnapshotTags.StateNodeTag);
         }
         {
             ref TWriter valueWriter = ref outerBuilder.BeginValueWrite();
-            NWayMergePerAddressColumn<TWriter, TReader, TPin>(views, PersistedSnapshot.AccountColumnTag, ref valueWriter, bloom);
-            outerBuilder.FinishValueWrite(PersistedSnapshot.AccountColumnTag);
+            NWayMergePerAddressColumn<TWriter, TReader, TPin>(views, PersistedSnapshotTags.AccountColumnTag, ref valueWriter, bloom);
+            outerBuilder.FinishValueWrite(PersistedSnapshotTags.AccountColumnTag);
         }
         {
             ref TWriter valueWriter = ref outerBuilder.BeginValueWrite();
             NWayMetadataMerge<TWriter, TReader, TPin>(views, ref valueWriter);
-            outerBuilder.FinishValueWrite(PersistedSnapshot.MetadataTag);
+            outerBuilder.FinishValueWrite(PersistedSnapshotTags.MetadataTag);
         }
 
         outerBuilder.Build();
@@ -179,7 +172,7 @@ public static class PersistedSnapshotMerger
 
         // Cache each source's current 20-byte addressHash prefix key (stride 32 with room).
         const int KeyStride = 32;
-        const int AddrKeyLen = AddressHashPrefixLength;
+        const int AddrKeyLen = PersistedSnapshotTags.AddressHashPrefixLength;
         Span<byte> keyBuf = stackalloc byte[n * KeyStride];
 
         // Reusable work buffers for the per-address slot prefix/suffix HSST builders.
@@ -215,7 +208,7 @@ public static class PersistedSnapshotMerger
             // builder is passed to ReaddAddressHsst by ref, so it can't be a `using`
             // declaration (the compiler refuses ref to using-variables). Manage its
             // disposal with a try/finally instead.
-            HsstBTreeBuilder<TWriter, TReader, TPin> builder = new(ref writer, AddressHashPrefixLength);
+            HsstBTreeBuilder<TWriter, TReader, TPin> builder = new(ref writer, PersistedSnapshotTags.AddressHashPrefixLength);
             try
             {
                 while (cursor.MoveNext())
@@ -251,16 +244,16 @@ public static class PersistedSnapshotMerger
                                 // restore after — otherwise only the first would match.
                                 HsstReader<WholeReadSessionReader, NoOpPin> outer = new(in srcReader, vb);
                                 Bound outerRoot = outer.GetBound();
-                                if (outer.TrySeek(PersistedSnapshot.SlotSubTag, out Bound slotBound))
+                                if (outer.TrySeek(PersistedSnapshotTags.SlotSubTag, out Bound slotBound))
                                     AddSlotKeysToBloom<WholeReadSessionReader, NoOpPin>(in srcReader, slotBound, addrKey, bloom);
                                 outer.SetBound(outerRoot);
-                                if (outer.TrySeek(PersistedSnapshot.StorageTopSubTag, out Bound stb))
+                                if (outer.TrySeek(PersistedSnapshotTags.StorageTopSubTag, out Bound stb))
                                     AddStorageTrieKeysToBloom<WholeReadSessionReader, NoOpPin>(in srcReader, stb, addrKey, bloom);
                                 outer.SetBound(outerRoot);
-                                if (outer.TrySeek(PersistedSnapshot.StorageCompactSubTag, out Bound scb))
+                                if (outer.TrySeek(PersistedSnapshotTags.StorageCompactSubTag, out Bound scb))
                                     AddStorageTrieKeysToBloom<WholeReadSessionReader, NoOpPin>(in srcReader, scb, addrKey, bloom);
                                 outer.SetBound(outerRoot);
-                                if (outer.TrySeek(PersistedSnapshot.StorageFallbackSubTag, out Bound sfb))
+                                if (outer.TrySeek(PersistedSnapshotTags.StorageFallbackSubTag, out Bound sfb))
                                     AddStorageTrieKeysToBloom<WholeReadSessionReader, NoOpPin>(in srcReader, sfb, addrKey, bloom);
 
                                 cursor.AdvanceMatching();
@@ -282,7 +275,7 @@ public static class PersistedSnapshotMerger
                         perAddrBounds[j] = (vb.Offset, vb.Length);
                     }
 
-                    using NativeMemoryList<Bound> subTagBoundsList = new(matchCount * PerAddrSubTagCount, matchCount * PerAddrSubTagCount);
+                    using NativeMemoryList<Bound> subTagBoundsList = new(matchCount * PersistedSnapshotTags.PerAddrSubTagCount, matchCount * PersistedSnapshotTags.PerAddrSubTagCount);
                     Span<Bound> subTagBounds = subTagBoundsList.AsSpan();
                     for (int j = 0; j < matchCount; j++)
                     {
@@ -290,7 +283,7 @@ public static class PersistedSnapshotMerger
                         HsstDenseByteIndexReader.TryResolveAll<WholeReadSessionReader, NoOpPin>(
                             in r,
                             new Bound(perAddrBounds[j].Offset, perAddrBounds[j].Length),
-                            subTagBounds.Slice(j * PerAddrSubTagCount, PerAddrSubTagCount));
+                            subTagBounds.Slice(j * PersistedSnapshotTags.PerAddrSubTagCount, PersistedSnapshotTags.PerAddrSubTagCount));
                     }
 
                     ref TWriter perAddrWriter = ref builder.BeginValueWrite();
@@ -347,15 +340,15 @@ public static class PersistedSnapshotMerger
             // Find newest destruct barrier: newest j where SelfDestructSubTag is present and
             // marks "destructed" ([0x00]). With DenseByteIndex per-address encoding, sub-tag
             // values are presence-marked: length 0 = absent, [0x00] = destructed, [0x01] = new.
-            int sdTag = PersistedSnapshot.SelfDestructSubTag[0];
+            int sdTag = PersistedSnapshotTags.SelfDestructSubTag[0];
             int destructBarrier = -1;
             for (int j = 0; j < matchCount; j++)
             {
-                Bound sdb = subTagBounds[j * PerAddrSubTagCount + sdTag];
+                Bound sdb = subTagBounds[j * PersistedSnapshotTags.PerAddrSubTagCount + sdTag];
                 if (sdb.Length != 1) continue;
                 WholeReadSessionReader r = Reader(views[matchingSources[j]]);
                 using NoOpPin sdPin = r.PinBuffer(sdb.Offset, 1);
-                if (sdPin.Buffer[0] == 0x00)
+                if (sdPin.Buffer[0] == PersistedSnapshotTags.SelfDestructDestructedMarkerByte)
                     destructBarrier = j;
             }
 
@@ -366,16 +359,16 @@ public static class PersistedSnapshotMerger
             // dispatches the inner BTree merge into a PackedArray builder. The per-address
             // DenseByteIndex requires strictly descending insertion, so these emit first.
             MergeStorageTrieSubTag<TWriter, TReader, TPin>(matchingSources, matchCount, views, subTagBounds,
-                ref perAddrBuilder, PersistedSnapshot.StorageTopSubTag,
-                subTagIdx: PersistedSnapshot.StorageTopSubTag[0], innerKeySize: 4, perSourceStride: PerAddrSubTagCount,
+                ref perAddrBuilder, PersistedSnapshotTags.StorageTopSubTag,
+                subTagIdx: PersistedSnapshotTags.StorageTopSubTag[0], innerKeySize: 4, perSourceStride: PersistedSnapshotTags.PerAddrSubTagCount,
                 bloom, addrBloomKey);
             MergeStorageTrieSubTag<TWriter, TReader, TPin>(matchingSources, matchCount, views, subTagBounds,
-                ref perAddrBuilder, PersistedSnapshot.StorageCompactSubTag,
-                subTagIdx: PersistedSnapshot.StorageCompactSubTag[0], innerKeySize: 8, perSourceStride: PerAddrSubTagCount,
+                ref perAddrBuilder, PersistedSnapshotTags.StorageCompactSubTag,
+                subTagIdx: PersistedSnapshotTags.StorageCompactSubTag[0], innerKeySize: 8, perSourceStride: PersistedSnapshotTags.PerAddrSubTagCount,
                 bloom, addrBloomKey);
             MergeStorageTrieSubTag<TWriter, TReader, TPin>(matchingSources, matchCount, views, subTagBounds,
-                ref perAddrBuilder, PersistedSnapshot.StorageFallbackSubTag,
-                subTagIdx: PersistedSnapshot.StorageFallbackSubTag[0], innerKeySize: 33, perSourceStride: PerAddrSubTagCount,
+                ref perAddrBuilder, PersistedSnapshotTags.StorageFallbackSubTag,
+                subTagIdx: PersistedSnapshotTags.StorageFallbackSubTag[0], innerKeySize: 33, perSourceStride: PersistedSnapshotTags.PerAddrSubTagCount,
                 bloom, addrBloomKey);
 
             // Sub-tag 0x04: Slots
@@ -387,7 +380,7 @@ public static class PersistedSnapshotMerger
             // so re-emitting through the inner BTree builder (which does align) keeps
             // the slot HSST on its own page.
             int slotStart = Math.Max(0, destructBarrier);
-            int slotTag = PersistedSnapshot.SlotSubTag[0];
+            int slotTag = PersistedSnapshotTags.SlotSubTag[0];
 
             {
                 int slotSourceCount = 0;
@@ -398,7 +391,7 @@ public static class PersistedSnapshotMerger
                 Span<(long Offset, long Length)> slotBounds = slotBoundsList.AsSpan();
                 for (int j = slotStart; j < matchCount; j++)
                 {
-                    Bound slotBound = subTagBounds[j * PerAddrSubTagCount + slotTag];
+                    Bound slotBound = subTagBounds[j * PersistedSnapshotTags.PerAddrSubTagCount + slotTag];
                     if (slotBound.Length > 0)
                     {
                         slotSources[slotSourceCount] = matchingSources[j];
@@ -431,7 +424,7 @@ public static class PersistedSnapshotMerger
                             ref slotWriter,
                             ref slotPrefixBuffers,
                             bloom, addrBloomKey);
-                        perAddrBuilder.FinishValueWrite(PersistedSnapshot.SlotSubTag);
+                        perAddrBuilder.FinishValueWrite(PersistedSnapshotTags.SlotSubTag);
                     }
                     finally
                     {
@@ -453,7 +446,7 @@ public static class PersistedSnapshotMerger
 
                 for (int j = 0; j < matchCount; j++)
                 {
-                    Bound sdb = subTagBounds[j * PerAddrSubTagCount + sdTag];
+                    Bound sdb = subTagBounds[j * PersistedSnapshotTags.PerAddrSubTagCount + sdTag];
                     if (sdb.Length == 0) continue;
 
                     if (sdSrcJ < 0)
@@ -467,7 +460,7 @@ public static class PersistedSnapshotMerger
                         // TryAdd: newer=destructed ([0x00]) -> destructed wins; newer=new ([0x01]) -> keep older.
                         WholeReadSessionReader r = Reader(views[matchingSources[j]]);
                         using NoOpPin firstBytePin = r.PinBuffer(sdb.Offset, 1);
-                        if (firstBytePin.Buffer[0] == 0x00)
+                        if (firstBytePin.Buffer[0] == PersistedSnapshotTags.SelfDestructDestructedMarkerByte)
                         {
                             sdSrcJ = j;
                             sdValOff = sdb.Offset;
@@ -480,20 +473,20 @@ public static class PersistedSnapshotMerger
                 {
                     WholeReadSessionReader r = Reader(views[matchingSources[sdSrcJ]]);
                     using NoOpPin sdPin = r.PinBuffer(sdValOff, sdValLen);
-                    perAddrBuilder.Add(PersistedSnapshot.SelfDestructSubTag, sdPin.Buffer);
+                    perAddrBuilder.Add(PersistedSnapshotTags.SelfDestructSubTag, sdPin.Buffer);
                 }
             }
 
             // Sub-tag 0x02: Account — newest wins (walk M-1..0, first present (length>0)).
             {
-                int acctTag = PersistedSnapshot.AccountSubTag[0];
+                int acctTag = PersistedSnapshotTags.AccountSubTag[0];
                 for (int j = matchCount - 1; j >= 0; j--)
                 {
-                    Bound ab = subTagBounds[j * PerAddrSubTagCount + acctTag];
+                    Bound ab = subTagBounds[j * PersistedSnapshotTags.PerAddrSubTagCount + acctTag];
                     if (ab.Length == 0) continue;
                     WholeReadSessionReader r = Reader(views[matchingSources[j]]);
                     using NoOpPin acctPin = r.PinBuffer(ab.Offset, ab.Length);
-                    perAddrBuilder.Add(PersistedSnapshot.AccountSubTag, acctPin.Buffer);
+                    perAddrBuilder.Add(PersistedSnapshotTags.AccountSubTag, acctPin.Buffer);
                     break;
                 }
             }
@@ -502,14 +495,14 @@ public static class PersistedSnapshotMerger
             // so every source's 20-byte preimage for this addressHash is byte-identical.
             // Walk 0..M-1 looking for the first non-empty sub-tag value and copy it.
             {
-                int addrTag = PersistedSnapshot.AddressSubTag[0];
+                int addrTag = PersistedSnapshotTags.AddressSubTag[0];
                 for (int j = 0; j < matchCount; j++)
                 {
-                    Bound ab = subTagBounds[j * PerAddrSubTagCount + addrTag];
+                    Bound ab = subTagBounds[j * PersistedSnapshotTags.PerAddrSubTagCount + addrTag];
                     if (ab.Length == 0) continue;
                     WholeReadSessionReader r = Reader(views[matchingSources[j]]);
                     using NoOpPin addrPin = r.PinBuffer(ab.Offset, ab.Length);
-                    perAddrBuilder.Add(PersistedSnapshot.AddressSubTag, addrPin.Buffer);
+                    perAddrBuilder.Add(PersistedSnapshotTags.AddressSubTag, addrPin.Buffer);
                     break;
                 }
             }
@@ -852,15 +845,15 @@ public static class PersistedSnapshotMerger
         // gets a narrow PinBuffer so the resulting Span is just the field bytes —
         // no wide pin of the entire metadata blob.
         HsstReader<WholeReadSessionReader, NoOpPin> oldestRoot = new(in oldestReader, new Bound(0, oldestReader.Length));
-        oldestRoot.TrySeek(PersistedSnapshot.MetadataTag, out Bound oldestMetaScope);
+        oldestRoot.TrySeek(PersistedSnapshotTags.MetadataTag, out Bound oldestMetaScope);
         HsstReader<WholeReadSessionReader, NoOpPin> newestRoot = new(in newestReader, new Bound(0, newestReader.Length));
-        newestRoot.TrySeek(PersistedSnapshot.MetadataTag, out Bound newestMetaScope);
+        newestRoot.TrySeek(PersistedSnapshotTags.MetadataTag, out Bound newestMetaScope);
 
-        Bound fb = SeekField(in oldestReader, oldestMetaScope, PersistedSnapshot.MetadataFromBlockKey);
-        Bound fh = SeekField(in oldestReader, oldestMetaScope, PersistedSnapshot.MetadataFromHashKey);
-        Bound tb = SeekField(in newestReader, newestMetaScope, PersistedSnapshot.MetadataToBlockKey);
-        Bound th = SeekField(in newestReader, newestMetaScope, PersistedSnapshot.MetadataToHashKey);
-        Bound vb = SeekField(in newestReader, newestMetaScope, PersistedSnapshot.MetadataVersionKey);
+        Bound fb = SeekField(in oldestReader, oldestMetaScope, PersistedSnapshotTags.MetadataFromBlockKey);
+        Bound fh = SeekField(in oldestReader, oldestMetaScope, PersistedSnapshotTags.MetadataFromHashKey);
+        Bound tb = SeekField(in newestReader, newestMetaScope, PersistedSnapshotTags.MetadataToBlockKey);
+        Bound th = SeekField(in newestReader, newestMetaScope, PersistedSnapshotTags.MetadataToHashKey);
+        Bound vb = SeekField(in newestReader, newestMetaScope, PersistedSnapshotTags.MetadataVersionKey);
 
         using NoOpPin fbPin = oldestReader.PinBuffer(fb.Offset, fb.Length);
         using NoOpPin fhPin = oldestReader.PinBuffer(fh.Offset, fh.Length);
@@ -897,9 +890,9 @@ public static class PersistedSnapshotMerger
             sourceStarts[i] = totalRefIdsBytes;
             WholeReadSessionReader r = Reader(views[i]);
             HsstReader<WholeReadSessionReader, NoOpPin> root = new(in r, new Bound(0, r.Length));
-            if (!root.TrySeek(PersistedSnapshot.MetadataTag, out Bound metaScope)) continue;
+            if (!root.TrySeek(PersistedSnapshotTags.MetadataTag, out Bound metaScope)) continue;
             HsstReader<WholeReadSessionReader, NoOpPin> metaHsst = new(in r, metaScope);
-            if (!metaHsst.TrySeek(PersistedSnapshot.MetadataRefIdsKey, out Bound rb)
+            if (!metaHsst.TrySeek(PersistedSnapshotTags.MetadataRefIdsKey, out Bound rb)
                 || rb.Length == 0 || rb.Length % 2 != 0) continue;
             sourceOrigins[i] = rb.Offset;
             totalRefIdsBytes = checked(totalRefIdsBytes + (int)rb.Length);
@@ -956,18 +949,18 @@ public static class PersistedSnapshotMerger
             }
         }
 
-        using HsstBTreeBuilder<TWriter, TReader, TPin> builder = new(ref writer, PersistedSnapshot.MetadataKeyLength);
+        using HsstBTreeBuilder<TWriter, TReader, TPin> builder = new(ref writer, PersistedSnapshotTags.MetadataKeyLength);
 
         // Emit all keys in sorted ASCII order. NUL-padding to 10 bytes preserves the
         // original ASCII sort order:
         // "from_block" < "from_hash\0" < "noderefs\0\0" < "ref_ids\0\0\0" < "to_block\0\0" < "to_hash\0\0\0" < "version\0\0\0"
-        builder.Add(PersistedSnapshot.MetadataFromBlockKey, fromBlock);
-        builder.Add(PersistedSnapshot.MetadataFromHashKey, fromHash);
-        builder.Add(PersistedSnapshot.MetadataNodeRefsKey, [0x01]);
-        builder.Add(PersistedSnapshot.MetadataRefIdsKey, mergedRefIds[..writeCursor]);
-        builder.Add(PersistedSnapshot.MetadataToBlockKey, toBlock);
-        builder.Add(PersistedSnapshot.MetadataToHashKey, toHash);
-        builder.Add(PersistedSnapshot.MetadataVersionKey, version);
+        builder.Add(PersistedSnapshotTags.MetadataFromBlockKey, fromBlock);
+        builder.Add(PersistedSnapshotTags.MetadataFromHashKey, fromHash);
+        builder.Add(PersistedSnapshotTags.MetadataNodeRefsKey, PersistedSnapshotTags.MetadataNodeRefsPresentMarker);
+        builder.Add(PersistedSnapshotTags.MetadataRefIdsKey, mergedRefIds[..writeCursor]);
+        builder.Add(PersistedSnapshotTags.MetadataToBlockKey, toBlock);
+        builder.Add(PersistedSnapshotTags.MetadataToHashKey, toHash);
+        builder.Add(PersistedSnapshotTags.MetadataVersionKey, version);
 
         builder.Build();
     }

@@ -20,12 +20,11 @@ public static class PersistedSnapshotReader
 {
     private const int TopPathThreshold = 7;
     private const int CompactPathThreshold = 15;
-    private const int AddressHashPrefixLength = PersistedSnapshot.AddressHashPrefixLength;
     private const int SlotPrefixLength = 30;
 
     /// <summary>
-    /// Seek the per-address inner-HSST bound under <see cref="PersistedSnapshot.AccountColumnTag"/>:
-    /// AccountColumnTag → addressHash.Bytes[..AddressHashPrefixLength]. On success outs the
+    /// Seek the per-address inner-HSST bound under <see cref="PersistedSnapshotTags.AccountColumnTag"/>:
+    /// AccountColumnTag → addressHash.Bytes[..PersistedSnapshotTags.AddressHashPrefixLength]. On success outs the
     /// inner-HSST bound that <see cref="HsstReader{TReader,TPin}"/> can be re-entered with to
     /// do sub-tag lookups (storage-trie nodes, slots, account, self-destruct, raw-address
     /// preimage) without re-walking the outer column.
@@ -35,8 +34,8 @@ public static class PersistedSnapshotReader
         where TReader : IHsstByteReader<TPin>, allows ref struct
     {
         using HsstReader<TReader, TPin> r = new(in reader);
-        if (!r.TrySeek(PersistedSnapshot.AccountColumnTag, out _) ||
-            !r.TrySeek(addressHash.Bytes[..AddressHashPrefixLength], out _))
+        if (!r.TrySeek(PersistedSnapshotTags.AccountColumnTag, out _) ||
+            !r.TrySeek(addressHash.Bytes[..PersistedSnapshotTags.AddressHashPrefixLength], out _))
         {
             addressBound = default;
             return false;
@@ -55,7 +54,7 @@ public static class PersistedSnapshotReader
         // tag below count, including gap-filled (length 0) absences; treat length 0 as "no
         // account record" so callers don't misread an absent entry as a deleted account.
         if (!HsstDenseByteIndexReader.TryResolveSingleTag<TReader, TPin>(
-                in reader, addressBound, PersistedSnapshot.AccountSubTagByte, out Bound b) ||
+                in reader, addressBound, PersistedSnapshotTags.AccountSubTagByte, out Bound b) ||
             b.Length == 0)
         {
             accountBound = default;
@@ -73,7 +72,7 @@ public static class PersistedSnapshotReader
         // read. The nested HSST inside the sub-tag value (slot-prefix → slot-suffix → value)
         // has a non-fixed layout, so the inner walk goes back through HsstReader's dispatch.
         if (!HsstDenseByteIndexReader.TryResolveSingleTag<TReader, TPin>(
-                in reader, addressBound, PersistedSnapshot.SlotSubTagByte, out Bound slotSubTagBound) ||
+                in reader, addressBound, PersistedSnapshotTags.SlotSubTagByte, out Bound slotSubTagBound) ||
             slotSubTagBound.Length == 0)
         {
             slotBound = default;
@@ -97,13 +96,13 @@ public static class PersistedSnapshotReader
         where TReader : IHsstByteReader<TPin>, allows ref struct
     {
         if (!HsstDenseByteIndexReader.TryResolveSingleTag<TReader, TPin>(
-                in reader, addressBound, PersistedSnapshot.SelfDestructSubTagByte, out Bound b))
+                in reader, addressBound, PersistedSnapshotTags.SelfDestructSubTagByte, out Bound b))
             return null;
         // length 0 = absent (DenseByteIndex gap fill). [0x00] = destructed. [0x01] = new account.
         if (b.Length == 0) return null;
         Span<byte> oneByte = stackalloc byte[1];
         if (!reader.TryRead(b.Offset, oneByte)) return null;
-        return oneByte[0] != 0x00;
+        return oneByte[0] != PersistedSnapshotTags.SelfDestructDestructedMarkerByte;
     }
 
     /// <summary>
@@ -119,18 +118,18 @@ public static class PersistedSnapshotReader
         {
             Span<byte> key = stackalloc byte[4];
             path.EncodeWith4Byte(key);
-            return TryGetFromColumn<TReader, TPin>(in reader, PersistedSnapshot.StateTopNodesTag, key, out bound);
+            return TryGetFromColumn<TReader, TPin>(in reader, PersistedSnapshotTags.StateTopNodesTag, key, out bound);
         }
         if (path.Length <= CompactPathThreshold)
         {
             Span<byte> key = stackalloc byte[8];
             path.EncodeWith8Byte(key);
-            return TryGetFromColumn<TReader, TPin>(in reader, PersistedSnapshot.StateNodeTag, key, out bound);
+            return TryGetFromColumn<TReader, TPin>(in reader, PersistedSnapshotTags.StateNodeTag, key, out bound);
         }
         Span<byte> fullKey = stackalloc byte[33];
         path.Path.Bytes.CopyTo(fullKey);
         fullKey[32] = (byte)path.Length;
-        return TryGetFromColumn<TReader, TPin>(in reader, PersistedSnapshot.StateNodeFallbackTag, fullKey, out bound);
+        return TryGetFromColumn<TReader, TPin>(in reader, PersistedSnapshotTags.StateNodeFallbackTag, fullKey, out bound);
     }
 
     /// <summary>
@@ -151,9 +150,9 @@ public static class PersistedSnapshotReader
         // entry for this sub-tag" so callers don't read into the adjacent sub-tag bytes.
         byte subTag;
         int keyLen;
-        if (path.Length <= TopPathThreshold) { subTag = PersistedSnapshot.StorageTopSubTagByte; keyLen = 4; }
-        else if (path.Length <= CompactPathThreshold) { subTag = PersistedSnapshot.StorageCompactSubTagByte; keyLen = 8; }
-        else { subTag = PersistedSnapshot.StorageFallbackSubTagByte; keyLen = 33; }
+        if (path.Length <= TopPathThreshold) { subTag = PersistedSnapshotTags.StorageTopSubTagByte; keyLen = 4; }
+        else if (path.Length <= CompactPathThreshold) { subTag = PersistedSnapshotTags.StorageCompactSubTagByte; keyLen = 8; }
+        else { subTag = PersistedSnapshotTags.StorageFallbackSubTagByte; keyLen = 33; }
 
         if (!HsstDenseByteIndexReader.TryResolveSingleTag<TReader, TPin>(
                 in reader, addressBound, subTag, out Bound subTagBound) ||
@@ -191,8 +190,8 @@ public static class PersistedSnapshotReader
         where TReader : IHsstByteReader<TPin>, allows ref struct
     {
         using HsstReader<TReader, TPin> r = new(in reader);
-        if (!r.TrySeek(PersistedSnapshot.MetadataTag, out _) ||
-            !r.TrySeek(PersistedSnapshot.MetadataRefIdsKey, out _))
+        if (!r.TrySeek(PersistedSnapshotTags.MetadataTag, out _) ||
+            !r.TrySeek(PersistedSnapshotTags.MetadataRefIdsKey, out _))
             return null;
         Bound b = r.GetBound();
         if (b.Length == 0 || b.Length % 2 != 0) return null;

@@ -25,7 +25,6 @@ public sealed class PersistedSnapshotScanner(WholeReadSession session, Persisted
 {
     private const int SlotPrefixLength = 30;
     private const int SlotSuffixLength = 32 - SlotPrefixLength;
-    private const int AddressHashPrefixLength = PersistedSnapshot.AddressHashPrefixLength;
 
     private readonly WholeReadSession _session = session;
     private readonly PersistedSnapshot _snapshot = snapshot;
@@ -71,7 +70,7 @@ public sealed class PersistedSnapshotScanner(WholeReadSession session, Persisted
                 if (_sdBound.Length == 0) return null;
                 Span<byte> tag = stackalloc byte[1];
                 _reader.TryRead(_sdBound.Offset, tag);
-                return tag[0] != 0x00;
+                return tag[0] != PersistedSnapshotTags.SelfDestructDestructedMarkerByte;
             }
         }
 
@@ -90,7 +89,7 @@ public sealed class PersistedSnapshotScanner(WholeReadSession session, Persisted
                 if (_accountBound.Length == 0) return null;
                 using NoOpPin pin = Pin(in _reader, _accountBound);
                 ReadOnlySpan<byte> rlp = pin.Buffer;
-                if (rlp.Length == 1 && rlp[0] == 0x00) return null;
+                if (rlp.Length == 1 && rlp[0] == PersistedSnapshotTags.AccountDeletedMarkerByte) return null;
                 return AccountDecoder.Slim.Decode(rlp);
             }
         }
@@ -113,10 +112,6 @@ public sealed class PersistedSnapshotScanner(WholeReadSession session, Persisted
 
     public ref struct PerAddressEnumerator : IDisposable
     {
-        // Per-address inner DenseByteIndex tags range 0x01..0x07; pin every entry with one
-        // TryResolveAll call (sized to max tag + 1 = 8).
-        private const int PerAddrSubTagCount = 8;
-
         private readonly WholeReadSessionReader _reader;
         private HsstRefEnumerator<WholeReadSessionReader, NoOpPin> _addrEnum;
         // _curAddress is materialised once per outer row from sub-tag 0x07 (raw 20-byte
@@ -132,25 +127,25 @@ public sealed class PersistedSnapshotScanner(WholeReadSession session, Persisted
         {
             _reader = reader;
             HsstReader<WholeReadSessionReader, NoOpPin> r = new(in _reader);
-            Bound colBound = r.TrySeek(PersistedSnapshot.AccountColumnTag, out Bound matched) ? matched : default;
+            Bound colBound = r.TrySeek(PersistedSnapshotTags.AccountColumnTag, out Bound matched) ? matched : default;
             _addrEnum = new HsstRefEnumerator<WholeReadSessionReader, NoOpPin>(in _reader, colBound);
         }
 
         public bool MoveNext()
         {
-            Span<byte> hashBuf = stackalloc byte[AddressHashPrefixLength];
+            Span<byte> hashBuf = stackalloc byte[PersistedSnapshotTags.AddressHashPrefixLength];
             Span<byte> addrBuf = stackalloc byte[Address.Size];
-            Span<Bound> sub = stackalloc Bound[PerAddrSubTagCount];
+            Span<Bound> sub = stackalloc Bound[PersistedSnapshotTags.PerAddrSubTagCount];
             while (_addrEnum.MoveNext())
             {
                 KeyValueEntry addrEntry = _addrEnum.Current;
                 sub.Clear();
                 HsstDenseByteIndexReader.TryResolveAll<WholeReadSessionReader, NoOpPin>(
                     in _reader, addrEntry.ValueBound, sub);
-                Bound slot = sub[PersistedSnapshot.SlotSubTag[0]];
-                Bound account = sub[PersistedSnapshot.AccountSubTag[0]];
-                Bound sd = sub[PersistedSnapshot.SelfDestructSubTag[0]];
-                Bound addr = sub[PersistedSnapshot.AddressSubTag[0]];
+                Bound slot = sub[PersistedSnapshotTags.SlotSubTag[0]];
+                Bound account = sub[PersistedSnapshotTags.AccountSubTag[0]];
+                Bound sd = sub[PersistedSnapshotTags.SelfDestructSubTag[0]];
+                Bound addr = sub[PersistedSnapshotTags.AddressSubTag[0]];
                 // Defensive: skip rows where every account-side sub-tag is gap-filled —
                 // those are storage-trie-only rows enumerated separately via StorageNodes.
                 if (slot.Length == 0 && account.Length == 0 && sd.Length == 0 && addr.Length == 0)
@@ -340,7 +335,7 @@ public sealed class PersistedSnapshotScanner(WholeReadSession session, Persisted
             _reader = reader;
             _curKey = new byte[33];
             _stage = 0;
-            _inner = OpenColumn(in _reader, PersistedSnapshot.StateTopNodesTag);
+            _inner = OpenColumn(in _reader, PersistedSnapshotTags.StateTopNodesTag);
         }
 
         private static HsstRefEnumerator<WholeReadSessionReader, NoOpPin> OpenColumn(scoped in WholeReadSessionReader reader, byte[] tag)
@@ -364,8 +359,8 @@ public sealed class PersistedSnapshotScanner(WholeReadSession session, Persisted
                 _stage++;
                 _inner = _stage switch
                 {
-                    1 => OpenColumn(in _reader, PersistedSnapshot.StateNodeTag),
-                    2 => OpenColumn(in _reader, PersistedSnapshot.StateNodeFallbackTag),
+                    1 => OpenColumn(in _reader, PersistedSnapshotTags.StateNodeTag),
+                    2 => OpenColumn(in _reader, PersistedSnapshotTags.StateNodeFallbackTag),
                     _ => default,
                 };
             }
@@ -437,7 +432,7 @@ public sealed class PersistedSnapshotScanner(WholeReadSession session, Persisted
             _level = 0;
             _curHash = default;
             HsstReader<WholeReadSessionReader, NoOpPin> r = new(in _reader);
-            Bound colBound = r.TrySeek(PersistedSnapshot.AccountColumnTag, out Bound matched) ? matched : default;
+            Bound colBound = r.TrySeek(PersistedSnapshotTags.AccountColumnTag, out Bound matched) ? matched : default;
             _addrEnum = new HsstRefEnumerator<WholeReadSessionReader, NoOpPin>(in _reader, colBound);
         }
 
@@ -482,13 +477,13 @@ public sealed class PersistedSnapshotScanner(WholeReadSession session, Persisted
                     if (_stage == 0)
                     {
                         _stage = 1;
-                        if (TryOpenSubTag(in _reader, _addrInnerBound, PersistedSnapshot.StorageCompactSubTag, out _pathEnum))
+                        if (TryOpenSubTag(in _reader, _addrInnerBound, PersistedSnapshotTags.StorageCompactSubTag, out _pathEnum))
                             continue;
                     }
                     if (_stage == 1)
                     {
                         _stage = 2;
-                        if (TryOpenSubTag(in _reader, _addrInnerBound, PersistedSnapshot.StorageFallbackSubTag, out _pathEnum))
+                        if (TryOpenSubTag(in _reader, _addrInnerBound, PersistedSnapshotTags.StorageFallbackSubTag, out _pathEnum))
                             continue;
                     }
                     _level = 0;
@@ -499,13 +494,13 @@ public sealed class PersistedSnapshotScanner(WholeReadSession session, Persisted
                 KeyValueEntry addrEntry = _addrEnum.Current;
                 _addrInnerBound = addrEntry.ValueBound;
                 _stage = 0;
-                if (!TryOpenSubTag(in _reader, _addrInnerBound, PersistedSnapshot.StorageTopSubTag, out _pathEnum))
+                if (!TryOpenSubTag(in _reader, _addrInnerBound, PersistedSnapshotTags.StorageTopSubTag, out _pathEnum))
                 {
                     _stage = 1;
-                    if (!TryOpenSubTag(in _reader, _addrInnerBound, PersistedSnapshot.StorageCompactSubTag, out _pathEnum))
+                    if (!TryOpenSubTag(in _reader, _addrInnerBound, PersistedSnapshotTags.StorageCompactSubTag, out _pathEnum))
                     {
                         _stage = 2;
-                        if (!TryOpenSubTag(in _reader, _addrInnerBound, PersistedSnapshot.StorageFallbackSubTag, out _pathEnum))
+                        if (!TryOpenSubTag(in _reader, _addrInnerBound, PersistedSnapshotTags.StorageFallbackSubTag, out _pathEnum))
                             continue;
                     }
                 }
