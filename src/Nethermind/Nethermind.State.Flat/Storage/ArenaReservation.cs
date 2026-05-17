@@ -70,8 +70,8 @@ public sealed class ArenaReservation : RefCountingDisposable
     /// <summary>
     /// Range version of <see cref="TouchPage"/>: probe every OS page that overlaps the
     /// reader-relative byte range <c>[localOffset, localOffset + length)</c> against the
-    /// <see cref="PageResidencyTracker"/>, queue any displaced occupants, and — if any
-    /// probed page was a non-<see cref="TouchOutcome.Hit"/> — issue a <em>single</em>
+    /// <see cref="PageResidencyTracker"/>, queue any displaced occupants, and — if more
+    /// than one probed page was a non-<see cref="TouchOutcome.Hit"/> — issue a <em>single</em>
     /// <c>madvise(MADV_POPULATE_READ)</c> over the page-aligned envelope of the range.
     /// </summary>
     /// <remarks>
@@ -81,6 +81,9 @@ public sealed class ArenaReservation : RefCountingDisposable
     /// range is harmless. The per-page tracker probes themselves are unchanged from
     /// <see cref="TouchPage"/> — same arming, same clock eviction, same dispatch into
     /// <see cref="IArenaManager.QueueEviction"/> for displaced pages.
+    /// If only a single probed page was non-<see cref="TouchOutcome.Hit"/>, the batched
+    /// <c>madvise</c> call is skipped — a one-page syscall is not amortized vs. the
+    /// inline minor fault the reader would otherwise take on that page.
     /// </remarks>
     internal void TouchRangePopulate(long localOffset, long length)
     {
@@ -93,19 +96,22 @@ public sealed class ArenaReservation : RefCountingDisposable
         int firstPage = (int)(firstPageBase / pageSize);
         int lastPage = (int)((lastPageBaseExclusive - 1) / pageSize);
 
-        bool anyMissed = false;
+        int missedCount = 0;
         PageResidencyTracker tracker = _arenaManager.PageTracker;
         for (int p = firstPage; p <= lastPage; p++)
         {
             TouchOutcome outcome = tracker.TryTouch(ArenaId, p,
                 out int evictedArenaId, out int evictedPageIdx);
             if (outcome == TouchOutcome.Hit) continue;
-            anyMissed = true;
+            missedCount++;
             if (outcome == TouchOutcome.Evicted)
                 _arenaManager.QueueEviction(evictedArenaId, evictedPageIdx);
         }
 
-        if (anyMissed)
+        // A single cold page is cheaper to bring in via the reader's inline minor fault
+        // than via a madvise syscall, so only batch-populate when at least two pages
+        // are cold and the syscall overhead is actually amortized.
+        if (missedCount > 1)
             _arenaFile.PopulateRead(firstPageBase, lastPageBaseExclusive - firstPageBase);
     }
 
