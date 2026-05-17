@@ -255,9 +255,11 @@ public class P2PProtocolHandler(
         _protocolVersion = hello.P2PVersion;
 
         IOwnedReadOnlyList<Capability>? capabilities = hello.Capabilities;
-        _availableCapabilities = new List<Capability>(capabilities);
-        foreach (Capability theirCapability in capabilities)
+        ReadOnlySpan<Capability> capabilitiesSpan = capabilities.AsSpan();
+        _availableCapabilities = new List<Capability>(capabilitiesSpan.Length);
+        foreach (Capability theirCapability in capabilitiesSpan)
         {
+            _availableCapabilities.Add(theirCapability);
             if (_supportedCapabilities.Contains(theirCapability))
             {
                 if (Logger.IsTrace) TraceAgreedCapability(theirCapability);
