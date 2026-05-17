@@ -83,7 +83,7 @@ public static class TxErrorMessages
         => $"TxGasLimitCapExceeded: Gas limit {gasLimit} exceeded cap of {gasLimitCap}.";
 
     public static string TxIntrinsicGasExceedsCap(long intrinsicRegularGas, long intrinsicFloorGas, long gasLimitCap)
-        => $"intrinsic gas too low: intrinsic (regular {intrinsicRegularGas}, floor {intrinsicFloorGas}) exceeded cap of {gasLimitCap}.";
+        => $"TxGasLimitCapExceeded: Intrinsic gas (regular {intrinsicRegularGas}, floor {intrinsicFloorGas}) exceeded cap of {gasLimitCap}.";
 
     public const string NonceTooHigh = "NonceTooHigh: Nonce exceeds max nonce";
 
