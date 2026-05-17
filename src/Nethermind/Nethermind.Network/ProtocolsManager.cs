@@ -159,8 +159,9 @@ namespace Nethermind.Network
             handler.Init();
         }
 
-        void IProtocolRegistrar.Register(ISession session, ProtocolHandlerBase handler) =>
-            session.Node.EthDetails = handler.Name;
+        void IProtocolRegistrar.Register(ISession session, ProtocolHandlerBase handler)
+        {
+        }
 
         void IProtocolRegistrar.Register(ISession session, P2PProtocolHandler handler)
         {

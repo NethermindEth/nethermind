@@ -91,6 +91,10 @@ internal sealed class AutofacProtocolHandlerFactory<THandler>(
             {
                 return context.ResolveKeyed(keyFilter.Key, parameterType);
             }
+
+            throw new InvalidOperationException(
+                $"Missing keyed registration for {parameterType.Name} with key '{keyFilter.Key}' " +
+                $"required by {typeof(THandler).Name}.{Constructor.Name} parameter '{parameter.Name}'.");
         }
         else if (context.ComponentRegistry.IsRegistered(new TypedService(parameterType)))
         {
