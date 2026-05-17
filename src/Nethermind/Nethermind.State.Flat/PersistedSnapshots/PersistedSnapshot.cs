@@ -507,6 +507,21 @@ public sealed class PersistedSnapshot : RefCountingDisposable
     public bool TryAcquire() => TryAcquireLease();
 
     /// <summary>
+    /// Advise this snapshot's mmap range cold (<c>madvise(MADV_DONTNEED)</c>) and clear
+    /// the per-arena page-tracker entries that cover it. Intended as a hook for callers
+    /// that have superseded this snapshot but want to drop its resident pages eagerly
+    /// rather than waiting for full disposal — e.g. the compactor releasing sources
+    /// after merging them into a new snapshot.
+    /// </summary>
+    /// <remarks>
+    /// Does not touch the inline address-bound cache: its 64 bytes stay on the snapshot
+    /// and the cached offsets remain content-verified against the (now-cold) mmap range,
+    /// so subsequent reads still hit the cache and simply pay a cold-page fault on first
+    /// access. Idempotent and safe to call from any thread.
+    /// </remarks>
+    public void Demote() => _reservation.AdviseDontNeed();
+
+    /// <summary>
     /// Mark every file this snapshot references (its metadata <see cref="ArenaReservation"/>'s
     /// <see cref="ArenaFile"/> and every leased <see cref="BlobArenaFile"/>) for
     /// shutdown-preservation. Called by <see cref="PersistedSnapshotRepository.Dispose"/>
