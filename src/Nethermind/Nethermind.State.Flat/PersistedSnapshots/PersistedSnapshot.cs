@@ -70,6 +70,16 @@ public sealed class PersistedSnapshot : RefCountingDisposable
     internal static readonly byte[] StorageCompactSubTag = [0x06];
     internal static readonly byte[] StorageTopSubTag = [0x07];
 
+    // Single-byte companions of the sub-tag arrays above, consumed by the fast-path
+    // <see cref="HsstDenseByteIndexReader.TryResolveSingleTag{TReader, TPin}"/> resolver which
+    // takes the tag as a <see cref="byte"/> rather than a one-element <see cref="ReadOnlySpan{T}"/>.
+    internal const byte AccountSubTagByte = 0x02;
+    internal const byte SelfDestructSubTagByte = 0x03;
+    internal const byte SlotSubTagByte = 0x04;
+    internal const byte StorageFallbackSubTagByte = 0x05;
+    internal const byte StorageCompactSubTagByte = 0x06;
+    internal const byte StorageTopSubTagByte = 0x07;
+
     // Metadata column keys. The HSST builder requires uniform key length per HSST,
     // so the original ASCII keys are NUL-padded to a fixed 10 bytes (the longest
     // original key, "from_block"). NUL-padding preserves the original sort order

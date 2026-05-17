@@ -3,6 +3,8 @@
 
 using System;
 using System.Buffers.Binary;
+using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 
 namespace Nethermind.State.Flat.Hsst;
 
@@ -138,8 +140,8 @@ internal static class HsstDenseByteIndexReader
         // Producer streams values high-tag → low-tag, so the physical predecessor of tag idx
         // is the next-higher in-array tag (idx + 1). The highest tag (idx == Count − 1) was
         // the first written and starts at DataStart, so its prevEnd is 0.
-        long prevEnd = idx == L.Count - 1 ? 0 : ReadEnd(ends, (idx + 1) * L.OffsetSize, L.OffsetSize);
-        long thisEnd = ReadEnd(ends, idx * L.OffsetSize, L.OffsetSize);
+        long prevEnd = idx == L.Count - 1 ? 0 : ReadEndFixed(ends, (idx + 1) * L.OffsetSize, L.OffsetSize);
+        long thisEnd = ReadEndFixed(ends, idx * L.OffsetSize, L.OffsetSize);
         if (thisEnd < prevEnd) return false;
         long valueLen = thisEnd - prevEnd;
         // Bound.Length is long; the only ceiling is the producer's MaxValuesTotal (256 TiB).
@@ -150,12 +152,97 @@ internal static class HsstDenseByteIndexReader
         return true;
     }
 
-    /// <summary>Read a 1/2/4/6-byte LE end-offset from <paramref name="buf"/> at <paramref name="byteOffset"/>.</summary>
-    private static long ReadEnd(ReadOnlySpan<byte> buf, int byteOffset, int offsetSize)
+    /// <summary>
+    /// Read a 1/2/4/6-byte LE end-offset from <paramref name="buf"/> at <paramref name="byteOffset"/>.
+    /// Branchless per width: direct integer load for 1/2/4, masked 8-byte unaligned load for 6.
+    /// Replaces the prior <c>stackalloc → Clear → CopyTo → ReadUInt64LE</c> shape.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static long ReadEndFixed(ReadOnlySpan<byte> buf, int byteOffset, int offsetSize) => offsetSize switch
     {
-        Span<byte> wide = stackalloc byte[8];
-        wide.Clear();
-        buf.Slice(byteOffset, offsetSize).CopyTo(wide);
-        return (long)BinaryPrimitives.ReadUInt64LittleEndian(wide);
+        1 => buf[byteOffset],
+        2 => BinaryPrimitives.ReadUInt16LittleEndian(buf[byteOffset..]),
+        4 => BinaryPrimitives.ReadUInt32LittleEndian(buf[byteOffset..]),
+        // 6-byte LE: load 8 bytes unaligned then mask off the high 16 bits. The 2 bytes past
+        // the offset are inside the same Ends[] section (validated by trailerSize) for every
+        // entry except the last; the trailer accommodates that with the IndexType + Count +
+        // OffsetSize bytes that always follow the array.
+        6 => (long)(Unsafe.ReadUnaligned<ulong>(
+                ref Unsafe.Add(ref MemoryMarshal.GetReference(buf), (nint)byteOffset))
+            & 0x0000_FFFF_FFFF_FFFFul),
+        _ => throw new InvalidDataException($"Invalid OffsetSize: {offsetSize}")
+    };
+
+    /// <summary>
+    /// Resolve the value bound for the single sub-<paramref name="tag"/> within a DenseByteIndex
+    /// HSST at <paramref name="bound"/>. Specialised for the per-address inner HSST hot path:
+    /// pins one tail window covering <c>IndexType + Count + OffsetSize + Ends[]</c> in a single
+    /// <see cref="IHsstByteReader{TPin}.PinBuffer"/> call instead of the three reader calls the
+    /// general dispatch path uses (one byte for <see cref="IndexType"/>, two for the layout
+    /// header, one pin for <c>Ends[]</c>).
+    /// </summary>
+    /// <remarks>
+    /// Validation mirrors <see cref="TryReadLayout{TReader, TPin}"/>: rejects an
+    /// <see cref="IndexType"/> mismatch, an invalid <c>OffsetSize</c>, a truncated bound, and
+    /// returns <c>false</c> for <paramref name="tag"/> ≥ Count (matches the exact-match semantics
+    /// of <see cref="TrySeek{TReader, TPin}"/>). Empty entries (gap-fill) return <c>true</c> with
+    /// a zero-length <see cref="Bound"/> — callers check <c>Length == 0</c> for absence.
+    ///
+    /// The pinned window is sized to fit the per-address HSST's trailer in one shot (Count ≤ 7,
+    /// OffsetSize ∈ {1, 2}, trailer ≤ 17 bytes); larger trailers fall back to a precise re-pin
+    /// of the <c>Ends[]</c> array.
+    /// </remarks>
+    public static bool TryResolveSingleTag<TReader, TPin>(
+        scoped in TReader reader, Bound bound, byte tag, out Bound entryBound)
+        where TPin : struct, IBufferPin, allows ref struct
+        where TReader : IHsstByteReader<TPin>, allows ref struct
+    {
+        entryBound = default;
+        if (bound.Length < 3) return false;
+
+        int winLen = (int)Math.Min(SpecTailWindow, bound.Length);
+        long winStart = bound.Offset + bound.Length - winLen;
+        using TPin winPin = reader.PinBuffer(winStart, winLen);
+        ReadOnlySpan<byte> win = winPin.Buffer;
+
+        // Trailer layout (low → high address): [Ends[count]] [Count u8] [OffsetSize u8] [IndexType u8].
+        if (win[winLen - 1] != (byte)IndexType.DenseByteIndex) return false;
+        int count = win[winLen - 3] + 1;
+        int offsetSize = win[winLen - 2];
+        if (!HsstOffset.IsValidOffsetSize(offsetSize)) return false;
+
+        long endsBytes = (long)count * offsetSize;
+        long trailerSize = 3L + endsBytes;
+        if (trailerSize > bound.Length) return false;
+        if ((uint)tag >= (uint)count) return false;
+
+        if (trailerSize <= winLen)
+        {
+            int endsOffsetInWin = winLen - 3 - (int)endsBytes;
+            return ResolveTag(win.Slice(endsOffsetInWin, (int)endsBytes), count, offsetSize, tag,
+                              bound.Offset, out entryBound);
+        }
+
+        // Cold path: trailer exceeds the speculative window (count > ~13 with offsetSize 2, or
+        // any combination beyond SpecTailWindow). Re-pin Ends[] precisely.
+        if (endsBytes > int.MaxValue) return false;
+        using TPin endsPin = reader.PinBuffer(bound.Offset + bound.Length - trailerSize, endsBytes);
+        return ResolveTag(endsPin.Buffer, count, offsetSize, tag, bound.Offset, out entryBound);
+    }
+
+    /// <summary>Speculative tail window for <see cref="TryResolveSingleTag"/>. Sized to cover the
+    /// per-address inner HSST's trailer (Count ≤ 7, OffsetSize ∈ {1, 2} ⇒ ≤ 17 bytes) with room
+    /// for format growth. Larger trailers fall back to a precise re-pin.</summary>
+    private const int SpecTailWindow = 32;
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static bool ResolveTag(ReadOnlySpan<byte> ends, int count, int offsetSize, int tag,
+                                   long dataStart, out Bound entryBound)
+    {
+        long prevEnd = tag == count - 1 ? 0L : ReadEndFixed(ends, (tag + 1) * offsetSize, offsetSize);
+        long thisEnd = ReadEndFixed(ends, tag * offsetSize, offsetSize);
+        if (thisEnd < prevEnd) { entryBound = default; return false; }
+        entryBound = new Bound(dataStart + prevEnd, thisEnd - prevEnd);
+        return true;
     }
 }

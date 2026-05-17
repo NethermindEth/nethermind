@@ -49,17 +49,14 @@ public static class PersistedSnapshotReader
         where TPin : struct, IBufferPin, allows ref struct
         where TReader : IHsstByteReader<TPin>, allows ref struct
     {
-        using HsstReader<TReader, TPin> r = new(in reader, addressBound);
-        // DenseByteIndex returns success for any tag below count, including gap-filled
-        // (length 0) absences; treat length 0 as "no account record" so callers don't
-        // misread an absent entry as a deleted account.
-        if (!r.TrySeek(PersistedSnapshot.AccountSubTag, out _))
-        {
-            accountBound = default;
-            return false;
-        }
-        Bound b = r.GetBound();
-        if (b.Length == 0)
+        // Per-address HSST is always DenseByteIndex (column 0x01 layout). Resolve the sub-tag
+        // in a single pinned trailer read instead of going through HsstReader's dispatch +
+        // separate IndexType / layout / Ends[] reads. DenseByteIndex returns success for any
+        // tag below count, including gap-filled (length 0) absences; treat length 0 as "no
+        // account record" so callers don't misread an absent entry as a deleted account.
+        if (!HsstDenseByteIndexReader.TryResolveSingleTag<TReader, TPin>(
+                in reader, addressBound, PersistedSnapshot.AccountSubTagByte, out Bound b) ||
+            b.Length == 0)
         {
             accountBound = default;
             return false;
@@ -72,11 +69,20 @@ public static class PersistedSnapshotReader
         where TPin : struct, IBufferPin, allows ref struct
         where TReader : IHsstByteReader<TPin>, allows ref struct
     {
-        using HsstReader<TReader, TPin> r = new(in reader, addressBound);
+        // Per-address sub-tag step is always DenseByteIndex — resolve in one pinned trailer
+        // read. The nested HSST inside the sub-tag value (slot-prefix → slot-suffix → value)
+        // has a non-fixed layout, so the inner walk goes back through HsstReader's dispatch.
+        if (!HsstDenseByteIndexReader.TryResolveSingleTag<TReader, TPin>(
+                in reader, addressBound, PersistedSnapshot.SlotSubTagByte, out Bound slotSubTagBound) ||
+            slotSubTagBound.Length == 0)
+        {
+            slotBound = default;
+            return false;
+        }
         Span<byte> slotKey = stackalloc byte[32];
         index.ToBigEndian(slotKey);
-        if (!r.TrySeek(PersistedSnapshot.SlotSubTag, out _) ||
-            !r.TrySeek(slotKey[..SlotPrefixLength], out _) ||
+        using HsstReader<TReader, TPin> r = new(in reader, slotSubTagBound);
+        if (!r.TrySeek(slotKey[..SlotPrefixLength], out _) ||
             !r.TrySeek(slotKey[SlotPrefixLength..], out _))
         {
             slotBound = default;
@@ -90,10 +96,9 @@ public static class PersistedSnapshotReader
         where TPin : struct, IBufferPin, allows ref struct
         where TReader : IHsstByteReader<TPin>, allows ref struct
     {
-        using HsstReader<TReader, TPin> r = new(in reader, addressBound);
-        if (!r.TrySeek(PersistedSnapshot.SelfDestructSubTag, out _))
+        if (!HsstDenseByteIndexReader.TryResolveSingleTag<TReader, TPin>(
+                in reader, addressBound, PersistedSnapshot.SelfDestructSubTagByte, out Bound b))
             return null;
-        Bound b = r.GetBound();
         // length 0 = absent (DenseByteIndex gap fill). [0x00] = destructed. [0x01] = new account.
         if (b.Length == 0) return null;
         Span<byte> oneByte = stackalloc byte[1];
@@ -139,43 +144,39 @@ public static class PersistedSnapshotReader
         where TPin : struct, IBufferPin, allows ref struct
         where TReader : IHsstByteReader<TPin>, allows ref struct
     {
-        using HsstReader<TReader, TPin> r = new(in reader, addressBound);
-        if (path.Length <= TopPathThreshold)
+        // Per-address sub-tag step is always DenseByteIndex — resolve in one pinned trailer
+        // read. The nested HSST inside the sub-tag value (TreePath → NodeRef) has a non-fixed
+        // layout, so the inner walk goes back through HsstReader's dispatch. DenseByteIndex
+        // returns success even for gap-filled (length 0) absences; treat length 0 as "no
+        // entry for this sub-tag" so callers don't read into the adjacent sub-tag bytes.
+        byte subTag;
+        int keyLen;
+        if (path.Length <= TopPathThreshold) { subTag = PersistedSnapshot.StorageTopSubTagByte; keyLen = 4; }
+        else if (path.Length <= CompactPathThreshold) { subTag = PersistedSnapshot.StorageCompactSubTagByte; keyLen = 8; }
+        else { subTag = PersistedSnapshot.StorageFallbackSubTagByte; keyLen = 33; }
+
+        if (!HsstDenseByteIndexReader.TryResolveSingleTag<TReader, TPin>(
+                in reader, addressBound, subTag, out Bound subTagBound) ||
+            subTagBound.Length == 0)
         {
-            Span<byte> key = stackalloc byte[4];
-            path.EncodeWith4Byte(key);
-            if (!r.TrySeek(PersistedSnapshot.StorageTopSubTag, out _) ||
-                !r.TrySeek(key, out _))
-            {
-                bound = default;
-                return false;
-            }
-            bound = r.GetBound();
-            if (bound.Length == 0) { bound = default; return false; }
-            return true;
+            bound = default;
+            return false;
         }
-        if (path.Length <= CompactPathThreshold)
+
+        Span<byte> key = stackalloc byte[33];
+        Span<byte> keySlice = key[..keyLen];
+        switch (keyLen)
         {
-            Span<byte> key = stackalloc byte[8];
-            path.EncodeWith8Byte(key);
-            if (!r.TrySeek(PersistedSnapshot.StorageCompactSubTag, out _) ||
-                !r.TrySeek(key, out _))
-            {
-                bound = default;
-                return false;
-            }
-            bound = r.GetBound();
-            // DenseByteIndex returns success even for gap-filled (length 0) absences; treat
-            // length 0 as "no compact entry for this path" so callers don't read into the
-            // adjacent fallback sub-tag value bytes by mistake.
-            if (bound.Length == 0) { bound = default; return false; }
-            return true;
+            case 4: path.EncodeWith4Byte(keySlice); break;
+            case 8: path.EncodeWith8Byte(keySlice); break;
+            default:
+                path.Path.Bytes.CopyTo(keySlice);
+                keySlice[32] = (byte)path.Length;
+                break;
         }
-        Span<byte> fullKey = stackalloc byte[33];
-        path.Path.Bytes.CopyTo(fullKey);
-        fullKey[32] = (byte)path.Length;
-        if (!r.TrySeek(PersistedSnapshot.StorageFallbackSubTag, out _) ||
-            !r.TrySeek(fullKey, out _))
+
+        using HsstReader<TReader, TPin> r = new(in reader, subTagBound);
+        if (!r.TrySeek(keySlice, out _))
         {
             bound = default;
             return false;

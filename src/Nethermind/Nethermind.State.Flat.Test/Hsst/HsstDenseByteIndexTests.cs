@@ -410,4 +410,221 @@ public class HsstDenseByteIndexTests
             Assert.That(TryGet(data, 0x07, out _), Is.False);
         }
     }
+
+    /// <summary>
+    /// Helper: exact-match single-tag resolution via the per-address fast path
+    /// (<see cref="HsstDenseByteIndexReader.TryResolveSingleTag{TReader,TPin}"/>).
+    /// </summary>
+    private static bool TryResolveSingleTag(ReadOnlySpan<byte> data, byte tag, out byte[] value)
+    {
+        SpanByteReader reader = new(data);
+        bool ok = HsstDenseByteIndexReader.TryResolveSingleTag<SpanByteReader, NoOpPin>(
+            in reader, new Bound(0, data.Length), tag, out Bound b);
+        if (!ok) { value = []; return false; }
+        value = b.Length == 0 ? [] : data.Slice((int)b.Offset, (int)b.Length).ToArray();
+        return true;
+    }
+
+    [TestCase(50, 1)]     // OffsetSize 1 (cumulative ≤ 255)
+    [TestCase(300, 2)]    // OffsetSize 2 (≤ 65535)
+    [TestCase(20_000, 4)] // OffsetSize 4 (> 65535)
+    public void TryResolveSingleTag_RoundTripsAllOffsetSizeRegimes(int valLen, int expectedOffsetSize)
+    {
+        // Tags 0, 2, 4, 6 — gaps at 1, 3, 5 must round-trip as empty values regardless of OffsetSize.
+        byte[] tags = [0x00, 0x02, 0x04, 0x06];
+        byte[][] vals = new byte[4][];
+        for (int i = 0; i < 4; i++)
+        {
+            vals[i] = new byte[valLen];
+            for (int k = 0; k < valLen; k++) vals[i][k] = (byte)((i * 31 + k) & 0xff);
+        }
+
+        byte[] data = Build(tags, vals);
+        Assert.That(data[^2], Is.EqualTo((byte)expectedOffsetSize));
+
+        // Round-trip filled positions via the single-tag fast path.
+        for (int i = 0; i < 4; i++)
+        {
+            Assert.That(TryResolveSingleTag(data, tags[i], out byte[] got), Is.True);
+            Assert.That(got, Is.EqualTo(vals[i]));
+        }
+        // Gap positions return true with empty value (matches general TrySeek semantics).
+        foreach (byte gap in new byte[] { 0x01, 0x03, 0x05 })
+        {
+            Assert.That(TryResolveSingleTag(data, gap, out byte[] g), Is.True);
+            Assert.That(g.Length, Is.EqualTo(0));
+        }
+        // Above-range tag 0x07 misses (Count - 1 == 0x06).
+        Assert.That(TryResolveSingleTag(data, 0x07, out _), Is.False);
+        Assert.That(TryResolveSingleTag(data, 0xFF, out _), Is.False);
+    }
+
+    /// <summary>
+    /// Stub <see cref="IHsstByteReader{TPin}"/> whose logical length is huge but only the trailing
+    /// trailer bytes are physically backed. The
+    /// <see cref="HsstDenseByteIndexReader.TryResolveSingleTag{TReader, TPin}"/> fast path pins
+    /// a 32-byte speculative window at the end of the bound — that window straddles the (fake)
+    /// value region and the real trailer. Callers pre-build a <c>specStage</c> buffer containing
+    /// zeros for the fake-value bytes and the real trailer bytes at its tail; the stub returns
+    /// that stage for the speculative pin so the resolver sees correctly-positioned trailer
+    /// bytes at its window end.
+    /// </summary>
+    private readonly ref struct PaddedTrailerLongReader : IHsstByteReader<NoOpPin>
+    {
+        private readonly long _length;
+        private readonly long _trailerStart;
+        private readonly ReadOnlySpan<byte> _trailer;
+        private readonly ReadOnlySpan<byte> _specStage;
+
+        public PaddedTrailerLongReader(long length, ReadOnlySpan<byte> trailer, ReadOnlySpan<byte> specStage)
+        {
+            _length = length;
+            _trailerStart = length - trailer.Length;
+            _trailer = trailer;
+            _specStage = specStage;
+        }
+
+        public long Length => _length;
+        public Bound Bound => new(0, _length);
+
+        public bool TryRead(long offset, scoped Span<byte> output)
+        {
+            if (offset + output.Length > _length) return false;
+            for (int i = 0; i < output.Length; i++)
+            {
+                long abs = offset + i;
+                output[i] = abs >= _trailerStart
+                    ? _trailer[(int)(abs - _trailerStart)]
+                    : (byte)0;
+            }
+            return true;
+        }
+
+        public NoOpPin PinBuffer(long offset, long size)
+        {
+            if (offset + size > _length)
+                throw new InvalidOperationException($"out of bounds at {offset} size {size}");
+            if (offset >= _trailerStart)
+                return new NoOpPin(_trailer.Slice((int)(offset - _trailerStart), (int)size));
+            // Straddling pin: speculative tail window. Expected to be end-anchored
+            // (offset + size == _length) and bounded by the pre-built stage.
+            if (offset + size != _length)
+                throw new InvalidOperationException("non-end-anchored straddling pin not supported");
+            if (size > _specStage.Length)
+                throw new InvalidOperationException($"spec stage too small: need {size}, have {_specStage.Length}");
+            return new NoOpPin(_specStage[..(int)size]);
+        }
+    }
+
+    [Test]
+    public void TryResolveSingleTag_HandlesOffsetSize6_AboveUInt32Max()
+    {
+        // OffsetSize 6 is exercised by the same trailer-only stub pattern as the existing
+        // regression test, since real OffsetSize-6 data won't fit in memory. Build a 2-entry
+        // DenseByteIndex whose cumulative ends straddle the 4-byte boundary, forcing
+        // OffsetSize = 6 (the only way to express ends ≥ 4 GiB).
+        const long BigValueSize = 5_000_000_000L; // > uint.MaxValue, requires OffsetSize 6
+        const int SmallValueSize = 1024;
+        byte[] scratch = new byte[64];
+        LongAdvanceOnlyWriter writer = new(scratch);
+
+        using (HsstDenseByteIndexBuilder<LongAdvanceOnlyWriter> b = new(ref writer))
+        {
+            b.BeginValueWrite();
+            writer.Advance(SmallValueSize);
+            b.FinishValueWrite(0x01);
+
+            b.BeginValueWrite();
+            // Advance is int-typed; cover BigValueSize via repeated int.MaxValue hops + tail.
+            long remaining = BigValueSize;
+            while (remaining > int.MaxValue)
+            {
+                writer.Advance(int.MaxValue);
+                remaining -= int.MaxValue;
+            }
+            writer.Advance((int)remaining);
+            b.FinishValueWrite(0x00);
+
+            b.Build();
+        }
+
+        ReadOnlySpan<byte> trailer = writer.ScratchTrailer;
+        Assert.That(trailer[^1], Is.EqualTo((byte)IndexType.DenseByteIndex));
+        Assert.That(trailer[^2], Is.EqualTo((byte)6), "Cumulative ends > uint.MaxValue must select OffsetSize 6");
+
+        long total = writer.Written;
+        // Pre-build the speculative-window stage: zeros for the fake value-region prefix,
+        // real trailer bytes at the tail. The resolver's speculative pin (size = min(32,
+        // bound.Length)) lands here when winStart < trailerStart.
+        byte[] specStage = new byte[32];
+        trailer.CopyTo(specStage.AsSpan(specStage.Length - trailer.Length));
+        PaddedTrailerLongReader reader = new(total, trailer, specStage);
+
+        // tag 0x01 written first → physically at offset 0, length 1024.
+        Assert.That(HsstDenseByteIndexReader.TryResolveSingleTag<PaddedTrailerLongReader, NoOpPin>(
+            in reader, new Bound(0, total), 0x01, out Bound b1), Is.True);
+        Assert.That(b1.Offset, Is.EqualTo(0L));
+        Assert.That(b1.Length, Is.EqualTo((long)SmallValueSize));
+
+        // tag 0x00 occupies [SmallValueSize, SmallValueSize + BigValueSize); Length > int.MaxValue.
+        Assert.That(HsstDenseByteIndexReader.TryResolveSingleTag<PaddedTrailerLongReader, NoOpPin>(
+            in reader, new Bound(0, total), 0x00, out Bound b0), Is.True);
+        Assert.That(b0.Offset, Is.EqualTo((long)SmallValueSize));
+        Assert.That(b0.Length, Is.EqualTo(BigValueSize));
+    }
+
+    [Test]
+    public void TryResolveSingleTag_FallsBackToColdRepin_WhenTrailerExceedsSpecWindow()
+    {
+        // Build a DenseByteIndex with 256 tags (max addressable) at OffsetSize 2:
+        // trailer = 3 + 256·2 = 515 bytes, well past the 32-byte speculative window.
+        // The cold-path re-pin must still resolve every tag correctly.
+        byte[] tags = new byte[256];
+        byte[][] vals = new byte[256][];
+        for (int i = 0; i < 256; i++)
+        {
+            tags[i] = (byte)i;
+            // Drive cumulative ends past 255 so OffsetSize must be 2.
+            int len = (i % 3 == 0) ? 0 : ((i * 7) % 13 + 1);
+            vals[i] = new byte[len];
+            for (int k = 0; k < len; k++) vals[i][k] = (byte)((i * 17 + k) & 0xff);
+        }
+
+        byte[] data = Build(tags, vals);
+        Assert.That(data[^2], Is.EqualTo((byte)2), "Cumulative ends > 255 must select OffsetSize 2");
+        // Trailer = 3 + 256*2 = 515 → forces the cold re-pin path in TryResolveSingleTag.
+        int trailerSize = 3 + 256 * 2;
+        Assert.That(trailerSize, Is.GreaterThan(32));
+
+        for (int i = 0; i < 256; i++)
+        {
+            Assert.That(TryResolveSingleTag(data, (byte)i, out byte[] got), Is.True, $"tag 0x{i:X2}");
+            Assert.That(got, Is.EqualTo(vals[i]), $"value mismatch at tag 0x{i:X2}");
+        }
+    }
+
+    [Test]
+    public void TryResolveSingleTag_RejectsTruncatedBound_WrongIndexType_InvalidOffsetSize()
+    {
+        byte[] valid = Build([0x00, 0x02], [[0xAA, 0xBB], [0xCC]]);
+        SpanByteReader reader = new(valid);
+
+        // Bound < 3: cannot hold the minimal trailer.
+        Assert.That(HsstDenseByteIndexReader.TryResolveSingleTag<SpanByteReader, NoOpPin>(
+            in reader, new Bound(0, 2), 0x00, out _), Is.False);
+
+        // Wrong IndexType byte: synthesise a trailer that ends with a non-DenseByteIndex sentinel.
+        byte[] wrongType = (byte[])valid.Clone();
+        wrongType[^1] = (byte)IndexType.BTree;
+        SpanByteReader wrongTypeReader = new(wrongType);
+        Assert.That(HsstDenseByteIndexReader.TryResolveSingleTag<SpanByteReader, NoOpPin>(
+            in wrongTypeReader, new Bound(0, wrongType.Length), 0x00, out _), Is.False);
+
+        // Invalid OffsetSize: 0 isn't in {1,2,4,6}.
+        byte[] badOff = (byte[])valid.Clone();
+        badOff[^2] = 0;
+        SpanByteReader badOffReader = new(badOff);
+        Assert.That(HsstDenseByteIndexReader.TryResolveSingleTag<SpanByteReader, NoOpPin>(
+            in badOffReader, new Bound(0, badOff.Length), 0x00, out _), Is.False);
+    }
 }
