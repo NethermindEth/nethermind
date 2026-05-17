@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Runtime.CompilerServices;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
 using Nethermind.Api.Steps;
@@ -47,7 +48,7 @@ namespace Nethermind.Init.Steps
 
             if (stepsWithMatchingApiType.Length > 1)
             {
-                Array.Sort(stepsWithMatchingApiType, (t1, t2) => t1.StepType.IsAssignableFrom(t2.StepType) ? 1 : -1);
+                stepsWithMatchingApiType.AsSpan().Sort(default(StepInfoByAssignabilityComparer));
             }
 
             if (stepsWithMatchingApiType.Length == 0)
@@ -59,6 +60,12 @@ namespace Nethermind.Init.Steps
             }
 
             return stepsWithMatchingApiType.FirstOrDefault();
+        }
+
+        private readonly struct StepInfoByAssignabilityComparer : IComparer<StepInfo>
+        {
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            public int Compare(StepInfo? t1, StepInfo? t2) => t1!.StepType.IsAssignableFrom(t2!.StepType) ? 1 : -1;
         }
     }
 }

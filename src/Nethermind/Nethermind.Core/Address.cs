@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.ComponentModel;
 using System.Diagnostics;
 using System.Globalization;
@@ -279,6 +280,24 @@ namespace Nethermind.Core
         }
 
         internal long GetHashCode64() => SpanExtensions.FastHash64For20Bytes(ref Unsafe.AsRef(in FirstByte));
+    }
+
+    public readonly struct AddressByEip55ChecksumOrdinalComparer : IComparer<Address>
+    {
+        [SkipLocalsInit]
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public int Compare(Address? a, Address? b)
+        {
+            if (ReferenceEquals(a, b)) return 0;
+            if (a is null) return -1;
+            if (b is null) return 1;
+
+            Span<char> aHex = stackalloc char[Address.Size * 2];
+            Span<char> bHex = stackalloc char[Address.Size * 2];
+            a.Bytes.OutputBytesToCharHexWithEip55Checksum(aHex, withZeroX: false);
+            b.Bytes.OutputBytesToCharHexWithEip55Checksum(bHex, withZeroX: false);
+            return aHex.SequenceCompareTo(bHex);
+        }
     }
 
     [JsonConverter(typeof(AddressAsKeyConverter))]

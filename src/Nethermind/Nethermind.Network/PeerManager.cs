@@ -9,6 +9,7 @@ using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
@@ -38,7 +39,6 @@ namespace Nethermind.Network
         private readonly IRlpxHost _rlpxHost;
         private readonly INodeStatsManager _stats;
         private readonly SemaphoreSlim _peerUpdateRequested = new(0, 1);
-        private readonly PeerComparer _peerComparer = new();
         private Task? _peerUpdateLoopTask;
         private readonly IPeerPool _peerPool;
         private readonly Lock _sessionLock = new();
@@ -605,7 +605,7 @@ namespace Nethermind.Network
                 node.CurrentReputation = peer.Stats.CurrentNodeReputation(nowUTC);
             }
 
-            _currentSelection.Candidates.Sort(_peerComparer);
+            CollectionsMarshal.AsSpan(_currentSelection.Candidates).Sort(default(PeerComparer));
 
             foreach (KeyValuePair<string, int> currentSelectionCounter in _currentSelection.Counters)
             {
@@ -713,7 +713,7 @@ namespace Nethermind.Network
                     }
                 }
 
-                _candidates.Sort(static (x, y) => PeerStatsComparer.Instance.Compare(x, y));
+                CollectionsMarshal.AsSpan(_candidates).Sort(default(PeerStatsComparer));
 
                 int countToRemove = _candidates.Count - _networkConfig.MaxCandidatePeerCount;
                 if (countToRemove > 0)
@@ -755,10 +755,9 @@ namespace Nethermind.Network
             public long CurrentReputation { get; } = currentReputation;
         }
 
-        private class PeerStatsComparer : IComparer<PeerStats>
+        private readonly struct PeerStatsComparer : IComparer<PeerStats>
         {
-            public static readonly PeerStatsComparer Instance = new();
-
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
             public int Compare(PeerStats x, PeerStats y)
             {
                 int failedValidationCompare = y.FailedValidation.CompareTo(x.FailedValidation);
