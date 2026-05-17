@@ -331,6 +331,9 @@ public class BatchedTrieVisitor<TNodeContext>
 
                     // This innocent looking sort is surprisingly effective when batch size is large enough. The sort itself
                     // take about 0.1% of the time, so not very cpu intensive in this case.
+                    // Safe: resolveOrdering only contains indices in [0, currentBatch.Count) (populated in the loop
+                    // above), and currentBatch is not mutated for the duration of the sort, so the backing array
+                    // reference is stable and every lookup stays in-bounds.
                     resolveOrdering
                         .Sort(new BatchKeccakAscendingComparer(currentBatch.UnsafeGetInternalArray()));
 

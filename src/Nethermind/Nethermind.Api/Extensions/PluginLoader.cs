@@ -106,6 +106,9 @@ public class PluginLoader(string pluginPath, IFileSystem fileSystem, ILogger log
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public int Compare(Type? firstPlugin, Type? secondPlugin)
         {
+            // The IComparer<Type> signature requires nullable parameters but the only caller
+            // is the sort over _pluginTypes, which is populated exclusively from non-null Type
+            // instances. The `!` dereference is safe at this call site.
             bool firstHasPriority = _priorities.TryGetValue(firstPlugin!.Name, out int firstPriorityIndex);
             bool secondHasPriority = _priorities.TryGetValue(secondPlugin!.Name, out int secondPriorityIndex);
 
