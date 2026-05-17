@@ -53,7 +53,7 @@ public class Eth71ProtocolHandler : Eth70ProtocolHandler, ISyncPeer, IStaticProt
         ITxGossipPolicy? transactionsGossipPolicy = null)
         : base(session, serializer, nodeStatsManager, syncServer, backgroundTaskScheduler, txPool,
             gossipPolicy, forkInfo, logManager, txPoolConfig, specProvider, transactionsGossipPolicy) =>
-        _balRequests = new MessageDictionary<GetBlockAccessListsMessage, BlockAccessListsMessage>(Send);
+        _balRequests = new MessageDictionary<GetBlockAccessListsMessage, BlockAccessListsMessage>(this);
 
     public override string Name => "eth71";
 

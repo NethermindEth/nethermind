@@ -66,8 +66,8 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
         {
             SyncServer = syncServer ?? throw new ArgumentNullException(nameof(syncServer));
             _timestamper = Timestamper.Default;
-            _headersRequests = new MessageQueue<GetBlockHeadersMessage, IOwnedReadOnlyList<BlockHeader>>(Send);
-            _bodiesRequests = new MessageQueue<GetBlockBodiesMessage, (OwnedBlockBodies, long)>(Send);
+            _headersRequests = new MessageQueue<GetBlockHeadersMessage, IOwnedReadOnlyList<BlockHeader>>(this);
+            _bodiesRequests = new MessageQueue<GetBlockBodiesMessage, (OwnedBlockBodies, long)>(this);
         }
 
         public override void RegisterWith(ISession session, IProtocolRegistrar registrar)

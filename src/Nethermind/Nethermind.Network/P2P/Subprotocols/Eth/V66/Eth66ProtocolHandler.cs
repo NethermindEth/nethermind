@@ -9,6 +9,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Logging;
 using Nethermind.Network.Contract.Messages;
 using Nethermind.Network.Contract.P2P;
+using Nethermind.Network.P2P.Messages;
 using Nethermind.Network.P2P.ProtocolHandlers;
 using Nethermind.Network.P2P.Subprotocols.Eth.V65;
 using Nethermind.Network.P2P.Subprotocols.Eth.V65.Messages;
@@ -48,10 +49,10 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
             ITxGossipPolicy? transactionsGossipPolicy = null)
             : base(session, serializer, nodeStatsManager, syncServer, backgroundTaskScheduler, txPool, gossipPolicy, forkInfo, logManager, transactionsGossipPolicy)
         {
-            _headersRequests66 = new MessageDictionary<GetBlockHeadersMessage, IOwnedReadOnlyList<BlockHeader>>(Send);
-            _bodiesRequests66 = new MessageDictionary<GetBlockBodiesMessage, (OwnedBlockBodies, long)>(Send);
-            _nodeDataRequests66 = new MessageDictionary<GetNodeDataMessage, IByteArrayList>(Send);
-            _receiptsRequests66 = new MessageDictionary<GetReceiptsMessage, (IOwnedReadOnlyList<TxReceipt[]>, long)>(Send);
+            _headersRequests66 = new MessageDictionary<GetBlockHeadersMessage, IOwnedReadOnlyList<BlockHeader>>(this);
+            _bodiesRequests66 = new MessageDictionary<GetBlockBodiesMessage, (OwnedBlockBodies, long)>(this);
+            _nodeDataRequests66 = new MessageDictionary<GetNodeDataMessage, IByteArrayList>(this);
+            _receiptsRequests66 = new MessageDictionary<GetReceiptsMessage, (IOwnedReadOnlyList<TxReceipt[]>, long)>(this);
         }
 
         public override string Name => "eth66";
@@ -250,7 +251,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
             Func<T66, string> describeRequestFunc,
             CancellationToken token
         )
-            where T66 : IEth66Message
+            where T66 : P2PMessage, IEth66Message
         {
             Request<T66, TResponse> request = new(message);
             messageQueue.Send(request);

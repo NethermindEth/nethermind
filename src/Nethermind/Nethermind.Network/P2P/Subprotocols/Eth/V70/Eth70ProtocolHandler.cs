@@ -53,7 +53,7 @@ public class Eth70ProtocolHandler : Eth69ProtocolHandler, IStaticProtocolInfo
             gossipPolicy, forkInfo, logManager, txPoolConfig, specProvider, transactionsGossipPolicy)
     {
         _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
-        _receiptsRequests70 = new MessageDictionary<GetReceiptsMessage70, ReceiptsMessage70>(Send);
+        _receiptsRequests70 = new MessageDictionary<GetReceiptsMessage70, ReceiptsMessage70>(this);
     }
 
     public override string Name => "eth70";

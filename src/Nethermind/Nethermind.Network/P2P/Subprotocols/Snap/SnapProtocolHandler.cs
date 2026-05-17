@@ -55,10 +55,10 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
             ISnapServer snapServer)
             : base(session, nodeStats, serializer, backgroundTaskScheduler, logManager)
         {
-            _getAccountRangeRequests = new(Send);
-            _getStorageRangeRequests = new(Send);
-            _getByteCodesRequests = new(Send);
-            _getTrieNodesRequests = new(Send);
+            _getAccountRangeRequests = new(this);
+            _getStorageRangeRequests = new(this);
+            _getByteCodesRequests = new(this);
+            _getTrieNodesRequests = new(this);
             SyncServer = snapServer;
             CanServe = snapServer.CanServe;
             SnapMessageLimits.GetTrieNodesPathsPerGroupRlpLimit = RlpLimit.For<PathGroup>(syncConfig.SnapServingMaxPathsPerGroup, nameof(PathGroup.Group));
