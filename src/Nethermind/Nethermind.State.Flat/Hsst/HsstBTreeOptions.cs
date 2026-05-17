@@ -27,8 +27,9 @@ public sealed record HsstBTreeOptions
     /// <summary>Byte budget per intermediate node — accumulation stops when the
     /// next child would push the estimated node size over this threshold. Higher
     /// values flatten the tree (fewer levels = fewer cache misses per lookup) at
-    /// the cost of a larger per-node binary search.</summary>
-    public const int DefaultMaxIntermediateBytes = 2048;
+    /// the cost of a larger per-node binary search. Set to one 4 KiB page so each
+    /// intermediate fits in a single page-aligned pin window.</summary>
+    public const int DefaultMaxIntermediateBytes = 4096;
 
     /// <summary>Default minimum children per intermediate node — once reached,
     /// the builder may split early if the next child would worsen the per-node

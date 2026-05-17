@@ -835,9 +835,11 @@ internal ref struct LeafBoundaryEnumerator
     private const int StackCapacityInts = 4096;
 
     /// <summary>Estimated leaf-node bytes above which the splitter forces a further split,
-    /// independent of separator/value gates. Matches
-    /// <see cref="HsstBTreeOptions.DefaultMaxIntermediateBytes"/> so leaves and intermediate
-    /// nodes share the same byte budget.</summary>
+    /// independent of separator/value gates. Held at 2 KiB so two consecutive leaves
+    /// can co-reside in a single 4 KiB page when the writer is page-aligned;
+    /// <see cref="HsstBTreeOptions.DefaultMaxIntermediateBytes"/> is set wider (one full
+    /// page) since intermediates pay relatively more header-overhead per child and benefit
+    /// more from being flatter.</summary>
     private const int MaxLeafBytes = 2048;
 
     /// <summary>Header bytes assumed when estimating the serialized size of a leaf node —
