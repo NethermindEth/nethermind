@@ -221,6 +221,7 @@ public class BackgroundTaskScheduler : IBackgroundTaskScheduler, IAsyncDisposabl
         // until they observe cancellation and complete.
         await Task.WhenAll(_tasksExecutors);
         _mainCancellationTokenSource.Dispose();
+        _blockProcessorCancellationTokenSource.Dispose();
         _scheduler.Dispose();
     }
 
