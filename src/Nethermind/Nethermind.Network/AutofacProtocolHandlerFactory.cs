@@ -42,6 +42,11 @@ internal sealed class AutofacProtocolHandlerFactory<THandler>(
         return true;
     }
 
+    /// <remarks>
+    /// Non-<see cref="ISession"/> constructor dependencies of <typeparamref name="THandler"/>
+    /// are resolved once and reused across all sessions; per-dependency or per-scope lifetimes
+    /// are silently promoted to singleton semantics.
+    /// </remarks>
     private object?[] GetDependencies()
     {
         object?[]? dependencies = Volatile.Read(ref _dependencies);
