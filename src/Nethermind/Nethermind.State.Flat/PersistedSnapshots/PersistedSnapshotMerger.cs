@@ -88,17 +88,17 @@ public static class PersistedSnapshotMerger
 
         {
             ref TWriter valueWriter = ref outerBuilder.BeginValueWrite();
-            NWayStreamingMerge<TWriter, TReader, TPin>(views, PersistedSnapshot.StateNodeFallbackTag, ref valueWriter, keySize: 33, bloom);
+            NWayPackedArrayMerge<TWriter, TReader, TPin>(views, PersistedSnapshot.StateNodeFallbackTag, ref valueWriter, keySize: 33, bloom);
             outerBuilder.FinishValueWrite(PersistedSnapshot.StateNodeFallbackTag);
         }
         {
             ref TWriter valueWriter = ref outerBuilder.BeginValueWrite();
-            NWayStreamingMerge<TWriter, TReader, TPin>(views, PersistedSnapshot.StateTopNodesTag, ref valueWriter, keySize: 4, bloom);
+            NWayPackedArrayMerge<TWriter, TReader, TPin>(views, PersistedSnapshot.StateTopNodesTag, ref valueWriter, keySize: 4, bloom);
             outerBuilder.FinishValueWrite(PersistedSnapshot.StateTopNodesTag);
         }
         {
             ref TWriter valueWriter = ref outerBuilder.BeginValueWrite();
-            NWayStreamingMerge<TWriter, TReader, TPin>(views, PersistedSnapshot.StateNodeTag, ref valueWriter, keySize: 8, bloom);
+            NWayPackedArrayMerge<TWriter, TReader, TPin>(views, PersistedSnapshot.StateNodeTag, ref valueWriter, keySize: 8, bloom);
             outerBuilder.FinishValueWrite(PersistedSnapshot.StateNodeTag);
         }
         {
@@ -123,7 +123,7 @@ public static class PersistedSnapshotMerger
     /// The caller supplies a parallel <paramref name="views"/> span — one entry per source —
     /// so the helper does not re-open per-reservation mmap views inside its scope.
     /// </summary>
-    private static void NWayStreamingMerge<TWriter, TReader, TPin>(
+    private static void NWayPackedArrayMerge<TWriter, TReader, TPin>(
         ReadOnlySpan<(IntPtr Ptr, long Len)> views, byte[] tag, ref TWriter writer,
         int keySize, BloomFilter bloom) where TWriter : IByteBufferWriterWithReader<TReader, TPin> where TReader : IHsstByteReader<TPin>, allows ref struct where TPin : struct, IBufferPin, allows ref struct
     {

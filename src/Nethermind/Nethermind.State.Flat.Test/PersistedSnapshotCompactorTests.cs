@@ -397,7 +397,7 @@ public class PersistedSnapshotCompactorTests
                 .SetName("Merge_AccountOverride");
         }
 
-        // Regression: advance-corrupts-minKey bug in NWayStreamingMerge (StateTopNodes).
+        // Regression: advance-corrupts-minKey bug in NWayPackedArrayMerge (StateTopNodes).
         // snapshot[0] has paths {A, B}, snapshot[1] has only {B} with different RLP.
         {
             TreePath pathA = new(Hash256.Zero, 4);
