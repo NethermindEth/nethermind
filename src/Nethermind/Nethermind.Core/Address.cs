@@ -292,11 +292,37 @@ namespace Nethermind.Core
             if (a is null) return -1;
             if (b is null) return 1;
 
-            Span<char> aHex = stackalloc char[Address.Size * 2];
-            Span<char> bHex = stackalloc char[Address.Size * 2];
-            a.Bytes.OutputBytesToCharHexWithEip55Checksum(aHex, withZeroX: false);
-            b.Bytes.OutputBytesToCharHexWithEip55Checksum(bHex, withZeroX: false);
-            return aHex.SequenceCompareTo(bHex);
+            Span<byte> aLowerHex = stackalloc byte[Address.Size * 2];
+            Span<byte> bLowerHex = stackalloc byte[Address.Size * 2];
+            a.Bytes.OutputBytesToByteHex(aLowerHex, extraNibble: false);
+            b.Bytes.OutputBytesToByteHex(bLowerHex, extraNibble: false);
+
+            ValueHash256 aChecksum = ValueKeccak.Compute(aLowerHex);
+            ValueHash256 bChecksum = ValueKeccak.Compute(bLowerHex);
+            for (int i = 0; i < aLowerHex.Length; i++)
+            {
+                char aChar = ToChecksummedHexChar(aLowerHex[i], GetChecksumNibble(in aChecksum, i));
+                char bChar = ToChecksummedHexChar(bLowerHex[i], GetChecksumNibble(in bChecksum, i));
+                if (aChar != bChar)
+                {
+                    return aChar - bChar;
+                }
+            }
+
+            return 0;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static char ToChecksummedHexChar(byte lowerHexChar, int checksumNibble) =>
+            lowerHexChar >= 'a' && checksumNibble > 7
+                ? (char)(lowerHexChar - ('a' - 'A'))
+                : (char)lowerHexChar;
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static int GetChecksumNibble(in ValueHash256 checksum, int index)
+        {
+            byte value = checksum.BytesAsSpan[index >> 1];
+            return (index & 1) == 0 ? value >> 4 : value & 0x0f;
         }
     }
 
