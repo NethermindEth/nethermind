@@ -25,6 +25,11 @@ using Nethermind.Stats.Model;
 
 namespace Nethermind.Network.P2P
 {
+    internal interface ISessionActivityObserver
+    {
+        void OnSessionActivity(Session session);
+    }
+
     public class Session : ISession
     {
         private static readonly ConcurrentDictionary<string, AdaptiveCodeResolver> _resolvers = new();
@@ -38,6 +43,7 @@ namespace Nethermind.Network.P2P
         private readonly IChannel _channel;
         private readonly IDisconnectsAnalyzer _disconnectsAnalyzer;
         private IChannelHandlerContext? _context;
+        private ISessionActivityObserver? _activityObserver;
         private volatile bool _isChannelClosed;
 
         public Session(
@@ -191,6 +197,7 @@ namespace Nethermind.Network.P2P
             (string? protocol, int messageId) = _resolver.ResolveProtocol(zeroPacket.PacketType);
             zeroPacket.Protocol = protocol;
 
+            _activityObserver?.OnSessionActivity(this);
             MsgReceived?.Invoke(this, new PeerEventArgs(_node, zeroPacket.Protocol, zeroPacket.PacketType, zeroPacket.Content.ReadableBytes));
 
             RecordIncomingMessageMetric(zeroPacket.Protocol, messageId, zeroPacket.Content.ReadableBytes);
@@ -249,6 +256,7 @@ namespace Nethermind.Network.P2P
                 message.AdaptivePacketType = _resolver.ResolveAdaptiveId(message.Protocol, message.PacketType);
                 int size = _packetSender.Enqueue(message);
 
+                _activityObserver?.OnSessionActivity(this);
                 MsgDelivered?.Invoke(this, new PeerEventArgs(_node, message.Protocol, message.PacketType, size));
 
                 RecordOutgoingMessageMetric(message, size);
@@ -590,6 +598,8 @@ namespace Nethermind.Network.P2P
         public event EventHandler<EventArgs> Initialized;
         public event EventHandler<PeerEventArgs> MsgReceived;
         public event EventHandler<PeerEventArgs> MsgDelivered;
+
+        internal void SetActivityObserver(ISessionActivityObserver? activityObserver) => _activityObserver = activityObserver;
 
         public void Dispose()
         {

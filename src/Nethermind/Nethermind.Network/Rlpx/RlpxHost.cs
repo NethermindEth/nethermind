@@ -30,7 +30,7 @@ using LogLevel = DotNetty.Handlers.Logging.LogLevel;
 
 namespace Nethermind.Network.Rlpx
 {
-    public class RlpxHost : IRlpxHost
+    public class RlpxHost : IRlpxHost, ISessionActivityObserver
     {
         private IChannel? _bootstrapChannel;
         private IEventLoopGroup? _bossGroup;
@@ -422,29 +422,48 @@ namespace Nethermind.Network.Rlpx
         {
             private readonly RlpxHost _rlpxHost;
             private readonly ISession _session;
+            private readonly Session? _concreteSession;
             private readonly EventHandler<DisconnectEventArgs> _onDisconnected;
-            private readonly EventHandler<PeerEventArgs> _refreshNodeFilter;
+            private readonly EventHandler<PeerEventArgs>? _refreshNodeFilter;
 
             public SessionActivitySubscription(RlpxHost rlpxHost, ISession session)
             {
                 _rlpxHost = rlpxHost;
                 _session = session;
+                _concreteSession = session as Session;
                 _onDisconnected = OnDisconnected;
-                _refreshNodeFilter = RefreshNodeFilter;
+                if (_concreteSession is null)
+                {
+                    _refreshNodeFilter = RefreshNodeFilter;
+                }
             }
 
             public void Attach()
             {
-                _session.MsgReceived += _refreshNodeFilter;
-                _session.MsgDelivered += _refreshNodeFilter;
+                if (_concreteSession is not null)
+                {
+                    _concreteSession.SetActivityObserver(_rlpxHost);
+                    return;
+                }
+
+                _session.MsgReceived += _refreshNodeFilter!;
+                _session.MsgDelivered += _refreshNodeFilter!;
             }
 
             public void AttachDisconnected() => _session.Disconnected += _onDisconnected;
 
             public void Detach()
             {
-                _session.MsgReceived -= _refreshNodeFilter;
-                _session.MsgDelivered -= _refreshNodeFilter;
+                if (_concreteSession is not null)
+                {
+                    _concreteSession.SetActivityObserver(null);
+                }
+                else
+                {
+                    _session.MsgReceived -= _refreshNodeFilter!;
+                    _session.MsgDelivered -= _refreshNodeFilter!;
+                }
+
                 _session.Disconnected -= _onDisconnected;
                 _rlpxHost._sessionActivitySubscriptions.TryRemove(_session.SessionId, out _);
             }
@@ -474,6 +493,12 @@ namespace Nethermind.Network.Rlpx
                 Detach();
                 _session.Dispose();
             }
+        }
+
+        void ISessionActivityObserver.OnSessionActivity(Session session)
+        {
+            Node remoteNode = session.Node;
+            _nodeFilter.Touch(remoteNode.Address.Address, remoteNode.IsStatic || remoteNode.IsBootnode);
         }
 
         private sealed class InboundChannelInitializer(RlpxHost rlpxHost) : ChannelInitializer<IChannel>
