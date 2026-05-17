@@ -211,14 +211,6 @@ public static class PersistedSnapshotMerger
         // chain into the builder constructors.
         HsstBTreeBuilderBuffers slotPrefixBuffers = new();
 
-        // Pooled staging buffer for the multi-source no-storage fast path: when none
-        // of the matching sources contribute slots or storage-trie nodes for an
-        // address, the merged per-address blob is bounded ({SD, Account, Address}
-        // plus trailer). Staging into a known-length buffer lets the outer entry
-        // apply 4 KiB page alignment via MaybePadInnerHsstToNextPage. Mirrors the
-        // single-source byte-copy fast path above.
-        using PooledByteBufferWriter noStorageBuffer = new(256);
-
         try
         {
             for (int i = 0; i < n; i++)
@@ -241,104 +233,49 @@ public static class PersistedSnapshotMerger
             NWayMergeCursor cursor = new(
                 enums, hasMore, views, srcMap, n, AddrKeyLen, KeyStride, keyBuf, matchingBuf, tree);
 
-            using HsstBTreeBuilder<TWriter, TReader, TPin> builder = new(ref writer, AddressHashPrefixLength);
-
-            while (cursor.MoveNext())
+            // builder is passed to ReaddAddressHsst by ref, so it can't be a `using`
+            // declaration (the compiler refuses ref to using-variables). Manage its
+            // disposal with a try/finally instead.
+            HsstBTreeBuilder<TWriter, TReader, TPin> builder = new(ref writer, AddressHashPrefixLength);
+            try
             {
-                ReadOnlySpan<byte> minKey = cursor.MinKey;
-                int matchCount = cursor.MatchCount;
-                ReadOnlySpan<int> matchingSources = cursor.MatchingSources;
-
-                if (matchCount == 1)
+                while (cursor.MoveNext())
                 {
-                    // Single-source fast path: byte-copy the source's per-address HSST blob.
-                    // HSST internal pointers are HSST-relative (childOffset / dense-index ends
-                    // are stored as deltas from the blob start), so a verbatim relocation to
-                    // the destination writer position stays readable. The per-address sub-tags
-                    // (storage-trie 0x01/0x02/0x03, slots 0x04, account 0x05, self-destruct
-                    // 0x06, raw-address preimage 0x07) ride along inside the copied blob — no
-                    // per-sub-tag merge needed. Streamed via the long-aware
-                    // IByteBufferWriter.Copy so blobs over the 2 GiB single-Span ceiling stay safe.
-                    int srcIdx = matchingSources[0];
-                    Bound vb = enums[srcIdx].CurrentValue;
-                    WholeReadSessionReader srcReader = Reader(views[srcIdx]);
-                    ref TWriter perAddrWriter = ref builder.BeginValueWrite();
-                    MaybePadInnerHsstToNextPage(ref perAddrWriter, vb.Length);
-                    IByteBufferWriter.Copy<TWriter, WholeReadSessionReader, NoOpPin>(ref perAddrWriter, in srcReader, vb);
+                    ReadOnlySpan<byte> minKey = cursor.MinKey;
+                    int matchCount = cursor.MatchCount;
+                    ReadOnlySpan<int> matchingSources = cursor.MatchingSources;
+
+                    if (matchCount == 1)
                     {
+                        ReaddAddressHsst<TWriter, TReader, TPin>(matchingSources[0], enums, views, ref builder, minKey, bloom);
+                    }
+                    else
+                    {
+                        // M > 1 sources collide on this address: resolve every source's per-address
+                        // bounds and sub-tag bounds up front, then stream the merged DenseByteIndex
+                        // through NWayMergePerAddressHsst.
+                        using NativeMemoryList<(long Offset, long Length)> perAddrBoundsList = new(matchCount, matchCount);
+                        Span<(long Offset, long Length)> perAddrBounds = perAddrBoundsList.AsSpan();
+                        for (int j = 0; j < matchCount; j++)
+                        {
+                            Bound vb = enums[matchingSources[j]].CurrentValue;
+                            perAddrBounds[j] = (vb.Offset, vb.Length);
+                        }
+
+                        using NativeMemoryList<Bound> subTagBoundsList = new(matchCount * PerAddrSubTagCount, matchCount * PerAddrSubTagCount);
+                        Span<Bound> subTagBounds = subTagBoundsList.AsSpan();
+                        for (int j = 0; j < matchCount; j++)
+                        {
+                            WholeReadSessionReader r = Reader(views[matchingSources[j]]);
+                            HsstDenseByteIndexReader.TryResolveAll<WholeReadSessionReader, NoOpPin>(
+                                in r,
+                                new Bound(perAddrBounds[j].Offset, perAddrBounds[j].Length),
+                                subTagBounds.Slice(j * PerAddrSubTagCount, PerAddrSubTagCount));
+                        }
+
                         ulong addrKey = MemoryMarshal.Read<ulong>(minKey);
                         bloom.Add(addrKey);
-                        // Walk the just-written per-address blob through the writer's own
-                        // OpenReader and add bloom keys for slots + storage-trie nodes. When
-                        // the blob still fits the unflushed arena buffer the pages are
-                        // already hot in cache and the fast path hands back a pinned pointer
-                        // with no syscall. Reader window is [0, vb.Length).
-                        TReader dstReader = perAddrWriter.OpenReader(vb.Length);
-                        // Each successful TrySeek mutates HsstReader._bound to the matched
-                        // value scope. For sibling sub-tag seeks we save the root bound
-                        // before each call and restore after — otherwise only the first
-                        // sub-tag would be found.
-                        HsstReader<TReader, TPin> outer = new(in dstReader, new Bound(0, vb.Length));
-                        Bound outerRoot = outer.GetBound();
-                        if (outer.TrySeek(PersistedSnapshot.SlotSubTag, out Bound slotBound))
-                            AddSlotKeysToBloom<TReader, TPin>(in dstReader, slotBound, addrKey, bloom);
-                        outer.SetBound(outerRoot);
-                        if (outer.TrySeek(PersistedSnapshot.StorageTopSubTag, out Bound stb))
-                            AddStorageTrieKeysToBloom<TReader, TPin>(in dstReader, stb, addrKey, bloom);
-                        outer.SetBound(outerRoot);
-                        if (outer.TrySeek(PersistedSnapshot.StorageCompactSubTag, out Bound scb))
-                            AddStorageTrieKeysToBloom<TReader, TPin>(in dstReader, scb, addrKey, bloom);
-                        outer.SetBound(outerRoot);
-                        if (outer.TrySeek(PersistedSnapshot.StorageFallbackSubTag, out Bound sfb))
-                            AddStorageTrieKeysToBloom<TReader, TPin>(in dstReader, sfb, addrKey, bloom);
-                        perAddrWriter.DisposeActiveReader();
-                    }
-                    // Explicit valueLength so any leading pad bytes inserted above are
-                    // treated as inert gap data outside the recorded value range.
-                    builder.FinishValueWrite(minKey, vb.Length);
-                }
-                else
-                {
-                    // M > 1 sources collide on this address: merge per-address HSSTs.
-                    // Resolve every source's per-address bounds and sub-tag bounds up
-                    // front so we can branch on the no-storage fast path (none of
-                    // 0x04/0x05/0x06/0x07 present in any source) before deciding
-                    // whether to stream the merged DenseByteIndex or stage it.
-                    using NativeMemoryList<(long Offset, long Length)> perAddrBoundsList = new(matchCount, matchCount);
-                    Span<(long Offset, long Length)> perAddrBounds = perAddrBoundsList.AsSpan();
-                    for (int j = 0; j < matchCount; j++)
-                    {
-                        Bound vb = enums[matchingSources[j]].CurrentValue;
-                        perAddrBounds[j] = (vb.Offset, vb.Length);
-                    }
 
-                    using NativeMemoryList<Bound> subTagBoundsList = new(matchCount * PerAddrSubTagCount, matchCount * PerAddrSubTagCount);
-                    Span<Bound> subTagBounds = subTagBoundsList.AsSpan();
-                    for (int j = 0; j < matchCount; j++)
-                    {
-                        WholeReadSessionReader r = Reader(views[matchingSources[j]]);
-                        HsstDenseByteIndexReader.TryResolveAll<WholeReadSessionReader, NoOpPin>(
-                            in r,
-                            new Bound(perAddrBounds[j].Offset, perAddrBounds[j].Length),
-                            subTagBounds.Slice(j * PerAddrSubTagCount, PerAddrSubTagCount));
-                    }
-
-                    ulong addrKey = MemoryMarshal.Read<ulong>(minKey);
-                    bloom.Add(addrKey);
-
-                    bool anyStorage = false;
-                    for (int j = 0; j < matchCount && !anyStorage; j++)
-                    {
-                        int baseIdx = j * PerAddrSubTagCount;
-                        if (subTagBounds[baseIdx + PersistedSnapshot.SlotSubTag[0]].Length > 0
-                            || subTagBounds[baseIdx + PersistedSnapshot.StorageFallbackSubTag[0]].Length > 0
-                            || subTagBounds[baseIdx + PersistedSnapshot.StorageCompactSubTag[0]].Length > 0
-                            || subTagBounds[baseIdx + PersistedSnapshot.StorageTopSubTag[0]].Length > 0)
-                            anyStorage = true;
-                    }
-
-                    if (anyStorage)
-                    {
                         ref TWriter perAddrWriter = ref builder.BeginValueWrite();
                         NWayMergePerAddressHsst<TWriter, TReader, TPin>(
                             matchingSources, matchCount, views,
@@ -347,33 +284,75 @@ public static class PersistedSnapshotMerger
                             bloom, addrKey);
                         builder.FinishValueWrite(minKey);
                     }
-                    else
-                    {
-                        // Stage the merged {SD, Account, Address} blob into noStorageBuffer
-                        // so its length is known before we open the outer leaf entry —
-                        // that lets MaybePadInnerHsstToNextPage keep the blob on a single
-                        // 4 KiB page.
-                        StageNoStoragePerAddressHsst(
-                            matchingSources, matchCount, views,
-                            subTagBounds, noStorageBuffer);
-                        ReadOnlySpan<byte> staged = noStorageBuffer.WrittenSpan;
-                        ref TWriter outerWriter = ref builder.BeginValueWrite();
-                        MaybePadInnerHsstToNextPage(ref outerWriter, staged.Length);
-                        IByteBufferWriter.Copy(ref outerWriter, staged);
-                        builder.FinishValueWrite(minKey, staged.Length);
-                    }
+
+                    cursor.AdvanceMatching();
                 }
 
-                cursor.AdvanceMatching();
+                builder.Build();
             }
-
-            builder.Build();
+            finally
+            {
+                builder.Dispose();
+            }
         }
         finally
         {
             for (int i = 0; i < n; i++) enums[i].Dispose();
             slotPrefixBuffers.Dispose();
         }
+    }
+
+    /// <summary>
+    /// Single-source fast path for the per-address column merge: byte-copies the
+    /// source's per-address HSST blob verbatim into the destination builder. HSST
+    /// internal pointers are HSST-relative (childOffset / dense-index ends are stored
+    /// as deltas from the blob start), so a verbatim relocation to the destination
+    /// writer position stays readable. The per-address sub-tags (storage-trie
+    /// 0x07/0x06/0x05, slots 0x04, self-destruct 0x03, account 0x02, raw-address
+    /// preimage 0x01) ride along inside the copied blob — no per-sub-tag merge needed.
+    /// Bloom keys for slots and storage-trie nodes are walked directly off the source
+    /// reader rather than re-opening a reader on the just-written destination bytes.
+    /// </summary>
+    private static void ReaddAddressHsst<TWriter, TReader, TPin>(
+        int srcIdx,
+        HsstEnumerator[] enums,
+        ReadOnlySpan<(IntPtr Ptr, long Len)> views,
+        scoped ref HsstBTreeBuilder<TWriter, TReader, TPin> builder,
+        scoped ReadOnlySpan<byte> minKey,
+        BloomFilter bloom) where TWriter : IByteBufferWriterWithReader<TReader, TPin> where TReader : IHsstByteReader<TPin>, allows ref struct where TPin : struct, IBufferPin, allows ref struct
+    {
+        Bound vb = enums[srcIdx].CurrentValue;
+        WholeReadSessionReader srcReader = Reader(views[srcIdx]);
+        ref TWriter perAddrWriter = ref builder.BeginValueWrite();
+        MaybePadInnerHsstToNextPage(ref perAddrWriter, vb.Length);
+        // Streamed via the long-aware IByteBufferWriter.Copy so blobs over the 2 GiB
+        // single-Span ceiling stay safe.
+        IByteBufferWriter.Copy<TWriter, WholeReadSessionReader, NoOpPin>(ref perAddrWriter, in srcReader, vb);
+
+        ulong addrKey = MemoryMarshal.Read<ulong>(minKey);
+        bloom.Add(addrKey);
+        // Walk the source's per-address blob to add bloom keys for slots and
+        // storage-trie nodes. Each successful TrySeek mutates HsstReader._bound to the
+        // matched value scope. For sibling sub-tag seeks we save the root bound before
+        // each call and restore after — otherwise only the first sub-tag would be found.
+        HsstReader<WholeReadSessionReader, NoOpPin> outer = new(in srcReader, vb);
+        Bound outerRoot = outer.GetBound();
+        if (outer.TrySeek(PersistedSnapshot.SlotSubTag, out Bound slotBound))
+            AddSlotKeysToBloom<WholeReadSessionReader, NoOpPin>(in srcReader, slotBound, addrKey, bloom);
+        outer.SetBound(outerRoot);
+        if (outer.TrySeek(PersistedSnapshot.StorageTopSubTag, out Bound stb))
+            AddStorageTrieKeysToBloom<WholeReadSessionReader, NoOpPin>(in srcReader, stb, addrKey, bloom);
+        outer.SetBound(outerRoot);
+        if (outer.TrySeek(PersistedSnapshot.StorageCompactSubTag, out Bound scb))
+            AddStorageTrieKeysToBloom<WholeReadSessionReader, NoOpPin>(in srcReader, scb, addrKey, bloom);
+        outer.SetBound(outerRoot);
+        if (outer.TrySeek(PersistedSnapshot.StorageFallbackSubTag, out Bound sfb))
+            AddStorageTrieKeysToBloom<WholeReadSessionReader, NoOpPin>(in srcReader, sfb, addrKey, bloom);
+
+        // Explicit valueLength so any leading pad bytes inserted by
+        // MaybePadInnerHsstToNextPage are treated as inert gap data outside the
+        // recorded value range.
+        builder.FinishValueWrite(minKey, vb.Length);
     }
 
     /// <summary>
@@ -595,92 +574,6 @@ public static class PersistedSnapshotMerger
         finally
         {
             perAddrBuilder.Dispose();
-        }
-    }
-
-    /// <summary>
-    /// No-storage variant of <see cref="NWayMergePerAddressHsst"/>: merges only sub-tags
-    /// 0x03 (SelfDestruct) / 0x02 (Account) / 0x01 (Address) — i.e. the case where no
-    /// matching source contributes slots (0x04) or storage-trie nodes (0x05/0x06/0x07).
-    /// Stages the merged DenseByteIndex into <paramref name="noStorageBuffer"/> so the
-    /// caller knows the value length before opening the outer leaf entry, enabling the
-    /// same 4 KiB page-alignment pad as the single-source byte-copy fast path.
-    /// </summary>
-    private static void StageNoStoragePerAddressHsst(
-        scoped ReadOnlySpan<int> matchingSources, int matchCount,
-        ReadOnlySpan<(IntPtr Ptr, long Len)> views,
-        scoped ReadOnlySpan<Bound> subTagBounds,
-        PooledByteBufferWriter noStorageBuffer)
-    {
-        noStorageBuffer.Reset();
-        ref PooledByteBufferWriter.Writer stagingWriter = ref noStorageBuffer.GetWriter();
-        HsstDenseByteIndexBuilder<PooledByteBufferWriter.Writer> stagedPerAddr = new(ref stagingWriter);
-        try
-        {
-            // Sub-tag 0x03: SelfDestruct — TryAdd semantics (destructed wins on collision,
-            // newest non-destruct otherwise). Same scan logic as the streaming path.
-            int sdTag = PersistedSnapshot.SelfDestructSubTag[0];
-            int sdSrcJ = -1;
-            long sdValOff = 0;
-            long sdValLen = 0;
-            for (int j = 0; j < matchCount; j++)
-            {
-                Bound sdb = subTagBounds[j * PerAddrSubTagCount + sdTag];
-                if (sdb.Length == 0) continue;
-                if (sdSrcJ < 0)
-                {
-                    sdSrcJ = j;
-                    sdValOff = sdb.Offset;
-                    sdValLen = sdb.Length;
-                }
-                else
-                {
-                    WholeReadSessionReader r = Reader(views[matchingSources[j]]);
-                    using NoOpPin firstBytePin = r.PinBuffer(sdb.Offset, 1);
-                    if (firstBytePin.Buffer[0] == 0x00)
-                    {
-                        sdSrcJ = j;
-                        sdValOff = sdb.Offset;
-                        sdValLen = sdb.Length;
-                    }
-                }
-            }
-            if (sdSrcJ >= 0)
-            {
-                WholeReadSessionReader r = Reader(views[matchingSources[sdSrcJ]]);
-                using NoOpPin sdPin = r.PinBuffer(sdValOff, sdValLen);
-                stagedPerAddr.Add(PersistedSnapshot.SelfDestructSubTag, sdPin.Buffer);
-            }
-
-            // Sub-tag 0x02: Account — newest wins.
-            int acctTag = PersistedSnapshot.AccountSubTag[0];
-            for (int j = matchCount - 1; j >= 0; j--)
-            {
-                Bound ab = subTagBounds[j * PerAddrSubTagCount + acctTag];
-                if (ab.Length == 0) continue;
-                WholeReadSessionReader r = Reader(views[matchingSources[j]]);
-                using NoOpPin acctPin = r.PinBuffer(ab.Offset, ab.Length);
-                stagedPerAddr.Add(PersistedSnapshot.AccountSubTag, acctPin.Buffer);
-                break;
-            }
-
-            // Sub-tag 0x01: Address preimage — first non-empty wins.
-            int addrTag = PersistedSnapshot.AddressSubTag[0];
-            for (int j = 0; j < matchCount; j++)
-            {
-                Bound ab = subTagBounds[j * PerAddrSubTagCount + addrTag];
-                if (ab.Length == 0) continue;
-                WholeReadSessionReader r = Reader(views[matchingSources[j]]);
-                using NoOpPin addrPin = r.PinBuffer(ab.Offset, ab.Length);
-                stagedPerAddr.Add(PersistedSnapshot.AddressSubTag, addrPin.Buffer);
-                break;
-            }
-
-            stagedPerAddr.Build();
-        }
-        finally
-        {
-            stagedPerAddr.Dispose();
         }
     }
 
