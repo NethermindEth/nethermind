@@ -1,10 +1,12 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using DotNetty.Buffers;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Rlp;
@@ -60,12 +62,13 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
             stream.Encode(message.Bytes);
         }
 
-        private static int GetPathsRlpLength(IReadOnlyList<PathGroup> paths)
+        private static int GetPathsRlpLength(IOwnedReadOnlyList<PathGroup> paths)
         {
             int contentLength = 0;
-            for (int i = 0; i < paths.Count; i++)
+            ReadOnlySpan<PathGroup> pathsSpan = paths.AsSpan();
+            for (int i = 0; i < pathsSpan.Length; i++)
             {
-                byte[][] group = paths[i].Group;
+                byte[][] group = pathsSpan[i].Group;
                 int groupContentLength = 0;
                 for (int j = 0; j < group.Length; j++)
                 {
@@ -76,12 +79,13 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
             return Rlp.LengthOfSequence(contentLength);
         }
 
-        private static void EncodePaths(RlpStream stream, IReadOnlyList<PathGroup> paths)
+        private static void EncodePaths(RlpStream stream, IOwnedReadOnlyList<PathGroup> paths)
         {
             int contentLength = 0;
-            for (int i = 0; i < paths.Count; i++)
+            ReadOnlySpan<PathGroup> pathsSpan = paths.AsSpan();
+            for (int i = 0; i < pathsSpan.Length; i++)
             {
-                byte[][] group = paths[i].Group;
+                byte[][] group = pathsSpan[i].Group;
                 int groupContentLength = 0;
                 for (int j = 0; j < group.Length; j++)
                 {
@@ -91,9 +95,9 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
             }
 
             stream.StartSequence(contentLength);
-            for (int i = 0; i < paths.Count; i++)
+            for (int i = 0; i < pathsSpan.Length; i++)
             {
-                byte[][] group = paths[i].Group;
+                byte[][] group = pathsSpan[i].Group;
                 int groupContentLength = 0;
                 for (int j = 0; j < group.Length; j++)
                 {
