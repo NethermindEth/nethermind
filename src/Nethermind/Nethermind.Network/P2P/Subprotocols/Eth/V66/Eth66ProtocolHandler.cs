@@ -265,6 +265,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
             RequestPooledTransactions<GetPooledTransactionsMessage>(hashesToRetry);
         }
 
+        // Intentionally explicit: each closed generic handler keeps scheduling delegate-free
+        // and lets the JIT specialize request execution for this hot path.
         private readonly struct GetBlockHeadersHandler : ISyncServeRequestHandler<Eth66ProtocolHandler, GetBlockHeadersMessage, BlockHeadersMessage>
         {
             static Task<BlockHeadersMessage> ISyncServeRequestHandler<Eth66ProtocolHandler, GetBlockHeadersMessage, BlockHeadersMessage>.Execute(
