@@ -79,8 +79,8 @@ public sealed class ArenaReservation : RefCountingDisposable
     /// reservation; disposing it releases the lease and (by default) issues
     /// <c>madvise(MADV_DONTNEED)</c> on the mapped range. Pass
     /// <paramref name="adviseDontNeedOnDispose"/> = <c>false</c> when the caller has
-    /// arranged an explicit eviction elsewhere (e.g. <see cref="PersistedSnapshots.PersistedSnapshot.Demote"/>)
-    /// and a redundant madvise on session close would be wasteful.
+    /// arranged an explicit eviction elsewhere and a redundant madvise on session close
+    /// would be wasteful.
     /// </summary>
     public WholeReadSession BeginWholeReadSession(bool adviseDontNeedOnDispose = true) =>
         new(this, adviseDontNeedOnDispose);
