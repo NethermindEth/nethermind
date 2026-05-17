@@ -90,6 +90,7 @@ public class JsonRpcUrlCollection : Dictionary<int, JsonRpcUrl>, IJsonRpcUrlColl
 
     private void BuildAdditionalUrls(bool includeWebSockets)
     {
+        List<string[]> additionalRpcUrlRows = new List<string[]>();
         foreach (string additionalRpcUrl in _jsonRpcConfig.AdditionalRpcUrls)
         {
             try
@@ -119,6 +120,13 @@ public class JsonRpcUrlCollection : Dictionary<int, JsonRpcUrl>, IJsonRpcUrlColl
                 else
                 {
                     Add(url.Port, url);
+                    string[] row = new[]
+                    {
+                        $"{url.Host}:{url.Port}",
+                        url.RpcEndpoint.ToString(),
+                        string.Join(", ", url.EnabledModules)
+                    };
+                    additionalRpcUrlRows.Add(row);
                 }
             }
             catch (FormatException fe)
@@ -126,6 +134,40 @@ public class JsonRpcUrlCollection : Dictionary<int, JsonRpcUrl>, IJsonRpcUrlColl
                 if (_logger.IsInfo) _logger.Info($"Additional JSON RPC URL packed value '{additionalRpcUrl}' format error: {fe.Message}; skipping...");
             }
         }
+        LogTable(additionalRpcUrlRows);
+    }
+    private void LogTable(List<string[]> rows)
+    {
+        
+        string[] headers = ["Additional Url", "Protocols", "Modules"];
+        string redSeparator = "\u001b[31m|\u001b[0m"; 
+        var columnWidths = new int[headers.Length];
+
+        for (int i = 0; i < headers.Length; i++)
+        {
+            columnWidths[i] = headers[i].Length;
+            foreach (var row in rows)
+            {
+                if (i < row.Length)
+                {
+                    columnWidths[i] = Math.Max(columnWidths[i], row[i]?.Length ?? 0);
+                }
+            }
+        }
+
+        var separator = "-" + string.Join("-", columnWidths.Select(width => new string('-', width + 2))) + "-";
+
+        _logger.Info("\u001b[31m*****\u001b[0m Additional RPC URLs \u001b[31m*****\u001b[0m");
+        _logger.Info(separator);
+        _logger.Info(redSeparator + " " + string.Join(" " + redSeparator + " ", headers.Select((h, i) => h.PadRight(columnWidths[i]))) + " " + redSeparator);
+        _logger.Info(separator);
+
+        foreach (var row in rows)
+        {
+            _logger.Info(redSeparator + " " + string.Join(" " + redSeparator + " ", row.Select((cell, i) => (cell ?? "").PadRight(columnWidths[i]))) + " " + redSeparator);
+        }
+
+        _logger.Info(separator);
     }
 }
 
