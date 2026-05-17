@@ -109,7 +109,7 @@ public class BackgroundTaskScheduler : IBackgroundTaskScheduler, IAsyncDisposabl
             {
                 // Create fresh CancellationTokenSource for current block processing
                 CancellationTokenSource cts = CancellationTokenSource.CreateLinkedTokenSource(
-                            _blockProcessorCancellationTokenSource.Token,
+                            Volatile.Read(ref _blockProcessorCancellationTokenSource).Token,
                             _mainCancellationTokenSource.Token);
                 try
                 {
