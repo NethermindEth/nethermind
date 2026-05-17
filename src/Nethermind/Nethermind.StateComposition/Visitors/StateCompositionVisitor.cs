@@ -5,6 +5,7 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Collections.Immutable;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Threading;
 using Nethermind.Core;
@@ -306,8 +307,16 @@ internal sealed class StateCompositionVisitor(
             return [];
 
         TopContractEntry[] sorted = entries.AsSpan(0, count).ToArray();
-        Array.Sort(sorted, 0, count, Comparer<TopContractEntry>.Create((a, b) => comparer(b, a)));
-        return System.Runtime.InteropServices.ImmutableCollectionsMarshal.AsImmutableArray(sorted);
+        sorted.AsSpan(0, count).Sort(new ReverseEntryComparer(comparer));
+        return ImmutableCollectionsMarshal.AsImmutableArray(sorted);
+    }
+
+    private readonly struct ReverseEntryComparer(TopNTracker.EntryComparer comparer) : IComparer<TopContractEntry>
+    {
+        private readonly TopNTracker.EntryComparer _comparer = comparer;
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public int Compare(TopContractEntry a, TopContractEntry b) => _comparer(in b, in a);
     }
 
     private static double CalcAvgDepth(ReadOnlySpan<DepthCounter> depths)
