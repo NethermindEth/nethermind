@@ -41,31 +41,6 @@ public static class PersistedSnapshotMerger
     }
 
     /// <summary>
-    /// 4 KiB-align an inner-HSST blob about to be copied into <paramref name="writer"/>:
-    /// when the blob is no bigger than a page yet would straddle the next page boundary,
-    /// and a small pad (≤ <see cref="PageLayout.PadThreshold"/>) would push its start
-    /// onto a fresh page, insert leading zero bytes so the blob lives entirely in one
-    /// page. Blobs larger than a page cross regardless of alignment, so padding can't
-    /// help — skip. Used after <c>BeginValueWrite</c>; the caller must close the entry
-    /// with the padding-aware <c>FinishValueWrite(key, blobLength)</c> overload so the
-    /// pad bytes are recorded as inert gap data outside the value range. Mirrors the
-    /// in-HSST page-alignment policy in <see cref="HsstIndexBuilder{TWriter,TReader,TPin}"/>.
-    /// </summary>
-    internal static void MaybePadInnerHsstToNextPage<TWriter>(ref TWriter writer, long blobLength)
-        where TWriter : IByteBufferWriter
-    {
-        long pageOff = (writer.Written - writer.FirstOffset) & PageLayout.PageMask;
-        if (pageOff == 0 || blobLength > PageLayout.PageSize || pageOff + blobLength <= PageLayout.PageSize)
-            return;
-        long padLen = PageLayout.PageSize - pageOff;
-        if (padLen > PageLayout.PadThreshold) return;
-        int padInt = (int)padLen;
-        Span<byte> pad = writer.GetSpan(padInt);
-        pad[..padInt].Clear();
-        writer.Advance(padInt);
-    }
-
-    /// <summary>
     /// N-way merge of N persisted snapshots (oldest-first) into <paramref name="writer"/>.
     /// Callers (the compactor in production, the test/benchmark helpers otherwise) own the
     /// session lifecycle: open one <see cref="WholeReadSession"/> per source up front, pass
@@ -550,9 +525,12 @@ public static class PersistedSnapshotMerger
     /// <summary>
     /// Outer 30-byte slot-prefix BTree streaming merge across M slot-bearing sources, with
     /// the inner 2-byte suffix BTree merge inlined per bucket. Per outer bucket, emits one
-    /// bloom add (keyed on the 30-byte prefix); the single-source fast path for outer-match
-    /// count == 1 pins the source suffix HSST and adds it whole through the outer builder,
-    /// skipping the inner merge entirely. Caller is responsible for: collecting the
+    /// bloom add (keyed on the 30-byte prefix); when only one source matches an outer
+    /// key and the source suffix HSST entry fits and can be page-aligned, pins the source
+    /// blob and adds it whole through the outer builder via
+    /// <see cref="HsstBTreeBuilder{TWriter, TReader, TPin}.TryAddAligned"/>, skipping the
+    /// inner merge entirely. Otherwise (multi-source bucket, or single-source with
+    /// unalignable suffix) the inner merge runs. Caller is responsible for: collecting the
     /// slot-bearing sources from per-address sub-tag 0x04, opening the slot enums, and
     /// wrapping this call in BeginValueWrite/FinishValueWrite on its outer builder.
     /// </summary>
@@ -621,30 +599,37 @@ public static class PersistedSnapshotMerger
 
             outerKey.CopyTo(slotKeyBuf[..OuterKeyLen]);
 
+            // 1-matching-source fast path: pin the source's suffix HSST blob and try
+            // to add it page-aligned through the outer builder. HSST internal pointers
+            // are blob-relative so the relocated blob stays readable. The bloom walk
+            // reads the source bytes directly. Falls through to the inner-merge
+            // rebuild below if the entry can't fit on one page or the alignment pad
+            // would exceed the threshold.
             if (outerMatchCount == 1)
             {
-                // 1 matching source for this outer key: pin its suffix HSST blob and
-                // add it whole. HSST internal pointers are blob-relative so the
-                // relocated blob stays readable at the destination writer position.
-                // The bloom walk reads the source bytes directly — no need to copy
-                // through staging just to enumerate the 2-byte suffix keys.
                 int srcIdx = outerMatches[0];
                 Bound vb = outerEnums[srcIdx].CurrentValue;
                 WholeReadSessionReader srcReader = Reader(views[srcIdx]);
                 using NoOpPin suffixPin = srcReader.PinBuffer(vb.Offset, vb.Length);
-                HsstEnumerator<WholeReadSessionReader, NoOpPin> suffixEnum = new(in srcReader, vb);
-                while (suffixEnum.MoveNext(in srcReader))
+                if (outerBuilder.TryAddAligned(outerKey, suffixPin.Buffer))
                 {
-                    suffixEnum.CopyCurrentLogicalKey(in srcReader, slotKeyBuf.Slice(OuterKeyLen, InnerKeyLen));
-                    bloom.Add(PersistedSnapshotBloomBuilder.SlotKey(addrBloomKey, slotKeyBuf));
+                    HsstEnumerator<WholeReadSessionReader, NoOpPin> suffixEnum = new(in srcReader, vb);
+                    while (suffixEnum.MoveNext(in srcReader))
+                    {
+                        suffixEnum.CopyCurrentLogicalKey(in srcReader, slotKeyBuf.Slice(OuterKeyLen, InnerKeyLen));
+                        bloom.Add(PersistedSnapshotBloomBuilder.SlotKey(addrBloomKey, slotKeyBuf));
+                    }
+                    suffixEnum.Dispose();
+                    outerCursor.AdvanceMatching();
+                    continue;
                 }
-                suffixEnum.Dispose();
-                outerBuilder.Add(outerKey, suffixPin.Buffer);
             }
-            else
+
             {
-                // >1 matching sources: inner 2-byte BTree streaming merge driven by a
-                // second cursor over the matched-source subset. Working buffers
+                // Rebuild path: inner 2-byte BTree streaming merge driven by a second
+                // cursor over the matched-source subset. Handles >1 matching sources
+                // and the N=1 fall-through case when TryAddAligned above couldn't fit
+                // the source blob on one page. Working buffers
                 // (innerKeyBuf/innerMatchingBuf/innerTree) are pre-allocated above and
                 // sliced to the actual inner-source count per iteration.
                 int innerN = outerMatchCount;

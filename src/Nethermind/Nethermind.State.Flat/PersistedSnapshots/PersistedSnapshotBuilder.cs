@@ -342,10 +342,9 @@ public static class PersistedSnapshotBuilder
         // storage slots and no storage-trie nodes, the per-address inner HSST collapses
         // to at most {SD, Account, Address} sub-tags plus the DenseByteIndex trailer
         // — well under 256 bytes for any realistic slim account. Staging into a known-
-        // length buffer lets the outer leaf entry apply 4 KiB page alignment via
-        // MaybePadInnerHsstToNextPage + FinishValueWrite(key, length), keeping each
-        // EOA's per-address blob on a single OS page (mirrors the compaction fast
-        // path at PersistedSnapshotMerger.NWayMergePerAddressColumn).
+        // length buffer lets addressLevel.Add apply its own 4 KiB page-alignment pad
+        // (best-effort, via HsstBTreeBuilder.Add → TryAlign), keeping each EOA's
+        // per-address blob on a single OS page when the writer can accommodate it.
         using PooledByteBufferWriter noStorageBuffer = new(256);
         int storageIdx = 0;
         int storTopIdx = 0;
@@ -425,11 +424,7 @@ public static class PersistedSnapshotBuilder
                     stagedPerAddr.Build();
                 }
 
-                ReadOnlySpan<byte> staged = noStorageBuffer.WrittenSpan;
-                ref TWriter outerWriter = ref addressLevel.BeginValueWrite();
-                PersistedSnapshotMerger.MaybePadInnerHsstToNextPage(ref outerWriter, staged.Length);
-                IByteBufferWriter.Copy(ref outerWriter, staged);
-                addressLevel.FinishValueWrite(addressHashPrefix, staged.Length);
+                addressLevel.Add(addressHashPrefix, noStorageBuffer.WrittenSpan);
                 continue;
             }
 

@@ -247,7 +247,11 @@ public ref struct HsstBTreeBuilder<TWriter, TReader, TPin>
     }
 
     /// <summary>
-    /// Convenience: add key-value pair in one call.
+    /// Convenience: add key-value pair in one call. Attempts to keep the entry
+    /// (key + LEB128 + value) on a single <see cref="PageLayout.PageSize"/> page
+    /// via a small leading zero pad when the writer is mid-page; if the pad would
+    /// exceed <see cref="PageLayout.PadThreshold"/> or the entry is larger than
+    /// one page, the entry is written without alignment.
     /// In key-after-value mode the layout written is <c>[Value][LEB128 ValueLength][FullKey]</c>
     /// and the recorded entry position aims at the LEB128 byte (MetadataStart).
     /// In key-first mode (<c>keyFirst = true</c> at construction) the layout is
@@ -255,6 +259,73 @@ public ref struct HsstBTreeBuilder<TWriter, TReader, TPin>
     /// FullKey byte 0 (EntryStart).
     /// </summary>
     public void Add(scoped ReadOnlySpan<byte> key, scoped ReadOnlySpan<byte> value)
+    {
+        long entryLen = (long)key.Length + Leb128.EncodedSize((long)value.Length) + value.Length;
+        TryAlign(entryLen); // best-effort; entry lands unaligned if false
+        AddCore(key, value);
+    }
+
+    /// <summary>
+    /// Try to add an entry such that the whole entry block — the key, its LEB128
+    /// value-length prefix, and the value — lands within a single
+    /// <see cref="PageLayout.PageSize"/> page in the destination writer. If the
+    /// current writer position would force the entry to straddle a page boundary,
+    /// up to <see cref="PageLayout.PadThreshold"/> zero bytes are written ahead
+    /// of the entry to push its start onto the next page. Returns true on a
+    /// successful (possibly padded) add; returns false without writing anything
+    /// if either of the unalignable cases applies:
+    /// <list type="bullet">
+    ///   <item>the entry is larger than one page (cannot fit at any offset)</item>
+    ///   <item>the alignment pad would exceed <see cref="PageLayout.PadThreshold"/></item>
+    /// </list>
+    /// Works uniformly in both key-after-value and key-first modes — the entry's
+    /// total byte count is the same in either layout (only the order differs),
+    /// and the pad bytes sit before the entry's captured index position so the
+    /// reader never reads them (key-after-value resolves the value via
+    /// <c>ValueStart = MetadataStart − ValueLength</c> back-reference; key-first
+    /// walks forward from EntryStart, which the index points at). Use this when
+    /// you want a definite success/failure signal so the caller can fall back
+    /// to a different code path on alignment failure; for best-effort alignment
+    /// without a signal, use <see cref="Add"/>.
+    /// </summary>
+    public bool TryAddAligned(scoped ReadOnlySpan<byte> key, scoped ReadOnlySpan<byte> value)
+    {
+        long entryLen = (long)key.Length + Leb128.EncodedSize((long)value.Length) + value.Length;
+        if (!TryAlign(entryLen)) return false;
+        AddCore(key, value);
+        return true;
+    }
+
+    /// <summary>
+    /// Shared pad-then-align helper. Returns true if the entry (length
+    /// <paramref name="entryLen"/>) will fit on a single page at the post-call
+    /// writer position — either because it already does (writer at boundary or
+    /// remaining-in-page is enough) or because a pad &lt;=
+    /// <see cref="PageLayout.PadThreshold"/> was written to advance to the next
+    /// page boundary. Returns false (without writing) if the entry is larger
+    /// than a page or the required pad exceeds the threshold.
+    /// </summary>
+    private bool TryAlign(long entryLen)
+    {
+        if (entryLen > PageLayout.PageSize) return false;
+        long pageOff = (_writer.Written - _writer.FirstOffset) & PageLayout.PageMask;
+        if (pageOff == 0 || pageOff + entryLen <= PageLayout.PageSize) return true;
+        long padLen = PageLayout.PageSize - pageOff;
+        if (padLen > PageLayout.PadThreshold) return false;
+        int padInt = (int)padLen;
+        Span<byte> pad = _writer.GetSpan(padInt);
+        pad[..padInt].Clear();
+        _writer.Advance(padInt);
+        return true;
+    }
+
+    /// <summary>
+    /// Layout-mode-agnostic entry write, without page-alignment. Called from
+    /// <see cref="Add"/> after <see cref="TryAlign"/> has run its best-effort pad,
+    /// and from <see cref="TryAddAligned"/> after a successful pad — so neither
+    /// public method pays double page-math.
+    /// </summary>
+    private void AddCore(scoped ReadOnlySpan<byte> key, scoped ReadOnlySpan<byte> value)
     {
         if (_keyLength < 0)
         {
@@ -282,48 +353,6 @@ public ref struct HsstBTreeBuilder<TWriter, TReader, TPin>
         _writtenBeforeValue = _writer.Written;
         IByteBufferWriter.Copy(ref _writer, value);
         FinishValueWrite(key);
-    }
-
-    /// <summary>
-    /// Try to add an entry such that the whole entry block — the key, its LEB128
-    /// value-length prefix, and the value — lands within a single
-    /// <see cref="PageLayout.PageSize"/> page in the destination writer. If the
-    /// current writer position would force the entry to straddle a page boundary,
-    /// up to <see cref="PageLayout.PadThreshold"/> zero bytes are written ahead
-    /// of the entry to push its start onto the next page. Returns true on a
-    /// successful (possibly padded) add; returns false without writing anything
-    /// if either of the unalignable cases applies:
-    /// <list type="bullet">
-    ///   <item>the entry is larger than one page (cannot fit at any offset)</item>
-    ///   <item>the alignment pad would exceed <see cref="PageLayout.PadThreshold"/></item>
-    /// </list>
-    /// Works uniformly in both key-after-value and key-first modes — the entry's
-    /// total byte count is the same in either layout (only the order differs),
-    /// and the pad bytes sit before the entry's captured index position so the
-    /// reader never reads them (key-after-value resolves the value via
-    /// <c>ValueStart = MetadataStart − ValueLength</c> back-reference; key-first
-    /// walks forward from EntryStart, which the index points at). Use this when
-    /// you want a definite success/failure signal so the caller can fall back
-    /// to a different code path on alignment failure.
-    /// </summary>
-    public bool TryAddAligned(scoped ReadOnlySpan<byte> key, scoped ReadOnlySpan<byte> value)
-    {
-        long entryLen = (long)key.Length + Leb128.EncodedSize((long)value.Length) + value.Length;
-        if (entryLen > PageLayout.PageSize) return false;
-
-        long pageOff = (_writer.Written - _writer.FirstOffset) & PageLayout.PageMask;
-        if (pageOff != 0 && pageOff + entryLen > PageLayout.PageSize)
-        {
-            long padLen = PageLayout.PageSize - pageOff;
-            if (padLen > PageLayout.PadThreshold) return false;
-            int padInt = (int)padLen;
-            Span<byte> pad = _writer.GetSpan(padInt);
-            pad[..padInt].Clear();
-            _writer.Advance(padInt);
-        }
-
-        Add(key, value);
-        return true;
     }
 
     /// <summary>
