@@ -56,10 +56,13 @@ public static class OwnedReadOnlyListExtensions
 
     public static void DisposeRecursive<T>(this IOwnedReadOnlyList<T> list) where T : IDisposable
     {
-        ReadOnlySpan<T> span = list.AsSpan();
-        for (int i = 0; i < span.Length; i++)
+        if (list.Count != 0)
         {
-            span[i]?.Dispose();
+            ReadOnlySpan<T> span = list.AsSpan();
+            for (int i = 0; i < span.Length; i++)
+            {
+                span[i]?.Dispose();
+            }
         }
 
         list.Dispose();

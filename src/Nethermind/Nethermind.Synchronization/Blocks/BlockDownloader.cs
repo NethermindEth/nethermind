@@ -3,7 +3,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
@@ -296,10 +295,11 @@ namespace Nethermind.Synchronization.Blocks
                 (await _syncPeerPool.EstimateRequestLimit(RequestType.Receipts, EstimatedAllocationStrategy, AllocationContexts.Blocks, cancellation))
                 ?? GethSyncLimits.MaxReceiptFetch;
 
-            BlockHeader parentHeader = headers.AsSpan()[0];
-            for (int i = 1; i < headers.Count; i++)
+            int headersCount = headers.Count;
+            BlockHeader parentHeader = headers[0];
+            for (int i = 1; i < headersCount; i++)
             {
-                BlockHeader blockHeader = headers.AsSpan()[i];
+                BlockHeader blockHeader = headers[i];
                 if (parentHeader.Hash != blockHeader.ParentHash)
                 {
                     // Precaution for weird consensus

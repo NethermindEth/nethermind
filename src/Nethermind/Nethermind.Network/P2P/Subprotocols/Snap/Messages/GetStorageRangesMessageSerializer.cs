@@ -3,7 +3,6 @@
 
 using DotNetty.Buffers;
 using System;
-using Nethermind.Core.Collections;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Snap;
 
