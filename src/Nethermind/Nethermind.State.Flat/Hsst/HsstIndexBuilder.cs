@@ -430,25 +430,20 @@ public ref struct HsstIndexBuilder<TWriter, TReader, TPin>
             int estimated = (newCount - 1) * valueSlotSize + newSumSep;
             if (estimated > byteThreshold) break;
 
-            // Dynamic split heuristics, mirrors ChooseLeafLayout. Once
-            // minChildren reached, break early when adding the next child would
-            // worsen the per-node encoding even if it still fits the byte
-            // budget:
-            //   - newMaxSepLen > maxSepLen: widens the planner's Uniform key slot
-            //     (or forces Variable layout), enlarging every per-entry slot.
-            //   - newCommonLen < commonLen (after the first sep is seen):
-            //     planner strips fewer bytes per slot, fattening every entry.
-            //   - valueSlotSize > committedValueSlot: child-offset range widened,
-            //     bumping every Uniform value slot to a wider encoding.
+            // Dynamic split heuristics. Once minChildren is reached, break only
+            // when:
+            //   - effective separator (post-LCP-strip) would exceed 4 bytes —
+            //     mirrors the leaf splitter's `gap > 4` rule. Combines the old
+            //     "max sep widened" and "LCP shrank" checks into a single
+            //     post-strip-width budget; value-slot widening is allowed.
             //   - WouldCrossNewPage: candidate node would straddle a 4 KiB page
             //     boundary the committed node does not.
+            int newEffSepLen = newMaxSepLen - newCommonLen;
             int candidateSize = IntermediateNodeSizeUpperBound(newCount, newSumSep, valueSlotSize);
             int committedSize = IntermediateNodeSizeUpperBound(childCount, sumSepBytes, committedValueSlot);
             if (childCount >= minChildren &&
                 committedSize >= minBytes &&
-                (newMaxSepLen > maxSepLen ||
-                 (commonLen >= 0 && newCommonLen < commonLen) ||
-                 valueSlotSize > committedValueSlot ||
+                (newEffSepLen > 4 ||
                  WouldCrossNewPage(nodeStart, firstOffset, committedSize, candidateSize)))
                 break;
 
