@@ -68,6 +68,46 @@ public class HsstReaderTests
         Assert.That(r.TrySeek("z"u8, out _), Is.False);
     }
 
+    /// <summary>
+    /// Regression: a search key that lands between two leaves where the latter leaf's
+    /// internal common prefix extends past the natural separator length must still floor
+    /// correctly. The pre-fix design stored each separator at its natural length
+    /// (<c>LCP(prev_leaf_last, next_leaf_first) + 1</c>), which truncated below the
+    /// next leaf's actual common prefix; a search key matching the truncated separator
+    /// but diverging inside the next leaf's prefix routed to the wrong leaf and returned
+    /// no-floor. The current builder extends each separator to <c>max(natural,
+    /// child.PrefixLen)</c> so the parent's floor compare sees enough bytes to send the
+    /// query to the correct subtree.
+    /// </summary>
+    [Test]
+    public void TrySeekFloor_AcrossTruncatedSeparatorBoundary_RoutesCorrectly()
+    {
+        // Build two leaves:
+        //   leaf 0: 32 keys with prefix [0xA9, 0xFF]
+        //   leaf 1: 32 keys with prefix [0xAB, 0xCD]   ← leaf prefix length = 2
+        // Natural separator between them = LCP([0xA9,0xFF,...], [0xAB,0xCD,...]) + 1 = 1
+        // (= [0xAB]). The fix extends it to length 2 (= [0xAB, 0xCD]).
+        //
+        // Search key K = [0xAB, 0x00, 0x00] matches the OLD truncated separator (0xAB)
+        // and would route to leaf 1 — where it falls before every key (0xAB < 0xABCD…)
+        // and TryGetFloor would have returned false, missing the actual floor in leaf 0.
+        // With the extended separator the parent's floor compare detects K < S_1 and
+        // routes K to leaf 0, returning its last entry as the floor.
+        byte[] data = HsstTestUtil.BuildToArray((ref HsstBTreeBuilder<PooledByteBufferWriter.Writer, PooledByteBufferWriter.WriterReader, NoOpPin> builder) =>
+        {
+            for (int i = 0; i < 32; i++)
+                builder.Add([0xA9, 0xFF, (byte)i], [(byte)(0xA0 + i)]);
+            for (int i = 0; i < 32; i++)
+                builder.Add([0xAB, 0xCD, (byte)i], [(byte)(0xB0 + i)]);
+        }, maxLeafEntries: 32);
+
+        Assert.That(HsstTestUtil.TryGetFloor(data, [0xAB, 0x00, 0x00], out byte[] floorValue), Is.True,
+            "Floor of [0xAB, 0x00, 0x00] should resolve to the last entry of leaf 0");
+        // Last entry of leaf 0 is [0xA9, 0xFF, 0x1F] with value [0xA0 + 31] = [0xBF].
+        Assert.That(floorValue, Is.EqualTo(new byte[] { 0xBF }),
+            "Floor should be the last entry of leaf 0, not a leaf-1 entry");
+    }
+
     [Test]
     public void TrySeekFloor_BetweenKeys_ReturnsFloorEntry()
     {

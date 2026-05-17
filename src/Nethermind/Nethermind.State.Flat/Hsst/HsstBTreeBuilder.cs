@@ -356,8 +356,13 @@ public ref struct HsstBTreeBuilder<TWriter, TReader, TPin>
     }
 
     /// <summary>
-    /// Build index, then append the trailing [RootSize u16 LE][KeyLength u8][IndexType u8] (4 bytes).
-    /// Reader locates the root via (HSST end - 4 - RootSize). A node is capped at 64 KiB
+    /// Build index, then append the trailing
+    /// <c>[RootPrefix bytes][RootPrefixLen u8][RootSize u16 LE][KeyLength u8][IndexType u8]</c>
+    /// (5 + RootPrefixLen bytes). Reader locates the root via
+    /// <c>HSST end − 5 − RootPrefixLen − RootSize</c> and supplies the trailer's
+    /// <c>RootPrefix</c> bytes to the root node's <c>BSearchIndexReader.ReadFromStart</c>
+    /// — non-root nodes get their prefix bytes from the parent's separator, but the root
+    /// has no parent so the bytes ride the trailer instead. A node is capped at 64 KiB
     /// so RootSize fits in u16. KeyLength is the fixed key length for every entry in this
     /// HSST (the builder enforces uniformity); 0 when the build was empty and no length
     /// was declared.
@@ -374,6 +379,9 @@ public ref struct HsstBTreeBuilder<TWriter, TReader, TPin>
         long dataSectionSize = _writer.Written - _baseOffset;
         long absoluteIndexStart = dataSectionSize;
         int rootSize;
+        int rootPrefixLen;
+        // Up to 128 prefix bytes per BSearchIndexLayoutPlanner.MaxCommonKeyPrefixLen.
+        Span<byte> rootPrefixBytes = stackalloc byte[128];
         TReader reader = _writer.OpenReader(dataSectionSize);
         try
         {
@@ -383,6 +391,8 @@ public ref struct HsstBTreeBuilder<TWriter, TReader, TPin>
                 HsstIndexBuilder<TWriter, TReader, TPin> indexBuilder = new(
                     ref _writer, reader, bufs.EntryPositions.AsSpan(), _keyLength, ref bufs, _keyFirst);
                 rootSize = indexBuilder.Build(absoluteIndexStart, maxLeafEntries, maxIntermediateEntries, minLeafEntries, maxIntermediateBytes, minIntermediateChildren, minIntermediateBytes);
+                rootPrefixLen = indexBuilder.RootPrefixLen;
+                if (rootPrefixLen > 0) indexBuilder.CopyRootPrefixBytes(rootPrefixBytes[..rootPrefixLen]);
             }
             else
             {
@@ -394,6 +404,8 @@ public ref struct HsstBTreeBuilder<TWriter, TReader, TPin>
                     HsstIndexBuilder<TWriter, TReader, TPin> indexBuilder = new(
                         ref _writer, reader, _ownedEntryPositions.AsSpan(), _keyLength, ref localBufs, _keyFirst);
                     rootSize = indexBuilder.Build(absoluteIndexStart, maxLeafEntries, maxIntermediateEntries, minLeafEntries, maxIntermediateBytes, minIntermediateChildren, minIntermediateBytes);
+                    rootPrefixLen = indexBuilder.RootPrefixLen;
+                    if (rootPrefixLen > 0) indexBuilder.CopyRootPrefixBytes(rootPrefixBytes[..rootPrefixLen]);
                 }
                 finally
                 {
@@ -412,16 +424,22 @@ public ref struct HsstBTreeBuilder<TWriter, TReader, TPin>
 
         if ((uint)rootSize > ushort.MaxValue)
             throw new InvalidOperationException($"Root node size {rootSize} exceeds u16 trailer field");
+        if ((uint)rootPrefixLen > byte.MaxValue)
+            throw new InvalidOperationException($"Root prefix length {rootPrefixLen} exceeds u8 trailer field");
 
-        // Trailing [RootSize u16 LE][KeyLength u8][IndexType u8]; IndexType is the last
-        // byte of the HSST. Empty builds (_keyLength still -1 because no Add() / FinishValueWrite
-        // was called) record KeyLength = 0; the reader never decodes any keys in that case.
+        // Trailing layout: [RootPrefix bytes][RootPrefixLen u8][RootSize u16 LE][KeyLength u8][IndexType u8].
+        // IndexType is the last byte of the HSST. Empty builds (_keyLength still -1
+        // because no Add() / FinishValueWrite was called) record KeyLength = 0 and
+        // RootPrefixLen = 0; the reader never decodes any keys in that case.
         int trailerKeyLength = _keyLength < 0 ? 0 : _keyLength;
-        Span<byte> tail = _writer.GetSpan(4);
-        tail[0] = (byte)rootSize;
-        tail[1] = (byte)(rootSize >> 8);
-        tail[2] = (byte)trailerKeyLength;
-        tail[3] = (byte)(_keyFirst ? IndexType.BTreeKeyFirst : IndexType.BTree);
-        _writer.Advance(4);
+        int trailerLen = 5 + rootPrefixLen;
+        Span<byte> tail = _writer.GetSpan(trailerLen);
+        if (rootPrefixLen > 0) rootPrefixBytes[..rootPrefixLen].CopyTo(tail);
+        tail[rootPrefixLen] = (byte)rootPrefixLen;
+        tail[rootPrefixLen + 1] = (byte)rootSize;
+        tail[rootPrefixLen + 2] = (byte)(rootSize >> 8);
+        tail[rootPrefixLen + 3] = (byte)trailerKeyLength;
+        tail[rootPrefixLen + 4] = (byte)(_keyFirst ? IndexType.BTreeKeyFirst : IndexType.BTree);
+        _writer.Advance(trailerLen);
     }
 }

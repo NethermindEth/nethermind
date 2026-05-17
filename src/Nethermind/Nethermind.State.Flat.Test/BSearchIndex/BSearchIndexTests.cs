@@ -20,12 +20,16 @@ namespace Nethermind.State.Flat.Test;
 public class BSearchIndexTests
 {
     // Read the root node from a full-HSST byte array.
-    // Trailer is [RootSize u16 LE][KeyLength u8][IndexType u8].
+    // Trailer is [RootPrefix bytes][RootPrefixLen u8][RootSize u16 LE][KeyLength u8][IndexType u8].
     private static BSearchIndexReader ReadHsstRoot(byte[] data)
     {
+        int rootPrefixLen = data[data.Length - 5];
         int rootSize = data[data.Length - 4] | (data[data.Length - 3] << 8);
-        int rootStart = data.Length - 4 - rootSize;
-        return BSearchIndexReader.ReadFromStart(data, rootStart);
+        int rootStart = data.Length - 5 - rootPrefixLen - rootSize;
+        ReadOnlySpan<byte> rootPrefix = rootPrefixLen > 0
+            ? data.AsSpan(data.Length - 5 - rootPrefixLen, rootPrefixLen)
+            : default;
+        return BSearchIndexReader.ReadFromStart(data, rootStart, rootPrefix);
     }
 
     // ===== METADATA READING TESTS =====
@@ -477,10 +481,15 @@ public class BSearchIndexTests
         byte[] valScratch = new byte[separatorHexes.Length * (2 + 4)];
         byte[] output = new byte[1024];
         SpanBufferWriter w = new(output);
+        // StoreInlinePrefix is normally set only on the HSST root (non-root nodes get
+        // their prefix bytes via the descent's parentSeparator). This unit test
+        // reads the bytes back directly without descent context, so we opt in to the
+        // inline-bytes layout to keep the round-trip self-contained.
         BSearchIndexWriter<SpanBufferWriter> writer = new(ref w, new BSearchIndexMetadata
         {
             KeyType = keyType,
             KeySlotSize = slotSize,
+            StoreInlinePrefix = true,
         }, keyBuf, valScratch, commonPrefix);
         Span<byte> valBuf = stackalloc byte[4];
         for (int i = 0; i < separatorHexes.Length; i++)

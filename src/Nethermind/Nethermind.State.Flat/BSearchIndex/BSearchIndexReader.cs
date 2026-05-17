@@ -14,10 +14,12 @@ namespace Nethermind.State.Flat.BSearchIndex;
 ///
 /// Layout (low → high address):
 ///   [Flags: u8][KeyCount: u16 LE][KeySize: u16 LE][ValueSize: u8][BaseOffset: 6-byte LE]
-///   [CommonPrefixLen: u8][CommonPrefix bytes]?     (only if Flags bit6 set)
+///   [CommonPrefixLen: u8]?                        (only if Flags bit6 set)
+///   [CommonPrefix bytes]?                         (only if Flags bit6 AND bit7 set — root only)
 ///   [Keys section][Values section]
 ///
-/// Flags: bit0=IsIntermediate, bits1-2=KeyType, bits3-4=reserved (must be 0), bit5=IsKeyLittleEndian, bit6=HasCommonKeyPrefix.
+/// Flags: bit0=IsIntermediate, bits1-2=KeyType, bits3-4=reserved (must be 0),
+/// bit5=IsKeyLittleEndian, bit6=HasCommonKeyPrefix, bit7=HasInlineCommonKeyPrefix.
 ///
 /// IsKeyLittleEndian (bit 5) marks that fixed-width key slots are stored byte-reversed so an
 /// x86 LE integer load of a slot equals its semantic numeric/lex value. Set for Uniform
@@ -49,6 +51,12 @@ namespace Nethermind.State.Flat.BSearchIndex;
 ///
 /// When HasCommonKeyPrefix is set, every stored key equals (CommonKeyPrefix || stored slot i);
 /// the keys section holds suffixes only — use <see cref="GetFullKey"/> to reconstruct lex bytes.
+///
+/// When HasCommonKeyPrefix is set but HasInlineCommonKeyPrefix is clear, the prefix bytes are
+/// supplied by the caller via <see cref="ReadFromStart"/>'s <c>parentSeparator</c> parameter,
+/// which the descent loop derives from the parent's matched separator. The builder guarantees
+/// that each separator length is at least the child's prefix length, so the first
+/// <c>CommonPrefixLen</c> bytes of the parent's full separator are the child's prefix bytes.
 /// </summary>
 public readonly ref struct BSearchIndexReader
 {
@@ -82,9 +90,14 @@ public readonly ref struct BSearchIndexReader
 
     /// <summary>
     /// Read an index block forward from <paramref name="nodeStart"/> (inclusive start position).
+    /// <paramref name="parentSeparator"/> supplies the common-key-prefix bytes for nodes whose
+    /// header carries only the prefix length (every non-root HSST node). Must be the full
+    /// lex-order separator bytes the parent used to route into this node — the builder
+    /// guarantees <c>parentSeparator.Length &gt;= CommonPrefixLen</c>. Pass <c>default</c> for
+    /// the root (its prefix bytes are stored inline; flag bit 7 set).
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static BSearchIndexReader ReadFromStart(ReadOnlySpan<byte> data, int nodeStart)
+    public static BSearchIndexReader ReadFromStart(ReadOnlySpan<byte> data, int nodeStart, ReadOnlySpan<byte> parentSeparator = default)
     {
         // 12-byte fixed header minimum.
         if (data.Length - nodeStart < 12)
@@ -109,8 +122,22 @@ public readonly ref struct BSearchIndexReader
         {
             int prefixLen = data[pos];
             pos += 1;
-            commonKeyPrefix = data.Slice(pos, prefixLen);
-            pos += prefixLen;
+            if ((flags & 0x80) != 0)
+            {
+                // Root: prefix bytes inline.
+                commonKeyPrefix = data.Slice(pos, prefixLen);
+                pos += prefixLen;
+            }
+            else if (parentSeparator.Length >= prefixLen)
+            {
+                // Non-root: bytes supplied by caller via parent's separator.
+                commonKeyPrefix = parentSeparator[..prefixLen];
+            }
+            // else: caller supplied no (or insufficient) parent separator. The
+            // returned reader is usable for value-only operations (GetUInt64Value,
+            // EntryCount, etc.) but the prefix-dependent paths (TryGetFloor,
+            // GetFullKey, GetSeparatorBytes) will misbehave. Streaming enumerators
+            // that only walk child offsets use this path.
         }
 
         IndexMetadata metadata = new()
@@ -433,6 +460,14 @@ public readonly ref struct BSearchIndexReader
     }
 
     /// <summary>
+    /// Copy entry <paramref name="index"/>'s full lex-order separator bytes (common prefix +
+    /// per-entry suffix) into <paramref name="dest"/>. Returns the number of bytes written.
+    /// Equivalent to <see cref="GetFullKey"/> — callers descending into a child node use this
+    /// to materialize the bytes that the child's header omits.
+    /// </summary>
+    public int GetSeparatorBytes(int index, Span<byte> dest) => GetFullKey(index, dest);
+
+    /// <summary>
     /// Enumerate all key-value pairs in order.
     /// </summary>
     public Enumerator GetEnumerator() => new(this);
@@ -483,6 +518,12 @@ public readonly ref struct BSearchIndexReader
         /// </summary>
         public bool IsKeyLittleEndian => (Flags & 0x20) != 0;
         public bool HasCommonKeyPrefix => (Flags & 0x40) != 0;
+        /// <summary>
+        /// True when the prefix bytes are stored inline in this node's header (root only).
+        /// When false (every non-root node), the prefix bytes were supplied by the caller
+        /// to <see cref="ReadFromStart"/> via the parent's separator.
+        /// </summary>
+        public bool HasInlineCommonKeyPrefix => (Flags & 0x80) != 0;
 
         /// <summary>Total byte size of the Keys section.</summary>
         public int KeySectionSize => KeyType switch

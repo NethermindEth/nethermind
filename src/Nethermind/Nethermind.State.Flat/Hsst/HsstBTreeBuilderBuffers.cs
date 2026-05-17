@@ -88,7 +88,7 @@ public ref struct HsstBTreeBuilderBuffers(int expectedKeyCount = 16)
 /// <see cref="HsstBTreeBuilderBuffers"/> — which is not generic in <c>TWriter</c> — can
 /// hold preallocated lists of these.
 /// </summary>
-internal readonly struct HsstIndexNodeInfo(long childOffset, int firstEntry, int lastEntry, int firstLeafIdx)
+internal readonly struct HsstIndexNodeInfo(long childOffset, int firstEntry, int lastEntry, int firstLeafIdx, int prefixLen)
 {
     /// <summary>Absolute first-byte position of this node in the data region (= absoluteIndexStart + relativeStart).</summary>
     public readonly long ChildOffset = childOffset;
@@ -100,4 +100,9 @@ internal readonly struct HsstIndexNodeInfo(long childOffset, int firstEntry, int
     /// for the first-key of that leaf. At leaf level it is the leaf's own index; at higher
     /// levels it is inherited from the leftmost child.</summary>
     public readonly int FirstLeafIdx = firstLeafIdx;
+    /// <summary>Common-key-prefix length the BSearchIndex planner picked for this node.
+    /// Read at the level above when computing each separator length: the parent must extend
+    /// its separator i to at least <c>PrefixLen</c> bytes so the child can recover its
+    /// prefix bytes from the parent's separator at descent time.</summary>
+    public readonly int PrefixLen = prefixLen;
 }

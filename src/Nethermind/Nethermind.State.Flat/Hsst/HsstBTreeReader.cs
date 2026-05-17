@@ -32,40 +32,66 @@ internal static class HsstBTreeReader
     {
         resultBound = default;
 
-        // Trailer is [RootSize u16 LE][KeyLength u8][IndexType u8]. Root start = bound end - 4 - RootSize.
-        if (bound.Length < 4 + 12) return false;
-        Span<byte> trailerBuf = stackalloc byte[3];
-        if (!reader.TryRead(bound.Offset + bound.Length - 4, trailerBuf)) return false;
-        int rootSize = trailerBuf[0] | (trailerBuf[1] << 8);
-        int trailerKeyLength = trailerBuf[2];
+        // Trailer: [RootPrefix bytes][RootPrefixLen u8][RootSize u16 LE][KeyLength u8][IndexType u8].
+        // Read the fixed 5-byte tail first to learn RootPrefixLen / RootSize / KeyLength;
+        // the prefix bytes (if any) sit immediately before that.
+        if (bound.Length < 5 + 12) return false;
+        Span<byte> tailBuf = stackalloc byte[5];
+        if (!reader.TryRead(bound.Offset + bound.Length - 5, tailBuf)) return false;
+        int rootPrefixLen = tailBuf[0];
+        int rootSize = tailBuf[1] | (tailBuf[2] << 8);
+        int trailerKeyLength = tailBuf[3];
+        // tailBuf[4] is IndexType — already consumed by the HsstReader dispatcher.
 
         // Exact-match needs the input key to match the HSST's fixed key length; reject up
         // front before walking the tree. Floor lookups intentionally allow mismatched
         // lengths so callers can seek with a key prefix or sentinel.
         if (exactMatch && key.Length != trailerKeyLength) return false;
 
-        long currentAbsStart = bound.Offset + bound.Length - 4 - rootSize;
-        // Trailer is 4 bytes; nodes live in [bound.Offset, scopeEnd).
-        long scopeEnd = bound.Offset + bound.Length - 4;
+        // Root prefix bytes seed the root's parentSeparator (non-root nodes get their
+        // prefix bytes from the parent's separator during descent; the root has no
+        // parent, so the bytes ride the trailer).
+        Span<byte> rootPrefixBuf = stackalloc byte[128];
+        scoped ReadOnlySpan<byte> rootPrefix = default;
+        if (rootPrefixLen > 0)
+        {
+            if (!reader.TryRead(bound.Offset + bound.Length - 5 - rootPrefixLen, rootPrefixBuf[..rootPrefixLen])) return false;
+            rootPrefix = rootPrefixBuf[..rootPrefixLen];
+        }
+
+        long trailerLen = 5L + rootPrefixLen;
+        long currentAbsStart = bound.Offset + bound.Length - trailerLen - rootSize;
+        long scopeEnd = bound.Offset + bound.Length - trailerLen;
+
+        // parentSeparator for the current node — seeded with the trailer's root prefix
+        // for the root, then overwritten with each descended-through separator's full
+        // bytes (CommonKeyPrefix || storedSlot in lex order).
+        Span<byte> separatorScratch = stackalloc byte[Math.Max(trailerKeyLength, 1)];
+        scoped ReadOnlySpan<byte> parentSeparator = rootPrefix;
 
         while (true)
         {
-            if (!TryLoadNode<TReader, TPin>(in reader, currentAbsStart, scopeEnd, out HsstIndex node, out TPin pin))
+            if (!TryLoadNode<TReader, TPin>(in reader, currentAbsStart, scopeEnd, parentSeparator, out HsstIndex node, out TPin pin))
                 return false;
             using (pin)
             {
                 if (node.IsIntermediate)
                 {
-                    // Intermediate nodes drop the phantom leftmost slot: keys array
-                    // holds the N-1 real separators between adjacent children, and
-                    // BaseOffset names the leftmost child directly. A "no floor"
-                    // search result (key < smallest separator, or empty 1-child
-                    // node) routes to the leftmost child via BaseOffset alone.
-                    long childOffset = node.TryGetFloor(key, out _, out ReadOnlySpan<byte> childValueBytes)
-                        ? (long)(BSearchIndex.BSearchIndexReader.ReadUInt64LE(childValueBytes) + node.Metadata.BaseOffset)
-                        : (long)node.Metadata.BaseOffset;
-                    // childOffset is the first byte of the child node (0-indexed within the HSST).
-                    currentAbsStart = bound.Offset + childOffset;
+                    // Phantom slot 0 restored: every child has a separator in this node.
+                    // FindFloorIndex returns the matched child index; "no floor" means
+                    // the search key falls before children[0]'s separator, so the
+                    // subtree contains nothing ≤ key and the seek fails.
+                    int floorIdx = node.FindFloorIndex(key);
+                    if (floorIdx < 0) return false;
+
+                    // Materialize the matched separator's full lex-order bytes so the
+                    // child can recover its own prefix bytes from them at the next
+                    // ReadFromStart call.
+                    int sepBytesWritten = node.GetSeparatorBytes(floorIdx, separatorScratch);
+                    parentSeparator = separatorScratch[..sepBytesWritten];
+
+                    ulong childOffset = node.GetUInt64Value(floorIdx);
+                    currentAbsStart = bound.Offset + (long)childOffset;
                     continue;
                 }
 
@@ -166,6 +192,7 @@ internal static class HsstBTreeReader
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal static bool TryLoadNode<TReader, TPin>(
         scoped in TReader reader, long absStart, long scopeEnd,
+        ReadOnlySpan<byte> parentSeparator,
         out HsstIndex node, out TPin pin)
         where TPin : struct, IBufferPin, allows ref struct
         where TReader : IHsstByteReader<TPin>, allows ref struct
@@ -193,8 +220,13 @@ internal static class HsstBTreeReader
             if ((flags & 0x40) != 0)
             {
                 if (winLen < 13) goto Cold;
+                // CommonPrefixLen byte sits at win[12]; the prefix bytes themselves are
+                // out-of-band (delivered via parentSeparator) unless bit 7 marks them
+                // inline (legacy-style root encoding — HSST callers no longer set bit 7
+                // since the root prefix rides the trailer, but the reader handles both).
                 int prefixLen = win[12];
-                headerSize += 1 + prefixLen;
+                headerSize += 1;
+                if ((flags & 0x80) != 0) headerSize += prefixLen;
             }
             int keyType = (flags >> 1) & 0x03;
             int keySectionSize = keyType switch { 0 => keySize, _ => keyCount * keySize };
@@ -206,7 +238,7 @@ internal static class HsstBTreeReader
             {
                 // Hot path: node fits in the speculative window. ReadFromStart parses the
                 // header at win[0..] and slices keys/values forward within the node range.
-                node = HsstIndex.ReadFromStart(win, 0);
+                node = HsstIndex.ReadFromStart(win, 0, parentSeparator);
                 pin = speculativePin;
                 keepSpeculative = true;
                 return true;
@@ -219,7 +251,7 @@ internal static class HsstBTreeReader
 
         // Cold path: node larger than the speculative window. Pin precisely.
         pin = reader.PinBuffer(absStart, totalNodeSize);
-        node = HsstIndex.ReadFromStart(pin.Buffer, 0);
+        node = HsstIndex.ReadFromStart(pin.Buffer, 0, parentSeparator);
         return true;
 
     Cold:

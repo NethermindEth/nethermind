@@ -26,13 +26,14 @@ public readonly ref struct HsstIndex
     /// </summary>
     public ReadOnlySpan<byte> CommonKeyPrefix => _inner.CommonKeyPrefix;
 
-    public static HsstIndex ReadFromStart(ReadOnlySpan<byte> data, int nodeStart) =>
-        new(BSearchIndexReader.ReadFromStart(data, nodeStart));
+    public static HsstIndex ReadFromStart(ReadOnlySpan<byte> data, int nodeStart, ReadOnlySpan<byte> parentSeparator = default) =>
+        new(BSearchIndexReader.ReadFromStart(data, nodeStart, parentSeparator));
 
     public ReadOnlySpan<byte> GetValue(int index) => _inner.GetValue(index);
     public ulong GetUInt64Value(int index) => _inner.GetUInt64Value(index);
     public int FindFloorIndex(ReadOnlySpan<byte> key) => _inner.FindFloorIndex(key);
     public int GetFullKey(int index, Span<byte> dest) => _inner.GetFullKey(index, dest);
+    public int GetSeparatorBytes(int index, Span<byte> dest) => _inner.GetSeparatorBytes(index, dest);
 
     public bool TryGetFloor(ReadOnlySpan<byte> key, out ReadOnlySpan<byte> floorKey, out ReadOnlySpan<byte> floorValue) =>
         _inner.TryGetFloor(key, out floorKey, out floorValue);

@@ -296,21 +296,40 @@ public struct HsstEnumerator<TReader, TPin> : IDisposable
         private long _currentValueLength;
         private long _currentMetaStart;
 
+        // Root prefix bytes parsed from the HSST trailer at construction. Seeded as
+        // parentSeparator when DescendToLeaf loads the root; non-root descents pass
+        // `default` and rely on the value-only fast path in the reader (the enumerator
+        // never touches prefix-dependent BSearchIndex APIs — only GetUInt64Value /
+        // EntryCount / IsIntermediate / BaseOffset).
+        private readonly byte[] _rootPrefix;
+        private readonly long _trailerLen;
+
         public BTreeVariant(scoped in TReader reader, Bound scope, bool keyFirst)
         {
             _scopeStart = scope.Offset;
             _scopeEnd = scope.Offset + scope.Length;
             _keyFirst = keyFirst;
-            // BTree trailer is [RootSize u16 LE][KeyLength u8][IndexType u8];
-            // root starts at scopeEnd - 4 - rootSize.
-            if (scope.Length >= 4 + 12)
+            _rootPrefix = [];
+            // BTree trailer: [RootPrefix bytes][RootPrefixLen u8][RootSize u16 LE][KeyLength u8][IndexType u8].
+            // Root starts at scopeEnd - 5 - rootPrefixLen - rootSize.
+            if (scope.Length >= 5 + 12)
             {
-                Span<byte> trailerBuf = stackalloc byte[3];
-                if (reader.TryRead(_scopeEnd - 4, trailerBuf))
+                Span<byte> tailBuf = stackalloc byte[5];
+                if (reader.TryRead(_scopeEnd - 5, tailBuf))
                 {
-                    int rootSize = trailerBuf[0] | (trailerBuf[1] << 8);
-                    _keyLength = trailerBuf[2];
-                    _rootAbsStart = _scopeEnd - 4 - rootSize;
+                    int rootPrefixLen = tailBuf[0];
+                    int rootSize = tailBuf[1] | (tailBuf[2] << 8);
+                    _keyLength = tailBuf[3];
+                    _trailerLen = 5L + rootPrefixLen;
+                    _rootAbsStart = _scopeEnd - _trailerLen - rootSize;
+                    if (rootPrefixLen > 0)
+                    {
+                        _rootPrefix = new byte[rootPrefixLen];
+                        if (!reader.TryRead(_scopeEnd - 5 - rootPrefixLen, _rootPrefix))
+                        {
+                            _rootAbsStart = -1;
+                        }
+                    }
                 }
                 else
                 {
@@ -363,15 +382,20 @@ public struct HsstEnumerator<TReader, TPin> : IDisposable
         /// Descend leftmost from the node starting at <paramref name="absStart"/> down to a leaf,
         /// pushing (AbsStart, LastIdx=0) ancestor frames as we cross intermediate levels. On
         /// success, _depth and the leaf metaStart buffer are populated with _leafIdx=0;
-        /// returns false if a node fails to load or the tree exceeds MaxDepth.
+        /// returns false if a node fails to load or the tree exceeds MaxDepth. The root
+        /// node gets its prefix bytes from <see cref="_rootPrefix"/>; deeper nodes are
+        /// loaded with an empty parentSeparator since the enumerator only consumes value
+        /// slots (the reader tolerates an absent prefix for value-only callers).
         /// </summary>
         private bool DescendToLeaf(scoped in TReader reader, long absStart, int depthHint)
         {
             long currentStart = absStart;
             int depth = depthHint;
+            long scopeEndMinusTrailer = _scopeEnd - _trailerLen;
             while (depth < MaxDepth)
             {
-                if (!HsstBTreeReader.TryLoadNode<TReader, TPin>(in reader, currentStart, _scopeEnd - 4, out HsstIndex node, out TPin pin))
+                ReadOnlySpan<byte> parentSeparator = depth == 0 ? _rootPrefix : default;
+                if (!HsstBTreeReader.TryLoadNode<TReader, TPin>(in reader, currentStart, scopeEndMinusTrailer, parentSeparator, out HsstIndex node, out TPin pin))
                     return false;
 
                 using (pin)
@@ -389,15 +413,14 @@ public struct HsstEnumerator<TReader, TPin> : IDisposable
                         return true;
                     }
 
-                    // Intermediate: push frame for this level, follow leftmost
-                    // child. The phantom slot is gone, so the leftmost child's
-                    // absolute offset is BaseOffset directly. Frame.LastIdx=0
-                    // is the semantic child index (0..N-1 across all N
-                    // children); k=0 = leftmost = BaseOffset, k≥1 = value[k-1].
+                    // Intermediate: push frame for this level, follow leftmost child.
+                    // With phantom slot 0 restored the keys/values array carries one
+                    // entry per child (EntryCount == N); slot 0's value is the leftmost
+                    // child's relative offset (= 0 since BaseOffset names children[0]).
                     ref Ancestor frame = ref _ancestors[depth];
                     frame.AbsStart = currentStart;
                     frame.LastIdx = 0;
-                    long childRelStart = (long)node.Metadata.BaseOffset;
+                    long childRelStart = (long)node.GetUInt64Value(0);
                     currentStart = _scopeStart + childRelStart;
                 }
                 depth++;
@@ -433,13 +456,15 @@ public struct HsstEnumerator<TReader, TPin> : IDisposable
         /// </summary>
         private bool AscendAndDescend(scoped in TReader reader)
         {
+            long scopeEndMinusTrailer = _scopeEnd - _trailerLen;
             while (_depth > 0)
             {
                 _depth--;
                 ref Ancestor anc = ref _ancestors[_depth];
                 anc.LastIdx++;
 
-                if (!HsstBTreeReader.TryLoadNode<TReader, TPin>(in reader, anc.AbsStart, _scopeEnd - 4, out HsstIndex parent, out TPin parentPin))
+                ReadOnlySpan<byte> parentSeparator = _depth == 0 ? _rootPrefix : default;
+                if (!HsstBTreeReader.TryLoadNode<TReader, TPin>(in reader, anc.AbsStart, scopeEndMinusTrailer, parentSeparator, out HsstIndex parent, out TPin parentPin))
                 {
                     _depth = -2;
                     return false;
@@ -447,14 +472,12 @@ public struct HsstEnumerator<TReader, TPin> : IDisposable
                 long childAbsStart;
                 using (parentPin)
                 {
-                    // LastIdx is the semantic child index (0..N-1). With N
-                    // children stored as 1 leftmost (BaseOffset) + N-1 deltas,
-                    // EntryCount = N-1. Exhausted when LastIdx > EntryCount.
-                    // LastIdx>=1 reads value[LastIdx-1]; LastIdx==0 would mean
-                    // BaseOffset, but we only reach here after LastIdx++ from
-                    // the leftmost-descent frame so LastIdx≥1 here.
-                    if (anc.LastIdx > parent.EntryCount) continue;
-                    long childRelStart = (long)parent.GetUInt64Value(anc.LastIdx - 1);
+                    // LastIdx is the semantic child index (0..N-1). With phantom slot 0
+                    // restored each child has its own slot, so EntryCount == N and the
+                    // exhaustion check is LastIdx >= EntryCount. Value[LastIdx] gives
+                    // the relative offset for children[LastIdx].
+                    if (anc.LastIdx >= parent.EntryCount) continue;
+                    long childRelStart = (long)parent.GetUInt64Value(anc.LastIdx);
                     childAbsStart = _scopeStart + childRelStart;
                 }
                 if (!DescendToLeaf(in reader, childAbsStart, depthHint: _depth + 1))
