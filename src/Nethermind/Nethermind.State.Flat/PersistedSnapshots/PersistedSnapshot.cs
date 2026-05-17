@@ -69,6 +69,16 @@ public sealed class PersistedSnapshot : RefCountingDisposable
     private const int AddressBoundCacheMetaHandMask = 0x7;
     private const int AddressBoundCacheProbeBytes = 6 + PersistedSnapshotTags.AddressHashPrefixLength;
 
+    // On address-bound cache miss, pre-fault the trailing slice of the per-address inner HSST
+    // in one madvise(MADV_POPULATE_READ) syscall over a fixed window at the tail of the bound.
+    // The DenseByteIndex layout streams values in descending-tag order, so the hot small-blob
+    // sub-tags (AccountSubTag, SelfDestructSubTag) and the index trailer cluster at the tail —
+    // 32 KiB lands at most 8 pages and covers every realistic hot inner HSST entirely. When the
+    // whole bound fits inside the window, the sub-tag walk continues over the now-resident span
+    // through a zero-touch <see cref="SpanByteReader"/> instead of <see cref="ArenaByteReader"/>,
+    // skipping the per-read tracker probe loop for the rest of the lookup.
+    private const long AddressBoundWarmupBytes = 32 * 1024;
+
     private Vector512<long> _addressBoundCache;
     private int _addressBoundCacheMeta;
 
@@ -224,8 +234,19 @@ public sealed class PersistedSnapshot : RefCountingDisposable
         return ReadBlobArenaRlp(nodeRef.BlobArenaId, nodeRef.RlpDataOffset);
     }
 
-    private bool TryGetAddressBound(in ArenaByteReader reader, in ValueHash256 addressHash, out Bound addressBound)
+    /// <summary>
+    /// Resolve the per-address inner-HSST bound, going through the inline 8-way address-bound
+    /// cache. <paramref name="warmedWholeBound"/> is set to <c>true</c> when the call took the
+    /// miss path AND the warmup window covered the entire bound — the caller may then drive
+    /// the sub-tag walk over a zero-touch <see cref="SpanByteReader"/>. On cache hit it is
+    /// <c>false</c>: the trailer page was probed for verification (so the hottest data is
+    /// already warm) and the caller continues with the page-tracker-backed
+    /// <see cref="ArenaByteReader"/>.
+    /// </summary>
+    private bool TryGetAddressBound(in ArenaByteReader reader, in ValueHash256 addressHash,
+        out Bound addressBound, out bool warmedWholeBound)
     {
+        warmedWholeBound = false;
         Span<long> slots = MemoryMarshal.CreateSpan(
             ref Unsafe.As<Vector512<long>, long>(ref _addressBoundCache), AddressBoundCacheWays);
         ushort hashTag = MemoryMarshal.Read<ushort>(addressHash.Bytes[4..6]);
@@ -254,6 +275,16 @@ public sealed class PersistedSnapshot : RefCountingDisposable
 
         if (!PersistedSnapshotReader.TryGetAddressHsstBound<ArenaByteReader, NoOpPin>(in reader, in addressHash, out addressBound))
             return false;
+
+        // Pre-fault the trailing window of the resolved bound in one syscall. The DenseByteIndex
+        // trailer + hot sub-tags live at the high end of the bound; faulting from
+        // <see cref="AddressBoundWarmupBytes"/> before the end gets the next sub-tag resolution's
+        // pages resident in a single MADV_POPULATE_READ instead of N inline page faults.
+        long warmStart = Math.Max(addressBound.Offset,
+            addressBound.Offset + addressBound.Length - AddressBoundWarmupBytes);
+        long warmLen = (addressBound.Offset + addressBound.Length) - warmStart;
+        _reservation.TouchRangePopulate(warmStart, warmLen);
+        warmedWholeBound = warmLen >= addressBound.Length;
 
         // keyFirst=false bound is (lebStart - valueLength, valueLength), so
         // lebStart = bound.Offset + bound.Length.
@@ -348,8 +379,27 @@ public sealed class PersistedSnapshot : RefCountingDisposable
     public bool TryGetAccount(in ValueHash256 addressHash, out Account? account)
     {
         ArenaByteReader reader = CreateReader();
-        if (!TryGetAddressBound(in reader, in addressHash, out Bound addrBound) ||
-            !PersistedSnapshotReader.TryGetAccount<ArenaByteReader, NoOpPin>(in reader, addrBound, out Bound b))
+        if (!TryGetAddressBound(in reader, in addressHash, out Bound addrBound, out bool warmedWhole))
+        {
+            account = null;
+            return false;
+        }
+        if (warmedWhole)
+        {
+            ReadOnlySpan<byte> warmedSpan = reader.GetSpanWithoutTouch(addrBound.Offset, addrBound.Length);
+            SpanByteReader spanReader = new(warmedSpan);
+            return TryGetAccountInner<SpanByteReader, NoOpPin>(
+                in spanReader, new Bound(0, addrBound.Length), out account);
+        }
+        return TryGetAccountInner<ArenaByteReader, NoOpPin>(in reader, addrBound, out account);
+    }
+
+    private static bool TryGetAccountInner<TReader, TPin>(
+        scoped in TReader reader, Bound addrBound, out Account? account)
+        where TPin : struct, IBufferPin, allows ref struct
+        where TReader : IHsstByteReader<TPin>, allows ref struct
+    {
+        if (!PersistedSnapshotReader.TryGetAccount<TReader, TPin>(in reader, addrBound, out Bound b))
         {
             account = null;
             return false;
@@ -371,8 +421,24 @@ public sealed class PersistedSnapshot : RefCountingDisposable
     public bool TryGetSlot(in ValueHash256 addressHash, in UInt256 index, ref SlotValue slotValue)
     {
         ArenaByteReader reader = CreateReader();
-        if (!TryGetAddressBound(in reader, in addressHash, out Bound addrBound) ||
-            !PersistedSnapshotReader.TryGetSlot<ArenaByteReader, NoOpPin>(in reader, addrBound, in index, out Bound b))
+        if (!TryGetAddressBound(in reader, in addressHash, out Bound addrBound, out bool warmedWhole))
+            return false;
+        if (warmedWhole)
+        {
+            ReadOnlySpan<byte> warmedSpan = reader.GetSpanWithoutTouch(addrBound.Offset, addrBound.Length);
+            SpanByteReader spanReader = new(warmedSpan);
+            return TryGetSlotInner<SpanByteReader, NoOpPin>(
+                in spanReader, new Bound(0, addrBound.Length), in index, ref slotValue);
+        }
+        return TryGetSlotInner<ArenaByteReader, NoOpPin>(in reader, addrBound, in index, ref slotValue);
+    }
+
+    private static bool TryGetSlotInner<TReader, TPin>(
+        scoped in TReader reader, Bound addrBound, in UInt256 index, ref SlotValue slotValue)
+        where TPin : struct, IBufferPin, allows ref struct
+        where TReader : IHsstByteReader<TPin>, allows ref struct
+    {
+        if (!PersistedSnapshotReader.TryGetSlot<TReader, TPin>(in reader, addrBound, in index, out Bound b))
             return false;
         Span<byte> buf = stackalloc byte[32];
         Span<byte> raw = buf[..checked((int)b.Length)];
@@ -384,8 +450,15 @@ public sealed class PersistedSnapshot : RefCountingDisposable
     public bool? TryGetSelfDestructFlag(in ValueHash256 addressHash)
     {
         ArenaByteReader reader = CreateReader();
-        if (!TryGetAddressBound(in reader, in addressHash, out Bound addrBound))
+        if (!TryGetAddressBound(in reader, in addressHash, out Bound addrBound, out bool warmedWhole))
             return null;
+        if (warmedWhole)
+        {
+            ReadOnlySpan<byte> warmedSpan = reader.GetSpanWithoutTouch(addrBound.Offset, addrBound.Length);
+            SpanByteReader spanReader = new(warmedSpan);
+            return PersistedSnapshotReader.TryGetSelfDestructFlag<SpanByteReader, NoOpPin>(
+                in spanReader, new Bound(0, addrBound.Length));
+        }
         return PersistedSnapshotReader.TryGetSelfDestructFlag<ArenaByteReader, NoOpPin>(in reader, addrBound);
     }
 
@@ -404,13 +477,45 @@ public sealed class PersistedSnapshot : RefCountingDisposable
     public bool TryLoadStorageNodeRlp(in ValueHash256 addressHash, in TreePath path, out byte[]? nodeRlp)
     {
         ArenaByteReader reader = CreateReader();
-        if (!TryGetAddressBound(in reader, in addressHash, out Bound addrBound) ||
-            !PersistedSnapshotReader.TryLoadStorageNodeRlpInBound<ArenaByteReader, NoOpPin>(in reader, addrBound, in path, out Bound bound))
+        if (!TryGetAddressBound(in reader, in addressHash, out Bound addrBound, out bool warmedWhole))
         {
             nodeRlp = null;
             return false;
         }
-        nodeRlp = ResolveTrieRlp(bound);
+        if (warmedWhole)
+        {
+            ReadOnlySpan<byte> warmedSpan = reader.GetSpanWithoutTouch(addrBound.Offset, addrBound.Length);
+            SpanByteReader spanReader = new(warmedSpan);
+            return TryLoadStorageNodeRlpInner<SpanByteReader, NoOpPin>(
+                in spanReader, new Bound(0, addrBound.Length), in path, out nodeRlp);
+        }
+        return TryLoadStorageNodeRlpInner<ArenaByteReader, NoOpPin>(in reader, addrBound, in path, out nodeRlp);
+    }
+
+    private bool TryLoadStorageNodeRlpInner<TReader, TPin>(
+        scoped in TReader reader, Bound addrBound, scoped in TreePath path, out byte[]? nodeRlp)
+        where TPin : struct, IBufferPin, allows ref struct
+        where TReader : IHsstByteReader<TPin>, allows ref struct
+    {
+        if (!PersistedSnapshotReader.TryLoadStorageNodeRlpInBound<TReader, TPin>(in reader, addrBound, in path, out Bound bound))
+        {
+            nodeRlp = null;
+            return false;
+        }
+        // Read the 6-byte NodeRef through the same reader that produced <paramref name="bound"/>
+        // so the coordinate system stays consistent — the bound is in reader-relative coords,
+        // which differs between ArenaByteReader (reservation-relative) and SpanByteReader
+        // (span-relative). Only the cross-arena blob dereference (<see cref="ReadBlobArenaRlp"/>)
+        // is independent of the inner reader's coordinate frame.
+        Span<byte> nrBuf = stackalloc byte[NodeRef.Size];
+        Span<byte> nr = nrBuf[..checked((int)bound.Length)];
+        if (!reader.TryRead(bound.Offset, nr))
+        {
+            nodeRlp = null;
+            return false;
+        }
+        NodeRef nodeRef = NodeRef.Read(nr);
+        nodeRlp = ReadBlobArenaRlp(nodeRef.BlobArenaId, nodeRef.RlpDataOffset);
         return true;
     }
 

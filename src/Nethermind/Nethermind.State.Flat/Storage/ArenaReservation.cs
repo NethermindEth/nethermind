@@ -68,6 +68,48 @@ public sealed class ArenaReservation : RefCountingDisposable
     }
 
     /// <summary>
+    /// Range version of <see cref="TouchPage"/>: probe every OS page that overlaps the
+    /// reader-relative byte range <c>[localOffset, localOffset + length)</c> against the
+    /// <see cref="PageResidencyTracker"/>, queue any displaced occupants, and — if any
+    /// probed page was a non-<see cref="TouchOutcome.Hit"/> — issue a <em>single</em>
+    /// <c>madvise(MADV_POPULATE_READ)</c> over the page-aligned envelope of the range.
+    /// </summary>
+    /// <remarks>
+    /// Used by callers that know a contiguous span of data is about to be read and want to
+    /// coalesce the per-page pre-fault syscalls into one. <c>MADV_POPULATE_READ</c> is a
+    /// no-op on already-resident pages, so over-faulting the few hot pages inside the
+    /// range is harmless. The per-page tracker probes themselves are unchanged from
+    /// <see cref="TouchPage"/> — same arming, same clock eviction, same dispatch into
+    /// <see cref="IArenaManager.QueueEviction"/> for displaced pages.
+    /// </remarks>
+    internal void TouchRangePopulate(long localOffset, long length)
+    {
+        if (length <= 0) return;
+        int pageSize = Environment.SystemPageSize;
+        long absStart = Offset + localOffset;
+        long absEnd = absStart + length;
+        long firstPageBase = absStart & ~(long)(pageSize - 1);
+        long lastPageBaseExclusive = (absEnd + pageSize - 1) & ~(long)(pageSize - 1);
+        int firstPage = (int)(firstPageBase / pageSize);
+        int lastPage = (int)((lastPageBaseExclusive - 1) / pageSize);
+
+        bool anyMissed = false;
+        PageResidencyTracker tracker = _arenaManager.PageTracker;
+        for (int p = firstPage; p <= lastPage; p++)
+        {
+            TouchOutcome outcome = tracker.TryTouch(ArenaId, p,
+                out int evictedArenaId, out int evictedPageIdx);
+            if (outcome == TouchOutcome.Hit) continue;
+            anyMissed = true;
+            if (outcome == TouchOutcome.Evicted)
+                _arenaManager.QueueEviction(evictedArenaId, evictedPageIdx);
+        }
+
+        if (anyMissed)
+            _arenaFile.PopulateRead(firstPageBase, lastPageBaseExclusive - firstPageBase);
+    }
+
+    /// <summary>
     /// Direct span access used internally by <see cref="WholeReadSession"/> and the reader
     /// path. External consumers go through <see cref="BeginWholeReadSession"/> so that the
     /// span's lifetime is bounded by an explicit Begin/End scope.

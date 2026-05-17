@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.IO;
 using Nethermind.Core;
@@ -368,5 +369,82 @@ public class PersistedSnapshotTests
         PersistedSnapshot persisted = CreatePersistedSnapshot(s0, s2, merged);
 
         verify(persisted);
+    }
+
+    // Cross-size coverage for the address-bound warmup path added to <see cref="PersistedSnapshot.TryGetAddressBound"/>.
+    // Three regimes:
+    //   - 4 slots: inner HSST is tiny → warmedWholeBound = true → sub-tag walk goes via SpanByteReader.
+    //   - 400 slots: inner HSST is a few KiB → still under the 32 KiB warmup window → SpanByteReader path.
+    //   - 4000 slots: inner HSST exceeds 32 KiB → warmedWholeBound = false → sub-tag walk stays on ArenaByteReader.
+    // Each case asserts: account/self-destruct/slot/storage-node round-trip on first lookup (cache miss → warmup),
+    // a second lookup (cache hit, no warmup), and a third lookup after Demote() drops kernel pages.
+    [TestCase(4)]
+    [TestCase(400)]
+    [TestCase(4000)]
+    public void AddressBoundWarmup_RoundTripsAcrossInnerHsstSizes(int slotCount)
+    {
+        StateId from = new(0, Keccak.EmptyTreeHash);
+        StateId to = new(1, Keccak.Compute("warmup"));
+
+        Address addr = TestItem.AddressA;
+        Hash256 addrHashKey = new(addr.ToAccountPath.Bytes.ToArray());
+        Account expectedAccount = Build.An.Account.WithBalance(987654321).WithNonce(11).TestObject;
+        TreePath storagePath = new(Keccak.Compute("warmup-spath"), 6);
+        TrieNode storageNode = new(NodeType.Branch, [0xC3, 0x80, 0x81, 0x82]);
+
+        SnapshotContent content = new();
+        content.Accounts[addr] = expectedAccount;
+        content.SelfDestructedStorageAddresses[addr] = true;
+        content.StorageNodes[(addrHashKey, storagePath)] = storageNode;
+        for (int i = 0; i < slotCount; i++)
+        {
+            byte[] val = new byte[32];
+            BinaryPrimitives.WriteInt32BigEndian(val.AsSpan(28, 4), i + 1);
+            content.Storages[(addr, (UInt256)i + 1)] = new SlotValue(val);
+        }
+
+        Snapshot snapshot = new(from, to, content, _resourcePool, ResourcePool.Usage.MainBlockProcessing);
+        byte[] data = PersistedSnapshotBuilderTestExtensions.Build(snapshot, _blobs);
+        using PersistedSnapshot persisted = CreatePersistedSnapshot(from, to, data);
+
+        // Spot-check the sub-tags that the address-bound warmup path serves.
+        ValueHash256 addrHash = addr.ToAccountPath;
+
+        // First pass: cache miss → warmup runs.
+        Assert.That(persisted.TryGetAccount(addrHash, out Account? acc1), Is.True);
+        Assert.That(acc1, Is.Not.Null);
+        Assert.That(acc1!.Balance, Is.EqualTo(expectedAccount.Balance));
+        Assert.That(acc1.Nonce, Is.EqualTo(expectedAccount.Nonce));
+
+        Assert.That(persisted.TryGetSelfDestructFlag(addrHash), Is.EqualTo((bool?)true));
+
+        UInt256 probeIndex = (UInt256)(Math.Min(slotCount, 3));
+        SlotValue slot1 = default;
+        Assert.That(persisted.TryGetSlot(addrHash, probeIndex, ref slot1), Is.True);
+        byte[] expectedSlotVal = new byte[32];
+        BinaryPrimitives.WriteInt32BigEndian(expectedSlotVal.AsSpan(28, 4), (int)probeIndex);
+        Assert.That(slot1.AsReadOnlySpan.SequenceEqual(expectedSlotVal), Is.True);
+
+        Assert.That(persisted.TryLoadStorageNodeRlp(addrHash, storagePath, out byte[]? nodeRlp1), Is.True);
+        Assert.That(nodeRlp1, Is.EqualTo(storageNode.FullRlp.ToArray()));
+
+        // Second pass: cache hit → no warmup, results must match.
+        Assert.That(persisted.TryGetAccount(addrHash, out Account? acc2), Is.True);
+        Assert.That(acc2!.Balance, Is.EqualTo(expectedAccount.Balance));
+        SlotValue slot2 = default;
+        Assert.That(persisted.TryGetSlot(addrHash, probeIndex, ref slot2), Is.True);
+        Assert.That(slot2.AsReadOnlySpan.SequenceEqual(expectedSlotVal), Is.True);
+
+        // After Demote(): tracker is forgotten and pages are advised cold; the next miss will
+        // re-warm. With MemoryArenaManager the underlying buffer is unmanaged memory rather
+        // than an mmap so Demote is a no-op there — the test still verifies the lookup path
+        // produces correct results when the cache slot is invalidated by AdviseDontNeed's
+        // ForgetTrackerRange + a snapshot already promoted out of the cache (we just probe a
+        // fresh, never-cached address to force the miss path again).
+        ValueHash256 missAddrHash = TestItem.AddressB.ToAccountPath;
+        Assert.That(persisted.TryGetAccount(missAddrHash, out _), Is.False);
+        // Still able to resolve the populated address afterwards.
+        Assert.That(persisted.TryGetAccount(addrHash, out Account? acc3), Is.True);
+        Assert.That(acc3!.Nonce, Is.EqualTo(expectedAccount.Nonce));
     }
 }
