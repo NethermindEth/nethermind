@@ -65,7 +65,7 @@ public class UnsafeStartingSyncPivotUpdater(
         TryGetFromPeers(blockNumber, cancellationToken, static async (peer, number, token) =>
         {
             using IOwnedReadOnlyList<BlockHeader>? x = await peer.GetBlockHeaders(number, 1, 0, token);
-            ReadOnlySpan<BlockHeader> headers = x?.AsSpan() ?? [];
+            ReadOnlySpan<BlockHeader> headers = x is null ? [] : x.AsSpan();
             return headers.Length == 1 ? headers[0] : null;
         });
 

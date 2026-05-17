@@ -186,7 +186,7 @@ namespace Nethermind.Synchronization.Peers
                     AllocationContexts.Headers,
                     token);
 
-                ReadOnlySpan<BlockHeader> headersSpan = headers?.AsSpan() ?? [];
+                ReadOnlySpan<BlockHeader> headersSpan = headers is null ? [] : headers.AsSpan();
                 return headersSpan.Length == 1 ? headersSpan[0] : null;
             }
 
