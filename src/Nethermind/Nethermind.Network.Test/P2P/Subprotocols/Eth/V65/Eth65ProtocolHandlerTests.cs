@@ -7,7 +7,9 @@ using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Consensus;
+using Nethermind.Consensus.Scheduler;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
@@ -41,7 +43,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V65
         private ITxPool _transactionPool = null!;
         private ISpecProvider _specProvider = null!;
         private Block _genesisBlock = null!;
-        private Eth65ProtocolHandler _handler = null!;
+        private TestEth65ProtocolHandler _handler = null!;
         private ITxGossipPolicy _txGossipPolicy = null!;
         private CompositeDisposable _disposables = null!;
 
@@ -67,7 +69,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V65
             _txGossipPolicy = Substitute.For<ITxGossipPolicy>();
             _txGossipPolicy.ShouldListenToGossipedTransactions.Returns(true);
             _txGossipPolicy.ShouldGossipTransaction(Arg.Any<Transaction>()).Returns(true);
-            _handler = new Eth65ProtocolHandler(
+            _handler = new TestEth65ProtocolHandler(
                 _session,
                 _svc,
                 new NodeStatsManager(timerFactory, LimboLogs.Instance),
@@ -193,6 +195,22 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V65
             _session.Received(canGossipTransactions ? 1 : 0).DeliverMessage(Arg.Any<GetPooledTransactionsMessage>());
         }
 
+        [Test]
+        public void should_not_allocate_when_tracking_notified_pooled_hashes()
+        {
+            using ArrayPoolList<Hash256> hashes = new(2) { TestItem.KeccakA, TestItem.KeccakB };
+
+            _handler.AddNotifiedTransactionsForTest(hashes.AsSpan());
+            _handler.AddNotifiedTransactionsForTest(hashes.AsSpan());
+
+            long allocatedBefore = GC.GetAllocatedBytesForCurrentThread();
+
+            _handler.AddNotifiedTransactionsForTest(hashes.AsSpan());
+
+            long allocated = GC.GetAllocatedBytesForCurrentThread() - allocatedBefore;
+            allocated.Should().Be(0);
+        }
+
         private void HandleZeroMessage<T>(T msg, int messageCode) where T : MessageBase
         {
             using DisposableByteBuffer getBlockHeadersPacket = _svc.ZeroSerialize(msg).AsDisposable();
@@ -207,6 +225,32 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V65
             using DisposableByteBuffer statusPacket = _svc.ZeroSerialize(statusMsg).AsDisposable();
             statusPacket.ReadByte();
             _handler.HandleMessage(new ZeroPacket(statusPacket) { PacketType = 0 });
+        }
+
+        private sealed class TestEth65ProtocolHandler(
+            ISession session,
+            IMessageSerializationService serializer,
+            INodeStatsManager nodeStatsManager,
+            ISyncServer syncServer,
+            IBackgroundTaskScheduler backgroundTaskScheduler,
+            ITxPool txPool,
+            IGossipPolicy gossipPolicy,
+            IForkInfo forkInfo,
+            ILogManager logManager,
+            ITxGossipPolicy transactionsGossipPolicy)
+            : Eth65ProtocolHandler(
+                session,
+                serializer,
+                nodeStatsManager,
+                syncServer,
+                backgroundTaskScheduler,
+                txPool,
+                gossipPolicy,
+                forkInfo,
+                logManager,
+                transactionsGossipPolicy)
+        {
+            public void AddNotifiedTransactionsForTest(ReadOnlySpan<Hash256> hashes) => AddNotifiedTransactions(hashes);
         }
     }
 }
