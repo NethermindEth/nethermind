@@ -142,20 +142,19 @@ internal static class BSearchIndexLayoutPlanner
         }
 
         // BSearchIndexWriter takes `keySlotSize` bytes per entry from
-        // currKey.Slice(prefixLen, slot) (see HsstIndexBuilder.cs:317 and
-        // KeySliceLength at :336), pulling pad bytes from the data section past each
-        // entry's natural separator length. So:
-        //   * lcp may equal minLen — the shortest separator becomes pure padding for
-        //     that entry's slot, still a valid (longer) prefix of its key.
-        //   * Uniform slots may be widened to any power-of-2 ≤ keyLength - lcp without
-        //     dropping lcp; non-SIMD widths can be snapped to {2, 4, 8} simply by
-        //     enlarging the slot, since the extra bytes come from the key data section.
-        //   * Mixed-length leaves with effMaxLen ≤ 8 also land in Uniform: the slot
-        //     accommodates the longest entry, and shorter entries pad from key data.
+        // currKey.Slice(prefixLen, slot) for Uniform layouts, padding from key data
+        // past each entry's natural separator length when the slot exceeds it. For
+        // Variable layouts the writer instead slices `currKey.Slice(prefixLen,
+        // sepLength - prefixLen)` per entry, which requires lcp ≤ every sep length
+        // (i.e. lcp ≤ minLen) or the slice goes negative. Since the planner picks
+        // Uniform-vs-Variable AFTER fixing lcp, we conservatively clamp to minLen
+        // even though Uniform alone could safely take lcp = crossEntryLcp (writer
+        // pads short slots from key data past the natural sep). The missed
+        // optimization fires only when entry 0's LCP with the previous leaf's last
+        // key is shorter than the leaf-internal crossEntryLcp.
         //
-        // Clamp by minLen (caller invariant — crossEntryLcp ≤ shortest sep), then by
-        // keyLength - 1 to reserve at least one byte per slot, then by the header's u8
-        // prefix-length field.
+        // Then clamp by keyLength - 1 to reserve at least one byte per slot, and by
+        // the header's u8 prefix-length field.
         int lcp = Math.Min(crossEntryLcp, minLen);
         if (lcp > keyLength - 1) lcp = keyLength - 1;
         if (lcp > MaxCommonKeyPrefixLen) lcp = MaxCommonKeyPrefixLen;

@@ -650,10 +650,13 @@ public ref struct HsstIndexBuilder<TWriter, TReader, TPin>
 
     // Conservative upper bound on an intermediate node's serialised size. The
     // phantom leftmost slot is dropped, so a node holding <paramref name="count"/>
-    // children emits count-1 keys and count-1 values. Keys are variable-length;
-    // include the 2-byte u16 length prefix that BSearchIndexWriter accumulates
-    // per key (matches WriteInternalIndexNode's keyBufSize before plan-time
-    // prefix stripping).
+    // children emits count-1 keys and count-1 values. The per-entry term
+    // (2 + valueSlotSize) intentionally over-allocates by 2 bytes per value:
+    // Uniform values on disk are just valueSlotSize bytes each (no length prefix),
+    // but the +2 absorbs Variable-section length-table overhead and rounding
+    // slack so the bound stays above the actual size for every layout the
+    // planner picks. sumSepBytes upper-bounds the keys section the same way
+    // (it sums count sep lengths against the count-1 actually emitted).
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static int IntermediateNodeSizeUpperBound(int count, int sumSepBytes, int valueSlotSize)
         => NodeHeaderUpperBound + sumSepBytes + (count > 0 ? count - 1 : 0) * (2 + valueSlotSize);
@@ -714,29 +717,6 @@ public ref struct HsstIndexBuilder<TWriter, TReader, TPin>
     {
         for (int i = 0; i < width; i++)
             dest[i] = (byte)(value >> (i * 8));
-    }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    internal static int WriteSeparatorBetween(Span<byte> output, ReadOnlySpan<byte> left, ReadOnlySpan<byte> right, int minSeparatorLength = 0)
-    {
-        int minLen = Math.Min(left.Length, right.Length);
-        int len = right.Length;
-        for (int i = 0; i < minLen; i++)
-        {
-            if (left[i] != right[i])
-            {
-                len = i + 1;
-                break;
-            }
-        }
-        // Apply minSeparatorLength floor (clamped to right.Length) so internal-node
-        // separators stay uniform when the caller has signalled a fixed key width.
-        // Extending the prefix further (still a prefix of right) preserves the
-        // invariants: the result is > left and ≤ right.
-        if (minSeparatorLength > len)
-            len = Math.Min(minSeparatorLength, right.Length);
-        right[..len].CopyTo(output);
-        return len;
     }
 
 }
@@ -1021,9 +1001,13 @@ internal ref struct LeafBoundaryEnumerator
                 // bound matches what BSearchIndexWriter and the merger actually
                 // account for.
                 int prefixOverheadUB = Math.Min(minLcp + 1, _keyLength);
+                // Split when the post-strip slot would land outside the SIMD-friendly
+                // widths {1, 2, 4, 8} — gap+1 is the post-strip slot upper bound, so
+                // gap > 4 covers slots 6+ (no SIMD fast path even after planner widening,
+                // since widening to 8 is only possible when budget ≥ 8). gap ∈ {0,1,2,3}
+                // lands the planner on slot ∈ {1,2,2,4} (with widening), all SIMD-served.
                 bool splitNeeded =
                     gap > 4 ||
-                    gap == 3 ||
                     vr > ValueRangeLimit ||
                     estimatedSize > MaxLeafBytes ||
                     (pageOff + estimatedSize + prefixOverheadUB > PageLayout.PageSize && count > minLeafEntries);

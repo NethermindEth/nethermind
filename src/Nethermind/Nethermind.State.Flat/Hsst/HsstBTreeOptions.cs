@@ -42,9 +42,6 @@ public sealed record HsstBTreeOptions
     /// gates).</summary>
     public const int DefaultMinIntermediateBytes = 0;
 
-    /// <summary>Minimum length of separators stored in leaf nodes.</summary>
-    public int MinSeparatorLength { get; init; } = 0;
-
     /// <summary>Maximum entries per leaf node before the builder splits.</summary>
     public int MaxLeafEntries { get; init; } = DefaultMaxLeafEntries;
 

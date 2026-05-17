@@ -19,12 +19,11 @@ internal static class HsstTestUtil
     /// this helper rely on the builder picking up the length from the first <see cref="HsstBTreeBuilder{TWriter,TReader,TPin}.Add"/>
     /// call and validating that every subsequent key matches.
     /// </summary>
-    public static byte[] BuildToArray(BuildAction buildAction, int keyLength = -1, int maxLeafEntries = HsstBTreeOptions.DefaultMaxLeafEntries, int minSeparatorLength = 0, bool keyFirst = false)
+    public static byte[] BuildToArray(BuildAction buildAction, int keyLength = -1, int maxLeafEntries = HsstBTreeOptions.DefaultMaxLeafEntries, bool keyFirst = false)
     {
         using PooledByteBufferWriter pooled = new(10 * 1024 * 1024);
         HsstBTreeBuilder<PooledByteBufferWriter.Writer, PooledByteBufferWriter.WriterReader, NoOpPin> builder = new(ref pooled.GetWriter(), keyLength, new HsstBTreeOptions
         {
-            MinSeparatorLength = minSeparatorLength,
             MaxLeafEntries = maxLeafEntries,
         }, keyFirst: keyFirst);
         try

@@ -241,7 +241,7 @@ public static class PersistedSnapshotMerger
             NWayMergeCursor cursor = new(
                 enums, hasMore, views, srcMap, n, AddrKeyLen, KeyStride, keyBuf, matchingBuf, tree);
 
-            using HsstBTreeBuilder<TWriter, TReader, TPin> builder = new(ref writer, AddressHashPrefixLength, new HsstBTreeOptions { MinSeparatorLength = 4 });
+            using HsstBTreeBuilder<TWriter, TReader, TPin> builder = new(ref writer, AddressHashPrefixLength);
 
             while (cursor.MoveNext())
             {
@@ -702,7 +702,7 @@ public static class PersistedSnapshotMerger
         const int OuterKeyLen = 30;
         const int OuterStride = 32;
         const int InnerKeyLen = 2;
-        using HsstBTreeBuilder<TWriter, TReader, TPin> outerBuilder = new(ref writer, ref slotPrefixBuffers, OuterKeyLen, new HsstBTreeOptions { MinSeparatorLength = 4 }, keyFirst: true);
+        using HsstBTreeBuilder<TWriter, TReader, TPin> outerBuilder = new(ref writer, ref slotPrefixBuffers, OuterKeyLen, keyFirst: true);
         // Per-prefix staging buffer for the sub-slot HSST. The outer BTree is built
         // key-first, so its outer entry layout requires the value length up front —
         // each sub-slot must be fully materialised in this buffer before Add. Reused

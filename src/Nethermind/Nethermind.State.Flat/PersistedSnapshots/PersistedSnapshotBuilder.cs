@@ -310,10 +310,7 @@ public static class PersistedSnapshotBuilder
 
         // Address-level HSST keyed by 20-byte address-hash prefix.
         ref TWriter addressWriter = ref outer.BeginValueWrite();
-        using HsstBTreeBuilder<TWriter, TReader, TPin> addressLevel = new(ref addressWriter, AddressHashPrefixLength, new HsstBTreeOptions
-        {
-            MinSeparatorLength = 4,
-        }, expectedKeyCount: uniqueAddressHashes.Count);
+        using HsstBTreeBuilder<TWriter, TReader, TPin> addressLevel = new(ref addressWriter, AddressHashPrefixLength, expectedKeyCount: uniqueAddressHashes.Count);
         // Slim-account RLP for any single account fits comfortably in 256 bytes (4×u256 fields
         // plus framing). Pool the scratch so it doesn't allocate per WritePerAddressColumn call.
         byte[] rlpBuffer = ArrayPool<byte>.Shared.Rent(256);
@@ -467,7 +464,7 @@ public static class PersistedSnapshotBuilder
             {
                 addrRefForStorageNode ??= new Hash256(in addressHash);
                 ref TWriter topWriter = ref perAddr.BeginValueWrite();
-                using HsstBTreeBuilder<TWriter, TReader, TPin> topLevel = new(ref topWriter, keyLength: 4, new HsstBTreeOptions { MinSeparatorLength = 4 },
+                using HsstBTreeBuilder<TWriter, TReader, TPin> topLevel = new(ref topWriter, keyLength: 4,
                     expectedKeyCount: storTopIdx - topStart);
                 for (int i = topStart; i < storTopIdx; i++)
                 {
@@ -495,7 +492,7 @@ public static class PersistedSnapshotBuilder
             {
                 addrRefForStorageNode ??= new Hash256(in addressHash);
                 ref TWriter compactWriter = ref perAddr.BeginValueWrite();
-                using HsstBTreeBuilder<TWriter, TReader, TPin> compactLevel = new(ref compactWriter, keyLength: 8, new HsstBTreeOptions { MinSeparatorLength = 8 },
+                using HsstBTreeBuilder<TWriter, TReader, TPin> compactLevel = new(ref compactWriter, keyLength: 8,
                     expectedKeyCount: storCompactIdx - compactStart);
                 for (int i = compactStart; i < storCompactIdx; i++)
                 {
@@ -548,7 +545,7 @@ public static class PersistedSnapshotBuilder
             if (hasStorage)
             {
                 ref TWriter slotWriter = ref perAddr.BeginValueWrite();
-                using HsstBTreeBuilder<TWriter, TReader, TPin> prefixLevel = new(ref slotWriter, ref slotPrefixBuffers, slotPrefixLength, new HsstBTreeOptions { MinSeparatorLength = 4 }, keyFirst: true);
+                using HsstBTreeBuilder<TWriter, TReader, TPin> prefixLevel = new(ref slotWriter, ref slotPrefixBuffers, slotPrefixLength, keyFirst: true);
 
                 while (storageIdx < sortedStorages.Count &&
                     sortedStorages[storageIdx].Key.AddrHash.Equals(addressHash))
@@ -667,10 +664,7 @@ public static class PersistedSnapshotBuilder
     private static void WriteStateTopNodesColumn<TWriter, TReader, TPin>(ref HsstDenseByteIndexBuilder<TWriter> outer, Snapshot snapshot, NativeMemoryList<TreePath> stateNodeKeys, BlobArenaWriter blobWriter, BloomFilter bloom) where TWriter : IByteBufferWriterWithReader<TReader, TPin> where TReader : IHsstByteReader<TPin>, allows ref struct where TPin : struct, IBufferPin, allows ref struct
     {
         ref TWriter innerWriter = ref outer.BeginValueWrite();
-        using HsstBTreeBuilder<TWriter, TReader, TPin> inner = new(ref innerWriter, keyLength: 4, new HsstBTreeOptions
-        {
-            MinSeparatorLength = 4,
-        }, expectedKeyCount: stateNodeKeys.Count);
+        using HsstBTreeBuilder<TWriter, TReader, TPin> inner = new(ref innerWriter, keyLength: 4, expectedKeyCount: stateNodeKeys.Count);
         Span<byte> keyBuffer = stackalloc byte[4];
         Span<byte> nrBuf = stackalloc byte[NodeRef.Size];
         for (int i = 0; i < stateNodeKeys.Count; i++)
@@ -694,10 +688,7 @@ public static class PersistedSnapshotBuilder
     private static void WriteStateNodesColumnCompact<TWriter, TReader, TPin>(ref HsstDenseByteIndexBuilder<TWriter> outer, Snapshot snapshot, NativeMemoryList<TreePath> stateNodeKeys, BlobArenaWriter blobWriter, BloomFilter bloom) where TWriter : IByteBufferWriterWithReader<TReader, TPin> where TReader : IHsstByteReader<TPin>, allows ref struct where TPin : struct, IBufferPin, allows ref struct
     {
         ref TWriter innerWriter = ref outer.BeginValueWrite();
-        using HsstBTreeBuilder<TWriter, TReader, TPin> inner = new(ref innerWriter, keyLength: 8, new HsstBTreeOptions
-        {
-            MinSeparatorLength = 8,
-        }, expectedKeyCount: stateNodeKeys.Count);
+        using HsstBTreeBuilder<TWriter, TReader, TPin> inner = new(ref innerWriter, keyLength: 8, expectedKeyCount: stateNodeKeys.Count);
         Span<byte> keyBuffer = stackalloc byte[8];
         Span<byte> nrBuf = stackalloc byte[NodeRef.Size];
         for (int i = 0; i < stateNodeKeys.Count; i++)

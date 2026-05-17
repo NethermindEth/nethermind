@@ -84,7 +84,7 @@ public class HsstCrossFormatTests
             case Format.BTree:
                 {
                     HsstBTreeBuilder<PooledByteBufferWriter.Writer, PooledByteBufferWriter.WriterReader, NoOpPin> b
-                        = new(ref pooled.GetWriter(), KeySize, new HsstBTreeOptions { MinSeparatorLength = KeySize });
+                        = new(ref pooled.GetWriter(), KeySize);
                     try
                     {
                         for (int i = 0; i < keys.Length; i++) b.Add(keys[i], values[i]);
