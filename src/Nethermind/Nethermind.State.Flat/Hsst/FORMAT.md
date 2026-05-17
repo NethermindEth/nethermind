@@ -427,8 +427,8 @@ All header fields are fixed-width — no varint decoding on parse. With the
 64 KiB node-size cap, every count/size field fits in `u16`.
 
 `ValueSize` is a single byte because per-entry value slots are 1..8 bytes
-(Uniform pointers); the b-tree index nodes never use Variable-encoded value
-sections.
+(Uniform pointers); b-tree index nodes always use Uniform values — there is
+no Variable-value encoding for this section.
 
 `BaseOffset` is a **mandatory** fixed 6-byte little-endian unsigned integer
 (low 48 bits; enough for any HSST up to 256 TiB). The 6 bytes are paid once
@@ -441,7 +441,7 @@ total cheaper than always-4-byte slots. There is no flag bit gating it.
 |------|---------|
 | 0    | `IsIntermediate` — 1 = intermediate B-tree node, 0 = leaf |
 | 1–2  | `KeyType`        — 0 Variable / 1 Uniform (value 2 reserved/unused) |
-| 3–4  | `ValueType`      — 0 Variable / 1 Uniform (value 2 reserved/unused) |
+| 3–4  | Reserved — must be 0. (Previously `ValueType`; values are now always Uniform.) |
 | 5    | `IsKeyLittleEndian` — 1 = fixed-width key slots are stored byte-reversed so a native LE integer load matches lex order; set unconditionally for Variable (prefixArr is 2 bytes/slot) and for Uniform with KeySize ∈ {2,4,8}. |
 | 6    | `HasCommonKeyPrefix` — 1 = `CommonKeyPrefixLen` (u8) + prefix bytes follow |
 | 7    | `HasFlagsContinuation` — 1 = a second flags byte follows the first, reserved for future expansion. Current writers always emit 0; current readers may reject `1` as unsupported. |
@@ -457,19 +457,20 @@ stays well under the `MetadataLength` u8 ceiling, and only emit it when
 `prefixLen × (count − 1) > 1` (i.e. it strictly pays back its
 `1 + prefixLen` overhead) and when at least one suffix is non-empty.
 
-`KeySize` / `ValueSize` semantics depend on the corresponding type:
+`KeySize` semantics depend on `KeyType`:
 
-- **Variable (0)** — the value of `KeySize`/`ValueSize` is the *section's*
-  total byte size. The section holds `LEB128 length || bytes` per entry at
-  the front, followed by a `KeyCount * 2`-byte little-endian offset table at
-  the **end** of the section. Offsets are relative to the section's start
-  (i.e. the first entry sits at offset 0). The maximum addressable section
-  data region is therefore 64 KiB; the writer rejects nodes that would
-  exceed it.
+- **Variable (0)** — the value of `KeySize` is the *Keys section's* total
+  byte size. The section uses an SoA layout described in the
+  *Keys section (Variable)* notes below; its 14-bit tailOffset caps the
+  section at 16 KiB.
 - **Uniform (1)** — packed fixed-width entries. Each entry is exactly
-  `KeySize` (or `ValueSize`) bytes; section size is `KeyCount * size`.
+  `KeySize` bytes; section size is `KeyCount * KeySize`.
 
-`KeyType` / `ValueType` value `2` is reserved/unused — it once selected a
+`ValueSize` is always the fixed per-entry value slot width (1..8 bytes);
+the Values section is `KeyCount * ValueSize` bytes. B-tree index nodes
+have no Variable-value encoding.
+
+`KeyType` value `2` is reserved/unused — it once selected a
 `UniformWithLen` layout (fixed slot with a trailing length byte), now
 removed. Readers fail with `InvalidDataException` if they encounter it.
 

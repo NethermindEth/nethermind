@@ -197,9 +197,9 @@ internal static class HsstBTreeReader
                 headerSize += 1 + prefixLen;
             }
             int keyType = (flags >> 1) & 0x03;
-            int valueType = (flags >> 3) & 0x03;
             int keySectionSize = keyType switch { 0 => keySize, _ => keyCount * keySize };
-            int valueSectionSize = valueType switch { 0 => valueSize, _ => keyCount * valueSize };
+            // Values are always Uniform — bits 3-4 of flags are reserved/zero.
+            int valueSectionSize = keyCount * valueSize;
             totalNodeSize = headerSize + keySectionSize + valueSectionSize;
 
             if (totalNodeSize <= winLen)

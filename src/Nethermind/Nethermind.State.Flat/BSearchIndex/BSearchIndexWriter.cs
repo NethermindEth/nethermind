@@ -27,11 +27,9 @@ internal struct BSearchIndexMetadata
     /// Variable: ignored.
     /// </summary>
     public int KeySlotSize;
-    /// <summary>0=Variable, 1=Uniform. Default: Uniform.</summary>
-    public int ValueType = 1;
     /// <summary>
-    /// Uniform: fixed value size or slot size in bytes (1..8 for Uniform offsets).
-    /// Default: 4 bytes.
+    /// Fixed value size in bytes (1..8 for Uniform offsets). B-tree index nodes always use
+    /// Uniform values; there is no Variable-value shape. Default: 4 bytes.
     /// </summary>
     public int ValueSlotSize = 4;
     /// <summary>
@@ -60,9 +58,9 @@ internal struct BSearchIndexMetadata
 /// hardware prefetcher pull the entry data into L1/L2 while the search code is still parsing
 /// the header — the previous metadata-at-end layout fought the prefetcher's forward stride.
 ///
-/// Variable-encoded VALUES (ValueType=0) use a sentinel-terminated offset table
-/// of (count+1) u16 entries appended after the raw entry data; length(i) =
-/// offsets[i+1] - offsets[i]. No per-entry length prefix.
+/// Values are always Uniform: each entry's value slot is a fixed-width 1..8 byte LE integer
+/// sized by <see cref="BSearchIndexMetadata.ValueSlotSize"/>. There is no Variable-value
+/// shape in b-tree index nodes.
 ///
 /// Variable-encoded KEYS (KeyType=0) use a Structure-of-Arrays layout that inlines the
 /// first 2 bytes of every key for cache-friendly binary search:
@@ -161,12 +159,7 @@ internal ref struct BSearchIndexWriter<TWriter>
             2 => _metadata.KeySlotSize,
             _ => ComputeVariableKeySectionSize(),
         };
-        int valueSize = _metadata.ValueType switch
-        {
-            1 => _metadata.ValueSlotSize,
-            2 => _metadata.ValueSlotSize,
-            _ => ComputeVariableValueSectionSize(),
-        };
+        int valueSize = _metadata.ValueSlotSize;
 
         // 1) Header.
         WriteHeader(keySize, valueSize, _commonKeyPrefix);
@@ -178,26 +171,21 @@ internal ref struct BSearchIndexWriter<TWriter>
             default: WriteVariableKeys(); break;
         }
 
-        // 3) Values section.
-        switch (_metadata.ValueType)
-        {
-            case 1: WriteUniformValues(); break;
-            default: WriteVariableValues(); break;
-        }
+        // 3) Values section — always Uniform (no Variable-value shape for b-tree nodes).
+        WriteUniformValues();
 
-        // When a section uses Variable encoding, its u16 offset table cannot
-        // address bytes past 64 KiB. We've already enforced that the section
-        // alone is below the cap. Cap the *whole* node at 64 KiB so any future
-        // Variable-relative offset reasoning stays valid even for nodes that
-        // mix Variable and non-Variable sections.
-        if (_metadata.KeyType == 0 || _metadata.ValueType == 0)
+        // When the keys section uses Variable encoding, its u16 offset table cannot
+        // address bytes past 64 KiB. We've already enforced that the section alone is
+        // below the cap. Cap the *whole* node at 64 KiB so any future Variable-relative
+        // offset reasoning stays valid.
+        if (_metadata.KeyType == 0)
         {
             int header = HeaderSize();
             int totalNodeSize = header + keySize + valueSize;
             const int MaxVariableNodeSize = 64 * 1024;
             if (totalNodeSize > MaxVariableNodeSize)
                 throw new InvalidOperationException(
-                    $"Index node with Variable key/value section exceeds 64 KiB ({totalNodeSize} bytes); split before finalizing.");
+                    $"Index node with Variable key section exceeds 64 KiB ({totalNodeSize} bytes); split before finalizing.");
         }
     }
 
@@ -254,21 +242,6 @@ internal ref struct BSearchIndexWriter<TWriter>
         return _count * 4 + tailBytes;
     }
 
-    private int ComputeVariableValueSectionSize()
-    {
-        int dataBytes = 0;
-        int valSrc = 0;
-        for (int i = 0; i < _count; i++)
-        {
-            int len = BinaryPrimitives.ReadUInt16LittleEndian(_valueBuf[valSrc..]);
-            valSrc += 2 + len;
-            dataBytes += len;
-        }
-        if (dataBytes > ushort.MaxValue)
-            throw new InvalidOperationException("Variable section exceeds 64 KiB; offset table cannot address it");
-        return dataBytes + (_count + 1) * 2;
-    }
-
     private void WriteHeader(int keySize, int valueSize, scoped ReadOnlySpan<byte> commonKeyPrefix)
     {
         // Header fields are sized for the 64 KiB per-node cap; ValueSize is u8 since
@@ -284,10 +257,10 @@ internal ref struct BSearchIndexWriter<TWriter>
 
         bool hasCommonPrefix = commonKeyPrefix.Length > 0;
         bool keyLe = ShouldEncodeKeyLittleEndian();
+        // Flags bits 3-4 (formerly ValueType) are reserved and always emitted as 0.
         byte flags = (byte)(
             (_metadata.IsIntermediate ? 0x01 : 0x00) |
             (_metadata.KeyType << 1) |
-            (_metadata.ValueType << 3) |
             (keyLe ? 0x20 : 0x00) |
             (hasCommonPrefix ? 0x40 : 0x00));
 
@@ -455,38 +428,4 @@ internal ref struct BSearchIndexWriter<TWriter>
         }
     }
 
-    private void WriteVariableValues()
-    {
-        Span<ushort> offsets = stackalloc ushort[_count + 1];
-        int valSrc = 0;
-        int dataOffset = 0;
-        for (int i = 0; i < _count; i++)
-        {
-            int len = BinaryPrimitives.ReadUInt16LittleEndian(_valueBuf[valSrc..]);
-            valSrc += 2 + len;
-            offsets[i] = (ushort)dataOffset;
-            dataOffset += len;
-        }
-        if (dataOffset > ushort.MaxValue)
-            throw new InvalidOperationException("Variable section exceeds 64 KiB; offset table cannot address it");
-        offsets[_count] = (ushort)dataOffset;
-
-        valSrc = 0;
-        for (int i = 0; i < _count; i++)
-        {
-            int len = BinaryPrimitives.ReadUInt16LittleEndian(_valueBuf[valSrc..]);
-            valSrc += 2;
-            if (len > 0)
-            {
-                IByteBufferWriter.Copy(ref _writer, _valueBuf.Slice(valSrc, len));
-            }
-            valSrc += len;
-        }
-
-        int tableSize = (_count + 1) * 2;
-        Span<byte> table = _writer.GetSpan(tableSize);
-        for (int i = 0; i <= _count; i++)
-            BinaryPrimitives.WriteUInt16LittleEndian(table[(i * 2)..], offsets[i]);
-        _writer.Advance(tableSize);
-    }
 }

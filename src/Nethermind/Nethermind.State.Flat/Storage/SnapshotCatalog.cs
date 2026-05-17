@@ -37,7 +37,9 @@ public sealed class SnapshotCatalog(IDb db)
     // v3: blob arena ids are now per-file (was per-slice); NodeRef.RlpDataOffset is now
     // file-absolute (was slice-relative); entries are keyed by StateId.To and the
     // per-entry Id field is gone.
-    internal const int CurrentVersion = 3;
+    // v4: BSearchIndex node Flags byte no longer encodes ValueType in bits 3-4 (those bits
+    // are now reserved/zero); writers always emit Uniform values for b-tree index nodes.
+    internal const int CurrentVersion = 4;
 
     // Length-4 sentinel key holding the version word. Entry keys are 40 bytes, so the
     // length disambiguation is unambiguous when iterating GetAll().

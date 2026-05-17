@@ -253,7 +253,6 @@ public ref struct HsstIndexBuilder<TWriter, TReader, TPin>
             KeyType = 0,
             BaseOffset = 0,
             KeySlotSize = 1,
-            ValueType = 1,
             ValueSlotSize = 1,
         }, default, default);
         indexWriter.FinalizeNode();
@@ -318,7 +317,6 @@ public ref struct HsstIndexBuilder<TWriter, TReader, TPin>
             KeyType = keyType,
             BaseOffset = (ulong)baseOffset,
             KeySlotSize = keySlotSize,
-            ValueType = 1,
             ValueSlotSize = valueSlotSize,
             IsKeyLittleEndian = keyLittleEndian,
         }, keyBuf, valueScratchSlice, commonPrefixBuf);
@@ -542,7 +540,6 @@ public ref struct HsstIndexBuilder<TWriter, TReader, TPin>
             KeyType = keyType,
             BaseOffset = (ulong)baseOffset,
             KeySlotSize = keySlotSize,
-            ValueType = 1,
             ValueSlotSize = valueSlotSize,
             IsKeyLittleEndian = keyLittleEndian,
         }, keyBuf, valueScratchSlice, commonPrefixBuf);

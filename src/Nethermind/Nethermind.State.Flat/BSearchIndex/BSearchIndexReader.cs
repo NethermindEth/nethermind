@@ -17,7 +17,7 @@ namespace Nethermind.State.Flat.BSearchIndex;
 ///   [CommonPrefixLen: u8][CommonPrefix bytes]?     (only if Flags bit6 set)
 ///   [Keys section][Values section]
 ///
-/// Flags: bit0=IsIntermediate, bits1-2=KeyType, bits3-4=ValueType, bit5=IsKeyLittleEndian, bit6=HasCommonKeyPrefix.
+/// Flags: bit0=IsIntermediate, bits1-2=KeyType, bits3-4=reserved (must be 0), bit5=IsKeyLittleEndian, bit6=HasCommonKeyPrefix.
 ///
 /// IsKeyLittleEndian (bit 5) marks that fixed-width key slots are stored byte-reversed so an
 /// x86 LE integer load of a slot equals its semantic numeric/lex value. Set for Uniform
@@ -31,20 +31,21 @@ namespace Nethermind.State.Flat.BSearchIndex;
 /// prefetcher pull the keys/values forward into cache while the search code is still parsing
 /// the header.
 ///
-/// KeyType/ValueType:
-///   0 = Variable.
-///       VALUES: raw entry bytes concatenated, then a sentinel u16 offset table of (count+1)
-///           entries at the end of the section. Length(i) = offsets[i+1] - offsets[i].
-///       KEYS: SoA layout — [prefixArr: N×u16 LE][offsetArr: N×u16 LE][remainingkeys].
-///           prefixArr[i] holds the first 2 bytes of key i, byte-reversed (LE-stored) so a
-///           u16 LE load yields a value with the same unsigned-int order as a lex compare on
-///           the original 2-byte prefix. offsetArr[i] = (lenTag &lt;&lt; 14) | tailOffset:
-///           tag 00=len 0, 01=len 1, 10=len 2 (no tail), 11=len ≥ 3 (tail at tailOffset in
-///           remainingkeys; tail length sentinel-derived from offsetArr[i+1].tailOffset, with
-///           the implicit sentinel for i=N being remainingkeys.Length). Tags 00/01/10 freeze
-///           the cursor (offset == next tag-11 entry's offset). 14-bit tailOffset caps
-///           remainingkeys at 16 KiB per section.
-///   1 = Uniform: packed fixed-width entries
+/// Values are always Uniform: each entry is a fixed-width <c>ValueSize</c>-byte LE integer
+/// (1..8 bytes, with <see cref="IndexMetadata.BaseOffset"/> added on read). There is no
+/// Variable-value shape for b-tree index nodes.
+///
+/// KeyType:
+///   0 = Variable: SoA layout — [prefixArr: N×u16 LE][offsetArr: N×u16 LE][remainingkeys].
+///       prefixArr[i] holds the first 2 bytes of key i, byte-reversed (LE-stored) so a
+///       u16 LE load yields a value with the same unsigned-int order as a lex compare on
+///       the original 2-byte prefix. offsetArr[i] = (lenTag &lt;&lt; 14) | tailOffset:
+///       tag 00=len 0, 01=len 1, 10=len 2 (no tail), 11=len ≥ 3 (tail at tailOffset in
+///       remainingkeys; tail length sentinel-derived from offsetArr[i+1].tailOffset, with
+///       the implicit sentinel for i=N being remainingkeys.Length). Tags 00/01/10 freeze
+///       the cursor (offset == next tag-11 entry's offset). 14-bit tailOffset caps
+///       remainingkeys at 16 KiB per section.
+///   1 = Uniform: packed fixed-width entries.
 ///
 /// When HasCommonKeyPrefix is set, every stored key equals (CommonKeyPrefix || stored slot i);
 /// the keys section holds suffixes only — use <see cref="GetFullKey"/> to reconstruct lex bytes.
@@ -154,14 +155,11 @@ public readonly ref struct BSearchIndexReader
 
     /// <summary>
     /// Get the value at the given entry index (raw bytes, no BaseOffset adjustment).
+    /// Values are always Uniform: fixed-width <see cref="IndexMetadata.ValueSize"/> bytes per entry.
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public ReadOnlySpan<byte> GetValue(int index) => _metadata.ValueType switch
-    {
-        0 => GetVariableEntry(_values, index, _metadata.KeyCount),
-        1 => _values.Slice(index * _metadata.ValueSize, _metadata.ValueSize),
-        _ => throw new InvalidDataException($"Unknown ValueType: {_metadata.ValueType}")
-    };
+    public ReadOnlySpan<byte> GetValue(int index) =>
+        _values.Slice(index * _metadata.ValueSize, _metadata.ValueSize);
 
     /// <summary>
     /// Get the unsigned integer value at the given entry index with BaseOffset applied.
@@ -186,21 +184,6 @@ public readonly ref struct BSearchIndexReader
         for (int i = 0; i < len; i++)
             v |= (ulong)src[i] << (i * 8);
         return v;
-    }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static ReadOnlySpan<byte> GetVariableEntry(ReadOnlySpan<byte> section, int index, int count)
-    {
-        // Sentinel offset table at end of section: (count+1) u16 entries, offsets
-        // relative to section start. Length(i) = offsets[i+1] - offsets[i] —
-        // load both as a single u32 to halve the per-compare load count.
-        // Used for VALUES only; the KEY section's Variable layout is SoA — see
-        // GetVariableKeyOffsetSlot / GetVariableKeyTail below.
-        int tableStart = section.Length - (count + 1) * 2;
-        uint pair = BinaryPrimitives.ReadUInt32LittleEndian(section[(tableStart + index * 2)..]);
-        int start = (int)(ushort)pair;
-        int end = (int)(ushort)(pair >> 16);
-        return section.Slice(start, end - start);
     }
 
     // ---- Variable KEY (SoA) helpers ----
@@ -483,16 +466,15 @@ public readonly ref struct BSearchIndexReader
     {
         public byte Flags { get; init; }
         public int KeyCount { get; init; }
-        /// <summary>KeyType=0: section size. KeyType=1: fixed key length. KeyType=2: slot size.</summary>
+        /// <summary>KeyType=0: section size. KeyType=1: fixed key length.</summary>
         public int KeySize { get; init; }
-        /// <summary>ValueType=0: section size. ValueType=1: fixed value length (1..8 for offsets). ValueType=2: slot size.</summary>
+        /// <summary>Fixed value length (1..8 for Uniform offsets). Values are always Uniform.</summary>
         public int ValueSize { get; init; }
         /// <summary>Base offset added to every Uniform value read. 0 when absent. Encoded on disk as 6-byte LE.</summary>
         public ulong BaseOffset { get; init; }
 
         public bool IsIntermediate => (Flags & 0x01) != 0;
         public int KeyType => (Flags >> 1) & 0x03;
-        public int ValueType => (Flags >> 3) & 0x03;
         /// <summary>
         /// True when fixed-width key slots are stored byte-reversed (Flags bit 5). Honored by
         /// readers for Uniform with <see cref="KeySize"/> ∈ {2,4,8}, and unconditionally for
@@ -510,12 +492,7 @@ public readonly ref struct BSearchIndexReader
             _ => throw new InvalidDataException()
         };
 
-        /// <summary>Total byte size of the Values section.</summary>
-        public int ValueSectionSize => ValueType switch
-        {
-            0 => ValueSize,              // Variable: ValueSize IS the section size
-            1 => KeyCount * ValueSize,   // Uniform: count * fixed length
-            _ => throw new InvalidDataException()
-        };
+        /// <summary>Total byte size of the Values section. Always Uniform: count × fixed width.</summary>
+        public int ValueSectionSize => KeyCount * ValueSize;
     }
 }

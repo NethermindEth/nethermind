@@ -91,7 +91,7 @@ public class BSearchIndexTests
         // Header sits at the front; keys section then values section follow.
         //
         // Expected binary layout (header fields are fixed-width LE; no LEB128):
-        //   "0A"           - Flags: leaf(0)|KeyType=Uniform(02)|ValueType=Uniform(08)
+        //   "02"           - Flags: leaf(0)|KeyType=Uniform(02)  [bits 3-4 reserved=0]
         //   "0100"         - KeyCount: 1 (u16 LE)
         //   "0100"         - KeySize: 1 (u16 LE — fixed key length)
         //   "04"           - ValueSize: 4 (u8 — fixed value slot size, 1..8)
@@ -100,14 +100,14 @@ public class BSearchIndexTests
         //   "64000000"     - Values[0]: 100 as int32 LE (test passes ValueSlotSize=4)
         yield return new TestCaseData(
             new[] { "41" }, new[] { 100 }, 1,
-            "0A" + "0100" + "0100" + "04" + "000000000000" + "41" + "64000000"
+            "02" + "0100" + "0100" + "04" + "000000000000" + "41" + "64000000"
         ).SetName("Uniform_SingleEntry");
 
         // Three entries: separators=[0x41,0x43,0x45], values=[0,100,200], keyLen=1
         // BaseOffset = 0 here (writer didn't strip it; test exercises the BSearchIndexWriter
         // with an explicit ValueSlotSize=4, so values stay 4-byte int32 LE).
         //
-        //   "0A"           - Flags
+        //   "02"           - Flags
         //   "0300"         - KeyCount: 3
         //   "0100"         - KeySize: 1
         //   "04"           - ValueSize: 4
@@ -118,7 +118,7 @@ public class BSearchIndexTests
         //   "C8000000"     - Values[2]: 200 as int32 LE
         yield return new TestCaseData(
             new[] { "41", "43", "45" }, new[] { 0, 100, 200 }, 1,
-            "0A" + "0300" + "0100" + "04" + "000000000000" + "41" + "43" + "45" + "00000000" + "64000000" + "C8000000"
+            "02" + "0300" + "0100" + "04" + "000000000000" + "41" + "43" + "45" + "00000000" + "64000000" + "C8000000"
         ).SetName("Uniform_ThreeEntries");
     }
 
@@ -163,7 +163,7 @@ public class BSearchIndexTests
         // Three entries with values=[100,200,300]. Caller pre-subtracts baseOffset=100.
         // BaseOffset is mandatory (6 bytes LE).
         //
-        //   "0A"           - Flags: leaf, Uniform keys, Uniform values
+        //   "02"           - Flags: leaf, Uniform keys (bits 3-4 reserved=0; values always Uniform)
         //   "0300"         - KeyCount: 3
         //   "0100"         - KeySize: 1
         //   "04"           - ValueSize: 4 (u8)
@@ -172,7 +172,7 @@ public class BSearchIndexTests
         //   "00000000"     - Values[0]: 100-100=0 as int32 LE
         //   "64000000"     - Values[1]: 200-100=100 as int32 LE
         //   "C8000000"     - Values[2]: 300-100=200 as int32 LE
-        string expectedHex = "0A" + "0300" + "0100" + "04" + "640000000000" + "41" + "43" + "45" + "00000000" + "64000000" + "C8000000";
+        string expectedHex = "02" + "0300" + "0100" + "04" + "640000000000" + "41" + "43" + "45" + "00000000" + "64000000" + "C8000000";
 
         ulong baseOffset = 100;
         byte[] output = new byte[1024];
@@ -206,7 +206,7 @@ public class BSearchIndexTests
         // Empty first entry forces Variable key format. Variable always sets the LE key flag
         // (bit 5) since prefixArr is uniformly 2 bytes/slot. No BaseOffset.
         //
-        //   "28"       - Flags: leaf(0)|KeyType=Variable(00)|ValueType=Uniform(08)|LEKey(20)
+        //   "20"       - Flags: leaf(0)|KeyType=Variable(00)|LEKey(20)  [bits 3-4 reserved=0]
         //   "0200"     - KeyCount: 2
         //   "0900"     - KeySize: 9 (2*2 prefixArr + 2*2 offsetArr + 1 remainingkeys)
         //   "04"       - ValueSize: 4 (u8)
@@ -220,13 +220,13 @@ public class BSearchIndexTests
         //   "37000000" - Values[1]: 55 as int32 LE
         yield return new TestCaseData(
             new[] { "", "7A8B49" }, new[] { 0, 55 },
-            "28" + "0200" + "0900" + "04" + "000000000000" + "0000" + "8B7A" + "0000" + "00C0" + "49" + "00000000" + "37000000"
+            "20" + "0200" + "0900" + "04" + "000000000000" + "0000" + "8B7A" + "0000" + "00C0" + "49" + "00000000" + "37000000"
         ).SetName("Variable_EmptyAndThreeBytes");
 
         // Three entries with varying separator lengths: 1, 2, 3 bytes.
         // No BaseOffset.
         //
-        //   "28"         - Flags: leaf(0)|KeyType=Variable(00)|ValueType=Uniform(08)|LEKey(20)
+        //   "20"         - Flags: leaf(0)|KeyType=Variable(00)|LEKey(20)  [bits 3-4 reserved=0]
         //   "0300"       - KeyCount: 3
         //   "0D00"       - KeySize: 13 (3*2 prefixArr + 3*2 offsetArr + 1 remainingkeys)
         //   "04"         - ValueSize: 4 (u8)
@@ -243,7 +243,7 @@ public class BSearchIndexTests
         //   "C8000000"   - Values[2]: 200 as int32 LE
         yield return new TestCaseData(
             new[] { "41", "4243", "444546" }, new[] { 0, 100, 200 },
-            "28" + "0300" + "0D00" + "04" + "000000000000" + "0041" + "4342" + "4544" + "0040" + "0080" + "00C0" + "46" + "00000000" + "64000000" + "C8000000"
+            "20" + "0300" + "0D00" + "04" + "000000000000" + "0041" + "4342" + "4544" + "0040" + "0080" + "00C0" + "46" + "00000000" + "64000000" + "C8000000"
         ).SetName("Variable_VaryingSeparators");
     }
 
