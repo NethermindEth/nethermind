@@ -418,9 +418,12 @@ public static class PersistedSnapshotMerger
 
             // Sub-tag 0x04: Slots
             // Merge slots only from max(0, destructBarrier)..matchCount-1. Collect the
-            // active slot sources, then early-return for 0 sources (no emit), byte-copy
-            // for 1 source (with a separate bloom walk), or call NWayNestedStreamingSlotMerge
-            // for >1 sources (it folds bloom adds inline).
+            // active slot sources, then early-return for 0 sources (no emit) or run the
+            // outer/inner BTree streaming merge through NWayNestedStreamingSlotMerge for
+            // any positive count. We do not byte-copy a single-source slot blob through
+            // perAddrBuilder here: the dense byte index does not page-align its values,
+            // so re-emitting through the inner BTree builder (which does align) keeps
+            // the slot HSST on its own page.
             int slotStart = Math.Max(0, destructBarrier);
             int slotTag = PersistedSnapshot.SlotSubTag[0];
 
@@ -442,22 +445,8 @@ public static class PersistedSnapshotMerger
                     }
                 }
 
-                if (slotSourceCount == 1)
+                if (slotSourceCount > 0)
                 {
-                    // Single-source fast path: pin the whole slot HSST blob from the
-                    // source and add it under the slot sub-tag. HSST internal pointers
-                    // are HSST-relative so the relocated blob stays readable. Bloom
-                    // keys are walked directly off the source reader.
-                    WholeReadSessionReader slotReader = Reader(views[slotSources[0]]);
-                    Bound slotBlob = new(slotBounds[0].Offset, slotBounds[0].Length);
-                    using NoOpPin slotPin = slotReader.PinBuffer(slotBlob.Offset, slotBlob.Length);
-                    perAddrBuilder.Add(PersistedSnapshot.SlotSubTag, slotPin.Buffer);
-                    AddSlotKeysToBloom<WholeReadSessionReader, NoOpPin>(in slotReader, slotBlob, addrBloomKey, bloom);
-                }
-                else if (slotSourceCount > 1)
-                {
-                    // M > 1 slot sources: outer 30-byte BTree streaming merge with inline
-                    // bloom adds and inline inner 2-byte suffix BTree merge.
                     using ArrayPoolList<HsstEnumerator> slotEnumsList = new(slotSourceCount, slotSourceCount);
                     using NativeMemoryList<bool> slotHasMoreList = new(slotSourceCount, slotSourceCount);
                     using NativeMemoryList<(IntPtr Ptr, long Len)> slotViewsList = new(slotSourceCount, slotSourceCount);
@@ -574,10 +563,11 @@ public static class PersistedSnapshotMerger
     /// <summary>
     /// Outer 30-byte slot-prefix BTree streaming merge across M slot-bearing sources, with
     /// the inner 2-byte suffix BTree merge inlined per bucket. Per outer bucket, emits one
-    /// bloom add (keyed on the 30-byte prefix); the byte-copy fast path for outer-match
-    /// count == 1 skips the inner merge entirely. Caller is responsible for: collecting
-    /// the slot-bearing sources from per-address sub-tag 0x04, opening the slot enums,
-    /// and wrapping this call in BeginValueWrite/FinishValueWrite on its outer builder.
+    /// bloom add (keyed on the 30-byte prefix); the single-source fast path for outer-match
+    /// count == 1 pins the source suffix HSST and adds it whole through the outer builder,
+    /// skipping the inner merge entirely. Caller is responsible for: collecting the
+    /// slot-bearing sources from per-address sub-tag 0x04, opening the slot enums, and
+    /// wrapping this call in BeginValueWrite/FinishValueWrite on its outer builder.
     /// </summary>
     private static void NWayNestedStreamingSlotMerge<TWriter, TReader, TPin>(
         HsstEnumerator[] outerEnums, Span<bool> outerHasMore, int n,
@@ -646,34 +636,23 @@ public static class PersistedSnapshotMerger
 
             if (outerMatchCount == 1)
             {
-                // 1 matching source for this outer key: byte-copy its suffix HSST blob
-                // verbatim into the staging buffer. HSST internal pointers are
-                // blob-relative so the relocated blob stays readable at the destination
-                // writer position. Streamed via the long-aware IByteBufferWriter.Copy so
-                // >2 GiB suffix HSSTs stay safe.
+                // 1 matching source for this outer key: pin its suffix HSST blob and
+                // add it whole. HSST internal pointers are blob-relative so the
+                // relocated blob stays readable at the destination writer position.
+                // The bloom walk reads the source bytes directly — no need to copy
+                // through staging just to enumerate the 2-byte suffix keys.
                 int srcIdx = outerMatches[0];
                 Bound vb = outerEnums[srcIdx].CurrentValue;
                 WholeReadSessionReader srcReader = Reader(views[srcIdx]);
-                innerStaging.Reset();
-                ref PooledByteBufferWriter.Writer stagingWriter = ref innerStaging.GetWriter();
-                IByteBufferWriter.Copy<PooledByteBufferWriter.Writer, WholeReadSessionReader, NoOpPin>(
-                    ref stagingWriter, in srcReader, vb);
+                using NoOpPin suffixPin = srcReader.PinBuffer(vb.Offset, vb.Length);
+                HsstEnumerator<WholeReadSessionReader, NoOpPin> suffixEnum = new(in srcReader, vb);
+                while (suffixEnum.MoveNext(in srcReader))
                 {
-                    // Walk the buffered inner suffix HSST through the staging writer's
-                    // own OpenReader. The blob is a single 2-byte-keyed HSST (no
-                    // nesting) so one enumerator pass suffices; compose the 32-byte
-                    // slot from outerKey || innerSuffix and emit a per-slot bloom add.
-                    PooledByteBufferWriter.WriterReader dstReader = stagingWriter.OpenReader(vb.Length);
-                    HsstEnumerator<PooledByteBufferWriter.WriterReader, NoOpPin> suffixEnum = new(in dstReader, new Bound(0, vb.Length));
-                    while (suffixEnum.MoveNext(in dstReader))
-                    {
-                        suffixEnum.CopyCurrentLogicalKey(in dstReader, slotKeyBuf.Slice(OuterKeyLen, InnerKeyLen));
-                        bloom.Add(PersistedSnapshotBloomBuilder.SlotKey(addrBloomKey, slotKeyBuf));
-                    }
-                    suffixEnum.Dispose();
-                    stagingWriter.DisposeActiveReader();
+                    suffixEnum.CopyCurrentLogicalKey(in srcReader, slotKeyBuf.Slice(OuterKeyLen, InnerKeyLen));
+                    bloom.Add(PersistedSnapshotBloomBuilder.SlotKey(addrBloomKey, slotKeyBuf));
                 }
-                outerBuilder.Add(outerKey, innerStaging.WrittenSpan);
+                suffixEnum.Dispose();
+                outerBuilder.Add(outerKey, suffixPin.Buffer);
             }
             else
             {
