@@ -99,7 +99,7 @@ public class Eth68ProtocolHandler(ISession session,
 
         TxPool.Metrics.PendingTransactionsHashesReceived += message.Hashes.Count;
 
-        AddNotifiedTransactions(message.Hashes);
+        AddNotifiedTransactions(message.Hashes.AsSpan());
 
         long startTime = Logger.IsTrace ? Stopwatch.GetTimestamp() : 0;
 
