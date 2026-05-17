@@ -399,9 +399,10 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
         private static IOwnedReadOnlyList<BlockHeader> FixHeadersForGeth(IOwnedReadOnlyList<BlockHeader> headers)
         {
             int emptyBlocksAtTheEnd = 0;
-            for (int i = 0; i < headers.Count; i++)
+            ReadOnlySpan<BlockHeader> headersSpan = headers.AsSpan();
+            for (int i = 0; i < headersSpan.Length; i++)
             {
-                if (headers[headers.Count - 1 - i] is null)
+                if (headersSpan[headersSpan.Length - 1 - i] is null)
                 {
                     emptyBlocksAtTheEnd++;
                 }
@@ -413,14 +414,15 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
 
             if (emptyBlocksAtTheEnd != 0)
             {
-                int toTake = headers.Count - emptyBlocksAtTheEnd;
+                int toTake = headersSpan.Length - emptyBlocksAtTheEnd;
                 if (headers is ArrayPoolList<BlockHeader> asArrayPoolList)
                 {
                     asArrayPoolList.Truncate(toTake);
                     return headers;
                 }
 
-                ArrayPoolList<BlockHeader> newList = new(toTake, headers.Take(toTake));
+                ArrayPoolList<BlockHeader> newList = new(toTake);
+                newList.AddRange(headersSpan[..toTake]);
                 headers.Dispose();
                 return newList;
             }
