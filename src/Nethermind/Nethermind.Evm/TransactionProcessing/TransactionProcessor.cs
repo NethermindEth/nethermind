@@ -624,9 +624,9 @@ namespace Nethermind.Evm.TransactionProcessing
 
             if (spec.IsEip8037Enabled && intrinsicGas.ExceedsCap(Eip7825Constants.DefaultTxGasLimitCap, out long regular, out long floor))
             {
-                long required = Math.Max(regular, floor);
-                TraceLogInvalidTx(tx, $"TX_INTRINSIC_REGULAR_GAS_EXCEEDS_MAX {required} > {Eip7825Constants.DefaultTxGasLimitCap}");
-                return TransactionResult.ErrorType.GasLimitBelowIntrinsicGas.WithDetail($"intrinsic gas too low: have {tx.GasLimit}, want {required}");
+                TraceLogInvalidTx(tx, $"TX_INTRINSIC_GAS_EXCEEDS_CAP regular={regular} floor={floor} > {Eip7825Constants.DefaultTxGasLimitCap}");
+                return TransactionResult.ErrorType.GasLimitBelowIntrinsicGas.WithDetail(
+                    TxErrorMessages.TxIntrinsicGasExceedsCap(regular, floor, Eip7825Constants.DefaultTxGasLimitCap));
             }
 
             TGasPolicy standard = intrinsicGas.Standard;

@@ -136,7 +136,7 @@ public sealed class IntrinsicGasTxValidator : ITxValidator
         IntrinsicGas<EthereumGasPolicy> intrinsicGas = EthereumGasPolicy.CalculateIntrinsicGas(transaction, releaseSpec, blockGasLimit);
         if (releaseSpec.IsEip8037Enabled && intrinsicGas.ExceedsCap(Eip7825Constants.DefaultTxGasLimitCap, out long regular, out long floor))
         {
-            return TxErrorMessages.TxGasLimitCapExceeded(Math.Max(regular, floor), Eip7825Constants.DefaultTxGasLimitCap);
+            return TxErrorMessages.TxIntrinsicGasExceedsCap(regular, floor, Eip7825Constants.DefaultTxGasLimitCap);
         }
 
         // Implicit conversion combines Standard + StateReservoir (EIP-8037) before max'ing with FloorGas.
