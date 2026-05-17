@@ -153,7 +153,7 @@ public sealed class EthereumIesEngine(HMac mac, Sha256Digest hash, BufferedBlock
         int macSize = _mac.GetMacSize();
 
         // Ensure that the length of the input is greater than the MAC in bytes
-        if (input.Length <= _iesParameters.MacKeySize / 8)
+        if (input.Length <= macSize)
         {
             ThrowInputTooShort();
         }
