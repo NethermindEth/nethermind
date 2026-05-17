@@ -30,7 +30,6 @@ using Nethermind.JsonRpc.Test;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.GC;
-using Nethermind.Consensus.Stateless;
 using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Merge.Plugin.Synchronization;
 using Nethermind.Serialization.Json;
@@ -385,16 +384,16 @@ public partial class EngineModuleTests
                 Substitute.For<IHandler<IReadOnlyList<Hash256>, IReadOnlyList<ExecutionPayloadBodyV1Result?>>>(),
                 Substitute.For<IGetPayloadBodiesByRangeV1Handler>(),
                 Substitute.For<IHandler<TransitionConfigurationV1, TransitionConfigurationV1>>(),
-                Substitute.For<IHandler<IEnumerable<string>, IReadOnlyList<string>>>(),
+                Substitute.For<IHandler<HashSet<string>, IReadOnlyList<string>>>(),
                 Substitute.For<IAsyncHandler<byte[][], IReadOnlyList<BlobAndProofV1?>>>(),
                 Substitute.For<IAsyncHandler<GetBlobsHandlerV2Request, IReadOnlyList<BlobAndProofV2?>?>>(),
                 Substitute.For<IHandler<IReadOnlyList<Hash256>, IReadOnlyList<ExecutionPayloadBodyV2Result?>>>(),
                 Substitute.For<IGetPayloadBodiesByRangeV2Handler>(),
+                Substitute.For<INewPayloadWithWitnessHandler>(),
                 Substitute.For<IEngineRequestsTracker>(),
                 chain.SpecProvider,
                 new GCKeeper(NoGCStrategy.Instance, chain.LogManager),
                 chain.BlockTree,
-                Substitute.For<IWitnessGeneratingBlockProcessingEnvFactory>(),
                 Substitute.For<ILogManager>()));
         }
 

@@ -668,30 +668,12 @@ public class SszMiddlewareTests
         body.Should().Contain("\"code\"");
     }
 
-    [Test]
-    public async Task NewPayloadWithWitness_returns_200_with_octet_stream_and_decodable_ssz_for_valid_status()
+    private void ConfigureWitnessFactory(Witness? witness)
     {
-        PayloadStatusV1 status = new() { Status = PayloadStatus.Valid, LatestValidHash = TestItem.KeccakA };
-        _engineModule.engine_newPayloadV5(
-                Arg.Any<ExecutionPayloadV4>(), Arg.Any<byte[]?[]>(), Arg.Any<Hash256?>(), Arg.Any<byte[][]?>())
-            .Returns(ResultWrapper<PayloadStatusV1>.Success(status));
-
-        ArrayPoolList<byte[]> stateList = new(1)
-        {
-            new byte[] { 0xDE, 0xAD, 0xBE, 0xEF }
-        };
-        Witness stubWitness = new()
-        {
-            State = stateList,
-            Codes = new ArrayPoolList<byte[]>(0),
-            Keys = new ArrayPoolList<byte[]>(0),
-            Headers = new ArrayPoolList<byte[]>(0),
-        };
-
         IExistingBlockWitnessCollector stubCollector = Substitute.For<IExistingBlockWitnessCollector>();
         stubCollector
             .GetWitnessForExistingBlock(Arg.Any<BlockHeader>(), Arg.Any<Block>())
-            .Returns(stubWitness);
+            .Returns(witness);
 
         IWitnessGeneratingBlockProcessingEnv stubEnv = Substitute.For<IWitnessGeneratingBlockProcessingEnv>();
         stubEnv.CreateExistingBlockWitnessCollector().Returns(stubCollector);
@@ -700,6 +682,25 @@ public class SszMiddlewareTests
         stubScope.Env.Returns(stubEnv);
 
         _witnessEnvFactory.CreateScope().Returns(stubScope);
+    }
+
+    [Test]
+    public async Task NewPayloadWithWitness_returns_200_with_octet_stream_and_decodable_ssz_for_valid_status()
+    {
+        PayloadStatusV1 status = new() { Status = PayloadStatus.Valid, LatestValidHash = TestItem.KeccakA };
+        _engineModule.engine_newPayloadV5(
+                Arg.Any<ExecutionPayloadV4>(), Arg.Any<byte[]?[]>(), Arg.Any<Hash256?>(), Arg.Any<byte[][]?>())
+            .Returns(ResultWrapper<PayloadStatusV1>.Success(status));
+
+        Witness stubWitness = new()
+        {
+            State = new ArrayPoolList<byte[]>(1) { new byte[] { 0xDE, 0xAD, 0xBE, 0xEF } },
+            Codes = new ArrayPoolList<byte[]>(0),
+            Keys = new ArrayPoolList<byte[]>(0),
+            Headers = new ArrayPoolList<byte[]>(0),
+        };
+
+        ConfigureWitnessFactory(stubWitness);
 
         _blockTree.FindHeader(Arg.Any<Hash256>(), Arg.Any<BlockTreeLookupOptions>())
             .Returns(Build.A.BlockHeader.TestObject);

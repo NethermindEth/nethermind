@@ -17,6 +17,7 @@ using Nethermind.Consensus;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Rewards;
+using Nethermind.Consensus.Stateless;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -328,6 +329,16 @@ public class BaseMergePluginModule : Module
                 .AddSingleton<IAsyncHandler<GetBlobsHandlerV2Request, IReadOnlyList<BlobAndProofV2?>?>, GetBlobsHandlerV2>()
                 .AddSingleton<IHandler<IReadOnlyList<Hash256>, IReadOnlyList<ExecutionPayloadBodyV2Result?>>, GetPayloadBodiesByHashV2Handler>()
                 .AddSingleton<IGetPayloadBodiesByRangeV2Handler, GetPayloadBodiesByRangeV2Handler>()
+                .AddSingleton<INewPayloadWithWitnessHandler>(ctx =>
+                {
+                    Lazy<IEngineRpcModule> lazyModule = ctx.Resolve<Lazy<IEngineRpcModule>>();
+                    return new NewPayloadWithWitnessHandler(
+                        (payload, hashes, root, requests) =>
+                            lazyModule.Value.engine_newPayloadV5(payload, hashes, root, requests),
+                        ctx.Resolve<IBlockTree>(),
+                        ctx.Resolve<IWitnessGeneratingBlockProcessingEnvFactory>(),
+                        ctx.Resolve<ILogManager>());
+                })
 
                 .AddSingleton<NoSyncGcRegionStrategy>()
                 .AddSingleton<GCKeeper>((ctx) =>

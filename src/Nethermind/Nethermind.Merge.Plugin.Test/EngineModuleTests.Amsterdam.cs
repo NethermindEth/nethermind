@@ -2,10 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
 using System.Threading.Tasks;
 using FluentAssertions;
-using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Consensus.Stateless;
 using Nethermind.Core;
@@ -15,7 +13,6 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.JsonRpc;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Data;
-using Nethermind.Merge.Plugin.GC;
 using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Specs.Forks;
 using NSubstitute;
@@ -35,83 +32,92 @@ public partial class EngineModuleTests
             Headers = new ArrayPoolList<byte[]>(0),
         };
 
-    private sealed class StubbedEngineRpcModule(
-        PayloadStatusV1 stubbedV5Status,
-        IBlockTree blockTree,
-        IWitnessGeneratingBlockProcessingEnvFactory witnessEnvFactory,
-        MergeTestBlockchain chain)
-        : EngineRpcModule(
-            Substitute.For<IAsyncHandler<byte[], ExecutionPayload?>>(),
-            Substitute.For<IAsyncHandler<byte[], GetPayloadV2Result?>>(),
-            Substitute.For<IAsyncHandler<byte[], GetPayloadV3Result?>>(),
-            Substitute.For<IAsyncHandler<byte[], GetPayloadV4Result?>>(),
-            Substitute.For<IAsyncHandler<byte[], GetPayloadV5Result?>>(),
-            Substitute.For<IAsyncHandler<byte[], GetPayloadV6Result?>>(),
-            Substitute.For<IAsyncHandler<ExecutionPayload, PayloadStatusV1>>(),
-            Substitute.For<IForkchoiceUpdatedHandler>(),
-            Substitute.For<IHandler<IReadOnlyList<Hash256>, IReadOnlyList<ExecutionPayloadBodyV1Result?>>>(),
-            Substitute.For<IGetPayloadBodiesByRangeV1Handler>(),
-            Substitute.For<IHandler<TransitionConfigurationV1, TransitionConfigurationV1>>(),
-            Substitute.For<IHandler<IEnumerable<string>, IReadOnlyList<string>>>(),
-            Substitute.For<IAsyncHandler<byte[][], IReadOnlyList<BlobAndProofV1?>>>(),
-            Substitute.For<IAsyncHandler<GetBlobsHandlerV2Request, IReadOnlyList<BlobAndProofV2?>?>>(),
-            Substitute.For<IHandler<IReadOnlyList<Hash256>, IReadOnlyList<ExecutionPayloadBodyV2Result?>>>(),
-            Substitute.For<IGetPayloadBodiesByRangeV2Handler>(),
-            Substitute.For<IEngineRequestsTracker>(),
-            chain.SpecProvider,
-            new GCKeeper(NoGCStrategy.Instance, chain.LogManager),
-            blockTree,
-            witnessEnvFactory,
-            LimboLogs.Instance)
+    private sealed class WitnessHandlerBuilder
     {
-        private readonly PayloadStatusV1 _stubbedV5Status = stubbedV5Status;
+        public Func<ExecutionPayloadV4, byte[]?[], Hash256?, byte[][]?, Task<ResultWrapper<PayloadStatusV1>>> NewPayloadV5 { get; set; }
+            = SucceedingNewPayloadV5(new PayloadStatusV1 { Status = PayloadStatus.Valid, LatestValidHash = TestItem.KeccakA });
 
-        public override Task<ResultWrapper<PayloadStatusV1>> engine_newPayloadV5(
-            ExecutionPayloadV4 executionPayload,
-            byte[]?[] blobVersionedHashes,
-            Hash256? parentBeaconBlockRoot,
-            byte[][]? executionRequests)
-            => Task.FromResult(ResultWrapper<PayloadStatusV1>.Success(_stubbedV5Status));
+        public IBlockTree BlockTree { get; set; } = BlockTreeWithHeader(Nethermind.Core.Test.Builders.Build.A.BlockHeader.TestObject);
+
+        public IWitnessGeneratingBlockProcessingEnvFactory WitnessFactory { get; set; } =
+            WitnessFactoryFor(MakeStubWitness());
+
+        public NewPayloadWithWitnessHandler Build() =>
+            new(NewPayloadV5, BlockTree, WitnessFactory, LimboLogs.Instance);
+
+        public static Func<ExecutionPayloadV4, byte[]?[], Hash256?, byte[][]?, Task<ResultWrapper<PayloadStatusV1>>>
+            SucceedingNewPayloadV5(PayloadStatusV1 status) =>
+            (_, _, _, _) => Task.FromResult(ResultWrapper<PayloadStatusV1>.Success(status));
+
+        public static Func<ExecutionPayloadV4, byte[]?[], Hash256?, byte[][]?, Task<ResultWrapper<PayloadStatusV1>>>
+            FailingNewPayloadV5(string error, int errorCode) =>
+            (_, _, _, _) => Task.FromResult(ResultWrapper<PayloadStatusV1>.Fail(error, errorCode));
+
+        public static IBlockTree BlockTreeWithHeader(BlockHeader? header)
+        {
+            IBlockTree bt = Substitute.For<IBlockTree>();
+            bt.FindHeader(Arg.Any<Hash256>(), Arg.Any<BlockTreeLookupOptions>())
+              .Returns(header);
+            return bt;
+        }
+
+        private static IWitnessGeneratingBlockProcessingEnvFactory BuildWitnessFactory(
+            Action<IExistingBlockWitnessCollector> configureCollector)
+        {
+            IExistingBlockWitnessCollector collector = Substitute.For<IExistingBlockWitnessCollector>();
+            configureCollector(collector);
+
+            IWitnessGeneratingBlockProcessingEnv env =
+                Substitute.For<IWitnessGeneratingBlockProcessingEnv>();
+            env.CreateExistingBlockWitnessCollector().Returns(collector);
+
+            IWitnessGeneratingBlockProcessingEnvScope scope =
+                Substitute.For<IWitnessGeneratingBlockProcessingEnvScope>();
+            scope.Env.Returns(env);
+
+            IWitnessGeneratingBlockProcessingEnvFactory factory =
+                Substitute.For<IWitnessGeneratingBlockProcessingEnvFactory>();
+            factory.CreateScope().Returns(scope);
+
+            return factory;
+        }
+
+        public static IWitnessGeneratingBlockProcessingEnvFactory WitnessFactoryFor(Witness? witness) =>
+            BuildWitnessFactory(collector =>
+                collector
+                    .GetWitnessForExistingBlock(Arg.Any<BlockHeader>(), Arg.Any<Block>())
+                    .Returns(witness));
+
+        public static IWitnessGeneratingBlockProcessingEnvFactory ThrowingWitnessFactory(Exception ex) =>
+            BuildWitnessFactory(collector =>
+                collector
+                    .GetWitnessForExistingBlock(Arg.Any<BlockHeader>(), Arg.Any<Block>())
+                    .Throws(ex));
+
+        public static IWitnessGeneratingBlockProcessingEnvFactory NoopWitnessFactory() =>
+            Substitute.For<IWitnessGeneratingBlockProcessingEnvFactory>();
     }
 
     [Test]
     public async Task NewPayloadWithWitness_valid_status_returns_result_with_executionWitness_populated()
     {
         using MergeTestBlockchain chain = await CreateBlockchain(Amsterdam.Instance);
-
-        PayloadStatusV1 status = new() { Status = PayloadStatus.Valid, LatestValidHash = TestItem.KeccakA };
-
-        Witness stubWitness = MakeStubWitness();
-        IExistingBlockWitnessCollector stubCollector = Substitute.For<IExistingBlockWitnessCollector>();
-        stubCollector
-            .GetWitnessForExistingBlock(Arg.Any<BlockHeader>(), Arg.Any<Block>())
-            .Returns(stubWitness);
-
-        IWitnessGeneratingBlockProcessingEnv stubEnv = Substitute.For<IWitnessGeneratingBlockProcessingEnv>();
-        stubEnv.CreateExistingBlockWitnessCollector().Returns(stubCollector);
-
-        IWitnessGeneratingBlockProcessingEnvScope stubScope =
-            Substitute.For<IWitnessGeneratingBlockProcessingEnvScope>();
-        stubScope.Env.Returns(stubEnv);
-
-        IWitnessGeneratingBlockProcessingEnvFactory witnessFactory =
-            Substitute.For<IWitnessGeneratingBlockProcessingEnvFactory>();
-        witnessFactory.CreateScope().Returns(stubScope);
-
-        IBlockTree blockTree = Substitute.For<IBlockTree>();
-        blockTree
-            .FindHeader(Arg.Any<Hash256>(), Arg.Any<BlockTreeLookupOptions>())
-            .Returns(Build.A.BlockHeader.TestObject);
-
-        StubbedEngineRpcModule module = new(status, blockTree, witnessFactory, chain);
-
-        // Build a minimal valid ExecutionPayloadV4 from the genesis block so TryGetBlock succeeds.
         ExecutionPayloadV4 payload = ExecutionPayloadV4.Create(chain.BlockTree.Head!);
 
-        ResultWrapper<NewPayloadWithWitnessV1Result> result =
-            await module.engine_newPayloadWithWitness(payload, [], Keccak.Zero, []);
+        Witness stubWitness = MakeStubWitness();
+        NewPayloadWithWitnessHandler handler = new WitnessHandlerBuilder
+        {
+            NewPayloadV5 = WitnessHandlerBuilder.SucceedingNewPayloadV5(
+                new PayloadStatusV1 { Status = PayloadStatus.Valid, LatestValidHash = TestItem.KeccakA }),
+            BlockTree = WitnessHandlerBuilder.BlockTreeWithHeader(Nethermind.Core.Test.Builders.Build.A.BlockHeader.TestObject),
+            WitnessFactory = WitnessHandlerBuilder.WitnessFactoryFor(stubWitness),
+        }.Build();
 
-        result.Result.ResultType.Should().Be(ResultType.Success, "a VALID status must not produce an RPC-level error");
+        ResultWrapper<NewPayloadWithWitnessV1Result> result =
+            await handler.HandleAsync(payload, [], Keccak.Zero, []);
+
+        result.Result.ResultType.Should().Be(ResultType.Success,
+            "a VALID status must not produce an RPC-level error");
         result.Data.Status.Should().Be(PayloadStatus.Valid);
         result.Data.LatestValidHash.Should().Be(TestItem.KeccakA);
         result.Data.ExecutionWitness.Should().NotBeNull(
@@ -122,24 +128,19 @@ public partial class EngineModuleTests
     public async Task NewPayloadWithWitness_valid_status_but_witness_generation_fails_returns_success_with_null_witness()
     {
         using MergeTestBlockchain chain = await CreateBlockchain(Amsterdam.Instance);
-
-        PayloadStatusV1 status = new() { Status = PayloadStatus.Valid, LatestValidHash = TestItem.KeccakB };
-
-        // Return null parent so witness generation bails out early.
-        IBlockTree blockTree = Substitute.For<IBlockTree>();
-        blockTree
-            .FindHeader(Arg.Any<Hash256>(), Arg.Any<BlockTreeLookupOptions>())
-            .Returns((BlockHeader?)null);
-
-        IWitnessGeneratingBlockProcessingEnvFactory witnessFactory =
-            Substitute.For<IWitnessGeneratingBlockProcessingEnvFactory>();
-
-        StubbedEngineRpcModule module = new(status, blockTree, witnessFactory, chain);
-
         ExecutionPayloadV4 payload = ExecutionPayloadV4.Create(chain.BlockTree.Head!);
 
+        // Null parent forces witness generation to bail out early.
+        NewPayloadWithWitnessHandler handler = new WitnessHandlerBuilder
+        {
+            NewPayloadV5 = WitnessHandlerBuilder.SucceedingNewPayloadV5(
+                new PayloadStatusV1 { Status = PayloadStatus.Valid, LatestValidHash = TestItem.KeccakB }),
+            BlockTree = WitnessHandlerBuilder.BlockTreeWithHeader(null),
+            WitnessFactory = WitnessHandlerBuilder.NoopWitnessFactory(),
+        }.Build();
+
         ResultWrapper<NewPayloadWithWitnessV1Result> result =
-            await module.engine_newPayloadWithWitness(payload, [], Keccak.Zero, []);
+            await handler.HandleAsync(payload, [], Keccak.Zero, []);
 
         result.Result.ResultType.Should().Be(ResultType.Success,
             "a VALID block must always be accepted even when witness generation fails");
@@ -153,36 +154,19 @@ public partial class EngineModuleTests
     public async Task NewPayloadWithWitness_valid_status_witness_collector_throws_returns_success_with_null_witness()
     {
         using MergeTestBlockchain chain = await CreateBlockchain(Amsterdam.Instance);
-
-        PayloadStatusV1 status = new() { Status = PayloadStatus.Valid, LatestValidHash = TestItem.KeccakC };
-
-        IExistingBlockWitnessCollector stubCollector = Substitute.For<IExistingBlockWitnessCollector>();
-        stubCollector
-            .GetWitnessForExistingBlock(Arg.Any<BlockHeader>(), Arg.Any<Block>())
-            .Throws(new InvalidOperationException("simulated witness failure"));
-
-        IWitnessGeneratingBlockProcessingEnv stubEnv = Substitute.For<IWitnessGeneratingBlockProcessingEnv>();
-        stubEnv.CreateExistingBlockWitnessCollector().Returns(stubCollector);
-
-        IWitnessGeneratingBlockProcessingEnvScope stubScope =
-            Substitute.For<IWitnessGeneratingBlockProcessingEnvScope>();
-        stubScope.Env.Returns(stubEnv);
-
-        IWitnessGeneratingBlockProcessingEnvFactory witnessFactory =
-            Substitute.For<IWitnessGeneratingBlockProcessingEnvFactory>();
-        witnessFactory.CreateScope().Returns(stubScope);
-
-        IBlockTree blockTree = Substitute.For<IBlockTree>();
-        blockTree
-            .FindHeader(Arg.Any<Hash256>(), Arg.Any<BlockTreeLookupOptions>())
-            .Returns(Build.A.BlockHeader.TestObject);
-
-        StubbedEngineRpcModule module = new(status, blockTree, witnessFactory, chain);
-
         ExecutionPayloadV4 payload = ExecutionPayloadV4.Create(chain.BlockTree.Head!);
 
+        NewPayloadWithWitnessHandler handler = new WitnessHandlerBuilder
+        {
+            NewPayloadV5 = WitnessHandlerBuilder.SucceedingNewPayloadV5(
+                new PayloadStatusV1 { Status = PayloadStatus.Valid, LatestValidHash = TestItem.KeccakC }),
+            BlockTree = WitnessHandlerBuilder.BlockTreeWithHeader(Nethermind.Core.Test.Builders.Build.A.BlockHeader.TestObject),
+            WitnessFactory = WitnessHandlerBuilder.ThrowingWitnessFactory(
+                new InvalidOperationException("simulated witness failure")),
+        }.Build();
+
         ResultWrapper<NewPayloadWithWitnessV1Result> result =
-            await module.engine_newPayloadWithWitness(payload, [], Keccak.Zero, []);
+            await handler.HandleAsync(payload, [], Keccak.Zero, []);
 
         result.Result.ResultType.Should().Be(ResultType.Success,
             "exceptions in witness generation must not surface as RPC errors");
@@ -195,19 +179,18 @@ public partial class EngineModuleTests
     public async Task NewPayloadWithWitness_syncing_status_returns_success_with_no_witness()
     {
         using MergeTestBlockchain chain = await CreateBlockchain(Amsterdam.Instance);
-
-        PayloadStatusV1 status = new() { Status = PayloadStatus.Syncing };
-
-        IWitnessGeneratingBlockProcessingEnvFactory witnessFactory =
-            Substitute.For<IWitnessGeneratingBlockProcessingEnvFactory>();
-        IBlockTree blockTree = Substitute.For<IBlockTree>();
-
-        StubbedEngineRpcModule module = new(status, blockTree, witnessFactory, chain);
-
         ExecutionPayloadV4 payload = ExecutionPayloadV4.Create(chain.BlockTree.Head!);
 
+        IWitnessGeneratingBlockProcessingEnvFactory witnessFactory = WitnessHandlerBuilder.NoopWitnessFactory();
+        NewPayloadWithWitnessHandler handler = new WitnessHandlerBuilder
+        {
+            NewPayloadV5 = WitnessHandlerBuilder.SucceedingNewPayloadV5(new PayloadStatusV1 { Status = PayloadStatus.Syncing }),
+            BlockTree = WitnessHandlerBuilder.BlockTreeWithHeader(Nethermind.Core.Test.Builders.Build.A.BlockHeader.TestObject),
+            WitnessFactory = witnessFactory,
+        }.Build();
+
         ResultWrapper<NewPayloadWithWitnessV1Result> result =
-            await module.engine_newPayloadWithWitness(payload, [], Keccak.Zero, []);
+            await handler.HandleAsync(payload, [], Keccak.Zero, []);
 
         result.Result.ResultType.Should().Be(ResultType.Success);
         result.Data.Status.Should().Be(PayloadStatus.Syncing,
@@ -223,24 +206,23 @@ public partial class EngineModuleTests
     public async Task NewPayloadWithWitness_invalid_status_returns_success_with_no_witness()
     {
         using MergeTestBlockchain chain = await CreateBlockchain(Amsterdam.Instance);
-
-        PayloadStatusV1 status = new()
-        {
-            Status = PayloadStatus.Invalid,
-            LatestValidHash = TestItem.KeccakD,
-            ValidationError = "bad block"
-        };
-
-        IWitnessGeneratingBlockProcessingEnvFactory witnessFactory =
-            Substitute.For<IWitnessGeneratingBlockProcessingEnvFactory>();
-        IBlockTree blockTree = Substitute.For<IBlockTree>();
-
-        StubbedEngineRpcModule module = new(status, blockTree, witnessFactory, chain);
-
         ExecutionPayloadV4 payload = ExecutionPayloadV4.Create(chain.BlockTree.Head!);
 
+        IWitnessGeneratingBlockProcessingEnvFactory witnessFactory = WitnessHandlerBuilder.NoopWitnessFactory();
+        NewPayloadWithWitnessHandler handler = new WitnessHandlerBuilder
+        {
+            NewPayloadV5 = WitnessHandlerBuilder.SucceedingNewPayloadV5(new PayloadStatusV1
+            {
+                Status = PayloadStatus.Invalid,
+                LatestValidHash = TestItem.KeccakD,
+                ValidationError = "bad block"
+            }),
+            BlockTree = WitnessHandlerBuilder.BlockTreeWithHeader(Nethermind.Core.Test.Builders.Build.A.BlockHeader.TestObject),
+            WitnessFactory = witnessFactory,
+        }.Build();
+
         ResultWrapper<NewPayloadWithWitnessV1Result> result =
-            await module.engine_newPayloadWithWitness(payload, [], Keccak.Zero, []);
+            await handler.HandleAsync(payload, [], Keccak.Zero, []);
 
         result.Result.ResultType.Should().Be(ResultType.Success);
         result.Data.Status.Should().Be(PayloadStatus.Invalid);
@@ -256,20 +238,18 @@ public partial class EngineModuleTests
     public async Task NewPayloadWithWitness_engine_newPayloadV5_fails_propagates_error_code_and_message()
     {
         using MergeTestBlockchain chain = await CreateBlockchain(Amsterdam.Instance);
-
-        // Simulate the engine returning an UnsupportedFork error (e.g. pre-Amsterdam payload
-        // sent to the Amsterdam handler).
-        IWitnessGeneratingBlockProcessingEnvFactory witnessFactory =
-            Substitute.For<IWitnessGeneratingBlockProcessingEnvFactory>();
-        IBlockTree blockTree = Substitute.For<IBlockTree>();
-
-        FailingNewPayloadEngineRpcModule failModule = new(
-            "Unsupported fork", MergeErrorCodes.UnsupportedFork, blockTree, witnessFactory, chain);
-
         ExecutionPayloadV4 payload = ExecutionPayloadV4.Create(chain.BlockTree.Head!);
 
+        IWitnessGeneratingBlockProcessingEnvFactory witnessFactory = WitnessHandlerBuilder.NoopWitnessFactory();
+        NewPayloadWithWitnessHandler handler = new WitnessHandlerBuilder
+        {
+            NewPayloadV5 = WitnessHandlerBuilder.FailingNewPayloadV5("Unsupported fork", MergeErrorCodes.UnsupportedFork),
+            BlockTree = WitnessHandlerBuilder.BlockTreeWithHeader(Nethermind.Core.Test.Builders.Build.A.BlockHeader.TestObject),
+            WitnessFactory = witnessFactory,
+        }.Build();
+
         ResultWrapper<NewPayloadWithWitnessV1Result> result =
-            await failModule.engine_newPayloadWithWitness(payload, [], Keccak.Zero, []);
+            await handler.HandleAsync(payload, [], Keccak.Zero, []);
 
         result.Result.ResultType.Should().Be(ResultType.Failure,
             "an RPC-level failure from engine_newPayloadV5 must propagate as an RPC failure");
@@ -278,46 +258,5 @@ public partial class EngineModuleTests
         result.Result.Error.Should().Contain("Unsupported fork");
 
         witnessFactory.DidNotReceive().CreateScope();
-    }
-
-    private sealed class FailingNewPayloadEngineRpcModule(
-        string error,
-        int errorCode,
-        IBlockTree blockTree,
-        IWitnessGeneratingBlockProcessingEnvFactory witnessEnvFactory,
-        MergeTestBlockchain chain)
-        : EngineRpcModule(
-            Substitute.For<IAsyncHandler<byte[], ExecutionPayload?>>(),
-            Substitute.For<IAsyncHandler<byte[], GetPayloadV2Result?>>(),
-            Substitute.For<IAsyncHandler<byte[], GetPayloadV3Result?>>(),
-            Substitute.For<IAsyncHandler<byte[], GetPayloadV4Result?>>(),
-            Substitute.For<IAsyncHandler<byte[], GetPayloadV5Result?>>(),
-            Substitute.For<IAsyncHandler<byte[], GetPayloadV6Result?>>(),
-            Substitute.For<IAsyncHandler<ExecutionPayload, PayloadStatusV1>>(),
-            Substitute.For<IForkchoiceUpdatedHandler>(),
-            Substitute.For<IHandler<IReadOnlyList<Hash256>, IReadOnlyList<ExecutionPayloadBodyV1Result?>>>(),
-            Substitute.For<IGetPayloadBodiesByRangeV1Handler>(),
-            Substitute.For<IHandler<TransitionConfigurationV1, TransitionConfigurationV1>>(),
-            Substitute.For<IHandler<IEnumerable<string>, IReadOnlyList<string>>>(),
-            Substitute.For<IAsyncHandler<byte[][], IReadOnlyList<BlobAndProofV1?>>>(),
-            Substitute.For<IAsyncHandler<GetBlobsHandlerV2Request, IReadOnlyList<BlobAndProofV2?>?>>(),
-            Substitute.For<IHandler<IReadOnlyList<Hash256>, IReadOnlyList<ExecutionPayloadBodyV2Result?>>>(),
-            Substitute.For<IGetPayloadBodiesByRangeV2Handler>(),
-            Substitute.For<IEngineRequestsTracker>(),
-            chain.SpecProvider,
-            new GCKeeper(NoGCStrategy.Instance, chain.LogManager),
-            blockTree,
-            witnessEnvFactory,
-            LimboLogs.Instance)
-    {
-        private readonly string _error = error;
-        private readonly int _errorCode = errorCode;
-
-        public override Task<ResultWrapper<PayloadStatusV1>> engine_newPayloadV5(
-            ExecutionPayloadV4 executionPayload,
-            byte[]?[] blobVersionedHashes,
-            Hash256? parentBeaconBlockRoot,
-            byte[][]? executionRequests)
-            => Task.FromResult(ResultWrapper<PayloadStatusV1>.Fail(_error, _errorCode));
     }
 }

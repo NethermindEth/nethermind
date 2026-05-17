@@ -86,6 +86,12 @@ public sealed class NewPayloadWithWitnessSszHandler(
 
             if (status.Status == PayloadStatus.Valid)
             {
+                // TODO(perf): TryGenerateWitness re-executes the block via a second
+                // WitnessCollector.GetWitnessForExistingBlock → ProcessOne call after
+                // engine_newPayloadV5 has already processed it once. The parent spec
+                // (execution-apis #773) was designed to eliminate this double-execution.
+                // Wiring witness collection into the primary processing path is a follow-up.
+                // https://github.com/NethermindEth/nethermind/issues/11636.
                 witness = TryGenerateWitness(request.ExecutionPayload);
 
                 if (witness is null)

@@ -5,7 +5,6 @@ using System;
 using System.Collections.Generic;
 using Nethermind.Api;
 using Nethermind.Blockchain;
-using Nethermind.Consensus.Stateless;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.JsonRpc;
@@ -33,19 +32,17 @@ public partial class EngineRpcModule(
     IAsyncHandler<GetBlobsHandlerV2Request, IReadOnlyList<BlobAndProofV2?>?> getBlobsHandlerV2,
     IHandler<IReadOnlyList<Hash256>, IReadOnlyList<ExecutionPayloadBodyV2Result?>> getPayloadBodiesByHashV2Handler,
     IGetPayloadBodiesByRangeV2Handler getPayloadBodiesByRangeV2Handler,
+    INewPayloadWithWitnessHandler newPayloadWithWitnessHandler,
     IEngineRequestsTracker engineRequestsTracker,
     ISpecProvider specProvider,
     GCKeeper gcKeeper,
     IBlockTree blockTree,
-    IWitnessGeneratingBlockProcessingEnvFactory witnessEnvFactory,
     ILogManager logManager) : IEngineRpcModule
 {
-
     private readonly IHandler<HashSet<string>, IReadOnlyList<string>> _capabilitiesHandler = capabilitiesHandler ?? throw new ArgumentNullException(nameof(capabilitiesHandler));
     protected readonly ISpecProvider _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
     protected readonly ILogger _logger = logManager.GetClassLogger<EngineRpcModule>();
     protected readonly IBlockTree _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
-    protected readonly IWitnessGeneratingBlockProcessingEnvFactory _witnessEnvFactory = witnessEnvFactory ?? throw new ArgumentNullException(nameof(witnessEnvFactory));
 
     public ResultWrapper<IReadOnlyList<string>> engine_exchangeCapabilities(IEnumerable<string> methods)
         => _capabilitiesHandler.Handle(methods as HashSet<string> ?? [.. methods]);
