@@ -279,13 +279,13 @@ public sealed class PersistedSnapshot : RefCountingDisposable
                 Interlocked.Or(ref slots[w], AddressBoundCacheRefBit);
             addressBound = new Bound(lebOffset - valueLength, valueLength);
             useSpanReader = addressBound.Length <= AddressBoundWarmupBytes;
-            if (useSpanReader)
-            {
-                // Re-arm REF bits on every page of the (small) bound and pre-fault any cold
-                // page in one syscall. The cache-hit probe only touched the trailer page, so
-                // the rest of the bound has no tracker bookkeeping from this lookup.
-                _reservation.TouchRangePopulate(addressBound.Offset, addressBound.Length);
-            }
+            // if (useSpanReader)
+            // {
+            //     // Re-arm REF bits on every page of the (small) bound and pre-fault any cold
+            //     // page in one syscall. The cache-hit probe only touched the trailer page, so
+            //     // the rest of the bound has no tracker bookkeeping from this lookup.
+            //     _reservation.TouchRangePopulate(addressBound.Offset, addressBound.Length);
+            // }
             return true;
         }
 
