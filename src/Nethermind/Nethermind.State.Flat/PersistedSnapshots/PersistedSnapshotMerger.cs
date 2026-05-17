@@ -49,9 +49,10 @@ public static class PersistedSnapshotMerger
         // All snapshots are blob-backed (values in trie columns are NodeRefs), so we can
         // merge them directly without any Full→Linked pre-conversion stage. Columns are
         // emitted in strictly descending tag order, as the outer DenseByteIndex requires:
-        // state-fallback (0x06), state-top-nodes (0x05), state-node (0x03), per-address
-        // (0x01), metadata (0x00). Column 0x01 carries per-addressHash {address-preimage,
-        // account, SD, slots, storage-trie fallback/compact/top}.
+        // state-fallback (0x06), state-top-nodes (0x05), state-node (0x03), storage-trie
+        // (0x02), per-address (0x01), metadata (0x00). Column 0x01 carries per-address
+        // {slots, account, SD} keyed by raw Address. Column 0x02 carries per-addressHash
+        // {storage-trie top/compact/fallback}.
         using HsstDenseByteIndexBuilder<TWriter> outerBuilder = new(ref writer);
 
         {
@@ -68,6 +69,11 @@ public static class PersistedSnapshotMerger
             ref TWriter valueWriter = ref outerBuilder.BeginValueWrite();
             NWayPackedArrayMerge<TWriter, TReader, TPin>(views, PersistedSnapshotTags.StateNodeTag, ref valueWriter, keySize: 8, bloom);
             outerBuilder.FinishValueWrite(PersistedSnapshotTags.StateNodeTag);
+        }
+        {
+            ref TWriter valueWriter = ref outerBuilder.BeginValueWrite();
+            NWayMergeStorageTrieColumn<TWriter, TReader, TPin>(views, PersistedSnapshotTags.StorageTrieColumnTag, ref valueWriter, bloom);
+            outerBuilder.FinishValueWrite(PersistedSnapshotTags.StorageTrieColumnTag);
         }
         {
             ref TWriter valueWriter = ref outerBuilder.BeginValueWrite();
@@ -150,16 +156,16 @@ public static class PersistedSnapshotMerger
     }
     /// <summary>
     /// N-way merge of the per-address column (tag 0x01) across N snapshots.
-    /// Outer: 20-byte addressHash prefix keys (minSep=4). A single matching source
+    /// Outer: raw 20-byte Address keys (minSep=4). A single matching source
     /// whose per-address HSST entry (key + value) fits one page and can be page-
     /// aligned at the current writer position byte-copies through
     /// <see cref="HsstBTreeBuilder{TWriter, TReader, TPin}.TryAddAligned"/>
     /// (HSST internal pointers are HSST-relative, so a relocation stays readable);
     /// larger entries, unalignable positions, and any multi-source collision fall
     /// through to <see cref="NWayMergePerAddressHsst"/>, which re-emits per sub-tag.
-    /// Per-address inner sub-tags are 0x01 (raw 20-byte Address preimage), 0x02
-    /// (account RLP), 0x03 (self-destruct), 0x04 (slots), 0x05/0x06/0x07
-    /// (storage-trie nodes fallback/compact/top).
+    /// Per-address inner sub-tags are 0x04 (slots), 0x05 (account RLP), 0x06
+    /// (self-destruct). Storage-trie nodes live in column 0x02 keyed by addressHash
+    /// and are merged separately by <see cref="NWayMergeStorageTrieColumn"/>.
     /// </summary>
     private static void NWayMergePerAddressColumn<TWriter, TReader, TPin>(
         ReadOnlySpan<(IntPtr Ptr, long Len)> views, byte[] tag, ref TWriter writer, BloomFilter bloom) where TWriter : IByteBufferWriterWithReader<TReader, TPin> where TReader : IHsstByteReader<TPin>, allows ref struct where TPin : struct, IBufferPin, allows ref struct
@@ -170,9 +176,9 @@ public static class PersistedSnapshotMerger
         HsstEnumerator[] enums = enumsList.UnsafeGetInternalArray();
         Span<bool> hasMore = hasMoreList.AsSpan();
 
-        // Cache each source's current 20-byte addressHash prefix key (stride 32 with room).
+        // Cache each source's current 20-byte Address key (stride 32 with room).
         const int KeyStride = 32;
-        const int AddrKeyLen = PersistedSnapshotTags.AddressHashPrefixLength;
+        const int AddrKeyLen = PersistedSnapshotTags.AddressKeyLength;
         Span<byte> keyBuf = stackalloc byte[n * KeyStride];
 
         // Reusable work buffers for the per-address slot prefix/suffix HSST builders.
@@ -208,7 +214,7 @@ public static class PersistedSnapshotMerger
             // builder is passed to ReaddAddressHsst by ref, so it can't be a `using`
             // declaration (the compiler refuses ref to using-variables). Manage its
             // disposal with a try/finally instead.
-            HsstBTreeBuilder<TWriter, TReader, TPin> builder = new(ref writer, PersistedSnapshotTags.AddressHashPrefixLength);
+            HsstBTreeBuilder<TWriter, TReader, TPin> builder = new(ref writer, PersistedSnapshotTags.AddressKeyLength);
             try
             {
                 while (cursor.MoveNext())
@@ -238,23 +244,11 @@ public static class PersistedSnapshotMerger
                             if (builder.TryAddAligned(minKey, blobPin.Buffer))
                             {
                                 // Walk the source's per-address blob to add bloom keys for
-                                // slots and storage-trie nodes. Each successful TrySeek
-                                // mutates HsstReader._bound to the matched value scope;
-                                // save the root bound before each sibling sub-tag seek and
-                                // restore after — otherwise only the first would match.
+                                // slots. Storage-trie sub-tags no longer live here — those
+                                // are walked by the column-0x02 merger.
                                 HsstReader<WholeReadSessionReader, NoOpPin> outer = new(in srcReader, vb);
-                                Bound outerRoot = outer.GetBound();
                                 if (outer.TrySeek(PersistedSnapshotTags.SlotSubTag, out Bound slotBound))
                                     AddSlotKeysToBloom<WholeReadSessionReader, NoOpPin>(in srcReader, slotBound, addrKey, bloom);
-                                outer.SetBound(outerRoot);
-                                if (outer.TrySeek(PersistedSnapshotTags.StorageTopSubTag, out Bound stb))
-                                    AddStorageTrieKeysToBloom<WholeReadSessionReader, NoOpPin>(in srcReader, stb, addrKey, bloom);
-                                outer.SetBound(outerRoot);
-                                if (outer.TrySeek(PersistedSnapshotTags.StorageCompactSubTag, out Bound scb))
-                                    AddStorageTrieKeysToBloom<WholeReadSessionReader, NoOpPin>(in srcReader, scb, addrKey, bloom);
-                                outer.SetBound(outerRoot);
-                                if (outer.TrySeek(PersistedSnapshotTags.StorageFallbackSubTag, out Bound sfb))
-                                    AddStorageTrieKeysToBloom<WholeReadSessionReader, NoOpPin>(in srcReader, sfb, addrKey, bloom);
 
                                 cursor.AdvanceMatching();
                                 continue;
@@ -312,16 +306,160 @@ public static class PersistedSnapshotMerger
     }
 
     /// <summary>
+    /// N-way merge of the storage-trie column (tag 0x02) across N snapshots.
+    /// Outer: 20-byte addressHash prefix keys. For each merged addressHash the inner
+    /// DenseByteIndex carries sub-tags 0x01 (top), 0x02 (compact), 0x03 (fallback) —
+    /// each a nested HSST keyed by encoded TreePath with 6-byte NodeRef values.
+    /// Single-source matches with a page-fittable, page-alignable blob byte-copy
+    /// through TryAddAligned and walk bloom keys via AddStorageTrieKeysToBloom; any
+    /// multi-source collision and any unalignable single-source blob fall through
+    /// to a per-addressHash inner rebuild that re-emits each sub-tag (descending
+    /// 0x03 → 0x02 → 0x01) via the shared <see cref="MergeStorageTrieSubTag"/>
+    /// helper, which already streams the inner-BTree merge.
+    /// </summary>
+    private static void NWayMergeStorageTrieColumn<TWriter, TReader, TPin>(
+        ReadOnlySpan<(IntPtr Ptr, long Len)> views, byte[] tag, ref TWriter writer, BloomFilter bloom) where TWriter : IByteBufferWriterWithReader<TReader, TPin> where TReader : IHsstByteReader<TPin>, allows ref struct where TPin : struct, IBufferPin, allows ref struct
+    {
+        int n = views.Length;
+        using ArrayPoolList<HsstEnumerator> enumsList = new(n, n);
+        using NativeMemoryList<bool> hasMoreList = new(n, n);
+        HsstEnumerator[] enums = enumsList.UnsafeGetInternalArray();
+        Span<bool> hasMore = hasMoreList.AsSpan();
+
+        const int KeyStride = 32;
+        const int AddrKeyLen = PersistedSnapshotTags.AddressHashPrefixLength;
+        Span<byte> keyBuf = stackalloc byte[n * KeyStride];
+
+        try
+        {
+            for (int i = 0; i < n; i++)
+            {
+                WholeReadSessionReader r = Reader(views[i]);
+                HsstReader<WholeReadSessionReader, NoOpPin> hsst = new(in r, new Bound(0, r.Length));
+                (long Offset, long Length) cb = hsst.TrySeek(tag, out Bound cbOut) ? (cbOut.Offset, cbOut.Length) : (0, 0);
+                enums[i] = new HsstEnumerator(in r, new Bound(cb.Offset, cb.Length));
+                hasMore[i] = enums[i].MoveNext(in r);
+                if (hasMore[i])
+                    enums[i].CopyCurrentLogicalKey(in r, keyBuf.Slice(i * KeyStride, AddrKeyLen));
+            }
+
+            int pow2N = (int)BitOperations.RoundUpToPowerOf2((uint)Math.Max(1, n));
+            Span<int> srcMap = stackalloc int[Math.Max(1, n)];
+            for (int i = 0; i < n; i++) srcMap[i] = i;
+            Span<int> matchingBuf = stackalloc int[Math.Max(1, n)];
+            Span<int> tree = stackalloc int[2 * pow2N];
+
+            NWayMergeCursor cursor = new(
+                enums, hasMore, views, srcMap, n, AddrKeyLen, KeyStride, keyBuf, matchingBuf, tree);
+
+            HsstBTreeBuilder<TWriter, TReader, TPin> builder = new(ref writer, PersistedSnapshotTags.AddressHashPrefixLength);
+            try
+            {
+                while (cursor.MoveNext())
+                {
+                    ReadOnlySpan<byte> minKey = cursor.MinKey;
+                    int matchCount = cursor.MatchCount;
+                    ReadOnlySpan<int> matchingSources = cursor.MatchingSources;
+                    ulong addrKey = MemoryMarshal.Read<ulong>(minKey);
+
+                    if (matchCount == 1)
+                    {
+                        int srcIdx = matchingSources[0];
+                        Bound vb = enums[srcIdx].CurrentValue;
+                        if (vb.Length <= PageLayout.PageSize)
+                        {
+                            WholeReadSessionReader srcReader = Reader(views[srcIdx]);
+                            using NoOpPin blobPin = srcReader.PinBuffer(vb.Offset, vb.Length);
+                            if (builder.TryAddAligned(minKey, blobPin.Buffer))
+                            {
+                                HsstReader<WholeReadSessionReader, NoOpPin> outer = new(in srcReader, vb);
+                                Bound outerRoot = outer.GetBound();
+                                if (outer.TrySeek(PersistedSnapshotTags.StorageTopSubTag, out Bound stb))
+                                    AddStorageTrieKeysToBloom<WholeReadSessionReader, NoOpPin>(in srcReader, stb, addrKey, bloom);
+                                outer.SetBound(outerRoot);
+                                if (outer.TrySeek(PersistedSnapshotTags.StorageCompactSubTag, out Bound scb))
+                                    AddStorageTrieKeysToBloom<WholeReadSessionReader, NoOpPin>(in srcReader, scb, addrKey, bloom);
+                                outer.SetBound(outerRoot);
+                                if (outer.TrySeek(PersistedSnapshotTags.StorageFallbackSubTag, out Bound sfb))
+                                    AddStorageTrieKeysToBloom<WholeReadSessionReader, NoOpPin>(in srcReader, sfb, addrKey, bloom);
+
+                                cursor.AdvanceMatching();
+                                continue;
+                            }
+                        }
+                    }
+
+                    // Rebuild path: resolve every source's per-addressHash sub-tag bounds,
+                    // then stream the merged inner DenseByteIndex via MergeStorageTrieSubTag.
+                    using NativeMemoryList<(long Offset, long Length)> perAddrBoundsList = new(matchCount, matchCount);
+                    Span<(long Offset, long Length)> perAddrBounds = perAddrBoundsList.AsSpan();
+                    for (int j = 0; j < matchCount; j++)
+                    {
+                        Bound vb = enums[matchingSources[j]].CurrentValue;
+                        perAddrBounds[j] = (vb.Offset, vb.Length);
+                    }
+
+                    using NativeMemoryList<Bound> subTagBoundsList = new(matchCount * PersistedSnapshotTags.StorageTrieSubTagCount, matchCount * PersistedSnapshotTags.StorageTrieSubTagCount);
+                    Span<Bound> subTagBounds = subTagBoundsList.AsSpan();
+                    for (int j = 0; j < matchCount; j++)
+                    {
+                        WholeReadSessionReader r = Reader(views[matchingSources[j]]);
+                        HsstDenseByteIndexReader.TryResolveAll<WholeReadSessionReader, NoOpPin>(
+                            in r,
+                            new Bound(perAddrBounds[j].Offset, perAddrBounds[j].Length),
+                            subTagBounds.Slice(j * PersistedSnapshotTags.StorageTrieSubTagCount, PersistedSnapshotTags.StorageTrieSubTagCount));
+                    }
+
+                    ref TWriter perAddrWriter = ref builder.BeginValueWrite();
+                    HsstDenseByteIndexBuilder<TWriter> perAddrBuilder = new(ref perAddrWriter);
+                    try
+                    {
+                        // Emit descending 0x03 (fallback) → 0x02 (compact) → 0x01 (top).
+                        MergeStorageTrieSubTag<TWriter, TReader, TPin>(matchingSources, matchCount, views, subTagBounds,
+                            ref perAddrBuilder, PersistedSnapshotTags.StorageFallbackSubTag,
+                            subTagIdx: PersistedSnapshotTags.StorageFallbackSubTag[0], innerKeySize: 33, perSourceStride: PersistedSnapshotTags.StorageTrieSubTagCount,
+                            bloom, addrKey);
+                        MergeStorageTrieSubTag<TWriter, TReader, TPin>(matchingSources, matchCount, views, subTagBounds,
+                            ref perAddrBuilder, PersistedSnapshotTags.StorageCompactSubTag,
+                            subTagIdx: PersistedSnapshotTags.StorageCompactSubTag[0], innerKeySize: 8, perSourceStride: PersistedSnapshotTags.StorageTrieSubTagCount,
+                            bloom, addrKey);
+                        MergeStorageTrieSubTag<TWriter, TReader, TPin>(matchingSources, matchCount, views, subTagBounds,
+                            ref perAddrBuilder, PersistedSnapshotTags.StorageTopSubTag,
+                            subTagIdx: PersistedSnapshotTags.StorageTopSubTag[0], innerKeySize: 4, perSourceStride: PersistedSnapshotTags.StorageTrieSubTagCount,
+                            bloom, addrKey);
+                        perAddrBuilder.Build();
+                    }
+                    finally
+                    {
+                        perAddrBuilder.Dispose();
+                    }
+                    builder.FinishValueWrite(minKey);
+
+                    cursor.AdvanceMatching();
+                }
+
+                builder.Build();
+            }
+            finally
+            {
+                builder.Dispose();
+            }
+        }
+        finally
+        {
+            for (int i = 0; i < n; i++) enums[i].Dispose();
+        }
+    }
+
+    /// <summary>
     /// N-way merge of per-address HSSTs from M sources (oldest-first by matchingSources order).
-    /// All seven column-0x01 inner sub-tags emitted in <b>descending</b> byte order so the
+    /// All three column-0x01 inner sub-tags emitted in <b>descending</b> byte order so the
     /// DenseByteIndex builder accepts them (writer streams high-tag → low-tag):
-    /// - 0x07/0x06/0x05 Storage trie (top/compact/fallback): newest wins on key collision
-    ///   (storage nodes are content-addressable so duplicate keys are byte-identical in practice)
+    /// - 0x06 SelfDestruct: iterate 0..M-1, apply TryAdd semantics
+    /// - 0x05 Account: newest wins (walk M-1..0, first with AccountSubTag)
     /// - 0x04 Slots: find newest destruct barrier, merge slots from barrier..M-1 via nested streaming merge
-    /// - 0x03 SelfDestruct: iterate 0..M-1, apply TryAdd semantics
-    /// - 0x02 Account: newest wins (walk M-1..0, first with AccountSubTag)
-    /// - 0x01 Address preimage: first non-empty wins (Keccak is a function, so every
-    ///   source's preimage for this hash is byte-identical)
+    /// Storage-trie nodes for the matching addressHash live in column 0x02 and are merged
+    /// independently by <see cref="NWayMergeStorageTrieColumn"/>.
     /// </summary>
     private static void NWayMergePerAddressHsst<TWriter, TReader, TPin>(
         scoped ReadOnlySpan<int> matchingSources, int matchCount,
@@ -352,24 +490,63 @@ public static class PersistedSnapshotMerger
                     destructBarrier = j;
             }
 
-            // Sub-tags 0x07 / 0x06 / 0x05: Storage-trie nodes (top / compact / fallback).
-            // No destruct barrier is required here — orphan nodes are unreachable from the
-            // new storage root after a self-destruct, so newest-wins on key collision is
-            // the correct semantic. Inner values are NodeRefs; MergeStorageTrieSubTag
-            // dispatches the inner BTree merge into a PackedArray builder. The per-address
-            // DenseByteIndex requires strictly descending insertion, so these emit first.
-            MergeStorageTrieSubTag<TWriter, TReader, TPin>(matchingSources, matchCount, views, subTagBounds,
-                ref perAddrBuilder, PersistedSnapshotTags.StorageTopSubTag,
-                subTagIdx: PersistedSnapshotTags.StorageTopSubTag[0], innerKeySize: 4, perSourceStride: PersistedSnapshotTags.PerAddrSubTagCount,
-                bloom, addrBloomKey);
-            MergeStorageTrieSubTag<TWriter, TReader, TPin>(matchingSources, matchCount, views, subTagBounds,
-                ref perAddrBuilder, PersistedSnapshotTags.StorageCompactSubTag,
-                subTagIdx: PersistedSnapshotTags.StorageCompactSubTag[0], innerKeySize: 8, perSourceStride: PersistedSnapshotTags.PerAddrSubTagCount,
-                bloom, addrBloomKey);
-            MergeStorageTrieSubTag<TWriter, TReader, TPin>(matchingSources, matchCount, views, subTagBounds,
-                ref perAddrBuilder, PersistedSnapshotTags.StorageFallbackSubTag,
-                subTagIdx: PersistedSnapshotTags.StorageFallbackSubTag[0], innerKeySize: 33, perSourceStride: PersistedSnapshotTags.PerAddrSubTagCount,
-                bloom, addrBloomKey);
+            // Sub-tag 0x06: SelfDestruct — iterate 0..M-1, apply TryAdd semantics. Presence
+            // is signalled by length>0 ([0x00]=destructed, [0x01]=new); absent entries (gap-
+            // filled length 0 under DenseByteIndex) are ignored. Emitted first so the
+            // DenseByteIndex insertion order stays strictly descending. Track the winning
+            // bound snapshot-absolute so we can re-pin at the end without holding a span
+            // across iterations.
+            {
+                int sdSrcJ = -1;
+                long sdValOff = 0;
+                long sdValLen = 0;
+
+                for (int j = 0; j < matchCount; j++)
+                {
+                    Bound sdb = subTagBounds[j * PersistedSnapshotTags.PerAddrSubTagCount + sdTag];
+                    if (sdb.Length == 0) continue;
+
+                    if (sdSrcJ < 0)
+                    {
+                        sdSrcJ = j;
+                        sdValOff = sdb.Offset;
+                        sdValLen = sdb.Length;
+                    }
+                    else
+                    {
+                        // TryAdd: newer=destructed ([0x00]) -> destructed wins; newer=new ([0x01]) -> keep older.
+                        WholeReadSessionReader r = Reader(views[matchingSources[j]]);
+                        using NoOpPin firstBytePin = r.PinBuffer(sdb.Offset, 1);
+                        if (firstBytePin.Buffer[0] == PersistedSnapshotTags.SelfDestructDestructedMarkerByte)
+                        {
+                            sdSrcJ = j;
+                            sdValOff = sdb.Offset;
+                            sdValLen = sdb.Length;
+                        }
+                    }
+                }
+
+                if (sdSrcJ >= 0)
+                {
+                    WholeReadSessionReader r = Reader(views[matchingSources[sdSrcJ]]);
+                    using NoOpPin sdPin = r.PinBuffer(sdValOff, sdValLen);
+                    perAddrBuilder.Add(PersistedSnapshotTags.SelfDestructSubTag, sdPin.Buffer);
+                }
+            }
+
+            // Sub-tag 0x05: Account — newest wins (walk M-1..0, first present (length>0)).
+            {
+                int acctTag = PersistedSnapshotTags.AccountSubTag[0];
+                for (int j = matchCount - 1; j >= 0; j--)
+                {
+                    Bound ab = subTagBounds[j * PersistedSnapshotTags.PerAddrSubTagCount + acctTag];
+                    if (ab.Length == 0) continue;
+                    WholeReadSessionReader r = Reader(views[matchingSources[j]]);
+                    using NoOpPin acctPin = r.PinBuffer(ab.Offset, ab.Length);
+                    perAddrBuilder.Add(PersistedSnapshotTags.AccountSubTag, acctPin.Buffer);
+                    break;
+                }
+            }
 
             // Sub-tag 0x04: Slots
             // Merge slots only from max(0, destructBarrier)..matchCount-1. Collect the
@@ -430,80 +607,6 @@ public static class PersistedSnapshotMerger
                     {
                         for (int j = 0; j < slotSourceCount; j++) slotEnums[j].Dispose();
                     }
-                }
-            }
-
-            // Sub-tag 0x03: SelfDestruct — iterate 0..M-1, apply TryAdd semantics. Presence
-            // is signalled by length>0 ([0x00]=destructed, [0x01]=new); absent entries (gap-
-            // filled length 0 under DenseByteIndex) are ignored. Emitted before Account so
-            // the DenseByteIndex insertion order stays strictly descending. Track the
-            // winning bound snapshot-absolute so we can re-pin at the end without holding a
-            // span across iterations.
-            {
-                int sdSrcJ = -1;
-                long sdValOff = 0;
-                long sdValLen = 0;
-
-                for (int j = 0; j < matchCount; j++)
-                {
-                    Bound sdb = subTagBounds[j * PersistedSnapshotTags.PerAddrSubTagCount + sdTag];
-                    if (sdb.Length == 0) continue;
-
-                    if (sdSrcJ < 0)
-                    {
-                        sdSrcJ = j;
-                        sdValOff = sdb.Offset;
-                        sdValLen = sdb.Length;
-                    }
-                    else
-                    {
-                        // TryAdd: newer=destructed ([0x00]) -> destructed wins; newer=new ([0x01]) -> keep older.
-                        WholeReadSessionReader r = Reader(views[matchingSources[j]]);
-                        using NoOpPin firstBytePin = r.PinBuffer(sdb.Offset, 1);
-                        if (firstBytePin.Buffer[0] == PersistedSnapshotTags.SelfDestructDestructedMarkerByte)
-                        {
-                            sdSrcJ = j;
-                            sdValOff = sdb.Offset;
-                            sdValLen = sdb.Length;
-                        }
-                    }
-                }
-
-                if (sdSrcJ >= 0)
-                {
-                    WholeReadSessionReader r = Reader(views[matchingSources[sdSrcJ]]);
-                    using NoOpPin sdPin = r.PinBuffer(sdValOff, sdValLen);
-                    perAddrBuilder.Add(PersistedSnapshotTags.SelfDestructSubTag, sdPin.Buffer);
-                }
-            }
-
-            // Sub-tag 0x02: Account — newest wins (walk M-1..0, first present (length>0)).
-            {
-                int acctTag = PersistedSnapshotTags.AccountSubTag[0];
-                for (int j = matchCount - 1; j >= 0; j--)
-                {
-                    Bound ab = subTagBounds[j * PersistedSnapshotTags.PerAddrSubTagCount + acctTag];
-                    if (ab.Length == 0) continue;
-                    WholeReadSessionReader r = Reader(views[matchingSources[j]]);
-                    using NoOpPin acctPin = r.PinBuffer(ab.Offset, ab.Length);
-                    perAddrBuilder.Add(PersistedSnapshotTags.AccountSubTag, acctPin.Buffer);
-                    break;
-                }
-            }
-
-            // Sub-tag 0x01: Address preimage — first non-empty wins. Keccak is a function,
-            // so every source's 20-byte preimage for this addressHash is byte-identical.
-            // Walk 0..M-1 looking for the first non-empty sub-tag value and copy it.
-            {
-                int addrTag = PersistedSnapshotTags.AddressSubTag[0];
-                for (int j = 0; j < matchCount; j++)
-                {
-                    Bound ab = subTagBounds[j * PersistedSnapshotTags.PerAddrSubTagCount + addrTag];
-                    if (ab.Length == 0) continue;
-                    WholeReadSessionReader r = Reader(views[matchingSources[j]]);
-                    using NoOpPin addrPin = r.PinBuffer(ab.Offset, ab.Length);
-                    perAddrBuilder.Add(PersistedSnapshotTags.AddressSubTag, addrPin.Buffer);
-                    break;
                 }
             }
 

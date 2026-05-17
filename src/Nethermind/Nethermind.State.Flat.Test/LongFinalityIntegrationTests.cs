@@ -217,8 +217,8 @@ public class LongFinalityIntegrationTests
         Assert.That(storageRlpResult, Is.EqualTo(new byte[] { 0xC1, 0x80 }));
 
         // Both accounts should be present
-        Assert.That(mergedSnap.TryGetAccount(TestItem.AddressA.ToAccountPath, out _), Is.True);
-        Assert.That(mergedSnap.TryGetAccount(TestItem.AddressB.ToAccountPath, out _), Is.True);
+        Assert.That(mergedSnap.TryGetAccount(TestItem.AddressA, out _), Is.True);
+        Assert.That(mergedSnap.TryGetAccount(TestItem.AddressB, out _), Is.True);
     }
 
     [TestCase(10)]
@@ -355,7 +355,7 @@ public class LongFinalityIntegrationTests
         repo.ConvertSnapshotToPersistedSnapshot(empty);
 
         Assert.That(repo.TryLeaseSnapshotTo(s1, out PersistedSnapshot? persisted), Is.True);
-        Assert.That(persisted!.TryGetAccount(TestItem.AddressA.ToAccountPath, out _), Is.False);
+        Assert.That(persisted!.TryGetAccount(TestItem.AddressA, out _), Is.False);
         Assert.That(persisted.TryLoadStateNodeRlp(new TreePath(Keccak.Compute("any"), 4), out _), Is.False);
         persisted.Dispose();
     }

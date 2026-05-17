@@ -24,17 +24,37 @@ public static class PersistedSnapshotReader
 
     /// <summary>
     /// Seek the per-address inner-HSST bound under <see cref="PersistedSnapshotTags.AccountColumnTag"/>:
-    /// AccountColumnTag → addressHash.Bytes[..PersistedSnapshotTags.AddressHashPrefixLength]. On success outs the
-    /// inner-HSST bound that <see cref="HsstReader{TReader,TPin}"/> can be re-entered with to
-    /// do sub-tag lookups (storage-trie nodes, slots, account, self-destruct, raw-address
-    /// preimage) without re-walking the outer column.
+    /// AccountColumnTag → raw 20-byte Address. On success outs the inner-HSST bound that
+    /// <see cref="HsstReader{TReader,TPin}"/> can be re-entered with to do sub-tag lookups
+    /// (slots, account, self-destruct) without re-walking the outer column.
     /// </summary>
-    internal static bool TryGetAddressHsstBound<TReader, TPin>(scoped in TReader reader, in ValueHash256 addressHash, out Bound addressBound)
+    internal static bool TryGetAddressHsstBound<TReader, TPin>(scoped in TReader reader, Address address, out Bound addressBound)
         where TPin : struct, IBufferPin, allows ref struct
         where TReader : IHsstByteReader<TPin>, allows ref struct
     {
         using HsstReader<TReader, TPin> r = new(in reader);
         if (!r.TrySeek(PersistedSnapshotTags.AccountColumnTag, out _) ||
+            !r.TrySeek(address.Bytes, out _))
+        {
+            addressBound = default;
+            return false;
+        }
+        addressBound = r.GetBound();
+        return true;
+    }
+
+    /// <summary>
+    /// Seek the per-addressHash storage-trie inner-HSST bound under
+    /// <see cref="PersistedSnapshotTags.StorageTrieColumnTag"/>:
+    /// StorageTrieColumnTag → addressHash.Bytes[..AddressHashPrefixLength]. The bound carries
+    /// the per-addressHash DenseByteIndex with sub-tags 0x01/0x02/0x03 (top/compact/fallback).
+    /// </summary>
+    internal static bool TryGetStorageTrieAddressHsstBound<TReader, TPin>(scoped in TReader reader, in ValueHash256 addressHash, out Bound addressBound)
+        where TPin : struct, IBufferPin, allows ref struct
+        where TReader : IHsstByteReader<TPin>, allows ref struct
+    {
+        using HsstReader<TReader, TPin> r = new(in reader);
+        if (!r.TrySeek(PersistedSnapshotTags.StorageTrieColumnTag, out _) ||
             !r.TrySeek(addressHash.Bytes[..PersistedSnapshotTags.AddressHashPrefixLength], out _))
         {
             addressBound = default;
@@ -133,17 +153,17 @@ public static class PersistedSnapshotReader
     }
 
     /// <summary>
-    /// Look up a storage-trie node within an already-positioned per-address inner HSST
-    /// (produced by <see cref="TryGetAddressHsstBound"/> and cached on the snapshot).
-    /// Walks sub-tag <c>StorageTopSubTag</c> for top paths (length 0-7),
-    /// <c>StorageCompactSubTag</c> for compact paths (length 8-15), and
-    /// <c>StorageFallbackSubTag</c> for paths past the compact threshold.
+    /// Look up a storage-trie node within an already-positioned per-addressHash inner HSST
+    /// (produced by <see cref="TryGetStorageTrieAddressHsstBound"/>). Walks sub-tag
+    /// <c>StorageTopSubTag</c> for top paths (length 0-5), <c>StorageCompactSubTag</c> for
+    /// compact paths (length 6-15), and <c>StorageFallbackSubTag</c> for paths past the
+    /// compact threshold.
     /// </summary>
     internal static bool TryLoadStorageNodeRlpInBound<TReader, TPin>(scoped in TReader reader, Bound addressBound, in TreePath path, out Bound bound)
         where TPin : struct, IBufferPin, allows ref struct
         where TReader : IHsstByteReader<TPin>, allows ref struct
     {
-        // Per-address sub-tag step is always DenseByteIndex — resolve in one pinned trailer
+        // Per-addressHash sub-tag step is always DenseByteIndex — resolve in one pinned trailer
         // read. The nested HSST inside the sub-tag value (TreePath → NodeRef) has a non-fixed
         // layout, so the inner walk goes back through HsstReader's dispatch. DenseByteIndex
         // returns success even for gap-filled (length 0) absences; treat length 0 as "no

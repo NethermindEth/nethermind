@@ -46,8 +46,7 @@ internal static class PersistedSnapshotBloomBuilder
         // Pass 2: populate. Address/slot/SD keys.
         foreach (PersistedSnapshotScanner.PerAddressEntry entry in scanner.PerAddresses)
         {
-            ValueHash256 addressHash = entry.AddressHash;
-            ulong addrKey = AddressKey(in addressHash);
+            ulong addrKey = AddressKey(entry.Address);
             if (entry.HasAccount)
                 bloom.Add(addrKey);
             if (entry.SelfDestructFlag is not null)
@@ -68,14 +67,23 @@ internal static class PersistedSnapshotBloomBuilder
     }
 
     /// <summary>
-    /// Bloom-key seed from the first 8 bytes of a 20-byte addressHash prefix. Column
-    /// 0x01's outer key is exactly those 8 bytes (extended to 20 by the BTree builder),
-    /// so the merger byte-copy fast paths can also read the seed directly from the
-    /// outer key via <see cref="MemoryMarshal.Read{T}(ReadOnlySpan{byte})"/>.
+    /// Bloom-key seed from the first 8 bytes of a raw 20-byte Address. Column 0x01's
+    /// outer key is exactly the raw Address bytes, so the merger byte-copy fast paths
+    /// can read the seed directly from the outer key via
+    /// <see cref="MemoryMarshal.Read{T}(ReadOnlySpan{byte})"/>.
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    internal static ulong AddressKey(in ValueHash256 addressHash) =>
-        MemoryMarshal.Read<ulong>(addressHash.Bytes);
+    internal static ulong AddressKey(Address address) =>
+        MemoryMarshal.Read<ulong>(address.Bytes);
+
+    /// <summary>
+    /// Span overload of <see cref="AddressKey(Address)"/> — used by the builder loop,
+    /// which iterates raw 20-byte slices in a NativeMemoryList without materialising
+    /// an <see cref="Address"/> object per row.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal static ulong AddressKey(scoped ReadOnlySpan<byte> addressBytes) =>
+        MemoryMarshal.Read<ulong>(addressBytes);
 
     /// <summary>
     /// Slot bloom hash: XORs the full 32-byte big-endian slot into the address key.

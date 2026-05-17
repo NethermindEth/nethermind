@@ -45,12 +45,12 @@ public sealed class PersistedSnapshot : RefCountingDisposable
     // Each slot packs:
     //   bit 63: REF — armed on every hit and insert, cleared by the clock hand on a miss-pass.
     //   bit 62: VALID — distinguishes an empty (0L) slot from a stored (tag=0, offset=0) entry.
-    //   bits 46..61: 16-bit tag (bytes 4..6 of the address-hash).
+    //   bits 46..61: 16-bit tag (bytes 4..6 of the raw Address).
     //   bits 0..45: 46-bit absolute offset of the LEB128 value-length byte in the outer
     //               column 0x01 entry. 46 bits = 64 TiB, ample for any real snapshot.
     // Layout: keyFirst=false BTree entry shape is [Value][LEB128][FullKey]. On a tag match
     // we read 26 bytes at lebStart covering the LEB128 (≤ 6 bytes) plus the 20-byte stored
-    // address-hash, then compare to the lookup hash to catch tag collisions / layout drift.
+    // raw Address, then compare to the lookup Address to catch tag collisions / layout drift.
     // The cached Bound is (lebStart - valueLength, valueLength).
     //
     // Hot path: lock-free 8-way Volatile.Read scan; <see cref="Interlocked.Or"/> re-arms REF
@@ -67,7 +67,7 @@ public sealed class PersistedSnapshot : RefCountingDisposable
     private const int AddressBoundCacheWayMask = AddressBoundCacheWays - 1;
     private const int AddressBoundCacheMetaLockBit = 1 << 7;
     private const int AddressBoundCacheMetaHandMask = 0x7;
-    private const int AddressBoundCacheProbeBytes = 6 + PersistedSnapshotTags.AddressHashPrefixLength;
+    private const int AddressBoundCacheProbeBytes = 6 + PersistedSnapshotTags.AddressKeyLength;
 
     // On address-bound cache miss, pre-fault the trailing slice of the per-address inner HSST
     // in one madvise(MADV_POPULATE_READ) syscall over a fixed window at the tail of the bound.
@@ -251,15 +251,15 @@ public sealed class PersistedSnapshot : RefCountingDisposable
     /// When the bound exceeds the threshold the caller stays on the page-tracker-backed
     /// <see cref="ArenaByteReader"/>.
     /// </summary>
-    private bool TryGetAddressBound(in ArenaByteReader reader, in ValueHash256 addressHash,
+    private bool TryGetAddressBound(in ArenaByteReader reader, Address address,
         out Bound addressBound, out bool useSpanReader)
     {
         useSpanReader = false;
         Span<long> slots = MemoryMarshal.CreateSpan(
             ref Unsafe.As<Vector512<long>, long>(ref _addressBoundCache), AddressBoundCacheWays);
-        ushort hashTag = MemoryMarshal.Read<ushort>(addressHash.Bytes[4..6]);
+        ushort hashTag = MemoryMarshal.Read<ushort>(address.Bytes.Slice(4, 2));
         // Lock-free 8-way scan: a tag match is a candidate, still verified against the
-        // 20-byte stored address-hash on disk to filter out the inevitable collisions.
+        // 20-byte stored raw Address on disk to filter out the inevitable collisions.
         for (int w = 0; w < AddressBoundCacheWays; w++)
         {
             long s = Volatile.Read(ref slots[w]);
@@ -271,8 +271,8 @@ public sealed class PersistedSnapshot : RefCountingDisposable
             if (!reader.TryRead(lebOffset, probe)) continue;
             int pos = 0;
             long valueLength = Leb128.Read(probe, ref pos);
-            if (!probe.Slice(pos, PersistedSnapshotTags.AddressHashPrefixLength)
-                    .SequenceEqual(addressHash.Bytes[..PersistedSnapshotTags.AddressHashPrefixLength]))
+            if (!probe.Slice(pos, PersistedSnapshotTags.AddressKeyLength)
+                    .SequenceEqual(address.Bytes))
                 continue;
 
             if ((s & AddressBoundCacheRefBit) == 0)
@@ -289,7 +289,7 @@ public sealed class PersistedSnapshot : RefCountingDisposable
             return true;
         }
 
-        if (!PersistedSnapshotReader.TryGetAddressHsstBound<ArenaByteReader, NoOpPin>(in reader, in addressHash, out addressBound))
+        if (!PersistedSnapshotReader.TryGetAddressHsstBound<ArenaByteReader, NoOpPin>(in reader, address, out addressBound))
             return false;
 
         // Pre-fault the trailing window of the resolved bound in one syscall. The DenseByteIndex
@@ -392,10 +392,10 @@ public sealed class PersistedSnapshot : RefCountingDisposable
     private static void ReleaseAddressBoundCacheLock(ref int meta) =>
         Volatile.Write(ref meta, meta & ~AddressBoundCacheMetaLockBit);
 
-    public bool TryGetAccount(in ValueHash256 addressHash, out Account? account)
+    public bool TryGetAccount(Address address, out Account? account)
     {
         ArenaByteReader reader = CreateReader();
-        if (!TryGetAddressBound(in reader, in addressHash, out Bound addrBound, out bool useSpanReader))
+        if (!TryGetAddressBound(in reader, address, out Bound addrBound, out bool useSpanReader))
         {
             account = null;
             return false;
@@ -434,10 +434,10 @@ public sealed class PersistedSnapshot : RefCountingDisposable
         return true;
     }
 
-    public bool TryGetSlot(in ValueHash256 addressHash, in UInt256 index, ref SlotValue slotValue)
+    public bool TryGetSlot(Address address, in UInt256 index, ref SlotValue slotValue)
     {
         ArenaByteReader reader = CreateReader();
-        if (!TryGetAddressBound(in reader, in addressHash, out Bound addrBound, out bool useSpanReader))
+        if (!TryGetAddressBound(in reader, address, out Bound addrBound, out bool useSpanReader))
             return false;
         if (useSpanReader)
         {
@@ -463,10 +463,10 @@ public sealed class PersistedSnapshot : RefCountingDisposable
         return true;
     }
 
-    public bool? TryGetSelfDestructFlag(in ValueHash256 addressHash)
+    public bool? TryGetSelfDestructFlag(Address address)
     {
         ArenaByteReader reader = CreateReader();
-        if (!TryGetAddressBound(in reader, in addressHash, out Bound addrBound, out bool useSpanReader))
+        if (!TryGetAddressBound(in reader, address, out Bound addrBound, out bool useSpanReader))
             return null;
         if (useSpanReader)
         {
@@ -493,45 +493,15 @@ public sealed class PersistedSnapshot : RefCountingDisposable
     public bool TryLoadStorageNodeRlp(in ValueHash256 addressHash, in TreePath path, out byte[]? nodeRlp)
     {
         ArenaByteReader reader = CreateReader();
-        if (!TryGetAddressBound(in reader, in addressHash, out Bound addrBound, out bool useSpanReader))
+        if (!PersistedSnapshotReader.TryGetStorageTrieAddressHsstBound<ArenaByteReader, NoOpPin>(
+                in reader, in addressHash, out Bound addrBound) ||
+            !PersistedSnapshotReader.TryLoadStorageNodeRlpInBound<ArenaByteReader, NoOpPin>(
+                in reader, addrBound, in path, out Bound bound))
         {
             nodeRlp = null;
             return false;
         }
-        if (useSpanReader)
-        {
-            ReadOnlySpan<byte> warmedSpan = reader.GetSpanWithoutTouch(addrBound.Offset, addrBound.Length);
-            SpanByteReader spanReader = new(warmedSpan);
-            return TryLoadStorageNodeRlpInner<SpanByteReader, NoOpPin>(
-                in spanReader, new Bound(0, addrBound.Length), in path, out nodeRlp);
-        }
-        return TryLoadStorageNodeRlpInner<ArenaByteReader, NoOpPin>(in reader, addrBound, in path, out nodeRlp);
-    }
-
-    private bool TryLoadStorageNodeRlpInner<TReader, TPin>(
-        scoped in TReader reader, Bound addrBound, scoped in TreePath path, out byte[]? nodeRlp)
-        where TPin : struct, IBufferPin, allows ref struct
-        where TReader : IHsstByteReader<TPin>, allows ref struct
-    {
-        if (!PersistedSnapshotReader.TryLoadStorageNodeRlpInBound<TReader, TPin>(in reader, addrBound, in path, out Bound bound))
-        {
-            nodeRlp = null;
-            return false;
-        }
-        // Read the 6-byte NodeRef through the same reader that produced <paramref name="bound"/>
-        // so the coordinate system stays consistent — the bound is in reader-relative coords,
-        // which differs between ArenaByteReader (reservation-relative) and SpanByteReader
-        // (span-relative). Only the cross-arena blob dereference (<see cref="ReadBlobArenaRlp"/>)
-        // is independent of the inner reader's coordinate frame.
-        Span<byte> nrBuf = stackalloc byte[NodeRef.Size];
-        Span<byte> nr = nrBuf[..checked((int)bound.Length)];
-        if (!reader.TryRead(bound.Offset, nr))
-        {
-            nodeRlp = null;
-            return false;
-        }
-        NodeRef nodeRef = NodeRef.Read(nr);
-        nodeRlp = ReadBlobArenaRlp(nodeRef.BlobArenaId, nodeRef.RlpDataOffset);
+        nodeRlp = ResolveTrieRlp(bound);
         return true;
     }
 

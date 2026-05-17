@@ -94,19 +94,19 @@ public class PersistedSnapshotCompactorTests
                 // Every unique account must survive.
                 for (int i = 1; i <= n; i++)
                 {
-                    Assert.That(compacted.TryGetAccount(TestItem.Addresses[i - 1].ToAccountPath, out _), Is.True,
+                    Assert.That(compacted.TryGetAccount(TestItem.Addresses[i - 1], out _), Is.True,
                         $"Account from block {i} missing");
                 }
 
                 // Overlapping account: newest balance wins.
-                Assert.That(compacted.TryGetAccount(TestItem.AddressA.ToAccountPath, out Account? a), Is.True);
+                Assert.That(compacted.TryGetAccount(TestItem.AddressA, out Account? a), Is.True);
                 Assert.That(a!.Balance, Is.EqualTo((UInt256)n), "Newest balance must win on the overlapping account");
 
                 // Every per-block slot must survive (each block wrote a distinct slot index).
                 for (int i = 1; i <= n; i++)
                 {
                     SlotValue slot = default;
-                    Assert.That(compacted.TryGetSlot(TestItem.AddressA.ToAccountPath, (UInt256)i, ref slot), Is.True,
+                    Assert.That(compacted.TryGetSlot(TestItem.AddressA, (UInt256)i, ref slot), Is.True,
                         $"Slot {i} must survive merge");
                     Assert.That(slot.AsReadOnlySpan.ToArray(), Is.EqualTo(new SlotValue(new byte[] { (byte)i }).AsReadOnlySpan.ToArray()),
                         $"Slot {i} value mismatch");
@@ -187,7 +187,7 @@ public class PersistedSnapshotCompactorTests
 
                 BloomFilter bloom = bloomLease.Bloom;
                 ValueHash256 addrHash = ValueKeccak.Compute(TestItem.AddressA.Bytes);
-                ulong addrKey = PersistedSnapshotBloomBuilder.AddressKey(in addrHash);
+                ulong addrKey = PersistedSnapshotBloomBuilder.AddressKey(TestItem.AddressA);
 
                 Assert.Multiple(() =>
                 {
@@ -276,7 +276,7 @@ public class PersistedSnapshotCompactorTests
                     for (int i = 0; i < accountCount; i++)
                     {
                         Address addr = TestItem.Addresses[i];
-                        Assert.That(compacted!.TryGetAccount(addr.ToAccountPath, out Account? a), Is.True,
+                        Assert.That(compacted!.TryGetAccount(addr, out Account? a), Is.True,
                             $"Account {i} must survive fast-path compaction");
                         Assert.That(a!.Balance, Is.EqualTo((UInt256)(i + 1)),
                             $"Account {i} balance mismatch — pad bytes leaked into the value range");
@@ -285,7 +285,7 @@ public class PersistedSnapshotCompactorTests
                         for (int s = 0; s < slots; s++)
                         {
                             SlotValue slot = default;
-                            Assert.That(compacted.TryGetSlot(addr.ToAccountPath, (UInt256)(s + 1), ref slot), Is.True,
+                            Assert.That(compacted.TryGetSlot(addr, (UInt256)(s + 1), ref slot), Is.True,
                                 $"Slot {s + 1} for account {i} must survive fast-path compaction");
                             SlotValue expected = new(new byte[] { (byte)((i * 13 + s) & 0xFF) });
                             Assert.That(slot.AsReadOnlySpan.ToArray(),
@@ -391,7 +391,7 @@ public class PersistedSnapshotCompactorTests
                 (object)new[] { c0, c1 },
                 (Action<PersistedSnapshot>)(s =>
                 {
-                    Assert.That(s.TryGetAccount(TestItem.AddressA.ToAccountPath, out Account? a), Is.True);
+                    Assert.That(s.TryGetAccount(TestItem.AddressA, out Account? a), Is.True);
                     Assert.That(a!.Balance, Is.EqualTo((UInt256)200));
                 }))
                 .SetName("Merge_AccountOverride");
@@ -461,18 +461,18 @@ public class PersistedSnapshotCompactorTests
                 (object)new[] { c0, c1 },
                 (Action<PersistedSnapshot>)(s =>
                 {
-                    Assert.That(s.TryGetAccount(TestItem.AddressA.ToAccountPath, out Account? a), Is.True);
+                    Assert.That(s.TryGetAccount(TestItem.AddressA, out Account? a), Is.True);
                     Assert.That(a!.Balance, Is.EqualTo((UInt256)200), "Account override");
 
                     SlotValue slot1 = default;
-                    Assert.That(s.TryGetSlot(TestItem.AddressA.ToAccountPath, 1, ref slot1), Is.True, "Older-only slot must survive (no self-destruct on A)");
+                    Assert.That(s.TryGetSlot(TestItem.AddressA, 1, ref slot1), Is.True, "Older-only slot must survive (no self-destruct on A)");
                     Assert.That(slot1.AsReadOnlySpan.ToArray(), Is.EqualTo(new SlotValue(new byte[] { 0x42 }).AsReadOnlySpan.ToArray()));
 
                     SlotValue slot2 = default;
-                    Assert.That(s.TryGetSlot(TestItem.AddressA.ToAccountPath, 2, ref slot2), Is.True);
+                    Assert.That(s.TryGetSlot(TestItem.AddressA, 2, ref slot2), Is.True);
                     Assert.That(slot2.AsReadOnlySpan.ToArray(), Is.EqualTo(new SlotValue(new byte[] { 0x99 }).AsReadOnlySpan.ToArray()));
 
-                    Assert.That(s.TryGetSelfDestructFlag(TestItem.AddressB.ToAccountPath), Is.Not.Null,
+                    Assert.That(s.TryGetSelfDestructFlag(TestItem.AddressB), Is.Not.Null,
                         "Self-destruct flag for B (set in c0) must be present after compaction");
 
                     Assert.That(s.TryLoadStateNodeRlp(statePath, out byte[]? stateRlp), Is.True);
@@ -499,9 +499,9 @@ public class PersistedSnapshotCompactorTests
                 {
                     Assert.That(s.TryLoadStateNodeRlp(path, out byte[]? rlp), Is.True);
                     Assert.That(rlp, Is.EqualTo(new byte[] { 0xC1, 0x80 }), "Newer state-node RLP wins");
-                    Assert.That(s.TryGetAccount(TestItem.AddressA.ToAccountPath, out Account? a), Is.True);
+                    Assert.That(s.TryGetAccount(TestItem.AddressA, out Account? a), Is.True);
                     Assert.That(a!.Balance, Is.EqualTo((UInt256)100));
-                    Assert.That(s.TryGetAccount(TestItem.AddressB.ToAccountPath, out Account? b), Is.True);
+                    Assert.That(s.TryGetAccount(TestItem.AddressB, out Account? b), Is.True);
                     Assert.That(b!.Balance, Is.EqualTo((UInt256)200));
                 }))
                 .SetName("Merge_NewerOverridesOlder");
@@ -539,11 +539,11 @@ public class PersistedSnapshotCompactorTests
                 (Action<PersistedSnapshot>)(s =>
                 {
                     SlotValue slot1 = default;
-                    Assert.That(s.TryGetSlot(TestItem.AddressA.ToAccountPath, 1, ref slot1), Is.False, "Older slot must be cleared by newer destruct");
+                    Assert.That(s.TryGetSlot(TestItem.AddressA, 1, ref slot1), Is.False, "Older slot must be cleared by newer destruct");
                     SlotValue slot2 = default;
-                    Assert.That(s.TryGetSlot(TestItem.AddressA.ToAccountPath, 2, ref slot2), Is.True);
+                    Assert.That(s.TryGetSlot(TestItem.AddressA, 2, ref slot2), Is.True);
                     Assert.That(slot2.AsReadOnlySpan.ToArray(), Is.EqualTo(new SlotValue(new byte[] { 0x99 }).AsReadOnlySpan.ToArray()));
-                    Assert.That(s.TryGetSelfDestructFlag(TestItem.AddressA.ToAccountPath), Is.False, "Destruct flag must be present and value must be `false` (destructed)");
+                    Assert.That(s.TryGetSelfDestructFlag(TestItem.AddressA), Is.False, "Destruct flag must be present and value must be `false` (destructed)");
                 }))
                 .SetName("Merge_SelfDestruct_ClearsOlderStorage");
         }
@@ -558,7 +558,7 @@ public class PersistedSnapshotCompactorTests
                 (object)new[] { c0, c1 },
                 (Action<PersistedSnapshot>)(s =>
                 {
-                    Assert.That(s.TryGetSelfDestructFlag(TestItem.AddressA.ToAccountPath), Is.False,
+                    Assert.That(s.TryGetSelfDestructFlag(TestItem.AddressA), Is.False,
                         "Older `false` (destructed) flag must win over newer `true` (new-account) flag");
                 }))
                 .SetName("Merge_SelfDestruct_TryAddSemantics");
@@ -853,19 +853,19 @@ public class PersistedSnapshotCompactorTests
                     for (int i = 0; i < accountCount; i++)
                     {
                         Address addr = TestItem.Addresses[i];
-                        Assert.That(built!.TryGetAccount(addr.ToAccountPath, out Account? a), Is.True,
+                        Assert.That(built!.TryGetAccount(addr, out Account? a), Is.True,
                             $"Account {i} ({(i % 7 == 0 ? "with-storage" : "no-storage")}) must survive WritePerAddressColumn");
                         Assert.That(a!.Balance, Is.EqualTo((UInt256)(i + 1)),
                             $"Account {i} balance mismatch — pad bytes leaked into the value range");
                         if (i % 5 == 0)
                         {
-                            Assert.That(built.TryGetSelfDestructFlag(addr.ToAccountPath), Is.EqualTo((bool?)(i % 10 == 0)),
+                            Assert.That(built.TryGetSelfDestructFlag(addr), Is.EqualTo((bool?)(i % 10 == 0)),
                                 $"Self-destruct flag for account {i} must survive the staged DenseByteIndex path");
                         }
                         if (i % 7 == 0)
                         {
                             SlotValue slot = default;
-                            Assert.That(built.TryGetSlot(addr.ToAccountPath, 1, ref slot), Is.True,
+                            Assert.That(built.TryGetSlot(addr, 1, ref slot), Is.True,
                                 $"Slot for storage-bearing account {i} must come back from the streaming path");
                             SlotValue expected = new(new byte[] { (byte)(i & 0xFF) });
                             Assert.That(slot.AsReadOnlySpan.ToArray(), Is.EqualTo(expected.AsReadOnlySpan.ToArray()));
@@ -940,13 +940,13 @@ public class PersistedSnapshotCompactorTests
                     for (int i = 0; i < accountCount; i++)
                     {
                         Address addr = TestItem.Addresses[i];
-                        Assert.That(compacted!.TryGetAccount(addr.ToAccountPath, out Account? a), Is.True,
+                        Assert.That(compacted!.TryGetAccount(addr, out Account? a), Is.True,
                             $"Account {i} must survive the staged multi-source merge");
                         Assert.That(a!.Balance, Is.EqualTo((UInt256)((i + 1) * 1000)),
                             $"Account {i}: newest balance (c1) must win — pad bytes must not leak into the value range");
                         if (i % 5 == 0)
                         {
-                            Assert.That(compacted.TryGetSelfDestructFlag(addr.ToAccountPath), Is.False,
+                            Assert.That(compacted.TryGetSelfDestructFlag(addr), Is.False,
                                 $"Self-destruct flag for account {i} must survive the staged DenseByteIndex merge");
                         }
                     }

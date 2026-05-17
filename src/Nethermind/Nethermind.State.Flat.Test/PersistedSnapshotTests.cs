@@ -288,17 +288,17 @@ public class PersistedSnapshotTests
 
         // addrA slot 1 should be overridden to val3
         SlotValue slot1 = default;
-        Assert.That(persisted.TryGetSlot(addrA.ToAccountPath, (UInt256)1, ref slot1), Is.True);
+        Assert.That(persisted.TryGetSlot(addrA, (UInt256)1, ref slot1), Is.True);
         Assert.That(slot1.ToEvmBytes()[0], Is.EqualTo(0x03));
 
         // addrA slot 2 should be val2 (from newer)
         SlotValue slot2 = default;
-        Assert.That(persisted.TryGetSlot(addrA.ToAccountPath, (UInt256)2, ref slot2), Is.True);
+        Assert.That(persisted.TryGetSlot(addrA, (UInt256)2, ref slot2), Is.True);
         Assert.That(slot2.ToEvmBytes()[0], Is.EqualTo(0x02));
 
         // addrB slot 5 should be val2 (from older, carried through)
         SlotValue slot5 = default;
-        Assert.That(persisted.TryGetSlot(addrB.ToAccountPath, (UInt256)5, ref slot5), Is.True);
+        Assert.That(persisted.TryGetSlot(addrB, (UInt256)5, ref slot5), Is.True);
         Assert.That(slot5.ToEvmBytes()[0], Is.EqualTo(0x02));
     }
 
@@ -313,7 +313,7 @@ public class PersistedSnapshotTests
             (Action<PersistedSnapshot>)(persisted =>
             {
                 SlotValue slot = default;
-                Assert.That(persisted.TryGetSlot(TestItem.AddressA.ToAccountPath, (UInt256)1, ref slot), Is.True);
+                Assert.That(persisted.TryGetSlot(TestItem.AddressA, (UInt256)1, ref slot), Is.True);
                 Assert.That(slot.AsReadOnlySpan.IndexOfAnyExcept((byte)0), Is.EqualTo(-1), "Null slot should override value after merge");
             })).SetName("NullOverridesValue");
 
@@ -323,7 +323,7 @@ public class PersistedSnapshotTests
             (Action<PersistedSnapshot>)(persisted =>
             {
                 SlotValue slot = default;
-                Assert.That(persisted.TryGetSlot(TestItem.AddressA.ToAccountPath, (UInt256)1, ref slot), Is.True);
+                Assert.That(persisted.TryGetSlot(TestItem.AddressA, (UInt256)1, ref slot), Is.True);
                 Assert.That(slot.ToEvmBytes().Length, Is.GreaterThan(0), "Value should override null slot after merge");
             })).SetName("ValueOverridesNull");
 
@@ -333,11 +333,11 @@ public class PersistedSnapshotTests
             (Action<PersistedSnapshot>)(persisted =>
             {
                 SlotValue slot1 = default;
-                Assert.That(persisted.TryGetSlot(TestItem.AddressA.ToAccountPath, (UInt256)1, ref slot1), Is.True);
+                Assert.That(persisted.TryGetSlot(TestItem.AddressA, (UInt256)1, ref slot1), Is.True);
                 Assert.That(slot1.AsReadOnlySpan.IndexOfAnyExcept((byte)0), Is.EqualTo(-1), "Null slot from older should be preserved");
 
                 SlotValue slot2 = default;
-                Assert.That(persisted.TryGetSlot(TestItem.AddressA.ToAccountPath, (UInt256)2, ref slot2), Is.True);
+                Assert.That(persisted.TryGetSlot(TestItem.AddressA, (UInt256)2, ref slot2), Is.True);
                 Assert.That(slot2.AsReadOnlySpan.IndexOfAnyExcept((byte)0), Is.GreaterThanOrEqualTo(0), "Value from newer should be present");
             })).SetName("NullPreservedAndValueCarried");
     }
@@ -407,20 +407,21 @@ public class PersistedSnapshotTests
         byte[] data = PersistedSnapshotBuilderTestExtensions.Build(snapshot, _blobs);
         using PersistedSnapshot persisted = CreatePersistedSnapshot(from, to, data);
 
-        // Spot-check the sub-tags that the address-bound warmup path serves.
+        // Spot-check the sub-tags that the address-bound warmup path serves. The per-address
+        // column is keyed by raw Address; storage-trie reads still take the addressHash.
         ValueHash256 addrHash = addr.ToAccountPath;
 
         // First pass: cache miss → warmup runs.
-        Assert.That(persisted.TryGetAccount(addrHash, out Account? acc1), Is.True);
+        Assert.That(persisted.TryGetAccount(addr, out Account? acc1), Is.True);
         Assert.That(acc1, Is.Not.Null);
         Assert.That(acc1!.Balance, Is.EqualTo(expectedAccount.Balance));
         Assert.That(acc1.Nonce, Is.EqualTo(expectedAccount.Nonce));
 
-        Assert.That(persisted.TryGetSelfDestructFlag(addrHash), Is.EqualTo((bool?)true));
+        Assert.That(persisted.TryGetSelfDestructFlag(addr), Is.EqualTo((bool?)true));
 
         UInt256 probeIndex = (UInt256)(Math.Min(slotCount, 3));
         SlotValue slot1 = default;
-        Assert.That(persisted.TryGetSlot(addrHash, probeIndex, ref slot1), Is.True);
+        Assert.That(persisted.TryGetSlot(addr, probeIndex, ref slot1), Is.True);
         byte[] expectedSlotVal = new byte[32];
         BinaryPrimitives.WriteInt32BigEndian(expectedSlotVal.AsSpan(28, 4), (int)probeIndex);
         Assert.That(slot1.AsReadOnlySpan.SequenceEqual(expectedSlotVal), Is.True);
@@ -429,10 +430,10 @@ public class PersistedSnapshotTests
         Assert.That(nodeRlp1, Is.EqualTo(storageNode.FullRlp.ToArray()));
 
         // Second pass: cache hit → no warmup, results must match.
-        Assert.That(persisted.TryGetAccount(addrHash, out Account? acc2), Is.True);
+        Assert.That(persisted.TryGetAccount(addr, out Account? acc2), Is.True);
         Assert.That(acc2!.Balance, Is.EqualTo(expectedAccount.Balance));
         SlotValue slot2 = default;
-        Assert.That(persisted.TryGetSlot(addrHash, probeIndex, ref slot2), Is.True);
+        Assert.That(persisted.TryGetSlot(addr, probeIndex, ref slot2), Is.True);
         Assert.That(slot2.AsReadOnlySpan.SequenceEqual(expectedSlotVal), Is.True);
 
         // AdviseDontNeed: the per-arena tracker entries are forgotten and the mmap range
@@ -444,14 +445,13 @@ public class PersistedSnapshotTests
         // mmap) re-faulting any cold page in one syscall. With MemoryArenaManager the kernel
         // side is a no-op; the assertion below just proves the lookup path remains correct.
         persisted.AdviseDontNeed();
-        Assert.That(persisted.TryGetAccount(addrHash, out Account? acc3), Is.True);
+        Assert.That(persisted.TryGetAccount(addr, out Account? acc3), Is.True);
         Assert.That(acc3!.Nonce, Is.EqualTo(expectedAccount.Nonce));
         SlotValue slot3 = default;
-        Assert.That(persisted.TryGetSlot(addrHash, probeIndex, ref slot3), Is.True);
+        Assert.That(persisted.TryGetSlot(addr, probeIndex, ref slot3), Is.True);
         Assert.That(slot3.AsReadOnlySpan.SequenceEqual(expectedSlotVal), Is.True);
 
         // Fresh miss for an unrelated address still works after AdviseDontNeed.
-        ValueHash256 missAddrHash = TestItem.AddressB.ToAccountPath;
-        Assert.That(persisted.TryGetAccount(missAddrHash, out _), Is.False);
+        Assert.That(persisted.TryGetAccount(TestItem.AddressB, out _), Is.False);
     }
 }
