@@ -4,7 +4,6 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using Nethermind.Abi;
 using Nethermind.Consensus.AuRa.Config;
@@ -33,7 +32,7 @@ namespace Nethermind.Consensus.AuRa.Rewards
                 if (auRaParameters.BlockRewardContractTransitions is not null)
                 {
                     contracts.AddRange(auRaParameters.BlockRewardContractTransitions.Select(t => new RewardContract(transactionProcessor, abiEncoder, t.Value, t.Key)));
-                    CollectionsMarshal.AsSpan(contracts).Sort(default(RewardContractByActivationComparer));
+                    CollectionsMarshal.AsSpan(contracts).Sort(default(ActivatedAtComparer<IRewardContract, long>));
                 }
 
                 if (auRaParameters.BlockRewardContractAddress is not null)
@@ -103,13 +102,6 @@ namespace Nethermind.Consensus.AuRa.Rewards
             }
 
             return blockRewards;
-        }
-
-
-        private readonly struct RewardContractByActivationComparer : IComparer<IRewardContract>
-        {
-            [MethodImpl(MethodImplOptions.AggressiveInlining)]
-            public int Compare(IRewardContract a, IRewardContract b) => a.Activation.CompareTo(b.Activation);
         }
 
         public class AuRaRewardCalculatorSource(AuRaChainSpecEngineParameters auRaParameters, IAbiEncoder abiEncoder) : IRewardCalculatorSource
