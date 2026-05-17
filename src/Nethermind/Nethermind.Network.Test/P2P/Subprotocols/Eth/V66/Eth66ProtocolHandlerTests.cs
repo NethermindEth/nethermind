@@ -224,7 +224,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
         }
 
         [Test]
-        public void Should_reuse_GetPooledTransactions_background_handler_delegate()
+        public void Should_schedule_GetPooledTransactions_without_request_handler_delegate()
         {
             _handler.Dispose();
             RecordingBackgroundTaskScheduler backgroundTaskScheduler = new();
@@ -240,6 +240,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
 
             Assert.That(backgroundTaskScheduler.ScheduledFulfillFuncs.Count, Is.EqualTo(2));
             Assert.That(backgroundTaskScheduler.ScheduledFulfillFuncs[1], Is.SameAs(backgroundTaskScheduler.ScheduledFulfillFuncs[0]));
+            Assert.That(backgroundTaskScheduler.ScheduledRequestsHaveDelegateFields, Is.EqualTo(new[] { false, false }));
         }
 
         [Test]
@@ -406,15 +407,17 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
         private sealed class RecordingBackgroundTaskScheduler : IBackgroundTaskScheduler
         {
             public List<Delegate> ScheduledFulfillFuncs { get; } = new();
+            public List<bool> ScheduledRequestsHaveDelegateFields { get; } = new();
 
             public bool TryScheduleTask<TReq>(TReq request, Func<TReq, CancellationToken, Task> fulfillFunc, TimeSpan? timeout = null, string? source = null)
             {
-                ScheduledFulfillFuncs.Add(GetFulfillFunc(request));
+                ScheduledRequestsHaveDelegateFields.Add(HasDelegateField<TReq>());
+                ScheduledFulfillFuncs.Add(fulfillFunc);
                 fulfillFunc(request, CancellationToken.None).GetAwaiter().GetResult();
                 return true;
             }
 
-            private static Delegate GetFulfillFunc<TReq>(TReq request)
+            private static bool HasDelegateField<TReq>()
             {
                 FieldInfo[] fields = typeof(TReq).GetFields(BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public);
                 for (int i = 0; i < fields.Length; i++)
@@ -422,11 +425,11 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
                     FieldInfo field = fields[i];
                     if (typeof(Delegate).IsAssignableFrom(field.FieldType))
                     {
-                        return (Delegate)field.GetValue(request)!;
+                        return true;
                     }
                 }
 
-                throw new InvalidOperationException($"No delegate field found in scheduled request {typeof(TReq)}.");
+                return false;
             }
         }
     }

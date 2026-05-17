@@ -13,6 +13,7 @@ using Nethermind.Network.P2P.ProtocolHandlers;
 using Nethermind.Network.P2P.Subprotocols.Eth.V65;
 using Nethermind.Network.P2P.Subprotocols.Eth.V65.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages;
+using Nethermind.Network.P2P.Utils;
 using Nethermind.Network.Rlpx;
 using Nethermind.Stats;
 using Nethermind.Synchronization;
@@ -34,11 +35,6 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
         private readonly MessageDictionary<GetBlockBodiesMessage, (OwnedBlockBodies, long)> _bodiesRequests66;
         private readonly MessageDictionary<GetNodeDataMessage, IByteArrayList> _nodeDataRequests66;
         private readonly MessageDictionary<GetReceiptsMessage, (IOwnedReadOnlyList<TxReceipt[]>, long)> _receiptsRequests66;
-        private readonly Func<GetBlockHeadersMessage, CancellationToken, Task<BlockHeadersMessage>> _handleGetBlockHeaders;
-        private readonly Func<GetBlockBodiesMessage, CancellationToken, Task<BlockBodiesMessage>> _handleGetBlockBodies;
-        private readonly Func<GetPooledTransactionsMessage, CancellationToken, Task<PooledTransactionsMessage>> _handleGetPooledTransactions;
-        private readonly Func<GetReceiptsMessage, CancellationToken, Task<ReceiptsMessage>> _handleGetReceipts;
-        private readonly Func<GetNodeDataMessage, CancellationToken, Task<NodeDataMessage>> _handleGetNodeData;
 
         public Eth66ProtocolHandler(ISession session,
             IMessageSerializationService serializer,
@@ -56,11 +52,6 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
             _bodiesRequests66 = new MessageDictionary<GetBlockBodiesMessage, (OwnedBlockBodies, long)>(Send);
             _nodeDataRequests66 = new MessageDictionary<GetNodeDataMessage, IByteArrayList>(Send);
             _receiptsRequests66 = new MessageDictionary<GetReceiptsMessage, (IOwnedReadOnlyList<TxReceipt[]>, long)>(Send);
-            _handleGetBlockHeaders = Handle;
-            _handleGetBlockBodies = Handle;
-            _handleGetPooledTransactions = Handle;
-            _handleGetReceipts = Handle;
-            _handleGetNodeData = Handle;
         }
 
         public override string Name => "eth66";
@@ -75,7 +66,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
             switch (message.PacketType)
             {
                 case Eth66MessageCode.GetBlockHeaders:
-                    HandleInBackground<GetBlockHeadersMessage, BlockHeadersMessage>(message, _handleGetBlockHeaders);
+                    HandleInBackground<Eth66ProtocolHandler, GetBlockHeadersMessage, BlockHeadersMessage, GetBlockHeadersHandler>(message);
                     break;
                 case Eth66MessageCode.BlockHeaders:
                     BlockHeadersMessage headersMsg = Deserialize<BlockHeadersMessage>(message.Content);
@@ -83,7 +74,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
                     Handle(headersMsg, size);
                     break;
                 case Eth66MessageCode.GetBlockBodies:
-                    HandleInBackground<GetBlockBodiesMessage, BlockBodiesMessage>(message, _handleGetBlockBodies);
+                    HandleInBackground<Eth66ProtocolHandler, GetBlockBodiesMessage, BlockBodiesMessage, GetBlockBodiesHandler>(message);
                     break;
                 case Eth66MessageCode.BlockBodies:
                     BlockBodiesMessage bodiesMsg = Deserialize<BlockBodiesMessage>(message.Content);
@@ -91,7 +82,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
                     HandleBodies(bodiesMsg, size);
                     break;
                 case Eth66MessageCode.GetPooledTransactions:
-                    HandleInBackground<GetPooledTransactionsMessage, PooledTransactionsMessage>(message, _handleGetPooledTransactions);
+                    HandleInBackground<Eth66ProtocolHandler, GetPooledTransactionsMessage, PooledTransactionsMessage, GetPooledTransactionsHandler>(message);
                     break;
                 case Eth66MessageCode.PooledTransactions:
                     if (CanReceiveTransactions)
@@ -108,7 +99,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
 
                     break;
                 case Eth66MessageCode.GetReceipts:
-                    HandleInBackground<GetReceiptsMessage, ReceiptsMessage>(message, _handleGetReceipts);
+                    HandleInBackground<Eth66ProtocolHandler, GetReceiptsMessage, ReceiptsMessage, GetReceiptsHandler>(message);
                     break;
                 case Eth66MessageCode.Receipts:
                     ReceiptsMessage receiptsMessage = Deserialize<ReceiptsMessage>(message.Content);
@@ -116,7 +107,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
                     Handle(receiptsMessage, size);
                     break;
                 case Eth66MessageCode.GetNodeData:
-                    HandleInBackground<GetNodeDataMessage, NodeDataMessage>(message, _handleGetNodeData);
+                    HandleInBackground<Eth66ProtocolHandler, GetNodeDataMessage, NodeDataMessage, GetNodeDataHandler>(message);
                     break;
                 case Eth66MessageCode.NodeData:
                     NodeDataMessage nodeDataMessage = Deserialize<NodeDataMessage>(message.Content);
@@ -271,6 +262,51 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
         {
             using ArrayPoolList<Hash256> hashesToRetry = new(1) { new Hash256(message.TxHash) };
             RequestPooledTransactions<GetPooledTransactionsMessage>(hashesToRetry);
+        }
+
+        private readonly struct GetBlockHeadersHandler : ISyncServeRequestHandler<Eth66ProtocolHandler, GetBlockHeadersMessage, BlockHeadersMessage>
+        {
+            static Task<BlockHeadersMessage> ISyncServeRequestHandler<Eth66ProtocolHandler, GetBlockHeadersMessage, BlockHeadersMessage>.Execute(
+                Eth66ProtocolHandler handler,
+                GetBlockHeadersMessage request,
+                CancellationToken cancellationToken) =>
+                handler.Handle(request, cancellationToken);
+        }
+
+        private readonly struct GetBlockBodiesHandler : ISyncServeRequestHandler<Eth66ProtocolHandler, GetBlockBodiesMessage, BlockBodiesMessage>
+        {
+            static Task<BlockBodiesMessage> ISyncServeRequestHandler<Eth66ProtocolHandler, GetBlockBodiesMessage, BlockBodiesMessage>.Execute(
+                Eth66ProtocolHandler handler,
+                GetBlockBodiesMessage request,
+                CancellationToken cancellationToken) =>
+                handler.Handle(request, cancellationToken);
+        }
+
+        private readonly struct GetPooledTransactionsHandler : ISyncServeRequestHandler<Eth66ProtocolHandler, GetPooledTransactionsMessage, PooledTransactionsMessage>
+        {
+            static Task<PooledTransactionsMessage> ISyncServeRequestHandler<Eth66ProtocolHandler, GetPooledTransactionsMessage, PooledTransactionsMessage>.Execute(
+                Eth66ProtocolHandler handler,
+                GetPooledTransactionsMessage request,
+                CancellationToken cancellationToken) =>
+                handler.Handle(request, cancellationToken);
+        }
+
+        private readonly struct GetReceiptsHandler : ISyncServeRequestHandler<Eth66ProtocolHandler, GetReceiptsMessage, ReceiptsMessage>
+        {
+            static Task<ReceiptsMessage> ISyncServeRequestHandler<Eth66ProtocolHandler, GetReceiptsMessage, ReceiptsMessage>.Execute(
+                Eth66ProtocolHandler handler,
+                GetReceiptsMessage request,
+                CancellationToken cancellationToken) =>
+                handler.Handle(request, cancellationToken);
+        }
+
+        private readonly struct GetNodeDataHandler : ISyncServeRequestHandler<Eth66ProtocolHandler, GetNodeDataMessage, NodeDataMessage>
+        {
+            static Task<NodeDataMessage> ISyncServeRequestHandler<Eth66ProtocolHandler, GetNodeDataMessage, NodeDataMessage>.Execute(
+                Eth66ProtocolHandler handler,
+                GetNodeDataMessage request,
+                CancellationToken cancellationToken) =>
+                handler.Handle(request, cancellationToken);
         }
     }
 }

@@ -14,6 +14,13 @@ using Nethermind.Synchronization;
 
 namespace Nethermind.Network.P2P.Utils;
 
+internal interface ISyncServeRequestHandler<THandler, TReq, TRes>
+    where THandler : ProtocolHandlerBase
+    where TRes : P2PMessage
+{
+    static abstract Task<TRes> Execute(THandler handler, TReq request, CancellationToken cancellationToken);
+}
+
 /// <summary>
 /// Some utility function for interacting with BackgroundTaskScheduler. Notably, disconnect and/or log on failure.
 /// </summary>
@@ -25,6 +32,21 @@ public class BackgroundTaskSchedulerWrapper(ProtocolHandlerBase handler, IBackgr
     {
         SyncServeTaskRequest<TReq, TRes> syncServeRequest = new(handler, request, fulfillFunc);
         if (!backgroundTaskScheduler.TryScheduleTask(syncServeRequest, SyncServeTaskRequestRunner<TReq, TRes>.Run, source: RequestSource<TReq>.Name))
+        {
+            request.TryDispose();
+            return false;
+        }
+
+        return true;
+    }
+
+    internal bool TryScheduleSyncServe<THandler, TReq, TRes, TRequestHandler>(THandler requestHandler, TReq request)
+        where THandler : ProtocolHandlerBase
+        where TRes : P2PMessage
+        where TRequestHandler : struct, ISyncServeRequestHandler<THandler, TReq, TRes>
+    {
+        HandlerSyncServeTaskRequest<THandler, TReq, TRes, TRequestHandler> syncServeRequest = new(requestHandler, request);
+        if (!backgroundTaskScheduler.TryScheduleTask(syncServeRequest, HandlerSyncServeTaskRequestRunner<THandler, TReq, TRes, TRequestHandler>.Run, source: RequestSource<TReq>.Name))
         {
             request.TryDispose();
             return false;
@@ -98,6 +120,32 @@ public class BackgroundTaskSchedulerWrapper(ProtocolHandlerBase handler, IBackgr
         }
     }
 
+    private readonly struct HandlerSyncServeTaskRequest<THandler, TReq, TRes, TRequestHandler>(
+        THandler handler,
+        TReq request)
+        where THandler : ProtocolHandlerBase
+        where TRes : P2PMessage
+        where TRequestHandler : struct, ISyncServeRequestHandler<THandler, TReq, TRes>
+    {
+        public async Task Execute(CancellationToken cancellationToken)
+        {
+            try
+            {
+                TRes response = await TRequestHandler.Execute(handler, request, cancellationToken);
+                handler.Send(response);
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested && handler.Session.IsClosing)
+            {
+                // Session shutdown or disconnect canceled the task; do not treat it as a background task failure.
+                return;
+            }
+            catch (Exception e)
+            {
+                HandleBackgroundTaskFailure(handler, e);
+            }
+        }
+    }
+
     private readonly struct SyncServeValueTaskRequest<TReq, TRes>(
         ProtocolHandlerBase handler,
         TReq request,
@@ -150,6 +198,15 @@ public class BackgroundTaskSchedulerWrapper(ProtocolHandlerBase handler, IBackgr
         where TRes : P2PMessage
     {
         public static readonly Func<SyncServeTaskRequest<TReq, TRes>, CancellationToken, Task> Run =
+            static (request, cancellationToken) => request.Execute(cancellationToken);
+    }
+
+    private static class HandlerSyncServeTaskRequestRunner<THandler, TReq, TRes, TRequestHandler>
+        where THandler : ProtocolHandlerBase
+        where TRes : P2PMessage
+        where TRequestHandler : struct, ISyncServeRequestHandler<THandler, TReq, TRes>
+    {
+        public static readonly Func<HandlerSyncServeTaskRequest<THandler, TReq, TRes, TRequestHandler>, CancellationToken, Task> Run =
             static (request, cancellationToken) => request.Execute(cancellationToken);
     }
 
