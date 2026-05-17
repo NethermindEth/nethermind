@@ -40,13 +40,6 @@ internal struct BSearchIndexMetadata
     /// in the on-disk header.
     /// </summary>
     public bool IsKeyLittleEndian = false;
-    /// <summary>
-    /// When true, the common-key-prefix bytes are emitted inline in this node's header
-    /// (following the length byte). Set only for the HSST root, which has no parent node
-    /// whose separator could supply the prefix bytes at read time. Encoded as Flags bit 7
-    /// in the on-disk header; ignored when no common prefix is present.
-    /// </summary>
-    public bool StoreInlinePrefix = false;
 
     public BSearchIndexMetadata() { }
 }
@@ -56,18 +49,17 @@ internal struct BSearchIndexMetadata
 ///
 /// Index node layout (low → high address):
 ///   [Flags: u8][KeyCount: u16 LE][KeySize: u16 LE][ValueSize: u8][BaseOffset: 6-byte LE]
-///   [CommonPrefixLen: u8]?                        (only if Flags bit6 set)
-///   [CommonPrefix bytes]?                         (only if Flags bit6 AND bit7 set — root only)
+///   [CommonPrefixLen: u8]
 ///   [Keys section][Values section]
 ///
-/// Header is fixed-width (12 base bytes) plus an optional 1-byte common-key-prefix length,
-/// plus prefixLen bytes inline only on the root node. Non-root nodes store only the length;
-/// their prefix bytes are supplied by the descending caller (via the parent's separator —
-/// the builder guarantees every separator length ≥ the matching child's prefix length).
-/// Readers parse it forward from the first byte; the parent stores the child's first-byte
-/// offset. Putting the metadata header before the keys/values section lets the hardware
-/// prefetcher pull the entry data into L1/L2 while the search code is still parsing the
-/// header — the previous metadata-at-end layout fought the prefetcher's forward stride.
+/// Header is a fixed 13 bytes. The trailing <c>CommonPrefixLen</c> may be 0 — meaning no
+/// prefix optimization for this node. When non-zero, the actual prefix bytes are supplied
+/// by the descending caller (via the parent's separator — the builder guarantees every
+/// separator length ≥ the matching child's prefix length). Readers parse forward from the
+/// first byte; the parent stores the child's first-byte offset. Putting the metadata header
+/// before the keys/values section lets the hardware prefetcher pull the entry data into
+/// L1/L2 while the search code is still parsing the header — the previous metadata-at-end
+/// layout fought the prefetcher's forward stride.
 ///
 /// Values are always Uniform: each entry's value slot is a fixed-width 1..8 byte LE integer
 /// sized by <see cref="BSearchIndexMetadata.ValueSlotSize"/>. There is no Variable-value
@@ -200,16 +192,7 @@ internal ref struct BSearchIndexWriter<TWriter>
         }
     }
 
-    private int HeaderSize()
-    {
-        int hdr = 12; // Flags(1) + KeyCount(2) + KeySize(2) + ValueSize(1) + BaseOffset(6)
-        if (_commonKeyPrefix.Length > 0)
-        {
-            hdr += 1; // CommonPrefixLen u8
-            if (_metadata.StoreInlinePrefix) hdr += _commonKeyPrefix.Length;
-        }
-        return hdr;
-    }
+    private int HeaderSize() => 13; // 12 base + 1 always-present CommonPrefixLen u8.
 
     private void WriteEmptyNode()
     {
@@ -217,13 +200,13 @@ internal ref struct BSearchIndexWriter<TWriter>
         // BaseOffset is preserved from the caller — for an empty intermediate
         // node (single-child b-tree intermediate, no separators) BaseOffset
         // names the lone child's absolute offset and the reader's no-floor
-        // fallback descends to it.
-        // [Flags u8][KeyCount=0 u16][KeySize=0 u16][ValueSize=0 u8][BaseOffset 6 bytes]
+        // fallback descends to it. CommonPrefixLen is always present and is 0 here.
+        // [Flags u8][KeyCount=0 u16][KeySize=0 u16][ValueSize=0 u8][BaseOffset 6 bytes][CommonPrefixLen=0 u8]
         if (_metadata.BaseOffset > 0xFFFF_FFFF_FFFFUL)
             throw new InvalidOperationException(
                 $"BaseOffset {_metadata.BaseOffset} exceeds 6-byte (48-bit) header field");
         byte flags = (byte)(_metadata.IsIntermediate ? 0x01 : 0x00);
-        Span<byte> span = _writer.GetSpan(12);
+        Span<byte> span = _writer.GetSpan(13);
         span[0] = flags;
         span[1..6].Clear();
         ulong v = _metadata.BaseOffset;
@@ -233,7 +216,8 @@ internal ref struct BSearchIndexWriter<TWriter>
         span[9] = (byte)(v >> 24);
         span[10] = (byte)(v >> 32);
         span[11] = (byte)(v >> 40);
-        _writer.Advance(12);
+        span[12] = 0; // CommonPrefixLen
+        _writer.Advance(13);
     }
 
     /// <summary>14-bit tailOffset cap for the prefix-inlined Variable key section.</summary>
@@ -270,23 +254,27 @@ internal ref struct BSearchIndexWriter<TWriter>
         if ((uint)valueSize > byte.MaxValue)
             throw new InvalidOperationException($"Index node ValueSize {valueSize} exceeds u8 header field");
 
-        bool hasCommonPrefix = commonKeyPrefix.Length > 0;
-        bool inlinePrefix = hasCommonPrefix && _metadata.StoreInlinePrefix;
+        int prefixLen = commonKeyPrefix.Length;
+        if ((uint)prefixLen > byte.MaxValue)
+            throw new InvalidOperationException($"Common key prefix length {prefixLen} exceeds u8 header field");
+
         bool keyLe = ShouldEncodeKeyLittleEndian();
-        // Flags bits 3-4 (formerly ValueType) are reserved and always emitted as 0.
+        // Flags bits 3-4 (formerly ValueType) and bits 6-7 (formerly prefix-block markers)
+        // are reserved and always emitted as 0.
         byte flags = (byte)(
             (_metadata.IsIntermediate ? 0x01 : 0x00) |
             (_metadata.KeyType << 1) |
-            (keyLe ? 0x20 : 0x00) |
-            (hasCommonPrefix ? 0x40 : 0x00) |
-            (inlinePrefix ? 0x80 : 0x00));
+            (keyLe ? 0x20 : 0x00));
 
         if (_metadata.BaseOffset > 0xFFFF_FFFF_FFFFUL)
             throw new InvalidOperationException(
                 $"BaseOffset {_metadata.BaseOffset} exceeds 6-byte (48-bit) header field");
 
-        // Fixed 12-byte head: [Flags u8][KeyCount u16][KeySize u16][ValueSize u8][BaseOffset 6 bytes].
-        Span<byte> head = _writer.GetSpan(12);
+        // Fixed 13-byte header: [Flags u8][KeyCount u16][KeySize u16][ValueSize u8][BaseOffset 6 bytes][CommonPrefixLen u8].
+        // CommonPrefixLen may be 0 — meaning no prefix optimization for this node. When non-zero
+        // the actual prefix bytes are supplied at read time by the descending caller via the
+        // parent's separator (the builder guarantees parent.sepLen ≥ child.prefixLen).
+        Span<byte> head = _writer.GetSpan(13);
         head[0] = flags;
         BinaryPrimitives.WriteUInt16LittleEndian(head[1..], (ushort)_count);
         BinaryPrimitives.WriteUInt16LittleEndian(head[3..], (ushort)keySize);
@@ -298,22 +286,8 @@ internal ref struct BSearchIndexWriter<TWriter>
         head[9] = (byte)(v >> 24);
         head[10] = (byte)(v >> 32);
         head[11] = (byte)(v >> 40);
-        _writer.Advance(12);
-
-        // Optional common-prefix block: length first (forward-readable). The bytes follow
-        // only on the root node — non-root nodes recover them from the parent's separator
-        // bytes at descent (the builder guarantees parent.sepLen ≥ child.prefixLen).
-        if (hasCommonPrefix)
-        {
-            int plen = commonKeyPrefix.Length;
-            if ((uint)plen > byte.MaxValue)
-                throw new InvalidOperationException($"Common key prefix length {plen} exceeds u8 header field");
-            int blockLen = inlinePrefix ? plen + 1 : 1;
-            Span<byte> dst = _writer.GetSpan(blockLen);
-            dst[0] = (byte)plen;
-            if (inlinePrefix) commonKeyPrefix.CopyTo(dst[1..]);
-            _writer.Advance(blockLen);
-        }
+        head[12] = (byte)prefixLen;
+        _writer.Advance(13);
     }
 
     /// <summary>

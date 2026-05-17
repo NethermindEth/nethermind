@@ -35,7 +35,8 @@ internal static class HsstBTreeReader
         // Trailer: [RootPrefix bytes][RootPrefixLen u8][RootSize u16 LE][KeyLength u8][IndexType u8].
         // Read the fixed 5-byte tail first to learn RootPrefixLen / RootSize / KeyLength;
         // the prefix bytes (if any) sit immediately before that.
-        if (bound.Length < 5 + 12) return false;
+        // Smallest valid HSST: trailer (5 bytes) + root header (13 bytes).
+        if (bound.Length < 5 + 13) return false;
         Span<byte> tailBuf = stackalloc byte[5];
         if (!reader.TryRead(bound.Offset + bound.Length - 5, tailBuf)) return false;
         int rootPrefixLen = tailBuf[0];
@@ -201,7 +202,8 @@ internal static class HsstBTreeReader
         pin = default;
 
         long available = scopeEnd - absStart;
-        if (available < 12) return false;
+        // 13 = fixed header bytes (12 base + CommonPrefixLen u8).
+        if (available < 13) return false;
 
         int winLen = (int)Math.Min(SpeculativePinSize, available);
 
@@ -216,18 +218,10 @@ internal static class HsstBTreeReader
             int keySize = BinaryPrimitives.ReadUInt16LittleEndian(win[3..]);
             int valueSize = win[5];
             // BaseOffset (6 bytes) at win[6..12]; we don't need it here, just the size.
-            int headerSize = 12;
-            if ((flags & 0x40) != 0)
-            {
-                if (winLen < 13) goto Cold;
-                // CommonPrefixLen byte sits at win[12]; the prefix bytes themselves are
-                // out-of-band (delivered via parentSeparator) unless bit 7 marks them
-                // inline (legacy-style root encoding — HSST callers no longer set bit 7
-                // since the root prefix rides the trailer, but the reader handles both).
-                int prefixLen = win[12];
-                headerSize += 1;
-                if ((flags & 0x80) != 0) headerSize += prefixLen;
-            }
+            // CommonPrefixLen is always at win[12]; the actual prefix bytes ride in via
+            // parentSeparator (caller supplies them from the parent's separator at descent,
+            // or from the HSST trailer for the root).
+            int headerSize = 13;
             int keyType = (flags >> 1) & 0x03;
             int keySectionSize = keyType switch { 0 => keySize, _ => keyCount * keySize };
             // Values are always Uniform — bits 3-4 of flags are reserved/zero.
@@ -253,11 +247,5 @@ internal static class HsstBTreeReader
         pin = reader.PinBuffer(absStart, totalNodeSize);
         node = HsstIndex.ReadFromStart(pin.Buffer, 0, parentSeparator);
         return true;
-
-    Cold:
-        // Window too small to even read the common-prefix length byte. The HasCommonKeyPrefix
-        // bit is set yet available < 13, which is structurally impossible for a well-formed
-        // HSST — bail rather than risk an out-of-bounds read.
-        return false;
     }
 }

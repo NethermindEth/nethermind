@@ -312,7 +312,8 @@ public struct HsstEnumerator<TReader, TPin> : IDisposable
             _rootPrefix = [];
             // BTree trailer: [RootPrefix bytes][RootPrefixLen u8][RootSize u16 LE][KeyLength u8][IndexType u8].
             // Root starts at scopeEnd - 5 - rootPrefixLen - rootSize.
-            if (scope.Length >= 5 + 12)
+            // Smallest valid HSST: trailer (5 bytes) + root header (13 bytes).
+            if (scope.Length >= 5 + 13)
             {
                 Span<byte> tailBuf = stackalloc byte[5];
                 if (reader.TryRead(_scopeEnd - 5, tailBuf))

@@ -100,11 +100,12 @@ public class BSearchIndexTests
         //   "0100"         - KeySize: 1 (u16 LE — fixed key length)
         //   "04"           - ValueSize: 4 (u8 — fixed value slot size, 1..8)
         //   "000000000000" - BaseOffset: 0 (mandatory 6-byte LE)
+        //   "00"           - CommonPrefixLen: 0 (mandatory u8; 0 = no prefix)
         //   "41"           - Keys[0]: separator byte 0x41 (Uniform, 1 byte)
         //   "64000000"     - Values[0]: 100 as int32 LE (test passes ValueSlotSize=4)
         yield return new TestCaseData(
             new[] { "41" }, new[] { 100 }, 1,
-            "02" + "0100" + "0100" + "04" + "000000000000" + "41" + "64000000"
+            "02" + "0100" + "0100" + "04" + "000000000000" + "00" + "41" + "64000000"
         ).SetName("Uniform_SingleEntry");
 
         // Three entries: separators=[0x41,0x43,0x45], values=[0,100,200], keyLen=1
@@ -116,13 +117,14 @@ public class BSearchIndexTests
         //   "0100"         - KeySize: 1
         //   "04"           - ValueSize: 4
         //   "000000000000" - BaseOffset: 0
+        //   "00"           - CommonPrefixLen: 0
         //   "41 43 45"     - Keys[0..2]
         //   "00000000"     - Values[0]: 0 as int32 LE
         //   "64000000"     - Values[1]: 100 as int32 LE
         //   "C8000000"     - Values[2]: 200 as int32 LE
         yield return new TestCaseData(
             new[] { "41", "43", "45" }, new[] { 0, 100, 200 }, 1,
-            "02" + "0300" + "0100" + "04" + "000000000000" + "41" + "43" + "45" + "00000000" + "64000000" + "C8000000"
+            "02" + "0300" + "0100" + "04" + "000000000000" + "00" + "41" + "43" + "45" + "00000000" + "64000000" + "C8000000"
         ).SetName("Uniform_ThreeEntries");
     }
 
@@ -172,11 +174,12 @@ public class BSearchIndexTests
         //   "0100"         - KeySize: 1
         //   "04"           - ValueSize: 4 (u8)
         //   "640000000000" - BaseOffset: 100 (mandatory 6-byte LE)
+        //   "00"           - CommonPrefixLen: 0
         //   "41 43 45"     - Keys[0..2]
         //   "00000000"     - Values[0]: 100-100=0 as int32 LE
         //   "64000000"     - Values[1]: 200-100=100 as int32 LE
         //   "C8000000"     - Values[2]: 300-100=200 as int32 LE
-        string expectedHex = "02" + "0300" + "0100" + "04" + "640000000000" + "41" + "43" + "45" + "00000000" + "64000000" + "C8000000";
+        string expectedHex = "02" + "0300" + "0100" + "04" + "640000000000" + "00" + "41" + "43" + "45" + "00000000" + "64000000" + "C8000000";
 
         ulong baseOffset = 100;
         byte[] output = new byte[1024];
@@ -215,6 +218,7 @@ public class BSearchIndexTests
         //   "0900"     - KeySize: 9 (2*2 prefixArr + 2*2 offsetArr + 1 remainingkeys)
         //   "04"       - ValueSize: 4 (u8)
         //   "000000000000" - BaseOffset: 0
+        //   "00"       - CommonPrefixLen: 0
         //   "0000"     - prefixArr[0]: empty key → padded zeros (LE-stored)
         //   "8B7A"     - prefixArr[1]: byte-reversed first 2 bytes of "7A8B49" = [8B, 7A]
         //   "0000"     - offsetArr[0]: tag=00, tailOffset=0 (no tail)
@@ -224,7 +228,7 @@ public class BSearchIndexTests
         //   "37000000" - Values[1]: 55 as int32 LE
         yield return new TestCaseData(
             new[] { "", "7A8B49" }, new[] { 0, 55 },
-            "20" + "0200" + "0900" + "04" + "000000000000" + "0000" + "8B7A" + "0000" + "00C0" + "49" + "00000000" + "37000000"
+            "20" + "0200" + "0900" + "04" + "000000000000" + "00" + "0000" + "8B7A" + "0000" + "00C0" + "49" + "00000000" + "37000000"
         ).SetName("Variable_EmptyAndThreeBytes");
 
         // Three entries with varying separator lengths: 1, 2, 3 bytes.
@@ -235,6 +239,7 @@ public class BSearchIndexTests
         //   "0D00"       - KeySize: 13 (3*2 prefixArr + 3*2 offsetArr + 1 remainingkeys)
         //   "04"         - ValueSize: 4 (u8)
         //   "000000000000" - BaseOffset: 0
+        //   "00"         - CommonPrefixLen: 0
         //   "0041"       - prefixArr[0]: key "41" → LE-stored [00, 41]
         //   "4342"       - prefixArr[1]: key "4243" → LE-stored [43, 42]
         //   "4544"       - prefixArr[2]: key "444546" → LE-stored [45, 44]
@@ -247,7 +252,7 @@ public class BSearchIndexTests
         //   "C8000000"   - Values[2]: 200 as int32 LE
         yield return new TestCaseData(
             new[] { "41", "4243", "444546" }, new[] { 0, 100, 200 },
-            "20" + "0300" + "0D00" + "04" + "000000000000" + "0041" + "4342" + "4544" + "0040" + "0080" + "00C0" + "46" + "00000000" + "64000000" + "C8000000"
+            "20" + "0300" + "0D00" + "04" + "000000000000" + "00" + "0041" + "4342" + "4544" + "0040" + "0080" + "00C0" + "46" + "00000000" + "64000000" + "C8000000"
         ).SetName("Variable_VaryingSeparators");
     }
 
@@ -481,15 +486,14 @@ public class BSearchIndexTests
         byte[] valScratch = new byte[separatorHexes.Length * (2 + 4)];
         byte[] output = new byte[1024];
         SpanBufferWriter w = new(output);
-        // StoreInlinePrefix is normally set only on the HSST root (non-root nodes get
-        // their prefix bytes via the descent's parentSeparator). This unit test
-        // reads the bytes back directly without descent context, so we opt in to the
-        // inline-bytes layout to keep the round-trip self-contained.
+        // Production nodes drop the inline prefix bytes — the reader receives them via the
+        // descending caller's parentSeparator parameter (sourced from the parent's separator
+        // at descent, or from the HSST trailer for the root). This test passes commonPrefix
+        // directly to ReadFromStart below to simulate that descent supply.
         BSearchIndexWriter<SpanBufferWriter> writer = new(ref w, new BSearchIndexMetadata
         {
             KeyType = keyType,
             KeySlotSize = slotSize,
-            StoreInlinePrefix = true,
         }, keyBuf, valScratch, commonPrefix);
         Span<byte> valBuf = stackalloc byte[4];
         for (int i = 0; i < separatorHexes.Length; i++)
@@ -525,8 +529,7 @@ public class BSearchIndexTests
         // Optimization paid off.
         Assert.That(written, Is.LessThan(cw.Written), "Common-prefix optimization should shrink the node");
 
-        BSearchIndexReader reader = BSearchIndexReader.ReadFromStart(output, 0);
-        Assert.That(reader.Metadata.HasCommonKeyPrefix, Is.True);
+        BSearchIndexReader reader = BSearchIndexReader.ReadFromStart(output, 0, commonPrefix);
         Assert.That(reader.CommonKeyPrefix.ToArray(), Is.EqualTo(Convert.FromHexString("DEADBEEF")));
 
         // Per-entry decoded suffix matches (suffix only, prefix stripped). GetFullKey
@@ -609,7 +612,6 @@ public class BSearchIndexTests
         writer.FinalizeNode();
 
         BSearchIndexReader reader = BSearchIndexReader.ReadFromStart(output, 0);
-        Assert.That(reader.Metadata.HasCommonKeyPrefix, Is.False);
         Assert.That(reader.CommonKeyPrefix.Length, Is.EqualTo(0));
     }
 
@@ -872,10 +874,10 @@ public class BSearchIndexTests
 
     private static int HeaderSize(BSearchIndexReader r)
     {
-        // 12-byte fixed header + (1 + prefixLen) optional common-prefix block.
-        int hdr = 12;
-        if (r.Metadata.HasCommonKeyPrefix) hdr += 1 + r.CommonKeyPrefix.Length;
-        return hdr;
+        // Fixed 13-byte header (12 base + always-present CommonPrefixLen u8).
+        // Prefix bytes themselves are carried out-of-band via parentSeparator, not in the node.
+        _ = r;
+        return 13;
     }
 
     private static byte[] WriteUniform(byte[][] keys, int keySize, bool isLittleEndian)
