@@ -91,20 +91,21 @@ public class Eth70ProtocolHandler : Eth69ProtocolHandler, IStaticProtocolInfo
 
     private ReceiptsResponse FulfillReceiptsRequest(GetReceiptsMessage70 getReceiptsMessage, CancellationToken cancellationToken)
     {
-        ArrayPoolList<TxReceipt[]> txReceipts = new(getReceiptsMessage.Hashes.Count);
+        ReadOnlySpan<Hash256> hashes = getReceiptsMessage.Hashes.AsSpan();
+        ArrayPoolList<TxReceipt[]> txReceipts = new(hashes.Length);
         bool lastBlockIncomplete = false;
 
         try
         {
             ulong responseReceiptsContentSize = 0;
-            for (int blockIndex = 0; blockIndex < getReceiptsMessage.Hashes.Count; blockIndex++)
+            for (int blockIndex = 0; blockIndex < hashes.Length; blockIndex++)
             {
                 if (cancellationToken.IsCancellationRequested)
                 {
                     break;
                 }
 
-                Hash256 blockHash = getReceiptsMessage.Hashes[blockIndex];
+                Hash256 blockHash = hashes[blockIndex];
                 if (SyncServer.FindHeader(blockHash) is null)
                 {
                     break;
