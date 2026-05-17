@@ -472,6 +472,15 @@ namespace Nethermind.JsonRpc.Test.Modules
         }
 
         [Test]
+        public async Task LogsSubscription_with_too_long_string_arguments_returns_invalid_params()
+        {
+            string args = new('a', 1_000_001);
+            string serialized = await RpcTest.TestSerializedRequest(_subscribeRpcModule, "eth_subscribe", "logs", args);
+            string expectedResult = "{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32602,\"message\":\"Invalid params\",\"data\":\"subscription args string length 1000001 exceeds maximum allowed length of 1000000\"},\"id\":67}";
+            expectedResult.Should().Be(serialized);
+        }
+
+        [Test]
         [Retry(3)]
         public void LogsSubscription_with_null_arguments_on_NewHeadBlock_event()
         {

@@ -13,6 +13,7 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
         {
             try
             {
+                SubscriptionArgsLengthValidator.Validate(args);
                 ResultWrapper<string> successfulResult = ResultWrapper<string>.Success(subscriptionManager.AddSubscription(Context.DuplexClient, subscriptionName, args));
                 return successfulResult;
             }

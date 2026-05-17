@@ -29,6 +29,8 @@ public class SubscriptionFactory : ISubscriptionFactory
     {
         if (_subscriptionConstructors.TryGetValue(subscriptionType, out CustomSubscriptionType customSubscription))
         {
+            SubscriptionArgsLengthValidator.Validate(args);
+
             Type? paramType = customSubscription.ParamType;
 
             IJsonRpcParam? param = null;
@@ -77,5 +79,18 @@ public class SubscriptionFactory : ISubscriptionFactory
     {
         public Func<IJsonRpcDuplexClient, object, Subscription> Constructor { get; } = constructor;
         public Type? ParamType { get; } = paramType;
+    }
+}
+
+internal static class SubscriptionArgsLengthValidator
+{
+    internal const int MaxArgsStringLength = 1_000_000;
+
+    public static void Validate(string? args)
+    {
+        if (args is not null && args.Length > MaxArgsStringLength)
+        {
+            throw new ArgumentException($"subscription args string length {args.Length} exceeds maximum allowed length of {MaxArgsStringLength}");
+        }
     }
 }
