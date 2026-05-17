@@ -90,21 +90,22 @@ public class Eth71ProtocolHandler : Eth70ProtocolHandler, ISyncPeer, IStaticProt
     {
         using GetBlockAccessListsMessage req = request;
         IOwnedReadOnlyList<Hash256> hashes = req.Hashes;
+        ReadOnlySpan<Hash256> hashesSpan = hashes.AsSpan();
         long totalSize = 0;
         RlpByteArrayList results;
 
-        using (DeferredRlpItemList.Builder builder = new(entryCapacity: hashes.Count))
+        using (DeferredRlpItemList.Builder builder = new(entryCapacity: hashesSpan.Length))
         {
             using (DeferredRlpItemList.Builder.Writer writer = builder.BeginRootContainer())
             {
-                for (int i = 0; i < hashes.Count; i++)
+                for (int i = 0; i < hashesSpan.Length; i++)
                 {
                     if (cancellationToken.IsCancellationRequested)
                     {
                         break;
                     }
 
-                    using MemoryManager<byte>? balRlp = SyncServer.GetBlockAccessListRlp(hashes[i]);
+                    using MemoryManager<byte>? balRlp = SyncServer.GetBlockAccessListRlp(hashesSpan[i]);
                     ReadOnlySpan<byte> balRlpSpan = balRlp is null ? ReadOnlySpan<byte>.Empty : balRlp.Memory.Span;
                     writer.WriteValue(balRlpSpan);
                     totalSize += Rlp.LengthOf(balRlpSpan);
