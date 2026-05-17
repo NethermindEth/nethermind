@@ -435,16 +435,23 @@ public class PersistedSnapshotTests
         Assert.That(persisted.TryGetSlot(addrHash, probeIndex, ref slot2), Is.True);
         Assert.That(slot2.AsReadOnlySpan.SequenceEqual(expectedSlotVal), Is.True);
 
-        // After Demote(): tracker is forgotten and pages are advised cold; the next miss will
-        // re-warm. With MemoryArenaManager the underlying buffer is unmanaged memory rather
-        // than an mmap so Demote is a no-op there — the test still verifies the lookup path
-        // produces correct results when the cache slot is invalidated by AdviseDontNeed's
-        // ForgetTrackerRange + a snapshot already promoted out of the cache (we just probe a
-        // fresh, never-cached address to force the miss path again).
-        ValueHash256 missAddrHash = TestItem.AddressB.ToAccountPath;
-        Assert.That(persisted.TryGetAccount(missAddrHash, out _), Is.False);
-        // Still able to resolve the populated address afterwards.
+        // AdviseDontNeed: the per-arena tracker entries are forgotten and the mmap range
+        // is advised cold. The inline address-bound cache slot is unaffected (it holds an
+        // arena offset, not page-residency state) so the *next* TryGetAccount call hits the
+        // cache. For a small bound this exercises the cache-hit-with-cold-pages branch:
+        // TryGetAddressBound's hit path now also calls TouchRangePopulate on the whole bound
+        // when bound.Length <= AddressBoundWarmupBytes, re-arming the tracker and (on a real
+        // mmap) re-faulting any cold page in one syscall. With MemoryArenaManager the kernel
+        // side is a no-op; the assertion below just proves the lookup path remains correct.
+        persisted.AdviseDontNeed();
         Assert.That(persisted.TryGetAccount(addrHash, out Account? acc3), Is.True);
         Assert.That(acc3!.Nonce, Is.EqualTo(expectedAccount.Nonce));
+        SlotValue slot3 = default;
+        Assert.That(persisted.TryGetSlot(addrHash, probeIndex, ref slot3), Is.True);
+        Assert.That(slot3.AsReadOnlySpan.SequenceEqual(expectedSlotVal), Is.True);
+
+        // Fresh miss for an unrelated address still works after AdviseDontNeed.
+        ValueHash256 missAddrHash = TestItem.AddressB.ToAccountPath;
+        Assert.That(persisted.TryGetAccount(missAddrHash, out _), Is.False);
     }
 }

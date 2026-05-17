@@ -236,17 +236,25 @@ public sealed class PersistedSnapshot : RefCountingDisposable
 
     /// <summary>
     /// Resolve the per-address inner-HSST bound, going through the inline 8-way address-bound
-    /// cache. <paramref name="warmedWholeBound"/> is set to <c>true</c> when the call took the
-    /// miss path AND the warmup window covered the entire bound — the caller may then drive
-    /// the sub-tag walk over a zero-touch <see cref="SpanByteReader"/>. On cache hit it is
-    /// <c>false</c>: the trailer page was probed for verification (so the hottest data is
-    /// already warm) and the caller continues with the page-tracker-backed
+    /// cache. <paramref name="useSpanReader"/> is set to <c>true</c> when the caller should
+    /// drive the sub-tag walk over a zero-touch <see cref="SpanByteReader"/> sliced from the
+    /// arena, skipping per-read page-tracker probes. Two regimes set it:
+    /// <list type="bullet">
+    ///   <item><b>Cache miss</b> — the warmup window covered the entire bound (i.e.
+    ///     <c>addressBound.Length &lt;= <see cref="AddressBoundWarmupBytes"/></c>); every page
+    ///     of the bound is now resident.</item>
+    ///   <item><b>Cache hit</b> — the bound fits in the same threshold. We did not pre-fault,
+    ///     but the cache hit implies the address was accessed recently; we accept the risk of
+    ///     an inline page fault on a cold tail in exchange for skipping the per-read tracker
+    ///     overhead.</item>
+    /// </list>
+    /// When the bound exceeds the threshold the caller stays on the page-tracker-backed
     /// <see cref="ArenaByteReader"/>.
     /// </summary>
     private bool TryGetAddressBound(in ArenaByteReader reader, in ValueHash256 addressHash,
-        out Bound addressBound, out bool warmedWholeBound)
+        out Bound addressBound, out bool useSpanReader)
     {
-        warmedWholeBound = false;
+        useSpanReader = false;
         Span<long> slots = MemoryMarshal.CreateSpan(
             ref Unsafe.As<Vector512<long>, long>(ref _addressBoundCache), AddressBoundCacheWays);
         ushort hashTag = MemoryMarshal.Read<ushort>(addressHash.Bytes[4..6]);
@@ -270,6 +278,14 @@ public sealed class PersistedSnapshot : RefCountingDisposable
             if ((s & AddressBoundCacheRefBit) == 0)
                 Interlocked.Or(ref slots[w], AddressBoundCacheRefBit);
             addressBound = new Bound(lebOffset - valueLength, valueLength);
+            useSpanReader = addressBound.Length <= AddressBoundWarmupBytes;
+            if (useSpanReader)
+            {
+                // Re-arm REF bits on every page of the (small) bound and pre-fault any cold
+                // page in one syscall. The cache-hit probe only touched the trailer page, so
+                // the rest of the bound has no tracker bookkeeping from this lookup.
+                _reservation.TouchRangePopulate(addressBound.Offset, addressBound.Length);
+            }
             return true;
         }
 
@@ -284,7 +300,7 @@ public sealed class PersistedSnapshot : RefCountingDisposable
             addressBound.Offset + addressBound.Length - AddressBoundWarmupBytes);
         long warmLen = (addressBound.Offset + addressBound.Length) - warmStart;
         _reservation.TouchRangePopulate(warmStart, warmLen);
-        warmedWholeBound = warmLen >= addressBound.Length;
+        useSpanReader = warmLen >= addressBound.Length;
 
         // keyFirst=false bound is (lebStart - valueLength, valueLength), so
         // lebStart = bound.Offset + bound.Length.
@@ -379,12 +395,12 @@ public sealed class PersistedSnapshot : RefCountingDisposable
     public bool TryGetAccount(in ValueHash256 addressHash, out Account? account)
     {
         ArenaByteReader reader = CreateReader();
-        if (!TryGetAddressBound(in reader, in addressHash, out Bound addrBound, out bool warmedWhole))
+        if (!TryGetAddressBound(in reader, in addressHash, out Bound addrBound, out bool useSpanReader))
         {
             account = null;
             return false;
         }
-        if (warmedWhole)
+        if (useSpanReader)
         {
             ReadOnlySpan<byte> warmedSpan = reader.GetSpanWithoutTouch(addrBound.Offset, addrBound.Length);
             SpanByteReader spanReader = new(warmedSpan);
@@ -421,9 +437,9 @@ public sealed class PersistedSnapshot : RefCountingDisposable
     public bool TryGetSlot(in ValueHash256 addressHash, in UInt256 index, ref SlotValue slotValue)
     {
         ArenaByteReader reader = CreateReader();
-        if (!TryGetAddressBound(in reader, in addressHash, out Bound addrBound, out bool warmedWhole))
+        if (!TryGetAddressBound(in reader, in addressHash, out Bound addrBound, out bool useSpanReader))
             return false;
-        if (warmedWhole)
+        if (useSpanReader)
         {
             ReadOnlySpan<byte> warmedSpan = reader.GetSpanWithoutTouch(addrBound.Offset, addrBound.Length);
             SpanByteReader spanReader = new(warmedSpan);
@@ -450,9 +466,9 @@ public sealed class PersistedSnapshot : RefCountingDisposable
     public bool? TryGetSelfDestructFlag(in ValueHash256 addressHash)
     {
         ArenaByteReader reader = CreateReader();
-        if (!TryGetAddressBound(in reader, in addressHash, out Bound addrBound, out bool warmedWhole))
+        if (!TryGetAddressBound(in reader, in addressHash, out Bound addrBound, out bool useSpanReader))
             return null;
-        if (warmedWhole)
+        if (useSpanReader)
         {
             ReadOnlySpan<byte> warmedSpan = reader.GetSpanWithoutTouch(addrBound.Offset, addrBound.Length);
             SpanByteReader spanReader = new(warmedSpan);
@@ -477,12 +493,12 @@ public sealed class PersistedSnapshot : RefCountingDisposable
     public bool TryLoadStorageNodeRlp(in ValueHash256 addressHash, in TreePath path, out byte[]? nodeRlp)
     {
         ArenaByteReader reader = CreateReader();
-        if (!TryGetAddressBound(in reader, in addressHash, out Bound addrBound, out bool warmedWhole))
+        if (!TryGetAddressBound(in reader, in addressHash, out Bound addrBound, out bool useSpanReader))
         {
             nodeRlp = null;
             return false;
         }
-        if (warmedWhole)
+        if (useSpanReader)
         {
             ReadOnlySpan<byte> warmedSpan = reader.GetSpanWithoutTouch(addrBound.Offset, addrBound.Length);
             SpanByteReader spanReader = new(warmedSpan);
