@@ -43,7 +43,7 @@ namespace Nethermind.Network.P2P
         private readonly IChannel _channel;
         private readonly IDisconnectsAnalyzer _disconnectsAnalyzer;
         private IChannelHandlerContext? _context;
-        private ISessionActivityObserver? _activityObserver;
+        private volatile ISessionActivityObserver? _activityObserver;
         private volatile bool _isChannelClosed;
 
         public Session(
