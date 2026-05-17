@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.IO;
@@ -249,8 +250,9 @@ namespace Nethermind.Evm.TransactionProcessing
                 JournalSet<Address> destroyList = substate.DestroyList;
                 if (destroyList.Count > 1)
                 {
-                    Address[] orderedDestroyList = [.. destroyList];
-                    Array.Sort(orderedDestroyList, GenericComparer.GetOptimized<Address>());
+                    Address[] orderedDestroyList = new Address[destroyList.Count];
+                    destroyList.CopyTo(orderedDestroyList, 0);
+                    orderedDestroyList.AsSpan().Sort(default(AddressByBytesComparer));
                     for (int i = 0; i < orderedDestroyList.Length; i++)
                     {
                         FinalizeDestroyedAccount(WorldState, in substate, orderedDestroyList[i]);
@@ -1449,6 +1451,14 @@ namespace Nethermind.Evm.TransactionProcessing
 
         [DoesNotReturn, StackTraceHidden]
         private static void ThrowInvalidDataException(string message) => throw new InvalidDataException(message);
+
+        // Devirtualised wrapper over Address.CompareTo (sealed -> already devirt'd inside) so the EIP-7708
+        // destroy-list sort goes through Sort<TComparer> instead of Comparer<Address>.Default's virtual call.
+        private readonly struct AddressByBytesComparer : IComparer<Address>
+        {
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            public int Compare(Address? x, Address? y) => x!.CompareTo(y);
+        }
     }
 
     /// <summary>
