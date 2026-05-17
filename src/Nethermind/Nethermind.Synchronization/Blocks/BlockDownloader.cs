@@ -259,7 +259,13 @@ namespace Nethermind.Synchronization.Blocks
 
         private void PruneRequestMap(IOwnedReadOnlyList<BlockHeader> currentHeaders)
         {
-            HashSet<Hash256> currentHeaderHashes = currentHeaders.Select(h => h.Hash).ToHashSet();
+            ReadOnlySpan<BlockHeader> currentHeadersSpan = currentHeaders.AsSpan();
+            HashSet<Hash256> currentHeaderHashes = new(currentHeadersSpan.Length);
+            foreach (BlockHeader header in currentHeadersSpan)
+            {
+                currentHeaderHashes.Add(header.Hash);
+            }
+
             foreach (KeyValuePair<Hash256, BlockEntry> kv in _downloadRequests)
             {
                 if (!currentHeaderHashes.Contains(kv.Key))
@@ -285,9 +291,10 @@ namespace Nethermind.Synchronization.Blocks
                 (await _syncPeerPool.EstimateRequestLimit(RequestType.Receipts, EstimatedAllocationStrategy, AllocationContexts.Blocks, cancellation))
                 ?? GethSyncLimits.MaxReceiptFetch;
 
-            BlockHeader parentHeader = headers[0];
-            foreach (BlockHeader blockHeader in headers.Skip(1))
+            BlockHeader parentHeader = headers.AsSpan()[0];
+            for (int i = 1; i < headers.Count; i++)
             {
+                BlockHeader blockHeader = headers.AsSpan()[i];
                 if (parentHeader.Hash != blockHeader.ParentHash)
                 {
                     // Precaution for weird consensus
@@ -378,8 +385,10 @@ namespace Nethermind.Synchronization.Blocks
             try
             {
                 satisfiedEntry = new ArrayPoolList<BlockEntry>(headers.Count);
-                foreach (BlockHeader blockHeader in headers.Skip(1))
+                ReadOnlySpan<BlockHeader?> headersSpan = headers.AsSpan();
+                for (int i = 1; i < headersSpan.Length; i++)
                 {
+                    BlockHeader? blockHeader = headersSpan[i];
                     if (blockHeader is null) break;
                     if (!_downloadRequests.TryGetValue(blockHeader.Hash, out BlockEntry blockEntry)) break;
                     if (blockEntry.Block is null) break;
