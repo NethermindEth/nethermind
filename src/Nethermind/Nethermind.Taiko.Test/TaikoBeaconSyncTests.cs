@@ -58,7 +58,7 @@ public class TaikoBeaconSyncTests
 
         Assert.That(sut.ShouldBeInBeaconHeaders(), Is.False);
         _ = blockTree.DidNotReceive().LowestInsertedBeaconHeader;
-        beaconPivot.DidNotReceive().PivotDestinationNumber.GetType();
+        _ = beaconPivot.DidNotReceive().PivotDestinationNumber;
     }
 
     [Test]
