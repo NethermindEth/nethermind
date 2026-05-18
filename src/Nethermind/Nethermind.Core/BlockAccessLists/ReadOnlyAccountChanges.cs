@@ -155,8 +155,12 @@ public class ReadOnlyAccountChanges : IEquatable<ReadOnlyAccountChanges>
     public byte[]? GetCode(uint blockAccessIndex)
         => TryGetLastBefore(CodeChanges, blockAccessIndex, out CodeChange last) ? last.Code : null;
 
+    // The explicit (ValueHash256?) on the null branch matters: ValueHash256 has an implicit
+    // conversion operator from Hash256? that returns default(ValueHash256) for a null source,
+    // so without the cast C# resolves the conditional's best common type as ValueHash256
+    // (non-nullable) and the "null" branch becomes default(ValueHash256) lifted to HasValue=true.
     public ValueHash256? GetCodeHash(uint blockAccessIndex)
-        => TryGetLastBefore(CodeChanges, blockAccessIndex, out CodeChange last) ? last.CodeHash : null;
+        => TryGetLastBefore(CodeChanges, blockAccessIndex, out CodeChange last) ? last.CodeHash : (ValueHash256?)null;
 
     public bool TryGetLastBalanceChangeBefore(uint blockAccessIndex, out BalanceChange balanceChange)
         => TryGetLastBefore(BalanceChanges, blockAccessIndex, out balanceChange);
