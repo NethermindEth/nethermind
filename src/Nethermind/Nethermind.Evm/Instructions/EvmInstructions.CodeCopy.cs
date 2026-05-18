@@ -12,7 +12,6 @@ using Nethermind.Evm.GasPolicy;
 namespace Nethermind.Evm;
 
 using Int256;
-using Nethermind.Evm.State;
 
 public static partial class EvmInstructions
 {

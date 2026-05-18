@@ -6,15 +6,12 @@ using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
-using System.Runtime.Intrinsics;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
 
 namespace Nethermind.Evm;
-
-using Word = Vector256<byte>;
 
 public struct EvmPooledMemory
 {
@@ -35,7 +32,7 @@ public struct EvmPooledMemory
         if (outOfGas) return false;
 
         int offset = TruncateToInt32(location.u0);
-        Word word1 = Unsafe.As<byte, Word>(ref MemoryMarshal.GetReference(word));
+        EvmWord word1 = Unsafe.As<byte, EvmWord>(ref MemoryMarshal.GetReference(word));
         UpdateSize(newLength);
         ref byte memory = ref MemoryMarshal.GetArrayDataReference(_memory!);
         Unsafe.WriteUnaligned(ref Unsafe.Add(ref memory, offset), word1);
@@ -282,7 +279,7 @@ public struct EvmPooledMemory
     {
         Debug.Assert(location.IsUint64);
         int offset = TruncateToInt32(location.u0);
-        Word value = Unsafe.As<byte, Word>(ref MemoryMarshal.GetReference(word));
+        EvmWord value = Unsafe.As<byte, EvmWord>(ref MemoryMarshal.GetReference(word));
         PrepareAccessAfterGas(location.u0 + WordSize);
         ref byte memory = ref MemoryMarshal.GetArrayDataReference(_memory!);
         Unsafe.WriteUnaligned(ref Unsafe.Add(ref memory, offset), value);
@@ -469,7 +466,7 @@ public struct EvmPooledMemory
     private static void ThrowArgumentOutOfRangeException()
     {
         Metrics.EvmExceptions++;
-        throw new ArgumentOutOfRangeException("Word size must be 32 bytes");
+        throw new ArgumentOutOfRangeException("EvmWord size must be 32 bytes");
     }
 }
 

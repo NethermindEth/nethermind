@@ -1,11 +1,13 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Text;
 using Nethermind.Blockchain;
 using Nethermind.Core;
+using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Messages;
@@ -161,17 +163,14 @@ public class BlockValidator(
         // the suggested block carries a BAL (engine-API path); RLP-imported blocks have a
         // null suggested BAL and the agreed gas limit must still be validated against the
         // generated BAL here.
+        string? balSizeError = null;
         if (suggestedBlock.BlockAccessList is null
             && processedBlock.GeneratedBlockAccessList is not null
-            && _specProvider.GetSpec(suggestedBlock.Header).BlockLevelAccessListsEnabled)
+            && _specProvider.GetSpec(suggestedBlock.Header).BlockLevelAccessListsEnabled
+            && !ValidateBlockLevelAccessListSize(processedBlock, ref balSizeError))
         {
-            int itemCount = processedBlock.GeneratedBlockAccessList.ItemCount();
-            if (itemCount * GasCostOf.BlockAccessListItem > suggestedBlock.Header.GasLimit)
-            {
-                error = BlockErrorMessages.BlockAccessListGasLimitExceeded(itemCount, suggestedBlock.Header.GasLimit);
-                if (_logger.IsWarn) _logger.Warn($"Block level access list item count {itemCount} exceeds block gas limit bound in block {suggestedBlock.ToString(Block.Format.FullHashAndNumber)}.");
-                return false;
-            }
+            error = balSizeError;
+            return false;
         }
 
         if (processedBlock.Header.Hash == suggestedBlock.Header.Hash)
@@ -199,6 +198,14 @@ public class BlockValidator(
         {
             if (_logger.IsWarn) _logger.Warn($"- receipts root: expected {suggestedBlock.Header.ReceiptsRoot}, got {processedBlock.Header.ReceiptsRoot}");
             error ??= BlockErrorMessages.InvalidReceiptsRoot(suggestedBlock.Header.ReceiptsRoot, processedBlock.Header.ReceiptsRoot);
+        }
+
+        if (processedBlock.Header.BlockAccessListHash != suggestedBlock.Header.BlockAccessListHash)
+        {
+            if (_logger.IsWarn) _logger.Warn($"- block access list hash : expected {suggestedBlock.Header.BlockAccessListHash}, got {processedBlock.Header.BlockAccessListHash}");
+            error ??= BlockErrorMessages.InvalidBlockLevelAccessListHash(suggestedBlock.Header.BlockAccessListHash, processedBlock.Header.BlockAccessListHash);
+            if (_logger.IsDebug) _logger.Debug($"Generated block access list:\n{processedBlock.GeneratedBlockAccessList}\nSuggested block access list:\n{processedBlock.BlockAccessList}");
+            suggestedBlock.GeneratedBlockAccessList = processedBlock.GeneratedBlockAccessList;
         }
 
         if (processedBlock.Header.StateRoot != suggestedBlock.Header.StateRoot)
@@ -229,14 +236,6 @@ public class BlockValidator(
         {
             if (_logger.IsWarn) _logger.Warn($"- requests root : expected {suggestedBlock.Header.RequestsHash}, got {processedBlock.Header.RequestsHash}");
             error ??= BlockErrorMessages.InvalidRequestsHash(suggestedBlock.Header.RequestsHash, processedBlock.Header.RequestsHash);
-        }
-
-        if (processedBlock.Header.BlockAccessListHash != suggestedBlock.Header.BlockAccessListHash)
-        {
-            if (_logger.IsWarn) _logger.Warn($"- block access list hash : expected {suggestedBlock.Header.BlockAccessListHash}, got {processedBlock.Header.BlockAccessListHash}");
-            error ??= BlockErrorMessages.InvalidBlockLevelAccessListHash(suggestedBlock.Header.BlockAccessListHash, processedBlock.Header.BlockAccessListHash);
-            if (_logger.IsDebug) _logger.Debug($"Generated block access list:\n{processedBlock.GeneratedBlockAccessList}\nSuggested block access list:\n{processedBlock.BlockAccessList}");
-            suggestedBlock.GeneratedBlockAccessList = processedBlock.GeneratedBlockAccessList;
         }
 
         if (processedBlock.Header.SlotNumber != suggestedBlock.Header.SlotNumber)
@@ -316,7 +315,7 @@ public class BlockValidator(
         {
             Transaction transaction = transactions[txIndex];
 
-            ValidationResult isWellFormed = _txValidator.IsWellFormed(transaction, spec);
+            ValidationResult isWellFormed = _txValidator.IsWellFormed(transaction, spec, block.Header.GasLimit);
             if (!isWellFormed)
             {
                 if (_logger.IsDebug) _logger.Debug($"{Invalid(block)} Invalid transaction: {isWellFormed}");
@@ -416,7 +415,9 @@ public class BlockValidator(
 
     public virtual bool ValidateBlockLevelAccessList(Block block, IReleaseSpec spec, ref string? error)
     {
-        // n.b. block BAL could be null if it doesn't come from engine API eg. RLP tests
+        // n.b. block BAL body is a side-channel property only set by engine API or local production.
+        // It is NOT part of block RLP, so blocks from p2p/fixtures will have null BlockAccessList
+        // even when EIP-7928 is active. We only validate the body if it's present.
 
         if (!spec.BlockLevelAccessListsEnabled && block.BlockAccessList is not null)
         {
@@ -429,20 +430,21 @@ public class BlockValidator(
 
         if (block.BlockAccessList is not null)
         {
-            int itemCount = block.BlockAccessList.ItemCount();
-            if (itemCount * GasCostOf.BlockAccessListItem > block.Header.GasLimit)
-            {
-                error = BlockErrorMessages.BlockAccessListGasLimitExceeded(itemCount, block.Header.GasLimit);
-                if (_logger.IsWarn) _logger.Warn($"Block level access list item count {itemCount} exceeds block gas limit bound in block {block.ToString(Block.Format.FullHashAndNumber)}.");
-
-                return false;
-            }
-
             if (!ValidateBlockLevelAccessListHashMatches(block, out Hash256 blockLevelAccessListHash))
             {
                 error = BlockErrorMessages.InvalidBlockLevelAccessListHash(block.Header.BlockAccessListHash, blockLevelAccessListHash);
                 if (_logger.IsWarn) _logger.Warn($"Block level access list hash mismatch in block {block.ToString(Block.Format.FullHashAndNumber)}: expected {block.Header.BlockAccessListHash}, got {blockLevelAccessListHash}");
 
+                return false;
+            }
+
+            if (!ValidateBlockLevelAccessListSize(block, ref error))
+            {
+                return false;
+            }
+
+            if (!ValidateBlockLevelAccessListIndexBounds(block, ref error))
+            {
                 return false;
             }
         }
@@ -451,6 +453,61 @@ public class BlockValidator(
 
         return true;
 
+    }
+
+    private bool ValidateBlockLevelAccessListSize(Block block, ref string? error)
+    {
+        // Suggested/engine blocks carry the wire BAL in BlockAccessList. RLP/P2P
+        // validation reaches this helper after execution with only GeneratedBlockAccessList.
+        BlockAccessList bal = block.BlockAccessList ?? block.GeneratedBlockAccessList;
+        long maxBalItems = block.Header.GasLimit / Eip7928Constants.ItemCost;
+
+        long balItemCount = bal.ItemCount;
+        if (balItemCount < 0 || balItemCount > maxBalItems)
+        {
+            error = BlockErrorMessages.BlockAccessListGasLimitExceeded(balItemCount, maxBalItems);
+            if (_logger.IsWarn) _logger.Warn($"{Invalid(block)} {error}");
+            return false;
+        }
+
+        return true;
+    }
+
+    // EIP-7928: BlockAccessIndex valid range is [0, txCount + 1]
+    // (0 = pre-execution, 1..n = transactions, n+1 = post-execution).
+    private bool ValidateBlockLevelAccessListIndexBounds(Block block, ref string? error)
+    {
+        BlockAccessList bal = block.BlockAccessList!;
+        uint maxAllowed = (uint)block.Transactions.Length + 1;
+
+        foreach (AccountChanges accountChanges in bal.AccountChanges)
+        {
+            if (!ValidateBlockLevelAccessListIndexBounds(block, accountChanges.BalanceChanges, maxAllowed, ref error)) return false;
+            if (!ValidateBlockLevelAccessListIndexBounds(block, accountChanges.NonceChanges, maxAllowed, ref error)) return false;
+            if (!ValidateBlockLevelAccessListIndexBounds(block, accountChanges.CodeChanges, maxAllowed, ref error)) return false;
+            foreach (SlotChanges slotChanges in accountChanges.StorageChanges)
+            {
+                if (!ValidateBlockLevelAccessListIndexBounds(block, slotChanges.Changes.Values, maxAllowed, ref error)) return false;
+            }
+        }
+
+        return true;
+    }
+
+    private bool ValidateBlockLevelAccessListIndexBounds<T>(Block block, IReadOnlyList<T> changes, uint maxAllowed, ref string? error)
+        where T : IIndexedChange
+    {
+        for (int i = 0; i < changes.Count; i++)
+        {
+            uint index = changes[i].Index;
+            if (index <= maxAllowed) continue;
+
+            error = BlockErrorMessages.BlockLevelAccessListIndexOutOfRange(index, maxAllowed);
+            if (_logger.IsWarn) _logger.Warn($"{Invalid(block)} {error}");
+            return false;
+        }
+
+        return true;
     }
 
     private bool ValidateTxRootMatchesTxs(Block block, bool validateHashes, [NotNullWhen(false)] ref string? errorMessage)

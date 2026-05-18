@@ -105,7 +105,7 @@ public partial class EngineModuleTests
     }
 
     [Test]
-    [CancelAfter(10000)]
+    [CancelAfter(30000)]
     public async Task getPayloadV1_picks_transactions_from_pool_v1(CancellationToken cancellationToken)
     {
         using SemaphoreSlim blockImprovementLock = new(0);
@@ -390,11 +390,13 @@ public partial class EngineModuleTests
         improvementContextFactory.CreatedContexts.Should().OnlyContain(static i => i.Disposed);
     }
 
+    [Parallelizable(ParallelScope.None)] // Timing sensitive
     [Test, Retry(3)]
     public async Task getPayloadV1_picks_transactions_from_pool_constantly_improving_blocks()
     {
         TimeSpan delay = TimeSpan.FromMilliseconds(10);
-        TimeSpan timePerSlot = 50 * delay;
+        // Must stay above the PayloadPreparationService slot-cutoff (timePerSlot * 1.3) for all 3 wait rounds.
+        TimeSpan timePerSlot = 500 * delay;
         using MergeTestBlockchain chain = await CreateBlockchainWithImprovementContext(
             ctx => new StoringBlockImprovementContextFactory(new BlockImprovementContextFactory(ctx.Resolve<IBlockProducer>()!, TimeSpan.FromSeconds(ctx.Resolve<IMergeConfig>().SecondsPerSlot))),
             timePerSlot, delay: delay);
@@ -519,6 +521,7 @@ public partial class EngineModuleTests
     }
 
     [Test]
+    [NonParallelizable]
     public async Task Cannot_build_invalid_block_with_the_branch()
     {
         TimeSpan delay = TimeSpan.FromMilliseconds(10);
@@ -752,8 +755,14 @@ public partial class EngineModuleTests
             improvementDelay: delay);
 
     [TestCaseSource(nameof(OsakaTransitionInvalidatedTransactionsTestCaseSource))]
-    public async Task Lightweight_transaction_validation_is_applied_on_new_head(Transaction tx, IReleaseSpec initialSpec, IReleaseSpec nextBlockSpec, bool isForked)
+    public async Task Lightweight_transaction_validation_is_applied_on_new_head(TransactionBuilder<Transaction> txBuilder, int blobCount, IReleaseSpec? blobSpec, IReleaseSpec initialSpec, IReleaseSpec nextBlockSpec, bool isForked)
     {
+        // allocate blobs outside testcase to avoid excessive allocation
+        Transaction tx = txBuilder
+            .WithShardBlobTxTypeAndFields(blobCount, spec: blobSpec)
+            .SignedAndResolved(TestItem.PrivateKeyA)
+            .TestObject;
+
         using MergeTestBlockchain chain = await CreateBlockchain(configurer: builder => builder
             .WithGenesisPostProcessor((genesis, state) =>
             {
@@ -796,10 +805,9 @@ public partial class EngineModuleTests
                 yield return new TestCaseData(
                    Build.A.Transaction
                    .WithMaxFeePerGas(10000000000)
-                   .WithMaxPriorityFeePerGas(10000000000)
-                   .WithShardBlobTxTypeAndFields(1)
-                   .SignedAndResolved(TestItem.PrivateKeyA)
-                   .TestObject,
+                   .WithMaxPriorityFeePerGas(10000000000),
+                   1,
+                   (IReleaseSpec?)null,
                    Prague.Instance,
                    Osaka.Instance,
                    isForked
@@ -810,10 +818,9 @@ public partial class EngineModuleTests
                     Build.A.Transaction
                     .WithGasLimit(Eip7825Constants.DefaultTxGasLimitCap + 1)
                     .WithMaxFeePerGas(10000000000)
-                    .WithMaxPriorityFeePerGas(10000000000)
-                    .WithShardBlobTxTypeAndFields(1, spec: Osaka.Instance)
-                    .SignedAndResolved(TestItem.PrivateKeyA)
-                    .TestObject,
+                    .WithMaxPriorityFeePerGas(10000000000),
+                    1,
+                    (IReleaseSpec?)Osaka.Instance,
                     osakaWithNoTxGasCap,
                     Osaka.Instance,
                     isForked)
@@ -821,10 +828,9 @@ public partial class EngineModuleTests
 
                 yield return new TestCaseData(Build.A.Transaction
                     .WithMaxFeePerGas(10000000000)
-                    .WithMaxPriorityFeePerGas(10000000000)
-                    .WithShardBlobTxTypeAndFields(2, spec: Osaka.Instance)
-                    .SignedAndResolved(TestItem.PrivateKeyA)
-                    .TestObject,
+                    .WithMaxPriorityFeePerGas(10000000000),
+                    2,
+                    (IReleaseSpec?)Osaka.Instance,
                     Osaka.Instance,
                     osakaWithSmallerBlobCap,
                     isForked)

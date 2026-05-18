@@ -49,8 +49,13 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
         {
             (Hash256, long)[] blockHashes = ctx.DecodeArray(static (ref Rlp.ValueDecoderContext c) =>
             {
-                c.ReadSequenceLength();
-                return (c.DecodeKeccak(), (long)c.DecodeUInt256());
+                int length = c.ReadSequenceLength();
+                int checkPosition = c.Position + length;
+
+                (Hash256, long) result = (c.DecodeKeccak(), (long)c.DecodeUInt256());
+
+                c.Check(checkPosition);
+                return result;
             }, false, limit: RlpLimit);
 
             return new NewBlockHashesMessage(blockHashes);

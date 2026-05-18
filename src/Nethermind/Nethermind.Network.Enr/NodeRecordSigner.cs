@@ -76,11 +76,11 @@ public class NodeRecordSigner(IEcdsa? ethereumEcdsa, PrivateKey? privateKey) : I
                     nodeRecord.SetEntry(new EthEntry(forkHash, nextBlock));
                     break;
                 case 3 when key.SequenceEqual(EnrContentKey.TcpU8):
-                    int tcpPort = ctx.DecodeInt();
+                    int tcpPort = ctx.DecodePositiveInt();
                     nodeRecord.SetEntry(new TcpEntry(tcpPort));
                     break;
                 case 3 when key.SequenceEqual(EnrContentKey.UdpU8):
-                    int udpPort = ctx.DecodeInt();
+                    int udpPort = ctx.DecodePositiveInt();
                     nodeRecord.SetEntry(new UdpEntry(udpPort));
                     break;
                 case 9 when key.SequenceEqual(EnrContentKey.SecP256k1U8):

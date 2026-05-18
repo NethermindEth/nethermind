@@ -9,7 +9,6 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.State;
 using Nethermind.Synchronization.FastBlocks;
 using Nethermind.Synchronization.ParallelSync;
-using Nethermind.Synchronization.SnapSync;
 using NSubstitute;
 using NSubstitute.ReturnsExtensions;
 using NUnit.Framework;
@@ -127,7 +126,7 @@ namespace Nethermind.Synchronization.Test
                 Substitute.For<ISyncFeed<HeadersSyncBatch?>>(),
                 Substitute.For<ISyncFeed<BodiesSyncBatch?>>(),
                 receiptFeed,
-                Substitute.For<ISyncFeed<SnapSyncBatch?>>()
+                Substitute.For<ISyncFeed<BlockAccessListsSyncBatch?>>()
             );
         }
     }

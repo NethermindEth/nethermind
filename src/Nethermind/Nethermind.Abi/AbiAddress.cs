@@ -27,8 +27,8 @@ namespace Nethermind.Abi
                 {
                     case Address input:
                         {
-                            byte[] bytes = input.Bytes;
-                            return packed ? bytes : bytes.PadLeft(UInt256.LengthInBytes);
+                            ReadOnlySpan<byte> bytes = input.Bytes;
+                            return packed ? bytes.ToArray() : bytes.PadLeft(UInt256.LengthInBytes);
                         }
                     case string stringInput:
                         {

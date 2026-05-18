@@ -20,7 +20,7 @@ public abstract class MerkleTree : IMerkleList
     private const ulong MaxNodes = (1ul << (TreeHeight + 1)) - 1ul;
     private const ulong MaxNodeIndex = MaxNodes - 1;
 
-    private readonly IKeyValueStore<ulong, byte[]> _keyValueStore;
+    private readonly IKeyValueStore<ulong> _keyValueStore;
 
     private static readonly ulong _countKey = ulong.MaxValue;
 
@@ -130,7 +130,7 @@ public abstract class MerkleTree : IMerkleList
 
     public uint Count { get; set; }
 
-    public MerkleTree(IKeyValueStore<ulong, byte[]> keyValueStore)
+    public MerkleTree(IKeyValueStore<ulong> keyValueStore)
     {
         _keyValueStore = keyValueStore ?? throw new ArgumentNullException(nameof(keyValueStore));
 

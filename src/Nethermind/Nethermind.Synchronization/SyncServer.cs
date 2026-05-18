@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.Collections.Generic;
 using System.IO;
 using System.Text;
@@ -9,6 +10,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Autofac.Features.AttributeFilters;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Headers;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus;
@@ -43,6 +45,7 @@ namespace Nethermind.Synchronization
         private readonly ISyncPeerPool _pool;
         private readonly ISyncModeSelector _syncModeSelector;
         private readonly IReceiptFinder _receiptFinder;
+        private readonly IBlockAccessListStore _blockAccessListStore;
         private readonly IBlockValidator _blockValidator;
         private readonly ISealValidator _sealValidator;
         private readonly IReadOnlyKeyValueStore? _stateDb;
@@ -69,6 +72,7 @@ namespace Nethermind.Synchronization
             [KeyFilter(DbNames.Code)] IReadOnlyKeyValueStore codeDb,
             IBlockTree blockTree,
             IReceiptFinder receiptFinder,
+            IBlockAccessListStore blockAccessListStore,
             IBlockValidator blockValidator,
             ISealValidator sealValidator,
             ISyncPeerPool pool,
@@ -89,6 +93,7 @@ namespace Nethermind.Synchronization
             _codeDb = codeDb ?? throw new ArgumentNullException(nameof(codeDb));
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _receiptFinder = receiptFinder ?? throw new ArgumentNullException(nameof(receiptFinder));
+            _blockAccessListStore = blockAccessListStore ?? throw new ArgumentNullException(nameof(blockAccessListStore));
             _blockValidator = blockValidator ?? throw new ArgumentNullException(nameof(blockValidator));
             _historyPruner = historyPruner ?? throw new ArgumentNullException(nameof(historyPruner));
             _logger = logManager?.GetClassLogger<SyncServer>() ?? throw new ArgumentNullException(nameof(logManager));
@@ -215,9 +220,9 @@ namespace Nethermind.Synchronization
                     BroadcastBlock(blockToBroadCast, false, nodeWhoSentTheBlock);
 
                     SyncMode syncMode = _syncModeSelector.Current;
-                    bool notInFastSyncNorStateSyncNorSnap = (syncMode & (SyncMode.FastSync | SyncMode.StateNodes | SyncMode.SnapSync)) == SyncMode.None;
+                    bool notInFastSyncNorStateSync = (syncMode & (SyncMode.FastSync | SyncMode.StateNodes)) == SyncMode.None;
                     bool inFullSyncOrWaitingForBlocks = (syncMode & (SyncMode.Full | SyncMode.WaitingForBlock)) != SyncMode.None;
-                    if (notInFastSyncNorStateSyncNorSnap || inFullSyncOrWaitingForBlocks)
+                    if (notInFastSyncNorStateSync || inFullSyncOrWaitingForBlocks)
                     {
                         LogBlockAuthorNicely(block, nodeWhoSentTheBlock);
                         SyncBlock(block, nodeWhoSentTheBlock);
@@ -370,6 +375,11 @@ namespace Nethermind.Synchronization
         }
 
         public TxReceipt[] GetReceipts(Hash256? blockHash) => blockHash is not null ? _receiptFinder.Get(blockHash) : [];
+
+        public MemoryManager<byte>? GetBlockAccessListRlp(Hash256 blockHash) =>
+            _blockTree.FindHeader(blockHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded)?.BlockAccessListHash is null
+                ? null
+                : _blockAccessListStore.GetRlp(blockHash);
 
         public IOwnedReadOnlyList<BlockHeader> FindHeaders(Hash256 hash, int numberOfBlocks, int skip, bool reverse) => _blockTree.FindHeaders(hash, numberOfBlocks, skip, reverse);
 

@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
@@ -186,6 +186,8 @@ public class GethGenesisLoader(IJsonSerializer serializer) : IChainSpecLoader
             Eip7843TransitionTimestamp = config.AmsterdamTime,
             Eip7928TransitionTimestamp = config.AmsterdamTime,
             Eip7954TransitionTimestamp = config.AmsterdamTime,
+            Eip7976TransitionTimestamp = config.AmsterdamTime,
+            Eip7981TransitionTimestamp = config.AmsterdamTime,
             Eip8024TransitionTimestamp = config.AmsterdamTime,
             Eip8037TransitionTimestamp = config.AmsterdamTime,
 

@@ -83,7 +83,7 @@ public class NodeLifecycleManager : INodeLifecycleManager
         RefreshNodeContactTime();
     }
 
-    private void SendEnrRequest()
+    protected virtual void SendEnrRequest()
     {
         EnrRequestMsg msg = new(ManagedNode.Address, CalculateExpirationTime());
         _discoveryManager.SendMessage(msg);

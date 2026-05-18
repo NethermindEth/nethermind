@@ -8,12 +8,12 @@ namespace Nethermind.State.Flat.ScopeProvider;
 
 public interface ITrieWarmer
 {
-    public void PushSlotJob(
+    public bool PushSlotJob(
         IStorageWarmer storageTree,
         in UInt256? index,
         int sequenceId);
 
-    public void PushAddressJob(
+    public bool PushAddressJob(
         IAddressWarmer scope,
         Address? path,
         int sequenceId);

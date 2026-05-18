@@ -835,15 +835,17 @@ namespace Nethermind.Trie.Test.Pruning
         [TestCase(false)]
         public void ReadOnly_store_returns_copies(bool pruning)
         {
-            TrieNode node = new(NodeType.Leaf);
-            Account account = new(1, 1, TestItem.KeccakA, Keccak.OfAnEmptyString);
-            node.Value = _accountDecoder.Encode(account).Bytes;
-            node.Key = Nibbles.BytesToNibbleBytes(TestItem.KeccakA.BytesToArray());
+            TrieNode node = new(NodeType.Branch);
+            for (int i = 0; i < 16; i++)
+            {
+                node.SetChild(i, new TrieNode(NodeType.Unknown, TestItem.Keccaks[i]));
+            }
+
             TreePath emptyPath = TreePath.Empty;
-            node.ResolveKey(NullTrieNodeResolver.Instance, ref emptyPath);
 
             using TrieStore fullTrieStore = CreateTrieStore(pruningStrategy: new TestPruningStrategy(pruning));
             IScopedTrieStore trieStore = fullTrieStore.GetTrieStore(null);
+            node.ResolveKey(trieStore, ref emptyPath);
 
             using (ICommitter? committer = fullTrieStore.BeginStateBlockCommit(0, node))
             {
@@ -862,9 +864,14 @@ namespace Nethermind.Trie.Test.Pruning
 
             CappedArray<byte> origRlp = originalNode.FullRlp;
             CappedArray<byte> readOnlyRlp = readOnlyNode.FullRlp;
-            readOnlyRlp.Should().BeEquivalentTo(origRlp);
+            readOnlyRlp.AsSpan().ToArray().Should().Equal(origRlp.AsSpan().ToArray());
+            readOnlyRlp.UnderlyingArray.Should().NotBeSameAs(origRlp.UnderlyingArray);
 
-            readOnlyNode.Key?.ToString().Should().Be(originalNode.Key?.ToString());
+            byte firstReadOnlyByte = readOnlyRlp[0];
+            origRlp[0] ^= 1;
+
+            readOnlyNode.GetChildHash(0).Should().Be(TestItem.Keccaks[0]);
+            readOnlyNode.FullRlp[0].Should().Be(firstReadOnlyByte);
         }
 
         private long ExpectedPerNodeKeyMemorySize => (scheme == INodeStorage.KeyScheme.Hash ? 0 : TrieStoreDirtyNodesCache.Key.MemoryUsage) + MemorySizes.ObjectHeaderMethodTable + MemorySizes.RefSize + 4 + MemorySizes.RefSize;

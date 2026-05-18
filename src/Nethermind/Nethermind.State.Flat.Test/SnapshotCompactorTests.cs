@@ -292,7 +292,7 @@ public class SnapshotCompactorTests
         // New account marked as self-destructed should be tracked
         Assert.That(compacted.Content.SelfDestructedStorageAddresses.Count, Is.GreaterThan(0));
         // Verify at least one entry has true value
-        Assert.That(compacted.Content.SelfDestructedStorageAddresses.Values.Any(v => v), Is.True);
+        Assert.That(compacted.Content.SelfDestructedStorageAddresses.Any(static kvp => kvp.Value), Is.True);
     }
 
     [Test]

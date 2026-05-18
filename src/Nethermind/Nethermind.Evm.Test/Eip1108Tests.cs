@@ -54,7 +54,7 @@ public class Eip1108Tests : VirtualMachineTestsBase
     {
         _blockNumberAdjustment = blockAdjustment;
         byte[] code = Prepare.EvmCode
-            .CallWithInput(BN254PairingPrecompile.Address, 200000L, new byte[192])
+            .CallWithInput(BN254PairingCheckPrecompile.Address, 200000L, new byte[192])
             .Done;
         TestAllTracerWithOutput result = Execute(BlockNumber, 1000000L, code);
         Assert.That(result.StatusCode, Is.EqualTo(StatusCode.Success));

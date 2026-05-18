@@ -8,6 +8,7 @@ using System.IO;
 using Autofac.Features.AttributeFilters;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Db;
@@ -106,6 +107,48 @@ public class HeaderStore(
         {
             blockNumberDb.DangerousReleaseMemory(numberSpan);
         }
+    }
+
+    public IOwnedReadOnlyList<BlockHeader> FindReversedHeaders(long endBlockNumber, Hash256 endBlockHash, int count)
+    {
+        Dictionary<ValueHash256, BlockHeader> prefetched = new(count);
+
+        if (headerDb is ISortedKeyValueStore sorted)
+        {
+            Span<byte> startKey = stackalloc byte[40];
+            Span<byte> endKey = stackalloc byte[40];
+            KeyValueStoreExtensions.GetBlockNumPrefixedKey(Math.Max(0L, endBlockNumber - count + 1), default, startKey);
+            KeyValueStoreExtensions.GetBlockNumPrefixedKey(endBlockNumber + 1, default, endKey);
+
+            using ISortedView view = sorted.GetViewBetween(startKey, endKey);
+            while (view.MoveNext())
+            {
+                if (view.CurrentKey.Length != 40) continue; // skip old hash-only keys
+                BlockHeader header = _headerDecoder.Decode(view.CurrentValue);
+                header.Hash ??= new Hash256(view.CurrentKey[8..]);
+                prefetched[header.Hash.ValueHash256] = header;
+            }
+        }
+
+        BlockHeader? cursor = prefetched.TryGetValue(endBlockHash.ValueHash256, out BlockHeader? found)
+            ? found
+            : Get(endBlockHash, shouldCache: false, blockNumber: endBlockNumber);
+
+        if (cursor is null) return ArrayPoolList<BlockHeader>.Empty();
+
+        ArrayPoolList<BlockHeader> result = new(count) { cursor };
+        while (result.Count < count && cursor.ParentHash is not null)
+        {
+            long parentNumber = cursor.Number - 1;
+            cursor = prefetched.TryGetValue(cursor.ParentHash.ValueHash256, out BlockHeader? dictHeader)
+                ? dictHeader
+                : Get(cursor.ParentHash, shouldCache: false, blockNumber: parentNumber);
+            if (cursor is null) break;
+            result.Add(cursor);
+        }
+
+        result.AsSpan().Reverse();
+        return result;
     }
 
     BlockHeader? IHeaderFinder.Get(Hash256 blockHash, long? blockNumber) => Get(blockHash, true, blockNumber);

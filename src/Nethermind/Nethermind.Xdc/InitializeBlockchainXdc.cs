@@ -8,6 +8,7 @@ using Nethermind.Init.Steps;
 using Nethermind.TxPool;
 using Nethermind.Xdc.TxPool;
 using System.Collections.Generic;
+using Nethermind.Consensus.Producers;
 
 namespace Nethermind.Xdc;
 
@@ -35,6 +36,9 @@ internal class InitializeBlockchainXdc(INethermindApi api, IChainHeadInfoProvide
         _api.DisposeStack.Push(txPool);
         return txPool;
     }
+
+    // Consensus loop must run on all nodes to keep QC/TC state current
+    protected override IBlockProductionPolicy CreateBlockProductionPolicy() => AlwaysStartBlockProductionPolicy.Instance;
 
     protected new IComparer<Transaction> CreateTxPoolTxComparer() => new XdcTransactionComparerProvider(_api.SpecProvider!, _api.BlockTree!).GetDefaultComparer();
 }

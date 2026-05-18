@@ -21,24 +21,30 @@ public class OverridableEnvFactory(IWorldStateManager worldStateManager, ILifeti
             .AddDecorator<ICodeInfoRepository, OverridableCodeInfoRepository>()
             .AddScoped<IOverridableCodeInfoRepository, ICodeInfoRepository>((codeInfoRepo) => (codeInfoRepo as OverridableCodeInfoRepository)!));
 
-        return new OverridableEnv(overridableScope, childLifetimeScope, specProvider);
+        OverridableSpecProvider overridableSpecProvider = new(specProvider);
+        return new OverridableEnv(overridableScope, childLifetimeScope, specProvider, overridableSpecProvider);
     }
 
     private class OverridableEnv(
         IOverridableWorldScope overridableScope,
         ILifetimeScope childLifetimeScope,
-        ISpecProvider specProvider
+        ISpecProvider specProvider,
+        OverridableSpecProvider overridableSpecProvider
     ) : Module, IOverridableEnv, IDisposable
     {
         private IDisposable? _worldScopeCloser;
         private readonly IOverridableCodeInfoRepository _codeInfoRepository = childLifetimeScope.Resolve<IOverridableCodeInfoRepository>();
         private readonly IWorldState _worldState = childLifetimeScope.Resolve<IWorldState>();
 
-        public IDisposable BuildAndOverride(BlockHeader? header, Dictionary<Address, AccountOverride>? stateOverride)
+        public IDisposable BuildAndOverride(BlockHeader? header, Dictionary<Address, AccountOverride>? stateOverride = null, IReleaseSpec? specOverride = null)
         {
             if (_worldScopeCloser is not null) throw new InvalidOperationException("Previous overridable world scope was not closed");
 
             Reset();
+
+            if (specOverride is not null)
+                overridableSpecProvider.SetOverride(specOverride);
+
             _worldScopeCloser = _worldState.BeginScope(header);
 
             try
@@ -66,6 +72,7 @@ public class OverridableEnvFactory(IWorldStateManager worldStateManager, ILifeti
         private void Reset()
         {
             _codeInfoRepository.ResetOverrides();
+            overridableSpecProvider.ResetOverride();
 
             _worldScopeCloser?.Dispose();
             _worldScopeCloser = null;
@@ -79,6 +86,7 @@ public class OverridableEnvFactory(IWorldStateManager worldStateManager, ILifeti
                 .AddScoped<IOverridableEnv>(this)
                 .AddScoped<ICodeInfoRepository>(_codeInfoRepository)
                 .AddScoped<IOverridableCodeInfoRepository>(_codeInfoRepository)
+                .AddScoped<ISpecProvider>(overridableSpecProvider)
             ;
 
         public void Dispose() =>

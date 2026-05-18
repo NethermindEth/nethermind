@@ -45,50 +45,23 @@ public readonly struct Frequency(double hertz)
 
     public static Frequency FromGHz(double value) => GHz * value;
 
-    public static implicit operator Frequency(double value)
-    {
-        return new Frequency(value);
-    }
+    public static implicit operator Frequency(double value) => new(value);
 
-    public static implicit operator double(Frequency property)
-    {
-        return property.Hertz;
-    }
+    public static implicit operator double(Frequency property) => property.Hertz;
 
-    public static double operator /(Frequency a, Frequency b)
-    {
-        return 1.0 * a.Hertz / b.Hertz;
-    }
+    public static double operator /(Frequency a, Frequency b) => 1.0 * a.Hertz / b.Hertz;
 
-    public static Frequency operator /(Frequency a, double k)
-    {
-        return new Frequency(a.Hertz / k);
-    }
+    public static Frequency operator /(Frequency a, double k) => new(a.Hertz / k);
 
-    public static Frequency operator /(Frequency a, int k)
-    {
-        return new Frequency(a.Hertz / (double)k);
-    }
+    public static Frequency operator /(Frequency a, int k) => new(a.Hertz / (double)k);
 
-    public static Frequency operator *(Frequency a, double k)
-    {
-        return new Frequency(a.Hertz * k);
-    }
+    public static Frequency operator *(Frequency a, double k) => new(a.Hertz * k);
 
-    public static Frequency operator *(Frequency a, int k)
-    {
-        return new Frequency(a.Hertz * (double)k);
-    }
+    public static Frequency operator *(Frequency a, int k) => new(a.Hertz * (double)k);
 
-    public static Frequency operator *(double k, Frequency a)
-    {
-        return new Frequency(a.Hertz * k);
-    }
+    public static Frequency operator *(double k, Frequency a) => new(a.Hertz * k);
 
-    public static Frequency operator *(int k, Frequency a)
-    {
-        return new Frequency(a.Hertz * (double)k);
-    }
+    public static Frequency operator *(int k, Frequency a) => new(a.Hertz * (double)k);
 
     public static bool TryParse(string s, FrequencyUnit unit, out Frequency freq)
     {

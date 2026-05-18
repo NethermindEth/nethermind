@@ -14,6 +14,7 @@ using CkzgLib;
 using FluentAssertions;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
@@ -60,7 +61,7 @@ public partial class EngineModuleTests
             ParentBeaconBlockRoot = TestItem.KeccakB
         };
 
-        ResultWrapper<object?> buildResult = await testingRpcModule.testing_buildBlockV1(
+        ResultWrapper<object> buildResult = await testingRpcModule.testing_buildBlockV1(
             head.Hash!,
             payloadAttributes,
             [],
@@ -86,6 +87,32 @@ public partial class EngineModuleTests
     }
 
     [Test]
+    public async Task Testing_commitBlockV1_advances_chain_head()
+    {
+        MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: Osaka.Instance);
+        ITestingRpcModule testingRpcModule = chain.Container.Resolve<ITestingRpcModule>();
+
+        Block head = chain.BlockTree.Head!;
+        long initialHeadNumber = head.Number;
+
+        PayloadAttributes payloadAttributes = new()
+        {
+            Timestamp = head.Timestamp + 12,
+            PrevRandao = TestItem.KeccakA,
+            SuggestedFeeRecipient = Address.Zero,
+            Withdrawals = [],
+            ParentBeaconBlockRoot = TestItem.KeccakB
+        };
+
+        ResultWrapper<Hash256> result = await testingRpcModule.testing_commitBlockV1(payloadAttributes, [], []);
+
+        result.Result.Should().Be(Result.Success);
+        result.Data.Should().NotBeNull();
+        chain.BlockTree.Head!.Number.Should().Be(initialHeadNumber + 1);
+        chain.BlockTree.Head.Hash.Should().Be(result.Data);
+    }
+
+    [Test]
     public async Task GetBlobsV2_should_throw_if_more_than_128_requested_blobs([Values(128, 129)] int requestSize)
     {
         MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: Osaka.Instance, mergeConfig: new MergeConfig()
@@ -100,7 +127,7 @@ public partial class EngineModuleTests
             request.Add(Bytes.FromHexString(i.ToString("X64")));
         }
 
-        ResultWrapper<IEnumerable<BlobAndProofV2?>?> result = await rpcModule.engine_getBlobsV2(request.ToArray());
+        ResultWrapper<IReadOnlyList<BlobAndProofV2?>?> result = await rpcModule.engine_getBlobsV2(request.ToArray());
 
         if (requestSize > 128)
         {
@@ -123,7 +150,7 @@ public partial class EngineModuleTests
         });
         IEngineRpcModule rpcModule = chain.EngineRpcModule;
 
-        ResultWrapper<IEnumerable<BlobAndProofV2?>?> result = await rpcModule.engine_getBlobsV2([]);
+        ResultWrapper<IReadOnlyList<BlobAndProofV2?>?> result = await rpcModule.engine_getBlobsV2([]);
 
         result.Result.Should().Be(Result.Success);
         result.Data.Should().BeEquivalentTo(ArraySegment<BlobAndProofV2>.Empty);
@@ -147,7 +174,7 @@ public partial class EngineModuleTests
 
         chain.TxPool.SubmitTx(blobTx, TxHandlingOptions.None).Should().Be(AcceptTxResult.Accepted);
 
-        ResultWrapper<IEnumerable<BlobAndProofV2?>?> result = await rpcModule.engine_getBlobsV2(blobTx.BlobVersionedHashes!);
+        ResultWrapper<IReadOnlyList<BlobAndProofV2?>?> result = await rpcModule.engine_getBlobsV2(blobTx.BlobVersionedHashes!);
 
         ShardBlobNetworkWrapper wrapper = (ShardBlobNetworkWrapper)blobTx.NetworkWrapper!;
 
@@ -175,7 +202,7 @@ public partial class EngineModuleTests
             .SignedAndResolved(chain.EthereumEcdsa, TestItem.PrivateKeyA).TestObject;
 
         // requesting hashes that are not present in TxPool
-        ResultWrapper<IEnumerable<BlobAndProofV2?>?> result = await rpcModule.engine_getBlobsV2(blobTx.BlobVersionedHashes!);
+        ResultWrapper<IReadOnlyList<BlobAndProofV2?>?> result = await rpcModule.engine_getBlobsV2(blobTx.BlobVersionedHashes!);
 
         result.Result.Should().Be(Result.Success);
         result.Data.Should().BeNull();
@@ -210,7 +237,7 @@ public partial class EngineModuleTests
             blobVersionedHashesRequest.Add(addActualHash ? blobTx.BlobVersionedHashes![actualIndex++]! : Bytes.FromHexString(i.ToString("X64")));
         }
 
-        ResultWrapper<IEnumerable<BlobAndProofV2?>?> result = await rpcModule.engine_getBlobsV2(blobVersionedHashesRequest.ToArray());
+        ResultWrapper<IReadOnlyList<BlobAndProofV2?>?> result = await rpcModule.engine_getBlobsV2(blobVersionedHashesRequest.ToArray());
         if (multiplier > 1)
         {
             result.Result.Should().Be(Result.Success);
@@ -256,7 +283,7 @@ public partial class EngineModuleTests
             blobVersionedHashesRequest.Add(addActualHash ? blobTx.BlobVersionedHashes![actualIndex++]! : Bytes.FromHexString(i.ToString("X64")));
         }
 
-        ResultWrapper<IEnumerable<BlobAndProofV2?>?> result = await rpcModule.engine_getBlobsV3(blobVersionedHashesRequest.ToArray());
+        ResultWrapper<IReadOnlyList<BlobAndProofV2?>?> result = await rpcModule.engine_getBlobsV3(blobVersionedHashesRequest.ToArray());
 
         result.Result.Should().Be(Result.Success);
         result.Data.Should().NotBeNull();
@@ -289,7 +316,7 @@ public partial class EngineModuleTests
         MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: Osaka.Instance);
         IEngineRpcModule rpcModule = chain.EngineRpcModule;
 
-        ResultWrapper<IEnumerable<BlobAndProofV1?>> result = await rpcModule.engine_getBlobsV1([]);
+        ResultWrapper<IReadOnlyList<BlobAndProofV1?>> result = await rpcModule.engine_getBlobsV1([]);
 
         result.Result.Should().BeEquivalentTo(Result.Fail(MergeErrorMessages.UnsupportedFork));
         result.ErrorCode.Should().Be(MergeErrorCodes.UnsupportedFork);
