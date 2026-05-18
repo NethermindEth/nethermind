@@ -15,7 +15,7 @@ internal enum EthStatsIncomingMessageType
 
 internal readonly record struct EthStatsHistoryRequest(long Min, long Max);
 
-internal readonly record struct EthStatsNodeTiming(long? ClientTime, long? ServerTime);
+internal readonly record struct EthStatsNodeTiming(long? ClientTime);
 
 internal readonly record struct EthStatsIncomingMessage(
     string EventTypeName,
@@ -105,9 +105,8 @@ internal static class EthStatsMessageParser
     private static EthStatsNodeTiming ReadNodeTiming(JsonElement payload)
     {
         long? clientTime = TryGetInt64(payload, "clientTime", out long parsedClientTime) ? parsedClientTime : null;
-        long? serverTime = TryGetInt64(payload, "serverTime", out long parsedServerTime) ? parsedServerTime : null;
 
-        return new EthStatsNodeTiming(clientTime, serverTime);
+        return new EthStatsNodeTiming(clientTime);
     }
 
     private static bool TryGetInt64(JsonElement payload, string propertyName, out long value)

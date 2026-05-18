@@ -15,7 +15,6 @@ public class EthStatsMessageParserTests
             (int)EthStatsIncomingMessageType.History,
             1L,
             3L,
-            null,
             null)
             .SetName("Can_parse_history_request");
 
@@ -24,8 +23,7 @@ public class EthStatsMessageParserTests
             (int)EthStatsIncomingMessageType.NodePing,
             null,
             null,
-            42L,
-            null)
+            42L)
             .SetName("Can_parse_node_ping");
 
         yield return new TestCaseData(
@@ -33,8 +31,7 @@ public class EthStatsMessageParserTests
             (int)EthStatsIncomingMessageType.NodePong,
             null,
             null,
-            42L,
-            84L)
+            42L)
             .SetName("Can_parse_node_pong");
     }
 
@@ -44,16 +41,15 @@ public class EthStatsMessageParserTests
         int expectedMessageType,
         long? expectedHistoryMin,
         long? expectedHistoryMax,
-        long? expectedClientTime,
-        long? expectedServerTime)
+        long? expectedClientTime)
     {
         bool parsed = EthStatsMessageParser.TryParse(json, out EthStatsIncomingMessage message);
         EthStatsHistoryRequest? expectedHistoryRequest = expectedHistoryMin is null || expectedHistoryMax is null
             ? null
             : new EthStatsHistoryRequest(expectedHistoryMin.Value, expectedHistoryMax.Value);
-        EthStatsNodeTiming? expectedNodeTiming = expectedClientTime is null && expectedServerTime is null
+        EthStatsNodeTiming? expectedNodeTiming = expectedClientTime is null
             ? null
-            : new EthStatsNodeTiming(expectedClientTime, expectedServerTime);
+            : new EthStatsNodeTiming(expectedClientTime);
 
         using (Assert.EnterMultipleScope())
         {

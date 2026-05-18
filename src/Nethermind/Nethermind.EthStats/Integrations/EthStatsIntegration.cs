@@ -85,7 +85,10 @@ namespace Nethermind.EthStats.Integrations
             _timer.Elapsed += TimerOnElapsed;
             _blockTree.NewHeadBlock += BlockTreeOnNewHeadBlock;
             _websocketClient = await _ethStatsClient.InitAsync();
+
+            // Subscribe to incoming messages before the explicit initial hello; reconnect events only cover later reconnects.
             Run(_timer);
+
             if (_logger.IsInfo) _logger.Info("Initial connection, sending 'hello' message...");
             await SendHelloAsync();
             _connected = true;
@@ -99,11 +102,9 @@ namespace Nethermind.EthStats.Integrations
                 return;
             }
 
-            _websocketClient.ReconnectionHappened.Subscribe(async _ =>
+            _websocketClient.ReconnectionHappened.Subscribe(reconnectionInfo =>
             {
-                if (_logger.IsInfo) _logger.Info("ETH Stats reconnected, sending 'hello' message...");
-                await SendHelloAsync();
-                _connected = true;
+                _ = ReconnectHelloAsync();
             });
 
             _websocketClient.DisconnectionHappened.Subscribe(reason =>
@@ -149,7 +150,7 @@ namespace Nethermind.EthStats.Integrations
 
             if (_logger.IsDebug) _logger.Debug("ETH Stats sending 'block', 'pending' messages...");
             _lastBlockProcessedTimestamp = timestamp;
-            SendBlockAsync(block);
+            _ = SendBlockAsync(block);
         }
 
         public void Dispose()
@@ -178,6 +179,20 @@ namespace Nethermind.EthStats.Integrations
         private Task SendBlockAsync(CoreBlock block)
             => _sender.SendAsync(_websocketClient!, new BlockMessage(CreateBlockModel(block)));
 
+        private async Task ReconnectHelloAsync()
+        {
+            try
+            {
+                if (_logger.IsInfo) _logger.Info("ETH Stats reconnected, sending 'hello' message...");
+                await SendHelloAsync();
+                _connected = true;
+            }
+            catch (Exception e)
+            {
+                if (_logger.IsWarn) _logger.Warn($"ETH Stats hello failed after reconnect: {e}");
+            }
+        }
+
         private Task SendHistoryAsync(EthStatsHistoryRequest request)
         {
             if (!TryNormalizeHistoryRange(request, out long min, out long max))
@@ -187,12 +202,17 @@ namespace Nethermind.EthStats.Integrations
             }
 
             List<EthStatsBlock> history = new((int)(max - min + 1));
-            for (long blockNumber = max; blockNumber >= min; blockNumber--)
+            for (long blockNumber = min; blockNumber <= max; blockNumber++)
             {
                 CoreBlock? block = _blockTree.FindBlock(blockNumber, BlockTreeLookupOptions.RequireCanonical);
                 if (block is not null)
                 {
                     history.Add(CreateBlockModel(block));
+                }
+
+                if (blockNumber == max)
+                {
+                    break;
                 }
             }
 
@@ -212,7 +232,7 @@ namespace Nethermind.EthStats.Integrations
             return _sender.SendAsync(_websocketClient, new NodePingMessage(clientTime), "node-ping");
         }
 
-        private async Task HandleIncomingMessageAsync(string? message)
+        internal async Task HandleIncomingMessageAsync(string? message)
         {
             if (!EthStatsMessageParser.TryParse(message, out EthStatsIncomingMessage incomingMessage))
             {
@@ -261,7 +281,13 @@ namespace Nethermind.EthStats.Integrations
 
             long clientTime = nodeTiming.Value.ClientTime.Value;
             long now = Timestamper.Default.UnixTime.MillisecondsLong;
-            long latency = now >= clientTime ? now - clientTime : clientTime - now;
+            if (now < clientTime)
+            {
+                if (_logger.IsDebug) _logger.Debug($"Ignoring ETH Stats 'node-pong' latency with future clientTime {clientTime}.");
+                return Task.CompletedTask;
+            }
+
+            long latency = now - clientTime;
 
             if (_logger.IsDebug) _logger.Debug($"ETH Stats sending 'latency' message after 'node-pong': {latency} ms.");
             return _sender.SendAsync(_websocketClient, new LatencyMessage(latency));
@@ -287,8 +313,7 @@ namespace Nethermind.EthStats.Integrations
 
             min = Math.Max(0, min);
 
-            long requestedBlocks = max - min + 1;
-            if (requestedBlocks > MaxHistoryBlocks)
+            if (max - min >= MaxHistoryBlocks)
             {
                 min = max - MaxHistoryBlocks + 1;
             }
