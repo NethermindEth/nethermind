@@ -452,7 +452,20 @@ public ref struct HsstBTreeBuilder<TWriter, TReader, TPin>
         // Prune stranded pending first so the final leaf only wraps entries on
         // the writer's current page; any older entries become direct Entry
         // children of the intermediate level instead.
-        if (EntryPositions.Count > _pendingFirstEntryIdx)
+        //
+        // Single-entry HSST short-circuit: when the build holds exactly one entry,
+        // bypass FlushPendingNotOnCurrentPage and emit it as a 1-entry inline leaf
+        // directly. Without this, a page-crossing value would push the lone entry
+        // past the writer's page, FlushPendingNotOnCurrentPage would strand it as
+        // a direct Entry descriptor on CurrentLevel, and HsstIndexBuilder.Build's
+        // currentNative.Count == 1 early-return would mis-report the rootSize as
+        // the entry record's full byte length (1 + keyLen + LEB128 + valueLen) —
+        // unbounded, overflowing the u16 trailer for large values.
+        if (EntryPositions.Count == 1)
+        {
+            EmitInlineLeaf();
+        }
+        else if (EntryPositions.Count > _pendingFirstEntryIdx)
         {
             FlushPendingNotOnCurrentPage();
             if (EntryPositions.Count > _pendingFirstEntryIdx)

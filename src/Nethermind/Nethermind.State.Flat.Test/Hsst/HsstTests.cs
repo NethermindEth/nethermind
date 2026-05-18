@@ -220,6 +220,48 @@ public class HsstTests
         }
     }
 
+    /// <summary>
+    /// Regression: single-entry HSST with a value that crosses page boundaries.
+    /// </summary>
+    /// <remarks>
+    /// One entry whose value is large enough to push the writer many pages past
+    /// the entry's flag byte. Without the trigger-3 single-entry short-circuit
+    /// in <see cref="HsstBTreeBuilder{TWriter, TReader, TPin}"/>.Build,
+    /// FlushPendingNotOnCurrentPage drains the lone pending entry as a direct
+    /// Entry descriptor and EmitInlineLeaf never runs. HsstIndexBuilder.Build's
+    /// currentNative.Count == 1 early-return then returns
+    /// <c>absoluteIndexStart - only.ChildOffset</c> — the entry record's full
+    /// byte length (1 + keyLen + LEB128 + valueLen) — as the rootSize, which
+    /// overflows the u16 trailer field for any value past ~64 KiB. Covers both
+    /// key-first and key-after-value layouts since both flow through the same
+    /// trigger-3 path.
+    /// </remarks>
+    [TestCase(16, false)]            // small value (fits page) — sanity baseline
+    [TestCase(6 * 1024, false)]      // ~2-page value, key-after-value
+    [TestCase(150 * 1024, false)]    // ~37 pages, key-after-value (was: u16 overflow)
+    [TestCase(16, true)]             // small value (fits page) — key-first sanity
+    [TestCase(150 * 1024, true)]     // ~37 pages, key-first (matches failing snapshot shape)
+    public void Build_OneEntry_PageCrossingValue_DoesNotOverflowRoot(int valueLen, bool keyFirst)
+    {
+        byte[] key = new byte[30];
+        for (int i = 0; i < 30; i++) key[i] = (byte)(i + 1);
+        byte[] value = new byte[valueLen];
+        for (int j = 0; j < value.Length; j++) value[j] = (byte)((j * 31 + 7) & 0xFF);
+
+        byte[] data = HsstTestUtil.BuildToArray(
+            (ref HsstBTreeBuilder<PooledByteBufferWriter.Writer, PooledByteBufferWriter.WriterReader, NoOpPin> builder) =>
+                builder.Add(key, value),
+            keyLength: 30, keyFirst: keyFirst);
+
+        Assert.That(TryGet(data, key, out byte[] got), Is.True, "Single entry not found via TryGet");
+        Assert.That(got, Is.EqualTo(value), "Single entry value mismatch");
+
+        List<(byte[] Key, byte[] Value)> all = Materialize(data);
+        Assert.That(all.Count, Is.EqualTo(1));
+        Assert.That(all[0].Key, Is.EqualTo(key));
+        Assert.That(all[0].Value, Is.EqualTo(value));
+    }
+
     [TestCase(1)]
     [TestCase(10)]
     [TestCase(200)]
