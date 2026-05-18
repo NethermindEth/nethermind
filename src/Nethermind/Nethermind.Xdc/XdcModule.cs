@@ -105,6 +105,7 @@ public class XdcModule : Module
             .AddSingleton<IXdcConsensusContext, XdcConsensusContext>()
             .AddDatabase(XdcRocksDbConfigFactory.XdcSnapshotDbName)
             .AddSingleton<ISnapshotManager, IDb, IBlockTree, IMasternodeVotingContract, ISpecProvider>(CreateSnapshotManager)
+            .AddSingleton<ISignTransactionManager, SignTransactionManager>()
             .AddSingleton<IPenaltyHandler, PenaltyHandler>()
             .AddSingleton<ITimeoutTimer, TimeoutTimer>()
             .AddSingleton<ISyncInfoManager, SyncInfoManager>()
@@ -139,8 +140,6 @@ public class XdcModule : Module
         // Safe: plugins are always loaded after NethermindModule in NethermindRunnerModule, so last-registration-wins is guaranteed.
         builder.RegisterType<XdcDiscoveryApp>().As<DiscoveryApp>().WithAttributeFiltering().SingleInstance().ExternallyOwned();
         builder.RegisterType<XdcNodeLifecycleManagerFactory>().As<INodeLifecycleManagerFactory>().SingleInstance();
-
-        builder.RegisterType<SignTransactionManager>().As<IStartable>().SingleInstance();
     }
 
     private ISnapshotManager CreateSnapshotManager([KeyFilter(XdcRocksDbConfigFactory.XdcSnapshotDbName)] IDb db, IBlockTree blockTree, IMasternodeVotingContract votingContract, ISpecProvider specProvider) => new SnapshotManager(db, blockTree, votingContract, specProvider);

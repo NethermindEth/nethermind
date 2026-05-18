@@ -1,8 +1,8 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-
-using Microsoft.Extensions.Logging;
+using System;
+using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Consensus;
 using Nethermind.Core;
@@ -16,33 +16,46 @@ using Nethermind.Logging;
 using Nethermind.TxPool;
 using Nethermind.Xdc.Spec;
 using Nethermind.Xdc.Types;
-using System;
-using System.Threading.Tasks;
 
 namespace Nethermind.Xdc;
 
-internal class SignTransactionManager(
-    ISigner signer,
-    ITxPool txPool,
-    IBlockTree blockTree,
-    ISnapshotManager snapshotManager,
-    ISpecProvider specProvider,
-    ILogManager logManager) : ISignTransactionManager, IStartable, IDisposable
+internal class SignTransactionManager : ISignTransactionManager, IDisposable
 {
+    private readonly ISigner _signer;
+    private readonly ITxPool _txPool;
+    private readonly IBlockTree _blockTree;
+    private readonly ISnapshotManager _snapshotManager;
+    private readonly ISpecProvider _specProvider;
+    private readonly ILogger _logger;
     private readonly AssociativeKeyCache<ValueHash256> _alreadySigned = new(128);
-    private Logging.ILogger _logger = logManager.GetClassLogger<SignTransactionManager>();
-    public void Start() => blockTree.BlockAddedToMain += OnBlockAddedToMain;
+
+    public SignTransactionManager(
+        ISigner signer,
+        ITxPool txPool,
+        IBlockTree blockTree,
+        ISnapshotManager snapshotManager,
+        ISpecProvider specProvider,
+        ILogManager logManager)
+    {
+        _signer = signer;
+        _txPool = txPool;
+        _blockTree = blockTree;
+        _snapshotManager = snapshotManager;
+        _specProvider = specProvider;
+        _logger = logManager.GetClassLogger<SignTransactionManager>();
+        _blockTree.BlockAddedToMain += OnBlockAddedToMain;
+    }
 
     public async Task SubmitTransactionSign(XdcBlockHeader header, IXdcReleaseSpec spec)
     {
-        UInt256 nonce = txPool.GetLatestPendingNonce(signer.Address);
-        Transaction transaction = CreateTxSign((UInt256)header.Number, header.Hash ?? header.CalculateHash().ToHash256(), nonce, spec.BlockSignerContract, signer.Address);
+        UInt256 nonce = _txPool.GetLatestPendingNonce(_signer.Address);
+        Transaction transaction = CreateTxSign((UInt256)header.Number, header.Hash ?? header.CalculateHash().ToHash256(), nonce, spec.BlockSignerContract, _signer.Address);
 
-        await signer.Sign(transaction);
+        await _signer.Sign(transaction);
 
         transaction.Hash = transaction.CalculateHash();
 
-        AcceptTxResult added = txPool.SubmitTx(transaction, TxHandlingOptions.PersistentBroadcast);
+        AcceptTxResult added = _txPool.SubmitTx(transaction, TxHandlingOptions.PersistentBroadcast);
         if (!added)
         {
             _logger.Warn($"Failed to add signed transaction to the pool: {added} {header.ToString(BlockHeader.Format.FullHashAndNumber)}");
@@ -54,25 +67,25 @@ internal class SignTransactionManager(
         if (e.Block.Header is not XdcBlockHeader xdcHeader)
             return;
 
-        if (e.Block.Hash is null || !blockTree.WasProcessed(e.Block.Number, e.Block.Hash) || blockTree.IsSyncing().isSyncing)
+        if (e.Block.Hash is null || !_blockTree.WasProcessed(e.Block.Number, e.Block.Hash) || _blockTree.IsSyncing().isSyncing)
             return;
 
         if (_alreadySigned.Contains(xdcHeader.Hash))
             return;
 
         ulong round = xdcHeader.ExtraConsensusData.BlockRound;
-        IXdcReleaseSpec spec = specProvider.GetXdcSpec(xdcHeader, round);
+        IXdcReleaseSpec spec = _specProvider.GetXdcSpec(xdcHeader, round);
         if (spec is null)
             return;
 
         if (xdcHeader.Number % spec.MergeSignRange != 0)
             return;
 
-        Snapshot snapshot = snapshotManager.GetSnapshotByBlockNumber(xdcHeader.Number, spec);
+        Snapshot snapshot = _snapshotManager.GetSnapshotByBlockNumber(xdcHeader.Number, spec);
         if (snapshot is null)
             return;
 
-        if (IsMasternode(snapshot, signer.Address))
+        if (IsMasternode(snapshot, _signer.Address))
         {
             _alreadySigned.Set(xdcHeader.Hash);
             _ = SubmitTransactionSign(xdcHeader, spec)
@@ -102,9 +115,5 @@ internal class SignTransactionManager(
         return transaction;
     }
 
-    public void Dispose()
-    {
-        blockTree.BlockAddedToMain -= OnBlockAddedToMain;
-        GC.SuppressFinalize(this);
-    }
+    public void Dispose() => _blockTree.BlockAddedToMain -= OnBlockAddedToMain;
 }
