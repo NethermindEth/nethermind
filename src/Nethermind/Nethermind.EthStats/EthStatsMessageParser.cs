@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Text.Json;
 
 namespace Nethermind.EthStats;
@@ -120,15 +119,7 @@ internal static class EthStatsMessageParser
             return false;
         }
 
-        foreach (JsonProperty property in payload.EnumerateObject())
-        {
-            if (property.NameEquals(propertyName))
-            {
-                return TryReadInt64(property.Value, out value);
-            }
-        }
-
-        return false;
+        return payload.TryGetProperty(propertyName, out JsonElement element) && TryReadInt64(element, out value);
     }
 
     private static bool TryReadInt64(JsonElement element, out long value)

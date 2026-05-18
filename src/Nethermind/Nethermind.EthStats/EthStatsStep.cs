@@ -13,7 +13,6 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.EthStats.Clients;
-using Nethermind.EthStats.Configs;
 using Nethermind.EthStats.Integrations;
 using Nethermind.EthStats.Senders;
 using Nethermind.Facade.Eth;

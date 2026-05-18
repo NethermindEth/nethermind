@@ -1,48 +1,74 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections.Generic;
 using NUnit.Framework;
 
-namespace Nethermind.EthStats.Test
+namespace Nethermind.EthStats.Test;
+
+public class EthStatsMessageParserTests
 {
-    public class EthStatsMessageParserTests
+    private static IEnumerable<TestCaseData> ParseCases()
     {
-        [Test]
-        public void Can_parse_history_request()
-        {
-            bool parsed = EthStatsMessageParser.TryParse("""{"emit":["history",{"min":1,"max":3}]}""", out EthStatsIncomingMessage message);
+        yield return new TestCaseData(
+            """{"emit":["history",{"min":1,"max":3}]}""",
+            (int)EthStatsIncomingMessageType.History,
+            1L,
+            3L,
+            null,
+            null)
+            .SetName("Can_parse_history_request");
 
+        yield return new TestCaseData(
+            """{"emit":["node-ping",{"clientTime":42}]}""",
+            (int)EthStatsIncomingMessageType.NodePing,
+            null,
+            null,
+            42L,
+            null)
+            .SetName("Can_parse_node_ping");
+
+        yield return new TestCaseData(
+            """{"emit":["node-pong",{"clientTime":42,"serverTime":84}]}""",
+            (int)EthStatsIncomingMessageType.NodePong,
+            null,
+            null,
+            42L,
+            84L)
+            .SetName("Can_parse_node_pong");
+    }
+
+    [TestCaseSource(nameof(ParseCases))]
+    public void Can_parse_message(
+        string json,
+        int expectedMessageType,
+        long? expectedHistoryMin,
+        long? expectedHistoryMax,
+        long? expectedClientTime,
+        long? expectedServerTime)
+    {
+        bool parsed = EthStatsMessageParser.TryParse(json, out EthStatsIncomingMessage message);
+        EthStatsHistoryRequest? expectedHistoryRequest = expectedHistoryMin is null || expectedHistoryMax is null
+            ? null
+            : new EthStatsHistoryRequest(expectedHistoryMin.Value, expectedHistoryMax.Value);
+        EthStatsNodeTiming? expectedNodeTiming = expectedClientTime is null && expectedServerTime is null
+            ? null
+            : new EthStatsNodeTiming(expectedClientTime, expectedServerTime);
+
+        using (Assert.EnterMultipleScope())
+        {
             Assert.That(parsed, Is.True);
-            Assert.That(message.MessageType, Is.EqualTo(EthStatsIncomingMessageType.History));
-            Assert.That(message.HistoryRequest, Is.EqualTo(new EthStatsHistoryRequest(1, 3)));
+            Assert.That(message.MessageType, Is.EqualTo((EthStatsIncomingMessageType)expectedMessageType));
+            Assert.That(message.HistoryRequest, Is.EqualTo(expectedHistoryRequest));
+            Assert.That(message.NodeTiming, Is.EqualTo(expectedNodeTiming));
         }
+    }
 
-        [Test]
-        public void Can_parse_node_ping()
-        {
-            bool parsed = EthStatsMessageParser.TryParse("""{"emit":["node-ping",{"clientTime":42}]}""", out EthStatsIncomingMessage message);
+    [Test]
+    public void Ignores_invalid_payload()
+    {
+        bool parsed = EthStatsMessageParser.TryParse("""{"emit":["history",{"min":"bad","max":3}]}""", out _);
 
-            Assert.That(parsed, Is.True);
-            Assert.That(message.MessageType, Is.EqualTo(EthStatsIncomingMessageType.NodePing));
-            Assert.That(message.NodeTiming, Is.EqualTo(new EthStatsNodeTiming(42, null)));
-        }
-
-        [Test]
-        public void Can_parse_node_pong()
-        {
-            bool parsed = EthStatsMessageParser.TryParse("""{"emit":["node-pong",{"clientTime":42,"serverTime":84}]}""", out EthStatsIncomingMessage message);
-
-            Assert.That(parsed, Is.True);
-            Assert.That(message.MessageType, Is.EqualTo(EthStatsIncomingMessageType.NodePong));
-            Assert.That(message.NodeTiming, Is.EqualTo(new EthStatsNodeTiming(42, 84)));
-        }
-
-        [Test]
-        public void Ignores_invalid_payload()
-        {
-            bool parsed = EthStatsMessageParser.TryParse("""{"emit":["history",{"min":"bad","max":3}]}""", out _);
-
-            Assert.That(parsed, Is.False);
-        }
+        Assert.That(parsed, Is.False);
     }
 }

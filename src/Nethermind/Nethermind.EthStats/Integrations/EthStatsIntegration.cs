@@ -194,11 +194,6 @@ namespace Nethermind.EthStats.Integrations
                 {
                     history.Add(CreateBlockModel(block));
                 }
-
-                if (blockNumber == 0)
-                {
-                    break;
-                }
             }
 
             if (_logger.IsDebug) _logger.Debug($"ETH Stats sending 'history' message for range {min}-{max}.");
@@ -278,7 +273,7 @@ namespace Nethermind.EthStats.Integrations
             return Task.CompletedTask;
         }
 
-        private static bool TryNormalizeHistoryRange(EthStatsHistoryRequest request, out long min, out long max)
+        internal static bool TryNormalizeHistoryRange(EthStatsHistoryRequest request, out long min, out long max)
         {
             min = Math.Min(request.Min, request.Max);
             max = Math.Max(request.Min, request.Max);
