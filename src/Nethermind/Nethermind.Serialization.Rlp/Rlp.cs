@@ -1018,7 +1018,7 @@ namespace Nethermind.Serialization.Rlp
                     throw new InvalidOperationException("Incorrect bloom RLP");
                 }
 
-                return bloomBytes.SequenceEqual(Bloom.Empty.Bytes) ? Bloom.Empty : new Bloom(bloomBytes.ToArray());
+                return bloomBytes.SequenceEqual(Bloom.Empty.Bytes) ? Bloom.Empty : new Bloom(bloomBytes);
             }
 
             public void DecodeBloomStructRef(out BloomStructRef bloom)
