@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using FluentAssertions;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Messages;
@@ -14,7 +15,7 @@ namespace Nethermind.Core.Test.Validation;
 [Parallelizable(ParallelScope.All)]
 public class SetCodeTxValidationTests
 {
-    private static AuthorizationTuple AuthorizationTuple() =>
+    private static AuthorizationTuple CreateAuthorizationTuple() =>
         new(0, Address.Zero, 0, new Signature(new byte[64], 0));
 
     [Test]
@@ -38,24 +39,23 @@ public class SetCodeTxValidationTests
         result.Error.Should().Be(TxErrorMessages.NotAllowedCreateTransaction);
     }
 
-    [Test]
-    public void ValidateAuthorizationList_returns_error_when_list_is_null()
+    private static IEnumerable<TestCaseData> MissingAuthorizationListCases()
     {
-        Transaction tx = Build.A.Transaction.To(TestItem.AddressA).TestObject;
-
-        ValidationResult result = SetCodeTxValidation.ValidateAuthorizationList(tx);
-
-        result.AsBool().Should().BeFalse();
-        result.Error.Should().Be(TxErrorMessages.MissingAuthorizationList);
+        yield return new TestCaseData((Func<Transaction>)(() =>
+            Build.A.Transaction.To(TestItem.AddressA).TestObject))
+        { TestName = "null_authorization_list" };
+        yield return new TestCaseData((Func<Transaction>)(() =>
+            Build.A.Transaction
+                .To(TestItem.AddressA)
+                .WithAuthorizationCode(Array.Empty<AuthorizationTuple>())
+                .TestObject))
+        { TestName = "empty_authorization_list" };
     }
 
-    [Test]
-    public void ValidateAuthorizationList_returns_error_when_list_is_empty()
+    [TestCaseSource(nameof(MissingAuthorizationListCases))]
+    public void ValidateAuthorizationList_returns_error_when_list_is_missing(Func<Transaction> buildTransaction)
     {
-        Transaction tx = Build.A.Transaction
-            .To(TestItem.AddressA)
-            .WithAuthorizationCode(Array.Empty<AuthorizationTuple>())
-            .TestObject;
+        Transaction tx = buildTransaction();
 
         ValidationResult result = SetCodeTxValidation.ValidateAuthorizationList(tx);
 
@@ -68,7 +68,7 @@ public class SetCodeTxValidationTests
     {
         Transaction tx = Build.A.Transaction
             .To(TestItem.AddressA)
-            .WithAuthorizationCode(new[] { AuthorizationTuple() })
+            .WithAuthorizationCode([CreateAuthorizationTuple()])
             .TestObject;
 
         ValidationResult result = SetCodeTxValidation.ValidateAuthorizationList(tx);
