@@ -7,7 +7,7 @@ using Nethermind.Trie.Pruning;
 
 namespace Nethermind.Trie
 {
-    internal sealed class MeteredTrieNodeResolver(ITrieNodeResolver inner, ProofDiagnostics diagnostics) : ITrieNodeResolver
+    internal sealed class MeteredTrieNodeResolver(ITrieNodeResolver inner, VisitingStats diagnostics) : ITrieNodeResolver
     {
         public TrieNode FindCachedOrUnknown(in TreePath path, Hash256 hash)
         {

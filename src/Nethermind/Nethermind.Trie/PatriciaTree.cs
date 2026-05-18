@@ -1050,7 +1050,7 @@ namespace Nethermind.Trie
             VisitingOptions? visitingOptions = null,
             Hash256? storageAddr = null,
             Hash256? storageRoot = null,
-            ProofDiagnostics? diagnostics = null
+            VisitingStats? diagnostics = null
         ) where TNodeContext : struct, INodeContext<TNodeContext>
         {
             ArgumentNullException.ThrowIfNull(visitor);

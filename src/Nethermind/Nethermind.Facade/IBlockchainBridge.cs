@@ -52,7 +52,7 @@ namespace Nethermind.Facade
 
         bool TryGetLogs(int filterId, out IEnumerable<FilterLog> filterLogs, CancellationToken cancellationToken = default);
         /// <inheritdoc cref="Nethermind.State.IStateReader.RunTreeVisitor{TCtx}"/>
-        void RunTreeVisitor<TCtx>(ITreeVisitor<TCtx> treeVisitor, BlockHeader? baseBlock, ProofDiagnostics? diagnostics = null) where TCtx : struct, INodeContext<TCtx>;
+        void RunTreeVisitor<TCtx>(ITreeVisitor<TCtx> treeVisitor, BlockHeader? baseBlock, VisitingStats? diagnostics = null) where TCtx : struct, INodeContext<TCtx>;
 
         bool HasStateForBlock(BlockHeader? baseBlock);
 

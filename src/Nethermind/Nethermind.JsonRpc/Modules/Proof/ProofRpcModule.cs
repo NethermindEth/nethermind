@@ -205,7 +205,7 @@ namespace Nethermind.JsonRpc.Modules.Proof
             }
 
             AccountProofCollector accountProofCollector = new(accountAddress, storageKeys);
-            ProofDiagnostics diagnostics = new();
+            VisitingStats diagnostics = new();
             blockchainBridge.RunTreeVisitor(accountProofCollector, header!, diagnostics: diagnostics);
 
             return ResultWrapper<AccountProofWithMeta>.Success(new AccountProofWithMeta

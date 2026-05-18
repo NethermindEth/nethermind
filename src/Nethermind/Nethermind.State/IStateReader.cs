@@ -21,7 +21,7 @@ namespace Nethermind.State
         /// per-call lookup, cache-miss, and depth counters are accumulated into it (used by
         /// <c>proof_getProofWithMeta</c>).
         /// </summary>
-        void RunTreeVisitor<TCtx>(ITreeVisitor<TCtx> treeVisitor, BlockHeader? baseBlock, VisitingOptions? visitingOptions = null, ProofDiagnostics? diagnostics = null) where TCtx : struct, INodeContext<TCtx>;
+        void RunTreeVisitor<TCtx>(ITreeVisitor<TCtx> treeVisitor, BlockHeader? baseBlock, VisitingOptions? visitingOptions = null, VisitingStats? diagnostics = null) where TCtx : struct, INodeContext<TCtx>;
 
         bool HasStateForBlock(BlockHeader? baseBlock);
     }

@@ -21,7 +21,7 @@ public class MeteredTrieNodeResolverTests
         TrieNode dummy = new(NodeType.Unknown, TestItem.KeccakA);
         inner.FindCachedOrUnknown(default, default!).ReturnsForAnyArgs(dummy);
 
-        ProofDiagnostics diag = new();
+        VisitingStats diag = new();
         MeteredTrieNodeResolver resolver = new(inner, diag);
 
         TreePath path = TreePath.Empty;
@@ -41,7 +41,7 @@ public class MeteredTrieNodeResolverTests
         inner.FindCachedOrUnknown(default, default!).ReturnsForAnyArgs(dummy);
         inner.LoadRlp(default, default!).ReturnsForAnyArgs(new byte[] { 0xc0 });
 
-        ProofDiagnostics diag = new();
+        VisitingStats diag = new();
         MeteredTrieNodeResolver resolver = new(inner, diag);
 
         TreePath path = TreePath.Empty;
@@ -63,7 +63,7 @@ public class MeteredTrieNodeResolverTests
         inner.GetStorageTrieNodeResolver(Arg.Any<Hash256?>()).Returns(storageInner);
         storageInner.FindCachedOrUnknown(default, default!).ReturnsForAnyArgs(dummy);
 
-        ProofDiagnostics diag = new();
+        VisitingStats diag = new();
         MeteredTrieNodeResolver resolver = new(inner, diag);
 
         ITrieNodeResolver storageResolver = resolver.GetStorageTrieNodeResolver(Keccak.Zero);

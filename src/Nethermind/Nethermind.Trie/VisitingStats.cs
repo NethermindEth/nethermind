@@ -17,7 +17,7 @@ namespace Nethermind.Trie
     /// (e.g. the <c>BatchedTrieVisitor</c> path). For the default proof-RPC code path the
     /// traversal is single-threaded and the atomic ops are uncontended.
     /// </remarks>
-    public sealed class ProofDiagnostics
+    public sealed class VisitingStats
     {
         private long _nodeLookups;
         private long _cacheMisses;
