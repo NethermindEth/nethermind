@@ -51,10 +51,7 @@ public class EthStatsStep(
         if (!initConfig.WebSocketsEnabled)
         {
             _logger.Warn($"{nameof(EthStatsPlugin)} disabled due to {nameof(initConfig.WebSocketsEnabled)} set to false");
-        }
-        else
-        {
-            if (_logger.IsDebug) _logger.Debug($"{nameof(EthStatsPlugin)} plugin disabled due to {nameof(EthStatsConfig)} settings set to false");
+            return;
         }
 
         string instanceId = $"{ethStatsConfig.Name}-{Keccak.Compute(enode!.Info)}";
@@ -66,7 +63,7 @@ public class EthStatsStep(
         const int reconnectionInterval = 5000;
         const string api = "no";
         const string client = "0.1.1";
-        const bool canUpdateHistory = false;
+        const bool canUpdateHistory = true;
         string node = ProductInfo.ClientId;
         int port = networkConfig.P2PPort;
         string network = specProvider!.NetworkId.ToString();
