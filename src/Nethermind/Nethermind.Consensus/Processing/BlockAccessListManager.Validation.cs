@@ -165,12 +165,7 @@ public partial class BlockAccessListManager
             return;
         }
 
-        if (_verifyOnly && _suggestedValidationIndex is not null && _generatedValidationIndex is not null)
-        {
-            SlowPathFromColumnIndex(block, index, validateStorageReads);
-            return;
-        }
-
+        // Bisecting: don't route through SlowPathFromColumnIndex while merge is always-on.
         GeneratedBlockAccessList generated = GeneratedBlockAccessList;
         ReadOnlyBlockAccessList suggested = block.BlockAccessList;
 
