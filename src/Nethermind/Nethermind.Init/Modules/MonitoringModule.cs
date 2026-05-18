@@ -15,11 +15,12 @@ using Nethermind.Logging;
 using Nethermind.Monitoring;
 using Nethermind.Monitoring.Config;
 using Nethermind.Monitoring.Metrics;
+using Nethermind.Api;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Init.Modules;
 
-public class MonitoringModule(IMetricsConfig metricsConfig) : Module
+public class MonitoringModule(IMetricsConfig metricsConfig, IInitConfig initConfig, IFlatDbConfig flatDbConfig) : Module
 {
     protected override void Load(ContainerBuilder builder)
     {
@@ -62,6 +63,23 @@ public class MonitoringModule(IMetricsConfig metricsConfig) : Module
 
 
         ProductInfo.PruningMode = pruningConfig.Mode.ToString();
+
+        bool isArchive = pruningConfig.Mode == PruningMode.None;
+        ProductInfo.VersionPostfix = flatDbConfig.Enabled
+            ? flatDbConfig.Layout switch
+            {
+                FlatLayout.Flat => "-flat",
+                FlatLayout.FlatInTrie => "-flatInTrie",
+                FlatLayout.PreimageFlat => "-preimageFlat",
+                _ => ""
+            }
+            : initConfig.StateDbKeyScheme switch
+            {
+                INodeStorage.KeyScheme.Hash => isArchive ? "-hashArchive" : "-hash",
+                INodeStorage.KeyScheme.HalfPath => isArchive ? "-halfpathArchive" : "-halfpath",
+                _ => ""
+            };
+
         Metrics.Version = VersionToMetrics.ConvertToNumber(ProductInfo.Version);
 
         IMetricsController controller = new MetricsController(metricsConfig);
