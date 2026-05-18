@@ -10,10 +10,9 @@ using Nethermind.Core.Extensions;
 namespace Nethermind.Core.Buffers;
 
 /// <summary>
-/// Basically like ArraySegment, but only contain length, which reduces it size from 16byte to 12byte. Useful for
-/// polling memory where memory pool usually can't return exactly the same size of data. To conserve space, The
-/// underlying array can be null and this struct is meant to be non nullable, checking the `IsNull` property to check
-/// if it represent null.
+/// Like ArraySegment but with explicit offset+length, supporting zero-copy logical slices over a shared
+/// backing array. Useful for pooled memory where the pool may return a larger buffer than requested. The
+/// underlying array can be null; check the <see cref="IsNull"/> property to detect that case.
 /// </summary>
 public readonly struct CappedArray<T> where T : struct
 {
@@ -25,11 +24,18 @@ public readonly struct CappedArray<T> where T : struct
     public static object EmptyBoxed { get; } = _empty;
 
     private readonly T[]? _array;
+    private readonly int _offset;
     private readonly int _length;
 
     public CappedArray(T[]? array, int length)
+        : this(array, 0, length)
+    {
+    }
+
+    public CappedArray(T[]? array, int offset, int length)
     {
         _array = array;
+        _offset = offset;
         _length = length;
     }
 
@@ -38,7 +44,14 @@ public readonly struct CappedArray<T> where T : struct
         if (array is not null)
         {
             _array = array;
+            _offset = 0;
             _length = array.Length;
+        }
+        else
+        {
+            _array = null;
+            _offset = 0;
+            _length = 0;
         }
     }
 
@@ -50,23 +63,39 @@ public readonly struct CappedArray<T> where T : struct
     {
         get
         {
-            T[] array = _array!;
-            if (index >= _length || (uint)index >= (uint)array.Length)
+            // Validate against the logical slice first - a negative `index` would otherwise wrap into
+            // `_offset + index` and silently read bytes from before the slice (e.g. parent RLP for an
+            // inline trie child). The underlying-array check defends against an oversized _length passed
+            // to the (array, offset, length) constructor.
+            if ((uint)index >= (uint)_length)
             {
                 ThrowArgumentOutOfRangeException();
             }
 
-            return array[index];
+            T[] array = _array!;
+            int arrayIndex = _offset + index;
+            if ((uint)arrayIndex >= (uint)array.Length)
+            {
+                ThrowArgumentOutOfRangeException();
+            }
+
+            return array[arrayIndex];
         }
         set
         {
-            T[] array = _array!;
-            if (index >= _length || (uint)index >= (uint)array.Length)
+            if ((uint)index >= (uint)_length)
             {
                 ThrowArgumentOutOfRangeException();
             }
 
-            array[index] = value;
+            T[] array = _array!;
+            int arrayIndex = _offset + index;
+            if ((uint)arrayIndex >= (uint)array.Length)
+            {
+                ThrowArgumentOutOfRangeException();
+            }
+
+            array[arrayIndex] = value;
         }
     }
 
@@ -74,15 +103,26 @@ public readonly struct CappedArray<T> where T : struct
     private static void ThrowArgumentOutOfRangeException() => throw new ArgumentOutOfRangeException();
 
     public int Length => _length;
+    public int Offset => _offset;
     public int UnderlyingLength => _array?.Length ?? 0;
     public T[]? UnderlyingArray => _array;
-    public bool IsUncapped => _length == _array?.Length;
+    public bool IsUncapped => _offset == 0 && _length == _array?.Length;
     public bool IsNull => _array is null;
     public bool IsNotNull => _array is not null;
     public bool IsNullOrEmpty => _length == 0;
     public bool IsNotNullOrEmpty => _length > 0;
-    public Span<T> AsSpan() => _array.AsSpan(0, _length);
-    public Span<T> AsSpan(int start, int length) => _array.AsSpan(start, length);
+    public Span<T> AsSpan() => _array.AsSpan(_offset, _length);
+    public Span<T> AsSpan(int start, int length)
+    {
+        // Validate against the logical slice first; otherwise a negative `start` would wrap into
+        // `_offset + start` and yield a span over bytes outside the slice (e.g. parent RLP).
+        if ((uint)start > (uint)_length || (uint)length > (uint)(_length - start))
+        {
+            ThrowArgumentOutOfRangeException();
+        }
+
+        return _array.AsSpan(_offset + start, length);
+    }
 
     public T[]? ToArray()
     {
@@ -90,7 +130,7 @@ public readonly struct CappedArray<T> where T : struct
 
         if (array is null) return null;
         if (array.Length == 0) return [];
-        if (_length == array.Length) return array;
+        if (_offset == 0 && _length == array.Length) return array;
         return AsSpan().ToArray();
     }
 
@@ -99,5 +139,14 @@ public readonly struct CappedArray<T> where T : struct
         : base.ToString();
 
     public ArraySegment<T> AsArraySegment() => AsArraySegment(0, _length);
-    public ArraySegment<T> AsArraySegment(int start, int length) => new(_array!, start, length);
+    public ArraySegment<T> AsArraySegment(int start, int length)
+    {
+        // See AsSpan(start, length) - validate against the logical slice before adding _offset.
+        if ((uint)start > (uint)_length || (uint)length > (uint)(_length - start))
+        {
+            ThrowArgumentOutOfRangeException();
+        }
+
+        return new(_array!, _offset + start, length);
+    }
 }

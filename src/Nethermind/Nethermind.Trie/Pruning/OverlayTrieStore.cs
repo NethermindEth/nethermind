@@ -1,44 +1,93 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 
 namespace Nethermind.Trie.Pruning;
 
 /// <summary>
-/// OverlayTrieStore works by reading and writing to the passed in keyValueStore first as if it is an archive node.
-/// If a node is missing, then it will try to find from the base store.
-/// On reset the base db provider is expected to clear any diff which causes this overlay trie store to no longer
-/// see overlaid keys.
+/// Reads/writes to <paramref name="keyValueStore"/> first (archive-style); falls back to <paramref name="baseStore"/>
+/// on miss. Reset is driven by the base db provider clearing the overlay diff.
 /// </summary>
-public class OverlayTrieStore(IKeyValueStoreWithBatching keyValueStore, IReadOnlyTrieStore baseStore) : ITrieStore
+public class OverlayTrieStore(IKeyValueStoreWithBatching keyValueStore, IReadOnlyTrieStore baseStore)
+    : WrappingTrieStore(baseStore), IScopedReadOnlyTraversalProvider
 {
     private readonly INodeStorage _nodeStorage = new NodeStorage(keyValueStore);
+    private readonly IReadOnlyTrieStore _baseStore = baseStore;
 
-    public void Dispose() => baseStore.Dispose();
+    public override byte[]? LoadRlp(Hash256? address, in TreePath path, in ValueHash256 hash, ReadFlags flags = ReadFlags.None) =>
+        TryLoadRlp(address, in path, in hash, flags) ?? MissingTrieNodeException.ThrowMissing(address, in path, in hash, "Missing RLP node");
 
-    public TrieNode FindCachedOrUnknown(Hash256? address, in TreePath path, Hash256 hash) =>
-        // We always return Unknown even if baseStore return unknown, like archive node.
-        baseStore.FindCachedOrUnknown(address, in path, hash);
+    public override byte[]? TryLoadRlp(Hash256? address, in TreePath path, in ValueHash256 hash, ReadFlags flags = ReadFlags.None) =>
+        _nodeStorage.Get(address, in path, hash, flags) ?? _baseStore.TryLoadRlp(address, in path, in hash, flags);
 
-    public byte[]? LoadRlp(Hash256? address, in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) =>
-        TryLoadRlp(address, in path, hash, flags)
-        ?? throw new MissingTrieNodeException("Missing RLP node", address, path, hash);
+    public override TrieNode GetOrLoadNode(Hash256? address, in TreePath path, in ValueHash256 hash, ReadFlags flags = ReadFlags.None) =>
+        TryGetOverlayNode(address, in path, in hash, out TrieNode? node, flags)
+            ? node
+            : _baseStore.GetOrLoadNode(address, in path, in hash, flags);
 
-    public byte[]? TryLoadRlp(Hash256? address, in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) => _nodeStorage.Get(address, in path, hash, flags) ?? baseStore.TryLoadRlp(address, in path, hash, flags);
+    public override bool TryGetOrLoadNode(Hash256? address, in TreePath path, in ValueHash256 hash, [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out TrieNode? node, ReadFlags flags = ReadFlags.None)
+    {
+        if (TryGetOverlayNode(address, in path, in hash, out node, flags))
+        {
+            return true;
+        }
 
-    public bool HasRoot(Hash256 stateRoot) => _nodeStorage.Get(null, TreePath.Empty, stateRoot) is not null || baseStore.HasRoot(stateRoot);
+        return _baseStore.TryGetOrLoadNode(address, in path, in hash, out node, flags);
+    }
 
-    public IDisposable BeginScope(BlockHeader? baseBlock) => baseStore.BeginScope(baseBlock);
+    public override bool HasRoot(Hash256 stateRoot) =>
+        _nodeStorage.Get(null, TreePath.Empty, stateRoot) is not null || _baseStore.HasRoot(stateRoot);
 
-    public IScopedTrieStore GetTrieStore(Hash256? address) => new ScopedTrieStore(this, address);
+    public override IBlockCommitter BeginBlockCommit(long blockNumber) => NullCommitter.Instance;
 
-    public INodeStorage.KeyScheme Scheme => baseStore.Scheme;
+    public override ICommitter BeginCommit(Hash256? address, TrieNode? root, WriteFlags writeFlags) =>
+        new RawScopedTrieStore.Committer(_nodeStorage, address, writeFlags);
 
-    public IBlockCommitter BeginBlockCommit(long blockNumber) => NullCommitter.Instance;
+    public ITrieNodeResolver? GetReadOnlyTraversalResolver(Hash256? address) =>
+        new SharedOverlayTraversalResolver(
+            this,
+            address,
+            _baseStore.GetTrieStore(address).AsReadOnlyTraversal());
 
-    // Write directly to _nodeStorage, which goes to db provider.
-    public ICommitter BeginCommit(Hash256? address, TrieNode? root, WriteFlags writeFlags) => new RawScopedTrieStore.Committer(_nodeStorage, address, writeFlags);
+    private bool TryGetOverlayNode(Hash256? address, in TreePath path, in ValueHash256 hash, [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out TrieNode? node, ReadFlags flags)
+    {
+        byte[]? rlp = _nodeStorage.Get(address, in path, hash, flags);
+        if (rlp is null)
+        {
+            node = null;
+            return false;
+        }
+
+        node = TrieNode.DecodeNode(in path, in hash, rlp);
+        return true;
+    }
+
+    private sealed class SharedOverlayTraversalResolver(
+        OverlayTrieStore fullTrieStore,
+        Hash256? address,
+        ITrieNodeResolver baseReadResolver) : ReadOnlyTraversalResolver(fullTrieStore, address)
+    {
+        public override TrieNode GetOrLoadNode(in TreePath path, in ValueHash256 hash, ReadFlags flags = ReadFlags.None) =>
+            fullTrieStore.TryGetOverlayNode(Address, in path, in hash, out TrieNode? node, flags)
+                ? node
+                : baseReadResolver.GetOrLoadNode(in path, in hash, flags);
+
+        public override bool TryGetOrLoadNode(in TreePath path, in ValueHash256 hash, [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out TrieNode? node, ReadFlags flags = ReadFlags.None)
+        {
+            if (fullTrieStore.TryGetOverlayNode(Address, in path, in hash, out node, flags))
+            {
+                return true;
+            }
+
+            return baseReadResolver.TryGetOrLoadNode(in path, in hash, out node, flags);
+        }
+
+        protected override ITrieNodeResolver WithAddress(Hash256? address1) =>
+            new SharedOverlayTraversalResolver(
+                fullTrieStore,
+                address1,
+                fullTrieStore._baseStore.GetTrieStore(address1).AsReadOnlyTraversal());
+    }
 }

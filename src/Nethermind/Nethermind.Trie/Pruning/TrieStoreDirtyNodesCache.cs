@@ -28,7 +28,10 @@ internal class TrieStoreDirtyNodesCache
     private readonly ILogger _logger;
     private readonly bool _storeByHash;
     private readonly ConcurrentDictionary<Key, NodeRecord> _byKeyObjectCache;
-    private readonly ConcurrentDictionary<Hash256AsKey, NodeRecord> _byHashObjectCache;
+    // ValueHash256 is already a struct with value Equals/GetHashCode, no need for the
+    // Hash256AsKey wrapper here; Hash256AsKey stays in non-trie call sites that key by
+    // Hash256 reference.
+    private readonly ConcurrentDictionary<ValueHash256, NodeRecord> _byHashObjectCache;
 
     public long Count => _count;
     public long DirtyCount => _dirtyCount;
@@ -63,11 +66,14 @@ internal class TrieStoreDirtyNodesCache
         GetDictionarySizing(out int concurrencyLevel, out int initialBuckets);
         if (_storeByHash)
         {
-            _byHashObjectCache = new(concurrencyLevel, initialBuckets);
+            // Explicit comparer: ZK_EVM / bflat builds have no working
+            // EqualityComparer<ValueHash256>.Default (reflection-free runtime),
+            // so the dictionary must be constructed with a typed comparer.
+            _byHashObjectCache = new(concurrencyLevel, initialBuckets, GenericEqualityComparer.GetOptimized<ValueHash256>());
         }
         else
         {
-            _byKeyObjectCache = new(concurrencyLevel, initialBuckets);
+            _byKeyObjectCache = new(concurrencyLevel, initialBuckets, GenericEqualityComparer.GetOptimized<Key>());
         }
         KeyMemoryUsage = _storeByHash ? 0 : Key.MemoryUsage; // 0 because previously it was not counted.
 
@@ -76,43 +82,33 @@ internal class TrieStoreDirtyNodesCache
         KeyMemoryUsage += MemorySizes.ObjectHeaderMethodTable + MemorySizes.RefSize + 4 + MemorySizes.RefSize;
     }
 
-    public TrieNode FindCachedOrUnknown(in Key key)
+    /// <summary>
+    /// Returns the cached typed node for <paramref name="key"/>, or <see langword="null"/>
+    /// if no resolved entry exists. Never fabricates a <see cref="TrieSyncNode"/>;
+    /// callers handle the miss by loading RLP and decoding directly.
+    /// </summary>
+    public TrieNode? FindCachedNode(in Key key)
     {
-        NodeRecord nodeRecord = GetOrAdd(in key, this);
-        if (nodeRecord.Node.NodeType != NodeType.Unknown)
+        if (TryGetValue(key, out TrieNode cached) && cached.NodeType != NodeType.Unknown)
         {
             Metrics.LoadedFromCacheNodesCount++;
+            return cached;
         }
-        else
-        {
-            if (_logger.IsTrace) Trace(nodeRecord.Node);
-        }
-
-        return nodeRecord.Node;
-
-        [MethodImpl(MethodImplOptions.NoInlining)]
-        void Trace(TrieNode trieNode) => _logger.Trace($"Creating new node {trieNode}");
+        return null;
     }
 
-    public TrieNode FromCachedRlpOrUnknown(in Key key)
+    /// <summary>
+    /// Read-only sibling of <see cref="FindCachedNode"/>: returns a clone/shared copy of the
+    /// cached node when present, or <see langword="null"/> on miss.
+    /// </summary>
+    public TrieNode? FromCachedRlp(in Key key)
     {
-        // ReSharper disable once ConditionIsAlwaysTrueOrFalse
-        if (TryGetValue(key, out TrieNode trieNode))
+        if (TryGetValue(key, out TrieNode trieNode) && trieNode.NodeType != NodeType.Unknown)
         {
-            trieNode = _trieStore.CloneForReadOnly(key, trieNode);
-
             Metrics.LoadedFromCacheNodesCount++;
+            return _trieStore.CloneForReadOnly(key, trieNode);
         }
-        else
-        {
-            trieNode = new TrieNode(NodeType.Unknown, key.Keccak);
-        }
-
-        if (_logger.IsTrace) Trace(trieNode);
-        return trieNode;
-
-        [MethodImpl(MethodImplOptions.NoInlining)]
-        void Trace(TrieNode trieNode) => _logger.Trace($"Creating new node {trieNode}");
+        return null;
     }
 
     public bool IsNodeCached(in Key key)
@@ -136,7 +132,7 @@ internal class TrieStoreDirtyNodesCache
             if (_storeByHash)
             {
                 return _byHashObjectCache.Select(
-                    static pair => new KeyValuePair<Key, NodeRecord>(new Key(null, TreePath.Empty, pair.Key.Value), pair.Value));
+                    static pair => new KeyValuePair<Key, NodeRecord>(new Key(null, TreePath.Empty, pair.Key), pair.Value));
             }
 
             return _byKeyObjectCache;
@@ -161,23 +157,23 @@ internal class TrieStoreDirtyNodesCache
             ? _byHashObjectCache.TryGetValue(key.Keccak, out nodeRecord)
             : _byKeyObjectCache.TryGetValue(key, out nodeRecord);
 
-    private NodeRecord GetOrAdd(in Key key, TrieStoreDirtyNodesCache cache) => _storeByHash
-        ? _byHashObjectCache.GetOrAdd(key.Keccak, static (keccak, cache) =>
-        {
-            TrieNode trieNode = new(NodeType.Unknown, keccak);
-            cache.IncrementMemory(trieNode);
-            return new NodeRecord(trieNode, -1);
-        }, cache)
-        : _byKeyObjectCache.GetOrAdd(key, static (key, cache) =>
-        {
-            TrieNode trieNode = new(NodeType.Unknown, key.Keccak);
-            cache.IncrementMemory(trieNode);
-            return new NodeRecord(trieNode, -1);
-        }, cache);
-
     public NodeRecord GetOrAdd(in Key key, NodeRecord record) => _storeByHash
             ? GetOrAdd(_byHashObjectCache, key.Keccak, record)
             : GetOrAdd(_byKeyObjectCache, key, record);
+
+    public bool TryAdd(in Key key, NodeRecord record)
+    {
+        bool added = _storeByHash
+            ? _byHashObjectCache.TryAdd(key.Keccak, record)
+            : _byKeyObjectCache.TryAdd(key, record);
+
+        if (added)
+        {
+            IncrementMemory(record.Node);
+        }
+
+        return added;
+    }
 
     private static NodeRecord GetOrAdd<TKey>(ConcurrentDictionary<TKey, NodeRecord> dictionary, TKey key, NodeRecord record)
         where TKey : notnull
@@ -479,20 +475,21 @@ internal class TrieStoreDirtyNodesCache
         Interlocked.Exchange(ref _count, 0);
     }
 
-    internal readonly struct Key(Hash256? address, in TreePath path, Hash256 keccak) : IEquatable<Key>
+    internal readonly struct Key(Hash256? address, in TreePath path, in ValueHash256 keccak) : IEquatable<Key>
     {
-        internal const long MemoryUsage = 8 + 36 + 8; // (address (probably shared), path, keccak pointer (shared with TrieNode))
+        // Address ref (8, probably shared), path (36), inline ValueHash256 keccak (32).
+        internal const long MemoryUsage = 8 + 36 + 32;
         public readonly Hash256? Address = address;
         // Direct member rather than property for large struct, so members are called directly,
         // rather than struct copy through the property. Could also return a ref through property.
         public readonly TreePath Path = path;
-        public Hash256 Keccak { get; } = keccak;
+        public readonly ValueHash256 Keccak = keccak;
 
         [SkipLocalsInit]
         public override int GetHashCode()
         {
             ulong chainedHash = ((ulong)(uint)Path.GetHashCode() << 32) | (uint)(Address?.GetHashCode() ?? 1);
-            return Keccak.ValueHash256.GetChainedHashCode(chainedHash);
+            return Keccak.GetChainedHashCode(chainedHash);
         }
 
         public bool Equals(Key other) => other.Keccak == Keccak && other.Path == Path && other.Address == Address;

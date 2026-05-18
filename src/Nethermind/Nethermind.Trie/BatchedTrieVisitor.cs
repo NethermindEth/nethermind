@@ -207,7 +207,7 @@ public class BatchedTrieVisitor<TNodeContext>
                 for (int i = 0; i < _maxBatchSize; i++)
                 {
                     if (!theStack.TryPop(out Job item)) break;
-                    finalBatch.Add((_resolver.FindCachedOrUnknown(TreePath.Empty, item.Key.ToCommitment()), item.NodeContext,
+                    finalBatch.Add((_resolver.GetOrLoadNode(TreePath.Empty, item.Key.ToCommitment()), item.NodeContext,
                         item.Context));
                     Interlocked.Decrement(ref _queuedJobs);
                 }
@@ -241,7 +241,7 @@ public class BatchedTrieVisitor<TNodeContext>
             {
                 Job job = preSort[i];
 
-                TrieNode node = _resolver.FindCachedOrUnknown(TreePath.Empty, job.Key.ToCommitment());
+                TrieNode node = _resolver.GetOrLoadNode(TreePath.Empty, job.Key.ToCommitment());
                 finalBatch.Add((node, job.NodeContext, job.Context));
             }
 
@@ -263,18 +263,20 @@ public class BatchedTrieVisitor<TNodeContext>
     void QueueNextNodes(ref ArrayPoolListRef<(TrieNode, TNodeContext, SmallTrieVisitContext)> batchResult)
     {
         // Reverse order is important so that higher level appear at the end of the stack.
-        TreePath emptyPath = TreePath.Empty;
         for (int i = batchResult.Count - 1; i >= 0; i--)
         {
             (TrieNode trieNode, TNodeContext nodeContext, SmallTrieVisitContext ctx) = batchResult[i];
-            if (trieNode.NodeType == NodeType.Unknown && trieNode.FullRlp.IsNotNull)
+            // Hot path: pull the inline 32-byte value directly instead of materializing a Hash256.
+            if (!trieNode.TryGetKeccak(out ValueHash256 keccak))
             {
-                // Inline node. Seems rare, so its fine to create new list for this. Does not have a keccak
-                // to queue, so we'll just process it inline.
+                // Inline node. Seems rare, so its fine to create new list for this. Does not have a
+                // keccak to queue, so we walk it inline. Phase B decodes inline children eagerly into
+                // typed nodes, so ResolveNode is a no-op here in production callers; it remains as a
+                // safety net for any legacy resolver that still hands back an unresolved placeholder.
                 ArrayPoolListRef<(TrieNode, TNodeContext, SmallTrieVisitContext)> recursiveResult = new(1);
                 try
                 {
-                    trieNode.ResolveNode(_resolver, emptyPath);
+                    TrieNode.ResolveNode(ref trieNode, _resolver, in TreePath.Empty);
                     Interlocked.Increment(ref _activeJobs);
                     AcceptResolvedNode(trieNode, nodeContext, _resolver, ctx, ref recursiveResult);
                     QueueNextNodes(ref recursiveResult);
@@ -287,7 +289,6 @@ public class BatchedTrieVisitor<TNodeContext>
                 continue;
             }
 
-            ValueHash256 keccak = trieNode.Keccak;
             int partitionIdx = CalculatePartitionIdx(keccak);
             Interlocked.Increment(ref _activeJobs);
             Interlocked.Increment(ref _queuedJobs);
@@ -322,18 +323,19 @@ public class BatchedTrieVisitor<TNodeContext>
                         cur.ResolveKey(_resolver, ref emptyPath);
 
                         if (cur.FullRlp.IsNotNull) continue;
-                        if (cur.Keccak is null)
+                        if (!cur.HasKeccak)
                             ThrowUnableToResolve(ctx);
 
                         resolveOrdering.Add(i);
                     }
 
                     // This innocent looking sort is surprisingly effective when batch size is large enough. The sort itself
-                    // take about 0.1% of the time, so not very cpu intensive in this case.
+                    // take about 0.1% of the time, so not very cpu intensive in this case. Compare the inline 32-byte
+                    // values rather than materialized Hash256 references; cuts two Hash256 allocations per comparison.
                     resolveOrdering
                         .AsSpan()
                         .Sort((item1, item2) =>
-                            currentBatch[item1].Item1.Keccak.CompareTo(currentBatch[item2].Item1.Keccak));
+                            currentBatch[item1].Item1.KeccakValue.CompareTo(currentBatch[item2].Item1.KeccakValue));
 
                     ReadFlags flags = ReadFlags.None;
                     if (resolveOrdering.Count > _readAheadThreshold)
@@ -346,16 +348,19 @@ public class BatchedTrieVisitor<TNodeContext>
                     {
                         int idx = resolveOrdering[i];
 
-                        (TrieNode nodeToResolve, TNodeContext nodeContext, SmallTrieVisitContext ctx) = currentBatch[idx];
+                        ref (TrieNode Node, TNodeContext NodeContext, SmallTrieVisitContext Ctx) slot = ref currentBatch.GetRef(idx);
                         try
                         {
-                            Hash256 theKeccak = nodeToResolve.Keccak;
-                            nodeToResolve.ResolveNode(_resolver, emptyPath, flags);
-                            nodeToResolve.Keccak = theKeccak; // The resolve may set a key which clear the keccak
+                            // Save/restore the inline value directly; resolve may publish a typed
+                            // replacement that does not yet carry a keccak. Skip the restore when
+                            // there was no keccak so we don't publish a zero hash.
+                            bool hadKeccak = slot.Node.TryGetKeccak(out ValueHash256 theKeccak);
+                            TrieNode.ResolveNode(ref slot.Node, _resolver, in emptyPath, flags);
+                            if (hadKeccak) slot.Node.SetKeccak(in theKeccak);
                         }
                         catch (TrieException)
                         {
-                            _visitor.VisitMissingNode(nodeContext, nodeToResolve.Keccak);
+                            _visitor.VisitMissingNode(slot.NodeContext, slot.Node.Keccak);
                         }
                     }
 

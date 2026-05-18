@@ -32,25 +32,60 @@ public class PrewarmerScopeProvider(
     IWorldStateScopeProvider baseProvider,
     PreBlockCaches preBlockCaches,
     bool populatePreBlockCache = true
-) : IWorldStateScopeProvider, IPreBlockCaches
+) : IWorldStateScopeProvider, IPreBlockCaches, IPreBlockCacheWarmup
 {
     public bool HasRoot(BlockHeader? baseBlock) => baseProvider.HasRoot(baseBlock);
 
-    public IWorldStateScopeProvider.IScope BeginScope(BlockHeader? baseBlock) => new ScopeWrapper(baseProvider.BeginScope(baseBlock), preBlockCaches, populatePreBlockCache);
+    public IWorldStateScopeProvider.IScope BeginScope(BlockHeader? baseBlock)
+        => new ScopeWrapper(baseProvider.BeginScope(baseBlock), preBlockCaches, populatePreBlockCache, useUncachedReads: false);
 
     public PreBlockCaches? Caches => preBlockCaches;
     public bool IsWarmWorldState => !populatePreBlockCache;
 
-    private sealed class ScopeWrapper(IWorldStateScopeProvider.IScope baseScope, PreBlockCaches preBlockCaches, bool populatePreBlockCache) : IWorldStateScopeProvider.IScope
+    /// <inheritdoc />
+    public IPreBlockCacheWarmupSession BeginPreBlockCacheWarmup(BlockHeader? baseBlock)
     {
-        private readonly IWorldStateScopeProvider.IScope baseScope = baseScope;
-        private readonly SeqlockCache<AddressAsKey, Account> preBlockCache = preBlockCaches.StateCache;
-        private readonly SeqlockCache<StorageCell, byte[]> storageCache = preBlockCaches.StorageCache;
-        private readonly bool populatePreBlockCache = populatePreBlockCache;
+        IWorldStateScopeProvider.IScope baseScope = baseProvider.BeginScope(baseBlock);
+        return new ScopeWrapper(baseScope, preBlockCaches, populatePreBlockCache, populatePreBlockCache && CanUseUncachedReads(baseScope));
+    }
+
+    private static bool CanUseUncachedReads(IWorldStateScopeProvider.IScope baseScope)
+        => baseScope is IUncachedAccountReader { CanReadAccountUncached: true }
+        && baseScope is IUncachedStorageTreeProvider { CanCreateStorageTreeUncachedAccount: true };
+
+    private sealed class ScopeWrapper : IWorldStateScopeProvider.IScope, IPreBlockCacheWarmupSession
+    {
+        private readonly IWorldStateScopeProvider.IScope baseScope;
+        private readonly SeqlockCache<AddressAsKey, Account> preBlockCache;
+        private readonly SeqlockCache<StorageCell, byte[]> storageCache;
+        private readonly bool populatePreBlockCache;
         private readonly IMetricObserver _metricObserver = Metrics.PrewarmerGetTime;
         private readonly bool _measureMetric = Metrics.DetailedMetricsEnabled;
-        private readonly PrewarmerGetTimeLabels _labels = populatePreBlockCache ? PrewarmerGetTimeLabels.Prewarmer : PrewarmerGetTimeLabels.NonPrewarmer;
+        private readonly PrewarmerGetTimeLabels _labels;
+        // When useUncachedReads is true, CanUseUncachedReads has already proven both capability
+        // interfaces are present and enabled - cache the typed references so the hot read path
+        // never re-runs the interface type-test.
+        private readonly IUncachedAccountReader? _uncachedAccountReader;
+        private readonly IUncachedStorageTreeProvider? _uncachedStorageTreeProvider;
         private long _writeBatchTime = 0;
+
+        public ScopeWrapper(
+            IWorldStateScopeProvider.IScope baseScope,
+            PreBlockCaches preBlockCaches,
+            bool populatePreBlockCache,
+            bool useUncachedReads)
+        {
+            this.baseScope = baseScope;
+            preBlockCache = preBlockCaches.StateCache;
+            storageCache = preBlockCaches.StorageCache;
+            this.populatePreBlockCache = populatePreBlockCache;
+            _labels = populatePreBlockCache ? PrewarmerGetTimeLabels.Prewarmer : PrewarmerGetTimeLabels.NonPrewarmer;
+            if (useUncachedReads)
+            {
+                _uncachedAccountReader = (IUncachedAccountReader)baseScope;
+                _uncachedStorageTreeProvider = (IUncachedStorageTreeProvider)baseScope;
+            }
+        }
 
         public void Dispose()
         {
@@ -64,10 +99,15 @@ public class PrewarmerScopeProvider(
         public IWorldStateScopeProvider.ICodeDb CodeDb => baseScope.CodeDb;
 
         public IWorldStateScopeProvider.IStorageTree CreateStorageTree(Address address) => new StorageTreeWrapper(
-                baseScope.CreateStorageTree(address),
+                CreateBaseStorageTree(address),
                 storageCache,
                 address,
                 populatePreBlockCache);
+
+        private IWorldStateScopeProvider.IStorageTree CreateBaseStorageTree(Address address) =>
+            _uncachedStorageTreeProvider is { } provider
+                ? provider.CreateStorageTreeUncachedAccount(address)
+                : baseScope.CreateStorageTree(address);
 
         public IWorldStateScopeProvider.IWorldStateWriteBatch StartWriteBatch(int estimatedAccountNum)
         {
@@ -151,7 +191,22 @@ public class PrewarmerScopeProvider(
 
         public void HintGet(Address address, Account? account) => baseScope.HintGet(address, account);
 
-        private Account? GetFromBaseTree(in AddressAsKey address) => baseScope.Get(address);
+        public bool CanBeShared => _uncachedAccountReader is not null;
+
+        public bool WarmUp(Address address) => Get(address) is not null;
+
+        public ReadOnlySpan<byte> Get(in StorageCell storageCell)
+        {
+            IWorldStateScopeProvider.IStorageTree storageTree = CreateStorageTree(storageCell.Address);
+            return !storageCell.IsHash
+                ? storageTree.Get(storageCell.Index)
+                : storageTree.Get(storageCell.Hash);
+        }
+
+        private Account? GetFromBaseTree(in AddressAsKey address) =>
+            _uncachedAccountReader is { } reader
+                ? reader.GetAccountUncached(address)
+                : baseScope.Get(address);
     }
 
     private sealed class StorageTreeWrapper(
@@ -173,6 +228,11 @@ public class PrewarmerScopeProvider(
         public byte[] Get(in UInt256 index)
         {
             StorageCell storageCell = new(address, in index); // TODO: Make the dictionary use UInt256 directly
+            return Get(in storageCell);
+        }
+
+        private byte[] Get(in StorageCell storageCell)
+        {
             long sw = _measureMetric ? Stopwatch.GetTimestamp() : 0;
             if (populatePreBlockCache)
             {
@@ -216,9 +276,7 @@ public class PrewarmerScopeProvider(
                 : baseStorageTree.Get(storageCell.Hash);
         }
 
-        public byte[] Get(in ValueHash256 hash) =>
-            // Not a critical path. so we just forward for simplicity
-            baseStorageTree.Get(in hash);
+        public byte[] Get(in ValueHash256 hash) => Get(new StorageCell(address, hash));
     }
 
     private class WriteBatchLifetimeMeasurer(IWorldStateScopeProvider.IWorldStateWriteBatch baseWriteBatch, IMetricObserver metricObserver, long startTime, bool populatePreBlockCache) : IWorldStateScopeProvider.IWorldStateWriteBatch

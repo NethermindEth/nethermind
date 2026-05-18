@@ -54,9 +54,8 @@ public ref struct TrieLeafIterator
 
         if (rootHash is not null && rootHash != Keccak.EmptyTreeHash)
         {
-            TreePath emptyPath = TreePath.Empty;
-            TrieNode root = resolver.FindCachedOrUnknown(emptyPath, rootHash);
-            Push(root, emptyPath);
+            TrieNode root = resolver.GetOrLoadNode(in TreePath.Empty, rootHash);
+            Push(root, in TreePath.Empty);
         }
     }
 
@@ -69,10 +68,11 @@ public ref struct TrieLeafIterator
         {
             ref StackFrame frame = ref _stack[_stackDepth - 1];
 
-            // Resolve the node if needed
+            // Resolve the node if needed; placeholder may be replaced with a typed
+            // instance, so rebind the stack frame in place.
             try
             {
-                frame.Node.ResolveNode(_resolver, frame.Path);
+                TrieNode.ResolveNode(ref frame.Node, _resolver, in frame.Path);
             }
             catch (TrieNodeException ex)
             {

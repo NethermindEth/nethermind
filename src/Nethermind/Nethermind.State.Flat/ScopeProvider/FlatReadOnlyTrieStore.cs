@@ -20,14 +20,27 @@ internal sealed class FlatReadOnlyTrieStore(IFlatDbManager flatDbManager) : IRea
     private ReadOnlyStateTrieStoreAdapter? _adapter;
 
     // IScopableTrieStore — delegate to adapter (set after BeginScope)
-    public TrieNode FindCachedOrUnknown(Hash256? address, in TreePath path, Hash256 hash) =>
-        Resolve(address).FindCachedOrUnknown(in path, hash);
+    public byte[]? LoadRlp(Hash256? address, in TreePath path, in ValueHash256 hash, ReadFlags flags = ReadFlags.None) =>
+        Resolve(address).LoadRlp(in path, in hash, flags);
 
-    public byte[]? LoadRlp(Hash256? address, in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) =>
-        Resolve(address).LoadRlp(in path, hash, flags);
+    public byte[]? TryLoadRlp(Hash256? address, in TreePath path, in ValueHash256 hash, ReadFlags flags = ReadFlags.None) =>
+        Resolve(address).TryLoadRlp(in path, in hash, flags);
 
-    public byte[]? TryLoadRlp(Hash256? address, in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) =>
-        Resolve(address).TryLoadRlp(in path, hash, flags);
+    // Forward node lookups to the adapter so its TryGetCachedNode path
+    // (in-memory snapshot via TryFindStateNodes / TryFindStorageNodes) is
+    // consulted before we fall through to LoadRlp. The IScopableTrieStore
+    // default would skip the snapshot entirely and only hit the on-disk
+    // persistence reader, missing nodes that are committed in-memory but
+    // not yet persisted. Same fix pattern as OverlayTrieStore /
+    // WitnessCapturingTrieStore.
+    public TrieNode GetOrLoadNode(Hash256? address, in TreePath path, in ValueHash256 hash, ReadFlags flags = ReadFlags.None) =>
+        Resolve(address).GetOrLoadNode(in path, in hash, flags);
+
+    public bool TryGetOrLoadNode(Hash256? address, in TreePath path, in ValueHash256 hash, [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out TrieNode? node, ReadFlags flags = ReadFlags.None) =>
+        Resolve(address).TryGetOrLoadNode(in path, in hash, out node, flags);
+
+    public bool TryGetCachedNode(Hash256? address, in TreePath path, in ValueHash256 hash, [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out TrieNode? node) =>
+        Resolve(address).TryGetCachedNode(in path, in hash, out node);
 
     public INodeStorage.KeyScheme Scheme =>
         _adapter?.Scheme ?? INodeStorage.KeyScheme.HalfPath;

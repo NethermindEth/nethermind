@@ -672,7 +672,7 @@ public class FlatWorldStateScopeProviderTests
             content.Storages[(addr1, slot1)] = SlotValue.FromSpanWithoutLeadingZero(value1);
 
             // Also add a storage trie node for addr1 at root path
-            TrieNode storageNode = new(NodeType.Leaf, Keccak.Zero);
+            TrieNode storageNode = TrieNode.CreateLeafTyped(Keccak.Zero);
             content.StorageNodes[(addr1Hash, TreePath.Empty)] = storageNode;
         });
 

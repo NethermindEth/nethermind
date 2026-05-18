@@ -7,34 +7,44 @@ using Nethermind.Trie.Pruning;
 
 namespace Nethermind.Trie;
 
-public class TrieNodeResolverWithReadFlags(ITrieNodeResolver baseResolver, ReadFlags defaultFlags) : ITrieNodeResolver
+public class TrieNodeResolverWithReadFlags(ITrieNodeResolver baseResolver, ReadFlags defaultFlags) : ITrieNodeResolver, ITrieNodeResolverSource
 {
     private readonly ITrieNodeResolver _baseResolver = baseResolver;
     private readonly ReadFlags _defaultFlags = defaultFlags;
 
-    public TrieNode FindCachedOrUnknown(in TreePath treePath, Hash256 hash) => _baseResolver.FindCachedOrUnknown(treePath, hash);
+    public TrieNode GetOrLoadNode(in TreePath treePath, in ValueHash256 hash, ReadFlags flags = ReadFlags.None) =>
+        _baseResolver.GetOrLoadNode(in treePath, in hash, flags == ReadFlags.None ? _defaultFlags : (flags | _defaultFlags));
 
-    public byte[]? TryLoadRlp(in TreePath treePath, Hash256 hash, ReadFlags flags = ReadFlags.None)
+    public bool TryGetOrLoadNode(in TreePath treePath, in ValueHash256 hash, [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out TrieNode? node, ReadFlags flags = ReadFlags.None) =>
+        _baseResolver.TryGetOrLoadNode(in treePath, in hash, out node, flags == ReadFlags.None ? _defaultFlags : (flags | _defaultFlags));
+
+    public byte[]? TryLoadRlp(in TreePath treePath, in ValueHash256 hash, ReadFlags flags = ReadFlags.None)
     {
         if (flags != ReadFlags.None)
         {
-            return _baseResolver.TryLoadRlp(treePath, hash, flags | _defaultFlags);
+            return _baseResolver.TryLoadRlp(treePath, in hash, flags | _defaultFlags);
         }
 
-        return _baseResolver.TryLoadRlp(treePath, hash, _defaultFlags);
+        return _baseResolver.TryLoadRlp(treePath, in hash, _defaultFlags);
     }
 
-    public byte[]? LoadRlp(in TreePath treePath, Hash256 hash, ReadFlags flags = ReadFlags.None)
+    public byte[]? LoadRlp(in TreePath treePath, in ValueHash256 hash, ReadFlags flags = ReadFlags.None)
     {
         if (flags != ReadFlags.None)
         {
-            return _baseResolver.LoadRlp(treePath, hash, flags | _defaultFlags);
+            return _baseResolver.LoadRlp(treePath, in hash, flags | _defaultFlags);
         }
 
-        return _baseResolver.LoadRlp(treePath, hash, _defaultFlags);
+        return _baseResolver.LoadRlp(treePath, in hash, _defaultFlags);
     }
 
-    public ITrieNodeResolver GetStorageTrieNodeResolver(Hash256 address) => new TrieNodeResolverWithReadFlags(_baseResolver.GetStorageTrieNodeResolver(address), _defaultFlags);
+    public ITrieNodeResolver GetStorageTrieNodeResolver(Hash256? address) => new TrieNodeResolverWithReadFlags(_baseResolver.GetStorageTrieNodeResolver(address), _defaultFlags);
 
     public INodeStorage.KeyScheme Scheme => _baseResolver.Scheme;
+
+    public ITrieNodeResolver? GetReadOnlyTraversalResolver() =>
+        _baseResolver is ITrieNodeResolverSource source
+            && source.GetReadOnlyTraversalResolver() is ITrieNodeResolver readOnlyResolver
+            ? new TrieNodeResolverWithReadFlags(readOnlyResolver, _defaultFlags)
+            : null;
 }

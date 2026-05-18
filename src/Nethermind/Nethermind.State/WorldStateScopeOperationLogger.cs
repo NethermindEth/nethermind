@@ -26,40 +26,82 @@ public class WorldStateScopeOperationLogger(IWorldStateScopeProvider baseScopePr
         return new ScopeWrapper(baseScopeProvider.BeginScope(baseBlock), scopeId, _logger);
     }
 
-    private class ScopeWrapper(IWorldStateScopeProvider.IScope innerScope, long scopeId, ILogger logger) : IWorldStateScopeProvider.IScope
+    private class ScopeWrapper : IWorldStateScopeProvider.IScope, IUncachedAccountReader, IUncachedStorageTreeProvider
     {
-        public void Dispose()
+        private readonly IWorldStateScopeProvider.IScope _innerScope;
+        private readonly long _scopeId;
+        private readonly ILogger _logger;
+        // See WorldStateMetricsScopeProvider.MetricsScope - capability references resolved once.
+        private readonly IUncachedAccountReader? _uncachedAccountReader;
+        private readonly IUncachedStorageTreeProvider? _uncachedStorageTreeProvider;
+
+        public ScopeWrapper(IWorldStateScopeProvider.IScope innerScope, long scopeId, ILogger logger)
         {
-            innerScope.Dispose();
-            logger.Trace($"{scopeId}: Scope disposed");
+            _innerScope = innerScope;
+            _scopeId = scopeId;
+            _logger = logger;
+            if (innerScope is IUncachedAccountReader { CanReadAccountUncached: true } uncachedReader)
+            {
+                _uncachedAccountReader = uncachedReader;
+            }
+            if (innerScope is IUncachedStorageTreeProvider { CanCreateStorageTreeUncachedAccount: true } uncachedStorage)
+            {
+                _uncachedStorageTreeProvider = uncachedStorage;
+            }
         }
 
-        public Hash256 RootHash => innerScope.RootHash;
+        public void Dispose()
+        {
+            _innerScope.Dispose();
+            _logger.Trace($"{_scopeId}: Scope disposed");
+        }
+
+        public Hash256 RootHash => _innerScope.RootHash;
 
         public void UpdateRootHash()
         {
-            innerScope.UpdateRootHash();
-            logger.Trace($"{scopeId}: Update root hash");
+            _innerScope.UpdateRootHash();
+            _logger.Trace($"{_scopeId}: Update root hash");
         }
 
         public Account? Get(Address address)
         {
-            Account? res = innerScope.Get(address);
-            logger.Trace($"{scopeId}: Get account {address}, got {res}");
+            Account? res = _innerScope.Get(address);
+            _logger.Trace($"{_scopeId}: Get account {address}, got {res}");
             return res;
         }
 
-        public void HintGet(Address address, Account? account) => innerScope.HintGet(address, account);
+        public bool CanReadAccountUncached => _uncachedAccountReader is not null;
 
-        public IWorldStateScopeProvider.ICodeDb CodeDb => innerScope.CodeDb;
+        public Account? GetAccountUncached(Address address)
+        {
+            Account? res = _uncachedAccountReader is { } reader ? reader.GetAccountUncached(address) : _innerScope.Get(address);
+            _logger.Trace($"{_scopeId}: Get uncached account {address}, got {res}");
+            return res;
+        }
+
+        public void HintGet(Address address, Account? account) => _innerScope.HintGet(address, account);
+
+        public IWorldStateScopeProvider.ICodeDb CodeDb => _innerScope.CodeDb;
 
         public IWorldStateScopeProvider.IStorageTree CreateStorageTree(Address address) =>
-            new StorageTreeWrapper(innerScope.CreateStorageTree(address), address, scopeId, logger);
+            new StorageTreeWrapper(_innerScope.CreateStorageTree(address), address, _scopeId, _logger);
+
+        public bool CanCreateStorageTreeUncachedAccount => _uncachedStorageTreeProvider is not null;
+
+        public IWorldStateScopeProvider.IStorageTree CreateStorageTreeUncachedAccount(Address address)
+        {
+            IWorldStateScopeProvider.IStorageTree storageTree = _uncachedStorageTreeProvider is { } provider
+                ? provider.CreateStorageTreeUncachedAccount(address)
+                : _innerScope.CreateStorageTree(address);
+            _logger.Trace($"{_scopeId}: Create uncached storage tree {address}");
+            return new StorageTreeWrapper(storageTree, address, _scopeId, _logger);
+        }
 
         public IWorldStateScopeProvider.IWorldStateWriteBatch StartWriteBatch(int estimatedAccountNum) =>
-            new WriteBatchWrapper(innerScope.StartWriteBatch(estimatedAccountNum), scopeId, logger);
+            new WriteBatchWrapper(_innerScope.StartWriteBatch(estimatedAccountNum), _scopeId, _logger);
 
-        public void Commit(long blockNumber) => innerScope.Commit(blockNumber);
+        public void Commit(long blockNumber) => _innerScope.Commit(blockNumber);
     }
 
     private class StorageTreeWrapper(IWorldStateScopeProvider.IStorageTree storageTree, Address address, long scopeId, ILogger logger) : IWorldStateScopeProvider.IStorageTree

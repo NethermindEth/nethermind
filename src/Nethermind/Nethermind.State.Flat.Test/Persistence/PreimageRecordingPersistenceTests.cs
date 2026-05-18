@@ -99,7 +99,7 @@ public class PreimageRecordingPersistenceTests
         _innerPersistence.CreateWriteBatch(from, to, WriteFlags.None).Returns(innerBatch);
 
         TreePath path = TreePath.FromHexString("1234");
-        TrieNode node = new(NodeType.Leaf, [0xc1, 0x01]);
+        TrieNode node = TrieNode.CreateLeafTyped([0xc1, 0x01]);
         Hash256 addrHash = TestItem.KeccakA;
         Hash256 slotHash = TestItem.KeccakB;
         Account account = TestItem.GenerateIndexedAccount(0);

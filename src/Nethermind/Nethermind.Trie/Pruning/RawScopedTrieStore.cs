@@ -14,13 +14,10 @@ public class RawScopedTrieStore(INodeStorage nodeStorage, Hash256? address = nul
     {
     }
 
-    public TrieNode FindCachedOrUnknown(in TreePath path, Hash256 hash) => new(NodeType.Unknown, hash);
+    public byte[]? LoadRlp(in TreePath path, in ValueHash256 hash, ReadFlags flags = ReadFlags.None) =>
+        nodeStorage.Get(address, path, hash, flags) ?? MissingTrieNodeException.ThrowMissing(address, in path, in hash);
 
-    public byte[]? LoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) =>
-        nodeStorage.Get(address, path, hash, flags)
-        ?? throw new MissingTrieNodeException("Node missing", address, path, hash);
-
-    public byte[]? TryLoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) =>
+    public byte[]? TryLoadRlp(in TreePath path, in ValueHash256 hash, ReadFlags flags = ReadFlags.None) =>
         nodeStorage.Get(address, path, hash, flags);
 
     public ITrieNodeResolver GetStorageTrieNodeResolver(Hash256? address) => new RawScopedTrieStore(nodeStorage, address);

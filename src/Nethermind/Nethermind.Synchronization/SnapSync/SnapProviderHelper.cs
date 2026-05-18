@@ -8,7 +8,6 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.State.Snap;
 using Nethermind.Trie;
-using Nethermind.Trie.Pruning;
 
 namespace Nethermind.Synchronization.SnapSync
 {
@@ -224,8 +223,11 @@ namespace Nethermind.Synchronization.SnapSync
                             byte[]? inlineRlp = node.GetInlineNodeRlp(ci);
                             if (inlineRlp is not null)
                             {
-                                child = new TrieNode(NodeType.Unknown, inlineRlp);
-                                child.ResolveNode(NullTrieNodeResolver.Instance, path.Append(ci));
+                                // Inline RLP is already in hand; fold load+decode into a single
+                                // typed allocation so no NodeType.Unknown placeholder leaves
+                                // this loop.
+                                TreePath inlinePath = path.Append(ci);
+                                child = TrieNode.DecodeInlineFromRlp(inlineRlp, in inlinePath);
                             }
                         }
 
@@ -279,8 +281,12 @@ namespace Nethermind.Synchronization.SnapSync
                                 {
                                     // Leaf are range proof, proof that the range covers the requested path.
                                     // But we dont persist them as it should be persisted by the range itself through
-                                    // other range.
-                                    node.NodeData[ci] = child.Keccak;
+                                    // other range. Inline leaves have no separate hash to record - skip them silently
+                                    // (matches pre-A1 behavior where child.Keccak == null wrote a null slot).
+                                    if (child.TryGetKeccak(out ValueHash256 boundaryChildKeccak))
+                                    {
+                                        node.SetUnresolvedChildHashAt(ci, in boundaryChildKeccak);
+                                    }
                                 }
                             }
                         }
@@ -298,11 +304,11 @@ namespace Nethermind.Synchronization.SnapSync
             for (int i = 0; i < proofs.Count; i++)
             {
                 byte[] proof = proofs[i].ToArray();
-                TrieNode node = new(NodeType.Unknown, proof, isDirty: true);
+                TrieNode node = new TrieSyncNode(proof, isDirty: true);
                 node.IsBoundaryProofNode = true;
 
                 TreePath emptyPath = TreePath.Empty;
-                node.ResolveNode(UnknownNodeResolver.Instance, emptyPath);
+                TrieNode.ResolveNode(ref node, UnknownNodeResolver.Instance, in emptyPath);
                 node.ResolveKey(UnknownNodeResolver.Instance, ref emptyPath);
 
                 dict[node.Keccak] = node;
@@ -323,26 +329,23 @@ namespace Nethermind.Synchronization.SnapSync
                 (TrieNode node, TreePath path) = sortedBoundaryList[i];
                 if (!node.IsPersisted)
                 {
-                    INodeData nodeData = node.NodeData;
-                    if (nodeData is ExtensionData extensionData)
+                    if (node.IsExtension)
                     {
-                        if (IsChildPersisted(node, ref path, extensionData._value, ExtensionRlpChildIndex, tree, startPath))
+                        if (IsChildPersisted(node, ref path, node.GetRawChildRef(0), ExtensionRlpChildIndex, tree, startPath))
                         {
                             node.IsBoundaryProofNode = false;
                         }
                     }
-                    else if (nodeData is BranchData branchData)
+                    else if (node.IsBranch)
                     {
                         bool isBoundaryProofNode = false;
-                        int ci = 0;
-                        foreach (object? o in branchData.Branches)
+                        for (int ci = 0; ci < 16; ci++)
                         {
-                            if (!IsChildPersisted(node, ref path, o, ci, tree, startPath))
+                            if (!IsChildPersisted(node, ref path, node.GetRawChildRef(ci), ci, tree, startPath))
                             {
                                 isBoundaryProofNode = true;
                                 break;
                             }
-                            ci++;
                         }
 
                         node.IsBoundaryProofNode = isBoundaryProofNode;
@@ -362,19 +365,17 @@ namespace Nethermind.Synchronization.SnapSync
             }
         }
 
-        private static bool IsChildPersisted<TEntry>(TrieNode node, ref TreePath nodePath, object? child, int childIndex, ISnapTree<TEntry> tree, ValueHash256 startPath) where TEntry : ISnapEntry
+        private static bool IsChildPersisted<TEntry>(TrieNode node, ref TreePath nodePath, TrieNode? child, int childIndex, ISnapTree<TEntry> tree, ValueHash256 startPath) where TEntry : ISnapEntry
         {
-            if (child is TrieNode childNode)
+            // Resolved typed child: the boundary-proof flag carries the answer directly.
+            // The empty sentinel and unresolved (null) slots both fall through to the
+            // hash-from-RLP path so the snap tree can confirm persistence by hash.
+            if (child is not null && !ReferenceEquals(child, TrieNode.NullNode))
             {
-                return !childNode.IsBoundaryProofNode;
+                return !child.IsBoundaryProofNode;
             }
 
-            ValueHash256 childKeccak;
-            if (child is Hash256 hash)
-            {
-                childKeccak = hash.ValueHash256;
-            }
-            else if (!node.GetChildHashAsValueKeccak(childIndex, out childKeccak))
+            if (!node.GetChildHashAsValueKeccak(childIndex, out ValueHash256 childKeccak))
             {
                 return true;
             }

@@ -50,18 +50,18 @@ internal sealed partial class TrieDiffWalker
 
                 if (oldChild is not null && newChild is not null)
                 {
-                    oldChild.ResolveNode(resolver, in path);
-                    newChild.ResolveNode(resolver, in path);
+                    TrieNode.ResolveNode(ref oldChild, resolver, in path);
+                    TrieNode.ResolveNode(ref newChild, resolver, in path);
                     DiffNodes(oldChild, newChild, ref path, resolver, isStorage, childDepth);
                 }
                 else if (oldChild is not null)
                 {
-                    oldChild.ResolveNode(resolver, in path);
+                    TrieNode.ResolveNode(ref oldChild, resolver, in path);
                     CollectSubtree(oldChild, ref path, resolver, isStorage, added: false, childDepth);
                 }
                 else if (newChild is not null)
                 {
-                    newChild.ResolveNode(resolver, in path);
+                    TrieNode.ResolveNode(ref newChild, resolver, in path);
                     CollectSubtree(newChild, ref path, resolver, isStorage, added: true, childDepth);
                 }
             }

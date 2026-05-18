@@ -411,16 +411,16 @@ public class BlockCachePreWarmerTests
         PreBlockCaches caches,
         ConcurrentBag<IReadOnlyTxProcessorSource> created,
         ConcurrentBag<IReadOnlyTxProcessorSource> disposed)
-        : IPooledObjectPolicy<IReadOnlyTxProcessorSource>
+        : IPooledObjectPolicy<IPreBlockCacheWarmupSource>
     {
-        public IReadOnlyTxProcessorSource Create()
+        public IPreBlockCacheWarmupSource Create()
         {
-            TrackingEnv env = new(factory.Create(caches), disposed);
+            TrackingEnv env = new((IPreBlockCacheWarmupSource)factory.Create(caches), disposed);
             created.Add(env);
             return env;
         }
 
-        public bool Return(IReadOnlyTxProcessorSource obj) => true;
+        public bool Return(IPreBlockCacheWarmupSource obj) => true;
 
         /// <summary>
         /// Wraps an inner env and records itself in <paramref name="disposed"/> when
@@ -428,12 +428,15 @@ public class BlockCachePreWarmerTests
         /// disposed by pool eviction from those still retained.
         /// </summary>
         private sealed class TrackingEnv(
-            IReadOnlyTxProcessorSource inner,
+            IPreBlockCacheWarmupSource inner,
             ConcurrentBag<IReadOnlyTxProcessorSource> disposed)
-            : IReadOnlyTxProcessorSource
+            : IPreBlockCacheWarmupSource
         {
             public IReadOnlyTxProcessingScope Build(BlockHeader? baseBlock) =>
                 inner.Build(baseBlock);
+
+            public IPreBlockCacheWarmupSession BuildPreBlockCacheWarmup(BlockHeader? baseBlock) =>
+                inner.BuildPreBlockCacheWarmup(baseBlock);
 
             public void Dispose()
             {

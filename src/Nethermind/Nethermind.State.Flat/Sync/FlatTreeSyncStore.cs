@@ -43,8 +43,8 @@ public class FlatTreeSyncStore(IPersistence persistence, IPersistenceManager per
         using IPersistence.IPersistenceReader reader = persistence.CreateReader(ReaderFlags.Sync);
         using IPersistence.IWriteBatch writeBatch = persistence.CreateWriteBatch(StateId.Sync, StateId.Sync, WriteFlags.DisableWAL);
 
-        TrieNode node = new(NodeType.Unknown, data.ToArray());
-        node.ResolveNode(NullTrieNodeResolver.Instance, path);
+        TrieNode node = new TrieSyncNode(data.ToArray());
+        TrieNode.ResolveNode(ref node, NullTrieNodeResolver.Instance, in path);
 
         TrieNode? existingNode = ReadExistingNode(reader, address, path);
 
@@ -71,8 +71,8 @@ public class FlatTreeSyncStore(IPersistence persistence, IPersistenceManager per
             : reader.TryLoadStorageRlp(address, path, ReadFlags.None);
         if (existingData is null) return null;
 
-        TrieNode existingNode = new(NodeType.Unknown, existingData);
-        existingNode.ResolveNode(NullTrieNodeResolver.Instance, path);
+        TrieNode existingNode = new TrieSyncNode(existingData);
+        TrieNode.ResolveNode(ref existingNode, NullTrieNodeResolver.Instance, in path);
         return existingNode;
     }
 
@@ -263,9 +263,12 @@ public class FlatTreeSyncStore(IPersistence persistence, IPersistenceManager per
         public FlatVerificationContext(IPersistence persistence, byte[] rootNodeData, ILogManager logManager)
         {
             _reader = persistence.CreateReader();
+            // Decode the supplied root RLP directly to a typed TrieNode so RootRef never
+            // holds an NodeType.Unknown placeholder. The hash is computed lazily by the
+            // first traversal that needs it (ResolveKey).
             _stateTree = new StateTree(new FlatSyncTrieStore(_reader), logManager)
             {
-                RootRef = new TrieNode(NodeType.Unknown, rootNodeData)
+                RootRef = TrieNode.DecodeRootFromRlp(rootNodeData)
             };
         }
 
@@ -283,10 +286,7 @@ public class FlatTreeSyncStore(IPersistence persistence, IPersistenceManager per
     /// </summary>
     private class FlatSyncTrieStore(IPersistence.IPersistenceReader reader) : AbstractMinimalTrieStore
     {
-        public override TrieNode FindCachedOrUnknown(in TreePath path, Hash256 hash) =>
-            new(NodeType.Unknown, hash);
-
-        public override byte[]? TryLoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) =>
+        public override byte[]? TryLoadRlp(in TreePath path, in ValueHash256 hash, ReadFlags flags = ReadFlags.None) =>
             reader.TryLoadStateRlp(path, flags);
     }
 }

@@ -50,7 +50,7 @@ namespace Nethermind.Trie.Benchmark
         // public Param Input { get; set; }
 
         [Benchmark]
-        public TrieNode Just_trie_node_56B() => new(NodeType.Unknown);
+        public TrieNode Just_trie_node_56B() => new TrieSyncNode();
 
         [Benchmark]
         public Keccak Just_keccak_80B() => Keccak.Compute(_bytes);
@@ -63,17 +63,17 @@ namespace Nethermind.Trie.Benchmark
         public TrieNode Just_trie_node_with_hash_136B()
         {
             BinaryPrimitives.WriteInt64BigEndian(_bytes, _i);
-            TrieNode trieNode = new(NodeType.Unknown, Keccak.Compute(_bytes));
+            TrieNode trieNode = new TrieSyncNode(Keccak.Compute(_bytes));
             return trieNode;
         }
 
         [Benchmark]
-        public TrieNode Just_trie_node_with_rlp_120B() => new(NodeType.Unknown, new byte[7]);
+        public TrieNode Just_trie_node_with_rlp_120B() => new TrieSyncNode(new byte[7]);
 
         [Benchmark]
         public TrieNode Just_extension_with_child_96B()
         {
-            TrieNode trieNode = new(NodeType.Extension);
+            TrieNode trieNode = TrieNode.CreateExtensionTyped();
             trieNode.SetChild(0, null);
             return trieNode;
         }
@@ -81,7 +81,7 @@ namespace Nethermind.Trie.Benchmark
         [Benchmark]
         public TrieNode Just_branch_with_child_208B()
         {
-            TrieNode trieNode = new(NodeType.Branch);
+            TrieNode trieNode = TrieNode.CreateBranchTyped();
             trieNode.SetChild(0, null);
             return trieNode;
         }
@@ -89,7 +89,7 @@ namespace Nethermind.Trie.Benchmark
         [Benchmark]
         public TrieNode Just_leaf_with_value_128B()
         {
-            TrieNode trieNode = new(NodeType.Leaf);
+            TrieNode trieNode = TrieNode.CreateLeafTyped();
             trieNode.Value = new byte[7];
             return trieNode;
         }

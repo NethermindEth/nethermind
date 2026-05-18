@@ -654,17 +654,28 @@ public class FlatTrieVerifier
         if (_logger.IsInfo) _logger.Info($"=== Diagnosing trie path for flat key {flatKey} ===");
 
         TreePath currentPath = TreePath.Empty;
-        TrieNode? currentNode = trieStore.FindCachedOrUnknown(currentPath, stateRoot);
+        TrieNode? currentNode;
+        try
+        {
+            currentNode = trieStore.GetOrLoadNode(currentPath, stateRoot);
+        }
+        catch (TrieException ex)
+        {
+            if (_logger.IsWarn) _logger.Warn($"  Path: {currentPath} | Failed to resolve: {ex.Message}");
+            ScanRemainingPathWithZeroHash(trieStore, currentPath, flatKey);
+            return;
+        }
         Hash256? expectedHash = stateRoot;
 
         while (currentNode is not null)
         {
             bool isInline = expectedHash is null;
 
-            // Resolve the node (loads RLP for non-inline, no-op for already resolved inline nodes)
+            // GetChildWithChildPath may still return an Unknown placeholder for non-inline children;
+            // resolve here so the rest of the loop sees a typed node.
             try
             {
-                currentNode.ResolveNode(trieStore, currentPath);
+                TrieNode.ResolveNode(ref currentNode, trieStore, in currentPath);
             }
             catch (TrieNodeException ex)
             {
@@ -689,7 +700,7 @@ public class FlatTrieVerifier
 
                         try
                         {
-                            child.ResolveNode(trieStore, childPath);
+                            TrieNode.ResolveNode(ref child, trieStore, in childPath);
                             return "X";
                         }
                         catch (TrieNodeException)
@@ -797,10 +808,10 @@ public class FlatTrieVerifier
                 if (_logger.IsInfo) _logger.Info($"  Path: {currentPath} | ZeroHash lookup found data | ActualHash: {actualHash.ToShortString()}");
 
                 // Try to decode and show node info
-                TrieNode node = new(NodeType.Unknown, actualHash, zeroHashRlp);
+                TrieNode node = new TrieSyncNode(zeroHashRlp);
                 try
                 {
-                    node.ResolveNode(trieStore, currentPath);
+                    TrieNode.ResolveNode(ref node, trieStore, in currentPath);
                     if (_logger.IsInfo) _logger.Info($"    -> Type: {node.NodeType}, Key: {node.Key?.ToHexString() ?? "null"}");
                 }
                 catch (TrieNodeException ex)
@@ -843,31 +854,35 @@ public class FlatTrieVerifier
 
         public long HashMismatchCount => Interlocked.Read(ref _hashMismatchCount);
 
-        public TrieNode FindCachedOrUnknown(in TreePath path, Hash256 hash) => inner.FindCachedOrUnknown(path, hash);
+        public TrieNode GetOrLoadNode(in TreePath path, in ValueHash256 hash, ReadFlags flags = ReadFlags.None) =>
+            inner.GetOrLoadNode(in path, in hash, flags);
 
-        public byte[]? LoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None)
+        public bool TryGetOrLoadNode(in TreePath path, in ValueHash256 hash, [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out TrieNode? node, ReadFlags flags = ReadFlags.None) =>
+            inner.TryGetOrLoadNode(in path, in hash, out node, flags);
+
+        public byte[]? LoadRlp(in TreePath path, in ValueHash256 hash, ReadFlags flags = ReadFlags.None)
         {
-            byte[]? rlp = inner.LoadRlp(path, hash, flags);
+            byte[]? rlp = inner.LoadRlp(path, in hash, flags);
             if (rlp is not null)
             {
-                VerifyHash(rlp, hash, path);
+                VerifyHash(rlp, in hash, path);
             }
             return rlp;
         }
 
-        public byte[]? TryLoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None)
+        public byte[]? TryLoadRlp(in TreePath path, in ValueHash256 hash, ReadFlags flags = ReadFlags.None)
         {
-            byte[]? rlp = inner.TryLoadRlp(path, hash, flags);
-            if (rlp is not null && hash != Keccak.Zero)
+            byte[]? rlp = inner.TryLoadRlp(path, in hash, flags);
+            if (rlp is not null && hash != default)
             {
-                VerifyHash(rlp, hash, path);
+                VerifyHash(rlp, in hash, path);
             }
             return rlp;
         }
 
-        private void VerifyHash(byte[] rlp, Hash256 expectedHash, in TreePath path)
+        private void VerifyHash(byte[] rlp, in ValueHash256 expectedHash, in TreePath path)
         {
-            Hash256 computed = Keccak.Compute(rlp);
+            ValueHash256 computed = ValueKeccak.Compute(rlp);
             if (computed != expectedHash)
             {
                 Interlocked.Increment(ref _hashMismatchCount);
