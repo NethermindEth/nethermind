@@ -601,6 +601,31 @@ public ref struct HsstBTreeBuilder<TWriter, TReader, TPin>
         // fresh for the new entry. minPending = 1 so even a singleton becomes a
         // 1-entry leaf — keeps the on-disk tree a node-only structure for now.
         EmitInlineLeaf();
+        // Force-pad to the next page so the new entry can't slip into the
+        // post-leaf slack and re-trigger with K=1 against effectively zero
+        // remaining (which would produce a cross-page 1-entry leaf). TryAlign
+        // alone won't do this: it only pads when the pad is ≤ PadThreshold, and
+        // the post-leaf slack is often above that for small-entry workloads
+        // (e.g., uniform 40-byte state entries leave ~70 bytes of slack).
+        PadToNextPage();
+    }
+
+    /// <summary>
+    /// Unconditionally pad to the next 4 KiB page boundary. Companion to the
+    /// boundary-triggered <see cref="EmitInlineLeaf"/> in
+    /// <see cref="MaybeFlushBeforeEntry"/>: once we've sealed a leaf because the
+    /// current page is full-ish, force the next entry to a fresh page so it
+    /// can't sneak into the page tail and produce a stray K=1 leaf that crosses
+    /// on the next flush. No-op when already at a page boundary.
+    /// </summary>
+    private void PadToNextPage()
+    {
+        long pageOff = (_writer.Written - _writer.FirstOffset) & PageLayout.PageMask;
+        if (pageOff == 0) return;
+        int padLen = (int)(PageLayout.PageSize - pageOff);
+        Span<byte> pad = _writer.GetSpan(padLen);
+        pad[..padLen].Clear();
+        _writer.Advance(padLen);
     }
 
     private const int PageLocalLeafHeaderBytes = 12;
