@@ -394,7 +394,7 @@ public class Startup : IStartup
         }
     }
 
-    private static int GetStatusCode(in JsonRpcResult result)
+    internal static int GetStatusCode(in JsonRpcResult result)
     {
         if (result.IsCollection)
         {
@@ -408,7 +408,7 @@ public class Startup : IStartup
         }
     }
 
-    private static bool IsResourceUnavailableError(JsonRpcResponse? response) => response is JsonRpcErrorResponse { Error.Code: ErrorCodes.ModuleTimeout }
+    internal static bool IsResourceUnavailableError(JsonRpcResponse? response) => response is JsonRpcErrorResponse { Error.Code: ErrorCodes.ModuleTimeout }
                     or JsonRpcErrorResponse { Error.Code: ErrorCodes.LimitExceeded };
 
     private async Task PushErrorResponseAsync(HttpContext ctx, int statusCode, int errorCode, string message)
@@ -461,6 +461,13 @@ public class Startup : IStartup
                         // Flush headers before body for unbuffered responses
                         if (stream is null)
                         {
+                            if (!result.IsCollection &&
+                                result.Response is not null &&
+                                TryGetKnownSingleResponseContentLength(result.Response, out long contentLength))
+                            {
+                                ctx.Response.ContentLength = contentLength;
+                            }
+
                             await ctx.Response.StartAsync();
                         }
 
@@ -553,6 +560,63 @@ public class Startup : IStartup
     /// avoiding polymorphic dispatch through the JsonRpcResponse base class hierarchy.
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal static void WriteJsonRpcResponse(CountingWriter writer, JsonRpcResponse response)
+    {
+        if (response is JsonRpcSuccessResponse successResponse && TryWritePrimitiveSuccessResponse(writer, successResponse))
+        {
+            return;
+        }
+
+        WriteJsonRpcResponse((IBufferWriter<byte>)writer, response);
+    }
+
+    private static bool TryWritePrimitiveSuccessResponse(CountingWriter writer, JsonRpcSuccessResponse response)
+    {
+        if (ForcedNumberConversion.Value != NumberConversion.Hex || response.Result is not ulong result)
+        {
+            return false;
+        }
+
+        writer.Write("{\"jsonrpc\":\"2.0\",\"result\":"u8);
+        WriteHexUlong(writer, result);
+        writer.Write(",\"id\":"u8);
+        WriteIdRaw(writer, response.Id);
+        writer.Write("}"u8);
+        return true;
+    }
+
+    private static void WriteHexUlong(PipeWriter writer, ulong value)
+    {
+        Span<byte> buffer = stackalloc byte[20];
+        buffer[0] = (byte)'"';
+        buffer[1] = (byte)'0';
+        buffer[2] = (byte)'x';
+
+        int offset = 3;
+        bool hasNonZeroNibble = false;
+        for (int shift = 60; shift >= 0; shift -= 4)
+        {
+            int nibble = (int)(value >> shift) & 0xF;
+            if (nibble == 0 && !hasNonZeroNibble)
+            {
+                continue;
+            }
+
+            hasNonZeroNibble = true;
+            buffer[offset++] = (byte)(nibble < 10
+                ? (byte)'0' + nibble
+                : (byte)'a' + nibble - 10);
+        }
+
+        if (!hasNonZeroNibble)
+        {
+            buffer[offset++] = (byte)'0';
+        }
+
+        buffer[offset++] = (byte)'"';
+        writer.Write(buffer[..offset]);
+    }
+
     private static void WriteJsonRpcResponse(IBufferWriter<byte> writer, JsonRpcResponse response)
     {
         using Utf8JsonWriter jsonWriter = new(writer, new JsonWriterOptions { SkipValidation = true });
@@ -590,6 +654,52 @@ public class Startup : IStartup
         WriteId(jsonWriter, response.Id);
 
         jsonWriter.WriteEndObject();
+    }
+
+    internal static bool TryGetKnownSingleResponseContentLength(JsonRpcResponse response, out long length)
+    {
+        if (response is JsonRpcSuccessResponse successResponse &&
+            TryGetRawResultLength(successResponse.Result, out long resultLength) &&
+            TryGetRawIdLength(response.Id, out int idLength))
+        {
+            length = "{\"jsonrpc\":\"2.0\",\"result\":"u8.Length +
+                     resultLength +
+                     ",\"id\":"u8.Length +
+                     idLength +
+                     "}"u8.Length;
+            return true;
+        }
+
+        length = 0;
+        return false;
+    }
+
+    private static bool TryGetRawResultLength(object? result, out long length)
+    {
+        switch (result)
+        {
+            case RawJsonRpcResult raw:
+                length = raw.Json.Length;
+                return true;
+            case ulong value when ForcedNumberConversion.Value == NumberConversion.Hex:
+                length = GetHexUlongLength(value);
+                return true;
+            default:
+                length = 0;
+                return false;
+        }
+    }
+
+    private static int GetHexUlongLength(ulong value)
+    {
+        int digits = 1;
+        ulong current = value;
+        while ((current >>= 4) != 0)
+        {
+            digits++;
+        }
+
+        return 2 + 2 + digits;
     }
 
     private static void WriteId(Utf8JsonWriter writer, object? id)
@@ -673,6 +783,42 @@ public class Startup : IStartup
                         break;
                     }
             }
+        }
+    }
+
+    private static bool TryGetRawIdLength(object? id, out int length)
+    {
+        switch (id)
+        {
+            case int intId:
+                length = GetFormattedIntLength(intId);
+                return true;
+            case long longId:
+                length = GetFormattedLongLength(longId);
+                return true;
+            case string strId:
+                length = Encoding.UTF8.GetByteCount(strId) + 2;
+                return true;
+            case null:
+                length = "null"u8.Length;
+                return true;
+            default:
+                length = 0;
+                return false;
+        }
+
+        static int GetFormattedIntLength(int value)
+        {
+            Span<byte> buffer = stackalloc byte[11];
+            value.TryFormat(buffer, out int written);
+            return written;
+        }
+
+        static int GetFormattedLongLength(long value)
+        {
+            Span<byte> buffer = stackalloc byte[20];
+            value.TryFormat(buffer, out int written);
+            return written;
         }
     }
 
