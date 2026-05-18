@@ -27,6 +27,8 @@ public partial class NewPayloadRequest<TExecutionPayload>
     public static NewPayloadRequest<TExecutionPayload> From(Block block)
     {
         TExecutionPayload payload = TExecutionPayload.From(block);
+        Hash256 parentBeaconBlockRoot = block.ParentBeaconBlockRoot
+            ?? throw new ArgumentException("Parent beacon block root is missing.", nameof(block));
 
         List<Hash256> versionedHashes = [];
 
@@ -46,7 +48,7 @@ public partial class NewPayloadRequest<TExecutionPayload>
         {
             ExecutionPayload = payload,
             VersionedHashes = [.. versionedHashes],
-            ParentBeaconBlockRoot = block.ParentBeaconBlockRoot!
+            ParentBeaconBlockRoot = parentBeaconBlockRoot
         };
 
         if (block.ExecutionRequests is null)
