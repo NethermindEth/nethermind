@@ -43,6 +43,7 @@ public class DebugRpcModule(
     : IDebugRpcModule
 {
     private readonly ILogger _logger = logManager.GetClassLogger<DebugRpcModule>();
+    private static readonly IRlpDecoder<Transaction> TxRlpDecoder = TxDecoder.Instance;
     private readonly BlockDecoder _blockDecoder = new();
     private readonly ulong _secondsPerSlot = blocksConfig.SecondsPerSlot;
 
@@ -372,7 +373,7 @@ public class DebugRpcModule(
 
         RlpBehaviors encodingSettings = RlpBehaviors.SkipTypedWrapping | (transaction.IsInMempoolForm() ? RlpBehaviors.InMempoolForm : RlpBehaviors.None);
 
-        using NettyRlpStream stream = ((IRlpDecoder<Transaction>)TxDecoder.Instance).EncodeToNewNettyStream(transaction, encodingSettings);
+        using NettyRlpStream stream = TxRlpDecoder.EncodeToNewNettyStream(transaction, encodingSettings);
         return ResultWrapper<string?>.Success(stream.AsSpan().ToHexString(true));
     }
 

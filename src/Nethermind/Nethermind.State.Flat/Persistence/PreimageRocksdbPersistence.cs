@@ -22,6 +22,7 @@ namespace Nethermind.State.Flat.Persistence;
 /// </summary>
 public class PreimageRocksdbPersistence(IColumnsDb<FlatDbColumns> db) : IPersistence
 {
+    private static readonly IRlpDecoder<Account?> SlimAccountDecoder = AccountDecoder.Slim;
     private readonly WriteBufferAdjuster _adjuster = new(db);
     private int _layoutPersisted = BasePersistence.ValidateLayoutReturnFlag(db, FlatLayout.PreimageFlat);
 
@@ -149,7 +150,7 @@ public class PreimageRocksdbPersistence(IColumnsDb<FlatDbColumns> db) : IPersist
                 return;
             }
 
-            using NettyRlpStream stream = ((IRlpDecoder<Account?>)AccountDecoder.Slim).EncodeToNewNettyStream(account);
+            using NettyRlpStream stream = SlimAccountDecoder.EncodeToNewNettyStream(account);
             _flatWriteBatch.SetAccount(fakeAddrHash, stream.AsSpan());
         }
 

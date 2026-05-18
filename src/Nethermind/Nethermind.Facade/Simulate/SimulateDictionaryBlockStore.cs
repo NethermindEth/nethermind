@@ -13,7 +13,7 @@ public class SimulateDictionaryBlockStore(IBlockStore readonlyBaseBlockStore) : 
 {
     private readonly Dictionary<Hash256AsKey, Block> _blockDict = [];
     private readonly Dictionary<long, Block> _blockNumDict = [];
-    private readonly BlockDecoder _blockDecoder = new();
+    private readonly IRlpDecoder<Block> _blockDecoder = new BlockDecoder();
 
     public void Insert(Block block, WriteFlags writeFlags = WriteFlags.None)
     {
@@ -46,7 +46,7 @@ public class SimulateDictionaryBlockStore(IBlockStore readonlyBaseBlockStore) : 
     {
         if (_blockNumDict.TryGetValue(blockNumber, out Block block))
         {
-            using NettyRlpStream newRlp = ((IRlpDecoder<Block>)_blockDecoder).EncodeToNewNettyStream(block);
+            using NettyRlpStream newRlp = _blockDecoder.EncodeToNewNettyStream(block);
             return newRlp.AsSpan().ToArray();
         }
         return readonlyBaseBlockStore.GetRlp(blockNumber, blockHash);

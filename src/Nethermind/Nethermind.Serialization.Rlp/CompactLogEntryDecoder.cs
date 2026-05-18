@@ -10,7 +10,7 @@ using Nethermind.Core.Extensions;
 namespace Nethermind.Serialization.Rlp
 {
     [Rlp.SkipGlobalRegistration]
-    public class CompactLogEntryDecoder : IRlpDecoder<LogEntry>
+    public class CompactLogEntryDecoder : IRlpDecoder<LogEntry?>
     {
         private static readonly RlpLimit RlpLimit = RlpLimit.For<LogEntry>((int)16.MB, nameof(LogEntry));
         public static CompactLogEntryDecoder Instance { get; } = new();
@@ -117,9 +117,9 @@ namespace Nethermind.Serialization.Rlp
             return Rlp.LengthOfSequence(GetContentLength(item).Total);
         }
 
-        void IRlpDecoder<LogEntry>.Encode(RlpStream stream, LogEntry item, RlpBehaviors rlpBehaviors) => Encode(stream, item, rlpBehaviors);
+        void IRlpDecoder<LogEntry?>.Encode(RlpStream stream, LogEntry? item, RlpBehaviors rlpBehaviors) => Encode(stream, item, rlpBehaviors);
 
-        LogEntry IRlpDecoder<LogEntry>.Decode(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors) => Decode(ref decoderContext, rlpBehaviors)!;
+        LogEntry? IRlpDecoder<LogEntry?>.Decode(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors) => Decode(ref decoderContext, rlpBehaviors);
 
         private static byte[] DecodeCompactData(scoped ref Rlp.ValueDecoderContext decoderContext)
         {

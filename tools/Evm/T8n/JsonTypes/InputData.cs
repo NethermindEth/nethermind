@@ -19,15 +19,16 @@ public class InputData
     public TransactionMetaData[]? TransactionMetaDataList { get; set; }
     public string? TxRlp { get; set; }
 
-    public Transaction[] GetTransactions(TxDecoder decoder, ulong chainId)
+    public Transaction[] GetTransactions(IRlpDecoder<Transaction> decoder, ulong chainId)
     {
-        List<Transaction> transactions = [];
         if (TxRlp is not null)
         {
             Rlp.ValueDecoderContext ctx = new(Bytes.FromHexString(TxRlp));
-            transactions = ((IRlpDecoder<Transaction>)decoder).DecodeArray(ref ctx).ToList();
+            return decoder.DecodeArray(ref ctx);
         }
-        else if (Txs is not null && TransactionMetaDataList is not null)
+
+        List<Transaction> transactions = [];
+        if (Txs is not null && TransactionMetaDataList is not null)
         {
             var ecdsa = new EthereumEcdsa(chainId);
 

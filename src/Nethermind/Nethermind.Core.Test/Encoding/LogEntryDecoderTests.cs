@@ -29,25 +29,26 @@ public class LogEntryDecoderTests
     public void Can_do_roundtrip(bool valueDecode, bool useDecoderInstance)
     {
         LogEntry logEntry = CreateSampleLogEntry();
-        IRlpDecoder<LogEntry> decoder = LogEntryDecoder.Instance;
+        IRlpDecoder<LogEntry?> decoder = LogEntryDecoder.Instance;
 
         Rlp rlp = useDecoderInstance
             ? decoder.Encode(logEntry)
             : Rlp.Encode(logEntry);
 
-        LogEntry decoded;
+        LogEntry? decoded;
         if (useDecoderInstance)
         {
             Rlp.ValueDecoderContext ctx = new(rlp.Bytes);
-            decoded = decoder.Decode(ref ctx)!;
+            decoded = decoder.Decode(ref ctx);
         }
         else
         {
             decoded = valueDecode
-                ? Rlp.Decode<LogEntry>(rlp.Bytes.AsSpan())
-                : Rlp.Decode<LogEntry>(rlp);
+                ? Rlp.Decode<LogEntry?>(rlp.Bytes.AsSpan())
+                : Rlp.Decode<LogEntry?>(rlp);
         }
 
+        Assert.That(decoded, Is.Not.Null);
         AssertLogEntriesEqual(logEntry, decoded);
     }
 
@@ -75,8 +76,18 @@ public class LogEntryDecoderTests
     public void Can_handle_nulls()
     {
         Rlp rlp = Rlp.Encode((LogEntry)null!);
-        LogEntry decoded = Rlp.Decode<LogEntry>(rlp);
+        LogEntry? decoded = Rlp.Decode<LogEntry?>(rlp);
         Assert.That(decoded, Is.Null);
+    }
+
+    [TestCase(false)]
+    [TestCase(true)]
+    public void Interface_decoders_return_null_for_empty_log_entry(bool compact)
+    {
+        IRlpDecoder<LogEntry?> decoder = compact ? CompactLogEntryDecoder.Instance : LogEntryDecoder.Instance;
+        Rlp.ValueDecoderContext ctx = Rlp.OfEmptyList.Bytes.AsRlpValueContext();
+
+        Assert.That(decoder.Decode(ref ctx), Is.Null);
     }
 
     [Test]

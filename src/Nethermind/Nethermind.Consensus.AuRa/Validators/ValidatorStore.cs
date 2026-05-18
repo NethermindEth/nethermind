@@ -4,7 +4,6 @@
 using System;
 using Autofac.Features.AttributeFilters;
 using Nethermind.Core;
-using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Db;
@@ -16,7 +15,7 @@ namespace Nethermind.Consensus.AuRa.Validators
     {
         internal static readonly Hash256 LatestFinalizedValidatorsBlockNumberKey = Keccak.Compute("LatestFinalizedValidatorsBlockNumber");
         internal static readonly Hash256 PendingValidatorsKey = Keccak.Compute("PendingValidators");
-        private static readonly PendingValidatorsDecoder PendingValidatorsDecoder = new();
+        private static readonly IRlpDecoder<PendingValidators> PendingValidatorsDecoder = new PendingValidatorsDecoder();
 
         private readonly IDb _db;
         private long _latestFinalizedValidatorsBlockNumber;
@@ -66,11 +65,8 @@ namespace Nethermind.Consensus.AuRa.Validators
 
         private void StorePendingValidators(PendingValidators value)
         {
-            int length = PendingValidatorsDecoder.GetLength(value, RlpBehaviors.None);
-            using ArrayPoolDisposableReturn bufferReturn = ArrayPoolDisposableReturn.Rent(length, out byte[] bytes);
-            CappedArray<byte> buffer = new(bytes, length);
-            PendingValidatorsDecoder.Encode(buffer.AsRlpStream(), value);
-            _db.PutSpan(PendingValidatorsKey.Bytes, buffer.AsSpan());
+            using NettyRlpStream stream = PendingValidatorsDecoder.EncodeToNewNettyStream(value);
+            _db.PutSpan(PendingValidatorsKey.Bytes, stream.AsSpan());
         }
 
         private ValidatorInfo FindValidatorInfo(in long blockNumber)

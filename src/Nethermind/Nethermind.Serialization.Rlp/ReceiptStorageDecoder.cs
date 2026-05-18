@@ -16,6 +16,7 @@ namespace Nethermind.Serialization.Rlp
     public sealed class ReceiptStorageDecoder(bool supportTxHash = true) : RlpDecoder<TxReceipt>, IReceiptRefDecoder
     {
         private const byte MarkTxHashByte = 255;
+        private static readonly IRlpDecoder<Hash256> HashDecoder = KeccakDecoder.Instance;
 
         // Used by Rlp decoders discovery
         public ReceiptStorageDecoder() : this(true)
@@ -323,7 +324,7 @@ namespace Nethermind.Serialization.Rlp
         public void DecodeLogEntryStructRef(scoped ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors behaviour,
             out LogEntryStructRef current) => LogEntryDecoder.DecodeStructRef(ref decoderContext, behaviour, out current);
 
-        public Hash256[] DecodeTopics(Rlp.ValueDecoderContext valueDecoderContext) => ((IRlpDecoder<Hash256>)KeccakDecoder.Instance).DecodeArray(ref valueDecoderContext);
+        public Hash256[] DecodeTopics(Rlp.ValueDecoderContext valueDecoderContext) => HashDecoder.DecodeArray(ref valueDecoderContext);
 
         public bool CanDecodeBloom => true;
     }

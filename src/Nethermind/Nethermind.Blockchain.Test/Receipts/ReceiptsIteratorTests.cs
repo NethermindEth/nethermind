@@ -18,6 +18,7 @@ namespace Nethermind.Blockchain.Test.Receipts;
 public class ReceiptsIteratorTests
 {
     private readonly ReceiptArrayStorageDecoder _decoder = ReceiptArrayStorageDecoder.Instance;
+    private readonly IRlpDecoder<TxReceipt[]> _rlpDecoder = ReceiptArrayStorageDecoder.Instance;
 
     [Test]
     public void SmokeTestWithRecovery()
@@ -103,7 +104,7 @@ public class ReceiptsIteratorTests
 
     private ReceiptsIterator CreateIterator(TxReceipt[] receipts, Block block)
     {
-        using NettyRlpStream stream = ((IRlpDecoder<TxReceipt[]>)_decoder).EncodeToNewNettyStream(receipts, RlpBehaviors.Storage);
+        using NettyRlpStream stream = _rlpDecoder.EncodeToNewNettyStream(receipts, RlpBehaviors.Storage);
         Span<byte> span = stream.AsSpan();
         TestMemDb blockDb = new();
         ReceiptsRecovery recovery = new(

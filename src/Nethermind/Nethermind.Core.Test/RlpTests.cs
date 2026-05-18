@@ -17,6 +17,8 @@ namespace Nethermind.Core.Test
     [TestFixture]
     public class RlpTests
     {
+        private static readonly IRlpDecoder<Transaction> TransactionDecoder = TxDecoder.Instance;
+
         public record DecoderCase(string Name, Func<Rlp.ValueDecoderContext, dynamic> Invoke, int? Size)
         {
             public override string ToString() => Name;
@@ -407,7 +409,7 @@ namespace Nethermind.Core.Test
         public void Encode_stream_with_null_items_produces_empty_list()
         {
             RlpStream stream = new(Rlp.OfEmptyList.Length);
-            ((IRlpDecoder<Transaction>)TxDecoder.Instance).Encode(stream, (Transaction[]?)null);
+            TransactionDecoder.Encode(stream, (Transaction[]?)null);
             Assert.That(stream.Data.ToArray(), Is.EqualTo(Rlp.OfEmptyList.Bytes));
         }
 

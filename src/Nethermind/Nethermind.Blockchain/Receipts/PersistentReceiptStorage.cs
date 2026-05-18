@@ -29,7 +29,8 @@ namespace Nethermind.Blockchain.Receipts
         private readonly IDb _transactionDb;
         private static readonly Hash256 MigrationBlockNumberKey = Keccak.Compute(nameof(MigratedBlockNumber));
         private long _migratedBlockNumber;
-        private readonly ReceiptArrayStorageDecoder _storageDecoder = ReceiptArrayStorageDecoder.Instance;
+        private readonly ReceiptArrayStorageDecoder _storageDecoder;
+        private readonly IRlpDecoder<TxReceipt[]> _storageRlpDecoder;
         private readonly IBlockTree _blockTree;
         private readonly IBlockStore _blockStore;
         private readonly IReceiptConfig _receiptConfig;
@@ -61,6 +62,7 @@ namespace Nethermind.Blockchain.Receipts
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _blockStore = blockStore ?? throw new ArgumentNullException(nameof(blockStore));
             _storageDecoder = storageDecoder ?? ReceiptArrayStorageDecoder.Instance;
+            _storageRlpDecoder = _storageDecoder;
             _receiptConfig = receiptConfig ?? throw new ArgumentNullException(nameof(receiptConfig));
 
             _migratedBlockNumber = Get(MigrationBlockNumberKey, long.MaxValue);
@@ -275,7 +277,7 @@ namespace Nethermind.Blockchain.Receipts
             long blockNumber = block.Number;
             RlpBehaviors behaviors = spec.IsEip658Enabled ? RlpBehaviors.Eip658Receipts | RlpBehaviors.Storage : RlpBehaviors.Storage;
 
-            using (NettyRlpStream stream = ((IRlpDecoder<TxReceipt[]>)_storageDecoder).EncodeToNewNettyStream(txReceipts, behaviors))
+            using (NettyRlpStream stream = _storageRlpDecoder.EncodeToNewNettyStream(txReceipts, behaviors))
             {
                 Span<byte> blockNumPrefixed = stackalloc byte[40];
                 GetBlockNumPrefixedKey(blockNumber, block.Hash!, blockNumPrefixed);

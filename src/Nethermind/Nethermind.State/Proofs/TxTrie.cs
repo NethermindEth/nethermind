@@ -16,7 +16,7 @@ namespace Nethermind.State.Proofs;
 /// </summary>
 public sealed class TxTrie : PatriciaTrie<Transaction>
 {
-    private static readonly TxDecoder _txDecoder = TxDecoder.Instance;
+    private static readonly IRlpDecoder<Transaction> _txDecoder = TxDecoder.Instance;
 
     /// <inheritdoc/>
     /// <param name="transactions">The transactions to build the trie of.</param>
@@ -32,7 +32,7 @@ public sealed class TxTrie : PatriciaTrie<Transaction>
             ref readonly Memory<byte> rlp = ref transaction.PreHash;
             CappedArray<byte> buffer = (rlp.Length > 0) ?
                 CopyExistingRlp(rlp.Span, _bufferPool) :
-                ((IRlpDecoder<Transaction>)_txDecoder).EncodeToCappedArray(transaction, rlpBehaviors: RlpBehaviors.SkipTypedWrapping, bufferPool: _bufferPool);
+                _txDecoder.EncodeToCappedArray(transaction, rlpBehaviors: RlpBehaviors.SkipTypedWrapping, bufferPool: _bufferPool);
             CappedArray<byte> keyBuffer = Rlp.EncodeToCappedArray(key, _bufferPool);
             key++;
 
