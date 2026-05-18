@@ -29,7 +29,7 @@ public class LogEntryDecoderTests
     public void Can_do_roundtrip(bool valueDecode, bool useDecoderInstance)
     {
         LogEntry logEntry = CreateSampleLogEntry();
-        IRlpDecoder<LogEntry?> decoder = LogEntryDecoder.Instance;
+        LogEntryDecoder decoder = LogEntryDecoder.Instance;
 
         Rlp rlp = useDecoderInstance
             ? decoder.Encode(logEntry)
@@ -84,7 +84,7 @@ public class LogEntryDecoderTests
     [TestCase(true)]
     public void Interface_decoders_return_null_for_empty_log_entry(bool compact)
     {
-        IRlpDecoder<LogEntry?> decoder = compact ? CompactLogEntryDecoder.Instance : LogEntryDecoder.Instance;
+        RlpDecoder<LogEntry?> decoder = compact ? CompactLogEntryDecoder.Instance : LogEntryDecoder.Instance;
         Rlp.ValueDecoderContext ctx = Rlp.OfEmptyList.Bytes.AsRlpValueContext();
 
         Assert.That(decoder.Decode(ref ctx), Is.Null);
@@ -120,7 +120,7 @@ public class LogEntryDecoderTests
             }
             else
             {
-                CompactLogEntryDecoder.Decode(ref ctx);
+                CompactLogEntryDecoder.Instance.Decode(ref ctx);
             }
         });
     }

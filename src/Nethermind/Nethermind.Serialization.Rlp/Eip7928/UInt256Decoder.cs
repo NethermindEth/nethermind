@@ -5,15 +5,13 @@ using Nethermind.Int256;
 
 namespace Nethermind.Serialization.Rlp.Eip7928;
 
-public class UInt256Decoder : IRlpDecoder<UInt256>
+public class UInt256Decoder : RlpDecoder<UInt256, UInt256Decoder>
 {
-    public static readonly UInt256Decoder Instance = new();
-
-    public int GetLength(UInt256 item, RlpBehaviors rlpBehaviors)
+    public override int GetLength(UInt256 item, RlpBehaviors rlpBehaviors)
         => Rlp.LengthOf(item);
 
-    public UInt256 Decode(ref Rlp.ValueDecoderContext ctx, RlpBehaviors rlpBehaviors) => ctx.DecodeUInt256();
+    protected override UInt256 DecodeInternal(ref Rlp.ValueDecoderContext ctx, RlpBehaviors rlpBehaviors) => ctx.DecodeUInt256();
 
-    public void Encode(RlpStream stream, UInt256 item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public override void Encode(RlpStream stream, UInt256 item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         => stream.Encode(item);
 }

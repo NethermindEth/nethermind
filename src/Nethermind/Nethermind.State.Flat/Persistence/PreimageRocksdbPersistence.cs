@@ -22,7 +22,7 @@ namespace Nethermind.State.Flat.Persistence;
 /// </summary>
 public class PreimageRocksdbPersistence(IColumnsDb<FlatDbColumns> db) : IPersistence
 {
-    private static readonly IRlpDecoder<Account?> SlimAccountDecoder = AccountDecoder.Slim;
+    private static readonly AccountDecoder SlimAccountDecoder = AccountDecoder.Slim;
     private readonly WriteBufferAdjuster _adjuster = new(db);
     private int _layoutPersisted = BasePersistence.ValidateLayoutReturnFlag(db, FlatLayout.PreimageFlat);
 

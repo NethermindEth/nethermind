@@ -47,7 +47,7 @@ internal abstract class BaseSnapshotDecoder<T> : RlpDecoder<T> where T : Snapsho
         return addresses;
     }
 
-    public Rlp Encode(T item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public override Rlp Encode(T item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (item is null)
             return Rlp.OfEmptyList;

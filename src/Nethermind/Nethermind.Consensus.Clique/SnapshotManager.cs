@@ -222,7 +222,7 @@ namespace Nethermind.Consensus.Clique
             return new Hash256(keyBytes);
         }
 
-        private readonly IRlpDecoder<Snapshot> _decoder = new SnapshotDecoder();
+        private readonly SnapshotDecoder _decoder = new();
 
         [Todo(Improve.Refactor, "I guess it was only added here because of the use of blocksdb")]
         private Snapshot? LoadSnapshot(Hash256 hash)

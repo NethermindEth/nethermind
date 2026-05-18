@@ -13,7 +13,7 @@ public class SimulateDictionaryBlockStore(IBlockStore readonlyBaseBlockStore) : 
 {
     private readonly Dictionary<Hash256AsKey, Block> _blockDict = [];
     private readonly Dictionary<long, Block> _blockNumDict = [];
-    private readonly IRlpDecoder<Block> _blockDecoder = new BlockDecoder();
+    private readonly BlockDecoder _blockDecoder = new();
 
     public void Insert(Block block, WriteFlags writeFlags = WriteFlags.None)
     {

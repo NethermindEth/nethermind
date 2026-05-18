@@ -16,7 +16,7 @@ namespace Nethermind.Optimism.Rpc;
 
 public class OptimismPayloadAttributes : PayloadAttributes
 {
-    private static readonly IRlpDecoder<Transaction> TxRlpDecoder = TxDecoder.Instance;
+    private static readonly TxDecoder TxRlpDecoder = TxDecoder.Instance;
     private byte[][]? _encodedTransactions;
 
     public byte[][]? Transactions

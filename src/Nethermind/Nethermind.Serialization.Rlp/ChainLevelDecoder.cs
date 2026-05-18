@@ -73,8 +73,6 @@ namespace Nethermind.Serialization.Rlp
             return info;
         }
 
-        public Rlp Encode(ChainLevelInfo? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None) => throw new NotImplementedException();
-
         private static int GetContentLength(ChainLevelInfo item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (item is null)

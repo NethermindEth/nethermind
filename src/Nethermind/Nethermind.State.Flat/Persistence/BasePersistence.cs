@@ -243,7 +243,7 @@ public static class BasePersistence
     ) : IFlatWriteBatch
         where TWriteBatch : struct, IHashedFlatWriteBatch
     {
-        private readonly IRlpDecoder<Account?> _accountDecoder = useFlatAccount ? AccountDecoder.Slim : AccountDecoder.Instance;
+        private readonly AccountDecoder _accountDecoder = useFlatAccount ? AccountDecoder.Slim : AccountDecoder.Instance;
         private TWriteBatch _flatWriteBatch = flatWriteBatch;
 
         public void SelfDestruct(Address addr) => _flatWriteBatch.SelfDestruct(addr.ToAccountPath);
@@ -289,7 +289,7 @@ public static class BasePersistence
     ) : IFlatReader
         where TFlatReader : struct, IHashedFlatReader
     {
-        private readonly IRlpDecoder<Account?> _accountDecoder = useFlatAccount ? AccountDecoder.Slim : AccountDecoder.Instance;
+        private readonly AccountDecoder _accountDecoder = useFlatAccount ? AccountDecoder.Slim : AccountDecoder.Instance;
         private readonly int _accountSpanBufferSize = 256;
         private TFlatReader _flatReader = flatReader;
 

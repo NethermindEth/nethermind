@@ -53,7 +53,7 @@ public sealed class WithdrawalDecoder() : RlpDecoder<Withdrawal>
         stream.Encode(item.AmountInGwei);
     }
 
-    public Rlp Encode(Withdrawal? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public override Rlp Encode(Withdrawal? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         RlpStream stream = new(GetLength(item, rlpBehaviors));
 

@@ -15,7 +15,7 @@ namespace Nethermind.Consensus.AuRa.Validators
     {
         internal static readonly Hash256 LatestFinalizedValidatorsBlockNumberKey = Keccak.Compute("LatestFinalizedValidatorsBlockNumber");
         internal static readonly Hash256 PendingValidatorsKey = Keccak.Compute("PendingValidators");
-        private static readonly IRlpDecoder<PendingValidators> PendingValidatorsDecoder = new PendingValidatorsDecoder();
+        private static readonly PendingValidatorsDecoder PendingValidatorsDecoder = new();
 
         private readonly IDb _db;
         private long _latestFinalizedValidatorsBlockNumber;

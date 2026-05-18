@@ -17,7 +17,7 @@ namespace Nethermind.Core.Test
     [TestFixture]
     public class RlpTests
     {
-        private static readonly IRlpDecoder<Transaction> TransactionDecoder = TxDecoder.Instance;
+        private static readonly TxDecoder TransactionDecoder = TxDecoder.Instance;
 
         public record DecoderCase(string Name, Func<Rlp.ValueDecoderContext, dynamic> Invoke, int? Size)
         {

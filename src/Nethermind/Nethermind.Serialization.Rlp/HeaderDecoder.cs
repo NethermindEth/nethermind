@@ -154,7 +154,7 @@ namespace Nethermind.Serialization.Rlp
             if (requiredItems[7]) rlpStream.Encode(header.SlotNumber.GetValueOrDefault());
         }
 
-        public Rlp Encode(BlockHeader? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public override Rlp Encode(BlockHeader? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (item is null)
             {

@@ -34,7 +34,7 @@ internal class SyncInfoDecoder : RlpDecoder<SyncInfo>
         return new SyncInfo(highestQuorumCert, highestTimeoutCert);
     }
 
-    public Rlp Encode(SyncInfo item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public override Rlp Encode(SyncInfo item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (item is null)
             return Rlp.OfEmptyList;

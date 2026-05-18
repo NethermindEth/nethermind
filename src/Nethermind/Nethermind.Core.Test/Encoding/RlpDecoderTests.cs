@@ -10,12 +10,12 @@ using NUnit.Framework;
 
 namespace Nethermind.Core.Test.Encoding;
 
-public class IRlpDecoderTests
+public class RlpDecoderTests
 {
     [Test]
     public void Decode_complete_not_null_decodes_item()
     {
-        IRlpDecoder<Withdrawal> decoder = new WithdrawalDecoder();
+        WithdrawalDecoder decoder = new();
         Rlp rlp = decoder.Encode(TestItem.WithdrawalA_1Eth);
 
         Assert.That(decoder.DecodeCompleteNotNull(rlp.Bytes), Is.Not.Null);
@@ -24,7 +24,7 @@ public class IRlpDecoderTests
     [Test]
     public void Array_encoding_uses_empty_list_for_null_withdrawals()
     {
-        IRlpDecoder<Withdrawal> decoder = new WithdrawalDecoder();
+        WithdrawalDecoder decoder = new();
         Withdrawal?[] withdrawals = [TestItem.WithdrawalA_1Eth, null, TestItem.WithdrawalB_2Eth];
 
         int contentLength = decoder.GetContentLength(withdrawals);
@@ -56,7 +56,7 @@ public class IRlpDecoderTests
 
         static void DecodeEmptyInput()
         {
-            IRlpDecoder<Withdrawal> decoder = new WithdrawalDecoder();
+            WithdrawalDecoder decoder = new();
             Rlp.ValueDecoderContext context = new(ReadOnlySpan<byte>.Empty);
             decoder.Decode(ref context);
         }
@@ -65,7 +65,7 @@ public class IRlpDecoderTests
     [Test]
     public void Netty_array_encoding_uses_empty_list_for_null_withdrawals()
     {
-        IRlpDecoder<Withdrawal> decoder = new WithdrawalDecoder();
+        WithdrawalDecoder decoder = new();
         Withdrawal?[] withdrawals = [TestItem.WithdrawalA_1Eth, null, TestItem.WithdrawalB_2Eth];
 
         using NettyRlpStream stream = decoder.EncodeToNewNettyStream(withdrawals);
@@ -76,7 +76,7 @@ public class IRlpDecoderTests
     [Test]
     public void Netty_list_encoding_uses_empty_list_for_null_withdrawals()
     {
-        IRlpDecoder<Withdrawal> decoder = new WithdrawalDecoder();
+        WithdrawalDecoder decoder = new();
         List<Withdrawal?> withdrawals = [TestItem.WithdrawalA_1Eth, null, TestItem.WithdrawalB_2Eth];
 
         using NettyRlpStream stream = decoder.EncodeToNewNettyStream(withdrawals);
@@ -87,7 +87,7 @@ public class IRlpDecoderTests
     [Test]
     public void Netty_array_pool_list_ref_encoding_uses_empty_list_for_null_withdrawals()
     {
-        IRlpDecoder<Withdrawal> decoder = new WithdrawalDecoder();
+        WithdrawalDecoder decoder = new();
         using ArrayPoolListRef<Withdrawal?> withdrawals = new(3);
         withdrawals.Add(TestItem.WithdrawalA_1Eth);
         withdrawals.Add(null);
@@ -98,7 +98,7 @@ public class IRlpDecoderTests
         AssertEncodedNullItem(decoder, stream.AsSpan());
     }
 
-    private static void AssertEncodedNullItem(IRlpDecoder<Withdrawal> decoder, ReadOnlySpan<byte> bytes)
+    private static void AssertEncodedNullItem(WithdrawalDecoder decoder, ReadOnlySpan<byte> bytes)
     {
         Rlp.ValueDecoderContext context = new(bytes);
         int sequenceEnd = context.ReadSequenceLength() + context.Position;

@@ -41,7 +41,7 @@ internal sealed class QuorumCertificateDecoder : RlpDecoder<QuorumCertificate>
         return new QuorumCertificate(blockInfo, signatures, gap);
     }
 
-    public Rlp Encode(QuorumCertificate item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public override Rlp Encode(QuorumCertificate item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (item is null)
             return Rlp.OfEmptyList;

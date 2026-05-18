@@ -12,23 +12,15 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Blockchain.Blocks;
 
-public class BlockStore : IBlockStore, IClearableCache
+public class BlockStore([KeyFilter(DbNames.Blocks)] IDb blockDb, IHeaderDecoder? headerDecoder = null) : IBlockStore, IClearableCache
 {
     public const int CacheSize = 128 + 32;
 
-    private readonly IDb _blockDb;
-    private readonly BlockDecoder _blockDecoder;
-    private readonly IRlpDecoder<Block> _blockRlpDecoder;
+    private readonly IDb _blockDb = blockDb;
+    private readonly BlockDecoder _blockDecoder = new(headerDecoder ?? new HeaderDecoder());
 
     private readonly AssociativeCache<ValueHash256, Block>
         _blockCache = new(CacheSize);
-
-    public BlockStore([KeyFilter(DbNames.Blocks)] IDb blockDb, IHeaderDecoder? headerDecoder = null)
-    {
-        _blockDb = blockDb;
-        _blockDecoder = new BlockDecoder(headerDecoder ?? new HeaderDecoder());
-        _blockRlpDecoder = _blockDecoder;
-    }
 
     public void SetMetadata(byte[] key, byte[] value) => _blockDb.Set(key, value);
 
@@ -50,7 +42,7 @@ public class BlockStore : IBlockStore, IClearableCache
 
         // if we carry Rlp from the network message all the way here we could avoid encoding back to RLP here
         // Although cpu is the main bottleneck since NettyRlpStream uses pooled memory which avoid unnecessary allocations..
-        using NettyRlpStream newRlp = _blockRlpDecoder.EncodeToNewNettyStream(block);
+        using NettyRlpStream newRlp = _blockDecoder.EncodeToNewNettyStream(block);
 
         _blockDb.Set(block.Number, block.Hash, newRlp.AsSpan(), writeFlags);
     }

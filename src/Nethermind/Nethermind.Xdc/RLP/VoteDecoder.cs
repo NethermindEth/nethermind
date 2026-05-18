@@ -57,7 +57,7 @@ public sealed class VoteDecoder : RlpDecoder<Vote>
         stream.Encode(item.GapNumber);
     }
 
-    public Rlp Encode(Vote item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public override Rlp Encode(Vote item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (item is null)
             return Rlp.OfEmptyList;

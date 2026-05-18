@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using FluentAssertions;
 using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
@@ -29,10 +28,18 @@ public class AuthorizationTupleDecoderTests
     {
         AuthorizationTupleDecoder sut = new();
 
-        RlpStream result = sut.Encode(item);
-        Rlp.ValueDecoderContext ctx = new(result.Data);
+        Rlp result = sut.Encode(item);
+        Rlp.ValueDecoderContext ctx = new(result.Bytes);
 
-        sut.Decode(ref ctx).Should().BeEquivalentTo(item);
+        AuthorizationTuple decoded = sut.Decode(ref ctx);
+        Assert.Multiple(() =>
+        {
+            Assert.That(decoded.ChainId, Is.EqualTo(item.ChainId));
+            Assert.That(decoded.CodeAddress, Is.EqualTo(item.CodeAddress));
+            Assert.That(decoded.Nonce, Is.EqualTo(item.Nonce));
+            Assert.That(decoded.AuthoritySignature, Is.EqualTo(item.AuthoritySignature));
+            Assert.That(decoded.Authority, Is.EqualTo(item.Authority));
+        });
     }
 
     [Test]

@@ -801,7 +801,7 @@ public class BlockAccessListDecoderTests
         return stream.Data.ToArray()!;
     }
 
-    private static int GetArrayLength<T>(T[] items, IRlpDecoder<T> encoder)
+    private static int GetArrayLength<T>(T[] items, RlpDecoder<T> encoder)
     {
         int contentLength = 0;
         for (int i = 0; i < items.Length; i++)
@@ -812,7 +812,7 @@ public class BlockAccessListDecoderTests
         return Rlp.LengthOfSequence(contentLength);
     }
 
-    private static void EncodeArray<T>(RlpStream stream, T[] items, IRlpDecoder<T> encoder)
+    private static void EncodeArray<T>(RlpStream stream, T[] items, RlpDecoder<T> encoder)
     {
         int contentLength = 0;
         for (int i = 0; i < items.Length; i++)
@@ -831,12 +831,12 @@ public class BlockAccessListDecoderTests
         typeof(T).GetField(name, BindingFlags.Instance | BindingFlags.NonPublic)
         ?? throw new MissingFieldException(typeof(T).FullName, name);
 
-    private sealed class ThrowingByteDecoder : IRlpDecoder<byte>
+    private sealed class ThrowingByteDecoder : RlpDecoder<byte>
     {
         public const string Error = "semantic failure";
         private int _calls;
 
-        public byte Decode(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        protected override byte DecodeInternal(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             byte value = decoderContext.DecodeByte();
             _calls++;
@@ -848,9 +848,9 @@ public class BlockAccessListDecoderTests
             return value;
         }
 
-        public void Encode(RlpStream stream, byte item, RlpBehaviors rlpBehaviors = RlpBehaviors.None) => stream.Encode(item);
+        public override void Encode(RlpStream stream, byte item, RlpBehaviors rlpBehaviors = RlpBehaviors.None) => stream.Encode(item);
 
-        public int GetLength(byte item, RlpBehaviors rlpBehaviors = RlpBehaviors.None) => 1;
+        public override int GetLength(byte item, RlpBehaviors rlpBehaviors = RlpBehaviors.None) => 1;
     }
 
     private sealed class DisposableElement : IDisposable
@@ -860,12 +860,12 @@ public class BlockAccessListDecoderTests
         public void Dispose() => DisposedCount++;
     }
 
-    private sealed class ThrowingDisposableDecoder : IRlpDecoder<DisposableElement>
+    private sealed class ThrowingDisposableDecoder : RlpDecoder<DisposableElement>
     {
         public const string Error = "disposable semantic failure";
         private int _calls;
 
-        public DisposableElement Decode(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        protected override DisposableElement DecodeInternal(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             decoderContext.DecodeByte();
             _calls++;
@@ -877,17 +877,17 @@ public class BlockAccessListDecoderTests
             return new DisposableElement();
         }
 
-        public void Encode(RlpStream stream, DisposableElement item, RlpBehaviors rlpBehaviors = RlpBehaviors.None) => stream.Encode(0);
+        public override void Encode(RlpStream stream, DisposableElement item, RlpBehaviors rlpBehaviors = RlpBehaviors.None) => stream.Encode(0);
 
-        public int GetLength(DisposableElement item, RlpBehaviors rlpBehaviors = RlpBehaviors.None) => 1;
+        public override int GetLength(DisposableElement item, RlpBehaviors rlpBehaviors = RlpBehaviors.None) => 1;
     }
 
-    private sealed class ThrowingObjectDecoder : IRlpDecoder<object>
+    private sealed class ThrowingObjectDecoder : RlpDecoder<object>
     {
         public const string Error = "object semantic failure";
         private int _calls;
 
-        public object Decode(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        protected override object DecodeInternal(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             decoderContext.DecodeByte();
             _calls++;
@@ -899,21 +899,21 @@ public class BlockAccessListDecoderTests
             return new DisposableElement();
         }
 
-        public void Encode(RlpStream stream, object item, RlpBehaviors rlpBehaviors = RlpBehaviors.None) => stream.Encode(0);
+        public override void Encode(RlpStream stream, object item, RlpBehaviors rlpBehaviors = RlpBehaviors.None) => stream.Encode(0);
 
-        public int GetLength(object item, RlpBehaviors rlpBehaviors = RlpBehaviors.None) => 1;
+        public override int GetLength(object item, RlpBehaviors rlpBehaviors = RlpBehaviors.None) => 1;
     }
 
-    private sealed class ThrowingArgumentDecoder : IRlpDecoder<byte>
+    private sealed class ThrowingArgumentDecoder : RlpDecoder<byte>
     {
-        public byte Decode(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        protected override byte DecodeInternal(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             decoderContext.DecodeByte();
             throw new ArgumentException("semantic argument failure");
         }
 
-        public void Encode(RlpStream stream, byte item, RlpBehaviors rlpBehaviors = RlpBehaviors.None) => stream.Encode(item);
+        public override void Encode(RlpStream stream, byte item, RlpBehaviors rlpBehaviors = RlpBehaviors.None) => stream.Encode(item);
 
-        public int GetLength(byte item, RlpBehaviors rlpBehaviors = RlpBehaviors.None) => 1;
+        public override int GetLength(byte item, RlpBehaviors rlpBehaviors = RlpBehaviors.None) => 1;
     }
 }

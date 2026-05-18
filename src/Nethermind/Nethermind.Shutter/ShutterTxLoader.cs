@@ -32,7 +32,7 @@ public class ShutterTxLoader(
     IAbiEncoder abiEncoder,
     ILogManager logManager)
 {
-    private static readonly IRlpDecoder<Transaction> TxRlpDecoder = TxDecoder.Instance;
+    private static readonly TxDecoder TxRlpDecoder = TxDecoder.Instance;
 
     private readonly ShutterLogScanner _logScanner = new(
                 new(new Address(cfg.SequencerContractAddress!)),

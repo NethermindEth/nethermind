@@ -18,7 +18,7 @@ public class BlockAccessListStore(
     BlockAccessListDecoder? decoder = null)
     : IBlockAccessListStore
 {
-    private readonly IRlpDecoder<BlockAccessList> _balDecoder = decoder ?? new();
+    private readonly BlockAccessListDecoder _balDecoder = decoder ?? new();
 
     public void Insert(Hash256 blockHash, BlockAccessList bal)
     {

@@ -28,7 +28,7 @@ internal sealed class ExtraConsensusDataDecoder : RlpDecoder<ExtraFieldsV2>
         return new ExtraFieldsV2(round, quorumCert);
     }
 
-    public Rlp Encode(ExtraFieldsV2 item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public override Rlp Encode(ExtraFieldsV2 item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (item is null)
             return Rlp.OfEmptyList;

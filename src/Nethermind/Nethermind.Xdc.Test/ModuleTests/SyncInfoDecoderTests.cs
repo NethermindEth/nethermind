@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using FluentAssertions;
 using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Xdc.Types;
@@ -79,7 +78,7 @@ public class SyncInfoDecoderTests
             decoded = decoder.Decode(ref decoderContext);
         }
 
-        decoded.Should().BeEquivalentTo(syncInfo);
+        AssertSyncInfo(decoded, syncInfo);
     }
 
     [Test]
@@ -111,10 +110,9 @@ public class SyncInfoDecoderTests
         Rlp.ValueDecoderContext decoderContext = new(stream.Data.AsSpan());
         SyncInfo decodedContext = decoder.Decode(ref decoderContext);
 
-        // Both should be equivalent to original
-        decodedStream.Should().BeEquivalentTo(syncInfo);
-        decodedContext.Should().BeEquivalentTo(syncInfo);
-        decodedStream.Should().BeEquivalentTo(decodedContext);
+        AssertSyncInfo(decodedStream, syncInfo);
+        AssertSyncInfo(decodedContext, syncInfo);
+        AssertSyncInfo(decodedStream, decodedContext);
     }
 
     [Test]
@@ -146,7 +144,7 @@ public class SyncInfoDecoderTests
     {
         SyncInfoDecoder decoder = new();
 
-        Rlp encoded = decoder.Encode(null!);
+        Rlp encoded = decoder.Encode((SyncInfo)null!);
 
         Assert.That(encoded, Is.EqualTo(Rlp.OfEmptyList));
     }
@@ -170,5 +168,32 @@ public class SyncInfoDecoderTests
         SyncInfo decoded = decoder.Decode(ref decoderContext);
 
         Assert.That(decoded, Is.Null);
+    }
+
+    private static void AssertSyncInfo(SyncInfo actual, SyncInfo expected)
+    {
+        AssertQuorumCertificate(actual.HighestQuorumCert, expected.HighestQuorumCert);
+        AssertTimeoutCertificate(actual.HighestTimeoutCert, expected.HighestTimeoutCert);
+    }
+
+    private static void AssertQuorumCertificate(QuorumCertificate actual, QuorumCertificate expected)
+    {
+        AssertBlockRoundInfo(actual.ProposedBlockInfo, expected.ProposedBlockInfo);
+        Assert.That(actual.Signatures, Is.EqualTo(expected.Signatures));
+        Assert.That(actual.GapNumber, Is.EqualTo(expected.GapNumber));
+    }
+
+    private static void AssertTimeoutCertificate(TimeoutCertificate actual, TimeoutCertificate expected)
+    {
+        Assert.That(actual.Round, Is.EqualTo(expected.Round));
+        Assert.That(actual.Signatures, Is.EqualTo(expected.Signatures));
+        Assert.That(actual.GapNumber, Is.EqualTo(expected.GapNumber));
+    }
+
+    private static void AssertBlockRoundInfo(BlockRoundInfo actual, BlockRoundInfo expected)
+    {
+        Assert.That(actual.Hash, Is.EqualTo(expected.Hash));
+        Assert.That(actual.Round, Is.EqualTo(expected.Round));
+        Assert.That(actual.BlockNumber, Is.EqualTo(expected.BlockNumber));
     }
 }

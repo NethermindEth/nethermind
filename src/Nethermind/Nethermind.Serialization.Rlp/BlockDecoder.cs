@@ -78,7 +78,7 @@ namespace Nethermind.Serialization.Rlp
             return block;
         }
 
-        public Rlp Encode(Block? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public override Rlp Encode(Block? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (item is null)
             {

@@ -43,7 +43,7 @@ public sealed class TimeoutCertificateDecoder : RlpDecoder<TimeoutCertificate>
         return new TimeoutCertificate(round, signatures, gapNumber);
     }
 
-    public Rlp Encode(TimeoutCertificate item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public override Rlp Encode(TimeoutCertificate item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (item is null)
             return Rlp.OfEmptyList;

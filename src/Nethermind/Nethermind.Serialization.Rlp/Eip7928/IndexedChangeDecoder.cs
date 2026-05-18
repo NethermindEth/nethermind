@@ -12,16 +12,16 @@ namespace Nethermind.Serialization.Rlp.Eip7928;
 /// Base class for RLP decoders of <see cref="IIndexedChange"/> types that share the pattern:
 /// sequence of (Index, value). Subclasses provide the value field operations.
 /// </summary>
-public abstract class IndexedChangeDecoder<T> : IRlpDecoder<T>
+public abstract class IndexedChangeDecoder<T> : RlpDecoder<T>
     where T : struct, IIndexedChange
 {
-    public int GetLength(T item, RlpBehaviors rlpBehaviors)
+    public override int GetLength(T item, RlpBehaviors rlpBehaviors)
         => Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors));
 
     // Nethermind internal: Eip7928Constants.PrestateIndex (uint.MaxValue) overloads the
     // wire block_access_index space as a prestate sentinel. EIP-7928 reserves no such value;
     // we reject it on both ends so the sentinel can never collide with a real index.
-    public T Decode(ref Rlp.ValueDecoderContext ctx, RlpBehaviors rlpBehaviors)
+    protected override T DecodeInternal(ref Rlp.ValueDecoderContext ctx, RlpBehaviors rlpBehaviors)
     {
         int length = ctx.ReadSequenceLength();
         int check = length + ctx.Position;
@@ -40,7 +40,7 @@ public abstract class IndexedChangeDecoder<T> : IRlpDecoder<T>
         return result;
     }
 
-    public void Encode(RlpStream stream, T item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public override void Encode(RlpStream stream, T item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (item.Index == Eip7928Constants.PrestateIndex)
         {

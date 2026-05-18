@@ -19,9 +19,9 @@ public class EraWriter : IDisposable
     private long _totalWritten;
     private readonly ArrayPoolList<long> _entryIndexes;
 
-    private readonly IRlpDecoder<BlockHeader> _headerDecoder = new HeaderDecoder();
-    private readonly IRlpDecoder<BlockBody> _blockBodyDecoder = BlockBodyDecoder.Instance;
-    private readonly IRlpDecoder<TxReceipt> _receiptDecoder = new ReceiptMessageDecoder();
+    private readonly HeaderDecoder _headerDecoder = new();
+    private readonly BlockBodyDecoder _blockBodyDecoder = BlockBodyDecoder.Instance;
+    private readonly ReceiptMessageDecoder _receiptDecoder = new();
 
     private readonly E2StoreWriter _e2StoreWriter;
     private readonly AccumulatorCalculator _accumulatorCalculator;

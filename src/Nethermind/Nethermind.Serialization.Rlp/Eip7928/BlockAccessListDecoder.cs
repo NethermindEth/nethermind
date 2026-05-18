@@ -10,16 +10,14 @@ using Nethermind.Core.BlockAccessLists;
 
 namespace Nethermind.Serialization.Rlp.Eip7928;
 
-public class BlockAccessListDecoder : IRlpDecoder<BlockAccessList>
+public class BlockAccessListDecoder : RlpDecoder<BlockAccessList, BlockAccessListDecoder>
 {
-    public static readonly BlockAccessListDecoder Instance = new();
-
     private static readonly RlpLimit _accountsLimit = new(Eip7928Constants.MaxAccounts, "", ReadOnlyMemory<char>.Empty);
 
-    public int GetLength(BlockAccessList item, RlpBehaviors rlpBehaviors)
+    public override int GetLength(BlockAccessList item, RlpBehaviors rlpBehaviors)
         => Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors));
 
-    public BlockAccessList Decode(ref Rlp.ValueDecoderContext ctx, RlpBehaviors rlpBehaviors)
+    protected override BlockAccessList DecodeInternal(ref Rlp.ValueDecoderContext ctx, RlpBehaviors rlpBehaviors)
     {
         AccountChanges[] accountChanges = ctx.DecodeArray(AccountChangesDecoder.Instance, true, default, _accountsLimit);
 
@@ -61,7 +59,7 @@ public class BlockAccessListDecoder : IRlpDecoder<BlockAccessList>
         return result;
     }
 
-    public void Encode(RlpStream stream, BlockAccessList item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public override void Encode(RlpStream stream, BlockAccessList item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         ReadOnlySpan<AccountChanges> accounts = item.AccountChangesByAddress;
         AccountChangesDecoder.EncodingLengths[] accountLengths = ArrayPool<AccountChangesDecoder.EncodingLengths>.Shared.Rent(accounts.Length);

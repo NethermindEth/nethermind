@@ -10,13 +10,11 @@ using Nethermind.Int256;
 
 namespace Nethermind.Serialization.Rlp.Eip7928;
 
-public class SlotChangesDecoder : IRlpDecoder<SlotChanges>
+public class SlotChangesDecoder : RlpDecoder<SlotChanges, SlotChangesDecoder>
 {
-    public static readonly SlotChangesDecoder Instance = new();
-
     private static readonly RlpLimit _txLimit = new(Eip7928Constants.MaxTxs, "", ReadOnlyMemory<char>.Empty);
 
-    public SlotChanges Decode(ref Rlp.ValueDecoderContext ctx, RlpBehaviors rlpBehaviors)
+    protected override SlotChanges DecodeInternal(ref Rlp.ValueDecoderContext ctx, RlpBehaviors rlpBehaviors)
     {
         int length = ctx.ReadSequenceLength();
         int check = length + ctx.Position;
@@ -53,10 +51,10 @@ public class SlotChangesDecoder : IRlpDecoder<SlotChanges>
         return slotChanges;
     }
 
-    public int GetLength(SlotChanges item, RlpBehaviors rlpBehaviors)
+    public override int GetLength(SlotChanges item, RlpBehaviors rlpBehaviors)
         => Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors));
 
-    public void Encode(RlpStream stream, SlotChanges item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public override void Encode(RlpStream stream, SlotChanges item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         stream.StartSequence(GetContentLength(item, rlpBehaviors));
         stream.Encode(item.Key);

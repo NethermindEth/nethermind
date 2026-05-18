@@ -17,7 +17,7 @@ namespace Evm.T8n;
 
 public static class T8nInputProcessor
 {
-    private static readonly IRlpDecoder<Transaction> TransactionDecoder = TxDecoder.Instance;
+    private static readonly TxDecoder TransactionDecoder = TxDecoder.Instance;
 
     public static T8nTest ProcessInputAndConvertToT8nTest(T8nCommandArguments arguments)
     {

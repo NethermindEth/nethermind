@@ -13,7 +13,7 @@ namespace Nethermind.Blockchain.Blocks;
 
 public class BadBlockStore(IDb blockDb, long maxSize) : IBadBlockStore
 {
-    private readonly IRlpDecoder<Block> _blockDecoder = new BlockDecoder();
+    private readonly BlockDecoder _blockDecoder = new();
 
     public void Insert(Block block, WriteFlags writeFlags = WriteFlags.None)
     {

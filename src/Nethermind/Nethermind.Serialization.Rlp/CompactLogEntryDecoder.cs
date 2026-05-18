@@ -10,12 +10,12 @@ using Nethermind.Core.Extensions;
 namespace Nethermind.Serialization.Rlp
 {
     [Rlp.SkipGlobalRegistration]
-    public class CompactLogEntryDecoder : IRlpDecoder<LogEntry?>
+    public class CompactLogEntryDecoder : RlpDecoder<LogEntry?>
     {
         private static readonly RlpLimit RlpLimit = RlpLimit.For<LogEntry>((int)16.MB, nameof(LogEntry));
         public static CompactLogEntryDecoder Instance { get; } = new();
 
-        public static LogEntry? Decode(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        protected override LogEntry? DecodeInternal(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (decoderContext.IsNextItemEmptyList())
             {
@@ -82,7 +82,7 @@ namespace Nethermind.Serialization.Rlp
             return topics.ToArray();
         }
 
-        public static void Encode(RlpStream rlpStream, LogEntry? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public override void Encode(RlpStream rlpStream, LogEntry? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (item is null)
             {
@@ -107,7 +107,7 @@ namespace Nethermind.Serialization.Rlp
             rlpStream.Encode(withoutLeadingZero);
         }
 
-        public int GetLength(LogEntry? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public override int GetLength(LogEntry? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (item is null)
             {
@@ -116,10 +116,6 @@ namespace Nethermind.Serialization.Rlp
 
             return Rlp.LengthOfSequence(GetContentLength(item).Total);
         }
-
-        void IRlpDecoder<LogEntry?>.Encode(RlpStream stream, LogEntry? item, RlpBehaviors rlpBehaviors) => Encode(stream, item, rlpBehaviors);
-
-        LogEntry? IRlpDecoder<LogEntry?>.Decode(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors) => Decode(ref decoderContext, rlpBehaviors);
 
         private static byte[] DecodeCompactData(scoped ref Rlp.ValueDecoderContext decoderContext)
         {

@@ -42,7 +42,7 @@ public class BalRecorderE2ETests
 {
     private const int BlocksToBuild = 3;
     private static readonly TimeSpan TestTimeout = TimeSpan.FromSeconds(60);
-    private static readonly IRlpDecoder<BlockAccessList> BalDecoder = BlockAccessListDecoder.Instance;
+    private static readonly BlockAccessListDecoder BalDecoder = BlockAccessListDecoder.Instance;
 
     [Test]
     public async Task Record_Then_Replay_RoundTrip()

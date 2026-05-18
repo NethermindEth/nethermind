@@ -38,7 +38,7 @@ public sealed class TimeoutDecoder : RlpDecoder<Timeout>
         return new Timeout(round, signature, gapNumber);
     }
 
-    public Rlp Encode(Timeout item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public override Rlp Encode(Timeout item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (item is null)
             return Rlp.OfEmptyList;

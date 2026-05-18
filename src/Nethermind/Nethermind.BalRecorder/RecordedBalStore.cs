@@ -12,7 +12,7 @@ namespace Nethermind.BalRecorder;
 
 public class RecordedBalStore(IBalRecorderConfig config, IInitConfig initConfig, ILogManager logManager) : IRecordedBalStore
 {
-    private static readonly IRlpDecoder<BlockAccessList> BalDecoder = BlockAccessListDecoder.Instance;
+    private static readonly BlockAccessListDecoder BalDecoder = BlockAccessListDecoder.Instance;
     private readonly ILogger _logger = logManager.GetClassLogger<RecordedBalStore>();
     private readonly SlotStore _store = new(
         config.Path.GetApplicationResourcePath(initConfig.BaseDbPath), "bal");

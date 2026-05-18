@@ -50,7 +50,7 @@ namespace Nethermind.Serialization.Rlp
             using ArrayPoolListRef<LogEntry> logEntries = new(sequenceLength * 2 / Rlp.LengthOfAddressRlp);
             while (decoderContext.Position < lastCheck)
             {
-                logEntries.Add(CompactLogEntryDecoder.Decode(ref decoderContext, RlpBehaviors.AllowExtraBytes));
+                logEntries.Add(CompactLogEntryDecoder.Instance.Decode(ref decoderContext, RlpBehaviors.AllowExtraBytes));
             }
 
             txReceipt.Logs = logEntries.ToArray();
@@ -155,7 +155,7 @@ namespace Nethermind.Serialization.Rlp
             LogEntry[] logs = item.Logs ?? [];
             for (int i = 0; i < logs.Length; i++)
             {
-                CompactLogEntryDecoder.Encode(rlpStream, logs[i]);
+                CompactLogEntryDecoder.Instance.Encode(rlpStream, logs[i]);
             }
         }
 

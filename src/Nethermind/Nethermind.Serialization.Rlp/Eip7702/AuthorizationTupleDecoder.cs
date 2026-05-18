@@ -38,13 +38,6 @@ public sealed class AuthorizationTupleDecoder() : RlpDecoder<AuthorizationTuple>
         return new AuthorizationTuple(chainId, codeAddress, nonce, yParity, r, s);
     }
 
-    public RlpStream Encode(AuthorizationTuple item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-    {
-        RlpStream stream = new(GetLength(item, rlpBehaviors));
-        Encode(stream, item, rlpBehaviors);
-        return stream;
-    }
-
     public override void Encode(RlpStream stream, AuthorizationTuple item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         int contentLength = GetContentLength(item);

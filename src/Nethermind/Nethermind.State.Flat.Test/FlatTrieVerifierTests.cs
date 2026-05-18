@@ -25,7 +25,7 @@ namespace Nethermind.State.Flat.Test;
 [TestFixture(FlatLayout.PreimageFlat)]
 public class FlatTrieVerifierTests(FlatLayout layout)
 {
-    private static readonly IRlpDecoder<Account?> SlimAccountDecoder = AccountDecoder.Slim;
+    private static readonly AccountDecoder SlimAccountDecoder = AccountDecoder.Slim;
     private MemDb _trieDb = null!;
     private RawScopedTrieStore _trieStore = null!;
     private StateTree _stateTree = null!;

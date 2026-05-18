@@ -24,7 +24,7 @@ public partial class EthRpcModuleTests
     private const string UnlockedTestAccount = "0x7e5f4552091a69125d5dfcb7b8c2659029395bdf";
     private const string LockedAccount = "0x000000000000000000000000000000000000dead";
     private const string FeeFieldsMissingMessage = "missing gasPrice or maxFeePerGas/maxPriorityFeePerGas";
-    private static readonly IRlpDecoder<Transaction> TxRlpDecoder = TxDecoder.Instance;
+    private static readonly TxDecoder TxRlpDecoder = TxDecoder.Instance;
 
     [TestCase(TxType.Legacy, "gas", "gas not specified", TestName = "GasMissing")]
     [TestCase(TxType.Legacy, "gasPrice", FeeFieldsMissingMessage, TestName = "LegacyFeesMissing")]
