@@ -28,6 +28,8 @@ namespace Nethermind.Network.P2P
     internal interface ISessionActivityObserver
     {
         void OnSessionActivity(Session session);
+
+        void OnSessionDisconnected(Session session, DisconnectEventArgs args);
     }
 
     public class Session : ISession
@@ -515,15 +517,18 @@ namespace Nethermind.Network.P2P
                 State = SessionState.Disconnected;
             }
 
+            ISessionActivityObserver? activityObserver = _activityObserver;
             if (_disconnectedHandlers.HasHandlers)
             {
                 if (_logger.IsTrace) TraceDisconnectedEvent(disconnectReason, disconnectType);
                 _disconnectedHandlers.Invoke(this, disconnectEventArgs);
             }
-            else if (_logger.IsDebug)
+            else if (_logger.IsDebug && activityObserver is null)
             {
                 DebugNoDisconnectedSubscriptions();
             }
+
+            activityObserver?.OnSessionDisconnected(this, disconnectEventArgs);
 
             [MethodImpl(MethodImplOptions.NoInlining)]
             void TraceAlreadyDisconnected(DisconnectReason reason, DisconnectType type)

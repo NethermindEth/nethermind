@@ -53,7 +53,7 @@ public class ProtocolsManagerTests
     public static Context When => new();
 
     [Test]
-    public void Reuses_session_event_handlers_when_unsubscribing_on_disconnect()
+    public void Uses_host_disconnected_event_when_unsubscribing_on_disconnect()
     {
         IRlpxHost rlpxHost = Substitute.For<IRlpxHost>();
         TrackingSession session = new();
@@ -71,14 +71,16 @@ public class ProtocolsManagerTests
         rlpxHost.SessionCreated += Raise.EventWith(new object(), new SessionEventArgs(session));
 
         EventHandler<EventArgs>? initializedHandler = session.AddedInitializedHandler;
-        EventHandler<DisconnectEventArgs>? disconnectedHandler = session.AddedDisconnectedHandler;
 
-        session.RaiseDisconnected();
+        rlpxHost.SessionDisconnected += Raise.Event<SessionDisconnectedEventHandler>(
+            new object(),
+            session,
+            new DisconnectEventArgs(DisconnectReason.Other, DisconnectType.Remote, "test"));
 
         Assert.That(initializedHandler, Is.Not.Null);
-        Assert.That(disconnectedHandler, Is.Not.Null);
+        Assert.That(session.AddedDisconnectedHandler, Is.Null);
         Assert.That(session.RemovedInitializedHandler, Is.SameAs(initializedHandler));
-        Assert.That(session.RemovedDisconnectedHandler, Is.SameAs(disconnectedHandler));
+        Assert.That(session.RemovedDisconnectedHandler, Is.Null);
     }
 
     public class Context
@@ -272,6 +274,10 @@ public class ProtocolsManagerTests
         public Context Disconnect()
         {
             _currentSession.MarkDisconnected(DisconnectReason.TooManyPeers, DisconnectType.Local, "test");
+            _rlpxHost.SessionDisconnected += Raise.Event<SessionDisconnectedEventHandler>(
+                new object(),
+                _currentSession,
+                new DisconnectEventArgs(DisconnectReason.TooManyPeers, DisconnectType.Local, "test"));
             return this;
         }
 

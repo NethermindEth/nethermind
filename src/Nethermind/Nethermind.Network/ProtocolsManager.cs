@@ -44,7 +44,7 @@ namespace Nethermind.Network
         private readonly HashSet<Capability> _capabilities = DefaultCapabilities.ToHashSet();
         private readonly EventHandler<SessionEventArgs> _onSessionCreated;
         private readonly EventHandler<EventArgs> _onSessionInitialized;
-        private readonly EventHandler<DisconnectEventArgs> _onSessionDisconnected;
+        private readonly SessionDisconnectedEventHandler _onSessionDisconnected;
 
         public ProtocolsManager(
             ISyncPeerPool syncPeerPool,
@@ -71,20 +71,18 @@ namespace Nethermind.Network
             _onSessionInitialized = SessionInitialized;
             _onSessionDisconnected = SessionDisconnected;
             rlpxHost.SessionCreated += _onSessionCreated;
+            rlpxHost.SessionDisconnected += _onSessionDisconnected;
         }
 
         private void SessionCreated(object sender, SessionEventArgs e)
         {
             _sessions.TryAdd(e.Session.SessionId, e.Session);
             e.Session.Initialized += _onSessionInitialized;
-            e.Session.Disconnected += _onSessionDisconnected;
         }
 
-        private void SessionDisconnected(object sender, DisconnectEventArgs e)
+        private void SessionDisconnected(object sender, ISession session, DisconnectEventArgs e)
         {
-            ISession session = (ISession)sender;
             session.Initialized -= _onSessionInitialized;
-            session.Disconnected -= _onSessionDisconnected;
             _sessions.TryRemove(session.SessionId, out _);
 
             if (_logger.IsDebug && session.BestStateReached == SessionState.Initialized)

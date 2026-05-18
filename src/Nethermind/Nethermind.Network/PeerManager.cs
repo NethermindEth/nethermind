@@ -63,7 +63,7 @@ namespace Nethermind.Network
         private readonly ConcurrentDictionary<Guid, ISession> _sessions = new();
         private readonly int _outgoingConnectParallelism;
         private readonly EventHandler<EventArgs> _onHandshakeComplete;
-        private readonly EventHandler<DisconnectEventArgs> _onDisconnected;
+        private readonly SessionDisconnectedEventHandler _onSessionDisconnected;
 
         public PeerManager(
             IRlpxHost rlpxHost,
@@ -83,7 +83,7 @@ namespace Nethermind.Network
             _stats = stats;
             _networkConfig = networkConfig;
             _onHandshakeComplete = OnHandshakeComplete;
-            _onDisconnected = OnDisconnected;
+            _onSessionDisconnected = OnDisconnected;
             _outgoingConnectParallelism = networkConfig.NumConcurrentOutgoingConnects;
             if (_outgoingConnectParallelism == 0)
             {
@@ -181,6 +181,7 @@ namespace Nethermind.Network
                 _peerPool.PeerAdded += PeerPoolOnPeerAdded;
                 _peerPool.PeerRemoved += PeerPoolOnPeerRemoved;
                 _rlpxHost.SessionCreated += RlpxHostOnSessionCreated;
+                _rlpxHost.SessionDisconnected += _onSessionDisconnected;
             }
 
             StartPeerUpdateLoop();
@@ -218,6 +219,7 @@ namespace Nethermind.Network
                 _peerPool.PeerAdded -= PeerPoolOnPeerAdded;
                 _peerPool.PeerRemoved -= PeerPoolOnPeerRemoved;
                 _rlpxHost.SessionCreated -= RlpxHostOnSessionCreated;
+                _rlpxHost.SessionDisconnected -= _onSessionDisconnected;
                 foreach (KeyValuePair<Guid, ISession> kvp in _sessions)
                 {
                     ToggleSessionEventListeners(kvp.Value, false);
@@ -1137,9 +1139,8 @@ namespace Nethermind.Network
         private static bool IsConnected(Peer peer)
             => HasOpenSession(peer.InSession) || HasOpenSession(peer.OutSession);
 
-        private void OnDisconnected(object sender, DisconnectEventArgs e)
+        private void OnDisconnected(object sender, ISession session, DisconnectEventArgs e)
         {
-            ISession session = (ISession)sender;
             lock (_sessionLock)
             {
                 ToggleSessionEventListeners(session, false);
@@ -1204,12 +1205,10 @@ namespace Nethermind.Network
             if (shouldListen)
             {
                 session.HandshakeComplete += _onHandshakeComplete;
-                session.Disconnected += _onDisconnected;
             }
             else
             {
                 session.HandshakeComplete -= _onHandshakeComplete;
-                session.Disconnected -= _onDisconnected;
             }
         }
 
