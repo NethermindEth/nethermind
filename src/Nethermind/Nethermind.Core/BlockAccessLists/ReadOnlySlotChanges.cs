@@ -24,9 +24,7 @@ public class ReadOnlySlotChanges(UInt256 key, StorageChange[] changes) : IEquata
     public ReadOnlySlotChanges(UInt256 key) : this(key, []) { }
 
     public bool Equals(ReadOnlySlotChanges? other)
-        => other is not null
-           && Key.Equals(other.Key)
-           && ((ReadOnlySpan<StorageChange>)Changes).SequenceEqual(other.Changes);
+        => other is not null && Key.Equals(other.Key) && ((ReadOnlySpan<StorageChange>)Changes).SequenceEqual(other.Changes);
 
     public override bool Equals(object? obj) => obj is ReadOnlySlotChanges other && Equals(other);
 
