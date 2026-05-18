@@ -817,13 +817,13 @@ namespace Nethermind.Core.Extensions
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static char ToChecksummedHexChar(byte lowerHexChar, int checksumNibble) =>
+        internal static char ToChecksummedHexChar(byte lowerHexChar, int checksumNibble) =>
             lowerHexChar >= 'a' && checksumNibble > 7
                 ? (char)(lowerHexChar - ('a' - 'A'))
                 : (char)lowerHexChar;
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static int GetChecksumNibble(in ValueHash256 checksum, int index)
+        internal static int GetChecksumNibble(in ValueHash256 checksum, int index)
         {
             byte value = checksum.BytesAsSpan[index >> 1];
             return (index & 1) == 0 ? value >> 4 : value & 0x0f;

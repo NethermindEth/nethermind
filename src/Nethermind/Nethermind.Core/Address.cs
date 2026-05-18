@@ -301,8 +301,8 @@ namespace Nethermind.Core
             ValueHash256 bChecksum = ValueKeccak.Compute(bLowerHex);
             for (int i = 0; i < aLowerHex.Length; i++)
             {
-                char aChar = ToChecksummedHexChar(aLowerHex[i], GetChecksumNibble(in aChecksum, i));
-                char bChar = ToChecksummedHexChar(bLowerHex[i], GetChecksumNibble(in bChecksum, i));
+                char aChar = Bytes.ToChecksummedHexChar(aLowerHex[i], Bytes.GetChecksumNibble(in aChecksum, i));
+                char bChar = Bytes.ToChecksummedHexChar(bLowerHex[i], Bytes.GetChecksumNibble(in bChecksum, i));
                 if (aChar != bChar)
                 {
                     return aChar - bChar;
@@ -310,19 +310,6 @@ namespace Nethermind.Core
             }
 
             return 0;
-        }
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static char ToChecksummedHexChar(byte lowerHexChar, int checksumNibble) =>
-            lowerHexChar >= 'a' && checksumNibble > 7
-                ? (char)(lowerHexChar - ('a' - 'A'))
-                : (char)lowerHexChar;
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static int GetChecksumNibble(in ValueHash256 checksum, int index)
-        {
-            byte value = checksum.BytesAsSpan[index >> 1];
-            return (index & 1) == 0 ? value >> 4 : value & 0x0f;
         }
     }
 
