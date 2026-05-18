@@ -454,6 +454,58 @@ public class OptimismEthRpcModuleTest
     }
 
     [Test]
+    public async Task GetBlockByHash_WithFullTransactionsAndEmptyReceipts_DoesNotSetDepositReceiptVersion()
+    {
+        Transaction depositTx = Build.A.Transaction
+            .WithType(TxType.DepositTx)
+            .WithHash(TestItem.KeccakA)
+            .WithSenderAddress(TestItem.AddressA)
+            .TestObject;
+        Transaction regularTx = Build.A.Transaction
+            .WithType(TxType.EIP1559)
+            .WithHash(TestItem.KeccakB)
+            .WithSenderAddress(TestItem.AddressB)
+            .TestObject;
+
+        Block block = Build.A.Block
+            .WithHeader(Build.A.BlockHeader
+                .WithNumber(1)
+                .WithHash(TestItem.KeccakC)
+                .TestObject)
+            .WithTransactions(depositTx, regularTx)
+            .TestObject;
+
+        IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
+        blockFinder.FindBlock(new BlockParameter(block.Hash!)).Returns(block);
+        blockFinder.FindBlock(new BlockParameter(block.Number)).Returns(block);
+
+        IReceiptFinder receiptFinder = Substitute.For<IReceiptFinder>();
+        receiptFinder.Get(block).Returns(Array.Empty<TxReceipt>());
+
+        TestRpcBlockchain rpcBlockchain = await TestRpcBlockchain
+            .ForTest(sealEngineType: SealEngineType.Optimism)
+            .WithBlockFinder(blockFinder)
+            .WithReceiptFinder(receiptFinder)
+            .WithOptimismEthRpcModule(
+                sequencerRpcClient: Substitute.For<IJsonRpcClient>(),
+                accountStateProvider: Substitute.For<IAccountStateProvider>(),
+                ecdsa: Substitute.For<IEthereumEcdsa>(),
+                sealer: Substitute.For<ITxSealer>(),
+                opSpecHelper: Substitute.For<IOptimismSpecHelper>())
+            .Build();
+
+        string serialized = await rpcBlockchain.TestEthRpc("eth_getBlockByHash", block.Hash, true);
+        JToken result = JToken.Parse(serialized)["result"]!;
+        JToken firstTx = result["transactions"]![0]!;
+        JToken secondTx = result["transactions"]![1]!;
+
+        firstTx["hash"]!.Value<string>().Should().Be(depositTx.Hash!.Bytes.ToHexString(withZeroX: true));
+        firstTx["depositReceiptVersion"].Should().BeNull();
+        secondTx["hash"]!.Value<string>().Should().Be(regularTx.Hash!.Bytes.ToHexString(withZeroX: true));
+        secondTx["depositReceiptVersion"].Should().BeNull();
+    }
+
+    [Test]
     public async Task GetBlockReceipts_ReturnsDefaultAndOptimismReceipts()
     {
         Transaction txA = Build.A.Transaction
