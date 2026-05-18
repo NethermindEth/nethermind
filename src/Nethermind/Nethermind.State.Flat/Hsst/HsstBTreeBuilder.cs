@@ -629,36 +629,18 @@ public ref struct HsstBTreeBuilder<TWriter, TReader, TPin>
         // that loses the page-locality it exists to provide. Instead push each
         // pending entry directly onto the next index level — the future
         // intermediate node will point at the entries, saving the leaf entirely.
+        //
+        // No force-pad to the next page after the flush: the leaf-fit check above
+        // plus the page-prune at the top of MaybeFlushBeforeEntry (and at every
+        // other flush site) already handle the K=1 trap. If the next entry slips
+        // into the post-leaf slack, the next iteration's leaf-fit check will see
+        // remaining < estLeafActual and direct-flush the trapped entry instead
+        // of writing a cross-page 1-entry leaf.
         int estLeafActual = PageLocalLeafHeaderBytes + pending * (4 + maxSepLen) + pending * PageLocalLeafValueSlotBytes;
         if (estLeafActual > remaining)
             FlushPendingAsEntries();
         else
             EmitInlineLeaf();
-        // Force-pad to the next page so the new entry can't slip into the
-        // post-leaf slack and re-trigger with K=1 against effectively zero
-        // remaining (which would produce a cross-page 1-entry leaf). TryAlign
-        // alone won't do this: it only pads when the pad is ≤ PadThreshold, and
-        // the post-leaf slack is often above that for small-entry workloads
-        // (e.g., uniform 40-byte state entries leave ~70 bytes of slack).
-        PadToNextPage();
-    }
-
-    /// <summary>
-    /// Unconditionally pad to the next 4 KiB page boundary. Companion to the
-    /// boundary-triggered <see cref="EmitInlineLeaf"/> in
-    /// <see cref="MaybeFlushBeforeEntry"/>: once we've sealed a leaf because the
-    /// current page is full-ish, force the next entry to a fresh page so it
-    /// can't sneak into the page tail and produce a stray K=1 leaf that crosses
-    /// on the next flush. No-op when already at a page boundary.
-    /// </summary>
-    private void PadToNextPage()
-    {
-        long pageOff = (_writer.Written - _writer.FirstOffset) & PageLayout.PageMask;
-        if (pageOff == 0) return;
-        int padLen = (int)(PageLayout.PageSize - pageOff);
-        Span<byte> pad = _writer.GetSpan(padLen);
-        pad[..padLen].Clear();
-        _writer.Advance(padLen);
     }
 
     private const int PageLocalLeafHeaderBytes = 12;
