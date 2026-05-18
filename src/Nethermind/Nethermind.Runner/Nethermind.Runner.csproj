@@ -20,6 +20,12 @@
     <InternalsVisibleTo Include="Nethermind.Runner.Test" />
   </ItemGroup>
 
+  <PropertyGroup Condition="'$(RuntimeIdentifier)' != ''">
+    <PublishReadyToRun>true</PublishReadyToRun>
+    <PublishReadyToRunComposite>true</PublishReadyToRunComposite>
+    <OptimizationPreference>Speed</OptimizationPreference>
+  </PropertyGroup>
+
   <PropertyGroup Label="PackagesLock">
     <DisableImplicitNuGetFallbackFolder Condition="$(ContinuousIntegrationBuild) == 'true'">true</DisableImplicitNuGetFallbackFolder>
     <RuntimeIdentifiers>linux-arm64;linux-x64;osx-arm64;osx-x64;win-x64</RuntimeIdentifiers>
