@@ -217,9 +217,7 @@ public class OptimismEthRpcModule(
         Transaction transaction = block.Transactions[(int)positionIndex];
         RecoverTxSenderIfNeeded(transaction);
 
-        TxReceipt? receipt = _receiptFinder
-            .Get(block)
-            .FirstOrDefault(r => r.TxHash == transaction.Hash);
+        TxReceipt? receipt = TryGetMatchingReceipt(_receiptFinder.Get(block), transaction, (int)positionIndex);
 
         TransactionForRpc transactionModel = TransactionForRpc.FromTransaction(
             transaction,

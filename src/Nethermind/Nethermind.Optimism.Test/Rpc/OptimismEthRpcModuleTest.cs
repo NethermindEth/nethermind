@@ -376,8 +376,9 @@ public class OptimismEthRpcModuleTest
         }
     }
 
-    [Test]
-    public async Task GetBlockByHash_WithFullTransactions_UsesMatchingReceiptHashForDepositVersion()
+    [TestCase(false, TestName = "Receipts aligned with transactions (fast path)")]
+    [TestCase(true, TestName = "Receipts in reverse order (linear fallback)")]
+    public async Task GetBlockByHash_WithFullTransactions_UsesMatchingReceiptHashForDepositVersion(bool reverseReceipts)
     {
         Transaction depositTx = Build.A.Transaction
             .WithType(TxType.DepositTx)
@@ -418,12 +419,16 @@ public class OptimismEthRpcModuleTest
             Index = 1,
         };
 
+        TxReceipt[] receipts = reverseReceipts
+            ? [regularReceipt, depositReceipt]
+            : [depositReceipt, regularReceipt];
+
         IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
         blockFinder.FindBlock(new BlockParameter(block.Hash!)).Returns(block);
         blockFinder.FindBlock(new BlockParameter(block.Number)).Returns(block);
 
         IReceiptFinder receiptFinder = Substitute.For<IReceiptFinder>();
-        receiptFinder.Get(block).Returns([regularReceipt, depositReceipt]);
+        receiptFinder.Get(block).Returns(receipts);
 
         TestRpcBlockchain rpcBlockchain = await TestRpcBlockchain
             .ForTest(sealEngineType: SealEngineType.Optimism)
