@@ -19,6 +19,9 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Hosting.Internal;
+using Nethermind.Config;
+using Nethermind.Core.Authentication;
+using Nethermind.JsonRpc;
 using Nethermind.Logging;
 
 namespace Nethermind.Runner.JsonRpc;
@@ -82,13 +85,28 @@ internal sealed partial class WebHost : IHost, IAsyncDisposable
         _applicationLifetime = _applicationServices.GetRequiredService<ApplicationLifetime>();
 
         HttpContextFactory httpContextFactory = new(Services);
-        HostingApplication hostingApp = new(application, _logManager, httpContextFactory);
+        JsonRpcHttpFastPath? jsonRpcHttpFastPath = TryCreateJsonRpcHttpFastPath();
+        HostingApplication hostingApp = new(application, _logManager, httpContextFactory, jsonRpcHttpFastPath);
 
         await Server.StartAsync(hostingApp, cancellationToken).ConfigureAwait(false);
         _startedServer = true;
 
         // Fire IApplicationLifetime.Started
         _applicationLifetime?.NotifyStarted();
+    }
+
+    private JsonRpcHttpFastPath? TryCreateJsonRpcHttpFastPath()
+    {
+        JsonRpcProcessor? jsonRpcProcessor = Services.GetService<JsonRpcProcessor>();
+        JsonRpcService? jsonRpcService = Services.GetService<JsonRpcService>();
+        IJsonRpcUrlCollection? jsonRpcUrlCollection = Services.GetService<IJsonRpcUrlCollection>();
+        IJsonRpcConfig? jsonRpcConfig = Services.GetService<IConfigProvider>()?.GetConfig<IJsonRpcConfig>();
+        IJsonRpcLocalStats? jsonRpcLocalStats = Services.GetService<IJsonRpcLocalStats>();
+        IRpcAuthentication? rpcAuthentication = Services.GetService<IRpcAuthentication>();
+        return jsonRpcProcessor is not null && jsonRpcService is not null && jsonRpcUrlCollection is not null &&
+               jsonRpcConfig is not null && jsonRpcLocalStats is not null
+            ? new JsonRpcHttpFastPath(jsonRpcUrlCollection, jsonRpcProcessor, jsonRpcService, jsonRpcConfig, jsonRpcLocalStats, rpcAuthentication, _logManager)
+            : null;
     }
 
     [MemberNotNull(nameof(Server))]

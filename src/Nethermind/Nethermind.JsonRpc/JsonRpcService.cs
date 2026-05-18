@@ -111,20 +111,26 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
         IResultWrapper? resultWrapper = null;
         try
         {
-            // Execute method
-            object invocationResult = hasMissing ?
-                method.MethodInfo.Invoke(rpcModule, parameters) :
-                method.Invoker.Invoke(rpcModule, new Span<object?>(parameters));
-
-            switch (invocationResult)
+            if (GeneratedRpcMethodDispatcher.TryInvoke(methodName, rpcModule, parameters, hasMissing, out ValueTask<IResultWrapper?> generatedInvocation))
             {
-                case IResultWrapper wrapper:
-                    resultWrapper = wrapper;
-                    break;
-                case Task task:
-                    await task;
-                    resultWrapper = GetResultProperty(task)?.GetValue(task) as IResultWrapper;
-                    break;
+                resultWrapper = await generatedInvocation;
+            }
+            else
+            {
+                object invocationResult = hasMissing ?
+                    method.MethodInfo.Invoke(rpcModule, parameters) :
+                    method.Invoker.Invoke(rpcModule, new Span<object?>(parameters));
+
+                switch (invocationResult)
+                {
+                    case IResultWrapper wrapper:
+                        resultWrapper = wrapper;
+                        break;
+                    case Task task:
+                        await task;
+                        resultWrapper = GetResultProperty(task)?.GetValue(task) as IResultWrapper;
+                        break;
+                }
             }
         }
         catch (Exception ex)

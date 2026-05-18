@@ -7,6 +7,7 @@ using System.IO;
 using System.IO.Abstractions;
 using System.Text;
 using System.Text.Json;
+using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Http.Features;
@@ -78,6 +79,55 @@ public class StartupTests
             doc.RootElement.GetProperty("id").GetString(),
             Is.EqualTo(injId)
         );
+    }
+
+    [Test]
+    public async Task WriteStreamableResponse_WritesRawJsonResult()
+    {
+        RawJsonRpcResult rawResult = new("""{"value":[1,true]}"""u8.ToArray());
+        JsonRpcSuccessResponse response = new()
+        {
+            Id = 7,
+            Result = rawResult
+        };
+
+        using MemoryStream stream = new();
+        CountingWriter writer = new CountingStreamPipeWriter(stream);
+
+        await Startup.WriteStreamableResponseAsync(writer, response, rawResult, CancellationToken.None);
+        await writer.CompleteAsync();
+
+        string json = Encoding.UTF8.GetString(stream.ToArray());
+        Assert.That(json, Is.EqualTo("""{"jsonrpc":"2.0","result":{"value":[1,true]},"id":7}"""));
+    }
+
+    [Test]
+    public async Task WriteJsonRpcResponse_WritesPrimitiveUlongWithoutSerializerDispatch()
+    {
+        NumberConversion previous = ForcedNumberConversion.Value;
+        ForcedNumberConversion.Value = NumberConversion.Hex;
+
+        try
+        {
+            JsonRpcSuccessResponse response = new()
+            {
+                Id = 1,
+                Result = 42UL
+            };
+
+            using MemoryStream stream = new();
+            CountingWriter writer = new CountingStreamPipeWriter(stream);
+
+            Startup.WriteJsonRpcResponse(writer, response);
+            await writer.CompleteAsync();
+
+            string json = Encoding.UTF8.GetString(stream.ToArray());
+            Assert.That(json, Is.EqualTo("""{"jsonrpc":"2.0","result":"0x2a","id":1}"""));
+        }
+        finally
+        {
+            ForcedNumberConversion.Value = previous;
+        }
     }
 
     private static async Task<string> ProcessJsonRpcRequest(string request)
