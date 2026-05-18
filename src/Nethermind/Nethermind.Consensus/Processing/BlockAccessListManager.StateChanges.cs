@@ -12,6 +12,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
 using Nethermind.Serialization.Rlp.Eip7928;
+using static Nethermind.State.BlockAccessListBasedWorldState;
 
 namespace Nethermind.Consensus.Processing;
 
@@ -93,18 +94,76 @@ public partial class BlockAccessListManager
         if (block.IsGenesis)
         {
             block.Header.BlockAccessListHash = Keccak.OfAnEmptySequenceRlp;
+            return;
         }
-        else
-        {
-            CheckInitialized();
 
-            MergeAndReturnBal(uint.MaxValue);
-            block.GeneratedBlockAccessList = GeneratedBlockAccessList;
-            // EncodeToBytes precomputes per-account RLP sub-lengths once via a rented ArrayPool
-            // buffer and reuses them across the encode pass — avoids re-walking each account's
-            // sub-collections (slot changes, storage reads, balance/nonce/code) twice.
-            block.EncodedBlockAccessList = BlockAccessListDecoder.EncodeToBytes(GeneratedBlockAccessList);
-            block.Header.BlockAccessListHash = new(ValueKeccak.Compute(block.EncodedBlockAccessList).Bytes);
+        CheckInitialized();
+        MergeAndReturnBal(uint.MaxValue);
+        block.GeneratedBlockAccessList = GeneratedBlockAccessList;
+
+        if (_verifyOnly)
+        {
+            // IncrementalValidation only covered indices 0..txCount; the post-execution slot
+            // (uint.MaxValue → lastBalIndex = txCount + 1) was just merged but its row hasn't
+            // been compared yet. Run that comparison now.
+            ValidateBlockAccessList(block, (uint)(block.Transactions.Length + 1));
+
+            // The column-index check (run per-tx and just now for the post-execution row) covers
+            // the per-account, per-row lane data but does NOT compare account *presence* or
+            // storage_reads contents — both of which the wire-bytes hash check used to catch
+            // implicitly. Compare them explicitly so a malicious BAL can't slip extra empty
+            // account entries or fabricated storage_reads past us without the encode + Keccak.
+            ValidateStructuralEquivalence(block, GeneratedBlockAccessList);
+            return;
+        }
+
+        // EncodeToBytes precomputes per-account RLP sub-lengths once via a rented ArrayPool
+        // buffer and reuses them across the encode pass — avoids re-walking each account's
+        // sub-collections (slot changes, storage reads, balance/nonce/code) twice.
+        block.EncodedBlockAccessList = BlockAccessListDecoder.EncodeToBytes(GeneratedBlockAccessList);
+        block.Header.BlockAccessListHash = new(ValueKeccak.Compute(block.EncodedBlockAccessList).Bytes);
+    }
+
+    /// <summary>
+    /// Closes the gap between the column-index per-row validation and what the end-of-block
+    /// canonical-bytes hash compare used to catch: namely, account-set presence and the
+    /// exact set of storage_reads per account. Throws <see cref="InvalidBlockLevelAccessListException"/>
+    /// on any structural difference between the suggested and generated BALs.
+    /// </summary>
+    private static void ValidateStructuralEquivalence(Block block, GeneratedBlockAccessList generated)
+    {
+        ReadOnlyBlockAccessList suggested = block.BlockAccessList!;
+
+        if (suggested.AccountChanges.Count != generated.AccountChanges.Count)
+        {
+            throw new InvalidBlockLevelAccessListException(block.Header,
+                $"Account-set size mismatch: suggested={suggested.AccountChanges.Count}, generated={generated.AccountChanges.Count}.");
+        }
+
+        foreach (ReadOnlyAccountChanges sug in suggested.AccountChanges)
+        {
+            GeneratedAccountChanges gen = generated.GetAccountChanges(sug.Address)
+                ?? throw new InvalidBlockLevelAccessListException(block.Header,
+                    $"Suggested block-level access list declares account {sug.Address} which execution did not touch.");
+
+            if (sug.StorageReads.Length != gen.StorageReads.Count)
+            {
+                throw new InvalidBlockLevelAccessListException(block.Header,
+                    $"Suggested block-level access list storage_reads count mismatch for {sug.Address}: suggested={sug.StorageReads.Length}, generated={gen.StorageReads.Count}.");
+            }
+
+            // Both sides keep storage_reads sorted (decoder-validated on the suggested side;
+            // SortedSet on the generated side). Walk in lockstep.
+            int i = 0;
+            foreach (UInt256 genRead in gen.StorageReads)
+            {
+                if (!sug.StorageReads[i].Equals(genRead))
+                {
+                    throw new InvalidBlockLevelAccessListException(block.Header,
+                        $"Suggested block-level access list storage_reads mismatch for {sug.Address} at offset {i}.");
+                }
+                i++;
+            }
         }
     }
 }

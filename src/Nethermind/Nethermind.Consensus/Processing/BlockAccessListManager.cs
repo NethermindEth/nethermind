@@ -92,6 +92,14 @@ public partial class BlockAccessListManager(
     public bool Enabled { get; private set; }
     public bool ParallelExecutionEnabled { get; private set; }
 
+    // Verify-only mode: the column-index validator (BlockAccessListValidationIndex) checks each
+    // per-tx slice against the suggested BAL row-by-row. On the parallel validation path this
+    // is sufficient to replace the end-of-block canonical-bytes hash compare with a structural-
+    // equivalence check (account-set match + storage_reads-set match), avoiding a full encode
+    // + Keccak over the generated BAL. Mirrors Reth's `rebuilt_bal.as_slice() != decoded_bal
+    // .as_bal().as_slice()` check from paradigmxyz/reth#24297. Set in PrepareForProcessing.
+    private bool _verifyOnly;
+
     public void PrepareForProcessing(Block suggestedBlock, IReleaseSpec spec, ProcessingOptions options)
     {
         _blockAccessListsEnabled = spec.BlockLevelAccessListsEnabled;
@@ -129,6 +137,7 @@ public partial class BlockAccessListManager(
             }
             _gasRemaining = suggestedBlock.GasUsed;
             _parentStateRoot = ParallelExecutionEnabled ? stateProvider.StateRoot : null;
+            _verifyOnly = ParallelExecutionEnabled;
         }
     }
 
@@ -226,6 +235,7 @@ public partial class BlockAccessListManager(
         _generatedChargeableStorageReads = 0;
         _hasGeneratedValidationIndexUpdates = false;
         _hasGeneratedRequiredReadAccountMismatch = false;
+        _verifyOnly = false;
     }
 
     [DoesNotReturn]
