@@ -102,10 +102,7 @@ namespace Nethermind.EthStats.Integrations
                 return;
             }
 
-            _websocketClient.ReconnectionHappened.Subscribe(reconnectionInfo =>
-            {
-                _ = ReconnectHelloAsync();
-            });
+            _websocketClient.ReconnectionHappened.Subscribe(_ => OnReconnectionHappened());
 
             _websocketClient.DisconnectionHappened.Subscribe(reason =>
             {
@@ -124,7 +121,7 @@ namespace Nethermind.EthStats.Integrations
             if (_logger.IsDebug) _logger.Debug("ETH Stats sending 'stats' message...");
             _ = SendStatsAsync();
             _ = SendNodePingAsync();
-            SendPendingAsync(_txPool.GetPendingTransactionsCount() + _txPool.GetPendingBlobTransactionsCount());
+            _ = SendPendingAsync(_txPool.GetPendingTransactionsCount() + _txPool.GetPendingBlobTransactionsCount());
         }
 
         private void BlockTreeOnNewHeadBlock(object? sender, BlockEventArgs e)
@@ -179,6 +176,9 @@ namespace Nethermind.EthStats.Integrations
         private Task SendBlockAsync(CoreBlock block)
             => _sender.SendAsync(_websocketClient!, new BlockMessage(CreateBlockModel(block)));
 
+        private void OnReconnectionHappened()
+            => _ = ReconnectHelloAsync();
+
         private async Task ReconnectHelloAsync()
         {
             try
@@ -210,6 +210,7 @@ namespace Nethermind.EthStats.Integrations
                     history.Add(CreateBlockModel(block));
                 }
 
+                // Prevent long.MaxValue + 1 overflow on the for-loop increment.
                 if (blockNumber == max)
                 {
                     break;
