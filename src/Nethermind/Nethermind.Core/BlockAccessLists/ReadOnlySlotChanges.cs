@@ -9,26 +9,19 @@ namespace Nethermind.Core.BlockAccessLists;
 
 /// <summary>
 /// Per-slot changes from a decoded BAL, sorted by <see cref="StorageChange.Index"/>
-/// (decoder-validated). Most slots are touched in exactly one tx, so the first change is stored
-/// inline and the <see cref="StorageChange"/> array + <c>uint[]</c> index lane are only
-/// allocated when a slot has more than one change. Read paths
-/// (<see cref="TryGetLastBefore"/>, <see cref="TryGetAtIndex"/>, <see cref="HasAtIndex"/>) hit
-/// the inline field directly for the common case; only multi-change slots fall through to the
-/// binary search.
+/// (decoder-validated). The first change is stored inline; <see cref="_multiple"/> and the
+/// parallel <c>uint[]</c> index lane are only allocated for slots with more than one change.
 /// </summary>
 public class ReadOnlySlotChanges : IEquatable<ReadOnlySlotChanges>
 {
     public UInt256 Key { get; }
 
     private readonly StorageChange _first;
-    // Full array (including _first at [0]) when count > 1; null when count <= 1.
+    // count > 1: full array including _first at [0]. count <= 1: null.
     private readonly StorageChange[]? _multiple;
-    // Parallel index lane for the multi-change path; null when count <= 1.
     private readonly uint[]? _indices;
     private readonly int _count;
-    // Lazily materialised [_first] for count == 1 callers that need the array (encoder, JSON).
-    // Benign race: concurrent first-access from multiple threads is rare in practice (Changes is
-    // not hit on the validation read path) and any racing writers produce equal arrays.
+    // count == 1 only; lazy [_first] for the array-form Changes accessor.
     private StorageChange[]? _singletonChanges;
 
     public ReadOnlySlotChanges(UInt256 key, StorageChange[] changes)
@@ -39,8 +32,7 @@ public class ReadOnlySlotChanges : IEquatable<ReadOnlySlotChanges>
         _first = changes[0];
         if (_count == 1)
         {
-            // Reuse the caller's array as the singleton cache when it's already length-1 — saves
-            // a redundant allocation on the dominant decoder path.
+            // Caller's already-allocated length-1 array doubles as the singleton cache.
             _singletonChanges = changes;
             return;
         }
@@ -81,9 +73,8 @@ public class ReadOnlySlotChanges : IEquatable<ReadOnlySlotChanges>
 
     public override string ToString() => $"{Key}:[{string.Join(", ", Changes)}]";
 
-    /// <summary>Last storage change strictly before <paramref name="blockAccessIndex"/>.
-    /// Returns <c>false</c> when no entry is recorded before the index — caller can fall through
-    /// to a parent-state reader.</summary>
+    /// <summary>Last storage change strictly before <paramref name="blockAccessIndex"/>;
+    /// <c>false</c> if none — caller can fall through to a parent-state reader.</summary>
     public bool TryGetLastBefore(uint blockAccessIndex, out StorageChange storageChange)
     {
         if (_count == 0)
@@ -102,8 +93,7 @@ public class ReadOnlySlotChanges : IEquatable<ReadOnlySlotChanges>
             return false;
         }
         int idx = ((ReadOnlySpan<uint>)_indices!).BinarySearch(blockAccessIndex);
-        // idx (if found) or ~idx (if not) is the position of the first entry with Index >= target;
-        // strictly-before is one step earlier.
+        // idx (if found) or ~idx (if not) is the first entry with Index >= target; one earlier is strictly-before.
         int lastBefore = (idx >= 0 ? idx : ~idx) - 1;
         if (lastBefore < 0)
         {
