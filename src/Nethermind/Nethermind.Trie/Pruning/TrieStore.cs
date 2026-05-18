@@ -591,10 +591,6 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
         TryExitCommitBufferMode();
     }
 
-    // Testing purpose only — blocks until the commit buffer is flushed, so tests don't depend on the
-    // fire-and-forget TryExitCommitBufferMode posted from BeginScope's dispose to win the lock race.
-    internal void FlushCommitBufferForTest() => FlushNonBlockingBuffer();
-
     private void SyncPruneNonLocked()
     {
         Debug.Assert(_pruningLock.IsHeldByCurrentThread, "Pruning lock must be held to perform sync prune.");
@@ -1009,7 +1005,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
         PersistOnShutdown();
     }
 
-    private void FlushNonBlockingBuffer()
+    internal void FlushNonBlockingBuffer()
     {
         using Lock.Scope _ = _scopeLock.EnterScope();
         if (_commitBuffer is null) return;
