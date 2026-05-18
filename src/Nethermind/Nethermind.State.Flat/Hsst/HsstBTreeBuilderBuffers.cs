@@ -32,8 +32,8 @@ public ref struct HsstBTreeBuilderBuffers(int expectedKeyCount = 16)
     // on every <see cref="HsstBTreeBuilder{TWriter,TReader,TPin}"/>.EmitInlineLeaf
     // (after the leaf has been written). Peak size is bounded by one 4 KiB page-
     // worth of entries (a few hundred entries × keyLength, low KB) — once flushed,
-    // those keys can be re-read from the data section if intermediate construction
-    // needs them again at Build time.
+    // the leftmost-entry key the index builder still needs for intermediate
+    // construction is preserved in <see cref="CurrentLevelFirstKeys"/>.
     internal NativeMemoryListRef<byte> PendingKeys = new(64);
 
     // Current/next index-build level node lists. Populated during Add (entry
@@ -43,9 +43,27 @@ public ref struct HsstBTreeBuilderBuffers(int expectedKeyCount = 16)
     internal NativeMemoryListRef<HsstIndexNodeInfo> CurrentLevel = new(64);
     internal NativeMemoryListRef<HsstIndexNodeInfo> NextLevel = new(64);
 
+    // First-entry full key for every descriptor in <see cref="CurrentLevel"/> /
+    // <see cref="NextLevel"/>, in matching order. Flat (descriptorCount * keyLength)
+    // layout: the i-th descriptor's first-key occupies bytes
+    // [i * keyLength, (i + 1) * keyLength). Populated whenever a descriptor is
+    // pushed (inline leaf, direct-flush entry, or freshly written intermediate)
+    // so that HsstIndexBuilder.Build can read every child's first-key directly
+    // without reaching back into the already-written data region for a 20-byte
+    // address that may straddle a 4 KiB page. Flipped together with the level
+    // lists at the end of each Build iteration.
+    internal NativeMemoryListRef<byte> CurrentLevelFirstKeys = new(64);
+    internal NativeMemoryListRef<byte> NextLevelFirstKeys = new(64);
+
     // ArrayPool-backed scratch — null until first build that uses them.
     internal byte[]? CommonPrefixArr = null;
     internal byte[]? ValueScratch = null;
+
+    // Root node's first-entry full key, populated by HsstIndexBuilder.Build at its
+    // final return so HsstIndexBuilder.CopyRootPrefixBytes can supply the trailer's
+    // RootPrefix bytes from memory rather than re-reading from the data section.
+    // ArrayPool-backed for cross-build reuse; null until the first non-empty build.
+    internal byte[]? RootFirstKey = null;
 
     /// <summary>
     /// Reset list counts to zero ahead of a new build. Capacity is retained, and
@@ -58,6 +76,8 @@ public ref struct HsstBTreeBuilderBuffers(int expectedKeyCount = 16)
         PendingKeys.Clear();
         CurrentLevel.Clear();
         NextLevel.Clear();
+        CurrentLevelFirstKeys.Clear();
+        NextLevelFirstKeys.Clear();
     }
 
     /// <summary>
@@ -80,8 +100,11 @@ public ref struct HsstBTreeBuilderBuffers(int expectedKeyCount = 16)
         PendingKeys.Dispose();
         CurrentLevel.Dispose();
         NextLevel.Dispose();
+        CurrentLevelFirstKeys.Dispose();
+        NextLevelFirstKeys.Dispose();
         if (CommonPrefixArr is not null) { ArrayPool<byte>.Shared.Return(CommonPrefixArr); CommonPrefixArr = null; }
         if (ValueScratch is not null) { ArrayPool<byte>.Shared.Return(ValueScratch); ValueScratch = null; }
+        if (RootFirstKey is not null) { ArrayPool<byte>.Shared.Return(RootFirstKey); RootFirstKey = null; }
     }
 }
 

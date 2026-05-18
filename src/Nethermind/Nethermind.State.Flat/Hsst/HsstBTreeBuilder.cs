@@ -467,28 +467,16 @@ public ref struct HsstBTreeBuilder<TWriter, TReader, TPin>
         Span<byte> rootPrefixBytes = stackalloc byte[128];
         ref HsstBTreeBuilderBuffers bufs = ref Buffers;
 
-        // Open a single data-section reader view for the whole intermediate-build
-        // phase. By this point trigger 3 has flushed every pending entry into a
-        // leaf, so PendingKeys is empty and the index builder must re-fetch any
-        // child's leftmost-entry key by reaching back into the data section.
-        // The single-reader-at-a-time contract means we open once, use throughout
-        // Build, and dispose in finally.
-        TReader reader = _writer.OpenReader(dataSectionSize);
-        try
-        {
-            HsstIndexBuilder<TWriter, TReader, TPin> indexBuilder = new(
-                ref _writer, bufs.EntryPositions.AsSpan(), _keyLength, ref bufs, _keyFirst,
-                pendingFirstEntryIdx: bufs.EntryPositions.Count,
-                reader: reader,
-                useDataReader: true);
-            rootSize = indexBuilder.Build(absoluteIndexStart, maxLeafEntries, maxIntermediateEntries, minLeafEntries, maxIntermediateBytes, minIntermediateChildren, minIntermediateBytes);
-            rootPrefixLen = indexBuilder.RootPrefixLen;
-            if (rootPrefixLen > 0) indexBuilder.CopyRootPrefixBytes(rootPrefixBytes[..rootPrefixLen]);
-        }
-        finally
-        {
-            _writer.DisposeActiveReader();
-        }
+        // No data-section reader needed: every descriptor in <c>CurrentLevel</c> carries
+        // its first-entry full key in the parallel <c>CurrentLevelFirstKeys</c> list,
+        // populated at descriptor-push time (EmitInlineLeaf, FlushPendingAsEntries,
+        // FlushPendingNotOnCurrentPage). HsstIndexBuilder.Build propagates first-keys as it
+        // walks up the tree, so no read-back is required.
+        HsstIndexBuilder<TWriter, TReader, TPin> indexBuilder = new(
+            ref _writer, bufs.EntryPositions.AsSpan(), _keyLength, ref bufs);
+        rootSize = indexBuilder.Build(absoluteIndexStart, maxLeafEntries, maxIntermediateEntries, minLeafEntries, maxIntermediateBytes, minIntermediateChildren, minIntermediateBytes);
+        rootPrefixLen = indexBuilder.RootPrefixLen;
+        if (rootPrefixLen > 0) indexBuilder.CopyRootPrefixBytes(rootPrefixBytes[..rootPrefixLen]);
 
         if ((uint)rootSize > ushort.MaxValue)
             throw new InvalidOperationException($"Root node size {rootSize} exceeds u16 trailer field");
@@ -675,23 +663,23 @@ public ref struct HsstBTreeBuilder<TWriter, TReader, TPin>
             children[i] = new HsstIndexNodeInfo(entryPositions[entryIdx], entryIdx, entryIdx, prefixLen: 0);
         }
 
-        // Inline-emit path: every child's FirstEntry is in [_pendingFirstEntryIdx,
-        // EntryPositions.Count), so the builder's ReadKey lands in PendingKeys for
-        // each per-child key read. No data-section reader is needed; passing
-        // default(TReader) and useDataReader=false explicitly enforces that.
+        // Per-child first-keys for WriteIndexNode: each pending entry's full key sits in
+        // PendingKeys at offset i * _keyLength.
+        ReadOnlySpan<byte> childFirstKeys = bufs.PendingKeys.AsSpan();
+
         HsstIndexBuilder<TWriter, TReader, TPin> indexBuilder = new(
-            ref _writer, entryPositions, _keyLength, ref bufs, _keyFirst,
-            pendingFirstEntryIdx: _pendingFirstEntryIdx,
-            reader: default!,
-            useDataReader: false);
-        indexBuilder.WriteIndexNode(children, bufs.ValueScratch!, bufs.CommonPrefixArr!, out int leafPrefixLen);
+            ref _writer, entryPositions, _keyLength, ref bufs);
+        indexBuilder.WriteIndexNode(children, childFirstKeys, bufs.ValueScratch!, bufs.CommonPrefixArr!, out int leafPrefixLen);
 
         bufs.CurrentLevel.Add(new HsstIndexNodeInfo(nodeStart, firstEntryIdx, firstEntryIdx + count - 1, leafPrefixLen));
+        // The new leaf's first-key = entry firstEntryIdx's full key, which is the first
+        // _keyLength bytes of PendingKeys. Push it into CurrentLevelFirstKeys before
+        // PendingKeys is cleared so intermediate construction can read it later.
+        if (_keyLength > 0) bufs.CurrentLevelFirstKeys.AddRange(bufs.PendingKeys.AsSpan()[.._keyLength]);
         _pendingFirstEntryIdx = EntryPositions.Count;
-        // Drop the in-flight keys now that they've been folded into a leaf. Subsequent
-        // adds repopulate the buffer with the next pending set; intermediate
-        // construction at Build time falls back to data-section reads for any entry
-        // whose key isn't in PendingKeys anymore.
+        // Drop the in-flight keys now that they've been folded into a leaf. The leaf's
+        // first-key survives in CurrentLevelFirstKeys; subsequent adds repopulate
+        // PendingKeys with the next pending set.
         bufs.PendingKeys.Clear();
     }
 
@@ -721,6 +709,11 @@ public ref struct HsstBTreeBuilder<TWriter, TReader, TPin>
             bufs.CurrentLevel.Add(new HsstIndexNodeInfo(
                 entryPositions[entryIdx], entryIdx, entryIdx, prefixLen: 0));
         }
+        // Each direct-flushed entry is one descriptor in CurrentLevel; copy every
+        // pending key (count * _keyLength bytes, the entire current PendingKeys
+        // payload) into CurrentLevelFirstKeys in matching order before PendingKeys
+        // is cleared so intermediate construction can read them later.
+        if (_keyLength > 0) bufs.CurrentLevelFirstKeys.AddRange(bufs.PendingKeys.AsSpan());
 
         _pendingFirstEntryIdx = EntryPositions.Count;
         bufs.PendingKeys.Clear();
@@ -768,11 +761,21 @@ public ref struct HsstBTreeBuilder<TWriter, TReader, TPin>
             bufs.CurrentLevel.Add(new HsstIndexNodeInfo(
                 entryPositions[entryIdx], entryIdx, entryIdx, prefixLen: 0));
         }
+
+        // Each direct-flushed entry becomes one descriptor in CurrentLevel; copy the
+        // matching front slice of PendingKeys (directCount * _keyLength bytes) into
+        // CurrentLevelFirstKeys before the front bytes are dropped below.
+        if (_keyLength > 0)
+        {
+            int bytesRemoved = directCount * _keyLength;
+            bufs.CurrentLevelFirstKeys.AddRange(bufs.PendingKeys.AsSpan()[..bytesRemoved]);
+        }
+
         _pendingFirstEntryIdx = firstOnCurrent;
 
         // Drop the direct-flushed entries' keys from the front of PendingKeys.
-        // Shift the remaining-pending keys to position 0 so ReadKey's
-        // (idx - _pendingFirstEntryIdx) * keyLength indexing stays valid.
+        // Shift the remaining-pending keys to position 0 so PendingKeys indexing
+        // (which is local-offset based) stays valid for the surviving pending set.
         if (_keyLength > 0)
         {
             int bytesRemoved = directCount * _keyLength;
