@@ -28,7 +28,7 @@ on:
           - superblocks
         default: superblocks
       delay_seconds:
-        description: Value used to replace <<DELAY>> placeholder (integer)
+        description: Value used to replace <<DELAY>> placeholder
         required: false
         default: "0"
       amount:
@@ -225,8 +225,8 @@ jobs:
             exit 1
           fi
 
-          if ! [[ "${delay_seconds}" =~ ^-?[0-9]+$ ]]; then
-            echo "delay_seconds must be an integer, got '${delay_seconds}'."
+          if ! [[ "${delay_seconds}" =~ ^-?[0-9]+([.][0-9]+)?$ ]]; then
+            echo "delay_seconds must be a non-negative number, got '${delay_seconds}'."
             exit 1
           fi
 
