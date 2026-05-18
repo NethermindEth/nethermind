@@ -122,22 +122,22 @@ public partial class BlockAccessListManager
         BlockAccessListValidationIndex.StructuralMismatchKind mismatch =
             generatedIndex.FindStructuralMismatch(suggested, out Address? mismatchAddress);
 
-        switch (mismatch)
+        // Exhaustive: the default arm throws at runtime so a newly-added enum value can't slip
+        // past this consensus-critical gate.
+        string? error = mismatch switch
         {
-            case BlockAccessListValidationIndex.StructuralMismatchKind.None:
-                return;
-            case BlockAccessListValidationIndex.StructuralMismatchKind.AccountCountMismatch:
-                throw new InvalidBlockLevelAccessListException(block.Header,
-                    $"Account-set size mismatch: suggested={suggested.AccountChanges.Count}, generated={generatedIndex.MarkedAccountCount}.");
-            case BlockAccessListValidationIndex.StructuralMismatchKind.MissingInGenerated:
-                throw new InvalidBlockLevelAccessListException(block.Header,
-                    $"Suggested BAL declares account {mismatchAddress} which execution did not touch.");
-            case BlockAccessListValidationIndex.StructuralMismatchKind.StorageReadsCountMismatch:
-                throw new InvalidBlockLevelAccessListException(block.Header,
-                    $"storage_reads count mismatch for {mismatchAddress}.");
-            case BlockAccessListValidationIndex.StructuralMismatchKind.StorageReadsContentMismatch:
-                throw new InvalidBlockLevelAccessListException(block.Header,
-                    $"storage_reads mismatch for {mismatchAddress}.");
-        }
+            BlockAccessListValidationIndex.StructuralMismatchKind.None => null,
+            BlockAccessListValidationIndex.StructuralMismatchKind.AccountCountMismatch
+                => $"Account-set size mismatch: suggested={suggested.AccountChanges.Count}, generated={generatedIndex.MarkedAccountCount}.",
+            BlockAccessListValidationIndex.StructuralMismatchKind.MissingInGenerated
+                => $"Suggested BAL declares account {mismatchAddress} which execution did not touch.",
+            BlockAccessListValidationIndex.StructuralMismatchKind.StorageReadsCountMismatch
+                => $"storage_reads count mismatch for {mismatchAddress}.",
+            BlockAccessListValidationIndex.StructuralMismatchKind.StorageReadsContentMismatch
+                => $"storage_reads mismatch for {mismatchAddress}.",
+            _ => throw new InvalidOperationException($"Unhandled {nameof(BlockAccessListValidationIndex.StructuralMismatchKind)}: {mismatch}"),
+        };
+
+        if (error is not null) throw new InvalidBlockLevelAccessListException(block.Header, error);
     }
 }

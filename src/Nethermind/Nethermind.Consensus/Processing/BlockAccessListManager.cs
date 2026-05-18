@@ -217,7 +217,7 @@ public partial class BlockAccessListManager(
     private void MergeAndReturnBal(uint balIndex = 0)
         => _txProcessorWithWorldStateManager!.MergeAndReturnBal(
             balIndex,
-            GeneratedBlockAccessList,  // temporarily always merge; bisecting pyspec failures
+            _verifyOnly ? null : GeneratedBlockAccessList,
             RegisterGeneratedSlice);
 
     private void CheckInitialized()

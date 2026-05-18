@@ -165,7 +165,16 @@ public partial class BlockAccessListManager
             return;
         }
 
-        // Bisecting: don't route through SlowPathFromColumnIndex while merge is always-on.
+        // Verify-only path skips the per-tx Merge into GeneratedBlockAccessList — the column
+        // index already carries everything the slow walk needs to produce per-account
+        // diagnostics. Non-verify path keeps the legacy GBAL walk for the BAL recorder /
+        // sequential build that relies on the materialised list.
+        if (_verifyOnly && _suggestedValidationIndex is not null && _generatedValidationIndex is not null)
+        {
+            SlowPathFromColumnIndex(block, index, validateStorageReads);
+            return;
+        }
+
         GeneratedBlockAccessList generated = GeneratedBlockAccessList;
         ReadOnlyBlockAccessList suggested = block.BlockAccessList;
 
@@ -244,7 +253,7 @@ public partial class BlockAccessListManager
         foreach (int ordinal in gen.EnumerateMarkedOrdinals())
         {
             Address address = gen.AddressOf(ordinal);
-            bool inSuggested = sug.HasAccountOrdinalPublic(ordinal);
+            bool inSuggested = sug.HasAccount(ordinal);
 
             if (inSuggested)
             {
@@ -275,7 +284,7 @@ public partial class BlockAccessListManager
         // change at this row is a surplus.
         foreach (int ordinal in sug.EnumerateMarkedOrdinals())
         {
-            if (gen.HasAccountOrdinalPublic(ordinal)) continue; // already handled in Pass 1
+            if (gen.HasAccount(ordinal)) continue; // already handled in Pass 1
             if (sug.HasChangesAtRow(row, ordinal))
             {
                 throw new InvalidBlockLevelAccessListException(block.Header,
