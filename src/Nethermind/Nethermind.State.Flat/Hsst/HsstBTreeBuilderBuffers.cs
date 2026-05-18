@@ -59,6 +59,18 @@ public ref struct HsstBTreeBuilderBuffers(int expectedKeyCount = 16)
     internal byte[]? CommonPrefixArr = null;
     internal byte[]? ValueScratch = null;
 
+    // Per-Build scratch for HsstIndexBuilder.ChooseIntermediateChildCount and
+    // HsstIndexBuilder.WriteIndexNode. Previously stackalloc'd per call (255 bytes
+    // each for firstSep / sepBuf, plus variable-sized int[] / byte[] for sepLengths
+    // / keyBuf). Promoted to pooled fields so a hot caller (e.g.
+    // PersistedSnapshotBuilder, which fires many small Builds back-to-back) reuses
+    // the rented buffers across calls. Sized lazily by HsstIndexBuilder; null until
+    // the first build that needs them.
+    internal byte[]? IndexFirstSepScratch = null;
+    internal byte[]? IndexSepBufScratch = null;
+    internal byte[]? IndexKeyBufScratch = null;
+    internal int[]? IndexSepLengthsScratch = null;
+
     // Root node's first-entry full key, populated by HsstIndexBuilder.Build at its
     // final return so HsstIndexBuilder.CopyRootPrefixBytes can supply the trailer's
     // RootPrefix bytes from memory rather than re-reading from the data section.
@@ -127,6 +139,10 @@ public ref struct HsstBTreeBuilderBuffers(int expectedKeyCount = 16)
         if (ValueScratch is not null) { ArrayPool<byte>.Shared.Return(ValueScratch); ValueScratch = null; }
         if (RootFirstKey is not null) { ArrayPool<byte>.Shared.Return(RootFirstKey); RootFirstKey = null; }
         if (PrevKeyBuf is not null) { ArrayPool<byte>.Shared.Return(PrevKeyBuf); PrevKeyBuf = null; }
+        if (IndexFirstSepScratch is not null) { ArrayPool<byte>.Shared.Return(IndexFirstSepScratch); IndexFirstSepScratch = null; }
+        if (IndexSepBufScratch is not null) { ArrayPool<byte>.Shared.Return(IndexSepBufScratch); IndexSepBufScratch = null; }
+        if (IndexKeyBufScratch is not null) { ArrayPool<byte>.Shared.Return(IndexKeyBufScratch); IndexKeyBufScratch = null; }
+        if (IndexSepLengthsScratch is not null) { ArrayPool<int>.Shared.Return(IndexSepLengthsScratch); IndexSepLengthsScratch = null; }
     }
 }
 

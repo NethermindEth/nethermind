@@ -302,11 +302,14 @@ public ref struct HsstIndexBuilder<TWriter, TReader, TPin>
         out int nodePrefixLen)
     {
         int count = children.Length;
+        ref HsstBTreeBuilderBuffers bufs = ref Buffers;
 
         // Per-child separator length: natural LCP-derived length widened to at least
         // the child's own planner-picked prefix so the parent slot can hand the child
-        // every byte of its CommonKeyPrefix at descent time.
-        Span<int> sepLengths = stackalloc int[count];
+        // every byte of its CommonKeyPrefix at descent time. Backed by a pooled buffer
+        // so back-to-back Builds reuse the rent.
+        HsstBTreeBuilderBuffers.EnsureSize(ref bufs.IndexSepLengthsScratch, count);
+        Span<int> sepLengths = bufs.IndexSepLengthsScratch.AsSpan(0, count);
         for (int i = 0; i < count; i++)
         {
             int natural = Math.Min(commonPrefixArr[children[i].FirstEntry] + 1, _keyLength);
@@ -343,7 +346,8 @@ public ref struct HsstIndexBuilder<TWriter, TReader, TPin>
 
         int perEntryKeyBytes = Math.Max(keySlotSize, _keyLength - prefixLen);
         int keyBufSize = count * (2 + Math.Max(1, perEntryKeyBytes));
-        Span<byte> keyBuf = stackalloc byte[keyBufSize];
+        HsstBTreeBuilderBuffers.EnsureSize(ref bufs.IndexKeyBufScratch, keyBufSize);
+        Span<byte> keyBuf = bufs.IndexKeyBufScratch.AsSpan(0, keyBufSize);
         Span<byte> valueScratchSlice = valueScratch[..(count * (2 + valueSlotSize))];
 
         scoped BSearchIndexWriter<TWriter> indexWriter = new(ref _writer, new BSearchIndexMetadata
@@ -447,10 +451,15 @@ public ref struct HsstIndexBuilder<TWriter, TReader, TPin>
         int committedValueSlot = MinBytesFor(0);
         // Common-prefix length across separators observed so far. With phantom slot 0
         // restored the first separator (firstChild) seeds commonLen and firstSep so the
-        // running LCP is meaningful from childCount == 1 onward.
+        // running LCP is meaningful from childCount == 1 onward. firstSep / sepBuf live
+        // on the pooled buffers struct so back-to-back Builds reuse the rent instead of
+        // re-stackallocating 510 bytes per ChooseIntermediateChildCount call.
         int commonLen = firstSepLen;
-        Span<byte> firstSep = stackalloc byte[MaxKeyLen];
-        Span<byte> sepBuf = stackalloc byte[MaxKeyLen];
+        ref HsstBTreeBuilderBuffers bufs = ref Buffers;
+        HsstBTreeBuilderBuffers.EnsureSize(ref bufs.IndexFirstSepScratch, MaxKeyLen);
+        HsstBTreeBuilderBuffers.EnsureSize(ref bufs.IndexSepBufScratch, MaxKeyLen);
+        Span<byte> firstSep = bufs.IndexFirstSepScratch.AsSpan(0, MaxKeyLen);
+        Span<byte> sepBuf = bufs.IndexSepBufScratch.AsSpan(0, MaxKeyLen);
         if (firstSepLen > 0)
         {
             // First child's first-key sits at slot childIdx of levelFirstKeys.
