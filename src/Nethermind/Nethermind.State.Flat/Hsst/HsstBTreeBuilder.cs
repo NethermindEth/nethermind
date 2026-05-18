@@ -684,8 +684,7 @@ public ref struct HsstBTreeBuilder<TWriter, TReader, TPin>
             pendingFirstEntryIdx: _pendingFirstEntryIdx,
             reader: default!,
             useDataReader: false);
-        indexBuilder.WriteIndexNode(children, BSearchNodeKind.Leaf,
-            bufs.ValueScratch!, bufs.CommonPrefixArr!, out int leafPrefixLen);
+        indexBuilder.WriteIndexNode(children, bufs.ValueScratch!, bufs.CommonPrefixArr!, out int leafPrefixLen);
 
         bufs.CurrentLevel.Add(new HsstIndexNodeInfo(nodeStart, firstEntryIdx, firstEntryIdx + count - 1, leafPrefixLen));
         _pendingFirstEntryIdx = EntryPositions.Count;

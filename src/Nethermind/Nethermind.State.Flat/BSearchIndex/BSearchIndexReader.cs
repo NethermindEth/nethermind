@@ -83,7 +83,6 @@ public readonly ref struct BSearchIndexReader
 
     public int EntryCount => _metadata.KeyCount;
     public BSearchNodeKind NodeKind => _metadata.NodeKind;
-    public bool IsIntermediate => _metadata.IsIntermediate;
     public IndexMetadata Metadata => _metadata;
     /// <summary>Total bytes occupied by this index node, including header.</summary>
     public int TotalSize => _totalSize;
@@ -515,13 +514,12 @@ public readonly ref struct BSearchIndexReader
 
         /// <summary>
         /// The <see cref="BSearchNodeKind"/> packed into Flags bits 0-1. For BSearchIndex
-        /// nodes parsed by this reader, this is always <see cref="BSearchNodeKind.Leaf"/> or
-        /// <see cref="BSearchNodeKind.Intermediate"/>; <see cref="BSearchNodeKind.Entry"/> sits
-        /// on data-region entries which the BTree reader recognizes from a single flag-byte
-        /// read before deciding whether to call <see cref="ReadFromStart"/> at all.
+        /// nodes parsed by this reader, this is always <see cref="BSearchNodeKind.Intermediate"/>;
+        /// <see cref="BSearchNodeKind.Entry"/> sits on data-region entries which the BTree
+        /// reader recognizes from a single flag-byte read before deciding whether to call
+        /// <see cref="ReadFromStart"/> at all.
         /// </summary>
         public BSearchNodeKind NodeKind => (BSearchNodeKind)(Flags & 0x03);
-        public bool IsIntermediate => NodeKind == BSearchNodeKind.Intermediate;
         public int KeyType => (Flags >> 2) & 0x03;
         /// <summary>
         /// Fixed value width in bytes (one of {2, 3, 4, 6}). Decoded from Flags bits 4-5.

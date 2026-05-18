@@ -20,9 +20,13 @@ public enum BSearchNodeKind : byte
     /// Bits 2–7 of the flag byte are reserved and written as zero for entries.
     /// </summary>
     Entry = 0,
-    /// <summary>Bottom-of-tree <see cref="BSearchIndex"/> node whose value slots point at entries.</summary>
-    Leaf = 1,
-    /// <summary>Inner <see cref="BSearchIndex"/> node whose value slots point at other nodes or at entries.</summary>
-    Intermediate = 2,
-    // Value 3 is reserved.
+    /// <summary>
+    /// A <see cref="BSearchIndex"/> node. Value slots point at children — entries (page-local
+    /// leaf level), other Intermediate nodes (inner levels), or a mix. There is no separate
+    /// "leaf" on-disk kind: a node whose value slots all point at entries is conceptually a
+    /// leaf but encodes the same way. Consumers that need the "leaf level" semantics peek the
+    /// leftmost child's flag byte (see <c>HsstEnumerator.DescendToLeaf</c>).
+    /// </summary>
+    Intermediate = 1,
+    // Values 2 and 3 are reserved.
 }

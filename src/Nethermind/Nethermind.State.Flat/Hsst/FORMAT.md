@@ -80,17 +80,17 @@ decoding is forward-readable from a known `MetadataStart` cursor:
 
 `MetadataStart` is the byte offset (within the HSST buffer, measured from
 byte 0 — the first byte of the data region) of the entry's **leading flag
-byte**. The flag byte's low 2 bits encode the `BSearchNodeKind` (Entry,
-Leaf, or Intermediate) — the same flag-byte layout used by `BSearchIndex`
+byte**. The flag byte's low 2 bits encode the `BSearchNodeKind` (Entry
+or Intermediate) — the same flag-byte layout used by `BSearchIndex`
 node headers — so the BTree reader's dispatch loop can recognize *what
 kind of thing it just landed on* from a single byte read. For entries the
 flag is `NodeKind = Entry (00)`; bits 2–7 are reserved and written as
-zero. The leaf B-tree node stores `MetadataStart` for every entry; readers
-seek into the leaf, take the metaStart pointer, then:
+zero. The leaf-level B-tree node stores `MetadataStart` for every entry;
+readers seek into the node, take the metaStart pointer, then:
 
 1. Read the 1-byte flag at `MetadataStart`. The low 2 bits must be
    `NodeKind = Entry`; the dispatch loop terminates here for the
-   target entry (Leaf and Intermediate kinds route through
+   target entry (Intermediate kind routes through
    `BSearchIndexReader.ReadFromStart` instead).
 2. Decode `ValueLength` (LEB128) starting at `MetadataStart + 1` — the
    value bytes live at `[MetadataStart - ValueLength, MetadataStart)`.
@@ -99,25 +99,28 @@ seek into the leaf, take the metaStart pointer, then:
    where `KeyLength` comes from the BTree trailer (the value is the same
    for every entry in this HSST).
 
-**Page-local leaves.** Leaf `BSearchIndex` nodes are emitted *inline in
-the data region*, next to the entries they describe, not in a separate
-trailing index region. The builder fires a leaf write whenever adding the
-next entry would push the (pending-entries + estimated-leaf) layout past
-the current 4 KiB page boundary, and again at `Build()` start for any
-tail entries. The result is that the leaf and most of its entries land in
-the same 4 KiB page — a seek for a small entry that's already pulled the
-page into cache reaches the value without a second I/O.
+**Page-local leaf-level nodes.** Leaf-level `BSearchIndex` nodes are
+emitted *inline in the data region*, next to the entries they describe,
+not in a separate trailing index region. The builder fires a node write
+whenever adding the next entry would push the (pending-entries +
+estimated-node) layout past the current 4 KiB page boundary, and again
+at `Build()` start for any tail entries. The result is that the node
+and most of its entries land in the same 4 KiB page — a seek for a
+small entry that's already pulled the page into cache reaches the value
+without a second I/O. Leaf-level nodes are written with `NodeKind =
+Intermediate` on disk; "leaf" is purely a conceptual role for nodes
+whose value slots all point at entries.
 
-The `BSearchIndex` node's flag byte (bits 0-1 = `NodeKind = Leaf` for
-these) is the same flag byte that the reader's dispatch loop reads — so
-landing on either an entry-flag or a leaf-flag is uniform from the
-loop's point of view. **Variable depth** falls out of this: some
-subtrees stop at a leaf (one level above the entry), others (when the
-trigger left a singleton pending) stop with an intermediate pointing
-directly at the entry. Today's naive trigger always emits a leaf even
-for singletons, so on-disk the tree shape stays leaf-at-bottom; the
-format permits direct-entry children for a future trigger that wants
-to skip the singleton-leaf cost.
+The `BSearchIndex` node's flag byte (bits 0-1 = `NodeKind =
+Intermediate`) is the same flag byte that the reader's dispatch loop
+reads — so landing on either an entry-flag or a node-flag is uniform
+from the loop's point of view. **Variable depth** falls out of this:
+some subtrees stop at a leaf-level node (one level above the entry),
+others (after a direct-flush trigger) have an intermediate pointing
+directly at one or more entries. The format permits direct-entry
+children alongside Intermediate children under any node — the builder
+uses this to avoid writing single-entry leaf-level nodes and to handle
+entries stranded by page-crossing writes.
 
 **Trailer.** The HSST tail is
 `[RootPrefix bytes][RootPrefixLen: u8][RootSize: u16 LE][KeyLength: u8][IndexType: u8]`,
@@ -144,9 +147,9 @@ load-bearing invariant for this variant — the entry tail must keep
 (0x07) flips this for callers whose values are large nested HSSTs and want
 the entry's metadata at the entry's front instead; see that section below.
 
-**Separator vs. full key.** The leaf B-tree node *also* stores a
+**Separator vs. full key.** The leaf-level B-tree node *also* stores a
 **separator** for each entry — a min-length prefix chosen against the
-entry's neighbours, used purely to drive in-leaf binary search. The
+entry's neighbours, used purely to drive in-node binary search. The
 data-region entry is self-describing (carries the full key), so a reader
 doesn't need to combine separator + suffix; it can decode the full key
 directly from the entry tail. This costs `separator.Length` extra bytes
@@ -176,8 +179,8 @@ EntryStart  (= the index pointer's target byte)
 `EntryStart` is the byte offset (within the HSST buffer, measured from
 byte 0) of the entry's leading flag byte (same flag-byte convention as
 the `BTree` variant — `NodeKind = Entry (00)` in bits 0-1, bits 2-7
-reserved zero). The leaf B-tree node stores this offset for every entry;
-readers take the pointer, read the flag byte, then walk forward:
+reserved zero). The leaf-level B-tree node stores this offset for every
+entry; readers take the pointer, read the flag byte, then walk forward:
 
 1. The full key sits at `[EntryStart + 1, EntryStart + 1 + KeyLength)`,
    where `KeyLength` comes from the trailer.
@@ -505,15 +508,21 @@ is no flag bit gating `BaseOffset`.
 `Flags` bits — shared with the data-region's **per-entry leading flag
 byte**, so the BTree reader's dispatch loop reads a single byte at the
 current cursor and switches on `NodeKind` to decide whether it's sitting
-on an entry, a leaf, or an intermediate. For entry-kind flag bytes, bits
-2-7 are reserved and written as zero.
+on an entry or on a `BSearchIndex` node. For entry-kind flag bytes, bits
+2-7 are reserved and written as zero. There is no separate "leaf" kind
+on disk: a `BSearchIndex` node whose value slots all point at entries is
+conceptually a leaf, but encodes identically to any other intermediate
+node. Consumers that need the leaf-level semantics (e.g. the
+enumerator's "stop descending and buffer entries" decision) peek the
+node's children's flag bytes — uniform-Entry children mark the leaf
+level.
 
 | Bit  | Meaning |
 |------|---------|
-| 0-1  | `NodeKind` — `00` = Entry (data-region entry), `01` = Leaf (BSearchIndex leaf node), `10` = Intermediate (BSearchIndex inner node), `11` reserved |
-| 2-3  | `KeyType` — 0 Variable / 1 Uniform (value 2 reserved/unused) — leaf and intermediate only |
-| 4-5  | `ValueSizeCode` — packs the per-entry value-slot width into 2 bits: `00`→2, `01`→3, `10`→4, `11`→6 — leaf and intermediate only |
-| 6    | `IsKeyLittleEndian` — 1 = fixed-width key slots are stored byte-reversed so a native LE integer load matches lex order; set unconditionally for Variable (prefixArr is 2 bytes/slot) and for Uniform with `KeySize ∈ {2,4,8}` — leaf and intermediate only |
+| 0-1  | `NodeKind` — `00` = Entry (data-region entry), `01` = Intermediate (BSearchIndex node), `10`/`11` reserved |
+| 2-3  | `KeyType` — 0 Variable / 1 Uniform (value 2 reserved/unused) — intermediate only |
+| 4-5  | `ValueSizeCode` — packs the per-entry value-slot width into 2 bits: `00`→2, `01`→3, `10`→4, `11`→6 — intermediate only |
+| 6    | `IsKeyLittleEndian` — 1 = fixed-width key slots are stored byte-reversed so a native LE integer load matches lex order; set unconditionally for Variable (prefixArr is 2 bytes/slot) and for Uniform with `KeySize ∈ {2,4,8}` — intermediate only |
 | 7    | Reserved — must be 0 |
 
 **Common key prefix.** When `CommonPrefixLen > 0`, every stored key in the

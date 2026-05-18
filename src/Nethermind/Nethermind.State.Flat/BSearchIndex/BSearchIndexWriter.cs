@@ -12,20 +12,13 @@ namespace Nethermind.State.Flat.BSearchIndex;
 /// </summary>
 internal struct BSearchIndexMetadata
 {
-    /// <summary>Which kind of <see cref="BSearchIndex"/> node this is (Leaf or Intermediate).</summary>
+    /// <summary>Which kind of addressable thing this is.</summary>
     /// <remarks>
-    /// Encoded in the low 2 bits of the on-disk <c>Flags</c> byte. <see cref="BSearchNodeKind.Entry"/>
-    /// is reserved for data-region entries and is not used here — the writer only emits Leaf or
-    /// Intermediate nodes.
+    /// Encoded in the low 2 bits of the on-disk <c>Flags</c> byte. The writer emits only
+    /// <see cref="BSearchNodeKind.Intermediate"/>; <see cref="BSearchNodeKind.Entry"/> is the
+    /// kind used by data-region entry records and is not written here.
     /// </remarks>
     public BSearchNodeKind NodeKind;
-
-    /// <summary>Legacy boolean shim — equivalent to <c><see cref="NodeKind"/> == BSearchNodeKind.Intermediate</c>.</summary>
-    public bool IsIntermediate
-    {
-        get => NodeKind == BSearchNodeKind.Intermediate;
-        set => NodeKind = value ? BSearchNodeKind.Intermediate : BSearchNodeKind.Leaf;
-    }
 
     /// <summary>0=Variable, 1=Uniform.</summary>
     public int KeyType;
@@ -56,7 +49,7 @@ internal struct BSearchIndexMetadata
     /// </summary>
     public bool IsKeyLittleEndian = false;
 
-    public BSearchIndexMetadata() => NodeKind = BSearchNodeKind.Leaf;
+    public BSearchIndexMetadata() => NodeKind = BSearchNodeKind.Intermediate;
 }
 
 /// <summary>
@@ -80,11 +73,11 @@ internal struct BSearchIndexMetadata
 /// code is still parsing the header.
 ///
 /// The <c>Flags</c> byte is shared with the data-region's per-entry flag byte; bits 0-1 carry a
-/// <see cref="BSearchNodeKind"/> (Entry / Leaf / Intermediate) so the BTree reader's dispatch
-/// loop can recognize what kind of thing it is sitting on from a single byte read. For
-/// <see cref="BSearchNodeKind.Leaf"/> and <see cref="BSearchNodeKind.Intermediate"/>, bits 2-3
-/// carry <c>KeyType</c>, bits 4-5 <c>ValueSizeCode</c>, bit 6 <c>IsKeyLittleEndian</c>, and
-/// bit 7 is reserved. <see cref="BSearchNodeKind.Entry"/> uses bits 2-7 as reserved zero.
+/// <see cref="BSearchNodeKind"/> (Entry or Intermediate) so the BTree reader's dispatch loop
+/// can recognize what kind of thing it is sitting on from a single byte read. For
+/// <see cref="BSearchNodeKind.Intermediate"/>, bits 2-3 carry <c>KeyType</c>, bits 4-5
+/// <c>ValueSizeCode</c>, bit 6 <c>IsKeyLittleEndian</c>, and bit 7 is reserved.
+/// <see cref="BSearchNodeKind.Entry"/> uses bits 2-7 as reserved zero.
 ///
 /// Values are always Uniform: each entry's value slot is a fixed-width LE integer whose
 /// width is one of <c>{2, 3, 4, 6}</c> — encoded as the 2-bit field at Flags bits 4-5

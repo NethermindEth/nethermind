@@ -301,7 +301,7 @@ public struct HsstEnumerator<TReader, TPin> : IDisposable
         // parentSeparator when DescendToLeaf loads the root; non-root descents pass
         // `default` and rely on the value-only fast path in the reader (the enumerator
         // never touches prefix-dependent BSearchIndex APIs — only GetUInt64Value /
-        // EntryCount / IsIntermediate / BaseOffset).
+        // EntryCount / BaseOffset).
         private readonly byte[] _rootPrefix;
         private readonly long _trailerLen;
 
@@ -419,28 +419,58 @@ public struct HsstEnumerator<TReader, TPin> : IDisposable
 
                 using (pin)
                 {
-                    if (!node.IsIntermediate)
+                    // Empty index node (only happens for an empty HSST) — fall through to
+                    // ascent, which will exhaust and set _depth=-2.
+                    if (node.EntryCount == 0)
                     {
                         _depth = depth;
-                        BufferLeaf(node);
+                        _leafCount = 0;
                         _leafIdx = 0;
-                        if (_leafCount == 0)
-                        {
-                            // Empty leaf shouldn't normally happen; fall through to ascent.
-                            return AscendAndDescend(in reader);
-                        }
-                        return true;
+                        return AscendAndDescend(in reader);
                     }
 
-                    // Intermediate: push frame for this level, follow leftmost child.
-                    // With phantom slot 0 restored the keys/values array carries one
-                    // entry per child (EntryCount == N); slot 0's value is the leftmost
-                    // child's relative offset (= 0 since BaseOffset names children[0]).
+                    // Peek the leftmost child's flag byte. The on-disk format no longer
+                    // distinguishes leaf from intermediate kinds; the descent decides
+                    // "buffer entries vs descend further" by inspecting children's kinds.
+                    long firstChildAbs = _scopeStart + (long)node.GetUInt64Value(0);
+                    if (!reader.TryRead(firstChildAbs, flagBuf)) return false;
+                    bool firstIsEntry = (BSearchNodeKind)(flagBuf[0] & 0x03) == BSearchNodeKind.Entry;
+                    if (firstIsEntry)
+                    {
+                        // Verify ALL children are Entry-kind before treating the node as
+                        // leaf-like. ChooseIntermediateChildCount packs descriptors
+                        // consecutively without kind awareness, so a node may have mixed
+                        // children (Entry from direct-flush + Intermediate from an inline
+                        // page-local node). BufferLeaf relies on every value slot pointing
+                        // at an entry record, so it must only fire when that holds.
+                        bool allEntry = true;
+                        int n = node.EntryCount;
+                        for (int i = 1; i < n; i++)
+                        {
+                            long childAbs = _scopeStart + (long)node.GetUInt64Value(i);
+                            if (!reader.TryRead(childAbs, flagBuf)) return false;
+                            if ((BSearchNodeKind)(flagBuf[0] & 0x03) != BSearchNodeKind.Entry)
+                            {
+                                allEntry = false;
+                                break;
+                            }
+                        }
+                        if (allEntry)
+                        {
+                            _depth = depth;
+                            BufferLeaf(node);
+                            _leafIdx = 0;
+                            return true;
+                        }
+                    }
+
+                    // Mixed or inner node: push frame for this level, follow leftmost
+                    // child (which the next iteration will recognize as Entry or recurse
+                    // into as an Intermediate).
                     ref Ancestor frame = ref _ancestors[depth];
                     frame.AbsStart = currentStart;
                     frame.LastIdx = 0;
-                    long childRelStart = (long)node.GetUInt64Value(0);
-                    currentStart = _scopeStart + childRelStart;
+                    currentStart = firstChildAbs;
                 }
                 depth++;
             }

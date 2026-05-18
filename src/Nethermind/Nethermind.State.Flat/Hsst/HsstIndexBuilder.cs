@@ -108,8 +108,8 @@ public ref struct HsstIndexBuilder<TWriter, TReader, TPin>
         _rootPrefixLen = 0;
         if (_entryPositions.Length == 0)
         {
-            // Empty index: write a single empty leaf node.
-            return WriteEmptyLeafIndexNode();
+            // Empty index: write a single empty index node.
+            return WriteEmptyIndexNode();
         }
 
         if (minIntermediateChildren > maxIntermediateEntries) minIntermediateChildren = maxIntermediateEntries;
@@ -177,8 +177,7 @@ public ref struct HsstIndexBuilder<TWriter, TReader, TPin>
 
                 long nodeStart = _writer.Written;
                 long relativeStart = nodeStart - startWritten;
-                WriteIndexNode(children, BSearchNodeKind.Intermediate,
-                    valueScratchArr, commonPrefixArr, out int intermediatePrefixLen);
+                WriteIndexNode(children, valueScratchArr, commonPrefixArr, out int intermediatePrefixLen);
                 int nodeLen = checked((int)(_writer.Written - nodeStart));
                 lastNodeLen = nodeLen;
                 lastNodePrefixLen = intermediatePrefixLen;
@@ -246,16 +245,16 @@ public ref struct HsstIndexBuilder<TWriter, TReader, TPin>
         return minLen;
     }
 
-    private int WriteEmptyLeafIndexNode()
+    private int WriteEmptyIndexNode()
     {
         long nodeStart = _writer.Written;
         scoped BSearchIndexWriter<TWriter> indexWriter = new(ref _writer, new BSearchIndexMetadata
         {
-            NodeKind = BSearchNodeKind.Leaf,
+            NodeKind = BSearchNodeKind.Intermediate,
             KeyType = 0,
             BaseOffset = 0,
             KeySlotSize = 1,
-            // Empty leaf has no values; ValueSlotSize = 2 is the smallest supported width
+            // Empty node has no values; ValueSlotSize = 2 is the smallest supported width
             // and the size that gets encoded into the Flags byte. The values section is
             // 0 bytes either way (KeyCount * ValueSize = 0 * 2 = 0).
             ValueSlotSize = 2,
@@ -265,22 +264,21 @@ public ref struct HsstIndexBuilder<TWriter, TReader, TPin>
     }
 
     /// <summary>
-    /// Unified node writer: emit a BSearchIndex node of the requested
-    /// <see cref="BSearchNodeKind"/> covering the given <paramref name="children"/>. Used
-    /// for both inline page-local leaves (each child wraps a single entry; pushed from
-    /// <see cref="HsstBTreeBuilder{TWriter,TReader,TPin}"/> trigger paths) and intermediate
-    /// nodes (each child is a previously-emitted leaf / intermediate). The per-child
-    /// separator length is <c>max(natural LCP + 1, children[i].PrefixLen)</c>: short
-    /// separators are widened so the parent's slot always carries every byte of the
-    /// child's planner-picked CommonKeyPrefix. The planner then picks this node's own
-    /// <c>CommonPrefixLen</c> from the shared per-entry LCP array
-    /// (<paramref name="commonPrefixArr"/>) capped at <c>minLen</c> over the sepLengths.
-    /// The result is returned via <paramref name="nodePrefixLen"/> so the caller can
-    /// record it on the descriptor it pushes for the next level up.
+    /// Unified node writer: emit a <see cref="BSearchNodeKind.Intermediate"/> BSearchIndex
+    /// node covering the given <paramref name="children"/>. Used for both inline page-local
+    /// nodes (each child wraps a single entry; pushed from
+    /// <see cref="HsstBTreeBuilder{TWriter,TReader,TPin}"/> trigger paths) and inner
+    /// nodes (each child is a previously-emitted node). The per-child separator length is
+    /// <c>max(natural LCP + 1, children[i].PrefixLen)</c>: short separators are widened so
+    /// the parent's slot always carries every byte of the child's planner-picked
+    /// CommonKeyPrefix. The planner then picks this node's own <c>CommonPrefixLen</c> from
+    /// the shared per-entry LCP array (<paramref name="commonPrefixArr"/>) capped at
+    /// <c>minLen</c> over the sepLengths. The result is returned via
+    /// <paramref name="nodePrefixLen"/> so the caller can record it on the descriptor it
+    /// pushes for the next level up.
     /// </summary>
     internal void WriteIndexNode(
         scoped ReadOnlySpan<HsstIndexNodeInfo> children,
-        BSearchNodeKind kind,
         scoped Span<byte> valueScratch,
         byte[] commonPrefixArr,
         out int nodePrefixLen)
@@ -333,7 +331,7 @@ public ref struct HsstIndexBuilder<TWriter, TReader, TPin>
 
         scoped BSearchIndexWriter<TWriter> indexWriter = new(ref _writer, new BSearchIndexMetadata
         {
-            NodeKind = kind,
+            NodeKind = BSearchNodeKind.Intermediate,
             KeyType = keyType,
             BaseOffset = (ulong)baseOffset,
             KeySlotSize = keySlotSize,
@@ -512,10 +510,12 @@ public ref struct HsstIndexBuilder<TWriter, TReader, TPin>
 
     // WriteInternalIndexNode and PrecomputeCommonPrefixLengths have been folded into
     // <see cref="WriteIndexNode"/> and the online LCP path in HsstBTreeBuilder.OnEntryAdded
-    // respectively. The intermediate-construction loop now calls WriteIndexNode with
-    // <c>BSearchNodeKind.Intermediate</c>, and the leaf-emission path in HsstBTreeBuilder
-    // calls it with <c>BSearchNodeKind.Leaf</c> after wrapping each pending entry in a
-    // single-entry HsstIndexNodeInfo descriptor.
+    // respectively. Every BSearchIndex node WriteIndexNode emits has
+    // <c>NodeKind=Intermediate</c>; the leaf-emission path in HsstBTreeBuilder reuses it
+    // by wrapping each pending entry in a single-entry HsstIndexNodeInfo descriptor — the
+    // resulting node is byte-identical to what a separate "Leaf" kind would have produced
+    // and the reader recognizes its leaf-level role by peeking the leftmost child's flag
+    // byte.
 
     /// <summary>
     /// Read the full key for entry index <paramref name="idx"/> into <paramref name="dest"/>.

@@ -41,7 +41,6 @@ public class BSearchIndexTests
 
         BSearchIndexReader index = ReadHsstRoot(data);
         Assert.That(index.EntryCount, Is.EqualTo(0));
-        Assert.That(index.IsIntermediate, Is.False);
         Assert.That(index.Metadata.KeyCount, Is.EqualTo(0));
     }
 
@@ -60,7 +59,6 @@ public class BSearchIndexTests
 
         BSearchIndexReader rootIndex = ReadHsstRoot(data);
         Assert.That(rootIndex.EntryCount, Is.EqualTo(10));
-        Assert.That(rootIndex.IsIntermediate, Is.False);
     }
 
     [Test]
@@ -70,7 +68,6 @@ public class BSearchIndexTests
 
         BSearchIndexReader index = ReadHsstRoot(data);
         Assert.That(index.EntryCount, Is.EqualTo(0));
-        Assert.That(index.IsIntermediate, Is.False);
         Assert.That(index.TryGetFloor("abc"u8, out _, out _), Is.False);
     }
 
@@ -84,7 +81,6 @@ public class BSearchIndexTests
 
         BSearchIndexReader rootIndex = ReadHsstRoot(data);
         Assert.That(rootIndex.EntryCount, Is.EqualTo(1));
-        Assert.That(rootIndex.IsIntermediate, Is.False);
     }
 
     // ===== HEX FIXTURE TESTS: UNIFORM KEYS =====
@@ -95,7 +91,7 @@ public class BSearchIndexTests
         // Header sits at the front; keys section then values section follow.
         //
         // Expected binary layout (header fields are fixed-width LE; no LEB128):
-        //   "25"           - Flags: NodeKind=Leaf(01)|KeyType=Uniform(01<<2=04)|ValueSizeCode=10→4 bytes (10<<4=0x20)
+        //   "25"           - Flags: NodeKind=Intermediate(01)|KeyType=Uniform(01<<2=04)|ValueSizeCode=10→4 bytes (10<<4=0x20)
         //   "0100"         - KeyCount: 1 (u16 LE)
         //   "0100"         - KeySize: 1 (u16 LE — fixed key length)
         //   "00"           - CommonPrefixLen: 0 (mandatory u8; 0 = no prefix)
@@ -111,7 +107,7 @@ public class BSearchIndexTests
         // BaseOffset = 0 here (writer didn't strip it; test exercises the BSearchIndexWriter
         // with an explicit ValueSlotSize=4, so values stay 4-byte int32 LE).
         //
-        //   "25"           - Flags (NodeKind=Leaf|KeyType=Uniform|ValueSizeCode=10→4 bytes)
+        //   "25"           - Flags (NodeKind=Intermediate|KeyType=Uniform|ValueSizeCode=10→4 bytes)
         //   "0300"         - KeyCount: 3
         //   "0100"         - KeySize: 1
         //   "00"           - CommonPrefixLen: 0
@@ -167,7 +163,7 @@ public class BSearchIndexTests
         // Three entries with values=[100,200,300]. Caller pre-subtracts baseOffset=100.
         // BaseOffset is mandatory (6 bytes LE).
         //
-        //   "25"           - Flags: NodeKind=Leaf|KeyType=Uniform|ValueSizeCode=10→4 bytes
+        //   "25"           - Flags: NodeKind=Intermediate|KeyType=Uniform|ValueSizeCode=10→4 bytes
         //   "0300"         - KeyCount: 3
         //   "0100"         - KeySize: 1
         //   "00"           - CommonPrefixLen: 0
@@ -210,7 +206,7 @@ public class BSearchIndexTests
         // Empty first entry forces Variable key format. Variable always sets the LE key flag
         // (bit 6) since prefixArr is uniformly 2 bytes/slot. No BaseOffset.
         //
-        //   "61"       - Flags: NodeKind=Leaf(01)|KeyType=Variable(00<<2)|ValueSizeCode=10→4 bytes (10<<4=0x20)|LEKey(1<<6=0x40)
+        //   "61"       - Flags: NodeKind=Intermediate(01)|KeyType=Variable(00<<2)|ValueSizeCode=10→4 bytes (10<<4=0x20)|LEKey(1<<6=0x40)
         //   "0200"     - KeyCount: 2
         //   "0900"     - KeySize: 9 (2*2 prefixArr + 2*2 offsetArr + 1 remainingkeys)
         //   "00"       - CommonPrefixLen: 0
@@ -230,7 +226,7 @@ public class BSearchIndexTests
         // Three entries with varying separator lengths: 1, 2, 3 bytes.
         // No BaseOffset.
         //
-        //   "61"         - Flags: NodeKind=Leaf|KeyType=Variable|ValueSizeCode=10→4 bytes|LEKey
+        //   "61"         - Flags: NodeKind=Intermediate|KeyType=Variable|ValueSizeCode=10→4 bytes|LEKey
         //   "0300"       - KeyCount: 3
         //   "0D00"       - KeySize: 13 (3*2 prefixArr + 3*2 offsetArr + 1 remainingkeys)
         //   "00"         - CommonPrefixLen: 0
@@ -399,14 +395,14 @@ public class BSearchIndexTests
     // ===== MULTI-LEVEL TREE TESTS =====
 
     [Test]
-    public void MultiLevel_Tree_RootIsIntermediate()
+    public void MultiLevel_Tree_RootHasNodeChildren()
     {
-        // Page-local leaves split when the next entry + estimated leaf would push
-        // past a 4 KiB page boundary. With 4-byte keys + 1-byte values (~7 bytes
-        // per entry), ~230 entries fit in one page; bump well past that to force
-        // multiple page-local leaves and an intermediate root. The maxLeafEntries
-        // option is honored by the planner's per-node cap but no longer drives the
-        // leaf splitter (that's been replaced by inline emission).
+        // Page-local nodes split when the next entry + estimated node body would
+        // push past a 4 KiB page boundary. With 4-byte keys + 1-byte values
+        // (~7 bytes per entry), ~230 entries fit in one page; bump well past that
+        // to force multiple page-local nodes and a multi-level tree. The root's
+        // first child is then itself a BSearchIndex node (Intermediate kind),
+        // not an Entry — that's the format-level signal of multi-level structure.
         const int count = 500;
         byte[] data = HsstTestUtil.BuildToArray((ref HsstBTreeBuilder<PooledByteBufferWriter.Writer, PooledByteBufferWriter.WriterReader, NoOpPin> builder) =>
         {
@@ -420,7 +416,13 @@ public class BSearchIndexTests
         });
 
         BSearchIndexReader rootIndex = ReadHsstRoot(data);
-        Assert.That(rootIndex.IsIntermediate, Is.True);
+        // The root's leftmost child's flag byte should mark it as Intermediate
+        // (a node), not Entry — proving the tree has multiple levels rather
+        // than being a single leaf-level node with K entry children.
+        ulong firstChildOffset = rootIndex.GetUInt64Value(0);
+        byte firstChildFlag = data[firstChildOffset];
+        BSearchNodeKind firstChildKind = (BSearchNodeKind)(firstChildFlag & 0x03);
+        Assert.That(firstChildKind, Is.EqualTo(BSearchNodeKind.Intermediate));
     }
 
     [Test]

@@ -30,11 +30,11 @@ internal static class HsstBTreeReader
     /// <remarks>
     /// The dispatch loop reads the 1-byte flag at the current cursor and switches on its
     /// <see cref="BSearchNodeKind"/>: <see cref="BSearchNodeKind.Entry"/> jumps directly to
-    /// entry decode; <see cref="BSearchNodeKind.Leaf"/> and
-    /// <see cref="BSearchNodeKind.Intermediate"/> load the node header, do a floor lookup,
-    /// and advance the cursor to the matched child's flag byte. Variable depth is natural —
-    /// the loop terminates the moment it lands on an Entry-kind flag, which can happen at
-    /// any depth (a "direct-entry" child of an intermediate, a child of a leaf, etc.).
+    /// entry decode; <see cref="BSearchNodeKind.Intermediate"/> loads the node header, does
+    /// a floor lookup, and advances the cursor to the matched child's flag byte. Variable
+    /// depth is natural — the loop terminates the moment it lands on an Entry-kind flag,
+    /// which can happen at any depth (a "direct-entry" child of an intermediate, a child of
+    /// a leaf-level intermediate, etc.).
     /// </remarks>
     public static bool TrySeek<TReader, TPin>(
         scoped in TReader reader, Bound bound, scoped ReadOnlySpan<byte> key,
@@ -234,8 +234,8 @@ internal static class HsstBTreeReader
             // CommonPrefixLen at win[5]; BaseOffset at win[6..12] (not needed for sizing).
             // ValueSize is decoded from the 2-bit ValueSizeCode field in Flags bits 4-5
             // ({2, 3, 4, 6}). KeyType lives in bits 2-3; bits 0-1 carry NodeKind (always
-            // Leaf or Intermediate for nodes parsed here — Entry-kind flag bytes are
-            // recognized by the caller before TryLoadNode is invoked).
+            // Intermediate for nodes parsed here — Entry-kind flag bytes are recognized by
+            // the caller before TryLoadNode is invoked).
             int valueSize = ((flags >> 4) & 0b11) switch { 0 => 2, 1 => 3, 2 => 4, _ => 6 };
             int headerSize = 12;
             int keyType = (flags >> 2) & 0x03;
