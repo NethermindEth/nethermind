@@ -10,5 +10,5 @@ public class SpecDrivenTxGossipPolicy(IChainHeadInfoProvider chainHeadInfoProvid
     private IChainHeadInfoProvider ChainHeadInfoProvider { get; } = chainHeadInfoProvider;
 
     public bool ShouldGossipTransaction(Transaction tx) =>
-        !tx.SupportsBlobs || (tx.NetworkWrapper as ShardBlobNetworkWrapper)?.Version == ChainHeadInfoProvider.CurrentProofVersion;
+        !tx.SupportsBlobs || tx.GetProofVersion() == ChainHeadInfoProvider.CurrentProofVersion;
 }

@@ -7,7 +7,9 @@ namespace Nethermind.Core;
 
 public static class Eip7825Constants
 {
-    public static readonly long DefaultTxGasLimitCap = 30_000_000;
-    public static long GetTxGasLimitCap(IReleaseSpec spec)
-        => spec.IsEip7825Enabled ? DefaultTxGasLimitCap : long.MaxValue;
+    public static readonly long DefaultTxGasLimitCap = 16_777_216;
+    public static long GetTxGasLimitCap(this IReleaseSpec spec)
+        => spec.IsEip7825Enabled && !spec.IsEip8037Enabled
+            ? DefaultTxGasLimitCap
+            : long.MaxValue;
 }

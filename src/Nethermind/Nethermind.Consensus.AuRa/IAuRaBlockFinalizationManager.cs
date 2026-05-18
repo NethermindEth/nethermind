@@ -24,6 +24,6 @@ namespace Nethermind.Consensus.AuRa
         /// <returns>Level at which finalization happened. Null if checked level is not yet finalized.</returns>
         long? GetFinalizationLevel(long level);
 
-        public void SetMainBlockProcessor(IBlockProcessor blockProcessor);
+        public void SetMainBlockBranchProcessor(IBranchProcessor branchProcessor);
     }
 }

@@ -22,7 +22,7 @@ public class NodeRecord
 
     private Hash256? _contentHash;
 
-    private SortedDictionary<string, EnrContentEntry> Entries { get; } = new();
+    private SortedDictionary<string, EnrContentEntry> Entries { get; } = new(System.StringComparer.Ordinal);
 
     /// <summary>
     /// This field is used when this <see cref="NodeRecord"/> is deserialized and an unknown entry is encountered.
@@ -88,10 +88,7 @@ public class NodeRecord
 
     public bool Snap { get; set; }
 
-    public NodeRecord()
-    {
-        SetEntry(IdEntry.Instance);
-    }
+    public NodeRecord() => SetEntry(IdEntry.Instance);
 
     /// <summary>
     /// Sets one of the record entries. Entries are then automatically sorted by keys.
@@ -161,20 +158,14 @@ public class NodeRecord
     /// Needed for optimized RLP serialization.
     /// </summary>
     /// <returns>Length of the Rlp([signature, seq, k, v, ...]) when calculated without the RLP sequence prefix.</returns>
-    private int GetContentLengthWithSignature()
-    {
-        return GetContentLengthWithoutSignature() + 64 + 2;
-    }
+    private int GetContentLengthWithSignature() => GetContentLengthWithoutSignature() + 64 + 2;
 
     /// <summary>
     /// Needed for optimized RLP serialization when a proper length byte array has to be allocated upfront.
     /// </summary>
     /// <returns>Length of the Rlp([signature, seq, k, v, ...])</returns>
-    public int GetRlpLengthWithSignature()
-    {
-        return Rlp.LengthOfSequence(
+    public int GetRlpLengthWithSignature() => Rlp.LengthOfSequence(
             GetContentLengthWithSignature());
-    }
 
     /// <summary>
     /// Applies Rlp([seq, k, v, ...]]).
@@ -185,7 +176,7 @@ public class NodeRecord
         int contentLength = GetContentLengthWithoutSignature();
         rlpStream.StartSequence(contentLength);
         rlpStream.Encode(EnrSequence);
-        foreach ((_, EnrContentEntry contentEntry) in Entries.OrderBy(static e => e.Key))
+        foreach ((_, EnrContentEntry contentEntry) in Entries)
         {
             contentEntry.Encode(rlpStream);
         }
@@ -216,7 +207,7 @@ public class NodeRecord
         rlpStream.StartSequence(contentLength);
         rlpStream.Encode(Signature!.Bytes);
         rlpStream.Encode(EnrSequence); // a different sequence here (not RLP sequence)
-        foreach ((_, EnrContentEntry contentEntry) in Entries.OrderBy(static e => e.Key))
+        foreach ((_, EnrContentEntry contentEntry) in Entries)
         {
             contentEntry.Encode(rlpStream);
         }
@@ -228,7 +219,7 @@ public class NodeRecord
 
         const string prefix = "enr:";
         int rlpLength = GetRlpLengthWithSignature();
-        IByteBuffer buffer = PooledByteBufferAllocator.Default.Buffer(rlpLength);
+        IByteBuffer buffer = NethermindBuffers.Default.Buffer(rlpLength);
         try
         {
             NettyRlpStream rlpStream = new(buffer);

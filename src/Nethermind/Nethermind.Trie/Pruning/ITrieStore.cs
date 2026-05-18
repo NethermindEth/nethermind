@@ -15,6 +15,15 @@ namespace Nethermind.Trie.Pruning
     {
         bool HasRoot(Hash256 stateRoot);
 
+        /// <summary>
+        /// Checks if the state root exists and the state for the given block number is still available
+        /// (i.e., not partially pruned). Implementations that perform pruning should reject blocks
+        /// whose state may have been partially pruned.
+        /// </summary>
+        bool HasRoot(Hash256 stateRoot, long blockNumber) => HasRoot(stateRoot);
+
+        IDisposable BeginScope(BlockHeader? baseBlock);
+
         IScopedTrieStore GetTrieStore(Hash256? address);
 
         /// <summary>
@@ -32,7 +41,6 @@ namespace Nethermind.Trie.Pruning
         TrieNode FindCachedOrUnknown(Hash256? address, in TreePath path, Hash256 hash);
         byte[]? LoadRlp(Hash256? address, in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None);
         byte[]? TryLoadRlp(Hash256? address, in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None);
-        bool IsPersisted(Hash256? address, in TreePath path, in ValueHash256 keccak);
         INodeStorage.KeyScheme Scheme { get; }
     }
 
@@ -40,12 +48,16 @@ namespace Nethermind.Trie.Pruning
     {
         public void PersistCache(CancellationToken cancellationToken);
 
-        IReadOnlyTrieStore AsReadOnly(INodeStorage? keyValueStore = null);
+        IReadOnlyTrieStore AsReadOnly();
 
         event EventHandler<ReorgBoundaryReached>? ReorgBoundaryReached;
 
         // Used for serving via hash
         IReadOnlyKeyValueStore TrieNodeRlpStore { get; }
+
+        // Acquire lock, then persist and flush cache.
+        // Used for full pruning operation that change underlying node storage.
+        TrieStore.StableLockScope PrepareStableState(CancellationToken cancellationToken);
     }
 
     /// <summary>

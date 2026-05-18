@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using Nethermind.Consensus.Processing.CensorshipDetector;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
@@ -20,11 +19,14 @@ public abstract class GetPayloadHandlerBase<TGetPayloadResult>(
     IPayloadPreparationService payloadPreparationService,
     ISpecProvider specProvider,
     ILogManager logManager,
-    CensorshipDetector? censorshipDetector = null)
+    ICensorshipDetector? censorshipDetector = null)
     : IAsyncHandler<byte[], TGetPayloadResult?>
     where TGetPayloadResult : IForkValidator
 {
-    private readonly ILogger _logger = logManager.GetClassLogger();
+    private readonly ILogger _logger = logManager.GetClassLogger(typeof(GetPayloadHandlerBase<>));
+
+    /// <summary>The spec provider passed to this handler.</summary>
+    protected ISpecProvider SpecProvider => specProvider;
 
     public async Task<ResultWrapper<TGetPayloadResult?>> HandleAsync(byte[] payloadId)
     {
@@ -44,7 +46,7 @@ public abstract class GetPayloadHandlerBase<TGetPayloadResult>(
         if (!getPayloadResult.ValidateFork(specProvider))
         {
             if (_logger.IsWarn) _logger.Warn($"The payload is not supported by the current fork");
-            return ResultWrapper<TGetPayloadResult?>.Fail("unsupported fork", MergeErrorCodes.UnsupportedFork);
+            return ResultWrapper<TGetPayloadResult?>.Fail(MergeErrorMessages.UnsupportedFork, MergeErrorCodes.UnsupportedFork);
         }
 
         if (_logger.IsInfo) _logger.Info($"GetPayloadV{apiVersion} result: {block.Header.ToString(BlockHeader.Format.Short)}.");

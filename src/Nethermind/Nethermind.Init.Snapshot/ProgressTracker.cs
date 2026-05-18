@@ -21,7 +21,7 @@ public class ProgressTracker : IDisposable
         _total = total;
         _current = current;
 
-        _logger = logManager.GetClassLogger();
+        _logger = logManager.GetClassLogger<ProgressTracker>();
 
         _timer = timerFactory.CreateTimer(interval);
         _timer.Elapsed += ReportProgress;
@@ -30,7 +30,7 @@ public class ProgressTracker : IDisposable
 
     public void AddProgress(long count)
     {
-        _current += count;
+        Interlocked.Add(ref _current, count);
         _timer.Enabled = true;
     }
 
@@ -39,27 +39,28 @@ public class ProgressTracker : IDisposable
         if (byteCount < 0)
             throw new ArgumentOutOfRangeException(nameof(byteCount), "Cannot be negative");
 
-        if (byteCount < 1.KB())
+        if (byteCount < 1.KB)
             return $"{byteCount:0.##}B";
-        if (byteCount < 1.MB())
-            return $"{(float)byteCount / 1.KB():0.##}KB";
-        if (byteCount < 1.GB())
-            return $"{(float)byteCount / 1.MB():0.##}MB";
+        if (byteCount < 1.MB)
+            return $"{(float)byteCount / 1.KB:0.##}KB";
+        if (byteCount < 1.GB)
+            return $"{(float)byteCount / 1.MB:0.##}MB";
 
-        return $"{(float)byteCount / 1.GB():0.##}GB";
+        return $"{(float)byteCount / 1.GB:0.##}GB";
     }
 
     private void ReportProgress(object? sender, EventArgs e)
     {
         if (_logger.IsInfo)
         {
+            long current = Interlocked.Read(ref _current);
             _logger.Info(_total is null
-                ? $"Snapshot download progress {HumanReadableSize(_current)}"
-                : $"Snapshot download progress {HumanReadableSize(_current)} out of {HumanReadableSize(_total.Value)}");
+                ? $"Snapshot download progress {HumanReadableSize(current)}"
+                : $"Snapshot download progress {HumanReadableSize(current)} out of {HumanReadableSize(_total.Value)}");
         }
 
         _timer.Enabled = true;
     }
 
-    void IDisposable.Dispose() => _timer.Dispose();
+    public void Dispose() => _timer.Dispose();
 }

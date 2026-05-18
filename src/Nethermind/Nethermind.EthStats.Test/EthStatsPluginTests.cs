@@ -23,9 +23,6 @@ public class EthStatsPluginTests
         _plugin = new EthStatsPlugin(new EthStatsConfig() { Enabled = true });
     }
 
-    [TearDown]
-    public void TearDown() => _plugin.DisposeAsync();
-
     [TestCase(true)]
     [TestCase(false)]
     public void Init_eth_stats_plugin_does_not_throw_exception(bool enabled)
@@ -34,6 +31,5 @@ public class EthStatsPluginTests
         Assert.DoesNotThrowAsync(async () => await _plugin.Init(_context));
         Assert.DoesNotThrowAsync(async () => await _plugin.InitNetworkProtocol());
         Assert.DoesNotThrowAsync(async () => await _plugin.InitRpcModules());
-        Assert.DoesNotThrowAsync(async () => await _plugin.DisposeAsync());
     }
 }

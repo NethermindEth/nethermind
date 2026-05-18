@@ -18,9 +18,7 @@ namespace Nethermind.Network.Discovery.Discv4;
 /// <param name="bootNodes"></param>
 public class DiscV4KademliaModule(PublicKey masterNode, IReadOnlyList<Node> bootNodes) : Module
 {
-    protected override void Load(ContainerBuilder builder)
-    {
-        builder
+    protected override void Load(ContainerBuilder builder) => builder
             .AddSingleton<DiscoveryPersistenceManager>()
 
             // This two class contains the actual `INodeSource` logic. As in finding nodes within the network.
@@ -48,5 +46,4 @@ public class DiscV4KademliaModule(PublicKey masterNode, IReadOnlyList<Node> boot
                 BootNodes = bootNodes
             })
             ;
-    }
 }

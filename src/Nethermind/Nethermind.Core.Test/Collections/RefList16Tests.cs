@@ -15,7 +15,7 @@ public class RefList16Tests
     [Test]
     public void CanAddItem()
     {
-        RefList16<Hash256> pool = new RefList16<Hash256>();
+        RefList16<Hash256> pool = new();
 
         pool.Count.Should().Be(0);
 
@@ -37,7 +37,7 @@ public class RefList16Tests
     [Test]
     public void WillThrowExceptionWhenTryingToAddMoreThan16Item()
     {
-        RefList16<Hash256> pool = new RefList16<Hash256>();
+        RefList16<Hash256> pool = new();
 
         for (int i = 0; i < 16; i++)
         {

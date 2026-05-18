@@ -7,6 +7,8 @@ using System.IO;
 using System.IO.Abstractions;
 using System.Linq;
 using System.Reflection;
+using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using System.Runtime.Loader;
 using System.Threading.Tasks;
 using Autofac;
@@ -55,8 +57,7 @@ public class PluginLoader(string pluginPath, IFileSystem fileSystem, ILogger log
             try
             {
                 if (logger.IsInfo) logger.Info($"Loading assembly {pluginAssembly}");
-                string assemblyPath = _fileSystem.Path.Combine(pluginAssembliesDir, assemblyName);
-                Assembly assembly = AssemblyLoadContext.Default.LoadFromAssemblyPath(assemblyPath);
+                Assembly assembly = AssemblyLoadContext.Default.LoadFromAssemblyPath(assemblyName);
                 AssemblyLoadContext.Default.Resolving += (_, name) =>
                 {
                     string fileName = name.Name + ".dll";
@@ -91,42 +92,34 @@ public class PluginLoader(string pluginPath, IFileSystem fileSystem, ILogger log
 
     public void OrderPlugins(IPluginConfig pluginConfig)
     {
-        List<string> order = pluginConfig.PluginOrder.Select(s => s.ToLower() + "plugin").ToList();
-        _pluginTypes.Sort((f, s) =>
+        Dictionary<string, int> pluginPriorities = pluginConfig.PluginOrder
+            .Select((name, index) => (name: name + "plugin", index))
+            .ToDictionary(x => x.name, x => x.index, StringComparer.OrdinalIgnoreCase);
+
+        CollectionsMarshal.AsSpan(_pluginTypes).Sort(new PluginPriorityComparer(pluginPriorities));
+    }
+
+    private readonly struct PluginPriorityComparer(Dictionary<string, int> priorities) : IComparer<Type>
+    {
+        private readonly Dictionary<string, int> _priorities = priorities;
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public int Compare(Type? firstPlugin, Type? secondPlugin)
         {
-            bool fIsConsensus = typeof(IConsensusPlugin).IsAssignableFrom(f);
-            bool sIsConsensus = typeof(IConsensusPlugin).IsAssignableFrom(s);
+            // The IComparer<Type> signature requires nullable parameters but the only caller
+            // is the sort over _pluginTypes, which is populated exclusively from non-null Type
+            // instances. The `!` dereference is safe at this call site.
+            bool firstHasPriority = _priorities.TryGetValue(firstPlugin!.Name, out int firstPriorityIndex);
+            bool secondHasPriority = _priorities.TryGetValue(secondPlugin!.Name, out int secondPriorityIndex);
 
-            // Consensus plugins always at front
-            if (fIsConsensus && !sIsConsensus)
+            return (firstHasPriority, secondHasPriority) switch
             {
-                return -1;
-            }
-
-            if (sIsConsensus && !fIsConsensus)
-            {
-                return 1;
-            }
-
-            int fPos = order.IndexOf(f.Name.ToLower());
-            int sPos = order.IndexOf(s.Name.ToLower());
-            if (fPos == -1)
-            {
-                if (sPos == -1)
-                {
-                    return f.Name.CompareTo(s.Name);
-                }
-
-                return 1;
-            }
-
-            if (sPos == -1)
-            {
-                return -1;
-            }
-
-            return fPos.CompareTo(sPos);
-        });
+                (true, true) => firstPriorityIndex.CompareTo(secondPriorityIndex),
+                (true, false) => -1,
+                (false, true) => 1,
+                (false, false) => string.Compare(firstPlugin.Name, secondPlugin.Name, StringComparison.OrdinalIgnoreCase)
+            };
+        }
     }
 
     public async Task<IList<INethermindPlugin>> LoadPlugins(IConfigProvider configProvider, ChainSpec chainSpec)
@@ -136,7 +129,7 @@ public class PluginLoader(string pluginPath, IFileSystem fileSystem, ILogger log
             .AddSingleton(chainSpec)
             .AddSource(new ConfigRegistrationSource());
 
-        foreach (var pluginType in PluginTypes)
+        foreach (Type pluginType in PluginTypes)
         {
             builder
                 .RegisterType(pluginType)
@@ -161,10 +154,6 @@ public class PluginLoader(string pluginPath, IFileSystem fileSystem, ILogger log
                 if (plugin.Enabled)
                 {
                     plugins.Add(plugin);
-                }
-                else
-                {
-                    await plugin.DisposeAsync();
                 }
             }
             catch (Exception ex)

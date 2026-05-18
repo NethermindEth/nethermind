@@ -8,7 +8,7 @@ namespace Nethermind.Network.Discovery.Discv4;
 
 public class NeighbourMsgHandler(int k) : ITaskCompleter<Node[]>
 {
-    private Node[] _current = Array.Empty<Node>();
+    private Node[] _current = [];
     public TaskCompletionSource<Node[]> TaskCompletionSource { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
     // The peer should send the two packet pretty much immediately. In any case, if the second packet is loss, its not a huge deal.
@@ -23,7 +23,7 @@ public class NeighbourMsgHandler(int k) : ITaskCompleter<Node[]>
         {
             Node[] current = _current;
             if (current.Length >= k || current.Length + neighborsMsg.Nodes.Count > k) return false;
-            if (Interlocked.CompareExchange(ref _current, _current.Concat(neighborsMsg.Nodes).ToArray(), current) == current) break;
+            if (Interlocked.CompareExchange(ref _current, [.. _current, .. neighborsMsg.Nodes], current) == current) break;
         }
 
         if (_current.Length == k)

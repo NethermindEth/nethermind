@@ -18,7 +18,7 @@ public class ManualPruningTrigger : IPruningTrigger
     /// <returns>Status of triggering full pruning.</returns>
     public PruningStatus Trigger()
     {
-        PruningTriggerEventArgs args = new PruningTriggerEventArgs();
+        PruningTriggerEventArgs args = new();
         Prune?.Invoke(this, args);
         return args.Status;
     }

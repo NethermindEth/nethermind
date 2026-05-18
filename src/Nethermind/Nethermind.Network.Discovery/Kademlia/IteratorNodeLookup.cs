@@ -5,6 +5,7 @@ using System.Runtime.CompilerServices;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Utils;
 using Nethermind.Logging;
 using Nethermind.Network.Discovery.Kademlia;
 using NonBlocking;
@@ -39,17 +40,14 @@ public class IteratorNodeLookup<TKey, TNode>(
     private const int MaxNonProgressingRound = 3;
     private const int MinResult = 128;
 
-    private bool SameAsSelf(TNode node)
-    {
-        return keyOperator.GetNodeHash(node) == _currentNodeIdAsHash;
-    }
+    private bool SameAsSelf(TNode node) => keyOperator.GetNodeHash(node) == _currentNodeIdAsHash;
 
     public async IAsyncEnumerable<TNode> Lookup(TKey target, [EnumeratorCancellation] CancellationToken token)
     {
         ValueHash256 targetHash = keyOperator.GetKeyHash(target);
         if (_logger.IsDebug) _logger.Debug($"Initiate lookup for hash {targetHash}");
 
-        using var cts = token.CreateChildTokenSource();
+        using AutoCancelTokenSource cts = token.CreateChildTokenSource();
         token = cts.Token;
 
         ConcurrentDictionary<ValueHash256, TNode> queried = new();
@@ -182,7 +180,7 @@ public class IteratorNodeLookup<TKey, TNode>(
     {
         try
         {
-            if (_unreacheableNodes.TryGet(keyOperator.GetNodeHash(node), out var lastAttempt) &&
+            if (_unreacheableNodes.TryGet(keyOperator.GetNodeHash(node), out DateTimeOffset lastAttempt) &&
                 lastAttempt + TimeSpan.FromMinutes(5) > DateTimeOffset.Now)
             {
                 return [];

@@ -37,10 +37,7 @@ public class PingMsg : DiscoveryMsg
         DestinationAddress = farAddress;
     }
 
-    public override string ToString()
-    {
-        return base.ToString() + $", SourceAddress: {SourceAddress}, DestinationAddress: {DestinationAddress}, Version: {Version}, Mdc: {Mdc?.ToHexString()}";
-    }
+    public override string ToString() => base.ToString() + $", SourceAddress: {SourceAddress}, DestinationAddress: {DestinationAddress}, Version: {Version}, Mdc: {Mdc?.ToHexString()}";
 
     public override MsgType MsgType => MsgType.Ping;
 }

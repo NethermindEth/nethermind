@@ -4,7 +4,7 @@
 using System.Collections.Generic;
 using System.Text.Json;
 
-using Nethermind.Evm.Tracing.ParityStyle;
+using Nethermind.Blockchain.Tracing.ParityStyle;
 using Nethermind.Int256;
 using Nethermind.Serialization.Json;
 

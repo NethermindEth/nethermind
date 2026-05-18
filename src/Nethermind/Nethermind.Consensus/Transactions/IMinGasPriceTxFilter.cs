@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
+using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using Nethermind.TxPool;
 
@@ -14,6 +15,6 @@ namespace Nethermind.Consensus.Transactions
          * The additional method allows us to specify a custom min gas price floor.
          */
 
-        AcceptTxResult IsAllowed(Transaction tx, BlockHeader parentHeader, in UInt256 minGasPriceFloor);
+        AcceptTxResult IsAllowed(Transaction tx, BlockHeader parentHeader, in UInt256 minGasPriceFloor, IReleaseSpec currentSpec);
     }
 }

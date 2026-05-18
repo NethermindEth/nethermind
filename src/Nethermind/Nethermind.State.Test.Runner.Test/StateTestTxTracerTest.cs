@@ -24,7 +24,7 @@ public class StateTestTxTracerTest : VirtualMachineTestsBase
     public void Does_not_throw_on_call()
     {
         byte[] code = Prepare.EvmCode
-            .CallWithValue(TestItem.AddressC, 50000, 1000000.Ether())
+            .CallWithValue(TestItem.AddressC, 50000, 1000000.Ether)
             .Done;
 
         Assert.DoesNotThrow(() => Execute(tracer, code));

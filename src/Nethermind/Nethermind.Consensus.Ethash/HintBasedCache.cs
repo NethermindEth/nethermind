@@ -13,37 +13,25 @@ using Nethermind.Logging;
 
 namespace Nethermind.Consensus.Ethash
 {
-    internal class HintBasedCache
+    internal class HintBasedCache(Func<uint, IEthashDataSet> createDataSet, ILogManager logManager)
     {
         private readonly Dictionary<Guid, HashSet<uint>> _epochsPerGuid = new();
         private readonly Dictionary<uint, int> _epochRefs = new();
         private readonly Dictionary<uint, Task<IEthashDataSet>> _cachedSets = new();
         private readonly Dictionary<uint, DataSetWithTime> _recent = new();
 
-        private struct DataSetWithTime
+        private struct DataSetWithTime(DateTimeOffset timestamp, Task<IEthashDataSet> dataSet)
         {
-            public DataSetWithTime(DateTimeOffset timestamp, Task<IEthashDataSet> dataSet)
-            {
-                Timestamp = timestamp;
-                DataSet = dataSet;
-            }
-
-            public DateTimeOffset Timestamp { get; set; }
-            public Task<IEthashDataSet> DataSet { get; set; }
+            public DateTimeOffset Timestamp { get; set; } = timestamp;
+            public Task<IEthashDataSet> DataSet { get; set; } = dataSet;
         }
 
         private int _cachedEpochsCount;
 
         public int CachedEpochsCount => _cachedEpochsCount;
 
-        private readonly Func<uint, IEthashDataSet> _createDataSet;
-        private readonly ILogger _logger;
-
-        public HintBasedCache(Func<uint, IEthashDataSet> createDataSet, ILogManager logManager)
-        {
-            _createDataSet = createDataSet;
-            _logger = logManager?.GetClassLogger<HintBasedCache>() ?? throw new ArgumentNullException(nameof(logManager));
-        }
+        private readonly Func<uint, IEthashDataSet> _createDataSet = createDataSet;
+        private readonly ILogger _logger = logManager?.GetClassLogger<HintBasedCache>() ?? throw new ArgumentNullException(nameof(logManager));
 
         [MethodImpl(MethodImplOptions.Synchronized)]
         public void Hint(Guid guid, long start, long end)
@@ -80,7 +68,7 @@ namespace Nethermind.Consensus.Ethash
                 if (alreadyCachedEpoch < startEpoch || alreadyCachedEpoch > endEpoch)
                 {
                     epochForGuid.Remove(alreadyCachedEpoch);
-                    if (!_epochRefs.TryGetValue(alreadyCachedEpoch, out var epochValue))
+                    if (!_epochRefs.TryGetValue(alreadyCachedEpoch, out int epochValue))
                     {
                         throw new InvalidAsynchronousStateException("Epoch ref missing");
                     }
@@ -103,7 +91,7 @@ namespace Nethermind.Consensus.Ethash
                     uint epoch = (uint)i;
                     if (epochForGuid.Add(epoch))
                     {
-                        if (!_epochRefs.TryGetValue(epoch, out var epochValue))
+                        if (!_epochRefs.TryGetValue(epoch, out int epochValue))
                         {
                             epochValue = 0;
                             _epochRefs[epoch] = epochValue;

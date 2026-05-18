@@ -1,11 +1,12 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+using FluentAssertions;
 using Nethermind.Consensus.Processing;
-using Nethermind.Core.Test.Builders;
+using Nethermind.Core;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Evm.State;
-using Nethermind.State;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -14,16 +15,17 @@ namespace Nethermind.Consensus.Test;
 public class ReadOnlyTxProcessingScopeTests
 {
     [Test]
-    public void Test_WhenDispose_ThenStateRootWillRevert()
+    public void Test_WhenDispose_ThenStateRootWillReset()
     {
-        ReadOnlyTxProcessingScope env = new ReadOnlyTxProcessingScope(
+        bool closed = false;
+        IDisposable closer = new Reactive.AnonymousDisposable(() => closed = true);
+        ReadOnlyTxProcessingScope env = new(
             Substitute.For<ITransactionProcessor>(),
-            Substitute.For<IVisitingWorldState>(),
-            TestItem.KeccakB
-        );
+            closer,
+            Substitute.For<IWorldState>());
 
         env.Dispose();
 
-        env.WorldState.Received().StateRoot = TestItem.KeccakB;
+        closed.Should().BeTrue();
     }
 }

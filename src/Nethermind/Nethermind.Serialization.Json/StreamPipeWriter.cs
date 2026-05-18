@@ -76,7 +76,7 @@ public sealed class CountingStreamPipeWriter : CountingWriter
 
     private CancellationTokenSource? _internalTokenSource;
     private bool _isCompleted;
-    private readonly Lock _lockObject = new Lock();
+    private readonly Lock _lockObject = new();
 
     private BufferSegmentStack _bufferSegmentPool;
     private readonly bool _leaveOpen;
@@ -227,7 +227,7 @@ public sealed class CountingStreamPipeWriter : CountingWriter
         // First we need to handle case where hint is smaller than minimum segment size
         sizeHint = Math.Max(_minimumBufferSize, sizeHint);
         // After that adjust it to fit into pools max buffer size
-        var adjustedToMaximumSize = Math.Min(maxBufferSize, sizeHint);
+        int adjustedToMaximumSize = Math.Min(maxBufferSize, sizeHint);
         return adjustedToMaximumSize;
     }
 
@@ -252,10 +252,7 @@ public sealed class CountingStreamPipeWriter : CountingWriter
     }
 
     /// <inheritdoc />
-    public override void CancelPendingFlush()
-    {
-        Cancel();
-    }
+    public override void CancelPendingFlush() => Cancel();
 
     /// <inheritdoc />
     public override bool CanGetUnflushedBytes => true;
@@ -327,15 +324,9 @@ public sealed class CountingStreamPipeWriter : CountingWriter
     /// <inheritdoc />
     public override long UnflushedBytes => _bytesBuffered;
 
-    public override ValueTask<FlushResult> WriteAsync(ReadOnlyMemory<byte> source, CancellationToken cancellationToken = default)
-    {
-        return FlushAsyncInternal(writeToStream: true, data: source, cancellationToken);
-    }
+    public override ValueTask<FlushResult> WriteAsync(ReadOnlyMemory<byte> source, CancellationToken cancellationToken = default) => FlushAsyncInternal(writeToStream: true, data: source, cancellationToken);
 
-    private void Cancel()
-    {
-        InternalTokenSource.Cancel();
-    }
+    private void Cancel() => InternalTokenSource.Cancel();
 
     [AsyncMethodBuilder(typeof(PoolingAsyncValueTaskMethodBuilder<>))]
     private async ValueTask<FlushResult> FlushAsyncInternal(bool writeToStream, ReadOnlyMemory<byte> data, CancellationToken cancellationToken = default)

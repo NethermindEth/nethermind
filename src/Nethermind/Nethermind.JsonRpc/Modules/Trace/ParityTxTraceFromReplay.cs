@@ -11,7 +11,7 @@ using System.Text.Json.Serialization;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
-using Nethermind.Evm.Tracing.ParityStyle;
+using Nethermind.Blockchain.Tracing.ParityStyle;
 
 namespace Nethermind.JsonRpc.Modules.Trace
 {
@@ -138,9 +138,9 @@ namespace Nethermind.JsonRpc.Modules.Trace
                 addressBytes[1] = (byte)'x';
                 Span<byte> hex = addressBytes[2..];
 
-                foreach ((Address address, ParityAccountStateChange stateChange) in value.StateChanges.OrderBy(static sc => sc.Key, AddressComparer.Instance))
+                foreach ((Address address, ParityAccountStateChange stateChange) in value.StateChanges.OrderBy(static sc => sc.Key, GenericComparer.GetOptimized<Address>()))
                 {
-                    address.Bytes.AsSpan().OutputBytesToByteHex(hex, false);
+                    address.Bytes.OutputBytesToByteHex(hex, false);
                     writer.WritePropertyName(addressBytes);
                     JsonSerializer.Serialize(writer, stateChange, options);
                 }

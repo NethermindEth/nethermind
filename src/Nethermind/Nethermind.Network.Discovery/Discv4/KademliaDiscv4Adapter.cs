@@ -6,6 +6,7 @@ using Nethermind.Core;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Utils;
 using Nethermind.Logging;
 using Nethermind.Network.Discovery.Kademlia;
 using Nethermind.Network.Discovery.Messages;
@@ -45,7 +46,7 @@ public class KademliaDiscv4Adapter(
 
     public NodeSession GetSession(Node node)
     {
-        if (_sessions.TryGet(node.IdHash, out var session)) return session;
+        if (_sessions.TryGet(node.IdHash, out NodeSession? session)) return session;
         session = new NodeSession(nodeStatsManager.GetOrAdd(node), timestamper);
         _sessions.Set(node.IdHash, session);
         return session;
@@ -83,25 +84,22 @@ public class KademliaDiscv4Adapter(
     }
 
     private void AddMessageHandler(
-        MsgType msgType, ValueHash256 nodeId, IMessageHandler handler)
-    {
-        _incomingMessageHandlers.AddOrUpdate(
+        MsgType msgType, ValueHash256 nodeId, IMessageHandler handler) => _incomingMessageHandlers.AddOrUpdate(
             (nodeId, msgType),
             (_) => [handler],
-            (_, currentHandler) => currentHandler.Concat([handler]).ToArray()
+            (_, currentHandler) => [.. currentHandler, handler]
         );
-    }
 
     private void RemoveMessageHandler(
         MsgType msgType, ValueHash256 nodeId, IMessageHandler handler)
     {
-        var key = (nodeId, msgType);
+        (ValueHash256 nodeId, MsgType msgType) key = (nodeId, msgType);
         if (_incomingMessageHandlers.TryRemove(new KeyValuePair<(ValueHash256, MsgType), IMessageHandler[]>(key, [handler]))) return;
 
         while (true)
         {
             if (!_incomingMessageHandlers.TryGetValue(key, out IMessageHandler[]? current)) return;
-            var newValue = current.Where((it) => it != handler).ToArray();
+            IMessageHandler[] newValue = [.. current.Where((it) => it != handler)];
             if (_incomingMessageHandlers.TryUpdate(key, newValue, current)) return;
         }
     }
@@ -145,21 +143,20 @@ public class KademliaDiscv4Adapter(
         }
     }
 
-    private long CalculateExpirationTime()
-    {
-        return (long)(_expirationTime.TotalSeconds + timestamper.UnixTime.SecondsLong);
-    }
+    private long CalculateExpirationTime() => (long)(_expirationTime.TotalSeconds + timestamper.UnixTime.SecondsLong);
 
     #endregion
 
     public async Task Ping(Node receiver, CancellationToken token)
     {
-        using var cts = token.CreateChildTokenSource(_pingTimeout);
+        using AutoCancelTokenSource cts = token.CreateChildTokenSource(_pingTimeout);
         token = cts.Token;
         NodeSession session = GetSession(receiver);
 
-        PingMsg msg = new PingMsg(receiver.Address, CalculateExpirationTime(), kademliaConfig.CurrentNodeId.Address);
-        msg.EnrSequence = nodeRecordProvider.Current.EnrSequence; // optional and does not seems to be used anywhere.
+        PingMsg msg = new(receiver.Address, CalculateExpirationTime(), kademliaConfig.CurrentNodeId.Address)
+        {
+            EnrSequence = nodeRecordProvider.Current.EnrSequence // optional and does not seems to be used anywhere.
+        };
         session.OnPingSent();
         _ = await CallAndWaitForResponse(MsgType.Pong, new PongMsgHandler(msg), receiver, session, msg, token);
         session.OnPongReceived();
@@ -170,10 +167,10 @@ public class KademliaDiscv4Adapter(
         NodeSession session = GetSession(receiver);
         return await RunAuthenticatedRequest(receiver, session, async token =>
         {
-            using var cts = token.CreateChildTokenSource(_findNeighbourTimeout);
+            using AutoCancelTokenSource cts = token.CreateChildTokenSource(_findNeighbourTimeout);
             token = cts.Token;
 
-            FindNodeMsg msg = new FindNodeMsg(receiver.Address, CalculateExpirationTime(), target.Bytes);
+            FindNodeMsg msg = new(receiver.Address, CalculateExpirationTime(), target.Bytes);
 
             return await CallAndWaitForResponse(MsgType.Neighbors, new NeighbourMsgHandler(discoveryConfig.BucketSize), receiver, session, msg, token);
         }, token);
@@ -184,10 +181,10 @@ public class KademliaDiscv4Adapter(
         NodeSession session = GetSession(receiver);
         return await RunAuthenticatedRequest(receiver, session, async token =>
         {
-            using var cts = token.CreateChildTokenSource(_requestEnrTimeout);
+            using AutoCancelTokenSource cts = token.CreateChildTokenSource(_requestEnrTimeout);
             token = cts.Token;
 
-            EnrRequestMsg msg = new EnrRequestMsg(receiver.Address, CalculateExpirationTime());
+            EnrRequestMsg msg = new(receiver.Address, CalculateExpirationTime());
 
             return await CallAndWaitForResponse(MsgType.EnrResponse, new EnrResponseHandler(), receiver, session, msg, token);
         }, token);
@@ -213,7 +210,7 @@ public class KademliaDiscv4Adapter(
             return;
         }
 
-        PublicKey publicKey = new PublicKey(msg.SearchedNodeId);
+        PublicKey publicKey = new(msg.SearchedNodeId);
         Node[] nodes = kademlia.Value.GetKNeighbour(publicKey, node, false);
         if (nodes.Length <= 12)
         {
@@ -311,7 +308,7 @@ public class KademliaDiscv4Adapter(
     {
         (Hash256 IdHash, MsgType MsgType) key = (node.IdHash, msg.MsgType);
         if (!_incomingMessageHandlers.TryGetValue(key, out IMessageHandler[]? handlers)) return false;
-        foreach (var messageHandler in handlers!)
+        foreach (IMessageHandler messageHandler in handlers!)
         {
             if (messageHandler.Handle(msg))
             {
@@ -323,8 +320,5 @@ public class KademliaDiscv4Adapter(
         return true;
     }
 
-    public ValueTask DisposeAsync()
-    {
-        return ValueTask.CompletedTask;
-    }
+    public ValueTask DisposeAsync() => ValueTask.CompletedTask;
 }

@@ -51,7 +51,7 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
         private ITxFilter CreateBaseAuRaTxFilter(
             IDictionaryContractDataStore<TxPriorityContract.Destination>? minGasPricesContractDataStore)
         {
-            IMinGasPriceTxFilter minGasPriceTxFilter = TxFilterBuilders.CreateStandardMinGasPriceTxFilter(blocksConfig, specProvider);
+            IMinGasPriceTxFilter minGasPriceTxFilter = TxFilterBuilders.CreateStandardMinGasPriceTxFilter(blocksConfig);
             ITxFilter gasPriceTxFilter = minGasPriceTxFilter;
             if (minGasPricesContractDataStore is not null)
             {
@@ -63,7 +63,7 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
             {
                 RegisterContract registerContract = new(abiEncoder, registrar, readOnlyTxProcessingEnvFactory.Create());
                 CertifierContract certifierContract = new(abiEncoder, registerContract, readOnlyTxProcessingEnvFactory.Create());
-                return CreateFilter(new TxCertifierFilter(certifierContract, gasPriceTxFilter, specProvider, logManager), gasPriceTxFilter);
+                return CreateFilter(new TxCertifierFilter(certifierContract, gasPriceTxFilter, logManager), gasPriceTxFilter);
             }
 
             return gasPriceTxFilter;
@@ -76,7 +76,7 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
             {
                 RegisterContract registerContract = new(abiEncoder, registrar, readOnlyTxProcessingEnvFactory.Create());
                 CertifierContract certifierContract = new(abiEncoder, registerContract, readOnlyTxProcessingEnvFactory.Create());
-                return CreateFilter(new TxCertifierFilter(certifierContract, baseTxFilter, specProvider, logManager));
+                return CreateFilter(new TxCertifierFilter(certifierContract, baseTxFilter, logManager));
             }
 
             return baseTxFilter;
@@ -87,7 +87,7 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
         {
             if (chainSpec.Parameters.TransactionPermissionContract is not null)
             {
-                var txPermissionFilter = CreateFilter(new PermissionBasedTxFilter(
+                ITxFilter txPermissionFilter = CreateFilter(new PermissionBasedTxFilter(
                     new VersionedTransactionPermissionContract(abiEncoder,
                         chainSpec.Parameters.TransactionPermissionContract,
                         chainSpec.Parameters.TransactionPermissionContractTransition ?? 0,
@@ -138,9 +138,7 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
 
         public DictionaryContractDataStore<TxPriorityContract.Destination>? CreateMinGasPricesDataStore(
             TxPriorityContract? txPriorityContract,
-            TxPriorityContract.LocalDataSource? localDataSource)
-        {
-            return txPriorityContract is not null || localDataSource is not null
+            TxPriorityContract.LocalDataSource? localDataSource) => txPriorityContract is not null || localDataSource is not null
                 ? new DictionaryContractDataStore<TxPriorityContract.Destination>(
                     new TxPriorityContract.DestinationSortedListContractDataStoreCollection(),
                     txPriorityContract?.MinGasPrices,
@@ -149,6 +147,5 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
                     logManager,
                     localDataSource?.GetMinGasPricesLocalDataSource())
                 : null;
-        }
     }
 }

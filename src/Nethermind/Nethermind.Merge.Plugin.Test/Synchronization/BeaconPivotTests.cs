@@ -29,7 +29,7 @@ public class BeaconPivotTests
         _syncConfig = new SyncConfig
         {
             FastSync = true,
-            PivotNumber = "1000",
+            PivotNumber = 1000,
             PivotHash = Keccak.Zero.ToString(),
             PivotTotalDifficulty = "1000"
         };
@@ -47,7 +47,7 @@ public class BeaconPivotTests
     }
 
     [TestCase(0, 1001)]
-    [TestCase(500, 372)]
+    [TestCase(500, 436)]
     public void Beacon_pivot_set_to_pivot_when_set(int processedBlocks, int expectedPivotDestinationNumber)
     {
         IBlockTree blockTree = Build.A.BlockTree()

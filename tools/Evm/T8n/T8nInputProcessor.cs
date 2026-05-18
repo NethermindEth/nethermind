@@ -5,7 +5,7 @@ using Ethereum.Test.Base;
 using Evm.T8n.Errors;
 using Evm.T8n.JsonTypes;
 using Nethermind.Core.Specs;
-using Nethermind.Evm.Tracing.GethStyle;
+using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;

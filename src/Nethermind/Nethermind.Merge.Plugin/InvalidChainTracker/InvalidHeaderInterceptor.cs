@@ -8,30 +8,17 @@ using System.Diagnostics.CodeAnalysis;
 
 namespace Nethermind.Merge.Plugin.InvalidChainTracker;
 
-public class InvalidHeaderInterceptor : IHeaderValidator
+public class InvalidHeaderInterceptor(
+    IHeaderValidator headerValidator,
+    IInvalidChainTracker invalidChainTracker,
+    ILogManager logManager)
+    : IHeaderValidator
 {
-    private readonly IHeaderValidator _baseValidator;
-    private readonly IInvalidChainTracker _invalidChainTracker;
-    private readonly ILogger _logger;
+    private readonly ILogger _logger = logManager.GetClassLogger<InvalidHeaderInterceptor>();
 
-    public InvalidHeaderInterceptor(
-        IHeaderValidator headerValidator,
-        IInvalidChainTracker invalidChainTracker,
-        ILogManager logManager)
+    public bool Validate(BlockHeader header, BlockHeader parent, bool isUncle, [NotNullWhen(false)] out string? error)
     {
-        _baseValidator = headerValidator;
-        _invalidChainTracker = invalidChainTracker;
-        _logger = logManager.GetClassLogger<InvalidHeaderInterceptor>();
-    }
-
-    public bool Validate(BlockHeader header, BlockHeader? parent, bool isUncle = false)
-    {
-        return Validate(header, parent, isUncle, out _);
-    }
-
-    public bool Validate(BlockHeader header, BlockHeader? parent, bool isUncle, [NotNullWhen(false)] out string? error)
-    {
-        bool result = _baseValidator.Validate(header, parent, isUncle, out error);
+        bool result = headerValidator.Validate(header, parent, isUncle, out error);
         if (!result)
         {
             if (_logger.IsDebug) _logger.Debug($"Intercepted a bad header {header}");
@@ -40,35 +27,14 @@ public class InvalidHeaderInterceptor : IHeaderValidator
                 if (_logger.IsDebug) _logger.Debug($"Header invalidation should not be tracked");
                 return result;
             }
-            _invalidChainTracker.OnInvalidBlock(header.Hash!, header.ParentHash);
+            invalidChainTracker.OnInvalidBlock(header.Hash!, header.ParentHash);
         }
-        _invalidChainTracker.SetChildParent(header.Hash!, header.ParentHash!);
+        invalidChainTracker.SetChildParent(header.Hash!, header.ParentHash!);
         return result;
     }
 
-    public bool Validate(BlockHeader header, bool isUncle = false)
-    {
-        return Validate(header, isUncle, out _);
-    }
-    public bool Validate(BlockHeader header, bool isUncle, [NotNullWhen(false)] out string? error)
-    {
-        bool result = _baseValidator.Validate(header, isUncle, out error);
-        if (!result)
-        {
-            if (_logger.IsDebug) _logger.Debug($"Intercepted a bad header {header}");
-            if (ShouldNotTrackInvalidation(header))
-            {
-                if (_logger.IsDebug) _logger.Debug($"Header invalidation should not be tracked");
-                return result;
-            }
-            _invalidChainTracker.OnInvalidBlock(header.Hash!, header.ParentHash);
-        }
-        _invalidChainTracker.SetChildParent(header.Hash!, header.ParentHash!);
-        return result;
-    }
+    public bool ValidateOrphaned(BlockHeader header, [NotNullWhen(false)] out string? error) =>
+        headerValidator.ValidateOrphaned(header, out error);
 
-    private static bool ShouldNotTrackInvalidation(BlockHeader header)
-    {
-        return !HeaderValidator.ValidateHash(header);
-    }
+    private static bool ShouldNotTrackInvalidation(BlockHeader header) => !HeaderValidator.ValidateHash(header);
 }

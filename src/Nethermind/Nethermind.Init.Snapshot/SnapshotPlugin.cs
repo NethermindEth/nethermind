@@ -13,7 +13,6 @@ public class SnapshotPlugin(ISnapshotConfig snapshotConfig) : INethermindPlugin
 
     public string Description => "Plugin providing snapshot functionality";
     public bool Enabled => snapshotConfig is { Enabled: true, DownloadUrl: not null };
-    public ValueTask DisposeAsync() => ValueTask.CompletedTask;
     public IModule Module => new SnapshotPluginModule();
 }
 

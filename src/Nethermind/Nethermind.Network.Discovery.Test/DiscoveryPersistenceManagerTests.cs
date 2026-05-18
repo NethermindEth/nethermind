@@ -5,10 +5,8 @@ using System;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using FluentAssertions;
 using Nethermind.Config;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Logging;
@@ -59,9 +57,9 @@ namespace Nethermind.Network.Discovery.Test
         }
 
         [TearDown]
-        public void Teardown()
+        public async Task Teardown()
         {
-            _discv4Adapter?.DisposeAsync();
+            await _discv4Adapter.DisposeAsync();
             _discoveryDb.Dispose();
         }
 
@@ -69,11 +67,11 @@ namespace Nethermind.Network.Discovery.Test
         [CancelAfter(10000)]
         public async Task AddPersistedNodes_Should_Ping_Each_Valid_Node(CancellationToken cancellationToken)
         {
-            var networkNodes = new[]
-            {
+            NetworkNode[] networkNodes =
+            [
                 new NetworkNode(TestItem.PublicKeyA, "192.168.1.1", 30303, 0),
                 new NetworkNode(TestItem.PublicKeyB, "192.168.1.2", 30303, 0)
-            };
+            ];
 
             _networkStorage.UpdateNodes(networkNodes);
 
@@ -88,11 +86,11 @@ namespace Nethermind.Network.Discovery.Test
         [CancelAfter(10000)]
         public async Task AddPersistedNodes_Should_Handle_Ping_Exceptions(CancellationToken cancellationToken)
         {
-            var networkNodes = new[]
-            {
+            NetworkNode[] networkNodes =
+            [
                 new NetworkNode(TestItem.PublicKeyA, "192.168.1.1", 30303, 0),
                 new NetworkNode(TestItem.PublicKeyB, "192.168.1.2", 30303, 0)
-            };
+            ];
 
             _networkStorage.UpdateNodes(networkNodes);
 
@@ -113,24 +111,27 @@ namespace Nethermind.Network.Discovery.Test
         [Test]
         public async Task RunDiscoveryPersistenceCommit_Should_Update_Nodes_In_Storage()
         {
-            var nodes = new[]
-            {
+            Node[] nodes =
+            [
                 new Node(TestItem.PublicKeyA, "192.168.1.1", 30303),
                 new Node(TestItem.PublicKeyB, "192.168.1.2", 30303)
-            };
+            ];
 
-            var cls = new CancellationTokenSource().ThatCancelAfter(TimeSpan.FromMilliseconds(5000));
+            using CancellationTokenSource cts = new(TimeSpan.FromSeconds(10));
 
             _kademlia.IterateNodes().Returns(nodes);
 
-            _ = _persistenceManager.RunDiscoveryPersistenceCommit(cls.Token);
+            _ = _persistenceManager.RunDiscoveryPersistenceCommit(cts.Token);
 
-            // Wait a bit to allow at least one persistence cycle to complete
-            await Task.Delay(_discoveryConfig.DiscoveryPersistenceInterval * 2, cls.Token);
+            while (_discoveryDb.Count < nodes.Length)
+            {
+                cts.Token.ThrowIfCancellationRequested();
+                await Task.Delay(10, cts.Token);
+            }
 
-            await cls.CancelAsync();
+            await cts.CancelAsync();
 
-            _discoveryDb.Count.Should().Be(2);
+            Assert.That(_discoveryDb.Count, Is.EqualTo(nodes.Length));
         }
     }
 }

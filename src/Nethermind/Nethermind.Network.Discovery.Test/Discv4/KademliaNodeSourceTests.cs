@@ -5,15 +5,14 @@ using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
-using FluentAssertions;
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Utils;
 using Nethermind.Logging;
 using Nethermind.Network.Discovery.Discv4;
 using Nethermind.Network.Discovery.Kademlia;
-using Nethermind.Core;
-using Nethermind.Core.Extensions;
-using Nethermind.Core.Utils;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using NSubstitute;
@@ -47,10 +46,10 @@ namespace Nethermind.Network.Discovery.Test.Discv4
             };
 
             _nodeStats = Substitute.For<INodeStats>();
-            _timestamper = new ManualTimestamper();
+            _timestamper = new();
             _timestamper.Set(new DateTimeOffset(2025, 5, 13, 21, 0, 0, TimeSpan.Zero).UtcDateTime);
 
-            _nodeSession = new NodeSession(_nodeStats, _timestamper);
+            _nodeSession = new(_nodeStats, _timestamper);
             _discv4Adapter.GetSession(Arg.Any<Node>()).Returns(_nodeSession);
 
             _nodeSource = new KademliaNodeSource(
@@ -62,17 +61,14 @@ namespace Nethermind.Network.Discovery.Test.Discv4
         }
 
         [TearDown]
-        public async Task TearDown()
-        {
-            await _discv4Adapter.DisposeAsync();
-        }
+        public async Task TearDown() => await _discv4Adapter.DisposeAsync();
 
         [Test]
         [CancelAfter(10000)]
         public async Task DiscoverNodes_should_use_lookup_to_find_nodes(CancellationToken token)
         {
-            Node node1 = new Node(TestItem.PublicKeyA, "192.168.1.1", 30303);
-            Node node2 = new Node(TestItem.PublicKeyB, "192.168.1.2", 30303);
+            Node node1 = new(TestItem.PublicKeyA, "192.168.1.1", 30303);
+            Node node2 = new(TestItem.PublicKeyB, "192.168.1.2", 30303);
             _nodeSession.OnPongReceived();
 
             _lookup.Lookup(Arg.Any<PublicKey>(), token)
@@ -82,11 +78,11 @@ namespace Nethermind.Network.Discovery.Test.Discv4
             _discv4Adapter.Ping(node2, token)
                 .Returns(Task.CompletedTask);
 
-            var enumerator = _nodeSource.DiscoverNodes(token).GetAsyncEnumerator(token);
-            await enumerator.MoveNextAsync(token);
-            enumerator.Current.Should().Be(node1);
-            await enumerator.MoveNextAsync(token);
-            enumerator.Current.Should().Be(node2);
+            IAsyncEnumerator<Node> enumerator = _nodeSource.DiscoverNodes(token).GetAsyncEnumerator(token);
+            await enumerator.MoveNextAsync();
+            Assert.That(enumerator.Current, Is.EqualTo(node1));
+            await enumerator.MoveNextAsync();
+            Assert.That(enumerator.Current, Is.EqualTo(node2));
 
             _lookup.Received().Lookup(Arg.Any<PublicKey>(), token);
         }
@@ -95,7 +91,7 @@ namespace Nethermind.Network.Discovery.Test.Discv4
         [CancelAfter(10000)]
         public async Task DiscoverNodes_should_ping_nodes_that_have_not_received_pong(CancellationToken token)
         {
-            Node node = new Node(TestItem.PublicKeyA, "192.168.1.1", 30303);
+            Node node = new(TestItem.PublicKeyA, "192.168.1.1", 30303);
             _lookup.Lookup(Arg.Any<PublicKey>(), token)
                 .Returns(CreateAsyncEnumerable(node));
 
@@ -113,11 +109,11 @@ namespace Nethermind.Network.Discovery.Test.Discv4
         [CancelAfter(10000)]
         public async Task DiscoverNodes_should_skip_nodes_that_have_tried_ping_recently_without_pong(CancellationToken token)
         {
-            Node node1 = new Node(TestItem.PublicKeyA, "192.168.1.1", 30303);
-            Node node2 = new Node(TestItem.PublicKeyB, "192.168.1.2", 30303);
+            Node node1 = new(TestItem.PublicKeyA, "192.168.1.1", 30303);
+            Node node2 = new(TestItem.PublicKeyB, "192.168.1.2", 30303);
 
-            NodeSession session1 = new NodeSession(_nodeStats, _timestamper);
-            NodeSession session2 = new NodeSession(_nodeStats, _timestamper);
+            NodeSession session1 = new(_nodeStats, _timestamper);
+            NodeSession session2 = new(_nodeStats, _timestamper);
             _discv4Adapter.GetSession(node1).Returns(session1);
             _discv4Adapter.GetSession(node2).Returns(session2);
 
@@ -134,7 +130,7 @@ namespace Nethermind.Network.Discovery.Test.Discv4
 
             IAsyncEnumerator<Node> enumerator = discoveryEnumerable.GetAsyncEnumerator(token);
             await enumerator.MoveNextAsync();
-            enumerator.Current.Should().Be(node2);
+            Assert.That(enumerator.Current, Is.EqualTo(node2));
 
             await _discv4Adapter.DidNotReceive().Ping(
                 Arg.Is<Node>(n => n == node1),
@@ -145,8 +141,8 @@ namespace Nethermind.Network.Discovery.Test.Discv4
         [CancelAfter(10000)]
         public async Task DiscoverNodes_should_handle_ping_timeout(CancellationToken token)
         {
-            Node node1 = new Node(TestItem.PublicKeyA, "192.168.1.1", 30303);
-            Node node2 = new Node(TestItem.PublicKeyB, "192.168.1.2", 30303);
+            Node node1 = new(TestItem.PublicKeyA, "192.168.1.1", 30303);
+            Node node2 = new(TestItem.PublicKeyB, "192.168.1.2", 30303);
 
             _discv4Adapter.Ping(node1, token)
                 .Returns(Task.FromException(new OperationCanceledException()));
@@ -160,7 +156,7 @@ namespace Nethermind.Network.Discovery.Test.Discv4
 
             IAsyncEnumerator<Node> enumerator = discoveryEnumerable.GetAsyncEnumerator(token);
             await enumerator.MoveNextAsync();
-            enumerator.Current.Should().Be(node2);
+            Assert.That(enumerator.Current, Is.EqualTo(node2));
 
             await _discv4Adapter.Received(2).Ping(
                 Arg.Is<Node>(n => n == node1),
@@ -171,8 +167,8 @@ namespace Nethermind.Network.Discovery.Test.Discv4
         [CancelAfter(10000)]
         public async Task DiscoverNodes_should_emit_nodes_from_kademlia_events(CancellationToken token)
         {
-            Node node1 = new Node(TestItem.PublicKeyA, "192.168.1.1", 30303);
-            Node node2 = new Node(TestItem.PublicKeyB, "192.168.1.2", 30303);
+            Node node1 = new(TestItem.PublicKeyA, "192.168.1.1", 30303);
+            Node node2 = new(TestItem.PublicKeyB, "192.168.1.2", 30303);
 
             _nodeSession.OnPongReceived();
 
@@ -190,14 +186,14 @@ namespace Nethermind.Network.Discovery.Test.Discv4
             // Continue iterating
             await enumerator.MoveNextAsync();
 
-            enumerator.Current.Should().Be(node2);
+            Assert.That(enumerator.Current, Is.EqualTo(node2));
         }
 
         [Test]
         [CancelAfter(10000)]
         public async Task DiscoverNodes_should_not_emit_duplicate_nodes(CancellationToken token)
         {
-            Node node = new Node(TestItem.PublicKeyC, "192.168.1.1", 30303);
+            Node node = new(TestItem.PublicKeyC, "192.168.1.1", 30303);
 
             _nodeSession.OnPongReceived();
 
@@ -210,16 +206,15 @@ namespace Nethermind.Network.Discovery.Test.Discv4
             IAsyncEnumerator<Node> enumerator = discoveryEnumerable.GetAsyncEnumerator(token);
             await enumerator.MoveNextAsync();
 
-            Func<Task<bool>> act = () => enumerator.MoveNextAsync().AsTask();
-            await act.Should().ThrowAsync<OperationCanceledException>();
+            Assert.ThrowsAsync<OperationCanceledException>(async () => await enumerator.MoveNextAsync().AsTask());
         }
 
         [Test]
         [CancelAfter(10000)]
         public async Task DiscoverNodes_should_use_multiple_concurrent_discovery_jobs(CancellationToken token)
         {
-            Node node1 = new Node(TestItem.PublicKeyA, "192.168.1.1", 30303);
-            Node node2 = new Node(TestItem.PublicKeyB, "192.168.1.2", 30303);
+            Node node1 = new(TestItem.PublicKeyA, "192.168.1.1", 30303);
+            Node node2 = new(TestItem.PublicKeyB, "192.168.1.2", 30303);
 
             _nodeSession.OnPongReceived();
 

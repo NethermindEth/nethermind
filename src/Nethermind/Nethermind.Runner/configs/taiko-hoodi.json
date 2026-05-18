@@ -1,0 +1,23 @@
+{
+  "$schema": "https://raw.githubusercontent.com/NethermindEth/core-scripts/refs/heads/main/schemas/config.json",
+  "Init": {
+    "ChainSpecPath": "chainspec/taiko-hoodi.json",
+    "GenesisHash": "0x8e3d16acf3ecc1fbe80309b04e010b90c9ccb3da14e98536cfe66bb93407d228",
+    "BaseDbPath": "nethermind_db/taiko-hoodi",
+    "LogFileName": "taiko-hoodi.log"
+  },
+  "TxPool": {
+    "BlobsSupport": "Disabled"
+  },
+  "Sync": {
+    "FastSync": false,
+    "SnapSync": false
+  },
+  "Pruning": {
+    "PruningBoundary": 1000
+  },
+  "JsonRpc": {
+    "Enabled": true,
+    "EnginePort": 8551
+  }
+}

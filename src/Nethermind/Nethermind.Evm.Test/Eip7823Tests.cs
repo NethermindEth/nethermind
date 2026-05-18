@@ -1,14 +1,13 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using Nethermind.Evm.Precompiles;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
-using Nethermind.Evm.Precompiles;
 using Nethermind.Int256;
 using Nethermind.Specs.Forks;
 using NUnit.Framework;
@@ -44,10 +43,6 @@ public class Eip7823Tests
         {
             Assert.That(gas, Is.LessThan(long.MaxValue));
         }
-        else
-        {
-            Assert.That(gas, Is.EqualTo(long.MaxValue));
-        }
     }
 
     [TestCase("0x9e5faafc")]
@@ -60,8 +55,8 @@ public class Eip7823Tests
 
         byte[] input = Bytes.FromHexString(inputHex);
 
-        Assert.Throws<OverflowException>(() => TestSuccess(input, specDisabled));
-        Assert.Throws<OverflowException>(() => TestSuccess(input, specEnabled));
+        Assert.That(TestSuccess(input, specDisabled), Is.EqualTo(false));
+        Assert.That(TestSuccess(input, specEnabled), Is.EqualTo(false));
 
         Assert.That(TestGas(input, specDisabled), Is.EqualTo(long.MaxValue));
         Assert.That(TestGas(input, specEnabled), Is.EqualTo(long.MaxValue));
@@ -77,7 +72,7 @@ public class Eip7823Tests
             yield return new object[] { true, true, inputBaseLength, inputExpLength, inputModulusLength };
             yield return new object[] { false, true, inputBaseLength, inputExpLength, inputModulusLength };
 
-            for (var i = 0b001; i <= 0b111; i++)
+            for (int i = 0b001; i <= 0b111; i++)
             {
                 inputBaseLength = (i & 0b001) != 0 ? ModExpMaxInputSizeEip7823PlusOne : ModExpMaxInputSizeEip7823;
                 inputExpLength = (i & 0b010) != 0 ? ModExpMaxInputSizeEip7823PlusOne : ModExpMaxInputSizeEip7823;

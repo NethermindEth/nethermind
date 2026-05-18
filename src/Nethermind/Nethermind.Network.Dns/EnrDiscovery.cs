@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Diagnostics.CodeAnalysis;
 using System.Net;
 using System.Runtime.CompilerServices;
 using DnsClient;
@@ -10,6 +9,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
 using Nethermind.Network.Enr;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Stats.Model;
 
 namespace Nethermind.Network.Dns;
@@ -24,7 +24,7 @@ public class EnrDiscovery : INodeSource
     public EnrDiscovery(IEnrRecordParser parser, INetworkConfig networkConfig, ILogManager logManager)
     {
         _parser = parser;
-        _logger = logManager.GetClassLogger();
+        _logger = logManager.GetClassLogger<EnrDiscovery>();
         _crawler = new EnrTreeCrawler(_logger);
         _domain = networkConfig.DiscoveryDns!;
     }
@@ -33,8 +33,8 @@ public class EnrDiscovery : INodeSource
     {
         if (string.IsNullOrWhiteSpace(_domain)) yield break;
 
-        IByteBuffer buffer = PooledByteBufferAllocator.Default.Buffer();
-        await using ConfiguredCancelableAsyncEnumerable<string>.Enumerator enumerator = _crawler.SearchTree(_domain)
+        IByteBuffer buffer = NethermindBuffers.Default.Buffer();
+        await using ConfiguredCancelableAsyncEnumerable<string>.Enumerator enumerator = _crawler.SearchTree(_domain, cancellationToken)
             .WithCancellation(cancellationToken)
             .GetAsyncEnumerator();
 
@@ -69,7 +69,7 @@ public class EnrDiscovery : INodeSource
                 }
                 catch (Exception e)
                 {
-                    if (_logger.IsDebug) _logger.Error($"DEBUG/ERROR failed to parse enr record {nodeRecordText}", e);
+                    _logger.DebugError($"failed to parse enr record {nodeRecordText}", e);
                 }
 
                 if (node is not null)
@@ -87,7 +87,7 @@ public class EnrDiscovery : INodeSource
 
     private static Node? CreateNode(NodeRecord nodeRecord)
     {
-        CompressedPublicKey? compressedPublicKey = nodeRecord.GetObj<CompressedPublicKey>(EnrContentKey.Secp256K1);
+        CompressedPublicKey? compressedPublicKey = nodeRecord.GetObj<CompressedPublicKey>(EnrContentKey.SecP256k1);
         IPAddress? ipAddress = nodeRecord.GetObj<IPAddress>(EnrContentKey.Ip);
         int? port = nodeRecord.GetValue<int>(EnrContentKey.Tcp) ?? nodeRecord.GetValue<int>(EnrContentKey.Udp);
         return compressedPublicKey is not null && ipAddress is not null && port is not null

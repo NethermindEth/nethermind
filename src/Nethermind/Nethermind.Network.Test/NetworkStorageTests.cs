@@ -26,15 +26,12 @@ public class NetworkStorageTests
         _ = new ConfigProvider();
         _tempDir = TempPath.GetTempDirectory();
 
-        var db = new SimpleFilePublicKeyDb("Test", _tempDir.Path, logManager);
+        SimpleFilePublicKeyDb db = new("Test", _tempDir.Path, logManager);
         _storage = new NetworkStorage(db, logManager);
     }
 
     [TearDown]
-    public void TearDown()
-    {
-        _tempDir.Dispose();
-    }
+    public void TearDown() => _tempDir.Dispose();
 
     private TempPath _tempDir;
     private INetworkStorage _storage;
@@ -42,22 +39,24 @@ public class NetworkStorageTests
     [Test]
     public void Can_store_discovery_nodes()
     {
-        var persistedNodes = _storage.GetPersistedNodes();
+        NetworkNode[] persistedNodes = _storage.GetPersistedNodes();
         Assert.That(persistedNodes.Length, Is.EqualTo(0));
 
-        var nodes = new[]
-        {
+        Node[] nodes =
+        [
             new Node(TestItem.PublicKeyA, "192.1.1.1", 3441),
             new Node(TestItem.PublicKeyB, "192.1.1.2", 3442),
             new Node(TestItem.PublicKeyC, "192.1.1.3", 3443),
             new Node(TestItem.PublicKeyD, "192.1.1.4", 3444),
             new Node(TestItem.PublicKeyE, "192.1.1.5", 3445)
-        };
+        ];
 
         INodeStatsManager nodeStatsManager = new NodeStatsManager(new TimerFactory(), LimboLogs.Instance);
 
         DateTime utcNow = DateTime.UtcNow;
-        var networkNodes = nodes.Select(x => new NetworkNode(x.Id, x.Host, x.Port, nodeStatsManager.GetOrAdd(x).NewPersistedNodeReputation(utcNow))).ToArray();
+        NetworkNode[] networkNodes = nodes
+            .Select(x => new NetworkNode(x.Id, x.Host, x.Port, nodeStatsManager.GetOrAdd(x).NewPersistedNodeReputation(utcNow)))
+            .ToArray();
 
 
         _storage.StartBatch();
@@ -99,19 +98,19 @@ public class NetworkStorageTests
     [Test]
     public void Can_store_peers()
     {
-        var persistedPeers = _storage.GetPersistedNodes();
+        NetworkNode[] persistedPeers = _storage.GetPersistedNodes();
         Assert.That(persistedPeers.Length, Is.EqualTo(0));
 
-        var nodes = new[]
-        {
+        Node[] nodes =
+        [
             new Node(TestItem.PublicKeyA, "192.1.1.1", 3441),
             new Node(TestItem.PublicKeyB, "192.1.1.2", 3442),
             new Node(TestItem.PublicKeyC, "192.1.1.3", 3443),
             new Node(TestItem.PublicKeyD, "192.1.1.4", 3444),
             new Node(TestItem.PublicKeyE, "192.1.1.5", 3445)
-        };
+        ];
 
-        var peers = nodes.Select(x => new NetworkNode(x.Id, x.Host, x.Port, 0L)).ToArray();
+        NetworkNode[] peers = nodes.Select(x => new NetworkNode(x.Id, x.Host, x.Port, 0L)).ToArray();
 
         _storage.StartBatch();
         _storage.UpdateNodes(peers);

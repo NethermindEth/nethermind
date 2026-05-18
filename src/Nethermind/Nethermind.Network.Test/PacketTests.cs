@@ -11,7 +11,7 @@ namespace Nethermind.Network.Test
     public class PacketTests
     {
         [Test]
-        public void Asggins_values_from_constructor()
+        public void Assigns_values_from_constructor()
         {
             byte[] data = { 3, 4, 5 };
             Packet packet = new("eth", 2, data);

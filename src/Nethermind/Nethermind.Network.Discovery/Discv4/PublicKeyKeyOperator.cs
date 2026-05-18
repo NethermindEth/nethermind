@@ -9,15 +9,9 @@ namespace Nethermind.Network.Discovery.Discv4;
 
 public class PublicKeyKeyOperator : IKeyOperator<PublicKey, Node>
 {
-    public PublicKey GetKey(Node node)
-    {
-        return node.Id;
-    }
+    public PublicKey GetKey(Node node) => node.Id;
 
-    public ValueHash256 GetKeyHash(PublicKey key)
-    {
-        return key.Hash;
-    }
+    public ValueHash256 GetKeyHash(PublicKey key) => key.Hash;
 
     public PublicKey CreateRandomKeyAtDistance(ValueHash256 nodePrefix, int depth)
     {

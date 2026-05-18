@@ -8,6 +8,8 @@ using Nethermind.JsonRpc.Modules.Admin;
 using Nethermind.Network.P2P;
 using Nethermind.Network.Rlpx;
 using Nethermind.Network.P2P.EventArg;
+using Nethermind.Stats.Model;
+using Nethermind.Core.Crypto;
 
 namespace Nethermind.JsonRpc.Modules.Subscribe
 {
@@ -17,7 +19,6 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
         private readonly IRlpxHost _rlpxHost;
         private readonly ISessionMonitor _sessionMonitor;
 
-
         public PeerEventsSubscription(
             IJsonRpcDuplexClient jsonRpcDuplexClient,
             ILogManager? logManager,
@@ -26,7 +27,7 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
             )
             : base(jsonRpcDuplexClient)
         {
-            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+            _logger = logManager?.GetClassLogger<PeerEventsSubscription>() ?? throw new ArgumentNullException(nameof(logManager));
             _peerPool = peerPool ?? throw new ArgumentNullException(nameof(peerPool));
             _rlpxHost = rlpxHost ?? throw new ArgumentNullException(nameof(rlpxHost));
 
@@ -38,29 +39,26 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
             {
                 session.MsgDelivered += OnMsgDelivered;
                 session.MsgReceived += OnMsgReceived;
-                session.Disconnected += OnSessionDisconnected;
             }
             _rlpxHost.SessionCreated += OnSessionCreated;
+            _rlpxHost.SessionDisconnected += OnSessionDisconnected;
             if (_logger.IsTrace) _logger.Trace($"admin_subscription {Id} will track PeerAdded, PeerRemoved, MsgDelivered and MsgReceived.");
         }
 
         private void OnPeerAdded(object? sender, PeerEventArgs args)
         {
-            PeerInfo peerInfo = new(new Peer(args.Node), false);
-            var response = new PeerEventResponse
+            (string localHost, string remoteAddress, PublicKey? peerId) = GetPeerEventInfo(args.Node);
+            PeerEventResponse response = new()
             {
                 Type = PeerEventType.Add,
-                Peer = peerInfo.Id,
-                Local = peerInfo.Host,
-                Remote = peerInfo.Address,
+                Peer = peerId,
+                Local = localHost,
+                Remote = remoteAddress,
             };
 
             ScheduleAction(async () =>
             {
-                using JsonRpcResult result = CreateSubscriptionMessage(
-                    response,
-                    SubscriptionMethodName.AdminSubscription
-                    );
+                using JsonRpcResult result = CreateSubscriptionMessage(response, SubscriptionMethodName.AdminSubscription);
                 await JsonRpcDuplexClient.SendJsonRpcResult(result);
                 if (_logger.IsTrace) _logger.Trace($"admin_subscription {Id} printed new peer.");
             });
@@ -68,21 +66,18 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
 
         private void OnPeerRemoved(object? sender, PeerEventArgs args)
         {
-            PeerInfo peerInfo = new(new Peer(args.Node), false);
-            var response = new PeerEventResponse
+            (string localHost, string remoteAddress, PublicKey peerId) = GetPeerEventInfo(args.Node);
+            PeerEventResponse response = new()
             {
                 Type = PeerEventType.Drop,
-                Peer = peerInfo.Id,
-                Local = peerInfo.Host,
-                Remote = peerInfo.Address,
+                Peer = peerId,
+                Local = localHost,
+                Remote = remoteAddress,
             };
 
             ScheduleAction(async () =>
             {
-                using JsonRpcResult result = CreateSubscriptionMessage(
-                    response,
-                    SubscriptionMethodName.AdminSubscription
-                    );
+                using JsonRpcResult result = CreateSubscriptionMessage(response, SubscriptionMethodName.AdminSubscription);
                 await JsonRpcDuplexClient.SendJsonRpcResult(result);
                 if (_logger.IsTrace) _logger.Trace($"admin_subscription {Id} printed dropped peer.");
             });
@@ -90,17 +85,18 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
 
         private void OnMsgReceived(object? sender, PeerEventArgs args)
         {
-            PeerInfo peerInfo = new(new Peer(args.Node), false);
-            var response = new PeerEventResponse
+            (string localHost, string remoteAddress, PublicKey peerId) = GetPeerEventInfo(args.Node);
+            PeerEventResponse response = new()
             {
                 Type = PeerEventType.MsgRecv,
-                Peer = peerInfo.Id,
-                Local = peerInfo.Host,
-                Remote = peerInfo.Address,
+                Peer = peerId,
+                Local = localHost,
+                Remote = remoteAddress,
                 Protocol = args.MessageInfo.Protocol,
                 MsgPacketType = args.MessageInfo.PacketType,
                 MsgSize = args.MessageInfo.Size,
             };
+
             ScheduleAction(async () =>
             {
                 using JsonRpcResult result = CreateSubscriptionMessage(response, SubscriptionMethodName.AdminSubscription);
@@ -111,38 +107,47 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
 
         private void OnMsgDelivered(object? sender, PeerEventArgs args)
         {
-            PeerInfo peerInfo = new(new Peer(args.Node), false);
-            var response = new PeerEventResponse
+            (string localHost, string remoteAddress, PublicKey peerId) = GetPeerEventInfo(args.Node);
+            PeerEventResponse response = new()
             {
                 Type = PeerEventType.MsgSend,
-                Peer = peerInfo.Id,
-                Local = peerInfo.Host,
-                Remote = peerInfo.Address,
+                Peer = peerId,
+                Local = localHost,
+                Remote = remoteAddress,
                 Protocol = args.MessageInfo.Protocol,
                 MsgPacketType = args.MessageInfo.PacketType,
                 MsgSize = args.MessageInfo.Size,
             };
+
             ScheduleAction(async () =>
             {
                 using JsonRpcResult result = CreateSubscriptionMessage(response, SubscriptionMethodName.AdminSubscription);
                 await JsonRpcDuplexClient.SendJsonRpcResult(result);
-                if (_logger.IsTrace) _logger.Trace($"admin_subscription {Id} printed message sned.");
+                if (_logger.IsTrace) _logger.Trace($"admin_subscription {Id} printed message sent.");
             });
+        }
+
+        private (string localHost, string remoteAddress, PublicKey peerId) GetPeerEventInfo(Node node)
+        {
+            PeerInfo peerInfo = new(new Peer(node));
+
+            return (
+                peerInfo.Network.LocalHost,
+                peerInfo.Network.RemoteAddress,
+                peerInfo.Id
+            );
         }
 
         private void OnSessionCreated(object? sender, SessionEventArgs args)
         {
             args.Session.MsgDelivered += OnMsgDelivered;
             args.Session.MsgReceived += OnMsgReceived;
-            args.Session.Disconnected += OnSessionDisconnected;
         }
 
-        private void OnSessionDisconnected(object sender, DisconnectEventArgs e)
+        private void OnSessionDisconnected(object sender, ISession session, DisconnectEventArgs e)
         {
-            ISession session = (ISession)sender;
             session.MsgDelivered -= OnMsgDelivered;
             session.MsgReceived -= OnMsgReceived;
-            session.Disconnected -= OnSessionDisconnected;
         }
 
         public override string Type => SubscriptionType.AdminSubscription.PeerEvents;
@@ -155,20 +160,19 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
             {
                 session.MsgDelivered -= OnMsgDelivered;
                 session.MsgReceived -= OnMsgReceived;
-                session.Disconnected -= OnSessionDisconnected;
             }
             _rlpxHost.SessionCreated -= OnSessionCreated;
+            _rlpxHost.SessionDisconnected -= OnSessionDisconnected;
             base.Dispose();
             if (_logger.IsTrace) _logger.Trace($"admin_subscription.peerEvent {Id} is no longer subscribed.");
         }
 
-        public static class PeerEventType
+        private static class PeerEventType
         {
-            public static string Add = "add";
-            public static string Drop = "drop";
-            public static string MsgSend = "msgsend";
-            public static string MsgRecv = "msgrecv";
+            public const string Add = "add";
+            public const string Drop = "drop";
+            public const string MsgSend = "msgsend";
+            public const string MsgRecv = "msgrecv";
         }
     }
-
 }

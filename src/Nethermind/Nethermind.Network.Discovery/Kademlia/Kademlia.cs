@@ -49,30 +49,17 @@ public class Kademlia<TKey, TNode> : IKademlia<TKey, TNode> where TNode : notnul
 
     public TNode CurrentNode => _currentNodeId;
 
-    public void AddOrRefresh(TNode node)
-    {
+    public void AddOrRefresh(TNode node) =>
         // It add to routing table and does the whole refresh logid.
         _nodeHealthTracker.OnIncomingMessageFrom(node);
-    }
 
-    public void Remove(TNode node)
-    {
-        _routingTable.Remove(_keyOperator.GetNodeHash(node));
-    }
+    public void Remove(TNode node) => _routingTable.Remove(_keyOperator.GetNodeHash(node));
 
-    public TNode[] GetAllAtDistance(int i)
-    {
-        return _routingTable.GetAllAtDistance(i);
-    }
+    public TNode[] GetAllAtDistance(int i) => _routingTable.GetAllAtDistance(i);
 
-    private bool SameAsSelf(TNode node)
-    {
-        return _keyOperator.GetNodeHash(node) == _currentNodeIdAsHash;
-    }
+    private bool SameAsSelf(TNode node) => _keyOperator.GetNodeHash(node) == _currentNodeIdAsHash;
 
-    public Task<TNode[]> LookupNodesClosest(TKey key, CancellationToken token, int? k = null)
-    {
-        return _lookupAlgo.Lookup(
+    public Task<TNode[]> LookupNodesClosest(TKey key, CancellationToken token, int? k = null) => _lookupAlgo.Lookup(
             _keyOperator.GetKeyHash(key),
             k ?? _kSize,
             async (nextNode, token) =>
@@ -86,7 +73,6 @@ public class Kademlia<TKey, TNode> : IKademlia<TKey, TNode> where TNode : notnul
             },
             token
         );
-    }
 
     public async Task Run(CancellationToken token)
     {
@@ -131,7 +117,7 @@ public class Kademlia<TKey, TNode> : IKademlia<TKey, TNode> where TNode : notnul
         // A refresh means to do a k-nearest node lookup for a random hash for that particular bucket.
         foreach ((ValueHash256 Prefix, int Distance, KBucket<TNode> Bucket) in _routingTable.IterateBuckets())
         {
-            var keyToLookup = _keyOperator.CreateRandomKeyAtDistance(Prefix, Distance);
+            TKey? keyToLookup = _keyOperator.CreateRandomKeyAtDistance(Prefix, Distance);
             await LookupNodesClosest(keyToLookup, token);
         }
 
@@ -160,7 +146,7 @@ public class Kademlia<TKey, TNode> : IKademlia<TKey, TNode> where TNode : notnul
     {
         foreach ((ValueHash256 _, int _, KBucket<TNode> Bucket) in _routingTable.IterateBuckets())
         {
-            foreach (var node in Bucket.GetAll())
+            foreach (TNode node in Bucket.GetAll())
             {
                 yield return node;
             }

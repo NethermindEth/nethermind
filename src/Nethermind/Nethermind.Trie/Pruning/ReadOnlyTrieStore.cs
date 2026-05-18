@@ -10,7 +10,7 @@ namespace Nethermind.Trie.Pruning
     /// <summary>
     /// Safe to be reused for the same wrapped store.
     /// </summary>
-    public class ReadOnlyTrieStore(TrieStore trieStore, INodeStorage? readOnlyStore) : IReadOnlyTrieStore
+    public class ReadOnlyTrieStore(TrieStore trieStore) : IReadOnlyTrieStore
     {
         private readonly TrieStore _trieStore = trieStore ?? throw new ArgumentNullException(nameof(trieStore));
         public INodeStorage.KeyScheme Scheme => _trieStore.Scheme;
@@ -19,24 +19,21 @@ namespace Nethermind.Trie.Pruning
             _trieStore.FindCachedOrUnknown(address, treePath, hash, true);
 
         public byte[] LoadRlp(Hash256? address, in TreePath treePath, Hash256 hash, ReadFlags flags) =>
-            _trieStore.LoadRlp(address, treePath, hash, readOnlyStore, flags);
+            _trieStore.LoadRlp(address, treePath, hash, flags);
         public byte[]? TryLoadRlp(Hash256? address, in TreePath treePath, Hash256 hash, ReadFlags flags) =>
-            _trieStore.TryLoadRlp(address, treePath, hash, readOnlyStore, flags);
-
-        public bool IsPersisted(Hash256? address, in TreePath path, in ValueHash256 keccak) => _trieStore.IsPersisted(address, path, keccak);
+            _trieStore.TryLoadRlp(address, treePath, hash, flags);
 
         public ICommitter BeginCommit(Hash256? address, TrieNode? root, WriteFlags writeFlags) => NullCommitter.Instance;
 
-        public IBlockCommitter BeginBlockCommit(long blockNumber)
-        {
-            return NullCommitter.Instance;
-        }
+        public IBlockCommitter BeginBlockCommit(long blockNumber) => NullCommitter.Instance;
 
-        public IReadOnlyKeyValueStore TrieNodeRlpStore => _trieStore.TrieNodeRlpStore;
+        public IDisposable BeginScope(BlockHeader? baseBlock) => new Reactive.AnonymousDisposable(() => { }); // Noop
 
         public IScopedTrieStore GetTrieStore(Hash256? address) => new ScopedReadOnlyTrieStore(this, address);
 
         public bool HasRoot(Hash256 stateRoot) => _trieStore.HasRoot(stateRoot);
+
+        public bool HasRoot(Hash256 stateRoot, long blockNumber) => _trieStore.HasRoot(stateRoot, blockNumber);
 
         public void Dispose() { }
 
@@ -56,9 +53,6 @@ namespace Nethermind.Trie.Pruning
             public INodeStorage.KeyScheme Scheme => fullTrieStore.Scheme;
 
             public ICommitter BeginCommit(TrieNode? root, WriteFlags writeFlags = WriteFlags.None) => NullCommitter.Instance;
-
-            public bool IsPersisted(in TreePath path, in ValueHash256 keccak) =>
-                fullTrieStore.IsPersisted(address, path, in keccak);
         }
     }
 }

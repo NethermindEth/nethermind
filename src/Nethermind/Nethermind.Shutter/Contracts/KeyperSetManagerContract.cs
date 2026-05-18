@@ -10,18 +10,9 @@ namespace Nethermind.Shutter.Contracts;
 
 public class KeyperSetManagerContract(ITransactionProcessor transactionProcessor, IAbiEncoder abiEncoder, Address contractAddress) : CallableContract(transactionProcessor, abiEncoder, contractAddress), IKeyperSetManagerContract
 {
-    public Address GetKeyperSetAddress(BlockHeader blockHeader, in ulong index)
-    {
-        return (Address)Call(blockHeader, nameof(GetKeyperSetAddress), Address.Zero, [index])[0];
-    }
+    public Address GetKeyperSetAddress(BlockHeader blockHeader, in ulong index) => (Address)Call(blockHeader, nameof(GetKeyperSetAddress), Address.Zero, [index])[0];
 
-    public ulong GetNumKeyperSets(BlockHeader blockHeader)
-    {
-        return (ulong)Call(blockHeader, nameof(GetNumKeyperSets), Address.Zero, [])[0];
-    }
+    public ulong GetNumKeyperSets(BlockHeader blockHeader) => (ulong)Call(blockHeader, nameof(GetNumKeyperSets), Address.Zero, [])[0];
 
-    public ulong GetKeyperSetIndexByBlock(BlockHeader blockHeader, in ulong blockNumber)
-    {
-        return (ulong)Call(blockHeader, nameof(GetKeyperSetIndexByBlock), Address.Zero, [blockNumber])[0];
-    }
+    public ulong GetKeyperSetIndexByBlock(BlockHeader blockHeader, in ulong blockNumber) => (ulong)Call(blockHeader, nameof(GetKeyperSetIndexByBlock), Address.Zero, [blockNumber])[0];
 }

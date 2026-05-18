@@ -9,17 +9,17 @@ namespace Nethermind.Network.Discovery.Kademlia;
 
 public class DoubleEndedLru<TNode>(int capacity) where TNode : notnull
 {
-    private McsLock _lock = new McsLock();
+    private readonly McsLock _lock = new();
 
-    private LinkedList<(ValueHash256, TNode)> _queue = new();
-    private ConcurrentDictionary<ValueHash256, LinkedListNode<(ValueHash256, TNode)>> _hashMapping = new();
+    private readonly LinkedList<(ValueHash256, TNode)> _queue = new();
+    private readonly ConcurrentDictionary<ValueHash256, LinkedListNode<(ValueHash256, TNode)>> _hashMapping = new();
     public int Count => _queue.Count;
 
     public BucketAddResult AddOrRefresh(in ValueHash256 hash, TNode node)
     {
         using McsLock.Disposable _ = _lock.Acquire();
 
-        if (_hashMapping.TryGetValue(hash, out var listNode))
+        if (_hashMapping.TryGetValue(hash, out LinkedListNode<(ValueHash256, TNode)>? listNode))
         {
             _queue.Remove(listNode);
             _queue.AddFirst(listNode);
@@ -77,7 +77,7 @@ public class DoubleEndedLru<TNode>(int capacity) where TNode : notnull
     {
         using McsLock.Disposable _ = _lock.Acquire();
 
-        if (_hashMapping.TryRemove(hash, out var listNode))
+        if (_hashMapping.TryRemove(hash, out LinkedListNode<(ValueHash256, TNode)>? listNode))
         {
             _queue.Remove(listNode);
             return true;
@@ -86,20 +86,11 @@ public class DoubleEndedLru<TNode>(int capacity) where TNode : notnull
         return false;
     }
 
-    public TNode[] GetAll()
-    {
-        return _hashMapping.Select(kv => kv.Value.Value.Item2).ToArray();
-    }
+    public TNode[] GetAll() => [.. _hashMapping.Select(kv => kv.Value.Value.Item2)];
 
-    public IEnumerable<(ValueHash256, TNode)> GetAllWithHash()
-    {
-        return _queue;
-    }
+    public IEnumerable<(ValueHash256, TNode)> GetAllWithHash() => _queue;
 
-    public bool Contains(in ValueHash256 hash)
-    {
-        return _hashMapping.ContainsKey(hash);
-    }
+    public bool Contains(in ValueHash256 hash) => _hashMapping.ContainsKey(hash);
 
     public TNode? GetByHash(ValueHash256 hash)
     {

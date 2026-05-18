@@ -79,8 +79,5 @@ public record NodeSession(INodeStats NodeStats, ITimestamper Timestamper)
         }
     }
 
-    public void OnPingSent()
-    {
-        LastPingSent = Timestamper.UtcNowOffset;
-    }
+    public void OnPingSent() => LastPingSent = Timestamper.UtcNowOffset;
 }

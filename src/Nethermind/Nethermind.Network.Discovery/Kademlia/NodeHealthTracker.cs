@@ -23,10 +23,7 @@ public class NodeHealthTracker<TKey, TNode>(
     private readonly ValueHash256 _currentNodeIdAsHash = nodeHashProvider.GetHash(config.CurrentNodeId);
     private readonly TimeSpan _refreshPingTimeout = config.RefreshPingTimeout;
 
-    private bool SameAsSelf(TNode node)
-    {
-        return nodeHashProvider.GetHash(node) == _currentNodeIdAsHash;
-    }
+    private bool SameAsSelf(TNode node) => nodeHashProvider.GetHash(node) == _currentNodeIdAsHash;
 
     private void TryRefresh(TNode toRefresh)
     {
@@ -43,7 +40,7 @@ public class NodeHealthTracker<TKey, TNode>(
                 }
 
                 // OK, fine, we'll ping it.
-                using CancellationTokenSource cts = new CancellationTokenSource(_refreshPingTimeout);
+                using CancellationTokenSource cts = new(_refreshPingTimeout);
                 try
                 {
                     await kademliaMessageSender.Ping(toRefresh, cts.Token);
@@ -75,7 +72,7 @@ public class NodeHealthTracker<TKey, TNode>(
     {
         _isRefreshing.TryRemove(nodeHashProvider.GetHash(node), out _);
 
-        var addResult = routingTable.TryAddOrRefresh(nodeHashProvider.GetHash(node), node, out TNode? toRefresh);
+        BucketAddResult addResult = routingTable.TryAddOrRefresh(nodeHashProvider.GetHash(node), node, out TNode? toRefresh);
         if (addResult == BucketAddResult.Full && toRefresh != null)
         {
             if (SameAsSelf(toRefresh))
@@ -98,7 +95,7 @@ public class NodeHealthTracker<TKey, TNode>(
     public void OnRequestFailed(TNode node)
     {
         ValueHash256 hash = nodeHashProvider.GetHash(node);
-        if (!_peerFailures.TryGet(hash, out var currentFailure))
+        if (!_peerFailures.TryGet(hash, out int currentFailure))
         {
             _peerFailures.Set(hash, 1);
             return;

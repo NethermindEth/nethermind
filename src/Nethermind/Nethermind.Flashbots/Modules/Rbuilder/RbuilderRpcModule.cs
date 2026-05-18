@@ -10,7 +10,6 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.State;
-using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using Nethermind.JsonRpc;
 using Nethermind.State;
@@ -21,10 +20,7 @@ public class RbuilderRpcModule(IBlockFinder blockFinder, ISpecProvider specProvi
     : IRbuilderRpcModule
 {
 
-    public ResultWrapper<byte[]?> rbuilder_getCodeByHash(Hash256 hash)
-    {
-        return ResultWrapper<byte[]?>.Success(stateReader.GetCode(hash));
-    }
+    public ResultWrapper<byte[]?> rbuilder_getCodeByHash(Hash256 hash) => ResultWrapper<byte[]?>.Success(stateReader.GetCode(hash));
 
     public ResultWrapper<Hash256> rbuilder_calculateStateRoot(BlockParameter blockParam, IDictionary<Address, AccountChange> accountDiff)
     {
@@ -37,7 +33,6 @@ public class RbuilderRpcModule(IBlockFinder blockFinder, ISpecProvider specProvi
         using IReadOnlyTxProcessingScope worldScope = txProcessorSource.Build(blockHeader);
         IWorldState worldState = worldScope.WorldState;
         IReleaseSpec releaseSpec = specProvider.GetSpec(blockHeader);
-        worldState.StateRoot = blockHeader.StateRoot!;
 
         foreach (KeyValuePair<Address, AccountChange> kv in accountDiff)
         {
@@ -115,8 +110,7 @@ public class RbuilderRpcModule(IBlockFinder blockFinder, ISpecProvider specProvi
             return ResultWrapper<AccountState?>.Fail("Block not found", ErrorCodes.ResourceNotFound);
         }
 
-        if (stateReader.TryGetAccount(blockHeader.StateRoot!, address,
-                out AccountStruct account))
+        if (stateReader.TryGetAccount(blockHeader, address, out AccountStruct account))
         {
             return ResultWrapper<AccountState?>.Success(new AccountState(account.Nonce, account.Balance,
                 account.CodeHash));

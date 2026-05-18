@@ -3,14 +3,13 @@
 
 using Nethermind.Core;
 
-namespace Nethermind.TxPool.Filters
+namespace Nethermind.TxPool.Filters;
+
+/// <summary>
+/// Filter used for discarding inbound transactions in the TX pool.
+/// Name used to differentiate from filters from Consensus namespace.
+/// </summary>
+public interface IIncomingTxFilter
 {
-    /// <summary>
-    /// Filter used for discarding inbound transactions in the TX pool.
-    /// Name used to differentiate from filters from Consensus namespace.
-    /// </summary>
-    public interface IIncomingTxFilter
-    {
-        AcceptTxResult Accept(Transaction tx, ref TxFilteringState state, TxHandlingOptions txHandlingOptions);
-    }
+    AcceptTxResult Accept(Transaction tx, ref TxFilteringState state, TxHandlingOptions txHandlingOptions);
 }

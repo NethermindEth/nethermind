@@ -2,14 +2,16 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Threading;
 using Nethermind.JsonRpc.Modules;
 
 namespace Nethermind.JsonRpc
 {
     public class JsonRpcContext : IDisposable
     {
-        public static AsyncLocal<JsonRpcContext?> Current { get; private set; } = new();
+        [ThreadStatic]
+        private static JsonRpcContext? _current;
+
+        public static ThreadStaticAccessor Current { get; } = new();
 
         public static JsonRpcContext Http(JsonRpcUrl url) => new(RpcEndpoint.Http, url: url);
         public static JsonRpcContext WebSocket(JsonRpcUrl url) => new(RpcEndpoint.Ws, url: url);
@@ -20,7 +22,7 @@ namespace Nethermind.JsonRpc
             DuplexClient = duplexClient;
             Url = url;
             IsAuthenticated = Url?.IsAuthenticated == true || RpcEndpoint == RpcEndpoint.IPC;
-            Current.Value = this;
+            _current = this;
         }
 
         public RpcEndpoint RpcEndpoint { get; }
@@ -29,9 +31,22 @@ namespace Nethermind.JsonRpc
         public bool IsAuthenticated { get; }
         public void Dispose()
         {
-            if (Current.Value == this)
+            if (_current == this)
             {
-                Current.Value = null;
+                _current = null;
+            }
+        }
+
+        /// <summary>
+        /// Provides .Value accessor compatible with AsyncLocal API shape so callers
+        /// like <c>JsonRpcContext.Current.Value?.IsAuthenticated</c> continue to compile.
+        /// </summary>
+        public sealed class ThreadStaticAccessor
+        {
+            public JsonRpcContext? Value
+            {
+                get => _current;
+                set => _current = value;
             }
         }
     }

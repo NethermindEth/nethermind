@@ -105,16 +105,10 @@ public class RangeQueryVisitor : ITreeVisitor<TreePathContext>, IDisposable
         return true;
     }
 
-    public bool ShouldVisit(in TreePathContext ctx, in ValueHash256 nextNode)
-    {
-        return ShouldVisit(ctx.Path);
-    }
+    public bool ShouldVisit(in TreePathContext ctx, in ValueHash256 nextNode) => ShouldVisit(ctx.Path);
 
 
-    public long GetBytesSize()
-    {
-        return _currentBytesCount;
-    }
+    public long GetBytesSize() => _currentBytesCount;
 
     public ArrayPoolList<byte[]> GetProofs()
     {
@@ -150,10 +144,7 @@ public class RangeQueryVisitor : ITreeVisitor<TreePathContext>, IDisposable
     }
 
 
-    public void VisitMissingNode(in TreePathContext ctx, in ValueHash256 nodeHash)
-    {
-        throw new TrieException($"Missing node {ctx.Path} {nodeHash}");
-    }
+    public void VisitMissingNode(in TreePathContext ctx, in ValueHash256 nodeHash) => throw new TrieException($"Missing node {ctx.Path} {nodeHash}");
 
     public void VisitBranch(in TreePathContext ctx, TrieNode node)
     {
@@ -196,7 +187,7 @@ public class RangeQueryVisitor : ITreeVisitor<TreePathContext>, IDisposable
     {
     }
 
-    private void CollectNode(in TreePath path, SpanSource value)
+    private void CollectNode(in TreePath path, CappedArray<byte> value)
     {
         int encodedSize = _valueCollector.Collect(path.Path, value);
         _currentBytesCount += encodedSize;
@@ -209,6 +200,6 @@ public class RangeQueryVisitor : ITreeVisitor<TreePathContext>, IDisposable
 
     public interface ILeafValueCollector
     {
-        int Collect(in ValueHash256 path, SpanSource value);
+        int Collect(in ValueHash256 path, CappedArray<byte> value);
     }
 }

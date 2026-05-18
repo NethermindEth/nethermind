@@ -7,6 +7,7 @@ public class NoGCStrategy : IGCStrategy
 {
     public static readonly NoGCStrategy Instance = new();
     public int CollectionsPerDecommit => -1;
+    public int PostBlockDelayMs => 0;
     public bool CanStartNoGCRegion() => false;
     public (GcLevel Generation, GcCompaction Compacting) GetForcedGCParams() => (GcLevel.NoGC, GcCompaction.No);
 }

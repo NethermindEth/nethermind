@@ -6,7 +6,6 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
 using System.Runtime.Intrinsics;
-using FluentAssertions;
 using Nethermind.Core.Crypto;
 using Nethermind.Network.Discovery.Kademlia;
 using NUnit.Framework;
@@ -57,28 +56,28 @@ public class Hash256XorUtilsTests
               "0x000000000000000000000000000000000000000000000000000000000001000f", 17)]
     public void TestDistance(string hash1, string hash2, string xosString, int expectedDistance)
     {
-        ValueHash256 xor = Hash256XorUtils.XorDistance(new ValueHash256(hash1), new ValueHash256(hash2));
-        xor.ToString().Should().Be(xosString.ToLower());
-        Hash256XorUtils.CalculateLogDistance(new ValueHash256(hash1), new ValueHash256(hash2)).Should().Be(expectedDistance);
-        Hash256XorUtils.CalculateLogDistance(new ValueHash256(hash2), new ValueHash256(hash1)).Should().Be(expectedDistance);
+        ValueHash256 xor = Hash256XorUtils.XorDistance(new(hash1), new(hash2));
+        Assert.That(xor.ToString(), Is.EqualTo(xosString.ToLower()));
+        Assert.That(Hash256XorUtils.CalculateLogDistance(new(hash1), new(hash2)), Is.EqualTo(expectedDistance));
+        Assert.That(Hash256XorUtils.CalculateLogDistance(new(hash2), new(hash1)), Is.EqualTo(expectedDistance));
     }
 
     [Test]
     public void TestGetRandomHash()
     {
-        Random rand = new Random(0);
-        ValueHash256 randomized = new ValueHash256();
+        Random rand = new(0);
+        ValueHash256 randomized = new();
         rand.NextBytes(randomized.BytesAsSpan);
 
         void TestForDistance(int distance)
         {
-            var randHash = Hash256XorUtils.GetRandomHashAtDistance(randomized, distance, rand);
-            Hash256XorUtils.CalculateLogDistance(randomized, randHash).Should().Be(distance);
+            ValueHash256 randHash = Hash256XorUtils.GetRandomHashAtDistance(randomized, distance, rand);
+            Assert.That(Hash256XorUtils.CalculateLogDistance(randomized, randHash), Is.EqualTo(distance));
         }
 
         for (int i = 1; i < 256; i++)
         {
-            rand = new Random(0);
+            rand = new(0);
             for (int j = 0; j < 10; j++)
             {
                 TestForDistance(i);
@@ -90,10 +89,10 @@ public class Hash256XorUtilsTests
     [TestCase]
     public void TestDistanceCompare()
     {
-        ValueHash256 h1 = new ValueHash256("0x0010000000000000000000000000000000000000000000000000000000000000");
-        ValueHash256 h2 = new ValueHash256("0x0110000000000000000000000000000000000000000000000000000000000000");
-        ValueHash256 h3 = new ValueHash256("0x0000000000000000000000000000000000000000000000000000000000000000");
+        ValueHash256 h1 = new("0x0010000000000000000000000000000000000000000000000000000000000000");
+        ValueHash256 h2 = new("0x0110000000000000000000000000000000000000000000000000000000000000");
+        ValueHash256 h3 = new("0x0000000000000000000000000000000000000000000000000000000000000000");
 
-        Hash256XorUtils.Compare(h1, h2, h3).Should().BeLessThan(0);
+        Assert.That(Hash256XorUtils.Compare(h1, h2, h3), Is.LessThan(0));
     }
 }

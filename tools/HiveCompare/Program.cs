@@ -45,8 +45,7 @@ internal class Program
                 : 2;
         });
 
-        CommandLineConfiguration cli = new(rootCommand);
-        cli.Invoke(args);
+        rootCommand.Parse(args).Invoke();
     }
 
     private static bool ParseTests(string firstFile, string secondFile)

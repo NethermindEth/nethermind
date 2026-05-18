@@ -12,6 +12,7 @@ using Nethermind.Db.Rocks.Config;
 using Nethermind.Init.Steps;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
+using Nethermind.Serialization.Rlp;
 using Nethermind.TxPool;
 
 namespace Nethermind.Init
@@ -19,17 +20,11 @@ namespace Nethermind.Init
     /// <summary>
     /// Applies changes to the NetworkConfig and the DbConfig so to adhere to the max memory limit hint.
     /// </summary>
-    public class MemoryHintMan
+    public class MemoryHintMan(ILogManager logManager, MallocHelper? mallocHelper = null)
     {
-        private readonly ILogger _logger;
-        private readonly MallocHelper _mallocHelper;
-
-        public MemoryHintMan(ILogManager logManager, MallocHelper? mallocHelper = null)
-        {
-            _mallocHelper = mallocHelper ?? MallocHelper.Instance;
-            _logger = logManager?.GetClassLogger<MemoryHintMan>()
+        private readonly ILogger _logger = logManager?.GetClassLogger<MemoryHintMan>()
                       ?? throw new ArgumentNullException(nameof(logManager));
-        }
+        private readonly MallocHelper _mallocHelper = mallocHelper ?? MallocHelper.Instance;
 
         public void SetMemoryAllowances(
             IDbConfig dbConfig,
@@ -39,7 +34,7 @@ namespace Nethermind.Init
             ITxPoolConfig txPoolConfig,
             uint cpuCount)
         {
-            TotalMemory = initConfig.MemoryHint ?? 2.GB();
+            TotalMemory = initConfig.MemoryHint ?? 1.GB;
             ValidateCpuCount(cpuCount);
 
             checked
@@ -48,7 +43,7 @@ namespace Nethermind.Init
 
                 if (_logger.IsInfo) _logger.Info("Setting up memory allowances");
                 if (_logger.IsInfo) _logger.Info($"  Memory hint:        {TotalMemory / 1000 / 1000,5} MB");
-                _remainingMemory = initConfig.MemoryHint ?? 2.GB();
+                _remainingMemory = initConfig.MemoryHint ?? 1.GB;
                 _remainingMemory -= GeneralMemory;
                 if (_logger.IsInfo) _logger.Info($"  General memory:     {GeneralMemory / 1000 / 1000,5} MB");
                 AssignPeersMemory(networkConfig);
@@ -88,14 +83,14 @@ namespace Nethermind.Init
             // On 16C/32T machine, this reduces memory usage by about 7GB.
             // There aren't much difference between 16KB to 64KB, but the system cpu time increase slightly as threshold
             // lowers. 4k significantly increase cpu system time.
-            bool success = MallocHelper.Instance.MallOpt(MallocHelper.Option.M_MMAP_THRESHOLD, (int)64.KiB());
+            bool success = MallocHelper.Instance.MallOpt(MallocHelper.Option.M_MMAP_THRESHOLD, (int)64.KiB);
             if (!success && _logger.IsDebug) _logger.Debug("Unable to set M_MAP_THRESHOLD");
         }
 
         private long _remainingMemory;
 
         public long TotalMemory = 1024 * 1024 * 1024;
-        public long GeneralMemory { get; } = 32.MB();
+        public long GeneralMemory { get; } = 32.MB;
         public long FastBlocksMemory { get; private set; }
         public long DbMemory { get; private set; }
         public long NettyMemory { get; private set; }
@@ -111,7 +106,7 @@ namespace Nethermind.Init
 
         private void AssignPeersMemory(INetworkConfig networkConfig)
         {
-            PeersMemory = networkConfig.MaxActivePeers.MB();
+            PeersMemory = networkConfig.MaxActivePeers.MB;
             if (PeersMemory > _remainingMemory * 0.75)
             {
                 throw new InvalidDataException(
@@ -131,7 +126,7 @@ namespace Nethermind.Init
             MemoryAllowance.TxHashCacheSize = (int)(hashCacheMemory / 128);
             hashCacheMemory = MemoryAllowance.TxHashCacheSize * 128;
 
-            long txPoolMemory = txPoolConfig.Size * 40.KB() + hashCacheMemory;
+            long txPoolMemory = txPoolConfig.Size * 40.KB + hashCacheMemory;
             if (txPoolMemory > _remainingMemory * 0.5)
             {
                 throw new InvalidDataException(
@@ -147,11 +142,11 @@ namespace Nethermind.Init
             {
                 if (!syncConfig.DownloadBodiesInFastSync && !syncConfig.DownloadReceiptsInFastSync)
                 {
-                    FastBlocksMemory = Math.Min(128.MB(), (long)(0.1 * _remainingMemory));
+                    FastBlocksMemory = Math.Min(128.MB, (long)(0.1 * _remainingMemory));
                 }
                 else
                 {
-                    FastBlocksMemory = Math.Min(1.GB(), (long)(0.1 * _remainingMemory));
+                    FastBlocksMemory = Math.Min(1.GB, (long)(0.1 * _remainingMemory));
                 }
 
                 syncConfig.FastHeadersMemoryBudget = (ulong)FastBlocksMemory;
@@ -172,37 +167,27 @@ namespace Nethermind.Init
             dbConfig.SharedBlockCacheSize = (ulong)DbMemory;
         }
 
-        private struct DbNeeds
+        private struct DbNeeds(
+            uint preferredBuffers,
+            long preferredMinBufferMemory,
+            long preferredMaxBufferMemory,
+            long preferredMinMemory,
+            long preferredMaxMemory,
+            decimal preferredMemoryPercentage)
         {
-            public DbNeeds(
-                uint preferredBuffers,
-                long preferredMinBufferMemory,
-                long preferredMaxBufferMemory,
-                long preferredMinMemory,
-                long preferredMaxMemory,
-                decimal preferredMemoryPercentage)
-            {
-                PreferredBuffers = preferredBuffers;
-                PreferredMinBufferMemory = preferredMinBufferMemory;
-                PreferredMaxBufferMemory = preferredMaxBufferMemory;
-                PreferredMinMemory = preferredMinMemory;
-                PreferredMaxMemory = preferredMaxMemory;
-                PreferredMemoryPercentage = preferredMemoryPercentage;
-            }
-
-            public uint PreferredBuffers { get; set; }
-            public long PreferredMinBufferMemory { get; set; }
-            public long PreferredMaxBufferMemory { get; set; }
-            public long PreferredMinMemory { get; set; }
-            public long PreferredMaxMemory { get; set; }
-            public decimal PreferredMemoryPercentage { get; set; }
+            public uint PreferredBuffers { get; set; } = preferredBuffers;
+            public long PreferredMinBufferMemory { get; set; } = preferredMinBufferMemory;
+            public long PreferredMaxBufferMemory { get; set; } = preferredMaxBufferMemory;
+            public long PreferredMinMemory { get; set; } = preferredMinMemory;
+            public long PreferredMaxMemory { get; set; } = preferredMaxMemory;
+            public decimal PreferredMemoryPercentage { get; set; } = preferredMemoryPercentage;
         }
 
         private void AssignNettyMemory(INetworkConfig networkConfig, uint cpuCount)
         {
             ValidateCpuCount(cpuCount);
 
-            NettyMemory = Math.Min(256.MB(), (long)(0.2 * _remainingMemory));
+            NettyMemory = Math.Min(256.MB, (long)(0.2 * _remainingMemory));
 
             uint arenaCount = (uint)Math.Min(cpuCount * 2, networkConfig.MaxNettyArenaCount);
 
@@ -236,10 +221,23 @@ namespace Nethermind.Init
 
             NettyMemory = estimate;
 
+            // Set PooledByteBufferAllocator.Default configuration.
+            // Set it to a fixed 1 MB, 1 arena. Code should prefer NethermindBuffers.Default instead as it is easier to override.
+            ConfigureDefaultPooledByteBufferAllocator(8, 1);
+
+            NethermindBuffers.Default = NethermindBuffers.CreateAllocator(networkConfig.NettyArenaOrder, arenaCount);
+            NethermindBuffers.RlpxAllocator = NethermindBuffers.CreateAllocator(networkConfig.NettyArenaOrder, arenaCount);
+
+            // 1 MB chunk independent of memory hint as discovery should be fairly small and does not do much.
+            NethermindBuffers.DiscoveryAllocator = NethermindBuffers.CreateAllocator(8, arenaCount);
+        }
+
+        private void ConfigureDefaultPooledByteBufferAllocator(int arenaOrder, uint arenaCount)
+        {
             // Need to set these early, or otherwise if the allocator is used ahead of these setting, these config
             // will not take affect
 
-            Environment.SetEnvironmentVariable("io.netty.allocator.maxOrder", networkConfig.NettyArenaOrder.ToString());
+            Environment.SetEnvironmentVariable("io.netty.allocator.maxOrder", arenaOrder.ToString());
 
             // Arena count is capped because if its too high, the memory budget per arena can get too low causing
             // a very small chunk size. Any allocation of size higher than a chunk will essentially be unpooled triggering LOH.
@@ -259,7 +257,6 @@ namespace Nethermind.Init
             // We never use any direct arena, but it does not take up memory because of that.
             Environment.SetEnvironmentVariable("io.netty.allocator.numHeapArenas", arenaCount.ToString());
             Environment.SetEnvironmentVariable("io.netty.allocator.numDirectArenas", arenaCount.ToString());
-
             if (PooledByteBufferAllocator.Default.Metric.HeapArenas().Count != arenaCount)
             {
                 _logger.Warn("unable to set netty pooled byte buffer config");

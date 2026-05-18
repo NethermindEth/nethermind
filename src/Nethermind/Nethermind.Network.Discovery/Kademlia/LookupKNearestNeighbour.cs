@@ -36,7 +36,7 @@ public class LookupKNearestNeighbour<TKey, TNode>(
     {
         if (_logger.IsDebug) _logger.Debug($"Initiate lookup for hash {targetHash}");
 
-        using var cts = CancellationTokenSource.CreateLinkedTokenSource(token);
+        using CancellationTokenSource cts = CancellationTokenSource.CreateLinkedTokenSource(token);
         token = cts.Token;
 
         ConcurrentDictionary<ValueHash256, TNode> queried = new();
@@ -47,7 +47,7 @@ public class LookupKNearestNeighbour<TKey, TNode>(
         IComparer<ValueHash256> comparerReverse = Comparer<ValueHash256>.Create((h1, h2) =>
             Hash256XorUtils.Compare(h2, h1, targetHash));
 
-        McsLock queueLock = new McsLock();
+        McsLock queueLock = new();
 
         // Ordered by lowest distance. Will get popped for next round.
         PriorityQueue<(ValueHash256, TNode), ValueHash256> bestSeen = new(comparer);
@@ -62,13 +62,13 @@ public class LookupKNearestNeighbour<TKey, TNode>(
             bestSeen.Enqueue((nodeHash, node), nodeHash);
         }
 
-        TaskCompletionSource roundComplete = new TaskCompletionSource(token);
+        TaskCompletionSource roundComplete = new(token);
         int closestNodeRound = 0;
         int currentRound = 0;
         int queryingTask = 0;
         bool finished = false;
 
-        Task[] worker = Enumerable.Range(0, config.Alpha).Select((i) => Task.Run(async () =>
+        Task[] worker = [.. Enumerable.Range(0, config.Alpha).Select((i) => Task.Run(async () =>
         {
             while (!finished)
             {
@@ -89,7 +89,7 @@ public class LookupKNearestNeighbour<TKey, TNode>(
 
                 try
                 {
-                    if (ShouldStopDueToNoBetterResult(out var round))
+                    if (ShouldStopDueToNoBetterResult(out int round))
                     {
                         if (_logger.IsTrace) _logger.Trace("Stopping lookup. No better result.");
                         break;
@@ -107,7 +107,7 @@ public class LookupKNearestNeighbour<TKey, TNode>(
                     if (roundComplete.TrySetResult()) roundComplete = new TaskCompletionSource(token);
                 }
             }
-        }, token)).ToArray();
+        }, token))];
 
         // When any of the worker is finished, we consider the whole query as done.
         // This prevent this operation from hanging on a timed out request
@@ -119,13 +119,13 @@ public class LookupKNearestNeighbour<TKey, TNode>(
 
         async Task<(TNode target, TNode[]? retVal)> WrappedFindNeighbourOp(TNode node)
         {
-            using var cts = CancellationTokenSource.CreateLinkedTokenSource(token);
+            using CancellationTokenSource cts = CancellationTokenSource.CreateLinkedTokenSource(token);
             cts.CancelAfter(_findNeighbourHardTimeout);
 
             try
             {
                 // targetHash is implied in findNeighbourOp
-                var ret = await findNeighbourOp(node, cts.Token);
+                TNode[]? ret = await findNeighbourOp(node, cts.Token);
                 nodeHealthTracker.OnIncomingMessageFrom(node);
 
                 return (node, ret);
@@ -162,7 +162,7 @@ public class LookupKNearestNeighbour<TKey, TNode>(
 
         void ProcessResult(ValueHash256 hash, TNode toQuery, (TNode, TNode[]? neighbours)? valueTuple, int round)
         {
-            using var _ = queueLock.Acquire();
+            using McsLock.Disposable _ = queueLock.Acquire();
 
             finalResult.Enqueue((hash, toQuery), hash);
             while (finalResult.Count > k)
@@ -203,14 +203,14 @@ public class LookupKNearestNeighbour<TKey, TNode>(
 
         TNode[] CompileResult()
         {
-            using var _ = queueLock.Acquire();
+            using McsLock.Disposable _ = queueLock.Acquire();
             if (finalResult.Count > k) finalResult.Dequeue();
-            return finalResult.UnorderedItems.Select((kv) => kv.Element.Item2).ToArray();
+            return [.. finalResult.UnorderedItems.Select((kv) => kv.Element.Item2)];
         }
 
         bool ShouldStopDueToNoBetterResult(out int round)
         {
-            using var _ = queueLock.Acquire();
+            using McsLock.Disposable _ = queueLock.Acquire();
 
             round = Interlocked.Increment(ref currentRound);
             if (finalResult.Count >= k && round - closestNodeRound >= (config.Alpha * 2))

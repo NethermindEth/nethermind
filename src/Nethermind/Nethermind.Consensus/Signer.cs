@@ -40,14 +40,11 @@ namespace Nethermind.Consensus
         public Signature Sign(in ValueHash256 message)
         {
             if (!CanSign) throw new InvalidOperationException("Cannot sign without provided key.");
-            byte[] rs = SpanSecP256k1.SignCompact(message.Bytes, _key!.KeyBytes, out int v);
+            byte[] rs = SecP256k1.SignCompact(message.Bytes, _key!.KeyBytes, out int v);
             return new Signature(rs, v);
         }
 
-        public Signature Sign(BlockHeader header)
-        {
-            return Sign(header.Hash);
-        }
+        public Signature Sign(BlockHeader header) => Sign(header.Hash);
 
         public ValueTask Sign(Transaction tx)
         {

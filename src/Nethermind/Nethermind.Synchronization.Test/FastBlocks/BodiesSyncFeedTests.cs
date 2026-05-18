@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -6,6 +6,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
@@ -13,9 +14,11 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
+using Nethermind.History;
 using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Stats;
+using Nethermind.Stats.Model;
 using Nethermind.Synchronization.FastBlocks;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
@@ -28,20 +31,22 @@ namespace Nethermind.Synchronization.Test.FastBlocks;
 
 public class BodiesSyncFeedTests
 {
-    private IBlockTree _syncingFromBlockTree = null!;
-    private IBlockTree _syncingToBlockTree = null!;
-    private TestMemDb _blocksDb = null!;
-    private ISyncPointers _syncPointers = null!;
-    private BodiesSyncFeed _feed = null!;
-    private ISyncConfig _syncConfig = null!;
-    private MemDb _metadataDb = null!;
-    private Block _pivotBlock = null!;
-    private ISyncPeerPool _syncPeerPool = null!;
+    private IBlockTree _syncingFromBlockTree;
+    private IBlockTree _syncingToBlockTree;
+    private TestMemDb _blocksDb;
+    private ISyncPointers _syncPointers;
+    private BodiesSyncFeed _feed;
+    private ISyncConfig _syncConfig;
+    private MemDb _metadataDb;
+    private Block _pivotBlock;
+    private ISyncPeerPool _syncPeerPool;
+    private IHistoryPruner _historyPruner;
 
     [SetUp]
     public void Setup()
     {
         _syncingFromBlockTree = Build.A.BlockTree()
+            .WithTransactions(new InMemoryReceiptStorage())
             .OfChainLength(100)
             .TestObject;
 
@@ -64,27 +69,32 @@ public class BodiesSyncFeedTests
         {
             FastSync = true,
             PivotHash = _pivotBlock.Hash!.ToString(),
-            PivotNumber = _pivotBlock.Number.ToString(),
+            PivotNumber = _pivotBlock.Number,
             AncientBodiesBarrier = 0,
             DownloadBodiesInFastSync = true,
         };
         _syncingToBlockTree.SyncPivot = (_pivotBlock.Number, _pivotBlock.Hash);
 
         _syncPeerPool = Substitute.For<ISyncPeerPool>();
+        _historyPruner = Substitute.For<IHistoryPruner>();
         _feed = new BodiesSyncFeed(
             MainnetSpecProvider.Instance,
             _syncingToBlockTree,
-            Always.Valid,
+            CreateBlockValidator(),
             _syncPointers,
             _syncPeerPool,
             _syncConfig,
             new NullSyncReport(),
+            _historyPruner,
             _blocksDb,
             _metadataDb,
             LimboLogs.Instance,
             flushDbInterval: 10
         );
     }
+
+    private static BlockValidator CreateBlockValidator() =>
+        new(Always.Valid, Always.Valid, Always.Valid, MainnetSpecProvider.Instance, LimboLogs.Instance);
 
     [TearDown]
     public void TearDown()
@@ -151,6 +161,30 @@ public class BodiesSyncFeedTests
     }
 
     [Test]
+    public async Task ShouldHandleSparseBodyResponseWithoutReportingBreach()
+    {
+        _feed.InitializeFeed();
+
+        BodiesSyncBatch req = (await _feed.PrepareRequest())!;
+        Block firstBlock = _syncingFromBlockTree.FindBlock(req.Infos[0]!.BlockNumber, BlockTreeLookupOptions.None)!;
+        Block skippedBlock = _syncingFromBlockTree.FindBlock(req.Infos[1]!.BlockNumber, BlockTreeLookupOptions.None)!;
+        Block thirdBlock = _syncingFromBlockTree.FindBlock(req.Infos[2]!.BlockNumber, BlockTreeLookupOptions.None)!;
+        req.Response = new OwnedBlockBodies([firstBlock.Body, thirdBlock.Body]);
+        req.ResponseSourcePeer = new PeerInfo(Substitute.For<ISyncPeer>());
+
+        SyncResponseHandlingResult result = _feed.HandleResponse(req);
+
+        Assert.That(result, Is.EqualTo(SyncResponseHandlingResult.OK));
+        Assert.That(_syncingToBlockTree.FindBlock(firstBlock.Hash!, BlockTreeLookupOptions.None, firstBlock.Number), Is.Not.Null);
+        Assert.That(_syncingToBlockTree.FindBlock(skippedBlock.Hash!, BlockTreeLookupOptions.None, skippedBlock.Number), Is.Null);
+        Assert.That(_syncingToBlockTree.FindBlock(thirdBlock.Hash!, BlockTreeLookupOptions.None, thirdBlock.Number), Is.Not.Null);
+        _syncPeerPool.DidNotReceive().ReportBreachOfProtocol(
+            Arg.Any<PeerInfo>(),
+            Arg.Any<DisconnectReason>(),
+            Arg.Any<string>());
+    }
+
+    [Test]
     public async Task ShouldRecoverOnInsertFailure()
     {
         _feed.InitializeFeed();
@@ -176,46 +210,61 @@ public class BodiesSyncFeedTests
     }
 
     [TestCase(1, 99, false, null, false)]
-    [TestCase(1, 11051474, false, null, true)]
-    [TestCase(1, 11052984, false, null, true)]
-    [TestCase(1, 11052985, false, null, false)]
-    [TestCase(11051474, 11052984, false, null, false)]
-    [TestCase(11051474, 11051474, false, null, true)]
-    [TestCase(1, 99, false, 11052984, false)]
-    [TestCase(1, 11051474, false, 11052984, true)]
-    [TestCase(1, 11052984, false, 11052984, true)]
-    [TestCase(1, 11052985, false, 11052984, false)]
-    [TestCase(11051474, 11052984, false, 11052984, false)]
-    [TestCase(11051474, 11051474, false, 11052984, true)]
     [TestCase(1, 99, true, null, false)]
-    [TestCase(1, 11051474, true, null, false)]
-    [TestCase(1, 11052984, true, null, false)]
-    [TestCase(1, 11052985, true, null, false)]
-    [TestCase(11051474, 11052984, true, null, false)]
-    [TestCase(11051474, 11051474, true, null, true)]
     [TestCase(1, 99, false, 0, false)]
-    [TestCase(1, 11051474, false, 0, false)]
-    [TestCase(1, 11052984, false, 0, false)]
-    [TestCase(1, 11052985, false, 0, false)]
-    [TestCase(11051474, 11052984, false, 0, false)]
-    [TestCase(11051474, 11051474, false, 0, true)]
-    public void When_finished_sync_with_old_default_barrier_then_finishes_imedietely(
+    public void When_finished_sync_with_old_default_barrier_then_finishes_immediately(
             long AncientBarrierInConfig,
             long lowestInsertedBlockNumber,
             bool JustStarted,
             long? previousBarrierInDb,
-            bool shouldfinish)
+            bool shouldFinish)
     {
         _syncConfig.AncientBodiesBarrier = AncientBarrierInConfig;
         _syncConfig.AncientReceiptsBarrier = AncientBarrierInConfig;
-        _syncConfig.PivotNumber = (AncientBarrierInConfig + 1_000_000).ToString();
+        _syncConfig.PivotNumber = AncientBarrierInConfig + 1_000_000;
         _syncPointers.LowestInsertedBodyNumber = JustStarted ? null : _pivotBlock.Number;
         if (previousBarrierInDb is not null)
             _metadataDb.Set(MetadataDbKeys.BodiesBarrierWhenStarted, previousBarrierInDb.Value.ToBigEndianByteArrayWithoutLeadingZeros());
         _feed.InitializeFeed();
         _syncPointers.LowestInsertedBodyNumber = lowestInsertedBlockNumber;
 
-        _feed.IsFinished.Should().Be(shouldfinish);
+        _feed.IsFinished.Should().Be(shouldFinish);
+    }
+
+    [Test]
+    public async Task When_AncientBodiesBarrier_exceeds_SyncPivot_then_finishes_immediately()
+    {
+        _syncConfig.PivotNumber = 0;
+        _syncConfig.AncientBodiesBarrier = 4_367_322;
+
+        _feed.InitializeFeed();
+        using BodiesSyncBatch? _ = await _feed.PrepareRequest();
+
+        _feed.IsFinished.Should().BeTrue();
+    }
+
+    // Regression for #9002: decreasing AncientBodiesBarrier after a partial sync must not leave the feed stuck.
+    [Test]
+    public async Task When_AncientBodiesBarrier_decreased_after_partial_sync_feed_resumes_download()
+    {
+        // Previous run downloaded bodies from pivot (99) down to block 60.
+        for (int i = 60; i <= 99; i++)
+        {
+            _syncingToBlockTree.Insert(_syncingFromBlockTree.FindBlock(i, BlockTreeLookupOptions.None)!);
+        }
+        _syncPointers.LowestInsertedBodyNumber = 60;
+
+        // Restart with a lower barrier — blocks 40..59 still need downloading.
+        _syncConfig.AncientBodiesBarrier = 40;
+        _feed.InitializeFeed();
+
+        _feed.IsFinished.Should().BeFalse();
+
+        using BodiesSyncBatch? batch = await _feed.PrepareRequest();
+        batch.Should().NotBeNull();
+        batch!.Infos
+            .Where(static i => i is not null)
+            .Should().AllSatisfy(i => i!.BlockNumber.Should().BeInRange(40, 59));
     }
 
     [Test]

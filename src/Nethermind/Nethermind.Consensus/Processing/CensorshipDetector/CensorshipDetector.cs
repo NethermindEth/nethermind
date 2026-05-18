@@ -4,7 +4,6 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
-using System.Linq;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Core;
@@ -17,12 +16,25 @@ using Nethermind.TxPool;
 
 namespace Nethermind.Consensus.Processing.CensorshipDetector;
 
-public class CensorshipDetector : IDisposable
+public interface ICensorshipDetector
+{
+    IEnumerable<BlockNumberHash> GetCensoredBlocks();
+    bool BlockPotentiallyCensored(long blockNumber, ValueHash256 blockHash);
+}
+
+public class NoopCensorshipDetector : ICensorshipDetector
+{
+    public IEnumerable<BlockNumberHash> GetCensoredBlocks() => [];
+
+    public bool BlockPotentiallyCensored(long blockNumber, ValueHash256 blockHash) => false;
+}
+
+public class CensorshipDetector : IDisposable, ICensorshipDetector
 {
     private readonly IBlockTree _blockTree;
     private readonly ITxPool _txPool;
     private readonly IComparer<Transaction> _betterTxComparer;
-    private readonly IBlockProcessor _blockProcessor;
+    private readonly IBranchProcessor _blockProcessor;
     private readonly ILogger _logger;
     private readonly Dictionary<AddressAsKey, Transaction?>? _bestTxPerObservedAddresses;
     private readonly LruCache<BlockNumberHash, BlockCensorshipInfo> _potentiallyCensoredBlocks;
@@ -34,7 +46,7 @@ public class CensorshipDetector : IDisposable
         IBlockTree blockTree,
         ITxPool txPool,
         IComparer<Transaction> betterTxComparer,
-        IBlockProcessor blockProcessor,
+        IBranchProcessor blockProcessor,
         ILogManager logManager,
         ICensorshipDetectorConfig censorshipDetectorConfig)
     {
@@ -44,7 +56,7 @@ public class CensorshipDetector : IDisposable
         _blockProcessor = blockProcessor;
         _blockCensorshipThreshold = censorshipDetectorConfig.BlockCensorshipThreshold;
         _cacheSize = (int)(4 * _blockCensorshipThreshold);
-        _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+        _logger = logManager?.GetClassLogger<CensorshipDetector>() ?? throw new ArgumentNullException(nameof(logManager));
 
         if (censorshipDetectorConfig.AddressesForCensorshipDetection is not null)
         {
@@ -108,7 +120,7 @@ public class CensorshipDetector : IDisposable
             if (block.Transactions.Length == 0)
             {
                 BlockCensorshipInfo blockCensorshipInfo = new(false, block.ParentHash);
-                BlockNumberHash blockNumberHash = new BlockNumberHash(block);
+                BlockNumberHash blockNumberHash = new(block);
                 _potentiallyCensoredBlocks.Set(blockNumberHash, blockCensorshipInfo);
             }
             else
@@ -171,7 +183,7 @@ public class CensorshipDetector : IDisposable
                                   || blockTxsOfTrackedAddresses * 2 < poolTxsThatAreBetterThanWorstInBlock;
 
                 BlockCensorshipInfo blockCensorshipInfo = new(isCensored, block.ParentHash);
-                BlockNumberHash blockNumberHash = new BlockNumberHash(block);
+                BlockNumberHash blockNumberHash = new(block);
                 _potentiallyCensoredBlocks.Set(blockNumberHash, blockCensorshipInfo);
 
                 if (isCensored)
@@ -235,10 +247,7 @@ public class CensorshipDetector : IDisposable
 
     public bool BlockPotentiallyCensored(long blockNumber, ValueHash256 blockHash) => _potentiallyCensoredBlocks.Contains(new BlockNumberHash(blockNumber, blockHash));
 
-    public void Dispose()
-    {
-        _blockProcessor.BlockProcessing -= OnBlockProcessing;
-    }
+    public void Dispose() => _blockProcessor.BlockProcessing -= OnBlockProcessing;
 }
 
 public readonly record struct BlockCensorshipInfo(bool IsCensored, ValueHash256? ParentHash);

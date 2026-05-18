@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using Nethermind.Db;
 using Nethermind.Evm.State;
 using Nethermind.Logging;
@@ -20,13 +19,12 @@ public class OverridableWorldStateManager : IOverridableWorldScope
         _dbProvider = readOnlyDbProvider;
         OverlayTrieStore overlayTrieStore = new(readOnlyDbProvider.StateDb, trieStore);
         _reader = new(overlayTrieStore, readOnlyDbProvider.CodeDb, logManager);
-        WorldState = new WorldState(overlayTrieStore, readOnlyDbProvider.CodeDb, logManager, null, true);
+        WorldState = new TrieStoreScopeProvider(overlayTrieStore, readOnlyDbProvider.CodeDb, logManager);
     }
 
-    public IVisitingWorldState WorldState { get; }
+    public IWorldStateScopeProvider WorldState { get; }
+
     public IStateReader GlobalStateReader => _reader;
-    public void ResetOverrides()
-    {
-        _dbProvider.ClearTempChanges();
-    }
+    public void ResetOverrides() => _dbProvider.ClearTempChanges();
+    public void Dispose() => _dbProvider.Dispose();
 }

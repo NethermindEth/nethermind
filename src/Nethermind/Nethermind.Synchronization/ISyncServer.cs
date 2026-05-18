@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.Collections.Generic;
 using System.Threading;
 using Nethermind.Blockchain.Synchronization;
@@ -18,13 +19,16 @@ namespace Nethermind.Synchronization
         void AddNewBlock(Block block, ISyncPeer node);
         void StopNotifyingPeersAboutNewBlocks();
         TxReceipt[] GetReceipts(Hash256 blockHashes);
+        MemoryManager<byte>? GetBlockAccessListRlp(Hash256 blockHash);
         Block? Find(Hash256 hash);
+        BlockHeader? FindHeader(Hash256 hash);
         Hash256? FindHash(long number);
         IOwnedReadOnlyList<BlockHeader> FindHeaders(Hash256 hash, int numberOfBlocks, int skip, bool reverse);
-        IOwnedReadOnlyList<byte[]?> GetNodeData(IReadOnlyList<Hash256> keys, CancellationToken cancellationToken, NodeDataType includedTypes = NodeDataType.Code | NodeDataType.State);
+        IByteArrayList GetNodeData(IReadOnlyList<Hash256> keys, CancellationToken cancellationToken, NodeDataType includedTypes = NodeDataType.Code | NodeDataType.State);
         int GetPeerCount();
         ulong NetworkId { get; }
         BlockHeader Genesis { get; }
         BlockHeader? Head { get; }
+        long LowestBlock { get; }
     }
 }

@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Network.Discovery.Discv4;
 using Nethermind.Stats;
@@ -23,56 +22,56 @@ namespace Nethermind.Network.Discovery.Test.Discv4
         public void Setup()
         {
             _nodeStats = Substitute.For<INodeStats>();
-            _timestamper = new ManualTimestamper();
-            DateTimeOffset currentTime = new DateTimeOffset(2025, 5, 13, 21, 0, 0, TimeSpan.Zero);
+            _timestamper = new();
+            DateTimeOffset currentTime = new(2025, 5, 13, 21, 0, 0, TimeSpan.Zero);
             _timestamper.Set(currentTime.LocalDateTime);
-            _nodeSession = new NodeSession(_nodeStats, _timestamper);
+            _nodeSession = new(_nodeStats, _timestamper);
         }
 
         [Test]
         public void Test_HasReceivedPing()
         {
-            _nodeSession.HasReceivedPing.Should().BeFalse();
+            Assert.That(_nodeSession.HasReceivedPing, Is.False);
             _nodeSession.OnPingReceived();
-            _nodeSession.HasReceivedPing.Should().BeTrue();
+            Assert.That(_nodeSession.HasReceivedPing, Is.True);
             _timestamper.Add(NodeSession.BondTimeout);
-            _nodeSession.HasReceivedPing.Should().BeFalse();
+            Assert.That(_nodeSession.HasReceivedPing, Is.False);
         }
 
         [Test]
         public void Test_HasReceivedPong()
         {
-            _nodeSession.HasReceivedPong.Should().BeFalse();
+            Assert.That(_nodeSession.HasReceivedPong, Is.False);
             _nodeSession.OnPongReceived();
-            _nodeSession.HasReceivedPong.Should().BeTrue();
+            Assert.That(_nodeSession.HasReceivedPong, Is.True);
             _timestamper.Add(NodeSession.BondTimeout);
-            _nodeSession.HasReceivedPong.Should().BeFalse();
+            Assert.That(_nodeSession.HasReceivedPong, Is.False);
         }
 
         [Test]
         public void Test_HasTriedPingRecently()
         {
-            _nodeSession.HasTriedPingRecently.Should().BeFalse();
+            Assert.That(_nodeSession.HasTriedPingRecently, Is.False);
             _nodeSession.OnPingSent();
-            _nodeSession.HasTriedPingRecently.Should().BeTrue();
+            Assert.That(_nodeSession.HasTriedPingRecently, Is.True);
             _timestamper.Add(NodeSession.PingRetryTimeout);
-            _nodeSession.HasTriedPingRecently.Should().BeFalse();
+            Assert.That(_nodeSession.HasTriedPingRecently, Is.False);
         }
 
         [Test]
         public void Test_NotTooManyFailures()
         {
-            _nodeSession.NotTooManyFailure.Should().BeTrue();
+            Assert.That(_nodeSession.NotTooManyFailure, Is.True);
             _nodeSession.OnAuthenticatedRequestFailure();
-            _nodeSession.NotTooManyFailure.Should().BeTrue();
+            Assert.That(_nodeSession.NotTooManyFailure, Is.True);
 
             for (int i = 0; i < NodeSession.AuthenticatedRequestFailureLimit; i++)
             {
                 _nodeSession.OnAuthenticatedRequestFailure();
             }
-            _nodeSession.NotTooManyFailure.Should().BeFalse();
+            Assert.That(_nodeSession.NotTooManyFailure, Is.False);
             _nodeSession.ResetAuthenticatedRequestFailure();
-            _nodeSession.NotTooManyFailure.Should().BeTrue();
+            Assert.That(_nodeSession.NotTooManyFailure, Is.True);
         }
     }
 }

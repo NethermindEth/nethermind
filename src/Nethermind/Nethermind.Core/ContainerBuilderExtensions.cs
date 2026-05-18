@@ -1,12 +1,14 @@
-// SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
 using Autofac;
 using Autofac.Builder;
 using Autofac.Core;
+using Autofac.Core.Registration;
 using Autofac.Core.Resolving.Pipeline;
 using Autofac.Features.AttributeFilters;
 using Nethermind.Core.Container;
@@ -30,12 +32,16 @@ public static class ContainerBuilderExtensions
         return builder;
     }
 
-    public static ContainerBuilder AddSingleton<T>(this ContainerBuilder builder, T instance) where T : class
+    public static ContainerBuilder AddSingleton<T>(this ContainerBuilder builder, T instance, bool takeOwnership = false) where T : class
     {
-        builder.RegisterInstance(instance)
+        IRegistrationBuilder<T, SimpleActivatorData, SingleRegistrationStyle> registrationBuilder = builder.RegisterInstance(instance)
             .As<T>()
-            .ExternallyOwned()
             .SingleInstance();
+
+        if (!takeOwnership)
+        {
+            registrationBuilder.ExternallyOwned();
+        }
 
         return builder;
     }
@@ -243,6 +249,27 @@ public static class ContainerBuilderExtensions
         return builder;
     }
 
+    public static ContainerBuilder AddScoped<T, TArg0, TArg1, TArg2, TArg3>(this ContainerBuilder builder, Func<TArg0, TArg1, TArg2, TArg3, T> factoryMethod) where T : class where TArg0 : notnull where TArg1 : notnull where TArg2 : notnull where TArg3 : notnull
+    {
+        Func<IComponentContext, TArg0> param0 = CreateArgResolver<TArg0>(factoryMethod.Method, 0);
+        Func<IComponentContext, TArg1> param1 = CreateArgResolver<TArg1>(factoryMethod.Method, 1);
+        Func<IComponentContext, TArg2> param2 = CreateArgResolver<TArg2>(factoryMethod.Method, 2);
+        Func<IComponentContext, TArg3> param3 = CreateArgResolver<TArg3>(factoryMethod.Method, 3);
+
+        builder
+            .Register((ctx) => factoryMethod(
+                param0(ctx),
+                param1(ctx),
+                param2(ctx),
+                param3(ctx)
+            ))
+            .As<T>()
+            .AsSelf()
+            .InstancePerLifetimeScope();
+
+        return builder;
+    }
+
     public static ContainerBuilder AddScoped<T, TImpl>(this ContainerBuilder builder) where TImpl : T where T : notnull
     {
         builder.RegisterType<TImpl>()
@@ -250,7 +277,7 @@ public static class ContainerBuilderExtensions
             .CommonNethermindConfig()
             .InstancePerLifetimeScope();
 
-        builder.Bind<T, TImpl>();
+        builder.BindScoped<T, TImpl>();
 
         return builder;
     }
@@ -275,16 +302,17 @@ public static class ContainerBuilderExtensions
         return builder;
     }
 
-    public static ContainerBuilder AddScoped<T>(this ContainerBuilder builder, Func<IComponentContext, T> factoryMethod) where T : class
-    {
-        return builder.AddScoped<T, IComponentContext>(factoryMethod);
-    }
+    public static ContainerBuilder AddScoped<T>(this ContainerBuilder builder, Func<IComponentContext, T> factoryMethod) where T : class => builder.AddScoped<T, IComponentContext>(factoryMethod);
 
-    public static ContainerBuilder Add<T>(this ContainerBuilder builder) where T : class
+    public static ContainerBuilder Add<T>(this ContainerBuilder builder, bool externallyOwned = false) where T : class
     {
-        builder.RegisterType<T>()
-            .CommonNethermindConfig()
-            .As<T>();
+        IRegistrationBuilder<T, ConcreteReflectionActivatorData, SingleRegistrationStyle> registration =
+            builder.RegisterType<T>()
+                .CommonNethermindConfig()
+                .As<T>();
+
+        if (externallyOwned)
+            registration.ExternallyOwned();
 
         return builder;
     }
@@ -338,8 +366,20 @@ public static class ContainerBuilderExtensions
         return builder;
     }
 
+    public static ContainerBuilder Intercept<T>(this ContainerBuilder builder, Action<T> interceptor) where T : class => builder.AddDecorator<T>((ctx, service) =>
+    {
+        interceptor(service);
+        return service;
+    });
+
+    public static ContainerBuilder Intercept<T>(this ContainerBuilder builder, Action<T, IComponentContext> interceptor) where T : class => builder.AddDecorator<T>((ctx, service) =>
+    {
+        interceptor(service, ctx);
+        return service;
+    });
+
     /// <summary>
-    /// A convenient way of creating a service whose member can be configured indipendent of other instance of the same
+    /// A convenient way of creating a service whose members can be configured independent of other instances of the same
     /// type (assuming the type is of lifetime scope). This is useful for same type with multiple configuration
     /// or a graph of multiple same type. The T is expected to be of a main container of sort that contains the
     /// main service of interest.
@@ -355,9 +395,12 @@ public static class ContainerBuilderExtensions
         return builder;
     }
 
-    public static ContainerBuilder AddModule(this ContainerBuilder builder, IModule module)
+    public static ContainerBuilder AddModule(this ContainerBuilder builder, params IReadOnlyList<IModule> modules)
     {
-        builder.RegisterModule(module);
+        foreach (IModule module in modules)
+        {
+            builder.RegisterModule(module);
+        }
 
         return builder;
     }
@@ -389,6 +432,19 @@ public static class ContainerBuilderExtensions
     {
         builder.Register(static (it) => it.Resolve<TFrom>())
             .As<TTo>()
+            .ExternallyOwned();
+
+        return builder;
+    }
+
+    /// <summary>
+    /// Like <see cref="Bind"/> but register as scoped. Make a difference with decorator. Otherwise, does not make a difference.
+    /// </summary>
+    public static ContainerBuilder BindScoped<TTo, TFrom>(this ContainerBuilder builder) where TFrom : TTo where TTo : notnull
+    {
+        builder.Register(static (it) => it.Resolve<TFrom>())
+            .As<TTo>()
+            .InstancePerLifetimeScope()
             .ExternallyOwned();
 
         return builder;
@@ -433,12 +489,8 @@ public static class ContainerBuilderExtensions
 
     private static IRegistrationBuilder<TLimit, TReflectionActivatorData, TRegistrationStyle> CommonNethermindConfig<TLimit, TReflectionActivatorData, TRegistrationStyle>(
         this IRegistrationBuilder<TLimit, TReflectionActivatorData, TRegistrationStyle> builder
-    ) where TReflectionActivatorData : ReflectionActivatorData
-    {
-        return builder
-            .WithAttributeFiltering()
-            .FindConstructorsWith(NethermindConstructorFinder.Instance);
-    }
+    ) where TReflectionActivatorData : ReflectionActivatorData => builder
+            .WithAttributeFiltering();
 
     private static Func<IComponentContext, T> CreateArgResolver<T>(MethodInfo methodInfo, int paramIndex) where T : notnull
     {
@@ -448,6 +500,19 @@ public static class ContainerBuilderExtensions
         }
         return (ctx) => ctx.Resolve<T>();
     }
+
+    public static IRegistrationBuilder<T, TAct, TStyle> Fixed<T, TAct, TStyle>(this IRegistrationBuilder<T, TAct, TStyle> reg)
+    {
+        // Fixed registration is one where it is always the default. Can't be overridden by later registration.
+        reg.RegistrationData.Options |= RegistrationOptions.Fixed;
+        return reg;
+    }
+
+    public static ContainerBuilder AddKeyedAdapter<TTo, TFrom>(this ContainerBuilder builder, Func<TFrom, TTo> mapper) where TFrom : notnull => builder.AddSource(new KeyedMapperRegistrationSource<TFrom, TTo>(mapper, false));
+
+    public static ContainerBuilder AddKeyedAdapter<TTo, TFrom>(this ContainerBuilder builder, Func<object, TFrom, TTo> mapper) where TFrom : notnull => builder.AddSource(new KeyedMapperRegistrationSource<TFrom, TTo>(mapper, false));
+
+    public static ContainerBuilder AddKeyedAdapterWithNewService<TTo, TFrom>(this ContainerBuilder builder, Func<TFrom, TTo> mapper) where TFrom : notnull => builder.AddSource(new KeyedMapperRegistrationSource<TFrom, TTo>(mapper, true));
 }
 
 /// <summary>

@@ -22,21 +22,30 @@ using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
 using Nethermind.Synchronization.Reporting;
 using Nethermind.Stats.SyncLimits;
+using Nethermind.History;
 
 [assembly: InternalsVisibleTo("Nethermind.Synchronization.Test")]
 
 namespace Nethermind.Synchronization.FastBlocks
 {
-
     public class ReceiptsSyncFeed : BarrierSyncFeed<ReceiptsSyncBatch?>
     {
         protected override long? LowestInsertedNumber => _syncPointers.LowestInsertedReceiptBlockNumber;
         protected override int BarrierWhenStartedMetadataDbKey => MetadataDbKeys.ReceiptsBarrierWhenStarted;
-        protected override long SyncConfigBarrierCalc => _syncConfig.AncientReceiptsBarrierCalc;
+        protected override long SyncConfigBarrierCalc => ComputeBarrier(_blockTree.SyncPivot.BlockNumber);
+
+        private long ComputeBarrier(long pivotNumber)
+        {
+            long requested = Math.Max(_syncConfig.AncientBodiesBarrier, _syncConfig.AncientReceiptsBarrier);
+            long clamped = Math.Max(1, Math.Min(pivotNumber, requested));
+            long? cutoffBlockNumber = _historyPruner.CutoffBlockNumber;
+            return cutoffBlockNumber is null ? clamped : long.Max(clamped, cutoffBlockNumber.Value);
+        }
+
         protected override Func<bool> HasPivot =>
             () => _receiptStorage.HasBlock(_blockTree.SyncPivot.BlockNumber, _blockTree.SyncPivot.BlockHash);
 
-        private FastBlocksAllocationStrategy _approximateAllocationStrategy = new FastBlocksAllocationStrategy(TransferSpeedType.Receipts, 0, true);
+        private readonly FastBlocksAllocationStrategy _approximateAllocationStrategy = new(TransferSpeedType.Receipts, 0, true);
 
         private readonly IBlockTree _blockTree;
         private readonly ISyncConfig _syncConfig;
@@ -44,12 +53,13 @@ namespace Nethermind.Synchronization.FastBlocks
         private readonly IReceiptStorage _receiptStorage;
         private readonly ISyncPointers _syncPointers;
         private readonly ISyncPeerPool _syncPeerPool;
+        private readonly IHistoryPruner _historyPruner;
+        private readonly ReceiptDownloadStrategy _receiptDownloadStrategy;
 
         private SyncStatusList _syncStatusList;
 
         private bool ShouldFinish => !_syncConfig.DownloadReceiptsInFastSync || AllDownloaded;
-        private bool AllDownloaded => (_syncPointers.LowestInsertedReceiptBlockNumber ?? long.MaxValue) <= _barrier
-            || WithinOldBarrierDefault;
+        private bool AllDownloaded => (_syncPointers.LowestInsertedReceiptBlockNumber ?? long.MaxValue) <= _barrier;
 
         public override bool IsFinished => AllDownloaded;
         public override string FeedName => nameof(ReceiptsSyncFeed);
@@ -62,9 +72,10 @@ namespace Nethermind.Synchronization.FastBlocks
             ISyncPeerPool syncPeerPool,
             ISyncConfig syncConfig,
             ISyncReport syncReport,
+            IHistoryPruner historyPruner,
             [KeyFilter(DbNames.Metadata)] IDb metadataDb,
             ILogManager logManager)
-            : base(metadataDb, specProvider, logManager?.GetClassLogger() ?? default)
+            : base(metadataDb, specProvider, logManager?.GetClassLogger<ReceiptsSyncFeed>() ?? default)
         {
             _receiptStorage = receiptStorage;
             _syncPointers = syncPointers;
@@ -72,6 +83,8 @@ namespace Nethermind.Synchronization.FastBlocks
             _syncConfig = syncConfig;
             _syncReport = syncReport;
             _blockTree = blockTree;
+            _historyPruner = historyPruner;
+            _receiptDownloadStrategy = new(_blockTree, _receiptStorage, _syncReport, _historyPruner);
 
             if (!_syncConfig.FastSync)
             {
@@ -83,26 +96,25 @@ namespace Nethermind.Synchronization.FastBlocks
 
         public override void InitializeFeed()
         {
-            if (_pivotNumber != _blockTree.SyncPivot.BlockNumber || _barrier != _syncConfig.AncientReceiptsBarrierCalc)
+            long newPivotNumber = _blockTree.SyncPivot.BlockNumber;
+            long newBarrier = ComputeBarrier(newPivotNumber);
+            if (_pivotNumber != newPivotNumber || _barrier != newBarrier)
             {
-                _pivotNumber = _blockTree.SyncPivot.BlockNumber;
-                _barrier = _syncConfig.AncientReceiptsBarrierCalc;
+                _pivotNumber = newPivotNumber;
+                _barrier = newBarrier;
                 if (_logger.IsInfo) _logger.Info($"Changed pivot in receipts sync. Now using pivot {_pivotNumber} and barrier {_barrier}");
                 ResetSyncStatusList();
                 InitializeMetadataDb();
             }
             base.InitializeFeed();
-            _syncReport.FastBlocksReceipts.Reset(0, _pivotNumber - _syncConfig.AncientReceiptsBarrierCalc);
+            _syncReport.FastBlocksReceipts.Reset(0, _pivotNumber - _barrier);
         }
 
-        private void ResetSyncStatusList()
-        {
-            _syncStatusList = new SyncStatusList(
+        private void ResetSyncStatusList() => _syncStatusList = new SyncStatusList(
                 _blockTree,
                 _pivotNumber,
                 _syncPointers.LowestInsertedReceiptBlockNumber,
-                _syncConfig.AncientReceiptsBarrier);
-        }
+                _barrier);
 
         protected override SyncMode ActivationSyncModes { get; }
             = SyncMode.FastReceipts & ~SyncMode.FastBlocks;
@@ -139,13 +151,8 @@ namespace Nethermind.Synchronization.FastBlocks
                     (await _syncPeerPool.EstimateRequestLimit(RequestType.Receipts, _approximateAllocationStrategy, AllocationContexts.Receipts, token))
                     ?? GethSyncLimits.MaxReceiptFetch;
 
-                BlockInfo?[] infos = null;
-                while (!_syncStatusList.TryGetInfosForBatch(requestSize, (info) =>
-                       {
-                           bool hasReceipt = _receiptStorage.HasBlock(info.BlockNumber, info.BlockHash);
-                           if (hasReceipt) _syncReport.FastBlocksReceipts.IncrementSkipped();
-                           return hasReceipt;
-                       }, out infos))
+                BlockInfo?[] infos;
+                while (!_syncStatusList.TryGetInfosForBatch(requestSize, _receiptDownloadStrategy, out infos))
                 {
                     token.ThrowIfCancellationRequested();
                     _syncPointers.LowestInsertedReceiptBlockNumber = _syncStatusList.LowestInsertWithoutGaps;
@@ -154,11 +161,11 @@ namespace Nethermind.Synchronization.FastBlocks
 
                 if (infos[0] is not null)
                 {
-                    batch = new ReceiptsSyncBatch(infos);
-                    batch.Prioritized = true;
+                    batch = new ReceiptsSyncBatch(infos)
+                    {
+                        Prioritized = true
+                    };
                 }
-
-                // Array.Reverse(infos);
             }
 
             _syncPointers.LowestInsertedReceiptBlockNumber = _syncStatusList.LowestInsertWithoutGaps;
@@ -312,6 +319,19 @@ namespace Nethermind.Synchronization.FastBlocks
         {
             _syncReport.FastBlocksReceipts.Update(_pivotNumber - _syncStatusList.LowestInsertWithoutGaps);
             _syncReport.FastBlocksReceipts.CurrentQueued = _syncStatusList.QueueSize;
+        }
+
+        private class ReceiptDownloadStrategy(IBlockTree blockTree, IReceiptStorage receiptStorage, ISyncReport syncReport, IHistoryPruner historyPruner) : IBlockDownloadStrategy
+        {
+            public bool ShouldDownloadBlock(BlockInfo info)
+            {
+                bool hasReceipt = receiptStorage.HasBlock(info.BlockNumber, info.BlockHash);
+                long? cutoff = historyPruner?.CutoffBlockNumber;
+                cutoff = cutoff is null ? null : long.Min(cutoff!.Value, blockTree.SyncPivot.BlockNumber);
+                bool shouldDownload = !hasReceipt && (cutoff is null || info.BlockNumber >= cutoff);
+                if (!shouldDownload) syncReport.FastBlocksReceipts.IncrementSkipped();
+                return shouldDownload;
+            }
         }
     }
 }

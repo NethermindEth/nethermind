@@ -32,7 +32,7 @@ namespace Nethermind.AuRa.Test.Transactions
             Address nodeAddress = TestItem.AddressA;
 
             UInt256 expectedNonce = 10;
-            stateReader.TryGetAccount(blockHeader.StateRoot, nodeAddress, out Arg.Any<AccountStruct>())
+            stateReader.TryGetAccount(blockHeader, nodeAddress, out Arg.Any<AccountStruct>())
                 .Returns(x =>
                 {
                     x[2] = new AccountStruct(expectedNonce, UInt256.Zero);

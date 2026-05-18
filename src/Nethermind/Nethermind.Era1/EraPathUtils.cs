@@ -3,6 +3,8 @@
 
 using System.IO.Abstractions;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
+using Testably.Abstractions;
 
 namespace Nethermind.Era1;
 
@@ -12,7 +14,7 @@ public static class EraPathUtils
 
     public static IEnumerable<string> GetAllEraFiles(string directoryPath, string network, IFileSystem fileSystem)
     {
-        var entries = fileSystem.Directory.GetFiles(directoryPath, "*.era1", new EnumerationOptions()
+        string[] entries = fileSystem.Directory.GetFiles(directoryPath, "*.era1", new EnumerationOptions()
         {
             RecurseSubdirectories = false,
             MatchCasing = MatchCasing.PlatformDefault
@@ -35,10 +37,7 @@ public static class EraPathUtils
         }
     }
 
-    public static IEnumerable<string> GetAllEraFiles(string directoryPath, string network)
-    {
-        return GetAllEraFiles(directoryPath, network, new FileSystem());
-    }
+    public static IEnumerable<string> GetAllEraFiles(string directoryPath, string network) => GetAllEraFiles(directoryPath, network, new RealFileSystem());
 
     public static string Filename(string network, long epoch, Hash256 root)
     {
@@ -46,6 +45,16 @@ public static class EraPathUtils
         ArgumentNullException.ThrowIfNull(root);
         ArgumentOutOfRangeException.ThrowIfLessThan(epoch, 0);
 
-        return $"{network}-{epoch.ToString("D5")}-{root.ToString(true)[2..10]}.era1";
+        return $"{network}-{epoch:D5}-{root.ToString(true)[2..10]}.era1";
+    }
+
+    public static ValueHash256 ExtractHashFromAccumulatorAndCheckSumEntry(string s)
+    {
+        ValueHash256 result = default;
+        ReadOnlySpan<char> span = s.AsSpan();
+        int idx = span.IndexOf(' ');
+        ReadOnlySpan<char> token = idx == -1 ? span : span[..idx];
+        Bytes.FromHexString(token, result.BytesAsSpan);
+        return result;
     }
 }

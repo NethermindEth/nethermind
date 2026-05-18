@@ -11,121 +11,116 @@ using Nethermind.Network.Discovery.Kademlia;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
 
-namespace Nethermind.Network.Discovery
+namespace Nethermind.Network.Discovery;
+
+/// <summary>
+/// Manages persistence operations for the discovery process, including loading nodes from storage
+/// and periodic saving of discovered nodes.
+/// </summary>
+/// <remarks>
+/// Initializes a new instance of the <see cref="DiscoveryPersistenceManager"/> class.
+/// </remarks>
+/// <param name="discoveryStorage">The network storage for persisting discovery nodes.</param>
+/// <param name="nodeStatsManager">Manager for node statistics.</param>
+/// <param name="discv4Adapter">Adapter for Discv4 protocol communication.</param>
+/// <param name="discoveryConfig">Configuration for the discovery process.</param>
+/// <param name="logManager">Log manager for logging events.</param>
+/// <exception cref="ArgumentNullException">Thrown if any required parameter is null.</exception>
+public class DiscoveryPersistenceManager(
+    [KeyFilter(DbNames.DiscoveryNodes)] INetworkStorage discoveryStorage,
+    INodeStatsManager nodeStatsManager,
+    IKademliaDiscv4Adapter discv4Adapter,
+    IKademlia<PublicKey, Node> kademlia,
+    IDiscoveryConfig discoveryConfig,
+    ILogManager logManager)
 {
+    private readonly INetworkStorage _discoveryStorage = discoveryStorage;
+    private readonly INodeStatsManager _nodeStatsManager = nodeStatsManager;
+    private readonly IKademliaDiscv4Adapter _discv4Adapter = discv4Adapter;
+    private readonly IKademlia<PublicKey, Node> _kademlia = kademlia;
+    private readonly ILogger _logger = logManager.GetClassLogger<DiscoveryPersistenceManager>();
+    private readonly int _persistenceInterval = discoveryConfig.DiscoveryPersistenceInterval;
+
     /// <summary>
-    /// Manages persistence operations for the discovery process, including loading nodes from storage
-    /// and periodic saving of discovered nodes.
+    /// Loads persisted nodes from storage and pings them to verify their availability.
     /// </summary>
-    public class DiscoveryPersistenceManager
+    /// <param name="cancellationToken">Cancellation token to stop the operation.</param>
+    /// <returns>A task representing the asynchronous operation.</returns>
+    public async Task LoadPersistedNodes(CancellationToken cancellationToken)
     {
-        private readonly INetworkStorage _discoveryStorage;
-        private readonly INodeStatsManager _nodeStatsManager;
-        private readonly IKademliaDiscv4Adapter _discv4Adapter;
-        private readonly IKademlia<PublicKey, Node> _kademlia;
-        private readonly ILogger _logger;
-        private readonly int _persistenceInterval;
-
-        /// <summary>
-        /// Initializes a new instance of the <see cref="DiscoveryPersistenceManager"/> class.
-        /// </summary>
-        /// <param name="discoveryStorage">The network storage for persisting discovery nodes.</param>
-        /// <param name="nodeStatsManager">Manager for node statistics.</param>
-        /// <param name="discv4Adapter">Adapter for Discv4 protocol communication.</param>
-        /// <param name="discoveryConfig">Configuration for the discovery process.</param>
-        /// <param name="logManager">Log manager for logging events.</param>
-        /// <exception cref="ArgumentNullException">Thrown if any required parameter is null.</exception>
-        public DiscoveryPersistenceManager(
-            [KeyFilter(DbNames.DiscoveryNodes)] INetworkStorage discoveryStorage,
-            INodeStatsManager nodeStatsManager,
-            IKademliaDiscv4Adapter discv4Adapter,
-            IKademlia<PublicKey, Node> kademlia,
-            IDiscoveryConfig discoveryConfig,
-            ILogManager logManager)
+        NetworkNode[] nodes = _discoveryStorage.GetPersistedNodes();
+        foreach (NetworkNode networkNode in nodes)
         {
-            _discoveryStorage = discoveryStorage;
-            _nodeStatsManager = nodeStatsManager;
-            _discv4Adapter = discv4Adapter;
-            _kademlia = kademlia;
-            _logger = logManager.GetClassLogger();
-            _persistenceInterval = discoveryConfig.DiscoveryPersistenceInterval;
-        }
+            if (cancellationToken.IsCancellationRequested) break;
 
-        /// <summary>
-        /// Loads persisted nodes from storage and pings them to verify their availability.
-        /// </summary>
-        /// <param name="cancellationToken">Cancellation token to stop the operation.</param>
-        /// <returns>A task representing the asynchronous operation.</returns>
-        public async Task LoadPersistedNodes(CancellationToken cancellationToken)
-        {
-            NetworkNode[] nodes = _discoveryStorage.GetPersistedNodes();
-            foreach (NetworkNode networkNode in nodes)
+            Node node;
+            try
             {
-                if (cancellationToken.IsCancellationRequested) break;
-
-                Node node;
-                try
+                node = new Node(networkNode.NodeId, networkNode.Host, networkNode.Port);
+            }
+            catch (Exception)
+            {
+                if (_logger.IsDebug)
                 {
-                    node = new Node(networkNode.NodeId, networkNode.Host, networkNode.Port);
-                }
-                catch (Exception)
-                {
-                    if (_logger.IsDebug)
-                        _logger.Error(
-                            $"ERROR/DEBUG peer could not be loaded for {networkNode.NodeId}@{networkNode.Host}:{networkNode.Port}");
-                    continue;
+                    _logger.Error(
+                        $"ERROR/DEBUG peer could not be loaded for {networkNode.NodeId}@{networkNode.Host}:{networkNode.Port}");
                 }
 
-                try
-                {
-                    // If when it receive Pong, it should automatically add to routing table if not full.
-                    await _discv4Adapter.Ping(node, cancellationToken);
-                }
-                catch (OperationCanceledException)
-                {
-                    continue;
-                }
-                catch (Exception)
-                {
-                    if (_logger.IsDebug)
-                        _logger.Error(
-                            $"ERROR/DEBUG error when pinging persisted node {networkNode.NodeId}@{networkNode.Host}:{networkNode.Port}");
-                    continue;
-                }
-
-                if (_logger.IsTrace)
-                    _logger.Trace($"Adding persisted node {networkNode.NodeId}@{networkNode.Host}:{networkNode.Port}");
+                continue;
             }
 
-            if (_logger.IsDebug) _logger.Debug($"Added persisted discovery nodes: {nodes.Length}");
+            try
+            {
+                // If when it receive Pong, it should automatically add to routing table if not full.
+                await _discv4Adapter.Ping(node, cancellationToken);
+            }
+            catch (OperationCanceledException)
+            {
+                continue;
+            }
+            catch (Exception)
+            {
+                if (_logger.IsDebug)
+                {
+                    _logger.Error(
+                        $"ERROR/DEBUG error when pinging persisted node {networkNode.NodeId}@{networkNode.Host}:{networkNode.Port}");
+                }
+
+                continue;
+            }
+
+            if (_logger.IsTrace)
+                _logger.Trace($"Adding persisted node {networkNode.NodeId}@{networkNode.Host}:{networkNode.Port}");
         }
 
-        /// <summary>
-        /// Periodically commits discovered nodes to persistent storage.
-        /// </summary>
-        /// <param name="cancellationToken">Cancellation token to stop the operation.</param>
-        /// <returns>A task representing the asynchronous operation.</returns>
-        public async Task RunDiscoveryPersistenceCommit(CancellationToken cancellationToken)
+        if (_logger.IsDebug) _logger.Debug($"Added persisted discovery nodes: {nodes.Length}");
+    }
+
+    /// <summary>
+    /// Periodically commits discovered nodes to persistent storage.
+    /// </summary>
+    /// <param name="cancellationToken">Cancellation token to stop the operation.</param>
+    /// <returns>A task representing the asynchronous operation.</returns>
+    public async Task RunDiscoveryPersistenceCommit(CancellationToken cancellationToken)
+    {
+        if (_logger.IsDebug) _logger.Debug("Starting discovery persistence timer");
+        using PeriodicTimer timer = new(TimeSpan.FromMilliseconds(_persistenceInterval));
+
+        while (!cancellationToken.IsCancellationRequested && await timer.WaitForNextTickAsync(cancellationToken))
         {
-            if (_logger.IsDebug) _logger.Debug("Starting discovery persistence timer");
-            PeriodicTimer timer = new PeriodicTimer(TimeSpan.FromMilliseconds(_persistenceInterval));
-
-            while (!cancellationToken.IsCancellationRequested && await timer.WaitForNextTickAsync(cancellationToken))
+            try
             {
-                try
-                {
-                    _discoveryStorage.StartBatch();
+                _discoveryStorage.StartBatch();
 
-                    _discoveryStorage.UpdateNodes(_kademlia
-                        .IterateNodes()
-                        .Select(x => new NetworkNode(x.Id, x.Host, x.Port, _nodeStatsManager.GetNewPersistedReputation(x))));
+                _discoveryStorage.UpdateNodes(_kademlia
+                    .IterateNodes()
+                    .Select(x => new NetworkNode(x.Id, x.Host, x.Port, _nodeStatsManager.GetNewPersistedReputation(x))));
 
-                    _discoveryStorage.Commit();
-                }
-                catch (Exception ex)
-                {
-                    _logger.Error($"Error during discovery commit: {ex}");
-                }
+                _discoveryStorage.Commit();
+            }
+            catch (Exception ex)
+            {
+                _logger.Error($"Error during discovery commit: {ex}");
             }
         }
     }

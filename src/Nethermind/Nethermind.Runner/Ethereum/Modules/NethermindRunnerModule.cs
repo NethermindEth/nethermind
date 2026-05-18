@@ -7,7 +7,6 @@ using System.Linq;
 using Autofac;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
-using Nethermind.Api.Steps;
 using Nethermind.Config;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
@@ -32,7 +31,7 @@ namespace Nethermind.Runner.Ethereum.Modules;
 /// <param name="plugins"></param>
 /// <param name="logManager"></param>
 public class NethermindRunnerModule(
-    IJsonSerializer jsonSerializer,
+    EthereumJsonSerializer jsonSerializer,
     ChainSpec chainSpec,
     IConfigProvider configProvider,
     IProcessExitSource processExitSource,
@@ -45,7 +44,7 @@ public class NethermindRunnerModule(
         IEnumerable<IConsensusPlugin> consensusPlugins = plugins.OfType<IConsensusPlugin>();
         if (consensusPlugins.Count() != 1)
         {
-            throw new NotSupportedException($"Thse should be exactly one consensus plugin are enabled. Seal engine type: {chainSpec.SealEngineType}. {string.Join(", ", consensusPlugins.Select(x => x.Name))}");
+            throw new NotSupportedException($"There should be exactly one consensus plugin enabled. Seal engine type: {chainSpec.SealEngineType}. {string.Join(", ", consensusPlugins.Select(x => x.Name))}");
         }
 
         IConsensusPlugin consensusPlugin = consensusPlugins.FirstOrDefault();
@@ -76,16 +75,18 @@ public class NethermindRunnerModule(
 
             .AddSingleton<IBlockPreprocessorStep, INethermindApi>((api) => api.BlockPreprocessor)
             .AddSingleton(jsonSerializer)
+            .AddSingleton<IJsonSerializer>(jsonSerializer)
             .AddSingleton<IConsensusPlugin>(consensusPlugin)
             ;
 
-        foreach (var plugin in plugins)
+        foreach (INethermindPlugin plugin in plugins)
         {
             if (plugin.Module is not null)
             {
                 builder.AddModule(plugin.Module);
             }
-            builder.AddSingleton<INethermindPlugin>(plugin);
+
+            builder.AddSingleton<INethermindPlugin>(plugin, takeOwnership: true);
         }
 
         builder.OnBuild((ctx) =>

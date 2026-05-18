@@ -5,7 +5,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text.Json;
 using Nethermind.Core.Crypto;
-using Nethermind.Evm.Tracing.GethStyle;
+using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Serialization.Json;
 using NUnit.Framework;
 
@@ -18,7 +18,7 @@ public class GethLikeTxTraceCollectionConverterTests
     [Test]
     public void Write_null()
     {
-        var result = _serializer.Serialize((GethLikeTxTraceCollection?)null);
+        string result = _serializer.Serialize((GethLikeTxTraceCollection?)null);
 
         Assert.That(result, Is.EqualTo("null"));
     }
@@ -26,19 +26,19 @@ public class GethLikeTxTraceCollectionConverterTests
     [Test]
     public void Write_empty()
     {
-        var collection = new GethLikeTxTraceCollection([]);
-        var result = _serializer.Serialize(collection);
+        GethLikeTxTraceCollection collection = new([]);
+        string result = _serializer.Serialize(collection);
 
         Assert.That(result, Is.EqualTo("[]"));
     }
 
-    [TestCaseSource(nameof(TracesAndJsonsSource))]
+    [TestCaseSource(nameof(TraceAndJsonSource))]
     public void Write_with_traces_with_tx_hash(GethLikeTxTrace trace, string json)
     {
-        var expected = $"""[{json}]""";
+        string expected = $"""[{json}]""";
 
-        var collection = new GethLikeTxTraceCollection([trace]);
-        var result = _serializer.Serialize(collection);
+        GethLikeTxTraceCollection collection = new([trace]);
+        string result = _serializer.Serialize(collection);
 
         Assert.That(JsonElement.DeepEquals(
             JsonDocument.Parse(result).RootElement,
@@ -49,8 +49,8 @@ public class GethLikeTxTraceCollectionConverterTests
     [Test]
     public void Read_null()
     {
-        var json = "null";
-        var result = _serializer.Deserialize<GethLikeTxTraceCollection>(json);
+        string json = "null";
+        GethLikeTxTraceCollection result = _serializer.Deserialize<GethLikeTxTraceCollection>(json);
 
         Assert.That(result, Is.Null);
     }
@@ -58,17 +58,17 @@ public class GethLikeTxTraceCollectionConverterTests
     [Test]
     public void Read_empty()
     {
-        var json = "[]";
-        var result = _serializer.Deserialize<GethLikeTxTraceCollection>(json);
+        string json = "[]";
+        GethLikeTxTraceCollection result = _serializer.Deserialize<GethLikeTxTraceCollection>(json);
 
         Assert.That(result.Count, Is.EqualTo(0));
     }
 
 
-    [TestCaseSource(nameof(TracesAndJsonsSource))]
+    [TestCaseSource(nameof(TraceAndJsonSource))]
     public void Read_with_traces(GethLikeTxTrace expectedTrace, string json)
     {
-        var result = _serializer.Deserialize<GethLikeTxTraceCollection>($"""[{json}]""");
+        GethLikeTxTraceCollection result = _serializer.Deserialize<GethLikeTxTraceCollection>($"""[{json}]""");
 
         Assert.Multiple(() =>
         {
@@ -79,34 +79,34 @@ public class GethLikeTxTraceCollectionConverterTests
         });
     }
 
-    private static IEnumerable<object[]> TracesAndJsonsSource()
+    private static IEnumerable<TestCaseData> TraceAndJsonSource()
     {
-        yield return [
+        yield return new TestCaseData(
             new GethLikeTxTrace { Gas = 1, ReturnValue = [0x01], TxHash = null },
             """
             {
                 "result": { "gas": 1, "failed": false, "returnValue": "0x01", "structLogs": [] },
                 "txHash": null
             }
-            """
-        ];
-        yield return [
+            """)
+            .SetName("Gas1_NullTxHash");
+        yield return new TestCaseData(
             new GethLikeTxTrace { Gas = 2, ReturnValue = [0x02], TxHash = Hash256.Zero },
             """
             {
                 "result": { "gas": 2, "failed": false, "returnValue": "0x02", "structLogs": [] },
                 "txHash": "0x0000000000000000000000000000000000000000000000000000000000000000"
             }
-            """
-        ];
-        yield return [
+            """)
+            .SetName("Gas2_ZeroTxHash");
+        yield return new TestCaseData(
             new GethLikeTxTrace { Gas = 3, ReturnValue = [0x03], TxHash = Keccak.Compute("A") },
             """
             {
                 "result": { "gas": 3, "failed": false, "returnValue": "0x03", "structLogs": [] },
                 "txHash": "0x03783fac2efed8fbc9ad443e592ee30e61d65f471140c10ca155e937b435b760"
             }
-            """
-        ];
+            """)
+            .SetName("Gas3_ComputedTxHash");
     }
 }

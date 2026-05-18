@@ -7,16 +7,10 @@ using Nethermind.TxPool;
 
 namespace Nethermind.Wallet
 {
-    public class WalletTxSigner : ITxSigner
+    public class WalletTxSigner(IWallet wallet, ulong chainId) : ITxSigner
     {
-        private readonly IWallet _wallet;
-        private readonly ulong _chainId;
-
-        public WalletTxSigner(IWallet wallet, ulong chainId)
-        {
-            _wallet = wallet;
-            _chainId = chainId;
-        }
+        private readonly IWallet _wallet = wallet;
+        private readonly ulong _chainId = chainId;
 
         public ValueTask Sign(Transaction tx)
         {

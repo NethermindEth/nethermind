@@ -20,7 +20,7 @@ public class KademliaNodeSource(
     ILogManager logManager)
     : IKademliaNodeSource
 {
-    private readonly ILogger _logger = logManager.GetClassLogger();
+    private readonly ILogger _logger = logManager.GetClassLogger<KademliaNodeSource>();
 
     public async IAsyncEnumerable<Node> DiscoverNodes([EnumeratorCancellation] CancellationToken token)
     {
@@ -36,7 +36,7 @@ public class KademliaNodeSource(
             bool anyFound = false;
             int count = 0;
 
-            await foreach (var node in lookup2.Lookup(target, token))
+            await foreach (Node node in lookup2.Lookup(target, token))
             {
                 if (!discv4Adapter.GetSession(node).HasReceivedPong)
                 {

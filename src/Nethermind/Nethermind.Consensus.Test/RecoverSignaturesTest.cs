@@ -9,11 +9,11 @@ using NSubstitute;
 using Nethermind.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Logging;
-using Nethermind.TxPool;
 using System.Linq;
-using Nethermind.Core.Crypto;
+using Nethermind.Core.Test;
 
 namespace Nethermind.Consensus.Test;
+
 [TestFixture]
 public class RecoverSignaturesTest
 {
@@ -36,7 +36,7 @@ public class RecoverSignaturesTest
             .TestObject;
 
         ISpecProvider specProvider = Substitute.For<ISpecProvider>();
-        IReleaseSpec releaseSpec = Substitute.For<IReleaseSpec>();
+        IReleaseSpec releaseSpec = ReleaseSpecSubstitute.Create();
         releaseSpec.IsAuthorizationListEnabled.Returns(true);
         specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(releaseSpec);
         RecoverSignatures sut = new(

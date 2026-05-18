@@ -1,0 +1,36 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Content Remove="package.json" />
+    <Content Remove="tsconfig.json" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="package.json" />
+    <None Include="tsconfig.json" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <TypeScriptCompile Include="scripts\boxPlot.ts" />
+    <TypeScriptCompile Include="scripts\gasInfo.ts" />
+    <TypeScriptCompile Include="scripts\logWindow.ts" />
+    <TypeScriptCompile Include="scripts\peerPie.ts" />
+    <TypeScriptCompile Include="scripts\treeMap.ts" />
+    <TypeScriptCompile Include="scripts\txParser.ts" />
+    <TypeScriptCompile Include="scripts\types.ts" />
+    <TypeScriptCompile Include="scripts\utilities.ts" />
+  </ItemGroup>
+
+  <Target Name="JsBuild" BeforeTargets="PreBuildEvent">
+    <Exec Command="npm install" />
+    <Exec Command="npm run build:dev" Condition="'$(Configuration)'=='Debug'" />
+    <Exec Command="npm run build:release" Condition="'$(Configuration)'=='Release'" />
+  </Target>
+
+</Project>

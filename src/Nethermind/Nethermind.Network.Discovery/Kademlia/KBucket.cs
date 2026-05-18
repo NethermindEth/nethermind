@@ -1,27 +1,19 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Collections;
 using Nethermind.Core.Crypto;
 
 namespace Nethermind.Network.Discovery.Kademlia;
 
-public class KBucket<TNode> where TNode : notnull
+public class KBucket<TNode>(int k) where TNode : notnull
 {
-    private readonly int _k;
-    private DoubleEndedLru<TNode> _items;
-    private DoubleEndedLru<TNode> _replacement;
+    private readonly int _k = k;
+    private DoubleEndedLru<TNode> _items = new(k);
+    private DoubleEndedLru<TNode> _replacement = new(k);
 
     public int Count => _items.Count;
 
-    private TNode[] _cachedArray = Array.Empty<TNode>();
-
-    public KBucket(int k)
-    {
-        _k = k;
-        _items = new DoubleEndedLru<TNode>(k);
-        _replacement = new DoubleEndedLru<TNode>(k);  // Well, the replacement does not have to be k. Could be much lower.
-    }
+    private TNode[] _cachedArray = [];
 
     /// <summary>
     /// Add or refresh a node entry.
@@ -50,15 +42,9 @@ public class KBucket<TNode> where TNode : notnull
         return BucketAddResult.Full;
     }
 
-    public TNode[] GetAll()
-    {
-        return _cachedArray;
-    }
+    public TNode[] GetAll() => _cachedArray;
 
-    public IEnumerable<(ValueHash256, TNode)> GetAllWithHash()
-    {
-        return _items.GetAllWithHash();
-    }
+    public IEnumerable<(ValueHash256, TNode)> GetAllWithHash() => _items.GetAllWithHash();
 
     public bool RemoveAndReplace(in ValueHash256 hash)
     {
@@ -80,13 +66,7 @@ public class KBucket<TNode> where TNode : notnull
         _cachedArray = _items.GetAll();
     }
 
-    public bool ContainsNode(in ValueHash256 hash)
-    {
-        return _items.Contains(hash);
-    }
+    public bool ContainsNode(in ValueHash256 hash) => _items.Contains(hash);
 
-    public TNode? GetByHash(ValueHash256 hash)
-    {
-        return _items.GetByHash(hash);
-    }
+    public TNode? GetByHash(ValueHash256 hash) => _items.GetByHash(hash);
 }

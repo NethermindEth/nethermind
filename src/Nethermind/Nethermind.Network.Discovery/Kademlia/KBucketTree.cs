@@ -10,19 +10,13 @@ namespace Nethermind.Network.Discovery.Kademlia;
 
 public class KBucketTree<TNode> : IRoutingTable<TNode> where TNode : notnull
 {
-    private class TreeNode
+    private class TreeNode(int k, ValueHash256 prefix)
     {
-        public KBucket<TNode> Bucket { get; }
+        public KBucket<TNode> Bucket { get; } = new KBucket<TNode>(k);
         public TreeNode? Left { get; set; }
         public TreeNode? Right { get; set; }
-        public ValueHash256 Prefix { get; }
+        public ValueHash256 Prefix { get; } = prefix;
         public bool IsLeaf => Left == null && Right == null;
-
-        public TreeNode(int k, ValueHash256 prefix)
-        {
-            Bucket = new KBucket<TNode>(k);
-            Prefix = prefix;
-        }
     }
 
     private readonly TreeNode _root;
@@ -32,7 +26,7 @@ public class KBucketTree<TNode> : IRoutingTable<TNode> where TNode : notnull
     private readonly ILogger _logger;
 
     // TODO: Double check and probably make lockless
-    private readonly McsLock _lock = new McsLock();
+    private readonly McsLock _lock = new();
 
     public KBucketTree(KademliaConfig<TNode> config, INodeHashProvider<TNode> nodeHashProvider, ILogManager logManager)
     {
@@ -40,7 +34,7 @@ public class KBucketTree<TNode> : IRoutingTable<TNode> where TNode : notnull
         _b = config.Beta;
         _currentNodeHash = nodeHashProvider.GetHash(config.CurrentNodeId);
         _root = new TreeNode(config.KSize, new ValueHash256());
-        _logger = logManager.GetClassLogger();
+        _logger = logManager.GetClassLogger<KBucketTree<TNode>>();
         if (_logger.IsDebug) _logger.Debug($"Initialized KBucketTree with k={_k}, currentNodeId={_currentNodeHash}");
     }
 
@@ -59,7 +53,7 @@ public class KBucketTree<TNode> : IRoutingTable<TNode> where TNode : notnull
             if (current.IsLeaf)
             {
                 if (_logger.IsTrace) _logger.Trace($"Reached leaf node at depth {depth}");
-                var resp = current.Bucket.TryAddOrRefresh(nodeHash, node, out toRefresh);
+                BucketAddResult resp = current.Bucket.TryAddOrRefresh(nodeHash, node, out toRefresh);
                 if (resp == BucketAddResult.Added)
                 {
                     OnNodeAdded?.Invoke(this, node);
@@ -89,10 +83,7 @@ public class KBucketTree<TNode> : IRoutingTable<TNode> where TNode : notnull
         }
     }
 
-    public TNode? GetByHash(ValueHash256 hash)
-    {
-        return GetBucketForHash(hash).GetByHash(hash);
-    }
+    public TNode? GetByHash(ValueHash256 hash) => GetBucketForHash(hash).GetByHash(hash);
 
     private KBucket<TNode> GetBucketForHash(ValueHash256 nodeHash)
     {
@@ -124,7 +115,7 @@ public class KBucketTree<TNode> : IRoutingTable<TNode> where TNode : notnull
     private void SplitBucket(int depth, TreeNode node)
     {
         node.Left = new TreeNode(_k, node.Prefix);
-        var rightPrefixBytes = node.Prefix.Bytes.ToArray();
+        byte[] rightPrefixBytes = node.Prefix.Bytes.ToArray();
         rightPrefixBytes[depth / 8] |= (byte)(1 << (7 - (depth % 8)));
         node.Right = new TreeNode(_k, new ValueHash256(rightPrefixBytes));
 
@@ -132,7 +123,7 @@ public class KBucketTree<TNode> : IRoutingTable<TNode> where TNode : notnull
 
         // The reverse is because the bucket is iterated from the most recent. Without it
         // reading would have reversed this order.
-        foreach (var item in node.Bucket.GetAllWithHash().Reverse())
+        foreach ((ValueHash256, TNode) item in node.Bucket.GetAllWithHash().Reverse())
         {
             ValueHash256 itemHash = item.Item1;
             TreeNode? targetNode = GetBit(itemHash, depth) ? node.Right : node.Left;
@@ -158,10 +149,10 @@ public class KBucketTree<TNode> : IRoutingTable<TNode> where TNode : notnull
         using McsLock.Disposable _ = _lock.Acquire();
 
         _logger.Debug($"Getting all nodes at distance {distance}");
-        List<TNode> result = new List<TNode>();
+        List<TNode> result = [];
         GetAllAtDistanceRecursive(_root, 0, distance, result);
         _logger.Debug($"Found {result.Count} nodes at distance {distance}");
-        return result.ToArray();
+        return [.. result];
     }
 
     private void GetAllAtDistanceRecursive(TreeNode node, int depth, int distance, List<TNode> result)
@@ -231,12 +222,12 @@ public class KBucketTree<TNode> : IRoutingTable<TNode> where TNode : notnull
         }
         else
         {
-            foreach (var bucketInfo in DoIterateBucketRandomHashes(node.Left!, depth + 1))
+            foreach ((ValueHash256 Prefix, int Distance, KBucket<TNode> Bucket) bucketInfo in DoIterateBucketRandomHashes(node.Left!, depth + 1))
             {
                 yield return bucketInfo;
             }
 
-            foreach (var bucketInfo in DoIterateBucketRandomHashes(node.Right!, depth + 1))
+            foreach ((ValueHash256 Prefix, int Distance, KBucket<TNode> Bucket) bucketInfo in DoIterateBucketRandomHashes(node.Right!, depth + 1))
             {
                 yield return bucketInfo;
             }
@@ -295,7 +286,7 @@ public class KBucketTree<TNode> : IRoutingTable<TNode> where TNode : notnull
 
         KBucket<TNode> firstBucket = GetBucketForHash(hash);
         bool shouldNotContainExcludedNode = exclude == null || !firstBucket.ContainsNode(exclude.Value);
-        bool shouldNotContainSelf = excludeSelf == false || !firstBucket.ContainsNode(_currentNodeHash);
+        bool shouldNotContainSelf = !excludeSelf || !firstBucket.ContainsNode(_currentNodeHash);
 
         if (shouldNotContainExcludedNode && shouldNotContainSelf)
         {
@@ -308,19 +299,21 @@ public class KBucketTree<TNode> : IRoutingTable<TNode> where TNode : notnull
             }
         }
 
-        var iterator = IterateNeighbour(hash);
+        IEnumerable<(ValueHash256, TNode)> iterator = IterateNeighbour(hash);
 
         if (exclude != null)
+        {
             iterator = iterator
                 .Where(kv => kv.Item1 != exclude.Value);
+        }
 
         if (excludeSelf)
+        {
             iterator = iterator
                 .Where(kv => kv.Item1 != _currentNodeHash);
+        }
 
-        return iterator.Take(_k)
-            .Select(kv => kv.Item2)
-            .ToArray();
+        return [.. iterator.Take(_k).Select(kv => kv.Item2)];
     }
 
     private bool GetBit(ValueHash256 hash, int index)
@@ -390,7 +383,7 @@ public class KBucketTree<TNode> : IRoutingTable<TNode> where TNode : notnull
     }
     private void LogTreeStructure()
     {
-        StringBuilder sb = new StringBuilder();
+        StringBuilder sb = new();
         LogTreeStructureRecursive(_root, "", true, 0, sb);
         _logger.Info($"Current Tree Structure:\n{sb}");
     }
@@ -408,9 +401,9 @@ public class KBucketTree<TNode> : IRoutingTable<TNode> where TNode : notnull
         get
         {
             int total = 0;
-            foreach (var iterateBucket in IterateBuckets())
+            foreach ((ValueHash256 Prefix, int Distance, KBucket<TNode> Bucket) in IterateBuckets())
             {
-                total += iterateBucket.Bucket.Count;
+                total += Bucket.Count;
             }
             return total;
         }

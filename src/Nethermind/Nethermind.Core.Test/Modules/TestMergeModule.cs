@@ -2,16 +2,15 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Autofac;
+using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Rewards;
-using Nethermind.Consensus.Transactions;
 using Nethermind.Merge.Plugin;
 using Nethermind.Merge.Plugin.BlockProduction;
-using Nethermind.Merge.Plugin.InvalidChainTracker;
 using Nethermind.TxPool;
 
 namespace Nethermind.Core.Test.Modules;
@@ -30,11 +29,6 @@ public class TestMergeModule(ITxPoolConfig txPoolConfig) : Module
             .AddModule(new MergePluginModule())
 
             .AddSingleton<IBlockFinalizationManager, ManualBlockFinalizationManager>()
-            .OnActivate<MainBlockProcessingContext>(((context, componentContext) =>
-            {
-                componentContext.Resolve<InvalidChainTracker>().SetupBlockchainProcessorInterceptor(context.BlockchainProcessor);
-            }))
-
             .AddDecorator<IRewardCalculatorSource, MergeRewardCalculatorSource>()
 
             // Validators
@@ -48,6 +42,9 @@ public class TestMergeModule(ITxPoolConfig txPoolConfig) : Module
             .AddDecorator<IBlockProductionPolicy, MergeBlockProductionPolicy>()
             .AddScoped<PostMergeBlockProducerFactory>()
             .AddDecorator<IBlockProducerFactory, TestMergeBlockProducerFactory>()
+
+            // Engine rpc
+            .AddSingleton<IEngineRequestsTracker, NoEngineRequestsTracker>()
             ;
 
         if (txPoolConfig.BlobsSupport.SupportsReorgs())
@@ -72,7 +69,7 @@ public class TestMergeModule(ITxPoolConfig txPoolConfig) : Module
                 ? baseBlockProducerFactory.InitBlockProducer()
                 : null;
 
-            IBlockProducerEnv blockProducerEnv = blockProducerEnvFactory.Create();
+            IBlockProducerEnv blockProducerEnv = blockProducerEnvFactory.CreatePersistent();
 
             PostMergeBlockProducer postMergeBlockProducer = postMergeBlockProducerFactory.Create(blockProducerEnv);
             return new MergeBlockProducer(blockProducer, postMergeBlockProducer, poSSwitcher);

@@ -29,10 +29,10 @@ public class DiscoveryApp : IDiscoveryApp, IAsyncDisposable
     private readonly IKademlia<PublicKey, Node> _kademlia;
     private readonly Func<IChannel, NettyDiscoveryHandler> _discoveryHandlerFactory;
     private readonly ILifetimeScope _discv4Services;
+    private readonly CancellationTokenSource _stopCts;
 
     private NettyDiscoveryHandler? _discoveryHandler;
     private Task? _runningTask;
-    private readonly IProcessExitSource _processExitSource;
 
     public DiscoveryApp(
         ILifetimeScope rootScope,
@@ -40,14 +40,15 @@ public class DiscoveryApp : IDiscoveryApp, IAsyncDisposable
         INetworkConfig networkConfig,
         IDiscoveryConfig discoveryConfig,
         IProcessExitSource processExitSource,
-        ILogManager logManager)
+        ILogManager logManager,
+        Action<ContainerBuilder>? configureDiscv4Services = null)
     {
-        _logger = logManager.GetClassLogger();
+        _logger = logManager.GetClassLogger<DiscoveryApp>();
         _networkConfig = networkConfig;
-        _processExitSource = processExitSource;
+        _stopCts = CancellationTokenSource.CreateLinkedTokenSource(processExitSource.Token);
 
-        var bootNodes = new List<Node>();
-        NetworkNode[] bootnodes = NetworkNode.ParseNodes(discoveryConfig.Bootnodes, _logger);
+        List<Node> bootNodes = [];
+        NetworkNode[] bootnodes = networkConfig.Bootnodes;
         if (bootnodes.Length == 0)
         {
             if (_logger.IsWarn) _logger.Warn("No bootnodes specified in configuration");
@@ -56,19 +57,30 @@ public class DiscoveryApp : IDiscoveryApp, IAsyncDisposable
         for (int i = 0; i < bootnodes.Length; i++)
         {
             NetworkNode bootnode = bootnodes[i];
+            if (!bootnode.IsEnode)
+            {
+                if (_logger.IsTrace) _logger.Trace($"Ignoring ENR in discovery V4: {bootnode}");
+                continue;
+            }
+
             if (bootnode.NodeId is null)
             {
                 _logger.Warn($"Bootnode ignored because of missing node ID: {bootnode}");
+                continue;
             }
 
             bootNodes.Add(new(bootnode.NodeId, bootnode.Host, bootnode.Port));
         }
 
         _discv4Services = rootScope.BeginLifetimeScope(
-            (builder) => builder
+            (builder) =>
+            {
+                builder
                 .AddModule(new DiscV4KademliaModule(nodeKey.PublicKey, bootNodes))
-                .AddSingleton<DiscV4Services>()
-        );
+                .AddSingleton<DiscV4Services>();
+
+                configureDiscv4Services?.Invoke(builder);
+            });
 
         (_kademliaNodeSource, _persistenceManager, _discv4Adapter, _kademlia, _discoveryHandlerFactory) = _discv4Services.Resolve<DiscV4Services>();
     }
@@ -102,6 +114,16 @@ public class DiscoveryApp : IDiscoveryApp, IAsyncDisposable
 
     public async Task StopAsync()
     {
+        DetachEventHandlers();
+
+        try
+        {
+            await _stopCts.CancelAsync();
+        }
+        catch (ObjectDisposedException)
+        {
+        }
+
         try
         {
             if (_runningTask is not null)
@@ -117,27 +139,26 @@ public class DiscoveryApp : IDiscoveryApp, IAsyncDisposable
             if (_logger.IsError) _logger.Error("Error in discovery task", e);
         }
 
+        _stopCts.Dispose();
+
+        if (_logger.IsInfo) _logger.Info("Discovery shutdown complete. Please wait for all components to close");
+    }
+
+    private void DetachEventHandlers()
+    {
         try
         {
-            if (_discoveryHandler is not null)
-            {
-                _discoveryHandler.OnChannelActivated -= OnChannelActivated;
-            }
+            _discoveryHandler?.OnChannelActivated -= OnChannelActivated;
         }
         catch (Exception e)
         {
             _logger.Error("Error during discovery cleanup", e);
         }
-
-        if (_logger.IsInfo) _logger.Info("Discovery shutdown complete.. please wait for all components to close");
     }
 
     string IStoppableService.Description => "discv4";
 
-    public void AddNodeToDiscovery(Node node)
-    {
-        _kademlia.AddOrRefresh(node);
-    }
+    public void AddNodeToDiscovery(Node node) => _kademlia.AddOrRefresh(node);
 
     private void Initialize()
     {
@@ -146,11 +167,16 @@ public class DiscoveryApp : IDiscoveryApp, IAsyncDisposable
         ThisNodeInfo.AddInfo("Discovery    :", $"udp://{_networkConfig.ExternalIp}:{_networkConfig.DiscoveryPort}");
     }
 
+    protected virtual NettyDiscoveryHandler CreateDiscoveryHandler(IChannel channel)
+    {
+        NettyDiscoveryHandler discoveryHandler = _discoveryHandlerFactory(channel);
+        _discv4Adapter.MsgSender = discoveryHandler;
+        return discoveryHandler;
+    }
+
     public void InitializeChannel(IChannel channel)
     {
-        _discoveryHandler = _discoveryHandlerFactory(channel);
-        _discv4Adapter.MsgSender = _discoveryHandler;
-
+        _discoveryHandler = CreateDiscoveryHandler(channel);
         _discoveryHandler.OnChannelActivated += OnChannelActivated;
 
         channel.Pipeline
@@ -165,30 +191,32 @@ public class DiscoveryApp : IDiscoveryApp, IAsyncDisposable
         // Make sure this is non blocking code, otherwise netty will not process messages
         // Explicitly use TaskScheduler.Default, otherwise it will use dotnetty's task scheduler which have a habit of
         // not working sometimes.
-        if (_processExitSource.Token.IsCancellationRequested) return;
-        _runningTask = Task.Factory
-            .StartNew(() => OnChannelActivated(_processExitSource.Token), _processExitSource.Token, TaskCreationOptions.LongRunning, TaskScheduler.Default)
-            .ContinueWith
-            (
-                t =>
-                {
-                    if (t.IsFaulted)
-                    {
-                        string faultMessage = "Cannot activate channel.";
-                        _logger.Info(faultMessage);
-                        throw t.Exception ??
-                              (Exception)new NetworkingException(faultMessage, NetworkExceptionType.Discovery);
-                    }
-
-                    if (t.IsCompleted && !_processExitSource.Token.IsCancellationRequested)
-                    {
-                        _logger.Debug("Discovery App initialized.");
-                    }
-                }
-            );
+        if (_stopCts.IsCancellationRequested) return;
+        _runningTask = StartActivationAsync(_stopCts.Token);
     }
 
-    private async Task OnChannelActivated(CancellationToken cancellationToken)
+    private async Task StartActivationAsync(CancellationToken cancellationToken)
+    {
+        const string faultMessage = "Cannot activate channel.";
+
+        try
+        {
+            await Task.Factory.StartNew(static state => ((DiscoveryApp)state!).ActivateAsync(), this, cancellationToken, TaskCreationOptions.LongRunning, TaskScheduler.Default).Unwrap();
+            if (!cancellationToken.IsCancellationRequested && _logger.IsDebug) _logger.Debug("Discovery App initialized.");
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+        }
+        catch (Exception)
+        {
+            if (_logger.IsInfo) _logger.Info(faultMessage);
+            throw;
+        }
+    }
+
+    private Task ActivateAsync() => ActivateAsync(_stopCts.Token);
+
+    private async Task ActivateAsync(CancellationToken cancellationToken)
     {
         try
         {
@@ -210,21 +238,16 @@ public class DiscoveryApp : IDiscoveryApp, IAsyncDisposable
         }
         catch (OperationCanceledException)
         {
+            if (_logger.IsInfo) _logger.Info("Discovery App stopped");
         }
         catch (Exception e)
         {
-            if (_logger.IsDebug) _logger.Error("DEBUG/ERROR Error during discovery initialization", e);
+            _logger.DebugError("Error during discovery initialization", e);
         }
     }
 
-    public IAsyncEnumerable<Node> DiscoverNodes(CancellationToken token)
-    {
-        return _kademliaNodeSource.DiscoverNodes(token);
-    }
+    public IAsyncEnumerable<Node> DiscoverNodes(CancellationToken token) => _kademliaNodeSource.DiscoverNodes(token);
 
     public event EventHandler<NodeEventArgs>? NodeRemoved { add { } remove { } }
-    public ValueTask DisposeAsync()
-    {
-        return _discv4Services.DisposeAsync();
-    }
+    public ValueTask DisposeAsync() => _discv4Services.DisposeAsync();
 }
