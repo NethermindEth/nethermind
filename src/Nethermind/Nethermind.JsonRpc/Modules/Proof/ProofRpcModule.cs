@@ -19,6 +19,7 @@ using Nethermind.Blockchain.Tracing.Proofs;
 using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Data;
+using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.OverridableEnv;
 using Nethermind.State.Proofs;
@@ -38,7 +39,6 @@ namespace Nethermind.JsonRpc.Modules.Proof
         IBlockchainBridge blockchainBridge)
         : IProofRpcModule
     {
-        private const int GetProofWithMetaStorageKeyLimit = 1000;
         private readonly HeaderDecoder _headerDecoder = new();
         private static readonly IRlpStreamEncoder<TxReceipt> _receiptEncoder = Rlp.GetStreamEncoder<TxReceipt>();
 
@@ -182,10 +182,10 @@ namespace Nethermind.JsonRpc.Modules.Proof
 
         public ResultWrapper<AccountProofWithMeta> proof_getProofWithMeta(Address accountAddress, HashSet<UInt256> storageKeys, BlockParameter? blockParameter)
         {
-            if (storageKeys.Count > GetProofWithMetaStorageKeyLimit)
+            if (storageKeys.Count > EthRpcModule.GetProofStorageKeyLimit)
             {
                 return ResultWrapper<AccountProofWithMeta>.Fail(
-                    $"storageKeys: {storageKeys.Count} is over the query limit {GetProofWithMetaStorageKeyLimit}.",
+                    $"storageKeys: {storageKeys.Count} is over the query limit {EthRpcModule.GetProofStorageKeyLimit}.",
                     ErrorCodes.InvalidParams);
             }
 
