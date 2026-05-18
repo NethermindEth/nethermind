@@ -41,6 +41,7 @@ using Nethermind.Core.Test.Modules;
 using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Db.Rocks.Config;
+using Nethermind.State.Flat;
 using Nethermind.Era1;
 using Nethermind.Evm;
 using Nethermind.Evm.State;
@@ -452,7 +453,10 @@ public class EthereumRunnerTests
                     {
                         jsonRpcConfig.PreloadRpcModules = true; // So that rpc is resolved early so that we know if something is wrong in test
                         return jsonRpcConfig;
-                    });
+                    })
+                    // MemDb doesn't support RocksDB snapshots; provide snapshot-capable column DB for flat mode
+                    .AddSingleton<IColumnsDb<FlatDbColumns>>((_) => new SnapshotableMemColumnsDb<FlatDbColumns>(neverPrune: true))
+                    ;
 
                 if (forStepTest)
                 {

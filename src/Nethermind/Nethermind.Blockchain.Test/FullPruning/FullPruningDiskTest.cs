@@ -75,9 +75,12 @@ public class FullPruningDiskTest
         }
 
         protected override ContainerBuilder
-            ConfigureContainer(ContainerBuilder builder, IConfigProvider configProvider) =>
-            // Reenable rocksdb
-            base.ConfigureContainer(builder, configProvider)
+            ConfigureContainer(ContainerBuilder builder, IConfigProvider configProvider)
+        {
+            // Disable flat before module loading — pruning tests need TrieStore
+            configProvider.GetConfig<IFlatDbConfig>().Enabled = false;
+
+            return base.ConfigureContainer(builder, configProvider)
                 .AddSingleton<IDbFactory, RocksDbFactory>()
                 .Intercept<IInitConfig>((initConfig) =>
                 {
@@ -88,6 +91,7 @@ public class FullPruningDiskTest
                     // Make test faster otherwise it may potentially buffer 128 block.
                     pruningConfig.MaxBufferedCommitCount = 1;
                 });
+        }
 
         public override void Dispose()
         {
