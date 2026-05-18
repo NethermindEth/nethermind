@@ -30,7 +30,7 @@ public partial struct ConsolidationRequest
 
         return new()
         {
-            SourceAddress = new(buffer[0..20].ToArray()),
+            SourceAddress = new(buffer[0..20]),
             ValidatorPublicKey = buffer[20..68].ToArray(),
             TargetPublicKey = buffer[68..116].ToArray()
         };

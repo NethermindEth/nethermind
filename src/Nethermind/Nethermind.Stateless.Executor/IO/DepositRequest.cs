@@ -35,7 +35,7 @@ public partial struct DepositRequest
         return new()
         {
             PublicKey = buffer[0..48].ToArray(),
-            WithdrawalCredentials = new SszBytes32(buffer[48..80].ToArray()),
+            WithdrawalCredentials = new SszBytes32(buffer[48..80]),
             Amount = BinaryPrimitives.ReadUInt64LittleEndian(buffer[80..88]),
             Signature = buffer[88..184].ToArray(),
             Index = BinaryPrimitives.ReadUInt64LittleEndian(buffer[184..192])

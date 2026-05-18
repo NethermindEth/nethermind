@@ -30,7 +30,7 @@ public partial struct WithdrawalRequest
 
         return new()
         {
-            SourceAddress = new(buffer[0..20].ToArray()),
+            SourceAddress = new(buffer[0..20]),
             ValidatorPublicKey = buffer[20..68].ToArray(),
             Amount = BinaryPrimitives.ReadUInt64LittleEndian(buffer[68..76])
         };
