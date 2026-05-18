@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.IO.Abstractions;
+using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Resettables;
 using Nethermind.Logging;
@@ -25,7 +26,8 @@ public class CallAnalyzerFileTracer : StatsAnalyzerFileTracer<CallAnalyzerTxTrac
         ProcessingMode mode,
         SortOrder sort,
         string fileName,
-        CancellationToken ct) : base(
+        CancellationToken ct,
+        IBlocksConfig blocksConfig) : base(
         new CallStatsAnalyzerTxTracer(buffer, callStatsAnalyzer, sort, ct),
         "call-analyzer.json",
         processingQueueSize,
@@ -34,7 +36,7 @@ public class CallAnalyzerFileTracer : StatsAnalyzerFileTracer<CallAnalyzerTxTrac
         writeFreq,
         mode,
         sort,
-        ct, fileName)
+        ct, fileName, blocksConfig)
 
     {
         _callStatsAnalyzer = callStatsAnalyzer;

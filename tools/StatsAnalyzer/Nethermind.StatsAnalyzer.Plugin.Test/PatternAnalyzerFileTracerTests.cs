@@ -3,6 +3,7 @@
 
 using System.Collections.Generic;
 using System.Threading;
+using Nethermind.Config;
 using Nethermind.Core.Resettables;
 using Nethermind.Evm;
 using Nethermind.Evm.Test;
@@ -55,13 +56,17 @@ public class PatternAnalyzerFileTracerTests : VirtualMachineTestsBase
             .SetCapacity(100000)
             .SetMinSupport(1).SetSketchResetOrReuseThreshold(0.001).SetSketch(sketch2).Build();
 
+        // Tests rely on every block being recorded; force sequential exec.
+        IBlocksConfig sequentialBlocksConfig = new BlocksConfig { ParallelExecution = false };
         _tracer = new PatternAnalyzerFileTracer(new ResettableList<Instruction>(), 1, 100,
             _patternStatsAnalyzer, new HashSet<Instruction>(), _fileSystem,
-            _logger, 1, ProcessingMode.Sequential, SortOrder.Descending, _testFileName, CancellationToken.None);
+            _logger, 1, ProcessingMode.Sequential, SortOrder.Descending, _testFileName, CancellationToken.None,
+            sequentialBlocksConfig);
         _tracerIgnore = new PatternAnalyzerFileTracer(new ResettableList<Instruction>(), 1, 100,
             _patternStatsAnalyzerIgnore, _ignoreSet, _fileSystem, _logger, 1,
             ProcessingMode.Sequential,
-            SortOrder.Descending, _testIgnoreFileName, CancellationToken.None);
+            SortOrder.Descending, _testIgnoreFileName, CancellationToken.None,
+            sequentialBlocksConfig);
     }
 
 

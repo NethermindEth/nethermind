@@ -21,7 +21,11 @@ public sealed class PatternStatsAnalyzerTxTracer : StatsAnalyzerTxTracer<Instruc
     }
 
 
-    public void AddTxEndMarker() => Queue?.Enqueue(NGram.Reset);
+    public void AddTxEndMarker()
+    {
+        if (Skip) return;
+        Queue?.Enqueue(NGram.Reset);
+    }
 
 
     public override PatternAnalyzerTxTrace BuildResult(long fromBlock = 0, long toBlock = 0)
@@ -52,6 +56,7 @@ public sealed class PatternStatsAnalyzerTxTracer : StatsAnalyzerTxTracer<Instruc
 
     public override void StartOperation(int pc, Instruction opcode, long gas, in ExecutionEnvironment env)
     {
+        if (Skip) return;
         if (!_ignoreSet.Contains(opcode)) Queue?.Enqueue(opcode);
     }
 }

@@ -48,6 +48,7 @@ public sealed class CallStatsAnalyzerTxTracer : StatsAnalyzerTxTracer<Address, C
     public override void ReportAction(long gas, UInt256 value, Address from, Address to, ReadOnlyMemory<byte> input,
         ExecutionType callType, bool isPrecompileCall = false)
     {
+        if (Skip) return;
         if (!isPrecompileCall && IsTrackedCallType(callType)) Queue?.Enqueue(to);
     }
 }

@@ -3,6 +3,7 @@
 
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
+using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Resettables;
 using Nethermind.Evm;
@@ -20,6 +21,7 @@ public class StatsAnalyzerPlugin(IPatternAnalyzerConfig patternAnalyzerConfig, I
 {
     private readonly CancellationTokenSource _cancellationTokenSource = new();
     private INethermindApi _api = null!;
+    private IBlocksConfig _blocksConfig = null!;
     private ILogger _logger;
     private ILogManager _logManager = null!;
     public string Name => "StatsAnalyzer";
@@ -33,6 +35,7 @@ public class StatsAnalyzerPlugin(IPatternAnalyzerConfig patternAnalyzerConfig, I
         _api = nethermindApi;
         _logManager = _api.LogManager;
         _logger = _logManager.GetClassLogger<StatsAnalyzerPlugin>();
+        _blocksConfig = _api.Config<IBlocksConfig>();
         return Task.CompletedTask;
     }
 
@@ -41,6 +44,22 @@ public class StatsAnalyzerPlugin(IPatternAnalyzerConfig patternAnalyzerConfig, I
         if (Enabled)
         {
             if (_logger.IsInfo) _logger.Info("Setting up Stats Analyzer");
+
+            // Pattern/Call analyzers share mutable state across transactions and
+            // are unsafe when parallel BAL execution is active (Amsterdam+ blocks
+            // with Blocks.ParallelExecution=true). The block tracer skips
+            // recording on parallel-BAL blocks; warn the operator once at startup
+            // so the partial coverage is not surprising. The proper parallel-safe
+            // redesign is tracked in BAL-statsanalyzer-plan.md §6d.
+            if (_blocksConfig.ParallelExecution && _logger.IsWarn)
+            {
+                _logger.Warn(
+                    "Blocks.ParallelExecution=true: StatsAnalyzer Pattern/Call analyzers " +
+                    "will skip recording on blocks executed with parallel BAL. " +
+                    "Pre-Amsterdam and sequentially-executed blocks will still be recorded. " +
+                    "Set Blocks.ParallelExecution=false to capture every block. " +
+                    "See tools/StatsAnalyzer/EIP-7928-references.md for details.");
+            }
 
             if (patternAnalyzerConfig.Enabled) SetupPatternAnalyzer();
             if (callAnalyzerConfig.Enabled) SetupCallAnalyzer();
@@ -71,7 +90,8 @@ public class StatsAnalyzerPlugin(IPatternAnalyzerConfig patternAnalyzerConfig, I
             (ProcessingMode)Enum.Parse(typeof(ProcessingMode), callAnalyzerConfig.ProcessingMode),
             (SortOrder)Enum.Parse(typeof(SortOrder), callAnalyzerConfig.Sort),
             callAnalyzerConfig.File!,
-            _cancellationTokenSource.Token);
+            _cancellationTokenSource.Token,
+            _blocksConfig);
         _api.MainProcessingContext!.BlockchainProcessor!.Tracers.Add(callAnalyzerFileTracer);
     }
 
@@ -92,7 +112,8 @@ public class StatsAnalyzerPlugin(IPatternAnalyzerConfig patternAnalyzerConfig, I
             (ProcessingMode)Enum.Parse(typeof(ProcessingMode), patternAnalyzerConfig.ProcessingMode),
             (SortOrder)Enum.Parse(typeof(SortOrder), patternAnalyzerConfig.Sort),
             patternAnalyzerConfig.File!,
-            _cancellationTokenSource.Token);
+            _cancellationTokenSource.Token,
+            _blocksConfig);
         _api.MainProcessingContext!.BlockchainProcessor!.Tracers.Add(patternAnalyzerFileTracer);
     }
 }

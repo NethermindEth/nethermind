@@ -4,6 +4,7 @@
 using System.IO.Abstractions;
 using System.Text.Json;
 using Nethermind.Blockchain.Tracing;
+using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
@@ -21,7 +22,8 @@ public abstract class StatsAnalyzerFileTracer<TxTrace, TxTracer>(
     ProcessingMode mode,
     SortOrder sort,
     CancellationToken ct,
-    string? fileName) : BlockTracerBase<TxTrace, TxTracer>
+    string? fileName,
+    IBlocksConfig blocksConfig) : BlockTracerBase<TxTrace, TxTracer>
     where TxTracer : class, ITxTracer, IStatsAnalyzerTxTracer<TxTrace>
 
 {
@@ -35,12 +37,21 @@ public abstract class StatsAnalyzerFileTracer<TxTrace, TxTracer>(
     private readonly ProcessingMode _processingMode = mode;
     private readonly JsonSerializerOptions _serializerOptions = new();
     protected readonly SortOrder Sort = sort;
+    private readonly IBlocksConfig _blocksConfig = blocksConfig ?? throw new ArgumentNullException(nameof(blocksConfig));
     private int _pos;
     private long _currentBlock;
     protected Task CurrentTask = Task.CompletedTask;
     private long _initialBlock;
     private Task _lastTask = Task.CompletedTask;
     protected TxTracer Tracer = tracer;
+    // Per-block flag set in StartNewBlockTrace. When true, this block is being
+    // processed under parallel-BAL execution and the per-tx tracer must short-
+    // circuit; the file write at EndBlockTrace is also suppressed. See
+    // tools/StatsAnalyzer/EIP-7928-references.md and BAL-statsanalyzer-plan.md
+    // §6c for the gating rationale.
+    private bool _skipThisBlock;
+    // One-shot log on the first skipped block — avoids per-block log spam.
+    private bool _loggedFirstSkip;
 
     protected abstract void ResetBufferAndTracer();
 
@@ -49,22 +60,26 @@ public abstract class StatsAnalyzerFileTracer<TxTrace, TxTracer>(
         TxTracer tracer = Tracer;
         long initialBlockNumber = _initialBlock;
         long currentBlockNumber = _currentBlock;
+        bool skip = _skipThisBlock;
 
         ResetBufferAndTracer();
 
-        Enqueue(new Task(() =>
-            {
-                Ct.ThrowIfCancellationRequested();
-                WriteTrace(
-                    initialBlockNumber,
-                    currentBlockNumber,
-                    tracer,
-                    FileName,
-                    _fileSystem,
-                    _serializerOptions,
-                    Ct);
-            },
-            Ct));
+        if (!skip)
+        {
+            Enqueue(new Task(() =>
+                {
+                    Ct.ThrowIfCancellationRequested();
+                    WriteTrace(
+                        initialBlockNumber,
+                        currentBlockNumber,
+                        tracer,
+                        FileName,
+                        _fileSystem,
+                        _serializerOptions,
+                        Ct);
+                },
+                Ct));
+        }
 
         base.EndBlockTrace();
     }
@@ -116,6 +131,34 @@ public abstract class StatsAnalyzerFileTracer<TxTrace, TxTracer>(
     {
         base.StartNewBlockTrace(block);
         long number = block.Header.Number;
+
+        // Approximate Nethermind's authoritative
+        //   BlockAccessListManager.ParallelExecutionEnabled =
+        //     Enabled && blocksConfig.ParallelExecution && !_isBuilding && suggestedBlock.BlockAccessList is not null;
+        // The two missing pieces (Enabled, !_isBuilding) are subtractive: when
+        // false they force sequential exec, so this approximation never
+        // under-skips and only over-skips in narrow benign cases (e.g. local
+        // block production with a pre-populated BAL body — we lose stats for
+        // those blocks, no correctness break).
+        _skipThisBlock = _blocksConfig.ParallelExecution && block.BlockAccessList is not null;
+        Tracer.SetSkip(_skipThisBlock);
+
+        if (_skipThisBlock)
+        {
+            if (!_loggedFirstSkip && Logger.IsInfo)
+            {
+                Logger.Info(
+                    $"StatsAnalyzer skipping block {number}: parallel BAL execution active. " +
+                    "Set Blocks.ParallelExecution=false to record every block on this node " +
+                    "(see tools/StatsAnalyzer/EIP-7928-references.md).");
+                _loggedFirstSkip = true;
+            }
+            // Don't anchor _initialBlock/_currentBlock on skipped blocks so the
+            // emitted (initialBlockNumber, currentBlockNumber) range reflects only
+            // blocks the analyzer actually recorded.
+            return;
+        }
+
         // _initialBlock == 0 means "unset" rather than "genesis"; on a
         // fresh node this means the genesis block itself does not anchor
         // _initialBlock — the first non-genesis block the tracer sees does.

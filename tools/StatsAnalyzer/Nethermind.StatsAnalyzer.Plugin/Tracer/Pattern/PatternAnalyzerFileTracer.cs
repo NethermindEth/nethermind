@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.IO.Abstractions;
+using Nethermind.Config;
 using Nethermind.Core.Resettables;
 using Nethermind.Evm;
 using Nethermind.Logging;
@@ -29,7 +30,8 @@ public class PatternAnalyzerFileTracer : StatsAnalyzerFileTracer<PatternAnalyzer
         ProcessingMode mode,
         SortOrder sort,
         string fileName,
-        CancellationToken ct) : base(
+        CancellationToken ct,
+        IBlocksConfig blocksConfig) : base(
         new PatternStatsAnalyzerTxTracer(buffer, ignore, patternStatsAnalyzer, sort, ct),
         "pattern-analyzer.json",
         processingQueueSize,
@@ -38,7 +40,7 @@ public class PatternAnalyzerFileTracer : StatsAnalyzerFileTracer<PatternAnalyzer
         writeFreq,
         mode,
         sort,
-        ct, fileName)
+        ct, fileName, blocksConfig)
     {
         _buffer = buffer;
 
