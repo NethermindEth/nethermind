@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.ComponentModel;
 using System.Diagnostics;
 using System.Globalization;
@@ -279,6 +280,36 @@ namespace Nethermind.Core
         }
 
         internal long GetHashCode64() => SpanExtensions.FastHash64For20Bytes(ref Unsafe.AsRef(in FirstByte));
+    }
+
+    public readonly struct AddressByEip55ChecksumOrdinalComparer : IComparer<Address>
+    {
+        [SkipLocalsInit]
+        public int Compare(Address? a, Address? b)
+        {
+            if (ReferenceEquals(a, b)) return 0;
+            if (a is null) return -1;
+            if (b is null) return 1;
+
+            Span<byte> aLowerHex = stackalloc byte[Address.Size * 2];
+            Span<byte> bLowerHex = stackalloc byte[Address.Size * 2];
+            a.Bytes.OutputBytesToByteHex(aLowerHex, extraNibble: false);
+            b.Bytes.OutputBytesToByteHex(bLowerHex, extraNibble: false);
+
+            ValueHash256 aChecksum = ValueKeccak.Compute(aLowerHex);
+            ValueHash256 bChecksum = ValueKeccak.Compute(bLowerHex);
+            for (int i = 0; i < aLowerHex.Length; i++)
+            {
+                char aChar = Bytes.ToChecksummedHexChar(aLowerHex[i], Bytes.GetChecksumNibble(in aChecksum, i));
+                char bChar = Bytes.ToChecksummedHexChar(bLowerHex[i], Bytes.GetChecksumNibble(in bChecksum, i));
+                if (aChar != bChar)
+                {
+                    return aChar - bChar;
+                }
+            }
+
+            return 0;
+        }
     }
 
     [JsonConverter(typeof(AddressAsKeyConverter))]

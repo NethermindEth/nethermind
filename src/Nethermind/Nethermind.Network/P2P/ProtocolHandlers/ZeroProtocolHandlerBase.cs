@@ -8,6 +8,7 @@ using DotNetty.Common.Utilities;
 using Nethermind.Consensus.Scheduler;
 using Nethermind.Core.Extensions;
 using Nethermind.Logging;
+using Nethermind.Network.P2P.Messages;
 using Nethermind.Network.Rlpx;
 using Nethermind.Stats;
 
@@ -52,7 +53,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
             TransferSpeedType speedType,
             Func<TRequest, string> describeRequestFunc,
             CancellationToken token
-        ) where TRequest : MessageBase
+        ) where TRequest : P2PMessage
         {
             Request<TRequest, TResponse> request = new(message);
             messageQueue.Send(request);
