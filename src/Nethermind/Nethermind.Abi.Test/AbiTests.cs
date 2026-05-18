@@ -676,14 +676,13 @@ public class AbiTests
     [Test]
     public void AbiTypeConverter_Parses_TupleArray_Correctly()
     {
-        // Test that "tuple[]" produces AbiArray(AbiTuple) not plain AbiTuple
         string json = "\"tuple[]\"";
         AbiType result = JsonSerializer.Deserialize<AbiType>(json)!;
 
         result.Should().BeOfType<AbiArray>();
         AbiArray arrayType = (AbiArray)result;
         arrayType.ElementType.Should().BeOfType<AbiTuple>();
-        // Empty tuple since we don't have components at this level
+
         arrayType.Name.Should().Be("()[]");
     }
 
