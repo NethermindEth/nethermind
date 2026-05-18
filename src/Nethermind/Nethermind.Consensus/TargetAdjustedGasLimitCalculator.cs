@@ -13,12 +13,12 @@ namespace Nethermind.Consensus
         private readonly ISpecProvider _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
         private readonly IBlocksConfig _blocksConfig = blocksConfig ?? throw new ArgumentNullException(nameof(blocksConfig));
 
-        public long GetGasLimit(BlockHeader parentHeader)
+        public long GetGasLimit(BlockHeader parentHeader, long? targetGasLimit = null)
         {
             long parentGasLimit = parentHeader.GasLimit;
             long gasLimit = parentGasLimit;
 
-            long? targetGasLimit = _blocksConfig.TargetBlockGasLimit;
+            targetGasLimit ??= _blocksConfig.TargetBlockGasLimit;
             long newBlockNumber = parentHeader.Number + 1;
             IReleaseSpec spec = _specProvider.GetSpec(newBlockNumber, parentHeader.Timestamp); // taking the parent timestamp is a temporary solution
             if (targetGasLimit is not null)

@@ -16,7 +16,7 @@ namespace Nethermind.Consensus.AuRa
 {
     public class AuRaContractGasLimitOverride(
         IList<IBlockGasLimitContract> contracts,
-AuRaContractGasLimitOverride.Cache cache,
+        AuRaContractGasLimitOverride.Cache cache,
         bool minimum2MlnGasPerBlockWhenUsingBlockGasLimitContract,
         IGasLimitCalculator innerCalculator,
         ILogManager logManager) : IGasLimitCalculator
@@ -37,7 +37,10 @@ AuRaContractGasLimitOverride.Cache cache,
         private readonly IGasLimitCalculator _innerCalculator = innerCalculator ?? throw new ArgumentNullException(nameof(innerCalculator));
         private readonly ILogger _logger = logManager?.GetClassLogger<AuRaContractGasLimitOverride>() ?? throw new ArgumentNullException(nameof(logManager));
 
-        public long GetGasLimit(BlockHeader parentHeader) => GetGasLimitFromContract(parentHeader) ?? _innerCalculator.GetGasLimit(parentHeader);
+        public long GetGasLimit(BlockHeader parentHeader, long? targetGasLimit = null) =>
+            targetGasLimit is not null
+                ? _innerCalculator.GetGasLimit(parentHeader, targetGasLimit)
+                : GetGasLimitFromContract(parentHeader) ?? _innerCalculator.GetGasLimit(parentHeader);
 
         private long? GetGasLimitFromContract(BlockHeader parentHeader)
         {
@@ -95,7 +98,9 @@ AuRaContractGasLimitOverride.Cache cache,
         public bool IsGasLimitValid(BlockHeader parentHeader, in long gasLimit, out long? expectedGasLimit)
         {
             expectedGasLimit = GetGasLimitFromContract(parentHeader);
-            return expectedGasLimit is null || expectedGasLimit == gasLimit;
+            return expectedGasLimit is null
+                || expectedGasLimit == gasLimit
+                || _innerCalculator.GetGasLimit(parentHeader, gasLimit) == gasLimit;
         }
     }
 }
