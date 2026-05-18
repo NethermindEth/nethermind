@@ -147,7 +147,7 @@ public interface IRlpDecoder<T> : IRlpDecoder
         int totalLength = 0;
         for (int i = 0; i < items.Length; i++)
         {
-            totalLength += GetLength(items[i], behaviors);
+            totalLength += GetNullableLength(items[i], behaviors);
         }
 
         int bufferLength = Rlp.LengthOfSequence(totalLength);
@@ -176,7 +176,7 @@ public interface IRlpDecoder<T> : IRlpDecoder
         int totalLength = 0;
         for (int i = 0; i < items.Count; i++)
         {
-            totalLength += GetLength(items[i], behaviors);
+            totalLength += GetNullableLength(items[i], behaviors);
         }
 
         int bufferLength = Rlp.LengthOfSequence(totalLength);
@@ -197,7 +197,7 @@ public interface IRlpDecoder<T> : IRlpDecoder
         int totalLength = 0;
         for (int i = 0; i < items.Count; i++)
         {
-            totalLength += GetLength(items[i], behaviors);
+            totalLength += GetNullableLength(items[i], behaviors);
         }
 
         int bufferLength = Rlp.LengthOfSequence(totalLength);
@@ -254,7 +254,7 @@ public interface IRlpDecoder<T> : IRlpDecoder
         int contentLength = 0;
         for (int i = 0; i < items.Length; i++)
         {
-            contentLength += items[i] is null ? Rlp.OfEmptyList.Length : GetLength(items[i], behaviors);
+            contentLength += GetNullableLength(items[i], behaviors);
         }
 
         return contentLength;
@@ -274,4 +274,7 @@ public interface IRlpDecoder<T> : IRlpDecoder
     [StackTraceHidden]
     private static T ThrowNullDecodedValue()
         => throw new RlpException($"{typeof(T).Name} decoding returned null");
+
+    private int GetNullableLength(T? item, RlpBehaviors behaviors)
+        => item is null ? Rlp.OfEmptyList.Length : GetLength(item, behaviors);
 }

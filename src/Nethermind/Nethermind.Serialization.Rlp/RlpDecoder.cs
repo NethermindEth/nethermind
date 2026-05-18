@@ -16,7 +16,7 @@ public abstract class RlpDecoder<T> : IRlpDecoder<T>
     [DoesNotReturn]
     [StackTraceHidden]
     protected static void ThrowRlpException(Exception exception) =>
-        throw new RlpException($"Cannot decode stream of {nameof(T)}", exception);
+        throw new RlpException($"Cannot decode stream of {typeof(T).Name}", exception);
 
     public T Decode(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
