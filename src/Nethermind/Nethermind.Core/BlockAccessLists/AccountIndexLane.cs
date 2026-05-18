@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Runtime.CompilerServices;
 
 namespace Nethermind.Core.BlockAccessLists;
 
@@ -48,6 +49,7 @@ internal readonly struct AccountIndexLane
     public ReadOnlySpan<uint> Code => _indices.AsSpan(_codeStart);
 
     /// <summary>Entry from <paramref name="values"/> at exactly <c>Index == index</c>, or null.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static T? GetExact<T>(ReadOnlySpan<uint> indices, T[] values, uint index) where T : struct
     {
         int idx = indices.BinarySearch(index);
@@ -56,6 +58,7 @@ internal readonly struct AccountIndexLane
 
     /// <summary>Entry with the largest Index strictly less than <paramref name="blockAccessIndex"/>;
     /// returns <c>false</c> if none.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static bool TryGetLastBefore<T>(ReadOnlySpan<uint> indices, T[] values, uint blockAccessIndex, out T last) where T : struct
     {
         int idx = indices.BinarySearch(blockAccessIndex);

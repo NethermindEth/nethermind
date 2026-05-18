@@ -92,7 +92,8 @@ public class ReadOnlySlotChanges : IEquatable<ReadOnlySlotChanges>
             storageChange = default;
             return false;
         }
-        int idx = ((ReadOnlySpan<uint>)_indices!).BinarySearch(blockAccessIndex);
+        ReadOnlySpan<uint> indices = _indices!;
+        int idx = indices.BinarySearch(blockAccessIndex);
         // idx (if found) or ~idx (if not) is the first entry with Index >= target; one earlier is strictly-before.
         int lastBefore = (idx >= 0 ? idx : ~idx) - 1;
         if (lastBefore < 0)
