@@ -11,9 +11,10 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
     {
         public ResultWrapper<string> eth_subscribe(string subscriptionName, string? args = null)
         {
+            if (SubscriptionArgs.CheckArgsLength(args) is { } failure) return failure;
+
             try
             {
-                SubscriptionArgsLengthValidator.Validate(args);
                 ResultWrapper<string> successfulResult = ResultWrapper<string>.Success(subscriptionManager.AddSubscription(Context.DuplexClient, subscriptionName, args));
                 return successfulResult;
             }
