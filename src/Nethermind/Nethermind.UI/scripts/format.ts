@@ -189,7 +189,6 @@ const logos = {
   "1": "ethereum-logo.svg",
   "100": "gnosis.png",
   "480": "world-logo.svg",
-  "8453": "base-logo.svg",
   "10200": "gnosis.png",
   "7032118028": "perfnet.png"
 }
