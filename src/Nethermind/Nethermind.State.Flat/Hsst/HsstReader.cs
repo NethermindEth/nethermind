@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Runtime.CompilerServices;
 
 namespace Nethermind.State.Flat.Hsst;
 
@@ -60,6 +61,7 @@ public ref struct HsstReader<TReader, TPin>(scoped in TReader reader, Bound init
     public bool TrySeekFloor(scoped ReadOnlySpan<byte> key, out Bound matched) =>
         TrySeekCore(key, exactMatch: false, out matched);
 
+    [SkipLocalsInit]
     private bool TrySeekCore(scoped ReadOnlySpan<byte> key, bool exactMatch, out Bound matched)
     {
         if (_bound.Length < 2) { matched = default; return false; }

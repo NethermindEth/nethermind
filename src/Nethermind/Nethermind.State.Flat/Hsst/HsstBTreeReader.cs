@@ -36,6 +36,7 @@ internal static class HsstBTreeReader
     /// which can happen at any depth (a "direct-entry" child of an intermediate, a child of
     /// a leaf-level intermediate, etc.).
     /// </remarks>
+    [SkipLocalsInit]
     public static bool TrySeek<TReader, TPin>(
         scoped in TReader reader, Bound bound, scoped ReadOnlySpan<byte> key,
         bool exactMatch, bool keyFirst, out Bound resultBound)
@@ -63,13 +64,16 @@ internal static class HsstBTreeReader
 
         // Root prefix bytes seed the root's parentSeparator (non-root nodes get their
         // prefix bytes from the parent's separator during descent; the root has no
-        // parent, so the bytes ride the trailer).
-        Span<byte> rootPrefixBuf = stackalloc byte[128];
+        // parent, so the bytes ride the trailer). Size to the actual prefix length
+        // (capped at 255 by the trailer's u8 field) rather than a fixed 128 bytes —
+        // saves stack frame in the common short-prefix case, and is correct even when
+        // the prefix runs to the full 255-byte cap.
         scoped ReadOnlySpan<byte> rootPrefix = default;
         if (rootPrefixLen > 0)
         {
-            if (!reader.TryRead(bound.Offset + bound.Length - 5 - rootPrefixLen, rootPrefixBuf[..rootPrefixLen])) return false;
-            rootPrefix = rootPrefixBuf[..rootPrefixLen];
+            Span<byte> rootPrefixBuf = stackalloc byte[rootPrefixLen];
+            if (!reader.TryRead(bound.Offset + bound.Length - 5 - rootPrefixLen, rootPrefixBuf)) return false;
+            rootPrefix = rootPrefixBuf;
         }
 
         long trailerLen = 5L + rootPrefixLen;
@@ -125,6 +129,7 @@ internal static class HsstBTreeReader
     /// FullKey → LEB128 → Value; <c>false</c> walks forward through LEB128 → FullKey and
     /// derives the value position back-referentially from <c>flagByteStart − valueLength</c>.
     /// </summary>
+    [SkipLocalsInit]
     private static bool DecodeEntry<TReader, TPin>(
         scoped in TReader reader, Bound bound, long absFlagByteStart,
         scoped ReadOnlySpan<byte> key, bool exactMatch, bool keyFirst,
@@ -149,10 +154,9 @@ internal static class HsstBTreeReader
 
             if (exactMatch)
             {
-                Span<byte> stored = stackalloc byte[255];
-                Span<byte> storedSlice = stored[..trailerKeyLength];
-                if (!reader.TryRead(absKeyStart, storedSlice)) return false;
-                if (!storedSlice.SequenceEqual(key)) return false;
+                Span<byte> stored = stackalloc byte[trailerKeyLength];
+                if (!reader.TryRead(absKeyStart, stored)) return false;
+                if (!stored.SequenceEqual(key)) return false;
             }
 
             resultBound = new Bound(absLebStart + pos, valueLength);
@@ -174,12 +178,12 @@ internal static class HsstBTreeReader
         if (exactMatch)
         {
             // trailerKeyLength == key.Length was enforced at the top of TrySeek; compare
-            // the stored key bytes against the input. Stored key fits in 255 bytes —
-            // single read + compare, no chunking.
-            Span<byte> stored = stackalloc byte[255];
-            Span<byte> storedSlice = stored[..trailerKeyLength];
-            if (!reader.TryRead(absLebStart_ + pos_, storedSlice)) return false;
-            if (!storedSlice.SequenceEqual(key)) return false;
+            // the stored key bytes against the input. Right-sized to the actual key
+            // length instead of the legacy 255-byte alloc — saves stack frame and skips
+            // zero-init under [SkipLocalsInit].
+            Span<byte> stored = stackalloc byte[trailerKeyLength];
+            if (!reader.TryRead(absLebStart_ + pos_, stored)) return false;
+            if (!stored.SequenceEqual(key)) return false;
         }
 
         resultBound = new Bound(absFlagByteStart - valueLength_, valueLength_);
