@@ -167,15 +167,15 @@ public class Startup : IStartup
         _rpcAuthentication = rpcAuthentication;
         _logger = logger;
 
-        // Engine API fast lane: authenticated engine port POST requests bypass
-        // routing, CORS, compression, and WebSocket middleware
+        // Fast lane: local JSON-RPC POST requests and authenticated engine POST
+        // requests bypass routing, CORS, compression, and WebSocket middleware.
         app.Use(async (ctx, next) =>
         {
             if (ctx.Request.Method != "POST" ||
                 !(ctx.Request.ContentType?.Contains("application/json") ?? false) ||
                 !jsonRpcUrlCollection.TryGetValue(ctx.Connection.LocalPort, out JsonRpcUrl jsonRpcUrl) ||
-                !jsonRpcUrl.IsAuthenticated ||
-                !jsonRpcUrl.RpcEndpoint.HasFlag(RpcEndpoint.Http))
+                !jsonRpcUrl.RpcEndpoint.HasFlag(RpcEndpoint.Http) ||
+                (!jsonRpcUrl.IsAuthenticated && !IsLocalhost(ctx.Connection.RemoteIpAddress!)))
             {
                 await next();
                 return;
@@ -287,7 +287,7 @@ public class Startup : IStartup
     private static bool IsLocalhost(IPAddress remoteIp)
         => IPAddress.IsLoopback(remoteIp) || remoteIp.Equals(IPAddress.IPv6Loopback);
 
-    private static int GetStatusCode(in JsonRpcResult result)
+    internal static int GetStatusCode(in JsonRpcResult result)
     {
         if (result.IsCollection)
         {
@@ -301,7 +301,7 @@ public class Startup : IStartup
         }
     }
 
-    private static bool IsResourceUnavailableError(JsonRpcResponse? response) => response is JsonRpcErrorResponse { Error.Code: ErrorCodes.ModuleTimeout }
+    internal static bool IsResourceUnavailableError(JsonRpcResponse? response) => response is JsonRpcErrorResponse { Error.Code: ErrorCodes.ModuleTimeout }
                     or JsonRpcErrorResponse { Error.Code: ErrorCodes.LimitExceeded };
 
     private async Task PushErrorResponseAsync(HttpContext ctx, int statusCode, int errorCode, string message)
@@ -343,6 +343,9 @@ public class Startup : IStartup
                 using (result)
                 {
                     // Authenticated single responses bypass buffering to avoid double-copy
+                    IStreamableResult? streamableResponse = result.Response is JsonRpcSuccessResponse { Result: IStreamableResult streamable }
+                        ? streamable
+                        : null;
                     bool bufferResponse = _jsonRpcConfig.BufferResponses && !(jsonRpcUrl.IsAuthenticated && !result.IsCollection);
                     await using Stream stream = bufferResponse ? RecyclableStream.GetStream("http") : null;
                     CountingWriter resultWriter = stream is not null ? new CountingStreamPipeWriter(stream) : new CountingPipeWriter(ctx.Response.BodyWriter);
@@ -351,8 +354,8 @@ public class Startup : IStartup
                         ctx.Response.ContentType = "application/json";
                         ctx.Response.StatusCode = GetStatusCode(result);
 
-                        // Flush headers before body for unbuffered responses
-                        if (stream is null)
+                        // Streamable responses can take time before the first body bytes are ready.
+                        if (stream is null && streamableResponse is not null)
                         {
                             await ctx.Response.StartAsync();
                         }
@@ -389,9 +392,9 @@ public class Startup : IStartup
                             }
                             resultWriter.Write(_jsonClosingBracket);
                         }
-                        else if (result.Response is JsonRpcSuccessResponse { Result: IStreamableResult streamable })
+                        else if (streamableResponse is not null)
                         {
-                            await WriteStreamableResponseAsync(resultWriter, result.Response, streamable, ctx.RequestAborted);
+                            await WriteStreamableResponseAsync(resultWriter, result.Response, streamableResponse, ctx.RequestAborted);
                         }
                         else
                         {
@@ -446,6 +449,63 @@ public class Startup : IStartup
     /// avoiding polymorphic dispatch through the JsonRpcResponse base class hierarchy.
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal static void WriteJsonRpcResponse(CountingWriter writer, JsonRpcResponse response)
+    {
+        if (response is JsonRpcSuccessResponse successResponse && TryWritePrimitiveSuccessResponse(writer, successResponse))
+        {
+            return;
+        }
+
+        WriteJsonRpcResponse((IBufferWriter<byte>)writer, response);
+    }
+
+    private static bool TryWritePrimitiveSuccessResponse(CountingWriter writer, JsonRpcSuccessResponse response)
+    {
+        if (ForcedNumberConversion.Value != NumberConversion.Hex || response.Result is not ulong result)
+        {
+            return false;
+        }
+
+        writer.Write("{\"jsonrpc\":\"2.0\",\"result\":"u8);
+        WriteHexUlong(writer, result);
+        writer.Write(",\"id\":"u8);
+        WriteIdRaw(writer, response.Id);
+        writer.Write("}"u8);
+        return true;
+    }
+
+    private static void WriteHexUlong(PipeWriter writer, ulong value)
+    {
+        Span<byte> buffer = stackalloc byte[20];
+        buffer[0] = (byte)'"';
+        buffer[1] = (byte)'0';
+        buffer[2] = (byte)'x';
+
+        int offset = 3;
+        bool hasNonZeroNibble = false;
+        for (int shift = 60; shift >= 0; shift -= 4)
+        {
+            int nibble = (int)(value >> shift) & 0xF;
+            if (nibble == 0 && !hasNonZeroNibble)
+            {
+                continue;
+            }
+
+            hasNonZeroNibble = true;
+            buffer[offset++] = (byte)(nibble < 10
+                ? (byte)'0' + nibble
+                : (byte)'a' + nibble - 10);
+        }
+
+        if (!hasNonZeroNibble)
+        {
+            buffer[offset++] = (byte)'0';
+        }
+
+        buffer[offset++] = (byte)'"';
+        writer.Write(buffer[..offset]);
+    }
+
     private static void WriteJsonRpcResponse(IBufferWriter<byte> writer, JsonRpcResponse response)
     {
         using Utf8JsonWriter jsonWriter = new(writer, new JsonWriterOptions { SkipValidation = true });

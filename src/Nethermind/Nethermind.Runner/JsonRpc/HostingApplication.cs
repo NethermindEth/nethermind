@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -14,11 +14,13 @@ namespace Nethermind.Runner.JsonRpc;
 internal sealed class HostingApplication(
     RequestDelegate application,
     ILogManager logManager,
-    HttpContextFactory httpContextFactory) : IHttpApplication<HostingApplication.Context>
+    HttpContextFactory httpContextFactory,
+    JsonRpcHttpFastPath? jsonRpcHttpFastPath) : IHttpApplication<HostingApplication.Context>
 {
     private readonly ILogger _logger = logManager.GetClassLogger<HostingApplication>();
     private readonly RequestDelegate _application = application;
     private readonly HttpContextFactory? _httpContextFactory = httpContextFactory;
+    private readonly JsonRpcHttpFastPath? _jsonRpcHttpFastPath = jsonRpcHttpFastPath;
 
     // Set up the request
     public Context CreateContext(IFeatureCollection contextFeatures)
@@ -38,30 +40,40 @@ internal sealed class HostingApplication(
             // Server doesn't support pooling, so create a new Context
             hostContext = new Context();
         }
+        hostContext.Features = contextFeatures;
+        if (_jsonRpcHttpFastPath?.CanProcess(contextFeatures) == true)
+        {
+            hostContext.HttpContext = null;
+            return hostContext;
+        }
 
-        HttpContext httpContext;
-        DefaultHttpContext defaultHttpContext = (DefaultHttpContext?)hostContext.HttpContext;
-        if (defaultHttpContext is null)
-        {
-            httpContext = _httpContextFactory.Create(contextFeatures);
-            hostContext.HttpContext = httpContext;
-        }
-        else
-        {
-            _httpContextFactory.Initialize(defaultHttpContext, contextFeatures);
-            httpContext = defaultHttpContext;
-        }
+        EnsureHttpContext(hostContext);
 
         return hostContext;
     }
 
     // Execute the request
-    public Task ProcessRequestAsync(Context context) => _application(context.HttpContext!);
+    public async Task ProcessRequestAsync(Context context)
+    {
+        if (_jsonRpcHttpFastPath is not null && await _jsonRpcHttpFastPath.TryProcessAsync(context.Features!))
+        {
+            return;
+        }
+
+        EnsureHttpContext(context);
+        await _application(context.HttpContext!);
+    }
 
     // Clean up the request
     public void DisposeContext(Context context, Exception? exception)
     {
-        HttpContext httpContext = context.HttpContext!;
+        if (context.HttpContext is null)
+        {
+            context.Reset();
+            return;
+        }
+
+        HttpContext httpContext = context.HttpContext;
 
         _httpContextFactory.Dispose((DefaultHttpContext)httpContext);
 
@@ -75,11 +87,29 @@ internal sealed class HostingApplication(
         context.Reset();
     }
 
+    private void EnsureHttpContext(Context hostContext)
+    {
+        DefaultHttpContext? defaultHttpContext = (DefaultHttpContext?)hostContext.HttpContext;
+        if (defaultHttpContext is null)
+        {
+            hostContext.HttpContext = _httpContextFactory.Create(hostContext.Features!);
+        }
+        else
+        {
+            _httpContextFactory.Initialize(defaultHttpContext, hostContext.Features!);
+        }
+    }
+
     internal sealed class Context
     {
         public HttpContext? HttpContext { get; set; }
+        public IFeatureCollection? Features { get; set; }
         public IDisposable? Scope { get; set; }
 
-        public void Reset() => Scope = null;
+        public void Reset()
+        {
+            Scope = null;
+            Features = null;
+        }
     }
 }
