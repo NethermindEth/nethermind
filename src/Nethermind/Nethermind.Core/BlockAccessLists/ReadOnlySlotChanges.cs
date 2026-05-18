@@ -22,6 +22,8 @@ public class ReadOnlySlotChanges : IEquatable<ReadOnlySlotChanges>
     private readonly uint[]? _indices;
     private readonly int _count;
     // count == 1 only; lazy [_first] for the array-form Changes accessor.
+    // Single-writer post-construction in practice (validation read path skips Changes); the ??= is
+    // a benign race if ever shared — both threads compute the same [_first] array.
     private StorageChange[]? _singletonChanges;
 
     public ReadOnlySlotChanges(UInt256 key, StorageChange[] changes)
@@ -33,6 +35,7 @@ public class ReadOnlySlotChanges : IEquatable<ReadOnlySlotChanges>
         if (_count == 1)
         {
             // Caller's already-allocated length-1 array doubles as the singleton cache.
+            // Caller must not mutate changes[0] post-construction (decoder path does not).
             _singletonChanges = changes;
             return;
         }
@@ -55,8 +58,6 @@ public class ReadOnlySlotChanges : IEquatable<ReadOnlySlotChanges>
         }
     }
 
-    public int Count => _count;
-
     public bool Equals(ReadOnlySlotChanges? other)
     {
         if (other is null) return false;
@@ -64,7 +65,8 @@ public class ReadOnlySlotChanges : IEquatable<ReadOnlySlotChanges>
         if (_count != other._count) return false;
         if (_count == 0) return true;
         if (_multiple is null) return _first.Equals(other._first);
-        return ((ReadOnlySpan<StorageChange>)_multiple).SequenceEqual(other._multiple);
+        // _count match + _multiple != null ⇒ other._multiple != null by the same invariant.
+        return ((ReadOnlySpan<StorageChange>)_multiple).SequenceEqual(other._multiple!);
     }
 
     public override bool Equals(object? obj) => obj is ReadOnlySlotChanges other && Equals(other);
