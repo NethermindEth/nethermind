@@ -57,6 +57,16 @@ public class FlatWorldStateManager(
             logManager,
             isReadOnly: true);
 
+    public IWorldStateScopeProvider CreatePrewarmerWorldState() =>
+        new FlatScopeProvider(
+            codeDb,
+            flatDbManager,
+            configuration,
+            trieWarmer,
+            ResourcePool.Usage.ReadOnlyProcessingEnv,
+            logManager,
+            isReadOnly: true);
+
     event EventHandler<ReorgBoundaryReached>? IWorldStateManager.ReorgBoundaryReached
     {
         add => flatDbManager.ReorgBoundaryReached += value;

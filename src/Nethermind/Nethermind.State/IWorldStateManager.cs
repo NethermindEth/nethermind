@@ -23,6 +23,13 @@ public interface IWorldStateManager
     /// <returns></returns>
     IWorldStateScopeProvider CreateResettableWorldState();
 
+    /// <summary>
+    /// Like <see cref="CreateResettableWorldState"/> but with the real TrieWarmer enabled.
+    /// The prewarmer's storage writes push trie warmup jobs, warming trie nodes
+    /// ahead of the main thread's merkle phase.
+    /// </summary>
+    IWorldStateScopeProvider CreatePrewarmerWorldState() => CreateResettableWorldState();
+
     event EventHandler<ReorgBoundaryReached>? ReorgBoundaryReached;
 
     IOverridableWorldScope CreateOverridableWorldScope();
