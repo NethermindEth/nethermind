@@ -29,6 +29,7 @@ public class StateSyncRunner(
     ISyncPeerPool syncPeerPool,
     IStateSyncPivot stateSyncPivot,
     ITrieReassembler trieReassembler,
+    IWorldStateManager worldStateManager,
     [KeyFilter(DbNames.State)] ITunableDb? stateDb,
     [KeyFilter(DbNames.Code)] ITunableDb? codeDb,
     ILogManager logManager,
@@ -118,8 +119,35 @@ public class StateSyncRunner(
         if (_logger.IsInfo) _logger.Info($"Trie reassembly succeeded for {expectedRoot} — skipping state healing.");
         treeSync.FinalizeSync(pivotHeader);
 
-        if (syncConfig.VerifyTrieOnStateSyncFinished)
-            verifyTrieStarter?.TryStartVerifyTrie(pivotHeader);
+        // Synchronously walk the freshly assembled trie from the pivot root to catch any
+        // missing/dangling nodes the root-hash check might have missed. Diagnostic only —
+        // it cannot un-finalize sync, but a failure here is a loud signal that reassembly
+        // produced an internally inconsistent tree even though its root happened to match.
+        // TODO: drop this once reassembly has been validated on mainnet.
+        if (_logger.IsInfo) _logger.Info("Running post-reassembly verify-trie pass.");
+        bool verified;
+        try
+        {
+            verified = worldStateManager.VerifyTrie(pivotHeader, token);
+        }
+        catch (OperationCanceledException) when (token.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception e)
+        {
+            if (_logger.IsError) _logger.Error("Post-reassembly verify-trie threw.", e);
+            verified = false;
+        }
+
+        if (!verified && _logger.IsError)
+        {
+            _logger.Error($"POST-REASSEMBLY VERIFY-TRIE FAILED for root {expectedRoot}. Sync was already marked complete; the trie has dangling references.");
+        }
+        else if (verified && _logger.IsInfo)
+        {
+            _logger.Info($"Post-reassembly verify-trie passed for root {expectedRoot}.");
+        }
 
         return true;
     }
