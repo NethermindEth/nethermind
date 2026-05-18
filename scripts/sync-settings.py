@@ -36,18 +36,6 @@ configs = {
         "multiplierRequirement": 1000,
         "isPoS": True
     },
-    "base-mainnet": {
-        "url": "https://mainnet.base.org",
-        "blockReduced": 8192,
-        "multiplierRequirement": 10000,
-        "isPoS": True
-    },
-    "base-sepolia": {
-        "url": "https://sepolia.base.org",
-        "blockReduced": 8192,
-        "multiplierRequirement": 10000,
-        "isPoS": True
-    },
     "op-mainnet": {
         "url": "https://mainnet.optimism.io",
         "blockReduced": 8192,
