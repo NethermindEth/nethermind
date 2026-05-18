@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -115,7 +115,7 @@ public class ShutterTxLoader(
         }
 
         using ArrayPoolList<SequencedTransaction> sortedIndexes = sequencedTransactions.ToPooledList();
-        sortedIndexes.Sort((a, b) => Bytes.BytesComparer.Compare(a.IdentityPreimage, b.IdentityPreimage));
+        sortedIndexes.Sort<SequencedTransactionByIdentityPreimageComparer>(default);
 
         using ArrayPoolList<int> sortedKeyIndexes = new(txCount, txCount);
         int keyIndex = 0;
@@ -190,7 +190,7 @@ public class ShutterTxLoader(
 
     private Transaction DecodeTransaction(ReadOnlySpan<byte> encoded)
     {
-        Transaction tx = TxDecoder.Instance.Decode(encoded, RlpBehaviors.SkipTypedWrapping);
+        Transaction tx = TxDecoder.Instance.DecodeCompleteNotNull(encoded, RlpBehaviors.SkipTypedWrapping);
         tx.SenderAddress = ecdsa.RecoverAddress(tx, true);
         return tx;
     }
@@ -265,6 +265,13 @@ public class ShutterTxLoader(
         public UInt256 GasLimit;
         public byte[] Identity;
         public byte[] IdentityPreimage;
+    }
+
+    private readonly struct SequencedTransactionByIdentityPreimageComparer : IComparer<SequencedTransaction>
+    {
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public int Compare(SequencedTransaction a, SequencedTransaction b) =>
+            Bytes.BytesComparer.Compare(a.IdentityPreimage, b.IdentityPreimage);
     }
 
     private readonly struct DecryptedTransactions : IDisposable

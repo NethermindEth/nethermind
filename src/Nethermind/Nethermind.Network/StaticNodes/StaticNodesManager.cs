@@ -18,7 +18,7 @@ namespace Nethermind.Network.StaticNodes;
 
 public class StaticNodesManager(string staticNodesPath, ILogManager logManager) : NodesManager(staticNodesPath, logManager.GetClassLogger<StaticNodesManager>()), IStaticNodesManager
 {
-    public IEnumerable<NetworkNode> Nodes => _nodes.Values;
+    public IEnumerable<NetworkNode> Nodes => _nodes.Select(static kvp => kvp.Value);
 
     public async Task InitAsync()
     {
@@ -77,7 +77,7 @@ public class StaticNodesManager(string staticNodesPath, ILogManager logManager) 
     {
         Channel<Node> ch = Channel.CreateBounded<Node>(128); // Some reasonably large value
 
-        foreach (Node node in _nodes.Values.Select(n => new Node(n)))
+        foreach (Node node in _nodes.Select(static kvp => new Node(kvp.Value)))
         {
             cancellationToken.ThrowIfCancellationRequested();
             yield return node;

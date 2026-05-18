@@ -310,6 +310,23 @@ public class ReceiptsSyncFeedTests
         _feed.IsFinished.Should().BeTrue();
     }
 
+    // Regression for #9002: decreasing AncientReceiptsBarrier after a partial sync must not leave the feed stuck.
+    [Test]
+    public void When_AncientReceiptsBarrier_decreased_after_partial_sync_feed_is_not_finished()
+    {
+        // Previous run reached block 768; restart with a lower barrier of 256.
+        _syncConfig.AncientBodiesBarrier = 256;
+        _syncConfig.AncientReceiptsBarrier = 256;
+        _receiptStorage.HasBlock(Arg.Is(_pivotNumber), Arg.Any<Hash256>()).Returns(true);
+        _syncPointers.LowestInsertedReceiptBlockNumber = 768;
+
+        _feed = CreateFeed();
+        _feed.InitializeFeed();
+
+        // Receipts 256..767 are still missing — feed must stay active.
+        _feed.IsFinished.Should().BeFalse();
+    }
+
     private void LoadScenario(Scenario scenario) =>
         LoadScenario(scenario, _syncConfig);
 

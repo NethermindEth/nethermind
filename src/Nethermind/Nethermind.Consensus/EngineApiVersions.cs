@@ -41,5 +41,31 @@ public static class EngineApiVersions
         public const int V4 = 4; // Prague
         public const int V5 = 5; // Osaka
         public const int V6 = 6; // Amsterdam
+        public const int Latest = V6;
+    }
+
+    /// <summary>engine_getBlobs method versions.</summary>
+    public static class GetBlobs
+    {
+        public const int V1 = 1; // Cancun
+        public const int V2 = 2; // Osaka
+        public const int V3 = 3; // Osaka (allowPartialReturn = true)
+        public const int Latest = V3;
+    }
+
+    /// <summary>engine_getPayloadBodiesByHash method versions.</summary>
+    public static class PayloadBodiesByHash
+    {
+        public const int V1 = 1; // Shanghai
+        public const int V2 = 2; // Amsterdam
+        public const int Latest = V2;
+    }
+
+    /// <summary>engine_getPayloadBodiesByRange method versions.</summary>
+    public static class PayloadBodiesByRange
+    {
+        public const int V1 = 1; // Shanghai
+        public const int V2 = 2; // Amsterdam
+        public const int Latest = V2;
     }
 }

@@ -137,7 +137,7 @@ internal class QuorumCertificateManager(
         _context.HighestCommitBlock = new BlockRoundInfo(grandParentHeader.Hash, grandParentHeader.ExtraConsensusData.BlockRound, grandParentHeader.Number);
         _logger.Info($"Committed block {grandParentHeader.ToString(BlockHeader.Format.Short)} round={grandParentHeader.ExtraConsensusData.BlockRound}");
         _ = _forensicsProcessor.ForensicsMonitoring([parentHeader, proposedBlockHeader], proposedQuorumCert);
-        //Mark grand parent as finalized
+        //Mark grandparent as finalized
         _blockTree.ForkChoiceUpdated(grandParentHeader.Hash, grandParentHeader.Hash);
         error = null;
         return true;
@@ -237,8 +237,10 @@ internal class QuorumCertificateManager(
     {
         IXdcReleaseSpec spec = _specProvider.GetXdcSpec(current);
         QuorumCertificate latestQc;
-        if (current.Number == spec.SwitchBlock)
+        if (current.Number == spec.SwitchBlock || (current.IsGenesis && current.ExtraConsensusData is null))
         {
+            if (current.ExtraConsensusData is null && _logger.IsInfo)
+                _logger.Info($"Block {current.ToString(BlockHeader.Format.FullHashAndNumber)} has no V2 consensus data; initializing consensus on round 1.");
             latestQc = new QuorumCertificate(new BlockRoundInfo(current.Hash, 0, current.Number), Array.Empty<Signature>(),
                     (ulong)Math.Max(0, current.Number - spec.Gap));
             _context.HighestQC = latestQc;

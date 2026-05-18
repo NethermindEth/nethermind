@@ -54,9 +54,9 @@ public class FlatOverridableWorldScope : IOverridableWorldScope, IFlatCommitTarg
     public void ResetOverrides()
     {
         _codeDbOverlay.ClearTempChanges();
-        foreach (Snapshot snapshot in _snapshots.Values)
+        foreach (KeyValuePair<StateId, Snapshot> kvp in _snapshots)
         {
-            snapshot.Dispose();
+            kvp.Value.Dispose();
         }
 
         _snapshots.Clear();
@@ -114,9 +114,9 @@ public class FlatOverridableWorldScope : IOverridableWorldScope, IFlatCommitTarg
     public void Dispose()
     {
         if (Interlocked.CompareExchange(ref _isDisposed, true, false)) return;
-        foreach (Snapshot snapshot in _snapshots.Values)
+        foreach (KeyValuePair<StateId, Snapshot> kvp in _snapshots)
         {
-            snapshot.Dispose();
+            kvp.Value.Dispose();
         }
         _snapshots.Clear();
     }

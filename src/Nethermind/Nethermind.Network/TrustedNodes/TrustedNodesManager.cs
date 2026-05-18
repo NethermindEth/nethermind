@@ -8,6 +8,7 @@ using Nethermind.Stats.Model;
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Channels;
@@ -25,7 +26,7 @@ public class TrustedNodesManager(string trustedNodesPath, ILogManager logManager
         FullMode = BoundedChannelFullMode.Wait
     });
 
-    public IEnumerable<NetworkNode> Nodes => _nodes.Values;
+    public IEnumerable<NetworkNode> Nodes => _nodes.Select(static kvp => kvp.Value);
 
     public async Task InitAsync()
     {
@@ -39,10 +40,10 @@ public class TrustedNodesManager(string trustedNodesPath, ILogManager logManager
     public async IAsyncEnumerable<Node> DiscoverNodes([EnumeratorCancellation] CancellationToken cancellationToken)
     {
         // yield existing nodes.
-        foreach (NetworkNode netNode in _nodes.Values)
+        foreach (KeyValuePair<PublicKey, NetworkNode> kvp in _nodes)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            yield return new Node(netNode) { IsTrusted = true };
+            yield return new Node(kvp.Value) { IsTrusted = true };
         }
 
         // yield new nodes as they are added via the channel

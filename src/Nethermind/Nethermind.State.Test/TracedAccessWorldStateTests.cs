@@ -9,11 +9,13 @@ using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
+using Nethermind.Logging;
 using Nethermind.Specs.Forks;
 using Nethermind.State;
 using NUnit.Framework;
@@ -135,6 +137,55 @@ public class TracedAccessWorldStateTests(bool parallel)
     }
 
     [Test]
+    public void TryGetAccount_UsesCurrentCodeChange_WhenInnerStateDoesNotMutateCode()
+    {
+        IWorldState inner = TestWorldStateFactory.CreateForTest();
+        Hash256 stateRoot;
+        using (inner.BeginScope(IWorldState.PreGenesis))
+        {
+            inner.Commit(Spec, isGenesis: true);
+            inner.CommitTree(0);
+            stateRoot = inner.StateRoot;
+        }
+
+        BlockHeader baseBlock = Build.A.BlockHeader.WithStateRoot(stateRoot).WithNumber(0).TestObject;
+        BlockAccessList suggestedBal = new();
+        AccountChanges accountChanges = new(TestItem.AddressA)
+        {
+            ExistedBeforeBlock = true
+        };
+        accountChanges.AddBalanceChange(new(Eip7928Constants.PrestateIndex, 0));
+        accountChanges.AddNonceChange(new(Eip7928Constants.PrestateIndex, 0));
+        accountChanges.AddCodeChange(new(Eip7928Constants.PrestateIndex, []));
+        suggestedBal.AddAccountChanges(accountChanges);
+
+        BlockAccessListBasedWorldState balWorldState = new(inner, LimboLogs.Instance);
+        balWorldState.SetBlockAccessIndex(0);
+        balWorldState.SetParentReader(inner);
+        Block block = Build.A.Block.WithHeader(baseBlock).WithBlockAccessList(suggestedBal).TestObject;
+        balWorldState.Setup(block);
+
+        TracedAccessWorldState tws = new(balWorldState, parallel: true);
+        tws.SetGeneratingBlockAccessList(new());
+        using (tws.BeginScope(baseBlock))
+        {
+            tws.SetIndex(0);
+            byte[] code = [0x60, 0x00];
+            ValueHash256 codeHash = ValueKeccak.Compute(code);
+            tws.InsertCode(TestItem.AddressA, codeHash, code, Spec);
+
+            bool exists = tws.TryGetAccount(TestItem.AddressA, out AccountStruct account);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(exists, Is.True);
+                Assert.That(account.CodeHash, Is.EqualTo(codeHash));
+                Assert.That(account.HasCode, Is.True);
+            }
+        }
+    }
+
+    [Test]
     public void Set_RecordsStorageChange()
     {
         StorageCell cell = new(TestItem.AddressA, 1);
@@ -148,7 +199,7 @@ public class TracedAccessWorldStateTests(bool parallel)
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(ac, Is.Not.Null);
-                Assert.That(ac!.StorageChanges, Has.Count.EqualTo(1));
+                Assert.That(ac!.StorageChanges, Has.Length.EqualTo(1));
                 Assert.That(ac.StorageChanges[0].Key, Is.EqualTo((UInt256)1));
             }
         }
@@ -458,11 +509,11 @@ public class TracedAccessWorldStateTests(bool parallel)
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(ac, Is.Not.Null);
-                Assert.That(ac!.StorageChanges, Has.Count.EqualTo(1));
+                Assert.That(ac!.StorageChanges, Has.Length.EqualTo(1));
                 SlotChanges slotChanges = ac.StorageChanges[0];
                 // Storage changes also Pop+Push at same Index, so Count stays 1
                 Assert.That(slotChanges.Changes, Has.Count.EqualTo(1));
-                Assert.That(slotChanges.Changes.Values[0].Value, Is.EqualTo((UInt256)2));
+                Assert.That(slotChanges.Changes.Values[0].Value, Is.EqualTo(((UInt256)2).ToBigEndianWord()));
             }
         }
     }
@@ -489,7 +540,7 @@ public class TracedAccessWorldStateTests(bool parallel)
     public void AccountChanges_GetBalance_ReturnsPreBlockValue_WhenOnlyPreStateExists()
     {
         AccountChanges ac = new(TestItem.AddressA);
-        ac.AddBalanceChange(new BalanceChange(-1, 500));
+        ac.AddBalanceChange(new BalanceChange(Eip7928Constants.PrestateIndex, 500));
         UInt256? balance = ac.GetBalance(0);
         Assert.That(balance, Is.EqualTo((UInt256)500));
     }
@@ -498,7 +549,7 @@ public class TracedAccessWorldStateTests(bool parallel)
     public void AccountChanges_GetNonce_ReturnsPreBlockValue_WhenOnlyPreStateExists()
     {
         AccountChanges ac = new(TestItem.AddressA);
-        ac.AddNonceChange(new NonceChange(-1, 3));
+        ac.AddNonceChange(new NonceChange(Eip7928Constants.PrestateIndex, 3));
         UInt256? nonce = ac.GetNonce(0);
         Assert.That(nonce, Is.EqualTo((UInt256)3));
     }

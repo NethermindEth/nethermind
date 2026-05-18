@@ -145,7 +145,7 @@ namespace Nethermind.Xdc
         private async Task WaitForBlockTreeHead(CancellationToken cancellationToken)
         {
             _logger.Debug("Waiting for blockTree.Head to initialize...");
-            while (_blockTree.Head == null)
+            while (_blockTree.Head == null || _blockTree.IsSyncing().isSyncing)
             {
                 await Task.Delay(100, cancellationToken);
             }

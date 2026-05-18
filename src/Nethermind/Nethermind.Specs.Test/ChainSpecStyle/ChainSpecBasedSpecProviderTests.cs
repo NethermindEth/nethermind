@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Config;
@@ -12,6 +12,8 @@ using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Specs.ChainSpecStyle.Json;
+using Nethermind.Specs.Forks;
+using Nethermind.Specs.GnosisForks;
 using NSubstitute;
 using NUnit.Framework;
 using System;
@@ -710,6 +712,33 @@ public class ChainSpecBasedSpecProviderTests
         Assert.That(provider.DaoBlockNumber, Is.EqualTo(23));
     }
 
+    [TestCase(nameof(Berlin), BlockchainIds.Mainnet, typeof(Berlin))]
+    [TestCase(nameof(Prague), BlockchainIds.Mainnet, typeof(Prague))]
+    [TestCase(nameof(Osaka), BlockchainIds.Gnosis, typeof(OsakaGnosis))]
+    [TestCase(nameof(Osaka), BlockchainIds.Chiado, typeof(OsakaGnosis))]
+    [TestCase(nameof(Cancun), BlockchainIds.Sepolia, typeof(Cancun))]
+    [TestCase(nameof(Prague), BlockchainIds.Sepolia, typeof(Prague))]
+    [TestCase(nameof(Osaka), BlockchainIds.Hoodi, typeof(Osaka))]
+    public void Named_forks_are_available_for_chain_spec_based_provider(string forkName, ulong chainId, Type expectedSpecType)
+    {
+        ChainSpec chainSpec = new()
+        {
+            ChainId = chainId,
+            Parameters = new ChainParameters(),
+            EngineChainSpecParametersProvider = TestChainSpecParametersProvider.NethDev
+        };
+
+        ChainSpecBasedSpecProvider provider = new(chainSpec);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(provider, Is.InstanceOf<IForkAwareSpecProvider>());
+            Assert.That(provider.AvailableForks, Does.Contain(forkName));
+            Assert.That(provider.TryGetForkSpec(forkName.ToLowerInvariant(), out IReleaseSpec? spec), Is.True);
+            Assert.That(spec, Is.InstanceOf(expectedSpecType));
+        }
+    }
+
     [Test]
     public void Max_code_transition_loaded_correctly()
     {
@@ -732,6 +761,34 @@ public class ChainSpecBasedSpecProviderTests
             Assert.That(provider.GetSpec((ForkActivation)(maxCodeTransition - 1)).MaxCodeSize, Is.EqualTo(long.MaxValue), "one before");
             Assert.That(provider.GetSpec((ForkActivation)maxCodeTransition).MaxCodeSize, Is.EqualTo(maxCodeSize), "at transition");
             Assert.That(provider.GetSpec((ForkActivation)(maxCodeTransition + 1)).MaxCodeSize, Is.EqualTo(maxCodeSize), "one after");
+        }
+    }
+
+    [Test]
+    public void Amsterdam_timestamp_enables_bundled_floor_pricing_eips_when_individual_transitions_are_missing()
+    {
+        const ulong amsterdamTimestamp = 15;
+        ChainSpec chainSpec = new()
+        {
+            Parameters = new ChainParameters
+            {
+                Eip7623TransitionTimestamp = 0,
+                Eip7928TransitionTimestamp = amsterdamTimestamp,
+            },
+            AmsterdamTimestamp = amsterdamTimestamp,
+            EngineChainSpecParametersProvider = TestChainSpecParametersProvider.NethDev
+        };
+
+        ChainSpecBasedSpecProvider provider = new(chainSpec);
+        IReleaseSpec preAmsterdam = provider.GetSpec(ForkActivation.TimestampOnly(amsterdamTimestamp - 1));
+        IReleaseSpec amsterdam = provider.GetSpec(ForkActivation.TimestampOnly(amsterdamTimestamp));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(preAmsterdam.IsEip7976Enabled, Is.False);
+            Assert.That(preAmsterdam.IsEip7981Enabled, Is.False);
+            Assert.That(amsterdam.IsEip7976Enabled, Is.True);
+            Assert.That(amsterdam.IsEip7981Enabled, Is.True);
         }
     }
 

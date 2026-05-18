@@ -845,6 +845,7 @@ namespace Nethermind.Network.Test
 
                 Session session = new(30313, node, Substitute.For<IChannel>(), NullDisconnectsAnalyzer.Instance,
                     LimboLogs.Instance);
+                Track(session);
                 lock (_sessions)
                 {
                     _sessions.Add(session);
@@ -857,6 +858,7 @@ namespace Nethermind.Network.Test
             public void CreateRandomIncoming()
             {
                 Session session = new(30313, Substitute.For<IChannel>(), NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
+                Track(session);
                 lock (_sessions)
                 {
                     _sessions.Add(session);
@@ -875,6 +877,7 @@ namespace Nethermind.Network.Test
             public PublicKey LocalNodeId { get; } = TestItem.PublicKeyA;
             public int LocalPort => 0;
             public event EventHandler<SessionEventArgs> SessionCreated;
+            public event SessionDisconnectedEventHandler SessionDisconnected;
 
             public void CreateIncoming(params Session[] sessions)
             {
@@ -884,6 +887,7 @@ namespace Nethermind.Network.Test
                     Session sessionIn = new(30313, Substitute.For<IChannel>(), NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
                     sessionIn.RemoteHost = session.RemoteHost;
                     sessionIn.RemotePort = session.RemotePort;
+                    Track(sessionIn);
                     SessionCreated?.Invoke(this, new SessionEventArgs(sessionIn));
                     sessionIn.Handshake(session.RemoteNodeId);
                     incomingSessions.Add(sessionIn);
@@ -900,6 +904,15 @@ namespace Nethermind.Network.Test
             public void MakeItFail() => _isFailing = true;
 
             public bool ShouldContact(IPAddress ip, bool exactOnly = false) => true;
+
+            private void Track(Session session) => session.Disconnected += OnSessionDisconnected;
+
+            private void OnSessionDisconnected(object? sender, DisconnectEventArgs args)
+            {
+                ISession session = (ISession)sender!;
+                session.Disconnected -= OnSessionDisconnected;
+                SessionDisconnected?.Invoke(this, session, args);
+            }
         }
 
         private class InMemoryStorage : INetworkStorage
@@ -907,7 +920,7 @@ namespace Nethermind.Network.Test
             private readonly ConcurrentDictionary<PublicKey, NetworkNode> _nodes =
                 new();
 
-            public NetworkNode[] GetPersistedNodes() => _nodes.Values.ToArray();
+            public NetworkNode[] GetPersistedNodes() => _nodes.Select(static kvp => kvp.Value).ToArray();
 
             public void UpdateNode(NetworkNode node)
             {

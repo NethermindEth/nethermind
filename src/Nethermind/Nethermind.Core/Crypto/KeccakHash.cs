@@ -312,6 +312,8 @@ public sealed partial class KeccakHash
         }
 
         Pool.ReturnState(ref _state);
+        Pool.ReturnRemainder(ref _remainderBuffer);
+        _remainderLength = 0;
     }
 
     public void Reset()
@@ -319,6 +321,7 @@ public sealed partial class KeccakHash
         // Clear our hash state information.
         Pool.ReturnState(ref _state);
         Pool.ReturnRemainder(ref _remainderBuffer);
+        _remainderLength = 0;
         _hash = null;
     }
 

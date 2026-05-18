@@ -33,8 +33,10 @@ namespace Nethermind.Blockchain.Synchronization
         public bool DownloadHeadersInFastSync { get; set; } = true;
         public bool DownloadBodiesInFastSync { get; set; } = true;
         public bool DownloadReceiptsInFastSync { get; set; } = true;
+        public bool DownloadBlockAccessListsInFastSync { get; set; } = true;
         public long AncientBodiesBarrier { get; set; }
         public long AncientReceiptsBarrier { get; set; }
+        public long AncientBlockAccessListsBarrier { get; set; }
         public string PivotTotalDifficulty { get; set; }
         private long _pivotNumber = 0;
         public long PivotNumber
@@ -49,7 +51,7 @@ namespace Nethermind.Blockchain.Synchronization
             get => FastSync || SnapSync ? _pivotHash : null;
             set => _pivotHash = value;
         }
-        public int MaxAttemptsToUpdatePivot { get; set; } = int.MaxValue;
+        public int MaxAttemptsToUpdatePivot { get; set; } = ISyncConfig.InfiniteAttempts;
         public bool SnapSync { get; set; } = false;
         public int SnapSyncAccountRangePartitionCount { get; set; } = 8;
         public bool FixReceipts { get; set; } = false;

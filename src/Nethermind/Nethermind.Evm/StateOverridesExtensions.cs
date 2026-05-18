@@ -91,7 +91,7 @@ public static class StateOverridesExtensions
     {
         if (accountOverride.MovePrecompileToAddress is not null)
         {
-            if (!overridableCodeInfoRepository.GetCachedCodeInfo(address, currentSpec).IsPrecompile)
+            if (!overridableCodeInfoRepository.GetCachedCodeInfoNoDelegation(address, currentSpec).IsPrecompile)
             {
                 throw new ArgumentException($"Account {address} is not a precompile");
             }
