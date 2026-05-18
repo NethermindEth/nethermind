@@ -39,12 +39,12 @@ internal sealed class BlockAccessListValidationIndex
     private readonly StorageLane _storage;
     private ulong[] _hasAccountWords = [];
     private bool _hasOutOfRangeChange;
-    // Generated-side storage_reads accumulator (mutable index only). Keyed by addressIndex
-    // ordinal; the SortedSet matches today's GeneratedAccountChanges._storageReads shape so a
-    // single linear walk against the suggested side's UInt256[] StorageReads works for the
-    // structural-equivalence check. Allocates only for accounts that actually have reads —
-    // ~half the touched accounts per typical block — vs every touched account today.
-    private readonly Dictionary<int, SortedSet<UInt256>>? _generatedStorageReads;
+    // Generated-side storage_reads accumulator (mutable index only). Flat list of
+    // (ordinal, slot) pairs — one allocation that grows with append, vs the per-account
+    // SortedSet that today's GeneratedAccountChanges allocates. Sorted lazily on first
+    // structural-equivalence query; dedup happens during the sort pass.
+    private readonly List<(int Ordinal, UInt256 Slot)>? _generatedStorageReads;
+    private bool _generatedStorageReadsSorted = true;
 
     public BlockAccessListValidationIndex(int txCount, AddressIndex addressIndex, BlockAccessListValidationIndex suggested)
     {
@@ -57,7 +57,7 @@ internal sealed class BlockAccessListValidationIndex
         _nonce = Lane<ulong>.CreateMutableLike(suggested._nonce);
         _code = Lane<ValueHash256>.CreateMutableLike(suggested._code);
         _storage = StorageLane.CreateMutableLike(suggested._storage);
-        _generatedStorageReads = new();
+        _generatedStorageReads = [];
     }
 
     private BlockAccessListValidationIndex(
@@ -151,10 +151,9 @@ internal sealed class BlockAccessListValidationIndex
 
             if (accountChanges.StorageReads.Count > 0)
             {
-                ref SortedSet<UInt256>? reads = ref CollectionsMarshal.GetValueRefOrAddDefault(
-                    _generatedStorageReads!, accountOrdinal, out _);
-                reads ??= new SortedSet<UInt256>(GenericComparer.GetOptimized<UInt256>());
-                foreach (UInt256 read in accountChanges.StorageReads) reads.Add(read);
+                List<(int, UInt256)> reads = _generatedStorageReads!;
+                foreach (UInt256 read in accountChanges.StorageReads) reads.Add((accountOrdinal, read));
+                _generatedStorageReadsSorted = false;
             }
         }
 
@@ -204,6 +203,17 @@ internal sealed class BlockAccessListValidationIndex
             return StructuralMismatchKind.AccountCountMismatch;
         }
 
+        // Sort-and-dedup the flat storage_reads buffer once for the whole walk. After this the
+        // entries are in (ordinal asc, slot asc) order with no duplicates, so the per-ordinal
+        // range for any account is a contiguous span the walk can advance through in lockstep
+        // with suggested.AccountChanges (which iterates address-sorted, i.e. ordinal-ascending
+        // for accounts in the shared addressIndex).
+        SortAndDedupStorageReads();
+        ReadOnlySpan<(int Ordinal, UInt256 Slot)> reads = _generatedStorageReads is null
+            ? default
+            : CollectionsMarshal.AsSpan(_generatedStorageReads);
+        int readsCursor = 0;
+
         foreach (ReadOnlyAccountChanges sug in suggested.AccountChanges)
         {
             if (!_addressIndex.TryGet(sug.Address, out int ordinal) || !HasAccountOrdinal(ordinal))
@@ -212,33 +222,58 @@ internal sealed class BlockAccessListValidationIndex
                 return StructuralMismatchKind.MissingInGenerated;
             }
 
-            SortedSet<UInt256>? genReads = null;
-            _generatedStorageReads?.TryGetValue(ordinal, out genReads);
-            int genReadsCount = genReads?.Count ?? 0;
-            ReadOnlySpan<UInt256> sugReads = sug.StorageReads;
+            // Skip past reads for ordinals below the current account (generated had reads
+            // for an account that suggested also has but iterates earlier — won't happen if
+            // both sides are address-sorted, but defensive).
+            while (readsCursor < reads.Length && reads[readsCursor].Ordinal < ordinal) readsCursor++;
 
+            int runStart = readsCursor;
+            while (readsCursor < reads.Length && reads[readsCursor].Ordinal == ordinal) readsCursor++;
+            int genReadsCount = readsCursor - runStart;
+
+            ReadOnlySpan<UInt256> sugReads = sug.StorageReads;
             if (sugReads.Length != genReadsCount)
             {
                 mismatchAddress = sug.Address;
                 return StructuralMismatchKind.StorageReadsCountMismatch;
             }
 
-            if (genReads is not null)
+            for (int i = 0; i < genReadsCount; i++)
             {
-                int i = 0;
-                foreach (UInt256 r in genReads)
+                if (!sugReads[i].Equals(reads[runStart + i].Slot))
                 {
-                    if (!sugReads[i].Equals(r))
-                    {
-                        mismatchAddress = sug.Address;
-                        return StructuralMismatchKind.StorageReadsContentMismatch;
-                    }
-                    i++;
+                    mismatchAddress = sug.Address;
+                    return StructuralMismatchKind.StorageReadsContentMismatch;
                 }
             }
         }
 
         return StructuralMismatchKind.None;
+    }
+
+    private void SortAndDedupStorageReads()
+    {
+        if (_generatedStorageReadsSorted || _generatedStorageReads is null) return;
+
+        Span<(int Ordinal, UInt256 Slot)> span = CollectionsMarshal.AsSpan(_generatedStorageReads);
+        span.Sort(static (a, b) =>
+        {
+            int c = a.Ordinal.CompareTo(b.Ordinal);
+            return c != 0 ? c : a.Slot.CompareTo(b.Slot);
+        });
+
+        // In-place dedup: keep only the first occurrence of each (ordinal, slot) pair.
+        int writeIdx = 0;
+        for (int i = 0; i < span.Length; i++)
+        {
+            if (writeIdx == 0 || span[i].Ordinal != span[writeIdx - 1].Ordinal || !span[i].Slot.Equals(span[writeIdx - 1].Slot))
+            {
+                span[writeIdx++] = span[i];
+            }
+        }
+        CollectionsMarshal.SetCount(_generatedStorageReads, writeIdx);
+
+        _generatedStorageReadsSorted = true;
     }
 
     public bool ChangesEqual(BlockAccessListValidationIndex other, uint index)
@@ -254,6 +289,84 @@ internal sealed class BlockAccessListValidationIndex
                _code.ChangesEqual(other._code, row) &&
                _storage.ChangesEqual(other._storage, row);
     }
+
+    /// <summary>True iff any of the four lanes has data at (<paramref name="row"/>, <paramref name="ordinal"/>).
+    /// Column-index equivalent of <c>!HasNoChangesAtIndex</c> on the legacy GeneratedAccountChanges path.</summary>
+    public bool HasChangesAtRow(int row, int ordinal) =>
+        _balance.HasAt(row, ordinal) || _nonce.HasAt(row, ordinal) ||
+        _code.HasAt(row, ordinal) || _storage.HasAt(row, ordinal);
+
+    /// <summary>True iff both indexes have the same per-lane data at (<paramref name="row"/>, <paramref name="ordinal"/>).
+    /// Column-index equivalent of <c>gen.ChangesAtIndexEqual(sug, index)</c> on the legacy path.</summary>
+    public bool ChangesAtRowEqualForOrdinal(BlockAccessListValidationIndex other, int row, int ordinal)
+    {
+        // Each scalar lane: presence must match; if both present, value must match.
+        if (_balance.HasAt(row, ordinal))
+        {
+            if (!other._balance.TryGetAt(row, ordinal, out UInt256 otherBal)) return false;
+            _balance.TryGetAt(row, ordinal, out UInt256 thisBal);
+            if (!thisBal.Equals(otherBal)) return false;
+        }
+        else if (other._balance.HasAt(row, ordinal)) return false;
+
+        if (_nonce.HasAt(row, ordinal))
+        {
+            if (!other._nonce.TryGetAt(row, ordinal, out ulong otherN)) return false;
+            _nonce.TryGetAt(row, ordinal, out ulong thisN);
+            if (thisN != otherN) return false;
+        }
+        else if (other._nonce.HasAt(row, ordinal)) return false;
+
+        if (_code.HasAt(row, ordinal))
+        {
+            if (!other._code.TryGetAt(row, ordinal, out ValueHash256 otherC)) return false;
+            _code.TryGetAt(row, ordinal, out ValueHash256 thisC);
+            if (!thisC.Equals(otherC)) return false;
+        }
+        else if (other._code.HasAt(row, ordinal)) return false;
+
+        return _storage.SlotsEqualAt(other._storage, row, ordinal);
+    }
+
+    /// <summary>True iff this index has accumulated any storage_reads for the given ordinal.
+    /// Sorts the flat list lazily on first call.</summary>
+    public bool HasStorageReadsForOrdinal(int ordinal)
+    {
+        if (_generatedStorageReads is null) return false;
+        SortAndDedupStorageReads();
+        ReadOnlySpan<(int Ordinal, UInt256 Slot)> reads = CollectionsMarshal.AsSpan(_generatedStorageReads);
+        // Binary search for any entry with this ordinal — we only need presence so check the
+        // (ordinal, default-slot) pair's bracketing.
+        int lo = 0, hi = reads.Length - 1;
+        while (lo <= hi)
+        {
+            int mid = (lo + hi) >> 1;
+            if (reads[mid].Ordinal == ordinal) return true;
+            if (reads[mid].Ordinal < ordinal) lo = mid + 1;
+            else hi = mid - 1;
+        }
+        return false;
+    }
+
+    /// <summary>Address of the account assigned this <paramref name="ordinal"/>.</summary>
+    public Address AddressOf(int ordinal) => _addressIndex.GetAddress(ordinal);
+
+    /// <summary>Iterates ordinals where this index's account-presence bitmap is set, in ascending order.</summary>
+    public IEnumerable<int> EnumerateMarkedOrdinals()
+    {
+        for (int wordIdx = 0; wordIdx < _hasAccountWords.Length; wordIdx++)
+        {
+            ulong word = _hasAccountWords[wordIdx];
+            while (word != 0)
+            {
+                int bitOffset = BitOperations.TrailingZeroCount(word);
+                yield return (wordIdx << 6) + bitOffset;
+                word &= word - 1;
+            }
+        }
+    }
+
+    public bool HasAccountOrdinalPublic(int ordinal) => HasAccountOrdinal(ordinal);
 
     private static void Count(ReadOnlyBlockAccessList blockAccessList, Counts counts, uint lastIndex)
     {
@@ -354,16 +467,27 @@ internal sealed class BlockAccessListValidationIndex
     internal sealed class AddressIndex
     {
         private readonly Dictionary<AddressAsKey, int> _ordinals = new(AddressAsKey.EqualityComparer);
+        // Reverse lookup for slow-path diagnostics that need to translate an ordinal back to an
+        // Address (e.g. "incorrect changes for {addr} at index N"). Appended in GetOrAdd.
+        private readonly List<Address> _addresses = [];
+
+        public int Count => _ordinals.Count;
 
         public int GetOrAdd(Address address)
         {
             ref int ordinal = ref CollectionsMarshal.GetValueRefOrAddDefault(_ordinals, address, out bool exists);
-            if (!exists) ordinal = _ordinals.Count - 1;
+            if (!exists)
+            {
+                ordinal = _ordinals.Count - 1;
+                _addresses.Add(address);
+            }
             return ordinal;
         }
 
         public bool TryGet(Address address, out int ordinal) =>
             _ordinals.TryGetValue(address, out ordinal);
+
+        public Address GetAddress(int ordinal) => _addresses[ordinal];
     }
 
     private sealed class Counts(int rowCount)
@@ -465,6 +589,29 @@ internal sealed class BlockAccessListValidationIndex
                        .SequenceEqual(new ReadOnlySpan<int>(other._accountOrdinals, otherStart, length)) &&
                    new ReadOnlySpan<TValue>(_values, start, length)
                        .SequenceEqual(new ReadOnlySpan<TValue>(other._values, otherStart, length));
+        }
+
+        /// <summary>True iff this lane has an entry at (<paramref name="row"/>, <paramref name="ordinal"/>).
+        /// Row data is sorted by ordinal so this is a binary search.</summary>
+        public bool HasAt(int row, int ordinal)
+        {
+            if (HasOverflow(row)) return false;
+            int start = _rowStarts[row];
+            int length = RowLength(row);
+            ReadOnlySpan<int> ordinals = new(_accountOrdinals, start, length);
+            return ordinals.BinarySearch(ordinal) >= 0;
+        }
+
+        public bool TryGetAt(int row, int ordinal, out TValue value)
+        {
+            if (HasOverflow(row)) { value = default!; return false; }
+            int start = _rowStarts[row];
+            int length = RowLength(row);
+            ReadOnlySpan<int> ordinals = new(_accountOrdinals, start, length);
+            int idx = ordinals.BinarySearch(ordinal);
+            if (idx < 0) { value = default!; return false; }
+            value = _values[start + idx];
+            return true;
         }
 
         public void SortAllRows()
@@ -654,6 +801,48 @@ internal sealed class BlockAccessListValidationIndex
                        .SequenceEqual(new ReadOnlySpan<UInt256>(other._keys, otherStart, length)) &&
                    new ReadOnlySpan<EvmWord>(_values, start, length)
                        .SequenceEqual(new ReadOnlySpan<EvmWord>(other._values, otherStart, length));
+        }
+
+        /// <summary>True iff this lane has any (slot, value) entry for <paramref name="ordinal"/> at <paramref name="row"/>.</summary>
+        public bool HasAt(int row, int ordinal)
+        {
+            if (HasOverflow(row)) return false;
+            GetOrdinalRange(row, ordinal, out _, out int length);
+            return length > 0;
+        }
+
+        /// <summary>True iff both lanes have identical (slot, value) sequences for <paramref name="ordinal"/> at <paramref name="row"/>.</summary>
+        public bool SlotsEqualAt(StorageLane other, int row, int ordinal)
+        {
+            if (HasOverflow(row) || other.HasOverflow(row)) return false;
+
+            GetOrdinalRange(row, ordinal, out int thisStart, out int thisLen);
+            other.GetOrdinalRange(row, ordinal, out int otherStart, out int otherLen);
+
+            if (thisLen != otherLen) return false;
+
+            return new ReadOnlySpan<UInt256>(_keys, thisStart, thisLen)
+                       .SequenceEqual(new ReadOnlySpan<UInt256>(other._keys, otherStart, thisLen)) &&
+                   new ReadOnlySpan<EvmWord>(_values, thisStart, thisLen)
+                       .SequenceEqual(new ReadOnlySpan<EvmWord>(other._values, otherStart, thisLen));
+        }
+
+        // Row data is sorted by (ordinal, key); locates the contiguous range with the given ordinal.
+        private void GetOrdinalRange(int row, int ordinal, out int start, out int length)
+        {
+            int rowStart = _rowStarts[row];
+            int rowLength = RowLength(row);
+            ReadOnlySpan<int> ordinals = new(_accountOrdinals, rowStart, rowLength);
+            int idx = ordinals.BinarySearch(ordinal);
+            if (idx < 0) { start = 0; length = 0; return; }
+
+            // BinarySearch may return any matching index; step back to find the first.
+            while (idx > 0 && ordinals[idx - 1] == ordinal) idx--;
+            int endIdx = idx;
+            while (endIdx < ordinals.Length && ordinals[endIdx] == ordinal) endIdx++;
+
+            start = rowStart + idx;
+            length = endIdx - idx;
         }
 
         public void SortAllRows()

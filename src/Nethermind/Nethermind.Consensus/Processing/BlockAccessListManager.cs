@@ -92,8 +92,14 @@ public partial class BlockAccessListManager(
     public bool Enabled { get; private set; }
     public bool ParallelExecutionEnabled { get; private set; }
 
-    // Replaces the end-of-block encode + Keccak with a structural-equivalence check (account-set
-    // + storage_reads). See paradigmxyz/reth#24297 for the prior art.
+    /// <summary>When set, the manager always builds the materialised GeneratedBlockAccessList
+    /// even on the parallel-validation path where the column-index validator suffices on its own.
+    /// Wrappers that read the materialised BAL after processing (BAL recorder, RPC diagnostics)
+    /// must set this before PrepareForProcessing runs.</summary>
+    public bool ForceMaterializeGeneratedBlockAccessList { get; set; }
+
+    // Replaces the end-of-block encode + Keccak (and now the per-tx Merge) with a column-index-
+    // only validation path. See paradigmxyz/reth#24297 for the prior art.
     private bool _verifyOnly;
 
     public void PrepareForProcessing(Block suggestedBlock, IReleaseSpec spec, ProcessingOptions options)
@@ -133,7 +139,7 @@ public partial class BlockAccessListManager(
             }
             _gasRemaining = suggestedBlock.GasUsed;
             _parentStateRoot = ParallelExecutionEnabled ? stateProvider.StateRoot : null;
-            _verifyOnly = ParallelExecutionEnabled;
+            _verifyOnly = ParallelExecutionEnabled && !ForceMaterializeGeneratedBlockAccessList;
         }
     }
 
@@ -209,7 +215,10 @@ public partial class BlockAccessListManager(
     /// callers (<c>IncrementalValidation</c>, <c>SetBlockAccessList</c>) always pass an explicit
     /// value to identify the per-tx slot to detach.</remarks>
     private void MergeAndReturnBal(uint balIndex = 0)
-        => _txProcessorWithWorldStateManager!.MergeAndReturnBal(balIndex, GeneratedBlockAccessList, RegisterGeneratedSlice);
+        => _txProcessorWithWorldStateManager!.MergeAndReturnBal(
+            balIndex,
+            _verifyOnly ? null : GeneratedBlockAccessList,
+            RegisterGeneratedSlice);
 
     private void CheckInitialized()
     {

@@ -165,6 +165,12 @@ public partial class BlockAccessListManager
             return;
         }
 
+        if (_verifyOnly && _suggestedValidationIndex is not null && _generatedValidationIndex is not null)
+        {
+            SlowPathFromColumnIndex(block, index, validateStorageReads);
+            return;
+        }
+
         GeneratedBlockAccessList generated = GeneratedBlockAccessList;
         ReadOnlyBlockAccessList suggested = block.BlockAccessList;
 
@@ -223,6 +229,68 @@ public partial class BlockAccessListManager
 
         int surplusSuggestedReads = suggestedReads - generatedReads;
         if (validateStorageReads && surplusSuggestedReads > 0 && _gasRemaining < surplusSuggestedReads * Eip7928Constants.ItemCost)
+        {
+            throw new InvalidBlockLevelAccessListException(block.Header, "Suggested block-level access list contained invalid storage reads.");
+        }
+    }
+
+    /// <summary>Verify-only slow path: produces the same per-account, per-row diagnostics as the
+    /// legacy walk over GeneratedBlockAccessList.AccountChanges, but reads only from the
+    /// column-index data structures. Required when per-tx Merge is skipped so generated is empty.</summary>
+    private void SlowPathFromColumnIndex(Block block, uint index, bool validateStorageReads)
+    {
+        BlockAccessListValidationIndex gen = _generatedValidationIndex!;
+        BlockAccessListValidationIndex sug = _suggestedValidationIndex!;
+        ReadOnlyBlockAccessList suggestedBal = block.BlockAccessList!;
+        int row = (int)index;
+
+        // Pass 1: walk generated marked ordinals. Equivalent of the legacy
+        // "foreach GeneratedAccountChanges in generated.AccountChanges".
+        foreach (int ordinal in gen.EnumerateMarkedOrdinals())
+        {
+            Address address = gen.AddressOf(ordinal);
+            bool inSuggested = sug.HasAccountOrdinalPublic(ordinal);
+
+            if (inSuggested)
+            {
+                if (!gen.ChangesAtRowEqualForOrdinal(sug, row, ordinal))
+                {
+                    throw new InvalidBlockLevelAccessListException(block.Header,
+                        $"Suggested block-level access list contained incorrect changes for {address} at index {index}.");
+                }
+                continue;
+            }
+
+            // Generated has the account, suggested doesn't. Tolerated when no changes at this
+            // row AND (system-user read at index 0 with no reads, or has reads).
+            bool hasReads = gen.HasStorageReadsForOrdinal(ordinal);
+            int genReads = IsSystemContract(address) ? 0 : (hasReads ? 1 : 0); // sentinel; only "> 0" matters
+            if (!gen.HasChangesAtRow(row, ordinal) &&
+                ((index == 0 && address == Address.SystemUser && genReads == 0) || genReads > 0))
+            {
+                continue;
+            }
+
+            throw new InvalidBlockLevelAccessListException(block.Header,
+                $"Suggested block-level access list missing account changes for {address} at index {index}.");
+        }
+
+        // Pass 2: walk suggested-only ordinals. The bitmap on the suggested side gives us every
+        // address declared in the wire BAL; for any that the generated side didn't touch, a
+        // change at this row is a surplus.
+        foreach (int ordinal in sug.EnumerateMarkedOrdinals())
+        {
+            if (gen.HasAccountOrdinalPublic(ordinal)) continue; // already handled in Pass 1
+            if (sug.HasChangesAtRow(row, ordinal))
+            {
+                throw new InvalidBlockLevelAccessListException(block.Header,
+                    $"Suggested block-level access list contained surplus changes for {sug.AddressOf(ordinal)} at index {index}.");
+            }
+        }
+
+        // Storage-read gas budget — counts already tracked block-cumulative on both sides.
+        int surplusReads = _suggestedChargeableStorageReads - _generatedChargeableStorageReads;
+        if (validateStorageReads && surplusReads > 0 && _gasRemaining < surplusReads * Eip7928Constants.ItemCost)
         {
             throw new InvalidBlockLevelAccessListException(block.Header, "Suggested block-level access list contained invalid storage reads.");
         }

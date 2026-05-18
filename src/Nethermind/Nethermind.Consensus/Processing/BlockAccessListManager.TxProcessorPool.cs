@@ -47,7 +47,7 @@ public partial class BlockAccessListManager
         TxProcessorWithWorldState GetPostExecution() => Get(uint.MaxValue);
         void NextTransaction();
         void Rollback();
-        void MergeAndReturnBal(uint balIndex, GeneratedBlockAccessList target, Action<BlockAccessListAtIndex>? onSlice = null);
+        void MergeAndReturnBal(uint balIndex, GeneratedBlockAccessList? target, Action<BlockAccessListAtIndex>? onSlice = null);
     }
 
     private class ParallelTxProcessorWithWorldStateManager : ITxProcessorWithWorldStateManager
@@ -190,7 +190,7 @@ public partial class BlockAccessListManager
         /// <paramref name="onSlice"/> hook (used by <see cref="BlockAccessListValidationIndex"/>)
         /// runs after the merge but before the slice goes back to the pool, so the manager can
         /// snapshot per-tx rows for the validator's fast path.</summary>
-        public void MergeAndReturnBal(uint balIndex, GeneratedBlockAccessList target, Action<BlockAccessListAtIndex>? onSlice = null)
+        public void MergeAndReturnBal(uint balIndex, GeneratedBlockAccessList? target, Action<BlockAccessListAtIndex>? onSlice = null)
         {
             int idx = ClampBalIndex(balIndex);
 
@@ -199,7 +199,10 @@ public partial class BlockAccessListManager
             BlockAccessListAtIndex? source = _perTxBal[idx];
             if (source is null) return;
 
-            target.Merge(source);
+            // Verify-only mode passes target=null: the column-index validator (onSlice) handles
+            // per-row data and end-of-block structural-equivalence; the per-block aggregate isn't
+            // needed downstream.
+            target?.Merge(source);
             onSlice?.Invoke(source);
             _perTxBal[idx] = null;
             StaticPool<BlockAccessListAtIndex>.Return(source);
@@ -349,8 +352,12 @@ public partial class BlockAccessListManager
         // allocated under that flag (PrepareForProcessing), so even an invocation here would
         // dereference a null index. The parameter remains on the interface so the sequential
         // and parallel pools share a signature.
-        public void MergeAndReturnBal(uint _, GeneratedBlockAccessList target, Action<BlockAccessListAtIndex>? onSlice = null)
-            => _txProcessorWithWorldState.WorldState.MergeGeneratingBal(target);
+        public void MergeAndReturnBal(uint _, GeneratedBlockAccessList? target, Action<BlockAccessListAtIndex>? onSlice = null)
+        {
+            // Sequential path never runs in verify-only mode (verify-only requires parallel
+            // execution). Tolerate null target defensively.
+            if (target is not null) _txProcessorWithWorldState.WorldState.MergeGeneratingBal(target);
+        }
     }
 
     private class TxProcessorWithWorldState

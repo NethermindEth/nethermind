@@ -17,6 +17,11 @@ public interface IBlockAccessListManager
     bool Enabled { get; }
     bool ParallelExecutionEnabled { get; }
 
+    /// <summary>When set, the manager always builds the materialised GeneratedBlockAccessList
+    /// even on the parallel-validation path. BAL recorder must set this before
+    /// PrepareForProcessing.</summary>
+    bool ForceMaterializeGeneratedBlockAccessList { get; set; }
+
     void PrepareForProcessing(Block suggestedBlock, IReleaseSpec spec, ProcessingOptions options);
     void Setup(Block block);
     void SpendGas(long gas);
