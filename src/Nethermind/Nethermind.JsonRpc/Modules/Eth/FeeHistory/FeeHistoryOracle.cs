@@ -4,6 +4,8 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
@@ -57,6 +59,12 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
         });
 
         private readonly record struct RewardInfo(long GasUsed, UInt256 PremiumPerGas);
+
+        private readonly struct RewardInfoByPremiumAscendingComparer : IComparer<RewardInfo>
+        {
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            public int Compare(RewardInfo i1, RewardInfo i2) => i1.PremiumPerGas.CompareTo(i2.PremiumPerGas);
+        }
 
         private readonly record struct BlockFeeHistorySearchInfo(
             long BlockNumber,
@@ -273,7 +281,7 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
                 rewardInfos.Add(new RewardInfo(gasUsedSpan[i], premiumPerGas));
             }
 
-            rewardInfos.Sort(static (i1, i2) => i1.PremiumPerGas.CompareTo(i2.PremiumPerGas));
+            CollectionsMarshal.AsSpan(rewardInfos).Sort(default(RewardInfoByPremiumAscendingComparer));
 
             return rewardInfos;
         }

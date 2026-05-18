@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.IO;
@@ -249,8 +250,9 @@ namespace Nethermind.Evm.TransactionProcessing
                 JournalSet<Address> destroyList = substate.DestroyList;
                 if (destroyList.Count > 1)
                 {
-                    Address[] orderedDestroyList = [.. destroyList];
-                    Array.Sort(orderedDestroyList, GenericComparer.GetOptimized<Address>());
+                    Address[] orderedDestroyList = new Address[destroyList.Count];
+                    destroyList.CopyTo(orderedDestroyList, 0);
+                    orderedDestroyList.AsSpan().Sort(default(AddressByBytesComparer));
                     for (int i = 0; i < orderedDestroyList.Length; i++)
                     {
                         FinalizeDestroyedAccount(WorldState, in substate, orderedDestroyList[i]);
@@ -606,6 +608,20 @@ namespace Nethermind.Evm.TransactionProcessing
             {
                 TraceLogInvalidTx(tx, $"CREATE_TRANSACTION_SIZE_EXCEEDS_MAX_INIT_CODE_SIZE {tx.DataLength} > {spec.MaxInitCodeSize}");
                 return TransactionResult.TransactionSizeOverMaxInitCodeSize;
+            }
+
+            if (tx.SupportsAuthorizationList)
+            {
+                if (tx.IsContractCreation)
+                {
+                    TraceLogInvalidTx(tx, "SETCODE_TX_CREATE");
+                    return TransactionResult.ErrorType.MalformedTransaction.WithDetail($"{TxErrorMessages.NotAllowedCreateTransaction} (sender {tx.SenderAddress})");
+                }
+                if (!tx.HasAuthorizationList)
+                {
+                    TraceLogInvalidTx(tx, "EMPTY_AUTHORIZATION_LIST");
+                    return TransactionResult.ErrorType.MalformedTransaction.WithDetail($"{TxErrorMessages.MissingAuthorizationList} (sender {tx.SenderAddress})");
+                }
             }
 
             TGasPolicy standard = intrinsicGas.Standard;
@@ -1435,6 +1451,16 @@ namespace Nethermind.Evm.TransactionProcessing
 
         [DoesNotReturn, StackTraceHidden]
         private static void ThrowInvalidDataException(string message) => throw new InvalidDataException(message);
+
+        // Devirtualised wrapper over Address.CompareTo (sealed -> already devirt'd inside) so the EIP-7708
+        // destroy-list sort goes through Sort<TComparer> instead of Comparer<Address>.Default's virtual call.
+        // The IComparer<Address> contract declares nullable parameters; the destroy-list source
+        // (JournalSet<Address>) never contains null entries, so the `!` dereference is safe here.
+        private readonly struct AddressByBytesComparer : IComparer<Address>
+        {
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            public int Compare(Address? x, Address? y) => x!.CompareTo(y);
+        }
     }
 
     /// <summary>
