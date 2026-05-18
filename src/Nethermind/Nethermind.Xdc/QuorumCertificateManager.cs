@@ -41,12 +41,11 @@ internal class QuorumCertificateManager : IQuorumCertificateManager, IDisposable
         _forensicsProcessor = forensicsProcessor;
         _logger = logManager.GetClassLogger<QuorumCertificateManager>();
 
+        _blockTree.OnUpdateMainChain += OnUpdateMainChain;
+
         BlockHeader? head = _blockTree.Head?.Header;
         if (head is not null)
             Initialize((XdcBlockHeader)head);
-
-        _blockTree.OnUpdateMainChain += OnUpdateMainChain;
-
     }
 
     public QuorumCertificate HighestKnownCertificate => _context.HighestQC;
@@ -271,6 +270,12 @@ internal class QuorumCertificateManager : IQuorumCertificateManager, IDisposable
 
             if (block.Header is not XdcBlockHeader xdcHeader)
                 throw new InvalidOperationException($"Expected an XDC header, but got {block.Header.GetType().FullName}");
+
+            if (block.IsGenesis)
+            {
+                Initialize((XdcBlockHeader)block.Header);
+                continue;
+            }
 
             if (xdcHeader.ExtraConsensusData is null)
                 throw new InvalidOperationException($"Block {xdcHeader.ToString(BlockHeader.Format.FullHashAndNumber)} has no V2 consensus data");

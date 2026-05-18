@@ -8,7 +8,6 @@ using Nethermind.Init.Steps;
 using Nethermind.TxPool;
 using Nethermind.Xdc.TxPool;
 using System.Collections.Generic;
-using Nethermind.Consensus.Producers;
 
 namespace Nethermind.Xdc;
 
