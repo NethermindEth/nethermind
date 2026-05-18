@@ -76,6 +76,15 @@ public ref struct HsstBTreeBuilderBuffers(int expectedKeyCount = 16)
     // reads it.
     internal byte[]? PrevKeyBuf = null;
 
+    // Running max separator length over the currently-pending entry range
+    // [_pendingFirstEntryIdx, EntryPositions.Count). Maintained incrementally by
+    // HsstBTreeBuilder.OnEntryAdded so MaybeFlushBeforeEntry's leaf-fit estimate
+    // can read it in O(1) instead of rescanning the pending CommonPrefixArr slice
+    // on every Add. Reset to 0 on every full pending flush
+    // (EmitInlineLeaf / FlushPendingAsEntries); recomputed by a bounded rescan in
+    // FlushPendingNotOnCurrentPage's partial-flush path.
+    internal byte PendingMaxSepLen = 0;
+
     /// <summary>
     /// Reset list counts to zero ahead of a new build. Capacity is retained, and
     /// rented arrays stay rented — the next build will reuse them if large enough.
@@ -89,6 +98,7 @@ public ref struct HsstBTreeBuilderBuffers(int expectedKeyCount = 16)
         NextLevel.Clear();
         CurrentLevelFirstKeys.Clear();
         NextLevelFirstKeys.Clear();
+        PendingMaxSepLen = 0;
     }
 
     /// <summary>

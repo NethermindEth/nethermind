@@ -89,6 +89,14 @@ public ref struct HsstBTreeBuilder<TWriter, TReader, TPin>
     // of any tail entries.
     private int _pendingFirstEntryIdx;
 
+    // Writer's page index (writer.Written / PageLayout.PageSize) at the last
+    // observation point. Used by MaybeFlushBeforeEntry to gate the
+    // FlushPendingNotOnCurrentPage call — entries can only become stranded on a
+    // prior page when the writer's own page index has advanced, and Add() is the
+    // only path that mutates the writer between consecutive Adds, so the gate is
+    // safe.
+    private long _lastWriterPage;
+
     /// <summary>
     /// Create builder writing via the given writer.
     /// The trailing [RootSize u16][KeyLength u8][IndexType u8] is appended in <see cref="Build"/>.
@@ -124,6 +132,7 @@ public ref struct HsstBTreeBuilder<TWriter, TReader, TPin>
         _ownedBuffers = new HsstBTreeBuilderBuffers(expectedKeyCount);
         _useExternalBuffers = false;
         _pendingFirstEntryIdx = 0;
+        _lastWriterPage = (_writer.Written - _writer.FirstOffset) / PageLayout.PageSize;
     }
 
     /// <summary>
@@ -154,6 +163,7 @@ public ref struct HsstBTreeBuilder<TWriter, TReader, TPin>
         _externalBuffers = Unsafe.AsPointer(ref buffers);
         _useExternalBuffers = true;
         _pendingFirstEntryIdx = 0;
+        _lastWriterPage = (_writer.Written - _writer.FirstOffset) / PageLayout.PageSize;
     }
 
     /// <summary>
@@ -552,10 +562,7 @@ public ref struct HsstBTreeBuilder<TWriter, TReader, TPin>
             }
             else
             {
-                int n = Math.Min(prevKey.Length, key.Length);
-                int i = 0;
-                while (i < n && prevKey[i] == key[i]) i++;
-                cp = i;
+                cp = MemoryExtensions.CommonPrefixLength(prevKey.AsSpan(0, Math.Min(prevKey.Length, _keyLength)), key);
             }
         }
         // Grow-preserving resize: HsstBTreeBuilderBuffers.EnsureSize returns the old
@@ -574,6 +581,17 @@ public ref struct HsstBTreeBuilder<TWriter, TReader, TPin>
             bufs.CommonPrefixArr = newArr;
         }
         bufs.CommonPrefixArr![entryIdx] = (byte)cp;
+
+        // Incremental update of PendingMaxSepLen so MaybeFlushBeforeEntry can skip
+        // its O(pending) scan. Mirrors the loop it replaces: sepLen for an entry is
+        // min(cp + 1, keyLength), and we want the max over the pending range. The
+        // first-in-pending entry (entryIdx == _pendingFirstEntryIdx) contributes too —
+        // matching today's scan which iterates from _pendingFirstEntryIdx inclusive.
+        if (_keyLength > 0)
+        {
+            byte sl = (byte)Math.Min(cp + 1, _keyLength);
+            if (sl > bufs.PendingMaxSepLen) bufs.PendingMaxSepLen = sl;
+        }
 
         // Refresh PrevKeyBuf for the next entry's LCP. The buffer survives across
         // leaf flushes and across builds (the latter being safe because entryIdx=0's
@@ -612,47 +630,42 @@ public ref struct HsstBTreeBuilder<TWriter, TReader, TPin>
         int lcp = -1;
         if (_keyLength > 0 && key.Length == _keyLength && prevKey is not null)
         {
-            int n = Math.Min(prevKey.Length, key.Length);
-            int i = 0;
-            while (i < n && prevKey[i] == key[i]) i++;
-            lcp = i;
+            lcp = MemoryExtensions.CommonPrefixLength(prevKey.AsSpan(0, _keyLength), key);
         }
 
         int pending = EntryPositions.Count - _pendingFirstEntryIdx;
         if (pending < 1) return lcp;
         if (_keyLength <= 0) return lcp;
 
-        // Prune any pending entry whose flag byte (= key region) is stranded on
-        // a prior page — those can't share a leaf with anything on the writer's
-        // current page, so push them as direct Entry descriptors to the next
-        // index level. The remaining pending (if any) all live on the current
-        // page, which keeps the estLeaf computation and the leaf-vs-direct
-        // decision below page-coherent.
-        FlushPendingNotOnCurrentPage();
-        pending = EntryPositions.Count - _pendingFirstEntryIdx;
-        if (pending < 1) return lcp;
+        // Stranded-entry prune is only meaningful when the writer's page index
+        // has advanced since the last Add. Add() is the only thing that mutates
+        // the writer between Adds, so a cached _lastWriterPage is sufficient.
+        // FlushPendingNotOnCurrentPage updates _lastWriterPage internally.
+        long writerPage = (_writer.Written - _writer.FirstOffset) / PageLayout.PageSize;
+        if (writerPage != _lastWriterPage)
+        {
+            FlushPendingNotOnCurrentPage();
+            pending = EntryPositions.Count - _pendingFirstEntryIdx;
+            if (pending < 1) return lcp;
+        }
 
         int newSepLen = lcp >= 0 ? Math.Min(lcp + 1, _keyLength) : _keyLength;
 
-        // Max sep length over pending entries (look at the LCPs we cached in
-        // bufs.CommonPrefixArr — one byte per entry; sepLength = cp + 1, capped at
-        // keyLength).
-        byte[]? cp = bufs.CommonPrefixArr;
-        int maxSepLen = 0;
-        if (cp is not null)
-        {
-            for (int i = _pendingFirstEntryIdx; i < EntryPositions.Count; i++)
-            {
-                int sl = Math.Min(cp[i] + 1, _keyLength);
-                if (sl > maxSepLen) maxSepLen = sl;
-            }
-        }
+        // Max sep length over pending entries is maintained incrementally by
+        // OnEntryAdded (and rebuilt by FlushPendingNotOnCurrentPage's
+        // partial-flush rescan).
+        int maxSepLen = bufs.PendingMaxSepLen;
         int maxSepWithNew = Math.Max(maxSepLen, newSepLen);
 
-        // Conservative leaf-size estimate: Variable layout (4 bytes per entry —
-        // u16 prefixArr + u16 offsetArr) plus tail-bytes bounded by maxSepLen,
-        // plus a 12-byte header and a 2-byte value slot per entry.
-        int estLeaf = PageLocalLeafHeaderBytes + (pending + 1) * (4 + maxSepWithNew) + (pending + 1) * PageLocalLeafValueSlotBytes;
+        // Leaf-size upper bound matching the Variable-key layout written by
+        // BSearchIndexWriter: 12-byte header + 4 bytes/entry (u16 prefixArr +
+        // u16 offsetArr) + 2 bytes/entry value slot + per-entry tail bytes
+        // beyond the 2-byte prefix slot (so max(0, sepLen - 2)). Safe upper
+        // bound; tighter than the legacy formula that double-counted the
+        // 2-byte prefix.
+        int estLeafTailPer = Math.Max(0, maxSepWithNew - 2);
+        int estLeafPerEntry = 4 + PageLocalLeafValueSlotBytes + estLeafTailPer;
+        int estLeaf = PageLocalLeafHeaderBytes + (pending + 1) * estLeafPerEntry;
 
         long inPage = (_writer.Written - _writer.FirstOffset) & PageLayout.PageMask;
         long remaining = PageLayout.PageSize - inPage;
@@ -676,7 +689,9 @@ public ref struct HsstBTreeBuilder<TWriter, TReader, TPin>
         // into the post-leaf slack, the next iteration's leaf-fit check will see
         // remaining < estLeafActual and direct-flush the trapped entry instead
         // of writing a cross-page 1-entry leaf.
-        int estLeafActual = PageLocalLeafHeaderBytes + pending * (4 + maxSepLen) + pending * PageLocalLeafValueSlotBytes;
+        int estLeafActualTailPer = Math.Max(0, maxSepLen - 2);
+        int estLeafActualPerEntry = 4 + PageLocalLeafValueSlotBytes + estLeafActualTailPer;
+        int estLeafActual = PageLocalLeafHeaderBytes + pending * estLeafActualPerEntry;
         if (estLeafActual > remaining)
             FlushPendingAsEntries();
         else
@@ -755,6 +770,8 @@ public ref struct HsstBTreeBuilder<TWriter, TReader, TPin>
         // first-key survives in CurrentLevelFirstKeys; subsequent adds repopulate
         // PendingKeys with the next pending set.
         bufs.PendingKeys.Clear();
+        // Pending range is empty — reset the incremental max-sep tracker.
+        bufs.PendingMaxSepLen = 0;
     }
 
     /// <summary>
@@ -791,6 +808,8 @@ public ref struct HsstBTreeBuilder<TWriter, TReader, TPin>
 
         _pendingFirstEntryIdx = EntryPositions.Count;
         bufs.PendingKeys.Clear();
+        // Pending range is empty — reset the incremental max-sep tracker.
+        bufs.PendingMaxSepLen = 0;
     }
 
     /// <summary>
@@ -809,10 +828,19 @@ public ref struct HsstBTreeBuilder<TWriter, TReader, TPin>
     private void FlushPendingNotOnCurrentPage()
     {
         int pending = EntryPositions.Count - _pendingFirstEntryIdx;
-        if (pending == 0) return;
+        if (pending == 0)
+        {
+            // Even when there's nothing pending to prune, the caller paths
+            // (BeginValueWrite, Build, and MaybeFlushBeforeEntry's now-gated
+            // path) rely on _lastWriterPage being current after this method
+            // returns so the next per-Add gate check is a single cmp.
+            _lastWriterPage = (_writer.Written - _writer.FirstOffset) / PageLayout.PageSize;
+            return;
+        }
 
         long firstOffset = _writer.FirstOffset;
         long writerPage = (_writer.Written - firstOffset) / PageLayout.PageSize;
+        _lastWriterPage = writerPage;
 
         ref HsstBTreeBuilderBuffers bufs = ref Buffers;
         ReadOnlySpan<long> entryPositions = bufs.EntryPositions.AsSpan();
@@ -857,5 +885,26 @@ public ref struct HsstBTreeBuilder<TWriter, TReader, TPin>
             keysSpan[bytesRemoved..].CopyTo(keysSpan);
             bufs.PendingKeys.Truncate(keysSpan.Length - bytesRemoved);
         }
+
+        // Recompute PendingMaxSepLen over the surviving pending range. The
+        // direct-flushed entries that contributed to the previous max are gone,
+        // and the surviving entries' cp values in CommonPrefixArr are untouched
+        // by the direct flush. This rescan runs at most once per writer-page
+        // transition (and only when stranded entries existed); the per-Add
+        // scan it replaces is gone.
+        byte newMax = 0;
+        if (_keyLength > 0)
+        {
+            byte[]? cpArr = bufs.CommonPrefixArr;
+            if (cpArr is not null)
+            {
+                for (int i = _pendingFirstEntryIdx; i < EntryPositions.Count; i++)
+                {
+                    byte sl = (byte)Math.Min(cpArr[i] + 1, _keyLength);
+                    if (sl > newMax) newMax = sl;
+                }
+            }
+        }
+        bufs.PendingMaxSepLen = newMax;
     }
 }
