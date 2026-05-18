@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Linq;
+using System.Collections.Generic;
 using FluentAssertions;
 using Nethermind.Consensus.Scheduler;
 using Nethermind.Core;
@@ -11,6 +12,7 @@ using Nethermind.Core.Timers;
 using Nethermind.Logging;
 using Nethermind.Network.Contract.P2P;
 using Nethermind.Network.P2P;
+using Nethermind.Network.P2P.EventArg;
 using Nethermind.Network.P2P.Messages;
 using Nethermind.Network.P2P.ProtocolHandlers;
 using Nethermind.Network.Rlpx;
@@ -249,6 +251,38 @@ namespace Nethermind.Network.Test.P2P
 
             requestedCount.Should().Be(1);
             p2PProtocolHandler.AgreedCapabilities.Count(c => c.Equals(capability)).Should().Be(1);
+        }
+
+        [Test]
+        public void Hello_starts_highest_agreed_eth_version_only()
+        {
+            P2PProtocolHandler p2PProtocolHandler = CreateSession();
+            List<ProtocolEventArgs> requestedProtocols = new();
+
+            p2PProtocolHandler.AddSupportedCapability(new Capability(Protocol.Eth, 68));
+            p2PProtocolHandler.AddSupportedCapability(new Capability(Protocol.Eth, 69));
+            p2PProtocolHandler.AddSupportedCapability(new Capability(Protocol.Eth, 70));
+            p2PProtocolHandler.AddSupportedCapability(new Capability(Protocol.Eth, 71));
+
+            p2PProtocolHandler.SubprotocolRequested += (_, args) => requestedProtocols.Add(args);
+
+            using HelloMessage message = new()
+            {
+                Capabilities = new ArrayPoolList<Capability>(4)
+                {
+                    new(Protocol.Eth, 68),
+                    new(Protocol.Eth, 69),
+                    new(Protocol.Eth, 70),
+                    new(Protocol.Eth, 71),
+                },
+                NodeId = TestItem.PublicKeyA,
+            };
+
+            p2PProtocolHandler.HandleMessage(CreateP2PPacket(message));
+
+            requestedProtocols.Should().ContainSingle();
+            requestedProtocols[0].ProtocolCode.Should().Be(Protocol.Eth);
+            requestedProtocols[0].Version.Should().Be(71);
         }
 
         [Test]

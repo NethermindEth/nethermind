@@ -7,7 +7,6 @@ using System.Linq;
 using System.Net;
 using System.Threading;
 using System.Threading.Tasks;
-using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus;
@@ -33,6 +32,10 @@ using Nethermind.Synchronization;
 using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
+using DotNetty.Buffers;
+using DotNetty.Transport.Channels;
+using Nethermind.Network.P2P.ProtocolHandlers;
+using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
 {
@@ -99,14 +102,14 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
         [Test]
         public void Metadata_correct()
         {
-            _handler.ProtocolCode.Should().Be("eth");
-            _handler.Name.Should().Be("eth62");
-            _handler.ProtocolVersion.Should().Be(62);
-            _handler.MessageIdSpaceSize.Should().Be(8);
-            _handler.IncludeInTxPool.Should().BeTrue();
-            _handler.ClientId.Should().Be(_session.Node?.ClientId);
-            _handler.HeadHash.Should().BeNull();
-            _handler.HeadNumber.Should().Be(0);
+            Assert.That(_handler.ProtocolCode, Is.EqualTo("eth"));
+            Assert.That(_handler.Name, Is.EqualTo("eth62"));
+            Assert.That(_handler.ProtocolVersion, Is.EqualTo(62));
+            Assert.That(_handler.MessageIdSpaceSize, Is.EqualTo(8));
+            Assert.That(_handler.IncludeInTxPool, Is.True);
+            Assert.That(_handler.ClientId, Is.EqualTo(_session.Node?.ClientId));
+            Assert.That(_handler.HeadHash, Is.Null);
+            Assert.That(_handler.HeadNumber, Is.EqualTo(0));
         }
 
         [Test]
@@ -395,9 +398,9 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             Assert.That(bodies[1], Is.SameAs(thirdBlock.Body));
         }
 
-        [TestCase(5, 5)]
-        [TestCase(50, 19)]
-        public void Should_truncate_array_when_too_many_body(int availableBody, int expectedResponseSize)
+        [TestCase(5)]
+        [TestCase(50)]
+        public void Should_truncate_array_when_too_many_body(int availableBody)
         {
             List<Block> blocks = new();
             Transaction[] transactions = Build.A.Transaction.TestObjectNTimes(1000);
@@ -423,12 +426,12 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             HandleIncomingStatusMessage();
             HandleZeroMessage(msg, Eth62MessageCode.GetBlockBodies);
 
-            response.Should().NotBeNull();
+            Assert.That(response, Is.Not.Null);
             BlockBody[]? bodies = response.Bodies.Bodies;
-            bodies.Length.Should().Be(expectedResponseSize);
+            Assert.That(bodies, Has.Length.EqualTo(SoftLimitTestHelper.CountBlocksWithinSoftLimit(blocks)));
             foreach (BlockBody responseBody in bodies)
             {
-                responseBody.Should().NotBeNull();
+                Assert.That(responseBody, Is.Not.Null);
             }
             response.Dispose();
         }
@@ -442,6 +445,27 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             HandleIncomingStatusMessage();
             HandleZeroMessage(msg, Eth62MessageCode.Transactions);
             _transactionPool.Received(canGossipTransactions ? 3 : 0).SubmitTx(Arg.Any<Transaction>(), TxHandlingOptions.None);
+        }
+
+        /// <summary>
+        /// Calls <see cref="ZeroNettyP2PHandler.ExceptionCaught"/> with <see cref="RlpException"/> directly
+        /// (without testing the whole pipeline) and verifies disconnect was triggered.
+        /// </summary>
+        [Test]
+        public void Disconnects_peer_on_transaction_deserialization_exception()
+        {
+            _txGossipPolicy.ShouldListenToGossipedTransactions.Returns(true);
+            IByteBuffer malformedTransactionsPacket = Unpooled.WrappedBuffer([0xc1, 0xc0]);
+
+            HandleIncomingStatusMessage();
+            RlpException exception = Assert.Throws<RlpException>(() => HandleZeroMessage(malformedTransactionsPacket, Eth62MessageCode.Transactions));
+
+            ZeroNettyP2PHandler zeroNettyP2PHandler = new(_session, LimboLogs.Instance);
+            zeroNettyP2PHandler.ExceptionCaught(Substitute.For<IChannelHandlerContext>(), exception!);
+
+            _session.Received().InitiateDisconnect(
+                DisconnectReason.Exception,
+                Arg.Is<string>(details => details.Contains("RlpException") && details.Contains("Transaction decoding returned null")));
         }
 
         private class AlwaysTimeoutBackgroundTaskScheduler : IBackgroundTaskScheduler
@@ -480,7 +504,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             HandleIncomingStatusMessage();
             HandleZeroMessage(msg, Eth62MessageCode.Transactions);
 
-            taskScheduler.ScheduledTasks.Should().Be(1);
+            Assert.That(taskScheduler.ScheduledTasks, Is.EqualTo(1));
         }
 
         [Test]
@@ -545,7 +569,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
         {
             using OwnedBlockBodies bodies = await ((ISyncPeer)_handler).GetBlockBodies(new List<Hash256>(), CancellationToken.None);
 
-            bodies.Bodies.Should().HaveCount(0);
+            Assert.That(bodies.Bodies, Has.Length.EqualTo(0));
         }
 
         [Test]
@@ -671,6 +695,9 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             getBlockHeadersPacket.ReadByte();
             _handler.HandleMessage(new ZeroPacket(getBlockHeadersPacket) { PacketType = (byte)messageCode });
         }
+
+        private void HandleZeroMessage(IByteBuffer msg, int messageCode) =>
+            _handler.HandleMessage(new ZeroPacket(msg) { PacketType = (byte)messageCode });
 
         private BlockBody?[] RequestBlockBodies(params Hash256[] hashes)
         {
