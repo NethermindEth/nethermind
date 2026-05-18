@@ -58,6 +58,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
     private long _lastBlockNumber;
     private long _lastBlockGasLimit;
     private readonly bool _simulateBlockProduction;
+    private readonly IEarlyBlockPreWarmer? _earlyPreWarmer;
 
     public NewPayloadHandler(
         IPayloadPreparationService payloadPreparationService,
@@ -73,7 +74,8 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         IMergeConfig mergeConfig,
         IReceiptConfig receiptConfig,
         IStateReader stateReader,
-        ILogManager logManager)
+        ILogManager logManager,
+        IEarlyBlockPreWarmer? earlyPreWarmer = null)
     {
         _payloadPreparationService = payloadPreparationService;
         _blockValidator = blockValidator ?? throw new ArgumentNullException(nameof(blockValidator));
@@ -86,6 +88,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         _invalidChainTracker = invalidChainTracker;
         _mergeSyncController = mergeSyncController;
         _stateReader = stateReader;
+        _earlyPreWarmer = earlyPreWarmer;
         _logger = logManager.GetClassLogger<NewPayloadHandler>();
         _defaultProcessingOptions = receiptConfig.StoreReceipts ? ProcessingOptions.EthereumMerge | ProcessingOptions.StoreReceipts : ProcessingOptions.EthereumMerge;
         _timeout = TimeSpan.FromMilliseconds(mergeConfig.NewPayloadBlockProcessingTimeout);
@@ -235,6 +238,10 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
 
         // Otherwise, we can just process this block and we don't need to do BeaconSync anymore.
         _mergeSyncController.StopSyncing();
+
+        // Start prewarming as early as possible — before the block enters the processing queue.
+        // BranchProcessor will pick up this task instead of starting a new one.
+        _earlyPreWarmer?.StartEarlyPreWarming(block, parentHeader, CancellationToken.None);
 
         using ThreadExtensions.Disposable handle = Thread.CurrentThread.BoostPriority();
         // Try to execute block

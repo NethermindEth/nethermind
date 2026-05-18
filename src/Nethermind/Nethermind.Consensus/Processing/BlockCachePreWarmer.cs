@@ -9,6 +9,7 @@ using Microsoft.Extensions.ObjectPool;
 using Nethermind.Blockchain;
 using Nethermind.Config;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Threading;
 using Nethermind.Evm;
@@ -25,7 +26,7 @@ using Nethermind.Trie;
 
 namespace Nethermind.Consensus.Processing;
 
-public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
+public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IEarlyBlockPreWarmer
 {
     private readonly int _concurrencyLevel;
     private readonly bool _parallelExecutionBatchRead;
@@ -34,12 +35,18 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
     private readonly PreBlockCaches _preBlockCaches;
     private readonly NodeStorageCache _nodeStorageCache;
     private readonly bool _parallelExecutionEnabled;
+    private readonly ISpecProvider? _specProvider;
+
+    private Hash256? _earlyPreWarmBlockHash;
+    private Task? _earlyPreWarmTask;
+    private CancellationTokenSource? _earlyPreWarmCts;
 
     public BlockCachePreWarmer(
         PrewarmerEnvFactory envFactory,
         IBlocksConfig blocksConfig,
         NodeStorageCache nodeStorageCache,
         PreBlockCaches preBlockCaches,
+        ISpecProvider specProvider,
         ILogManager logManager
     ) : this(
         new ReadOnlyTxProcessingEnvPooledObjectPolicy(envFactory, preBlockCaches),
@@ -48,7 +55,11 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         blocksConfig.ParallelExecutionBatchRead,
         nodeStorageCache,
         preBlockCaches,
-        logManager) => _parallelExecutionEnabled = blocksConfig.ParallelExecution;
+        logManager)
+    {
+        _parallelExecutionEnabled = blocksConfig.ParallelExecution;
+        _specProvider = specProvider;
+    }
 
     internal BlockCachePreWarmer(
         IPooledObjectPolicy<IReadOnlyTxProcessorSource> poolPolicy,
@@ -551,6 +562,37 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         /// to do so leaks resources held by the env for the lifetime of the process.
         /// </remarks>
         public bool Return(IReadOnlyTxProcessorSource obj) => true;
+    }
+
+    public void StartEarlyPreWarming(Block block, BlockHeader parentHeader, CancellationToken cancellationToken)
+    {
+        // Cancel any previous early prewarm
+        _earlyPreWarmCts?.Cancel();
+        _earlyPreWarmCts?.Dispose();
+
+        CancellationTokenSource cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        _earlyPreWarmCts = cts;
+        _earlyPreWarmBlockHash = block.Hash;
+
+        // Start prewarming immediately — same as PreWarmCaches but without waiting for FCU
+        _earlyPreWarmTask = PreWarmCaches(block, parentHeader, _specProvider.GetSpec(block.Header), cts.Token);
+    }
+
+    public Task? ConsumeEarlyPreWarmTask(Block block)
+    {
+        if (_earlyPreWarmBlockHash == block.Hash && _earlyPreWarmTask is not null)
+        {
+            Task task = _earlyPreWarmTask;
+            _earlyPreWarmTask = null;
+            _earlyPreWarmBlockHash = null;
+            return task;
+        }
+
+        // Different block or no early prewarm — cancel stale one
+        _earlyPreWarmCts?.Cancel();
+        _earlyPreWarmTask = null;
+        _earlyPreWarmBlockHash = null;
+        return null;
     }
 
     private record BlockState(BlockCachePreWarmer PreWarmer, Block Block, BlockHeader Parent, IReleaseSpec Spec);

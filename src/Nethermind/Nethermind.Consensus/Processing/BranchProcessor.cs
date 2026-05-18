@@ -81,10 +81,11 @@ public class BranchProcessor(
 
         try
         {
-            // Start prewarming as early as possible
+            // Check if early prewarming was started at engine_newPayload time
             WaitForCacheClear();
             IReleaseSpec spec = specProvider.GetSpec(suggestedBlock.Header);
-            preWarmTask = PreWarmTransactions(suggestedBlock, baseBlock!, spec, backgroundCancellation.Token);
+            Task? earlyTask = (preWarmer as IEarlyBlockPreWarmer)?.ConsumeEarlyPreWarmTask(suggestedBlock);
+            preWarmTask = earlyTask ?? PreWarmTransactions(suggestedBlock, baseBlock!, spec, backgroundCancellation.Token);
             Task? prefetchBlockhash = blockhashProvider.Prefetch(suggestedBlock.Header, backgroundCancellation.Token);
 
             BlocksProcessing?.Invoke(this, new BlocksProcessingEventArgs(suggestedBlocks));
