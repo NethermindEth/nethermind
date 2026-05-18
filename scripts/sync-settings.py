@@ -8,7 +8,7 @@ import requests
 
 CONFIGS_PATH = './src/Nethermind/Nethermind.Runner/configs'
 APPLICATION_JSON = { 'Content-type': 'application/json' }
-SUPERCHAIN_CHAINS = ["op-mainnet", "op-sepolia", "base-mainnet", "base-sepolia", "worldchain-mainnet", "worldchain-sepolia"]
+SUPERCHAIN_CHAINS = ["op-mainnet", "op-sepolia", "worldchain-mainnet", "worldchain-sepolia"]
 
 configs = {
     # fast sync section
