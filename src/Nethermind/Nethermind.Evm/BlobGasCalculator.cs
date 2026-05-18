@@ -15,6 +15,7 @@ public static class BlobGasCalculator
     /// <returns><see langword="false"/> if the multiplication overflows; otherwise <see langword="true"/>.</returns>
     public static bool TryCalculateBlobMaxFee(int blobCount, UInt256 maxFeePerBlobGas, out UInt256 blobFee) =>
         !UInt256.MultiplyOverflow((UInt256)blobCount * (UInt256)Eip4844Constants.GasPerBlob, maxFeePerBlobGas, out blobFee);
+
     public static bool TrySubtractBlobFee(IReleaseSpec spec, Transaction tx, ref UInt256 available)
     {
         if (!spec.IsEip4844Enabled || tx.BlobVersionedHashes?.Length is not > 0)
