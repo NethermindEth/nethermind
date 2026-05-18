@@ -556,6 +556,112 @@ jobs:
             fi
           fi
 
+      - name: Write performance summary to run page
+        if: inputs.is_performance_check == true
+        shell: bash
+        # Inputs are passed via env to avoid `${{ ... }}` shell-expansion injection.
+        env:
+          BRANCH_TO_COMPARE: ${{ inputs.branch_to_compare }}
+          # GitHub silently truncates $GITHUB_STEP_SUMMARY past 1 MiB.
+          SUMMARY_BUDGET_BYTES: "900000"
+        # Reads each test's results.json directly. We don't shell out to `flood report` because
+        # it generates an HTML notebook (via nbconvert) and writes garbage + ANSI codes to stdout —
+        # plus it requires vegeta on PATH, which isn't carried over from the load-test step.
+        run: |
+          set -euo pipefail
+
+          tmp_summary=$(mktemp)
+          python3 - "$tmp_summary" <<'PY'
+          import json, os, sys, glob
+
+          # Latencies in flood's results.json are in seconds.
+          def fmt_ms(v):
+              if v is None: return '—'
+              try: return f'{float(v) * 1000:.1f} ms'
+              except (TypeError, ValueError): return str(v)
+
+          def fmt_pct(v):
+              if v is None: return '—'
+              try: return f'{float(v) * 100:.1f}%'
+              except (TypeError, ValueError): return str(v)
+
+          with open(sys.argv[1], 'w') as out:
+            branch_to_compare = os.environ.get('BRANCH_TO_COMPARE', '?')
+            out.write('## RPC Performance Diff\n\n')
+            out.write(f'Current branch vs `{branch_to_compare}`, identical hardware, mainnet snap-synced.\n\n')
+            out.write('Per-method latencies at the configured RPS steps (each rate is run multiple times for stability).\n\n')
+
+            dirs = sorted(glob.glob('*_perf_result'))
+            if not dirs:
+                out.write('_No `*_perf_result/` directories found. See uploaded artifact._\n')
+                sys.exit(0)
+
+            for d in dirs:
+              name = os.path.basename(d)[:-len('_perf_result')]
+              out.write(f'### {name}\n\n')
+              path = os.path.join(d, 'results.json')
+              if not os.path.isfile(path):
+                  out.write('_no `results.json` — flood run produced no output for this test_\n\n')
+                  continue
+              try:
+                  with open(path, 'rb') as f:
+                      data = json.loads(f.read())
+              except Exception as e:
+                  out.write(f'_failed to parse `{path}`: {e}_\n\n')
+                  continue
+
+              # Schema produced by flood 0.3.x:
+              #   results: { <node_name>: { target_rate: [N steps], p50: [N], p95: [N], p99: [N], success: [N], ... } }
+              # Each node has parallel arrays — same length, indexed by RPS step.
+              if not isinstance(data, dict):
+                  out.write('_top-level JSON is not an object — schema mismatch, see uploaded artifact_\n\n')
+                  continue
+
+              per_node = data.get('results')
+              if not isinstance(per_node, dict) or not per_node:
+                  out.write('_results section missing or empty — see uploaded artifact_\n\n')
+                  continue
+
+              nodes = [n for n, v in per_node.items() if isinstance(v, dict)]
+              if not nodes:
+                  out.write('_no per-node entries — schema mismatch, see uploaded artifact_\n\n')
+                  continue
+
+              # flood drives both endpoints in lockstep with the same --rates flag, so every
+              # node has identical target_rate. We use the first node's array as the row count;
+              # the at() helper guards against length mismatches if that ever changes.
+              rates = per_node[nodes[0]].get('target_rate')
+              if not isinstance(rates, list) or not rates:
+                  out.write('_no target_rate array — schema mismatch, see uploaded artifact_\n\n')
+                  continue
+
+              try:
+                  out.write('| Step | Target RPS | Node | p50 | p95 | p99 | success |\n')
+                  out.write('|---:|---:|---|---:|---:|---:|---:|\n')
+                  for i, rate in enumerate(rates):
+                      for node in nodes:
+                          ns = per_node[node]
+                          def at(key):
+                              arr = ns.get(key)
+                              return arr[i] if isinstance(arr, list) and i < len(arr) else None
+                          out.write(f'| {i + 1} | {rate} | {node} | {fmt_ms(at("p50"))} | {fmt_ms(at("p95"))} | {fmt_ms(at("p99"))} | {fmt_pct(at("success"))} |\n')
+                  out.write('\n')
+              except Exception as e:
+                  out.write(f'\n_failed while rendering `{name}`: {type(e).__name__}: {e}_\n\n')
+
+          out.close()
+          PY
+
+          actual_size=$(wc -c < "$tmp_summary")
+          if (( actual_size > SUMMARY_BUDGET_BYTES )); then
+            head -c "$SUMMARY_BUDGET_BYTES" "$tmp_summary" >> "$GITHUB_STEP_SUMMARY"
+            printf '\n\n_Summary truncated at %s bytes (limit %s). See the `flood-results` artifact for full data._\n' \
+              "$actual_size" "$SUMMARY_BUDGET_BYTES" >> "$GITHUB_STEP_SUMMARY"
+          else
+            cat "$tmp_summary" >> "$GITHUB_STEP_SUMMARY"
+          fi
+          rm -f "$tmp_summary"
+
       - name: Upload results as files
         uses: actions/upload-artifact@v7
         with:
