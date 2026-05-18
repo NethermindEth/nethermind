@@ -687,4 +687,5 @@ public class Eth70ProtocolHandler : Eth69ProtocolHandler, IStaticProtocolInfo
             }
         }
     }
+
 }

@@ -702,6 +702,7 @@ public class Eth70ProtocolHandlerTests
         TxReceipt[] receipts = [null!];
         using ReceiptsMessage70 response = new(1111, new[] { receipts }.ToPooledList(), false);
 
+        HandleIncomingStatusMessage();
         RlpException? exception = Assert.Throws<RlpException>(() => HandleZeroMessage(response, Eth70MessageCode.Receipts));
 
         Assert.That(exception?.Message, Is.EqualTo("Unexpected null receipt payload"));
