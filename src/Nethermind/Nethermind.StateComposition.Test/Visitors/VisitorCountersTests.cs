@@ -13,9 +13,10 @@ namespace Nethermind.StateComposition.Test.Visitors;
 [TestFixture]
 public class VisitorCountersTests
 {
-    // Mirrors TopNTracker.EntryComparer (which is internal — exposing it through a
-    // public test method signature triggers CS0051). Defined here so TestCaseSource
-    // can dispatch the three CompareBy* method groups through a single typed handle.
+    // Mirrors TopNTracker.IEntryComparer's in-ref signature (the interface itself is
+    // internal — exposing it through a public test method signature triggers CS0051).
+    // Defined here so TestCaseSource can dispatch the four strategy structs through a
+    // single typed handle.
     public delegate int EntryComparer(in TopContractEntry a, in TopContractEntry b);
 
     [Test]
@@ -137,19 +138,19 @@ public class VisitorCountersTests
         yield return new TestCaseData(
             new TopContractEntry { MaxDepth = 10, TotalNodes = 100, ValueNodes = 50 },
             new TopContractEntry { MaxDepth = 10, TotalNodes = 200, ValueNodes = 50 },
-            (EntryComparer)TopNTracker.CompareByDepth)
+            (EntryComparer)((in TopContractEntry a, in TopContractEntry b) => default(TopNTracker.ByDepth).Compare(in a, in b)))
             .SetName(nameof(Comparator_DeterministicTiebreaking) + "_ByDepth");
 
         yield return new TestCaseData(
             new TopContractEntry { TotalNodes = 200, MaxDepth = 5, ValueNodes = 50 },
             new TopContractEntry { TotalNodes = 200, MaxDepth = 10, ValueNodes = 50 },
-            (EntryComparer)TopNTracker.CompareByTotalNodes)
+            (EntryComparer)((in TopContractEntry a, in TopContractEntry b) => default(TopNTracker.ByTotalNodes).Compare(in a, in b)))
             .SetName(nameof(Comparator_DeterministicTiebreaking) + "_ByTotalNodes");
 
         yield return new TestCaseData(
             new TopContractEntry { ValueNodes = 100, MaxDepth = 5, TotalNodes = 50 },
             new TopContractEntry { ValueNodes = 100, MaxDepth = 10, TotalNodes = 50 },
-            (EntryComparer)TopNTracker.CompareByValueNodes)
+            (EntryComparer)((in TopContractEntry a, in TopContractEntry b) => default(TopNTracker.ByValueNodes).Compare(in a, in b)))
             .SetName(nameof(Comparator_DeterministicTiebreaking) + "_ByValueNodes");
     }
 

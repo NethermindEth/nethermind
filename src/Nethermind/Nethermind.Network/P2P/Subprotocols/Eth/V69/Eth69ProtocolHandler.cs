@@ -58,8 +58,6 @@ public class Eth69ProtocolHandler(
         set { }
     }
 
-    public override event EventHandler<ProtocolInitializedEventArgs>? ProtocolInitialized;
-
     protected override void HandleMessageCore(ZeroPacket message)
     {
         int size = message.Content.ReadableBytes;
@@ -114,7 +112,7 @@ public class Eth69ProtocolHandler(
         Session.IsNetworkIdMatched = SyncServer.NetworkId == (ulong)status.NetworkId;
         HeadNumber = status.LatestBlock;
         HeadHash = status.LatestBlockHash;
-        ProtocolInitialized?.Invoke(this, eventArgs);
+        NotifyProtocolInitialized(eventArgs);
     }
 
     private void Handle(BlockRangeUpdateMessage blockRangeUpdate)

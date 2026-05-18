@@ -387,7 +387,7 @@ public class PersistedSnapshotTests
         StateId to = new(1, Keccak.Compute("warmup"));
 
         Address addr = TestItem.AddressA;
-        Hash256 addrHashKey = new(addr.ToAccountPath.Bytes.ToArray());
+        Hash256 addrHashKey = new(addr.ToAccountPath.Bytes);
         Account expectedAccount = Build.An.Account.WithBalance(987654321).WithNonce(11).TestObject;
         TreePath storagePath = new(Keccak.Compute("warmup-spath"), 6);
         TrieNode storageNode = new(NodeType.Branch, [0xC3, 0x80, 0x81, 0x82]);

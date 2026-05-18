@@ -36,7 +36,7 @@
     "cl": "lodestar",
     "cl_image": "chainsafe/lodestar:latest",
     "checkpoint-sync-url": "https://mainnet-checkpoint-sync.attestant.io/",
-    "timeout": 180,
+    "timeout": 360,
     "agent": "g6-standard-8"
   },
   {

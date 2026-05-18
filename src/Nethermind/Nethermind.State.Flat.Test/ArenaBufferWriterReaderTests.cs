@@ -126,7 +126,7 @@ public class ArenaBufferWriterReaderTests
 
             ArenaBufferReader reader = writer.OpenReader(64);
             ReadOnlySpan<byte> tail = payload.AsSpan(payload.Length - 64);
-            ReadAndAssert(reader, tail.ToArray());
+            ReadAndAssert(reader, tail);
 
             writer.DisposeActiveReader();
 

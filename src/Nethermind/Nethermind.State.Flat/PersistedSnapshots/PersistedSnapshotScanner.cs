@@ -145,7 +145,7 @@ public sealed class PersistedSnapshotScanner(WholeReadSession session, Persisted
                 if (slot.Length == 0 && account.Length == 0 && sd.Length == 0)
                     continue;
                 ReadOnlySpan<byte> addrKey = _addrEnum.CopyCurrentLogicalKey(addrBuf);
-                _curAddress = new Address(addrKey.ToArray());
+                _curAddress = new Address(addrKey);
                 _slotBound = slot;
                 _accountBound = account;
                 _sdBound = sd;
