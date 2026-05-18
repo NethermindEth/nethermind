@@ -65,6 +65,17 @@ public ref struct HsstBTreeBuilderBuffers(int expectedKeyCount = 16)
     // ArrayPool-backed for cross-build reuse; null until the first non-empty build.
     internal byte[]? RootFirstKey = null;
 
+    // Previous entry's full key, used by HsstBTreeBuilder.OnEntryAdded /
+    // MaybeFlushBeforeEntry to compute online LCP. Independent of
+    // <see cref="PendingKeys"/> (which only holds keys for the in-flight pending
+    // set and is cleared on each leaf emission), so the LCP chain stays intact
+    // across flushes. ArrayPool-backed and retained across builds: cross-build
+    // contamination is impossible because the in-build invariant is "PrevKeyBuf
+    // is meaningful only when entryIdx > 0 in the current build", and entryIdx=0's
+    // OnEntryAdded unconditionally writes the entry-0 key before any later add
+    // reads it.
+    internal byte[]? PrevKeyBuf = null;
+
     /// <summary>
     /// Reset list counts to zero ahead of a new build. Capacity is retained, and
     /// rented arrays stay rented — the next build will reuse them if large enough.
@@ -105,6 +116,7 @@ public ref struct HsstBTreeBuilderBuffers(int expectedKeyCount = 16)
         if (CommonPrefixArr is not null) { ArrayPool<byte>.Shared.Return(CommonPrefixArr); CommonPrefixArr = null; }
         if (ValueScratch is not null) { ArrayPool<byte>.Shared.Return(ValueScratch); ValueScratch = null; }
         if (RootFirstKey is not null) { ArrayPool<byte>.Shared.Return(RootFirstKey); RootFirstKey = null; }
+        if (PrevKeyBuf is not null) { ArrayPool<byte>.Shared.Return(PrevKeyBuf); PrevKeyBuf = null; }
     }
 }
 
