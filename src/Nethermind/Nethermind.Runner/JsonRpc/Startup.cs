@@ -22,6 +22,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Http.Features;
 using Microsoft.AspNetCore.ResponseCompression;
 using Microsoft.AspNetCore.Server.Kestrel.Core;
+using Microsoft.AspNetCore.Server.Kestrel.Transport.Sockets;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.FileProviders;
 using Microsoft.Extensions.Hosting;
@@ -94,6 +95,12 @@ public class Startup : IStartup
                 listenOptions.Protocols = HttpProtocols.Http1;
                 listenOptions.DisableAltSvcHeader = true;
             });
+        });
+        services.Configure<SocketTransportOptions>(options =>
+        {
+            options.IOQueueCount = 0;
+            options.WaitForDataBeforeAllocatingBuffer = false;
+            options.UnsafePreferInlineScheduling = true;
         });
         Bootstrap.Instance.RegisterJsonRpcServices(services);
 
