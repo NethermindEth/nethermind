@@ -4,7 +4,6 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
-using Nethermind.Api;
 using Nethermind.Api.Steps;
 using Nethermind.Blockchain;
 using Nethermind.Config;
@@ -37,7 +36,6 @@ public class EthStatsStep(
     IEnode enode,
     IEthStatsConfig ethStatsConfig,
     INetworkConfig networkConfig,
-    IInitConfig initConfig,
     IMiningConfig miningConfig,
     ILogManager logManager
 ) : IStep, IAsyncDisposable
@@ -47,12 +45,6 @@ public class EthStatsStep(
     private IEthStatsIntegration _ethStatsIntegration = null!;
     public async Task Execute(CancellationToken cancellationToken)
     {
-        if (!initConfig.WebSocketsEnabled)
-        {
-            _logger.Warn($"{nameof(EthStatsPlugin)} disabled due to {nameof(initConfig.WebSocketsEnabled)} set to false");
-            return;
-        }
-
         string instanceId = $"{ethStatsConfig.Name}-{Keccak.Compute(enode!.Info)}";
         if (_logger.IsInfo)
         {
