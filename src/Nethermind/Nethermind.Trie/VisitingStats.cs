@@ -8,14 +8,20 @@ namespace Nethermind.Trie
 {
     /// <summary>
     /// Per-call counters populated by <see cref="MeteredTrieNodeResolver"/> while a single
-    /// <see cref="PatriciaTree.AcceptMetered{TNodeContext}"/> traversal runs. Values are aggregate
-    /// across the account and any storage tries visited during that traversal.
+    /// <see cref="PatriciaTree.Accept{TNodeContext}"/> traversal runs with a non-null
+    /// <c>diagnostics</c> argument. Values aggregate across the account and any storage tries
+    /// visited during that traversal.
     /// </summary>
     /// <remarks>
     /// Counter mutations use <see cref="Interlocked"/> so the same instance is safe to share
     /// across multiple threads when the visitor runs with <c>MaxDegreeOfParallelism &gt; 1</c>
     /// (e.g. the <c>BatchedTrieVisitor</c> path). For the default proof-RPC code path the
     /// traversal is single-threaded and the atomic ops are uncontended.
+    /// <para>
+    /// Reader properties read each counter independently, so <see cref="CacheHits"/> is not a
+    /// consistent snapshot of <see cref="NodeLookups"/> and <see cref="CacheMisses"/> if read
+    /// concurrently with ongoing mutations. Read after the traversal completes.
+    /// </para>
     /// </remarks>
     public sealed class VisitingStats
     {
