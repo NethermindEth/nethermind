@@ -596,16 +596,9 @@ namespace Nethermind.Consensus.Processing
         protected virtual long GetReportMs() => Environment.TickCount64;
 
         /// <remarks>
-        /// Parallel-execution caveat: when <c>ParallelExecution</c> is enabled
-        /// (<see cref="BlockProcessor.ParallelBlockValidationTransactionsExecutor"/>), every parallel
-        /// worker thread copies <c>IsBlockProcessingThread = true</c> from the outer block-processing
-        /// thread, so EVM opcode counters (<c>evm.sload</c>, <c>evm.sstore</c>, <c>evm.calls</c>, …)
-        /// and state-I/O counters (<c>state_reads.*</c>, <c>state_writes.*</c>) accumulate the total
-        /// across all workers in the <c>_main*</c> fields rather than a single-threaded equivalent.
-        /// Wall-clock timing fields (<c>execution_ms</c>, <c>evm_ms</c>, <c>commit_ms</c>, …) are
-        /// unaffected — they are computed from per-phase Stopwatch deltas on the main thread.
-        /// Cross-client consumers expecting per-single-thread opcode counts will see inflated numbers
-        /// on nodes running with <c>ParallelExecution=true</c>.
+        /// Under <c>ParallelExecution</c>, workers inherit <c>IsBlockProcessingThread = true</c>,
+        /// so <c>evm.*</c> and <c>state_reads/writes.*</c> counters sum across all workers (not
+        /// per-thread). Wall-clock timings are unaffected.
         /// </remarks>
         private void LogSlowBlock(Block block, BlockData data, double mgasPerSec)
         {
