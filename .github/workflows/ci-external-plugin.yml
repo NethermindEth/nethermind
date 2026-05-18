@@ -1,0 +1,285 @@
+# SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+# SPDX-License-Identifier: LGPL-3.0-only
+
+name: "External Plugin Compatibility Check"
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PLUGIN_DIR: external-plugin
+
+jobs:
+  build-plugin:
+    if: github.event.pull_request.draft == false
+    name: Build External Plugin
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Free up disk space
+        uses: jlumbroso/free-disk-space@v1.3.1
+        with:
+          large-packages: false
+          tool-cache: false
+
+      - name: Authenticate App
+        id: gh-app
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: ${{ vars.APP_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+          repositories: nethermind,${{ secrets.EXTERNAL_PLUGIN_REPO_NAME }}
+          owner: ${{ github.repository_owner }}
+
+      - name: Check out Nethermind repository
+        uses: actions/checkout@v6
+        with:
+          path: nethermind
+
+      - name: Check out plugin repository
+        uses: actions/checkout@v6
+        with:
+          repository: ${{ github.repository_owner }}/${{ secrets.EXTERNAL_PLUGIN_REPO_NAME }}
+          token: ${{ steps.gh-app.outputs.token }}
+          path: ${{ env.PLUGIN_DIR }}
+
+      - name: Set up build directory structure
+        run: |
+          mkdir -p build/src
+
+          # Copy Nethermind source
+          cp -r nethermind/src/Nethermind build/src/
+
+          # Copy plugin source (expects plugin project in src/<PluginName>)
+          for dir in ${PLUGIN_DIR}/src/Nethermind.*/; do
+            if [ -d "$dir" ]; then
+              cp -r "$dir" build/src/
+              echo "Copied plugin: $dir"
+            fi
+          done
+
+          # Copy build configuration from plugin repo if present
+          [ -f "${PLUGIN_DIR}/src/Directory.Build.props" ] && cp "${PLUGIN_DIR}/src/Directory.Build.props" build/src/
+          [ -f "${PLUGIN_DIR}/src/nuget.config" ] && cp "${PLUGIN_DIR}/src/nuget.config" build/src/
+
+          # Copy root-level files from Nethermind if needed
+          cp nethermind/global.json build/ 2>/dev/null || true
+
+          echo "Build directory structure:"
+          ls -la build/
+          ls -la build/src/
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v5
+        with:
+          global-json-file: build/global.json
+
+      - name: Discover and build plugin projects
+        working-directory: build
+        env:
+          COMMIT_HASH: ${{ github.sha }}
+        run: |
+          echo "Discovering plugin projects..."
+
+          # Find all plugin .csproj files (excluding test projects)
+          plugin_projects=$(find src -maxdepth 2 -name "Nethermind.*.csproj" \
+            ! -path "src/Nethermind/*" \
+            ! -name "*.Test.csproj" \
+            ! -name "*.Tests.csproj")
+
+          if [ -z "$plugin_projects" ]; then
+            echo "ERROR: No plugin projects found"
+            exit 1
+          fi
+
+          echo "Found plugin projects:"
+          echo "$plugin_projects"
+
+          # Build each plugin
+          for project in $plugin_projects; do
+            echo "Building: $project"
+            dotnet publish "$project" \
+              -c Release \
+              -o ./plugin-output \
+              --sc false \
+              -p:Commit="$COMMIT_HASH"
+          done
+
+          echo "Plugin build output:"
+          ls -la ./plugin-output/
+
+      - name: Build Nethermind Runner
+        working-directory: build
+        env:
+          COMMIT_HASH: ${{ github.sha }}
+        run: |
+          echo "Building Nethermind Runner..."
+          dotnet publish src/Nethermind/Nethermind.Runner/Nethermind.Runner.csproj \
+            -c Release \
+            -o ./app \
+            --sc false \
+            -p:Commit="$COMMIT_HASH"
+
+          echo "Nethermind Runner build output:"
+          ls -la ./app/
+
+      - name: Verify plugin integration
+        working-directory: build
+        run: |
+          echo "Setting up plugins directory..."
+          mkdir -p ./app/plugins
+
+          # Copy all plugin DLLs (excluding Nethermind core assemblies)
+          for dll in ./plugin-output/Nethermind.*.dll; do
+            filename=$(basename "$dll")
+            # Skip if it's a core Nethermind assembly (already in app)
+            if [ ! -f "./app/$filename" ]; then
+              cp "$dll" ./app/plugins/
+              echo "Copied plugin assembly: $filename"
+            fi
+          done
+
+          # Copy native libraries if present
+          if [ -d "./plugin-output/runtimes" ]; then
+            cp -r ./plugin-output/runtimes ./app/plugins/
+            echo "Native libraries copied"
+          fi
+
+          # Copy any nested native library structures
+          find ./plugin-output -type d -name "runtimes" | while read -r runtime_dir; do
+            parent_dir=$(dirname "$runtime_dir")
+            relative_path=${parent_dir#./plugin-output/}
+            if [ -n "$relative_path" ] && [ "$relative_path" != "." ]; then
+              mkdir -p "./app/plugins/$relative_path"
+              cp -r "$runtime_dir" "./app/plugins/$relative_path/"
+              echo "Copied nested native libraries from: $relative_path"
+            fi
+          done
+
+          echo "Plugin files in plugins directory:"
+          ls -la ./app/plugins/
+
+          # Verify at least one plugin DLL exists
+          plugin_count=$(find ./app/plugins -maxdepth 1 -name "Nethermind.*.dll" | wc -l)
+          if [ "$plugin_count" -eq 0 ]; then
+            echo "ERROR: No plugin DLLs found in plugins directory"
+            exit 1
+          fi
+
+          echo "Plugin integration verified successfully ($plugin_count plugin assemblies)"
+
+      - name: Copy configuration files
+        env:
+          PLUGIN_SOURCE_DIR: ${{ env.PLUGIN_DIR }}
+        working-directory: build
+        run: |
+          # Copy configs and chainspec if they exist in any plugin
+          for config_dir in ../${PLUGIN_SOURCE_DIR}/src/Nethermind.*/Properties/configs; do
+            if [ -d "$config_dir" ]; then
+              cp -r "$config_dir" ./app/
+              echo "Config files copied from: $config_dir"
+            fi
+          done
+
+          for chainspec_dir in ../${PLUGIN_SOURCE_DIR}/src/Nethermind.*/Properties/chainspec; do
+            if [ -d "$chainspec_dir" ]; then
+              cp -r "$chainspec_dir" ./app/
+              echo "Chainspec files copied from: $chainspec_dir"
+            fi
+          done
+
+          echo "Final app directory structure:"
+          find ./app -type f -name "*.dll" | head -20
+          find ./app -type f -name "*.json" | head -10
+
+  docker-build:
+    if: github.event.pull_request.draft == false
+    name: Docker Build Test
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Free up disk space
+        uses: jlumbroso/free-disk-space@v1.3.1
+        with:
+          large-packages: false
+          tool-cache: false
+
+      - name: Authenticate App
+        id: gh-app
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: ${{ vars.APP_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+          repositories: nethermind,${{ secrets.EXTERNAL_PLUGIN_REPO_NAME }}
+          owner: ${{ github.repository_owner }}
+
+      - name: Check out Nethermind repository
+        uses: actions/checkout@v6
+        with:
+          path: nethermind
+
+      - name: Check out plugin repository
+        uses: actions/checkout@v6
+        with:
+          repository: ${{ github.repository_owner }}/${{ secrets.EXTERNAL_PLUGIN_REPO_NAME }}
+          token: ${{ steps.gh-app.outputs.token }}
+          path: ${{ env.PLUGIN_DIR }}
+
+      - name: Set up build context
+        run: |
+          # Use the plugin repo as the build context
+          # Copy Nethermind source into the expected location
+          cp -r nethermind/src/Nethermind ${PLUGIN_DIR}/src/
+
+          echo "Build context structure:"
+          ls -la ${PLUGIN_DIR}/src/
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build Docker image
+        working-directory: ${{ env.PLUGIN_DIR }}
+        env:
+          COMMIT_HASH: ${{ github.sha }}
+        run: |
+          image_name="nethermind-plugin-test"
+          image_tag="${COMMIT_HASH:0:8}"
+          full_image="${image_name}:${image_tag}"
+
+          echo "Building Docker image: ${full_image}"
+
+          docker buildx build . \
+            --platform linux/amd64 \
+            -f Dockerfile \
+            -t "${full_image}" \
+            --load \
+            --build-arg BUILD_CONFIG=Release \
+            --build-arg CI=true \
+            --build-arg COMMIT_HASH="$COMMIT_HASH"
+
+          echo "Docker build completed successfully"
+
+          echo "Verifying image exists:"
+          docker images | grep "${image_name}"
+
+      - name: Verify Docker image contents
+        env:
+          COMMIT_HASH: ${{ github.sha }}
+        run: |
+          image_name="nethermind-plugin-test"
+          image_tag="${COMMIT_HASH:0:8}"
+
+          echo "Checking plugin files in Docker image..."
+          docker run --rm "${image_name}:${image_tag}" ls -la /app/plugins/ || true
+
+          echo "Docker image verification completed"
