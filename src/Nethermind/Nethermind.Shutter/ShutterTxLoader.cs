@@ -117,7 +117,7 @@ public class ShutterTxLoader(
         }
 
         using ArrayPoolList<SequencedTransaction> sortedIndexes = sequencedTransactions.ToPooledList();
-        sortedIndexes.Sort((a, b) => Bytes.BytesComparer.Compare(a.IdentityPreimage, b.IdentityPreimage));
+        sortedIndexes.Sort<SequencedTransactionByIdentityPreimageComparer>(default);
 
         using ArrayPoolList<int> sortedKeyIndexes = new(txCount, txCount);
         int keyIndex = 0;
@@ -267,6 +267,13 @@ public class ShutterTxLoader(
         public UInt256 GasLimit;
         public byte[] Identity;
         public byte[] IdentityPreimage;
+    }
+
+    private readonly struct SequencedTransactionByIdentityPreimageComparer : IComparer<SequencedTransaction>
+    {
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public int Compare(SequencedTransaction a, SequencedTransaction b) =>
+            Bytes.BytesComparer.Compare(a.IdentityPreimage, b.IdentityPreimage);
     }
 
     private readonly struct DecryptedTransactions : IDisposable

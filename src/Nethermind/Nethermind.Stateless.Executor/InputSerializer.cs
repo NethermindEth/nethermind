@@ -153,15 +153,17 @@ public static class InputSerializer
         if (value.Count == 0)
             return;
 
-        WriteInt32(value.Count, destination, ref offset);
+        ReadOnlySpan<byte[]> valueSpan = value.AsSpan();
+        WriteInt32(valueSpan.Length, destination, ref offset);
 
-        for (int i = 0; i < value.Count; i++)
+        for (int i = 0; i < valueSpan.Length; i++)
         {
-            int len = value[i].Length;
+            byte[] item = valueSpan[i];
+            int len = item.Length;
 
             WriteInt32(len, destination, ref offset);
 
-            value[i].CopyTo(destination.Slice(offset, len));
+            item.CopyTo(destination.Slice(offset, len));
             offset += len;
         }
     }
@@ -172,9 +174,10 @@ public static class InputSerializer
             return 0;
 
         int len = sizeof(int);
+        ReadOnlySpan<byte[]> valueSpan = value.AsSpan();
 
-        for (int i = 0; i < value.Count; i++)
-            len += sizeof(int) + value[i].Length;
+        for (int i = 0; i < valueSpan.Length; i++)
+            len += sizeof(int) + valueSpan[i].Length;
 
         return len;
     }

@@ -224,10 +224,10 @@ internal sealed class StateCompositionVisitor(
             EmptyAccounts = agg.EmptyAccounts,
             CodeBytesTotal = agg.CodeBytes,
             SlotCountHistogram = ImmutableArray.Create<long>(agg.SlotCountHistogram[..]),
-            TopContractsByDepth = BuildSortedTopN(agg.TopN.TopByDepth, agg.TopN.TopByDepthCount, TopNTracker.CompareByDepth),
-            TopContractsByNodes = BuildSortedTopN(agg.TopN.TopByNodes, agg.TopN.TopByNodesCount, TopNTracker.CompareByTotalNodes),
-            TopContractsByValueNodes = BuildSortedTopN(agg.TopN.TopByValueNodes, agg.TopN.TopByValueNodesCount, TopNTracker.CompareByValueNodes),
-            TopContractsBySize = BuildSortedTopN(agg.TopN.TopBySize, agg.TopN.TopBySizeCount, TopNTracker.CompareBySize),
+            TopContractsByDepth = BuildSortedTopN<TopNTracker.ByDepth>(agg.TopN.TopByDepth, agg.TopN.TopByDepthCount),
+            TopContractsByNodes = BuildSortedTopN<TopNTracker.ByTotalNodes>(agg.TopN.TopByNodes, agg.TopN.TopByNodesCount),
+            TopContractsByValueNodes = BuildSortedTopN<TopNTracker.ByValueNodes>(agg.TopN.TopByValueNodes, agg.TopN.TopByValueNodesCount),
+            TopContractsBySize = BuildSortedTopN<TopNTracker.BySize>(agg.TopN.TopBySize, agg.TopN.TopBySizeCount),
             SlotCountByAddress = agg.SlotCountsByOwner,
             CodeHashSizes = new Dictionary<ValueHash256, int>(_codeHashSizes),
             CodeHashRefcounts = agg.CodeHashRefcounts,
@@ -299,15 +299,19 @@ internal sealed class StateCompositionVisitor(
         return agg;
     }
 
-    private static ImmutableArray<TopContractEntry> BuildSortedTopN(
-        TopContractEntry[] entries, int count, TopNTracker.EntryComparer comparer)
+    // Generic over TComparer so Sort<TComparer> specialises and inlines Compare with no
+    // residual delegate dispatch. Sorts descending directly via Reverse<TComparer> so the
+    // display tier (highest-first) gets the array in one pass.
+    private static ImmutableArray<TopContractEntry> BuildSortedTopN<TComparer>(
+        TopContractEntry[] entries, int count)
+        where TComparer : struct, TopNTracker.IEntryComparer
     {
         if (count == 0)
             return [];
 
         TopContractEntry[] sorted = entries.AsSpan(0, count).ToArray();
-        Array.Sort(sorted, 0, count, Comparer<TopContractEntry>.Create((a, b) => comparer(b, a)));
-        return System.Runtime.InteropServices.ImmutableCollectionsMarshal.AsImmutableArray(sorted);
+        sorted.AsSpan().Sort(default(TopNTracker.Reverse<TComparer>));
+        return ImmutableCollectionsMarshal.AsImmutableArray(sorted);
     }
 
     private static double CalcAvgDepth(ReadOnlySpan<DepthCounter> depths)
