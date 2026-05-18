@@ -180,7 +180,6 @@ const networks = {
   "1": "Ethereum mainnet",
   "100": "Gnosis Mainnet",
   "480": "World Mainnet",
-  "8453": "Base mainnet",
   "10200": "Gnosis Chiado Testnet",
   "7032118028": "Ethereum Perfnet"
 }
