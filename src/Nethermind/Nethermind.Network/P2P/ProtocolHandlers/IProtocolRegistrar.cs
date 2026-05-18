@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.Network.P2P.EventArg;
 
 namespace Nethermind.Network.P2P.ProtocolHandlers;
 
@@ -25,4 +26,8 @@ public interface IProtocolRegistrar
     /// Registers a sync peer protocol (e.g., ETH) — wires into sync pool, tx pool, and peer storage.
     /// </summary>
     void Register(ISession session, SyncPeerProtocolHandlerBase handler);
+
+    void OnProtocolInitialized(ISession session, ProtocolHandlerBase handler, ProtocolInitializedEventArgs args);
+
+    void OnSubprotocolRequested(ISession session, ProtocolHandlerBase handler, string protocolCode, int version);
 }
