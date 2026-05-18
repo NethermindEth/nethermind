@@ -2,9 +2,11 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
+using System.Threading;
 using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
@@ -736,8 +738,14 @@ public class PatriciaTreeBulkSetterTests
 
     public class StrictRawScopedTrieStore(IScopedTrieStore baseTrieStore) : IScopedTrieStore
     {
+        private readonly ConcurrentDictionary<TreePath, TrieNode> _byPath = new();
+
         public TrieNode FindCachedOrUnknown(in TreePath path, Hash256 hash)
         {
+            if (_byPath.TryGetValue(path, out TrieNode cached) && cached.Keccak != hash)
+                throw new InvalidOperationException(
+                    $"Node hash mismatch at {path}: cached={cached.Keccak}, requested={hash}");
+
             TrieNode node = baseTrieStore.FindCachedOrUnknown(in path, hash);
             if (hash != Keccak.EmptyTreeHash)
             {
@@ -755,6 +763,39 @@ public class PatriciaTreeBulkSetterTests
 
         public INodeStorage.KeyScheme Scheme => baseTrieStore.Scheme;
 
-        public ICommitter BeginCommit(TrieNode root, WriteFlags writeFlags = WriteFlags.None) => baseTrieStore.BeginCommit(root, writeFlags);
+        // BulkSetAndCommit's parallel path requires a concurrency-safe ICommitter. Production
+        // TrieStore.BlockCommitter is; RawScopedTrieStore.Committer (the test backing) isn't —
+        // it wraps a plain IWriteBatch. Wrap it with a lock so tests can exercise the parallel path.
+        public ICommitter BeginCommit(TrieNode root, WriteFlags writeFlags = WriteFlags.None) =>
+            new SynchronizedCommitter(baseTrieStore.BeginCommit(root, writeFlags), _byPath);
+
+        // Mirrors TrieStore.BlockCommitter's quota semantics so tests actually exercise the
+        // parallel dispatch. Without this, TryRequestConcurrentQuota returns the interface
+        // default (false) and every parallel nib falls into the inline branch — the parallel
+        // code path would be uncovered.
+        private sealed class SynchronizedCommitter(ICommitter inner, ConcurrentDictionary<TreePath, TrieNode> byPath) : ICommitter
+        {
+            private int _concurrency = Environment.ProcessorCount;
+
+            public void Dispose() => inner.Dispose();
+
+            public TrieNode CommitNode(ref TreePath path, TrieNode node)
+            {
+                lock (inner)
+                {
+                    byPath[path] = node;
+                    return inner.CommitNode(ref path, node);
+                }
+            }
+
+            public bool TryRequestConcurrentQuota()
+            {
+                if (Interlocked.Decrement(ref _concurrency) >= 0) return true;
+                Interlocked.Increment(ref _concurrency);
+                return false;
+            }
+
+            public void ReturnConcurrencyQuota() => Interlocked.Increment(ref _concurrency);
+        }
     }
 }

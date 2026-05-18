@@ -695,6 +695,14 @@ namespace Nethermind.Trie
                     "An attempt was made to ask about whether a child is null on a non-branch node.");
         }
 
+        internal object? GetRawChild(int i)
+        {
+            if (IsExtension) i++;
+            if (_nodeData is null) return null;
+            object data = _nodeData[i];
+            return ReferenceEquals(data, _nullNode) ? null : data;
+        }
+
         public bool TryGetDirtyChild(int i, [NotNullWhen(true)] out TrieNode? dirtyChild)
         {
             if (IsExtension)
