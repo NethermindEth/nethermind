@@ -106,7 +106,7 @@ public partial class BlockAccessListManager
             // IncrementalValidation only covered indices 0..txCount; the post-execution row
             // (txCount + 1) was just merged but not yet compared.
             ValidateBlockAccessList(block, (uint)(block.Transactions.Length + 1));
-            ValidateStructuralEquivalence(block, GeneratedBlockAccessList);
+            ValidateStructuralEquivalence(block);
             return;
         }
 
@@ -114,44 +114,30 @@ public partial class BlockAccessListManager
         block.Header.BlockAccessListHash = new(ValueKeccak.Compute(block.EncodedBlockAccessList).Bytes);
     }
 
-    /// <summary>Catches what the canonical-bytes hash compare used to catch but the column-index
-    /// per-row check doesn't: account-set presence and the storage_reads contents per account.</summary>
-    private static void ValidateStructuralEquivalence(Block block, GeneratedBlockAccessList generated)
+    private void ValidateStructuralEquivalence(Block block)
     {
+        BlockAccessListValidationIndex generatedIndex = _generatedValidationIndex!;
         ReadOnlyBlockAccessList suggested = block.BlockAccessList!;
-        ReadOnlySpan<ReadOnlyAccountChanges> suggestedAccounts = suggested.AccountChangesAsSpan;
 
-        if (suggestedAccounts.Length != generated.AccountChanges.Count)
+        BlockAccessListValidationIndex.StructuralMismatchKind mismatch =
+            generatedIndex.FindStructuralMismatch(suggested, out Address? mismatchAddress);
+
+        switch (mismatch)
         {
-            throw new InvalidBlockLevelAccessListException(block.Header,
-                $"Account-set size mismatch: suggested={suggestedAccounts.Length}, generated={generated.AccountChanges.Count}.");
-        }
-
-        for (int a = 0; a < suggestedAccounts.Length; a++)
-        {
-            ReadOnlyAccountChanges sug = suggestedAccounts[a];
-            GeneratedAccountChanges gen = generated.GetAccountChanges(sug.Address)
-                ?? throw new InvalidBlockLevelAccessListException(block.Header,
-                    $"Suggested BAL declares account {sug.Address} which execution did not touch.");
-
-            ReadOnlySpan<UInt256> sugReads = sug.StorageReads;
-            if (sugReads.Length != gen.StorageReads.Count)
-            {
+            case BlockAccessListValidationIndex.StructuralMismatchKind.None:
+                return;
+            case BlockAccessListValidationIndex.StructuralMismatchKind.AccountCountMismatch:
                 throw new InvalidBlockLevelAccessListException(block.Header,
-                    $"storage_reads count mismatch for {sug.Address}: suggested={sugReads.Length}, generated={gen.StorageReads.Count}.");
-            }
-
-            // Both sides keep storage_reads sorted (decoder-validated; SortedSet on the generated side).
-            int i = 0;
-            foreach (UInt256 genRead in gen.StorageReads)
-            {
-                if (!sugReads[i].Equals(genRead))
-                {
-                    throw new InvalidBlockLevelAccessListException(block.Header,
-                        $"storage_reads mismatch for {sug.Address} at offset {i}.");
-                }
-                i++;
-            }
+                    $"Account-set size mismatch: suggested={suggested.AccountChanges.Count}, generated={generatedIndex.MarkedAccountCount}.");
+            case BlockAccessListValidationIndex.StructuralMismatchKind.MissingInGenerated:
+                throw new InvalidBlockLevelAccessListException(block.Header,
+                    $"Suggested BAL declares account {mismatchAddress} which execution did not touch.");
+            case BlockAccessListValidationIndex.StructuralMismatchKind.StorageReadsCountMismatch:
+                throw new InvalidBlockLevelAccessListException(block.Header,
+                    $"storage_reads count mismatch for {mismatchAddress}.");
+            case BlockAccessListValidationIndex.StructuralMismatchKind.StorageReadsContentMismatch:
+                throw new InvalidBlockLevelAccessListException(block.Header,
+                    $"storage_reads mismatch for {mismatchAddress}.");
         }
     }
 }

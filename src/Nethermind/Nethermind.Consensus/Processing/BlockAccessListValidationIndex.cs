@@ -4,9 +4,11 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Numerics;
 using System.Runtime.InteropServices;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 
@@ -37,6 +39,12 @@ internal sealed class BlockAccessListValidationIndex
     private readonly StorageLane _storage;
     private ulong[] _hasAccountWords = [];
     private bool _hasOutOfRangeChange;
+    // Generated-side storage_reads accumulator (mutable index only). Keyed by addressIndex
+    // ordinal; the SortedSet matches today's GeneratedAccountChanges._storageReads shape so a
+    // single linear walk against the suggested side's UInt256[] StorageReads works for the
+    // structural-equivalence check. Allocates only for accounts that actually have reads —
+    // ~half the touched accounts per typical block — vs every touched account today.
+    private readonly Dictionary<int, SortedSet<UInt256>>? _generatedStorageReads;
 
     public BlockAccessListValidationIndex(int txCount, AddressIndex addressIndex, BlockAccessListValidationIndex suggested)
     {
@@ -49,6 +57,7 @@ internal sealed class BlockAccessListValidationIndex
         _nonce = Lane<ulong>.CreateMutableLike(suggested._nonce);
         _code = Lane<ValueHash256>.CreateMutableLike(suggested._code);
         _storage = StorageLane.CreateMutableLike(suggested._storage);
+        _generatedStorageReads = new();
     }
 
     private BlockAccessListValidationIndex(
@@ -114,6 +123,7 @@ internal sealed class BlockAccessListValidationIndex
         foreach (AccountChangesAtIndex accountChanges in slice.AccountChanges)
         {
             int accountOrdinal = _addressIndex.GetOrAdd(accountChanges.Address);
+            MarkAccount(ref _hasAccountWords, accountOrdinal);
 
             if (accountChanges.BalanceChange is { } balance)
             {
@@ -138,6 +148,14 @@ internal sealed class BlockAccessListValidationIndex
                 if (TryGetRow(kv.Value.Index, _lastIndex, out int row)) _storage.Add(row, accountOrdinal, kv.Key, kv.Value.Value);
                 else _hasOutOfRangeChange = true;
             }
+
+            if (accountChanges.StorageReads.Count > 0)
+            {
+                ref SortedSet<UInt256>? reads = ref CollectionsMarshal.GetValueRefOrAddDefault(
+                    _generatedStorageReads!, accountOrdinal, out _);
+                reads ??= new SortedSet<UInt256>(GenericComparer.GetOptimized<UInt256>());
+                foreach (UInt256 read in accountChanges.StorageReads) reads.Add(read);
+            }
         }
 
         _balance.SortTouchedRows();
@@ -149,6 +167,79 @@ internal sealed class BlockAccessListValidationIndex
     public bool HasAccount(Address address) =>
         _addressIndex.TryGet(address, out int accountOrdinal) &&
         HasAccountOrdinal(accountOrdinal);
+
+    /// <summary>Number of accounts marked in this index's bitmap. Equivalent to the count of
+    /// touched addresses on the generated side or declared addresses on the suggested side.</summary>
+    public int MarkedAccountCount
+    {
+        get
+        {
+            int count = 0;
+            ReadOnlySpan<ulong> words = _hasAccountWords;
+            for (int i = 0; i < words.Length; i++) count += BitOperations.PopCount(words[i]);
+            return count;
+        }
+    }
+
+    public enum StructuralMismatchKind
+    {
+        None,
+        AccountCountMismatch,
+        MissingInGenerated,
+        StorageReadsCountMismatch,
+        StorageReadsContentMismatch,
+    }
+
+    /// <summary>Catches what the column-index <see cref="ChangesEqual"/> doesn't: account-set
+    /// presence (via bitmap) and the storage_reads contents per account. Equivalent to
+    /// re-encoding the generated BAL and comparing bytes to the wire hash, but without the
+    /// encode + Keccak pass — same shape as Reth's <c>rebuilt_bal.as_slice() != decoded_bal
+    /// .as_bal().as_slice()</c> in paradigmxyz/reth#24297.</summary>
+    public StructuralMismatchKind FindStructuralMismatch(ReadOnlyBlockAccessList suggested, out Address? mismatchAddress)
+    {
+        mismatchAddress = null;
+
+        if (suggested.AccountChanges.Count != MarkedAccountCount)
+        {
+            return StructuralMismatchKind.AccountCountMismatch;
+        }
+
+        foreach (ReadOnlyAccountChanges sug in suggested.AccountChanges)
+        {
+            if (!_addressIndex.TryGet(sug.Address, out int ordinal) || !HasAccountOrdinal(ordinal))
+            {
+                mismatchAddress = sug.Address;
+                return StructuralMismatchKind.MissingInGenerated;
+            }
+
+            SortedSet<UInt256>? genReads = null;
+            _generatedStorageReads?.TryGetValue(ordinal, out genReads);
+            int genReadsCount = genReads?.Count ?? 0;
+            ReadOnlySpan<UInt256> sugReads = sug.StorageReads;
+
+            if (sugReads.Length != genReadsCount)
+            {
+                mismatchAddress = sug.Address;
+                return StructuralMismatchKind.StorageReadsCountMismatch;
+            }
+
+            if (genReads is not null)
+            {
+                int i = 0;
+                foreach (UInt256 r in genReads)
+                {
+                    if (!sugReads[i].Equals(r))
+                    {
+                        mismatchAddress = sug.Address;
+                        return StructuralMismatchKind.StorageReadsContentMismatch;
+                    }
+                    i++;
+                }
+            }
+        }
+
+        return StructuralMismatchKind.None;
+    }
 
     public bool ChangesEqual(BlockAccessListValidationIndex other, uint index)
     {
