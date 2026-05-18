@@ -68,6 +68,18 @@ public ref struct HsstBTreeBuilder<TWriter, TReader, TPin>
     private readonly bool _keyFirst;
     private int _keyLength;
 
+    // Single global CommonKeyPrefix length used by every BSearchIndex node in
+    // this HSST — every page-local leaf and every intermediate writes
+    // CommonPrefixLen = _globalLcp. The trailer's RootPrefix carries the same
+    // _globalLcp bytes from entry 0's key. Callers pass this at construction
+    // (default 0 for random / hash-derived keys); workloads with a known
+    // structural prefix (e.g., a slot-level HSST whose entries all share an
+    // outer-key prefix) should pass it so the leaves and intermediates can
+    // strip those bytes off each stored slot. The builder relies on the
+    // caller's contract that every entry's first _globalLcp bytes match
+    // entry 0's first _globalLcp bytes.
+    private readonly int _globalLcp;
+
     // Per-build working buffers (entry positions, full keys, per-entry LCP, current /
     // next index-build levels, value scratch, etc.). When the builder is constructed
     // via the auto-owned overload, this field is the live storage; the borrowed
@@ -80,6 +92,14 @@ public ref struct HsstBTreeBuilder<TWriter, TReader, TPin>
     // HsstBTreeBuilderBuffers is a ref struct and not eligible for T* / managed fields.
     private readonly unsafe void* _externalBuffers;
     private readonly bool _useExternalBuffers;
+
+    // The previous entry's full key, used by <see cref="OnEntryAdded"/> and
+    // <see cref="MaybeFlushBeforeEntry"/> to compute online LCP. Independent of
+    // <c>Buffers.PendingKeys</c> (which only holds keys for the in-flight pending
+    // set and is cleared on each leaf emission), so the LCP chain stays intact
+    // across flushes. Lazily allocated to <c>_keyLength</c> bytes on the first add;
+    // overwritten in-place on every subsequent add.
+    private byte[]? _prevKeyBuf;
 
     // Index of the first entry that has not yet been folded into a page-local leaf.
     // Add / FinishValueWrite push entries; <see cref="MaybeFlushBeforeEntry"/> closes
@@ -108,10 +128,13 @@ public ref struct HsstBTreeBuilder<TWriter, TReader, TPin>
     /// because the value length must be known up front, so callers must use
     /// <see cref="Add"/>.
     /// </summary>
-    public HsstBTreeBuilder(ref TWriter writer, int keyLength, HsstBTreeOptions? options = null, int expectedKeyCount = 16, bool keyFirst = false)
+    public HsstBTreeBuilder(ref TWriter writer, int keyLength, HsstBTreeOptions? options = null, int expectedKeyCount = 16, bool keyFirst = false, int commonKeyPrefixLength = 0)
     {
         ArgumentOutOfRangeException.ThrowIfLessThan(keyLength, -1);
         ArgumentOutOfRangeException.ThrowIfGreaterThan(keyLength, 255);
+        ArgumentOutOfRangeException.ThrowIfNegative(commonKeyPrefixLength);
+        if (keyLength >= 0)
+            ArgumentOutOfRangeException.ThrowIfGreaterThan(commonKeyPrefixLength, keyLength);
 
         HsstBTreeOptions opts = options ?? HsstBTreeOptions.Default;
 
@@ -120,6 +143,7 @@ public ref struct HsstBTreeBuilder<TWriter, TReader, TPin>
         _options = opts;
         _keyLength = keyLength;
         _keyFirst = keyFirst;
+        _globalLcp = commonKeyPrefixLength;
 
         _ownedBuffers = new HsstBTreeBuilderBuffers(expectedKeyCount);
         _useExternalBuffers = false;
@@ -137,10 +161,13 @@ public ref struct HsstBTreeBuilder<TWriter, TReader, TPin>
     /// responsibility to dispose.
     /// See the primary constructor for <paramref name="keyFirst"/> semantics.
     /// </summary>
-    public unsafe HsstBTreeBuilder(ref TWriter writer, scoped ref HsstBTreeBuilderBuffers buffers, int keyLength, HsstBTreeOptions? options = null, int expectedKeyCount = 16, bool keyFirst = false)
+    public unsafe HsstBTreeBuilder(ref TWriter writer, scoped ref HsstBTreeBuilderBuffers buffers, int keyLength, HsstBTreeOptions? options = null, int expectedKeyCount = 16, bool keyFirst = false, int commonKeyPrefixLength = 0)
     {
         ArgumentOutOfRangeException.ThrowIfLessThan(keyLength, -1);
         ArgumentOutOfRangeException.ThrowIfGreaterThan(keyLength, 255);
+        ArgumentOutOfRangeException.ThrowIfNegative(commonKeyPrefixLength);
+        if (keyLength >= 0)
+            ArgumentOutOfRangeException.ThrowIfGreaterThan(commonKeyPrefixLength, keyLength);
 
         HsstBTreeOptions opts = options ?? HsstBTreeOptions.Default;
 
@@ -149,6 +176,7 @@ public ref struct HsstBTreeBuilder<TWriter, TReader, TPin>
         _options = opts;
         _keyLength = keyLength;
         _keyFirst = keyFirst;
+        _globalLcp = commonKeyPrefixLength;
 
         buffers.ResetForBuild(expectedKeyCount);
         _externalBuffers = Unsafe.AsPointer(ref buffers);
@@ -186,10 +214,10 @@ public ref struct HsstBTreeBuilder<TWriter, TReader, TPin>
     }
 
     [UnscopedRef]
-    private ref NativeMemoryListRef<byte> AllKeys
+    private ref NativeMemoryListRef<byte> PendingKeys
     {
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        get => ref Buffers.AllKeys;
+        get => ref Buffers.PendingKeys;
     }
 
     /// <summary>
@@ -288,7 +316,7 @@ public ref struct HsstBTreeBuilder<TWriter, TReader, TPin>
         }
 
         EntryPositions.Add(metadataPos);
-        if (key.Length > 0) AllKeys.AddRange(key);
+        if (key.Length > 0) PendingKeys.AddRange(key);
         OnEntryAdded(key);
     }
 
@@ -402,7 +430,7 @@ public ref struct HsstBTreeBuilder<TWriter, TReader, TPin>
             if (value.Length > 0)
                 IByteBufferWriter.Copy(ref _writer, value);
             EntryPositions.Add(entryStart);
-            if (key.Length > 0) AllKeys.AddRange(key);
+            if (key.Length > 0) PendingKeys.AddRange(key);
             OnEntryAdded(key);
             return;
         }
@@ -445,11 +473,30 @@ public ref struct HsstBTreeBuilder<TWriter, TReader, TPin>
         // Up to 128 prefix bytes per BSearchIndexLayoutPlanner.MaxCommonKeyPrefixLen.
         Span<byte> rootPrefixBytes = stackalloc byte[128];
         ref HsstBTreeBuilderBuffers bufs = ref Buffers;
-        HsstIndexBuilder<TWriter, TReader, TPin> indexBuilder = new(
-            ref _writer, bufs.EntryPositions.AsSpan(), _keyLength, ref bufs, _keyFirst);
-        rootSize = indexBuilder.Build(absoluteIndexStart, maxLeafEntries, maxIntermediateEntries, minLeafEntries, maxIntermediateBytes, minIntermediateChildren, minIntermediateBytes);
-        rootPrefixLen = indexBuilder.RootPrefixLen;
-        if (rootPrefixLen > 0) indexBuilder.CopyRootPrefixBytes(rootPrefixBytes[..rootPrefixLen]);
+
+        // Open a single data-section reader view for the whole intermediate-build
+        // phase. By this point trigger 3 has flushed every pending entry into a
+        // leaf, so PendingKeys is empty and the index builder must re-fetch any
+        // child's leftmost-entry key by reaching back into the data section.
+        // The single-reader-at-a-time contract means we open once, use throughout
+        // Build, and dispose in finally.
+        TReader reader = _writer.OpenReader(dataSectionSize);
+        try
+        {
+            HsstIndexBuilder<TWriter, TReader, TPin> indexBuilder = new(
+                ref _writer, bufs.EntryPositions.AsSpan(), _keyLength, ref bufs, _keyFirst,
+                globalLcp: _globalLcp,
+                pendingFirstEntryIdx: bufs.EntryPositions.Count,
+                reader: reader,
+                useDataReader: true);
+            rootSize = indexBuilder.Build(absoluteIndexStart, maxLeafEntries, maxIntermediateEntries, minLeafEntries, maxIntermediateBytes, minIntermediateChildren, minIntermediateBytes);
+            rootPrefixLen = indexBuilder.RootPrefixLen;
+            if (rootPrefixLen > 0) indexBuilder.CopyRootPrefixBytes(rootPrefixBytes[..rootPrefixLen]);
+        }
+        finally
+        {
+            _writer.DisposeActiveReader();
+        }
 
         if ((uint)rootSize > ushort.MaxValue)
             throw new InvalidOperationException($"Root node size {rootSize} exceeds u16 trailer field");
@@ -474,7 +521,7 @@ public ref struct HsstBTreeBuilder<TWriter, TReader, TPin>
 
     /// <summary>
     /// Per-entry bookkeeping: compute the new entry's LCP against the previous entry's
-    /// key (stored in <see cref="AllKeys"/>), record it in <c>Buffers.CommonPrefixArr</c>,
+    /// key (stored in <see cref="PendingKeys"/>), record it in <c>Buffers.CommonPrefixArr</c>,
     /// and fire the naive trigger when <see cref="NaiveLeafBatchSize"/> entries have
     /// accumulated since the last flush.
     /// </summary>
@@ -482,13 +529,11 @@ public ref struct HsstBTreeBuilder<TWriter, TReader, TPin>
     {
         int entryIdx = EntryPositions.Count - 1;
         int cp = 0;
-        if (entryIdx > 0 && _keyLength > 0)
+        if (entryIdx > 0 && _keyLength > 0 && _prevKeyBuf is not null)
         {
-            ReadOnlySpan<byte> all = AllKeys.AsSpan();
-            ReadOnlySpan<byte> prev = all.Slice((entryIdx - 1) * _keyLength, _keyLength);
-            int n = Math.Min(prev.Length, key.Length);
+            int n = Math.Min(_prevKeyBuf.Length, key.Length);
             int i = 0;
-            while (i < n && prev[i] == key[i]) i++;
+            while (i < n && _prevKeyBuf[i] == key[i]) i++;
             cp = i;
         }
         ref HsstBTreeBuilderBuffers bufs = ref Buffers;
@@ -508,6 +553,15 @@ public ref struct HsstBTreeBuilder<TWriter, TReader, TPin>
             bufs.CommonPrefixArr = newArr;
         }
         bufs.CommonPrefixArr![entryIdx] = (byte)cp;
+
+        // Update _prevKeyBuf for the next entry's LCP. Lazy-allocate on first add;
+        // overwrite in place thereafter so the chain stays intact across leaf flushes.
+        if (_keyLength > 0 && key.Length == _keyLength)
+        {
+            if (_prevKeyBuf is null || _prevKeyBuf.Length < _keyLength)
+                _prevKeyBuf = new byte[_keyLength];
+            key.CopyTo(_prevKeyBuf);
+        }
     }
 
     /// <summary>
@@ -524,15 +578,14 @@ public ref struct HsstBTreeBuilder<TWriter, TReader, TPin>
         if (_keyLength <= 0) return;
 
         // Compute the would-be LCP for the new entry against the previous entry's key,
-        // so the max-sepLen prediction includes it.
+        // so the max-sepLen prediction includes it. Uses _prevKeyBuf (set by the last
+        // OnEntryAdded) — survives leaf flushes that clear PendingKeys.
         int newSepLen;
-        if (key.Length == _keyLength && EntryPositions.Count > 0)
+        if (key.Length == _keyLength && _prevKeyBuf is not null)
         {
-            ReadOnlySpan<byte> all = AllKeys.AsSpan();
-            ReadOnlySpan<byte> prev = all.Slice((EntryPositions.Count - 1) * _keyLength, _keyLength);
-            int n = Math.Min(prev.Length, key.Length);
+            int n = Math.Min(_prevKeyBuf.Length, key.Length);
             int i = 0;
-            while (i < n && prev[i] == key[i]) i++;
+            while (i < n && _prevKeyBuf[i] == key[i]) i++;
             newSepLen = Math.Min(i + 1, _keyLength);
         }
         else
@@ -592,23 +645,36 @@ public ref struct HsstBTreeBuilder<TWriter, TReader, TPin>
         HsstBTreeBuilderBuffers.EnsureSize(ref bufs.ValueScratch, Math.Max(64, count * (2 + 8)));
 
         // Wrap each pending entry in a single-entry descriptor and feed to the unified
-        // WriteIndexNode. This is the leaf flavor of mixing leaves and intermediates
-        // through one node-writer code path.
+        // WriteIndexNode. Every leaf and intermediate in this HSST uses the same
+        // CommonPrefixLen = _globalLcp; the descriptor's PrefixLen mirrors that for
+        // consistency with the intermediate-construction path.
         Span<HsstIndexNodeInfo> children = stackalloc HsstIndexNodeInfo[count];
         ReadOnlySpan<long> entryPositions = bufs.EntryPositions.AsSpan();
         for (int i = 0; i < count; i++)
         {
             int entryIdx = firstEntryIdx + i;
-            children[i] = new HsstIndexNodeInfo(entryPositions[entryIdx], entryIdx, entryIdx, prefixLen: 0);
+            children[i] = new HsstIndexNodeInfo(entryPositions[entryIdx], entryIdx, entryIdx, prefixLen: _globalLcp);
         }
 
+        // Inline-emit path: every child's FirstEntry is in [_pendingFirstEntryIdx,
+        // EntryPositions.Count), so the builder's ReadKey lands in PendingKeys for
+        // each per-child key read. No data-section reader is needed; passing
+        // default(TReader) and useDataReader=false explicitly enforces that.
         HsstIndexBuilder<TWriter, TReader, TPin> indexBuilder = new(
-            ref _writer, entryPositions, _keyLength, ref bufs, _keyFirst);
-        int crossEntryLcp = indexBuilder.ComputeCrossEntryLcp(children, bufs.CommonPrefixArr!);
-        indexBuilder.WriteIndexNode(children, BSearchNodeKind.Leaf, crossEntryLcp,
-            bufs.ValueScratch!, bufs.CommonPrefixArr!, out int leafPrefixLen);
+            ref _writer, entryPositions, _keyLength, ref bufs, _keyFirst,
+            globalLcp: _globalLcp,
+            pendingFirstEntryIdx: _pendingFirstEntryIdx,
+            reader: default!,
+            useDataReader: false);
+        indexBuilder.WriteIndexNode(children, BSearchNodeKind.Leaf,
+            bufs.ValueScratch!, bufs.CommonPrefixArr!);
 
-        bufs.CurrentLevel.Add(new HsstIndexNodeInfo(nodeStart, firstEntryIdx, firstEntryIdx + count - 1, leafPrefixLen));
+        bufs.CurrentLevel.Add(new HsstIndexNodeInfo(nodeStart, firstEntryIdx, firstEntryIdx + count - 1, _globalLcp));
         _pendingFirstEntryIdx = EntryPositions.Count;
+        // Drop the in-flight keys now that they've been folded into a leaf. Subsequent
+        // adds repopulate the buffer with the next pending set; intermediate
+        // construction at Build time falls back to data-section reads for any entry
+        // whose key isn't in PendingKeys anymore.
+        bufs.PendingKeys.Clear();
     }
 }

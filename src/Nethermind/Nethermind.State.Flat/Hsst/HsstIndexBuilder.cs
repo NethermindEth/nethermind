@@ -43,22 +43,45 @@ public ref struct HsstIndexBuilder<TWriter, TReader, TPin>
     // byte). Used directly wherever we previously tracked minKeyLen — those collapse
     // to this single scalar.
     private readonly int _keyLength;
+    // Single global CommonPrefixLen used by every BSearchIndex node this builder
+    // emits — every leaf and intermediate writes the same <c>CommonPrefixLen = _globalLcp</c>
+    // header field, and the HSST trailer carries the same <c>_globalLcp</c> bytes from
+    // entry 0. Supplied by HsstBTreeBuilder at construction; the planner's per-node lcp
+    // pick is bypassed via <see cref="BSearchIndexLayoutPlanner.PlanWithFixedLcp"/>.
+    private readonly int _globalLcp;
     // When true, entryPositions point to EntryStart (FullKey byte 0) and entry bytes
     // are [FullKey][LEB128 ValueLength][Value]. When false (default), entryPositions
     // point to MetadataStart (LEB128 byte) and bytes are [Value][LEB128][FullKey].
     private readonly bool _keyFirst;
     // Pointer to the caller-supplied buffers struct holding the work arrays/lists
-    // (AllKeys, EntryPositions, CommonPrefixArr, CurrentLevel, NextLevel, ValueScratch).
+    // (PendingKeys, EntryPositions, CommonPrefixArr, CurrentLevel, NextLevel, ValueScratch).
     // Stored as void* because HsstBTreeBuilderBuffers is a ref struct and therefore not
     // eligible for ordinary T* / managed-pointer fields.
     private readonly unsafe void* _buffersPtr;
 
-    public unsafe HsstIndexBuilder(ref TWriter writer, ReadOnlySpan<long> entryPositions, int keyLength, scoped ref HsstBTreeBuilderBuffers buffers, bool keyFirst = false)
+    // Global entry index of the first key still in PendingKeys. ReadKey treats any
+    // <c>idx &gt;= _pendingFirstEntryIdx</c> as living in PendingKeys at local offset
+    // <c>(idx - _pendingFirstEntryIdx) * keyLength</c>; lower indices fall through to
+    // <see cref="ReadKeyFromDataSection"/>. The EmitInlineLeaf transient builder
+    // passes the current pending start; the Build-time builder passes
+    // <c>entryPositions.Length</c> so the pending branch is never taken.
+    private readonly int _pendingFirstEntryIdx;
+    // Data-section reader view used for <see cref="ReadKeyFromDataSection"/>. Default
+    // <c>(TReader)default</c> when this builder only ever reads from PendingKeys
+    // (the inline-emit path).
+    private TReader _reader;
+    private readonly bool _useDataReader;
+
+    public unsafe HsstIndexBuilder(ref TWriter writer, ReadOnlySpan<long> entryPositions, int keyLength, scoped ref HsstBTreeBuilderBuffers buffers, bool keyFirst = false, int globalLcp = 0, int pendingFirstEntryIdx = 0, TReader reader = default!, bool useDataReader = false)
     {
         _writer = ref writer;
         _entryPositions = entryPositions;
         _keyLength = keyLength;
+        _globalLcp = globalLcp;
         _keyFirst = keyFirst;
+        _pendingFirstEntryIdx = pendingFirstEntryIdx;
+        _reader = reader;
+        _useDataReader = useDataReader;
         _buffersPtr = Unsafe.AsPointer(ref buffers);
     }
 
@@ -90,8 +113,6 @@ public ref struct HsstIndexBuilder<TWriter, TReader, TPin>
 
         // Root prefix tracking: the final node emitted is the root.
         _rootPrefixLen = 0;
-        int lastNodePrefixLen = 0;
-
         if (_entryPositions.Length == 0)
         {
             // Empty index: write a single empty leaf node.
@@ -127,7 +148,7 @@ public ref struct HsstIndexBuilder<TWriter, TReader, TPin>
         if (currentNative.Count == 1)
         {
             HsstIndexNodeInfo only = currentNative.AsSpan()[0];
-            _rootPrefixLen = only.PrefixLen;
+            _rootPrefixLen = _globalLcp;
             return checked((int)(absoluteIndexStart - only.ChildOffset));
         }
 
@@ -160,12 +181,10 @@ public ref struct HsstIndexBuilder<TWriter, TReader, TPin>
 
                 long nodeStart = _writer.Written;
                 long relativeStart = nodeStart - startWritten;
-                WriteIndexNode(children, BSearchNodeKind.Intermediate, crossEntryLcp,
-                    valueScratchArr, commonPrefixArr,
-                    out int internalPrefixLen);
+                WriteIndexNode(children, BSearchNodeKind.Intermediate,
+                    valueScratchArr, commonPrefixArr);
                 int nodeLen = checked((int)(_writer.Written - nodeStart));
                 lastNodeLen = nodeLen;
-                lastNodePrefixLen = internalPrefixLen;
 
                 HsstIndexNodeInfo first = children[0];
                 HsstIndexNodeInfo last = children[childCount - 1];
@@ -176,7 +195,7 @@ public ref struct HsstIndexBuilder<TWriter, TReader, TPin>
                     childOffset,
                     first.FirstEntry,
                     last.LastEntry,
-                    internalPrefixLen));
+                    _globalLcp));
 
                 childIdx += childCount;
             }
@@ -187,7 +206,7 @@ public ref struct HsstIndexBuilder<TWriter, TReader, TPin>
             nextNative = ref tmp;
         }
 
-        _rootPrefixLen = lastNodePrefixLen;
+        _rootPrefixLen = _globalLcp;
         return lastNodeLen;
     }
 
@@ -208,9 +227,13 @@ public ref struct HsstIndexBuilder<TWriter, TReader, TPin>
     public unsafe int CopyRootPrefixBytes(scoped Span<byte> dest)
     {
         if (_rootPrefixLen == 0) return 0;
-        ref HsstBTreeBuilderBuffers bufs = ref Buffers;
-        ReadOnlySpan<byte> allKeys = bufs.AllKeys.AsSpan();
-        allKeys[.._rootPrefixLen].CopyTo(dest);
+        // Re-read entry 0's first _rootPrefixLen bytes from the data section. By the
+        // time Build() has finished, every entry has been folded into a leaf and
+        // PendingKeys is empty, so the data section is the only place left to find
+        // the key bytes. One read per build.
+        Span<byte> keyScratch = stackalloc byte[MaxKeyLen];
+        ReadKeyFromDataSection(0, keyScratch[.._keyLength]);
+        keyScratch[.._rootPrefixLen].CopyTo(dest);
         return _rootPrefixLen;
     }
 
@@ -249,31 +272,30 @@ public ref struct HsstIndexBuilder<TWriter, TReader, TPin>
     /// <see cref="BSearchNodeKind"/> covering the given <paramref name="children"/>. Used
     /// for both inline page-local leaves (each child wraps a single entry; pushed from
     /// <see cref="HsstBTreeBuilder{TWriter,TReader,TPin}"/> trigger paths) and intermediate
-    /// nodes (each child is a previously-emitted leaf / intermediate). The mixing case —
-    /// a level whose children are a mix of entry- and node-descriptors — is supported by
-    /// the uniform separator formula <c>max(natural LCP + 1, child.PrefixLen)</c>: entries
-    /// contribute <c>PrefixLen = 0</c> and the natural LCP dominates; nodes contribute a
-    /// non-zero <c>PrefixLen</c> the parent's separator must carry so the child can
-    /// recover its <c>CommonKeyPrefix</c> at descent.
+    /// nodes (each child is a previously-emitted leaf / intermediate). Every node in the
+    /// HSST shares the same <c>CommonPrefixLen = _globalLcp</c>, so each child's prefix
+    /// is uniformly known and the per-child separator length simplifies to
+    /// <c>max(natural LCP + 1, _globalLcp)</c>: short separators (e.g., entry 0's natural
+    /// sep length of 1) get padded up to the global prefix, while longer ones carry the
+    /// natural disambiguating bytes.
     /// </summary>
     internal void WriteIndexNode(
         scoped ReadOnlySpan<HsstIndexNodeInfo> children,
         BSearchNodeKind kind,
-        int crossEntryLcp,
         scoped Span<byte> valueScratch,
-        byte[] commonPrefixArr,
-        out int nodePrefixLen)
+        byte[] commonPrefixArr)
     {
         int count = children.Length;
+        int prefixLen = _globalLcp;
 
-        // Per-child separator length: natural LCP-derived length floored at
-        // child.PrefixLen so the parent's slot carries every byte the child's
-        // BSearchIndex header needs to recover its CommonKeyPrefix.
+        // Per-child separator length: natural LCP-derived length floored at the
+        // single global prefix so the parent's slot always carries every byte of
+        // the (uniformly known) child CommonKeyPrefix.
         Span<int> sepLengths = stackalloc int[count];
         for (int i = 0; i < count; i++)
         {
             int natural = Math.Min(commonPrefixArr[children[i].FirstEntry] + 1, _keyLength);
-            sepLengths[i] = Math.Max(natural, children[i].PrefixLen);
+            sepLengths[i] = Math.Max(natural, prefixLen);
         }
 
         // BaseOffset + per-entry value-slot width from child offsets.
@@ -289,9 +311,8 @@ public ref struct HsstIndexBuilder<TWriter, TReader, TPin>
         if (count > 1 && minOff > 0 && minOff < maxOff) baseOffset = minOff;
         int valueSlotSize = MinBytesFor(maxOff - baseOffset);
 
-        BSearchIndexLayoutPlanner.Plan(sepLengths, crossEntryLcp, _keyLength,
-            out int prefixLen, out int keyType, out int keySlotSize, out bool keyLittleEndian);
-        nodePrefixLen = prefixLen;
+        BSearchIndexLayoutPlanner.PlanWithFixedLcp(sepLengths, prefixLen, _keyLength,
+            out int keyType, out int keySlotSize, out bool keyLittleEndian);
 
         Span<byte> currKey = stackalloc byte[MaxKeyLen];
         Span<byte> commonPrefixBuf = stackalloc byte[prefixLen];
@@ -405,9 +426,13 @@ public ref struct HsstIndexBuilder<TWriter, TReader, TPin>
         int commonLen = firstSepLen;
         Span<byte> firstSep = stackalloc byte[MaxKeyLen];
         Span<byte> sepBuf = stackalloc byte[MaxKeyLen];
-        ReadOnlySpan<byte> allKeys = Buffers.AllKeys.AsSpan();
+        Span<byte> firstKeyScratch = stackalloc byte[MaxKeyLen];
+        Span<byte> rightKeyScratch = stackalloc byte[MaxKeyLen];
         if (firstSepLen > 0)
-            allKeys.Slice(firstChild.FirstEntry * _keyLength, firstSepLen).CopyTo(firstSep);
+        {
+            ReadKey(firstChild.FirstEntry, firstKeyScratch[.._keyLength]);
+            firstKeyScratch[..firstSepLen].CopyTo(firstSep);
+        }
 
         while (childCount < hardMax)
         {
@@ -417,10 +442,10 @@ public ref struct HsstIndexBuilder<TWriter, TReader, TPin>
             // Natural separator length is min(LCP + 1, _keyLength); the actual stored
             // length is widened to at least curr.PrefixLen so the parent's separator
             // carries every byte of the child's prefix at descent time.
-            ReadOnlySpan<byte> rightKey = allKeys.Slice(curr.FirstEntry * _keyLength, _keyLength);
+            ReadKey(curr.FirstEntry, rightKeyScratch[.._keyLength]);
             int naturalSep = Math.Min(commonPrefixArr[curr.FirstEntry] + 1, _keyLength);
             int sepLen = Math.Max(naturalSep, curr.PrefixLen);
-            rightKey[..sepLen].CopyTo(sepBuf);
+            rightKeyScratch[..sepLen].CopyTo(sepBuf);
 
             long newMaxOff = curr.ChildOffset > maxOff ? curr.ChildOffset : maxOff;
             int valueSlotSize = MinBytesFor(newMaxOff - baseChildOffset);
@@ -489,24 +514,70 @@ public ref struct HsstIndexBuilder<TWriter, TReader, TPin>
 
     /// <summary>
     /// Read the full key for entry index <paramref name="idx"/> into <paramref name="dest"/>.
-    /// In key-after-value mode walks the LEB128 ValueLength header byte-by-byte then reads
-    /// the key. In key-first mode the entry position already points at FullKey byte 0, so
-    /// the key bytes are read directly. Key length is uniform per HSST and stored in the
-    /// trailer, not per entry. Returns the key length (≤ 255).
+    /// Dispatches by where the key lives at this point in the build:
+    /// <list type="bullet">
+    /// <item><description>
+    ///   <c>idx &gt;= _pendingFirstEntryIdx</c> — the entry is in the in-flight pending set;
+    ///   its key sits in <c>Buffers.PendingKeys</c> at local offset
+    ///   <c>(idx - _pendingFirstEntryIdx) * keyLength</c>. Used by the inline page-local
+    ///   leaf emit path.
+    /// </description></item>
+    /// <item><description>
+    ///   <c>idx &lt; _pendingFirstEntryIdx</c> — the entry has already been folded into
+    ///   an inline leaf; <c>PendingKeys</c> no longer holds it, so we re-read the full
+    ///   key from the data section via <see cref="ReadKeyFromDataSection"/>. Used by
+    ///   the Build-time intermediate-construction path.
+    /// </description></item>
+    /// </list>
+    /// Returns the key length (≤ 255).
     /// </summary>
     private int ReadKey(int idx, scoped Span<byte> dest)
     {
         int keyLen = _keyLength;
-        if (keyLen > 0)
+        if (keyLen <= 0) return 0;
+        if (idx >= _pendingFirstEntryIdx)
         {
-            // Keys were captured into Buffers.AllKeys during Add / FinishValueWrite —
-            // flat (numEntries * keyLength) layout — so the index-build phase doesn't
-            // need to round-trip through the data section to recover separator bytes.
-            ReadOnlySpan<byte> allKeys = Buffers.AllKeys.AsSpan();
-            allKeys.Slice(idx * keyLen, keyLen).CopyTo(dest);
+            ReadOnlySpan<byte> pending = Buffers.PendingKeys.AsSpan();
+            int localOffset = (idx - _pendingFirstEntryIdx) * keyLen;
+            pending.Slice(localOffset, keyLen).CopyTo(dest);
+        }
+        else
+        {
+            ReadKeyFromDataSection(idx, dest[..keyLen]);
         }
         return keyLen;
     }
+
+    /// <summary>
+    /// Read entry <paramref name="idx"/>'s full key by reaching into the data section
+    /// via <see cref="_reader"/>. For key-after-value entries
+    /// (<c>[Value][FlagByte][LEB128 ValueLength][FullKey]</c>) walks past the leading
+    /// flag byte and the LEB128 byte(s) to locate the key. For key-first entries
+    /// (<c>[FlagByte][FullKey][LEB128 ValueLength][Value]</c>) skips just the leading
+    /// flag byte. Throws if the reader view isn't valid (the inline-emit transient
+    /// builder never takes this path — all its reads land in PendingKeys).
+    /// </summary>
+    private void ReadKeyFromDataSection(int idx, scoped Span<byte> dest)
+    {
+        if (!_useDataReader)
+            throw new InvalidOperationException("HsstIndexBuilder asked to read entry " + idx + " from the data section but no reader view was supplied at construction.");
+
+        long pos = _entryPositions[idx] + 1; // skip the leading flag byte
+        if (!_keyFirst)
+        {
+            // Skip LEB128 ValueLength. 1-10 bytes, continuation-bit terminator on bit 7.
+            Span<byte> oneByte = stackalloc byte[1];
+            do
+            {
+                if (!_reader.TryRead(pos, oneByte)) ThrowReadFailed();
+                pos++;
+            } while ((oneByte[0] & 0x80) != 0);
+        }
+        if (!_reader.TryRead(pos, dest)) ThrowReadFailed();
+    }
+
+    private static void ThrowReadFailed() =>
+        throw new IOException("HSST data-section read out of range during index build.");
 
     /// <summary>
     /// Leaf-wide cross-entry LCP — chain-min of adjacent-key LCPs across the count entries

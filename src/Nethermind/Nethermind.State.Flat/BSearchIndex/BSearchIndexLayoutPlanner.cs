@@ -198,4 +198,80 @@ internal static class BSearchIndexLayoutPlanner
             keyType == 0 ||
             (keyType == 1 && keySlotSize is 2 or 4 or 8);
     }
+
+    /// <summary>
+    /// Variant of <see cref="Plan"/> for callers (the HSST builder) that have already
+    /// committed to a single global <c>CommonPrefixLen</c> shared by every node in the
+    /// HSST. Skips the per-node lcp pick and strip-gate logic; uses the supplied
+    /// <paramref name="fixedLcp"/> directly. Still computes <paramref name="keyType"/>,
+    /// <paramref name="keySlotSize"/>, and <paramref name="keyLittleEndian"/> from the
+    /// post-strip effective lengths.
+    /// </summary>
+    public static void PlanWithFixedLcp(
+        scoped ReadOnlySpan<int> lengths,
+        int fixedLcp,
+        int keyLength,
+        out int keyType,
+        out int keySlotSize,
+        out bool keyLittleEndian)
+    {
+        if (lengths.Length == 0)
+        {
+            keyType = 1;
+            keySlotSize = 0;
+            keyLittleEndian = false;
+            return;
+        }
+
+        int minLen = lengths[0];
+        int maxLen = lengths[0];
+        int firstLen = lengths[0];
+        bool allSameLen = true;
+        for (int i = 1; i < lengths.Length; i++)
+        {
+            int len = lengths[i];
+            if (len < minLen) minLen = len;
+            if (len > maxLen) maxLen = len;
+            if (len != firstLen) allSameLen = false;
+        }
+
+        // Slot widening (mirror of Plan): when every natural length fits in {2, 4} and
+        // the keyLength budget allows, pretend they're all `target` bytes. The builder
+        // pads each slot from key data. The downstream Uniform branch then snaps to a
+        // power-of-2 SIMD slot when the post-strip budget allows.
+        int target = 0;
+        if (firstLen > 0)
+        {
+            if (maxLen <= 2 && keyLength >= 2) target = 2;
+            else if (maxLen <= 4 && keyLength >= 4) target = 4;
+        }
+        if (target > 0)
+        {
+            firstLen = target;
+            minLen = target;
+            maxLen = target;
+            allSameLen = true;
+        }
+
+        int effMaxLen = maxLen - fixedLcp;
+        if (allSameLen || effMaxLen <= 8)
+        {
+            keyType = 1;
+            int budget = keyLength - fixedLcp;
+            keySlotSize =
+                effMaxLen <= 2 && budget >= 2 ? 2 :
+                effMaxLen <= 4 && budget >= 4 ? 4 :
+                effMaxLen <= 8 && budget >= 8 ? 8 :
+                effMaxLen;
+        }
+        else
+        {
+            keyType = 0;
+            keySlotSize = 0;
+        }
+
+        keyLittleEndian =
+            keyType == 0 ||
+            (keyType == 1 && keySlotSize is 2 or 4 or 8);
+    }
 }

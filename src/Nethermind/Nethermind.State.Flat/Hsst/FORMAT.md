@@ -524,17 +524,26 @@ node header** — they arrive from outside:
 - For non-root nodes, from the parent's separator for this child. The
   parent's leaf/intermediate descender hands the matched separator (a
   full lex-order key constructed from the parent's `CommonKeyPrefix` plus
-  the parent's stored suffix slot) to the child's parse routine. The
-  builder guarantees that every parent separator's length is at least the
-  matching child's `CommonPrefixLen`, so the first `CommonPrefixLen` bytes
-  of the parent's separator are the child's prefix.
+  the parent's stored suffix slot) to the child's parse routine.
 - For the root, from the HSST trailer's `RootPrefix` bytes (the root has
   no parent to inherit from).
 
-`KeySize` / slot semantics apply to the *suffixes*. Writers cap
-`CommonPrefixLen` at **128 bytes** and only emit a non-zero value when
-`prefixLen × (count − 1) > 1` (i.e. it strictly pays back its 1-byte
-header cost) and at least one suffix is non-empty.
+**`CommonPrefixLen` is uniform across every node in the HSST.** Every
+leaf and every intermediate writes the same `CommonPrefixLen = G`, where
+`G` is the `commonKeyPrefixLength` the caller passed to
+`HsstBTreeBuilder` at construction (default `0`). The trailer's
+`RootPrefix` carries those `G` bytes once for the whole HSST. Because the
+parent's separator always starts with the parent's own `CommonKeyPrefix`
+— which equals every other node's prefix — the first `G` bytes of any
+parent separator are automatically the child's prefix; no per-level
+"extend separator to at least the child's prefix" handshake is required.
+Callers with random/hash-derived keys pass `0`; callers whose entries
+share a structural prefix (e.g. an inner HSST under a fixed outer-key
+prefix) pass the known length so leaves and intermediates can strip
+those bytes off every stored slot.
+
+`KeySize` / slot semantics apply to the *suffixes*. The builder caps `G`
+at `min(keyLength, 128)` (the latter being the u8 header field's max).
 
 `KeySize` semantics depend on `KeyType`:
 

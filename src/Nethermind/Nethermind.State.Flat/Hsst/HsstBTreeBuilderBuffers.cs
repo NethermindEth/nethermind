@@ -27,12 +27,14 @@ public ref struct HsstBTreeBuilderBuffers(int expectedKeyCount = 16)
     // Per-key metadata position list — owned by the outer HsstBTreeBuilder phase.
     internal NativeMemoryListRef<long> EntryPositions = new(expectedKeyCount);
 
-    // Every entry's full key bytes, captured by HsstBTreeBuilder.Add /
-    // FinishValueWrite. Flat (numEntries * keyLength) layout. Replaces the previous
-    // re-read-from-data-section ReadKey path; the index builder indexes into this
-    // buffer by the entry's global index. Page-local leaf emission and intermediate
-    // construction both source separator/prefix bytes from here.
-    internal NativeMemoryListRef<byte> AllKeys = new(64);
+    // Full keys for the entries that are still pending — i.e. not yet folded into
+    // an inline page-local leaf. Flat (pendingCount * keyLength) layout. Cleared
+    // on every <see cref="HsstBTreeBuilder{TWriter,TReader,TPin}"/>.EmitInlineLeaf
+    // (after the leaf has been written). Peak size is bounded by one 4 KiB page-
+    // worth of entries (a few hundred entries × keyLength, low KB) — once flushed,
+    // those keys can be re-read from the data section if intermediate construction
+    // needs them again at Build time.
+    internal NativeMemoryListRef<byte> PendingKeys = new(64);
 
     // Current/next index-build level node lists. Populated during Add (entry
     // descriptors pushed for each Add; collapsed into a leaf descriptor when a
@@ -53,7 +55,7 @@ public ref struct HsstBTreeBuilderBuffers(int expectedKeyCount = 16)
     {
         EntryPositions.Clear();
         EntryPositions.EnsureCapacity(expectedKeyCount);
-        AllKeys.Clear();
+        PendingKeys.Clear();
         CurrentLevel.Clear();
         NextLevel.Clear();
     }
@@ -75,7 +77,7 @@ public ref struct HsstBTreeBuilderBuffers(int expectedKeyCount = 16)
     public void Dispose()
     {
         EntryPositions.Dispose();
-        AllKeys.Dispose();
+        PendingKeys.Dispose();
         CurrentLevel.Dispose();
         NextLevel.Dispose();
         if (CommonPrefixArr is not null) { ArrayPool<byte>.Shared.Return(CommonPrefixArr); CommonPrefixArr = null; }
@@ -98,9 +100,9 @@ internal readonly struct HsstIndexNodeInfo(long childOffset, int firstEntry, int
 {
     /// <summary>Absolute first-byte position of this node (or entry) in the HSST (= the flag byte).</summary>
     public readonly long ChildOffset = childOffset;
-    /// <summary>Index (into <c>EntryPositions</c> / <c>AllKeys</c>) of the first leaf entry under this subtree.</summary>
+    /// <summary>Index (into <c>EntryPositions</c> / <c>PendingKeys</c>) of the first leaf entry under this subtree.</summary>
     public readonly int FirstEntry = firstEntry;
-    /// <summary>Index (into <c>EntryPositions</c> / <c>AllKeys</c>) of the last leaf entry under this subtree.</summary>
+    /// <summary>Index (into <c>EntryPositions</c> / <c>PendingKeys</c>) of the last leaf entry under this subtree.</summary>
     public readonly int LastEntry = lastEntry;
     /// <summary>Common-key-prefix length the BSearchIndex planner picked for this node.
     /// Read at the level above when computing each separator length: the parent must extend
