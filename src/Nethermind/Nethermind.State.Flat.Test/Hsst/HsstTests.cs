@@ -152,6 +152,74 @@ public class HsstTests
         Assert.That(TryGet(data, ""u8, out _), Is.False);
     }
 
+    /// <summary>
+    /// Regression test for <see cref="Nethermind.State.Flat.Hsst.HsstEnumerator{TReader, TPin}"/>'s
+    /// mixed-kind intermediate handling in <c>DescendToLeaf</c>.
+    /// </summary>
+    /// <remarks>
+    /// Interleaves small entries (16-byte values) with large entries (~6 KiB
+    /// values). The large values cross page boundaries during the write, so
+    /// the builder's <c>FlushPendingNotOnCurrentPage</c> direct-flushes the
+    /// stranded entries as <c>NodeKind=Entry</c> descriptors onto
+    /// <c>CurrentLevel</c>. Those interleave with <c>NodeKind=Intermediate</c>
+    /// descriptors from <c>EmitInlineLeaf</c> for the small-entry runs;
+    /// <c>ChooseIntermediateChildCount</c> packs them without kind awareness,
+    /// so the resulting intermediates carry mixed Entry+Intermediate children.
+    ///
+    /// The enumerator's descent must scan every child's flag byte (not just
+    /// the leftmost) before treating a node as leaf-level. If it short-circuits
+    /// on the leftmost-is-Entry check alone, <c>BufferLeaf</c> mis-treats
+    /// inner-node positions as entry positions and the enumeration truncates.
+    /// </remarks>
+    [TestCase(20)]
+    [TestCase(100)]
+    [TestCase(500)]
+    public void Enumeration_YieldsAllEntries_With_PageCrossing_Values(int count)
+    {
+        List<(string Key, byte[] Value)> expected = new(count);
+        for (int i = 0; i < count; i++)
+        {
+            // Every fifth entry has a ~6 KiB value (crosses two 4 KiB pages); the
+            // others are small enough to fit alongside their leaf node on the
+            // same page. The mix forces the prune + direct-flush path to fire
+            // at boundary transitions.
+            byte[] value = (i % 5 == 0)
+                ? new byte[6 * 1024]
+                : new byte[16];
+            // Fill values with a deterministic per-entry pattern so a mis-read
+            // (e.g. via BufferLeaf on a non-entry position) surfaces as a value
+            // mismatch rather than passing silently.
+            for (int j = 0; j < value.Length; j++) value[j] = (byte)((i + j) & 0xFF);
+            expected.Add(($"key_{i:D6}", value));
+        }
+
+        byte[] data = HsstTestUtil.BuildToArray((ref HsstBTreeBuilder<PooledByteBufferWriter.Writer, PooledByteBufferWriter.WriterReader, NoOpPin> builder) =>
+        {
+            foreach ((string key, byte[] value) in expected)
+            {
+                builder.Add(Encoding.UTF8.GetBytes(key), value);
+            }
+        });
+
+        // Enumerate via HsstRefEnumerator and verify count, ordering, and per-entry value bytes.
+        List<(byte[] Key, byte[] Value)> actual = Materialize(data);
+        Assert.That(actual.Count, Is.EqualTo(count));
+
+        expected.Sort((a, b) => string.Compare(a.Key, b.Key, StringComparison.Ordinal));
+        for (int i = 0; i < count; i++)
+        {
+            Assert.That(Encoding.UTF8.GetString(actual[i].Key), Is.EqualTo(expected[i].Key), $"Key mismatch at index {i}");
+            Assert.That(actual[i].Value, Is.EqualTo(expected[i].Value), $"Value mismatch at key {expected[i].Key}");
+        }
+
+        // Per-key seek (TrySeek path, independent of the enumerator).
+        foreach ((string key, byte[] value) in expected)
+        {
+            Assert.That(TryGet(data, Encoding.UTF8.GetBytes(key), out byte[] val), Is.True, $"Key {key} not found via TryGet");
+            Assert.That(val, Is.EqualTo(value), $"TryGet value mismatch at key {key}");
+        }
+    }
+
     [TestCase(1)]
     [TestCase(10)]
     [TestCase(200)]
