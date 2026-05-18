@@ -155,6 +155,8 @@ public class AdminRpcModule : IAdminRpcModule
 
     public ResultWrapper<string> admin_subscribe(string subscriptionName, string? args = null)
     {
+        if (Subscription.ValidateArgs(args) is { } failure) return failure;
+
         try
         {
             ResultWrapper<string> successfulResult = ResultWrapper<string>.Success(_subscriptionManager.AddSubscription(Context.DuplexClient, subscriptionName, args));
