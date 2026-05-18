@@ -20,7 +20,6 @@ using Nethermind.Db;
 using Nethermind.Db.Rocks.Config;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Init.Modules;
-using Nethermind.Logging;
 using Nethermind.Network;
 using Nethermind.Network.Discovery;
 using Nethermind.Network.Discovery.Lifecycle;
