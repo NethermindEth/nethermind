@@ -48,10 +48,10 @@ public partial struct DepositRequest
         Span<byte> buffer = result;
 
         PublicKey.CopyTo(buffer); // offset = 0
-        WithdrawalCredentials.Hash.Bytes.CopyTo(buffer[48..]); // offset += 48
-        BinaryPrimitives.WriteUInt64LittleEndian(buffer[80..], Amount); // offset += 32
-        Signature.CopyTo(result, 88); // offset += 8
-        BinaryPrimitives.WriteUInt64LittleEndian(buffer[184..], Index); // offset += 96
+        WithdrawalCredentials.Hash.Bytes.CopyTo(buffer[48..]); // offset = 48
+        BinaryPrimitives.WriteUInt64LittleEndian(buffer[80..], Amount); // offset = 48 + 32
+        Signature.CopyTo(buffer[88..]); // offset = 48 + 32 + 8
+        BinaryPrimitives.WriteUInt64LittleEndian(buffer[184..], Index); // offset = 48 + 32 + 8 + 96
 
         return new()
         {
