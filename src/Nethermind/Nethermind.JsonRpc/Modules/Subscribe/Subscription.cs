@@ -19,6 +19,21 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
             ProcessMessages();
         }
 
+        /// <summary>
+        /// Returns an <c>Invalid params</c> failure when <paramref name="args"/> exceeds
+        /// <see cref="JsonRpcLimits.MaxJsonStringArgLength"/>, or <c>null</c> when it is within bounds.
+        /// </summary>
+        /// <remarks>
+        /// Bounds peak memory on the subscribe path before any JSON re-parsing. Called at the
+        /// RPC entrypoint so the failure can be surfaced as a normal result rather than via
+        /// an exception.
+        /// </remarks>
+        internal static ResultWrapper<string>? ValidateArgs(string? args) =>
+            args is { Length: > JsonRpcLimits.MaxJsonStringArgLength }
+                ? ResultWrapper<string>.Fail("Invalid params", ErrorCodes.InvalidParams,
+                    $"subscription args string length {args.Length} exceeds maximum allowed length of {JsonRpcLimits.MaxJsonStringArgLength}")
+                : null;
+
         public string Id { get; }
         public abstract string Type { get; }
         public IJsonRpcDuplexClient JsonRpcDuplexClient { get; }
