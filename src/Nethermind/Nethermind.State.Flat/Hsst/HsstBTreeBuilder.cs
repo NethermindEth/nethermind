@@ -219,11 +219,14 @@ public ref struct HsstBTreeBuilder<TWriter, TReader, TPin>
     {
         if (_keyFirst)
             throw new InvalidOperationException("Key-first BTree requires Add(key, value); BeginValueWrite/FinishValueWrite streaming is not supported.");
-        // Trigger 1: close out any pending entries as an inline leaf before the
-        // streaming value starts flowing. The streaming bytes will straddle pages,
-        // so flushing now keeps each pending leaf colocated with its entries.
-        // Prune stranded pending first (key on a prior page) so the leaf only
-        // covers entries that share the writer's current page.
+        // Trigger 1: close out any pending entries before the streaming value
+        // starts flowing. The streaming bytes will straddle pages, so flushing now
+        // keeps any pending leaf colocated with its entries. Prune stranded pending
+        // first (key on a prior page) so the leaf only covers entries that share
+        // the writer's current page. A singleton pending set is pushed onto
+        // CurrentLevel as a direct Entry descriptor (see EmitInlineLeaf's singleton
+        // fast path) — the common all-streaming case where every entry becomes its
+        // own direct-Entry child of the intermediate level above.
         if (EntryPositions.Count > _pendingFirstEntryIdx)
         {
             FlushPendingNotOnCurrentPage();
@@ -447,23 +450,27 @@ public ref struct HsstBTreeBuilder<TWriter, TReader, TPin>
         int minIntermediateChildren = Math.Min(_options.MinIntermediateChildren, maxIntermediateEntries);
         int minIntermediateBytes = Math.Min(_options.MinIntermediateBytes, maxIntermediateBytes);
 
-        // Trigger 3: flush any remaining unflushed entries into one final inline
-        // leaf, so HsstIndexBuilder.Build can skip its leaf phase entirely.
-        // Prune stranded pending first so the final leaf only wraps entries on
-        // the writer's current page; any older entries become direct Entry
-        // children of the intermediate level instead.
+        // Trigger 3: flush any remaining unflushed entries so HsstIndexBuilder.Build
+        // can skip its leaf phase entirely. Prune stranded pending first so the final
+        // flush only covers entries on the writer's current page; any older entries
+        // become direct Entry children of the intermediate level instead.
         //
         // Single-entry HSST short-circuit: when the build holds exactly one entry,
         // bypass FlushPendingNotOnCurrentPage and emit it as a 1-entry inline leaf
-        // directly. Without this, a page-crossing value would push the lone entry
-        // past the writer's page, FlushPendingNotOnCurrentPage would strand it as
-        // a direct Entry descriptor on CurrentLevel, and HsstIndexBuilder.Build's
-        // currentNative.Count == 1 early-return would mis-report the rootSize as
-        // the entry record's full byte length (1 + keyLen + LEB128 + valueLen) —
-        // unbounded, overflowing the u16 trailer for large values.
+        // via forceLeaf:true. Two failure modes are prevented:
+        //   1. A page-crossing value would push the lone entry past the writer's
+        //      page, FlushPendingNotOnCurrentPage would strand it as a direct Entry
+        //      descriptor on CurrentLevel.
+        //   2. EmitInlineLeaf's own singleton fast path would route through
+        //      FlushPendingAsEntries and also produce a direct Entry descriptor.
+        // Either way HsstIndexBuilder.Build's currentNative.Count == 1 early-return
+        // would mis-report rootSize as the entry record's full byte length
+        // (1 + keyLen + LEB128 + valueLen) — unbounded, overflowing the u16 trailer
+        // for large values. forceLeaf:true forces the leaf wrap so the lone
+        // descriptor on CurrentLevel is a bounded leaf node.
         if (EntryPositions.Count == 1)
         {
-            EmitInlineLeaf();
+            EmitInlineLeaf(forceLeaf: true);
         }
         else if (EntryPositions.Count > _pendingFirstEntryIdx)
         {
@@ -621,9 +628,11 @@ public ref struct HsstBTreeBuilder<TWriter, TReader, TPin>
         long remaining = PageLayout.PageSize - inPage;
         if (entryLen + estLeaf <= remaining) return;
 
-        // Doesn't fit on the current page. Seal pending into a leaf now and start
-        // fresh for the new entry. minPending = 1 so even a singleton becomes a
-        // 1-entry leaf — keeps the on-disk tree a node-only structure for now.
+        // Doesn't fit on the current page. Seal pending now and start fresh for
+        // the new entry. A multi-entry pending set goes out as a page-local leaf;
+        // a singleton goes out as a direct Entry descriptor via EmitInlineLeaf's
+        // singleton fast path (no leaf header + slot bytes spent on a degenerate
+        // 1-entry node).
         // Edge case: the K-entry leaf itself may not fit (e.g., the previous entry
         // was close to PageSize, leaving remaining < estLeafActual). Writing a
         // cross-page leaf would spend a header + per-entry slot bytes on a node
@@ -653,11 +662,31 @@ public ref struct HsstBTreeBuilder<TWriter, TReader, TPin>
     /// <c>Buffers.CurrentLevel</c>, and advance <see cref="_pendingFirstEntryIdx"/>.
     /// No-op when nothing is pending.
     /// </summary>
-    private void EmitInlineLeaf()
+    /// <remarks>
+    /// Singleton fast path: when exactly one entry is pending, the leaf wrap is pure
+    /// overhead (12-byte header + per-entry slot + tail key bytes) — the lone entry
+    /// is instead pushed onto <c>CurrentLevel</c> as an
+    /// <see cref="BSearchNodeKind.Entry"/>-kind descriptor via
+    /// <see cref="FlushPendingAsEntries"/>. The intermediate node above dispatches
+    /// on the flag byte and handles Entry / Leaf / Intermediate children uniformly.
+    /// Callers that need the leaf wrap even for a singleton (i.e. the lone entry
+    /// would otherwise become the root, where a direct Entry would inflate rootSize
+    /// past the u16 trailer field) must pass <paramref name="forceLeaf"/> = true.
+    /// </remarks>
+    private void EmitInlineLeaf(bool forceLeaf = false)
     {
         int firstEntryIdx = _pendingFirstEntryIdx;
         int count = EntryPositions.Count - firstEntryIdx;
         if (count == 0) return;
+
+        // Singleton short-circuit: route through FlushPendingAsEntries so the lone
+        // entry becomes a direct Entry descriptor instead of a degenerate 1-entry
+        // leaf. Bypassed when forceLeaf is set (single-entry-HSST case in Build()).
+        if (count == 1 && !forceLeaf)
+        {
+            FlushPendingAsEntries();
+            return;
+        }
 
         long nodeStart = _writer.Written - _baseOffset;
 
