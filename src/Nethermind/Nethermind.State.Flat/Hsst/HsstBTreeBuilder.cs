@@ -222,8 +222,14 @@ public ref struct HsstBTreeBuilder<TWriter, TReader, TPin>
         // Trigger 1: close out any pending entries as an inline leaf before the
         // streaming value starts flowing. The streaming bytes will straddle pages,
         // so flushing now keeps each pending leaf colocated with its entries.
+        // Prune stranded pending first (key on a prior page) so the leaf only
+        // covers entries that share the writer's current page.
         if (EntryPositions.Count > _pendingFirstEntryIdx)
-            EmitInlineLeaf();
+        {
+            FlushPendingNotOnCurrentPage();
+            if (EntryPositions.Count > _pendingFirstEntryIdx)
+                EmitInlineLeaf();
+        }
         _writtenBeforeValue = _writer.Written;
         return ref _writer;
     }
@@ -443,8 +449,15 @@ public ref struct HsstBTreeBuilder<TWriter, TReader, TPin>
 
         // Trigger 3: flush any remaining unflushed entries into one final inline
         // leaf, so HsstIndexBuilder.Build can skip its leaf phase entirely.
+        // Prune stranded pending first so the final leaf only wraps entries on
+        // the writer's current page; any older entries become direct Entry
+        // children of the intermediate level instead.
         if (EntryPositions.Count > _pendingFirstEntryIdx)
-            EmitInlineLeaf();
+        {
+            FlushPendingNotOnCurrentPage();
+            if (EntryPositions.Count > _pendingFirstEntryIdx)
+                EmitInlineLeaf();
+        }
 
         long dataSectionSize = _writer.Written - _baseOffset;
         long absoluteIndexStart = dataSectionSize;
@@ -556,6 +569,16 @@ public ref struct HsstBTreeBuilder<TWriter, TReader, TPin>
         if (pending < 1) return;
         if (_keyLength <= 0) return;
 
+        // Prune any pending entry whose flag byte (= key region) is stranded on
+        // a prior page — those can't share a leaf with anything on the writer's
+        // current page, so push them as direct Entry descriptors to the next
+        // index level. The remaining pending (if any) all live on the current
+        // page, which keeps the estLeaf computation and the leaf-vs-direct
+        // decision below page-coherent.
+        FlushPendingNotOnCurrentPage();
+        pending = EntryPositions.Count - _pendingFirstEntryIdx;
+        if (pending < 1) return;
+
         // Compute the would-be LCP for the new entry against the previous entry's key,
         // so the max-sepLen prediction includes it. Uses _prevKeyBuf (set by the last
         // OnEntryAdded) — survives leaf flushes that clear PendingKeys.
@@ -600,7 +623,17 @@ public ref struct HsstBTreeBuilder<TWriter, TReader, TPin>
         // Doesn't fit on the current page. Seal pending into a leaf now and start
         // fresh for the new entry. minPending = 1 so even a singleton becomes a
         // 1-entry leaf — keeps the on-disk tree a node-only structure for now.
-        EmitInlineLeaf();
+        // Edge case: the K-entry leaf itself may not fit (e.g., the previous entry
+        // was close to PageSize, leaving remaining < estLeafActual). Writing a
+        // cross-page leaf would spend a header + per-entry slot bytes on a node
+        // that loses the page-locality it exists to provide. Instead push each
+        // pending entry directly onto the next index level — the future
+        // intermediate node will point at the entries, saving the leaf entirely.
+        int estLeafActual = PageLocalLeafHeaderBytes + pending * (4 + maxSepLen) + pending * PageLocalLeafValueSlotBytes;
+        if (estLeafActual > remaining)
+            FlushPendingAsEntries();
+        else
+            EmitInlineLeaf();
         // Force-pad to the next page so the new entry can't slip into the
         // post-leaf slack and re-trigger with K=1 against effectively zero
         // remaining (which would produce a cross-page 1-entry leaf). TryAlign
@@ -679,5 +712,92 @@ public ref struct HsstBTreeBuilder<TWriter, TReader, TPin>
         // construction at Build time falls back to data-section reads for any entry
         // whose key isn't in PendingKeys anymore.
         bufs.PendingKeys.Clear();
+    }
+
+    /// <summary>
+    /// Push each pending entry directly onto <c>Buffers.CurrentLevel</c> as an
+    /// <see cref="BSearchNodeKind.Entry"/>-kind descriptor, skipping the leaf
+    /// node entirely. Used by <see cref="MaybeFlushBeforeEntry"/> when the
+    /// would-be leaf for the pending entries wouldn't fit on the current page:
+    /// rather than write a cross-page leaf that loses its locality benefit,
+    /// let the future intermediate node point at the entries directly. The
+    /// reader's flag-byte dispatch handles a mix of Entry/Leaf/Intermediate
+    /// children under an intermediate uniformly. Bookkeeping (advancing
+    /// <see cref="_pendingFirstEntryIdx"/>, clearing PendingKeys) mirrors
+    /// <see cref="EmitInlineLeaf"/>.
+    /// </summary>
+    private void FlushPendingAsEntries()
+    {
+        int firstEntryIdx = _pendingFirstEntryIdx;
+        int count = EntryPositions.Count - firstEntryIdx;
+        if (count == 0) return;
+
+        ref HsstBTreeBuilderBuffers bufs = ref Buffers;
+        ReadOnlySpan<long> entryPositions = bufs.EntryPositions.AsSpan();
+        for (int i = 0; i < count; i++)
+        {
+            int entryIdx = firstEntryIdx + i;
+            bufs.CurrentLevel.Add(new HsstIndexNodeInfo(
+                entryPositions[entryIdx], entryIdx, entryIdx, prefixLen: 0));
+        }
+
+        _pendingFirstEntryIdx = EntryPositions.Count;
+        bufs.PendingKeys.Clear();
+    }
+
+    /// <summary>
+    /// Direct-flush any pending entry whose flag byte (= the key region) is
+    /// stranded on a page prior to the writer's current page. These entries
+    /// can't share a page-local leaf with anything on the writer's current
+    /// page, so push them as <see cref="BSearchNodeKind.Entry"/>-kind
+    /// descriptors onto <c>Buffers.CurrentLevel</c>; the intermediate node
+    /// above will point at them directly via the reader's uniform flag-byte
+    /// dispatch.
+    ///
+    /// Entries are written with monotonically increasing positions, so the
+    /// stranded entries form a contiguous prefix of pending — once the scan
+    /// finds one on the writer's current page, every later one is too.
+    /// </summary>
+    private void FlushPendingNotOnCurrentPage()
+    {
+        int pending = EntryPositions.Count - _pendingFirstEntryIdx;
+        if (pending == 0) return;
+
+        long firstOffset = _writer.FirstOffset;
+        long writerPage = (_writer.Written - firstOffset) / PageLayout.PageSize;
+
+        ref HsstBTreeBuilderBuffers bufs = ref Buffers;
+        ReadOnlySpan<long> entryPositions = bufs.EntryPositions.AsSpan();
+
+        int firstOnCurrent = _pendingFirstEntryIdx;
+        while (firstOnCurrent < EntryPositions.Count)
+        {
+            long flagAbs = entryPositions[firstOnCurrent] + _baseOffset;
+            long flagPage = (flagAbs - firstOffset) / PageLayout.PageSize;
+            if (flagPage == writerPage) break;
+            firstOnCurrent++;
+        }
+
+        int directCount = firstOnCurrent - _pendingFirstEntryIdx;
+        if (directCount == 0) return;
+
+        for (int i = 0; i < directCount; i++)
+        {
+            int entryIdx = _pendingFirstEntryIdx + i;
+            bufs.CurrentLevel.Add(new HsstIndexNodeInfo(
+                entryPositions[entryIdx], entryIdx, entryIdx, prefixLen: 0));
+        }
+        _pendingFirstEntryIdx = firstOnCurrent;
+
+        // Drop the direct-flushed entries' keys from the front of PendingKeys.
+        // Shift the remaining-pending keys to position 0 so ReadKey's
+        // (idx - _pendingFirstEntryIdx) * keyLength indexing stays valid.
+        if (_keyLength > 0)
+        {
+            int bytesRemoved = directCount * _keyLength;
+            Span<byte> keysSpan = bufs.PendingKeys.AsSpan();
+            keysSpan[bytesRemoved..].CopyTo(keysSpan);
+            bufs.PendingKeys.Truncate(keysSpan.Length - bytesRemoved);
+        }
     }
 }

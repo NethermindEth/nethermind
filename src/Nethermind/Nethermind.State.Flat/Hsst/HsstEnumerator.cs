@@ -4,6 +4,7 @@
 using System;
 using System.Buffers.Binary;
 using Nethermind.Core.Utils;
+using Nethermind.State.Flat.BSearchIndex;
 
 namespace Nethermind.State.Flat.Hsst;
 
@@ -393,8 +394,25 @@ public struct HsstEnumerator<TReader, TPin> : IDisposable
             long currentStart = absStart;
             int depth = depthHint;
             long scopeEndMinusTrailer = _scopeEnd - _trailerLen;
+            Span<byte> flagBuf = stackalloc byte[1];
             while (depth < MaxDepth)
             {
+                // Peek the flag byte to detect Entry-kind children (an entry record sitting
+                // directly under an intermediate, via the direct-flush path in the builder).
+                // Entries have no header, so we can't pass them to TryLoadNode — treat the
+                // record as a single-entry virtual leaf at this depth.
+                if (!reader.TryRead(currentStart, flagBuf)) return false;
+                if ((BSearchNodeKind)(flagBuf[0] & 0x03) == BSearchNodeKind.Entry)
+                {
+                    _depth = depth;
+                    if (_leafMetaStarts.Length < 1)
+                        _leafMetaStarts = new long[16];
+                    _leafMetaStarts[0] = currentStart;
+                    _leafCount = 1;
+                    _leafIdx = 0;
+                    return true;
+                }
+
                 ReadOnlySpan<byte> parentSeparator = depth == 0 ? _rootPrefix : default;
                 if (!HsstBTreeReader.TryLoadNode<TReader, TPin>(in reader, currentStart, scopeEndMinusTrailer, parentSeparator, out HsstIndex node, out TPin pin))
                     return false;
