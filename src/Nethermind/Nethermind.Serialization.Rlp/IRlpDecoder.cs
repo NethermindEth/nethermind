@@ -96,12 +96,6 @@ public interface IRlpDecoder<T> : IRlpDecoder
         return value;
     }
 
-    T DecodeGuardNotNull(ReadOnlySpan<byte> bytes, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-    {
-        Rlp.ValueDecoderContext context = new(bytes);
-        return DecodeGuardNotNull(ref context, rlpBehaviors);
-    }
-
     /// <summary>
     /// Decodes instance of <typeparamref name="T"/> from <paramref name="context"/>
     /// and verifies that the end of the stream has been reached.
