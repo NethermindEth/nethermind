@@ -21,6 +21,14 @@ public partial struct SszForkActivation
         Timestamp = [forkActivation.Timestamp ?? 0ul]
     };
 
-    public readonly ForkActivation ToForkActivation() =>
-        new((long)BlockNumber.FirstOrDefault(), Timestamp.FirstOrDefault());
+    public readonly ForkActivation ToForkActivation()
+    {
+        if (BlockNumber is not { Length: 1 })
+            throw new InvalidDataException($"{nameof(BlockNumber)} must have exactly one element.");
+
+        if (Timestamp is not { Length: 1 })
+            throw new InvalidDataException($"{nameof(Timestamp)} must have exactly one element.");
+
+        return new(checked((long)BlockNumber[0]), Timestamp[0]);
+    }
 }
