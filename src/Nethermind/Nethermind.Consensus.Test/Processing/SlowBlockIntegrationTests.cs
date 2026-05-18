@@ -4,6 +4,7 @@
 using System;
 using System.Linq;
 using System.Text.Json;
+using System.Threading;
 using Nethermind.Blockchain;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
@@ -87,14 +88,10 @@ public class SlowBlockIntegrationTests
         _txProcessor.Execute(tx, new BlockExecutionContext(block.Header, _specProvider.GetSpec(block.Header)), Evm.Tracing.NullTxTracer.Instance);
         _stats.UpdateStats(new[] { block }, Build.A.BlockHeader.TestObject, blockProcessingTimeInMicros: 100_000);
 
-        // Report is queued to ThreadPool — poll until it arrives (up to 5s)
-        int waited = 0;
-        while (!_slowBlockLogger.LogList.Any() && waited < 5000)
-        {
-            System.Threading.Thread.Sleep(50);
-            waited += 50;
-        }
-
+        // Report is queued to ThreadPool — wait deterministically (SpinUntil does an
+        // initial busy-spin then exponential Sleep backoff, so it's both faster than
+        // Thread.Sleep(50) polling for fast cases and quieter under load).
+        SpinWait.SpinUntil(() => _slowBlockLogger.LogList.Any(), TimeSpan.FromSeconds(5));
         Assert.That(_slowBlockLogger.LogList, Is.Not.Empty, "Expected slow block log");
         SlowBlockLogEntry? entry = JsonSerializer.Deserialize<SlowBlockLogEntry>(_slowBlockLogger.LogList.Last());
         Assert.That(entry, Is.Not.Null);
