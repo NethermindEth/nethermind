@@ -63,11 +63,12 @@ public static class WitnessExtensions
         public ArrayPoolList<BlockHeader> DecodeHeaders()
         {
             IOwnedReadOnlyList<byte[]> headers = witness.Headers;
-            ArrayPoolList<BlockHeader> decodedHeaders = new(headers.Count, headers.Count);
+            ReadOnlySpan<byte[]> headersSpan = headers.AsSpan();
+            ArrayPoolList<BlockHeader> decodedHeaders = new(headersSpan.Length, headersSpan.Length);
 
-            for (int i = 0; i < headers.Count; i++)
+            for (int i = 0; i < headersSpan.Length; i++)
             {
-                Rlp.ValueDecoderContext stream = new(headers[i]);
+                Rlp.ValueDecoderContext stream = new(headersSpan[i]);
 
                 decodedHeaders[i] = _decoder.Decode(ref stream)
                     ?? throw new InvalidOperationException($"No header decoded at index {i}");

@@ -310,7 +310,7 @@ namespace Nethermind.Synchronization.SnapSync
         {
             if (accountsToRefreshRequest is not null)
             {
-                foreach (AccountWithStorageStartingHash path in accountsToRefreshRequest.Paths)
+                foreach (AccountWithStorageStartingHash path in accountsToRefreshRequest.Paths.AsSpan())
                 {
                     AccountsToRefresh.Enqueue(path);
                 }
@@ -340,6 +340,16 @@ namespace Nethermind.Synchronization.SnapSync
             Interlocked.Add(ref _activeStorageRequests, -originalStorageCount);
         }
 
+        public void ReportFullStorageRequestFinished(int originalStorageCount, ReadOnlySpan<PathWithAccount> storages)
+        {
+            foreach (PathWithAccount pathWithAccount in storages)
+            {
+                EnqueueAccountStorage(pathWithAccount);
+            }
+
+            Interlocked.Add(ref _activeStorageRequests, -originalStorageCount);
+        }
+
         public void EnqueueNextSlot(StorageRange? storageRange)
         {
             if (storageRange is not null)
@@ -355,7 +365,7 @@ namespace Nethermind.Synchronization.SnapSync
                 return;
 
             ValueHash256? startingHash = parentRequest.StartingHash;
-            PathWithAccount account = parentRequest.Accounts[accountIndex];
+            PathWithAccount account = parentRequest.Accounts.AsSpan()[accountIndex];
             UInt256 limit = new(limitHash.Bytes, true);
             UInt256 lastProcessed = new(lastProcessedHash.Bytes, true);
             UInt256 start = startingHash.HasValue ? new UInt256(startingHash.Value.Bytes, true) : UInt256.Zero;
@@ -412,7 +422,7 @@ namespace Nethermind.Synchronization.SnapSync
             }
             else
             {
-                foreach (PathWithAccount account in storageRange.Accounts)
+                foreach (PathWithAccount account in storageRange.Accounts.AsSpan())
                 {
                     EnqueueAccountStorage(account);
                 }
@@ -580,7 +590,7 @@ namespace Nethermind.Synchronization.SnapSync
 
             if (item.Accounts.Count == 1)
             {
-                _largeStorageProgress.AddOrUpdate(item.Accounts[0].Path,
+                _largeStorageProgress.AddOrUpdate(item.Accounts.AsSpan()[0].Path,
                     (key, progress) => new LargeProgressStatus().UpdateProgress(progress),
                     (key, progress, range) => progress.UpdateProgress(range),
                     item
