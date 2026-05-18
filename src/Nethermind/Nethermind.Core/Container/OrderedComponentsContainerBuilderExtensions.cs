@@ -70,7 +70,7 @@ public static class OrderedComponentsContainerBuilderExtensions
 
         if (singleInstance)
         {
-            registration.SingleInstance();
+            registration = registration.SingleInstance();
         }
 
         return builder;

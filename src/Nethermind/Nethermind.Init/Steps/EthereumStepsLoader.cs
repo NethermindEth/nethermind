@@ -73,7 +73,9 @@ namespace Nethermind.Init.Steps
             public int Compare(StepInfo? t1, StepInfo? t2)
             {
                 if (ReferenceEquals(t1, t2)) return 0;
-                bool t1IsParent = t1!.StepType.IsAssignableFrom(t2!.StepType);
+                if (t1 is null) return -1;
+                if (t2 is null) return 1;
+                bool t1IsParent = t1.StepType.IsAssignableFrom(t2.StepType);
                 bool t2IsParent = t2.StepType.IsAssignableFrom(t1.StepType);
                 if (t1IsParent && !t2IsParent) return 1;   // t2 is more derived -> first
                 if (t2IsParent && !t1IsParent) return -1;  // t1 is more derived -> first

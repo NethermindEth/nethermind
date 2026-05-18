@@ -285,7 +285,6 @@ namespace Nethermind.Core
     public readonly struct AddressByEip55ChecksumOrdinalComparer : IComparer<Address>
     {
         [SkipLocalsInit]
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public int Compare(Address? a, Address? b)
         {
             if (ReferenceEquals(a, b)) return 0;
