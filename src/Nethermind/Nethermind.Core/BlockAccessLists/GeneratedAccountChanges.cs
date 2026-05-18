@@ -152,17 +152,7 @@ public class GeneratedAccountChanges(Address address)
     }
 
     private static bool TryGetSlotChangeAtIndex(ReadOnlySlotChanges slot, uint index, out StorageChange change)
-    {
-        ReadOnlySpan<StorageChange> span = slot.Changes;
-        int idx = span.BinarySearch(new IndexKey<StorageChange>(index));
-        if (idx >= 0)
-        {
-            change = span[idx];
-            return true;
-        }
-        change = default;
-        return false;
-    }
+        => slot.TryGetAtIndex(index, out change);
 
     /// <summary>O(log n) lookup of the entry with <c>Index == index</c> over a list kept sorted
     /// by index (the merge contract on <see cref="GeneratedAccountChanges"/> guarantees that).</summary>
