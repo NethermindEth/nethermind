@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Linq;
 using System.Text.Json.Serialization;
 using Nethermind.Int256;
 
@@ -21,7 +20,7 @@ public class ReadOnlySlotChanges(UInt256 key, StorageChange[] changes) : IEquata
     public StorageChange[] Changes { get; } = changes;
 
     public bool Equals(ReadOnlySlotChanges? other)
-        => other is not null && Key.Equals(other.Key) && Changes.SequenceEqual(other.Changes);
+        => other is not null && Key.Equals(other.Key) && ((ReadOnlySpan<StorageChange>)Changes).SequenceEqual(other.Changes);
 
     public override bool Equals(object? obj) => obj is ReadOnlySlotChanges other && Equals(other);
 
