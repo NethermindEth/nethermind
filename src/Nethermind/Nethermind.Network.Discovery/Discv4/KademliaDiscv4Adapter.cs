@@ -99,7 +99,32 @@ public class KademliaDiscv4Adapter(
         while (true)
         {
             if (!_incomingMessageHandlers.TryGetValue(key, out IMessageHandler[]? current)) return;
-            IMessageHandler[] newValue = [.. current.Where((it) => it != handler)];
+
+            int newLength = 0;
+            for (int i = 0; i < current.Length; i++)
+            {
+                if (!ReferenceEquals(current[i], handler)) newLength++;
+            }
+
+            if (newLength == current.Length) return;
+
+            if (newLength == 0)
+            {
+                if (_incomingMessageHandlers.TryRemove(new KeyValuePair<(ValueHash256, MsgType), IMessageHandler[]>(key, current))) return;
+                continue;
+            }
+
+            IMessageHandler[] newValue = new IMessageHandler[newLength];
+            int newIndex = 0;
+            for (int i = 0; i < current.Length; i++)
+            {
+                IMessageHandler currentHandler = current[i];
+                if (!ReferenceEquals(currentHandler, handler))
+                {
+                    newValue[newIndex++] = currentHandler;
+                }
+            }
+
             if (_incomingMessageHandlers.TryUpdate(key, newValue, current)) return;
         }
     }
@@ -317,7 +342,7 @@ public class KademliaDiscv4Adapter(
             }
         }
 
-        return true;
+        return false;
     }
 
     public ValueTask DisposeAsync() => ValueTask.CompletedTask;

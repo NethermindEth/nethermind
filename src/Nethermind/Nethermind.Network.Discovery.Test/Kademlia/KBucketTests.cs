@@ -3,12 +3,8 @@
 
 using System;
 using System.Linq;
-using System.Threading;
-using System.Threading.Tasks;
-using FluentAssertions;
 using Nethermind.Core.Crypto;
 using Nethermind.Network.Discovery.Kademlia;
-using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Network.Discovery.Test.Kademlia;
@@ -33,13 +29,13 @@ public class KBucketTests
             bucket.TryAddOrRefresh(valueHash256, valueHash256, out _);
         }
 
-        bucket.GetAll().ToHashSet().Should().BeEquivalentTo(toAdd[..5].ToHashSet());
-        bucket.GetAllWithHash().Select(it => it.Item2).ToHashSet().Should().BeEquivalentTo(toAdd[..5].ToHashSet());
+        Assert.That(bucket.GetAll().ToHashSet(), Is.EquivalentTo(toAdd[..5].ToHashSet()));
+        Assert.That(bucket.GetAllWithHash().Select(static it => it.Item2).ToHashSet(), Is.EquivalentTo(toAdd[..5].ToHashSet()));
 
         foreach (ValueHash256 valueHash256 in toAdd[..5])
         {
-            bucket.ContainsNode(valueHash256).Should().BeTrue();
-            bucket.GetByHash(valueHash256).Should().NotBeNull();
+            Assert.That(bucket.ContainsNode(valueHash256), Is.True);
+            Assert.That(bucket.GetByHash(valueHash256), Is.EqualTo(valueHash256));
         }
     }
 
@@ -62,11 +58,11 @@ public class KBucketTests
             bucket.TryAddOrRefresh(valueHash256, valueHash256, out _);
         }
 
-        bucket.GetAll().Should().BeSameAs(nodes);
+        Assert.That(bucket.GetAll(), Is.SameAs(nodes));
     }
 
     [Test]
-    public void RemoteAndReplace_ShouldReplaceNodeWithLatestInReplacementCache()
+    public void RemoveAndReplace_ShouldReplaceNodeWithLatestInReplacementCache()
     {
         KBucket<ValueHash256> bucket = new(5);
 
@@ -79,8 +75,10 @@ public class KBucketTests
 
         bucket.RemoveAndReplace(toAdd[0]);
 
-        bucket.GetAll().ToHashSet()
-            .Should()
-            .BeEquivalentTo((toAdd[1..5].Concat(toAdd[9..10])).ToHashSet());
+        Assert.That(bucket.GetAll().ToHashSet(), Is.EquivalentTo((toAdd[1..5].Concat(toAdd[9..10])).ToHashSet()));
+        Assert.That(bucket.ContainsNode(toAdd[0]), Is.False);
+        Assert.That(bucket.ContainsNode(toAdd[9]), Is.True);
+        Assert.That(bucket.GetByHash(toAdd[9]), Is.EqualTo(toAdd[9]));
+        Assert.That(bucket.GetByHash(toAdd[0]), Is.Not.EqualTo(toAdd[0]));
     }
 }

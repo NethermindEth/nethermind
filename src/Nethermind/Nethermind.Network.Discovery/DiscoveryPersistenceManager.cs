@@ -72,6 +72,7 @@ public class DiscoveryPersistenceManager(
             try
             {
                 // If when it receive Pong, it should automatically add to routing table if not full.
+                _nodeStatsManager.GetOrAdd(node).CurrentPersistedNodeReputation = networkNode.Reputation;
                 await _discv4Adapter.Ping(node, cancellationToken);
             }
             catch (OperationCanceledException)

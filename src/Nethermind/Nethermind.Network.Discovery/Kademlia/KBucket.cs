@@ -50,9 +50,9 @@ public class KBucket<TNode>(int k) where TNode : notnull
     {
         if (!_items.Remove(hash)) return false;
 
-        if (_replacement.TryPopHead(out TNode? replacement))
+        if (_replacement.TryPopHead(out ValueHash256 replacementHash, out TNode? replacement))
         {
-            _items.AddOrRefresh(hash, replacement!);
+            _items.AddOrRefresh(replacementHash, replacement!);
         }
         _cachedArray = _items.GetAll();
 

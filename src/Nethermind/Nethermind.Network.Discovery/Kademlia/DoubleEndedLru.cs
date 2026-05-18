@@ -40,18 +40,20 @@ public class DoubleEndedLru<TNode>(int capacity) where TNode : notnull
         return BucketAddResult.Full;
     }
 
-    public bool TryPopHead(out TNode? node)
+    public bool TryPopHead(out ValueHash256 hash, out TNode? node)
     {
         using McsLock.Disposable _ = _lock.Acquire();
 
         LinkedListNode<(ValueHash256, TNode)>? front = _queue.First;
         if (front == null)
         {
+            hash = default;
             node = default;
             return false;
         }
 
         _queue.Remove(front);
+        hash = front.Value.Item1;
         node = front.Value.Item2;
         _hashMapping.TryRemove(front.Value.Item1, out front);
 

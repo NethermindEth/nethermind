@@ -78,7 +78,7 @@ public class NodeHealthTracker<TKey, TNode>(
             if (SameAsSelf(toRefresh))
             {
                 // Move the current node entry to the front of its bucket.
-                routingTable.TryAddOrRefresh(_currentNodeIdAsHash, node, out TNode? _);
+                routingTable.TryAddOrRefresh(_currentNodeIdAsHash, toRefresh, out TNode? _);
             }
             else
             {

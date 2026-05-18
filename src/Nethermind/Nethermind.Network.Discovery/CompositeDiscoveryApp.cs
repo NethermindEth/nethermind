@@ -56,6 +56,20 @@ public class CompositeDiscoveryApp : IDiscoveryApp
         _compositeNodeSource = new CompositeNodeSource(_discoveryApps);
     }
 
+    internal CompositeDiscoveryApp(
+        INetworkConfig networkConfig,
+        IDiscoveryConfig discoveryConfig,
+        ILogManager logManager,
+        IDiscoveryApp[] discoveryApps,
+        IChannelFactory? channelFactory = null)
+    {
+        _networkConfig = networkConfig;
+        _connections = new DiscoveryConnectionsPool(logManager.GetClassLogger<DiscoveryConnectionsPool>(), _networkConfig, discoveryConfig);
+        _channelFactory = channelFactory;
+        _discoveryApps = discoveryApps;
+        _compositeNodeSource = new CompositeNodeSource(_discoveryApps);
+    }
+
     public void InitializeChannel(IChannel channel)
         => ForEachDiscoveryApp(static (discoveryApp, state) => discoveryApp.InitializeChannel(state), channel);
 
@@ -92,6 +106,7 @@ public class CompositeDiscoveryApp : IDiscoveryApp
         finally
         {
             _compositeNodeSource.Dispose();
+            await DisposeDiscoveryApps();
         }
     }
 
@@ -125,6 +140,18 @@ public class CompositeDiscoveryApp : IDiscoveryApp
         Task result = Task.WhenAll(tasks.AsSpan());
         tasks.Dispose();
         return result;
+    }
+
+    private async Task DisposeDiscoveryApps()
+    {
+        IDiscoveryApp[] discoveryApps = _discoveryApps;
+        for (int i = 0; i < discoveryApps.Length; i++)
+        {
+            if (discoveryApps[i] is IAsyncDisposable asyncDisposable)
+            {
+                await asyncDisposable.DisposeAsync();
+            }
+        }
     }
 
     public IAsyncEnumerable<Node> DiscoverNodes(CancellationToken cancellationToken) => _compositeNodeSource.DiscoverNodes(cancellationToken);
