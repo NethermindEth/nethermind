@@ -131,14 +131,19 @@ public partial class BlockProcessor(
         _systemContractHandler.ApplyBlockhashStateChanges(header, spec);
         _stateProvider.Commit(spec, commitRoots: false);
 
-        _stateProvider.PauseTrieWarmer();
+        // Pause TrieWarmer during tx processing for light blocks to free CPU for the main thread.
+        // Heavy blocks (>60% gas utilization) keep the warmer running because their merkle phase
+        // is expensive and needs pre-warmed trie nodes.
+        bool pauseWarmer = header.GasUsed < header.GasLimit * 6 / 10;
+        if (pauseWarmer) _stateProvider.PauseTrieWarmer();
+
         TxReceipt[] receipts;
         receipts = _blockTransactionsExecutor.ProcessTransactions(block, options, ReceiptsTracer, token);
 
         // Signal that transactions are done — subscribers can cancel background work (e.g. prewarmer)
         // to free the thread pool for blooms, receipts root, state root parallel work below
         TransactionsExecuted?.Invoke();
-        _stateProvider.ResumeTrieWarmer();
+        if (pauseWarmer) _stateProvider.ResumeTrieWarmer();
 
         _stateProvider.Commit(spec, commitRoots: false);
 
