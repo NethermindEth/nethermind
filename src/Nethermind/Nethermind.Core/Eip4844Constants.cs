@@ -44,13 +44,6 @@ public static class Eip4844Constants
 
     public const byte BytesPerBlobVersionedHash = 32;
 
-    /// <summary>
-    /// Tries to compute the total blob fee: <c>blobCount × GAS_PER_BLOB × maxFeePerBlobGas</c>.
-    /// </summary>
-    /// <returns><see langword="false"/> if the multiplication overflows; otherwise <see langword="true"/>.</returns>
-    public static bool TryGetTotalBlobFee(int blobCount, UInt256 maxFeePerBlobGas, out UInt256 blobFee) =>
-        !UInt256.MultiplyOverflow((UInt256)((ulong)blobCount * GasPerBlob), maxFeePerBlobGas, out blobFee);
-
     // The parameter mutators are kept separate deliberately to ensure no accidental value changes.
     public static void OverrideIfAny(UInt256? minBlobGasPrice = null)
     {

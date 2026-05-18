@@ -113,16 +113,8 @@ public class GasEstimator(
 
         available = senderBalance - tx.ValueRef;
 
-        if (spec.IsEip4844Enabled && tx.BlobVersionedHashes?.Length > 0)
-        {
-            if (!Eip4844Constants.TryGetTotalBlobFee(tx.BlobVersionedHashes.Length, tx.MaxFeePerBlobGas ?? UInt256.Zero, out UInt256 blobUsage)
-                || blobUsage > available)
-            {
-                return EstimationResult.Failure(GetError(gasTracer, InsufficientFundsForGas));
-            }
-
-            available -= blobUsage;
-        }
+        if (!BlobGasCalculator.TrySubtractBlobFee(spec, tx, ref available))
+            return EstimationResult.Failure(GetError(gasTracer, InsufficientFundsForGas));
 
         return null;
     }
