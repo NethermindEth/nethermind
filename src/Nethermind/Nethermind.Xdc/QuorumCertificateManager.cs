@@ -272,8 +272,8 @@ internal class QuorumCertificateManager : IQuorumCertificateManager, IDisposable
             if (block.Header is not XdcBlockHeader xdcHeader)
                 throw new InvalidOperationException($"Expected an XDC header, but got {block.Header.GetType().FullName}");
 
-            if (xdcHeader.ExtraConsensusData?.QuorumCert is null)
-                throw new InvalidOperationException("New main chain block missing ExtraConsensusData");
+            if (xdcHeader.ExtraConsensusData is null)
+                throw new InvalidOperationException($"Block {xdcHeader.ToString(BlockHeader.Format.FullHashAndNumber)} has no V2 consensus data");
 
             CommitCertificate(xdcHeader.ExtraConsensusData.QuorumCert);
         }
