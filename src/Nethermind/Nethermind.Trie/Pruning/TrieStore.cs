@@ -13,7 +13,6 @@ using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Collections;
-using Nethermind.Core.Caching;
 using Nethermind.Core.Cpu;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Threading;
