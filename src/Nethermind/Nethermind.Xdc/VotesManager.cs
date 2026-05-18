@@ -273,11 +273,16 @@ internal class VotesManager(
     /// Signatures count if all are valid, or <c>null</c>
     /// if there's any validation <paramref name="error"/>.
     /// </returns>
+    /// <remarks>
+    /// When <paramref name="allowDuplicateSigners"/> is <c>true</c>, duplicate signatures from the same
+    /// recovered signer are ignored and only distinct signers contribute to the count.
+    /// </remarks>
     public static int? CountValidSignatures(
         IReadOnlyCollection<Address> allowedSigners,
         IReadOnlyCollection<Signature> signatures,
         ValueHash256 messageHash,
-        out string? error)
+        out string? error,
+        bool allowDuplicateSigners = false)
     {
         //TODO: try to minimize number of allocations, at least for common cases
         Dictionary<Address, int> signedBy = new(allowedSigners.Count);
@@ -300,8 +305,11 @@ internal class VotesManager(
 
             if (Interlocked.Increment(ref signCount) != 1)
             {
-                localError = $"Certificate contains a duplicate signature from {signer}";
-                state.Stop();
+                if (!allowDuplicateSigners)
+                {
+                    localError = $"Certificate contains a duplicate signature from {signer}";
+                    state.Stop();
+                }
                 return;
             }
 

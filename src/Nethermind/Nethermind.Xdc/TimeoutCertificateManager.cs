@@ -136,7 +136,6 @@ public class TimeoutCertificateManager : ITimeoutCertificateManager
             errorMessage = "Empty master node list from snapshot";
             return false;
         }
-        HashSet<Address> nextEpochCandidates = new(snapshot.NextEpochCandidates);
         XdcBlockHeader xdcHeader = _blockTree.Head?.Header as XdcBlockHeader;
         IXdcReleaseSpec spec = _specProvider.GetXdcSpec(xdcHeader, timeoutCertificate.Round);
         EpochSwitchInfo epochInfo = _epochSwitchManager.GetTimeoutCertificateEpochInfo(timeoutCertificate);
@@ -153,22 +152,20 @@ public class TimeoutCertificateManager : ITimeoutCertificateManager
             return false;
         }
 
-        HashSet<Address> uniqueSigners = [];
         ValueHash256 timeoutMsgHash = ComputeTimeoutMsgHash(timeoutCertificate.Round, timeoutCertificate.GapNumber);
-        foreach (Signature signature in timeoutCertificate.Signatures)
+        if (VotesManager.CountValidSignatures(
+                snapshot.NextEpochCandidates,
+                timeoutCertificate.Signatures,
+                timeoutMsgHash,
+                out errorMessage,
+                allowDuplicateSigners: true) is not { } uniqueSigners)
         {
-            Address signer = _ethereumEcdsa.RecoverAddress(signature, in timeoutMsgHash);
-            if (!nextEpochCandidates.Contains(signer))
-            {
-                errorMessage = "One or more invalid signatures";
-                return false;
-            }
-            uniqueSigners.Add(signer);
+            return false;
         }
 
-        if (uniqueSigners.Count < epochInfo.Masternodes.Length * spec.CertificateThreshold)
+        if (uniqueSigners < epochInfo.Masternodes.Length * spec.CertificateThreshold)
         {
-            errorMessage = $"Number of unique signers {uniqueSigners.Count} does not meet threshold of {epochInfo.Masternodes.Length * spec.CertificateThreshold}";
+            errorMessage = $"Number of unique signers {uniqueSigners} does not meet threshold of {epochInfo.Masternodes.Length * spec.CertificateThreshold}";
             return false;
         }
 

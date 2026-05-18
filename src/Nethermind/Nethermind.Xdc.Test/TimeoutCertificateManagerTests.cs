@@ -106,6 +106,13 @@ public class TimeoutCertificateManagerTests
         // Base case
         yield return new TestCaseData(BuildTimeoutCertificate(keys), masterNodes, true);
 
+        // Threshold signatures plus duplicate signer should still pass when unique signer count meets threshold
+        EthereumEcdsa thresholdEcdsa = new(0);
+        ValueHash256 thresholdMsgHash = TimeoutCertificateManager.ComputeTimeoutMsgHash(1, 0);
+        Signature[] thresholdSignatures = [.. keys.Take(quorumCount).Select(k => thresholdEcdsa.Sign(k, thresholdMsgHash))];
+        Signature duplicateThresholdSignature = XdcTestHelper.CreateMalleableSignature(thresholdSignatures[0]);
+        yield return new TestCaseData(new TimeoutCertificate(1, [.. thresholdSignatures, duplicateThresholdSignature], 0), masterNodes, true);
+
         // Insufficient signature count
         PrivateKey[] notEnoughKeys = [.. keys.Take(quorumCount - 1)];
         yield return new TestCaseData(BuildTimeoutCertificate(notEnoughKeys), masterNodes, false);

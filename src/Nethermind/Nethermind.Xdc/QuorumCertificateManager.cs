@@ -12,7 +12,6 @@ using Nethermind.Xdc.Errors;
 using Nethermind.Xdc.Spec;
 using Nethermind.Xdc.Types;
 using System;
-using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 
 namespace Nethermind.Xdc;
@@ -34,7 +33,6 @@ internal class QuorumCertificateManager(
 
     private ISpecProvider _specProvider { get; } = xdcConfig;
     private static readonly VoteDecoder _voteDecoder = new();
-    private static readonly EthereumEcdsa _ethereumEcdsa = new(0);
 
     public QuorumCertificate HighestKnownCertificate => _context.HighestQC;
     public QuorumCertificate LockCertificate => _context.LockQC;
@@ -181,23 +179,20 @@ internal class QuorumCertificateManager(
             return false;
         }
 
-        HashSet<Address> masternodes = [.. epochSwitchInfo.Masternodes];
-        HashSet<Address> uniqueSigners = [];
         ValueHash256 voteHash = VoteHash(qc.ProposedBlockInfo, qc.GapNumber);
-        foreach (Signature signature in qc.Signatures)
+        if (VotesManager.CountValidSignatures(
+                epochSwitchInfo.Masternodes,
+                qc.Signatures,
+                voteHash,
+                out error,
+                allowDuplicateSigners: true) is not { } uniqueSigners)
         {
-            Address signer = _ethereumEcdsa.RecoverAddress(signature, voteHash);
-            if (!masternodes.Contains(signer))
-            {
-                error = "Quorum certificate contains one or more invalid vote signatures";
-                return false;
-            }
-            uniqueSigners.Add(signer);
+            return false;
         }
 
-        if ((qcRound > 0) && (uniqueSigners.Count < required))
+        if ((qcRound > 0) && (uniqueSigners < required))
         {
-            error = $"Number of votes ({uniqueSigners.Count}/{epochSwitchInfo.Masternodes.Length}) does not meet threshold of {certificateThreshold}";
+            error = $"Number of votes ({uniqueSigners}/{epochSwitchInfo.Masternodes.Length}) does not meet threshold of {certificateThreshold}";
             return false;
         }
 

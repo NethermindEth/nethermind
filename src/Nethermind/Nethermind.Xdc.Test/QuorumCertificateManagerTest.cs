@@ -100,6 +100,12 @@ public class QuorumCertificateManagerTest
         //Base valid control case
         yield return new TestCaseData(XdcTestHelper.CreateQc(new BlockRoundInfo(headerBuilder.TestObject.Hash!, 1, 1), 0, keys), headerBuilder, keys.Select(k => k.Address), true);
 
+        //Threshold signatures plus duplicate signer should still pass when unique signer count meets threshold
+        BlockRoundInfo thresholdRoundInfo = new(headerBuilder.TestObject.Hash!, 1, 1);
+        Signature[] thresholdSignatures = XdcTestHelper.CreateVoteSignatures(thresholdRoundInfo, 0, [.. keys.Take(quorumCount)]);
+        Signature duplicateThresholdSignature = XdcTestHelper.CreateMalleableSignature(thresholdSignatures[0]);
+        yield return new TestCaseData(new QuorumCertificate(thresholdRoundInfo, [.. thresholdSignatures, duplicateThresholdSignature], 0), headerBuilder, masterNodes, true);
+
         //Not enough signatures
         yield return new TestCaseData(XdcTestHelper.CreateQc(new BlockRoundInfo(headerBuilder.TestObject.Hash!, 1, 1), 0, [.. keys.Take(quorumCount - 1)]), headerBuilder, keys.Select(k => k.Address), false);
 
