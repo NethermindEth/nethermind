@@ -295,7 +295,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
                     {
                         // On revert, return remaining regular gas and restore state gas to parent reservoir.
                         TGasPolicy.UpdateGasUp(ref _currentState.Gas, TGasPolicy.GetRemainingGas(in previousState.Gas));
-                        RemoveAdvancedStateGasRefund(previousState);
+                        RemoveAdvancedStateGasRefund(previousState, ref previousState.Gas);
                         TGasPolicy.RestoreChildStateGas(ref _currentState.Gas, in previousState.Gas);
                         if (previousState.ExecutionType.IsAnyCreate())
                         {
@@ -614,7 +614,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
     {
         VmState<TGasPolicy> childState = _currentState;
         _currentState = _stateStack.Pop();
-        RemoveAdvancedStateGasRefund(childState);
+        RemoveAdvancedStateGasRefund(childState, ref childState.Gas);
         TGasPolicy.RestoreChildStateGasOnHalt(ref _currentState.Gas, in childState.Gas);
         _currentState.IsContinuation = true;
         childState.Dispose();
@@ -686,18 +686,6 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
             childState.StateGasRefundPending = 0;
             childState.StateGasRefundAdvanced = 0;
         }
-    }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static void RemoveAdvancedStateGasRefund(VmState<TGasPolicy> vmState)
-    {
-        if (vmState.StateGasRefundAdvanced > 0)
-        {
-            TGasPolicy.RemoveStateGasRefundFromReservoir(ref vmState.Gas, vmState.StateGasRefundAdvanced);
-            vmState.StateGasRefundAdvanced = 0;
-        }
-
-        vmState.StateGasRefundPending = 0;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
