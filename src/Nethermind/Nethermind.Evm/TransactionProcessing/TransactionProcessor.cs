@@ -12,6 +12,7 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Messages;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Validation;
 using Nethermind.Crypto;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Evm.GasPolicy;
@@ -610,15 +611,22 @@ namespace Nethermind.Evm.TransactionProcessing
 
             if (tx.SupportsAuthorizationList)
             {
-                if (tx.IsContractCreation)
+                // SetCode-specific shape checks live in Nethermind.Core.Validation.SetCodeTxValidation
+                // so that this RPC-facing path (eth_call / eth_estimateGas, which bypass TxValidator)
+                // and the consensus-side NoContractCreationTxValidator / AuthorizationListTxValidator
+                // share a single source of truth. See https://github.com/NethermindEth/nethermind/issues/11619.
+                ValidationResult noCreation = SetCodeTxValidation.ValidateNoContractCreation(tx);
+                if (!noCreation)
                 {
                     TraceLogInvalidTx(tx, "SETCODE_TX_CREATE");
-                    return TransactionResult.ErrorType.MalformedTransaction.WithDetail($"{TxErrorMessages.NotAllowedCreateTransaction} (sender {tx.SenderAddress})");
+                    return TransactionResult.ErrorType.MalformedTransaction.WithDetail($"{noCreation.Error} (sender {tx.SenderAddress})");
                 }
-                if (!tx.HasAuthorizationList)
+
+                ValidationResult authList = SetCodeTxValidation.ValidateAuthorizationList(tx);
+                if (!authList)
                 {
                     TraceLogInvalidTx(tx, "EMPTY_AUTHORIZATION_LIST");
-                    return TransactionResult.ErrorType.MalformedTransaction.WithDetail($"{TxErrorMessages.MissingAuthorizationList} (sender {tx.SenderAddress})");
+                    return TransactionResult.ErrorType.MalformedTransaction.WithDetail($"{authList.Error} (sender {tx.SenderAddress})");
                 }
             }
 
