@@ -10,16 +10,32 @@ using Nethermind.Serialization.Ssz;
 namespace Nethermind.Merge.Plugin.SszRest;
 
 /// <summary>
+/// Factory contract for SSZ execution payload wrappers.
+/// </summary>
+/// <typeparam name="TSszExecutionPayload">The concrete SSZ execution payload wrapper type.</typeparam>
+public interface ISszExecutionPayloadFactory<out TSszExecutionPayload>
+    where TSszExecutionPayload : SszExecutionPayloadV1
+{
+    /// <summary>
+    /// Creates an SSZ execution payload wrapper from an execution block.
+    /// </summary>
+    /// <param name="block">The block to wrap.</param>
+    /// <returns>The concrete SSZ execution payload wrapper.</returns>
+    static abstract TSszExecutionPayload From(Block block);
+}
+
+/// <summary>
 /// SSZ wrapper for ExecutionPayloadV1 (pre-Shanghai / pre-EIP-4895).
 /// Using this type for V1 newPayload encode/decode avoids the 4-byte withdrawals offset
 /// that <see cref="SszExecutionPayload"/> would include in the fixed header.
 /// </summary>
 [SszContainer]
-public partial class SszExecutionPayloadV1(ExecutionPayload payload)
+public partial class SszExecutionPayloadV1(ExecutionPayload payload) : ISszExecutionPayloadFactory<SszExecutionPayloadV1>
 {
     public SszExecutionPayloadV1() : this(new ExecutionPayload()) { }
 
-    public SszExecutionPayloadV1(Block block) : this(ExecutionPayload.Create(block)) { }
+    /// <inheritdoc/>
+    public static SszExecutionPayloadV1 From(Block block) => new(ExecutionPayload.Create(block));
 
     protected virtual ExecutionPayload Inner { get; private set; } = payload;
 
@@ -138,11 +154,14 @@ public partial class SszExecutionPayloadV1(ExecutionPayload payload)
 /// Keeps all SSZ-specific type adaptations out of the domain class.
 /// </summary>
 [SszContainer]
-public partial class SszExecutionPayloadV2(ExecutionPayload payload) : SszExecutionPayloadV1(payload)
+public partial class SszExecutionPayloadV2(ExecutionPayload payload)
+    : SszExecutionPayloadV1(payload), ISszExecutionPayloadFactory<SszExecutionPayloadV2>
 {
     public SszExecutionPayloadV2() : this(new ExecutionPayload()) { }
 
-    public SszExecutionPayloadV2(Block block) : this(ExecutionPayload.Create(block)) { }
+    /// <inheritdoc/>
+    public new static SszExecutionPayloadV2 From(Block block) => new(ExecutionPayload.Create(block));
+
     [SszList(16)]
     public SszWithdrawal[] Withdrawals
     {
@@ -201,13 +220,15 @@ public partial class SszExecutionPayloadV2(ExecutionPayload payload) : SszExecut
 /// <see cref="SszExecutionPayload"/> with EIP-4844 fields.
 /// </summary>
 [SszContainer]
-public partial class SszExecutionPayloadV3(ExecutionPayload payload) : SszExecutionPayloadV2(payload)
+public partial class SszExecutionPayloadV3(ExecutionPayload payload)
+    : SszExecutionPayloadV2(payload), ISszExecutionPayloadFactory<SszExecutionPayloadV3>
 {
     protected override ExecutionPayloadV3 Inner => (ExecutionPayloadV3)base.Inner;
 
     public SszExecutionPayloadV3() : this(new ExecutionPayloadV3()) { }
 
-    public SszExecutionPayloadV3(Block block) : this(ExecutionPayloadV3.Create(block)) { }
+    /// <inheritdoc/>
+    public new static SszExecutionPayloadV3 From(Block block) => new(ExecutionPayloadV3.Create(block));
 
     public override ExecutionPayloadV3 AsExecutionPayload() => Inner;
 
@@ -229,13 +250,15 @@ public partial class SszExecutionPayloadV3(ExecutionPayload payload) : SszExecut
 /// <see cref="SszExecutionPayloadV3"/> with EIP-7928 and EIP-7843 fields.
 /// </summary>
 [SszContainer]
-public partial class SszExecutionPayloadV4(ExecutionPayloadV4 payload) : SszExecutionPayloadV3(payload)
+public partial class SszExecutionPayloadV4(ExecutionPayloadV4 payload)
+    : SszExecutionPayloadV3(payload), ISszExecutionPayloadFactory<SszExecutionPayloadV4>
 {
     protected override ExecutionPayloadV4 Inner => (ExecutionPayloadV4)base.Inner;
 
     public SszExecutionPayloadV4() : this(new ExecutionPayloadV4()) { }
 
-    public SszExecutionPayloadV4(Block block) : this(ExecutionPayloadV4.Create(block)) { }
+    /// <inheritdoc/>
+    public new static SszExecutionPayloadV4 From(Block block) => new(ExecutionPayloadV4.Create(block));
 
     public override ExecutionPayloadV4 AsExecutionPayload() => Inner;
 

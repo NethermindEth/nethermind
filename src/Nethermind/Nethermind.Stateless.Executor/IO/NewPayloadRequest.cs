@@ -13,7 +13,7 @@ namespace Nethermind.Stateless.Execution.IO;
 
 [SszContainer]
 public partial class NewPayloadRequest<TExecutionPayload>
-    where TExecutionPayload : SszExecutionPayloadV1, ISszCodec<TExecutionPayload>, new()
+    where TExecutionPayload : SszExecutionPayloadV1, ISszExecutionPayloadFactory<TExecutionPayload>, ISszCodec<TExecutionPayload>, new()
 {
     public TExecutionPayload ExecutionPayload { get; set; } = default!;
 
@@ -26,13 +26,7 @@ public partial class NewPayloadRequest<TExecutionPayload>
 
     public static NewPayloadRequest<TExecutionPayload> From(Block block)
     {
-        SszExecutionPayloadV1 payload = typeof(TExecutionPayload) switch
-        {
-            Type t when t == typeof(SszExecutionPayloadV4) => new SszExecutionPayloadV4(block),
-            Type t when t == typeof(SszExecutionPayloadV3) => new SszExecutionPayloadV3(block),
-            Type t when t == typeof(SszExecutionPayloadV2) => new SszExecutionPayloadV2(block),
-            _ => new SszExecutionPayloadV1(block)
-        };
+        TExecutionPayload payload = TExecutionPayload.From(block);
 
         List<Hash256> versionedHashes = [];
 
@@ -50,7 +44,7 @@ public partial class NewPayloadRequest<TExecutionPayload>
 
         NewPayloadRequest<TExecutionPayload> request = new()
         {
-            ExecutionPayload = (TExecutionPayload)payload,
+            ExecutionPayload = payload,
             VersionedHashes = [.. versionedHashes],
             ParentBeaconBlockRoot = block.ParentBeaconBlockRoot!
         };

@@ -7,8 +7,8 @@ using Nethermind.Serialization.Ssz;
 namespace Nethermind.Stateless.Execution.IO;
 
 [SszContainer]
-public partial class StatelessInput<TExecutionPayload>
-    where TExecutionPayload : SszExecutionPayloadV1, ISszCodec<TExecutionPayload>, new()
+public partial class StatelessInput<TExecutionPayload> where TExecutionPayload
+    : SszExecutionPayloadV1, ISszExecutionPayloadFactory<TExecutionPayload>, ISszCodec<TExecutionPayload>, new()
 {
     public NewPayloadRequest<TExecutionPayload> NewPayloadRequest { get; set; } = null!;
 

@@ -24,7 +24,7 @@ internal static class InputDecoder
     }
 
     private static StatelessPayload DecodeV1<TExecutionPayload>(ReadOnlySpan<byte> data)
-        where TExecutionPayload : SszExecutionPayloadV1, ISszCodec<TExecutionPayload>, new()
+        where TExecutionPayload : SszExecutionPayloadV1, ISszExecutionPayloadFactory<TExecutionPayload>, ISszCodec<TExecutionPayload>, new()
     {
         StatelessInput<TExecutionPayload>.Decode(data, out StatelessInput<TExecutionPayload> input);
         NewPayloadRequest<TExecutionPayload>.Merkleize(input.NewPayloadRequest, out UInt256 root);
