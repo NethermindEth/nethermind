@@ -268,7 +268,7 @@ internal class QuorumCertificateManager : IQuorumCertificateManager, IDisposable
 
             if (block.IsGenesis)
             {
-                Initialize((XdcBlockHeader)block.Header);
+                Initialize(xdcHeader);
                 continue;
             }
 
