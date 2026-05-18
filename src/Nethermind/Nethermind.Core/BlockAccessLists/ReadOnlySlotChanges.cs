@@ -8,13 +8,9 @@ using Nethermind.Int256;
 namespace Nethermind.Core.BlockAccessLists;
 
 /// <summary>
-/// Per-slot changes from a decoded BAL. Backed by a <see cref="StorageChange"/> array sorted by
-/// <see cref="StorageChange.Index"/> (the decoder validates ordering on the way in). A parallel
-/// <c>uint[]</c> index lane is built once at construction so binary-search lookups
-/// (<see cref="TryGetLastBefore"/>, <see cref="TryGetAtIndex"/>, <see cref="HasAtIndex"/>) walk a
-/// densely packed 4-byte key per element rather than reading a 36-byte <see cref="StorageChange"/>
-/// struct on every comparison — 16 keys per cacheline vs ~1, which compounds on hot accounts that
-/// accumulate many tx-level changes (sequencer fee recipient, popular pools).
+/// Per-slot changes from a decoded BAL, sorted by <see cref="StorageChange.Index"/>
+/// (decoder-validated). A parallel <c>uint[]</c> index lane drives the binary-search lookups
+/// (<see cref="TryGetLastBefore"/>, <see cref="TryGetAtIndex"/>, <see cref="HasAtIndex"/>).
 /// </summary>
 public class ReadOnlySlotChanges(UInt256 key, StorageChange[] changes) : IEquatable<ReadOnlySlotChanges>
 {
@@ -23,9 +19,6 @@ public class ReadOnlySlotChanges(UInt256 key, StorageChange[] changes) : IEquata
     [JsonConverter(typeof(StorageChangesByIndexConverter))]
     public StorageChange[] Changes { get; } = changes;
 
-    /// <summary>Parallel-to-<see cref="Changes"/> array of <see cref="StorageChange.Index"/>
-    /// values, kept in the same order. Drives the binary searches without dragging the full
-    /// <see cref="StorageChange"/> struct through cache.</summary>
     private readonly uint[] _indices = ExtractIndices(changes);
 
     public ReadOnlySlotChanges(UInt256 key) : this(key, []) { }

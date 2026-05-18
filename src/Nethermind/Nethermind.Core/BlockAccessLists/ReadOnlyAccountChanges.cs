@@ -13,21 +13,17 @@ using Nethermind.Serialization.Json;
 namespace Nethermind.Core.BlockAccessLists;
 
 /// <summary>
-/// Per-account changes from a decoded BAL. Index-keyed change families are stored as plain
-/// arrays kept sorted by <see cref="IIndexedChange.Index"/> (the decoder validates ordering).
-/// Reads (<see cref="GetBalance"/>, <see cref="GetNonce"/>, <see cref="GetCode"/>,
-/// <see cref="BalanceChangeAtIndex"/>, etc.) binary-search a parallel <c>uint[]</c> index lane
-/// built once at construction, rather than walking the fat change structs themselves —
-/// 16 indices per cacheline vs ~1, which compounds on the hot accounts that accumulate many
-/// tx-level changes per block. Storage changes are kept in two parallel structures: a hash map
-/// for O(1) <see cref="TryGetSlotChanges"/> lookups (used during EVM execution) and an array
-/// sorted by slot key for ordered iteration (used by the cache prewarmer's sorted-merge with
-/// <see cref="StorageReads"/>).
+/// Per-account changes from a decoded BAL. Indexed change families are kept sorted by
+/// <see cref="IIndexedChange.Index"/> (decoder-validated) and reads binary-search a
+/// dense <c>uint[]</c> index lane shared across balance / nonce / code (one allocation,
+/// three spans carved by offset). Storage changes are also indexed twice: a hash map for
+/// O(1) <see cref="TryGetSlotChanges"/> lookups during EVM execution, and an array sorted
+/// by slot key for the cache prewarmer's sorted-merge with <see cref="StorageReads"/>.
 /// </summary>
 /// <remarks>
-/// Instances are immutable after construction: parallel transaction workers read concurrently
-/// and any missing entry at the current block-access index falls through to the per-worker
-/// parent-state snapshot (see <c>BlockAccessListBasedWorldState</c>).
+/// Immutable after construction; parallel workers read concurrently. Missing entries at the
+/// current block-access index fall through to the per-worker parent state in
+/// <c>BlockAccessListBasedWorldState</c>.
 /// </remarks>
 public class ReadOnlyAccountChanges : IEquatable<ReadOnlyAccountChanges>
 {
@@ -55,12 +51,7 @@ public class ReadOnlyAccountChanges : IEquatable<ReadOnlyAccountChanges>
 
     private readonly Dictionary<UInt256, ReadOnlySlotChanges> _storageChanges;
     private readonly HashSet<UInt256>? _storageReadSet;
-
-    // Parallel-to-{Balance,Nonce,Code}Changes arrays of Index values. Drive the binary searches
-    // without reading the full change struct on every comparison.
-    private readonly uint[] _balanceIndices;
-    private readonly uint[] _nonceIndices;
-    private readonly uint[] _codeIndices;
+    private readonly AccountIndexLane _lane;
 
     public ReadOnlyAccountChanges(
         Address address,
@@ -85,9 +76,7 @@ public class ReadOnlyAccountChanges : IEquatable<ReadOnlyAccountChanges>
         BalanceChanges = balanceChanges;
         NonceChanges = nonceChanges;
         CodeChanges = codeChanges;
-        _balanceIndices = ExtractIndices<BalanceChange>(balanceChanges);
-        _nonceIndices = ExtractIndices<NonceChange>(nonceChanges);
-        _codeIndices = ExtractIndices<CodeChange>(codeChanges);
+        _lane = new AccountIndexLane(balanceChanges, nonceChanges, codeChanges);
         // Hash-set lookup beats array.Contains() for accounts with many declared reads; allocated
         // lazily to avoid the overhead on accounts that never get queried via IsStorageRead.
         _storageReadSet = storageReads.Length > 4 ? [.. storageReads] : null;
@@ -113,11 +102,11 @@ public class ReadOnlyAccountChanges : IEquatable<ReadOnlyAccountChanges>
         return false;
     }
 
-    public BalanceChange? BalanceChangeAtIndex(uint index) => GetExact(_balanceIndices, BalanceChanges, index);
+    public BalanceChange? BalanceChangeAtIndex(uint index) => AccountIndexLane.GetExact(_lane.Balance, BalanceChanges, index);
 
-    public NonceChange? NonceChangeAtIndex(uint index) => GetExact(_nonceIndices, NonceChanges, index);
+    public NonceChange? NonceChangeAtIndex(uint index) => AccountIndexLane.GetExact(_lane.Nonce, NonceChanges, index);
 
-    public CodeChange? CodeChangeAtIndex(uint index) => GetExact(_codeIndices, CodeChanges, index);
+    public CodeChange? CodeChangeAtIndex(uint index) => AccountIndexLane.GetExact(_lane.Code, CodeChanges, index);
 
     public bool HasSlotChangesAtIndex(uint index)
     {
@@ -159,29 +148,29 @@ public class ReadOnlyAccountChanges : IEquatable<ReadOnlyAccountChanges>
 
     /// <summary>Most recent balance strictly before <paramref name="blockAccessIndex"/>; null if none.</summary>
     public UInt256? GetBalance(uint blockAccessIndex)
-        => TryGetLastBefore(_balanceIndices, BalanceChanges, blockAccessIndex, out BalanceChange last) ? last.Value : null;
+        => AccountIndexLane.TryGetLastBefore(_lane.Balance, BalanceChanges, blockAccessIndex, out BalanceChange last) ? last.Value : null;
 
     public UInt256? GetNonce(uint blockAccessIndex)
-        => TryGetLastBefore(_nonceIndices, NonceChanges, blockAccessIndex, out NonceChange last) ? last.Value : null;
+        => AccountIndexLane.TryGetLastBefore(_lane.Nonce, NonceChanges, blockAccessIndex, out NonceChange last) ? last.Value : null;
 
     public byte[]? GetCode(uint blockAccessIndex)
-        => TryGetLastBefore(_codeIndices, CodeChanges, blockAccessIndex, out CodeChange last) ? last.Code : null;
+        => AccountIndexLane.TryGetLastBefore(_lane.Code, CodeChanges, blockAccessIndex, out CodeChange last) ? last.Code : null;
 
     // The explicit (ValueHash256?) on the null branch matters: ValueHash256 has an implicit
     // conversion operator from Hash256? that returns default(ValueHash256) for a null source,
     // so without the cast C# resolves the conditional's best common type as ValueHash256
     // (non-nullable) and the "null" branch becomes default(ValueHash256) lifted to HasValue=true.
     public ValueHash256? GetCodeHash(uint blockAccessIndex)
-        => TryGetLastBefore(_codeIndices, CodeChanges, blockAccessIndex, out CodeChange last) ? last.CodeHash : (ValueHash256?)null;
+        => AccountIndexLane.TryGetLastBefore(_lane.Code, CodeChanges, blockAccessIndex, out CodeChange last) ? last.CodeHash : (ValueHash256?)null;
 
     public bool TryGetLastBalanceChangeBefore(uint blockAccessIndex, out BalanceChange balanceChange)
-        => TryGetLastBefore(_balanceIndices, BalanceChanges, blockAccessIndex, out balanceChange);
+        => AccountIndexLane.TryGetLastBefore(_lane.Balance, BalanceChanges, blockAccessIndex, out balanceChange);
 
     public bool TryGetLastNonceChangeBefore(uint blockAccessIndex, out NonceChange nonceChange)
-        => TryGetLastBefore(_nonceIndices, NonceChanges, blockAccessIndex, out nonceChange);
+        => AccountIndexLane.TryGetLastBefore(_lane.Nonce, NonceChanges, blockAccessIndex, out nonceChange);
 
     public bool TryGetLastCodeChangeBefore(uint blockAccessIndex, out CodeChange codeChange)
-        => TryGetLastBefore(_codeIndices, CodeChanges, blockAccessIndex, out codeChange);
+        => AccountIndexLane.TryGetLastBefore(_lane.Code, CodeChanges, blockAccessIndex, out codeChange);
 
     public bool Equals(ReadOnlyAccountChanges? other)
     {
@@ -217,41 +206,4 @@ public class ReadOnlyAccountChanges : IEquatable<ReadOnlyAccountChanges>
         return sb.ToString();
     }
 
-    /// <summary>Returns the change with <c>Index == index</c> if any; otherwise null. Searches the
-    /// dense <paramref name="indices"/> lane and indexes into the parallel <paramref name="values"/>
-    /// array, so each comparison loads 4 bytes instead of a full <typeparamref name="T"/> struct.</summary>
-    private static T? GetExact<T>(uint[] indices, T[] values, uint index) where T : struct
-    {
-        int idx = ((ReadOnlySpan<uint>)indices).BinarySearch(index);
-        return idx >= 0 ? values[idx] : null;
-    }
-
-    /// <summary>Returns the entry with the largest Index strictly less than
-    /// <paramref name="blockAccessIndex"/>, or <c>false</c> if none. Same lane shape as
-    /// <see cref="GetExact{T}"/>.</summary>
-    private static bool TryGetLastBefore<T>(uint[] indices, T[] values, uint blockAccessIndex, out T last) where T : struct
-    {
-        int idx = ((ReadOnlySpan<uint>)indices).BinarySearch(blockAccessIndex);
-        // (idx if found, ~idx otherwise) is the position of the first entry with Index >= target;
-        // the last strictly-before is one step earlier.
-        int lastBefore = (idx >= 0 ? idx : ~idx) - 1;
-        if (lastBefore < 0)
-        {
-            last = default;
-            return false;
-        }
-        last = values[lastBefore];
-        return true;
-    }
-
-    private static uint[] ExtractIndices<T>(T[] changes) where T : struct, IIndexedChange
-    {
-        if (changes.Length == 0) return [];
-        uint[] indices = new uint[changes.Length];
-        for (int i = 0; i < changes.Length; i++)
-        {
-            indices[i] = changes[i].Index;
-        }
-        return indices;
-    }
 }
