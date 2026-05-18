@@ -27,10 +27,12 @@ public class SubscriptionFactory : ISubscriptionFactory
 
     public Subscription CreateSubscription(IJsonRpcDuplexClient jsonRpcDuplexClient, string subscriptionType, string? args = null)
     {
+        // Defence-in-depth: RPC entrypoints already guard the args length, but the factory is public
+        // and may be invoked directly by plugins, so we re-check here before any JSON re-parsing.
+        SubscriptionArgsLengthValidator.Validate(args);
+
         if (_subscriptionConstructors.TryGetValue(subscriptionType, out CustomSubscriptionType customSubscription))
         {
-            SubscriptionArgsLengthValidator.Validate(args);
-
             Type? paramType = customSubscription.ParamType;
 
             IJsonRpcParam? param = null;
@@ -86,7 +88,7 @@ internal static class SubscriptionArgsLengthValidator
 {
     internal const int MaxArgsStringLength = 1_000_000;
 
-    public static void Validate(string? args)
+    internal static void Validate(string? args)
     {
         if (args is not null && args.Length > MaxArgsStringLength)
         {
