@@ -59,10 +59,9 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         PreBlockCaches preBlockCaches,
         ILogManager logManager)
     {
-        // Thread budget: prewarmer + TrieWarmer ≤ ProcessorCount - 2 (reserve cores for main thread + OS).
-        // Prewarmer gets 60% of budget (more benefit from parallelism), TrieWarmer gets 40%.
-        int threadBudget = Math.Max(Environment.ProcessorCount - 2, 2);
-        _concurrencyLevel = concurrency == 0 ? Math.Max(threadBudget * 6 / 10, 2) : concurrency;
+        // Keep prewarmer at half of cores — enough for good cache hits while leaving
+        // headroom for TrieWarmer and main thread. TrieWarmer keeps its default (ProcessorCount-1).
+        _concurrencyLevel = concurrency == 0 ? Math.Max(Environment.ProcessorCount / 2, 2) : concurrency;
         _parallelExecutionBatchRead = parallelExecutionBatchRead;
         _envPool = new DefaultObjectPoolProvider { MaximumRetained = maxPoolSize }.Create(poolPolicy);
         _logger = logManager.GetClassLogger<BlockCachePreWarmer>();
