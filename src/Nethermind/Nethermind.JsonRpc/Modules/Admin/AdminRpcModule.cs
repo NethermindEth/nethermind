@@ -155,7 +155,7 @@ public class AdminRpcModule : IAdminRpcModule
 
     public ResultWrapper<string> admin_subscribe(string subscriptionName, string? args = null)
     {
-        if (SubscriptionArgs.CheckArgsLength(args) is { } failure) return failure;
+        if (Subscription.ValidateArgs(args) is { } failure) return failure;
 
         try
         {
