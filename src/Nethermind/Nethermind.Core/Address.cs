@@ -142,7 +142,7 @@ namespace Nethermind.Core
             return false;
         }
 
-        public Address(ReadOnlySpan<byte> bytes)
+        public Address(scoped ReadOnlySpan<byte> bytes)
         {
             if (bytes.Length != Size)
             {
@@ -281,6 +281,7 @@ namespace Nethermind.Core
         internal long GetHashCode64() => SpanExtensions.FastHash64For20Bytes(ref Unsafe.AsRef(in FirstByte));
     }
 
+    [JsonConverter(typeof(AddressAsKeyConverter))]
     public readonly struct AddressAsKey(Address key) : IEquatable<AddressAsKey>, IHash64bit<AddressAsKey>
     {
         public static GenericEqualityComparer<AddressAsKey> EqualityComparer { get; } = new();
@@ -309,7 +310,7 @@ namespace Nethermind.Core
 
         public AddressStructRef(Hash256StructRef keccak) : this(keccak.Bytes.Slice(12, ByteLength)) { }
 
-        public AddressStructRef(in ValueHash256 keccak) : this(keccak.BytesAsSpan.Slice(12, ByteLength).ToArray()) { }
+        public AddressStructRef(in ValueHash256 keccak) : this(keccak.BytesAsSpan.Slice(12, ByteLength)) { }
 
         public readonly byte this[int index] => Bytes[index];
 
@@ -405,6 +406,6 @@ namespace Nethermind.Core
 
         public static bool operator !=(AddressStructRef a, AddressStructRef b) => !(a == b);
 
-        public readonly Address ToAddress() => new(Bytes.ToArray());
+        public readonly Address ToAddress() => new(Bytes);
     }
 }

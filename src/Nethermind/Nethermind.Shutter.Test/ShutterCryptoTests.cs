@@ -59,7 +59,7 @@ class ShutterCryptoTests
 
         Span<byte> decryptedMessage = stackalloc byte[ShutterCrypto.GetDecryptedDataLength(encryptedMessage)];
         ShutterCrypto.Decrypt(ref decryptedMessage, encryptedMessage, key);
-        Assert.That(msg.SequenceEqual(decryptedMessage.ToArray()));
+        Assert.That(msg.SequenceEqual(decryptedMessage));
 
         EncryptedMessage decoded = ShutterCrypto.DecodeEncryptedMessage(ShutterCrypto.EncodeEncryptedMessage(encryptedMessage));
         Assert.That(encryptedMessage.C1.IsEqual(decoded.C1));

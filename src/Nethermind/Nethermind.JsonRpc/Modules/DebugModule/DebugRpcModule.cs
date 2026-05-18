@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.IO;
 using System.Linq;
 using System.Threading;
@@ -12,6 +13,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Evm;
 using Nethermind.Blockchain.Tracing.GethStyle;
+using Nethermind.Consensus.Tracing;
 using Nethermind.JsonRpc.Data;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
@@ -231,7 +233,7 @@ public class DebugRpcModule(
 
             if (_logger.IsTrace) _logger.Trace($"{nameof(debug_traceBlock)} request {blockRlp.ToHexString()}, result: {blockTrace}");
 
-            return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Success(blockTrace);
+            return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Success(new GethLikeTxTraceStreamingResult(blockTrace));
         }
         catch (RlpException)
         {
@@ -263,7 +265,7 @@ public class DebugRpcModule(
 
             if (_logger.IsTrace) _logger.Trace($"{nameof(debug_traceBlockByNumber)} request {blockNumber}, result: {blockTrace}");
 
-            return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Success(blockTrace);
+            return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Success(new GethLikeTxTraceStreamingResult(blockTrace));
         }
         catch (ArgumentNullException)
         {
@@ -290,12 +292,38 @@ public class DebugRpcModule(
 
             if (_logger.IsTrace) _logger.Trace($"{nameof(debug_traceBlockByHash)} request {blockHash}, result: {blockTrace}");
 
-            return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Success(blockTrace);
+            return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Success(new GethLikeTxTraceStreamingResult(blockTrace));
         }
         catch (ArgumentNullException)
         {
             return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Fail($"Trace is null for block {blockHash}", ErrorCodes.InvalidInput);
         }
+    }
+
+    public ResultWrapper<IReadOnlyCollection<Hash256>> debug_intermediateRoots(Hash256 blockHash, GethTraceOptions? options = null)
+    {
+        TryGetHeaderAndCheckState<IReadOnlyCollection<Hash256>>(blockHash, out ResultWrapper<IReadOnlyCollection<Hash256>>? headerError);
+        if (headerError is not null)
+        {
+            return headerError;
+        }
+
+        using CancellationTokenSource? timeout = BuildTimeoutCancellationTokenSource();
+        CancellationToken cancellationToken = timeout.Token;
+
+        IReadOnlyCollection<Hash256> roots;
+        try
+        {
+            roots = debugBridge.GetBlockIntermediateRoots(blockHash, cancellationToken, options);
+        }
+        catch (GenesisNotTraceableException e)
+        {
+            return ResultWrapper<IReadOnlyCollection<Hash256>>.Fail(e.Message, ErrorCodes.InvalidInput);
+        }
+
+        if (_logger.IsTrace) _logger.Trace($"{nameof(debug_intermediateRoots)} request {blockHash}, roots: {roots.Count}");
+
+        return ResultWrapper<IReadOnlyCollection<Hash256>>.Success(roots);
     }
 
     public ResultWrapper<GethLikeTxTrace[]> debug_traceBlockFromFile(string fileName, GethTraceOptions options = null) => throw new NotImplementedException();
@@ -369,6 +397,21 @@ public class DebugRpcModule(
 
     public ResultWrapper<byte[]> debug_getRawBlock(BlockParameter blockParameter) =>
         GetBlockRlpOrFail(blockParameter);
+
+    public ResultWrapper<OwnedByteMemory> debug_getRawBlockAccessList(BlockParameter blockParameter)
+    {
+        Block? block = debugBridge.GetBlock(blockParameter);
+        if (block is null || block.BlockAccessListHash is null)
+        {
+            return ResultWrapper<OwnedByteMemory>.Fail("Resource not found", ErrorCodes.BlockAccessListResourceNotFound);
+        }
+
+        MemoryManager<byte>? balRlp = blockchainBridge.GetBlockAccessListRlp(block.Hash);
+
+        return balRlp is null
+            ? ResultWrapper<OwnedByteMemory>.Fail("Pruned history unavailable", ErrorCodes.PrunedHistoryUnavailable)
+            : ResultWrapper<OwnedByteMemory>.Success(new OwnedByteMemory(balRlp));
+    }
 
     public ResultWrapper<byte[]> debug_getRawHeader(BlockParameter blockParameter)
     {

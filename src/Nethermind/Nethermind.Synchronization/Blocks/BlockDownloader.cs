@@ -186,7 +186,7 @@ namespace Nethermind.Synchronization.Blocks
 
                 (bool shouldProcess, bool downloadReceipts) = ReceiptEdgeCase(bestProcessedBlock, headers[1].Number, originalShouldProcess, originalDownloadReceiptOpts);
 
-                using ArrayPoolList<BlockEntry> satisfiedEntry = AssembleSatisfiedEntries(headers, downloadReceipts);
+                using ArrayPoolList<BlockEntry> satisfiedEntry = AssembleSatisfiedEntries(headers, shouldProcess, downloadReceipts);
 
                 if (satisfiedEntry.Count == 0)
                 {
@@ -250,7 +250,7 @@ namespace Nethermind.Synchronization.Blocks
 
                 if (satisfiedEntry.Count == 0) // Nothing left to process
                 {
-                    return await AssembleRequest(headers, downloadReceipts, cancellation);
+                    return await AssembleRequest(headers, shouldProcess, downloadReceipts, cancellation);
                 }
             }
         }
@@ -269,7 +269,7 @@ namespace Nethermind.Synchronization.Blocks
             }
         }
 
-        private async Task<BlocksRequest?> AssembleRequest(IOwnedReadOnlyList<BlockHeader> headers, bool shouldDownloadReceipt, CancellationToken cancellation)
+        private async Task<BlocksRequest?> AssembleRequest(IOwnedReadOnlyList<BlockHeader> headers, bool shouldProcess, bool shouldDownloadReceipt, CancellationToken cancellation)
         {
             BlocksRequestContentType? requestContentType = null;
 
@@ -316,7 +316,7 @@ namespace Nethermind.Synchronization.Blocks
                     requestContentType = BlocksRequestContentType.Bodies;
                 }
 
-                if ((requestContentType is null or BlocksRequestContentType.BlockAccessLists) && entry.NeedAccessListDownload)
+                if (!shouldProcess && (requestContentType is null or BlocksRequestContentType.BlockAccessLists) && entry.NeedAccessListDownload)
                 {
                     blockAccessListsRequestSize ??=
                         (await _syncPeerPool.EstimateRequestLimit(RequestType.BlockAccessLists, EstimatedAllocationStrategy, AllocationContexts.BlockAccessLists, cancellation))
@@ -372,7 +372,7 @@ namespace Nethermind.Synchronization.Blocks
             };
         }
 
-        private ArrayPoolList<BlockEntry> AssembleSatisfiedEntries(IOwnedReadOnlyList<BlockHeader?> headers, bool shouldDownloadReceipt)
+        private ArrayPoolList<BlockEntry> AssembleSatisfiedEntries(IOwnedReadOnlyList<BlockHeader?> headers, bool shouldProcess, bool shouldDownloadReceipt)
         {
             ArrayPoolList<BlockEntry>? satisfiedEntry = null;
             try
@@ -383,7 +383,7 @@ namespace Nethermind.Synchronization.Blocks
                     if (blockHeader is null) break;
                     if (!_downloadRequests.TryGetValue(blockHeader.Hash, out BlockEntry blockEntry)) break;
                     if (blockEntry.Block is null) break;
-                    if (!blockEntry.HasAccessList) break;
+                    if (!shouldProcess && !blockEntry.HasAccessList) break;
                     if (shouldDownloadReceipt && !blockEntry.HasReceipt) break;
 
                     satisfiedEntry.Add(blockEntry);
@@ -708,23 +708,28 @@ namespace Nethermind.Synchronization.Blocks
                 case AddBlockResult.UnknownParent:
                     {
                         if (_logger.IsTrace) _logger.Trace($"Block/header {block.Number} ignored (unknown parent)");
-                        if (isFirstInBatch)
-                        {
-                            const string message = "Peer sent orphaned blocks/headers inside the batch";
-                            _logger.Error(message);
-                            throw new EthSyncException(message);
-                        }
-                        else
-                        {
-                            const string message = "Peer sent an inconsistent batch of blocks/headers";
-                            _logger.Error(message);
-                            throw new EthSyncException(message);
-                        }
+                        string blockId = $"#{block.Number} ({block.Hash}, parent {block.ParentHash})";
+                        string message = isFirstInBatch
+                            ? $"Peer {peerInfo} sent orphaned blocks/headers inside the batch: {blockId}"
+                            : $"Peer {peerInfo} sent an inconsistent batch of blocks/headers: {blockId}";
+                        _logger.Error(message);
+                        throw new EthSyncException(message);
                     }
                 case AddBlockResult.CannotAccept:
-                    throw new EthSyncException("Block tree rejected block/header");
+                    {
+                        string message = $"Block tree rejected block/header from peer {peerInfo}: " +
+                                         $"#{block.Number} ({block.Hash}, parent {block.ParentHash})";
+                        throw new EthSyncException(message);
+                    }
                 case AddBlockResult.InvalidBlock:
-                    throw new EthSyncException("Peer sent an invalid block/header");
+                    {
+                        // Validator-level reason (e.g. InvalidReceiptsRoot, BAL hash mismatch) is logged
+                        // separately via InvalidBlockException by the validator/processor; see preceding
+                        // 'Rejected invalid block' log lines and the RLP dump at /tmp/block_<hash>.rlp.
+                        string message = $"Peer {peerInfo} sent an invalid block/header: " +
+                                         $"#{block.Number} ({block.Hash}, parent {block.ParentHash})";
+                        throw new EthSyncException(message);
+                    }
                 case AddBlockResult.Added:
                     UpdatePeerInfo(peerInfo, block);
                     if (_logger.IsTrace) _logger.Trace($"Block/header {block.Number} suggested for processing");

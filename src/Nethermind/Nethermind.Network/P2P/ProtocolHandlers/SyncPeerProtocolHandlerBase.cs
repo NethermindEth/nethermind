@@ -30,7 +30,8 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
 {
     public abstract class SyncPeerProtocolHandlerBase : ZeroProtocolHandlerBase, ISyncPeer
     {
-        internal static ulong SoftOutgoingMessageSizeLimit = (ulong)2.MB;
+        internal static ulong SoftOutgoingMessageSizeLimit = (ulong)2.MiB;
+        internal static ulong HardOutgoingReceiptsMessageSizeLimit = (ulong)10.MiB;
         public Node Node => Session?.Node;
         public string ClientId => Node?.ClientId;
         public virtual UInt256? TotalDifficulty { get; set; } = UInt256.Zero; // for compatibility with old code, which relies on 0 being the default value
