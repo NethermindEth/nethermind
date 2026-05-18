@@ -481,6 +481,29 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
         Assert.That(tracer.GasConsumedResult.EffectiveBlockGas, Is.EqualTo(gasLimit));
     }
 
+    [Test]
+    public void Eip8037_create_state_refund_helpers_are_disabled_before_amsterdam()
+    {
+        byte[] childInitCode = Prepare.EvmCode
+            .PushData(33_000)
+            .PushData(0)
+            .Op(Instruction.RETURN)
+            .Done;
+
+        byte[] code = Prepare.EvmCode
+            .Create(childInitCode, UInt256.Zero)
+            .Op(Instruction.POP)
+            .Op(Instruction.STOP)
+            .Done;
+
+        const long gasLimit = 500_000;
+        TestAllTracerWithOutput tracer = Execute(MainnetSpecProvider.PragueActivation, gasLimit, code, blockGasLimit: DynamicStatePricingBlockGasLimit);
+
+        Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Success));
+        Assert.That(tracer.GasConsumedResult.SpentGas, Is.EqualTo(493_018));
+        Assert.That(tracer.GasConsumedResult.BlockStateGas, Is.Zero);
+    }
+
     [TestCase(false, TestName = "Eip8037_create_in_static_context_must_not_charge_state_gas_or_increment_nonce_CREATE")]
     [TestCase(true, TestName = "Eip8037_create_in_static_context_must_not_charge_state_gas_or_increment_nonce_CREATE2")]
     public void Eip8037_create_in_static_context_must_not_charge_state_gas_or_increment_nonce(bool create2)
@@ -571,6 +594,44 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
         AssertStorage(new StorageCell(Recipient, 0), UInt256.Zero);
         AssertStorage(new StorageCell(Recipient, 1), UInt256.Zero);
         AssertStorage(new StorageCell(Recipient, 2), UInt256.One);
+    }
+
+    [Test]
+    public void Eip8037_reverted_ancestor_discards_descendant_storage_refund_credit()
+    {
+        byte[] descendantCode = Prepare.EvmCode
+            .PushData(0)
+            .PushData(0)
+            .Op(Instruction.SSTORE)
+            .Op(Instruction.STOP)
+            .Done;
+
+        TestState.CreateAccount(TestItem.AddressC, 0);
+        TestState.InsertCode(TestItem.AddressC, descendantCode, SpecProvider.GenesisSpec);
+
+        byte[] intermediateCode = Prepare.EvmCode
+            .DelegateCall(TestItem.AddressC, 400_000)
+            .Op(Instruction.POP)
+            .Revert(0, 0)
+            .Done;
+
+        TestState.CreateAccount(TestItem.AddressD, 0);
+        TestState.InsertCode(TestItem.AddressD, intermediateCode, SpecProvider.GenesisSpec);
+
+        byte[] parentCode = Prepare.EvmCode
+            .PushData(1)
+            .PushData(0)
+            .Op(Instruction.SSTORE)
+            .DelegateCall(TestItem.AddressD, 600_000)
+            .Op(Instruction.POP)
+            .Op(Instruction.STOP)
+            .Done;
+
+        TestAllTracerWithOutput tracer = Execute(Activation, 900_000, parentCode, blockGasLimit: DynamicStatePricingBlockGasLimit);
+
+        Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Success));
+        Assert.That(tracer.GasConsumedResult.BlockStateGas, Is.EqualTo(GasCostOf.SSetState));
+        AssertStorage(new StorageCell(Recipient, 0), UInt256.One);
     }
 
     private Address SetupStaticCreateAttempt(bool create2)
