@@ -263,7 +263,7 @@ public class BlockTreeTests
             onUpdateDbObserved = level?.HasBlockOnMainChain == true;
         };
 
-        blockTree.UpdateMainChain(new[] { block1, block2 }, wereProcessed: true);
+        blockTree.UpdateMainChain([block1, block2], wereProcessed: true);
 
         blockAddedDbObservations.Should().Equal(true, true);
         newHeadDbObserved.Should().BeTrue();
