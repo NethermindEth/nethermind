@@ -597,6 +597,78 @@ public class BlockProcessorTests
         Assert.DoesNotThrow(() => balManager.ValidateBlockAccessList(block, 0));
     }
 
+    [Test]
+    public void SetBlockAccessList_verify_only_rejects_storage_reads_content_mismatch()
+    {
+        // Tests the verify-only structural-equivalence check for storage_reads contents — the one
+        // path that the column-index validation doesn't cover (it only tracks read counts via the
+        // gas-budget check) and the canonical-bytes hash compare used to catch implicitly.
+        IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
+        using IDisposable scope = stateProvider.BeginScope(IWorldState.PreGenesis);
+        using BlockAccessListManager balManager = CreateAmsterdamBalManager(stateProvider);
+
+        // Suggested BAL declares AddressA read slot 5.
+        ReadOnlyBlockAccessList suggestedBal = Build.A.BlockAccessList
+            .WithAccountChanges(Build.An.AccountChanges
+                .WithAddress(TestItem.AddressA)
+                .WithStorageReads((UInt256)5)
+                .TestObject)
+            .TestObject;
+
+        Block block = Build.A.Block
+            .WithNumber(1)
+            .WithGasUsed(0)
+            .WithBlockAccessList(suggestedBal)
+            .TestObject;
+
+        PrepareSetup(balManager, block, Amsterdam.Instance);
+
+        // Generated reads slot 7 instead — same count, different value. The gas-budget surplus-
+        // reads check (which compares counts) doesn't catch this; the structural-equivalence
+        // walk does.
+        BlockAccessListAtIndex slice = new();
+        slice.AddStorageRead(TestItem.AddressA, (UInt256)7);
+        balManager.GeneratedBlockAccessList.Merge(slice);
+
+        Assert.Throws<BlockAccessListBasedWorldState.InvalidBlockLevelAccessListException>(
+            () => balManager.SetBlockAccessList(block));
+    }
+
+    [Test]
+    public void SetBlockAccessList_verify_only_rejects_surplus_account_with_matching_count()
+    {
+        // Tests the per-account presence check: count matches but addresses differ. Without the
+        // structural walk this would slip past the column-index check (no lane data on either
+        // side for an empty account entry) and the count comparison (same count).
+        IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
+        using IDisposable scope = stateProvider.BeginScope(IWorldState.PreGenesis);
+        using BlockAccessListManager balManager = CreateAmsterdamBalManager(stateProvider);
+
+        // Suggested has AddressA only.
+        ReadOnlyBlockAccessList suggestedBal = Build.A.BlockAccessList
+            .WithAccountChanges(Build.An.AccountChanges
+                .WithAddress(TestItem.AddressA)
+                .WithBalanceChanges(new BalanceChange(0, 1))
+                .TestObject)
+            .TestObject;
+
+        Block block = Build.A.Block
+            .WithNumber(1)
+            .WithGasUsed(0)
+            .WithBlockAccessList(suggestedBal)
+            .TestObject;
+
+        PrepareSetup(balManager, block, Amsterdam.Instance);
+
+        // Generated touched AddressB (different address) — same count of 1.
+        BlockAccessListAtIndex slice = new();
+        slice.AddBalanceChange(TestItem.AddressB, before: 0, after: 1);
+        balManager.GeneratedBlockAccessList.Merge(slice);
+
+        Assert.Throws<BlockAccessListBasedWorldState.InvalidBlockLevelAccessListException>(
+            () => balManager.SetBlockAccessList(block));
+    }
+
     [TestCase(1)]
     [TestCase(2)]
     public void PrepareForProcessing_keeps_parallel_bal_execution_for_validated_eip8037_blocks(int txCount) =>
