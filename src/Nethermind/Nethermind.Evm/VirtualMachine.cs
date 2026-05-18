@@ -623,11 +623,6 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private void RefundRevertedTopLevelStateGas()
     {
-        if (!Spec.IsEip8037Enabled)
-        {
-            return;
-        }
-
         // EIP-8037 top-level REVERT: gas_left is preserved, so the spilled portion of
         // state_gas_used (originally drawn from gas_left) is still in the user's pocket.
         // Refund the full state_gas_used — reservoir-portion AND spilled-portion — to the
@@ -673,11 +668,6 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private void IncorporateChildStateGasRefunds(VmState<TGasPolicy> childState)
     {
-        if (!Spec.IsEip8037Enabled)
-        {
-            return;
-        }
-
         if (childState.StateGasRefundPending > 0)
         {
             long pendingRefund = childState.StateGasRefundPending;
