@@ -56,6 +56,18 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
         .Op(Instruction.SLOAD)
         .Done;
 
+    private static IEnumerable<TestCaseData> SelfdestructSendToSenderTestSource()
+    {
+        yield return new TestCaseData(Shanghai.Instance, 0)
+            .SetName("EIP7928_pre_EIP6780_selfdestruct_to_sender_zero_balance");
+        yield return new TestCaseData(Shanghai.Instance, 100)
+            .SetName("EIP7928_pre_EIP6780_selfdestruct_to_sender_nonzero_balance");
+        yield return new TestCaseData(Amsterdam.Instance, 0)
+            .SetName("EIP7928_EIP6780_selfdestruct_to_sender_zero_balance");
+        yield return new TestCaseData(Amsterdam.Instance, 100)
+            .SetName("EIP7928_EIP6780_selfdestruct_to_sender_nonzero_balance");
+    }
+
     /// <summary>
     /// Creates a fresh <see cref="TracedAccessWorldState"/> wrapping <see cref="VirtualMachineTestsBase.TestState"/>
     /// and a matching <see cref="TransactionProcessor{EthereumGasPolicy}"/> wired to it. When
@@ -81,29 +93,6 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
         return (tracedState, processor);
     }
 
-    private (TracedAccessWorldState tracedState, TransactionProcessor<EthereumGasPolicy> processor, Block block) SetupPrecompileBalScenario(
-        Address? delegationTarget = null)
-    {
-        InitWorldState(TestState, delegationTarget: delegationTarget);
-        (TracedAccessWorldState tracedState, TransactionProcessor<EthereumGasPolicy> processor) =
-            CreateTracedProcessor(wrapPrecompileCache: true);
-        Block block = Build.A.Block.TestObject;
-        processor.SetBlockExecutionContext(new BlockExecutionContext(block.Header, Amsterdam.Instance));
-        return (tracedState, processor, block);
-    }
-
-    private static IEnumerable<TestCaseData> SelfdestructSendToSenderTestSource()
-    {
-        yield return new TestCaseData(Shanghai.Instance, 0)
-            .SetName("EIP7928_pre_EIP6780_selfdestruct_to_sender_zero_balance");
-        yield return new TestCaseData(Shanghai.Instance, 100)
-            .SetName("EIP7928_pre_EIP6780_selfdestruct_to_sender_nonzero_balance");
-        yield return new TestCaseData(Amsterdam.Instance, 0)
-            .SetName("EIP7928_EIP6780_selfdestruct_to_sender_zero_balance");
-        yield return new TestCaseData(Amsterdam.Instance, 100)
-            .SetName("EIP7928_EIP6780_selfdestruct_to_sender_nonzero_balance");
-    }
-
     private static Transaction BuildContractTx(byte[] code, long executionGas, UInt256 value, BlockHeader header)
     {
         Transaction templateTx = Build.A.Transaction
@@ -118,6 +107,64 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
             .WithGasLimit(intrinsicGas + executionGas)
             .WithValue(value)
             .SignedAndResolved(_ecdsa, TestItem.PrivateKeyA).TestObject;
+    }
+
+    private (TracedAccessWorldState tracedState, TransactionProcessor<EthereumGasPolicy> processor, Block block) SetupPrecompileBalScenario(
+        Address? delegationTarget = null)
+    {
+        InitWorldState(TestState, delegationTarget: delegationTarget);
+        (TracedAccessWorldState tracedState, TransactionProcessor<EthereumGasPolicy> processor) =
+            CreateTracedProcessor(wrapPrecompileCache: true);
+        Block block = Build.A.Block.TestObject;
+        processor.SetBlockExecutionContext(new BlockExecutionContext(block.Header, Amsterdam.Instance));
+        return (tracedState, processor, block);
+    }
+
+    private static void AssertPureAccountRead(AccountChangesAtIndex? accountChanges)
+    {
+        Assert.That(accountChanges, Is.Not.Null);
+        Assert.That(accountChanges!.BalanceChange, Is.Null);
+        Assert.That(accountChanges.NonceChange, Is.Null);
+        Assert.That(accountChanges.CodeChange, Is.Null);
+    }
+
+    /// <summary>
+    /// Asserts equality between an expected <see cref="ReadOnlyAccountChanges"/> (single-index
+    /// expectations) and the produced <see cref="AccountChangesAtIndex"/>. The traced state
+    /// always operates at index 0 in these tests, so each scalar change list has at most one
+    /// entry.
+    /// </summary>
+    private static void AssertEqual(ReadOnlyAccountChanges expected, AccountChangesAtIndex? actual)
+    {
+        Assert.That(actual, Is.Not.Null);
+        Assert.That(actual!.Address, Is.EqualTo(expected.Address));
+
+        Assert.That(actual.BalanceChange, expected.BalanceChanges.Length == 0
+            ? Is.Null
+            : Is.EqualTo((BalanceChange?)expected.BalanceChanges[0]));
+        Assert.That(actual.NonceChange, expected.NonceChanges.Length == 0
+            ? Is.Null
+            : Is.EqualTo((NonceChange?)expected.NonceChanges[0]));
+        Assert.That(actual.CodeChange, expected.CodeChanges.Length == 0
+            ? Is.Null
+            : Is.EqualTo((CodeChange?)expected.CodeChanges[0]));
+
+        // Compare storage changes (one entry per slot, all at index 0).
+        Dictionary<UInt256, StorageChange> actualStorage = [];
+        foreach (KeyValuePair<UInt256, StorageChange> kv in actual.StorageChanges)
+        {
+            actualStorage[kv.Key] = kv.Value;
+        }
+        Assert.That(actualStorage.Count, Is.EqualTo(expected.StorageChanges.Length));
+        foreach (ReadOnlySlotChanges slot in expected.StorageChanges)
+        {
+            Assert.That(actualStorage.TryGetValue(slot.Key, out StorageChange actualChange), Is.True);
+            // Expected slot has exactly one change.
+            StorageChange expectedChange = slot.Changes[0];
+            Assert.That(actualChange, Is.EqualTo(expectedChange));
+        }
+
+        Assert.That(actual.StorageReads, Is.EquivalentTo(expected.StorageReads));
     }
 
     private Transaction BuildSetCodeCallTx(Address to, params AuthorizationTuple[] authorizationList)
@@ -375,53 +422,6 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
         }
 
         return tracedState.GetGeneratingBlockAccessList()!;
-    }
-
-    private static void AssertPureAccountRead(AccountChangesAtIndex? accountChanges)
-    {
-        Assert.That(accountChanges, Is.Not.Null);
-        Assert.That(accountChanges!.BalanceChange, Is.Null);
-        Assert.That(accountChanges.NonceChange, Is.Null);
-        Assert.That(accountChanges.CodeChange, Is.Null);
-    }
-
-    /// <summary>
-    /// Asserts equality between an expected <see cref="ReadOnlyAccountChanges"/> (single-index
-    /// expectations) and the produced <see cref="AccountChangesAtIndex"/>. The traced state
-    /// always operates at index 0 in these tests, so each scalar change list has at most one
-    /// entry.
-    /// </summary>
-    private static void AssertEqual(ReadOnlyAccountChanges expected, AccountChangesAtIndex? actual)
-    {
-        Assert.That(actual, Is.Not.Null);
-        Assert.That(actual!.Address, Is.EqualTo(expected.Address));
-
-        Assert.That(actual.BalanceChange, expected.BalanceChanges.Length == 0
-            ? Is.Null
-            : Is.EqualTo((BalanceChange?)expected.BalanceChanges[0]));
-        Assert.That(actual.NonceChange, expected.NonceChanges.Length == 0
-            ? Is.Null
-            : Is.EqualTo((NonceChange?)expected.NonceChanges[0]));
-        Assert.That(actual.CodeChange, expected.CodeChanges.Length == 0
-            ? Is.Null
-            : Is.EqualTo((CodeChange?)expected.CodeChanges[0]));
-
-        // Compare storage changes (one entry per slot, all at index 0).
-        Dictionary<UInt256, StorageChange> actualStorage = [];
-        foreach (KeyValuePair<UInt256, StorageChange> kv in actual.StorageChanges)
-        {
-            actualStorage[kv.Key] = kv.Value;
-        }
-        Assert.That(actualStorage.Count, Is.EqualTo(expected.StorageChanges.Length));
-        foreach (ReadOnlySlotChanges slot in expected.StorageChanges)
-        {
-            Assert.That(actualStorage.TryGetValue(slot.Key, out StorageChange actualChange), Is.True);
-            // Expected slot has exactly one change.
-            StorageChange expectedChange = slot.Changes[0];
-            Assert.That(actualChange, Is.EqualTo(expectedChange));
-        }
-
-        Assert.That(actual.StorageReads, Is.EquivalentTo(expected.StorageReads));
     }
 
     [TestCaseSource(nameof(CodeTestSource))]
