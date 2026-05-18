@@ -64,11 +64,14 @@ public sealed class TrieWarmer : ITrieWarmer, IAsyncDisposable
     {
         _logger = logManager.GetClassLogger<TrieWarmer>();
 
+        // Thread budget: prewarmer + TrieWarmer ≤ ProcessorCount - 2.
+        // TrieWarmer gets 40% of the budget.
         int configuredWorkerCount = flatDbConfig.TrieWarmerWorkerCount;
+        int threadBudget = Math.Max(Environment.ProcessorCount - 2, 2);
         int workerCount = configuredWorkerCount == -1
-            ? Math.Max(Environment.ProcessorCount - 1, 1)
+            ? Math.Max(threadBudget * 4 / 10, 2)
             : configuredWorkerCount;
-        workerCount = Math.Max(workerCount, 2); // Min worker count is 2
+        workerCount = Math.Max(workerCount, 2);
         _secondaryWorkerCount = workerCount - 1;
 
         _executionSlots = new Semaphore(0, _secondaryWorkerCount);
