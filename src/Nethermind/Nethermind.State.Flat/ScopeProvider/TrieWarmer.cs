@@ -64,10 +64,9 @@ public sealed class TrieWarmer : ITrieWarmer, IAsyncDisposable
     {
         _logger = logManager.GetClassLogger<TrieWarmer>();
 
-        // Keep TrieWarmer at default — it needs enough threads to finish before merkle.
         int configuredWorkerCount = flatDbConfig.TrieWarmerWorkerCount;
         int workerCount = configuredWorkerCount == -1
-            ? Math.Max(Environment.ProcessorCount - 1, 1)
+            ? Math.Max(Environment.ProcessorCount / 2, 2)
             : configuredWorkerCount;
         workerCount = Math.Max(workerCount, 2);
         _secondaryWorkerCount = workerCount - 1;
