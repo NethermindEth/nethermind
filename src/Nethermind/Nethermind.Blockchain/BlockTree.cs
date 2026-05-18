@@ -1003,11 +1003,7 @@ namespace Nethermind.Blockchain
             long lastNumber = ascendingOrder ? blocks[^1].Number : blocks[0].Number;
             long previousHeadNumber = Head?.Number ?? 0L;
 
-            // Events are buffered and raised after the batch is disposed so that subscribers always
-            // observe the underlying RocksDB write batch as committed. Otherwise subscribers reading
-            // ChainLevelInfo through a path that bypasses _blockInfoCache (cache eviction, a separate
-            // repository instance, or a process restart in between) would see stale state.
-            List<DeferredMainChainEvent> pendingEvents = new(blocks.Count);
+            using ArrayPoolListRef<DeferredMainChainEvent> pendingEvents = new(blocks.Count);
 
             using (BatchWrite batch = _chainLevelInfoRepository.StartBatch())
             {
@@ -1051,16 +1047,12 @@ namespace Nethermind.Blockchain
                     DeferredMainChainEvent deferred = MoveToMain(blocks[i], batch, wereProcessed, forceUpdateHeadBlock && lastProcessedBlock);
                     pendingEvents.Add(deferred);
                 }
-
-                TryUpdateSyncPivot();
             }
 
-            // Batch disposed above — write batch is now flushed to the underlying IDb.
-            // Raise the per-block events in their original relative order: NewHeadBlock first
-            // (for the block whose UpdateHeadBlock path ran), then BlockAddedToMain.
-            for (int i = 0; i < pendingEvents.Count; i++)
+            TryUpdateSyncPivot();
+
+            foreach (DeferredMainChainEvent deferred in pendingEvents.AsSpan())
             {
-                DeferredMainChainEvent deferred = pendingEvents[i];
                 if (deferred.NewHead is not null)
                 {
                     NewHeadBlock?.Invoke(this, deferred.NewHead);
@@ -1071,11 +1063,7 @@ namespace Nethermind.Blockchain
             OnUpdateMainChain?.Invoke(this, new OnUpdateMainChainArgs(blocks, wereProcessed));
         }
 
-        private readonly struct DeferredMainChainEvent(BlockReplacementEventArgs blockAdded, BlockEventArgs? newHead)
-        {
-            public BlockReplacementEventArgs BlockAdded { get; } = blockAdded;
-            public BlockEventArgs? NewHead { get; } = newHead;
-        }
+        private readonly record struct DeferredMainChainEvent(BlockReplacementEventArgs BlockAdded, BlockEventArgs? NewHead);
 
 
         private void TryUpdateSyncPivot()
