@@ -283,6 +283,27 @@ public class BlockProcessorTests
         return (processor, branchProcessor, stateProvider);
     }
 
+    private sealed class CountingPreWarmer : IBlockCachePreWarmer
+    {
+        public int PreWarmCalls { get; private set; }
+        public int ClearCalls { get; private set; }
+
+        public Task PreWarmCaches(Block suggestedBlock, BlockHeader? parent, IReleaseSpec spec,
+            CancellationToken cancellationToken = default, params ReadOnlySpan<IHasAccessList> systemAccessLists)
+        {
+            PreWarmCalls++;
+            return Task.CompletedTask;
+        }
+
+        public CacheType ClearCaches()
+        {
+            ClearCalls++;
+            return CacheType.None;
+        }
+
+        public void Dispose() { }
+    }
+
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void Prepared_block_contains_author_field()
     {
@@ -318,6 +339,38 @@ public class BlockProcessorTests
             new List<Block> { block },
             ProcessingOptions.None,
             AlwaysCancelBlockTracer.Instance));
+    }
+
+    [TestCase(2, 1, 0, 2)]
+    [TestCase(3, 1, 1, 1)]
+    [TestCase(1, 2, 0, 4)]
+    public void Prewarmer_triggered_only_above_transaction_threshold(
+        int transactionCount,
+        int processCalls,
+        int expectedPreWarmCalls,
+        int expectedClearCalls)
+    {
+        CountingPreWarmer preWarmer = new();
+        (_, BranchProcessor branchProcessor, _) = CreateProcessorAndBranch(preWarmer: preWarmer);
+
+        Block parent = Build.A.Block.Genesis.TestObject;
+        Block block = Build.A.Block
+            .WithNumber(1)
+            .WithParent(parent)
+            .WithTransactions(transactionCount, Prague.Instance)
+            .TestObject;
+
+        for (int i = 0; i < processCalls; i++)
+        {
+            branchProcessor.Process(
+                parent.Header,
+                new List<Block> { block },
+                ProcessingOptions.NoValidation,
+                NullBlockTracer.Instance);
+        }
+
+        Assert.That(preWarmer.PreWarmCalls, Is.EqualTo(expectedPreWarmCalls));
+        Assert.That(preWarmer.ClearCalls, Is.EqualTo(expectedClearCalls));
     }
 
     [MaxTime(Timeout.MaxTestTime)]
