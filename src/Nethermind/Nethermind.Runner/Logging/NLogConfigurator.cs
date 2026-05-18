@@ -2,18 +2,20 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Globalization;
+using System.IO;
 using System.Linq;
+using System.Reflection;
 using System.Threading;
+using System.Xml;
 using Nethermind.Core.Collections;
 using NLog;
 using NLog.Common;
 using NLog.Config;
-using NLog.LayoutRenderers;
 using NLog.Layouts;
 using NLog.Targets;
 using NLog.Targets.Seq;
-using NLog.Targets.Wrappers;
 
 namespace Nethermind.Runner.Logging;
 
@@ -21,13 +23,26 @@ public static class NLogConfigurator
 {
     private static int _customRenderersRegistered;
 
-    // Regex pattern matching ANSI CSI SGR escape sequences (e.g. "\x1B[31m"). Wrapped around ${message}
-    // for JSON layouts so coloured upstream log strings do not pollute the rendered JSON payload.
-    private const string AnsiStripPattern = @"\x1B\[[0-9;]*m";
+    private const string EmbeddedConsoleTargetName = "json-console";
+
+    // Each format ships as an embedded NLog XML resource under Logging/Layouts/. The C# side stays
+    // a thin loader: parse the resource, copy the resulting Layout onto the existing console
+    // target(s). The XML is the source of truth for field shape and lets operators inspect the
+    // emitted JSON layout without reading code. Custom renderers (gcp-severity, gelf-level,
+    // gelf-timestamp) stay in C# because they need access to LogEventInfo.
+    private static readonly IReadOnlyDictionary<LoggingFormat, string> EmbeddedLayoutResources =
+        new Dictionary<LoggingFormat, string>
+        {
+            [LoggingFormat.Ecs] = "Nethermind.Runner.Logging.Layouts.ecs.layout.xml",
+            [LoggingFormat.Gcp] = "Nethermind.Runner.Logging.Layouts.gcp.layout.xml",
+            [LoggingFormat.Logstash] = "Nethermind.Runner.Logging.Layouts.logstash.layout.xml",
+            [LoggingFormat.Gelf] = "Nethermind.Runner.Logging.Layouts.gelf.layout.xml"
+        };
 
     /// <summary>
     /// Replaces the layout of the console target with a structured <see cref="JsonLayout"/>
-    /// matching the requested format. Has no effect when the format is <c>plain</c>.
+    /// loaded from the embedded XML resource for the requested format. Has no effect when
+    /// the format is <c>plain</c>.
     /// </summary>
     /// <param name="format">One of <c>plain</c>, <c>ecs</c>, <c>gcp</c>, <c>logstash</c>, <c>gelf</c> (case-insensitive).</param>
     /// <exception cref="ArgumentException">Thrown when <paramref name="format"/> is not a recognized value.</exception>
@@ -49,7 +64,7 @@ public static class NLogConfigurator
 
         EnsureCustomRenderers();
 
-        Layout layout = BuildLayout(parsed);
+        Layout layout = LoadEmbeddedLayout(parsed);
 
         // AllTargets already enumerates wrapped inner targets, so OfType is enough.
         foreach (ConsoleTarget consoleTarget in loggingConfiguration.AllTargets.OfType<ConsoleTarget>())
@@ -79,88 +94,39 @@ public static class NLogConfigurator
             nameof(format))
     };
 
-    private static Layout BuildLayout(LoggingFormat format) => format switch
+    private static Layout LoadEmbeddedLayout(LoggingFormat format)
     {
-        LoggingFormat.Ecs => BuildEcsLayout(),
-        LoggingFormat.Gcp => BuildGcpLayout(),
-        LoggingFormat.Logstash => BuildLogstashLayout(),
-        LoggingFormat.Gelf => BuildGelfLayout(),
-        _ => throw new InvalidOperationException()
-    };
-
-    // ECS uses 100-ns subsecond precision (date_nanos compatible). Costs nothing and avoids collisions
-    // on busy nodes that emit hundreds of events per block.
-    private static JsonLayout BuildEcsLayout() => new()
-    {
-        SuppressSpaces = true,
-        Attributes =
+        if (!EmbeddedLayoutResources.TryGetValue(format, out string? resourceName))
         {
-            new JsonAttribute("@timestamp", Layout.FromString("${date:universalTime=true:format=yyyy-MM-ddTHH\\:mm\\:ss.fffffffZ}")),
-            new JsonAttribute("log.level", Layout.FromString("${level:lowercase=true}")),
-            new JsonAttribute("message", MessageLayout()),
-            new JsonAttribute("ecs.version", Layout.FromString("8.11.0")),
-            new JsonAttribute("log.logger", Layout.FromString("${logger}")),
-            new JsonAttribute("process.thread.id", Layout.FromString("${threadid}")) { Encode = false },
-            new JsonAttribute("error.type", Layout.FromString("${exception:format=type}")) { IncludeEmptyValue = false },
-            new JsonAttribute("error.message", Layout.FromString("${exception:format=message}")) { IncludeEmptyValue = false },
-            new JsonAttribute("error.stack_trace", Layout.FromString("${exception:format=tostring}")) { IncludeEmptyValue = false }
+            throw new InvalidOperationException($"No embedded layout registered for {format}.");
         }
-    };
 
-    private static JsonLayout BuildGcpLayout() => new()
-    {
-        SuppressSpaces = true,
-        Attributes =
-        {
-            new JsonAttribute("severity", Layout.FromString("${gcp-severity}")),
-            new JsonAttribute("time", Layout.FromString("${date:universalTime=true:format=yyyy-MM-ddTHH\\:mm\\:ss.fffffffZ}")),
-            new JsonAttribute("message", Layout.FromString($"${{replace:searchFor={AnsiStripPattern}:replaceWith=:regex=true:inner=${{message}}}}${{onexception:inner=\\: ${{exception:format=tostring}}}}")),
-            new JsonAttribute("logger", Layout.FromString("${logger}")),
-            new JsonAttribute("thread", Layout.FromString("${threadid}")) { Encode = false }
-        }
-    };
+        Assembly assembly = typeof(NLogConfigurator).Assembly;
+        using Stream? stream = assembly.GetManifestResourceStream(resourceName)
+            ?? throw new InvalidOperationException($"Embedded layout resource '{resourceName}' not found.");
 
-    private static JsonLayout BuildLogstashLayout() => new()
-    {
-        SuppressSpaces = true,
-        Attributes =
-        {
-            new JsonAttribute("@timestamp", Layout.FromString("${date:universalTime=true:format=yyyy-MM-ddTHH\\:mm\\:ss.fffffffZ}")),
-            new JsonAttribute("@version", Layout.FromString("1")),
-            new JsonAttribute("message", MessageLayout()),
-            new JsonAttribute("level", Layout.FromString("${level:upperCase=true}")),
-            new JsonAttribute("logger_name", Layout.FromString("${logger}")),
-            // thread_name is a string per Logstash convention; leave default Encode=true.
-            new JsonAttribute("thread_name", Layout.FromString("${threadid}")),
-            new JsonAttribute("host", Layout.FromString("${machinename}")),
-            new JsonAttribute("stack_trace", Layout.FromString("${exception:format=tostring}")) { IncludeEmptyValue = false }
-        }
-    };
+        // XmlLoggingConfiguration parses the snippet into a temporary configuration whose only
+        // purpose is to give us a fully constructed Layout. We never register the temp config with
+        // LogManager — we just lift the Layout off the configured target.
+        using XmlReader reader = XmlReader.Create(stream);
+        XmlLoggingConfiguration embeddedConfig = new(reader, fileName: resourceName);
 
-    // GELF 1.1: `timestamp` is "seconds since UNIX epoch with optional decimal places for milliseconds"
-    // and must be numeric. Encode=false leaves the value unquoted in the rendered JSON.
-    // See https://go2docs.graylog.org/current/getting_in_log_data/gelf.html
-    private static JsonLayout BuildGelfLayout() => new()
-    {
-        SuppressSpaces = true,
-        Attributes =
-        {
-            new JsonAttribute("version", Layout.FromString("1.1")),
-            new JsonAttribute("host", Layout.FromString("${machinename}")),
-            new JsonAttribute("short_message", MessageLayout()),
-            new JsonAttribute("full_message", Layout.FromString($"${{onexception:inner=${{replace:searchFor={AnsiStripPattern}:replaceWith=:regex=true:inner=${{message}}}}\\n${{exception:format=tostring}}}}")) { IncludeEmptyValue = false },
-            new JsonAttribute("timestamp", Layout.FromString("${gelf-timestamp}")) { Encode = false },
-            new JsonAttribute("level", Layout.FromString("${gelf-level}")) { Encode = false },
-            // _logger / _thread are GELF user-defined string fields — keep default Encode=true so they quote.
-            new JsonAttribute("_logger", Layout.FromString("${logger}")),
-            new JsonAttribute("_thread", Layout.FromString("${threadid}"))
-        }
-    };
+        // ConfiguredNamedTargets only enumerates targets that have been registered with the
+        // configuration (no <rules> reference required, unlike FindTargetByName).
+        // ConfiguredNamedTargets only enumerates targets that have been registered with the
+        // configuration (no <rules> reference required, unlike FindTargetByName).
+        Target target = embeddedConfig.ConfiguredNamedTargets
+            .FirstOrDefault(t => string.Equals(t.Name, EmbeddedConsoleTargetName, StringComparison.Ordinal))
+            ?? embeddedConfig.AllTargets.FirstOrDefault()
+            ?? throw new InvalidOperationException(
+                $"Embedded layout '{resourceName}' does not contain any target (expected '{EmbeddedConsoleTargetName}').");
 
-    private static Layout MessageLayout() =>
-        Layout.FromString($"${{replace:searchFor={AnsiStripPattern}:replaceWith=:regex=true:inner=${{message}}}}");
+        return target.GetType().GetProperty("Layout")?.GetValue(target) as Layout
+            ?? throw new InvalidOperationException(
+                $"Embedded layout '{resourceName}' did not produce a Layout on target '{target.Name}'.");
+    }
 
-    private enum LoggingFormat
+    internal enum LoggingFormat
     {
         Plain,
         Ecs,
