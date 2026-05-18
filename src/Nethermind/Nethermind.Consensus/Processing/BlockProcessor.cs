@@ -132,11 +132,15 @@ public partial class BlockProcessor(
         _systemContractHandler.ApplyBlockhashStateChanges(header, spec);
         CommitState(spec);
 
+        // Pause TrieWarmer during tx processing — prewarmer has already pushed early jobs,
+        // and main thread's HintSet/HintGet jobs queue up for post-tx drain.
+        _stateProvider.PauseTrieWarmer();
         TxReceipt[] receipts = _blockTransactionsExecutor.ProcessTransactions(block, options, ReceiptsTracer, token);
 
         // Signal that transactions are done — subscribers can cancel background work (e.g. prewarmer)
         // to free the thread pool for blooms, receipts root, state root parallel work below
         TransactionsExecuted?.Invoke();
+        _stateProvider.ResumeTrieWarmer();
 
         CommitState(spec);
 

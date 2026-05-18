@@ -141,6 +141,8 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
     ArrayPoolList<AddressAsKey>? GetAccountChanges();
 
     void ResetTransient();
+    void PauseTrieWarmer() { }
+    void ResumeTrieWarmer() { }
 
     public void AddAccountRead(Address address) { }
 

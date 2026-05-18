@@ -37,6 +37,8 @@ public interface IWorldStateScopeProvider
         /// <param name="address"></param>
         /// <param name="account"></param>
         void HintGet(Address address, Account? account);
+        void PauseTrieWarmer() { }
+        void ResumeTrieWarmer() { }
 
         /// <summary>
         /// The code db
