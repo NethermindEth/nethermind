@@ -43,12 +43,6 @@ public ref struct HsstIndexBuilder<TWriter, TReader, TPin>
     // byte). Used directly wherever we previously tracked minKeyLen — those collapse
     // to this single scalar.
     private readonly int _keyLength;
-    // Single global CommonPrefixLen used by every BSearchIndex node this builder
-    // emits — every leaf and intermediate writes the same <c>CommonPrefixLen = _globalLcp</c>
-    // header field, and the HSST trailer carries the same <c>_globalLcp</c> bytes from
-    // entry 0. Supplied by HsstBTreeBuilder at construction; the planner's per-node lcp
-    // pick is bypassed via <see cref="BSearchIndexLayoutPlanner.PlanWithFixedLcp"/>.
-    private readonly int _globalLcp;
     // When true, entryPositions point to EntryStart (FullKey byte 0) and entry bytes
     // are [FullKey][LEB128 ValueLength][Value]. When false (default), entryPositions
     // point to MetadataStart (LEB128 byte) and bytes are [Value][LEB128][FullKey].
@@ -72,12 +66,11 @@ public ref struct HsstIndexBuilder<TWriter, TReader, TPin>
     private TReader _reader;
     private readonly bool _useDataReader;
 
-    public unsafe HsstIndexBuilder(ref TWriter writer, ReadOnlySpan<long> entryPositions, int keyLength, scoped ref HsstBTreeBuilderBuffers buffers, bool keyFirst = false, int globalLcp = 0, int pendingFirstEntryIdx = 0, TReader reader = default!, bool useDataReader = false)
+    public unsafe HsstIndexBuilder(ref TWriter writer, ReadOnlySpan<long> entryPositions, int keyLength, scoped ref HsstBTreeBuilderBuffers buffers, bool keyFirst = false, int pendingFirstEntryIdx = 0, TReader reader = default!, bool useDataReader = false)
     {
         _writer = ref writer;
         _entryPositions = entryPositions;
         _keyLength = keyLength;
-        _globalLcp = globalLcp;
         _keyFirst = keyFirst;
         _pendingFirstEntryIdx = pendingFirstEntryIdx;
         _reader = reader;
@@ -140,15 +133,18 @@ public ref struct HsstIndexBuilder<TWriter, TReader, TPin>
         nextNative.Clear();
 
         int lastNodeLen = 0;
+        int lastNodePrefixLen = 0;
 
         // If level 0 has a single node (one page-local leaf written by trigger 3), it
         // IS the root — return its byte length without writing any intermediate. The
         // leaf was written by HsstBTreeBuilder just before invoking us, so its bytes
-        // occupy <c>[only.ChildOffset, absoluteIndexStart)</c>.
+        // occupy <c>[only.ChildOffset, absoluteIndexStart)</c>. The leaf descriptor
+        // carries the planner-picked prefix length recorded at EmitInlineLeaf time;
+        // that becomes the root's prefix length for the trailer.
         if (currentNative.Count == 1)
         {
             HsstIndexNodeInfo only = currentNative.AsSpan()[0];
-            _rootPrefixLen = _globalLcp;
+            _rootPrefixLen = only.PrefixLen;
             return checked((int)(absoluteIndexStart - only.ChildOffset));
         }
 
@@ -182,9 +178,10 @@ public ref struct HsstIndexBuilder<TWriter, TReader, TPin>
                 long nodeStart = _writer.Written;
                 long relativeStart = nodeStart - startWritten;
                 WriteIndexNode(children, BSearchNodeKind.Intermediate,
-                    valueScratchArr, commonPrefixArr);
+                    valueScratchArr, commonPrefixArr, out int intermediatePrefixLen);
                 int nodeLen = checked((int)(_writer.Written - nodeStart));
                 lastNodeLen = nodeLen;
+                lastNodePrefixLen = intermediatePrefixLen;
 
                 HsstIndexNodeInfo first = children[0];
                 HsstIndexNodeInfo last = children[childCount - 1];
@@ -195,7 +192,7 @@ public ref struct HsstIndexBuilder<TWriter, TReader, TPin>
                     childOffset,
                     first.FirstEntry,
                     last.LastEntry,
-                    _globalLcp));
+                    intermediatePrefixLen));
 
                 childIdx += childCount;
             }
@@ -206,7 +203,7 @@ public ref struct HsstIndexBuilder<TWriter, TReader, TPin>
             nextNative = ref tmp;
         }
 
-        _rootPrefixLen = _globalLcp;
+        _rootPrefixLen = lastNodePrefixLen;
         return lastNodeLen;
     }
 
@@ -272,31 +269,41 @@ public ref struct HsstIndexBuilder<TWriter, TReader, TPin>
     /// <see cref="BSearchNodeKind"/> covering the given <paramref name="children"/>. Used
     /// for both inline page-local leaves (each child wraps a single entry; pushed from
     /// <see cref="HsstBTreeBuilder{TWriter,TReader,TPin}"/> trigger paths) and intermediate
-    /// nodes (each child is a previously-emitted leaf / intermediate). Every node in the
-    /// HSST shares the same <c>CommonPrefixLen = _globalLcp</c>, so each child's prefix
-    /// is uniformly known and the per-child separator length simplifies to
-    /// <c>max(natural LCP + 1, _globalLcp)</c>: short separators (e.g., entry 0's natural
-    /// sep length of 1) get padded up to the global prefix, while longer ones carry the
-    /// natural disambiguating bytes.
+    /// nodes (each child is a previously-emitted leaf / intermediate). The per-child
+    /// separator length is <c>max(natural LCP + 1, children[i].PrefixLen)</c>: short
+    /// separators are widened so the parent's slot always carries every byte of the
+    /// child's planner-picked CommonKeyPrefix. The planner then picks this node's own
+    /// <c>CommonPrefixLen</c> from the shared per-entry LCP array
+    /// (<paramref name="commonPrefixArr"/>) capped at <c>minLen</c> over the sepLengths.
+    /// The result is returned via <paramref name="nodePrefixLen"/> so the caller can
+    /// record it on the descriptor it pushes for the next level up.
     /// </summary>
     internal void WriteIndexNode(
         scoped ReadOnlySpan<HsstIndexNodeInfo> children,
         BSearchNodeKind kind,
         scoped Span<byte> valueScratch,
-        byte[] commonPrefixArr)
+        byte[] commonPrefixArr,
+        out int nodePrefixLen)
     {
         int count = children.Length;
-        int prefixLen = _globalLcp;
 
-        // Per-child separator length: natural LCP-derived length floored at the
-        // single global prefix so the parent's slot always carries every byte of
-        // the (uniformly known) child CommonKeyPrefix.
+        // Per-child separator length: natural LCP-derived length widened to at least
+        // the child's own planner-picked prefix so the parent slot can hand the child
+        // every byte of its CommonKeyPrefix at descent time.
         Span<int> sepLengths = stackalloc int[count];
         for (int i = 0; i < count; i++)
         {
             int natural = Math.Min(commonPrefixArr[children[i].FirstEntry] + 1, _keyLength);
-            sepLengths[i] = Math.Max(natural, prefixLen);
+            sepLengths[i] = Math.Max(natural, children[i].PrefixLen);
         }
+
+        // Shared per-entry LCP array — cp[entry j] is identical at every level by
+        // construction, so the chain-min across the children's entry range is the
+        // cross-entry LCP the planner needs.
+        int crossEntryLcp = ComputeCrossEntryLcp(children, commonPrefixArr);
+
+        BSearchIndexLayoutPlanner.Plan(sepLengths, crossEntryLcp, _keyLength,
+            out int prefixLen, out int keyType, out int keySlotSize, out bool keyLittleEndian);
 
         // BaseOffset + per-entry value-slot width from child offsets.
         long minOff = children[0].ChildOffset;
@@ -310,9 +317,6 @@ public ref struct HsstIndexBuilder<TWriter, TReader, TPin>
         long baseOffset = 0;
         if (count > 1 && minOff > 0 && minOff < maxOff) baseOffset = minOff;
         int valueSlotSize = MinBytesFor(maxOff - baseOffset);
-
-        BSearchIndexLayoutPlanner.PlanWithFixedLcp(sepLengths, prefixLen, _keyLength,
-            out int keyType, out int keySlotSize, out bool keyLittleEndian);
 
         Span<byte> currKey = stackalloc byte[MaxKeyLen];
         Span<byte> commonPrefixBuf = stackalloc byte[prefixLen];
@@ -348,6 +352,7 @@ public ref struct HsstIndexBuilder<TWriter, TReader, TPin>
                 valueBuf[..valueSlotSize]);
         }
         indexWriter.FinalizeNode();
+        nodePrefixLen = prefixLen;
     }
 
     /// <summary>

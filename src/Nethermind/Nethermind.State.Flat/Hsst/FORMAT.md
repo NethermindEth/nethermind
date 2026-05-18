@@ -528,22 +528,23 @@ node header** — they arrive from outside:
 - For the root, from the HSST trailer's `RootPrefix` bytes (the root has
   no parent to inherit from).
 
-**`CommonPrefixLen` is uniform across every node in the HSST.** Every
-leaf and every intermediate writes the same `CommonPrefixLen = G`, where
-`G` is the `commonKeyPrefixLength` the caller passed to
-`HsstBTreeBuilder` at construction (default `0`). The trailer's
-`RootPrefix` carries those `G` bytes once for the whole HSST. Because the
-parent's separator always starts with the parent's own `CommonKeyPrefix`
-— which equals every other node's prefix — the first `G` bytes of any
-parent separator are automatically the child's prefix; no per-level
-"extend separator to at least the child's prefix" handshake is required.
-Callers with random/hash-derived keys pass `0`; callers whose entries
-share a structural prefix (e.g. an inner HSST under a fixed outer-key
-prefix) pass the known length so leaves and intermediates can strip
-those bytes off every stored slot.
+**`CommonPrefixLen` is picked per node by the layout planner**
+(`BSearchIndexLayoutPlanner.Plan`) from the per-entry LCP array and the
+node's separator lengths. The per-entry LCP array
+(`commonPrefixArr[i]` = LCP between entry `i-1` and entry `i`) is
+computed once during `Add`/`FinishValueWrite` and shared across every
+level: `commonPrefixArr[100]` is the same value whether a leaf or an
+intermediate consults it. Each node's planner then derives its own
+`CommonPrefixLen` from the chain-min over its covered range, capped at
+`min` of the sepLengths (so every entry has at least one suffix byte
+left) and at the u8 header field's 128-byte cap. Parents widen each
+separator to at least the child's `CommonPrefixLen` so a descender can
+hand the full prefix bytes to the child at parse time. The trailer's
+`RootPrefix` carries the **root node's** `CommonPrefixLen` bytes — the
+root has no parent to inherit them from.
 
-`KeySize` / slot semantics apply to the *suffixes*. The builder caps `G`
-at `min(keyLength, 128)` (the latter being the u8 header field's max).
+`KeySize` / slot semantics apply to the *suffixes* (the bytes left after
+the per-node `CommonPrefixLen` strip).
 
 `KeySize` semantics depend on `KeyType`:
 

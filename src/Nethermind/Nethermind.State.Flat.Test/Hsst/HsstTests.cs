@@ -152,41 +152,6 @@ public class HsstTests
         Assert.That(TryGet(data, ""u8, out _), Is.False);
     }
 
-    /// <summary>
-    /// Build an HSST whose every key shares a known 4-byte prefix ("key_"), pass that
-    /// length to the builder as <c>commonKeyPrefixLength</c>, and verify the trailer
-    /// records <c>RootPrefixLen = 4</c>. The trailer carries the prefix bytes once and
-    /// every BSearchIndex node — leaf and intermediate — reuses the same global lcp,
-    /// so all four prefix bytes are stripped uniformly throughout the tree.
-    /// </summary>
-    [TestCase(20)]
-    [TestCase(500)]
-    [TestCase(5000)]
-    public void Build_With_Explicit_CommonKeyPrefixLength_RoundTrips(int count)
-    {
-        const int prefixLen = 4;
-        List<(string Key, string Value)> expected = new(count);
-        for (int i = 0; i < count; i++)
-            expected.Add(($"key_{i:D6}", $"val_{i:D6}"));
-
-        byte[] data = HsstTestUtil.BuildToArray((ref HsstBTreeBuilder<PooledByteBufferWriter.Writer, PooledByteBufferWriter.WriterReader, NoOpPin> builder) =>
-        {
-            foreach ((string key, string value) in expected)
-                builder.Add(Encoding.UTF8.GetBytes(key), Encoding.UTF8.GetBytes(value));
-        }, commonKeyPrefixLength: prefixLen);
-
-        // Trailer layout: [RootPrefix bytes][RootPrefixLen u8][RootSize u16 LE][KeyLength u8][IndexType u8].
-        Assert.That(data[data.Length - 5], Is.EqualTo(prefixLen), "RootPrefixLen should match the supplied commonKeyPrefixLength");
-        Assert.That(Encoding.UTF8.GetString(data.AsSpan(data.Length - 5 - prefixLen, prefixLen).ToArray()), Is.EqualTo("key_"));
-
-        expected.Sort((a, b) => string.Compare(a.Key, b.Key, StringComparison.Ordinal));
-        foreach ((string key, string value) in expected)
-        {
-            Assert.That(TryGet(data, Encoding.UTF8.GetBytes(key), out byte[] val), Is.True, $"Key {key} not found");
-            Assert.That(Encoding.UTF8.GetString(val), Is.EqualTo(value));
-        }
-    }
-
     [TestCase(1)]
     [TestCase(10)]
     [TestCase(200)]
