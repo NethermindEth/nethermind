@@ -155,7 +155,7 @@ namespace Nethermind.Serialization.Ssz.Test
                         Enumerable.Repeat((byte)0xff, 32).ToArray()
                     ),
                     HashUtility.Hash(
-                        HashUtility.Chunk(new byte[] { 0x01 }).ToArray(),
+                        HashUtility.Chunk(new byte[] { 0x01 }),
                         new byte[32]
                     )
                 )
@@ -169,8 +169,8 @@ namespace Nethermind.Serialization.Ssz.Test
                 (ulong)8,
                 "2b01",
                 HashUtility.Hash(
-                    HashUtility.Chunk(new byte[] { 0x2b }).ToArray(),
-                    HashUtility.Chunk(new byte[] { 0x08 }).ToArray()
+                    HashUtility.Chunk(new byte[] { 0x2b }),
+                    HashUtility.Chunk(new byte[] { 0x08 })
                 )
             ).SetName("Len8_Limit8");
 
@@ -179,8 +179,8 @@ namespace Nethermind.Serialization.Ssz.Test
                 (ulong)4,
                 "1a",
                 HashUtility.Hash(
-                    HashUtility.Chunk(new byte[] { 0x0a }).ToArray(),
-                    HashUtility.Chunk(new byte[] { 0x04 }).ToArray()
+                    HashUtility.Chunk(new byte[] { 0x0a }),
+                    HashUtility.Chunk(new byte[] { 0x04 })
                 )
             ).SetName("Len4_Limit4");
 
@@ -189,8 +189,8 @@ namespace Nethermind.Serialization.Ssz.Test
                 (ulong)3,
                 "0a",
                 HashUtility.Hash(
-                    HashUtility.Chunk(new byte[] { 0x02 }).ToArray(),
-                    HashUtility.Chunk(new byte[] { 0x03 }).ToArray()
+                    HashUtility.Chunk(new byte[] { 0x02 }),
+                    HashUtility.Chunk(new byte[] { 0x03 })
                 )
             ).SetName("Len3_Limit3");
 
@@ -199,8 +199,8 @@ namespace Nethermind.Serialization.Ssz.Test
                 (ulong)16,
                 "c506",
                 HashUtility.Hash(
-                    HashUtility.Chunk(new byte[] { 0xc5, 0x02 }).ToArray(),
-                    HashUtility.Chunk(new byte[] { 0x0a }).ToArray()
+                    HashUtility.Chunk(new byte[] { 0xc5, 0x02 }),
+                    HashUtility.Chunk(new byte[] { 0x0a })
                 )
             ).SetName("Len10_Limit16");
 
@@ -210,8 +210,8 @@ namespace Nethermind.Serialization.Ssz.Test
                 (ulong)16,
                 "c5c201",
                 HashUtility.Hash(
-                    HashUtility.Chunk(new byte[] { 0xc5, 0xc2 }).ToArray(),
-                    HashUtility.Chunk(new byte[] { 0x10 }).ToArray()
+                    HashUtility.Chunk(new byte[] { 0xc5, 0xc2 }),
+                    HashUtility.Chunk(new byte[] { 0x10 })
                 )
             ).SetName("Len16_Limit16");
 
@@ -221,10 +221,10 @@ namespace Nethermind.Serialization.Ssz.Test
                 "03",
                 HashUtility.Hash(
                     HashUtility.Hash(
-                        HashUtility.Chunk(new byte[] { 0x01 }).ToArray(),
+                        HashUtility.Chunk(new byte[] { 0x01 }),
                         new byte[32]
                     ),
-                    HashUtility.Chunk(new byte[] { 0x01 }).ToArray()
+                    HashUtility.Chunk(new byte[] { 0x01 })
                 )
             ).SetName("Len1_Limit512");
 
@@ -237,7 +237,7 @@ namespace Nethermind.Serialization.Ssz.Test
                         Enumerable.Repeat((byte)0xff, 32).ToArray(),
                         Enumerable.Repeat((byte)0xff, 32).ToArray()
                     ),
-                    HashUtility.Chunk(new byte[] { 0x00, 0x02 }).ToArray()
+                    HashUtility.Chunk(new byte[] { 0x00, 0x02 })
                 )
             ).SetName("Len512_Limit512");
 
@@ -252,11 +252,11 @@ namespace Nethermind.Serialization.Ssz.Test
                             Enumerable.Repeat((byte)0xff, 32).ToArray()
                         ),
                         HashUtility.Hash(
-                            HashUtility.Chunk(new byte[] { 0x01 }).ToArray(),
+                            HashUtility.Chunk(new byte[] { 0x01 }),
                             new byte[32]
                         )
                     ),
-                    HashUtility.Chunk(new byte[] { 0x01, 0x02 }).ToArray()
+                    HashUtility.Chunk(new byte[] { 0x01, 0x02 })
                 )
             ).SetName("Len513_Limit513");
         }

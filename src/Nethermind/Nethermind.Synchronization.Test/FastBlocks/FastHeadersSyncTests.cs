@@ -429,6 +429,44 @@ public class FastHeadersSyncTests
     }
 
     [Test]
+    public async Task Does_not_prepare_batch_when_destination_moves_past_request_cursor()
+    {
+        const long pivotNumber = 1000;
+        IBlockTree blockTree = Substitute.For<IBlockTree>();
+        blockTree.SyncPivot.Returns((pivotNumber, TestItem.KeccakA));
+
+        ISyncPeerPool syncPeerPool = Substitute.For<ISyncPeerPool>();
+        syncPeerPool.EstimateRequestLimit(RequestType.Headers, Arg.Any<IPeerAllocationStrategy>(), AllocationContexts.Headers, default)
+            .Returns(Task.FromResult<int?>(10));
+
+        using DestinationHeaderSyncFeed feed = new(
+            blockTree: blockTree,
+            syncPeerPool: syncPeerPool,
+            syncConfig: new TestSyncConfig
+            {
+                FastSync = true,
+                PivotNumber = pivotNumber,
+                PivotHash = TestItem.KeccakA.ToString(),
+                PivotTotalDifficulty = "1000"
+            },
+            syncReport: new NullSyncReport(),
+            logManager: LimboLogs.Instance,
+            destinationNumber: 995);
+
+        feed.InitializeFeed();
+
+        using HeadersSyncBatch? firstBatch = await feed.PrepareRequest();
+        firstBatch.Should().NotBeNull();
+        firstBatch!.StartNumber.Should().Be(995);
+        firstBatch.RequestSize.Should().Be(6);
+
+        feed.DestinationNumber = 996;
+
+        using HeadersSyncBatch? overrunBatch = await feed.PrepareRequest();
+        overrunBatch.Should().BeNull();
+    }
+
+    [Test]
     public async Task Finishes_when_all_downloaded()
     {
         IBlockTree blockTree = Substitute.For<IBlockTree>();
@@ -941,6 +979,21 @@ public class FastHeadersSyncTests
                 }
             }
         }
+    }
+
+    private class DestinationHeaderSyncFeed(
+        IBlockTree? blockTree,
+        ISyncPeerPool? syncPeerPool,
+        ISyncConfig? syncConfig,
+        ISyncReport? syncReport,
+        ILogManager? logManager,
+        long destinationNumber
+        ) : HeadersSyncFeed(blockTree, syncPeerPool, syncConfig, syncReport, Substitute.For<IPoSSwitcher>(), logManager,
+            Substitute.For<IChainLevelInfoRepository>(), Substitute.For<IHeaderStore>())
+    {
+        public long DestinationNumber { get; set; } = destinationNumber;
+
+        protected override long HeadersDestinationNumber => DestinationNumber;
     }
 
 }

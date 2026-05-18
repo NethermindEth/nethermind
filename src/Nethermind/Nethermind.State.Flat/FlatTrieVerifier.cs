@@ -298,7 +298,7 @@ public class FlatTrieVerifier
                 if (trieAccountRlp.IsEmpty)
                 {
                     Interlocked.Increment(ref _missingInTrie);
-                    if (_logger.IsWarn) _logger.Warn($"Account in flat not found in trie. Address: {new Address(flatKey.Bytes[..20].ToArray())}");
+                    if (_logger.IsWarn) _logger.Warn($"Account in flat not found in trie. Address: {new Address(flatKey.Bytes[..20])}");
                     DiagnoseTriePath(trieStore, stateRoot, flatKey);
                     continue;
                 }

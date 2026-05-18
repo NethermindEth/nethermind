@@ -27,6 +27,7 @@ using Nethermind.Blockchain;
 using Newtonsoft.Json.Linq;
 using NUnit.Framework;
 using Nethermind.Abi;
+using Nethermind.Core.Messages;
 
 namespace Nethermind.JsonRpc.Test.Modules.Eth;
 
@@ -66,7 +67,7 @@ public partial class EthRpcModuleTests
         string serialized = await ctx.Test.TestEthRpc("eth_call", transaction);
         JToken parsed = JToken.Parse(serialized);
         parsed["error"]!["code"]!.Value<int>().Should().Be(-32003);
-        parsed["error"]!["message"]!.Value<string>().Should().Contain("insufficient funds");
+        parsed["error"]!["message"]!.Value<string>().Should().Contain("insufficient sender balance");
         AssertAccountDoesNotExist(ctx, TestAccount);
     }
 
@@ -322,7 +323,7 @@ public partial class EthRpcModuleTests
         string serialized = await ctx.Test.TestEthRpc("eth_call", transaction);
         JToken parsed = JToken.Parse(serialized);
         parsed["error"]!["code"]!.Value<int>().Should().Be(-32003);
-        parsed["error"]!["message"]!.Value<string>().Should().Contain("insufficient funds");
+        parsed["error"]!["message"]!.Value<string>().Should().Contain("insufficient sender balance");
     }
 
     [Test]
@@ -912,6 +913,43 @@ public partial class EthRpcModuleTests
 
         UInt256 overriddenFee = Bytes.FromHexString(resultHex!).ToUInt256();
         overriddenFee.Should().Be((UInt256)0x02);
+    }
+
+    [TestCase(
+        """{"from":"0x0001020304050607080910111213141516171819","to":"0x0000000000000000000000000000000000000000","value":"0x0","type":"0x4","authorizationList":[]}""",
+        TxErrorMessages.MissingAuthorizationList,
+        TestName = "Empty authorization list")]
+    [TestCase(
+        """{"from":"0x0001020304050607080910111213141516171819","value":"0x0","type":"0x4","data":"0x60006000f3","authorizationList":[{"chainId":"0x1","address":"0x0000000000000000000000000000000000000001","nonce":"0x1","yParity":"0x0","r":"0x0101010101010101010101010101010101010101010101010101010101010101","s":"0x0101010101010101010101010101010101010101010101010101010101010101"}]}""",
+        TxErrorMessages.NotAllowedCreateTransaction,
+        TestName = "Contract creation")]
+    public async Task Eth_call_setCode_invalid_transaction_returns_error(string txJson, string expectedMessage)
+    {
+        TestSpecProvider specProvider = new(Prague.Instance);
+        using Context ctx = await Context.Create(specProvider);
+
+        object transaction = JsonSerializer.Deserialize<object>(txJson)!;
+
+        string serialized = await ctx.Test.TestEthRpc("eth_call", transaction, "latest");
+
+        JToken parsed = JToken.Parse(serialized);
+        parsed["error"]!["code"]!.Value<int>().Should().Be(-32003);
+        parsed["error"]!["message"]!.Value<string>().Should().Contain(expectedMessage);
+    }
+
+    [Test]
+    public async Task Eth_call_setCode_missing_yParity_returns_error()
+    {
+        TestSpecProvider specProvider = new(Prague.Instance);
+        using Context ctx = await Context.Create(specProvider);
+
+        object transaction = JsonSerializer.Deserialize<object>(
+            $$$"""{"from":"0x0001020304050607080910111213141516171819","to":"0x0000000000000000000000000000000000000000","type":"0x4","authorizationList":[{"chainId":"0x1","address":"{{{TestItem.AddressA}}}","nonce":"0x1","r":"0x0101010101010101010101010101010101010101010101010101010101010101","s":"0x0101010101010101010101010101010101010101010101010101010101010101"}]}""")!;
+
+        string serialized = await ctx.Test.TestEthRpc("eth_call", transaction, "latest");
+
+        JToken parsed = JToken.Parse(serialized);
+        parsed["error"]!["code"]!.Value<int>().Should().Be(-32602);
     }
 
 }

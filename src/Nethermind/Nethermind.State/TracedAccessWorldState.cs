@@ -4,6 +4,7 @@
 using System;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Collections;
@@ -19,8 +20,12 @@ using Nethermind.Int256;
 
 namespace Nethermind.State;
 
-public class TracedAccessWorldState(IWorldState innerWorldState, bool parallel) : IWorldState
+public class TracedAccessWorldState(IWorldState innerWorldState, bool parallel) : IWorldState, IPreBlockCaches, IBlockAccessListSource
 {
+    public PreBlockCaches Caches => (_innerWorldState.ScopeProvider as IPreBlockCaches)?.Caches
+        ?? throw new InvalidOperationException($"{nameof(IPreBlockCaches)} is unavailable from the wrapped world state's scope provider.");
+    public bool IsWarmWorldState => (_innerWorldState.ScopeProvider as IPreBlockCaches)?.IsWarmWorldState ?? false;
+
     public bool IsInScope => _innerWorldState.IsInScope;
     public IWorldStateScopeProvider ScopeProvider => _innerWorldState.ScopeProvider;
     public Hash256 StateRoot => _innerWorldState.StateRoot;
@@ -74,7 +79,7 @@ public class TracedAccessWorldState(IWorldState innerWorldState, bool parallel) 
         return GetInternal(storageCell);
     }
 
-    public byte[] GetOriginal(in StorageCell storageCell)
+    public ReadOnlySpan<byte> GetOriginal(in StorageCell storageCell)
         => _innerWorldState.GetOriginal(storageCell);
 
     public void IncrementNonce(Address address, UInt256 delta, out UInt256 oldNonce)
@@ -174,7 +179,7 @@ public class TracedAccessWorldState(IWorldState innerWorldState, bool parallel) 
             GetNonceInternal(address),
             GetBalanceInternal(address),
             Keccak.EmptyTreeHash, // never used
-            _innerWorldState.GetCodeHash(address)) : AccountStruct.TotallyEmpty;
+            GetCodeHashInternal(address)) : AccountStruct.TotallyEmpty;
         return !account.IsTotallyEmpty;
     }
 
@@ -186,7 +191,7 @@ public class TracedAccessWorldState(IWorldState innerWorldState, bool parallel) 
         }
     }
 
-    public void SetIndex(int index)
+    public void SetIndex(uint index)
         => _generatingBlockAccessList.Index = index;
 
     public void IncrementIndex()
@@ -200,6 +205,8 @@ public class TracedAccessWorldState(IWorldState innerWorldState, bool parallel) 
 
     public void MergeGeneratingBal(BlockAccessList other)
         => other.Merge(_generatingBlockAccessList);
+
+    BlockAccessList IBlockAccessListSource.GeneratedBlockAccessList => _generatingBlockAccessList;
 
     public void Restore(Snapshot snapshot)
     {
@@ -349,7 +356,8 @@ public class TracedAccessWorldState(IWorldState innerWorldState, bool parallel) 
 
                 if (slotChanges is not null && slotChanges.Changes.Count >= 1)
                 {
-                    return slotChanges.Changes.Values[slotChanges.Changes.Count - 1].Value.ToBigEndian();
+                    StorageChange last = slotChanges.Changes.Values[slotChanges.Changes.Count - 1];
+                    return MemoryMarshal.CreateReadOnlySpan(ref Unsafe.As<EvmWord, byte>(ref Unsafe.AsRef(in last.Value)), 32).ToArray();
                 }
             }
         }
@@ -368,6 +376,15 @@ public class TracedAccessWorldState(IWorldState innerWorldState, bool parallel) 
             // if nonce or balance is changed in this tx must exist
             // could have been created this tx
             return true;
+        }
+
+        if (accountChanges is not null && accountChanges.CodeChanges.Count >= 1)
+        {
+            IndexedChangeValues<CodeChange> codeChanges = accountChanges.CodeChanges;
+            if (codeChanges[codeChanges.Count - 1].Code.Length != 0)
+            {
+                return true;
+            }
         }
 
         return null;

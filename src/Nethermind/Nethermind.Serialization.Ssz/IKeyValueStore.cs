@@ -3,7 +3,7 @@
 
 namespace Nethermind.Serialization.Ssz;
 
-public interface IKeyValueStore<in TKey, TValue>
+public interface IKeyValueStore<in TKey>
 {
     byte[]? this[TKey key] { get; set; }
 }

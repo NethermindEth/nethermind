@@ -3,21 +3,33 @@
 
 using System;
 using System.Collections.Generic;
-using System.Diagnostics.CodeAnalysis;
-using System.Linq;
-using Nethermind.Core.Extensions;
+using System.Text.Json.Serialization;
 using Nethermind.Int256;
 
 namespace Nethermind.Core.BlockAccessLists;
 
-public record SlotChanges(UInt256 Key, SortedList<int, StorageChange> Changes)
+public record SlotChanges(UInt256 Key, IndexedChanges<StorageChange> Changes)
 {
-    public SlotChanges(UInt256 slot) : this(slot, new(GenericComparer.GetOptimized<int>())) { }
+    public SlotChanges(UInt256 slot) : this(slot, new IndexedChanges<StorageChange>()) { }
 
-    public virtual bool Equals(SlotChanges? other) =>
-        other is not null &&
-        Key.Equals(other.Key) &&
-        Changes.SequenceEqual(other.Changes);
+    public SlotChanges(UInt256 slot, SortedList<uint, StorageChange> changes) : this(slot, (IndexedChanges<StorageChange>)changes) { }
+
+    public virtual bool Equals(SlotChanges? other)
+    {
+        if (other is null || !Key.Equals(other.Key) || Changes.Count != other.Changes.Count)
+            return false;
+
+        for (int i = 0; i < Changes.Count; i++)
+        {
+            if (Changes.Keys[i] != other.Changes.Keys[i] ||
+                !Changes.Values[i].Equals(other.Changes.Values[i]))
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
 
     public override int GetHashCode() =>
         HashCode.Combine(Key, Changes);
@@ -26,50 +38,17 @@ public record SlotChanges(UInt256 Key, SortedList<int, StorageChange> Changes)
 
 
     public void Merge(SlotChanges other)
-    {
-        foreach (KeyValuePair<int, StorageChange> kv in other.Changes)
-        {
-            Changes[kv.Key] = kv.Value;
-        }
-    }
+        => Changes.SetRange(other.Changes);
 
     public void AddStorageChange(StorageChange storageChange)
-        => Changes.Add(storageChange.Index, storageChange);
+        => Changes.Add(storageChange);
 
-    public bool TryPopStorageChange(int index, [NotNullWhen(true)] out StorageChange? storageChange)
-    {
-        storageChange = null;
+    [JsonIgnore]
+    public bool HasChanges => Changes.HasChanges;
 
-        if (Changes.Count == 0)
-            return false;
+    public bool TryGetLastBefore(uint blockAccessIndex, out StorageChange storageChange)
+        => Changes.TryGetLastBefore(blockAccessIndex, out storageChange);
 
-        StorageChange lastChange = Changes.Values[Changes.Count - 1];
-
-        if (lastChange.Index == index)
-        {
-            Changes.RemoveAt(Changes.Count - 1);
-            storageChange = lastChange;
-            return true;
-        }
-
-        return false;
-    }
-
-    public byte[] Get(int blockAccessIndex)
-    {
-        Span<byte> tmp = stackalloc byte[32];
-        UInt256 lastValue = 0;
-        foreach (KeyValuePair<int, StorageChange> change in Changes)
-        {
-            if (change.Key >= blockAccessIndex)
-            {
-                lastValue.ToBigEndian(tmp);
-                return [.. tmp.WithoutLeadingZeros()];
-            }
-            lastValue = change.Value.Value;
-        }
-
-        lastValue.ToBigEndian(tmp);
-        return [.. tmp.WithoutLeadingZeros()];
-    }
+    internal bool TryPopStorageChangeDirect(uint index, out StorageChange storageChange)
+        => Changes.TryPopLast(index, out storageChange);
 }
