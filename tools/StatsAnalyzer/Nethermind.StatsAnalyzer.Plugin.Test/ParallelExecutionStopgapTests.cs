@@ -1,7 +1,9 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
+using System.Reflection;
 using System.Threading;
 using Nethermind.Config;
 using Nethermind.Core;
@@ -15,10 +17,10 @@ using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.StatsAnalyzer.Plugin.Analyzer.Pattern;
+using Nethermind.StatsAnalyzer.Plugin.Tracer.Pattern;
 using Nethermind.StatsAnalyzer.Plugin.Types;
 using NUnit.Framework;
 using Testably.Abstractions.Testing;
-using PatternAnalyzerFileTracer = Nethermind.StatsAnalyzer.Plugin.Tracer.Pattern.PatternAnalyzerFileTracer;
 
 namespace Nethermind.StatsAnalyzer.Plugin.Test;
 
@@ -88,19 +90,62 @@ public class ParallelExecutionStopgapTests : VirtualMachineTestsBase
         Assert.That(_fileSystem.File.ReadAllText(fileName), Is.EqualTo(InitialFileContent));
     }
 
-    // NB: a "back-to-back mixed sequential/parallel/sequential" reset test was
-    // attempted here but consistently hung on the existing tracer's
-    // CompleteAllTasks plumbing — there's a pre-existing race between
-    // _lastTask.ContinueWith(...task.Start()) and Task.WaitAll on the queued
-    // un-started Task that only manifests under tight back-to-back
-    // EndBlockTrace calls. The three tests above plus inspection of
-    // StartNewBlockTrace (which writes _skipThisBlock unconditionally on
-    // every call) cover the reset semantics for now. The race itself is
-    // tracked as a follow-up in BAL-statsanalyzer-plan.md §6d, which
-    // replaces the queue model with per-worker accumulators.
+    [Test]
+    public void SkipFlagResetsAcrossBlocks()
+    {
+        // The stopgap must not leak skip-state across blocks. Drive
+        // StartNewBlockTrace directly with successive BAL settings and
+        // observe the per-tx tracer's Skip via the IStatsAnalyzerTxTracer
+        // contract. Bypasses the EVM and the file-write pipeline so the
+        // regression is independent of unrelated tracer plumbing.
+        IBlocksConfig cfg = new BlocksConfig { ParallelExecution = true };
+        (string _, PatternAnalyzerFileTracer tracer) = BuildTracer(cfg, "gating.json");
+
+        Block sequentialBlock = BuildBlock(bal: null);
+        Block parallelBlock = BuildBlock(bal: new BlockAccessList());
+
+        tracer.StartNewBlockTrace(sequentialBlock);
+        Assert.That(ReadTracerSkip(tracer), Is.False,
+            "no BAL → not parallel → record");
+
+        tracer.StartNewBlockTrace(parallelBlock);
+        Assert.That(ReadTracerSkip(tracer), Is.True,
+            "BAL present + parallel config → skip");
+
+        tracer.StartNewBlockTrace(sequentialBlock);
+        Assert.That(ReadTracerSkip(tracer), Is.False,
+            "skip flag must reset on next sequential block");
+    }
+
+    private Block BuildBlock(BlockAccessList? bal)
+    {
+        ForkActivation forkActivation = MainnetSpecProvider.PragueActivation;
+        byte[] code = Prepare.EvmCode.PushData(0).Done;
+        (Block? block, Transaction _) = PrepareTx(forkActivation, 100000, code);
+        block!.BlockAccessList = bal;
+        return block;
+    }
+
+    // Reflectively reads the per-tx tracer's Skip field on the file tracer's
+    // current Tracer. Avoids growing public/internal surface for a test that's
+    // a stopgap-era safety net (the proper parallel-safe redesign retires it).
+    private static bool ReadTracerSkip(PatternAnalyzerFileTracer tracer)
+    {
+        FieldInfo tracerField =
+            typeof(Nethermind.StatsAnalyzer.Plugin.Tracer.StatsAnalyzerFileTracer<PatternAnalyzerTxTrace, PatternStatsAnalyzerTxTracer>)
+                .GetField("Tracer", BindingFlags.NonPublic | BindingFlags.Instance)
+            ?? throw new InvalidOperationException("Tracer field not found on StatsAnalyzerFileTracer");
+        object current = tracerField.GetValue(tracer)
+            ?? throw new InvalidOperationException("Tracer field is null");
+        FieldInfo skipField =
+            typeof(Nethermind.StatsAnalyzer.Plugin.Tracer.StatsAnalyzerTxTracer<Instruction, PatternStat, PatternAnalyzerTxTrace>)
+                .GetField("Skip", BindingFlags.NonPublic | BindingFlags.Instance)
+            ?? throw new InvalidOperationException("Skip field not found on StatsAnalyzerTxTracer");
+        return (bool)skipField.GetValue(current)!;
+    }
 
     private (string fileName, PatternAnalyzerFileTracer tracer) BuildTracer(
-        IBlocksConfig blocksConfig, string filename, int processingQueueSize = 1)
+        IBlocksConfig blocksConfig, string filename)
     {
         string fileName = _fileSystem.Path.Combine(".", filename);
         _fileSystem.File.WriteAllText(fileName, InitialFileContent);
@@ -111,7 +156,7 @@ public class ParallelExecutionStopgapTests : VirtualMachineTestsBase
             .SetMinSupport(1).SetSketchResetOrReuseThreshold(0.001).SetSketch(sketch).Build();
 
         PatternAnalyzerFileTracer tracer = new(
-            new ResettableList<Instruction>(), processingQueueSize, 100, analyzer,
+            new ResettableList<Instruction>(), 1, 100, analyzer,
             new HashSet<Instruction>(), _fileSystem, _logger, 1,
             ProcessingMode.Sequential, SortOrder.Descending,
             fileName, CancellationToken.None, blocksConfig);

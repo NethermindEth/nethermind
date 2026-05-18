@@ -66,40 +66,43 @@ public abstract class StatsAnalyzerFileTracer<TxTrace, TxTracer>(
 
         if (!skip)
         {
-            Enqueue(new Task(() =>
-                {
-                    Ct.ThrowIfCancellationRequested();
-                    WriteTrace(
-                        initialBlockNumber,
-                        currentBlockNumber,
-                        tracer,
-                        FileName,
-                        _fileSystem,
-                        _serializerOptions,
-                        Ct);
-                },
-                Ct));
+            Enqueue(() =>
+            {
+                Ct.ThrowIfCancellationRequested();
+                WriteTrace(
+                    initialBlockNumber,
+                    currentBlockNumber,
+                    tracer,
+                    FileName,
+                    _fileSystem,
+                    _serializerOptions,
+                    Ct);
+            });
         }
 
         base.EndBlockTrace();
     }
 
-    private void Enqueue(Task task)
+    private void Enqueue(Action work)
     {
         if (_fileTracingQueueSize < 1) return;
 
         _pos = (_pos + 1) % _writeFreq;
         if (_pos != 0) return;
 
-
-        // var task = CurrentTask;
-        _lastTask = _lastTask.ContinueWith(t =>
+        // Chain via ContinueWith so the runtime starts the queued task itself
+        // once its antecedent completes — never sits in Created state. The
+        // earlier `new Task(...).Start()` pattern raced with Wait/WaitAll when
+        // the starting continuation had not yet been picked up by the
+        // ThreadPool.
+        Task previous = _lastTask;
+        Task task = previous.ContinueWith(t =>
         {
             if (t.Exception != null)
                 Logger.Error($"Previous task failed: {t.Exception.Flatten()}");
-
-            task.Start();
+            work();
         }, Ct);
+        _lastTask = task;
 
         _fileTracingQueue.Add(task);
 
