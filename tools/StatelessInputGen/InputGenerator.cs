@@ -23,7 +23,7 @@ internal static class InputGenerator
     {
         ReadOnlySpan<byte> data = File.ReadAllBytes(filename);
         ulong dataLen = BinaryPrimitives.ReadUInt64LittleEndian(data);
-        data = data.Slice(sizeof(ulong), (int)dataLen);
+        data = data.Slice(sizeof(ulong), checked((int)dataLen));
 
         (Block block, Witness witness, ulong chainId) = InputSerializer.Deserialize(data);
 
