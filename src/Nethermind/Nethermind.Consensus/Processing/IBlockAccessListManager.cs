@@ -11,7 +11,6 @@ using Nethermind.Evm.TransactionProcessing;
 
 namespace Nethermind.Consensus.Processing;
 
-// todo: maybe split into smaller classes
 public interface IBlockAccessListManager
 {
     GeneratedBlockAccessList GeneratedBlockAccessList { get; set; }
@@ -38,7 +37,6 @@ public interface IBlockAccessListManager
 
     void IncrementalValidation(Block block, GasValidationResultSlot[] gasResults, BlockReceiptsTracer[] receiptsTracers, BlockProcessor.BlockValidationTransactionsExecutor.ITransactionProcessedEventHandler? transactionProcessedEventHandler, CancellationToken token);
     void SetBlockAccessList(Block block);
-
     void ValidateBlockAccessList(Block block, uint index, bool validateStorageReads = true);
     void StoreBeaconRoot(Block block, IReleaseSpec spec);
     void ApplyBlockhashStateChanges(BlockHeader header, IReleaseSpec spec);
