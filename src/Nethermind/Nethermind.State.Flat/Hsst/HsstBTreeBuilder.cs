@@ -133,6 +133,7 @@ public ref struct HsstBTreeBuilder<TWriter, TReader, TPin>
         _useExternalBuffers = false;
         _pendingFirstEntryIdx = 0;
         _lastWriterPage = (_writer.Written - _writer.FirstOffset) / PageLayout.PageSize;
+        PrimePerAddBuffers(ref _ownedBuffers, expectedKeyCount, keyLength);
     }
 
     /// <summary>
@@ -164,6 +165,25 @@ public ref struct HsstBTreeBuilder<TWriter, TReader, TPin>
         _useExternalBuffers = true;
         _pendingFirstEntryIdx = 0;
         _lastWriterPage = (_writer.Written - _writer.FirstOffset) / PageLayout.PageSize;
+        PrimePerAddBuffers(ref buffers, expectedKeyCount, keyLength);
+    }
+
+    /// <summary>
+    /// Reserve <c>CommonPrefixArr</c> at <c>max(expectedKeyCount, 64)</c> bytes and,
+    /// when <paramref name="keyLength"/> is known, <c>PrevKeyBuf</c> at <c>keyLength</c>
+    /// bytes. The per-<c>Add</c> hot path then reads these slots with a tight bounds
+    /// check (and a cold grow helper for <c>CommonPrefixArr</c>) instead of the
+    /// <c>oldArr is null || oldArr.Length &lt; entryIdx + 1</c> branch on every entry.
+    /// When <paramref name="keyLength"/> is <c>-1</c> at construction (deferred), the
+    /// <c>PrevKeyBuf</c> rent is delegated to the first <c>OnEntryAdded</c> that
+    /// learns the length.
+    /// </summary>
+    private static void PrimePerAddBuffers(ref HsstBTreeBuilderBuffers buffers, int expectedKeyCount, int keyLength)
+    {
+        int cpCap = Math.Max(expectedKeyCount, 64);
+        HsstBTreeBuilderBuffers.EnsureSize(ref buffers.CommonPrefixArr, cpCap);
+        if (keyLength > 0)
+            HsstBTreeBuilderBuffers.EnsureSize(ref buffers.PrevKeyBuf, keyLength);
     }
 
     /// <summary>
@@ -229,10 +249,11 @@ public ref struct HsstBTreeBuilder<TWriter, TReader, TPin>
         // CurrentLevel as a direct Entry descriptor (see EmitInlineLeaf's singleton
         // fast path) — the common all-streaming case where every entry becomes its
         // own direct-Entry child of the intermediate level above.
-        if (EntryPositions.Count > _pendingFirstEntryIdx)
+        ref HsstBTreeBuilderBuffers bufs = ref Buffers;
+        if (bufs.EntryPositions.Count > _pendingFirstEntryIdx)
         {
             FlushPendingNotOnCurrentPage();
-            if (EntryPositions.Count > _pendingFirstEntryIdx)
+            if (bufs.EntryPositions.Count > _pendingFirstEntryIdx)
                 EmitInlineLeaf();
         }
         _writtenBeforeValue = _writer.Written;
@@ -297,28 +318,18 @@ public ref struct HsstBTreeBuilder<TWriter, TReader, TPin>
         // byte before parsing the LEB128.
         long metadataPos = _writer.Written - _baseOffset;
 
-        // Per-entry flag byte: NodeKind=Entry (0) in bits 0-1, all other bits reserved zero.
-        Span<byte> flagSpan = _writer.GetSpan(1);
-        flagSpan[0] = (byte)BSearchNodeKind.Entry;
-        _writer.Advance(1);
+        // Single GetSpan/Advance for the post-value [FlagByte][LEB128][FullKey] trailer.
+        // Value bytes were streamed in via the caller's BeginValueWrite snapshot and are
+        // already on the writer; this trailer is bounded by 1 + 10 + key.Length.
+        int lebSize = Leb128.EncodedSize(valueLength);
+        int trailerLen = 1 + lebSize + key.Length;
+        Span<byte> dest = _writer.GetSpan(trailerLen);
+        dest[0] = (byte)BSearchNodeKind.Entry;
+        Leb128.Write(dest, 1, valueLength);
+        if (key.Length > 0) key.CopyTo(dest.Slice(1 + lebSize, key.Length));
+        _writer.Advance(trailerLen);
 
-        // Write [ValueLength: LEB128][FullKey]. The full key lives in the data region
-        // so the entry is self-describing; the leaf separator stored in the B-tree
-        // node is recomputed at Build() time from the flushed bytes. Key length is
-        // uniform per HSST and recorded once in the trailer, not per entry.
-        // 64-bit LEB128 takes up to 10 bytes.
-        Span<byte> leb = _writer.GetSpan(10);
-        int lebLen = Leb128.Write(leb, 0, valueLength);
-        _writer.Advance(lebLen);
-
-        if (key.Length > 0)
-        {
-            IByteBufferWriter.Copy(ref _writer, key);
-        }
-
-        EntryPositions.Add(metadataPos);
-        if (key.Length > 0) PendingKeys.AddRange(key);
-        OnEntryAdded(key, precomputedLcp);
+        EmitEntryBookkeeping(ref Buffers, key, metadataPos, precomputedLcp);
     }
 
     /// <summary>
@@ -335,11 +346,13 @@ public ref struct HsstBTreeBuilder<TWriter, TReader, TPin>
     /// </summary>
     public void Add(scoped ReadOnlySpan<byte> key, scoped ReadOnlySpan<byte> value)
     {
+        ref HsstBTreeBuilderBuffers bufs = ref Buffers;
         // +1 for the leading per-entry flag byte.
-        long entryLen = 1L + key.Length + Leb128.EncodedSize((long)value.Length) + value.Length;
-        int lcp = MaybeFlushBeforeEntry(key, entryLen);
+        int lebSize = Leb128.EncodedSize((long)value.Length);
+        long entryLen = 1L + key.Length + lebSize + value.Length;
+        int lcp = MaybeFlushBeforeEntry(ref bufs, key, entryLen);
         TryAlign(entryLen); // best-effort; entry lands unaligned if false
-        AddCore(key, value, lcp);
+        AddCore(ref bufs, key, value, lebSize, lcp);
     }
 
     /// <summary>
@@ -367,11 +380,13 @@ public ref struct HsstBTreeBuilder<TWriter, TReader, TPin>
     /// </summary>
     public bool TryAddAligned(scoped ReadOnlySpan<byte> key, scoped ReadOnlySpan<byte> value)
     {
+        ref HsstBTreeBuilderBuffers bufs = ref Buffers;
         // +1 for the leading per-entry flag byte.
-        long entryLen = 1L + key.Length + Leb128.EncodedSize((long)value.Length) + value.Length;
-        int lcp = MaybeFlushBeforeEntry(key, entryLen);
+        int lebSize = Leb128.EncodedSize((long)value.Length);
+        long entryLen = 1L + key.Length + lebSize + value.Length;
+        int lcp = MaybeFlushBeforeEntry(ref bufs, key, entryLen);
         if (!TryAlign(entryLen)) return false;
-        AddCore(key, value, lcp);
+        AddCore(ref bufs, key, value, lebSize, lcp);
         return true;
     }
 
@@ -408,7 +423,7 @@ public ref struct HsstBTreeBuilder<TWriter, TReader, TPin>
     /// <see cref="OnEntryAdded(System.ReadOnlySpan{byte},int)"/> so the per-key
     /// LCP loop runs once per buffered <see cref="Add"/>.
     /// </summary>
-    private void AddCore(scoped ReadOnlySpan<byte> key, scoped ReadOnlySpan<byte> value, int precomputedLcp)
+    private void AddCore(ref HsstBTreeBuilderBuffers bufs, scoped ReadOnlySpan<byte> key, scoped ReadOnlySpan<byte> value, int lebSize, int precomputedLcp)
     {
         if (_keyLength < 0)
         {
@@ -418,31 +433,67 @@ public ref struct HsstBTreeBuilder<TWriter, TReader, TPin>
         else if (key.Length != _keyLength)
             throw new ArgumentException($"key length {key.Length} != declared keyLength {_keyLength}", nameof(key));
 
+        // Single GetSpan + Advance per entry. Pre-pad has already run via TryAlign in
+        // the caller; the reserved slice starts at the post-pad writer position. Entry
+        // bytes are laid down via local offsets into <c>dest</c>, then a single
+        // <c>Advance(totalLen)</c> commits the whole record at once. Avoids the
+        // four-touch GetSpan/Advance dance of the legacy path (flag, Copy(key/value),
+        // LEB128, Copy(remaining)).
+        int totalLen = 1 + key.Length + lebSize + value.Length;
+        long entryStart = _writer.Written - _baseOffset;
+        Span<byte> dest = _writer.GetSpan(totalLen);
+
+        long entryPos;
         if (_keyFirst)
         {
             // Entry layout: [FlagByte=Entry][FullKey][LEB128 ValueLength][Value]. EntryStart =
             // FlagByte position; the BTree reader's dispatch loop reads the flag byte first
             // to recognize the entry, then walks forward past the key + LEB128 to the value.
-            long entryStart = _writer.Written - _baseOffset;
-            Span<byte> flagSpan = _writer.GetSpan(1);
-            flagSpan[0] = (byte)BSearchNodeKind.Entry;
-            _writer.Advance(1);
-            if (key.Length > 0)
-                IByteBufferWriter.Copy(ref _writer, key);
-            Span<byte> leb = _writer.GetSpan(10);
-            int lebLen = Leb128.Write(leb, 0, value.Length);
-            _writer.Advance(lebLen);
-            if (value.Length > 0)
-                IByteBufferWriter.Copy(ref _writer, value);
-            EntryPositions.Add(entryStart);
-            if (key.Length > 0) PendingKeys.AddRange(key);
-            OnEntryAdded(key, precomputedLcp);
-            return;
+            dest[0] = (byte)BSearchNodeKind.Entry;
+            int off = 1;
+            if (key.Length > 0) key.CopyTo(dest.Slice(off, key.Length));
+            off += key.Length;
+            Leb128.Write(dest, off, (long)value.Length);
+            off += lebSize;
+            if (value.Length > 0) value.CopyTo(dest.Slice(off, value.Length));
+            entryPos = entryStart;
         }
+        else
+        {
+            // Entry layout: [Value][FlagByte=Entry][LEB128 ValueLength][FullKey]. MetadataStart
+            // = the FlagByte position (== entryStart + value.Length, expressed relative to the
+            // data-section start at _baseOffset); the BTree reader recovers ValueStart from
+            // MetadataStart - ValueLength.
+            int off = 0;
+            if (value.Length > 0) value.CopyTo(dest.Slice(off, value.Length));
+            off += value.Length;
+            long metadataPos = entryStart + value.Length;
+            dest[off] = (byte)BSearchNodeKind.Entry;
+            off++;
+            Leb128.Write(dest, off, (long)value.Length);
+            off += lebSize;
+            if (key.Length > 0) key.CopyTo(dest.Slice(off, key.Length));
+            entryPos = metadataPos;
+        }
+        _writer.Advance(totalLen);
 
-        _writtenBeforeValue = _writer.Written;
-        IByteBufferWriter.Copy(ref _writer, value);
-        FinishValueWrite(key, _writer.Written - _writtenBeforeValue, precomputedLcp);
+        EmitEntryBookkeeping(ref bufs, key, entryPos, precomputedLcp);
+    }
+
+    /// <summary>
+    /// Per-entry list pushes + LCP update shared by the buffered <see cref="AddCore"/>
+    /// path and the streaming <see cref="FinishValueWrite(System.ReadOnlySpan{byte},long,int)"/>
+    /// path. Records the entry's index pointer (MetadataStart in key-after-value
+    /// mode, EntryStart in key-first mode), appends the key to the pending leaf set,
+    /// and runs the LCP / PendingMaxSepLen / PrevKeyBuf bookkeeping in
+    /// <see cref="OnEntryAdded"/>.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private void EmitEntryBookkeeping(ref HsstBTreeBuilderBuffers bufs, scoped ReadOnlySpan<byte> key, long entryPos, int precomputedLcp)
+    {
+        bufs.EntryPositions.Add(entryPos);
+        if (key.Length > 0) bufs.PendingKeys.AddRange(key);
+        OnEntryAdded(ref bufs, key, precomputedLcp);
     }
 
     /// <summary>
@@ -540,47 +591,38 @@ public ref struct HsstBTreeBuilder<TWriter, TReader, TPin>
     /// for the next add. Forwarder for the streaming <see cref="FinishValueWrite"/>
     /// path that has no precomputed LCP.
     /// </summary>
-    private void OnEntryAdded(scoped ReadOnlySpan<byte> key) => OnEntryAdded(key, -1);
+    private void OnEntryAdded(scoped ReadOnlySpan<byte> key) => OnEntryAdded(ref Buffers, key, -1);
 
     /// <summary>
     /// Same as <see cref="OnEntryAdded(System.ReadOnlySpan{byte})"/>, but accepts the
     /// raw LCP byte count against <c>Buffers.PrevKeyBuf</c> already computed by
     /// <see cref="MaybeFlushBeforeEntry"/>. Pass <c>-1</c> when no precomputed value
     /// is available; the method then walks the prev/current keys itself.
+    /// <paramref name="bufs"/> is the same ref the caller already resolved at the
+    /// top of <see cref="Add"/> / <see cref="BeginValueWrite"/>; threading it
+    /// through avoids re-resolving the <see cref="Buffers"/> branch on every Add.
     /// </summary>
-    private void OnEntryAdded(scoped ReadOnlySpan<byte> key, int precomputedLcp)
+    private void OnEntryAdded(ref HsstBTreeBuilderBuffers bufs, scoped ReadOnlySpan<byte> key, int precomputedLcp)
     {
-        int entryIdx = EntryPositions.Count - 1;
-        ref HsstBTreeBuilderBuffers bufs = ref Buffers;
+        int entryIdx = bufs.EntryPositions.Count - 1;
         byte[]? prevKey = bufs.PrevKeyBuf;
         int cp = 0;
         if (entryIdx > 0 && _keyLength > 0 && prevKey is not null)
         {
-            if (precomputedLcp >= 0)
-            {
-                cp = precomputedLcp;
-            }
-            else
-            {
-                cp = MemoryExtensions.CommonPrefixLength(prevKey.AsSpan(0, Math.Min(prevKey.Length, _keyLength)), key);
-            }
+            cp = precomputedLcp >= 0
+                ? precomputedLcp
+                : MemoryExtensions.CommonPrefixLength(prevKey.AsSpan(0, Math.Min(prevKey.Length, _keyLength)), key);
         }
-        // Grow-preserving resize: HsstBTreeBuilderBuffers.EnsureSize returns the old
-        // array to the pool unconditionally, losing its contents. We must copy the
-        // accumulated cp[0..entryIdx) into the new buffer before the old one is
-        // returned, otherwise WriteIndexNode reads garbage at higher entry indices.
-        byte[]? oldArr = bufs.CommonPrefixArr;
-        if (oldArr is null || oldArr.Length < entryIdx + 1)
+        // CommonPrefixArr was primed at construction to max(expectedKeyCount, 64) bytes
+        // and grows monotonically. Hot path: tight bounds check + direct write. Cold
+        // path: out-of-line helper preserves the bytes already written for entries
+        // 0..entryIdx before swapping in the larger pool array.
+        byte[] cpArr = bufs.CommonPrefixArr!;
+        if ((uint)entryIdx >= (uint)cpArr.Length)
         {
-            byte[] newArr = System.Buffers.ArrayPool<byte>.Shared.Rent(entryIdx + 1);
-            if (oldArr is not null)
-            {
-                Array.Copy(oldArr, newArr, oldArr.Length);
-                System.Buffers.ArrayPool<byte>.Shared.Return(oldArr);
-            }
-            bufs.CommonPrefixArr = newArr;
+            cpArr = GrowCommonPrefixArr(ref bufs, entryIdx + 1);
         }
-        bufs.CommonPrefixArr![entryIdx] = (byte)cp;
+        cpArr[entryIdx] = (byte)cp;
 
         // Incremental update of PendingMaxSepLen so MaybeFlushBeforeEntry can skip
         // its O(pending) scan. Mirrors the loop it replaces: sepLen for an entry is
@@ -593,14 +635,41 @@ public ref struct HsstBTreeBuilder<TWriter, TReader, TPin>
             if (sl > bufs.PendingMaxSepLen) bufs.PendingMaxSepLen = sl;
         }
 
-        // Refresh PrevKeyBuf for the next entry's LCP. The buffer survives across
-        // leaf flushes and across builds (the latter being safe because entryIdx=0's
-        // OnEntryAdded always overwrites byte 0..keyLength before any later add reads it).
+        // Refresh PrevKeyBuf for the next entry's LCP. The buffer is sized to
+        // <c>_keyLength</c> by the constructor (when known) or here on the first
+        // entry of a deferred-keyLength build; after that, every Add writes
+        // exactly _keyLength bytes into a buffer that is already large enough.
         if (_keyLength > 0 && key.Length == _keyLength)
         {
-            HsstBTreeBuilderBuffers.EnsureSize(ref bufs.PrevKeyBuf, _keyLength);
-            key.CopyTo(bufs.PrevKeyBuf);
+            byte[]? prev = bufs.PrevKeyBuf;
+            if (prev is null || prev.Length < _keyLength)
+            {
+                HsstBTreeBuilderBuffers.EnsureSize(ref bufs.PrevKeyBuf, _keyLength);
+                prev = bufs.PrevKeyBuf;
+            }
+            key.CopyTo(prev);
         }
+    }
+
+    /// <summary>
+    /// Out-of-line grow path for <c>CommonPrefixArr</c>. Rents a larger pool array,
+    /// copies the bytes already written for entries <c>0..entryIdx-1</c> (which the
+    /// caller's hot loop has populated incrementally), returns the old array to the
+    /// pool, and assigns the new one. Returns the new array so the caller can
+    /// continue writing without re-reading the field.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static byte[] GrowCommonPrefixArr(ref HsstBTreeBuilderBuffers bufs, int needed)
+    {
+        byte[]? oldArr = bufs.CommonPrefixArr;
+        byte[] newArr = System.Buffers.ArrayPool<byte>.Shared.Rent(needed);
+        if (oldArr is not null)
+        {
+            Array.Copy(oldArr, newArr, oldArr.Length);
+            System.Buffers.ArrayPool<byte>.Shared.Return(oldArr);
+        }
+        bufs.CommonPrefixArr = newArr;
+        return newArr;
     }
 
     /// <summary>
@@ -618,14 +687,13 @@ public ref struct HsstBTreeBuilder<TWriter, TReader, TPin>
     /// <see cref="OnEntryAdded(System.ReadOnlySpan{byte},int)"/> so the per-key
     /// LCP loop runs once per buffered <see cref="Add"/>/<see cref="TryAddAligned"/>.
     /// </returns>
-    private int MaybeFlushBeforeEntry(scoped ReadOnlySpan<byte> key, long entryLen)
+    private int MaybeFlushBeforeEntry(ref HsstBTreeBuilderBuffers bufs, scoped ReadOnlySpan<byte> key, long entryLen)
     {
         // Compute LCP once at the top; reused for the leaf-fit estimate below and
         // returned for the caller to forward into OnEntryAdded. Uses PrevKeyBuf
         // (set by the last OnEntryAdded) — survives leaf flushes that clear
         // PendingKeys, and stays valid even when the prior entry was stranded
         // onto the previous page and direct-flushed.
-        ref HsstBTreeBuilderBuffers bufs = ref Buffers;
         byte[]? prevKey = bufs.PrevKeyBuf;
         int lcp = -1;
         if (_keyLength > 0 && key.Length == _keyLength && prevKey is not null)
@@ -633,7 +701,7 @@ public ref struct HsstBTreeBuilder<TWriter, TReader, TPin>
             lcp = MemoryExtensions.CommonPrefixLength(prevKey.AsSpan(0, _keyLength), key);
         }
 
-        int pending = EntryPositions.Count - _pendingFirstEntryIdx;
+        int pending = bufs.EntryPositions.Count - _pendingFirstEntryIdx;
         if (pending < 1) return lcp;
         if (_keyLength <= 0) return lcp;
 
@@ -645,7 +713,7 @@ public ref struct HsstBTreeBuilder<TWriter, TReader, TPin>
         if (writerPage != _lastWriterPage)
         {
             FlushPendingNotOnCurrentPage();
-            pending = EntryPositions.Count - _pendingFirstEntryIdx;
+            pending = bufs.EntryPositions.Count - _pendingFirstEntryIdx;
             if (pending < 1) return lcp;
         }
 
