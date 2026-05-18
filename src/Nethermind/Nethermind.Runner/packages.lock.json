@@ -1168,16 +1168,6 @@
           "Nethermind.Trie": "[1.38.0-unstable, )"
         }
       },
-      "nethermind.statsanalyzer.plugin": {
-        "type": "Project",
-        "dependencies": {
-          "Nethermind.Api": "[1.38.0-unstable, )",
-          "Nethermind.Config": "[1.38.0-unstable, )",
-          "Nethermind.Evm": "[1.38.0-unstable, )",
-          "Nethermind.Logging": "[1.38.0-unstable, )",
-          "Nethermind.Specs": "[1.38.0-unstable, )"
-        }
-      },
       "nethermind.synchronization": {
         "type": "Project",
         "dependencies": {

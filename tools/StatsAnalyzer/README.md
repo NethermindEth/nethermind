@@ -6,6 +6,31 @@ The plugin serves JSON traces of the stats of top patterns of **2-7 opcodes** ob
 
 - **Enabled**: The ability to enable or disable the plugin.
 
+## Building & installing (developer tool, opt-in)
+
+This plugin is a diagnostic tool, not a production runtime component, and is **not** included in shipped Nethermind builds (it is intentionally absent from `Nethermind.Runner.csproj`'s `ProjectReference` list and from the docker image). A developer who wants to run it must build the plugin separately and drop the resulting DLL into the Runner's `plugins/` folder:
+
+```bash
+# 1. Build the plugin standalone.
+dotnet build tools/StatsAnalyzer/StatsAnalyzer.slnx -c Release
+
+# 2. Copy the build output into the Runner's plugins folder.
+#    Adjust the destination if you publish Runner to a different path.
+cp tools/StatsAnalyzer/artifacts/bin/Nethermind.StatsAnalyzer.Plugin/release/Nethermind.StatsAnalyzer.Plugin.dll \
+   src/Nethermind/Nethermind.Runner/artifacts/bin/Nethermind.Runner/release/plugins/
+
+# 3. Run Nethermind with the analyzer enabled (Pattern, Call, or both).
+dotnet run --project src/Nethermind/Nethermind.Runner -c Release -- \
+    --config mainnet \
+    --PatternAnalyzer.Enabled=true
+```
+
+Tests, configs, and the analyzer code remain in this directory (`tools/StatsAnalyzer/`). The Runner is unaware of the plugin at build time; it only discovers the DLL at startup from the `plugins/` folder.
+
+### Parallel block-level access list execution
+
+When the node runs Amsterdam+ blocks with `Blocks.ParallelExecution=true`, the Pattern/Call analyzers cannot safely record stats — their per-tx tracer shares mutable state across transactions, and parallel BAL execution would race on it. The plugin detects this per block and silently skips recording for those blocks; non-parallel blocks (pre-Amsterdam, locally-produced, or operator-disabled parallel exec) continue to be recorded normally. A one-time warning is emitted at plugin startup, and the first skipped block is logged at `Info`. See [`EIP-7928-references.md`](./EIP-7928-references.md) for the EIP-7928 → execution-specs → Nethermind cross-reference and the gating logic. The proper parallel-safe redesign (per-worker accumulators + merge) is tracked as a follow-up.
+
 ## Pattern Analyzer
 
 The Analyzer primarily consists of the **StatsAnalyzer**, **CMSKetch**, **NGram** and **StatsProcessingQueue**.
