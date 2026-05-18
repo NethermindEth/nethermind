@@ -1572,6 +1572,8 @@ namespace Nethermind.Trie.Test.Pruning
             // and can lose the lock race against the background prune. Force a deterministic flush
             // here so block 12's commit moves into the main queue before the next assertion phase;
             // otherwise the follow-up commits below would land in the buffer instead.
+            // Fire-and-forget TryExitCommitBufferMode (posted from BeginScope's dispose) can lose the
+            // lock race; force a blocking flush so block 12 is in the main queue before the writes below.
             fullTrieStore.FlushCommitBufferForTest();
 
             // Write a bit more
