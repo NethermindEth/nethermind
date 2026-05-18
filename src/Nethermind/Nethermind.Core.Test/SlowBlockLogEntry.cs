@@ -90,6 +90,5 @@ public record SlowBlockLogEntry
         [JsonPropertyName("creates")] public long Creates { get; init; }
         [JsonPropertyName("self_destructs")] public long SelfDestructs { get; init; }
         [JsonPropertyName("contracts_analyzed")] public long ContractsAnalyzed { get; init; }
-        [JsonPropertyName("cached_contracts_used")] public long CachedContractsUsed { get; init; }
     }
 }
