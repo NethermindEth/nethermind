@@ -484,7 +484,7 @@ public class AdminModuleTests
             manualResetEvent.Set();
         }));
 
-        _existingSession1.Disconnected += Raise.EventWith(_existingSession1, disconnectEventArgs);
+        _rlpxPeer.SessionDisconnected += Raise.Event<SessionDisconnectedEventHandler>(_rlpxPeer, _existingSession1, disconnectEventArgs);
         _existingSession1.MsgDelivered += Raise.EventWith(new object(), peerEventArgs);
 
         manualResetEvent.WaitOne(TimeSpan.FromMilliseconds(1000)).Should().BeFalse(because: "after disconnect the session is unhooked and must not raise further notifications");
