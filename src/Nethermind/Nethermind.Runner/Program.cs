@@ -355,18 +355,15 @@ void ConfigureLogger(ParseResult parseResult)
     if (logLevel is not null)
         NLogConfigurator.ConfigureLogLevels(logLevel);
 
-    string? loggingFormat = parseResult.GetValue(BasicOptions.LoggingFormat);
+    string loggingFormat = parseResult.GetValue(BasicOptions.LoggingFormat) ?? "plain";
 
-    if (!string.IsNullOrWhiteSpace(loggingFormat))
+    try
     {
-        try
-        {
-            NLogConfigurator.ConfigureConsoleFormat(loggingFormat);
-        }
-        catch (ArgumentException ex)
-        {
-            logger.Error(ex.Message);
-        }
+        NLogConfigurator.ConfigureConsoleFormat(loggingFormat);
+    }
+    catch (ArgumentException ex)
+    {
+        logger.Error(ex.Message);
     }
 }
 
@@ -618,7 +615,8 @@ static class BasicOptions
     public static Option<string> LoggingFormat { get; } = new("--logging-format", "--loggingFormat")
     {
         Description = "Console log output format. Allowed values: plain (default), ecs, gcp, logstash, gelf.",
-        HelpName = "format"
+        HelpName = "format",
+        DefaultValueFactory = _ => "plain"
     };
 
     public static Option<bool> ForceResync { get; } = CreateForceResyncOption();

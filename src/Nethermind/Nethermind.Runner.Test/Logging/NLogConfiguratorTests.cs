@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Text.Json;
 using FluentAssertions;
 using Nethermind.Runner.Logging;
@@ -40,52 +41,104 @@ public class NLogConfiguratorTests
         doc.RootElement.GetProperty(key).GetString().Should().Be(expectedValue);
     }
 
-    [Test]
-    public void Gcp_severity_mapping_is_spec_accurate()
+    private static readonly (string Format, string Field, string[] Expected)[] LevelMappingCases =
     {
-        MemoryTarget memory = SetUpAndConfigure("gcp");
+        ("gcp", "severity", new[] { "DEBUG", "DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL" }),
+        ("gelf", "level", new[] { "7", "7", "6", "4", "3", "2" })
+    };
+
+    [TestCaseSource(nameof(LevelMappingCases))]
+    public void Level_mapping_is_spec_accurate((string Format, string Field, string[] Expected) testCase)
+    {
+        MemoryTarget memory = SetUpAndConfigure(testCase.Format);
 
         Logger logger = LogManager.GetLogger("t");
         logger.Trace("t"); logger.Debug("d"); logger.Info("i");
         logger.Warn("w"); logger.Error("e"); logger.Fatal("f");
 
-        string[] severities =
-        [
-            ParseSeverity(memory.Logs[0]), ParseSeverity(memory.Logs[1]), ParseSeverity(memory.Logs[2]),
-            ParseSeverity(memory.Logs[3]), ParseSeverity(memory.Logs[4]), ParseSeverity(memory.Logs[5])
-        ];
-
-        severities.Should().Equal("DEBUG", "DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL");
-
-        static string ParseSeverity(string json)
+        string[] actual = new string[6];
+        for (int i = 0; i < 6; i++)
         {
-            using JsonDocument doc = JsonDocument.Parse(json);
-            return doc.RootElement.GetProperty("severity").GetString()!;
+            using JsonDocument doc = JsonDocument.Parse(memory.Logs[i]);
+            JsonElement value = doc.RootElement.GetProperty(testCase.Field);
+            // GCP severity is a string; GELF level is a JSON number.
+            actual[i] = value.ValueKind == JsonValueKind.Number ? value.GetInt32().ToString() : value.GetString()!;
         }
+
+        actual.Should().Equal(testCase.Expected);
     }
 
     [Test]
-    public void Gelf_level_mapping_uses_syslog_severity()
+    public void Gelf_timestamp_is_numeric_seconds_since_epoch()
     {
         MemoryTarget memory = SetUpAndConfigure("gelf");
 
-        Logger logger = LogManager.GetLogger("t");
-        logger.Trace("t"); logger.Debug("d"); logger.Info("i");
-        logger.Warn("w"); logger.Error("e"); logger.Fatal("f");
+        DateTime before = DateTime.UtcNow;
+        LogManager.GetLogger("t").Info("hello");
+        DateTime after = DateTime.UtcNow;
 
-        int[] levels =
-        [
-            ParseLevel(memory.Logs[0]), ParseLevel(memory.Logs[1]), ParseLevel(memory.Logs[2]),
-            ParseLevel(memory.Logs[3]), ParseLevel(memory.Logs[4]), ParseLevel(memory.Logs[5])
-        ];
+        using JsonDocument doc = JsonDocument.Parse(memory.Logs[0]);
+        JsonElement ts = doc.RootElement.GetProperty("timestamp");
 
-        levels.Should().Equal(7, 7, 6, 4, 3, 2);
+        // Spec violation guard: GELF 1.1 requires timestamp as numeric seconds-since-epoch, not an ISO string.
+        ts.ValueKind.Should().Be(JsonValueKind.Number);
 
-        static int ParseLevel(string json)
+        double seconds = ts.GetDouble();
+        double lower = (before.AddSeconds(-1) - DateTime.UnixEpoch).TotalSeconds;
+        double upper = (after.AddSeconds(1) - DateTime.UnixEpoch).TotalSeconds;
+        seconds.Should().BeInRange(lower, upper);
+    }
+
+    [TestCase("ecs", "@timestamp")]
+    [TestCase("logstash", "@timestamp")]
+    [TestCase("gcp", "time")]
+    public void Iso_timestamp_is_string_with_subsecond_precision(string format, string field)
+    {
+        MemoryTarget memory = SetUpAndConfigure(format);
+
+        LogManager.GetLogger("t").Info("hello");
+
+        using JsonDocument doc = JsonDocument.Parse(memory.Logs[0]);
+        JsonElement ts = doc.RootElement.GetProperty(field);
+        ts.ValueKind.Should().Be(JsonValueKind.String);
+        string value = ts.GetString()!;
+        // .fffffffZ -> 7 fractional digits before the Z. Don't assert exact value, only shape.
+        value.Should().MatchRegex(@"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{7}Z$");
+    }
+
+    [TestCase("ecs")]
+    [TestCase("gcp")]
+    [TestCase("logstash")]
+    [TestCase("gelf")]
+    public void Ansi_escape_sequences_are_stripped_from_message(string format)
+    {
+        MemoryTarget memory = SetUpAndConfigure(format);
+
+        // Two SGR sequences wrapping the visible text "colored".
+        LogManager.GetLogger("t").Info("\x1B[31mcolored\x1B[0m");
+
+        string messageField = format switch
         {
-            using JsonDocument doc = JsonDocument.Parse(json);
-            return doc.RootElement.GetProperty("level").GetInt32();
-        }
+            "gelf" => "short_message",
+            _ => "message"
+        };
+
+        using JsonDocument doc = JsonDocument.Parse(memory.Logs[0]);
+        string value = doc.RootElement.GetProperty(messageField).GetString()!;
+        value.Should().Be("colored");
+    }
+
+    [Test]
+    public void Ecs_omits_error_fields_when_no_exception()
+    {
+        MemoryTarget memory = SetUpAndConfigure("ecs");
+
+        LogManager.GetLogger("t").Info("plain");
+
+        using JsonDocument doc = JsonDocument.Parse(memory.Logs[0]);
+        doc.RootElement.TryGetProperty("error.type", out _).Should().BeFalse();
+        doc.RootElement.TryGetProperty("error.message", out _).Should().BeFalse();
+        doc.RootElement.TryGetProperty("error.stack_trace", out _).Should().BeFalse();
     }
 
     [Test]
