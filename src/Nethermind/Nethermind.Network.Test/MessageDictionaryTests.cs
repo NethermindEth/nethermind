@@ -4,20 +4,13 @@
 using System;
 using System.Collections.Generic;
 using FluentAssertions;
-using Nethermind.Consensus.Scheduler;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Logging;
 using Nethermind.Network.P2P;
-using Nethermind.Network.P2P.Messages;
-using Nethermind.Network.P2P.ProtocolHandlers;
 using Nethermind.Network.P2P.Subprotocols;
 using Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages;
-using Nethermind.Network.Rlpx;
-using Nethermind.Stats;
-using Nethermind.Stats.Model;
 using NSubstitute;
 using NUnit.Framework;
 using GetBlockHeadersMessage = Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages.GetBlockHeadersMessage;
@@ -34,7 +27,7 @@ public class MessageDictionaryTests
     public void Setup()
     {
         _recordedRequests.Clear();
-        _testMessageDictionary = new(CreateHandler(_recordedRequests));
+        _testMessageDictionary = new(RecordingProtocolHandler.Create(_recordedRequests));
     }
 
     [Test]
@@ -122,7 +115,7 @@ public class MessageDictionaryTests
     [Test]
     public void Handle_disposes_tuple_disposable_component_on_unmatched_request()
     {
-        MessageDictionary<Eth66Message<GetBlockHeadersMessage>, (IDisposable, long)> dictionary = new(CreateHandler<Eth66Message<GetBlockHeadersMessage>>());
+        MessageDictionary<Eth66Message<GetBlockHeadersMessage>, (IDisposable, long)> dictionary = new(RecordingProtocolHandler.Create<Eth66Message<GetBlockHeadersMessage>>());
         IDisposable inner = Substitute.For<IDisposable>();
 
         dictionary.Invoking(d => d.Handle(9999, (inner, 100L), 100))
@@ -138,33 +131,5 @@ public class MessageDictionaryTests
             new(new Network.P2P.Subprotocols.Eth.V66.Messages.GetBlockHeadersMessage(requestId,
                 new GetBlockHeadersMessage()));
         return request;
-    }
-
-    private static TestProtocolHandler CreateHandler<TMessage>(List<TMessage>? recordedSends = null)
-        where TMessage : P2PMessage
-    {
-        ISession session = Substitute.For<ISession>();
-        session.When(s => s.DeliverMessage(Arg.Any<TMessage>()))
-            .Do(c => recordedSends?.Add(c.Arg<TMessage>()));
-        return new TestProtocolHandler(session);
-    }
-
-    private sealed class TestProtocolHandler(ISession session)
-        : ProtocolHandlerBase(
-            session,
-            Substitute.For<INodeStatsManager>(),
-            Substitute.For<IMessageSerializationService>(),
-            Substitute.For<IBackgroundTaskScheduler>(),
-            LimboLogs.Instance)
-    {
-        public override string Name => "test";
-        protected override TimeSpan InitTimeout => TimeSpan.Zero;
-        public override byte ProtocolVersion => 0;
-        public override string ProtocolCode => "test";
-        public override int MessageIdSpaceSize => 0;
-        public override void Init() { }
-        public override void HandleMessage(Packet message) { }
-        public override void DisconnectProtocol(DisconnectReason disconnectReason, string details) { }
-        public override void Dispose() { }
     }
 }

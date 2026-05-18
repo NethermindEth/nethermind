@@ -4,20 +4,13 @@
 using System;
 using System.Collections.Generic;
 using FluentAssertions;
-using Nethermind.Consensus.Scheduler;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Logging;
 using Nethermind.Network.P2P;
-using Nethermind.Network.P2P.Messages;
-using Nethermind.Network.P2P.ProtocolHandlers;
 using Nethermind.Network.P2P.Subprotocols;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
-using Nethermind.Network.Rlpx;
-using Nethermind.Stats;
-using Nethermind.Stats.Model;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -32,7 +25,7 @@ public class MessageQueueTests
     public void Setup()
     {
         _recordedSends.Clear();
-        _queue = new(CreateHandler(_recordedSends));
+        _queue = new(RecordingProtocolHandler.Create(_recordedSends));
     }
 
     [Test]
@@ -214,7 +207,7 @@ public class MessageQueueTests
     [Test]
     public void Handle_disposes_tuple_disposable_component_when_no_current_request()
     {
-        MessageQueue<GetBlockHeadersMessage, (IDisposable, long)> queue = new(CreateHandler<GetBlockHeadersMessage>());
+        MessageQueue<GetBlockHeadersMessage, (IDisposable, long)> queue = new(RecordingProtocolHandler.Create<GetBlockHeadersMessage>());
         IDisposable inner = Substitute.For<IDisposable>();
 
         queue.Invoking(q => q.Handle((inner, 100L), 100))
@@ -225,32 +218,4 @@ public class MessageQueueTests
     }
 
     private static Request<GetBlockHeadersMessage, IOwnedReadOnlyList<BlockHeader>> CreateRequest() => new(new GetBlockHeadersMessage());
-
-    private static TestProtocolHandler CreateHandler<TMessage>(List<TMessage>? recordedSends = null)
-        where TMessage : P2PMessage
-    {
-        ISession session = Substitute.For<ISession>();
-        session.When(s => s.DeliverMessage(Arg.Any<TMessage>()))
-            .Do(c => recordedSends?.Add(c.Arg<TMessage>()));
-        return new TestProtocolHandler(session);
-    }
-
-    private sealed class TestProtocolHandler(ISession session)
-        : ProtocolHandlerBase(
-            session,
-            Substitute.For<INodeStatsManager>(),
-            Substitute.For<IMessageSerializationService>(),
-            Substitute.For<IBackgroundTaskScheduler>(),
-            LimboLogs.Instance)
-    {
-        public override string Name => "test";
-        protected override TimeSpan InitTimeout => TimeSpan.Zero;
-        public override byte ProtocolVersion => 0;
-        public override string ProtocolCode => "test";
-        public override int MessageIdSpaceSize => 0;
-        public override void Init() { }
-        public override void HandleMessage(Packet message) { }
-        public override void DisconnectProtocol(DisconnectReason disconnectReason, string details) { }
-        public override void Dispose() { }
-    }
 }
