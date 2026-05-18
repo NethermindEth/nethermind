@@ -3,7 +3,7 @@
 
 using System.Text.Json.Serialization;
 
-namespace Nethermind.Core.Test;
+namespace Nethermind.Consensus.Test.Processing;
 
 /// <summary>
 /// Strongly-typed model for deserializing slow block JSON logs in tests.

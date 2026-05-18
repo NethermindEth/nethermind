@@ -17,15 +17,26 @@ using Nethermind.Core.Threading;
 namespace Nethermind.Evm;
 
 /// <summary>
-/// Single compile-time switch for the cross-client execution-metrics counters added in PR #11400
+/// Compile-time switch for the cross-client execution-metrics counters added in PR #11400
 /// (account/storage/code reads + writes, EIP-7702 delegation set/clear, block timing breakdown).
-/// Flip <see cref="IsActive"/> to <c>false</c> and the JIT folds the constant in every
-/// <c>if (!ExecutionMetricsFlag.IsActive) return;</c> guard, eliding the metric increments entirely.
-/// Pre-existing counters (Calls, SLoad/SStore, CodeDbCache, …) are not gated by this flag.
 /// </summary>
+/// <remarks>
+/// Default builds compile with metrics on (<see cref="IsActive"/> = <c>true</c>). Define the
+/// <c>NETHERMIND_NO_EXECUTION_METRICS</c> build symbol to flip it to <c>false</c>; the JIT
+/// then folds every <c>if (!ExecutionMetricsFlag.IsActive) return;</c> guard at the head of
+/// the gated <see cref="Metrics"/> methods to a constant <c>true</c> early-return, and with
+/// <c>AggressiveInlining</c> the empty bodies are inlined into callers — eliminating both
+/// the call and the underlying <see cref="Interlocked"/> writes.
+/// Pre-existing counters (Calls, SLoad/SStore, CodeDbCache, …) are not gated by this flag.
+/// </remarks>
 public readonly struct ExecutionMetricsFlag : IFlag
 {
-    public static bool IsActive => true;
+    public static bool IsActive =>
+#if NETHERMIND_NO_EXECUTION_METRICS
+        false;
+#else
+        true;
+#endif
 }
 
 public class Metrics

@@ -123,7 +123,16 @@ namespace Nethermind.Consensus.Processing
         {
         }
 
-        public ProcessingStats(IStateReader stateReader, ILogger logger, ILogger? slowBlockLogger = null, long slowBlockThresholdMs = 1000, long slowBlockPerTxThresholdMs = -1)
+        /// <summary>
+        /// Lower-level ctor used by tests and by the public <see cref="ILogManager"/> overloads.
+        /// </summary>
+        /// <remarks>
+        /// <paramref name="slowBlockThresholdMs"/> defaults to <c>-1</c> (disabled) to match
+        /// <see cref="BlocksConfig.SlowBlockThresholdMs"/>; callers that need slow-block JSON
+        /// emission must pass an explicit non-negative value (typical: <c>1000</c> for the
+        /// production "log blocks slower than 1s" threshold, <c>0</c> to log every block).
+        /// </remarks>
+        public ProcessingStats(IStateReader stateReader, ILogger logger, ILogger? slowBlockLogger = null, long slowBlockThresholdMs = -1, long slowBlockPerTxThresholdMs = -1)
         {
             _executeFromThreadPool = ExecuteFromThreadPool;
 
@@ -586,6 +595,18 @@ namespace Nethermind.Consensus.Processing
 
         protected virtual long GetReportMs() => Environment.TickCount64;
 
+        /// <remarks>
+        /// Parallel-execution caveat: when <c>ParallelExecution</c> is enabled
+        /// (<see cref="BlockProcessor.ParallelBlockValidationTransactionsExecutor"/>), every parallel
+        /// worker thread copies <c>IsBlockProcessingThread = true</c> from the outer block-processing
+        /// thread, so EVM opcode counters (<c>evm.sload</c>, <c>evm.sstore</c>, <c>evm.calls</c>, …)
+        /// and state-I/O counters (<c>state_reads.*</c>, <c>state_writes.*</c>) accumulate the total
+        /// across all workers in the <c>_main*</c> fields rather than a single-threaded equivalent.
+        /// Wall-clock timing fields (<c>execution_ms</c>, <c>evm_ms</c>, <c>commit_ms</c>, …) are
+        /// unaffected — they are computed from per-phase Stopwatch deltas on the main thread.
+        /// Cross-client consumers expecting per-single-thread opcode counts will see inflated numbers
+        /// on nodes running with <c>ParallelExecution=true</c>.
+        /// </remarks>
         private void LogSlowBlock(Block block, BlockData data, double mgasPerSec)
         {
             if (!_slowBlockLogger.IsWarn) return;
