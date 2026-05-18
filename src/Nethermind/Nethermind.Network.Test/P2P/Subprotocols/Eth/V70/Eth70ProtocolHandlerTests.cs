@@ -26,6 +26,7 @@ using Nethermind.Network.P2P.Subprotocols.Eth.V70;
 using Nethermind.Network.P2P.Subprotocols.Eth.V70.Messages;
 using Nethermind.Network.Rlpx;
 using Nethermind.Network.Test.Builders;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using Nethermind.Synchronization;
@@ -696,21 +697,13 @@ public class Eth70ProtocolHandlerTests
     }
 
     [Test]
-    public void Should_reject_null_receipt_payload_when_requesting_from_peer()
+    public void Should_reject_null_receipt_payload_during_deserialization()
     {
         TxReceipt[] receipts = [null!];
+        using ReceiptsMessage70 response = new(1111, new[] { receipts }.ToPooledList(), false);
 
-        _session.When(s => s.DeliverMessage(Arg.Any<GetReceiptsMessage70>())).Do(call =>
-        {
-            GetReceiptsMessage70 sent = (GetReceiptsMessage70)call[0];
-            ReceiptsMessage70 response = new(sent.RequestId, new[] { receipts }.ToPooledList(), false);
-            HandleZeroMessage(response, Eth70MessageCode.Receipts);
-        });
+        RlpException? exception = Assert.Throws<RlpException>(() => HandleZeroMessage(response, Eth70MessageCode.Receipts));
 
-        HandleIncomingStatusMessage();
-        Func<Task> act = async () => await _handler.GetReceipts(new[] { Keccak.Zero }, CancellationToken.None);
-
-        SubprotocolException? exception = Assert.ThrowsAsync<SubprotocolException>(async () => await act());
         Assert.That(exception?.Message, Is.EqualTo("Unexpected null receipt payload"));
     }
 

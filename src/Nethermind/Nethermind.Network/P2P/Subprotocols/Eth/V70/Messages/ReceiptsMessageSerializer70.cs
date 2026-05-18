@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using DotNetty.Buffers;
+using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Specs;
 using Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V69.Messages;
@@ -32,7 +34,16 @@ public class ReceiptsMessageSerializer70(ISpecProvider specProvider)
         }
 
         V63.Messages.ReceiptsMessage inner = _receiptsSerializer.Deserialize(ref ctx);
-        return new ReceiptsMessage70(requestId, inner.TxReceipts, lastBlockIncomplete is 1);
+        try
+        {
+            ValidateReceiptPayload(inner.TxReceipts);
+            return new ReceiptsMessage70(requestId, inner.TxReceipts, lastBlockIncomplete is 1);
+        }
+        catch
+        {
+            inner.Dispose();
+            throw;
+        }
     }
 
     protected override int GetLengthInternal(ReceiptsMessage70 message)
@@ -41,5 +52,25 @@ public class ReceiptsMessageSerializer70(ISpecProvider specProvider)
         int receiptsLength = _receiptsSerializer.GetLength(inner, out _);
 
         return Rlp.LengthOf(message.LastBlockIncomplete ? 1 : 0) + receiptsLength;
+    }
+
+    private static void ValidateReceiptPayload(IOwnedReadOnlyList<TxReceipt[]?> txReceipts)
+    {
+        for (int blockIndex = 0; blockIndex < txReceipts.Count; blockIndex++)
+        {
+            TxReceipt[]? blockReceipts = txReceipts[blockIndex];
+            if (blockReceipts is null)
+            {
+                continue;
+            }
+
+            for (int receiptIndex = 0; receiptIndex < blockReceipts.Length; receiptIndex++)
+            {
+                if (blockReceipts[receiptIndex] is null)
+                {
+                    throw new RlpException("Unexpected null receipt payload");
+                }
+            }
+        }
     }
 }

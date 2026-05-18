@@ -519,7 +519,7 @@ public class Eth70ProtocolHandler : Eth69ProtocolHandler, IStaticProtocolInfo
         for (int i = 0; i < blockReceipts.Length; i++)
         {
             int receiptIndex = checked(firstReceiptIndex + i);
-            TxReceipt receipt = GetReceipt(blockReceipts, i);
+            TxReceipt receipt = blockReceipts[i];
             ulong receiptSize = GetReceiptSize(receipt, receiptBehaviors);
             ValidateReceiptSizeAgainstTransactionGasLimit(receiptSize, transactions, receiptIndex);
             receiptsContentSize = checked(receiptsContentSize + receiptSize);
@@ -687,7 +687,4 @@ public class Eth70ProtocolHandler : Eth69ProtocolHandler, IStaticProtocolInfo
             }
         }
     }
-
-    private static TxReceipt GetReceipt(TxReceipt[] blockReceipts, int index) =>
-        blockReceipts[index] ?? throw new SubprotocolException("Unexpected null receipt payload");
 }
