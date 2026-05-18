@@ -1568,6 +1568,12 @@ namespace Nethermind.Trie.Test.Pruning
 
             await persistTask;
 
+            // The commit buffer flush is posted as a fire-and-forget Task from BeginScope's dispose
+            // and can lose the lock race against the background prune. Force a deterministic flush
+            // here so block 12's commit moves into the main queue before the next assertion phase;
+            // otherwise the follow-up commits below would land in the buffer instead.
+            fullTrieStore.FlushCommitBufferForTest();
+
             // Write a bit more
             for (int i = 13; i < 13 + pruningBoundary; i++)
             {
