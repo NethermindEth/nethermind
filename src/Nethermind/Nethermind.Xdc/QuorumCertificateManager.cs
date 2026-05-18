@@ -262,12 +262,7 @@ internal class QuorumCertificateManager : IQuorumCertificateManager, IDisposable
 
         foreach (Block block in e.Blocks)
         {
-            if (block.IsGenesis)
-            {
-                Initialize((XdcBlockHeader)block.Header);
-                continue;
-            }
-
+            // Violations indicate a corrupt DB; let the exception propagate.
             if (block.Header is not XdcBlockHeader xdcHeader)
                 throw new InvalidOperationException($"Expected an XDC header, but got {block.Header.GetType().FullName}");
 
