@@ -23,6 +23,7 @@ using Nethermind.Db;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Modules;
+using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.JsonRpc.Modules.Proof;
 using Nethermind.Logging;
 using Nethermind.Specs;
@@ -42,6 +43,8 @@ public class ProofRpcModuleMetaTests
     private WorldStateManager _worldStateManager = null!;
     private IContainer _container = null!;
 
+    private const int StorageSlotCount = 64;
+
     [SetUp]
     public async Task Setup()
     {
@@ -55,6 +58,10 @@ public class ProofRpcModuleMetaTests
             worldState.CreateAccount(TestItem.AddressA, 100_000);
             worldState.CreateAccount(TestItem.AddressB, 200_000);
             worldState.CreateAccount(TestItem.AddressC, 300_000);
+            for (int i = 0; i < StorageSlotCount; i++)
+            {
+                worldState.Set(new StorageCell(TestItem.AddressB, (UInt256)i), [(byte)(i + 1)]);
+            }
             worldState.Commit(London.Instance);
             worldState.CommitTree(0);
             stateRoot = worldState.StateRoot;
@@ -109,29 +116,48 @@ public class ProofRpcModuleMetaTests
         payload.Meta.Should().NotBeNull();
         payload.Meta.NodeLookups.Should().BeGreaterThan(0,
             "every proof generation must perform at least one node lookup");
-        payload.Meta.CacheHits.Should().BeGreaterThanOrEqualTo(0);
         payload.Meta.CacheHits.Should().BeLessThanOrEqualTo(payload.Meta.NodeLookups,
             "cache hits cannot exceed total lookups");
-        payload.Meta.MaxDepth.Should().BeGreaterThanOrEqualTo(0);
     }
 
     [Test]
-    public void Repeated_calls_increase_cache_hits_on_warm_path()
+    public void Identical_queries_produce_identical_diagnostics()
     {
         AccountProofWithMeta first = _proofRpcModule.proof_getProofWithMeta(
             TestItem.AddressA, new HashSet<UInt256>(), BlockParameter.Earliest).Data;
         AccountProofWithMeta second = _proofRpcModule.proof_getProofWithMeta(
             TestItem.AddressA, new HashSet<UInt256>(), BlockParameter.Earliest).Data;
 
-        second.Meta.CacheHits.Should().BeGreaterThanOrEqualTo(first.Meta.CacheHits,
-            "warming the cache should not reduce hit count on identical query");
+        second.Meta.NodeLookups.Should().Be(first.Meta.NodeLookups);
+        second.Meta.CacheHits.Should().Be(first.Meta.CacheHits);
+        second.Meta.MaxDepth.Should().Be(first.Meta.MaxDepth);
+    }
+
+    [Test]
+    public void MaxDepth_grows_when_storage_trie_is_traversed()
+    {
+        AccountProofWithMeta withoutStorage = _proofRpcModule.proof_getProofWithMeta(
+            TestItem.AddressB, new HashSet<UInt256>(), BlockParameter.Earliest).Data;
+
+        HashSet<UInt256> storageKeys = new();
+        for (int i = 0; i < StorageSlotCount; i++)
+        {
+            storageKeys.Add((UInt256)i);
+        }
+        AccountProofWithMeta withStorage = _proofRpcModule.proof_getProofWithMeta(
+            TestItem.AddressB, storageKeys, BlockParameter.Earliest).Data;
+
+        withStorage.Meta.MaxDepth.Should().BeGreaterThan(withoutStorage.Meta.MaxDepth,
+            "descending into the storage trie reaches deeper than the account trie alone");
+        withStorage.Meta.NodeLookups.Should().BeGreaterThan(withoutStorage.Meta.NodeLookups,
+            "storage-trie traversal triggers additional node lookups");
     }
 
     [Test]
     public void Rejects_too_many_storage_keys()
     {
         HashSet<UInt256> storageKeys = new();
-        for (int i = 0; i < 1001; i++)
+        for (int i = 0; i <= EthRpcModule.GetProofStorageKeyLimit; i++)
         {
             storageKeys.Add((UInt256)i);
         }
