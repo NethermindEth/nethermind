@@ -168,13 +168,11 @@ public static partial class EvmInstructions
         if (!TGasPolicy.ConsumeAccountAccessGas(ref gas, vm.Spec, in vm.VmState.AccessTracker,
                 vm.TxTracer.IsTracingAccess, codeSource)) goto OutOfGas;
 
-        // Resolve EIP-7702 delegation by parsing codeSource's code only — this records
-        // codeSource in the BAL but NOT the delegation target. Per EIP-7928 / EELS, the
-        // target's address must not appear in the BAL when this CALL OOGs at one of the
-        // gas charges below. The delegation target is loaded into the cache later via
-        // GetCachedCodeInfo, but only after the per-CALL OOG points have passed.
-        bool _ = vm.TxExecutionContext.CodeInfoRepository
-            .TryGetDelegation(codeSource, vm.Spec, out Address delegated);
+        CodeInfo codeInfo = vm.CodeInfoRepository.GetCachedCodeInfo(
+            codeSource,
+            followDelegation: false,
+            vmSpec: spec,
+            delegationAddress: out Address? delegated);
 
         if (spec.UseHotAndColdStorage && delegated is not null)
         {
@@ -193,10 +191,17 @@ public static partial class EvmInstructions
 
         if (newAccountOutOfGas) goto OutOfGas;
 
-        // Now that all CALL-level OOG checks have passed, load and follow delegation.
-        // This records the delegation target in the BAL — correct because we know the
-        // CALL frame will be entered and the target's code will execute.
-        CodeInfo codeInfo = vm.CodeInfoRepository.GetCachedCodeInfo(codeSource, spec);
+        // EIP-7702: load delegated code after cold-access charge above.
+        if (delegated is not null)
+        {
+            // EIP-7928: decorator fast-path skips world-state reads; record explicitly.
+            state.AddAccountRead(delegated);
+
+            // EIP-7702: precompile MUST NOT execute via delegation; the decorator would route to the precompile CodeInfo.
+            codeInfo = spec.IsPrecompile(delegated)
+                ? CodeInfo.Empty
+                : vm.CodeInfoRepository.GetCachedCodeInfoNoDelegation(delegated, spec);
+        }
 
         long gasAvailable = TGasPolicy.GetRemainingGas(in gas);
         long gasLimitUl;
