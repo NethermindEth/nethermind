@@ -76,7 +76,6 @@ namespace Nethermind.Evm.TransactionProcessing
         private long _blockCumulativeReceiptGas;
         private long _blockCumulativeRegularGas;
         private long _blockCumulativeStateGas;
-        private Address[]? _destroyListBuffer;
 
         protected TransactionProcessorBase(
             ITransactionProcessor.IBlobBaseFeeCalculator? blobBaseFeeCalculator,
@@ -252,16 +251,19 @@ namespace Nethermind.Evm.TransactionProcessing
                 int count = destroyList.Count;
                 if (count > 1)
                 {
-                    Address[] buffer = _destroyListBuffer;
-                    if (buffer is null || buffer.Length < count)
+                    Address[] buffer = SafeArrayPool<Address>.Shared.Rent(count);
+                    try
                     {
-                        buffer = _destroyListBuffer = new Address[count];
+                        destroyList.CopyTo(buffer, 0);
+                        buffer.AsSpan(0, count).Sort(default(AddressByBytesComparer));
+                        for (int i = 0; i < count; i++)
+                        {
+                            FinalizeDestroyedAccount(WorldState, in substate, buffer[i]);
+                        }
                     }
-                    destroyList.CopyTo(buffer, 0);
-                    buffer.AsSpan(0, count).Sort(default(AddressByBytesComparer));
-                    for (int i = 0; i < count; i++)
+                    finally
                     {
-                        FinalizeDestroyedAccount(WorldState, in substate, buffer[i]);
+                        SafeArrayPool<Address>.Shared.Return(buffer);
                     }
                 }
                 else
