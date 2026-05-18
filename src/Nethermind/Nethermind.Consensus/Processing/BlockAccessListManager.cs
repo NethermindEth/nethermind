@@ -109,9 +109,6 @@ public partial class BlockAccessListManager(
         if (Enabled)
         {
             Reset();
-            _gasRemaining = suggestedBlock.GasUsed;
-            _parentStateRoot = ParallelExecutionEnabled ? stateProvider.StateRoot : null;
-
             // Build the column-oriented validation index once per block; per-tx ChangesEqual
             // then collapses to row-aligned span compares. Tally suggested chargeable storage
             // reads here so the per-tx surplus-reads gas check avoids re-walking the BAL.
@@ -130,6 +127,8 @@ public partial class BlockAccessListManager(
                 }
                 _suggestedChargeableStorageReads = suggestedReads;
             }
+            _gasRemaining = suggestedBlock.GasUsed;
+            _parentStateRoot = ParallelExecutionEnabled ? stateProvider.StateRoot : null;
         }
     }
 
@@ -163,7 +162,7 @@ public partial class BlockAccessListManager(
         if (Enabled)
         {
             CheckInitialized();
-            MergeTxBal();
+            MergeAndReturnBal();
             _txProcessorWithWorldStateManager.NextTransaction();
         }
     }
@@ -200,13 +199,12 @@ public partial class BlockAccessListManager(
     /// <summary>Detach the slice for <paramref name="balIndex"/>, fold it into
     /// <see cref="GeneratedBlockAccessList"/>, and feed it to <see cref="RegisterGeneratedSlice"/>
     /// so the column-index fast path and read-only-account mismatch flag stay in sync.</summary>
-    private void MergeAndReturnBal(uint balIndex)
+    /// <remarks>The <paramref name="balIndex"/> default exists for the sequential per-tx hook
+    /// (<see cref="NextTransaction"/>), where the underlying pool ignores the index. Parallel
+    /// callers (<c>IncrementalValidation</c>, <c>SetBlockAccessList</c>) always pass an explicit
+    /// value to identify the per-tx slot to detach.</remarks>
+    private void MergeAndReturnBal(uint balIndex = 0)
         => _txProcessorWithWorldStateManager!.MergeAndReturnBal(balIndex, GeneratedBlockAccessList, RegisterGeneratedSlice);
-
-    /// <summary>Sequential counterpart to <see cref="MergeAndReturnBal"/>: merges the active
-    /// worldstate's BAL directly, without the parallel path's detach + slice-hook step.</summary>
-    private void MergeTxBal()
-        => _txProcessorWithWorldStateManager!.Get().WorldState.MergeGeneratingBal(GeneratedBlockAccessList);
 
     private void CheckInitialized()
     {

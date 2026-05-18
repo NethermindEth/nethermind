@@ -8,7 +8,6 @@ using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
-using Nethermind.Evm.GasPolicy;
 using Nethermind.Evm.TransactionProcessing;
 
 namespace Nethermind.Consensus.Processing;
