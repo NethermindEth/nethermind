@@ -13,21 +13,14 @@ public static class BlobGasCalculator
     /// Tries to compute the total blob fee: <c>blobCount × GAS_PER_BLOB × maxFeePerBlobGas</c>.
     /// </summary>
     /// <returns><see langword="false"/> if the multiplication overflows; otherwise <see langword="true"/>.</returns>
-    public static bool TryGetTotalBlobFee(int blobCount, UInt256 maxFeePerBlobGas, out UInt256 blobFee) =>
+    public static bool TryCalculateBlobMaxFee(int blobCount, UInt256 maxFeePerBlobGas, out UInt256 blobFee) =>
         !UInt256.MultiplyOverflow((UInt256)blobCount * (UInt256)Eip4844Constants.GasPerBlob, maxFeePerBlobGas, out blobFee);
-
-    /// <summary>
-    /// When EIP-4844 is active and the transaction carries blobs, subtracts the total blob fee
-    /// from <paramref name="available"/>. Returns <see langword="false"/> if the fee overflows
-    /// or exceeds <paramref name="available"/>; leaves <paramref name="available"/> unchanged
-    /// and returns <see langword="true"/> when blobs are not applicable.
-    /// </summary>
     public static bool TrySubtractBlobFee(IReleaseSpec spec, Transaction tx, ref UInt256 available)
     {
         if (!spec.IsEip4844Enabled || tx.BlobVersionedHashes?.Length is not > 0)
             return true;
 
-        if (!TryGetTotalBlobFee(tx.BlobVersionedHashes.Length, tx.MaxFeePerBlobGas ?? UInt256.Zero, out UInt256 blobFee)
+        if (!TryCalculateBlobMaxFee(tx.BlobVersionedHashes.Length, tx.MaxFeePerBlobGas ?? UInt256.Zero, out UInt256 blobFee)
             || blobFee > available)
             return false;
 

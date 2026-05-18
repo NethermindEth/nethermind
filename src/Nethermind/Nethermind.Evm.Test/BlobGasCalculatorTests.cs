@@ -114,16 +114,16 @@ public class BlobGasCalculatorTests
         yield return (Build.A.Transaction.WithType(TxType.Blob).WithBlobVersionedHashes(1000).TestObject, 10000000, 2490368000);
     }
 
-    [TestCaseSource(nameof(TryGetTotalBlobFeeCases))]
-    public void TryGetTotalBlobFee_computes_correctly((int blobCount, UInt256 maxFeePerBlobGas, bool expectedResult, UInt256 expectedFee) testCase)
+    [TestCaseSource(nameof(TryCalculateBlobMaxFeeCases))]
+    public void TryCalculateBlobMaxFee_computes_correctly((int blobCount, UInt256 maxFeePerBlobGas, bool expectedResult, UInt256 expectedFee) testCase)
     {
-        bool result = BlobGasCalculator.TryGetTotalBlobFee(testCase.blobCount, testCase.maxFeePerBlobGas, out UInt256 blobFee);
+        bool result = BlobGasCalculator.TryCalculateBlobMaxFee(testCase.blobCount, testCase.maxFeePerBlobGas, out UInt256 blobFee);
         Assert.That(result, Is.EqualTo(testCase.expectedResult));
         if (testCase.expectedResult)
             Assert.That(blobFee, Is.EqualTo(testCase.expectedFee));
     }
 
-    private static IEnumerable<(int, UInt256, bool, UInt256)> TryGetTotalBlobFeeCases()
+    private static IEnumerable<(int, UInt256, bool, UInt256)> TryCalculateBlobMaxFeeCases()
     {
         yield return (1, (UInt256)1, true, (UInt256)Eip4844Constants.GasPerBlob);
         yield return (6, (UInt256)1_000_000_000, true, (UInt256)(6 * Eip4844Constants.GasPerBlob * 1_000_000_000));
