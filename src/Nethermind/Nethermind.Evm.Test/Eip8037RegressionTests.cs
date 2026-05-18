@@ -530,6 +530,49 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
         Assert.That(TestState.AccountExists(createdAddress), Is.False);
     }
 
+    [Test]
+    public void Eip8037_delegatecall_sstore_restoration_refund_credits_local_reservoir()
+    {
+        byte[] childCode = Prepare.EvmCode
+            .PushData(0)
+            .PushData(0)
+            .Op(Instruction.SSTORE)
+            .PushData(0)
+            .PushData(1)
+            .Op(Instruction.SSTORE)
+            .Create([], UInt256.Zero)
+            .Op(Instruction.POP)
+            .PushData(1)
+            .PushData(2)
+            .Op(Instruction.SSTORE)
+            .Op(Instruction.STOP)
+            .Done;
+
+        TestState.CreateAccount(TestItem.AddressC, 0);
+        TestState.InsertCode(TestItem.AddressC, childCode, SpecProvider.GenesisSpec);
+
+        byte[] parentCode = Prepare.EvmCode
+            .PushData(1)
+            .PushData(0)
+            .Op(Instruction.SSTORE)
+            .PushData(1)
+            .PushData(1)
+            .Op(Instruction.SSTORE)
+            .DelegateCall(TestItem.AddressC, 400_000)
+            .Op(Instruction.POP)
+            .Op(Instruction.STOP)
+            .Done;
+
+        TestAllTracerWithOutput tracer = Execute(Activation, 487_640, parentCode, blockGasLimit: DynamicStatePricingBlockGasLimit);
+
+        Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Success));
+        Assert.That(tracer.GasConsumedResult.BlockStateGas, Is.EqualTo(GasCostOf.CreateState + GasCostOf.SSetState));
+        Assert.That(TestState.GetNonce(Recipient), Is.EqualTo(UInt256.One));
+        AssertStorage(new StorageCell(Recipient, 0), UInt256.Zero);
+        AssertStorage(new StorageCell(Recipient, 1), UInt256.Zero);
+        AssertStorage(new StorageCell(Recipient, 2), UInt256.One);
+    }
+
     private Address SetupStaticCreateAttempt(bool create2)
     {
         byte[] childInitCode = Prepare.EvmCode
