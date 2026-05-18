@@ -2,11 +2,13 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac.Features.AttributeFilters;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.State;
@@ -25,6 +27,8 @@ public class StateSyncRunner(
     ISyncProgressResolver syncProgressResolver,
     IBeaconSyncStrategy beaconSyncStrategy,
     ISyncPeerPool syncPeerPool,
+    IStateSyncPivot stateSyncPivot,
+    ITrieReassembler trieReassembler,
     [KeyFilter(DbNames.State)] ITunableDb? stateDb,
     [KeyFilter(DbNames.Code)] ITunableDb? codeDb,
     ILogManager logManager,
@@ -51,6 +55,11 @@ public class StateSyncRunner(
                     if (_logger.IsInfo) _logger.Info("Starting snap sync.");
                     await snapSyncRunner.Run(token);
                     if (_logger.IsInfo) _logger.Info("Snap sync completed.");
+
+                    if (TryReassembleAfterSnap(token))
+                    {
+                        return;
+                    }
                 }
 
                 await RunStateSyncRounds(token);
@@ -65,6 +74,54 @@ public class StateSyncRunner(
         {
             // Clean shutdown — swallow so Synchronizer doesn't log "State sync failed".
         }
+    }
+
+    /// <summary>
+    /// Attempt to rebuild the missing top of the state trie locally from the leaves snap sync
+    /// committed, avoiding the network-bound healing phase. Returns <c>true</c> when reassembly
+    /// produces the pivot's expected state root and finalizes the sync; <c>false</c> otherwise
+    /// (the caller falls through to <see cref="RunStateSyncRounds"/>).
+    /// </summary>
+    private bool TryReassembleAfterSnap(CancellationToken token)
+    {
+        if (token.IsCancellationRequested) return false;
+
+        BlockHeader? pivotHeader = stateSyncPivot.GetPivotHeader();
+        if (pivotHeader is null)
+        {
+            if (_logger.IsWarn) _logger.Warn("Trie reassembly skipped: no pivot header.");
+            return false;
+        }
+
+        Hash256 expectedRoot = pivotHeader.StateRoot!;
+
+        Hash256[] updatedStorages = stateSyncPivot.UpdatedStorages.ToArray();
+        if (_logger.IsInfo) _logger.Info($"Attempting local trie reassembly with {updatedStorages.Length} updated storages, target root {expectedRoot}.");
+
+        Hash256? assembledRoot;
+        try
+        {
+            assembledRoot = trieReassembler.TryReassemble(updatedStorages);
+        }
+        catch (Exception e)
+        {
+            if (_logger.IsWarn) _logger.Warn($"Trie reassembly failed with exception, falling back to healing: {e}");
+            return false;
+        }
+
+        if (assembledRoot != expectedRoot)
+        {
+            if (_logger.IsWarn) _logger.Warn($"Trie reassembly produced {assembledRoot ?? Keccak.Zero}, expected {expectedRoot}. Falling back to healing.");
+            return false;
+        }
+
+        if (_logger.IsInfo) _logger.Info($"Trie reassembly succeeded for {expectedRoot} — skipping state healing.");
+        treeSync.FinalizeSync(pivotHeader);
+
+        if (syncConfig.VerifyTrieOnStateSyncFinished)
+            verifyTrieStarter?.TryStartVerifyTrie(pivotHeader);
+
+        return true;
     }
 
     public async Task RunStateSyncRounds(CancellationToken token)
