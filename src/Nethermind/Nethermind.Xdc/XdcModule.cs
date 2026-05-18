@@ -20,6 +20,7 @@ using Nethermind.Db;
 using Nethermind.Db.Rocks.Config;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Init.Modules;
+using Nethermind.JsonRpc.Modules;
 using Nethermind.Logging;
 using Nethermind.Network;
 using Nethermind.Network.Discovery;
@@ -33,6 +34,7 @@ using Nethermind.Synchronization.ParallelSync;
 using Nethermind.TxPool;
 using Nethermind.Xdc.Contracts;
 using Nethermind.Xdc.P2P;
+using Nethermind.Xdc.RPC;
 using Nethermind.Xdc.Spec;
 using Nethermind.Xdc.TxPool;
 using Nethermind.Xdc.Discovery;
@@ -104,7 +106,9 @@ public class XdcModule : Module
             .AddSingleton<IEpochSwitchManager, EpochSwitchManager>()
             .AddSingleton<IXdcConsensusContext, XdcConsensusContext>()
             .AddDatabase(XdcRocksDbConfigFactory.XdcSnapshotDbName)
+            .AddDatabase(XdcRocksDbConfigFactory.XdcRewardsDbName)
             .AddSingleton<ISnapshotManager, IDb, IBlockTree, IMasternodeVotingContract, ISpecProvider>(CreateSnapshotManager)
+            .AddSingleton<IRewardsStore, IDb>(CreateRewardsStore)
             .AddSingleton<ISignTransactionManager, ISigner, ITxPool, ILogManager>(CreateSignTransactionManager)
             .AddSingleton<IPenaltyHandler, PenaltyHandler>()
             .AddSingleton<ITimeoutTimer, TimeoutTimer>()
@@ -134,7 +138,9 @@ public class XdcModule : Module
             .AddScoped<ITransactionProcessor, XdcTransactionProcessor>()
             .AddSingleton<IGasLimitCalculator, XdcGasLimitCalculator>()
             .AddSingleton<IDifficultyCalculator, XdcDifficultyCalculator>()
-            .AddScoped<IProducedBlockSuggester, XdcBlockSuggester>();
+            .AddScoped<IProducedBlockSuggester, XdcBlockSuggester>()
+
+            .RegisterSingletonJsonRpcModule<IXdcRpcModule, XdcRpcModule>();
 
         // Overrides DiscoveryApp and NodeLifecycleManagerFactory registered in DiscoveryModule (via NethermindModule).
         // Safe: plugins are always loaded after NethermindModule in NethermindRunnerModule, so last-registration-wins is guaranteed.
@@ -143,6 +149,7 @@ public class XdcModule : Module
     }
 
     private ISnapshotManager CreateSnapshotManager([KeyFilter(XdcRocksDbConfigFactory.XdcSnapshotDbName)] IDb db, IBlockTree blockTree, IMasternodeVotingContract votingContract, ISpecProvider specProvider) => new SnapshotManager(db, blockTree, votingContract, specProvider);
+    private IRewardsStore CreateRewardsStore([KeyFilter(XdcRocksDbConfigFactory.XdcRewardsDbName)] IDb db) => new RewardsStore(db);
     private ISignTransactionManager CreateSignTransactionManager(ISigner signer, ITxPool txPool, ILogManager logManager) => new SignTransactionManager(signer, txPool, logManager.GetClassLogger<SignTransactionManager>());
 
     private IMasternodeVotingContract CreateVotingContract(
