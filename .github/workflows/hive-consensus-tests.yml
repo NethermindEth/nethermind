@@ -122,7 +122,7 @@ jobs:
           path: nethermind
           submodules: "recursive"
       - name: Set up .NET
-        uses: actions/setup-dotnet@v5
+        uses: ./.github/actions/setup-dotnet
         with:
           global-json-file: nethermind/global.json
       - name: Generate Hive Json For Matrix

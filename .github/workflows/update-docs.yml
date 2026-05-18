@@ -36,7 +36,7 @@ jobs:
           path: d
           token: ${{ steps.gh-app.outputs.token }}
       - name: Set up .NET
-        uses: actions/setup-dotnet@v5
+        uses: ./.github/actions/setup-dotnet
         with:
           global-json-file: n/global.json
       - name: Build DocGen

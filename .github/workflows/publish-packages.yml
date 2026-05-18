@@ -155,7 +155,7 @@ jobs:
           ref: ${{ github.event.release.tag_name }}
 
       - name: Set up .NET
-        uses: actions/setup-dotnet@v5
+        uses: ./.github/actions/setup-dotnet
 
       - name: Download Nethermind reference assemblies
         id: download

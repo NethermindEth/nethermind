@@ -99,7 +99,7 @@ jobs:
           submodules: ${{ startsWith(matrix.project, 'Ethereum.') && 'recursive' || 'false' }}
 
       - name: Set up .NET
-        uses: actions/setup-dotnet@v5
+        uses: ./.github/actions/setup-dotnet
         with:
           cache: true
           cache-dependency-path: |
@@ -159,7 +159,7 @@ jobs:
           submodules: ${{ startsWith(matrix.test.project, 'Ethereum.Blockchain.Pyspec') && 'false' || 'recursive' }}
 
       - name: Set up .NET
-        uses: actions/setup-dotnet@v5
+        uses: ./.github/actions/setup-dotnet
         with:
           cache: true
           cache-dependency-path: |

@@ -1,0 +1,46 @@
+name: Setup .NET
+description: >-
+  Wraps `actions/setup-dotnet@v5` with up to 3 attempts. Transient install /
+  cache-restore failures (Windows runners are the usual offenders) would
+  otherwise fail the job; the second attempt almost always succeeds.
+
+inputs:
+  cache:
+    description: Forwarded to `actions/setup-dotnet`.
+    required: false
+    default: "false"
+  cache-dependency-path:
+    description: Forwarded to `actions/setup-dotnet`.
+    required: false
+    default: ""
+  global-json-file:
+    description: Forwarded to `actions/setup-dotnet`.
+    required: false
+    default: ""
+
+runs:
+  using: composite
+  steps:
+    - id: try1
+      uses: actions/setup-dotnet@v5
+      with:
+        cache: ${{ inputs.cache }}
+        cache-dependency-path: ${{ inputs.cache-dependency-path }}
+        global-json-file: ${{ inputs.global-json-file }}
+      continue-on-error: true
+
+    - id: try2
+      if: steps.try1.outcome == 'failure'
+      uses: actions/setup-dotnet@v5
+      with:
+        cache: ${{ inputs.cache }}
+        cache-dependency-path: ${{ inputs.cache-dependency-path }}
+        global-json-file: ${{ inputs.global-json-file }}
+      continue-on-error: true
+
+    - if: steps.try1.outcome == 'failure' && steps.try2.outcome == 'failure'
+      uses: actions/setup-dotnet@v5
+      with:
+        cache: ${{ inputs.cache }}
+        cache-dependency-path: ${{ inputs.cache-dependency-path }}
+        global-json-file: ${{ inputs.global-json-file }}

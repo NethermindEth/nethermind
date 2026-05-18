@@ -104,7 +104,7 @@ jobs:
           ref: ${{ github.event.pull_request.head.sha }}
 
       - name: Set up .NET
-        uses: actions/setup-dotnet@v5
+        uses: ./.github/actions/setup-dotnet
         with:
           cache: true
           cache-dependency-path: src/Nethermind/Nethermind.Runner/packages.lock.json
