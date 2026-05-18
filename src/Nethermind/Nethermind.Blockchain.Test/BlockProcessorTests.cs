@@ -597,76 +597,59 @@ public class BlockProcessorTests
         Assert.DoesNotThrow(() => balManager.ValidateBlockAccessList(block, 0));
     }
 
-    [Test]
-    public void SetBlockAccessList_verify_only_rejects_storage_reads_content_mismatch()
+    // Verify-only structural-equivalence check: covers the mismatch classes the column-index
+    // and gas-budget checks don't catch (their inputs slip through to the structural walk in
+    // SetBlockAccessList).
+    [TestCaseSource(nameof(VerifyOnlyStructuralMismatchCases))]
+    public void SetBlockAccessList_verify_only_rejects_structural_mismatch(
+        ReadOnlyBlockAccessList suggested,
+        Action<BlockAccessListAtIndex> populateGenerated)
     {
-        // Tests the verify-only structural-equivalence check for storage_reads contents — the one
-        // path that the column-index validation doesn't cover (it only tracks read counts via the
-        // gas-budget check) and the canonical-bytes hash compare used to catch implicitly.
         IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
         using IDisposable scope = stateProvider.BeginScope(IWorldState.PreGenesis);
         using BlockAccessListManager balManager = CreateAmsterdamBalManager(stateProvider);
 
-        // Suggested BAL declares AddressA read slot 5.
-        ReadOnlyBlockAccessList suggestedBal = Build.A.BlockAccessList
-            .WithAccountChanges(Build.An.AccountChanges
-                .WithAddress(TestItem.AddressA)
-                .WithStorageReads((UInt256)5)
-                .TestObject)
-            .TestObject;
-
         Block block = Build.A.Block
             .WithNumber(1)
             .WithGasUsed(0)
-            .WithBlockAccessList(suggestedBal)
+            .WithBlockAccessList(suggested)
             .TestObject;
 
         PrepareSetup(balManager, block, Amsterdam.Instance);
 
-        // Generated reads slot 7 instead — same count, different value. The gas-budget surplus-
-        // reads check (which compares counts) doesn't catch this; the structural-equivalence
-        // walk does.
         BlockAccessListAtIndex slice = new();
-        slice.AddStorageRead(TestItem.AddressA, (UInt256)7);
+        populateGenerated(slice);
         balManager.GeneratedBlockAccessList.Merge(slice);
 
         Assert.Throws<BlockAccessListBasedWorldState.InvalidBlockLevelAccessListException>(
             () => balManager.SetBlockAccessList(block));
     }
 
-    [Test]
-    public void SetBlockAccessList_verify_only_rejects_surplus_account_with_matching_count()
+    private static IEnumerable<TestCaseData> VerifyOnlyStructuralMismatchCases()
     {
-        // Tests the per-account presence check: count matches but addresses differ. Without the
-        // structural walk this would slip past the column-index check (no lane data on either
-        // side for an empty account entry) and the count comparison (same count).
-        IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
-        using IDisposable scope = stateProvider.BeginScope(IWorldState.PreGenesis);
-        using BlockAccessListManager balManager = CreateAmsterdamBalManager(stateProvider);
+        // storage_reads content mismatch (count matches, values differ): the one mismatch class
+        // nothing else catches — column-index only tracks read counts via the gas-budget check.
+        yield return new TestCaseData(
+            Build.A.BlockAccessList
+                .WithAccountChanges(Build.An.AccountChanges
+                    .WithAddress(TestItem.AddressA)
+                    .WithStorageReads((UInt256)5)
+                    .TestObject)
+                .TestObject,
+            (Action<BlockAccessListAtIndex>)(s => s.AddStorageRead(TestItem.AddressA, (UInt256)7)))
+            .SetName("storage_reads content mismatch (same count, different value)");
 
-        // Suggested has AddressA only.
-        ReadOnlyBlockAccessList suggestedBal = Build.A.BlockAccessList
-            .WithAccountChanges(Build.An.AccountChanges
-                .WithAddress(TestItem.AddressA)
-                .WithBalanceChanges(new BalanceChange(0, 1))
-                .TestObject)
-            .TestObject;
-
-        Block block = Build.A.Block
-            .WithNumber(1)
-            .WithGasUsed(0)
-            .WithBlockAccessList(suggestedBal)
-            .TestObject;
-
-        PrepareSetup(balManager, block, Amsterdam.Instance);
-
-        // Generated touched AddressB (different address) — same count of 1.
-        BlockAccessListAtIndex slice = new();
-        slice.AddBalanceChange(TestItem.AddressB, before: 0, after: 1);
-        balManager.GeneratedBlockAccessList.Merge(slice);
-
-        Assert.Throws<BlockAccessListBasedWorldState.InvalidBlockLevelAccessListException>(
-            () => balManager.SetBlockAccessList(block));
+        // Per-account presence mismatch with matching count: suggested has AddressA, generated
+        // touched AddressB — the structural walk catches via `generated.GetAccountChanges` miss.
+        yield return new TestCaseData(
+            Build.A.BlockAccessList
+                .WithAccountChanges(Build.An.AccountChanges
+                    .WithAddress(TestItem.AddressA)
+                    .WithBalanceChanges(new BalanceChange(0, 1))
+                    .TestObject)
+                .TestObject,
+            (Action<BlockAccessListAtIndex>)(s => s.AddBalanceChange(TestItem.AddressB, before: 0, after: 1)))
+            .SetName("account presence mismatch (same count, different address)");
     }
 
     [TestCase(1)]

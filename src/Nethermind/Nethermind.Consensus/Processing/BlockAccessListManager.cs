@@ -92,12 +92,8 @@ public partial class BlockAccessListManager(
     public bool Enabled { get; private set; }
     public bool ParallelExecutionEnabled { get; private set; }
 
-    // Verify-only mode: the column-index validator (BlockAccessListValidationIndex) checks each
-    // per-tx slice against the suggested BAL row-by-row. On the parallel validation path this
-    // is sufficient to replace the end-of-block canonical-bytes hash compare with a structural-
-    // equivalence check (account-set match + storage_reads-set match), avoiding a full encode
-    // + Keccak over the generated BAL. Mirrors Reth's `rebuilt_bal.as_slice() != decoded_bal
-    // .as_bal().as_slice()` check from paradigmxyz/reth#24297. Set in PrepareForProcessing.
+    // Replaces the end-of-block encode + Keccak with a structural-equivalence check (account-set
+    // + storage_reads). See paradigmxyz/reth#24297 for the prior art.
     private bool _verifyOnly;
 
     public void PrepareForProcessing(Block suggestedBlock, IReleaseSpec spec, ProcessingOptions options)

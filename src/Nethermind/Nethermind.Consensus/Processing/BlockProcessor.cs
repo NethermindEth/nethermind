@@ -244,10 +244,7 @@ public partial class BlockProcessor(
             IsPostMerge = bh.IsPostMerge,
             ParentBeaconBlockRoot = bh.ParentBeaconBlockRoot,
             SlotNumber = bh.SlotNumber,
-            // Carry the wire BAL hash through cloning; the BAL manager's verify-only fast path
-            // relies on the wire value being present (it doesn't overwrite the header hash).
-            // SetBlockAccessList still recomputes and overwrites this on the building path and
-            // on the non-verify validation path.
+            // Carried for the verify-only fast path which doesn't recompute it.
             BlockAccessListHash = bh.BlockAccessListHash
         };
 
