@@ -219,4 +219,16 @@ public readonly record struct IntrinsicGas<TGasPolicy>(TGasPolicy Standard, TGas
 {
     public TGasPolicy MinimalGas { get; } = TGasPolicy.Max(Standard, FloorGas);
     public static explicit operator TGasPolicy(IntrinsicGas<TGasPolicy> gas) => gas.MinimalGas;
+
+    /// <summary>
+    /// EIP-8037: rejects a transaction whose intrinsic regular or floor gas exceeds <paramref name="cap"/>.
+    /// </summary>
+    public bool ExceedsCap(long cap, out long regular, out long floor)
+    {
+        TGasPolicy standard = Standard;
+        TGasPolicy floorGas = FloorGas;
+        regular = TGasPolicy.GetRemainingGas(in standard);
+        floor = TGasPolicy.GetRemainingGas(in floorGas);
+        return regular > cap || floor > cap;
+    }
 }
