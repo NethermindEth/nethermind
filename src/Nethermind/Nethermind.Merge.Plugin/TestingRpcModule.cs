@@ -60,7 +60,7 @@ public class TestingRpcModule(
     }
 
     public async Task<ResultWrapper<Hash256>> testing_commitBlockV1(
-        PayloadAttributes payloadAttributes, IEnumerable<byte[]> txRlps, byte[]? extraData = null)
+        PayloadAttributes payloadAttributes, IEnumerable<byte[]>? txRlps, byte[]? extraData = null)
     {
         CancellationToken exitToken = processExitSource.Token;
         try
