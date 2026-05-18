@@ -94,7 +94,6 @@ public class KademliaDiscv4Adapter(
         MsgType msgType, ValueHash256 nodeId, IMessageHandler handler)
     {
         (ValueHash256 nodeId, MsgType msgType) key = (nodeId, msgType);
-        if (_incomingMessageHandlers.TryRemove(new KeyValuePair<(ValueHash256, MsgType), IMessageHandler[]>(key, [handler]))) return;
 
         while (true)
         {

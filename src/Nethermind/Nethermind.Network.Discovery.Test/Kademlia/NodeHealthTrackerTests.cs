@@ -33,6 +33,27 @@ public class NodeHealthTrackerTests
         Assert.That(routingTable.AddCalls[1].Node, Is.EqualTo(self));
     }
 
+    [Test]
+    public void OnRequestFailed_ShouldClearFailureCount_WhenNodeIsRemoved()
+    {
+        const string self = "self";
+        const string remote = "remote";
+        RoutingTableStub routingTable = new();
+        NodeHealthTracker<ValueHash256, string> tracker = new(
+            new KademliaConfig<string> { CurrentNodeId = self, NodeRequestFailureThreshold = 1 },
+            routingTable,
+            new StringNodeHashProvider(),
+            Substitute.For<IKademliaMessageSender<ValueHash256, string>>(),
+            LimboLogs.Instance);
+
+        tracker.OnRequestFailed(remote);
+        tracker.OnRequestFailed(remote);
+        tracker.OnRequestFailed(remote);
+
+        Assert.That(routingTable.RemoveCalls, Has.Count.EqualTo(1));
+        Assert.That(routingTable.RemoveCalls[0], Is.EqualTo(ValueKeccak.Compute(remote)));
+    }
+
     private sealed class StringNodeHashProvider : INodeHashProvider<string>
     {
         public ValueHash256 GetHash(string node) => ValueKeccak.Compute(node);
@@ -43,6 +64,8 @@ public class NodeHealthTrackerTests
         public string ToRefresh { get; init; } = string.Empty;
 
         public List<(ValueHash256 Hash, string Node)> AddCalls { get; } = [];
+
+        public List<ValueHash256> RemoveCalls { get; } = [];
 
         public BucketAddResult TryAddOrRefresh(in ValueHash256 hash, string item, out string? toRefresh)
         {
@@ -57,7 +80,11 @@ public class NodeHealthTrackerTests
             return BucketAddResult.Refreshed;
         }
 
-        public bool Remove(in ValueHash256 hash) => throw new NotSupportedException();
+        public bool Remove(in ValueHash256 hash)
+        {
+            RemoveCalls.Add(hash);
+            return true;
+        }
 
         public string[] GetKNearestNeighbour(ValueHash256 hash, ValueHash256? exclude = null, bool excludeSelf = false) =>
             throw new NotSupportedException();

@@ -19,7 +19,6 @@ using Nethermind.Network.Discovery.Kademlia;
 using Nethermind.Network.Discovery.Messages;
 using Nethermind.Network.Enr;
 using Nethermind.Network.Test.Builders;
-using Nethermind.Specs;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using NSubstitute;

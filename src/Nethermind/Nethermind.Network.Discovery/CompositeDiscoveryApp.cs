@@ -26,6 +26,7 @@ public class CompositeDiscoveryApp : IDiscoveryApp
     private readonly IChannelFactory? _channelFactory;
     private readonly IDiscoveryApp[] _discoveryApps;
     private readonly CompositeNodeSource _compositeNodeSource;
+    private readonly ILogger _logger;
 
     public CompositeDiscoveryApp(
         INetworkConfig networkConfig,
@@ -39,6 +40,7 @@ public class CompositeDiscoveryApp : IDiscoveryApp
         _networkConfig = networkConfig;
         _connections = new DiscoveryConnectionsPool(logManager.GetClassLogger<DiscoveryConnectionsPool>(), _networkConfig, discoveryConfig);
         _channelFactory = channelFactory;
+        _logger = logManager.GetClassLogger<CompositeDiscoveryApp>();
 
         List<IDiscoveryApp> discoveryApps = new(2);
 
@@ -66,6 +68,7 @@ public class CompositeDiscoveryApp : IDiscoveryApp
         _networkConfig = networkConfig;
         _connections = new DiscoveryConnectionsPool(logManager.GetClassLogger<DiscoveryConnectionsPool>(), _networkConfig, discoveryConfig);
         _channelFactory = channelFactory;
+        _logger = logManager.GetClassLogger<CompositeDiscoveryApp>();
         _discoveryApps = discoveryApps;
         _compositeNodeSource = new CompositeNodeSource(_discoveryApps);
     }
@@ -149,7 +152,14 @@ public class CompositeDiscoveryApp : IDiscoveryApp
         {
             if (discoveryApps[i] is IAsyncDisposable asyncDisposable)
             {
-                await asyncDisposable.DisposeAsync();
+                try
+                {
+                    await asyncDisposable.DisposeAsync();
+                }
+                catch (Exception e)
+                {
+                    if (_logger.IsWarn) _logger.Warn($"Error disposing discovery app {discoveryApps[i]}: {e}");
+                }
             }
         }
     }

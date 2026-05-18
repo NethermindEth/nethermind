@@ -4,10 +4,8 @@
 using Autofac;
 using Autofac.Features.AttributeFilters;
 using Nethermind.Config;
-using Nethermind.Core;
 using Nethermind.Crypto;
 using Nethermind.Logging;
-using Nethermind.Network;
 using Nethermind.Network.Config;
 using Nethermind.Network.Discovery;
 

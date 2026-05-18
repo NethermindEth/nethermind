@@ -89,7 +89,7 @@ public class NodeHealthTracker<TKey, TNode>(
     }
 
     /// <summary>
-    /// Call when a requset to a node failed. This is used by other algorithm for health checks.
+    /// Call when a request to a node failed. This is used by other algorithm for health checks.
     /// </summary>
     /// <param name="node"></param>
     public void OnRequestFailed(TNode node)
@@ -105,6 +105,7 @@ public class NodeHealthTracker<TKey, TNode>(
         {
             routingTable.Remove(hash);
             _peerFailures.Delete(hash);
+            return;
         }
 
         _peerFailures.Set(hash, currentFailure + 1);

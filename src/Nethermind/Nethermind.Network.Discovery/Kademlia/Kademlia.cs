@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Diagnostics;
+using System.Threading;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
 
@@ -98,7 +99,7 @@ public class Kademlia<TKey, TNode> : IKademlia<TKey, TNode> where TNode : notnul
             {
                 // Should be added on Pong.
                 await _kademliaMessageSender.Ping(node, token);
-                onlineBootNodes++;
+                Interlocked.Increment(ref onlineBootNodes);
             }
             catch (OperationCanceledException)
             {
