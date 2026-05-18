@@ -53,7 +53,7 @@ public class Eth70ProtocolHandler : Eth69ProtocolHandler, IStaticProtocolInfo
             gossipPolicy, forkInfo, logManager, txPoolConfig, specProvider, transactionsGossipPolicy)
     {
         _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
-        _receiptsRequests70 = new MessageDictionary<GetReceiptsMessage70, ReceiptsMessage70>(Send);
+        _receiptsRequests70 = new MessageDictionary<GetReceiptsMessage70, ReceiptsMessage70>(this);
     }
 
     public override string Name => "eth70";
@@ -91,20 +91,21 @@ public class Eth70ProtocolHandler : Eth69ProtocolHandler, IStaticProtocolInfo
 
     private ReceiptsResponse FulfillReceiptsRequest(GetReceiptsMessage70 getReceiptsMessage, CancellationToken cancellationToken)
     {
-        ArrayPoolList<TxReceipt[]> txReceipts = new(getReceiptsMessage.Hashes.Count);
+        ReadOnlySpan<Hash256> hashes = getReceiptsMessage.Hashes.AsSpan();
+        ArrayPoolList<TxReceipt[]> txReceipts = new(hashes.Length);
         bool lastBlockIncomplete = false;
 
         try
         {
             ulong responseReceiptsContentSize = 0;
-            for (int blockIndex = 0; blockIndex < getReceiptsMessage.Hashes.Count; blockIndex++)
+            for (int blockIndex = 0; blockIndex < hashes.Length; blockIndex++)
             {
                 if (cancellationToken.IsCancellationRequested)
                 {
                     break;
                 }
 
-                Hash256 blockHash = getReceiptsMessage.Hashes[blockIndex];
+                Hash256 blockHash = hashes[blockIndex];
                 if (SyncServer.FindHeader(blockHash) is null)
                 {
                     break;
@@ -243,28 +244,32 @@ public class Eth70ProtocolHandler : Eth69ProtocolHandler, IStaticProtocolInfo
         using ArrayPoolList<bool> validateReceiptGasUpperBoundAgainstHeader = new(blockHashes.Count);
         using ArrayPoolList<bool> validateReceiptGasEqualToHeader = new(blockHashes.Count);
 
-        for (int i = 0; i < blockHashes.Count; i++)
         {
-            BlockHeader? header = SyncServer.FindHeader(blockHashes[i]);
-            if (header is null)
+            ReadOnlySpan<Hash256> blockHashesSpan = blockHashes.AsSpan();
+            for (int i = 0; i < blockHashesSpan.Length; i++)
             {
-                expectedGasUsed.Add(0);
-                blockGasLimits.Add(0);
-                blockTransactions.Add(null);
-                receiptRlpBehaviors.Add(RlpBehaviors.None);
-                validateReceiptGasUpperBoundAgainstHeader.Add(false);
-                validateReceiptGasEqualToHeader.Add(false);
-                continue;
-            }
+                Hash256 blockHash = blockHashesSpan[i];
+                BlockHeader? header = SyncServer.FindHeader(blockHash);
+                if (header is null)
+                {
+                    expectedGasUsed.Add(0);
+                    blockGasLimits.Add(0);
+                    blockTransactions.Add(null);
+                    receiptRlpBehaviors.Add(RlpBehaviors.None);
+                    validateReceiptGasUpperBoundAgainstHeader.Add(false);
+                    validateReceiptGasEqualToHeader.Add(false);
+                    continue;
+                }
 
-            IReleaseSpec spec = _specProvider.GetSpec(header);
-            Block? block = SyncServer.Find(blockHashes[i]);
-            expectedGasUsed.Add(header.GasUsed);
-            blockGasLimits.Add(header.GasLimit);
-            blockTransactions.Add(GetTransactionsForReceiptValidation(block));
-            receiptRlpBehaviors.Add(spec.IsEip658Enabled ? RlpBehaviors.Eip658Receipts : RlpBehaviors.None);
-            validateReceiptGasUpperBoundAgainstHeader.Add(!spec.IsEip8037Enabled);
-            validateReceiptGasEqualToHeader.Add(!spec.IsEip7778Enabled && !spec.IsEip8037Enabled);
+                IReleaseSpec spec = _specProvider.GetSpec(header);
+                Block? block = SyncServer.Find(blockHash);
+                expectedGasUsed.Add(header.GasUsed);
+                blockGasLimits.Add(header.GasLimit);
+                blockTransactions.Add(GetTransactionsForReceiptValidation(block));
+                receiptRlpBehaviors.Add(spec.IsEip658Enabled ? RlpBehaviors.Eip658Receipts : RlpBehaviors.None);
+                validateReceiptGasUpperBoundAgainstHeader.Add(!spec.IsEip8037Enabled);
+                validateReceiptGasEqualToHeader.Add(!spec.IsEip7778Enabled && !spec.IsEip8037Enabled);
+            }
         }
 
         try
@@ -303,12 +308,12 @@ public class Eth70ProtocolHandler : Eth69ProtocolHandler, IStaticProtocolInfo
                         throw new SubprotocolException($"Received partial receipts response below minimum size ({size} bytes < {SoftOutgoingMessageSizeLimit / 4} bytes)");
                     }
 
-                    IOwnedReadOnlyList<TxReceipt[]?> txReceipts = response.TxReceipts;
+                    ReadOnlySpan<TxReceipt[]?> txReceipts = response.TxReceipts.AsSpan();
 
-                    for (int i = 0; i < txReceipts.Count; i++)
+                    for (int i = 0; i < txReceipts.Length; i++)
                     {
                         bool isFirst = i == 0;
-                        bool isLast = i == txReceipts.Count - 1;
+                        bool isLast = i == txReceipts.Length - 1;
                         TxReceipt[] blockReceipts = txReceipts[i] ?? throw new SubprotocolException("Unexpected null receipt block payload");
                         long blockExpectedGasUsed = expectedGasUsed[blockIndex];
                         long blockGasLimit = blockGasLimits[blockIndex];

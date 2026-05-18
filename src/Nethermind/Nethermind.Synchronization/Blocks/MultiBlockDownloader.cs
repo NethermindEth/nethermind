@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
@@ -50,10 +51,11 @@ public class MultiBlockDownloader : ISyncDownloader<BlocksRequest>
 
     private static ArrayPoolList<Hash256> BuildHashList(IOwnedReadOnlyList<BlockHeader> headers)
     {
-        ArrayPoolList<Hash256> hashes = new(headers.Count);
-        for (int i = 0; i < headers.Count; i++)
+        ReadOnlySpan<BlockHeader> headersSpan = headers.AsSpan();
+        ArrayPoolList<Hash256> hashes = new(headersSpan.Length);
+        for (int i = 0; i < headersSpan.Length; i++)
         {
-            hashes.Add(headers[i].Hash!);
+            hashes.Add(headersSpan[i].Hash!);
         }
 
         return hashes;

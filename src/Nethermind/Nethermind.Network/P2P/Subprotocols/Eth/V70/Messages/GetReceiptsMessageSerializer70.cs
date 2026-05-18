@@ -49,9 +49,9 @@ public class GetReceiptsMessageSerializer70 : Eth66SerializerBase<GetReceiptsMes
     private static int GetHashesContentLength(IOwnedReadOnlyList<Hash256> hashes)
     {
         int contentLength = 0;
-        for (int i = 0; i < hashes.Count; i++)
+        foreach (Hash256 hash in hashes.AsSpan())
         {
-            contentLength += Rlp.LengthOf(hashes[i]);
+            contentLength += Rlp.LengthOf(hash);
         }
 
         return contentLength;
