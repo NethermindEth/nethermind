@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Db;
@@ -15,10 +17,12 @@ namespace Nethermind.State.Flat.Test.Persistence;
 public class WriteBufferAdjusterTests
 {
     private const long MinWriteBufferSize = 16L * 1024 * 1024;
-    private const long MaxWriteBufferSize = 256L * 1024 * 1024;
+    private const long AccountMaxWriteBufferSize = 32L * 1024 * 1024;
+    private const long StorageMaxWriteBufferSize = 64L * 1024 * 1024;
 
     private IColumnsDb<FlatDbColumns> _db = null!;
     private IDb _columnDb = null!;
+    private Dictionary<FlatDbColumns, IDb> _columnDbs = null!;
     private StubColumnsWriteBatch _batch = null!;
     private WriteBufferAdjuster _sut = null!;
 
@@ -26,8 +30,9 @@ public class WriteBufferAdjusterTests
     public void SetUp()
     {
         _db = Substitute.For<IColumnsDb<FlatDbColumns>>();
-        _columnDb = Substitute.For<IDb>();
-        _db.GetColumnDb(Arg.Any<FlatDbColumns>()).Returns(_columnDb);
+        _columnDbs = Enum.GetValues<FlatDbColumns>().ToDictionary(c => c, _ => Substitute.For<IDb>());
+        _db.GetColumnDb(Arg.Any<FlatDbColumns>()).Returns(call => _columnDbs[call.Arg<FlatDbColumns>()]);
+        _columnDb = _columnDbs[FlatDbColumns.Account];
 
         _batch = new StubColumnsWriteBatch();
 
@@ -38,7 +43,7 @@ public class WriteBufferAdjusterTests
     public void TearDown()
     {
         _batch.Dispose();
-        _columnDb.Dispose();
+        foreach (IDb db in _columnDbs.Values) db.Dispose();
         _db.Dispose();
     }
 
@@ -78,6 +83,31 @@ public class WriteBufferAdjusterTests
         }
 
         _columnDb.Received(expectedSetWriteBufferCallCount).SetWriteBuffer(Arg.Any<long>());
+    }
+
+    [Test]
+    public void AdjustWriteBuffer_RespectsPerColumnCap()
+    {
+        WriteBufferAdjuster.CountingWriteBatch store =
+            (WriteBufferAdjuster.CountingWriteBatch)_sut.Wrap(_batch, FlatDbColumns.Account, WriteFlags.None);
+        store.Set(new byte[200 * 1024 * 1024], null);
+        _sut.OnBatchDisposed();
+
+        _columnDb.Received(1).SetWriteBuffer(AccountMaxWriteBufferSize);
+    }
+
+    [Test]
+    public void Wrap_WithDisableWAL_UsesPerColumnCaps()
+    {
+        _sut.Wrap(_batch, FlatDbColumns.Account, WriteFlags.DisableWAL);
+
+        _columnDbs[FlatDbColumns.Account].Received(1).SetWriteBuffer(AccountMaxWriteBufferSize);
+        _columnDbs[FlatDbColumns.Storage].Received(1).SetWriteBuffer(StorageMaxWriteBufferSize);
+        _columnDbs[FlatDbColumns.StateNodes].Received(1).SetWriteBuffer(StorageMaxWriteBufferSize);
+        _columnDbs[FlatDbColumns.StorageNodes].Received(1).SetWriteBuffer(StorageMaxWriteBufferSize);
+        _columnDbs[FlatDbColumns.StateTopNodes].DidNotReceive().SetWriteBuffer(Arg.Any<long>());
+        _columnDbs[FlatDbColumns.Metadata].DidNotReceive().SetWriteBuffer(Arg.Any<long>());
+        _columnDbs[FlatDbColumns.FallbackNodes].DidNotReceive().SetWriteBuffer(Arg.Any<long>());
     }
 
     private sealed class StubWriteBatch : IWriteBatch

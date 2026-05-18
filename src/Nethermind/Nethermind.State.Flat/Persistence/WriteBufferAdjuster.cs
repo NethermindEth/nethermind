@@ -11,7 +11,15 @@ internal class WriteBufferAdjuster(IColumnsDb<FlatDbColumns> db)
 {
     internal const int ColumnCount = 7;
     private const long MinWriteBufferSize = 16L * 1024 * 1024;   // 16 MB floor
-    private const long MaxWriteBufferSize = 256L * 1024 * 1024;  // 256 MB cap
+    private static long MaxWriteBufferSize(FlatDbColumns column) => column switch
+    {
+        FlatDbColumns.Account => 32L * 1024 * 1024,        // 32 MB
+        FlatDbColumns.Storage => 64L * 1024 * 1024,        // 64 MB
+        FlatDbColumns.StateNodes => 64L * 1024 * 1024,     // 64 MB
+        FlatDbColumns.StateTopNodes => 64L * 1024 * 1024,  // 64 MB
+        FlatDbColumns.StorageNodes => 64L * 1024 * 1024,   // 64 MB
+        _ => 16L * 1024 * 1024,                            // 16 MB (Metadata, FallbackNodes)
+    };
 
     private bool _syncBufferSet;
 
@@ -37,14 +45,14 @@ internal class WriteBufferAdjuster(IColumnsDb<FlatDbColumns> db)
         {
             if (!_syncBufferSet)
             {
-                SetWriteBuffer(db, FlatDbColumns.Account, 32L * 1024 * 1024);
-                SetWriteBuffer(db, FlatDbColumns.Storage, 64L * 1024 * 1024);
-                SetWriteBuffer(db, FlatDbColumns.StateNodes, 64L * 1024 * 1024);
-                SetWriteBuffer(db, FlatDbColumns.StorageNodes, 64L * 1024 * 1024);
+                SetWriteBuffer(db, FlatDbColumns.Account);
+                SetWriteBuffer(db, FlatDbColumns.Storage);
+                SetWriteBuffer(db, FlatDbColumns.StateNodes);
+                SetWriteBuffer(db, FlatDbColumns.StorageNodes);
                 _syncBufferSet = true;
 
-                static void SetWriteBuffer(IColumnsDb<FlatDbColumns> columnsDb, FlatDbColumns column, long size) =>
-                    columnsDb.GetColumnDb(column).SetWriteBuffer(size);
+                static void SetWriteBuffer(IColumnsDb<FlatDbColumns> columnsDb, FlatDbColumns col) =>
+                    columnsDb.GetColumnDb(col).SetWriteBuffer(MaxWriteBufferSize(col));
             }
 
             return batch.GetColumnBatch(column);
@@ -84,7 +92,7 @@ internal class WriteBufferAdjuster(IColumnsDb<FlatDbColumns> db)
         if (_syncBufferSet) return;
         if (bytesWritten == 0) return;
         int idx = (int)column;
-        long target = Math.Clamp((long)(bytesWritten * 1.5), MinWriteBufferSize, MaxWriteBufferSize);
+        long target = Math.Clamp((long)(bytesWritten * 1.5), MinWriteBufferSize, MaxWriteBufferSize(column));
         long lastSize = _lastWriteBufferSize[idx];
         if (lastSize != 0 && Math.Abs(target - lastSize) <= (long)(lastSize * 0.2))
             return;
