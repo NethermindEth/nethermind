@@ -13,7 +13,7 @@ public class ReceiptsRootCalculator : IReceiptsRootCalculator
 {
     public static readonly ReceiptsRootCalculator Instance = new();
     private static readonly IRlpDecoder<TxReceipt> _decoder = Rlp.GetDecoder<TxReceipt>(RlpDecoderKey.Trie)!;
-    private static readonly IRlpDecoder<TxReceipt> _skipStateDecoder = new ReceiptMessageDecoder(skipStateAndStatus: true);
+    private static readonly ReceiptMessageDecoder _skipStateDecoder = new(skipStateAndStatus: true);
 
     public Hash256 GetReceiptsRoot(TxReceipt[] receipts, IReceiptSpec spec, Hash256? suggestedRoot)
     {
