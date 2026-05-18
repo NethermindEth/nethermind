@@ -38,12 +38,12 @@ A compact, immutable binary format for sorted key/value tables.
 
 | Variant | Bytes |
 |---|---|
-| **BTree** | `[Data Region][Index Region][RootPrefix: RootPrefixLen bytes][RootPrefixLen: u8][RootSize: u16 LE][KeyLength: u8][IndexType: u8 = 0x01]` |
+| **BTree** | `[Data Region (entries + inline page-local leaves)][Index Region (intermediates only)][RootPrefix: RootPrefixLen bytes][RootPrefixLen: u8][RootSize: u16 LE][KeyLength: u8][IndexType: u8 = 0x01]` |
 | **PackedArray** | `[Data][Summary L0]…[Summary L(D-1)][Metadata: 10 bytes][MetadataLength: u8 = 10][IndexType: u8 = 0x02]` |
 | **DenseByteIndex** | `[Value_{N-1}]…[Value_0][Ends: N·OffsetSize LE][Count: u8 = N − 1][OffsetSize: u8][IndexType: u8 = 0x04]` (values laid down high-tag-first; `OffsetSize ∈ {1, 2, 4, 6}`) |
 | **TwoByteSlotValue** | `[KeyCount: u16 LE = N − 1][Key_0: 2 bytes]…[Key_{N-1}: 2 bytes][Offset_1: u16 LE]…[Offset_{N-1}: u16 LE][Value_0]…[Value_{N-1}][IndexType: u8 = 0x05]` |
 | **TwoByteSlotValueLarge** | `[KeyCount: u16 LE = N − 1][Key_0: 2 bytes]…[Key_{N-1}: 2 bytes][Offset_1: u24 LE]…[Offset_{N-1}: u24 LE][Value_0]…[Value_{N-1}][IndexType: u8 = 0x06]` |
-| **BTreeKeyFirst** | `[Data Region (key-first entries)][Index Region][RootPrefix: RootPrefixLen bytes][RootPrefixLen: u8][RootSize: u16 LE][KeyLength: u8][IndexType: u8 = 0x07]` |
+| **BTreeKeyFirst** | `[Data Region (key-first entries + inline page-local leaves)][Index Region (intermediates only)][RootPrefix: RootPrefixLen bytes][RootPrefixLen: u8][RootSize: u16 LE][KeyLength: u8][IndexType: u8 = 0x07]` |
 
 The trailing **index type byte** is the last byte of the HSST and selects
 the variant by enumerated value (not a bitfield):
@@ -73,22 +73,51 @@ variable-length, **self-describing** entries laid out value-first so that
 decoding is forward-readable from a known `MetadataStart` cursor:
 
 ```
-[Value: V bytes][ValueLength: LEB128][FullKey: KeyLength bytes]
+[Value: V bytes][FlagByte][ValueLength: LEB128][FullKey: KeyLength bytes]
                 ^
                 MetadataStart  (= the index pointer's target byte)
 ```
 
 `MetadataStart` is the byte offset (within the HSST buffer, measured from
-byte 0 — the first byte of the data region) of the `ValueLength` LEB128.
-The leaf B-tree node stores this offset for every entry; readers seek into
-the leaf, take the metaStart pointer, then:
+byte 0 — the first byte of the data region) of the entry's **leading flag
+byte**. The flag byte's low 2 bits encode the `BSearchNodeKind` (Entry,
+Leaf, or Intermediate) — the same flag-byte layout used by `BSearchIndex`
+node headers — so the BTree reader's dispatch loop can recognize *what
+kind of thing it just landed on* from a single byte read. For entries the
+flag is `NodeKind = Entry (00)`; bits 2–7 are reserved and written as
+zero. The leaf B-tree node stores `MetadataStart` for every entry; readers
+seek into the leaf, take the metaStart pointer, then:
 
-1. Decode `ValueLength` (LEB128) — the value bytes live at
-   `[MetadataStart - ValueLength, MetadataStart)`.
-2. The full key sits at
-   `[MetadataStart + lebBytes, MetadataStart + lebBytes + KeyLength)`,
+1. Read the 1-byte flag at `MetadataStart`. The low 2 bits must be
+   `NodeKind = Entry`; the dispatch loop terminates here for the
+   target entry (Leaf and Intermediate kinds route through
+   `BSearchIndexReader.ReadFromStart` instead).
+2. Decode `ValueLength` (LEB128) starting at `MetadataStart + 1` — the
+   value bytes live at `[MetadataStart - ValueLength, MetadataStart)`.
+3. The full key sits at
+   `[MetadataStart + 1 + lebBytes, MetadataStart + 1 + lebBytes + KeyLength)`,
    where `KeyLength` comes from the BTree trailer (the value is the same
    for every entry in this HSST).
+
+**Page-local leaves.** Leaf `BSearchIndex` nodes are emitted *inline in
+the data region*, next to the entries they describe, not in a separate
+trailing index region. The builder fires a leaf write whenever adding the
+next entry would push the (pending-entries + estimated-leaf) layout past
+the current 4 KiB page boundary, and again at `Build()` start for any
+tail entries. The result is that the leaf and most of its entries land in
+the same 4 KiB page — a seek for a small entry that's already pulled the
+page into cache reaches the value without a second I/O.
+
+The `BSearchIndex` node's flag byte (bits 0-1 = `NodeKind = Leaf` for
+these) is the same flag byte that the reader's dispatch loop reads — so
+landing on either an entry-flag or a leaf-flag is uniform from the
+loop's point of view. **Variable depth** falls out of this: some
+subtrees stop at a leaf (one level above the entry), others (when the
+trigger left a singleton pending) stop with an intermediate pointing
+directly at the entry. Today's naive trigger always emits a leaf even
+for singletons, so on-disk the tree shape stays leaf-at-bottom; the
+format permits direct-entry children for a future trigger that wants
+to skip the singleton-leaf cost.
 
 **Trailer.** The HSST tail is
 `[RootPrefix bytes][RootPrefixLen: u8][RootSize: u16 LE][KeyLength: u8][IndexType: u8]`,
@@ -139,20 +168,22 @@ reason as in `BTree` (see that section). Only the per-entry data-region
 bytes are reshaped:
 
 ```
-[FullKey: KeyLength bytes][ValueLength: LEB128][Value: V bytes]
+[FlagByte][FullKey: KeyLength bytes][ValueLength: LEB128][Value: V bytes]
 ^
 EntryStart  (= the index pointer's target byte)
 ```
 
 `EntryStart` is the byte offset (within the HSST buffer, measured from
-byte 0) of the entry's `FullKey`. The leaf B-tree node stores this offset
-for every entry; readers take the pointer, then walk forward:
+byte 0) of the entry's leading flag byte (same flag-byte convention as
+the `BTree` variant — `NodeKind = Entry (00)` in bits 0-1, bits 2-7
+reserved zero). The leaf B-tree node stores this offset for every entry;
+readers take the pointer, read the flag byte, then walk forward:
 
-1. The full key sits at `[EntryStart, EntryStart + KeyLength)`, where
-   `KeyLength` comes from the trailer.
-2. Decode `ValueLength` (LEB128) starting at `EntryStart + KeyLength`.
-3. The value bytes live at `[EntryStart + KeyLength + lebBytes,
-   EntryStart + KeyLength + lebBytes + ValueLength)`.
+1. The full key sits at `[EntryStart + 1, EntryStart + 1 + KeyLength)`,
+   where `KeyLength` comes from the trailer.
+2. Decode `ValueLength` (LEB128) starting at `EntryStart + 1 + KeyLength`.
+3. The value bytes live at `[EntryStart + 1 + KeyLength + lebBytes,
+   EntryStart + 1 + KeyLength + lebBytes + ValueLength)`.
 
 **Why a separate variant.** With the key at the entry's front the entry's
 per-entry metadata (FullKey + LEB128 length) is contiguous at the start
@@ -471,15 +502,19 @@ are paid once per node, and per-entry value slot widths are picked from
 `{2, 3, 4, 6}` to keep the total cheaper than always-4-byte slots. There
 is no flag bit gating `BaseOffset`.
 
-`Flags` bits:
+`Flags` bits — shared with the data-region's **per-entry leading flag
+byte**, so the BTree reader's dispatch loop reads a single byte at the
+current cursor and switches on `NodeKind` to decide whether it's sitting
+on an entry, a leaf, or an intermediate. For entry-kind flag bytes, bits
+2-7 are reserved and written as zero.
 
 | Bit  | Meaning |
 |------|---------|
-| 0    | `IsIntermediate` — 1 = intermediate B-tree node, 0 = leaf |
-| 1–2  | `KeyType` — 0 Variable / 1 Uniform (value 2 reserved/unused) |
-| 3–4  | `ValueSizeCode` — packs the per-entry value-slot width into 2 bits: `00`→2, `01`→3, `10`→4, `11`→6 |
-| 5    | `IsKeyLittleEndian` — 1 = fixed-width key slots are stored byte-reversed so a native LE integer load matches lex order; set unconditionally for Variable (prefixArr is 2 bytes/slot) and for Uniform with `KeySize ∈ {2,4,8}` |
-| 6–7  | Reserved — must be 0 |
+| 0-1  | `NodeKind` — `00` = Entry (data-region entry), `01` = Leaf (BSearchIndex leaf node), `10` = Intermediate (BSearchIndex inner node), `11` reserved |
+| 2-3  | `KeyType` — 0 Variable / 1 Uniform (value 2 reserved/unused) — leaf and intermediate only |
+| 4-5  | `ValueSizeCode` — packs the per-entry value-slot width into 2 bits: `00`→2, `01`→3, `10`→4, `11`→6 — leaf and intermediate only |
+| 6    | `IsKeyLittleEndian` — 1 = fixed-width key slots are stored byte-reversed so a native LE integer load matches lex order; set unconditionally for Variable (prefixArr is 2 bytes/slot) and for Uniform with `KeySize ∈ {2,4,8}` — leaf and intermediate only |
+| 7    | Reserved — must be 0 |
 
 **Common key prefix.** When `CommonPrefixLen > 0`, every stored key in the
 node equals `CommonKeyPrefix || suffix_i` where `suffix_i` is what the
@@ -515,7 +550,7 @@ header cost) and at least one suffix is non-empty.
 removed. Readers fail with `InvalidDataException` if they encounter it.
 
 **Value slot width.** Per-entry value slots are one of `{2, 3, 4, 6}`
-bytes, encoded as the 2-bit `ValueSizeCode` field at `Flags` bits 3–4
+bytes, encoded as the 2-bit `ValueSizeCode` field at `Flags` bits 4–5
 (`00`→2, `01`→3, `10`→4, `11`→6). Values are always Uniform; there is no
 Variable-value encoding for B-tree index nodes. The Values section is
 `KeyCount * ValueSize` bytes. Widths outside `{2, 3, 4, 6}` are not

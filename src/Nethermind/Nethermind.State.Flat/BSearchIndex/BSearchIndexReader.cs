@@ -21,14 +21,17 @@ namespace Nethermind.State.Flat.BSearchIndex;
 /// CommonPrefixLen) group into the first 6 bytes; BaseOffset is only consumed by
 /// <see cref="GetUInt64Value"/> after a successful floor match.
 ///
-/// Flags: bit0=IsIntermediate, bits1-2=KeyType, bits3-4=ValueSizeCode, bit5=IsKeyLittleEndian.
-/// Bits 6-7 are reserved.
+/// Flags: bits 0-1 = <see cref="BSearchNodeKind"/> (00=Entry, 01=Leaf, 10=Intermediate, 11=reserved),
+/// bits 2-3 = KeyType, bits 4-5 = ValueSizeCode, bit 6 = IsKeyLittleEndian. Bit 7 is reserved.
+/// The same Flags byte appears at the front of every addressable thing — data-region entries
+/// (NodeKind = Entry, bits 2-7 = 0) and BSearchIndex nodes (NodeKind = Leaf | Intermediate) —
+/// so the BTree reader can dispatch on a single byte read without consulting the parent.
 ///
-/// ValueSizeCode (bits 3-4) packs the per-entry value width into 2 bits: 00→2, 01→3,
+/// ValueSizeCode (bits 4-5) packs the per-entry value width into 2 bits: 00→2, 01→3,
 /// 10→4, 11→6. There is no Variable-value shape for b-tree index nodes; widths outside
 /// the supported set are not encodable.
 ///
-/// IsKeyLittleEndian (bit 5) marks that fixed-width key slots are stored byte-reversed so an
+/// IsKeyLittleEndian (bit 6) marks that fixed-width key slots are stored byte-reversed so an
 /// x86 LE integer load of a slot equals its semantic numeric/lex value. Set for Uniform
 /// with KeySize ∈ {2,4,8}, and unconditionally for Variable (KeyType=0) where the prefixArr
 /// is uniformly 2 bytes/slot — the SIMD floor scan exploits this to drop its per-lane
@@ -79,6 +82,7 @@ public readonly ref struct BSearchIndexReader
     }
 
     public int EntryCount => _metadata.KeyCount;
+    public BSearchNodeKind NodeKind => _metadata.NodeKind;
     public bool IsIntermediate => _metadata.IsIntermediate;
     public IndexMetadata Metadata => _metadata;
     /// <summary>Total bytes occupied by this index node, including header.</summary>
@@ -486,10 +490,10 @@ public readonly ref struct BSearchIndexReader
 
     /// <summary>
     /// Decode the value-slot width from <paramref name="flags"/>'s ValueSizeCode field
-    /// (bits 3-4): 00→2, 01→3, 10→4, 11→6.
+    /// (bits 4-5): 00→2, 01→3, 10→4, 11→6.
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static int DecodeValueSize(byte flags) => ((flags >> 3) & 0b11) switch
+    private static int DecodeValueSize(byte flags) => ((flags >> 4) & 0b11) switch
     {
         0 => 2,
         1 => 3,
@@ -509,20 +513,28 @@ public readonly ref struct BSearchIndexReader
         /// <summary>Base offset added to every Uniform value read. 0 when absent. Encoded on disk as 6-byte LE.</summary>
         public ulong BaseOffset { get; init; }
 
-        public bool IsIntermediate => (Flags & 0x01) != 0;
-        public int KeyType => (Flags >> 1) & 0x03;
         /// <summary>
-        /// Fixed value width in bytes (one of {2, 3, 4, 6}). Decoded from Flags bits 3-4.
+        /// The <see cref="BSearchNodeKind"/> packed into Flags bits 0-1. For BSearchIndex
+        /// nodes parsed by this reader, this is always <see cref="BSearchNodeKind.Leaf"/> or
+        /// <see cref="BSearchNodeKind.Intermediate"/>; <see cref="BSearchNodeKind.Entry"/> sits
+        /// on data-region entries which the BTree reader recognizes from a single flag-byte
+        /// read before deciding whether to call <see cref="ReadFromStart"/> at all.
+        /// </summary>
+        public BSearchNodeKind NodeKind => (BSearchNodeKind)(Flags & 0x03);
+        public bool IsIntermediate => NodeKind == BSearchNodeKind.Intermediate;
+        public int KeyType => (Flags >> 2) & 0x03;
+        /// <summary>
+        /// Fixed value width in bytes (one of {2, 3, 4, 6}). Decoded from Flags bits 4-5.
         /// Values are always Uniform.
         /// </summary>
         public int ValueSize => DecodeValueSize(Flags);
         /// <summary>
-        /// True when fixed-width key slots are stored byte-reversed (Flags bit 5). Honored by
+        /// True when fixed-width key slots are stored byte-reversed (Flags bit 6). Honored by
         /// readers for Uniform with <see cref="KeySize"/> ∈ {2,4,8}, and unconditionally for
         /// Variable (<see cref="KeyType"/>=0) where the prefixArr slot is uniformly 2 bytes.
         /// See <see cref="BSearchIndexReader"/> docs for details.
         /// </summary>
-        public bool IsKeyLittleEndian => (Flags & 0x20) != 0;
+        public bool IsKeyLittleEndian => (Flags & 0x40) != 0;
 
         /// <summary>Total byte size of the Keys section.</summary>
         public int KeySectionSize => KeyType switch

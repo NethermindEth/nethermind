@@ -95,7 +95,7 @@ public class BSearchIndexTests
         // Header sits at the front; keys section then values section follow.
         //
         // Expected binary layout (header fields are fixed-width LE; no LEB128):
-        //   "12"           - Flags: leaf(0)|KeyType=Uniform(02)|ValueSizeCode=10→4 bytes (0x10)
+        //   "25"           - Flags: NodeKind=Leaf(01)|KeyType=Uniform(01<<2=04)|ValueSizeCode=10→4 bytes (10<<4=0x20)
         //   "0100"         - KeyCount: 1 (u16 LE)
         //   "0100"         - KeySize: 1 (u16 LE — fixed key length)
         //   "00"           - CommonPrefixLen: 0 (mandatory u8; 0 = no prefix)
@@ -104,14 +104,14 @@ public class BSearchIndexTests
         //   "64000000"     - Values[0]: 100 as int32 LE (ValueSize=4 from flags code)
         yield return new TestCaseData(
             new[] { "41" }, new[] { 100 }, 1,
-            "12" + "0100" + "0100" + "00" + "000000000000" + "41" + "64000000"
+            "25" + "0100" + "0100" + "00" + "000000000000" + "41" + "64000000"
         ).SetName("Uniform_SingleEntry");
 
         // Three entries: separators=[0x41,0x43,0x45], values=[0,100,200], keyLen=1
         // BaseOffset = 0 here (writer didn't strip it; test exercises the BSearchIndexWriter
         // with an explicit ValueSlotSize=4, so values stay 4-byte int32 LE).
         //
-        //   "12"           - Flags (Uniform key + ValueSizeCode=10→4 bytes)
+        //   "25"           - Flags (NodeKind=Leaf|KeyType=Uniform|ValueSizeCode=10→4 bytes)
         //   "0300"         - KeyCount: 3
         //   "0100"         - KeySize: 1
         //   "00"           - CommonPrefixLen: 0
@@ -122,7 +122,7 @@ public class BSearchIndexTests
         //   "C8000000"     - Values[2]: 200 as int32 LE
         yield return new TestCaseData(
             new[] { "41", "43", "45" }, new[] { 0, 100, 200 }, 1,
-            "12" + "0300" + "0100" + "00" + "000000000000" + "41" + "43" + "45" + "00000000" + "64000000" + "C8000000"
+            "25" + "0300" + "0100" + "00" + "000000000000" + "41" + "43" + "45" + "00000000" + "64000000" + "C8000000"
         ).SetName("Uniform_ThreeEntries");
     }
 
@@ -167,7 +167,7 @@ public class BSearchIndexTests
         // Three entries with values=[100,200,300]. Caller pre-subtracts baseOffset=100.
         // BaseOffset is mandatory (6 bytes LE).
         //
-        //   "12"           - Flags: leaf, Uniform keys, ValueSizeCode=10→4 bytes
+        //   "25"           - Flags: NodeKind=Leaf|KeyType=Uniform|ValueSizeCode=10→4 bytes
         //   "0300"         - KeyCount: 3
         //   "0100"         - KeySize: 1
         //   "00"           - CommonPrefixLen: 0
@@ -176,7 +176,7 @@ public class BSearchIndexTests
         //   "00000000"     - Values[0]: 100-100=0 as int32 LE
         //   "64000000"     - Values[1]: 200-100=100 as int32 LE
         //   "C8000000"     - Values[2]: 300-100=200 as int32 LE
-        string expectedHex = "12" + "0300" + "0100" + "00" + "640000000000" + "41" + "43" + "45" + "00000000" + "64000000" + "C8000000";
+        string expectedHex = "25" + "0300" + "0100" + "00" + "640000000000" + "41" + "43" + "45" + "00000000" + "64000000" + "C8000000";
 
         ulong baseOffset = 100;
         byte[] output = new byte[1024];
@@ -208,9 +208,9 @@ public class BSearchIndexTests
     {
         // Two entries: empty separator + "7A8B49" (3 bytes).
         // Empty first entry forces Variable key format. Variable always sets the LE key flag
-        // (bit 5) since prefixArr is uniformly 2 bytes/slot. No BaseOffset.
+        // (bit 6) since prefixArr is uniformly 2 bytes/slot. No BaseOffset.
         //
-        //   "30"       - Flags: leaf(0)|KeyType=Variable(00)|ValueSizeCode=10→4 bytes (0x10)|LEKey(20)
+        //   "61"       - Flags: NodeKind=Leaf(01)|KeyType=Variable(00<<2)|ValueSizeCode=10→4 bytes (10<<4=0x20)|LEKey(1<<6=0x40)
         //   "0200"     - KeyCount: 2
         //   "0900"     - KeySize: 9 (2*2 prefixArr + 2*2 offsetArr + 1 remainingkeys)
         //   "00"       - CommonPrefixLen: 0
@@ -224,13 +224,13 @@ public class BSearchIndexTests
         //   "37000000" - Values[1]: 55 as int32 LE
         yield return new TestCaseData(
             new[] { "", "7A8B49" }, new[] { 0, 55 },
-            "30" + "0200" + "0900" + "00" + "000000000000" + "0000" + "8B7A" + "0000" + "00C0" + "49" + "00000000" + "37000000"
+            "61" + "0200" + "0900" + "00" + "000000000000" + "0000" + "8B7A" + "0000" + "00C0" + "49" + "00000000" + "37000000"
         ).SetName("Variable_EmptyAndThreeBytes");
 
         // Three entries with varying separator lengths: 1, 2, 3 bytes.
         // No BaseOffset.
         //
-        //   "30"         - Flags: leaf(0)|KeyType=Variable(00)|ValueSizeCode=10→4 bytes (0x10)|LEKey(20)
+        //   "61"         - Flags: NodeKind=Leaf|KeyType=Variable|ValueSizeCode=10→4 bytes|LEKey
         //   "0300"       - KeyCount: 3
         //   "0D00"       - KeySize: 13 (3*2 prefixArr + 3*2 offsetArr + 1 remainingkeys)
         //   "00"         - CommonPrefixLen: 0
@@ -247,7 +247,7 @@ public class BSearchIndexTests
         //   "C8000000"   - Values[2]: 200 as int32 LE
         yield return new TestCaseData(
             new[] { "41", "4243", "444546" }, new[] { 0, 100, 200 },
-            "30" + "0300" + "0D00" + "00" + "000000000000" + "0041" + "4342" + "4544" + "0040" + "0080" + "00C0" + "46" + "00000000" + "64000000" + "C8000000"
+            "61" + "0300" + "0D00" + "00" + "000000000000" + "0041" + "4342" + "4544" + "0040" + "0080" + "00C0" + "46" + "00000000" + "64000000" + "C8000000"
         ).SetName("Variable_VaryingSeparators");
     }
 
@@ -401,16 +401,23 @@ public class BSearchIndexTests
     [Test]
     public void MultiLevel_Tree_RootIsIntermediate()
     {
+        // Page-local leaves split when the next entry + estimated leaf would push
+        // past a 4 KiB page boundary. With 4-byte keys + 1-byte values (~7 bytes
+        // per entry), ~230 entries fit in one page; bump well past that to force
+        // multiple page-local leaves and an intermediate root. The maxLeafEntries
+        // option is honored by the planner's per-node cap but no longer drives the
+        // leaf splitter (that's been replaced by inline emission).
+        const int count = 500;
         byte[] data = HsstTestUtil.BuildToArray((ref HsstBTreeBuilder<PooledByteBufferWriter.Writer, PooledByteBufferWriter.WriterReader, NoOpPin> builder) =>
         {
-            for (int i = 0; i < 20; i++)
+            for (int i = 0; i < count; i++)
             {
                 byte[] key = new byte[4];
                 key[0] = (byte)(i >> 8);
                 key[1] = (byte)(i & 0xFF);
                 builder.Add(key, new byte[] { (byte)i });
             }
-        }, maxLeafEntries: 4);
+        });
 
         BSearchIndexReader rootIndex = ReadHsstRoot(data);
         Assert.That(rootIndex.IsIntermediate, Is.True);
@@ -649,7 +656,7 @@ public class BSearchIndexTests
         // Header flag bit.
         Assert.That(beReader.Metadata.IsKeyLittleEndian, Is.False);
         Assert.That(leReader.Metadata.IsKeyLittleEndian, Is.True);
-        Assert.That((leOut[0] & 0x20), Is.EqualTo(0x20));
+        Assert.That((leOut[0] & 0x40), Is.EqualTo(0x40));
 
         // Raw stored slot bytes are byte-reversed under LE.
         int hdrUniform = HeaderSize(beReader);

@@ -15,6 +15,7 @@ public readonly ref struct HsstIndex
     private HsstIndex(BSearchIndexReader inner) => _inner = inner;
 
     public int EntryCount => _inner.EntryCount;
+    public BSearchNodeKind NodeKind => _inner.NodeKind;
     public bool IsIntermediate => _inner.IsIntermediate;
     public BSearchIndexReader.IndexMetadata Metadata => _inner.Metadata;
     public int TotalSize => _inner.TotalSize;

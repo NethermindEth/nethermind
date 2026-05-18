@@ -5,6 +5,7 @@ using System;
 using System.Buffers.Binary;
 using System.Runtime.CompilerServices;
 using Nethermind.Core.Utils;
+using Nethermind.State.Flat.BSearchIndex;
 
 namespace Nethermind.State.Flat.Hsst;
 
@@ -21,9 +22,20 @@ internal static class HsstBTreeReader
     /// <paramref name="resultBound"/> to the value region of the matched entry. Caller
     /// has already read the trailing <see cref="IndexType"/> byte and signals the entry
     /// layout via <paramref name="keyFirst"/>:
-    /// <c>false</c> = <c>[Value][LEB128][FullKey]</c> with pointer at LEB128;
-    /// <c>true</c> = <c>[FullKey][LEB128][Value]</c> with pointer at FullKey byte 0.
+    /// <c>false</c> = <c>[Value][FlagByte][LEB128][FullKey]</c> with the pointer at FlagByte
+    /// (= MetadataStart);
+    /// <c>true</c> = <c>[FlagByte][FullKey][LEB128][Value]</c> with the pointer at FlagByte
+    /// (= EntryStart).
     /// </summary>
+    /// <remarks>
+    /// The dispatch loop reads the 1-byte flag at the current cursor and switches on its
+    /// <see cref="BSearchNodeKind"/>: <see cref="BSearchNodeKind.Entry"/> jumps directly to
+    /// entry decode; <see cref="BSearchNodeKind.Leaf"/> and
+    /// <see cref="BSearchNodeKind.Intermediate"/> load the node header, do a floor lookup,
+    /// and advance the cursor to the matched child's flag byte. Variable depth is natural —
+    /// the loop terminates the moment it lands on an Entry-kind flag, which can happen at
+    /// any depth (a "direct-entry" child of an intermediate, a child of a leaf, etc.).
+    /// </remarks>
     public static bool TrySeek<TReader, TPin>(
         scoped in TReader reader, Bound bound, scoped ReadOnlySpan<byte> key,
         bool exactMatch, bool keyFirst, out Bound resultBound)
@@ -66,109 +78,112 @@ internal static class HsstBTreeReader
 
         // parentSeparator for the current node — seeded with the trailer's root prefix
         // for the root, then overwritten with each descended-through separator's full
-        // bytes (CommonKeyPrefix || storedSlot in lex order).
+        // bytes (CommonKeyPrefix || storedSlot in lex order). Entries don't have headers,
+        // so the value is irrelevant once the cursor reaches one.
         Span<byte> separatorScratch = stackalloc byte[Math.Max(trailerKeyLength, 1)];
         scoped ReadOnlySpan<byte> parentSeparator = rootPrefix;
 
+        Span<byte> flagBuf = stackalloc byte[1];
         while (true)
         {
+            if (!reader.TryRead(currentAbsStart, flagBuf)) return false;
+            BSearchNodeKind kind = (BSearchNodeKind)(flagBuf[0] & 0x03);
+
+            if (kind == BSearchNodeKind.Entry)
+            {
+                return DecodeEntry<TReader, TPin>(in reader, bound, currentAbsStart, key,
+                    exactMatch, keyFirst, trailerKeyLength, out resultBound);
+            }
+
+            // Leaf or Intermediate — parse as a BSearchIndex node.
             if (!TryLoadNode<TReader, TPin>(in reader, currentAbsStart, scopeEnd, parentSeparator, out HsstIndex node, out TPin pin))
                 return false;
             using (pin)
             {
-                if (node.IsIntermediate)
-                {
-                    // Phantom slot 0 restored: every child has a separator in this node.
-                    // FindFloorIndex returns the matched child index; "no floor" means
-                    // the search key falls before children[0]'s separator, so the
-                    // subtree contains nothing ≤ key and the seek fails.
-                    int floorIdx = node.FindFloorIndex(key);
-                    if (floorIdx < 0) return false;
+                // FindFloorIndex returns -1 when key < every separator in this node;
+                // that means the subtree below has nothing ≤ key and the seek fails.
+                int floorIdx = node.FindFloorIndex(key);
+                if (floorIdx < 0) return false;
 
-                    // Materialize the matched separator's full lex-order bytes so the
-                    // child can recover its own prefix bytes from them at the next
-                    // ReadFromStart call.
-                    int sepBytesWritten = node.GetSeparatorBytes(floorIdx, separatorScratch);
-                    parentSeparator = separatorScratch[..sepBytesWritten];
+                // Materialize the matched separator's full lex-order bytes so the
+                // child (if it's a Leaf/Intermediate) can recover its own prefix bytes
+                // from them at the next ReadFromStart call. Cheap to compute even when
+                // the child is an Entry — the next iteration will discard parentSeparator
+                // before reading the flag byte.
+                int sepBytesWritten = node.GetSeparatorBytes(floorIdx, separatorScratch);
+                parentSeparator = separatorScratch[..sepBytesWritten];
 
-                    ulong childOffset = node.GetUInt64Value(floorIdx);
-                    currentAbsStart = bound.Offset + (long)childOffset;
-                    continue;
-                }
-
-                if (!node.TryGetFloor(key, out ReadOnlySpan<byte> separator, out ReadOnlySpan<byte> metaBytes))
-                    return false;
-
-                // Cheap reject path: the stored full key starts with (commonPrefix + separator),
-                // so the input must too. Saves a length-mismatch read in the common
-                // exact-miss case. Skip when the leaf stores keys in LE byte order — the
-                // `separator` bytes are byte-reversed, so a direct StartsWith comparison would
-                // be incorrect, and the storage-read SequenceEqual below still catches mismatches.
-                if (exactMatch && !node.Metadata.IsKeyLittleEndian)
-                {
-                    ReadOnlySpan<byte> p = node.CommonKeyPrefix;
-                    if (!key.StartsWith(p) || !key[p.Length..].StartsWith(separator)) return false;
-                }
-
-                long entryRel = (long)(BSearchIndex.BSearchIndexReader.ReadUInt64LE(metaBytes) + node.Metadata.BaseOffset);
-                long absEntryStart = bound.Offset + entryRel;
-
-                if (keyFirst)
-                {
-                    // Entry: [FullKey: trailerKeyLength bytes][LEB128 ValueLength][Value].
-                    // absEntryStart points at FullKey byte 0.
-                    long absLebStart = absEntryStart + trailerKeyLength;
-                    long available = bound.Offset + bound.Length - absLebStart;
-                    if (available <= 0) return false;
-                    Span<byte> lebBuf = stackalloc byte[10];
-                    int lebRead = (int)Math.Min(10, available);
-                    if (!reader.TryRead(absLebStart, lebBuf[..lebRead])) return false;
-                    int pos = 0;
-                    long valueLength = Leb128.Read(lebBuf, ref pos);
-
-                    if (exactMatch)
-                    {
-                        Span<byte> stored = stackalloc byte[255];
-                        Span<byte> storedSlice = stored[..trailerKeyLength];
-                        if (!reader.TryRead(absEntryStart, storedSlice)) return false;
-                        if (!storedSlice.SequenceEqual(key)) return false;
-                    }
-
-                    resultBound = new Bound(absLebStart + pos, valueLength);
-                    return true;
-                }
-                else
-                {
-                    // Entry: [Value][LEB128 ValueLength][FullKey]. absEntryStart points at
-                    // the LEB128 byte (MetadataStart). Read up to 10 bytes for the LEB128
-                    // (max 10 bytes for a 64-bit varint). The key length comes from the
-                    // trailer, not from per-entry storage.
-                    long available = bound.Offset + bound.Length - absEntryStart;
-                    if (available <= 0) return false;
-                    Span<byte> lebBuf = stackalloc byte[10];
-                    int lebRead = (int)Math.Min(10, available);
-                    if (!reader.TryRead(absEntryStart, lebBuf[..lebRead])) return false;
-
-                    int pos = 0;
-                    long valueLength = Leb128.Read(lebBuf, ref pos);
-
-                    if (exactMatch)
-                    {
-                        // trailerKeyLength == key.Length was already enforced at the top of
-                        // TrySeek; compare the stored key bytes against the input. Stored
-                        // key fits in 255 bytes — single read + compare, no chunking.
-                        Span<byte> stored = stackalloc byte[255];
-                        Span<byte> storedSlice = stored[..trailerKeyLength];
-                        if (!reader.TryRead(absEntryStart + pos, storedSlice)) return false;
-                        if (!storedSlice.SequenceEqual(key)) return false;
-                    }
-
-                    // value bytes are immediately before the metaStart
-                    resultBound = new Bound(absEntryStart - valueLength, valueLength);
-                    return true;
-                }
+                ulong childOffset = node.GetUInt64Value(floorIdx);
+                currentAbsStart = bound.Offset + (long)childOffset;
             }
         }
+    }
+
+    /// <summary>
+    /// Decode an entry whose leading flag byte sits at <paramref name="absFlagByteStart"/>.
+    /// Splits on <paramref name="keyFirst"/>: <c>true</c> walks forward through
+    /// FullKey → LEB128 → Value; <c>false</c> walks forward through LEB128 → FullKey and
+    /// derives the value position back-referentially from <c>flagByteStart − valueLength</c>.
+    /// </summary>
+    private static bool DecodeEntry<TReader, TPin>(
+        scoped in TReader reader, Bound bound, long absFlagByteStart,
+        scoped ReadOnlySpan<byte> key, bool exactMatch, bool keyFirst,
+        int trailerKeyLength, out Bound resultBound)
+        where TPin : struct, IBufferPin, allows ref struct
+        where TReader : IHsstByteReader<TPin>, allows ref struct
+    {
+        resultBound = default;
+
+        if (keyFirst)
+        {
+            // [FlagByte][FullKey: trailerKeyLength bytes][LEB128 ValueLength][Value].
+            long absKeyStart = absFlagByteStart + 1;
+            long absLebStart = absKeyStart + trailerKeyLength;
+            long available = bound.Offset + bound.Length - absLebStart;
+            if (available <= 0) return false;
+            Span<byte> lebBuf = stackalloc byte[10];
+            int lebRead = (int)Math.Min(10, available);
+            if (!reader.TryRead(absLebStart, lebBuf[..lebRead])) return false;
+            int pos = 0;
+            long valueLength = Leb128.Read(lebBuf, ref pos);
+
+            if (exactMatch)
+            {
+                Span<byte> stored = stackalloc byte[255];
+                Span<byte> storedSlice = stored[..trailerKeyLength];
+                if (!reader.TryRead(absKeyStart, storedSlice)) return false;
+                if (!storedSlice.SequenceEqual(key)) return false;
+            }
+
+            resultBound = new Bound(absLebStart + pos, valueLength);
+            return true;
+        }
+
+        // [Value][FlagByte][LEB128 ValueLength][FullKey]. absFlagByteStart points at the
+        // FlagByte (MetadataStart). LEB128 starts at +1; the value sits just before the
+        // flag byte and is recovered via ValueStart = MetadataStart − ValueLength.
+        long absLebStart_ = absFlagByteStart + 1;
+        long available_ = bound.Offset + bound.Length - absLebStart_;
+        if (available_ <= 0) return false;
+        Span<byte> lebBuf_ = stackalloc byte[10];
+        int lebRead_ = (int)Math.Min(10, available_);
+        if (!reader.TryRead(absLebStart_, lebBuf_[..lebRead_])) return false;
+        int pos_ = 0;
+        long valueLength_ = Leb128.Read(lebBuf_, ref pos_);
+
+        if (exactMatch)
+        {
+            // trailerKeyLength == key.Length was enforced at the top of TrySeek; compare
+            // the stored key bytes against the input. Stored key fits in 255 bytes —
+            // single read + compare, no chunking.
+            Span<byte> stored = stackalloc byte[255];
+            Span<byte> storedSlice = stored[..trailerKeyLength];
+            if (!reader.TryRead(absLebStart_ + pos_, storedSlice)) return false;
+            if (!storedSlice.SequenceEqual(key)) return false;
+        }
+
+        resultBound = new Bound(absFlagByteStart - valueLength_, valueLength_);
+        return true;
     }
 
     /// <summary>
@@ -217,13 +232,13 @@ internal static class HsstBTreeReader
             int keyCount = BinaryPrimitives.ReadUInt16LittleEndian(win[1..]);
             int keySize = BinaryPrimitives.ReadUInt16LittleEndian(win[3..]);
             // CommonPrefixLen at win[5]; BaseOffset at win[6..12] (not needed for sizing).
-            // ValueSize is decoded from the 2-bit ValueSizeCode field in Flags bits 3-4
-            // ({2, 3, 4, 6}). Actual prefix bytes ride in via parentSeparator (caller
-            // supplies them from the parent's separator at descent, or from the HSST
-            // trailer for the root).
-            int valueSize = ((flags >> 3) & 0b11) switch { 0 => 2, 1 => 3, 2 => 4, _ => 6 };
+            // ValueSize is decoded from the 2-bit ValueSizeCode field in Flags bits 4-5
+            // ({2, 3, 4, 6}). KeyType lives in bits 2-3; bits 0-1 carry NodeKind (always
+            // Leaf or Intermediate for nodes parsed here — Entry-kind flag bytes are
+            // recognized by the caller before TryLoadNode is invoked).
+            int valueSize = ((flags >> 4) & 0b11) switch { 0 => 2, 1 => 3, 2 => 4, _ => 6 };
             int headerSize = 12;
-            int keyType = (flags >> 1) & 0x03;
+            int keyType = (flags >> 2) & 0x03;
             int keySectionSize = keyType switch { 0 => keySize, _ => keyCount * keySize };
             int valueSectionSize = keyCount * valueSize;
             totalNodeSize = headerSize + keySectionSize + valueSectionSize;

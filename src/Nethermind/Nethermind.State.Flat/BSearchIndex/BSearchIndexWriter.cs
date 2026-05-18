@@ -12,8 +12,21 @@ namespace Nethermind.State.Flat.BSearchIndex;
 /// </summary>
 internal struct BSearchIndexMetadata
 {
-    /// <summary>True if this is an internal (non-leaf) node.</summary>
-    public bool IsIntermediate;
+    /// <summary>Which kind of <see cref="BSearchIndex"/> node this is (Leaf or Intermediate).</summary>
+    /// <remarks>
+    /// Encoded in the low 2 bits of the on-disk <c>Flags</c> byte. <see cref="BSearchNodeKind.Entry"/>
+    /// is reserved for data-region entries and is not used here — the writer only emits Leaf or
+    /// Intermediate nodes.
+    /// </remarks>
+    public BSearchNodeKind NodeKind;
+
+    /// <summary>Legacy boolean shim — equivalent to <c><see cref="NodeKind"/> == BSearchNodeKind.Intermediate</c>.</summary>
+    public bool IsIntermediate
+    {
+        get => NodeKind == BSearchNodeKind.Intermediate;
+        set => NodeKind = value ? BSearchNodeKind.Intermediate : BSearchNodeKind.Leaf;
+    }
+
     /// <summary>0=Variable, 1=Uniform.</summary>
     public int KeyType;
     /// <summary>
@@ -38,12 +51,12 @@ internal struct BSearchIndexMetadata
     /// When true, fixed-width key slots are written byte-reversed on disk so that an x86
     /// little-endian integer load of a slot equals its semantic numeric/lex value. The SIMD
     /// floor scan can then drop the per-lane byte-swap shuffle. Honored only for Uniform with
-    /// <see cref="KeySlotSize"/> ∈ {2,4,8}; ignored for other shapes. Encoded as Flags bit 5
+    /// <see cref="KeySlotSize"/> ∈ {2,4,8}; ignored for other shapes. Encoded as Flags bit 6
     /// in the on-disk header.
     /// </summary>
     public bool IsKeyLittleEndian = false;
 
-    public BSearchIndexMetadata() { }
+    public BSearchIndexMetadata() => NodeKind = BSearchNodeKind.Leaf;
 }
 
 /// <summary>
@@ -66,8 +79,15 @@ internal struct BSearchIndexMetadata
 /// section lets the hardware prefetcher pull the entry data into L1/L2 while the search
 /// code is still parsing the header.
 ///
+/// The <c>Flags</c> byte is shared with the data-region's per-entry flag byte; bits 0-1 carry a
+/// <see cref="BSearchNodeKind"/> (Entry / Leaf / Intermediate) so the BTree reader's dispatch
+/// loop can recognize what kind of thing it is sitting on from a single byte read. For
+/// <see cref="BSearchNodeKind.Leaf"/> and <see cref="BSearchNodeKind.Intermediate"/>, bits 2-3
+/// carry <c>KeyType</c>, bits 4-5 <c>ValueSizeCode</c>, bit 6 <c>IsKeyLittleEndian</c>, and
+/// bit 7 is reserved. <see cref="BSearchNodeKind.Entry"/> uses bits 2-7 as reserved zero.
+///
 /// Values are always Uniform: each entry's value slot is a fixed-width LE integer whose
-/// width is one of <c>{2, 3, 4, 6}</c> — encoded as the 2-bit field at Flags bits 3-4
+/// width is one of <c>{2, 3, 4, 6}</c> — encoded as the 2-bit field at Flags bits 4-5
 /// (00→2, 01→3, 10→4, 11→6). There is no Variable-value shape in b-tree index nodes.
 ///
 /// Variable-encoded KEYS (KeyType=0) use a Structure-of-Arrays layout that inlines the
@@ -79,7 +99,7 @@ internal struct BSearchIndexMetadata
 /// Tail length for tag 11 is sentinel-derived: <c>offsetArr[i+1].tailOffset - offsetArr[i].tailOffset</c>
 /// (the implicit sentinel for i = N is <c>remainingkeys.Length</c>). Tags 00/01/10 don't
 /// advance the tail cursor, so their offset equals the next tag-11 entry's offset.
-/// Prefixes are byte-reversed on disk (Flags bit 5 / IsKeyLittleEndian set unconditionally
+/// Prefixes are byte-reversed on disk (Flags bit 6 / IsKeyLittleEndian set unconditionally
 /// for KeyType=0) so a u16 LE load yields a value with the same ordering as a lex compare
 /// on the original 2 bytes — feeding the existing 2-byte SIMD floor-scan path.
 /// The 14-bit tailOffset caps remainingkeys at 16 KiB per section.
@@ -201,7 +221,7 @@ internal ref struct BSearchIndexWriter<TWriter>
 
     /// <summary>
     /// Map a <see cref="BSearchIndexMetadata.ValueSlotSize"/> to its 2-bit Flags encoding
-    /// (bits 3-4): 2→00, 3→01, 4→10, 6→11. Throws if <paramref name="slot"/> is anything
+    /// (bits 4-5): 2→00, 3→01, 4→10, 6→11. Throws if <paramref name="slot"/> is anything
     /// else — values must already be quantized by the caller (see
     /// <c>HsstValueSlot.MinBytesFor</c>).
     /// </summary>
@@ -214,6 +234,17 @@ internal ref struct BSearchIndexWriter<TWriter>
         _ => throw new InvalidOperationException(
             $"Unsupported ValueSlotSize {slot}; supported widths are {{2, 3, 4, 6}}")
     };
+
+    /// <summary>
+    /// Pack the on-disk <c>Flags</c> byte. Bits 0-1 carry the <see cref="BSearchNodeKind"/>, bits
+    /// 2-3 <c>KeyType</c>, bits 4-5 <c>ValueSizeCode</c>, bit 6 <c>IsKeyLittleEndian</c>; bit 7 is
+    /// reserved (always 0).
+    /// </summary>
+    private static byte EncodeFlags(BSearchNodeKind kind, int keyType, byte valueSizeCode, bool keyLe) => (byte)(
+        ((byte)kind & 0x03) |
+        ((keyType & 0x03) << 2) |
+        ((valueSizeCode & 0x03) << 4) |
+        (keyLe ? 0x40 : 0x00));
 
     private void WriteEmptyNode()
     {
@@ -229,9 +260,7 @@ internal ref struct BSearchIndexWriter<TWriter>
             throw new InvalidOperationException(
                 $"BaseOffset {_metadata.BaseOffset} exceeds 6-byte (48-bit) header field");
         int emptyValueSlot = _metadata.ValueSlotSize == 0 ? 2 : _metadata.ValueSlotSize;
-        byte flags = (byte)(
-            (_metadata.IsIntermediate ? 0x01 : 0x00) |
-            (EncodeValueSizeCode(emptyValueSlot) << 3));
+        byte flags = EncodeFlags(_metadata.NodeKind, keyType: 0, EncodeValueSizeCode(emptyValueSlot), keyLe: false);
         Span<byte> span = _writer.GetSpan(12);
         span[0] = flags;
         span[1..5].Clear();   // KeyCount(2) + KeySize(2) = 0
@@ -282,13 +311,7 @@ internal ref struct BSearchIndexWriter<TWriter>
             throw new InvalidOperationException($"Common key prefix length {prefixLen} exceeds u8 header field");
 
         bool keyLe = ShouldEncodeKeyLittleEndian();
-        // Bit 0 = IsIntermediate, bits 1-2 = KeyType, bits 3-4 = ValueSize code,
-        // bit 5 = IsKeyLittleEndian. Bits 6-7 stay reserved (must be 0).
-        byte flags = (byte)(
-            (_metadata.IsIntermediate ? 0x01 : 0x00) |
-            (_metadata.KeyType << 1) |
-            (EncodeValueSizeCode(valueSize) << 3) |
-            (keyLe ? 0x20 : 0x00));
+        byte flags = EncodeFlags(_metadata.NodeKind, _metadata.KeyType, EncodeValueSizeCode(valueSize), keyLe);
 
         if (_metadata.BaseOffset > 0xFFFF_FFFF_FFFFUL)
             throw new InvalidOperationException(

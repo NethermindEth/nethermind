@@ -27,20 +27,23 @@ public ref struct HsstBTreeBuilderBuffers(int expectedKeyCount = 16)
     // Per-key metadata position list — owned by the outer HsstBTreeBuilder phase.
     internal NativeMemoryListRef<long> EntryPositions = new(expectedKeyCount);
 
-    // First-key bytes per leaf, used by HsstIndexBuilder to build internal nodes
-    // without re-reading the data section. Flat (numLeaves * keyLength) layout.
-    internal NativeMemoryListRef<byte> LeafFirstKeys = new(64);
+    // Every entry's full key bytes, captured by HsstBTreeBuilder.Add /
+    // FinishValueWrite. Flat (numEntries * keyLength) layout. Replaces the previous
+    // re-read-from-data-section ReadKey path; the index builder indexes into this
+    // buffer by the entry's global index. Page-local leaf emission and intermediate
+    // construction both source separator/prefix bytes from here.
+    internal NativeMemoryListRef<byte> AllKeys = new(64);
 
-    // Current/next index-build level node lists — flipped between iterations as
-    // HsstIndexBuilder walks up from leaves to root.
+    // Current/next index-build level node lists. Populated during Add (entry
+    // descriptors pushed for each Add; collapsed into a leaf descriptor when a
+    // page-local leaf is emitted); then consumed by HsstIndexBuilder.Build as the
+    // bottom level and flipped between iterations as it walks up to the root.
     internal NativeMemoryListRef<HsstIndexNodeInfo> CurrentLevel = new(64);
     internal NativeMemoryListRef<HsstIndexNodeInfo> NextLevel = new(64);
 
     // ArrayPool-backed scratch — null until first build that uses them.
     internal byte[]? CommonPrefixArr = null;
     internal byte[]? ValueScratch = null;
-    internal byte[]? SegTree = null;
-    internal int[]? DfsStack = null;
 
     /// <summary>
     /// Reset list counts to zero ahead of a new build. Capacity is retained, and
@@ -50,7 +53,7 @@ public ref struct HsstBTreeBuilderBuffers(int expectedKeyCount = 16)
     {
         EntryPositions.Clear();
         EntryPositions.EnsureCapacity(expectedKeyCount);
-        LeafFirstKeys.Clear();
+        AllKeys.Clear();
         CurrentLevel.Clear();
         NextLevel.Clear();
     }
@@ -72,13 +75,11 @@ public ref struct HsstBTreeBuilderBuffers(int expectedKeyCount = 16)
     public void Dispose()
     {
         EntryPositions.Dispose();
-        LeafFirstKeys.Dispose();
+        AllKeys.Dispose();
         CurrentLevel.Dispose();
         NextLevel.Dispose();
         if (CommonPrefixArr is not null) { ArrayPool<byte>.Shared.Return(CommonPrefixArr); CommonPrefixArr = null; }
         if (ValueScratch is not null) { ArrayPool<byte>.Shared.Return(ValueScratch); ValueScratch = null; }
-        if (SegTree is not null) { ArrayPool<byte>.Shared.Return(SegTree); SegTree = null; }
-        if (DfsStack is not null) { ArrayPool<int>.Shared.Return(DfsStack); DfsStack = null; }
     }
 }
 
@@ -88,21 +89,23 @@ public ref struct HsstBTreeBuilderBuffers(int expectedKeyCount = 16)
 /// <see cref="HsstBTreeBuilderBuffers"/> — which is not generic in <c>TWriter</c> — can
 /// hold preallocated lists of these.
 /// </summary>
-internal readonly struct HsstIndexNodeInfo(long childOffset, int firstEntry, int lastEntry, int firstLeafIdx, int prefixLen)
+/// <summary>
+/// One node descriptor in the bottom-up B-tree build. Used uniformly for entries, leaves,
+/// and intermediate nodes — the on-disk flag byte at <see cref="ChildOffset"/> tells the
+/// reader which kind of thing it is sitting on.
+/// </summary>
+internal readonly struct HsstIndexNodeInfo(long childOffset, int firstEntry, int lastEntry, int prefixLen)
 {
-    /// <summary>Absolute first-byte position of this node in the data region (= absoluteIndexStart + relativeStart).</summary>
+    /// <summary>Absolute first-byte position of this node (or entry) in the HSST (= the flag byte).</summary>
     public readonly long ChildOffset = childOffset;
-    /// <summary>Index (into <c>EntryPositions</c>) of the first leaf entry under this subtree.</summary>
+    /// <summary>Index (into <c>EntryPositions</c> / <c>AllKeys</c>) of the first leaf entry under this subtree.</summary>
     public readonly int FirstEntry = firstEntry;
-    /// <summary>Index (into <c>EntryPositions</c>) of the last leaf entry under this subtree.</summary>
+    /// <summary>Index (into <c>EntryPositions</c> / <c>AllKeys</c>) of the last leaf entry under this subtree.</summary>
     public readonly int LastEntry = lastEntry;
-    /// <summary>Index of the leftmost leaf under this subtree — keys into <c>LeafFirstKeys</c>
-    /// for the first-key of that leaf. At leaf level it is the leaf's own index; at higher
-    /// levels it is inherited from the leftmost child.</summary>
-    public readonly int FirstLeafIdx = firstLeafIdx;
     /// <summary>Common-key-prefix length the BSearchIndex planner picked for this node.
     /// Read at the level above when computing each separator length: the parent must extend
     /// its separator i to at least <c>PrefixLen</c> bytes so the child can recover its
-    /// prefix bytes from the parent's separator at descent time.</summary>
+    /// prefix bytes from the parent's separator at descent time. <c>0</c> for an entry
+    /// descriptor — entries have no header, no <c>CommonKeyPrefix</c>.</summary>
     public readonly int PrefixLen = prefixLen;
 }

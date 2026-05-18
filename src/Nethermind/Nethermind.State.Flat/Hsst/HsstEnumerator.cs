@@ -497,10 +497,12 @@ public struct HsstEnumerator<TReader, TPin> : IDisposable
         /// small window to decode the value length. Sets _currentKeyOffset/Length and
         /// _currentValueOffset/Length to absolute reader-space bounds.
         ///
-        /// Key-after-value mode (<c>_keyFirst = false</c>): the pointer aims at the LEB128
-        /// byte (MetadataStart); value sits before, key after.
-        /// Key-first mode (<c>_keyFirst = true</c>): the pointer aims at FullKey byte 0
-        /// (EntryStart); the LEB128 follows the key, value follows the LEB128.
+        /// In both layouts the pointer aims at the entry's leading flag byte; the
+        /// LEB128 (key-after-value) or FullKey (key-first) starts at <c>entryPos + 1</c>.
+        /// Key-after-value mode (<c>_keyFirst = false</c>): MetadataStart = FlagByte,
+        /// LEB128 at +1, value sits just before (<c>entryPos − valueLength</c>), key after.
+        /// Key-first mode (<c>_keyFirst = true</c>): EntryStart = FlagByte, key at +1,
+        /// LEB128 follows the key, value follows the LEB128.
         /// </summary>
         private bool LoadCurrentEntry(scoped in TReader reader)
         {
@@ -511,7 +513,8 @@ public struct HsstEnumerator<TReader, TPin> : IDisposable
 
             if (_keyFirst)
             {
-                long lebStart = entryPos + _keyLength;
+                long keyStart = entryPos + 1;
+                long lebStart = keyStart + _keyLength;
                 int lebWindow = (int)Math.Min(ValueLenMaxBytes, _scopeEnd - lebStart);
                 int pos;
                 long valueLength;
@@ -523,7 +526,7 @@ public struct HsstEnumerator<TReader, TPin> : IDisposable
                 }
 
                 _currentMetaStart = entryPos;
-                _currentKeyOffset = entryPos;
+                _currentKeyOffset = keyStart;
                 _currentKeyLength = _keyLength;
                 _currentValueOffset = lebStart + pos;
                 _currentValueLength = valueLength;
@@ -531,10 +534,11 @@ public struct HsstEnumerator<TReader, TPin> : IDisposable
             }
             else
             {
-                int lebWindow = (int)Math.Min(ValueLenMaxBytes, _scopeEnd - entryPos);
+                long lebStart = entryPos + 1;
+                int lebWindow = (int)Math.Min(ValueLenMaxBytes, _scopeEnd - lebStart);
                 int pos;
                 long valueLength;
-                using (TPin lebPin = reader.PinBuffer(entryPos, lebWindow))
+                using (TPin lebPin = reader.PinBuffer(lebStart, lebWindow))
                 {
                     ReadOnlySpan<byte> leb = lebPin.Buffer;
                     pos = 0;
@@ -542,7 +546,7 @@ public struct HsstEnumerator<TReader, TPin> : IDisposable
                 }
 
                 _currentMetaStart = entryPos;
-                _currentKeyOffset = entryPos + pos;
+                _currentKeyOffset = lebStart + pos;
                 _currentKeyLength = _keyLength;
                 _currentValueOffset = entryPos - valueLength;
                 _currentValueLength = valueLength;
