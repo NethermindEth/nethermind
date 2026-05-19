@@ -222,6 +222,115 @@ public class PersistedSnapshotRepositoryTests
         Assert.That(repo.SnapshotCount, Is.EqualTo(2));
     }
 
+    [TestCase(1)]
+    [TestCase(2)]
+    [TestCase(5)]
+    public void TryGetSnapshotFrom_WalksBaseChainFromSeed(int chainLength)
+    {
+        using ArenaManager smallArena = new(Path.Combine(_testDir, "arenas", "base"), 0, maxArenaSize: 4096);
+        using BlobArenaManager smallBlobs = new(Path.Combine(_testDir, "blobs", "small"), 1024 * 1024, PersistedSnapshotTier.Small);
+        using PersistedSnapshotRepository repo = new(smallArena, smallBlobs, new MemDb(), new FlatDbConfig(), new PersistedSnapshotBloomFilterManager());
+        repo.LoadFromCatalog();
+
+        StateId[] states = new StateId[chainLength + 1];
+        states[0] = new StateId(0, Keccak.EmptyTreeHash);
+        for (int i = 1; i <= chainLength; i++)
+        {
+            states[i] = new StateId(i, Keccak.Compute($"s{i}"));
+            repo.ConvertSnapshotToPersistedSnapshot(
+                CreateTestSnapshot(states[i - 1], states[i], TestItem.Addresses[(i - 1) % TestItem.Addresses.Length]));
+        }
+
+        // seed = top of chain; fromState = bottom. BFS must walk down via base.From edges
+        // and return the base whose From matches states[0].
+        PersistedSnapshot? hit = repo.TryGetSnapshotFrom(states[0], states[chainLength]);
+        Assert.That(hit, Is.Not.Null);
+        Assert.That(hit!.From, Is.EqualTo(states[0]));
+        Assert.That(hit.To, Is.EqualTo(states[1]));
+        hit.Dispose();
+    }
+
+    [Test]
+    public void TryGetSnapshotFrom_EmptyRepo_ReturnsNull()
+    {
+        using ArenaManager smallArena = new(Path.Combine(_testDir, "arenas", "base"), 0, maxArenaSize: 4096);
+        using BlobArenaManager smallBlobs = new(Path.Combine(_testDir, "blobs", "small"), 1024 * 1024, PersistedSnapshotTier.Small);
+        using PersistedSnapshotRepository repo = new(smallArena, smallBlobs, new MemDb(), new FlatDbConfig(), new PersistedSnapshotBloomFilterManager());
+        repo.LoadFromCatalog();
+
+        StateId from = new(0, Keccak.EmptyTreeHash);
+        StateId seed = new(5, Keccak.Compute("seed"));
+
+        Assert.That(repo.TryGetSnapshotFrom(from, seed), Is.Null);
+    }
+
+    [TestCase(0)] // seed == fromState block
+    [TestCase(-1)] // seed below fromState block (constructed via from at block 5)
+    public void TryGetSnapshotFrom_SeedNotAboveTarget_ReturnsNull(int seedOffset)
+    {
+        using ArenaManager smallArena = new(Path.Combine(_testDir, "arenas", "base"), 0, maxArenaSize: 4096);
+        using BlobArenaManager smallBlobs = new(Path.Combine(_testDir, "blobs", "small"), 1024 * 1024, PersistedSnapshotTier.Small);
+        using PersistedSnapshotRepository repo = new(smallArena, smallBlobs, new MemDb(), new FlatDbConfig(), new PersistedSnapshotBloomFilterManager());
+        repo.LoadFromCatalog();
+
+        // Plant a real base whose From matches `from` so we'd otherwise have a hit.
+        StateId from = new(5, Keccak.Compute("from"));
+        StateId to = new(6, Keccak.Compute("to"));
+        repo.ConvertSnapshotToPersistedSnapshot(CreateTestSnapshot(from, to, TestItem.AddressA));
+
+        StateId seed = new(5 + seedOffset, Keccak.Compute("seed"));
+        Assert.That(repo.TryGetSnapshotFrom(from, seed), Is.Null,
+            "BFS must short-circuit when the seed isn't strictly above the target block");
+    }
+
+    [Test]
+    public void TryGetSnapshotFrom_CompactedFromMatch_NotReturnedWhenBaseRemoved()
+    {
+        // Compacted [s0 → s8] exists and its From matches the target. Base[s1] (the lone
+        // base whose From == s0) is pruned. BFS must navigate through the compacted skip
+        // pointer for free but NEVER return the compacted entry — base-only is the new
+        // contract — so the result is null.
+        using ArenaManager arena = new(Path.Combine(_testDir, "arenas", "base"), 0, maxArenaSize: 256 * 1024);
+        using BlobArenaManager blobs = new(Path.Combine(_testDir, "blobs", "small"), 4 * 1024 * 1024, PersistedSnapshotTier.Small);
+        PersistedSnapshotBloomFilterManager blooms = new();
+        using PersistedSnapshotRepository repo = new(arena, blobs, new MemDb(), new FlatDbConfig(), blooms);
+        repo.LoadFromCatalog();
+
+        const int n = 8;
+        IFlatDbConfig config = new FlatDbConfig { CompactSize = 4, MinCompactSize = 2 };
+        PersistedSnapshotCompactor compactor = new(
+            repo, arena, config, Nethermind.Logging.LimboLogs.Instance, blooms,
+            minCompactSize: config.CompactSize * 2,
+            maxCompactSize: config.PersistedSnapshotMaxCompactSize,
+            tier: PersistedSnapshotTier.Large);
+
+        StateId[] states = new StateId[n + 1];
+        states[0] = new StateId(0, Keccak.EmptyTreeHash);
+        for (int i = 1; i <= n; i++)
+        {
+            states[i] = new StateId(i, Keccak.Compute($"s{i}"));
+            repo.ConvertSnapshotToPersistedSnapshot(
+                CreateTestSnapshot(states[i - 1], states[i], TestItem.Addresses[(i - 1) % TestItem.Addresses.Length]));
+        }
+
+        compactor.DoCompactSnapshot(states[n]);
+        Assert.That(repo.TryLeaseCompactedSnapshotTo(states[n], out PersistedSnapshot? compacted), Is.True);
+        Assert.That(compacted!.From, Is.EqualTo(states[0]),
+            "Test setup: compacted must cover s0..s8 so its From == target fromState");
+        compacted.Dispose();
+
+        // Sanity: with base[s1] still present, BFS finds it.
+        PersistedSnapshot? withBase = repo.TryGetSnapshotFrom(states[0], states[n]);
+        Assert.That(withBase, Is.Not.Null);
+        Assert.That(withBase!.From, Is.EqualTo(states[0]));
+        withBase.Dispose();
+
+        // Prune base[s1] (To.BlockNumber < 2). Compacted survives (To=s8). Now no base has From==s0.
+        repo.PruneBefore(new StateId(2, Keccak.Compute("prune")));
+        Assert.That(repo.TryGetSnapshotFrom(states[0], states[n]), Is.Null,
+            "Only the compacted entry has From==s0; base-only contract means we return null");
+    }
+
     [TestCase(100)]
     [TestCase(1000)]
     public void ManyBaseSnapshots_ShareUnderlyingFiles(int count)

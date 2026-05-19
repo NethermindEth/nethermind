@@ -22,7 +22,7 @@ public interface IPersistedSnapshotRepository : IDisposable
     PersistedSnapshotList AssembleSnapshotsForCompaction(StateId toStateId, long minBlockNumber);
 
     // Lookup
-    PersistedSnapshot? TryGetSnapshotFrom(StateId fromState);
+    PersistedSnapshot? TryGetSnapshotFrom(StateId fromState, StateId seedState);
     bool TryLeaseSnapshotTo(StateId toState, [NotNullWhen(true)] out PersistedSnapshot? snapshot);
     bool TryLeaseCompactedSnapshotTo(StateId toState, [NotNullWhen(true)] out PersistedSnapshot? snapshot);
 
