@@ -168,8 +168,10 @@ public partial class BlockAccessListManager
             }
         }
 
-        /// <summary>Detaches the worker's populated BAL into the per-tx slot and recycles
-        /// the processor immediately, so workers never block on the validator.</summary>
+        /// <summary>
+        /// Detaches the worker's populated BAL into the per-tx slot and recycles the processor
+        /// immediately, so workers never block on the validator.
+        /// </summary>
         public void Return(uint balIndex)
         {
             int idx = ClampBalIndex(balIndex);
@@ -184,12 +186,14 @@ public partial class BlockAccessListManager
             ReturnProcessor(processor);
         }
 
-        /// <summary>Merges the per-tx BAL into <paramref name="target"/> in caller-controlled
-        /// order, then returns it to the pool. Idempotent w.r.t. <see cref="Return"/>: also
-        /// detaches the BAL for pre/post callers that never went through Return. The optional
+        /// <summary>
+        /// Merges the per-tx BAL into <paramref name="target"/> in caller-controlled order, then
+        /// returns it to the pool. Idempotent w.r.t. <see cref="Return"/>: also detaches the BAL
+        /// for pre/post callers that never went through Return. The optional
         /// <paramref name="onSlice"/> hook (used by <see cref="BlockAccessListValidationIndex"/>)
         /// runs after the merge but before the slice goes back to the pool, so the manager can
-        /// snapshot per-tx rows for the validator's fast path.</summary>
+        /// snapshot per-tx rows for the validator's fast path.
+        /// </summary>
         public void MergeAndReturnBal(uint balIndex, GeneratedBlockAccessList target, Action<BlockAccessListAtIndex>? onSlice = null)
         {
             int idx = ClampBalIndex(balIndex);

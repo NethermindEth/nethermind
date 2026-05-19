@@ -29,16 +29,13 @@ public class BlockAccessListItemCountTests
         GeneratedBlockAccessList bal = new();
         bal.Merge(slice);
 
-        // Pure account read -> 1 account, 0 storage entries.
         Assert.That(bal.ItemCount, Is.EqualTo(1));
     }
 
     public static IEnumerable<TestCaseData> SingleMutationCases()
     {
-        // For each mutation kind, drive the BlockAccessListAtIndex API and assert the
-        // total item count after a single Merge. Item count is 1 per account + 1 per
-        // storage change + 1 per storage read (matching master's BlockAccessList.ItemCount
-        // semantics and what BlockValidator.ValidateBlockLevelAccessListSize consumes).
+        // Item count is 1 per account + 1 per storage change + 1 per storage read (matches
+        // ReadOnlyBlockAccessList.ItemCount and what BlockValidator.ValidateBlockLevelAccessListSize consumes).
         yield return new TestCaseData(
             (Action<BlockAccessListAtIndex>)(static s => s.AddBalanceChange(TestItem.AddressA, before: UInt256.Zero, after: (UInt256)100)),
             1).SetName("ItemCount_balance_change_counts_only_account");
@@ -72,21 +69,22 @@ public class BlockAccessListItemCountTests
     public void ItemCount_combines_storage_changes_and_reads_across_accounts()
     {
         BlockAccessListAtIndex slice = new() { Index = 0 };
-        // AddressA: 1 account + 1 storage change + 1 storage read = 3.
         slice.AddStorageChange(TestItem.AddressA, 1, before: UInt256.Zero, after: (UInt256)42);
         slice.AddStorageRead(TestItem.AddressA, 2);
-        // AddressB: 1 account + 1 storage read = 2.
         slice.AddBalanceChange(TestItem.AddressB, before: UInt256.Zero, after: (UInt256)1);
         slice.AddStorageRead(TestItem.AddressB, 7);
 
         GeneratedBlockAccessList bal = new();
         bal.Merge(slice);
 
+        // A: account + storage change + storage read = 3; B: account + storage read = 2.
         Assert.That(bal.ItemCount, Is.EqualTo(5));
     }
 
-    /// <summary>BAL instances are reused across blocks via <see cref="GeneratedBlockAccessList.Reset"/>;
-    /// the next block's <c>ItemCount</c> must report a fresh count, never the stale prior one. </summary>
+    /// <summary>
+    /// BAL instances are reused across blocks via <see cref="GeneratedBlockAccessList.Reset"/>;
+    /// the next block's <c>ItemCount</c> must report a fresh count, never the stale prior one.
+    /// </summary>
     [Test]
     public void ItemCount_reflects_reuse_across_blocks_through_Reset()
     {
@@ -111,10 +109,12 @@ public class BlockAccessListItemCountTests
             "block 2: 1 account + 4 storage reads, no carryover from block 1");
     }
 
-    /// <summary><see cref="ReadOnlyBlockAccessList.ItemCount"/> is set at construction by the
+    /// <summary>
+    /// <see cref="ReadOnlyBlockAccessList.ItemCount"/> is set at construction by the
     /// RLP decoder (which already walked every entry to validate ordering) and is immutable
     /// thereafter. The validator's size check reads it on the suggested-block side, so the
-    /// stored value must match the underlying wire shape.</summary>
+    /// stored value must match the underlying wire shape.
+    /// </summary>
     [Test]
     public void ReadOnlyItemCount_set_at_construction_and_immutable()
     {
@@ -130,7 +130,6 @@ public class BlockAccessListItemCountTests
             .WithAccountChanges(a, b)
             .TestObject;
 
-        // a: 1 account + 2 storage reads = 3. b: 1 account = 1. Total = 4.
         Assert.That(bal.ItemCount, Is.EqualTo(4));
     }
 }

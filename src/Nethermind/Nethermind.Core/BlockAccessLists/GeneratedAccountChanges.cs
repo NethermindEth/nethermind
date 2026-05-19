@@ -183,7 +183,9 @@ public class GeneratedAccountChanges(Address address)
         }
     }
 
-    /// <summary>Merge the per-index source into this accumulator. Caller must ensure indices arrive monotonically.</summary>
+    /// <summary>
+    /// Merge the per-index source into this accumulator. Caller must ensure indices arrive monotonically.
+    /// </summary>
     public void Merge(AccountChangesAtIndex other)
     {
         if (other.BalanceChange is not null)
