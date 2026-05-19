@@ -39,7 +39,10 @@ public sealed class SnapshotCatalog(IDb db)
     // per-entry Id field is gone.
     // v4: BSearchIndex node Flags byte no longer encodes ValueType in bits 3-4 (those bits
     // are now reserved/zero); writers always emit Uniform values for b-tree index nodes.
-    internal const int CurrentVersion = 4;
+    // v5: catalog moved out of the flatdb column set into a dedicated RocksDB under
+    // persisted_snapshot/catalog/. Old directories must wipe persisted_snapshot/ so the
+    // new dedicated DB and the on-disk arena/blob files start in sync.
+    internal const int CurrentVersion = 5;
 
     // Length-4 sentinel key holding the version word. Entry keys are 40 bytes, so the
     // length disambiguation is unambiguous when iterating GetAll().
