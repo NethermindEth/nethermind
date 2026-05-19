@@ -344,6 +344,7 @@ public class BaseMergePluginModule : Module
                 .AddSingleton<IJsonRpcServiceConfigurer, SszMiddlewareConfigurer>()
 
             // Testing rpc
+            .AddSingleton<ITestingRpcGasLimitCalculator, TestingRpcGasLimitCalculator>()
             .RegisterSingletonJsonRpcModule<ITestingRpcModule, TestingRpcModule>()
             ;
 

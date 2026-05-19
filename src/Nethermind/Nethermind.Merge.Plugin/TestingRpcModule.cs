@@ -9,7 +9,6 @@ using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Config;
-using Nethermind.Consensus;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
@@ -28,9 +27,12 @@ using ILogger = Nethermind.Logging.ILogger;
 
 namespace Nethermind.Merge.Plugin;
 
+/// <summary>
+/// Implements the <c>testing_buildBlockV1</c> RPC method for deterministic block building.
+/// </summary>
 public class TestingRpcModule(
     IBlockProducerEnvFactory blockProducerEnvFactory,
-    IGasLimitCalculator gasLimitCalculator,
+    ITestingRpcGasLimitCalculator gasLimitCalculator,
     ISpecProvider specProvider,
     IBlockFinder blockFinder,
     IBlockTree blockTree,
