@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using Nethermind.Consensus;
@@ -39,7 +40,11 @@ public class ClefSigner : IHeaderSigner, ISignerStore
     /// <param name="message">Message to be signed.</param>
     /// <returns><see cref="Signature"/> of <paramref name="message"/>.</returns>
     public Signature Sign(in ValueHash256 message)
-        => _clefWallet.Sign(new Hash256(message), Address);
+    {
+        if (!_clefWallet.TrySign(in message, Address, out Signature signature))
+            ThrowSignFailed();
+        return signature;
+    }
 
     /// <summary>
     /// Used to sign a clique header. The full Rlp of the header has to be sent,
@@ -47,7 +52,17 @@ public class ClefSigner : IHeaderSigner, ISignerStore
     /// </summary>
     /// <param name="header">Clique header</param>
     /// <returns><see cref="Signature"/> of the hash of the clique header.</returns>
-    public Signature Sign(BlockHeader header) => _clefWallet.Sign(header, Address);
+    public Signature Sign(BlockHeader header)
+    {
+        if (!_clefWallet.TrySign(header, Address, out Signature signature))
+            ThrowSignFailed();
+        return signature;
+    }
+
+    [DoesNotReturn, StackTraceHidden]
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void ThrowSignFailed() =>
+        throw new InvalidOperationException("Remote signer failed to sign the request.");
 
     public ValueTask Sign(Transaction tx) =>
         throw new NotImplementedException("Remote signing of transactions is not supported.");
