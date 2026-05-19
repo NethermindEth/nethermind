@@ -334,7 +334,7 @@ public partial class EthRpcModule(
     public ResultWrapper<Signature> eth_sign(Address addressData, byte[] message)
     {
         if (!_wallet.TrySignMessage(message, addressData, out Signature sig))
-            return ResultWrapper<Signature>.Fail($"Unable to sign as {addressData}", ErrorCodes.AccountLocked);
+            return ResultWrapper<Signature>.Fail("authentication needed: password or unlock", ErrorCodes.AccountLocked);
 
         if (_logger.IsTrace) _logger.Trace($"eth_sign request {addressData}, {message}, result: {sig}");
         return ResultWrapper<Signature>.Success(sig);

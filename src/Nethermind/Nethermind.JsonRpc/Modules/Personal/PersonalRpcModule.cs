@@ -75,7 +75,7 @@ namespace Nethermind.JsonRpc.Modules.Personal
 
             return wallet.TrySignMessage(message, address, out Signature signature)
                 ? ResultWrapper<Signature>.Success(signature)
-                : ResultWrapper<Signature>.Fail($"Unable to sign as {address}", ErrorCodes.AccountLocked);
+                : ResultWrapper<Signature>.Fail("authentication needed: password or unlock", ErrorCodes.AccountLocked);
         }
     }
 }
