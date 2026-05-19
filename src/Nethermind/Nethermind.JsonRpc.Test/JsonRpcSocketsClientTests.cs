@@ -208,15 +208,21 @@ public class JsonRpcSocketsClientTests
 
             int concurrentCall = 0;
             TaskCompletionSource completeSource = new();
-            async IAsyncEnumerable<JsonRpcResult> ResponseFunc(CallInfo c)
+            async ValueTask ResponseFunc(CallInfo c)
             {
                 Interlocked.Increment(ref concurrentCall);
                 await completeSource.Task;
-                yield return JsonRpcResult.Single(new JsonRpcSuccessResponse(null), new RpcReport());
+                IJsonRpcResponseSink sink = c.Arg<IJsonRpcResponseSink>();
+                await sink.WriteSingleAsync(new JsonRpcSuccessResponse(null), new RpcReport(), c.Arg<CancellationToken>());
             }
 
             jsonRpcProcessor
-                .ProcessAsync(Arg.Any<PipeReader>(), Arg.Any<JsonRpcContext>())
+                .ProcessAsync(
+                    Arg.Any<PipeReader>(),
+                    Arg.Any<JsonRpcContext>(),
+                    Arg.Any<IJsonRpcResponseSink>(),
+                    Arg.Any<JsonRpcProcessingOptions>(),
+                    Arg.Any<CancellationToken>())
                 .Returns(ResponseFunc);
 
             for (int i = 0; i < concurrencyLevel; i++)
@@ -545,16 +551,24 @@ public class JsonRpcSocketsClientTests
         private static IJsonRpcProcessor CreateCapturingProcessor(Action<ReadOnlySequence<byte>> onRequest)
         {
             IJsonRpcProcessor processor = Substitute.For<IJsonRpcProcessor>();
-            async IAsyncEnumerable<JsonRpcResult> ResponseFunc(CallInfo callInfo)
+            async ValueTask ResponseFunc(CallInfo callInfo)
             {
                 PipeReader reader = callInfo.ArgAt<PipeReader>(0);
                 ReadResult readResult = await reader.ReadToEndAsync();
                 ReadOnlySequence<byte> buffer = readResult.Buffer;
                 onRequest(buffer);
                 reader.AdvanceTo(buffer.End);
-                yield return JsonRpcResult.Single(new JsonRpcSuccessResponse(null), new RpcReport());
+                IJsonRpcResponseSink sink = callInfo.Arg<IJsonRpcResponseSink>();
+                await sink.WriteSingleAsync(new JsonRpcSuccessResponse(null), new RpcReport(), callInfo.Arg<CancellationToken>());
             }
-            processor.ProcessAsync(Arg.Any<PipeReader>(), Arg.Any<JsonRpcContext>()).Returns(ResponseFunc);
+            processor
+                .ProcessAsync(
+                    Arg.Any<PipeReader>(),
+                    Arg.Any<JsonRpcContext>(),
+                    Arg.Any<IJsonRpcResponseSink>(),
+                    Arg.Any<JsonRpcProcessingOptions>(),
+                    Arg.Any<CancellationToken>())
+                .Returns(ResponseFunc);
             return processor;
         }
 
