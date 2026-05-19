@@ -93,18 +93,23 @@ public partial class BlockAccessListManager
         if (block.IsGenesis)
         {
             block.Header.BlockAccessListHash = Keccak.OfAnEmptySequenceRlp;
+            return;
         }
-        else
-        {
-            CheckInitialized();
 
-            MergeAndReturnBal(uint.MaxValue);
-            block.GeneratedBlockAccessList = GeneratedBlockAccessList;
-            // EncodeToBytes precomputes per-account RLP sub-lengths once via a rented ArrayPool
-            // buffer and reuses them across the encode pass — avoids re-walking each account's
-            // sub-collections (slot changes, storage reads, balance/nonce/code) twice.
-            block.EncodedBlockAccessList = BlockAccessListDecoder.EncodeToBytes(GeneratedBlockAccessList);
-            block.Header.BlockAccessListHash = new(ValueKeccak.Compute(block.EncodedBlockAccessList).Bytes);
+        CheckInitialized();
+        MergeAndReturnBal(uint.MaxValue);
+        block.GeneratedBlockAccessList = GeneratedBlockAccessList;
+
+        if (ParallelExecutionEnabled)
+        {
+            // IncrementalValidation only covered indices 0..txCount; the post-execution row
+            // (txCount + 1) was just merged but not yet compared.
+            ValidateBlockAccessList(block, (uint)(block.Transactions.Length + 1));
+            ValidateStructuralEquivalence(block, GeneratedBlockAccessList);
+            return;
         }
+
+        block.EncodedBlockAccessList = BlockAccessListDecoder.EncodeToBytes(GeneratedBlockAccessList);
+        block.Header.BlockAccessListHash = new(ValueKeccak.Compute(block.EncodedBlockAccessList).Bytes);
     }
 }

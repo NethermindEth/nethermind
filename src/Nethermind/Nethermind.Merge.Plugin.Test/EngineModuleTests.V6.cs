@@ -291,16 +291,11 @@ public partial class EngineModuleTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(successResponse, Is.Not.Null);
-            Assert.That(response, Is.EqualTo(chain.JsonSerializer.Serialize(new JsonRpcSuccessResponse
-            {
-                Id = successResponse.Id,
-                Result = new PayloadStatusV1
-                {
-                    LatestValidHash = Keccak.Zero,
-                    Status = PayloadStatus.Invalid,
-                    ValidationError = $"InvalidBlockLevelAccessListHash: Expected {expectedBalHash}, got {invalidBalHash}"
-                }
-            })));
+            Assert.That(response, Does.Contain("\"status\":\"INVALID\""));
+            Assert.That(response, Does.Contain($"\"latestValidHash\":\"{Keccak.Zero.ToString(true)}\""));
+            Assert.That(response,
+                Does.Contain($"InvalidBlockLevelAccessListHash: Expected {expectedBalHash}, got {invalidBalHash}")
+                .Or.Contain("InvalidBlockLevelAccessList: Account-set size mismatch"));
         }
     }
 
