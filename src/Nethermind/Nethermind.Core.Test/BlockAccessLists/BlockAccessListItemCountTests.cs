@@ -10,15 +10,6 @@ using NUnit.Framework;
 
 namespace Nethermind.Core.Test.BlockAccessLists;
 
-/// <summary>
-/// Tests for <c>ItemCount</c> on the BAL types. The branch's
-/// <see cref="GeneratedBlockAccessList.ItemCount"/> is recomputed on every access (no cache), so
-/// the cache-invalidation regression master tests on <c>BlockAccessList.ItemCount</c> is moot
-/// here. What still matters — and what these tests pin — is that the wire item count is
-/// computed correctly. <c>BlockValidator.ValidateBlockLevelAccessListSize</c> reads it to enforce
-/// the EIP-7928 size cap (gas_limit / ItemCost), so a miscount in either direction admits an
-/// oversized BAL or rejects a valid one.
-/// </summary>
 [TestFixture]
 public class BlockAccessListItemCountTests
 {
@@ -95,9 +86,7 @@ public class BlockAccessListItemCountTests
     }
 
     /// <summary>BAL instances are reused across blocks via <see cref="GeneratedBlockAccessList.Reset"/>;
-    /// the next block's <c>ItemCount</c> must report a fresh count, never the stale prior one.
-    /// On the branch this is automatic because the count is recomputed on access, but the same
-    /// invariant still holds against the validator size check.</summary>
+    /// the next block's <c>ItemCount</c> must report a fresh count, never the stale prior one. </summary>
     [Test]
     public void ItemCount_reflects_reuse_across_blocks_through_Reset()
     {
