@@ -3,7 +3,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Metric;
@@ -34,54 +33,54 @@ namespace Nethermind.JsonRpc.Test
         }
 
         [Test]
-        public async Task Success_average_is_fine()
+        public void Success_average_is_fine()
         {
             JsonRpcLocalStats localStats = new(_manualTimestamper, _config, _logManager);
-            await localStats.ReportCall("A", 100, true);
-            await localStats.ReportCall("A", 200, true);
+            localStats.ReportCall("A", 100, true);
+            localStats.ReportCall("A", 200, true);
             MakeTimePass();
-            await localStats.ReportCall("A", 300, true);
+            localStats.ReportCall("A", 300, true);
             CheckLogLine("A|2|0.150|0.200|0|0.000|0.000|");
             CheckLogLine("TOTAL|2|0.150|0.200|0|0.000|0.000|");
         }
 
         [Test]
-        public async Task Single_average_is_fine()
+        public void Single_average_is_fine()
         {
             JsonRpcLocalStats localStats = new(_manualTimestamper, _config, _logManager);
-            await localStats.ReportCall("A", 100, true);
+            localStats.ReportCall("A", 100, true);
             MakeTimePass();
-            await localStats.ReportCall("A", 300, true);
+            localStats.ReportCall("A", 300, true);
             CheckLogLine("A|1|0.100|0.100|0|0.000|0.000|");
             CheckLogLine("TOTAL|1|0.100|0.100|0|0.000|0.000|");
         }
 
         [Test]
-        public async Task Swaps_properly()
+        public void Swaps_properly()
         {
             JsonRpcLocalStats localStats = new(_manualTimestamper, _config, _logManager);
-            await localStats.ReportCall("A", 100, true);
+            localStats.ReportCall("A", 100, true);
             MakeTimePass();
-            await localStats.ReportCall("A", 300, true);
+            localStats.ReportCall("A", 300, true);
             CheckLogLine("A|1|0.100|0.100|0|0.000|0.000|");
             _testLogger.LogList.Clear();
             MakeTimePass();
-            await localStats.ReportCall("A", 500, true);
+            localStats.ReportCall("A", 500, true);
             CheckLogLine("A|1|0.300|0.300|0|0.000|0.000|");
             _testLogger.LogList.Clear();
             MakeTimePass();
-            await localStats.ReportCall("A", 700, true);
+            localStats.ReportCall("A", 700, true);
             CheckLogLine("A|1|0.500|0.500|0|0.000|0.000|");
             _testLogger.LogList.Clear();
         }
 
         [Test]
-        public async Task Calls_do_not_delay_report()
+        public void Calls_do_not_delay_report()
         {
             JsonRpcLocalStats localStats = new(_manualTimestamper, _config, _logManager);
             for (int i = 0; i < 100; i++)
             {
-                await localStats.ReportCall("A", 300, true);
+                localStats.ReportCall("A", 300, true);
                 MakeTimePass(60);
             }
 
@@ -112,51 +111,51 @@ namespace Nethermind.JsonRpc.Test
         }
 
         [Test]
-        public async Task Multiple_have_no_decimal_places()
+        public void Multiple_have_no_decimal_places()
         {
             JsonRpcLocalStats localStats = new(_manualTimestamper, _config, _logManager);
-            await localStats.ReportCall("A", 30, true);
-            await localStats.ReportCall("A", 20, true);
-            await localStats.ReportCall("A", 50, true);
-            await localStats.ReportCall("A", 60, false);
-            await localStats.ReportCall("A", 40, false);
-            await localStats.ReportCall("A", 100, false);
+            localStats.ReportCall("A", 30, true);
+            localStats.ReportCall("A", 20, true);
+            localStats.ReportCall("A", 50, true);
+            localStats.ReportCall("A", 60, false);
+            localStats.ReportCall("A", 40, false);
+            localStats.ReportCall("A", 100, false);
             MakeTimePass();
-            await localStats.ReportCall("A", 300, true);
+            localStats.ReportCall("A", 300, true);
             CheckLogLine("A|3|0.033|0.050|3|0.067|0.100|");
             CheckLogLine("TOTAL|3|0.033|0.050|3|0.067|0.100|");
         }
 
         [Test]
-        public async Task Single_of_each_is_fine()
+        public void Single_of_each_is_fine()
         {
             JsonRpcLocalStats localStats = new(_manualTimestamper, _config, _logManager);
-            await localStats.ReportCall("A", 25, true);
-            await localStats.ReportCall("A", 125, false);
-            await localStats.ReportCall("B", 75, true);
-            await localStats.ReportCall("B", 175, false);
+            localStats.ReportCall("A", 25, true);
+            localStats.ReportCall("A", 125, false);
+            localStats.ReportCall("B", 75, true);
+            localStats.ReportCall("B", 175, false);
             MakeTimePass();
-            await localStats.ReportCall("A", 300, true);
+            localStats.ReportCall("A", 300, true);
             CheckLogLine("A|1|0.025|0.025|1|0.125|0.125|");
             CheckLogLine("B|1|0.075|0.075|1|0.175|0.175|");
             CheckLogLine("TOTAL|2|0.050|0.075|2|0.150|0.175|");
         }
 
         [Test]
-        public async Task Orders_alphabetically()
+        public void Orders_alphabetically()
         {
             JsonRpcLocalStats localStats = new(_manualTimestamper, _config, _logManager);
-            await localStats.ReportCall("C", 1, true);
-            await localStats.ReportCall("A", 2, true);
-            await localStats.ReportCall("B", 3, false);
+            localStats.ReportCall("C", 1, true);
+            localStats.ReportCall("A", 2, true);
+            localStats.ReportCall("B", 3, false);
             MakeTimePass();
-            await localStats.ReportCall("A", 300, true);
+            localStats.ReportCall("A", 300, true);
             _testLogger.LogList[0].IndexOf("A   ", StringComparison.Ordinal).Should().BeLessThan(_testLogger.LogList[0].IndexOf("B   ", StringComparison.Ordinal));
             _testLogger.LogList[0].IndexOf("B   ", StringComparison.Ordinal).Should().BeLessThan(_testLogger.LogList[0].IndexOf("C   ", StringComparison.Ordinal));
         }
 
         [Test]
-        public async Task Records_metric_when_per_method_enabled_even_without_info_logging()
+        public void Records_metric_when_per_method_enabled_even_without_info_logging()
         {
             RecordingMetricObserver observer = new();
             IMetricObserver previous = Metrics.JsonRpcCallLatencyMicros;
@@ -168,7 +167,7 @@ namespace Nethermind.JsonRpc.Test
                 JsonRpcConfig config = new() { EnablePerMethodMetrics = true };
                 JsonRpcLocalStats localStats = new(_manualTimestamper, config, silentLogManager);
 
-                await localStats.ReportCall(new RpcReport("eth_call", 0, true), elapsedMicroseconds: 123);
+                localStats.ReportCall(new RpcReport("eth_call", 0, true), elapsedMicroseconds: 123);
 
                 silentLogger.LogList.Should().BeEmpty();
                 observer.Observations.Should().HaveCount(1);
@@ -182,7 +181,7 @@ namespace Nethermind.JsonRpc.Test
         }
 
         [Test]
-        public async Task Records_boundary_metrics_when_report_contains_measurements()
+        public void Records_boundary_metrics_when_report_contains_measurements()
         {
             RecordingMetricObserver boundaryObserver = new();
             RecordingMetricObserver preMethodObserver = new();
@@ -217,7 +216,7 @@ namespace Nethermind.JsonRpc.Test
                         ResponseWriteMicroseconds: 5)
                 };
 
-                await localStats.ReportCall(report, elapsedMicroseconds: 135);
+                localStats.ReportCall(report, elapsedMicroseconds: 135);
 
                 silentLogger.LogList.Should().BeEmpty();
                 boundaryObserver.Observations.Should().ContainSingle().Which.Value.Should().Be(35);

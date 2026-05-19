@@ -157,9 +157,9 @@ public class WebSocketExtensionsTests
         Assert.That(Metrics.JsonRpcBytesReceivedWebSockets - receivedBefore, Is.EqualTo(1024));
         Assert.That(Metrics.JsonRpcBytesSentWebSockets - sentBefore, Is.EqualTo(mock.SentBytes));
         Assert.That(mock.SentEndMessages, Is.EqualTo(2));
-        await localStats.Received(1).ReportCall(Arg.Is<RpcReport>(static report => report.Method != "# collection serialization #"), Arg.Any<long>(), Arg.Is<long>(static size => size > 0));
-        await localStats.Received(1).ReportCall(Arg.Is<RpcReport>(static report => report.Method == "# collection serialization #"), Arg.Any<long>(), Arg.Is<long>(static size => size > 0));
-        await localStats.Received(3).ReportCall(Arg.Any<RpcReport>());
+        localStats.Received(1).ReportCall(Arg.Is<RpcReport>(static report => report.Method != "# collection serialization #"), Arg.Any<long>(), Arg.Is<long>(static size => size > 0));
+        localStats.Received(1).ReportCall(Arg.Is<RpcReport>(static report => report.Method == "# collection serialization #"), Arg.Any<long>(), Arg.Is<long>(static size => size > 0));
+        localStats.Received(3).ReportCall(Arg.Any<RpcReport>());
     }
 
     [Test]

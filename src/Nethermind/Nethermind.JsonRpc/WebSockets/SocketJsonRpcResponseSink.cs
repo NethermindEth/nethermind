@@ -49,7 +49,7 @@ internal sealed class SocketJsonRpcResponseSink<TStream>(
             {
                 BoundaryTimings = report.BoundaryTimings.WithResponseWrite(handlingTimeMicroseconds)
             };
-            _ = jsonRpcLocalStats.ReportCall(report, handlingTimeMicroseconds, responseBytes);
+            jsonRpcLocalStats.ReportCall(report, handlingTimeMicroseconds, responseBytes);
         }
         finally
         {
@@ -85,7 +85,7 @@ internal sealed class SocketJsonRpcResponseSink<TStream>(
         {
             BoundaryTimings = report.BoundaryTimings.WithResponseWrite((long)Stopwatch.GetElapsedTime(responseWriteStartTimestamp).TotalMicroseconds)
         };
-        _ = jsonRpcLocalStats.ReportCall(report);
+        jsonRpcLocalStats.ReportCall(report);
 
         if (!jsonRpcContext.IsAuthenticated && _topLevelResponseBytes > maxBatchResponseBodySize)
         {
@@ -104,7 +104,7 @@ internal sealed class SocketJsonRpcResponseSink<TStream>(
             BytesWritten += _topLevelResponseBytes;
 
             long handlingTimeMicroseconds = (long)Stopwatch.GetElapsedTime(_batchStartTimestamp).TotalMicroseconds;
-            _ = jsonRpcLocalStats.ReportCall(new RpcReport("# collection serialization #", handlingTimeMicroseconds, true), handlingTimeMicroseconds, _topLevelResponseBytes);
+            jsonRpcLocalStats.ReportCall(new RpcReport("# collection serialization #", handlingTimeMicroseconds, true), handlingTimeMicroseconds, _topLevelResponseBytes);
         }
         finally
         {

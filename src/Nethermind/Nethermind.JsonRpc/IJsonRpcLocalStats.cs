@@ -1,8 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Threading.Tasks;
-
 namespace Nethermind.JsonRpc;
 
 public class MethodStats
@@ -20,7 +18,7 @@ public class MethodStats
 
 public interface IJsonRpcLocalStats
 {
-    Task ReportCall(RpcReport report, long elapsedMicroseconds = 0, long? size = null);
+    void ReportCall(RpcReport report, long elapsedMicroseconds = 0, long? size = null);
 
     MethodStats GetMethodStats(string methodName);
 }

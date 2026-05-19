@@ -8,7 +8,6 @@ using System.Diagnostics.Contracts;
 using System.Globalization;
 using System.Linq;
 using System.Text;
-using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Metric;
 using Nethermind.Logging;
@@ -30,22 +29,22 @@ public class JsonRpcLocalStats(ITimestamper timestamper, IJsonRpcConfig jsonRpcC
 
     public MethodStats GetMethodStats(string methodName) => _allTimeStats.GetValueOrDefault(methodName, new MethodStats());
 
-    public Task ReportCall(string method, long handlingTimeMicroseconds, bool success) =>
+    public void ReportCall(string method, long handlingTimeMicroseconds, bool success) =>
         ReportCall(new RpcReport(method, handlingTimeMicroseconds, success));
 
-    public Task ReportCall(RpcReport report, long elapsedMicroseconds = 0, long? size = null)
+    public void ReportCall(RpcReport report, long elapsedMicroseconds = 0, long? size = null)
     {
         if (string.IsNullOrWhiteSpace(report.Method))
         {
-            return Task.CompletedTask;
+            return;
         }
 
         if (!_enablePerMethodMetrics && !_logger.IsInfo)
         {
-            return Task.CompletedTask;
+            return;
         }
 
-        return ReportCallInternal(report, elapsedMicroseconds, size);
+        ReportCallInternal(report, elapsedMicroseconds, size);
     }
 
     private record MetricLabel(string method, bool success) : IMetricLabels
@@ -53,11 +52,8 @@ public class JsonRpcLocalStats(ITimestamper timestamper, IJsonRpcConfig jsonRpcC
         public string[] Labels => [method, success ? "success" : "fail"];
     }
 
-    private async Task ReportCallInternal(RpcReport report, long elapsedMicroseconds, long? size)
+    private void ReportCallInternal(RpcReport report, long elapsedMicroseconds, long? size)
     {
-        // we don't want to block RPC calls any longer than required
-        await Task.Yield();
-
         long reportHandlingTimeMicroseconds = elapsedMicroseconds == 0 ? report.HandlingTimeMicroseconds : elapsedMicroseconds;
 
         if (_enablePerMethodMetrics)

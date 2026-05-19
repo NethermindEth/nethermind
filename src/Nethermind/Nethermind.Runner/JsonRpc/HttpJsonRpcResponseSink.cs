@@ -94,7 +94,7 @@ internal sealed class HttpJsonRpcResponseSink(
         };
 
         long handlingTimeMicroseconds = (long)Stopwatch.GetElapsedTime(requestStartTimestamp).TotalMicroseconds;
-        _ = jsonRpcLocalStats.ReportCall(report, handlingTimeMicroseconds, BytesWritten);
+        jsonRpcLocalStats.ReportCall(report, handlingTimeMicroseconds, BytesWritten);
     }
 
     public ValueTask BeginBatchAsync(CancellationToken cancellationToken)
@@ -150,7 +150,7 @@ internal sealed class HttpJsonRpcResponseSink(
             BoundaryTimings = report.BoundaryTimings.WithResponseWrite((long)Stopwatch.GetElapsedTime(responseWriteStartTimestamp).TotalMicroseconds)
         };
 
-        _ = jsonRpcLocalStats.ReportCall(report);
+        jsonRpcLocalStats.ReportCall(report);
 
         if (!jsonRpcUrl.IsAuthenticated && BytesWritten > jsonRpcConfig.MaxBatchResponseBodySize)
         {
@@ -164,7 +164,7 @@ internal sealed class HttpJsonRpcResponseSink(
         _writer!.Write(JsonClosingBracket);
 
         long handlingTimeMicroseconds = (long)Stopwatch.GetElapsedTime(requestStartTimestamp).TotalMicroseconds;
-        _ = jsonRpcLocalStats.ReportCall(new RpcReport("# collection serialization #", handlingTimeMicroseconds, true), handlingTimeMicroseconds, BytesWritten);
+        jsonRpcLocalStats.ReportCall(new RpcReport("# collection serialization #", handlingTimeMicroseconds, true), handlingTimeMicroseconds, BytesWritten);
 
         return ValueTask.CompletedTask;
     }
