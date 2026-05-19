@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Frozen;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Numerics;
@@ -98,6 +99,11 @@ internal sealed class BlockAccessListValidationIndex
             int accountOrdinal = addressIndex.GetOrAdd(accountChanges.Address);
             MarkAccount(ref hasAccountWords, accountOrdinal);
         }
+
+        // Freeze the suggested-side dictionary so per-tx validation's TryGet hot path reads
+        // from a FrozenDictionary; the generated side's GetOrAdd routes new addresses to a
+        // mutable overflow dictionary that the layered lookup checks second.
+        addressIndex.Freeze();
 
         Count(blockAccessList, counts, lastIndex);
 
@@ -544,26 +550,61 @@ internal sealed class BlockAccessListValidationIndex
 
     internal sealed class AddressIndex
     {
-        private readonly Dictionary<AddressAsKey, int> _ordinals = new(AddressAsKey.EqualityComparer);
+        // Pre-freeze writes (suggested-side Build, or any GetOrAdd before Freeze) land here.
+        // After Freeze, this is snapshotted into _frozen and reused as the post-freeze overflow
+        // for generated-side GetOrAdd of addresses not declared in the suggested BAL.
+        private Dictionary<AddressAsKey, int> _mutable = new(AddressAsKey.EqualityComparer);
+        // Snapshot of _mutable taken at Freeze. Per-tx validation's TryGet hot path reads this
+        // first; FrozenDictionary lookups are materially faster than Dictionary for read-only
+        // workloads. Null until Freeze is called.
+        private FrozenDictionary<AddressAsKey, int>? _frozen;
         // Reverse lookup for slow-path diagnostics that need to translate an ordinal back to an
         // Address (e.g. "incorrect changes for {addr} at index N"). Appended in GetOrAdd.
         private readonly List<Address> _addresses = [];
 
-        public int Count => _ordinals.Count;
+        public int Count => _addresses.Count;
+
+        /// <summary>
+        /// Snapshots the current address-to-ordinal map into a <see cref="FrozenDictionary{TKey, TValue}"/>
+        /// for the read-heavy validation hot path; subsequent <see cref="GetOrAdd"/> calls route
+        /// new addresses to a mutable overflow dictionary that the layered lookup checks second.
+        /// </summary>
+        /// <remarks>
+        /// Called once by <see cref="Build"/> after all suggested-side addresses have been added.
+        /// Idempotent only when no addresses have been inserted since the previous freeze; the
+        /// current callsite invokes it exactly once per index, so re-freeze is not exercised.
+        /// </remarks>
+        public void Freeze()
+        {
+            if (_frozen is not null) return;
+            _frozen = _mutable.ToFrozenDictionary(AddressAsKey.EqualityComparer);
+            _mutable = new Dictionary<AddressAsKey, int>(AddressAsKey.EqualityComparer);
+        }
 
         public int GetOrAdd(Address address)
         {
-            ref int ordinal = ref CollectionsMarshal.GetValueRefOrAddDefault(_ordinals, address, out bool exists);
+            if (_frozen is { } frozen && frozen.TryGetValue(address, out int frozenOrdinal))
+            {
+                return frozenOrdinal;
+            }
+
+            ref int ordinal = ref CollectionsMarshal.GetValueRefOrAddDefault(_mutable, address, out bool exists);
             if (!exists)
             {
-                ordinal = _ordinals.Count - 1;
+                ordinal = _addresses.Count;
                 _addresses.Add(address);
             }
             return ordinal;
         }
 
-        public bool TryGet(Address address, out int ordinal) =>
-            _ordinals.TryGetValue(address, out ordinal);
+        public bool TryGet(Address address, out int ordinal)
+        {
+            if (_frozen is { } frozen && frozen.TryGetValue(address, out ordinal))
+            {
+                return true;
+            }
+            return _mutable.TryGetValue(address, out ordinal);
+        }
 
         public Address GetAddress(int ordinal) => _addresses[ordinal];
     }
