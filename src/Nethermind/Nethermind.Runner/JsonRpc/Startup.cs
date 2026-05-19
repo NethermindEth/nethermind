@@ -27,6 +27,7 @@ using Microsoft.Extensions.Hosting.Internal;
 using Nethermind.Api;
 using Nethermind.Config;
 using Nethermind.Core.Authentication;
+using Nethermind.Core.Resettables;
 using Nethermind.Facade.Eth;
 using Nethermind.HealthChecks;
 using Nethermind.JsonRpc;
@@ -304,16 +305,22 @@ public class Startup : IStartup
         }
 
         if (jsonRpcUrl.MaxRequestBodySize is not null)
-            ctx.Features.Get<IHttpMaxRequestBodySizeFeature>()!.MaxRequestBodySize = jsonRpcUrl.MaxRequestBodySize;
+        {
+            IHttpMaxRequestBodySizeFeature? maxRequestBodySizeFeature = ctx.Features.Get<IHttpMaxRequestBodySizeFeature>();
+            if (maxRequestBodySizeFeature is not null)
+            {
+                maxRequestBodySizeFeature.MaxRequestBodySize = jsonRpcUrl.MaxRequestBodySize;
+            }
+        }
 
         long startTime = Stopwatch.GetTimestamp();
-        // Skip CountingPipeReader when Content-Length is known
-        long? knownContentLength = ctx.Request.ContentLength;
-        CountingPipeReader? countingReader = knownContentLength > 0 ? null : new(ctx.Request.BodyReader);
-        PipeReader request = countingReader ?? ctx.Request.BodyReader;
+        long? contentLength = ctx.Request.ContentLength;
+        long? effectiveMaxRequestBodySize = jsonRpcUrl.MaxRequestBodySize ?? _jsonRpcConfig.MaxRequestBodySize;
+        CollectedHttpBody collectedBody = new();
         HttpJsonRpcResponseSink? responseSink = null;
         try
         {
+            PipeReader request = await CollectHttpRequestBodyAsync(ctx, contentLength, effectiveMaxRequestBodySize, collectedBody, ctx.RequestAborted);
             using JsonRpcContext jsonRpcContext = JsonRpcContext.Http(jsonRpcUrl);
             responseSink = new HttpJsonRpcResponseSink(ctx, jsonRpcUrl, _jsonRpcConfig, _jsonRpcLocalStats, EthereumJsonSerializer.JsonOptions, _logger, startTime);
 
@@ -349,7 +356,63 @@ public class Startup : IStartup
                 await responseSink.CompleteAsync(ctx.RequestAborted);
             }
 
-            Interlocked.Add(ref Metrics.JsonRpcBytesReceivedHttp, knownContentLength ?? countingReader?.Length ?? 0);
+            Interlocked.Add(ref Metrics.JsonRpcBytesReceivedHttp, collectedBody.BytesRead);
+        }
+    }
+
+    private static async ValueTask<PipeReader> CollectHttpRequestBodyAsync(
+        HttpContext context,
+        long? contentLength,
+        long? maxRequestBodySize,
+        CollectedHttpBody collectedBody,
+        CancellationToken cancellationToken)
+    {
+        Stream stream = contentLength is > 0
+            ? RecyclableStream.GetStream("http-request", contentLength.Value)
+            : RecyclableStream.GetStream("http-request");
+        bool success = false;
+
+        try
+        {
+            PipeReader bodyReader = context.Request.BodyReader;
+            while (true)
+            {
+                ReadResult readResult = await bodyReader.ReadAsync(cancellationToken);
+                ReadOnlySequence<byte> buffer = readResult.Buffer;
+
+                foreach (ReadOnlyMemory<byte> segment in buffer)
+                {
+                    collectedBody.BytesRead += segment.Length;
+                    if (maxRequestBodySize is not null && collectedBody.BytesRead > maxRequestBodySize)
+                    {
+                        throw new Microsoft.AspNetCore.Http.BadHttpRequestException(
+                            $"Request body too large. The max request body size is {maxRequestBodySize} bytes.",
+                            StatusCodes.Status413PayloadTooLarge);
+                    }
+
+                    await stream.WriteAsync(segment, cancellationToken);
+                }
+
+                bodyReader.AdvanceTo(buffer.End);
+
+                if (readResult.IsCompleted || readResult.IsCanceled)
+                {
+                    break;
+                }
+            }
+
+            await context.Request.BodyReader.CompleteAsync();
+            stream.Seek(0, SeekOrigin.Begin);
+            success = true;
+            return PipeReader.Create(stream, new StreamPipeReaderOptions(leaveOpen: false));
+        }
+        finally
+        {
+            if (!success)
+            {
+                await context.Request.BodyReader.CompleteAsync();
+                await stream.DisposeAsync();
+            }
         }
     }
 
@@ -357,64 +420,8 @@ public class Startup : IStartup
     private static void LogBadRequest(ILogger logger, Exception e) =>
         logger.Debug($"Couldn't read request.{Environment.NewLine}{e}");
 
-    private sealed class CountingPipeReader(PipeReader stream) : PipeReader
+    private sealed class CollectedHttpBody
     {
-        private ReadOnlySequence<byte> _currentSequence;
-        private long _countedFromCurrentSequence;
-
-        public long Length { get; private set; }
-
-        public override void AdvanceTo(SequencePosition consumed)
-        {
-            CountConsumed(consumed);
-            stream.AdvanceTo(consumed);
-        }
-
-        public override void AdvanceTo(SequencePosition consumed, SequencePosition examined)
-        {
-            CountConsumed(consumed);
-            stream.AdvanceTo(consumed, examined);
-        }
-
-        public override void CancelPendingRead() => stream.CancelPendingRead();
-
-        public override void Complete(Exception? exception = null)
-        {
-            Length += _currentSequence.Length - _countedFromCurrentSequence;
-            _countedFromCurrentSequence = _currentSequence.Length;
-            stream.Complete(exception);
-        }
-
-        public override async ValueTask<ReadResult> ReadAsync(CancellationToken cancellationToken = default)
-        {
-            ReadResult result = await stream.ReadAsync(cancellationToken);
-            _currentSequence = result.Buffer;
-            _countedFromCurrentSequence = 0;
-            return result;
-        }
-
-        public override bool TryRead(out ReadResult result)
-        {
-            bool didRead = stream.TryRead(out result);
-            if (didRead)
-            {
-                _currentSequence = result.Buffer;
-                _countedFromCurrentSequence = 0;
-            }
-
-            return didRead;
-        }
-
-        private void CountConsumed(SequencePosition consumed)
-        {
-            long consumedOffset = _currentSequence.GetOffset(consumed);
-            if (consumedOffset <= _countedFromCurrentSequence)
-            {
-                return;
-            }
-
-            Length += consumedOffset - _countedFromCurrentSequence;
-            _countedFromCurrentSequence = consumedOffset;
-        }
+        public long BytesRead { get; set; }
     }
 }
