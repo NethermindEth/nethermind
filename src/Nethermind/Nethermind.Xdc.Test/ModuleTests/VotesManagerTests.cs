@@ -9,6 +9,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
+using Nethermind.Logging;
 using Nethermind.Synchronization.Peers;
 using Nethermind.Xdc.Spec;
 using Nethermind.Xdc.Types;
@@ -310,7 +311,7 @@ public class VotesManagerTests
         IForensicsProcessor forensicsProcessor = Substitute.For<IForensicsProcessor>();
 
         return new VotesManager(ctx, Substitute.For<ISyncPeerPool>(), blockTree, epochSwitchManager, snapshotManager, quorumCertificateManager,
-            specProvider, signer, forensicsProcessor);
+            specProvider, signer, forensicsProcessor, NullLogManager.Instance);
     }
 
     private static XdcBlockHeader[] GenerateBlockHeaders(int n, long blockNumber)

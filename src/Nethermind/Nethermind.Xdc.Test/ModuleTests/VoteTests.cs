@@ -86,5 +86,6 @@ public class VoteTests
             blockchain.QuorumCertificateManager,
             blockchain.SpecProvider,
             blockchain.Signer,
-            Substitute.For<IForensicsProcessor>());
+            Substitute.For<IForensicsProcessor>(),
+            NullLogManager.Instance);
 }
