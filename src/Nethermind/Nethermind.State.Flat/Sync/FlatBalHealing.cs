@@ -3,10 +3,16 @@
 
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Blockchain;
+using Nethermind.Blockchain.Find;
+using Nethermind.Blockchain.Headers;
+using Nethermind.Consensus.Processing;
 using Nethermind.Core;
+using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Specs;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State;
@@ -35,18 +41,23 @@ namespace Nethermind.State.Flat.Sync;
 /// reassembles those storage tries first, and rewrites the corresponding state-leaf
 /// <see cref="Account.StorageRoot"/> values before re-hashing.
 ///
-/// EIP-7928 (BAL) replay from the snap pivot to head is the planned follow-up — when it lands it
-/// will share this entry point.
+/// EIP-7928 (BAL) replay from the snap pivot to head is layered on top of the reassembly: after
+/// the trie matches the FIRST pivot snap sync downloaded against, the parent chain is walked from
+/// the latest pivot down to the first, and each block's BAL is applied in order to bridge the gap.
 /// </remarks>
 public sealed class FlatBalHealing(
     IPersistence persistence,
     IStateSyncPivot stateSyncPivot,
     ITreeSyncStore treeSyncStore,
     IWorldStateManager worldStateManager,
+    IBlockTree blockTree,
+    IBlockAccessListStore balStore,
+    ISpecProvider specProvider,
     ILogManager logManager) : IBalHealing
 {
     private readonly ILogger _logger = logManager.GetClassLogger<FlatBalHealing>();
     private readonly AccountDecoder _accountDecoder = AccountDecoder.Instance;
+    private readonly ILogManager _logManager = logManager;
 
     private const int MaxPathLength = 64;
     private const int BranchChildCount = 16;
@@ -56,16 +67,18 @@ public sealed class FlatBalHealing(
     {
         if (token.IsCancellationRequested) return Task.FromResult(false);
 
-        BlockHeader? pivotHeader = stateSyncPivot.GetPivotHeader();
-        if (pivotHeader is null)
+        BlockHeader? firstPivot = stateSyncPivot.FirstPivot;
+        BlockHeader? lastPivot = stateSyncPivot.GetPivotHeader();
+        if (firstPivot is null || lastPivot is null)
         {
-            if (_logger.IsWarn) _logger.Warn("BAL healing skipped: no pivot header.");
+            if (_logger.IsWarn) _logger.Warn("BAL healing skipped: pivot header not available.");
             return Task.FromResult(false);
         }
 
-        Hash256 expectedRoot = pivotHeader.StateRoot!;
+        // 1) Reassemble the trie against the FIRST pivot — that's the state snap sync actually wrote.
+        Hash256 firstRoot = firstPivot.StateRoot!;
         Hash256[] updatedStorages = stateSyncPivot.UpdatedStorages.ToArray();
-        if (_logger.IsInfo) _logger.Info($"Attempting local trie reassembly with {updatedStorages.Length} updated storages, target root {expectedRoot}.");
+        if (_logger.IsInfo) _logger.Info($"Attempting local trie reassembly with {updatedStorages.Length} updated storages, target root {firstRoot} (first pivot {firstPivot.Number}).");
 
         Hash256? assembledRoot;
         try
@@ -78,25 +91,82 @@ public sealed class FlatBalHealing(
             return Task.FromResult(false);
         }
 
-        if (assembledRoot != expectedRoot)
+        if (assembledRoot != firstRoot)
         {
-            if (_logger.IsWarn) _logger.Warn($"Trie reassembly produced {assembledRoot ?? Keccak.Zero}, expected {expectedRoot}. Falling back to healing.");
+            if (_logger.IsWarn) _logger.Warn($"Trie reassembly produced {assembledRoot ?? Keccak.Zero}, expected first pivot {firstRoot}. Falling back to healing.");
             return Task.FromResult(false);
         }
 
-        if (_logger.IsInfo) _logger.Info($"Trie reassembly succeeded for {expectedRoot} — skipping state healing.");
-        treeSyncStore.FinalizeSync(pivotHeader);
+        // 2) Walk the parent chain from last pivot back to first pivot.
+        if (!TryBuildBalChain(firstPivot, lastPivot, out List<BlockHeader> chain))
+        {
+            return Task.FromResult(false);
+        }
 
-        // Synchronously walk the freshly assembled trie from the pivot root to catch any
-        // missing/dangling nodes the root-hash check might have missed. Diagnostic only —
-        // it cannot un-finalize sync, but a failure here is a loud signal that reassembly
-        // produced an internally inconsistent tree even though its root happened to match.
-        // TODO: drop this once reassembly has been validated on mainnet.
-        if (_logger.IsInfo) _logger.Info("Running post-reassembly verify-trie pass.");
+        Hash256 expectedFinalRoot = lastPivot.StateRoot!;
+
+        if (chain.Count == 0)
+        {
+            // first == last — snap sync's pivot never advanced. Nothing to replay; the assembled
+            // trie already matches the target. Skip BeginScope/BAL apply entirely.
+            if (_logger.IsInfo) _logger.Info($"Trie reassembly matches the only pivot {firstRoot}; no BAL replay needed.");
+        }
+        else
+        {
+            if (_logger.IsInfo) _logger.Info($"Trie reassembly matches first pivot {firstRoot}; replaying {chain.Count} BAL(s) to reach last pivot {lastPivot.Number}.");
+
+            // 3) Replay BALs forward (firstPivot+1 … lastPivot) against an IWorldState scoped at firstPivot.
+            WorldState worldState = new(worldStateManager.GlobalWorldState, _logManager);
+            using (worldState.BeginScope(firstPivot))
+            {
+                foreach (BlockHeader header in chain)
+                {
+                    if (token.IsCancellationRequested) return Task.FromResult(false);
+
+                    BlockAccessList? bal = balStore.Get(header.Hash!);
+                    if (bal is null)
+                    {
+                        if (_logger.IsWarn) _logger.Warn($"BAL replay aborted: missing BAL for block {header.Number} {header.Hash}.");
+                        return Task.FromResult(false);
+                    }
+
+                    try
+                    {
+                        IReleaseSpec spec = specProvider.GetSpec(header);
+                        BlockAccessListManager.ApplyStateChanges(bal, worldState, spec, shouldComputeStateRoot: false);
+                    }
+                    catch (Exception e)
+                    {
+                        if (_logger.IsWarn) _logger.Warn($"BAL replay threw at block {header.Number} {header.Hash}, falling back to healing: {e}");
+                        return Task.FromResult(false);
+                    }
+                }
+
+                worldState.RecalculateStateRoot();
+                if (worldState.StateRoot != expectedFinalRoot)
+                {
+                    if (_logger.IsWarn) _logger.Warn($"BAL replay produced {worldState.StateRoot}, expected last pivot {expectedFinalRoot}. Falling back to healing.");
+                    return Task.FromResult(false);
+                }
+
+                worldState.CommitTree(lastPivot.Number);
+            }
+
+            if (_logger.IsInfo) _logger.Info($"BAL replay succeeded; state at {lastPivot.Number} matches {expectedFinalRoot}.");
+        }
+
+        if (_logger.IsInfo) _logger.Info($"Finalizing sync at last pivot {lastPivot.Number} — skipping traditional healing.");
+        treeSyncStore.FinalizeSync(lastPivot);
+
+        // Synchronously walk the just-built trie from the last pivot root to catch any missing/
+        // dangling nodes the root-hash chain might have missed. Diagnostic only — sync is already
+        // marked complete, but a failure here is a loud signal of internal inconsistency.
+        // TODO: drop this once BAL healing has been validated on mainnet.
+        if (_logger.IsInfo) _logger.Info("Running post-replay verify-trie pass.");
         bool verified;
         try
         {
-            verified = worldStateManager.VerifyTrie(pivotHeader, token);
+            verified = worldStateManager.VerifyTrie(lastPivot, token);
         }
         catch (OperationCanceledException) when (token.IsCancellationRequested)
         {
@@ -104,20 +174,53 @@ public sealed class FlatBalHealing(
         }
         catch (Exception e)
         {
-            if (_logger.IsError) _logger.Error("Post-reassembly verify-trie threw.", e);
+            if (_logger.IsError) _logger.Error("Post-replay verify-trie threw.", e);
             verified = false;
         }
 
         if (!verified && _logger.IsError)
         {
-            _logger.Error($"POST-REASSEMBLY VERIFY-TRIE FAILED for root {expectedRoot}. Sync was already marked complete; the trie has dangling references.");
+            _logger.Error($"POST-REPLAY VERIFY-TRIE FAILED for root {expectedFinalRoot}. Sync was already marked complete; the trie has dangling references.");
         }
         else if (verified && _logger.IsInfo)
         {
-            _logger.Info($"Post-reassembly verify-trie passed for root {expectedRoot}.");
+            _logger.Info($"Post-replay verify-trie passed for root {expectedFinalRoot}.");
         }
 
         return Task.FromResult(true);
+    }
+
+    /// <summary>
+    /// Walk the parent chain from <paramref name="lastPivot"/> back to <paramref name="firstPivot"/>,
+    /// returning the headers in forward order (<c>firstPivot+1 … lastPivot</c>). Returns false (and
+    /// an empty list) if the chain doesn't connect, e.g. due to a reorg or a missing header.
+    /// </summary>
+    private bool TryBuildBalChain(BlockHeader firstPivot, BlockHeader lastPivot, out List<BlockHeader> chain)
+    {
+        chain = new List<BlockHeader>();
+
+        if (lastPivot.Hash == firstPivot.Hash)
+        {
+            // Pivot never advanced — nothing to replay.
+            return true;
+        }
+
+        BlockHeader? cursor = lastPivot;
+        while (cursor is not null && cursor.Hash != firstPivot.Hash)
+        {
+            chain.Add(cursor);
+            cursor = blockTree.FindParentHeader(cursor, BlockTreeLookupOptions.None);
+        }
+
+        if (cursor?.Hash != firstPivot.Hash)
+        {
+            if (_logger.IsWarn) _logger.Warn($"BAL healing skipped: parent chain from last pivot {lastPivot.Number} does not reach first pivot {firstPivot.Number}.");
+            chain.Clear();
+            return false;
+        }
+
+        chain.Reverse();
+        return true;
     }
 
     /// <summary>

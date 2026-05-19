@@ -4,16 +4,23 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
+using ConcurrentCollections;
+using Nethermind.Blockchain;
+using Nethermind.Blockchain.Find;
+using Nethermind.Blockchain.Headers;
 using Nethermind.Core;
+using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
-using System.Threading;
-using System.Threading.Tasks;
-using ConcurrentCollections;
+using Nethermind.Specs.Forks;
+using Nethermind.Evm.State;
 using Nethermind.State;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.Sync;
@@ -284,50 +291,104 @@ public class TrieReassemblerTests
 
     /// <summary>
     /// Construct a FlatBalHealing with substitutes for the dependencies the reassembly methods
-    /// don't touch (pivot, tree-sync store, world-state manager). Tests that exercise
-    /// <see cref="FlatBalHealing.Run"/> use <see cref="NewBalHealing"/> instead.
+    /// don't touch. Used by the tests that only exercise <see cref="FlatBalHealing.ReassembleStateTrie"/>
+    /// / <see cref="FlatBalHealing.ReassembleStorageTrie"/>. Tests that exercise
+    /// <see cref="FlatBalHealing.Run"/> build a configured instance inline.
     /// </summary>
     private FlatBalHealing NewReassembler() =>
         new(_persistence,
             Substitute.For<IStateSyncPivot>(),
             Substitute.For<ITreeSyncStore>(),
             Substitute.For<IWorldStateManager>(),
+            Substitute.For<IBlockTree>(),
+            Substitute.For<IBlockAccessListStore>(),
+            Substitute.For<ISpecProvider>(),
             LimboLogs.Instance);
 
     /// <summary>
+    /// Builds a pivot pair where first and last are the same header — the no-BAL-bridge case.
+    /// </summary>
+    private static (BlockHeader firstPivot, BlockHeader lastPivot) SamePivot(Hash256 stateRoot, long blockNumber = 100) =>
+        (PivotHeader(stateRoot, blockNumber), PivotHeader(stateRoot, blockNumber));
+
+    private static BlockHeader PivotHeader(Hash256 stateRoot, long number, Hash256? parentHash = null)
+    {
+        BlockHeaderBuilder builder = Build.A.BlockHeader.WithStateRoot(stateRoot).WithNumber(number);
+        if (parentHash is not null) builder = builder.WithParentHash(parentHash);
+        BlockHeader header = builder.TestObject;
+        // Deterministic synthetic hash so tests are stable across runs without computing the real keccak.
+        header.Hash = ValueKeccak.Compute($"pivot-{number}-{stateRoot}").ToCommitment();
+        return header;
+    }
+
+    private static IStateSyncPivot StubPivot(BlockHeader first, BlockHeader last)
+    {
+        IStateSyncPivot sub = Substitute.For<IStateSyncPivot>();
+        sub.FirstPivot.Returns(first);
+        sub.GetPivotHeader().Returns(last);
+        sub.UpdatedStorages.Returns(new ConcurrentHashSet<Hash256>());
+        return sub;
+    }
+
+    private static IBlockTree StubBlockTree(params (BlockHeader child, BlockHeader? parent)[] parents)
+    {
+        IBlockTree blockTree = Substitute.For<IBlockTree>();
+        foreach ((BlockHeader child, BlockHeader? parent) in parents)
+        {
+            blockTree.FindHeader(child.ParentHash!, Arg.Any<BlockTreeLookupOptions>(), Arg.Any<long?>()).Returns(parent);
+        }
+        return blockTree;
+    }
+
+    private static ISpecProvider StubSpec()
+    {
+        ISpecProvider provider = Substitute.For<ISpecProvider>();
+        // GetSpec(BlockHeader) is an extension that delegates to GetSpec(ForkActivation); stub the underlying method.
+        provider.GetSpec(Arg.Any<ForkActivation>()).Returns(Cancun.Instance);
+        return provider;
+    }
+
+    /// <summary>
     /// End-to-end smoke test for <see cref="FlatBalHealing.Run"/>: build a real 4-account trie via
-    /// the snap-sync write path, drop the root, configure an <see cref="IStateSyncPivot"/> that
-    /// reports the expected root + the empty <c>UpdatedStorages</c> set, and assert that
-    /// <c>Run</c> finalizes the sync and returns <see langword="true"/>.
+    /// the snap-sync write path, drop the root, and assert that <c>Run</c> finalizes when the
+    /// first and last pivot point at the same header (no BAL bridge needed).
     /// </summary>
     [Test]
-    public async Task Run_finalizes_when_reassembled_root_matches_pivot()
+    public async Task Run_finalizes_when_first_equals_last_pivot()
     {
         Hash256 originalRoot = WriteAccountsViaSnapTree(accountCount: 4);
         DeleteStateRoot();
 
-        BlockHeader pivot = Build.A.BlockHeader.WithStateRoot(originalRoot).TestObject;
-        IStateSyncPivot pivotSub = Substitute.For<IStateSyncPivot>();
-        pivotSub.GetPivotHeader().Returns(pivot);
-        pivotSub.UpdatedStorages.Returns(new ConcurrentHashSet<Hash256>());
+        (BlockHeader first, BlockHeader last) = SamePivot(originalRoot);
+        IStateSyncPivot pivot = StubPivot(first, last);
 
         ITreeSyncStore treeSyncStore = Substitute.For<ITreeSyncStore>();
         IWorldStateManager worldStateManager = Substitute.For<IWorldStateManager>();
-        worldStateManager.VerifyTrie(pivot, Arg.Any<CancellationToken>()).Returns(true);
+        IWorldStateScopeProvider scopeProvider = Substitute.For<IWorldStateScopeProvider>();
+        IWorldStateScopeProvider.IScope scope = Substitute.For<IWorldStateScopeProvider.IScope>();
+        scope.RootHash.Returns(originalRoot);
+        scopeProvider.BeginScope(Arg.Any<BlockHeader?>()).Returns(scope);
+        worldStateManager.GlobalWorldState.Returns(scopeProvider);
+        worldStateManager.VerifyTrie(last, Arg.Any<CancellationToken>()).Returns(true);
 
-        FlatBalHealing healing = new(_persistence, pivotSub, treeSyncStore, worldStateManager, LimboLogs.Instance);
+        FlatBalHealing healing = new(
+            _persistence, pivot, treeSyncStore, worldStateManager,
+            Substitute.For<IBlockTree>(),
+            Substitute.For<IBlockAccessListStore>(),
+            StubSpec(),
+            LimboLogs.Instance);
 
         bool result = await healing.Run(CancellationToken.None);
 
         Assert.That(result, Is.True);
-        treeSyncStore.Received(1).FinalizeSync(pivot);
-        worldStateManager.Received(1).VerifyTrie(pivot, Arg.Any<CancellationToken>());
+        treeSyncStore.Received(1).FinalizeSync(last);
+        worldStateManager.Received(1).VerifyTrie(last, Arg.Any<CancellationToken>());
     }
 
     /// <summary>
-    /// When reassembly produces a root that does not match the pivot's expected root, <c>Run</c>
-    /// must return <see langword="false"/> and NOT finalize the sync — the caller falls through
-    /// to traditional healing.
+    /// When reassembly produces a root that does not match the first pivot's expected root,
+    /// <c>Run</c> must return <see langword="false"/> and NOT finalize the sync — the caller
+    /// falls through to traditional healing.
     /// </summary>
     [Test]
     public async Task Run_returns_false_without_finalizing_when_root_mismatches()
@@ -335,16 +396,151 @@ public class TrieReassemblerTests
         WriteAccountsViaSnapTree(accountCount: 4);
         DeleteStateRoot();
 
-        // Pivot expects a root that does NOT match what reassembly will produce.
-        BlockHeader pivot = Build.A.BlockHeader.WithStateRoot(Keccak.Zero).TestObject;
-        IStateSyncPivot pivotSub = Substitute.For<IStateSyncPivot>();
-        pivotSub.GetPivotHeader().Returns(pivot);
-        pivotSub.UpdatedStorages.Returns(new ConcurrentHashSet<Hash256>());
+        // First pivot expects a root that does NOT match what reassembly will produce.
+        (BlockHeader first, BlockHeader last) = SamePivot(Keccak.Zero);
+        IStateSyncPivot pivot = StubPivot(first, last);
 
         ITreeSyncStore treeSyncStore = Substitute.For<ITreeSyncStore>();
         IWorldStateManager worldStateManager = Substitute.For<IWorldStateManager>();
 
-        FlatBalHealing healing = new(_persistence, pivotSub, treeSyncStore, worldStateManager, LimboLogs.Instance);
+        FlatBalHealing healing = new(
+            _persistence, pivot, treeSyncStore, worldStateManager,
+            Substitute.For<IBlockTree>(),
+            Substitute.For<IBlockAccessListStore>(),
+            StubSpec(),
+            LimboLogs.Instance);
+
+        bool result = await healing.Run(CancellationToken.None);
+
+        Assert.That(result, Is.False);
+        treeSyncStore.DidNotReceive().FinalizeSync(Arg.Any<BlockHeader>());
+        worldStateManager.DidNotReceive().VerifyTrie(Arg.Any<BlockHeader>(), Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>
+    /// Bridge with one block of BAL replay: first pivot has a state matching reassembly; last
+    /// pivot is one block ahead with the SAME state root (we use an empty BAL so the state
+    /// doesn't change). Confirms the chain walk, BAL lookup, and verify-trie all fire.
+    /// </summary>
+    [Test]
+    public async Task Run_replays_one_block_bal_and_finalizes_at_last_pivot()
+    {
+        Hash256 originalRoot = WriteAccountsViaSnapTree(accountCount: 4);
+        DeleteStateRoot();
+
+        BlockHeader first = PivotHeader(originalRoot, number: 100);
+        BlockHeader last = PivotHeader(originalRoot, number: 101, parentHash: first.Hash);
+        IStateSyncPivot pivot = StubPivot(first, last);
+
+        IBlockTree blockTree = StubBlockTree((last, first));
+        IBlockAccessListStore balStore = Substitute.For<IBlockAccessListStore>();
+        balStore.Get(last.Hash!).Returns(new BlockAccessList());
+
+        // Wire a stub scope that reports the unchanged root after replay.
+        IWorldStateManager worldStateManager = Substitute.For<IWorldStateManager>();
+        IWorldStateScopeProvider scopeProvider = Substitute.For<IWorldStateScopeProvider>();
+        IWorldStateScopeProvider.IScope scope = Substitute.For<IWorldStateScopeProvider.IScope>();
+        scope.RootHash.Returns(originalRoot);
+        scopeProvider.BeginScope(Arg.Any<BlockHeader?>()).Returns(scope);
+        worldStateManager.GlobalWorldState.Returns(scopeProvider);
+        worldStateManager.VerifyTrie(last, Arg.Any<CancellationToken>()).Returns(true);
+
+        ITreeSyncStore treeSyncStore = Substitute.For<ITreeSyncStore>();
+        FlatBalHealing healing = new(_persistence, pivot, treeSyncStore, worldStateManager,
+            blockTree, balStore, StubSpec(), LimboLogs.Instance);
+
+        bool result = await healing.Run(CancellationToken.None);
+
+        Assert.That(result, Is.True);
+        balStore.Received(1).Get(last.Hash!);
+        treeSyncStore.Received(1).FinalizeSync(last);
+        worldStateManager.Received(1).VerifyTrie(last, Arg.Any<CancellationToken>());
+    }
+
+    [Test]
+    public async Task Run_returns_false_when_bal_is_missing_in_db()
+    {
+        Hash256 originalRoot = WriteAccountsViaSnapTree(accountCount: 4);
+        DeleteStateRoot();
+
+        BlockHeader first = PivotHeader(originalRoot, number: 100);
+        BlockHeader last = PivotHeader(originalRoot, number: 101, parentHash: first.Hash);
+        IStateSyncPivot pivot = StubPivot(first, last);
+
+        IBlockTree blockTree = StubBlockTree((last, first));
+        IBlockAccessListStore balStore = Substitute.For<IBlockAccessListStore>();
+        balStore.Get(last.Hash!).Returns((BlockAccessList?)null);
+
+        IWorldStateManager worldStateManager = Substitute.For<IWorldStateManager>();
+        IWorldStateScopeProvider scopeProvider = Substitute.For<IWorldStateScopeProvider>();
+        IWorldStateScopeProvider.IScope scope = Substitute.For<IWorldStateScopeProvider.IScope>();
+        scopeProvider.BeginScope(Arg.Any<BlockHeader?>()).Returns(scope);
+        worldStateManager.GlobalWorldState.Returns(scopeProvider);
+
+        ITreeSyncStore treeSyncStore = Substitute.For<ITreeSyncStore>();
+        FlatBalHealing healing = new(_persistence, pivot, treeSyncStore, worldStateManager,
+            blockTree, balStore, StubSpec(), LimboLogs.Instance);
+
+        bool result = await healing.Run(CancellationToken.None);
+
+        Assert.That(result, Is.False);
+        treeSyncStore.DidNotReceive().FinalizeSync(Arg.Any<BlockHeader>());
+        worldStateManager.DidNotReceive().VerifyTrie(Arg.Any<BlockHeader>(), Arg.Any<CancellationToken>());
+    }
+
+    [Test]
+    public async Task Run_returns_false_when_parent_chain_does_not_connect()
+    {
+        Hash256 originalRoot = WriteAccountsViaSnapTree(accountCount: 4);
+        DeleteStateRoot();
+
+        BlockHeader first = PivotHeader(originalRoot, number: 100);
+        BlockHeader last = PivotHeader(originalRoot, number: 102, parentHash: ValueKeccak.Compute("orphan-parent").ToCommitment());
+        IStateSyncPivot pivot = StubPivot(first, last);
+
+        // BlockTree returns null for any parent lookup — chain doesn't connect to first pivot.
+        IBlockTree blockTree = Substitute.For<IBlockTree>();
+        blockTree.FindHeader(Arg.Any<Hash256>(), Arg.Any<BlockTreeLookupOptions>(), Arg.Any<long?>()).Returns((BlockHeader?)null);
+
+        IBlockAccessListStore balStore = Substitute.For<IBlockAccessListStore>();
+        ITreeSyncStore treeSyncStore = Substitute.For<ITreeSyncStore>();
+        IWorldStateManager worldStateManager = Substitute.For<IWorldStateManager>();
+
+        FlatBalHealing healing = new(_persistence, pivot, treeSyncStore, worldStateManager,
+            blockTree, balStore, StubSpec(), LimboLogs.Instance);
+
+        bool result = await healing.Run(CancellationToken.None);
+
+        Assert.That(result, Is.False);
+        balStore.DidNotReceive().Get(Arg.Any<Hash256>());
+        treeSyncStore.DidNotReceive().FinalizeSync(Arg.Any<BlockHeader>());
+    }
+
+    [Test]
+    public async Task Run_returns_false_when_final_state_root_mismatches_last_pivot()
+    {
+        Hash256 originalRoot = WriteAccountsViaSnapTree(accountCount: 4);
+        DeleteStateRoot();
+
+        BlockHeader first = PivotHeader(originalRoot, number: 100);
+        // last pivot's StateRoot intentionally differs from what an empty BAL would produce.
+        BlockHeader last = PivotHeader(ValueKeccak.Compute("expected-different-root").ToCommitment(), number: 101, parentHash: first.Hash);
+        IStateSyncPivot pivot = StubPivot(first, last);
+
+        IBlockTree blockTree = StubBlockTree((last, first));
+        IBlockAccessListStore balStore = Substitute.For<IBlockAccessListStore>();
+        balStore.Get(last.Hash!).Returns(new BlockAccessList());
+
+        IWorldStateManager worldStateManager = Substitute.For<IWorldStateManager>();
+        IWorldStateScopeProvider scopeProvider = Substitute.For<IWorldStateScopeProvider>();
+        IWorldStateScopeProvider.IScope scope = Substitute.For<IWorldStateScopeProvider.IScope>();
+        scope.RootHash.Returns(originalRoot);  // Empty BAL leaves root == originalRoot != last.StateRoot
+        scopeProvider.BeginScope(Arg.Any<BlockHeader?>()).Returns(scope);
+        worldStateManager.GlobalWorldState.Returns(scopeProvider);
+
+        ITreeSyncStore treeSyncStore = Substitute.For<ITreeSyncStore>();
+        FlatBalHealing healing = new(_persistence, pivot, treeSyncStore, worldStateManager,
+            blockTree, balStore, StubSpec(), LimboLogs.Instance);
 
         bool result = await healing.Run(CancellationToken.None);
 

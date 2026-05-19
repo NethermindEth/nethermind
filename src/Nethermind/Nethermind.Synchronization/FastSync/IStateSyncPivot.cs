@@ -13,6 +13,12 @@ public interface IStateSyncPivot
     void UpdateHeaderForcefully();
     ConcurrentHashSet<Hash256> UpdatedStorages { get; }
     long Diff { get; }
+    /// <summary>
+    /// The very first pivot snap sync downloaded against. Captured the first time
+    /// the pivot header is set and never advances after that, so BAL healing can
+    /// pin trie reassembly to the state snap sync actually wrote to disk.
+    /// </summary>
+    BlockHeader? FirstPivot { get; }
     /// <summary>Returns <c>true</c> if state sync can be finalized at <paramref name="pivot"/>.</summary>
     /// <param name="pivot">The proposed finalization point.</param>
     /// <returns><c>true</c> if ready to finalize; otherwise <c>false</c>.</returns>
