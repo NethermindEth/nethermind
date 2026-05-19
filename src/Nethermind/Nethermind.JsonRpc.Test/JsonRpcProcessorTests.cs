@@ -49,7 +49,7 @@ public class JsonRpcProcessorTests(bool returnErrors)
     {
         IList<JsonRpcResult> result = await ProcessAsync("{\"id\":\"840b55c4-18b0-431c-be1d-6d22198b53f2\",\"jsonrpc\":\"2.0\",\"method\":\"eth_getTransactionCount\",\"params\":[\"0x7f01d9b227593e033bf8d6fc86e634d27aa85568\",\"0x668c24\"]}");
         result.Should().HaveCount(1);
-        Assert.That(result[0].Response!.Id, Is.EqualTo("840b55c4-18b0-431c-be1d-6d22198b53f2"));
+        Assert.That(result[0].Response!.Id, Is.EqualTo(new JsonRpcId("840b55c4-18b0-431c-be1d-6d22198b53f2")));
     }
 
     private ValueTask<List<JsonRpcResult>> ProcessAsync(string request, JsonRpcContext? context = null, JsonRpcConfig? config = null) =>
@@ -251,7 +251,7 @@ public class JsonRpcProcessorTests(bool returnErrors)
         service.GetErrorResponse(Arg.Any<int>(), Arg.Any<string>(), Arg.Any<object?>(), Arg.Any<string?>())
             .Returns(static ci => new JsonRpcErrorResponse
             {
-                Id = ci.ArgAt<object?>(2),
+                Id = JsonRpcId.FromObject(ci.ArgAt<object?>(2)),
                 Error = new Error { Code = ci.ArgAt<int>(0), Message = ci.ArgAt<string>(1) }
             });
 
@@ -263,7 +263,7 @@ public class JsonRpcProcessorTests(bool returnErrors)
     {
         IList<JsonRpcResult> result = await ProcessAsync("{\"id\":12345678901234567890,\"jsonrpc\":\"2.0\",\"method\":\"eth_getTransactionCount\",\"params\":[\"0x7f01d9b227593e033bf8d6fc86e634d27aa85568\",\"0x668c24\"]}");
         result.Should().HaveCount(1);
-        Assert.That(result[0].Response!.Id, Is.EqualTo(decimal.Parse("12345678901234567890")));
+        Assert.That(result[0].Response!.Id, Is.EqualTo(new JsonRpcId(decimal.Parse("12345678901234567890"))));
         result.DisposeItems();
     }
 
@@ -272,7 +272,7 @@ public class JsonRpcProcessorTests(bool returnErrors)
     {
         IList<JsonRpcResult> result = await ProcessAsync("{\"id\":\"0xa1aa12434\",\"jsonrpc\":\"2.0\",\"method\":\"eth_getTransactionCount\",\"params\":[\"0x7f01d9b227593e033bf8d6fc86e634d27aa85568\",\"0x668c24\"]}");
         result.Should().HaveCount(1);
-        Assert.That(result[0].Response!.Id, Is.EqualTo("0xa1aa12434"));
+        Assert.That(result[0].Response!.Id, Is.EqualTo(new JsonRpcId("0xa1aa12434")));
         result.DisposeItems();
     }
 
@@ -281,7 +281,7 @@ public class JsonRpcProcessorTests(bool returnErrors)
     {
         IList<JsonRpcResult> result = await ProcessAsync("{\"id\":67,\"jsonrpc\":\"2.0\",\"method\":\"eth_getTransactionCount\",\"params\":[\"0x7f01d9b227593e033bf8d6fc86e634d27aa85568\",\"0x668c24\"]}");
         result.Should().HaveCount(1);
-        Assert.That(result[0].Response!.Id, Is.EqualTo(67));
+        Assert.That(result[0].Response!.Id, Is.EqualTo(new JsonRpcId(67)));
         result.DisposeItems();
     }
 
@@ -290,7 +290,7 @@ public class JsonRpcProcessorTests(bool returnErrors)
     {
         IList<JsonRpcResult> result = await ProcessAsync("{\"id\":67,\"jsonrpc\":\"2.0\",\"method\":\"eth_getTransactionCount\",\"Params\":[\"0x7f01d9b227593e033bf8d6fc86e634d27aa85568\",\"0x668c24\"]}");
         result.Should().HaveCount(1);
-        Assert.That(result[0].Response!.Id, Is.EqualTo(67));
+        Assert.That(result[0].Response!.Id, Is.EqualTo(new JsonRpcId(67)));
         if (returnErrors)
         {
             result[0].Response.Should().BeOfType<JsonRpcErrorResponse>();
@@ -308,7 +308,7 @@ public class JsonRpcProcessorTests(bool returnErrors)
     {
         IList<JsonRpcResult> result = await ProcessAsync("{\"id\":9223372036854775807,\"jsonrpc\":\"2.0\",\"method\":\"eth_getTransactionCount\",\"params\":[\"0x7f01d9b227593e033bf8d6fc86e634d27aa85568\",\"0x668c24\"]}");
         result.Should().HaveCount(1);
-        Assert.That(result[0].Response!.Id, Is.EqualTo(long.MaxValue));
+        Assert.That(result[0].Response!.Id, Is.EqualTo(new JsonRpcId(long.MaxValue)));
         result.DisposeItems();
     }
 
@@ -317,7 +317,7 @@ public class JsonRpcProcessorTests(bool returnErrors)
     {
         IList<JsonRpcResult> result = await ProcessAsync("{\"id\":\";\\\\\\\"\",\"jsonrpc\":\"2.0\",\"method\":\"eth_getTransactionCount\",\"params\":[\"0x7f01d9b227593e033bf8d6fc86e634d27aa85568\",\"0x668c24\"]}");
         result.Should().HaveCount(1);
-        Assert.That(result[0].Response!.Id, Is.EqualTo(";\\\""));
+        Assert.That(result[0].Response!.Id, Is.EqualTo(new JsonRpcId(";\\\"")));
         result.DisposeItems();
     }
 
@@ -326,7 +326,7 @@ public class JsonRpcProcessorTests(bool returnErrors)
     {
         IList<JsonRpcResult> result = await ProcessAsync("{\"id\":null,\"jsonrpc\":\"2.0\",\"method\":\"eth_getTransactionCount\",\"params\":[\"0x7f01d9b227593e033bf8d6fc86e634d27aa85568\",\"0x668c24\"]}");
         result.Should().HaveCount(1);
-        Assert.That(result[0].Response!.Id, Is.EqualTo(null));
+        Assert.That(result[0].Response!.Id, Is.EqualTo(JsonRpcId.Null));
         result.DisposeItems();
     }
 

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Numerics;
 using System.Text.Json;
@@ -103,6 +104,14 @@ namespace Nethermind.JsonRpc.Test.Data
             JsonRpcId.FromObject("test").ToObject().Should().Be("test");
         }
 
+        [TestCaseSource(nameof(JsonRpcResponseIdCases))]
+        public void JsonRpcResponse_serializes_typed_ids(JsonRpcId id, string expectedIdJson)
+        {
+            JsonRpcSuccessResponse response = new() { Id = id, Result = "0x1" };
+
+            TestToJson(response, $"{{\"jsonrpc\":\"2.0\",\"result\":\"0x1\",\"id\":{expectedIdJson}}}");
+        }
+
         [Test]
         public void Can_do_roundtrip_null() => TestRoundtrip<SomethingWithId>("{\"id\":null}");
 
@@ -146,5 +155,14 @@ namespace Nethermind.JsonRpc.Test.Data
         }
 
         private static string Serialize(JsonRpcId id) => JsonSerializer.Serialize(id, _jsonRpcIdOptions);
+
+        private static IEnumerable<TestCaseData> JsonRpcResponseIdCases()
+        {
+            yield return new TestCaseData(JsonRpcId.Missing, "null").SetName("Missing");
+            yield return new TestCaseData(JsonRpcId.Null, "null").SetName("ExplicitNull");
+            yield return new TestCaseData(new JsonRpcId(1), "1").SetName("Long");
+            yield return new TestCaseData(new JsonRpcId(1234m), "1234").SetName("DecimalInteger");
+            yield return new TestCaseData(new JsonRpcId("test"), "\"test\"").SetName("String");
+        }
     }
 }

@@ -80,24 +80,10 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
             }
         }
 
-        object? id = null;
+        JsonRpcId id = JsonRpcId.Missing;
         if (element.TryGetProperty("id"u8, out JsonElement idElement))
         {
-            if (idElement.ValueKind == JsonValueKind.Number)
-            {
-                if (idElement.TryGetInt64(out long idNumber))
-                {
-                    id = idNumber;
-                }
-                else if (idElement.TryGetDecimal(out decimal value))
-                {
-                    id = value;
-                }
-            }
-            else
-            {
-                id = idElement.GetString();
-            }
+            id = DeserializeId(idElement);
         }
 
         string? method = null;
@@ -114,10 +100,40 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
         return new JsonRpcRequest
         {
             JsonRpc = jsonRpc!,
-            Id = id!,
+            Id = id,
             Method = method!,
             Params = paramsElement
         };
+    }
+
+    private static JsonRpcId DeserializeId(JsonElement idElement)
+    {
+        if (idElement.ValueKind == JsonValueKind.Number)
+        {
+            if (idElement.TryGetInt64(out long idNumber))
+            {
+                return new JsonRpcId(idNumber);
+            }
+
+            if (idElement.TryGetDecimal(out decimal value) && value.Scale == 0)
+            {
+                return new JsonRpcId(value);
+            }
+
+            throw new JsonException("Unsupported JSON-RPC ID value.");
+        }
+
+        if (idElement.ValueKind == JsonValueKind.Null)
+        {
+            return JsonRpcId.Null;
+        }
+
+        if (idElement.ValueKind == JsonValueKind.String)
+        {
+            return new JsonRpcId(idElement.GetString()!);
+        }
+
+        throw new JsonException("Unsupported JSON-RPC ID value.");
     }
 
     private ArrayPoolList<JsonRpcRequest> DeserializeArray(JsonElement element)
