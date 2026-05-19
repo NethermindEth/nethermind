@@ -17,9 +17,8 @@ public class ForkConfigSummary
 
 public class ForkConfig
 {
-    public int? ActivationTime { get; init; }
-    public int? ActivationBlock { get; init; }
-    public required BlobScheduleSettingsForRpc? BlobSchedule { get; init; }
+    public required int ActivationTime { get; init; }
+    public required BlobScheduleSettingsForRpc BlobSchedule { get; init; }
     public required ulong ChainId { get; init; }
     public required byte[] ForkId { get; init; }
     public required OrderedDictionary<string, Address> Precompiles { get; init; }
