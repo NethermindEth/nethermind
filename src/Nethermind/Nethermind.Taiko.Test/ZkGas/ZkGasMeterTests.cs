@@ -247,4 +247,20 @@ public class ZkGasMeterTests
         Assert.That(result, Is.False);
         Assert.That(meter.IsLimitExceeded, Is.True);
     }
+
+    [Test]
+    public void CommitTransaction_PreservesLimitExceeded_WhenChargeFailedMidTx()
+    {
+        ZkGasMeter meter = new(blockZkGasLimit: 1000, txIntrinsicZkGas: 0);
+
+        meter.ChargeOpcode(0xf0, 800); // succeeds: 800 in-flight
+        meter.ChargeOpcode(0xf0, 300); // fails: 800+300 > 1000, _txZkGasUsed stays at 800
+        Assert.That(meter.IsLimitExceeded, Is.True);
+
+        // Must not commit the undercounted partial total and clear the flag.
+        bool committed = meter.CommitTransaction();
+        Assert.That(committed, Is.False);
+        Assert.That(meter.IsLimitExceeded, Is.True);
+        Assert.That(meter.BlockZkGasUsed, Is.EqualTo(0UL));
+    }
 }

@@ -218,9 +218,7 @@ public class OptimismEthRpcModule(
         Transaction transaction = block.Transactions[(int)positionIndex];
         RecoverTxSenderIfNeeded(transaction);
 
-        TxReceipt? receipt = _receiptFinder
-            .Get(block)
-            .FirstOrDefault(r => r.TxHash == transaction.Hash);
+        TxReceipt? receipt = TryGetMatchingReceipt(_receiptFinder.Get(block), transaction, (int)positionIndex);
 
         TransactionForRpc transactionModel = TransactionForRpc.FromTransaction(
             transaction,
@@ -272,6 +270,7 @@ public class OptimismEthRpcModule(
                 for (int i = 0; i < txs.Length; i++)
                 {
                     Transaction tx = transactions[i];
+                    TxReceipt? receipt = TryGetMatchingReceipt(receipts, tx, i);
                     TransactionForRpc rpcTx = TransactionForRpc.FromTransaction(
                         tx,
                         new(
@@ -281,12 +280,11 @@ public class OptimismEthRpcModule(
                             txIndex: i,
                             blockTimestamp: block.Timestamp,
                             baseFee: block.BaseFeePerGas,
-                            receipt: receipts.FirstOrDefault(r => r.TxHash?.Equals(tx.Hash) ?? false)));
+                            receipt: receipt));
 
                     if (rpcTx is DepositTransactionForRpc depositTx)
                     {
-                        OptimismTxReceipt? receipt = receipts.FirstOrDefault(r => r.TxHash?.Equals(tx.Hash) ?? false) as OptimismTxReceipt;
-                        depositTx.DepositReceiptVersion = receipt?.DepositReceiptVersion;
+                        depositTx.DepositReceiptVersion = (receipt as OptimismTxReceipt)?.DepositReceiptVersion;
                     }
 
                     txs[i] = rpcTx;
@@ -297,5 +295,30 @@ public class OptimismEthRpcModule(
         }
 
         return ResultWrapper<BlockForRpc?>.Success(result);
+    }
+
+    private static TxReceipt? TryGetMatchingReceipt(TxReceipt[] receipts, Transaction tx, int txIndex)
+    {
+        TxReceipt? indexedReceipt = txIndex < receipts.Length ? receipts[txIndex] : null;
+        if (indexedReceipt?.TxHash == tx.Hash)
+        {
+            return indexedReceipt;
+        }
+
+        if (tx.Hash is not Hash256 txHash)
+        {
+            return null;
+        }
+
+        for (int i = 0; i < receipts.Length; i++)
+        {
+            TxReceipt receipt = receipts[i];
+            if (receipt.TxHash == txHash)
+            {
+                return receipt;
+            }
+        }
+
+        return null;
     }
 }
