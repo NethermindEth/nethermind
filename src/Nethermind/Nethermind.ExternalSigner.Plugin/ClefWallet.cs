@@ -64,7 +64,7 @@ namespace Nethermind.ExternalSigner.Plugin
             return false;
         }
 
-        public bool TrySign(in ValueHash256 message, Address address, out Signature signature)
+        public bool TrySign(in ValueHash256 message, Address address, [NotNullWhen(true)] out Signature signature)
         {
             string? signed = rpcClient.Post<string>(
                 "account_signData",
@@ -80,7 +80,7 @@ namespace Nethermind.ExternalSigner.Plugin
             return true;
         }
 
-        public bool TrySignMessage(byte[] message, Address address, out Signature signature)
+        public bool TrySignMessage(byte[] message, Address address, [NotNullWhen(true)] out Signature signature)
         {
             ArgumentNullException.ThrowIfNull(message);
             string? signed = rpcClient.Post<string>(
@@ -97,7 +97,7 @@ namespace Nethermind.ExternalSigner.Plugin
             return true;
         }
 
-        public bool TrySign(BlockHeader header, Address address, out Signature signature)
+        public bool TrySign(BlockHeader header, Address address, [NotNullWhen(true)] out Signature signature)
         {
             ArgumentNullException.ThrowIfNull(header);
 
