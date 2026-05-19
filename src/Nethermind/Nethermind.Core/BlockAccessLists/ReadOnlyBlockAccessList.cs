@@ -19,12 +19,20 @@ namespace Nethermind.Core.BlockAccessLists;
 public class ReadOnlyBlockAccessList : IEquatable<ReadOnlyBlockAccessList>
 {
     private readonly Dictionary<Address, ReadOnlyAccountChanges> _accountChanges;
+    private readonly ReadOnlyAccountChanges[] _orderedAccounts;
 
     [JsonIgnore]
     public int ItemCount { get; }
 
     public EnumerableWithCount<ReadOnlyAccountChanges> AccountChanges
         => new(_accountChanges.Values, _accountChanges.Count);
+
+    /// <summary>
+    /// Span over the address-sorted accounts (same data as <see cref="AccountChanges"/>, but
+    /// skips the dictionary's enumerator for hot walks).
+    /// </summary>
+    [JsonIgnore]
+    public ReadOnlySpan<ReadOnlyAccountChanges> AccountChangesAsSpan => _orderedAccounts;
 
     public bool HasAccount(Address address) => _accountChanges.ContainsKey(address);
 
@@ -41,6 +49,7 @@ public class ReadOnlyBlockAccessList : IEquatable<ReadOnlyBlockAccessList>
     /// </summary>
     public ReadOnlyBlockAccessList(ReadOnlyAccountChanges[] orderedAccounts, int itemCount)
     {
+        _orderedAccounts = orderedAccounts;
         _accountChanges = new Dictionary<Address, ReadOnlyAccountChanges>(orderedAccounts.Length);
         foreach (ReadOnlyAccountChanges a in orderedAccounts)
         {
