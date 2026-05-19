@@ -42,7 +42,7 @@ public class PersistenceManagerTests
         {
             CompactSize = 16,
             MinReorgDepth = 64,
-            MaxInMemoryReorgDepth = 256,
+            MaxInMemoryBaseSnapshotCount = 128 + 32,
             LongFinalityReorgDepth = 90000,
             EnableLongFinality = true
         };
@@ -120,7 +120,7 @@ public class PersistenceManagerTests
         StateId latest = CreateStateId(60);
         _finalizedStateProvider.SetFinalizedBlockNumber(100);
 
-        (PersistedSnapshot? persistedToPersist, Snapshot? toPersist, long? toConvert) = _persistenceManager.DetermineSnapshotAction(latest);
+        (PersistedSnapshot? persistedToPersist, Snapshot? toPersist, PersistenceManager.ConversionCandidate? toConvert) = _persistenceManager.DetermineSnapshotAction(latest);
 
         Assert.That(persistedToPersist, Is.Null);
         Assert.That(toPersist, Is.Null);
@@ -145,7 +145,7 @@ public class PersistenceManagerTests
         // Create snapshot (compacted or not based on parameter)
         using Snapshot expectedSnapshot = CreateSnapshot(persisted, target, compacted: useCompacted);
 
-        (PersistedSnapshot? persistedToPersist, Snapshot? toPersist, long? toConvert) = _persistenceManager.DetermineSnapshotAction(latest);
+        (PersistedSnapshot? persistedToPersist, Snapshot? toPersist, PersistenceManager.ConversionCandidate? toConvert) = _persistenceManager.DetermineSnapshotAction(latest);
 
         Assert.That(persistedToPersist, Is.Null);
         Assert.That(toPersist, Is.Not.Null);
@@ -166,7 +166,7 @@ public class PersistenceManagerTests
         StateId latest = CreateStateId(150);
         _finalizedStateProvider.SetFinalizedBlockNumber(10);
 
-        (PersistedSnapshot? persistedToPersist, Snapshot? toPersist, long? toConvert) = _persistenceManager.DetermineSnapshotAction(latest);
+        (PersistedSnapshot? persistedToPersist, Snapshot? toPersist, PersistenceManager.ConversionCandidate? toConvert) = _persistenceManager.DetermineSnapshotAction(latest);
 
         Assert.That(persistedToPersist, Is.Null);
         Assert.That(toPersist, Is.Null);
@@ -198,7 +198,7 @@ public class PersistenceManagerTests
 
         using Snapshot expectedSnapshot = CreateSnapshot(persisted, target, compacted: false);
 
-        (PersistedSnapshot? persistedToPersist, Snapshot? toPersist, long? toConvert) = _persistenceManager.DetermineSnapshotAction(latest);
+        (PersistedSnapshot? persistedToPersist, Snapshot? toPersist, PersistenceManager.ConversionCandidate? toConvert) = _persistenceManager.DetermineSnapshotAction(latest);
 
         // The load-bearing check: the long-finality conversion path is short-circuited.
         // toPersist may still be populated by the normal finalized-snapshot-to-RocksDB
@@ -214,25 +214,28 @@ public class PersistenceManagerTests
     }
 
     [Test]
-    public void DetermineSnapshotAction_UnfinalizedAndAboveForceLimit_ReturnsToConvert()
+    public void DetermineSnapshotAction_UnfinalizedAndAboveForceLimit_ForcePersistsFromTip()
     {
-        // Setup: persisted at Block0, latest at 300, finalized at 10
-        // In-memory depth is ~301 (> 256 forced boundary)
-        // Now returns ToConvert instead of force-persisting
+        // Force-persist mode: depth (300) > MaxInMemoryBaseSnapshotCount (160), finality stalled.
+        // BFS seeds with the in-memory tip and persists whichever candidate extends from
+        // currentPersistedState — no waiting for finalization.
         StateId persisted = Block0;
         StateId latest = CreateStateId(300);
         StateId target = CreateStateId(1);
 
         _finalizedStateProvider.SetFinalizedBlockNumber(10);
 
-        // Create non-compacted snapshot chain from persisted state
         using Snapshot expectedSnapshot = CreateSnapshot(persisted, target, compacted: false);
 
-        (PersistedSnapshot? persistedToPersist, Snapshot? toPersist, long? toConvert) = _persistenceManager.DetermineSnapshotAction(latest);
+        (PersistedSnapshot? persistedToPersist, Snapshot? toPersist, PersistenceManager.ConversionCandidate? toConvert) = _persistenceManager.DetermineSnapshotAction(latest);
 
         Assert.That(persistedToPersist, Is.Null);
-        Assert.That(toPersist, Is.Null);
-        Assert.That(toConvert, Is.Not.Null);
+        Assert.That(toPersist, Is.Not.Null);
+        Assert.That(toConvert, Is.Null);
+        Assert.That(toPersist!.From, Is.EqualTo(persisted));
+        Assert.That(toPersist.To, Is.EqualTo(target));
+
+        toPersist.Dispose();
     }
 
     [Test]
@@ -255,20 +258,21 @@ public class PersistenceManagerTests
     [Test]
     public void DetermineSnapshotAction_FinalizedNoInMemory_FallsBackToPersistedSnapshot()
     {
-        // Setup: persisted at Block0, latest at 100, finalized at 100
+        // Setup: persisted at Block0, latest at 100, finalized at 16 — the BFS seeds with the
+        // finalized state, which corresponds exactly to the persisted snapshot we mock below.
         StateId latest = CreateStateId(100);
-        _finalizedStateProvider.SetFinalizedBlockNumber(100);
-        _finalizedStateProvider.SetFinalizedStateRootAt(16, new Hash256(CreateStateId(16).StateRoot.Bytes));
+        StateId target = CreateStateId(16);
+        _finalizedStateProvider.SetFinalizedBlockNumber(16);
+        _finalizedStateProvider.SetFinalizedStateRootAt(16, new Hash256(target.StateRoot.Bytes));
 
         // Don't create any in-memory snapshots — configure persisted snapshot fallback
-        StateId target = CreateStateId(16);
         using ArenaWriter emptyWriter = _memArena.CreateWriter(0);
         (_, ArenaReservation emptyRes) = emptyWriter.Complete();
         PersistedSnapshot persisted = new(Block0, target, emptyRes, NullBlobArenaManager.Instance, PersistedSnapshotTier.Small);
         _persistedSnapshotRepository.TryLeaseSnapshotTo(target, out Arg.Any<PersistedSnapshot?>())
             .Returns(x => { x[1] = persisted; return true; });
 
-        (PersistedSnapshot? persistedToPersist, Snapshot? toPersist, long? toConvert) = _persistenceManager.DetermineSnapshotAction(latest);
+        (PersistedSnapshot? persistedToPersist, Snapshot? toPersist, PersistenceManager.ConversionCandidate? toConvert) = _persistenceManager.DetermineSnapshotAction(latest);
 
         Assert.That(persistedToPersist, Is.Not.Null);
         Assert.That(toPersist, Is.Null);
@@ -520,11 +524,12 @@ public class PersistenceManagerTests
     [Test]
     public void FlushToPersistence_PrefersFinalizedOverUnfinalized()
     {
-        // Arrange - two snapshots at same block, one finalized
+        // Arrange - two snapshots at same block, one finalized. Set finalized block to the
+        // candidate block so the BFS seed lands directly on the finalized state.
         StateId finalizedState = CreateStateId(16, rootByte: 1);
         StateId unfinalizedState = CreateStateId(16, rootByte: 2);
 
-        _finalizedStateProvider.SetFinalizedBlockNumber(100);
+        _finalizedStateProvider.SetFinalizedBlockNumber(16);
         _finalizedStateProvider.SetFinalizedStateRootAt(16, new Hash256(finalizedState.StateRoot.Bytes));
 
         // Create both snapshots

@@ -35,8 +35,7 @@ public class PersistenceManager(
 {
     private readonly ILogger _logger = logManager.GetClassLogger<PersistenceManager>();
     private readonly int _minReorgDepth = configuration.MinReorgDepth;
-    private readonly int _maxInMemoryReorgDepth = configuration.MaxInMemoryReorgDepth;
-    private readonly int _longFinalityReorgDepth = configuration.LongFinalityReorgDepth;
+    private readonly int _maxInMemoryBaseSnapshotCount = configuration.MaxInMemoryBaseSnapshotCount;
     private readonly int _compactSize = configuration.CompactSize;
     private readonly bool _enableLongFinality = configuration.EnableLongFinality;
     private readonly IPersistence _persistence = persistence;
@@ -186,262 +185,205 @@ public class PersistenceManager(
         return _currentPersistedStateId;
     }
 
-    private (PersistedSnapshot? Persisted, Snapshot? InMemory) GetFinalizedSnapshotAtBlockNumber(long blockNumber, StateId currentPersistedState, bool compactedSnapshot)
+    /// <summary>
+    /// Two-phase action: Phase 1 (persistence to RocksDB) runs first; Phase 2 (conversion to
+    /// the HSST persisted-snapshot tier) runs only when Phase 1 returns no candidate.
+    /// </summary>
+    /// <remarks>
+    /// Phase 1 seed selection:
+    /// <list type="bullet">
+    ///   <item>Force-persist short-circuit when <c>snapshotsDepth &gt; MaxInMemoryBaseSnapshotCount</c> →
+    ///   seed = <see cref="ISnapshotRepository.LastRegisteredState"/>; the finality gate is bypassed.</item>
+    ///   <item>Otherwise, require <c>finalizedBlock &gt; persistedBlock + CompactSize</c> AND
+    ///   <c>snapshotsDepth + CompactSize &gt; MinReorgDepth</c> → seed = finalized state.</item>
+    /// </list>
+    /// Phase 2 runs only with <see cref="_enableLongFinality"/> enabled AND
+    /// <c>SnapshotCount &gt; MaxInMemoryBaseSnapshotCount</c>.
+    /// </remarks>
+    internal (PersistedSnapshot? ToPersistPersistedSnapshot, Snapshot? ToPersist, ConversionCandidate? ToConvert) DetermineSnapshotAction(StateId latestSnapshot)
     {
-        Hash256? finalizedStateRoot = _finalizedStateProvider.GetFinalizedStateRootAt(blockNumber);
-        if (finalizedStateRoot is null) return (null, null);
+        StateId currentPersistedState = GetCurrentPersistedStateId();
+        long snapshotsDepth = latestSnapshot.BlockNumber - currentPersistedState.BlockNumber;
 
-        // The finalized state root pins the exact StateId we want at `blockNumber`, so the
-        // dictionaries can be hit directly — no walk needed. (Walk-from-tip is reserved for
-        // the first-snapshot path, where the state root is unknown.)
-        StateId targetStateId = new(blockNumber, finalizedStateRoot);
-        if (TryLeaseInMemoryVariant(targetStateId, compactedSnapshot, out Snapshot? inMemory))
+        // ---- Phase 1: persistence to RocksDB ----
+        // Up to two seeds populate the BFS queue: the finalized state (preferred — anchors the
+        // canonical chain) and the in-memory tip (`LastRegisteredState`, force-persist fallback).
+        // The force-persist trigger uses tip-only; the normal trigger uses finalized + tip so the
+        // walk still has an entry point when the snapshot graph hasn't filled in between persisted
+        // and finalized yet.
+        StateId? finalizedSeed = null;
+        StateId? tipSeed = null;
+        if (snapshotsDepth > _maxInMemoryBaseSnapshotCount)
         {
-            if (inMemory!.From == currentPersistedState)
+            tipSeed = _snapshotRepository.LastRegisteredState;
+        }
+        else
+        {
+            long finalizedBlockNumber = _finalizedStateProvider.FinalizedBlockNumber;
+            if (finalizedBlockNumber >= currentPersistedState.BlockNumber + _compactSize
+                && snapshotsDepth + _compactSize > _minReorgDepth)
             {
-                if (_logger.IsDebug) _logger.Debug($"Persisting compacted state {targetStateId}");
-                return (null, inMemory);
+                Hash256? finalizedStateRoot = _finalizedStateProvider.GetFinalizedStateRootAt(finalizedBlockNumber);
+                if (finalizedStateRoot is not null)
+                    finalizedSeed = new StateId(finalizedBlockNumber, finalizedStateRoot);
+                tipSeed = _snapshotRepository.LastRegisteredState;
             }
-            inMemory.Dispose();
         }
 
-        // No in-memory snapshot found — try persisted snapshot at same block/root
-        bool found = compactedSnapshot
-            ? _largeRepo.TryLeaseSnapshotTo(targetStateId, out PersistedSnapshot? persisted)
-            : _smallRepo.TryLeaseSnapshotTo(targetStateId, out persisted);
-        if (found)
+        if (finalizedSeed is not null || tipSeed is not null)
         {
-            if (persisted!.From == currentPersistedState)
-                return (persisted, null);
-            persisted.Dispose();
+            (PersistedSnapshot? persisted, Snapshot? inMemory) =
+                TryFindSnapshotToPersist(finalizedSeed, tipSeed, currentPersistedState);
+            if (persisted is not null || inMemory is not null)
+                return (persisted, inMemory, null);
+        }
+
+        // ---- Phase 2: conversion to the persisted-snapshot tier ----
+        if (!_enableLongFinality) return (null, null, null);
+        if (_snapshotRepository.SnapshotCount <= _maxInMemoryBaseSnapshotCount) return (null, null, null);
+
+        return (null, null, TryFindSnapshotToConvert(currentPersistedState));
+    }
+
+    /// <summary>
+    /// Phase 1 BFS — walks backward over the snapshot graph from <paramref name="seed"/> via
+    /// <see cref="Snapshot.From"/> pointers, returning the first snapshot whose <c>From</c> equals
+    /// <paramref name="currentPersistedState"/>. At each visited <c>StateId</c> the four candidate
+    /// sources are tried in this fixed priority order:
+    /// <list type="number">
+    ///   <item><c>_largeRepo.TryLeaseSnapshotTo</c> — persisted base, depth == CompactSize</item>
+    ///   <item><c>_smallRepo.TryLeaseSnapshotTo</c> — persisted base, sub-CompactSize</item>
+    ///   <item><c>_snapshotRepository.TryLeaseCompactedState</c> filtered to depth == CompactSize —
+    ///   in-memory boundary compacted</item>
+    ///   <item><c>_snapshotRepository.TryLeaseState</c> — in-memory base, depth == 1</item>
+    /// </list>
+    /// </summary>
+    /// <remarks>
+    /// Compacted persisted entries (large hierarchical / small compacted) and non-boundary
+    /// in-memory compacted entries are not returnable candidates; they are still traversed for
+    /// navigation, acting as skip pointers that jump multiple blocks per hop and shorten the path
+    /// to a candidate.
+    /// </remarks>
+    private (PersistedSnapshot? Persisted, Snapshot? InMemory) TryFindSnapshotToPersist(
+        StateId? finalizedSeed, StateId? tipSeed, StateId currentPersistedState)
+    {
+        HashSet<StateId> visited = [];
+        Queue<StateId> queue = new();
+        EnqueueAncestor(finalizedSeed, currentPersistedState, visited, queue);
+        EnqueueAncestor(tipSeed, currentPersistedState, visited, queue);
+        if (queue.Count == 0) return (null, null);
+
+        while (queue.TryDequeue(out StateId current))
+        {
+            // Priority 1: persisted base in the Large tier (depth == CompactSize).
+            if (_largeRepo.TryLeaseSnapshotTo(current, out PersistedSnapshot? largeBase))
+            {
+                if (largeBase!.From == currentPersistedState) return (largeBase, null);
+                EnqueueAncestor(largeBase.From, currentPersistedState, visited, queue);
+                largeBase.Dispose();
+            }
+
+            // Priority 2: persisted base in the Small tier (sub-CompactSize).
+            if (_smallRepo.TryLeaseSnapshotTo(current, out PersistedSnapshot? smallBase))
+            {
+                if (smallBase!.From == currentPersistedState) return (smallBase, null);
+                EnqueueAncestor(smallBase.From, currentPersistedState, visited, queue);
+                smallBase.Dispose();
+            }
+
+            // Priority 3: in-memory boundary compacted (depth == CompactSize).
+            if (_snapshotRepository.TryLeaseCompactedState(current, out Snapshot? inMemCompacted))
+            {
+                if (inMemCompacted!.To.BlockNumber - inMemCompacted.From.BlockNumber == _compactSize
+                    && inMemCompacted.From == currentPersistedState)
+                    return (null, inMemCompacted);
+                EnqueueAncestor(inMemCompacted.From, currentPersistedState, visited, queue);
+                inMemCompacted.Dispose();
+            }
+
+            // Priority 4: in-memory base (depth == 1).
+            if (_snapshotRepository.TryLeaseState(current, out Snapshot? inMemBase))
+            {
+                if (inMemBase!.From == currentPersistedState) return (null, inMemBase);
+                EnqueueAncestor(inMemBase.From, currentPersistedState, visited, queue);
+                inMemBase.Dispose();
+            }
+
+            // Pure navigation: compacted persisted entries are never returned as candidates but
+            // act as skip pointers (their range covers multiple blocks per hop).
+            if (_largeRepo.TryLeaseCompactedSnapshotTo(current, out PersistedSnapshot? largeCompacted))
+            {
+                EnqueueAncestor(largeCompacted!.From, currentPersistedState, visited, queue);
+                largeCompacted.Dispose();
+            }
+            if (_smallRepo.TryLeaseCompactedSnapshotTo(current, out PersistedSnapshot? smallCompacted))
+            {
+                EnqueueAncestor(smallCompacted!.From, currentPersistedState, visited, queue);
+                smallCompacted.Dispose();
+            }
         }
 
         return (null, null);
     }
 
-    /// <summary>
-    /// Force-persist fallback: walk backward from the in-memory snapshot repository's
-    /// <see cref="ISnapshotRepository.LastRegisteredState"/> via <see cref="Snapshot.From"/> pointers and
-    /// return the snapshot at exactly <paramref name="blockNumber"/> whose
-    /// <see cref="Snapshot.From"/> equals <paramref name="currentPersistedState"/>. Unlike the finalized
-    /// path the state root isn't pinned, so a direct dictionary hit isn't possible — the walk picks the
-    /// canonical-chain candidate at the target block.
-    /// </summary>
-    /// <remarks>
-    /// At each cursor the preferred variant (compacted vs base, per <paramref name="compactedSnapshot"/>)
-    /// is leased. On miss or overshoot, the other variant is used purely for navigation — compacted
-    /// snapshots act as skip pointers covering multi-block hops; base snapshots cover unit-block steps.
-    /// The walk bails when it can only advance below <paramref name="blockNumber"/>, when both variants
-    /// are absent at the cursor, or on a self-loop edge.
-    /// </remarks>
-    private Snapshot? GetFirstSnapshotAtBlockNumber(long blockNumber, StateId currentPersistedState, bool compactedSnapshot)
+    private static void EnqueueAncestor(StateId? from, in StateId currentPersistedState, HashSet<StateId> visited, Queue<StateId> queue)
     {
-        StateId? cursor = _snapshotRepository.LastRegisteredState;
-        while (cursor is not null && cursor.Value.BlockNumber >= blockNumber)
+        if (from is not null && from.Value.BlockNumber > currentPersistedState.BlockNumber && visited.Add(from.Value))
+            queue.Enqueue(from.Value);
+    }
+
+    /// <summary>
+    /// Phase 2 — scan in-memory snapshots in ascending block-number order, picking the first whose
+    /// <c>From</c> is already on disk (either equals <paramref name="currentPersistedState"/> or is the
+    /// <c>To</c> of an existing persisted snapshot in either tier). Priority within each <c>StateId</c>:
+    /// boundary-CompactSize compacted (triggers batch convert) over base (single convert).
+    /// </summary>
+    private ConversionCandidate? TryFindSnapshotToConvert(StateId currentPersistedState)
+    {
+        using ArrayPoolList<StateId> ordered = _snapshotRepository.GetSnapshotBeforeStateId(long.MaxValue);
+        foreach (StateId X in ordered)
         {
-            bool atTarget = cursor.Value.BlockNumber == blockNumber;
-            bool leasedPreferred = TryLeaseInMemoryVariant(cursor.Value, compactedSnapshot, out Snapshot? snapshot);
-
-            if (leasedPreferred && atTarget)
+            // Priority 1: boundary-CompactSize in-memory compacted → batch convert.
+            if (_snapshotRepository.TryLeaseCompactedState(X, out Snapshot? compacted))
             {
-                if (snapshot!.From == currentPersistedState)
-                {
-                    if (_logger.IsWarn) _logger.Warn($"Force persisting state {snapshot.To}");
-                    return snapshot;
-                }
-                snapshot.Dispose();
-                return null;
+                if (compacted!.To.BlockNumber - compacted.From.BlockNumber == _compactSize
+                    && IsOnDisk(compacted.From, currentPersistedState))
+                    return new ConversionCandidate(compacted, Base: null);
+                compacted.Dispose();
             }
 
-            StateId? next = null;
-            if (leasedPreferred)
+            // Priority 2: in-memory base → single convert.
+            if (_snapshotRepository.TryLeaseState(X, out Snapshot? baseSnap))
             {
-                if (snapshot!.From.BlockNumber >= blockNumber) next = snapshot.From;
-                snapshot.Dispose();
+                if (IsOnDisk(baseSnap!.From, currentPersistedState))
+                    return new ConversionCandidate(Compacted: null, baseSnap);
+                baseSnap.Dispose();
             }
-
-            if (next is null)
-            {
-                if (!TryLeaseInMemoryVariant(cursor.Value, !compactedSnapshot, out Snapshot? navSnapshot)) return null;
-
-                if (navSnapshot!.From.BlockNumber >= blockNumber) next = navSnapshot.From;
-                navSnapshot.Dispose();
-            }
-
-            if (next is null || next.Value == cursor.Value) return null;
-            cursor = next;
         }
 
         return null;
     }
 
-    private bool TryLeaseInMemoryVariant(in StateId stateId, bool compacted, out Snapshot? snapshot) =>
-        compacted
-            ? _snapshotRepository.TryLeaseCompactedState(stateId, out snapshot)
-            : _snapshotRepository.TryLeaseState(stateId, out snapshot);
+    private bool IsOnDisk(in StateId state, in StateId currentPersistedState) =>
+        state == currentPersistedState
+        || _largeRepo.HasBaseSnapshot(state)
+        || _smallRepo.HasBaseSnapshot(state);
 
-    internal (PersistedSnapshot? ToPersistPersistedSnapshot, Snapshot? ToPersist, long? snapshotLevelToConvert) DetermineSnapshotAction(StateId latestSnapshot)
-    {
-        long lastSnapshotNumber = latestSnapshot.BlockNumber;
-
-        long? TryGetSnapshotLevelToConvert() => _snapshotRepository.GetEarliestSnapshotId()?.BlockNumber;
-
-        StateId currentPersistedState = GetCurrentPersistedStateId();
-        long finalizedBlockNumber = _finalizedStateProvider.FinalizedBlockNumber;
-        long snapshotsDepth = lastSnapshotNumber - currentPersistedState.BlockNumber;
-
-        // Long-finality (HSST persisted-snapshot tier) decision branches. When the feature is
-        // disabled, skip the conversion/force-persist paths entirely and fall through to the
-        // normal finalized-snapshot-to-RocksDB persistence flow below — the behaviour predating
-        // the persisted-snapshot tier.
-        if (_enableLongFinality)
-        {
-            if (snapshotsDepth - _compactSize < _minReorgDepth)
-            {
-                long? earliestInMemory = TryGetSnapshotLevelToConvert();
-                if (earliestInMemory == null)
-                {
-                    return (null, null, null);
-                }
-
-                long inMemoryDepth = lastSnapshotNumber - earliestInMemory.Value;
-                if (inMemoryDepth <= _maxInMemoryReorgDepth + _compactSize)
-                {
-                    // No action needed
-                    return (null, null, null);
-                }
-
-                return (null, null, TryGetSnapshotLevelToConvert());
-            }
-
-            long afterPersistPersistedBlockNumber = currentPersistedState.BlockNumber + _compactSize;
-            if (afterPersistPersistedBlockNumber > finalizedBlockNumber)
-            {
-                if (snapshotsDepth <= _maxInMemoryReorgDepth)
-                {
-                    // No action needed
-                    return (null, null, null);
-                }
-
-                if (snapshotsDepth > _longFinalityReorgDepth)
-                {
-                    // Need to force persisted snapshot
-                    return (TryGetForcePersistedSnapshot(currentPersistedState, snapshotsDepth), null, null);
-                }
-
-                // Memory pressure with unfinalized state: convert to persisted snapshots instead of force-persisting to RocksDB.
-                // Mirror the ShallowDepth floor: never convert unless the in-memory window is wider than
-                // _maxInMemoryReorgDepth + _compactSize, otherwise we end up persisting (and removing from memory)
-                // the freshest snapshot before its parent edges exist on disk — producing gaps in Persisted.Base on restart.
-                long? earliestInMemoryUnf = TryGetSnapshotLevelToConvert();
-                if (earliestInMemoryUnf == null)
-                {
-                    return (null, null, null);
-                }
-
-                long inMemoryDepthUnf = lastSnapshotNumber - earliestInMemoryUnf.Value;
-                if (inMemoryDepthUnf <= _maxInMemoryReorgDepth + _compactSize)
-                {
-                    return (null, null, null);
-                }
-
-                if (_logger.IsWarn) _logger.Warn($"Very long unfinalized state. Converting to persisted snapshots. finalized block number is {finalizedBlockNumber}.");
-
-                return (null, null, earliestInMemoryUnf);
-            }
-        }
-
-        (PersistedSnapshot? persistedSnapshot, Snapshot? snapshotToPersist) =
-            GetFinalizedSnapshotAtBlockNumber(currentPersistedState.BlockNumber + _compactSize, currentPersistedState, true);
-
-        bool compactedSnapshot = true;
-        if (snapshotToPersist is null && persistedSnapshot is null)
-        {
-            compactedSnapshot = false;
-            (persistedSnapshot, snapshotToPersist) =
-                GetFinalizedSnapshotAtBlockNumber(currentPersistedState.BlockNumber + 1, currentPersistedState, false);
-        }
-
-        if (snapshotToPersist is not null)
-            return (null, snapshotToPersist, null);
-
-        if (persistedSnapshot is not null)
-        {
-            if (compactedSnapshot)
-            {
-                _logger.Warn($"Persisting persisted snapshot {persistedSnapshot.From} to {persistedSnapshot.To}, is compacted snapshot {compactedSnapshot}. {currentPersistedState}");
-            }
-            return (persistedSnapshot, null, null);
-        }
-
-        if (_logger.IsWarn) _logger.Warn($"Unable to find snapshot to persist. Current persisted state {currentPersistedState}. Compact size {_compactSize}.");
-        return (null, null, null);
-    }
+    internal sealed record ConversionCandidate(Snapshot? Compacted, Snapshot? Base);
 
     public void AddToPersistence(StateId latestSnapshot)
     {
         using Lock.Scope scope = _persistenceLock.EnterScope();
         while (true)
         {
-            (PersistedSnapshot? persistedToPersist, Snapshot? toPersist, long? snapshotLevelToConvert) = DetermineSnapshotAction(latestSnapshot);
+            (PersistedSnapshot? persistedToPersist, Snapshot? toPersist, ConversionCandidate? toConvert) =
+                DetermineSnapshotAction(latestSnapshot);
 
             if (toPersist is not null)
             {
                 using Snapshot _ = toPersist;
                 PersistSnapshot(toPersist);
                 _currentPersistedStateId = toPersist.To;
-            }
-            else if (snapshotLevelToConvert.HasValue)
-            {
-                long start = snapshotLevelToConvert.Value;
-                // Next compactSize-aligned boundary >= start
-                long end = ((start - 1) / _compactSize + 1) * _compactSize;
-
-                ArrayPoolList<StateId> allStateIds = new(64);
-                int boundaryStart = 0;
-                for (long b = start; b <= end; b++)
-                {
-                    if (b == end) boundaryStart = allStateIds.Count;
-                    using ArrayPoolList<StateId> statesAtBlock = _snapshotRepository.GetStatesAtBlockNumber(b);
-                    foreach (StateId state in statesAtBlock)
-                        allStateIds.Add(state);
-                }
-
-                // Parallel base conversion across the whole batch
-                Parallel.ForEach(
-                    allStateIds,
-                    new ParallelOptions { CancellationToken = _cancelTokenSource.Token },
-                    state =>
-                    {
-                        if (_snapshotRepository.TryLeaseState(state, out Snapshot? snapshot))
-                        {
-                            long sw = Stopwatch.GetTimestamp();
-                            _smallRepo.ConvertSnapshotToPersistedSnapshot(snapshot);
-                            _persistedSnapshotConvertTime.WithLabels("base").Observe(Stopwatch.GetTimestamp() - sw);
-                            snapshot.Dispose();
-                        }
-                    });
-
-                // Boundary-block compacted promotion (sequential; full-size compacted only exists at end)
-                for (int i = boundaryStart; i < allStateIds.Count; i++)
-                {
-                    StateId endState = allStateIds[i];
-                    if (_snapshotRepository.TryLeaseCompactedState(endState, out Snapshot? compacted))
-                    {
-                        if (compacted.To.BlockNumber - compacted.From.BlockNumber == _compactSize)
-                        {
-                            long sw = Stopwatch.GetTimestamp();
-                            _largeRepo.ConvertSnapshotToPersistedSnapshot(compacted);
-                            _persistedSnapshotConvertTime.WithLabels("full32").Observe(Stopwatch.GetTimestamp() - sw);
-                        }
-                        compacted.Dispose();
-                    }
-                }
-
-                EnsureCompactorStarted();
-                _compactPersistedJobs.Writer.WriteAsync(allStateIds).AsTask().Wait();
-
-                _snapshotRepository.RemoveStatesUntil(end);
             }
             else if (persistedToPersist is not null)
             {
@@ -455,14 +397,88 @@ public class PersistenceManager(
                     Metrics.PersistedSnapshotCount = _smallRepo.SnapshotCount + _largeRepo.SnapshotCount;
                     Metrics.PersistedSnapshotMemory = _smallRepo.BaseSnapshotMemory + _largeRepo.BaseSnapshotMemory;
                     Metrics.CompactedPersistedSnapshotMemory = _smallRepo.CompactedSnapshotMemory + _largeRepo.CompactedSnapshotMemory;
-                    // Arena file/byte counters update themselves via push deltas in ArenaManager —
-                    // no manual recompute needed here.
                     if (_logger.IsDebug) _logger.Debug($"Pruned {pruned} persisted snapshots before block {persistedToPersist.To.BlockNumber}");
                 }
+            }
+            else if (toConvert is not null)
+            {
+                DoConvert(toConvert);
             }
             else
             {
                 break;
+            }
+        }
+    }
+
+    private void DoConvert(ConversionCandidate candidate)
+    {
+        if (candidate.Compacted is not null)
+        {
+            // Branch A — boundary CompactSize compacted: batch-convert every in-memory entry in
+            // the range it spans, then promote the compacted itself.
+            Snapshot compacted = candidate.Compacted;
+            try
+            {
+                long start = compacted.From.BlockNumber + 1;
+                long end = compacted.To.BlockNumber;
+
+                ArrayPoolList<StateId> allStateIds = new(64);
+                for (long b = start; b <= end; b++)
+                {
+                    using ArrayPoolList<StateId> statesAtBlock = _snapshotRepository.GetStatesAtBlockNumber(b);
+                    foreach (StateId state in statesAtBlock)
+                        allStateIds.Add(state);
+                }
+
+                Parallel.ForEach(
+                    allStateIds,
+                    new ParallelOptions { CancellationToken = _cancelTokenSource.Token },
+                    state =>
+                    {
+                        if (_snapshotRepository.TryLeaseState(state, out Snapshot? snap))
+                        {
+                            long sw = Stopwatch.GetTimestamp();
+                            _smallRepo.ConvertSnapshotToPersistedSnapshot(snap);
+                            _persistedSnapshotConvertTime.WithLabels("base").Observe(Stopwatch.GetTimestamp() - sw);
+                            snap.Dispose();
+                        }
+                    });
+
+                long sw2 = Stopwatch.GetTimestamp();
+                _largeRepo.ConvertSnapshotToPersistedSnapshot(compacted);
+                _persistedSnapshotConvertTime.WithLabels("full32").Observe(Stopwatch.GetTimestamp() - sw2);
+
+                EnsureCompactorStarted();
+                _compactPersistedJobs.Writer.WriteAsync(allStateIds).AsTask().Wait();
+
+                _snapshotRepository.RemoveStatesUntil(end);
+            }
+            finally
+            {
+                compacted.Dispose();
+            }
+        }
+        else
+        {
+            // Branch B — single base convert (fragmented case: no full-CompactSize compacted
+            // available for the candidate range yet).
+            Snapshot baseSnap = candidate.Base!;
+            try
+            {
+                long sw = Stopwatch.GetTimestamp();
+                _smallRepo.ConvertSnapshotToPersistedSnapshot(baseSnap);
+                _persistedSnapshotConvertTime.WithLabels("base").Observe(Stopwatch.GetTimestamp() - sw);
+
+                EnsureCompactorStarted();
+                ArrayPoolList<StateId> single = new(1) { baseSnap.To };
+                _compactPersistedJobs.Writer.WriteAsync(single).AsTask().Wait();
+
+                _snapshotRepository.RemoveAndReleaseKnownState(baseSnap.To);
+            }
+            finally
+            {
+                baseSnap.Dispose();
             }
         }
     }
@@ -483,42 +499,38 @@ public class PersistenceManager(
             return currentPersistedState;
         }
 
-        // Persist all snapshots from current persisted state to latest
+        // Persist all snapshots from current persisted state to latest. Flush ignores finality
+        // entirely — seed the BFS with the in-memory tip so every hop on the chain (finalized or
+        // not) is reachable.
         while (currentPersistedState.BlockNumber < latestStateId.Value.BlockNumber)
         {
-            // Try finalized snapshots first (compacted, then non-compacted)
-            (PersistedSnapshot? persisted, Snapshot? snapshotToPersist) = GetFinalizedSnapshotAtBlockNumber(
-                currentPersistedState.BlockNumber + _compactSize,
-                currentPersistedState,
-                compactedSnapshot: true);
-            persisted?.Dispose();
-
-            if (snapshotToPersist is null)
+            StateId? tipSeed = _snapshotRepository.LastRegisteredState;
+            StateId? finalizedSeed = null;
+            long finalizedBlockNumber = _finalizedStateProvider.FinalizedBlockNumber;
+            if (finalizedBlockNumber > currentPersistedState.BlockNumber)
             {
-                (persisted, snapshotToPersist) = GetFinalizedSnapshotAtBlockNumber(
-                    currentPersistedState.BlockNumber + 1,
-                    currentPersistedState,
-                    compactedSnapshot: false);
-                persisted?.Dispose();
+                Hash256? finalizedStateRoot = _finalizedStateProvider.GetFinalizedStateRootAt(finalizedBlockNumber);
+                if (finalizedStateRoot is not null)
+                    finalizedSeed = new StateId(finalizedBlockNumber, finalizedStateRoot);
             }
 
-            // Fall back to the first available snapshot if finalized not available
-            snapshotToPersist ??= GetFirstSnapshotAtBlockNumber(
-                currentPersistedState.BlockNumber + _compactSize,
-                currentPersistedState,
-                compactedSnapshot: true);
+            if (tipSeed is null && finalizedSeed is null) break;
 
-            snapshotToPersist ??= GetFirstSnapshotAtBlockNumber(
-                currentPersistedState.BlockNumber + 1,
-                currentPersistedState,
-                compactedSnapshot: false);
+            (PersistedSnapshot? persisted, Snapshot? snapshotToPersist) =
+                TryFindSnapshotToPersist(finalizedSeed, tipSeed, currentPersistedState);
 
-            if (snapshotToPersist is null)
+            if (persisted is not null)
             {
-                break;
+                using PersistedSnapshot persistedScope = persisted;
+                PersistPersistedSnapshot(persisted);
+                _currentPersistedStateId = persisted.To;
+                currentPersistedState = _currentPersistedStateId;
+                continue;
             }
 
-            using Snapshot _ = snapshotToPersist;
+            if (snapshotToPersist is null) break;
+
+            using Snapshot inMemScope = snapshotToPersist;
             PersistSnapshot(snapshotToPersist);
             _currentPersistedStateId = snapshotToPersist.To;
             currentPersistedState = _currentPersistedStateId;
@@ -628,21 +640,6 @@ public class PersistenceManager(
         }
 
         Metrics.FlatPersistenceTime.Observe(Stopwatch.GetTimestamp() - sw);
-    }
-
-    private PersistedSnapshot? TryGetForcePersistedSnapshot(StateId currentPersistedState, long totalDepth)
-    {
-        if (totalDepth <= _longFinalityReorgDepth) return null;
-
-        // Each repo self-seeds its backward BFS from its own LastRegisteredState. The walk follows
-        // the From-pointer chain through each repo's To-keyed dictionaries, using compacted entries
-        // as skip pointers to converge quickly on a base whose From == currentPersistedState.
-        // Large tier first (longer ranges = faster catch-up); fall back to small.
-        PersistedSnapshot? oldest = _largeRepo.TryGetSnapshotFrom(currentPersistedState)
-                                    ?? _smallRepo.TryGetSnapshotFrom(currentPersistedState);
-        if (oldest is not null && _logger.IsWarn)
-            _logger.Warn($"Total reorg depth {totalDepth} exceeds LongFinalityReorgDepth {_longFinalityReorgDepth}. Force persisting persisted snapshot {oldest.From} -> {oldest.To}.");
-        return oldest;
     }
 
     internal void PersistPersistedSnapshot(PersistedSnapshot snapshot)

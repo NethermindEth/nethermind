@@ -24,6 +24,7 @@ public interface ISnapshotRepository
     StateId? GetLastSnapshotId();
     StateId? GetEarliestSnapshotId();
     ArrayPoolList<StateId> GetStatesAtBlockNumber(long blockNumber);
+    ArrayPoolList<StateId> GetSnapshotBeforeStateId(long blockNumber);
     void RemoveStatesUntil(long blockNumber);
     void RemoveAndReleaseKnownState(in StateId stateId);
 }

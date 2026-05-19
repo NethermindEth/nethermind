@@ -31,8 +31,8 @@ public interface IFlatDbConfig : IConfig
     [ConfigItem(Description = "Max in flight compact job", DefaultValue = "32")]
     int MaxInFlightCompactJob { get; set; }
 
-    [ConfigItem(Description = "Max in-memory reorg depth before converting to persisted snapshots", DefaultValue = "256")]
-    int MaxInMemoryReorgDepth { get; set; }
+    [ConfigItem(Description = "Maximum number of in-memory base snapshots before conversion to the persisted-snapshot tier kicks in. Counted as `SnapshotCount` of the in-memory repository, not a block-distance depth. Default is MinReorgDepth + CompactSize.", DefaultValue = "160")]
+    int MaxInMemoryBaseSnapshotCount { get; set; }
 
     [ConfigItem(Description = "Minimum compact size (power of 2, floor for hierarchical compaction)", DefaultValue = "4")]
     int MinCompactSize { get; set; }
