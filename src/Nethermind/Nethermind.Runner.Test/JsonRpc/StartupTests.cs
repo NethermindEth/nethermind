@@ -121,6 +121,34 @@ public class StartupTests
     }
 
     [Test]
+    public async Task ProcessJsonRpcRequest_RejectsObjectThenArrayTopLevelValues()
+    {
+        const string request =
+            """
+            {"jsonrpc":"2.0","id":1,"method":"engine_getBlobsV1","params":[[]]}[{"jsonrpc":"2.0","id":2,"method":"engine_getBlobsV1","params":[[]]}]
+            """;
+
+        string response = await ProcessJsonRpcRequest(request);
+
+        using JsonDocument doc = JsonDocument.Parse(response);
+
+        Assert.That(doc.RootElement.GetProperty("error").GetProperty("code").GetInt32(), Is.EqualTo(ErrorCodes.ParseError));
+    }
+
+    [Test]
+    public async Task ProcessJsonRpcRequest_AcceptsTrailingWhitespaceAfterSingleDocument()
+    {
+        const string request = "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"engine_getBlobsV1\",\"params\":[[]]}\r\n\t ";
+
+        string response = await ProcessJsonRpcRequest(request);
+
+        using JsonDocument doc = JsonDocument.Parse(response);
+
+        Assert.That(doc.RootElement.GetProperty("id").GetInt64(), Is.EqualTo(1));
+        Assert.That(doc.RootElement.GetProperty("result").ValueKind, Is.EqualTo(JsonValueKind.Array));
+    }
+
+    [Test]
     public async Task ProcessJsonRpcRequest_AcceptsBatchDocument()
     {
         const string request =
