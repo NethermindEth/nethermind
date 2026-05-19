@@ -32,22 +32,13 @@ public class StartupTests
 
     static StartupTests() => Startup = CreateStartup();
 
-    private static Startup CreateStartup(IRpcAuthentication? rpcAuthentication = null)
+    private static Startup CreateStartup(
+        IRpcAuthentication? rpcAuthentication = null,
+        IEngineRpcModule? engineModule = null,
+        JsonRpcConfig? rpcConfig = null)
     {
-        JsonRpcConfig rpcConfig = new() { EnabledModules = [ModuleType.Engine] };
-
-        IEngineRpcModule engineModule = Substitute.For<IEngineRpcModule>();
-        {
-            engineModule
-                .engine_getBlobsV1(Arg.Any<byte[][]>())
-                .Returns(Task.FromResult(ResultWrapper<IReadOnlyList<BlobAndProofV1?>>.Success(new BlobsV1DirectResponse(new(0)))));
-            engineModule
-                .engine_getBlobsV2(Arg.Any<byte[][]>())
-                .Returns(Task.FromResult(ResultWrapper<IReadOnlyList<BlobAndProofV2?>?>.Fail("typed error", ErrorCodes.InvalidInput, new BlobsV2DirectResponse([], [], 0))));
-            engineModule
-                .engine_getBlobsV3(Arg.Any<byte[][]>())
-                .Returns(Task.FromResult(ResultWrapper<IReadOnlyList<BlobAndProofV2?>?>.Success(new BlobsV2DirectResponse([], [], 0))));
-        }
+        rpcConfig ??= new JsonRpcConfig { EnabledModules = [ModuleType.Engine] };
+        engineModule ??= CreateEngineModule();
 
         RpcModuleProvider moduleProvider = new(new RealFileSystem(), rpcConfig, new EthereumJsonSerializer(), LimboLogs.Instance);
         moduleProvider.Register(new SingletonModulePool<IEngineRpcModule>(
@@ -60,6 +51,24 @@ public class StartupTests
 
         return new Startup(jsonRpcProcessor, jsonRpcService, jsonRpcLocalStats, jsonSerializer, rpcConfig, rpcAuthentication);
     }
+
+    private static IEngineRpcModule CreateEngineModule()
+    {
+        IEngineRpcModule engineModule = Substitute.For<IEngineRpcModule>();
+        engineModule
+            .engine_getBlobsV1(Arg.Any<byte[][]>())
+            .Returns(Task.FromResult(CreateBlobsV1Response()));
+        engineModule
+            .engine_getBlobsV2(Arg.Any<byte[][]>())
+            .Returns(Task.FromResult(ResultWrapper<IReadOnlyList<BlobAndProofV2?>?>.Fail("typed error", ErrorCodes.InvalidInput, new BlobsV2DirectResponse([], [], 0))));
+        engineModule
+            .engine_getBlobsV3(Arg.Any<byte[][]>())
+            .Returns(Task.FromResult(ResultWrapper<IReadOnlyList<BlobAndProofV2?>?>.Success(new BlobsV2DirectResponse([], [], 0))));
+        return engineModule;
+    }
+
+    private static ResultWrapper<IReadOnlyList<BlobAndProofV1?>> CreateBlobsV1Response() =>
+        ResultWrapper<IReadOnlyList<BlobAndProofV1?>>.Success(new BlobsV1DirectResponse(new(0)));
 
     [Test]
     public async Task ProcessJsonRpcRequest_EscapesId()
@@ -189,7 +198,7 @@ public class StartupTests
     public async Task ProcessJsonRpcRequest_AuthFailure_ReturnsUnauthorizedError()
     {
         IRpcAuthentication rpcAuthentication = Substitute.For<IRpcAuthentication>();
-        rpcAuthentication.Authenticate(Arg.Any<string>()).Returns(false);
+        rpcAuthentication.Authenticate(Arg.Any<string>()).Returns(Task.FromResult(false));
 
         (string response, int statusCode) = await ProcessJsonRpcRequestWithStatus(
             "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"engine_getBlobsV1\",\"params\":[[]]}",
@@ -200,6 +209,41 @@ public class StartupTests
 
         Assert.That(statusCode, Is.EqualTo(StatusCodes.Status401Unauthorized));
         Assert.That(doc.RootElement.GetProperty("error").GetProperty("code").GetInt32(), Is.EqualTo(ErrorCodes.InvalidRequest));
+    }
+
+    [Test]
+    public async Task ProcessJsonRpcRequest_UnauthenticatedBatchResponseSizeLimitStopsDispatch()
+    {
+        IEngineRpcModule engineModule = CreateEngineModule();
+        JsonRpcConfig rpcConfig = new() { EnabledModules = [ModuleType.Engine], MaxBatchResponseBodySize = 1 };
+
+        string response = await ProcessJsonRpcRequest(
+            CreateBlobsBatchRequest(3),
+            startup: CreateStartup(engineModule: engineModule, rpcConfig: rpcConfig));
+
+        using JsonDocument doc = JsonDocument.Parse(response);
+
+        Assert.That(doc.RootElement.GetArrayLength(), Is.EqualTo(3));
+        await engineModule.Received(1).engine_getBlobsV1(Arg.Any<byte[][]>());
+    }
+
+    [Test]
+    public async Task ProcessJsonRpcRequest_AuthenticatedBatchResponseSizeLimitDispatchesAll()
+    {
+        IEngineRpcModule engineModule = CreateEngineModule();
+        JsonRpcConfig rpcConfig = new() { EnabledModules = [ModuleType.Engine], MaxBatchResponseBodySize = 1 };
+        IRpcAuthentication rpcAuthentication = Substitute.For<IRpcAuthentication>();
+        rpcAuthentication.Authenticate(Arg.Any<string>()).Returns(Task.FromResult(true));
+
+        string response = await ProcessJsonRpcRequest(
+            CreateBlobsBatchRequest(3),
+            startup: CreateStartup(rpcAuthentication, engineModule, rpcConfig),
+            isAuthenticated: true);
+
+        using JsonDocument doc = JsonDocument.Parse(response);
+
+        Assert.That(doc.RootElement.GetArrayLength(), Is.EqualTo(3));
+        await engineModule.Received(3).engine_getBlobsV1(Arg.Any<byte[][]>());
     }
 
     [Test]
@@ -216,8 +260,12 @@ public class StartupTests
         Assert.That(error.GetProperty("data").ValueKind, Is.EqualTo(JsonValueKind.Array));
     }
 
-    private static async Task<string> ProcessJsonRpcRequest(string request, bool setContentLength = true) =>
-        (await ProcessJsonRpcRequestWithStatus(request, setContentLength)).Response;
+    private static async Task<string> ProcessJsonRpcRequest(
+        string request,
+        bool setContentLength = true,
+        Startup? startup = null,
+        bool isAuthenticated = false) =>
+        (await ProcessJsonRpcRequestWithStatus(request, setContentLength, startup: startup, isAuthenticated: isAuthenticated)).Response;
 
     private static async Task<(string Response, int StatusCode)> ProcessJsonRpcRequestWithStatus(
         string request,
@@ -250,5 +298,24 @@ public class StartupTests
         await (startup ?? Startup).ProcessJsonRpcRequestCoreAsync(ctx, url);
 
         return (Encoding.UTF8.GetString(responseBody.ToArray()), ctx.Response.StatusCode);
+    }
+
+    private static string CreateBlobsBatchRequest(int count)
+    {
+        StringBuilder request = new("[");
+        for (int i = 1; i <= count; i++)
+        {
+            if (i != 1)
+            {
+                request.Append(',');
+            }
+
+            request.Append("{\"jsonrpc\":\"2.0\",\"id\":");
+            request.Append(i);
+            request.Append(",\"method\":\"engine_getBlobsV1\",\"params\":[[]]}");
+        }
+
+        request.Append(']');
+        return request.ToString();
     }
 }
