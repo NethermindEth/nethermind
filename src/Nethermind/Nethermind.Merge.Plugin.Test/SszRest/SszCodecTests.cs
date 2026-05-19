@@ -10,6 +10,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
 using Nethermind.Consensus.Producers;
+using Nethermind.Consensus.Stateless;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.SszRest;
 using NUnit.Framework;
@@ -648,4 +649,138 @@ public class SszCodecTests
             decoded.Commitments![i].AsSpan().ToArray().Should().BeEquivalentTo(proofs[i],
                 $"commitment {i} bytes must round-trip exactly");
     }
+
+    [Test]
+    public void PayloadStatusWire_ValidationError_accepts_8192_bytes()
+    {
+        string longError = new('x', 8192);
+        PayloadStatusV1 ps = new() { Status = PayloadStatus.Invalid, ValidationError = longError };
+
+        Action act = () => Encode(ps, SszCodec.EncodePayloadStatus);
+
+        act.Should().NotThrow("ValidationError SSZ list must accommodate 8192 bytes per spec");
+    }
+
+    [Test]
+    public void PayloadStatusWire_ValidationError_is_truncated_to_8192_bytes_not_1024()
+    {
+        string oversized = new('a', 9000);
+        PayloadStatusV1 ps = new() { Status = PayloadStatus.Invalid, ValidationError = oversized };
+
+        byte[] encoded = Encode(ps, SszCodec.EncodePayloadStatus);
+
+        PayloadStatusWire.Decode(encoded, out PayloadStatusWire wire);
+        wire.ValidationError.Should().NotBeNull();
+        wire.ValidationError!.Length.Should().Be(8192,
+            "oversized ValidationError must be truncated to VALIDATION_ERROR_MAX=8192, not 1024");
+    }
+
+    [Test]
+    public void EncodePayloadStatus_truncation_does_not_split_multibyte_utf8_codepoint()
+    {
+        string error = new string('a', 8190) + "€"; // 8190 + 3 = 8193 UTF-8 bytes
+        PayloadStatusV1 ps = new() { Status = PayloadStatus.Invalid, ValidationError = error };
+
+        byte[] encoded = Encode(ps, SszCodec.EncodePayloadStatus);
+
+        PayloadStatusWire.Decode(encoded, out PayloadStatusWire wire);
+        wire.ValidationError.Should().NotBeNull();
+
+        Action decode = () => System.Text.Encoding.UTF8.GetString(wire.ValidationError!);
+        decode.Should().NotThrow("truncated ValidationError bytes must be valid UTF-8");
+
+        wire.ValidationError!.Length.Should().Be(8190,
+            "TruncateUtf8 must drop the whole multi-byte codepoint, not split it");
+    }
+
+    [Test]
+    public void EncodeNewPayloadWithWitnessResponse_non_valid_status_always_encodes_witness_as_none()
+    {
+        using Witness nonNullWitness = MakeMinimalWitness();
+
+        foreach (string nonValidStatus in new[] { PayloadStatus.Invalid, PayloadStatus.Syncing, PayloadStatus.Accepted })
+        {
+            PayloadStatusV1 ps = new() { Status = nonValidStatus };
+
+            byte[] encoded = Encode(
+                (ps, (Witness?)nonNullWitness),
+                static (t, w) => SszCodec.EncodeNewPayloadWithWitnessResponse(t.Item1, t.Item2, w));
+
+            (byte decodedStatus, _, bool witnessPresent) = SszCodec.DecodeNewPayloadWithWitnessResponse(encoded);
+            witnessPresent.Should().BeFalse(
+                $"witness Union must be None (selector 0x00) when status is {nonValidStatus}, not {PayloadStatus.Valid}");
+            _ = decodedStatus;
+        }
+    }
+
+    [Test]
+    public void EncodeNewPayloadWithWitnessResponse_valid_status_with_witness_encodes_witness_as_some()
+    {
+        using Witness witness = MakeMinimalWitness();
+        PayloadStatusV1 ps = new() { Status = PayloadStatus.Valid, LatestValidHash = TestItem.KeccakA };
+
+        byte[] encoded = Encode(
+            (ps, (Witness?)witness),
+            static (t, w) => SszCodec.EncodeNewPayloadWithWitnessResponse(t.Item1, t.Item2, w));
+
+        (byte decodedStatus, Hash256? lvh, bool witnessPresent) = SszCodec.DecodeNewPayloadWithWitnessResponse(encoded);
+        decodedStatus.Should().Be(0, "VALID maps to SSZ status byte 0");
+        lvh.Should().Be(TestItem.KeccakA,
+            "latest_valid_hash Union Some variant must round-trip the 32-byte hash");
+        witnessPresent.Should().BeTrue(
+            "VALID status with a non-null witness must encode the witness Union as Some (selector 0x01)");
+    }
+
+    [Test]
+    public void EncodeNewPayloadWithWitnessResponse_valid_status_null_witness_encodes_witness_as_none()
+    {
+        PayloadStatusV1 ps = new() { Status = PayloadStatus.Valid };
+
+        byte[] encoded = Encode(
+            (ps, (Witness?)null),
+            static (t, w) => SszCodec.EncodeNewPayloadWithWitnessResponse(t.Item1, t.Item2, w));
+
+        (byte decodedStatus, _, bool witnessPresent) = SszCodec.DecodeNewPayloadWithWitnessResponse(encoded);
+        decodedStatus.Should().Be(0, "VALID maps to SSZ status byte 0");
+        witnessPresent.Should().BeFalse(
+            "null witness must encode the witness Union as None (selector 0x00) regardless of status");
+    }
+
+    [Test]
+    public void EncodeNewPayloadWithWitnessResponse_container_header_is_13_bytes_and_offsets_are_correct()
+    {
+        PayloadStatusV1 ps = new() { Status = PayloadStatus.Valid, LatestValidHash = TestItem.KeccakA };
+
+        byte[] encoded = Encode(
+            (ps, (Witness?)null),
+            static (t, w) => SszCodec.EncodeNewPayloadWithWitnessResponse(t.Item1, t.Item2, w));
+
+        ReadOnlySpan<byte> buf = encoded;
+
+        buf[0].Should().Be(0, "VALID encodes as status byte 0x00");
+
+        int off1 = System.Buffers.Binary.BinaryPrimitives.ReadInt32LittleEndian(buf.Slice(1, 4));
+        off1.Should().Be(13, "latest_valid_hash Union starts immediately after the 13-byte fixed header");
+
+        buf[off1].Should().Be(0x01, "latest_valid_hash Union selector must be 0x01 (Some) when hash is present");
+        buf.Slice(off1 + 1, 32).ToArray().Should()
+            .BeEquivalentTo(TestItem.KeccakA.Bytes.ToArray(),
+                "latest_valid_hash bytes must follow immediately after the 0x01 selector");
+
+        int off2 = System.Buffers.Binary.BinaryPrimitives.ReadInt32LittleEndian(buf.Slice(5, 4));
+        off2.Should().Be(46, "validation_error Union starts after latest_valid_hash (13 header + 33 lvh bytes)");
+        buf[off2].Should().Be(0x00, "validation_error Union selector must be 0x00 (None) when no error");
+
+        int off3 = System.Buffers.Binary.BinaryPrimitives.ReadInt32LittleEndian(buf.Slice(9, 4));
+        off3.Should().Be(47, "witness Union starts after validation_error (46 + 1 None byte)");
+        buf[off3].Should().Be(0x00, "witness Union selector must be 0x00 (None) when no witness was generated");
+    }
+
+    private static Witness MakeMinimalWitness() => new()
+    {
+        State = new Core.Collections.ArrayPoolList<byte[]>(0),
+        Codes = new Core.Collections.ArrayPoolList<byte[]>(0),
+        Keys = new Core.Collections.ArrayPoolList<byte[]>(0),
+        Headers = new Core.Collections.ArrayPoolList<byte[]>(0),
+    };
 }

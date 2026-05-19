@@ -35,6 +35,9 @@ public sealed class SszMiddleware
     // Path: /engine/v{N}/{resource}[/{extra}]
     private const string EnginePrefix = "/engine/v";
 
+    // Non-versioned path prefix for the witness endpoint
+    private const string WitnessPath = "/new-payload-with-witness";
+
     /// <summary>
     /// Maximum allowed request body size in bytes (16 MiB).
     /// Corresponds to <c>MAX_REQUEST_BODY_SIZE</c> defined in the Engine API SSZ-REST spec
@@ -50,6 +53,9 @@ public sealed class SszMiddleware
     private readonly (string Resource, List<ISszEndpointHandler> Handlers)[] _postPrefixRoutes;
     private readonly (string Resource, List<ISszEndpointHandler> Handlers)[] _getPrefixRoutes;
 
+    // Dedicated fast-path handler for POST /new-payload-with-witness (non-versioned, JSON body)
+    private readonly ISszEndpointHandler? _witnessHandler;
+
     public SszMiddleware(
         RequestDelegate next,
         IJsonRpcUrlCollection urlCollection,
@@ -63,22 +69,37 @@ public sealed class SszMiddleware
         _auth = auth;
         _logger = logManager.GetClassLogger<SszMiddleware>();
         _processExitToken = processExitSource.Token;
-        (_postRoutes, _getRoutes, _postPrefixRoutes, _getPrefixRoutes) = BuildRoutes(handlers);
+
+        IReadOnlyList<ISszEndpointHandler> hs = handlers as IReadOnlyList<ISszEndpointHandler> ?? [.. handlers];
+
+        (_postRoutes, _getRoutes, _postPrefixRoutes, _getPrefixRoutes) = BuildRoutes(hs);
         _postLookup = _postRoutes.GetAlternateLookup<ReadOnlySpan<char>>();
         _getLookup = _getRoutes.GetAlternateLookup<ReadOnlySpan<char>>();
+
+        foreach (ISszEndpointHandler h in hs)
+        {
+            if (h.Resource.Equals(SszRestPaths.NewPayloadWithWitness, StringComparison.OrdinalIgnoreCase))
+            {
+                _witnessHandler = h;
+                break;
+            }
+        }
     }
 
     private static (FrozenDictionary<string, List<ISszEndpointHandler>> post,
                     FrozenDictionary<string, List<ISszEndpointHandler>> get,
                     (string, List<ISszEndpointHandler>)[] postPrefix,
                     (string, List<ISszEndpointHandler>)[] getPrefix)
-        BuildRoutes(IEnumerable<ISszEndpointHandler> handlers)
+        BuildRoutes(IReadOnlyList<ISszEndpointHandler> handlers)
     {
         Dictionary<string, List<ISszEndpointHandler>> postDict = [];
         Dictionary<string, List<ISszEndpointHandler>> getDict = [];
 
         foreach (ISszEndpointHandler h in handlers)
         {
+            if (h.Resource.Equals(SszRestPaths.NewPayloadWithWitness, StringComparison.OrdinalIgnoreCase))
+                continue;
+
             string resource = h.Resource.ToLowerInvariant();
             Dictionary<string, List<ISszEndpointHandler>> dict =
                 h.HttpMethod.Equals("GET", StringComparison.OrdinalIgnoreCase)
@@ -132,13 +153,17 @@ public sealed class SszMiddleware
             {
                 Metrics.SszRestRequestsClientErrorTotal++;
                 await SszEndpointHandlerBase.WriteErrorAsync(ctx, StatusCodes.Status401Unauthorized,
-                    "Authentication error");
+                    "Authentication error", ErrorCodes.InvalidRequest);
+            }
+            else if (IsWitnessPath(ctx.Request.Path.Value ?? string.Empty))
+            {
+                await DispatchWitnessAsync(ctx);
             }
             else if (!TryRoute(ctx.Request.Path.Value ?? string.Empty, out int version, out ReadOnlyMemory<char> pathSegment))
             {
                 Metrics.SszRestRequestsClientErrorTotal++;
                 await SszEndpointHandlerBase.WriteErrorAsync(ctx, StatusCodes.Status404NotFound,
-                    "Unknown SSZ endpoint");
+                    "Unknown SSZ endpoint", ErrorCodes.MethodNotFound);
             }
             else if (!TryResolveHandler(ctx.Request.Method, pathSegment, version, out ISszEndpointHandler? handler, out ReadOnlyMemory<char> extra))
             {
@@ -146,7 +171,7 @@ public sealed class SszMiddleware
                 // Use .Span in the interpolation: ROM<char>.ToString() would allocate a separate
                 // intermediate string; appending the span goes straight into the format buffer.
                 await SszEndpointHandlerBase.WriteErrorAsync(ctx, StatusCodes.Status404NotFound,
-                    $"Unknown method: {ctx.Request.Method} /engine/v{version}/{pathSegment.Span}");
+                    $"Unknown method: {ctx.Request.Method} /engine/v{version}/{pathSegment.Span}", ErrorCodes.MethodNotFound);
             }
             else
             {
@@ -190,7 +215,7 @@ public sealed class SszMiddleware
                 catch (InvalidOperationException ex) when (!bodyRead)
                 {
                     Metrics.SszRestRequestsClientErrorTotal++;
-                    await SszEndpointHandlerBase.WriteErrorAsync(ctx, StatusCodes.Status413PayloadTooLarge, ex.Message);
+                    await SszEndpointHandlerBase.WriteErrorAsync(ctx, StatusCodes.Status413PayloadTooLarge, ex.Message, ErrorCodes.ParseError);
                 }
                 catch (Exception ex) when (ex is InvalidDataException or IndexOutOfRangeException or EndOfStreamException)
                 {
@@ -201,7 +226,7 @@ public sealed class SszMiddleware
                     Metrics.SszRestDecodeFailuresTotal++;
                     Metrics.SszRestRequestsClientErrorTotal++;
                     if (_logger.IsDebug) _logger.Debug($"SSZ-REST malformed body at {ctx.Request.Path.Value}: {ex.Message}");
-                    await SszEndpointHandlerBase.WriteErrorAsync(ctx, StatusCodes.Status400BadRequest, "Malformed SSZ body");
+                    await SszEndpointHandlerBase.WriteErrorAsync(ctx, StatusCodes.Status400BadRequest, "Malformed SSZ body", ErrorCodes.ParseError);
                 }
                 catch (Exception ex)
                 {
@@ -212,13 +237,91 @@ public sealed class SszMiddleware
                     // and called ctx.Abort), don't try to write a 500 — WriteAsync would throw
                     // OperationCanceledException, producing a duplicate exception in the logs.
                     if (!ctx.RequestAborted.IsCancellationRequested)
-                        await SszEndpointHandlerBase.WriteErrorAsync(ctx, StatusCodes.Status500InternalServerError, "Internal server error");
+                        await SszEndpointHandlerBase.WriteErrorAsync(ctx, StatusCodes.Status500InternalServerError, "Internal server error", ErrorCodes.InternalError);
                 }
                 finally
                 {
                     if (bodyRead) reader.AdvanceTo(body.End);
                 }
             }
+        }
+    }
+
+    private static bool IsWitnessPath(string path)
+        => path.Equals(WitnessPath, StringComparison.OrdinalIgnoreCase);
+
+    private async Task DispatchWitnessAsync(HttpContext ctx)
+    {
+        // Reject any method other than POST with 405.
+        if (!string.Equals(ctx.Request.Method, "POST", StringComparison.OrdinalIgnoreCase))
+        {
+            Metrics.SszRestRequestsClientErrorTotal++;
+            ctx.Response.Headers.Allow = "POST";
+            await SszEndpointHandlerBase.WriteErrorAsync(ctx, StatusCodes.Status405MethodNotAllowed,
+                $"Method '{ctx.Request.Method}' is not allowed on {WitnessPath}. Only POST is supported.", ErrorCodes.MethodNotFound);
+            return;
+        }
+
+        string? contentType = ctx.Request.ContentType;
+        if (contentType is null || !contentType.Contains("application/json", StringComparison.OrdinalIgnoreCase))
+        {
+            Metrics.SszRestRequestsClientErrorTotal++;
+            ctx.Response.Headers["Accept"] = "application/json";
+            await SszEndpointHandlerBase.WriteErrorAsync(ctx, StatusCodes.Status415UnsupportedMediaType,
+                $"Content-Type must be application/json for {WitnessPath}.", ErrorCodes.ParseError);
+            return;
+        }
+
+        if (_witnessHandler is null)
+        {
+            Metrics.SszRestRequestsClientErrorTotal++;
+            await SszEndpointHandlerBase.WriteErrorAsync(ctx, StatusCodes.Status404NotFound,
+                "Endpoint not available", ErrorCodes.MethodNotFound);
+            return;
+        }
+
+        if (_logger.IsTrace) _logger.Trace($"SSZ-REST POST {WitnessPath}");
+
+        PipeReader reader = ctx.Request.BodyReader;
+        ReadOnlySequence<byte> body = default;
+        bool bodyRead = false;
+        try
+        {
+            body = await ReadBodyAsync(ctx, reader);
+            bodyRead = true;
+            Metrics.SszRestRequestBytesTotal += body.Length;
+
+            await _witnessHandler.HandleAsync(ctx, 0, default, body);
+
+            int status = ctx.Response.StatusCode;
+            switch (status)
+            {
+                case >= 200 and < 300:
+                    Metrics.SszRestRequestsSuccessTotal++;
+                    break;
+                case >= 400 and < 500:
+                    Metrics.SszRestRequestsClientErrorTotal++;
+                    break;
+                case >= 500:
+                    Metrics.SszRestRequestsServerErrorTotal++;
+                    break;
+            }
+        }
+        catch (InvalidOperationException ex) when (!bodyRead)
+        {
+            Metrics.SszRestRequestsClientErrorTotal++;
+            await SszEndpointHandlerBase.WriteErrorAsync(ctx, StatusCodes.Status413PayloadTooLarge, ex.Message, ErrorCodes.ParseError);
+        }
+        catch (Exception ex)
+        {
+            Metrics.SszRestRequestsServerErrorTotal++;
+            if (_logger.IsError) _logger.Error($"SSZ-REST handler error for {WitnessPath}", ex);
+            if (!ctx.RequestAborted.IsCancellationRequested)
+                await SszEndpointHandlerBase.WriteErrorAsync(ctx, StatusCodes.Status500InternalServerError, "Internal server error", ErrorCodes.InternalError);
+        }
+        finally
+        {
+            if (bodyRead) reader.AdvanceTo(body.End);
         }
     }
 
@@ -340,9 +443,31 @@ public sealed class SszMiddleware
         return false;
     }
 
+    /// <summary>
+    /// Determines whether this middleware should handle the incoming request.
+    /// </summary>
+    /// <remarks>
+    /// The witness endpoint (<c>/new-payload-with-witness</c>) is intercepted for ALL HTTP
+    /// methods — not just POST — so that non-POST requests receive a proper <c>405 Method Not
+    /// Allowed</c> from <see cref="DispatchWitnessAsync"/> rather than falling through to the
+    /// next middleware and returning a confusing 404.
+    ///
+    /// For a valid POST to the witness path, the request <c>Content-Type</c> must be
+    /// <c>application/json</c>. For any other method, <see cref="IsSszRequest"/> returns
+    /// <c>true</c> (so the middleware intercepts it) but without inspecting the Content-Type —
+    /// <see cref="DispatchWitnessAsync"/> will immediately reject it with 405.
+    /// </remarks>
     private static bool IsSszRequest(HttpContext ctx)
     {
         string path = ctx.Request.Path.Value ?? string.Empty;
+
+        // Non-versioned witness endpoint — intercept all methods so we can return 405 for
+        // non-POST instead of falling through and returning a confusing 404.
+        if (path.Equals(WitnessPath, StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
         if (!path.StartsWith("/engine/", StringComparison.OrdinalIgnoreCase))
             return false;
 

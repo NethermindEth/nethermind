@@ -33,7 +33,7 @@ public partial struct PayloadStatusWire
 {
     public byte Status { get; set; }
     [SszList(1)] public Hash256[]? LatestValidHash { get; set; }
-    [SszList(1024)] public byte[]? ValidationError { get; set; }
+    [SszList(8192)] public byte[]? ValidationError { get; set; }
 }
 
 [SszContainer]
@@ -368,3 +368,27 @@ public partial struct GetBlobsV3ResponseWire
     [SszList(128)] public NullableBlobAndProofV2Wire[]? BlobsAndProofs { get; set; }
 }
 
+[SszContainer(isCollectionItself: true)]
+public partial struct SszWitnessItem
+{
+    [SszList(1048576)] public byte[]? Bytes { get; set; }
+}
+
+[SszContainer]
+public partial struct ExecutionWitnessV1Wire
+{
+    [SszList(1048576)] public SszWitnessItem[]? State { get; set; }
+    [SszList(1048576)] public SszWitnessItem[]? Codes { get; set; }
+    [SszList(1048576)] public SszWitnessItem[]? Headers { get; set; }
+}
+
+// NewPayloadWithWitnessResponseV1 is NOT represented as a generated [SszContainer] struct.
+// The spec (execution-apis #773) defines latest_valid_hash, validation_error, and witness as
+// SSZ Union[None, T] fields. The SSZ Union encoding (selector_byte ++ variant_bytes) is NOT
+// the same as the List[T, max=1] convention used elsewhere in this codebase. The SszGenerator's
+// [SszCompatibleUnion] attribute only supports selectors in [1, 127], making it impossible to
+// model the None selector (0x00) via code generation.
+//
+// Encoding and decoding for this type is therefore hand-written in SszCodec.cs:
+//   SszCodec.EncodeNewPayloadWithWitnessResponse()
+//   SszCodec.DecodeNewPayloadWithWitnessResponse()

@@ -52,9 +52,11 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
         IAsyncHandler<GetBlobsHandlerV2Request, IReadOnlyList<BlobAndProofV2?>?> getBlobsHandlerV2,
         IHandler<IReadOnlyList<Hash256>, IReadOnlyList<ExecutionPayloadBodyV2Result?>> getPayloadBodiesByHashV2Handler,
         IGetPayloadBodiesByRangeV2Handler getPayloadBodiesByRangeV2Handler,
+        INewPayloadWithWitnessHandler newPayloadWithWitnessHandler,
         IEngineRequestsTracker engineRequestsTracker,
         ISpecProvider specProvider,
         GCKeeper gcKeeper,
+        IBlockTree blockTree,
         ILogManager logManager,
         ITxPool txPool,
         IBlockFinder blockFinder,
@@ -78,9 +80,11 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
                 getBlobsHandlerV2,
                 getPayloadBodiesByHashV2Handler,
                 getPayloadBodiesByRangeV2Handler,
+                newPayloadWithWitnessHandler,
                 engineRequestsTracker,
                 specProvider,
                 gcKeeper,
+                blockTree,
                 logManager), ITaikoEngineRpcModule
 {
     /// <summary>
