@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
@@ -82,6 +83,12 @@ public class ExecutionPayloadParams<TVersionedExecutionPayload>(
             return result;
         }
 
+        result = ValidateEngineApiVersionParams(spec, version, out error);
+        if (result != ValidationResult.Success)
+        {
+            return result;
+        }
+
         Result<Transaction[]> transactionDecodingResult = executionPayload.TryGetTransactions();
         if (transactionDecodingResult.IsError)
         {
@@ -102,6 +109,39 @@ public class ExecutionPayloadParams<TVersionedExecutionPayload>(
         }
 
         executionPayload.ParentBeaconBlockRoot = parentBeaconBlockRoot;
+
+        error = null;
+        return ValidationResult.Success;
+    }
+
+    private ValidationResult ValidateEngineApiVersionParams(IReleaseSpec spec, int version, out string? error)
+    {
+        if (version < EngineApiVersions.NewPayload.V5)
+        {
+            if (executionPayload.BlockAccessList is not null)
+            {
+                error = "Block access list must not be set before engine_newPayloadV5";
+                return ValidationResult.Fail;
+            }
+
+            if (executionPayload.SlotNumber is not null)
+            {
+                error = "Slot number must not be set before engine_newPayloadV5";
+                return ValidationResult.Fail;
+            }
+        }
+
+        if (spec.BlockLevelAccessListsEnabled && executionPayload.BlockAccessList is null)
+        {
+            error = "Block access list must be set";
+            return ValidationResult.Fail;
+        }
+
+        if (spec.IsEip7843Enabled && executionPayload.SlotNumber is null)
+        {
+            error = "Slot number must be set";
+            return ValidationResult.Fail;
+        }
 
         error = null;
         return ValidationResult.Success;
