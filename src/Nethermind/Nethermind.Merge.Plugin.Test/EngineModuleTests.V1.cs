@@ -1421,6 +1421,7 @@ public partial class EngineModuleTests
         ResultWrapper<ForkchoiceUpdatedV1Result> result = await rpc.engine_forkchoiceUpdatedV1(fcu);
         result.ErrorCode.Should().Be(MergeErrorCodes.InvalidForkchoiceState);
 
+        chain.BlockTree.Head!.Hash.Should().Be(initialHeadHash);
         chain.BlockFinder.HeadHash.Should().Be(initialHeadHash);
         chain.BlockFinder.FinalizedHash.Should().Be(initialFinalizedHash);
         chain.BlockFinder.SafeHash.Should().Be(initialSafeHash);
