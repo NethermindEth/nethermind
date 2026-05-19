@@ -101,7 +101,7 @@ public partial class BlockAccessListManager
         MergeAndReturnBal(uint.MaxValue);
         block.GeneratedBlockAccessList = GeneratedBlockAccessList;
 
-        if (_verifyOnly)
+        if (ParallelExecutionEnabled)
         {
             // IncrementalValidation only covered indices 0..txCount; the post-execution row
             // (txCount + 1) was just merged but not yet compared.
@@ -112,48 +112,5 @@ public partial class BlockAccessListManager
 
         block.EncodedBlockAccessList = BlockAccessListDecoder.EncodeToBytes(GeneratedBlockAccessList);
         block.Header.BlockAccessListHash = new(ValueKeccak.Compute(block.EncodedBlockAccessList).Bytes);
-    }
-
-    /// <summary>
-    /// Catches what the canonical-bytes hash compare used to catch but the column-index per-row
-    /// check doesn't: account-set presence and the storage_reads contents per account.
-    /// </summary>
-    private static void ValidateStructuralEquivalence(Block block, GeneratedBlockAccessList generated)
-    {
-        ReadOnlyBlockAccessList suggested = block.BlockAccessList!;
-        ReadOnlySpan<ReadOnlyAccountChanges> suggestedAccounts = suggested.AccountChangesAsSpan;
-
-        if (suggestedAccounts.Length != generated.AccountChanges.Count)
-        {
-            throw new InvalidBlockLevelAccessListException(block.Header,
-                $"Account-set size mismatch: suggested={suggestedAccounts.Length}, generated={generated.AccountChanges.Count}.");
-        }
-
-        for (int a = 0; a < suggestedAccounts.Length; a++)
-        {
-            ReadOnlyAccountChanges sug = suggestedAccounts[a];
-            GeneratedAccountChanges gen = generated.GetAccountChanges(sug.Address)
-                ?? throw new InvalidBlockLevelAccessListException(block.Header,
-                    $"Suggested BAL declares account {sug.Address} which execution did not touch.");
-
-            ReadOnlySpan<UInt256> sugReads = sug.StorageReads;
-            if (sugReads.Length != gen.StorageReads.Count)
-            {
-                throw new InvalidBlockLevelAccessListException(block.Header,
-                    $"storage_reads count mismatch for {sug.Address}: suggested={sugReads.Length}, generated={gen.StorageReads.Count}.");
-            }
-
-            // Both sides keep storage_reads sorted (decoder-validated; SortedSet on the generated side).
-            int i = 0;
-            foreach (UInt256 genRead in gen.StorageReads)
-            {
-                if (!sugReads[i].Equals(genRead))
-                {
-                    throw new InvalidBlockLevelAccessListException(block.Header,
-                        $"storage_reads mismatch for {sug.Address} at offset {i}.");
-                }
-                i++;
-            }
-        }
     }
 }

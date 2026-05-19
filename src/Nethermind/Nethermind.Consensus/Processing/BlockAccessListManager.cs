@@ -92,10 +92,6 @@ public partial class BlockAccessListManager(
     public bool Enabled { get; private set; }
     public bool ParallelExecutionEnabled { get; private set; }
 
-    // Replaces the end-of-block encode + Keccak with a structural-equivalence check (account-set
-    // + storage_reads). See paradigmxyz/reth#24297 for the prior art.
-    private bool _verifyOnly;
-
     public void PrepareForProcessing(Block suggestedBlock, IReleaseSpec spec, ProcessingOptions options)
     {
         _blockAccessListsEnabled = spec.BlockLevelAccessListsEnabled;
@@ -133,7 +129,6 @@ public partial class BlockAccessListManager(
             }
             _gasRemaining = suggestedBlock.GasUsed;
             _parentStateRoot = ParallelExecutionEnabled ? stateProvider.StateRoot : null;
-            _verifyOnly = ParallelExecutionEnabled;
         }
     }
 
@@ -235,7 +230,6 @@ public partial class BlockAccessListManager(
         _generatedChargeableStorageReads = 0;
         _hasGeneratedValidationIndexUpdates = false;
         _hasGeneratedRequiredReadAccountMismatch = false;
-        _verifyOnly = false;
     }
 
     [DoesNotReturn]
