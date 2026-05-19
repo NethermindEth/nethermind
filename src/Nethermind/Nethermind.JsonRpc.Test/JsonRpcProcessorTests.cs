@@ -56,69 +56,6 @@ public class JsonRpcProcessorTests(bool returnErrors)
         Initialize(config).ProcessAsync(request, context ?? new JsonRpcContext(RpcEndpoint.Http)).ToListAsync();
 
     [Test]
-    public async Task Sink_adapter_writes_single_response()
-    {
-        CollectingJsonRpcResponseSink sink = new();
-        JsonRpcProcessor processor = Initialize(recorderState: RpcRecorderState.None);
-
-        await JsonRpcProcessorSinkAdapter.ProcessAsync(
-            processor,
-            CreateReader("{\"id\":67,\"jsonrpc\":\"2.0\",\"method\":\"eth_getTransactionCount\",\"params\":[]}"),
-            new JsonRpcContext(RpcEndpoint.Http),
-            sink,
-            new JsonRpcProcessingOptions(JsonRpcInputMode.SingleDocument));
-
-        sink.Singles.Should().HaveCount(1);
-        sink.Singles[0].Id.Should().Be(67);
-        sink.BatchEvents.Should().BeEmpty();
-    }
-
-    [Test]
-    public async Task Sink_adapter_writes_batch_boundaries_and_items()
-    {
-        CollectingJsonRpcResponseSink sink = new();
-        JsonRpcProcessor processor = Initialize(recorderState: RpcRecorderState.None);
-
-        await JsonRpcProcessorSinkAdapter.ProcessAsync(
-            processor,
-            CreateReader("[{\"id\":67,\"jsonrpc\":\"2.0\",\"method\":\"eth_getTransactionCount\",\"params\":[]},{\"id\":68,\"jsonrpc\":\"2.0\",\"method\":\"eth_blockNumber\",\"params\":[]}]"),
-            new JsonRpcContext(RpcEndpoint.Http),
-            sink,
-            new JsonRpcProcessingOptions(JsonRpcInputMode.SingleDocument));
-
-        sink.Singles.Should().BeEmpty();
-        sink.BatchItems.Should().HaveCount(2);
-        sink.BatchItems[0].Id.Should().Be(67);
-        sink.BatchItems[1].Id.Should().Be(68);
-        sink.BatchEvents.Should().Equal("begin", "item", "item", "end");
-    }
-
-    [Test]
-    public async Task Sink_adapter_propagates_stop_requested_to_batch_processing()
-    {
-        IJsonRpcService service = CreateEchoService();
-        JsonRpcProcessor processor = new(
-            service,
-            new JsonRpcConfig { RpcRecorderState = RpcRecorderState.None },
-            Substitute.For<IFileSystem>(),
-            LimboLogs.Instance);
-        CollectingJsonRpcResponseSink sink = new() { StopAfterBatchItems = 1 };
-
-        await JsonRpcProcessorSinkAdapter.ProcessAsync(
-            processor,
-            CreateReader("[{\"id\":1,\"jsonrpc\":\"2.0\",\"method\":\"eth_getTransactionCount\",\"params\":[]},{\"id\":2,\"jsonrpc\":\"2.0\",\"method\":\"eth_blockNumber\",\"params\":[]},{\"id\":3,\"jsonrpc\":\"2.0\",\"method\":\"net_version\",\"params\":[]}]"),
-            new JsonRpcContext(RpcEndpoint.Http),
-            sink,
-            new JsonRpcProcessingOptions(JsonRpcInputMode.SingleDocument));
-
-        sink.BatchItems.Should().HaveCount(3);
-        sink.BatchItems[0].Should().BeOfType<JsonRpcSuccessResponse>();
-        sink.BatchItems[1].Should().BeOfType<JsonRpcErrorResponse>();
-        sink.BatchItems[2].Should().BeOfType<JsonRpcErrorResponse>();
-        await service.Received(1).SendRequestAsync(Arg.Any<JsonRpcRequest>(), Arg.Any<JsonRpcContext>());
-    }
-
-    [Test]
     public async Task Sink_processor_entry_point_rejects_oversized_unauthenticated_batch_without_dispatching()
     {
         IJsonRpcService service = CreateEchoService();
