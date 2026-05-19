@@ -5,6 +5,7 @@
 using System.Collections.Generic;
 using System.IO;
 using System.IO.Abstractions;
+using System.Net;
 using System.Text;
 using System.Text.Json;
 using System.Threading.Tasks;
@@ -258,6 +259,30 @@ public class StartupTests
 
         Assert.That(error.GetProperty("code").GetInt32(), Is.EqualTo(ErrorCodes.InvalidInput));
         Assert.That(error.GetProperty("data").ValueKind, Is.EqualTo(JsonValueKind.Array));
+    }
+
+    [TestCase("127.0.0.1", true)]
+    [TestCase("::1", true)]
+    [TestCase("10.1.2.3", true)]
+    [TestCase("172.16.0.1", true)]
+    [TestCase("172.31.255.255", true)]
+    [TestCase("172.32.0.1", false)]
+    [TestCase("192.168.1.1", true)]
+    [TestCase("8.8.8.8", false)]
+    public void IsTrustedSource_RecognizesBuiltInNetworks(string remoteIp, bool expected)
+    {
+        bool isTrusted = Startup.IsTrustedSource(IPAddress.Parse(remoteIp), []);
+
+        Assert.That(isTrusted, Is.EqualTo(expected));
+    }
+
+    [Test]
+    public void IsTrustedSource_AcceptsAdditionalTrustedNetworks()
+    {
+        Startup.TrustedCidr[] networks = Startup.ParseTrustedNetworks(["100.64.0.0/10"], LimboLogs.Instance.GetClassLogger<StartupTests>());
+
+        Assert.That(Startup.IsTrustedSource(IPAddress.Parse("100.64.1.2"), networks), Is.True);
+        Assert.That(Startup.IsTrustedSource(IPAddress.Parse("100.128.1.2"), networks), Is.False);
     }
 
     private static async Task<string> ProcessJsonRpcRequest(
