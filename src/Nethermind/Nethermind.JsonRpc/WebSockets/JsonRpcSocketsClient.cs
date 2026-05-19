@@ -133,8 +133,7 @@ public class JsonRpcSocketsClient<TStream> : SocketClient<TStream>, IJsonRpcDupl
             _sendSemaphore,
             _jsonRpcContext);
 
-        await JsonRpcProcessorSinkAdapter.ProcessAsync(
-            _jsonRpcProcessor,
+        await _jsonRpcProcessor.ProcessAsync(
             request,
             _jsonRpcContext,
             sink,
