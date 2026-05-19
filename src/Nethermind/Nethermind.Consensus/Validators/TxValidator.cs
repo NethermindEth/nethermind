@@ -7,6 +7,7 @@ using Nethermind.Core.Specs;
 using Nethermind.TxPool;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Messages;
+using Nethermind.Core.Validation;
 using Nethermind.Crypto;
 using Nethermind.Evm;
 using Nethermind.Int256;
@@ -374,7 +375,7 @@ public sealed class NoContractCreationTxValidator : ITxValidator
     public static readonly NoContractCreationTxValidator Instance = new();
     private NoContractCreationTxValidator() { }
     public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec) =>
-        transaction.IsContractCreation ? TxErrorMessages.NotAllowedCreateTransaction : ValidationResult.Success;
+        SetCodeTxValidation.ValidateNoContractCreation(transaction);
 }
 
 public sealed class AuthorizationListTxValidator : ITxValidator
@@ -383,11 +384,7 @@ public sealed class AuthorizationListTxValidator : ITxValidator
     private AuthorizationListTxValidator() { }
 
     public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec) =>
-        transaction.AuthorizationList switch
-        {
-            null or { Length: 0 } => TxErrorMessages.MissingAuthorizationList,
-            _ => ValidationResult.Success
-        };
+        SetCodeTxValidation.ValidateAuthorizationList(transaction);
 }
 
 public sealed class GasLimitCapTxValidator : ITxValidator
