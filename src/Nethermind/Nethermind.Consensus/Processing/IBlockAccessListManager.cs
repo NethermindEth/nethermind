@@ -11,10 +11,9 @@ using Nethermind.Evm.TransactionProcessing;
 
 namespace Nethermind.Consensus.Processing;
 
-// todo: maybe split into smaller classes
 public interface IBlockAccessListManager
 {
-    BlockAccessList GeneratedBlockAccessList { get; set; }
+    GeneratedBlockAccessList GeneratedBlockAccessList { get; set; }
     bool Enabled { get; }
     bool ParallelExecutionEnabled { get; }
 
