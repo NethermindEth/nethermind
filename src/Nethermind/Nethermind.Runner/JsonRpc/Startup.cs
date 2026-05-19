@@ -10,7 +10,6 @@ using System.Linq;
 using System.Net;
 using System.Runtime.CompilerServices;
 using System.Security.Authentication;
-using System.Text;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
@@ -551,13 +550,8 @@ public class Startup : IStartup
             {
                 case string strId:
                     {
-                        // escaping is intentionally skipped for max performance;
-                        // JSON-RPC IDs are usually simple values (typically numeric)
-                        Span<byte> buf = writer.GetSpan(strId.Length * 3 + 2);
-                        buf[0] = (byte)'"';
-                        int len = Encoding.UTF8.GetBytes(strId, buf[1..]);
-                        buf[len + 1] = (byte)'"';
-                        writer.Advance(len + 2);
+                        using Utf8JsonWriter jsonWriter = new(writer, new JsonWriterOptions { SkipValidation = true });
+                        jsonWriter.WriteStringValue(strId);
                         break;
                     }
                 default:
