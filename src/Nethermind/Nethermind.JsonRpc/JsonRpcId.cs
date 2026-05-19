@@ -104,7 +104,7 @@ public readonly struct JsonRpcId : IEquatable<JsonRpcId>
     /// </summary>
     public bool IsNullLike => _kind is JsonRpcIdKind.Missing or JsonRpcIdKind.Null;
 
-    internal bool HasRawToken => _kind == JsonRpcIdKind.String && _rawValue is not null;
+    public bool HasRawToken => _kind == JsonRpcIdKind.String && _rawValue is not null;
 
     internal static JsonRpcId FromValidatedRawStringToken(ReadOnlySpan<byte> rawToken)
     {

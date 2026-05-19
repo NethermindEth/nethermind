@@ -31,7 +31,6 @@ using Microsoft.Extensions.Hosting.Internal;
 using Nethermind.Api;
 using Nethermind.Config;
 using Nethermind.Core.Authentication;
-using Nethermind.Core.Resettables;
 using Nethermind.Facade.Eth;
 using Nethermind.HealthChecks;
 using Nethermind.JsonRpc;
