@@ -156,15 +156,60 @@ internal ref struct JsonRpcEnvelopeReader
 
     private static string? InternMethodName(ref Utf8JsonReader methodReader)
     {
-        if (methodReader.ValueTextEquals("engine_newPayloadV4"u8)) return "engine_newPayloadV4";
-        if (methodReader.ValueTextEquals("engine_forkchoiceUpdatedV3"u8)) return "engine_forkchoiceUpdatedV3";
-        if (methodReader.ValueTextEquals("engine_newPayloadV3"u8)) return "engine_newPayloadV3";
-        if (methodReader.ValueTextEquals("engine_forkchoiceUpdatedV2"u8)) return "engine_forkchoiceUpdatedV2";
-        if (methodReader.ValueTextEquals("engine_getPayloadV4"u8)) return "engine_getPayloadV4";
-        if (methodReader.ValueTextEquals("engine_getPayloadV3"u8)) return "engine_getPayloadV3";
-        if (methodReader.ValueTextEquals("engine_newPayloadV2"u8)) return "engine_newPayloadV2";
-        if (methodReader.ValueTextEquals("engine_newPayloadV1"u8)) return "engine_newPayloadV1";
-        if (methodReader.ValueTextEquals("engine_exchangeCapabilities"u8)) return "engine_exchangeCapabilities";
+        switch (methodReader.ValueSpan.Length)
+        {
+            case 8:
+                if (methodReader.ValueTextEquals("eth_call"u8)) return "eth_call";
+                break;
+            case 11:
+                if (methodReader.ValueTextEquals("eth_chainId"u8)) return "eth_chainId";
+                break;
+            case 17:
+                if (methodReader.ValueTextEquals("engine_getBlobsV2"u8)) return "engine_getBlobsV2";
+                if (methodReader.ValueTextEquals("engine_getBlobsV1"u8)) return "engine_getBlobsV1";
+                if (methodReader.ValueTextEquals("engine_getBlobsV3"u8)) return "engine_getBlobsV3";
+                break;
+            case 19:
+                if (methodReader.ValueTextEquals("engine_newPayloadV4"u8)) return "engine_newPayloadV4";
+                if (methodReader.ValueTextEquals("engine_newPayloadV5"u8)) return "engine_newPayloadV5";
+                if (methodReader.ValueTextEquals("engine_newPayloadV3"u8)) return "engine_newPayloadV3";
+                if (methodReader.ValueTextEquals("engine_newPayloadV2"u8)) return "engine_newPayloadV2";
+                if (methodReader.ValueTextEquals("engine_newPayloadV1"u8)) return "engine_newPayloadV1";
+                if (methodReader.ValueTextEquals("engine_getPayloadV4"u8)) return "engine_getPayloadV4";
+                if (methodReader.ValueTextEquals("engine_getPayloadV5"u8)) return "engine_getPayloadV5";
+                if (methodReader.ValueTextEquals("engine_getPayloadV6"u8)) return "engine_getPayloadV6";
+                if (methodReader.ValueTextEquals("engine_getPayloadV3"u8)) return "engine_getPayloadV3";
+                if (methodReader.ValueTextEquals("engine_getPayloadV2"u8)) return "engine_getPayloadV2";
+                if (methodReader.ValueTextEquals("engine_getPayloadV1"u8)) return "engine_getPayloadV1";
+                break;
+            case 20:
+                if (methodReader.ValueTextEquals("eth_getBlockByNumber"u8)) return "eth_getBlockByNumber";
+                break;
+            case 25:
+                if (methodReader.ValueTextEquals("engine_getClientVersionV1"u8)) return "engine_getClientVersionV1";
+                break;
+            case 26:
+                if (methodReader.ValueTextEquals("engine_forkchoiceUpdatedV3"u8)) return "engine_forkchoiceUpdatedV3";
+                if (methodReader.ValueTextEquals("engine_forkchoiceUpdatedV4"u8)) return "engine_forkchoiceUpdatedV4";
+                if (methodReader.ValueTextEquals("engine_forkchoiceUpdatedV2"u8)) return "engine_forkchoiceUpdatedV2";
+                if (methodReader.ValueTextEquals("engine_forkchoiceUpdatedV1"u8)) return "engine_forkchoiceUpdatedV1";
+                break;
+            case 27:
+                if (methodReader.ValueTextEquals("engine_exchangeCapabilities"u8)) return "engine_exchangeCapabilities";
+                break;
+            case 31:
+                if (methodReader.ValueTextEquals("engine_getPayloadBodiesByHashV1"u8)) return "engine_getPayloadBodiesByHashV1";
+                if (methodReader.ValueTextEquals("engine_getPayloadBodiesByHashV2"u8)) return "engine_getPayloadBodiesByHashV2";
+                break;
+            case 32:
+                if (methodReader.ValueTextEquals("engine_getPayloadBodiesByRangeV1"u8)) return "engine_getPayloadBodiesByRangeV1";
+                if (methodReader.ValueTextEquals("engine_getPayloadBodiesByRangeV2"u8)) return "engine_getPayloadBodiesByRangeV2";
+                break;
+            case 40:
+                if (methodReader.ValueTextEquals("engine_exchangeTransitionConfigurationV1"u8)) return "engine_exchangeTransitionConfigurationV1";
+                break;
+        }
+
         return methodReader.GetString();
     }
 }

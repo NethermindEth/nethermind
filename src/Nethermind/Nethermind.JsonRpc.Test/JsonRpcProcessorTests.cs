@@ -27,6 +27,37 @@ namespace Nethermind.JsonRpc.Test;
 public class JsonRpcProcessorTests(bool returnErrors)
 {
     private readonly JsonRpcErrorResponse _errorResponse = new();
+    private static readonly string[] CachedMethodNames =
+    [
+        "eth_call",
+        "eth_chainId",
+        "eth_getBlockByNumber",
+        "engine_getBlobsV2",
+        "engine_getBlobsV1",
+        "engine_getBlobsV3",
+        "engine_newPayloadV4",
+        "engine_newPayloadV5",
+        "engine_newPayloadV3",
+        "engine_newPayloadV2",
+        "engine_newPayloadV1",
+        "engine_getPayloadV4",
+        "engine_getPayloadV5",
+        "engine_getPayloadV6",
+        "engine_getPayloadV3",
+        "engine_getPayloadV2",
+        "engine_getPayloadV1",
+        "engine_forkchoiceUpdatedV3",
+        "engine_forkchoiceUpdatedV4",
+        "engine_forkchoiceUpdatedV2",
+        "engine_forkchoiceUpdatedV1",
+        "engine_getClientVersionV1",
+        "engine_exchangeCapabilities",
+        "engine_getPayloadBodiesByHashV1",
+        "engine_getPayloadBodiesByHashV2",
+        "engine_getPayloadBodiesByRangeV1",
+        "engine_getPayloadBodiesByRangeV2",
+        "engine_exchangeTransitionConfigurationV1",
+    ];
 
     private JsonRpcProcessor Initialize(JsonRpcConfig? config = null, RpcRecorderState recorderState = RpcRecorderState.All)
     {
@@ -82,6 +113,60 @@ public class JsonRpcProcessorTests(bool returnErrors)
         capturedMethod.Should().Be("engine_newPayloadV4");
         capturedRawParams.Should().BeTrue();
         capturedParamsKind.Should().Be(JsonValueKind.Array);
+    }
+
+    [TestCaseSource(nameof(CachedMethodNames))]
+    public async Task Http_known_hot_methods_use_cached_method_names_on_direct_utf8_path(string methodName)
+    {
+        string? capturedMethod = null;
+        IJsonRpcService service = Substitute.For<IJsonRpcService>();
+        service.SendRequestAsync(Arg.Any<JsonRpcRequest>(), Arg.Any<JsonRpcContext>()).Returns(callInfo =>
+        {
+            JsonRpcRequest request = callInfo.Arg<JsonRpcRequest>();
+            capturedMethod = request.Method;
+            return new JsonRpcSuccessResponse { Id = request.Id };
+        });
+
+        JsonRpcProcessor processor = new(
+            service,
+            new JsonRpcConfig { RpcRecorderState = RpcRecorderState.None },
+            Substitute.For<IFileSystem>(),
+            LimboLogs.Instance);
+
+        await ProcessAsync(
+            processor,
+            CreateReader($$"""{"id":1,"jsonrpc":"2.0","method":"{{methodName}}","params":[]}"""),
+            new JsonRpcContext(RpcEndpoint.Http));
+
+        capturedMethod.Should().Be(methodName);
+        ReferenceEquals(capturedMethod, string.Intern(methodName)).Should().BeTrue();
+    }
+
+    [TestCaseSource(nameof(CachedMethodNames))]
+    public async Task Http_batch_known_hot_methods_use_cached_method_names_on_document_path(string methodName)
+    {
+        string? capturedMethod = null;
+        IJsonRpcService service = Substitute.For<IJsonRpcService>();
+        service.SendRequestAsync(Arg.Any<JsonRpcRequest>(), Arg.Any<JsonRpcContext>()).Returns(callInfo =>
+        {
+            JsonRpcRequest request = callInfo.Arg<JsonRpcRequest>();
+            capturedMethod = request.Method;
+            return new JsonRpcSuccessResponse { Id = request.Id };
+        });
+
+        JsonRpcProcessor processor = new(
+            service,
+            new JsonRpcConfig { RpcRecorderState = RpcRecorderState.None },
+            Substitute.For<IFileSystem>(),
+            LimboLogs.Instance);
+
+        await ProcessAsync(
+            processor,
+            CreateReader($$"""[{"id":1,"jsonrpc":"2.0","method":"{{methodName}}","params":[]}]"""),
+            new JsonRpcContext(RpcEndpoint.Http));
+
+        capturedMethod.Should().Be(methodName);
+        ReferenceEquals(capturedMethod, string.Intern(methodName)).Should().BeTrue();
     }
 
     private ValueTask<CollectedJsonRpcResponses> ProcessAsync(string request, JsonRpcContext? context = null, JsonRpcConfig? config = null) =>
