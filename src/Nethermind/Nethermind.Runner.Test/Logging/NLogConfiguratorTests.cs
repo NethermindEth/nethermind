@@ -12,7 +12,6 @@ using NLog.Layouts;
 using NLog.Targets;
 using NUnit.Framework;
 
-#nullable enable
 
 namespace Nethermind.Runner.Test.Logging;
 

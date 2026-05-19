@@ -355,7 +355,7 @@ void ConfigureLogger(ParseResult parseResult)
     if (logLevel is not null)
         NLogConfigurator.ConfigureLogLevels(logLevel);
 
-    string loggingFormat = parseResult.GetValue(BasicOptions.LoggingFormat) ?? "plain";
+    string loggingFormat = parseResult.GetValue(BasicOptions.LoggingFormat)!;
 
     try
     {

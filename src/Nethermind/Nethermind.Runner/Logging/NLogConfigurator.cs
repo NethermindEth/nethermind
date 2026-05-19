@@ -119,7 +119,7 @@ public static class NLogConfigurator
             ?? throw new InvalidOperationException(
                 $"Embedded layout '{resourceName}' does not contain any target (expected '{EmbeddedConsoleTargetName}').");
 
-        return target.GetType().GetProperty("Layout")?.GetValue(target) as Layout
+        return (target as TargetWithLayout)?.Layout
             ?? throw new InvalidOperationException(
                 $"Embedded layout '{resourceName}' did not produce a Layout on target '{target.Name}'.");
     }
