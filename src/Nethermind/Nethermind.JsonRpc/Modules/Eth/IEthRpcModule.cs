@@ -176,6 +176,11 @@ namespace Nethermind.JsonRpc.Modules.Eth
             ulong? timeoutMs = null);
 
         [JsonRpcMethod(IsImplemented = true,
+            Description = "Fills the defaults (nonce, gas, gasPrice or 1559 fees, chainId) of a transaction and returns the unsigned RLP and the filled object.",
+            IsSharable = false)]
+        Task<ResultWrapper<FillTransactionResult>> eth_fillTransaction(TransactionForRpc rpcTx);
+
+        [JsonRpcMethod(IsImplemented = true,
             Description = "Executes a tx call (does not create a transaction)",
             IsSharable = true,
             ExampleResponse = "0x")]

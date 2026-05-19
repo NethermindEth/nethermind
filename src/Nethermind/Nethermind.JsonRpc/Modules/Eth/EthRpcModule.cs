@@ -524,6 +524,74 @@ public partial class EthRpcModule(
         return @default > 0 ? Math.Min(@default, max) : max;
     }
 
+    public virtual async Task<ResultWrapper<FillTransactionResult>> eth_fillTransaction(TransactionForRpc rpcTx)
+    {
+        ArgumentNullException.ThrowIfNull(rpcTx);
+
+        BlockHeader? head = _blockchainBridge.HeadBlock?.Header;
+        if (head is null)
+            return ResultWrapper<FillTransactionResult>.Fail("head block not available", ErrorCodes.ResourceUnavailable);
+
+        IReleaseSpec spec = _specProvider.GetSpec(head);
+        ulong chainId = _blockchainBridge.GetChainId();
+
+        // All concrete subtypes (AccessList, EIP1559, Blob, SetCode) derive from LegacyTransactionForRpc,
+        // so this gives us a single handle to the shared fields (From, Nonce, GasPrice, ChainId).
+        if (rpcTx is not LegacyTransactionForRpc legacy)
+            return ResultWrapper<FillTransactionResult>.Fail("unsupported transaction type", ErrorCodes.InvalidInput);
+
+        if (legacy.From is null)
+        {
+            Address? defaultAccount = _wallet.GetAccounts().FirstOrDefault();
+            if (defaultAccount is null)
+                return ResultWrapper<FillTransactionResult>.Fail("from address required (no wallet accounts available)", ErrorCodes.InvalidInput);
+            legacy.From = defaultAccount;
+        }
+
+        legacy.ChainId ??= chainId;
+        legacy.Nonce ??= _txPool.GetLatestPendingNonce(legacy.From);
+
+        await FillGasPricing(legacy, head);
+
+        if (rpcTx.Gas is null)
+        {
+            ResultWrapper<UInt256?> est = eth_estimateGas(rpcTx, BlockParameter.Latest);
+            if (est.Result.ResultType != ResultType.Success || est.Data is null)
+                return ResultWrapper<FillTransactionResult>.Fail(est.Result.Error ?? "gas estimation failed", est.ErrorCode);
+            rpcTx.Gas = (long)est.Data.Value.ToUInt64(null);
+        }
+
+        Result<Transaction> conv = rpcTx.ToTransaction(validateUserInput: true, spec: spec);
+        if (!conv.Success(out Transaction tx, out string error))
+            return ResultWrapper<FillTransactionResult>.Fail(error, ErrorCodes.InvalidInput);
+
+        tx.ChainId = chainId;
+
+        byte[] raw = TxDecoder.Instance.Encode(tx, RlpBehaviors.SkipTypedWrapping | RlpBehaviors.AllowUnsigned).Bytes;
+
+        return ResultWrapper<FillTransactionResult>.Success(new FillTransactionResult
+        {
+            Raw = raw,
+            Tx = TransactionForRpc.FromTransaction(tx, new(chainId))
+        });
+    }
+
+    /// <summary>
+    /// Fills fee fields on <paramref name="rpcTx"/>. EIP-1559 path follows geth: tip from the oracle,
+    /// max fee = 2 * baseFee + tip. Legacy path defaults <c>gasPrice</c> from the gas-price oracle.
+    /// </summary>
+    private async Task FillGasPricing(LegacyTransactionForRpc rpcTx, BlockHeader head)
+    {
+        if (rpcTx is EIP1559TransactionForRpc eip1559)
+        {
+            eip1559.MaxPriorityFeePerGas ??= _gasPriceOracle.GetMaxPriorityGasFeeEstimate();
+            eip1559.MaxFeePerGas ??= head.BaseFeePerGas * 2 + eip1559.MaxPriorityFeePerGas.Value;
+            return;
+        }
+
+        rpcTx.GasPrice ??= await _gasPriceOracle.GetGasPriceEstimate();
+    }
+
     private async Task<ResultWrapper<Hash256>> SendTx(Transaction tx,
         TxHandlingOptions txHandlingOptions = TxHandlingOptions.None)
     {
