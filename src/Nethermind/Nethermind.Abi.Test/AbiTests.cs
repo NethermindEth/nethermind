@@ -673,69 +673,17 @@ public class AbiTests
         encoded.ToHexString().Should().BeEquivalentTo(expectedValue.ToHexString());
     }
 
-    [Test]
-    public void AbiTypeConverter_Parses_TupleArray_Correctly()
+    [TestCase("tuple", typeof(AbiTuple), "()")]
+    [TestCase("tuple[]", typeof(AbiArray), "()[]")]
+    [TestCase("tuple[3]", typeof(AbiFixedLengthArray), "()[3]")]
+    [TestCase("tuple[][]", typeof(AbiArray), "()[][]")]
+    [TestCase("tuple[2][]", typeof(AbiArray), "()[2][]")]
+    public void AbiTypeConverter_Parses_Tuple_Variants(string typeName, Type expectedType, string expectedName)
     {
-        string json = "\"tuple[]\"";
-        AbiType result = JsonSerializer.Deserialize<AbiType>(json)!;
+        AbiType result = JsonSerializer.Deserialize<AbiType>($"\"{typeName}\"")!;
 
-        result.Should().BeOfType<AbiArray>();
-        AbiArray arrayType = (AbiArray)result;
-        arrayType.ElementType.Should().BeOfType<AbiTuple>();
-
-        arrayType.Name.Should().Be("()[]");
-    }
-
-    [Test]
-    public void AbiTypeConverter_Parses_FixedTupleArray_Correctly()
-    {
-        string json = "\"tuple[3]\"";
-        AbiType result = JsonSerializer.Deserialize<AbiType>(json)!;
-
-        result.Should().BeOfType<AbiFixedLengthArray>();
-        AbiFixedLengthArray arrayType = (AbiFixedLengthArray)result;
-        arrayType.ElementType.Should().BeOfType<AbiTuple>();
-        arrayType.Length.Should().Be(3);
-        arrayType.Name.Should().Be("()[3]");
-    }
-
-    [Test]
-    public void AbiTypeConverter_Parses_PlainTuple_Correctly()
-    {
-        string json = "\"tuple\"";
-        AbiType result = JsonSerializer.Deserialize<AbiType>(json)!;
-
-        result.Should().BeOfType<AbiTuple>();
-        result.Name.Should().Be("()");
-    }
-
-    [Test]
-    public void AbiTypeConverter_Parses_DynamicDimensionalTupleArray_Correctly()
-    {
-        string json = "\"tuple[][]\"";
-        AbiType result = JsonSerializer.Deserialize<AbiType>(json)!;
-
-        result.Should().BeOfType<AbiArray>();
-        AbiArray outer = (AbiArray)result;
-        outer.ElementType.Should().BeOfType<AbiArray>();
-        AbiArray inner = (AbiArray)outer.ElementType;
-        inner.ElementType.Should().BeOfType<AbiTuple>();
-        result.Name.Should().Be("()[][]");
-    }
-
-    [Test]
-    public void AbiTypeConverter_Parses_FixedDynamicTupleArray_Correctly()
-    {
-        string json = "\"tuple[2][]\"";
-        AbiType result = JsonSerializer.Deserialize<AbiType>(json)!;
-
-        result.Should().BeOfType<AbiArray>();
-        AbiArray outer = (AbiArray)result;
-        outer.ElementType.Should().BeOfType<AbiFixedLengthArray>();
-        AbiFixedLengthArray inner = (AbiFixedLengthArray)outer.ElementType;
-        inner.ElementType.Should().BeOfType<AbiTuple>();
-        inner.Length.Should().Be(2);
-        result.Name.Should().Be("()[2][]");
+        result.Should().BeOfType(expectedType);
+        result.Name.Should().Be(expectedName);
     }
 
     [Test]
