@@ -308,6 +308,41 @@ public class StartupTests
         Assert.That(doc.RootElement.GetProperty("result").GetBoolean(), Is.EqualTo(value));
     }
 
+    [Test]
+    public async Task HttpJsonRpcResponseSink_ReportsStreamableFlushCount()
+    {
+        DefaultHttpContext ctx = new();
+        MemoryStream responseBody = new();
+        ctx.Features.Set<IHttpResponseBodyFeature>(new StreamResponseBodyFeature(responseBody));
+        IJsonRpcLocalStats jsonRpcLocalStats = Substitute.For<IJsonRpcLocalStats>();
+
+        HttpJsonRpcResponseSink sink = new(
+            ctx,
+            new JsonRpcUrl("http", "127.0.0.1", 0, RpcEndpoint.Http, true, [ModuleType.Engine]),
+            new JsonRpcConfig(),
+            jsonRpcLocalStats,
+            EthereumJsonSerializer.JsonOptions,
+            LimboLogs.Instance.GetClassLogger<StartupTests>(),
+            Stopwatch.GetTimestamp());
+
+        JsonRpcSuccessResponse response = new()
+        {
+            Id = JsonRpcId.FromObject(1),
+            Result = new FlushingStreamableResult()
+        };
+
+        await sink.WriteSingleAsync(response, new RpcReport("engine_getBlobsV2", 0, true), CancellationToken.None);
+        await sink.CompleteAsync(CancellationToken.None);
+
+        jsonRpcLocalStats.Received(1).ReportCall(
+            Arg.Is<RpcReport>(static report =>
+                report.Method == "engine_getBlobsV2" &&
+                report.BoundaryTimings.ResponseFlushCount == 2 &&
+                report.BoundaryTimings.ResponseFlushMicroseconds >= 0),
+            Arg.Any<long>(),
+            Arg.Any<long?>());
+    }
+
     [TestCase("127.0.0.1", true)]
     [TestCase("::1", true)]
     [TestCase("10.1.2.3", true)]
@@ -493,6 +528,18 @@ public class StartupTests
             throw new InvalidOperationException("Generic blob serialization path was used.");
 
         System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => GetEnumerator();
+    }
+
+    private sealed class FlushingStreamableResult : IStreamableResult
+    {
+        public async ValueTask WriteToAsync(PipeWriter writer, CancellationToken cancellationToken)
+        {
+            writer.Write("["u8);
+            await writer.FlushAsync(cancellationToken);
+            writer.Write("null"u8);
+            await writer.FlushAsync(cancellationToken);
+            writer.Write("]"u8);
+        }
     }
 
     private sealed class TestJsonRpcUrlCollection : Dictionary<int, JsonRpcUrl>, IJsonRpcUrlCollection

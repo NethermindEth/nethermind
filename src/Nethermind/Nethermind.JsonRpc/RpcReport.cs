@@ -33,13 +33,30 @@ namespace Nethermind.JsonRpc
             PreMethodMicroseconds != 0 ||
             MethodBodyMicroseconds != 0 ||
             PostMethodMicroseconds != 0 ||
-            ResponseWriteMicroseconds != 0;
+            ResponseWriteMicroseconds != 0 ||
+            ResponseFlushMicroseconds != 0 ||
+            ResponseFlushCount != 0;
 
         [JsonIgnore]
         public long BoundaryMicroseconds => PreMethodMicroseconds + PostMethodMicroseconds + ResponseWriteMicroseconds;
 
-        public RpcBoundaryTimings WithResponseWrite(long responseWriteMicroseconds) =>
-            this with { ResponseWriteMicroseconds = responseWriteMicroseconds, IsMeasured = true };
+        [JsonIgnore]
+        public long ResponseFlushMicroseconds { get; init; }
+
+        [JsonIgnore]
+        public long ResponseFlushCount { get; init; }
+
+        public RpcBoundaryTimings WithResponseWrite(
+            long responseWriteMicroseconds,
+            long responseFlushMicroseconds = 0,
+            long responseFlushCount = 0) =>
+            this with
+            {
+                ResponseWriteMicroseconds = responseWriteMicroseconds,
+                ResponseFlushMicroseconds = responseFlushMicroseconds,
+                ResponseFlushCount = responseFlushCount,
+                IsMeasured = true
+            };
 
         public static RpcBoundaryTimings PreMethodOnly(long boundaryStartTimestamp, long boundaryEndTimestamp) =>
             new(GetElapsedMicroseconds(boundaryStartTimestamp, boundaryEndTimestamp), 0, 0, 0) { IsMeasured = true };

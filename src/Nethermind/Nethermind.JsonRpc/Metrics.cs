@@ -84,5 +84,13 @@ namespace Nethermind.JsonRpc
         [SummaryMetric(LabelNames = ["method", "status"], ObjectiveQuantile = [0.5, 0.9, 0.95, 0.99], ObjectiveEpsilon = [0.05, 0.05, 0.01, 0.005])]
         [Description("JSON RPC response writing latency.")]
         public static IMetricObserver JsonRpcResponseWriteLatencyMicros = NoopMetricObserver.Instance;
+
+        [SummaryMetric(LabelNames = ["method", "status"], ObjectiveQuantile = [0.5, 0.9, 0.95, 0.99], ObjectiveEpsilon = [0.05, 0.05, 0.01, 0.005])]
+        [Description("JSON RPC response PipeWriter flush latency during response writing.")]
+        public static IMetricObserver JsonRpcResponseFlushLatencyMicros = NoopMetricObserver.Instance;
+
+        [SummaryMetric(LabelNames = ["method", "status"], ObjectiveQuantile = [0.5, 0.9, 0.95, 0.99], ObjectiveEpsilon = [0.05, 0.05, 0.01, 0.005])]
+        [Description("JSON RPC response PipeWriter flush count during response writing.")]
+        public static IMetricObserver JsonRpcResponseFlushCount = NoopMetricObserver.Instance;
     }
 }

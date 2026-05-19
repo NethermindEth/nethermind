@@ -122,6 +122,8 @@ public class JsonRpcLocalStats(ITimestamper timestamper, IJsonRpcConfig jsonRpcC
         Metrics.JsonRpcMethodBodyLatencyMicros.Observe(timings.MethodBodyMicroseconds, label);
         Metrics.JsonRpcPostMethodBoundaryLatencyMicros.Observe(timings.PostMethodMicroseconds, label);
         Metrics.JsonRpcResponseWriteLatencyMicros.Observe(timings.ResponseWriteMicroseconds, label);
+        Metrics.JsonRpcResponseFlushLatencyMicros.Observe(timings.ResponseFlushMicroseconds, label);
+        Metrics.JsonRpcResponseFlushCount.Observe(timings.ResponseFlushCount, label);
     }
 
     private const string ReportHeader = "method                                  | " +

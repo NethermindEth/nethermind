@@ -39,6 +39,8 @@ internal sealed class HttpJsonRpcResponseSink(
     private Stream? _bufferedStream;
     private bool _isFirstBatchItem = true;
     private bool _completed;
+    private long _reportedFlushCount;
+    private long _reportedFlushTimeMicroseconds;
 
     public long BytesWritten => _writer?.WrittenCount ?? 0;
     public bool StopRequested { get; private set; }
@@ -91,7 +93,7 @@ internal sealed class HttpJsonRpcResponseSink(
     {
         report = report with
         {
-            BoundaryTimings = report.BoundaryTimings.WithResponseWrite((long)Stopwatch.GetElapsedTime(responseWriteStartTimestamp).TotalMicroseconds)
+            BoundaryTimings = GetResponseWriteTimings(report, responseWriteStartTimestamp)
         };
 
         long handlingTimeMicroseconds = (long)Stopwatch.GetElapsedTime(requestStartTimestamp).TotalMicroseconds;
@@ -148,7 +150,7 @@ internal sealed class HttpJsonRpcResponseSink(
     {
         report = report with
         {
-            BoundaryTimings = report.BoundaryTimings.WithResponseWrite((long)Stopwatch.GetElapsedTime(responseWriteStartTimestamp).TotalMicroseconds)
+            BoundaryTimings = GetResponseWriteTimings(report, responseWriteStartTimestamp)
         };
 
         jsonRpcLocalStats.ReportCall(report);
@@ -158,6 +160,24 @@ internal sealed class HttpJsonRpcResponseSink(
             if (logger.IsWarn) logger.Warn($"The max batch response body size exceeded. The current response size {BytesWritten}, and the config setting is JsonRpc.{nameof(jsonRpcConfig.MaxBatchResponseBodySize)} = {jsonRpcConfig.MaxBatchResponseBodySize}");
             StopRequested = true;
         }
+    }
+
+    private RpcBoundaryTimings GetResponseWriteTimings(RpcReport report, long responseWriteStartTimestamp)
+    {
+        long responseFlushCount = 0;
+        long responseFlushMicroseconds = 0;
+        if (_writer is not null)
+        {
+            responseFlushCount = _writer.FlushCount - _reportedFlushCount;
+            responseFlushMicroseconds = _writer.FlushTimeMicroseconds - _reportedFlushTimeMicroseconds;
+            _reportedFlushCount = _writer.FlushCount;
+            _reportedFlushTimeMicroseconds = _writer.FlushTimeMicroseconds;
+        }
+
+        return report.BoundaryTimings.WithResponseWrite(
+            (long)Stopwatch.GetElapsedTime(responseWriteStartTimestamp).TotalMicroseconds,
+            responseFlushMicroseconds,
+            responseFlushCount);
     }
 
     public ValueTask EndBatchAsync(CancellationToken cancellationToken)

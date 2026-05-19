@@ -188,18 +188,24 @@ namespace Nethermind.JsonRpc.Test
             RecordingMetricObserver methodBodyObserver = new();
             RecordingMetricObserver postMethodObserver = new();
             RecordingMetricObserver responseWriteObserver = new();
+            RecordingMetricObserver responseFlushObserver = new();
+            RecordingMetricObserver responseFlushCountObserver = new();
 
             IMetricObserver previousBoundary = Metrics.JsonRpcBoundaryLatencyMicros;
             IMetricObserver previousPreMethod = Metrics.JsonRpcPreMethodBoundaryLatencyMicros;
             IMetricObserver previousMethodBody = Metrics.JsonRpcMethodBodyLatencyMicros;
             IMetricObserver previousPostMethod = Metrics.JsonRpcPostMethodBoundaryLatencyMicros;
             IMetricObserver previousResponseWrite = Metrics.JsonRpcResponseWriteLatencyMicros;
+            IMetricObserver previousResponseFlush = Metrics.JsonRpcResponseFlushLatencyMicros;
+            IMetricObserver previousResponseFlushCount = Metrics.JsonRpcResponseFlushCount;
 
             Metrics.JsonRpcBoundaryLatencyMicros = boundaryObserver;
             Metrics.JsonRpcPreMethodBoundaryLatencyMicros = preMethodObserver;
             Metrics.JsonRpcMethodBodyLatencyMicros = methodBodyObserver;
             Metrics.JsonRpcPostMethodBoundaryLatencyMicros = postMethodObserver;
             Metrics.JsonRpcResponseWriteLatencyMicros = responseWriteObserver;
+            Metrics.JsonRpcResponseFlushLatencyMicros = responseFlushObserver;
+            Metrics.JsonRpcResponseFlushCount = responseFlushCountObserver;
 
             try
             {
@@ -214,6 +220,10 @@ namespace Nethermind.JsonRpc.Test
                         MethodBodyMicroseconds: 100,
                         PostMethodMicroseconds: 20,
                         ResponseWriteMicroseconds: 5)
+                    {
+                        ResponseFlushMicroseconds = 3,
+                        ResponseFlushCount = 2
+                    }
                 };
 
                 localStats.ReportCall(report, elapsedMicroseconds: 135);
@@ -224,6 +234,8 @@ namespace Nethermind.JsonRpc.Test
                 methodBodyObserver.Observations.Should().ContainSingle().Which.Value.Should().Be(100);
                 postMethodObserver.Observations.Should().ContainSingle().Which.Value.Should().Be(20);
                 responseWriteObserver.Observations.Should().ContainSingle().Which.Value.Should().Be(5);
+                responseFlushObserver.Observations.Should().ContainSingle().Which.Value.Should().Be(3);
+                responseFlushCountObserver.Observations.Should().ContainSingle().Which.Value.Should().Be(2);
                 boundaryObserver.Observations[0].Labels.Should().Equal("engine_newPayloadV4", "success");
             }
             finally
@@ -233,6 +245,8 @@ namespace Nethermind.JsonRpc.Test
                 Metrics.JsonRpcMethodBodyLatencyMicros = previousMethodBody;
                 Metrics.JsonRpcPostMethodBoundaryLatencyMicros = previousPostMethod;
                 Metrics.JsonRpcResponseWriteLatencyMicros = previousResponseWrite;
+                Metrics.JsonRpcResponseFlushLatencyMicros = previousResponseFlush;
+                Metrics.JsonRpcResponseFlushCount = previousResponseFlushCount;
             }
         }
 
