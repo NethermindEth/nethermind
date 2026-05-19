@@ -192,6 +192,10 @@ public static class Metrics
     [KeyIsLabel("tier")]
     public static ConcurrentDictionary<PersistedSnapshotTier, long> BlobAllocatedBytesByTier { get; } = new();
 
+    [Description("Number of live PersistedSnapshot instances (refcount > 0), by tier")]
+    [KeyIsLabel("tier")]
+    public static ConcurrentDictionary<PersistedSnapshotTier, long> ActivePersistedSnapshotCountByTier { get; } = new();
+
     // Per-tier PageResidencyTracker gauges. ResidentBytes is refreshed by ArenaManager on a
     // 1-second System.Threading.Timer so the tracker's hot path stays untouched; the gauge
     // lags reality by at most ~1s. MetadataBytes and MaxBytes are fixed at tracker construction.

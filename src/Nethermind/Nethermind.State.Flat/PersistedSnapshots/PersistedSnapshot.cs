@@ -93,6 +93,7 @@ public sealed class PersistedSnapshot : RefCountingDisposable
 
     public StateId From { get; }
     public StateId To { get; }
+    public PersistedSnapshotTier Tier { get; }
 
     public long Size => _reservation.Size;
 
@@ -131,6 +132,7 @@ public sealed class PersistedSnapshot : RefCountingDisposable
     {
         From = from;
         To = to;
+        Tier = tier;
         _reservation = reservation;
         _blobManager = blobManager;
         _reservation.AcquireLease();
@@ -163,6 +165,11 @@ public sealed class PersistedSnapshot : RefCountingDisposable
             _reservation.Dispose();
             throw;
         }
+
+        // Increment only after every throw path above has been cleared, so a
+        // partial-construction failure does not leave the gauge off by one.
+        Metrics.ActivePersistedSnapshotCountByTier.AddOrUpdate(tier,
+            1L, static (_, c) => c + 1);
     }
 
     /// <summary>
@@ -583,5 +590,8 @@ public sealed class PersistedSnapshot : RefCountingDisposable
         foreach (ushort id in GetRefIdsEnumerator())
             _blobManager.GetFile(id).Dispose();
         _reservation.Dispose();
+
+        Metrics.ActivePersistedSnapshotCountByTier.AddOrUpdate(Tier,
+            0L, static (_, c) => Math.Max(0, c - 1));
     }
 }

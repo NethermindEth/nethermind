@@ -42,7 +42,10 @@ public class PersistedSnapshotTests
         try { Directory.Delete(_blobsDir, recursive: true); } catch { /* best-effort */ }
     }
 
-    private PersistedSnapshot CreatePersistedSnapshot(StateId from, StateId to, byte[] data)
+    private PersistedSnapshot CreatePersistedSnapshot(StateId from, StateId to, byte[] data) =>
+        CreatePersistedSnapshot(from, to, data, PersistedSnapshotTier.Small);
+
+    private PersistedSnapshot CreatePersistedSnapshot(StateId from, StateId to, byte[] data, PersistedSnapshotTier tier)
     {
         using ArenaWriter writer = _memArena.CreateWriter(data.Length);
         Span<byte> span = writer.GetWriter().GetSpan(data.Length);
@@ -50,7 +53,7 @@ public class PersistedSnapshotTests
         writer.GetWriter().Advance(data.Length);
         (_, ArenaReservation reservation) = writer.Complete();
         TestFixtureHelpers.LeaseBlobIdsFromHsst(reservation, _blobs);
-        return new PersistedSnapshot(from, to, reservation, _blobs, PersistedSnapshotTier.Small);
+        return new PersistedSnapshot(from, to, reservation, _blobs, tier);
     }
 
     private static IEnumerable<TestCaseData> RoundTripTestCases()
@@ -190,6 +193,41 @@ public class PersistedSnapshotTests
         PersistedSnapshot persisted = CreatePersistedSnapshot(from, to, data);
 
         Assert.DoesNotThrow(() => PersistedSnapshotUtils.ValidatePersistedSnapshot(snapshot, persisted, new PersistedSnapshotBloomFilterManager()));
+    }
+
+    [Test]
+    public void ActivePersistedSnapshotCount_TracksConstructionAndDisposalByTier()
+    {
+        StateId from = new(0, Keccak.EmptyTreeHash);
+        StateId toSmall = new(1, Keccak.Compute("small"));
+        StateId toLarge = new(2, Keccak.Compute("large"));
+
+        Snapshot inMemSmall = new(from, toSmall, new SnapshotContent(), _resourcePool, ResourcePool.Usage.MainBlockProcessing);
+        Snapshot inMemLarge = new(from, toLarge, new SnapshotContent(), _resourcePool, ResourcePool.Usage.MainBlockProcessing);
+        byte[] dataSmall = PersistedSnapshotBuilderTestExtensions.Build(inMemSmall, _blobs);
+        byte[] dataLarge = PersistedSnapshotBuilderTestExtensions.Build(inMemLarge, _blobs);
+
+        long baselineSmall = Active(PersistedSnapshotTier.Small);
+        long baselineLarge = Active(PersistedSnapshotTier.Large);
+
+        PersistedSnapshot small = CreatePersistedSnapshot(from, toSmall, dataSmall, PersistedSnapshotTier.Small);
+        PersistedSnapshot large = CreatePersistedSnapshot(from, toLarge, dataLarge, PersistedSnapshotTier.Large);
+
+        Assert.That(small.Tier, Is.EqualTo(PersistedSnapshotTier.Small));
+        Assert.That(large.Tier, Is.EqualTo(PersistedSnapshotTier.Large));
+        Assert.That(Active(PersistedSnapshotTier.Small), Is.EqualTo(baselineSmall + 1));
+        Assert.That(Active(PersistedSnapshotTier.Large), Is.EqualTo(baselineLarge + 1));
+
+        small.Dispose();
+        Assert.That(Active(PersistedSnapshotTier.Small), Is.EqualTo(baselineSmall));
+        Assert.That(Active(PersistedSnapshotTier.Large), Is.EqualTo(baselineLarge + 1));
+
+        large.Dispose();
+        Assert.That(Active(PersistedSnapshotTier.Small), Is.EqualTo(baselineSmall));
+        Assert.That(Active(PersistedSnapshotTier.Large), Is.EqualTo(baselineLarge));
+
+        static long Active(PersistedSnapshotTier tier) =>
+            Metrics.ActivePersistedSnapshotCountByTier.TryGetValue(tier, out long c) ? c : 0;
     }
 
     [TestCase((ushort)0, 0)]
