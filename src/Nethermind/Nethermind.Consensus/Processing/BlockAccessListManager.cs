@@ -133,12 +133,13 @@ public partial class BlockAccessListManager(
             if (ParallelExecutionEnabled && suggestedBlock.BlockAccessList is not null)
             {
                 BlockAccessListValidationIndex.AddressIndex addressIndex = new();
-                _suggestedValidationIndex = BlockAccessListValidationIndex.Build(suggestedBlock.BlockAccessList, suggestedBlock.Transactions.Length, addressIndex);
-                _generatedValidationIndex = new(suggestedBlock.Transactions.Length, addressIndex, _suggestedValidationIndex);
+                ReadOnlyBlockAccessList suggested = suggestedBlock.BlockAccessList;
+                _suggestedValidationIndex = BlockAccessListValidationIndex.Build(suggested, suggestedBlock.Transactions.Length, addressIndex);
+                _generatedValidationIndex = new(suggestedBlock.Transactions.Length, addressIndex, _suggestedValidationIndex, suggested.TotalStorageReads, suggested.TotalStorageChangeEvents);
                 int suggestedReads = 0;
-                foreach (ReadOnlyAccountChanges ac in suggestedBlock.BlockAccessList.AccountChanges)
+                foreach (ReadOnlyAccountChanges ac in suggested.AccountChanges)
                 {
-                    suggestedReads += IsSystemContract(ac.Address) ? 0 : ac.StorageReads.Length;
+                    if (!IsSystemContract(ac.Address)) suggestedReads += ac.StorageReads.Length;
                 }
                 _suggestedChargeableStorageReads = suggestedReads;
             }

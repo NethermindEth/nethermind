@@ -24,6 +24,20 @@ public class ReadOnlyBlockAccessList : IEquatable<ReadOnlyBlockAccessList>
     [JsonIgnore]
     public int ItemCount { get; }
 
+    /// <summary>
+    /// Sum of <see cref="ReadOnlyAccountChanges.StorageReads"/> lengths across all accounts.
+    /// Cached once at construction so per-block validation doesn't re-walk the BAL.
+    /// </summary>
+    [JsonIgnore]
+    public int TotalStorageReads { get; }
+
+    /// <summary>
+    /// Sum of per-slot change-event counts (<c>StorageChanges[i].Changes.Length</c>) across all
+    /// accounts. Bounds the total (slot, tx) pairs the generator can produce in a valid block.
+    /// </summary>
+    [JsonIgnore]
+    public int TotalStorageChangeEvents { get; }
+
     public EnumerableWithCount<ReadOnlyAccountChanges> AccountChanges
         => new(_accountChanges.Values, _accountChanges.Count);
 
@@ -49,11 +63,17 @@ public class ReadOnlyBlockAccessList : IEquatable<ReadOnlyBlockAccessList>
     {
         _orderedAccounts = orderedAccounts;
         _accountChanges = new Dictionary<Address, ReadOnlyAccountChanges>(orderedAccounts.Length);
+        int totalReads = 0;
+        int totalChangeEvents = 0;
         foreach (ReadOnlyAccountChanges a in orderedAccounts)
         {
             _accountChanges.Add(a.Address, a);
+            totalReads += a.StorageReads.Length;
+            foreach (ReadOnlySlotChanges slot in a.StorageChanges) totalChangeEvents += slot.Changes.Length;
         }
         ItemCount = itemCount;
+        TotalStorageReads = totalReads;
+        TotalStorageChangeEvents = totalChangeEvents;
     }
 
     public bool Equals(ReadOnlyBlockAccessList? other)

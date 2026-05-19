@@ -51,7 +51,7 @@ internal sealed class BlockAccessListValidationIndex
     private Address? _generatedOverflowAddress;
     private uint _generatedOverflowIndex;
 
-    public BlockAccessListValidationIndex(int txCount, AddressIndex addressIndex, BlockAccessListValidationIndex suggested)
+    public BlockAccessListValidationIndex(int txCount, AddressIndex addressIndex, BlockAccessListValidationIndex suggested, int storageReadsCapacity, int storageWritesCapacity)
     {
         _addressIndex = addressIndex;
         _lastIndex = GetLastIndex(txCount);
@@ -62,8 +62,10 @@ internal sealed class BlockAccessListValidationIndex
         _nonce = Lane<ulong>.CreateMutableLike(suggested._nonce);
         _code = Lane<ValueHash256>.CreateMutableLike(suggested._code);
         _storage = StorageLane.CreateMutableLike(suggested._storage);
-        _generatedStorageReads = [];
-        _generatedStorageWrites = [];
+        // +25% slack: reads can over-count due to per-tx duplication before dedup, and invalid
+        // wire BALs may push generated past suggested before lane overflow trips.
+        _generatedStorageReads = new(storageReadsCapacity + (storageReadsCapacity >> 2));
+        _generatedStorageWrites = new(storageWritesCapacity + (storageWritesCapacity >> 2));
     }
 
     private BlockAccessListValidationIndex(
@@ -232,8 +234,15 @@ internal sealed class BlockAccessListValidationIndex
     /// (via bitmap) and the storage_reads contents per account. Equivalent to re-encoding the
     /// generated BAL and comparing bytes to the wire hash, without the encode + Keccak pass.
     /// </summary>
+    /// <remarks>
+    /// Must only be called on the mutable (generated) index. <c>_generatedStorageReads</c> and
+    /// <c>_generatedStorageWrites</c> are null on the immutable (suggested) side.
+    /// </remarks>
     public StructuralMismatchKind FindStructuralMismatch(ReadOnlyBlockAccessList suggested, out Address? mismatchAddress)
     {
+        if (!_isMutable)
+            throw new InvalidOperationException("FindStructuralMismatch must be called on the generated index.");
+
         mismatchAddress = null;
 
         if (suggested.AccountChanges.Count != MarkedAccountCount)
@@ -242,12 +251,10 @@ internal sealed class BlockAccessListValidationIndex
         }
 
         // Sort-and-dedup both flat buffers once for the whole walk. After this each is in
-        // (ordinal asc, slot asc) order with no duplicates, so the per-ordinal ranges line up
-        // with suggested.AccountChanges (which iterates address-sorted, i.e. ordinal-ascending
-        // for accounts in the shared addressIndex). The compare then walks reads and writes
-        // for each account in lockstep, dropping reads whose slot also has a write — mirroring
-        // GeneratedBlockAccessList.Merge's read→write promotion so this stays consistent with
-        // the wire-bytes hash check.
+        // (ordinal asc, slot asc) order with no duplicates, so per-ordinal ranges line up with
+        // the suggested.AccountChanges iteration order. Reads/writes walk in lockstep per
+        // account, dropping reads whose slot also has a write — mirroring
+        // GeneratedBlockAccessList.Merge's read→write promotion.
         SortAndDedupFlat(_generatedStorageReads, ref _generatedStorageReadsSorted);
         SortAndDedupFlat(_generatedStorageWrites, ref _generatedStorageWritesSorted);
         ReadOnlySpan<(int Ordinal, UInt256 Slot)> reads = _generatedStorageReads is null
@@ -258,6 +265,7 @@ internal sealed class BlockAccessListValidationIndex
             : CollectionsMarshal.AsSpan(_generatedStorageWrites);
         int readsCursor = 0;
         int writesCursor = 0;
+        int lastOrdinal = -1;
 
         foreach (ReadOnlyAccountChanges sug in suggested.AccountChanges)
         {
@@ -266,6 +274,12 @@ internal sealed class BlockAccessListValidationIndex
                 mismatchAddress = sug.Address;
                 return StructuralMismatchKind.MissingInGenerated;
             }
+
+            // suggested.AccountChanges is address-sorted and Build() assigns ordinals in that
+            // iteration order, so ordinals here are monotonically increasing — the reads/writes
+            // cursors below rely on this to avoid backtracking.
+            Debug.Assert(ordinal > lastOrdinal, "AccountChanges enumeration must produce ordinals in ascending order.");
+            lastOrdinal = ordinal;
 
             while (readsCursor < reads.Length && reads[readsCursor].Ordinal < ordinal) readsCursor++;
             int readsRunStart = readsCursor;
