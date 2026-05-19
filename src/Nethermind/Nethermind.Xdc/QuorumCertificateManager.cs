@@ -16,23 +16,37 @@ using System.Diagnostics.CodeAnalysis;
 
 namespace Nethermind.Xdc;
 
-internal class QuorumCertificateManager(
-    IXdcConsensusContext context,
-    IBlockTree blockTree,
-    ISpecProvider xdcConfig,
-    IEpochSwitchManager epochSwitchManager,
-    ILogManager logManager,
-    IForensicsProcessor forensicsProcessor) : IQuorumCertificateManager
+internal class QuorumCertificateManager : IQuorumCertificateManager, IDisposable
 {
-    private IXdcConsensusContext _context { get; } = context;
-    private readonly IBlockTree _blockTree = blockTree;
-    private IEpochSwitchManager _epochSwitchManager { get; } = epochSwitchManager;
-    private readonly IForensicsProcessor _forensicsProcessor = forensicsProcessor;
-
-    private ILogger _logger = logManager.GetClassLogger<QuorumCertificateManager>();
-
-    private ISpecProvider _specProvider { get; } = xdcConfig;
+    private readonly IXdcConsensusContext _context;
+    private readonly IBlockTree _blockTree;
+    private readonly IEpochSwitchManager _epochSwitchManager;
+    private readonly IForensicsProcessor _forensicsProcessor;
+    private readonly ILogger _logger;
+    private readonly ISpecProvider _specProvider;
     private static readonly VoteDecoder _voteDecoder = new();
+
+    public QuorumCertificateManager(
+        IXdcConsensusContext context,
+        IBlockTree blockTree,
+        ISpecProvider xdcConfig,
+        IEpochSwitchManager epochSwitchManager,
+        ILogManager logManager,
+        IForensicsProcessor forensicsProcessor)
+    {
+        _context = context;
+        _blockTree = blockTree;
+        _specProvider = xdcConfig;
+        _epochSwitchManager = epochSwitchManager;
+        _forensicsProcessor = forensicsProcessor;
+        _logger = logManager.GetClassLogger<QuorumCertificateManager>();
+
+        _blockTree.OnUpdateMainChain += OnUpdateMainChain;
+
+        BlockHeader? head = _blockTree.Head?.Header;
+        if (head is not null)
+            Initialize((XdcBlockHeader)head);
+    }
 
     public QuorumCertificate HighestKnownCertificate => _context.HighestQC;
     public QuorumCertificate LockCertificate => _context.LockQC;
@@ -61,10 +75,7 @@ internal class QuorumCertificateManager(
                 _context.LockQC = parentQc;
             }
 
-            if (!CommitBlock(proposedBlockHeader, proposedBlockHeader.ExtraConsensusData.BlockRound, qc, out string error))
-            {
-                if (_logger.IsWarn) _logger.Warn($"Could not commit block ({proposedBlockHeader.Hash}). {error}");
-            }
+            CommitBlock(proposedBlockHeader, proposedBlockHeader.ExtraConsensusData.BlockRound, qc);
         }
 
         if (qc.ProposedBlockInfo.Round >= _context.CurrentRound)
@@ -73,74 +84,66 @@ internal class QuorumCertificateManager(
         }
     }
 
-    private bool CommitBlock(XdcBlockHeader proposedBlockHeader, ulong proposedRound, QuorumCertificate proposedQuorumCert, [NotNullWhen(false)] out string? error)
+    private void CommitBlock(XdcBlockHeader proposedBlockHeader, ulong proposedRound, QuorumCertificate proposedQuorumCert)
     {
         IXdcReleaseSpec spec = _specProvider.GetXdcSpec(proposedBlockHeader);
-        //Can only commit a QC if the proposed block is at least 2 blocks after the switch block, since we want to check grandparent of proposed QC
 
         if ((proposedBlockHeader.Number - 2) <= spec.SwitchBlock)
         {
-            error = $"Proposed block ({proposedBlockHeader.Number}) is too close or before genesis block ({spec.SwitchBlock})";
-            return false;
+            if (_logger.IsDebug) _logger.Debug($"Block {proposedBlockHeader.Number} is too close to switch block {spec.SwitchBlock}, skipping commit.");
+            return;
         }
 
         if (_blockTree.FindHeader(proposedBlockHeader.ParentHash!) is not XdcBlockHeader parentHeader)
         {
-            error = $"Parent header {proposedBlockHeader.ParentHash} is missing.";
-            return false;
+            if (_logger.IsWarn) _logger.Warn($"Parent header {proposedBlockHeader.ParentHash} is missing.");
+            return;
         }
 
         if (parentHeader.ExtraConsensusData is null)
         {
-            error = $"Block {parentHeader.ToString(BlockHeader.Format.FullHashAndNumber)} does not have required consensus data! Chain might be corrupt!";
-            return false;
+            if (_logger.IsWarn) _logger.Warn($"Block {parentHeader.ToString(BlockHeader.Format.FullHashAndNumber)} does not have required consensus data! Chain might be corrupt!");
+            return;
         }
 
         if (proposedRound - 1 != parentHeader.ExtraConsensusData.BlockRound)
         {
-            error = $"QC round is not continuous from parent QC round.";
-            return false;
+            if (_logger.IsDebug) _logger.Debug($"QC round {proposedRound} is not continuous from parent QC round {parentHeader.ExtraConsensusData.BlockRound}.");
+            return;
         }
 
         if (_blockTree.FindHeader(parentHeader.ParentHash!) is not XdcBlockHeader grandParentHeader)
         {
-            error = $"Grandparent header {parentHeader.ParentHash} is missing.";
-            return false;
+            if (_logger.IsWarn) _logger.Warn($"Grandparent header {parentHeader.ParentHash} is missing.");
+            return;
         }
 
         if (grandParentHeader.ExtraConsensusData is null)
         {
-            error = $"QC grand parent ({grandParentHeader.ToString(BlockHeader.Format.FullHashAndNumber)}) does not have a QC.";
-            return false;
+            if (_logger.IsWarn) _logger.Warn($"QC grandparent {grandParentHeader.ToString(BlockHeader.Format.FullHashAndNumber)} does not have consensus data. Chain might be corrupt!");
+            return;
         }
 
         if (proposedRound - 2 != grandParentHeader.ExtraConsensusData.BlockRound)
         {
-            error = $"QC round is not continuous from grand parent QC round.";
-            return false;
+            if (_logger.IsDebug) _logger.Debug($"QC round {proposedRound} is not continuous from grandparent QC round {grandParentHeader.ExtraConsensusData.BlockRound}.");
+            return;
         }
 
-        //We will normally commit twice - once when QC vote finished and once when we receive new block containing the same QC most likely
         if (_context.HighestCommitBlock is not null && grandParentHeader.Hash == _context.HighestCommitBlock.Hash)
-        {
-            error = null;
-            return true;
-        }
+            return;
 
         if (_context.HighestCommitBlock is not null
             && (_context.HighestCommitBlock.Round >= grandParentHeader.ExtraConsensusData.BlockRound || _context.HighestCommitBlock.BlockNumber > grandParentHeader.Number))
         {
-            error = $"Committed block (round={_context.HighestCommitBlock.Round} #{_context.HighestCommitBlock.BlockNumber} hash={_context.HighestCommitBlock.Hash}) has higher round or block number than proposed header grandparent #{grandParentHeader.Number} round={grandParentHeader.ExtraConsensusData.BlockRound} hash={grandParentHeader.Hash}.";
-            return false;
+            if (_logger.IsDebug) _logger.Debug($"Committed block (round={_context.HighestCommitBlock.Round} #{_context.HighestCommitBlock.BlockNumber}) has higher round or block number than grandparent #{grandParentHeader.Number} round={grandParentHeader.ExtraConsensusData.BlockRound}.");
+            return;
         }
 
         _context.HighestCommitBlock = new BlockRoundInfo(grandParentHeader.Hash, grandParentHeader.ExtraConsensusData.BlockRound, grandParentHeader.Number);
-        _logger.Info($"Committed block {grandParentHeader.ToString(BlockHeader.Format.Short)} round={grandParentHeader.ExtraConsensusData.BlockRound}");
+        _logger.Info($"Committed new block {grandParentHeader.ToString(BlockHeader.Format.Short)} round={grandParentHeader.ExtraConsensusData.BlockRound}");
         _ = _forensicsProcessor.ForensicsMonitoring([parentHeader, proposedBlockHeader], proposedQuorumCert);
-        //Mark grandparent as finalized
         _blockTree.ForkChoiceUpdated(grandParentHeader.Hash, grandParentHeader.Hash);
-        error = null;
-        return true;
     }
 
     public bool VerifyCertificate(QuorumCertificate qc, [NotNullWhen(false)] out string error)
@@ -251,4 +254,30 @@ internal class QuorumCertificateManager(
             CommitCertificate(current.ExtraConsensusData.QuorumCert);
         }
     }
+
+    private void OnUpdateMainChain(object? sender, OnUpdateMainChainArgs e)
+    {
+        if (!e.WereProcessed)
+            return;
+
+        foreach (Block block in e.Blocks)
+        {
+            // Violations indicate a corrupt DB; let the exception propagate.
+            if (block.Header is not XdcBlockHeader xdcHeader)
+                throw new InvalidOperationException($"Expected an XDC header, but got {block.Header.GetType().FullName}");
+
+            if (block.IsGenesis)
+            {
+                Initialize(xdcHeader);
+                continue;
+            }
+
+            if (xdcHeader.ExtraConsensusData is null)
+                throw new InvalidOperationException($"Block {xdcHeader.ToString(BlockHeader.Format.FullHashAndNumber)} has no V2 consensus data");
+
+            CommitCertificate(xdcHeader.ExtraConsensusData.QuorumCert);
+        }
+    }
+
+    public void Dispose() => _blockTree.OnUpdateMainChain -= OnUpdateMainChain;
 }

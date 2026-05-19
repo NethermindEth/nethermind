@@ -51,7 +51,10 @@ public class NethermindModule(ChainSpec chainSpec, IConfigProvider configProvide
                 configProvider.GetConfig<ISyncConfig>()
             ))
             .AddModule(new DbMonitoringModule())
-            .AddModule(new WorldStateModule(configProvider.GetConfig<IInitConfig>()))
+            .AddModule(new WorldStateModule())
+            .AddModule(new PruningTrieStoreModule(configProvider.GetConfig<IInitConfig>()))
+            .AddModule(new FlatWorldStateModule(configProvider.GetConfig<IFlatDbConfig>()))
+            .AddModule(new WorldStateDbDeciderModule())
             .AddModule(new PrewarmerModule(configProvider.GetConfig<IBlocksConfig>()))
             .AddModule(new BuiltInStepsModule())
             .AddModule(new DatabaseMigrationsModule())
@@ -95,8 +98,6 @@ public class NethermindModule(ChainSpec chainSpec, IConfigProvider configProvide
             builder.AddSingleton<IBlobTxStorage>(NullBlobTxStorage.Instance);
         }
 
-        if (configProvider.GetConfig<IFlatDbConfig>().Enabled)
-            builder.AddModule(new FlatWorldStateModule(configProvider.GetConfig<IFlatDbConfig>()));
     }
 
     // Just a wrapper to make it clear, these three are expected to be available at the time of configurations.

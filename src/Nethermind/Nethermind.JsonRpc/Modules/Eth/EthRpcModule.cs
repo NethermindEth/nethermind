@@ -7,6 +7,7 @@ using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -115,18 +116,36 @@ public partial class EthRpcModule(
 
     public ResultWrapper<UInt256?> eth_blobBaseFee()
     {
-        if (_blockFinder.Head?.Header?.ExcessBlobGas is null)
+        BlockHeader? head = _blockFinder.Head?.Header;
+        if (head?.ExcessBlobGas is null)
         {
-            return ResultWrapper<UInt256?>.Success(UInt256.Zero);
+            return ResultWrapper<UInt256?>.Success(null);
         }
 
-        IReleaseSpec spec = _specProvider.GetSpec(_blockFinder.Head?.Header!);
-        if (!BlobGasCalculator.TryCalculateFeePerBlobGas(_blockFinder.Head?.Header?.ExcessBlobGas ?? 0,
+        IReleaseSpec spec = _specProvider.GetSpec(head);
+        if (!BlobGasCalculator.TryCalculateFeePerBlobGas(head.ExcessBlobGas.Value,
                 spec.BlobBaseFeeUpdateFraction, out UInt256 feePerBlobGas))
         {
             return ResultWrapper<UInt256?>.Fail("Unable to calculate the current blob base fee");
         }
         return ResultWrapper<UInt256?>.Success(feePerBlobGas);
+    }
+
+    public ResultWrapper<UInt256?> eth_baseFee()
+    {
+        BlockHeader? head = _blockFinder.Head?.Header;
+        if (head is null)
+        {
+            return ResultWrapper<UInt256?>.Success(null);
+        }
+
+        IEip1559Spec specFor1559 = _specProvider.GetSpecFor1559(head.Number + 1);
+        if (!specFor1559.IsEip1559Enabled)
+        {
+            return ResultWrapper<UInt256?>.Success(null);
+        }
+
+        return ResultWrapper<UInt256?>.Success(BaseFeeCalculator.Calculate(head, specFor1559));
     }
 
     public ResultWrapper<UInt256?> eth_maxPriorityFeePerGas()
@@ -406,13 +425,29 @@ public partial class EthRpcModule(
 
         if (_logger.IsInfo) _logger.Info($"eth_signTransaction signed tx {tx.Hash} from {tx.SenderAddress}");
 
-        byte[] raw = TxDecoder.Instance.Encode(tx, RlpBehaviors.SkipTypedWrapping | RlpBehaviors.InMempoolForm).Bytes;
+        return BuildSignedResult(tx);
+    }
 
-        return ResultWrapper<SignTransactionResult>.Success(new SignTransactionResult
+    private static ResultWrapper<SignTransactionResult> BuildSignedResult(Transaction tx)
+    {
+        const RlpBehaviors encodeBehaviors = RlpBehaviors.SkipTypedWrapping | RlpBehaviors.InMempoolForm;
+        int length = TxDecoder.Instance.GetLength(tx, encodeBehaviors);
+        ArrayPoolList<byte> buffer = new(length, length);
+        try
         {
-            Raw = raw,
-            Tx = TransactionForRpc.FromTransaction(tx)
-        });
+            RlpStream stream = new(new CappedArray<byte>(buffer.UnsafeGetInternalArray(), length));
+            TxDecoder.Instance.Encode(stream, tx, encodeBehaviors);
+            return ResultWrapper<SignTransactionResult>.Success(new SignTransactionResult
+            {
+                Raw = buffer,
+                Tx = TransactionForRpc.FromTransaction(tx)
+            });
+        }
+        catch
+        {
+            buffer.Dispose();
+            throw;
+        }
     }
 
     private ResultWrapper<SignTransactionResult>? CheckTxFeeCap(Transaction tx)
