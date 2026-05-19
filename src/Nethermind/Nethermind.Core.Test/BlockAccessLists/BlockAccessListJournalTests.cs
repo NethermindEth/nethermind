@@ -20,6 +20,17 @@ namespace Nethermind.Core.Test.BlockAccessLists;
 public class BlockAccessListJournalTests
 {
     [Test]
+    public void AddCodeChange_with_equal_before_after_does_not_create_account_changes()
+    {
+        BlockAccessListAtIndex slice = new() { Index = 0 };
+        byte[] emptyCode = [];
+
+        slice.AddCodeChange(TestItem.AddressA, emptyCode, emptyCode);
+
+        Assert.That(slice.GetAccountChanges(TestItem.AddressA), Is.Null);
+    }
+
+    [Test]
     public void Restore_reinstates_previous_values_for_interleaved_change_types()
     {
         BlockAccessListAtIndex slice = new() { Index = 1 };

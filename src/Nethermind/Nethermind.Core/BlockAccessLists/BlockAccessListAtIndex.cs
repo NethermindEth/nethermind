@@ -82,13 +82,12 @@ public class BlockAccessListAtIndex : IJournal<int>, IResettable
 
     public void AddCodeChange(Address address, byte[] before, ReadOnlyMemory<byte> after)
     {
-        AccountChangesAtIndex accountChanges = GetOrAddAccountChanges(address);
-
         if (before.AsSpan().SequenceEqual(after.Span))
         {
             return;
         }
 
+        AccountChangesAtIndex accountChanges = GetOrAddAccountChanges(address);
         byte[] preTxCode = accountChanges.PreTxCode ??= before;
 
         _changes.Add(new()
