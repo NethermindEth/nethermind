@@ -37,7 +37,6 @@ namespace Nethermind.Blockchain
             set => _wrapped.BestPersistedState = value;
         }
 
-
         public BlockHeader? LowestInsertedBeaconHeader
         {
             get => _wrapped.LowestInsertedBeaconHeader;

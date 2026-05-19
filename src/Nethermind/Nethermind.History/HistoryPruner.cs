@@ -33,6 +33,8 @@ public class HistoryPruner : IHistoryPruner
     private const int LockWaitTimeoutMs = 100;
     private const int SlotsPerEpoch = 32;
 
+    public long GetRetentionBlocks(long retentionEpochs) => retentionEpochs * SlotsPerEpoch;
+
     // only one pruning and one searching thread at a time
     private readonly object _pruneLock = new();
     private readonly object _searchLock = new();

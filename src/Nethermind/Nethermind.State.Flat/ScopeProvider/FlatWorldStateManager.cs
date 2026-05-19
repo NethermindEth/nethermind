@@ -22,6 +22,7 @@ public class FlatWorldStateManager(
     Func<FlatOverridableWorldScope> overridableWorldScopeFactory,
     [KeyFilter(DbNames.Code)] IDb codeDb,
     IFlatStateRootIndex flatStateRootIndex,
+    IColumnsDb<FlatDbColumns> flatDb,
     ILogManager logManager)
     : IWorldStateManager
 {
@@ -36,6 +37,9 @@ public class FlatWorldStateManager(
 
     private readonly FlatTrieVerifier _trieVerifier = new(flatDbManager, persistence, logManager);
 
+    // OldestStateBlock co-located with state in the flat metadata column.
+    private readonly StateBoundaryStore _boundaryStore = new(flatDb.GetColumnDb(FlatDbColumns.Metadata));
+
     private FlatSnapServer? _snapServer;
 
     public IWorldStateScopeProvider GlobalWorldState => _mainWorldState;
@@ -46,6 +50,16 @@ public class FlatWorldStateManager(
         flatStateRootIndex,
         logManager);
     public IReadOnlyKeyValueStore? HashServer => null;
+
+    // No memory-pruning rolling window. State retention is driven by snapshot persistence and
+    // is reported through OldestStateBlock instead.
+    public long? RetentionWindowBlocks => null;
+
+    public long? OldestStateBlock
+    {
+        get => _boundaryStore.OldestStateBlock;
+        set => _boundaryStore.OldestStateBlock = value;
+    }
 
     public IWorldStateScopeProvider CreateResettableWorldState() =>
         new FlatScopeProvider(

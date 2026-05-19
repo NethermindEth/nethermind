@@ -29,6 +29,7 @@ namespace Nethermind.Blockchain.FullPruning
         private readonly IPruningTrigger _pruningTrigger;
         private readonly IPruningConfig _pruningConfig;
         private readonly IBlockTree _blockTree;
+        private readonly IStateBoundary _stateBoundary;
         private readonly IStateReader _stateReader;
         private readonly IProcessExitSource _processExitSource;
         private readonly ILogManager _logManager;
@@ -46,6 +47,7 @@ namespace Nethermind.Blockchain.FullPruning
             IPruningTrigger pruningTrigger,
             IPruningConfig pruningConfig,
             IBlockTree blockTree,
+            IStateBoundary stateBoundary,
             IStateReader stateReader,
             IProcessExitSource processExitSource,
             IChainEstimations chainEstimations,
@@ -59,6 +61,7 @@ namespace Nethermind.Blockchain.FullPruning
             _pruningTrigger = pruningTrigger;
             _pruningConfig = pruningConfig;
             _blockTree = blockTree;
+            _stateBoundary = stateBoundary;
             _stateReader = stateReader;
             _processExitSource = processExitSource;
             _logManager = logManager;
@@ -178,7 +181,10 @@ namespace Nethermind.Blockchain.FullPruning
             }
 
             if (_logger.IsInfo) _logger.Info($"Full Pruning Ready to start: pruning garbage before state {stateToCopy} with root {header.StateRoot}");
-            await CopyTrie(pruningContext, header, cancellationToken);
+            if (CopyTrie(pruningContext, header, cancellationToken))
+            {
+                _stateBoundary.OldestStateBlock = stateToCopy;
+            }
         }
 
         private bool CanStartNewPruning() => _fullPruningDb.CanStartPruning;
@@ -218,10 +224,11 @@ namespace Nethermind.Blockchain.FullPruning
             }
         }
 
-        private Task CopyTrie(IPruningContext pruning, BlockHeader? baseBlock, CancellationToken cancellationToken)
+        private bool CopyTrie(IPruningContext pruning, BlockHeader? baseBlock, CancellationToken cancellationToken)
         {
             INodeStorage.KeyScheme originalKeyScheme = _nodeStorage.Scheme;
             ICopyTreeVisitor visitor = null;
+            bool committed = false;
 
             try
             {
@@ -277,6 +284,7 @@ namespace Nethermind.Blockchain.FullPruning
 
                     _nodeStorage.Scheme = targetNodeStorage.Scheme;
                     _lastPruning = DateTime.UtcNow;
+                    committed = true;
                 }
             }
             catch (Exception e)
@@ -290,7 +298,7 @@ namespace Nethermind.Blockchain.FullPruning
                 visitor?.Dispose();
             }
 
-            return Task.CompletedTask;
+            return committed;
         }
 
         private ICopyTreeVisitor CopyTree<TContext>(
