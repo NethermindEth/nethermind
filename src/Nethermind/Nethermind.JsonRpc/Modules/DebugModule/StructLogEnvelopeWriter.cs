@@ -6,8 +6,10 @@ using System.IO.Pipelines;
 using System.Text.Json;
 using System.Threading;
 using Nethermind.Blockchain.Tracing.GethStyle;
+using Nethermind.Core;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
+using Nethermind.State;
 
 namespace Nethermind.JsonRpc.Modules.DebugModule;
 
@@ -45,7 +47,8 @@ internal static class StructLogEnvelopeWriter
         {
             writer.WriteEndArray();
             string? errorMessage = failure is null ? null : $"tracing failed: {failure.Message}";
-            WriteFooter(writer, trace, errorMessage, fallbackGas);
+            int errorCode = ResolveErrorCode(failure);
+            WriteFooter(writer, trace, errorMessage, errorCode, fallbackGas);
         }
 
         LogFailure(logger, failure);
@@ -61,10 +64,22 @@ internal static class StructLogEnvelopeWriter
         writer.WritePropertyName("structLogs"u8);
         writer.WriteStartArray();
         writer.WriteEndArray();
-        WriteFooter(writer, trace: null, errorMessage, fallbackGas: gasLimit);
+        WriteFooter(writer, trace: null, errorMessage, ErrorCodes.InvalidInput, fallbackGas: gasLimit);
     }
 
-    private static void WriteFooter(Utf8JsonWriter writer, GethLikeTxTrace? trace, string? errorMessage, long fallbackGas)
+    private static int ResolveErrorCode(Exception? failure)
+    {
+        if (failure is null) return ErrorCodes.InvalidInput;
+
+        for (Exception? current = failure; current is not null; current = current.InnerException)
+        {
+            if (current is InsufficientBalanceException or InvalidBlockException) return ErrorCodes.InvalidInput;
+        }
+
+        return ErrorCodes.InternalError;
+    }
+
+    private static void WriteFooter(Utf8JsonWriter writer, GethLikeTxTrace? trace, string? errorMessage, int errorCode, long fallbackGas)
     {
         long gas = trace?.Gas ?? fallbackGas;
         bool failed = errorMessage is not null || trace is null || trace.Failed;
@@ -84,7 +99,7 @@ internal static class StructLogEnvelopeWriter
             writer.WriteStringValue(errorMessage);
 
             writer.WritePropertyName("errorCode"u8);
-            writer.WriteNumberValue(ErrorCodes.InvalidInput);
+            writer.WriteNumberValue(errorCode);
         }
 
         writer.WriteEndObject();

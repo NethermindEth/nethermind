@@ -353,10 +353,16 @@ public class DebugRpcModule(
 
         if (CanStreamStructLogs(options))
         {
+            Block? resolvedBlock = blockFinder.FindBlock(blockNumber);
+            if (resolvedBlock is null)
+            {
+                return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Fail($"Block body not found for {blockNumber}", ErrorCodes.ResourceNotFound);
+            }
+
             GethTraceOptions effective = options ?? GethTraceOptions.Default;
             return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Success(BuildStreamingBlockResult(
                 (writer, pipeWriter, token) =>
-                    debugBridge.GetBlockTraceStreaming(blockNumber, writer, pipeWriter, token, effective)));
+                    debugBridge.GetBlockTraceStreaming(resolvedBlock, writer, pipeWriter, token, effective)));
         }
 
         using CancellationTokenSource? timeout = BuildTimeoutCancellationTokenSource();
@@ -389,11 +395,16 @@ public class DebugRpcModule(
 
         if (CanStreamStructLogs(options))
         {
+            Block? resolvedBlock = blockFinder.FindBlock(blockHash);
+            if (resolvedBlock is null)
+            {
+                return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Fail($"Block body not found for {blockHash}", ErrorCodes.ResourceNotFound);
+            }
+
             GethTraceOptions effective = options ?? GethTraceOptions.Default;
-            BlockParameter resolvedParam = new(blockHash);
             return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Success(BuildStreamingBlockResult(
                 (writer, pipeWriter, token) =>
-                    debugBridge.GetBlockTraceStreaming(resolvedParam, writer, pipeWriter, token, effective)));
+                    debugBridge.GetBlockTraceStreaming(resolvedBlock, writer, pipeWriter, token, effective)));
         }
 
         using CancellationTokenSource? timeout = BuildTimeoutCancellationTokenSource();

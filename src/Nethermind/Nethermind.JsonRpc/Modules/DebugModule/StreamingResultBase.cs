@@ -47,10 +47,16 @@ public abstract class StreamingResultBase : IStreamableResult, IDisposable
 
         using Utf8JsonWriter jsonWriter = new(writer, StreamingWriterOptions);
 
-        EmitContent(jsonWriter, writer, combinedToken);
-
-        jsonWriter.Flush();
-        await writer.FlushAsync(combinedToken);
+        try
+        {
+            EmitContent(jsonWriter, writer, combinedToken);
+            jsonWriter.Flush();
+            await writer.FlushAsync(combinedToken);
+        }
+        catch (OperationCanceledException) when (combinedToken.IsCancellationRequested)
+        {
+            if (Logger.IsDebug) Logger.Debug("debug_trace streaming cancelled mid-response; client receives a partial body with the JSON envelope closed by the inner finally blocks.");
+        }
     }
 
     /// <summary>

@@ -51,10 +51,16 @@ public sealed class GethLikeTxTraceStreamingSingleResult : GethLikeTxTrace, IStr
 
         using Utf8JsonWriter jsonWriter = new(writer, StreamingWriterOptions);
 
-        StructLogEnvelopeWriter.EmitTraceObject(jsonWriter, writer, combinedToken, _runTrace, _logger);
-
-        jsonWriter.Flush();
-        await writer.FlushAsync(combinedToken);
+        try
+        {
+            StructLogEnvelopeWriter.EmitTraceObject(jsonWriter, writer, combinedToken, _runTrace, _logger);
+            jsonWriter.Flush();
+            await writer.FlushAsync(combinedToken);
+        }
+        catch (OperationCanceledException) when (combinedToken.IsCancellationRequested)
+        {
+            if (_logger.IsDebug) _logger.Debug("debug_trace streaming cancelled mid-response; client receives a partial body with the JSON envelope closed by the inner finally blocks.");
+        }
     }
 
     /// <summary>

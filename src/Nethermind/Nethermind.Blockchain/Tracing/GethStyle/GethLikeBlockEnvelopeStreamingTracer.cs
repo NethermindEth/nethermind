@@ -16,12 +16,13 @@ namespace Nethermind.Blockchain.Tracing.GethStyle;
 /// with the per-tx struct-log entries streamed through a <see cref="GethLikeTxStreamingMemoryTracer"/>.
 /// Memory is bounded by one in-flight opcode entry regardless of block size.
 /// </summary>
-public sealed class GethLikeBlockEnvelopeStreamingTracer : BlockTracerBase<GethLikeTxTrace, GethLikeTxStreamingMemoryTracer>
+public sealed class GethLikeBlockEnvelopeStreamingTracer : BlockTracerBase<GethLikeTxTrace, GethLikeTxStreamingMemoryTracer>, IDisposable
 {
     private readonly GethTraceOptions _options;
     private readonly Utf8JsonWriter _writer;
     private readonly PipeWriter? _pipeWriter;
     private readonly CancellationToken _cancellationToken;
+    private bool _innerEnvelopeOpen;
 
     public GethLikeBlockEnvelopeStreamingTracer(
         GethTraceOptions options,
@@ -45,6 +46,7 @@ public sealed class GethLikeBlockEnvelopeStreamingTracer : BlockTracerBase<GethL
         _writer.WriteStartObject();
         _writer.WritePropertyName("structLogs"u8);
         _writer.WriteStartArray();
+        _innerEnvelopeOpen = true;
         return new GethLikeTxStreamingMemoryTracer(tx, _options, _writer, _pipeWriter, _cancellationToken);
     }
 
@@ -63,9 +65,25 @@ public sealed class GethLikeBlockEnvelopeStreamingTracer : BlockTracerBase<GethL
         _writer.WritePropertyName("txHash"u8);
         JsonSerializer.Serialize(_writer, trace.TxHash, EthereumJsonSerializer.JsonOptions);
         _writer.WriteEndObject();
+        _innerEnvelopeOpen = false;
 
         FlushPerTxEnvelope();
         return trace;
+    }
+
+    public void Dispose()
+    {
+        if (!_innerEnvelopeOpen) return;
+
+        _writer.WriteEndArray();
+        ForcedNumberConversion.WriteRawLong(_writer, "gas"u8, 0L);
+        _writer.WritePropertyName("failed"u8);
+        _writer.WriteBooleanValue(true);
+        _writer.WritePropertyName("returnValue"u8);
+        JsonSerializer.Serialize(_writer, Array.Empty<byte>(), EthereumJsonSerializer.JsonOptions);
+        _writer.WriteEndObject();
+        _writer.WriteEndObject();
+        _innerEnvelopeOpen = false;
     }
 
     private void FlushPerTxEnvelope()
