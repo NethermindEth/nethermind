@@ -4,6 +4,7 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Trie;
@@ -54,10 +55,28 @@ internal sealed partial class StateCompositionService
             head = _blockTree.Head;
             if (head?.Header.StateRoot is null || prevRoot == Hash256.Zero || head.Header.StateRoot == prevRoot) return;
 
-            using IReadOnlyTrieStore readOnlyStore = _worldStateManager.CreateReadOnlyTrieStore();
-            IScopedTrieStore resolver = readOnlyStore.GetTrieStore(null);
+            // BlockTree.Head is briefly transient during chain init — it can return a
+            // best-persisted block that's older than the snapshot we just restored. A
+            // diff in that direction has no reachable prevRoot in FlatDb (the snapshot's
+            // state isn't on the older fork) and would translate to a spurious
+            // MissingTrieNode → full rescan. Defer until head catches up; the next
+            // legitimate NewHeadBlock retriggers this method against the current state.
+            if (head.Number < _stateHolder.IncrementalBlock) return;
 
-            TrieDiff diff = _diffWalker.ComputeDiff(prevRoot, head.Header.StateRoot, resolver);
+            // FlatDb's BeginScope materialises the snapshot bundle for one block,
+            // so a diff across two roots needs one scope per side or the off-side
+            // nodes resolve as Unknown and the walker silently emits zero deltas.
+            BlockHeader prevHeader = _blockTree.FindHeader(_stateHolder.IncrementalBlock, BlockTreeLookupOptions.RequireCanonical)
+                ?? throw new MissingTrieNodeException("prev block header is no longer canonical", null, TreePath.Empty, prevRoot);
+
+            using IReadOnlyTrieStore oldStore = _worldStateManager.CreateReadOnlyTrieStore();
+            using IDisposable oldScope = BeginScopeOrThrowMissing(oldStore, prevHeader, prevRoot);
+            using IReadOnlyTrieStore newStore = _worldStateManager.CreateReadOnlyTrieStore();
+            using IDisposable newScope = BeginScopeOrThrowMissing(newStore, head.Header, head.Header.StateRoot);
+            IScopedTrieStore oldResolver = oldStore.GetTrieStore(null);
+            IScopedTrieStore newResolver = newStore.GetTrieStore(null);
+
+            TrieDiff diff = _diffWalker.ComputeDiff(prevRoot, head.Header.StateRoot, oldResolver, newResolver);
             // Size-lookup lambda is invoked once per newly-observed code hash,
             // not per reference, so cost stays bounded by distinct new hashes.
             CumulativeTrieStats updated = _stateHolder.ApplyIncrementalDiffAndUpdate(
@@ -72,14 +91,20 @@ internal sealed partial class StateCompositionService
             Metrics.StateCompDiffsSinceBaseline = _stateHolder.DiffsSinceBaseline;
             Metrics.StateCompDiffsApplied++;
 
+            // Periodic flush bounds rescan loss to ≤ SnapshotIntervalDiffs blocks
+            // if a hard kill skips StopAsync.
+            if (_stateHolder.DiffsSinceBaseline % _config.SnapshotIntervalDiffs == 0)
+                WriteSnapshotForHead(updated, head.Number, head.Header.StateRoot);
+
             if (_logger.IsDebug)
                 _logger.Debug($"StateComposition: incremental diff applied at block {head.Number}, " +
                               $"accounts={updated.AccountsTotal}, slots={updated.StorageSlotsTotal}");
         }
         catch (MissingTrieNodeException ex)
         {
-            // prevRoot is no longer in the trie DB (pruning window exceeded).
-            // Invalidate so OnNewHeadBlock stops dispatching diffs, then rescan.
+            // prevRoot is no longer reachable — pruned out, or rolled past FlatDb's
+            // bundle window (BeginScopeOrThrowMissing translates that case here).
+            // Drop the baseline so OnNewHeadBlock stops dispatching, then rescan.
             Metrics.StateCompBaselineInvalidations++;
             _stateHolder.InvalidateBaseline();
             if (_logger.IsWarn)
@@ -109,6 +134,28 @@ internal sealed partial class StateCompositionService
         finally
         {
             _diffLock.Exit();
+        }
+    }
+
+    /// <summary>
+    /// FlatDb's <see cref="ITrieStore.BeginScope"/> raises a generic
+    /// <see cref="InvalidOperationException"/> when the requested state's bundle
+    /// has rolled past its retention window or was never gatherable. Translate
+    /// at the call site to the same recovery channel the pruning store uses
+    /// (<see cref="MissingTrieNodeException"/>) so a single catch handles both
+    /// backends without matching exception messages by string.
+    /// </summary>
+    private static IDisposable BeginScopeOrThrowMissing(IReadOnlyTrieStore store, BlockHeader header, Hash256 root)
+    {
+        try
+        {
+            return store.BeginScope(header);
+        }
+        catch (InvalidOperationException ex)
+        {
+            throw new MissingTrieNodeException(
+                $"BeginScope failed for block {header.Number}: {ex.Message}",
+                address: null, TreePath.Empty, root, innerException: ex);
         }
     }
 

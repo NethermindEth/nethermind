@@ -23,6 +23,7 @@ using Nethermind.StateComposition.Service;
 using Nethermind.StateComposition.Snapshots;
 using Nethermind.StateComposition.Test.Helpers;
 using Nethermind.StateComposition.Visitors;
+using Nethermind.Trie;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -102,6 +103,42 @@ public class StateCompositionServiceTests
             Assert.That(result.IsSuccess, Is.True);
             Assert.That(harness.StateHolder.HasScanBaseline, Is.True);
             Assert.That(harness.StateHolder.LastScanMetadata.IsComplete, Is.True);
+        }
+    }
+
+    [Test]
+    public async Task AnalyzeAsync_PartialScan_DoesNotPublishBaseline()
+    {
+        // Regression: prior code published a baseline regardless of MissingNodesObserved.
+        // A FlatDb-window pruning event during a long scan would surface as missing nodes,
+        // the visitor would return ~half the trie counted, and PublishScanBaseline would
+        // overwrite a complete in-memory baseline with the strict subset — a snapshot
+        // flush then persisted the corrupted state.
+        IStateReader stateReader = Substitute.For<IStateReader>();
+
+        stateReader.WhenForAnyArgs(x =>
+            x.RunTreeVisitor<StateCompositionContext>(null!, null))
+            .Do(call =>
+            {
+                ITreeVisitor<StateCompositionContext> visitor =
+                    call.Arg<ITreeVisitor<StateCompositionContext>>();
+                visitor.VisitMissingNode(
+                    new StateCompositionContext(TreePath.Empty, 0, false, null),
+                    new ValueHash256(new byte[32]));
+            });
+
+        await using Harness harness = CreateHarness(stateReader);
+        BlockHeader header = Build.A.BlockHeader.TestObject;
+
+        Result<StateCompositionStats> result = await harness.Service.AnalyzeAsync(header, CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.IsSuccess, Is.True, "scan still returns its (partial) stats to the caller");
+            Assert.That(harness.StateHolder.HasScanBaseline, Is.False,
+                "partial scan must not seed the baseline");
+            Assert.That(harness.StateHolder.LastScanMetadata.IsComplete, Is.False,
+                "scan metadata must not record completion");
         }
     }
 
