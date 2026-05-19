@@ -239,6 +239,43 @@ public class EthSimulateTestsBlocksAndTransactions
     }
 
     /// <summary>
+    /// The execution-apis spec (error -38020) mandates the verbatim message
+    /// "Block number in sequence did not increase". Asserts both the error code and
+    /// the canonical message so it cannot regress to a verbose, value-interpolated string.
+    /// </summary>
+    [Test]
+    public async Task Test_eth_simulate_returns_spec_message_when_block_numbers_not_increasing()
+    {
+        TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
+
+        SimulatePayload<TransactionForRpc> payload = new()
+        {
+            BlockStateCalls =
+            [
+                new()
+                {
+                    BlockOverrides = new BlockOverride { Number = 10 },
+                    Calls = []
+                },
+                new()
+                {
+                    // Strictly less than the previous BlockStateCall.
+                    BlockOverrides = new BlockOverride { Number = 9 },
+                    Calls = []
+                }
+            ]
+        };
+
+        SimulateTxExecutor<SimulateCallResult> executor = new(chain.Bridge, chain.BlockFinder, new JsonRpcConfig(), chain.SpecProvider, new SimulateBlockMutatorTracerFactory());
+
+        ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result =
+            executor.Execute(payload, BlockParameter.Latest);
+
+        result.ErrorCode.Should().Be(ErrorCodes.InvalidInputBlocksOutOfOrder);
+        result.Result!.Error.Should().Be(SimulateErrorMessages.BlockNumberNotIncreasing);
+    }
+
+    /// <summary>
     ///     This test verifies that a temporary forked blockchain can make transactions, blocks and report on them
     /// </summary>
     [Test]
