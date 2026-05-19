@@ -1396,6 +1396,37 @@ public partial class EngineModuleTests
     }
 
     [Test]
+    public async Task inconsistent_safe_hash_is_rejected_when_head_is_ancestor_of_latest_known_finalized()
+    {
+        using MergeTestBlockchain chain = await CreateBlockchain(null, new MergeConfig() { TerminalTotalDifficulty = "0" });
+        IEngineRpcModule rpc = chain.EngineRpcModule;
+
+        IReadOnlyList<ExecutionPayload> blocks = await ProduceBranchV1(
+            rpc,
+            chain,
+            3,
+            CreateParentBlockRequestOnHead(chain.BlockTree),
+            setHead: true);
+
+        ExecutionPayload block1 = blocks[0];
+        ExecutionPayload block3 = blocks[2];
+        Hash256 initialHeadHash = chain.BlockFinder.HeadHash;
+        Hash256 initialFinalizedHash = chain.BlockFinder.FinalizedHash!;
+        Hash256 initialSafeHash = chain.BlockFinder.SafeHash!;
+        initialHeadHash.Should().Be(block3.BlockHash);
+        initialFinalizedHash.Should().Be(block3.BlockHash);
+
+        // Old-head skip is optional, but InvalidForkchoiceState for an out-of-chain safe block is mandatory.
+        ForkchoiceStateV1 fcu = new(headBlockHash: block1.BlockHash, finalizedBlockHash: block1.BlockHash, safeBlockHash: block3.BlockHash);
+        ResultWrapper<ForkchoiceUpdatedV1Result> result = await rpc.engine_forkchoiceUpdatedV1(fcu);
+        result.ErrorCode.Should().Be(MergeErrorCodes.InvalidForkchoiceState);
+
+        chain.BlockFinder.HeadHash.Should().Be(initialHeadHash);
+        chain.BlockFinder.FinalizedHash.Should().Be(initialFinalizedHash);
+        chain.BlockFinder.SafeHash.Should().Be(initialSafeHash);
+    }
+
+    [Test]
     public async Task forkchoiceUpdated_safe_block_that_is_real_ancestor_of_new_head_is_accepted()
     {
         // Spec acceptance case for #11185: an FCU whose safe/finalized are real ancestors of the
