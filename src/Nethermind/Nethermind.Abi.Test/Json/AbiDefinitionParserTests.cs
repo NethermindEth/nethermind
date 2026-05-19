@@ -4,7 +4,7 @@
 using System;
 using Nethermind.Blockchain.Contracts.Json;
 using Nethermind.Consensus.AuRa.Contracts;
-using Newtonsoft.Json.Linq;
+using Nethermind.Core.Test.Json;
 using NUnit.Framework;
 
 namespace Nethermind.Abi.Test.Json
@@ -22,61 +22,7 @@ namespace Nethermind.Abi.Test.Json
             string json = AbiDefinitionParser.LoadContract(contractType);
             AbiDefinition contract = parser.Parse(json);
             string serialized = AbiDefinitionParser.Serialize(contract);
-            Assert.That(ContainsSubtree(JToken.Parse(serialized), JToken.Parse(json)), Is.True);
-        }
-
-        private static bool ContainsSubtree(JToken actual, JToken expected)
-        {
-            if (JToken.DeepEquals(actual, expected))
-            {
-                return true;
-            }
-
-            if (actual is JObject actualObject && expected is JObject expectedObject)
-            {
-                foreach (JProperty expectedProperty in expectedObject.Properties())
-                {
-                    if (!actualObject.TryGetValue(expectedProperty.Name, out JToken actualValue) ||
-                        !ContainsSubtree(actualValue, expectedProperty.Value))
-                    {
-                        return false;
-                    }
-                }
-
-                return true;
-            }
-
-            if (actual is JArray actualArray && expected is JArray expectedArray)
-            {
-                bool[] matched = new bool[actualArray.Count];
-                foreach (JToken expectedItem in expectedArray)
-                {
-                    bool found = false;
-                    for (int i = 0; i < actualArray.Count; i++)
-                    {
-                        if (matched[i])
-                        {
-                            continue;
-                        }
-
-                        if (ContainsSubtree(actualArray[i], expectedItem))
-                        {
-                            matched[i] = true;
-                            found = true;
-                            break;
-                        }
-                    }
-
-                    if (!found)
-                    {
-                        return false;
-                    }
-                }
-
-                return true;
-            }
-
-            return false;
+            Assert.That(serialized, JsonSubtree.Containing(json));
         }
     }
 }

@@ -221,7 +221,9 @@ public class ChainSpecTest
             foreach (PropertyInfo property in typeof(IReleaseSpec).GetProperties())
             {
                 if (property.Name is nameof(IReleaseSpec.Name) or nameof(IReleaseSpec.Precompiles))
+                {
                     continue;
+                }
 
                 Assert.That(property.GetValue(actual), Is.EqualTo(property.GetValue(expected)), property.Name);
             }

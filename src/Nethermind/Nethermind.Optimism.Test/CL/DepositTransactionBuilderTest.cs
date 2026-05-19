@@ -7,6 +7,7 @@ using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Optimism.CL;
 using Nethermind.Optimism.CL.Derivation;
@@ -269,9 +270,7 @@ public class DepositTransactionBuilderTest
             .TestObject;
 
         Assert.That(depositTransactions.Length, Is.EqualTo(1));
-        // NOTE: Check if we can simplify this assertion
-        AssertEquivalentExceptData(depositTransactions[0], expectedTransaction);
-        Assert.That(depositTransactions[0].Data.ToArray(), Is.EqualTo(expectedTransaction.Data.ToArray()));
+        depositTransactions[0].EqualToTransaction(expectedTransaction);
     }
 
     [Test]
@@ -334,8 +333,7 @@ public class DepositTransactionBuilderTest
 
         Assert.That(depositTransactions.Length, Is.EqualTo(1));
 
-        AssertEquivalentExceptData(depositTransactions[0], expectedTransaction);
-        Assert.That(depositTransactions[0].Data.ToArray(), Is.EqualTo(expectedTransaction.Data.ToArray()));
+        depositTransactions[0].EqualToTransaction(expectedTransaction);
     }
 
     [Test]
@@ -422,8 +420,7 @@ public class DepositTransactionBuilderTest
 
         Assert.That(depositTransactions.Length, Is.EqualTo(1));
 
-        AssertEquivalentExceptData(depositTransactions[0], expectedTransaction);
-        Assert.That(depositTransactions[0].Data.ToArray(), Is.EqualTo(expectedTransaction.Data.ToArray()));
+        depositTransactions[0].EqualToTransaction(expectedTransaction);
     }
 
     [Test]
@@ -524,11 +521,9 @@ public class DepositTransactionBuilderTest
             .TestObject;
 
         Assert.That(depositTransactions.Length, Is.EqualTo(2));
-        AssertEquivalentExceptData(depositTransactions[0], expectedTransaction_0);
-        Assert.That(depositTransactions[0].Data.ToArray(), Is.EqualTo(expectedTransaction_0.Data.ToArray()));
+        depositTransactions[0].EqualToTransaction(expectedTransaction_0);
 
-        AssertEquivalentExceptData(depositTransactions[1], expectedTransaction_1);
-        Assert.That(depositTransactions[1].Data.ToArray(), Is.EqualTo(expectedTransaction_1.Data.ToArray()));
+        depositTransactions[1].EqualToTransaction(expectedTransaction_1);
     }
 
     [Test]
@@ -712,52 +707,8 @@ public class DepositTransactionBuilderTest
             .TestObject;
 
         Assert.That(depositTransactions.Length, Is.EqualTo(2));
-        AssertEquivalentExceptData(depositTransactions[0], expectedTransaction_0);
-        Assert.That(depositTransactions[0].Data.ToArray(), Is.EqualTo(expectedTransaction_0.Data.ToArray()));
+        depositTransactions[0].EqualToTransaction(expectedTransaction_0);
 
-        AssertEquivalentExceptData(depositTransactions[1], expectedTransaction_1);
-        Assert.That(depositTransactions[1].Data.ToArray(), Is.EqualTo(expectedTransaction_1.Data.ToArray()));
-    }
-    private static void AssertEquivalentExceptData(Transaction actual, Transaction expected)
-    {
-        ReadOnlyMemory<byte> actualData = actual.Data;
-        ReadOnlyMemory<byte> expectedData = expected.Data;
-        actual.Data = ReadOnlyMemory<byte>.Empty;
-        expected.Data = ReadOnlyMemory<byte>.Empty;
-
-        try
-        {
-            Assert.Multiple(() =>
-            {
-                Assert.That(actual.ChainId, Is.EqualTo(expected.ChainId));
-                Assert.That(actual.Type, Is.EqualTo(expected.Type));
-                Assert.That(actual.IsAnchorTx, Is.EqualTo(expected.IsAnchorTx));
-                Assert.That(actual.SourceHash, Is.EqualTo(expected.SourceHash));
-                Assert.That(actual.Mint, Is.EqualTo(expected.Mint));
-                Assert.That(actual.IsOPSystemTransaction, Is.EqualTo(expected.IsOPSystemTransaction));
-                Assert.That(actual.Nonce, Is.EqualTo(expected.Nonce));
-                Assert.That(actual.GasPrice, Is.EqualTo(expected.GasPrice));
-                Assert.That(actual.GasBottleneck, Is.EqualTo(expected.GasBottleneck));
-                Assert.That(actual.DecodedMaxFeePerGas, Is.EqualTo(expected.DecodedMaxFeePerGas));
-                Assert.That(actual.GasLimit, Is.EqualTo(expected.GasLimit));
-                Assert.That(actual.To, Is.EqualTo(expected.To));
-                Assert.That(actual.Value, Is.EqualTo(expected.Value));
-                Assert.That(actual.SenderAddress, Is.EqualTo(expected.SenderAddress));
-                Assert.That(actual.Signature, Is.EqualTo(expected.Signature));
-                Assert.That(actual.Hash, Is.EqualTo(expected.Hash));
-                Assert.That(actual.Timestamp, Is.EqualTo(expected.Timestamp));
-                Assert.That(actual.AccessList, Is.EqualTo(expected.AccessList));
-                Assert.That(actual.MaxFeePerBlobGas, Is.EqualTo(expected.MaxFeePerBlobGas));
-                Assert.That(actual.BlobVersionedHashes, Is.EqualTo(expected.BlobVersionedHashes));
-                Assert.That(actual.NetworkWrapper, Is.EqualTo(expected.NetworkWrapper));
-                Assert.That(actual.IsServiceTransaction, Is.EqualTo(expected.IsServiceTransaction));
-                Assert.That(actual.PoolIndex, Is.EqualTo(expected.PoolIndex));
-            });
-        }
-        finally
-        {
-            actual.Data = actualData;
-            expected.Data = expectedData;
-        }
+        depositTransactions[1].EqualToTransaction(expectedTransaction_1);
     }
 }

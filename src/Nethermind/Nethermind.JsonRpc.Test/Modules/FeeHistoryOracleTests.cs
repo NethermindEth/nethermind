@@ -31,7 +31,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             ResultWrapper<FeeHistoryResults> expected = ResultWrapper<FeeHistoryResults>.Fail("blockCount: Value 0 is less than 1", ErrorCodes.InvalidParams);
 
             using ResultWrapper<FeeHistoryResults> resultWrapper = feeHistoryOracle.GetFeeHistory(0, BlockParameter.Latest, []);
-            AssertResultWrapper(resultWrapper, expected);
+            Assert.That(resultWrapper, Is.EqualTo(expected).UsingPropertiesComparer());
         }
 
         [Test]
@@ -41,7 +41,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             ResultWrapper<FeeHistoryResults> expected = ResultWrapper<FeeHistoryResults>.Fail("newestBlock: Is not correct block number", ErrorCodes.InvalidParams);
 
             using ResultWrapper<FeeHistoryResults> resultWrapper = feeHistoryOracle.GetFeeHistory(0, new BlockParameter(TestItem.KeccakA), []);
-            AssertResultWrapper(resultWrapper, expected);
+            Assert.That(resultWrapper, Is.EqualTo(expected).UsingPropertiesComparer());
         }
 
         [Test]
@@ -53,7 +53,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             ResultWrapper<FeeHistoryResults> expected = ResultWrapper<FeeHistoryResults>.Fail("upstream does not have the requested block yet", ErrorCodes.InternalError);
 
             using ResultWrapper<FeeHistoryResults> resultWrapper = feeHistoryOracle.GetFeeHistory(1, new BlockParameter((long)0), []);
-            AssertResultWrapper(resultWrapper, expected);
+            Assert.That(resultWrapper, Is.EqualTo(expected).UsingPropertiesComparer());
         }
 
 
@@ -69,7 +69,7 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             using ResultWrapper<FeeHistoryResults> resultWrapper = feeHistoryOracle.GetFeeHistory(1, new BlockParameter(lastBlockNumber), []);
 
-            AssertResultWrapper(resultWrapper, expected);
+            Assert.That(resultWrapper, Is.EqualTo(expected).UsingPropertiesComparer());
         }
 
         [Test]
@@ -420,7 +420,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             );
 
             using ResultWrapper<FeeHistoryResults> resultWrapper = feeHistoryOracle.GetFeeHistory(2, newestBlockParameter, rewardPercentiles);
-            AssertFeeHistoryResults(resultWrapper.Data, expected);
+            Assert.That(resultWrapper.Data, Is.EqualTo(expected).UsingPropertiesComparer());
 
             static FeeHistoryOracle SetUpFeeHistoryManager(BlockParameter blockParameter, IReleaseSpec spec)
             {
@@ -495,29 +495,6 @@ namespace Nethermind.JsonRpc.Test.Modules
             BlobGasCalculator.TryCalculateFeePerBlobGas(nextExcess, spec.BlobBaseFeeUpdateFraction, out UInt256 expectedNextFee);
             Assert.That(fees[1], Is.EqualTo(expectedNextFee), "index 1 is the next block's estimated blob base fee");
             Assert.That(fees[1], Is.LessThan(fees[0]), "next fee must be lower since BlobGasUsed=0 reduces excess blob gas");
-        }
-
-        private static void AssertResultWrapper(ResultWrapper<FeeHistoryResults> actual, ResultWrapper<FeeHistoryResults> expected)
-        {
-            Assert.That(actual.Result, Is.EqualTo(expected.Result));
-            Assert.That(actual.ErrorCode, Is.EqualTo(expected.ErrorCode));
-            Assert.That(actual.IsTemporary, Is.EqualTo(expected.IsTemporary));
-        }
-
-        private static void AssertFeeHistoryResults(FeeHistoryResults actual, FeeHistoryResults expected)
-        {
-            Assert.That(actual.OldestBlock, Is.EqualTo(expected.OldestBlock));
-            Assert.That(actual.BaseFeePerGas, Is.EqualTo(expected.BaseFeePerGas));
-            Assert.That(actual.GasUsedRatio, Is.EqualTo(expected.GasUsedRatio));
-            Assert.That(actual.BaseFeePerBlobGas, Is.EqualTo(expected.BaseFeePerBlobGas));
-            Assert.That(actual.BlobGasUsedRatio, Is.EqualTo(expected.BlobGasUsedRatio));
-            Assert.That(actual.Reward, Is.Not.Null);
-            Assert.That(expected.Reward, Is.Not.Null);
-            Assert.That(actual.Reward!.Count, Is.EqualTo(expected.Reward!.Count));
-            for (int i = 0; i < expected.Reward.Count; i++)
-            {
-                Assert.That(actual.Reward[i], Is.EqualTo(expected.Reward[i]));
-            }
         }
 
         private static FeeHistoryOracle GetSubstitutedFeeHistoryOracle(

@@ -62,7 +62,7 @@ internal class SubnetSnapshotManagerTests
         // Act
         SubnetSnapshot? result = _snapshotManager.GetSnapshotByGapNumber(gapBlock) as SubnetSnapshot;
 
-        AssertSubnetSnapshot(result, snapshot);
+        XdcTestAssertions.AssertSubnetSnapshot(result, snapshot);
     }
 
     [Test]
@@ -109,15 +109,4 @@ internal class SubnetSnapshotManagerTests
         Assert.That(subnetSnapshot.NextEpochPenalties, Is.EquivalentTo(penalties));
     }
 
-    private static void AssertSubnetSnapshot(SubnetSnapshot? actual, SubnetSnapshot expected)
-    {
-        Assert.That(actual, Is.Not.Null);
-        Assert.Multiple(() =>
-        {
-            Assert.That(actual!.BlockNumber, Is.EqualTo(expected.BlockNumber));
-            Assert.That(actual.HeaderHash, Is.EqualTo(expected.HeaderHash));
-            Assert.That(actual.NextEpochCandidates, Is.EquivalentTo(expected.NextEpochCandidates));
-            Assert.That(actual.NextEpochPenalties, Is.EquivalentTo(expected.NextEpochPenalties));
-        });
-    }
 }

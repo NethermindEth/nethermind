@@ -59,7 +59,7 @@ internal class SnapshotManagerTests
         Snapshot? result = _snapshotManager.GetSnapshotByGapNumber(gapBlock);
 
         // assert that it was retrieved from cache
-        AssertSnapshot(result, snapshot);
+        XdcTestAssertions.AssertSnapshot(result, snapshot);
     }
 
     [Test]
@@ -85,7 +85,7 @@ internal class SnapshotManagerTests
         Snapshot? saved = _snapshotManager.GetSnapshotByGapNumber(gapBlock);
 
         // Assert
-        AssertSnapshot(saved, snapshot);
+        XdcTestAssertions.AssertSnapshot(saved, snapshot);
     }
 
     [Test]
@@ -102,7 +102,7 @@ internal class SnapshotManagerTests
         Snapshot? fromDb = _snapshotManager.GetSnapshotByGapNumber(gapBlock);
 
         // Assert
-        AssertSnapshot(fromDb, snapshot);
+        XdcTestAssertions.AssertSnapshot(fromDb, snapshot);
     }
 
     [Test]
@@ -117,7 +117,7 @@ internal class SnapshotManagerTests
         Snapshot? result = _snapshotManager.GetSnapshotByGapNumber(gapBlock1);
 
         // assert that it was retrieved from db
-        AssertSnapshot(result, snapshot1);
+        XdcTestAssertions.AssertSnapshot(result, snapshot1);
 
         // store another snapshot with the same hash but different data
 
@@ -130,7 +130,7 @@ internal class SnapshotManagerTests
         result = _snapshotManager.GetSnapshotByBlockNumber(900, _xdcReleaseSpec);
 
         // assert that the original snapshot is still returned
-        AssertSnapshot(result, snapshot2);
+        XdcTestAssertions.AssertSnapshot(result, snapshot2);
     }
 
     [TestCase(1, 0)]
@@ -150,7 +150,7 @@ internal class SnapshotManagerTests
         Snapshot? result = _snapshotManager.GetSnapshotByBlockNumber(blockNumber, _xdcReleaseSpec);
 
         // assert that it was retrieved from db
-        AssertSnapshot(result, snapshot);
+        XdcTestAssertions.AssertSnapshot(result, snapshot);
     }
 
     [TestCase(450)]
@@ -177,14 +177,4 @@ internal class SnapshotManagerTests
         Assert.That(result!.HeaderHash, Is.EqualTo(header.Hash!));
     }
 
-    private static void AssertSnapshot(Snapshot? actual, Snapshot expected)
-    {
-        Assert.That(actual, Is.Not.Null);
-        Assert.Multiple(() =>
-        {
-            Assert.That(actual!.BlockNumber, Is.EqualTo(expected.BlockNumber));
-            Assert.That(actual.HeaderHash, Is.EqualTo(expected.HeaderHash));
-            Assert.That(actual.NextEpochCandidates, Is.EquivalentTo(expected.NextEpochCandidates));
-        });
-    }
 }

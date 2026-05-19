@@ -15,6 +15,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Container;
+using Nethermind.Core.Test.Encoding;
 using Nethermind.Core.Test.IO;
 using Nethermind.Int256;
 using Nethermind.Specs.ChainSpecStyle;
@@ -387,26 +388,6 @@ public class Era1ModuleTests
             Assert.That(actual.PostTransactionState, Is.EqualTo(expected.PostTransactionState));
         }
 
-        AssertLogEntriesEquivalent(actual.Logs, expected.Logs);
-    }
-
-    private static void AssertLogEntriesEquivalent(LogEntry[]? actual, LogEntry[]? expected)
-    {
-        if (actual is null || expected is null)
-        {
-            Assert.That(actual, Is.EqualTo(expected));
-            return;
-        }
-
-        Assert.That(actual, Has.Length.EqualTo(expected.Length));
-        for (int i = 0; i < expected.Length; i++)
-        {
-            Assert.Multiple(() =>
-            {
-                Assert.That(actual[i].Address, Is.EqualTo(expected[i].Address));
-                Assert.That(actual[i].Data, Is.EqualTo(expected[i].Data));
-                Assert.That(actual[i].Topics, Is.EqualTo(expected[i].Topics));
-            });
-        }
+        actual.Logs.AssertEquivalentTo(expected.Logs);
     }
 }

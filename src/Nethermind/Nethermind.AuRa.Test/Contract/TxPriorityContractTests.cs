@@ -13,7 +13,6 @@ using Nethermind.Blockchain.Data;
 using Nethermind.Consensus.AuRa.Contracts;
 using Nethermind.Consensus.AuRa.Contracts.DataStore;
 using Nethermind.Core;
-using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.IO;
@@ -234,25 +233,18 @@ public class TxPriorityContractTests
     private static void AssertDestinationsEquivalent(
         IEnumerable<TxPriorityContract.Destination> actual,
         IEnumerable<TxPriorityContract.Destination> expected,
-        bool includeBlockNumber = true) =>
-        Assert.That(
-            actual.Select(destination => ToComparableDestination(destination, includeBlockNumber)),
-            Is.EquivalentTo(expected.Select(destination => ToComparableDestination(destination, includeBlockNumber))));
+        bool includeBlockNumber = true)
+    {
+        if (includeBlockNumber)
+        {
+            Assert.That(actual, Is.EquivalentTo(expected).UsingPropertiesComparer());
+            return;
+        }
 
-    private static ComparableDestination ToComparableDestination(TxPriorityContract.Destination destination, bool includeBlockNumber) =>
-        new(
-            destination.Target,
-            destination.FnSignature.ToHexString(),
-            destination.Value,
-            destination.Source,
-            includeBlockNumber ? destination.BlockNumber : 0);
-
-    private sealed record ComparableDestination(
-        Address Target,
-        string FnSignature,
-        UInt256 Value,
-        TxPriorityContract.DestinationSource Source,
-        long BlockNumber);
+        Assert.That(actual, Is.EquivalentTo(expected)
+            .UsingPropertiesComparer<TxPriorityContract.Destination>(
+                static options => options.Excluding(static destination => destination.BlockNumber)));
+    }
 
     public class TxPermissionContractBlockchain : TestContractBlockchain
     {

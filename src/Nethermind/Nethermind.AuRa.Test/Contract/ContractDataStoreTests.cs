@@ -11,9 +11,7 @@ using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus.AuRa.Contracts;
 using Nethermind.Consensus.AuRa.Contracts.DataStore;
 using Nethermind.Core;
-using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Int256;
 using Nethermind.Logging;
 using NSubstitute;
 using NSubstitute.ExceptionExtensions;
@@ -245,19 +243,7 @@ public abstract class ContractDataStoreTests
     private static void AssertDestinationsEquivalent(
         IEnumerable<TxPriorityContract.Destination> actual,
         IEnumerable<TxPriorityContract.Destination> expected) =>
-        Assert.That(
-            actual.Select(ToComparableDestination),
-            Is.EquivalentTo(expected.Select(ToComparableDestination)));
-
-    private static ComparableDestination ToComparableDestination(TxPriorityContract.Destination destination) =>
-        new(destination.Target, destination.FnSignature.ToHexString(), destination.Value, destination.Source, destination.BlockNumber);
-
-    private sealed record ComparableDestination(
-        Address Target,
-        string FnSignature,
-        UInt256 Value,
-        TxPriorityContract.DestinationSource Source,
-        long BlockNumber);
+        Assert.That(actual, Is.EquivalentTo(expected).UsingPropertiesComparer());
 
     protected virtual TestCase<T> BuildTestCase<T>(IComparer<T> keyComparer = null, IComparer<T> valueComparer = null)
     {

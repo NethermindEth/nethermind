@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
-using System.Linq;
 using Nethermind.Consensus.AuRa.Rewards;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Core;
@@ -73,9 +72,6 @@ namespace Nethermind.AuRa.Test.Reward
         }
 
         private static void AssertReward(BlockReward[] actual, BlockReward expected) =>
-            Assert.That(actual.Select(ToComparableReward), Is.EqualTo(new[] { ToComparableReward(expected) }));
-
-        private static (Address Address, UInt256 Value, BlockRewardType RewardType) ToComparableReward(BlockReward reward) =>
-            (reward.Address, reward.Value, reward.RewardType);
+            Assert.That(actual, Is.EquivalentTo(new[] { expected }).UsingPropertiesComparer());
     }
 }

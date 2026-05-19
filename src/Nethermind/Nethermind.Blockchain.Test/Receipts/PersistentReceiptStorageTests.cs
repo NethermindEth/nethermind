@@ -11,6 +11,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.Encoding;
 using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Serialization.Rlp;
@@ -100,9 +101,9 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
         (Block? block, TxReceipt[]? receipts) = InsertBlock();
 
         _storage.ClearCache();
-        AssertReceiptsEquivalent(_storage.Get(block), receipts);
+        _storage.Get(block).AssertEquivalentTo(receipts, nameof(TxReceipt.Error));
         // second should be from cache
-        AssertReceiptsEquivalent(_storage.Get(block), receipts);
+        _storage.Get(block).AssertEquivalentTo(receipts, nameof(TxReceipt.Error));
     }
 
     [Test]
@@ -141,7 +142,7 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
         }
 
         _storage.ClearCache();
-        AssertReceiptsEquivalent(_storage.Get(block, recoverSender: false), receipts);
+        _storage.Get(block, recoverSender: false).AssertEquivalentTo(receipts, nameof(TxReceipt.Error));
 
         foreach (Transaction tx in block.Transactions)
         {
@@ -209,7 +210,7 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
         Assert.That(_storage.TryGetReceiptsIterator(0, block.Hash!, out ReceiptsIterator iterator), Is.True);
         Assert.That(iterator.TryGetNext(out TxReceiptStructRef receiptStructRef), Is.True);
         Assert.That(receiptStructRef.LogsRlp.ToArray(), Is.Empty);
-        AssertLogsEquivalent(receiptStructRef.Logs, receipts.First().Logs);
+        receiptStructRef.Logs.AssertEquivalentTo(receipts.First().Logs);
         Assert.That(iterator.TryGetNext(out _), Is.False);
     }
 
@@ -237,7 +238,7 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
         Assert.That(_storage.TryGetReceiptsIterator(0, block.Hash!, out ReceiptsIterator iterator), Is.True);
         Assert.That(iterator.TryGetNext(out TxReceiptStructRef receiptStructRef), Is.True);
         Assert.That(receiptStructRef.LogsRlp.ToArray(), Is.Empty);
-        AssertLogsEquivalent(receiptStructRef.Logs, receipts.First().Logs);
+        receiptStructRef.Logs.AssertEquivalentTo(receipts.First().Logs);
         Assert.That(iterator.TryGetNext(out _), Is.False);
     }
 
@@ -492,58 +493,4 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
         return (block, receipts);
     }
 
-    private static void AssertReceiptsEquivalent(TxReceipt[]? actual, TxReceipt[]? expected)
-    {
-        Assert.That(actual, Is.Not.Null);
-        Assert.That(expected, Is.Not.Null);
-        Assert.That(actual, Has.Length.EqualTo(expected!.Length));
-
-        for (int i = 0; i < expected.Length; i++)
-        {
-            AssertReceiptEquivalent(actual![i], expected[i]);
-        }
-    }
-
-    private static void AssertReceiptEquivalent(TxReceipt actual, TxReceipt expected)
-    {
-        Assert.Multiple(() =>
-        {
-            Assert.That(actual.TxType, Is.EqualTo(expected.TxType));
-            Assert.That(actual.StatusCode, Is.EqualTo(expected.StatusCode));
-            Assert.That(actual.BlockNumber, Is.EqualTo(expected.BlockNumber));
-            Assert.That(actual.BlockHash, Is.EqualTo(expected.BlockHash));
-            Assert.That(actual.TxHash, Is.EqualTo(expected.TxHash));
-            Assert.That(actual.Index, Is.EqualTo(expected.Index));
-            Assert.That(actual.GasUsed, Is.EqualTo(expected.GasUsed));
-            Assert.That(actual.GasUsedTotal, Is.EqualTo(expected.GasUsedTotal));
-            Assert.That(actual.BlockGasUsed, Is.EqualTo(expected.BlockGasUsed));
-            Assert.That(actual.StorageGasUsed, Is.EqualTo(expected.StorageGasUsed));
-            Assert.That(actual.ExecutionGasUsed, Is.EqualTo(expected.ExecutionGasUsed));
-            Assert.That(actual.EffectiveGasPrice, Is.EqualTo(expected.EffectiveGasPrice));
-            Assert.That(actual.Sender, Is.EqualTo(expected.Sender));
-            Assert.That(actual.ContractAddress, Is.EqualTo(expected.ContractAddress));
-            Assert.That(actual.Recipient, Is.EqualTo(expected.Recipient));
-            Assert.That(actual.ReturnValue, Is.EqualTo(expected.ReturnValue));
-            Assert.That(actual.PostTransactionState, Is.EqualTo(expected.PostTransactionState));
-            Assert.That(actual.Bloom, Is.EqualTo(expected.Bloom));
-        });
-        AssertLogsEquivalent(actual.Logs, expected.Logs);
-    }
-
-    private static void AssertLogsEquivalent(LogEntry[]? actual, LogEntry[]? expected)
-    {
-        Assert.That(actual, Is.Not.Null);
-        Assert.That(expected, Is.Not.Null);
-        Assert.That(actual, Has.Length.EqualTo(expected!.Length));
-
-        for (int i = 0; i < expected.Length; i++)
-        {
-            Assert.Multiple(() =>
-            {
-                Assert.That(actual![i].Address, Is.EqualTo(expected[i].Address));
-                Assert.That(actual[i].Data, Is.EqualTo(expected[i].Data));
-                Assert.That(actual[i].Topics, Is.EqualTo(expected[i].Topics));
-            });
-        }
-    }
 }

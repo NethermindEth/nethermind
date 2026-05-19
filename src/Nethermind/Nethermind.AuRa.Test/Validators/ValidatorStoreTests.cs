@@ -127,19 +127,8 @@ namespace Nethermind.AuRa.Test.Validators
                 store.PendingValidators = validators;
             }
 
-            Assert.That(ToComparablePendingValidators(store.PendingValidators), Is.EqualTo(ToComparablePendingValidators(expectedValidators)));
+            Assert.That(store.PendingValidators, Is.EqualTo(expectedValidators).UsingPropertiesComparer());
         }
-
-        private static ComparablePendingValidators? ToComparablePendingValidators(PendingValidators pendingValidators) =>
-            pendingValidators is null
-                ? null
-                : new ComparablePendingValidators(
-                    pendingValidators.BlockNumber,
-                    pendingValidators.BlockHash,
-                    string.Join(",", pendingValidators.Addresses.Select(static address => address.ToString())),
-                    pendingValidators.AreFinalized);
-
-        private sealed record ComparablePendingValidators(long BlockNumber, Hash256 BlockHash, string Addresses, bool AreFinalized);
 
         // regression test - was throwing NRE before
         [Test]

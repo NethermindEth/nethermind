@@ -596,20 +596,8 @@ public class ContractBasedValidatorTests
             pendingValidators = new PendingValidators(block.Number, block.Hash, new[] { TestItem.Addresses[block.Number * 10] });
         }
 
-        Assert.That(ToComparablePendingValidators(_validatorStore.PendingValidators), Is.EqualTo(ToComparablePendingValidators(pendingValidators)));
+        Assert.That(_validatorStore.PendingValidators, Is.EqualTo(pendingValidators).UsingPropertiesComparer());
     }
-
-    private static ComparablePendingValidators? ToComparablePendingValidators(PendingValidators pendingValidators) =>
-        pendingValidators is null
-            ? null
-            : new ComparablePendingValidators(
-                pendingValidators.BlockNumber,
-                pendingValidators.BlockHash,
-                string.Join(",", pendingValidators.Addresses.Select(static address => address.ToString())),
-                pendingValidators.AreFinalized);
-
-    private sealed record ComparablePendingValidators(long BlockNumber, Hash256 BlockHash, string Addresses, bool AreFinalized);
-
 
     private void ValidateFinalizationForChain(ConsecutiveInitiateChangeTestParameters.ChainInfo chain)
     {

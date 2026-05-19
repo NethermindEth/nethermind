@@ -193,10 +193,7 @@ namespace Nethermind.AuRa.Test.Reward
         }
 
         private static void AssertRewards(BlockReward[] actual, IEnumerable<BlockReward> expected) =>
-            Assert.That(actual.Select(ToComparableReward), Is.EqualTo(expected.Select(ToComparableReward)));
-
-        private static (Address Address, UInt256 Value, BlockRewardType RewardType) ToComparableReward(BlockReward reward) =>
-            (reward.Address, reward.Value, reward.RewardType);
+            Assert.That(actual, Is.EquivalentTo(expected).UsingPropertiesComparer());
 
         private void SetupBlockRewards(IDictionary<Address, BlockReward[]> rewards) =>
             _transactionProcessor.When(x => x.Execute(

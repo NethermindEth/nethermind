@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -6,10 +6,10 @@ using System.Text.Json;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Test.Json;
 using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Int256;
 using Nethermind.Serialization.Json;
-using Newtonsoft.Json.Linq;
 using NUnit.Framework;
 
 namespace Nethermind.JsonRpc.Test.Modules.RpcTransaction;
@@ -47,12 +47,11 @@ public class TransactionForRpcTests
         EthereumJsonSerializer serializer = new();
         string serialized = serializer.Serialize(txForRpc);
 
-        JObject json = JObject.Parse(serialized);
-        JObject expectedS = JObject.Parse("""{ "s": "0x20000000000000000000000000000000000000000000000000000000000"}""");
-        JObject expectedR = JObject.Parse("""{ "r": "0x1000000000000000000000000000000000000000000000000000000000000"}""");
+        string expectedS = """{ "s": "0x20000000000000000000000000000000000000000000000000000000000"}""";
+        string expectedR = """{ "r": "0x1000000000000000000000000000000000000000000000000000000000000"}""";
 
-        Assert.That(ContainsSubtree(json, expectedS), Is.True);
-        Assert.That(ContainsSubtree(json, expectedR), Is.True);
+        Assert.That(serialized, JsonSubtree.Containing(expectedS));
+        Assert.That(serialized, JsonSubtree.Containing(expectedR));
     }
 
     [TestCaseSource(nameof(Transactions))]
@@ -127,53 +126,6 @@ public class TransactionForRpcTests
         ulong? expectedChainId = tx.Signature.ChainId;
         Assert.That(expectedChainId, Is.EqualTo(0xc72dd9d5e883eul));
         Assert.That(legacyRpcTx.ChainId, Is.EqualTo(expectedChainId));
-    }
-
-    private static bool ContainsSubtree(JToken actual, JToken expected)
-    {
-        if (JToken.DeepEquals(actual, expected))
-        {
-            return true;
-        }
-
-        if (actual is JObject actualObject && expected is JObject expectedObject)
-        {
-            foreach (JProperty expectedProperty in expectedObject.Properties())
-            {
-                if (!actualObject.TryGetValue(expectedProperty.Name, out JToken? actualValue) ||
-                    !ContainsSubtree(actualValue, expectedProperty.Value))
-                {
-                    return false;
-                }
-            }
-
-            return true;
-        }
-
-        if (actual is JArray actualArray && expected is JArray expectedArray)
-        {
-            foreach (JToken expectedItem in expectedArray)
-            {
-                bool found = false;
-                foreach (JToken actualItem in actualArray)
-                {
-                    if (ContainsSubtree(actualItem, expectedItem))
-                    {
-                        found = true;
-                        break;
-                    }
-                }
-
-                if (!found)
-                {
-                    return false;
-                }
-            }
-
-            return true;
-        }
-
-        return false;
     }
 
     [Test]

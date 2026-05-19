@@ -7,6 +7,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.Encoding;
 using Nethermind.Int256;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
@@ -40,22 +41,7 @@ public class Eip7708Tests(bool eip7708Enabled)
 
         for (int i = 0; i < expected.Length; i++)
         {
-            AssertLogEntries(receipts[i].Logs ?? [], expected[i]);
-        }
-    }
-
-    private static void AssertLogEntries(LogEntry[] actual, LogEntry[] expected)
-    {
-        Assert.That(actual, Has.Length.EqualTo(expected.Length));
-
-        for (int i = 0; i < expected.Length; i++)
-        {
-            Assert.Multiple(() =>
-            {
-                Assert.That(actual[i].Address, Is.EqualTo(expected[i].Address));
-                Assert.That(actual[i].Data, Is.EqualTo(expected[i].Data));
-                Assert.That(actual[i].Topics, Is.EqualTo(expected[i].Topics));
-            });
+            (receipts[i].Logs ?? []).AssertEquivalentTo(expected[i]);
         }
     }
 

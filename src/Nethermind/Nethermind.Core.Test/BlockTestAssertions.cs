@@ -29,10 +29,10 @@ public static class BlockTestAssertions
             AssertBlockBodyEquivalent(actual.Body, expected.Body);
             Assert.That(actual.BlockAccessList, Is.EqualTo(expected.BlockAccessList));
             Assert.That(actual.GeneratedBlockAccessList, Is.EqualTo(expected.GeneratedBlockAccessList));
-            AssertJaggedBytes(actual.ExecutionRequests, expected.ExecutionRequests);
+            Assert.That(actual.ExecutionRequests, Is.EqualTo(expected.ExecutionRequests));
             AssertAccountChangesEquivalent(actual.AccountChanges, expected.AccountChanges);
             Assert.That(actual.EncodedBlockAccessList, Is.EqualTo(expected.EncodedBlockAccessList));
-            AssertJaggedBytes(actual.EncodedTransactions, expected.EncodedTransactions);
+            Assert.That(actual.EncodedTransactions, Is.EqualTo(expected.EncodedTransactions));
         });
     }
 
@@ -54,7 +54,9 @@ public static class BlockTestAssertions
         {
             actual.Transactions.EqualToTransactions(expected.Transactions);
             Assert.That(actual.Uncles, Has.Length.EqualTo(expected.Uncles.Length));
-            AssertWithdrawalsEquivalent(actual.Withdrawals, expected.Withdrawals);
+            Assert.That(actual.Withdrawals, Is.EqualTo(expected.Withdrawals)
+                .UsingPropertiesComparer<Withdrawal>(
+                    static options => options.Excluding(static withdrawal => withdrawal.AmountInWei)));
         });
 
         for (int i = 0; i < expected.Uncles.Length; i++)
@@ -109,54 +111,6 @@ public static class BlockTestAssertions
             Assert.That(actual.SlotNumber, Is.EqualTo(expected.SlotNumber));
             Assert.That(actual.IsPostMerge, Is.EqualTo(expected.IsPostMerge));
         });
-    }
-
-    private static void AssertWithdrawalsEquivalent(Withdrawal[]? actual, Withdrawal[]? expected)
-    {
-        if (expected is null)
-        {
-            Assert.That(actual, Is.Null);
-            return;
-        }
-
-        Assert.That(actual, Is.Not.Null);
-        if (actual is null)
-        {
-            return;
-        }
-
-        Assert.That(actual, Has.Length.EqualTo(expected.Length));
-        for (int i = 0; i < expected.Length; i++)
-        {
-            Assert.Multiple(() =>
-            {
-                Assert.That(actual[i].Index, Is.EqualTo(expected[i].Index));
-                Assert.That(actual[i].ValidatorIndex, Is.EqualTo(expected[i].ValidatorIndex));
-                Assert.That(actual[i].Address, Is.EqualTo(expected[i].Address));
-                Assert.That(actual[i].AmountInGwei, Is.EqualTo(expected[i].AmountInGwei));
-            });
-        }
-    }
-
-    private static void AssertJaggedBytes(byte[][]? actual, byte[][]? expected)
-    {
-        if (expected is null)
-        {
-            Assert.That(actual, Is.Null);
-            return;
-        }
-
-        Assert.That(actual, Is.Not.Null);
-        if (actual is null)
-        {
-            return;
-        }
-
-        Assert.That(actual, Has.Length.EqualTo(expected.Length));
-        for (int i = 0; i < expected.Length; i++)
-        {
-            Assert.That(actual[i], Is.EqualTo(expected[i]));
-        }
     }
 
     private static void AssertAccountChangesEquivalent(ArrayPoolList<AddressAsKey>? actual, ArrayPoolList<AddressAsKey>? expected)

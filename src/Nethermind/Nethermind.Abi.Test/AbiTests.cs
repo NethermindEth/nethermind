@@ -539,13 +539,7 @@ public class AbiTests
             new Address("0x4173c8cE71a385e325357d8d79d6B7bc1c708F40")
         ];
 
-        Assert.That(objects, Has.Length.EqualTo(expectedObjects.Length));
-        Assert.That(objects[1], Is.EqualTo(expectedObjects[1]));
-
-        UserOperationAbi[] decodedOperations = (UserOperationAbi[])objects[0];
-        UserOperationAbi[] expectedOperations = (UserOperationAbi[])expectedObjects[0];
-        Assert.That(decodedOperations, Has.Length.EqualTo(expectedOperations.Length));
-        AssertUserOperation(decodedOperations[0], expectedOperations[0]);
+        Assert.That(objects, Is.EqualTo(expectedObjects).UsingPropertiesComparer());
     }
 
     [Test]
@@ -583,23 +577,6 @@ public class AbiTests
 
         Assert.Throws<AbiException>(() => new AbiEncoder().Decode(AbiEncodingStyle.None, abi, data));
     }
-
-    private static void AssertUserOperation(UserOperationAbi actual, UserOperationAbi expected) =>
-        Assert.Multiple(() =>
-        {
-            Assert.That(actual.Target, Is.EqualTo(expected.Target));
-            Assert.That(actual.Nonce, Is.EqualTo(expected.Nonce));
-            Assert.That(actual.InitCode, Is.EqualTo(expected.InitCode));
-            Assert.That(actual.CallData, Is.EqualTo(expected.CallData));
-            Assert.That(actual.CallGas, Is.EqualTo(expected.CallGas));
-            Assert.That(actual.VerificationGas, Is.EqualTo(expected.VerificationGas));
-            Assert.That(actual.MaxFeePerGas, Is.EqualTo(expected.MaxFeePerGas));
-            Assert.That(actual.MaxPriorityFeePerGas, Is.EqualTo(expected.MaxPriorityFeePerGas));
-            Assert.That(actual.Paymaster, Is.EqualTo(expected.Paymaster));
-            Assert.That(actual.PaymasterData, Is.EqualTo(expected.PaymasterData));
-            Assert.That(actual.Signer, Is.EqualTo(expected.Signer));
-            Assert.That(actual.Signature, Is.EqualTo(expected.Signature));
-        });
 
     private class UserOperationAbi
     {
