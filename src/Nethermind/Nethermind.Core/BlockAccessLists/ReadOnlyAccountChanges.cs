@@ -13,18 +13,11 @@ using Nethermind.Serialization.Json;
 namespace Nethermind.Core.BlockAccessLists;
 
 /// <summary>
-/// Per-account changes from a decoded BAL. Indexed change families are kept sorted by
-/// <see cref="IIndexedChange.Index"/> (decoder-validated) and reads binary-search a dense
-/// <c>uint[]</c> index lane shared across balance / nonce / code (one allocation, three spans
-/// carved by offset). Storage changes are also indexed twice: a hash map for O(1)
-/// <see cref="TryGetSlotChanges"/> lookups during EVM execution, and an array sorted by slot key
-/// for the cache prewarmer's sorted-merge with <see cref="StorageReads"/>.
+/// Per-account changes from a decoded BAL. Indexed families share a dense <c>uint[]</c> lane
+/// (<see cref="AccountIndexLane"/>) for binary-search lookups. Storage changes are indexed twice:
+/// a hash map for O(1) <see cref="TryGetSlotChanges"/> and an array sorted by slot key for the
+/// cache prewarmer's sorted-merge with <see cref="StorageReads"/>.
 /// </summary>
-/// <remarks>
-/// Immutable after construction; parallel workers read concurrently. Missing entries at the
-/// current block-access index fall through to the per-worker parent state in
-/// <c>BlockAccessListBasedWorldState</c>.
-/// </remarks>
 public class ReadOnlyAccountChanges : IEquatable<ReadOnlyAccountChanges>
 {
     [JsonConverter(typeof(AddressConverter))]
@@ -77,8 +70,7 @@ public class ReadOnlyAccountChanges : IEquatable<ReadOnlyAccountChanges>
         NonceChanges = nonceChanges;
         CodeChanges = codeChanges;
         _lane = new AccountIndexLane(balanceChanges, nonceChanges, codeChanges);
-        // Hash-set lookup beats array.Contains() for accounts with many declared reads; allocated
-        // lazily to avoid the overhead on accounts that never get queried via IsStorageRead.
+        // Hash set only pays off when there are enough reads to outweigh its overhead.
         _storageReadSet = storageReads.Length > 4 ? [.. storageReads] : null;
     }
 
@@ -139,9 +131,7 @@ public class ReadOnlyAccountChanges : IEquatable<ReadOnlyAccountChanges>
         && !HasSlotChangesAtIndex(index);
 
     /// <summary>
-    /// True iff this account has any tx-level mutation declared in the BAL. Used by
-    /// <c>BlockAccessListBasedWorldState.GetAccountChanges</c> to enumerate the addresses that
-    /// will be visibly modified by the block. Computed; not serialised.
+    /// True iff this account has any tx-level mutation declared in the BAL.
     /// </summary>
     [JsonIgnore]
     public bool HasStateChanges
@@ -188,8 +178,6 @@ public class ReadOnlyAccountChanges : IEquatable<ReadOnlyAccountChanges>
             if (!other._storageChanges.TryGetValue(kv.Key, out ReadOnlySlotChanges? otherVal) || !kv.Value.Equals(otherVal))
                 return false;
         }
-        // MemoryExtensions.SequenceEqual on ReadOnlySpan<T>: zero-alloc, no iterator, not LINQ
-        // (see coding-style.md). Implicit array->span conversion suffices.
         return ((ReadOnlySpan<UInt256>)StorageReads).SequenceEqual(other.StorageReads)
             && ((ReadOnlySpan<BalanceChange>)BalanceChanges).SequenceEqual(other.BalanceChanges)
             && ((ReadOnlySpan<NonceChange>)NonceChanges).SequenceEqual(other.NonceChanges)

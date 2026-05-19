@@ -30,16 +30,12 @@ internal readonly struct AccountIndexLane
             return;
         }
 
-        uint[] indices = new uint[total];
-        for (int i = 0; i < balance; i++) indices[i] = balanceChanges[i].Index;
-        int nonceStart = balance;
-        for (int i = 0; i < nonce; i++) indices[nonceStart + i] = nonceChanges[i].Index;
-        int codeStart = nonceStart + nonce;
-        for (int i = 0; i < code; i++) indices[codeStart + i] = codeChanges[i].Index;
-
-        _indices = indices;
-        _nonceStart = nonceStart;
-        _codeStart = codeStart;
+        _indices = new uint[total];
+        for (int i = 0; i < balance; i++) _indices[i] = balanceChanges[i].Index;
+        _nonceStart = balance;
+        for (int i = 0; i < nonce; i++) _indices[_nonceStart + i] = nonceChanges[i].Index;
+        _codeStart = _nonceStart + nonce;
+        for (int i = 0; i < code; i++) _indices[_codeStart + i] = codeChanges[i].Index;
     }
 
     private ReadOnlySpan<uint> Balances => _indices.AsSpan(0, _nonceStart);

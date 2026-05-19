@@ -33,22 +33,17 @@ public class ReadOnlySlotChanges(UInt256 key, StorageChange[] changes) : IEquata
     public override string ToString() => $"{Key}:[{string.Join(", ", Changes)}]";
 
     /// <summary>
-    /// Last storage change strictly before <paramref name="blockAccessIndex"/>. Returns
-    /// <c>false</c> when no entry is recorded before the index — caller can fall through to a
-    /// parent-state reader.
+    /// Last storage change strictly before <paramref name="blockAccessIndex"/>; <c>false</c> if none.
     /// </summary>
     public bool TryGetLastBefore(uint blockAccessIndex, out StorageChange storageChange)
         => IndexLane.TryGetLastBefore(_indices, Changes, blockAccessIndex, out storageChange);
 
     /// <summary>
-    /// The change recorded at exactly <paramref name="index"/>, if any.
+    /// The change at exactly <paramref name="index"/>, if any.
     /// </summary>
     public bool TryGetAtIndex(uint index, out StorageChange storageChange)
         => IndexLane.TryGetExact(_indices, Changes, index, out storageChange);
 
-    /// <summary>
-    /// True iff this slot has a change recorded at exactly <paramref name="index"/>.
-    /// </summary>
     public bool HasAtIndex(uint index) => IndexLane.HasExact(_indices, index);
 
     private static uint[] ExtractIndices(StorageChange[] changes)
