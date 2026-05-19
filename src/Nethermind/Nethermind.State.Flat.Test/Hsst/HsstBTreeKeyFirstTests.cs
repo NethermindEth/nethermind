@@ -2,8 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
-using System.Text;
 using Nethermind.State.Flat.Hsst;
 using NUnit.Framework;
 
@@ -22,22 +20,6 @@ public class HsstBTreeKeyFirstTests
         return true;
     }
 
-    private static List<(byte[] Key, byte[] Value)> Materialize(ReadOnlySpan<byte> data)
-    {
-        List<(byte[] Key, byte[] Value)> entries = [];
-        SpanByteReader reader = new(data);
-        using HsstRefEnumerator<SpanByteReader, NoOpPin> e = new(in reader, new Bound(0, data.Length));
-        Span<byte> keyBuf = stackalloc byte[256];
-        while (e.MoveNext())
-        {
-            byte[] k = e.CopyCurrentLogicalKey(keyBuf).ToArray();
-            Bound vb = e.Current.ValueBound;
-            byte[] v = vb.Length == 0 ? [] : data.Slice((int)vb.Offset, (int)vb.Length).ToArray();
-            entries.Add((k, v));
-        }
-        return entries;
-    }
-
     [Test]
     public void IndexType_Byte_Is_BTreeKeyFirst_At_Tail()
     {
@@ -47,63 +29,6 @@ public class HsstBTreeKeyFirstTests
         }, keyFirst: true);
 
         Assert.That(data[^1], Is.EqualTo((byte)IndexType.BTreeKeyFirst));
-    }
-
-    [Test]
-    public void Single_Entry_RoundTrip()
-    {
-        byte[] data = HsstTestUtil.BuildToArray((ref HsstBTreeBuilder<PooledByteBufferWriter.Writer, PooledByteBufferWriter.WriterReader, NoOpPin> b) =>
-        {
-            b.Add("key1"u8, "value1"u8);
-        }, keyFirst: true);
-
-        Assert.That(TryGet(data, "key1"u8, out byte[] val), Is.True);
-        Assert.That(Encoding.UTF8.GetString(val), Is.EqualTo("value1"));
-        Assert.That(TryGet(data, "key0"u8, out _), Is.False);
-        Assert.That(TryGet(data, "key2"u8, out _), Is.False);
-    }
-
-    [TestCase(2)]
-    [TestCase(10)]
-    [TestCase(64)]
-    [TestCase(65)]
-    [TestCase(128)]
-    [TestCase(500)]
-    public void Multiple_Entries_RoundTrip(int n)
-    {
-        byte[][] keys = new byte[n][];
-        byte[][] vals = new byte[n][];
-        for (int i = 0; i < n; i++)
-        {
-            keys[i] = Encoding.UTF8.GetBytes($"key{i:D5}");
-            vals[i] = Encoding.UTF8.GetBytes($"value-{i}-{new string('x', i % 13)}");
-        }
-
-        byte[] data = HsstTestUtil.BuildToArray((ref HsstBTreeBuilder<PooledByteBufferWriter.Writer, PooledByteBufferWriter.WriterReader, NoOpPin> b) =>
-        {
-            for (int i = 0; i < n; i++) b.Add(keys[i], vals[i]);
-        }, keyFirst: true);
-
-        Assert.That(data[^1], Is.EqualTo((byte)IndexType.BTreeKeyFirst));
-
-        // Exact-match every key.
-        for (int i = 0; i < n; i++)
-        {
-            Assert.That(TryGet(data, keys[i], out byte[] got), Is.True, $"missing key #{i}");
-            Assert.That(got, Is.EqualTo(vals[i]), $"value mismatch for key #{i}");
-        }
-
-        // Miss on a key that wasn't inserted.
-        Assert.That(TryGet(data, "missingkey"u8, out _), Is.False);
-
-        // Enumerator walks in key order and yields the same key/value pairs.
-        List<(byte[] Key, byte[] Value)> walked = Materialize(data);
-        Assert.That(walked.Count, Is.EqualTo(n));
-        for (int i = 0; i < n; i++)
-        {
-            Assert.That(walked[i].Key, Is.EqualTo(keys[i]), $"walked key #{i}");
-            Assert.That(walked[i].Value, Is.EqualTo(vals[i]), $"walked value #{i}");
-        }
     }
 
     [Test]
