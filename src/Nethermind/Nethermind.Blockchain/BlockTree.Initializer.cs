@@ -331,9 +331,16 @@ public partial class BlockTree
             if (Logger.IsInfo) Logger.Info(
                 $"Start block loaded from reorg boundary - {persistedNumber} - {startBlock?.ToString(Block.Format.Short)}");
         }
-        else
+
+        // Fall back to the explicitly persisted head hash whenever the reorg
+        // boundary did not yield a block — either no boundary was stored, or it
+        // points one past the highest stored block (a persisted-state pointer
+        // written ahead of the block body). HeadAddressInDb is written by
+        // UpdateHeadBlock for every committed block and still holds a valid head;
+        // discarding it here would silently reset the node to genesis on restart.
+        if (startBlock is null)
         {
-            byte[] data = _blockInfoDb.Get(HeadAddressInDb);
+            byte[]? data = _blockInfoDb.Get(HeadAddressInDb);
             if (data is not null)
             {
                 startBlock = FindBlock(new Hash256(data), BlockTreeLookupOptions.None);
