@@ -305,6 +305,8 @@ public class VotesManagerTests
         });
         ISigner signer = Substitute.For<ISigner>();
         signer.Address.Returns(TestItem.AddressA);
+        signer.TrySign(in Arg.Any<ValueHash256>(), out Arg.Any<Signature>())
+            .Returns(call => { call[1] = new Signature(new byte[65]); return true; });
         IForensicsProcessor forensicsProcessor = Substitute.For<IForensicsProcessor>();
 
         return new VotesManager(ctx, Substitute.For<ISyncPeerPool>(), blockTree, epochSwitchManager, snapshotManager, quorumCertificateManager,
