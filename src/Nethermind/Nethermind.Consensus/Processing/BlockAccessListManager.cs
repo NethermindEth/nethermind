@@ -196,13 +196,17 @@ public partial class BlockAccessListManager(
         }
     }
 
-    /// <summary>Detach the slice for <paramref name="balIndex"/>, fold it into
+    /// <summary>
+    /// Detach the slice for <paramref name="balIndex"/>, fold it into
     /// <see cref="GeneratedBlockAccessList"/>, and feed it to <see cref="RegisterGeneratedSlice"/>
-    /// so the column-index fast path and read-only-account mismatch flag stay in sync.</summary>
-    /// <remarks>The <paramref name="balIndex"/> default exists for the sequential per-tx hook
+    /// so the column-index fast path and read-only-account mismatch flag stay in sync.
+    /// </summary>
+    /// <remarks>
+    /// The <paramref name="balIndex"/> default exists for the sequential per-tx hook
     /// (<see cref="NextTransaction"/>), where the underlying pool ignores the index. Parallel
     /// callers (<c>IncrementalValidation</c>, <c>SetBlockAccessList</c>) always pass an explicit
-    /// value to identify the per-tx slot to detach.</remarks>
+    /// value to identify the per-tx slot to detach.
+    /// </remarks>
     private void MergeAndReturnBal(uint balIndex = 0)
         => _txProcessorWithWorldStateManager!.MergeAndReturnBal(balIndex, GeneratedBlockAccessList, RegisterGeneratedSlice);
 

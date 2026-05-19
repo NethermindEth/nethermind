@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
@@ -471,7 +472,6 @@ internal sealed class BlockAccessListValidationIndex
         private readonly bool[]? _rowTouched;
         private readonly int[]? _touchedRows;
         private readonly bool[]? _rowOverflow;
-        private readonly StorageOrderComparer _orderComparer = new();
         private int[] _orderScratch = [];
         private int[] _accountScratch = [];
         private UInt256[] _keyScratch = [];
@@ -673,8 +673,7 @@ internal sealed class BlockAccessListValidationIndex
                 _orderScratch[i] = i;
             }
 
-            _orderComparer.Reset(_accountOrdinals, _keys, start);
-            Array.Sort(_orderScratch, 0, length, _orderComparer);
+            _orderScratch.AsSpan(0, length).Sort(new StorageOrderComparer(_accountOrdinals, _keys, start));
 
             for (int i = 0; i < length; i++)
             {
@@ -702,19 +701,13 @@ internal sealed class BlockAccessListValidationIndex
             _valueScratch = new EvmWord[length];
         }
 
-        private sealed class StorageOrderComparer : IComparer<int>
+        private readonly struct StorageOrderComparer(int[] accountOrdinals, UInt256[] keys, int start) : IComparer<int>
         {
-            private int[] _accountOrdinals = [];
-            private UInt256[] _keys = [];
-            private int _start;
+            private readonly int[] _accountOrdinals = accountOrdinals;
+            private readonly UInt256[] _keys = keys;
+            private readonly int _start = start;
 
-            public void Reset(int[] accountOrdinals, UInt256[] keys, int start)
-            {
-                _accountOrdinals = accountOrdinals;
-                _keys = keys;
-                _start = start;
-            }
-
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
             public int Compare(int leftOffset, int rightOffset)
             {
                 int left = _start + leftOffset;
