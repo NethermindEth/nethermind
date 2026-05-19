@@ -80,8 +80,9 @@ jobs:
             const body = payload.issue?.body ?? payload.pull_request?.body ?? '';
             const requestText = payload.comment?.body ?? payload.review?.body ?? payload.issue?.body ?? '';
             const targetType = prNumber ? 'pull_request' : 'issue';
-            const checkoutRef = prNumber ? `refs/pull/${prNumber}/merge` : context.ref;
             let baseRef = '';
+            let headSha = '';
+            let checkoutRef = context.ref;
 
             if (prNumber) {
               const { data: pr } = await github.rest.pulls.get({
@@ -91,6 +92,9 @@ jobs:
               });
 
               baseRef = pr.base.ref;
+              headSha = pr.head.sha;
+              // Pin to the head SHA resolved at trigger time, not refs/pull/<N>/merge
+              checkoutRef = headSha;
             }
 
             core.setOutput('issue_number', String(issueNumber));
@@ -101,6 +105,7 @@ jobs:
             core.setOutput('request_text', requestText);
             core.setOutput('checkout_ref', checkoutRef);
             core.setOutput('base_ref', baseRef);
+            core.setOutput('head_sha', headSha);
 
       - name: Check out repository
         uses: actions/checkout@v6
@@ -110,9 +115,11 @@ jobs:
       - name: Fetch PR diff refs
         if: steps.target.outputs.target_type == 'pull_request'
         run: |
+          # Fetch the same pinned head SHA used for checkout above, so the diff
+          # base/head refs cannot drift from what the action actually sees.
           git fetch --no-tags origin \
             "+refs/heads/${{ steps.target.outputs.base_ref }}:refs/remotes/origin/codex-base" \
-            "+refs/pull/${{ steps.target.outputs.pr_number }}/head:refs/remotes/origin/codex-head"
+            "+${{ steps.target.outputs.head_sha }}:refs/remotes/origin/codex-head"
 
       - name: Build prompt
         id: prompt
