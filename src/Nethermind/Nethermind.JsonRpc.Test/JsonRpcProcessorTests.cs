@@ -143,6 +143,36 @@ public class JsonRpcProcessorTests(bool returnErrors)
         sink.Singles[0].Id.Should().Be(67);
     }
 
+    [Test]
+    public async Task Sink_processor_entry_point_stops_when_shutdown_requested()
+    {
+        IJsonRpcService service = Substitute.For<IJsonRpcService>();
+        service.GetErrorResponse(Arg.Any<int>(), Arg.Any<string>())
+            .Returns(new JsonRpcErrorResponse { Error = new Error { Code = ErrorCodes.ResourceUnavailable, Message = "Shutting down" } });
+
+        IProcessExitSource processExitSource = Substitute.For<IProcessExitSource>();
+        processExitSource.Token.Returns(new CancellationToken(canceled: true));
+
+        JsonRpcProcessor processor = new(
+            service,
+            new JsonRpcConfig { RpcRecorderState = RpcRecorderState.None },
+            Substitute.For<IFileSystem>(),
+            LimboLogs.Instance,
+            processExitSource);
+        CollectingJsonRpcResponseSink sink = new();
+
+        await processor.ProcessAsync(
+            CreateReader("{\"id\":67,\"jsonrpc\":\"2.0\",\"method\":\"eth_getTransactionCount\",\"params\":[]}"),
+            new JsonRpcContext(RpcEndpoint.Http),
+            sink,
+            new JsonRpcProcessingOptions(JsonRpcInputMode.SingleDocument));
+
+        sink.Singles.Should().HaveCount(1);
+        sink.Singles[0].Should().BeOfType<JsonRpcErrorResponse>();
+        ((JsonRpcErrorResponse)sink.Singles[0]).Error!.Code.Should().Be(ErrorCodes.ResourceUnavailable);
+        await service.DidNotReceive().SendRequestAsync(Arg.Any<JsonRpcRequest>(), Arg.Any<JsonRpcContext>());
+    }
+
     private static PipeReader CreateReader(string request) =>
         PipeReader.Create(new ReadOnlySequence<byte>(Encoding.UTF8.GetBytes(request)));
 
