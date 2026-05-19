@@ -139,6 +139,22 @@ public class JsonRpcProcessorTests(bool returnErrors)
         ReferenceEquals(capturedMethod, string.Intern(methodName)).Should().BeTrue();
     }
 
+    [Test]
+    public void KnownRpcMethodNames_uses_full_value_length_for_multi_segment_reader()
+    {
+        ReadOnlySequence<byte> methodSequence = CreateSequence("\"engine_", "newPayloadV4\"");
+        Utf8JsonReader reader = new(methodSequence);
+
+        reader.Read().Should().BeTrue();
+        reader.TokenType.Should().Be(JsonTokenType.String);
+        reader.HasValueSequence.Should().BeTrue();
+
+        string? methodName = KnownRpcMethodNames.Intern(ref reader);
+
+        methodName.Should().Be("engine_newPayloadV4");
+        ReferenceEquals(methodName, string.Intern("engine_newPayloadV4")).Should().BeTrue();
+    }
+
     private ValueTask<CollectedJsonRpcResponses> ProcessAsync(string request, JsonRpcContext? context = null, JsonRpcConfig? config = null) =>
         ProcessAsync(Initialize(config), CreateReader(request), context ?? new JsonRpcContext(RpcEndpoint.Http));
 
@@ -359,6 +375,13 @@ public class JsonRpcProcessorTests(bool returnErrors)
 
     private static PipeReader CreateReader(string request) =>
         PipeReader.Create(new ReadOnlySequence<byte>(Encoding.UTF8.GetBytes(request)));
+
+    private static ReadOnlySequence<byte> CreateSequence(string first, string second)
+    {
+        BufferSegment start = new(Encoding.UTF8.GetBytes(first));
+        BufferSegment end = start.Append(Encoding.UTF8.GetBytes(second));
+        return new ReadOnlySequence<byte>(start, 0, end, end.Memory.Length);
+    }
 
     [Test]
     public void JsonRpcEnvelopeReader_reads_envelope_and_params_range()
@@ -1346,6 +1369,18 @@ public class JsonRpcProcessorTests(bool returnErrors)
             {
                 response.Dispose();
             }
+        }
+    }
+
+    private sealed class BufferSegment : ReadOnlySequenceSegment<byte>
+    {
+        public BufferSegment(ReadOnlyMemory<byte> memory) => Memory = memory;
+
+        public BufferSegment Append(ReadOnlyMemory<byte> memory)
+        {
+            BufferSegment segment = new(memory) { RunningIndex = RunningIndex + Memory.Length };
+            Next = segment;
+            return segment;
         }
     }
 }

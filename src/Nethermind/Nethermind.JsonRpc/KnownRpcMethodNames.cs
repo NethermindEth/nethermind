@@ -354,7 +354,11 @@ internal static class KnownRpcMethodNames
 
     public static string? Intern(ref Utf8JsonReader methodReader)
     {
-        string? methodName = methodReader.ValueSpan.Length switch
+        int methodLength = methodReader.HasValueSequence
+            ? checked((int)methodReader.ValueSequence.Length)
+            : methodReader.ValueSpan.Length;
+
+        string? methodName = methodLength switch
         {
             8 => Match(ref methodReader, Length8),
             9 => Match(ref methodReader, Length9),
