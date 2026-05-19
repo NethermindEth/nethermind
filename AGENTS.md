@@ -12,7 +12,7 @@ This guide helps to get started with the Nethermind Ethereum execution client re
 ## Coding guidelines and style
 
 - Follow [CONTRIBUTING.md](./CONTRIBUTING.md) and [.editorconfig](./.editorconfig)
-- Keep changes minimal and focused — don't touch unrelated code. Try to minimise the diff from the base branch, for example, not reordering code or making styalisic changes unless they improve code clarity.
+- Keep changes minimal and focused — don't touch unrelated code. Try to minimise the diff from the base branch, for example, not reordering code or making stylistic changes unless they improve code clarity.
 - When fixing a bug, always add a regression test
 - Do not alter [src/bench_precompiles](./src/bench_precompiles/) or [src/tests](./src/tests/)
 - Prefer self-documenting code — clear names and structure should remove the need for most comments. Emit a comment only when it captures context that is not obvious from the code itself: the _why_ behind a non-obvious choice, an invariant, a workaround, an EIP/Yellow-Paper reference, a subtle edge case, etc. Comments that merely restate the code are noise — don't add them, and remove them when you encounter them. Keep comments concise and ensure that they make sense in the context of the master branch, not referencing the specifics of the current session.
