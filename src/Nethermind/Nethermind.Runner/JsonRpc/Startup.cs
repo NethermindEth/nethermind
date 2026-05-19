@@ -6,6 +6,7 @@ using System.Buffers;
 using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.IO.Pipelines;
 using System.Linq;
@@ -413,12 +414,12 @@ public class Startup : IStartup
         HttpJsonRpcResponseSink? responseSink = null;
         try
         {
-            PipeReader request = await CollectHttpRequestBodyAsync(ctx, contentLength, effectiveMaxRequestBodySize, collectedBody, ctx.RequestAborted);
+            await CollectHttpRequestBodyAsync(ctx, contentLength, effectiveMaxRequestBodySize, collectedBody, ctx.RequestAborted);
             using JsonRpcContext jsonRpcContext = JsonRpcContext.Http(jsonRpcUrl);
             responseSink = new HttpJsonRpcResponseSink(ctx, jsonRpcUrl, _jsonRpcConfig, _jsonRpcLocalStats, EthereumJsonSerializer.JsonOptions, _logger, startTime);
 
             await _jsonRpcProcessor.ProcessAsync(
-                request,
+                collectedBody.Memory,
                 jsonRpcContext,
                 responseSink,
                 new JsonRpcProcessingOptions(JsonRpcInputMode.SingleDocument),
@@ -444,30 +445,37 @@ public class Startup : IStartup
         }
         finally
         {
-            if (responseSink is not null)
+            try
             {
-                await responseSink.CompleteAsync(ctx.RequestAborted);
-            }
+                if (responseSink is not null)
+                {
+                    await responseSink.CompleteAsync(ctx.RequestAborted);
+                }
 
-            Interlocked.Add(ref Metrics.JsonRpcBytesReceivedHttp, collectedBody.BytesRead);
+                Interlocked.Add(ref Metrics.JsonRpcBytesReceivedHttp, collectedBody.BytesRead);
+            }
+            finally
+            {
+                collectedBody.Dispose();
+            }
         }
     }
 
-    private static async ValueTask<PipeReader> CollectHttpRequestBodyAsync(
+    private static async ValueTask CollectHttpRequestBodyAsync(
         HttpContext context,
         long? contentLength,
         long? maxRequestBodySize,
         CollectedHttpBody collectedBody,
         CancellationToken cancellationToken)
     {
-        Stream stream = contentLength is > 0
-            ? RecyclableStream.GetStream("http-request", contentLength.Value)
-            : RecyclableStream.GetStream("http-request");
-        bool success = false;
+        if (contentLength is > 0 and <= int.MaxValue)
+        {
+            collectedBody.EnsureCapacity((int)contentLength.Value);
+        }
 
+        PipeReader bodyReader = context.Request.BodyReader;
         try
         {
-            PipeReader bodyReader = context.Request.BodyReader;
             while (true)
             {
                 ReadResult readResult = await bodyReader.ReadAsync(cancellationToken);
@@ -475,15 +483,18 @@ public class Startup : IStartup
 
                 foreach (ReadOnlyMemory<byte> segment in buffer)
                 {
-                    collectedBody.BytesRead += segment.Length;
-                    if (maxRequestBodySize is not null && collectedBody.BytesRead > maxRequestBodySize)
+                    long bytesRead = collectedBody.BytesRead + segment.Length;
+                    if (maxRequestBodySize is not null && bytesRead > maxRequestBodySize)
                     {
-                        throw new Microsoft.AspNetCore.Http.BadHttpRequestException(
-                            $"Request body too large. The max request body size is {maxRequestBodySize} bytes.",
-                            StatusCodes.Status413PayloadTooLarge);
+                        ThrowRequestBodyTooLarge(maxRequestBodySize.Value);
                     }
 
-                    await stream.WriteAsync(segment, cancellationToken);
+                    if (bytesRead > int.MaxValue)
+                    {
+                        ThrowRequestBodyTooLarge(maxRequestBodySize ?? int.MaxValue);
+                    }
+
+                    collectedBody.Append(segment);
                 }
 
                 bodyReader.AdvanceTo(buffer.End);
@@ -493,28 +504,78 @@ public class Startup : IStartup
                     break;
                 }
             }
-
-            await context.Request.BodyReader.CompleteAsync();
-            stream.Seek(0, SeekOrigin.Begin);
-            success = true;
-            return PipeReader.Create(stream, new StreamPipeReaderOptions(leaveOpen: false));
         }
         finally
         {
-            if (!success)
-            {
-                await context.Request.BodyReader.CompleteAsync();
-                await stream.DisposeAsync();
-            }
+            await bodyReader.CompleteAsync();
         }
+
+        [DoesNotReturn, StackTraceHidden]
+        static void ThrowRequestBodyTooLarge(long maxRequestBodySize) =>
+            throw new Microsoft.AspNetCore.Http.BadHttpRequestException(
+                $"Request body too large. The max request body size is {maxRequestBodySize} bytes.",
+                StatusCodes.Status413PayloadTooLarge);
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
     private static void LogBadRequest(ILogger logger, Exception e) =>
         logger.Debug($"Couldn't read request.{Environment.NewLine}{e}");
 
-    private sealed class CollectedHttpBody
+    private sealed class CollectedHttpBody : IDisposable
     {
-        public long BytesRead { get; set; }
+        private byte[]? _buffer;
+
+        public int BytesRead { get; private set; }
+
+        public ReadOnlyMemory<byte> Memory =>
+            _buffer is null ? ReadOnlyMemory<byte>.Empty : _buffer.AsMemory(0, BytesRead);
+
+        public void EnsureCapacity(int minCapacity)
+        {
+            if (minCapacity <= 0 || _buffer?.Length >= minCapacity)
+            {
+                return;
+            }
+
+            int newCapacity = _buffer is null ? 256 : _buffer.Length;
+            while (newCapacity < minCapacity)
+            {
+                newCapacity = newCapacity <= Array.MaxLength / 2 ? newCapacity * 2 : minCapacity;
+            }
+
+            byte[] newBuffer = ArrayPool<byte>.Shared.Rent(newCapacity);
+            if (_buffer is not null)
+            {
+                _buffer.AsSpan(0, BytesRead).CopyTo(newBuffer);
+                ArrayPool<byte>.Shared.Return(_buffer);
+            }
+
+            _buffer = newBuffer;
+        }
+
+        public void Append(ReadOnlyMemory<byte> segment)
+        {
+            if (segment.Length == 0)
+            {
+                return;
+            }
+
+            int newLength = BytesRead + segment.Length;
+            EnsureCapacity(newLength);
+            segment.CopyTo(_buffer!.AsMemory(BytesRead));
+            BytesRead = newLength;
+        }
+
+        public void Dispose()
+        {
+            if (_buffer is null)
+            {
+                return;
+            }
+
+            ArrayPool<byte>.Shared.Return(_buffer);
+            _buffer = null;
+            BytesRead = 0;
+        }
     }
 }
