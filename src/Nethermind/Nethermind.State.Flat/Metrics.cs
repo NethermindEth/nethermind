@@ -19,6 +19,10 @@ public static class Metrics
     [Description("Average snapshot bundle size in terms of num of snapshot")]
     public static long SnapshotBundlePersistedSnapshotSize { get; set; }
 
+    [GaugeMetric]
+    [Description("Total persisted-snapshot reservation bytes in the most recently assembled read-only snapshot bundle (the bytes a tip reader pays for)")]
+    public static long SnapshotBundlePersistedSnapshotMemory { get; set; }
+
     [DetailedMetric]
     [Description("Time for persistence job")]
     [ExponentialPowerHistogramMetric(Start = 1, Factor = 1.5, Count = 30)]

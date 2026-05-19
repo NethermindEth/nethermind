@@ -341,6 +341,11 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
 
             Metrics.SnapshotBundleSize = assembled.InMemory.Count;
             Metrics.SnapshotBundlePersistedSnapshotSize = assembled.Persisted.Count;
+
+            long persistedBytes = 0;
+            for (int i = 0; i < assembled.Persisted.Count; i++)
+                persistedBytes += assembled.Persisted[i].Size;
+            Metrics.SnapshotBundlePersistedSnapshotMemory = persistedBytes;
             return res;
         }
     }
