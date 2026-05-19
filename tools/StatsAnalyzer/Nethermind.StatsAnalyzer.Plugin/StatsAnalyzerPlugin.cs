@@ -49,8 +49,9 @@ public class StatsAnalyzerPlugin(IPatternAnalyzerConfig patternAnalyzerConfig, I
             // are unsafe when parallel BAL execution is active (Amsterdam+ blocks
             // with Blocks.ParallelExecution=true). The block tracer skips
             // recording on parallel-BAL blocks; warn the operator once at startup
-            // so the partial coverage is not surprising. The proper parallel-safe
-            // redesign is tracked in BAL-statsanalyzer-plan.md §6d.
+            // so the partial coverage is not surprising. See
+            // tools/StatsAnalyzer/EIP-7928-references.md for the parallel-safe
+            // redesign sketch.
             if (_blocksConfig.ParallelExecution && _logger.IsWarn)
             {
                 _logger.Warn(
@@ -87,8 +88,8 @@ public class StatsAnalyzerPlugin(IPatternAnalyzerConfig patternAnalyzerConfig, I
             _api.FileSystem,
             _logger,
             callAnalyzerConfig.WriteFrequency,
-            (ProcessingMode)Enum.Parse(typeof(ProcessingMode), callAnalyzerConfig.ProcessingMode),
-            (SortOrder)Enum.Parse(typeof(SortOrder), callAnalyzerConfig.Sort),
+            (ProcessingMode)Enum.Parse(typeof(ProcessingMode), callAnalyzerConfig.ProcessingMode, ignoreCase: true),
+            (SortOrder)Enum.Parse(typeof(SortOrder), callAnalyzerConfig.Sort, ignoreCase: true),
             callAnalyzerConfig.File!,
             _cancellationTokenSource.Token,
             _blocksConfig);
@@ -109,8 +110,8 @@ public class StatsAnalyzerPlugin(IPatternAnalyzerConfig patternAnalyzerConfig, I
             _api.FileSystem,
             _logger,
             patternAnalyzerConfig.WriteFrequency,
-            (ProcessingMode)Enum.Parse(typeof(ProcessingMode), patternAnalyzerConfig.ProcessingMode),
-            (SortOrder)Enum.Parse(typeof(SortOrder), patternAnalyzerConfig.Sort),
+            (ProcessingMode)Enum.Parse(typeof(ProcessingMode), patternAnalyzerConfig.ProcessingMode, ignoreCase: true),
+            (SortOrder)Enum.Parse(typeof(SortOrder), patternAnalyzerConfig.Sort, ignoreCase: true),
             patternAnalyzerConfig.File!,
             _cancellationTokenSource.Token,
             _blocksConfig);

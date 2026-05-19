@@ -122,8 +122,7 @@ When `_skipThisBlock` is true:
   reflects only blocks actually written.
 
 The stopgap is a placeholder. The proper fix — per-worker accumulators
-plus a merge at end-of-block — is tracked in
-`/Users/sid/dev/nethermind/BAL-statsanalyzer-plan.md` §6d.
+plus a merge at end-of-block — is left as follow-up work.
 
 ## 5. Spec-drift checklist
 

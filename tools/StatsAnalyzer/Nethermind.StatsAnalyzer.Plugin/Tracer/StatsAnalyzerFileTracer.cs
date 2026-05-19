@@ -40,15 +40,13 @@ public abstract class StatsAnalyzerFileTracer<TxTrace, TxTracer>(
     private readonly IBlocksConfig _blocksConfig = blocksConfig ?? throw new ArgumentNullException(nameof(blocksConfig));
     private int _pos;
     private long _currentBlock;
-    protected Task CurrentTask = Task.CompletedTask;
     private long _initialBlock;
     private Task _lastTask = Task.CompletedTask;
     protected TxTracer Tracer = tracer;
     // Per-block flag set in StartNewBlockTrace. When true, this block is being
     // processed under parallel-BAL execution and the per-tx tracer must short-
     // circuit; the file write at EndBlockTrace is also suppressed. See
-    // tools/StatsAnalyzer/EIP-7928-references.md and BAL-statsanalyzer-plan.md
-    // §6c for the gating rationale.
+    // tools/StatsAnalyzer/EIP-7928-references.md for the gating rationale.
     private bool _skipThisBlock;
     // One-shot log on the first skipped block — avoids per-block log spam.
     private bool _loggedFirstSkip;
