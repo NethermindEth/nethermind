@@ -118,8 +118,8 @@ public class BlockTreeTests
         using MemoryManager<byte>? missingBal = blockAccessListStore.GetRlp(block.Hash!);
         missingBal.Should().BeNull();
 
-        byte[] encodedBal = Rlp.Encode(new BlockAccessList()).Bytes;
-        block.GeneratedBlockAccessList = new BlockAccessList();
+        byte[] encodedBal = Rlp.Encode(new ReadOnlyBlockAccessList()).Bytes;
+        block.GeneratedBlockAccessList = new GeneratedBlockAccessList();
         block.EncodedBlockAccessList = encodedBal;
         block.Header.BlockAccessListHash = new Hash256(ValueKeccak.Compute(encodedBal).Bytes);
 
