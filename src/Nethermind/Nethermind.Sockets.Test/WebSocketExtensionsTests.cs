@@ -3,7 +3,7 @@
 
 using System;
 using System.Collections.Generic;
-using System.Linq;
+using System.IO.Pipelines;
 using System.Net.WebSockets;
 using System.Threading;
 using System.Threading.Tasks;
@@ -14,6 +14,7 @@ using Nethermind.JsonRpc.WebSockets;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using NSubstitute;
+using NSubstitute.Core;
 using NUnit.Framework;
 
 namespace Nethermind.Sockets.Test;
@@ -110,17 +111,28 @@ public class WebSocketExtensionsTests
         WebSocketMock mock = new(receiveResult);
 
         IJsonRpcProcessor processor = Substitute.For<IJsonRpcProcessor>();
-        processor.ProcessAsync(default, default).ReturnsForAnyArgs(static (x) => new List<JsonRpcResult>()
+        static async ValueTask WriteResponses(CallInfo callInfo)
         {
-            (JsonRpcResult.Single((new JsonRpcResponse()), new RpcReport())),
-            (JsonRpcResult.Collection(new JsonRpcBatchResult(static (e, c) =>
-                new List<JsonRpcResult.Entry>()
+            IJsonRpcResponseSink sink = callInfo.Arg<IJsonRpcResponseSink>();
+            CancellationToken cancellationToken = callInfo.Arg<CancellationToken>();
+
+            await sink.WriteSingleAsync(new JsonRpcResponse(), new RpcReport("single", 0, true), cancellationToken);
+            await sink.BeginBatchAsync(cancellationToken);
+            for (int index = 0; index < 3; index++)
             {
-                new(new JsonRpcResponse(), new RpcReport()),
-                new(new JsonRpcResponse(), new RpcReport()),
-                new(new JsonRpcResponse(), new RpcReport()),
-            }.ToAsyncEnumerable().GetAsyncEnumerator(c))))
-        }.ToAsyncEnumerable());
+                await sink.WriteBatchItemAsync(new JsonRpcResponse(), new RpcReport("batch", 0, true), cancellationToken);
+            }
+            await sink.EndBatchAsync(cancellationToken);
+        }
+
+        processor
+            .ProcessAsync(
+                Arg.Any<PipeReader>(),
+                Arg.Any<JsonRpcContext>(),
+                Arg.Any<IJsonRpcResponseSink>(),
+                Arg.Any<JsonRpcProcessingOptions>(),
+                Arg.Any<CancellationToken>())
+            .Returns(WriteResponses);
 
         IJsonRpcService service = Substitute.For<IJsonRpcService>();
 
