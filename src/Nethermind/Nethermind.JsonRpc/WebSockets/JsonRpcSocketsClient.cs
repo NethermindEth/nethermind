@@ -3,7 +3,6 @@
 
 using System;
 using System.Buffers;
-using System.Diagnostics;
 using System.IO;
 using System.IO.Pipelines;
 using System.Threading;
@@ -126,31 +125,23 @@ public class JsonRpcSocketsClient<TStream> : SocketClient<TStream>, IJsonRpcDupl
     private async Task HandleRequest(Memory<byte> data, CancellationToken cancellationToken = default)
     {
         PipeReader request = PipeReader.Create(new ReadOnlySequence<byte>(data));
-        long allResponsesSize = 0;
+        using SocketJsonRpcResponseSink<TStream> sink = new(
+            _stream,
+            _jsonSerializer,
+            _jsonRpcLocalStats,
+            _maxBatchResponseBodySize,
+            _sendSemaphore,
+            _jsonRpcContext);
 
-        await foreach (JsonRpcResult result in _jsonRpcProcessor.ProcessAsync(request, _jsonRpcContext).WithCancellation(cancellationToken))
-        {
-            using (result)
-            {
-                int singleResponseSize = await SendJsonRpcResult(result, cancellationToken);
-                allResponsesSize += singleResponseSize;
+        await JsonRpcProcessorSinkAdapter.ProcessAsync(
+            _jsonRpcProcessor,
+            request,
+            _jsonRpcContext,
+            sink,
+            new JsonRpcProcessingOptions(JsonRpcInputMode.MultipleDocuments),
+            cancellationToken);
 
-                long startTime = Stopwatch.GetTimestamp();
-
-                if (result.IsCollection)
-                {
-                    long handlingTimeMicroseconds = (long)Stopwatch.GetElapsedTime(startTime).TotalMicroseconds;
-                    _ = _jsonRpcLocalStats.ReportCall(new RpcReport("# collection serialization #", handlingTimeMicroseconds, true), handlingTimeMicroseconds, singleResponseSize);
-                }
-                else
-                {
-                    long handlingTimeMicroseconds = (long)Stopwatch.GetElapsedTime(startTime).TotalMicroseconds;
-                    _ = _jsonRpcLocalStats.ReportCall(result.Report!.Value, handlingTimeMicroseconds, singleResponseSize);
-                }
-            }
-        }
-
-        IncrementBytesSentMetric(allResponsesSize);
+        IncrementBytesSentMetric(sink.BytesWritten);
     }
 
     private void IncrementBytesReceivedMetric(long size)
