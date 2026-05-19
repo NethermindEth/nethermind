@@ -621,10 +621,6 @@ namespace Nethermind.Evm.TransactionProcessing
 
             if (tx.SupportsAuthorizationList)
             {
-                // SetCode-specific shape checks live in Nethermind.Core.Validation.SetCodeTxValidation
-                // so that this RPC-facing path (eth_call / eth_estimateGas, which bypass TxValidator)
-                // and the consensus-side NoContractCreationTxValidator / AuthorizationListTxValidator
-                // share a single source of truth. See https://github.com/NethermindEth/nethermind/issues/11619.
                 ValidationResult noCreation = SetCodeTxValidation.ValidateNoContractCreation(tx);
                 if (!noCreation)
                 {
