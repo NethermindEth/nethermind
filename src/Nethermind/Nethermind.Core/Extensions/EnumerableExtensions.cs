@@ -20,6 +20,8 @@ namespace Nethermind.Core.Extensions
         public static ArrayPoolListRef<T> ToPooledListRef<T>(this IReadOnlyCollection<T> collection) => new(collection.Count, collection);
         public static ArrayPoolListRef<T> ToPooledListRef<T>(this ReadOnlySpan<T> span) => new(span);
 
+        public static NativeMemoryList<T> ToNativeMemoryList<T>(this IEnumerable<T> enumerable, int count) where T : unmanaged => new(count, enumerable);
+
         public static (T Min, T Max) MinMax<T>(this IEnumerable<T> source)
             where T : IComparable<T>
         {

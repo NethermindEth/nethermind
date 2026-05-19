@@ -49,7 +49,7 @@ public class AccumulatorCalculator : IDisposable
         proof[0] = new ValueHash256(_totalDifficulties[blockIndex].ToLittleEndian());
 
         // Build the flat binary tree over MaxEra1Size HeaderRecord roots.
-        using ArrayPoolList<byte> flatTreeBuffer = new(2 * EraWriter.MaxEra1Size * 32, 2 * EraWriter.MaxEra1Size * 32);
+        using NativeMemoryList<byte> flatTreeBuffer = new(2 * EraWriter.MaxEra1Size * 32, 2 * EraWriter.MaxEra1Size * 32);
         Span<byte> flatTree = flatTreeBuffer.AsSpan();
         flatTree.Clear();
         for (int i = 0; i < count; i++)
