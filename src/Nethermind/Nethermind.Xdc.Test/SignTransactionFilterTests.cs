@@ -113,7 +113,7 @@ internal class SignTransactionFilterTests
         Hash256 hashBeforeSigning = tx.CalculateHash();
 
         Signer signer = new(0, TestItem.PrivateKeyB, NullLogManager.Instance);
-        signer.Sign(tx).GetAwaiter().GetResult();
+        signer.TrySign(tx);
 
         Hash256 hashAfterSigning = tx.CalculateHash();
 
