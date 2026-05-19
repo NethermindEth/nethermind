@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Net;
 using System.Threading.Tasks;
 using Nethermind.Core.Crypto;
@@ -26,13 +27,13 @@ namespace Nethermind.Network.Discovery.Test.Discv4
         {
             _handler = new(K);
             _farAddress = new(IPAddress.Parse("192.168.1.1"), 30303);
-            _expirationTime = System.DateTimeOffset.UtcNow.ToUnixTimeSeconds() + 60; // 60 seconds in the future
+            _expirationTime = DateTimeOffset.UtcNow.ToUnixTimeSeconds() + 60; // 60 seconds in the future
         }
 
         [Test]
         public async Task When_TotalNodesLessThanK_ThenDontFinish_UntilTimeout()
         {
-            System.ArraySegment<Node> nodes = CreateNodes(5);
+            ArraySegment<Node> nodes = CreateNodes(5);
             NeighborsMsg msg = new(_farAddress, _expirationTime, nodes);
 
             Assert.That(_handler.Handle(msg), Is.True);
@@ -44,7 +45,7 @@ namespace Nethermind.Network.Discovery.Test.Discv4
         [Test]
         public void When_TotalNodesLessEqualToK_ThenFinishImmediately()
         {
-            System.ArraySegment<Node> nodes = CreateNodes(8);
+            ArraySegment<Node> nodes = CreateNodes(8);
             NeighborsMsg msg = new(_farAddress, _expirationTime, nodes);
 
             Assert.That(_handler.Handle(msg), Is.True);
@@ -56,7 +57,7 @@ namespace Nethermind.Network.Discovery.Test.Discv4
         [Test]
         public async Task When_TotalNodesDoesNotAddUp_DontTakeMessage()
         {
-            System.ArraySegment<Node> nodes = CreateNodes(10);
+            ArraySegment<Node> nodes = CreateNodes(10);
             NeighborsMsg msg = new(_farAddress, _expirationTime, nodes);
 
             Assert.That(_handler.Handle(msg), Is.True);
@@ -65,7 +66,7 @@ namespace Nethermind.Network.Discovery.Test.Discv4
             await _handler.TaskCompletionSource.Task;
         }
 
-        private System.ArraySegment<Node> CreateNodes(int count, int startIndex = 0)
+        private ArraySegment<Node> CreateNodes(int count, int startIndex = 0)
         {
             Node[] nodes = new Node[count];
             for (int i = 0; i < count; i++)

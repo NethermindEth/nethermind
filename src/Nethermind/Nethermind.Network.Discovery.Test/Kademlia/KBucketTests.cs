@@ -29,7 +29,7 @@ public class KBucketTests
         }
 
         Assert.That(bucket.GetAll().ToHashSet(), Is.EquivalentTo(toAdd[..5].ToHashSet()));
-        Assert.That(bucket.GetAllWithHash().Select(static it => it.Item2).ToHashSet(), Is.EquivalentTo(toAdd[..5].ToHashSet()));
+        Assert.That(bucket.GetAllWithHash().ToHashSet(), Is.EquivalentTo(toAdd[..5].Select(static it => (it, it)).ToHashSet()));
 
         foreach (ValueHash256 valueHash256 in toAdd[..5])
         {
@@ -74,10 +74,8 @@ public class KBucketTests
 
         bucket.RemoveAndReplace(toAdd[0]);
 
-        Assert.That(bucket.GetAll().ToHashSet(), Is.EquivalentTo((toAdd[1..5].Concat(toAdd[9..10])).ToHashSet()));
-        Assert.That(bucket.ContainsNode(toAdd[0]), Is.False);
-        Assert.That(bucket.ContainsNode(toAdd[9]), Is.True);
-        Assert.That(bucket.GetByHash(toAdd[9]), Is.EqualTo(toAdd[9]));
-        Assert.That(bucket.GetByHash(toAdd[0]), Is.Not.EqualTo(toAdd[0]));
+        ValueHash256[] expected = [.. toAdd[1..5], toAdd[9]];
+        Assert.That(bucket.GetAll().ToHashSet(), Is.EquivalentTo(expected.ToHashSet()));
+        Assert.That(bucket.GetAllWithHash().ToHashSet(), Is.EquivalentTo(expected.Select(static it => (it, it)).ToHashSet()));
     }
 }

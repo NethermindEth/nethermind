@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Nethermind.Core.Crypto;
 using Nethermind.Network.Discovery.Kademlia;
 using NUnit.Framework;
@@ -60,7 +61,7 @@ public class Hash256XorUtilsTests
     [Test]
     public void TestGetRandomHash()
     {
-        System.Random rand = new(0);
+        Random rand = new(0);
         ValueHash256 randomized = new();
         rand.NextBytes(randomized.BytesAsSpan);
 

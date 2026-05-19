@@ -58,21 +58,6 @@ public class CompositeDiscoveryApp : IDiscoveryApp
         _compositeNodeSource = new CompositeNodeSource(_discoveryApps);
     }
 
-    internal CompositeDiscoveryApp(
-        INetworkConfig networkConfig,
-        IDiscoveryConfig discoveryConfig,
-        ILogManager logManager,
-        IDiscoveryApp[] discoveryApps,
-        IChannelFactory? channelFactory = null)
-    {
-        _networkConfig = networkConfig;
-        _connections = new DiscoveryConnectionsPool(logManager.GetClassLogger<DiscoveryConnectionsPool>(), _networkConfig, discoveryConfig);
-        _channelFactory = channelFactory;
-        _logger = logManager.GetClassLogger<CompositeDiscoveryApp>();
-        _discoveryApps = discoveryApps;
-        _compositeNodeSource = new CompositeNodeSource(_discoveryApps);
-    }
-
     public void InitializeChannel(IChannel channel)
         => ForEachDiscoveryApp(static (discoveryApp, state) => discoveryApp.InitializeChannel(state), channel);
 
