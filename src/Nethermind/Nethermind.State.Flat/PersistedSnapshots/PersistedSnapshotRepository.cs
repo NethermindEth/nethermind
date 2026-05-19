@@ -51,9 +51,14 @@ public sealed class PersistedSnapshotRepository(
     private readonly ConcurrentDictionary<StateId, PersistedSnapshot> _compactedSnapshots = new();
     // Running totals matching the dictionaries above. Mutated under _catalogLock at
     // every insert/remove site; read lock-free via Interlocked.Read by the Prometheus
-    // scrape thread so the metric stays O(1) regardless of snapshot count.
+    // scrape thread so the metrics stay O(1) regardless of snapshot count. The count
+    // counters also let SnapshotCount (consumed by Metrics.PersistedSnapshotCount and a
+    // hot compactor guard) avoid ConcurrentDictionary.Count, which acquires every stripe
+    // lock and briefly blocks writers.
     private long _baseSnapshotMemoryBytes;
     private long _compactedSnapshotMemoryBytes;
+    private long _baseSnapshotCount;
+    private long _compactedSnapshotCount;
     // Shared across both per-tier repos. Owned by the DI container, not this repo —
     // see <see cref="Dispose"/> which does NOT dispose the manager.
     private readonly PersistedSnapshotBloomFilterManager _bloomManager = bloomManager;
@@ -61,7 +66,8 @@ public sealed class PersistedSnapshotRepository(
 
     private bool BloomEnabled => _bloomBitsPerKey > 0;
 
-    public int SnapshotCount => _baseSnapshots.Count + _compactedSnapshots.Count;
+    public int SnapshotCount =>
+        (int)(Interlocked.Read(ref _baseSnapshotCount) + Interlocked.Read(ref _compactedSnapshotCount));
     public long BaseSnapshotMemory => Interlocked.Read(ref _baseSnapshotMemoryBytes);
     public long CompactedSnapshotMemory => Interlocked.Read(ref _compactedSnapshotMemoryBytes);
 
@@ -122,11 +128,13 @@ public sealed class PersistedSnapshotRepository(
         {
             _compactedSnapshots[entry.To] = snapshot;
             Interlocked.Add(ref _compactedSnapshotMemoryBytes, snapshot.Size);
+            Interlocked.Increment(ref _compactedSnapshotCount);
         }
         else
         {
             _baseSnapshots[entry.To] = snapshot;
             Interlocked.Add(ref _baseSnapshotMemoryBytes, snapshot.Size);
+            Interlocked.Increment(ref _baseSnapshotCount);
         }
     }
 
@@ -186,6 +194,7 @@ public sealed class PersistedSnapshotRepository(
                 PersistedSnapshotUtils.ValidatePersistedSnapshot(snapshot, persisted, _bloomManager);
             _baseSnapshots[snapshot.To] = persisted;
             Interlocked.Add(ref _baseSnapshotMemoryBytes, persisted.Size);
+            Interlocked.Increment(ref _baseSnapshotCount);
         }
 
         // Release the metadata writer's creation lease (PersistedSnapshot took its own in
@@ -213,6 +222,7 @@ public sealed class PersistedSnapshotRepository(
 
             _compactedSnapshots[to] = snapshot;
             Interlocked.Add(ref _compactedSnapshotMemoryBytes, snapshot.Size);
+            Interlocked.Increment(ref _compactedSnapshotCount);
         }
 
         // Release the caller's "creation" lease — see ConvertSnapshotToPersistedSnapshot.
@@ -380,6 +390,7 @@ public sealed class PersistedSnapshotRepository(
                 if (_baseSnapshots.TryRemove(key, out PersistedSnapshot? snapshot))
                 {
                     Interlocked.Add(ref _baseSnapshotMemoryBytes, -snapshot.Size);
+                    Interlocked.Decrement(ref _baseSnapshotCount);
                     RemoveFromCatalog(snapshot.To);
                     snapshot.Dispose();
                     pruned++;
@@ -398,6 +409,7 @@ public sealed class PersistedSnapshotRepository(
                 if (_compactedSnapshots.TryRemove(key, out PersistedSnapshot? snapshot))
                 {
                     Interlocked.Add(ref _compactedSnapshotMemoryBytes, -snapshot.Size);
+                    Interlocked.Decrement(ref _compactedSnapshotCount);
                     RemoveFromCatalog(snapshot.To);
                     snapshot.Dispose();
                     pruned++;
@@ -453,6 +465,8 @@ public sealed class PersistedSnapshotRepository(
             _compactedSnapshots.Clear();
             Interlocked.Exchange(ref _baseSnapshotMemoryBytes, 0);
             Interlocked.Exchange(ref _compactedSnapshotMemoryBytes, 0);
+            Interlocked.Exchange(ref _baseSnapshotCount, 0);
+            Interlocked.Exchange(ref _compactedSnapshotCount, 0);
             // Drop the managers' dictionary refs; any file still alive cleans up here.
             // Orphans / unreferenced files (no PersistOnShutdown caller) get deleted.
             _arena.Dispose();

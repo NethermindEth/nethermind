@@ -18,12 +18,20 @@ public class SnapshotRepository(PersistedSnapshotRepositories persistedSnapshotR
     private readonly IPersistedSnapshotRepository _smallPersisted = persistedSnapshotRepositories.Small;
     private readonly IPersistedSnapshotRepository _largePersisted = persistedSnapshotRepositories.Large;
 
+    // Do NOT iterate these dictionaries: entry counts can reach hundreds of thousands
+    // in production. Use TryGetValue / TryLease* for point lookups. Aggregates (the
+    // SnapshotCount / CompactedSnapshotCount properties below, plus the static
+    // Metrics.Snapshot* gauges) are maintained as running totals at the TryAdd* /
+    // RemoveAndRelease* sites so the repo doesn't pay ConcurrentDictionary.Count's
+    // all-stripe-lock cost on every read.
     private readonly ConcurrentDictionary<StateId, Snapshot> _compactedSnapshots = new();
     private readonly ConcurrentDictionary<StateId, Snapshot> _snapshots = new();
     private readonly ReadWriteLockBox<SortedSet<StateId>> _sortedSnapshotStateIds = new([]);
+    private long _snapshotCount;
+    private long _compactedSnapshotCount;
 
-    public int SnapshotCount => _snapshots.Count;
-    public int CompactedSnapshotCount => _compactedSnapshots.Count;
+    public int SnapshotCount => (int)Interlocked.Read(ref _snapshotCount);
+    public int CompactedSnapshotCount => (int)Interlocked.Read(ref _compactedSnapshotCount);
 
     public void AddStateId(in StateId stateId)
     {
@@ -251,6 +259,7 @@ public class SnapshotRepository(PersistedSnapshotRepositories persistedSnapshotR
     {
         if (_compactedSnapshots.TryAdd(snapshot.To, snapshot))
         {
+            Interlocked.Increment(ref _compactedSnapshotCount);
             Metrics.CompactedSnapshotCount++;
 
             long compactedBytes = snapshot.Content.EstimateCompactedMemory();
@@ -267,6 +276,7 @@ public class SnapshotRepository(PersistedSnapshotRepositories persistedSnapshotR
     {
         if (_snapshots.TryAdd(snapshot.To, snapshot))
         {
+            Interlocked.Increment(ref _snapshotCount);
             Metrics.SnapshotCount++;
 
             long totalBytes = snapshot.EstimateMemory();
@@ -308,6 +318,7 @@ public class SnapshotRepository(PersistedSnapshotRepositories persistedSnapshotR
     {
         if (_compactedSnapshots.TryRemove(stateId, out Snapshot? existingState))
         {
+            Interlocked.Decrement(ref _compactedSnapshotCount);
             Metrics.CompactedSnapshotCount--;
 
             long compactedBytes = existingState.Content.EstimateCompactedMemory();
@@ -326,6 +337,7 @@ public class SnapshotRepository(PersistedSnapshotRepositories persistedSnapshotR
     {
         if (_snapshots.TryRemove(stateId, out Snapshot? existingState))
         {
+            Interlocked.Decrement(ref _snapshotCount);
             Metrics.SnapshotCount--;
 
             using (_sortedSnapshotStateIds.EnterWriteLock(out SortedSet<StateId> sortedSnapshots))
