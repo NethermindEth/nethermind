@@ -32,6 +32,7 @@ internal sealed class HttpJsonRpcResponseSink(
     private static ReadOnlySpan<byte> JsonOpeningBracket => [(byte)'['];
     private static ReadOnlySpan<byte> JsonComma => [(byte)','];
     private static ReadOnlySpan<byte> JsonClosingBracket => [(byte)']'];
+    private const string JsonContentType = "application/json";
     private static readonly ConcurrentDictionary<Type, JsonTypeInfo> _jsonTypeInfoCache = new();
 
     private CountingWriter? _writer;
@@ -169,22 +170,62 @@ internal sealed class HttpJsonRpcResponseSink(
         return ValueTask.CompletedTask;
     }
 
-    public async ValueTask CompleteAsync(CancellationToken cancellationToken)
+    public ValueTask CompleteAsync(CancellationToken cancellationToken)
     {
         if (_completed || _writer is null)
         {
-            return;
+            return ValueTask.CompletedTask;
         }
 
         _completed = true;
-        await _writer.CompleteAsync();
+        ValueTask writerCompleteTask = _writer.CompleteAsync();
+        if (!writerCompleteTask.IsCompletedSuccessfully)
+        {
+            return CompleteAfterWriterAsync(writerCompleteTask, cancellationToken);
+        }
 
+        writerCompleteTask.GetAwaiter().GetResult();
+        return CompleteResponseAsync(cancellationToken);
+    }
+
+    private async ValueTask CompleteAfterWriterAsync(ValueTask writerCompleteTask, CancellationToken cancellationToken)
+    {
+        await writerCompleteTask;
+        await CompleteResponseAsync(cancellationToken);
+    }
+
+    private ValueTask CompleteResponseAsync(CancellationToken cancellationToken)
+    {
         if (_bufferedStream is not null)
         {
+            return CompleteBufferedResponseAsync(cancellationToken);
+        }
+
+        Interlocked.Add(ref Metrics.JsonRpcBytesSentHttp, BytesWritten);
+        Task completeTask = context.Response.CompleteAsync();
+        if (!completeTask.IsCompletedSuccessfully)
+        {
+            return new ValueTask(completeTask);
+        }
+
+        completeTask.GetAwaiter().GetResult();
+        return ValueTask.CompletedTask;
+    }
+
+    private async ValueTask CompleteBufferedResponseAsync(CancellationToken cancellationToken)
+    {
+        Stream bufferedStream = _bufferedStream!;
+        _bufferedStream = null;
+
+        try
+        {
             context.Response.ContentLength = BytesWritten;
-            _bufferedStream.Seek(0, SeekOrigin.Begin);
-            await _bufferedStream.CopyToAsync(context.Response.Body, cancellationToken);
-            await _bufferedStream.DisposeAsync();
+            bufferedStream.Seek(0, SeekOrigin.Begin);
+            await bufferedStream.CopyToAsync(context.Response.Body, cancellationToken);
+        }
+        finally
+        {
+            await bufferedStream.DisposeAsync();
         }
 
         Interlocked.Add(ref Metrics.JsonRpcBytesSentHttp, BytesWritten);
@@ -202,7 +243,7 @@ internal sealed class HttpJsonRpcResponseSink(
         _bufferedStream = bufferResponse ? RecyclableStream.GetStream("http") : null;
         _writer = _bufferedStream is not null ? new CountingStreamPipeWriter(_bufferedStream) : new CountingPipeWriter(context.Response.BodyWriter);
 
-        context.Response.ContentType = "application/json";
+        context.Response.ContentType = JsonContentType;
         context.Response.StatusCode = isCollection
             ? StatusCodes.Status200OK
             : GetStatusCode(response);
