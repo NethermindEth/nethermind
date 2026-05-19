@@ -317,8 +317,7 @@ public class Startup : IStartup
             using JsonRpcContext jsonRpcContext = JsonRpcContext.Http(jsonRpcUrl);
             responseSink = new HttpJsonRpcResponseSink(ctx, jsonRpcUrl, _jsonRpcConfig, _jsonRpcLocalStats, EthereumJsonSerializer.JsonOptions, _logger, startTime);
 
-            await JsonRpcProcessorSinkAdapter.ProcessAsync(
-                _jsonRpcProcessor,
+            await _jsonRpcProcessor.ProcessAsync(
                 request,
                 jsonRpcContext,
                 responseSink,
