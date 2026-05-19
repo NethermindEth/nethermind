@@ -40,7 +40,7 @@ public class StartupTests
                 .Returns(Task.FromResult(ResultWrapper<IReadOnlyList<BlobAndProofV1?>>.Success(new BlobsV1DirectResponse(new(0)))));
             engineModule
                 .engine_getBlobsV2(Arg.Any<byte[][]>())
-                .Returns(Task.FromResult(ResultWrapper<IReadOnlyList<BlobAndProofV2?>?>.Success(new BlobsV2DirectResponse([], [], 0))));
+                .Returns(Task.FromResult(ResultWrapper<IReadOnlyList<BlobAndProofV2?>?>.Fail("typed error", ErrorCodes.InvalidInput, new BlobsV2DirectResponse([], [], 0))));
             engineModule
                 .engine_getBlobsV3(Arg.Any<byte[][]>())
                 .Returns(Task.FromResult(ResultWrapper<IReadOnlyList<BlobAndProofV2?>?>.Success(new BlobsV2DirectResponse([], [], 0))));
@@ -180,6 +180,20 @@ public class StartupTests
 
         Assert.That(statusCode, Is.EqualTo(StatusCodes.Status413PayloadTooLarge));
         Assert.That(doc.RootElement.GetProperty("error").GetProperty("code").GetInt32(), Is.EqualTo(ErrorCodes.LimitExceeded));
+    }
+
+    [Test]
+    public async Task ProcessJsonRpcRequest_SerializesTypedErrorData()
+    {
+        const string request = "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"engine_getBlobsV2\",\"params\":[[]]}";
+
+        string response = await ProcessJsonRpcRequest(request);
+
+        using JsonDocument doc = JsonDocument.Parse(response);
+        JsonElement error = doc.RootElement.GetProperty("error");
+
+        Assert.That(error.GetProperty("code").GetInt32(), Is.EqualTo(ErrorCodes.InvalidInput));
+        Assert.That(error.GetProperty("data").ValueKind, Is.EqualTo(JsonValueKind.Array));
     }
 
     private static async Task<string> ProcessJsonRpcRequest(string request, bool setContentLength = true) =>
