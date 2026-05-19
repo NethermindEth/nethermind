@@ -8,7 +8,6 @@ using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.Json;
-using System.Text.Json.Serialization;
 using System.Text.Json.Serialization.Metadata;
 using System.Threading;
 using System.Threading.Tasks;
@@ -29,9 +28,6 @@ namespace Nethermind.JsonRpc;
 
 public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogManager logManager, IJsonRpcConfig jsonRpcConfig) : IJsonRpcService
 {
-    private readonly static Lock _reparseLock = new();
-    private static Dictionary<TypeAsKey, bool> _reparseReflectionCache = new();
-
     private readonly ILogger _logger = logManager.GetClassLogger<JsonRpcService>();
     private readonly IRpcModuleProvider _rpcModuleProvider = rpcModuleProvider;
     private readonly HashSet<string> _methodsLoggingFiltering = (jsonRpcConfig.MethodsLoggingFiltering ?? []).ToHashSet();
@@ -381,12 +377,6 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
 
     private static object? DeserializeParameter(JsonElement providedParameter, ExpectedParameter expectedParameter)
     {
-        Type paramType = expectedParameter.Info.ParameterType;
-        if (paramType.IsByRef)
-        {
-            paramType = paramType.GetElementType();
-        }
-
         if (providedParameter.ValueKind == JsonValueKind.Null || (providedParameter.ValueKind == JsonValueKind.String && providedParameter.ValueEquals(ReadOnlySpan<byte>.Empty)))
         {
             return providedParameter.ValueKind == JsonValueKind.Null && expectedParameter.IsNullable
@@ -395,13 +385,13 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
         }
 
         object? executionParam;
-        if (paramType == typeof(string))
+        if (expectedParameter.Kind == ParameterKind.String)
         {
             executionParam = providedParameter.ValueKind == JsonValueKind.String ?
                 providedParameter.GetString() :
                 providedParameter.GetRawText();
         }
-        else if (expectedParameter.IsIJsonRpcParam)
+        else if (expectedParameter.Kind == ParameterKind.JsonRpcParam)
         {
             IJsonRpcParam jsonRpcParam = expectedParameter.CreateRpcParam();
             jsonRpcParam!.ReadJson(providedParameter, EthereumJsonSerializer.JsonOptions);
@@ -409,15 +399,11 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
         }
         else
         {
-            EthereumJsonSerializer.JsonOptions.TryGetTypeInfo(paramType, out JsonTypeInfo? typeInfo);
+            Type paramType = expectedParameter.ParameterType;
+            JsonTypeInfo? typeInfo = expectedParameter.TypeInfo;
             if (providedParameter.ValueKind == JsonValueKind.String)
             {
-                if (!_reparseReflectionCache.TryGetValue(paramType, out bool reparseString))
-                {
-                    reparseString = CreateNewCacheEntry(paramType);
-                }
-
-                executionParam = reparseString
+                executionParam = expectedParameter.ReparseString
                     ? JsonSerializer.Deserialize(providedParameter.GetString(), paramType, EthereumJsonSerializer.JsonOptions)
                     : typeInfo is not null
                         ? providedParameter.Deserialize(typeInfo)
@@ -432,31 +418,6 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
         }
 
         return executionParam;
-    }
-
-    private static bool CreateNewCacheEntry(Type paramType)
-    {
-        lock (_reparseLock)
-        {
-            // Re-check inside the lock in case another thread already added it
-            if (_reparseReflectionCache.TryGetValue(paramType, out bool reparseString))
-            {
-                return reparseString;
-            }
-
-            JsonConverter converter = EthereumJsonSerializer.JsonOptions.GetConverter(paramType);
-            reparseString = converter.GetType().Namespace.StartsWith("System.", StringComparison.Ordinal);
-
-            // Copy-on-write: create a new dictionary so we don't mutate
-            Dictionary<TypeAsKey, bool> reparseReflectionCache = new(_reparseReflectionCache)
-            {
-                [paramType] = reparseString
-            };
-
-            // Publish the new cache instance atomically by swapping the reference.
-            _reparseReflectionCache = reparseReflectionCache;
-            return reparseString;
-        }
     }
 
     private static (object[]? parameters, bool hasMissing) DeserializeParameters(
