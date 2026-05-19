@@ -38,26 +38,38 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
 
     private Dictionary<TypeAsKey, PropertyInfo?> _propertyInfoCache = [];
 
-    public async Task<JsonRpcResponse> SendRequestAsync(JsonRpcRequest rpcRequest, JsonRpcContext context)
+    public Task<JsonRpcResponse> SendRequestAsync(JsonRpcRequest rpcRequest, JsonRpcContext context)
     {
         (int? errorCode, string errorMessage) = Validate(rpcRequest, context);
         if (errorCode.HasValue)
         {
             if (_logger.IsDebug) _logger.Debug($"Validation error when handling request: {rpcRequest}");
-            return GetErrorResponse(rpcRequest.Method, errorCode.Value, errorMessage, null, rpcRequest.Id);
+            return Task.FromResult<JsonRpcResponse>(GetErrorResponse(rpcRequest.Method, errorCode.Value, errorMessage, null, rpcRequest.Id));
         }
 
-        Exception error;
         try
         {
-            return await ExecuteRequestAsync(rpcRequest, context);
+            Task<JsonRpcResponse> responseTask = ExecuteRequestAsync(rpcRequest, context);
+            return responseTask.IsCompletedSuccessfully
+                ? responseTask
+                : AwaitRequestAsync(responseTask, rpcRequest);
         }
         catch (Exception ex)
         {
-            error = ex;
+            return Task.FromResult<JsonRpcResponse>(ReturnErrorResponse(rpcRequest, ex));
         }
 
-        return ReturnErrorResponse(rpcRequest, error);
+        async Task<JsonRpcResponse> AwaitRequestAsync(Task<JsonRpcResponse> responseTask, JsonRpcRequest rpcRequest)
+        {
+            try
+            {
+                return await responseTask;
+            }
+            catch (Exception ex)
+            {
+                return ReturnErrorResponse(rpcRequest, ex);
+            }
+        }
     }
 
     private JsonRpcErrorResponse ReturnErrorResponse(JsonRpcRequest rpcRequest, Exception ex)
