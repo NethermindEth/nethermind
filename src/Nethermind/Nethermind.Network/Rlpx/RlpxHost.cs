@@ -475,12 +475,15 @@ namespace Nethermind.Network.Rlpx
             {
                 try
                 {
-                    const string details = "shutdown";
-                    _session.MarkDisconnected(DisconnectReason.AppClosing, DisconnectType.Local, details);
-                    if (_rlpxHost._sessionActivitySubscriptions.ContainsKey(_session.SessionId))
-                    {
-                        _rlpxHost.OnSessionDisconnected(_session, new DisconnectEventArgs(DisconnectReason.AppClosing, DisconnectType.Local, details));
-                    }
+                    // MarkDisconnected is responsible for firing OnSessionDisconnected (via the
+                    // activity observer for concrete sessions, or via the Disconnected event for
+                    // substitutes). It does this only when it actually transitions state; if it
+                    // returns early because another thread already moved state to Disconnecting,
+                    // that other thread will fire OnSessionDisconnected from its own context
+                    // once it reaches Disconnected. Firing it again here races with that thread
+                    // and can reach PeerManager.OnDisconnected while State == Disconnecting,
+                    // which throws InvalidAsynchronousStateException.
+                    _session.MarkDisconnected(DisconnectReason.AppClosing, DisconnectType.Local, "shutdown");
                 }
                 catch (InvalidOperationException)
                 {
