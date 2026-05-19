@@ -570,18 +570,19 @@ public class Startup : IStartup
     private sealed class CountingPipeReader(PipeReader stream) : PipeReader
     {
         private ReadOnlySequence<byte> _currentSequence;
+        private long _countedFromCurrentSequence;
 
         public long Length { get; private set; }
 
         public override void AdvanceTo(SequencePosition consumed)
         {
-            Length += _currentSequence.GetOffset(consumed);
+            CountConsumed(consumed);
             stream.AdvanceTo(consumed);
         }
 
         public override void AdvanceTo(SequencePosition consumed, SequencePosition examined)
         {
-            Length += _currentSequence.GetOffset(consumed);
+            CountConsumed(consumed);
             stream.AdvanceTo(consumed, examined);
         }
 
@@ -589,7 +590,8 @@ public class Startup : IStartup
 
         public override void Complete(Exception? exception = null)
         {
-            Length += _currentSequence.Length;
+            Length += _currentSequence.Length - _countedFromCurrentSequence;
+            _countedFromCurrentSequence = _currentSequence.Length;
             stream.Complete(exception);
         }
 
@@ -597,6 +599,7 @@ public class Startup : IStartup
         {
             ReadResult result = await stream.ReadAsync(cancellationToken);
             _currentSequence = result.Buffer;
+            _countedFromCurrentSequence = 0;
             return result;
         }
 
@@ -606,9 +609,22 @@ public class Startup : IStartup
             if (didRead)
             {
                 _currentSequence = result.Buffer;
+                _countedFromCurrentSequence = 0;
             }
 
             return didRead;
+        }
+
+        private void CountConsumed(SequencePosition consumed)
+        {
+            long consumedOffset = _currentSequence.GetOffset(consumed);
+            if (consumedOffset <= _countedFromCurrentSequence)
+            {
+                return;
+            }
+
+            Length += consumedOffset - _countedFromCurrentSequence;
+            _countedFromCurrentSequence = consumedOffset;
         }
     }
 }
