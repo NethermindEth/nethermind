@@ -86,7 +86,8 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
             JsonRpc = jsonRpc!,
             Id = id,
             Method = method!,
-            Params = paramsElement
+            Params = paramsElement,
+            ParamsKind = paramsElement.ValueKind
         };
     }
 
@@ -561,28 +562,12 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
             return false;
         }
 
-        JsonElement paramsElement = default;
-        try
-        {
-            if (envelope.HasParams)
-            {
-                paramsDocument = JsonDocument.Parse(objectBody.Slice(envelope.ParamsStart, envelope.ParamsLength));
-                paramsElement = paramsDocument.RootElement;
-            }
+        ReadOnlyMemory<byte> paramsUtf8 = envelope.HasParams
+            ? objectBody.Slice(envelope.ParamsStart, envelope.ParamsLength)
+            : default;
 
-            ReadOnlyMemory<byte> paramsUtf8 = envelope.HasParams
-                ? objectBody.Slice(envelope.ParamsStart, envelope.ParamsLength)
-                : default;
-
-            request = CreateRequest(envelope, paramsElement, paramsUtf8);
-            return true;
-        }
-        catch
-        {
-            paramsDocument?.Dispose();
-            paramsDocument = null;
-            throw;
-        }
+        request = CreateRequest(envelope, paramsElement: default, paramsUtf8);
+        return true;
     }
 
     private static JsonRpcRequest CreateRequest(JsonRpcEnvelope envelope, JsonElement paramsElement, ReadOnlyMemory<byte> paramsUtf8) =>
@@ -592,7 +577,8 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
             Id = envelope.Id,
             Method = envelope.Method!,
             Params = paramsElement,
-            ParamsUtf8 = paramsUtf8
+            ParamsUtf8 = paramsUtf8,
+            ParamsKind = envelope.HasParams ? envelope.ParamsKind : JsonValueKind.Undefined
         };
 
     private static int CountLeadingJsonWhitespace(ReadOnlySpan<byte> span)
@@ -706,6 +692,7 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
         }
         finally
         {
+            request.DisposeParsedParamsDocument();
             paramsDocument?.Dispose();
         }
     }
@@ -808,6 +795,7 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
         int offset = 0;
         bool started = false;
         List<JsonDocument>? requestDocuments = null;
+        List<JsonRpcRequest>? requestsWithRawParams = null;
 
         try
         {
@@ -819,6 +807,11 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
                 {
                     requestDocuments ??= [];
                     requestDocuments.Add(requestDocument);
+                }
+                else if (!jsonRpcRequest.ParamsUtf8.IsEmpty)
+                {
+                    requestsWithRawParams ??= [];
+                    requestsWithRawParams.Add(jsonRpcRequest);
                 }
 
                 JsonRpcResult.Entry response = isStopped
@@ -857,6 +850,14 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
                     foreach (JsonDocument requestDocument in requestDocuments)
                     {
                         requestDocument.Dispose();
+                    }
+                }
+
+                if (requestsWithRawParams is not null)
+                {
+                    foreach (JsonRpcRequest request in requestsWithRawParams)
+                    {
+                        request.DisposeParsedParamsDocument();
                     }
                 }
             }
