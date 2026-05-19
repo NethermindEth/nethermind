@@ -14,18 +14,18 @@ namespace Nethermind.Consensus
 
         public Address Address { get; } = Address.Zero;
 
-        public bool TrySign(Transaction tx) => false;
+        public bool TrySign(Transaction tx) => true;
 
         public bool TrySign(in ValueHash256 message, [NotNullWhen(true)] out Signature signature)
         {
-            signature = null!;
-            return false;
+            signature = new(new byte[65]);
+            return true;
         }
 
         public bool TrySign(BlockHeader header, [NotNullWhen(true)] out Signature signature)
         {
-            signature = null!;
-            return false;
+            signature = new(new byte[65]);
+            return true;
         }
 
         public bool CanSign { get; } = false;

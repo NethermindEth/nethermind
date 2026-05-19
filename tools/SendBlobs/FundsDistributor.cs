@@ -179,8 +179,7 @@ internal class FundsDistributor
 
     private async Task<string?> SignAndSendAsync(Signer signer, Transaction tx)
     {
-        if (!signer.TrySign(tx))
-            throw new InvalidOperationException($"Signer {signer.Address} could not sign transaction.");
+        await signer.Sign(tx);
 
         string txRlp = Convert.ToHexStringLower(TxDecoderInstance
             .Encode(tx, RlpBehaviors.SkipTypedWrapping | RlpBehaviors.InMempoolForm).Bytes);

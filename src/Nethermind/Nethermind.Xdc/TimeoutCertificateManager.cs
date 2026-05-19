@@ -262,7 +262,7 @@ public class TimeoutCertificateManager : ITimeoutCertificateManager
 
         ValueHash256 msgHash = ComputeTimeoutMsgHash(currentRound, (ulong)gapNumber);
         if (!_signer.TrySign(in msgHash, out Signature signedHash))
-            throw new InvalidOperationException($"XDC signer {_signer.Address} could not sign timeout for round {currentRound}.");
+            return;
         Timeout timeoutMsg = new(currentRound, signedHash, (ulong)gapNumber, isMyVote: true);
         timeoutMsg.Signer = _signer.Address;
 

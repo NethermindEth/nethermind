@@ -11,7 +11,6 @@ using Nethermind.Int256;
 using Nethermind.TxPool;
 using Nethermind.Xdc.Spec;
 using Nethermind.Logging;
-using System;
 using System.Threading.Tasks;
 
 namespace Nethermind.Xdc;
@@ -24,7 +23,10 @@ internal class SignTransactionManager(ISigner signer, ITxPool txPool, ILogger lo
         Transaction transaction = CreateTxSign((UInt256)header.Number, header.Hash ?? header.CalculateHash().ToHash256(), nonce, spec.BlockSignerContract, signer.Address);
 
         if (!signer.TrySign(transaction))
-            throw new InvalidOperationException($"XDC signer {signer.Address} could not sign block sign tx for header {header.Number}.");
+        {
+            if (logger.IsWarn) logger.Warn($"XDC signer {signer.Address} could not sign block-sign tx for header {header.Number} — skipping submission.");
+            return Task.CompletedTask;
+        }
 
         transaction.Hash = transaction.CalculateHash();
 

@@ -78,7 +78,10 @@ namespace Nethermind.Consensus.Clique
             }
 
             if (!signed)
-                throw new InvalidOperationException($"Clique signer {_signer.Address} could not sign block {block.Number}.");
+            {
+                if (_logger.IsWarn) _logger.Warn($"Clique signer {_signer.Address} could not sign block {block.Number} — skipping seal.");
+                return null;
+            }
 
             // Copy signature bytes (R and S)
             ReadOnlySpan<byte> signatureBytes = signature.Bytes;

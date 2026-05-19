@@ -67,7 +67,7 @@ internal class VotesManager(
 
         Vote vote = new(blockInfo, (ulong)gapNumber, isMyVote: true);
         // Sets signature and signer for the vote
-        Sign(vote);
+        if (!TrySign(vote)) return Task.CompletedTask;
 
         _highestVotedRound = (long)blockInfo.Round;
 
@@ -312,15 +312,16 @@ internal class VotesManager(
         return error is null ? count : null;
     }
 
-    private void Sign(Vote vote)
+    private bool TrySign(Vote vote)
     {
         KeccakRlpStream stream = new();
         _voteDecoder.Encode(stream, vote, RlpBehaviors.ForSealing);
         ValueHash256 hash = stream.GetValueHash();
         if (!_signer.TrySign(in hash, out Signature signature))
-            throw new InvalidOperationException($"XDC signer {_signer.Address} could not sign vote.");
+            return false;
         vote.Signature = signature;
         vote.Signer = _signer.Address;
+        return true;
     }
 
     public long GetVotesCount(Vote vote) => _votePool.GetCount(vote);

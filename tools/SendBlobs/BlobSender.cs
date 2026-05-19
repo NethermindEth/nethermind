@@ -315,8 +315,7 @@ internal class BlobSender
             NetworkWrapper = blobsContainer,
         };
 
-        if (!signer.TrySign(tx))
-            throw new InvalidOperationException($"Signer {signer.Address} could not sign blob transaction.");
+        await signer.Sign(tx);
 
         string txRlp = Hex.ToHexString(txDecoder
             .Encode(tx, RlpBehaviors.InMempoolForm | RlpBehaviors.SkipTypedWrapping).Bytes);
