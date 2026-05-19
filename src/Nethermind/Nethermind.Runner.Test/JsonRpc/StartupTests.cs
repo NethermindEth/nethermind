@@ -57,10 +57,10 @@ public class StartupTests
         Startup = new Startup(jsonRpcProcessor, jsonRpcService, jsonRpcLocalStats, jsonSerializer, rpcConfig);
     }
 
-    [Test, Ignore("Escaping is disabled for now to maximize performance")]
+    [Test]
     public async Task ProcessJsonRpcRequest_EscapesId()
     {
-        const string injId = "x\" , \"injected\":\"value";
+        const string injId = "x\"\\\n\u0001";
         string response = await ProcessJsonRpcRequest(
             $$"""
             {
