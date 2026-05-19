@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.Core.Test.Builders;
+using Nethermind.Int256;
 using Nethermind.Specs;
 using NUnit.Framework;
 
@@ -49,6 +51,61 @@ namespace Nethermind.Evm.Test
                 .Done;
 
             TestAllTracerWithOutput result = Execute(Activation, 21020, code);
+            Assert.That(result.Error, Is.EqualTo("OutOfGas"));
+        }
+
+        /// <summary>
+        /// Post-EIP-150 (Tangerine Whistle and later): the 63/64 cap clamps any caller-supplied
+        /// gasLimit to a value strictly less than <c>long.MaxValue</c>, so the post-clamp
+        /// <c>(long)gasLimit</c> cast never trips even when the user pushes <c>UInt256.MaxValue</c>.
+        /// </summary>
+        [Test]
+        public void Call_with_gas_above_long_max_post_eip150_is_capped_not_out_of_gas()
+        {
+            byte[] code = Prepare.EvmCode
+                .PushData(0)               // retLength
+                .PushData(0)               // retOffset
+                .PushData(0)               // argsLength
+                .PushData(0)               // argsOffset
+                .PushData(0)               // value
+                .PushData(TestItem.AddressC)
+                .PushData(UInt256.MaxValue) // gasLimit — high bits set; cap clamps it
+                .Op(Instruction.CALL)
+                .Done;
+
+            TestAllTracerWithOutput result = Execute(Activation, 200_000, code);
+            Assert.That(result.Error, Is.Null, "CALL must succeed: 63/64 cap clamps gasLimit to a long-representable value");
+            Assert.That(result.StatusCode, Is.EqualTo(StatusCode.Success));
+        }
+    }
+
+    /// <summary>
+    /// Pre-EIP-150 (Frontier / Homestead) CALL behaviour for caller-supplied <c>gasLimit</c>
+    /// values larger than <see cref="long.MaxValue"/>. With the 63/64 rule inactive, the only
+    /// guard before <c>(long)gasLimit</c> is the explicit <c>gasLimit &gt;= long.MaxValue</c>
+    /// OOG check; without it, the UInt256→long cast throws <c>OverflowException</c> instead of
+    /// the EVM-correct <c>OutOfGas</c>. This locks the guard in place against future refactors.
+    /// </summary>
+    public class CallTestsPreEip150 : VirtualMachineTestsBase
+    {
+        protected override long BlockNumber => 0;
+        protected override ulong Timestamp => 0;
+
+        [Test]
+        public void Call_with_gas_above_long_max_out_of_gas()
+        {
+            byte[] code = Prepare.EvmCode
+                .PushData(0)               // retLength
+                .PushData(0)               // retOffset
+                .PushData(0)               // argsLength
+                .PushData(0)               // argsOffset
+                .PushData(0)               // value
+                .PushData(TestItem.AddressC)
+                .PushData(UInt256.MaxValue) // gasLimit — high bits set, exceeds long.MaxValue
+                .Op(Instruction.CALL)
+                .Done;
+
+            TestAllTracerWithOutput result = Execute(Activation, 200_000, code);
             Assert.That(result.Error, Is.EqualTo("OutOfGas"));
         }
     }

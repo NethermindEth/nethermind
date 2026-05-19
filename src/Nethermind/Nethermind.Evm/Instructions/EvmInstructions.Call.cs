@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
@@ -204,23 +203,20 @@ public static partial class EvmInstructions
         }
 
         long gasAvailable = TGasPolicy.GetRemainingGas(in gas);
-        long gasLimitUl;
 
+        // EIP-150 63/64 cap. The cap (gasAvailable - gasAvailable/64) is a non-negative long
+        // bounded by 63/64 * long.MaxValue, so min(cap, gasLimit) always fits in long when the
+        // rule is active. The single `>= long.MaxValue` OOG below covers both the post-cap
+        // case (cap < long.MaxValue, never trips) and the no-cap pre-Tangerine-Whistle case
+        // where the caller-supplied gasLimit exceeds the host's representable range.
         if (spec.Use63Over64Rule)
         {
-            // EIP-150: cap is a non-negative long, so min(gasLimit, cap) fits without 256-bit math.
-            Debug.Assert(gasAvailable >= 0, "GetRemainingGas must be non-negative; (ulong)cap below would otherwise wrap.");
-            long cap = gasAvailable - gasAvailable / 64;
-            gasLimitUl = gasLimit.IsUint64 && gasLimit.u0 <= (ulong)cap
-                ? (long)gasLimit.u0
-                : cap;
-        }
-        else
-        {
-            if (!gasLimit.IsUint64 || gasLimit.u0 >= long.MaxValue) goto OutOfGas;
-            gasLimitUl = (long)gasLimit.u0;
+            gasLimit = UInt256.Min((UInt256)(gasAvailable - gasAvailable / 64), gasLimit);
         }
 
+        if (gasLimit >= long.MaxValue) goto OutOfGas;
+
+        long gasLimitUl = (long)gasLimit;
         if (!TGasPolicy.UpdateGas(ref gas, gasLimitUl)) goto OutOfGas;
 
         // Add call stipend if value is being transferred.
