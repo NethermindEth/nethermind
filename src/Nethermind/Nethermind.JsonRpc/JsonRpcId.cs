@@ -30,6 +30,7 @@ internal enum JsonRpcIdKind : byte
 public readonly struct JsonRpcId : IEquatable<JsonRpcId>
 {
     private readonly string? _stringValue;
+    private readonly byte[]? _rawValue;
     private readonly long _longValue;
     private readonly decimal _decimalValue;
     private readonly JsonRpcIdKind _kind;
@@ -104,6 +105,29 @@ public readonly struct JsonRpcId : IEquatable<JsonRpcId>
     /// </summary>
     public bool IsNullLike => _kind is JsonRpcIdKind.Missing or JsonRpcIdKind.Null;
 
+    internal bool HasRawToken => _rawValue is not null;
+
+    internal JsonRpcId WithValidatedRawToken(ReadOnlySpan<byte> rawToken)
+    {
+        if (rawToken.IsEmpty || IsMissing)
+        {
+            return this;
+        }
+
+        return _kind switch
+        {
+            JsonRpcIdKind.Null => this,
+            JsonRpcIdKind.Long => new JsonRpcId(_longValue, rawToken.ToArray()),
+            JsonRpcIdKind.Decimal => new JsonRpcId(_decimalValue, rawToken.ToArray()),
+            JsonRpcIdKind.String => new JsonRpcId(_stringValue!, rawToken.ToArray()),
+            _ => ThrowInvalidKind()
+        };
+
+        [DoesNotReturn, StackTraceHidden]
+        static JsonRpcId ThrowInvalidKind() =>
+            throw new NotSupportedException("Unsupported JSON-RPC ID kind.");
+    }
+
     /// <summary>
     /// Converts the legacy boxed ID representation into a typed JSON-RPC ID.
     /// </summary>
@@ -157,6 +181,12 @@ public readonly struct JsonRpcId : IEquatable<JsonRpcId>
     public void WriteTo(Utf8JsonWriter writer)
     {
         ArgumentNullException.ThrowIfNull(writer);
+
+        if (_rawValue is not null)
+        {
+            writer.WriteRawValue(_rawValue, skipInputValidation: true);
+            return;
+        }
 
         switch (_kind)
         {
@@ -305,4 +335,24 @@ public readonly struct JsonRpcId : IEquatable<JsonRpcId>
     /// <param name="value">The string value.</param>
     public static implicit operator JsonRpcId(string value) => new(value);
 
+    private JsonRpcId(long value, byte[] rawValue)
+    {
+        _kind = JsonRpcIdKind.Long;
+        _longValue = value;
+        _rawValue = rawValue;
+    }
+
+    private JsonRpcId(decimal value, byte[] rawValue)
+    {
+        _kind = JsonRpcIdKind.Decimal;
+        _decimalValue = value;
+        _rawValue = rawValue;
+    }
+
+    private JsonRpcId(string value, byte[] rawValue)
+    {
+        _kind = JsonRpcIdKind.String;
+        _stringValue = value;
+        _rawValue = rawValue;
+    }
 }

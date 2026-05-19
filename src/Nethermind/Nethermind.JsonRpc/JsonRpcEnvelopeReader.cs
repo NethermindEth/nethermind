@@ -55,7 +55,9 @@ internal ref struct JsonRpcEnvelopeReader
             if (reader.ValueTextEquals("id"u8))
             {
                 ReadValue(ref reader);
+                long valueStart = reader.TokenStartIndex;
                 id = ReadId(ref reader);
+                id = id.WithValidatedRawToken(_body.Slice(checked((int)valueStart), checked((int)(reader.BytesConsumed - valueStart))));
                 continue;
             }
 
