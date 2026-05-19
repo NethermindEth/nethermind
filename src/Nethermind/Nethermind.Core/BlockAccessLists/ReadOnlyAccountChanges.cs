@@ -135,9 +135,7 @@ public class ReadOnlyAccountChanges : IEquatable<ReadOnlyAccountChanges>
         && CodeChangeAtIndex(index) is null
         && !HasSlotChangesAtIndex(index);
 
-    /// <summary>True iff this account has any tx-level mutation declared in the BAL. Used by
-    /// <c>BlockAccessListBasedWorldState.GetAccountChanges</c> to enumerate the addresses that
-    /// will be visibly modified by the block. Computed; not serialised.</summary>
+    /// <summary>True iff this account has any tx-level mutation declared in the BAL.</summary>
     [JsonIgnore]
     public bool HasStateChanges
         => BalanceChanges.Length > 0
@@ -181,8 +179,7 @@ public class ReadOnlyAccountChanges : IEquatable<ReadOnlyAccountChanges>
             if (!other._storageChanges.TryGetValue(kv.Key, out ReadOnlySlotChanges? otherVal) || !kv.Value.Equals(otherVal))
                 return false;
         }
-        // MemoryExtensions.SequenceEqual on ReadOnlySpan<T>: zero-alloc, no iterator,
-        // not LINQ (see coding-style.md). Implicit array->span conversion suffices.
+        // Span casts force MemoryExtensions.SequenceEqual (zero-alloc) over LINQ's.
         return ((ReadOnlySpan<UInt256>)StorageReads).SequenceEqual(other.StorageReads)
             && ((ReadOnlySpan<BalanceChange>)BalanceChanges).SequenceEqual(other.BalanceChanges)
             && ((ReadOnlySpan<NonceChange>)NonceChanges).SequenceEqual(other.NonceChanges)

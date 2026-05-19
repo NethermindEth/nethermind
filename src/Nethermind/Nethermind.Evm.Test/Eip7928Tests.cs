@@ -1110,13 +1110,9 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
     }
 
     /// <summary>
-    /// Regression for the perf optimization in <c>cea517aa20</c>: when an outer CALL into an
-    /// EIP-7702-delegated EOA OOGs at the cold-access gas charge for the delegation target,
-    /// the delegation target's address must NOT appear in the BAL — only the call target
-    /// (the EOA itself). The optimization had moved <c>GetCachedCodeInfo</c> (which loads the
-    /// delegation target's code via <c>GetCodeHash</c>, recording it as a BAL account-read)
-    /// before the cold-access OOG check, so the target ended up recorded even when the CALL
-    /// frame never executed. Mirrors EELS's
+    /// When an outer CALL into an EIP-7702-delegated EOA OOGs at the cold-access gas charge
+    /// for the delegation target, the target's address must NOT appear in the BAL — only the
+    /// call target (the EOA itself). Mirrors EELS's
     /// <c>test_bal_call_7702_delegation_and_oog[…oog_after_target_access]</c> family.
     /// </summary>
     [Test]
@@ -1156,12 +1152,11 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
         using (Assert.EnterMultipleScope())
         {
             Assert.That(res.TransactionExecuted);
-            // The CALL target (the delegated EOA itself) was loaded to resolve delegation,
-            // so it IS in the BAL.
+            // The CALL target (the delegated EOA itself) is loaded to resolve delegation, so it
+            // IS in the BAL. The delegation target is gated behind the cold-access OOG, so it
+            // MUST NOT appear when the CALL never reaches that point.
             Assert.That(bal.GetAccountChanges(_callTargetAddress), Is.Not.Null,
                 "EIP-7702 delegated EOA must be recorded as the CALL target");
-            // The delegation target was NEVER fully loaded — the CALL OOG'd at the cold-access
-            // gas charge before GetCachedCodeInfo could load its code. It must not appear.
             Assert.That(bal.GetAccountChanges(_delegationTargetAddress), Is.Null,
                 "EIP-7702 delegation target must not be recorded when CALL OOGs before its code is loaded");
         }

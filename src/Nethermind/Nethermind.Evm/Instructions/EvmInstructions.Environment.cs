@@ -618,6 +618,7 @@ public static partial class EvmInstructions
         {
             return stack.PushZero<TTracingInst>();
         }
+        // Otherwise, push the account's code hash.
         ValueHash256 hash = state.GetCodeHash(address);
         return stack.Push32Bytes<TTracingInst>(in hash);
         // Jump forward to be unpredicted by the branch predictor.
