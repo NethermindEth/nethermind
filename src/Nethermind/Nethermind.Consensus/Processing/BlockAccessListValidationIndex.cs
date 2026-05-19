@@ -576,6 +576,12 @@ internal sealed class BlockAccessListValidationIndex
         public readonly int[] Storage = new int[rowCount];
     }
 
+    // Rows below this length sort faster with a branch-predictor-friendly in-place insertion sort
+    // than with the framework introsort: fewer comparisons, no recursion, no scratch allocation.
+    // BAL rows are typically small (< 16 entries per tx-row), so this threshold covers the
+    // overwhelming majority of sort calls.
+    private const int InsertionSortThreshold = 16;
+
     private sealed class Lane<TValue>
         where TValue : IEquatable<TValue>
     {
@@ -751,7 +757,7 @@ internal sealed class BlockAccessListValidationIndex
             }
 
             int start = _rowStarts[row];
-            if (length <= 8)
+            if (length <= InsertionSortThreshold)
             {
                 InsertionSort(start, length);
                 return;
@@ -994,7 +1000,7 @@ internal sealed class BlockAccessListValidationIndex
             }
 
             int start = _rowStarts[row];
-            if (length <= 8)
+            if (length <= InsertionSortThreshold)
             {
                 InsertionSort(start, length);
                 return;
