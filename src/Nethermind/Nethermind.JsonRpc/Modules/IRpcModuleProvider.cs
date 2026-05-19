@@ -25,7 +25,7 @@ namespace Nethermind.JsonRpc.Modules
 
         ResolvedMethodInfo? Resolve(string methodName);
 
-        Task<IRpcModule> Rent(string methodName, bool canBeShared);
+        ValueTask<IRpcModule> Rent(string methodName, bool canBeShared);
 
         void Return(string methodName, IRpcModule rpcModule);
 

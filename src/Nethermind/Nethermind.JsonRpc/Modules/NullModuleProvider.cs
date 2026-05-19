@@ -14,7 +14,7 @@ namespace Nethermind.JsonRpc.Modules
     public class NullModuleProvider : IRpcModuleProvider
     {
         public static NullModuleProvider Instance = new();
-        private static readonly Task<IRpcModule> Null = Task.FromResult(default(IRpcModule));
+        private static readonly ValueTask<IRpcModule> Null = ValueTask.FromResult<IRpcModule>(null!);
 
         private NullModuleProvider()
         {
@@ -38,7 +38,7 @@ namespace Nethermind.JsonRpc.Modules
 
         public ResolvedMethodInfo Resolve(string methodName) => new();
 
-        public Task<IRpcModule> Rent(string methodName, bool canBeShared) => Null;
+        public ValueTask<IRpcModule> Rent(string methodName, bool canBeShared) => Null;
 
         public void Return(string methodName, IRpcModule rpcModule) { }
 

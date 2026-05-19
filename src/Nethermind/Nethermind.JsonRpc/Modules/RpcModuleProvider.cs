@@ -20,7 +20,7 @@ using Nethermind.Core.Collections;
 
 namespace Nethermind.JsonRpc.Modules
 {
-    using Pool = (Func<bool, Task<IRpcModule>> RentModule, Action<IRpcModule> ReturnModule, IRpcModulePool ModulePool);
+    using Pool = (Func<bool, ValueTask<IRpcModule>> RentModule, Action<IRpcModule> ReturnModule, IRpcModulePool ModulePool);
 
     public class RpcModuleProvider : IRpcModuleProvider
     {
@@ -92,7 +92,7 @@ namespace Nethermind.JsonRpc.Modules
             lock (_updateRegistrationsLock)
             {
                 KeyValuePair<string, ResolvedMethodInfo>[] methods = GetMethods<T>(moduleType).ToArray();
-                (Func<bool, Task<IRpcModule>> RentModule, Action<IRpcModule> ReturnModule, IRpcModulePool ModulePool) poolRecord = GetPool(pool);
+                (Func<bool, ValueTask<IRpcModule>> RentModule, Action<IRpcModule> ReturnModule, IRpcModulePool ModulePool) poolRecord = GetPool(pool);
 
                 methods
                     .ForEach((method) =>
@@ -112,7 +112,18 @@ namespace Nethermind.JsonRpc.Modules
             }
         }
 
-        private Pool GetPool<T>(IRpcModulePool<T> pool) where T : IRpcModule => (async canBeShared => await pool.GetModule(canBeShared), m => pool.ReturnModule((T)m), pool);
+        private Pool GetPool<T>(IRpcModulePool<T> pool) where T : IRpcModule => (canBeShared => RentModule(pool, canBeShared), m => pool.ReturnModule((T)m), pool);
+
+        private static ValueTask<IRpcModule> RentModule<T>(IRpcModulePool<T> pool, bool canBeShared) where T : IRpcModule
+        {
+            Task<T> moduleTask = pool.GetModule(canBeShared);
+            return moduleTask.IsCompletedSuccessfully
+                ? ValueTask.FromResult<IRpcModule>(moduleTask.Result)
+                : AwaitRentModule(moduleTask);
+
+            static async ValueTask<IRpcModule> AwaitRentModule(Task<T> moduleTask) =>
+                await moduleTask;
+        }
 
         private IEnumerable<KeyValuePair<string, ResolvedMethodInfo>> GetMethods<T>(string moduleType) where T : IRpcModule
         {
@@ -167,10 +178,10 @@ namespace Nethermind.JsonRpc.Modules
             return result;
         }
 
-        public Task<IRpcModule> Rent(string methodName, bool canBeShared)
+        public ValueTask<IRpcModule> Rent(string methodName, bool canBeShared)
         {
             EnsureFrozenCollection();
-            if (!_frozenMethods.TryGetValue(methodName, out ResolvedMethodInfo result)) return null;
+            if (!_frozenMethods.TryGetValue(methodName, out ResolvedMethodInfo result)) return ValueTask.FromResult<IRpcModule>(null!);
 
             return _frozenPools[methodName].RentModule(canBeShared);
         }
@@ -187,7 +198,7 @@ namespace Nethermind.JsonRpc.Modules
         public IRpcModulePool? GetPoolForMethod(string methodName)
         {
             EnsureFrozenCollection();
-            return _frozenPools.TryGetValue(methodName, out (Func<bool, Task<IRpcModule>> RentModule, Action<IRpcModule> ReturnModule, IRpcModulePool ModulePool) poolInfo) ? poolInfo.ModulePool : null;
+            return _frozenPools.TryGetValue(methodName, out (Func<bool, ValueTask<IRpcModule>> RentModule, Action<IRpcModule> ReturnModule, IRpcModulePool ModulePool) poolInfo) ? poolInfo.ModulePool : null;
         }
 
         private static IDictionary<string, (MethodInfo, bool, RpcEndpoint)> GetMethodDict(Type type)
