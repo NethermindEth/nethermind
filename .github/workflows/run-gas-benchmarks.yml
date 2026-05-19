@@ -54,6 +54,8 @@ jobs:
         env:
           EVENT_NAME: ${{ github.event_name }}
           LABEL_NAME: ${{ github.event.label.name }}
+          PR_HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+          CURRENT_REPO: ${{ github.repository }}
           DISPATCH_RUNS: ${{ inputs.runs }}
           DISPATCH_TEST_PATH: ${{ inputs.testPath }}
           DISPATCH_GENESIS_FILE: ${{ inputs.genesisFile }}
@@ -79,22 +81,26 @@ jobs:
             clients="${DISPATCH_CLIENTS:-nethermind}"
             filter="${DISPATCH_FILTER:-}"
           elif [[ "${EVENT_NAME}" == "pull_request" ]]; then
-            label="${LABEL_NAME:-}"
+            if [[ "${PR_HEAD_REPO:-}" != "${CURRENT_REPO:-}" ]]; then
+              should_run="false"
+            else
+              label="${LABEL_NAME:-}"
 
-            # Only accept labels in the format: gasbench[-<comma-separated-filters>]
-            if [[ "${label}" == "gasbench" ]]; then
-              filter=""
-            elif [[ "${label}" == gasbench-* ]]; then
-              suffix="${label#gasbench-}"
-              if [[ -z "${suffix}" ]]; then
+              # Only accept labels in the format: gasbench[-<comma-separated-filters>]
+              if [[ "${label}" == "gasbench" ]]; then
                 filter=""
-              elif [[ "${suffix}" =~ ^[A-Za-z0-9_.-]+(,[A-Za-z0-9_.-]+)*$ ]]; then
-                filter="${suffix}"
+              elif [[ "${label}" == gasbench-* ]]; then
+                suffix="${label#gasbench-}"
+                if [[ -z "${suffix}" ]]; then
+                  filter=""
+                elif [[ "${suffix}" =~ ^[A-Za-z0-9_.-]+(,[A-Za-z0-9_.-]+)*$ ]]; then
+                  filter="${suffix}"
+                else
+                  should_run="false"
+                fi
               else
                 should_run="false"
               fi
-            else
-              should_run="false"
             fi
           fi
 
