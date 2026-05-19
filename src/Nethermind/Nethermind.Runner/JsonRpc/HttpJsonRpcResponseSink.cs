@@ -299,7 +299,7 @@ internal sealed class HttpJsonRpcResponseSink(
 
     private static void WriteIdRaw(PipeWriter writer, JsonRpcId id)
     {
-        if (id.TryGetInt64(out long longId))
+        if (!id.HasRawToken && id.TryGetInt64(out long longId))
         {
             Span<byte> buffer = writer.GetSpan(20);
             longId.TryFormat(buffer, out int written);
@@ -307,7 +307,7 @@ internal sealed class HttpJsonRpcResponseSink(
             return;
         }
 
-        if (id.TryGetDecimal(out decimal decimalId))
+        if (!id.HasRawToken && id.TryGetDecimal(out decimal decimalId))
         {
             Span<byte> buffer = writer.GetSpan(32);
             decimalId.TryFormat(buffer, out int written);

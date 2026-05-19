@@ -305,6 +305,24 @@ public class JsonRpcProcessorTests(bool returnErrors)
     }
 
     [Test]
+    public void JsonRpcEnvelopeReader_echoes_validated_raw_id_token()
+    {
+        byte[] body = Encoding.UTF8.GetBytes("{\"id\":\"\\u0041\\n\",\"method\":\"eth_blockNumber\"}");
+        JsonRpcEnvelopeReader reader = new(body);
+
+        reader.TryRead(out JsonRpcEnvelope envelope).Should().BeTrue();
+
+        envelope.Id.Should().Be(new JsonRpcId("A\n"));
+        ArrayBufferWriter<byte> buffer = new();
+        using (Utf8JsonWriter writer = new(buffer))
+        {
+            envelope.Id.WriteTo(writer);
+        }
+
+        Encoding.UTF8.GetString(buffer.WrittenSpan).Should().Be("\"\\u0041\\n\"");
+    }
+
+    [Test]
     public void JsonRpcEnvelopeReader_returns_false_for_non_object_root()
     {
         byte[] body = Encoding.UTF8.GetBytes("[{\"id\":1}]");
