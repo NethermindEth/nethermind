@@ -914,7 +914,7 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
         await WriteSingleEntryAsync(result, sink, cancellationToken);
     }
 
-    private async ValueTask WriteSingleEntryAsync(
+    private ValueTask WriteSingleEntryAsync(
         JsonRpcResult.Entry entry,
         IJsonRpcResponseSink sink,
         CancellationToken cancellationToken)
@@ -922,15 +922,36 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
         try
         {
             JsonRpcResult.Entry recorded = RecordResponse(entry);
-            await sink.WriteSingleAsync(recorded.Response, recorded.Report, cancellationToken);
+            ValueTask writeTask = sink.WriteSingleAsync(recorded.Response, recorded.Report, cancellationToken);
+            if (writeTask.IsCompletedSuccessfully)
+            {
+                writeTask.GetAwaiter().GetResult();
+                entry.Dispose();
+                return ValueTask.CompletedTask;
+            }
+
+            return AwaitAndDisposeAsync(writeTask, entry);
         }
-        finally
+        catch
         {
             entry.Dispose();
+            throw;
+        }
+
+        static async ValueTask AwaitAndDisposeAsync(ValueTask writeTask, JsonRpcResult.Entry entry)
+        {
+            try
+            {
+                await writeTask;
+            }
+            finally
+            {
+                entry.Dispose();
+            }
         }
     }
 
-    private async ValueTask WriteBatchEntryAsync(
+    private ValueTask WriteBatchEntryAsync(
         JsonRpcResult.Entry entry,
         IJsonRpcResponseSink sink,
         CancellationToken cancellationToken)
@@ -938,11 +959,32 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
         try
         {
             JsonRpcResult.Entry recorded = RecordResponse(entry);
-            await sink.WriteBatchItemAsync(recorded.Response, recorded.Report, cancellationToken);
+            ValueTask writeTask = sink.WriteBatchItemAsync(recorded.Response, recorded.Report, cancellationToken);
+            if (writeTask.IsCompletedSuccessfully)
+            {
+                writeTask.GetAwaiter().GetResult();
+                entry.Dispose();
+                return ValueTask.CompletedTask;
+            }
+
+            return AwaitAndDisposeAsync(writeTask, entry);
         }
-        finally
+        catch
         {
             entry.Dispose();
+            throw;
+        }
+
+        static async ValueTask AwaitAndDisposeAsync(ValueTask writeTask, JsonRpcResult.Entry entry)
+        {
+            try
+            {
+                await writeTask;
+            }
+            finally
+            {
+                entry.Dispose();
+            }
         }
     }
 
@@ -970,12 +1012,31 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
         return RecordResponse(response, new RpcReport("# parsing error #", (long)Stopwatch.GetElapsedTime(startTime).TotalMicroseconds, false));
     }
 
-    private async Task<JsonRpcResult.Entry> HandleSingleRequest(JsonRpcRequest request, JsonRpcContext context)
+    private ValueTask<JsonRpcResult.Entry> HandleSingleRequest(JsonRpcRequest request, JsonRpcContext context)
     {
         Metrics.JsonRpcRequests++;
         long startTime = Stopwatch.GetTimestamp();
 
-        JsonRpcResponse response = await _jsonRpcService.SendRequestAsync(request, context);
+        Task<JsonRpcResponse> responseTask = _jsonRpcService.SendRequestAsync(request, context);
+        if (responseTask.IsCompletedSuccessfully)
+        {
+            return ValueTask.FromResult(CreateSingleRequestEntry(request, responseTask.Result, startTime));
+        }
+
+        return AwaitAndCreateEntryAsync(responseTask, request, startTime);
+
+        async ValueTask<JsonRpcResult.Entry> AwaitAndCreateEntryAsync(
+            Task<JsonRpcResponse> responseTask,
+            JsonRpcRequest request,
+            long startTime)
+        {
+            JsonRpcResponse response = await responseTask;
+            return CreateSingleRequestEntry(request, response, startTime);
+        }
+    }
+
+    private JsonRpcResult.Entry CreateSingleRequestEntry(JsonRpcRequest request, JsonRpcResponse response, long startTime)
+    {
         JsonRpcErrorResponse localErrorResponse = response as JsonRpcErrorResponse;
         bool isSuccess = localErrorResponse is null;
         if (!isSuccess)

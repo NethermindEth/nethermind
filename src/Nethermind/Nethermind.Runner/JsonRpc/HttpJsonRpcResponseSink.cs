@@ -42,22 +42,70 @@ internal sealed class HttpJsonRpcResponseSink(
     public long BytesWritten => _writer?.WrittenCount ?? 0;
     public bool StopRequested { get; private set; }
 
-    public async ValueTask WriteSingleAsync(JsonRpcResponse response, RpcReport report, CancellationToken cancellationToken)
+    public ValueTask WriteSingleAsync(JsonRpcResponse response, RpcReport report, CancellationToken cancellationToken)
     {
-        await EnsureStartedAsync(isCollection: false, response, cancellationToken);
-        await WriteResponseAsync(_writer!, response, cancellationToken);
+        ValueTask startTask = EnsureStartedAsync(isCollection: false, response, cancellationToken);
+        if (!startTask.IsCompletedSuccessfully)
+        {
+            return WriteSingleAfterStartAsync(startTask, response, report, cancellationToken);
+        }
 
+        startTask.GetAwaiter().GetResult();
+        return WriteSingleStartedAsync(response, report, cancellationToken);
+    }
+
+    private ValueTask WriteSingleStartedAsync(JsonRpcResponse response, RpcReport report, CancellationToken cancellationToken)
+    {
+        ValueTask writeTask = WriteResponseAsync(_writer!, response, cancellationToken);
+        if (!writeTask.IsCompletedSuccessfully)
+        {
+            return WriteSingleAfterWriteAsync(writeTask, report);
+        }
+
+        writeTask.GetAwaiter().GetResult();
+        ReportSingle(report);
+        return ValueTask.CompletedTask;
+    }
+
+    private async ValueTask WriteSingleAfterStartAsync(ValueTask startTask, JsonRpcResponse response, RpcReport report, CancellationToken cancellationToken)
+    {
+        await startTask;
+        await WriteResponseAsync(_writer!, response, cancellationToken);
+        ReportSingle(report);
+    }
+
+    private async ValueTask WriteSingleAfterWriteAsync(ValueTask writeTask, RpcReport report)
+    {
+        await writeTask;
+        ReportSingle(report);
+    }
+
+    private void ReportSingle(RpcReport report)
+    {
         long handlingTimeMicroseconds = (long)Stopwatch.GetElapsedTime(requestStartTimestamp).TotalMicroseconds;
         _ = jsonRpcLocalStats.ReportCall(report, handlingTimeMicroseconds, BytesWritten);
     }
 
-    public async ValueTask BeginBatchAsync(CancellationToken cancellationToken)
+    public ValueTask BeginBatchAsync(CancellationToken cancellationToken)
     {
-        await EnsureStartedAsync(isCollection: true, response: null, cancellationToken);
+        ValueTask startTask = EnsureStartedAsync(isCollection: true, response: null, cancellationToken);
+        if (!startTask.IsCompletedSuccessfully)
+        {
+            return BeginBatchAfterStartAsync(startTask);
+        }
+
+        startTask.GetAwaiter().GetResult();
+        _writer!.Write(JsonOpeningBracket);
+        return ValueTask.CompletedTask;
+    }
+
+    private async ValueTask BeginBatchAfterStartAsync(ValueTask startTask)
+    {
+        await startTask;
         _writer!.Write(JsonOpeningBracket);
     }
 
-    public async ValueTask WriteBatchItemAsync(JsonRpcResponse response, RpcReport report, CancellationToken cancellationToken)
+    public ValueTask WriteBatchItemAsync(JsonRpcResponse response, RpcReport report, CancellationToken cancellationToken)
     {
         if (!_isFirstBatchItem)
         {
@@ -66,7 +114,25 @@ internal sealed class HttpJsonRpcResponseSink(
 
         _isFirstBatchItem = false;
 
-        await WriteResponseAsync(_writer!, response, cancellationToken);
+        ValueTask writeTask = WriteResponseAsync(_writer!, response, cancellationToken);
+        if (!writeTask.IsCompletedSuccessfully)
+        {
+            return WriteBatchItemAfterWriteAsync(writeTask, report);
+        }
+
+        writeTask.GetAwaiter().GetResult();
+        ReportBatchItem(report);
+        return ValueTask.CompletedTask;
+    }
+
+    private async ValueTask WriteBatchItemAfterWriteAsync(ValueTask writeTask, RpcReport report)
+    {
+        await writeTask;
+        ReportBatchItem(report);
+    }
+
+    private void ReportBatchItem(RpcReport report)
+    {
         _ = jsonRpcLocalStats.ReportCall(report);
 
         if (!jsonRpcUrl.IsAuthenticated && BytesWritten > jsonRpcConfig.MaxBatchResponseBodySize)
@@ -108,11 +174,11 @@ internal sealed class HttpJsonRpcResponseSink(
         await context.Response.CompleteAsync();
     }
 
-    private async ValueTask EnsureStartedAsync(bool isCollection, JsonRpcResponse? response, CancellationToken cancellationToken)
+    private ValueTask EnsureStartedAsync(bool isCollection, JsonRpcResponse? response, CancellationToken cancellationToken)
     {
         if (_writer is not null)
         {
-            return;
+            return ValueTask.CompletedTask;
         }
 
         bool bufferResponse = jsonRpcConfig.BufferResponses && !(jsonRpcUrl.IsAuthenticated && !isCollection);
@@ -126,8 +192,10 @@ internal sealed class HttpJsonRpcResponseSink(
 
         if (_bufferedStream is null)
         {
-            await context.Response.StartAsync(cancellationToken);
+            return new ValueTask(context.Response.StartAsync(cancellationToken));
         }
+
+        return ValueTask.CompletedTask;
     }
 
     private static int GetStatusCode(JsonRpcResponse? response) =>
