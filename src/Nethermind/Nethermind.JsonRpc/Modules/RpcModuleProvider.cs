@@ -20,8 +20,6 @@ using Nethermind.Core.Collections;
 
 namespace Nethermind.JsonRpc.Modules
 {
-    using Pool = (Func<bool, ValueTask<IRpcModule>> RentModule, Action<IRpcModule> ReturnModule, IRpcModulePool ModulePool);
-
     public class RpcModuleProvider : IRpcModuleProvider
     {
         private readonly ILogger _logger;
@@ -31,9 +29,7 @@ namespace Nethermind.JsonRpc.Modules
         private readonly HashSet<string> _enabledModules = new(StringComparer.OrdinalIgnoreCase);
 
         private Dictionary<string, ResolvedMethodInfo> _methods = new();
-        private Dictionary<string, Pool> _pools = new();
         private FrozenDictionary<string, ResolvedMethodInfo>? _frozenMethods = null;
-        private FrozenDictionary<string, Pool>? _frozenPools = null;
 
         private readonly IRpcMethodFilter _filter = NullRpcMethodFilter.Instance;
 
@@ -92,15 +88,15 @@ namespace Nethermind.JsonRpc.Modules
             lock (_updateRegistrationsLock)
             {
                 KeyValuePair<string, ResolvedMethodInfo>[] methods = GetMethods<T>(moduleType).ToArray();
-                (Func<bool, ValueTask<IRpcModule>> RentModule, Action<IRpcModule> ReturnModule, IRpcModulePool ModulePool) poolRecord = GetPool(pool);
+                Func<bool, ValueTask<IRpcModule>> rentModule = canBeShared => RentModule(pool, canBeShared);
+                Action<IRpcModule> returnModule = m => pool.ReturnModule((T)m);
 
                 methods
                     .ForEach((method) =>
                     {
-                        _pools[method.Key] = poolRecord;
+                        method.Value.SetPool(rentModule, returnModule, pool);
                         _methods[method.Key] = method.Value;
                     });
-                _frozenPools = null;
                 _frozenMethods = null;
 
                 _modules.Add(moduleType);
@@ -111,8 +107,6 @@ namespace Nethermind.JsonRpc.Modules
                 }
             }
         }
-
-        private Pool GetPool<T>(IRpcModulePool<T> pool) where T : IRpcModule => (canBeShared => RentModule(pool, canBeShared), m => pool.ReturnModule((T)m), pool);
 
         private static ValueTask<IRpcModule> RentModule<T>(IRpcModulePool<T> pool, bool canBeShared) where T : IRpcModule
         {
@@ -137,16 +131,14 @@ namespace Nethermind.JsonRpc.Modules
             }
         }
 
-        private void EnsureFrozenCollection()
-        {
-            _frozenPools ??= _pools.ToFrozenDictionary(StringComparer.Ordinal);
+        private void EnsureFrozenCollection() =>
             _frozenMethods ??= _methods.ToFrozenDictionary(StringComparer.Ordinal);
-        }
 
-        public ModuleResolution Check(string methodName, JsonRpcContext context, out string? module)
+        public ModuleResolution Check(string methodName, JsonRpcContext context, out string? module, out ResolvedMethodInfo? method)
         {
             EnsureFrozenCollection();
             module = null;
+            method = null;
 
             if (!_frozenMethods.TryGetValue(methodName, out ResolvedMethodInfo result))
             {
@@ -154,6 +146,7 @@ namespace Nethermind.JsonRpc.Modules
             }
 
             module = result.ModuleType;
+            method = result;
 
             if ((result.Availability & context.RpcEndpoint) == RpcEndpoint.None)
             {
@@ -183,8 +176,10 @@ namespace Nethermind.JsonRpc.Modules
             EnsureFrozenCollection();
             if (!_frozenMethods.TryGetValue(methodName, out ResolvedMethodInfo result)) return ValueTask.FromResult<IRpcModule>(null!);
 
-            return _frozenPools[methodName].RentModule(canBeShared);
+            return result.RentModule(canBeShared);
         }
+
+        public ValueTask<IRpcModule> Rent(ResolvedMethodInfo method) => method.RentModule();
 
         public void Return(string methodName, IRpcModule rpcModule)
         {
@@ -192,13 +187,15 @@ namespace Nethermind.JsonRpc.Modules
             if (!_frozenMethods.TryGetValue(methodName, out ResolvedMethodInfo result))
                 throw new InvalidOperationException("Not possible to return an unresolved module");
 
-            _frozenPools[methodName].ReturnModule(rpcModule);
+            result.ReturnModule(rpcModule);
         }
+
+        public void Return(ResolvedMethodInfo method, IRpcModule rpcModule) => method.ReturnModule(rpcModule);
 
         public IRpcModulePool? GetPoolForMethod(string methodName)
         {
             EnsureFrozenCollection();
-            return _frozenPools.TryGetValue(methodName, out (Func<bool, ValueTask<IRpcModule>> RentModule, Action<IRpcModule> ReturnModule, IRpcModulePool ModulePool) poolInfo) ? poolInfo.ModulePool : null;
+            return _frozenMethods.TryGetValue(methodName, out ResolvedMethodInfo result) ? result.ModulePool : null;
         }
 
         private static IDictionary<string, (MethodInfo, bool, RpcEndpoint)> GetMethodDict(Type type)
@@ -367,8 +364,51 @@ namespace Nethermind.JsonRpc.Modules
             public ExpectedParameter[] ExpectedParameters { get; }
             public bool ReadOnly { get; }
             public RpcEndpoint Availability { get; }
+            internal IRpcModulePool? ModulePool { get; private set; }
 
             public override string ToString() => MethodInfo.Name;
+
+            internal void SetPool(
+                Func<bool, ValueTask<IRpcModule>> rentModule,
+                Action<IRpcModule> returnModule,
+                IRpcModulePool modulePool)
+            {
+                _rentModule = rentModule;
+                _returnModule = returnModule;
+                ModulePool = modulePool;
+            }
+
+            private Func<bool, ValueTask<IRpcModule>>? _rentModule;
+
+            private Action<IRpcModule>? _returnModule;
+
+            internal ValueTask<IRpcModule> RentModule(bool canBeShared)
+            {
+                Func<bool, ValueTask<IRpcModule>>? rentModule = _rentModule;
+                if (rentModule is null)
+                {
+                    ThrowMissingPool();
+                }
+
+                return rentModule(canBeShared);
+            }
+
+            internal ValueTask<IRpcModule> RentModule() => RentModule(ReadOnly);
+
+            internal void ReturnModule(IRpcModule rpcModule)
+            {
+                Action<IRpcModule>? returnModule = _returnModule;
+                if (returnModule is null)
+                {
+                    ThrowMissingPool();
+                }
+
+                returnModule(rpcModule);
+            }
+
+            [DoesNotReturn, StackTraceHidden]
+            private static void ThrowMissingPool() =>
+                throw new InvalidOperationException("No JSON-RPC module pool is attached to the resolved method.");
 
             private static bool IsNullableParameter(ParameterInfo parameterInfo)
             {

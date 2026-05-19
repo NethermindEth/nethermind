@@ -41,18 +41,18 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
     public ValueTask<JsonRpcResponse> SendRequestAsync(JsonRpcRequest rpcRequest, JsonRpcContext context)
     {
         long boundaryStartTimestamp = Stopwatch.GetTimestamp();
-        (int? errorCode, string errorMessage) = Validate(rpcRequest, context);
+        (int? errorCode, string? errorMessage, string methodName, ResolvedMethodInfo? method) = Validate(rpcRequest, context);
         if (errorCode.HasValue)
         {
             if (_logger.IsDebug) _logger.Debug($"Validation error when handling request: {rpcRequest}");
-            JsonRpcErrorResponse response = GetErrorResponse(rpcRequest.Method, errorCode.Value, errorMessage, null, rpcRequest.Id);
+            JsonRpcErrorResponse response = GetErrorResponse(methodName, errorCode.Value, errorMessage, null, rpcRequest.Id);
             response.BoundaryTimings = RpcBoundaryTimings.PreMethodOnly(boundaryStartTimestamp, Stopwatch.GetTimestamp());
             return ValueTask.FromResult<JsonRpcResponse>(response);
         }
 
         try
         {
-            ValueTask<JsonRpcResponse> responseTask = ExecuteRequestAsync(rpcRequest, context, boundaryStartTimestamp);
+            ValueTask<JsonRpcResponse> responseTask = ExecuteRequestAsync(rpcRequest, methodName, method!, context, boundaryStartTimestamp);
             return responseTask.IsCompletedSuccessfully
                 ? responseTask
                 : AwaitRequestAsync(responseTask, rpcRequest, boundaryStartTimestamp);
@@ -98,17 +98,8 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
         return GetErrorResponse(rpcRequest.Method, errorCode, errorText, ex.ToString(), rpcRequest.Id);
     }
 
-    private ValueTask<JsonRpcResponse> ExecuteRequestAsync(JsonRpcRequest rpcRequest, JsonRpcContext context, long boundaryStartTimestamp)
-    {
-        string methodName = rpcRequest.Method.Trim();
-
-        ResolvedMethodInfo? result = _rpcModuleProvider.Resolve(methodName);
-        return result?.MethodInfo is not null
-            ? ExecuteAsync(rpcRequest, methodName, result, context, boundaryStartTimestamp)
-            : ValueTask.FromResult<JsonRpcResponse>(WithPreMethodTimings(
-                GetErrorResponse(methodName, ErrorCodes.MethodNotFound, "Method not found", $"{rpcRequest.Method}", rpcRequest.Id),
-                boundaryStartTimestamp));
-    }
+    private ValueTask<JsonRpcResponse> ExecuteRequestAsync(JsonRpcRequest rpcRequest, string methodName, ResolvedMethodInfo method, JsonRpcContext context, long boundaryStartTimestamp) =>
+        ExecuteAsync(rpcRequest, methodName, method, context, boundaryStartTimestamp);
 
     private async ValueTask<JsonRpcResponse> ExecuteAsync(JsonRpcRequest request, string methodName, ResolvedMethodInfo method, JsonRpcContext context, long boundaryStartTimestamp)
     {
@@ -121,13 +112,13 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
             return value;
         }
 
-        IRpcModule rpcModule = await _rpcModuleProvider.Rent(methodName, method.ReadOnly);
+        IRpcModule rpcModule = await _rpcModuleProvider.Rent(method);
         if (rpcModule is IContextAwareRpcModule contextAwareModule)
         {
             contextAwareModule.Context = context;
         }
         bool returnImmediately = methodName != GetLogsMethodName;
-        Action? returnAction = returnImmediately ? null : () => _rpcModuleProvider.Return(methodName, rpcModule);
+        Action? returnAction = returnImmediately ? null : () => _rpcModuleProvider.Return(method, rpcModule);
         IResultWrapper? resultWrapper = null;
         long methodStartTimestamp = Stopwatch.GetTimestamp();
         long methodEndTimestamp = methodStartTimestamp;
@@ -163,7 +154,7 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
         {
             if (returnImmediately)
             {
-                _rpcModuleProvider.Return(methodName, rpcModule);
+                _rpcModuleProvider.Return(method, rpcModule);
             }
         }
 
@@ -821,28 +812,29 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
         return response;
     }
 
-    private (int? ErrorType, string ErrorMessage) Validate(JsonRpcRequest? rpcRequest, JsonRpcContext context)
+    private (int? ErrorType, string? ErrorMessage, string MethodName, ResolvedMethodInfo? Method) Validate(JsonRpcRequest? rpcRequest, JsonRpcContext context)
     {
         if (rpcRequest is null)
         {
-            return (ErrorCodes.InvalidRequest, "Invalid request");
+            return (ErrorCodes.InvalidRequest, "Invalid request", string.Empty, null);
         }
 
         string methodName = rpcRequest.Method;
         if (string.IsNullOrWhiteSpace(methodName))
         {
-            return (ErrorCodes.InvalidRequest, "Method is required");
+            return (ErrorCodes.InvalidRequest, "Method is required", methodName, null);
         }
 
-        methodName = methodName.Trim();
+        string trimmedMethodName = methodName.Trim();
 
-        ModuleResolution result = _rpcModuleProvider.Check(methodName, context, out string? module);
+        ModuleResolution result = _rpcModuleProvider.Check(trimmedMethodName, context, out string? module, out ResolvedMethodInfo? method);
         if (result == ModuleResolution.Enabled)
         {
-            return (null, null);
+            return (null, null, trimmedMethodName, method);
         }
 
-        return GetErrorResult(methodName, context, result, module);
+        (int? errorType, string errorMessage) = GetErrorResult(trimmedMethodName, context, result, module);
+        return (errorType, errorMessage, methodName, null);
 
         [MethodImpl(MethodImplOptions.NoInlining)]
         static (int? ErrorType, string ErrorMessage) GetErrorResult(string methodName, JsonRpcContext context, ModuleResolution result, string module) => result switch
