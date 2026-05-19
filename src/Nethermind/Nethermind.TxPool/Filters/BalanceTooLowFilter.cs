@@ -13,6 +13,22 @@ namespace Nethermind.TxPool.Filters
     /// </summary>
     internal sealed class BalanceTooLowFilter(TxDistinctSortedPool txs, TxDistinctSortedPool blobTxs, ILogger logger) : IIncomingTxFilter
     {
+        private struct BucketBalanceState
+        {
+            public readonly long AccountNonce;
+            public readonly long TxNonce;
+            public UInt256 CumulativeCost;
+            public bool Overflow;
+
+            public BucketBalanceState(long accountNonce, long txNonce)
+            {
+                AccountNonce = accountNonce;
+                TxNonce = txNonce;
+                CumulativeCost = UInt256.Zero;
+                Overflow = false;
+            }
+        }
+
         private readonly TxDistinctSortedPool _txs = txs;
         private readonly TxDistinctSortedPool _blobTxs = blobTxs;
         private readonly ILogger _logger = logger;
@@ -27,32 +43,27 @@ namespace Nethermind.TxPool.Filters
             AccountStruct account = state.SenderAccount;
             UInt256 balance = account.Balance;
 
-            UInt256 cumulativeCost = UInt256.Zero;
-            bool overflow = false;
-            Transaction[] sameTypeTxs = tx.SupportsBlobs
-                ? _blobTxs.GetBucketSnapshot(tx.SenderAddress!) // it will create a snapshot of light txs (without actual blobs)
-                : _txs.GetBucketSnapshot(tx.SenderAddress!);
+            BucketBalanceState bucketBalanceState = new(account.Nonce, tx.Nonce);
+            TxDistinctSortedPool pool = tx.SupportsBlobs ? _blobTxs : _txs;
             // tx.SenderAddress! as unknownSenderFilter will run before this one
-
-            for (int i = 0; i < sameTypeTxs.Length; i++)
+            pool.VisitBucket(tx.SenderAddress!, ref bucketBalanceState, static (Transaction otherTx, ref BucketBalanceState bucketState) =>
             {
-                Transaction otherTx = sameTypeTxs[i];
-                if (otherTx.Nonce < account.Nonce)
+                if (otherTx.Nonce < bucketState.AccountNonce)
                 {
-                    continue;
+                    return true;
                 }
 
-                if (otherTx.Nonce < tx.Nonce)
+                if (otherTx.Nonce >= bucketState.TxNonce)
                 {
-                    overflow |= otherTx.IsOverflowWhenAddingTxCostToCumulative(cumulativeCost, out cumulativeCost);
+                    return false;
                 }
-                else
-                {
-                    break;
-                }
-            }
 
-            overflow |= tx.IsOverflowWhenAddingTxCostToCumulative(cumulativeCost, out cumulativeCost);
+                bucketState.Overflow |= otherTx.IsOverflowWhenAddingTxCostToCumulative(bucketState.CumulativeCost, out bucketState.CumulativeCost);
+                return true;
+            });
+
+            bool overflow = bucketBalanceState.Overflow;
+            overflow |= tx.IsOverflowWhenAddingTxCostToCumulative(bucketBalanceState.CumulativeCost, out UInt256 cumulativeCost);
 
             if (overflow)
             {

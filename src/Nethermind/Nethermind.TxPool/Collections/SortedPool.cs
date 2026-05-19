@@ -23,6 +23,8 @@ namespace Nethermind.TxPool.Collections
         where TKey : notnull
         where TGroupKey : notnull
     {
+        internal delegate bool BucketVisitor<TState>(TValue value, ref TState state);
+
         protected McsLock Lock { get; } = new();
 
         private readonly int _capacity;
@@ -546,6 +548,29 @@ namespace Nethermind.TxPool.Collections
 
             item = default;
             return false;
+        }
+
+        /// <summary>
+        /// Iterates over bucket items under lock until visitor returns false.
+        /// </summary>
+        internal void VisitBucket<TState>(TGroupKey groupKey, ref TState state, BucketVisitor<TState> visitor)
+        {
+            using McsLock.Disposable lockRelease = Lock.Acquire();
+
+            ArgumentNullException.ThrowIfNull(groupKey);
+            ArgumentNullException.ThrowIfNull(visitor);
+            if (!_buckets.TryGetValue(groupKey, out EnhancedSortedSet<TValue>? bucket))
+            {
+                return;
+            }
+
+            foreach (TValue value in bucket)
+            {
+                if (!visitor(value, ref state))
+                {
+                    break;
+                }
+            }
         }
 
         public bool BucketAny(TGroupKey groupKey, Func<TValue, bool> predicate)
