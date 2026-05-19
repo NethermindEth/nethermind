@@ -293,7 +293,10 @@ internal sealed class HttpJsonRpcResponseSink(
             object? result = successResponse.Result;
             if (result is not null)
             {
-                JsonSerializer.Serialize(jsonWriter, result, GetJsonTypeInfo(result.GetType()));
+                if (!TryWriteSimpleResult(jsonWriter, result))
+                {
+                    JsonSerializer.Serialize(jsonWriter, result, GetJsonTypeInfo(result.GetType()));
+                }
             }
             else
             {
@@ -317,6 +320,21 @@ internal sealed class HttpJsonRpcResponseSink(
         response.Id.WriteTo(jsonWriter);
 
         jsonWriter.WriteEndObject();
+    }
+
+    private static bool TryWriteSimpleResult(Utf8JsonWriter jsonWriter, object result)
+    {
+        switch (result)
+        {
+            case string value:
+                jsonWriter.WriteStringValue(value);
+                return true;
+            case bool value:
+                jsonWriter.WriteBooleanValue(value);
+                return true;
+            default:
+                return false;
+        }
     }
 
     private void WriteError(Utf8JsonWriter jsonWriter, Error error)

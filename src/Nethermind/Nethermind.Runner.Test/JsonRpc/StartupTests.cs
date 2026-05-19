@@ -3,11 +3,13 @@
 
 #nullable enable
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.IO.Abstractions;
 using System.Net;
 using System.Text;
 using System.Text.Json;
+using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Http.Features;
@@ -261,6 +263,28 @@ public class StartupTests
         Assert.That(error.GetProperty("data").ValueKind, Is.EqualTo(JsonValueKind.Array));
     }
 
+    [TestCase("ok")]
+    [TestCase("x\"\\\n\u0001")]
+    public async Task HttpJsonRpcResponseSink_SerializesStringResultSafely(string value)
+    {
+        string response = await WriteHttpJsonRpcResponse(new JsonRpcSuccessResponse { Id = JsonRpcId.FromObject(1), Result = value });
+
+        using JsonDocument doc = JsonDocument.Parse(response);
+
+        Assert.That(doc.RootElement.GetProperty("result").GetString(), Is.EqualTo(value));
+    }
+
+    [TestCase(false)]
+    [TestCase(true)]
+    public async Task HttpJsonRpcResponseSink_SerializesBooleanResultSafely(bool value)
+    {
+        string response = await WriteHttpJsonRpcResponse(new JsonRpcSuccessResponse { Id = JsonRpcId.FromObject(1), Result = value });
+
+        using JsonDocument doc = JsonDocument.Parse(response);
+
+        Assert.That(doc.RootElement.GetProperty("result").GetBoolean(), Is.EqualTo(value));
+    }
+
     [TestCase("127.0.0.1", true)]
     [TestCase("::1", true)]
     [TestCase("10.1.2.3", true)]
@@ -323,6 +347,28 @@ public class StartupTests
         await (startup ?? Startup).ProcessJsonRpcRequestCoreAsync(ctx, url);
 
         return (Encoding.UTF8.GetString(responseBody.ToArray()), ctx.Response.StatusCode);
+    }
+
+    private static async Task<string> WriteHttpJsonRpcResponse(JsonRpcResponse response)
+    {
+        DefaultHttpContext ctx = new();
+        MemoryStream responseBody = new();
+        ctx.Features.Set<IHttpResponseBodyFeature>(new StreamResponseBodyFeature(responseBody));
+
+        JsonRpcConfig rpcConfig = new();
+        HttpJsonRpcResponseSink sink = new(
+            ctx,
+            new JsonRpcUrl("http", "127.0.0.1", 0, RpcEndpoint.Http, false, [ModuleType.Engine]),
+            rpcConfig,
+            Substitute.For<IJsonRpcLocalStats>(),
+            EthereumJsonSerializer.JsonOptions,
+            LimboLogs.Instance.GetClassLogger<StartupTests>(),
+            Stopwatch.GetTimestamp());
+
+        await sink.WriteSingleAsync(response, new RpcReport("test", 0, true), CancellationToken.None);
+        await sink.CompleteAsync(CancellationToken.None);
+
+        return Encoding.UTF8.GetString(responseBody.ToArray());
     }
 
     private static string CreateBlobsBatchRequest(int count)
