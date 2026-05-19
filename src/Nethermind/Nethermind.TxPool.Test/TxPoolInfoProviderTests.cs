@@ -1,9 +1,8 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
 using System.Linq;
-using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
@@ -45,19 +44,19 @@ public class TxPoolInfoProviderTests
             .Returns(new Dictionary<AddressAsKey, Transaction[]> { { _address, transactions } });
         TxPoolInfo info = _infoProvider.GetInfo();
 
-        info.Pending.Count.Should().Be(1);
-        info.Queued.Count.Should().Be(1);
+        Assert.That(info.Pending.Count, Is.EqualTo(1));
+        Assert.That(info.Queued.Count, Is.EqualTo(1));
 
         KeyValuePair<AddressAsKey, IDictionary<ulong, Transaction>> pending = info.Pending.First();
-        pending.Key.Value.Should().Be(_address);
-        pending.Value.Count.Should().Be(3);
+        Assert.That(pending.Key.Value, Is.EqualTo(_address));
+        Assert.That(pending.Value.Count, Is.EqualTo(3));
         VerifyNonceAndTransactions(pending.Value, 3);
         VerifyNonceAndTransactions(pending.Value, 4);
         VerifyNonceAndTransactions(pending.Value, 5);
 
         KeyValuePair<AddressAsKey, IDictionary<ulong, Transaction>> queued = info.Queued.First();
-        queued.Key.Value.Should().Be(_address);
-        queued.Value.Count.Should().Be(4);
+        Assert.That(queued.Key.Value, Is.EqualTo(_address));
+        Assert.That(queued.Value.Count, Is.EqualTo(4));
         VerifyNonceAndTransactions(queued.Value, 1);
         VerifyNonceAndTransactions(queued.Value, 2);
         VerifyNonceAndTransactions(queued.Value, 8);
@@ -79,8 +78,8 @@ public class TxPoolInfoProviderTests
 
         TxPoolInfo info = _infoProvider.GetInfo();
 
-        info.Pending[_address].Keys.Should().BeEquivalentTo(new ulong[] { 0 });
-        info.Queued[_address].Keys.Should().BeEquivalentTo(new ulong[] { 2 });
+        Assert.That(info.Pending[_address].Keys, Is.EquivalentTo(new ulong[] { 0 }));
+        Assert.That(info.Queued[_address].Keys, Is.EquivalentTo(new ulong[] { 2 }));
     }
 
     [Test]
@@ -98,8 +97,8 @@ public class TxPoolInfoProviderTests
 
         TxPoolInfo info = _infoProvider.GetInfo();
 
-        info.Pending.Should().NotContainKey(_address);
-        info.Queued.Should().NotContainKey(_address);
+        Assert.That(info.Pending.ContainsKey(_address), Is.False);
+        Assert.That(info.Queued.ContainsKey(_address), Is.False);
     }
 
     // Inputs are always nonce-sorted: TxDistinctSortedPool's group comparer puts
@@ -131,9 +130,9 @@ public class TxPoolInfoProviderTests
 
         TxPoolSenderInfo senderInfo = _infoProvider.GetSenderInfo(_address);
 
-        senderInfo.Pending.Keys.Should().BeEquivalentTo(scenario.ExpectedPending,
+        Assert.That(senderInfo.Pending.Keys, Is.EquivalentTo(scenario.ExpectedPending),
             "pending nonces are those continuous with the account nonce");
-        senderInfo.Queued.Keys.Should().BeEquivalentTo(scenario.ExpectedQueued,
+        Assert.That(senderInfo.Queued.Keys, Is.EquivalentTo(scenario.ExpectedQueued),
             "queued nonces are those beyond a gap from the account nonce");
     }
 
@@ -142,7 +141,7 @@ public class TxPoolInfoProviderTests
     {
         TxPoolSenderInfo senderInfo = _infoProvider.GetSenderInfo(_address);
 
-        senderInfo.Should().BeSameAs(TxPoolSenderInfo.Empty,
+        Assert.That(senderInfo, Is.SameAs(TxPoolSenderInfo.Empty),
             "the empty singleton avoids allocating two empty dictionaries on the miss path");
     }
 
@@ -157,8 +156,8 @@ public class TxPoolInfoProviderTests
 
         TxPoolSenderInfo senderInfo = _infoProvider.GetSenderInfo(_address);
 
-        senderInfo.Pending.Keys.Should().BeEquivalentTo(new ulong[] { 0 });
-        senderInfo.Queued.Keys.Should().BeEquivalentTo(new ulong[] { 2 });
+        Assert.That(senderInfo.Pending.Keys, Is.EquivalentTo(new ulong[] { 0 }));
+        Assert.That(senderInfo.Queued.Keys, Is.EquivalentTo(new ulong[] { 2 }));
     }
 
     [Test]
@@ -173,7 +172,7 @@ public class TxPoolInfoProviderTests
 
         TxPoolSenderInfo senderInfo = _infoProvider.GetSenderInfo(_address);
 
-        senderInfo.Should().BeSameAs(TxPoolSenderInfo.Empty);
+        Assert.That(senderInfo, Is.SameAs(TxPoolSenderInfo.Empty));
     }
 
     [Test]
@@ -212,8 +211,8 @@ public class TxPoolInfoProviderTests
 
         TxPoolCounts counts = _infoProvider.GetCounts();
 
-        counts.Pending.Should().Be(scenario.ExpectedPending.Length, "pending count must match the split");
-        counts.Queued.Should().Be(scenario.ExpectedQueued.Length, "queued count must match the split");
+        Assert.That(counts.Pending, Is.EqualTo(scenario.ExpectedPending.Length), "pending count must match the split");
+        Assert.That(counts.Queued, Is.EqualTo(scenario.ExpectedQueued.Length), "queued count must match the split");
     }
 
     [Test]
@@ -227,12 +226,12 @@ public class TxPoolInfoProviderTests
 
         TxPoolCounts counts = _infoProvider.GetCounts();
 
-        counts.Pending.Should().Be(3, "nonces 0, 1, 2 form a continuous run from account nonce 0");
-        counts.Queued.Should().Be(1, "nonce 5 is queued behind the gap");
+        Assert.That(counts.Pending, Is.EqualTo(3), "nonces 0, 1, 2 form a continuous run from account nonce 0");
+        Assert.That(counts.Queued, Is.EqualTo(1), "nonce 5 is queued behind the gap");
     }
 
     private void VerifyNonceAndTransactions(IDictionary<ulong, Transaction> transactionNonce, ulong nonce) =>
-        transactionNonce[nonce].Nonce.Should().Be(nonce);
+        Assert.That(transactionNonce[nonce].Nonce, Is.EqualTo((UInt256)nonce));
 
     private Transaction[] GetTransactions() =>
         BuildTransactions([1, 2, 3, 4, 5, 8, 9]);
@@ -244,6 +243,13 @@ public class TxPoolInfoProviderTests
             result[i] = Build.A.Transaction.WithNonce(nonces[i]).WithSenderAddress(_address).TestObject;
         return result;
     }
+
+    private Transaction GetBlobTransaction(UInt256 nonce) =>
+        Build.A.Transaction
+            .WithType(TxType.Blob)
+            .WithNonce(nonce)
+            .WithSenderAddress(_address)
+            .TestObject;
 
     public record SenderScenario(uint AccountNonce, ulong[] TxNonces, ulong[] ExpectedPending, ulong[] ExpectedQueued);
 }

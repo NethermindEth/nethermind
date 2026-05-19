@@ -304,10 +304,12 @@ public sealed class MempoolBlobTxValidator : ITxValidator
         static ValidationResult ValidateBlobs(Transaction transaction, ShardBlobNetworkWrapper wrapper)
         {
             IBlobProofsVerifier proofsManager = IBlobProofsManager.For(wrapper.Version);
+            bool hasProofMaterial = wrapper.HasFullBlobs() || (wrapper.Cells is { Length: > 0 } && !wrapper.CellMask.IsEmpty);
+            int blobCount = transaction.BlobVersionedHashes?.Length ?? 0;
 
-            return (transaction.BlobVersionedHashes?.Length ?? 0) != wrapper.Blobs.Length || !proofsManager.ValidateLengths(wrapper) ? TxErrorMessages.InvalidBlobDataSize :
+            return blobCount != wrapper.Commitments.Length || !proofsManager.ValidateLengths(wrapper) ? TxErrorMessages.InvalidBlobDataSize :
                 transaction.BlobVersionedHashes is null || !proofsManager.ValidateHashes(wrapper, transaction.BlobVersionedHashes) ? TxErrorMessages.InvalidBlobHashes :
-                !proofsManager.ValidateProofs(wrapper) ? TxErrorMessages.InvalidBlobProofs :
+                hasProofMaterial && !proofsManager.ValidateProofs(wrapper) ? TxErrorMessages.InvalidBlobProofs :
                 ValidationResult.Success;
         }
     }

@@ -258,6 +258,7 @@ public class NetworkModuleTest
                 networkConfig,
                 syncConfig,
                 Substitute.For<IInitConfig>(),
+                Substitute.For<IChainHeadSpecProvider>(),
                 logManager)
     {
         public Task RunInitPeer() => InitPeer();

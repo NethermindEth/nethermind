@@ -1,6 +1,7 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Rlp;
@@ -22,7 +23,8 @@ public class LightTxDecoder : TxDecoder<Transaction>
                + Rlp.LengthOf(tx.BlobVersionedHashes!)
                + Rlp.LengthOf(tx.PoolIndex)
                + Rlp.LengthOf(tx.GetLength())
-               + Rlp.LengthOf(sizeof(byte));
+               + Rlp.LengthOf(sizeof(byte))
+               + Rlp.LengthOfByteString(BlobCellMask.FixedByteLength, firstByte: 0);
 
     public static byte[] Encode(Transaction tx)
     {
@@ -41,6 +43,7 @@ public class LightTxDecoder : TxDecoder<Transaction>
         rlpStream.Encode(tx.PoolIndex);
         rlpStream.Encode(tx.GetLength());
         rlpStream.Encode((byte)((tx.NetworkWrapper as ShardBlobNetworkWrapper)?.Version ?? default));
+        EncodeAvailableCellMask(tx, rlpStream);
 
         return rlpStream.Data.ToArray()!;
     }
@@ -61,6 +64,21 @@ public class LightTxDecoder : TxDecoder<Transaction>
             blobVersionHashes: ctx.DecodeByteArrays(BlobTxDecoder<Transaction>.BlobVersionedHashesCountLimit, innerSize: Hash256.Size),
             poolIndex: ctx.DecodeULong(),
             size: ctx.DecodePositiveInt(),
-            proofVersion: ctx.PeekNumberOfItemsRemaining(maxSearch: 1) == 1 ? (ProofVersion)ctx.ReadByte() : default);
+            proofVersion: ctx.PeekNumberOfItemsRemaining(maxSearch: 2) >= 1 ? (ProofVersion)ctx.ReadByte() : default,
+            blobCellMask: ctx.PeekNumberOfItemsRemaining(maxSearch: 1) == 1
+                ? BlobCellMask.FromBytes(ctx.DecodeByteArraySpan())
+                : default);
     }
+
+    private static void EncodeAvailableCellMask(Transaction tx, RlpStream rlpStream)
+    {
+        Span<byte> bytes = stackalloc byte[BlobCellMask.FixedByteLength];
+        GetAvailableCellMask(tx).WriteTo(bytes);
+        rlpStream.Encode(bytes);
+    }
+
+    private static BlobCellMask GetAvailableCellMask(Transaction tx) =>
+        tx.NetworkWrapper is ShardBlobNetworkWrapper wrapper
+            ? wrapper.GetAvailableCellMask()
+            : BlobCellMask.Empty;
 }

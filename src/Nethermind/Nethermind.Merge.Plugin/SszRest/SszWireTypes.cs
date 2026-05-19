@@ -18,7 +18,6 @@ public partial struct SszTransaction
 {
     [SszList(0x4000_0000)] public byte[]? Bytes { get; set; }
 }
-
 [SszContainer]
 public partial struct SszWithdrawal
 {
@@ -367,4 +366,3 @@ public partial struct GetBlobsV3ResponseWire
 {
     [SszList(128)] public NullableBlobAndProofV2Wire[]? BlobsAndProofs { get; set; }
 }
-

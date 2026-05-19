@@ -88,7 +88,6 @@ internal sealed class OpcodeBlockTracer(Action<OpcodeBlockTrace> onBlockComplete
         }
     }
 }
-
 internal sealed record OpcodeBlockTrace
 {
     public required Hash256 BlockHash { get; init; }

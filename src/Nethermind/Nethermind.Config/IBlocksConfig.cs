@@ -75,4 +75,9 @@ public interface IBlocksConfig : IConfig
 
     [ConfigItem(Description = "The max blob count after which the block producer should stop adding blobs. Minimum value is `0`.", DefaultValue = "null")]
     int? BlockProductionBlobLimit { get; set; }
+
+    [ConfigItem(
+        Description = "The blob transaction inclusion policy used by local block production. `Conservative` includes only blob transactions with full blob data, `Optimistic` also includes locally sampled sparse blob transactions, and `Proactive` uses the optimistic local criteria while allowing future proposer-duty resampling hooks. Default is `Conservative`.",
+        DefaultValue = nameof(BlobInclusionPolicy.Conservative))]
+    BlobInclusionPolicy BlobInclusionPolicy { get; set; }
 }

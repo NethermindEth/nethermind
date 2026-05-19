@@ -56,6 +56,9 @@ public static partial class KzgPolynomialCommitments
         ReadOnlySpan<byte> proof
     );
 
+    public static void ComputeCells(Span<byte> cells, ReadOnlySpan<byte> blob) =>
+        Ckzg.ComputeCells(cells, blob, _ckzgSetup);
+
     public static void ComputeCellProofs(ReadOnlySpan<byte> blob, Span<byte> cellProofs) =>
         Ckzg.ComputeCellsAndKzgProofs(new byte[Ckzg.CellsPerExtBlob * Ckzg.BytesPerCell], cellProofs, blob, _ckzgSetup);
 }

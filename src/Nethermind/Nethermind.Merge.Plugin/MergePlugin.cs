@@ -21,6 +21,7 @@ using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Exceptions;
+using Nethermind.Core.Specs;
 using Nethermind.Db;
 using Nethermind.Facade.Proxy;
 using Nethermind.HealthChecks;
@@ -236,6 +237,13 @@ public partial class MergePlugin(ChainSpec chainSpec, IMergeConfig mergeConfig) 
         _api.ProtocolsManager!.AddSupportedCapability(new(Protocol.Eth, 70));
         if (_logger.IsInfo) _logger.Info("Adding eth/71 capability");
         _api.ProtocolsManager!.AddSupportedCapability(new(Protocol.Eth, 71));
+
+        IChainHeadSpecProvider chainHeadSpecProvider = _api.Context.Resolve<IChainHeadSpecProvider>();
+        if (_txPoolConfig.BlobsSupport.IsEnabled() && chainHeadSpecProvider.GetCurrentHeadSpec().IsEip7594Enabled)
+        {
+            if (_logger.IsInfo) _logger.Info("Adding eth/72 capability");
+            _api.ProtocolsManager!.AddSupportedCapability(new(Protocol.Eth, 72));
+        }
     }
 
     protected virtual IBlockFinalizationManager InitializeMergeFinalizationManager() => new MergeFinalizationManager(_api.Context.Resolve<IManualBlockFinalizationManager>(), _api.FinalizationManager, _poSSwitcher);
@@ -326,6 +334,7 @@ public class BaseMergePluginModule : Module
                     .AddSingleton<IRpcCapabilitiesProvider, EngineRpcCapabilitiesProvider>()
                 .AddSingleton<IAsyncHandler<byte[][], IReadOnlyList<BlobAndProofV1?>>, GetBlobsHandler>()
                 .AddSingleton<IAsyncHandler<GetBlobsHandlerV2Request, IReadOnlyList<BlobAndProofV2?>?>, GetBlobsHandlerV2>()
+                .AddSingleton<IAsyncHandler<GetBlobsHandlerV4Request, IReadOnlyList<BlobCellsAndProofsV1?>?>, GetBlobsHandlerV4>()
                 .AddSingleton<IHandler<IReadOnlyList<Hash256>, IReadOnlyList<ExecutionPayloadBodyV2Result?>>, GetPayloadBodiesByHashV2Handler>()
                 .AddSingleton<IGetPayloadBodiesByRangeV2Handler, GetPayloadBodiesByRangeV2Handler>()
 
