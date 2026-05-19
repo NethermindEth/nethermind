@@ -103,11 +103,11 @@ public static class PersistedSnapshotMerger
     {
         int n = views.Length;
         using ArrayPoolList<HsstEnumerator> enums = new(n, n);
-        using NativeMemoryList<bool> hasMore = new(n, n);
+        using NativeMemoryListRef<bool> hasMore = new(n, n);
         // Cache each source's current logical key once per MoveNext so the O(log N) cursor
         // and O(N) match-detection scans don't redo CopyCurrentLogicalKey per output key.
         int keyStride = Math.Max(1, keySize);
-        using NativeMemoryList<byte> keyBufList = new(n * keyStride, n * keyStride);
+        using NativeMemoryListRef<byte> keyBufList = new(n * keyStride, n * keyStride);
         Span<byte> keyBuf = keyBufList.AsSpan();
 
         try
@@ -172,7 +172,7 @@ public static class PersistedSnapshotMerger
     {
         int n = views.Length;
         using ArrayPoolList<HsstEnumerator> enumsList = new(n, n);
-        using NativeMemoryList<bool> hasMoreList = new(n, n);
+        using NativeMemoryListRef<bool> hasMoreList = new(n, n);
         HsstEnumerator[] enums = enumsList.UnsafeGetInternalArray();
         Span<bool> hasMore = hasMoreList.AsSpan();
 
@@ -261,7 +261,7 @@ public static class PersistedSnapshotMerger
                     // NWayMergePerAddressHsst. Used for any multi-source collision and
                     // for single-source blobs that exceed a page (re-emitting per sub-tag
                     // keeps the result page-aligned where the verbatim copy could not).
-                    using NativeMemoryList<(long Offset, long Length)> perAddrBoundsList = new(matchCount, matchCount);
+                    using NativeMemoryListRef<(long Offset, long Length)> perAddrBoundsList = new(matchCount, matchCount);
                     Span<(long Offset, long Length)> perAddrBounds = perAddrBoundsList.AsSpan();
                     for (int j = 0; j < matchCount; j++)
                     {
@@ -269,7 +269,7 @@ public static class PersistedSnapshotMerger
                         perAddrBounds[j] = (vb.Offset, vb.Length);
                     }
 
-                    using NativeMemoryList<Bound> subTagBoundsList = new(matchCount * PersistedSnapshotTags.PerAddrSubTagCount, matchCount * PersistedSnapshotTags.PerAddrSubTagCount);
+                    using NativeMemoryListRef<Bound> subTagBoundsList = new(matchCount * PersistedSnapshotTags.PerAddrSubTagCount, matchCount * PersistedSnapshotTags.PerAddrSubTagCount);
                     Span<Bound> subTagBounds = subTagBoundsList.AsSpan();
                     for (int j = 0; j < matchCount; j++)
                     {
@@ -322,7 +322,7 @@ public static class PersistedSnapshotMerger
     {
         int n = views.Length;
         using ArrayPoolList<HsstEnumerator> enumsList = new(n, n);
-        using NativeMemoryList<bool> hasMoreList = new(n, n);
+        using NativeMemoryListRef<bool> hasMoreList = new(n, n);
         HsstEnumerator[] enums = enumsList.UnsafeGetInternalArray();
         Span<bool> hasMore = hasMoreList.AsSpan();
 
@@ -391,7 +391,7 @@ public static class PersistedSnapshotMerger
 
                     // Rebuild path: resolve every source's per-addressHash sub-tag bounds,
                     // then stream the merged inner DenseByteIndex via MergeStorageTrieSubTag.
-                    using NativeMemoryList<(long Offset, long Length)> perAddrBoundsList = new(matchCount, matchCount);
+                    using NativeMemoryListRef<(long Offset, long Length)> perAddrBoundsList = new(matchCount, matchCount);
                     Span<(long Offset, long Length)> perAddrBounds = perAddrBoundsList.AsSpan();
                     for (int j = 0; j < matchCount; j++)
                     {
@@ -399,7 +399,7 @@ public static class PersistedSnapshotMerger
                         perAddrBounds[j] = (vb.Offset, vb.Length);
                     }
 
-                    using NativeMemoryList<Bound> subTagBoundsList = new(matchCount * PersistedSnapshotTags.StorageTrieSubTagCount, matchCount * PersistedSnapshotTags.StorageTrieSubTagCount);
+                    using NativeMemoryListRef<Bound> subTagBoundsList = new(matchCount * PersistedSnapshotTags.StorageTrieSubTagCount, matchCount * PersistedSnapshotTags.StorageTrieSubTagCount);
                     Span<Bound> subTagBounds = subTagBoundsList.AsSpan();
                     for (int j = 0; j < matchCount; j++)
                     {
@@ -503,8 +503,8 @@ public static class PersistedSnapshotMerger
                 int slotTag = PersistedSnapshotTags.SlotSubTag[0];
                 int slotSourceCount = 0;
                 int slotCapacity = matchCount - slotStart;
-                using NativeMemoryList<int> slotSourcesList = new(slotCapacity, slotCapacity);
-                using NativeMemoryList<(long Offset, long Length)> slotBoundsList = new(slotCapacity, slotCapacity);
+                using NativeMemoryListRef<int> slotSourcesList = new(slotCapacity, slotCapacity);
+                using NativeMemoryListRef<(long Offset, long Length)> slotBoundsList = new(slotCapacity, slotCapacity);
                 Span<int> slotSources = slotSourcesList.AsSpan();
                 Span<(long Offset, long Length)> slotBounds = slotBoundsList.AsSpan();
                 for (int j = slotStart; j < matchCount; j++)
@@ -521,8 +521,8 @@ public static class PersistedSnapshotMerger
                 if (slotSourceCount > 0)
                 {
                     using ArrayPoolList<HsstEnumerator> slotEnumsList = new(slotSourceCount, slotSourceCount);
-                    using NativeMemoryList<bool> slotHasMoreList = new(slotSourceCount, slotSourceCount);
-                    using NativeMemoryList<(IntPtr Ptr, long Len)> slotViewsList = new(slotSourceCount, slotSourceCount);
+                    using NativeMemoryListRef<bool> slotHasMoreList = new(slotSourceCount, slotSourceCount);
+                    using NativeMemoryListRef<(IntPtr Ptr, long Len)> slotViewsList = new(slotSourceCount, slotSourceCount);
                     HsstEnumerator[] slotEnums = slotEnumsList.UnsafeGetInternalArray();
                     Span<bool> slotHasMore = slotHasMoreList.AsSpan();
                     Span<(IntPtr Ptr, long Len)> slotViews = slotViewsList.AsSpan();
@@ -730,7 +730,7 @@ public static class PersistedSnapshotMerger
                 // sliced to the actual inner-source count per iteration.
                 int innerN = outerMatchCount;
                 using ArrayPoolList<HsstEnumerator> innerEnumsList = new(innerN, innerN);
-                using NativeMemoryList<bool> innerHasMoreList = new(innerN, innerN);
+                using NativeMemoryListRef<bool> innerHasMoreList = new(innerN, innerN);
                 HsstEnumerator[] innerEnums = innerEnumsList.UnsafeGetInternalArray();
                 Span<bool> innerHasMore = innerHasMoreList.AsSpan();
                 Span<byte> iKeyBuf = innerKeyBuf[..(innerN * InnerKeyLen)];
@@ -844,8 +844,8 @@ public static class PersistedSnapshotMerger
         BloomFilter bloom,
         ulong addrKey) where TWriter : IByteBufferWriterWithReader<TReader, TPin> where TReader : IHsstByteReader<TPin>, allows ref struct where TPin : struct, IBufferPin, allows ref struct
     {
-        using NativeMemoryList<int> srcsList = new(matchCount, matchCount);
-        using NativeMemoryList<(long Offset, long Length)> boundsList = new(matchCount, matchCount);
+        using NativeMemoryListRef<int> srcsList = new(matchCount, matchCount);
+        using NativeMemoryListRef<(long Offset, long Length)> boundsList = new(matchCount, matchCount);
         Span<int> srcs = srcsList.AsSpan();
         Span<(long Offset, long Length)> subBounds = boundsList.AsSpan();
 
@@ -879,7 +879,7 @@ public static class PersistedSnapshotMerger
         // source PackedArray's storage layout, so cross-source min selection on cached
         // keys works at innerKeySize ∈ {2,4,8} BE-stored or auto-LE-stored alike.
         using ArrayPoolList<HsstEnumerator> innerEnumsList = new(active, active);
-        using NativeMemoryList<bool> innerHasMoreList = new(active, active);
+        using NativeMemoryListRef<bool> innerHasMoreList = new(active, active);
         HsstEnumerator[] innerEnums = innerEnumsList.UnsafeGetInternalArray();
         Span<bool> innerHasMore = innerHasMoreList.AsSpan();
         Span<byte> keyBuf = stackalloc byte[active * innerKeySize];
@@ -1004,11 +1004,12 @@ public static class PersistedSnapshotMerger
 
         // Pull every source's ref_ids bytes into one contiguous buffer (sourceBytes), then
         // merge into mergedRefIds. Both buffers share the same upper bound, so they're
-        // sized to totalRefIdsBytes. NativeMemoryList — heap rental — sidesteps the >2 GiB
-        // stackalloc theoretical risk and matches the working-buffer pattern used by the
-        // other merge helpers in this file. In practice totalRefIdsBytes is ~tens of bytes.
-        using NativeMemoryList<byte> sourceBytesBuf = new(totalRefIdsBytes, totalRefIdsBytes);
-        using NativeMemoryList<byte> mergedRefIdsBuf = new(totalRefIdsBytes, totalRefIdsBytes);
+        // sized to totalRefIdsBytes. NativeMemoryListRef — heap-rented buffer — sidesteps
+        // the >2 GiB stackalloc theoretical risk and matches the working-buffer pattern
+        // used by the other merge helpers in this file. In practice totalRefIdsBytes is
+        // ~tens of bytes.
+        using NativeMemoryListRef<byte> sourceBytesBuf = new(totalRefIdsBytes, totalRefIdsBytes);
+        using NativeMemoryListRef<byte> mergedRefIdsBuf = new(totalRefIdsBytes, totalRefIdsBytes);
         Span<byte> sourceBytes = sourceBytesBuf.AsSpan();
         Span<byte> mergedRefIds = mergedRefIdsBuf.AsSpan();
         for (int i = 0; i < n; i++)

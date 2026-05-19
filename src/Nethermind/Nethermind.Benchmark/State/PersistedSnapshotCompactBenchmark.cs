@@ -96,7 +96,7 @@ public class PersistedSnapshotCompactBenchmark : IDisposable
         using PooledByteBufferWriter pooled = new(checked((int)Math.Min(_estimatedSize, int.MaxValue)));
         int n = _snapshots.Count;
         using ArrayPoolList<WholeReadSession> sessionsList = new(n, n);
-        using NativeMemoryList<(IntPtr Ptr, long Len)> viewsList = new(n, n);
+        using NativeMemoryListRef<(IntPtr Ptr, long Len)> viewsList = new(n, n);
         WholeReadSession[] sessionArr = sessionsList.UnsafeGetInternalArray();
         Span<(IntPtr Ptr, long Len)> views = viewsList.AsSpan();
         try

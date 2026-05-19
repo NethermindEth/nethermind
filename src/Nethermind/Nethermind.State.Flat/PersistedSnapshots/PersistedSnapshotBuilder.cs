@@ -479,7 +479,7 @@ public static class PersistedSnapshotBuilder
         // we append the prefixes and run a sort-then-linear-dedupe over the full ValueHash256,
         // which is a strict refinement of the 20-byte prefix order the column key requires.
         int capacity = storTop.Count + storCompact.Count + storFallback.Count;
-        using NativeMemoryList<ValueHash256> uniqueAddrHashes = new(Math.Max(1, capacity));
+        using NativeMemoryListRef<ValueHash256> uniqueAddrHashes = new(Math.Max(1, capacity));
         for (int i = 0; i < storTop.Count; i++) uniqueAddrHashes.Add(storTop[i].AddrHash);
         for (int i = 0; i < storCompact.Count; i++) uniqueAddrHashes.Add(storCompact[i].AddrHash);
         for (int i = 0; i < storFallback.Count; i++) uniqueAddrHashes.Add(storFallback[i].AddrHash);
