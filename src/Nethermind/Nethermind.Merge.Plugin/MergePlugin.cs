@@ -33,6 +33,7 @@ using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.GC;
 using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Merge.Plugin.InvalidChainTracker;
+using Nethermind.Merge.Plugin.SszRest;
 using Nethermind.Merge.Plugin.Synchronization;
 using Nethermind.Network.Contract.P2P;
 using Nethermind.Serialization.Json;
@@ -318,14 +319,14 @@ public class BaseMergePluginModule : Module
                 .AddSingleton<IAsyncHandler<byte[], GetPayloadV6Result?>, GetPayloadV6Handler>()
                 .AddSingleton<IAsyncHandler<ExecutionPayload, PayloadStatusV1>, NewPayloadHandler>()
                 .AddSingleton<IForkchoiceUpdatedHandler, ForkchoiceUpdatedHandler>()
-                .AddSingleton<IHandler<IReadOnlyList<Hash256>, IEnumerable<ExecutionPayloadBodyV1Result?>>, GetPayloadBodiesByHashV1Handler>()
+                .AddSingleton<IHandler<IReadOnlyList<Hash256>, IReadOnlyList<ExecutionPayloadBodyV1Result?>>, GetPayloadBodiesByHashV1Handler>()
                 .AddSingleton<IGetPayloadBodiesByRangeV1Handler, GetPayloadBodiesByRangeV1Handler>()
                 .AddSingleton<IHandler<TransitionConfigurationV1, TransitionConfigurationV1>, ExchangeTransitionConfigurationV1Handler>()
-                .AddSingleton<IHandler<IEnumerable<string>, IEnumerable<string>>, ExchangeCapabilitiesHandler>()
+                .AddSingleton<IHandler<HashSet<string>, IReadOnlyList<string>>, ExchangeCapabilitiesHandler>()
                     .AddSingleton<IRpcCapabilitiesProvider, EngineRpcCapabilitiesProvider>()
-                .AddSingleton<IAsyncHandler<byte[][], IEnumerable<BlobAndProofV1?>>, GetBlobsHandler>()
-                .AddSingleton<IAsyncHandler<GetBlobsHandlerV2Request, IEnumerable<BlobAndProofV2?>?>, GetBlobsHandlerV2>()
-                .AddSingleton<IHandler<IReadOnlyList<Hash256>, IEnumerable<ExecutionPayloadBodyV2Result?>>, GetPayloadBodiesByHashV2Handler>()
+                .AddSingleton<IAsyncHandler<byte[][], IReadOnlyList<BlobAndProofV1?>>, GetBlobsHandler>()
+                .AddSingleton<IAsyncHandler<GetBlobsHandlerV2Request, IReadOnlyList<BlobAndProofV2?>?>, GetBlobsHandlerV2>()
+                .AddSingleton<IHandler<IReadOnlyList<Hash256>, IReadOnlyList<ExecutionPayloadBodyV2Result?>>, GetPayloadBodiesByHashV2Handler>()
                 .AddSingleton<IGetPayloadBodiesByRangeV2Handler, GetPayloadBodiesByRangeV2Handler>()
 
                 .AddSingleton<NoSyncGcRegionStrategy>()
@@ -340,6 +341,7 @@ public class BaseMergePluginModule : Module
                 })
                 .AddSingleton<IHttpClient, DefaultHttpClient>()
                 .AddSingleton<IGasLimitCalculator, TargetAdjustedGasLimitCalculator>()
+                .AddSingleton<IJsonRpcServiceConfigurer, SszMiddlewareConfigurer>()
 
             // Testing rpc
             .RegisterSingletonJsonRpcModule<ITestingRpcModule, TestingRpcModule>()

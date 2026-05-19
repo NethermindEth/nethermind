@@ -194,6 +194,11 @@ internal static class RlpHelpers
             ThrowUnexpectedLength(contentLength);
         }
 
+        if (contentLength > data.Length - position - (1 + lengthOfLength))
+        {
+            ThrowRlpDataTruncated();
+        }
+
         return (1 + lengthOfLength, contentLength);
     }
 

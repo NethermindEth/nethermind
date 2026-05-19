@@ -22,6 +22,7 @@ using Nethermind.JsonRpc.Modules.Net;
 using Nethermind.JsonRpc.Modules.Web3;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
+using Nethermind.Trie;
 using NSubstitute;
 using NSubstitute.ExceptionExtensions;
 using NUnit.Framework;
@@ -295,5 +296,19 @@ public class JsonRpcServiceTests
         Assert.That(response, Is.InstanceOf<JsonRpcErrorResponse>());
         JsonRpcErrorResponse errorResponse = (JsonRpcErrorResponse)response;
         Assert.That(errorResponse.Error!.Code, Is.EqualTo(ErrorCodes.InternalError));
+    }
+
+    [Test]
+    public void Missing_trie_node_exception_returns_resource_not_found()
+    {
+        IEthRpcModule ethRpcModule = Substitute.For<IEthRpcModule>();
+        ethRpcModule.eth_getLogs(Arg.Any<Filter>())
+            .Throws(new MissingTrieNodeException("Node missing", null, TreePath.Empty, TestItem.KeccakA));
+
+        JsonRpcErrorResponse? response = TestRequest(ethRpcModule, "eth_getLogs", "{}") as JsonRpcErrorResponse;
+
+        Assert.That(response?.Error?.Code, Is.EqualTo(ErrorCodes.ResourceNotFound));
+        Assert.That(response?.Error?.Message, Is.EqualTo("Node missing"));
+        response?.Dispose();
     }
 }

@@ -14,7 +14,8 @@ public sealed class BlobTxDecoder<T>(Func<T>? transactionFactory = null)
     private const int BlobCountLimit = 128;
     private const int BlobCellProofsCountLimit = BlobCountLimit * Ckzg.CellsPerExtBlob;
 
-    private static readonly RlpLimit BlobVersionedHashesCountLimit = RlpLimit.For<Transaction>(BlobCountLimit, nameof(Transaction.BlobVersionedHashes));
+    public static readonly RlpLimit BlobVersionedHashesCountLimit = RlpLimit.For<Transaction>(BlobCountLimit, nameof(Transaction.BlobVersionedHashes));
+
     private static readonly RlpLimit NetworkWrapperBlobsCountLimit = RlpLimit.For<ShardBlobNetworkWrapper>(BlobCountLimit, nameof(ShardBlobNetworkWrapper.Blobs));
     private static readonly RlpLimit NetworkWrapperCommitmentsCountLimit = RlpLimit.For<ShardBlobNetworkWrapper>(BlobCountLimit, nameof(ShardBlobNetworkWrapper.Commitments));
     private static readonly RlpLimit NetworkWrapperProofsCountLimit = RlpLimit.For<ShardBlobNetworkWrapper>(BlobCountLimit, $"{nameof(ShardBlobNetworkWrapper.Proofs)} {ProofVersion.V0}");

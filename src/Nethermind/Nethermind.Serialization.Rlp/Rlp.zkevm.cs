@@ -60,7 +60,7 @@ public partial class Rlp
 
         // Receipt decoders with explicit keys.
         RegisterDecoder(new RlpDecoderKey(typeof(TxReceipt), RlpDecoderKey.Default), new ReceiptMessageDecoder());
-        RegisterDecoder(new RlpDecoderKey(typeof(TxReceipt), RlpDecoderKey.LegacyStorage), ReceiptArrayStorageDecoder.Instance);
+        RegisterDecoder(new RlpDecoderKey(typeof(TxReceipt), RlpDecoderKey.LegacyStorage), new ReceiptStorageDecoder());
         RegisterDecoder(new RlpDecoderKey(typeof(TxReceipt), RlpDecoderKey.Storage), CompactReceiptStorageDecoder.Instance);
         RegisterDecoder(new RlpDecoderKey(typeof(TxReceipt), RlpDecoderKey.Trie), new ReceiptMessageDecoder());
     }

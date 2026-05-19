@@ -89,6 +89,58 @@ public partial class BlockDownloaderTests
     }
 
     [Test]
+    public async Task Full_sync_processing_does_not_request_block_access_lists()
+    {
+        IForwardHeaderProvider forwardHeaderProvider = Substitute.For<IForwardHeaderProvider>();
+        await using IContainer node = CreateNode(builder => builder.AddSingleton<IForwardHeaderProvider>(forwardHeaderProvider));
+        Context ctx = node.Resolve<Context>();
+        ConfigureBlockAccessListRequest(ctx, forwardHeaderProvider);
+
+        using BlocksRequest bodyRequest = (await ctx.FullSyncFeedComponent.BlockDownloader.PrepareRequest(
+            DownloaderOptions.Process,
+            0,
+            CancellationToken.None))!;
+
+        Assert.That(bodyRequest.BodiesRequests, Has.Count.EqualTo(1));
+        Assert.That(bodyRequest.BlockAccessListsRequests, Has.Count.EqualTo(0));
+
+        BlocksRequest? noRequest = await ctx.FullSyncFeedComponent.BlockDownloader.PrepareRequest(
+            DownloaderOptions.Process,
+            0,
+            CancellationToken.None);
+
+        Assert.That(noRequest, Is.Null);
+    }
+
+    [Test]
+    public async Task Full_sync_processing_satisfies_block_without_downloaded_block_access_list()
+    {
+        IForwardHeaderProvider forwardHeaderProvider = Substitute.For<IForwardHeaderProvider>();
+        await using IContainer node = CreateNode(builder => builder.AddSingleton<IForwardHeaderProvider>(forwardHeaderProvider));
+        Context ctx = node.Resolve<Context>();
+        ConfigureBlockAccessListRequest(ctx, forwardHeaderProvider);
+
+        BlocksRequest bodyRequest = (await ctx.FullSyncFeedComponent.BlockDownloader.PrepareRequest(
+            DownloaderOptions.Process,
+            0,
+            CancellationToken.None))!;
+        bodyRequest.OwnedBodies = new OwnedBlockBodies([new BlockBody()]);
+
+        ISyncPeer syncPeer = Substitute.For<ISyncPeer>();
+        PeerInfo peerInfo = new(syncPeer);
+
+        SyncResponseHandlingResult result = ctx.FullSyncFeedComponent.BlockDownloader.HandleResponse(bodyRequest, peerInfo);
+        BlocksRequest? noRequest = await ctx.FullSyncFeedComponent.BlockDownloader.PrepareRequest(
+            DownloaderOptions.Process,
+            0,
+            CancellationToken.None);
+
+        Assert.That(result, Is.EqualTo(SyncResponseHandlingResult.OK));
+        Assert.That(noRequest, Is.Null);
+        Assert.That(ctx.BlockTree.BestSuggestedHeader!.Number, Is.EqualTo(1));
+    }
+
+    [Test]
     public async Task Does_not_request_block_access_lists_from_pre_eth71_peer()
     {
         IForwardHeaderProvider forwardHeaderProvider = Substitute.For<IForwardHeaderProvider>();

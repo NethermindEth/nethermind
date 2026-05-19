@@ -23,6 +23,8 @@ using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.Messages;
 using Nethermind.Network.P2P.Subprotocols;
 using Nethermind.Network.P2P.Subprotocols.Eth.V69.Messages;
+using Nethermind.Network.P2P.Subprotocols.Eth.V70;
+using Nethermind.Network.P2P.Subprotocols.Eth.V70.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V71;
 using Nethermind.Network.P2P.Subprotocols.Eth.V71.Messages;
 using Nethermind.Network.Rlpx;
@@ -110,6 +112,25 @@ public class Eth71ProtocolHandlerTests
         Assert.That(_handler.ClientId, Is.EqualTo(_session.Node?.ClientId));
         Assert.That(_handler.HeadHash, Is.Null);
         Assert.That(_handler.HeadNumber, Is.EqualTo(0));
+    }
+
+    [Test]
+    public void Should_handle_eth70_GetReceipts_message()
+    {
+        TxReceipt[] receipts = [new() { GasUsedTotal = GasCostOf.Transaction, Logs = [] }];
+        _syncManager.FindHeader(Keccak.Zero).Returns(_genesisBlock.Header);
+        _syncManager.GetReceipts(Keccak.Zero).Returns(receipts);
+
+        HandleIncomingStatusMessage();
+        using GetReceiptsMessage70 request = new(1111, 0, new[] { Keccak.Zero }.ToPooledList());
+        HandleZeroMessage(request, Eth70MessageCode.GetReceipts);
+
+        _session.Received(1).DeliverMessage(Arg.Is<ReceiptsMessage70>(m =>
+            m.RequestId == 1111 &&
+            m.TxReceipts.Count == 1 &&
+            m.TxReceipts[0].Length == 1 &&
+            m.TxReceipts[0][0].GasUsedTotal == GasCostOf.Transaction &&
+            !m.LastBlockIncomplete));
     }
 
     [TestCaseSource(nameof(BlockAccessListsResponseCases))]
