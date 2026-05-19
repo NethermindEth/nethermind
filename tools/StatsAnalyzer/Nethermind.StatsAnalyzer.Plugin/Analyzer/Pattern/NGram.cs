@@ -10,11 +10,8 @@ public readonly struct NGram(ulong value = NGram.Null) : IEquatable<NGram>
     private const uint MaxSize = 7;
     public const ulong Null = 0;
     // Boundary marker between transactions / call frames so an n-gram window
-    // does not span unrelated execution. STOP (0x00) is also a real opcode,
-    // so a contract that executes STOP mid-stream (e.g. as a sub-call return)
-    // will end up splitting the window. This is acceptable for the current
-    // pattern-frequency use case but worth revisiting if a sentinel outside
-    // the opcode space is needed (e.g. a wrapper struct or a flag column).
+    // does not span unrelated execution. STOP is also a real opcode, so a
+    // mid-stream STOP will split the window — acceptable for frequency stats.
     public const Instruction Reset = Instruction.STOP;
 
     private const ulong TwoGramBitMask = (255UL << 8) | 255UL;

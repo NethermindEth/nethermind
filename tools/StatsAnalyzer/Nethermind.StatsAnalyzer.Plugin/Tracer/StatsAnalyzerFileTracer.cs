@@ -43,12 +43,7 @@ public abstract class StatsAnalyzerFileTracer<TxTrace, TxTracer>(
     private long _initialBlock;
     private Task _lastTask = Task.CompletedTask;
     protected TxTracer Tracer = tracer;
-    // Per-block flag set in StartNewBlockTrace. When true, this block is being
-    // processed under parallel-BAL execution and the per-tx tracer must short-
-    // circuit; the file write at EndBlockTrace is also suppressed. See
-    // tools/StatsAnalyzer/EIP-7928-references.md for the gating rationale.
     private bool _skipThisBlock;
-    // One-shot log on the first skipped block — avoids per-block log spam.
     private bool _loggedFirstSkip;
 
     protected abstract void ResetBufferAndTracer();
@@ -88,11 +83,8 @@ public abstract class StatsAnalyzerFileTracer<TxTrace, TxTracer>(
         _pos = (_pos + 1) % _writeFreq;
         if (_pos != 0) return;
 
-        // Chain via ContinueWith so the runtime starts the queued task itself
-        // once its antecedent completes — never sits in Created state. The
-        // earlier `new Task(...).Start()` pattern raced with Wait/WaitAll when
-        // the starting continuation had not yet been picked up by the
-        // ThreadPool.
+        // Chain via ContinueWith so the runtime starts the task itself rather
+        // than leaving it in Created state where Wait/WaitAll would race.
         Task previous = _lastTask;
         Task task = previous.ContinueWith(t =>
         {
@@ -133,14 +125,9 @@ public abstract class StatsAnalyzerFileTracer<TxTrace, TxTracer>(
         base.StartNewBlockTrace(block);
         long number = block.Header.Number;
 
-        // Approximate Nethermind's authoritative
-        //   BlockAccessListManager.ParallelExecutionEnabled =
-        //     Enabled && blocksConfig.ParallelExecution && !_isBuilding && suggestedBlock.BlockAccessList is not null;
-        // The two missing pieces (Enabled, !_isBuilding) are subtractive: when
-        // false they force sequential exec, so this approximation never
-        // under-skips and only over-skips in narrow benign cases (e.g. local
-        // block production with a pre-populated BAL body — we lose stats for
-        // those blocks, no correctness break).
+        // Approximates BlockAccessListManager.ParallelExecutionEnabled; missing
+        // clauses are subtractive, so this never under-skips (no race), only
+        // over-skips a few benign cases (e.g. local block production).
         _skipThisBlock = _blocksConfig.ParallelExecution && block.BlockAccessList is not null;
         Tracer.SetSkip(_skipThisBlock);
 
@@ -154,17 +141,12 @@ public abstract class StatsAnalyzerFileTracer<TxTrace, TxTracer>(
                     "(see tools/StatsAnalyzer/EIP-7928-references.md).");
                 _loggedFirstSkip = true;
             }
-            // Don't anchor _initialBlock/_currentBlock on skipped blocks so the
-            // emitted (initialBlockNumber, currentBlockNumber) range reflects only
-            // blocks the analyzer actually recorded.
+            // Skipped blocks don't advance the recorded range.
             return;
         }
 
-        // _initialBlock == 0 means "unset" rather than "genesis"; on a
-        // fresh node this means the genesis block itself does not anchor
-        // _initialBlock — the first non-genesis block the tracer sees does.
-        // Acceptable for the analyzer's accounting (the first traced block
-        // is the start of the trace), but document the off-by-one.
+        // 0 is the "unset" sentinel; genesis won't anchor _initialBlock, the
+        // first non-genesis block traced does.
         if (_initialBlock == 0)
             _initialBlock = number;
         _currentBlock = number;
@@ -200,8 +182,6 @@ public abstract class StatsAnalyzerFileTracer<TxTrace, TxTracer>(
 
         ct.ThrowIfCancellationRequested();
 
-        // FileMode.Create truncates the file in a single open via the injected
-        // IFileSystem, so MockFileSystem-backed tests see the truncation.
         using (Stream file = fileSystem.File.Open(fileName, FileMode.Create, FileAccess.Write))
         using (Utf8JsonWriter jsonWriter = new(file))
         {

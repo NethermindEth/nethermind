@@ -23,10 +23,6 @@ public class StatsAnalyzerBuilder : Builder
 
     public PatternStatsAnalyzer Build()
     {
-        // Check.ThrowIfNull throws on null/missing — the explicit !.HasValue
-        // ladder that used to follow was dead code (and contained a copy-paste
-        // error that reused 'Buffer size for sketches must be set.' for the
-        // _minSupport branch).
         Check.ThrowIfNull(_bufferSizeForSketches, nameof(_bufferSizeForSketches));
         Check.ThrowIfNull(_minSupport, nameof(_minSupport));
         Check.ThrowIfNull(_capacity, nameof(_capacity));

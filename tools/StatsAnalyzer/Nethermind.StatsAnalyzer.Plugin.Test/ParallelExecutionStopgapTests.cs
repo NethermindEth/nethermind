@@ -50,9 +50,6 @@ public class ParallelExecutionStopgapTests : VirtualMachineTestsBase
     [Test]
     public void RecordsBlock_WhenSequentialBalConfig()
     {
-        // BAL is present on the block (Amsterdam+ shape) but operator has
-        // disabled parallel execution: stopgap should NOT trigger, plugin
-        // records normally.
         IBlocksConfig blocksConfig = new BlocksConfig { ParallelExecution = false };
         (string fileName, PatternAnalyzerFileTracer tracer) = BuildTracer(blocksConfig, "seq.json");
 
@@ -64,9 +61,6 @@ public class ParallelExecutionStopgapTests : VirtualMachineTestsBase
     [Test]
     public void RecordsBlock_WhenPreAmsterdamFixture()
     {
-        // Config allows parallel exec but block has no BAL body
-        // (pre-Amsterdam / genesis / sync path that skipped BAL gen).
-        // Stopgap recognizes "no BAL → not parallel" and records normally.
         IBlocksConfig blocksConfig = new BlocksConfig { ParallelExecution = true };
         (string fileName, PatternAnalyzerFileTracer tracer) = BuildTracer(blocksConfig, "pre-amsterdam.json");
 
@@ -78,26 +72,18 @@ public class ParallelExecutionStopgapTests : VirtualMachineTestsBase
     [Test]
     public void SkipsBlock_WhenParallelBalActive()
     {
-        // Both gating conditions met: parallel exec config on AND BAL body
-        // present. Stopgap fires; file untouched, analyzer state unchanged.
         IBlocksConfig blocksConfig = new BlocksConfig { ParallelExecution = true };
         (string fileName, PatternAnalyzerFileTracer tracer) = BuildTracer(blocksConfig, "parallel.json");
 
         RunSingleBlock(tracer, bal: new BlockAccessList());
 
-        // The file was seeded with InitialFileContent in BuildTracer; since
-        // EndBlockTrace skipped the write, it must still hold that exact text.
+        // Skipped write must leave the seed content intact.
         Assert.That(_fileSystem.File.ReadAllText(fileName), Is.EqualTo(InitialFileContent));
     }
 
     [Test]
     public void SkipFlagResetsAcrossBlocks()
     {
-        // The stopgap must not leak skip-state across blocks. Drive
-        // StartNewBlockTrace directly with successive BAL settings and
-        // observe the per-tx tracer's Skip via the IStatsAnalyzerTxTracer
-        // contract. Bypasses the EVM and the file-write pipeline so the
-        // regression is independent of unrelated tracer plumbing.
         IBlocksConfig cfg = new BlocksConfig { ParallelExecution = true };
         (string _, PatternAnalyzerFileTracer tracer) = BuildTracer(cfg, "gating.json");
 
@@ -126,9 +112,7 @@ public class ParallelExecutionStopgapTests : VirtualMachineTestsBase
         return block;
     }
 
-    // Reflectively reads the per-tx tracer's Skip field on the file tracer's
-    // current Tracer. Avoids growing public/internal surface for a test that's
-    // a stopgap-era safety net (the proper parallel-safe redesign retires it).
+    // Reflective read avoids widening public/internal surface for tests.
     private static bool ReadTracerSkip(PatternAnalyzerFileTracer tracer)
     {
         FieldInfo tracerField =
@@ -166,7 +150,6 @@ public class ParallelExecutionStopgapTests : VirtualMachineTestsBase
 
     private void RunSingleBlock(PatternAnalyzerFileTracer tracer, BlockAccessList? bal)
     {
-        // PUSH1 PUSH1 PUSH1 — yields the SingleBlockExpected JSON when traced.
         byte[] code = Prepare.EvmCode.PushData(0).PushData(0).PushData(0).Done;
         ForkActivation forkActivation = MainnetSpecProvider.PragueActivation;
         (Block? block, Transaction _) = PrepareTx(forkActivation, 100000, code);

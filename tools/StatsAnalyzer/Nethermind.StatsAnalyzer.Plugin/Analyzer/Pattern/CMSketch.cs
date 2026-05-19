@@ -147,10 +147,8 @@ public class CmSketch(int numberOfhashFunctions, int numberOfBuckets)
 
     public CmSketch Reset()
     {
-        // Snapshot the current state so callers can keep querying historical data.
-        // Seeds MUST NOT be regenerated: QueryAllSketches sums counts across the
-        // sketch buffer, which only makes sense when every sketch hashes 'item'
-        // to the same cell — i.e. shares the same seeds.
+        // Seeds must be cloned, not regenerated: QueryAllSketches sums counts
+        // across the buffer and requires all sketches to share the same seeds.
         CmSketch cms = new((ulong[])_sketch.Clone(), (long[])_seeds.Clone(), _seen,
                                numberOfhashFunctions, numberOfBuckets);
         _sketch = new ulong[numberOfBuckets * numberOfhashFunctions];
@@ -162,7 +160,6 @@ public class CmSketch(int numberOfhashFunctions, int numberOfBuckets)
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private ulong ComputeHash(ulong value, int hasher)
     {
-        // Ideally more families of hash functions should go here:
         switch (hasher)
         {
             default:

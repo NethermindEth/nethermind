@@ -142,8 +142,7 @@ public class CmSketchTests
     [TestCase(4, 10, 100)]
     public void validate_confidence(int hashFunctions, int buckets, int numberOfItemsInStream = 1)
     {
-        // Seeded for reproducibility — an unseeded Random produced different
-        // empirical breach counts each run, making the assertion below flaky.
+        // Seeded for reproducibility — empirical breach counts vary across runs.
         Random random = new(42);
         ulong randomUlong;
 
@@ -161,13 +160,9 @@ public class CmSketchTests
 
             for (int i = 0; i < numberOfItemsInStream; i++)
             {
-                // for each item in stream select a random ulong
                 randomUlong = (ulong)random.NextInt64(long.MinValue, long.MaxValue);
-                // for each item in stream select a random update Qty
                 int randomUpdate = random.Next(1, 100);
-                // make n-random updates for random ulong
                 make_n_updates(randomUlong, randomUpdate, sketch);
-                // store the actual update qty in the dictionary
                 actualCounts[randomUlong] = (ulong)randomUpdate +
                                             CollectionsMarshal.GetValueRefOrAddDefault(actualCounts, randomUlong,
                                                 out _);

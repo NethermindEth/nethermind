@@ -47,9 +47,8 @@ public class PatternStatsAnalyzer : TopNAnalyzer<Instruction, ulong, PatternStat
         }
         else
         {
-            // buffer is full we reuse sketches
             _currentSketchBufferSize = (_currentSketchBufferSize + 1) % _sketchBuffer.Length;
-            _sketchResetError *= 2; // double the error
+            _sketchResetError *= 2;
         }
     }
 
@@ -81,7 +80,6 @@ public class PatternStatsAnalyzer : TopNAnalyzer<Instruction, ulong, PatternStat
     }
 
 
-    // Call ProcessTopN after adding instruction(s).
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public override unsafe void Add(Instruction instruction)
     {

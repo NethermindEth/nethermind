@@ -45,13 +45,9 @@ public class StatsAnalyzerPlugin(IPatternAnalyzerConfig patternAnalyzerConfig, I
         {
             if (_logger.IsInfo) _logger.Info("Setting up Stats Analyzer");
 
-            // Pattern/Call analyzers share mutable state across transactions and
-            // are unsafe when parallel BAL execution is active (Amsterdam+ blocks
-            // with Blocks.ParallelExecution=true). The block tracer skips
-            // recording on parallel-BAL blocks; warn the operator once at startup
-            // so the partial coverage is not surprising. See
-            // tools/StatsAnalyzer/EIP-7928-references.md for the parallel-safe
-            // redesign sketch.
+            // Analyzers share mutable state across transactions and are unsafe
+            // under parallel BAL execution; the block tracer skips recording on
+            // such blocks, so warn once that coverage will be partial.
             if (_blocksConfig.ParallelExecution && _logger.IsWarn)
             {
                 _logger.Warn(

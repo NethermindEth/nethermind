@@ -21,10 +21,6 @@ public abstract class StatsAnalyzerTxTracer<TData, TStat, TTrace>(
     protected readonly IStatsAnalyzer<TData, TStat> StatsAnalyzer = statsAnalyzer;
     protected StatsProcessingQueue<TData, TStat>? Queue = new(buffer, statsAnalyzer, ct);
 
-    // Set by the owning block-tracer at StartNewBlockTrace; when true, per-tx
-    // hot paths (StartOperation, ReportAction) must short-circuit. Skip-state
-    // applies for the duration of one block; the block-tracer re-evaluates on
-    // each StartNewBlockTrace and forwards via SetSkip.
     protected bool Skip;
 
     public void SetSkip(bool skip) => Skip = skip;
