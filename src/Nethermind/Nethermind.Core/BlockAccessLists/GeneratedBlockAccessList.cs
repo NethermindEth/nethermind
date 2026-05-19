@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using System.Text;
 using Nethermind.Core.Collections;
@@ -11,13 +12,29 @@ namespace Nethermind.Core.BlockAccessLists;
 /// Block-level access list assembled by merging <see cref="BlockAccessListAtIndex"/> contributions
 /// (one per transaction) into per-account, append-only collections. Ready for RLP encoding.
 /// </summary>
+/// <remarks>
+/// Backed by a plain <see cref="Dictionary{TKey, TValue}"/> keyed by address; ordering is deferred
+/// to the encoder via <see cref="GetSortedAccountChanges"/> rather than paid as O(log n) on every
+/// per-tx merge. EIP-7928 only requires address-sorted accounts on the wire, so internal iteration
+/// (validation, item counting) walks unsorted.
+/// </remarks>
 public class GeneratedBlockAccessList
 {
-    private readonly SortedDictionary<Address, GeneratedAccountChanges> _accountChanges
-        = new(GenericComparer.GetOptimized<Address>());
+    private readonly Dictionary<Address, GeneratedAccountChanges> _accountChanges = new();
 
     public EnumerableWithCount<GeneratedAccountChanges> AccountChanges
         => new(_accountChanges.Values, _accountChanges.Values.Count);
+
+    /// <summary>
+    /// Address-sorted snapshot of the account-change values. Used by the RLP encoder, which
+    /// requires accounts in ascending-by-address order per EIP-7928.
+    /// </summary>
+    public GeneratedAccountChanges[] GetSortedAccountChanges()
+    {
+        GeneratedAccountChanges[] sorted = [.. _accountChanges.Values];
+        Array.Sort(sorted, static (a, b) => a.Address.CompareTo(b.Address));
+        return sorted;
+    }
 
     public bool HasAccount(Address address) => _accountChanges.ContainsKey(address);
 
@@ -69,7 +86,7 @@ public class GeneratedBlockAccessList
     {
         StringBuilder sb = new();
         sb.AppendLine($"GeneratedBlockAccessList (Accounts={_accountChanges.Count})");
-        foreach (GeneratedAccountChanges ac in _accountChanges.Values)
+        foreach (GeneratedAccountChanges ac in GetSortedAccountChanges())
         {
             sb.Append("  ").AppendLine(ac.ToString());
         }
