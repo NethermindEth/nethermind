@@ -72,6 +72,13 @@ internal sealed partial class StateCompositionService
             Metrics.StateCompDiffsSinceBaseline = _stateHolder.DiffsSinceBaseline;
             Metrics.StateCompDiffsApplied++;
 
+            // Periodic flush bounds rescan loss to ≤ SnapshotIntervalDiffs blocks
+            // if a hard kill skips StopAsync. Guard against 0 — that disables the
+            // periodic flush entirely (only the shutdown flush persists).
+            if (_config.SnapshotIntervalDiffs > 0 &&
+                _stateHolder.DiffsSinceBaseline % _config.SnapshotIntervalDiffs == 0)
+                WriteSnapshotForHead(updated, head.Number, head.Header.StateRoot);
+
             if (_logger.IsDebug)
                 _logger.Debug($"StateComposition: incremental diff applied at block {head.Number}, " +
                               $"accounts={updated.AccountsTotal}, slots={updated.StorageSlotsTotal}");
