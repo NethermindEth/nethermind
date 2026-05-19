@@ -64,4 +64,13 @@ public interface IBlobArenaManager : IDisposable
     /// crash where Complete never ran.
     /// </summary>
     void SweepUnreferenced();
+
+    /// <summary>
+    /// Called by <see cref="PersistedSnapshots.PersistedSnapshot.CleanUp"/> after it has
+    /// released its lease on a blob file. If only the manager's slot lease remains and
+    /// the file's frontier is non-zero, reset the frontier to 0 so the bytes gauge drops
+    /// and the file is reusable for packing from offset 0. No-op when the file still
+    /// has external lessees, or when called against the null manager.
+    /// </summary>
+    void TryResetOrphanedFrontier(BlobArenaFile file);
 }

@@ -588,7 +588,16 @@ public sealed class PersistedSnapshot : RefCountingDisposable
         // CleanUp. GetFile is a lock-free array read; the lease we acquired at construction
         // kept the slot alive until now.
         foreach (ushort id in GetRefIdsEnumerator())
-            _blobManager.GetFile(id).Dispose();
+        {
+            BlobArenaFile file = _blobManager.GetFile(id);
+            file.Dispose();
+            // Opportunistic reclaim: if we were the last external lessee, signal the
+            // manager to drop the file's frontier back to 0 so BlobAllocatedBytesByTier
+            // reflects "no live NodeRef into this file" and the file becomes packing-
+            // reusable from offset 0. The manager re-validates under its own lock.
+            if (file.HasOnlyManagerLease)
+                _blobManager.TryResetOrphanedFrontier(file);
+        }
         _reservation.Dispose();
 
         Metrics.ActivePersistedSnapshotCountByTier.AddOrUpdate(Tier,

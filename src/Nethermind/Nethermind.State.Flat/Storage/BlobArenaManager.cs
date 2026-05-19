@@ -248,6 +248,41 @@ public sealed class BlobArenaManager : IBlobArenaManager
         }
     }
 
+    /// <inheritdoc/>
+    public void TryResetOrphanedFrontier(BlobArenaFile file)
+    {
+        lock (_lock)
+        {
+            if (_disposed) return;
+            // Slot may already have been replaced (Dispose nulls it out).
+            if (_files[file.BlobArenaId] != file) return;
+            // Re-check inside the lock — a racing TryLeaseFile or CreateWriter could
+            // have bumped the refcount in the window between the caller's
+            // HasOnlyManagerLease probe and us taking the lock.
+            if (!file.HasOnlyManagerLease) return;
+            long prev = file.ReportedFrontier;
+            if (prev == 0)
+            {
+                // Already at 0; make sure it's a packing candidate and exit.
+                _mutableFiles.Add(file.BlobArenaId);
+                return;
+            }
+
+            // Take the file out of the packing pool BEFORE mutating Frontier. Strictly
+            // redundant with _lock + the HasOnlyManagerLease re-check (CreateWriter also
+            // takes _lock), but keeps the "files in _mutableFiles have a stable Frontier"
+            // invariant locally obvious. Re-added at frontier=0 below.
+            _mutableFiles.Remove(file.BlobArenaId);
+
+            file.Frontier = 0;
+            file.ReportedFrontier = 0;
+            Metrics.BlobAllocatedBytesByTier.AddOrUpdate(_tier,
+                static (_, _) => 0L, static (_, b, r) => Math.Max(0, b - r), prev);
+
+            _mutableFiles.Add(file.BlobArenaId);
+        }
+    }
+
     public void Dispose()
     {
         lock (_lock)

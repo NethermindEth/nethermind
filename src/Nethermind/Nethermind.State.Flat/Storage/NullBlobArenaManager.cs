@@ -29,5 +29,6 @@ public sealed class NullBlobArenaManager : IBlobArenaManager
     public BlobArenaFile GetFile(ushort blobArenaId) =>
         throw new InvalidOperationException("NullBlobArenaManager has no registered files.");
     public void SweepUnreferenced() { }
+    public void TryResetOrphanedFrontier(BlobArenaFile file) { }
     public void Dispose() { }
 }

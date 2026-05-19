@@ -230,6 +230,44 @@ public class PersistedSnapshotTests
             Metrics.ActivePersistedSnapshotCountByTier.TryGetValue(tier, out long c) ? c : 0;
     }
 
+    [Test]
+    public void BlobArena_FrontierResets_WhenLastPersistedSnapshotDisposes()
+    {
+        StateId from = new(0, Keccak.EmptyTreeHash);
+        StateId to = new(1, Keccak.Compute("reset"));
+
+        Snapshot inMem = new(from, to, new SnapshotContent(), _resourcePool, ResourcePool.Usage.MainBlockProcessing);
+        TreePath path = new(Keccak.Compute("p"), 8);
+        inMem.Content.StateNodes[path] = new TrieNode(NodeType.Leaf, [0xC2, 0x80, 0x80]);
+
+        long baselineBytes = Bytes(PersistedSnapshotTier.Small);
+        // Build writes the trie-node RLPs into _blobs; afterBuild captures that growth.
+        byte[] data = PersistedSnapshotBuilderTestExtensions.Build(inMem, _blobs);
+        long afterBuild = Bytes(PersistedSnapshotTier.Small);
+        Assert.That(afterBuild, Is.GreaterThan(baselineBytes), "Building a snapshot with trie nodes should grow blob-allocated bytes");
+
+        // Inline construction (skip LeaseBlobIdsFromHsst): the helper acquires an extra
+        // lease per blob id that other tests rely on but that this test must not leave
+        // dangling, otherwise the orphan-reset would correctly refuse to fire.
+        using (ArenaWriter writer = _memArena.CreateWriter(data.Length))
+        {
+            Span<byte> span = writer.GetWriter().GetSpan(data.Length);
+            data.CopyTo(span);
+            writer.GetWriter().Advance(data.Length);
+            (_, ArenaReservation reservation) = writer.Complete();
+            PersistedSnapshot persisted = new(from, to, reservation, _blobs, PersistedSnapshotTier.Small);
+            persisted.Dispose();
+        }
+
+        // After the last external lease drops, the manager's TryResetOrphanedFrontier
+        // should have reset the file's frontier and pushed the delta back to the gauge.
+        Assert.That(Bytes(PersistedSnapshotTier.Small), Is.EqualTo(baselineBytes),
+            "Blob-allocated bytes must drop back to baseline once the last referencing snapshot is disposed");
+
+        static long Bytes(PersistedSnapshotTier tier) =>
+            Metrics.BlobAllocatedBytesByTier.TryGetValue(tier, out long c) ? c : 0;
+    }
+
     [TestCase((ushort)0, 0)]
     [TestCase((ushort)42, 12345)]
     [TestCase(ushort.MaxValue, int.MaxValue)]
