@@ -12,7 +12,6 @@ using Nethermind.Core.Specs;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
 using Nethermind.Serialization.Rlp.Eip7928;
-using static Nethermind.State.BlockAccessListBasedWorldState;
 
 namespace Nethermind.Consensus.Processing;
 
