@@ -30,15 +30,18 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           IS_FORK: ${{ github.event.pull_request.head.repo.fork }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
           if [ "$IS_FORK" != "true" ]; then
             echo "run=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
-          # Fork PR: only run if at least one approval exists
+          # Fork PR: only run if a trusted reviewer (OWNER/MEMBER/COLLABORATOR) has
+          # approved the *current* head SHA. Stale approvals on earlier commits do
+          # NOT count.
           approved=$(gh api "repos/${{ github.repository }}/pulls/${PR_NUMBER}/reviews" \
-            --jq '[.[] | select(.state == "APPROVED")] | length > 0')
+            --jq "[.[] | select(.state == \"APPROVED\" and .commit_id == \"${HEAD_SHA}\" and (.author_association == \"OWNER\" or .author_association == \"MEMBER\" or .author_association == \"COLLABORATOR\"))] | length > 0")
           echo "run=$approved" >> "$GITHUB_OUTPUT"
 
   sync-hoodi:
