@@ -332,6 +332,39 @@ public class StartupTests
         Assert.That(Startup.IsTrustedSource(IPAddress.Parse("100.128.1.2"), networks), Is.False);
     }
 
+    [Test]
+    public void TrustedEngineNewPayloadPost_UsesHttpFastLaneAndKeepsAuthenticatedUrl()
+    {
+        JsonRpcUrl engineUrl = CreateUrl(isAuthenticated: true);
+        DefaultHttpContext ctx = CreateFastLaneContext(engineUrl.Port);
+
+        bool usesFastLane = Startup.TryGetTrustedHttpJsonRpcUrl(ctx, new TestJsonRpcUrlCollection(engineUrl), [], out JsonRpcUrl? resolvedUrl);
+
+        Assert.That(usesFastLane, Is.True);
+        Assert.That(resolvedUrl, Is.SameAs(engineUrl));
+        Assert.That(resolvedUrl!.IsAuthenticated, Is.True);
+    }
+
+    [TestCase("GET", "application/json", "127.0.0.1", RpcEndpoint.Http, false)]
+    [TestCase("POST", "text/plain", "127.0.0.1", RpcEndpoint.Http, false)]
+    [TestCase("POST", "application/json", "8.8.8.8", RpcEndpoint.Http, false)]
+    [TestCase("POST", "application/json", "127.0.0.1", RpcEndpoint.Ws, false)]
+    [TestCase("POST", "application/json", "127.0.0.1", RpcEndpoint.Http, true)]
+    public void TrustedHttpFastLane_RequiresTrustedJsonHttpPost(
+        string method,
+        string contentType,
+        string remoteIp,
+        RpcEndpoint endpoint,
+        bool expected)
+    {
+        JsonRpcUrl jsonRpcUrl = CreateUrl(endpoint: endpoint);
+        DefaultHttpContext ctx = CreateFastLaneContext(jsonRpcUrl.Port, method, contentType, IPAddress.Parse(remoteIp));
+
+        bool usesFastLane = Startup.TryGetTrustedHttpJsonRpcUrl(ctx, new TestJsonRpcUrlCollection(jsonRpcUrl), [], out _);
+
+        Assert.That(usesFastLane, Is.EqualTo(expected));
+    }
+
     private static async Task<string> ProcessJsonRpcRequest(
         string request,
         bool setContentLength = true,
@@ -413,6 +446,34 @@ public class StartupTests
         return request.ToString();
     }
 
+    private static DefaultHttpContext CreateFastLaneContext(
+        int localPort,
+        string method = "POST",
+        string contentType = "application/json",
+        IPAddress? remoteIp = null)
+    {
+        const string request = "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"engine_newPayloadV4\",\"params\":[null,[],null,null]}";
+
+        DefaultHttpContext ctx = new()
+        {
+            Request =
+            {
+                Method = method,
+                ContentType = contentType,
+                Body = new MemoryStream(Encoding.UTF8.GetBytes(request))
+            }
+        };
+
+        ctx.Connection.LocalPort = localPort;
+        ctx.Connection.RemoteIpAddress = remoteIp ?? IPAddress.Loopback;
+        return ctx;
+    }
+
+    private static JsonRpcUrl CreateUrl(
+        RpcEndpoint endpoint = RpcEndpoint.Http,
+        bool isAuthenticated = false) =>
+        new("http", "127.0.0.1", 8551, endpoint, isAuthenticated, [ModuleType.Engine]);
+
     private sealed class ProbeBlobStreamableResult : IStreamableResult, IReadOnlyList<BlobAndProofV2?>
     {
         public int WriteCount { get; private set; }
@@ -432,5 +493,19 @@ public class StartupTests
             throw new InvalidOperationException("Generic blob serialization path was used.");
 
         System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => GetEnumerator();
+    }
+
+    private sealed class TestJsonRpcUrlCollection : Dictionary<int, JsonRpcUrl>, IJsonRpcUrlCollection
+    {
+        private readonly string[] _urls;
+
+        public TestJsonRpcUrlCollection(JsonRpcUrl url)
+            : base(capacity: 1)
+        {
+            Add(url.Port, url);
+            _urls = [url.ToString()];
+        }
+
+        public string[] Urls => _urls;
     }
 }

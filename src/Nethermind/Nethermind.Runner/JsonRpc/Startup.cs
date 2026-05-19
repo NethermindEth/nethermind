@@ -171,11 +171,7 @@ public class Startup : IStartup
         // inside the handler for authenticated endpoints.
         app.Use(async (ctx, next) =>
         {
-            if (ctx.Request.Method != "POST" ||
-                !(ctx.Request.ContentType?.Contains("application/json") ?? false) ||
-                !jsonRpcUrlCollection.TryGetValue(ctx.Connection.LocalPort, out JsonRpcUrl jsonRpcUrl) ||
-                !jsonRpcUrl.RpcEndpoint.HasFlag(RpcEndpoint.Http) ||
-                !IsTrustedSource(ctx.Connection.RemoteIpAddress, additionalTrustedNetworks))
+            if (!TryGetTrustedHttpJsonRpcUrl(ctx, jsonRpcUrlCollection, additionalTrustedNetworks, out JsonRpcUrl? jsonRpcUrl))
             {
                 await next();
                 return;
@@ -286,6 +282,25 @@ public class Startup : IStartup
     /// <param name="remoteIp">Request source</param>
     private static bool IsLocalhost(IPAddress remoteIp)
         => IPAddress.IsLoopback(remoteIp) || remoteIp.Equals(IPAddress.IPv6Loopback);
+
+    internal static bool TryGetTrustedHttpJsonRpcUrl(
+        HttpContext ctx,
+        IJsonRpcUrlCollection jsonRpcUrlCollection,
+        TrustedCidr[] additionalTrustedNetworks,
+        [NotNullWhen(true)] out JsonRpcUrl? jsonRpcUrl)
+    {
+        if (ctx.Request.Method == "POST" &&
+            (ctx.Request.ContentType?.Contains("application/json") ?? false) &&
+            jsonRpcUrlCollection.TryGetValue(ctx.Connection.LocalPort, out jsonRpcUrl) &&
+            jsonRpcUrl.RpcEndpoint.HasFlag(RpcEndpoint.Http) &&
+            IsTrustedSource(ctx.Connection.RemoteIpAddress, additionalTrustedNetworks))
+        {
+            return true;
+        }
+
+        jsonRpcUrl = null;
+        return false;
+    }
 
     internal static bool IsTrustedSource(IPAddress? remoteIp, TrustedCidr[] additionalTrustedNetworks)
     {
