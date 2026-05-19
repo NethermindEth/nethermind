@@ -6,10 +6,13 @@ using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using Nethermind.Core;
+using Nethermind.Core.BlockAccessLists;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Threading;
 using Nethermind.Db;
 using Nethermind.Evm.State;
+using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Trie;
 
@@ -32,10 +35,13 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
     // The sequence id is for stopping trie warmer for doing work while committing. Incrementing this value invalidates
     // tasks within the trie warmer's ring buffer.
-    private int _hintSequenceId = 0;
+    private volatile int _hintSequenceId = 0;
     private int _outstandingWarmups = 0;
     private StateId _currentStateId;
-    internal bool _pausePrewarmer = false;
+    internal volatile bool _pausePrewarmer = false;
+
+    private CancellationTokenSource? _hintBalCts;
+    private Task? _hintBalTask;
 
     public FlatWorldStateScope(
         StateId currentStateId,
@@ -80,9 +86,25 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     public void Dispose()
     {
         if (Interlocked.CompareExchange(ref _isDisposed, true, false)) return;
+        CancelHintBal();
         WaitForOutstandingWarmups();
         _snapshotBundle.Dispose();
         _warmer.OnExitScope();
+    }
+
+    private void CancelHintBal()
+    {
+        _hintBalCts?.Cancel();
+        try { _hintBalTask?.GetAwaiter().GetResult(); }
+        catch (OperationCanceledException) { }
+        catch (Exception ex)
+        {
+            ILogger logger = _logManager.GetClassLogger<FlatWorldStateScope>();
+            if (logger.IsError) logger.Error("HintBal background task faulted during cancel/drain", ex);
+        }
+        _hintBalCts?.Dispose();
+        _hintBalCts = null;
+        _hintBalTask = null;
     }
 
     // Exposed for tests to observe when the wait loop is entered.
@@ -139,6 +161,143 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         }
     }
 
+    public Task HintBal(BlockAccessList bal, IWorldStateScopeProvider.IAsyncBalReaderSink? sink = null)
+    {
+        AccountChanges[]? accountChanges = bal.AccountChangesByAddressOrNull;
+        if (accountChanges is null || accountChanges.Length == 0) return Task.CompletedTask;
+        int accountCount = accountChanges.Length;
+
+        CancelHintBal();
+
+        _hintBalCts = new CancellationTokenSource();
+        CancellationToken token = _hintBalCts.Token;
+        int snapshot = _hintSequenceId;
+
+        return _hintBalTask = Task.Run(() =>
+        {
+            ParallelOptions parallelOptions = new() { CancellationToken = token };
+
+            Account?[]? accounts = sink is null ? null : new Account?[accountCount];
+            int[]? selfDestructIdxs = sink is null ? null : new int[accountCount];
+
+            try
+            {
+                // Phase 1: trie warmup + GetAccount + sink.OnAccountRead. Sink slot reads are
+                // deferred to phase 2 so one huge account doesn't bottleneck a single worker.
+                Parallel.For(0, accountCount, parallelOptions, (i) =>
+                {
+                    if (token.IsCancellationRequested || _hintSequenceId != snapshot || _pausePrewarmer) return;
+
+                    AccountChanges ac = accountChanges[i];
+                    Address address = ac.Address;
+
+                    if (_snapshotBundle.ShouldQueuePrewarm(address)
+                        && _warmer.PushAddressJob(this, address, snapshot))
+                        Interlocked.Increment(ref _outstandingWarmups);
+
+                    SlotChanges[]? storageChanges = ac.StorageChangesOrNull;
+                    int storageChangeCount = storageChanges?.Length ?? 0;
+
+                    Account? account = sink is null && storageChangeCount == 0
+                        ? null
+                        : _snapshotBundle.GetAccount(address);
+
+                    if (sink is not null && sink.StillNeeded(address, out _))
+                        sink.OnAccountRead(address, account);
+
+                    if (account is null) return;
+                    Hash256 storageRoot = account.StorageRoot ?? Keccak.EmptyTreeHash;
+                    if (storageRoot == Keccak.EmptyTreeHash) return;
+
+                    if (storageChanges is not null && storageChangeCount > 0)
+                    {
+                        FlatStorageTree storageWarmer = new(
+                            this,
+                            _warmer,
+                            _snapshotBundle,
+                            _configuration,
+                            _concurrencyQuota,
+                            storageRoot,
+                            address,
+                            _logManager);
+
+                        foreach (SlotChanges slotChanges in storageChanges)
+                        {
+                            UInt256 key = slotChanges.Key;
+                            if (_snapshotBundle.ShouldQueuePrewarm(address, key)
+                                && _warmer.PushSlotJobMpmc(storageWarmer, key, snapshot))
+                                Interlocked.Increment(ref _outstandingWarmups);
+                        }
+                    }
+
+                    if (accounts is not null)
+                    {
+                        accounts[i] = account;
+                        selfDestructIdxs![i] = _snapshotBundle.DetermineSelfDestructSnapshotIdx(address);
+                    }
+                });
+
+                if (sink is not null) RunSinkSlotReads(accountChanges, accounts!, selfDestructIdxs!, sink, parallelOptions);
+            }
+            catch (OperationCanceledException) { }
+        }, token);
+    }
+
+    private void RunSinkSlotReads(
+        AccountChanges[] accountChanges,
+        Account?[] accounts,
+        int[] selfDestructIdxs,
+        IWorldStateScopeProvider.IAsyncBalReaderSink sink,
+        ParallelOptions parallelOptions)
+    {
+        int totalSlots = 0;
+        for (int i = 0; i < accountChanges.Length; i++)
+        {
+            if (accounts[i] is null) continue;
+            totalSlots += (accountChanges[i].StorageChangesOrNull?.Length ?? 0)
+                       + (accountChanges[i].SortedStorageReadsOrNull?.Length ?? 0);
+        }
+
+        if (totalSlots == 0) return;
+
+        using ArrayPoolList<(Address Address, int SelfDestructIdx, UInt256 Slot)> jobs = new(totalSlots, totalSlots);
+        int idx = 0;
+        for (int i = 0; i < accountChanges.Length; i++)
+        {
+            if (accounts[i] is null) continue;
+            AccountChanges ac = accountChanges[i];
+            Address address = ac.Address;
+            int selfDestructIdx = selfDestructIdxs[i];
+            SlotChanges[]? storageChanges = ac.StorageChangesOrNull;
+            UInt256[]? storageReads = ac.SortedStorageReadsOrNull;
+            if (storageChanges is not null)
+            {
+                foreach (SlotChanges slotChanges in storageChanges)
+                    jobs[idx++] = (address, selfDestructIdx, slotChanges.Key);
+            }
+            if (storageReads is not null)
+            {
+                foreach (UInt256 readKey in storageReads)
+                    jobs[idx++] = (address, selfDestructIdx, readKey);
+            }
+        }
+
+        Parallel.For(0, idx, parallelOptions, (j) =>
+        {
+            if (_pausePrewarmer) return;
+            (Address address, int selfDestructIdx, UInt256 slot) = jobs[j];
+            ReadSlotToSink(sink, address, in slot, selfDestructIdx);
+        });
+    }
+
+    private void ReadSlotToSink(IWorldStateScopeProvider.IAsyncBalReaderSink sink, Address address, in UInt256 slot, int selfDestructIdx)
+    {
+        StorageCell cell = new(address, in slot);
+        if (!sink.StillNeeded(in cell)) return;
+        byte[]? raw = _snapshotBundle.GetSlot(address, in slot, selfDestructIdx);
+        sink.OnStorageRead(in cell, raw is null || raw.Length == 0 ? StorageTree.ZeroBytes : raw);
+    }
+
     public IWorldStateScopeProvider.ICodeDb CodeDb { get; }
 
     public int HintSequenceId => _hintSequenceId; // Called by FlatStorageTree
@@ -186,8 +345,11 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         return storage;
     }
 
-    public IWorldStateScopeProvider.IWorldStateWriteBatch StartWriteBatch(int estimatedAccountNum) =>
-        new WriteBatch(this, estimatedAccountNum, _logManager.GetClassLogger<WriteBatch>());
+    public IWorldStateScopeProvider.IWorldStateWriteBatch StartWriteBatch(int estimatedAccountNum)
+    {
+        CancelHintBal();
+        return new WriteBatch(this, estimatedAccountNum, _logManager.GetClassLogger<WriteBatch>());
+    }
 
     public void Commit(long blockNumber)
     {

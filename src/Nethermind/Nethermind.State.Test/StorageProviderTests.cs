@@ -3,9 +3,11 @@
 
 using System;
 using System.Collections.Concurrent;
+using System.Threading.Tasks;
 using Autofac;
 using FluentAssertions;
 using Nethermind.Core;
+using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Resettables;
@@ -758,7 +760,7 @@ public class StorageProviderTests(bool useFlat)
 
             if (preBlockCaches is not null)
             {
-                scopeProvider = new PrewarmerScopeProvider(scopeProvider, preBlockCaches, populatePreBlockCache: true);
+                scopeProvider = new PrewarmerScopeProvider(scopeProvider, preBlockCaches, LimboLogs.Instance, populatePreBlockCache: true);
             }
 
             if (trackWrittenData)
@@ -815,6 +817,9 @@ public class StorageProviderTests(bool useFlat)
             public Account Get(Address address) => baseScope.Get(address);
 
             public void HintGet(Address address, Account account) => baseScope.HintGet(address, account);
+
+            public Task HintBal(BlockAccessList bal, IWorldStateScopeProvider.IAsyncBalReaderSink sink = null)
+                => baseScope.HintBal(bal, sink);
 
             public IWorldStateScopeProvider.ICodeDb CodeDb => baseScope.CodeDb;
 
