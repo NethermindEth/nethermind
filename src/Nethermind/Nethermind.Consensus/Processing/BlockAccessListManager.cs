@@ -100,7 +100,12 @@ public partial class BlockAccessListManager(
     /// </summary>
     public bool ForceMaterializeGeneratedBlockAccessList { get; set; }
 
-    private bool _verifyOnly;
+    // Non-null when the manager is materialising the per-block aggregate (always points at
+    // GeneratedBlockAccessList itself in that case); null on the verify-only path where the
+    // column-index validator stands in for the materialised list. Drives both the per-tx
+    // Merge target and the end-of-block encode + Keccak step.
+    private GeneratedBlockAccessList? _currentGeneratedBlockAccessList;
+    private bool VerifyOnly => _currentGeneratedBlockAccessList is null;
 
     public void PrepareForProcessing(Block suggestedBlock, IReleaseSpec spec, ProcessingOptions options)
     {
@@ -139,7 +144,7 @@ public partial class BlockAccessListManager(
             }
             _gasRemaining = suggestedBlock.GasUsed;
             _parentStateRoot = ParallelExecutionEnabled ? stateProvider.StateRoot : null;
-            _verifyOnly = ParallelExecutionEnabled && !ForceMaterializeGeneratedBlockAccessList;
+            _currentGeneratedBlockAccessList = (ParallelExecutionEnabled && !ForceMaterializeGeneratedBlockAccessList) ? null : GeneratedBlockAccessList;
         }
     }
 
@@ -221,7 +226,7 @@ public partial class BlockAccessListManager(
     private void MergeAndReturnBal(uint balIndex = 0)
         => _txProcessorWithWorldStateManager!.MergeAndReturnBal(
             balIndex,
-            _verifyOnly ? null : GeneratedBlockAccessList,
+            _currentGeneratedBlockAccessList,
             RegisterGeneratedSlice);
 
     private void CheckInitialized()
@@ -244,7 +249,7 @@ public partial class BlockAccessListManager(
         _generatedChargeableStorageReads = 0;
         _hasGeneratedValidationIndexUpdates = false;
         _hasGeneratedRequiredReadAccountMismatch = false;
-        _verifyOnly = false;
+        _currentGeneratedBlockAccessList = null;
     }
 
     [DoesNotReturn]

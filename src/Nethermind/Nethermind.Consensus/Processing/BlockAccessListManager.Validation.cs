@@ -169,7 +169,7 @@ public partial class BlockAccessListManager
         // index already carries everything the slow walk needs to produce per-account
         // diagnostics. Non-verify path keeps the legacy GBAL walk for the BAL recorder /
         // sequential build that relies on the materialised list.
-        if (_verifyOnly && _suggestedValidationIndex is not null && _generatedValidationIndex is not null)
+        if (VerifyOnly && _suggestedValidationIndex is not null && _generatedValidationIndex is not null)
         {
             SlowPathFromColumnIndex(block, index, validateStorageReads);
             return;

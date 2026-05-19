@@ -100,7 +100,7 @@ public partial class BlockAccessListManager
         CheckInitialized();
         MergeAndReturnBal(uint.MaxValue);
 
-        if (_verifyOnly)
+        if (VerifyOnly)
         {
             // IncrementalValidation only covered indices 0..txCount; the post-execution row
             // (txCount + 1) was just merged but not yet compared.
