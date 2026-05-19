@@ -18,6 +18,14 @@ namespace Nethermind.JsonRpc
         public static long JsonRpcRequestDeserializationFailures { get; set; }
 
         [CounterMetric]
+        [Description("Number of JSON RPC HTTP envelopes parsed on the direct UTF-8 path.")]
+        public static long JsonRpcDirectUtf8Parses;
+
+        [CounterMetric]
+        [Description("Number of JSON RPC HTTP documents parsed through the JsonDocument fallback path.")]
+        public static long JsonRpcJsonDocumentFallbackParses;
+
+        [CounterMetric]
         [Description("Number of JSON RPC requests that were invalid.")]
         public static long JsonRpcInvalidRequests { get; set; }
 

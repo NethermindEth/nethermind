@@ -52,6 +52,38 @@ public class JsonRpcProcessorTests(bool returnErrors)
         Assert.That(result[0].Response!.Id, Is.EqualTo(new JsonRpcId("840b55c4-18b0-431c-be1d-6d22198b53f2")));
     }
 
+    [Test]
+    public async Task Http_engine_newPayloadV4_keeps_envelope_and_params_on_direct_utf8_path()
+    {
+        string? capturedMethod = null;
+        bool capturedRawParams = false;
+        JsonValueKind capturedParamsKind = JsonValueKind.Undefined;
+        IJsonRpcService service = Substitute.For<IJsonRpcService>();
+        service.SendRequestAsync(Arg.Any<JsonRpcRequest>(), Arg.Any<JsonRpcContext>()).Returns(callInfo =>
+        {
+            JsonRpcRequest request = callInfo.Arg<JsonRpcRequest>();
+            capturedMethod = request.Method;
+            capturedRawParams = !request.ParamsUtf8.IsEmpty;
+            capturedParamsKind = request.ParamsKind;
+            return new JsonRpcSuccessResponse { Id = request.Id };
+        });
+
+        JsonRpcProcessor processor = new(
+            service,
+            new JsonRpcConfig { RpcRecorderState = RpcRecorderState.None },
+            Substitute.For<IFileSystem>(),
+            LimboLogs.Instance);
+
+        await ProcessAsync(
+            processor,
+            CreateReader("{\"id\":1,\"jsonrpc\":\"2.0\",\"method\":\"engine_newPayloadV4\",\"params\":[{\"parentHash\":\"0x0\"},[],null,null]}"),
+            new JsonRpcContext(RpcEndpoint.Http));
+
+        capturedMethod.Should().Be("engine_newPayloadV4");
+        capturedRawParams.Should().BeTrue();
+        capturedParamsKind.Should().Be(JsonValueKind.Array);
+    }
+
     private ValueTask<CollectedJsonRpcResponses> ProcessAsync(string request, JsonRpcContext? context = null, JsonRpcConfig? config = null) =>
         ProcessAsync(Initialize(config), CreateReader(request), context ?? new JsonRpcContext(RpcEndpoint.Http));
 
