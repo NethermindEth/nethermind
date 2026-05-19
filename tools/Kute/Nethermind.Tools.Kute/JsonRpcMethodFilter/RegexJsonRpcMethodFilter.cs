@@ -11,7 +11,9 @@ public sealed class RegexJsonRpcMethodFilter : IJsonRpcMethodFilter
 
     public RegexJsonRpcMethodFilter(string pattern)
     {
-        _pattern = new Regex(pattern);
+        // The filter is constructed once and reused for every JSON-RPC method name; compile the
+        // pattern up-front so the hot path skips the interpreter on every IsMatch call.
+        _pattern = new Regex(pattern, RegexOptions.Compiled);
     }
 
     public bool ShouldSubmit(string methodName) => _pattern.IsMatch(methodName);
