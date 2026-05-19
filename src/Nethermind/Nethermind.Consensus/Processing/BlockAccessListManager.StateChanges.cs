@@ -119,6 +119,14 @@ public partial class BlockAccessListManager
         BlockAccessListValidationIndex generatedIndex = _generatedValidationIndex!;
         ReadOnlyBlockAccessList suggested = block.BlockAccessList!;
 
+        // Generated lane Add dropped a row that didn't fit suggested's per-row capacity —
+        // structural mismatch the per-account walk below can't see through HasAt.
+        if (generatedIndex.TryGetGeneratedOverflow(out Address overflowAddress, out uint overflowIndex))
+        {
+            throw new InvalidBlockLevelAccessListException(block.Header,
+                $"Suggested block-level access list contained incorrect changes for {overflowAddress} at index {overflowIndex}.");
+        }
+
         BlockAccessListValidationIndex.StructuralMismatchKind mismatch =
             generatedIndex.FindStructuralMismatch(suggested, out Address? mismatchAddress);
 

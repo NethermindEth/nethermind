@@ -53,6 +53,13 @@ internal sealed class BlockAccessListValidationIndex
     // EIP-4788 / 7002 / 7251 system contracts).
     private readonly List<(int Ordinal, UInt256 Slot)>? _generatedStorageWrites;
     private bool _generatedStorageWritesSorted = true;
+    // Captures the first per-tx slice entry that didn't fit in a column-index lane: row
+    // capacity is sized to the suggested side, so an overflow signals "generated produced
+    // a change suggested doesn't declare" — exactly the structural mismatch the slow path
+    // is supposed to surface. Without this, HasAt/TryGetAt on an overflowed row silently
+    // returns false and the diagnostic walk reports no error.
+    private Address? _generatedOverflowAddress;
+    private uint _generatedOverflowIndex;
 
     public BlockAccessListValidationIndex(int txCount, AddressIndex addressIndex, BlockAccessListValidationIndex suggested)
     {
@@ -136,19 +143,19 @@ internal sealed class BlockAccessListValidationIndex
 
             if (accountChanges.BalanceChange is { } balance)
             {
-                if (TryGetRow(balance.Index, _lastIndex, out int row)) _balance.Add(row, accountOrdinal, balance.Value);
+                if (TryGetRow(balance.Index, _lastIndex, out int row)) RecordIfOverflow(_balance.Add(row, accountOrdinal, balance.Value), balance.Index, accountChanges.Address);
                 else _hasOutOfRangeChange = true;
             }
 
             if (accountChanges.NonceChange is { } nonce)
             {
-                if (TryGetRow(nonce.Index, _lastIndex, out int row)) _nonce.Add(row, accountOrdinal, nonce.Value);
+                if (TryGetRow(nonce.Index, _lastIndex, out int row)) RecordIfOverflow(_nonce.Add(row, accountOrdinal, nonce.Value), nonce.Index, accountChanges.Address);
                 else _hasOutOfRangeChange = true;
             }
 
             if (accountChanges.CodeChange is { } code)
             {
-                if (TryGetRow(code.Index, _lastIndex, out int row)) _code.Add(row, accountOrdinal, code.CodeHash);
+                if (TryGetRow(code.Index, _lastIndex, out int row)) RecordIfOverflow(_code.Add(row, accountOrdinal, code.CodeHash), code.Index, accountChanges.Address);
                 else _hasOutOfRangeChange = true;
             }
 
@@ -156,7 +163,7 @@ internal sealed class BlockAccessListValidationIndex
             int writesCountBefore = writes.Count;
             foreach (KeyValuePair<UInt256, StorageChange> kv in accountChanges.StorageChanges)
             {
-                if (TryGetRow(kv.Value.Index, _lastIndex, out int row)) _storage.Add(row, accountOrdinal, kv.Key, kv.Value.Value);
+                if (TryGetRow(kv.Value.Index, _lastIndex, out int row)) RecordIfOverflow(_storage.Add(row, accountOrdinal, kv.Key, kv.Value.Value), kv.Value.Index, accountChanges.Address);
                 else _hasOutOfRangeChange = true;
                 writes.Add((accountOrdinal, kv.Key));
             }
@@ -174,6 +181,30 @@ internal sealed class BlockAccessListValidationIndex
         _nonce.SortTouchedRows();
         _code.SortTouchedRows();
         _storage.SortTouchedRows();
+    }
+
+    private void RecordIfOverflow(bool added, uint index, Address address)
+    {
+        if (added || _generatedOverflowAddress is not null) return;
+        _generatedOverflowAddress = address;
+        _generatedOverflowIndex = index;
+    }
+
+    /// <summary>If a lane Add overflowed during a prior <see cref="Add(BlockAccessListAtIndex)"/>
+    /// call, returns the offending (address, index) pair. Overflow means generated produced a
+    /// change at a (row, lane) that suggested didn't declare — a structural mismatch the slow
+    /// path must surface even though <see cref="Lane{TValue}.HasAt"/> can't see the dropped row.</summary>
+    public bool TryGetGeneratedOverflow(out Address address, out uint index)
+    {
+        if (_generatedOverflowAddress is null)
+        {
+            address = default!;
+            index = 0;
+            return false;
+        }
+        address = _generatedOverflowAddress;
+        index = _generatedOverflowIndex;
+        return true;
     }
 
     public bool HasAccount(Address address) =>
@@ -584,14 +615,14 @@ internal sealed class BlockAccessListValidationIndex
             _values[offset] = value;
         }
 
-        public void Add(int row, int accountOrdinal, TValue value)
+        public bool Add(int row, int accountOrdinal, TValue value)
         {
             int[] rowFilled = _rowFilled ?? throw new InvalidOperationException("Cannot append to immutable lane.");
             int filled = rowFilled[row];
             if ((uint)filled >= (uint)Capacity(row))
             {
                 _rowOverflow![row] = true;
-                return;
+                return false;
             }
 
             int offset = _rowStarts[row] + filled;
@@ -599,6 +630,7 @@ internal sealed class BlockAccessListValidationIndex
             _values[offset] = value;
             rowFilled[row] = filled + 1;
             MarkTouched(row);
+            return true;
         }
 
         public bool ChangesEqual(Lane<TValue> other, int row)
@@ -793,14 +825,14 @@ internal sealed class BlockAccessListValidationIndex
             _values[offset] = value;
         }
 
-        public void Add(int row, int accountOrdinal, UInt256 key, EvmWord value)
+        public bool Add(int row, int accountOrdinal, UInt256 key, EvmWord value)
         {
             int[] rowFilled = _rowFilled ?? throw new InvalidOperationException("Cannot append to immutable lane.");
             int filled = rowFilled[row];
             if ((uint)filled >= (uint)Capacity(row))
             {
                 _rowOverflow![row] = true;
-                return;
+                return false;
             }
 
             int offset = _rowStarts[row] + filled;
@@ -809,6 +841,7 @@ internal sealed class BlockAccessListValidationIndex
             _values[offset] = value;
             rowFilled[row] = filled + 1;
             MarkTouched(row);
+            return true;
         }
 
         public bool ChangesEqual(StorageLane other, int row)

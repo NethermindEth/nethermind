@@ -248,6 +248,16 @@ public partial class BlockAccessListManager
         ReadOnlyBlockAccessList suggestedBal = block.BlockAccessList!;
         int row = (int)index;
 
+        // Mutable-lane row capacity tracks the suggested side, so an overflowed Add means
+        // generated produced a change at a (row, lane) suggested doesn't declare. HasAt/TryGetAt
+        // hide that entry, so the per-account walk below would silently report "equal" — surface
+        // the mismatch up front instead, matching the legacy GBAL walk's per-account diagnostic.
+        if (gen.TryGetGeneratedOverflow(out Address overflowAddress, out uint overflowIndex) && overflowIndex <= index)
+        {
+            throw new InvalidBlockLevelAccessListException(block.Header,
+                $"Suggested block-level access list contained incorrect changes for {overflowAddress} at index {overflowIndex}.");
+        }
+
         // Pass 1: walk generated marked ordinals. Equivalent of the legacy
         // "foreach GeneratedAccountChanges in generated.AccountChanges".
         foreach (int ordinal in gen.EnumerateMarkedOrdinals())
