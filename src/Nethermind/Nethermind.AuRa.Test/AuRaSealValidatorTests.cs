@@ -244,7 +244,7 @@ namespace Nethermind.AuRa.Test
             bool signed = _wallet.TrySign(in hash, signedAddress, out Signature signature);
             Assert.That(signed, Is.True, "wallet should sign for unlocked test account");
             block.AuRaSignature = signature.BytesWithRecovery;
-            _ethereumEcdsa.RecoverAddress(Arg.Any<Signature>(), in hash.ValueHash256).Returns(recoveredAddress);
+            _ethereumEcdsa.RecoverAddress(Arg.Any<Signature>(), in hash).Returns(recoveredAddress);
 
             return _sealValidator.ValidateSeal(block, false);
         }
