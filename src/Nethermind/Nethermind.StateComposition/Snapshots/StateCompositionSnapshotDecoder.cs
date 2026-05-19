@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
 using System.Collections.Immutable;
 using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Rlp;
@@ -13,7 +12,10 @@ using Nethermind.StateComposition.Diff;
 namespace Nethermind.StateComposition.Snapshots;
 
 /// <summary>
-/// RLP encoder/decoder for <see cref="StateCompositionSnapshot"/>.
+/// RLP encoder/decoder for the fixed-size portion of <see cref="StateCompositionSnapshot"/>.
+/// The three contract-keyed tracker maps are written separately as raw chunked
+/// records by <see cref="StateCompositionSnapshotStore"/>; the decoder hands back
+/// empty dictionaries and the store fills them on read.
 /// Field order:
 ///   0. schema version byte (current = 1)
 ///   1. 13 longs (CumulativeTrieStats)
@@ -24,9 +26,6 @@ namespace Nethermind.StateComposition.Snapshots;
 ///        + TotalBranchNodes + TotalBranchChildren
 ///   5. codeBytesTotal (long)
 ///   6. 16 longs of SlotCountHistogram
-///   7. slotCountByAddress: int count, then count × (keccak hash, long slot count)
-///   8. codeHashRefcounts: int count, then count × (keccak hash, int refcount)
-///   9. codeHashSizes: int count, then count × (keccak hash, int size)
 /// Legacy snapshots (wrong version or pre-version schema) fail to decode with
 /// <see cref="RlpException"/> and are discarded by the plugin, which then
 /// triggers a fresh scan to rebuild the baseline with the new schema.
@@ -42,8 +41,6 @@ public sealed class StateCompositionSnapshotDecoder : RlpValueDecoder<StateCompo
     /// as missing and trigger a fresh scan.
     /// </summary>
     private const byte SchemaVersion = 1;
-
-    private delegate TValue DecodeValueDelegate<TValue>(ref Rlp.ValueDecoderContext ctx);
 
     public override void Encode(RlpStream stream, StateCompositionSnapshot item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
@@ -111,13 +108,6 @@ public sealed class StateCompositionSnapshotDecoder : RlpValueDecoder<StateCompo
         for (int i = 0; i < CumulativeTrieStats.SlotHistogramLength; i++)
             length += EncodeLong(stream, hist.IsDefault ? 0L : hist[i]);
 
-        length += EncodeOrLengthMap(stream, item.SlotCountByAddress,
-            static (s, v) => s.Encode(v), static v => Rlp.LengthOf(v));
-        length += EncodeOrLengthMap(stream, item.CodeHashRefcounts,
-            static (s, v) => s.Encode(v), static v => Rlp.LengthOf(v));
-        length += EncodeOrLengthMap(stream, item.CodeHashSizes,
-            static (s, v) => s.Encode(v), static v => Rlp.LengthOf(v));
-
         return length;
     }
 
@@ -131,39 +121,6 @@ public sealed class StateCompositionSnapshotDecoder : RlpValueDecoder<StateCompo
     {
         stream?.Encode(value);
         return Rlp.LengthOf(value);
-    }
-
-    private static int EncodeOrLengthMap<TValue>(
-        RlpStream? stream,
-        IReadOnlyDictionary<ValueHash256, TValue> map,
-        System.Action<RlpStream, TValue> encodeValue,
-        System.Func<TValue, int> lengthOfValue)
-    {
-        int total = EncodeInt(stream, map.Count);
-        foreach (KeyValuePair<ValueHash256, TValue> kvp in map)
-        {
-            if (stream is not null)
-            {
-                stream.Encode(new Hash256(kvp.Key));
-                encodeValue(stream, kvp.Value);
-            }
-            total += Rlp.LengthOfKeccakRlp + lengthOfValue(kvp.Value);
-        }
-        return total;
-    }
-
-    private static Dictionary<ValueHash256, TValue> DecodeMap<TValue>(
-        ref Rlp.ValueDecoderContext ctx,
-        DecodeValueDelegate<TValue> decodeValue)
-    {
-        int count = ctx.DecodePositiveInt();
-        Dictionary<ValueHash256, TValue> map = new(count);
-        for (int i = 0; i < count; i++)
-        {
-            ValueHash256 key = ctx.DecodeKeccak();
-            map[key] = decodeValue(ref ctx);
-        }
-        return map;
     }
 
     public override int GetLength(StateCompositionSnapshot item, RlpBehaviors rlpBehaviors = RlpBehaviors.None) => Rlp.LengthOfSequence(EncodeOrLength(null, item));
@@ -224,12 +181,8 @@ public sealed class StateCompositionSnapshotDecoder : RlpValueDecoder<StateCompo
             SlotCountHistogram = ImmutableArray.Create(hist),
         };
 
-        Dictionary<ValueHash256, long> slotCountByAddress = DecodeMap(ref ctx, static (ref c) => c.DecodeLong());
-        Dictionary<ValueHash256, int> codeHashRefcounts = DecodeMap(ref ctx, static (ref c) => c.DecodeInt());
-        Dictionary<ValueHash256, int> codeHashSizes = DecodeMap(ref ctx, static (ref c) => c.DecodeInt());
-
         return new StateCompositionSnapshot(
             stats, blockNumber, stateRoot, diffsSinceBaseline, scanBlockNumber, depthStats,
-            slotCountByAddress, codeHashRefcounts, codeHashSizes);
+            SlotCountByAddress: [], CodeHashRefcounts: [], CodeHashSizes: []);
     }
 }
