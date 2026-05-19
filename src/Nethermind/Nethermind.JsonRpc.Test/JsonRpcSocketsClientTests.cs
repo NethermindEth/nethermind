@@ -7,6 +7,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.IO.Pipelines;
+using System.Linq;
 using System.Net;
 using System.Net.Sockets;
 using System.Net.WebSockets;
@@ -31,6 +32,72 @@ namespace Nethermind.JsonRpc.Test;
 [Parallelizable(ParallelScope.Children)]
 public class JsonRpcSocketsClientTests
 {
+    [Test]
+    public async Task Socket_sink_writes_single_response_with_one_message_boundary()
+    {
+        MemoryMessageStream stream = new();
+        using SemaphoreSlim sendSemaphore = new(1, 1);
+        using SocketJsonRpcResponseSink<MemoryMessageStream> sink = new(
+            stream,
+            new EthereumJsonSerializer(),
+            new NullJsonRpcLocalStats(),
+            maxBatchResponseBodySize: 10_000,
+            sendSemaphore,
+            new JsonRpcContext(RpcEndpoint.Ws));
+
+        await sink.WriteSingleAsync(new JsonRpcSuccessResponse { Id = 1, Result = "0x1" }, new RpcReport("eth_blockNumber", 1, true), CancellationToken.None);
+
+        byte[] response = stream.ToArray();
+        Enumerable.Count(response, static b => b == (byte)'\n').Should().Be(1);
+        sink.BytesWritten.Should().Be(response.Length);
+    }
+
+    [Test]
+    public async Task Socket_sink_writes_batch_with_one_message_boundary()
+    {
+        MemoryMessageStream stream = new();
+        using SemaphoreSlim sendSemaphore = new(1, 1);
+        using SocketJsonRpcResponseSink<MemoryMessageStream> sink = new(
+            stream,
+            new EthereumJsonSerializer(),
+            new NullJsonRpcLocalStats(),
+            maxBatchResponseBodySize: 10_000,
+            sendSemaphore,
+            new JsonRpcContext(RpcEndpoint.Ws));
+
+        await sink.BeginBatchAsync(CancellationToken.None);
+        await sink.WriteBatchItemAsync(new JsonRpcSuccessResponse { Id = 1, Result = "0x1" }, new RpcReport("eth_blockNumber", 1, true), CancellationToken.None);
+        await sink.WriteBatchItemAsync(new JsonRpcSuccessResponse { Id = 2, Result = "0x2" }, new RpcReport("eth_chainId", 1, true), CancellationToken.None);
+        await sink.EndBatchAsync(CancellationToken.None);
+
+        byte[] response = stream.ToArray();
+        response[0].Should().Be((byte)'[');
+        Enumerable.Count(response, static b => b == (byte)'\n').Should().Be(1);
+        sink.BytesWritten.Should().Be(response.Length);
+    }
+
+    [TestCase(RpcEndpoint.Ws, true)]
+    [TestCase(RpcEndpoint.IPC, false)]
+    public async Task Socket_sink_response_limit_stop_depends_on_authentication(RpcEndpoint endpoint, bool expectedStopRequested)
+    {
+        MemoryMessageStream stream = new();
+        using SemaphoreSlim sendSemaphore = new(1, 1);
+        using SocketJsonRpcResponseSink<MemoryMessageStream> sink = new(
+            stream,
+            new EthereumJsonSerializer(),
+            new NullJsonRpcLocalStats(),
+            maxBatchResponseBodySize: 1,
+            sendSemaphore,
+            new JsonRpcContext(endpoint));
+
+        await sink.BeginBatchAsync(CancellationToken.None);
+        await sink.WriteBatchItemAsync(new JsonRpcSuccessResponse { Id = 1, Result = "0x1" }, new RpcReport("eth_blockNumber", 1, true), CancellationToken.None);
+
+        sink.StopRequested.Should().Be(expectedStopRequested);
+
+        await sink.EndBatchAsync(CancellationToken.None);
+    }
+
     public class UsingIpc
     {
         [Test]
