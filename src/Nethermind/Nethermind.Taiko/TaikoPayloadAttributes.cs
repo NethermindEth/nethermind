@@ -2,7 +2,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Diagnostics.CodeAnalysis;
+using Nethermind.Consensus;
 using Nethermind.Consensus.Producers;
+using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
 
@@ -14,7 +16,7 @@ public class TaikoPayloadAttributes : PayloadAttributes
     public BlockMetadata? BlockMetadata { get; set; }
     public L1Origin? L1Origin { get; set; }
 
-    public override long? GetGasLimit() => BlockMetadata!.GasLimit;
+    public override long GetGasLimit(BlockHeader parent, IGasLimitCalculator gasLimitCalculator) => BlockMetadata!.GasLimit;
 
     public override PayloadAttributesValidationResult Validate(ISpecProvider specProvider, int fcuVersion,
         [NotNullWhen(false)] out string? error)
