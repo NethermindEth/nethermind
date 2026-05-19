@@ -3,6 +3,7 @@
 
 using System;
 using System.Buffers;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.IO;
@@ -251,15 +252,25 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
                         {
                             if (options.InputMode == JsonRpcInputMode.SingleDocument &&
                                 isCompleted &&
-                                buffer.IsSingleSegment &&
-                                TryReadSingleObjectRequest(buffer.First, out JsonRpcRequest? directRequest, out JsonDocument? directParamsDocument))
+                                buffer.IsSingleSegment)
                             {
-                                reader.AdvanceTo(buffer.End);
-                                advanced = true;
-                                shouldExit = true;
+                                if (TryReadSingleObjectRequest(buffer.First, out JsonRpcRequest? directRequest, out JsonDocument? directParamsDocument))
+                                {
+                                    reader.AdvanceTo(buffer.End);
+                                    advanced = true;
+                                    shouldExit = true;
 
-                                await ProcessSingleRequestToSink(directRequest, directParamsDocument, context, sink, cancellationToken);
-                                continue;
+                                    await ProcessSingleRequestToSink(directRequest, directParamsDocument, context, sink, cancellationToken);
+                                    continue;
+                                }
+
+                                if (await TryProcessBatchRequestDirectly(buffer.First, context, sink, cancellationToken))
+                                {
+                                    reader.AdvanceTo(buffer.End);
+                                    advanced = true;
+                                    shouldExit = true;
+                                    continue;
+                                }
                             }
 
                             freshState = TryParseJson(ref buffer, isCompleted, ref readerState, out JsonDocument? jsonDocument, options);
@@ -355,6 +366,21 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
         request = null;
         paramsDocument = null;
 
+        if (!TryGetSingleDocumentBody(memory, JsonTokenType.StartObject, out ReadOnlyMemory<byte> objectBody))
+        {
+            return false;
+        }
+
+        return TryReadObjectRequest(objectBody, out request, out paramsDocument);
+    }
+
+    private static bool TryGetSingleDocumentBody(
+        ReadOnlyMemory<byte> memory,
+        JsonTokenType expectedRootToken,
+        out ReadOnlyMemory<byte> documentBody)
+    {
+        documentBody = default;
+
         ReadOnlyMemory<byte> body = memory[CountLeadingJsonWhitespace(memory.Span)..];
         if (body.IsEmpty)
         {
@@ -362,7 +388,7 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
         }
 
         Utf8JsonReader reader = new(body.Span, isFinalBlock: true, state: default);
-        if (!reader.Read() || reader.TokenType != JsonTokenType.StartObject)
+        if (!reader.Read() || reader.TokenType != expectedRootToken)
         {
             return false;
         }
@@ -374,7 +400,18 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
             return false;
         }
 
-        ReadOnlyMemory<byte> objectBody = body[..documentLength];
+        documentBody = body[..documentLength];
+        return true;
+    }
+
+    private static bool TryReadObjectRequest(
+        ReadOnlyMemory<byte> objectBody,
+        [NotNullWhen(true)] out JsonRpcRequest? request,
+        out JsonDocument? paramsDocument)
+    {
+        request = null;
+        paramsDocument = null;
+
         JsonRpcEnvelopeReader envelopeReader = new(objectBody.Span);
         if (!envelopeReader.TryRead(out JsonRpcEnvelope envelope))
         {
@@ -390,13 +427,7 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
                 paramsElement = paramsDocument.RootElement;
             }
 
-            request = new JsonRpcRequest
-            {
-                JsonRpc = envelope.JsonRpc!,
-                Id = envelope.Id,
-                Method = envelope.Method!,
-                Params = paramsElement
-            };
+            request = CreateRequest(envelope, paramsElement);
             return true;
         }
         catch
@@ -406,6 +437,15 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
             throw;
         }
     }
+
+    private static JsonRpcRequest CreateRequest(JsonRpcEnvelope envelope, JsonElement paramsElement) =>
+        new()
+        {
+            JsonRpc = envelope.JsonRpc!,
+            Id = envelope.Id,
+            Method = envelope.Method!,
+            Params = paramsElement
+        };
 
     private static int CountLeadingJsonWhitespace(ReadOnlySpan<byte> span)
     {
@@ -571,6 +611,193 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
         {
             await sink.EndBatchAsync(cancellationToken);
         }
+    }
+
+    private async ValueTask<bool> TryProcessBatchRequestDirectly(
+        ReadOnlyMemory<byte> memory,
+        JsonRpcContext context,
+        IJsonRpcResponseSink sink,
+        CancellationToken cancellationToken)
+    {
+        if (!TryGetSingleDocumentBody(memory, JsonTokenType.StartArray, out ReadOnlyMemory<byte> batchBody))
+        {
+            return false;
+        }
+
+        await ProcessBatchMemoryToSink(batchBody, context, sink, cancellationToken);
+        return true;
+    }
+
+    private async ValueTask ProcessBatchMemoryToSink(
+        ReadOnlyMemory<byte> batchBody,
+        JsonRpcContext context,
+        IJsonRpcResponseSink sink,
+        CancellationToken cancellationToken)
+    {
+        int? requestCount = null;
+        if (!context.IsAuthenticated)
+        {
+            requestCount = CountBatchItems(batchBody.Span);
+            if (requestCount > _jsonRpcConfig.MaxBatchSize)
+            {
+                if (_logger.IsWarn) _logger.Warn($"The batch size limit was exceeded. The requested batch size {requestCount}, and the current config setting is JsonRpc.{nameof(_jsonRpcConfig.MaxBatchSize)} = {_jsonRpcConfig.MaxBatchSize}.");
+                JsonRpcErrorResponse errorResponse = _jsonRpcService.GetErrorResponse(ErrorCodes.LimitExceeded, "Batch size limit exceeded");
+                await WriteSingleEntryAsync(new JsonRpcResult.Entry(errorResponse, RpcReport.Error), sink, cancellationToken);
+                return;
+            }
+        }
+
+        if (_logger.IsDebug)
+        {
+            _logger.Debug(requestCount is null ? "JSON RPC batch request" : $"{requestCount} JSON RPC requests");
+        }
+
+        await sink.BeginBatchAsync(cancellationToken);
+        long startTime = Stopwatch.GetTimestamp();
+        int requestIndex = 0;
+        bool isStopped = false;
+        JsonReaderState readerState = default;
+        int offset = 0;
+        bool started = false;
+        List<JsonDocument>? requestDocuments = null;
+
+        try
+        {
+            while (TryReadNextBatchItem(batchBody, ref offset, ref readerState, ref started, out ReadOnlyMemory<byte> itemBody))
+            {
+                requestIndex++;
+                JsonRpcRequest jsonRpcRequest = DeserializeBatchItem(itemBody, out JsonDocument? requestDocument);
+                if (requestDocument is not null)
+                {
+                    requestDocuments ??= [];
+                    requestDocuments.Add(requestDocument);
+                }
+
+                JsonRpcResult.Entry response = isStopped
+                    ? new JsonRpcResult.Entry(
+                        _jsonRpcService.GetErrorResponse(
+                            ErrorCodes.LimitExceeded,
+                            jsonRpcRequest.Method,
+                            jsonRpcRequest.Id,
+                            $"{nameof(IJsonRpcConfig.MaxBatchResponseBodySize)} of {_jsonRpcConfig.MaxBatchResponseBodySize / 1.KB}KB exceeded"),
+                        RpcReport.Error)
+                    : await HandleSingleRequest(jsonRpcRequest, context);
+
+                if (_logger.IsTrace)
+                {
+                    string progress = requestCount is null ? requestIndex.ToString() : $"{requestIndex}/{requestCount}";
+                    _logger.Trace($"  {progress} JSON RPC request - {jsonRpcRequest} handled after {response.Report.HandlingTimeMicroseconds}");
+                    TraceResult(response);
+                }
+
+                await WriteBatchEntryAsync(response, sink, cancellationToken);
+                isStopped |= sink.StopRequested;
+            }
+
+            if (_logger.IsTrace) _logger.Trace($"  {requestIndex} requests handled in {Stopwatch.GetElapsedTime(startTime).TotalMilliseconds:N0}ms");
+        }
+        finally
+        {
+            try
+            {
+                await sink.EndBatchAsync(cancellationToken);
+            }
+            finally
+            {
+                if (requestDocuments is not null)
+                {
+                    foreach (JsonDocument requestDocument in requestDocuments)
+                    {
+                        requestDocument.Dispose();
+                    }
+                }
+            }
+        }
+    }
+
+    private JsonRpcRequest DeserializeBatchItem(ReadOnlyMemory<byte> itemBody, out JsonDocument? requestDocument)
+    {
+        if (TryReadObjectRequest(itemBody, out JsonRpcRequest? directRequest, out JsonDocument? paramsDocument))
+        {
+            requestDocument = paramsDocument;
+            return directRequest;
+        }
+
+        requestDocument = JsonDocument.Parse(itemBody);
+        try
+        {
+            return DeserializeObject(requestDocument.RootElement);
+        }
+        catch
+        {
+            requestDocument.Dispose();
+            requestDocument = null;
+            throw;
+        }
+    }
+
+    private static int CountBatchItems(ReadOnlySpan<byte> batchBody)
+    {
+        Utf8JsonReader reader = new(batchBody, isFinalBlock: true, state: default);
+        if (!reader.Read() || reader.TokenType != JsonTokenType.StartArray)
+        {
+            throw new JsonException("Expected JSON-RPC batch array.");
+        }
+
+        int count = 0;
+        while (reader.Read())
+        {
+            if (reader.TokenType == JsonTokenType.EndArray)
+            {
+                return count;
+            }
+
+            reader.Skip();
+            count++;
+        }
+
+        throw new JsonException("Incomplete JSON-RPC batch array.");
+    }
+
+    private static bool TryReadNextBatchItem(
+        ReadOnlyMemory<byte> batchBody,
+        ref int offset,
+        ref JsonReaderState readerState,
+        ref bool started,
+        out ReadOnlyMemory<byte> itemBody)
+    {
+        itemBody = default;
+        Utf8JsonReader reader = new(batchBody.Span[offset..], isFinalBlock: true, readerState);
+
+        if (!started)
+        {
+            if (!reader.Read() || reader.TokenType != JsonTokenType.StartArray)
+            {
+                throw new JsonException("Expected JSON-RPC batch array.");
+            }
+
+            started = true;
+        }
+
+        if (!reader.Read())
+        {
+            throw new JsonException("Incomplete JSON-RPC batch array.");
+        }
+
+        if (reader.TokenType == JsonTokenType.EndArray)
+        {
+            offset += checked((int)reader.BytesConsumed);
+            readerState = reader.CurrentState;
+            return false;
+        }
+
+        int itemStart = checked(offset + (int)reader.TokenStartIndex);
+        reader.Skip();
+        int itemEnd = checked(offset + (int)reader.BytesConsumed);
+        itemBody = batchBody.Slice(itemStart, itemEnd - itemStart);
+        offset = itemEnd;
+        readerState = reader.CurrentState;
+        return true;
     }
 
     private async ValueTask WriteInvalidRequestAsync(
