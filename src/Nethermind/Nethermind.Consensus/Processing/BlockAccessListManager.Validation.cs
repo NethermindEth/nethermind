@@ -8,6 +8,7 @@ using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.GasPolicy;
+using Nethermind.Int256;
 using static Nethermind.Consensus.Processing.BlockProcessor;
 using static Nethermind.State.BlockAccessListBasedWorldState;
 
@@ -286,4 +287,55 @@ public partial class BlockAccessListManager
     private static bool IsSystemContract(Address address)
         => address == Eip7002Constants.WithdrawalRequestPredeployAddress
         || address == Eip7251Constants.ConsolidationRequestPredeployAddress;
+
+    /// <summary>
+    /// Closes the gap between the column-index per-row validation and what the end-of-block
+    /// canonical-bytes hash compare used to catch: namely, account-set presence and the exact
+    /// set of storage_reads per account. Throws <see cref="InvalidBlockLevelAccessListException"/>
+    /// on any structural difference between the suggested and generated BALs.
+    /// </summary>
+    /// <remarks>
+    /// Does not compare <c>StorageChanges</c> (write entries): those are fully covered by the
+    /// incremental <see cref="ValidateBlockAccessList"/> calls at indices 0..txCount+1 via
+    /// <c>ChangesAtIndexEqual</c>, which compares every balance/nonce/code/storage-write lane at
+    /// each tx index in lockstep.
+    /// </remarks>
+    private static void ValidateStructuralEquivalence(Block block, GeneratedBlockAccessList generated)
+    {
+        ReadOnlyBlockAccessList suggested = block.BlockAccessList!;
+        ReadOnlySpan<ReadOnlyAccountChanges> suggestedAccounts = suggested.AccountChangesAsSpan;
+
+        if (suggestedAccounts.Length != generated.AccountChanges.Count)
+        {
+            throw new InvalidBlockLevelAccessListException(block.Header,
+                $"Account-set size mismatch: suggested={suggestedAccounts.Length}, generated={generated.AccountChanges.Count}.");
+        }
+
+        for (int a = 0; a < suggestedAccounts.Length; a++)
+        {
+            ReadOnlyAccountChanges sug = suggestedAccounts[a];
+            GeneratedAccountChanges gen = generated.GetAccountChanges(sug.Address)
+                ?? throw new InvalidBlockLevelAccessListException(block.Header,
+                    $"Suggested BAL declares account {sug.Address} which execution did not touch.");
+
+            ReadOnlySpan<UInt256> sugReads = sug.StorageReads;
+            if (sugReads.Length != gen.StorageReads.Count)
+            {
+                throw new InvalidBlockLevelAccessListException(block.Header,
+                    $"storage_reads count mismatch for {sug.Address}: suggested={sugReads.Length}, generated={gen.StorageReads.Count}.");
+            }
+
+            // Both sides keep storage_reads sorted (decoder-validated; SortedSet on the generated side).
+            int i = 0;
+            foreach (UInt256 genRead in gen.StorageReads)
+            {
+                if (!sugReads[i].Equals(genRead))
+                {
+                    throw new InvalidBlockLevelAccessListException(block.Header,
+                        $"storage_reads mismatch for {sug.Address} at offset {i}.");
+                }
+                i++;
+            }
+        }
+    }
 }
