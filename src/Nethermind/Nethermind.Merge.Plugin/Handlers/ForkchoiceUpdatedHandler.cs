@@ -244,13 +244,6 @@ public class ForkchoiceUpdatedHandler(
             return result;
         }
 
-        bool newHeadTheSameAsCurrentHead = _blockTree.Head!.Hash == newHeadHeader.Hash;
-        bool shouldUpdateHead = !newHeadTheSameAsCurrentHead && blocks is not null;
-        if (shouldUpdateHead)
-        {
-            _blockTree.UpdateMainChain(blocks!, true, true);
-        }
-
         // Spec ordering within a single FCU: finalized <= safe <= head. Ancestry must be
         // re-validated on every FCU - the binding is (head, finalized, safe), so a repeated
         // finalized/safe hash paired with a new head on a sibling branch is still a spec violation.
@@ -258,6 +251,13 @@ public class ForkchoiceUpdatedHandler(
 
         if (RejectIfInconsistent(finalizedHeader, 0, "finalized", newHeadHeader, requestStr) is { } finalizedError) return finalizedError;
         if (RejectIfInconsistent(safeBlockHeader, finalizedNumber, "safe", newHeadHeader, requestStr) is { } safeError) return safeError;
+
+        bool newHeadTheSameAsCurrentHead = _blockTree.Head!.Hash == newHeadHeader.Hash;
+        bool shouldUpdateHead = !newHeadTheSameAsCurrentHead && blocks is not null;
+        if (shouldUpdateHead)
+        {
+            _blockTree.UpdateMainChain(blocks!, true, true);
+        }
 
         bool nonZeroFinalizedBlockHash = finalizedBlockHash != Keccak.Zero;
         if (nonZeroFinalizedBlockHash)
