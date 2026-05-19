@@ -6,6 +6,7 @@ using System.IO.Pipelines;
 using System.Text.Json;
 using System.Threading;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Json;
 
 namespace Nethermind.Blockchain.Tracing.GethStyle;
@@ -23,6 +24,7 @@ public sealed class GethLikeBlockEnvelopeStreamingTracer : BlockTracerBase<GethL
     private readonly PipeWriter? _pipeWriter;
     private readonly CancellationToken _cancellationToken;
     private bool _innerEnvelopeOpen;
+    private Hash256? _currentTxHash;
 
     public GethLikeBlockEnvelopeStreamingTracer(
         GethTraceOptions options,
@@ -47,6 +49,7 @@ public sealed class GethLikeBlockEnvelopeStreamingTracer : BlockTracerBase<GethL
         _writer.WritePropertyName("structLogs"u8);
         _writer.WriteStartArray();
         _innerEnvelopeOpen = true;
+        _currentTxHash = tx?.Hash;
         return new GethLikeTxStreamingMemoryTracer(tx, _options, _writer, _pipeWriter, _cancellationToken);
     }
 
@@ -66,6 +69,7 @@ public sealed class GethLikeBlockEnvelopeStreamingTracer : BlockTracerBase<GethL
         JsonSerializer.Serialize(_writer, trace.TxHash, EthereumJsonSerializer.JsonOptions);
         _writer.WriteEndObject();
         _innerEnvelopeOpen = false;
+        _currentTxHash = null;
 
         FlushPerTxEnvelope();
         return trace;
@@ -82,8 +86,12 @@ public sealed class GethLikeBlockEnvelopeStreamingTracer : BlockTracerBase<GethL
         _writer.WritePropertyName("returnValue"u8);
         JsonSerializer.Serialize(_writer, Array.Empty<byte>(), EthereumJsonSerializer.JsonOptions);
         _writer.WriteEndObject();
+
+        _writer.WritePropertyName("txHash"u8);
+        JsonSerializer.Serialize(_writer, _currentTxHash, EthereumJsonSerializer.JsonOptions);
         _writer.WriteEndObject();
         _innerEnvelopeOpen = false;
+        _currentTxHash = null;
     }
 
     private void FlushPerTxEnvelope()

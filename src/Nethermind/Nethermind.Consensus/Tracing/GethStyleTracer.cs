@@ -127,7 +127,11 @@ public class GethStyleTracer(
     public IReadOnlyCollection<GethLikeTxTrace> TraceBlock(Block block, GethTraceOptions options, CancellationToken cancellationToken) => TraceBlockImpl(block, options, cancellationToken);
 
     public void TraceBlockStreaming(BlockParameter blockParameter, GethTraceOptions options, Utf8JsonWriter writer, PipeWriter? pipeWriter, CancellationToken cancellationToken)
-        => TraceBlockStreamingImpl(blockTree.FindBlock(blockParameter), options, writer, pipeWriter, cancellationToken);
+    {
+        Block block = blockTree.FindBlock(blockParameter)
+                      ?? throw new InvalidOperationException($"Block body not found for {blockParameter}");
+        TraceBlockStreamingImpl(block, options, writer, pipeWriter, cancellationToken);
+    }
 
     public void TraceBlockStreaming(Rlp blockRlp, GethTraceOptions options, Utf8JsonWriter writer, PipeWriter? pipeWriter, CancellationToken cancellationToken)
         => TraceBlockStreamingImpl(GetBlockToTrace(blockRlp), options, writer, pipeWriter, cancellationToken);
