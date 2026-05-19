@@ -3,11 +3,14 @@
 
 using System;
 using System.Buffers;
+using System.Buffers.Binary;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.IO.Pipelines;
 using System.Linq;
 using System.Net;
+using System.Net.Sockets;
 using System.Runtime.CompilerServices;
 using System.Security.Authentication;
 using System.Threading;
@@ -161,15 +164,18 @@ public class Startup : IStartup
         _rpcAuthentication = rpcAuthentication;
         _logger = logger;
 
-        // Engine API fast lane: authenticated engine port POST requests bypass
-        // routing, CORS, compression, and WebSocket middleware
+        TrustedCidr[] additionalTrustedNetworks = ParseTrustedNetworks(jsonRpcConfig.AdditionalTrustedNetworks, logger);
+
+        // Trusted JSON-RPC HTTP POSTs dispatch directly, skipping routing, CORS,
+        // compression, and WebSocket middleware. Authentication is still enforced
+        // inside the handler for authenticated endpoints.
         app.Use(async (ctx, next) =>
         {
             if (ctx.Request.Method != "POST" ||
                 !(ctx.Request.ContentType?.Contains("application/json") ?? false) ||
                 !jsonRpcUrlCollection.TryGetValue(ctx.Connection.LocalPort, out JsonRpcUrl jsonRpcUrl) ||
-                !jsonRpcUrl.IsAuthenticated ||
-                !jsonRpcUrl.RpcEndpoint.HasFlag(RpcEndpoint.Http))
+                !jsonRpcUrl.RpcEndpoint.HasFlag(RpcEndpoint.Http) ||
+                !IsTrustedSource(ctx.Connection.RemoteIpAddress, additionalTrustedNetworks))
             {
                 await next();
                 return;
@@ -280,6 +286,93 @@ public class Startup : IStartup
     /// <param name="remoteIp">Request source</param>
     private static bool IsLocalhost(IPAddress remoteIp)
         => IPAddress.IsLoopback(remoteIp) || remoteIp.Equals(IPAddress.IPv6Loopback);
+
+    internal static bool IsTrustedSource(IPAddress? remoteIp, TrustedCidr[] additionalTrustedNetworks)
+    {
+        if (remoteIp is null) return false;
+        if (IPAddress.IsLoopback(remoteIp)) return true;
+
+        IPAddress ipv4 = remoteIp.IsIPv4MappedToIPv6 ? remoteIp.MapToIPv4() : remoteIp;
+        if (ipv4.AddressFamily == AddressFamily.InterNetwork)
+        {
+            Span<byte> bytes = stackalloc byte[4];
+            if (ipv4.TryWriteBytes(bytes, out _))
+            {
+                if (bytes[0] == 10) return true;
+                if (bytes[0] == 172 && (bytes[1] & 0xF0) == 16) return true;
+                if (bytes[0] == 192 && bytes[1] == 168) return true;
+            }
+        }
+
+        for (int i = 0; i < additionalTrustedNetworks.Length; i++)
+        {
+            if (additionalTrustedNetworks[i].Contains(remoteIp)) return true;
+        }
+
+        return false;
+    }
+
+    internal static TrustedCidr[] ParseTrustedNetworks(string[]? cidrs, ILogger logger)
+    {
+        if (cidrs is null || cidrs.Length == 0) return [];
+
+        List<TrustedCidr> parsed = new(cidrs.Length);
+        foreach (string? cidr in cidrs)
+        {
+            if (string.IsNullOrWhiteSpace(cidr)) continue;
+            if (TrustedCidr.TryParse(cidr, out TrustedCidr network))
+            {
+                parsed.Add(network);
+            }
+            else if (logger.IsWarn)
+            {
+                logger.Warn($"Ignoring invalid CIDR in {nameof(IJsonRpcConfig.AdditionalTrustedNetworks)}: '{cidr}'");
+            }
+        }
+
+        return parsed.ToArray();
+    }
+
+    internal readonly struct TrustedCidr
+    {
+        private readonly uint _network;
+        private readonly uint _mask;
+
+        private TrustedCidr(uint network, uint mask)
+        {
+            _network = network & mask;
+            _mask = mask;
+        }
+
+        public bool Contains(IPAddress address)
+        {
+            IPAddress ipv4 = address.IsIPv4MappedToIPv6 ? address.MapToIPv4() : address;
+            if (ipv4.AddressFamily != AddressFamily.InterNetwork) return false;
+
+            Span<byte> bytes = stackalloc byte[4];
+            if (!ipv4.TryWriteBytes(bytes, out _)) return false;
+            uint ip = BinaryPrimitives.ReadUInt32BigEndian(bytes);
+            return (ip & _mask) == _network;
+        }
+
+        public static bool TryParse(string cidr, out TrustedCidr network)
+        {
+            network = default;
+            int slash = cidr.IndexOf('/');
+            if (slash < 1 || slash == cidr.Length - 1) return false;
+
+            if (!IPAddress.TryParse(cidr.AsSpan(0, slash), out IPAddress? addr)) return false;
+            if (addr.AddressFamily != AddressFamily.InterNetwork) return false;
+            if (!int.TryParse(cidr.AsSpan(slash + 1), out int prefix) || prefix < 0 || prefix > 32) return false;
+
+            Span<byte> bytes = stackalloc byte[4];
+            if (!addr.TryWriteBytes(bytes, out _)) return false;
+            uint ip = BinaryPrimitives.ReadUInt32BigEndian(bytes);
+            uint mask = prefix == 0 ? 0u : ~0u << (32 - prefix);
+            network = new TrustedCidr(ip, mask);
+            return true;
+        }
+    }
 
     private async Task PushErrorResponseAsync(HttpContext ctx, int statusCode, int errorCode, string message)
     {
