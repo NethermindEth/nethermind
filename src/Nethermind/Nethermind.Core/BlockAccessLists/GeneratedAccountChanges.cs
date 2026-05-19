@@ -14,8 +14,8 @@ namespace Nethermind.Core.BlockAccessLists;
 
 /// <summary>
 /// Per-account changes assembled from one or more <see cref="AccountChangesAtIndex"/> via merging.
-/// Append-only and ordered by index; uses simple <see cref="List{T}"/> per change family because
-/// merge contributions arrive sorted, so no <see cref="SortedList{TKey, TValue}"/> is needed.
+/// Append-only and ordered by index; uses <see cref="InlineList{T}"/> per change family so the
+/// common single-change case avoids the <see cref="List{T}"/> backing-array allocation.
 /// </summary>
 /// <remarks>
 /// Storage changes and storage reads are kept in unsorted <see cref="Dictionary{TKey, TValue}"/> /
@@ -28,17 +28,30 @@ public class GeneratedAccountChanges(Address address)
     [JsonConverter(typeof(AddressConverter))]
     public Address Address { get; } = address;
 
-    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
-    public List<BalanceChange> BalanceChanges { get; } = [];
-
-    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
-    public List<NonceChange> NonceChanges { get; } = [];
-
-    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
-    public List<CodeChange> CodeChanges { get; } = [];
+    private InlineList<BalanceChange> _balanceChanges;
+    private InlineList<NonceChange> _nonceChanges;
+    private InlineList<CodeChange> _codeChanges;
 
     private readonly Dictionary<UInt256, GeneratedSlotChanges> _storageChanges = new();
     private readonly HashSet<UInt256> _storageReads = [];
+
+    public int BalanceChangesCount => _balanceChanges.Count;
+    public int NonceChangesCount => _nonceChanges.Count;
+    public int CodeChangesCount => _codeChanges.Count;
+
+    /// <summary>Non-allocating view over the per-account balance changes. The order is the
+    /// merge order, which is monotonically increasing by <see cref="BalanceChange.Index"/>.</summary>
+    /// <remarks>
+    /// Properties with ref-like return types (e.g. <see cref="ReadOnlySpan{T}"/>) confuse the
+    /// JSON source generator (SYSLIB1225); the explicit <see cref="JsonIgnoreAttribute"/> opts
+    /// these out of metadata generation entirely.
+    /// </remarks>
+    [JsonIgnore]
+    public ReadOnlySpan<BalanceChange> BalanceChangesSpan => _balanceChanges.AsSpan();
+    [JsonIgnore]
+    public ReadOnlySpan<NonceChange> NonceChangesSpan => _nonceChanges.AsSpan();
+    [JsonIgnore]
+    public ReadOnlySpan<CodeChange> CodeChangesSpan => _codeChanges.AsSpan();
 
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
     public IReadOnlyCollection<GeneratedSlotChanges> StorageChanges => _storageChanges.Values;
@@ -74,9 +87,9 @@ public class GeneratedAccountChanges(Address address)
     /// <summary>Per-family change lists are appended in monotonically increasing <c>Index</c>
     /// order during <see cref="Merge"/>, so we binary-search via <see cref="IndexKey{T}"/>
     /// rather than scanning. Mirrors <see cref="ReadOnlyAccountChanges"/>.</summary>
-    public BalanceChange? BalanceChangeAtIndex(uint index) => GetExact(BalanceChanges, index);
-    public NonceChange? NonceChangeAtIndex(uint index) => GetExact(NonceChanges, index);
-    public CodeChange? CodeChangeAtIndex(uint index) => GetExact(CodeChanges, index);
+    public BalanceChange? BalanceChangeAtIndex(uint index) => GetExact(_balanceChanges.AsSpan(), index);
+    public NonceChange? NonceChangeAtIndex(uint index) => GetExact(_nonceChanges.AsSpan(), index);
+    public CodeChange? CodeChangeAtIndex(uint index) => GetExact(_codeChanges.AsSpan(), index);
 
     public bool HasSlotChangesAtIndex(uint index)
     {
@@ -186,13 +199,12 @@ public class GeneratedAccountChanges(Address address)
         return false;
     }
 
-    /// <summary>O(log n) lookup of the entry with <c>Index == index</c> over a list kept sorted
+    /// <summary>O(log n) lookup of the entry with <c>Index == index</c> over a span kept sorted
     /// by index (the merge contract on <see cref="GeneratedAccountChanges"/> guarantees that).</summary>
-    private static T? GetExact<T>(List<T> changes, uint index) where T : struct, IIndexedChange
+    private static T? GetExact<T>(ReadOnlySpan<T> changes, uint index) where T : struct, IIndexedChange
     {
-        ReadOnlySpan<T> span = CollectionsMarshal.AsSpan(changes);
-        int idx = span.BinarySearch(new IndexKey<T>(index));
-        return idx >= 0 ? span[idx] : null;
+        int idx = changes.BinarySearch(new IndexKey<T>(index));
+        return idx >= 0 ? changes[idx] : null;
     }
 
     public GeneratedSlotChanges GetOrAddSlotChanges(UInt256 key)
@@ -218,15 +230,15 @@ public class GeneratedAccountChanges(Address address)
     {
         if (other.BalanceChange is not null)
         {
-            BalanceChanges.Add(other.BalanceChange.Value);
+            _balanceChanges.Add(other.BalanceChange.Value);
         }
         if (other.NonceChange is not null)
         {
-            NonceChanges.Add(other.NonceChange.Value);
+            _nonceChanges.Add(other.NonceChange.Value);
         }
         if (other.CodeChange is not null)
         {
-            CodeChanges.Add(other.CodeChange.Value);
+            _codeChanges.Add(other.CodeChange.Value);
         }
 
         foreach (KeyValuePair<UInt256, StorageChange> kv in other.StorageChanges)
@@ -251,11 +263,23 @@ public class GeneratedAccountChanges(Address address)
     {
         StringBuilder sb = new();
         sb.Append(Address);
-        if (BalanceChanges.Count > 0) sb.Append($" balance=[{string.Join(", ", BalanceChanges)}]");
-        if (NonceChanges.Count > 0) sb.Append($" nonce=[{string.Join(", ", NonceChanges)}]");
-        if (CodeChanges.Count > 0) sb.Append($" code=[{string.Join(", ", CodeChanges)}]");
+        AppendIfAny(sb, "balance", _balanceChanges.AsSpan());
+        AppendIfAny(sb, "nonce", _nonceChanges.AsSpan());
+        AppendIfAny(sb, "code", _codeChanges.AsSpan());
         if (_storageChanges.Count > 0) sb.Append($" storage=[{string.Join(", ", (object[])GetSortedStorageChanges())}]");
         if (_storageReads.Count > 0) sb.Append($" reads=[{string.Join(", ", GetSortedStorageReads())}]");
         return sb.ToString();
+    }
+
+    private static void AppendIfAny<T>(StringBuilder sb, string label, ReadOnlySpan<T> items) where T : struct
+    {
+        if (items.Length == 0) return;
+        sb.Append(' ').Append(label).Append("=[");
+        for (int i = 0; i < items.Length; i++)
+        {
+            if (i > 0) sb.Append(", ");
+            sb.Append(items[i]);
+        }
+        sb.Append(']');
     }
 }

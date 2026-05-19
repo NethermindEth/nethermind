@@ -5,7 +5,6 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
-using System.Runtime.InteropServices;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Int256;
@@ -141,9 +140,9 @@ public class AccountChangesDecoder :
         // The backing collections are unsorted Dictionary/HashSet; sort once at this boundary.
         EncodeGeneratedSlotChanges(stream, item.GetSortedStorageChanges(), lengths.StorageChangesContentLength, rlpBehaviors);
         EncodeStorageReads(stream, item.GetSortedStorageReads(), lengths.StorageReadsContentLength, rlpBehaviors);
-        EncodeIndexed<BalanceChange>(stream, CollectionsMarshal.AsSpan(item.BalanceChanges), lengths.BalanceContentLength, BalanceChangeDecoder.Instance, rlpBehaviors);
-        EncodeIndexed<NonceChange>(stream, CollectionsMarshal.AsSpan(item.NonceChanges), lengths.NonceContentLength, NonceChangeDecoder.Instance, rlpBehaviors);
-        EncodeIndexed<CodeChange>(stream, CollectionsMarshal.AsSpan(item.CodeChanges), lengths.CodeContentLength, CodeChangeDecoder.Instance, rlpBehaviors);
+        EncodeIndexed<BalanceChange>(stream, item.BalanceChangesSpan, lengths.BalanceContentLength, BalanceChangeDecoder.Instance, rlpBehaviors);
+        EncodeIndexed<NonceChange>(stream, item.NonceChangesSpan, lengths.NonceContentLength, NonceChangeDecoder.Instance, rlpBehaviors);
+        EncodeIndexed<CodeChange>(stream, item.CodeChangesSpan, lengths.CodeContentLength, CodeChangeDecoder.Instance, rlpBehaviors);
     }
 
     public static int GetContentLength(ReadOnlyAccountChanges item, RlpBehaviors rlpBehaviors)
@@ -166,9 +165,9 @@ public class AccountChangesDecoder :
     {
         int storageChanges = GeneratedSlotChangesContentLength(item.StorageChanges, rlpBehaviors);
         int storageReads = UInt256ContentLength(item.StorageReads, rlpBehaviors);
-        int balance = IndexedContentLength<BalanceChange>(CollectionsMarshal.AsSpan(item.BalanceChanges), BalanceChangeDecoder.Instance, rlpBehaviors);
-        int nonce = IndexedContentLength<NonceChange>(CollectionsMarshal.AsSpan(item.NonceChanges), NonceChangeDecoder.Instance, rlpBehaviors);
-        int code = IndexedContentLength<CodeChange>(CollectionsMarshal.AsSpan(item.CodeChanges), CodeChangeDecoder.Instance, rlpBehaviors);
+        int balance = IndexedContentLength<BalanceChange>(item.BalanceChangesSpan, BalanceChangeDecoder.Instance, rlpBehaviors);
+        int nonce = IndexedContentLength<NonceChange>(item.NonceChangesSpan, NonceChangeDecoder.Instance, rlpBehaviors);
+        int code = IndexedContentLength<CodeChange>(item.CodeChangesSpan, CodeChangeDecoder.Instance, rlpBehaviors);
         return BuildLengths(storageChanges, storageReads, balance, nonce, code);
     }
 
