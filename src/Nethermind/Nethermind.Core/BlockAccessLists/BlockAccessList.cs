@@ -216,13 +216,13 @@ public class BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>, IRese
 
     public void AddCodeChange(Address address, byte[] before, ReadOnlyMemory<byte> after)
     {
-        _itemCount = null;
-        AccountChanges accountChanges = GetOrAddAccountChanges(address);
-
         if (before.AsSpan().SequenceEqual(after.Span))
         {
             return;
         }
+
+        _itemCount = null;
+        AccountChanges accountChanges = GetOrAddAccountChanges(address);
 
         bool changedDuringTx = HasCodeChangedDuringTx(accountChanges, before, after.Span);
         bool hasPrev = accountChanges.TryPopCodeChange(Index, out CodeChange oldCodeChange);
