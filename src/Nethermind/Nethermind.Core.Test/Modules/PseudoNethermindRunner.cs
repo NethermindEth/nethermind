@@ -99,11 +99,11 @@ public class PseudoNethermindRunner(IComponentContext ctx) : IAsyncDisposable
     {
         await (_blockchainProcessor?.StopAsync() ?? Task.CompletedTask);
         await (_blockProducerRunner?.StopAsync() ?? Task.CompletedTask);
-        await (_rlpxHost?.Shutdown() ?? Task.CompletedTask);
 
         _sessionMonitor?.Stop();
         await (_discoveryApp?.StopAsync() ?? Task.CompletedTask);
-        await (_peerPool?.StopAsync() ?? Task.CompletedTask);
         await (_peerManager?.StopAsync() ?? Task.CompletedTask);
+        await (_rlpxHost?.Shutdown() ?? Task.CompletedTask);
+        await (_peerPool?.StopAsync() ?? Task.CompletedTask);
     }
 }

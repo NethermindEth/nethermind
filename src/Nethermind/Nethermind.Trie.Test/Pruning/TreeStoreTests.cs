@@ -35,8 +35,6 @@ namespace Nethermind.Trie.Test.Pruning
         private readonly ILogManager _logManager = LimboLogs.Instance;
         // new OneLoggerLogManager(new NUnitLogger(LogLevel.Trace));
 
-        private readonly AccountDecoder _accountDecoder = new();
-
         private TrieStore CreateTrieStore(
             IPruningStrategy? pruningStrategy = null,
             IKeyValueStoreWithBatching? kvStore = null,
@@ -582,7 +580,7 @@ namespace Nethermind.Trie.Test.Pruning
 
             TrieNode a = new(NodeType.Leaf);
             Account account = new(1, 1, storage1.Keccak, Keccak.OfAnEmptyString);
-            a.Value = _accountDecoder.Encode(account).Bytes;
+            a.Value = Rlp.Encode(account).Bytes;
             a.Key = Nibbles.BytesToNibbleBytes(TestItem.KeccakA.BytesToArray());
             a.ResolveKey(NullTrieNodeResolver.Instance, ref emptyPath);
 
@@ -637,7 +635,7 @@ namespace Nethermind.Trie.Test.Pruning
 
             TrieNode a = new(NodeType.Leaf);
             Account account = new(1, 1, storage1.Keccak, Keccak.OfAnEmptyString);
-            a.Value = _accountDecoder.Encode(account).Bytes;
+            a.Value = Rlp.Encode(account).Bytes;
             a.Key = Bytes.FromHexString("abc");
             a.ResolveKey(NullTrieNodeResolver.Instance, ref emptyPath);
 
@@ -699,7 +697,7 @@ namespace Nethermind.Trie.Test.Pruning
 
             TrieNode a = new(NodeType.Leaf);
             Account account = new(1, 1, storage1.Keccak, Keccak.OfAnEmptyString);
-            a.Value = _accountDecoder.Encode(account).Bytes;
+            a.Value = Rlp.Encode(account).Bytes;
             a.Key = storage1Nib[1..];
             a.ResolveKey(NullTrieNodeResolver.Instance, ref emptyPath);
 
@@ -708,7 +706,7 @@ namespace Nethermind.Trie.Test.Pruning
 
             TrieNode b = new(NodeType.Leaf);
             Account accountB = new(2, 1, storage2.Keccak, Keccak.OfAnEmptyString);
-            b.Value = _accountDecoder.Encode(accountB).Bytes;
+            b.Value = Rlp.Encode(accountB).Bytes;
             b.Key = storage2Nib[1..];
             b.ResolveKey(NullTrieNodeResolver.Instance, ref emptyPath);
 
@@ -1750,6 +1748,7 @@ namespace Nethermind.Trie.Test.Pruning
 
             commitBlock1.Should().NotThrow();
         }
+
     }
 
     [TestFixture]

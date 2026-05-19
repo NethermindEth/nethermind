@@ -37,8 +37,6 @@ public class SnapRangeRecovery(ISyncPeerPool peerPool, ILogManager logManager) :
     private const int ConcurrentAttempt = 3;
     private readonly ILogger _logger = logManager.GetClassLogger<SnapRangeRecovery>();
 
-    private readonly AccountDecoder _accountDecoder = new();
-
     public async Task<IOwnedReadOnlyList<(TreePath, byte[])>?> Recover(Hash256 rootHash, Hash256? address, TreePath startingPath, Hash256 startingNodeHash, Hash256 fullPath, CancellationToken cancellationToken)
     {
         using AutoCancelTokenSource cts = cancellationToken.CreateChildTokenSource();
@@ -122,7 +120,7 @@ public class SnapRangeRecovery(ISyncPeerPool peerPool, ILogManager logManager) :
             ValueHash256 slotPath = default;
             if (pathAndAccounts.Length > 0)
             {
-                accountRlp = _accountDecoder.Encode(pathAndAccounts[0].Account).Bytes;
+                accountRlp = Rlp.Encode(pathAndAccounts[0].Account).Bytes;
                 slotPath = pathAndAccounts[0].Path;
             }
 

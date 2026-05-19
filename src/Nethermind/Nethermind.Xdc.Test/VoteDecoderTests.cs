@@ -1,8 +1,6 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
-using FluentAssertions;
 using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Xdc.Types;
@@ -67,7 +65,7 @@ public class VoteDecoderTests
             decoded = decoder.Decode(ref decoderContext);
         }
 
-        decoded.Should().BeEquivalentTo(vote, options => options.Excluding(v => v.Signer));
+        AssertVote(decoded, vote);
     }
 
     [Test]
@@ -90,9 +88,9 @@ public class VoteDecoderTests
         Rlp.ValueDecoderContext decoderContext = new(stream.Data.AsSpan());
         Vote decodedContext = decoder.Decode(ref decoderContext);
 
-        decodedStream.Should().BeEquivalentTo(vote, options => options.Excluding(v => v.Signer));
-        decodedContext.Should().BeEquivalentTo(vote, options => options.Excluding(v => v.Signer));
-        decodedStream.Should().BeEquivalentTo(decodedContext);
+        AssertVote(decodedStream, vote);
+        AssertVote(decodedContext, vote);
+        AssertVote(decodedStream, decodedContext);
     }
 
     [Test]
@@ -130,7 +128,8 @@ public class VoteDecoderTests
         Assert.That(sealingEncoded.Bytes.Length, Is.LessThan(normalEncoded.Bytes.Length),
             "ForSealing encoding should be shorter as it omits the signature.");
 
-        Vote decoded = decoder.Decode((ReadOnlySpan<byte>)sealingEncoded.Bytes, RlpBehaviors.ForSealing);
+        Rlp.ValueDecoderContext context = sealingEncoded.Bytes.AsRlpValueContext();
+        Vote decoded = decoder.Decode(ref context, RlpBehaviors.ForSealing);
 
         Assert.That(decoded.Signature, Is.Null,
             "ForSealing decoding should not contain Signature field.");
@@ -143,7 +142,7 @@ public class VoteDecoderTests
     {
         VoteDecoder decoder = new();
 
-        Rlp encoded = decoder.Encode(null!);
+        Rlp encoded = decoder.Encode((Vote)null!);
 
         Assert.That(encoded, Is.EqualTo(Rlp.OfEmptyList));
     }
@@ -152,7 +151,8 @@ public class VoteDecoderTests
     public void Decode_Null_ReturnsNull()
     {
         VoteDecoder decoder = new();
-        Vote decoded = decoder.Decode((ReadOnlySpan<byte>)Rlp.OfEmptyList.Bytes);
+        Rlp.ValueDecoderContext context = Rlp.OfEmptyList.Bytes.AsRlpValueContext();
+        Vote decoded = decoder.Decode(ref context);
 
         Assert.That(decoded, Is.Null);
     }
@@ -199,5 +199,20 @@ public class VoteDecoderTests
 
         Assert.That(round, Is.EqualTo(1UL));
         Assert.That(hash, Is.Not.EqualTo(Hash256.Zero)); // Should be computed hash
+    }
+
+    private static void AssertVote(Vote actual, Vote expected)
+    {
+        AssertBlockRoundInfo(actual.ProposedBlockInfo, expected.ProposedBlockInfo);
+        Assert.That(actual.GapNumber, Is.EqualTo(expected.GapNumber));
+        Assert.That(actual.Signature, Is.EqualTo(expected.Signature));
+        Assert.That(actual.IsMyVote, Is.EqualTo(expected.IsMyVote));
+    }
+
+    private static void AssertBlockRoundInfo(BlockRoundInfo actual, BlockRoundInfo expected)
+    {
+        Assert.That(actual.Hash, Is.EqualTo(expected.Hash));
+        Assert.That(actual.Round, Is.EqualTo(expected.Round));
+        Assert.That(actual.BlockNumber, Is.EqualTo(expected.BlockNumber));
     }
 }

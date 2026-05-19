@@ -92,6 +92,7 @@ public partial class EthRpcModule(
     protected readonly IWallet _wallet = wallet ?? throw new ArgumentNullException(nameof(wallet));
     protected readonly ISpecProvider _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
     protected readonly ILogger _logger = logManager.GetClassLogger<EthRpcModule>();
+    private static readonly TxDecoder TxRlpDecoder = TxDecoder.Instance;
     protected readonly IGasPriceOracle _gasPriceOracle = gasPriceOracle ?? throw new ArgumentNullException(nameof(gasPriceOracle));
     protected readonly IEthSyncingInfo _ethSyncingInfo = ethSyncingInfo ?? throw new ArgumentNullException(nameof(ethSyncingInfo));
     protected readonly IFeeHistoryOracle _feeHistoryOracle = feeHistoryOracle ?? throw new ArgumentNullException(nameof(feeHistoryOracle));
@@ -372,7 +373,7 @@ public partial class EthRpcModule(
     {
         try
         {
-            Transaction tx = TxDecoder.Instance.DecodeCompleteNotNull(transaction,
+            Transaction tx = TxRlpDecoder.DecodeCompleteNotNull(transaction,
                 RlpBehaviors.AllowUnsigned | RlpBehaviors.SkipTypedWrapping | RlpBehaviors.InMempoolForm);
             return await SendTx(tx);
         }
@@ -651,7 +652,7 @@ public partial class EthRpcModule(
 
         RlpBehaviors encodingSettings = RlpBehaviors.SkipTypedWrapping | (transaction.IsInMempoolForm() ? RlpBehaviors.InMempoolForm : RlpBehaviors.None);
 
-        using NettyRlpStream stream = TxDecoder.Instance.EncodeToNewNettyStream(transaction, encodingSettings);
+        using NettyRlpStream stream = TxRlpDecoder.EncodeToNewNettyStream(transaction, encodingSettings);
         return ResultWrapper<string?>.Success(stream.AsSpan().ToHexString(true));
     }
 
@@ -715,7 +716,7 @@ public partial class EthRpcModule(
 
         Transaction transaction = block.Transactions[(int)positionIndex];
         // Block-stored txs never carry a sidecar (blob commitments live separately), so consensus form only.
-        using NettyRlpStream stream = TxDecoder.Instance.EncodeToNewNettyStream(transaction, RlpBehaviors.SkipTypedWrapping);
+        using NettyRlpStream stream = TxRlpDecoder.EncodeToNewNettyStream(transaction, RlpBehaviors.SkipTypedWrapping);
         return ResultWrapper<string?>.Success(stream.AsSpan().ToHexString(true));
     }
 

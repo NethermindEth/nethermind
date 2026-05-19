@@ -10,22 +10,19 @@ using Nethermind.Core.BlockAccessLists;
 
 namespace Nethermind.Serialization.Rlp.Eip7928;
 
-public class BlockAccessListDecoder :
-    IRlpValueDecoder<ReadOnlyBlockAccessList>,
-    IRlpStreamEncoder<ReadOnlyBlockAccessList>,
-    IRlpStreamEncoder<GeneratedBlockAccessList>
+public class BlockAccessListDecoder : RlpDecoder<ReadOnlyBlockAccessList>
 {
     public static readonly BlockAccessListDecoder Instance = new();
 
     private static readonly RlpLimit _accountsLimit = new(Eip7928Constants.MaxAccounts, "", ReadOnlyMemory<char>.Empty);
 
-    public int GetLength(ReadOnlyBlockAccessList item, RlpBehaviors rlpBehaviors)
+    public override int GetLength(ReadOnlyBlockAccessList item, RlpBehaviors rlpBehaviors)
         => Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors));
 
     public int GetLength(GeneratedBlockAccessList item, RlpBehaviors rlpBehaviors)
         => Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors));
 
-    public ReadOnlyBlockAccessList Decode(ref Rlp.ValueDecoderContext ctx, RlpBehaviors rlpBehaviors)
+    protected override ReadOnlyBlockAccessList DecodeInternal(ref Rlp.ValueDecoderContext ctx, RlpBehaviors rlpBehaviors)
     {
         ReadOnlyAccountChanges[] accountChanges = ctx.DecodeArray(AccountChangesDecoder.Instance, true, default, _accountsLimit);
 
@@ -62,13 +59,18 @@ public class BlockAccessListDecoder :
         int accountCount = item.AccountChanges.Count;
         AccountChangesDecoder.EncodingLengths[] accountLengths = ArrayPool<AccountChangesDecoder.EncodingLengths>.Shared.Rent(accountCount);
 
-        PrepareGeneratedLengths(item, accountLengths, rlpBehaviors, out int contentLength);
+        try
+        {
+            PrepareGeneratedLengths(item, accountLengths, rlpBehaviors, out int contentLength);
 
-        RlpStream stream = new(Rlp.LengthOfSequence(contentLength));
-        EncodeGeneratedPrepared(stream, item, accountLengths, contentLength, rlpBehaviors);
-        byte[] result = stream.Data.ToArray();
-        ArrayPool<AccountChangesDecoder.EncodingLengths>.Shared.Return(accountLengths);
-        return result;
+            RlpStream stream = new(Rlp.LengthOfSequence(contentLength));
+            EncodeGeneratedPrepared(stream, item, accountLengths, contentLength, rlpBehaviors);
+            return stream.Data.ToArray();
+        }
+        finally
+        {
+            ArrayPool<AccountChangesDecoder.EncodingLengths>.Shared.Return(accountLengths);
+        }
     }
 
     /// <inheritdoc cref="EncodeToBytes(GeneratedBlockAccessList, RlpBehaviors)"/>
@@ -77,16 +79,21 @@ public class BlockAccessListDecoder :
         int accountCount = item.AccountChanges.Count;
         AccountChangesDecoder.EncodingLengths[] accountLengths = ArrayPool<AccountChangesDecoder.EncodingLengths>.Shared.Rent(accountCount);
 
-        PrepareReadOnlyLengths(item, accountLengths, rlpBehaviors, out int contentLength);
+        try
+        {
+            PrepareReadOnlyLengths(item, accountLengths, rlpBehaviors, out int contentLength);
 
-        RlpStream stream = new(Rlp.LengthOfSequence(contentLength));
-        EncodeReadOnlyPrepared(stream, item, accountLengths, contentLength, rlpBehaviors);
-        byte[] result = stream.Data.ToArray();
-        ArrayPool<AccountChangesDecoder.EncodingLengths>.Shared.Return(accountLengths);
-        return result;
+            RlpStream stream = new(Rlp.LengthOfSequence(contentLength));
+            EncodeReadOnlyPrepared(stream, item, accountLengths, contentLength, rlpBehaviors);
+            return stream.Data.ToArray();
+        }
+        finally
+        {
+            ArrayPool<AccountChangesDecoder.EncodingLengths>.Shared.Return(accountLengths);
+        }
     }
 
-    public void Encode(RlpStream stream, ReadOnlyBlockAccessList item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public override void Encode(RlpStream stream, ReadOnlyBlockAccessList item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         int accountCount = item.AccountChanges.Count;
         AccountChangesDecoder.EncodingLengths[] accountLengths = ArrayPool<AccountChangesDecoder.EncodingLengths>.Shared.Rent(accountCount);

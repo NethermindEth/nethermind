@@ -9,18 +9,18 @@ using System.Diagnostics.CodeAnalysis;
 namespace Nethermind.Serialization.Rlp;
 
 [Rlp.SkipGlobalRegistration]
-public sealed class ReceiptArrayStorageDecoder(bool compactEncoding = true) : RlpValueDecoder<TxReceipt[]>
+public sealed class ReceiptArrayStorageDecoder(bool compactEncoding = true) : RlpDecoder<TxReceipt[]>
 {
     public static readonly ReceiptArrayStorageDecoder Instance = new();
 
     [DynamicDependency(DynamicallyAccessedMemberTypes.PublicConstructors, typeof(ReceiptArrayStorageDecoder))]
     public ReceiptArrayStorageDecoder() : this(true) { }
 
-    private static readonly IRlpStreamEncoder<TxReceipt> Decoder = Rlp.GetStreamEncoder<TxReceipt>(RlpDecoderKey.LegacyStorage);
-    private static readonly IRlpValueDecoder<TxReceipt> ValueDecoder = Rlp.GetValueDecoder<TxReceipt>(RlpDecoderKey.LegacyStorage);
+    private static readonly IRlpDecoder<TxReceipt> Decoder = Rlp.GetDecoder<TxReceipt>(RlpDecoderKey.LegacyStorage);
+    private static readonly IRlpDecoder<TxReceipt> ValueDecoder = Rlp.GetDecoder<TxReceipt>(RlpDecoderKey.LegacyStorage);
 
-    private static readonly IRlpStreamEncoder<TxReceipt> CompactDecoder = Rlp.GetStreamEncoder<TxReceipt>(RlpDecoderKey.Storage);
-    private static readonly IRlpValueDecoder<TxReceipt> CompactValueDecoder = Rlp.GetValueDecoder<TxReceipt>(RlpDecoderKey.Storage);
+    private static readonly IRlpDecoder<TxReceipt> CompactDecoder = Rlp.GetDecoder<TxReceipt>(RlpDecoderKey.Storage);
+    private static readonly IRlpDecoder<TxReceipt> CompactValueDecoder = Rlp.GetDecoder<TxReceipt>(RlpDecoderKey.Storage);
 
     public const int CompactEncoding = 127;
 

@@ -355,7 +355,7 @@ namespace Nethermind.Core.Test.Builders
                 currentBlock.Header.TxRoot = TxTrie.CalculateRoot(currentBlock.Transactions);
                 TxReceipt[] txReceipts = receipts.ToArray();
                 currentBlock.Header.ReceiptsRoot =
-                    ReceiptTrie.CalculateRoot(_specProvider.GetSpec(currentBlock.Header), txReceipts, Rlp.GetStreamEncoder<TxReceipt>()!);
+                    ReceiptTrie.CalculateRoot(_specProvider.GetSpec(currentBlock.Header), txReceipts, Rlp.GetDecoder<TxReceipt>()!);
                 currentBlock.Header.Hash = currentBlock.CalculateHash();
                 foreach (TxReceipt txReceipt in txReceipts)
                 {

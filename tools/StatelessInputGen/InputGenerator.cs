@@ -82,7 +82,7 @@ internal static class InputGenerator
 
                 byte[] rlp = Convert.FromHexString(rlpHex![2..]);
 
-                IRlpValueDecoder<Block> blockDecoder = Rlp.GetValueDecoder<Block>()!;
+                IRlpDecoder<Block> blockDecoder = Rlp.GetDecoder<Block>()!;
                 Rlp.ValueDecoderContext blockContext = new(rlp);
                 block = blockDecoder.Decode(ref blockContext, RlpBehaviors.None);
                 blockContext.Check(rlp.Length);

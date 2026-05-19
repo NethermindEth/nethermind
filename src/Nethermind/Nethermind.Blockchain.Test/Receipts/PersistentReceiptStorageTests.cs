@@ -38,6 +38,7 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
     private ReceiptConfig _receiptConfig = null!;
     private PersistentReceiptStorage _storage = null!;
     private ReceiptArrayStorageDecoder _decoder = null!;
+    private IRlpDecoder<TxReceipt[]> _rlpDecoder = null!;
 
     [SetUp]
     public void SetUp()
@@ -58,6 +59,7 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
     private void CreateStorage()
     {
         _decoder = new ReceiptArrayStorageDecoder(useCompactReceipts);
+        _rlpDecoder = _decoder;
         _storage = new PersistentReceiptStorage(
             _receiptsDb,
             _specProvider,
@@ -156,7 +158,7 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
     {
         (Block block, TxReceipt[] receipts) = PrepareBlock();
 
-        using NettyRlpStream rlpStream = _decoder.EncodeToNewNettyStream(receipts, RlpBehaviors.Storage);
+        using NettyRlpStream rlpStream = _rlpDecoder.EncodeToNewNettyStream(receipts, RlpBehaviors.Storage);
         _receiptsDb.GetColumnDb(ReceiptsColumns.Blocks)[block.Hash!.Bytes] = rlpStream.AsSpan().ToArray();
 
         CreateStorage();
@@ -180,7 +182,7 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
         block.Number.ToBigEndianByteArray().CopyTo(blockNumPrefixed); // TODO: We don't need to create an array here...
         block.Hash!.Bytes.CopyTo(blockNumPrefixed[8..]);
 
-        using NettyRlpStream rlpStream = _decoder.EncodeToNewNettyStream(receipts, RlpBehaviors.Storage);
+        using NettyRlpStream rlpStream = _rlpDecoder.EncodeToNewNettyStream(receipts, RlpBehaviors.Storage);
         _receiptsDb.GetColumnDb(ReceiptsColumns.Blocks)[block.Hash.Bytes] = rlpStream.AsSpan().ToArray();
 
         _storage.Get(block).Length.Should().Be(receipts.Length);

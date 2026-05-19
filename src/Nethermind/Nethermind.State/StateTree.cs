@@ -38,7 +38,13 @@ namespace Nethermind.State
         public Account? Get(Address address, Hash256? rootHash = null)
         {
             ReadOnlySpan<byte> bytes = Get(KeccakCache.Compute(address.Bytes).BytesAsSpan, rootHash);
-            return bytes.IsEmpty ? null : _decoder.Decode(bytes);
+            if (bytes.IsEmpty)
+            {
+                return null;
+            }
+
+            Rlp.ValueDecoderContext context = new(bytes);
+            return _decoder.Decode(ref context);
         }
 
         [DebuggerStepThrough]
@@ -59,7 +65,13 @@ namespace Nethermind.State
         internal Account? Get(Hash256 keccak) // for testing
         {
             ReadOnlySpan<byte> bytes = Get(keccak.Bytes);
-            return bytes.IsEmpty ? null : _decoder.Decode(bytes);
+            if (bytes.IsEmpty)
+            {
+                return null;
+            }
+
+            Rlp.ValueDecoderContext context = new(bytes);
+            return _decoder.Decode(ref context);
         }
 
         public void Set(Address address, Account? account)

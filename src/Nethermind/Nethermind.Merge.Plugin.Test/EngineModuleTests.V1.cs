@@ -418,7 +418,7 @@ public partial class EngineModuleTests
         IEngineRpcModule rpc = chain.EngineRpcModule;
         ExecutionPayload getPayloadResult = await BuildAndGetPayloadResult(chain, rpc);
         getPayloadResult.Timestamp = chain.BlockTree.Head!.Timestamp - 1;
-        Block? block = getPayloadResult.TryGetBlock().Block;
+        Block? block = getPayloadResult.TryGetBlock().Data;
         getPayloadResult.BlockHash = block!.Header.CalculateHash();
 
         ResultWrapper<PayloadStatusV1> executePayloadResult = await rpc.engine_newPayloadV1(getPayloadResult);
@@ -432,7 +432,7 @@ public partial class EngineModuleTests
         IEngineRpcModule rpc = chain.EngineRpcModule;
         ExecutionPayload getPayloadResult = await BuildAndGetPayloadResult(chain, rpc);
         getPayloadResult.ReceiptsRoot = TestItem.KeccakA;
-        Block? block = getPayloadResult.TryGetBlock().Block;
+        Block? block = getPayloadResult.TryGetBlock().Data;
         getPayloadResult.BlockHash = block!.Header.CalculateHash();
 
         ResultWrapper<PayloadStatusV1> executePayloadResult = await rpc.engine_newPayloadV1(getPayloadResult);
@@ -1143,7 +1143,7 @@ public partial class EngineModuleTests
         ExecutionPayload executionPayload = new();
         executionPayload.SetTransactions(txsSource);
 
-        Transaction[] txsReceived = executionPayload.TryGetTransactions().Transactions;
+        Transaction[] txsReceived = executionPayload.TryGetTransactions().Data!;
 
         txsReceived.Should().BeEquivalentTo(txsSource, static options => options
             .Excluding(static t => t.ChainId)

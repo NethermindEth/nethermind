@@ -6,7 +6,7 @@ namespace Nethermind.Serialization.Rlp;
 // If any of these is triggered in prod, then something went wrong, coz these are fairly slow path. These are only
 // useful for easy tests.
 
-public sealed class ByteStreamDecoder : RlpValueDecoder<byte>
+public sealed class ByteStreamDecoder : RlpDecoder<byte>
 {
     public override int GetLength(byte item, RlpBehaviors rlpBehaviors) =>
         Rlp.LengthOf(item);
@@ -18,7 +18,7 @@ public sealed class ByteStreamDecoder : RlpValueDecoder<byte>
         stream.Encode(item);
 }
 
-public sealed class ShortStreamDecoder : RlpValueDecoder<short>
+public sealed class ShortStreamDecoder : RlpDecoder<short>
 {
     public override int GetLength(short item, RlpBehaviors rlpBehaviors) =>
         Rlp.LengthOf(item);
@@ -30,7 +30,7 @@ public sealed class ShortStreamDecoder : RlpValueDecoder<short>
         stream.Encode(item);
 }
 
-public sealed class UShortStreamDecoder : RlpValueDecoder<ushort>
+public sealed class UShortStreamDecoder : RlpDecoder<ushort>
 {
     public override int GetLength(ushort item, RlpBehaviors rlpBehaviors) =>
         Rlp.LengthOf((long)item);
@@ -42,7 +42,7 @@ public sealed class UShortStreamDecoder : RlpValueDecoder<ushort>
         stream.Encode(item);
 }
 
-public sealed class IntStreamDecoder : RlpValueDecoder<int>
+public sealed class IntStreamDecoder : RlpDecoder<int>
 {
     public override int GetLength(int item, RlpBehaviors rlpBehaviors) =>
         Rlp.LengthOf(item);
@@ -54,7 +54,7 @@ public sealed class IntStreamDecoder : RlpValueDecoder<int>
         stream.Encode(item);
 }
 
-public sealed class UIntStreamDecoder : RlpValueDecoder<uint>
+public sealed class UIntStreamDecoder : RlpDecoder<uint>
 {
     public override int GetLength(uint item, RlpBehaviors rlpBehaviors) =>
         Rlp.LengthOf((long)item);
@@ -66,7 +66,7 @@ public sealed class UIntStreamDecoder : RlpValueDecoder<uint>
         stream.Encode(item);
 }
 
-public sealed class ULongStreamDecoder : RlpValueDecoder<ulong>
+public sealed class ULongStreamDecoder : RlpDecoder<ulong>
 {
     public override int GetLength(ulong item, RlpBehaviors rlpBehaviors) =>
         Rlp.LengthOf(item);

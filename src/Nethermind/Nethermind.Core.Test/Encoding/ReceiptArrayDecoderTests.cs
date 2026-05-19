@@ -70,7 +70,7 @@ namespace Nethermind.Core.Test.Encoding
 
             TxReceipt[] txReceipts = { BuildReceipt(), BuildReceipt() };
 
-            ReceiptArrayStorageDecoder encoder = new(compactEncoding);
+            IRlpDecoder<TxReceipt[]> encoder = new ReceiptArrayStorageDecoder(compactEncoding);
             using NettyRlpStream rlp = encoder.EncodeToNewNettyStream(txReceipts, encodeBehaviors);
 
             ReceiptArrayStorageDecoder decoder = new();
