@@ -312,10 +312,9 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
     {
         long refundableStateGas = Math.Max(0, gas.StateGasUsed - stateGasFloor);
         long appliedRefund = Math.Min(amount, refundableStateGas);
-        long unrefundedSpill = GetUnrefundedStateGasSpill(in gas);
         if (trackSpillRefund)
         {
-            gas.StateGasSpillRefunded += Math.Min(appliedRefund, unrefundedSpill);
+            TrackStateGasSpillRefund(ref gas, appliedRefund);
         }
 
         gas.StateReservoir += appliedRefund;
@@ -323,10 +322,48 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static void DiscardStateGas(ref EthereumGasPolicy gas, long amount, long stateGasFloor)
+    public static long DiscardStateGas(ref EthereumGasPolicy gas, long amount, long stateGasFloor, bool trackSpillRefund)
     {
         long discardableStateGas = Math.Max(0, gas.StateGasUsed - stateGasFloor);
-        gas.StateGasUsed -= Math.Min(amount, discardableStateGas);
+        long appliedRefund = Math.Min(amount, discardableStateGas);
+        if (trackSpillRefund)
+        {
+            TrackStateGasSpillRefund(ref gas, appliedRefund);
+        }
+
+        gas.StateGasUsed -= appliedRefund;
+        return amount - appliedRefund;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static void AddStateGasRefundToReservoir(ref EthereumGasPolicy gas, long amount, bool trackSpillRefund)
+    {
+        if (trackSpillRefund)
+        {
+            TrackStateGasSpillRefund(ref gas, amount);
+        }
+
+        gas.StateReservoir += amount;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static void RemoveStateGasRefundFromReservoir(ref EthereumGasPolicy gas, long amount)
+    {
+        long fromReservoir = Math.Min(amount, gas.StateReservoir);
+        gas.StateReservoir -= fromReservoir;
+        amount -= fromReservoir;
+
+        if (amount > 0)
+        {
+            gas.StateGasUsed -= Math.Min(amount, gas.StateGasUsed);
+        }
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void TrackStateGasSpillRefund(ref EthereumGasPolicy gas, long amount)
+    {
+        long unrefundedSpill = GetUnrefundedStateGasSpill(in gas);
+        gas.StateGasSpillRefunded += Math.Min(amount, unrefundedSpill);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
