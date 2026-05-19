@@ -930,16 +930,25 @@ internal sealed class BlockAccessListValidationIndex
             int rowStart = _rowStarts[row];
             int rowLength = RowLength(row);
             ReadOnlySpan<int> ordinals = new(_accountOrdinals, rowStart, rowLength);
-            int idx = ordinals.BinarySearch(ordinal);
-            if (idx < 0) { start = 0; length = 0; return; }
+            int lo = LowerBound(ordinals, ordinal);
+            int hi = LowerBound(ordinals, ordinal + 1);
+            start = rowStart + lo;
+            length = hi - lo;
+        }
 
-            // BinarySearch may return any matching index; step back to find the first.
-            while (idx > 0 && ordinals[idx - 1] == ordinal) idx--;
-            int endIdx = idx;
-            while (endIdx < ordinals.Length && ordinals[endIdx] == ordinal) endIdx++;
-
-            start = rowStart + idx;
-            length = endIdx - idx;
+        /// <summary>Smallest index <c>i</c> such that <c>span[i] &gt;= value</c>, or
+        /// <c>span.Length</c> if no such index exists. O(log n).</summary>
+        private static int LowerBound(ReadOnlySpan<int> span, int value)
+        {
+            int lo = 0;
+            int hi = span.Length;
+            while (lo < hi)
+            {
+                int mid = (int)((uint)(lo + hi) >> 1);
+                if (span[mid] < value) lo = mid + 1;
+                else hi = mid;
+            }
+            return lo;
         }
 
         public void SortAllRows()
