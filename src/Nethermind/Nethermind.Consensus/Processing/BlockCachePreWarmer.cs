@@ -128,6 +128,10 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
 
     private void PreWarmCachesParallel(BlockState blockState, Block suggestedBlock, BlockHeader parent, IReleaseSpec spec, ParallelOptions parallelOptions, AddressWarmer addressWarmer, CancellationToken cancellationToken)
     {
+        // Suppress the IsBlockProcessingThread flag inherited via ExecutionContext from Task.Run
+        // so speculative EVM metrics are routed to _other* counters, not the per-block _main* counters.
+        ProcessingThread.IsBlockProcessingThread = false;
+
         try
         {
             if (cancellationToken.IsCancellationRequested) return;
