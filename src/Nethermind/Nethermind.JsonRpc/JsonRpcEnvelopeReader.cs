@@ -55,8 +55,8 @@ internal ref struct JsonRpcEnvelopeReader
             if (reader.ValueTextEquals("id"u8))
             {
                 ReadValue(ref reader);
-                long valueStart = reader.TokenStartIndex;
-                id = ReadId(ref reader, _body.Slice(checked((int)valueStart), checked((int)(reader.BytesConsumed - valueStart))));
+                int valueStart = (int)reader.TokenStartIndex;
+                id = ReadId(ref reader, _body.Slice(valueStart, (int)reader.BytesConsumed - valueStart));
                 continue;
             }
 
@@ -73,10 +73,10 @@ internal ref struct JsonRpcEnvelopeReader
                 ReadValue(ref reader);
                 hasParams = true;
                 paramsKind = GetValueKind(reader.TokenType);
-                long valueStart = reader.TokenStartIndex;
+                int valueStart = (int)reader.TokenStartIndex;
                 SkipValue(ref reader);
-                paramsStart = checked((int)valueStart);
-                paramsLength = checked((int)(reader.BytesConsumed - valueStart));
+                paramsStart = valueStart;
+                paramsLength = (int)reader.BytesConsumed - valueStart;
                 continue;
             }
 
