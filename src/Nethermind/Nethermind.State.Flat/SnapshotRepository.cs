@@ -77,14 +77,21 @@ public class SnapshotRepository(PersistedSnapshotRepositories persistedSnapshotR
             {
                 (StateId current, bool currentPersisted, int parentIdx) = queue.Dequeue();
 
-                // Expand up to 6 edges from `current` (in-memory compacted/base, then
-                // persisted large compacted/base, then persisted small compacted/base).
-                // Large is probed before small because its ranges are longer, which
-                // shortens the assembled path. When already on a persisted path, skip
-                // in-memory edges (offset by 2).
-                int edgeStart = currentPersisted ? 2 : 0;
-                for (int e = edgeStart; e < 6; e++)
+                // Expand up to 6 edges from `current`, in widest-jump-first order:
+                //   0: in-memory compacted          — widest in-RAM hop, no disk read
+                //   1: Large-tier persisted compacted
+                //   2: Large-tier persisted base     — both are CompactSize-wide
+                //   3: in-memory base                — one-block hop, no disk read
+                //   4: Small-tier persisted compacted
+                //   5: Small-tier persisted base     — narrowest hops, last resort
+                // Persisted snapshots only chain back to other persisted snapshots by
+                // construction, so once on a persisted edge the in-memory edges (0, 3)
+                // are guaranteed misses — gated below by the edgeIsInMemory check.
+                for (int e = 0; e < 6; e++)
                 {
+                    bool edgeIsInMemory = e == 0 || e == 3;
+                    if (currentPersisted && edgeIsInMemory) continue;
+
                     IDisposable? snapshot;
                     StateId from;
 
@@ -94,17 +101,17 @@ public class SnapshotRepository(PersistedSnapshotRepositories persistedSnapshotR
                             if (!TryLeaseCompactedState(current, out Snapshot? sc)) continue;
                             snapshot = sc; from = sc.From;
                             break;
-                        case 1: // in-memory base
-                            if (!TryLeaseState(current, out Snapshot? sb)) continue;
-                            snapshot = sb; from = sb.From;
-                            break;
-                        case 2: // persisted compacted (large tier)
+                        case 1: // persisted compacted (large tier)
                             if (!_largePersisted.TryLeaseCompactedSnapshotTo(current, out PersistedSnapshot? pcL)) continue;
                             snapshot = pcL; from = pcL.From;
                             break;
-                        case 3: // persisted base (large tier — boundary CompactSize snapshots)
+                        case 2: // persisted base (large tier — boundary CompactSize snapshots)
                             if (!_largePersisted.TryLeaseSnapshotTo(current, out PersistedSnapshot? pbL)) continue;
                             snapshot = pbL; from = pbL.From;
+                            break;
+                        case 3: // in-memory base
+                            if (!TryLeaseState(current, out Snapshot? sb)) continue;
+                            snapshot = sb; from = sb.From;
                             break;
                         case 4: // persisted compacted (small tier)
                             if (!_smallPersisted.TryLeaseCompactedSnapshotTo(current, out PersistedSnapshot? pcS)) continue;
@@ -117,7 +124,7 @@ public class SnapshotRepository(PersistedSnapshotRepositories persistedSnapshotR
                         default: continue;
                     }
 
-                    bool edgePersisted = e >= 2;
+                    bool edgePersisted = !edgeIsInMemory;
 
                     if (from.BlockNumber < targetState.BlockNumber)
                     {
