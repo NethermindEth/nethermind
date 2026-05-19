@@ -466,7 +466,18 @@ public class Startup : IStartup
                     await responseSink.CompleteAsync(ctx.RequestAborted);
                 }
 
+                if (contentLength is null)
+                {
+                    Interlocked.Increment(ref Metrics.JsonRpcHttpRequestsWithoutContentLength);
+                }
+                else
+                {
+                    Interlocked.Increment(ref Metrics.JsonRpcHttpRequestsWithContentLength);
+                }
+
                 Interlocked.Add(ref Metrics.JsonRpcBytesReceivedHttp, collectedBody.BytesRead);
+                Interlocked.Add(ref Metrics.JsonRpcHttpRequestBodyReads, collectedBody.ReadCount);
+                Interlocked.Add(ref Metrics.JsonRpcHttpRequestBodySegments, collectedBody.SegmentCount);
             }
             finally
             {
@@ -499,10 +510,12 @@ public class Startup : IStartup
             while (true)
             {
                 ReadResult readResult = await bodyReader.ReadAsync(cancellationToken);
+                collectedBody.RecordRead();
                 ReadOnlySequence<byte> buffer = readResult.Buffer;
 
                 foreach (ReadOnlyMemory<byte> segment in buffer)
                 {
+                    collectedBody.RecordSegment(segment.Length);
                     long bytesRead = collectedBody.BytesRead + segment.Length;
                     if (maxRequestBodySize is not null && bytesRead > maxRequestBodySize)
                     {
@@ -549,6 +562,8 @@ public class Startup : IStartup
         private int _initialCapacity = DefaultInitialCapacity;
 
         public int BytesRead { get; private set; }
+        public int ReadCount { get; private set; }
+        public int SegmentCount { get; private set; }
 
         public ReadOnlyMemory<byte> Memory =>
             _buffer is null ? ReadOnlyMemory<byte>.Empty : _buffer.AsMemory(0, BytesRead);
@@ -584,6 +599,16 @@ public class Startup : IStartup
             _buffer = newBuffer;
         }
 
+        public void RecordRead() => ReadCount++;
+
+        public void RecordSegment(int length)
+        {
+            if (length != 0)
+            {
+                SegmentCount++;
+            }
+        }
+
         public void Append(ReadOnlyMemory<byte> segment)
         {
             if (segment.Length == 0)
@@ -607,6 +632,8 @@ public class Startup : IStartup
             ArrayPool<byte>.Shared.Return(_buffer);
             _buffer = null;
             BytesRead = 0;
+            ReadCount = 0;
+            SegmentCount = 0;
         }
     }
 }

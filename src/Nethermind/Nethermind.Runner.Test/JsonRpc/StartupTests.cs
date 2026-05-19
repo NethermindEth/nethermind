@@ -114,13 +114,46 @@ public class StartupTests
             """;
 
         long receivedBefore = JsonRpcMetrics.JsonRpcBytesReceivedHttp;
+        long withoutContentLengthBefore = JsonRpcMetrics.JsonRpcHttpRequestsWithoutContentLength;
+        long bodyReadsBefore = JsonRpcMetrics.JsonRpcHttpRequestBodyReads;
+        long bodySegmentsBefore = JsonRpcMetrics.JsonRpcHttpRequestBodySegments;
         string response = await ProcessJsonRpcRequest(request, setContentLength: false);
         long receivedBytes = JsonRpcMetrics.JsonRpcBytesReceivedHttp - receivedBefore;
+        long withoutContentLength = JsonRpcMetrics.JsonRpcHttpRequestsWithoutContentLength - withoutContentLengthBefore;
+        long bodyReads = JsonRpcMetrics.JsonRpcHttpRequestBodyReads - bodyReadsBefore;
+        long bodySegments = JsonRpcMetrics.JsonRpcHttpRequestBodySegments - bodySegmentsBefore;
 
         using JsonDocument doc = JsonDocument.Parse(response);
 
         Assert.That(doc.RootElement.GetProperty("result").ValueKind, Is.EqualTo(JsonValueKind.Array));
         Assert.That(receivedBytes, Is.EqualTo(Encoding.UTF8.GetByteCount(request)));
+        Assert.That(withoutContentLength, Is.EqualTo(1));
+        Assert.That(bodyReads, Is.GreaterThanOrEqualTo(1));
+        Assert.That(bodySegments, Is.GreaterThanOrEqualTo(1));
+    }
+
+    [Test]
+    [NonParallelizable]
+    public async Task ProcessJsonRpcRequest_WithContentLength_RecordsRequestShape()
+    {
+        const string request =
+            """
+            {
+                "jsonrpc":"2.0",
+                "id": 1,
+                "method":"engine_getBlobsV1",
+                "params":[[]]
+            }
+            """;
+
+        long withContentLengthBefore = JsonRpcMetrics.JsonRpcHttpRequestsWithContentLength;
+        string response = await ProcessJsonRpcRequest(request);
+        long withContentLength = JsonRpcMetrics.JsonRpcHttpRequestsWithContentLength - withContentLengthBefore;
+
+        using JsonDocument doc = JsonDocument.Parse(response);
+
+        Assert.That(doc.RootElement.GetProperty("result").ValueKind, Is.EqualTo(JsonValueKind.Array));
+        Assert.That(withContentLength, Is.EqualTo(1));
     }
 
     [Test]

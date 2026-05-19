@@ -62,6 +62,22 @@ namespace Nethermind.JsonRpc
         public static long JsonRpcBytesReceivedHttp;
 
         [CounterMetric]
+        [Description("Number of JSON RPC HTTP requests received with a Content-Length header.")]
+        public static long JsonRpcHttpRequestsWithContentLength;
+
+        [CounterMetric]
+        [Description("Number of JSON RPC HTTP requests received without a Content-Length header.")]
+        public static long JsonRpcHttpRequestsWithoutContentLength;
+
+        [CounterMetric]
+        [Description("Number of JSON RPC HTTP request body reads.")]
+        public static long JsonRpcHttpRequestBodyReads;
+
+        [CounterMetric]
+        [Description("Number of JSON RPC HTTP request body segments read.")]
+        public static long JsonRpcHttpRequestBodySegments;
+
+        [CounterMetric]
         [Description("Number of JSON RPC bytes received through web sockets.")]
         public static long JsonRpcBytesReceivedWebSockets;
 
