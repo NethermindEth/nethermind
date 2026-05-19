@@ -27,6 +27,9 @@ public class RlpDecoderTests
         WithdrawalDecoder decoder = new();
         Withdrawal?[] withdrawals = [TestItem.WithdrawalA_1Eth, null, TestItem.WithdrawalB_2Eth];
 
+        Assert.That(decoder.GetContentLength((Withdrawal?[]?)null), Is.Zero);
+        Assert.That(decoder.GetLength((Withdrawal?[]?)null), Is.EqualTo(Rlp.OfEmptyList.Length));
+
         int contentLength = decoder.GetContentLength(withdrawals);
 
         Assert.That(contentLength, Is.EqualTo(
@@ -98,6 +101,28 @@ public class RlpDecoderTests
         AssertEncodedNullItem(decoder, stream.AsSpan());
     }
 
+    [Test]
+    public void Netty_collection_encoding_does_not_call_item_encoder_for_null_items()
+    {
+        NonNullableItemDecoder decoder = new();
+
+        NonNullableItem?[] array = [new(), null, new()];
+        using NettyRlpStream arrayStream = decoder.EncodeToNewNettyStream(array);
+        AssertEncodedNullItem(arrayStream.AsSpan());
+
+        List<NonNullableItem?> list = [new(), null, new()];
+        using NettyRlpStream listStream = decoder.EncodeToNewNettyStream(list);
+        AssertEncodedNullItem(listStream.AsSpan());
+
+        using ArrayPoolListRef<NonNullableItem?> pooled = new(3);
+        pooled.Add(new());
+        pooled.Add(null);
+        pooled.Add(new());
+
+        using NettyRlpStream pooledStream = decoder.EncodeToNewNettyStream(in pooled);
+        AssertEncodedNullItem(pooledStream.AsSpan());
+    }
+
     private static void AssertEncodedNullItem(WithdrawalDecoder decoder, ReadOnlySpan<byte> bytes)
     {
         Rlp.ValueDecoderContext context = new(bytes);
@@ -107,5 +132,38 @@ public class RlpDecoderTests
         Assert.That(context.ReadByte(), Is.EqualTo(Rlp.EmptyListByte));
         Assert.That(decoder.Decode(ref context), Is.Not.Null);
         context.Check(sequenceEnd);
+    }
+
+    private static void AssertEncodedNullItem(ReadOnlySpan<byte> bytes)
+    {
+        Rlp.ValueDecoderContext context = new(bytes);
+        int sequenceEnd = context.ReadSequenceLength() + context.Position;
+
+        Assert.That(context.ReadByte(), Is.EqualTo(Rlp.EmptyByteArrayByte));
+        Assert.That(context.ReadByte(), Is.EqualTo(Rlp.EmptyListByte));
+        Assert.That(context.ReadByte(), Is.EqualTo(Rlp.EmptyByteArrayByte));
+        context.Check(sequenceEnd);
+    }
+
+    private sealed class NonNullableItem
+    {
+    }
+
+    private sealed class NonNullableItemDecoder : RlpDecoder<NonNullableItem>
+    {
+        public override int GetLength(NonNullableItem item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        {
+            ArgumentNullException.ThrowIfNull(item);
+            return Rlp.OfEmptyByteArray.Length;
+        }
+
+        public override void Encode(RlpStream stream, NonNullableItem item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        {
+            ArgumentNullException.ThrowIfNull(item);
+            stream.Encode(Rlp.OfEmptyByteArray);
+        }
+
+        protected override NonNullableItem DecodeInternal(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None) =>
+            throw new NotSupportedException();
     }
 }

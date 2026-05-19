@@ -155,7 +155,7 @@ public abstract class RlpDecoder<T> : IRlpDecoder<T>
     {
         if (items is null)
         {
-            return Rlp.OfEmptyList.Length;
+            return 0;
         }
 
         int contentLength = 0;

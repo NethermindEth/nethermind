@@ -63,7 +63,14 @@ namespace Nethermind.Serialization.Rlp
 
             foreach (T? item in items)
             {
-                decoder.Encode(this, item, rlpBehaviors);
+                if (item is null)
+                {
+                    WriteByte(Rlp.EmptyListByte);
+                }
+                else
+                {
+                    decoder.Encode(this, item, rlpBehaviors);
+                }
             }
         }
         public void Encode(Block value) => _blockDecoder.Encode(this, value);

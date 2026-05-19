@@ -56,7 +56,7 @@ public static class RlpDecoderNettyExtensions
 
         for (int i = 0; i < items.Length; i++)
         {
-            decoder.Encode(rlpStream, items[i], behaviors);
+            EncodeNullable(decoder, rlpStream, items[i], behaviors);
         }
 
         return rlpStream;
@@ -88,7 +88,7 @@ public static class RlpDecoderNettyExtensions
 
         for (int i = 0; i < items.Count; i++)
         {
-            decoder.Encode(rlpStream, items[i], behaviors);
+            EncodeNullable(decoder, rlpStream, items[i], behaviors);
         }
 
         return rlpStream;
@@ -112,10 +112,21 @@ public static class RlpDecoderNettyExtensions
 
         for (int i = 0; i < items.Count; i++)
         {
-            decoder.Encode(rlpStream, items[i], behaviors);
+            EncodeNullable(decoder, rlpStream, items[i], behaviors);
         }
 
         return rlpStream;
+    }
+
+    private static void EncodeNullable<T>(IRlpDecoder<T> decoder, RlpStream rlpStream, T? item, RlpBehaviors behaviors)
+    {
+        if (item is null)
+        {
+            rlpStream.WriteByte(Rlp.EmptyListByte);
+            return;
+        }
+
+        decoder.Encode(rlpStream, item, behaviors);
     }
 
     private static int GetNullableLength<T>(IRlpDecoder<T> decoder, T? item, RlpBehaviors behaviors)
