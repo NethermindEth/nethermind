@@ -56,31 +56,8 @@ public class ModExpPrecompileTests : PrecompileTests<ModExpPrecompile, ModExpPre
                 "000000000000000000000000000000000000000000000000000000000000000100000000000000000000000000000000000000000000000000000000ffffffff000000000000000000000000000000000000000000000000000000000000000102",
                 "00",
                 true
-            ) {TestName = "expLen=uint32.MaxValue (0xffffffff): huge expLength wraps modulus offset to base, must return zero (pre-EIP-7823)"};
-
-            yield return new(
-                "00000000000000000000000000000000000000000000000000000000000000010000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000007FFFFFFF02",
-                "",
-                false
-            ) {TestName = "modLen=int32.MaxValue (0x7fffffff): rejected because of C# array size limit"};
-
-            yield return new(
-                "00000000000000000000000000000000000000000000000000000000000000010000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000008000000002",
-                "",
-                false
-            ) {TestName = "modLen=int32.MaxValue+1 (0x80000000): rejected because of C# array size limit"};
-
-            yield return new(
-                "0000000000000000000000000000000000000000000000000000000000000001000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000ffffffff02",
-                "",
-                false
-            ) {TestName = "modLen=uint32.MaxValue (0xffffffff): rejected because of C# array size limit"};
-
-            yield return new(
-                "00000000000000000000000000000000000000000000000000000000000000010000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000010000000002",
-                "",
-                false
-            ) {TestName = "modLen=2^32 (0x100000000): rejected because of C# array size limit"};
+            )
+            { TestName = "expLen=uint32.MaxValue (0xffffffff): huge expLength wraps modulus offset to base, must return zero (pre-EIP-7823)" };
         }
     }
 }

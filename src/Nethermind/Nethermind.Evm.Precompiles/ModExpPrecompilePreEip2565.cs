@@ -110,9 +110,6 @@ public class ModExpPrecompilePreEip2565 : IPrecompile<ModExpPrecompilePreEip2565
 
         if (modulusInt.IsZero)
         {
-            if (modulusLength > Array.MaxLength)
-                return "modulus length exceeded allowed limit";
-
             return new byte[modulusLength];
         }
 
