@@ -294,22 +294,46 @@ public sealed class PersistedSnapshotRepository(
     }
 
     /// <summary>
-    /// Find the snapshot whose From matches the given state. Tries compacted first (larger range = faster catch-up), then base.
+    /// Find the base snapshot whose <see cref="PersistedSnapshot.From"/> matches <paramref name="fromState"/>,
+    /// reaching it via a backward BFS from <paramref name="seedState"/> over the <c>To</c>-keyed dictionaries.
     /// </summary>
-    public PersistedSnapshot? TryGetSnapshotFrom(StateId fromState)
+    /// <remarks>
+    /// The graph is walked by following each visited snapshot's <c>From</c> pointer; compacted entries act as
+    /// skip pointers (longer per-hop block ranges) that accelerate convergence but are never returned as the
+    /// answer — only entries from <see cref="_baseSnapshots"/> are candidates. <paramref name="seedState"/>
+    /// must be a recent (>= <paramref name="fromState"/>) state to walk back from; callers typically pass the
+    /// in-memory snapshot repository's earliest <c>StateId</c>.
+    /// </remarks>
+    public PersistedSnapshot? TryGetSnapshotFrom(StateId fromState, StateId seedState)
     {
-        foreach (KeyValuePair<StateId, PersistedSnapshot> kv in _compactedSnapshots)
-        {
-            PersistedSnapshot snapshot = kv.Value;
-            if (snapshot.From == fromState && snapshot.TryAcquire())
-                return snapshot;
-        }
+        if (seedState.BlockNumber <= fromState.BlockNumber) return null;
 
-        foreach (KeyValuePair<StateId, PersistedSnapshot> kv in _baseSnapshots)
+        HashSet<StateId> seen = [seedState];
+        Queue<StateId> queue = new();
+        queue.Enqueue(seedState);
+
+        while (queue.Count > 0)
         {
-            PersistedSnapshot snapshot = kv.Value;
-            if (snapshot.From == fromState && snapshot.TryAcquire())
-                return snapshot;
+            StateId current = queue.Dequeue();
+
+            // Skip pointer: compacted edge is navigated through but never returned.
+            if (_compactedSnapshots.TryGetValue(current, out PersistedSnapshot? compacted))
+            {
+                StateId next = compacted.From;
+                if (next.BlockNumber >= fromState.BlockNumber && seen.Add(next))
+                    queue.Enqueue(next);
+            }
+
+            // Candidate edge: only a base entry whose From matches is a valid answer.
+            if (_baseSnapshots.TryGetValue(current, out PersistedSnapshot? baseSnap))
+            {
+                if (baseSnap.From == fromState && baseSnap.TryAcquire())
+                    return baseSnap;
+
+                StateId next = baseSnap.From;
+                if (next.BlockNumber >= fromState.BlockNumber && seen.Add(next))
+                    queue.Enqueue(next);
+            }
         }
 
         return null;

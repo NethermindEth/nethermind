@@ -603,9 +603,16 @@ public class PersistenceManager(
     private PersistedSnapshot? TryGetForcePersistedSnapshot(StateId currentPersistedState, long totalDepth)
     {
         if (totalDepth <= _longFinalityReorgDepth) return null;
+
+        // Seed both repos' BFS with the in-memory snapshot graph's earliest StateId. The BFS walks
+        // backward via the From-pointer chain in each repo's To-keyed dictionaries, using compacted
+        // entries as skip pointers to converge quickly on a base whose From == currentPersistedState.
+        StateId? seedState = _snapshotRepository.GetEarliestSnapshotId();
+        if (seedState is null) return null;
+
         // Large tier first (longer ranges = faster catch-up); fall back to small.
-        PersistedSnapshot? oldest = _largeRepo.TryGetSnapshotFrom(currentPersistedState)
-                                    ?? _smallRepo.TryGetSnapshotFrom(currentPersistedState);
+        PersistedSnapshot? oldest = _largeRepo.TryGetSnapshotFrom(currentPersistedState, seedState.Value)
+                                    ?? _smallRepo.TryGetSnapshotFrom(currentPersistedState, seedState.Value);
         if (oldest is not null && _logger.IsWarn)
             _logger.Warn($"Total reorg depth {totalDepth} exceeds LongFinalityReorgDepth {_longFinalityReorgDepth}. Force persisting persisted snapshot {oldest.From} -> {oldest.To}.");
         return oldest;
