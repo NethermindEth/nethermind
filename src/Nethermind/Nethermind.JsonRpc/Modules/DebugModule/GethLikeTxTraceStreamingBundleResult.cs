@@ -18,11 +18,8 @@ using Nethermind.Logging;
 namespace Nethermind.JsonRpc.Modules.DebugModule;
 
 /// <summary>
-/// Streaming result for <c>debug_traceCallMany</c> (no overrides). Outer JSON array of
-/// per-bundle arrays, with each per-tx trace emitted through
-/// <see cref="StructLogEnvelopeWriter"/> so struct-log entries leave the process per opcode.
-/// Failures within a single tx are converted to a <c>failed:true</c> envelope (matching the
-/// existing buffered behaviour); the iteration continues to the next tx in the bundle.
+/// Streaming result for <c>debug_traceCallMany</c> (no overrides).
+/// <see cref="Count"/> is always 0; iteration is empty.
 /// </summary>
 [JsonConverter(typeof(GethLikeTxTraceStreamingBundleResultConverter))]
 public sealed class GethLikeTxTraceStreamingBundleResult : StreamingResultBase, IEnumerable<IEnumerable<GethLikeTxTrace>>
@@ -62,21 +59,33 @@ public sealed class GethLikeTxTraceStreamingBundleResult : StreamingResultBase, 
     protected override void EmitContent(Utf8JsonWriter writer, PipeWriter? pipeWriter, CancellationToken cancellationToken)
     {
         writer.WriteStartArray();
-        foreach (TransactionBundle bundle in _bundles)
+        try
         {
-            EmitBundle(writer, pipeWriter, cancellationToken, bundle);
+            foreach (TransactionBundle bundle in _bundles)
+            {
+                EmitBundle(writer, pipeWriter, cancellationToken, bundle);
+            }
         }
-        writer.WriteEndArray();
+        finally
+        {
+            writer.WriteEndArray();
+        }
     }
 
     private void EmitBundle(Utf8JsonWriter writer, PipeWriter? pipeWriter, CancellationToken cancellationToken, TransactionBundle bundle)
     {
         writer.WriteStartArray();
-        foreach (TransactionForRpc txForRpc in bundle.Transactions)
+        try
         {
-            EmitTraceForTx(writer, pipeWriter, cancellationToken, txForRpc);
+            foreach (TransactionForRpc txForRpc in bundle.Transactions)
+            {
+                EmitTraceForTx(writer, pipeWriter, cancellationToken, txForRpc);
+            }
         }
-        writer.WriteEndArray();
+        finally
+        {
+            writer.WriteEndArray();
+        }
 
         FlushBetweenBundles(writer, pipeWriter, cancellationToken);
     }

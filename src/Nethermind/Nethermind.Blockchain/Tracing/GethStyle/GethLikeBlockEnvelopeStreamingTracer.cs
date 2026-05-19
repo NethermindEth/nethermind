@@ -53,7 +53,7 @@ public sealed class GethLikeBlockEnvelopeStreamingTracer : BlockTracerBase<GethL
         GethLikeTxTrace trace = txTracer.BuildResult();
 
         _writer.WriteEndArray();
-        WriteRawLong(_writer, "gas"u8, trace.Gas);
+        ForcedNumberConversion.WriteRawLong(_writer, "gas"u8, trace.Gas);
         _writer.WritePropertyName("failed"u8);
         _writer.WriteBooleanValue(trace.Failed);
         _writer.WritePropertyName("returnValue"u8);
@@ -73,21 +73,5 @@ public sealed class GethLikeBlockEnvelopeStreamingTracer : BlockTracerBase<GethL
         if (_pipeWriter is null) return;
         _writer.Flush();
         _pipeWriter.FlushAsync(_cancellationToken).GetAwaiter().GetResult();
-    }
-
-    private static void WriteRawLong(Utf8JsonWriter writer, ReadOnlySpan<byte> name, long value)
-    {
-        writer.WritePropertyName(name);
-
-        NumberConversion previous = ForcedNumberConversion.Value;
-        ForcedNumberConversion.Value = NumberConversion.Raw;
-        try
-        {
-            JsonSerializer.Serialize(writer, value, EthereumJsonSerializer.JsonOptions);
-        }
-        finally
-        {
-            ForcedNumberConversion.Value = previous;
-        }
     }
 }

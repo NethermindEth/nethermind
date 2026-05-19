@@ -41,11 +41,13 @@ internal static class StructLogEnvelopeWriter
         {
             failure = ex;
         }
+        finally
+        {
+            writer.WriteEndArray();
+            string? errorMessage = failure is null ? null : $"tracing failed: {failure.Message}";
+            WriteFooter(writer, trace, errorMessage, fallbackGas);
+        }
 
-        writer.WriteEndArray();
-
-        string? errorMessage = failure is null ? null : $"tracing failed: {failure.Message}";
-        WriteFooter(writer, trace, errorMessage, fallbackGas);
         LogFailure(logger, failure);
     }
 
@@ -68,7 +70,7 @@ internal static class StructLogEnvelopeWriter
         bool failed = errorMessage is not null || trace is null || trace.Failed;
         byte[] returnValue = trace?.ReturnValue ?? [];
 
-        WriteRawLong(writer, "gas"u8, gas);
+        ForcedNumberConversion.WriteRawLong(writer, "gas"u8, gas);
 
         writer.WritePropertyName("failed"u8);
         writer.WriteBooleanValue(failed);
@@ -81,29 +83,11 @@ internal static class StructLogEnvelopeWriter
             writer.WritePropertyName("error"u8);
             writer.WriteStringValue(errorMessage);
 
-            // Mirror the buffered InsufficientBalanceException path (ErrorCodes.InvalidInput)
-            // and Geth's default JSON-RPC server-error code for tracing failures.
             writer.WritePropertyName("errorCode"u8);
             writer.WriteNumberValue(ErrorCodes.InvalidInput);
         }
 
         writer.WriteEndObject();
-    }
-
-    private static void WriteRawLong(Utf8JsonWriter writer, ReadOnlySpan<byte> name, long value)
-    {
-        writer.WritePropertyName(name);
-
-        NumberConversion previous = ForcedNumberConversion.Value;
-        ForcedNumberConversion.Value = NumberConversion.Raw;
-        try
-        {
-            JsonSerializer.Serialize(writer, value, EthereumJsonSerializer.JsonOptions);
-        }
-        finally
-        {
-            ForcedNumberConversion.Value = previous;
-        }
     }
 
     private static void LogFailure(ILogger logger, Exception? failure)

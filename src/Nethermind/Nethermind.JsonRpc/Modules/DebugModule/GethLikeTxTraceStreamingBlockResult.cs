@@ -15,13 +15,8 @@ using Nethermind.Logging;
 namespace Nethermind.JsonRpc.Modules.DebugModule;
 
 /// <summary>
-/// Streaming block-trace result with deferred execution. The supplied trace delegate runs
-/// inside <see cref="StreamingResultBase.WriteToAsync"/> against a <see cref="Utf8JsonWriter"/>
-/// wrapping the response <see cref="PipeWriter"/>; per-tx envelopes
-/// <c>{"result": {…}, "txHash": "…"}</c> are emitted by
-/// <see cref="GethLikeBlockEnvelopeStreamingTracer"/> as each transaction finishes,
-/// with the inner struct-log entries streamed per opcode. Memory stays bounded by one
-/// opcode entry regardless of block size.
+/// Streaming block-trace result. Traces are written straight to the response;
+/// <see cref="Count"/> is always 0 and <see cref="GetEnumerator"/> is always empty.
 /// </summary>
 [JsonConverter(typeof(GethLikeTxTraceStreamingBlockResultConverter))]
 public sealed class GethLikeTxTraceStreamingBlockResult : StreamingResultBase, IReadOnlyCollection<GethLikeTxTrace>
@@ -56,8 +51,10 @@ public sealed class GethLikeTxTraceStreamingBlockResult : StreamingResultBase, I
         {
             failure = ex;
         }
-
-        writer.WriteEndArray();
+        finally
+        {
+            writer.WriteEndArray();
+        }
 
         if (failure is not null && Logger.IsWarn)
         {
