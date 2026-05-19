@@ -141,7 +141,26 @@ public class StartupTests
         Assert.That(root[1].GetProperty("result").ValueKind, Is.EqualTo(JsonValueKind.Array));
     }
 
-    private static async Task<string> ProcessJsonRpcRequest(string request, bool setContentLength = true)
+    [Test]
+    public async Task ProcessJsonRpcRequest_OverMaxRequestBodySize_ReturnsPayloadTooLarge()
+    {
+        (string response, int statusCode) = await ProcessJsonRpcRequestWithStatus(
+            "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"engine_getBlobsV1\",\"params\":[[]]}",
+            maxRequestBodySize: 1);
+
+        using JsonDocument doc = JsonDocument.Parse(response);
+
+        Assert.That(statusCode, Is.EqualTo(StatusCodes.Status413PayloadTooLarge));
+        Assert.That(doc.RootElement.GetProperty("error").GetProperty("code").GetInt32(), Is.EqualTo(ErrorCodes.LimitExceeded));
+    }
+
+    private static async Task<string> ProcessJsonRpcRequest(string request, bool setContentLength = true) =>
+        (await ProcessJsonRpcRequestWithStatus(request, setContentLength)).Response;
+
+    private static async Task<(string Response, int StatusCode)> ProcessJsonRpcRequestWithStatus(
+        string request,
+        bool setContentLength = true,
+        long? maxRequestBodySize = null)
     {
         byte[] requestBytes = Encoding.UTF8.GetBytes(request);
 
@@ -162,9 +181,9 @@ public class StartupTests
         MemoryStream responseBody = new();
         ctx.Features.Set<IHttpResponseBodyFeature>(new StreamResponseBodyFeature(responseBody));
 
-        JsonRpcUrl url = new("http", "127.0.0.1", 0, RpcEndpoint.Http, false, [ModuleType.Engine]);
+        JsonRpcUrl url = new("http", "127.0.0.1", 0, RpcEndpoint.Http, false, [ModuleType.Engine], maxRequestBodySize);
         await Startup.ProcessJsonRpcRequestCoreAsync(ctx, url);
 
-        return Encoding.UTF8.GetString(responseBody.ToArray());
+        return (Encoding.UTF8.GetString(responseBody.ToArray()), ctx.Response.StatusCode);
     }
 }
