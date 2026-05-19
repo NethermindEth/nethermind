@@ -125,11 +125,11 @@ public abstract class TransactionTestBase
 
     private static readonly System.Collections.Generic.Dictionary<string, string[]> s_exceptionToErrorFragments = new()
     {
-        ["TransactionException.TYPE_4_EMPTY_AUTHORIZATION_LIST"] = ["MissingAuthorizationList", "Must be set"],
+        ["TransactionException.TYPE_4_EMPTY_AUTHORIZATION_LIST"] = ["EIP-7702 transaction with empty auth list"],
         ["TransactionException.TYPE_4_INVALID_AUTHORIZATION_FORMAT"] = ["InvalidAuthorityList", .. s_rlpDecodeFragments],
         ["TransactionException.TYPE_4_INVALID_AUTHORITY_SIGNATURE"] = ["InvalidAuthoritySignature", .. s_rlpDecodeFragments],
         ["TransactionException.TYPE_4_INVALID_AUTHORITY_SIGNATURE_S_TOO_HIGH"] = ["InvalidAuthoritySignature", "S value too high", .. s_rlpDecodeFragments],
-        ["TransactionException.TYPE_4_TX_CONTRACT_CREATION"] = ["NotAllowedCreateTransaction"],
+        ["TransactionException.TYPE_4_TX_CONTRACT_CREATION"] = ["EIP-7702 transaction cannot be used to create contract"],
         ["TransactionException.TYPE_4_TX_PRE_FORK"] = ["InvalidTxType"],
         ["TransactionException.TYPE_3_TX_PRE_FORK"] = ["InvalidTxType"],
         ["TransactionException.TYPE_2_TX_PRE_FORK"] = ["InvalidTxType"],

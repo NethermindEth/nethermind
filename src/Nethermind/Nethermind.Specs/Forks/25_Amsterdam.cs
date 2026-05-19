@@ -6,7 +6,7 @@ using Nethermind.Core.Specs;
 
 namespace Nethermind.Specs.Forks;
 
-public class Amsterdam() : NamedReleaseSpec<Amsterdam>(BPO5.Instance)
+public class Amsterdam() : NamedReleaseSpec<Amsterdam>(BPO2.Instance)
 {
     public override void Apply(NamedReleaseSpec spec)
     {

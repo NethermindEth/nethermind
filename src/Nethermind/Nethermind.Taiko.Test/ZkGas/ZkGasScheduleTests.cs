@@ -33,22 +33,6 @@ public class ZkGasScheduleTests
     }
 
     [Test]
-    public void Resolve_returns_masaya_limit_for_masaya_chain_id() =>
-        Assert.That(
-            ZkGasSchedule.ResolveBlockZkGasLimit(ZkGasSchedule.TaikoMasayaChainId),
-            Is.EqualTo(ZkGasSchedule.MasayaBlockZkGasLimit));
-
-    [TestCase(ZkGasSchedule.TaikoMainnetChainId)]
-    [TestCase(ZkGasSchedule.TaikoDevnetChainId)]
-    [TestCase(ZkGasSchedule.TaikoHoodiChainId)]
-    [TestCase(0UL)]
-    [TestCase(1UL)]
-    public void Resolve_returns_default_limit_for_other_chain_ids(ulong chainId) =>
-        Assert.That(
-            ZkGasSchedule.ResolveBlockZkGasLimit(chainId),
-            Is.EqualTo(ZkGasSchedule.BlockZkGasLimit));
-
-    [Test]
     public void Meter_default_ctor_uses_canonical_block_limit()
     {
         ZkGasMeter meter = new();

@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Threading;
 using Autofac;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
@@ -43,7 +44,8 @@ public class NetworkModule(IConfigProvider configProvider) : Module
             .AddModule(new SynchronizerModule(configProvider.GetConfig<ISyncConfig>()))
             .AddSingleton<SyncedTxGossipPolicy>()
             .AddLast<ITxGossipPolicy>(ctx => ctx.Resolve<SyncedTxGossipPolicy>())
-            .AddCompositeOrderedComponents<ITxGossipPolicy, CompositeTxGossipPolicy>()
+            .AddSingleton<ITxGossipPolicySource, TxGossipPolicySource>()
+            .AddCompositeOrderedComponents<ITxGossipPolicy, CompositeTxGossipPolicy>(singleInstance: true)
             .AddSingleton<IIPResolver, IPResolver>()
             .AddSingleton<IForkInfo, ForkInfo>()
 
@@ -149,7 +151,7 @@ public class NetworkModule(IConfigProvider configProvider) : Module
 
             .AddSingleton<State.SnapServer.ISnapServer, State.IWorldStateManager>(wsm => wsm.SnapServer)
 
-            // Protocol handler factories (using clean DSL with Autofac Func auto-generation)
+            // Protocol handler factories
             .AddProtocolHandler<Subprotocols.Snap.SnapProtocolHandler>()
             .AddProtocolHandler<Subprotocols.Eth.V66.Eth66ProtocolHandler>()
             .AddProtocolHandler<Subprotocols.Eth.V67.Eth67ProtocolHandler>()
@@ -160,5 +162,35 @@ public class NetworkModule(IConfigProvider configProvider) : Module
             .AddProtocolHandler<Subprotocols.Eth.V72.Eth72ProtocolHandler>()
 
             ;
+    }
+
+    private sealed class TxGossipPolicySource(ILifetimeScope lifetimeScope) : ITxGossipPolicySource
+    {
+        private readonly Lock _lock = new();
+        private ITxGossipPolicy[]? _policies;
+
+        public ITxGossipPolicy[] Policies
+        {
+            get
+            {
+                ITxGossipPolicy[]? policies = Volatile.Read(ref _policies);
+                if (policies is not null)
+                {
+                    return policies;
+                }
+
+                lock (_lock)
+                {
+                    policies = _policies;
+                    if (policies is null)
+                    {
+                        policies = lifetimeScope.Resolve<ITxGossipPolicy[]>();
+                        Volatile.Write(ref _policies, policies);
+                    }
+
+                    return policies;
+                }
+            }
+        }
     }
 }
