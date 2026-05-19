@@ -55,7 +55,7 @@ public class Eip8037BlockGasIntegrationTests
             .WithNumber(1)
             .WithGasLimit(blockGasLimit)
             .WithTransactions(txs)
-            .WithBlockAccessList(new BlockAccessList())
+            .WithBlockAccessList(new ReadOnlyBlockAccessList())
             .TestObject;
 
         balManager.PrepareForProcessing(block, Amsterdam.Instance, ProcessingOptions.None);

@@ -21,14 +21,14 @@ public class RecordedBalStore(IBalRecorderConfig config, IInitConfig initConfig,
 
     public void Dispose() => _store.Dispose();
 
-    public void Insert(Block block, BlockAccessList bal)
+    public void Insert(Block block, GeneratedBlockAccessList bal)
     {
         using NettyRlpStream rlp = BlockAccessListDecoder.Instance.EncodeToNewNettyStream(bal);
         if (!_store.Write(block.Number, rlp.AsSpan()))
             if (_logger.IsDebug) _logger.Debug($"BAL slot for block {block.Number} already filled; skipping.");
     }
 
-    public BlockAccessList? Get(long blockNumber)
+    public ReadOnlyBlockAccessList? Get(long blockNumber)
     {
         ReadState state = new() { Logger = _logger, BlockNumber = blockNumber };
         _store.TryRead(blockNumber, static (data, s) =>
@@ -41,7 +41,7 @@ public class RecordedBalStore(IBalRecorderConfig config, IInitConfig initConfig,
 
     private sealed class ReadState
     {
-        public BlockAccessList? Value;
+        public ReadOnlyBlockAccessList? Value;
         public ILogger Logger;
         public long BlockNumber;
     }
