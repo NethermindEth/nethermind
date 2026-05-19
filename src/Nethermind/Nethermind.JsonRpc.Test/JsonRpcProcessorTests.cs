@@ -343,6 +343,185 @@ public class JsonRpcProcessorTests(bool returnErrors)
         return service;
     }
 
+    [TestCase(RpcEndpoint.Http)]
+    [TestCase(RpcEndpoint.Ws)]
+    [TestCase(RpcEndpoint.IPC)]
+    public async Task Request_recorder_captures_payload(RpcEndpoint endpoint)
+    {
+        List<string> records = [];
+        IFileSystem fileSystem = CreateRecordingFileSystem(records);
+        JsonRpcProcessor processor = new(
+            CreateEchoService(),
+            CreateRecorderConfig(RpcRecorderState.Request),
+            fileSystem,
+            LimboLogs.Instance);
+
+        string request = endpoint == RpcEndpoint.Http
+            ? "{\"id\":1,\"jsonrpc\":\"2.0\",\"method\":\"eth_blockNumber\",\"params\":[]}"
+            : "{\"id\":1,\"jsonrpc\":\"2.0\",\"method\":\"eth_blockNumber\",\"params\":[]}{\"id\":2,\"jsonrpc\":\"2.0\",\"method\":\"net_version\",\"params\":[]}";
+
+        CollectedJsonRpcResponses result = await ProcessAsync(processor, CreateReader(request), new JsonRpcContext(endpoint));
+
+        records.Should().ContainSingle(record => record.Contains("\"method\":\"eth_blockNumber\""));
+        if (endpoint != RpcEndpoint.Http)
+        {
+            records[0].Should().Contain("\"method\":\"net_version\"");
+        }
+        result.DisposeItems();
+    }
+
+    [Test]
+    public async Task Response_recorder_captures_single_response()
+    {
+        List<string> records = [];
+        IFileSystem fileSystem = CreateRecordingFileSystem(records);
+        JsonRpcProcessor processor = new(
+            CreateEchoService(),
+            CreateRecorderConfig(RpcRecorderState.Response),
+            fileSystem,
+            LimboLogs.Instance);
+
+        CollectedJsonRpcResponses result = await ProcessAsync(processor, CreateReader("{\"id\":1,\"jsonrpc\":\"2.0\",\"method\":\"eth_blockNumber\",\"params\":[]}"), new JsonRpcContext(RpcEndpoint.Http));
+
+        records.Should().ContainSingle(record => record.Contains("eth_blockNumber"));
+        result.DisposeItems();
+    }
+
+    [Test]
+    public async Task Response_recorder_captures_batch_responses()
+    {
+        List<string> records = [];
+        IFileSystem fileSystem = CreateRecordingFileSystem(records);
+        JsonRpcProcessor processor = new(
+            CreateEchoService(),
+            CreateRecorderConfig(RpcRecorderState.Response),
+            fileSystem,
+            LimboLogs.Instance);
+
+        CollectedJsonRpcResponses result = await ProcessAsync(
+            processor,
+            CreateReader("[{\"id\":1,\"jsonrpc\":\"2.0\",\"method\":\"eth_blockNumber\",\"params\":[]},{\"id\":2,\"jsonrpc\":\"2.0\",\"method\":\"net_version\",\"params\":[]}]"),
+            new JsonRpcContext(RpcEndpoint.Http));
+
+        records.Should().HaveCount(2);
+        records.Should().Contain(record => record.Contains("eth_blockNumber"));
+        records.Should().Contain(record => record.Contains("net_version"));
+        result.DisposeItems();
+    }
+
+    [Test]
+    public async Task Single_request_params_document_is_disposed_after_sink_write()
+    {
+        JsonElement capturedParams = default;
+        IJsonRpcService service = CreateService(capturedRequest =>
+        {
+            capturedParams = capturedRequest.Params;
+            return new JsonRpcSuccessResponse { Id = capturedRequest.Id };
+        });
+        CollectingJsonRpcResponseSink sink = new()
+        {
+            OnSingleWrite = (_, _) => capturedParams.ValueKind.Should().Be(JsonValueKind.Array)
+        };
+        JsonRpcProcessor processor = new(
+            service,
+            new JsonRpcConfig { RpcRecorderState = RpcRecorderState.None },
+            Substitute.For<IFileSystem>(),
+            LimboLogs.Instance);
+
+        await ProcessAsync(
+            processor,
+            CreateReader("{\"id\":1,\"jsonrpc\":\"2.0\",\"method\":\"eth_blockNumber\",\"params\":[{\"a\":1}]}"),
+            new JsonRpcContext(RpcEndpoint.Http),
+            sink);
+
+        Action readAfterProcessing = () => _ = capturedParams.ValueKind;
+        readAfterProcessing.Should().Throw<ObjectDisposedException>();
+    }
+
+    [Test]
+    public async Task Batch_request_document_is_disposed_after_last_sink_write()
+    {
+        JsonElement capturedParams = default;
+        IJsonRpcService service = CreateService(capturedRequest =>
+        {
+            capturedParams = capturedRequest.Params;
+            return new JsonRpcSuccessResponse { Id = capturedRequest.Id };
+        });
+        CollectingJsonRpcResponseSink sink = new()
+        {
+            OnEndBatch = () => capturedParams.ValueKind.Should().Be(JsonValueKind.Array)
+        };
+        JsonRpcProcessor processor = new(
+            service,
+            new JsonRpcConfig { RpcRecorderState = RpcRecorderState.None },
+            Substitute.For<IFileSystem>(),
+            LimboLogs.Instance);
+
+        await ProcessAsync(
+            processor,
+            CreateReader("[{\"id\":1,\"jsonrpc\":\"2.0\",\"method\":\"eth_blockNumber\",\"params\":[1]},{\"id\":2,\"jsonrpc\":\"2.0\",\"method\":\"net_version\",\"params\":[2]}]"),
+            new JsonRpcContext(RpcEndpoint.Http),
+            sink);
+
+        Action readAfterProcessing = () => _ = capturedParams.ValueKind;
+        readAfterProcessing.Should().Throw<ObjectDisposedException>();
+    }
+
+    [Test]
+    public async Task Response_disposables_run_after_sink_write()
+    {
+        bool disposed = false;
+        bool disposedDuringWrite = true;
+        IJsonRpcService service = CreateService(capturedRequest => new JsonRpcSuccessResponse(() => disposed = true) { Id = capturedRequest.Id });
+        CollectingJsonRpcResponseSink sink = new()
+        {
+            OnSingleWrite = (_, _) => disposedDuringWrite = disposed
+        };
+        JsonRpcProcessor processor = new(
+            service,
+            new JsonRpcConfig { RpcRecorderState = RpcRecorderState.None },
+            Substitute.For<IFileSystem>(),
+            LimboLogs.Instance);
+
+        await ProcessAsync(
+            processor,
+            CreateReader("{\"id\":1,\"jsonrpc\":\"2.0\",\"method\":\"eth_blockNumber\",\"params\":[]}"),
+            new JsonRpcContext(RpcEndpoint.Http),
+            sink);
+
+        disposedDuringWrite.Should().BeFalse();
+        disposed.Should().BeTrue();
+    }
+
+    private static IJsonRpcService CreateService(Func<JsonRpcRequest, JsonRpcResponse> responseFactory)
+    {
+        IJsonRpcService service = Substitute.For<IJsonRpcService>();
+        service.SendRequestAsync(Arg.Any<JsonRpcRequest>(), Arg.Any<JsonRpcContext>())
+            .Returns(callInfo => responseFactory(callInfo.Arg<JsonRpcRequest>()));
+        service.GetErrorResponse(0, null!).ReturnsForAnyArgs(new JsonRpcErrorResponse());
+        service.GetErrorResponse(0, null!, null!, null!).ReturnsForAnyArgs(new JsonRpcErrorResponse());
+        return service;
+    }
+
+    private static JsonRpcConfig CreateRecorderConfig(RpcRecorderState recorderState) =>
+        new()
+        {
+            RpcRecorderState = recorderState,
+            RpcRecorderBaseFilePath = "rpc.{counter}.txt"
+        };
+
+    private static IFileSystem CreateRecordingFileSystem(List<string> records)
+    {
+        IFile file = Substitute.For<IFile>();
+        file.Create(Arg.Any<string>()).Returns((FileSystemStream)null!);
+        file.When(static file => file.AppendAllText(Arg.Any<string>(), Arg.Any<string>()))
+            .Do(callInfo => records.Add(callInfo.ArgAt<string>(1)));
+
+        IFileSystem fileSystem = Substitute.For<IFileSystem>();
+        fileSystem.File.Returns(file);
+        return fileSystem;
+    }
+
     [Test]
     public async Task Can_process_non_hex_ids()
     {
@@ -928,12 +1107,16 @@ public class JsonRpcProcessorTests(bool returnErrors)
         public List<JsonRpcResponse> Singles { get; } = [];
         public List<JsonRpcResponse> BatchItems { get; } = [];
         public List<string> BatchEvents { get; } = [];
+        public Action<JsonRpcResponse, RpcReport>? OnSingleWrite { get; init; }
+        public Action<JsonRpcResponse, RpcReport>? OnBatchItemWrite { get; init; }
+        public Action? OnEndBatch { get; init; }
         public int StopAfterBatchItems { get; init; } = int.MaxValue;
         public long BytesWritten { get; private set; }
         public bool StopRequested { get; private set; }
 
         public ValueTask WriteSingleAsync(JsonRpcResponse response, RpcReport report, CancellationToken cancellationToken)
         {
+            OnSingleWrite?.Invoke(response, report);
             Singles.Add(response);
             Responses.AddSingle(response, report);
             BytesWritten++;
@@ -950,6 +1133,7 @@ public class JsonRpcProcessorTests(bool returnErrors)
 
         public ValueTask WriteBatchItemAsync(JsonRpcResponse response, RpcReport report, CancellationToken cancellationToken)
         {
+            OnBatchItemWrite?.Invoke(response, report);
             BatchEvents.Add("item");
             BatchItems.Add(response);
             _currentBatch!.AddBatchItem(response, report);
@@ -960,6 +1144,7 @@ public class JsonRpcProcessorTests(bool returnErrors)
 
         public ValueTask EndBatchAsync(CancellationToken cancellationToken)
         {
+            OnEndBatch?.Invoke();
             BatchEvents.Add("end");
             _currentBatch = null;
             BytesWritten++;
