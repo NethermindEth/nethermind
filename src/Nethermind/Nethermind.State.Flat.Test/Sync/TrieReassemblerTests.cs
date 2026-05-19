@@ -297,7 +297,6 @@ public class TrieReassemblerTests
     /// </summary>
     private FlatBalHealing NewReassembler() =>
         new(_persistence,
-            Substitute.For<IStateSyncPivot>(),
             Substitute.For<ITreeSyncStore>(),
             Substitute.For<IWorldStateManager>(),
             Substitute.For<IBlockTree>(),
@@ -321,15 +320,6 @@ public class TrieReassemblerTests
         return header;
     }
 
-    private static IStateSyncPivot StubPivot(BlockHeader first, BlockHeader last)
-    {
-        IStateSyncPivot sub = Substitute.For<IStateSyncPivot>();
-        sub.FirstPivot.Returns(first);
-        sub.GetPivotHeader().Returns(last);
-        sub.UpdatedStorages.Returns(new ConcurrentHashSet<Hash256>());
-        return sub;
-    }
-
     private static IBlockTree StubBlockTree(params (BlockHeader child, BlockHeader? parent)[] parents)
     {
         IBlockTree blockTree = Substitute.For<IBlockTree>();
@@ -348,6 +338,8 @@ public class TrieReassemblerTests
         return provider;
     }
 
+    private static IReadOnlyCollection<Hash256> NoUpdatedStorages => Array.Empty<Hash256>();
+
     /// <summary>
     /// End-to-end smoke test for <see cref="FlatBalHealing.Run"/>: build a real 4-account trie via
     /// the snap-sync write path, drop the root, and assert that <c>Run</c> finalizes when the
@@ -360,25 +352,19 @@ public class TrieReassemblerTests
         DeleteStateRoot();
 
         (BlockHeader first, BlockHeader last) = SamePivot(originalRoot);
-        IStateSyncPivot pivot = StubPivot(first, last);
 
         ITreeSyncStore treeSyncStore = Substitute.For<ITreeSyncStore>();
         IWorldStateManager worldStateManager = Substitute.For<IWorldStateManager>();
-        IWorldStateScopeProvider scopeProvider = Substitute.For<IWorldStateScopeProvider>();
-        IWorldStateScopeProvider.IScope scope = Substitute.For<IWorldStateScopeProvider.IScope>();
-        scope.RootHash.Returns(originalRoot);
-        scopeProvider.BeginScope(Arg.Any<BlockHeader?>()).Returns(scope);
-        worldStateManager.GlobalWorldState.Returns(scopeProvider);
         worldStateManager.VerifyTrie(last, Arg.Any<CancellationToken>()).Returns(true);
 
         FlatBalHealing healing = new(
-            _persistence, pivot, treeSyncStore, worldStateManager,
+            _persistence, treeSyncStore, worldStateManager,
             Substitute.For<IBlockTree>(),
             Substitute.For<IBlockAccessListStore>(),
             StubSpec(),
             LimboLogs.Instance);
 
-        bool result = await healing.Run(CancellationToken.None);
+        bool result = await healing.Run(first, last, NoUpdatedStorages, CancellationToken.None);
 
         Assert.That(result, Is.True);
         treeSyncStore.Received(1).FinalizeSync(last);
@@ -398,19 +384,18 @@ public class TrieReassemblerTests
 
         // First pivot expects a root that does NOT match what reassembly will produce.
         (BlockHeader first, BlockHeader last) = SamePivot(Keccak.Zero);
-        IStateSyncPivot pivot = StubPivot(first, last);
 
         ITreeSyncStore treeSyncStore = Substitute.For<ITreeSyncStore>();
         IWorldStateManager worldStateManager = Substitute.For<IWorldStateManager>();
 
         FlatBalHealing healing = new(
-            _persistence, pivot, treeSyncStore, worldStateManager,
+            _persistence, treeSyncStore, worldStateManager,
             Substitute.For<IBlockTree>(),
             Substitute.For<IBlockAccessListStore>(),
             StubSpec(),
             LimboLogs.Instance);
 
-        bool result = await healing.Run(CancellationToken.None);
+        bool result = await healing.Run(first, last, NoUpdatedStorages, CancellationToken.None);
 
         Assert.That(result, Is.False);
         treeSyncStore.DidNotReceive().FinalizeSync(Arg.Any<BlockHeader>());
@@ -430,7 +415,6 @@ public class TrieReassemblerTests
 
         BlockHeader first = PivotHeader(originalRoot, number: 100);
         BlockHeader last = PivotHeader(originalRoot, number: 101, parentHash: first.Hash);
-        IStateSyncPivot pivot = StubPivot(first, last);
 
         IBlockTree blockTree = StubBlockTree((last, first));
         IBlockAccessListStore balStore = Substitute.For<IBlockAccessListStore>();
@@ -446,10 +430,10 @@ public class TrieReassemblerTests
         worldStateManager.VerifyTrie(last, Arg.Any<CancellationToken>()).Returns(true);
 
         ITreeSyncStore treeSyncStore = Substitute.For<ITreeSyncStore>();
-        FlatBalHealing healing = new(_persistence, pivot, treeSyncStore, worldStateManager,
+        FlatBalHealing healing = new(_persistence, treeSyncStore, worldStateManager,
             blockTree, balStore, StubSpec(), LimboLogs.Instance);
 
-        bool result = await healing.Run(CancellationToken.None);
+        bool result = await healing.Run(first, last, NoUpdatedStorages, CancellationToken.None);
 
         Assert.That(result, Is.True);
         balStore.Received(1).Get(last.Hash!);
@@ -465,7 +449,6 @@ public class TrieReassemblerTests
 
         BlockHeader first = PivotHeader(originalRoot, number: 100);
         BlockHeader last = PivotHeader(originalRoot, number: 101, parentHash: first.Hash);
-        IStateSyncPivot pivot = StubPivot(first, last);
 
         IBlockTree blockTree = StubBlockTree((last, first));
         IBlockAccessListStore balStore = Substitute.For<IBlockAccessListStore>();
@@ -478,10 +461,10 @@ public class TrieReassemblerTests
         worldStateManager.GlobalWorldState.Returns(scopeProvider);
 
         ITreeSyncStore treeSyncStore = Substitute.For<ITreeSyncStore>();
-        FlatBalHealing healing = new(_persistence, pivot, treeSyncStore, worldStateManager,
+        FlatBalHealing healing = new(_persistence, treeSyncStore, worldStateManager,
             blockTree, balStore, StubSpec(), LimboLogs.Instance);
 
-        bool result = await healing.Run(CancellationToken.None);
+        bool result = await healing.Run(first, last, NoUpdatedStorages, CancellationToken.None);
 
         Assert.That(result, Is.False);
         treeSyncStore.DidNotReceive().FinalizeSync(Arg.Any<BlockHeader>());
@@ -496,7 +479,6 @@ public class TrieReassemblerTests
 
         BlockHeader first = PivotHeader(originalRoot, number: 100);
         BlockHeader last = PivotHeader(originalRoot, number: 102, parentHash: ValueKeccak.Compute("orphan-parent").ToCommitment());
-        IStateSyncPivot pivot = StubPivot(first, last);
 
         // BlockTree returns null for any parent lookup — chain doesn't connect to first pivot.
         IBlockTree blockTree = Substitute.For<IBlockTree>();
@@ -506,10 +488,10 @@ public class TrieReassemblerTests
         ITreeSyncStore treeSyncStore = Substitute.For<ITreeSyncStore>();
         IWorldStateManager worldStateManager = Substitute.For<IWorldStateManager>();
 
-        FlatBalHealing healing = new(_persistence, pivot, treeSyncStore, worldStateManager,
+        FlatBalHealing healing = new(_persistence, treeSyncStore, worldStateManager,
             blockTree, balStore, StubSpec(), LimboLogs.Instance);
 
-        bool result = await healing.Run(CancellationToken.None);
+        bool result = await healing.Run(first, last, NoUpdatedStorages, CancellationToken.None);
 
         Assert.That(result, Is.False);
         balStore.DidNotReceive().Get(Arg.Any<Hash256>());
@@ -525,7 +507,6 @@ public class TrieReassemblerTests
         BlockHeader first = PivotHeader(originalRoot, number: 100);
         // last pivot's StateRoot intentionally differs from what an empty BAL would produce.
         BlockHeader last = PivotHeader(ValueKeccak.Compute("expected-different-root").ToCommitment(), number: 101, parentHash: first.Hash);
-        IStateSyncPivot pivot = StubPivot(first, last);
 
         IBlockTree blockTree = StubBlockTree((last, first));
         IBlockAccessListStore balStore = Substitute.For<IBlockAccessListStore>();
@@ -539,10 +520,10 @@ public class TrieReassemblerTests
         worldStateManager.GlobalWorldState.Returns(scopeProvider);
 
         ITreeSyncStore treeSyncStore = Substitute.For<ITreeSyncStore>();
-        FlatBalHealing healing = new(_persistence, pivot, treeSyncStore, worldStateManager,
+        FlatBalHealing healing = new(_persistence, treeSyncStore, worldStateManager,
             blockTree, balStore, StubSpec(), LimboLogs.Instance);
 
-        bool result = await healing.Run(CancellationToken.None);
+        bool result = await healing.Run(first, last, NoUpdatedStorages, CancellationToken.None);
 
         Assert.That(result, Is.False);
         treeSyncStore.DidNotReceive().FinalizeSync(Arg.Any<BlockHeader>());

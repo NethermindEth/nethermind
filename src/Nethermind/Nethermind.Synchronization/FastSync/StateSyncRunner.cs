@@ -25,6 +25,7 @@ public class StateSyncRunner(
     ISyncProgressResolver syncProgressResolver,
     IBeaconSyncStrategy beaconSyncStrategy,
     ISyncPeerPool syncPeerPool,
+    IStateSyncPivot stateSyncPivot,
     IBalHealing balHealing,
     [KeyFilter(DbNames.State)] ITunableDb? stateDb,
     [KeyFilter(DbNames.Code)] ITunableDb? codeDb,
@@ -49,11 +50,22 @@ public class StateSyncRunner(
             {
                 if (syncConfig.SnapSync)
                 {
+                    // Capture the pivot snap sync is about to download against; that's the
+                    // "first" pivot BAL healing will reassemble against. Calling
+                    // GetPivotHeader() seeds StateSyncPivot's internal cache before snap sync
+                    // itself does (snap sync's ProgressTracker would otherwise seed it on its
+                    // first internal call).
+                    BlockHeader? firstPivot = stateSyncPivot.GetPivotHeader();
+
                     if (_logger.IsInfo) _logger.Info("Starting snap sync.");
                     await snapSyncRunner.Run(token);
                     if (_logger.IsInfo) _logger.Info("Snap sync completed.");
 
-                    if (await balHealing.Run(token))
+                    // Re-read after snap to pick up any pivot advancement during the run.
+                    BlockHeader? lastPivot = stateSyncPivot.GetPivotHeader();
+
+                    if (firstPivot is not null && lastPivot is not null
+                        && await balHealing.Run(firstPivot, lastPivot, stateSyncPivot.UpdatedStorages, token))
                     {
                         return;
                     }

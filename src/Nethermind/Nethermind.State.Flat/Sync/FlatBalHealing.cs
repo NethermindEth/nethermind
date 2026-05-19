@@ -1,18 +1,23 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Headers;
-using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Buffers;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Eip2930;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
+using Nethermind.Evm.State;
+using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State;
@@ -25,29 +30,26 @@ namespace Nethermind.State.Flat.Sync;
 
 /// <summary>
 /// Flat-backend implementation of <see cref="IBalHealing"/>. Rebuilds a trie's missing internal
-/// nodes locally from the disconnected subtrees that snap sync left behind, avoiding the network
-/// round-trips of post-snap state healing.
+/// nodes locally from the disconnected subtrees that snap sync left behind, then replays
+/// EIP-7928 Block Access Lists to bridge from the first pivot snap sync downloaded against to
+/// the latest pivot — avoiding the network round-trips of post-snap state healing.
 /// </summary>
 /// <remarks>
-/// Algorithm: from the (potentially missing) root, probe the path-keyed trie node store. If a node exists at
-/// the current path it is reused as-is; otherwise the 16 child slots are explored. Each slot is "occupied" iff
-/// some flat account/storage leaf with a hash extending through that nibble exists. Recursion descends until a
-/// stored trie node is found or a slot proves empty. When a synthesized branch ends up with only one occupied
-/// slot it is collapsed: a Branch child becomes a one-nibble Extension; a Leaf/Extension child gets its key
-/// prefixed with the slot nibble (avoiding illegal Extension→Extension chains).
-///
-/// State and storage tries are handled the same way. To bridge the two, the run picks up the
-/// accounts whose storage was touched during snap (from <see cref="IStateSyncPivot.UpdatedStorages"/>),
-/// reassembles those storage tries first, and rewrites the corresponding state-leaf
-/// <see cref="Account.StorageRoot"/> values before re-hashing.
-///
-/// EIP-7928 (BAL) replay from the snap pivot to head is layered on top of the reassembly: after
-/// the trie matches the FIRST pivot snap sync downloaded against, the parent chain is walked from
-/// the latest pivot down to the first, and each block's BAL is applied in order to bridge the gap.
+/// Algorithm:
+///   1. Reassemble state trie (path-keyed probe-and-rebuild from snap-committed leaves), no
+///      storage-root rewrites at this stage.
+///   2. Reassemble each storage trie listed in the caller-supplied <c>updatedStorageAccounts</c>;
+///      collect <c>(accountHash → newStorageRoot)</c> map.
+///   3. Re-run state-trie reassembly with the rewrites baked into matching leaves — this is the
+///      "reapply storage roots" pass, performed AFTER the state structure has been rebuilt.
+///   4. Double-check by re-reading the root from disk and comparing keccak with what
+///      reassembly returned.
+///   5. Walk the parent chain from last pivot back to first pivot, replay each block's BAL
+///      against an <see cref="IWorldStateScopeProvider.IScope"/> scoped at the first pivot.
+///   6. Verify final state root against last pivot's expected root; finalize.
 /// </remarks>
 public sealed class FlatBalHealing(
     IPersistence persistence,
-    IStateSyncPivot stateSyncPivot,
     ITreeSyncStore treeSyncStore,
     IWorldStateManager worldStateManager,
     IBlockTree blockTree,
@@ -57,33 +59,26 @@ public sealed class FlatBalHealing(
 {
     private readonly ILogger _logger = logManager.GetClassLogger<FlatBalHealing>();
     private readonly AccountDecoder _accountDecoder = AccountDecoder.Instance;
-    private readonly ILogManager _logManager = logManager;
 
     private const int MaxPathLength = 64;
     private const int BranchChildCount = 16;
 
     /// <inheritdoc/>
-    public Task<bool> Run(CancellationToken token)
+    public Task<bool> Run(BlockHeader firstPivot, BlockHeader lastPivot, IReadOnlyCollection<Hash256> updatedStorageAccounts, CancellationToken token)
     {
         if (token.IsCancellationRequested) return Task.FromResult(false);
 
-        BlockHeader? firstPivot = stateSyncPivot.FirstPivot;
-        BlockHeader? lastPivot = stateSyncPivot.GetPivotHeader();
-        if (firstPivot is null || lastPivot is null)
-        {
-            if (_logger.IsWarn) _logger.Warn("BAL healing skipped: pivot header not available.");
-            return Task.FromResult(false);
-        }
-
-        // 1) Reassemble the trie against the FIRST pivot — that's the state snap sync actually wrote.
         Hash256 firstRoot = firstPivot.StateRoot!;
-        Hash256[] updatedStorages = stateSyncPivot.UpdatedStorages.ToArray();
-        if (_logger.IsInfo) _logger.Info($"Attempting local trie reassembly with {updatedStorages.Length} updated storages, target root {firstRoot} (first pivot {firstPivot.Number}).");
+        Hash256 expectedFinalRoot = lastPivot.StateRoot!;
+        if (_logger.IsInfo) _logger.Info($"Attempting local trie reassembly with {updatedStorageAccounts.Count} updated storages, first pivot {firstPivot.Number} (root {firstRoot}), last pivot {lastPivot.Number} (root {expectedFinalRoot}).");
 
+        // 1) Reassemble state trie (pure structural rebuild, no storage-root rewrites yet).
+        // 2) Reassemble storage tries → rewrite map.
+        // 3) Re-reassemble state trie with rewrites baked into matching leaves.
         Hash256? assembledRoot;
         try
         {
-            assembledRoot = TryReassemble(updatedStorages);
+            assembledRoot = TryReassemble(updatedStorageAccounts);
         }
         catch (Exception e)
         {
@@ -97,13 +92,32 @@ public sealed class FlatBalHealing(
             return Task.FromResult(false);
         }
 
-        // 2) Walk the parent chain from last pivot back to first pivot.
-        if (!TryBuildBalChain(firstPivot, lastPivot, out List<BlockHeader> chain))
+        // 4) Double-check: re-read the root node from disk and recompute its keccak. Guards
+        //    against the in-memory assembledRoot being right but the on-disk root not actually
+        //    persisted at TreePath.Empty (e.g. a write-batch failure that didn't throw).
+        if (!DoubleCheckRoot(firstRoot))
         {
             return Task.FromResult(false);
         }
 
-        Hash256 expectedFinalRoot = lastPivot.StateRoot!;
+        // 5) Walk the parent chain from last pivot back to first pivot. Inline so the
+        //    ref-struct ArrayPoolListRef lives entirely in Run's stack frame.
+        using ArrayPoolListRef<BlockHeader> chain = new(estimatedChainCapacity(firstPivot, lastPivot));
+        if (lastPivot.Hash != firstPivot.Hash)
+        {
+            BlockHeader? cursor = lastPivot;
+            while (cursor is not null && cursor.Hash != firstPivot.Hash)
+            {
+                chain.Add(cursor);
+                cursor = blockTree.FindParentHeader(cursor, BlockTreeLookupOptions.None);
+            }
+            if (cursor?.Hash != firstPivot.Hash)
+            {
+                if (_logger.IsWarn) _logger.Warn($"BAL healing skipped: parent chain from last pivot {lastPivot.Number} does not reach first pivot {firstPivot.Number}.");
+                return Task.FromResult(false);
+            }
+            chain.Reverse();
+        }
 
         if (chain.Count == 0)
         {
@@ -115,53 +129,153 @@ public sealed class FlatBalHealing(
         {
             if (_logger.IsInfo) _logger.Info($"Trie reassembly matches first pivot {firstRoot}; replaying {chain.Count} BAL(s) to reach last pivot {lastPivot.Number}.");
 
-            // 3) Replay BALs forward (firstPivot+1 … lastPivot) against an IWorldState scoped at firstPivot.
-            WorldState worldState = new(worldStateManager.GlobalWorldState, _logManager);
-            using (worldState.BeginScope(firstPivot))
+            // 6) Replay BALs forward (firstPivot+1 … lastPivot) against an IScope scoped at firstPivot.
+            using IWorldStateScopeProvider.IScope scope = worldStateManager.GlobalWorldState.BeginScope(firstPivot);
+            foreach (BlockHeader header in chain.AsSpan())
             {
-                foreach (BlockHeader header in chain)
+                if (token.IsCancellationRequested) return Task.FromResult(false);
+
+                BlockAccessList? bal = balStore.Get(header.Hash!);
+                if (bal is null)
                 {
-                    if (token.IsCancellationRequested) return Task.FromResult(false);
-
-                    BlockAccessList? bal = balStore.Get(header.Hash!);
-                    if (bal is null)
-                    {
-                        if (_logger.IsWarn) _logger.Warn($"BAL replay aborted: missing BAL for block {header.Number} {header.Hash}.");
-                        return Task.FromResult(false);
-                    }
-
-                    try
-                    {
-                        IReleaseSpec spec = specProvider.GetSpec(header);
-                        BlockAccessListManager.ApplyStateChanges(bal, worldState, spec, shouldComputeStateRoot: false);
-                    }
-                    catch (Exception e)
-                    {
-                        if (_logger.IsWarn) _logger.Warn($"BAL replay threw at block {header.Number} {header.Hash}, falling back to healing: {e}");
-                        return Task.FromResult(false);
-                    }
-                }
-
-                worldState.RecalculateStateRoot();
-                if (worldState.StateRoot != expectedFinalRoot)
-                {
-                    if (_logger.IsWarn) _logger.Warn($"BAL replay produced {worldState.StateRoot}, expected last pivot {expectedFinalRoot}. Falling back to healing.");
+                    if (_logger.IsWarn) _logger.Warn($"BAL replay aborted: missing BAL for block {header.Number} {header.Hash}.");
                     return Task.FromResult(false);
                 }
 
-                worldState.CommitTree(lastPivot.Number);
+                try
+                {
+                    IReleaseSpec spec = specProvider.GetSpec(header);
+                    ApplyBalToScope(scope, bal, spec);
+                }
+                catch (Exception e)
+                {
+                    if (_logger.IsWarn) _logger.Warn($"BAL replay threw at block {header.Number} {header.Hash}, falling back to healing: {e}");
+                    return Task.FromResult(false);
+                }
             }
 
+            scope.UpdateRootHash();
+            if (scope.RootHash != expectedFinalRoot)
+            {
+                if (_logger.IsWarn) _logger.Warn($"BAL replay produced {scope.RootHash}, expected last pivot {expectedFinalRoot}. Falling back to healing.");
+                return Task.FromResult(false);
+            }
+
+            scope.Commit(lastPivot.Number);
             if (_logger.IsInfo) _logger.Info($"BAL replay succeeded; state at {lastPivot.Number} matches {expectedFinalRoot}.");
         }
 
         if (_logger.IsInfo) _logger.Info($"Finalizing sync at last pivot {lastPivot.Number} — skipping traditional healing.");
         treeSyncStore.FinalizeSync(lastPivot);
 
-        // Synchronously walk the just-built trie from the last pivot root to catch any missing/
-        // dangling nodes the root-hash chain might have missed. Diagnostic only — sync is already
-        // marked complete, but a failure here is a loud signal of internal inconsistency.
+        // Diagnostic: walk the just-built trie from the last pivot root to catch any
+        // missing/dangling nodes the root-hash chain might have missed. Cannot un-finalize
+        // sync, but a failure is a loud signal of internal inconsistency.
         // TODO: drop this once BAL healing has been validated on mainnet.
+        RunVerifyTriePostFinalize(lastPivot, expectedFinalRoot, token);
+
+        return Task.FromResult(true);
+
+        static int estimatedChainCapacity(BlockHeader first, BlockHeader last) =>
+            last.Number > first.Number ? (int)System.Math.Min(last.Number - first.Number, 1024) : 0;
+    }
+
+    /// <summary>
+    /// Re-read the root node from disk via the path-keyed store and compare its computed keccak
+    /// to <paramref name="expectedRoot"/>. Returns false on mismatch (caller falls back).
+    /// </summary>
+    private bool DoubleCheckRoot(Hash256 expectedRoot)
+    {
+        using IPersistence.IPersistenceReader reader = persistence.CreateReader(ReaderFlags.Sync);
+        byte[]? rootRlp = reader.TryLoadStateRlp(TreePath.Empty, ReadFlags.None);
+        if (rootRlp is null)
+        {
+            if (_logger.IsWarn) _logger.Warn($"Root double-check failed: no node at TreePath.Empty (expected {expectedRoot}).");
+            return false;
+        }
+
+        Hash256 onDiskRoot = new(ValueKeccak.Compute(rootRlp));
+        if (onDiskRoot != expectedRoot)
+        {
+            if (_logger.IsWarn) _logger.Warn($"Root double-check failed: on-disk root {onDiskRoot} does not match assembled root {expectedRoot}.");
+            return false;
+        }
+
+        return true;
+    }
+
+    /// <summary>
+    /// Apply a single block's BAL to <paramref name="scope"/> via <see cref="IWorldStateScopeProvider.IWorldStateWriteBatch"/>
+    /// — equivalent in result to <c>BlockAccessListManager.ApplyStateChanges</c> but operating
+    /// directly on the scope instead of wrapping it in a <c>WorldState</c>.
+    /// </summary>
+    private static void ApplyBalToScope(IWorldStateScopeProvider.IScope scope, BlockAccessList bal, IReleaseSpec spec)
+    {
+        _ = spec; // currently unused; reserved for future post-EIP behaviours
+        ReadOnlySpan<AccountChanges> all = bal.AccountChangesByAddress;
+        using IWorldStateScopeProvider.IWorldStateWriteBatch wb = scope.StartWriteBatch(all.Length);
+
+        foreach (AccountChanges accountChanges in all)
+        {
+            Address addr = accountChanges.Address;
+            Account? existing = scope.Get(addr);
+
+            UInt256 balance = existing?.Balance ?? UInt256.Zero;
+            UInt256 nonce = existing?.Nonce ?? UInt256.Zero;
+            Hash256 codeHash = existing?.CodeHash ?? Keccak.OfAnEmptyString;
+            Hash256 storageRoot = existing?.StorageRoot ?? Keccak.EmptyTreeHash;
+            bool touched = existing is not null;
+
+            if (accountChanges.TryGetLastBalanceChangeBefore(Eip7928Constants.PrestateIndex, out BalanceChange balanceChange))
+            {
+                balance = balanceChange.Value;
+                touched = true;
+            }
+            if (accountChanges.TryGetLastNonceChangeBefore(Eip7928Constants.PrestateIndex, out NonceChange nonceChange))
+            {
+                nonce = nonceChange.Value;
+                touched = true;
+            }
+            if (accountChanges.TryGetLastCodeChangeBefore(Eip7928Constants.PrestateIndex, out CodeChange codeChange))
+            {
+                codeHash = codeChange.CodeHash.ToCommitment();
+                if (codeChange.Code is { Length: > 0 })
+                {
+                    using IWorldStateScopeProvider.ICodeSetter codeSetter = scope.CodeDb.BeginCodeWrite();
+                    codeSetter.Set(codeChange.CodeHash, codeChange.Code);
+                }
+                touched = true;
+            }
+
+            if (touched)
+            {
+                wb.Set(addr, new Account(nonce, balance, storageRoot, codeHash));
+            }
+
+            ReadOnlySpan<SlotChanges> slotsSpan = accountChanges.StorageChanges;
+            if (slotsSpan.Length > 0)
+            {
+                using IWorldStateScopeProvider.IStorageWriteBatch storageWb = wb.CreateStorageWriteBatch(addr, slotsSpan.Length);
+                foreach (SlotChanges slotChange in slotsSpan)
+                {
+                    if (slotChange.Changes.TryGetLastBefore(Eip7928Constants.PrestateIndex, out StorageChange storageChange))
+                    {
+                        // 32-byte big-endian word, trimmed of leading zeros — same canonical
+                        // representation BlockAccessListManager.ApplyStateChanges uses.
+                        byte[] trimmed = MemoryMarshal
+                            .CreateReadOnlySpan(ref Unsafe.As<EvmWord, byte>(ref Unsafe.AsRef(in storageChange.Value)), 32)
+                            .WithoutLeadingZeros()
+                            .ToArray();
+                        storageWb.Set(slotChange.Key, trimmed);
+                    }
+                }
+            }
+        }
+        // wb.Dispose() (via using) flushes dirty accounts + storage-root updates to the scope.
+    }
+
+    private void RunVerifyTriePostFinalize(BlockHeader lastPivot, Hash256 expectedFinalRoot, CancellationToken token)
+    {
         if (_logger.IsInfo) _logger.Info("Running post-replay verify-trie pass.");
         bool verified;
         try
@@ -186,52 +300,29 @@ public sealed class FlatBalHealing(
         {
             _logger.Info($"Post-replay verify-trie passed for root {expectedFinalRoot}.");
         }
-
-        return Task.FromResult(true);
     }
 
     /// <summary>
-    /// Walk the parent chain from <paramref name="lastPivot"/> back to <paramref name="firstPivot"/>,
-    /// returning the headers in forward order (<c>firstPivot+1 … lastPivot</c>). Returns false (and
-    /// an empty list) if the chain doesn't connect, e.g. due to a reorg or a missing header.
-    /// </summary>
-    private bool TryBuildBalChain(BlockHeader firstPivot, BlockHeader lastPivot, out List<BlockHeader> chain)
-    {
-        chain = new List<BlockHeader>();
-
-        if (lastPivot.Hash == firstPivot.Hash)
-        {
-            // Pivot never advanced — nothing to replay.
-            return true;
-        }
-
-        BlockHeader? cursor = lastPivot;
-        while (cursor is not null && cursor.Hash != firstPivot.Hash)
-        {
-            chain.Add(cursor);
-            cursor = blockTree.FindParentHeader(cursor, BlockTreeLookupOptions.None);
-        }
-
-        if (cursor?.Hash != firstPivot.Hash)
-        {
-            if (_logger.IsWarn) _logger.Warn($"BAL healing skipped: parent chain from last pivot {lastPivot.Number} does not reach first pivot {firstPivot.Number}.");
-            chain.Clear();
-            return false;
-        }
-
-        chain.Reverse();
-        return true;
-    }
-
-    /// <summary>
-    /// Reassembles each storage trie listed in <paramref name="updatedStorageAccounts"/> first
-    /// (collecting the new <c>StorageRoot</c> per account), then reassembles the state trie
-    /// while rewriting state-leaf <c>Account.StorageRoot</c> entries to point at the freshly
-    /// assembled storage roots. Returns the reassembled state root, or <see langword="null"/>
-    /// if the DB has no leaves to start from.
+    /// Three-pass reassembly: (1) state trie structure, (2) storage tries → rewrite map,
+    /// (3) state trie with leaf storage-root rewrites baked in.
+    /// Pass 1 walks the snap-committed leaves and rebuilds the missing spine; pass 3
+    /// re-walks the same structure but rewrites any state leaves matching <paramref name="updatedStorageAccounts"/>
+    /// so their <see cref="Account.StorageRoot"/> reflects the freshly assembled storage roots.
+    /// Pass 1 is the "state root rebuild"; pass 3 is the "reapply storage roots" step done
+    /// AFTER the rebuild — separating the two concerns at the API level even though pass 3 is
+    /// implemented as a second reassembly with the rewrites bound in.
     /// </summary>
     public Hash256? TryReassemble(IReadOnlyCollection<Hash256> updatedStorageAccounts)
     {
+        // Pass 1: rebuild state trie structurally (no storage rewrites).
+        Hash256? baseRoot = ReassembleStateTrie(storageRootRewrites: null);
+        if (baseRoot is null)
+        {
+            if (_logger.IsInfo) _logger.Info("Trie reassembly: state DB has no leaves — nothing to assemble.");
+            return null;
+        }
+
+        // Pass 2: rebuild storage tries; collect new storage roots per touched account.
         Dictionary<ValueHash256, Hash256> rewrites = new(updatedStorageAccounts.Count);
         foreach (Hash256 accountHash in updatedStorageAccounts)
         {
@@ -242,8 +333,14 @@ public sealed class FlatBalHealing(
             }
         }
 
-        if (_logger.IsInfo) _logger.Info($"Trie reassembly: rebuilt {rewrites.Count}/{updatedStorageAccounts.Count} storage tries; rebuilding state.");
+        if (rewrites.Count == 0)
+        {
+            if (_logger.IsInfo) _logger.Info($"Trie reassembly: no storage rewrites; base state root {baseRoot} is final.");
+            return baseRoot;
+        }
 
+        // Pass 3: reapply storage roots into state-trie leaves.
+        if (_logger.IsInfo) _logger.Info($"Trie reassembly: applying {rewrites.Count} storage-root rewrites on top of base state root {baseRoot}.");
         return ReassembleStateTrie(rewrites);
     }
 

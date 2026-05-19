@@ -14,10 +14,7 @@ namespace Nethermind.Synchronization.FastSync
     public class StateSyncPivot(IBlockTree blockTree, ISyncConfig syncConfig, ILogManager? logManager) : IStateSyncPivot
     {
         private BlockHeader? _bestHeader;
-        private BlockHeader? _firstPivot;
         private readonly ILogger _logger = logManager?.GetClassLogger<StateSyncPivot>() ?? throw new ArgumentNullException(nameof(logManager));
-
-        public BlockHeader? FirstPivot => _firstPivot;
 
         public long Diff => (blockTree.BestSuggestedHeader?.Number ?? 0) - (_bestHeader?.Number ?? 0);
 
@@ -54,9 +51,6 @@ namespace Nethermind.Synchronization.FastSync
             {
                 if (_logger.IsInfo) _logger.Info($"Snap - {msg} - Pivot changed from {_bestHeader?.Number} to {bestHeader.Number}");
                 _bestHeader = bestHeader;
-                // Anchor the first pivot snap sync ever downloaded against — used by
-                // BAL healing to pin trie reassembly to the state actually on disk.
-                _firstPivot ??= bestHeader;
             }
         }
 
