@@ -52,6 +52,20 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
     void Set(in StorageCell storageCell, byte[] newValue);
 
     /// <summary>
+    /// Set the provided value to persistent storage at the specified storage cell.
+    /// </summary>
+    /// <remarks>
+    /// Span-friendly overload for call sites that already hold the value as a span and would
+    /// otherwise have to materialise a <see cref="byte"/>[] just to call <see cref="Set(in StorageCell, byte[])"/>.
+    /// The default implementation still allocates via <see cref="ReadOnlySpan{T}.ToArray"/>; concrete
+    /// world states are free to override with a zero-copy path once the storage layer no longer
+    /// requires <see cref="byte"/>[]-backed change records.
+    /// </remarks>
+    /// <param name="storageCell">Storage location</param>
+    /// <param name="newValue">Value to store</param>
+    void Set(in StorageCell storageCell, ReadOnlySpan<byte> newValue) => Set(storageCell, newValue.ToArray());
+
+    /// <summary>
     /// Get the transient storage value at the specified storage cell
     /// </summary>
     /// <param name="storageCell">Storage location</param>
