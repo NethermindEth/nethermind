@@ -1,0 +1,147 @@
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
+using System;
+using System.Text.Json;
+
+namespace Nethermind.JsonRpc;
+
+internal ref struct JsonRpcEnvelopeReader
+{
+    private readonly ReadOnlySpan<byte> _body;
+
+    public JsonRpcEnvelopeReader(ReadOnlySpan<byte> body) => _body = body;
+
+    public bool TryRead(out JsonRpcEnvelope envelope)
+    {
+        Utf8JsonReader reader = new(_body, isFinalBlock: true, state: default);
+        if (!reader.Read() || reader.TokenType != JsonTokenType.StartObject)
+        {
+            envelope = default;
+            return false;
+        }
+
+        string? jsonRpc = null;
+        JsonRpcId id = JsonRpcId.Missing;
+        string? method = null;
+        bool hasParams = false;
+        JsonValueKind paramsKind = JsonValueKind.Undefined;
+        int paramsStart = 0;
+        int paramsLength = 0;
+
+        while (reader.Read())
+        {
+            if (reader.TokenType == JsonTokenType.EndObject)
+            {
+                envelope = new JsonRpcEnvelope(jsonRpc, id, method, hasParams, paramsKind, paramsStart, paramsLength);
+                return true;
+            }
+
+            if (reader.TokenType != JsonTokenType.PropertyName)
+            {
+                throw new JsonException("Expected JSON-RPC object property name.");
+            }
+
+            if (reader.ValueTextEquals("jsonrpc"u8))
+            {
+                ReadValue(ref reader);
+                jsonRpc = reader.TokenType == JsonTokenType.String && reader.ValueTextEquals("2.0"u8) ? "2.0" : null;
+                SkipComplexValue(ref reader);
+                continue;
+            }
+
+            if (reader.ValueTextEquals("id"u8))
+            {
+                ReadValue(ref reader);
+                id = ReadId(ref reader);
+                continue;
+            }
+
+            if (reader.ValueTextEquals("method"u8))
+            {
+                ReadValue(ref reader);
+                method = reader.TokenType == JsonTokenType.String ? InternMethodName(ref reader) : null;
+                SkipComplexValue(ref reader);
+                continue;
+            }
+
+            if (reader.ValueTextEquals("params"u8))
+            {
+                ReadValue(ref reader);
+                hasParams = true;
+                paramsKind = GetValueKind(reader.TokenType);
+                long valueStart = reader.TokenStartIndex;
+                SkipValue(ref reader);
+                paramsStart = checked((int)valueStart);
+                paramsLength = checked((int)(reader.BytesConsumed - valueStart));
+                continue;
+            }
+
+            ReadValue(ref reader);
+            SkipValue(ref reader);
+        }
+
+        throw new JsonException("Incomplete JSON-RPC object.");
+    }
+
+    private static void ReadValue(ref Utf8JsonReader reader)
+    {
+        if (!reader.Read())
+        {
+            throw new JsonException("Expected JSON-RPC property value.");
+        }
+    }
+
+    private static JsonRpcId ReadId(ref Utf8JsonReader reader) =>
+        reader.TokenType switch
+        {
+            JsonTokenType.Null => JsonRpcId.Null,
+            JsonTokenType.String => new JsonRpcId(reader.GetString()!),
+            JsonTokenType.Number when reader.TryGetInt64(out long value) => new JsonRpcId(value),
+            JsonTokenType.Number when reader.TryGetDecimal(out decimal value) && value.Scale == 0 => new JsonRpcId(value),
+            _ => throw new JsonException("Unsupported JSON-RPC ID value.")
+        };
+
+    private static JsonValueKind GetValueKind(JsonTokenType tokenType) =>
+        tokenType switch
+        {
+            JsonTokenType.StartObject => JsonValueKind.Object,
+            JsonTokenType.StartArray => JsonValueKind.Array,
+            JsonTokenType.String => JsonValueKind.String,
+            JsonTokenType.Number => JsonValueKind.Number,
+            JsonTokenType.True => JsonValueKind.True,
+            JsonTokenType.False => JsonValueKind.False,
+            JsonTokenType.Null => JsonValueKind.Null,
+            _ => JsonValueKind.Undefined
+        };
+
+    private static void SkipComplexValue(ref Utf8JsonReader reader)
+    {
+        if (reader.TokenType is JsonTokenType.StartObject or JsonTokenType.StartArray)
+        {
+            reader.Skip();
+        }
+    }
+
+    private static void SkipValue(ref Utf8JsonReader reader)
+    {
+        if (reader.TokenType is JsonTokenType.StartObject or JsonTokenType.StartArray)
+        {
+            reader.Skip();
+        }
+    }
+
+    private static string? InternMethodName(ref Utf8JsonReader methodReader)
+    {
+        if (methodReader.ValueTextEquals("engine_newPayloadV4"u8)) return "engine_newPayloadV4";
+        if (methodReader.ValueTextEquals("engine_forkchoiceUpdatedV3"u8)) return "engine_forkchoiceUpdatedV3";
+        if (methodReader.ValueTextEquals("engine_newPayloadV3"u8)) return "engine_newPayloadV3";
+        if (methodReader.ValueTextEquals("engine_forkchoiceUpdatedV2"u8)) return "engine_forkchoiceUpdatedV2";
+        if (methodReader.ValueTextEquals("engine_getPayloadV4"u8)) return "engine_getPayloadV4";
+        if (methodReader.ValueTextEquals("engine_getPayloadV3"u8)) return "engine_getPayloadV3";
+        if (methodReader.ValueTextEquals("engine_newPayloadV2"u8)) return "engine_newPayloadV2";
+        if (methodReader.ValueTextEquals("engine_newPayloadV1"u8)) return "engine_newPayloadV1";
+        if (methodReader.ValueTextEquals("engine_exchangeCapabilities"u8)) return "engine_exchangeCapabilities";
+        return methodReader.GetString();
+    }
+}
