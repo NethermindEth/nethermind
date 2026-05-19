@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.Collections.Generic;
 using System.IO.Abstractions;
 using System.IO.Pipelines;
@@ -53,6 +54,81 @@ public class JsonRpcProcessorTests(bool returnErrors)
 
     private ValueTask<List<JsonRpcResult>> ProcessAsync(string request, JsonRpcContext? context = null, JsonRpcConfig? config = null) =>
         Initialize(config).ProcessAsync(request, context ?? new JsonRpcContext(RpcEndpoint.Http)).ToListAsync();
+
+    [Test]
+    public async Task Sink_adapter_writes_single_response()
+    {
+        CollectingJsonRpcResponseSink sink = new();
+        JsonRpcProcessor processor = Initialize(recorderState: RpcRecorderState.None);
+
+        await JsonRpcProcessorSinkAdapter.ProcessAsync(
+            processor,
+            CreateReader("{\"id\":67,\"jsonrpc\":\"2.0\",\"method\":\"eth_getTransactionCount\",\"params\":[]}"),
+            new JsonRpcContext(RpcEndpoint.Http),
+            sink,
+            new JsonRpcProcessingOptions(JsonRpcInputMode.SingleDocument));
+
+        sink.Singles.Should().HaveCount(1);
+        sink.Singles[0].Id.Should().Be(67);
+        sink.BatchEvents.Should().BeEmpty();
+    }
+
+    [Test]
+    public async Task Sink_adapter_writes_batch_boundaries_and_items()
+    {
+        CollectingJsonRpcResponseSink sink = new();
+        JsonRpcProcessor processor = Initialize(recorderState: RpcRecorderState.None);
+
+        await JsonRpcProcessorSinkAdapter.ProcessAsync(
+            processor,
+            CreateReader("[{\"id\":67,\"jsonrpc\":\"2.0\",\"method\":\"eth_getTransactionCount\",\"params\":[]},{\"id\":68,\"jsonrpc\":\"2.0\",\"method\":\"eth_blockNumber\",\"params\":[]}]"),
+            new JsonRpcContext(RpcEndpoint.Http),
+            sink,
+            new JsonRpcProcessingOptions(JsonRpcInputMode.SingleDocument));
+
+        sink.Singles.Should().BeEmpty();
+        sink.BatchItems.Should().HaveCount(2);
+        sink.BatchItems[0].Id.Should().Be(67);
+        sink.BatchItems[1].Id.Should().Be(68);
+        sink.BatchEvents.Should().Equal("begin", "item", "item", "end");
+    }
+
+    [Test]
+    public async Task Sink_adapter_propagates_stop_requested_to_batch_processing()
+    {
+        IJsonRpcService service = Substitute.For<IJsonRpcService>();
+        service.SendRequestAsync(Arg.Any<JsonRpcRequest>(), Arg.Any<JsonRpcContext>())
+            .Returns(static ci => new JsonRpcSuccessResponse { Id = ci.Arg<JsonRpcRequest>().Id });
+        service.GetErrorResponse(Arg.Any<int>(), Arg.Any<string>(), Arg.Any<object?>(), Arg.Any<string?>())
+            .Returns(static ci => new JsonRpcErrorResponse
+            {
+                Id = ci.ArgAt<object?>(2),
+                Error = new Error { Code = ci.ArgAt<int>(0), Message = ci.ArgAt<string>(1) }
+            });
+
+        JsonRpcProcessor processor = new(
+            service,
+            new JsonRpcConfig { RpcRecorderState = RpcRecorderState.None },
+            Substitute.For<IFileSystem>(),
+            LimboLogs.Instance);
+        CollectingJsonRpcResponseSink sink = new() { StopAfterBatchItems = 1 };
+
+        await JsonRpcProcessorSinkAdapter.ProcessAsync(
+            processor,
+            CreateReader("[{\"id\":1,\"jsonrpc\":\"2.0\",\"method\":\"eth_getTransactionCount\",\"params\":[]},{\"id\":2,\"jsonrpc\":\"2.0\",\"method\":\"eth_blockNumber\",\"params\":[]},{\"id\":3,\"jsonrpc\":\"2.0\",\"method\":\"net_version\",\"params\":[]}]"),
+            new JsonRpcContext(RpcEndpoint.Http),
+            sink,
+            new JsonRpcProcessingOptions(JsonRpcInputMode.SingleDocument));
+
+        sink.BatchItems.Should().HaveCount(3);
+        sink.BatchItems[0].Should().BeOfType<JsonRpcSuccessResponse>();
+        sink.BatchItems[1].Should().BeOfType<JsonRpcErrorResponse>();
+        sink.BatchItems[2].Should().BeOfType<JsonRpcErrorResponse>();
+        await service.Received(1).SendRequestAsync(Arg.Any<JsonRpcRequest>(), Arg.Any<JsonRpcContext>());
+    }
+
+    private static PipeReader CreateReader(string request) =>
+        PipeReader.Create(new ReadOnlySequence<byte>(Encoding.UTF8.GetBytes(request)));
 
     [Test]
     public async Task Can_process_non_hex_ids()
@@ -631,5 +707,45 @@ public class JsonRpcProcessorTests(bool returnErrors)
         for (int i = 0; i < depth; i++) sb.Append('[');
         for (int i = 0; i < depth; i++) sb.Append(']');
         return sb.ToString();
+    }
+
+    private sealed class CollectingJsonRpcResponseSink : IJsonRpcResponseSink
+    {
+        public List<JsonRpcResponse> Singles { get; } = [];
+        public List<JsonRpcResponse> BatchItems { get; } = [];
+        public List<string> BatchEvents { get; } = [];
+        public int StopAfterBatchItems { get; init; } = int.MaxValue;
+        public long BytesWritten { get; private set; }
+        public bool StopRequested { get; private set; }
+
+        public ValueTask WriteSingleAsync(JsonRpcResponse response, RpcReport report, CancellationToken cancellationToken)
+        {
+            Singles.Add(response);
+            BytesWritten++;
+            return ValueTask.CompletedTask;
+        }
+
+        public ValueTask BeginBatchAsync(CancellationToken cancellationToken)
+        {
+            BatchEvents.Add("begin");
+            BytesWritten++;
+            return ValueTask.CompletedTask;
+        }
+
+        public ValueTask WriteBatchItemAsync(JsonRpcResponse response, RpcReport report, CancellationToken cancellationToken)
+        {
+            BatchEvents.Add("item");
+            BatchItems.Add(response);
+            BytesWritten++;
+            StopRequested = BatchItems.Count >= StopAfterBatchItems;
+            return ValueTask.CompletedTask;
+        }
+
+        public ValueTask EndBatchAsync(CancellationToken cancellationToken)
+        {
+            BatchEvents.Add("end");
+            BytesWritten++;
+            return ValueTask.CompletedTask;
+        }
     }
 }
