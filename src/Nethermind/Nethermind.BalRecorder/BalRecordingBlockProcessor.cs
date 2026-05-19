@@ -29,10 +29,7 @@ public class BalRecordingBlockProcessor(
 
         bool shouldFlip = ShouldFlip(suggestedBlock);
         if (shouldFlip) balSwitch.Enabled = true;
-        // Recording requires the materialised GeneratedBlockAccessList; opt out of the verify-only
-        // fast path (which skips the per-tx Merge) for the duration of this call.
-        bool previousForce = balManager.ForceMaterializeGeneratedBlockAccessList;
-        if (store.RecordingEnabled) balManager.ForceMaterializeGeneratedBlockAccessList = true;
+        balManager.ForceMaterializeGeneratedBlockAccessList = store.RecordingEnabled;
         try
         {
             (Block block, TxReceipt[] receipts) = inner.ProcessOne(suggestedBlock, options, blockTracer, spec, token);
@@ -42,7 +39,6 @@ public class BalRecordingBlockProcessor(
         }
         finally
         {
-            balManager.ForceMaterializeGeneratedBlockAccessList = previousForce;
             if (shouldFlip) balSwitch.Enabled = false;
         }
     }

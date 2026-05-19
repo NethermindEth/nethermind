@@ -39,25 +39,15 @@ internal sealed class BlockAccessListValidationIndex
     private readonly StorageLane _storage;
     private ulong[] _hasAccountWords = [];
     private bool _hasOutOfRangeChange;
-    // Generated-side storage_reads accumulator (mutable index only). Flat list of
-    // (ordinal, slot) pairs — one allocation that grows with append, vs the per-account
-    // SortedSet that today's GeneratedAccountChanges allocates. Sorted lazily on first
-    // structural-equivalence query; dedup happens during the sort pass.
+    // Generated-side accumulators (mutable index only). Flat (ordinal, slot) lists sorted
+    // lazily on first structural-equivalence query. Writes mirror StorageChanges and gate
+    // the wire BAL's read→write promotion when comparing StorageReads.
     private readonly List<(int Ordinal, UInt256 Slot)>? _generatedStorageReads;
     private bool _generatedStorageReadsSorted = true;
-    // Parallel accumulator of (ordinal, slot) for slots that received a storage *change*
-    // anywhere in the block. Needed at structural-equivalence time to filter the reads:
-    // wire BAL's StorageReads omits any slot that's also a StorageChange (read-vs-write
-    // promotion done by GeneratedBlockAccessList.Merge today), so the column-index check
-    // must mirror that filter or it fires on contracts that read-then-write (e.g. the
-    // EIP-4788 / 7002 / 7251 system contracts).
     private readonly List<(int Ordinal, UInt256 Slot)>? _generatedStorageWrites;
     private bool _generatedStorageWritesSorted = true;
-    // Captures the first per-tx slice entry that didn't fit in a column-index lane: row
-    // capacity is sized to the suggested side, so an overflow signals "generated produced
-    // a change suggested doesn't declare" — exactly the structural mismatch the slow path
-    // is supposed to surface. Without this, HasAt/TryGetAt on an overflowed row silently
-    // returns false and the diagnostic walk reports no error.
+    // First (row, lane) where Add overflowed: row capacity is sized to the suggested side,
+    // so an overflow is itself a structural mismatch — HasAt would otherwise drop it.
     private Address? _generatedOverflowAddress;
     private uint _generatedOverflowIndex;
 
@@ -190,10 +180,12 @@ internal sealed class BlockAccessListValidationIndex
         _generatedOverflowIndex = index;
     }
 
-    /// <summary>If a lane Add overflowed during a prior <see cref="Add(BlockAccessListAtIndex)"/>
-    /// call, returns the offending (address, index) pair. Overflow means generated produced a
-    /// change at a (row, lane) that suggested didn't declare — a structural mismatch the slow
-    /// path must surface even though <see cref="Lane{TValue}.HasAt"/> can't see the dropped row.</summary>
+    /// <summary>
+    /// If a lane Add overflowed during a prior <see cref="Add(BlockAccessListAtIndex)"/> call,
+    /// returns the offending (address, index) pair. Overflow means generated produced a change
+    /// at a (row, lane) that suggested didn't declare — a structural mismatch the slow path
+    /// must surface even though <see cref="Lane{TValue}.HasAt"/> can't see the dropped row.
+    /// </summary>
     public bool TryGetGeneratedOverflow(out Address address, out uint index)
     {
         if (_generatedOverflowAddress is null)
@@ -211,8 +203,10 @@ internal sealed class BlockAccessListValidationIndex
         _addressIndex.TryGet(address, out int accountOrdinal) &&
         HasAccountOrdinal(accountOrdinal);
 
-    /// <summary>Number of accounts marked in this index's bitmap. Equivalent to the count of
-    /// touched addresses on the generated side or declared addresses on the suggested side.</summary>
+    /// <summary>
+    /// Number of accounts marked in this index's bitmap. Equivalent to the count of touched
+    /// addresses on the generated side or declared addresses on the suggested side.
+    /// </summary>
     public int MarkedAccountCount
     {
         get
@@ -233,11 +227,11 @@ internal sealed class BlockAccessListValidationIndex
         StorageReadsContentMismatch,
     }
 
-    /// <summary>Catches what the column-index <see cref="ChangesEqual"/> doesn't: account-set
-    /// presence (via bitmap) and the storage_reads contents per account. Equivalent to
-    /// re-encoding the generated BAL and comparing bytes to the wire hash, but without the
-    /// encode + Keccak pass — same shape as Reth's <c>rebuilt_bal.as_slice() != decoded_bal
-    /// .as_bal().as_slice()</c> in paradigmxyz/reth#24297.</summary>
+    /// <summary>
+    /// Catches what the column-index <see cref="ChangesEqual"/> doesn't: account-set presence
+    /// (via bitmap) and the storage_reads contents per account. Equivalent to re-encoding the
+    /// generated BAL and comparing bytes to the wire hash, without the encode + Keccak pass.
+    /// </summary>
     public StructuralMismatchKind FindStructuralMismatch(ReadOnlyBlockAccessList suggested, out Address? mismatchAddress)
     {
         mismatchAddress = null;
@@ -352,14 +346,16 @@ internal sealed class BlockAccessListValidationIndex
                _storage.ChangesEqual(other._storage, row);
     }
 
-    /// <summary>True iff any of the four lanes has data at (<paramref name="row"/>, <paramref name="ordinal"/>).
-    /// Column-index equivalent of <c>!HasNoChangesAtIndex</c> on the legacy GeneratedAccountChanges path.</summary>
+    /// <summary>
+    /// True iff any of the four lanes has data at (<paramref name="row"/>, <paramref name="ordinal"/>).
+    /// </summary>
     public bool HasChangesAtRow(int row, int ordinal) =>
         _balance.HasAt(row, ordinal) || _nonce.HasAt(row, ordinal) ||
         _code.HasAt(row, ordinal) || _storage.HasAt(row, ordinal);
 
-    /// <summary>True iff both indexes have the same per-lane data at (<paramref name="row"/>, <paramref name="ordinal"/>).
-    /// Column-index equivalent of <c>gen.ChangesAtIndexEqual(sug, index)</c> on the legacy path.</summary>
+    /// <summary>
+    /// True iff both indexes have the same per-lane data at (<paramref name="row"/>, <paramref name="ordinal"/>).
+    /// </summary>
     public bool ChangesAtRowEqualForOrdinal(BlockAccessListValidationIndex other, int row, int ordinal)
     {
         // Each scalar lane: presence must match; if both present, value must match.
@@ -390,8 +386,10 @@ internal sealed class BlockAccessListValidationIndex
         return _storage.SlotsEqualAt(other._storage, row, ordinal);
     }
 
-    /// <summary>True iff this index has accumulated any storage_reads for the given ordinal.
-    /// Sorts the flat list lazily on first call.</summary>
+    /// <summary>
+    /// True iff this index has accumulated any storage_reads for the given ordinal.
+    /// Sorts the flat list lazily on first call.
+    /// </summary>
     public bool HasStorageReadsForOrdinal(int ordinal)
     {
         if (_generatedStorageReads is null) return false;
@@ -410,10 +408,14 @@ internal sealed class BlockAccessListValidationIndex
         return false;
     }
 
-    /// <summary>Address of the account assigned this <paramref name="ordinal"/>.</summary>
+    /// <summary>
+    /// Address of the account assigned this <paramref name="ordinal"/>.
+    /// </summary>
     public Address AddressOf(int ordinal) => _addressIndex.GetAddress(ordinal);
 
-    /// <summary>Iterates ordinals where this index's account-presence bitmap is set, in ascending order.</summary>
+    /// <summary>
+    /// Iterates ordinals where this index's account-presence bitmap is set, in ascending order.
+    /// </summary>
     public IEnumerable<int> EnumerateMarkedOrdinals()
     {
         for (int wordIdx = 0; wordIdx < _hasAccountWords.Length; wordIdx++)
@@ -654,8 +656,10 @@ internal sealed class BlockAccessListValidationIndex
                        .SequenceEqual(new ReadOnlySpan<TValue>(other._values, otherStart, length));
         }
 
-        /// <summary>True iff this lane has an entry at (<paramref name="row"/>, <paramref name="ordinal"/>).
-        /// Row data is sorted by ordinal so this is a binary search.</summary>
+        /// <summary>
+        /// True iff this lane has an entry at (<paramref name="row"/>, <paramref name="ordinal"/>).
+        /// Row data is sorted by ordinal so this is a binary search.
+        /// </summary>
         public bool HasAt(int row, int ordinal)
         {
             if (HasOverflow(row)) return false;
@@ -867,7 +871,9 @@ internal sealed class BlockAccessListValidationIndex
                        .SequenceEqual(new ReadOnlySpan<EvmWord>(other._values, otherStart, length));
         }
 
-        /// <summary>True iff this lane has any (slot, value) entry for <paramref name="ordinal"/> at <paramref name="row"/>.</summary>
+        /// <summary>
+        /// True iff this lane has any (slot, value) entry for <paramref name="ordinal"/> at <paramref name="row"/>.
+        /// </summary>
         public bool HasAt(int row, int ordinal)
         {
             if (HasOverflow(row)) return false;
@@ -875,7 +881,9 @@ internal sealed class BlockAccessListValidationIndex
             return length > 0;
         }
 
-        /// <summary>True iff both lanes have identical (slot, value) sequences for <paramref name="ordinal"/> at <paramref name="row"/>.</summary>
+        /// <summary>
+        /// True iff both lanes have identical (slot, value) sequences for <paramref name="ordinal"/> at <paramref name="row"/>.
+        /// </summary>
         public bool SlotsEqualAt(StorageLane other, int row, int ordinal)
         {
             if (HasOverflow(row) || other.HasOverflow(row)) return false;

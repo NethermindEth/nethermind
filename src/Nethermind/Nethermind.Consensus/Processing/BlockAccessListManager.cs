@@ -92,14 +92,14 @@ public partial class BlockAccessListManager(
     public bool Enabled { get; private set; }
     public bool ParallelExecutionEnabled { get; private set; }
 
-    /// <summary>When set, the manager always builds the materialised GeneratedBlockAccessList
-    /// even on the parallel-validation path where the column-index validator suffices on its own.
+    /// <summary>
+    /// When set, the manager always builds the materialised GeneratedBlockAccessList even on
+    /// the parallel-validation path where the column-index validator suffices on its own.
     /// Wrappers that read the materialised BAL after processing (BAL recorder, RPC diagnostics)
-    /// must set this before PrepareForProcessing runs.</summary>
+    /// must set this before PrepareForProcessing runs.
+    /// </summary>
     public bool ForceMaterializeGeneratedBlockAccessList { get; set; }
 
-    // Replaces the end-of-block encode + Keccak (and now the per-tx Merge) with a column-index-
-    // only validation path. See paradigmxyz/reth#24297 for the prior art.
     private bool _verifyOnly;
 
     public void PrepareForProcessing(Block suggestedBlock, IReleaseSpec spec, ProcessingOptions options)
@@ -207,13 +207,17 @@ public partial class BlockAccessListManager(
         }
     }
 
-    /// <summary>Detach the slice for <paramref name="balIndex"/>, fold it into
-    /// <see cref="GeneratedBlockAccessList"/>, and feed it to <see cref="RegisterGeneratedSlice"/>
-    /// so the column-index fast path and read-only-account mismatch flag stay in sync.</summary>
-    /// <remarks>The <paramref name="balIndex"/> default exists for the sequential per-tx hook
+    /// <summary>
+    /// Detach the slice for <paramref name="balIndex"/>, fold it into
+    /// <see cref="GeneratedBlockAccessList"/> (or skip the fold in verify-only mode), and feed
+    /// it to <see cref="RegisterGeneratedSlice"/> so the column-index fast path stays in sync.
+    /// </summary>
+    /// <remarks>
+    /// The <paramref name="balIndex"/> default exists for the sequential per-tx hook
     /// (<see cref="NextTransaction"/>), where the underlying pool ignores the index. Parallel
     /// callers (<c>IncrementalValidation</c>, <c>SetBlockAccessList</c>) always pass an explicit
-    /// value to identify the per-tx slot to detach.</remarks>
+    /// value to identify the per-tx slot to detach.
+    /// </remarks>
     private void MergeAndReturnBal(uint balIndex = 0)
         => _txProcessorWithWorldStateManager!.MergeAndReturnBal(
             balIndex,

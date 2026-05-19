@@ -130,8 +130,6 @@ public partial class BlockAccessListManager
         BlockAccessListValidationIndex.StructuralMismatchKind mismatch =
             generatedIndex.FindStructuralMismatch(suggested, out Address? mismatchAddress);
 
-        // Exhaustive: the default arm throws at runtime so a newly-added enum value can't slip
-        // past this consensus-critical gate.
         string? error = mismatch switch
         {
             BlockAccessListValidationIndex.StructuralMismatchKind.None => null,

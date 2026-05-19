@@ -238,9 +238,11 @@ public partial class BlockAccessListManager
         }
     }
 
-    /// <summary>Verify-only slow path: produces the same per-account, per-row diagnostics as the
-    /// legacy walk over GeneratedBlockAccessList.AccountChanges, but reads only from the
-    /// column-index data structures. Required when per-tx Merge is skipped so generated is empty.</summary>
+    /// <summary>
+    /// Verify-only slow path: produces the same per-account, per-row diagnostics as the legacy
+    /// walk over GeneratedBlockAccessList.AccountChanges, but reads only from the column-index
+    /// data structures. Required when per-tx Merge is skipped so generated is empty.
+    /// </summary>
     private void SlowPathFromColumnIndex(Block block, uint index, bool validateStorageReads)
     {
         BlockAccessListValidationIndex gen = _generatedValidationIndex!;
@@ -248,10 +250,8 @@ public partial class BlockAccessListManager
         ReadOnlyBlockAccessList suggestedBal = block.BlockAccessList!;
         int row = (int)index;
 
-        // Mutable-lane row capacity tracks the suggested side, so an overflowed Add means
-        // generated produced a change at a (row, lane) suggested doesn't declare. HasAt/TryGetAt
-        // hide that entry, so the per-account walk below would silently report "equal" — surface
-        // the mismatch up front instead, matching the legacy GBAL walk's per-account diagnostic.
+        // Row capacity tracks suggested, so an overflow signals generated produced a change at
+        // a (row, lane) suggested doesn't declare — HasAt would otherwise hide the dropped entry.
         if (gen.TryGetGeneratedOverflow(out Address overflowAddress, out uint overflowIndex) && overflowIndex <= index)
         {
             throw new InvalidBlockLevelAccessListException(block.Header,
@@ -343,11 +343,13 @@ public partial class BlockAccessListManager
         _hasGeneratedValidationIndexUpdates = true;
     }
 
-    /// <summary>True iff any account in <paramref name="slice"/> has no state changes, isn't a
-    /// tolerated read-only entry (system-user at index 0 or any storage-read row), and isn't
-    /// declared in <paramref name="suggestedValidationIndex"/>. Such an account is invisible to
-    /// the column-index fast path (no lane rows land for it on either side) but must still be
-    /// rejected — <see cref="ValidateBlockAccessList"/>'s fallback walk catches it.</summary>
+    /// <summary>
+    /// True iff any account in <paramref name="slice"/> has no state changes, isn't a tolerated
+    /// read-only entry (system-user at index 0 or any storage-read row), and isn't declared in
+    /// <paramref name="suggestedValidationIndex"/>. Such an account is invisible to the column-
+    /// index fast path (no lane rows land for it on either side) but must still be rejected —
+    /// <see cref="ValidateBlockAccessList"/>'s fallback walk catches it.
+    /// </summary>
     private static bool HasRequiredReadAccountMissing(BlockAccessListAtIndex slice, BlockAccessListValidationIndex suggestedValidationIndex)
     {
         foreach (AccountChangesAtIndex ac in slice.AccountChanges)
