@@ -243,6 +243,60 @@ public class JsonRpcProcessorTests(bool returnErrors)
     private static PipeReader CreateReader(string request) =>
         PipeReader.Create(new ReadOnlySequence<byte>(Encoding.UTF8.GetBytes(request)));
 
+    [Test]
+    public void JsonRpcEnvelopeReader_reads_envelope_and_params_range()
+    {
+        byte[] body = Encoding.UTF8.GetBytes("{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"engine_newPayloadV3\",\"params\":[1,{\"a\":2}],\"extra\":{\"ignored\":true}}");
+        JsonRpcEnvelopeReader reader = new(body);
+
+        reader.TryRead(out JsonRpcEnvelope envelope).Should().BeTrue();
+
+        envelope.JsonRpc.Should().Be("2.0");
+        envelope.Id.Should().Be(new JsonRpcId(1));
+        ReferenceEquals(envelope.Method, "engine_newPayloadV3").Should().BeTrue();
+        envelope.HasParams.Should().BeTrue();
+        envelope.ParamsKind.Should().Be(JsonValueKind.Array);
+        Encoding.UTF8.GetString(body, envelope.ParamsStart, envelope.ParamsLength).Should().Be("[1,{\"a\":2}]");
+    }
+
+    [Test]
+    public void JsonRpcEnvelopeReader_reads_unknown_method_and_missing_params()
+    {
+        byte[] body = Encoding.UTF8.GetBytes("{\"id\":12345678901234567890,\"method\":\"eth_unknown\"}");
+        JsonRpcEnvelopeReader reader = new(body);
+
+        reader.TryRead(out JsonRpcEnvelope envelope).Should().BeTrue();
+
+        envelope.Id.Should().Be(new JsonRpcId(decimal.Parse("12345678901234567890")));
+        envelope.Method.Should().Be("eth_unknown");
+        envelope.HasParams.Should().BeFalse();
+        envelope.ParamsKind.Should().Be(JsonValueKind.Undefined);
+    }
+
+    [Test]
+    public void JsonRpcEnvelopeReader_returns_false_for_non_object_root()
+    {
+        byte[] body = Encoding.UTF8.GetBytes("[{\"id\":1}]");
+        JsonRpcEnvelopeReader reader = new(body);
+
+        reader.TryRead(out JsonRpcEnvelope envelope).Should().BeFalse();
+        envelope.Should().Be(default(JsonRpcEnvelope));
+    }
+
+    [Test]
+    public void JsonRpcEnvelopeReader_rejects_fractional_numeric_ids()
+    {
+        byte[] body = Encoding.UTF8.GetBytes("{\"id\":1.1,\"method\":\"eth_blockNumber\"}");
+
+        Action read = () =>
+        {
+            JsonRpcEnvelopeReader reader = new(body);
+            reader.TryRead(out _);
+        };
+
+        read.Should().Throw<JsonException>();
+    }
+
     private static IJsonRpcService CreateEchoService()
     {
         IJsonRpcService service = Substitute.For<IJsonRpcService>();
