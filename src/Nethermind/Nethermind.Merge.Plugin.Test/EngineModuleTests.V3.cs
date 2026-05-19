@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.Collections.Generic;
 using System.IO.Pipelines;
 using System.Linq;
@@ -735,7 +736,7 @@ public partial class EngineModuleTests
 
         using BlobsV1DirectResponse response = new(items);
 
-        Pipe pipe = new();
+        Pipe pipe = new(new PipeOptions(pauseWriterThreshold: long.MaxValue));
         await response.WriteToAsync(pipe.Writer, CancellationToken.None);
         await pipe.Writer.CompleteAsync();
 
@@ -746,6 +747,41 @@ public partial class EngineModuleTests
         string stjJson = JsonSerializer.Serialize(response, EthereumJsonSerializer.JsonOptions);
 
         streamedJson.Should().Be(stjJson);
+    }
+
+    [Test]
+    public async Task BlobsV2DirectResponse_WriteToAsync_batches_missing_entries_until_completion()
+    {
+        const int Count = 16;
+        byte[]?[] blobs = new byte[Count][];
+        ReadOnlyMemory<byte[]>[] proofs = new ReadOnlyMemory<byte[]>[Count];
+        BlobsV2DirectResponse response = new(blobs, proofs, Count);
+
+        FlushCountingBufferWriter writer = new();
+        await response.WriteToAsync(writer, CancellationToken.None);
+
+        writer.FlushCount.Should().Be(0);
+
+        writer.WrittenText.Should().Be($"[{string.Join(',', Enumerable.Repeat("null", Count))}]");
+    }
+
+    [Test]
+    public async Task BlobsV2DirectResponse_WriteToAsync_flushes_large_entries_for_backpressure()
+    {
+        byte[] blob = new byte[40 * 1024];
+        Random.Shared.NextBytes(blob);
+        byte[]?[] blobs = [blob];
+        ReadOnlyMemory<byte[]>[] proofs = [Array.Empty<byte[]>()];
+        BlobsV2DirectResponse response = new(blobs, proofs, 1);
+
+        FlushCountingBufferWriter writer = new();
+        await response.WriteToAsync(writer, CancellationToken.None);
+
+        writer.FlushCount.Should().Be(1);
+
+        using JsonDocument doc = JsonDocument.Parse(writer.WrittenText);
+        doc.RootElement.GetArrayLength().Should().Be(1);
+        doc.RootElement[0].GetProperty("proofs").GetArrayLength().Should().Be(0);
     }
 
     [Test]
@@ -1037,5 +1073,42 @@ public partial class EngineModuleTests
         await blockImprovementWait;
 
         return (rpcModule, payloadId, txs, chain);
+    }
+
+    private sealed class FlushCountingBufferWriter : PipeWriter
+    {
+        private readonly ArrayBufferWriter<byte> _buffer = new();
+        private long _unflushedBytes;
+
+        public int FlushCount { get; private set; }
+
+        public string WrittenText => Encoding.UTF8.GetString(_buffer.WrittenSpan);
+
+        public override bool CanGetUnflushedBytes => true;
+
+        public override long UnflushedBytes => _unflushedBytes;
+
+        public override void Advance(int bytes)
+        {
+            _buffer.Advance(bytes);
+            _unflushedBytes += bytes;
+        }
+
+        public override Memory<byte> GetMemory(int sizeHint = 0) => _buffer.GetMemory(sizeHint);
+
+        public override Span<byte> GetSpan(int sizeHint = 0) => _buffer.GetSpan(sizeHint);
+
+        public override void CancelPendingFlush() { }
+
+        public override void Complete(Exception? exception = null) { }
+
+        public override ValueTask CompleteAsync(Exception? exception = null) => ValueTask.CompletedTask;
+
+        public override ValueTask<FlushResult> FlushAsync(CancellationToken cancellationToken = default)
+        {
+            FlushCount++;
+            _unflushedBytes = 0;
+            return new ValueTask<FlushResult>(new FlushResult(isCanceled: false, isCompleted: false));
+        }
     }
 }

@@ -75,10 +75,10 @@ public sealed class BlobsV2DirectResponse : IStreamableResult, IReadOnlyList<Blo
                 writer.Write("]}"u8);
             }
 
-            // Flush after each entry for backpressure
-            FlushResult flushResult = await writer.FlushAsync(cancellationToken);
-            if (flushResult.IsCompleted || flushResult.IsCanceled)
+            if (await StreamableResultWriter.FlushIfNeededAsync(writer, cancellationToken))
+            {
                 return;
+            }
         }
 
         writer.Write("]"u8);
