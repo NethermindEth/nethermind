@@ -50,10 +50,10 @@ public class ZkGasMeter(ulong blockZkGasLimit = ZkGasSchedule.BlockZkGasLimit, u
 
     /// <summary>
     /// Promotes the current transaction's ZK gas into the finalized block total.
-    /// Returns <c>false</c> and leaves state unchanged when either
-    /// <see cref="IsLimitExceeded"/> is already set (a prior charge failed mid-tx,
-    /// leaving <c>_txZkGasUsed</c> underestimated) or the commit would overflow the
-    /// block limit.
+    /// Returns <c>false</c> and leaves block state (<see cref="BlockZkGasUsed"/>,
+    /// <see cref="IsLimitExceeded"/>) unchanged when either <see cref="IsLimitExceeded"/>
+    /// is already set (a prior charge failed mid-tx, leaving <c>_txZkGasUsed</c>
+    /// underestimated) or the commit would overflow the block limit.
     /// </summary>
     public bool CommitTransaction()
     {
