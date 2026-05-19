@@ -10,6 +10,7 @@ using System.Text.Json;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Http.Features;
+using Nethermind.Core.Authentication;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Logging;
@@ -29,7 +30,9 @@ public class StartupTests
 {
     private static readonly Startup Startup;
 
-    static StartupTests()
+    static StartupTests() => Startup = CreateStartup();
+
+    private static Startup CreateStartup(IRpcAuthentication? rpcAuthentication = null)
     {
         JsonRpcConfig rpcConfig = new() { EnabledModules = [ModuleType.Engine] };
 
@@ -55,7 +58,7 @@ public class StartupTests
         JsonRpcService jsonRpcService = new(moduleProvider, LimboLogs.Instance, rpcConfig);
         JsonRpcProcessor jsonRpcProcessor = new(jsonRpcService, rpcConfig, Substitute.For<IFileSystem>(), LimboLogs.Instance);
 
-        Startup = new Startup(jsonRpcProcessor, jsonRpcService, jsonRpcLocalStats, jsonSerializer, rpcConfig);
+        return new Startup(jsonRpcProcessor, jsonRpcService, jsonRpcLocalStats, jsonSerializer, rpcConfig, rpcAuthentication);
     }
 
     [Test]
@@ -183,6 +186,23 @@ public class StartupTests
     }
 
     [Test]
+    public async Task ProcessJsonRpcRequest_AuthFailure_ReturnsUnauthorizedError()
+    {
+        IRpcAuthentication rpcAuthentication = Substitute.For<IRpcAuthentication>();
+        rpcAuthentication.Authenticate(Arg.Any<string>()).Returns(false);
+
+        (string response, int statusCode) = await ProcessJsonRpcRequestWithStatus(
+            "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"engine_getBlobsV1\",\"params\":[[]]}",
+            startup: CreateStartup(rpcAuthentication),
+            isAuthenticated: true);
+
+        using JsonDocument doc = JsonDocument.Parse(response);
+
+        Assert.That(statusCode, Is.EqualTo(StatusCodes.Status401Unauthorized));
+        Assert.That(doc.RootElement.GetProperty("error").GetProperty("code").GetInt32(), Is.EqualTo(ErrorCodes.InvalidRequest));
+    }
+
+    [Test]
     public async Task ProcessJsonRpcRequest_SerializesTypedErrorData()
     {
         const string request = "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"engine_getBlobsV2\",\"params\":[[]]}";
@@ -202,7 +222,9 @@ public class StartupTests
     private static async Task<(string Response, int StatusCode)> ProcessJsonRpcRequestWithStatus(
         string request,
         bool setContentLength = true,
-        long? maxRequestBodySize = null)
+        long? maxRequestBodySize = null,
+        Startup? startup = null,
+        bool isAuthenticated = false)
     {
         byte[] requestBytes = Encoding.UTF8.GetBytes(request);
 
@@ -220,11 +242,12 @@ public class StartupTests
             ctx.Request.ContentLength = requestBytes.Length;
         }
 
+        ctx.Request.Headers.Authorization = "Bearer test";
         MemoryStream responseBody = new();
         ctx.Features.Set<IHttpResponseBodyFeature>(new StreamResponseBodyFeature(responseBody));
 
-        JsonRpcUrl url = new("http", "127.0.0.1", 0, RpcEndpoint.Http, false, [ModuleType.Engine], maxRequestBodySize);
-        await Startup.ProcessJsonRpcRequestCoreAsync(ctx, url);
+        JsonRpcUrl url = new("http", "127.0.0.1", 0, RpcEndpoint.Http, isAuthenticated, [ModuleType.Engine], maxRequestBodySize);
+        await (startup ?? Startup).ProcessJsonRpcRequestCoreAsync(ctx, url);
 
         return (Encoding.UTF8.GetString(responseBody.ToArray()), ctx.Response.StatusCode);
     }
