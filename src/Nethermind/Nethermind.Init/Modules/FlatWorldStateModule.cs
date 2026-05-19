@@ -72,7 +72,8 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
                 IFlatDbConfig cfg = ctx.Resolve<IFlatDbConfig>();
                 ILogManager logManager = ctx.Resolve<ILogManager>();
                 string basePath = Path.Combine(ctx.Resolve<IInitConfig>().BaseDbPath, "persisted_snapshot");
-                IColumnsDb<FlatDbColumns> columns = ctx.Resolve<IColumnsDb<FlatDbColumns>>();
+                IColumnsDb<PersistedSnapshotCatalogColumns> catalogColumns =
+                    ctx.Resolve<IColumnsDb<PersistedSnapshotCatalogColumns>>();
                 // Shared across both tiers. A per-tier split would let a stale narrow bloom
                 // in one tier under-cover a wider compacted snapshot leased from the other
                 // tier, producing silent false negatives on bundle reads (see FlatDbManager.GatherSnapshots).
@@ -80,7 +81,7 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
 
                 ArenaManager smallArena = new(Path.Combine(basePath, "small", "arena"), cfg.PersistedSnapshotSmallArenaPageCacheBytes, cfg.ArenaFileSizeBytes, cfg.PersistedSnapshotFadviseOnPageEviction, tier: PersistedSnapshotTier.Small);
                 BlobArenaManager smallBlobs = new(Path.Combine(basePath, "small", "blob"), cfg.ArenaFileSizeBytes, PersistedSnapshotTier.Small);
-                IDb smallCatalogDb = columns.GetColumnDb(FlatDbColumns.SmallPersistedSnapshotCatalog);
+                IDb smallCatalogDb = catalogColumns.GetColumnDb(PersistedSnapshotCatalogColumns.Small);
                 PersistedSnapshotRepository smallRepo = new(smallArena, smallBlobs, smallCatalogDb, cfg, bloomManager);
                 PersistedSnapshotCompactor smallCompactor = new(
                     smallRepo, smallArena, cfg, logManager, bloomManager,
@@ -90,7 +91,7 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
 
                 ArenaManager largeArena = new(Path.Combine(basePath, "large", "arena"), cfg.PersistedSnapshotLargeArenaPageCacheBytes, cfg.ArenaFileSizeBytes, cfg.PersistedSnapshotFadviseOnPageEviction, tier: PersistedSnapshotTier.Large);
                 BlobArenaManager largeBlobs = new(Path.Combine(basePath, "large", "blob"), cfg.ArenaFileSizeBytes, PersistedSnapshotTier.Large);
-                IDb largeCatalogDb = columns.GetColumnDb(FlatDbColumns.LargePersistedSnapshotCatalog);
+                IDb largeCatalogDb = catalogColumns.GetColumnDb(PersistedSnapshotCatalogColumns.Large);
                 PersistedSnapshotRepository largeRepo = new(largeArena, largeBlobs, largeCatalogDb, cfg, bloomManager);
                 PersistedSnapshotCompactor largeCompactor = new(
                     largeRepo, largeArena, cfg, logManager, bloomManager,
@@ -123,6 +124,14 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
 
             // Persistences
             .AddColumnDatabase<FlatDbColumns>(DbNames.Flat)
+            // Persisted snapshot catalog: dedicated columned RocksDB co-located with the
+            // arena/blob files it indexes under <BaseDbPath>/persisted_snapshot/catalog/.
+            // Wiping persisted_snapshot/ therefore wipes the catalog alongside the data.
+            .AddSingleton<IColumnsDb<PersistedSnapshotCatalogColumns>>((ctx) => ctx
+                .Resolve<IDbFactory>()
+                .CreateColumnsDb<PersistedSnapshotCatalogColumns>(new DbSettings(
+                    nameof(DbNames.PersistedSnapshotCatalog),
+                    Path.Combine("persisted_snapshot", "catalog"))))
             .AddSingleton<RocksDbPersistence>()
             .AddSingleton<FlatInTriePersistence>()
             .AddDecorator<IRocksDbConfigFactory, FlatRocksDbConfigAdjuster>()
