@@ -3,7 +3,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.Runtime.InteropServices;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
@@ -75,15 +74,10 @@ internal sealed class BlockAccessListValidationIndex
         uint lastIndex = GetLastIndex(txCount);
         int rowCount = checked((int)lastIndex + 1);
         // BAL Manager hands Build a fresh AddressIndex per call, so GetOrAdd hands out
-        // ordinals 0..accountCount-1 densely; pre-sizing avoids log2(N) Array.Resize calls.
+        // ordinals 0..accountCount-1 densely; pre-sizing the bitmap lets the fused
+        // Fill walk OR bits in without a bounds-check/resize per account.
         int accountCount = blockAccessList.AccountChanges.Count;
         ulong[] hasAccountWords = new ulong[(accountCount + 63) >> 6];
-
-        foreach (ReadOnlyAccountChanges accountChanges in blockAccessList.AccountChanges)
-        {
-            int accountOrdinal = addressIndex.GetOrAdd(accountChanges.Address);
-            MarkAccount(ref hasAccountWords, accountOrdinal);
-        }
 
         // Per-row counts were precomputed during BAL decode; the BAL may have indices past
         // lastIndex (silently dropped here, matching the prior Count() pass that skipped them).
@@ -93,7 +87,7 @@ internal sealed class BlockAccessListValidationIndex
         Lane<ValueHash256> code = Lane<ValueHash256>.CreateImmutable(CopyCounts(cached.Code, rowCount));
         StorageLane storage = StorageLane.CreateImmutable(CopyCounts(cached.Storage, rowCount));
 
-        Fill(blockAccessList, addressIndex, lastIndex, balance, nonce, code, storage);
+        FillAndMark(blockAccessList, addressIndex, lastIndex, balance, nonce, code, storage, hasAccountWords);
 
         balance.SortAllRows();
         nonce.SortAllRows();
@@ -176,14 +170,20 @@ internal sealed class BlockAccessListValidationIndex
                _storage.ChangesEqual(other._storage, row);
     }
 
-    private static void Fill(
+    // Single walk over AccountChanges: assigns the dense ordinal, sets the presence bit, and
+    // populates the four lanes via independent per-row cursors. The lanes are pre-sized from
+    // cached row counts (rowStarts is immutable) and writes go through cursors[row], so the
+    // fill order across accounts does not matter; SortAllRows runs after to put each row in
+    // (accountOrdinal, key) order.
+    private static void FillAndMark(
         ReadOnlyBlockAccessList blockAccessList,
         AddressIndex addressIndex,
         uint lastIndex,
         Lane<UInt256> balance,
         Lane<ulong> nonce,
         Lane<ValueHash256> code,
-        StorageLane storage)
+        StorageLane storage,
+        ulong[] hasAccountWords)
     {
         int[] balanceCursors = balance.CreateFillCursors();
         int[] nonceCursors = nonce.CreateFillCursors();
@@ -192,8 +192,8 @@ internal sealed class BlockAccessListValidationIndex
 
         foreach (ReadOnlyAccountChanges accountChanges in blockAccessList.AccountChanges)
         {
-            bool found = addressIndex.TryGet(accountChanges.Address, out int accountOrdinal);
-            Debug.Assert(found);
+            int accountOrdinal = addressIndex.GetOrAdd(accountChanges.Address);
+            hasAccountWords[accountOrdinal >> 6] |= 1UL << (accountOrdinal & 63);
 
             foreach (BalanceChange change in accountChanges.BalanceChanges)
             {
@@ -225,14 +225,6 @@ internal sealed class BlockAccessListValidationIndex
         int word = accountOrdinal >> 6;
         return (uint)word < (uint)_hasAccountWords.Length
             && (_hasAccountWords[word] & (1UL << (accountOrdinal & 63))) != 0;
-    }
-
-    private static void MarkAccount(ref ulong[] words, int accountOrdinal)
-    {
-        int word = accountOrdinal >> 6;
-        if ((uint)word >= (uint)words.Length)
-            Array.Resize(ref words, Math.Max(word + 1, words.Length == 0 ? 1 : words.Length * 2));
-        words[word] |= 1UL << (accountOrdinal & 63);
     }
 
     // No callers read `row` on the false return; cheaper to set unconditionally and skip the branch.
