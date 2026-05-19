@@ -74,7 +74,10 @@ internal sealed class BlockAccessListValidationIndex
     {
         uint lastIndex = GetLastIndex(txCount);
         int rowCount = checked((int)lastIndex + 1);
-        ulong[] hasAccountWords = [];
+        // BAL Manager hands Build a fresh AddressIndex per call, so GetOrAdd hands out
+        // ordinals 0..accountCount-1 densely; pre-sizing avoids log2(N) Array.Resize calls.
+        int accountCount = blockAccessList.AccountChanges.Count;
+        ulong[] hasAccountWords = new ulong[(accountCount + 63) >> 6];
 
         foreach (ReadOnlyAccountChanges accountChanges in blockAccessList.AccountChanges)
         {
