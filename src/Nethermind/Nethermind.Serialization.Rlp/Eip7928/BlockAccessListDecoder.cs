@@ -59,13 +59,13 @@ public class BlockAccessListDecoder :
     /// encode pass doesn't re-walk per-account collections.</summary>
     public static byte[] EncodeToBytes(GeneratedBlockAccessList item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
-        int accountCount = item.AccountChanges.Count;
-        AccountChangesDecoder.EncodingLengths[] accountLengths = ArrayPool<AccountChangesDecoder.EncodingLengths>.Shared.Rent(accountCount);
+        GeneratedAccountChanges[] sortedAccounts = item.GetSortedAccountChanges();
+        AccountChangesDecoder.EncodingLengths[] accountLengths = ArrayPool<AccountChangesDecoder.EncodingLengths>.Shared.Rent(sortedAccounts.Length);
 
-        PrepareGeneratedLengths(item, accountLengths, rlpBehaviors, out int contentLength);
+        PrepareGeneratedLengths(sortedAccounts, accountLengths, rlpBehaviors, out int contentLength);
 
         RlpStream stream = new(Rlp.LengthOfSequence(contentLength));
-        EncodeGeneratedPrepared(stream, item, accountLengths, contentLength, rlpBehaviors);
+        EncodeGeneratedPrepared(stream, sortedAccounts, accountLengths, contentLength, rlpBehaviors);
         byte[] result = stream.Data.ToArray();
         ArrayPool<AccountChangesDecoder.EncodingLengths>.Shared.Return(accountLengths);
         return result;
@@ -103,12 +103,12 @@ public class BlockAccessListDecoder :
 
     public void Encode(RlpStream stream, GeneratedBlockAccessList item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
-        int accountCount = item.AccountChanges.Count;
-        AccountChangesDecoder.EncodingLengths[] accountLengths = ArrayPool<AccountChangesDecoder.EncodingLengths>.Shared.Rent(accountCount);
+        GeneratedAccountChanges[] sortedAccounts = item.GetSortedAccountChanges();
+        AccountChangesDecoder.EncodingLengths[] accountLengths = ArrayPool<AccountChangesDecoder.EncodingLengths>.Shared.Rent(sortedAccounts.Length);
         try
         {
-            PrepareGeneratedLengths(item, accountLengths, rlpBehaviors, out int contentLength);
-            EncodeGeneratedPrepared(stream, item, accountLengths, contentLength, rlpBehaviors);
+            PrepareGeneratedLengths(sortedAccounts, accountLengths, rlpBehaviors, out int contentLength);
+            EncodeGeneratedPrepared(stream, sortedAccounts, accountLengths, contentLength, rlpBehaviors);
         }
         finally
         {
@@ -136,6 +136,40 @@ public class BlockAccessListDecoder :
         return contentLength;
     }
 
+    private static void PrepareGeneratedLengths(
+        GeneratedAccountChanges[] sortedAccounts,
+        AccountChangesDecoder.EncodingLengths[] accountLengths,
+        RlpBehaviors rlpBehaviors,
+        out int contentLength)
+    {
+        Debug.Assert(accountLengths.Length >= sortedAccounts.Length);
+
+        contentLength = 0;
+        for (int i = 0; i < sortedAccounts.Length; i++)
+        {
+            AccountChangesDecoder.EncodingLengths accountLength = AccountChangesDecoder.PrepareEncodingLengths(sortedAccounts[i], rlpBehaviors);
+            accountLengths[i] = accountLength;
+            contentLength += Rlp.LengthOfSequence(accountLength.ContentLength);
+        }
+    }
+
+    private static void EncodeGeneratedPrepared(
+        RlpStream stream,
+        GeneratedAccountChanges[] sortedAccounts,
+        AccountChangesDecoder.EncodingLengths[] accountLengths,
+        int contentLength,
+        RlpBehaviors rlpBehaviors)
+    {
+        Debug.Assert(accountLengths.Length >= sortedAccounts.Length);
+
+        stream.StartSequence(contentLength);
+        AccountChangesDecoder accountChangesDecoder = AccountChangesDecoder.Instance;
+        for (int i = 0; i < sortedAccounts.Length; i++)
+        {
+            accountChangesDecoder.EncodePrepared(stream, sortedAccounts[i], in accountLengths[i], rlpBehaviors);
+        }
+    }
+
     private static void PrepareReadOnlyLengths(
         ReadOnlyBlockAccessList item,
         AccountChangesDecoder.EncodingLengths[] accountLengths,
@@ -147,24 +181,6 @@ public class BlockAccessListDecoder :
         contentLength = 0;
         int i = 0;
         foreach (ReadOnlyAccountChanges a in item.AccountChanges)
-        {
-            AccountChangesDecoder.EncodingLengths accountLength = AccountChangesDecoder.PrepareEncodingLengths(a, rlpBehaviors);
-            accountLengths[i++] = accountLength;
-            contentLength += Rlp.LengthOfSequence(accountLength.ContentLength);
-        }
-    }
-
-    private static void PrepareGeneratedLengths(
-        GeneratedBlockAccessList item,
-        AccountChangesDecoder.EncodingLengths[] accountLengths,
-        RlpBehaviors rlpBehaviors,
-        out int contentLength)
-    {
-        Debug.Assert(accountLengths.Length >= item.AccountChanges.Count);
-
-        contentLength = 0;
-        int i = 0;
-        foreach (GeneratedAccountChanges a in item.AccountChanges)
         {
             AccountChangesDecoder.EncodingLengths accountLength = AccountChangesDecoder.PrepareEncodingLengths(a, rlpBehaviors);
             accountLengths[i++] = accountLength;
@@ -185,24 +201,6 @@ public class BlockAccessListDecoder :
         AccountChangesDecoder accountChangesDecoder = AccountChangesDecoder.Instance;
         int i = 0;
         foreach (ReadOnlyAccountChanges a in item.AccountChanges)
-        {
-            accountChangesDecoder.EncodePrepared(stream, a, in accountLengths[i++], rlpBehaviors);
-        }
-    }
-
-    private static void EncodeGeneratedPrepared(
-        RlpStream stream,
-        GeneratedBlockAccessList item,
-        AccountChangesDecoder.EncodingLengths[] accountLengths,
-        int contentLength,
-        RlpBehaviors rlpBehaviors)
-    {
-        Debug.Assert(accountLengths.Length >= item.AccountChanges.Count);
-
-        stream.StartSequence(contentLength);
-        AccountChangesDecoder accountChangesDecoder = AccountChangesDecoder.Instance;
-        int i = 0;
-        foreach (GeneratedAccountChanges a in item.AccountChanges)
         {
             accountChangesDecoder.EncodePrepared(stream, a, in accountLengths[i++], rlpBehaviors);
         }
