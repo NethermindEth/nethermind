@@ -14,15 +14,49 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
 using Nethermind.JsonRpc;
+using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Test;
+using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Specs.Forks;
+using Nethermind.Serialization.Json;
+using NSubstitute;
 using NUnit.Framework;
+using Testably.Abstractions;
 
 namespace Nethermind.Merge.Plugin.Test;
 
 public partial class EngineModuleTests
 {
+    [Test]
+    public void NewPayloadV4_parameters_have_cached_deserialization_metadata()
+    {
+        JsonRpcConfig jsonRpcConfig = new() { EnabledModules = [ModuleType.Engine] };
+        RpcModuleProvider moduleProvider = new(new RealFileSystem(), jsonRpcConfig, new EthereumJsonSerializer(), LimboLogs.Instance);
+        moduleProvider.Register(new SingletonModulePool<IEngineRpcModule>(Substitute.For<IEngineRpcModule>(), true));
+
+        RpcModuleProvider.ResolvedMethodInfo method = moduleProvider.Resolve(nameof(IEngineRpcModule.engine_newPayloadV4))!;
+        RpcModuleProvider.ResolvedMethodInfo.ExpectedParameter[] parameters = method.ExpectedParameters;
+
+        parameters.Should().HaveCount(4);
+        AssertParameter(parameters[0], "executionPayload", typeof(ExecutionPayloadV3));
+        AssertParameter(parameters[1], "blobVersionedHashes", typeof(byte[][]));
+        AssertParameter(parameters[2], "parentBeaconBlockRoot", typeof(Hash256));
+        AssertParameter(parameters[3], "executionRequests", typeof(byte[][]));
+
+        static void AssertParameter(
+            RpcModuleProvider.ResolvedMethodInfo.ExpectedParameter parameter,
+            string name,
+            Type type)
+        {
+            parameter.Info.Name.Should().Be(name);
+            parameter.ParameterType.Should().Be(type);
+            parameter.Kind.Should().Be(RpcModuleProvider.ResolvedMethodInfo.ParameterKind.Typed);
+            parameter.TypeInfo.Should().NotBeNull();
+            parameter.TypeInfo!.Type.Should().Be(type);
+        }
+    }
+
     [TestCase(
         "0x32fc756d56a1897bf4d53ec72a854743786b5edbd8c0feec05b245e7cc124eea",
         "0xc1ecac4884c36982061392807b9307fb0d701a05d9d9fd7dc7e82d2ec96cf9af",
