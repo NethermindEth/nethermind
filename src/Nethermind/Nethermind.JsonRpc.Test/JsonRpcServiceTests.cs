@@ -254,6 +254,23 @@ public class JsonRpcServiceTests
         Assert.That(response?.Result, Is.EqualTo(TestItem.KeccakA));
     }
 
+    [Test]
+    public void String_parameter_receives_raw_json_for_non_string_values()
+    {
+        IMetadataTestRpcModule metadataTestRpcModule = Substitute.For<IMetadataTestRpcModule>();
+        string? captured = null;
+        metadataTestRpcModule.test_string(Arg.Any<string>()).Returns(callInfo =>
+        {
+            captured = callInfo.Arg<string>();
+            return ResultWrapper<string>.Success("ok");
+        });
+
+        JsonRpcSuccessResponse? response = TestRequest(metadataTestRpcModule, "test_string", new { a = 1 }) as JsonRpcSuccessResponse;
+
+        Assert.That(response?.Result, Is.EqualTo("ok"));
+        Assert.That(captured, Is.EqualTo("""{"a":1}"""));
+    }
+
     [TestCaseSource(nameof(BlockForRpcTestSource))]
     public void BlockForRpc_should_expose_withdrawals_if_any((bool Expected, Block Block) item)
     {
@@ -310,5 +327,11 @@ public class JsonRpcServiceTests
         Assert.That(response?.Error?.Code, Is.EqualTo(ErrorCodes.ResourceNotFound));
         Assert.That(response?.Error?.Message, Is.EqualTo("Node missing"));
         response?.Dispose();
+    }
+
+    [RpcModule(ModuleType.Eth)]
+    public interface IMetadataTestRpcModule : IRpcModule
+    {
+        ResultWrapper<string> test_string(string value);
     }
 }
