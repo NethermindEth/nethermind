@@ -18,6 +18,11 @@ namespace Nethermind.JsonRpc.Test.Data
     [TestFixture]
     public class IdConverterTests : SerializationTestBase
     {
+        private static readonly JsonSerializerOptions _jsonRpcIdOptions = new()
+        {
+            Converters = { new JsonRpcIdConverter() }
+        };
+
         [Test]
         public void Can_do_roundtrip_big() => TestRoundtrip<SomethingWithId>("{\"id\":123498132871289317239813219}");
 
@@ -63,6 +68,41 @@ namespace Nethermind.JsonRpc.Test.Data
         [Test]
         public void Can_do_roundtrip_string() => TestRoundtrip<SomethingWithId>("{\"id\":\"test\"}");
 
+        [TestCase("{\"id\":1234}")]
+        [TestCase("{\"id\":123498132871289317239813219}")]
+        [TestCase("{\"id\":\"test\"}")]
+        [TestCase("{\"id\":null}")]
+        public void JsonRpcId_can_do_roundtrip(string json) => TestRoundtrip<SomethingWithJsonRpcId>(json);
+
+        [Test]
+        public void JsonRpcId_preserves_missing_and_explicit_null_states()
+        {
+            JsonRpcId.Missing.IsMissing.Should().BeTrue();
+            JsonRpcId.Null.IsNull.Should().BeTrue();
+            JsonRpcId.Missing.Should().NotBe(JsonRpcId.Null);
+            Serialize(JsonRpcId.Missing).Should().Be("null");
+            Serialize(JsonRpcId.Null).Should().Be("null");
+        }
+
+        [Test]
+        public void JsonRpcId_escapes_string_values()
+        {
+            JsonRpcId id = new("a\"\\\n");
+
+            using JsonDocument document = JsonDocument.Parse(Serialize(id));
+            document.RootElement.GetString().Should().Be("a\"\\\n");
+        }
+
+        [Test]
+        public void JsonRpcId_bridges_legacy_object_values()
+        {
+            JsonRpcId.FromObject(null).Should().Be(JsonRpcId.Null);
+            JsonRpcId.FromObject(1).ToObject().Should().Be(1L);
+            JsonRpcId.FromObject(2L).ToObject().Should().Be(2L);
+            JsonRpcId.FromObject(3m).ToObject().Should().Be(3m);
+            JsonRpcId.FromObject("test").ToObject().Should().Be("test");
+        }
+
         [Test]
         public void Can_do_roundtrip_null() => TestRoundtrip<SomethingWithId>("{\"id\":null}");
 
@@ -95,5 +135,16 @@ namespace Nethermind.JsonRpc.Test.Data
 
             public string Something { get; set; } = null!;
         }
+
+        public class SomethingWithJsonRpcId
+        {
+            [JsonConverter(typeof(JsonRpcIdConverter))]
+            [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
+            public JsonRpcId Id { get; set; }
+
+            public string Something { get; set; } = null!;
+        }
+
+        private static string Serialize(JsonRpcId id) => JsonSerializer.Serialize(id, _jsonRpcIdOptions);
     }
 }
