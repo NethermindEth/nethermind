@@ -38,6 +38,9 @@ namespace Nethermind.JsonRpc
         [JsonIgnore]
         public string MethodName { get; set; }
 
+        [JsonIgnore]
+        public RpcBoundaryTimings BoundaryTimings { get; set; }
+
         public virtual void Dispose()
         {
             action?.Invoke();

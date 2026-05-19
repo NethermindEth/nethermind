@@ -58,9 +58,13 @@ public class JsonRpcLocalStats(ITimestamper timestamper, IJsonRpcConfig jsonRpcC
         // we don't want to block RPC calls any longer than required
         await Task.Yield();
 
+        long reportHandlingTimeMicroseconds = elapsedMicroseconds == 0 ? report.HandlingTimeMicroseconds : elapsedMicroseconds;
+
         if (_enablePerMethodMetrics)
         {
-            Metrics.JsonRpcCallLatencyMicros.Observe(elapsedMicroseconds, new MetricLabel(report.Method, report.Success));
+            MetricLabel label = new(report.Method, report.Success);
+            Metrics.JsonRpcCallLatencyMicros.Observe(reportHandlingTimeMicroseconds, label);
+            ObserveBoundaryTimings(report.BoundaryTimings, label);
         }
 
         if (!_logger.IsInfo)
@@ -72,8 +76,6 @@ public class JsonRpcLocalStats(ITimestamper timestamper, IJsonRpcConfig jsonRpcC
 
         MethodStats methodStats = _currentStats.GetOrAdd(report.Method, static _ => new MethodStats());
         MethodStats allTimeMethodStats = _allTimeStats.GetOrAdd(report.Method, static _ => new MethodStats());
-
-        long reportHandlingTimeMicroseconds = elapsedMicroseconds == 0 ? report.HandlingTimeMicroseconds : elapsedMicroseconds;
 
         decimal sizeDec = size ?? 0;
 
@@ -110,6 +112,20 @@ public class JsonRpcLocalStats(ITimestamper timestamper, IJsonRpcConfig jsonRpcC
             methodStats.TotalSize += sizeDec;
             allTimeMethodStats.TotalSize += sizeDec;
         }
+    }
+
+    private static void ObserveBoundaryTimings(RpcBoundaryTimings timings, MetricLabel label)
+    {
+        if (!timings.HasMeasurements)
+        {
+            return;
+        }
+
+        Metrics.JsonRpcBoundaryLatencyMicros.Observe(timings.BoundaryMicroseconds, label);
+        Metrics.JsonRpcPreMethodBoundaryLatencyMicros.Observe(timings.PreMethodMicroseconds, label);
+        Metrics.JsonRpcMethodBodyLatencyMicros.Observe(timings.MethodBodyMicroseconds, label);
+        Metrics.JsonRpcPostMethodBoundaryLatencyMicros.Observe(timings.PostMethodMicroseconds, label);
+        Metrics.JsonRpcResponseWriteLatencyMicros.Observe(timings.ResponseWriteMicroseconds, label);
     }
 
     private const string ReportHeader = "method                                  | " +

@@ -1057,7 +1057,12 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
         string reportMethod = localErrorResponse?.Error?.Code == ErrorCodes.MethodNotFound
             ? RpcReport.UnknownMethod
             : request.Method;
-        JsonRpcResult.Entry result = new(response, new RpcReport(reportMethod, (long)Stopwatch.GetElapsedTime(startTime).TotalMicroseconds, isSuccess));
+        JsonRpcResult.Entry result = new(
+            response,
+            new RpcReport(reportMethod, (long)Stopwatch.GetElapsedTime(startTime).TotalMicroseconds, isSuccess)
+            {
+                BoundaryTimings = response.BoundaryTimings
+            });
 
         if (_logger.IsTrace) TraceResult(result);
         return result;

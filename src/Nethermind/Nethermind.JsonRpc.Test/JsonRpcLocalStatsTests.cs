@@ -181,6 +181,62 @@ namespace Nethermind.JsonRpc.Test
             }
         }
 
+        [Test]
+        public async Task Records_boundary_metrics_when_report_contains_measurements()
+        {
+            RecordingMetricObserver boundaryObserver = new();
+            RecordingMetricObserver preMethodObserver = new();
+            RecordingMetricObserver methodBodyObserver = new();
+            RecordingMetricObserver postMethodObserver = new();
+            RecordingMetricObserver responseWriteObserver = new();
+
+            IMetricObserver previousBoundary = Metrics.JsonRpcBoundaryLatencyMicros;
+            IMetricObserver previousPreMethod = Metrics.JsonRpcPreMethodBoundaryLatencyMicros;
+            IMetricObserver previousMethodBody = Metrics.JsonRpcMethodBodyLatencyMicros;
+            IMetricObserver previousPostMethod = Metrics.JsonRpcPostMethodBoundaryLatencyMicros;
+            IMetricObserver previousResponseWrite = Metrics.JsonRpcResponseWriteLatencyMicros;
+
+            Metrics.JsonRpcBoundaryLatencyMicros = boundaryObserver;
+            Metrics.JsonRpcPreMethodBoundaryLatencyMicros = preMethodObserver;
+            Metrics.JsonRpcMethodBodyLatencyMicros = methodBodyObserver;
+            Metrics.JsonRpcPostMethodBoundaryLatencyMicros = postMethodObserver;
+            Metrics.JsonRpcResponseWriteLatencyMicros = responseWriteObserver;
+
+            try
+            {
+                TestLogger silentLogger = new() { IsInfo = false };
+                OneLoggerLogManager silentLogManager = new(new(silentLogger));
+                JsonRpcConfig config = new() { EnablePerMethodMetrics = true };
+                JsonRpcLocalStats localStats = new(_manualTimestamper, config, silentLogManager);
+                RpcReport report = new("engine_newPayloadV4", 0, true)
+                {
+                    BoundaryTimings = new RpcBoundaryTimings(
+                        PreMethodMicroseconds: 10,
+                        MethodBodyMicroseconds: 100,
+                        PostMethodMicroseconds: 20,
+                        ResponseWriteMicroseconds: 5)
+                };
+
+                await localStats.ReportCall(report, elapsedMicroseconds: 135);
+
+                silentLogger.LogList.Should().BeEmpty();
+                boundaryObserver.Observations.Should().ContainSingle().Which.Value.Should().Be(35);
+                preMethodObserver.Observations.Should().ContainSingle().Which.Value.Should().Be(10);
+                methodBodyObserver.Observations.Should().ContainSingle().Which.Value.Should().Be(100);
+                postMethodObserver.Observations.Should().ContainSingle().Which.Value.Should().Be(20);
+                responseWriteObserver.Observations.Should().ContainSingle().Which.Value.Should().Be(5);
+                boundaryObserver.Observations[0].Labels.Should().Equal("engine_newPayloadV4", "success");
+            }
+            finally
+            {
+                Metrics.JsonRpcBoundaryLatencyMicros = previousBoundary;
+                Metrics.JsonRpcPreMethodBoundaryLatencyMicros = previousPreMethod;
+                Metrics.JsonRpcMethodBodyLatencyMicros = previousMethodBody;
+                Metrics.JsonRpcPostMethodBoundaryLatencyMicros = previousPostMethod;
+                Metrics.JsonRpcResponseWriteLatencyMicros = previousResponseWrite;
+            }
+        }
+
         private sealed class RecordingMetricObserver : IMetricObserver
         {
             public List<(double Value, string[] Labels)> Observations { get; } = new();
