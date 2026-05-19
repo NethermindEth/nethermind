@@ -11,8 +11,10 @@ using Nethermind.Int256;
 
 namespace Nethermind.Serialization.Rlp.Eip7928;
 
-public class AccountChangesDecoder : RlpDecoder<AccountChanges, AccountChangesDecoder>
+public class AccountChangesDecoder : RlpDecoder<AccountChanges>
 {
+    public static readonly AccountChangesDecoder Instance = new();
+
     internal readonly record struct EncodingLengths(
         int ContentLength,
         int StorageChangesContentLength,

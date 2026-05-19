@@ -2,9 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
 using Nethermind.Core.Buffers;
-using Nethermind.Core.Collections;
 
 namespace Nethermind.Serialization.Rlp;
 
@@ -54,14 +52,6 @@ public interface IRlpDecoder<T> : IRlpDecoder
     /// </summary>
     T DecodeCompleteNotNull(ReadOnlySpan<byte> bytes, RlpBehaviors rlpBehaviors = RlpBehaviors.None);
 
-    NettyRlpStream EncodeToNewNettyStream(T? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None);
-
-    NettyRlpStream EncodeToNewNettyStream(T?[]? items, RlpBehaviors behaviors = RlpBehaviors.None);
-
-    NettyRlpStream EncodeToNewNettyStream(IList<T?>? items, RlpBehaviors behaviors = RlpBehaviors.None);
-
-    NettyRlpStream EncodeToNewNettyStream(in ArrayPoolListRef<T?> items, RlpBehaviors behaviors = RlpBehaviors.None);
-
     CappedArray<byte> EncodeToCappedArray(T? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None, ICappedArrayPool? bufferPool = null);
 
     void Encode(RlpStream stream, T?[]? items, RlpBehaviors behaviors = RlpBehaviors.None);
@@ -69,10 +59,4 @@ public interface IRlpDecoder<T> : IRlpDecoder
     int GetContentLength(T?[]? items, RlpBehaviors behaviors = RlpBehaviors.None);
 
     int GetLength(T?[]? items, RlpBehaviors behaviors = RlpBehaviors.None);
-}
-
-public interface IRlpDecoder<T, TDecoder> : IRlpDecoder<T>
-    where TDecoder : IRlpDecoder<T, TDecoder>
-{
-    static abstract TDecoder Instance { get; }
 }

@@ -10,8 +10,10 @@ using Nethermind.Core.BlockAccessLists;
 
 namespace Nethermind.Serialization.Rlp.Eip7928;
 
-public class BlockAccessListDecoder : RlpDecoder<BlockAccessList, BlockAccessListDecoder>
+public class BlockAccessListDecoder : RlpDecoder<BlockAccessList>
 {
+    public static readonly BlockAccessListDecoder Instance = new();
+
     private static readonly RlpLimit _accountsLimit = new(Eip7928Constants.MaxAccounts, "", ReadOnlyMemory<char>.Empty);
 
     public override int GetLength(BlockAccessList item, RlpBehaviors rlpBehaviors)

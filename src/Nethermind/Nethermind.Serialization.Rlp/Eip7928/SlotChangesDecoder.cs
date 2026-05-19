@@ -10,8 +10,10 @@ using Nethermind.Int256;
 
 namespace Nethermind.Serialization.Rlp.Eip7928;
 
-public class SlotChangesDecoder : RlpDecoder<SlotChanges, SlotChangesDecoder>
+public class SlotChangesDecoder : RlpDecoder<SlotChanges>
 {
+    public static readonly SlotChangesDecoder Instance = new();
+
     private static readonly RlpLimit _txLimit = new(Eip7928Constants.MaxTxs, "", ReadOnlyMemory<char>.Empty);
 
     protected override SlotChanges DecodeInternal(ref Rlp.ValueDecoderContext ctx, RlpBehaviors rlpBehaviors)

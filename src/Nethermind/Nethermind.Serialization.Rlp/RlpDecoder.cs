@@ -2,11 +2,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core.Buffers;
-using Nethermind.Core.Collections;
 
 namespace Nethermind.Serialization.Rlp;
 
@@ -15,6 +13,8 @@ public abstract class RlpDecoder<T> : IRlpDecoder<T>
     public abstract int GetLength(T item, RlpBehaviors rlpBehaviors = RlpBehaviors.None);
 
     public abstract void Encode(RlpStream stream, T item, RlpBehaviors rlpBehaviors = RlpBehaviors.None);
+
+    protected abstract T DecodeInternal(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None);
 
     public virtual Rlp Encode(T item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
@@ -53,7 +53,6 @@ public abstract class RlpDecoder<T> : IRlpDecoder<T>
         }
     }
 
-    protected abstract T DecodeInternal(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None);
 
     public virtual T[] DecodeArray(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None, RlpLimit? limit = null)
     {
@@ -121,100 +120,6 @@ public abstract class RlpDecoder<T> : IRlpDecoder<T>
         return DecodeCompleteNotNull(ref context, rlpBehaviors);
     }
 
-    public virtual NettyRlpStream EncodeToNewNettyStream(T? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-    {
-        NettyRlpStream rlpStream;
-        if (item is null)
-        {
-            rlpStream = new NettyRlpStream(NethermindBuffers.Default.Buffer(1));
-            rlpStream.WriteByte(Rlp.EmptyListByte);
-            return rlpStream;
-        }
-
-        rlpStream = new NettyRlpStream(NethermindBuffers.Default.Buffer(GetLength(item, rlpBehaviors)));
-        Encode(rlpStream, item, rlpBehaviors);
-        return rlpStream;
-    }
-
-    public virtual NettyRlpStream EncodeToNewNettyStream(T?[]? items, RlpBehaviors behaviors = RlpBehaviors.None)
-    {
-        NettyRlpStream rlpStream;
-        if (items is null)
-        {
-            rlpStream = new NettyRlpStream(NethermindBuffers.Default.Buffer(1));
-            rlpStream.WriteByte(Rlp.EmptyListByte);
-            return rlpStream;
-        }
-
-        int totalLength = 0;
-        for (int i = 0; i < items.Length; i++)
-        {
-            totalLength += GetNullableLength(items[i], behaviors);
-        }
-
-        int bufferLength = Rlp.LengthOfSequence(totalLength);
-
-        rlpStream = new NettyRlpStream(NethermindBuffers.Default.Buffer(bufferLength));
-        rlpStream.StartSequence(totalLength);
-
-        for (int i = 0; i < items.Length; i++)
-        {
-            Encode(rlpStream, items[i], behaviors);
-        }
-
-        return rlpStream;
-    }
-
-    public virtual NettyRlpStream EncodeToNewNettyStream(IList<T?>? items, RlpBehaviors behaviors = RlpBehaviors.None)
-    {
-        NettyRlpStream rlpStream;
-        if (items is null)
-        {
-            rlpStream = new NettyRlpStream(NethermindBuffers.Default.Buffer(1));
-            rlpStream.WriteByte(Rlp.EmptyListByte);
-            return rlpStream;
-        }
-
-        int totalLength = 0;
-        for (int i = 0; i < items.Count; i++)
-        {
-            totalLength += GetNullableLength(items[i], behaviors);
-        }
-
-        int bufferLength = Rlp.LengthOfSequence(totalLength);
-
-        rlpStream = new NettyRlpStream(NethermindBuffers.Default.Buffer(bufferLength));
-        rlpStream.StartSequence(totalLength);
-
-        for (int i = 0; i < items.Count; i++)
-        {
-            Encode(rlpStream, items[i], behaviors);
-        }
-
-        return rlpStream;
-    }
-
-    public virtual NettyRlpStream EncodeToNewNettyStream(in ArrayPoolListRef<T?> items, RlpBehaviors behaviors = RlpBehaviors.None)
-    {
-        int totalLength = 0;
-        for (int i = 0; i < items.Count; i++)
-        {
-            totalLength += GetNullableLength(items[i], behaviors);
-        }
-
-        int bufferLength = Rlp.LengthOfSequence(totalLength);
-
-        NettyRlpStream rlpStream = new(NethermindBuffers.Default.Buffer(bufferLength));
-        rlpStream.StartSequence(totalLength);
-
-        for (int i = 0; i < items.Count; i++)
-        {
-            Encode(rlpStream, items[i], behaviors);
-        }
-
-        return rlpStream;
-    }
-
     public virtual CappedArray<byte> EncodeToCappedArray(T? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None, ICappedArrayPool? bufferPool = null)
     {
         int size = GetLength(item, rlpBehaviors);
@@ -279,10 +184,4 @@ public abstract class RlpDecoder<T> : IRlpDecoder<T>
 
     private int GetNullableLength(T? item, RlpBehaviors behaviors)
         => item is null ? Rlp.OfEmptyList.Length : GetLength(item, behaviors);
-}
-
-public abstract class RlpDecoder<T, TDecoder> : RlpDecoder<T>, IRlpDecoder<T, TDecoder>
-    where TDecoder : RlpDecoder<T, TDecoder>, new()
-{
-    public static TDecoder Instance { get; } = new();
 }
