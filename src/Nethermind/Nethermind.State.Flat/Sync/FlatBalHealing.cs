@@ -1,12 +1,15 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Threading;
+using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
+using Nethermind.State;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.Synchronization.FastSync;
 using Nethermind.Trie;
@@ -15,8 +18,9 @@ using Nethermind.Trie.Pruning;
 namespace Nethermind.State.Flat.Sync;
 
 /// <summary>
-/// Rebuilds a trie's missing internal nodes locally from the disconnected subtrees that snap sync left behind,
-/// avoiding the network round-trips of post-snap state healing.
+/// Flat-backend implementation of <see cref="IBalHealing"/>. Rebuilds a trie's missing internal
+/// nodes locally from the disconnected subtrees that snap sync left behind, avoiding the network
+/// round-trips of post-snap state healing.
 /// </summary>
 /// <remarks>
 /// Algorithm: from the (potentially missing) root, probe the path-keyed trie node store. If a node exists at
@@ -26,25 +30,103 @@ namespace Nethermind.State.Flat.Sync;
 /// slot it is collapsed: a Branch child becomes a one-nibble Extension; a Leaf/Extension child gets its key
 /// prefixed with the slot nibble (avoiding illegal Extension→Extension chains).
 ///
-/// State and storage tries are handled the same way. To bridge the two, callers can pass a
-/// <c>storageRootRewrites</c> map; whenever a state leaf is encountered whose hash matches an entry, the leaf's
-/// <see cref="Account.StorageRoot"/> is rewritten before re-hashing so the parent branches end up referencing
-/// the freshly assembled storage root.
+/// State and storage tries are handled the same way. To bridge the two, the run picks up the
+/// accounts whose storage was touched during snap (from <see cref="IStateSyncPivot.UpdatedStorages"/>),
+/// reassembles those storage tries first, and rewrites the corresponding state-leaf
+/// <see cref="Account.StorageRoot"/> values before re-hashing.
+///
+/// EIP-7928 (BAL) replay from the snap pivot to head is the planned follow-up — when it lands it
+/// will share this entry point.
 /// </remarks>
-public sealed class TrieReassembler(IPersistence persistence, ILogManager logManager) : ITrieReassembler
+public sealed class FlatBalHealing(
+    IPersistence persistence,
+    IStateSyncPivot stateSyncPivot,
+    ITreeSyncStore treeSyncStore,
+    IWorldStateManager worldStateManager,
+    ILogManager logManager) : IBalHealing
 {
-    private readonly ILogger _logger = logManager.GetClassLogger<TrieReassembler>();
+    private readonly ILogger _logger = logManager.GetClassLogger<FlatBalHealing>();
     private readonly AccountDecoder _accountDecoder = AccountDecoder.Instance;
 
     private const int MaxPathLength = 64;
     private const int BranchChildCount = 16;
 
     /// <inheritdoc/>
-    /// <remarks>
-    /// Reassembles each storage trie listed in <paramref name="updatedStorageAccounts"/> first (collecting
-    /// the new <c>StorageRoot</c> per account), then reassembles the state trie while rewriting state-leaf
-    /// <c>Account.StorageRoot</c> entries to point at the freshly assembled storage roots.
-    /// </remarks>
+    public Task<bool> Run(CancellationToken token)
+    {
+        if (token.IsCancellationRequested) return Task.FromResult(false);
+
+        BlockHeader? pivotHeader = stateSyncPivot.GetPivotHeader();
+        if (pivotHeader is null)
+        {
+            if (_logger.IsWarn) _logger.Warn("BAL healing skipped: no pivot header.");
+            return Task.FromResult(false);
+        }
+
+        Hash256 expectedRoot = pivotHeader.StateRoot!;
+        Hash256[] updatedStorages = stateSyncPivot.UpdatedStorages.ToArray();
+        if (_logger.IsInfo) _logger.Info($"Attempting local trie reassembly with {updatedStorages.Length} updated storages, target root {expectedRoot}.");
+
+        Hash256? assembledRoot;
+        try
+        {
+            assembledRoot = TryReassemble(updatedStorages);
+        }
+        catch (Exception e)
+        {
+            if (_logger.IsWarn) _logger.Warn($"Trie reassembly failed with exception, falling back to healing: {e}");
+            return Task.FromResult(false);
+        }
+
+        if (assembledRoot != expectedRoot)
+        {
+            if (_logger.IsWarn) _logger.Warn($"Trie reassembly produced {assembledRoot ?? Keccak.Zero}, expected {expectedRoot}. Falling back to healing.");
+            return Task.FromResult(false);
+        }
+
+        if (_logger.IsInfo) _logger.Info($"Trie reassembly succeeded for {expectedRoot} — skipping state healing.");
+        treeSyncStore.FinalizeSync(pivotHeader);
+
+        // Synchronously walk the freshly assembled trie from the pivot root to catch any
+        // missing/dangling nodes the root-hash check might have missed. Diagnostic only —
+        // it cannot un-finalize sync, but a failure here is a loud signal that reassembly
+        // produced an internally inconsistent tree even though its root happened to match.
+        // TODO: drop this once reassembly has been validated on mainnet.
+        if (_logger.IsInfo) _logger.Info("Running post-reassembly verify-trie pass.");
+        bool verified;
+        try
+        {
+            verified = worldStateManager.VerifyTrie(pivotHeader, token);
+        }
+        catch (OperationCanceledException) when (token.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception e)
+        {
+            if (_logger.IsError) _logger.Error("Post-reassembly verify-trie threw.", e);
+            verified = false;
+        }
+
+        if (!verified && _logger.IsError)
+        {
+            _logger.Error($"POST-REASSEMBLY VERIFY-TRIE FAILED for root {expectedRoot}. Sync was already marked complete; the trie has dangling references.");
+        }
+        else if (verified && _logger.IsInfo)
+        {
+            _logger.Info($"Post-reassembly verify-trie passed for root {expectedRoot}.");
+        }
+
+        return Task.FromResult(true);
+    }
+
+    /// <summary>
+    /// Reassembles each storage trie listed in <paramref name="updatedStorageAccounts"/> first
+    /// (collecting the new <c>StorageRoot</c> per account), then reassembles the state trie
+    /// while rewriting state-leaf <c>Account.StorageRoot</c> entries to point at the freshly
+    /// assembled storage roots. Returns the reassembled state root, or <see langword="null"/>
+    /// if the DB has no leaves to start from.
+    /// </summary>
     public Hash256? TryReassemble(IReadOnlyCollection<Hash256> updatedStorageAccounts)
     {
         Dictionary<ValueHash256, Hash256> rewrites = new(updatedStorageAccounts.Count);

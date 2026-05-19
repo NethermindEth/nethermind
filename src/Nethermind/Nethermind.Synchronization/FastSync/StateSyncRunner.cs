@@ -2,13 +2,11 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac.Features.AttributeFilters;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.State;
@@ -27,9 +25,7 @@ public class StateSyncRunner(
     ISyncProgressResolver syncProgressResolver,
     IBeaconSyncStrategy beaconSyncStrategy,
     ISyncPeerPool syncPeerPool,
-    IStateSyncPivot stateSyncPivot,
-    ITrieReassembler trieReassembler,
-    IWorldStateManager worldStateManager,
+    IBalHealing balHealing,
     [KeyFilter(DbNames.State)] ITunableDb? stateDb,
     [KeyFilter(DbNames.Code)] ITunableDb? codeDb,
     ILogManager logManager,
@@ -57,7 +53,7 @@ public class StateSyncRunner(
                     await snapSyncRunner.Run(token);
                     if (_logger.IsInfo) _logger.Info("Snap sync completed.");
 
-                    if (TryReassembleAfterSnap(token))
+                    if (await balHealing.Run(token))
                     {
                         return;
                     }
@@ -75,81 +71,6 @@ public class StateSyncRunner(
         {
             // Clean shutdown — swallow so Synchronizer doesn't log "State sync failed".
         }
-    }
-
-    /// <summary>
-    /// Attempt to rebuild the missing top of the state trie locally from the leaves snap sync
-    /// committed, avoiding the network-bound healing phase. Returns <c>true</c> when reassembly
-    /// produces the pivot's expected state root and finalizes the sync; <c>false</c> otherwise
-    /// (the caller falls through to <see cref="RunStateSyncRounds"/>).
-    /// </summary>
-    private bool TryReassembleAfterSnap(CancellationToken token)
-    {
-        if (token.IsCancellationRequested) return false;
-
-        BlockHeader? pivotHeader = stateSyncPivot.GetPivotHeader();
-        if (pivotHeader is null)
-        {
-            if (_logger.IsWarn) _logger.Warn("Trie reassembly skipped: no pivot header.");
-            return false;
-        }
-
-        Hash256 expectedRoot = pivotHeader.StateRoot!;
-
-        Hash256[] updatedStorages = stateSyncPivot.UpdatedStorages.ToArray();
-        if (_logger.IsInfo) _logger.Info($"Attempting local trie reassembly with {updatedStorages.Length} updated storages, target root {expectedRoot}.");
-
-        Hash256? assembledRoot;
-        try
-        {
-            assembledRoot = trieReassembler.TryReassemble(updatedStorages);
-        }
-        catch (Exception e)
-        {
-            if (_logger.IsWarn) _logger.Warn($"Trie reassembly failed with exception, falling back to healing: {e}");
-            return false;
-        }
-
-        if (assembledRoot != expectedRoot)
-        {
-            if (_logger.IsWarn) _logger.Warn($"Trie reassembly produced {assembledRoot ?? Keccak.Zero}, expected {expectedRoot}. Falling back to healing.");
-            return false;
-        }
-
-        if (_logger.IsInfo) _logger.Info($"Trie reassembly succeeded for {expectedRoot} — skipping state healing.");
-        treeSync.FinalizeSync(pivotHeader);
-
-        // Synchronously walk the freshly assembled trie from the pivot root to catch any
-        // missing/dangling nodes the root-hash check might have missed. Diagnostic only —
-        // it cannot un-finalize sync, but a failure here is a loud signal that reassembly
-        // produced an internally inconsistent tree even though its root happened to match.
-        // TODO: drop this once reassembly has been validated on mainnet.
-        if (_logger.IsInfo) _logger.Info("Running post-reassembly verify-trie pass.");
-        bool verified;
-        try
-        {
-            verified = worldStateManager.VerifyTrie(pivotHeader, token);
-        }
-        catch (OperationCanceledException) when (token.IsCancellationRequested)
-        {
-            throw;
-        }
-        catch (Exception e)
-        {
-            if (_logger.IsError) _logger.Error("Post-reassembly verify-trie threw.", e);
-            verified = false;
-        }
-
-        if (!verified && _logger.IsError)
-        {
-            _logger.Error($"POST-REASSEMBLY VERIFY-TRIE FAILED for root {expectedRoot}. Sync was already marked complete; the trie has dangling references.");
-        }
-        else if (verified && _logger.IsInfo)
-        {
-            _logger.Info($"Post-reassembly verify-trie passed for root {expectedRoot}.");
-        }
-
-        return true;
     }
 
     public async Task RunStateSyncRounds(CancellationToken token)

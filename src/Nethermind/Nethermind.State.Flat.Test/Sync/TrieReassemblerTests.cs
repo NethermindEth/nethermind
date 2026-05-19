@@ -11,16 +11,22 @@ using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
+using System.Threading;
+using System.Threading.Tasks;
+using ConcurrentCollections;
+using Nethermind.State;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.Sync;
 using Nethermind.State.Flat.Sync.Snap;
 using Nethermind.State.Snap;
+using Nethermind.Synchronization.FastSync;
+using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.State.Flat.Test.Sync;
 
 /// <summary>
-/// Verifies that <see cref="TrieReassembler"/> can rebuild the upper missing slice of a
+/// Verifies that <see cref="FlatBalHealing"/> can rebuild the upper missing slice of a
 /// state trie from the leaves + intact lower subtrees that snap sync leaves behind.
 /// </summary>
 [TestFixture]
@@ -42,7 +48,7 @@ public class TrieReassemblerTests
     [Test]
     public void Empty_persistence_returns_null()
     {
-        TrieReassembler reassembler = new(_persistence, LimboLogs.Instance);
+        FlatBalHealing reassembler = NewReassembler();
         Hash256? root = reassembler.ReassembleStateTrie();
         Assert.That(root, Is.Null);
     }
@@ -65,7 +71,7 @@ public class TrieReassemblerTests
         DeleteStateRoot();
 
         // 3. Reassemble. Expect the same root hash.
-        TrieReassembler reassembler = new(_persistence, LimboLogs.Instance);
+        FlatBalHealing reassembler = NewReassembler();
         Hash256? reassembled = reassembler.ReassembleStateTrie();
 
         Assert.That(reassembled, Is.EqualTo(originalRoot));
@@ -95,7 +101,7 @@ public class TrieReassemblerTests
 
         DeleteStorageRoot(accountHash);
 
-        TrieReassembler reassembler = new(_persistence, LimboLogs.Instance);
+        FlatBalHealing reassembler = NewReassembler();
         Hash256? reassembled = reassembler.ReassembleStorageTrie(accountHash.ValueHash256);
 
         Assert.That(reassembled, Is.EqualTo(originalRoot));
@@ -123,7 +129,7 @@ public class TrieReassemblerTests
         // (length 0) AND the Branch (length 4). The leaves at length 5 stay put.
         DeleteStorageTopNodes(accountHash, maxPathLength: 4);
 
-        TrieReassembler reassembler = new(_persistence, LimboLogs.Instance);
+        FlatBalHealing reassembler = NewReassembler();
         Hash256? reassembled = reassembler.ReassembleStorageTrie(accountHash.ValueHash256);
 
         Assert.That(reassembled, Is.EqualTo(originalRoot));
@@ -131,7 +137,7 @@ public class TrieReassemblerTests
 
     /// <summary>
     /// Same as above but only for the storage trie. We commit a storage trie under a single
-    /// account, drop the top nodes, and confirm <see cref="TrieReassembler.ReassembleStorageTrie"/>
+    /// account, drop the top nodes, and confirm <see cref="FlatBalHealing.ReassembleStorageTrie"/>
     /// returns the original storage root.
     /// </summary>
     [TestCase(2)]
@@ -145,7 +151,7 @@ public class TrieReassemblerTests
         // Drop only the path-0 storage root from StorageNodes.
         DeleteStorageRoot(accountHash);
 
-        TrieReassembler reassembler = new(_persistence, LimboLogs.Instance);
+        FlatBalHealing reassembler = NewReassembler();
         Hash256? reassembled = reassembler.ReassembleStorageTrie(accountHash.ValueHash256);
 
         Assert.That(reassembled, Is.EqualTo(originalStorageRoot));
@@ -274,5 +280,76 @@ public class TrieReassemblerTests
         tree.Commit(ValueKeccak.MaxValue);
 
         return tree.RootHash;
+    }
+
+    /// <summary>
+    /// Construct a FlatBalHealing with substitutes for the dependencies the reassembly methods
+    /// don't touch (pivot, tree-sync store, world-state manager). Tests that exercise
+    /// <see cref="FlatBalHealing.Run"/> use <see cref="NewBalHealing"/> instead.
+    /// </summary>
+    private FlatBalHealing NewReassembler() =>
+        new(_persistence,
+            Substitute.For<IStateSyncPivot>(),
+            Substitute.For<ITreeSyncStore>(),
+            Substitute.For<IWorldStateManager>(),
+            LimboLogs.Instance);
+
+    /// <summary>
+    /// End-to-end smoke test for <see cref="FlatBalHealing.Run"/>: build a real 4-account trie via
+    /// the snap-sync write path, drop the root, configure an <see cref="IStateSyncPivot"/> that
+    /// reports the expected root + the empty <c>UpdatedStorages</c> set, and assert that
+    /// <c>Run</c> finalizes the sync and returns <see langword="true"/>.
+    /// </summary>
+    [Test]
+    public async Task Run_finalizes_when_reassembled_root_matches_pivot()
+    {
+        Hash256 originalRoot = WriteAccountsViaSnapTree(accountCount: 4);
+        DeleteStateRoot();
+
+        BlockHeader pivot = Build.A.BlockHeader.WithStateRoot(originalRoot).TestObject;
+        IStateSyncPivot pivotSub = Substitute.For<IStateSyncPivot>();
+        pivotSub.GetPivotHeader().Returns(pivot);
+        pivotSub.UpdatedStorages.Returns(new ConcurrentHashSet<Hash256>());
+
+        ITreeSyncStore treeSyncStore = Substitute.For<ITreeSyncStore>();
+        IWorldStateManager worldStateManager = Substitute.For<IWorldStateManager>();
+        worldStateManager.VerifyTrie(pivot, Arg.Any<CancellationToken>()).Returns(true);
+
+        FlatBalHealing healing = new(_persistence, pivotSub, treeSyncStore, worldStateManager, LimboLogs.Instance);
+
+        bool result = await healing.Run(CancellationToken.None);
+
+        Assert.That(result, Is.True);
+        treeSyncStore.Received(1).FinalizeSync(pivot);
+        worldStateManager.Received(1).VerifyTrie(pivot, Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>
+    /// When reassembly produces a root that does not match the pivot's expected root, <c>Run</c>
+    /// must return <see langword="false"/> and NOT finalize the sync — the caller falls through
+    /// to traditional healing.
+    /// </summary>
+    [Test]
+    public async Task Run_returns_false_without_finalizing_when_root_mismatches()
+    {
+        WriteAccountsViaSnapTree(accountCount: 4);
+        DeleteStateRoot();
+
+        // Pivot expects a root that does NOT match what reassembly will produce.
+        BlockHeader pivot = Build.A.BlockHeader.WithStateRoot(Keccak.Zero).TestObject;
+        IStateSyncPivot pivotSub = Substitute.For<IStateSyncPivot>();
+        pivotSub.GetPivotHeader().Returns(pivot);
+        pivotSub.UpdatedStorages.Returns(new ConcurrentHashSet<Hash256>());
+
+        ITreeSyncStore treeSyncStore = Substitute.For<ITreeSyncStore>();
+        IWorldStateManager worldStateManager = Substitute.For<IWorldStateManager>();
+
+        FlatBalHealing healing = new(_persistence, pivotSub, treeSyncStore, worldStateManager, LimboLogs.Instance);
+
+        bool result = await healing.Run(CancellationToken.None);
+
+        Assert.That(result, Is.False);
+        treeSyncStore.DidNotReceive().FinalizeSync(Arg.Any<BlockHeader>());
+        worldStateManager.DidNotReceive().VerifyTrie(Arg.Any<BlockHeader>(), Arg.Any<CancellationToken>());
     }
 }

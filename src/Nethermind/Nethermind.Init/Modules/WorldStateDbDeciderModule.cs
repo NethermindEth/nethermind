@@ -55,11 +55,11 @@ internal class WorldStateDbDeciderModule : Module
                         ? flatFactory()
                         : (IFullStateFinder)patriciaFactory())
 
-            // Trie reassembly only works against the path-keyed flat backend; the legacy
+            // BAL healing only works against the path-keyed flat backend; the legacy
             // Patricia store returns a no-op so callers fall through to existing healing.
-            .AddSingleton<ITrieReassembler, FlatStateActivationPolicy, Func<TrieReassembler>>(
+            .AddSingleton<IBalHealing, FlatStateActivationPolicy, Func<FlatBalHealing>>(
                 (policy, flatFactory) =>
                     policy.ShouldTurnOnFlatDb()
                         ? flatFactory()
-                        : NoopTrieReassembler.Instance);
+                        : NoopBalHealing.Instance);
 }
