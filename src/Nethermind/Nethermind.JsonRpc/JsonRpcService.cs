@@ -228,7 +228,7 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
         {
             try
             {
-                (parameters, hasMissing) = DeserializeParameters(method.ExpectedParameters, providedParametersLength, providedParameters, missingParamsCount);
+                (parameters, hasMissing) = DeserializeParameters(method.ExpectedParameters, providedParametersLength, providedParameters, request.ParamsUtf8, missingParamsCount);
             }
             catch (Exception e)
             {
@@ -375,7 +375,7 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
         }
     }
 
-    private static object? DeserializeParameter(JsonElement providedParameter, ExpectedParameter expectedParameter)
+    private static object? DeserializeParameter(JsonElement providedParameter, ExpectedParameter expectedParameter, ReadOnlyMemory<byte> providedParameterUtf8)
     {
         if (providedParameter.ValueKind == JsonValueKind.Null || (providedParameter.ValueKind == JsonValueKind.String && providedParameter.ValueEquals(ReadOnlySpan<byte>.Empty)))
         {
@@ -397,33 +397,56 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
             jsonRpcParam!.ReadJson(providedParameter, EthereumJsonSerializer.JsonOptions);
             executionParam = jsonRpcParam;
         }
+        else if (expectedParameter.Kind != ParameterKind.JsonElement && !providedParameterUtf8.IsEmpty)
+        {
+            executionParam = DeserializeTypedParameter(providedParameter, expectedParameter, providedParameterUtf8);
+        }
         else
         {
-            Type paramType = expectedParameter.ParameterType;
-            JsonTypeInfo? typeInfo = expectedParameter.TypeInfo;
-            if (providedParameter.ValueKind == JsonValueKind.String)
-            {
-                executionParam = expectedParameter.ReparseString
-                    ? JsonSerializer.Deserialize(providedParameter.GetString(), paramType, EthereumJsonSerializer.JsonOptions)
-                    : typeInfo is not null
-                        ? providedParameter.Deserialize(typeInfo)
-                        : providedParameter.Deserialize(paramType, EthereumJsonSerializer.JsonOptions);
-            }
-            else
-            {
-                executionParam = typeInfo is not null
-                    ? providedParameter.Deserialize(typeInfo)
-                    : providedParameter.Deserialize(paramType, EthereumJsonSerializer.JsonOptions);
-            }
+            executionParam = DeserializeTypedParameter(providedParameter, expectedParameter);
         }
 
         return executionParam;
+    }
+
+    private static object? DeserializeTypedParameter(JsonElement providedParameter, ExpectedParameter expectedParameter)
+    {
+        Type paramType = expectedParameter.ParameterType;
+        JsonTypeInfo? typeInfo = expectedParameter.TypeInfo;
+        if (providedParameter.ValueKind == JsonValueKind.String)
+        {
+            return expectedParameter.ReparseString
+                ? JsonSerializer.Deserialize(providedParameter.GetString(), paramType, EthereumJsonSerializer.JsonOptions)
+                : typeInfo is not null
+                    ? providedParameter.Deserialize(typeInfo)
+                    : providedParameter.Deserialize(paramType, EthereumJsonSerializer.JsonOptions);
+        }
+
+        return typeInfo is not null
+            ? providedParameter.Deserialize(typeInfo)
+            : providedParameter.Deserialize(paramType, EthereumJsonSerializer.JsonOptions);
+    }
+
+    private static object? DeserializeTypedParameter(JsonElement providedParameter, ExpectedParameter expectedParameter, ReadOnlyMemory<byte> providedParameterUtf8)
+    {
+        Type paramType = expectedParameter.ParameterType;
+        if (providedParameter.ValueKind == JsonValueKind.String && expectedParameter.ReparseString)
+        {
+            return JsonSerializer.Deserialize(providedParameter.GetString(), paramType, EthereumJsonSerializer.JsonOptions);
+        }
+
+        Utf8JsonReader reader = new(providedParameterUtf8.Span, isFinalBlock: true, state: default);
+        JsonTypeInfo? typeInfo = expectedParameter.TypeInfo;
+        return typeInfo is not null
+            ? JsonSerializer.Deserialize(ref reader, typeInfo)
+            : JsonSerializer.Deserialize(ref reader, paramType, EthereumJsonSerializer.JsonOptions);
     }
 
     private static (object[]? parameters, bool hasMissing) DeserializeParameters(
         ExpectedParameter[] expectedParameters,
         int providedParametersLength,
         JsonElement providedParameters,
+        ReadOnlyMemory<byte> providedParametersUtf8,
         int missingParamsCount)
     {
         int totalLength = providedParametersLength + missingParamsCount;
@@ -437,11 +460,20 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
         if (providedParametersLength > 0)
         {
             JsonElement.ArrayEnumerator enumerator = providedParameters.EnumerateArray();
+            bool useUtf8Parameters = !providedParametersUtf8.IsEmpty && providedParameters.ValueKind == JsonValueKind.Array;
+            JsonReaderState readerState = default;
+            int offset = 0;
+            bool started = false;
             while (enumerator.MoveNext())
             {
                 ExpectedParameter expectedParameter = expectedParameters[i];
+                ReadOnlyMemory<byte> providedParameterUtf8 = default;
+                if (useUtf8Parameters && !JsonRpcArrayReader.TryReadNextItem(providedParametersUtf8, ref offset, ref readerState, ref started, out providedParameterUtf8))
+                {
+                    throw new JsonException("Missing JSON-RPC parameter bytes.");
+                }
 
-                object? parameter = DeserializeParameter(enumerator.Current, expectedParameter);
+                object? parameter = DeserializeParameter(enumerator.Current, expectedParameter, providedParameterUtf8);
                 executionParameters[i] = parameter;
                 hasMissing |= ReferenceEquals(parameter, Type.Missing);
                 i++;
