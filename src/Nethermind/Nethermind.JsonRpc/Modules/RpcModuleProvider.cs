@@ -11,6 +11,8 @@ using System.Linq;
 using System.Reflection;
 using System.Threading.Tasks;
 using System.Runtime.CompilerServices;
+using System.Text.Json.Serialization;
+using System.Text.Json.Serialization.Metadata;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using System.Threading;
@@ -207,15 +209,19 @@ namespace Nethermind.JsonRpc.Modules
 
         public class ResolvedMethodInfo
         {
-            public readonly struct ExpectedParameter
-            {
-                public readonly ParameterInfo Info;
-                public readonly ConstructorInvoker? ConstructorInvoker;
-                private readonly ParameterDetails _introspection;
+                public readonly struct ExpectedParameter
+                {
+                    public readonly ParameterInfo Info;
+                    public readonly Type ParameterType;
+                    public readonly JsonTypeInfo? TypeInfo;
+                    public readonly ConstructorInvoker? ConstructorInvoker;
+                    private readonly ParameterDetails _introspection;
 
-                public bool IsNullable => (_introspection & ParameterDetails.IsNullable) != 0;
-                public bool IsIJsonRpcParam => ConstructorInvoker is not null;
-                public bool IsOptional => (_introspection & ParameterDetails.IsOptional) != 0;
+                    public ParameterKind Kind { get; }
+                    public bool IsNullable => (_introspection & ParameterDetails.IsNullable) != 0;
+                    public bool IsIJsonRpcParam => ConstructorInvoker is not null;
+                    public bool IsOptional => (_introspection & ParameterDetails.IsOptional) != 0;
+                    public bool ReparseString => (_introspection & ParameterDetails.ReparseString) != 0;
 
                 public IJsonRpcParam CreateRpcParam()
                 {
@@ -231,14 +237,31 @@ namespace Nethermind.JsonRpc.Modules
                     static void ThrowNotJsonRpc() => throw new InvalidOperationException("This parameter is not an IJsonRpcParam");
                 }
 
-                internal ExpectedParameter(ParameterInfo info, ConstructorInvoker? constructor, ParameterDetails introspection)
+                internal ExpectedParameter(
+                    ParameterInfo info,
+                    Type parameterType,
+                    JsonTypeInfo? typeInfo,
+                    ConstructorInvoker? constructor,
+                    ParameterKind kind,
+                    ParameterDetails introspection)
                 {
                     ArgumentNullException.ThrowIfNull(info);
 
                     Info = info;
+                    ParameterType = parameterType;
+                    TypeInfo = typeInfo;
                     ConstructorInvoker = constructor;
+                    Kind = kind;
                     _introspection = introspection;
                 }
+            }
+
+            public enum ParameterKind
+            {
+                Typed,
+                String,
+                JsonElement,
+                JsonRpcParam
             }
 
             [Flags]
@@ -247,6 +270,7 @@ namespace Nethermind.JsonRpc.Modules
                 None,
                 IsNullable = 0b1,
                 IsOptional = 0b10,
+                ReparseString = 0b100,
             }
 
             public ResolvedMethodInfo() => ExpectedParameters = [];
@@ -268,12 +292,40 @@ namespace Nethermind.JsonRpc.Modules
                     ConstructorInvoker? constructor = null;
                     ParameterDetails details = ParameterDetails.None;
 
-                    Type? paramType = parameter.ParameterType;
+                    Type paramType = parameter.ParameterType;
+                    if (paramType.IsByRef)
+                    {
+                        paramType = paramType.GetElementType()!;
+                    }
+
+                    JsonTypeInfo? typeInfo = null;
+                    ParameterKind kind = ParameterKind.Typed;
+
                     if (paramType.IsAssignableTo(typeof(IJsonRpcParam)))
                     {
                         ConstructorInfo constructorInfo = paramType.GetConstructor(BindingFlags.Public | BindingFlags.Instance, [])
                             ?? throw new InvalidOperationException($"{paramType.Name} must have parameterless constructor.");
                         constructor = ConstructorInvoker.Create(constructorInfo);
+                        kind = ParameterKind.JsonRpcParam;
+                    }
+                    else if (paramType == typeof(string))
+                    {
+                        kind = ParameterKind.String;
+                    }
+                    else
+                    {
+                        if (paramType == typeof(System.Text.Json.JsonElement))
+                        {
+                            kind = ParameterKind.JsonElement;
+                        }
+
+                        EthereumJsonSerializer.JsonOptions.TryGetTypeInfo(paramType, out typeInfo);
+
+                        JsonConverter converter = EthereumJsonSerializer.JsonOptions.GetConverter(paramType);
+                        if (converter.GetType().Namespace?.StartsWith("System.", StringComparison.Ordinal) == true)
+                        {
+                            details |= ParameterDetails.ReparseString;
+                        }
                     }
 
                     if (IsNullableParameter(parameter))
@@ -285,7 +337,7 @@ namespace Nethermind.JsonRpc.Modules
                         details |= ParameterDetails.IsOptional;
                     }
 
-                    expectedParameters[i] = new(parameter, constructor, details);
+                    expectedParameters[i] = new(parameter, paramType, typeInfo, constructor, kind, details);
                 }
 
                 ExpectedParameters = expectedParameters;
