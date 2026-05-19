@@ -8,6 +8,7 @@ using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.GasPolicy;
+using Nethermind.Int256;
 using static Nethermind.Consensus.Processing.BlockProcessor;
 using static Nethermind.State.BlockAccessListBasedWorldState;
 
@@ -130,46 +131,55 @@ public partial class BlockAccessListManager
 
     public void ValidateBlockAccessList(Block block, uint index, bool validateStorageReads = true)
     {
-        if (block.BlockAccessList is null)
-        {
-            return;
-        }
+        if (block.BlockAccessList is null) return;
 
         CheckInitialized();
 
-        // Fast path: when the column-oriented validation index is populated for this index,
-        // a single ChangesEqual call compares both sides row-by-row in bulk. On match, only
-        // the surplus-storage-reads gas check remains — no per-account dict lookups, no
-        // sorted merge walk. On mismatch (or when the index isn't ready, or when a generated
-        // slice contained a read-only account the suggested side never declared — invisible
-        // to ChangesEqual), fall through to the streaming walk below which produces precise
-        // diagnostics.
-        if (_hasGeneratedValidationIndexUpdates &&
-            _suggestedValidationIndex is not null &&
-            _generatedValidationIndex is not null &&
-            !_hasGeneratedRequiredReadAccountMismatch &&
-            _generatedValidationIndex.ChangesEqual(_suggestedValidationIndex, index))
-        {
-            int fastSurplus = _suggestedChargeableStorageReads - _generatedChargeableStorageReads;
-            if (validateStorageReads && fastSurplus > 0 && _gasRemaining < fastSurplus * Eip7928Constants.ItemCost)
-            {
-                throw new InvalidBlockLevelAccessListException(block.Header, "Suggested block-level access list contained invalid storage reads.");
-            }
-            return;
-        }
+        if (TryFastPath(block, index, validateStorageReads)) return;
 
-        // Verify-only path skips the per-tx Merge into GeneratedBlockAccessList — the column
-        // index already carries everything the slow walk needs to produce per-account
-        // diagnostics. Non-verify path keeps the legacy GBAL walk for the BAL recorder /
-        // sequential build that relies on the materialised list.
         if (VerifyOnly && _suggestedValidationIndex is not null && _generatedValidationIndex is not null)
         {
             SlowPathFromColumnIndex(block, index, validateStorageReads);
             return;
         }
 
+        SlowPathFromGeneratedBlockAccessList(block, index, validateStorageReads);
+    }
+
+    /// <summary>
+    /// Column-index per-row equality with a final surplus-reads gas budget check. Skipped when
+    /// the index hasn't received any updates, when a per-tx slice already surfaced a generated-
+    /// only account invisible to <see cref="BlockAccessListValidationIndex.ChangesEqual"/>, or
+    /// when ChangesEqual itself detects a row-level mismatch.
+    /// </summary>
+    private bool TryFastPath(Block block, uint index, bool validateStorageReads)
+    {
+        if (!_hasGeneratedValidationIndexUpdates ||
+            _suggestedValidationIndex is null ||
+            _generatedValidationIndex is null ||
+            _hasGeneratedRequiredReadAccountMismatch ||
+            !_generatedValidationIndex.ChangesEqual(_suggestedValidationIndex, index))
+        {
+            return false;
+        }
+
+        int surplus = _suggestedChargeableStorageReads - _generatedChargeableStorageReads;
+        if (validateStorageReads && surplus > 0 && _gasRemaining < surplus * Eip7928Constants.ItemCost)
+        {
+            throw new InvalidBlockLevelAccessListException(block.Header, "Suggested block-level access list contained invalid storage reads.");
+        }
+        return true;
+    }
+
+    /// <summary>
+    /// Non-verify-only diagnostic walk: the constructed <see cref="GeneratedBlockAccessList"/>
+    /// drives a two-pass comparison against the suggested BAL. Used by the BAL recorder and the
+    /// sequential build where the constructed list is populated anyway.
+    /// </summary>
+    private void SlowPathFromGeneratedBlockAccessList(Block block, uint index, bool validateStorageReads)
+    {
         GeneratedBlockAccessList generated = GeneratedBlockAccessList;
-        ReadOnlyBlockAccessList suggested = block.BlockAccessList;
+        ReadOnlyBlockAccessList suggested = block.BlockAccessList!;
 
         int generatedReads = 0;
         int suggestedReads = 0;
@@ -232,9 +242,8 @@ public partial class BlockAccessListManager
     }
 
     /// <summary>
-    /// Verify-only slow path: produces the same per-account, per-row diagnostics as the legacy
-    /// walk over GeneratedBlockAccessList.AccountChanges, but reads only from the column-index
-    /// data structures. Required when per-tx Merge is skipped so generated is empty.
+    /// Verify-only slow path: produces per-account, per-row diagnostics by walking only the
+    /// column-index data structures. Required when per-tx Merge is skipped so generated is empty.
     /// </summary>
     private void SlowPathFromColumnIndex(Block block, uint index, bool validateStorageReads)
     {
@@ -251,8 +260,7 @@ public partial class BlockAccessListManager
                 $"Suggested block-level access list contained incorrect changes for {overflowAddress} at index {overflowIndex}.");
         }
 
-        // Pass 1: walk generated marked ordinals. Equivalent of the legacy
-        // "foreach GeneratedAccountChanges in generated.AccountChanges".
+        // Pass 1: walk generated marked ordinals — every account execution touched.
         foreach (int ordinal in gen.EnumerateMarkedOrdinals())
         {
             Address address = gen.AddressOf(ordinal);
@@ -368,4 +376,49 @@ public partial class BlockAccessListManager
     private static bool IsSystemContract(Address address)
         => address == Eip7002Constants.WithdrawalRequestPredeployAddress
         || address == Eip7251Constants.ConsolidationRequestPredeployAddress;
+
+    /// <summary>
+    /// Closes the gap between the column-index per-row validation and what the end-of-block
+    /// canonical-bytes hash compare used to catch: namely, account-set presence and the exact
+    /// set of storage_reads per account. Throws <see cref="InvalidBlockLevelAccessListException"/>
+    /// on any structural difference between the suggested and generated BALs.
+    /// </summary>
+    /// <remarks>
+    /// Does not compare <c>StorageChanges</c> (write entries): those are fully covered by the
+    /// incremental <see cref="ValidateBlockAccessList"/> calls at indices 0..txCount+1 via
+    /// <c>ChangesAtIndexEqual</c>, which compares every balance/nonce/code/storage-write lane at
+    /// each tx index in lockstep.
+    /// </remarks>
+    private void ValidateStructuralEquivalence(Block block)
+    {
+        BlockAccessListValidationIndex generatedIndex = _generatedValidationIndex!;
+        ReadOnlyBlockAccessList suggested = block.BlockAccessList!;
+
+        // Generated lane Add dropped a row that didn't fit suggested's per-row capacity —
+        // structural mismatch the per-account walk below can't see through HasAt.
+        if (generatedIndex.TryGetGeneratedOverflow(out Address overflowAddress, out uint overflowIndex))
+        {
+            throw new InvalidBlockLevelAccessListException(block.Header,
+                $"Suggested block-level access list contained incorrect changes for {overflowAddress} at index {overflowIndex}.");
+        }
+
+        BlockAccessListValidationIndex.StructuralMismatchKind mismatch =
+            generatedIndex.FindStructuralMismatch(suggested, out Address? mismatchAddress, out int generatedAccountCount);
+
+        string? error = mismatch switch
+        {
+            BlockAccessListValidationIndex.StructuralMismatchKind.None => null,
+            BlockAccessListValidationIndex.StructuralMismatchKind.AccountCountMismatch
+                => $"Account-set size mismatch: suggested={suggested.AccountChanges.Count}, generated={generatedAccountCount}.",
+            BlockAccessListValidationIndex.StructuralMismatchKind.MissingInGenerated
+                => $"Suggested BAL declares account {mismatchAddress} which execution did not touch.",
+            BlockAccessListValidationIndex.StructuralMismatchKind.StorageReadsCountMismatch
+                => $"storage_reads count mismatch for {mismatchAddress}.",
+            BlockAccessListValidationIndex.StructuralMismatchKind.StorageReadsContentMismatch
+                => $"storage_reads mismatch for {mismatchAddress}.",
+            _ => throw new InvalidOperationException($"Unhandled {nameof(BlockAccessListValidationIndex.StructuralMismatchKind)}: {mismatch}"),
+        };
+
+        if (error is not null) throw new InvalidBlockLevelAccessListException(block.Header, error);
+    }
 }

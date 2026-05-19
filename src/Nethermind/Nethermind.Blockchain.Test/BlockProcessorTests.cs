@@ -1266,7 +1266,7 @@ public class BlockProcessorTests
         public GeneratedBlockAccessList GeneratedBlockAccessList { get; set; } = new();
         public bool Enabled => true;
         public bool ParallelExecutionEnabled => true;
-        public bool ForceMaterializeGeneratedBlockAccessList { get; set; }
+        public bool ForceConstructGeneratedBlockAccessList { get; set; }
 
         public void PrepareForProcessing(Block suggestedBlock, IReleaseSpec spec, ProcessingOptions options)
         {

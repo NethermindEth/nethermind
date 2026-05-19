@@ -291,14 +291,11 @@ public partial class EngineModuleTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(successResponse, Is.Not.Null);
-            // The verify-only BAL validation path catches the surplus-empty-entry attack via
-            // an account-set structural check rather than a byte-level hash compare; both
-            // legitimately reject the block but with different error messages. Accept either.
             Assert.That(response, Does.Contain("\"status\":\"INVALID\""));
             Assert.That(response, Does.Contain($"\"latestValidHash\":\"{Keccak.Zero.ToString(true)}\""));
             Assert.That(response,
                 Does.Contain($"InvalidBlockLevelAccessListHash: Expected {expectedBalHash}, got {invalidBalHash}")
-                .Or.Contain("InvalidBlockLevelAccessList:"));
+                .Or.Contain("InvalidBlockLevelAccessList: Account-set size mismatch"));
         }
     }
 
