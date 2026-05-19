@@ -248,14 +248,22 @@ namespace Nethermind.Evm.TransactionProcessing
             if (spec.IsEip8037Enabled && spec.IsEip7708Enabled && statusCode == StatusCode.Success)
             {
                 JournalSet<Address> destroyList = substate.DestroyList;
-                if (destroyList.Count > 1)
+                int count = destroyList.Count;
+                if (count > 1)
                 {
-                    Address[] orderedDestroyList = new Address[destroyList.Count];
-                    destroyList.CopyTo(orderedDestroyList, 0);
-                    orderedDestroyList.AsSpan().Sort(default(AddressByBytesComparer));
-                    for (int i = 0; i < orderedDestroyList.Length; i++)
+                    Address[] buffer = SafeArrayPool<Address>.Shared.Rent(count);
+                    try
                     {
-                        FinalizeDestroyedAccount(WorldState, in substate, orderedDestroyList[i]);
+                        destroyList.CopyTo(buffer, 0);
+                        buffer.AsSpan(0, count).Sort(default(AddressByBytesComparer));
+                        for (int i = 0; i < count; i++)
+                        {
+                            FinalizeDestroyedAccount(WorldState, in substate, buffer[i]);
+                        }
+                    }
+                    finally
+                    {
+                        SafeArrayPool<Address>.Shared.Return(buffer);
                     }
                 }
                 else
