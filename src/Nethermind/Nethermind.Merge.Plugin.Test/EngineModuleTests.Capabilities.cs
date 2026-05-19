@@ -5,11 +5,9 @@ using System.Text.Json;
 using Nethermind.Core.Specs;
 using Nethermind.HealthChecks;
 using Nethermind.JsonRpc;
-using Nethermind.Merge.Plugin;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs;
-using Nethermind.Specs.Test;
 using NUnit.Framework;
 
 namespace Nethermind.Merge.Plugin.Test;

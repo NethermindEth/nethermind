@@ -5,7 +5,6 @@ using DotNetty.Buffers;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
-using Nethermind.Network;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Stats.SyncLimits;
 

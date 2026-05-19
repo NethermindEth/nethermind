@@ -2,9 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Threading.Tasks;
-using Nethermind.Config;
 using Nethermind.Core;
-using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
 using NUnit.Framework;
