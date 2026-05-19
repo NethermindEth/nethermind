@@ -17,5 +17,5 @@ internal class TalkReqAndRespHandler : ITalkReqAndRespHandler
 
     public byte[]? HandleResponse(byte[] response) =>
         //We don't care about anything returned here at the moment
-        Array.Empty<byte>();
+        [];
 }

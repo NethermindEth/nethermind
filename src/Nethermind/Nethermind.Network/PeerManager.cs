@@ -125,6 +125,7 @@ namespace Nethermind.Network
         {
             Peer peer = nodeEventArgs.Peer;
             int newPeerPoolLength = _peerPool.PeerCount;
+            Metrics.PeerCandidateCount = newPeerPoolLength;
             int currentMaxPeerPoolLength = Volatile.Read(ref _maxPeerPoolLength);
             while (newPeerPoolLength > currentMaxPeerPoolLength + 100)
             {

@@ -23,7 +23,6 @@ using Nethermind.Init.Modules;
 using Nethermind.Logging;
 using Nethermind.Network;
 using Nethermind.Network.Discovery;
-using Nethermind.Network.Discovery.Lifecycle;
 using Nethermind.Network.Discovery.Messages;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs.ChainSpecStyle;
@@ -136,10 +135,9 @@ public class XdcModule : Module
             .AddSingleton<IDifficultyCalculator, XdcDifficultyCalculator>()
             .AddScoped<IProducedBlockSuggester, XdcBlockSuggester>();
 
-        // Overrides DiscoveryApp and NodeLifecycleManagerFactory registered in DiscoveryModule (via NethermindModule).
+        // Overrides DiscoveryApp registered in DiscoveryModule (via NethermindModule).
         // Safe: plugins are always loaded after NethermindModule in NethermindRunnerModule, so last-registration-wins is guaranteed.
         builder.RegisterType<XdcDiscoveryApp>().As<DiscoveryApp>().WithAttributeFiltering().SingleInstance().ExternallyOwned();
-        builder.RegisterType<XdcNodeLifecycleManagerFactory>().As<INodeLifecycleManagerFactory>().SingleInstance();
     }
 
     private ISnapshotManager CreateSnapshotManager([KeyFilter(XdcRocksDbConfigFactory.XdcSnapshotDbName)] IDb db, IBlockTree blockTree, IMasternodeVotingContract votingContract, ISpecProvider specProvider) => new SnapshotManager(db, blockTree, votingContract, specProvider);
