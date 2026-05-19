@@ -8,9 +8,9 @@ using Nethermind.Int256;
 namespace Nethermind.Core.BlockAccessLists;
 
 /// <summary>
-/// Per-slot changes from a decoded BAL. Backed by a <see cref="StorageChange"/> array sorted by
-/// <see cref="StorageChange.Index"/> (the decoder validates ordering on the way in), so
-/// <see cref="TryGetLastBefore"/> can binary-search via <see cref="System.MemoryExtensions"/>.
+/// Per-slot changes from a decoded BAL, sorted by <see cref="StorageChange.Index"/>
+/// (decoder-validated). A parallel <c>uint[]</c> index lane drives the binary-search lookups
+/// (<see cref="TryGetLastBefore"/>, <see cref="TryGetAtIndex"/>, <see cref="HasAtIndex"/>).
 /// </summary>
 public class ReadOnlySlotChanges(UInt256 key, StorageChange[] changes) : IEquatable<ReadOnlySlotChanges>
 {
@@ -18,6 +18,10 @@ public class ReadOnlySlotChanges(UInt256 key, StorageChange[] changes) : IEquata
 
     [JsonConverter(typeof(StorageChangesByIndexConverter))]
     public StorageChange[] Changes { get; } = changes;
+
+    private readonly uint[] _indices = ExtractIndices(changes);
+
+    public ReadOnlySlotChanges(UInt256 key) : this(key, []) { }
 
     public bool Equals(ReadOnlySlotChanges? other)
         => other is not null && Key.Equals(other.Key) && ((ReadOnlySpan<StorageChange>)Changes).SequenceEqual(other.Changes);
@@ -28,25 +32,28 @@ public class ReadOnlySlotChanges(UInt256 key, StorageChange[] changes) : IEquata
 
     public override string ToString() => $"{Key}:[{string.Join(", ", Changes)}]";
 
-    public ReadOnlySlotChanges(UInt256 key) : this(key, []) { }
-
-    /// <summary>Last storage change strictly before <paramref name="blockAccessIndex"/>.
-    /// Returns <c>false</c> when no entry is recorded before the index — caller can fall through
-    /// to a parent-state reader.</summary>
+    /// <summary>
+    /// Last storage change strictly before <paramref name="blockAccessIndex"/>; <c>false</c> if none.
+    /// </summary>
     public bool TryGetLastBefore(uint blockAccessIndex, out StorageChange storageChange)
-    {
-        ReadOnlySpan<StorageChange> span = Changes;
-        int idx = span.BinarySearch(new IndexKey<StorageChange>(blockAccessIndex));
-        // Whether found exactly or not, idx (or ~idx) is the position of the first entry with
-        // Index >= blockAccessIndex. The last strictly-before entry is one step earlier.
-        int lastBefore = (idx >= 0 ? idx : ~idx) - 1;
-        if (lastBefore < 0)
-        {
-            storageChange = default;
-            return false;
-        }
+        => IndexLane.TryGetLastBefore(_indices, Changes, blockAccessIndex, out storageChange);
 
-        storageChange = span[lastBefore];
-        return true;
+    /// <summary>
+    /// The change at exactly <paramref name="index"/>, if any.
+    /// </summary>
+    public bool TryGetAtIndex(uint index, out StorageChange storageChange)
+        => IndexLane.TryGetExact(_indices, Changes, index, out storageChange);
+
+    public bool HasAtIndex(uint index) => IndexLane.HasExact(_indices, index);
+
+    private static uint[] ExtractIndices(StorageChange[] changes)
+    {
+        if (changes.Length == 0) return [];
+        uint[] indices = new uint[changes.Length];
+        for (int i = 0; i < changes.Length; i++)
+        {
+            indices[i] = changes[i].Index;
+        }
+        return indices;
     }
 }
