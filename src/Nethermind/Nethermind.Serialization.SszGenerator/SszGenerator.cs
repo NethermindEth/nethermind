@@ -703,8 +703,8 @@ internal static class SszCodecHelpers
             int itemSize = property.Type.StaticLength;
             string encodeBody = property.Type.CustomEncodeTemplate!
                 .Replace("{0}", $"{target}.Slice(__i * {itemSize}, {itemSize})")
-                .Replace("{1}", $"{expression}[__i]");
-            return $"{{ var __arr = {expression}; for (int __i = 0; __i < __arr.Length; __i++) {{ {encodeBody} }} }}";
+                .Replace("{1}", "__items[__i]");
+            return $"{{ ReadOnlySpan<{property.Type.TypeReferenceName}> __items = {SpanExpression(property, expression)}; for (int __i = 0; __i < __items.Length; __i++) {{ {encodeBody} }} }}";
         }
 
         string arguments = $"{target}, {EncodeValueExpression(property, expression)}";
