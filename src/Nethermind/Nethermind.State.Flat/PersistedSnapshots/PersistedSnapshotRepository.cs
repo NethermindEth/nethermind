@@ -42,8 +42,18 @@ public sealed class PersistedSnapshotRepository(
     private readonly bool _validatePersistedSnapshot = config.ValidatePersistedSnapshot;
     private readonly double _bloomBitsPerKey = config.PersistedSnapshotBloomBitsPerKey;
     private readonly string _tierLabel = arenaManager.Tier.Name;
+    // Do NOT iterate these dictionaries on hot or metric paths — entry counts can
+    // reach hundreds of thousands in production. Use TryGetValue for point lookups;
+    // O(1) aggregates (Base/CompactedSnapshotMemory) are maintained as running totals
+    // in the long fields below. Iteration is reserved for one-off lifecycle ops
+    // (catalog prune, dispose), which run off the metric / read paths.
     private readonly ConcurrentDictionary<StateId, PersistedSnapshot> _baseSnapshots = new();
     private readonly ConcurrentDictionary<StateId, PersistedSnapshot> _compactedSnapshots = new();
+    // Running totals matching the dictionaries above. Mutated under _catalogLock at
+    // every insert/remove site; read lock-free via Interlocked.Read by the Prometheus
+    // scrape thread so the metric stays O(1) regardless of snapshot count.
+    private long _baseSnapshotMemoryBytes;
+    private long _compactedSnapshotMemoryBytes;
     // Shared across both per-tier repos. Owned by the DI container, not this repo —
     // see <see cref="Dispose"/> which does NOT dispose the manager.
     private readonly PersistedSnapshotBloomFilterManager _bloomManager = bloomManager;
@@ -52,8 +62,8 @@ public sealed class PersistedSnapshotRepository(
     private bool BloomEnabled => _bloomBitsPerKey > 0;
 
     public int SnapshotCount => _baseSnapshots.Count + _compactedSnapshots.Count;
-    public long BaseSnapshotMemory => SumMemory(_baseSnapshots);
-    public long CompactedSnapshotMemory => SumMemory(_compactedSnapshots);
+    public long BaseSnapshotMemory => Interlocked.Read(ref _baseSnapshotMemoryBytes);
+    public long CompactedSnapshotMemory => Interlocked.Read(ref _compactedSnapshotMemoryBytes);
 
     /// <summary>
     /// Load this tier's persisted snapshots from its catalog. Routes each
@@ -109,9 +119,15 @@ public sealed class PersistedSnapshotRepository(
         RegisterBlooms(snapshot, bloom);
 
         if (range > _compactSize)
+        {
             _compactedSnapshots[entry.To] = snapshot;
+            Interlocked.Add(ref _compactedSnapshotMemoryBytes, snapshot.Size);
+        }
         else
+        {
             _baseSnapshots[entry.To] = snapshot;
+            Interlocked.Add(ref _baseSnapshotMemoryBytes, snapshot.Size);
+        }
     }
 
     private readonly Histogram _persistedSnapshotSize = Prometheus.Metrics.CreateHistogram("persisted_snapshot_size", "persisted_snapshot_size", "tier");
@@ -169,6 +185,7 @@ public sealed class PersistedSnapshotRepository(
             if (_validatePersistedSnapshot)
                 PersistedSnapshotUtils.ValidatePersistedSnapshot(snapshot, persisted, _bloomManager);
             _baseSnapshots[snapshot.To] = persisted;
+            Interlocked.Add(ref _baseSnapshotMemoryBytes, persisted.Size);
         }
 
         // Release the metadata writer's creation lease (PersistedSnapshot took its own in
@@ -195,6 +212,7 @@ public sealed class PersistedSnapshotRepository(
             RegisterBlooms(snapshot, bloom);
 
             _compactedSnapshots[to] = snapshot;
+            Interlocked.Add(ref _compactedSnapshotMemoryBytes, snapshot.Size);
         }
 
         // Release the caller's "creation" lease — see ConvertSnapshotToPersistedSnapshot.
@@ -361,6 +379,7 @@ public sealed class PersistedSnapshotRepository(
             {
                 if (_baseSnapshots.TryRemove(key, out PersistedSnapshot? snapshot))
                 {
+                    Interlocked.Add(ref _baseSnapshotMemoryBytes, -snapshot.Size);
                     RemoveFromCatalog(snapshot.To);
                     snapshot.Dispose();
                     pruned++;
@@ -378,6 +397,7 @@ public sealed class PersistedSnapshotRepository(
             {
                 if (_compactedSnapshots.TryRemove(key, out PersistedSnapshot? snapshot))
                 {
+                    Interlocked.Add(ref _compactedSnapshotMemoryBytes, -snapshot.Size);
                     RemoveFromCatalog(snapshot.To);
                     snapshot.Dispose();
                     pruned++;
@@ -410,14 +430,6 @@ public sealed class PersistedSnapshotRepository(
             _catalog.Remove(to);
     }
 
-    private static long SumMemory(ConcurrentDictionary<StateId, PersistedSnapshot> dict)
-    {
-        long total = 0;
-        foreach (KeyValuePair<StateId, PersistedSnapshot> kv in dict)
-            total += kv.Value.Size;
-        return total;
-    }
-
     public void Dispose()
     {
         lock (_catalogLock)
@@ -439,6 +451,8 @@ public sealed class PersistedSnapshotRepository(
                 kv.Value.Dispose();
             _baseSnapshots.Clear();
             _compactedSnapshots.Clear();
+            Interlocked.Exchange(ref _baseSnapshotMemoryBytes, 0);
+            Interlocked.Exchange(ref _compactedSnapshotMemoryBytes, 0);
             // Drop the managers' dictionary refs; any file still alive cleans up here.
             // Orphans / unreferenced files (no PersistOnShutdown caller) get deleted.
             _arena.Dispose();
