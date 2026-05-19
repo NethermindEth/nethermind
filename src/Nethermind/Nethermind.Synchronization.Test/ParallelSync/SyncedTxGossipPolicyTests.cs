@@ -75,7 +75,7 @@ public class SyncedTxGossipPolicyTests
         TxPoolConfig txPoolConfig = new() { AcceptTxWhenNotSynced = true };
         MutableSelector selector = new(SyncMode.Disconnected);
         SyncedTxGossipPolicy syncPolicy = new(selector, txPoolConfig);
-        CompositeTxGossipPolicy composite = new(new Lazy<ITxGossipPolicy[]>([syncPolicy]));
+        CompositeTxGossipPolicy composite = new(new FixedTxGossipPolicySource([syncPolicy]));
 
         Assert.That(composite.ShouldListenToGossipedTransactions, Is.True);
 

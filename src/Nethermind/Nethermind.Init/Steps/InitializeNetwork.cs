@@ -257,13 +257,6 @@ public class InitializeNetwork : IStep
 
         _api.ProtocolsManager = CreateProtocolManager();
 
-        if (_api.Config<ITxPoolConfig>().BlobsSupport.IsEnabled()
-            && _chainHeadSpecProvider.GetCurrentHeadSpec().IsEip7594Enabled)
-        {
-            if (_logger.IsInfo) _logger.Info("Adding eth/72 capability");
-            _api.ProtocolsManager!.AddSupportedCapability(new Capability(Protocol.Eth, 72));
-        }
-
         if (_syncConfig.SnapServingEnabled == true)
         {
             _api.ProtocolsManager!.AddSupportedCapability(new Capability(Protocol.Snap, 1));

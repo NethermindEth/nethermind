@@ -425,13 +425,13 @@ public class Eth72ProtocolHandler(
         }
     }
 
-    protected override ValueTask HandleSlow((IOwnedReadOnlyList<Transaction> txs, int startIndex) request, CancellationToken cancellationToken)
+    protected override ValueTask HandleSlow(TransactionsRequest request, CancellationToken cancellationToken)
     {
-        IOwnedReadOnlyList<Transaction> transactions = request.txs;
+        IOwnedReadOnlyList<Transaction> transactions = request.Transactions;
         ReadOnlySpan<Transaction> transactionsSpan = transactions.AsSpan();
         try
         {
-            int startIdx = request.startIndex;
+            int startIdx = request.StartIndex;
             bool isTrace = Logger.IsTrace;
 
             for (int i = startIdx; i < transactionsSpan.Length; i++)
@@ -444,7 +444,7 @@ public class Eth72ProtocolHandler(
                         return ValueTask.CompletedTask;
                     }
 
-                    if (!BackgroundTaskScheduler.TryScheduleBackgroundTask((transactions, i), HandleSlow, "Transactions"))
+                    if (!BackgroundTaskScheduler.TryScheduleBackgroundTask(new TransactionsRequest(transactions, i), HandleSlow, "Transactions"))
                     {
                         transactions.Dispose();
                     }

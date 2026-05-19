@@ -321,9 +321,9 @@ namespace Nethermind.Core
             }
         }
 
-        public void CopyTo(Transaction tx)
+        public void CopyTo(Transaction tx, bool copyHash = true)
         {
-            tx.Hash = Hash;
+            tx.Hash = copyHash ? Hash : null;
             tx.ChainId = ChainId;
             tx.Type = Type;
             tx.IsAnchorTx = IsAnchorTx;
