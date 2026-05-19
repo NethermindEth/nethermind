@@ -185,34 +185,9 @@ internal sealed class HttpJsonRpcResponseSink(
         }
 
         jsonWriter.WritePropertyName("id"u8);
-        WriteId(jsonWriter, response.Id, jsonOptions);
+        response.Id.WriteTo(jsonWriter);
 
         jsonWriter.WriteEndObject();
-    }
-
-    private static void WriteId(Utf8JsonWriter writer, object? id, JsonSerializerOptions jsonOptions)
-    {
-        switch (id)
-        {
-            case int intId:
-                writer.WriteNumberValue(intId);
-                break;
-            case long longId:
-                writer.WriteNumberValue(longId);
-                break;
-            case string strId:
-                writer.WriteStringValue(strId);
-                break;
-            case null:
-                writer.WriteNullValue();
-                break;
-            default:
-                WriteOther(writer, id, jsonOptions);
-                break;
-        }
-
-        [MethodImpl(MethodImplOptions.NoInlining)]
-        static void WriteOther(Utf8JsonWriter writer, object id, JsonSerializerOptions jsonOptions) => JsonSerializer.Serialize(writer, id, id.GetType(), jsonOptions);
     }
 
     private static async ValueTask WriteStreamableResponseAsync(
@@ -228,46 +203,31 @@ internal sealed class HttpJsonRpcResponseSink(
         writer.Write("}"u8);
     }
 
-    private static void WriteIdRaw(PipeWriter writer, object? id)
+    private static void WriteIdRaw(PipeWriter writer, JsonRpcId id)
     {
-        switch (id)
+        if (id.TryGetInt64(out long longId))
         {
-            case int intId:
-                {
-                    Span<byte> buffer = writer.GetSpan(11);
-                    intId.TryFormat(buffer, out int written);
-                    writer.Advance(written);
-                    break;
-                }
-            case long longId:
-                {
-                    Span<byte> buffer = writer.GetSpan(20);
-                    longId.TryFormat(buffer, out int written);
-                    writer.Advance(written);
-                    break;
-                }
-            default:
-                WriteOther(writer, id);
-                break;
+            Span<byte> buffer = writer.GetSpan(20);
+            longId.TryFormat(buffer, out int written);
+            writer.Advance(written);
+            return;
         }
 
-        [MethodImpl(MethodImplOptions.NoInlining)]
-        static void WriteOther(PipeWriter writer, object? id)
+        if (id.TryGetDecimal(out decimal decimalId))
         {
-            switch (id)
-            {
-                case string strId:
-                    {
-                        using Utf8JsonWriter jsonWriter = new(writer, new JsonWriterOptions { SkipValidation = true });
-                        jsonWriter.WriteStringValue(strId);
-                        break;
-                    }
-                default:
-                    {
-                        writer.Write("null"u8);
-                        break;
-                    }
-            }
+            Span<byte> buffer = writer.GetSpan(32);
+            decimalId.TryFormat(buffer, out int written);
+            writer.Advance(written);
+            return;
+        }
+
+        WriteOther(writer, id);
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        static void WriteOther(PipeWriter writer, JsonRpcId id)
+        {
+            using Utf8JsonWriter jsonWriter = new(writer, new JsonWriterOptions { SkipValidation = true });
+            id.WriteTo(jsonWriter);
         }
     }
 }

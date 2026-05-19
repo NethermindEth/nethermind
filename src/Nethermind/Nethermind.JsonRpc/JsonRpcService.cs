@@ -495,7 +495,7 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
         return (executionParameters, hasMissing);
     }
 
-    private static JsonRpcResponse GetSuccessResponse(string methodName, object result, object id, Action? disposableAction)
+    private static JsonRpcResponse GetSuccessResponse(string methodName, object result, JsonRpcId id, Action? disposableAction)
     {
         JsonRpcResponse response = new JsonRpcSuccessResponse(disposableAction)
         {
@@ -508,14 +508,14 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
     }
 
     public JsonRpcErrorResponse GetErrorResponse(int errorCode, string errorMessage, object? id = null, string? methodName = null) =>
-        GetErrorResponse(methodName ?? string.Empty, errorCode, errorMessage, null, id);
+        GetErrorResponse(methodName ?? string.Empty, errorCode, errorMessage, null, JsonRpcId.FromObject(id));
 
     private JsonRpcErrorResponse GetErrorResponse(
         string methodName,
         int errorCode,
         string? errorMessage,
         object? errorData,
-        object? id,
+        JsonRpcId id,
         Action? disposableAction = null,
         bool suppressWarning = false)
     {

@@ -4,8 +4,6 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
-using Nethermind.Serialization.Json;
-
 namespace Nethermind.JsonRpc
 {
     public class JsonRpcRequest
@@ -15,8 +13,8 @@ namespace Nethermind.JsonRpc
 
         public JsonElement Params { get; set; }
 
-        [JsonConverter(typeof(IdConverter))]
-        public object Id { get; set; }
+        [JsonConverter(typeof(JsonRpcIdConverter))]
+        public JsonRpcId Id { get; set; }
 
         public override string ToString() => $"Id:{Id}, {Method}({Params})";
     }
