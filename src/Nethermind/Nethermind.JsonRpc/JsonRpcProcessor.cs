@@ -276,6 +276,19 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
                     {
                         try
                         {
+                            if (options.InputMode == JsonRpcInputMode.SingleDocument &&
+                                isCompleted &&
+                                buffer.IsSingleSegment &&
+                                TryReadSingleObjectRequest(buffer.First, out JsonRpcRequest? directRequest, out JsonDocument? directParamsDocument))
+                            {
+                                reader.AdvanceTo(buffer.End);
+                                advanced = true;
+                                shouldExit = true;
+
+                                await ProcessSingleRequestToSink(directRequest, directParamsDocument, context, sink, cancellationToken);
+                                continue;
+                            }
+
                             freshState = TryParseJson(ref buffer, isCompleted, ref readerState, out JsonDocument? jsonDocument, context);
                             if (freshState)
                             {
@@ -360,6 +373,95 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
                 JsonRpcConfigExtension.ReturnTimeoutCancellationToken(timeoutSource);
         }
     }
+
+    private static bool TryReadSingleObjectRequest(
+        ReadOnlyMemory<byte> memory,
+        [NotNullWhen(true)] out JsonRpcRequest? request,
+        out JsonDocument? paramsDocument)
+    {
+        request = null;
+        paramsDocument = null;
+
+        ReadOnlyMemory<byte> body = memory[CountLeadingJsonWhitespace(memory.Span)..];
+        if (body.IsEmpty)
+        {
+            return false;
+        }
+
+        Utf8JsonReader reader = new(body.Span, isFinalBlock: true, state: default);
+        if (!reader.Read() || reader.TokenType != JsonTokenType.StartObject)
+        {
+            return false;
+        }
+
+        reader.Skip();
+        int documentLength = checked((int)reader.BytesConsumed);
+        if (HasNonWhitespace(body.Span[documentLength..]))
+        {
+            return false;
+        }
+
+        ReadOnlyMemory<byte> objectBody = body[..documentLength];
+        JsonRpcEnvelopeReader envelopeReader = new(objectBody.Span);
+        if (!envelopeReader.TryRead(out JsonRpcEnvelope envelope))
+        {
+            return false;
+        }
+
+        JsonElement paramsElement = default;
+        try
+        {
+            if (envelope.HasParams)
+            {
+                paramsDocument = JsonDocument.Parse(objectBody.Slice(envelope.ParamsStart, envelope.ParamsLength));
+                paramsElement = paramsDocument.RootElement;
+            }
+
+            request = new JsonRpcRequest
+            {
+                JsonRpc = envelope.JsonRpc!,
+                Id = envelope.Id,
+                Method = envelope.Method!,
+                Params = paramsElement
+            };
+            return true;
+        }
+        catch
+        {
+            paramsDocument?.Dispose();
+            paramsDocument = null;
+            throw;
+        }
+    }
+
+    private static int CountLeadingJsonWhitespace(ReadOnlySpan<byte> span)
+    {
+        for (int index = 0; index < span.Length; index++)
+        {
+            if (!IsJsonWhitespace(span[index]))
+            {
+                return index;
+            }
+        }
+
+        return span.Length;
+    }
+
+    private static bool HasNonWhitespace(ReadOnlySpan<byte> span)
+    {
+        for (int index = 0; index < span.Length; index++)
+        {
+            if (!IsJsonWhitespace(span[index]))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static bool IsJsonWhitespace(byte value) =>
+        value is (byte)' ' or (byte)'\t' or (byte)'\r' or (byte)'\n';
 
     public async IAsyncEnumerable<JsonRpcResult> ProcessAsync(PipeReader reader, JsonRpcContext context)
     {
@@ -702,6 +804,26 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
         finally
         {
             jsonDocument.Dispose();
+        }
+    }
+
+    private async ValueTask ProcessSingleRequestToSink(
+        JsonRpcRequest request,
+        JsonDocument? paramsDocument,
+        JsonRpcContext context,
+        IJsonRpcResponseSink sink,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            if (_logger.IsDebug) _logger.Debug($"JSON RPC request {request.Method}");
+
+            JsonRpcResult.Entry response = await HandleSingleRequest(request, context);
+            await WriteSingleEntryAsync(response, sink, cancellationToken);
+        }
+        finally
+        {
+            paramsDocument?.Dispose();
         }
     }
 

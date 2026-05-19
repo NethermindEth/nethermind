@@ -211,6 +211,84 @@ public class JsonRpcProcessorTests(bool returnErrors)
     }
 
     [Test]
+    public async Task Sink_processor_entry_point_reads_params_through_envelope_reader()
+    {
+        bool inspected = false;
+        IJsonRpcService service = Substitute.For<IJsonRpcService>();
+        service.SendRequestAsync(Arg.Any<JsonRpcRequest>(), Arg.Any<JsonRpcContext>())
+            .Returns(ci =>
+            {
+                JsonRpcRequest request = ci.Arg<JsonRpcRequest>();
+                request.Params.ValueKind.Should().Be(JsonValueKind.Array);
+                request.Params[0].GetProperty("a").GetInt32().Should().Be(2);
+                inspected = true;
+                return new JsonRpcSuccessResponse { Id = request.Id };
+            });
+
+        JsonRpcProcessor processor = new(
+            service,
+            new JsonRpcConfig { RpcRecorderState = RpcRecorderState.None },
+            Substitute.For<IFileSystem>(),
+            LimboLogs.Instance);
+        CollectingJsonRpcResponseSink sink = new();
+
+        await processor.ProcessAsync(
+            CreateReader(" \r\n{\"id\":67,\"jsonrpc\":\"2.0\",\"method\":\"eth_getTransactionCount\",\"params\":[{\"a\":2}]}\t "),
+            new JsonRpcContext(RpcEndpoint.Http),
+            sink,
+            new JsonRpcProcessingOptions(JsonRpcInputMode.SingleDocument));
+
+        inspected.Should().BeTrue();
+        sink.Singles.Should().HaveCount(1);
+        sink.Singles[0].Id.Should().Be(67);
+    }
+
+    [TestCase(50, false, TestName = "Sink input below the 64-depth limit is accepted")]
+    [TestCase(65, true, TestName = "Sink input above the 64-depth limit is rejected as parse error")]
+    public async Task Sink_processor_entry_point_preserves_reader_default_max_depth(int paramNestingDepth, bool expectParseError)
+    {
+        JsonRpcRequest? captured = null;
+        bool capturedParamsWasArray = false;
+        IJsonRpcService service = Substitute.For<IJsonRpcService>();
+        service.SendRequestAsync(Arg.Any<JsonRpcRequest>(), Arg.Any<JsonRpcContext>())
+            .Returns(ci =>
+            {
+                captured = ci.Arg<JsonRpcRequest>();
+                capturedParamsWasArray = captured.Params.ValueKind == JsonValueKind.Array;
+                return new JsonRpcSuccessResponse { Id = captured.Id };
+            });
+        service.GetErrorResponse(0, null!).ReturnsForAnyArgs(_errorResponse);
+        service.GetErrorResponse(0, null!, null!, null!).ReturnsForAnyArgs(_errorResponse);
+
+        JsonRpcProcessor processor = new(
+            service,
+            new JsonRpcConfig { RpcRecorderState = RpcRecorderState.None },
+            Substitute.For<IFileSystem>(),
+            LimboLogs.Instance);
+        CollectingJsonRpcResponseSink sink = new();
+
+        string nested = BuildNestedArrayParams(paramNestingDepth);
+        await processor.ProcessAsync(
+            CreateReader($"{{\"id\":1,\"jsonrpc\":\"2.0\",\"method\":\"eth_getTransactionCount\",\"params\":[{nested}]}}"),
+            new JsonRpcContext(RpcEndpoint.Http),
+            sink,
+            new JsonRpcProcessingOptions(JsonRpcInputMode.SingleDocument));
+
+        sink.Singles.Should().HaveCount(1);
+        if (expectParseError)
+        {
+            sink.Singles[0].Should().BeSameAs(_errorResponse);
+            captured.Should().BeNull("a depth-rejected request must never reach the service");
+        }
+        else
+        {
+            sink.Singles[0].Should().BeOfType<JsonRpcSuccessResponse>();
+            captured.Should().NotBeNull();
+            capturedParamsWasArray.Should().BeTrue();
+        }
+    }
+
+    [Test]
     public async Task Sink_processor_entry_point_stops_when_shutdown_requested()
     {
         IJsonRpcService service = Substitute.For<IJsonRpcService>();
