@@ -105,6 +105,42 @@ public class StartupTests
         Assert.That(receivedBytes, Is.EqualTo(Encoding.UTF8.GetByteCount(request)));
     }
 
+    [Test]
+    public async Task ProcessJsonRpcRequest_RejectsAdjacentTopLevelValues()
+    {
+        const string request =
+            """
+            {"jsonrpc":"2.0","id":1,"method":"engine_getBlobsV1","params":[[]]}{"jsonrpc":"2.0","id":2,"method":"engine_getBlobsV1","params":[[]]}
+            """;
+
+        string response = await ProcessJsonRpcRequest(request);
+
+        using JsonDocument doc = JsonDocument.Parse(response);
+
+        Assert.That(doc.RootElement.GetProperty("error").GetProperty("code").GetInt32(), Is.EqualTo(ErrorCodes.ParseError));
+    }
+
+    [Test]
+    public async Task ProcessJsonRpcRequest_AcceptsBatchDocument()
+    {
+        const string request =
+            """
+            [{"jsonrpc":"2.0","id":1,"method":"engine_getBlobsV1","params":[[]]},{"jsonrpc":"2.0","id":2,"method":"engine_getBlobsV1","params":[[]]}]
+            """;
+
+        string response = await ProcessJsonRpcRequest(request);
+
+        using JsonDocument doc = JsonDocument.Parse(response);
+        JsonElement root = doc.RootElement;
+
+        Assert.That(root.ValueKind, Is.EqualTo(JsonValueKind.Array));
+        Assert.That(root.GetArrayLength(), Is.EqualTo(2));
+        Assert.That(root[0].GetProperty("id").GetInt64(), Is.EqualTo(1));
+        Assert.That(root[0].GetProperty("result").ValueKind, Is.EqualTo(JsonValueKind.Array));
+        Assert.That(root[1].GetProperty("id").GetInt64(), Is.EqualTo(2));
+        Assert.That(root[1].GetProperty("result").ValueKind, Is.EqualTo(JsonValueKind.Array));
+    }
+
     private static async Task<string> ProcessJsonRpcRequest(string request, bool setContentLength = true)
     {
         byte[] requestBytes = Encoding.UTF8.GetBytes(request);
