@@ -58,7 +58,6 @@ namespace Nethermind.Xdc
         private ulong _highestSelfMinedRound;
         private ulong _highestVotedRound;
         private bool _writeRoundInfo = true;
-        private long _highestSignTxNumber = 0;
 
         /// <summary>
         /// Starts the consensus runner.
@@ -227,17 +226,6 @@ namespace Nethermind.Xdc
             {
                 _highestSelfMinedRound = currentRound;
                 Task blockBuilder = BuildAndProposeBlock(roundParent, currentRound, spec, ct);
-            }
-
-            if (_highestSignTxNumber < roundParent.Number
-                && ((roundParent.Number % spec.MergeSignRange == 0)))
-            {
-                Snapshot snapshot = _snapshotManager.GetSnapshotByBlockNumber(roundParent.Number, spec);
-                if (snapshot is not null && snapshot.NextEpochCandidates.AsSpan().IndexOf(_signer.Address) != -1)
-                {
-                    _highestSignTxNumber = roundParent.Number;
-                    await _signTransactionManager.SubmitTransactionSign(roundParent, spec);
-                }
             }
 
             _writeRoundInfo = false;

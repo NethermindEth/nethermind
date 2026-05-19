@@ -19,7 +19,6 @@ using Nethermind.Core.Specs;
 using Nethermind.Db.Rocks.Config;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Init.Modules;
-using Nethermind.Logging;
 using Nethermind.Network;
 using Nethermind.Network.Discovery;
 using Nethermind.Network.Discovery.Lifecycle;
@@ -103,7 +102,7 @@ public class XdcModule : Module
             .AddSingleton<IEpochSwitchManager, EpochSwitchManager>()
             .AddSingleton<IXdcConsensusContext, XdcConsensusContext>()
             .AddDatabase(XdcRocksDbConfigFactory.XdcSnapshotDbName)
-            .AddSingleton<ISignTransactionManager, ISigner, ITxPool, ILogManager>(CreateSignTransactionManager)
+            .AddSingleton<ISignTransactionManager, SignTransactionManager>()
             .AddSingleton<IPenaltyHandler, PenaltyHandler>()
             .AddSingleton<ITimeoutTimer, TimeoutTimer>()
             .AddSingleton<ISyncInfoManager, SyncInfoManager>()
@@ -141,8 +140,6 @@ public class XdcModule : Module
         builder.RegisterType<XdcDiscoveryApp>().As<DiscoveryApp>().WithAttributeFiltering().SingleInstance().ExternallyOwned();
         builder.RegisterType<XdcNodeLifecycleManagerFactory>().As<INodeLifecycleManagerFactory>().SingleInstance();
     }
-
-    private ISignTransactionManager CreateSignTransactionManager(ISigner signer, ITxPool txPool, ILogManager logManager) => new SignTransactionManager(signer, txPool, logManager.GetClassLogger<SignTransactionManager>());
 
     private IMasternodeVotingContract CreateVotingContract(
         IAbiEncoder abiEncoder,
