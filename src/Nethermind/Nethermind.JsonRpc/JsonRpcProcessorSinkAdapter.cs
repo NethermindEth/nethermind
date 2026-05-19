@@ -8,8 +8,20 @@ using System.Threading.Tasks;
 
 namespace Nethermind.JsonRpc;
 
-internal static class JsonRpcProcessorSinkAdapter
+/// <summary>
+/// Bridges the legacy <see cref="JsonRpcResult"/> enumerable processor path to <see cref="IJsonRpcResponseSink"/>.
+/// </summary>
+public static class JsonRpcProcessorSinkAdapter
 {
+    /// <summary>
+    /// Processes JSON-RPC input with the legacy processor and forwards responses to a sink.
+    /// </summary>
+    /// <param name="processor">The legacy JSON-RPC processor.</param>
+    /// <param name="reader">The input reader containing JSON-RPC payload bytes.</param>
+    /// <param name="context">The request context.</param>
+    /// <param name="sink">The response sink.</param>
+    /// <param name="options">The processing options reserved for the native sink path.</param>
+    /// <param name="cancellationToken">The cancellation token for response writes.</param>
     public static async ValueTask ProcessAsync(
         IJsonRpcProcessor processor,
         PipeReader reader,
