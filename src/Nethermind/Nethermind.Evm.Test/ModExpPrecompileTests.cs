@@ -37,7 +37,6 @@ public class ModExpPrecompileTests : PrecompileTests<ModExpPrecompile, ModExpPre
         RunEffectiveInputTest(Instance, input, trailing, Osaka.Instance);
     }
 
-
     [TestCaseSource(nameof(OversizedLengths))]
     public void TestOversizedLengths(string input, string expectedOutput, bool status) =>
         RunTest(input, expectedOutput, status, Prague.Instance);
