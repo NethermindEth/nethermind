@@ -427,8 +427,8 @@ public abstract class BlockchainTestBase
         ("TransactionException.TYPE_3_TX_ZERO_BLOBS", "blob transaction must have at least 1 blob"),
         ("TransactionException.TYPE_3_TX_INVALID_BLOB_VERSIONED_HASH", "InvalidBlobVersionedHashVersion: Blob version not supported"),
         ("TransactionException.TYPE_3_TX_CONTRACT_CREATION", "blob transaction of type create"),
-        ("TransactionException.TYPE_4_EMPTY_AUTHORIZATION_LIST", "MissingAuthorizationList: Must be set"),
-        ("TransactionException.TYPE_4_TX_CONTRACT_CREATION", "NotAllowedCreateTransaction: To must be set"),
+        ("TransactionException.TYPE_4_EMPTY_AUTHORIZATION_LIST", "EIP-7702 transaction with empty auth list"),
+        ("TransactionException.TYPE_4_TX_CONTRACT_CREATION", "EIP-7702 transaction cannot be used to create contract"),
         ("TransactionException.TYPE_4_TX_PRE_FORK", "InvalidTxType: Transaction type in"),
         // HeaderBlobGasMismatch covers both wrong header.BlobGasUsed and an
         // inflated header value when real tx blob gas stays below the limit.
@@ -462,8 +462,10 @@ public abstract class BlockchainTestBase
         ("TransactionException.TYPE_3_TX_MAX_BLOB_GAS_ALLOWANCE_EXCEEDED", ValidationErrorRegex(@"BlockBlobGasExceeded: A block cannot have more than \d+ blob gas, blobs count \d+, blobs gas used: \d+")),
         ("TransactionException.TYPE_3_TX_BLOB_COUNT_EXCEEDED", ValidationErrorRegex(@"BlobTxGasLimitExceeded: Transaction's totalDataGas=\d+ exceeded MaxBlobGas per transaction=\d+")),
         ("TransactionException.GAS_LIMIT_EXCEEDS_MAXIMUM", ValidationErrorRegex(@"TxGasLimitCapExceeded:")),
+        ("TransactionException.INTRINSIC_GAS_TOO_LOW", ValidationErrorRegex(@"TxGasLimitCapExceeded: Intrinsic gas")),
         ("BlockException.INCORRECT_EXCESS_BLOB_GAS", ValidationErrorRegex(@"HeaderExcessBlobGasMismatch: Excess blob gas in header does not match calculated|Overflow in excess blob gas")),
         ("BlockException.INVALID_BLOCK_HASH", ValidationErrorRegex(@"Invalid block hash 0x[0-9a-f]+ does not match calculated hash 0x[0-9a-f]+")),
+        ("BlockException.INCORRECT_BLOCK_FORMAT", ValidationErrorRegex(@"Invalid block hash 0x[0-9a-f]+ does not match calculated hash 0x[0-9a-f]+")),
         ("BlockException.SYSTEM_CONTRACT_EMPTY", ValidationErrorRegex(@"(Withdrawals|Consolidations)Empty: Contract is not deployed\.")),
         ("BlockException.SYSTEM_CONTRACT_CALL_FAILED", ValidationErrorRegex(@"(Withdrawals|Consolidations)Failed: Contract execution failed\.")),
         ("BlockException.INVALID_BAL_HASH", ValidationErrorRegex(@"InvalidBlockLevelAccessListHash:")),

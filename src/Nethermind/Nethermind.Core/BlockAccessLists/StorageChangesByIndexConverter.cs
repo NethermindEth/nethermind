@@ -9,13 +9,6 @@ using System.Text.Json.Serialization;
 
 namespace Nethermind.Core.BlockAccessLists;
 
-/// <summary>
-/// JSON converter that emits a <see cref="StorageChange"/> array (sorted by
-/// <see cref="StorageChange.Index"/>) as an object keyed by the change's index, e.g.
-/// <c>{ "0": {…}, "2": {…} }</c>. Preserves the wire shape that consumers of
-/// <c>eth_getBlockAccessListBy*</c> were already serving when storage changes were stored
-/// as a <see cref="System.Collections.Generic.SortedList{TKey, TValue}"/>.
-/// </summary>
 public class StorageChangesByIndexConverter : JsonConverter<StorageChange[]>
 {
     public override StorageChange[]? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)

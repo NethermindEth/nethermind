@@ -154,7 +154,7 @@ namespace Nethermind.Core.Test
         public void Long_encode_decode([ValueSource(nameof(LongValues))] long value, [Values] bool useBuffer)
         {
             Rlp.ValueDecoderContext context = useBuffer
-                ? new(Rlp.Encode(value, stackalloc byte[9]).ToArray())
+                ? new(Rlp.Encode(value, stackalloc byte[9]))
                 : new(Rlp.Encode(value).Bytes);
 
             long decoded = context.DecodeLong();
@@ -166,7 +166,7 @@ namespace Nethermind.Core.Test
         public void ULong_encode_decode([ValueSource(nameof(ULongValues))] ulong value, [Values] bool useBuffer)
         {
             Rlp.ValueDecoderContext context = useBuffer
-                ? new(Rlp.Encode(value, stackalloc byte[9]).ToArray())
+                ? new(Rlp.Encode(value, stackalloc byte[9]))
                 : new(Rlp.Encode(value).Bytes);
 
             ulong decoded = context.DecodeULong();
