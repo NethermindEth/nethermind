@@ -7,7 +7,6 @@ using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
 using DotNetty.Transport.Channels;
 using Nethermind.Logging;
-using Nethermind.Network;
 using Nethermind.Network.Config;
 using Nethermind.Stats.Model;
 using NSubstitute;
@@ -83,7 +82,7 @@ public class CompositeDiscoveryAppTests
             yield break;
         }
 
-        public event EventHandler<NodeEventArgs>? NodeRemoved
+        public event EventHandler<Nethermind.Network.NodeEventArgs>? NodeRemoved
         {
             add { }
             remove { }
