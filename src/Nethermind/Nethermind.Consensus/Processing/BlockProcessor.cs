@@ -101,7 +101,7 @@ public partial class BlockProcessor(
         suggestedBlock.AccountChanges = block.AccountChanges;
         suggestedBlock.ExecutionRequests = block.ExecutionRequests;
         suggestedBlock.GeneratedBlockAccessList = block.GeneratedBlockAccessList;
-        suggestedBlock.EncodedBlockAccessList = block.EncodedBlockAccessList;
+        suggestedBlock.EncodedBlockAccessList = block.EncodedBlockAccessList ?? suggestedBlock.EncodedBlockAccessList;
     }
 
     protected bool ShouldComputeStateRoot(BlockHeader header) =>
