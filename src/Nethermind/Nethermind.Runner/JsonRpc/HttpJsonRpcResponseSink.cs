@@ -3,11 +3,13 @@
 
 using System;
 using System.Buffers;
+using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.IO;
 using System.IO.Pipelines;
 using System.Runtime.CompilerServices;
 using System.Text.Json;
+using System.Text.Json.Serialization.Metadata;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Http;
@@ -30,6 +32,7 @@ internal sealed class HttpJsonRpcResponseSink(
     private static ReadOnlySpan<byte> JsonOpeningBracket => [(byte)'['];
     private static ReadOnlySpan<byte> JsonComma => [(byte)','];
     private static ReadOnlySpan<byte> JsonClosingBracket => [(byte)']'];
+    private static readonly ConcurrentDictionary<Type, JsonTypeInfo> _jsonTypeInfoCache = new();
 
     private CountingWriter? _writer;
     private Stream? _bufferedStream;
@@ -164,7 +167,7 @@ internal sealed class HttpJsonRpcResponseSink(
             object? result = successResponse.Result;
             if (result is not null)
             {
-                JsonSerializer.Serialize(jsonWriter, result, result.GetType(), jsonOptions);
+                JsonSerializer.Serialize(jsonWriter, result, GetJsonTypeInfo(result.GetType()));
             }
             else
             {
@@ -176,7 +179,7 @@ internal sealed class HttpJsonRpcResponseSink(
             jsonWriter.WritePropertyName("error"u8);
             if (errorResponse.Error is not null)
             {
-                JsonSerializer.Serialize(jsonWriter, errorResponse.Error, jsonOptions);
+                WriteError(jsonWriter, errorResponse.Error);
             }
             else
             {
@@ -189,6 +192,29 @@ internal sealed class HttpJsonRpcResponseSink(
 
         jsonWriter.WriteEndObject();
     }
+
+    private void WriteError(Utf8JsonWriter jsonWriter, Error error)
+    {
+        jsonWriter.WriteStartObject();
+        jsonWriter.WriteNumber("code"u8, error.Code);
+        jsonWriter.WriteString("message"u8, error.Message);
+        jsonWriter.WritePropertyName("data"u8);
+
+        object? data = error.Data;
+        if (data is not null)
+        {
+            JsonSerializer.Serialize(jsonWriter, data, GetJsonTypeInfo(data.GetType()));
+        }
+        else
+        {
+            jsonWriter.WriteNullValue();
+        }
+
+        jsonWriter.WriteEndObject();
+    }
+
+    private JsonTypeInfo GetJsonTypeInfo(Type type) =>
+        _jsonTypeInfoCache.GetOrAdd(type, static (type, options) => options.GetTypeInfo(type), jsonOptions);
 
     private static async ValueTask WriteStreamableResponseAsync(
         CountingWriter writer,
