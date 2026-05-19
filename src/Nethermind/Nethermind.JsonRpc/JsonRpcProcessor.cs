@@ -233,8 +233,9 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
                         }
                         else if (isCompleted)
                         {
-                            result = await ProcessJsonDocument(pendingSingleDocument, context, pendingSingleDocumentStartTime);
+                            JsonDocument jsonDocument = pendingSingleDocument;
                             pendingSingleDocument = null;
+                            await ProcessJsonDocumentToSink(jsonDocument, context, sink, pendingSingleDocumentStartTime, cancellationToken);
                             shouldExit = true;
                         }
 
@@ -273,7 +274,7 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
                                     }
                                     else if (isCompleted)
                                     {
-                                        result = await ProcessJsonDocument(jsonDocument, context, startTime);
+                                        await ProcessJsonDocumentToSink(jsonDocument, context, sink, startTime, cancellationToken);
                                         shouldExit = true;
                                     }
                                     else
@@ -650,6 +651,142 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
         {
             jsonDocument.Dispose();
             throw;
+        }
+    }
+
+    private async ValueTask ProcessJsonDocumentToSink(
+        JsonDocument jsonDocument,
+        JsonRpcContext context,
+        IJsonRpcResponseSink sink,
+        long startTime,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            JsonElement rootElement = jsonDocument.RootElement;
+            switch (rootElement.ValueKind)
+            {
+                case JsonValueKind.Object:
+                    JsonRpcRequest request = DeserializeObject(rootElement);
+                    if (_logger.IsDebug) _logger.Debug($"JSON RPC request {request.Method}");
+
+                    JsonRpcResult.Entry singleResponse = await HandleSingleRequest(request, context);
+                    await WriteSingleEntryAsync(singleResponse, sink, cancellationToken);
+                    break;
+
+                case JsonValueKind.Array:
+                    await ProcessBatchDocumentToSink(rootElement, context, sink, cancellationToken);
+                    break;
+
+                default:
+                    await WriteInvalidRequestAsync(sink, startTime, cancellationToken);
+                    break;
+            }
+        }
+        finally
+        {
+            jsonDocument.Dispose();
+        }
+    }
+
+    private async ValueTask ProcessBatchDocumentToSink(
+        JsonElement rootElement,
+        JsonRpcContext context,
+        IJsonRpcResponseSink sink,
+        CancellationToken cancellationToken)
+    {
+        int requestCount = rootElement.GetArrayLength();
+        if (_logger.IsDebug) _logger.Debug($"{requestCount} JSON RPC requests");
+
+        if (!context.IsAuthenticated && requestCount > _jsonRpcConfig.MaxBatchSize)
+        {
+            if (_logger.IsWarn) _logger.Warn($"The batch size limit was exceeded. The requested batch size {requestCount}, and the current config setting is JsonRpc.{nameof(_jsonRpcConfig.MaxBatchSize)} = {_jsonRpcConfig.MaxBatchSize}.");
+            JsonRpcErrorResponse errorResponse = _jsonRpcService.GetErrorResponse(ErrorCodes.LimitExceeded, "Batch size limit exceeded");
+            await WriteSingleEntryAsync(new JsonRpcResult.Entry(errorResponse, RpcReport.Error), sink, cancellationToken);
+            return;
+        }
+
+        await sink.BeginBatchAsync(cancellationToken);
+        long startTime = Stopwatch.GetTimestamp();
+        int requestIndex = 0;
+        bool isStopped = false;
+        try
+        {
+            foreach (JsonElement item in rootElement.EnumerateArray())
+            {
+                JsonRpcRequest jsonRpcRequest = DeserializeObject(item);
+                JsonRpcResult.Entry response = isStopped
+                    ? new JsonRpcResult.Entry(
+                        _jsonRpcService.GetErrorResponse(
+                            ErrorCodes.LimitExceeded,
+                            jsonRpcRequest.Method,
+                            jsonRpcRequest.Id,
+                            $"{nameof(IJsonRpcConfig.MaxBatchResponseBodySize)} of {_jsonRpcConfig.MaxBatchResponseBodySize / 1.KB}KB exceeded"),
+                        RpcReport.Error)
+                    : await HandleSingleRequest(jsonRpcRequest, context);
+
+                if (_logger.IsTrace) _logger.Trace($"  {++requestIndex}/{requestCount} JSON RPC request - {jsonRpcRequest} handled after {response.Report.HandlingTimeMicroseconds}");
+                if (_logger.IsTrace) TraceResult(response);
+
+                await WriteBatchEntryAsync(response, sink, cancellationToken);
+                isStopped |= sink.StopRequested;
+            }
+
+            if (_logger.IsTrace) _logger.Trace($"  {requestCount} requests handled in {Stopwatch.GetElapsedTime(startTime).TotalMilliseconds:N0}ms");
+        }
+        finally
+        {
+            await sink.EndBatchAsync(cancellationToken);
+        }
+    }
+
+    private async ValueTask WriteInvalidRequestAsync(
+        IJsonRpcResponseSink sink,
+        long startTime,
+        CancellationToken cancellationToken)
+    {
+        Metrics.JsonRpcInvalidRequests++;
+        JsonRpcErrorResponse invalidResponse = _jsonRpcService.GetErrorResponse(ErrorCodes.InvalidRequest, "Invalid request");
+
+        if (_logger.IsTrace)
+        {
+            TraceResult(invalidResponse);
+            _logger.Trace($"  Failed request handled in {Stopwatch.GetElapsedTime(startTime).TotalMilliseconds:N0}ms");
+        }
+
+        JsonRpcResult.Entry result = new(invalidResponse, new RpcReport("# parsing error #", (long)Stopwatch.GetElapsedTime(startTime).TotalMicroseconds, false));
+        await WriteSingleEntryAsync(result, sink, cancellationToken);
+    }
+
+    private async ValueTask WriteSingleEntryAsync(
+        JsonRpcResult.Entry entry,
+        IJsonRpcResponseSink sink,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            JsonRpcResult.Entry recorded = RecordResponse(entry);
+            await sink.WriteSingleAsync(recorded.Response, recorded.Report, cancellationToken);
+        }
+        finally
+        {
+            entry.Dispose();
+        }
+    }
+
+    private async ValueTask WriteBatchEntryAsync(
+        JsonRpcResult.Entry entry,
+        IJsonRpcResponseSink sink,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            JsonRpcResult.Entry recorded = RecordResponse(entry);
+            await sink.WriteBatchItemAsync(recorded.Response, recorded.Report, cancellationToken);
+        }
+        finally
+        {
+            entry.Dispose();
         }
     }
 

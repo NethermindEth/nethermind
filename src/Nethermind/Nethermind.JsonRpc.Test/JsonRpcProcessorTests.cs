@@ -96,16 +96,7 @@ public class JsonRpcProcessorTests(bool returnErrors)
     [Test]
     public async Task Sink_adapter_propagates_stop_requested_to_batch_processing()
     {
-        IJsonRpcService service = Substitute.For<IJsonRpcService>();
-        service.SendRequestAsync(Arg.Any<JsonRpcRequest>(), Arg.Any<JsonRpcContext>())
-            .Returns(static ci => new JsonRpcSuccessResponse { Id = ci.Arg<JsonRpcRequest>().Id });
-        service.GetErrorResponse(Arg.Any<int>(), Arg.Any<string>(), Arg.Any<object?>(), Arg.Any<string?>())
-            .Returns(static ci => new JsonRpcErrorResponse
-            {
-                Id = ci.ArgAt<object?>(2),
-                Error = new Error { Code = ci.ArgAt<int>(0), Message = ci.ArgAt<string>(1) }
-            });
-
+        IJsonRpcService service = CreateEchoService();
         JsonRpcProcessor processor = new(
             service,
             new JsonRpcConfig { RpcRecorderState = RpcRecorderState.None },
@@ -124,6 +115,82 @@ public class JsonRpcProcessorTests(bool returnErrors)
         sink.BatchItems[0].Should().BeOfType<JsonRpcSuccessResponse>();
         sink.BatchItems[1].Should().BeOfType<JsonRpcErrorResponse>();
         sink.BatchItems[2].Should().BeOfType<JsonRpcErrorResponse>();
+        await service.Received(1).SendRequestAsync(Arg.Any<JsonRpcRequest>(), Arg.Any<JsonRpcContext>());
+    }
+
+    [Test]
+    public async Task Sink_processor_entry_point_rejects_oversized_unauthenticated_batch_without_dispatching()
+    {
+        IJsonRpcService service = CreateEchoService();
+        JsonRpcProcessor processor = new(
+            service,
+            new JsonRpcConfig { RpcRecorderState = RpcRecorderState.None, MaxBatchSize = 1 },
+            Substitute.For<IFileSystem>(),
+            LimboLogs.Instance);
+        CollectingJsonRpcResponseSink sink = new();
+
+        await processor.ProcessAsync(
+            CreateReader("[{\"id\":1,\"jsonrpc\":\"2.0\",\"method\":\"eth_getTransactionCount\",\"params\":[]},{\"id\":2,\"jsonrpc\":\"2.0\",\"method\":\"eth_blockNumber\",\"params\":[]}]"),
+            new JsonRpcContext(RpcEndpoint.Http),
+            sink,
+            new JsonRpcProcessingOptions(JsonRpcInputMode.SingleDocument));
+
+        sink.Singles.Should().HaveCount(1);
+        JsonRpcErrorResponse response = sink.Singles[0].Should().BeOfType<JsonRpcErrorResponse>().Subject;
+        response.Error!.Code.Should().Be(ErrorCodes.LimitExceeded);
+        sink.BatchItems.Should().BeEmpty();
+        await service.DidNotReceive().SendRequestAsync(Arg.Any<JsonRpcRequest>(), Arg.Any<JsonRpcContext>());
+    }
+
+    [Test]
+    public async Task Sink_processor_entry_point_authenticated_batch_bypasses_max_batch_size()
+    {
+        IJsonRpcService service = CreateEchoService();
+        JsonRpcProcessor processor = new(
+            service,
+            new JsonRpcConfig { RpcRecorderState = RpcRecorderState.None, MaxBatchSize = 1 },
+            Substitute.For<IFileSystem>(),
+            LimboLogs.Instance);
+        CollectingJsonRpcResponseSink sink = new();
+        JsonRpcUrl url = new(string.Empty, string.Empty, 0, RpcEndpoint.Http, true, []);
+        using JsonRpcContext context = new(RpcEndpoint.Http, url: url);
+
+        await processor.ProcessAsync(
+            CreateReader("[{\"id\":1,\"jsonrpc\":\"2.0\",\"method\":\"eth_getTransactionCount\",\"params\":[]},{\"id\":2,\"jsonrpc\":\"2.0\",\"method\":\"eth_blockNumber\",\"params\":[]}]"),
+            context,
+            sink,
+            new JsonRpcProcessingOptions(JsonRpcInputMode.SingleDocument));
+
+        sink.Singles.Should().BeEmpty();
+        sink.BatchItems.Should().HaveCount(2);
+        sink.BatchItems[0].Id.Should().Be(1);
+        sink.BatchItems[1].Id.Should().Be(2);
+        await service.Received(2).SendRequestAsync(Arg.Any<JsonRpcRequest>(), Arg.Any<JsonRpcContext>());
+    }
+
+    [Test]
+    public async Task Sink_processor_entry_point_propagates_stop_requested_to_inline_batch_processing()
+    {
+        IJsonRpcService service = CreateEchoService();
+        JsonRpcProcessor processor = new(
+            service,
+            new JsonRpcConfig { RpcRecorderState = RpcRecorderState.None },
+            Substitute.For<IFileSystem>(),
+            LimboLogs.Instance);
+        CollectingJsonRpcResponseSink sink = new() { StopAfterBatchItems = 1 };
+
+        await processor.ProcessAsync(
+            CreateReader("[{\"id\":1,\"jsonrpc\":\"2.0\",\"method\":\"eth_getTransactionCount\",\"params\":[]},{\"id\":2,\"jsonrpc\":\"2.0\",\"method\":\"eth_blockNumber\",\"params\":[]},{\"id\":3,\"jsonrpc\":\"2.0\",\"method\":\"net_version\",\"params\":[]}]"),
+            new JsonRpcContext(RpcEndpoint.Http),
+            sink,
+            new JsonRpcProcessingOptions(JsonRpcInputMode.SingleDocument));
+
+        sink.BatchItems.Should().HaveCount(3);
+        sink.BatchItems[0].Should().BeOfType<JsonRpcSuccessResponse>();
+        JsonRpcErrorResponse second = sink.BatchItems[1].Should().BeOfType<JsonRpcErrorResponse>().Subject;
+        JsonRpcErrorResponse third = sink.BatchItems[2].Should().BeOfType<JsonRpcErrorResponse>().Subject;
+        second.Id.Should().Be(2);
+        third.Id.Should().Be(3);
         await service.Received(1).SendRequestAsync(Arg.Any<JsonRpcRequest>(), Arg.Any<JsonRpcContext>());
     }
 
@@ -175,6 +242,21 @@ public class JsonRpcProcessorTests(bool returnErrors)
 
     private static PipeReader CreateReader(string request) =>
         PipeReader.Create(new ReadOnlySequence<byte>(Encoding.UTF8.GetBytes(request)));
+
+    private static IJsonRpcService CreateEchoService()
+    {
+        IJsonRpcService service = Substitute.For<IJsonRpcService>();
+        service.SendRequestAsync(Arg.Any<JsonRpcRequest>(), Arg.Any<JsonRpcContext>())
+            .Returns(static ci => new JsonRpcSuccessResponse { Id = ci.Arg<JsonRpcRequest>().Id });
+        service.GetErrorResponse(Arg.Any<int>(), Arg.Any<string>(), Arg.Any<object?>(), Arg.Any<string?>())
+            .Returns(static ci => new JsonRpcErrorResponse
+            {
+                Id = ci.ArgAt<object?>(2),
+                Error = new Error { Code = ci.ArgAt<int>(0), Message = ci.ArgAt<string>(1) }
+            });
+
+        return service;
+    }
 
     [Test]
     public async Task Can_process_non_hex_ids()
