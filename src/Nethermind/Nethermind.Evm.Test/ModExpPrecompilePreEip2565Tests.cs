@@ -83,5 +83,5 @@ public class ModExpPrecompilePreEip2565Tests : PrecompileTests<ModExpPrecompileP
 
     [TestCaseSource(typeof(ModExpPrecompileTests), nameof(ModExpPrecompileTests.OversizedLengths))]
     public void TestOversizedLengths(string input, string expectedOutput, bool status) =>
-        RunTest(input, expectedOutput, status, Prague.Instance);
+        RunTest(input, expectedOutput, status, Byzantium.Instance);
 }
