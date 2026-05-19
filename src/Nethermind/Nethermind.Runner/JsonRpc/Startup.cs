@@ -10,7 +10,6 @@ using System.Linq;
 using System.Net;
 using System.Runtime.CompilerServices;
 using System.Security.Authentication;
-using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using HealthChecks.UI.Client;
@@ -28,7 +27,6 @@ using Microsoft.Extensions.Hosting.Internal;
 using Nethermind.Api;
 using Nethermind.Config;
 using Nethermind.Core.Authentication;
-using Nethermind.Core.Resettables;
 using Nethermind.Facade.Eth;
 using Nethermind.HealthChecks;
 using Nethermind.JsonRpc;
@@ -49,10 +47,6 @@ public class Startup : IStartup
     private IJsonRpcConfig _jsonRpcConfig = null!;
     private IRpcAuthentication? _rpcAuthentication;
     private ILogger _logger = default;
-
-    private static ReadOnlySpan<byte> _jsonOpeningBracket => [(byte)'['];
-    private static ReadOnlySpan<byte> _jsonComma => [(byte)','];
-    private static ReadOnlySpan<byte> _jsonClosingBracket => [(byte)']'];
 
     public Startup() { }
 
@@ -286,23 +280,6 @@ public class Startup : IStartup
     private static bool IsLocalhost(IPAddress remoteIp)
         => IPAddress.IsLoopback(remoteIp) || remoteIp.Equals(IPAddress.IPv6Loopback);
 
-    private static int GetStatusCode(in JsonRpcResult result)
-    {
-        if (result.IsCollection)
-        {
-            return StatusCodes.Status200OK;
-        }
-        else
-        {
-            return IsResourceUnavailableError(result.Response)
-                ? StatusCodes.Status503ServiceUnavailable
-                : StatusCodes.Status200OK;
-        }
-    }
-
-    private static bool IsResourceUnavailableError(JsonRpcResponse? response) => response is JsonRpcErrorResponse { Error.Code: ErrorCodes.ModuleTimeout }
-                    or JsonRpcErrorResponse { Error.Code: ErrorCodes.LimitExceeded };
-
     private async Task PushErrorResponseAsync(HttpContext ctx, int statusCode, int errorCode, string message)
     {
         ctx.Response.ContentType = "application/json";
@@ -334,97 +311,29 @@ public class Startup : IStartup
         long? knownContentLength = ctx.Request.ContentLength;
         CountingPipeReader? countingReader = knownContentLength > 0 ? null : new(ctx.Request.BodyReader);
         PipeReader request = countingReader ?? ctx.Request.BodyReader;
+        HttpJsonRpcResponseSink? responseSink = null;
         try
         {
             using JsonRpcContext jsonRpcContext = JsonRpcContext.Http(jsonRpcUrl);
-            await foreach (JsonRpcResult result in _jsonRpcProcessor.ProcessAsync(request, jsonRpcContext))
-            {
-                using (result)
-                {
-                    // Authenticated single responses bypass buffering to avoid double-copy
-                    bool bufferResponse = _jsonRpcConfig.BufferResponses && !(jsonRpcUrl.IsAuthenticated && !result.IsCollection);
-                    await using Stream stream = bufferResponse ? RecyclableStream.GetStream("http") : null;
-                    CountingWriter resultWriter = stream is not null ? new CountingStreamPipeWriter(stream) : new CountingPipeWriter(ctx.Response.BodyWriter);
-                    try
-                    {
-                        ctx.Response.ContentType = "application/json";
-                        ctx.Response.StatusCode = GetStatusCode(result);
+            responseSink = new HttpJsonRpcResponseSink(ctx, jsonRpcUrl, _jsonRpcConfig, _jsonRpcLocalStats, EthereumJsonSerializer.JsonOptions, _logger, startTime);
 
-                        // Flush headers before body for unbuffered responses
-                        if (stream is null)
-                        {
-                            await ctx.Response.StartAsync();
-                        }
-
-                        if (result.IsCollection)
-                        {
-                            resultWriter.Write(_jsonOpeningBracket);
-                            bool first = true;
-                            JsonRpcBatchResultAsyncEnumerator enumerator = result.BatchedResponses.GetAsyncEnumerator(CancellationToken.None);
-                            try
-                            {
-                                while (await enumerator.MoveNextAsync())
-                                {
-                                    JsonRpcResult.Entry entry = enumerator.Current;
-                                    using (entry)
-                                    {
-                                        if (!first) resultWriter.Write(_jsonComma);
-                                        first = false;
-                                        await _jsonSerializer.SerializeAsync(resultWriter, entry.Response);
-                                        _ = _jsonRpcLocalStats.ReportCall(entry.Report);
-
-                                        // Stop batch if non-authenticated response exceeds configured size limit
-                                        if (!jsonRpcContext.IsAuthenticated && resultWriter.WrittenCount > _jsonRpcConfig.MaxBatchResponseBodySize)
-                                        {
-                                            if (_logger.IsWarn) _logger.Warn($"The max batch response body size exceeded. The current response size {resultWriter.WrittenCount}, and the config setting is JsonRpc.{nameof(_jsonRpcConfig.MaxBatchResponseBodySize)} = {_jsonRpcConfig.MaxBatchResponseBodySize}");
-                                            enumerator.IsStopped = true;
-                                        }
-                                    }
-                                }
-                            }
-                            finally
-                            {
-                                await enumerator.DisposeAsync();
-                            }
-                            resultWriter.Write(_jsonClosingBracket);
-                        }
-                        else if (result.Response is JsonRpcSuccessResponse { Result: IStreamableResult streamable })
-                        {
-                            await WriteStreamableResponseAsync(resultWriter, result.Response, streamable, ctx.RequestAborted);
-                        }
-                        else
-                        {
-                            WriteJsonRpcResponse(resultWriter, result.Response);
-                        }
-                        await resultWriter.CompleteAsync();
-                        if (stream is not null)
-                        {
-                            ctx.Response.ContentLength = resultWriter.WrittenCount;
-                            stream.Seek(0, SeekOrigin.Begin);
-                            await stream.CopyToAsync(ctx.Response.Body);
-                        }
-                    }
-                    catch (Exception e) when (e is OperationCanceledException || e.InnerException is OperationCanceledException)
-                    {
-                        JsonRpcErrorResponse error = _jsonRpcService.GetErrorResponse(ErrorCodes.Timeout, "Request was canceled due to enabled timeout.");
-                        await _jsonSerializer.SerializeAsync(resultWriter, error);
-                    }
-                    finally
-                    {
-                        await ctx.Response.CompleteAsync();
-                    }
-
-                    long handlingTimeMicroseconds = (long)Stopwatch.GetElapsedTime(startTime).TotalMicroseconds;
-                    _ = _jsonRpcLocalStats.ReportCall(result.IsCollection
-                        ? new RpcReport("# collection serialization #", handlingTimeMicroseconds, true)
-                        : result.Report.Value, handlingTimeMicroseconds, resultWriter.WrittenCount);
-                    Interlocked.Add(ref Metrics.JsonRpcBytesSentHttp, resultWriter.WrittenCount);
-                    break;
-                }
-            }
+            await JsonRpcProcessorSinkAdapter.ProcessAsync(
+                _jsonRpcProcessor,
+                request,
+                jsonRpcContext,
+                responseSink,
+                new JsonRpcProcessingOptions(JsonRpcInputMode.SingleDocument),
+                ctx.RequestAborted);
+        }
+        catch (Exception e) when (e is OperationCanceledException || e.InnerException is OperationCanceledException)
+        {
+            JsonRpcErrorResponse error = _jsonRpcService.GetErrorResponse(ErrorCodes.Timeout, "Request was canceled due to enabled timeout.");
+            responseSink ??= new HttpJsonRpcResponseSink(ctx, jsonRpcUrl, _jsonRpcConfig, _jsonRpcLocalStats, EthereumJsonSerializer.JsonOptions, _logger, startTime);
+            await responseSink.WriteSingleAsync(error, RpcReport.Error, ctx.RequestAborted);
         }
         catch (Microsoft.AspNetCore.Http.BadHttpRequestException e)
         {
+            responseSink = null;
             if (_logger.IsDebug) LogBadRequest(_logger, e);
             ctx.Response.ContentType = "application/json";
             ctx.Response.StatusCode = e.StatusCode;
@@ -436,130 +345,12 @@ public class Startup : IStartup
         }
         finally
         {
+            if (responseSink is not null)
+            {
+                await responseSink.CompleteAsync(ctx.RequestAborted);
+            }
+
             Interlocked.Add(ref Metrics.JsonRpcBytesReceivedHttp, knownContentLength ?? countingReader?.Length ?? 0);
-        }
-    }
-
-    /// <summary>
-    /// Writes a JSON-RPC response with typed serialization for the result/error payload,
-    /// avoiding polymorphic dispatch through the JsonRpcResponse base class hierarchy.
-    /// </summary>
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static void WriteJsonRpcResponse(IBufferWriter<byte> writer, JsonRpcResponse response)
-    {
-        using Utf8JsonWriter jsonWriter = new(writer, new JsonWriterOptions { SkipValidation = true });
-
-        jsonWriter.WriteStartObject();
-        jsonWriter.WriteString("jsonrpc"u8, "2.0"u8);
-
-        if (response is JsonRpcSuccessResponse successResponse)
-        {
-            jsonWriter.WritePropertyName("result"u8);
-            object? result = successResponse.Result;
-            if (result is not null)
-            {
-                JsonSerializer.Serialize(jsonWriter, result, result.GetType(), EthereumJsonSerializer.JsonOptions);
-            }
-            else
-            {
-                jsonWriter.WriteNullValue();
-            }
-        }
-        else if (response is JsonRpcErrorResponse errorResponse)
-        {
-            jsonWriter.WritePropertyName("error"u8);
-            if (errorResponse.Error is not null)
-            {
-                JsonSerializer.Serialize(jsonWriter, errorResponse.Error, EthereumJsonSerializer.JsonOptions);
-            }
-            else
-            {
-                jsonWriter.WriteNullValue();
-            }
-        }
-
-        jsonWriter.WritePropertyName("id"u8);
-        WriteId(jsonWriter, response.Id);
-
-        jsonWriter.WriteEndObject();
-    }
-
-    private static void WriteId(Utf8JsonWriter writer, object? id)
-    {
-        switch (id)
-        {
-            case int intId:
-                writer.WriteNumberValue(intId);
-                break;
-            case long longId:
-                writer.WriteNumberValue(longId);
-                break;
-            case string strId:
-                writer.WriteStringValue(strId);
-                break;
-            case null:
-                writer.WriteNullValue();
-                break;
-            default:
-                WriteOther(writer, id);
-                break;
-        }
-
-        [MethodImpl(MethodImplOptions.NoInlining)]
-        static void WriteOther(Utf8JsonWriter writer, object id) => JsonSerializer.Serialize(writer, id, id.GetType(), EthereumJsonSerializer.JsonOptions);
-    }
-
-    internal static async ValueTask WriteStreamableResponseAsync(
-        CountingWriter writer, JsonRpcResponse response,
-        IStreamableResult streamable, CancellationToken ct)
-    {
-        writer.Write("{\"jsonrpc\":\"2.0\",\"result\":"u8);
-        await streamable.WriteToAsync(writer, ct);
-        writer.Write(",\"id\":"u8);
-        WriteIdRaw(writer, response.Id);
-        writer.Write("}"u8);
-    }
-
-    private static void WriteIdRaw(PipeWriter writer, object? id)
-    {
-        switch (id)
-        {
-            case int intId:
-                {
-                    Span<byte> buf = writer.GetSpan(11);
-                    intId.TryFormat(buf, out int written);
-                    writer.Advance(written);
-                    break;
-                }
-            case long longId:
-                {
-                    Span<byte> buf = writer.GetSpan(20);
-                    longId.TryFormat(buf, out int written);
-                    writer.Advance(written);
-                    break;
-                }
-            default:
-                WriteOther(writer, id);
-                break;
-        }
-
-        [MethodImpl(MethodImplOptions.NoInlining)]
-        static void WriteOther(PipeWriter writer, object? id)
-        {
-            switch (id)
-            {
-                case string strId:
-                    {
-                        using Utf8JsonWriter jsonWriter = new(writer, new JsonWriterOptions { SkipValidation = true });
-                        jsonWriter.WriteStringValue(strId);
-                        break;
-                    }
-                default:
-                    {
-                        writer.Write("null"u8);
-                        break;
-                    }
-            }
         }
     }
 

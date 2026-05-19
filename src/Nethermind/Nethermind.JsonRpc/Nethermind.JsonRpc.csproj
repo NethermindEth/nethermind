@@ -3,7 +3,7 @@
     <Nullable>annotations</Nullable>
     <AllowUnsafeBlocks>True</AllowUnsafeBlocks>
   </PropertyGroup>
-  
+
   <ItemGroup>
     <ProjectReference Include="..\Nethermind.Abi\Nethermind.Abi.csproj" />
     <ProjectReference Include="..\Nethermind.Blockchain\Nethermind.Blockchain.csproj" />
