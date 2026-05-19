@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Collections.Generic;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.Precompiles;
@@ -12,12 +11,6 @@ namespace Nethermind.Evm.Test;
 
 public class ModExpPrecompileTests : PrecompileTests<ModExpPrecompile, ModExpPrecompileTests>, IPrecompileTests
 {
-    static IEnumerable<(string file, IReleaseSpec spec)> IPrecompileTests.TestFilesWithSpec()
-    {
-        yield return ("modexp_eip2565.json", Prague.Instance);
-        yield return ("modexp_eip7883.json", Osaka.Instance);
-    }
-
     [TestCase(
         "00000000000000000000000000000000000000000000000000000000000000010000000000000000000000000000000000000000000000000000000000000020000000000000000000000000000000000000000000000000000000000000002003fffffffffffffffffffffffffffffffffffffffffffffffffffffffefffffc2efffffffffffffffffffffffffffffffffffffffffffffffffffffffefffffc2f",
         "11",
@@ -44,12 +37,50 @@ public class ModExpPrecompileTests : PrecompileTests<ModExpPrecompile, ModExpPre
         RunEffectiveInputTest(Instance, input, trailing, Osaka.Instance);
     }
 
-    [TestCase(
-        "000000000000000000000000000000000000000000000000000000000000000100000000000000000000000000000000000000000000000000000000ffffffff000000000000000000000000000000000000000000000000000000000000000102",
-        "00",
-        true,
-        TestName = "expLen=uint32.MaxValue (0xffffffff): huge expLength wraps modulus offset to base, must return zero (pre-EIP-7823)"
-    )]
+
+    [TestCaseSource(nameof(OversizedLengths))]
     public void TestOversizedLengths(string input, string expectedOutput, bool status) =>
         RunTest(input, expectedOutput, status, Prague.Instance);
+
+    static IEnumerable<(string file, IReleaseSpec spec)> IPrecompileTests.TestFilesWithSpec()
+    {
+        yield return ("modexp_eip2565.json", Prague.Instance);
+        yield return ("modexp_eip7883.json", Osaka.Instance);
+    }
+
+    public static IEnumerable<TestCaseData<string, string, bool>> OversizedLengths
+    {
+        get
+        {
+            yield return new(
+                "000000000000000000000000000000000000000000000000000000000000000100000000000000000000000000000000000000000000000000000000ffffffff000000000000000000000000000000000000000000000000000000000000000102",
+                "00",
+                true
+            ) {TestName = "expLen=uint32.MaxValue (0xffffffff): huge expLength wraps modulus offset to base, must return zero (pre-EIP-7823)"};
+
+            yield return new(
+                "00000000000000000000000000000000000000000000000000000000000000010000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000007FFFFFFF02",
+                "",
+                false
+            ) {TestName = "modLen=int32.MaxValue (0x7fffffff): rejected because of C# array size limit"};
+
+            yield return new(
+                "00000000000000000000000000000000000000000000000000000000000000010000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000008000000002",
+                "",
+                false
+            ) {TestName = "modLen=int32.MaxValue+1 (0x80000000): rejected because of C# array size limit"};
+
+            yield return new(
+                "0000000000000000000000000000000000000000000000000000000000000001000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000ffffffff02",
+                "",
+                false
+            ) {TestName = "modLen=uint32.MaxValue (0xffffffff): rejected because of C# array size limit"};
+
+            yield return new(
+                "00000000000000000000000000000000000000000000000000000000000000010000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000010000000002",
+                "",
+                false
+            ) {TestName = "modLen=2^32 (0x100000000): rejected because of C# array size limit"};
+        }
+    }
 }

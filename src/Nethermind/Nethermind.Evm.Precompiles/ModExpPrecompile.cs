@@ -206,7 +206,7 @@ public partial class ModExpPrecompile : IPrecompile<ModExpPrecompile>
 
     private static bool ExceedsMaxInputSize(IReleaseSpec releaseSpec, uint baseLength, uint expLength, uint modulusLength) => releaseSpec.IsEip7823Enabled
             ? (baseLength > ModExpMaxInputSizeEip7823 || expLength > ModExpMaxInputSizeEip7823 || modulusLength > ModExpMaxInputSizeEip7823)
-            : baseLength >= uint.MaxValue || modulusLength >= uint.MaxValue;
+            : baseLength >= uint.MaxValue || modulusLength > Array.MaxLength; // byte[modulusLength] array needs to be created
 
     [MethodImpl(MethodImplOptions.NoInlining)]
     private static (uint baseLength, uint expLength, uint modulusLength) GetInputLengthsShort(ReadOnlySpan<byte> inputData)
@@ -331,7 +331,7 @@ public partial class ModExpPrecompile : IPrecompile<ModExpPrecompile>
 
         if (ExceedsMaxInputSize(releaseSpec, baseLength, expLength, modulusLength))
         {
-            result = "one or more of base/exponent/modulus length exceeded 1024 bytes";
+            result = "one or more of base/exponent/modulus length exceeded allowed limit";
             return false;
         }
 
