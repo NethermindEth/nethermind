@@ -47,7 +47,7 @@ internal static class StructLogEnvelopeWriter
         {
             writer.WriteEndArray();
             string? errorMessage = failure is null ? null : $"tracing failed: {failure.Message}";
-            int errorCode = ResolveErrorCode(failure);
+            int errorCode = failure is null ? ErrorCodes.InvalidInput : ResolveErrorCode(failure);
             WriteFooter(writer, trace, errorMessage, errorCode, fallbackGas);
         }
 
@@ -67,9 +67,9 @@ internal static class StructLogEnvelopeWriter
         WriteFooter(writer, trace: null, errorMessage, ErrorCodes.InvalidInput, fallbackGas: gasLimit);
     }
 
-    private static int ResolveErrorCode(Exception? failure)
+    private static int ResolveErrorCode(Exception failure)
     {
-        if (failure is null) return ErrorCodes.InvalidInput;
+        ArgumentNullException.ThrowIfNull(failure);
 
         for (Exception? current = failure; current is not null; current = current.InnerException)
         {

@@ -77,7 +77,7 @@ public partial class DebugRpcModuleTests
             timeoutCts,
             LimboLogs.Instance.GetClassLogger<DebugRpcModuleTests>());
 
-        ArrayBufferWriter bufferWriter = new();
+        ArrayBufferWriter<byte> bufferWriter = new();
         using Utf8JsonWriter writer = new(bufferWriter);
         result.WriteAsJson(writer);
         writer.Flush();
@@ -93,7 +93,7 @@ public partial class DebugRpcModuleTests
     {
         Transaction tx = Build.A.Transaction.WithHash(TestItem.KeccakA).TestObject;
 
-        ArrayBufferWriter outerBuffer = new();
+        ArrayBufferWriter<byte> outerBuffer = new();
         using Utf8JsonWriter jsonWriter = new(outerBuffer);
 
         jsonWriter.WriteStartArray();
@@ -154,32 +154,38 @@ public partial class DebugRpcModuleTests
         parsed.Should().HaveCount(1, "the one entry written before cancellation must be present in a well-formed array");
     }
 
-    private sealed class ArrayBufferWriter : IBufferWriter<byte>
+    [Test]
+    public async Task GethLikeTxTraceStreamingBlockResult_WhenTraceThrows_EmitsSentinelErrorEntry()
     {
-        private byte[] _buffer = new byte[256];
-        private int _written;
+        CancellationTokenSource timeoutCts = new();
 
-        public ReadOnlySpan<byte> WrittenSpan => _buffer.AsSpan(0, _written);
+        GethLikeTxTraceStreamingBlockResult result = new(
+            (writer, _, _) =>
+            {
+                writer.WriteStartObject();
+                writer.WritePropertyName("result"u8);
+                writer.WriteStartObject();
+                writer.WriteEndObject();
+                writer.WritePropertyName("txHash"u8);
+                writer.WriteStringValue(TestItem.KeccakA.ToString());
+                writer.WriteEndObject();
 
-        public void Advance(int count) => _written += count;
+                throw new InvalidOperationException("simulated mid-block failure");
+            },
+            timeoutCts,
+            LimboLogs.Instance.GetClassLogger<DebugRpcModuleTests>());
 
-        public Memory<byte> GetMemory(int sizeHint = 0)
-        {
-            EnsureCapacity(sizeHint);
-            return _buffer.AsMemory(_written);
-        }
+        Pipe pipe = new();
+        await result.WriteToAsync(pipe.Writer, CancellationToken.None);
+        await pipe.Writer.CompleteAsync();
 
-        public Span<byte> GetSpan(int sizeHint = 0)
-        {
-            EnsureCapacity(sizeHint);
-            return _buffer.AsSpan(_written);
-        }
+        ReadResult readResult = await pipe.Reader.ReadAsync();
+        string body = Encoding.UTF8.GetString(readResult.Buffer.ToArray());
 
-        private void EnsureCapacity(int sizeHint)
-        {
-            int needed = Math.Max(sizeHint, 1);
-            if (_buffer.Length - _written >= needed) return;
-            Array.Resize(ref _buffer, Math.Max(_buffer.Length * 2, _written + needed));
-        }
+        JArray parsed = (JArray)JToken.Parse(body);
+        parsed.Should().HaveCount(2, "the array must contain the one good entry plus a sentinel error entry so clients can detect the mid-block failure");
+
+        JToken sentinel = parsed[1]!;
+        ((string)sentinel["error"]!).Should().Contain("simulated mid-block failure", "the sentinel must carry the human-readable failure reason");
     }
 }
