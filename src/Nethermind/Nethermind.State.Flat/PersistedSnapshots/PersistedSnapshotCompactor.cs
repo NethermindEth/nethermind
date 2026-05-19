@@ -123,7 +123,7 @@ public class PersistedSnapshotCompactor(
         // value span — no pre-pass on this side.
         int n = snapshots.Count;
         using ArrayPoolList<WholeReadSession> sessionsList = new(n, n);
-        using NativeMemoryList<(IntPtr Ptr, long Len)> viewsList = new(n, n);
+        using NativeMemoryListRef<(IntPtr Ptr, long Len)> viewsList = new(n, n);
         WholeReadSession[] sessionArr = sessionsList.UnsafeGetInternalArray();
         Span<(IntPtr Ptr, long Len)> views = viewsList.AsSpan();
         try
