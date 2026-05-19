@@ -157,6 +157,61 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
         return ProcessCoreAsync(reader, context, sink, options, timeoutSource, timeoutToken, cancellationToken);
     }
 
+    public ValueTask ProcessAsync(
+        ReadOnlyMemory<byte> requestBody,
+        JsonRpcContext context,
+        IJsonRpcResponseSink sink,
+        JsonRpcProcessingOptions options,
+        CancellationToken cancellationToken = default)
+    {
+        CancellationTokenSource? timeoutSource = context.IsAuthenticated ? null : _jsonRpcConfig.BuildTimeoutCancellationToken();
+        CancellationToken timeoutToken = timeoutSource?.Token ?? CancellationToken.None;
+
+        return ProcessMemoryCoreAsync(requestBody, context, sink, options, timeoutSource, timeoutToken, cancellationToken);
+    }
+
+    private async ValueTask ProcessMemoryCoreAsync(
+        ReadOnlyMemory<byte> requestBody,
+        JsonRpcContext context,
+        IJsonRpcResponseSink sink,
+        JsonRpcProcessingOptions options,
+        CancellationTokenSource? timeoutSource,
+        CancellationToken timeoutToken,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            if (ProcessExit.IsCancellationRequested)
+            {
+                JsonRpcErrorResponse response = _jsonRpcService.GetErrorResponse(ErrorCodes.ResourceUnavailable, "Shutting down");
+                using JsonRpcResult.Entry entry = RecordResponse(response, new RpcReport("Shutdown", 0, false));
+                await sink.WriteSingleAsync(entry.Response, entry.Report, cancellationToken);
+                return;
+            }
+
+            if (options.InputMode != JsonRpcInputMode.SingleDocument)
+            {
+                PipeReader reader = PipeReader.Create(new ReadOnlySequence<byte>(requestBody));
+                CancellationTokenSource? coreTimeoutSource = timeoutSource;
+                timeoutSource = null;
+                await ProcessCoreAsync(reader, context, sink, options, coreTimeoutSource, timeoutToken, cancellationToken);
+                return;
+            }
+
+            if (IsRecordingRequest)
+            {
+                RecordRequest(requestBody);
+            }
+
+            await ProcessSingleDocumentMemoryToSink(requestBody, context, sink, cancellationToken);
+        }
+        finally
+        {
+            if (timeoutSource is not null)
+                JsonRpcConfigExtension.ReturnTimeoutCancellationToken(timeoutSource);
+        }
+    }
+
     private async ValueTask ProcessCoreAsync(
         PipeReader reader,
         JsonRpcContext context,
@@ -365,6 +420,84 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
             await reader.CompleteAsync();
             if (timeoutSource is not null)
                 JsonRpcConfigExtension.ReturnTimeoutCancellationToken(timeoutSource);
+        }
+    }
+
+    private async ValueTask ProcessSingleDocumentMemoryToSink(
+        ReadOnlyMemory<byte> requestBody,
+        JsonRpcContext context,
+        IJsonRpcResponseSink sink,
+        CancellationToken cancellationToken)
+    {
+        long startTime = Stopwatch.GetTimestamp();
+        try
+        {
+            if (TryReadSingleObjectRequest(requestBody, out JsonRpcRequest? directRequest, out JsonDocument? directParamsDocument))
+            {
+                await ProcessSingleRequestToSink(directRequest, directParamsDocument, context, sink, cancellationToken);
+                return;
+            }
+
+            if (await TryProcessBatchRequestDirectly(requestBody, context, sink, cancellationToken))
+            {
+                return;
+            }
+
+            await ProcessSingleDocumentMemoryFallbackToSink(requestBody, context, sink, startTime, cancellationToken);
+        }
+        catch (JsonException ex)
+        {
+            await WriteParsingErrorAsync(new ReadOnlySequence<byte>(requestBody), sink, startTime, "Error during parsing/validation.", cancellationToken, ex);
+        }
+    }
+
+    private async ValueTask ProcessSingleDocumentMemoryFallbackToSink(
+        ReadOnlyMemory<byte> requestBody,
+        JsonRpcContext context,
+        IJsonRpcResponseSink sink,
+        long startTime,
+        CancellationToken cancellationToken)
+    {
+        ReadOnlySequence<byte> buffer = new ReadOnlySequence<byte>(requestBody).TrimStart();
+        if (buffer.IsEmpty)
+        {
+            return;
+        }
+
+        JsonReaderState readerState = CreateJsonReaderState(new JsonRpcProcessingOptions(JsonRpcInputMode.SingleDocument));
+        JsonDocument? jsonDocument = null;
+        try
+        {
+            bool parsed = TryParseJson(
+                ref buffer,
+                isFinalBlock: true,
+                ref readerState,
+                out jsonDocument,
+                new JsonRpcProcessingOptions(JsonRpcInputMode.SingleDocument));
+
+            if (parsed)
+            {
+                ReadOnlySequence<byte> trailingBuffer = buffer.TrimStart();
+                if (!trailingBuffer.IsEmpty)
+                {
+                    jsonDocument.Dispose();
+                    await WriteParsingErrorAsync(trailingBuffer, sink, startTime, "Error during parsing/validation: trailing data after JSON-RPC request.", cancellationToken);
+                    return;
+                }
+
+                await ProcessJsonDocumentToSink(jsonDocument, context, sink, startTime, cancellationToken);
+                return;
+            }
+
+            if (!buffer.IsEmpty)
+            {
+                await WriteParsingErrorAsync(buffer, sink, startTime, "Error during parsing/validation: incomplete request.", cancellationToken);
+            }
+        }
+        catch (JsonException ex)
+        {
+            jsonDocument?.Dispose();
+            await WriteParsingErrorAsync(buffer, sink, startTime, "Error during parsing/validation.", cancellationToken, ex);
         }
     }
 
@@ -769,6 +902,18 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
         await WriteSingleEntryAsync(result, sink, cancellationToken);
     }
 
+    private async ValueTask WriteParsingErrorAsync(
+        ReadOnlySequence<byte> buffer,
+        IJsonRpcResponseSink sink,
+        long startTime,
+        string error,
+        CancellationToken cancellationToken,
+        Exception? exception = null)
+    {
+        JsonRpcResult.Entry result = GetParsingError(startTime, in buffer, error, exception);
+        await WriteSingleEntryAsync(result, sink, cancellationToken);
+    }
+
     private async ValueTask WriteSingleEntryAsync(
         JsonRpcResult.Entry entry,
         IJsonRpcResponseSink sink,
@@ -878,6 +1023,10 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
     }
 
     private static readonly StreamPipeReaderOptions _pipeReaderOptions = new(leaveOpen: false);
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private void RecordRequest(ReadOnlyMemory<byte> requestBody) =>
+        _recorder.RecordRequest(Encoding.UTF8.GetString(requestBody.Span));
 
     [MethodImpl(MethodImplOptions.NoInlining)]
     private async ValueTask<PipeReader> RecordRequest(PipeReader reader)
