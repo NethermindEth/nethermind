@@ -72,7 +72,7 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
         string? method = null;
         if (element.TryGetProperty("method"u8, out JsonElement methodElement))
         {
-            method = InternMethodName(methodElement);
+            method = KnownRpcMethodNames.Intern(methodElement);
         }
 
         if (!element.TryGetProperty("params"u8, out JsonElement paramsElement))
@@ -122,43 +122,6 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
         [DoesNotReturn, StackTraceHidden]
         static JsonRpcId ThrowUnsupportedId() =>
             throw new JsonException("Unsupported JSON-RPC ID value.");
-    }
-
-    /// <summary>
-    /// Returns a cached string constant for known hot method names to avoid allocation.
-    /// Falls back to <see cref="JsonElement.GetString"/> for unknown methods.
-    /// </summary>
-    private static string? InternMethodName(JsonElement methodElement)
-    {
-        if (methodElement.ValueEquals("engine_newPayloadV4"u8)) return "engine_newPayloadV4";
-        if (methodElement.ValueEquals("engine_getBlobsV2"u8)) return "engine_getBlobsV2";
-        if (methodElement.ValueEquals("engine_forkchoiceUpdatedV3"u8)) return "engine_forkchoiceUpdatedV3";
-        if (methodElement.ValueEquals("eth_call"u8)) return "eth_call";
-        if (methodElement.ValueEquals("eth_getBlockByNumber"u8)) return "eth_getBlockByNumber";
-        if (methodElement.ValueEquals("eth_chainId"u8)) return "eth_chainId";
-        if (methodElement.ValueEquals("engine_newPayloadV5"u8)) return "engine_newPayloadV5";
-        if (methodElement.ValueEquals("engine_newPayloadV3"u8)) return "engine_newPayloadV3";
-        if (methodElement.ValueEquals("engine_newPayloadV2"u8)) return "engine_newPayloadV2";
-        if (methodElement.ValueEquals("engine_newPayloadV1"u8)) return "engine_newPayloadV1";
-        if (methodElement.ValueEquals("engine_getPayloadV4"u8)) return "engine_getPayloadV4";
-        if (methodElement.ValueEquals("engine_getPayloadV5"u8)) return "engine_getPayloadV5";
-        if (methodElement.ValueEquals("engine_getPayloadV6"u8)) return "engine_getPayloadV6";
-        if (methodElement.ValueEquals("engine_getPayloadV3"u8)) return "engine_getPayloadV3";
-        if (methodElement.ValueEquals("engine_getPayloadV2"u8)) return "engine_getPayloadV2";
-        if (methodElement.ValueEquals("engine_getPayloadV1"u8)) return "engine_getPayloadV1";
-        if (methodElement.ValueEquals("engine_getBlobsV1"u8)) return "engine_getBlobsV1";
-        if (methodElement.ValueEquals("engine_getBlobsV3"u8)) return "engine_getBlobsV3";
-        if (methodElement.ValueEquals("engine_forkchoiceUpdatedV4"u8)) return "engine_forkchoiceUpdatedV4";
-        if (methodElement.ValueEquals("engine_forkchoiceUpdatedV2"u8)) return "engine_forkchoiceUpdatedV2";
-        if (methodElement.ValueEquals("engine_forkchoiceUpdatedV1"u8)) return "engine_forkchoiceUpdatedV1";
-        if (methodElement.ValueEquals("engine_exchangeCapabilities"u8)) return "engine_exchangeCapabilities";
-        if (methodElement.ValueEquals("engine_getClientVersionV1"u8)) return "engine_getClientVersionV1";
-        if (methodElement.ValueEquals("engine_getPayloadBodiesByHashV1"u8)) return "engine_getPayloadBodiesByHashV1";
-        if (methodElement.ValueEquals("engine_getPayloadBodiesByHashV2"u8)) return "engine_getPayloadBodiesByHashV2";
-        if (methodElement.ValueEquals("engine_getPayloadBodiesByRangeV1"u8)) return "engine_getPayloadBodiesByRangeV1";
-        if (methodElement.ValueEquals("engine_getPayloadBodiesByRangeV2"u8)) return "engine_getPayloadBodiesByRangeV2";
-        if (methodElement.ValueEquals("engine_exchangeTransitionConfigurationV1"u8)) return "engine_exchangeTransitionConfigurationV1";
-        return methodElement.GetString();
     }
 
     private static readonly JsonReaderOptions _socketJsonReaderOptions = new() { AllowMultipleValues = true };

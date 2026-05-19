@@ -27,37 +27,7 @@ namespace Nethermind.JsonRpc.Test;
 public class JsonRpcProcessorTests(bool returnErrors)
 {
     private readonly JsonRpcErrorResponse _errorResponse = new();
-    private static readonly string[] CachedMethodNames =
-    [
-        "eth_call",
-        "eth_chainId",
-        "eth_getBlockByNumber",
-        "engine_getBlobsV2",
-        "engine_getBlobsV1",
-        "engine_getBlobsV3",
-        "engine_newPayloadV4",
-        "engine_newPayloadV5",
-        "engine_newPayloadV3",
-        "engine_newPayloadV2",
-        "engine_newPayloadV1",
-        "engine_getPayloadV4",
-        "engine_getPayloadV5",
-        "engine_getPayloadV6",
-        "engine_getPayloadV3",
-        "engine_getPayloadV2",
-        "engine_getPayloadV1",
-        "engine_forkchoiceUpdatedV3",
-        "engine_forkchoiceUpdatedV4",
-        "engine_forkchoiceUpdatedV2",
-        "engine_forkchoiceUpdatedV1",
-        "engine_getClientVersionV1",
-        "engine_exchangeCapabilities",
-        "engine_getPayloadBodiesByHashV1",
-        "engine_getPayloadBodiesByHashV2",
-        "engine_getPayloadBodiesByRangeV1",
-        "engine_getPayloadBodiesByRangeV2",
-        "engine_exchangeTransitionConfigurationV1",
-    ];
+    private static IReadOnlyList<string> CachedMethodNames => KnownRpcMethodNames.All;
 
     private JsonRpcProcessor Initialize(JsonRpcConfig? config = null, RpcRecorderState recorderState = RpcRecorderState.All)
     {

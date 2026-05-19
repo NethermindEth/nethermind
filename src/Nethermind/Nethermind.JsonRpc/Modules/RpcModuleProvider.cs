@@ -30,6 +30,12 @@ namespace Nethermind.JsonRpc.Modules
 
         private Dictionary<string, ResolvedMethodInfo> _methods = new();
         private FrozenDictionary<string, ResolvedMethodInfo>? _frozenMethods = null;
+        private ResolvedMethodInfo? _engineNewPayloadV4Method;
+        private ResolvedMethodInfo? _engineGetBlobsV2Method;
+        private ResolvedMethodInfo? _engineForkchoiceUpdatedV3Method;
+        private ResolvedMethodInfo? _ethCallMethod;
+        private ResolvedMethodInfo? _ethGetBlockByNumberMethod;
+        private ResolvedMethodInfo? _ethChainIdMethod;
 
         private readonly IRpcMethodFilter _filter = NullRpcMethodFilter.Instance;
 
@@ -97,7 +103,7 @@ namespace Nethermind.JsonRpc.Modules
                         method.Value.SetPool(rentModule, returnModule, pool);
                         _methods[method.Key] = method.Value;
                     });
-                _frozenMethods = null;
+                ClearMethodCache();
 
                 _modules.Add(moduleType);
 
@@ -131,8 +137,65 @@ namespace Nethermind.JsonRpc.Modules
             }
         }
 
-        private void EnsureFrozenCollection() =>
-            _frozenMethods ??= _methods.ToFrozenDictionary(StringComparer.Ordinal);
+        private void EnsureFrozenCollection()
+        {
+            if (_frozenMethods is not null)
+            {
+                return;
+            }
+
+            FrozenDictionary<string, ResolvedMethodInfo> frozenMethods = _methods.ToFrozenDictionary(StringComparer.Ordinal);
+            _engineNewPayloadV4Method = Resolve(frozenMethods, "engine_newPayloadV4");
+            _engineGetBlobsV2Method = Resolve(frozenMethods, "engine_getBlobsV2");
+            _engineForkchoiceUpdatedV3Method = Resolve(frozenMethods, "engine_forkchoiceUpdatedV3");
+            _ethCallMethod = Resolve(frozenMethods, "eth_call");
+            _ethGetBlockByNumberMethod = Resolve(frozenMethods, "eth_getBlockByNumber");
+            _ethChainIdMethod = Resolve(frozenMethods, "eth_chainId");
+            _frozenMethods = frozenMethods;
+
+            static ResolvedMethodInfo? Resolve(FrozenDictionary<string, ResolvedMethodInfo> methods, string methodName) =>
+                methods.TryGetValue(methodName, out ResolvedMethodInfo result) ? result : null;
+        }
+
+        private void ClearMethodCache()
+        {
+            _frozenMethods = null;
+            _engineNewPayloadV4Method = null;
+            _engineGetBlobsV2Method = null;
+            _engineForkchoiceUpdatedV3Method = null;
+            _ethCallMethod = null;
+            _ethGetBlockByNumberMethod = null;
+            _ethChainIdMethod = null;
+        }
+
+        private bool TryGetResolvedMethod(string methodName, [NotNullWhen(true)] out ResolvedMethodInfo? method)
+        {
+            method = TryGetInternedHotMethod(methodName);
+            if (method is not null)
+            {
+                return true;
+            }
+
+            if (_frozenMethods!.TryGetValue(methodName, out ResolvedMethodInfo result))
+            {
+                method = result;
+                return true;
+            }
+
+            method = null;
+            return false;
+        }
+
+        private ResolvedMethodInfo? TryGetInternedHotMethod(string methodName)
+        {
+            if (ReferenceEquals(methodName, "engine_newPayloadV4")) return _engineNewPayloadV4Method;
+            if (ReferenceEquals(methodName, "engine_getBlobsV2")) return _engineGetBlobsV2Method;
+            if (ReferenceEquals(methodName, "engine_forkchoiceUpdatedV3")) return _engineForkchoiceUpdatedV3Method;
+            if (ReferenceEquals(methodName, "eth_call")) return _ethCallMethod;
+            if (ReferenceEquals(methodName, "eth_getBlockByNumber")) return _ethGetBlockByNumberMethod;
+            if (ReferenceEquals(methodName, "eth_chainId")) return _ethChainIdMethod;
+            return null;
+        }
 
         public ModuleResolution Check(string methodName, JsonRpcContext context, out string? module, out ResolvedMethodInfo? method)
         {
@@ -140,7 +203,7 @@ namespace Nethermind.JsonRpc.Modules
             module = null;
             method = null;
 
-            if (!_frozenMethods.TryGetValue(methodName, out ResolvedMethodInfo result))
+            if (!TryGetResolvedMethod(methodName, out ResolvedMethodInfo? result))
             {
                 return ModuleResolution.Unknown;
             }
@@ -166,7 +229,7 @@ namespace Nethermind.JsonRpc.Modules
         public ResolvedMethodInfo? Resolve(string methodName)
         {
             EnsureFrozenCollection();
-            if (!_frozenMethods.TryGetValue(methodName, out ResolvedMethodInfo result)) return null;
+            if (!TryGetResolvedMethod(methodName, out ResolvedMethodInfo? result)) return null;
 
             return result;
         }
@@ -174,7 +237,7 @@ namespace Nethermind.JsonRpc.Modules
         public ValueTask<IRpcModule> Rent(string methodName, bool canBeShared)
         {
             EnsureFrozenCollection();
-            if (!_frozenMethods.TryGetValue(methodName, out ResolvedMethodInfo result)) return ValueTask.FromResult<IRpcModule>(null!);
+            if (!TryGetResolvedMethod(methodName, out ResolvedMethodInfo? result)) return ValueTask.FromResult<IRpcModule>(null!);
 
             return result.RentModule(canBeShared);
         }
@@ -184,7 +247,7 @@ namespace Nethermind.JsonRpc.Modules
         public void Return(string methodName, IRpcModule rpcModule)
         {
             EnsureFrozenCollection();
-            if (!_frozenMethods.TryGetValue(methodName, out ResolvedMethodInfo result))
+            if (!TryGetResolvedMethod(methodName, out ResolvedMethodInfo? result))
                 throw new InvalidOperationException("Not possible to return an unresolved module");
 
             result.ReturnModule(rpcModule);
@@ -195,7 +258,7 @@ namespace Nethermind.JsonRpc.Modules
         public IRpcModulePool? GetPoolForMethod(string methodName)
         {
             EnsureFrozenCollection();
-            return _frozenMethods.TryGetValue(methodName, out ResolvedMethodInfo result) ? result.ModulePool : null;
+            return TryGetResolvedMethod(methodName, out ResolvedMethodInfo? result) ? result.ModulePool : null;
         }
 
         private static IDictionary<string, (MethodInfo, bool, RpcEndpoint)> GetMethodDict(Type type)

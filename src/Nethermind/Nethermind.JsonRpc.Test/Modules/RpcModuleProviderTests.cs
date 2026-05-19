@@ -127,6 +127,44 @@ public class RpcModuleProviderTests
         _moduleProvider.GetPoolForMethod(nameof(INetRpcModule.net_listening)).Should().Be(pool2);
     }
 
+    [TestCase("engine_newPayloadV4", ModuleType.Engine)]
+    [TestCase("engine_getBlobsV2", ModuleType.Engine)]
+    [TestCase("engine_forkchoiceUpdatedV3", ModuleType.Engine)]
+    [TestCase("eth_call", ModuleType.Eth)]
+    [TestCase("eth_getBlockByNumber", ModuleType.Eth)]
+    [TestCase("eth_chainId", ModuleType.Eth)]
+    public void Hot_method_resolution_matches_dictionary_resolution(string methodName, string moduleType)
+    {
+        RegisterHotModules();
+
+        string internedMethodName = string.Intern(methodName);
+        string nonInternedMethodName = new(methodName.ToCharArray());
+        ReferenceEquals(nonInternedMethodName, internedMethodName).Should().BeFalse();
+
+        _moduleProvider.Check(internedMethodName, _context, out string? internedModule, out RpcModuleProvider.ResolvedMethodInfo? internedMethod)
+            .Should().Be(ModuleResolution.Enabled);
+        _moduleProvider.Check(nonInternedMethodName, _context, out string? nonInternedModule, out RpcModuleProvider.ResolvedMethodInfo? nonInternedMethod)
+            .Should().Be(ModuleResolution.Enabled);
+
+        internedModule.Should().Be(moduleType);
+        nonInternedModule.Should().Be(moduleType);
+        internedMethod.Should().BeSameAs(nonInternedMethod);
+        internedMethod!.ToString().Should().Be(methodName);
+    }
+
+    [Test]
+    public void Hot_method_cache_updates_after_module_replacement()
+    {
+        TestModulePool<HotEngineRpcModule> firstPool = new(new HotEngineRpcModule());
+        _moduleProvider.Register(firstPool);
+        _moduleProvider.GetPoolForMethod("engine_newPayloadV4").Should().Be(firstPool);
+
+        TestModulePool<HotEngineRpcModule> secondPool = new(new HotEngineRpcModule());
+        _moduleProvider.Register(secondPool);
+
+        _moduleProvider.GetPoolForMethod("engine_newPayloadV4").Should().Be(secondPool);
+    }
+
     [Test]
     public void Can_register_via_constructor()
     {
@@ -177,6 +215,34 @@ public class RpcModuleProviderTests
         container.Resolve<TestRpcModuleDependencies>().WasRequested.Should().Be(preload);
     }
 
+    private void RegisterHotModules()
+    {
+        JsonRpcConfig config = new() { EnabledModules = [ModuleType.Engine, ModuleType.Eth] };
+        _moduleProvider = new RpcModuleProvider(_fileSystem, config, new EthereumJsonSerializer(), LimboLogs.Instance);
+        _moduleProvider.Register(new TestModulePool<HotEngineRpcModule>(new HotEngineRpcModule()));
+        _moduleProvider.Register(new TestModulePool<HotEthRpcModule>(new HotEthRpcModule()));
+    }
+
+    [RpcModule(ModuleType.Engine)]
+    private sealed class HotEngineRpcModule : IRpcModule
+    {
+        public ResultWrapper<string> engine_newPayloadV4() => ResultWrapper<string>.Success(string.Empty);
+
+        public ResultWrapper<string> engine_getBlobsV2() => ResultWrapper<string>.Success(string.Empty);
+
+        public ResultWrapper<string> engine_forkchoiceUpdatedV3() => ResultWrapper<string>.Success(string.Empty);
+    }
+
+    [RpcModule(ModuleType.Eth)]
+    private sealed class HotEthRpcModule : IRpcModule
+    {
+        public ResultWrapper<string> eth_call() => ResultWrapper<string>.Success(string.Empty);
+
+        public ResultWrapper<string> eth_getBlockByNumber() => ResultWrapper<string>.Success(string.Empty);
+
+        public ResultWrapper<string> eth_chainId() => ResultWrapper<string>.Success(string.Empty);
+    }
+
     [RpcModule(ModuleType.Eth)]
     private interface ITestRpcModule : IRpcModule
     {
@@ -191,5 +257,19 @@ public class RpcModuleProviderTests
     private class TestRpcModule : ITestRpcModule
     {
         public TestRpcModule(TestRpcModuleDependencies dependencies) => dependencies.WasRequested = true;
+    }
+
+    private sealed class TestModulePool<T>(T module) : IRpcModulePool<T> where T : IRpcModule
+    {
+        public IRpcModuleFactory<T> Factory { get; } = new TestModuleFactory<T>(module);
+
+        public Task<T> GetModule(bool canBeShared) => Task.FromResult(module);
+
+        public void ReturnModule(T module) { }
+    }
+
+    private sealed class TestModuleFactory<T>(T module) : IRpcModuleFactory<T> where T : IRpcModule
+    {
+        public T Create() => module;
     }
 }
