@@ -44,21 +44,6 @@ public class HsstPackedArrayTests
     private static bool TryGetFloor(ReadOnlySpan<byte> data, scoped ReadOnlySpan<byte> key, out byte[] value) =>
         HsstTestUtil.TryGetFloor(data, key, out value);
 
-    private static List<(byte[] Key, byte[] Value)> Materialize(ReadOnlySpan<byte> data)
-    {
-        List<(byte[], byte[])> entries = [];
-        SpanByteReader reader = new(data);
-        using HsstRefEnumerator<SpanByteReader, NoOpPin> e = new(in reader, new Bound(0, data.Length));
-        Span<byte> keyBuf = stackalloc byte[64];
-        while (e.MoveNext())
-        {
-            ReadOnlySpan<byte> k = e.CopyCurrentLogicalKey(keyBuf);
-            Bound vb = e.Current.ValueBound;
-            entries.Add((k.ToArray(), data.Slice((int)vb.Offset, (int)vb.Length).ToArray()));
-        }
-        return entries;
-    }
-
     private static (byte[][] Keys, byte[][] Values) MakeSortedKeys(int count, int seed = 1)
     {
         Random rng = new(seed);
@@ -79,87 +64,6 @@ public class HsstPackedArrayTests
             return v;
         }).ToArray();
         return (ks.ToArray(), vs);
-    }
-
-    [TestCase(1)]
-    [TestCase(2)]
-    [TestCase(7)]
-    [TestCase(256)]
-    [TestCase(5000)]
-    public void RoundTrip_HitsAndMisses(int count)
-    {
-        (byte[][] keys, byte[][] values) = MakeSortedKeys(count);
-        byte[] data = BuildFlat(keys, values);
-
-        Assert.That(data[^1], Is.EqualTo((byte)IndexType.PackedArray));
-
-        for (int i = 0; i < count; i++)
-        {
-            Assert.That(TryGet(data, keys[i], out byte[] got), Is.True, $"missing key {i}");
-            Assert.That(got, Is.EqualTo(values[i]));
-        }
-
-        Random rng = new(99);
-        for (int t = 0; t < 64; t++)
-        {
-            byte[] missing = new byte[KeySize];
-            rng.NextBytes(missing);
-            if (Array.BinarySearch(keys, missing, Comparer<byte[]>.Create((a, b) => a.AsSpan().SequenceCompareTo(b))) >= 0) continue;
-            Assert.That(TryGet(data, missing, out _), Is.False);
-        }
-    }
-
-    [TestCase(1)]
-    [TestCase(7)]
-    [TestCase(256)]
-    [TestCase(5000)]
-    public void Floor_AgreesWithLinearSearch(int count)
-    {
-        (byte[][] keys, byte[][] values) = MakeSortedKeys(count, seed: 5);
-        byte[] data = BuildFlat(keys, values);
-
-        Random rng = new(11);
-        for (int t = 0; t < 64; t++)
-        {
-            byte[] probe = new byte[KeySize];
-            rng.NextBytes(probe);
-
-            // Reference: largest key <= probe.
-            int floorIdx = -1;
-            for (int i = 0; i < count; i++)
-            {
-                if (keys[i].AsSpan().SequenceCompareTo(probe) <= 0) floorIdx = i; else break;
-            }
-
-            bool ok = TryGetFloor(data, probe, out byte[] got);
-            if (floorIdx < 0)
-            {
-                Assert.That(ok, Is.False);
-            }
-            else
-            {
-                Assert.That(ok, Is.True);
-                Assert.That(got, Is.EqualTo(values[floorIdx]));
-            }
-        }
-    }
-
-    [TestCase(1)]
-    [TestCase(7)]
-    [TestCase(256)]
-    [TestCase(5000)]
-    public void Enumerator_YieldsEntriesInOrder(int count)
-    {
-        (byte[][] keys, byte[][] values) = MakeSortedKeys(count, seed: 42);
-        byte[] data = BuildFlat(keys, values);
-
-        List<(byte[] K, byte[] V)> seen = Materialize(data);
-        Assert.That(seen.Count, Is.EqualTo(count));
-        for (int i = 0; i < count; i++)
-        {
-            Assert.That(seen[i].K, Is.EqualTo(keys[i]));
-            Assert.That(seen[i].V, Is.EqualTo(values[i]));
-        }
     }
 
     [Test]

@@ -2,184 +2,143 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Buffers.Binary;
-using System.Collections.Generic;
 using Nethermind.Core.Extensions;
 using Nethermind.State.Flat.Hsst;
 using NUnit.Framework;
 
 namespace Nethermind.State.Flat.Test;
 
+/// <summary>
+/// Format-specific tests for the keys-first sub-slot builders
+/// (<see cref="HsstTwoByteSlotValueBuilder{TWriter}"/> for the u16 / 64 KiB cumulative cap
+/// variant, and <see cref="HsstTwoByteSlotValueLargeBuilder{TWriter}"/> for the u24 variant).
+/// Tests that exercise the same shape across both builders are parameterised on a
+/// <c>bool large</c> discriminator. Generic round-trip / floor / enumeration coverage lives
+/// in <see cref="HsstCrossFormatTests"/>.
+/// </summary>
 [TestFixture]
 public class HsstTwoByteSlotValueTests
 {
-    private static byte[] Build(byte[][] keys, byte[][] values)
+    private static byte[] Build(bool large, byte[][] keys, byte[][] values)
     {
         Assert.That(keys.Length, Is.EqualTo(values.Length));
         using PooledByteBufferWriter pooled = new(64 * 1024);
-        using HsstTwoByteSlotValueBuilder<PooledByteBufferWriter.Writer> b = new(ref pooled.GetWriter());
-        for (int i = 0; i < keys.Length; i++) b.Add(keys[i], values[i]);
-        b.Build();
+        if (large)
+        {
+            using HsstTwoByteSlotValueLargeBuilder<PooledByteBufferWriter.Writer> b = new(ref pooled.GetWriter());
+            for (int i = 0; i < keys.Length; i++) b.Add(keys[i], values[i]);
+            b.Build();
+        }
+        else
+        {
+            using HsstTwoByteSlotValueBuilder<PooledByteBufferWriter.Writer> b = new(ref pooled.GetWriter());
+            for (int i = 0; i < keys.Length; i++) b.Add(keys[i], values[i]);
+            b.Build();
+        }
         return pooled.WrittenSpan.ToArray();
     }
 
     private static bool TryGet(ReadOnlySpan<byte> data, ReadOnlySpan<byte> key, out byte[] value) =>
         HsstTestUtil.TryGet(data, key, out value);
 
-    private static bool TryGetFloor(ReadOnlySpan<byte> data, ReadOnlySpan<byte> key, out byte[] value) =>
-        HsstTestUtil.TryGetFloor(data, key, out value);
-
-    [TestCase(1)]
-    [TestCase(2)]
-    [TestCase(7)]
-    [TestCase(32)]
-    [TestCase(256)]
-    [TestCase(1024)]
-    public void RoundTrip_HitsAndMisses(int n)
+    [TestCase(false)]
+    [TestCase(true)]
+    public void Add_NonAscendingKey_Throws(bool large)
     {
-        // n unique ascending 2-byte keys; deterministic variable-length values
-        // (some empty to exercise the zero-length / "deleted" marker path).
-        byte[][] keys = new byte[n][];
-        byte[][] vals = new byte[n][];
-        // Spread keys across the 2-byte space.
-        int stride = Math.Max(1, 65536 / Math.Max(1, n));
-        for (int i = 0; i < n; i++)
+        // Duplicate key.
+        Assert.Throws<ArgumentException>(() =>
         {
-            ushort k = (ushort)(i * stride);
-            keys[i] = [(byte)(k >> 8), (byte)(k & 0xff)];
-            int len = (i % 7 == 0) ? 0 : (i % 31) + 1;
-            vals[i] = new byte[len];
-            for (int j = 0; j < len; j++) vals[i][j] = (byte)((i * 17 + j * 13) & 0xff);
-        }
+            using PooledByteBufferWriter p = new(1024);
+            if (large)
+            {
+                using HsstTwoByteSlotValueLargeBuilder<PooledByteBufferWriter.Writer> b = new(ref p.GetWriter());
+                b.Add([0x10, 0x00], [1]);
+                b.Add([0x10, 0x00], [2]);
+            }
+            else
+            {
+                using HsstTwoByteSlotValueBuilder<PooledByteBufferWriter.Writer> b = new(ref p.GetWriter());
+                b.Add([0x10, 0x00], [1]);
+                b.Add([0x10, 0x00], [2]);
+            }
+        }, "duplicate key must throw");
 
-        byte[] data = Build(keys, vals);
-
-        // Wire-format pins: last byte = IndexType; first 2 bytes = N-1 u16 LE KeyCount.
-        Assert.That(data[^1], Is.EqualTo((byte)IndexType.TwoByteSlotValue));
-        Assert.That(BinaryPrimitives.ReadUInt16LittleEndian(data.AsSpan(0, 2)), Is.EqualTo((ushort)(n - 1)));
-
-        // Hits — every key returns the stored value.
-        for (int i = 0; i < n; i++)
+        // Strictly-lower key.
+        Assert.Throws<ArgumentException>(() =>
         {
-            Assert.That(TryGet(data, keys[i], out byte[] got), Is.True, $"missing key #{i}");
-            Assert.That(got, Is.EqualTo(vals[i]));
-        }
-
-        // Miss: a 2-byte key not in the set.
-        byte[] missing = [0xab, 0xcd];
-        bool present = false;
-        for (int i = 0; i < n; i++) if (keys[i].AsSpan().SequenceEqual(missing)) { present = true; break; }
-        if (!present)
-            Assert.That(TryGet(data, missing, out _), Is.False);
+            using PooledByteBufferWriter p = new(1024);
+            if (large)
+            {
+                using HsstTwoByteSlotValueLargeBuilder<PooledByteBufferWriter.Writer> b = new(ref p.GetWriter());
+                b.Add([0x10, 0x00], [1]);
+                b.Add([0x09, 0xff], [2]);
+            }
+            else
+            {
+                using HsstTwoByteSlotValueBuilder<PooledByteBufferWriter.Writer> b = new(ref p.GetWriter());
+                b.Add([0x10, 0x00], [1]);
+                b.Add([0x09, 0xff], [2]);
+            }
+        }, "lower key must throw");
     }
 
-    [Test]
-    public void ZeroLengthValues_RoundTrip()
+    [TestCase(false, 0)]
+    [TestCase(false, 1)]
+    [TestCase(false, 3)]
+    [TestCase(true, 0)]
+    [TestCase(true, 1)]
+    [TestCase(true, 3)]
+    public void Add_WrongKeyLength_Throws(bool large, int len)
     {
-        byte[][] keys =
-        [
-            [0x00, 0x01],
-            [0x12, 0x34],
-            [0xff, 0xfe],
-        ];
-        byte[][] vals = [[], Bytes.FromHexString("deadbeef"), []];
-
-        byte[] data = Build(keys, vals);
-
-        Assert.That(TryGet(data, keys[0], out byte[] g0), Is.True);
-        Assert.That(g0.Length, Is.EqualTo(0));
-        Assert.That(TryGet(data, keys[1], out byte[] g1), Is.True);
-        Assert.That(g1, Is.EqualTo(vals[1]));
-        Assert.That(TryGet(data, keys[2], out byte[] g2), Is.True);
-        Assert.That(g2.Length, Is.EqualTo(0));
-    }
-
-    [Test]
-    public void Floor_BeforeFirst_Misses()
-    {
-        byte[][] keys = [[0x10, 0x00], [0x20, 0x00]];
-        byte[][] vals = [[1], [2]];
-        byte[] data = Build(keys, vals);
-
-        Assert.That(TryGetFloor(data, [0x05, 0x00], out _), Is.False);
-    }
-
-    [Test]
-    public void Floor_BetweenKeys_ReturnsPredecessor()
-    {
-        byte[][] keys = [[0x10, 0x00], [0x20, 0x00], [0x30, 0x00]];
-        byte[][] vals = [[1, 1], [2, 2], [3, 3]];
-        byte[] data = Build(keys, vals);
-
-        // Floor of (0x25, 0x00) is (0x20, 0x00).
-        Assert.That(TryGetFloor(data, [0x25, 0x00], out byte[] got), Is.True);
-        Assert.That(got, Is.EqualTo(new byte[] { 2, 2 }));
-
-        // Floor of (0xff, 0xff) clamps to the last key.
-        Assert.That(TryGetFloor(data, [0xff, 0xff], out byte[] got2), Is.True);
-        Assert.That(got2, Is.EqualTo(new byte[] { 3, 3 }));
-
-        // Exact hit on a stored key uses the same path.
-        Assert.That(TryGetFloor(data, [0x20, 0x00], out byte[] got3), Is.True);
-        Assert.That(got3, Is.EqualTo(new byte[] { 2, 2 }));
-    }
-
-    [Test]
-    public void Add_NonAscendingKey_Throws()
-    {
-        bool dup = false, lower = false;
-        using (PooledByteBufferWriter p = new(1024))
-        {
-            using HsstTwoByteSlotValueBuilder<PooledByteBufferWriter.Writer> b = new(ref p.GetWriter());
-            b.Add([0x10, 0x00], [1]);
-            try { b.Add([0x10, 0x00], [2]); } catch (ArgumentException) { dup = true; }
-        }
-        using (PooledByteBufferWriter p = new(1024))
-        {
-            using HsstTwoByteSlotValueBuilder<PooledByteBufferWriter.Writer> b = new(ref p.GetWriter());
-            b.Add([0x10, 0x00], [1]);
-            try { b.Add([0x09, 0xff], [2]); } catch (ArgumentException) { lower = true; }
-        }
-        Assert.That(dup, Is.True, "duplicate key must throw");
-        Assert.That(lower, Is.True, "lower key must throw");
-    }
-
-    [TestCase(0)]
-    [TestCase(1)]
-    [TestCase(3)]
-    public void Add_WrongKeyLength_Throws(int len)
-    {
-        bool threw = false;
-        using PooledByteBufferWriter pooled = new(1024);
-        using HsstTwoByteSlotValueBuilder<PooledByteBufferWriter.Writer> b = new(ref pooled.GetWriter());
         byte[] key = new byte[len];
-        try { b.Add(key, [1]); } catch (ArgumentException) { threw = true; }
-        Assert.That(threw, Is.True, $"{len}-byte key must throw");
+        Assert.Throws<ArgumentException>(() =>
+        {
+            using PooledByteBufferWriter pooled = new(1024);
+            if (large)
+            {
+                using HsstTwoByteSlotValueLargeBuilder<PooledByteBufferWriter.Writer> b = new(ref pooled.GetWriter());
+                b.Add(key, [1]);
+            }
+            else
+            {
+                using HsstTwoByteSlotValueBuilder<PooledByteBufferWriter.Writer> b = new(ref pooled.GetWriter());
+                b.Add(key, [1]);
+            }
+        }, $"{len}-byte key must throw");
     }
 
-    [Test]
-    public void TrySeek_WrongKeyLength_ReturnsFalse()
+    [TestCase(false)]
+    [TestCase(true)]
+    public void TrySeek_WrongKeyLength_ReturnsFalse(bool large)
     {
         byte[][] keys = [[0x10, 0x00]];
         byte[][] vals = [[1]];
-        byte[] data = Build(keys, vals);
+        byte[] data = Build(large, keys, vals);
 
         Assert.That(TryGet(data, [0x10], out _), Is.False);
         Assert.That(TryGet(data, [0x10, 0x00, 0x00], out _), Is.False);
     }
 
-    [Test]
-    public void Build_EmptyMap_Throws()
-    {
-        bool threw = false;
-        using PooledByteBufferWriter pooled = new(1024);
-        using HsstTwoByteSlotValueBuilder<PooledByteBufferWriter.Writer> b = new(ref pooled.GetWriter());
-        try { b.Build(); } catch (InvalidOperationException) { threw = true; }
-        Assert.That(threw, Is.True, "Build on empty map must throw");
-    }
+    [TestCase(false)]
+    [TestCase(true)]
+    public void Build_EmptyMap_Throws(bool large) =>
+        Assert.Throws<InvalidOperationException>(() =>
+        {
+            using PooledByteBufferWriter pooled = new(1024);
+            if (large)
+            {
+                using HsstTwoByteSlotValueLargeBuilder<PooledByteBufferWriter.Writer> b = new(ref pooled.GetWriter());
+                b.Build();
+            }
+            else
+            {
+                using HsstTwoByteSlotValueBuilder<PooledByteBufferWriter.Writer> b = new(ref pooled.GetWriter());
+                b.Build();
+            }
+        }, "Build on empty map must throw");
 
     [Test]
-    public void FitsInOffsetWidth_BoundaryAndOverflow()
+    public void FitsInOffsetWidth_BoundaryAndOverflow_U16()
     {
         Assert.That(HsstTwoByteSlotValueBuilder<PooledByteBufferWriter.Writer>.FitsInOffsetWidth(0), Is.True);
         Assert.That(HsstTwoByteSlotValueBuilder<PooledByteBufferWriter.Writer>.FitsInOffsetWidth(ushort.MaxValue), Is.True);
@@ -187,35 +146,67 @@ public class HsstTwoByteSlotValueTests
     }
 
     [Test]
-    public void DataOverflow_AddThrows_WhenCumulativeCrossesU16()
+    public void FitsInOffsetWidth_BoundaryAndOverflow_U24()
     {
-        // Push the cumulative payload past ushort.MaxValue — Add itself rejects (the
-        // builder needs every offset to fit u16, so the trip-wire fires the moment a
-        // new entry would push the running total above the cap rather than waiting
-        // for Build).
-        bool addedTwo = false, threwOnThird = false, threwOnSingleOverflow = false;
-        using (PooledByteBufferWriter pooled = new(128 * 1024))
-        {
-            using HsstTwoByteSlotValueBuilder<PooledByteBufferWriter.Writer> b = new(ref pooled.GetWriter());
-            b.Add([0x00, 0x01], new byte[30000]);
-            b.Add([0x00, 0x02], new byte[30000]);
-            addedTwo = true;
-            // Cumulative would be 65600 > 65535: Add throws.
-            try { b.Add([0x00, 0x03], new byte[5600]); } catch (InvalidOperationException) { threwOnThird = true; }
-        }
-        // Single value larger than the u16 cap: Add rejects on the first entry.
-        using (PooledByteBufferWriter pooled = new(128 * 1024))
-        {
-            using HsstTwoByteSlotValueBuilder<PooledByteBufferWriter.Writer> b = new(ref pooled.GetWriter());
-            try { b.Add([0x00, 0x01], new byte[ushort.MaxValue + 1]); } catch (InvalidOperationException) { threwOnSingleOverflow = true; }
-        }
-        Assert.That(addedTwo, Is.True, "first two Adds must succeed");
-        Assert.That(threwOnThird, Is.True, "Add must throw once cumulative crosses ushort.MaxValue");
-        Assert.That(threwOnSingleOverflow, Is.True, "Add must throw on a single value > ushort.MaxValue");
+        Assert.That(HsstTwoByteSlotValueLargeBuilder<PooledByteBufferWriter.Writer>.FitsInOffsetWidth(0), Is.True);
+        Assert.That(HsstTwoByteSlotValueLargeBuilder<PooledByteBufferWriter.Writer>.FitsInOffsetWidth((1 << 24) - 1), Is.True);
+        Assert.That(HsstTwoByteSlotValueLargeBuilder<PooledByteBufferWriter.Writer>.FitsInOffsetWidth(1 << 24), Is.False);
     }
 
     [Test]
-    public void WireFormat_KeysFirst_PinsBytes()
+    public void DataOverflow_AddThrows_WhenCumulativeCrossesU16()
+    {
+        // Push the cumulative payload past ushort.MaxValue — Add itself rejects (the
+        // u16 builder needs every offset to fit u16, so the trip-wire fires the moment
+        // a new entry would push the running total above the cap rather than waiting
+        // for Build).
+        Assert.Throws<InvalidOperationException>(() =>
+        {
+            using PooledByteBufferWriter pooled = new(128 * 1024);
+            using HsstTwoByteSlotValueBuilder<PooledByteBufferWriter.Writer> b = new(ref pooled.GetWriter());
+            b.Add([0x00, 0x01], new byte[30000]);
+            b.Add([0x00, 0x02], new byte[30000]);
+            b.Add([0x00, 0x03], new byte[5600]);
+        }, "Add must throw once cumulative crosses ushort.MaxValue");
+
+        Assert.Throws<InvalidOperationException>(() =>
+        {
+            using PooledByteBufferWriter pooled = new(128 * 1024);
+            using HsstTwoByteSlotValueBuilder<PooledByteBufferWriter.Writer> b = new(ref pooled.GetWriter());
+            b.Add([0x00, 0x01], new byte[ushort.MaxValue + 1]);
+        }, "Add must throw on a single value > ushort.MaxValue");
+    }
+
+    [Test]
+    public void RoundTrip_PayloadExceedsU16Cap_RequiresU24()
+    {
+        // 3000 × 32 = 96 KiB > ushort.MaxValue: this is the regime that forces the u24
+        // builder's wider offsets. Spot-check entries at the start, middle, and end —
+        // including ones whose data offset is > 65,535 — to ensure the u24 offset path
+        // resolves correctly.
+        const int n = 3000;
+        byte[][] keys = new byte[n][];
+        byte[][] vals = new byte[n][];
+        for (int i = 0; i < n; i++)
+        {
+            ushort k = (ushort)i;
+            keys[i] = [(byte)(k >> 8), (byte)(k & 0xff)];
+            vals[i] = new byte[32];
+            for (int j = 0; j < 32; j++) vals[i][j] = (byte)((i * 7 + j) & 0xff);
+        }
+
+        byte[] data = Build(large: true, keys, vals);
+        Assert.That(data[^1], Is.EqualTo((byte)IndexType.TwoByteSlotValueLarge));
+
+        foreach (int idx in new[] { 0, n / 2, n - 1 })
+        {
+            Assert.That(TryGet(data, keys[idx], out byte[] got), Is.True, $"missing key #{idx}");
+            Assert.That(got, Is.EqualTo(vals[idx]));
+        }
+    }
+
+    [Test]
+    public void WireFormat_KeysFirst_PinsBytes_U16()
     {
         // Three entries, 2-byte values. Validate every byte of the keys-first layout:
         // header (KeyCount) + keys + offsets + values + IndexType trailer.
@@ -232,7 +223,7 @@ public class HsstTwoByteSlotValueTests
             Bytes.FromHexString("eeff"),
         ];
 
-        byte[] data = Build(keys, vals);
+        byte[] data = Build(large: false, keys, vals);
 
         // Expected wire format (total 19 bytes):
         //   keycount:    02 00                (N − 1 = 2)
@@ -250,7 +241,6 @@ public class HsstTwoByteSlotValueTests
         ];
         Assert.That(data, Is.EqualTo(expected));
 
-        // And every entry round-trips through the dispatcher.
         for (int i = 0; i < keys.Length; i++)
         {
             Assert.That(TryGet(data, keys[i], out byte[] got), Is.True);
@@ -259,38 +249,43 @@ public class HsstTwoByteSlotValueTests
     }
 
     [Test]
-    public void Enumerator_WalksInKeyOrder()
+    public void WireFormat_KeysFirst_PinsBytes_U24()
     {
         byte[][] keys =
         [
             [0x00, 0x10],
-            [0x12, 0x34],
-            [0xab, 0xcd],
-            [0xff, 0xfe],
+            [0x00, 0x20],
+            [0x00, 0x30],
         ];
-        byte[][] vals = [[1], [], [2, 3, 4], [5]];
-        byte[] data = Build(keys, vals);
+        byte[][] vals =
+        [
+            Bytes.FromHexString("aabb"),
+            Bytes.FromHexString("ccdd"),
+            Bytes.FromHexString("eeff"),
+        ];
 
-        SpanByteReader reader = new(data);
-        List<(byte[] Key, byte[] Value)> walked = [];
-        Span<byte> keyScratch = stackalloc byte[2];
-        using (HsstRefEnumerator<SpanByteReader, NoOpPin> e = new(in reader, new Bound(0, data.Length)))
-        {
-            while (e.MoveNext())
-            {
-                ReadOnlySpan<byte> k = e.CopyCurrentLogicalKey(keyScratch);
-                Bound vb = e.Current.ValueBound;
-                walked.Add((
-                    k.ToArray(),
-                    data.AsSpan().Slice((int)vb.Offset, (int)vb.Length).ToArray()));
-            }
-        }
+        byte[] data = Build(large: true, keys, vals);
 
-        Assert.That(walked.Count, Is.EqualTo(keys.Length));
+        // Expected wire format (total 21 bytes):
+        //   keycount:    02 00                       (N − 1 = 2)
+        //   keys:        10 00 20 00 30 00           (LE-stored, 3·2)
+        //   offsets:     02 00 00 04 00 00           (2·3 = 6, Offset_1 = 2 u24 LE, Offset_2 = 4 u24 LE)
+        //   values:      aa bb cc dd ee ff           (6)
+        //   indextype:   06                          (1)
+        byte[] expected =
+        [
+            0x02, 0x00,
+            0x10, 0x00, 0x20, 0x00, 0x30, 0x00,
+            0x02, 0x00, 0x00, 0x04, 0x00, 0x00,
+            0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff,
+            0x06,
+        ];
+        Assert.That(data, Is.EqualTo(expected));
+
         for (int i = 0; i < keys.Length; i++)
         {
-            Assert.That(walked[i].Key, Is.EqualTo(keys[i]), $"key #{i}");
-            Assert.That(walked[i].Value, Is.EqualTo(vals[i]), $"value #{i}");
+            Assert.That(TryGet(data, keys[i], out byte[] got), Is.True);
+            Assert.That(got, Is.EqualTo(vals[i]));
         }
     }
 }
