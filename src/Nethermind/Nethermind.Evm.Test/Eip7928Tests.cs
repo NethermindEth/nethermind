@@ -721,6 +721,24 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
     }
 
     [Test]
+    public void Eip7702_null_address_delegation_to_empty_code_records_nonce_without_code_change()
+    {
+        InitWorldState(TestState, []);
+
+        AuthorizationTuple authorization = SignAuthorization(TestItem.PrivateKeyA, Address.Zero, nonce: 1);
+
+        BlockAccessList bal = ExecuteSetCodeCall(authorization);
+        AccountChanges? senderChanges = bal.GetAccountChanges(TestItem.AddressA);
+
+        using (Assert.EnterMultipleScope())
+        {
+            AssertNonceChange(bal, TestItem.AddressA, 2);
+            Assert.That(senderChanges, Is.Not.Null);
+            Assert.That(senderChanges!.CodeChanges, Is.Empty);
+        }
+    }
+
+    [Test]
     public void Eip7702_multi_hop_delegation_resolves_one_hop_in_bal()
     {
         Address authority = TestItem.AddressB;
