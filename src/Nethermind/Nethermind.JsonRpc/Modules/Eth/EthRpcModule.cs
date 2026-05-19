@@ -1069,33 +1069,35 @@ public partial class EthRpcModule(
     public ResultWrapper<JsonNode> eth_config()
     {
         ForkActivationsSummary forks = forkInfo.GetForkActivationsSummary(_blockFinder.Head?.Header);
+        ulong genesisTimestamp = _blockFinder.FindGenesisBlock()?.Timestamp ?? 0UL;
 
         return ResultWrapper<JsonNode>.Success(JsonNode.Parse(JsonSerializer.Serialize((new ForkConfigSummary
         {
-            Current = GetForkConfig(forks.Current, _specProvider)!,
-            Next = GetForkConfig(forks.Next, _specProvider),
-            Last = GetForkConfig(forks.Last, _specProvider)
+            Current = GetForkConfig(forks.Current, _specProvider, genesisTimestamp)!,
+            Next = GetForkConfig(forks.Next, _specProvider, genesisTimestamp),
+            Last = GetForkConfig(forks.Last, _specProvider, genesisTimestamp)
         }), UnchangedDictionaryKeyOptions)));
 
-        static ForkConfig? GetForkConfig(Fork? fork, ISpecProvider specProvider)
+        static ForkConfig? GetForkConfig(Fork? fork, ISpecProvider specProvider, ulong genesisTimestamp)
         {
             if (fork is null)
             {
                 return null;
             }
 
-            IReleaseSpec? spec = specProvider.GetSpec(fork.Value.Activation.BlockNumber, fork.Value.Activation.Timestamp);
+            ForkActivation activation = fork.Value.Activation;
+            IReleaseSpec spec = specProvider.GetSpec(activation.BlockNumber, activation.Timestamp);
+            ulong activationTimestamp = activation.Timestamp ?? 0UL;
 
             return new ForkConfig
             {
-                ActivationTime = fork.Value.Activation.Timestamp is not null ? (int)fork.Value.Activation.Timestamp : null,
-                ActivationBlock = fork.Value.Activation.Timestamp is null ? (int)fork.Value.Activation.BlockNumber : null,
-                BlobSchedule = spec.IsEip4844Enabled ? new BlobScheduleSettingsForRpc
+                ActivationTime = genesisTimestamp >= activationTimestamp ? 0 : (int)activationTimestamp,
+                BlobSchedule = new BlobScheduleSettingsForRpc
                 {
                     BaseFeeUpdateFraction = (int)spec.BlobBaseFeeUpdateFraction,
                     Max = (int)spec.MaxBlobCount,
                     Target = (int)spec.TargetBlobCount,
-                } : null,
+                },
                 ChainId = specProvider.ChainId,
                 ForkId = fork.Value.Id.HashBytes,
                 Precompiles = spec.ListPrecompiles(),
