@@ -31,10 +31,10 @@ public interface IFlatDbConfig : IConfig
     [ConfigItem(Description = "Max in flight compact job", DefaultValue = "32")]
     int MaxInFlightCompactJob { get; set; }
 
-    [ConfigItem(Description = "Max reorg depth", DefaultValue = "256")]
-    int MaxReorgDepth { get; set; }
+    [ConfigItem(Description = "Maximum number of in-memory base snapshots before conversion to the persisted-snapshot tier kicks in. Counted as `SnapshotCount` of the in-memory repository, not a block-distance depth. Default is MinReorgDepth + CompactSize.", DefaultValue = "160")]
+    int MaxInMemoryBaseSnapshotCount { get; set; }
 
-    [ConfigItem(Description = "Minimum compact size (power of 2, floor for hierarchical compaction)", DefaultValue = "2")]
+    [ConfigItem(Description = "Minimum compact size (power of 2, floor for hierarchical compaction)", DefaultValue = "4")]
     int MinCompactSize { get; set; }
 
     [ConfigItem(Description = "Minimum reorg depth", DefaultValue = "128")]
@@ -48,4 +48,37 @@ public interface IFlatDbConfig : IConfig
 
     [ConfigItem(Description = "Verify with trie", DefaultValue = "false")]
     bool VerifyWithTrie { get; set; }
+
+    [ConfigItem(Description = "Enable long finality support with persisted snapshots", DefaultValue = "false")]
+    bool EnableLongFinality { get; set; }
+
+    [ConfigItem(Description = "Total max reorg depth in blocks (in-memory + persisted). When exceeded, force-persist oldest HSST snapshot to RocksDB.", DefaultValue = "90000")]
+    int LongFinalityReorgDepth { get; set; }
+
+    [ConfigItem(Description = "Path for persisted snapshot arena files (relative to data dir)", DefaultValue = "snapshots")]
+    string PersistedSnapshotPath { get; set; }
+
+    [ConfigItem(Description = "Max arena file size in bytes", DefaultValue = "1073741824")]
+    long ArenaFileSizeBytes { get; set; }
+
+    [ConfigItem(Description = "Per-arena page-cache budget (bytes) for the Small persisted-snapshot arena (short-range snapshots, To-From < CompactSize; previously called the base arena). Backs the PageResidencyTracker that drives madvise(DONTNEED) eviction on mmap'd arena files. 0 disables the tracker for this arena.", DefaultValue = "1073741824")]
+    long PersistedSnapshotSmallArenaPageCacheBytes { get; set; }
+
+    [ConfigItem(Description = "Per-arena page-cache budget (bytes) for the Large persisted-snapshot arena (compacted snapshots, To-From ≥ CompactSize; previously called the compacted arena). Backs the PageResidencyTracker that drives madvise(DONTNEED) eviction on mmap'd arena files. 0 disables the tracker for this arena.", DefaultValue = "8589934592")]
+    long PersistedSnapshotLargeArenaPageCacheBytes { get; set; }
+
+    [ConfigItem(Description = "When the persisted-snapshot page tracker evicts a page, also call posix_fadvise(POSIX_FADV_DONTNEED) on the arena file descriptor in addition to the existing madvise. Only useful for benchmarking — keeps arena pages from polluting the OS file cache and competing with other applications.", DefaultValue = "false")]
+    bool PersistedSnapshotFadviseOnPageEviction { get; set; }
+
+    [ConfigItem(Description = "Max persisted snapshot compaction size (hierarchical compaction ceiling for persisted layer)", DefaultValue = "1024")]
+    int PersistedSnapshotMaxCompactSize { get; set; }
+
+    [ConfigItem(Description = "Validate persisted snapshots against in-memory snapshots after conversion (debug/diagnostic only)", DefaultValue = "false")]
+    bool ValidatePersistedSnapshot { get; set; }
+
+    [ConfigItem(Description = "Bits per key for the per-snapshot in-memory bloom filter. One unified filter covers address/slot/self-destruct keys plus state-trie and storage-trie node paths. Higher = lower false-positive rate but more RAM. 0 disables the filter (lookups behave as full sweeps).", DefaultValue = "14.0")]
+    double PersistedSnapshotBloomBitsPerKey { get; set; }
+
+    [ConfigItem(Description = "Maximum total source bytes the compactor will merge into a single Linked compacted snapshot. If the sum of input PersistedSnapshot sizes exceeds this, the compactor halves compactSize and retries. Keeps the merged output safely below int.MaxValue and the underlying arena ceiling.", DefaultValue = "2147483648")]
+    long PersistedSnapshotMaxCompactedSourceBytes { get; set; }
 }

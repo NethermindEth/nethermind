@@ -8,6 +8,13 @@
     <PackageReference Include="BenchmarkDotNet" />
   </ItemGroup>
   <ItemGroup>
+    <!-- Pre-existing breakage from c8a5fbcff3 (long-finality refactor); excluded so the
+         project still builds for runnable benchmarks. -->
+    <Compile Remove="State/PersistedSnapshotBenchmark.cs" />
+    <Compile Remove="State/ReadOnlySnapshotBundleBenchmark.cs" />
+    <Compile Remove="State/WriteBatchBenchmark.cs" />
+  </ItemGroup>
+  <ItemGroup>
     <ProjectReference Include="..\Nethermind.Consensus.Ethash\Nethermind.Consensus.Ethash.csproj" />
     <ProjectReference Include="..\Nethermind.Core.Test\Nethermind.Core.Test.csproj" />
     <ProjectReference Include="..\Nethermind.Core\Nethermind.Core.csproj" />

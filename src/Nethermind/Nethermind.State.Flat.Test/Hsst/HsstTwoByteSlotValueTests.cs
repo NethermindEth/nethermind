@@ -1,0 +1,291 @@
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
+using System;
+using Nethermind.Core.Extensions;
+using Nethermind.State.Flat.Hsst;
+using NUnit.Framework;
+
+namespace Nethermind.State.Flat.Test;
+
+/// <summary>
+/// Format-specific tests for the keys-first sub-slot builders
+/// (<see cref="HsstTwoByteSlotValueBuilder{TWriter}"/> for the u16 / 64 KiB cumulative cap
+/// variant, and <see cref="HsstTwoByteSlotValueLargeBuilder{TWriter}"/> for the u24 variant).
+/// Tests that exercise the same shape across both builders are parameterised on a
+/// <c>bool large</c> discriminator. Generic round-trip / floor / enumeration coverage lives
+/// in <see cref="HsstCrossFormatTests"/>.
+/// </summary>
+[TestFixture]
+public class HsstTwoByteSlotValueTests
+{
+    private static byte[] Build(bool large, byte[][] keys, byte[][] values)
+    {
+        Assert.That(keys.Length, Is.EqualTo(values.Length));
+        using PooledByteBufferWriter pooled = new(64 * 1024);
+        if (large)
+        {
+            using HsstTwoByteSlotValueLargeBuilder<PooledByteBufferWriter.Writer> b = new(ref pooled.GetWriter());
+            for (int i = 0; i < keys.Length; i++) b.Add(keys[i], values[i]);
+            b.Build();
+        }
+        else
+        {
+            using HsstTwoByteSlotValueBuilder<PooledByteBufferWriter.Writer> b = new(ref pooled.GetWriter());
+            for (int i = 0; i < keys.Length; i++) b.Add(keys[i], values[i]);
+            b.Build();
+        }
+        return pooled.WrittenSpan.ToArray();
+    }
+
+    private static bool TryGet(ReadOnlySpan<byte> data, ReadOnlySpan<byte> key, out byte[] value) =>
+        HsstTestUtil.TryGet(data, key, out value);
+
+    [TestCase(false)]
+    [TestCase(true)]
+    public void Add_NonAscendingKey_Throws(bool large)
+    {
+        // Duplicate key.
+        Assert.Throws<ArgumentException>(() =>
+        {
+            using PooledByteBufferWriter p = new(1024);
+            if (large)
+            {
+                using HsstTwoByteSlotValueLargeBuilder<PooledByteBufferWriter.Writer> b = new(ref p.GetWriter());
+                b.Add([0x10, 0x00], [1]);
+                b.Add([0x10, 0x00], [2]);
+            }
+            else
+            {
+                using HsstTwoByteSlotValueBuilder<PooledByteBufferWriter.Writer> b = new(ref p.GetWriter());
+                b.Add([0x10, 0x00], [1]);
+                b.Add([0x10, 0x00], [2]);
+            }
+        }, "duplicate key must throw");
+
+        // Strictly-lower key.
+        Assert.Throws<ArgumentException>(() =>
+        {
+            using PooledByteBufferWriter p = new(1024);
+            if (large)
+            {
+                using HsstTwoByteSlotValueLargeBuilder<PooledByteBufferWriter.Writer> b = new(ref p.GetWriter());
+                b.Add([0x10, 0x00], [1]);
+                b.Add([0x09, 0xff], [2]);
+            }
+            else
+            {
+                using HsstTwoByteSlotValueBuilder<PooledByteBufferWriter.Writer> b = new(ref p.GetWriter());
+                b.Add([0x10, 0x00], [1]);
+                b.Add([0x09, 0xff], [2]);
+            }
+        }, "lower key must throw");
+    }
+
+    [TestCase(false, 0)]
+    [TestCase(false, 1)]
+    [TestCase(false, 3)]
+    [TestCase(true, 0)]
+    [TestCase(true, 1)]
+    [TestCase(true, 3)]
+    public void Add_WrongKeyLength_Throws(bool large, int len)
+    {
+        byte[] key = new byte[len];
+        Assert.Throws<ArgumentException>(() =>
+        {
+            using PooledByteBufferWriter pooled = new(1024);
+            if (large)
+            {
+                using HsstTwoByteSlotValueLargeBuilder<PooledByteBufferWriter.Writer> b = new(ref pooled.GetWriter());
+                b.Add(key, [1]);
+            }
+            else
+            {
+                using HsstTwoByteSlotValueBuilder<PooledByteBufferWriter.Writer> b = new(ref pooled.GetWriter());
+                b.Add(key, [1]);
+            }
+        }, $"{len}-byte key must throw");
+    }
+
+    [TestCase(false)]
+    [TestCase(true)]
+    public void TrySeek_WrongKeyLength_ReturnsFalse(bool large)
+    {
+        byte[][] keys = [[0x10, 0x00]];
+        byte[][] vals = [[1]];
+        byte[] data = Build(large, keys, vals);
+
+        Assert.That(TryGet(data, [0x10], out _), Is.False);
+        Assert.That(TryGet(data, [0x10, 0x00, 0x00], out _), Is.False);
+    }
+
+    [TestCase(false)]
+    [TestCase(true)]
+    public void Build_EmptyMap_Throws(bool large) =>
+        Assert.Throws<InvalidOperationException>(() =>
+        {
+            using PooledByteBufferWriter pooled = new(1024);
+            if (large)
+            {
+                using HsstTwoByteSlotValueLargeBuilder<PooledByteBufferWriter.Writer> b = new(ref pooled.GetWriter());
+                b.Build();
+            }
+            else
+            {
+                using HsstTwoByteSlotValueBuilder<PooledByteBufferWriter.Writer> b = new(ref pooled.GetWriter());
+                b.Build();
+            }
+        }, "Build on empty map must throw");
+
+    [Test]
+    public void FitsInOffsetWidth_BoundaryAndOverflow_U16()
+    {
+        Assert.That(HsstTwoByteSlotValueBuilder<PooledByteBufferWriter.Writer>.FitsInOffsetWidth(0), Is.True);
+        Assert.That(HsstTwoByteSlotValueBuilder<PooledByteBufferWriter.Writer>.FitsInOffsetWidth(ushort.MaxValue), Is.True);
+        Assert.That(HsstTwoByteSlotValueBuilder<PooledByteBufferWriter.Writer>.FitsInOffsetWidth(ushort.MaxValue + 1), Is.False);
+    }
+
+    [Test]
+    public void FitsInOffsetWidth_BoundaryAndOverflow_U24()
+    {
+        Assert.That(HsstTwoByteSlotValueLargeBuilder<PooledByteBufferWriter.Writer>.FitsInOffsetWidth(0), Is.True);
+        Assert.That(HsstTwoByteSlotValueLargeBuilder<PooledByteBufferWriter.Writer>.FitsInOffsetWidth((1 << 24) - 1), Is.True);
+        Assert.That(HsstTwoByteSlotValueLargeBuilder<PooledByteBufferWriter.Writer>.FitsInOffsetWidth(1 << 24), Is.False);
+    }
+
+    [Test]
+    public void DataOverflow_AddThrows_WhenCumulativeCrossesU16()
+    {
+        // Push the cumulative payload past ushort.MaxValue — Add itself rejects (the
+        // u16 builder needs every offset to fit u16, so the trip-wire fires the moment
+        // a new entry would push the running total above the cap rather than waiting
+        // for Build).
+        Assert.Throws<InvalidOperationException>(() =>
+        {
+            using PooledByteBufferWriter pooled = new(128 * 1024);
+            using HsstTwoByteSlotValueBuilder<PooledByteBufferWriter.Writer> b = new(ref pooled.GetWriter());
+            b.Add([0x00, 0x01], new byte[30000]);
+            b.Add([0x00, 0x02], new byte[30000]);
+            b.Add([0x00, 0x03], new byte[5600]);
+        }, "Add must throw once cumulative crosses ushort.MaxValue");
+
+        Assert.Throws<InvalidOperationException>(() =>
+        {
+            using PooledByteBufferWriter pooled = new(128 * 1024);
+            using HsstTwoByteSlotValueBuilder<PooledByteBufferWriter.Writer> b = new(ref pooled.GetWriter());
+            b.Add([0x00, 0x01], new byte[ushort.MaxValue + 1]);
+        }, "Add must throw on a single value > ushort.MaxValue");
+    }
+
+    [Test]
+    public void RoundTrip_PayloadExceedsU16Cap_RequiresU24()
+    {
+        // 3000 × 32 = 96 KiB > ushort.MaxValue: this is the regime that forces the u24
+        // builder's wider offsets. Spot-check entries at the start, middle, and end —
+        // including ones whose data offset is > 65,535 — to ensure the u24 offset path
+        // resolves correctly.
+        const int n = 3000;
+        byte[][] keys = new byte[n][];
+        byte[][] vals = new byte[n][];
+        for (int i = 0; i < n; i++)
+        {
+            ushort k = (ushort)i;
+            keys[i] = [(byte)(k >> 8), (byte)(k & 0xff)];
+            vals[i] = new byte[32];
+            for (int j = 0; j < 32; j++) vals[i][j] = (byte)((i * 7 + j) & 0xff);
+        }
+
+        byte[] data = Build(large: true, keys, vals);
+        Assert.That(data[^1], Is.EqualTo((byte)IndexType.TwoByteSlotValueLarge));
+
+        foreach (int idx in new[] { 0, n / 2, n - 1 })
+        {
+            Assert.That(TryGet(data, keys[idx], out byte[] got), Is.True, $"missing key #{idx}");
+            Assert.That(got, Is.EqualTo(vals[idx]));
+        }
+    }
+
+    [Test]
+    public void WireFormat_KeysFirst_PinsBytes_U16()
+    {
+        // Three entries, 2-byte values. Validate every byte of the keys-first layout:
+        // header (KeyCount) + keys + offsets + values + IndexType trailer.
+        byte[][] keys =
+        [
+            [0x00, 0x10],
+            [0x00, 0x20],
+            [0x00, 0x30],
+        ];
+        byte[][] vals =
+        [
+            Bytes.FromHexString("aabb"),
+            Bytes.FromHexString("ccdd"),
+            Bytes.FromHexString("eeff"),
+        ];
+
+        byte[] data = Build(large: false, keys, vals);
+
+        // Expected wire format (total 19 bytes):
+        //   keycount:    02 00                (N − 1 = 2)
+        //   keys:        10 00 20 00 30 00    (LE-stored: input 00:10 → 10 00, etc.)
+        //   offsets:     02 00 04 00          (Offset_1 = 2, Offset_2 = 4, relative to values start)
+        //   values:      aa bb cc dd ee ff
+        //   indextype:   05
+        byte[] expected =
+        [
+            0x02, 0x00,
+            0x10, 0x00, 0x20, 0x00, 0x30, 0x00,
+            0x02, 0x00, 0x04, 0x00,
+            0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff,
+            0x05,
+        ];
+        Assert.That(data, Is.EqualTo(expected));
+
+        for (int i = 0; i < keys.Length; i++)
+        {
+            Assert.That(TryGet(data, keys[i], out byte[] got), Is.True);
+            Assert.That(got, Is.EqualTo(vals[i]));
+        }
+    }
+
+    [Test]
+    public void WireFormat_KeysFirst_PinsBytes_U24()
+    {
+        byte[][] keys =
+        [
+            [0x00, 0x10],
+            [0x00, 0x20],
+            [0x00, 0x30],
+        ];
+        byte[][] vals =
+        [
+            Bytes.FromHexString("aabb"),
+            Bytes.FromHexString("ccdd"),
+            Bytes.FromHexString("eeff"),
+        ];
+
+        byte[] data = Build(large: true, keys, vals);
+
+        // Expected wire format (total 21 bytes):
+        //   keycount:    02 00                       (N − 1 = 2)
+        //   keys:        10 00 20 00 30 00           (LE-stored, 3·2)
+        //   offsets:     02 00 00 04 00 00           (2·3 = 6, Offset_1 = 2 u24 LE, Offset_2 = 4 u24 LE)
+        //   values:      aa bb cc dd ee ff           (6)
+        //   indextype:   06                          (1)
+        byte[] expected =
+        [
+            0x02, 0x00,
+            0x10, 0x00, 0x20, 0x00, 0x30, 0x00,
+            0x02, 0x00, 0x00, 0x04, 0x00, 0x00,
+            0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff,
+            0x06,
+        ];
+        Assert.That(data, Is.EqualTo(expected));
+
+        for (int i = 0; i < keys.Length; i++)
+        {
+            Assert.That(TryGet(data, keys[i], out byte[] got), Is.True);
+            Assert.That(got, Is.EqualTo(vals[i]));
+        }
+    }
+}

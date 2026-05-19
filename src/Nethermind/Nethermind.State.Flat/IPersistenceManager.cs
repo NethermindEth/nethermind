@@ -5,7 +5,7 @@ using Nethermind.State.Flat.Persistence;
 
 namespace Nethermind.State.Flat;
 
-public interface IPersistenceManager
+public interface IPersistenceManager : IAsyncDisposable
 {
     IPersistence.IPersistenceReader LeaseReader();
     StateId GetCurrentPersistedStateId();

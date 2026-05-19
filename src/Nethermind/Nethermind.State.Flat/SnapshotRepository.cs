@@ -8,38 +8,205 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Threading;
 using Nethermind.Logging;
+using Nethermind.State.Flat.PersistedSnapshots;
 
 namespace Nethermind.State.Flat;
 
-public class SnapshotRepository(ILogManager logManager) : ISnapshotRepository
+public class SnapshotRepository(PersistedSnapshotRepositories persistedSnapshotRepositories, ILogManager logManager) : ISnapshotRepository
 {
     private readonly ILogger _logger = logManager.GetClassLogger<SnapshotRepository>();
+    private readonly IPersistedSnapshotRepository _smallPersisted = persistedSnapshotRepositories.Small;
+    private readonly IPersistedSnapshotRepository _largePersisted = persistedSnapshotRepositories.Large;
 
+    // Do NOT iterate these dictionaries: entry counts can reach hundreds of thousands
+    // in production. Use TryGetValue / TryLease* for point lookups. Aggregates (the
+    // SnapshotCount / CompactedSnapshotCount properties below, plus the static
+    // Metrics.Snapshot* gauges) are maintained as running totals at the TryAdd* /
+    // RemoveAndRelease* sites so the repo doesn't pay ConcurrentDictionary.Count's
+    // all-stripe-lock cost on every read.
     private readonly ConcurrentDictionary<StateId, Snapshot> _compactedSnapshots = new();
     private readonly ConcurrentDictionary<StateId, Snapshot> _snapshots = new();
-    private readonly ReadWriteLockBox<SortedSet<StateId>> _sortedSnapshotStateIds = new(new SortedSet<StateId>());
+    private readonly ReadWriteLockBox<SortedSet<StateId>> _sortedSnapshotStateIds = new([]);
+    private long _snapshotCount;
+    private long _compactedSnapshotCount;
+    // Always guarded by `_sortedSnapshotStateIds`'s lock.
+    private StateId? _lastRegisteredState;
 
-    public int SnapshotCount => _snapshots.Count;
-    public int CompactedSnapshotCount => _compactedSnapshots.Count;
+    public int SnapshotCount => (int)Interlocked.Read(ref _snapshotCount);
+    public int CompactedSnapshotCount => (int)Interlocked.Read(ref _compactedSnapshotCount);
+
+    /// <summary>
+    /// Tip used as the seed for backward walks over the snapshot graph
+    /// (see <see cref="PersistenceManager"/>'s persist-finding paths).
+    /// Tracks call order of <see cref="AddStateId"/>, not block-number max —
+    /// the most-recent registration wins even if it lowers the block number.
+    /// </summary>
+    public StateId? LastRegisteredState
+    {
+        get
+        {
+            using ReadWriteLockBox<SortedSet<StateId>>.Lock readLock = _sortedSnapshotStateIds.EnterReadLock(out _);
+            return _lastRegisteredState;
+        }
+    }
 
     public void AddStateId(in StateId stateId)
     {
         using ReadWriteLockBox<SortedSet<StateId>>.Lock _ = _sortedSnapshotStateIds.EnterWriteLock(out SortedSet<StateId> sortedSnapshots);
         sortedSnapshots.Add(stateId);
+        _lastRegisteredState = stateId;
     }
 
-    public SnapshotPooledList AssembleSnapshots(in StateId baseBlock, in StateId targetState, int estimatedSize)
+    public AssembledSnapshotResult AssembleSnapshots(in StateId baseBlock, in StateId targetState, int estimatedSize)
     {
-        SnapshotPooledList list = AssembleSnapshotsUntil(baseBlock, targetState.BlockNumber, estimatedSize);
-        if (list.Count > 0 && list[0].From.BlockNumber == targetState.BlockNumber && list[0].From != targetState)
+        if (baseBlock == targetState) return new AssembledSnapshotResult(SnapshotPooledList.Empty(), PersistedSnapshotList.Empty());
+
+        // BFS over the snapshot graph: each StateId node has up to 4 edges
+        // (compacted/base × in-memory/persisted). Once on a persisted edge,
+        // further in-memory edges are not explored.
+        using ArrayPoolList<(IDisposable snapshot, int parentIndex)> visited = new(estimatedSize);
+        try
         {
-            list.Dispose();
+            Queue<(StateId current, bool isPersisted, int parentIndex)> queue = new();
+            HashSet<StateId> seen = [];
+            queue.Enqueue((baseBlock, false, -1));
+            seen.Add(baseBlock);
+            int winnerIndex = -1;
 
-            // Likely persisted a non-finalized block.
-            throw new InvalidOperationException($"Attempted to compile snapshots from {baseBlock} to {targetState} but target is not reachable from baseBlock");
+            while (queue.Count > 0 && winnerIndex < 0)
+            {
+                (StateId current, bool currentPersisted, int parentIdx) = queue.Dequeue();
+
+                // Expand up to 6 edges from `current`, in widest-jump-first order:
+                //   0: in-memory compacted          — widest in-RAM hop, no disk read
+                //   1: Large-tier persisted compacted
+                //   2: Large-tier persisted base     — both are CompactSize-wide
+                //   3: in-memory base                — one-block hop, no disk read
+                //   4: Small-tier persisted compacted
+                //   5: Small-tier persisted base     — narrowest hops, last resort
+                // Persisted snapshots only chain back to other persisted snapshots by
+                // construction, so once on a persisted edge the in-memory edges (0, 3)
+                // are guaranteed misses — gated below by the edgeIsInMemory check.
+                for (int e = 0; e < 6; e++)
+                {
+                    bool edgeIsInMemory = e == 0 || e == 3;
+                    if (currentPersisted && edgeIsInMemory) continue;
+
+                    IDisposable? snapshot;
+                    StateId from;
+
+                    switch (e)
+                    {
+                        case 0: // in-memory compacted
+                            if (!TryLeaseCompactedState(current, out Snapshot? sc)) continue;
+                            snapshot = sc; from = sc.From;
+                            break;
+                        case 1: // persisted compacted (large tier)
+                            if (!_largePersisted.TryLeaseCompactedSnapshotTo(current, out PersistedSnapshot? pcL)) continue;
+                            snapshot = pcL; from = pcL.From;
+                            break;
+                        case 2: // persisted base (large tier — boundary CompactSize snapshots)
+                            if (!_largePersisted.TryLeaseSnapshotTo(current, out PersistedSnapshot? pbL)) continue;
+                            snapshot = pbL; from = pbL.From;
+                            break;
+                        case 3: // in-memory base
+                            if (!TryLeaseState(current, out Snapshot? sb)) continue;
+                            snapshot = sb; from = sb.From;
+                            break;
+                        case 4: // persisted compacted (small tier)
+                            if (!_smallPersisted.TryLeaseCompactedSnapshotTo(current, out PersistedSnapshot? pcS)) continue;
+                            snapshot = pcS; from = pcS.From;
+                            break;
+                        case 5: // persisted base (small tier — sub-CompactSize)
+                            if (!_smallPersisted.TryLeaseSnapshotTo(current, out PersistedSnapshot? pbS)) continue;
+                            snapshot = pbS; from = pbS.From;
+                            break;
+                        default: continue;
+                    }
+
+                    bool edgePersisted = !edgeIsInMemory;
+
+                    if (from.BlockNumber < targetState.BlockNumber)
+                    {
+                        // In-memory snapshots are persistence-granular; overshoot means unusable edge.
+                        // Persisted (especially compacted) snapshots can span past the target — accept
+                        // as the terminal element without enqueuing further.
+                        if (!edgePersisted)
+                        {
+                            snapshot.Dispose();
+                            continue;
+                        }
+
+                        if (_logger.IsTrace) _logger.Trace($"BFS terminal persisted edge: {from} -> {current} spans below target {targetState} (persisted={edgePersisted})");
+                        int terminalIdx = visited.Count;
+                        visited.Add((snapshot, parentIdx));
+                        winnerIndex = terminalIdx;
+                        break;
+                    }
+
+                    // Cycle: already visited this node
+                    if (!seen.Add(from))
+                    {
+                        snapshot.Dispose();
+                        continue;
+                    }
+
+                    if (_logger.IsTrace) _logger.Trace($"BFS edge: {from} -> {current} (persisted={edgePersisted})");
+
+                    int idx = visited.Count;
+                    visited.Add((snapshot, parentIdx));
+
+                    if (from == targetState || from.BlockNumber == targetState.BlockNumber)
+                    {
+                        winnerIndex = idx;
+                        break;
+                    }
+
+                    queue.Enqueue((from, edgePersisted, idx));
+                }
+            }
+
+            if (winnerIndex < 0)
+                return new AssembledSnapshotResult(SnapshotPooledList.Empty(), PersistedSnapshotList.Empty());
+
+            // Reconstruct winning path and double-lease those snapshots so they
+            // survive the finally block which disposes all visited entries.
+            HashSet<int> pathIndices = [];
+            int walk = winnerIndex;
+            while (walk >= 0)
+            {
+                pathIndices.Add(walk);
+                walk = visited[walk].parentIndex;
+            }
+
+            SnapshotPooledList inMemory = new(estimatedSize);
+            PersistedSnapshotList persistedList = new(0);
+            for (int i = 0; i < visited.Count; i++)
+            {
+                if (!pathIndices.Contains(i)) continue;
+
+                switch (visited[i].snapshot)
+                {
+                    case PersistedSnapshot ps:
+                        ps.TryAcquire();
+                        persistedList.Add(ps);
+                        break;
+                    case Snapshot s:
+                        s.TryAcquire();
+                        inMemory.Add(s);
+                        break;
+                }
+            }
+
+            inMemory.Reverse();
+            persistedList.Reverse();
+            return new AssembledSnapshotResult(inMemory, persistedList);
         }
-
-        return list;
+        finally
+        {
+            for (int i = 0; i < visited.Count; i++)
+                visited[i].snapshot.Dispose();
+        }
     }
 
     public SnapshotPooledList AssembleSnapshotsUntil(in StateId baseBlock, long minBlockNumber, int estimatedSize)
@@ -117,6 +284,7 @@ public class SnapshotRepository(ILogManager logManager) : ISnapshotRepository
     {
         if (_compactedSnapshots.TryAdd(snapshot.To, snapshot))
         {
+            Interlocked.Increment(ref _compactedSnapshotCount);
             Metrics.CompactedSnapshotCount++;
 
             long compactedBytes = snapshot.Content.EstimateCompactedMemory();
@@ -133,6 +301,7 @@ public class SnapshotRepository(ILogManager logManager) : ISnapshotRepository
     {
         if (_snapshots.TryAdd(snapshot.To, snapshot))
         {
+            Interlocked.Increment(ref _snapshotCount);
             Metrics.SnapshotCount++;
 
             long totalBytes = snapshot.EstimateMemory();
@@ -161,10 +330,20 @@ public class SnapshotRepository(ILogManager logManager) : ISnapshotRepository
         return sortedSnapshots.Count == 0 ? null : sortedSnapshots.Max;
     }
 
+    public StateId? GetEarliestSnapshotId()
+    {
+        using ReadWriteLockBox<SortedSet<StateId>>.Lock _ = _sortedSnapshotStateIds.EnterReadLock(out SortedSet<StateId> sortedSnapshots);
+
+        if (sortedSnapshots.Count == 0)
+            return null;
+        return sortedSnapshots.Min;
+    }
+
     public bool RemoveAndReleaseCompactedKnownState(in StateId stateId)
     {
         if (_compactedSnapshots.TryRemove(stateId, out Snapshot? existingState))
         {
+            Interlocked.Decrement(ref _compactedSnapshotCount);
             Metrics.CompactedSnapshotCount--;
 
             long compactedBytes = existingState.Content.EstimateCompactedMemory();
@@ -179,15 +358,18 @@ public class SnapshotRepository(ILogManager logManager) : ISnapshotRepository
         return false;
     }
 
-    public void RemoveAndReleaseKnownState(StateId stateId)
+    public void RemoveAndReleaseKnownState(in StateId stateId)
     {
         if (_snapshots.TryRemove(stateId, out Snapshot? existingState))
         {
+            Interlocked.Decrement(ref _snapshotCount);
             Metrics.SnapshotCount--;
 
             using (_sortedSnapshotStateIds.EnterWriteLock(out SortedSet<StateId> sortedSnapshots))
             {
                 sortedSnapshots.Remove(stateId);
+                if (_lastRegisteredState == stateId)
+                    _lastRegisteredState = sortedSnapshots.Count == 0 ? null : sortedSnapshots.Max;
             }
 
             long totalBytes = existingState.EstimateMemory();
@@ -198,23 +380,31 @@ public class SnapshotRepository(ILogManager logManager) : ISnapshotRepository
         }
     }
 
-    public bool HasState(in StateId stateId) => _snapshots.ContainsKey(stateId);
-
-    public ArrayPoolList<StateId> GetSnapshotBeforeStateId(StateId stateId)
+    public bool HasState(in StateId stateId)
     {
-        if (stateId.BlockNumber < 0)
+        if (_snapshots.ContainsKey(stateId)) return true;
+        // Base snapshots can live in either tier: small holds sub-CompactSize bases,
+        // large holds boundary CompactSize bases written directly by PersistenceManager.
+        if (_largePersisted.HasBaseSnapshot(stateId)) return true;
+        if (_smallPersisted.HasBaseSnapshot(stateId)) return true;
+        return false;
+    }
+
+    public ArrayPoolList<StateId> GetSnapshotBeforeStateId(long blockNumber)
+    {
+        if (blockNumber < 0)
             return ArrayPoolList<StateId>.Empty();
 
         using ReadWriteLockBox<SortedSet<StateId>>.Lock _ = _sortedSnapshotStateIds.EnterReadLock(out SortedSet<StateId> sortedSnapshots);
 
         return sortedSnapshots
-            .GetViewBetween(new StateId(0, Hash256.Zero), new StateId(stateId.BlockNumber, Keccak.MaxValue))
+            .GetViewBetween(new StateId(0, Hash256.Zero), new StateId(blockNumber, Keccak.MaxValue))
             .ToPooledList(0);
     }
 
-    public void RemoveStatesUntil(in StateId currentPersistedStateId)
+    public void RemoveStatesUntil(long blockNumber)
     {
-        using ArrayPoolList<StateId> statesBeforeStateId = GetSnapshotBeforeStateId(currentPersistedStateId);
+        using ArrayPoolList<StateId> statesBeforeStateId = GetSnapshotBeforeStateId(blockNumber);
         foreach (StateId stateToRemove in statesBeforeStateId)
         {
             RemoveAndReleaseCompactedKnownState(stateToRemove);

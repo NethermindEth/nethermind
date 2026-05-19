@@ -135,15 +135,15 @@ internal static class FlatEntryWriter
             _rlpPosition = ctx.Position;
         }
 
-        public ValueHash256 CurrentPath => _currentFullPath;
-        public ReadOnlySpan<byte> CurrentValue => _currentValue;
+        public readonly ValueHash256 CurrentPath => _currentFullPath;
+        public readonly ReadOnlySpan<byte> CurrentValue => _currentValue;
 
         /// TODO: Only used in test. Delete
         /// <summary>
         /// Creates a TrieNode from the current inline leaf RLP.
         /// Use this when you need the full TrieNode object (e.g., for deletion range computation).
         /// </summary>
-        public TrieNode CurrentNode
+        public readonly TrieNode CurrentNode
         {
             get
             {

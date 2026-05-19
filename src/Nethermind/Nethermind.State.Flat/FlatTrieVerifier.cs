@@ -136,9 +136,12 @@ public class FlatTrieVerifier
 
         if (!isOk)
         {
-            if (_logger.IsWarn) _logger.Warn(
+            if (_logger.IsWarn)
+            {
+                _logger.Warn(
                 $"Verification failed: {Stats.MismatchedAccount} mismatched accounts, {Stats.MismatchedSlot} mismatched slots, " +
                 $"{Stats.MissingInFlat} missing in flat, {Stats.MissingInTrie} missing in trie");
+            }
         }
 
         if (_logger.IsInfo) _logger.Info($"Verification complete. {Stats}");
@@ -873,13 +876,19 @@ public class FlatTrieVerifier
                 Interlocked.Increment(ref _hashMismatchCount);
                 if (address is null)
                 {
-                    if (logger.IsError) logger.Error(
+                    if (logger.IsError)
+                    {
+                        logger.Error(
                         $"Hash mismatch at path {path}: expected {expectedHash.ToShortString()}, computed {computed.ToShortString()}");
+                    }
                 }
                 else
                 {
-                    if (logger.IsError) logger.Error(
+                    if (logger.IsError)
+                    {
+                        logger.Error(
                         $"Hash mismatch at path {address}:{path}: expected {expectedHash.ToShortString()}, computed {computed.ToShortString()}");
+                    }
                 }
             }
         }
@@ -894,6 +903,7 @@ public class FlatTrieVerifier
         public ICommitter BeginCommit(TrieNode? root, WriteFlags writeFlags = WriteFlags.None) =>
             inner.BeginCommit(root, writeFlags);
 
+        public bool IsPersisted(in TreePath path, in ValueHash256 keccak) => inner.IsPersisted(path, keccak);
 
     }
 }

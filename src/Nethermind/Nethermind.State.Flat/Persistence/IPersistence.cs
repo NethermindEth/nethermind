@@ -51,9 +51,13 @@ public interface IPersistence
         void SelfDestruct(Address addr);
         void SetAccount(Address addr, Account? account);
         void SetStorage(Address addr, in UInt256 slot, in SlotValue? value);
-        void SetStateTrieNode(in TreePath path, TrieNode tnValue);
-        void SetStorageTrieNode(Hash256 address, in TreePath path, TrieNode tnValue);
+        void SetStateTrieNode(in TreePath path, ReadOnlySpan<byte> rlp);
+        void SetStorageTrieNode(Hash256 address, in TreePath path, ReadOnlySpan<byte> rlp);
 
+        // Hash-keyed Set entrypoints — used by snap-sync / Importer paths that already
+        // hold pre-hashed keys (the snap protocol streams Keccak(address) / Keccak(slot)
+        // directly). Account/slot deletion is handled via the Address-keyed entrypoints
+        // (SetAccount(addr, null) / SelfDestruct(addr)).
         void SetStorageRaw(in ValueHash256 addrHash, in ValueHash256 slotHash, in SlotValue? value);
         void SetAccountRaw(in ValueHash256 addrHash, Account account);
 

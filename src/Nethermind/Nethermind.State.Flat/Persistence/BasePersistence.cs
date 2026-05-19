@@ -231,8 +231,8 @@ public static class BasePersistence
     public interface ITrieWriteBatch
     {
         public void SelfDestruct(in ValueHash256 address);
-        public void SetStateTrieNode(in TreePath path, TrieNode tnValue);
-        public void SetStorageTrieNode(Hash256 address, in TreePath path, TrieNode tnValue);
+        public void SetStateTrieNode(in TreePath path, ReadOnlySpan<byte> rlp);
+        public void SetStorageTrieNode(Hash256 address, in TreePath path, ReadOnlySpan<byte> rlp);
         public void DeleteStateTrieNodeRange(in TreePath fromPath, in TreePath toPath);
         public void DeleteStorageTrieNodeRange(in ValueHash256 addressHash, in TreePath fromPath, in TreePath toPath);
     }
@@ -244,7 +244,7 @@ public static class BasePersistence
         where TWriteBatch : struct, IHashedFlatWriteBatch
     {
         private readonly AccountDecoder _accountDecoder = useFlatAccount ? AccountDecoder.Slim : AccountDecoder.Instance;
-        private TWriteBatch _flatWriteBatch = flatWriteBatch;
+        private readonly TWriteBatch _flatWriteBatch = flatWriteBatch;
 
         public void SelfDestruct(Address addr) => _flatWriteBatch.SelfDestruct(addr.ToAccountPath);
 
@@ -291,7 +291,7 @@ public static class BasePersistence
     {
         private readonly AccountDecoder _accountDecoder = useFlatAccount ? AccountDecoder.Slim : AccountDecoder.Instance;
         private readonly int _accountSpanBufferSize = 256;
-        private TFlatReader _flatReader = flatReader;
+        private readonly TFlatReader _flatReader = flatReader;
 
         public Account? GetAccount(Address address)
         {
@@ -342,8 +342,8 @@ public static class BasePersistence
         where TFlatReader : struct, IFlatReader
         where TTrieReader : struct, ITrieReader
     {
-        private TTrieReader _trieReader = trieReader;
-        private TFlatReader _flatReader = flatReader;
+        private readonly TTrieReader _trieReader = trieReader;
+        private readonly TFlatReader _flatReader = flatReader;
 
         public StateId CurrentState { get; } = currentState;
 
@@ -384,8 +384,8 @@ public static class BasePersistence
         where TFlatWriteBatch : struct, IFlatWriteBatch
         where TTrieWriteBatch : struct, ITrieWriteBatch
     {
-        private TFlatWriteBatch _flatWriter = flatWriteBatch;
-        private TTrieWriteBatch _trieWriteBatch = trieWriteBatch;
+        private readonly TFlatWriteBatch _flatWriter = flatWriteBatch;
+        private readonly TTrieWriteBatch _trieWriteBatch = trieWriteBatch;
 
         public void Dispose() => disposer.Dispose();
 
@@ -401,11 +401,11 @@ public static class BasePersistence
         public void SetStorage(Address addr, in UInt256 slot, in SlotValue? value) =>
             _flatWriter.SetStorage(addr, slot, value);
 
-        public void SetStateTrieNode(in TreePath path, TrieNode tnValue) =>
-            _trieWriteBatch.SetStateTrieNode(path, tnValue);
+        public void SetStateTrieNode(in TreePath path, ReadOnlySpan<byte> rlp) =>
+            _trieWriteBatch.SetStateTrieNode(path, rlp);
 
-        public void SetStorageTrieNode(Hash256 address, in TreePath path, TrieNode tnValue) =>
-            _trieWriteBatch.SetStorageTrieNode(address, path, tnValue);
+        public void SetStorageTrieNode(Hash256 address, in TreePath path, ReadOnlySpan<byte> rlp) =>
+            _trieWriteBatch.SetStorageTrieNode(address, path, rlp);
 
         public void SetStorageRaw(in ValueHash256 addrHash, in ValueHash256 slotHash, in SlotValue? value) =>
             _flatWriter.SetStorageRaw(addrHash, slotHash, value);

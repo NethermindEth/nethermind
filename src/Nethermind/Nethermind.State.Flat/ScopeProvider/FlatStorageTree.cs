@@ -75,7 +75,7 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITr
             byte[] treeValue = _tree.Get(index);
             if (!Bytes.AreEqual(treeValue, value))
             {
-                throw new TrieException($"Get slot got wrong value. Address {_address}, {_tree.RootHash}, {index}. Tree: {treeValue?.ToHexString()} vs Flat: {value?.ToHexString()}. Self destruct it {_selfDestructKnownStateIdx}");
+                throw new TrieException($"Get slot got wrong value. Address: {_address}, Root: {_tree.RootHash}, Index: {index}. Tree: {treeValue?.ToHexString()} vs Flat: {value?.ToHexString()}. Self destruct it {_selfDestructKnownStateIdx}");
             }
         }
 

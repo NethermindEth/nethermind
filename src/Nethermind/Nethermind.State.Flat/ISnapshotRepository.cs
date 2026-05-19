@@ -12,15 +12,19 @@ public interface ISnapshotRepository
     int CompactedSnapshotCount { get; }
 
     void AddStateId(in StateId stateId);
+    StateId? LastRegisteredState { get; }
     bool TryAddSnapshot(Snapshot snapshot);
     bool TryAddCompactedSnapshot(Snapshot snapshot);
     bool TryLeaseState(in StateId stateId, [NotNullWhen(true)] out Snapshot? entry);
     bool TryLeaseCompactedState(in StateId stateId, [NotNullWhen(true)] out Snapshot? entry);
     bool RemoveAndReleaseCompactedKnownState(in StateId stateId);
     bool HasState(in StateId stateId);
-    SnapshotPooledList AssembleSnapshots(in StateId stateId, in StateId targetStateId, int estimatedSize);
+    AssembledSnapshotResult AssembleSnapshots(in StateId stateId, in StateId targetStateId, int estimatedSize);
     SnapshotPooledList AssembleSnapshotsUntil(in StateId stateId, long minBlockNumber, int estimatedSize);
     StateId? GetLastSnapshotId();
+    StateId? GetEarliestSnapshotId();
     ArrayPoolList<StateId> GetStatesAtBlockNumber(long blockNumber);
-    void RemoveStatesUntil(in StateId currentPersistedStateId);
+    ArrayPoolList<StateId> GetSnapshotBeforeStateId(long blockNumber);
+    void RemoveStatesUntil(long blockNumber);
+    void RemoveAndReleaseKnownState(in StateId stateId);
 }

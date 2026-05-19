@@ -81,13 +81,7 @@ public static class BaseTriePersistence
 
     private static ReadOnlySpan<byte> EncodeStateTopNodeKey(Span<byte> buffer, in TreePath path)
     {
-        // Looks like this <3-byte-path>
-        // Last 4 bit of the path is the length
-
-        path.Path.Bytes[0..StateNodesTopPathLength].CopyTo(buffer);
-        // Pack length into lower 4 bits of last byte (upper 4 bits contain path data)
-        byte lengthAsByte = (byte)path.Length;
-        buffer[StateNodesTopPathLength - 1] = (byte)((buffer[StateNodesTopPathLength - 1] & 0xf0) | (lengthAsByte & 0x0f));
+        path.EncodeWith3Byte(buffer);
         return buffer[..StateNodesTopPathLength];
     }
 
@@ -164,31 +158,31 @@ public static class BaseTriePersistence
                 1 + StoragePrefixPortion + FullPathLength + PathLengthLength, addressSuffix);
         }
 
-        public void SetStateTrieNode(in TreePath path, TrieNode tn)
+        public void SetStateTrieNode(in TreePath path, ReadOnlySpan<byte> rlp)
         {
             switch (path.Length)
             {
                 case <= StateNodesTopThreshold:
-                    stateTopNodes.PutSpan(EncodeStateTopNodeKey(stackalloc byte[StateNodesTopPathLength], path), tn.FullRlp.AsSpan(), flags);
+                    stateTopNodes.PutSpan(EncodeStateTopNodeKey(stackalloc byte[StateNodesTopPathLength], path), rlp, flags);
                     break;
                 case <= ShortenedPathThreshold:
-                    stateNodes.PutSpan(EncodeShortenedStateNodeKey(stackalloc byte[ShortenedPathLength], path), tn.FullRlp.AsSpan(), flags);
+                    stateNodes.PutSpan(EncodeShortenedStateNodeKey(stackalloc byte[ShortenedPathLength], path), rlp, flags);
                     break;
                 default:
-                    fallbackNodes.PutSpan(EncodeFullStateNodeKey(stackalloc byte[FullStateNodesKeyLength], in path), tn.FullRlp.AsSpan(), flags);
+                    fallbackNodes.PutSpan(EncodeFullStateNodeKey(stackalloc byte[FullStateNodesKeyLength], in path), rlp, flags);
                     break;
             }
         }
 
-        public void SetStorageTrieNode(Hash256 address, in TreePath path, TrieNode tn)
+        public void SetStorageTrieNode(Hash256 address, in TreePath path, ReadOnlySpan<byte> rlp)
         {
             switch (path.Length)
             {
                 case <= ShortenedPathThreshold:
-                    storageNodes.PutSpan(EncodeShortenedStorageNodeKey(stackalloc byte[ShortenedStorageNodesKeyLength], address, path), tn.FullRlp.AsSpan(), flags);
+                    storageNodes.PutSpan(EncodeShortenedStorageNodeKey(stackalloc byte[ShortenedStorageNodesKeyLength], address, path), rlp, flags);
                     break;
                 default:
-                    fallbackNodes.PutSpan(EncodeFullStorageNodeKey(stackalloc byte[FullStorageNodesKeyLength], address, in path), tn.FullRlp.AsSpan(), flags);
+                    fallbackNodes.PutSpan(EncodeFullStorageNodeKey(stackalloc byte[FullStorageNodesKeyLength], address, in path), rlp, flags);
                     break;
             }
         }

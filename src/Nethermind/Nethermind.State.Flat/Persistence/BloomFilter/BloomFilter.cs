@@ -121,6 +121,24 @@ public sealed unsafe class BloomFilter : IDisposable
     }
 
     /// <summary>
+    /// Construct a sentinel bloom whose <see cref="MightContain"/> always returns <c>true</c>.
+    /// </summary>
+    /// <remarks>
+    /// Used by the bloom-disabled config path (<c>PersistedSnapshotBloomBitsPerKey == 0</c> or
+    /// degenerate capacity-zero builds) to keep downstream APIs non-nullable: every snapshot
+    /// has a real <see cref="BloomFilter"/>, and the disabled mode just behaves as
+    /// "the bloom never filters anything out". One small native allocation (a single 64-byte
+    /// cache line — the minimum the constructor produces) per call; callers own disposal
+    /// the same as any other <see cref="BloomFilter"/>.
+    /// </remarks>
+    public static BloomFilter AlwaysTrue()
+    {
+        BloomFilter b = new(capacity: 1, bitsPerKey: 1.0);
+        new Span<byte>(b._data, checked((int)b._dataSize)).Fill(0xFF);
+        return b;
+    }
+
+    /// <summary>
     /// Returns the 64B cacheline byte offset within the bloom data that was touched.
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]

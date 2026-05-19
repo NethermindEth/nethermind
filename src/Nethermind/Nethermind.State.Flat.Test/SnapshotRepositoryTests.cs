@@ -1,13 +1,18 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
+using System.IO;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Logging;
+using Nethermind.State.Flat.PersistedSnapshots;
+using Nethermind.State.Flat.Storage;
+using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.State.Flat.Test;
@@ -18,13 +23,27 @@ public class SnapshotRepositoryTests
     private SnapshotRepository _repository = null!;
     private ResourcePool _resourcePool = null!;
     private FlatDbConfig _config = null!;
+    private MemoryArenaManager _memArena = null!;
+    private BlobArenaManager _blobs = null!;
+    private string _blobsDir = null!;
 
     [SetUp]
     public void SetUp()
     {
         _config = new FlatDbConfig { CompactSize = 16 };
         _resourcePool = new ResourcePool(_config);
-        _repository = new SnapshotRepository(LimboLogs.Instance);
+        _repository = new SnapshotRepository(new PersistedSnapshotRepositories(NullPersistedSnapshotRepository.Instance, NullPersistedSnapshotRepository.Instance), LimboLogs.Instance);
+        _memArena = new MemoryArenaManager();
+        _blobsDir = Path.Combine(Path.GetTempPath(), $"nm-sreptest-blobs-{Guid.NewGuid():N}");
+        _blobs = new BlobArenaManager(_blobsDir, 4L * 1024 * 1024, PersistedSnapshotTier.Small);
+    }
+
+    [TearDown]
+    public void TearDown()
+    {
+        _blobs.Dispose();
+        _memArena.Dispose();
+        try { Directory.Delete(_blobsDir, recursive: true); } catch { /* best-effort */ }
     }
 
     private StateId CreateStateId(long blockNumber, byte rootByte = 0)
@@ -249,7 +268,7 @@ public class SnapshotRepositoryTests
     {
         StateId target = CreateStateId(10);
 
-        ArrayPoolList<StateId> states = _repository.GetSnapshotBeforeStateId(target);
+        ArrayPoolList<StateId> states = _repository.GetSnapshotBeforeStateId(target.BlockNumber);
 
         Assert.That(states.Count, Is.EqualTo(0));
         states.Dispose();
@@ -262,7 +281,7 @@ public class SnapshotRepositoryTests
         _repository.AddStateId(state10);
 
         StateId target = CreateStateId(5);
-        ArrayPoolList<StateId> states = _repository.GetSnapshotBeforeStateId(target);
+        ArrayPoolList<StateId> states = _repository.GetSnapshotBeforeStateId(target.BlockNumber);
 
         Assert.That(states.Count, Is.EqualTo(0));
         states.Dispose();
@@ -284,7 +303,7 @@ public class SnapshotRepositoryTests
         _repository.AddStateId(state10);
 
         StateId target = CreateStateId(6);
-        ArrayPoolList<StateId> states = _repository.GetSnapshotBeforeStateId(target);
+        ArrayPoolList<StateId> states = _repository.GetSnapshotBeforeStateId(target.BlockNumber);
 
         Assert.That(states.Count, Is.EqualTo(3));
         states.Dispose();
@@ -296,14 +315,68 @@ public class SnapshotRepositoryTests
     {
         _repository.AddStateId(CreateStateId(1));
 
-        StateId target = new(blockNumber, Keccak.EmptyTreeHash);
-        ArrayPoolList<StateId> states = _repository.GetSnapshotBeforeStateId(target);
+        ArrayPoolList<StateId> states = _repository.GetSnapshotBeforeStateId(blockNumber);
 
         Assert.That(states.Count, Is.EqualTo(0));
         states.Dispose();
     }
 
+    [Test]
+    public void LastRegisteredState_TracksCallOrderAndFallsBackOnTipRemoval()
+    {
+        // Empty repo has no tip
+        Assert.That(_repository.LastRegisteredState, Is.Null);
+
+        // AddStateId order: 1, 3, 2 → tip is the last call (2), not the max (3).
+        AddSnapshotToRepository(0, 1);
+        AddSnapshotToRepository(2, 3);
+        AddSnapshotToRepository(1, 2);
+        Assert.That(_repository.LastRegisteredState, Is.EqualTo(CreateStateId(2)));
+
+        // Removing a non-tip state leaves the tip alone.
+        _repository.RemoveAndReleaseKnownState(CreateStateId(1));
+        Assert.That(_repository.LastRegisteredState, Is.EqualTo(CreateStateId(2)));
+
+        // Removing the tip falls back to the next-highest (3).
+        _repository.RemoveAndReleaseKnownState(CreateStateId(2));
+        Assert.That(_repository.LastRegisteredState, Is.EqualTo(CreateStateId(3)));
+
+        // Removing every remaining state clears the tip.
+        _repository.RemoveAndReleaseKnownState(CreateStateId(3));
+        Assert.That(_repository.LastRegisteredState, Is.Null);
+    }
+
     #endregion
+
+    private PersistedSnapshot CreatePersistedSnapshot(StateId from, StateId to)
+    {
+        Snapshot snap = CreateSnapshot(from, to);
+        byte[] data = PersistedSnapshotBuilderTestExtensions.Build(snap, _blobs);
+        snap.Dispose();
+        using ArenaWriter writer = _memArena.CreateWriter(data.Length);
+        Span<byte> span = writer.GetWriter().GetSpan(data.Length);
+        data.CopyTo(span);
+        writer.GetWriter().Advance(data.Length);
+        (_, ArenaReservation reservation) = writer.Complete();
+        TestFixtureHelpers.LeaseBlobIdsFromHsst(reservation, _blobs);
+        return new PersistedSnapshot(from, to, reservation, _blobs, PersistedSnapshotTier.Small);
+    }
+
+    private static void SetupSnapshotTo(IPersistedSnapshotRepository mockRepo, StateId toState, PersistedSnapshot snapshot) =>
+        mockRepo.TryLeaseSnapshotTo(toState, out PersistedSnapshot? _).Returns(callInfo =>
+        {
+            snapshot.AcquireLease();
+            callInfo[1] = snapshot;
+            return true;
+        });
+
+    private static void SetupCompactedSnapshotTo(IPersistedSnapshotRepository mockRepo, StateId toState, PersistedSnapshot snapshot) =>
+        mockRepo.TryLeaseCompactedSnapshotTo(toState, out PersistedSnapshot? _).Returns(callInfo =>
+        {
+            snapshot.AcquireLease();
+            callInfo[1] = snapshot;
+            return true;
+        });
 
     #region AssembleSnapshotsUntil
 
@@ -363,6 +436,65 @@ public class SnapshotRepositoryTests
         using SnapshotPooledList assembled = _repository.AssembleSnapshotsUntil(to, 0, 10);
 
         Assert.That(assembled.Count, Is.EqualTo(1));
+    }
+
+    #endregion
+
+    #region AssembleSnapshots
+
+    [TestCase(true)]
+    [TestCase(false)]
+    public void AssembleSnapshots_PersistedSpanning_BelowTarget_AcceptedAsTerminal(bool asCompacted)
+    {
+        StateId s0 = CreateStateId(0);
+        StateId s2 = CreateStateId(2);
+        StateId s5 = CreateStateId(5);
+
+        IPersistedSnapshotRepository mockRepo = Substitute.For<IPersistedSnapshotRepository>();
+        using PersistedSnapshot persisted = CreatePersistedSnapshot(s0, s5);
+
+        if (asCompacted)
+            SetupCompactedSnapshotTo(mockRepo, s5, persisted);
+        else
+            SetupSnapshotTo(mockRepo, s5, persisted);
+
+        SnapshotRepository repo = new(new PersistedSnapshotRepositories(mockRepo, mockRepo), LimboLogs.Instance);
+        using AssembledSnapshotResult result = repo.AssembleSnapshots(s5, s2, 4);
+
+        Assert.That(result.Persisted.Count, Is.EqualTo(1));
+        Assert.That(result.InMemory.Count, Is.EqualTo(0));
+        Assert.That(result.Persisted[0].From.BlockNumber, Is.LessThan(s2.BlockNumber));
+    }
+
+    [Test]
+    public void AssembleSnapshots_InMemoryOvershoot_Rejected()
+    {
+        StateId s2 = CreateStateId(2);
+        StateId s5 = CreateStateId(5);
+
+        AddSnapshotToRepository(0, 5, compacted: true);
+
+        using AssembledSnapshotResult result = _repository.AssembleSnapshots(s5, s2, 4);
+
+        Assert.That(result.SnapshotCount, Is.EqualTo(0));
+    }
+
+    [Test]
+    public void AssembleSnapshots_ExactPersistedMatch_AcceptedAsWinner()
+    {
+        StateId s2 = CreateStateId(2);
+        StateId s5 = CreateStateId(5);
+
+        IPersistedSnapshotRepository mockRepo = Substitute.For<IPersistedSnapshotRepository>();
+        using PersistedSnapshot persisted = CreatePersistedSnapshot(s2, s5);
+        SetupSnapshotTo(mockRepo, s5, persisted);
+
+        SnapshotRepository repo = new(new PersistedSnapshotRepositories(mockRepo, mockRepo), LimboLogs.Instance);
+        using AssembledSnapshotResult result = repo.AssembleSnapshots(s5, s2, 4);
+
+        Assert.That(result.Persisted.Count, Is.EqualTo(1));
+        Assert.That(result.InMemory.Count, Is.EqualTo(0));
+        Assert.That(result.Persisted[0].From.BlockNumber, Is.EqualTo(s2.BlockNumber));
     }
 
     #endregion

@@ -72,7 +72,11 @@ namespace Nethermind.Benchmark.Runner
             {
                 Assembly[] releaseAssemblies = additionalJobAssemblies
                     .Union(simpleJobAssemblies)
-                    .Append(typeof(KeccakBenchmark).Assembly)
+                    // Precompile benchmark assembly disabled: PrecompileBenchmarkBase.Inputs
+                    // does Directory.GetFiles on a path under artifacts/.../bnadd/current
+                    // that doesn't exist in fresh checkouts, crashing all benchmarks at
+                    // startup. Re-enable when those test data files are wired up.
+                    //.Append(typeof(KeccakBenchmark).Assembly)
                     .Distinct()
                     .ToArray();
 

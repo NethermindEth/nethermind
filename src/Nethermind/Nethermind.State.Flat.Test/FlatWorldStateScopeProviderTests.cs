@@ -5,8 +5,10 @@ using System;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
+using Nethermind.Api;
 using Nethermind.Config;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
@@ -16,6 +18,7 @@ using Nethermind.Init.Modules;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State.Flat.Persistence;
+using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.State.Flat.ScopeProvider;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
@@ -78,12 +81,15 @@ public class FlatWorldStateScopeProviderTests
                     .AddSingleton<ILogManager>(LimboLogs.Instance)
                     .AddSingleton<IFlatDbConfig>(config)
                     .AddSingleton<IWorldStateScopeProvider.ICodeDb>(_ => new TrieStoreScopeProvider.KeyValueWithBatchingBackedCodeDb(new TestMemDb()))
+                    .AddSingleton<IInitConfig>(_ => Substitute.For<IInitConfig>())
                 ;
 
             // Externally owned because snapshot bundle take ownership
             _containerBuilder.RegisterType<ReadOnlySnapshotBundle>()
                 .WithParameter(TypedParameter.From(false)) // recordDetailedMetrics
                 .WithParameter(TypedParameter.From(ReadOnlySnapshots))
+                .WithParameter(TypedParameter.From(PersistedSnapshotList.Empty()))
+                .WithParameter(TypedParameter.From(new ArrayPoolList<PersistedSnapshotBloom>(0)))
                 .ExternallyOwned();
 
             ConfigureSnapshotBundle();

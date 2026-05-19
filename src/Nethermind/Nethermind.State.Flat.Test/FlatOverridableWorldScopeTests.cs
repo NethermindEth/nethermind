@@ -8,6 +8,7 @@ using System.Threading;
 using Autofac;
 using Nethermind.Config;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
@@ -16,6 +17,7 @@ using Nethermind.Init.Modules;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State.Flat.Persistence;
+using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.State.Flat.ScopeProvider;
 using NSubstitute;
 using NUnit.Framework;
@@ -60,7 +62,7 @@ public class FlatOverridableWorldScopeTests
                         .Returns(_ =>
                         {
                             SnapshotPooledList snapshotList = new(0);
-                            return new ReadOnlySnapshotBundle(snapshotList, Substitute.For<IPersistence.IPersistenceReader>(), false);
+                            return new ReadOnlySnapshotBundle(snapshotList, Substitute.For<IPersistence.IPersistenceReader>(), false, PersistedSnapshotList.Empty(), new ArrayPoolList<PersistedSnapshotBloom>(0));
                         });
 
                     flatDbManager.HasStateForBlock(Arg.Any<StateId>())
