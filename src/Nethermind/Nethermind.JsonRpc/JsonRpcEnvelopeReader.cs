@@ -56,8 +56,7 @@ internal ref struct JsonRpcEnvelopeReader
             {
                 ReadValue(ref reader);
                 long valueStart = reader.TokenStartIndex;
-                id = ReadId(ref reader);
-                id = id.WithValidatedRawToken(_body.Slice(checked((int)valueStart), checked((int)(reader.BytesConsumed - valueStart))));
+                id = ReadId(ref reader, _body.Slice(checked((int)valueStart), checked((int)(reader.BytesConsumed - valueStart))));
                 continue;
             }
 
@@ -110,12 +109,12 @@ internal ref struct JsonRpcEnvelopeReader
             throw new JsonException("Expected JSON-RPC property value.");
     }
 
-    private static JsonRpcId ReadId(ref Utf8JsonReader reader)
+    private static JsonRpcId ReadId(ref Utf8JsonReader reader, ReadOnlySpan<byte> rawToken)
     {
         return reader.TokenType switch
         {
             JsonTokenType.Null => JsonRpcId.Null,
-            JsonTokenType.String => new JsonRpcId(reader.GetString()!),
+            JsonTokenType.String => JsonRpcId.FromValidatedRawStringToken(rawToken),
             JsonTokenType.Number when reader.TryGetInt64(out long value) => new JsonRpcId(value),
             JsonTokenType.Number when reader.TryGetDecimal(out decimal value) && value.Scale == 0 => new JsonRpcId(value),
             _ => ThrowUnsupportedId()
