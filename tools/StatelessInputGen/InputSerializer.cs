@@ -23,6 +23,9 @@ public static class InputSerializer
         sizeof(int);   // state length
 
     public static byte[] Serialize(Block block, Witness witness, ulong chainId)
+        => Serialize(block, witness, chainId, null);
+
+    public static byte[] Serialize(Block block, Witness witness, ulong chainId, byte[]? chainConfigJson)
     {
         ArgumentNullException.ThrowIfNull(block);
 
@@ -31,8 +34,10 @@ public static class InputSerializer
         int codesLen = GetSerializedLength(witness.Codes);
         int headersLen = GetSerializedLength(witness.Headers);
         int stateLen = GetSerializedLength(witness.State);
+        int chainConfigLen = chainConfigJson?.Length ?? 0;
+        int chainConfigSectionLen = chainConfigLen == 0 ? 0 : sizeof(int) + chainConfigLen;
         int outputLen = _minSerializedLength +
-            blockLen + codesLen + headersLen + stateLen;
+            blockLen + codesLen + headersLen + stateLen + chainConfigSectionLen;
 
         byte[] output = GC.AllocateUninitializedArray<byte>(outputLen);
         int offset = 0;
@@ -51,6 +56,13 @@ public static class InputSerializer
         WriteJaggedArray(witness.Headers, headersLen, output, ref offset);
         WriteJaggedArray(witness.State, stateLen, output, ref offset);
 
+        if (chainConfigLen != 0)
+        {
+            WriteInt32(chainConfigLen, output, ref offset);
+            chainConfigJson!.AsSpan().CopyTo(output.AsSpan(offset, chainConfigLen));
+            offset += chainConfigLen;
+        }
+
         if (offset != outputLen)
             throw new InvalidDataException("Invalid output length");
 
@@ -58,6 +70,12 @@ public static class InputSerializer
     }
 
     public static (Block, Witness, ulong) Deserialize(ReadOnlySpan<byte> input)
+    {
+        (Block block, Witness witness, ulong chainId, _) = DeserializeWithChainConfig(input);
+        return (block, witness, chainId);
+    }
+
+    public static (Block, Witness, ulong, byte[]?) DeserializeWithChainConfig(ReadOnlySpan<byte> input)
     {
         ArgumentOutOfRangeException.ThrowIfLessThan(input.Length, _minSerializedLength);
 
@@ -75,6 +93,19 @@ public static class InputSerializer
         IOwnedReadOnlyList<byte[]> headers = ReadJaggedArray(input, ref offset);
         IOwnedReadOnlyList<byte[]> state = ReadJaggedArray(input, ref offset);
 
+        // Optional trailing section: chain_config_json (i32 LE length + UTF-8 JSON
+        // bytes). Allows the executor to build a SpecProvider from an arbitrary
+        // chain.
+        byte[]? chainConfigJson = null;
+        if (offset < input.Length)
+        {
+            int chainConfigLen = ReadInt32(input, ref offset);
+            if (chainConfigLen < 0 || offset + chainConfigLen > input.Length)
+                throw new InvalidDataException("Invalid chain_config_json length");
+            chainConfigJson = input.Slice(offset, chainConfigLen).ToArray();
+            offset += chainConfigLen;
+        }
+
         if (offset != input.Length)
             throw new InvalidDataException("Invalid input or section length");
 
@@ -86,7 +117,7 @@ public static class InputSerializer
             State = state
         };
 
-        return (block, witness, chainId);
+        return (block, witness, chainId, chainConfigJson);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
