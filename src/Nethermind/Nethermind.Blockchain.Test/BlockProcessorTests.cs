@@ -51,11 +51,14 @@ public class BlockProcessorTests
     [Test]
     public void ApplyStateChanges_uses_parent_state_without_prestate_sentinels()
     {
-        BlockAccessList bal = new();
-        AccountChanges accountChanges = AddAccountRead(bal, TestItem.AddressA);
-        accountChanges.AddBalanceChange(new(0, 150));
-        accountChanges.AddNonceChange(new(0, 3));
-        accountChanges.GetOrAddSlotChanges(1).AddStorageChange(new(0, 0x2Au));
+        ReadOnlyBlockAccessList bal = Build.A.BlockAccessList
+            .WithAccountChanges(Build.An.AccountChanges
+                .WithAddress(TestItem.AddressA)
+                .WithBalanceChanges(new BalanceChange(0, 150))
+                .WithNonceChanges(new NonceChange(0, 3))
+                .WithStorageChanges(1, new StorageChange(0, 0x2Au))
+                .TestObject)
+            .TestObject;
 
         ApplyStateChangesInParentScope(
             bal,
@@ -75,8 +78,12 @@ public class BlockProcessorTests
     [Test]
     public void ApplyStateChanges_creates_missing_account_from_balance_change()
     {
-        BlockAccessList bal = new();
-        AddAccountRead(bal, TestItem.AddressA).AddBalanceChange(new(0, 25));
+        ReadOnlyBlockAccessList bal = Build.A.BlockAccessList
+            .WithAccountChanges(Build.An.AccountChanges
+                .WithAddress(TestItem.AddressA)
+                .WithBalanceChanges(new BalanceChange(0, 25))
+                .TestObject)
+            .TestObject;
 
         ApplyStateChangesInParentScope(
             bal,
@@ -127,7 +134,7 @@ public class BlockProcessorTests
             .WithNumber(7)
             .WithParentHash(parentHash)
             .WithTransactions(firstTx, secondTx)
-            .WithBlockAccessList(new BlockAccessList())
+            .WithBlockAccessList(new ReadOnlyBlockAccessList())
             .TestObject;
 
         PrepareSetup(balManager, block, Amsterdam.Instance);
@@ -196,7 +203,7 @@ public class BlockProcessorTests
             .WithNumber(7)
             .WithParentHash(parentHash)
             .WithTransactions(tx)
-            .WithBlockAccessList(new BlockAccessList())
+            .WithBlockAccessList(new ReadOnlyBlockAccessList())
             .TestObject;
 
         balManager.PrepareForProcessing(block, Amsterdam.Instance, ProcessingOptions.None);
@@ -218,14 +225,8 @@ public class BlockProcessorTests
         balManager.ReturnTxProcessor(1);
     }
 
-    private static AccountChanges AddAccountRead(BlockAccessList bal, Address address)
-    {
-        bal.AddAccountRead(address);
-        return bal.GetAccountChanges(address)!;
-    }
-
     private static void ApplyStateChangesInParentScope(
-        BlockAccessList bal,
+        ReadOnlyBlockAccessList bal,
         Action<IWorldState>? genesisSetup,
         Action<IWorldState> assertState)
     {
@@ -516,9 +517,12 @@ public class BlockProcessorTests
             new WithdrawalProcessorFactory(LimboLogs.Instance));
 
         // Prepare with a block that has gasUsed = gasRemaining (sets _gasRemaining)
-        BlockAccessList suggestedBal = new();
-        suggestedBal.AddAccountRead(TestItem.AddressA);
-        suggestedBal.AddStorageRead(TestItem.AddressA, 1);
+        ReadOnlyBlockAccessList suggestedBal = Build.A.BlockAccessList
+            .WithAccountChanges(Build.An.AccountChanges
+                .WithAddress(TestItem.AddressA)
+                .WithStorageReads(1)
+                .TestObject)
+            .TestObject;
 
         Block block = Build.A.Block
             .WithNumber(1)
@@ -528,7 +532,9 @@ public class BlockProcessorTests
 
         PrepareSetup(balManager, block, Amsterdam.Instance);
         // Generated BAL has the account but no storage reads
-        balManager.GeneratedBlockAccessList.AddAccountRead(TestItem.AddressA);
+        BlockAccessListAtIndex generatedAtIndex = new();
+        generatedAtIndex.AddAccountRead(TestItem.AddressA);
+        balManager.GeneratedBlockAccessList.Merge(generatedAtIndex);
 
         if (shouldThrow)
         {
@@ -560,9 +566,18 @@ public class BlockProcessorTests
             (lowAddress, highAddress) = (highAddress, lowAddress);
         }
 
-        BlockAccessList suggestedBal = new();
-        suggestedBal.AddBalanceChange(highAddress, before: 0, after: 2);
-        suggestedBal.AddBalanceChange(lowAddress, before: 0, after: 1);
+        // Build suggested BAL with accounts declared in high→low order so the validator must
+        // match by address rather than by insertion order.
+        ReadOnlyBlockAccessList suggestedBal = Build.A.BlockAccessList
+            .WithAccountChanges(Build.An.AccountChanges
+                .WithAddress(highAddress)
+                .WithBalanceChanges(new BalanceChange(0, 2))
+                .TestObject)
+            .WithAccountChanges(Build.An.AccountChanges
+                .WithAddress(lowAddress)
+                .WithBalanceChanges(new BalanceChange(0, 1))
+                .TestObject)
+            .TestObject;
 
         Block block = Build.A.Block
             .WithNumber(1)
@@ -572,8 +587,12 @@ public class BlockProcessorTests
 
         PrepareSetup(balManager, block, Amsterdam.Instance);
 
-        balManager.GeneratedBlockAccessList.AddBalanceChange(lowAddress, before: 0, after: 1);
-        balManager.GeneratedBlockAccessList.AddBalanceChange(highAddress, before: 0, after: 2);
+        // Generated BAL in low→high (canonical) order — index lookup must reconcile despite
+        // the suggested side using the opposite insertion order.
+        BlockAccessListAtIndex slice = new();
+        slice.AddBalanceChange(lowAddress, before: 0, after: 1);
+        slice.AddBalanceChange(highAddress, before: 0, after: 2);
+        balManager.GeneratedBlockAccessList.Merge(slice);
 
         Assert.DoesNotThrow(() => balManager.ValidateBlockAccessList(block, 0));
     }
@@ -590,7 +609,7 @@ public class BlockProcessorTests
         Block block = Build.A.Block
             .WithNumber(1)
             .WithTransactions(1, Amsterdam.Instance)
-            .WithBlockAccessList(new BlockAccessList())
+            .WithBlockAccessList(new ReadOnlyBlockAccessList())
             .TestObject;
 
         balManager.PrepareForProcessing(block, Amsterdam.Instance, ProcessingOptions.None);
@@ -625,7 +644,7 @@ public class BlockProcessorTests
             .WithNumber(1)
             .WithGasLimit(100_000)
             .WithTransactions(firstTx, secondTx)
-            .WithBlockAccessList(new BlockAccessList())
+            .WithBlockAccessList(new ReadOnlyBlockAccessList())
             .TestObject;
 
         PrepareSetup(balManager, block, Amsterdam.Instance);
@@ -658,7 +677,7 @@ public class BlockProcessorTests
             .WithNumber(1)
             .WithGasLimit(100_000)
             .WithTransactions(firstTx, secondTx)
-            .WithBlockAccessList(new BlockAccessList())
+            .WithBlockAccessList(new ReadOnlyBlockAccessList())
             .TestObject;
 
         PrepareSetup(balManager, block, Amsterdam.Instance);
@@ -697,7 +716,7 @@ public class BlockProcessorTests
             .WithNumber(1)
             .WithGasLimit(250_000)
             .WithTransactions(firstTx, createTx)
-            .WithBlockAccessList(new BlockAccessList())
+            .WithBlockAccessList(new ReadOnlyBlockAccessList())
             .TestObject;
 
         PrepareSetup(balManager, block, Amsterdam.Instance);
@@ -730,7 +749,7 @@ public class BlockProcessorTests
             .WithNumber(1)
             .WithGasLimit(100_000)
             .WithTransactions(onlyTx)
-            .WithBlockAccessList(new BlockAccessList())
+            .WithBlockAccessList(new ReadOnlyBlockAccessList())
             .TestObject;
 
         PrepareSetup(balManager, block, Amsterdam.Instance);
@@ -772,7 +791,7 @@ public class BlockProcessorTests
             .WithNumber(1)
             .WithGasLimit(100_000)
             .WithTransactions(firstTx, secondTx)
-            .WithBlockAccessList(new BlockAccessList())
+            .WithBlockAccessList(new ReadOnlyBlockAccessList())
             .TestObject;
 
         PrepareSetup(balManager, block, Amsterdam.Instance);
@@ -804,7 +823,7 @@ public class BlockProcessorTests
             .WithNumber(1)
             .WithGasLimit(txCount * 21_000)
             .WithTransactions(transactions)
-            .WithBlockAccessList(new BlockAccessList())
+            .WithBlockAccessList(new ReadOnlyBlockAccessList())
             .TestObject;
 
         using RecordingTransactionProcessorAdapter transactionProcessor = new();
@@ -848,7 +867,7 @@ public class BlockProcessorTests
             .WithNumber(1)
             .WithGasLimit(txCount * 21_000)
             .WithTransactions(transactions)
-            .WithBlockAccessList(new BlockAccessList())
+            .WithBlockAccessList(new ReadOnlyBlockAccessList())
             .TestObject;
 
         using RecordingTransactionProcessorAdapter transactionProcessor = new(traceOperation: true);
@@ -927,7 +946,7 @@ public class BlockProcessorTests
             .WithNumber(1)
             .WithGasLimit(txCount * 1_000_000L)
             .WithTransactions(transactions)
-            .WithBlockAccessList(new BlockAccessList())
+            .WithBlockAccessList(new ReadOnlyBlockAccessList())
             .TestObject;
 
         ConcurrentBag<(int TxIndex, uint BalIndex)> balIndexes = new();
@@ -999,7 +1018,7 @@ public class BlockProcessorTests
         Block block = Build.A.Block
             .WithNumber(1)
             .WithTransactions(txCount, Amsterdam.Instance)
-            .WithBlockAccessList(new BlockAccessList())
+            .WithBlockAccessList(new ReadOnlyBlockAccessList())
             .TestObject;
 
         balManager.PrepareForProcessing(block, Amsterdam.Instance, ProcessingOptions.None);
@@ -1189,7 +1208,7 @@ public class BlockProcessorTests
         {
         }
 
-        public BlockAccessList GeneratedBlockAccessList { get; set; } = new();
+        public GeneratedBlockAccessList GeneratedBlockAccessList { get; set; } = new();
         public bool Enabled => true;
         public bool ParallelExecutionEnabled => true;
 

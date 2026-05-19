@@ -2,7 +2,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
+using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Collections;
+using Nethermind.Serialization.Rlp.Eip7928;
 
 namespace Nethermind.Serialization.Rlp;
 
@@ -25,6 +27,16 @@ public static class RlpDecoderNettyExtensions
         }
 
         rlpStream = new NettyRlpStream(NethermindBuffers.Default.Buffer(decoder.GetLength(item, rlpBehaviors)));
+        decoder.Encode(rlpStream, item, rlpBehaviors);
+        return rlpStream;
+    }
+
+    /// <summary>
+    /// Encodes <paramref name="item"/> into a new disposable <see cref="NettyRlpStream"/>.
+    /// </summary>
+    public static NettyRlpStream EncodeToNewNettyStream(this BlockAccessListDecoder decoder, GeneratedBlockAccessList item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    {
+        NettyRlpStream rlpStream = new(NethermindBuffers.Default.Buffer(decoder.GetLength(item, rlpBehaviors)));
         decoder.Encode(rlpStream, item, rlpBehaviors);
         return rlpStream;
     }

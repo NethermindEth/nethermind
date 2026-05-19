@@ -20,7 +20,7 @@ public class BlockAccessListStore(
 {
     private readonly BlockAccessListDecoder _balDecoder = decoder ?? new();
 
-    public void Insert(Hash256 blockHash, BlockAccessList bal)
+    public void Insert(Hash256 blockHash, ReadOnlyBlockAccessList bal)
     {
         using NettyRlpStream rlpStream = _balDecoder.EncodeToNewNettyStream(bal);
         balDb.Set(blockHash, rlpStream.AsSpan());
@@ -38,7 +38,7 @@ public class BlockAccessListStore(
     public bool Exists(Hash256 blockHash)
         => balDb.KeyExists(blockHash);
 
-    public BlockAccessList? Get(Hash256 blockHash)
+    public ReadOnlyBlockAccessList? Get(Hash256 blockHash)
     {
         using MemoryManager<byte>? rlp = GetRlp(blockHash);
         return rlp is null ? null : _balDecoder.Decode(rlp.Memory.Span);

@@ -1,9 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Diagnostics;
-using System.Diagnostics.CodeAnalysis;
-using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 
 namespace Nethermind.Serialization.Rlp.Eip7928;
@@ -18,19 +15,12 @@ public abstract class IndexedChangeDecoder<T> : RlpDecoder<T>
     public override int GetLength(T item, RlpBehaviors rlpBehaviors)
         => Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors));
 
-    // Nethermind internal: Eip7928Constants.PrestateIndex (uint.MaxValue) overloads the
-    // wire block_access_index space as a prestate sentinel. EIP-7928 reserves no such value;
-    // we reject it on both ends so the sentinel can never collide with a real index.
     protected override T DecodeInternal(ref Rlp.ValueDecoderContext ctx, RlpBehaviors rlpBehaviors)
     {
         int length = ctx.ReadSequenceLength();
         int check = length + ctx.Position;
 
         T result = DecodeFields(ref ctx);
-        if (result.Index == Eip7928Constants.PrestateIndex)
-        {
-            ThrowPrestateIndexReserved();
-        }
 
         if (!rlpBehaviors.HasFlag(RlpBehaviors.AllowExtraBytes))
         {
@@ -42,11 +32,7 @@ public abstract class IndexedChangeDecoder<T> : RlpDecoder<T>
 
     public override void Encode(RlpStream stream, T item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
-        if (item.Index == Eip7928Constants.PrestateIndex)
-        {
-            ThrowPrestateIndexReserved();
-        }
-
+        // EIP-7928 v5.7.0 widened BlockAccessIndex to uint32 (commit 645099785a).
         stream.StartSequence(GetContentLength(item, rlpBehaviors));
         stream.Encode(item.Index);
         EncodeValue(stream, item);
@@ -55,16 +41,18 @@ public abstract class IndexedChangeDecoder<T> : RlpDecoder<T>
     public int GetContentLength(T item, RlpBehaviors rlpBehaviors)
         => Rlp.LengthOf(item.Index) + GetValueLength(item);
 
-    /// <summary>Decode Index + value field and return a new T.</summary>
+    /// <summary>
+    /// Decode Index + value field and return a new T.
+    /// </summary>
     protected abstract T DecodeFields(ref Rlp.ValueDecoderContext ctx);
 
-    /// <summary>Encode only the value field (Index is handled by the base).</summary>
+    /// <summary>
+    /// Encode only the value field (Index is handled by the base).
+    /// </summary>
     protected abstract void EncodeValue(RlpStream stream, T item);
 
-    /// <summary>Return the RLP length of the value field.</summary>
+    /// <summary>
+    /// Return the RLP length of the value field.
+    /// </summary>
     protected abstract int GetValueLength(T item);
-
-    [DoesNotReturn, StackTraceHidden]
-    private static void ThrowPrestateIndexReserved() =>
-        throw new RlpException($"BlockAccessIndex {Eip7928Constants.PrestateIndex} is reserved for internal prestate tracking.");
 }
