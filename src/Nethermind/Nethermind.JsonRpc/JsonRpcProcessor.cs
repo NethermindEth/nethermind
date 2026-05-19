@@ -150,6 +150,14 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
 
     private static readonly JsonReaderOptions _socketJsonReaderOptions = new() { AllowMultipleValues = true };
 
+    public ValueTask ProcessAsync(
+        PipeReader reader,
+        JsonRpcContext context,
+        IJsonRpcResponseSink sink,
+        JsonRpcProcessingOptions options,
+        CancellationToken cancellationToken = default) =>
+        JsonRpcProcessorSinkAdapter.ProcessAsync(this, reader, context, sink, options, cancellationToken);
+
     public async IAsyncEnumerable<JsonRpcResult> ProcessAsync(PipeReader reader, JsonRpcContext context)
     {
         // Engine API (authenticated) requests skip the timeout CTS entirely -- they are from

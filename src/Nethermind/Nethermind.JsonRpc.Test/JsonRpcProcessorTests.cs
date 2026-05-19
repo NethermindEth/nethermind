@@ -127,6 +127,22 @@ public class JsonRpcProcessorTests(bool returnErrors)
         await service.Received(1).SendRequestAsync(Arg.Any<JsonRpcRequest>(), Arg.Any<JsonRpcContext>());
     }
 
+    [Test]
+    public async Task Sink_processor_entry_point_writes_to_sink()
+    {
+        CollectingJsonRpcResponseSink sink = new();
+        JsonRpcProcessor processor = Initialize(recorderState: RpcRecorderState.None);
+
+        await processor.ProcessAsync(
+            CreateReader("{\"id\":67,\"jsonrpc\":\"2.0\",\"method\":\"eth_getTransactionCount\",\"params\":[]}"),
+            new JsonRpcContext(RpcEndpoint.Http),
+            sink,
+            new JsonRpcProcessingOptions(JsonRpcInputMode.SingleDocument));
+
+        sink.Singles.Should().HaveCount(1);
+        sink.Singles[0].Id.Should().Be(67);
+    }
+
     private static PipeReader CreateReader(string request) =>
         PipeReader.Create(new ReadOnlySequence<byte>(Encoding.UTF8.GetBytes(request)));
 
