@@ -30,8 +30,6 @@ namespace Nethermind.State.Proofs
         private readonly List<byte[]> _accountProofItems = new();
         private readonly List<byte[]>[] _storageProofItems;
 
-        private readonly AccountDecoder _accountDecoder = AccountDecoder.Instance;
-
         private static ValueHash256 ToKey(byte[] index) => ValueKeccak.Compute(index);
 
         private static byte[] ToKey(UInt256 index)
@@ -110,8 +108,11 @@ namespace Nethermind.State.Proofs
         {
             if (ctx.Storage is null)
             {
-                // Account trie: follow the path leading to our target account
-                return IsPrefix(_fullAccountPath, ctx.Path);
+                // Account trie: follow the path leading to our target account. Once we've reached
+                // the target leaf, only descend further (into the storage trie) when storage slots
+                // were actually requested.
+                if (!IsPrefix(_fullAccountPath, ctx.Path)) return false;
+                return _fullStoragePaths.Length != 0 || ctx.Path.Length < _fullAccountPath.Length;
             }
 
             // Storage trie: visit nodes on the path to any requested storage slot
@@ -137,66 +138,48 @@ namespace Nethermind.State.Proofs
         {
             AddProofItem(node, ctx);
 
-            if (ctx.Storage is null)
+            // Account-leaf fields are written from VisitAccount (the visitor framework decodes
+            // the account for us, so we avoid decoding the same RLP twice).
+            if (ctx.Storage is null) return;
+
+            // Storage leaf: record the decoded value for every requested slot whose full path
+            // ends at this leaf. Storage leaf Values are always RLP-encoded in a valid trie.
+            for (int i = 0; i < _fullStoragePaths.Length; i++)
             {
-                // Decode account fields only if this leaf is our target account
-                if (IsFullPathMatch(_fullAccountPath, ctx.Path, node.Key))
-                {
-                    Rlp.ValueDecoderContext rlpCtx = new(node.Value.ToArray());
-                    Account account = _accountDecoder.Decode(ref rlpCtx);
-                    _accountProof.Nonce = account.Nonce;
-                    _accountProof.Balance = account.Balance;
-                    _accountProof.StorageRoot = account.StorageRoot;
-                    _accountProof.CodeHash = account.CodeHash;
-                }
-            }
-            else
-            {
-                // Record decoded storage values for every slot whose full path matches this leaf
-                for (int i = 0; i < _fullStoragePaths.Length; i++)
-                {
-                    if (IsFullPathMatch(_fullStoragePaths[i], ctx.Path, node.Key))
-                    {
-                        _accountProof.StorageProofs[i].Value = DecodeStorageValue(node.Value);
-                    }
-                }
+                if (IsFullPathMatch(_fullStoragePaths[i], ctx.Path, node.Key))
+                    _accountProof.StorageProofs[i].Value = new Rlp.ValueDecoderContext(node.Value.AsSpan()).DecodeByteArray();
             }
         }
 
-        public void VisitAccount(in TreePathContextWithStorage ctx, TrieNode node, in AccountStruct account) { }
+        public void VisitAccount(in TreePathContextWithStorage ctx, TrieNode node, in AccountStruct account)
+        {
+            // ctx.Path here already includes the leaf's key (it's leafContext, not nodeContext).
+            if (!IsFullPathMatch(_fullAccountPath, ctx.Path)) return;
+
+            _accountProof.Nonce = account.Nonce;
+            _accountProof.Balance = account.Balance;
+            _accountProof.StorageRoot = account.StorageRoot.ToCommitment();
+            _accountProof.CodeHash = account.CodeHash.ToCommitment();
+        }
 
         private void AddProofItem(TrieNode node, in TreePathContextWithStorage ctx)
         {
+            // Inline nodes have no standalone hash; their RLP is already embedded in the parent's
+            // RLP, so EIP-1186 / go-ethereum convention is to omit them from the proof entries.
+            if (node.Keccak is null) return;
+
+            byte[] rlp = node.FullRlp.ToArray();
             if (ctx.Storage is null)
             {
-                _accountProofItems.Add(node.FullRlp.ToArray());
+                _accountProofItems.Add(rlp);
+                return;
             }
-            else
-            {
-                // Add the node RLP to every storage proof whose path passes through this node
-                for (int i = 0; i < _fullStoragePaths.Length; i++)
-                {
-                    if (IsPrefix(_fullStoragePaths[i], ctx.Path))
-                        _storageProofItems[i].Add(node.FullRlp.ToArray());
-                }
-            }
-        }
 
-
-        /// <summary>
-        /// Decodes a storage leaf value. Handles both RLP-encoded values (standard) and raw bytes.
-        /// </summary>
-        private static ReadOnlyMemory<byte> DecodeStorageValue(ReadOnlySpan<byte> nodeValue)
-        {
-            if (nodeValue.IsEmpty) return new byte[] { 0 };
-            try
+            // Add the node RLP to every storage proof whose path passes through this node.
+            for (int i = 0; i < _fullStoragePaths.Length; i++)
             {
-                return new Rlp.ValueDecoderContext(nodeValue).DecodeByteArray();
-            }
-            catch (RlpException)
-            {
-                // Value was stored without RLP encoding; return as-is
-                return nodeValue.ToArray();
+                if (IsPrefix(_fullStoragePaths[i], ctx.Path))
+                    _storageProofItems[i].Add(rlp);
             }
         }
 
@@ -231,6 +214,20 @@ namespace Nethermind.State.Proofs
                 if (nodeKey[i] != (byte)targetPath[ctxPath.Length + i]) return false;
             }
 
+            return true;
+        }
+
+        /// <summary>
+        /// Returns true if <paramref name="fullPath"/> exactly equals <paramref name="targetPath"/>.
+        /// Used at the account leaf where the context path already includes the leaf's key.
+        /// </summary>
+        private static bool IsFullPathMatch(Nibble[] targetPath, TreePath fullPath)
+        {
+            if (fullPath.Length != targetPath.Length) return false;
+            for (int i = 0; i < targetPath.Length; i++)
+            {
+                if (fullPath[i] != (byte)targetPath[i]) return false;
+            }
             return true;
         }
     }
