@@ -89,6 +89,21 @@ public class NLogConfiguratorTests
         seconds.Should().BeInRange(lower, upper);
     }
 
+    [Test]
+    public void Logstash_version_is_numeric_one()
+    {
+        MemoryTarget memory = SetUpAndConfigure("logstash");
+
+        LogManager.GetLogger("t").Info("hello");
+
+        using JsonDocument doc = JsonDocument.Parse(memory.Logs[0]);
+        JsonElement version = doc.RootElement.GetProperty("@version");
+
+        // Spec violation guard: logstash-logback-encoder defines @version as integer 1, not "1".
+        version.ValueKind.Should().Be(JsonValueKind.Number);
+        version.GetInt32().Should().Be(1);
+    }
+
     [TestCase("ecs", "@timestamp")]
     [TestCase("logstash", "@timestamp")]
     [TestCase("gcp", "time")]

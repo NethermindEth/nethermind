@@ -7,7 +7,7 @@
     <target name="json-console" xsi:type="Console">
       <layout xsi:type="JsonLayout" suppressSpaces="true">
         <attribute name="@timestamp" layout="${date:universalTime=true:format=yyyy-MM-ddTHH\:mm\:ss.fffffffZ}" />
-        <attribute name="@version" layout="1" />
+        <attribute name="@version" layout="1" encode="false" />
         <attribute name="message" layout="${replace:searchFor=\x1B\[[0-9;]*m:replaceWith=:regex=true:inner=${message}}" />
         <attribute name="level" layout="${level:upperCase=true}" />
         <attribute name="logger_name" layout="${logger}" />

@@ -113,8 +113,6 @@ public static class NLogConfigurator
 
         // ConfiguredNamedTargets only enumerates targets that have been registered with the
         // configuration (no <rules> reference required, unlike FindTargetByName).
-        // ConfiguredNamedTargets only enumerates targets that have been registered with the
-        // configuration (no <rules> reference required, unlike FindTargetByName).
         Target target = embeddedConfig.ConfiguredNamedTargets
             .FirstOrDefault(t => string.Equals(t.Name, EmbeddedConsoleTargetName, StringComparison.Ordinal))
             ?? embeddedConfig.AllTargets.FirstOrDefault()
