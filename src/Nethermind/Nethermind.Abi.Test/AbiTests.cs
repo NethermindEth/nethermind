@@ -689,7 +689,6 @@ public class AbiTests
     [Test]
     public void AbiTypeConverter_Parses_FixedTupleArray_Correctly()
     {
-        // Test that "tuple[3]" produces AbiFixedLengthArray(AbiTuple, 3)
         string json = "\"tuple[3]\"";
         AbiType result = JsonSerializer.Deserialize<AbiType>(json)!;
 
@@ -703,7 +702,6 @@ public class AbiTests
     [Test]
     public void AbiTypeConverter_Parses_PlainTuple_Correctly()
     {
-        // Test that "tuple" still produces AbiTuple (not array)
         string json = "\"tuple\"";
         AbiType result = JsonSerializer.Deserialize<AbiType>(json)!;
 
@@ -712,9 +710,37 @@ public class AbiTests
     }
 
     [Test]
+    public void AbiTypeConverter_Parses_DynamicDimensionalTupleArray_Correctly()
+    {
+        string json = "\"tuple[][]\"";
+        AbiType result = JsonSerializer.Deserialize<AbiType>(json)!;
+
+        result.Should().BeOfType<AbiArray>();
+        AbiArray outer = (AbiArray)result;
+        outer.ElementType.Should().BeOfType<AbiArray>();
+        AbiArray inner = (AbiArray)outer.ElementType;
+        inner.ElementType.Should().BeOfType<AbiTuple>();
+        result.Name.Should().Be("()[][]");
+    }
+
+    [Test]
+    public void AbiTypeConverter_Parses_FixedDynamicTupleArray_Correctly()
+    {
+        string json = "\"tuple[2][]\"";
+        AbiType result = JsonSerializer.Deserialize<AbiType>(json)!;
+
+        result.Should().BeOfType<AbiArray>();
+        AbiArray outer = (AbiArray)result;
+        outer.ElementType.Should().BeOfType<AbiFixedLengthArray>();
+        AbiFixedLengthArray inner = (AbiFixedLengthArray)outer.ElementType;
+        inner.ElementType.Should().BeOfType<AbiTuple>();
+        inner.Length.Should().Be(2);
+        result.Name.Should().Be("()[2][]");
+    }
+
+    [Test]
     public void AbiTuple_Name_Reflects_Elements()
     {
-        // Test that AbiTuple with elements has correct Name for signature generation
         AbiTuple tuple = new(AbiType.UInt8, AbiType.UInt64);
         tuple.Name.Should().Be("(uint8,uint64)");
 
