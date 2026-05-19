@@ -36,6 +36,12 @@ internal sealed partial class StateCompositionService : IStoppableService, IDisp
     private readonly ILogManager _logManager;
     private readonly ILogger _logger;
     private readonly SemaphoreSlim _scanLock = new(1, 1);
+    // Set when an AnalyzeAsync call cannot acquire _scanLock (a scan is already
+    // running). The scan that holds the lock re-fires one rescan against the
+    // current head on completion, so a rescan request is never silently lost —
+    // critical when the chain is frozen (a sensor-paced orchestrator waiting on
+    // the baseline), since nothing else would re-trigger it.
+    private int _rescanRequested;
     private readonly SemaphoreSlim _inspectLock = new(1, 1);
     // Non-blocking coalescing lock for per-block incremental diffs. Only used
     // synchronously inside Task.Run, so a managed Lock is a better fit than
@@ -97,8 +103,16 @@ internal sealed partial class StateCompositionService : IStoppableService, IDisp
             : TimeSpan.Zero;
         bool acquired = await _scanLock.WaitAsync(queueTimeout, ct).ConfigureAwait(false);
         if (!acquired)
-            return Result<StateCompositionStats>.Fail("Scan already in progress");
+        {
+            // A scan already holds the lock. Record the rescan so the running
+            // scan re-fires one against the current head on completion;
+            // otherwise this request is lost and, with a frozen chain, nothing
+            // ever re-triggers it.
+            Interlocked.Exchange(ref _rescanRequested, 1);
+            return Result<StateCompositionStats>.Fail("Scan already in progress; rescan queued");
+        }
 
+        Result<StateCompositionStats> result;
         try
         {
             using CancellationTokenSource linkedCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
@@ -142,13 +156,31 @@ internal sealed partial class StateCompositionService : IStoppableService, IDisp
                              $"in {sw.Elapsed}. Accounts={stats.AccountsTotal}, Contracts={stats.ContractsTotal}, " +
                              $"StorageSlots={stats.StorageSlotsTotal}");
 
-            return Result<StateCompositionStats>.Success(stats);
+            result = Result<StateCompositionStats>.Success(stats);
         }
         finally
         {
             _currentScanCts = null;
             _scanLock.Release();
         }
+
+        // A rescan was requested while this scan held the lock — the baseline
+        // just published may already trail the chain head. Re-fire one scan
+        // against the current head (the lock is free now) so the baseline
+        // converges; with a frozen chain this needs only one extra pass.
+        if (Interlocked.Exchange(ref _rescanRequested, 0) == 1)
+        {
+            BlockHeader? head = _blockTree.Head?.Header;
+            if (head?.StateRoot is not null)
+            {
+                FireAndForget.Run(
+                    () => AnalyzeAsync(head, CancellationToken.None),
+                    _logger,
+                    "StateComposition: queued rescan failed");
+            }
+        }
+
+        return result;
     }
 
     public async Task<Result<TopContractEntry?>> InspectContractAsync(Address address, BlockHeader header, CancellationToken ct)
