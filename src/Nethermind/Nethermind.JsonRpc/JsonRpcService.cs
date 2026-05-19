@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -29,6 +30,8 @@ namespace Nethermind.JsonRpc;
 
 public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogManager logManager, IJsonRpcConfig jsonRpcConfig) : IJsonRpcService
 {
+    private const int MaxPooledParameterCount = 8;
+
     private readonly ILogger _logger = logManager.GetClassLogger<JsonRpcService>();
     private readonly IRpcModuleProvider _rpcModuleProvider = rpcModuleProvider;
     private readonly HashSet<string> _methodsLoggingFiltering = (jsonRpcConfig.MethodsLoggingFiltering ?? []).ToHashSet();
@@ -105,7 +108,13 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
     {
         const string GetLogsMethodName = "eth_getLogs";
 
-        JsonRpcErrorResponse? value = PrepareParameters(request, methodName, method, out object[]? parameters);
+        JsonRpcErrorResponse? value = PrepareParameters(
+            request,
+            methodName,
+            method,
+            out object?[]? parameters,
+            out int parameterCount,
+            out bool returnParametersToPool);
         if (value is not null)
         {
             value.BoundaryTimings = RpcBoundaryTimings.PreMethodOnly(boundaryStartTimestamp, Stopwatch.GetTimestamp());
@@ -125,7 +134,15 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
         try
         {
             // Execute method
-            object invocationResult = method.Invoker.Invoke(rpcModule, new Span<object?>(parameters));
+            object? invocationResult;
+            try
+            {
+                invocationResult = method.Invoker.Invoke(rpcModule, parameters.AsSpan(0, parameterCount));
+            }
+            finally
+            {
+                ReturnParameters(parameters, returnParametersToPool);
+            }
 
             switch (invocationResult)
             {
@@ -181,6 +198,14 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
         }
     }
 
+    private static void ReturnParameters(object?[]? parameters, bool returnToPool)
+    {
+        if (returnToPool && parameters is not null)
+        {
+            ArrayPool<object?>.Shared.Return(parameters, clearArray: true);
+        }
+    }
+
     private static JsonRpcResponse WithPreMethodTimings(JsonRpcResponse response, long boundaryStartTimestamp)
     {
         response.BoundaryTimings = RpcBoundaryTimings.PreMethodOnly(boundaryStartTimestamp, Stopwatch.GetTimestamp());
@@ -198,9 +223,17 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
             methodEndTimestamp,
             Stopwatch.GetTimestamp());
 
-    private JsonRpcErrorResponse? PrepareParameters(JsonRpcRequest request, string methodName, ResolvedMethodInfo method, out object[]? parameters)
+    private JsonRpcErrorResponse? PrepareParameters(
+        JsonRpcRequest request,
+        string methodName,
+        ResolvedMethodInfo method,
+        out object?[]? parameters,
+        out int parameterCount,
+        out bool returnParametersToPool)
     {
         parameters = null;
+        parameterCount = 0;
+        returnParametersToPool = false;
         ReadOnlyMemory<byte> providedParametersUtf8 = request.ParamsUtf8;
         bool useUtf8Parameters = CanDeserializeParametersFromUtf8(request, method.ExpectedParameters);
         JsonElement providedParameters = useUtf8Parameters ? default : request.Params;
@@ -264,11 +297,12 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
         try
         {
             parameters = useUtf8Parameters
-                ? DeserializeParameters(method.ExpectedParameters, providedParametersLength, providedParametersUtf8, missingParamsCount)
-                : DeserializeParameters(method.ExpectedParameters, providedParametersLength, providedParameters, providedParametersUtf8, missingParamsCount);
+                ? DeserializeParameters(method.ExpectedParameters, providedParametersLength, providedParametersUtf8, missingParamsCount, out parameterCount, out returnParametersToPool)
+                : DeserializeParameters(method.ExpectedParameters, providedParametersLength, providedParameters, providedParametersUtf8, missingParamsCount, out parameterCount, out returnParametersToPool);
         }
         catch (Exception e)
         {
+            ReturnParameters(parameters, returnParametersToPool);
             if (_logger.IsWarn) _logger.Warn($"Incorrect JSON RPC parameters when calling {methodName} with params [{GetParamsForLog(request)}] {e}");
             return GetErrorResponse(methodName, ErrorCodes.InvalidParams, "Invalid params", null, request.Id);
         }
@@ -678,96 +712,134 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
             : JsonSerializer.Deserialize(ref reader, paramType, EthereumJsonSerializer.JsonOptions);
     }
 
-    private static object[] DeserializeParameters(
+    private static object?[] DeserializeParameters(
         ExpectedParameter[] expectedParameters,
         int providedParametersLength,
         ReadOnlyMemory<byte> providedParametersUtf8,
-        int missingParamsCount)
+        int missingParamsCount,
+        out int parameterCount,
+        out bool returnParametersToPool)
     {
         int totalLength = Math.Min(expectedParameters.Length, providedParametersLength + missingParamsCount);
+        parameterCount = totalLength;
+        returnParametersToPool = false;
         if (totalLength == 0) return [];
 
-        object[] executionParameters = new object[totalLength];
+        object?[] executionParameters = RentParameterArray(totalLength, out returnParametersToPool);
 
         int i = 0;
 
-        if (providedParametersLength > 0)
+        try
         {
-            JsonReaderState readerState = default;
-            int offset = 0;
-            bool started = false;
-            while (JsonRpcArrayReader.TryReadNextItem(providedParametersUtf8, ref offset, ref readerState, ref started, out ReadOnlyMemory<byte> providedParameterUtf8))
+            if (providedParametersLength > 0)
             {
-                ExpectedParameter expectedParameter = expectedParameters[i];
-                object? parameter = DeserializeParameter(providedParameterUtf8, expectedParameter);
-                executionParameters[i] = parameter;
-                i++;
+                JsonReaderState readerState = default;
+                int offset = 0;
+                bool started = false;
+                while (JsonRpcArrayReader.TryReadNextItem(providedParametersUtf8, ref offset, ref readerState, ref started, out ReadOnlyMemory<byte> providedParameterUtf8))
+                {
+                    ExpectedParameter expectedParameter = expectedParameters[i];
+                    object? parameter = DeserializeParameter(providedParameterUtf8, expectedParameter);
+                    executionParameters[i] = parameter;
+                    i++;
+                }
+
+                if (i != providedParametersLength)
+                {
+                    ThrowMismatchedParameterCount();
+                }
             }
 
-            if (i != providedParametersLength)
+            for (i = providedParametersLength; i < totalLength; i++)
             {
-                ThrowMismatchedParameterCount();
+                executionParameters[i] = expectedParameters[i].DefaultValue;
             }
-        }
 
-        for (i = providedParametersLength; i < totalLength; i++)
+            return executionParameters;
+        }
+        catch
         {
-            executionParameters[i] = expectedParameters[i].DefaultValue;
+            ReturnParameters(executionParameters, returnParametersToPool);
+            returnParametersToPool = false;
+            throw;
         }
-
-        return executionParameters;
 
         [DoesNotReturn, StackTraceHidden]
         static void ThrowMismatchedParameterCount() =>
             throw new JsonException("Mismatched JSON-RPC parameter count.");
     }
 
-    private static object[] DeserializeParameters(
+    private static object?[] DeserializeParameters(
         ExpectedParameter[] expectedParameters,
         int providedParametersLength,
         JsonElement providedParameters,
         ReadOnlyMemory<byte> providedParametersUtf8,
-        int missingParamsCount)
+        int missingParamsCount,
+        out int parameterCount,
+        out bool returnParametersToPool)
     {
         int totalLength = Math.Min(expectedParameters.Length, providedParametersLength + missingParamsCount);
+        parameterCount = totalLength;
+        returnParametersToPool = false;
         if (totalLength == 0) return [];
 
-        object[] executionParameters = new object[totalLength];
+        object?[] executionParameters = RentParameterArray(totalLength, out returnParametersToPool);
 
         int i = 0;
 
-        if (providedParametersLength > 0)
+        try
         {
-            JsonElement.ArrayEnumerator enumerator = providedParameters.EnumerateArray();
-            bool useUtf8Parameters = !providedParametersUtf8.IsEmpty && providedParameters.ValueKind == JsonValueKind.Array;
-            JsonReaderState readerState = default;
-            int offset = 0;
-            bool started = false;
-            while (enumerator.MoveNext())
+            if (providedParametersLength > 0)
             {
-                ExpectedParameter expectedParameter = expectedParameters[i];
-                ReadOnlyMemory<byte> providedParameterUtf8 = default;
-                if (useUtf8Parameters && !JsonRpcArrayReader.TryReadNextItem(providedParametersUtf8, ref offset, ref readerState, ref started, out providedParameterUtf8))
+                JsonElement.ArrayEnumerator enumerator = providedParameters.EnumerateArray();
+                bool useUtf8Parameters = !providedParametersUtf8.IsEmpty && providedParameters.ValueKind == JsonValueKind.Array;
+                JsonReaderState readerState = default;
+                int offset = 0;
+                bool started = false;
+                while (enumerator.MoveNext())
                 {
-                    ThrowMissingParameterBytes();
+                    ExpectedParameter expectedParameter = expectedParameters[i];
+                    ReadOnlyMemory<byte> providedParameterUtf8 = default;
+                    if (useUtf8Parameters && !JsonRpcArrayReader.TryReadNextItem(providedParametersUtf8, ref offset, ref readerState, ref started, out providedParameterUtf8))
+                    {
+                        ThrowMissingParameterBytes();
+                    }
+
+                    object? parameter = DeserializeParameter(enumerator.Current, expectedParameter, providedParameterUtf8);
+                    executionParameters[i] = parameter;
+                    i++;
                 }
-
-                object? parameter = DeserializeParameter(enumerator.Current, expectedParameter, providedParameterUtf8);
-                executionParameters[i] = parameter;
-                i++;
             }
-        }
 
-        for (i = providedParametersLength; i < totalLength; i++)
+            for (i = providedParametersLength; i < totalLength; i++)
+            {
+                executionParameters[i] = expectedParameters[i].DefaultValue;
+            }
+
+            return executionParameters;
+        }
+        catch
         {
-            executionParameters[i] = expectedParameters[i].DefaultValue;
+            ReturnParameters(executionParameters, returnParametersToPool);
+            returnParametersToPool = false;
+            throw;
         }
-
-        return executionParameters;
 
         [DoesNotReturn, StackTraceHidden]
         static void ThrowMissingParameterBytes() =>
             throw new JsonException("Missing JSON-RPC parameter bytes.");
+    }
+
+    private static object?[] RentParameterArray(int length, out bool returnToPool)
+    {
+        if (length <= MaxPooledParameterCount)
+        {
+            returnToPool = true;
+            return ArrayPool<object?>.Shared.Rent(length);
+        }
+
+        returnToPool = false;
+        return new object?[length];
     }
 
     private static JsonRpcResponse GetSuccessResponse(string methodName, object result, JsonRpcId id, Action? disposableAction)
