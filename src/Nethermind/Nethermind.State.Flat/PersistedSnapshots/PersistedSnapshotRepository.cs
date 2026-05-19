@@ -160,12 +160,16 @@ public sealed class PersistedSnapshotRepository(
             _compactedSnapshots[entry.To] = snapshot;
             Interlocked.Add(ref _compactedSnapshotMemoryBytes, snapshot.Size);
             Interlocked.Increment(ref _compactedSnapshotCount);
+            Interlocked.Add(ref Metrics._compactedPersistedSnapshotMemory, snapshot.Size);
+            Interlocked.Increment(ref Metrics._persistedSnapshotCount);
         }
         else
         {
             _baseSnapshots[entry.To] = snapshot;
             Interlocked.Add(ref _baseSnapshotMemoryBytes, snapshot.Size);
             Interlocked.Increment(ref _baseSnapshotCount);
+            Interlocked.Add(ref Metrics._persistedSnapshotMemory, snapshot.Size);
+            Interlocked.Increment(ref Metrics._persistedSnapshotCount);
         }
 
         // LoadFromCatalog already holds `_catalogLock`. Catalog order is insertion order, so
@@ -231,6 +235,8 @@ public sealed class PersistedSnapshotRepository(
             _baseSnapshots[snapshot.To] = persisted;
             Interlocked.Add(ref _baseSnapshotMemoryBytes, persisted.Size);
             Interlocked.Increment(ref _baseSnapshotCount);
+            Interlocked.Add(ref Metrics._persistedSnapshotMemory, persisted.Size);
+            Interlocked.Increment(ref Metrics._persistedSnapshotCount);
             RegisterStateIdLocked(snapshot.To);
             // Pre-acquire the caller's lease inside the lock so a racing PruneBefore can't
             // dispose the dict entry between the unlock and the caller seeing the return.
@@ -264,6 +270,8 @@ public sealed class PersistedSnapshotRepository(
             _compactedSnapshots[to] = snapshot;
             Interlocked.Add(ref _compactedSnapshotMemoryBytes, snapshot.Size);
             Interlocked.Increment(ref _compactedSnapshotCount);
+            Interlocked.Add(ref Metrics._compactedPersistedSnapshotMemory, snapshot.Size);
+            Interlocked.Increment(ref Metrics._persistedSnapshotCount);
             RegisterStateIdLocked(to);
             // Pre-acquire the caller's lease inside the lock so a racing PruneBefore on a
             // background compactor thread can't dispose the dict entry between unlock and
@@ -444,6 +452,9 @@ public sealed class PersistedSnapshotRepository(
                 {
                     Interlocked.Add(ref _baseSnapshotMemoryBytes, -snapshot.Size);
                     Interlocked.Decrement(ref _baseSnapshotCount);
+                    Interlocked.Add(ref Metrics._persistedSnapshotMemory, -snapshot.Size);
+                    Interlocked.Decrement(ref Metrics._persistedSnapshotCount);
+                    Interlocked.Increment(ref Metrics._persistedSnapshotPrunes);
                     RemoveFromCatalog(snapshot.To);
                     UnregisterStateIdLocked(snapshot.To);
                     snapshot.Dispose();
@@ -464,6 +475,9 @@ public sealed class PersistedSnapshotRepository(
                 {
                     Interlocked.Add(ref _compactedSnapshotMemoryBytes, -snapshot.Size);
                     Interlocked.Decrement(ref _compactedSnapshotCount);
+                    Interlocked.Add(ref Metrics._compactedPersistedSnapshotMemory, -snapshot.Size);
+                    Interlocked.Decrement(ref Metrics._persistedSnapshotCount);
+                    Interlocked.Increment(ref Metrics._persistedSnapshotPrunes);
                     RemoveFromCatalog(snapshot.To);
                     UnregisterStateIdLocked(snapshot.To);
                     snapshot.Dispose();
@@ -518,10 +532,13 @@ public sealed class PersistedSnapshotRepository(
                 kv.Value.Dispose();
             _baseSnapshots.Clear();
             _compactedSnapshots.Clear();
-            Interlocked.Exchange(ref _baseSnapshotMemoryBytes, 0);
-            Interlocked.Exchange(ref _compactedSnapshotMemoryBytes, 0);
-            Interlocked.Exchange(ref _baseSnapshotCount, 0);
-            Interlocked.Exchange(ref _compactedSnapshotCount, 0);
+            long baseMem = Interlocked.Exchange(ref _baseSnapshotMemoryBytes, 0);
+            long compactedMem = Interlocked.Exchange(ref _compactedSnapshotMemoryBytes, 0);
+            long baseCount = Interlocked.Exchange(ref _baseSnapshotCount, 0);
+            long compactedCount = Interlocked.Exchange(ref _compactedSnapshotCount, 0);
+            Interlocked.Add(ref Metrics._persistedSnapshotMemory, -baseMem);
+            Interlocked.Add(ref Metrics._compactedPersistedSnapshotMemory, -compactedMem);
+            Interlocked.Add(ref Metrics._persistedSnapshotCount, -(baseCount + compactedCount));
             _orderedStateIds.Clear();
             _lastRegisteredState = null;
             // Drop the managers' dictionary refs; any file still alive cleans up here.

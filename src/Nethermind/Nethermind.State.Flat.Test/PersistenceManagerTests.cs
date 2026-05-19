@@ -128,19 +128,20 @@ public class PersistenceManagerTests
     }
 
     [TestCase(true, TestName = "DetermineSnapshotAction_SufficientDepthAndFinalized_ReturnsCompactedSnapshot")]
-    [TestCase(false, TestName = "DetermineSnapshotAction_SufficientDepthAndFinalized_FallsBackToUncompacted")]
+    [TestCase(false, TestName = "DetermineSnapshotAction_SufficientDepthAndFinalized_BaseAtFinalizedBlock")]
     public void DetermineSnapshotAction_SufficientDepthAndFinalized(bool useCompacted)
     {
-        // Setup: persisted at Block0, latest at 100, finalized at 100
+        // Setup: persisted at Block0, latest at 100, finalized at the target block (= seed under
+        // the single-seed model). With CompactSize=16, finalized must be >= persisted + 16 for
+        // the normal-trigger seed to engage — for the non-compacted case we use a base at block 16
+        // to satisfy the gate; the OLD "fall back to a 1-wide base at persisted+1" semantic was
+        // removed when DetermineSnapshotAction switched to a single seed.
         StateId persisted = Block0;
         StateId latest = CreateStateId(100);
 
-        // Vary target block and compaction based on parameter
-        int targetBlock = useCompacted ? 16 : 1; // compacted uses 16, fallback uses 1
-        StateId target = CreateStateId(targetBlock);
-
-        _finalizedStateProvider.SetFinalizedBlockNumber(100);
-        _finalizedStateProvider.SetFinalizedStateRootAt(targetBlock, new Hash256(target.StateRoot.Bytes));
+        StateId target = CreateStateId(16);
+        _finalizedStateProvider.SetFinalizedBlockNumber(16);
+        _finalizedStateProvider.SetFinalizedStateRootAt(16, new Hash256(target.StateRoot.Bytes));
 
         // Create snapshot (compacted or not based on parameter)
         using Snapshot expectedSnapshot = CreateSnapshot(persisted, target, compacted: useCompacted);
@@ -176,10 +177,8 @@ public class PersistenceManagerTests
     [Test]
     public async Task DetermineSnapshotAction_LongFinalityDisabled_SkipsConversionPath()
     {
-        // Same scenario as DetermineSnapshotAction_UnfinalizedAndAboveForceLimit_ReturnsToConvert
-        // (in-memory depth ~301 > 256, finality stalled at block 10) — but with the
-        // EnableLongFinality flag off, the conversion path must not fire and we must not
-        // try to call ConvertSnapshotToPersistedSnapshot on the repo.
+        // In-memory depth ~301, finality stalled at block 10. With EnableLongFinality off, the
+        // conversion path must not fire and we must not call ConvertSnapshotToPersistedSnapshot.
         await _persistenceManager.DisposeAsync();
         _config.EnableLongFinality = false;
         _persistenceManager = new PersistenceManager(
@@ -214,11 +213,95 @@ public class PersistenceManagerTests
     }
 
     [Test]
-    public void DetermineSnapshotAction_UnfinalizedAndAboveForceLimit_ForcePersistsFromTip()
+    public void DetermineSnapshotAction_BackstopExceeded_SeedsFromPersistedTier()
     {
-        // Force-persist mode: depth (300) > MaxInMemoryBaseSnapshotCount (160), finality stalled.
-        // BFS seeds with the in-memory tip and persists whichever candidate extends from
-        // currentPersistedState — no waiting for finalization.
+        // Backstop: snapshotsDepth (95000) > LongFinalityReorgDepth (90000), finalized not in range.
+        // Phase 1 must seed from the latest persisted-snapshot tier state, not the in-memory tip.
+        StateId latest = CreateStateId(95000);
+        StateId tierTip = CreateStateId(80000);
+        _finalizedStateProvider.SetFinalizedBlockNumber(10);
+
+        // Mock the small repo to expose a tier tip; large repo returns null.
+        _persistedSnapshotRepository.LastRegisteredState.Returns(tierTip);
+
+        // Seed the in-memory base chain that the BFS will walk from tierTip back to Block0.
+        // CreateSnapshot's helper only registers one StateId at a time; emulate a one-hop graph
+        // by registering a base at the tier-tip block with From = Block0.
+        using Snapshot expected = CreateSnapshot(Block0, tierTip, compacted: false);
+
+        (PersistedSnapshot? persistedToPersist, Snapshot? toPersist, PersistenceManager.ConversionCandidate? toConvert) = _persistenceManager.DetermineSnapshotAction(latest);
+
+        Assert.That(toConvert, Is.Null);
+        // The backstop seed lands on tierTip; the BFS finds the in-memory base whose From == Block0
+        // (currentPersistedState) and returns it as toPersist.
+        Assert.That(toPersist, Is.Not.Null);
+        Assert.That(toPersist!.From, Is.EqualTo(Block0));
+        Assert.That(toPersist.To, Is.EqualTo(tierTip));
+
+        toPersist.Dispose();
+    }
+
+    [Test]
+    public void TryFindSnapshotToConvert_PrefersBoundaryCompactedOverBase()
+    {
+        // Bug A regression: Phase 2 must globally prefer a CompactSize-wide compacted (→ large
+        // repo via Branch A) over any in-memory base (→ small repo via Branch B), regardless of
+        // block-number ordering. Seed an in-memory base at state(1) and a CompactSize-wide
+        // (16-wide) compacted at state(16) — both have From == Block0 on disk. The old single-pass
+        // ascending walk would pick the base at state(1) first; the two-pass form must pick the
+        // compacted at state(16).
+        StateId persisted = Block0;
+        StateId baseTo = CreateStateId(1);
+        StateId compactedTo = CreateStateId(16);
+
+        // Base at state(1) — sub-CompactSize, would have triggered Branch B in the old code.
+        using Snapshot baseSnap = CreateSnapshot(persisted, baseTo, compacted: false);
+        // 16-wide compacted from Block0 — boundary, should win under the two-pass form.
+        using Snapshot compactedSnap = CreateSnapshot(persisted, compactedTo, compacted: true);
+
+        PersistenceManager.ConversionCandidate? result = InvokeTryFindSnapshotToConvert(persisted);
+
+        Assert.That(result, Is.Not.Null);
+        Assert.That(result!.Compacted, Is.Not.Null);
+        Assert.That(result.Compacted!.From, Is.EqualTo(persisted));
+        Assert.That(result.Compacted.To, Is.EqualTo(compactedTo));
+        Assert.That(result.Base, Is.Null);
+
+        result.Compacted.Dispose();
+    }
+
+    [Test]
+    public void AddToPersistence_InMemoryPersist_PrunesPersistedTier()
+    {
+        // Bug B regression: persisting an in-memory snapshot must trigger PruneBefore on both
+        // tier repos so superseded tier entries get cleared. The toPersist branch previously
+        // skipped the prune; only persistedToPersist did it.
+        StateId from = Block0;
+        StateId to = CreateStateId(16);
+        StateId latest = CreateStateId(100);
+
+        using Snapshot snapshot = CreateSnapshot(from, to, compacted: true);
+
+        _finalizedStateProvider.SetFinalizedBlockNumber(16);
+        _finalizedStateProvider.SetFinalizedStateRootAt(16, new Hash256(to.StateRoot.Bytes));
+
+        IPersistence.IWriteBatch writeBatch = Substitute.For<IPersistence.IWriteBatch>();
+        _persistence.CreateWriteBatch(Arg.Any<StateId>(), Arg.Any<StateId>()).Returns(writeBatch);
+
+        _persistenceManager.AddToPersistence(latest);
+
+        // Both tier mocks (shared substitute) should have received a PruneBefore call with
+        // the new persisted state — once for each repo (small + large).
+        _persistedSnapshotRepository.Received().PruneBefore(to);
+    }
+
+    [Test]
+    public void DetermineSnapshotAction_UnfinalizedBelowBackstop_ReturnsNull()
+    {
+        // Unfinalized (finalized at 10, persisted at 0 — not in range for the CompactSize=16
+        // gate) AND in-memory depth (300) below LongFinalityReorgDepth (90000): no force-persist,
+        // no Phase 1 candidate. Phase 2 entry guard (SnapshotCount > 160) also not satisfied with
+        // a single created snapshot. Action: do nothing.
         StateId persisted = Block0;
         StateId latest = CreateStateId(300);
         StateId target = CreateStateId(1);
@@ -230,12 +313,8 @@ public class PersistenceManagerTests
         (PersistedSnapshot? persistedToPersist, Snapshot? toPersist, PersistenceManager.ConversionCandidate? toConvert) = _persistenceManager.DetermineSnapshotAction(latest);
 
         Assert.That(persistedToPersist, Is.Null);
-        Assert.That(toPersist, Is.Not.Null);
+        Assert.That(toPersist, Is.Null);
         Assert.That(toConvert, Is.Null);
-        Assert.That(toPersist!.From, Is.EqualTo(persisted));
-        Assert.That(toPersist.To, Is.EqualTo(target));
-
-        toPersist.Dispose();
     }
 
     [Test]
@@ -304,12 +383,13 @@ public class PersistenceManagerTests
     [Test]
     public void DetermineSnapshotAction_MultipleStatesAtBlock_SelectsCorrectOne()
     {
-        // Setup: multiple state roots at same block number (reorg scenario)
+        // Setup: multiple state roots at same block number (reorg scenario). Set finalized at the
+        // candidate block so the single-seed BFS lands directly on the finalized state root.
         StateId persisted = Block0;
         StateId latest = CreateStateId(100);
         StateId target1 = CreateStateId(16, rootByte: 1);
         StateId target2 = CreateStateId(16, rootByte: 2); // Different root
-        _finalizedStateProvider.SetFinalizedBlockNumber(100);
+        _finalizedStateProvider.SetFinalizedBlockNumber(16);
         _finalizedStateProvider.SetFinalizedStateRootAt(16, new Hash256(target2.StateRoot.Bytes)); // target2 is finalized
 
         // Create both snapshots
@@ -343,12 +423,13 @@ public class PersistenceManagerTests
     [Test]
     public void DetermineSnapshotAction_OneAboveMinimumBoundary_ReturnsSnapshot()
     {
-        // Setup: persisted at Block0 (0), latest at 80
-        // After persist would be at 15, leaving depth of 65 (one above minimum boundary)
+        // Setup: persisted at Block0, latest at 80, finalized at the candidate block (16) so the
+        // single-seed BFS lands directly on it. Depth (80) + CompactSize (16) = 96 > MinReorgDepth
+        // (64) — passes the normal-trigger gate.
         StateId persisted = Block0;
         StateId latest = CreateStateId(80);
         StateId target = CreateStateId(16);
-        _finalizedStateProvider.SetFinalizedBlockNumber(100);
+        _finalizedStateProvider.SetFinalizedBlockNumber(16);
         _finalizedStateProvider.SetFinalizedStateRootAt(16, new Hash256(target.StateRoot.Bytes));
 
         using Snapshot expectedSnapshot = CreateSnapshot(persisted, target, compacted: true);
@@ -437,7 +518,7 @@ public class PersistenceManagerTests
     [Test]
     public void AddToPersistence_WithAvailableSnapshot_PersistsAndUpdatesState()
     {
-        // Arrange
+        // Arrange — finalized at the candidate block so the single-seed BFS lands directly on it.
         StateId from = Block0;
         StateId to = CreateStateId(16);
         StateId latest = CreateStateId(100);
@@ -445,7 +526,7 @@ public class PersistenceManagerTests
         // Create a snapshot that should be persisted
         using Snapshot snapshot = CreateSnapshot(from, to, compacted: true);
 
-        _finalizedStateProvider.SetFinalizedBlockNumber(100);
+        _finalizedStateProvider.SetFinalizedBlockNumber(16);
         _finalizedStateProvider.SetFinalizedStateRootAt(16, new Hash256(to.StateRoot.Bytes));
 
         IPersistence.IWriteBatch writeBatch = Substitute.For<IPersistence.IWriteBatch>();
@@ -575,6 +656,16 @@ public class PersistenceManagerTests
             _persistence.CreateWriteBatch(state1, state2);
             _persistence.CreateWriteBatch(state2, state3);
         });
+    }
+
+    private PersistenceManager.ConversionCandidate? InvokeTryFindSnapshotToConvert(StateId currentPersistedState)
+    {
+        // TryFindSnapshotToConvert is private; reach it via reflection so we can unit-test the
+        // priority logic without driving the full DetermineSnapshotAction → AddToPersistence loop.
+        System.Reflection.MethodInfo method = typeof(PersistenceManager).GetMethod(
+            "TryFindSnapshotToConvert",
+            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!;
+        return (PersistenceManager.ConversionCandidate?)method.Invoke(_persistenceManager, [currentPersistedState]);
     }
 
     private class TestFinalizedStateProvider : IFinalizedStateProvider

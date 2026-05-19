@@ -89,22 +89,45 @@ public static class Metrics
     public static IMetricObserver CompactTime { get; set; } = new NoopMetricObserver();
 
     // --- Persisted snapshot metrics ---
+    //
+    // The four gauges/counters below are mutated delta-wise by each PersistedSnapshotRepository
+    // at every add/remove site (via Interlocked.Add(ref Metrics._xxx, ...)), so callers must not
+    // recompute or overwrite them — they stay correct only as long as every mutation goes through
+    // the repo. Backed by fields with Volatile.Read/Write accessors to match the bloom pattern.
+
+    internal static long _persistedSnapshotCount;
 
     [GaugeMetric]
     [Description("Number of persisted snapshots on disk")]
-    public static long PersistedSnapshotCount { get; set; }
+    public static long PersistedSnapshotCount
+    {
+        get => Volatile.Read(ref _persistedSnapshotCount);
+        set => Volatile.Write(ref _persistedSnapshotCount, value);
+    }
 
     [GaugeMetric]
     [Description("Estimated disk usage of persisted snapshots in bytes")]
     public static long PersistedSnapshotDiskBytes { get; set; }
 
+    internal static long _persistedSnapshotMemory;
+
     [GaugeMetric]
     [Description("Estimated memory used by base persisted snapshots in bytes")]
-    public static long PersistedSnapshotMemory { get; set; }
+    public static long PersistedSnapshotMemory
+    {
+        get => Volatile.Read(ref _persistedSnapshotMemory);
+        set => Volatile.Write(ref _persistedSnapshotMemory, value);
+    }
+
+    internal static long _compactedPersistedSnapshotMemory;
 
     [GaugeMetric]
     [Description("Estimated memory used by compacted persisted snapshots in bytes")]
-    public static long CompactedPersistedSnapshotMemory { get; set; }
+    public static long CompactedPersistedSnapshotMemory
+    {
+        get => Volatile.Read(ref _compactedPersistedSnapshotMemory);
+        set => Volatile.Write(ref _compactedPersistedSnapshotMemory, value);
+    }
 
     // Backed by a field so callers can update via Interlocked.Add(ref ...).
     internal static long _persistedSnapshotBloomMemory;
@@ -127,10 +150,16 @@ public static class Metrics
     [Description("Number of persisted snapshot file writes")]
     public static long PersistedSnapshotWrites { get; set; }
 
+    internal static long _persistedSnapshotPrunes;
+
     [DetailedMetric]
     [CounterMetric]
     [Description("Number of persisted snapshot prunes")]
-    public static long PersistedSnapshotPrunes { get; set; }
+    public static long PersistedSnapshotPrunes
+    {
+        get => Volatile.Read(ref _persistedSnapshotPrunes);
+        set => Volatile.Write(ref _persistedSnapshotPrunes, value);
+    }
 
     // Push-style gauges keyed by the typed PersistedSnapshotTier singleton so the small and
     // large pools surface separately in Prometheus; the metrics controller dispatches on

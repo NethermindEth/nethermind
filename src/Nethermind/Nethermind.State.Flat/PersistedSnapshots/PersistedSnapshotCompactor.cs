@@ -197,11 +197,10 @@ public class PersistedSnapshotCompactor(
             }
 
             Metrics.PersistedSnapshotCompactions++;
-            Metrics.PersistedSnapshotCount = persistedSnapshotRepository.SnapshotCount;
-            Metrics.PersistedSnapshotMemory = persistedSnapshotRepository.BaseSnapshotMemory;
-            Metrics.CompactedPersistedSnapshotMemory = persistedSnapshotRepository.CompactedSnapshotMemory;
-            // Arena file/byte counters update themselves via push deltas in ArenaManager —
-            // no manual recompute needed here.
+            // PersistedSnapshotCount / PersistedSnapshotMemory / CompactedPersistedSnapshotMemory
+            // are now mutated delta-wise inside the repo at every add/remove site
+            // (AddCompactedSnapshot just ran above; the per-source disposals happen on Dispose).
+            // Arena file/byte counters update themselves via push deltas in ArenaManager.
             return true;
         }
         finally
