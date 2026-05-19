@@ -467,9 +467,15 @@ public class Startup : IStartup
         CollectedHttpBody collectedBody,
         CancellationToken cancellationToken)
     {
+        const int MissingContentLengthInitialCapacity = 4096;
+
         if (contentLength is > 0 and <= int.MaxValue)
         {
             collectedBody.EnsureCapacity((int)contentLength.Value);
+        }
+        else if (contentLength is null or > int.MaxValue)
+        {
+            collectedBody.SetInitialCapacity(MissingContentLengthInitialCapacity);
         }
 
         PipeReader bodyReader = context.Request.BodyReader;
@@ -522,12 +528,23 @@ public class Startup : IStartup
 
     private sealed class CollectedHttpBody : IDisposable
     {
+        private const int DefaultInitialCapacity = 256;
+
         private byte[]? _buffer;
+        private int _initialCapacity = DefaultInitialCapacity;
 
         public int BytesRead { get; private set; }
 
         public ReadOnlyMemory<byte> Memory =>
             _buffer is null ? ReadOnlyMemory<byte>.Empty : _buffer.AsMemory(0, BytesRead);
+
+        public void SetInitialCapacity(int initialCapacity)
+        {
+            if (_buffer is null && initialCapacity > _initialCapacity)
+            {
+                _initialCapacity = initialCapacity;
+            }
+        }
 
         public void EnsureCapacity(int minCapacity)
         {
@@ -536,7 +553,7 @@ public class Startup : IStartup
                 return;
             }
 
-            int newCapacity = _buffer is null ? 256 : _buffer.Length;
+            int newCapacity = _buffer is null ? _initialCapacity : _buffer.Length;
             while (newCapacity < minCapacity)
             {
                 newCapacity = newCapacity <= Array.MaxLength / 2 ? newCapacity * 2 : minCapacity;
