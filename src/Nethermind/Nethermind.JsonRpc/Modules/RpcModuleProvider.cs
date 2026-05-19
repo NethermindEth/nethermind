@@ -226,6 +226,7 @@ namespace Nethermind.JsonRpc.Modules
                     public readonly Type ParameterType;
                     public readonly JsonTypeInfo? TypeInfo;
                     public readonly ConstructorInvoker? ConstructorInvoker;
+                    public readonly object? DefaultValue;
                     private readonly ParameterDetails _introspection;
 
                     public ParameterKind Kind { get; }
@@ -254,6 +255,7 @@ namespace Nethermind.JsonRpc.Modules
                     JsonTypeInfo? typeInfo,
                     ConstructorInvoker? constructor,
                     ParameterKind kind,
+                    object? defaultValue,
                     ParameterDetails introspection)
                 {
                     ArgumentNullException.ThrowIfNull(info);
@@ -262,6 +264,7 @@ namespace Nethermind.JsonRpc.Modules
                     ParameterType = parameterType;
                     TypeInfo = typeInfo;
                     ConstructorInvoker = constructor;
+                    DefaultValue = defaultValue;
                     Kind = kind;
                     _introspection = introspection;
                 }
@@ -348,7 +351,8 @@ namespace Nethermind.JsonRpc.Modules
                         details |= ParameterDetails.IsOptional;
                     }
 
-                    expectedParameters[i] = new(parameter, paramType, typeInfo, constructor, kind, details);
+                    object? defaultValue = parameter.IsOptional ? GetDefaultValue(parameter, paramType) : null;
+                    expectedParameters[i] = new(parameter, paramType, typeInfo, constructor, kind, defaultValue, details);
                 }
 
                 ExpectedParameters = expectedParameters;
@@ -381,6 +385,19 @@ namespace Nethermind.JsonRpc.Modules
                     return flags.Length >= 1 && flags[0] == 2;
                 }
                 return false;
+            }
+
+            private static object? GetDefaultValue(ParameterInfo parameter, Type parameterType)
+            {
+                object? defaultValue = parameter.DefaultValue;
+                if (!ReferenceEquals(defaultValue, Type.Missing) && defaultValue != DBNull.Value)
+                {
+                    return defaultValue;
+                }
+
+                return parameterType.IsValueType && Nullable.GetUnderlyingType(parameterType) is null
+                    ? Activator.CreateInstance(parameterType)
+                    : null;
             }
         }
     }

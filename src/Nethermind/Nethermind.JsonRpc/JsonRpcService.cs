@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
@@ -11,11 +12,9 @@ using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization.Metadata;
-using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Core;
-using Nethermind.Core.Collections;
 using Nethermind.Core.Exceptions;
 using Nethermind.JsonRpc.Exceptions;
 using Nethermind.JsonRpc.Modules;
@@ -33,10 +32,11 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
     private readonly ILogger _logger = logManager.GetClassLogger<JsonRpcService>();
     private readonly IRpcModuleProvider _rpcModuleProvider = rpcModuleProvider;
     private readonly HashSet<string> _methodsLoggingFiltering = (jsonRpcConfig.MethodsLoggingFiltering ?? []).ToHashSet();
-    private readonly Lock _propertyInfoModificationLock = new();
     private readonly int _maxLoggedRequestParametersCharacters = jsonRpcConfig.MaxLoggedRequestParametersCharacters ?? int.MaxValue;
+    private static readonly ConcurrentDictionary<Type, TaskResultAccessor> _taskResultAccessors = new();
+    private static readonly MethodInfo _readTaskResultMethod = typeof(JsonRpcService).GetMethod(nameof(ReadTaskResult), BindingFlags.NonPublic | BindingFlags.Static)!;
 
-    private Dictionary<TypeAsKey, PropertyInfo?> _propertyInfoCache = [];
+    private delegate IResultWrapper? TaskResultAccessor(Task task);
 
     public ValueTask<JsonRpcResponse> SendRequestAsync(JsonRpcRequest rpcRequest, JsonRpcContext context)
     {
@@ -114,7 +114,7 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
     {
         const string GetLogsMethodName = "eth_getLogs";
 
-        JsonRpcErrorResponse? value = PrepareParameters(request, methodName, method, out object[]? parameters, out bool hasMissing);
+        JsonRpcErrorResponse? value = PrepareParameters(request, methodName, method, out object[]? parameters);
         if (value is not null)
         {
             value.BoundaryTimings = RpcBoundaryTimings.PreMethodOnly(boundaryStartTimestamp, Stopwatch.GetTimestamp());
@@ -134,9 +134,7 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
         try
         {
             // Execute method
-            object invocationResult = hasMissing ?
-                method.MethodInfo.Invoke(rpcModule, parameters) :
-                method.Invoker.Invoke(rpcModule, new Span<object?>(parameters));
+            object invocationResult = method.Invoker.Invoke(rpcModule, new Span<object?>(parameters));
 
             switch (invocationResult)
             {
@@ -147,7 +145,7 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
                 case Task task:
                     await task;
                     methodEndTimestamp = Stopwatch.GetTimestamp();
-                    resultWrapper = GetResultProperty(task)?.GetValue(task) as IResultWrapper;
+                    resultWrapper = GetTaskResult(task);
                     break;
                 default:
                     methodEndTimestamp = Stopwatch.GetTimestamp();
@@ -209,10 +207,9 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
             methodEndTimestamp,
             Stopwatch.GetTimestamp());
 
-    private JsonRpcErrorResponse? PrepareParameters(JsonRpcRequest request, string methodName, ResolvedMethodInfo method, out object[]? parameters, out bool hasMissing)
+    private JsonRpcErrorResponse? PrepareParameters(JsonRpcRequest request, string methodName, ResolvedMethodInfo method, out object[]? parameters)
     {
         parameters = null;
-        hasMissing = false;
         ReadOnlyMemory<byte> providedParametersUtf8 = request.ParamsUtf8;
         bool useUtf8Parameters = CanDeserializeParametersFromUtf8(request, method.ExpectedParameters);
         JsonElement providedParameters = useUtf8Parameters ? default : request.Params;
@@ -269,12 +266,13 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
 
         if (method.ExpectedParameters.Length == 0)
         {
+            parameters = [];
             return null;
         }
 
         try
         {
-            (parameters, hasMissing) = useUtf8Parameters
+            parameters = useUtf8Parameters
                 ? DeserializeParameters(method.ExpectedParameters, providedParametersLength, providedParametersUtf8, missingParamsCount)
                 : DeserializeParameters(method.ExpectedParameters, providedParametersLength, providedParameters, providedParametersUtf8, missingParamsCount);
         }
@@ -442,41 +440,36 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
         }
     }
 
-    private PropertyInfo? GetResultProperty(Task task)
+    private static IResultWrapper? GetTaskResult(Task task) =>
+        _taskResultAccessors.GetOrAdd(task.GetType(), static taskType => CreateTaskResultAccessor(taskType))(task);
+
+    private static TaskResultAccessor CreateTaskResultAccessor(Type taskType)
     {
-        Type type = task.GetType();
-        if (_propertyInfoCache.TryGetValue(type, out PropertyInfo? value))
+        Type? resultType = GetTaskResultType(taskType);
+        if (resultType is null || !resultType.IsAssignableTo(typeof(IResultWrapper)))
         {
-            return value;
+            return static _ => null;
         }
 
-        return GetResultPropertySlow(type);
+        return _readTaskResultMethod.MakeGenericMethod(resultType).CreateDelegate<TaskResultAccessor>();
     }
 
-    private PropertyInfo? GetResultPropertySlow(Type type)
+    private static Type? GetTaskResultType(Type taskType)
     {
-        lock (_propertyInfoModificationLock)
+        for (Type? type = taskType; type is not null; type = type.BaseType)
         {
-            Dictionary<TypeAsKey, PropertyInfo?> current = _propertyInfoCache;
-            // Re-check inside the lock in case another thread already added it
-            if (current.TryGetValue(type, out PropertyInfo? value))
+            if (type.IsGenericType && type.GetGenericTypeDefinition() == typeof(Task<>))
             {
-                return value;
+                return type.GetGenericArguments()[0];
             }
-
-            // Copy-on-write: create a new dictionary so we don't mutate
-            // the one other threads may be reading without locks.
-            Dictionary<TypeAsKey, PropertyInfo?> propertyInfoCache = new(current);
-            PropertyInfo? propertyInfo = type.GetProperty("Result");
-            propertyInfoCache[type] = propertyInfo;
-
-            // Publish the new cache instance atomically by swapping the reference.
-            // Readers grabbing _propertyInfoCache will now see the updated dictionary.
-            _propertyInfoCache = propertyInfoCache;
-
-            return propertyInfo;
         }
+
+        return null;
     }
+
+    private static IResultWrapper? ReadTaskResult<TResult>(Task task)
+        where TResult : IResultWrapper =>
+        ((Task<TResult>)task).Result;
 
     private void LogRequest(string methodName, JsonElement providedParameters, ExpectedParameter[] expectedParameters)
     {
@@ -588,7 +581,7 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
         {
             return providedParameter.ValueKind == JsonValueKind.Null && expectedParameter.IsNullable
                 ? null
-                : Type.Missing;
+                : expectedParameter.DefaultValue;
         }
 
         object? executionParam;
@@ -628,7 +621,7 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
         {
             return reader.TokenType == JsonTokenType.Null && expectedParameter.IsNullable
                 ? null
-                : Type.Missing;
+                : expectedParameter.DefaultValue;
         }
 
         if (expectedParameter.Kind == ParameterKind.String)
@@ -695,18 +688,17 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
             : JsonSerializer.Deserialize(ref reader, paramType, EthereumJsonSerializer.JsonOptions);
     }
 
-    private static (object[]? parameters, bool hasMissing) DeserializeParameters(
+    private static object[] DeserializeParameters(
         ExpectedParameter[] expectedParameters,
         int providedParametersLength,
         ReadOnlyMemory<byte> providedParametersUtf8,
         int missingParamsCount)
     {
-        int totalLength = providedParametersLength + missingParamsCount;
-        if (totalLength == 0) return ([], false);
+        int totalLength = Math.Min(expectedParameters.Length, providedParametersLength + missingParamsCount);
+        if (totalLength == 0) return [];
 
         object[] executionParameters = new object[totalLength];
 
-        bool hasMissing = missingParamsCount != 0;
         int i = 0;
 
         if (providedParametersLength > 0)
@@ -719,7 +711,6 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
                 ExpectedParameter expectedParameter = expectedParameters[i];
                 object? parameter = DeserializeParameter(providedParameterUtf8, expectedParameter);
                 executionParameters[i] = parameter;
-                hasMissing |= ReferenceEquals(parameter, Type.Missing);
                 i++;
             }
 
@@ -731,29 +722,28 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
 
         for (i = providedParametersLength; i < totalLength; i++)
         {
-            executionParameters[i] = Type.Missing;
+            executionParameters[i] = expectedParameters[i].DefaultValue;
         }
 
-        return (executionParameters, hasMissing);
+        return executionParameters;
 
         [DoesNotReturn, StackTraceHidden]
         static void ThrowMismatchedParameterCount() =>
             throw new JsonException("Mismatched JSON-RPC parameter count.");
     }
 
-    private static (object[]? parameters, bool hasMissing) DeserializeParameters(
+    private static object[] DeserializeParameters(
         ExpectedParameter[] expectedParameters,
         int providedParametersLength,
         JsonElement providedParameters,
         ReadOnlyMemory<byte> providedParametersUtf8,
         int missingParamsCount)
     {
-        int totalLength = providedParametersLength + missingParamsCount;
-        if (totalLength == 0) return ([], false);
+        int totalLength = Math.Min(expectedParameters.Length, providedParametersLength + missingParamsCount);
+        if (totalLength == 0) return [];
 
         object[] executionParameters = new object[totalLength];
 
-        bool hasMissing = missingParamsCount != 0;
         int i = 0;
 
         if (providedParametersLength > 0)
@@ -774,17 +764,16 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
 
                 object? parameter = DeserializeParameter(enumerator.Current, expectedParameter, providedParameterUtf8);
                 executionParameters[i] = parameter;
-                hasMissing |= ReferenceEquals(parameter, Type.Missing);
                 i++;
             }
         }
 
         for (i = providedParametersLength; i < totalLength; i++)
         {
-            executionParameters[i] = Type.Missing;
+            executionParameters[i] = expectedParameters[i].DefaultValue;
         }
 
-        return (executionParameters, hasMissing);
+        return executionParameters;
 
         [DoesNotReturn, StackTraceHidden]
         static void ThrowMissingParameterBytes() =>
