@@ -57,6 +57,15 @@ public class ZkGasMeter(ulong blockZkGasLimit = ZkGasSchedule.BlockZkGasLimit, u
     /// </summary>
     public bool CommitTransaction()
     {
+        // A failed charge leaves _txZkGasUsed undercounted. Committing would understate
+        // the block total and clear the flag, letting TaikoBlockProcessor accept an
+        // over-limit block. Bail out without touching the flag.
+        if (IsLimitExceeded)
+        {
+            _txZkGasUsed = 0;
+            return false;
+        }
+
         ulong next = _blockZkGasUsed + _txZkGasUsed;
         if (next < _blockZkGasUsed) // overflow
         {
@@ -74,7 +83,6 @@ public class ZkGasMeter(ulong blockZkGasLimit = ZkGasSchedule.BlockZkGasLimit, u
 
         _blockZkGasUsed = next;
         _txZkGasUsed = 0;
-        IsLimitExceeded = false; // successful commit – clear any temporary projection spike
         return true;
     }
 
