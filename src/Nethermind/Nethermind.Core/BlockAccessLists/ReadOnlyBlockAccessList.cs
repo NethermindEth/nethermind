@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Text;
 using System.Text.Json.Serialization;
 using Nethermind.Core.Collections;
+using Nethermind.Core.Crypto;
 
 namespace Nethermind.Core.BlockAccessLists;
 
@@ -22,6 +23,18 @@ public class ReadOnlyBlockAccessList : IEquatable<ReadOnlyBlockAccessList>
 
     [JsonIgnore]
     public int ItemCount { get; }
+
+    /// <summary>
+    /// Keccak of the BAL's wire (RLP) encoding, or <c>null</c> when the instance was synthesised
+    /// in-process rather than decoded from the wire.
+    /// </summary>
+    /// <remarks>
+    /// Populated by <see cref="Nethermind.Serialization.Rlp.Eip7928.BlockAccessListDecoder"/>
+    /// so the consensus-side hash check in <c>BlockValidator</c> avoids re-hashing the same
+    /// bytes once per block. Immutable for the lifetime of the BAL.
+    /// </remarks>
+    [JsonIgnore]
+    public Hash256? WireHash { get; }
 
     public EnumerableWithCount<ReadOnlyAccountChanges> AccountChanges
         => new(_accountChanges.Values, _accountChanges.Count);
@@ -40,6 +53,14 @@ public class ReadOnlyBlockAccessList : IEquatable<ReadOnlyBlockAccessList>
     /// loading, which only mutates per-account fields, so the sorted iteration is preserved.
     /// </summary>
     public ReadOnlyBlockAccessList(ReadOnlyAccountChanges[] orderedAccounts, int itemCount)
+        : this(orderedAccounts, itemCount, wireHash: null) { }
+
+    /// <inheritdoc cref="ReadOnlyBlockAccessList(ReadOnlyAccountChanges[], int)"/>
+    /// <remarks>
+    /// Decoder-only overload that caches the keccak of the BAL's wire RLP encoding on the
+    /// instance — see <see cref="WireHash"/>.
+    /// </remarks>
+    public ReadOnlyBlockAccessList(ReadOnlyAccountChanges[] orderedAccounts, int itemCount, Hash256? wireHash)
     {
         _accountChanges = new Dictionary<Address, ReadOnlyAccountChanges>(orderedAccounts.Length);
         foreach (ReadOnlyAccountChanges a in orderedAccounts)
@@ -47,6 +68,7 @@ public class ReadOnlyBlockAccessList : IEquatable<ReadOnlyBlockAccessList>
             _accountChanges.Add(a.Address, a);
         }
         ItemCount = itemCount;
+        WireHash = wireHash;
     }
 
     public bool Equals(ReadOnlyBlockAccessList? other)

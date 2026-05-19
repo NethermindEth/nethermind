@@ -7,6 +7,7 @@ using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
+using Nethermind.Core.Crypto;
 
 namespace Nethermind.Serialization.Rlp.Eip7928;
 
@@ -27,7 +28,12 @@ public class BlockAccessListDecoder :
 
     public ReadOnlyBlockAccessList Decode(ref Rlp.ValueDecoderContext ctx, RlpBehaviors rlpBehaviors)
     {
+        // Capture the BAL's RLP slice (prefix + content) so the wire hash can be cached on the
+        // returned instance — this is the hash that BlockValidator.ValidateBlockLevelAccessListHashMatches
+        // would otherwise recompute per block. The slice spans Position(start)..Position(end after DecodeArray).
+        int startPosition = ctx.Position;
         ReadOnlyAccountChanges[] accountChanges = ctx.DecodeArray(AccountChangesDecoder.Instance, true, default, _accountsLimit);
+        ReadOnlySpan<byte> wireRlp = ctx.Data.Slice(startPosition, ctx.Position - startPosition);
 
         Address? lastAddress = null;
         int itemCount = 0;
@@ -50,7 +56,8 @@ public class BlockAccessListDecoder :
             itemCount += 1 + a.StorageChanges.Length + a.StorageReads.Length;
         }
 
-        return new ReadOnlyBlockAccessList(accountChanges, itemCount);
+        Hash256 wireHash = new(ValueKeccak.Compute(wireRlp));
+        return new ReadOnlyBlockAccessList(accountChanges, itemCount, wireHash);
     }
 
     /// <summary>One-pass RLP encode of a generated BAL into a freshly allocated byte buffer.

@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.IO;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Collections;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
@@ -29,6 +30,50 @@ public class BlockAccessListDecoderTests
         Console.WriteLine(encoded);
         Console.WriteLine(rlp);
         Assert.That(encoded, Is.EqualTo(rlp));
+    }
+
+    // Decoder must cache the keccak of the BAL's wire RLP so BlockValidator can skip the per-block
+    // re-hash. The cached value must match a fresh ValueKeccak over the same bytes byte-for-byte.
+    [TestCaseSource(nameof(BlockAccessListTestSource))]
+    public void Decode_caches_wire_hash_matching_full_rlp_keccak(string rlp, ReadOnlyBlockAccessList _)
+    {
+        byte[] bytes = Bytes.FromHexString(rlp);
+        ReadOnlyBlockAccessList bal = Rlp.Decode<ReadOnlyBlockAccessList>(bytes);
+
+        Assert.That(bal.WireHash, Is.Not.Null);
+        Assert.That(bal.WireHash, Is.EqualTo(new Hash256(ValueKeccak.Compute(bytes))));
+    }
+
+    [Test]
+    public void Decode_handles_envelope_with_trailing_bytes_and_hashes_only_the_bal_slice()
+    {
+        // Embed a BAL inside an envelope so its bytes are not at the start of the input. The
+        // decoder must hash only the BAL's own RLP, not the surrounding bytes.
+        ReadOnlyBlockAccessList bal = Build.A.BlockAccessList
+            .WithAccountChanges(Build.An.AccountChanges.WithAddress(TestItem.AddressA).TestObject)
+            .TestObject;
+        byte[] balRlp = Rlp.Encode(bal).Bytes;
+
+        byte[] envelope = new byte[balRlp.Length + 4];
+        Buffer.BlockCopy(balRlp, 0, envelope, 0, balRlp.Length);
+        envelope[^4] = 0xde;
+        envelope[^3] = 0xad;
+        envelope[^2] = 0xbe;
+        envelope[^1] = 0xef;
+
+        Rlp.ValueDecoderContext ctx = new(envelope);
+        ReadOnlyBlockAccessList decoded = BlockAccessListDecoder.Instance.Decode(ref ctx, RlpBehaviors.None);
+
+        Assert.That(decoded.WireHash, Is.EqualTo(new Hash256(ValueKeccak.Compute(balRlp))));
+        Assert.That(ctx.Position, Is.EqualTo(balRlp.Length));
+    }
+
+    [Test]
+    public void Synthesised_bal_has_no_wire_hash()
+    {
+        ReadOnlyBlockAccessList bal = new();
+
+        Assert.That(bal.WireHash, Is.Null);
     }
 
     // Truncated RLP causes an out-of-bounds primitive read; the Rlp.Decode entry-point
