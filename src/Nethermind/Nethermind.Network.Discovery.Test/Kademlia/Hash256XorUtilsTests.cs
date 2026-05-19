@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
@@ -65,7 +64,7 @@ public class Hash256XorUtilsTests
     [Test]
     public void TestGetRandomHash()
     {
-        Random rand = new(0);
+        System.Random rand = new(0);
         ValueHash256 randomized = new();
         rand.NextBytes(randomized.BytesAsSpan);
 

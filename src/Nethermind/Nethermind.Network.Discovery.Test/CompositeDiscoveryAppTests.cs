@@ -4,7 +4,6 @@
 using System;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
-using System.Threading;
 using System.Threading.Tasks;
 using DotNetty.Transport.Channels;
 using Nethermind.Logging;
@@ -78,7 +77,7 @@ public class CompositeDiscoveryAppTests
         {
         }
 
-        public async IAsyncEnumerable<Node> DiscoverNodes([EnumeratorCancellation] CancellationToken cancellationToken)
+        public async IAsyncEnumerable<Node> DiscoverNodes([EnumeratorCancellation] System.Threading.CancellationToken cancellationToken)
         {
             await Task.CompletedTask;
             yield break;
