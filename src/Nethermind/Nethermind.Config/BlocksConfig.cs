@@ -103,7 +103,5 @@ namespace Nethermind.Config
         public long BlockProductionMaxTxKilobytes { get; set; } = DefaultMaxTxKilobytes;
 
         public int? BlockProductionBlobLimit { get; set; }
-
-        public BlobInclusionPolicy BlobInclusionPolicy { get; set; } = BlobInclusionPolicy.Conservative;
     }
 }

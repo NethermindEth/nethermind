@@ -142,29 +142,10 @@ namespace Nethermind.Consensus.Producers
                     return true;
                 }
 
-                if (blocksConfig.BlobInclusionPolicy is BlobInclusionPolicy.Conservative)
-                {
-                    if (_logger.IsTrace) _logger.Trace($"Declining {blobTx.ToShortString()}, blob data is only sampled locally.");
-                    return false;
-                }
-
-                if (!HasSampledBlobCells(wrapper, blobCount))
-                {
-                    if (_logger.IsTrace) _logger.Trace($"Declining {blobTx.ToShortString()}, sampled blob cells are incomplete.");
-                    return false;
-                }
-
-                return true;
+                if (_logger.IsTrace) _logger.Trace($"Declining {blobTx.ToShortString()}, blob data is only sampled locally.");
+                return false;
             }
         }
-
-        private static bool HasSampledBlobCells(ShardBlobNetworkWrapper wrapper, int blobCount)
-            => wrapper.Version is ProofVersion.V1
-                && !wrapper.CellMask.IsEmpty
-                && wrapper.Cells is not null
-                && wrapper.Cells.Length == blobCount * wrapper.CellMask.Count
-                && wrapper.Commitments.Length == blobCount
-                && wrapper.Proofs.Length >= blobCount * BlobCellMask.CellCount;
 
         private static IEnumerable<Transaction> PickBlobTxsBetterThanCurrentTx(ArrayPoolList<Transaction> selectedBlobTxs, Transaction tx, IComparer<Transaction> comparer)
         {

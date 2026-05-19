@@ -152,27 +152,16 @@ public class TxPoolSourceTests
     }
 
     [Test]
-    public void GetTransactions_should_skip_sampled_blob_txs_with_conservative_policy()
+    public void GetTransactions_should_skip_sampled_blob_txs()
     {
         Transaction sparseBlobTx = CreateSparseBlobTransaction();
 
-        Transaction[] result = SelectSingleBlobTransaction(sparseBlobTx, BlobInclusionPolicy.Conservative);
+        Transaction[] result = SelectSingleBlobTransaction(sparseBlobTx);
 
         Assert.That(result, Is.Empty);
     }
 
-    [TestCase(BlobInclusionPolicy.Optimistic)]
-    [TestCase(BlobInclusionPolicy.Proactive)]
-    public void GetTransactions_should_include_sampled_blob_txs_with_non_conservative_policy(BlobInclusionPolicy policy)
-    {
-        Transaction sparseBlobTx = CreateSparseBlobTransaction();
-
-        Transaction[] result = SelectSingleBlobTransaction(sparseBlobTx, policy);
-
-        Assert.That(result, Is.EqualTo(new[] { sparseBlobTx }));
-    }
-
-    private static Transaction[] SelectSingleBlobTransaction(Transaction blobTx, BlobInclusionPolicy policy)
+    private static Transaction[] SelectSingleBlobTransaction(Transaction blobTx)
     {
         TestSingleReleaseSpecProvider specProvider = new(Osaka.Instance);
         TransactionComparerProvider transactionComparerProvider = new(specProvider, Build.A.BlockTree().TestObject);
@@ -196,7 +185,7 @@ public class TxPoolSourceTests
             transactionComparerProvider,
             LimboLogs.Instance,
             txFilterPipeline,
-            new BlocksConfig { SecondsPerSlot = 12, BlobInclusionPolicy = policy });
+            new BlocksConfig { SecondsPerSlot = 12 });
 
         BlockHeader parent = Build.A.BlockHeader.WithNumber(0).WithExcessBlobGas(0).TestObject;
         return txSource.GetTransactions(parent, long.MaxValue).ToArray();
