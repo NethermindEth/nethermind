@@ -46,6 +46,22 @@ namespace Nethermind.JsonRpc
         public static long JsonRpcBytesSentHttp;
 
         [CounterMetric]
+        [Description("Number of buffered JSON RPC HTTP responses.")]
+        public static long JsonRpcHttpBufferedResponses;
+
+        [CounterMetric]
+        [Description("Number of unbuffered JSON RPC HTTP responses.")]
+        public static long JsonRpcHttpUnbufferedResponses;
+
+        [CounterMetric]
+        [Description("Number of JSON RPC HTTP responses written through IStreamableResult.")]
+        public static long JsonRpcHttpStreamableResponses;
+
+        [CounterMetric]
+        [Description("Number of JSON RPC HTTP responses written through generic JSON serialization.")]
+        public static long JsonRpcHttpSerializedResponses;
+
+        [CounterMetric]
         [Description("Number of JSON RPC bytes sent through web sockets.")]
         public static long JsonRpcBytesSentWebSockets;
 

@@ -262,6 +262,14 @@ internal sealed class HttpJsonRpcResponseSink(
         bool bufferResponse = jsonRpcConfig.BufferResponses && !(jsonRpcUrl.IsAuthenticated && !isCollection);
         _bufferedStream = bufferResponse ? RecyclableStream.GetStream("http") : null;
         _writer = _bufferedStream is not null ? new CountingStreamPipeWriter(_bufferedStream) : new CountingPipeWriter(context.Response.BodyWriter);
+        if (_bufferedStream is null)
+        {
+            Interlocked.Increment(ref Metrics.JsonRpcHttpUnbufferedResponses);
+        }
+        else
+        {
+            Interlocked.Increment(ref Metrics.JsonRpcHttpBufferedResponses);
+        }
 
         context.Response.ContentType = JsonContentType;
         context.Response.StatusCode = isCollection
@@ -288,9 +296,11 @@ internal sealed class HttpJsonRpcResponseSink(
     {
         if (response is JsonRpcSuccessResponse { Result: IStreamableResult streamable })
         {
+            Interlocked.Increment(ref Metrics.JsonRpcHttpStreamableResponses);
             return WriteStreamableResponseAsync(writer, response, streamable, cancellationToken);
         }
 
+        Interlocked.Increment(ref Metrics.JsonRpcHttpSerializedResponses);
         WriteJsonRpcResponse(writer, response);
         return ValueTask.CompletedTask;
     }
