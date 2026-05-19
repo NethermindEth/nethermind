@@ -51,7 +51,7 @@ namespace Nethermind.Blockchain.Synchronization
             get => FastSync || SnapSync ? _pivotHash : null;
             set => _pivotHash = value;
         }
-        public int MaxAttemptsToUpdatePivot { get; set; } = int.MaxValue;
+        public int MaxAttemptsToUpdatePivot { get; set; } = ISyncConfig.InfiniteAttempts;
         public bool SnapSync { get; set; } = false;
         public int SnapSyncAccountRangePartitionCount { get; set; } = 8;
         public bool FixReceipts { get; set; } = false;

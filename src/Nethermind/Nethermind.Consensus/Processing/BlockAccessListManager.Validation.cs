@@ -50,12 +50,9 @@ public partial class BlockAccessListManager
                 Transaction tx = block.Transactions[j];
 
                 GasValidationResult gasResult = gasResults[j].GetResult();
-                IntrinsicGas<EthereumGasPolicy> intrinsicGas = gasResult.IntrinsicGas;
-                // EIP-8037 per-tx 2D inclusion check (execution-specs PR 2703).
-                // totalRegularGas/totalStateGas reflect the cumulatives BEFORE this tx;
-                // the worst-case per-dimension contribution must fit the remaining budget.
                 // The worker precomputes intrinsic gas once and carries it here to avoid
                 // recalculating dynamic state-byte costs on the validation thread.
+                IntrinsicGas<EthereumGasPolicy> intrinsicGas = gasResult.IntrinsicGas;
                 CheckPerTxInclusion(block, j, tx, _blockExecutionContext.Value.Spec, totalRegularGas, totalStateGas, in intrinsicGas);
 
                 // Surface the worker's original tx-rejection reason before running any
@@ -98,20 +95,16 @@ public partial class BlockAccessListManager
 
     internal static void CheckPerTxInclusion(Block block, int index, Transaction tx, IReleaseSpec spec, long cumulativeRegular, long cumulativeState)
     {
-        // EIP-8037 (bal-devnet-6, execution-specs PR 2703): worst-case 2D inclusion
-        // check. Only applies when EIP-8037 is active; legacy and pre-EIP-8037 blocks
-        // continue to rely solely on the post-execution running max(R,S) check.
         if (!spec.IsEip8037Enabled) return;
 
         IntrinsicGas<EthereumGasPolicy> intrinsic = EthereumGasPolicy.CalculateIntrinsicGas(tx, spec, block.Header.GasLimit);
         CheckPerTxInclusion(block, index, tx, spec, cumulativeRegular, cumulativeState, in intrinsic);
     }
 
+    // EIP-8037 worst-case 2D inclusion check. Only fires when EIP-8037 is active; legacy and
+    // pre-EIP-8037 blocks rely solely on the post-execution running max(R,S) check.
     internal static void CheckPerTxInclusion(Block block, int index, Transaction tx, IReleaseSpec spec, long cumulativeRegular, long cumulativeState, in IntrinsicGas<EthereumGasPolicy> intrinsic)
     {
-        // EIP-8037 (bal-devnet-6, execution-specs PR 2703): worst-case 2D inclusion
-        // check. Only applies when EIP-8037 is active; legacy and pre-EIP-8037 blocks
-        // continue to rely solely on the post-execution running max(R,S) check.
         if (!spec.IsEip8037Enabled) return;
 
         long intrinsicRegular = intrinsic.Standard.Value;
@@ -311,14 +304,16 @@ public partial class BlockAccessListManager
     }
 
     /// <summary>
-    /// Hook called by <see cref="ITxProcessorWithWorldStateManager.MergeAndReturnBal"/> after
-    /// each per-tx slice merges into the cumulative <see cref="GeneratedBlockAccessList"/>.
-    /// Pushes the slice's rows into <see cref="_generatedValidationIndex"/> so the next
-    /// <see cref="ValidateBlockAccessList"/> call at this index can take the fast path, rolls
-    /// the chargeable-storage-reads counter forward, and latches the read-only-mismatch flag
-    /// if any account in the slice is missing from the suggested BAL (and isn't a tolerated
-    /// read-only entry).
+    /// Hook called by <see cref="ITxProcessorWithWorldStateManager.MergeAndReturnBal"/> after each
+    /// per-tx slice merges into the cumulative <see cref="GeneratedBlockAccessList"/>.
     /// </summary>
+    /// <remarks>
+    /// Pushes the slice's rows into <see cref="_generatedValidationIndex"/> so the next
+    /// <see cref="ValidateBlockAccessList"/> call at this index can take the fast path, rolls the
+    /// chargeable-storage-reads counter forward, and latches the read-only-mismatch flag if any
+    /// account in the slice is missing from the suggested BAL (and isn't a tolerated read-only
+    /// entry).
+    /// </remarks>
     private void RegisterGeneratedSlice(BlockAccessListAtIndex slice)
     {
         if (_generatedValidationIndex is null)
@@ -346,9 +341,9 @@ public partial class BlockAccessListManager
     /// <summary>
     /// True iff any account in <paramref name="slice"/> has no state changes, isn't a tolerated
     /// read-only entry (system-user at index 0 or any storage-read row), and isn't declared in
-    /// <paramref name="suggestedValidationIndex"/>. Such an account is invisible to the column-
-    /// index fast path (no lane rows land for it on either side) but must still be rejected —
-    /// <see cref="ValidateBlockAccessList"/>'s fallback walk catches it.
+    /// <paramref name="suggestedValidationIndex"/>. Such an account is invisible to the
+    /// column-index fast path (no lane rows land for it on either side) but must still be
+    /// rejected — <see cref="ValidateBlockAccessList"/>'s fallback walk catches it.
     /// </summary>
     private static bool HasRequiredReadAccountMissing(BlockAccessListAtIndex slice, BlockAccessListValidationIndex suggestedValidationIndex)
     {

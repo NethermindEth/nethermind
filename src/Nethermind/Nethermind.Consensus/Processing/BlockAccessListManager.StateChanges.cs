@@ -114,6 +114,10 @@ public partial class BlockAccessListManager
         block.Header.BlockAccessListHash = new(ValueKeccak.Compute(block.EncodedBlockAccessList).Bytes);
     }
 
+    /// <summary>
+    /// Catches what the canonical-bytes hash compare used to catch but the column-index per-row
+    /// check doesn't: account-set presence and the storage_reads contents per account.
+    /// </summary>
     private void ValidateStructuralEquivalence(Block block)
     {
         BlockAccessListValidationIndex generatedIndex = _generatedValidationIndex!;

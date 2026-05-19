@@ -21,14 +21,10 @@ using Nethermind.Int256;
 namespace Nethermind.State;
 
 /// <remarks>
-/// Setup contract: <see cref="SetGeneratingBlockAccessList"/> must be called with a non-null
-/// per-tx slice before any state-mutating method on this instance runs. The mutating helpers
-/// below dereference <c>_generatingBlockAccessList</c> without a null-check on the hot path,
-/// so violating this contract surfaces as a NullReferenceException at the first write rather
-/// than a silent logic error. Today's two callers honour this:
-///   - sequential path: BlockProcessor sets the slice immediately after constructing the wrapper;
-///   - parallel path: ParallelBlockValidationTransactionsExecutor's per-tx Get() rents/sets a
-///     slice from the pool before each tx runs.
+/// Setup contract: <see cref="SetGeneratingBlockAccessList"/> must run with a non-null slice
+/// before any state-mutating method. Hot-path mutators dereference
+/// <c>_generatingBlockAccessList</c> without a null-check, so a missed setup fails fast with
+/// <see cref="NullReferenceException"/> at the first write rather than silently corrupting BAL output.
 /// </remarks>
 public class TracedAccessWorldState(IWorldState innerWorldState, bool parallel) : IWorldState, IPreBlockCaches, IBlockAccessListSource
 {
@@ -40,15 +36,12 @@ public class TracedAccessWorldState(IWorldState innerWorldState, bool parallel) 
     public IWorldStateScopeProvider ScopeProvider => _innerWorldState.ScopeProvider;
     public Hash256 StateRoot => _innerWorldState.StateRoot;
     protected IWorldState _innerWorldState = innerWorldState;
-    // Nullable on purpose: see class remarks. SetGeneratingBlockAccessList must run before any
-    // state-mutating method dereferences this; the null check is omitted on hot paths so a
-    // missed setup fails fast rather than silently corrupting BAL output.
+    // Set by SetGeneratingBlockAccessList; see class remarks.
     private BlockAccessListAtIndex? _generatingBlockAccessList;
     private int _systemAccountReadSuppressionDepth;
     private UInt256 _scratchBalance;
     private ValueHash256 _scratchCodeHash;
-    // Scratch buffer for intra-tx SLOAD on the parallel path — see GetInternal. One instance per
-    // worker (TracedAccessWorldState is rented per-tx from the pool), so the single buffer is safe:
+    // Scratch buffer for intra-tx SLOAD on the parallel path (see GetInternal). Per-worker —
     // the returned span is consumed by the EVM stack push before another GetInternal runs.
     private readonly byte[] _scratchStorage = new byte[32];
     public BlockAccessListAtIndex? GetGeneratingBlockAccessList() => _generatingBlockAccessList;
@@ -368,8 +361,7 @@ public class TracedAccessWorldState(IWorldState innerWorldState, bool parallel) 
             AccountChangesAtIndex? accountChanges = _generatingBlockAccessList.GetAccountChanges(storageCell.Address);
             if (accountChanges is not null && accountChanges.TryGetStorageChange(storageCell.Index, out StorageChange? change))
             {
-                // StorageChange.Value is EvmWord (Vector256<byte>) in big-endian wire form; copy
-                // into the per-instance scratch buffer so the returned span outlives this stack
+                // Copy the BE word into _scratchStorage so the returned span outlives this
                 // frame without allocating a new byte[32] per SLOAD.
                 EvmWord value = change.Value.Value;
                 MemoryMarshal.CreateReadOnlySpan(

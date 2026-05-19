@@ -37,7 +37,9 @@ public class GeneratedBlockAccessList
         }
     }
 
-    /// <summary>Merge a per-tx contribution into this block-level accumulator.</summary>
+    /// <summary>
+    /// Merge a per-tx contribution into this block-level accumulator.
+    /// </summary>
     public void Merge(BlockAccessListAtIndex other)
     {
         foreach (AccountChangesAtIndex sourceAccount in other.AccountChanges)
@@ -54,7 +56,9 @@ public class GeneratedBlockAccessList
     public void Clear() => _accountChanges.Clear();
     public void Reset() => Clear();
 
-    /// <summary>For tests only — builds the accountChanges dictionary directly.</summary>
+    /// <summary>
+    /// For tests only — builds the accountChanges dictionary directly.
+    /// </summary>
     internal static GeneratedBlockAccessList FromAccounts(IEnumerable<GeneratedAccountChanges> accounts)
     {
         GeneratedBlockAccessList bal = new();
