@@ -29,14 +29,32 @@ public class SnapshotRepository(PersistedSnapshotRepositories persistedSnapshotR
     private readonly ReadWriteLockBox<SortedSet<StateId>> _sortedSnapshotStateIds = new([]);
     private long _snapshotCount;
     private long _compactedSnapshotCount;
+    // Always guarded by `_sortedSnapshotStateIds`'s lock.
+    private StateId? _lastRegisteredState;
 
     public int SnapshotCount => (int)Interlocked.Read(ref _snapshotCount);
     public int CompactedSnapshotCount => (int)Interlocked.Read(ref _compactedSnapshotCount);
+
+    /// <summary>
+    /// Tip used as the seed for backward walks over the snapshot graph
+    /// (see <see cref="PersistenceManager"/>'s persist-finding paths).
+    /// Tracks call order of <see cref="AddStateId"/>, not block-number max —
+    /// the most-recent registration wins even if it lowers the block number.
+    /// </summary>
+    public StateId? LastRegisteredState
+    {
+        get
+        {
+            using ReadWriteLockBox<SortedSet<StateId>>.Lock readLock = _sortedSnapshotStateIds.EnterReadLock(out _);
+            return _lastRegisteredState;
+        }
+    }
 
     public void AddStateId(in StateId stateId)
     {
         using ReadWriteLockBox<SortedSet<StateId>>.Lock _ = _sortedSnapshotStateIds.EnterWriteLock(out SortedSet<StateId> sortedSnapshots);
         sortedSnapshots.Add(stateId);
+        _lastRegisteredState = stateId;
     }
 
     public AssembledSnapshotResult AssembleSnapshots(in StateId baseBlock, in StateId targetState, int estimatedSize)
@@ -343,6 +361,8 @@ public class SnapshotRepository(PersistedSnapshotRepositories persistedSnapshotR
             using (_sortedSnapshotStateIds.EnterWriteLock(out SortedSet<StateId> sortedSnapshots))
             {
                 sortedSnapshots.Remove(stateId);
+                if (_lastRegisteredState == stateId)
+                    _lastRegisteredState = sortedSnapshots.Count == 0 ? null : sortedSnapshots.Max;
             }
 
             long totalBytes = existingState.EstimateMemory();

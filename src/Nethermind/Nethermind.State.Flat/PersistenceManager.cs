@@ -189,76 +189,96 @@ public class PersistenceManager(
     private (PersistedSnapshot? Persisted, Snapshot? InMemory) GetFinalizedSnapshotAtBlockNumber(long blockNumber, StateId currentPersistedState, bool compactedSnapshot)
     {
         Hash256? finalizedStateRoot = _finalizedStateProvider.GetFinalizedStateRootAt(blockNumber);
-        using ArrayPoolList<StateId> states = _snapshotRepository.GetStatesAtBlockNumber(blockNumber);
-        foreach (StateId stateId in states)
+        if (finalizedStateRoot is null) return (null, null);
+
+        // The finalized state root pins the exact StateId we want at `blockNumber`, so the
+        // dictionaries can be hit directly — no walk needed. (Walk-from-tip is reserved for
+        // the first-snapshot path, where the state root is unknown.)
+        StateId targetStateId = new(blockNumber, finalizedStateRoot);
+        if (TryLeaseInMemoryVariant(targetStateId, compactedSnapshot, out Snapshot? inMemory))
         {
-            if (stateId.StateRoot != finalizedStateRoot) continue;
-
-            Snapshot? snapshot;
-            if (compactedSnapshot)
+            if (inMemory!.From == currentPersistedState)
             {
-                if (!_snapshotRepository.TryLeaseCompactedState(stateId, out snapshot)) continue;
+                if (_logger.IsDebug) _logger.Debug($"Persisting compacted state {targetStateId}");
+                return (null, inMemory);
             }
-            else
-            {
-                if (!_snapshotRepository.TryLeaseState(stateId, out snapshot)) continue;
-            }
-
-            if (snapshot.From == currentPersistedState)
-            {
-                if (_logger.IsDebug) _logger.Debug($"Persisting compacted state {stateId}");
-
-                return (null, snapshot);
-            }
-
-            snapshot.Dispose();
+            inMemory.Dispose();
         }
 
         // No in-memory snapshot found — try persisted snapshot at same block/root
-        if (finalizedStateRoot is not null)
+        bool found = compactedSnapshot
+            ? _largeRepo.TryLeaseSnapshotTo(targetStateId, out PersistedSnapshot? persisted)
+            : _smallRepo.TryLeaseSnapshotTo(targetStateId, out persisted);
+        if (found)
         {
-            StateId targetStateId = new(blockNumber, finalizedStateRoot);
-            bool found = compactedSnapshot
-                ? _largeRepo.TryLeaseSnapshotTo(targetStateId, out PersistedSnapshot? persisted)
-                : _smallRepo.TryLeaseSnapshotTo(targetStateId, out persisted);
-            if (found)
-            {
-                if (persisted!.From == currentPersistedState)
-                    return (persisted, null);
-                persisted.Dispose();
-            }
+            if (persisted!.From == currentPersistedState)
+                return (persisted, null);
+            persisted.Dispose();
         }
 
         return (null, null);
     }
 
+    /// <summary>
+    /// Force-persist fallback: walk backward from the in-memory snapshot repository's
+    /// <see cref="ISnapshotRepository.LastRegisteredState"/> via <see cref="Snapshot.From"/> pointers and
+    /// return the snapshot at exactly <paramref name="blockNumber"/> whose
+    /// <see cref="Snapshot.From"/> equals <paramref name="currentPersistedState"/>. Unlike the finalized
+    /// path the state root isn't pinned, so a direct dictionary hit isn't possible — the walk picks the
+    /// canonical-chain candidate at the target block.
+    /// </summary>
+    /// <remarks>
+    /// At each cursor the preferred variant (compacted vs base, per <paramref name="compactedSnapshot"/>)
+    /// is leased. On miss or overshoot, the other variant is used purely for navigation — compacted
+    /// snapshots act as skip pointers covering multi-block hops; base snapshots cover unit-block steps.
+    /// The walk bails when it can only advance below <paramref name="blockNumber"/>, when both variants
+    /// are absent at the cursor, or on a self-loop edge.
+    /// </remarks>
     private Snapshot? GetFirstSnapshotAtBlockNumber(long blockNumber, StateId currentPersistedState, bool compactedSnapshot)
     {
-        using ArrayPoolList<StateId> states = _snapshotRepository.GetStatesAtBlockNumber(blockNumber);
-        foreach (StateId stateId in states)
+        StateId? cursor = _snapshotRepository.LastRegisteredState;
+        while (cursor is not null && cursor.Value.BlockNumber >= blockNumber)
         {
-            Snapshot? snapshot;
-            if (compactedSnapshot)
-            {
-                if (!_snapshotRepository.TryLeaseCompactedState(stateId, out snapshot)) continue;
-            }
-            else
-            {
-                if (!_snapshotRepository.TryLeaseState(stateId, out snapshot)) continue;
-            }
+            bool atTarget = cursor.Value.BlockNumber == blockNumber;
+            bool leasedPreferred = TryLeaseInMemoryVariant(cursor.Value, compactedSnapshot, out Snapshot? snapshot);
 
-            if (snapshot.From == currentPersistedState)
+            if (leasedPreferred && atTarget)
             {
-                if (_logger.IsWarn) _logger.Warn($"Force persisting state {stateId}");
-
-                return snapshot;
+                if (snapshot!.From == currentPersistedState)
+                {
+                    if (_logger.IsWarn) _logger.Warn($"Force persisting state {snapshot.To}");
+                    return snapshot;
+                }
+                snapshot.Dispose();
+                return null;
             }
 
-            snapshot.Dispose();
+            StateId? next = null;
+            if (leasedPreferred)
+            {
+                if (snapshot!.From.BlockNumber >= blockNumber) next = snapshot.From;
+                snapshot.Dispose();
+            }
+
+            if (next is null)
+            {
+                if (!TryLeaseInMemoryVariant(cursor.Value, !compactedSnapshot, out Snapshot? navSnapshot)) return null;
+
+                if (navSnapshot!.From.BlockNumber >= blockNumber) next = navSnapshot.From;
+                navSnapshot.Dispose();
+            }
+
+            if (next is null || next.Value == cursor.Value) return null;
+            cursor = next;
         }
 
         return null;
     }
+
+    private bool TryLeaseInMemoryVariant(in StateId stateId, bool compacted, out Snapshot? snapshot) =>
+        compacted
+            ? _snapshotRepository.TryLeaseCompactedState(stateId, out snapshot)
+            : _snapshotRepository.TryLeaseState(stateId, out snapshot);
 
     internal (PersistedSnapshot? ToPersistPersistedSnapshot, Snapshot? ToPersist, long? snapshotLevelToConvert) DetermineSnapshotAction(StateId latestSnapshot)
     {
@@ -614,15 +634,12 @@ public class PersistenceManager(
     {
         if (totalDepth <= _longFinalityReorgDepth) return null;
 
-        // Seed both repos' BFS with the in-memory snapshot graph's earliest StateId. The BFS walks
-        // backward via the From-pointer chain in each repo's To-keyed dictionaries, using compacted
-        // entries as skip pointers to converge quickly on a base whose From == currentPersistedState.
-        StateId? seedState = _snapshotRepository.GetEarliestSnapshotId();
-        if (seedState is null) return null;
-
+        // Each repo self-seeds its backward BFS from its own LastRegisteredState. The walk follows
+        // the From-pointer chain through each repo's To-keyed dictionaries, using compacted entries
+        // as skip pointers to converge quickly on a base whose From == currentPersistedState.
         // Large tier first (longer ranges = faster catch-up); fall back to small.
-        PersistedSnapshot? oldest = _largeRepo.TryGetSnapshotFrom(currentPersistedState, seedState.Value)
-                                    ?? _smallRepo.TryGetSnapshotFrom(currentPersistedState, seedState.Value);
+        PersistedSnapshot? oldest = _largeRepo.TryGetSnapshotFrom(currentPersistedState)
+                                    ?? _smallRepo.TryGetSnapshotFrom(currentPersistedState);
         if (oldest is not null && _logger.IsWarn)
             _logger.Warn($"Total reorg depth {totalDepth} exceeds LongFinalityReorgDepth {_longFinalityReorgDepth}. Force persisting persisted snapshot {oldest.From} -> {oldest.To}.");
         return oldest;

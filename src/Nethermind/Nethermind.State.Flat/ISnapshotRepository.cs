@@ -12,6 +12,7 @@ public interface ISnapshotRepository
     int CompactedSnapshotCount { get; }
 
     void AddStateId(in StateId stateId);
+    StateId? LastRegisteredState { get; }
     bool TryAddSnapshot(Snapshot snapshot);
     bool TryAddCompactedSnapshot(Snapshot snapshot);
     bool TryLeaseState(in StateId stateId, [NotNullWhen(true)] out Snapshot? entry);

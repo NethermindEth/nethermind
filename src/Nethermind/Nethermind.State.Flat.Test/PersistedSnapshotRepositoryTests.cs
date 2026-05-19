@@ -251,6 +251,71 @@ public class PersistedSnapshotRepositoryTests
     }
 
     [Test]
+    public void LastRegisteredState_TracksRegistrationsAcrossConvertAndPrune()
+    {
+        using ArenaManager smallArena = new(Path.Combine(_testDir, "arenas", "base"), 0, maxArenaSize: 4096);
+        using BlobArenaManager smallBlobs = new(Path.Combine(_testDir, "blobs", "small"), 1024 * 1024, PersistedSnapshotTier.Small);
+        using PersistedSnapshotRepository repo = new(smallArena, smallBlobs, new MemDb(), new FlatDbConfig(), new PersistedSnapshotBloomFilterManager());
+        repo.LoadFromCatalog();
+
+        Assert.That(repo.LastRegisteredState, Is.Null);
+
+        StateId s0 = new(0, Keccak.EmptyTreeHash);
+        StateId s1 = new(1, Keccak.Compute("1"));
+        StateId s2 = new(2, Keccak.Compute("2"));
+        repo.ConvertSnapshotToPersistedSnapshot(CreateTestSnapshot(s0, s1, TestItem.AddressA));
+        Assert.That(repo.LastRegisteredState, Is.EqualTo(s1));
+
+        repo.ConvertSnapshotToPersistedSnapshot(CreateTestSnapshot(s1, s2, TestItem.AddressB));
+        Assert.That(repo.LastRegisteredState, Is.EqualTo(s2));
+
+        // Pruning the tip rolls back to the next-highest remaining (s1).
+        int pruned = repo.PruneBefore(s2);
+        Assert.That(pruned, Is.EqualTo(1));
+        Assert.That(repo.LastRegisteredState, Is.EqualTo(s2),
+            "PruneBefore(s2) only removes entries with To.BlockNumber < 2, so s2 itself survives");
+
+        pruned = repo.PruneBefore(new StateId(99, Keccak.EmptyTreeHash));
+        Assert.That(pruned, Is.EqualTo(1));
+        Assert.That(repo.LastRegisteredState, Is.Null);
+    }
+
+    [Test]
+    public void TryGetSnapshotFrom_Parameterless_SelfSeedsFromLastRegisteredState()
+    {
+        using ArenaManager smallArena = new(Path.Combine(_testDir, "arenas", "base"), 0, maxArenaSize: 4096);
+        using BlobArenaManager smallBlobs = new(Path.Combine(_testDir, "blobs", "small"), 1024 * 1024, PersistedSnapshotTier.Small);
+        using PersistedSnapshotRepository repo = new(smallArena, smallBlobs, new MemDb(), new FlatDbConfig(), new PersistedSnapshotBloomFilterManager());
+        repo.LoadFromCatalog();
+
+        // Empty repo: nothing to seed from.
+        Assert.That(repo.TryGetSnapshotFrom(new StateId(0, Keccak.EmptyTreeHash)), Is.Null);
+
+        const int chainLength = 4;
+        StateId[] states = new StateId[chainLength + 1];
+        states[0] = new StateId(0, Keccak.EmptyTreeHash);
+        for (int i = 1; i <= chainLength; i++)
+        {
+            states[i] = new StateId(i, Keccak.Compute($"s{i}"));
+            repo.ConvertSnapshotToPersistedSnapshot(
+                CreateTestSnapshot(states[i - 1], states[i], TestItem.Addresses[(i - 1) % TestItem.Addresses.Length]));
+        }
+
+        // Parameterless overload must produce the same hit the seeded form does
+        // when the explicit seed is exactly LastRegisteredState (= the chain's tip).
+        PersistedSnapshot? selfSeed = repo.TryGetSnapshotFrom(states[0]);
+        PersistedSnapshot? explicitSeed = repo.TryGetSnapshotFrom(states[0], states[chainLength]);
+
+        Assert.That(selfSeed, Is.Not.Null);
+        Assert.That(explicitSeed, Is.Not.Null);
+        Assert.That(selfSeed!.From, Is.EqualTo(states[0]));
+        Assert.That(selfSeed.To, Is.EqualTo(explicitSeed!.To));
+
+        selfSeed.Dispose();
+        explicitSeed.Dispose();
+    }
+
+    [Test]
     public void TryGetSnapshotFrom_EmptyRepo_ReturnsNull()
     {
         using ArenaManager smallArena = new(Path.Combine(_testDir, "arenas", "base"), 0, maxArenaSize: 4096);

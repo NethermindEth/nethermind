@@ -63,6 +63,12 @@ public sealed class PersistedSnapshotRepository(
     // see <see cref="Dispose"/> which does NOT dispose the manager.
     private readonly PersistedSnapshotBloomFilterManager _bloomManager = bloomManager;
     private readonly Lock _catalogLock = new();
+    // Ordered StateId set + tip — both guarded by `_catalogLock`. Lookups (TryLeaseSnapshotTo,
+    // TryLeaseCompactedSnapshotTo, HasBaseSnapshot) stay on the concurrent dictionaries; the
+    // ordered set exists purely to expose a self-seed for backward walks
+    // (see <see cref="TryGetSnapshotFrom(StateId)"/>).
+    private readonly SortedSet<StateId> _orderedStateIds = [];
+    private StateId? _lastRegisteredState;
 
     private bool BloomEnabled => _bloomBitsPerKey > 0;
 
@@ -70,6 +76,31 @@ public sealed class PersistedSnapshotRepository(
         (int)(Interlocked.Read(ref _baseSnapshotCount) + Interlocked.Read(ref _compactedSnapshotCount));
     public long BaseSnapshotMemory => Interlocked.Read(ref _baseSnapshotMemoryBytes);
     public long CompactedSnapshotMemory => Interlocked.Read(ref _compactedSnapshotMemoryBytes);
+
+    /// <inheritdoc/>
+    public StateId? LastRegisteredState
+    {
+        get
+        {
+            lock (_catalogLock)
+            {
+                return _lastRegisteredState;
+            }
+        }
+    }
+
+    private void RegisterStateIdLocked(in StateId stateId)
+    {
+        _orderedStateIds.Add(stateId);
+        _lastRegisteredState = stateId;
+    }
+
+    private void UnregisterStateIdLocked(in StateId stateId)
+    {
+        _orderedStateIds.Remove(stateId);
+        if (_lastRegisteredState == stateId)
+            _lastRegisteredState = _orderedStateIds.Count == 0 ? null : _orderedStateIds.Max;
+    }
 
     /// <summary>
     /// Load this tier's persisted snapshots from its catalog. Routes each
@@ -136,6 +167,10 @@ public sealed class PersistedSnapshotRepository(
             Interlocked.Add(ref _baseSnapshotMemoryBytes, snapshot.Size);
             Interlocked.Increment(ref _baseSnapshotCount);
         }
+
+        // LoadFromCatalog already holds `_catalogLock`. Catalog order is insertion order, so
+        // the last entry processed wins as the tip.
+        RegisterStateIdLocked(entry.To);
     }
 
     private readonly Histogram _persistedSnapshotSize = Prometheus.Metrics.CreateHistogram("persisted_snapshot_size", "persisted_snapshot_size", "tier");
@@ -195,6 +230,7 @@ public sealed class PersistedSnapshotRepository(
             _baseSnapshots[snapshot.To] = persisted;
             Interlocked.Add(ref _baseSnapshotMemoryBytes, persisted.Size);
             Interlocked.Increment(ref _baseSnapshotCount);
+            RegisterStateIdLocked(snapshot.To);
         }
 
         // Release the metadata writer's creation lease (PersistedSnapshot took its own in
@@ -223,6 +259,7 @@ public sealed class PersistedSnapshotRepository(
             _compactedSnapshots[to] = snapshot;
             Interlocked.Add(ref _compactedSnapshotMemoryBytes, snapshot.Size);
             Interlocked.Increment(ref _compactedSnapshotCount);
+            RegisterStateIdLocked(to);
         }
 
         // Release the caller's "creation" lease — see ConvertSnapshotToPersistedSnapshot.
@@ -332,6 +369,13 @@ public sealed class PersistedSnapshotRepository(
     /// must be a recent (>= <paramref name="fromState"/>) state to walk back from; callers typically pass the
     /// in-memory snapshot repository's earliest <c>StateId</c>.
     /// </remarks>
+    /// <inheritdoc/>
+    public PersistedSnapshot? TryGetSnapshotFrom(StateId fromState)
+    {
+        StateId? seed = LastRegisteredState;
+        return seed is null ? null : TryGetSnapshotFrom(fromState, seed.Value);
+    }
+
     public PersistedSnapshot? TryGetSnapshotFrom(StateId fromState, StateId seedState)
     {
         if (seedState.BlockNumber <= fromState.BlockNumber) return null;
@@ -392,6 +436,7 @@ public sealed class PersistedSnapshotRepository(
                     Interlocked.Add(ref _baseSnapshotMemoryBytes, -snapshot.Size);
                     Interlocked.Decrement(ref _baseSnapshotCount);
                     RemoveFromCatalog(snapshot.To);
+                    UnregisterStateIdLocked(snapshot.To);
                     snapshot.Dispose();
                     pruned++;
                 }
@@ -411,6 +456,7 @@ public sealed class PersistedSnapshotRepository(
                     Interlocked.Add(ref _compactedSnapshotMemoryBytes, -snapshot.Size);
                     Interlocked.Decrement(ref _compactedSnapshotCount);
                     RemoveFromCatalog(snapshot.To);
+                    UnregisterStateIdLocked(snapshot.To);
                     snapshot.Dispose();
                     pruned++;
                 }
@@ -467,6 +513,8 @@ public sealed class PersistedSnapshotRepository(
             Interlocked.Exchange(ref _compactedSnapshotMemoryBytes, 0);
             Interlocked.Exchange(ref _baseSnapshotCount, 0);
             Interlocked.Exchange(ref _compactedSnapshotCount, 0);
+            _orderedStateIds.Clear();
+            _lastRegisteredState = null;
             // Drop the managers' dictionary refs; any file still alive cleans up here.
             // Orphans / unreferenced files (no PersistOnShutdown caller) get deleted.
             _arena.Dispose();

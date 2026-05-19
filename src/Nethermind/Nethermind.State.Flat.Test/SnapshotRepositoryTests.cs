@@ -321,6 +321,31 @@ public class SnapshotRepositoryTests
         states.Dispose();
     }
 
+    [Test]
+    public void LastRegisteredState_TracksCallOrderAndFallsBackOnTipRemoval()
+    {
+        // Empty repo has no tip
+        Assert.That(_repository.LastRegisteredState, Is.Null);
+
+        // AddStateId order: 1, 3, 2 → tip is the last call (2), not the max (3).
+        AddSnapshotToRepository(0, 1);
+        AddSnapshotToRepository(2, 3);
+        AddSnapshotToRepository(1, 2);
+        Assert.That(_repository.LastRegisteredState, Is.EqualTo(CreateStateId(2)));
+
+        // Removing a non-tip state leaves the tip alone.
+        _repository.RemoveAndReleaseKnownState(CreateStateId(1));
+        Assert.That(_repository.LastRegisteredState, Is.EqualTo(CreateStateId(2)));
+
+        // Removing the tip falls back to the next-highest (3).
+        _repository.RemoveAndReleaseKnownState(CreateStateId(2));
+        Assert.That(_repository.LastRegisteredState, Is.EqualTo(CreateStateId(3)));
+
+        // Removing every remaining state clears the tip.
+        _repository.RemoveAndReleaseKnownState(CreateStateId(3));
+        Assert.That(_repository.LastRegisteredState, Is.Null);
+    }
+
     #endregion
 
     private PersistedSnapshot CreatePersistedSnapshot(StateId from, StateId to)
