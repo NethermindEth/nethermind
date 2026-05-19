@@ -4,6 +4,8 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.IO.Pipelines;
+using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
@@ -157,6 +159,24 @@ public class DebugBridge : IDebugBridge
     public GethLikeTxTrace? GetTransactionTrace(Transaction transaction, BlockParameter blockParameter, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions = null) =>
         _tracer.Trace(blockParameter, transaction, gethTraceOptions ?? GethTraceOptions.Default, cancellationToken);
 
+    public GethLikeTxTrace? GetTransactionTraceStreaming(Hash256 transactionHash, Utf8JsonWriter writer, PipeWriter? pipeWriter, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions = null) =>
+        _tracer.TraceStreaming(transactionHash, gethTraceOptions ?? GethTraceOptions.Default, writer, pipeWriter, cancellationToken);
+
+    public GethLikeTxTrace? GetTransactionTraceStreaming(Transaction transaction, BlockParameter blockParameter, Utf8JsonWriter writer, PipeWriter? pipeWriter, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions = null) =>
+        _tracer.TraceStreaming(blockParameter, transaction, gethTraceOptions ?? GethTraceOptions.Default, writer, pipeWriter, cancellationToken);
+
+    public GethLikeTxTrace? GetTransactionTraceStreaming(long blockNumber, int index, Utf8JsonWriter writer, PipeWriter? pipeWriter, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions = null) =>
+        _tracer.TraceStreaming(blockNumber, index, gethTraceOptions ?? GethTraceOptions.Default, writer, pipeWriter, cancellationToken);
+
+    public GethLikeTxTrace? GetTransactionTraceStreaming(Hash256 blockHash, int index, Utf8JsonWriter writer, PipeWriter? pipeWriter, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions = null) =>
+        _tracer.TraceStreaming(blockHash, index, gethTraceOptions ?? GethTraceOptions.Default, writer, pipeWriter, cancellationToken);
+
+    public GethLikeTxTrace? GetTransactionTraceStreaming(Rlp blockRlp, Hash256 transactionHash, Utf8JsonWriter writer, PipeWriter? pipeWriter, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions = null) =>
+        _tracer.TraceStreaming(blockRlp, transactionHash, gethTraceOptions ?? GethTraceOptions.Default, writer, pipeWriter, cancellationToken);
+
+    public GethLikeTxTrace? GetTransactionTraceStreaming(Block block, Hash256 txHash, Utf8JsonWriter writer, PipeWriter? pipeWriter, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions = null) =>
+        _tracer.TraceStreaming(block, txHash, gethTraceOptions ?? GethTraceOptions.Default, writer, pipeWriter, cancellationToken);
+
     public IReadOnlyCollection<GethLikeTxTrace> GetBlockTrace(BlockParameter blockParameter, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions = null) =>
         _tracer.TraceBlock(blockParameter, gethTraceOptions ?? GethTraceOptions.Default, cancellationToken);
 
@@ -165,6 +185,15 @@ public class DebugBridge : IDebugBridge
 
     public IReadOnlyCollection<GethLikeTxTrace> GetBlockTrace(Block block, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions = null) =>
         _tracer.TraceBlock(block, gethTraceOptions ?? GethTraceOptions.Default, cancellationToken);
+
+    public void GetBlockTraceStreaming(BlockParameter blockParameter, Utf8JsonWriter writer, PipeWriter? pipeWriter, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions = null) =>
+        _tracer.TraceBlockStreaming(blockParameter, gethTraceOptions ?? GethTraceOptions.Default, writer, pipeWriter, cancellationToken);
+
+    public void GetBlockTraceStreaming(Rlp blockRlp, Utf8JsonWriter writer, PipeWriter? pipeWriter, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions = null) =>
+        _tracer.TraceBlockStreaming(blockRlp, gethTraceOptions ?? GethTraceOptions.Default, writer, pipeWriter, cancellationToken);
+
+    public void GetBlockTraceStreaming(Block block, Utf8JsonWriter writer, PipeWriter? pipeWriter, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions = null) =>
+        _tracer.TraceBlockStreaming(block, gethTraceOptions ?? GethTraceOptions.Default, writer, pipeWriter, cancellationToken);
 
     public IReadOnlyCollection<Hash256> GetBlockIntermediateRoots(Hash256 blockHash, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions = null) =>
         _tracer.TraceBlockIntermediateRoots(blockHash, gethTraceOptions ?? GethTraceOptions.Default, cancellationToken);

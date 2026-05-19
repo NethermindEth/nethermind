@@ -4,7 +4,9 @@
 using System;
 using System.Buffers;
 using System.IO;
+using System.IO.Pipelines;
 using System.Linq;
+using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Find;
@@ -70,6 +72,14 @@ public class DebugRpcModule(
             return headerError;
         }
 
+        if (CanStreamStructLogs(options))
+        {
+            GethTraceOptions effective = options ?? GethTraceOptions.Default;
+            return ResultWrapper<GethLikeTxTrace>.Success(BuildStreamingResult(
+                (writer, pipeWriter, token) =>
+                    debugBridge.GetTransactionTraceStreaming(transactionHash, writer, pipeWriter, token, effective)));
+        }
+
         using CancellationTokenSource timeout = BuildTimeoutCancellationTokenSource();
         CancellationToken cancellationToken = timeout.Token;
         GethLikeTxTrace? transactionTrace = debugBridge.GetTransactionTrace(transactionHash, cancellationToken, options);
@@ -98,6 +108,14 @@ public class DebugRpcModule(
             return ResultWrapper<GethLikeTxTrace>.Fail(error, ErrorCodes.InvalidInput);
         }
 
+        if (CanStreamStructLogs(options))
+        {
+            GethTraceOptions effective = options ?? GethTraceOptions.Default;
+            return ResultWrapper<GethLikeTxTrace>.Success(BuildStreamingResult(
+                (writer, pipeWriter, token) =>
+                    debugBridge.GetTransactionTraceStreaming(tx, blockParameter, writer, pipeWriter, token, effective)));
+        }
+
         using CancellationTokenSource timeout = BuildTimeoutCancellationTokenSource();
         CancellationToken cancellationToken = timeout.Token;
 
@@ -120,12 +138,52 @@ public class DebugRpcModule(
         return ResultWrapper<GethLikeTxTrace>.Success(transactionTrace);
     }
 
+    private static bool CanStreamStructLogs(GethTraceOptions? options) => string.IsNullOrEmpty(options?.Tracer);
+
+    private GethLikeTxTraceStreamingSingleResult BuildStreamingResult(
+        Func<Utf8JsonWriter, PipeWriter?, CancellationToken, GethLikeTxTrace?> runTrace)
+    {
+        CancellationTokenSource timeoutCts = BuildTimeoutCancellationTokenSource();
+        try
+        {
+            return new GethLikeTxTraceStreamingSingleResult(runTrace, timeoutCts, _logger);
+        }
+        catch
+        {
+            timeoutCts.Dispose();
+            throw;
+        }
+    }
+
+    private GethLikeTxTraceStreamingBlockResult BuildStreamingBlockResult(
+        Action<Utf8JsonWriter, PipeWriter?, CancellationToken> runBlockTrace)
+    {
+        CancellationTokenSource timeoutCts = BuildTimeoutCancellationTokenSource();
+        try
+        {
+            return new GethLikeTxTraceStreamingBlockResult(runBlockTrace, timeoutCts, _logger);
+        }
+        catch
+        {
+            timeoutCts.Dispose();
+            throw;
+        }
+    }
+
     public ResultWrapper<GethLikeTxTrace> debug_traceTransactionByBlockhashAndIndex(Hash256 blockhash, int index, GethTraceOptions options = null)
     {
         TryGetHeaderAndCheckState(blockhash, out ResultWrapper<GethLikeTxTrace>? headerError);
         if (headerError is not null)
         {
             return headerError;
+        }
+
+        if (CanStreamStructLogs(options))
+        {
+            GethTraceOptions effective = options ?? GethTraceOptions.Default;
+            return ResultWrapper<GethLikeTxTrace>.Success(BuildStreamingResult(
+                (writer, pipeWriter, token) =>
+                    debugBridge.GetTransactionTraceStreaming(blockhash, index, writer, pipeWriter, token, effective)));
         }
 
         using CancellationTokenSource timeout = BuildTimeoutCancellationTokenSource();
@@ -148,13 +206,23 @@ public class DebugRpcModule(
             return headerError;
         }
 
-        using CancellationTokenSource timeout = BuildTimeoutCancellationTokenSource();
-        CancellationToken cancellationToken = timeout.Token;
         long? blockNo = blockParameter.BlockNumber;
         if (!blockNo.HasValue)
         {
             throw new InvalidDataException("Block number value incorrect");
         }
+
+        if (CanStreamStructLogs(options))
+        {
+            GethTraceOptions effective = options ?? GethTraceOptions.Default;
+            long resolvedBlockNo = blockNo.Value;
+            return ResultWrapper<GethLikeTxTrace>.Success(BuildStreamingResult(
+                (writer, pipeWriter, token) =>
+                    debugBridge.GetTransactionTraceStreaming(resolvedBlockNo, index, writer, pipeWriter, token, effective)));
+        }
+
+        using CancellationTokenSource timeout = BuildTimeoutCancellationTokenSource();
+        CancellationToken cancellationToken = timeout.Token;
 
         GethLikeTxTrace? transactionTrace = debugBridge.GetTransactionTrace(blockNo.Value, index, cancellationToken, options);
         if (transactionTrace is null)
@@ -174,6 +242,14 @@ public class DebugRpcModule(
             return blockError;
         }
 
+        if (CanStreamStructLogs(options))
+        {
+            GethTraceOptions effective = options ?? GethTraceOptions.Default;
+            return ResultWrapper<GethLikeTxTrace>.Success(BuildStreamingResult(
+                (writer, pipeWriter, token) =>
+                    debugBridge.GetTransactionTraceStreaming(block!, transactionHash, writer, pipeWriter, token, effective)));
+        }
+
         using CancellationTokenSource timeout = BuildTimeoutCancellationTokenSource();
         CancellationToken cancellationToken = timeout.Token;
         GethLikeTxTrace? transactionTrace = debugBridge.GetTransactionTrace(block, transactionHash, cancellationToken, options);
@@ -191,6 +267,20 @@ public class DebugRpcModule(
         if (blockError is not null)
         {
             return blockError;
+        }
+
+        if (CanStreamStructLogs(options))
+        {
+            if (txIndex < 0 || txIndex >= block!.Transactions.Length)
+            {
+                return ResultWrapper<GethLikeTxTrace>.Fail($"Trace is null for RLP {blockRlp.ToHexString()} and transaction index {txIndex}", ErrorCodes.ResourceNotFound);
+            }
+
+            Hash256? targetTxHash = block.Transactions[txIndex].Hash;
+            GethTraceOptions effective = options ?? GethTraceOptions.Default;
+            return ResultWrapper<GethLikeTxTrace>.Success(BuildStreamingResult(
+                (writer, pipeWriter, token) =>
+                    debugBridge.GetTransactionTraceStreaming(block, targetTxHash!, writer, pipeWriter, token, effective)));
         }
 
         using CancellationTokenSource timeout = BuildTimeoutCancellationTokenSource();
@@ -220,6 +310,14 @@ public class DebugRpcModule(
         if (blockError is not null)
         {
             return blockError;
+        }
+
+        if (CanStreamStructLogs(options))
+        {
+            GethTraceOptions effective = options ?? GethTraceOptions.Default;
+            return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Success(BuildStreamingBlockResult(
+                (writer, pipeWriter, token) =>
+                    debugBridge.GetBlockTraceStreaming(block!, writer, pipeWriter, token, effective)));
         }
 
         using CancellationTokenSource? timeout = BuildTimeoutCancellationTokenSource();
@@ -253,6 +351,14 @@ public class DebugRpcModule(
             return headerError;
         }
 
+        if (CanStreamStructLogs(options))
+        {
+            GethTraceOptions effective = options ?? GethTraceOptions.Default;
+            return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Success(BuildStreamingBlockResult(
+                (writer, pipeWriter, token) =>
+                    debugBridge.GetBlockTraceStreaming(blockNumber, writer, pipeWriter, token, effective)));
+        }
+
         using CancellationTokenSource? timeout = BuildTimeoutCancellationTokenSource();
         CancellationToken cancellationToken = timeout.Token;
 
@@ -279,6 +385,15 @@ public class DebugRpcModule(
         if (headerError is not null)
         {
             return headerError;
+        }
+
+        if (CanStreamStructLogs(options))
+        {
+            GethTraceOptions effective = options ?? GethTraceOptions.Default;
+            BlockParameter resolvedParam = new(blockHash);
+            return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Success(BuildStreamingBlockResult(
+                (writer, pipeWriter, token) =>
+                    debugBridge.GetBlockTraceStreaming(resolvedParam, writer, pipeWriter, token, effective)));
         }
 
         using CancellationTokenSource? timeout = BuildTimeoutCancellationTokenSource();
@@ -504,6 +619,11 @@ public class DebugRpcModule(
 
     private ResultWrapper<IEnumerable<IEnumerable<GethLikeTxTrace>>> TraceCallMany(TransactionBundle[] bundles, BlockParameter blockParameter, GethTraceOptions? options, BlockHeader header)
     {
+        if (CanStreamStructLogs(options))
+        {
+            return ResultWrapper<IEnumerable<IEnumerable<GethLikeTxTrace>>>.Success(BuildStreamingBundleResult(bundles, blockParameter, options));
+        }
+
         CancellationTokenSource timeout = BuildTimeoutCancellationTokenSource();
         try
         {
@@ -521,6 +641,31 @@ public class DebugRpcModule(
         catch
         {
             timeout.Dispose();
+            throw;
+        }
+    }
+
+    private GethLikeTxTraceStreamingBundleResult BuildStreamingBundleResult(
+        TransactionBundle[] bundles,
+        BlockParameter blockParameter,
+        GethTraceOptions? options)
+    {
+        CancellationTokenSource timeoutCts = BuildTimeoutCancellationTokenSource();
+        try
+        {
+            GethTraceOptions effective = options ?? GethTraceOptions.Default;
+            return new GethLikeTxTraceStreamingBundleResult(
+                debugBridge,
+                bundles,
+                blockParameter,
+                jsonRpcConfig.GasCap,
+                effective,
+                timeoutCts,
+                _logger);
+        }
+        catch
+        {
+            timeoutCts.Dispose();
             throw;
         }
     }

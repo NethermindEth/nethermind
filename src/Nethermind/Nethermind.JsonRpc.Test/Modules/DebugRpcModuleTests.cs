@@ -55,12 +55,19 @@ public partial class DebugRpcModuleTests
         Address address = Build.An.Address.TestObject;
         UInt256 balance = 100.Ether, send = balance / 2;
 
-        JsonRpcResponse response = await RpcTest.TestRequest(ctx.DebugRpcModule, "debug_traceCall",
+        // Default struct-log tracer streams: pre-flight failures arrive after the response
+        // envelope has started, so the existing JSON-RPC error path is replaced by a success
+        // response with failed:true plus a Nethermind-extension "error" field carrying the
+        // human-readable reason. Pin both with a serialised round-trip.
+        string response = await RpcTest.TestSerializedRequest(ctx.DebugRpcModule, "debug_traceCall",
             new { from = $"{address}", to = $"{TestItem.AddressC}", value = send.ToString("X") }
         );
 
-        response.Should().BeOfType<JsonRpcErrorResponse>()
-            .Which.Error?.Message?.Should().Contain("insufficient sender balance");
+        JToken result = JToken.Parse(response)["result"]!;
+        ((bool)result["failed"]!).Should().BeTrue("insufficient balance must surface as failed:true");
+        ((string)result["returnValue"]!).Should().Be("0x");
+        ((string)result["error"]!).Should().Contain("insufficient", "the human-readable reason should be preserved in the error field");
+        ((int)result["errorCode"]!).Should().Be(ErrorCodes.InvalidInput, "tracing-failure errorCode mirrors the buffered ErrorCodes.InvalidInput");
     }
 
     [Test]
@@ -113,16 +120,18 @@ public partial class DebugRpcModuleTests
 
         using Context ctx = await Context.Create();
 
-        JsonRpcResponse response = await RpcTest.TestRequest(ctx.DebugRpcModule, "debug_traceCall",
+        string response = await RpcTest.TestSerializedRequest(ctx.DebugRpcModule, "debug_traceCall",
             transaction, null, new { stateOverrides = stateOverride }
         );
 
-        GethLikeTxTrace trace = response.Should().BeOfType<JsonRpcSuccessResponse>()
-            .Which.Result.Should().BeOfType<GethLikeTxTrace>()
-            .Subject;
+        JToken result = JToken.Parse(response)["result"]!;
+        ((bool)result["failed"]!).Should().BeFalse($"trace for case '{name}' must succeed");
 
-        if (expectedValue != null)
-            Convert.ToHexString(trace.ReturnValue).Should().BeEquivalentTo(expectedValue);
+        if (expectedValue is not null)
+        {
+            byte[] returnValueBytes = Bytes.FromHexString((string)result["returnValue"]!);
+            Convert.ToHexString(returnValueBytes).Should().BeEquivalentTo(expectedValue);
+        }
     }
 
     [Test]
@@ -139,17 +148,13 @@ public partial class DebugRpcModuleTests
             """{"0xc200000000000000000000000000000000000000":{"code":"0x5a60005260206000f3"}}""");
 
         // Request 100K gas — should be capped to 50K by GasCap
-        JsonRpcResponse response = await RpcTest.TestRequest(ctx.DebugRpcModule, "debug_traceCall",
+        string response = await RpcTest.TestSerializedRequest(ctx.DebugRpcModule, "debug_traceCall",
             new { to = "0xc200000000000000000000000000000000000000", gas = "0x186A0" },
             null,
             new { stateOverrides = stateOverride }
         );
 
-        GethLikeTxTrace trace = response.Should().BeOfType<JsonRpcSuccessResponse>()
-            .Which.Result.Should().BeOfType<GethLikeTxTrace>()
-            .Subject;
-
-        long gasAvailable = (long)trace.ReturnValue.ToUInt256();
+        long gasAvailable = (long)ParseReturnValue(response).ToUInt256();
         gasAvailable.Should().BeLessThan(gasCap);
         gasAvailable.Should().BeGreaterThan(0);
     }
@@ -170,19 +175,21 @@ public partial class DebugRpcModuleTests
             """{"0xc200000000000000000000000000000000000000":{"code":"0x5a60005260206000f3"}}""");
 
         // No gas field — should default to gasCap, not blockGasLimit
-        JsonRpcResponse response = await RpcTest.TestRequest(ctx.DebugRpcModule, "debug_traceCall",
+        string response = await RpcTest.TestSerializedRequest(ctx.DebugRpcModule, "debug_traceCall",
             new { to = "0xc200000000000000000000000000000000000000" },
             null,
             new { stateOverrides = stateOverride }
         );
 
-        GethLikeTxTrace trace = response.Should().BeOfType<JsonRpcSuccessResponse>()
-            .Which.Result.Should().BeOfType<GethLikeTxTrace>()
-            .Subject;
-
-        UInt256 gasAvailable = trace.ReturnValue.ToUInt256();
+        UInt256 gasAvailable = ParseReturnValue(response).ToUInt256();
         gasAvailable.Should().BeGreaterThan((UInt256)blockGasLimit,
             "gas available should reflect gasCap ({0}), not block gas limit ({1})", gasCap, blockGasLimit);
+    }
+
+    private static byte[] ParseReturnValue(string responseJson)
+    {
+        JToken result = JToken.Parse(responseJson)["result"]!;
+        return Bytes.FromHexString((string)result["returnValue"]!);
     }
 
     [TestCase(

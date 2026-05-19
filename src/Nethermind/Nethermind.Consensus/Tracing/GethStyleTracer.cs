@@ -4,7 +4,9 @@
 using System;
 using System.Collections.Generic;
 using System.IO.Abstractions;
+using System.IO.Pipelines;
 using System.Linq;
+using System.Text.Json;
 using System.Threading;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Blocks;
@@ -124,6 +126,19 @@ public class GethStyleTracer(
 
     public IReadOnlyCollection<GethLikeTxTrace> TraceBlock(Block block, GethTraceOptions options, CancellationToken cancellationToken) => TraceBlockImpl(block, options, cancellationToken);
 
+    public void TraceBlockStreaming(BlockParameter blockParameter, GethTraceOptions options, Utf8JsonWriter writer, PipeWriter? pipeWriter, CancellationToken cancellationToken)
+        => TraceBlockStreamingImpl(blockTree.FindBlock(blockParameter), options, writer, pipeWriter, cancellationToken);
+
+    public void TraceBlockStreaming(Rlp blockRlp, GethTraceOptions options, Utf8JsonWriter writer, PipeWriter? pipeWriter, CancellationToken cancellationToken)
+        => TraceBlockStreamingImpl(GetBlockToTrace(blockRlp), options, writer, pipeWriter, cancellationToken);
+
+    public void TraceBlockStreaming(Block block, GethTraceOptions options, Utf8JsonWriter writer, PipeWriter? pipeWriter, CancellationToken cancellationToken)
+        => TraceBlockStreamingImpl(block, options, writer, pipeWriter, cancellationToken);
+
+    private void TraceBlockStreamingImpl(Block? block, GethTraceOptions options, Utf8JsonWriter writer, PipeWriter? pipeWriter, CancellationToken cancellationToken)
+        => TraceBlockWithFactory(block, options, cancellationToken,
+            _ => new GethLikeBlockEnvelopeStreamingTracer(options, writer, pipeWriter, cancellationToken));
+
     public IReadOnlyCollection<Hash256> TraceBlockIntermediateRoots(Hash256 blockHash, GethTraceOptions options, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(blockHash);
@@ -178,6 +193,16 @@ public class GethStyleTracer(
 
     private GethLikeTxTrace? TraceImpl(Block block, Hash256? txHash, CancellationToken cancellationToken, GethTraceOptions options,
         ProcessingOptions processingOptions = ProcessingOptions.Trace)
+        => TraceWithFactory(block, txHash, cancellationToken, options, processingOptions,
+            worldState => CreateOptionsTracer(block.Header, options with { TxHash = txHash }, worldState, specProvider));
+
+    private GethLikeTxTrace? TraceWithFactory(
+        Block block,
+        Hash256? txHash,
+        CancellationToken cancellationToken,
+        GethTraceOptions options,
+        ProcessingOptions processingOptions,
+        Func<IWorldState, IBlockTracer<GethLikeTxTrace>> blockTracerFactory)
     {
         ArgumentNullException.ThrowIfNull(txHash);
 
@@ -196,7 +221,7 @@ public class GethStyleTracer(
 
         options.BlockOverrides?.ApplyOverrides(block.Header);
         using Scope<BlockProcessingComponents> scope = blockProcessingEnv.BuildAndOverride(baseBlockHeader, options.StateOverrides);
-        IBlockTracer<GethLikeTxTrace> tracer = CreateOptionsTracer(block.Header, options with { TxHash = txHash }, scope.Component.WorldState, specProvider);
+        IBlockTracer<GethLikeTxTrace> tracer = blockTracerFactory(scope.Component.WorldState);
 
         try
         {
@@ -210,6 +235,75 @@ public class GethStyleTracer(
         }
     }
 
+    public GethLikeTxTrace? TraceStreaming(Hash256 txHash, GethTraceOptions options, Utf8JsonWriter writer, PipeWriter? pipeWriter, CancellationToken cancellationToken)
+    {
+        Hash256? blockHash = receiptStorage.FindBlockHash(txHash);
+        if (blockHash is null) return null;
+
+        Block? block = blockTree.FindBlock(blockHash, BlockTreeLookupOptions.RequireCanonical);
+        if (block is null) return null;
+
+        return TraceWithFactory(block, txHash, cancellationToken, options, ProcessingOptions.Trace,
+            _ => new GethLikeBlockStreamingMemoryTracer(options with { TxHash = txHash }, writer, pipeWriter, cancellationToken));
+    }
+
+    public GethLikeTxTrace? TraceStreaming(BlockParameter blockParameter, Transaction tx, GethTraceOptions options, Utf8JsonWriter writer, PipeWriter? pipeWriter, CancellationToken cancellationToken)
+    {
+        Block block = blockTree.FindBlock(blockParameter) ?? throw new InvalidOperationException($"Cannot find block {blockParameter}");
+        tx.Hash ??= tx.CalculateHash();
+        block = block.WithReplacedBodyCloned(BlockBody.WithOneTransactionOnly(tx));
+
+        ITransactionProcessorAdapter currentAdapter = transactionProcessorAdapter.CurrentAdapter;
+        transactionProcessorAdapter.CurrentAdapter = new TraceTransactionProcessorAdapter(transactionProcessorAdapter.TransactionProcessor);
+
+        try
+        {
+            return TraceWithFactory(block, tx.Hash, cancellationToken, options, ProcessingOptions.TraceTransactions,
+                _ => new GethLikeBlockStreamingMemoryTracer(options with { TxHash = tx.Hash }, writer, pipeWriter, cancellationToken));
+        }
+        finally
+        {
+            transactionProcessorAdapter.CurrentAdapter = currentAdapter;
+        }
+    }
+
+    public GethLikeTxTrace? TraceStreaming(long blockNumber, int txIndex, GethTraceOptions options, Utf8JsonWriter writer, PipeWriter? pipeWriter, CancellationToken cancellationToken)
+    {
+        Block block = blockTree.FindBlock(blockNumber, BlockTreeLookupOptions.RequireCanonical)
+                      ?? throw new InvalidOperationException($"No historical block found for {blockNumber}");
+        return TraceStreamingTxAtIndex(block, txIndex, options, writer, pipeWriter, cancellationToken);
+    }
+
+    public GethLikeTxTrace? TraceStreaming(Hash256 blockHash, int txIndex, GethTraceOptions options, Utf8JsonWriter writer, PipeWriter? pipeWriter, CancellationToken cancellationToken)
+    {
+        Block block = blockTree.FindBlock(blockHash, BlockTreeLookupOptions.None)
+                      ?? throw new InvalidOperationException($"No historical block found for {blockHash}");
+        return TraceStreamingTxAtIndex(block, txIndex, options, writer, pipeWriter, cancellationToken);
+    }
+
+    public GethLikeTxTrace? TraceStreaming(Rlp blockRlp, Hash256 txHash, GethTraceOptions options, Utf8JsonWriter writer, PipeWriter? pipeWriter, CancellationToken cancellationToken)
+        => TraceStreaming(GetBlockToTrace(blockRlp), txHash, options, writer, pipeWriter, cancellationToken);
+
+    public GethLikeTxTrace? TraceStreaming(Block block, Hash256 txHash, GethTraceOptions options, Utf8JsonWriter writer, PipeWriter? pipeWriter, CancellationToken cancellationToken)
+    {
+        GethTraceOptions filtered = options with { TxHash = txHash };
+        return TraceBlockWithFactory(block, filtered, cancellationToken,
+                _ => new GethLikeBlockStreamingMemoryTracer(filtered, writer, pipeWriter, cancellationToken))
+            .FirstOrDefault();
+    }
+
+    private GethLikeTxTrace? TraceStreamingTxAtIndex(Block block, int txIndex, GethTraceOptions options, Utf8JsonWriter writer, PipeWriter? pipeWriter, CancellationToken cancellationToken)
+    {
+        if (txIndex > block.Transactions.Length - 1)
+        {
+            throw new InvalidOperationException($"Block {block.Hash} has only {block.Transactions.Length} transactions and the requested tx index was {txIndex}");
+        }
+
+        Hash256? txHash = block.Transactions[txIndex].Hash;
+        return TraceWithFactory(block, txHash, cancellationToken, options, ProcessingOptions.Trace,
+            _ => new GethLikeBlockStreamingMemoryTracer(options with { TxHash = txHash }, writer, pipeWriter, cancellationToken));
+    }
+
     public static IBlockTracer<GethLikeTxTrace> CreateOptionsTracer(BlockHeader block, GethTraceOptions options, IWorldState worldState, ISpecProvider specProvider) =>
         options switch
         {
@@ -219,13 +313,21 @@ public class GethStyleTracer(
         };
 
     private IReadOnlyCollection<GethLikeTxTrace> TraceBlockImpl(Block? block, GethTraceOptions options, CancellationToken cancellationToken)
+        => TraceBlockWithFactory(block, options, cancellationToken,
+            worldState => CreateOptionsTracer(block!.Header, options, worldState, specProvider));
+
+    private IReadOnlyCollection<GethLikeTxTrace> TraceBlockWithFactory(
+        Block? block,
+        GethTraceOptions options,
+        CancellationToken cancellationToken,
+        Func<IWorldState, IBlockTracer<GethLikeTxTrace>> blockTracerFactory)
     {
         ArgumentNullException.ThrowIfNull(block);
 
         BlockHeader parent = FindParent(block);
         using Scope<BlockProcessingComponents> scope = blockProcessingEnv.BuildAndOverride(parent, options.StateOverrides);
 
-        IBlockTracer<GethLikeTxTrace> tracer = CreateOptionsTracer(block.Header, options, scope.Component.WorldState, specProvider);
+        IBlockTracer<GethLikeTxTrace> tracer = blockTracerFactory(scope.Component.WorldState);
         try
         {
             scope.Component.BlockchainProcessor.Process(block, ProcessingOptions.Trace, tracer.WithCancellation(cancellationToken), cancellationToken);

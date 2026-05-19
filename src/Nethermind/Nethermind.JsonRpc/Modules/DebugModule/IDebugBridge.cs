@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
+using System.IO.Pipelines;
+using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Find;
@@ -21,9 +23,18 @@ public interface IDebugBridge
     GethLikeTxTrace GetTransactionTrace(Rlp blockRlp, Hash256 transactionHash, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions = null);
     GethLikeTxTrace GetTransactionTrace(Block block, Hash256 txHash, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions = null);
     GethLikeTxTrace? GetTransactionTrace(Transaction transaction, BlockParameter blockParameter, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions = null);
+    GethLikeTxTrace? GetTransactionTraceStreaming(Hash256 transactionHash, Utf8JsonWriter writer, PipeWriter? pipeWriter, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions = null);
+    GethLikeTxTrace? GetTransactionTraceStreaming(Transaction transaction, BlockParameter blockParameter, Utf8JsonWriter writer, PipeWriter? pipeWriter, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions = null);
+    GethLikeTxTrace? GetTransactionTraceStreaming(long blockNumber, int index, Utf8JsonWriter writer, PipeWriter? pipeWriter, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions = null);
+    GethLikeTxTrace? GetTransactionTraceStreaming(Hash256 blockHash, int index, Utf8JsonWriter writer, PipeWriter? pipeWriter, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions = null);
+    GethLikeTxTrace? GetTransactionTraceStreaming(Rlp blockRlp, Hash256 transactionHash, Utf8JsonWriter writer, PipeWriter? pipeWriter, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions = null);
+    GethLikeTxTrace? GetTransactionTraceStreaming(Block block, Hash256 txHash, Utf8JsonWriter writer, PipeWriter? pipeWriter, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions = null);
     IReadOnlyCollection<GethLikeTxTrace> GetBlockTrace(BlockParameter blockParameter, CancellationToken cancellationToken, GethTraceOptions gethTraceOptions = null);
     IReadOnlyCollection<GethLikeTxTrace> GetBlockTrace(Rlp blockRlp, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions = null);
     IReadOnlyCollection<GethLikeTxTrace> GetBlockTrace(Block block, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions = null);
+    void GetBlockTraceStreaming(BlockParameter blockParameter, Utf8JsonWriter writer, PipeWriter? pipeWriter, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions = null);
+    void GetBlockTraceStreaming(Rlp blockRlp, Utf8JsonWriter writer, PipeWriter? pipeWriter, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions = null);
+    void GetBlockTraceStreaming(Block block, Utf8JsonWriter writer, PipeWriter? pipeWriter, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions = null);
     IReadOnlyCollection<Hash256> GetBlockIntermediateRoots(Hash256 blockHash, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions = null);
     Block? GetBlock(BlockParameter param);
     byte[] GetBlockRlp(BlockParameter param);

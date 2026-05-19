@@ -68,8 +68,12 @@ public class DebugModuleTests
         DebugRpcModule rpcModule = CreateDebugRpcModule(_debugBridge);
         TransactionBundle bundle = new() { Transactions = [new LegacyTransactionForRpc { To = TestItem.AddressC }] };
 
+        // Non-empty Tracer keeps debug_traceCallMany on the lazy-IEnumerable buffered path
+        // (the streaming default-tracer path defers iteration into WriteToAsync, which this
+        // test isn't exercising). The cancellation-token lifecycle contract being verified
+        // is the buffered path's StreamBundleTraces wrapper.
         ResultWrapper<IEnumerable<IEnumerable<GethLikeTxTrace>>> result =
-            rpcModule.debug_traceCallMany([bundle, bundle], BlockParameter.Latest);
+            rpcModule.debug_traceCallMany([bundle, bundle], BlockParameter.Latest, new GethTraceOptions { Tracer = "callTracer" });
 
         // The first inner sequence touches WaitHandle (throws ObjectDisposedException if the
         // timeout CTS has been disposed). The second bundle throws unconditionally, so the
@@ -328,7 +332,8 @@ public class DebugModuleTests
         };
         trace.Entries.Add(entry);
 
-        GethTraceOptions gtOptions = new();
+        // Non-empty Tracer keeps debug_traceCall on the buffered path; struct-log default streams.
+        GethTraceOptions gtOptions = new() { Tracer = "callTracer" };
 
         Transaction transaction = Build.A.Transaction.WithTo(TestItem.AddressA).WithHash(TestItem.KeccakA).TestObject;
 
