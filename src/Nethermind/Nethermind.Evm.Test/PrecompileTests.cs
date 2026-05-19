@@ -4,6 +4,8 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
+using System.Text.Json.Serialization;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.Precompiles;
@@ -17,8 +19,11 @@ public abstract class PrecompileTests<TPrecompile, TTests> : IPrecompileTests
     where TPrecompile : IPrecompile<TPrecompile>
     where TTests : PrecompileTests<TPrecompile, TTests>, IPrecompileTests
 {
+    [method: JsonConstructor]
     public record TestCase(byte[] Input, byte[]? Expected, string Name, long? Gas, string? ExpectedError)
     {
+        public IReleaseSpec Spec { get; internal set; } = DefaultSpec;
+
         public TestCase(string input, string output, bool status) : this(
             Convert.FromHexString(input), Convert.FromHexString(output),
             Name: input, Gas: null, ExpectedError: status ? null : "<error>"
@@ -34,13 +39,18 @@ public abstract class PrecompileTests<TPrecompile, TTests> : IPrecompileTests
     private static IEnumerable<TestCaseData> TestSource()
     {
         EthereumJsonSerializer serializer = new();
-        foreach (string file in TTests.TestFiles())
+
+        foreach ((string file, IReleaseSpec spec) in Enumerable.Union(
+                     TTests.TestFiles().Select(f => (f, (IReleaseSpec)null)),
+                     TTests.TestFilesWithSpec()
+                 ))
         {
             string path = Path.Combine(TestFilesDirectory, file);
             string json = File.ReadAllText(path);
             foreach (TestCase test in serializer.Deserialize<TestCase[]>(json))
             {
-                yield return new(test) { TestName = EnsureSafeName(test.Name) };
+                test.Spec = spec ?? DefaultSpec;
+                yield return new(test) { TestName = ComposeName(test.Name, spec) };
             }
         }
     }
@@ -82,9 +92,9 @@ public abstract class PrecompileTests<TPrecompile, TTests> : IPrecompileTests
 
     private static void RunTest(ReadOnlyMemory<byte> input, TestCase testCase, string? reason = null)
     {
-        long gas = Instance.BaseGasCost(DefaultSpec) + Instance.DataGasCost(input, DefaultSpec);
+        long gas = Instance.BaseGasCost(DefaultSpec) + Instance.DataGasCost(input, testCase.Spec);
 
-        Result<byte[]> result = Instance.Run(input, DefaultSpec);
+        Result<byte[]> result = Instance.Run(input, testCase.Spec);
 
         using (Assert.EnterMultipleScope())
         {
@@ -115,12 +125,16 @@ public abstract class PrecompileTests<TPrecompile, TTests> : IPrecompileTests
         );
     }
 
-    private static string EnsureSafeName(string name) =>
-        name.Replace('(', '[')
+    private static string ComposeName(string name, IReleaseSpec? spec)
+    {
+        name = name.Replace('(', '[')
             .Replace(')', ']')
             .Replace("!=", "_not_eq_")
             .Replace("=", "_eq_")
             .Replace(" ", string.Empty);
+
+        return spec is null ? name : $"{name} @ {spec.Name}";
+    }
 
     private class ResultEqComparer : IEqualityComparer<Result<byte[]>>
     {
