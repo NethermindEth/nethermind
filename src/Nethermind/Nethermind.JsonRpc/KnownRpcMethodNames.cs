@@ -8,6 +8,7 @@ namespace Nethermind.JsonRpc;
 
 internal static class KnownRpcMethodNames
 {
+    // Order matters inside each bucket: matching probes sequentially after length gating.
     private static readonly string[] Length8 =
     [
         "eth_call",
@@ -29,14 +30,14 @@ internal static class KnownRpcMethodNames
     private static readonly string[] Length11 =
     [
         "eth_chainId",
-        "admin_peers",
-        "admin_prune",
         "eth_baseFee",
         "eth_getCode",
         "eth_getLogs",
         "eth_syncing",
         "net_version",
         "trace_block",
+        "admin_peers",
+        "admin_prune",
     ];
 
     private static readonly string[] Length12 =
@@ -51,157 +52,157 @@ internal static class KnownRpcMethodNames
 
     private static readonly string[] Length13 =
     [
-        "admin_addPeer",
-        "admin_dataDir",
-        "admin_setSolc",
-        "debug_gcStats",
-        "debug_setHead",
         "eth_newFilter",
         "eth_subscribe",
         "txpool_status",
+        "debug_gcStats",
+        "debug_setHead",
+        "admin_addPeer",
+        "admin_dataDir",
+        "admin_setSolc",
     ];
 
     private static readonly string[] Length14 =
     [
-        "admin_nodeInfo",
-        "debug_memStats",
-        "debug_seedHash",
         "eth_feeHistory",
         "eth_getAccount",
         "eth_getBalance",
         "eth_simulateV1",
-        "trace_callMany",
         "txpool_content",
         "txpool_inspect",
+        "trace_callMany",
+        "debug_memStats",
+        "debug_seedHash",
+        "admin_nodeInfo",
     ];
 
     private static readonly string[] Length15 =
     [
-        "admin_subscribe",
-        "debug_resetHead",
-        "debug_traceCall",
-        "debug_dumpBlock",
-        "debug_getFromDb",
         "eth_blobBaseFee",
         "eth_blockNumber",
         "eth_estimateGas",
         "eth_unsubscribe",
+        "debug_traceCall",
+        "debug_resetHead",
+        "debug_dumpBlock",
+        "debug_getFromDb",
+        "admin_subscribe",
     ];
 
     private static readonly string[] Length16 =
     [
-        "admin_removePeer",
-        "admin_verifyTrie",
-        "debug_traceBlock",
-        "debug_simulateV1",
         "eth_getStorageAt",
         "eth_subscription",
         "trace_simulateV1",
+        "debug_traceBlock",
+        "debug_simulateV1",
+        "admin_removePeer",
+        "admin_verifyTrie",
     ];
 
     private static readonly string[] Length17 =
     [
         "engine_getBlobsV2",
-        "admin_unsubscribe",
-        "debug_getRawBlock",
-        "debug_getBlockRlp",
-        "engine_getBlobsV1",
         "engine_getBlobsV3",
         "engine_getBlobsV4",
+        "engine_getBlobsV1",
         "eth_getFilterLogs",
         "trace_transaction",
+        "debug_getRawBlock",
+        "debug_getBlockRlp",
+        "admin_unsubscribe",
     ];
 
     private static readonly string[] Length18 =
     [
-        "admin_subscription",
-        "debug_getBadBlocks",
-        "debug_getRawHeader",
-        "debug_getSyncStage",
         "eth_getAccountInfo",
         "eth_getBlockByHash",
         "eth_newBlockFilter",
         "txpool_contentFrom",
+        "debug_getBadBlocks",
+        "debug_getRawHeader",
+        "debug_getSyncStage",
+        "admin_subscription",
     ];
 
     private static readonly string[] Length19 =
     [
-        "engine_newPayloadV4",
-        "admin_exportHistory",
-        "admin_importHistory",
-        "debug_getChainLevel",
-        "debug_traceCallMany",
-        "engine_getPayloadV1",
-        "engine_getPayloadV2",
-        "engine_getPayloadV3",
-        "engine_getPayloadV4",
         "engine_getPayloadV5",
         "engine_getPayloadV6",
-        "engine_newPayloadV1",
-        "engine_newPayloadV2",
-        "engine_newPayloadV3",
         "engine_newPayloadV5",
+        "engine_newPayloadV4",
+        "engine_getPayloadV4",
+        "engine_newPayloadV3",
+        "engine_getPayloadV3",
+        "engine_newPayloadV2",
+        "engine_getPayloadV2",
+        "engine_newPayloadV1",
+        "engine_getPayloadV1",
         "eth_getHeaderByHash",
         "eth_protocolVersion",
         "eth_sendTransaction",
         "eth_signTransaction",
         "eth_uninstallFilter",
         "rbuilder_getAccount",
+        "debug_traceCallMany",
+        "debug_getChainLevel",
+        "admin_exportHistory",
+        "admin_importHistory",
     ];
 
     private static readonly string[] Length20 =
     [
         "eth_getBlockByNumber",
-        "admin_addTrustedPeer",
-        "debug_getRawReceipts",
-        "debug_getConfigValue",
-        "debug_insertReceipts",
         "eth_createAccessList",
         "eth_getBlockReceipts",
         "eth_getFilterChanges",
         "eth_getStorageValues",
         "testing_buildBlockV1",
         "trace_rawTransaction",
+        "debug_getRawReceipts",
+        "debug_getConfigValue",
+        "debug_insertReceipts",
+        "admin_addTrustedPeer",
     ];
 
     private static readonly string[] Length21 =
     [
-        "debug_migrateReceipts",
         "eth_getHeaderByNumber",
         "rbuilder_getBlockHash",
         "testing_commitBlockV1",
+        "debug_migrateReceipts",
     ];
 
     private static readonly string[] Length22 =
     [
-        "admin_exportEraHistory",
-        "admin_importEraHistory",
-        "debug_deleteChainSlice",
-        "debug_traceTransaction",
-        "debug_traceBlockByHash",
-        "debug_executionWitness",
         "eth_getBlockAccessList",
         "eth_sendRawTransaction",
         "rbuilder_getCodeByHash",
+        "debug_traceTransaction",
+        "debug_traceBlockByHash",
+        "debug_executionWitness",
+        "debug_deleteChainSlice",
+        "admin_exportEraHistory",
+        "admin_importEraHistory",
     ];
 
     private static readonly string[] Length23 =
     [
-        "admin_removeTrustedPeer",
-        "debug_getRawTransaction",
-        "debug_intermediateRoots",
-        "debug_getBlockRlpByHash",
         "eth_getTransactionCount",
         "eth_pendingTransactions",
         "trace_replayTransaction",
+        "debug_getRawTransaction",
+        "debug_intermediateRoots",
+        "debug_getBlockRlpByHash",
+        "admin_removeTrustedPeer",
     ];
 
     private static readonly string[] Length24 =
     [
-        "debug_traceBlockByNumber",
-        "debug_traceBlockFromFile",
         "eth_getTransactionByHash",
         "eth_maxPriorityFeePerGas",
+        "debug_traceBlockByNumber",
+        "debug_traceBlockFromFile",
     ];
 
     private static readonly string[] Length25 =
@@ -212,23 +213,23 @@ internal static class KnownRpcMethodNames
 
     private static readonly string[] Length26 =
     [
-        "engine_forkchoiceUpdatedV3",
-        "admin_isStateRootAvailable",
-        "debug_executionWitnessCall",
-        "engine_forkchoiceUpdatedV1",
-        "engine_forkchoiceUpdatedV2",
         "engine_forkchoiceUpdatedV4",
+        "engine_forkchoiceUpdatedV3",
+        "engine_forkchoiceUpdatedV2",
+        "engine_forkchoiceUpdatedV1",
         "eth_sendRawTransactionSync",
         "proof_getTransactionByHash",
+        "debug_executionWitnessCall",
+        "admin_isStateRootAvailable",
     ];
 
     private static readonly string[] Length27 =
     [
-        "debug_getRawBlockAccessList",
         "engine_exchangeCapabilities",
         "eth_getRawTransactionByHash",
         "proof_getTransactionReceipt",
         "rbuilder_calculateStateRoot",
+        "debug_getRawBlockAccessList",
     ];
 
     private static readonly string[] Length28 =
@@ -244,29 +245,29 @@ internal static class KnownRpcMethodNames
 
     private static readonly string[] Length30 =
     [
-        "debug_standardTraceBlockToFile",
         "eth_getBlockAccessListByNumber",
         "eth_getUncleCountByBlockNumber",
+        "debug_standardTraceBlockToFile",
     ];
 
     private static readonly string[] Length31 =
     [
-        "engine_getPayloadBodiesByHashV1",
         "engine_getPayloadBodiesByHashV2",
+        "engine_getPayloadBodiesByHashV1",
         "eth_getUncleByBlockHashAndIndex",
         "eth_newPendingTransactionFilter",
     ];
 
     private static readonly string[] Length32 =
     [
-        "engine_getPayloadBodiesByRangeV1",
         "engine_getPayloadBodiesByRangeV2",
+        "engine_getPayloadBodiesByRangeV1",
     ];
 
     private static readonly string[] Length33 =
     [
-        "debug_standardTraceBadBlockToFile",
         "eth_getUncleByBlockNumberAndIndex",
+        "debug_standardTraceBadBlockToFile",
     ];
 
     private static readonly string[] Length34 =
@@ -281,14 +282,14 @@ internal static class KnownRpcMethodNames
 
     private static readonly string[] Length36 =
     [
-        "debug_traceTransactionInBlockByIndex",
         "eth_getBlockTransactionCountByNumber",
+        "debug_traceTransactionInBlockByIndex",
     ];
 
     private static readonly string[] Length37 =
     [
-        "debug_traceTransactionByBlockAndIndex",
         "eth_getTransactionByBlockHashAndIndex",
+        "debug_traceTransactionByBlockAndIndex",
     ];
 
     private static readonly string[] Length39 =
