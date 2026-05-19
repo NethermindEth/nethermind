@@ -5,6 +5,7 @@ using System.Buffers.Binary;
 using System.Globalization;
 using Nethermind.Consensus.Stateless;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.JsonRpc.Client;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
@@ -16,6 +17,53 @@ namespace Nethermind.StatelessInputGen;
 
 internal static class InputGenerator
 {
+    /// <summary>
+    /// Generates the .bin from a StatelessValidationFixture JSON without any RPC fetch.
+    /// </summary>
+    internal static int GenerateFromFixture(
+        string fixturePath, string output, bool forZisk, bool chainConfigEnvelope)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(fixturePath);
+
+        (Block block, Witness witness, ulong chainId, byte[]? envelope) =
+            FixtureReader.Read(fixturePath, includeChainConfigEnvelope: chainConfigEnvelope);
+
+        AnsiConsole.MarkupLine(
+            $"[green]✓[/] Loaded fixture [dim]{Markup.Escape(Path.GetFileName(fixturePath))}[/]: " +
+            $"block #{block.Number}, chainId={chainId}, " +
+            $"witness state={witness.State.Count} codes={witness.Codes.Count} headers={witness.Headers.Count}");
+
+        byte[] data;
+        using (witness)
+        {
+            data = InputSerializer.Serialize(block, witness, chainId, envelope);
+        }
+
+        if (envelope is not null)
+            AnsiConsole.MarkupLine(
+                $"[green]✓[/] Appended chain_config envelope ({envelope.Length} bytes)");
+
+        if (forZisk)
+            data = ApplyZiskFrame(data);
+
+        Directory.CreateDirectory(output);
+        string fileName = $"{block.Number}.bin";
+        string path = Path.Join(output, fileName);
+        File.WriteAllBytes(path, data);
+
+        // Emit a sibling `<num>.hash` containing the block hash as 32 raw bytes
+        // (RLP-encode the header + keccak256). This lets the host-side benchmark
+        // runner know the expected guest output without having to re-implement
+        // header hashing in Rust.
+        byte[] headerRlp = Rlp.Encode(block.Header).Bytes;
+        Hash256 blockHash = Keccak.Compute(headerRlp);
+        string hashPath = Path.Join(output, $"{block.Number}.hash");
+        File.WriteAllBytes(hashPath, blockHash.Bytes.ToArray());
+
+        AnsiConsole.MarkupLine($"[green]✓[/] Saved to [dim]{Path.GetDirectoryName(path)}{Path.DirectorySeparatorChar}[/]{fileName} (hash={blockHash})");
+        return 0;
+    }
+
     internal static async Task<int> Generate(string blockParam, Uri host, string output, bool forZisk)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(blockParam);
@@ -35,16 +83,7 @@ internal static class InputGenerator
         }
 
         if (forZisk)
-        {
-            int rem = data.Length % sizeof(ulong);
-            int len = sizeof(ulong) + data.Length + (rem == 0 ? 0 : (sizeof(ulong) - rem));
-            byte[] framedData = new byte[len];
-
-            BinaryPrimitives.WriteUInt64LittleEndian(framedData, (ulong)data.Length);
-            Buffer.BlockCopy(data, 0, framedData, sizeof(ulong), data.Length);
-
-            data = framedData;
-        }
+            data = ApplyZiskFrame(data);
 
         Directory.CreateDirectory(output);
 
@@ -56,6 +95,21 @@ internal static class InputGenerator
         AnsiConsole.MarkupLine($"[green]✓[/] Saved to [dim]{Path.GetDirectoryName(path)}{Path.DirectorySeparatorChar}[/]{fileName}");
 
         return 0;
+    }
+
+    /// <summary>
+    /// Wraps <paramref name="data"/> in the Zisk input frame: an 8-byte little-endian
+    /// length prefix followed by the payload, padded with zero bytes so the total
+    /// length is a multiple of <c>sizeof(ulong)</c>.
+    /// </summary>
+    private static byte[] ApplyZiskFrame(byte[] data)
+    {
+        int rem = data.Length % sizeof(ulong);
+        int len = sizeof(ulong) + data.Length + (rem == 0 ? 0 : sizeof(ulong) - rem);
+        byte[] framed = new byte[len];
+        BinaryPrimitives.WriteUInt64LittleEndian(framed, (ulong)data.Length);
+        Buffer.BlockCopy(data, 0, framed, sizeof(ulong), data.Length);
+        return framed;
     }
 
     private static async Task<(Block?, Witness?, ulong? chainId)> FetchData(string blockParam, Uri host)
