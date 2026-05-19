@@ -439,15 +439,18 @@ public class PersistenceManager(
                         if (_snapshotRepository.TryLeaseState(state, out Snapshot? snap))
                         {
                             long sw = Stopwatch.GetTimestamp();
-                            _smallRepo.ConvertSnapshotToPersistedSnapshot(snap);
+                            // Pre-leased return — dispose the caller's lease immediately;
+                            // the repository's dict entry holds its own lease.
+                            _smallRepo.ConvertSnapshotToPersistedSnapshot(snap).Dispose();
                             _persistedSnapshotConvertTime.WithLabels("base").Observe(Stopwatch.GetTimestamp() - sw);
                             snap.Dispose();
                         }
                     });
 
                 long sw2 = Stopwatch.GetTimestamp();
-                _largeRepo.ConvertSnapshotToPersistedSnapshot(compacted);
+                using PersistedSnapshot baseLarge = _largeRepo.ConvertSnapshotToPersistedSnapshot(compacted);
                 _persistedSnapshotConvertTime.WithLabels("full32").Observe(Stopwatch.GetTimestamp() - sw2);
+                PersistedSnapshotCompactor.WarmAddressColumnIndex(baseLarge);
 
                 EnsureCompactorStarted();
                 _compactPersistedJobs.Writer.WriteAsync(allStateIds).AsTask().Wait();
@@ -467,7 +470,9 @@ public class PersistenceManager(
             try
             {
                 long sw = Stopwatch.GetTimestamp();
-                _smallRepo.ConvertSnapshotToPersistedSnapshot(baseSnap);
+                // Pre-leased return — dispose the caller's lease immediately;
+                // the repository's dict entry holds its own lease.
+                _smallRepo.ConvertSnapshotToPersistedSnapshot(baseSnap).Dispose();
                 _persistedSnapshotConvertTime.WithLabels("base").Observe(Stopwatch.GetTimestamp() - sw);
 
                 EnsureCompactorStarted();

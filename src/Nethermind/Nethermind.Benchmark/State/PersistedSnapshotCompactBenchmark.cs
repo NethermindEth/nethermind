@@ -75,7 +75,7 @@ public class PersistedSnapshotCompactBenchmark : IDisposable
             c.Accounts[TestItem.AddressA] = Build.An.Account.WithBalance((UInt256)i).TestObject;
             c.Storages[(TestItem.AddressA, (UInt256)i)] = new SlotValue(new byte[] { (byte)i });
             _repo.ConvertSnapshotToPersistedSnapshot(
-                new Snapshot(prev, next, c, _pool, ResourcePool.Usage.MainBlockProcessing));
+                new Snapshot(prev, next, c, _pool, ResourcePool.Usage.MainBlockProcessing)).Dispose();
             prev = next;
         }
 

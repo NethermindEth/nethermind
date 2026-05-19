@@ -3,6 +3,7 @@
 
 using System.Diagnostics;
 using System.Numerics;
+using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Db;
 using Nethermind.Logging;
@@ -173,8 +174,27 @@ public class PersistedSnapshotCompactor(
 
             // PersistedSnapshot's ctor (called from inside AddCompactedSnapshot) reads
             // the merged ref_ids back from its own metadata and leases each blob arena
-            // file via a ref-struct iterator — no ushort[] materialisation here.
-            _ = persistedSnapshotRepository.AddCompactedSnapshot(from, to, location, reservation, mergedBloom);
+            // file via a ref-struct iterator — no ushort[] materialisation here. The
+            // returned snapshot is pre-leased; dispose it via `using` once we're done
+            // with the post-write step.
+            using (PersistedSnapshot compacted = persistedSnapshotRepository.AddCompactedSnapshot(from, to, location, reservation, mergedBloom))
+            {
+                if (_tier == PersistedSnapshotTier.Small && compactSize == _maxCompactSize)
+                {
+                    // Invariant: small tier's _maxCompactSize is CompactSize/2, so this
+                    // branch fires only on the topmost small-tier output. No further
+                    // small-tier compaction will absorb it (the large tier writes its
+                    // base snapshot from scratch via PersistenceManager, not by
+                    // re-reading small-tier outputs), so its pages would otherwise sit
+                    // hot in the page cache and tracker until the snapshot is finally
+                    // pruned.
+                    compacted.Demote();
+                }
+                else if (_tier == PersistedSnapshotTier.Large)
+                {
+                    WarmAddressColumnIndex(compacted);
+                }
+            }
 
             Metrics.PersistedSnapshotCompactions++;
             Metrics.PersistedSnapshotCount = persistedSnapshotRepository.SnapshotCount;
@@ -188,5 +208,44 @@ public class PersistedSnapshotCompactor(
         {
             for (int i = 0; i < n; i++) sessionArr[i]?.Dispose();
         }
+    }
+
+    /// <summary>
+    /// Pre-fault the address column's index region of a freshly-written large-tier
+    /// snapshot so its BTree separators / page directory land in the page-residency
+    /// tracker. Without this, the first query walking the address column takes a chain
+    /// of inline minor page faults.
+    /// </summary>
+    /// <remarks>
+    /// The index region is the byte range from the end of the last data entry to the end
+    /// of the address column's HSST bound (not the arena/file EOF). Locating it requires
+    /// (a) the column bound and (b) the bound of the largest data entry. The largest entry
+    /// is found via <c>TrySeekFloor</c> with a 20-byte all-<c>0xFF</c> key — addresses are
+    /// 20 bytes, so this floor-seek always lands on the rightmost entry of the BTree.
+    /// </remarks>
+    internal static void WarmAddressColumnIndex(PersistedSnapshot snapshot)
+    {
+        ArenaReservation reservation = snapshot.Reservation;
+        ArenaByteReader reader = reservation.CreateReader();
+
+        if (!PersistedSnapshotReader.TryGetAddressColumnBound<ArenaByteReader, NoOpPin>(
+                in reader, out Bound columnBound))
+            return;
+
+        using HsstReader<ArenaByteReader, NoOpPin> r = new(in reader);
+        if (!r.TrySeek(PersistedSnapshotTags.AccountColumnTag, out _))
+            return;
+        Span<byte> maxKey = stackalloc byte[Address.Size];
+        maxKey.Fill(0xFF);
+        if (!r.TrySeekFloor(maxKey, out Bound lastEntry))
+            return;
+
+        long dataEnd = lastEntry.Offset + lastEntry.Length;
+        long columnEnd = columnBound.Offset + columnBound.Length;
+        long indexLen = columnEnd - dataEnd;
+        if (indexLen <= 0) return;
+
+        long indexStartLocal = dataEnd - reservation.Offset;
+        reservation.TouchRangePopulate(indexStartLocal, indexLen);
     }
 }

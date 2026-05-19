@@ -22,8 +22,12 @@ public interface IPersistedSnapshotRepository : IDisposable
 
     void LoadFromCatalog();
 
-    // Two-layer storage
-    void ConvertSnapshotToPersistedSnapshot(Snapshot snapshot);
+    // Two-layer storage. Returned PersistedSnapshot is pre-leased — the caller owns the
+    // lease and MUST dispose it (the repository's own dict entry holds an independent
+    // lease, so disposing the returned reference does not remove the snapshot from the
+    // repo). Pre-leasing closes a use-after-free window between return and use when a
+    // concurrent PruneBefore may dispose the repo's dict entry.
+    PersistedSnapshot ConvertSnapshotToPersistedSnapshot(Snapshot snapshot);
     PersistedSnapshot AddCompactedSnapshot(StateId from, StateId to, SnapshotLocation location, ArenaReservation reservation, BloomFilter bloom);
 
     // Compaction assembly (mirrors SnapshotRepository.AssembleSnapshotsUntil)

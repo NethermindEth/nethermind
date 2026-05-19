@@ -55,7 +55,7 @@ public class PersistenceManagerPersistedTests
         content.Accounts[TestItem.AddressA] = Build.An.Account.WithBalance(500).TestObject;
         Snapshot snap = new(s0, s1, content, _pool, ResourcePool.Usage.MainBlockProcessing);
 
-        repo.ConvertSnapshotToPersistedSnapshot(snap);
+        repo.ConvertSnapshotToPersistedSnapshot(snap).Dispose();
 
         Assert.That(repo.SnapshotCount, Is.EqualTo(1));
         Assert.That(repo.TryLeaseSnapshotTo(s1, out PersistedSnapshot? snapshot), Is.True);
@@ -85,15 +85,15 @@ public class PersistenceManagerPersistedTests
 
         SnapshotContent c1 = new();
         c1.Accounts[TestItem.AddressA] = Build.An.Account.WithBalance(1).TestObject;
-        repo.ConvertSnapshotToPersistedSnapshot(new Snapshot(s0, s1, c1, _pool, ResourcePool.Usage.MainBlockProcessing));
+        repo.ConvertSnapshotToPersistedSnapshot(new Snapshot(s0, s1, c1, _pool, ResourcePool.Usage.MainBlockProcessing)).Dispose();
 
         SnapshotContent c2 = new();
         c2.Accounts[TestItem.AddressB] = Build.An.Account.WithBalance(2).TestObject;
-        repo.ConvertSnapshotToPersistedSnapshot(new Snapshot(s1, s3, c2, _pool, ResourcePool.Usage.MainBlockProcessing));
+        repo.ConvertSnapshotToPersistedSnapshot(new Snapshot(s1, s3, c2, _pool, ResourcePool.Usage.MainBlockProcessing)).Dispose();
 
         SnapshotContent c3 = new();
         c3.Accounts[TestItem.AddressC] = Build.An.Account.WithBalance(3).TestObject;
-        repo.ConvertSnapshotToPersistedSnapshot(new Snapshot(s3, s6, c3, _pool, ResourcePool.Usage.MainBlockProcessing));
+        repo.ConvertSnapshotToPersistedSnapshot(new Snapshot(s3, s6, c3, _pool, ResourcePool.Usage.MainBlockProcessing)).Dispose();
 
         Assert.That(repo.SnapshotCount, Is.EqualTo(3));
 

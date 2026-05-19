@@ -182,7 +182,7 @@ public sealed class PersistedSnapshotRepository(
     /// <see cref="_blobs"/> with its configured tags and inserts into
     /// <see cref="_baseSnapshots"/>.
     /// </summary>
-    public void ConvertSnapshotToPersistedSnapshot(Snapshot snapshot)
+    public PersistedSnapshot ConvertSnapshotToPersistedSnapshot(Snapshot snapshot)
     {
         // One unified bloom covering account/slot/SD keys + state-trie + storage-trie paths.
         // Sized as the union of both expected key counts at the configured bits-per-key.
@@ -218,12 +218,13 @@ public sealed class PersistedSnapshotRepository(
         // PersistedSnapshot's ctor reads its own ref_ids metadata and leases each blob
         // arena file. The single id written above (blobWriter.BlobArenaId) is the only
         // entry the new metadata carries, so the ctor's iterator yields exactly that id.
+        PersistedSnapshot persisted;
         lock (_catalogLock)
         {
             _catalog.Add(new SnapshotCatalog.CatalogEntry(snapshot.From, snapshot.To, location));
             _catalog.Save();
 
-            PersistedSnapshot persisted = new(snapshot.From, snapshot.To, reservation, _blobs, _arena.Tier);
+            persisted = new PersistedSnapshot(snapshot.From, snapshot.To, reservation, _blobs, _arena.Tier);
             RegisterBlooms(persisted, bloom);
             if (_validatePersistedSnapshot)
                 PersistedSnapshotUtils.ValidatePersistedSnapshot(snapshot, persisted, _bloomManager);
@@ -231,12 +232,16 @@ public sealed class PersistedSnapshotRepository(
             Interlocked.Add(ref _baseSnapshotMemoryBytes, persisted.Size);
             Interlocked.Increment(ref _baseSnapshotCount);
             RegisterStateIdLocked(snapshot.To);
+            // Pre-acquire the caller's lease inside the lock so a racing PruneBefore can't
+            // dispose the dict entry between the unlock and the caller seeing the return.
+            persisted.AcquireLease();
         }
 
         // Release the metadata writer's creation lease (PersistedSnapshot took its own in
         // the ctor). The blob writer's creation lease is dropped automatically when its
         // `using` scope exits — BlobArenaWriter.Dispose calls BlobArenaFile.Dispose.
         reservation.Dispose();
+        return persisted;
     }
 
     /// <summary>
@@ -260,6 +265,10 @@ public sealed class PersistedSnapshotRepository(
             Interlocked.Add(ref _compactedSnapshotMemoryBytes, snapshot.Size);
             Interlocked.Increment(ref _compactedSnapshotCount);
             RegisterStateIdLocked(to);
+            // Pre-acquire the caller's lease inside the lock so a racing PruneBefore on a
+            // background compactor thread can't dispose the dict entry between unlock and
+            // the caller seeing the return.
+            snapshot.AcquireLease();
         }
 
         // Release the caller's "creation" lease — see ConvertSnapshotToPersistedSnapshot.

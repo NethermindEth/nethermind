@@ -44,6 +44,26 @@ public static class PersistedSnapshotReader
     }
 
     /// <summary>
+    /// Seek the bound of the outer address column under
+    /// <see cref="PersistedSnapshotTags.AccountColumnTag"/> — the BTree HSST keyed by
+    /// 20-byte address that all per-address inner HSSTs index into. Used by post-write
+    /// warmup to locate the column's index region.
+    /// </summary>
+    internal static bool TryGetAddressColumnBound<TReader, TPin>(scoped in TReader reader, out Bound columnBound)
+        where TPin : struct, IBufferPin, allows ref struct
+        where TReader : IHsstByteReader<TPin>, allows ref struct
+    {
+        using HsstReader<TReader, TPin> r = new(in reader);
+        if (!r.TrySeek(PersistedSnapshotTags.AccountColumnTag, out _))
+        {
+            columnBound = default;
+            return false;
+        }
+        columnBound = r.GetBound();
+        return true;
+    }
+
+    /// <summary>
     /// Seek the per-addressHash storage-trie inner-HSST bound under
     /// <see cref="PersistedSnapshotTags.StorageTrieColumnTag"/>:
     /// StorageTrieColumnTag → addressHash.Bytes[..AddressHashPrefixLength]. The bound carries

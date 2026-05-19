@@ -57,7 +57,7 @@ public class PersistedSnapshotRepositoryTests
         StateId s1 = new(1, Keccak.Compute("1"));
         Snapshot snap = CreateTestSnapshot(s0, s1, TestItem.AddressA);
 
-        repo.ConvertSnapshotToPersistedSnapshot(snap);
+        repo.ConvertSnapshotToPersistedSnapshot(snap).Dispose();
         Assert.That(repo.SnapshotCount, Is.EqualTo(1));
 
         // Query through the snapshot
@@ -94,8 +94,8 @@ public class PersistedSnapshotRepositoryTests
         content2.StateNodes[path] = new TrieNode(NodeType.Leaf, rlp2);
         Snapshot snap2 = new(s1, s2, content2, _pool, ResourcePool.Usage.MainBlockProcessing);
 
-        repo.ConvertSnapshotToPersistedSnapshot(snap1);
-        repo.ConvertSnapshotToPersistedSnapshot(snap2);
+        repo.ConvertSnapshotToPersistedSnapshot(snap1).Dispose();
+        repo.ConvertSnapshotToPersistedSnapshot(snap2).Dispose();
 
         // The newest snapshot (s1→s2) should have rlp2 at the path
         Assert.That(repo.TryLeaseSnapshotTo(s2, out PersistedSnapshot? newest), Is.True);
@@ -118,7 +118,7 @@ public class PersistedSnapshotRepositoryTests
         {
             repo.LoadFromCatalog();
             Snapshot snap = CreateTestSnapshot(s0, s1, TestItem.AddressA);
-            repo.ConvertSnapshotToPersistedSnapshot(snap);
+            repo.ConvertSnapshotToPersistedSnapshot(snap).Dispose();
         }
 
         // Session 2: reload from disk
@@ -167,7 +167,7 @@ public class PersistedSnapshotRepositoryTests
         content.StorageNodes[(storageTrieAddr, storagePath)] = new TrieNode(NodeType.Branch, storageRlp);
         Snapshot snap = new(s0, s1, content, _pool, ResourcePool.Usage.MainBlockProcessing);
 
-        repo.ConvertSnapshotToPersistedSnapshot(snap);
+        repo.ConvertSnapshotToPersistedSnapshot(snap).Dispose();
 
         Assert.That(repo.TryLeaseSnapshotTo(s1, out PersistedSnapshot? persisted), Is.True);
         using PersistedSnapshot _ = persisted!;
@@ -211,9 +211,9 @@ public class PersistedSnapshotRepositoryTests
         Snapshot snap2 = CreateTestSnapshot(s1, s2, TestItem.AddressB);
         Snapshot snap3 = CreateTestSnapshot(s2, s3, TestItem.AddressC);
 
-        repo.ConvertSnapshotToPersistedSnapshot(snap1);
-        repo.ConvertSnapshotToPersistedSnapshot(snap2);
-        repo.ConvertSnapshotToPersistedSnapshot(snap3);
+        repo.ConvertSnapshotToPersistedSnapshot(snap1).Dispose();
+        repo.ConvertSnapshotToPersistedSnapshot(snap2).Dispose();
+        repo.ConvertSnapshotToPersistedSnapshot(snap3).Dispose();
         Assert.That(repo.SnapshotCount, Is.EqualTo(3));
 
         // Prune before block 2 (removes snap1 with To=1)
@@ -238,7 +238,7 @@ public class PersistedSnapshotRepositoryTests
         {
             states[i] = new StateId(i, Keccak.Compute($"s{i}"));
             repo.ConvertSnapshotToPersistedSnapshot(
-                CreateTestSnapshot(states[i - 1], states[i], TestItem.Addresses[(i - 1) % TestItem.Addresses.Length]));
+                CreateTestSnapshot(states[i - 1], states[i], TestItem.Addresses[(i - 1) % TestItem.Addresses.Length])).Dispose();
         }
 
         // seed = top of chain; fromState = bottom. BFS must walk down via base.From edges
@@ -341,7 +341,7 @@ public class PersistedSnapshotRepositoryTests
         // Plant a real base whose From matches `from` so we'd otherwise have a hit.
         StateId from = new(5, Keccak.Compute("from"));
         StateId to = new(6, Keccak.Compute("to"));
-        repo.ConvertSnapshotToPersistedSnapshot(CreateTestSnapshot(from, to, TestItem.AddressA));
+        repo.ConvertSnapshotToPersistedSnapshot(CreateTestSnapshot(from, to, TestItem.AddressA)).Dispose();
 
         StateId seed = new(5 + seedOffset, Keccak.Compute("seed"));
         Assert.That(repo.TryGetSnapshotFrom(from, seed), Is.Null,
@@ -375,7 +375,7 @@ public class PersistedSnapshotRepositoryTests
         {
             states[i] = new StateId(i, Keccak.Compute($"s{i}"));
             repo.ConvertSnapshotToPersistedSnapshot(
-                CreateTestSnapshot(states[i - 1], states[i], TestItem.Addresses[(i - 1) % TestItem.Addresses.Length]));
+                CreateTestSnapshot(states[i - 1], states[i], TestItem.Addresses[(i - 1) % TestItem.Addresses.Length])).Dispose();
         }
 
         compactor.DoCompactSnapshot(states[n]);
@@ -414,7 +414,7 @@ public class PersistedSnapshotRepositoryTests
         {
             StateId next = new(i, Keccak.Compute($"s{i}"));
             Snapshot snap = CreateTestSnapshot(prev, next, TestItem.Addresses[i % TestItem.Addresses.Length]);
-            repo.ConvertSnapshotToPersistedSnapshot(snap);
+            repo.ConvertSnapshotToPersistedSnapshot(snap).Dispose();
             prev = next;
         }
 
