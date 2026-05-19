@@ -38,28 +38,28 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
 
     private Dictionary<TypeAsKey, PropertyInfo?> _propertyInfoCache = [];
 
-    public Task<JsonRpcResponse> SendRequestAsync(JsonRpcRequest rpcRequest, JsonRpcContext context)
+    public ValueTask<JsonRpcResponse> SendRequestAsync(JsonRpcRequest rpcRequest, JsonRpcContext context)
     {
         (int? errorCode, string errorMessage) = Validate(rpcRequest, context);
         if (errorCode.HasValue)
         {
             if (_logger.IsDebug) _logger.Debug($"Validation error when handling request: {rpcRequest}");
-            return Task.FromResult<JsonRpcResponse>(GetErrorResponse(rpcRequest.Method, errorCode.Value, errorMessage, null, rpcRequest.Id));
+            return ValueTask.FromResult<JsonRpcResponse>(GetErrorResponse(rpcRequest.Method, errorCode.Value, errorMessage, null, rpcRequest.Id));
         }
 
         try
         {
-            Task<JsonRpcResponse> responseTask = ExecuteRequestAsync(rpcRequest, context);
+            ValueTask<JsonRpcResponse> responseTask = ExecuteRequestAsync(rpcRequest, context);
             return responseTask.IsCompletedSuccessfully
                 ? responseTask
                 : AwaitRequestAsync(responseTask, rpcRequest);
         }
         catch (Exception ex)
         {
-            return Task.FromResult<JsonRpcResponse>(ReturnErrorResponse(rpcRequest, ex));
+            return ValueTask.FromResult<JsonRpcResponse>(ReturnErrorResponse(rpcRequest, ex));
         }
 
-        async Task<JsonRpcResponse> AwaitRequestAsync(Task<JsonRpcResponse> responseTask, JsonRpcRequest rpcRequest)
+        async ValueTask<JsonRpcResponse> AwaitRequestAsync(ValueTask<JsonRpcResponse> responseTask, JsonRpcRequest rpcRequest)
         {
             try
             {
@@ -91,17 +91,17 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
         return GetErrorResponse(rpcRequest.Method, errorCode, errorText, ex.ToString(), rpcRequest.Id);
     }
 
-    private Task<JsonRpcResponse> ExecuteRequestAsync(JsonRpcRequest rpcRequest, JsonRpcContext context)
+    private ValueTask<JsonRpcResponse> ExecuteRequestAsync(JsonRpcRequest rpcRequest, JsonRpcContext context)
     {
         string methodName = rpcRequest.Method.Trim();
 
         ResolvedMethodInfo? result = _rpcModuleProvider.Resolve(methodName);
         return result?.MethodInfo is not null
             ? ExecuteAsync(rpcRequest, methodName, result, context)
-            : Task.FromResult<JsonRpcResponse>(GetErrorResponse(methodName, ErrorCodes.MethodNotFound, "Method not found", $"{rpcRequest.Method}", rpcRequest.Id));
+            : ValueTask.FromResult<JsonRpcResponse>(GetErrorResponse(methodName, ErrorCodes.MethodNotFound, "Method not found", $"{rpcRequest.Method}", rpcRequest.Id));
     }
 
-    private async Task<JsonRpcResponse> ExecuteAsync(JsonRpcRequest request, string methodName, ResolvedMethodInfo method, JsonRpcContext context)
+    private async ValueTask<JsonRpcResponse> ExecuteAsync(JsonRpcRequest request, string methodName, ResolvedMethodInfo method, JsonRpcContext context)
     {
         const string GetLogsMethodName = "eth_getLogs";
 
