@@ -104,7 +104,7 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
                 return new JsonRpcId(value);
             }
 
-            throw new JsonException("Unsupported JSON-RPC ID value.");
+            return ThrowUnsupportedId();
         }
 
         if (idElement.ValueKind == JsonValueKind.Null)
@@ -117,7 +117,11 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
             return new JsonRpcId(idElement.GetString()!);
         }
 
-        throw new JsonException("Unsupported JSON-RPC ID value.");
+        return ThrowUnsupportedId();
+
+        [DoesNotReturn, StackTraceHidden]
+        static JsonRpcId ThrowUnsupportedId() =>
+            throw new JsonException("Unsupported JSON-RPC ID value.");
     }
 
     /// <summary>
