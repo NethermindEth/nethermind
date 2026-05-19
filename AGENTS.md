@@ -12,10 +12,10 @@ This guide helps to get started with the Nethermind Ethereum execution client re
 ## Coding guidelines and style
 
 - Follow [CONTRIBUTING.md](./CONTRIBUTING.md) and [.editorconfig](./.editorconfig)
-- Keep changes minimal and focused — don't touch unrelated code
+- Keep changes minimal and focused — don't touch unrelated code. Try to minimise the diff from the base branch, for example, not reordering code or making styalisic changes unless they improve code clarity.
 - When fixing a bug, always add a regression test
 - Do not alter [src/bench_precompiles](./src/bench_precompiles/) or [src/tests](./src/tests/)
-- Prefer self-documenting code — clear names and structure should remove the need for most comments. Emit a comment only when it captures context that is not obvious from the code itself: the _why_ behind a non-obvious choice, an invariant, a workaround, an EIP/Yellow-Paper reference, a subtle edge case, etc. Comments that merely restate the code are noise — don't add them, and remove them when you encounter them.
+- Prefer self-documenting code — clear names and structure should remove the need for most comments. Emit a comment only when it captures context that is not obvious from the code itself: the _why_ behind a non-obvious choice, an invariant, a workaround, an EIP/Yellow-Paper reference, a subtle edge case, etc. Comments that merely restate the code are noise — don't add them, and remove them when you encounter them. Keep comments concise and ensure that they make sense in the context of the master branch, not referencing the specifics of the current session.
 - For member-level documentation (methods, constructors, properties, types), prefer XML doc comments over in-line comments whenever the explanation applies to the member as a whole:
   - `<summary>` — one or two sentences describing _what_ the member does from the caller's perspective: its contract, purpose, and what it returns/represents. Keep it short enough to be useful in IntelliSense; do not describe implementation details or rationale here.
   - `<remarks>` — the longer-form explanation that does not belong in the summary. Use it for any of: algorithmic approach, design rationale, pre/postconditions and invariants, thread-safety guarantees, performance characteristics, side effects, edge cases, EIP / Yellow-Paper / spec references, and notable caveats for callers.
@@ -40,6 +40,8 @@ Detailed rules live in [`.agents/rules/`](./.agents/rules/). **You MUST read the
 - [performance.md](./.agents/rules/performance.md) — Load when working on hot paths in the codebase. Covers ref structs, Span, SIMD, function pointers, and zero-allocation patterns.
 - [package-management.md](./.agents/rules/package-management.md) — Load when working with NuGet dependencies. Covers Central Package Management (CPM) rules.
 - [github-workflows.md](./.agents/rules/github-workflows.md) — Load when working with GitHub Actions, CODEOWNERS, or PR templates. Covers workflow conventions and automation patterns.
+- [git.md](./.agents/rules/git.md) — Load when interacting with git version control. Covers merging, rebasing, pushing, and more.
+- [agent-skills.md](./.agents/rules/agent-skills.md) — Load when working with agentic skills. Covers the symlink convention.
 - [agent-skills.md](./.agents/rules/agent-skills.md) — Load when working with agentic skills. Covers the symlink convention.
 
 ---
