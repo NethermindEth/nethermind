@@ -157,6 +157,8 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
         // handled by the PipeReader. Non-engine paths still use the pooled CTS.
         CancellationTokenSource? timeoutSource = context.IsAuthenticated ? null : _jsonRpcConfig.BuildTimeoutCancellationToken();
         CancellationToken timeoutToken = timeoutSource?.Token ?? CancellationToken.None;
+        JsonDocument? pendingHttpDocument = null;
+        long pendingHttpStartTime = 0;
         try
         {
             if (ProcessExit.IsCancellationRequested)
@@ -202,6 +204,36 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
                 {
                     bool isCompleted = readResult.IsCompleted || readResult.IsCanceled;
                     JsonRpcResult? result = null;
+
+                    if (pendingHttpDocument is not null)
+                    {
+                        ReadOnlySequence<byte> trailingBuffer = buffer.TrimStart();
+                        if (!trailingBuffer.IsEmpty)
+                        {
+                            pendingHttpDocument.Dispose();
+                            pendingHttpDocument = null;
+                            result = GetParsingError(pendingHttpStartTime, in trailingBuffer, "Error during parsing/validation: trailing data after JSON-RPC request.");
+                            shouldExit = true;
+                        }
+                        else if (isCompleted)
+                        {
+                            result = await ProcessJsonDocument(pendingHttpDocument, context, pendingHttpStartTime);
+                            pendingHttpDocument = null;
+                            shouldExit = true;
+                        }
+
+                        reader.AdvanceTo(buffer.End);
+                        advanced = true;
+
+                        if (result.HasValue)
+                        {
+                            yield return result.Value;
+                        }
+
+                        shouldExit |= isCompleted;
+                        continue;
+                    }
+
                     if (freshState)
                     {
                         buffer = buffer.TrimStart();
@@ -214,7 +246,33 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
                             freshState = TryParseJson(ref buffer, isCompleted, ref readerState, out JsonDocument? jsonDocument, context);
                             if (freshState)
                             {
-                                result = await ProcessJsonDocument(jsonDocument, context, startTime);
+                                if (context.RpcEndpoint == RpcEndpoint.Http)
+                                {
+                                    ReadOnlySequence<byte> trailingBuffer = buffer.TrimStart();
+                                    if (!trailingBuffer.IsEmpty)
+                                    {
+                                        jsonDocument.Dispose();
+                                        result = GetParsingError(startTime, in trailingBuffer, "Error during parsing/validation: trailing data after JSON-RPC request.");
+                                        shouldExit = true;
+                                    }
+                                    else if (isCompleted)
+                                    {
+                                        result = await ProcessJsonDocument(jsonDocument, context, startTime);
+                                        shouldExit = true;
+                                    }
+                                    else
+                                    {
+                                        pendingHttpDocument = jsonDocument;
+                                        pendingHttpStartTime = startTime;
+                                    }
+
+                                    reader.AdvanceTo(buffer.End);
+                                    advanced = true;
+                                }
+                                else
+                                {
+                                    result = await ProcessJsonDocument(jsonDocument, context, startTime);
+                                }
                             }
                             else if (isCompleted && !buffer.IsEmpty)
                             {
@@ -222,8 +280,11 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
                                 shouldExit = true;
                             }
 
-                            reader.AdvanceTo(buffer.Start, buffer.End);
-                            advanced = true;
+                            if (!advanced)
+                            {
+                                reader.AdvanceTo(buffer.Start, buffer.End);
+                                advanced = true;
+                            }
                         }
                         catch (BadHttpRequestException e)
                         {
@@ -260,6 +321,7 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
         }
         finally
         {
+            pendingHttpDocument?.Dispose();
             await reader.CompleteAsync();
             if (timeoutSource is not null)
                 JsonRpcConfigExtension.ReturnTimeoutCancellationToken(timeoutSource);
