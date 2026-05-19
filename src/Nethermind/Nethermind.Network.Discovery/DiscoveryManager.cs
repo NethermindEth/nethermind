@@ -396,7 +396,7 @@ public class DiscoveryManager : IDiscoveryManager
     {
         if (_nodeLifecycleManagers.TryRemove(key, out INodeLifecycleManager? manager))
         {
-            manager.OnStateChanged -= ManagerOnOnStateChanged;
+            manager.OnStateChanged -= _managerOnStateChanged;
             _discoveryStorage.RemoveNode(manager.ManagedNode.Id);
             return true;
         }

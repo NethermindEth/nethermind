@@ -1568,6 +1568,10 @@ namespace Nethermind.Trie.Test.Pruning
 
             await persistTask;
 
+            // The fire-and-forget flush from BeginScope's dispose can lose the lock race; force it
+            // here so block 12 leaves the commit buffer before the follow-up commits.
+            fullTrieStore.FlushNonBlockingBuffer();
+
             // Write a bit more
             for (int i = 13; i < 13 + pruningBoundary; i++)
             {
