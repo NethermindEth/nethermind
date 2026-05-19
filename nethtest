@@ -1,0 +1,3 @@
+#!/bin/bash
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+exec dotnet run --no-build --no-launch-profile -c Release --project "$SCRIPT_DIR/src/Nethermind/Nethermind.Test.Runner/Nethermind.Test.Runner.csproj" -- "$@"
