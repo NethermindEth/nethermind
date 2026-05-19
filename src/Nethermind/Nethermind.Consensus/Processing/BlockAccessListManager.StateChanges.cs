@@ -99,7 +99,6 @@ public partial class BlockAccessListManager
 
         CheckInitialized();
         MergeAndReturnBal(uint.MaxValue);
-        block.GeneratedBlockAccessList = GeneratedBlockAccessList;
 
         if (_verifyOnly)
         {
@@ -110,6 +109,7 @@ public partial class BlockAccessListManager
             return;
         }
 
+        block.GeneratedBlockAccessList = GeneratedBlockAccessList;
         block.EncodedBlockAccessList = BlockAccessListDecoder.EncodeToBytes(GeneratedBlockAccessList);
         block.Header.BlockAccessListHash = new(ValueKeccak.Compute(block.EncodedBlockAccessList).Bytes);
     }
