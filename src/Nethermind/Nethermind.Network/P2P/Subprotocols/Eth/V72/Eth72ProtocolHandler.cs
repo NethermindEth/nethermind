@@ -53,7 +53,7 @@ public class Eth72ProtocolHandler(
     : Eth71ProtocolHandler(session, serializer, nodeStatsManager, syncServer, backgroundTaskScheduler, txPool, gossipPolicy, forkInfo, logManager, txPoolConfig, specProvider, transactionsGossipPolicy), IStaticProtocolInfo
     , ISparseBlobPoolPeer
 {
-    private const int MaxBasisPoints = 10_000;
+    private const int MaxProviderProbabilityPercent = 100;
     private const int MinSamplerFullProviderAnnouncements = 2;
     private const int RequestToAnnouncementRatioThreshold = 5;
     private const int MinCellRequestsBeforeRatioDisconnect = 5;
@@ -63,7 +63,7 @@ public class Eth72ProtocolHandler(
     private const int SupernodeCustodyColumnThreshold = 64;
     private static readonly TimeSpan RequestToAnnouncementWarmup = TimeSpan.FromSeconds(60);
     private readonly bool _blobSupportEnabled = txPoolConfig.BlobsSupport.IsEnabled();
-    private readonly int _providerThresholdBasisPoints = Math.Clamp(txPoolConfig.SparseBlobProviderProbabilityBasisPoints, 0, MaxBasisPoints);
+    private readonly int _providerThresholdPercent = Math.Clamp(txPoolConfig.SparseBlobProviderProbabilityPercent, 0, MaxProviderProbabilityPercent);
     private readonly long _configuredMaxTxSize = txPoolConfig.MaxTxSize ?? long.MaxValue;
     private readonly long _configuredMaxBlobTxSize = txPoolConfig.MaxBlobTxSize is null
         ? long.MaxValue
@@ -928,12 +928,12 @@ public class Eth72ProtocolHandler(
 
     private bool ShouldFetchFull(Hash256 hash)
     {
-        if (_providerThresholdBasisPoints <= 0)
+        if (_providerThresholdPercent <= 0)
         {
             return false;
         }
 
-        if (_providerThresholdBasisPoints >= MaxBasisPoints)
+        if (_providerThresholdPercent >= MaxProviderProbabilityPercent)
         {
             return true;
         }
@@ -943,7 +943,7 @@ public class Eth72ProtocolHandler(
         hash.Bytes.CopyTo(input[PublicKey.LengthInBytes..]);
         Hash256 sampleHash = Keccak.Compute(input);
         ushort sample = BinaryPrimitives.ReadUInt16BigEndian(sampleHash.Bytes[..2]);
-        return sample % MaxBasisPoints < _providerThresholdBasisPoints;
+        return sample % MaxProviderProbabilityPercent < _providerThresholdPercent;
     }
 
     private bool CanRequestCellsNow(Hash256 hash, BlobCellMask requestMask)

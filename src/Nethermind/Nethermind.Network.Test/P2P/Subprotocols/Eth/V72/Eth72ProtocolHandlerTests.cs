@@ -80,7 +80,7 @@ public class Eth72ProtocolHandlerTests
         _gossipPolicy = Substitute.For<IGossipPolicy>();
         _txPoolConfig = Substitute.For<ITxPoolConfig>();
         _txPoolConfig.BlobsSupport.Returns(BlobsSupportMode.InMemory);
-        _txPoolConfig.SparseBlobProviderProbabilityBasisPoints.Returns(1_500);
+        _txPoolConfig.SparseBlobProviderProbabilityPercent.Returns(15);
         _genesisBlock = Build.A.Block.Genesis.TestObject;
         _syncManager.Head.Returns(_genesisBlock.Header);
         _syncManager.Genesis.Returns(_genesisBlock.Header);
@@ -207,7 +207,7 @@ public class Eth72ProtocolHandlerTests
     [Test]
     public void should_request_blob_cells_asynchronously_after_announcement()
     {
-        RecreateHandler(providerProbabilityBasisPoints: 10_000);
+        RecreateHandler(providerProbabilityPercent: 100);
         Transaction tx = Build.A.Transaction
             .WithShardBlobTxTypeAndFields(spec: Osaka.Instance)
             .WithNonce(UInt256.Zero)
@@ -251,7 +251,7 @@ public class Eth72ProtocolHandlerTests
     [Test]
     public void should_use_canonical_cell_request_code_for_geth_peer()
     {
-        RecreateHandler(providerProbabilityBasisPoints: 10_000);
+        RecreateHandler(providerProbabilityPercent: 100);
         _session.Node!.ClientId = "Geth/v1.16.0-unstable/windows-amd64/go1.24.2";
         Transaction tx = Build.A.Transaction
             .WithShardBlobTxTypeAndFields(spec: Osaka.Instance)
@@ -284,7 +284,7 @@ public class Eth72ProtocolHandlerTests
     [Test]
     public void normal_mode_should_wait_for_transaction_and_two_provider_announcements_before_sampled_request()
     {
-        RecreateHandler(providerProbabilityBasisPoints: 0);
+        RecreateHandler(providerProbabilityPercent: 0);
         Transaction tx = BuildSparseBlobTransaction(out _, out _);
 
         Hash256 hash = tx.Hash!;
@@ -319,7 +319,7 @@ public class Eth72ProtocolHandlerTests
     [Test]
     public void normal_mode_should_request_full_cells_from_full_provider_when_selected_as_provider()
     {
-        RecreateHandler(providerProbabilityBasisPoints: 10_000);
+        RecreateHandler(providerProbabilityPercent: 100);
         Transaction tx = Build.A.Transaction
             .WithShardBlobTxTypeAndFields(spec: Osaka.Instance)
             .WithNonce(UInt256.Zero)
@@ -1111,10 +1111,10 @@ public class Eth72ProtocolHandlerTests
         _handler.HandleMessage(new ZeroPacket(packet) { PacketType = (byte)messageCode });
     }
 
-    private void RecreateHandler(int providerProbabilityBasisPoints = 1_500)
+    private void RecreateHandler(int providerProbabilityPercent = 15)
     {
         _handler.Dispose();
-        _txPoolConfig.SparseBlobProviderProbabilityBasisPoints.Returns(providerProbabilityBasisPoints);
+        _txPoolConfig.SparseBlobProviderProbabilityPercent.Returns(providerProbabilityPercent);
         _handler = new Eth72ProtocolHandler(
             _session,
             _svc,
@@ -1160,7 +1160,7 @@ public class Eth72ProtocolHandlerTests
         hash.Bytes.CopyTo(input[PublicKey.LengthInBytes..]);
         Hash256 sampleHash = Keccak.Compute(input);
         ushort sample = BinaryPrimitives.ReadUInt16BigEndian(sampleHash.Bytes[..2]);
-        return sample % 10_000 < 1_500;
+        return sample % 100 < 15;
     }
 
     private static BlobCellMask ExtraCellMask(Hash256 hash, BlobCellMask alreadyRequested)
