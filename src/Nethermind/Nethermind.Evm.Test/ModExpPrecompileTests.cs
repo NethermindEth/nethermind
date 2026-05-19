@@ -1,6 +1,7 @@
 ﻿// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.Precompiles;
@@ -37,6 +38,18 @@ public class ModExpPrecompileTests : PrecompileTests<ModExpPrecompile, ModExpPre
         "11223344",
         TestName = "expLength=uint.MaxValue overflow path"
     )]
-    public void NormalizedInput_SameOutput(string input, string trailing) =>
+    public void NormalizedInput_SameOutput(string input, string trailing)
+    {
         RunEffectiveInputTest(Instance, input, trailing, Prague.Instance);
+        RunEffectiveInputTest(Instance, input, trailing, Osaka.Instance);
+    }
+
+    [TestCase(
+        "000000000000000000000000000000000000000000000000000000000000000100000000000000000000000000000000000000000000000000000000ffffffff000000000000000000000000000000000000000000000000000000000000000102",
+        "00",
+        true,
+        TestName = "expLen=uint32.MaxValue (0xffffffff): huge expLength wraps modulus offset to base, must return zero (pre-EIP-7823)"
+    )]
+    public void TestOversizedLengths(string input, string expectedOutput, bool status) =>
+        RunTest(input, expectedOutput, status, Prague.Instance);
 }
