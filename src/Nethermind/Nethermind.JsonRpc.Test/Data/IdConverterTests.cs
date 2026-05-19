@@ -86,12 +86,21 @@ namespace Nethermind.JsonRpc.Test.Data
         }
 
         [Test]
+        public void JsonRpcId_deserializes_absent_id_as_missing()
+        {
+            SomethingWithJsonRpcId? value = JsonSerializer.Deserialize<SomethingWithJsonRpcId>("{}", _jsonRpcIdOptions);
+
+            value!.Id.IsMissing.Should().BeTrue();
+        }
+
+        [Test]
         public void JsonRpcId_escapes_string_values()
         {
-            JsonRpcId id = new("a\"\\\n");
+            const string idValue = "a\"\\\n\u263A";
+            JsonRpcId id = new(idValue);
 
             using JsonDocument document = JsonDocument.Parse(Serialize(id));
-            document.RootElement.GetString().Should().Be("a\"\\\n");
+            document.RootElement.GetString().Should().Be(idValue);
         }
 
         [Test]
@@ -162,6 +171,7 @@ namespace Nethermind.JsonRpc.Test.Data
             yield return new TestCaseData(JsonRpcId.Null, "null").SetName("ExplicitNull");
             yield return new TestCaseData(new JsonRpcId(1), "1").SetName("Long");
             yield return new TestCaseData(new JsonRpcId(1234m), "1234").SetName("DecimalInteger");
+            yield return new TestCaseData(new JsonRpcId(12345678901234567890m), "12345678901234567890").SetName("LargeDecimalInteger");
             yield return new TestCaseData(new JsonRpcId("test"), "\"test\"").SetName("String");
         }
     }
