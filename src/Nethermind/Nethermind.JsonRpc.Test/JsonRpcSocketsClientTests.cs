@@ -649,8 +649,7 @@ public class JsonRpcSocketsClientTests
             Task sendCollection = Task.Run(async () =>
             {
                 using TestClient<WebSocketMessageStream> ws = await TestClient.ConnectWsAsync();
-                using JsonRpcResult result = JsonRpcResult.Collection(RandomBatchResult(10, 100));
-                await ws.Client.SendJsonRpcResult(result);
+                await SendRandomBatchAsync(ws.Stream, RpcEndpoint.Ws, maxBatchResponseBodySize: null, elements, 100);
                 await Task.Delay(100);
                 await cts.CancelAsync();
             });
@@ -675,8 +674,7 @@ public class JsonRpcSocketsClientTests
             Task<int> sendCollection = Task.Run(async () =>
             {
                 using TestClient<WebSocketMessageStream> ws = await TestClient.ConnectWsAsync(maxBatchResponseBodySize: maxByteCount);
-                using JsonRpcResult result = JsonRpcResult.Collection(RandomBatchResult(10, 100));
-                int sent = await ws.Client.SendJsonRpcResult(result);
+                int sent = (int)await SendRandomBatchAsync(ws.Stream, RpcEndpoint.Ws, maxByteCount, 10, 100);
                 await Task.Delay(100);
                 await cts.CancelAsync();
                 return sent;
@@ -693,8 +691,7 @@ public class JsonRpcSocketsClientTests
         {
             MemoryMessageStream stream = new();
             using TestClient<MemoryMessageStream> tc = new(stream, RpcEndpoint.Ws, maxBatchResponseBodySize: 10_000);
-            using JsonRpcResult result = JsonRpcResult.Collection(RandomBatchResult(10, 100));
-            await tc.Client.SendJsonRpcResult(result);
+            await SendRandomBatchAsync(tc.Stream, RpcEndpoint.Ws, maxBatchResponseBodySize: 10_000, 10, 100);
             stream.Seek(0, SeekOrigin.Begin);
             JsonRpcSuccessResponse[]? response = new EthereumJsonSerializer().Deserialize<JsonRpcSuccessResponse[]>(stream);
             response.Should().NotContainNulls();
@@ -740,12 +737,33 @@ public class JsonRpcSocketsClientTests
         }
     }
 
-    private static JsonRpcBatchResult RandomBatchResult(int items, int size) => new((_, token) =>
-        RandomAsyncEnumerable(
-            items,
-            () => Task.FromResult(new JsonRpcResult.Entry(RandomSuccessResponse(size), default))
-        ).GetAsyncEnumerator(token)
-    );
+    private static async ValueTask<long> SendRandomBatchAsync<TStream>(
+        TStream stream,
+        RpcEndpoint endpoint,
+        long? maxBatchResponseBodySize,
+        int items,
+        int size,
+        CancellationToken cancellationToken = default)
+        where TStream : Stream, IMessageBorderPreservingStream
+    {
+        using SemaphoreSlim sendSemaphore = new(1, 1);
+        using SocketJsonRpcResponseSink<TStream> sink = new(
+            stream,
+            new EthereumJsonSerializer(),
+            new NullJsonRpcLocalStats(),
+            maxBatchResponseBodySize,
+            sendSemaphore,
+            new JsonRpcContext(endpoint));
+
+        await sink.BeginBatchAsync(cancellationToken);
+        for (int index = 0; index < items; index++)
+        {
+            await sink.WriteBatchItemAsync(RandomSuccessResponse(size), default, cancellationToken);
+        }
+        await sink.EndBatchAsync(cancellationToken);
+
+        return sink.BytesWritten;
+    }
 
     private static JsonRpcSuccessResponse RandomSuccessResponse(int size, Action? disposeAction = null) =>
         new(disposeAction)
@@ -754,15 +772,6 @@ public class JsonRpcSocketsClientTests
             Id = "42",
             Result = RandomObject(size)
         };
-
-    private static async IAsyncEnumerable<T> RandomAsyncEnumerable<T>(int items, Func<Task<T>> factory)
-    {
-        for (int i = 0; i < items; i++)
-        {
-            T value = await factory();
-            yield return value;
-        }
-    }
 
     private static object RandomObject(int size)
     {
@@ -842,6 +851,8 @@ public class JsonRpcSocketsClientTests
         : IDisposable
         where TStream : Stream, IMessageBorderPreservingStream
     {
+        public TStream Stream { get; } = stream;
+
         public JsonRpcSocketsClient<TStream> Client { get; } = new(
             clientName: "TestClient",
             stream: stream,

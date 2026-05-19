@@ -73,10 +73,6 @@ public class JsonRpcSocketsClient<TStream> : SocketClient<TStream>, IJsonRpcDupl
         Closed?.Invoke(this, EventArgs.Empty);
     }
 
-    private static readonly byte[] _jsonOpeningBracket = [Convert.ToByte('[')];
-    private static readonly byte[] _jsonComma = [Convert.ToByte(',')];
-    private static readonly byte[] _jsonClosingBracket = [Convert.ToByte(']')];
-
     public override async Task ProcessAsync(ArraySegment<byte> data, CancellationToken cancellationToken)
     {
         IncrementBytesReceivedMetric(data.Count);
@@ -174,47 +170,9 @@ public class JsonRpcSocketsClient<TStream> : SocketClient<TStream>, IJsonRpcDupl
         await _sendSemaphore.WaitAsync(cancellationToken);
         try
         {
-            if (result.IsCollection)
-            {
-                int responseSize = 1;
-                bool isFirst = true;
-                await _stream.WriteAsync(_jsonOpeningBracket, cancellationToken);
-                await using JsonRpcBatchResultAsyncEnumerator enumerator = result.BatchedResponses!.GetAsyncEnumerator(cancellationToken);
-                while (await enumerator.MoveNextAsync())
-                {
-                    JsonRpcResult.Entry entry = enumerator.Current;
-                    using (entry)
-                    {
-                        if (!isFirst)
-                        {
-                            await _stream.WriteAsync(_jsonComma, cancellationToken);
-                            responseSize += 1;
-                        }
-                        isFirst = false;
-                        responseSize += (int)await _jsonSerializer.SerializeAsync(_stream, entry.Response, cancellationToken, indented: false);
-                        _ = _jsonRpcLocalStats.ReportCall(entry.Report);
-
-                        // We reached the limit and don't want to responded to more request in the batch
-                        if (!_jsonRpcContext.IsAuthenticated && responseSize > _maxBatchResponseBodySize)
-                        {
-                            enumerator.IsStopped = true;
-                        }
-                    }
-                }
-
-                await _stream.WriteAsync(_jsonClosingBracket);
-                responseSize++;
-
-                responseSize += await _stream.WriteEndOfMessageAsync();
-
-                return responseSize;
-            }
-            else
-            {
-                int responseSize = (int)await _jsonSerializer.SerializeAsync(_stream, result.Response, cancellationToken, indented: false);
-                responseSize += await _stream.WriteEndOfMessageAsync();
-                return responseSize;
-            }
+            int responseSize = (int)await _jsonSerializer.SerializeAsync(_stream, result.Response, cancellationToken, indented: false);
+            responseSize += await _stream.WriteEndOfMessageAsync();
+            return responseSize;
         }
         finally
         {
