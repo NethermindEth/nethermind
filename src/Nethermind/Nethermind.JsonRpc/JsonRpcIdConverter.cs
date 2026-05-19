@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
@@ -27,7 +29,7 @@ public sealed class JsonRpcIdConverter : JsonConverter<JsonRpcId>
                 return new JsonRpcId(decimalValue);
             }
 
-            throw new NotSupportedException();
+            return ThrowUnsupportedId();
         }
 
         if (reader.TokenType == JsonTokenType.Null)
@@ -40,7 +42,11 @@ public sealed class JsonRpcIdConverter : JsonConverter<JsonRpcId>
             return new JsonRpcId(reader.GetString()!);
         }
 
-        throw new NotSupportedException();
+        return ThrowUnsupportedId();
+
+        [DoesNotReturn, StackTraceHidden]
+        static JsonRpcId ThrowUnsupportedId() =>
+            throw new NotSupportedException();
     }
 
     /// <inheritdoc/>

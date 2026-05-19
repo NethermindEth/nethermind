@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.Text.Json;
 
 namespace Nethermind.JsonRpc;
@@ -39,7 +41,7 @@ internal ref struct JsonRpcEnvelopeReader
 
             if (reader.TokenType != JsonTokenType.PropertyName)
             {
-                throw new JsonException("Expected JSON-RPC object property name.");
+                ThrowExpectedPropertyName();
             }
 
             if (reader.ValueTextEquals("jsonrpc"u8))
@@ -81,26 +83,46 @@ internal ref struct JsonRpcEnvelopeReader
             SkipValue(ref reader);
         }
 
-        throw new JsonException("Incomplete JSON-RPC object.");
+        ThrowIncompleteObject();
+        envelope = default;
+        return false;
+
+        [DoesNotReturn, StackTraceHidden]
+        static void ThrowExpectedPropertyName() =>
+            throw new JsonException("Expected JSON-RPC object property name.");
+
+        [DoesNotReturn, StackTraceHidden]
+        static void ThrowIncompleteObject() =>
+            throw new JsonException("Incomplete JSON-RPC object.");
     }
 
     private static void ReadValue(ref Utf8JsonReader reader)
     {
         if (!reader.Read())
         {
-            throw new JsonException("Expected JSON-RPC property value.");
+            ThrowExpectedPropertyValue();
         }
+
+        [DoesNotReturn, StackTraceHidden]
+        static void ThrowExpectedPropertyValue() =>
+            throw new JsonException("Expected JSON-RPC property value.");
     }
 
-    private static JsonRpcId ReadId(ref Utf8JsonReader reader) =>
-        reader.TokenType switch
+    private static JsonRpcId ReadId(ref Utf8JsonReader reader)
+    {
+        return reader.TokenType switch
         {
             JsonTokenType.Null => JsonRpcId.Null,
             JsonTokenType.String => new JsonRpcId(reader.GetString()!),
             JsonTokenType.Number when reader.TryGetInt64(out long value) => new JsonRpcId(value),
             JsonTokenType.Number when reader.TryGetDecimal(out decimal value) && value.Scale == 0 => new JsonRpcId(value),
-            _ => throw new JsonException("Unsupported JSON-RPC ID value.")
+            _ => ThrowUnsupportedId()
         };
+
+        [DoesNotReturn, StackTraceHidden]
+        static JsonRpcId ThrowUnsupportedId() =>
+            throw new JsonException("Unsupported JSON-RPC ID value.");
+    }
 
     private static JsonValueKind GetValueKind(JsonTokenType tokenType) =>
         tokenType switch

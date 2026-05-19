@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.Text.Json;
 
 namespace Nethermind.JsonRpc;
@@ -13,7 +15,7 @@ internal static class JsonRpcArrayReader
         Utf8JsonReader reader = new(arrayBody.Span, isFinalBlock: true, state: default);
         if (!reader.Read() || reader.TokenType != JsonTokenType.StartArray)
         {
-            throw new JsonException("Expected JSON array.");
+            ThrowExpectedJsonArray();
         }
 
         int count = 0;
@@ -28,7 +30,15 @@ internal static class JsonRpcArrayReader
             count++;
         }
 
-        throw new JsonException("Incomplete JSON array.");
+        return ThrowIncompleteJsonArray();
+
+        [DoesNotReturn, StackTraceHidden]
+        static void ThrowExpectedJsonArray() =>
+            throw new JsonException("Expected JSON array.");
+
+        [DoesNotReturn, StackTraceHidden]
+        static int ThrowIncompleteJsonArray() =>
+            throw new JsonException("Incomplete JSON array.");
     }
 
     public static bool TryReadNextItem(
@@ -45,7 +55,7 @@ internal static class JsonRpcArrayReader
         {
             if (!reader.Read() || reader.TokenType != JsonTokenType.StartArray)
             {
-                throw new JsonException("Expected JSON array.");
+                ThrowExpectedJsonArray();
             }
 
             started = true;
@@ -53,7 +63,7 @@ internal static class JsonRpcArrayReader
 
         if (!reader.Read())
         {
-            throw new JsonException("Incomplete JSON array.");
+            ThrowIncompleteJsonArray();
         }
 
         if (reader.TokenType == JsonTokenType.EndArray)
@@ -70,5 +80,13 @@ internal static class JsonRpcArrayReader
         offset = itemEnd;
         readerState = reader.CurrentState;
         return true;
+
+        [DoesNotReturn, StackTraceHidden]
+        static void ThrowExpectedJsonArray() =>
+            throw new JsonException("Expected JSON array.");
+
+        [DoesNotReturn, StackTraceHidden]
+        static void ThrowIncompleteJsonArray() =>
+            throw new JsonException("Incomplete JSON array.");
     }
 }

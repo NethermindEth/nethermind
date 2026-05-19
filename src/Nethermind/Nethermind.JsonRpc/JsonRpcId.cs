@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
 using System.Numerics;
 using System.Text.Json;
@@ -68,6 +70,10 @@ public readonly struct JsonRpcId : IEquatable<JsonRpcId>
 
         _kind = JsonRpcIdKind.Decimal;
         _decimalValue = value;
+
+        [DoesNotReturn, StackTraceHidden]
+        static void ThrowFractionalDecimal() =>
+            throw new NotSupportedException("JSON-RPC decimal IDs must be integer values.");
     }
 
     /// <summary>
@@ -104,8 +110,9 @@ public readonly struct JsonRpcId : IEquatable<JsonRpcId>
     /// <param name="value">The legacy ID value.</param>
     /// <returns>The equivalent typed ID.</returns>
     /// <exception cref="NotSupportedException">Thrown when <paramref name="value"/> is not a supported JSON-RPC ID type.</exception>
-    public static JsonRpcId FromObject(object? value) =>
-        value switch
+    public static JsonRpcId FromObject(object? value)
+    {
+        return value switch
         {
             null => Null,
             JsonRpcId jsonRpcId => jsonRpcId,
@@ -117,12 +124,18 @@ public readonly struct JsonRpcId : IEquatable<JsonRpcId>
             _ => ThrowUnsupportedObject(value)
         };
 
+        [DoesNotReturn, StackTraceHidden]
+        static JsonRpcId ThrowUnsupportedObject(object value) =>
+            throw new NotSupportedException($"Unsupported JSON-RPC ID type: {value.GetType().FullName}");
+    }
+
     /// <summary>
     /// Converts this typed ID to the legacy boxed representation.
     /// </summary>
     /// <returns>The boxed ID value, or null for missing and explicit-null IDs.</returns>
-    public object? ToObject() =>
-        _kind switch
+    public object? ToObject()
+    {
+        return _kind switch
         {
             JsonRpcIdKind.Missing or JsonRpcIdKind.Null => null,
             JsonRpcIdKind.Long => _longValue,
@@ -130,6 +143,11 @@ public readonly struct JsonRpcId : IEquatable<JsonRpcId>
             JsonRpcIdKind.String => _stringValue,
             _ => ThrowInvalidKindObject()
         };
+
+        [DoesNotReturn, StackTraceHidden]
+        static object ThrowInvalidKindObject() =>
+            throw new NotSupportedException("Unsupported JSON-RPC ID kind.");
+    }
 
     /// <summary>
     /// Writes this ID as a JSON value.
@@ -159,6 +177,10 @@ public readonly struct JsonRpcId : IEquatable<JsonRpcId>
                 ThrowInvalidKind();
                 break;
         }
+
+        [DoesNotReturn, StackTraceHidden]
+        static void ThrowInvalidKind() =>
+            throw new NotSupportedException("Unsupported JSON-RPC ID kind.");
     }
 
     /// <summary>
@@ -283,15 +305,4 @@ public readonly struct JsonRpcId : IEquatable<JsonRpcId>
     /// <param name="value">The string value.</param>
     public static implicit operator JsonRpcId(string value) => new(value);
 
-    private static void ThrowFractionalDecimal() =>
-        throw new NotSupportedException("JSON-RPC decimal IDs must be integer values.");
-
-    private static JsonRpcId ThrowUnsupportedObject(object value) =>
-        throw new NotSupportedException($"Unsupported JSON-RPC ID type: {value.GetType().FullName}");
-
-    private static object ThrowInvalidKindObject() =>
-        throw new NotSupportedException("Unsupported JSON-RPC ID kind.");
-
-    private static void ThrowInvalidKind() =>
-        throw new NotSupportedException("Unsupported JSON-RPC ID kind.");
 }

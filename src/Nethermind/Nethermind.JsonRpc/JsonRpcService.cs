@@ -3,6 +3,8 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Reflection;
 using System.Runtime.CompilerServices;
@@ -470,7 +472,7 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
                 ReadOnlyMemory<byte> providedParameterUtf8 = default;
                 if (useUtf8Parameters && !JsonRpcArrayReader.TryReadNextItem(providedParametersUtf8, ref offset, ref readerState, ref started, out providedParameterUtf8))
                 {
-                    throw new JsonException("Missing JSON-RPC parameter bytes.");
+                    ThrowMissingParameterBytes();
                 }
 
                 object? parameter = DeserializeParameter(enumerator.Current, expectedParameter, providedParameterUtf8);
@@ -486,6 +488,10 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
         }
 
         return (executionParameters, hasMissing);
+
+        [DoesNotReturn, StackTraceHidden]
+        static void ThrowMissingParameterBytes() =>
+            throw new JsonException("Missing JSON-RPC parameter bytes.");
     }
 
     private static JsonRpcResponse GetSuccessResponse(string methodName, object result, JsonRpcId id, Action? disposableAction)
