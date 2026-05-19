@@ -2,10 +2,13 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 #nullable enable
+using System;
+using System.Buffers;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.IO.Abstractions;
+using System.IO.Pipelines;
 using System.Net;
 using System.Text;
 using System.Text.Json;
@@ -263,6 +266,26 @@ public class StartupTests
         Assert.That(error.GetProperty("data").ValueKind, Is.EqualTo(JsonValueKind.Array));
     }
 
+    [Test]
+    public async Task ProcessJsonRpcRequest_StreamsBlobResultsWithoutGenericSerialization()
+    {
+        ProbeBlobStreamableResult streamableResult = new();
+        IEngineRpcModule engineModule = Substitute.For<IEngineRpcModule>();
+        engineModule
+            .engine_getBlobsV2(Arg.Any<byte[][]>())
+            .Returns(Task.FromResult(ResultWrapper<IReadOnlyList<BlobAndProofV2?>?>.Success(streamableResult)));
+
+        string response = await ProcessJsonRpcRequest(
+            "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"engine_getBlobsV2\",\"params\":[[]]}",
+            startup: CreateStartup(engineModule: engineModule));
+
+        using JsonDocument doc = JsonDocument.Parse(response);
+
+        Assert.That(doc.RootElement.GetProperty("result").GetArrayLength(), Is.EqualTo(1));
+        Assert.That(doc.RootElement.GetProperty("result")[0].ValueKind, Is.EqualTo(JsonValueKind.Null));
+        Assert.That(streamableResult.WriteCount, Is.EqualTo(1));
+    }
+
     [TestCase("ok")]
     [TestCase("x\"\\\n\u0001")]
     public async Task HttpJsonRpcResponseSink_SerializesStringResultSafely(string value)
@@ -388,5 +411,26 @@ public class StartupTests
 
         request.Append(']');
         return request.ToString();
+    }
+
+    private sealed class ProbeBlobStreamableResult : IStreamableResult, IReadOnlyList<BlobAndProofV2?>
+    {
+        public int WriteCount { get; private set; }
+
+        public int Count => 1;
+
+        public BlobAndProofV2? this[int index] => throw new InvalidOperationException("Generic blob serialization path was used.");
+
+        public ValueTask WriteToAsync(PipeWriter writer, CancellationToken cancellationToken)
+        {
+            WriteCount++;
+            writer.Write("[null]"u8);
+            return ValueTask.CompletedTask;
+        }
+
+        public IEnumerator<BlobAndProofV2?> GetEnumerator() =>
+            throw new InvalidOperationException("Generic blob serialization path was used.");
+
+        System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => GetEnumerator();
     }
 }

@@ -1082,7 +1082,7 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
     {
         if (IsRecordingResponse)
         {
-            _recorder.RecordResponse(JsonSerializer.Serialize(result, EthereumJsonSerializer.JsonOptionsIndented));
+            _recorder.RecordResponse(SerializeForDiagnostics(result));
         }
 
         return result;
@@ -1120,10 +1120,45 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
     {
         if (_logger.IsTrace)
         {
-            string json = JsonSerializer.Serialize(response, EthereumJsonSerializer.JsonOptionsIndented);
+            string json = SerializeForDiagnostics(response);
 
             _logger.Trace($"Sending JSON RPC response: {json}");
         }
+    }
+
+    private static string SerializeForDiagnostics(in JsonRpcResult.Entry response) =>
+        TryGetDiagnosticResponse(response.Response, out JsonRpcResponse? diagnosticResponse)
+            ? JsonSerializer.Serialize(new JsonRpcResult.Entry(diagnosticResponse, response.Report), EthereumJsonSerializer.JsonOptionsIndented)
+            : JsonSerializer.Serialize(response, EthereumJsonSerializer.JsonOptionsIndented);
+
+    private static bool TryGetDiagnosticResponse(JsonRpcResponse response, [NotNullWhen(true)] out JsonRpcResponse? diagnosticResponse)
+    {
+        diagnosticResponse = response switch
+        {
+            JsonRpcSuccessResponse { Result: IStreamableResult } successResponse => new JsonRpcSuccessResponse
+            {
+                Id = successResponse.Id,
+                MethodName = successResponse.MethodName,
+                BoundaryTimings = successResponse.BoundaryTimings,
+                Result = "# streamable response omitted #"
+            },
+            JsonRpcErrorResponse { Error.Data: IStreamableResult } errorResponse => new JsonRpcErrorResponse
+            {
+                Id = errorResponse.Id,
+                MethodName = errorResponse.MethodName,
+                BoundaryTimings = errorResponse.BoundaryTimings,
+                Error = new Error
+                {
+                    Code = errorResponse.Error.Code,
+                    Message = errorResponse.Error.Message,
+                    Data = "# streamable error data omitted #",
+                    SuppressWarning = errorResponse.Error.SuppressWarning
+                }
+            },
+            _ => null
+        };
+
+        return diagnosticResponse is not null;
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
