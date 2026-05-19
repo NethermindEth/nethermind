@@ -11,18 +11,20 @@ using Nethermind.Int256;
 using Nethermind.TxPool;
 using Nethermind.Xdc.Spec;
 using Nethermind.Logging;
+using System;
 using System.Threading.Tasks;
 
 namespace Nethermind.Xdc;
 
 internal class SignTransactionManager(ISigner signer, ITxPool txPool, ILogger logger) : ISignTransactionManager
 {
-    public async Task SubmitTransactionSign(XdcBlockHeader header, IXdcReleaseSpec spec)
+    public Task SubmitTransactionSign(XdcBlockHeader header, IXdcReleaseSpec spec)
     {
         UInt256 nonce = txPool.GetLatestPendingNonce(signer.Address);
         Transaction transaction = CreateTxSign((UInt256)header.Number, header.Hash ?? header.CalculateHash().ToHash256(), nonce, spec.BlockSignerContract, signer.Address);
 
-        await signer.Sign(transaction);
+        if (!signer.TrySign(transaction))
+            throw new InvalidOperationException($"XDC signer {signer.Address} could not sign block sign tx for header {header.Number}.");
 
         transaction.Hash = transaction.CalculateHash();
 
@@ -31,6 +33,7 @@ internal class SignTransactionManager(ISigner signer, ITxPool txPool, ILogger lo
         {
             logger.Warn($"Failed to add signed transaction to the pool: {added} {header.ToString(BlockHeader.Format.FullHashAndNumber)}");
         }
+        return Task.CompletedTask;
     }
 
     internal static Transaction CreateTxSign(UInt256 number, Hash256 hash, UInt256 nonce, Address blockSignersAddress, Address sender)

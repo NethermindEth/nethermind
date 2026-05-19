@@ -316,7 +316,10 @@ internal class VotesManager(
     {
         KeccakRlpStream stream = new();
         _voteDecoder.Encode(stream, vote, RlpBehaviors.ForSealing);
-        vote.Signature = _signer.Sign(stream.GetValueHash());
+        ValueHash256 hash = stream.GetValueHash();
+        if (!_signer.TrySign(in hash, out Signature signature))
+            throw new InvalidOperationException($"XDC signer {_signer.Address} could not sign vote.");
+        vote.Signature = signature;
         vote.Signer = _signer.Address;
     }
 

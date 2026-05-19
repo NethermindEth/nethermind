@@ -29,7 +29,10 @@ internal class XdcSealer(ISigner signer) : ISealer
 
         KeccakRlpStream hashStream = new();
         _xdcHeaderDecoder.Encode(hashStream, xdcBlockHeader, RlpBehaviors.ForSealing);
-        xdcBlockHeader.Validator = signer.Sign(hashStream.GetValueHash()).BytesWithRecovery;
+        ValueHash256 hash = hashStream.GetValueHash();
+        if (!signer.TrySign(in hash, out Signature signature))
+            throw new InvalidOperationException($"XDC signer {signer.Address} could not sign block {block.Number}.");
+        xdcBlockHeader.Validator = signature.BytesWithRecovery;
 
         xdcBlockHeader.Hash = xdcBlockHeader.CalculateHash().ToHash256();
         return Task.FromResult(block);

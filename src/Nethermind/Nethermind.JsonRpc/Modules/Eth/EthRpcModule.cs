@@ -41,7 +41,6 @@ using System.Buffers;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
-using System.Security;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
@@ -514,13 +513,13 @@ public partial class EthRpcModule(
             (Hash256 txHash, AcceptTxResult? acceptTxResult) =
                 await _txSender.SendTransaction(tx, txHandlingOptions | TxHandlingOptions.PersistentBroadcast);
 
-            return acceptTxResult.Equals(AcceptTxResult.Accepted)
-                ? ResultWrapper<Hash256>.Success(txHash)
-                : ResultWrapper<Hash256>.Fail(acceptTxResult?.ToString() ?? string.Empty, ErrorCodes.TransactionRejected);
-        }
-        catch (SecurityException e)
-        {
-            return ResultWrapper<Hash256>.Fail(e.Message, ErrorCodes.AccountLocked);
+            if (acceptTxResult.Equals(AcceptTxResult.Accepted))
+                return ResultWrapper<Hash256>.Success(txHash);
+
+            int errorCode = acceptTxResult.Equals(AcceptTxResult.SignFailed)
+                ? ErrorCodes.AccountLocked
+                : ErrorCodes.TransactionRejected;
+            return ResultWrapper<Hash256>.Fail(acceptTxResult?.ToString() ?? string.Empty, errorCode);
         }
         catch (Exception e)
         {
