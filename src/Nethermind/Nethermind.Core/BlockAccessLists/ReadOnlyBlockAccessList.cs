@@ -36,6 +36,21 @@ public class ReadOnlyBlockAccessList : IEquatable<ReadOnlyBlockAccessList>
     [JsonIgnore]
     public Hash256? WireHash { get; }
 
+    /// <summary>
+    /// Per-lane row counts indexed by wire <c>Index</c>: how many balance / nonce / code / storage
+    /// changes the BAL declares at each block-access index. Sized to <c>maxIndex + 1</c> across
+    /// every lane (length 0 when the BAL has no indexed changes at all).
+    /// </summary>
+    /// <remarks>
+    /// Computed once in the constructor over the same pass that fills the address dictionary so
+    /// <see cref="Nethermind.Consensus.Processing.BlockAccessListValidationIndex.Build"/> can
+    /// pre-size lane buffers without a second walk of every change. Out-of-range indices
+    /// (<c>Index &gt; lastIndex</c>) are ignored at build time by copying only the prefix that
+    /// fits into the validation index's row count.
+    /// </remarks>
+    [JsonIgnore]
+    public LaneRowCounts RowCounts { get; }
+
     public EnumerableWithCount<ReadOnlyAccountChanges> AccountChanges
         => new(_accountChanges.Values, _accountChanges.Count);
 
@@ -67,8 +82,97 @@ public class ReadOnlyBlockAccessList : IEquatable<ReadOnlyBlockAccessList>
         {
             _accountChanges.Add(a.Address, a);
         }
+        RowCounts = BuildRowCounts(orderedAccounts);
         ItemCount = itemCount;
         WireHash = wireHash;
+    }
+
+    // Hard ceiling on per-lane cache length. EIP-7928 caps a block at MaxTxs transactions; valid
+    // wire indices fall in [0, MaxTxs + 1]. Indices above this cap can never be matched against a
+    // valid validation row count, so caching them would waste arbitrary memory on malformed input.
+    // Build() will silently drop such entries via its own range check (matching prior behaviour).
+    private const int MaxCachedRows = Eip7928Constants.MaxTxs + 2;
+
+    private static LaneRowCounts BuildRowCounts(ReadOnlyAccountChanges[] orderedAccounts)
+    {
+        // Each per-account change list is already sorted by Index (validated by the decoder), so
+        // the last entry holds the lane-local maximum; one cheap peek per account avoids a second
+        // walk over every change to size the per-lane counts arrays.
+        uint maxIndex = 0;
+        bool hasInRangeChange = false;
+        foreach (ReadOnlyAccountChanges a in orderedAccounts)
+        {
+            UpdateMaxIndex(a.BalanceChanges, ref maxIndex, ref hasInRangeChange);
+            UpdateMaxIndex(a.NonceChanges, ref maxIndex, ref hasInRangeChange);
+            UpdateMaxIndex(a.CodeChanges, ref maxIndex, ref hasInRangeChange);
+            foreach (ReadOnlySlotChanges slot in a.StorageChanges)
+            {
+                UpdateMaxIndex(slot.Changes, ref maxIndex, ref hasInRangeChange);
+            }
+        }
+
+        if (!hasInRangeChange) return LaneRowCounts.Empty;
+
+        int length = (int)maxIndex + 1;
+        int[] balance = new int[length];
+        int[] nonce = new int[length];
+        int[] code = new int[length];
+        int[] storage = new int[length];
+        uint cap = maxIndex;
+        foreach (ReadOnlyAccountChanges a in orderedAccounts)
+        {
+            foreach (BalanceChange c in a.BalanceChanges)
+            {
+                if (c.Index <= cap) balance[(int)c.Index]++;
+            }
+
+            foreach (NonceChange c in a.NonceChanges)
+            {
+                if (c.Index <= cap) nonce[(int)c.Index]++;
+            }
+
+            foreach (CodeChange c in a.CodeChanges)
+            {
+                if (c.Index <= cap) code[(int)c.Index]++;
+            }
+
+            foreach (ReadOnlySlotChanges slot in a.StorageChanges)
+            {
+                foreach (StorageChange c in slot.Changes)
+                {
+                    if (c.Index <= cap) storage[(int)c.Index]++;
+                }
+            }
+        }
+        return new LaneRowCounts(balance, nonce, code, storage);
+    }
+
+    private static void UpdateMaxIndex<TChange>(TChange[] changes, ref uint maxIndex, ref bool hasInRangeChange)
+        where TChange : struct, IIndexedChange
+    {
+        // Scan back from the end since changes are sorted by Index ascending: we want the largest
+        // in-range entry. Out-of-range entries (above MaxCachedRows - 1) are skipped — they can't
+        // be matched in any valid validation row count, so they're not worth caching.
+        for (int i = changes.Length - 1; i >= 0; i--)
+        {
+            uint idx = changes[i].Index;
+            if (idx >= MaxCachedRows) continue;
+            hasInRangeChange = true;
+            if (idx > maxIndex) maxIndex = idx;
+            return;
+        }
+    }
+
+    /// <summary>
+    /// Precomputed per-row counts of balance / nonce / code / storage changes, indexed by wire
+    /// <c>Index</c>. All four arrays share the same length (<c>maxIndex + 1</c>) for the BAL, or
+    /// are all empty for a BAL with no indexed changes.
+    /// </summary>
+    public readonly record struct LaneRowCounts(int[] Balance, int[] Nonce, int[] Code, int[] Storage)
+    {
+        public static LaneRowCounts Empty { get; } = new([], [], [], []);
+
+        public int Length => Balance.Length;
     }
 
     public bool Equals(ReadOnlyBlockAccessList? other)

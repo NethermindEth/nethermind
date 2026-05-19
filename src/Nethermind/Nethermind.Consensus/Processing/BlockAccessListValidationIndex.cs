@@ -18,7 +18,8 @@ namespace Nethermind.Consensus.Processing;
 // indexes can be compared row-by-row in bulk without per-account dictionary
 // lookups. Two construction modes:
 //   * Build(...): immutable index built once from the suggested BAL. Lanes are
-//     pre-sized via Counts and sorted in place.
+//     pre-sized from ReadOnlyBlockAccessList.RowCounts (cached at decode time)
+//     and sorted in place.
 //   * ctor(txCount, addressIndex, suggested): mutable index that mirrors the
 //     suggested layout; the generator pushes rows into it via Add(slice) as
 //     each per-tx BlockAccessListAtIndex slice is merged into the cumulative
@@ -73,7 +74,6 @@ internal sealed class BlockAccessListValidationIndex
     {
         uint lastIndex = GetLastIndex(txCount);
         int rowCount = checked((int)lastIndex + 1);
-        Counts counts = new(rowCount);
         ulong[] hasAccountWords = [];
 
         foreach (ReadOnlyAccountChanges accountChanges in blockAccessList.AccountChanges)
@@ -82,12 +82,13 @@ internal sealed class BlockAccessListValidationIndex
             MarkAccount(ref hasAccountWords, accountOrdinal);
         }
 
-        Count(blockAccessList, counts, lastIndex);
-
-        Lane<UInt256> balance = Lane<UInt256>.CreateImmutable(counts.Balance);
-        Lane<ulong> nonce = Lane<ulong>.CreateImmutable(counts.Nonce);
-        Lane<ValueHash256> code = Lane<ValueHash256>.CreateImmutable(counts.Code);
-        StorageLane storage = StorageLane.CreateImmutable(counts.Storage);
+        // Per-row counts were precomputed during BAL decode; the BAL may have indices past
+        // lastIndex (silently dropped here, matching the prior Count() pass that skipped them).
+        ReadOnlyBlockAccessList.LaneRowCounts cached = blockAccessList.RowCounts;
+        Lane<UInt256> balance = Lane<UInt256>.CreateImmutable(CopyCounts(cached.Balance, rowCount));
+        Lane<ulong> nonce = Lane<ulong>.CreateImmutable(CopyCounts(cached.Nonce, rowCount));
+        Lane<ValueHash256> code = Lane<ValueHash256>.CreateImmutable(CopyCounts(cached.Code, rowCount));
+        StorageLane storage = StorageLane.CreateImmutable(CopyCounts(cached.Storage, rowCount));
 
         Fill(blockAccessList, addressIndex, lastIndex, balance, nonce, code, storage);
 
@@ -97,6 +98,14 @@ internal sealed class BlockAccessListValidationIndex
         storage.SortAllRows();
 
         return new(addressIndex, lastIndex, balance, nonce, code, storage, hasAccountWords);
+    }
+
+    private static int[] CopyCounts(int[] cached, int rowCount)
+    {
+        int[] result = new int[rowCount];
+        int copy = Math.Min(cached.Length, rowCount);
+        if (copy > 0) Array.Copy(cached, result, copy);
+        return result;
     }
 
     /// <summary>
@@ -162,33 +171,6 @@ internal sealed class BlockAccessListValidationIndex
                _nonce.ChangesEqual(other._nonce, row) &&
                _code.ChangesEqual(other._code, row) &&
                _storage.ChangesEqual(other._storage, row);
-    }
-
-    private static void Count(ReadOnlyBlockAccessList blockAccessList, Counts counts, uint lastIndex)
-    {
-        foreach (ReadOnlyAccountChanges accountChanges in blockAccessList.AccountChanges)
-        {
-            Count(accountChanges.BalanceChanges, counts.Balance, lastIndex);
-            Count(accountChanges.NonceChanges, counts.Nonce, lastIndex);
-            Count(accountChanges.CodeChanges, counts.Code, lastIndex);
-
-            foreach (ReadOnlySlotChanges slotChanges in accountChanges.StorageChanges)
-            {
-                Count(slotChanges.Changes, counts.Storage, lastIndex);
-            }
-        }
-    }
-
-    private static void Count<TChange>(ReadOnlySpan<TChange> changes, int[] counts, uint lastIndex)
-        where TChange : struct, IIndexedChange
-    {
-        for (int i = 0; i < changes.Length; i++)
-        {
-            if (TryGetRow(changes[i].Index, lastIndex, out int row))
-            {
-                counts[row]++;
-            }
-        }
     }
 
     private static void Fill(
@@ -273,14 +255,6 @@ internal sealed class BlockAccessListValidationIndex
 
         public bool TryGet(Address address, out int ordinal) =>
             _ordinals.TryGetValue(address, out ordinal);
-    }
-
-    private sealed class Counts(int rowCount)
-    {
-        public readonly int[] Balance = new int[rowCount];
-        public readonly int[] Nonce = new int[rowCount];
-        public readonly int[] Code = new int[rowCount];
-        public readonly int[] Storage = new int[rowCount];
     }
 
     private sealed class Lane<TValue>
