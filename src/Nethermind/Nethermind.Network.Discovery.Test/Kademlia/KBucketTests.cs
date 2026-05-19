@@ -1,14 +1,9 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Linq;
-using System.Threading;
-using System.Threading.Tasks;
-using FluentAssertions;
 using Nethermind.Core.Crypto;
 using Nethermind.Network.Discovery.Kademlia;
-using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Network.Discovery.Test.Kademlia;
@@ -33,13 +28,13 @@ public class KBucketTests
             bucket.TryAddOrRefresh(valueHash256, valueHash256, out _);
         }
 
-        bucket.GetAll().ToHashSet().Should().BeEquivalentTo(toAdd[..5].ToHashSet());
-        bucket.GetAllWithHash().Select(it => it.Item2).ToHashSet().Should().BeEquivalentTo(toAdd[..5].ToHashSet());
+        Assert.That(bucket.GetAll().ToHashSet(), Is.EquivalentTo(toAdd[..5].ToHashSet()));
+        Assert.That(bucket.GetAllWithHash().ToHashSet(), Is.EquivalentTo(toAdd[..5].Select(static it => (it, it)).ToHashSet()));
 
         foreach (ValueHash256 valueHash256 in toAdd[..5])
         {
-            bucket.ContainsNode(valueHash256).Should().BeTrue();
-            bucket.GetByHash(valueHash256).Should().NotBeNull();
+            Assert.That(bucket.ContainsNode(valueHash256), Is.True);
+            Assert.That(bucket.GetByHash(valueHash256), Is.EqualTo(valueHash256));
         }
     }
 
@@ -62,11 +57,11 @@ public class KBucketTests
             bucket.TryAddOrRefresh(valueHash256, valueHash256, out _);
         }
 
-        bucket.GetAll().Should().BeSameAs(nodes);
+        Assert.That(bucket.GetAll(), Is.SameAs(nodes));
     }
 
     [Test]
-    public void RemoteAndReplace_ShouldReplaceNodeWithLatestInReplacementCache()
+    public void RemoveAndReplace_ShouldReplaceNodeWithLatestInReplacementCache()
     {
         KBucket<ValueHash256> bucket = new(5);
 
@@ -79,8 +74,8 @@ public class KBucketTests
 
         bucket.RemoveAndReplace(toAdd[0]);
 
-        bucket.GetAll().ToHashSet()
-            .Should()
-            .BeEquivalentTo((toAdd[1..5].Concat(toAdd[9..10])).ToHashSet());
+        ValueHash256[] expected = [.. toAdd[1..5], toAdd[9]];
+        Assert.That(bucket.GetAll().ToHashSet(), Is.EquivalentTo(expected.ToHashSet()));
+        Assert.That(bucket.GetAllWithHash().ToHashSet(), Is.EquivalentTo(expected.Select(static it => (it, it)).ToHashSet()));
     }
 }

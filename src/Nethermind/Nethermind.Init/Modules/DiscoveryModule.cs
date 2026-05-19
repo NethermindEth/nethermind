@@ -4,7 +4,6 @@
 using Autofac;
 using Autofac.Features.AttributeFilters;
 using Nethermind.Api;
-using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Crypto;
 using Nethermind.Db;

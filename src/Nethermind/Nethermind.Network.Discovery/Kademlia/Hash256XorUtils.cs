@@ -45,7 +45,21 @@ public static class Hash256XorUtils
     public static ValueHash256 XorDistance(ValueHash256 hash1, ValueHash256 hash2)
     {
         ValueHash256 bc = new();
-        (new Vector<byte>(hash1.BytesAsSpan) ^ new Vector<byte>(hash2.BytesAsSpan)).CopyTo(bc.BytesAsSpan);
+        ReadOnlySpan<byte> hash1Bytes = hash1.BytesAsSpan;
+        ReadOnlySpan<byte> hash2Bytes = hash2.BytesAsSpan;
+        Span<byte> result = bc.BytesAsSpan;
+
+        int i = 0;
+        for (; i <= result.Length - Vector<byte>.Count; i += Vector<byte>.Count)
+        {
+            (new Vector<byte>(hash1Bytes[i..]) ^ new Vector<byte>(hash2Bytes[i..])).CopyTo(result[i..]);
+        }
+
+        for (; i < result.Length; i++)
+        {
+            result[i] = (byte)(hash1Bytes[i] ^ hash2Bytes[i]);
+        }
+
         return bc;
     }
 

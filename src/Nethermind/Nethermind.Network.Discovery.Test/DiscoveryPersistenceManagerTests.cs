@@ -109,6 +109,26 @@ namespace Nethermind.Network.Discovery.Test
         }
 
         [Test]
+        [CancelAfter(10000)]
+        public async Task AddPersistedNodes_Should_Restore_Reputation(CancellationToken cancellationToken)
+        {
+            const int reputation = 123;
+            NetworkNode networkNode = new(TestItem.PublicKeyA, "192.168.1.1", 30303, reputation);
+            INodeStats nodeStats = Substitute.For<INodeStats>();
+
+            _networkStorage.UpdateNodes([networkNode]);
+            _nodeStatsManager.GetOrAdd(Arg.Any<Node>()).Returns(nodeStats);
+
+            await _persistenceManager.LoadPersistedNodes(cancellationToken);
+
+            _nodeStatsManager.Received(1).GetOrAdd(Arg.Is<Node>(n =>
+                n.Id.Equals(networkNode.NodeId) &&
+                n.Host == networkNode.Host &&
+                n.Port == networkNode.Port));
+            nodeStats.Received(1).CurrentPersistedNodeReputation = reputation;
+        }
+
+        [Test]
         public async Task RunDiscoveryPersistenceCommit_Should_Update_Nodes_In_Storage()
         {
             Node[] nodes =

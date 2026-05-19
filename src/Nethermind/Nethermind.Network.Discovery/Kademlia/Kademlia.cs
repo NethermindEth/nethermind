@@ -98,7 +98,7 @@ public class Kademlia<TKey, TNode> : IKademlia<TKey, TNode> where TNode : notnul
             {
                 // Should be added on Pong.
                 await _kademliaMessageSender.Ping(node, token);
-                onlineBootNodes++;
+                System.Threading.Interlocked.Increment(ref onlineBootNodes);
             }
             catch (OperationCanceledException)
             {

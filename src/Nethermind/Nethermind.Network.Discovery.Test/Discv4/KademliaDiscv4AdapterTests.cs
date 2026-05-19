@@ -19,7 +19,6 @@ using Nethermind.Network.Discovery.Kademlia;
 using Nethermind.Network.Discovery.Messages;
 using Nethermind.Network.Enr;
 using Nethermind.Network.Test.Builders;
-using Nethermind.Specs;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using NSubstitute;
@@ -82,6 +81,7 @@ namespace Nethermind.Network.Discovery.Test.Discv4
             _timestamper = Substitute.For<ITimestamper>();
             _timestamper.UnixTime.Returns(new UnixTime(new(2021, 5, 3, 0, 0, 0, DateTimeKind.Utc)));
             _msgSender = Substitute.For<IMsgSender>();
+            _msgSender.SendMsg(Arg.Any<DiscoveryMsg>()).Returns(Task.CompletedTask);
 
             _receiver = new(TestItem.PublicKeyB, "192.168.1.2", 30303);
             SerializationBuilder builder = new();
@@ -90,6 +90,8 @@ namespace Nethermind.Network.Discovery.Test.Discv4
 
             INodeRecordProvider nodeRecordProvider = Substitute.For<INodeRecordProvider>();
             nodeRecordProvider.Current.Returns(_selfNodeRecord);
+            INodeStatsManager nodeStatsManager = Substitute.For<INodeStatsManager>();
+            nodeStatsManager.GetOrAdd(Arg.Any<Node>()).Returns(Substitute.For<INodeStats>());
 
             _adapter = new KademliaDiscv4Adapter(
                 new Lazy<IKademlia<PublicKey, Node>>(() => _kademliaMessageReceiver),
@@ -97,7 +99,7 @@ namespace Nethermind.Network.Discovery.Test.Discv4
                 new DiscoveryConfig(),
                 _kademliaConfig,
                 nodeRecordProvider,
-                Substitute.For<INodeStatsManager>(),
+                nodeStatsManager,
                 _timestamper,
                 Substitute.For<IProcessExitSource>(),
                 _logManager
@@ -217,8 +219,39 @@ namespace Nethermind.Network.Discovery.Test.Discv4
 
         [Test]
         [CancelAfter(10000)]
+        public async Task Timed_out_response_handler_should_not_consume_later_unsolicited_message(CancellationToken token)
+        {
+            ConfigureBondCallback();
+
+            PingMsg pingMsg = new(_receiver.Address, _timestamper.UnixTime.SecondsLong + 20, _kademliaConfig.CurrentNodeId.Address);
+            pingMsg.FarAddress = _receiver.Address;
+            pingMsg = AddReceiverFarAddress(pingMsg);
+            await _adapter.OnIncomingMsg(pingMsg);
+
+            using CancellationTokenSource requestTimeout = CancellationTokenSource.CreateLinkedTokenSource(token);
+            requestTimeout.CancelAfter(50);
+
+            Assert.ThrowsAsync(Is.InstanceOf<OperationCanceledException>(), async () => await _adapter.SendEnrRequest(_receiver, requestTimeout.Token));
+
+            _nodeHealthTracker.ClearReceivedCalls();
+
+            EnrResponseMsg response = new(
+                _receiver.Address,
+                _selfNodeRecord,
+                new(new byte[32]));
+            response = AddReceiverFarAddress(response);
+
+            await _adapter.OnIncomingMsg(response);
+
+            _nodeHealthTracker.DidNotReceive().OnIncomingMessageFrom(Arg.Is<Node>(n => n.Id.Equals(_receiver.Id)));
+        }
+
+        [Test]
+        [CancelAfter(10000)]
         public async Task OnIncomingMsg_ping_should_respond_with_pong(CancellationToken token)
         {
+            ConfigureBondCallback();
+
             PingMsg pingMsg = new(_receiver.Address, _timestamper.UnixTime.SecondsLong + 20, _kademliaConfig.CurrentNodeId.Address);
             pingMsg.FarAddress = _receiver.Address;
             pingMsg = AddReceiverFarAddress(pingMsg);

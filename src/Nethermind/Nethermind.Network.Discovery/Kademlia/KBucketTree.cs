@@ -83,7 +83,11 @@ public class KBucketTree<TNode> : IRoutingTable<TNode> where TNode : notnull
         }
     }
 
-    public TNode? GetByHash(ValueHash256 hash) => GetBucketForHash(hash).GetByHash(hash);
+    public TNode? GetByHash(ValueHash256 hash)
+    {
+        using McsLock.Disposable _ = _lock.Acquire();
+        return GetBucketForHash(hash).GetByHash(hash);
+    }
 
     private KBucket<TNode> GetBucketForHash(ValueHash256 nodeHash)
     {

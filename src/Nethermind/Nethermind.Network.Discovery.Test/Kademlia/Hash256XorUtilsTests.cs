@@ -2,10 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Numerics;
-using System.Runtime.Intrinsics;
 using Nethermind.Core.Crypto;
 using Nethermind.Network.Discovery.Kademlia;
 using NUnit.Framework;
