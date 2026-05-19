@@ -8,7 +8,7 @@ using Nethermind.Crypto;
 
 namespace Nethermind.Consensus
 {
-    public class NullSigner : ISigner, ISignerStore
+    public class NullSigner : IHeaderSigner, ISignerStore
     {
         public static NullSigner Instance { get; } = new();
 

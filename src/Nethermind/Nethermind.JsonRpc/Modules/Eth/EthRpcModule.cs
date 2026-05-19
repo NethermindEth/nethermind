@@ -516,10 +516,9 @@ public partial class EthRpcModule(
             if (acceptTxResult.Equals(AcceptTxResult.Accepted))
                 return ResultWrapper<Hash256>.Success(txHash);
 
-            int errorCode = acceptTxResult.Equals(AcceptTxResult.SignFailed)
-                ? ErrorCodes.AccountLocked
-                : ErrorCodes.TransactionRejected;
-            return ResultWrapper<Hash256>.Fail(acceptTxResult?.ToString() ?? string.Empty, errorCode);
+            return acceptTxResult.Equals(AcceptTxResult.SignFailed)
+                ? ResultWrapper<Hash256>.Fail("authentication needed: password or unlock", ErrorCodes.AccountLocked)
+                : ResultWrapper<Hash256>.Fail(acceptTxResult?.ToString() ?? string.Empty, ErrorCodes.TransactionRejected);
         }
         catch (Exception e)
         {

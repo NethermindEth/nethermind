@@ -63,7 +63,7 @@ namespace Nethermind.Consensus.Clique
 
             // Sign all the things!
             ValueHash256 headerHash = SnapshotManager.CalculateCliqueHeaderHash(header);
-            Signature? signature;
+            Signature signature;
             bool signed;
             if (_signer is IHeaderSigner headerSigner)
             {
@@ -77,7 +77,7 @@ namespace Nethermind.Consensus.Clique
                 signed = _signer.TrySign(in headerHash, out signature);
             }
 
-            if (!signed || signature is null)
+            if (!signed)
                 throw new InvalidOperationException($"Clique signer {_signer.Address} could not sign block {block.Number}.");
 
             // Copy signature bytes (R and S)
