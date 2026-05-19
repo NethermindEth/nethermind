@@ -38,6 +38,7 @@ public class PersistenceManager(
     private readonly int _maxInMemoryReorgDepth = configuration.MaxInMemoryReorgDepth;
     private readonly int _longFinalityReorgDepth = configuration.LongFinalityReorgDepth;
     private readonly int _compactSize = configuration.CompactSize;
+    private readonly bool _enableLongFinality = configuration.EnableLongFinality;
     private readonly IPersistence _persistence = persistence;
     private readonly ISnapshotRepository _snapshotRepository = snapshotRepository;
     private readonly IFinalizedStateProvider _finalizedStateProvider = finalizedStateProvider;
@@ -82,7 +83,7 @@ public class PersistenceManager(
             {
                 try
                 {
-                    ProcessCompactBatch(batch);
+                    await ProcessCompactBatch(batch);
                 }
                 catch (Exception ex)
                 {
@@ -101,7 +102,7 @@ public class PersistenceManager(
         }
     }
 
-    private void ProcessCompactBatch(ArrayPoolList<StateId> batch)
+    private async Task ProcessCompactBatch(ArrayPoolList<StateId> batch)
     {
         if (batch.Count == 0) return;
 
@@ -134,7 +135,7 @@ public class PersistenceManager(
             Parallel.ForEach(kv.Value, state => _smallCompactor.DoCompactSnapshot(state));
 
         foreach (StateId boundary in boundaries)
-            _boundaryCompactJobs.Writer.WriteAsync(boundary).AsTask().Wait();
+            await _boundaryCompactJobs.Writer.WriteAsync(boundary, _cancelTokenSource.Token);
     }
 
     private async Task RunBoundaryCompactor(CancellationToken cancellationToken)
@@ -268,58 +269,66 @@ public class PersistenceManager(
         StateId currentPersistedState = GetCurrentPersistedStateId();
         long finalizedBlockNumber = _finalizedStateProvider.FinalizedBlockNumber;
         long snapshotsDepth = lastSnapshotNumber - currentPersistedState.BlockNumber;
-        if (snapshotsDepth - _compactSize < _minReorgDepth)
+
+        // Long-finality (HSST persisted-snapshot tier) decision branches. When the feature is
+        // disabled, skip the conversion/force-persist paths entirely and fall through to the
+        // normal finalized-snapshot-to-RocksDB persistence flow below — the behaviour predating
+        // the persisted-snapshot tier.
+        if (_enableLongFinality)
         {
-            long? earliestInMemory = TryGetSnapshotLevelToConvert();
-            if (earliestInMemory == null)
+            if (snapshotsDepth - _compactSize < _minReorgDepth)
             {
-                return (null, null, null);
+                long? earliestInMemory = TryGetSnapshotLevelToConvert();
+                if (earliestInMemory == null)
+                {
+                    return (null, null, null);
+                }
+
+                long inMemoryDepth = lastSnapshotNumber - earliestInMemory.Value;
+                if (inMemoryDepth <= _maxInMemoryReorgDepth + _compactSize)
+                {
+                    // No action needed
+                    return (null, null, null);
+                }
+
+                return (null, null, TryGetSnapshotLevelToConvert());
             }
 
-            long inMemoryDepth = lastSnapshotNumber - earliestInMemory.Value;
-            if (inMemoryDepth <= _maxInMemoryReorgDepth + _compactSize)
+            long afterPersistPersistedBlockNumber = currentPersistedState.BlockNumber + _compactSize;
+            if (afterPersistPersistedBlockNumber > finalizedBlockNumber)
             {
-                // No action needed
-                return (null, null, null);
+                if (snapshotsDepth <= _maxInMemoryReorgDepth)
+                {
+                    // No action needed
+                    return (null, null, null);
+                }
+
+                if (snapshotsDepth > _longFinalityReorgDepth)
+                {
+                    // Need to force persisted snapshot
+                    return (TryGetForcePersistedSnapshot(currentPersistedState, snapshotsDepth), null, null);
+                }
+
+                // Memory pressure with unfinalized state: convert to persisted snapshots instead of force-persisting to RocksDB.
+                // Mirror the ShallowDepth floor: never convert unless the in-memory window is wider than
+                // _maxInMemoryReorgDepth + _compactSize, otherwise we end up persisting (and removing from memory)
+                // the freshest snapshot before its parent edges exist on disk — producing gaps in Persisted.Base on restart.
+                long? earliestInMemoryUnf = TryGetSnapshotLevelToConvert();
+                if (earliestInMemoryUnf == null)
+                {
+                    return (null, null, null);
+                }
+
+                long inMemoryDepthUnf = lastSnapshotNumber - earliestInMemoryUnf.Value;
+                if (inMemoryDepthUnf <= _maxInMemoryReorgDepth + _compactSize)
+                {
+                    return (null, null, null);
+                }
+
+                if (_logger.IsWarn) _logger.Warn($"Very long unfinalized state. Converting to persisted snapshots. finalized block number is {finalizedBlockNumber}.");
+
+                return (null, null, earliestInMemoryUnf);
             }
-
-            return (null, null, TryGetSnapshotLevelToConvert());
-        }
-
-        long afterPersistPersistedBlockNumber = currentPersistedState.BlockNumber + _compactSize;
-        if (afterPersistPersistedBlockNumber > finalizedBlockNumber)
-        {
-            if (snapshotsDepth <= _maxInMemoryReorgDepth)
-            {
-                // No action needed
-                return (null, null, null);
-            }
-
-            if (snapshotsDepth > _longFinalityReorgDepth)
-            {
-                // Need to force persisted snapshot
-                return (TryGetForcePersistedSnapshot(currentPersistedState, snapshotsDepth), null, null);
-            }
-
-            // Memory pressure with unfinalized state: convert to persisted snapshots instead of force-persisting to RocksDB.
-            // Mirror the ShallowDepth floor: never convert unless the in-memory window is wider than
-            // _maxInMemoryReorgDepth + _compactSize, otherwise we end up persisting (and removing from memory)
-            // the freshest snapshot before its parent edges exist on disk — producing gaps in Persisted.Base on restart.
-            long? earliestInMemoryUnf = TryGetSnapshotLevelToConvert();
-            if (earliestInMemoryUnf == null)
-            {
-                return (null, null, null);
-            }
-
-            long inMemoryDepthUnf = lastSnapshotNumber - earliestInMemoryUnf.Value;
-            if (inMemoryDepthUnf <= _maxInMemoryReorgDepth + _compactSize)
-            {
-                return (null, null, null);
-            }
-
-            if (_logger.IsWarn) _logger.Warn($"Very long unfinalized state. Converting to persisted snapshots. finalized block number is {finalizedBlockNumber}.");
-
-            return (null, null, earliestInMemoryUnf);
         }
 
         (PersistedSnapshot? persistedSnapshot, Snapshot? snapshotToPersist) =
@@ -379,16 +388,19 @@ public class PersistenceManager(
                 }
 
                 // Parallel base conversion across the whole batch
-                Parallel.ForEach(allStateIds, state =>
-                {
-                    if (_snapshotRepository.TryLeaseState(state, out Snapshot? snapshot))
+                Parallel.ForEach(
+                    allStateIds,
+                    new ParallelOptions { CancellationToken = _cancelTokenSource.Token },
+                    state =>
                     {
-                        long sw = Stopwatch.GetTimestamp();
-                        _smallRepo.ConvertSnapshotToPersistedSnapshot(snapshot);
-                        _persistedSnapshotConvertTime.WithLabels("base").Observe(Stopwatch.GetTimestamp() - sw);
-                        snapshot.Dispose();
-                    }
-                });
+                        if (_snapshotRepository.TryLeaseState(state, out Snapshot? snapshot))
+                        {
+                            long sw = Stopwatch.GetTimestamp();
+                            _smallRepo.ConvertSnapshotToPersistedSnapshot(snapshot);
+                            _persistedSnapshotConvertTime.WithLabels("base").Observe(Stopwatch.GetTimestamp() - sw);
+                            snapshot.Dispose();
+                        }
+                    });
 
                 // Boundary-block compacted promotion (sequential; full-size compacted only exists at end)
                 for (int i = boundaryStart; i < allStateIds.Count; i++)
@@ -541,8 +553,7 @@ public class PersistenceManager(
             _trieNodesSortBuffer.Sort();
 
             long stateNodesSize = 0;
-            // foreach (var tn in snapshot.TrieNodes)
-            foreach ((Hash256, TreePath) k in _trieNodesSortBuffer.Select(v => ((Hash256, TreePath))v))
+            foreach ((Hash256, TreePath) k in _trieNodesSortBuffer)
             {
                 (_, TreePath path) = k;
 
@@ -570,8 +581,7 @@ public class PersistenceManager(
             _trieNodesSortBuffer.Sort();
 
             long storageNodesSize = 0;
-            // foreach (var tn in snapshot.TrieNodes)
-            foreach ((Hash256, TreePath) k in _trieNodesSortBuffer.Select(v => ((Hash256, TreePath))v))
+            foreach ((Hash256, TreePath) k in _trieNodesSortBuffer)
             {
                 (Hash256 address, TreePath path) = k;
 

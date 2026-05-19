@@ -52,7 +52,7 @@ public interface IFlatDbConfig : IConfig
     [ConfigItem(Description = "Enable long finality support with persisted snapshots", DefaultValue = "false")]
     bool EnableLongFinality { get; set; }
 
-    [ConfigItem(Description = "Total max reorg depth (in-memory + persisted). When exceeded, force-persist oldest HSST snapshot to RocksDB.", DefaultValue = "90000")]
+    [ConfigItem(Description = "Total max reorg depth in blocks (in-memory + persisted). When exceeded, force-persist oldest HSST snapshot to RocksDB.", DefaultValue = "90000")]
     int LongFinalityReorgDepth { get; set; }
 
     [ConfigItem(Description = "Path for persisted snapshot arena files (relative to data dir)", DefaultValue = "snapshots")]

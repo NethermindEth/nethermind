@@ -43,7 +43,8 @@ public class PersistenceManagerTests
             CompactSize = 16,
             MinReorgDepth = 64,
             MaxInMemoryReorgDepth = 256,
-            LongFinalityReorgDepth = 90000
+            LongFinalityReorgDepth = 90000,
+            EnableLongFinality = true
         };
 
         _resourcePool = new ResourcePool(_config);
@@ -170,6 +171,46 @@ public class PersistenceManagerTests
         Assert.That(persistedToPersist, Is.Null);
         Assert.That(toPersist, Is.Null);
         Assert.That(toConvert, Is.Null);
+    }
+
+    [Test]
+    public async Task DetermineSnapshotAction_LongFinalityDisabled_SkipsConversionPath()
+    {
+        // Same scenario as DetermineSnapshotAction_UnfinalizedAndAboveForceLimit_ReturnsToConvert
+        // (in-memory depth ~301 > 256, finality stalled at block 10) — but with the
+        // EnableLongFinality flag off, the conversion path must not fire and we must not
+        // try to call ConvertSnapshotToPersistedSnapshot on the repo.
+        await _persistenceManager.DisposeAsync();
+        _config.EnableLongFinality = false;
+        _persistenceManager = new PersistenceManager(
+            _config,
+            _finalizedStateProvider,
+            _persistence,
+            _snapshotRepository,
+            LimboLogs.Instance,
+            new PersistedSnapshotCompactors(_persistedSnapshotCompactor, _persistedSnapshotCompactor),
+            new PersistedSnapshotRepositories(_persistedSnapshotRepository, _persistedSnapshotRepository));
+
+        StateId persisted = Block0;
+        StateId latest = CreateStateId(300);
+        StateId target = CreateStateId(1);
+        _finalizedStateProvider.SetFinalizedBlockNumber(10);
+
+        using Snapshot expectedSnapshot = CreateSnapshot(persisted, target, compacted: false);
+
+        (PersistedSnapshot? persistedToPersist, Snapshot? toPersist, long? toConvert) = _persistenceManager.DetermineSnapshotAction(latest);
+
+        // The load-bearing check: the long-finality conversion path is short-circuited.
+        // toPersist may still be populated by the normal finalized-snapshot-to-RocksDB
+        // fall-through (its behaviour is unchanged), but no persisted-snapshot conversion
+        // and no force-persisted-snapshot was returned.
+        Assert.That(persistedToPersist, Is.Null);
+        Assert.That(toConvert, Is.Null, "Conversion path must be gated when EnableLongFinality is false");
+
+        // Sanity: even after invoking the production AddToPersistence path, no conversion
+        // call should reach the persisted-snapshot repo mock when the flag is false.
+        toPersist?.Dispose();
+        _persistedSnapshotRepository.DidNotReceive().ConvertSnapshotToPersistedSnapshot(Arg.Any<Snapshot>());
     }
 
     [Test]

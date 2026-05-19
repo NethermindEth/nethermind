@@ -3,6 +3,7 @@
 
 using System.Buffers.Binary;
 using System.Diagnostics;
+using System.IO;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics;
@@ -279,13 +280,6 @@ public sealed class PersistedSnapshot : RefCountingDisposable
                 Interlocked.Or(ref slots[w], AddressBoundCacheRefBit);
             addressBound = new Bound(lebOffset - valueLength, valueLength);
             useSpanReader = addressBound.Length <= AddressBoundWarmupBytes;
-            // if (useSpanReader)
-            // {
-            //     // Re-arm REF bits on every page of the (small) bound and pre-fault any cold
-            //     // page in one syscall. The cache-hit probe only touched the trailer page, so
-            //     // the rest of the bound has no tracker bookkeeping from this lookup.
-            //     _reservation.TouchRangePopulate(addressBound.Offset, addressBound.Length);
-            // }
             return true;
         }
 
@@ -524,11 +518,14 @@ public sealed class PersistedSnapshot : RefCountingDisposable
     private byte[] ReadBlobArenaRlp(ushort blobArenaId, int offset)
     {
         BlobArenaFile file = _blobManager.GetFile(blobArenaId);
-        using NativeMemoryList<byte> rented = new(MaxTrieNodeRlpBytes, MaxTrieNodeRlpBytes);
-        Span<byte> buf = rented.AsSpan();
+        Span<byte> buf = stackalloc byte[MaxTrieNodeRlpBytes];
         int bytesRead = file.RandomRead(offset, buf);
         Rlp.ValueDecoderContext ctx = new(buf[..bytesRead]);
         int totalLength = ctx.PeekNextRlpLength();
+        if (totalLength > bytesRead)
+            throw new InvalidDataException(
+                $"Trie-node RLP at blob arena {blobArenaId}+{offset} declares {totalLength} bytes " +
+                $"but only {bytesRead} were read (MaxTrieNodeRlpBytes = {MaxTrieNodeRlpBytes}).");
         byte[] result = new byte[totalLength];
         buf[..totalLength].CopyTo(result);
         return result;

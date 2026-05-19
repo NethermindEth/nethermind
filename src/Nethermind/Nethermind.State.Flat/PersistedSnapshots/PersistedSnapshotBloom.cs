@@ -35,6 +35,23 @@ public sealed class PersistedSnapshotBloom : RefCountingDisposable
         Interlocked.Add(ref Metrics._persistedSnapshotBloomMemory, bloom.DataBytes);
     }
 
+    /// <remarks>
+    /// When <paramref name="immortal"/> is true, the lease counter is initialised to a
+    /// value high enough that no realistic Acquire/Release sequence can reach zero, so
+    /// <see cref="CleanUp"/> will never run. Used for the <see cref="AlwaysTrue"/>
+    /// sentinel; not exposed publicly.
+    /// </remarks>
+    private PersistedSnapshotBloom(StateId from, StateId to, BloomFilter bloom, bool immortal)
+        : this(from, to, bloom)
+    {
+        if (immortal)
+        {
+            // Direct field write is safe here: this constructor is invoked only from the
+            // static initialiser for s_alwaysTrue, before any thread has access to the instance.
+            _leases.Value = long.MaxValue / 2;
+        }
+    }
+
     /// <summary>Lease for an additional concurrent user. Returns false if already disposed.</summary>
     public bool TryAcquire() => TryAcquireLease();
 
@@ -57,13 +74,6 @@ public sealed class PersistedSnapshotBloom : RefCountingDisposable
     /// </summary>
     public static PersistedSnapshotBloom AlwaysTrue => s_alwaysTrue;
 
-    private static PersistedSnapshotBloom CreateAlwaysTrue()
-    {
-        PersistedSnapshotBloom sentinel = new(StateId.PreGenesis, StateId.PreGenesis, BloomFilter.AlwaysTrue());
-        // Set leases very high so all decrement paths never reach zero.
-        // Direct field write is safe here: this is called inside the static
-        // initialiser before any thread has access to the instance.
-        sentinel._leases.Value = long.MaxValue / 2;
-        return sentinel;
-    }
+    private static PersistedSnapshotBloom CreateAlwaysTrue() =>
+        new(StateId.PreGenesis, StateId.PreGenesis, BloomFilter.AlwaysTrue(), immortal: true);
 }

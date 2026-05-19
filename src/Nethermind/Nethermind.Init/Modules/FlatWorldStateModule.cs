@@ -70,6 +70,19 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
             .AddSingleton<PerTierState>((ctx) =>
             {
                 IFlatDbConfig cfg = ctx.Resolve<IFlatDbConfig>();
+
+                // Feature flag off: skip arena / blob / catalog construction entirely and wire
+                // null implementations. Conversion paths in PersistenceManager.DetermineSnapshotAction
+                // are also gated on this flag, so no ConvertSnapshotToPersistedSnapshot call will
+                // ever reach the repo — this guarantees no on-disk artefacts under
+                // `<data-dir>/persisted_snapshot/`.
+                if (!cfg.EnableLongFinality)
+                {
+                    return new PerTierState(
+                        new PersistedSnapshotRepositories(NullPersistedSnapshotRepository.Instance, NullPersistedSnapshotRepository.Instance),
+                        new PersistedSnapshotCompactors(NullPersistedSnapshotCompactor.Instance, NullPersistedSnapshotCompactor.Instance));
+                }
+
                 ILogManager logManager = ctx.Resolve<ILogManager>();
                 string basePath = Path.Combine(ctx.Resolve<IInitConfig>().BaseDbPath, "persisted_snapshot");
                 IColumnsDb<FlatDbColumns> columns = ctx.Resolve<IColumnsDb<FlatDbColumns>>();
