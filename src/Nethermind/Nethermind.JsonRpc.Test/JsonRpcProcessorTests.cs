@@ -369,10 +369,10 @@ public class JsonRpcProcessorTests(bool returnErrors)
         IJsonRpcService service = Substitute.For<IJsonRpcService>();
         service.SendRequestAsync(Arg.Any<JsonRpcRequest>(), Arg.Any<JsonRpcContext>())
             .Returns(static ci => new JsonRpcSuccessResponse { Id = ci.Arg<JsonRpcRequest>().Id });
-        service.GetErrorResponse(Arg.Any<int>(), Arg.Any<string>(), Arg.Any<object?>(), Arg.Any<string?>())
+        service.GetErrorResponse(Arg.Any<int>(), Arg.Any<string>(), Arg.Any<JsonRpcId?>(), Arg.Any<string?>())
             .Returns(static ci => new JsonRpcErrorResponse
             {
-                Id = JsonRpcId.FromObject(ci.ArgAt<object?>(2)),
+                Id = JsonRpcId.FromObject(ci.ArgAt<JsonRpcId?>(2)),
                 Error = new Error { Code = ci.ArgAt<int>(0), Message = ci.ArgAt<string>(1) }
             });
 

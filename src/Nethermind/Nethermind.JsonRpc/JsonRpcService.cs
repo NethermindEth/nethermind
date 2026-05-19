@@ -762,8 +762,8 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
         return response;
     }
 
-    public JsonRpcErrorResponse GetErrorResponse(int errorCode, string errorMessage, object? id = null, string? methodName = null) =>
-        GetErrorResponse(methodName ?? string.Empty, errorCode, errorMessage, null, JsonRpcId.FromObject(id));
+    public JsonRpcErrorResponse GetErrorResponse(int errorCode, string errorMessage, JsonRpcId? id = null, string? methodName = null) =>
+        GetErrorResponse(methodName ?? string.Empty, errorCode, errorMessage, null, id ?? JsonRpcId.Null);
 
     private JsonRpcErrorResponse GetErrorResponse(
         string methodName,
