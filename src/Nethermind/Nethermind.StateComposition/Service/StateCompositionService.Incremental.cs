@@ -4,6 +4,7 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Trie;
@@ -54,10 +55,34 @@ internal sealed partial class StateCompositionService
             head = _blockTree.Head;
             if (head?.Header.StateRoot is null || prevRoot == Hash256.Zero || head.Header.StateRoot == prevRoot) return;
 
-            using IReadOnlyTrieStore readOnlyStore = _worldStateManager.CreateReadOnlyTrieStore();
-            IScopedTrieStore resolver = readOnlyStore.GetTrieStore(null);
+            long prevBlock = _stateHolder.IncrementalBlock;
+            if (head.Number < prevBlock) return;
 
-            TrieDiff diff = _diffWalker.ComputeDiff(prevRoot, head.Header.StateRoot, resolver);
+            BlockHeader? prevHeader = _blockTree.FindHeader(prevBlock, BlockTreeLookupOptions.RequireCanonical);
+            if (prevHeader is null)
+            {
+                Metrics.StateCompBaselineInvalidations++;
+                _stateHolder.InvalidateBaseline();
+                if (_logger.IsWarn)
+                    _logger.Warn(
+                        $"StateComposition: baseline header at block {prevBlock} no longer canonical " +
+                        $"(prevRoot={prevRoot}); invalidated baseline and scheduling a full rescan.");
+                ScheduleBaselineRescan(head);
+                return;
+            }
+
+            // Diffing across two state roots needs each side resolved against
+            // its own scope: under FlatDb, `BeginScope` only materialises the
+            // bundle for one block, so a single resolver makes the other
+            // side's nodes look Unknown and silently zeroes the diff.
+            using IReadOnlyTrieStore oldStore = _worldStateManager.CreateReadOnlyTrieStore();
+            using IDisposable oldScope = BeginScopeOrThrowMissing(oldStore, prevHeader, prevRoot);
+            using IReadOnlyTrieStore newStore = _worldStateManager.CreateReadOnlyTrieStore();
+            using IDisposable newScope = BeginScopeOrThrowMissing(newStore, head.Header, head.Header.StateRoot);
+            IScopedTrieStore oldResolver = oldStore.GetTrieStore(null);
+            IScopedTrieStore newResolver = newStore.GetTrieStore(null);
+
+            TrieDiff diff = _diffWalker.ComputeDiff(prevRoot, head.Header.StateRoot, oldResolver, newResolver);
             // Size-lookup lambda is invoked once per newly-observed code hash,
             // not per reference, so cost stays bounded by distinct new hashes.
             CumulativeTrieStats updated = _stateHolder.ApplyIncrementalDiffAndUpdate(
@@ -76,10 +101,11 @@ internal sealed partial class StateCompositionService
                 _logger.Debug($"StateComposition: incremental diff applied at block {head.Number}, " +
                               $"accounts={updated.AccountsTotal}, slots={updated.StorageSlotsTotal}");
         }
+        // Two paths fold into this handler: (1) ComputeDiff hit a pruned-out node,
+        // (2) BeginScopeOrThrowMissing wrapped FlatDb's "stale bundle"
+        // InvalidOperationException as MissingTrieNodeException. Both recover identically.
         catch (MissingTrieNodeException ex)
         {
-            // prevRoot is no longer in the trie DB (pruning window exceeded).
-            // Invalidate so OnNewHeadBlock stops dispatching diffs, then rescan.
             Metrics.StateCompBaselineInvalidations++;
             _stateHolder.InvalidateBaseline();
             if (_logger.IsWarn)
@@ -113,6 +139,24 @@ internal sealed partial class StateCompositionService
     }
 
     /// <summary>
+    /// Translate FlatDb's <see cref="InvalidOperationException"/> on a stale bundle
+    /// into <see cref="MissingTrieNodeException"/> so the outer catch handles both backends.
+    /// </summary>
+    private static IDisposable BeginScopeOrThrowMissing(IReadOnlyTrieStore store, BlockHeader header, Hash256 root)
+    {
+        try
+        {
+            return store.BeginScope(header);
+        }
+        catch (InvalidOperationException ex)
+        {
+            throw new MissingTrieNodeException(
+                $"BeginScope failed for block {header.Number}: {ex.Message}",
+                address: null, TreePath.Empty, root, innerException: ex);
+        }
+    }
+
+    /// <summary>
     /// Fire-and-forget a full rescan after a stale-baseline detection. Runs
     /// outside <c>_diffLock</c> because the scan is long-running. <c>AnalyzeAsync</c>
     /// already serialises via <c>_scanLock</c> with fail-fast semantics, so
@@ -120,8 +164,7 @@ internal sealed partial class StateCompositionService
     /// </summary>
     private void ScheduleBaselineRescan(Block? head)
     {
-        BlockHeader? header = head?.Header ?? _blockTree.Head?.Header;
-        if (header is null) return;
+        if (head?.Header is not BlockHeader header) return;
 
         FireAndForget.Run(
             async () =>

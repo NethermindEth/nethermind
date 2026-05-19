@@ -4,6 +4,7 @@
 #nullable enable
 
 using System;
+using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
@@ -17,6 +18,7 @@ using Nethermind.StateComposition.Service;
 using Nethermind.StateComposition.Snapshots;
 using Nethermind.StateComposition.Test.Helpers;
 using Nethermind.Trie;
+using Nethermind.Trie.Pruning;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -80,6 +82,8 @@ public class StateCompositionServiceIncrementalRecoveryTests
 
         Block headBlock = Build.A.Block.WithNumber(101).WithStateRoot(NewRoot).TestObject;
         blockTree.Head.Returns(headBlock);
+        blockTree.FindHeader(100, Arg.Any<BlockTreeLookupOptions>())
+            .Returns(Build.A.BlockHeader.WithNumber(100).WithStateRoot(PrevRoot).TestObject);
 
         // Simulate pruned baseline: opening a read-only store for the diff throws
         // the exact exception TrieNode.ResolveNode raises when the root is gone.
@@ -137,6 +141,8 @@ public class StateCompositionServiceIncrementalRecoveryTests
 
         Block headBlock = Build.A.Block.WithNumber(101).WithStateRoot(NewRoot).TestObject;
         blockTree.Head.Returns(headBlock);
+        blockTree.FindHeader(100, Arg.Any<BlockTreeLookupOptions>())
+            .Returns(Build.A.BlockHeader.WithNumber(100).WithStateRoot(PrevRoot).TestObject);
 
         worldStateManager.CreateReadOnlyTrieStore()
             .Returns(_ => throw new InvalidOperationException("boom"));
@@ -156,6 +162,45 @@ public class StateCompositionServiceIncrementalRecoveryTests
             Assert.That(stateHolder.LastProcessedStateRoot, Is.EqualTo(PrevRoot),
                 "Baseline must be intact — recovery is only for MissingTrieNodeException.");
         }
+    }
+
+    [Test]
+    public void RunIncrementalDiff_HeadBehindBaseline_DefersWithoutInvalidating()
+    {
+        long invalidationsBefore = Metrics.StateCompBaselineInvalidations;
+        long diffErrorsBefore = Metrics.StateCompDiffErrors;
+
+        IStateReader stateReader = Substitute.For<IStateReader>();
+        IWorldStateManager worldStateManager = Substitute.For<IWorldStateManager>();
+        IBlockTree blockTree = Substitute.For<IBlockTree>();
+        StateCompositionStateHolder stateHolder = new();
+
+        SeedBaseline(stateHolder, blockNumber: 100, stateRoot: PrevRoot);
+
+        // Head is BEHIND the baseline (transient init state).
+        Block staleHead = Build.A.Block.WithNumber(50).WithStateRoot(NewRoot).TestObject;
+        blockTree.Head.Returns(staleHead);
+
+        using StateCompositionService service = new(
+            stateReader, worldStateManager, blockTree, stateHolder,
+            CreateSnapshotStore(), CreateConfig(), LimboLogs.Instance);
+
+        service.RunIncrementalDiff();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Metrics.StateCompBaselineInvalidations, Is.EqualTo(invalidationsBefore),
+                "Deferred diff must NOT touch the baseline-invalidation counter.");
+            Assert.That(Metrics.StateCompDiffErrors, Is.EqualTo(diffErrorsBefore),
+                "Deferred diff must NOT touch the diff-errors counter.");
+            Assert.That(stateHolder.LastProcessedStateRoot, Is.EqualTo(PrevRoot),
+                "Baseline state root must be retained — the deferral leaves it untouched.");
+            Assert.That(stateHolder.IncrementalBlock, Is.EqualTo(100),
+                "Incremental block must stay at the baseline value while we wait.");
+        }
+
+        worldStateManager.DidNotReceive().CreateReadOnlyTrieStore();
+        blockTree.DidNotReceive().FindHeader(Arg.Any<long>(), Arg.Any<BlockTreeLookupOptions>());
     }
 
     [Test]
@@ -195,6 +240,127 @@ public class StateCompositionServiceIncrementalRecoveryTests
         }
     }
 
+    [Test]
+    public void RunIncrementalDiff_OpensScopeOnBothPrevAndHeadBeforeAcquiringResolver()
+    {
+        long diffErrorsBefore = Metrics.StateCompDiffErrors;
+
+        List<BlockHeader?> scopedHeaders = [];
+        IReadOnlyTrieStore readOnlyStore = Substitute.For<IReadOnlyTrieStore>();
+        readOnlyStore.BeginScope(Arg.Any<BlockHeader?>())
+            .Returns(call =>
+            {
+                scopedHeaders.Add((BlockHeader?)call[0]);
+                return Substitute.For<IDisposable>();
+            });
+        readOnlyStore.GetTrieStore(Arg.Any<Hash256?>())
+            .Returns(_ =>
+            {
+                if (scopedHeaders.Count == 0)
+                    throw new InvalidOperationException("BeginScope has not been called");
+                throw new BeginScopeSentinel();
+            });
+
+        IStateReader stateReader = Substitute.For<IStateReader>();
+        IWorldStateManager worldStateManager = Substitute.For<IWorldStateManager>();
+        worldStateManager.CreateReadOnlyTrieStore().Returns(readOnlyStore);
+        IBlockTree blockTree = Substitute.For<IBlockTree>();
+        StateCompositionStateHolder stateHolder = new();
+        SeedBaseline(stateHolder, blockNumber: 100, stateRoot: PrevRoot);
+
+        Block headBlock = Build.A.Block.WithNumber(101).WithStateRoot(NewRoot).TestObject;
+        BlockHeader prevHeader = Build.A.BlockHeader.WithNumber(100).WithStateRoot(PrevRoot).TestObject;
+        blockTree.Head.Returns(headBlock);
+        blockTree.FindHeader(100, Arg.Any<BlockTreeLookupOptions>()).Returns(prevHeader);
+
+        using StateCompositionService service = new(
+            stateReader, worldStateManager, blockTree, stateHolder,
+            CreateSnapshotStore(), CreateConfig(), LimboLogs.Instance);
+
+        service.RunIncrementalDiff();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(scopedHeaders, Has.Count.EqualTo(2),
+                "Both prev and head must be scoped before any node resolution.");
+            Assert.That(scopedHeaders[0], Is.SameAs(prevHeader),
+                "Prev header must be scoped first so old-side reads land in the prev bundle.");
+            Assert.That(scopedHeaders[1], Is.SameAs(headBlock.Header),
+                "Head header must be scoped before the new-side resolver is acquired.");
+            Assert.That(Metrics.StateCompDiffErrors, Is.EqualTo(diffErrorsBefore + 1),
+                "BeginScopeSentinel propagates as a generic diff error — confirms the call site executed end-to-end.");
+        }
+    }
+
+    [Test]
+    public void RunIncrementalDiff_BeginScopeThrowsInvalidOperation_InvalidatesBaseline()
+    {
+        long invalidationsBefore = Metrics.StateCompBaselineInvalidations;
+        long diffErrorsBefore = Metrics.StateCompDiffErrors;
+
+        IReadOnlyTrieStore readOnlyStore = Substitute.For<IReadOnlyTrieStore>();
+        readOnlyStore.BeginScope(Arg.Any<BlockHeader?>())
+            .Returns(_ => throw new InvalidOperationException(
+                "Unable to gather snapshots for state StateId { BlockNumber = 100, StateRoot = 0x... }."));
+
+        IStateReader stateReader = Substitute.For<IStateReader>();
+        IWorldStateManager worldStateManager = Substitute.For<IWorldStateManager>();
+        worldStateManager.CreateReadOnlyTrieStore().Returns(readOnlyStore);
+        IBlockTree blockTree = Substitute.For<IBlockTree>();
+        StateCompositionStateHolder stateHolder = new();
+
+        SeedBaseline(stateHolder, blockNumber: 100, stateRoot: PrevRoot);
+        Block headBlock = Build.A.Block.WithNumber(101).WithStateRoot(NewRoot).TestObject;
+        blockTree.Head.Returns(headBlock);
+        blockTree.FindHeader(100, Arg.Any<BlockTreeLookupOptions>())
+            .Returns(Build.A.BlockHeader.WithNumber(100).WithStateRoot(PrevRoot).TestObject);
+
+        using StateCompositionService service = new(
+            stateReader, worldStateManager, blockTree, stateHolder,
+            CreateSnapshotStore(), CreateConfig(), LimboLogs.Instance);
+
+        service.RunIncrementalDiff();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Metrics.StateCompBaselineInvalidations, Is.EqualTo(invalidationsBefore + 1),
+                "BeginScope's InvalidOperationException must route through the baseline-invalidation recovery path.");
+            Assert.That(Metrics.StateCompDiffErrors, Is.EqualTo(diffErrorsBefore),
+                "Recoverable bundle-gather failures must NOT count toward diff_errors.");
+        }
+    }
+
+    [Test]
+    public void RunIncrementalDiff_PrevHeaderMissing_InvalidatesBaselineAndRescans()
+    {
+        long invalidationsBefore = Metrics.StateCompBaselineInvalidations;
+        long diffErrorsBefore = Metrics.StateCompDiffErrors;
+
+        IStateReader stateReader = Substitute.For<IStateReader>();
+        IWorldStateManager worldStateManager = Substitute.For<IWorldStateManager>();
+        IBlockTree blockTree = Substitute.For<IBlockTree>();
+        StateCompositionStateHolder stateHolder = new();
+        SeedBaseline(stateHolder, blockNumber: 100, stateRoot: PrevRoot);
+
+        Block headBlock = Build.A.Block.WithNumber(101).WithStateRoot(NewRoot).TestObject;
+        blockTree.Head.Returns(headBlock);
+        blockTree.FindHeader(100, Arg.Any<BlockTreeLookupOptions>()).Returns((BlockHeader?)null);
+
+        using StateCompositionService service = new(
+            stateReader, worldStateManager, blockTree, stateHolder,
+            CreateSnapshotStore(), CreateConfig(), LimboLogs.Instance);
+
+        service.RunIncrementalDiff();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Metrics.StateCompBaselineInvalidations, Is.EqualTo(invalidationsBefore + 1),
+                "Missing prev header must invalidate the baseline.");
+            Assert.That(Metrics.StateCompDiffErrors, Is.EqualTo(diffErrorsBefore),
+                "Missing prev header is a recoverable condition; it must NOT count as a diff error.");
+        }
+    }
+
     private static async Task WaitForConditionAsync(Func<bool> condition, TimeSpan timeout, string message)
     {
         using CancellationTokenSource cts = new(timeout);
@@ -210,4 +376,6 @@ public class StateCompositionServiceIncrementalRecoveryTests
             Assert.Fail(message);
         }
     }
+
+    private sealed class BeginScopeSentinel : Exception;
 }

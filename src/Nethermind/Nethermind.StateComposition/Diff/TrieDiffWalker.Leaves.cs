@@ -7,13 +7,12 @@ using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Trie;
-using Nethermind.Trie.Pruning;
 
 namespace Nethermind.StateComposition.Diff;
 
 internal sealed partial class TrieDiffWalker
 {
-    private void DiffLeaves(TrieNode oldLeaf, TrieNode newLeaf, ref TreePath path, bool isStorage, int depth)
+    private void DiffLeaves(TrieNode oldLeaf, TrieNode newLeaf, ref TreePath path, ResolverPair resolvers, bool isStorage, int depth)
     {
         RecordNode(NodeType.Leaf, oldLeaf.FullRlp.Length, isStorage, added: false);
         RecordNode(NodeType.Leaf, newLeaf.FullRlp.Length, isStorage, added: true);
@@ -30,10 +29,10 @@ internal sealed partial class TrieDiffWalker
             return;
         }
 
-        DecodeAndDiffAccountLeaves(oldLeaf, newLeaf, ref path);
+        DecodeAndDiffAccountLeaves(oldLeaf, newLeaf, ref path, resolvers);
     }
 
-    private void DecodeAndDiffAccountLeaves(TrieNode oldLeaf, TrieNode newLeaf, ref TreePath path)
+    private void DecodeAndDiffAccountLeaves(TrieNode oldLeaf, TrieNode newLeaf, ref TreePath path, ResolverPair resolvers)
     {
         if (!TryDecodeAccount(oldLeaf, out AccountStruct oldAccount) ||
             !TryDecodeAccount(newLeaf, out AccountStruct newAccount))
@@ -65,13 +64,13 @@ internal sealed partial class TrieDiffWalker
         Hash256? normalizedOldStorage = oldAccount.HasStorage ? new Hash256(oldAccount.StorageRoot) : null;
         Hash256? normalizedNewStorage = newAccount.HasStorage ? new Hash256(newAccount.StorageRoot) : null;
 
-        ITrieNodeResolver storageResolver = _rootResolver.GetStorageTrieNodeResolver(addressHash);
+        ResolverPair storageResolvers = resolvers.ForStorage(addressHash);
         TreePath storagePath = TreePath.Empty;
 
         BeginContractStorage(addressHash.ValueHash256);
         try
         {
-            DiffSubtree(normalizedOldStorage, normalizedNewStorage, ref storagePath, storageResolver, isStorage: true, depth: 0);
+            DiffSubtree(normalizedOldStorage, normalizedNewStorage, ref storagePath, storageResolvers, isStorage: true, depth: 0);
         }
         finally
         {
