@@ -1,8 +1,6 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Numerics;
-using System.Runtime.Intrinsics;
 using Nethermind.Core.Crypto;
 using Nethermind.Network.Discovery.Kademlia;
 using NUnit.Framework;
