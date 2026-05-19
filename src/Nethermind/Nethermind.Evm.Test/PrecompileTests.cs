@@ -68,20 +68,21 @@ public abstract class PrecompileTests<TPrecompile, TTests> : IPrecompileTests
             RunTest(normalized, testCase, "normalized input should produce same output");
     }
 
-    protected void RunTest(string input, string output, bool status)
+    protected void RunTest(string input, string output, bool status, IReleaseSpec? spec = null)
     {
         byte[] inputData = Convert.FromHexString(input);
         byte[] outputData = Convert.FromHexString(output);
-        RunTest(inputData, outputData, status);
+        RunTest(inputData, outputData, status, spec);
 
         ReadOnlyMemory<byte> normalized = Instance.NormalizeInput(inputData);
         if (!normalized.Span.SequenceEqual(inputData))
-            RunTest(normalized, outputData, status, "normalized input should produce same output");
+            RunTest(normalized, outputData, status, spec, "normalized input should produce same output");
     }
 
-    private static void RunTest(ReadOnlyMemory<byte> input, byte[] output, bool status, string? reason = null)
+    private static void RunTest(ReadOnlyMemory<byte> input, byte[] output, bool status, IReleaseSpec? spec, string? reason = null)
     {
-        Result<byte[]> result = Instance.Run(input, DefaultSpec);
+        spec ??= DefaultSpec;
+        Result<byte[]> result = Instance.Run(input, spec);
 
         using (Assert.EnterMultipleScope())
         {
