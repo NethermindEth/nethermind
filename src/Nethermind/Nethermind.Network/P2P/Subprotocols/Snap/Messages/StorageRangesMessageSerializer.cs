@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using DotNetty.Buffers;
+using System;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -33,14 +34,15 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
             else
             {
                 stream.StartSequence(allSlotsLength);
+                ReadOnlySpan<IOwnedReadOnlyList<PathWithStorageSlot>> slotsSpan = message.Slots.AsSpan();
 
-                for (int i = 0; i < message.Slots.Count; i++)
+                for (int i = 0; i < slotsSpan.Length; i++)
                 {
                     stream.StartSequence(accountSlotsLengths[i]);
 
-                    IOwnedReadOnlyList<PathWithStorageSlot> accountSlots = message.Slots[i];
+                    ReadOnlySpan<PathWithStorageSlot> accountSlots = slotsSpan[i].AsSpan();
 
-                    for (int j = 0; j < accountSlots.Count; j++)
+                    for (int j = 0; j < accountSlots.Length; j++)
                     {
                         PathWithStorageSlot slot = accountSlots[j];
 
@@ -106,13 +108,15 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
             {
                 if (slots is not null && slotsCount != 0)
                 {
-                    for (int i = 0; i < slotsCount; i++)
+                    ReadOnlySpan<IOwnedReadOnlyList<PathWithStorageSlot>> slotsSpan = slots.AsSpan();
+                    for (int i = 0; i < slotsSpan.Length; i++)
                     {
                         int accountSlotsLength = 0;
 
-                        IOwnedReadOnlyList<PathWithStorageSlot> accountSlots = slots[i];
-                        foreach (ref readonly PathWithStorageSlot slot in accountSlots.AsSpan())
+                        ReadOnlySpan<PathWithStorageSlot> accountSlots = slotsSpan[i].AsSpan();
+                        for (int j = 0; j < accountSlots.Length; j++)
                         {
+                            PathWithStorageSlot slot = accountSlots[j];
                             int slotLength = Rlp.LengthOf(slot.Path) + Rlp.LengthOf(slot.SlotRlpValue);
                             accountSlotsLength += Rlp.LengthOfSequence(slotLength);
                         }

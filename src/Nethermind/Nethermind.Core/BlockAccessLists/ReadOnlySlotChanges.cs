@@ -75,8 +75,9 @@ public class ReadOnlySlotChanges : IEquatable<ReadOnlySlotChanges>
 
     public override string ToString() => $"{Key}:[{string.Join(", ", Changes)}]";
 
-    /// <summary>Last storage change strictly before <paramref name="blockAccessIndex"/>;
-    /// <c>false</c> if none — caller can fall through to a parent-state reader.</summary>
+    /// <summary>
+    /// Last storage change strictly before <paramref name="blockAccessIndex"/>; <c>false</c> if none.
+    /// </summary>
     public bool TryGetLastBefore(uint blockAccessIndex, out StorageChange storageChange)
     {
         if (_count == 0)
@@ -94,20 +95,12 @@ public class ReadOnlySlotChanges : IEquatable<ReadOnlySlotChanges>
             storageChange = default;
             return false;
         }
-        ReadOnlySpan<uint> indices = _indices!;
-        int idx = indices.BinarySearch(blockAccessIndex);
-        // idx (if found) or ~idx (if not) is the first entry with Index >= target; one earlier is strictly-before.
-        int lastBefore = (idx >= 0 ? idx : ~idx) - 1;
-        if (lastBefore < 0)
-        {
-            storageChange = default;
-            return false;
-        }
-        storageChange = _multiple[lastBefore];
-        return true;
+        return IndexLane.TryGetLastBefore(_indices!, _multiple, blockAccessIndex, out storageChange);
     }
 
-    /// <summary>The change recorded at exactly <paramref name="index"/>, if any.</summary>
+    /// <summary>
+    /// The change at exactly <paramref name="index"/>, if any.
+    /// </summary>
     public bool TryGetAtIndex(uint index, out StorageChange storageChange)
     {
         if (_count == 0)
@@ -125,21 +118,13 @@ public class ReadOnlySlotChanges : IEquatable<ReadOnlySlotChanges>
             storageChange = default;
             return false;
         }
-        int idx = ((ReadOnlySpan<uint>)_indices!).BinarySearch(index);
-        if (idx >= 0)
-        {
-            storageChange = _multiple[idx];
-            return true;
-        }
-        storageChange = default;
-        return false;
+        return IndexLane.TryGetExact(_indices!, _multiple, index, out storageChange);
     }
 
-    /// <summary>True iff this slot has a change recorded at exactly <paramref name="index"/>.</summary>
     public bool HasAtIndex(uint index)
     {
         if (_count == 0) return false;
         if (_multiple is null) return _first.Index == index;
-        return ((ReadOnlySpan<uint>)_indices!).BinarySearch(index) >= 0;
+        return IndexLane.HasExact(_indices!, index);
     }
 }

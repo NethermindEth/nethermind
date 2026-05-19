@@ -23,7 +23,7 @@ namespace Nethermind.Network.P2P.Messages
             stream.Encode(msg.P2PVersion);
             stream.Encode(msg.ClientId);
             stream.StartSequence(innerLength);
-            foreach (Capability? capability in msg.Capabilities)
+            foreach (Capability? capability in msg.Capabilities.AsSpan())
             {
                 string protocolCode = capability.ProtocolCode.ToLowerInvariant();
                 int capabilityLength = Rlp.LengthOf(protocolCode);
@@ -43,7 +43,7 @@ namespace Nethermind.Network.P2P.Messages
             contentLength += Rlp.LengthOf(msg.P2PVersion);
             contentLength += Rlp.LengthOf(msg.ClientId);
             int innerContentLength = 0;
-            foreach (Capability? capability in msg.Capabilities)
+            foreach (Capability? capability in msg.Capabilities.AsSpan())
             {
                 int capabilityLength = Rlp.LengthOf(capability.ProtocolCode.ToLowerInvariant());
                 capabilityLength += Rlp.LengthOf(capability.Version);

@@ -2,15 +2,13 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Runtime.CompilerServices;
 
 namespace Nethermind.Core.BlockAccessLists;
 
 /// <summary>
 /// Concatenated <c>uint</c> index lane covering an account's balance / nonce / code change
-/// families. One allocation backs all three; per-family spans are carved out via the
-/// <see cref="Balance"/>, <see cref="Nonce"/>, <see cref="Code"/> accessors. Drives binary-search
-/// lookups over a dense 4-byte key per element instead of walking the fat change structs.
+/// families. One allocation backs all three; the lane exposes per-family lookup helpers that
+/// binary-search the dense 4-byte key array, avoiding a walk over the fat change structs.
 /// </summary>
 internal readonly struct AccountIndexLane
 {
@@ -32,45 +30,28 @@ internal readonly struct AccountIndexLane
             return;
         }
 
-        uint[] indices = new uint[total];
-        for (int i = 0; i < balance; i++) indices[i] = balanceChanges[i].Index;
-        int nonceStart = balance;
-        for (int i = 0; i < nonce; i++) indices[nonceStart + i] = nonceChanges[i].Index;
-        int codeStart = nonceStart + nonce;
-        for (int i = 0; i < code; i++) indices[codeStart + i] = codeChanges[i].Index;
-
-        _indices = indices;
-        _nonceStart = nonceStart;
-        _codeStart = codeStart;
+        _indices = new uint[total];
+        for (int i = 0; i < balance; i++) _indices[i] = balanceChanges[i].Index;
+        _nonceStart = balance;
+        for (int i = 0; i < nonce; i++) _indices[_nonceStart + i] = nonceChanges[i].Index;
+        _codeStart = _nonceStart + nonce;
+        for (int i = 0; i < code; i++) _indices[_codeStart + i] = codeChanges[i].Index;
     }
 
-    public ReadOnlySpan<uint> Balance => _indices.AsSpan(0, _nonceStart);
-    public ReadOnlySpan<uint> Nonce => _indices.AsSpan(_nonceStart, _codeStart - _nonceStart);
-    public ReadOnlySpan<uint> Code => _indices.AsSpan(_codeStart);
+    private ReadOnlySpan<uint> Balances => _indices.AsSpan(0, _nonceStart);
+    private ReadOnlySpan<uint> Nonces => _indices.AsSpan(_nonceStart, _codeStart - _nonceStart);
+    private ReadOnlySpan<uint> Codes => _indices.AsSpan(_codeStart);
 
-    /// <summary>Entry from <paramref name="values"/> at exactly <c>Index == index</c>, or null.</summary>
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static T? GetExact<T>(ReadOnlySpan<uint> indices, T[] values, uint index) where T : struct
-    {
-        int idx = indices.BinarySearch(index);
-        return idx >= 0 ? values[idx] : null;
-    }
+    public BalanceChange? GetExact(BalanceChange[] values, uint index) => IndexLane.GetExact(Balances, values, index);
+    public NonceChange? GetExact(NonceChange[] values, uint index) => IndexLane.GetExact(Nonces, values, index);
+    public CodeChange? GetExact(CodeChange[] values, uint index) => IndexLane.GetExact(Codes, values, index);
 
-    /// <summary>Entry with the largest Index strictly less than <paramref name="blockAccessIndex"/>;
-    /// returns <c>false</c> if none.</summary>
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static bool TryGetLastBefore<T>(ReadOnlySpan<uint> indices, T[] values, uint blockAccessIndex, out T last) where T : struct
-    {
-        int idx = indices.BinarySearch(blockAccessIndex);
-        // idx (if found) or ~idx (if not) is the position of the first entry with Index >= target;
-        // strictly-before is one step earlier.
-        int lastBefore = (idx >= 0 ? idx : ~idx) - 1;
-        if (lastBefore < 0)
-        {
-            last = default;
-            return false;
-        }
-        last = values[lastBefore];
-        return true;
-    }
+    public bool TryGetLastBefore(BalanceChange[] values, uint blockAccessIndex, out BalanceChange last)
+        => IndexLane.TryGetLastBefore(Balances, values, blockAccessIndex, out last);
+
+    public bool TryGetLastBefore(NonceChange[] values, uint blockAccessIndex, out NonceChange last)
+        => IndexLane.TryGetLastBefore(Nonces, values, blockAccessIndex, out last);
+
+    public bool TryGetLastBefore(CodeChange[] values, uint blockAccessIndex, out CodeChange last)
+        => IndexLane.TryGetLastBefore(Codes, values, blockAccessIndex, out last);
 }
