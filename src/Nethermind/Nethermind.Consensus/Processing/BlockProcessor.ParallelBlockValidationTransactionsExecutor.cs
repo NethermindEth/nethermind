@@ -15,6 +15,7 @@ using Nethermind.Evm.GasPolicy;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
+using Nethermind.Int256;
 using Nethermind.Logging;
 
 namespace Nethermind.Consensus.Processing;
@@ -37,6 +38,17 @@ public partial class BlockProcessor
         private int[] _txExecutionOrder = [];
         private TxExecutionSortKey[] _txExecutionSortKeys = [];
 
+        // Reflects how the most recent block was executed on the current processing thread; consumed by
+        // ProcessingStats on the same thread to label the Block-throughput log line. ThreadStatic so
+        // concurrent processing pipelines (tests, multi-context hosts) cannot overwrite each other's
+        // value, and so a stale write from one BlockProcessor instance cannot leak into another's log.
+        [ThreadStatic] private static bool _lastBlockUsedParallelExecution;
+        public static bool LastBlockUsedParallelExecution
+        {
+            get => _lastBlockUsedParallelExecution;
+            private set => _lastBlockUsedParallelExecution = value;
+        }
+
         public void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext)
         {
             balManager.SetBlockExecutionContext(blockExecutionContext);
@@ -47,14 +59,49 @@ public partial class BlockProcessor
         {
             if (!balManager.Enabled)
             {
+                LastBlockUsedParallelExecution = false;
                 return inner.ProcessTransactions(block, processingOptions, receiptsTracer, token);
             }
 
             Metrics.ResetBlockStats();
 
-            return !block.IsGenesis && balManager.ParallelExecutionEnabled
+            bool parallel = !block.IsGenesis && balManager.ParallelExecutionEnabled;
+            LastBlockUsedParallelExecution = parallel;
+            TxReceipt[] receipts = parallel
                 ? ProcessTransactionsParallel(block, processingOptions, receiptsTracer, token)
                 : ProcessTransactionsSequential(block, processingOptions, receiptsTracer, token);
+
+            if (parallel)
+            {
+                AggregateBlockGasPriceMetrics(block);
+            }
+            else
+            {
+                Metrics.SeedBlockGasPriceIfEmpty(in block.Header.BaseFeePerGas);
+            }
+            return receipts;
+        }
+
+        // Recomputes effective gas price for each tx serially after parallel workers join; the
+        // alternative (per-worker thread-local accumulators merged after join) was rejected because
+        // avg/median don't compose losslessly across partitions and the cost here is bounded:
+        // ~150 txs/block * (one Min/Add UInt256 op + a few float ops) ~ <20us, vs ~100ms block work.
+        private void AggregateBlockGasPriceMetrics(Block block)
+        {
+            IReleaseSpec spec = specProvider.GetSpec(block.Header);
+            UInt256 baseFee = block.Header.BaseFeePerGas;
+            bool eip1559 = spec.IsEip1559Enabled;
+
+            Transaction[] txs = block.Transactions;
+            for (int i = 0; i < txs.Length; i++)
+            {
+                Transaction tx = txs[i];
+                if (tx.IsSystem()) continue;
+                UInt256 effective = tx.CalculateEffectiveGasPrice(eip1559, in baseFee);
+                Metrics.UpdateBlockGasPrice(in effective);
+            }
+
+            Metrics.SeedBlockGasPriceIfEmpty(in baseFee);
         }
 
         private TxReceipt[] ProcessTransactionsSequential(Block block, ProcessingOptions processingOptions, BlockReceiptsTracer receiptsTracer, CancellationToken token)
@@ -143,6 +190,8 @@ public partial class BlockProcessor
                             // continue to attribute work correctly across the parallel boundary.
                             bool previousIsBlockProcessingThread = ProcessingThread.IsBlockProcessingThread;
                             ProcessingThread.IsBlockProcessingThread = state.isBlockProcessingThread;
+                            bool previousSuppress = Metrics.SuppressInlineGasPriceUpdate;
+                            Metrics.SuppressInlineGasPriceUpdate = true;
                             try
                             {
                                 if (i == 0)
@@ -207,6 +256,7 @@ public partial class BlockProcessor
                             finally
                             {
                                 ProcessingThread.IsBlockProcessingThread = previousIsBlockProcessingThread;
+                                Metrics.SuppressInlineGasPriceUpdate = previousSuppress;
                             }
                         });
                 }

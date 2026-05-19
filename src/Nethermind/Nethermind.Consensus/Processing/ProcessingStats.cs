@@ -146,6 +146,9 @@ namespace Nethermind.Consensus.Processing
             blockData.CurrentContractsAnalyzed = Evm.Metrics.MainThreadContractsAnalysed;
             blockData.CurrentCreatesOps = Evm.Metrics.MainThreadCreates;
             blockData.CurrentSelfDestructOps = Evm.Metrics.MainThreadSelfDestructs;
+            // Snapshot the ThreadStatic exec-mode flag now (block-processing thread); GenerateReport
+            // runs on a thread-pool thread where the TLS slot is the default false.
+            blockData.UsedParallelExecution = BlockProcessor.ParallelBlockValidationTransactionsExecutor.LastBlockUsedParallelExecution;
 
             CaptureReportData(blockData);
         }
@@ -320,7 +323,27 @@ namespace Nethermind.Consensus.Processing
             double bps = chunkMicroseconds == 0 ? -1 : chunkBlocks / chunkMicroseconds * 1_000_000.0;
             double chunkMs = (chunkMicroseconds == 0 ? -1 : chunkMicroseconds / 1000.0);
             double runMs = (data.RunMicroseconds == 0 ? -1 : data.RunMicroseconds / 1000.0);
-            string blockGas = Evm.Metrics.BlockMinGasPrice != float.MaxValue ? $"⛽ Gas gwei: {Evm.Metrics.BlockMinGasPrice:N3} .. {whiteText}{Math.Max(Evm.Metrics.BlockMinGasPrice, Evm.Metrics.BlockEstMedianGasPrice):N3}{resetColor} ({Evm.Metrics.BlockAveGasPrice:N3}) .. {Evm.Metrics.BlockMaxGasPrice:N3}" : "";
+            string blockGas;
+            if (Evm.Metrics.BlockMinGasPrice == float.MaxValue)
+            {
+                blockGas = "";
+            }
+            else
+            {
+                float gasMin = Evm.Metrics.BlockMinGasPrice;
+                float gasMax = Evm.Metrics.BlockMaxGasPrice;
+                float gasAve = Evm.Metrics.BlockAveGasPrice;
+                float gasMed = Math.Max(gasMin, Evm.Metrics.BlockEstMedianGasPrice);
+                // Step down GWei -> MWei -> KWei -> Wei until min renders non-zero at :N3.
+                // 0.0005 is the rounding threshold for :N3, so min*scale must reach it.
+                string gasUnit;
+                float gasScale;
+                if (gasMin >= 0.0005f) { gasUnit = "GWei"; gasScale = 1f; }
+                else if (gasMin >= 5e-7f) { gasUnit = "MWei"; gasScale = 1_000f; }
+                else if (gasMin >= 5e-10f) { gasUnit = "KWei"; gasScale = 1_000_000f; }
+                else { gasUnit = "Wei"; gasScale = 1_000_000_000f; }
+                blockGas = $"⛽ Gas {gasUnit}: {gasMin * gasScale:N3} .. {whiteText}{gasMed * gasScale:N3}{resetColor} ({gasAve * gasScale:N3}) .. {gasMax * gasScale:N3}";
+            }
             string mgasColor = whiteText;
 
             NewProcessingStatistics?.Invoke(this, new BlockStatistics()
@@ -343,6 +366,13 @@ namespace Nethermind.Consensus.Processing
 
             if (_logger.IsInfo)
             {
+                // Execution-mode indicator (⛓️ = parallel BAL executor, 🔗 = sequential). Appended after
+                // the ops count on the Block throughput row so emoji-cell-width variation across terminals
+                // can't drift the mid-line pipes on the rows above.
+                string execMode = data.UsedParallelExecution
+                    ? " \u26D3\uFE0F"
+                    : " \U0001f517";
+
                 if (chunkBlocks > 1)
                 {
                     _logger.Info($"Processed    {chunkFirstBlockNumber,10}...{block.Number,9}   | {chunkMs,10:N1} ms  | slot    {runMs,11:N0} ms |{blockGas}");
@@ -425,11 +455,11 @@ namespace Nethermind.Consensus.Processing
 
                 if (recoveryQueue > 0 || processingQueue > 0)
                 {
-                    _logger.Info($" Block throughput {mgasPerSecondColor}{mgasPerSecond,11:F2}{resetColor} MGas/s{(mgasPerSecond > 1000 ? "🔥" : "  ")}| {txps,10:N1} tps |{blobsOrBlocksPerSec}| recover {recoveryQueue,5:N0} | process {processingQueue,5:N0} | ops {chunkOpCodes,11:N0}");
+                    _logger.Info($" Block throughput {mgasPerSecondColor}{mgasPerSecond,11:F2}{resetColor} MGas/s{(mgasPerSecond > 1000 ? "🔥" : "  ")}| {txps,10:N1} tps |{blobsOrBlocksPerSec}| recover {recoveryQueue,5:N0} | process {processingQueue,5:N0} | ops {chunkOpCodes,11:N0}{execMode}");
                 }
                 else
                 {
-                    _logger.Info($" Block throughput {mgasPerSecondColor}{mgasPerSecond,11:F2}{resetColor} MGas/s{(mgasPerSecond > 1000 ? "🔥" : "  ")}| {txps,10:N1} tps |{blobsOrBlocksPerSec}| exec code{resetColor} cache {cachedContractsUsed,7:N0} |{resetColor} new {contractsAnalysed,6:N0} | ops {chunkOpCodes,11:N0}");
+                    _logger.Info($" Block throughput {mgasPerSecondColor}{mgasPerSecond,11:F2}{resetColor} MGas/s{(mgasPerSecond > 1000 ? "🔥" : "  ")}| {txps,10:N1} tps |{blobsOrBlocksPerSec}| exec code{resetColor} cache {cachedContractsUsed,7:N0} |{resetColor} new {contractsAnalysed,6:N0} | ops {chunkOpCodes,11:N0}{execMode}");
                 }
             }
 
@@ -473,6 +503,7 @@ namespace Nethermind.Consensus.Processing
                 data.GasUsed = 0;
                 data.TransactionCount = 0;
                 data.BlobCount = 0;
+                data.UsedParallelExecution = false;
 
                 return true;
             }
@@ -508,6 +539,7 @@ namespace Nethermind.Consensus.Processing
             public long StartCallOps;
             public long StartSStoreOps;
             public long StartSLoadOps;
+            public bool UsedParallelExecution;
         }
     }
 }

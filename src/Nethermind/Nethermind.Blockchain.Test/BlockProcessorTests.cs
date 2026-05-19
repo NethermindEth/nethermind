@@ -990,6 +990,91 @@ public class BlockProcessorTests
         Assert.Throws<TaskCanceledException>(() => gasResults[1].GetResult());
     }
 
+    [Test]
+    [NonParallelizable]
+    public void Parallel_validation_aggregates_block_gas_price_metrics_after_processing()
+    {
+        const int txCount = 4;
+        const ulong oneGwei = 1_000_000_000UL;
+
+        Transaction[] transactions = new Transaction[txCount];
+        for (int i = 0; i < txCount; i++)
+        {
+            transactions[i] = Build.A.Transaction
+                .WithType(TxType.EIP1559)
+                .WithNonce((UInt256)i)
+                .WithGasLimit(21_000)
+                .WithMaxFeePerGas((UInt256)((ulong)(2 + i) * oneGwei))
+                .WithMaxPriorityFeePerGas((UInt256)oneGwei)
+                .TestObject;
+        }
+
+        (float Min, float EstMedian, float Ave, float Max)? prices =
+            RunParallelValidationAndGetGasPrices((UInt256)oneGwei, transactions);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(prices, Is.Not.Null,
+                "AggregateBlockGasPriceMetrics must populate the block-gas-price aggregates after a parallel run.");
+            Assert.That(prices!.Value.Min, Is.GreaterThan(0f), "Min must be folded from at least one user tx.");
+            Assert.That(prices!.Value.Max, Is.GreaterThanOrEqualTo(prices!.Value.Min));
+            Assert.That(BlockProcessor.ParallelBlockValidationTransactionsExecutor.LastBlockUsedParallelExecution,
+                Is.True, "Flag must mark the parallel path on the writing thread.");
+        }
+    }
+
+    [TestCase(2_000_000_000UL, 2f, TestName = "Parallel_validation_seeds_block_gas_price_with_baseFee_for_empty_block")]
+    [TestCase(0UL, null, TestName = "Parallel_validation_does_not_seed_block_gas_price_for_zero_baseFee_empty_block")]
+    [NonParallelizable]
+    public void Parallel_validation_empty_block_seeding(ulong baseFeeWei, float? expectedSeedGwei)
+    {
+        (float Min, float EstMedian, float Ave, float Max)? prices =
+            RunParallelValidationAndGetGasPrices((UInt256)baseFeeWei, []);
+
+        if (expectedSeedGwei is null)
+        {
+            Assert.That(prices, Is.Null,
+                "Zero-baseFee empty block must leave aggregates uninitialized so the log row stays blank rather than rendering 0.000.");
+            return;
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(prices, Is.Not.Null, "Empty block with non-zero baseFee must seed the aggregates.");
+            Assert.That(prices!.Value.Min, Is.EqualTo(expectedSeedGwei.Value).Within(0.001f));
+            Assert.That(prices!.Value.Max, Is.EqualTo(expectedSeedGwei.Value).Within(0.001f));
+            Assert.That(prices!.Value.Ave, Is.EqualTo(expectedSeedGwei.Value).Within(0.001f));
+        }
+    }
+
+    private static (float Min, float EstMedian, float Ave, float Max)? RunParallelValidationAndGetGasPrices(
+        UInt256 baseFeePerGas,
+        Transaction[] transactions)
+    {
+        Assume.That(Environment.ProcessorCount, Is.GreaterThan(1));
+        Nethermind.Evm.Metrics.ResetBlockStats();
+
+        IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
+        using IDisposable scope = stateProvider.BeginScope(IWorldState.PreGenesis);
+
+        long gasLimit = Math.Max(transactions.Length, 1) * 21_000;
+        Block block = Build.A.Block
+            .WithNumber(1)
+            .WithGasLimit(gasLimit)
+            .WithBaseFeePerGas(baseFeePerGas)
+            .WithTransactions(transactions)
+            .WithBlockAccessList(new BlockAccessList())
+            .TestObject;
+
+        using RecordingTransactionProcessorAdapter txProcessor = new();
+        BlockProcessor.ParallelBlockValidationTransactionsExecutor executor =
+            CreateParallelValidationExecutor(stateProvider, txProcessor);
+
+        executor.ProcessTransactions(block, ProcessingOptions.None, new BlockReceiptsTracer(), CancellationToken.None);
+
+        return Nethermind.Evm.Metrics.GetBlockGasPrices();
+    }
+
     private static BlockAccessListManager CreateAmsterdamBalManager()
     {
         IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
