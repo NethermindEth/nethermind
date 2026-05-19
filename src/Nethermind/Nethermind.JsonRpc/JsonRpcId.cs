@@ -117,8 +117,7 @@ public readonly struct JsonRpcId : IEquatable<JsonRpcId>
         return _kind switch
         {
             JsonRpcIdKind.Null => this,
-            JsonRpcIdKind.Long => new JsonRpcId(_longValue, rawToken.ToArray()),
-            JsonRpcIdKind.Decimal => new JsonRpcId(_decimalValue, rawToken.ToArray()),
+            JsonRpcIdKind.Long or JsonRpcIdKind.Decimal => this,
             JsonRpcIdKind.String => new JsonRpcId(_stringValue!, rawToken.ToArray()),
             _ => ThrowInvalidKind()
         };
@@ -334,20 +333,6 @@ public readonly struct JsonRpcId : IEquatable<JsonRpcId>
     /// </summary>
     /// <param name="value">The string value.</param>
     public static implicit operator JsonRpcId(string value) => new(value);
-
-    private JsonRpcId(long value, byte[] rawValue)
-    {
-        _kind = JsonRpcIdKind.Long;
-        _longValue = value;
-        _rawValue = rawValue;
-    }
-
-    private JsonRpcId(decimal value, byte[] rawValue)
-    {
-        _kind = JsonRpcIdKind.Decimal;
-        _decimalValue = value;
-        _rawValue = rawValue;
-    }
 
     private JsonRpcId(string value, byte[] rawValue)
     {
