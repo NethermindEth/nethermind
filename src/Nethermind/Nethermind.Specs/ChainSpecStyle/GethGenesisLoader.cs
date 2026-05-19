@@ -218,7 +218,7 @@ public class GethGenesisLoader(IJsonSerializer serializer) : IChainSpecLoader
 
     private readonly record struct OrderedBlobScheduleSettings(int ForkOrder, BlobScheduleSettings Settings);
 
-    private readonly Dictionary<string, BlobScheduleFork> _blobScheduleForks =
+    private static readonly Dictionary<string, BlobScheduleFork> _blobScheduleForks =
         new(StringComparer.OrdinalIgnoreCase)
         {
             [nameof(Cancun)] = new(0, static c => c.CancunTime),

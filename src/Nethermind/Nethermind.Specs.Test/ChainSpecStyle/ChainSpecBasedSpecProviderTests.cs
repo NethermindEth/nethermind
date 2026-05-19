@@ -1068,10 +1068,17 @@ public class ChainSpecBasedSpecProviderTests
         Assert.That(chainSpec.Genesis.BaseFeePerGas, Is.EqualTo(UInt256.Parse("18446744073709551616")));
     }
 
-    [Test]
-    public void Geth_genesis_amsterdam_uses_slot_number_from_genesis()
+    [TestCase(null, 0ul, TestName = "Geth genesis Amsterdam slot number: absent defaults to zero")]
+    [TestCase(123ul, 123ul, TestName = "Geth genesis Amsterdam slot number: configured value")]
+    public void Geth_genesis_amsterdam_uses_slot_number_from_genesis(
+        ulong? slotNumber,
+        ulong expectedSlotNumber)
     {
-        const string genesisJson = """
+        string slotNumberJson = slotNumber is null ? "" : $"""
+        ,
+          "slotNumber": {slotNumber}
+        """;
+        string genesisJson = $$"""
         {
           "config": {
             "chainId": 3151908,
@@ -1089,15 +1096,14 @@ public class ChainSpecBasedSpecProviderTests
           },
           "difficulty": "0x1",
           "gasLimit": "0x3938700",
-          "timestamp": 15,
-          "slotNumber": 123,
+          "timestamp": 15{{slotNumberJson}},
           "alloc": {}
         }
         """;
 
         ChainSpec chainSpec = LoadGethGenesisFromString(genesisJson);
 
-        Assert.That(chainSpec.Genesis.SlotNumber, Is.EqualTo(123));
+        Assert.That(chainSpec.Genesis.SlotNumber, Is.EqualTo(expectedSlotNumber));
     }
 
     [TestCase(1ul)]
