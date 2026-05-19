@@ -20,6 +20,7 @@ using Nethermind.Serialization.Json;
 using NSubstitute;
 using NUnit.Framework;
 using Testably.Abstractions;
+using JsonRpcMetrics = Nethermind.JsonRpc.Metrics;
 
 namespace Nethermind.Runner.Test.JsonRpc;
 
@@ -80,7 +81,31 @@ public class StartupTests
         );
     }
 
-    private static async Task<string> ProcessJsonRpcRequest(string request)
+    [Test]
+    [NonParallelizable]
+    public async Task ProcessJsonRpcRequest_WithoutContentLength_ProcessesAndCountsActualBytes()
+    {
+        const string request =
+            """
+            {
+                "jsonrpc":"2.0",
+                "id": 1,
+                "method":"engine_getBlobsV1",
+                "params":[[]]
+            }
+            """;
+
+        long receivedBefore = JsonRpcMetrics.JsonRpcBytesReceivedHttp;
+        string response = await ProcessJsonRpcRequest(request, setContentLength: false);
+        long receivedBytes = JsonRpcMetrics.JsonRpcBytesReceivedHttp - receivedBefore;
+
+        using JsonDocument doc = JsonDocument.Parse(response);
+
+        Assert.That(doc.RootElement.GetProperty("result").ValueKind, Is.EqualTo(JsonValueKind.Array));
+        Assert.That(receivedBytes, Is.EqualTo(Encoding.UTF8.GetByteCount(request)));
+    }
+
+    private static async Task<string> ProcessJsonRpcRequest(string request, bool setContentLength = true)
     {
         byte[] requestBytes = Encoding.UTF8.GetBytes(request);
 
@@ -90,10 +115,13 @@ public class StartupTests
             {
                 Method = "POST",
                 ContentType = "application/json",
-                ContentLength = requestBytes.Length,
                 Body = new MemoryStream(requestBytes)
             }
         };
+        if (setContentLength)
+        {
+            ctx.Request.ContentLength = requestBytes.Length;
+        }
 
         MemoryStream responseBody = new();
         ctx.Features.Set<IHttpResponseBodyFeature>(new StreamResponseBodyFeature(responseBody));
