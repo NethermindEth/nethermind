@@ -24,7 +24,7 @@ namespace Nethermind.StateComposition.Service;
 internal sealed partial class StateCompositionService : IStoppableService, IDisposable
 {
     private const long MinMemoryBudgetBytes = 1_048_576L; // 1 MiB
-    private const int MaxScanParallelism = 16;
+    private const int MaxScanParallelism = 32;
     private const int MaxTopNContracts = 10_000;
 
     private readonly IStateReader _stateReader;
