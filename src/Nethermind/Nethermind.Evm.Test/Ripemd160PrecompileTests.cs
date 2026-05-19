@@ -8,7 +8,7 @@ using NUnit.Framework;
 namespace Nethermind.Evm.Test;
 
 // Test data from RFC 2286.
-public class Ripemd160PrecompileTests: PrecompileTests<Ripemd160Precompile, Ripemd160PrecompileTests>
+public class Ripemd160PrecompileTests : PrecompileTests<Ripemd160Precompile, Ripemd160PrecompileTests>
 {
     [TestCase("", "0000000000000000000000009c1185a5c5e9fc54612808977ee8f548b2258d31", true)]
     [TestCase("61", "0000000000000000000000000bdc9d2d256b3ee9daae347be6f4dc835a467ffe", true)]
