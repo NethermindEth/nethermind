@@ -194,9 +194,13 @@ public class PersistenceManager(
     /// Phase 1 single-seed selection:
     /// <list type="bullet">
     ///   <item>If <c>finalizedBlock &gt;= persistedBlock + CompactSize</c> AND
-    ///   <c>snapshotsDepth + CompactSize &gt; MinReorgDepth</c> → seed = finalized state.</item>
-    ///   <item>Else if <c>snapshotsDepth &gt; LongFinalityReorgDepth</c> (backstop) →
-    ///   seed = latest persisted-snapshot tier state (large tier preferred, small fallback).</item>
+    ///   <c>snapshotsDepth + CompactSize &gt; MinReorgDepth</c> → seed = canonical state at
+    ///   the next boundary block (<c>persistedBlock + CompactSize</c>). Looked up via
+    ///   <see cref="IFinalizedStateProvider"/> — the boundary is always locally synced even
+    ///   during catch-up sync where the CL-reported finalized tip is beyond the chain head.</item>
+    ///   <item>Else if <c>snapshotsDepth &gt; LongFinalityReorgDepth</c> (backstop, finalization
+    ///   stalled) → seed = latest persisted-snapshot tier state (large tier preferred,
+    ///   small fallback).</item>
     ///   <item>Else → no seed; Phase 1 doesn't run, fall through to Phase 2.</item>
     /// </list>
     /// Phase 2 runs only with <see cref="_enableLongFinality"/> enabled AND
@@ -208,19 +212,25 @@ public class PersistenceManager(
         long snapshotsDepth = latestSnapshot.BlockNumber - currentPersistedState.BlockNumber;
 
         // ---- Phase 1: persistence to RocksDB ----
-        // Single seed. Two sources, in priority order: the finalized state (normal — anchors the
-        // canonical chain), or the latest persisted-snapshot tier state (backstop, only when
-        // in-memory has grown past LongFinalityReorgDepth). The previous two-seed form was a
-        // workaround for an empty snapshot graph between persisted and finalized; the backstop
-        // seed is always on disk, so the BFS is rooted on an in-graph node by construction.
+        // Single seed. Two sources, in priority order: the canonical state at the next
+        // boundary block (normal — anchors the canonical chain at a locally-synced block,
+        // robust to catch-up sync where the CL-reported finalized tip is beyond chain head),
+        // or the latest persisted-snapshot tier state (backstop, only when in-memory has
+        // grown past LongFinalityReorgDepth). The backstop seed is always on disk, so the
+        // BFS is rooted on an in-graph node by construction.
         StateId? seed = null;
         long finalizedBlockNumber = _finalizedStateProvider.FinalizedBlockNumber;
         if (finalizedBlockNumber >= currentPersistedState.BlockNumber + _compactSize
             && snapshotsDepth + _compactSize > _minReorgDepth)
         {
-            Hash256? finalizedStateRoot = _finalizedStateProvider.GetFinalizedStateRootAt(finalizedBlockNumber);
-            if (finalizedStateRoot is not null)
-                seed = new StateId(finalizedBlockNumber, finalizedStateRoot);
+            // Anchor at the next boundary block, not at the CL-reported finalized tip. The
+            // outer gate guarantees boundary <= finalizedBlockNumber, so the provider's own
+            // range check passes; the boundary is below chain head by construction, so the
+            // canonical header is in the block tree and FindHeader resolves.
+            long targetBlockNumber = currentPersistedState.BlockNumber + _compactSize;
+            Hash256? canonicalRoot = _finalizedStateProvider.GetFinalizedStateRootAt(targetBlockNumber);
+            if (canonicalRoot is not null)
+                seed = new StateId(targetBlockNumber, canonicalRoot);
         }
         else if (snapshotsDepth > _longFinalityReorgDepth)
         {
@@ -387,7 +397,11 @@ public class PersistenceManager(
     public void AddToPersistence(StateId latestSnapshot)
     {
         using Lock.Scope scope = _persistenceLock.EnterScope();
-        while (true)
+        // Bound the drain per invocation so a deep backlog (e.g. early catch-up sync) does
+        // not block the processing thread for an unbounded time. The caller re-enters on
+        // every block, so the remaining backlog is consumed across subsequent invocations.
+        const int MaxDrainIterations = 4;
+        for (int i = 0; i < MaxDrainIterations; i++)
         {
             (PersistedSnapshot? persistedToPersist, Snapshot? toPersist, ConversionCandidate? toConvert) =
                 DetermineSnapshotAction(latestSnapshot);

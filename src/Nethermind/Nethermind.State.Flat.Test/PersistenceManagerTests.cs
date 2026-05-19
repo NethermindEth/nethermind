@@ -242,6 +242,34 @@ public class PersistenceManagerTests
     }
 
     [Test]
+    public void DetermineSnapshotAction_FinalizedBeyondHead_SeedsAtBoundary()
+    {
+        // Catch-up sync: CL reports a finalized block far beyond the local chain head.
+        // GetFinalizedStateRootAt(finalizedBlockNumber) would return null, but the boundary
+        // block (persisted + CompactSize) IS locally synced, so the canonical-root lookup
+        // resolves there. Phase 1 must seed at the boundary and persist the boundary snapshot.
+        StateId persisted = Block0;
+        StateId latest = CreateStateId(200);
+        StateId boundary = CreateStateId(_config.CompactSize);
+
+        _finalizedStateProvider.SetFinalizedBlockNumber(25_128_361);
+        // Deliberately leave GetFinalizedStateRootAt(25_128_361) unset → returns null;
+        // only the boundary block has a known canonical state root.
+        _finalizedStateProvider.SetFinalizedStateRootAt(_config.CompactSize, new Hash256(boundary.StateRoot.Bytes));
+
+        using Snapshot expected = CreateSnapshot(persisted, boundary, compacted: false);
+
+        (PersistedSnapshot? persistedToPersist, Snapshot? toPersist, PersistenceManager.ConversionCandidate? toConvert) = _persistenceManager.DetermineSnapshotAction(latest);
+
+        Assert.That(toConvert, Is.Null);
+        Assert.That(toPersist, Is.Not.Null);
+        Assert.That(toPersist!.From, Is.EqualTo(persisted));
+        Assert.That(toPersist.To, Is.EqualTo(boundary));
+
+        toPersist.Dispose();
+    }
+
+    [Test]
     public void TryFindSnapshotToConvert_PrefersBoundaryCompactedOverBase()
     {
         // Bug A regression: Phase 2 must globally prefer a CompactSize-wide compacted (→ large
