@@ -13,22 +13,14 @@ using Nethermind.Serialization.Rlp;
 
 namespace SendBlobs;
 
-internal class FundsDistributor
+internal class FundsDistributor(IJsonRpcClient rpcClient, ulong chainId, string? keyFilePath, ILogManager logManager)
 {
     private static readonly TxDecoder TxDecoderInstance = TxDecoder.Instance;
 
-    private readonly IJsonRpcClient _rpcClient;
-    private readonly ulong _chainId;
-    private readonly string? _keyFilePath;
-    private readonly ILogManager _logManager;
-
-    public FundsDistributor(IJsonRpcClient rpcClient, ulong chainId, string? keyFilePath, ILogManager logManager)
-    {
-        _rpcClient = rpcClient ?? throw new ArgumentNullException(nameof(rpcClient));
-        _chainId = chainId;
-        _keyFilePath = keyFilePath;
-        _logManager = logManager;
-    }
+    private readonly IJsonRpcClient _rpcClient = rpcClient ?? throw new ArgumentNullException(nameof(rpcClient));
+    private readonly ulong _chainId = chainId;
+    private readonly string? _keyFilePath = keyFilePath;
+    private readonly ILogManager _logManager = logManager;
 
     /// <summary>
     /// Distribute the available funds from an address to a number of newly generated private keys.
@@ -54,7 +46,7 @@ internal class FundsDistributor
             maxPriorityFeePerGas = await _rpcClient.GetMaxPriorityFeePerGasAsync();
         }
 
-        UInt256 balance = new UInt256(Bytes.FromHexString(balanceString));
+        UInt256 balance = new(Bytes.FromHexString(balanceString));
 
         if (balance == 0)
             throw new AccountException($"Balance on provided signer {distributeFrom.Address} is 0.");
@@ -133,12 +125,12 @@ internal class FundsDistributor
 
         ILogger log = _logManager.GetClassLogger<FundsDistributor>();
         List<string> txHashes = [];
-        foreach (var signer in privateSigners)
+        foreach (Signer signer in privateSigners)
         {
             string balanceString = await _rpcClient.GetBalanceAsync(signer.Address);
             ulong nonce = await _rpcClient.GetTransactionCountAsync(signer.Address);
 
-            UInt256 balance = new UInt256(Bytes.FromHexString(balanceString));
+            UInt256 balance = new(Bytes.FromHexString(balanceString));
 
             ulong nonceValue = nonce;
 
