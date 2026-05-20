@@ -36,7 +36,7 @@ namespace Nethermind.State.Snap
         {
             BlockNumber = BlockNumber,
             RootHash = RootHash,
-            Accounts = Accounts.ToPooledList(Accounts.Count),
+            Accounts = Accounts.AsSpan().ToPooledList(),
             StartingHash = StartingHash,
             LimitHash = LimitHash,
         };

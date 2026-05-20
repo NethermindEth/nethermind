@@ -222,12 +222,16 @@ namespace Nethermind.Facade
         private CallOutput RunEstimateGas(IStateReader nonceReader, ITransactionProcessor txProcessor, IWorldState worldState, BlockHeader header, Transaction tx, int errorMargin, UInt256? blobBaseFeeOverride, CancellationToken cancellationToken)
         {
             // Cap tx.GasLimit to the sender's affordable allowance before the initial probe,
-            // mirroring Geth's hi = min(hi, (balance - value) / gasFeeCap). This ensures BuyGas
-            // never sees a gas limit that makes gasLimit * feeCap exceed the sender's balance.
+            // mirroring Geth's hi = min(hi, (balance - value - blobFee) / gasFeeCap), where blobFee = 0 outside EIP-4844. This ensures
+            // BuyGas never sees a gas limit that makes gasLimit * feeCap + blobFee exceed the sender's balance.
+            IReleaseSpec spec = specProvider.GetSpec(header.Number + 1, header.Timestamp + blocksConfig.SecondsPerSlot);
             UInt256 senderBalance = worldState.GetBalance(tx.SenderAddress ?? Address.Zero);
             UInt256 feeCap = tx.CalculateFeeCap();
             if (feeCap > UInt256.Zero && !UInt256.SubtractUnderflow(senderBalance, tx.Value, out UInt256 availableForGas))
             {
+                if (!BlobGasCalculator.TrySubtractBlobFee(spec, tx, ref availableForGas))
+                    availableForGas = UInt256.Zero;
+
                 long allowance = (long)UInt256.Min(availableForGas / feeCap, (UInt256)long.MaxValue);
                 if (tx.GasLimit > allowance)
                     tx.GasLimit = allowance;
@@ -244,8 +248,15 @@ namespace Nethermind.Facade
             long estimate = gasEstimator.Estimate(tx, header, estimateGasTracer, out string? err, errorMargin, cancellationToken);
             // Allowance errors take precedence over any earlier revert: the revert was an artifact
             // of the gas cap, so surfacing it instead of the affordability error would be misleading.
-            if (err is not null && (error is null || err.StartsWith(GasEstimator.GasExceedsAllowanceMsgPrefix, StringComparison.Ordinal) || err == GasEstimator.InsufficientBalance))
-                error = err;
+            error = err switch
+            {
+                null => error,
+                _ when error is null => err,
+                _ when err.StartsWith(GasEstimator.GasExceedsAllowanceMsgPrefix, StringComparison.Ordinal) => err,
+                GasEstimator.InsufficientBalance => err,
+                GasEstimator.InsufficientFundsForGas => err,
+                _ => error
+            };
 
             return new CallOutput
             {
@@ -540,7 +551,7 @@ namespace Nethermind.Facade
 
         public IEnumerable<FilterLog> FindLogs(LogFilter filter, CancellationToken cancellationToken = default) => logFinder.FindLogs(filter, cancellationToken);
 
-        public BlockAccessList? GetBlockAccessList(Hash256 blockHash)
+        public ReadOnlyBlockAccessList? GetBlockAccessList(Hash256 blockHash)
             => balStore.Get(blockHash);
 
         public MemoryManager<byte>? GetBlockAccessListRlp(Hash256 blockHash)

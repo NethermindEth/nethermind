@@ -30,17 +30,20 @@ namespace Nethermind.Consensus.AuRa.Transactions
 
             try
             {
-                return _innerSource.GetTransactions(parent, gasLimit, payloadAttributes, filterSource).Select(tx =>
+                return _innerSource.GetTransactions(parent, gasLimit, payloadAttributes, filterSource).Where(tx =>
                 {
-                    if (tx is GeneratedTransaction)
+                    if (tx is not GeneratedTransaction) return true;
+
+                    tx.Nonce = CalculateNonce(tx.SenderAddress, parent, _nonces);
+                    if (!_txSealer.TrySeal(tx, TxHandlingOptions.ManagedNonce | TxHandlingOptions.AllowReplacingSignature))
                     {
-                        tx.Nonce = CalculateNonce(tx.SenderAddress, parent, _nonces);
-                        _txSealer.Seal(tx, TxHandlingOptions.ManagedNonce | TxHandlingOptions.AllowReplacingSignature);
-                        Metrics.SealedTransactions++;
-                        if (_logger.IsDebug) _logger.Debug($"Sealed node generated transaction {tx.ToShortString()}");
+                        if (_logger.IsWarn) _logger.Warn($"AuRa sealer could not sign generated transaction from {tx.SenderAddress} — skipping.");
+                        return false;
                     }
 
-                    return tx;
+                    Metrics.SealedTransactions++;
+                    if (_logger.IsDebug) _logger.Debug($"Sealed node generated transaction {tx.ToShortString()}");
+                    return true;
                 });
             }
             finally

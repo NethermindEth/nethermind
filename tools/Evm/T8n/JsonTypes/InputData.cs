@@ -29,11 +29,11 @@ public class InputData
         }
         else if (Txs is not null && TransactionMetaDataList is not null)
         {
-            var ecdsa = new EthereumEcdsa(chainId);
+            EthereumEcdsa ecdsa = new(chainId);
 
             for (int i = 0; i < Txs.Length; i++)
             {
-                var transaction = (Transaction)Txs[i].ToTransaction();
+                Transaction transaction = (Transaction)Txs[i].ToTransaction();
                 transaction.SenderAddress = null; // t8n does not accept SenderAddress from input, so need to reset senderAddress
 
                 SignTransaction(transaction, TransactionMetaDataList[i], (LegacyTransactionForRpc)Txs[i]);
@@ -53,7 +53,7 @@ public class InputData
     {
         if (transactionMetaData.SecretKey is not null)
         {
-            var privateKey = new PrivateKey(transactionMetaData.SecretKey);
+            PrivateKey privateKey = new(transactionMetaData.SecretKey);
             transaction.SenderAddress = privateKey.Address;
 
             EthereumEcdsa ecdsa = new(transaction.ChainId ?? TestBlockchainIds.ChainId);
