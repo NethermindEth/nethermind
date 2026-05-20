@@ -7,8 +7,6 @@ using Nethermind.Core.Crypto;
 using Nethermind.Logging;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.Sync.Snap;
-using Nethermind.State.Snap;
-using Nethermind.Synchronization.SnapSync;
 using NSubstitute;
 using NUnit.Framework;
 
