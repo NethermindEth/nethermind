@@ -48,7 +48,7 @@ internal ref struct JsonRpcEnvelopeReader
             {
                 ReadValue(ref reader);
                 jsonRpc = reader.TokenType == JsonTokenType.String && reader.ValueTextEquals("2.0"u8) ? "2.0" : null;
-                SkipComplexValue(ref reader);
+                SkipValue(ref reader);
                 continue;
             }
 
@@ -64,7 +64,7 @@ internal ref struct JsonRpcEnvelopeReader
             {
                 ReadValue(ref reader);
                 method = reader.TokenType == JsonTokenType.String ? KnownRpcMethodNames.Intern(ref reader) : null;
-                SkipComplexValue(ref reader);
+                SkipValue(ref reader);
                 continue;
             }
 
@@ -137,14 +137,6 @@ internal ref struct JsonRpcEnvelopeReader
             JsonTokenType.Null => JsonValueKind.Null,
             _ => JsonValueKind.Undefined
         };
-
-    private static void SkipComplexValue(ref Utf8JsonReader reader)
-    {
-        if (reader.TokenType is JsonTokenType.StartObject or JsonTokenType.StartArray)
-        {
-            reader.Skip();
-        }
-    }
 
     private static void SkipValue(ref Utf8JsonReader reader)
     {
