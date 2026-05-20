@@ -14,26 +14,24 @@ namespace Nethermind.Core.BlockAccessLists;
 /// </summary>
 /// <remarks>
 /// Backed by a plain <see cref="Dictionary{TKey, TValue}"/> keyed by address; ordering is deferred
-/// to the encoder via <see cref="GetSortedAccountChanges"/> rather than paid as O(log n) on every
-/// per-tx merge. EIP-7928 only requires address-sorted accounts on the wire, so internal iteration
-/// (validation, item counting) walks unsorted.
+/// to the encoder rather than paid as O(log n) on every per-tx merge.
 /// </remarks>
 public class GeneratedBlockAccessList
 {
+    private static readonly Comparison<GeneratedAccountChanges> _byAddress = static (a, b) => a.Address.CompareTo(b.Address);
+
     private readonly Dictionary<Address, GeneratedAccountChanges> _accountChanges = new();
 
     public EnumerableWithCount<GeneratedAccountChanges> AccountChanges
         => new(_accountChanges.Values, _accountChanges.Values.Count);
 
-    /// <summary>
-    /// Address-sorted snapshot of the account-change values. Used by the RLP encoder, which
-    /// requires accounts in ascending-by-address order per EIP-7928.
-    /// </summary>
-    public GeneratedAccountChanges[] GetSortedAccountChanges()
+    /// <summary>Address-sorted snapshot of the account-change values; pooled, dispose after use.</summary>
+    public ArrayPoolListRef<GeneratedAccountChanges> GetSortedAccountChanges()
     {
-        GeneratedAccountChanges[] sorted = [.. _accountChanges.Values];
-        Array.Sort(sorted, static (a, b) => a.Address.CompareTo(b.Address));
-        return sorted;
+        ArrayPoolListRef<GeneratedAccountChanges> result = new(_accountChanges.Count);
+        foreach (GeneratedAccountChanges ac in _accountChanges.Values) result.Add(ac);
+        result.AsSpan().Sort(_byAddress);
+        return result;
     }
 
     public bool HasAccount(Address address) => _accountChanges.ContainsKey(address);
@@ -90,7 +88,8 @@ public class GeneratedBlockAccessList
     {
         StringBuilder sb = new();
         sb.AppendLine($"GeneratedBlockAccessList (Accounts={_accountChanges.Count})");
-        foreach (GeneratedAccountChanges ac in GetSortedAccountChanges())
+        using ArrayPoolListRef<GeneratedAccountChanges> sorted = GetSortedAccountChanges();
+        foreach (GeneratedAccountChanges ac in sorted)
         {
             sb.Append("  ").AppendLine(ac.ToString());
         }

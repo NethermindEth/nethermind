@@ -7,6 +7,7 @@ using System.Diagnostics.CodeAnalysis;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.Json.Serialization;
+using Nethermind.Core.Collections;
 using Nethermind.Int256;
 using Nethermind.Serialization.Json;
 
@@ -15,16 +16,17 @@ namespace Nethermind.Core.BlockAccessLists;
 /// <summary>
 /// Per-account changes assembled from one or more <see cref="AccountChangesAtIndex"/> via merging.
 /// Append-only and ordered by index; uses simple <see cref="List{T}"/> per change family because
-/// merge contributions arrive sorted, so no <see cref="SortedList{TKey, TValue}"/> is needed.
+/// merge contributions arrive sorted.
 /// </summary>
 /// <remarks>
 /// Storage changes and storage reads are kept in unsorted <see cref="Dictionary{TKey, TValue}"/> /
 /// <see cref="HashSet{T}"/>. EIP-7928 requires slot-sorted output on the wire, but that's paid
-/// once per block via <see cref="GetSortedStorageChanges"/> / <see cref="GetSortedStorageReads"/>
-/// at encode time rather than O(log n) on every per-tx merge.
+/// once per block at encode time rather than O(log n) on every per-tx merge.
 /// </remarks>
 public class GeneratedAccountChanges(Address address)
 {
+    private static readonly Comparison<GeneratedSlotChanges> _bySlotKey = static (a, b) => a.Key.CompareTo(b.Key);
+
     [JsonConverter(typeof(AddressConverter))]
     public Address Address { get; } = address;
 
@@ -46,26 +48,22 @@ public class GeneratedAccountChanges(Address address)
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
     public IReadOnlyCollection<UInt256> StorageReads => _storageReads;
 
-    /// <summary>
-    /// Slot-key-sorted snapshot of the per-slot changes. Used by the RLP encoder, which requires
-    /// storage_changes in ascending-by-slot-key order per EIP-7928.
-    /// </summary>
-    public GeneratedSlotChanges[] GetSortedStorageChanges()
+    /// <summary>Slot-key-sorted snapshot of the per-slot changes; pooled, dispose after use.</summary>
+    public ArrayPoolListRef<GeneratedSlotChanges> GetSortedStorageChanges()
     {
-        GeneratedSlotChanges[] sorted = [.. _storageChanges.Values];
-        Array.Sort(sorted, static (a, b) => a.Key.CompareTo(b.Key));
-        return sorted;
+        ArrayPoolListRef<GeneratedSlotChanges> result = new(_storageChanges.Count);
+        foreach (GeneratedSlotChanges sc in _storageChanges.Values) result.Add(sc);
+        result.AsSpan().Sort(_bySlotKey);
+        return result;
     }
 
-    /// <summary>
-    /// Slot-key-sorted snapshot of the storage reads. Used by the RLP encoder, which requires
-    /// storage_reads in ascending order per EIP-7928.
-    /// </summary>
-    public UInt256[] GetSortedStorageReads()
+    /// <summary>Slot-key-sorted snapshot of the storage reads; pooled, dispose after use.</summary>
+    public ArrayPoolListRef<UInt256> GetSortedStorageReads()
     {
-        UInt256[] sorted = [.. _storageReads];
-        Array.Sort(sorted);
-        return sorted;
+        ArrayPoolListRef<UInt256> result = new(_storageReads.Count);
+        foreach (UInt256 r in _storageReads) result.Add(r);
+        result.AsSpan().Sort(GenericComparer.GetOptimized<UInt256>());
+        return result;
     }
 
     public bool TryGetSlotChanges(UInt256 key, [NotNullWhen(true)] out GeneratedSlotChanges? slotChanges)
@@ -111,49 +109,38 @@ public class GeneratedAccountChanges(Address address)
 
     private bool SlotChangesAtIndexEqual(ReadOnlyAccountChanges other, uint index)
     {
-        // Walk the generated side (unsorted) and binary-search the suggested side
-        // (ReadOnlySlotChanges[], sorted-by-key — decoder validates). For every slot with a
-        // change at `index` on the generated side, the suggested side must contain the same slot
-        // with an equal change at that index. Symmetry is enforced by counting matches on both
-        // sides: if counts agree and every generated match has a paired suggested match, the
-        // sets are equal (slot keys are unique within each side).
-        ReadOnlySlotChanges[] otherSlots = other.StorageChanges;
+        // Linear merge over both sides walked in slot-key order. The generated side is sorted once
+        // via a pooled snapshot; the suggested side is already sorted (decoder-validated). The
+        // concrete struct enumerator is taken explicitly to dodge IEnumerable boxing.
+        using ArrayPoolListRef<GeneratedSlotChanges> sortedGen = GetSortedStorageChanges();
+        ReadOnlySpan<GeneratedSlotChanges> a = sortedGen.AsSpan();
+        ReadOnlySpan<ReadOnlySlotChanges> b = other.StorageChanges;
 
-        int genMatches = 0;
-        foreach (GeneratedSlotChanges slot in _storageChanges.Values)
+        int i = 0, j = 0;
+        StorageChange aChange = default, bChange = default;
+        while (true)
         {
-            if (!TryGetSlotChangeAtIndex(slot, index, out StorageChange genChange)) continue;
-            int idx = BinarySearchByKey(otherSlots, slot.Key);
-            if (idx < 0) return false;
-            if (!TryGetSlotChangeAtIndex(otherSlots[idx], index, out StorageChange othChange)) return false;
-            if (!genChange.Equals(othChange)) return false;
-            genMatches++;
-        }
+            bool aMatched = false;
+            while (i < a.Length)
+            {
+                if (TryGetSlotChangeAtIndex(a[i], index, out aChange)) { aMatched = true; break; }
+                i++;
+            }
+            bool bMatched = false;
+            while (j < b.Length)
+            {
+                if (TryGetSlotChangeAtIndex(b[j], index, out bChange)) { bMatched = true; break; }
+                j++;
+            }
 
-        int othMatches = 0;
-        for (int j = 0; j < otherSlots.Length; j++)
-        {
-            if (TryGetSlotChangeAtIndex(otherSlots[j], index, out _)) othMatches++;
-        }
+            if (!aMatched && !bMatched) return true;
+            if (aMatched != bMatched) return false;
+            if (a[i].Key != b[j].Key) return false;
+            if (!aChange.Equals(bChange)) return false;
 
-        return genMatches == othMatches;
-    }
-
-    /// <summary>Binary-search <paramref name="sortedSlots"/> (sorted ascending by Key) for the
-    /// entry with the given <paramref name="key"/>; returns its index or -1.</summary>
-    private static int BinarySearchByKey(ReadOnlySlotChanges[] sortedSlots, UInt256 key)
-    {
-        int low = 0;
-        int high = sortedSlots.Length - 1;
-        while (low <= high)
-        {
-            int mid = low + ((high - low) >> 1);
-            int cmp = sortedSlots[mid].Key.CompareTo(key);
-            if (cmp == 0) return mid;
-            if (cmp < 0) low = mid + 1;
-            else high = mid - 1;
+            i++;
+            j++;
         }
-        return -1;
     }
 
     private static bool TryGetSlotChangeAtIndex(GeneratedSlotChanges slot, uint index, out StorageChange change)
@@ -251,8 +238,16 @@ public class GeneratedAccountChanges(Address address)
         if (BalanceChanges.Count > 0) sb.Append($" balance=[{string.Join(", ", BalanceChanges)}]");
         if (NonceChanges.Count > 0) sb.Append($" nonce=[{string.Join(", ", NonceChanges)}]");
         if (CodeChanges.Count > 0) sb.Append($" code=[{string.Join(", ", CodeChanges)}]");
-        if (_storageChanges.Count > 0) sb.Append($" storage=[{string.Join(", ", (object[])GetSortedStorageChanges())}]");
-        if (_storageReads.Count > 0) sb.Append($" reads=[{string.Join(", ", GetSortedStorageReads())}]");
+        if (_storageChanges.Count > 0)
+        {
+            using ArrayPoolListRef<GeneratedSlotChanges> sorted = GetSortedStorageChanges();
+            sb.Append($" storage=[{string.Join(", ", sorted.ToArray())}]");
+        }
+        if (_storageReads.Count > 0)
+        {
+            using ArrayPoolListRef<UInt256> sorted = GetSortedStorageReads();
+            sb.Append($" reads=[{string.Join(", ", sorted.ToArray())}]");
+        }
         return sb.ToString();
     }
 }

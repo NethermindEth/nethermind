@@ -25,10 +25,8 @@ public class AccountChangesAtIndex(Address address)
     public byte[]? PreTxCode { get; set; }
     private Dictionary<UInt256, UInt256>? _preTxStorage;
 
-    private readonly SortedDictionary<UInt256, StorageChange> _storageChanges
-        = new(GenericComparer.GetOptimized<UInt256>());
-    private readonly SortedSet<UInt256> _storageReads
-        = new(GenericComparer.GetOptimized<UInt256>());
+    private readonly Dictionary<UInt256, StorageChange> _storageChanges = new();
+    private readonly HashSet<UInt256> _storageReads = [];
 
     public IReadOnlyCollection<UInt256> ChangedSlots => _storageChanges.Keys;
     public IEnumerable<KeyValuePair<UInt256, StorageChange>> StorageChanges => _storageChanges;

@@ -8,6 +8,7 @@ using System.Diagnostics.CodeAnalysis;
 using System.Runtime.InteropServices;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
+using Nethermind.Core.Collections;
 using Nethermind.Int256;
 
 namespace Nethermind.Serialization.Rlp.Eip7928;
@@ -137,10 +138,14 @@ public class AccountChangesDecoder :
     {
         stream.StartSequence(lengths.ContentLength);
         stream.Encode(item.Address);
-        // EIP-7928 mandates slot-sorted storage_changes and sorted storage_reads on the wire.
-        // The backing collections are unsorted Dictionary/HashSet; sort once at this boundary.
-        EncodeGeneratedSlotChanges(stream, item.GetSortedStorageChanges(), lengths.StorageChangesContentLength, rlpBehaviors);
-        EncodeStorageReads(stream, item.GetSortedStorageReads(), lengths.StorageReadsContentLength, rlpBehaviors);
+        using (ArrayPoolListRef<GeneratedSlotChanges> sortedSlots = item.GetSortedStorageChanges())
+        {
+            EncodeGeneratedSlotChanges(stream, sortedSlots.AsSpan(), lengths.StorageChangesContentLength, rlpBehaviors);
+        }
+        using (ArrayPoolListRef<UInt256> sortedReads = item.GetSortedStorageReads())
+        {
+            EncodeStorageReads(stream, sortedReads.AsSpan(), lengths.StorageReadsContentLength, rlpBehaviors);
+        }
         EncodeIndexed<BalanceChange>(stream, CollectionsMarshal.AsSpan(item.BalanceChanges), lengths.BalanceContentLength, BalanceChangeDecoder.Instance, rlpBehaviors);
         EncodeIndexed<NonceChange>(stream, CollectionsMarshal.AsSpan(item.NonceChanges), lengths.NonceContentLength, NonceChangeDecoder.Instance, rlpBehaviors);
         EncodeIndexed<CodeChange>(stream, CollectionsMarshal.AsSpan(item.CodeChanges), lengths.CodeContentLength, CodeChangeDecoder.Instance, rlpBehaviors);
