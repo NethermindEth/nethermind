@@ -500,6 +500,13 @@ public class Startup : IStartup
     {
         const int MissingContentLengthInitialCapacity = 4096;
 
+        if (contentLength is > 0 &&
+            maxRequestBodySize is not null &&
+            contentLength.Value > maxRequestBodySize.Value)
+        {
+            ThrowRequestBodyTooLarge(maxRequestBodySize.Value);
+        }
+
         if (contentLength is > 0 and <= int.MaxValue)
         {
             collectedBody.EnsureCapacity((int)contentLength.Value);

@@ -258,16 +258,23 @@ public class StartupTests
     }
 
     [Test]
+    [NonParallelizable]
     public async Task ProcessJsonRpcRequest_OverMaxRequestBodySize_ReturnsPayloadTooLarge()
     {
+        long bodyReadsBefore = JsonRpcMetrics.JsonRpcHttpRequestBodyReads;
+        long bufferRentsBefore = JsonRpcMetrics.JsonRpcHttpRequestBodyBufferRents;
         (string response, int statusCode) = await ProcessJsonRpcRequestWithStatus(
             "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"engine_getBlobsV1\",\"params\":[[]]}",
             maxRequestBodySize: 1);
+        long bodyReads = JsonRpcMetrics.JsonRpcHttpRequestBodyReads - bodyReadsBefore;
+        long bufferRents = JsonRpcMetrics.JsonRpcHttpRequestBodyBufferRents - bufferRentsBefore;
 
         using JsonDocument doc = JsonDocument.Parse(response);
 
         Assert.That(statusCode, Is.EqualTo(StatusCodes.Status413PayloadTooLarge));
         Assert.That(doc.RootElement.GetProperty("error").GetProperty("code").GetInt32(), Is.EqualTo(ErrorCodes.LimitExceeded));
+        Assert.That(bodyReads, Is.EqualTo(0));
+        Assert.That(bufferRents, Is.EqualTo(0));
     }
 
     [Test]
