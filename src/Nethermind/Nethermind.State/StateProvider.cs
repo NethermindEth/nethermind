@@ -322,7 +322,7 @@ namespace Nethermind.State
             {
                 return GetCode(in account.CodeHash.ValueHash256);
             }
-            catch (InvalidOperationException ex) when (ex.Message.StartsWith("Code "))
+            catch (InvalidOperationException ex)
             {
                 throw new InvalidOperationException(
                     $"[alchemy-debug] {ex.Message.TrimEnd('.')}. " +
