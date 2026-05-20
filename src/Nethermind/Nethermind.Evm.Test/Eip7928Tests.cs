@@ -68,12 +68,6 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
             .SetName("EIP7928_EIP6780_selfdestruct_to_sender_nonzero_balance");
     }
 
-    /// <summary>
-    /// Creates a fresh <see cref="TracedAccessWorldState"/> wrapping <see cref="VirtualMachineTestsBase.TestState"/>
-    /// and a matching <see cref="TransactionProcessor{EthereumGasPolicy}"/> wired to it. When
-    /// <paramref name="wrapPrecompileCache"/> is true, the inner code-info repository is wrapped in a
-    /// <see cref="PrecompileCachedCodeInfoRepository"/> so the precompile-aware fast paths are exercised.
-    /// </summary>
     private (TracedAccessWorldState tracedState, TransactionProcessor<EthereumGasPolicy> processor) CreateTracedProcessor(
         bool? parallelOverride = null,
         bool wrapPrecompileCache = false)
@@ -128,12 +122,6 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
         Assert.That(accountChanges.CodeChange, Is.Null);
     }
 
-    /// <summary>
-    /// Asserts equality between an expected <see cref="ReadOnlyAccountChanges"/> (single-index
-    /// expectations) and the produced <see cref="AccountChangesAtIndex"/>. The traced state
-    /// always operates at index 0 in these tests, so each scalar change list has at most one
-    /// entry.
-    /// </summary>
     private static void AssertEqual(ReadOnlyAccountChanges expected, AccountChangesAtIndex? actual)
     {
         Assert.That(actual, Is.Not.Null);
@@ -159,7 +147,6 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
         foreach (ReadOnlySlotChanges slot in expected.StorageChanges)
         {
             Assert.That(actualStorage.TryGetValue(slot.Key, out StorageChange actualChange), Is.True);
-            // Expected slot has exactly one change.
             StorageChange expectedChange = slot.Changes[0];
             Assert.That(actualChange, Is.EqualTo(expectedChange));
         }
@@ -566,7 +553,7 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
     }
 
     /// <summary>
-    /// EIP-7702 regression: delegation to a precompile must NOT execute the precompile (FastCall returns 1).
+    /// EIP-7702: delegation to a precompile must NOT execute the precompile (FastCall returns 1).
     /// </summary>
     /// <remarks>
     /// Inner gas is 0 to discriminate: precompile execution OOGs and pushes 0, FastCall pushes 1 regardless of forwarded gas.
@@ -605,7 +592,7 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
     }
 
     /// <summary>
-    /// EIP-7928 regression: DELEGATECALL to a precompile records the precompile (codeSource) in BAL.
+    /// EIP-7928: DELEGATECALL to a precompile records the precompile (codeSource) in BAL.
     /// </summary>
     /// <remarks>
     /// For DELEGATECALL/CALLCODE, target == ExecutingAccount, so the indirect <c>AccountExists(target)</c> records
@@ -634,7 +621,7 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
     }
 
     /// <summary>
-    /// EIP-7928 regression: top-level transaction with <c>tx.to == precompile_address</c> records the recipient in BAL.
+    /// EIP-7928: top-level transaction with <c>tx.to == precompile_address</c> records the recipient in BAL.
     /// </summary>
     /// <remarks>
     /// <see cref="TransactionProcessor"/>'s <c>BuildExecutionEnvironment</c> only calls <c>accessTracker.WarmUp</c> (EIP-2929)
@@ -769,6 +756,24 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
                 Assert.That(bal.GetAccountChanges(_delegationTargetAddress), Is.Null);
                 AssertStorageRead(bal, _callTargetAddress, UInt256.Zero);
             }
+        }
+    }
+
+    [Test]
+    public void Eip7702_null_address_delegation_to_empty_code_records_nonce_without_code_change()
+    {
+        InitWorldState(TestState, []);
+
+        AuthorizationTuple authorization = SignAuthorization(TestItem.PrivateKeyA, Address.Zero, nonce: 1);
+
+        BlockAccessListAtIndex bal = ExecuteSetCodeCall(authorization);
+        AccountChangesAtIndex? senderChanges = bal.GetAccountChanges(TestItem.AddressA);
+
+        using (Assert.EnterMultipleScope())
+        {
+            AssertNonceChange(bal, TestItem.AddressA, 2);
+            Assert.That(senderChanges, Is.Not.Null);
+            Assert.That(senderChanges!.CodeChange, Is.Null);
         }
     }
 
@@ -1110,13 +1115,9 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
     }
 
     /// <summary>
-    /// Regression for the perf optimization in <c>cea517aa20</c>: when an outer CALL into an
-    /// EIP-7702-delegated EOA OOGs at the cold-access gas charge for the delegation target,
-    /// the delegation target's address must NOT appear in the BAL — only the call target
-    /// (the EOA itself). The optimization had moved <c>GetCachedCodeInfo</c> (which loads the
-    /// delegation target's code via <c>GetCodeHash</c>, recording it as a BAL account-read)
-    /// before the cold-access OOG check, so the target ended up recorded even when the CALL
-    /// frame never executed. Mirrors EELS's
+    /// When an outer CALL into an EIP-7702-delegated EOA OOGs at the cold-access gas charge
+    /// for the delegation target, the target's address must NOT appear in the BAL — only the
+    /// call target (the EOA itself). Mirrors EELS's
     /// <c>test_bal_call_7702_delegation_and_oog[…oog_after_target_access]</c> family.
     /// </summary>
     [Test]
@@ -1156,12 +1157,11 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
         using (Assert.EnterMultipleScope())
         {
             Assert.That(res.TransactionExecuted);
-            // The CALL target (the delegated EOA itself) was loaded to resolve delegation,
-            // so it IS in the BAL.
+            // The CALL target (the delegated EOA itself) is loaded to resolve delegation, so it
+            // IS in the BAL. The delegation target is gated behind the cold-access OOG, so it
+            // MUST NOT appear when the CALL never reaches that point.
             Assert.That(bal.GetAccountChanges(_callTargetAddress), Is.Not.Null,
                 "EIP-7702 delegated EOA must be recorded as the CALL target");
-            // The delegation target was NEVER fully loaded — the CALL OOG'd at the cold-access
-            // gas charge before GetCachedCodeInfo could load its code. It must not appear.
             Assert.That(bal.GetAccountChanges(_delegationTargetAddress), Is.Null,
                 "EIP-7702 delegation target must not be recorded when CALL OOGs before its code is loaded");
         }

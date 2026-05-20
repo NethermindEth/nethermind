@@ -47,7 +47,7 @@ public partial class BlockAccessListManager
         TxProcessorWithWorldState GetPostExecution() => Get(uint.MaxValue);
         void NextTransaction();
         void Rollback();
-        void MergeAndReturnBal(uint balIndex, GeneratedBlockAccessList target, Action<BlockAccessListAtIndex>? onSlice = null);
+        void MergeAndReturnBal(uint balIndex, GeneratedBlockAccessList? target, Action<BlockAccessListAtIndex>? onSlice = null);
     }
 
     private class ParallelTxProcessorWithWorldStateManager : ITxProcessorWithWorldStateManager
@@ -168,8 +168,10 @@ public partial class BlockAccessListManager
             }
         }
 
-        /// <summary>Detaches the worker's populated BAL into the per-tx slot and recycles
-        /// the processor immediately, so workers never block on the validator.</summary>
+        /// <summary>
+        /// Detaches the worker's populated BAL into the per-tx slot and recycles the processor
+        /// immediately, so workers never block on the validator.
+        /// </summary>
         public void Return(uint balIndex)
         {
             int idx = ClampBalIndex(balIndex);
@@ -184,13 +186,13 @@ public partial class BlockAccessListManager
             ReturnProcessor(processor);
         }
 
-        /// <summary>Merges the per-tx BAL into <paramref name="target"/> in caller-controlled
-        /// order, then returns it to the pool. Idempotent w.r.t. <see cref="Return"/>: also
-        /// detaches the BAL for pre/post callers that never went through Return. The optional
-        /// <paramref name="onSlice"/> hook (used by <see cref="BlockAccessListValidationIndex"/>)
-        /// runs after the merge but before the slice goes back to the pool, so the manager can
-        /// snapshot per-tx rows for the validator's fast path.</summary>
-        public void MergeAndReturnBal(uint balIndex, GeneratedBlockAccessList target, Action<BlockAccessListAtIndex>? onSlice = null)
+        /// <summary>
+        /// Merges the per-tx BAL into <paramref name="target"/> in caller-controlled order, then
+        /// returns it to the pool. Idempotent w.r.t. <see cref="Return"/>: also detaches the BAL
+        /// for pre/post callers that never went through Return. <paramref name="target"/> may be
+        /// null to skip the merge; <paramref name="onSlice"/> still fires either way.
+        /// </summary>
+        public void MergeAndReturnBal(uint balIndex, GeneratedBlockAccessList? target, Action<BlockAccessListAtIndex>? onSlice = null)
         {
             int idx = ClampBalIndex(balIndex);
 
@@ -199,7 +201,7 @@ public partial class BlockAccessListManager
             BlockAccessListAtIndex? source = _perTxBal[idx];
             if (source is null) return;
 
-            target.Merge(source);
+            target?.Merge(source);
             onSlice?.Invoke(source);
             _perTxBal[idx] = null;
             StaticPool<BlockAccessListAtIndex>.Return(source);
@@ -343,14 +345,10 @@ public partial class BlockAccessListManager
 
         public void Dispose() { }
 
-        // No onSlice dispatch: the only producer of a non-null onSlice is
-        // BlockAccessListManager.IncrementalValidation, which runs solely on the parallel path
-        // (gated by ParallelExecutionEnabled). The validator's per-slice index is also only
-        // allocated under that flag (PrepareForProcessing), so even an invocation here would
-        // dereference a null index. The parameter remains on the interface so the sequential
-        // and parallel pools share a signature.
-        public void MergeAndReturnBal(uint _, GeneratedBlockAccessList target, Action<BlockAccessListAtIndex>? onSlice = null)
-            => _txProcessorWithWorldState.WorldState.MergeGeneratingBal(target);
+        public void MergeAndReturnBal(uint _, GeneratedBlockAccessList? target, Action<BlockAccessListAtIndex>? onSlice = null)
+        {
+            if (target is not null) _txProcessorWithWorldState.WorldState.MergeGeneratingBal(target);
+        }
     }
 
     private class TxProcessorWithWorldState

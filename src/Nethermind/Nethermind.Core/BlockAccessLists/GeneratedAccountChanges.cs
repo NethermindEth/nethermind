@@ -45,9 +45,8 @@ public class GeneratedAccountChanges(Address address)
     public bool TryGetSlotChanges(UInt256 key, [NotNullWhen(true)] out GeneratedSlotChanges? slotChanges)
         => _storageChanges.TryGetValue(key, out slotChanges);
 
-    /// <summary>Per-family change lists are appended in monotonically increasing <c>Index</c>
-    /// order during <see cref="Merge"/>, so we binary-search via <see cref="IndexKey{T}"/>
-    /// rather than scanning. Mirrors <see cref="ReadOnlyAccountChanges"/>.</summary>
+    /// <summary>Binary-search the entry with <c>Index == index</c>; null if none.
+    /// Lists are kept sorted by <c>Index</c> via the monotonic <see cref="Merge"/> contract.</summary>
     public BalanceChange? BalanceChangeAtIndex(uint index) => GetExact(BalanceChanges, index);
     public NonceChange? NonceChangeAtIndex(uint index) => GetExact(NonceChanges, index);
     public CodeChange? CodeChangeAtIndex(uint index) => GetExact(CodeChanges, index);
@@ -69,11 +68,8 @@ public class GeneratedAccountChanges(Address address)
         && CodeChangeAtIndex(index) is null
         && !HasSlotChangesAtIndex(index);
 
-    /// <summary>Structural equality of the per-index slice of this account against the suggested
-    /// (decoded) account. Address is not compared (callers ensure they're matched). Walks both
-    /// sides without allocating: per-slot lookup is an O(log n) binary search via
-    /// <see cref="IndexKey{T}"/>; both storage maps iterate in sorted-by-slot-key order so
-    /// account-level slot pairing is a single linear merge-walk.</summary>
+    /// <summary>Structural equality of this account's slice at <paramref name="index"/> against
+    /// the suggested (decoded) account. Address is not compared (callers ensure they match).</summary>
     public bool ChangesAtIndexEqual(ReadOnlyAccountChanges other, uint index)
     {
         if (BalanceChangeAtIndex(index) != other.BalanceChangeAtIndex(index)) return false;
@@ -89,14 +85,10 @@ public class GeneratedAccountChanges(Address address)
 
     private bool SlotChangesAtIndexEqual(ReadOnlyAccountChanges other, uint index)
     {
-        // Both sides iterate slots in sorted-by-key order:
-        //   - this:  SortedDictionary<UInt256, GeneratedSlotChanges>.Values
-        //   - other: ReadOnlySlotChanges[] (decoder produces sorted)
-        // Walk in lockstep, skipping slots that have no change at this index on either side.
-        // Concrete struct enumerator type avoids the boxing the IEnumerable/IEnumerator
-        // interface would force; the manual MoveNext/Current control rules out a `using` block,
-        // so the enumerator is disposed explicitly in `finally` to be safe against future BCL
-        // changes that give SortedDictionary's value-enumerator a non-trivial Dispose.
+        // Both sides iterate slots in sorted-by-key order (SortedDictionary on this side, decoded
+        // array on the other), so the walk is a single linear merge. The concrete struct
+        // enumerator is taken explicitly to dodge IEnumerable boxing; that rules out a `using`
+        // block, hence the manual finally-Dispose.
         SortedDictionary<UInt256, GeneratedSlotChanges>.ValueCollection.Enumerator a
             = _storageChanges.Values.GetEnumerator();
         try
@@ -108,8 +100,8 @@ public class GeneratedAccountChanges(Address address)
 
             while (true)
             {
-                // Advance each side to the next slot that has a change at `index`, capturing the
-                // change in the same binary search rather than re-searching after presence is known.
+                // Advance each side to the next slot with a change at `index`, capturing the
+                // change in the same binary search to avoid re-searching after presence.
                 bool aMatched = false;
                 while (aHas)
                 {
@@ -191,7 +183,9 @@ public class GeneratedAccountChanges(Address address)
         }
     }
 
-    /// <summary>Merge the per-index source into this accumulator. Caller must ensure indices arrive monotonically.</summary>
+    /// <summary>
+    /// Merge the per-index source into this accumulator. Caller must ensure indices arrive monotonically.
+    /// </summary>
     public void Merge(AccountChangesAtIndex other)
     {
         if (other.BalanceChange is not null)
@@ -217,7 +211,6 @@ public class GeneratedAccountChanges(Address address)
 
         foreach (UInt256 read in other.StorageReads)
         {
-            // only add reads where there's no existing change for the slot
             if (!_storageChanges.ContainsKey(read))
             {
                 _storageReads.Add(read);

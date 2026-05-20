@@ -50,12 +50,9 @@ public partial class BlockAccessListManager
                 Transaction tx = block.Transactions[j];
 
                 GasValidationResult gasResult = gasResults[j].GetResult();
-                IntrinsicGas<EthereumGasPolicy> intrinsicGas = gasResult.IntrinsicGas;
-                // EIP-8037 per-tx 2D inclusion check (execution-specs PR 2703).
-                // totalRegularGas/totalStateGas reflect the cumulatives BEFORE this tx;
-                // the worst-case per-dimension contribution must fit the remaining budget.
                 // The worker precomputes intrinsic gas once and carries it here to avoid
                 // recalculating dynamic state-byte costs on the validation thread.
+                IntrinsicGas<EthereumGasPolicy> intrinsicGas = gasResult.IntrinsicGas;
                 CheckPerTxInclusion(block, j, tx, _blockExecutionContext.Value.Spec, totalRegularGas, totalStateGas, in intrinsicGas);
 
                 // Surface the worker's original tx-rejection reason before running any
@@ -98,20 +95,16 @@ public partial class BlockAccessListManager
 
     internal static void CheckPerTxInclusion(Block block, int index, Transaction tx, IReleaseSpec spec, long cumulativeRegular, long cumulativeState)
     {
-        // EIP-8037 (bal-devnet-6, execution-specs PR 2703): worst-case 2D inclusion
-        // check. Only applies when EIP-8037 is active; legacy and pre-EIP-8037 blocks
-        // continue to rely solely on the post-execution running max(R,S) check.
         if (!spec.IsEip8037Enabled) return;
 
         IntrinsicGas<EthereumGasPolicy> intrinsic = EthereumGasPolicy.CalculateIntrinsicGas(tx, spec, block.Header.GasLimit);
         CheckPerTxInclusion(block, index, tx, spec, cumulativeRegular, cumulativeState, in intrinsic);
     }
 
+    // EIP-8037 worst-case 2D inclusion check. Only fires when EIP-8037 is active; legacy and
+    // pre-EIP-8037 blocks rely solely on the post-execution running max(R,S) check.
     internal static void CheckPerTxInclusion(Block block, int index, Transaction tx, IReleaseSpec spec, long cumulativeRegular, long cumulativeState, in IntrinsicGas<EthereumGasPolicy> intrinsic)
     {
-        // EIP-8037 (bal-devnet-6, execution-specs PR 2703): worst-case 2D inclusion
-        // check. Only applies when EIP-8037 is active; legacy and pre-EIP-8037 blocks
-        // continue to rely solely on the post-execution running max(R,S) check.
         if (!spec.IsEip8037Enabled) return;
 
         long intrinsicRegular = intrinsic.Standard.Value;
@@ -137,36 +130,55 @@ public partial class BlockAccessListManager
 
     public void ValidateBlockAccessList(Block block, uint index, bool validateStorageReads = true)
     {
-        if (block.BlockAccessList is null)
-        {
-            return;
-        }
+        if (block.BlockAccessList is null) return;
 
         CheckInitialized();
 
-        // Fast path: when the column-oriented validation index is populated for this index,
-        // a single ChangesEqual call compares both sides row-by-row in bulk. On match, only
-        // the surplus-storage-reads gas check remains — no per-account dict lookups, no
-        // sorted merge walk. On mismatch (or when the index isn't ready, or when a generated
-        // slice contained a read-only account the suggested side never declared — invisible
-        // to ChangesEqual), fall through to the streaming walk below which produces precise
-        // diagnostics.
-        if (_hasGeneratedValidationIndexUpdates &&
-            _suggestedValidationIndex is not null &&
-            _generatedValidationIndex is not null &&
-            !_hasGeneratedRequiredReadAccountMismatch &&
-            _generatedValidationIndex.ChangesEqual(_suggestedValidationIndex, index))
+        if (TryFastPath(block, index, validateStorageReads)) return;
+
+        if (VerifyOnly && _suggestedValidationIndex is not null && _generatedValidationIndex is not null)
         {
-            int fastSurplus = _suggestedChargeableStorageReads - _generatedChargeableStorageReads;
-            if (validateStorageReads && fastSurplus > 0 && _gasRemaining < fastSurplus * Eip7928Constants.ItemCost)
-            {
-                throw new InvalidBlockLevelAccessListException(block.Header, "Suggested block-level access list contained invalid storage reads.");
-            }
+            SlowPathFromColumnIndex(block, index, validateStorageReads);
             return;
         }
 
+        SlowPathFromGeneratedBlockAccessList(block, index, validateStorageReads);
+    }
+
+    /// <summary>
+    /// Column-index per-row equality with a final surplus-reads gas budget check. Skipped when
+    /// the index hasn't received any updates, when a per-tx slice already surfaced a generated-
+    /// only account invisible to <see cref="BlockAccessListValidationIndex.ChangesEqual"/>, or
+    /// when ChangesEqual itself detects a row-level mismatch.
+    /// </summary>
+    private bool TryFastPath(Block block, uint index, bool validateStorageReads)
+    {
+        if (!_hasGeneratedValidationIndexUpdates ||
+            _suggestedValidationIndex is null ||
+            _generatedValidationIndex is null ||
+            _hasGeneratedRequiredReadAccountMismatch ||
+            !_generatedValidationIndex.ChangesEqual(_suggestedValidationIndex, index))
+        {
+            return false;
+        }
+
+        int surplus = _suggestedChargeableStorageReads - _generatedChargeableStorageReads;
+        if (validateStorageReads && surplus > 0 && _gasRemaining < surplus * Eip7928Constants.ItemCost)
+        {
+            throw new InvalidBlockLevelAccessListException(block.Header, "Suggested block-level access list contained invalid storage reads.");
+        }
+        return true;
+    }
+
+    /// <summary>
+    /// Non-verify-only diagnostic walk: the constructed <see cref="GeneratedBlockAccessList"/>
+    /// drives a two-pass comparison against the suggested BAL. Used by the BAL recorder and the
+    /// sequential build where the constructed list is populated anyway.
+    /// </summary>
+    private void SlowPathFromGeneratedBlockAccessList(Block block, uint index, bool validateStorageReads)
+    {
         GeneratedBlockAccessList generated = GeneratedBlockAccessList;
-        ReadOnlyBlockAccessList suggested = block.BlockAccessList;
+        ReadOnlyBlockAccessList suggested = block.BlockAccessList!;
 
         int generatedReads = 0;
         int suggestedReads = 0;
@@ -229,14 +241,86 @@ public partial class BlockAccessListManager
     }
 
     /// <summary>
-    /// Hook called by <see cref="ITxProcessorWithWorldStateManager.MergeAndReturnBal"/> after
-    /// each per-tx slice merges into the cumulative <see cref="GeneratedBlockAccessList"/>.
-    /// Pushes the slice's rows into <see cref="_generatedValidationIndex"/> so the next
-    /// <see cref="ValidateBlockAccessList"/> call at this index can take the fast path, rolls
-    /// the chargeable-storage-reads counter forward, and latches the read-only-mismatch flag
-    /// if any account in the slice is missing from the suggested BAL (and isn't a tolerated
-    /// read-only entry).
+    /// Verify-only slow path: produces per-account, per-row diagnostics by walking only the
+    /// column-index data structures. Required when per-tx Merge is skipped so generated is empty.
     /// </summary>
+    private void SlowPathFromColumnIndex(Block block, uint index, bool validateStorageReads)
+    {
+        BlockAccessListValidationIndex gen = _generatedValidationIndex!;
+        BlockAccessListValidationIndex sug = _suggestedValidationIndex!;
+        ReadOnlyBlockAccessList suggestedBal = block.BlockAccessList!;
+        int row = (int)index;
+
+        // Row capacity tracks suggested, so an overflow signals generated produced a change at
+        // a (row, lane) suggested doesn't declare — HasAt would otherwise hide the dropped entry.
+        if (gen.TryGetGeneratedOverflow(out Address overflowAddress, out uint overflowIndex) && overflowIndex <= index)
+        {
+            throw new InvalidBlockLevelAccessListException(block.Header,
+                $"Suggested block-level access list contained incorrect changes for {overflowAddress} at index {overflowIndex}.");
+        }
+
+        // Pass 1: walk generated marked ordinals — every account execution touched.
+        foreach (int ordinal in gen.EnumerateMarkedOrdinals())
+        {
+            Address address = gen.AddressOf(ordinal);
+            bool inSuggested = sug.HasAccount(ordinal);
+
+            if (inSuggested)
+            {
+                if (!gen.ChangesAtRowEqualForOrdinal(sug, row, ordinal))
+                {
+                    throw new InvalidBlockLevelAccessListException(block.Header,
+                        $"Suggested block-level access list contained incorrect changes for {address} at index {index}.");
+                }
+                continue;
+            }
+
+            // Generated has the account, suggested doesn't. Tolerated when no changes at this
+            // row AND (system-user read at index 0 with no reads, or has reads).
+            bool hasReads = gen.HasStorageReadsForOrdinal(ordinal);
+            int genReads = IsSystemContract(address) ? 0 : (hasReads ? 1 : 0); // sentinel; only "> 0" matters
+            if (!gen.HasChangesAtRow(row, ordinal) &&
+                ((index == 0 && address == Address.SystemUser && genReads == 0) || genReads > 0))
+            {
+                continue;
+            }
+
+            throw new InvalidBlockLevelAccessListException(block.Header,
+                $"Suggested block-level access list missing account changes for {address} at index {index}.");
+        }
+
+        // Pass 2: walk suggested-only ordinals. The bitmap on the suggested side gives us every
+        // address declared in the wire BAL; for any that the generated side didn't touch, a
+        // change at this row is a surplus.
+        foreach (int ordinal in sug.EnumerateMarkedOrdinals())
+        {
+            if (gen.HasAccount(ordinal)) continue; // already handled in Pass 1
+            if (sug.HasChangesAtRow(row, ordinal))
+            {
+                throw new InvalidBlockLevelAccessListException(block.Header,
+                    $"Suggested block-level access list contained surplus changes for {sug.AddressOf(ordinal)} at index {index}.");
+            }
+        }
+
+        // Storage-read gas budget — counts already tracked block-cumulative on both sides.
+        int surplusReads = _suggestedChargeableStorageReads - _generatedChargeableStorageReads;
+        if (validateStorageReads && surplusReads > 0 && _gasRemaining < surplusReads * Eip7928Constants.ItemCost)
+        {
+            throw new InvalidBlockLevelAccessListException(block.Header, "Suggested block-level access list contained invalid storage reads.");
+        }
+    }
+
+    /// <summary>
+    /// Hook called by <see cref="ITxProcessorWithWorldStateManager.MergeAndReturnBal"/> after each
+    /// per-tx slice merges into the cumulative <see cref="GeneratedBlockAccessList"/>.
+    /// </summary>
+    /// <remarks>
+    /// Pushes the slice's rows into <see cref="_generatedValidationIndex"/> so the next
+    /// <see cref="ValidateBlockAccessList"/> call at this index can take the fast path, rolls the
+    /// chargeable-storage-reads counter forward, and latches the read-only-mismatch flag if any
+    /// account in the slice is missing from the suggested BAL (and isn't a tolerated read-only
+    /// entry).
+    /// </remarks>
     private void RegisterGeneratedSlice(BlockAccessListAtIndex slice)
     {
         if (_generatedValidationIndex is null)
@@ -261,11 +345,13 @@ public partial class BlockAccessListManager
         _hasGeneratedValidationIndexUpdates = true;
     }
 
-    /// <summary>True iff any account in <paramref name="slice"/> has no state changes, isn't a
-    /// tolerated read-only entry (system-user at index 0 or any storage-read row), and isn't
-    /// declared in <paramref name="suggestedValidationIndex"/>. Such an account is invisible to
-    /// the column-index fast path (no lane rows land for it on either side) but must still be
-    /// rejected — <see cref="ValidateBlockAccessList"/>'s fallback walk catches it.</summary>
+    /// <summary>
+    /// True iff any account in <paramref name="slice"/> has no state changes, isn't a tolerated
+    /// read-only entry (system-user at index 0 or any storage-read row), and isn't declared in
+    /// <paramref name="suggestedValidationIndex"/>. Such an account is invisible to the
+    /// column-index fast path (no lane rows land for it on either side) but must still be
+    /// rejected — <see cref="ValidateBlockAccessList"/>'s fallback walk catches it.
+    /// </summary>
     private static bool HasRequiredReadAccountMissing(BlockAccessListAtIndex slice, BlockAccessListValidationIndex suggestedValidationIndex)
     {
         foreach (AccountChangesAtIndex ac in slice.AccountChanges)
@@ -289,4 +375,49 @@ public partial class BlockAccessListManager
     private static bool IsSystemContract(Address address)
         => address == Eip7002Constants.WithdrawalRequestPredeployAddress
         || address == Eip7251Constants.ConsolidationRequestPredeployAddress;
+
+    /// <summary>
+    /// Closes the gap between the column-index per-row validation and what the end-of-block
+    /// canonical-bytes hash compare used to catch: namely, account-set presence and the exact
+    /// set of storage_reads per account. Throws <see cref="InvalidBlockLevelAccessListException"/>
+    /// on any structural difference between the suggested and generated BALs.
+    /// </summary>
+    /// <remarks>
+    /// Does not compare <c>StorageChanges</c> (write entries): those are fully covered by the
+    /// incremental <see cref="ValidateBlockAccessList"/> calls at indices 0..txCount+1 via
+    /// <c>ChangesAtIndexEqual</c>, which compares every balance/nonce/code/storage-write lane at
+    /// each tx index in lockstep.
+    /// </remarks>
+    private void ValidateStructuralEquivalence(Block block)
+    {
+        BlockAccessListValidationIndex generatedIndex = _generatedValidationIndex!;
+        ReadOnlyBlockAccessList suggested = block.BlockAccessList!;
+
+        // Generated lane Add dropped a row that didn't fit suggested's per-row capacity —
+        // structural mismatch the per-account walk below can't see through HasAt.
+        if (generatedIndex.TryGetGeneratedOverflow(out Address overflowAddress, out uint overflowIndex))
+        {
+            throw new InvalidBlockLevelAccessListException(block.Header,
+                $"Suggested block-level access list contained incorrect changes for {overflowAddress} at index {overflowIndex}.");
+        }
+
+        BlockAccessListValidationIndex.StructuralMismatchKind mismatch =
+            generatedIndex.FindStructuralMismatch(suggested, out Address? mismatchAddress, out int generatedAccountCount);
+
+        string? error = mismatch switch
+        {
+            BlockAccessListValidationIndex.StructuralMismatchKind.None => null,
+            BlockAccessListValidationIndex.StructuralMismatchKind.AccountCountMismatch
+                => $"Account-set size mismatch: suggested={suggested.AccountChanges.Count}, generated={generatedAccountCount}.",
+            BlockAccessListValidationIndex.StructuralMismatchKind.MissingInGenerated
+                => $"Suggested BAL declares account {mismatchAddress} which execution did not touch.",
+            BlockAccessListValidationIndex.StructuralMismatchKind.StorageReadsCountMismatch
+                => $"storage_reads count mismatch for {mismatchAddress}.",
+            BlockAccessListValidationIndex.StructuralMismatchKind.StorageReadsContentMismatch
+                => $"storage_reads mismatch for {mismatchAddress}.",
+            _ => throw new InvalidOperationException($"Unhandled {nameof(BlockAccessListValidationIndex.StructuralMismatchKind)}: {mismatch}"),
+        };
+
+        if (error is not null) throw new InvalidBlockLevelAccessListException(block.Header, error);
+    }
 }

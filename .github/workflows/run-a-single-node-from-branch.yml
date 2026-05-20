@@ -16,8 +16,6 @@ on:
           - hoodi
           - op-mainnet
           - op-sepolia
-          - base-mainnet
-          - base-sepolia
           - world-sepolia
           - world-mainnet
           - joc-mainnet
