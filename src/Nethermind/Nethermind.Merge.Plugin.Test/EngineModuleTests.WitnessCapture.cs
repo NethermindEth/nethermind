@@ -380,8 +380,7 @@ public partial class EngineModuleTests
 
         NewPayloadWithWitnessHandler handler = new(
             WitnessHandlerBuilder.SucceedingNewPayloadV5(new PayloadStatusV1 { Status = PayloadStatus.Syncing }),
-            registry,
-            LimboLogs.Instance);
+            registry);
 
         await handler.HandleAsync(new ExecutionPayloadV4 { BlockHash = TestItem.KeccakA }, [], TestItem.KeccakA, []);
 
@@ -403,8 +402,7 @@ public partial class EngineModuleTests
                 LatestValidHash = TestItem.KeccakD,
                 ValidationError = "bad block"
             }),
-            registry,
-            LimboLogs.Instance);
+            registry);
 
         await handler.HandleAsync(new ExecutionPayloadV4 { BlockHash = TestItem.KeccakA }, [], TestItem.KeccakA, []);
 
@@ -421,8 +419,7 @@ public partial class EngineModuleTests
 
         NewPayloadWithWitnessHandler handler = new(
             WitnessHandlerBuilder.FailingNewPayloadV5("Unsupported fork", MergeErrorCodes.UnsupportedFork),
-            registry,
-            LimboLogs.Instance);
+            registry);
 
         await handler.HandleAsync(new ExecutionPayloadV4 { BlockHash = TestItem.KeccakA }, [], TestItem.KeccakA, []);
 
@@ -438,8 +435,7 @@ public partial class EngineModuleTests
         NewPayloadWithWitnessHandler handler = new(
             WitnessHandlerBuilder.SucceedingNewPayloadV5(
                 new PayloadStatusV1 { Status = PayloadStatus.Valid, LatestValidHash = TestItem.KeccakA }),
-            registry,
-            LimboLogs.Instance);
+            registry);
 
         ExecutionPayloadV4 payload = new()
         {

@@ -56,7 +56,6 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
         IEngineRequestsTracker engineRequestsTracker,
         ISpecProvider specProvider,
         GCKeeper gcKeeper,
-        IBlockTree blockTree,
         ILogManager logManager,
         ITxPool txPool,
         IBlockFinder blockFinder,
@@ -84,7 +83,6 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
                 engineRequestsTracker,
                 specProvider,
                 gcKeeper,
-                blockTree,
                 logManager), ITaikoEngineRpcModule
 {
     /// <summary>

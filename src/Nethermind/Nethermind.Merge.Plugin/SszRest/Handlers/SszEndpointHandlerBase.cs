@@ -91,7 +91,7 @@ public abstract class SszEndpointHandlerBase : ISszEndpointHandler
     {
         ctx.Response.StatusCode = status;
         ctx.Response.ContentType = "application/json";
-        string json = $"{{\"code\":{jsonRpcCode},\"message\":{System.Text.Json.JsonSerializer.Serialize(message)}}}";
+        string json = System.Text.Json.JsonSerializer.Serialize(new { code = jsonRpcCode, message });
         await ctx.Response.WriteAsync(json, ctx.RequestAborted);
     }
 

@@ -11,7 +11,6 @@ using FluentAssertions;
 using Microsoft.AspNetCore.Http;
 using Nethermind.Config;
 using Nethermind.Consensus.Producers;
-using Nethermind.Consensus.Stateless;
 using Nethermind.Core;
 using Nethermind.Core.Authentication;
 using Nethermind.Core.Crypto;
@@ -28,6 +27,7 @@ using NUnit.Framework;
 using Nethermind.Core.Collections;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Serialization.Rlp.Eip7928;
+using Nethermind.Consensus.Stateless;
 
 namespace Nethermind.Merge.Plugin.Test.SszRest;
 
@@ -35,8 +35,6 @@ namespace Nethermind.Merge.Plugin.Test.SszRest;
 public class SszMiddlewareTests
 {
     private IEngineRpcModule _engineModule = null!;
-    private IWitnessCaptureRegistry _witnessCaptureRegistry = null!;
-
     private IJsonRpcUrlCollection _urlCollection = null!;
     private IRpcAuthentication _auth = null!;
     private IProcessExitSource _processExitSource = null!;
@@ -53,7 +51,6 @@ public class SszMiddlewareTests
     public void SetUp()
     {
         _engineModule = Substitute.For<IEngineRpcModule>();
-        _witnessCaptureRegistry = Substitute.For<IWitnessCaptureRegistry>();
 
         _urlCollection = Substitute.For<IJsonRpcUrlCollection>();
         _auth = Substitute.For<IRpcAuthentication>();
@@ -104,7 +101,7 @@ public class SszMiddlewareTests
 
             new ClientVersionSszHandler(_engineModule),
             new CapabilitiesSszHandler(_engineModule),
-            new NewPayloadWithWitnessSszHandler(_engineModule, _witnessCaptureRegistry, LimboLogs.Instance),
+            new NewPayloadWithWitnessSszHandler(_engineModule),
         ];
 
         return new SszMiddleware(
@@ -665,18 +662,9 @@ public class SszMiddlewareTests
         body.Should().Contain("\"code\"");
     }
 
-    private void ConfigureRegistry(Witness? witness) => _witnessCaptureRegistry
-            .ArmCapture(Arg.Any<Hash256>())
-            .Returns(Task.FromResult(witness));
-
     [Test]
     public async Task NewPayloadWithWitness_returns_200_with_octet_stream_and_decodable_ssz_for_valid_status()
     {
-        PayloadStatusV1 status = new() { Status = PayloadStatus.Valid, LatestValidHash = TestItem.KeccakA };
-        _engineModule.engine_newPayloadV5(
-                Arg.Any<ExecutionPayloadV4>(), Arg.Any<byte[]?[]>(), Arg.Any<Hash256?>(), Arg.Any<byte[][]?>())
-            .Returns(ResultWrapper<PayloadStatusV1>.Success(status));
-
         Witness stubWitness = new()
         {
             State = new ArrayPoolList<byte[]>(1) { new byte[] { 0xDE, 0xAD, 0xBE, 0xEF } },
@@ -685,14 +673,20 @@ public class SszMiddlewareTests
             Headers = new ArrayPoolList<byte[]>(0),
         };
 
-        ConfigureRegistry(stubWitness);
+        NewPayloadWithWitnessV1Result witnessResult = NewPayloadWithWitnessV1Result.FromPayloadStatus(
+            new PayloadStatusV1 { Status = PayloadStatus.Valid, LatestValidHash = TestItem.KeccakA },
+            stubWitness);
+
+        _engineModule.engine_newPayloadWithWitness(
+                Arg.Any<ExecutionPayloadV4>(), Arg.Any<byte[]?[]>(), Arg.Any<Hash256?>(), Arg.Any<byte[][]?>())
+            .Returns(ResultWrapper<NewPayloadWithWitnessV1Result>.Success(witnessResult));
 
         byte[] body = BuildMinimalWitnessRequestBody();
         DefaultHttpContext ctx = MakeJsonPostContext("/new-payload-with-witness", body);
 
         await _middleware.InvokeAsync(ctx);
 
-        await _engineModule.Received(1).engine_newPayloadV5(
+        await _engineModule.Received(1).engine_newPayloadWithWitness(
             Arg.Any<ExecutionPayloadV4>(), Arg.Any<byte[]?[]>(), Arg.Any<Hash256?>(), Arg.Any<byte[][]?>());
         ctx.Response.StatusCode.Should().Be(StatusCodes.Status200OK,
             "VALID with a successfully generated witness must return 200 OK");
@@ -714,12 +708,13 @@ public class SszMiddlewareTests
     [Test]
     public async Task NewPayloadWithWitness_valid_status_but_witness_generation_fails_returns_200_with_null_witness()
     {
-        PayloadStatusV1 status = new() { Status = PayloadStatus.Valid, LatestValidHash = TestItem.KeccakA };
-        _engineModule.engine_newPayloadV5(
-                Arg.Any<ExecutionPayloadV4>(), Arg.Any<byte[]?[]>(), Arg.Any<Hash256?>(), Arg.Any<byte[][]?>())
-            .Returns(ResultWrapper<PayloadStatusV1>.Success(status));
+        NewPayloadWithWitnessV1Result witnessResult = NewPayloadWithWitnessV1Result.FromPayloadStatus(
+            new PayloadStatusV1 { Status = PayloadStatus.Valid, LatestValidHash = TestItem.KeccakA },
+            witness: null);
 
-        ConfigureRegistry(null);
+        _engineModule.engine_newPayloadWithWitness(
+                Arg.Any<ExecutionPayloadV4>(), Arg.Any<byte[]?[]>(), Arg.Any<Hash256?>(), Arg.Any<byte[][]?>())
+            .Returns(ResultWrapper<NewPayloadWithWitnessV1Result>.Success(witnessResult));
 
         byte[] body = BuildMinimalWitnessRequestBody();
         DefaultHttpContext ctx = MakeJsonPostContext("/new-payload-with-witness", body);
@@ -756,10 +751,12 @@ public class SszMiddlewareTests
     [Test]
     public async Task NewPayloadWithWitness_non_valid_status_returns_200_with_ssz_body()
     {
-        PayloadStatusV1 status = new() { Status = PayloadStatus.Syncing };
-        _engineModule.engine_newPayloadV5(
+        NewPayloadWithWitnessV1Result witnessResult = NewPayloadWithWitnessV1Result.FromPayloadStatus(
+            new PayloadStatusV1 { Status = PayloadStatus.Syncing });
+
+        _engineModule.engine_newPayloadWithWitness(
                 Arg.Any<ExecutionPayloadV4>(), Arg.Any<byte[]?[]>(), Arg.Any<Hash256?>(), Arg.Any<byte[][]?>())
-            .Returns(ResultWrapper<PayloadStatusV1>.Success(status));
+            .Returns(ResultWrapper<NewPayloadWithWitnessV1Result>.Success(witnessResult));
 
         byte[] body = BuildMinimalWitnessRequestBody();
         DefaultHttpContext ctx = MakeJsonPostContext("/new-payload-with-witness", body);
@@ -802,9 +799,9 @@ public class SszMiddlewareTests
     [Test]
     public async Task NewPayloadWithWitness_unsupported_fork_returns_400_with_correct_code()
     {
-        _engineModule.engine_newPayloadV5(
+        _engineModule.engine_newPayloadWithWitness(
                 Arg.Any<ExecutionPayloadV4>(), Arg.Any<byte[]?[]>(), Arg.Any<Hash256?>(), Arg.Any<byte[][]?>())
-            .Returns(ResultWrapper<PayloadStatusV1>.Fail("Unsupported fork", MergeErrorCodes.UnsupportedFork));
+            .Returns(ResultWrapper<NewPayloadWithWitnessV1Result>.Fail("Unsupported fork", MergeErrorCodes.UnsupportedFork));
 
         byte[] body = BuildMinimalWitnessRequestBody();
         DefaultHttpContext ctx = MakeJsonPostContext("/new-payload-with-witness", body);
@@ -835,9 +832,9 @@ public class SszMiddlewareTests
     [Test]
     public async Task NewPayloadWithWitness_non_UnsupportedFork_engine_error_returns_500()
     {
-        _engineModule.engine_newPayloadV5(
+        _engineModule.engine_newPayloadWithWitness(
                 Arg.Any<ExecutionPayloadV4>(), Arg.Any<byte[]?[]>(), Arg.Any<Hash256?>(), Arg.Any<byte[][]?>())
-            .Returns(ResultWrapper<PayloadStatusV1>.Fail("Something exploded", ErrorCodes.InternalError));
+            .Returns(ResultWrapper<NewPayloadWithWitnessV1Result>.Fail("Something exploded", ErrorCodes.InternalError));
 
         byte[] body = BuildMinimalWitnessRequestBody();
         DefaultHttpContext ctx = MakeJsonPostContext("/new-payload-with-witness", body);

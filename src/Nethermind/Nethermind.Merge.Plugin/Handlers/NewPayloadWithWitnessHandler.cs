@@ -7,7 +7,6 @@ using Nethermind.Consensus.Stateless;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.JsonRpc;
-using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Data;
 
 namespace Nethermind.Merge.Plugin.Handlers;
@@ -23,11 +22,8 @@ namespace Nethermind.Merge.Plugin.Handlers;
 /// </remarks>
 public sealed class NewPayloadWithWitnessHandler(
     Func<ExecutionPayloadV4, byte[]?[], Hash256?, byte[][]?, Task<ResultWrapper<PayloadStatusV1>>> newPayloadV5,
-    IWitnessCaptureRegistry witnessCaptureRegistry,
-    ILogManager logManager) : INewPayloadWithWitnessHandler
+    IWitnessCaptureRegistry witnessCaptureRegistry) : INewPayloadWithWitnessHandler
 {
-    private readonly ILogger _logger = logManager.GetClassLogger<NewPayloadWithWitnessHandler>();
-
     public async Task<ResultWrapper<NewPayloadWithWitnessV1Result>> HandleAsync(
         ExecutionPayloadV4 executionPayload,
         byte[]?[] blobVersionedHashes,
@@ -63,14 +59,6 @@ public sealed class NewPayloadWithWitnessHandler(
                 if (captureTask is not null)
                 {
                     witness = await captureTask;
-
-                    if (witness is null && _logger.IsError)
-                    {
-                        _logger.Error(
-                            $"engine_newPayloadWithWitness: payload is VALID but execution witness could not be " +
-                            $"generated for block {blockHash}. " +
-                            $"The block has been accepted; returning witness=None per spec Union[None, T] arm.");
-                    }
                 }
             }
             else

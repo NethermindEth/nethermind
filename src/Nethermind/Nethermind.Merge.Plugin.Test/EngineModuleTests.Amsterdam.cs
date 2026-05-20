@@ -10,7 +10,6 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.JsonRpc;
-using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Specs.Forks;
@@ -38,7 +37,7 @@ public partial class EngineModuleTests
         public IWitnessCaptureRegistry Registry { get; set; } = RegistryReturning(MakeStubWitness());
 
         public NewPayloadWithWitnessHandler Build() =>
-            new(NewPayloadV5, Registry, LimboLogs.Instance);
+            new(NewPayloadV5, Registry);
 
         public static Func<ExecutionPayloadV4, byte[]?[], Hash256?, byte[][]?, Task<ResultWrapper<PayloadStatusV1>>>
             SucceedingNewPayloadV5(PayloadStatusV1 status) =>

@@ -7,10 +7,7 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.DependencyInjection;
 using Nethermind.Api.Extensions;
-using Nethermind.Blockchain;
-using Nethermind.Blockchain.Headers;
 using Nethermind.Config;
-using Nethermind.Consensus.Stateless;
 using Nethermind.Core.Authentication;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Data;
@@ -44,9 +41,6 @@ public sealed class SszMiddlewareConfigurer(IComponentContext ctx) : IJsonRpcSer
         services.Bridge<IRpcAuthentication>(ctx);
         services.Bridge<IEngineRpcModule>(ctx);
         services.Bridge<IProcessExitSource>(ctx);
-        services.Bridge<IBlockTree>(ctx);
-        services.Bridge<IHeaderFinder>(ctx);
-        services.Bridge<IWitnessCaptureRegistry>(ctx);
 
         services.AddSingleton<ISszEndpointHandler, NewPayloadSszHandler<NewPayloadDescriptorV1, NewPayloadV1RequestWire>>();
         services.AddSingleton<ISszEndpointHandler, NewPayloadSszHandler<NewPayloadDescriptorV2, NewPayloadV2RequestWire>>();

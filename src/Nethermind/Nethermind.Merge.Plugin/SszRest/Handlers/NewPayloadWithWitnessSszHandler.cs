@@ -10,7 +10,6 @@ using Nethermind.Consensus.Stateless;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.JsonRpc;
-using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Serialization.Json;
 
@@ -22,11 +21,8 @@ namespace Nethermind.Merge.Plugin.SszRest.Handlers;
 /// <c>NewPayloadWithWitnessResponseV1</c> that includes the execution witness when status is VALID.
 /// </summary>
 public sealed class NewPayloadWithWitnessSszHandler(
-    IEngineRpcModule engineModule,
-    IWitnessCaptureRegistry witnessCaptureRegistry,
-    ILogManager logManager) : SszEndpointHandlerBase
+    IEngineRpcModule engineModule) : SszEndpointHandlerBase
 {
-    private readonly ILogger _logger = logManager.GetClassLogger<NewPayloadWithWitnessSszHandler>();
 
     public override string HttpMethod => "POST";
 
@@ -34,7 +30,7 @@ public sealed class NewPayloadWithWitnessSszHandler(
     // The SszMiddleware dispatches to it via a dedicated fast path for this resource constant.
     public override string Resource => SszRestPaths.NewPayloadWithWitness;
 
-    // Version is null, this endpoint has no version prefix in its path.
+    // Version is null; this endpoint has no version prefix in its path.
     public override int? Version => null;
 
     public override async Task HandleAsync(HttpContext ctx, int version, ReadOnlyMemory<char> extra, ReadOnlySequence<byte> body)
@@ -55,13 +51,7 @@ public sealed class NewPayloadWithWitnessSszHandler(
             return;
         }
 
-        Hash256? blockHash = request.ExecutionPayload.BlockHash;
-
-        Task<Witness?>? captureTask = blockHash is not null
-            ? witnessCaptureRegistry.ArmCapture(blockHash)
-            : null;
-
-        ResultWrapper<PayloadStatusV1> result = await engineModule.engine_newPayloadV5(
+        ResultWrapper<NewPayloadWithWitnessV1Result> result = await engineModule.engine_newPayloadWithWitness(
             request.ExecutionPayload,
             request.ExpectedBlobVersionedHashes,
             request.ParentBeaconBlockRoot,
@@ -71,9 +61,6 @@ public sealed class NewPayloadWithWitnessSszHandler(
         {
             if (result.Result.ResultType != ResultType.Success)
             {
-                if (blockHash is not null)
-                    witnessCaptureRegistry.DisarmCapture(blockHash);
-
                 int httpStatus = result.ErrorCode switch
                 {
                     MergeErrorCodes.UnsupportedFork => StatusCodes.Status400BadRequest,
@@ -88,34 +75,18 @@ public sealed class NewPayloadWithWitnessSszHandler(
                 return;
             }
 
-            PayloadStatusV1 status = result.Data!;
-            Witness? witness = null;
-
-            if (status.Status == PayloadStatus.Valid)
+            NewPayloadWithWitnessV1Result witnessResult = result.Data!;
+            PayloadStatusV1 payloadStatus = new()
             {
-                if (captureTask is not null)
-                {
-                    witness = await captureTask;
-
-                    if (witness is null && _logger.IsError)
-                    {
-                        _logger.Error(
-                            $"Payload executed with VALID status but the execution witness could not be " +
-                            $"generated for block {blockHash}. " +
-                            $"The block has been accepted; returning witness=None per spec Union[None, T] arm.");
-                    }
-                }
-            }
-            else
-            {
-                if (blockHash is not null)
-                    witnessCaptureRegistry.DisarmCapture(blockHash);
-            }
-
-            await WriteSszNewPayloadWithWitnessAsync(ctx, status, witness);
+                Status = witnessResult.Status,
+                LatestValidHash = witnessResult.LatestValidHash,
+                ValidationError = witnessResult.ValidationError
+            };
+            await WriteSszNewPayloadWithWitnessAsync(ctx, payloadStatus, witnessResult.ExecutionWitness);
         }
     }
 
+    /// <param name="witness">Caller transfers ownership — this method disposes the instance.</param>
     private static async Task WriteSszNewPayloadWithWitnessAsync(HttpContext ctx, PayloadStatusV1 status, Witness? witness)
     {
         using Witness? w = witness;

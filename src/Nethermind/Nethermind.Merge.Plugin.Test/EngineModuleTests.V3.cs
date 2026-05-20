@@ -393,7 +393,6 @@ public partial class EngineModuleTests
                 Substitute.For<IEngineRequestsTracker>(),
                 chain.SpecProvider,
                 new GCKeeper(NoGCStrategy.Instance, chain.LogManager),
-                chain.BlockTree,
                 Substitute.For<ILogManager>()));
         }
 
