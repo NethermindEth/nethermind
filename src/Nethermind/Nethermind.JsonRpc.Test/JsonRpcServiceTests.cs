@@ -139,6 +139,16 @@ public class JsonRpcServiceTests
     }
 
     [Test]
+    public void No_parameter_methods_reject_non_empty_array_params_before_invocation()
+    {
+        IEthRpcModule ethRpcModule = Substitute.For<IEthRpcModule>();
+        ethRpcModule.eth_chainId().ReturnsForAnyArgs(ResultWrapper<ulong>.Success(1ul));
+
+        Assert.That(TestRequest(ethRpcModule, "eth_chainId", "0x1"), Is.InstanceOf<JsonRpcErrorResponse>());
+        ethRpcModule.DidNotReceive().eth_chainId();
+    }
+
+    [Test]
     public void Will_return_to_pool_on_arbitrary_error()
     {
         IRpcModulePool<IEthRpcModule> pool = Substitute.For<IRpcModulePool<IEthRpcModule>>();
