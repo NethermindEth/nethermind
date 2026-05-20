@@ -1009,7 +1009,7 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
     private static void DisposeEntry(JsonRpcResult.Entry entry)
     {
         IMetricObserver observer = Metrics.JsonRpcResponseDisposeLatencyMicros;
-        if (!ShouldObserveMetric(observer))
+        if (!ShouldObserveMetric(observer) || !entry.Response.HasDisposableResources)
         {
             entry.Dispose();
             return;

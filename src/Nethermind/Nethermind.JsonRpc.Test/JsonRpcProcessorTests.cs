@@ -708,6 +708,36 @@ public class JsonRpcProcessorTests(bool returnErrors)
         }
     }
 
+    [Test]
+    [NonParallelizable]
+    public async Task Response_dispose_skips_latency_metric_when_response_has_no_disposable_resources()
+    {
+        RecordingMetricObserver observer = new();
+        IMetricObserver previous = Metrics.JsonRpcResponseDisposeLatencyMicros;
+        Metrics.JsonRpcResponseDisposeLatencyMicros = observer;
+        try
+        {
+            IJsonRpcService service = CreateService(capturedRequest => new JsonRpcSuccessResponse { Id = capturedRequest.Id });
+            JsonRpcProcessor processor = new(
+                service,
+                new JsonRpcConfig { RpcRecorderState = RpcRecorderState.None },
+                Substitute.For<IFileSystem>(),
+                LimboLogs.Instance);
+
+            CollectedJsonRpcResponses result = await ProcessAsync(
+                processor,
+                CreateReader("{\"id\":1,\"jsonrpc\":\"2.0\",\"method\":\"eth_blockNumber\",\"params\":[]}"),
+                new JsonRpcContext(RpcEndpoint.Http));
+
+            observer.Observations.Should().BeEmpty();
+            result.DisposeItems();
+        }
+        finally
+        {
+            Metrics.JsonRpcResponseDisposeLatencyMicros = previous;
+        }
+    }
+
     private static IJsonRpcService CreateService(Func<JsonRpcRequest, JsonRpcResponse> responseFactory)
     {
         IJsonRpcService service = Substitute.For<IJsonRpcService>();

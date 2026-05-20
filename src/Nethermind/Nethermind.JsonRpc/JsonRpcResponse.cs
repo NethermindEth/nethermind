@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Runtime.CompilerServices;
 using System.Text.Json.Serialization;
 using Nethermind.Core.Extensions;
 using Nethermind.JsonRpc.Modules.Subscribe;
@@ -41,6 +42,8 @@ namespace Nethermind.JsonRpc
         [JsonIgnore]
         public RpcBoundaryTimings BoundaryTimings { get; set; }
 
+        internal virtual bool HasDisposableResources => action is not null;
+
         public virtual void Dispose()
         {
             action?.Invoke();
@@ -61,10 +64,28 @@ namespace Nethermind.JsonRpc
         {
         }
 
+        internal override bool HasDisposableResources =>
+            Result is IDisposable ||
+            Result is ITuple tuple && HasDisposableItem(tuple) ||
+            base.HasDisposableResources;
+
         public override void Dispose()
         {
             Result.TryDispose();
             base.Dispose();
+        }
+
+        private static bool HasDisposableItem(ITuple tuple)
+        {
+            for (int i = 0; i < tuple.Length; i++)
+            {
+                if (tuple[i] is IDisposable)
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
     }
 
