@@ -3,7 +3,6 @@
 
 using System;
 using System.Buffers.Binary;
-using System.Collections.Generic;
 using Nethermind.State.Flat.Hsst;
 using NUnit.Framework;
 

@@ -8,7 +8,6 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Int256;
-using Nethermind.Serialization.Rlp;
 using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.State.Flat.Storage;
 using Nethermind.Trie;

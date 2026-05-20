@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Runtime.CompilerServices;
 using System.Text.Json;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
@@ -9,9 +8,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
-using Nethermind.State.Flat.Hsst;
 using Nethermind.State.Flat.Persistence;
-using Nethermind.State.Flat.Storage;
 using Nethermind.Trie;
 
 namespace Nethermind.State.Flat.PersistedSnapshots;

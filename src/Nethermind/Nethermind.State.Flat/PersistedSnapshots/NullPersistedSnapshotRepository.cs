@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Diagnostics.CodeAnalysis;
 using Nethermind.State.Flat.Persistence.BloomFilter;
 using Nethermind.State.Flat.Storage;

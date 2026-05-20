@@ -22,7 +22,6 @@ using Nethermind.Serialization.Rlp;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Core.Crypto;
 using Nethermind.State.Flat;
-using Nethermind.State.Flat.ScopeProvider;
 using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
 using Nethermind.Wallet;

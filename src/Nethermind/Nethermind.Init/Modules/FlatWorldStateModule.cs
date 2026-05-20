@@ -19,7 +19,6 @@ using Nethermind.JsonRpc.Modules.Admin;
 using Nethermind.Logging;
 using Nethermind.Monitoring.Config;
 using Nethermind.Api;
-using Nethermind.State;
 using Nethermind.State.Flat;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.PersistedSnapshots;
