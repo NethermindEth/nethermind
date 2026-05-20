@@ -792,6 +792,18 @@ namespace Nethermind.Blockchain
             return FindBlock(hash, options, blockNumber: blockNumber);
         }
 
+        public void ReportBadBlock(Block badBlock)
+        {
+            if (badBlock.Hash is null)
+            {
+                if (Logger.IsWarn) Logger.Warn($"{nameof(ReportBadBlock)} call has been made for a block without a null hash.");
+                return;
+            }
+
+            _invalidBlocks.Set(badBlock.Hash, badBlock);
+            _badBlockStore.Insert(badBlock);
+        }
+
         public void DeleteInvalidBlock(Block invalidBlock)
         {
             if (invalidBlock.Hash is null)
@@ -802,8 +814,7 @@ namespace Nethermind.Blockchain
 
             if (Logger.IsDebug) Logger.Debug($"Deleting invalid block {invalidBlock.ToString(Block.Format.FullHashAndNumber)}");
 
-            _invalidBlocks.Set(invalidBlock.Hash, invalidBlock);
-            _badBlockStore.Insert(invalidBlock);
+            ReportBadBlock(invalidBlock);
 
             BestSuggestedHeader = Head?.Header;
             BestSuggestedBody = Head;

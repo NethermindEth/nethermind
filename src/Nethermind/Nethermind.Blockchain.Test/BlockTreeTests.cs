@@ -1249,6 +1249,35 @@ public class BlockTreeTests
         Assert.That(tree.BestSuggestedHeader!.Hash, Is.EqualTo(block5.Hash), "suggested");
     }
 
+    [Test]
+    public void Report_bad_block_stores_block_and_does_not_alter_main_chain()
+    {
+        BlockTreeBuilder builder = Build.A.BlockTree().OfChainLength(3);
+        BlockTree blockTree = builder.TestObject;
+        BlockHeader originalSuggested = blockTree.BestSuggestedHeader!;
+        Block bad = Build.A.Block.WithNumber(4).WithParent(blockTree.Head!).TestObject;
+
+        blockTree.ReportBadBlock(bad);
+
+        builder.BadBlockStore.GetAll().Should().ContainSingle()
+            .Which.Hash.Should().Be(bad.Hash!);
+        blockTree.FindBlock(bad.Hash!, BlockTreeLookupOptions.AllowInvalid).Should().NotBeNull();
+        blockTree.BestSuggestedHeader.Should().Be(originalSuggested,
+            "ReportBadBlock must not roll back BestSuggested the way DeleteInvalidBlock does");
+    }
+
+    [Test]
+    public void Report_bad_block_ignores_block_without_hash()
+    {
+        BlockTreeBuilder builder = Build.A.BlockTree().OfChainLength(3);
+        BlockTree blockTree = builder.TestObject;
+        Block badNoHash = new(new BlockHeader(), new BlockBody());
+
+        blockTree.ReportBadBlock(badNoHash);
+
+        builder.BadBlockStore.GetAll().Should().BeEmpty();
+    }
+
     [Test, MaxTime(Timeout.MaxTestTime), TestCaseSource(nameof(SourceOfBSearchTestCases))]
     public void When_lowestInsertedHeaderWasNotPersisted_useBinarySearchToLoadLowestInsertedHeader(long beginIndex, long insertedBlocks)
     {
