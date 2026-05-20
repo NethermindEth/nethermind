@@ -8,7 +8,7 @@ namespace Nethermind.Specs.Forks;
 
 public class Olympic() : NamedReleaseSpec<Olympic>(null)
 {
-    public override void Apply(ReleaseSpec spec)
+    public override void Apply(NamedReleaseSpec spec)
     {
         spec.Name = "Olympic";
         spec.MaximumExtraDataSize = 32;

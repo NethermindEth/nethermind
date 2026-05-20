@@ -8,7 +8,8 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Nethermind.ZiskBindings" />
+    <PackageReference Include="Nethermind.ZiskOS.Runtime" />
+    <PackageReference Include="Nethermind.Zkvm.Abstractions" />
   </ItemGroup>
 
   <ItemGroup>

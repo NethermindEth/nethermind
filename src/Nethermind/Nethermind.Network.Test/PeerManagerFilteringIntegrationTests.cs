@@ -204,6 +204,7 @@ public class PeerManagerFilteringIntegrationTests
         public PublicKey LocalNodeId { get; } = TestItem.PublicKeyA;
         public int LocalPort => 30303;
         public event EventHandler<SessionEventArgs>? SessionCreated;
+        public event SessionDisconnectedEventHandler? SessionDisconnected { add { } remove { } }
         public ISessionMonitor SessionMonitor => Substitute.For<ISessionMonitor>();
     }
 
@@ -229,6 +230,7 @@ public class PeerManagerFilteringIntegrationTests
         public PublicKey LocalNodeId { get; } = TestItem.PublicKeyA;
         public int LocalPort => 30303;
         public event EventHandler<SessionEventArgs>? SessionCreated { add { } remove { } }
+        public event SessionDisconnectedEventHandler? SessionDisconnected { add { } remove { } }
         public ISessionMonitor SessionMonitor => Substitute.For<ISessionMonitor>();
     }
 
@@ -237,7 +239,7 @@ public class PeerManagerFilteringIntegrationTests
         private readonly ConcurrentDictionary<PublicKey, NetworkNode> _nodes = new();
         private bool _pendingChanges;
 
-        public NetworkNode[] GetPersistedNodes() => _nodes.Values.ToArray();
+        public NetworkNode[] GetPersistedNodes() => _nodes.Select(static kvp => kvp.Value).ToArray();
         public int PersistedNodesCount => _nodes.Count;
 
         public void UpdateNode(NetworkNode node)

@@ -140,7 +140,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
 
                 foreach ((Address address, ParityAccountStateChange stateChange) in value.StateChanges.OrderBy(static sc => sc.Key, GenericComparer.GetOptimized<Address>()))
                 {
-                    address.Bytes.AsSpan().OutputBytesToByteHex(hex, false);
+                    address.Bytes.OutputBytesToByteHex(hex, false);
                     writer.WritePropertyName(addressBytes);
                     JsonSerializer.Serialize(writer, stateChange, options);
                 }

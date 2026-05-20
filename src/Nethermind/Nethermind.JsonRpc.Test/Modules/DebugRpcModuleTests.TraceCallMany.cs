@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
@@ -248,7 +247,7 @@ public partial class DebugRpcModuleTests
         // Returns gas available at start of execution as a uint256
         Address contractAddress = new("0xc200000000000000000000000000000000000000");
 
-        // No Gas set — should default to gasCap via EnsureDefaults, not blockGasLimit
+        // No Gas set — debug_traceCallMany defaults missing gas to gasCap, not blockGasLimit
         LegacyTransactionForRpc tx = new() { To = contractAddress };
 
         TransactionBundle bundle = new()

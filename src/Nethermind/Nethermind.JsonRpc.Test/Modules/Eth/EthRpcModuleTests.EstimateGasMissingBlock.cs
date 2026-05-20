@@ -11,11 +11,11 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth;
 
 public partial class EthRpcModuleTests
 {
-    [TestCase("0xFFFFFFFF", "block not found: 0xffffffff")]
-    [TestCase("0x123456", "block not found: 0x123456")]
+    [TestCase("0xFFFFFFFF", "header not found")]
+    [TestCase("0x123456", "header not found")]
     [TestCase(
         "0xf0b3f69cbd4e1e8d9b0ef02ff5d1384d18e19d251a4052f5f90bab190c5e8937",
-        "block not found: 0xf0b3f69cbd4e1e8d9b0ef02ff5d1384d18e19d251a4052f5f90bab190c5e8937")]
+        "header not found")]
     public async Task Eth_estimateGas_returns_geth_compatible_error_for_missing_block(string blockId, string expectedMessage)
     {
         using Context ctx = await Context.Create();

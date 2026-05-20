@@ -11,6 +11,8 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
     {
         public ResultWrapper<string> eth_subscribe(string subscriptionName, string? args = null)
         {
+            if (Subscription.ValidateArgs(args) is { } failure) return failure;
+
             try
             {
                 ResultWrapper<string> successfulResult = ResultWrapper<string>.Success(subscriptionManager.AddSubscription(Context.DuplexClient, subscriptionName, args));

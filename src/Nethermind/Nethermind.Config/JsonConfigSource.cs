@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Text;
 using System.Text.Json;
+using System.Globalization;
 using System.Linq;
 
 namespace Nethermind.Config;
@@ -21,8 +22,20 @@ public class JsonConfigSource : IConfigSource
         try
         {
             using JsonDocument json = JsonDocument.Parse(jsonContent);
-            foreach (JsonProperty moduleEntry in json.RootElement.EnumerateObject().Where(o => o.Name != SchemaKey))
+            HashSet<string> loadedModules = new(StringComparer.InvariantCultureIgnoreCase);
+            foreach (JsonProperty moduleEntry in json.RootElement.EnumerateObject())
             {
+                if (moduleEntry.Name == SchemaKey)
+                {
+                    continue;
+                }
+
+                string normalizedModuleName = NormalizeModuleName(moduleEntry.Name);
+                if (!loadedModules.Add(normalizedModuleName))
+                {
+                    throw new System.Configuration.ConfigurationErrorsException($"Duplicated config module: {moduleEntry.Name}");
+                }
+
                 LoadModule(moduleEntry.Name, moduleEntry.Value);
             }
         }
@@ -71,15 +84,20 @@ public class JsonConfigSource : IConfigSource
     {
         Dictionary<string, string> itemsDict = new(StringComparer.InvariantCultureIgnoreCase);
 
-        foreach (JsonProperty configItem in configItems.EnumerateObject().Where(o => o.Name != SchemaKey))
+        foreach (JsonProperty configItem in configItems.EnumerateObject())
         {
+            if (configItem.Name == SchemaKey)
+            {
+                continue;
+            }
+
             string key = configItem.Name;
             if (!itemsDict.ContainsKey(key))
             {
                 JsonElement value = configItem.Value;
                 if (value.ValueKind == JsonValueKind.Number)
                 {
-                    itemsDict[key] = value.GetInt64().ToString();
+                    itemsDict[key] = ParseNumber(value);
                 }
                 else if (value.ValueKind == JsonValueKind.True)
                 {
@@ -109,14 +127,14 @@ public class JsonConfigSource : IConfigSource
 
     private void ApplyConfigValues(string configModule, Dictionary<string, string> items)
     {
-        if (!configModule.EndsWith("Config"))
-        {
-            configModule += "Config";
-        }
+        configModule = NormalizeModuleName(configModule);
 
         _values[configModule] = items;
         _parsedValues[configModule] = new Dictionary<string, object>(StringComparer.InvariantCultureIgnoreCase);
     }
+
+    private static string NormalizeModuleName(string configModule) =>
+        configModule.EndsWith("Config", StringComparison.InvariantCultureIgnoreCase) ? configModule : $"{configModule}Config";
 
     private void ParseValue(Type type, string category, string name)
     {
@@ -152,4 +170,20 @@ public class JsonConfigSource : IConfigSource
     }
 
     public IEnumerable<(string? Category, string Name)> GetConfigKeys() => _values.SelectMany(m => m.Value.Keys.Select(n => ((string?)m.Key, n)));
+
+    private string ParseNumber(JsonElement value)
+    {
+        if (value.TryGetInt64(out long result))
+        {
+            return result.ToString();
+        }
+        else if (value.TryGetDouble(out double doubleResult))
+        {
+            return doubleResult.ToString(CultureInfo.InvariantCulture);
+        }
+        else
+        {
+            throw new System.Configuration.ConfigurationErrorsException($"Failed to parse the JSON number '{value}' as either Int64 or Double.");
+        }
+    }
 }

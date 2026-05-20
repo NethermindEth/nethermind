@@ -20,19 +20,10 @@ namespace Nethermind.Trie
 
         public Nibble(byte nibble) => _nibble = nibble;
 
-        public static explicit operator byte(Nibble nibble)
-        {
-            return nibble._nibble;
-        }
+        public static explicit operator byte(Nibble nibble) => nibble._nibble;
 
-        public static implicit operator Nibble(byte nibbleValue)
-        {
-            return new(nibbleValue);
-        }
+        public static implicit operator Nibble(byte nibbleValue) => new(nibbleValue);
 
-        public static implicit operator Nibble(char hexChar)
-        {
-            return new(hexChar);
-        }
+        public static implicit operator Nibble(char hexChar) => new(hexChar);
     }
 }

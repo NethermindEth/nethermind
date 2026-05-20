@@ -1,5 +1,3 @@
-using System.Collections.Generic;
-using System.Diagnostics;
 using System.Text.Json;
 
 namespace HiveConsensusWorkflowGenerator;
@@ -18,16 +16,16 @@ public static class Program
         // Sort the tests by size in descending order
         List<KeyValuePair<string, long>> sortedTests = pathsToBeTested.OrderByDescending(kv => kv.Value).ToList();
 
-        SortedList<long, List<string>> groupedTestNames = new SortedList<long, List<string>>();
+        SortedList<long, List<string>> groupedTestNames = new();
 
-        foreach (var test in sortedTests)
+        foreach (KeyValuePair<string, long> test in sortedTests)
         {
             long size = 0;
             List<string>? testsList = null;
 
             if (groupedTestNames.Count == MaxJobsCount)
             {
-                var smallestGroup = groupedTestNames.First();
+                KeyValuePair<long, List<string>> smallestGroup = groupedTestNames.First();
                 testsList = new List<string>(smallestGroup.Value);
                 size = smallestGroup.Key;
                 testsList.Add(test.Key);

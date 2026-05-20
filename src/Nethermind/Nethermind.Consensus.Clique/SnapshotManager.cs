@@ -112,13 +112,11 @@ namespace Nethermind.Consensus.Clique
 
                     // If we're at an checkpoint block, make a snapshot if it's known
                     BlockHeader? previousHeader = header;
-                    header = _blockTree.FindHeader(hash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
-                    if (header is null)
-                    {
-                        throw new InvalidOperationException($"Unknown ancestor ({hash}) of {previousHeader?.ToString(BlockHeader.Format.Short)}");
-                    }
+                    header = _blockTree.FindHeader(hash, BlockTreeLookupOptions.TotalDifficultyNotNeeded)
+                        ?? throw new InvalidOperationException($"Unknown ancestor ({hash}) of {previousHeader?.ToString(BlockHeader.Format.Short)}");
 
-                    if (header.Hash is null) throw new InvalidOperationException("Block tree block without hash set");
+                    if (header.Hash is null)
+                        throw new InvalidOperationException("Block tree block without hash set");
 
                     Hash256 parentHash = header.ParentHash;
                     if (IsEpochTransition(number))

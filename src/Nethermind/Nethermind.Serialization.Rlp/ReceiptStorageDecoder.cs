@@ -15,7 +15,6 @@ namespace Nethermind.Serialization.Rlp
     [method: DynamicDependency(DynamicallyAccessedMemberTypes.PublicConstructors, typeof(ReceiptStorageDecoder))]
     public sealed class ReceiptStorageDecoder(bool supportTxHash = true) : RlpValueDecoder<TxReceipt>, IRlpObjectDecoder<TxReceipt>, IReceiptRefDecoder
     {
-        private readonly bool _supportTxHash = supportTxHash;
         private const byte MarkTxHashByte = 255;
 
         // Used by Rlp decoders discovery
@@ -53,7 +52,7 @@ namespace Nethermind.Serialization.Rlp
 
             if (isStorage) txReceipt.BlockHash = decoderContext.DecodeKeccak();
             if (isStorage) txReceipt.BlockNumber = (long)decoderContext.DecodeUInt256();
-            if (isStorage) txReceipt.Index = decoderContext.DecodeInt();
+            if (isStorage) txReceipt.Index = decoderContext.DecodePositiveInt();
             if (isStorage) txReceipt.Sender = decoderContext.DecodeAddress();
             if (isStorage) txReceipt.Recipient = decoderContext.DecodeAddress();
             if (isStorage) txReceipt.ContractAddress = decoderContext.DecodeAddress();
@@ -77,7 +76,7 @@ namespace Nethermind.Serialization.Rlp
 
             if (!allowExtraBytes)
             {
-                if (isStorage && _supportTxHash && decoderContext.Position < receiptEnd)
+                if (isStorage && supportTxHash && decoderContext.Position < receiptEnd)
                 {
                     // since txHash was added later and may not be in rlp, we provide special mark byte that it will be next
                     if (decoderContext.PeekByte() == MarkTxHashByte)
@@ -159,7 +158,7 @@ namespace Nethermind.Serialization.Rlp
                     rlpStream.Encode(logs[i]);
                 }
 
-                if (_supportTxHash)
+                if (supportTxHash)
                 {
                     rlpStream.WriteByte(MarkTxHashByte);
                     rlpStream.Encode(item.TxHash);
@@ -184,7 +183,7 @@ namespace Nethermind.Serialization.Rlp
             }
         }
 
-        private static (int Total, int Logs) GetContentLength(TxReceipt? item, RlpBehaviors rlpBehaviors)
+        private (int Total, int Logs) GetContentLength(TxReceipt? item, RlpBehaviors rlpBehaviors)
         {
             int contentLength = 0;
             if (item is null)
@@ -203,7 +202,7 @@ namespace Nethermind.Serialization.Rlp
                 contentLength += Rlp.LengthOf(item.Recipient);
                 contentLength += Rlp.LengthOf(item.ContractAddress);
                 contentLength += Rlp.LengthOf(item.GasUsed);
-                contentLength += 1 + Rlp.LengthOf(item.TxHash);
+                if (supportTxHash) contentLength += 1 + Rlp.LengthOf(item.TxHash);
             }
 
             contentLength += Rlp.LengthOf(item.GasUsedTotal);
@@ -292,7 +291,7 @@ namespace Nethermind.Serialization.Rlp
             {
                 decoderContext.DecodeKeccakStructRef(out item.BlockHash);
                 item.BlockNumber = (long)decoderContext.DecodeUInt256();
-                item.Index = decoderContext.DecodeInt();
+                item.Index = decoderContext.DecodePositiveInt();
                 decoderContext.DecodeAddressStructRef(out item.Sender);
                 decoderContext.DecodeAddressStructRef(out item.Recipient);
                 decoderContext.DecodeAddressStructRef(out item.ContractAddress);
@@ -310,7 +309,7 @@ namespace Nethermind.Serialization.Rlp
             bool allowExtraBytes = (rlpBehaviors & RlpBehaviors.AllowExtraBytes) != 0;
             if (!allowExtraBytes)
             {
-                if (isStorage && _supportTxHash && decoderContext.Position < receiptEnd)
+                if (isStorage && supportTxHash && decoderContext.Position < receiptEnd)
                 {
                     // since txHash was added later and may not be in rlp, we provide special mark byte that it will be next
                     if (decoderContext.PeekByte() == MarkTxHashByte)

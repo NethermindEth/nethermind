@@ -1028,6 +1028,8 @@ namespace Nethermind.Blockchain
             for (int i = 0; i < blocks.Count; i++)
             {
                 Block block = blocks[i];
+                _balStore.InsertFromBlock(block);
+
                 if (ShouldCache(block.Number))
                 {
                     _blockStore.Cache(block);
@@ -1361,6 +1363,7 @@ namespace Nethermind.Blockchain
 
             // Yes, this is measurably faster
             using IOwnedReadOnlyList<ChainLevelInfo?> levels = _chainLevelInfoRepository.MultiLoadLevel(blockNumbers);
+            ReadOnlySpan<ChainLevelInfo?> levelsSpan = levels.AsSpan();
 
             for (int i = 0; i < blockInfos.Count; i++)
             {
@@ -1371,7 +1374,7 @@ namespace Nethermind.Blockchain
                     BestKnownNumber = number;
                 }
 
-                ChainLevelInfo? level = levels[i];
+                ChainLevelInfo? level = levelsSpan[i];
 
                 if (level is not null)
                 {

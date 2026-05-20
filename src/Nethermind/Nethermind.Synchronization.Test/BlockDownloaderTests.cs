@@ -632,6 +632,35 @@ public partial class BlockDownloaderTests
     }
 
 
+    [Test]
+    public async Task Second_sync_does_not_redownload_blocks()
+    {
+        SyncPeerMock syncPeer = new(10, false, Response.AllCorrect);
+
+        await using IContainer node = CreateNode();
+        Context ctx = node.Resolve<Context>();
+        PeerInfo peerInfo = new(syncPeer);
+        ctx.ConfigureBestPeer(peerInfo);
+
+        await ctx.FullSyncUntilNoRequest(peerInfo);
+        long afterFirstSync = ctx.BlockTree.BestSuggestedHeader!.Number;
+
+        syncPeer.ExtendTree(20);
+
+        // Simulate 5 blocks arriving via P2P - advances BestKnownNumber without going through BlockDownloader
+        for (long i = afterFirstSync + 1; i <= afterFirstSync + 5; i++)
+        {
+            BlockHeader? header = syncPeer.BlockTree.FindHeader(i, BlockTreeLookupOptions.None);
+            if (header is not null) ctx.BlockTree.SuggestHeader(header);
+        }
+        long bestKnownAfterPropagation = ctx.BlockTree.BestKnownNumber;
+
+        using BlocksRequest? secondRequest = await ctx.FullSyncFeedComponent.Feed.PrepareRequest();
+        secondRequest.Should().NotBeNull();
+        secondRequest.BodiesRequests.Count.Should().BeGreaterThan(0);
+        secondRequest.BodiesRequests[0].Number.Should().BeGreaterThan(bestKnownAfterPropagation);
+    }
+
     private class SlowSealValidator : ISealValidator
     {
         public bool ValidateParams(BlockHeader parent, BlockHeader header, bool isUncle = false)
@@ -1144,11 +1173,9 @@ public partial class BlockDownloaderTests
                 throw new TimeoutException();
             }
 
-            BlockHeader startBlock = _blockTree.FindHeader(_testHeaderMapping[startNumber], BlockTreeLookupOptions.None)!;
-            if (startBlock is null)
-            {
-                throw new Exception($"Null start block {startNumber} {_testHeaderMapping[startNumber]}");
-            }
+            BlockHeader startBlock = _blockTree.FindHeader(_testHeaderMapping[startNumber], BlockTreeLookupOptions.None)
+                ?? throw new($"Null start block {startNumber} {_testHeaderMapping[startNumber]}");
+
             BlockHeader[] headers = new BlockHeader[number];
             headers[0] = startBlock;
             if (!justFirst)

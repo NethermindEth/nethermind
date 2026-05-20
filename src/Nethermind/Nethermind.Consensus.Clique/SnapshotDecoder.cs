@@ -68,7 +68,7 @@ namespace Nethermind.Consensus.Clique
         private static SortedList<Address, long> DecodeSigners(ref Rlp.ValueDecoderContext decoderContext)
         {
             decoderContext.ReadSequenceLength();
-            int length = decoderContext.DecodeInt();
+            int length = decoderContext.DecodePositiveInt();
             decoderContext.GuardLimit(length);
             SortedList<Address, long> signers = new(GenericComparer.GetOptimized<Address>());
             for (int i = 0; i < length; i++)
@@ -84,7 +84,7 @@ namespace Nethermind.Consensus.Clique
         private static List<Vote> DecodeVotes(ref Rlp.ValueDecoderContext decoderContext)
         {
             decoderContext.ReadSequenceLength();
-            int length = decoderContext.DecodeInt();
+            int length = decoderContext.DecodePositiveInt();
             decoderContext.GuardLimit(length);
             List<Vote> votes = new(length);
             for (int i = 0; i < length; i++)
@@ -102,7 +102,7 @@ namespace Nethermind.Consensus.Clique
         private static Dictionary<Address, Tally> DecodeTally(ref Rlp.ValueDecoderContext decoderContext)
         {
             decoderContext.ReadSequenceLength();
-            int length = decoderContext.DecodeInt();
+            int length = decoderContext.DecodePositiveInt();
             decoderContext.GuardLimit(length);
             Dictionary<Address, Tally> tally = new(length);
             for (int i = 0; i < length; i++)

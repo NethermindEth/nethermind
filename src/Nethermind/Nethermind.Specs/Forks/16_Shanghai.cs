@@ -5,7 +5,7 @@ namespace Nethermind.Specs.Forks;
 
 public class Shanghai() : NamedReleaseSpec<Shanghai>(Paris.Instance)
 {
-    public override void Apply(ReleaseSpec spec)
+    public override void Apply(NamedReleaseSpec spec)
     {
         spec.Name = "Shanghai";
         spec.IsEip3651Enabled = true;

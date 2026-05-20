@@ -14,8 +14,6 @@ using static Nethermind.Evm.VirtualMachineStatics;
 
 namespace Nethermind.Evm;
 
-using Word = Vector256<byte>;
-
 public static partial class EvmInstructions
 {
     /// <summary>
@@ -34,7 +32,7 @@ public static partial class EvmInstructions
         /// </summary>
         /// <param name="value">The input 256‐bit vector.</param>
         /// <returns>The result of the operation as a 256‐bit vector.</returns>
-        abstract static Word Operation(Word value);
+        abstract static EvmWord Operation(EvmWord value);
     }
 
     /// <summary>
@@ -66,7 +64,7 @@ public static partial class EvmInstructions
         if (IsNullRef(ref bytesRef)) goto StackUnderflow;
 
         // Read a 256-bit value from unaligned memory on the stack.
-        Word result = TOpMath.Operation(ReadUnaligned<Word>(ref bytesRef));
+        EvmWord result = TOpMath.Operation(ReadUnaligned<EvmWord>(ref bytesRef));
 
         // Write the computed result directly back to the stack slot.
         WriteUnaligned(ref bytesRef, result);
@@ -83,7 +81,7 @@ public static partial class EvmInstructions
     /// </summary>
     public struct OpNot : IOpMath1Param
     {
-        public static Word Operation(Word value) => Vector256.OnesComplement(value);
+        public static EvmWord Operation(EvmWord value) => Vector256.OnesComplement(value);
     }
 
     /// <summary>
@@ -93,7 +91,7 @@ public static partial class EvmInstructions
     /// </summary>
     public struct OpIsZero : IOpMath1Param
     {
-        public static Word Operation(Word value) => value == default ? OpBitwiseEq.One : default;
+        public static EvmWord Operation(EvmWord value) => value == default ? OpBitwiseEq.One : default;
     }
 
     /// <summary>
@@ -104,7 +102,7 @@ public static partial class EvmInstructions
     {
         public static long GasCost => GasCostOf.Low;
 
-        public static Word Operation(Word value) => value == default
+        public static EvmWord Operation(EvmWord value) => value == default
             ? Vector256.Create((byte)0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0)
             : Vector256.Create(0UL, 0UL, 0UL, (ulong)value.CountLeadingZeroBits() << 56).AsByte();
     }

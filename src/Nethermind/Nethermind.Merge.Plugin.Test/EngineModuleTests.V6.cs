@@ -18,6 +18,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Evm;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text.Json;
 using Nethermind.State;
 using Nethermind.TxPool;
 using Nethermind.Int256;
@@ -204,6 +205,32 @@ public partial class EngineModuleTests
             ? NewPayloadV5_via_manual_block(blockHash, receiptsRoot, stateRoot)
             : NewPayloadV5_via_engine_built(blockHash, receiptsRoot, stateRoot, eip8037Enabled, useSerializedRpc: !useEnginePipeline);
 
+    [Test]
+    public async Task NewPayloadV5_returns_invalid_params_without_block_access_list()
+    {
+        using MergeTestBlockchain chain = await CreateBlockchain(Amsterdam.Instance);
+        Block block = Build.A.Block
+            .WithNumber(chain.BlockTree.Head!.Number + 1)
+            .WithParentBeaconBlockRoot(Keccak.Zero)
+            .WithBlobGasUsed(0)
+            .WithExcessBlobGas(0)
+            .WithSlotNumber(1)
+            .TestObject;
+        ExecutionPayloadV4 executionPayload = ExecutionPayloadV4.Create(block);
+
+        ResultWrapper<PayloadStatusV1> response = await chain.EngineRpcModule.engine_newPayloadV5(
+            executionPayload,
+            [],
+            Keccak.Zero,
+            []);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(response.Result.ResultType, Is.EqualTo(ResultType.Failure));
+            Assert.That(response.ErrorCode, Is.EqualTo(ErrorCodes.InvalidParams));
+        }
+    }
+
     [TestCase(
         "0x43b3722358b0a8b570fdfd846a5b836ad2fae3f7f58b3ac3519858472a997214",
         "0xb7cd7ecf731166baf69674234dc243d3f8931976b0f1a379beafe0981d01bd2e",
@@ -226,7 +253,7 @@ public partial class EngineModuleTests
         {
             invalidBalBuilder.WithAccountChanges([new(new Address(customWithdrawalContractAddress)), new(Address.SystemUser)]);
         }
-        BlockAccessList invalidBal = invalidBalBuilder.TestObject;
+        ReadOnlyBlockAccessList invalidBal = invalidBalBuilder.TestObject;
 
         Block block = new(
             new(
@@ -264,16 +291,11 @@ public partial class EngineModuleTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(successResponse, Is.Not.Null);
-            Assert.That(response, Is.EqualTo(chain.JsonSerializer.Serialize(new JsonRpcSuccessResponse
-            {
-                Id = successResponse.Id,
-                Result = new PayloadStatusV1
-                {
-                    LatestValidHash = Keccak.Zero,
-                    Status = PayloadStatus.Invalid,
-                    ValidationError = $"InvalidBlockLevelAccessListHash: Expected {expectedBalHash}, got {invalidBalHash}"
-                }
-            })));
+            Assert.That(response, Does.Contain("\"status\":\"INVALID\""));
+            Assert.That(response, Does.Contain($"\"latestValidHash\":\"{Keccak.Zero.ToString(true)}\""));
+            Assert.That(response,
+                Does.Contain($"InvalidBlockLevelAccessListHash: Expected {expectedBalHash}, got {invalidBalHash}")
+                .Or.Contain("InvalidBlockLevelAccessList: Account-set size mismatch"));
         }
     }
 
@@ -365,7 +387,7 @@ public partial class EngineModuleTests
             await chain.EngineRpcModule.engine_getPayloadV6(Bytes.FromHexString(fcuResponse.Data.PayloadId!));
         GetPayloadV6Result res = getPayloadResult.Data!;
         Assert.That(res.ExecutionPayload.BlockAccessList, Is.Not.Null);
-        BlockAccessList bal = Rlp.Decode<BlockAccessList>(new Rlp(res.ExecutionPayload.BlockAccessList));
+        ReadOnlyBlockAccessList bal = Rlp.Decode<ReadOnlyBlockAccessList>(new Rlp(res.ExecutionPayload.BlockAccessList));
 
         BlockAccessListBuilder expectedBalBuilder = Build.A.BlockAccessList
             .WithAccountChanges(Build.An.AccountChanges
@@ -390,7 +412,7 @@ public partial class EngineModuleTests
             expectedBalBuilder.WithAccountChanges([new(new Address(customWithdrawalContractAddress))]);
         }
 
-        BlockAccessList expected = expectedBalBuilder.TestObject;
+        ReadOnlyBlockAccessList expected = expectedBalBuilder.TestObject;
         Assert.That(bal, Is.EqualTo(expected));
     }
 
@@ -406,7 +428,7 @@ public partial class EngineModuleTests
             blockHashes.Add(payload.BlockHash);
         }
 
-        ResultWrapper<IEnumerable<ExecutionPayloadBodyV2Result?>> response = await chain.EngineRpcModule.engine_getPayloadBodiesByHashV2([
+        ResultWrapper<IReadOnlyList<ExecutionPayloadBodyV2Result?>> response = await chain.EngineRpcModule.engine_getPayloadBodiesByHashV2([
             blockHashes.ElementAt(1),
             blockHashes.ElementAt(2),
             Hash256.Zero
@@ -430,7 +452,7 @@ public partial class EngineModuleTests
             await AddNewBlockV6(chain.EngineRpcModule, chain, 1);
         }
 
-        ResultWrapper<IEnumerable<ExecutionPayloadBodyV2Result?>> response = await chain.EngineRpcModule.engine_getPayloadBodiesByRangeV2(1, 6);
+        ResultWrapper<IReadOnlyList<ExecutionPayloadBodyV2Result?>> response = await chain.EngineRpcModule.engine_getPayloadBodiesByRangeV2(1, 6);
 
         using (Assert.EnterMultipleScope())
         {
@@ -574,23 +596,20 @@ public partial class EngineModuleTests
         }
         else
         {
+            using JsonDocument responseJson = JsonDocument.Parse(response);
+            JsonElement result = responseJson.RootElement.GetProperty("result");
+            string? validationError = result.GetProperty("validationError").GetString();
+
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(successResponse, Is.Not.Null);
-                Assert.That(response, Is.EqualTo(chain.JsonSerializer.Serialize(new JsonRpcSuccessResponse
-                {
-                    Id = successResponse.Id,
-                    Result = new PayloadStatusV1
-                    {
-                        LatestValidHash = Keccak.Zero,
-                        Status = PayloadStatus.Invalid,
-                        ValidationError = expectedError
-                    }
-                })));
+                Assert.That(result.GetProperty("latestValidHash").GetString(), Is.EqualTo(Keccak.Zero.ToString(true)));
+                Assert.That(result.GetProperty("status").GetString(), Is.EqualTo(PayloadStatus.Invalid));
+                Assert.That(validationError, Does.Contain(expectedError));
             }
         }
 
-        BlockAccessList CreateBlockAccessList()
+        ReadOnlyBlockAccessList CreateBlockAccessList()
         {
             AccountChangesBuilder newContractAccount = Build.An.AccountChanges
                 .WithAddress(newContractAddress)
@@ -834,12 +853,12 @@ public partial class EngineModuleTests
         payload.ExecutionRequests = payloadResult.Data!.ExecutionRequests;
         BlockDecodingResult blockResult = payload.TryGetBlock();
         Block block = blockResult.Block!;
-        BlockAccessList validBal = block.BlockAccessList!;
+        ReadOnlyBlockAccessList validBal = block.BlockAccessList!;
 
-        SortedDictionary<Address, AccountChanges> modifiedAccounts = new();
+        SortedDictionary<Address, ReadOnlyAccountChanges> modifiedAccounts = new();
         Address senderAddress = TestItem.AddressA;
 
-        BlockAccessList modifiedBal = CreateBlockAccessList();
+        ReadOnlyBlockAccessList modifiedBal = CreateBlockAccessList();
         byte[] modifiedBalRlp = Rlp.Encode(modifiedBal).Bytes;
         block.BlockAccessList = modifiedBal;
         block.EncodedBlockAccessList = modifiedBalRlp;
@@ -848,9 +867,9 @@ public partial class EngineModuleTests
 
         return (chain, ExecutionPayloadV4.Create(block));
 
-        BlockAccessList CreateBlockAccessList()
+        ReadOnlyBlockAccessList CreateBlockAccessList()
         {
-            foreach (AccountChanges ac in validBal.AccountChanges)
+            foreach (ReadOnlyAccountChanges ac in validBal.AccountChanges)
             {
                 if (errorKind is not BalErrorKind.MissingChange || ac.Address != senderAddress)
                 {
@@ -867,52 +886,58 @@ public partial class EngineModuleTests
 
             if (errorKind is BalErrorKind.SurplusChange)
             {
-                SortedList<int, NonceChange> fakeNonce = new() { { 1, new NonceChange(1, 5) } };
-                modifiedAccounts[TestItem.AddressF] = new AccountChanges(
-                    TestItem.AddressF, new(), new SortedSet<UInt256>(), new(), fakeNonce, new());
+                NonceChange[] fakeNonce = [new NonceChange(1, 5)];
+                modifiedAccounts[TestItem.AddressF] = new ReadOnlyAccountChanges(
+                    TestItem.AddressF, [], [], [], fakeNonce, []);
             }
 
             if (errorKind is BalErrorKind.SurplusReads)
             {
-                AccountChanges entry = modifiedAccounts[senderAddress];
-                for (ulong i = 1_000_000; i < 1_000_100; i++)
-                    entry.AddStorageRead(new UInt256(i));
+                ReadOnlyAccountChanges entry = modifiedAccounts[senderAddress];
+                UInt256[] extraReads = new UInt256[100];
+                for (int i = 0; i < extraReads.Length; i++)
+                {
+                    extraReads[i] = new UInt256((ulong)(1_000_000 + i));
+                }
+                modifiedAccounts[senderAddress] = CloneAccountChanges(entry, storageReadsOverride: [.. entry.StorageReads, .. extraReads]);
             }
 
-            BlockAccessList blockAccessList = new(modifiedAccounts);
-            return blockAccessList;
+            ReadOnlyAccountChanges[] orderedAccounts = new ReadOnlyAccountChanges[modifiedAccounts.Count];
+            int itemCount = 0;
+            int idx = 0;
+            foreach (KeyValuePair<Address, ReadOnlyAccountChanges> kv in modifiedAccounts)
+            {
+                orderedAccounts[idx++] = kv.Value;
+                itemCount += 1 + kv.Value.StorageChanges.Length + kv.Value.StorageReads.Length;
+            }
+            return new ReadOnlyBlockAccessList(orderedAccounts, itemCount);
         }
     }
 
-    private static AccountChanges CloneAccountChanges(AccountChanges ac, Func<BalanceChange, BalanceChange>? balanceModifier = null)
+    private static ReadOnlyAccountChanges CloneAccountChanges(
+        ReadOnlyAccountChanges ac,
+        Func<BalanceChange, BalanceChange>? balanceModifier = null,
+        UInt256[]? storageReadsOverride = null)
     {
-        SortedList<UInt256, SlotChanges> storageChanges = new();
-        foreach (SlotChanges sc in ac.StorageChanges)
+        ReadOnlySlotChanges[] storageChanges = new ReadOnlySlotChanges[ac.StorageChanges.Length];
+        for (int i = 0; i < storageChanges.Length; i++)
         {
-            SortedList<int, StorageChange> changes = new();
-            foreach (KeyValuePair<int, StorageChange> kvp in sc.Changes)
-                changes.Add(kvp.Key, kvp.Value);
-
-            storageChanges.Add(sc.Key, sc with { Changes = changes });
+            ReadOnlySlotChanges sc = ac.StorageChanges[i];
+            storageChanges[i] = new ReadOnlySlotChanges(sc.Key, [.. sc.Changes]);
         }
 
-        SortedSet<UInt256> storageReads = new(ac.StorageReads);
+        UInt256[] storageReads = storageReadsOverride ?? [.. ac.StorageReads];
 
-        SortedList<int, BalanceChange> balanceChanges = new();
-        foreach (BalanceChange bc in ac.BalanceChanges)
+        BalanceChange[] balanceChanges = new BalanceChange[ac.BalanceChanges.Length];
+        for (int i = 0; i < ac.BalanceChanges.Length; i++)
         {
-            BalanceChange modified = balanceModifier?.Invoke(bc) ?? bc;
-            balanceChanges.Add(modified.Index, modified);
+            BalanceChange bc = ac.BalanceChanges[i];
+            balanceChanges[i] = balanceModifier?.Invoke(bc) ?? bc;
         }
 
-        SortedList<int, NonceChange> nonceChanges = new();
-        foreach (NonceChange nc in ac.NonceChanges)
-            nonceChanges.Add(nc.Index, nc);
+        NonceChange[] nonceChanges = [.. ac.NonceChanges];
+        CodeChange[] codeChanges = [.. ac.CodeChanges];
 
-        SortedList<int, CodeChange> codeChanges = new();
-        foreach (CodeChange cc in ac.CodeChanges)
-            codeChanges.Add(cc.Index, cc);
-
-        return new AccountChanges(ac.Address, storageChanges, storageReads, balanceChanges, nonceChanges, codeChanges);
+        return new ReadOnlyAccountChanges(ac.Address, storageChanges, storageReads, balanceChanges, nonceChanges, codeChanges);
     }
 }

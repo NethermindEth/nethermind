@@ -719,7 +719,7 @@ internal class EpochSwitchManagerTests
 
         for (int i = 0; i < nextEpochCandidates!.Length; i++)
         {
-            Array.Copy(nextEpochCandidates[i].Bytes, 0, extraData, XdcConstants.ExtraVanity + i * Address.Size, Address.Size);
+            nextEpochCandidates[i].Bytes.CopyTo(extraData.AsSpan(XdcConstants.ExtraVanity + i * Address.Size, Address.Size));
         }
 
         return extraData;

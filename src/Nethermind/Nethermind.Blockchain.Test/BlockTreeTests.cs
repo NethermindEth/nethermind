@@ -2,16 +2,19 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Blockchain.Blocks;
+using Nethermind.Blockchain.Headers;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Blockchain.Visitors;
 using Nethermind.Core;
+using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -85,6 +88,46 @@ public class BlockTreeTests
             parent = chain[i];
         }
         return chain;
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void UpdateMainChain_persists_generated_block_access_lists_for_processed_blocks()
+    {
+        _blocksDb = new TestMemDb();
+        _headersDb = new TestMemDb();
+        _blocksInfosDb = new TestMemDb();
+
+        BlockTreeBuilder builder = Build.A.BlockTree()
+            .WithBlocksDb(_blocksDb)
+            .WithHeadersDb(_headersDb)
+            .WithBlockInfoDb(_blocksInfosDb)
+            .WithoutSettingHead;
+        BlockTree blockTree = builder.TestObject;
+        IBlockAccessListStore blockAccessListStore = builder.BlockAccessListStore;
+
+        Block genesis = Build.A.Block.Genesis.TestObject;
+        AddToMain(blockTree, genesis);
+
+        Block block = Build.A.Block
+            .WithNumber(1)
+            .WithParent(genesis)
+            .WithTotalDifficulty(1L)
+            .TestObject;
+
+        blockTree.SuggestBlock(block).Should().Be(AddBlockResult.Added);
+        using MemoryManager<byte>? missingBal = blockAccessListStore.GetRlp(block.Hash!);
+        missingBal.Should().BeNull();
+
+        byte[] encodedBal = Rlp.Encode(new ReadOnlyBlockAccessList()).Bytes;
+        block.GeneratedBlockAccessList = new GeneratedBlockAccessList();
+        block.EncodedBlockAccessList = encodedBal;
+        block.Header.BlockAccessListHash = new Hash256(ValueKeccak.Compute(encodedBal).Bytes);
+
+        blockTree.UpdateMainChain([block], true);
+
+        using MemoryManager<byte>? persistedBal = blockAccessListStore.GetRlp(block.Hash!);
+        persistedBal.Should().NotBeNull();
+        persistedBal!.Memory.ToArray().Should().Equal(encodedBal);
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]

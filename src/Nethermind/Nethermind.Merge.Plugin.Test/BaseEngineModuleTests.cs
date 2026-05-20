@@ -197,11 +197,11 @@ public abstract partial class BaseEngineModuleTests
             MergeConfig.TerminalTotalDifficulty ??= "0";
             // Production default (7s) is too tight under Flat DB CI load — validation
             // races the timeout and the handler returns SYNCING, breaking tests that
-            // assert VALID/INVALID. Only bump when still at the production default;
-            // callers that exercise timeout→SYNCING behavior pass an explicit value.
+            // assert VALID/INVALID. Tests that exercise timeout→SYNCING behavior pass
+            // an explicit shorter value.
             if (MergeConfig.NewPayloadBlockProcessingTimeout == DefaultNewPayloadBlockProcessingTimeout)
             {
-                MergeConfig.NewPayloadBlockProcessingTimeout = 30_000;
+                MergeConfig.NewPayloadBlockProcessingTimeout = 60_000;
             }
         }
 

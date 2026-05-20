@@ -31,6 +31,7 @@ using Nethermind.Serialization.Rlp;
 using Nethermind.TxPool;
 using Nethermind.Evm.State;
 using Nethermind.Taiko.Config;
+using Nethermind.Taiko.ZkGas;
 using static Nethermind.Taiko.TaikoBlockValidator;
 
 namespace Nethermind.Taiko.Rpc;
@@ -43,13 +44,13 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
         IAsyncHandler<byte[], GetPayloadV6Result?> getPayloadHandlerV6,
         IAsyncHandler<ExecutionPayload, PayloadStatusV1> newPayloadV1Handler,
         IForkchoiceUpdatedHandler forkchoiceUpdatedV1Handler,
-        IHandler<IReadOnlyList<Hash256>, IEnumerable<ExecutionPayloadBodyV1Result?>> executionGetPayloadBodiesByHashV1Handler,
+        IHandler<IReadOnlyList<Hash256>, IReadOnlyList<ExecutionPayloadBodyV1Result?>> executionGetPayloadBodiesByHashV1Handler,
         IGetPayloadBodiesByRangeV1Handler executionGetPayloadBodiesByRangeV1Handler,
         IHandler<TransitionConfigurationV1, TransitionConfigurationV1> transitionConfigurationHandler,
-        IHandler<IEnumerable<string>, IEnumerable<string>> capabilitiesHandler,
-        IAsyncHandler<byte[][], IEnumerable<BlobAndProofV1?>> getBlobsHandler,
-        IAsyncHandler<GetBlobsHandlerV2Request, IEnumerable<BlobAndProofV2?>?> getBlobsHandlerV2,
-        IHandler<IReadOnlyList<Hash256>, IEnumerable<ExecutionPayloadBodyV2Result?>> getPayloadBodiesByHashV2Handler,
+        IHandler<HashSet<string>, IReadOnlyList<string>> capabilitiesHandler,
+        IAsyncHandler<byte[][], IReadOnlyList<BlobAndProofV1?>> getBlobsHandler,
+        IAsyncHandler<GetBlobsHandlerV2Request, IReadOnlyList<BlobAndProofV2?>?> getBlobsHandlerV2,
+        IHandler<IReadOnlyList<Hash256>, IReadOnlyList<ExecutionPayloadBodyV2Result?>> getPayloadBodiesByHashV2Handler,
         IGetPayloadBodiesByRangeV2Handler getPayloadBodiesByRangeV2Handler,
         IEngineRequestsTracker engineRequestsTracker,
         ISpecProvider specProvider,
@@ -82,18 +83,76 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
                 gcKeeper,
                 logManager), ITaikoEngineRpcModule
 {
-    private const int MaxBatchLookupBlocks = 192 * 1024;
+    /// <summary>
+    /// Maximum number of blocks to scan backwards when the batch→block index is missing.
+    /// Matches alethia-reth's <c>MAX_BACKWARD_SCAN_BLOCKS = 192 * 21_600</c>.
+    /// </summary>
+    private const int MaxBatchLookupBlocks = 192 * 21_600;
 
-    private static readonly ResultWrapper<UInt256?> BlockIdNotFound = ResultWrapper<UInt256?>.Fail("not found");
-    private static readonly ResultWrapper<UInt256?> BlockIdLookbackExceeded = ResultWrapper<UInt256?>.Fail("lookback limit exceeded");
+    // ResourceNotFound (-32000) instead of the default InternalError (-32603), and IsTemporary
+    // so the JsonRpc framework's SuppressWarning flag fires (JsonRpcService.cs:158 ->
+    // JsonRpcProcessor.cs:428). Without this, every cold-boot tryLastFinalizedCheckpoint poll
+    // produces a loud "Error response handling JsonRpc..." WARN line on a known-transient miss.
+    private static readonly ResultWrapper<UInt256?> BlockIdNotFound =
+        ResultWrapper<UInt256?>.Fail("not found", ErrorCodes.ResourceNotFound, isTemporary: true);
+
+    /// <summary>
+    /// Cached null-result for <c>taikoAuth_lastL1OriginByBatchID</c>. Per alethia-reth and
+    /// the Go taiko-client expectations, a missing L1 origin for a known batch is reported as
+    /// a successful JSON-RPC response with a null result (rather than a -32603 error), so a
+    /// freshly-started node that has not yet seen any L1 batches does not flood the logs
+    /// with errors during normal driver polling.
+    /// </summary>
+    private static readonly ResultWrapper<L1Origin?> L1OriginByBatchIdNullResult =
+        ResultWrapper<L1Origin?>.Success(null);
+
+    /// <summary>
+    /// Cached null-result for <c>taikoAuth_last{Certain,}BlockIDByBatchID</c> when the resolved
+    /// block id sits below this network's last-Pacaya threshold. Geth and reth both report this
+    /// case as success+null rather than the "not found" error, so the driver does not mistake
+    /// the threshold gate for a transient miss.
+    /// </summary>
+    private static readonly ResultWrapper<UInt256?> BlockIdBatchLookupNullResult =
+        ResultWrapper<UInt256?>.Success(null);
+
+    /// <summary>
+    /// Resolved once at construction from <see cref="ISpecProvider.ChainId"/>. <c>null</c> on
+    /// networks with no last-Pacaya threshold (Devnet, Masaya, unknown). On Mainnet and Hoodi,
+    /// any resolved batch-lookup block id strictly less than this value is reported as null.
+    /// </summary>
+    private readonly UInt256? _batchLookupThreshold =
+        ZkGasSchedule.ResolveBatchLookupThreshold(specProvider.ChainId) is { } t
+            ? new UInt256(t)
+            : (UInt256?)null;
+
+    private readonly ILogger _taikoLogger = logManager.GetClassLogger<TaikoEngineRpcModule>();
+
+    /// <summary>
+    /// Returns <c>true</c> when this network has a batch-lookup threshold and the resolved
+    /// block id sits strictly below it. Mirrors <c>batchLookupResultBelowThreshold</c> in
+    /// taiko-geth (PR #558) and <c>batch_lookup_result_below_last_pacaya_block_id</c> in
+    /// alethia-reth (PR #177).
+    /// </summary>
+    private bool IsBlockBelowBatchLookupThreshold(UInt256 blockId) =>
+        _batchLookupThreshold is { } threshold && blockId < threshold;
 
     public Task<ResultWrapper<ForkchoiceUpdatedV1Result>> engine_forkchoiceUpdatedV1(ForkchoiceStateV1 forkchoiceState, TaikoPayloadAttributes? payloadAttributes = null) => base.engine_forkchoiceUpdatedV1(forkchoiceState, payloadAttributes);
 
-    public Task<ResultWrapper<PayloadStatusV1>> engine_newPayloadV1(TaikoExecutionPayload executionPayload) => base.engine_newPayloadV1(executionPayload);
+    public Task<ResultWrapper<PayloadStatusV1>> engine_newPayloadV1(TaikoExecutionPayload executionPayload)
+    {
+        // Inject the spec provider so TryGetBlock can restore header fields V2 payloads don't
+        // carry: ParentBeaconBlockRoot (EIP-4788, [JsonIgnore]) and RequestsHash (EIP-7685, not a payload field).
+        executionPayload.AttachSpecProvider(_specProvider);
+        return base.engine_newPayloadV1(executionPayload);
+    }
 
     public Task<ResultWrapper<ForkchoiceUpdatedV1Result>> engine_forkchoiceUpdatedV2(ForkchoiceStateV1 forkchoiceState, TaikoPayloadAttributes? payloadAttributes = null) => base.engine_forkchoiceUpdatedV2(forkchoiceState, payloadAttributes);
 
-    public Task<ResultWrapper<PayloadStatusV1>> engine_newPayloadV2(TaikoExecutionPayload executionPayload) => base.engine_newPayloadV2(executionPayload);
+    public Task<ResultWrapper<PayloadStatusV1>> engine_newPayloadV2(TaikoExecutionPayload executionPayload)
+    {
+        executionPayload.AttachSpecProvider(_specProvider);
+        return base.engine_newPayloadV2(executionPayload);
+    }
 
     public Task<ResultWrapper<ForkchoiceUpdatedV1Result>> engine_forkchoiceUpdatedV3(ForkchoiceStateV1 forkchoiceState, TaikoPayloadAttributes? payloadAttributes = null) => base.engine_forkchoiceUpdatedV3(forkchoiceState, payloadAttributes);
 
@@ -143,7 +202,6 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
                 head.Timestamp + 1,
                 [])
         {
-            TotalDifficulty = 0,
             BaseFeePerGas = baseFee,
             StateRoot = head.StateRoot,
             IsPostMerge = true,
@@ -172,12 +230,19 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
 
         Batch batch = new(maxBytesPerTxList, txSource.Length, txDecoder);
 
+        void Restore(Snapshot snapshot, long gasUsed)
+        {
+            worldState.Restore(snapshot);
+            blockHeader.GasUsed = gasUsed;
+        }
+
         try
         {
             for (int i = 0; i < txSource.Length;)
             {
                 Transaction tx = txSource[i];
                 Snapshot snapshot = worldState.TakeSnapshot(true);
+                long gasUsedBefore = blockHeader.GasUsed;
 
                 try
                 {
@@ -185,7 +250,7 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
 
                     if (!executionResult)
                     {
-                        worldState.Restore(snapshot);
+                        Restore(snapshot, gasUsedBefore);
 
                         if (executionResult == TransactionResult.BlockGasLimitExceeded && batch.Transactions.Count is not 0)
                         {
@@ -208,21 +273,21 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
                     // For Surge, filter out any transaction with very high gas limit
                     if (surgeConfig.MaxGasLimitRatio > 0 && tx.GasLimit > tx.SpentGas * surgeConfig.MaxGasLimitRatio)
                     {
-                        worldState.Restore(snapshot);
+                        Restore(snapshot, gasUsedBefore);
                         while (i < txSource.Length && txSource[i].SenderAddress == tx.SenderAddress) i++;
                         continue;
                     }
                 }
                 catch
                 {
-                    worldState.Restore(snapshot);
+                    Restore(snapshot, gasUsedBefore);
                     while (i < txSource.Length && txSource[i].SenderAddress == tx.SenderAddress) i++;
                     continue;
                 }
 
                 if (!batch.TryAddTx(tx))
                 {
-                    worldState.Restore(snapshot);
+                    Restore(snapshot, gasUsedBefore);
 
                     if (batch.Transactions.Count is 0)
                     {
@@ -362,14 +427,13 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
             return ResultWrapper<L1Origin>.Fail($"signature must be exactly {L1OriginDecoder.SignatureLength} bytes, got {signature.Length}");
         }
 
-        L1Origin? l1Origin = l1OriginStore.ReadL1Origin(blockId);
+        // Atomic read-modify-write inside L1OriginStore so concurrent
+        // taikoAuth_setL1OriginSignature / taikoAuth_updateL1Origin calls cannot clobber each other.
+        L1Origin? l1Origin = l1OriginStore.SetL1OriginSignature(blockId, signature);
         if (l1Origin is null)
         {
             return ResultWrapper<L1Origin>.Fail($"L1 origin not found for block ID {blockId}");
         }
-
-        l1Origin.Signature = signature;
-        l1OriginStore.WriteL1Origin(blockId, l1Origin);
 
         return ResultWrapper<L1Origin>.Success(l1Origin);
     }
@@ -382,13 +446,23 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
             blockId = GetLastBlockByBatchId(batchId);
             if (blockId is null)
             {
-                return TaikoExtendedEthModule.L1OriginNotFound;
+                // Debug, not Warn: this fires on every periodic poll for the latest batch
+                // before NMC has ingested it; that's expected control flow, not a fault.
+                if (_taikoLogger.IsDebug) _taikoLogger.Debug($"taikoAuth_lastL1OriginByBatchID: no block found for batch {batchId}");
+                return L1OriginByBatchIdNullResult;
             }
         }
 
-        L1Origin? origin = l1OriginStore.ReadL1Origin(blockId.Value);
+        if (IsBlockBelowBatchLookupThreshold(blockId.Value))
+            return L1OriginByBatchIdNullResult;
 
-        return origin is null ? TaikoExtendedEthModule.L1OriginNotFound : ResultWrapper<L1Origin?>.Success(origin);
+        L1Origin? origin = l1OriginStore.ReadL1Origin(blockId.Value);
+        // Debug: a known block can lack its L1Origin record briefly between insertion and
+        // the driver's taikoAuth_updateL1Origin writeback — expected, not a fault.
+        if (origin is null && _taikoLogger.IsDebug)
+            _taikoLogger.Debug($"taikoAuth_lastL1OriginByBatchID: block {blockId} found for batch {batchId} but no L1 origin entry");
+
+        return origin is null ? L1OriginByBatchIdNullResult : ResultWrapper<L1Origin?>.Success(origin);
     }
 
     public Task<ResultWrapper<UInt256?>> taikoAuth_lastBlockIDByBatchID(UInt256 batchId)
@@ -399,9 +473,13 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
             blockId = GetLastBlockByBatchId(batchId);
             if (blockId is null)
             {
+                if (_taikoLogger.IsDebug) _taikoLogger.Debug($"taikoAuth_lastBlockIDByBatchID: no block found for batch {batchId}");
                 return BlockIdNotFound;
             }
         }
+
+        if (IsBlockBelowBatchLookupThreshold(blockId.Value))
+            return BlockIdBatchLookupNullResult;
 
         return ResultWrapper<UInt256?>.Success(blockId);
     }
@@ -409,6 +487,8 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
     public ResultWrapper<UInt256?> taikoAuth_lastCertainBlockIDByBatchID(UInt256 batchId)
     {
         UInt256? blockId = l1OriginStore.ReadBatchToLastBlockID(batchId);
+        if (blockId is { } b && IsBlockBelowBatchLookupThreshold(b))
+            return BlockIdBatchLookupNullResult;
         return ResultWrapper<UInt256?>.Success(blockId);
     }
 
@@ -417,8 +497,11 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
         UInt256? blockId = l1OriginStore.ReadBatchToLastBlockID(batchId);
         if (blockId is null)
         {
-            return ResultWrapper<L1Origin?>.Success(null);
+            return L1OriginByBatchIdNullResult;
         }
+
+        if (IsBlockBelowBatchLookupThreshold(blockId.Value))
+            return L1OriginByBatchIdNullResult;
 
         L1Origin? origin = l1OriginStore.ReadL1Origin(blockId.Value);
         return ResultWrapper<L1Origin?>.Success(origin);

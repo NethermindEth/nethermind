@@ -4,6 +4,7 @@
 using System;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Collections;
@@ -19,15 +20,32 @@ using Nethermind.Int256;
 
 namespace Nethermind.State;
 
-public class TracedAccessWorldState(IWorldState innerWorldState, bool parallel) : IWorldState
+/// <remarks>
+/// Setup contract: <see cref="SetGeneratingBlockAccessList"/> must run with a non-null slice
+/// before any state-mutating method. Hot-path mutators dereference
+/// <c>_generatingBlockAccessList</c> without a null-check, so a missed setup fails fast with
+/// <see cref="NullReferenceException"/> at the first write rather than silently corrupting BAL output.
+/// </remarks>
+public class TracedAccessWorldState(IWorldState innerWorldState, bool parallel) : IWorldState, IPreBlockCaches, IBlockAccessListSource
 {
+    public PreBlockCaches Caches => (_innerWorldState.ScopeProvider as IPreBlockCaches)?.Caches
+        ?? throw new InvalidOperationException($"{nameof(IPreBlockCaches)} is unavailable from the wrapped world state's scope provider.");
+    public bool IsWarmWorldState => (_innerWorldState.ScopeProvider as IPreBlockCaches)?.IsWarmWorldState ?? false;
+
     public bool IsInScope => _innerWorldState.IsInScope;
     public IWorldStateScopeProvider ScopeProvider => _innerWorldState.ScopeProvider;
     public Hash256 StateRoot => _innerWorldState.StateRoot;
     protected IWorldState _innerWorldState = innerWorldState;
-    private readonly BlockAccessList _generatingBlockAccessList = new();
+    // Set by SetGeneratingBlockAccessList; see class remarks.
+    private BlockAccessListAtIndex? _generatingBlockAccessList;
     private int _systemAccountReadSuppressionDepth;
-    internal BlockAccessList GetGeneratingBlockAccessList() => _generatingBlockAccessList;
+    private UInt256 _scratchBalance;
+    private ValueHash256 _scratchCodeHash;
+    // Scratch buffer for intra-tx SLOAD on the parallel path (see GetInternal). Per-worker —
+    // the returned span is consumed by the EVM stack push before another GetInternal runs.
+    private readonly byte[] _scratchStorage = new byte[32];
+    public BlockAccessListAtIndex? GetGeneratingBlockAccessList() => _generatingBlockAccessList;
+    public void SetGeneratingBlockAccessList(BlockAccessListAtIndex? bal) => _generatingBlockAccessList = bal;
 
     public bool HasStateForBlock(BlockHeader? baseBlock)
         => _innerWorldState.HasStateForBlock(baseBlock);
@@ -73,7 +91,7 @@ public class TracedAccessWorldState(IWorldState innerWorldState, bool parallel) 
         return GetInternal(storageCell);
     }
 
-    public byte[] GetOriginal(in StorageCell storageCell)
+    public ReadOnlySpan<byte> GetOriginal(in StorageCell storageCell)
         => _innerWorldState.GetOriginal(storageCell);
 
     public void IncrementNonce(Address address, UInt256 delta, out UInt256 oldNonce)
@@ -104,10 +122,16 @@ public class TracedAccessWorldState(IWorldState innerWorldState, bool parallel) 
         _innerWorldState.Set(storageCell, newValue);
     }
 
-    public UInt256 GetBalance(Address address)
+    public ref readonly UInt256 GetBalance(Address address)
     {
         AddAccountRead(address);
-        return GetBalanceInternal(address);
+        AccountChangesAtIndex? accountChanges = _generatingBlockAccessList.GetAccountChanges(address);
+        if (accountChanges?.BalanceChange is { } bc)
+        {
+            _scratchBalance = bc.Value;
+            return ref _scratchBalance;
+        }
+        return ref _innerWorldState.GetBalance(address);
     }
 
     public UInt256 GetNonce(Address address)
@@ -116,10 +140,16 @@ public class TracedAccessWorldState(IWorldState innerWorldState, bool parallel) 
         return GetNonceInternal(address);
     }
 
-    public ValueHash256 GetCodeHash(Address address)
+    public ref readonly ValueHash256 GetCodeHash(Address address)
     {
         AddAccountRead(address);
-        return GetCodeHashInternal(address);
+        AccountChangesAtIndex? accountChanges = _generatingBlockAccessList.GetAccountChanges(address);
+        if (accountChanges?.CodeChange is { } cc)
+        {
+            _scratchCodeHash = cc.CodeHash;
+            return ref _scratchCodeHash;
+        }
+        return ref _innerWorldState.GetCodeHash(address);
     }
 
     public byte[]? GetCode(Address address)
@@ -173,7 +203,7 @@ public class TracedAccessWorldState(IWorldState innerWorldState, bool parallel) 
             GetNonceInternal(address),
             GetBalanceInternal(address),
             Keccak.EmptyTreeHash, // never used
-            _innerWorldState.GetCodeHash(address)) : AccountStruct.TotallyEmpty;
+            GetCodeHashInternal(address)) : AccountStruct.TotallyEmpty;
         return !account.IsTotallyEmpty;
     }
 
@@ -185,17 +215,22 @@ public class TracedAccessWorldState(IWorldState innerWorldState, bool parallel) 
         }
     }
 
-    public void SetIndex(int index)
+    public void SetIndex(uint index)
         => _generatingBlockAccessList.Index = index;
 
     public void IncrementIndex()
         => _generatingBlockAccessList.Index++;
 
     public void Clear()
-        => _generatingBlockAccessList.Clear();
+    {
+        _generatingBlockAccessList.Clear();
+        _systemAccountReadSuppressionDepth = 0;
+    }
 
-    public void MergeGeneratingBal(BlockAccessList other)
-        => other.Merge(_generatingBlockAccessList);
+    public void MergeGeneratingBal(GeneratedBlockAccessList target)
+        => target.Merge(_generatingBlockAccessList);
+
+    BlockAccessListAtIndex? IBlockAccessListSource.GeneratedBlockAccessList => _generatingBlockAccessList;
 
     public void Restore(Snapshot snapshot)
     {
@@ -279,12 +314,8 @@ public class TracedAccessWorldState(IWorldState innerWorldState, bool parallel) 
 
     private UInt256? GetBalanceCurrent(Address address)
     {
-        AccountChanges? accountChanges = _generatingBlockAccessList.GetAccountChanges(address);
-        if (accountChanges is not null && accountChanges.BalanceChanges.Count >= 1)
-        {
-            return accountChanges.BalanceChanges[accountChanges.BalanceChanges.Count - 1].Value;
-        }
-        return null;
+        AccountChangesAtIndex? accountChanges = _generatingBlockAccessList.GetAccountChanges(address);
+        return accountChanges?.BalanceChange?.Value;
     }
 
     private UInt256 GetNonceInternal(Address address)
@@ -292,13 +323,8 @@ public class TracedAccessWorldState(IWorldState innerWorldState, bool parallel) 
 
     private UInt256? GetNonceCurrent(Address address)
     {
-        AccountChanges? accountChanges = _generatingBlockAccessList.GetAccountChanges(address);
-        if (accountChanges is not null && accountChanges.NonceChanges.Count >= 1)
-        {
-            return accountChanges.NonceChanges[accountChanges.NonceChanges.Count - 1].Value;
-        }
-
-        return null;
+        AccountChangesAtIndex? accountChanges = _generatingBlockAccessList.GetAccountChanges(address);
+        return accountChanges?.NonceChange?.Value;
     }
 
     private byte[]? GetCodeCurrent(Address address)
@@ -317,15 +343,9 @@ public class TracedAccessWorldState(IWorldState innerWorldState, bool parallel) 
 
     private bool TryGetCodeChangeCurrent(Address address, [NotNullWhen(true)] out CodeChange? codeChange)
     {
-        AccountChanges? accountChanges = _generatingBlockAccessList.GetAccountChanges(address);
-        if (accountChanges is not null && accountChanges.CodeChanges.Count >= 1)
-        {
-            codeChange = accountChanges.CodeChanges[accountChanges.CodeChanges.Count - 1];
-            return true;
-        }
-
-        codeChange = null;
-        return false;
+        AccountChangesAtIndex? accountChanges = _generatingBlockAccessList.GetAccountChanges(address);
+        codeChange = accountChanges?.CodeChange;
+        return codeChange is not null;
     }
 
     private byte[]? GetCodeInternal(Address address)
@@ -338,15 +358,15 @@ public class TracedAccessWorldState(IWorldState innerWorldState, bool parallel) 
     {
         if (parallel)
         {
-            AccountChanges? accountChanges = _generatingBlockAccessList.GetAccountChanges(storageCell.Address);
-            if (accountChanges is not null)
+            AccountChangesAtIndex? accountChanges = _generatingBlockAccessList.GetAccountChanges(storageCell.Address);
+            if (accountChanges is not null && accountChanges.TryGetStorageChange(storageCell.Index, out StorageChange? change))
             {
-                accountChanges.TryGetSlotChanges(storageCell.Index, out SlotChanges? slotChanges);
-
-                if (slotChanges is not null && slotChanges.Changes.Count >= 1)
-                {
-                    return slotChanges.Changes.Values[slotChanges.Changes.Count - 1].Value.ToBigEndian();
-                }
+                // Copy the BE word into _scratchStorage so the returned span outlives this
+                // frame without allocating a new byte[32] per SLOAD.
+                EvmWord value = change.Value.Value;
+                MemoryMarshal.CreateReadOnlySpan(
+                    ref Unsafe.As<EvmWord, byte>(ref value), 32).CopyTo(_scratchStorage);
+                return _scratchStorage;
             }
         }
 
@@ -358,11 +378,16 @@ public class TracedAccessWorldState(IWorldState innerWorldState, bool parallel) 
 
     private bool? AccountExistsCurrent(Address address)
     {
-        AccountChanges? accountChanges = _generatingBlockAccessList.GetAccountChanges(address);
-        if (accountChanges is not null && (accountChanges.NonceChanges.Count >= 1 || accountChanges.BalanceChanges.Count >= 1))
+        AccountChangesAtIndex? accountChanges = _generatingBlockAccessList.GetAccountChanges(address);
+        if (accountChanges is not null && (accountChanges.NonceChange is not null || accountChanges.BalanceChange is not null))
         {
-            // if nonce or balance is changed in this tx must exist
-            // could have been created this tx
+            // if nonce or balance is changed in this tx must exist (could have been created this tx)
+            return true;
+        }
+
+        // EIP-7928: code-only modifications (e.g. EIP-7702 SetCode) also imply existence at this index.
+        if (accountChanges?.CodeChange is { Code.Length: > 0 })
+        {
             return true;
         }
 

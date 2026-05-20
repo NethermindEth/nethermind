@@ -214,9 +214,9 @@ public class XdcTestBlockchain : TestBlockchain
         xdcSpec.Gap = 450;
         xdcSpec.SwitchEpoch = 0;
         xdcSpec.SwitchBlock = 0;
-        xdcSpec.MasternodeReward = 2.0;   // 2 Ether per masternode
-        xdcSpec.ProtectorReward = 1.0;    // 1 Ether per protector
-        xdcSpec.ObserverReward = 0.5;     // 0.5 Ether per observer
+        xdcSpec.MasternodeReward = (UInt256)2 * Unit.Ether; // 2 Ether in Wei per masternode
+        xdcSpec.ProtectorReward = Unit.Ether;               // 1 Ether in Wei per protector
+        xdcSpec.ObserverReward = Unit.Ether / 2;            // 0.5 Ether in Wei per observer
         xdcSpec.MinimumMinerBlockPerEpoch = 1;
         xdcSpec.MinimumSigningTx = 1;
         xdcSpec.GasLimitBoundDivisor = 1024;
@@ -521,7 +521,9 @@ public class XdcTestBlockchain : TestBlockchain
         {
             KeccakRlpStream stream = new();
             voteDecoder.Encode(stream, vote, RlpBehaviors.ForSealing);
-            vote.Signature = RandomSigner!.Sign(stream.GetValueHash());
+            ValueHash256 hash = stream.GetValueHash();
+            RandomSigner!.TrySign(in hash, out Signature signature);
+            vote.Signature = signature;
             vote.Signer = RandomSigner.Address;
         }
     }

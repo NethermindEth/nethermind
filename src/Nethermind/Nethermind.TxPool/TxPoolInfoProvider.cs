@@ -12,25 +12,19 @@ public class TxPoolInfoProvider(IAccountStateProvider accountStateProvider, ITxP
     public TxPoolInfoProvider(IChainHeadInfoProvider chainHeadInfoProvider, ITxPool txPool)
         : this(chainHeadInfoProvider.ReadOnlyStateProvider, txPool) { }
 
+    // Blob txs are intentionally not exposed via txpool_content / txpool_contentFrom; matches
+    // Geth's BlobPool.Content() returning empty stubs (see core/txpool/blobpool/blobpool.go).
+    // GetCounts() still includes blobs for txpool_status parity.
     public TxPoolInfo GetInfo()
     {
         IDictionary<AddressAsKey, Transaction[]> standardBySender = txPool.GetPendingTransactionsBySender();
-        IDictionary<AddressAsKey, Transaction[]> blobBySender = txPool.GetPendingLightBlobTransactionsBySender();
 
-        int senderEstimate = standardBySender.Count + blobBySender.Count;
-        Dictionary<AddressAsKey, IDictionary<ulong, Transaction>> pendingTransactions = new(senderEstimate);
-        Dictionary<AddressAsKey, IDictionary<ulong, Transaction>> queuedTransactions = new(senderEstimate);
+        Dictionary<AddressAsKey, IDictionary<ulong, Transaction>> pendingTransactions = new(standardBySender.Count);
+        Dictionary<AddressAsKey, IDictionary<ulong, Transaction>> queuedTransactions = new(standardBySender.Count);
 
         foreach (KeyValuePair<AddressAsKey, Transaction[]> group in standardBySender)
         {
-            blobBySender.TryGetValue(group.Key, out Transaction[]? blobTransactions);
-            AddSenderToInfo(group.Key, group.Value, blobTransactions, pendingTransactions, queuedTransactions);
-        }
-
-        foreach (KeyValuePair<AddressAsKey, Transaction[]> group in blobBySender)
-        {
-            if (standardBySender.ContainsKey(group.Key)) continue;
-            AddSenderToInfo(group.Key, standardTransactions: null, group.Value, pendingTransactions, queuedTransactions);
+            AddSenderToInfo(group.Key, group.Value, blobTransactions: null, pendingTransactions, queuedTransactions);
         }
 
         return new TxPoolInfo(pendingTransactions, queuedTransactions);
@@ -39,11 +33,10 @@ public class TxPoolInfoProvider(IAccountStateProvider accountStateProvider, ITxP
     public TxPoolSenderInfo GetSenderInfo(Address address)
     {
         Transaction[] standard = txPool.GetPendingTransactionsBySender(address);
-        Transaction[] blobs = txPool.GetPendingLightBlobTransactionsBySender(address);
-        if (standard.Length == 0 && blobs.Length == 0) return TxPoolSenderInfo.Empty;
+        if (standard.Length == 0) return TxPoolSenderInfo.Empty;
 
         (IDictionary<ulong, Transaction> pending, IDictionary<ulong, Transaction> queued) =
-            SplitByNonce(standard, blobs, accountStateProvider.GetNonce(address));
+            SplitByNonce(standard, blobs: null, accountStateProvider.GetNonce(address));
         return new TxPoolSenderInfo(pending, queued);
     }
 
