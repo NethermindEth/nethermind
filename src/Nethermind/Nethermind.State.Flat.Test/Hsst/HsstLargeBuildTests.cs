@@ -20,7 +20,7 @@ namespace Nethermind.State.Flat.Test.Hsst;
 ///
 /// Two scaling strategies are used, picked by the index type's structural cap:
 /// - Multi-byte-keyed indexes (BTree, PackedArray) hit &gt;2 GiB through entry
-///   volume — see <see cref="EntryCountPerHsst"/> (~150M).
+///   volume — see <see cref="BTreeEntryCount"/> / <see cref="PackedArrayEntryCount"/>.
 /// - Single-byte-keyed indexes (DenseByteIndex) are hard-capped at
 ///   256 entries by the format, so they hit &gt;2 GiB through value size:
 ///   <see cref="ByteKeyEntryCount"/> × <see cref="ByteKeyValueSize"/>.
@@ -35,15 +35,23 @@ namespace Nethermind.State.Flat.Test.Hsst;
 [Explicit("Writes large HSSTs to /tmp; minutes to hours to run at default scale.")]
 public class HsstLargeBuildTests
 {
-    // BTree / PackedArray (multi-byte keys): scale via entry count.
-    // 6 B key + value bytes ≈ entry size; chosen so the *merged* HSST stays
-    // under int.MaxValue separator-buffer count for BTree.
-    private static readonly long EntryCountPerHsst = 150_000_000L;
+    // BTree / PackedArray (multi-byte keys): scale via entry count. Each format
+    // needs its own count because their on-disk per-entry size differs — they're
+    // tuned so a single HSST clears ~2.4 GiB, well past the int.MaxValue ceiling.
+    // The merged HSST (2 × count entries) must keep its entry count under
+    // int.MaxValue; both values leave ample headroom.
+    //
+    // BTree per-entry on disk ≈ 13 B (6 B key + 1 B value + LEB length + index
+    // share); 200M ≈ 2.4 GiB. PackedArray uses a fixed 16 B value so it is denser
+    // per entry; 150M ≈ 2.4 GiB.
+    private static readonly long BTreeEntryCount = 200_000_000L;
+    private static readonly long PackedArrayEntryCount = 150_000_000L;
     private const int KeySize = 6;
     private const byte BTreeValueByte = 0xAB;
-    // PackedArray uses a fixed-size value; 16 B × 150M ≈ 2.4 GiB so a single
-    // HSST clears the ceiling even with the leaner index footprint.
     private const int PackedValueSize = 16;
+
+    private static long EntryCountFor(IndexType indexType) =>
+        indexType == IndexType.BTree ? BTreeEntryCount : PackedArrayEntryCount;
 
     // DenseByteIndex (1-byte keys): scale via value size.
     // 256 entries × 10 MiB ≈ 2.5 GiB per file — clears the ceiling without
@@ -62,34 +70,31 @@ public class HsstLargeBuildTests
 
         try
         {
+            long count = EntryCountFor(indexType);
+
             // -------- write --------
-            WriteLargeHsst(indexType, pathA, baseKey: 0L, count: EntryCountPerHsst);
-            WriteLargeHsst(indexType, pathB, baseKey: EntryCountPerHsst, count: EntryCountPerHsst);
+            WriteLargeHsst(indexType, pathA, baseKey: 0L, count: count);
+            WriteLargeHsst(indexType, pathB, baseKey: count, count: count);
 
             long sizeA = new FileInfo(pathA).Length;
             long sizeB = new FileInfo(pathB).Length;
-            // Skip the >2 GiB assertion when running with a smoke-sized entry count.
-            if (EntryCountPerHsst >= 150_000_000L)
-            {
-                Assert.That(sizeA, Is.GreaterThan((long)int.MaxValue),
-                    $"{indexType} HSST A is supposed to exceed the 2 GiB single-Span ceiling");
-                Assert.That(sizeB, Is.GreaterThan((long)int.MaxValue),
-                    $"{indexType} HSST B is supposed to exceed the 2 GiB single-Span ceiling");
-            }
+            Assert.That(sizeA, Is.GreaterThan((long)int.MaxValue),
+                $"{indexType} HSST A is supposed to exceed the 2 GiB single-Span ceiling");
+            Assert.That(sizeB, Is.GreaterThan((long)int.MaxValue),
+                $"{indexType} HSST B is supposed to exceed the 2 GiB single-Span ceiling");
 
             // -------- iterate each, verifying every key+value --------
-            IterateAndVerify(indexType, pathA, baseKey: 0L, expectedCount: EntryCountPerHsst);
-            IterateAndVerify(indexType, pathB, baseKey: EntryCountPerHsst, expectedCount: EntryCountPerHsst);
+            IterateAndVerify(indexType, pathA, baseKey: 0L, expectedCount: count);
+            IterateAndVerify(indexType, pathB, baseKey: count, expectedCount: count);
 
             // -------- merge --------
             MergeTwo(indexType, pathA, pathB, pathMerged);
 
             long sizeMerged = new FileInfo(pathMerged).Length;
-            if (EntryCountPerHsst >= 150_000_000L)
-                Assert.That(sizeMerged, Is.GreaterThan((long)int.MaxValue),
-                    $"merged {indexType} HSST is supposed to also exceed 2 GiB");
+            Assert.That(sizeMerged, Is.GreaterThan((long)int.MaxValue),
+                $"merged {indexType} HSST is supposed to also exceed 2 GiB");
 
-            IterateAndVerify(indexType, pathMerged, baseKey: 0L, expectedCount: EntryCountPerHsst * 2);
+            IterateAndVerify(indexType, pathMerged, baseKey: 0L, expectedCount: count * 2);
         }
         finally
         {
@@ -369,7 +374,7 @@ public class HsstLargeBuildTests
             ArenaBufferWriter writer = new(outFs, firstOffset: 0, (relOffset, size) => OpenFileView(outFs, relOffset, size));
             try
             {
-                int merged = checked((int)(EntryCountPerHsst * 2));
+                int merged = checked((int)(EntryCountFor(indexType) * 2));
                 switch (indexType)
                 {
                     case IndexType.BTree:
