@@ -25,6 +25,7 @@ jobs:
         with:
           large-packages: false
           tool-cache: false
+          swap-storage: false
 
       - name: Check out repository
         uses: actions/checkout@v6

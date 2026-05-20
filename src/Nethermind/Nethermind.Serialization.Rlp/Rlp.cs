@@ -13,13 +13,11 @@ using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading;
 using Nethermind.Core;
-using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 using Nethermind.Logging;
-using Nethermind.Serialization.Rlp.Eip7928;
 
 namespace Nethermind.Serialization.Rlp
 {
@@ -268,9 +266,6 @@ namespace Nethermind.Serialization.Rlp
 
         public static Rlp Encode(LogEntry item, RlpBehaviors behaviors = RlpBehaviors.None)
             => LogEntryDecoder.Instance.Encode(item, behaviors);
-
-        public static Rlp Encode(BlockAccessList item, RlpBehaviors behaviors = RlpBehaviors.None)
-            => new(BlockAccessListDecoder.EncodeToBytes(item, behaviors));
 
         public static Rlp Encode<T>(T item, RlpBehaviors behaviors = RlpBehaviors.None)
         {
@@ -662,7 +657,7 @@ namespace Nethermind.Serialization.Rlp
 
             public readonly bool IsSequenceNext() => Data[Position] >= 192;
 
-            public int PeekNumberOfItemsRemaining(int? beforePosition = null, int maxSearch = int.MaxValue)
+            public readonly int PeekNumberOfItemsRemaining(int? beforePosition = null, int maxSearch = int.MaxValue)
                 => RlpHelpers.CountItems(Data, Position, beforePosition ?? Data.Length, maxSearch);
 
             public void SkipLength() => Position += PeekPrefixLength();
@@ -1058,7 +1053,7 @@ namespace Nethermind.Serialization.Rlp
                     throw new InvalidOperationException("Incorrect bloom RLP");
                 }
 
-                return bloomBytes.SequenceEqual(Bloom.Empty.Bytes) ? Bloom.Empty : new Bloom(bloomBytes.ToArray());
+                return bloomBytes.SequenceEqual(Bloom.Empty.Bytes) ? Bloom.Empty : new Bloom(bloomBytes);
             }
 
             public void DecodeBloomStructRef(out BloomStructRef bloom)
@@ -1382,7 +1377,8 @@ namespace Nethermind.Serialization.Rlp
                 }
 
                 int checkPosition = Position + length;
-                int itemsCount = PeekNumberOfItemsRemaining(checkPosition);
+                int itemsCountMax = (limit ?? RlpLimit.DefaultLimit).Limit + 1;
+                int itemsCount = PeekNumberOfItemsRemaining(checkPosition, itemsCountMax);
                 GuardLimit(itemsCount, limit);
                 byte[][] result = new byte[itemsCount][];
 

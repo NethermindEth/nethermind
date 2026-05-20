@@ -267,9 +267,13 @@ namespace Nethermind.JsonRpc.Modules
                     ParameterInfo parameter = parameters[i];
                     ConstructorInvoker? constructor = null;
                     ParameterDetails details = ParameterDetails.None;
-                    if (parameter.ParameterType.IsAssignableTo(typeof(IJsonRpcParam)))
+
+                    Type? paramType = parameter.ParameterType;
+                    if (paramType.IsAssignableTo(typeof(IJsonRpcParam)))
                     {
-                        constructor = ConstructorInvoker.Create(parameter.ParameterType.GetConstructor(BindingFlags.Public | BindingFlags.Instance, []));
+                        ConstructorInfo constructorInfo = paramType.GetConstructor(BindingFlags.Public | BindingFlags.Instance, [])
+                            ?? throw new InvalidOperationException($"{paramType.Name} must have parameterless constructor.");
+                        constructor = ConstructorInvoker.Create(constructorInfo);
                     }
 
                     if (IsNullableParameter(parameter))

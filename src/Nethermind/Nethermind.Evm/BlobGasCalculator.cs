@@ -9,6 +9,26 @@ namespace Nethermind.Evm;
 
 public static class BlobGasCalculator
 {
+    /// <summary>
+    /// Tries to compute the total blob fee: <c>blobCount × GAS_PER_BLOB × maxFeePerBlobGas</c>.
+    /// </summary>
+    /// <returns><see langword="false"/> if the multiplication overflows; otherwise <see langword="true"/>.</returns>
+    public static bool TryCalculateBlobMaxFee(int blobCount, UInt256 maxFeePerBlobGas, out UInt256 blobFee) =>
+        !UInt256.MultiplyOverflow((UInt256)blobCount * (UInt256)Eip4844Constants.GasPerBlob, maxFeePerBlobGas, out blobFee);
+
+    public static bool TrySubtractBlobFee(IReleaseSpec spec, Transaction tx, ref UInt256 available)
+    {
+        if (!spec.IsEip4844Enabled || tx.BlobVersionedHashes?.Length is not > 0)
+            return true;
+
+        if (!TryCalculateBlobMaxFee(tx.BlobVersionedHashes.Length, tx.MaxFeePerBlobGas ?? UInt256.Zero, out UInt256 blobFee)
+            || blobFee > available)
+            return false;
+
+        available -= blobFee;
+        return true;
+    }
+
     public static ulong CalculateBlobGas(int blobCount) =>
         (ulong)blobCount * Eip4844Constants.GasPerBlob;
 

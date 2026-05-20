@@ -154,7 +154,7 @@ namespace Nethermind.Core.Test
         public void Long_encode_decode([ValueSource(nameof(LongValues))] long value, [Values] bool useBuffer)
         {
             Rlp.ValueDecoderContext context = useBuffer
-                ? new(Rlp.Encode(value, stackalloc byte[9]).ToArray())
+                ? new(Rlp.Encode(value, stackalloc byte[9]))
                 : new(Rlp.Encode(value).Bytes);
 
             long decoded = context.DecodeLong();
@@ -166,7 +166,7 @@ namespace Nethermind.Core.Test
         public void ULong_encode_decode([ValueSource(nameof(ULongValues))] ulong value, [Values] bool useBuffer)
         {
             Rlp.ValueDecoderContext context = useBuffer
-                ? new(Rlp.Encode(value, stackalloc byte[9]).ToArray())
+                ? new(Rlp.Encode(value, stackalloc byte[9]))
                 : new(Rlp.Encode(value).Bytes);
 
             ulong decoded = context.DecodeULong();
@@ -579,6 +579,17 @@ namespace Nethermind.Core.Test
             pLen2.Should().Be(1 + lengthOfLength, $"ValueRlpStream prefix length for {prefix}");
             cLen2.Should().Be(contentLength, $"ValueRlpStream content length for {prefix}");
         }
+
+        [TestCase(new byte[] { 0xBB, 0x7F, 0xFF, 0xFF, 0xFF }, TestName = "LongString_4ByteLength_Int32Max")]
+        [TestCase(new byte[] { 0xFB, 0x7F, 0xFF, 0xFF, 0xFF }, TestName = "LongList_4ByteLength_Int32Max")]
+        [TestCase(new byte[] { 0xB8, 0x64, 0x01, 0x02 }, TestName = "LongString_1ByteLength_100")]
+        [TestCase(new byte[] { 0xF8, 0x64, 0x01, 0x02 }, TestName = "LongList_1ByteLength_100")]
+        public void PeekPrefixAndContentLength_invalid(byte[] data) =>
+            Assert.Throws<RlpException>(() =>
+            {
+                Rlp.ValueDecoderContext ctx = new(data);
+                ctx.PeekPrefixAndContentLength();
+            });
 
         [Test]
         public void PeekNumberOfItemsRemaining_mixed_items()

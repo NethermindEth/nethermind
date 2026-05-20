@@ -34,13 +34,11 @@ public class XdcPlugin(ChainSpec chainSpec) : IConsensusPlugin
 
     public Task InitNetworkProtocol()
     {
-        // Remove default ETH 68 capability (XDC uses 62-65 and 100)
+        // Remove default ETH 68 capability (XDC uses 62-63 and 100)
         _nethermindApi.ProtocolsManager!.RemoveSupportedCapability(new(Protocol.Eth, 68));
 
         _nethermindApi.ProtocolsManager!.AddSupportedCapability(new(Protocol.Eth, 62));
         _nethermindApi.ProtocolsManager!.AddSupportedCapability(new(Protocol.Eth, 63));
-        _nethermindApi.ProtocolsManager!.AddSupportedCapability(new(Protocol.Eth, 64));
-        _nethermindApi.ProtocolsManager!.AddSupportedCapability(new(Protocol.Eth, 65));
         _nethermindApi.ProtocolsManager!.AddSupportedCapability(new(Protocol.Eth, 100));
         return Task.CompletedTask;
     }

@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+#nullable enable
 using System.Collections.Generic;
 using System.IO;
 using System.IO.Abstractions;
@@ -35,13 +36,13 @@ public class StartupTests
         {
             engineModule
                 .engine_getBlobsV1(Arg.Any<byte[][]>())
-                .Returns(Task.FromResult(ResultWrapper<IEnumerable<BlobAndProofV1>>.Success(new BlobsV1DirectResponse(new(0)))));
+                .Returns(Task.FromResult(ResultWrapper<IReadOnlyList<BlobAndProofV1?>>.Success(new BlobsV1DirectResponse(new(0)))));
             engineModule
                 .engine_getBlobsV2(Arg.Any<byte[][]>())
-                .Returns(Task.FromResult(ResultWrapper<IEnumerable<BlobAndProofV2>>.Success(new BlobsV2DirectResponse([], [], 0))));
+                .Returns(Task.FromResult(ResultWrapper<IReadOnlyList<BlobAndProofV2?>?>.Success(new BlobsV2DirectResponse([], [], 0))));
             engineModule
                 .engine_getBlobsV3(Arg.Any<byte[][]>())
-                .Returns(Task.FromResult(ResultWrapper<IEnumerable<BlobAndProofV2>>.Success(new BlobsV2DirectResponse([], [], 0))));
+                .Returns(Task.FromResult(ResultWrapper<IReadOnlyList<BlobAndProofV2?>?>.Success(new BlobsV2DirectResponse([], [], 0))));
         }
 
         RpcModuleProvider moduleProvider = new(new RealFileSystem(), rpcConfig, new EthereumJsonSerializer(), LimboLogs.Instance);

@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
@@ -20,10 +21,12 @@ namespace Nethermind.Consensus.Processing;
 //   * Build(...): immutable index built once from the suggested BAL. Lanes are
 //     pre-sized via Counts and sorted in place.
 //   * ctor(txCount, addressIndex, suggested): mutable index that mirrors the
-//     suggested layout; the generator pushes rows into it as the block executes
-//     and ChangesEqual(...) compares it against the suggested index after each
-//     tx. _hasOutOfRangeChange tracks whether a generated change went past the
-//     suggested last index, in which case full-slow validation is required.
+//     suggested layout; the generator pushes rows into it via Add(slice) as
+//     each per-tx BlockAccessListAtIndex slice is merged into the cumulative
+//     GeneratedBlockAccessList. ChangesEqual(...) then compares row-by-row
+//     against the suggested index. _hasOutOfRangeChange flips when a generated
+//     change targets an index past the suggested last index — in that case
+//     full-slow validation is required.
 internal sealed class BlockAccessListValidationIndex
 {
     private readonly AddressIndex _addressIndex;
@@ -67,14 +70,14 @@ internal sealed class BlockAccessListValidationIndex
         _hasAccountWords = hasAccountWords;
     }
 
-    public static BlockAccessListValidationIndex Build(BlockAccessList blockAccessList, int txCount, AddressIndex addressIndex)
+    public static BlockAccessListValidationIndex Build(ReadOnlyBlockAccessList blockAccessList, int txCount, AddressIndex addressIndex)
     {
         uint lastIndex = GetLastIndex(txCount);
         int rowCount = checked((int)lastIndex + 1);
         Counts counts = new(rowCount);
         ulong[] hasAccountWords = [];
 
-        foreach (AccountChanges accountChanges in blockAccessList.AccountChangesByAddress)
+        foreach (ReadOnlyAccountChanges accountChanges in blockAccessList.AccountChanges)
         {
             int accountOrdinal = addressIndex.GetOrAdd(accountChanges.Address);
             MarkAccount(ref hasAccountWords, accountOrdinal);
@@ -97,40 +100,44 @@ internal sealed class BlockAccessListValidationIndex
         return new(addressIndex, lastIndex, balance, nonce, code, storage, hasAccountWords);
     }
 
-    public void Add(BlockAccessList blockAccessList)
+    /// <summary>
+    /// Append a per-tx generated slice into the mutable validation index. Called from
+    /// <c>BlockAccessListManager.MergeAndReturnBal</c> after each tx's
+    /// <see cref="BlockAccessListAtIndex"/> is folded into the cumulative
+    /// <see cref="GeneratedBlockAccessList"/>; pushes exactly the rows that landed at the
+    /// slice's tx index so subsequent ChangesEqual(index) calls compare against suggested.
+    /// </summary>
+    public void Add(BlockAccessListAtIndex slice)
     {
         if (!_isMutable)
             throw new InvalidOperationException("Only generated validation indexes can be appended.");
 
-        foreach (AccountChanges accountChanges in blockAccessList.UnorderedAccountChanges)
+        foreach (AccountChangesAtIndex accountChanges in slice.AccountChanges)
         {
             int accountOrdinal = _addressIndex.GetOrAdd(accountChanges.Address);
 
-            foreach (BalanceChange change in accountChanges.BalanceChangeSet.BlockAccessChanges)
+            if (accountChanges.BalanceChange is { } balance)
             {
-                if (TryGetRow(change.Index, _lastIndex, out int row)) _balance.Add(row, accountOrdinal, change.Value);
+                if (TryGetRow(balance.Index, _lastIndex, out int row)) _balance.Add(row, accountOrdinal, balance.Value);
                 else _hasOutOfRangeChange = true;
             }
 
-            foreach (NonceChange change in accountChanges.NonceChangeSet.BlockAccessChanges)
+            if (accountChanges.NonceChange is { } nonce)
             {
-                if (TryGetRow(change.Index, _lastIndex, out int row)) _nonce.Add(row, accountOrdinal, change.Value);
+                if (TryGetRow(nonce.Index, _lastIndex, out int row)) _nonce.Add(row, accountOrdinal, nonce.Value);
                 else _hasOutOfRangeChange = true;
             }
 
-            foreach (CodeChange change in accountChanges.CodeChangeSet.BlockAccessChanges)
+            if (accountChanges.CodeChange is { } code)
             {
-                if (TryGetRow(change.Index, _lastIndex, out int row)) _code.Add(row, accountOrdinal, change.CodeHash);
+                if (TryGetRow(code.Index, _lastIndex, out int row)) _code.Add(row, accountOrdinal, code.CodeHash);
                 else _hasOutOfRangeChange = true;
             }
 
-            foreach (SlotChanges slotChanges in accountChanges.StorageChanges)
+            foreach (KeyValuePair<UInt256, StorageChange> kv in accountChanges.StorageChanges)
             {
-                foreach (StorageChange change in slotChanges.Changes.BlockAccessChanges)
-                {
-                    if (TryGetRow(change.Index, _lastIndex, out int row)) _storage.Add(row, accountOrdinal, slotChanges.Key, change.Value);
-                    else _hasOutOfRangeChange = true;
-                }
+                if (TryGetRow(kv.Value.Index, _lastIndex, out int row)) _storage.Add(row, accountOrdinal, kv.Key, kv.Value.Value);
+                else _hasOutOfRangeChange = true;
             }
         }
 
@@ -158,17 +165,17 @@ internal sealed class BlockAccessListValidationIndex
                _storage.ChangesEqual(other._storage, row);
     }
 
-    private static void Count(BlockAccessList blockAccessList, Counts counts, uint lastIndex)
+    private static void Count(ReadOnlyBlockAccessList blockAccessList, Counts counts, uint lastIndex)
     {
-        foreach (AccountChanges accountChanges in blockAccessList.UnorderedAccountChanges)
+        foreach (ReadOnlyAccountChanges accountChanges in blockAccessList.AccountChanges)
         {
-            Count(accountChanges.BalanceChangeSet.BlockAccessChanges, counts.Balance, lastIndex);
-            Count(accountChanges.NonceChangeSet.BlockAccessChanges, counts.Nonce, lastIndex);
-            Count(accountChanges.CodeChangeSet.BlockAccessChanges, counts.Code, lastIndex);
+            Count(accountChanges.BalanceChanges, counts.Balance, lastIndex);
+            Count(accountChanges.NonceChanges, counts.Nonce, lastIndex);
+            Count(accountChanges.CodeChanges, counts.Code, lastIndex);
 
-            foreach (SlotChanges slotChanges in accountChanges.StorageChanges)
+            foreach (ReadOnlySlotChanges slotChanges in accountChanges.StorageChanges)
             {
-                Count(slotChanges.Changes.BlockAccessChanges, counts.Storage, lastIndex);
+                Count(slotChanges.Changes, counts.Storage, lastIndex);
             }
         }
     }
@@ -186,7 +193,7 @@ internal sealed class BlockAccessListValidationIndex
     }
 
     private static void Fill(
-        BlockAccessList blockAccessList,
+        ReadOnlyBlockAccessList blockAccessList,
         AddressIndex addressIndex,
         uint lastIndex,
         Lane<UInt256> balance,
@@ -199,29 +206,29 @@ internal sealed class BlockAccessListValidationIndex
         int[] codeCursors = code.CreateFillCursors();
         int[] storageCursors = storage.CreateFillCursors();
 
-        foreach (AccountChanges accountChanges in blockAccessList.UnorderedAccountChanges)
+        foreach (ReadOnlyAccountChanges accountChanges in blockAccessList.AccountChanges)
         {
             bool found = addressIndex.TryGet(accountChanges.Address, out int accountOrdinal);
             Debug.Assert(found);
 
-            foreach (BalanceChange change in accountChanges.BalanceChangeSet.BlockAccessChanges)
+            foreach (BalanceChange change in accountChanges.BalanceChanges)
             {
                 if (TryGetRow(change.Index, lastIndex, out int row)) balance.Fill(row, balanceCursors, accountOrdinal, change.Value);
             }
 
-            foreach (NonceChange change in accountChanges.NonceChangeSet.BlockAccessChanges)
+            foreach (NonceChange change in accountChanges.NonceChanges)
             {
                 if (TryGetRow(change.Index, lastIndex, out int row)) nonce.Fill(row, nonceCursors, accountOrdinal, change.Value);
             }
 
-            foreach (CodeChange change in accountChanges.CodeChangeSet.BlockAccessChanges)
+            foreach (CodeChange change in accountChanges.CodeChanges)
             {
                 if (TryGetRow(change.Index, lastIndex, out int row)) code.Fill(row, codeCursors, accountOrdinal, change.CodeHash);
             }
 
-            foreach (SlotChanges slotChanges in accountChanges.StorageChanges)
+            foreach (ReadOnlySlotChanges slotChanges in accountChanges.StorageChanges)
             {
-                foreach (StorageChange change in slotChanges.Changes.BlockAccessChanges)
+                foreach (StorageChange change in slotChanges.Changes)
                 {
                     if (TryGetRow(change.Index, lastIndex, out int row)) storage.Fill(row, storageCursors, accountOrdinal, slotChanges.Key, change.Value);
                 }
@@ -465,7 +472,6 @@ internal sealed class BlockAccessListValidationIndex
         private readonly bool[]? _rowTouched;
         private readonly int[]? _touchedRows;
         private readonly bool[]? _rowOverflow;
-        private readonly StorageOrderComparer _orderComparer = new();
         private int[] _orderScratch = [];
         private int[] _accountScratch = [];
         private UInt256[] _keyScratch = [];
@@ -667,8 +673,7 @@ internal sealed class BlockAccessListValidationIndex
                 _orderScratch[i] = i;
             }
 
-            _orderComparer.Reset(_accountOrdinals, _keys, start);
-            Array.Sort(_orderScratch, 0, length, _orderComparer);
+            _orderScratch.AsSpan(0, length).Sort(new StorageOrderComparer(_accountOrdinals, _keys, start));
 
             for (int i = 0; i < length; i++)
             {
@@ -696,19 +701,13 @@ internal sealed class BlockAccessListValidationIndex
             _valueScratch = new EvmWord[length];
         }
 
-        private sealed class StorageOrderComparer : IComparer<int>
+        private readonly struct StorageOrderComparer(int[] accountOrdinals, UInt256[] keys, int start) : IComparer<int>
         {
-            private int[] _accountOrdinals = [];
-            private UInt256[] _keys = [];
-            private int _start;
+            private readonly int[] _accountOrdinals = accountOrdinals;
+            private readonly UInt256[] _keys = keys;
+            private readonly int _start = start;
 
-            public void Reset(int[] accountOrdinals, UInt256[] keys, int start)
-            {
-                _accountOrdinals = accountOrdinals;
-                _keys = keys;
-                _start = start;
-            }
-
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
             public int Compare(int leftOffset, int rightOffset)
             {
                 int left = _start + leftOffset;

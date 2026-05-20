@@ -28,7 +28,10 @@ public class GasEstimator(
     public const string GasExceedsAllowanceMsgPrefix = "gas required exceeds allowance";
 
     /// <summary>Message emitted when the sender has insufficient balance.</summary>
-    public const string InsufficientBalance = "insufficient funds for transfer";
+    public const string InsufficientBalance = "insufficient sender balance for transfer";
+
+    /// <summary>Message emitted when the sender cannot cover gas * price + value.</summary>
+    public const string InsufficientFundsForGas = "insufficient sender balance for gas * price + value";
 
     private const int MaxErrorMargin = 10000;
     private const double BasisPointsDivisor = 10000d;
@@ -68,7 +71,7 @@ public class GasEstimator(
 
         UInt256 senderBalance = stateProvider.GetBalance(tx.SenderAddress!);
 
-        if (CheckFunds(tx, spec, gasTracer, senderBalance) is { } fundsResult)
+        if (CheckFunds(tx, spec, gasTracer, senderBalance, out UInt256 available) is { } fundsResult)
             return fundsResult;
 
         long intrinsicGas = IntrinsicGasCalculator.Calculate(tx, spec, header.GasLimit).MinimalGas;
@@ -81,8 +84,7 @@ public class GasEstimator(
             return EstimationResult.Failure(CannotEstimateGasExceeded);
 
         UInt256 feeCap = tx.CalculateFeeCap();
-        // tx.ValueRef <= senderBalance is guaranteed here; subtract so the cap reflects gas budget only.
-        EstimationBounds bounds = CapByAllowance(new EstimationBounds(leftBound, rightBound, intrinsicGas), senderBalance - tx.ValueRef, feeCap);
+        EstimationBounds bounds = CapByAllowance(new EstimationBounds(leftBound, rightBound, intrinsicGas), available, feeCap);
 
         return BinarySearchEstimate(tx, header, gasTracer, bounds, errorMargin, token);
     }
@@ -96,15 +98,25 @@ public class GasEstimator(
         };
 
     // Returns null if funds are sufficient (estimation continues), or a terminal result to return immediately.
-    private static EstimationResult? CheckFunds(Transaction tx, IReleaseSpec spec, EstimateGasTracer gasTracer, UInt256 senderBalance)
+    // On success, `available` holds the sender's balance after deducting value and blob fees.
+    private static EstimationResult? CheckFunds(Transaction tx, IReleaseSpec spec, EstimateGasTracer gasTracer, UInt256 senderBalance, out UInt256 available)
     {
-        if (tx.ValueRef == UInt256.Zero || tx.ValueRef <= senderBalance)
-            return null;
+        available = UInt256.Zero;
 
-        long additionalGas = gasTracer.CalculateAdditionalGasRequired(tx, spec);
-        return additionalGas > 0
-            ? EstimationResult.Success(additionalGas)
-            : EstimationResult.Failure(GetError(gasTracer, InsufficientBalance));
+        if (tx.ValueRef > senderBalance)
+        {
+            long additionalGas = gasTracer.CalculateAdditionalGasRequired(tx, spec);
+            return additionalGas > 0
+                ? EstimationResult.Success(additionalGas)
+                : EstimationResult.Failure(GetError(gasTracer, InsufficientBalance));
+        }
+
+        available = senderBalance - tx.ValueRef;
+
+        if (!BlobGasCalculator.TrySubtractBlobFee(spec, tx, ref available))
+            return EstimationResult.Failure(GetError(gasTracer, InsufficientFundsForGas));
+
+        return null;
     }
 
     private static EstimationBounds CapByAllowance(EstimationBounds bounds, UInt256 available, UInt256 feeCap = default)

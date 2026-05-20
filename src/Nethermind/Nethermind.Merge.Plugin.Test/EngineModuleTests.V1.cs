@@ -1366,6 +1366,23 @@ public partial class EngineModuleTests
         return (block1, block2A, block2B, block3B);
     }
 
+    // Snapshots head/finalized/safe, sends an FCU that must be rejected as InvalidForkchoiceState,
+    // and asserts the three pointers are unchanged.
+    private static async Task AssertFcuRejectedAndStateUnchanged(MergeTestBlockchain chain, IEngineRpcModule rpc, ForkchoiceStateV1 fcu)
+    {
+        Hash256 initialHeadHash = chain.BlockFinder.HeadHash;
+        Hash256 initialFinalizedHash = chain.BlockFinder.FinalizedHash!;
+        Hash256 initialSafeHash = chain.BlockFinder.SafeHash!;
+
+        ResultWrapper<ForkchoiceUpdatedV1Result> result = await rpc.engine_forkchoiceUpdatedV1(fcu);
+        result.ErrorCode.Should().Be(MergeErrorCodes.InvalidForkchoiceState);
+
+        chain.BlockTree.Head!.Hash.Should().Be(initialHeadHash);
+        chain.BlockFinder.HeadHash.Should().Be(initialHeadHash);
+        chain.BlockFinder.FinalizedHash.Should().Be(initialFinalizedHash);
+        chain.BlockFinder.SafeHash.Should().Be(initialSafeHash);
+    }
+
     [TestCase(false, TestName = "inconsistent_finalized_hash")]
     [TestCase(true, TestName = "inconsistent_safe_hash")]
     public async Task inconsistent_sibling_hash_is_rejected(bool viaSafe)
@@ -1374,14 +1391,40 @@ public partial class EngineModuleTests
             await CreateBlockchain(null, new MergeConfig() { TerminalTotalDifficulty = "0" });
         IEngineRpcModule rpc = chain.EngineRpcModule;
 
-        (_, ExecutionPayload block2A, _, ExecutionPayload block3B) = await BuildYShapedChainV1(chain, rpc);
+        (ExecutionPayload block1, ExecutionPayload block2A, _, ExecutionPayload block3B) = await BuildYShapedChainV1(chain, rpc);
 
         // block2A is a sibling of branch B; passing it as either finalized or safe while head is on
         // branch B is not an ancestor relationship and must be rejected.
         ForkchoiceStateV1 fcu = viaSafe
             ? new(headBlockHash: block3B.BlockHash, finalizedBlockHash: block3B.BlockHash, safeBlockHash: block2A.BlockHash)
             : new(headBlockHash: block3B.BlockHash, finalizedBlockHash: block2A.BlockHash, safeBlockHash: block3B.BlockHash);
-        (await rpc.engine_forkchoiceUpdatedV1(fcu)).ErrorCode.Should().Be(MergeErrorCodes.InvalidForkchoiceState);
+        await AssertFcuRejectedAndStateUnchanged(chain, rpc, fcu);
+
+        chain.BlockTree.IsMainChain(block1.BlockHash).Should().BeTrue();
+        chain.BlockTree.IsMainChain(block3B.BlockHash).Should().BeFalse();
+    }
+
+    [Test]
+    public async Task inconsistent_safe_hash_is_rejected_when_head_is_ancestor_of_latest_known_finalized()
+    {
+        using MergeTestBlockchain chain = await CreateBlockchain(null, new MergeConfig() { TerminalTotalDifficulty = "0" });
+        IEngineRpcModule rpc = chain.EngineRpcModule;
+
+        IReadOnlyList<ExecutionPayload> blocks = await ProduceBranchV1(
+            rpc,
+            chain,
+            3,
+            CreateParentBlockRequestOnHead(chain.BlockTree),
+            setHead: true);
+
+        ExecutionPayload block1 = blocks[0];
+        ExecutionPayload block3 = blocks[2];
+        chain.BlockFinder.HeadHash.Should().Be(block3.BlockHash);
+        chain.BlockFinder.FinalizedHash.Should().Be(block3.BlockHash);
+
+        // Old-head skip is optional, but InvalidForkchoiceState for an out-of-chain safe block is mandatory.
+        ForkchoiceStateV1 fcu = new(headBlockHash: block1.BlockHash, finalizedBlockHash: block1.BlockHash, safeBlockHash: block3.BlockHash);
+        await AssertFcuRejectedAndStateUnchanged(chain, rpc, fcu);
     }
 
     [Test]
@@ -1720,12 +1763,16 @@ public partial class EngineModuleTests
         IEngineRpcModule rpcModule = chain.EngineRpcModule;
         IOrderedEnumerable<string> expected = typeof(IEngineRpcModule).GetMethods()
             .Select(static m => m.Name)
-            .Where(static m => !m.Equals(nameof(IEngineRpcModule.engine_exchangeCapabilities), StringComparison.Ordinal))
+            .Where(static m => !m.Equals(nameof(IEngineRpcModule.engine_exchangeCapabilities), StringComparison.Ordinal)
+                            && !m.Equals(nameof(IEngineRpcModule.engine_exchangeTransitionConfigurationV1), StringComparison.Ordinal))
             .Order();
 
-        ResultWrapper<IEnumerable<string>> result = rpcModule.engine_exchangeCapabilities(expected);
+        ResultWrapper<IReadOnlyList<string>> result = rpcModule.engine_exchangeCapabilities(expected);
 
-        result.Data.Should().BeEquivalentTo(expected);
+        // The advertised list mixes JSON-RPC method names and SSZ-REST paths per spec.
+        // Filter to JSON-RPC names by intersecting with reflection over IEngineRpcModule.
+        HashSet<string> jsonRpcMethodNames = [.. typeof(IEngineRpcModule).GetMethods().Select(static m => m.Name)];
+        result.Data.Where(jsonRpcMethodNames.Contains).Should().BeEquivalentTo(expected);
     }
 
     [Test]
@@ -1736,16 +1783,16 @@ public partial class EngineModuleTests
         ChainSpec chainSpec = loader.LoadEmbeddedOrFromFile(path);
         ChainSpecBasedSpecProvider specProvider = new(chainSpec);
         EngineRpcCapabilitiesProvider engineRpcCapabilitiesProvider = new(specProvider);
-        ExchangeCapabilitiesHandler exchangeCapabilitiesHandler = new(engineRpcCapabilitiesProvider, LimboLogs.Instance);
-        string[] result = exchangeCapabilitiesHandler.Handle(Array.Empty<string>()).Data.ToArray();
-        string[] expectedMethods = new string[]
-        {
+        string[] result = [.. engineRpcCapabilitiesProvider.GetJsonRpcCapabilities()
+            .Where(kv => kv.Value.IsEnabled())
+            .Select(kv => kv.Key)];
+        string[] expectedMethods =
+        [
             nameof(IEngineRpcModule.engine_getClientVersionV1),
 
             nameof(IEngineRpcModule.engine_getPayloadV1),
             nameof(IEngineRpcModule.engine_forkchoiceUpdatedV1),
             nameof(IEngineRpcModule.engine_newPayloadV1),
-            nameof(IEngineRpcModule.engine_exchangeTransitionConfigurationV1),
 
             nameof(IEngineRpcModule.engine_getPayloadV2),
             nameof(IEngineRpcModule.engine_forkchoiceUpdatedV2),
@@ -1764,7 +1811,7 @@ public partial class EngineModuleTests
             nameof(IEngineRpcModule.engine_getPayloadV5),
             nameof(IEngineRpcModule.engine_getBlobsV2),
             nameof(IEngineRpcModule.engine_getBlobsV3)
-        };
+        ];
         Assert.That(result, Is.EquivalentTo(expectedMethods));
     }
 
@@ -1791,11 +1838,85 @@ public partial class EngineModuleTests
             nameof(IEngineRpcModule.engine_getPayloadV3)
         };
 
-        ResultWrapper<IEnumerable<string>> result = rpcModule.engine_exchangeCapabilities(list);
+        ResultWrapper<IReadOnlyList<string>> result = rpcModule.engine_exchangeCapabilities(list);
 
         chain.LogManager.GetClassLogger<ExchangeCapabilitiesHandler>().UnderlyingLogger.Received().Warn(
             Arg.Is<string>(static a =>
                 a.Contains(nameof(IEngineRpcModule.engine_getPayloadV4), StringComparison.Ordinal)));
+    }
+
+    private static readonly string[] SszRestPathsParis =
+    [
+        "POST /engine/v1/payloads",
+        "GET /engine/v1/payloads/{payload_id}",
+        "POST /engine/v1/forkchoice",
+        "POST /engine/v1/capabilities",
+        "POST /engine/v1/client/version",
+    ];
+
+    private static readonly string[] SszRestPathsShanghai =
+    [
+        "POST /engine/v2/payloads",
+        "GET /engine/v2/payloads/{payload_id}",
+        "POST /engine/v2/forkchoice",
+        "POST /engine/v1/payloads/bodies/by-hash",
+        "POST /engine/v1/payloads/bodies/by-range",
+    ];
+
+    private static readonly string[] SszRestPathsCancun =
+    [
+        "POST /engine/v3/payloads",
+        "GET /engine/v3/payloads/{payload_id}",
+        "POST /engine/v3/forkchoice",
+        "POST /engine/v1/blobs",
+    ];
+
+    private static readonly string[] SszRestPathsPrague =
+    [
+        "POST /engine/v4/payloads",
+        "GET /engine/v4/payloads/{payload_id}",
+    ];
+
+    private static readonly string[] SszRestPathsOsaka =
+    [
+        "GET /engine/v5/payloads/{payload_id}",
+        "POST /engine/v2/blobs",
+        "POST /engine/v3/blobs",
+    ];
+
+    private static readonly string[] SszRestPathsAmsterdam =
+    [
+        "POST /engine/v5/payloads",
+        "GET /engine/v6/payloads/{payload_id}",
+        "POST /engine/v4/forkchoice",
+        "POST /engine/v2/payloads/bodies/by-hash",
+        "POST /engine/v2/payloads/bodies/by-range",
+    ];
+
+    public static IEnumerable<TestCaseData> SszRestPathsAdvertisedCases()
+    {
+        yield return new TestCaseData(
+            Osaka.Instance,
+            (string[])[.. SszRestPathsParis, .. SszRestPathsShanghai, .. SszRestPathsCancun, .. SszRestPathsPrague, .. SszRestPathsOsaka])
+            .SetName(nameof(SszRestPathsAreAdvertised) + "_for_Osaka");
+
+        yield return new TestCaseData(
+            Amsterdam.Instance,
+            (string[])[.. SszRestPathsParis, .. SszRestPathsShanghai, .. SszRestPathsCancun, .. SszRestPathsPrague, .. SszRestPathsOsaka, .. SszRestPathsAmsterdam])
+            .SetName(nameof(SszRestPathsAreAdvertised) + "_for_Amsterdam");
+    }
+
+    [TestCaseSource(nameof(SszRestPathsAdvertisedCases))]
+    public void SszRestPathsAreAdvertised(IReleaseSpec releaseSpec, string[] expectedPaths)
+    {
+        ISpecProvider specProvider = new TestSingleReleaseSpecProvider(releaseSpec);
+        EngineRpcCapabilitiesProvider engineRpcCapabilitiesProvider = new(specProvider);
+
+        string[] result = [.. engineRpcCapabilitiesProvider.GetSszRestPaths()
+            .Where(kv => kv.Value.IsEnabled())
+            .Select(kv => kv.Key)];
+
+        result.Should().BeEquivalentTo(expectedPaths);
     }
 
     private async Task<ExecutionPayload> BuildAndGetPayloadResult(
