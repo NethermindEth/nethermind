@@ -31,4 +31,14 @@ public static class PageLayout
     /// padding to avoid writing kilobytes of zeros.
     /// </summary>
     public const int PadThreshold = 64;
+
+    /// <summary>
+    /// OS memory-page size — the granularity of <c>madvise</c> / <c>posix_fadvise</c> /
+    /// <c>fallocate(PUNCH_HOLE)</c>. Distinct from <see cref="PageSize"/>, the fixed 4 KiB
+    /// logical page used for on-disk node alignment.
+    /// </summary>
+    public static readonly int OsPageSize = Environment.SystemPageSize;
+
+    /// <summary>Rounds <paramref name="value"/> up to the next <see cref="OsPageSize"/> multiple.</summary>
+    public static long RoundUpToOsPage(long value) => (value + OsPageSize - 1) & ~((long)OsPageSize - 1);
 }

@@ -215,11 +215,8 @@ public sealed unsafe class ArenaFile : RefCountingDisposable
     /// <c>[offset, offset + size)</c>, freeing the dead range's disk blocks without
     /// changing the file length. Punched pages read back as zero through the mmap.
     /// </summary>
-    /// <returns>
-    /// Whether punch-hole is still supported on this file's filesystem — <c>false</c>
-    /// after a permanent <c>EOPNOTSUPP</c> / <c>ENOSYS</c> so the manager can stop trying.
-    /// </returns>
-    internal bool PunchHole(long offset, long size) =>
+    /// <returns>The <see cref="PunchHoleOutcome"/> reported by the kernel.</returns>
+    internal PunchHoleOutcome PunchHole(long offset, long size) =>
         PosixReclaim.TryPunchHole((int)_handle.DangerousGetHandle(), offset, size);
 
     /// <summary>

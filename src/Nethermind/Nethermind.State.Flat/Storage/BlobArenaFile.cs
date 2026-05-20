@@ -147,11 +147,8 @@ public sealed class BlobArenaFile : RefCountingDisposable
     /// freeing the underlying disk blocks of an orphaned range without changing the
     /// pre-extended sparse file length.
     /// </summary>
-    /// <returns>
-    /// Whether punch-hole is still supported on this file's filesystem — <c>false</c>
-    /// after a permanent <c>EOPNOTSUPP</c> / <c>ENOSYS</c> so the manager can stop trying.
-    /// </returns>
-    internal bool PunchHole(long offset, long size) =>
+    /// <returns>The <see cref="PunchHoleOutcome"/> reported by the kernel.</returns>
+    internal PunchHoleOutcome PunchHole(long offset, long size) =>
         PosixReclaim.TryPunchHole((int)Handle.DangerousGetHandle(), offset, size);
 
     protected override void CleanUp()

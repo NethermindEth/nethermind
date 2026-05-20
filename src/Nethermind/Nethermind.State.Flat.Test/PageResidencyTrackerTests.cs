@@ -69,7 +69,7 @@ public class PageResidencyTrackerTests
         public bool MarkDead(ArenaFile file, long deadSize) => false;
         public void ForgetTrackerRange(int arenaId, long byteOffset, long byteSize) { }
         public bool FadviseOnEviction => false;
-        public void TryPunchHole(ArenaFile file, long offset, long size) { }
+        public bool TryPunchHole(ArenaFile file, long offset, long size) => false;
 
         public ArenaFile GetOrCreateFile(int arenaId)
         {

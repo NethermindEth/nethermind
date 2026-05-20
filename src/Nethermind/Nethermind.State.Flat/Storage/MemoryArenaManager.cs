@@ -39,7 +39,7 @@ public sealed class MemoryArenaManager : IArenaManager
 
     public bool MarkDead(ArenaFile file, long deadSize) => _inner.MarkDead(file, deadSize);
 
-    public void TryPunchHole(ArenaFile file, long offset, long size) => _inner.TryPunchHole(file, offset, size);
+    public bool TryPunchHole(ArenaFile file, long offset, long size) => _inner.TryPunchHole(file, offset, size);
 
     public void ForgetTrackerRange(int arenaId, long byteOffset, long byteSize) =>
         _inner.ForgetTrackerRange(arenaId, byteOffset, byteSize);

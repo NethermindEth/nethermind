@@ -284,13 +284,17 @@ public sealed class ArenaManager : IArenaManager
     }
 
     /// <inheritdoc/>
-    public void TryPunchHole(ArenaFile file, long offset, long size)
+    public bool TryPunchHole(ArenaFile file, long offset, long size)
     {
-        if (!_punchHoleOnReclaim || Volatile.Read(ref _punchHoleSupported) == 0) return;
-        if (file.PunchHole(offset, size)) return;
-        // First permanent "unsupported" from the kernel — stop trying on every later cleanup.
-        Volatile.Write(ref _punchHoleSupported, 0);
-        Metrics.PersistedSnapshotPunchHoleEnabledByTier[_tier] = 0L;
+        if (!_punchHoleOnReclaim || Volatile.Read(ref _punchHoleSupported) == 0) return false;
+        PunchHoleOutcome outcome = file.PunchHole(offset, size);
+        if (outcome == PunchHoleOutcome.Unsupported)
+        {
+            // First permanent "unsupported" from the kernel — stop trying on every later cleanup.
+            Volatile.Write(ref _punchHoleSupported, 0);
+            Metrics.PersistedSnapshotPunchHoleEnabledByTier[_tier] = 0L;
+        }
+        return outcome == PunchHoleOutcome.Done;
     }
 
     /// <summary>

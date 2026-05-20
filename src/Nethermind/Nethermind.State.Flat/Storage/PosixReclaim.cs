@@ -5,6 +5,19 @@ using System.Runtime.InteropServices;
 
 namespace Nethermind.State.Flat.Storage;
 
+/// <summary>Outcome of a <see cref="PosixReclaim.TryPunchHole"/> attempt.</summary>
+internal enum PunchHoleOutcome
+{
+    /// <summary>The range was hole-punched (or there was nothing to punch).</summary>
+    Done,
+
+    /// <summary>The filesystem/kernel permanently does not support hole-punching.</summary>
+    Unsupported,
+
+    /// <summary>A transient error — hole-punching may succeed on a later call.</summary>
+    Failed,
+}
+
 /// <summary>
 /// Thin fd-based wrappers over the Linux <c>fallocate</c> / <c>posix_fadvise</c> syscalls,
 /// used to reclaim disk blocks and OS file-cache pages of dead persisted-snapshot arena
@@ -43,23 +56,24 @@ internal static class PosixReclaim
     /// <summary>
     /// <c>fallocate(FALLOC_FL_PUNCH_HOLE | FALLOC_FL_KEEP_SIZE)</c> over the page-aligned
     /// subrange of <c>[offset, offset + size)</c>, freeing the underlying disk blocks
-    /// without changing the file length.
+    /// without changing the file length. A successful punch also invalidates the OS page
+    /// cache for the range, so a follow-up <c>posix_fadvise(DONTNEED)</c> is unnecessary.
     /// </summary>
     /// <returns>
-    /// <c>true</c> if punch-hole is (still) usable on this descriptor's filesystem;
-    /// <c>false</c> on non-Linux or when the kernel reports the operation permanently
-    /// unsupported (<c>EOPNOTSUPP</c> / <c>ENOSYS</c>), so the caller can stop trying.
-    /// A transient failure (any other errno) still returns <c>true</c>.
+    /// <see cref="PunchHoleOutcome.Done"/> on success (or an empty range);
+    /// <see cref="PunchHoleOutcome.Unsupported"/> on non-Linux or a permanent
+    /// <c>EOPNOTSUPP</c> / <c>ENOSYS</c>; <see cref="PunchHoleOutcome.Failed"/> on any
+    /// other (transient) errno.
     /// </returns>
-    internal static bool TryPunchHole(int fd, long offset, long size)
+    internal static PunchHoleOutcome TryPunchHole(int fd, long offset, long size)
     {
-        if (!OperatingSystem.IsLinux()) return false;
+        if (!OperatingSystem.IsLinux()) return PunchHoleOutcome.Unsupported;
         (long start, long len) = AlignInward(offset, size);
-        if (len <= 0) return true;
+        if (len <= 0) return PunchHoleOutcome.Done;
         if (Fallocate(fd, FALLOC_FL_PUNCH_HOLE | FALLOC_FL_KEEP_SIZE, start, len) == 0)
-            return true;
+            return PunchHoleOutcome.Done;
         int err = Marshal.GetLastPInvokeError();
-        return err is not (EOPNOTSUPP or ENOSYS);
+        return err is EOPNOTSUPP or ENOSYS ? PunchHoleOutcome.Unsupported : PunchHoleOutcome.Failed;
     }
 
     // Round offset up and end down to OS-page boundaries so only fully-covered pages are

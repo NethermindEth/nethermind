@@ -35,7 +35,12 @@ public unsafe interface IArenaManager : IDisposable
     /// per-manager support flag allow it. The adaptive flag latches off permanently after
     /// the first filesystem-unsupported error. No-op for implementations without on-disk arenas.
     /// </summary>
-    void TryPunchHole(ArenaFile file, long offset, long size);
+    /// <returns>
+    /// <c>true</c> if the range was actually hole-punched — the kernel has invalidated its
+    /// page cache, so the caller can skip a follow-up <c>posix_fadvise(DONTNEED)</c>;
+    /// <c>false</c> if punch-hole was skipped (config / adaptive flag) or failed.
+    /// </returns>
+    bool TryPunchHole(ArenaFile file, long offset, long size);
 
     /// <summary>
     /// Drop tracker entries for every fully-covered OS page in

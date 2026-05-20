@@ -22,6 +22,16 @@ public sealed class ArenaReservation : RefCountingDisposable
     internal long Offset { get; }
     public long Size { get; internal set; }
 
+    /// <summary>
+    /// On-disk byte footprint of this reservation, page-padded up to where the next
+    /// reservation begins. For a shared arena <see cref="Offset"/> is OS-page-aligned and
+    /// the next reservation starts at <c>Offset + Footprint</c>, so reclamation syscalls
+    /// (<c>madvise</c> / <c>posix_fadvise</c> / <c>fallocate(PUNCH_HOLE)</c>) over
+    /// <c>[Offset, Offset + Footprint)</c> cover whole pages exactly without touching a
+    /// neighbour. Capped at the file so a truncated dedicated arena reduces to <see cref="Size"/>.
+    /// </summary>
+    internal long Footprint => Math.Min(PageLayout.RoundUpToOsPage(Size), _arenaFile.MappedSize - Offset);
+
     public ArenaReservation(IArenaManager arenaManager, ArenaFile arenaFile,
                             int arenaId, long offset, long size)
         : base(1)
@@ -147,8 +157,9 @@ public sealed class ArenaReservation : RefCountingDisposable
 
     public void AdviseDontNeed()
     {
-        _arenaFile.AdviseDontNeed(Offset, Size);
-        _arenaManager.ForgetTrackerRange(ArenaId, Offset, Size);
+        long footprint = Footprint;
+        _arenaFile.AdviseDontNeed(Offset, footprint);
+        _arenaManager.ForgetTrackerRange(ArenaId, Offset, footprint);
     }
 
     /// <summary>
@@ -158,7 +169,7 @@ public sealed class ArenaReservation : RefCountingDisposable
     /// <see cref="WholeReadSession"/> over the same range) and only the tracker needs cleaning.
     /// </summary>
     public void ForgetTracker() =>
-        _arenaManager.ForgetTrackerRange(ArenaId, Offset, Size);
+        _arenaManager.ForgetTrackerRange(ArenaId, Offset, Footprint);
 
     /// <summary>
     /// Demote variant of <see cref="AdviseDontNeed"/>: <c>madvise(MADV_DONTNEED)</c> plus
@@ -169,9 +180,10 @@ public sealed class ArenaReservation : RefCountingDisposable
     /// </summary>
     public void AdviseAndFadviseDontNeed()
     {
-        _arenaFile.AdviseDontNeed(Offset, Size);
-        _arenaFile.FadviseDontNeed(Offset, Size);
-        _arenaManager.ForgetTrackerRange(ArenaId, Offset, Size);
+        long footprint = Footprint;
+        _arenaFile.AdviseDontNeed(Offset, footprint);
+        _arenaFile.FadviseDontNeed(Offset, footprint);
+        _arenaManager.ForgetTrackerRange(ArenaId, Offset, footprint);
     }
 
     /// <summary>
@@ -183,16 +195,19 @@ public sealed class ArenaReservation : RefCountingDisposable
 
     protected override void CleanUp()
     {
-        // File-side ops on the ref we already hold — no manager dict lookup. The manager's
-        // MarkDead just does the atomic set/dict/metric bookkeeping, then we drop our lease
-        // and let the file's own CleanUp delete the on-disk file when its refcount hits zero.
-        _arenaFile.AdviseDontNeed(Offset, Size);
-        _arenaFile.FadviseDontNeed(Offset, Size);
-        // Punch-hole only when the file survives in the manager: a file MarkDead removes is
-        // about to be deleted once our lease drops, so reclaiming its blocks is wasted work.
-        if (_arenaManager.MarkDead(_arenaFile, Size))
-            _arenaManager.TryPunchHole(_arenaFile, Offset, Size);
-        _arenaManager.ForgetTrackerRange(ArenaId, Offset, Size);
+        // File-side ops on the ref we already hold — no manager dict lookup. MarkDead does
+        // the atomic set/dict/metric bookkeeping; the page-padded Footprint keeps its
+        // DeadBytes >= Frontier accounting exact for shared arenas.
+        long footprint = Footprint;
+        _arenaFile.AdviseDontNeed(Offset, footprint);
+        bool fileSurvives = _arenaManager.MarkDead(_arenaFile, footprint);
+        // A file MarkDead removed is about to be File.Delete'd — punching it is wasted work.
+        // A successful punch-hole already invalidates the page cache, so the follow-up
+        // fadvise is then redundant and skipped.
+        bool punched = fileSurvives && _arenaManager.TryPunchHole(_arenaFile, Offset, footprint);
+        if (!punched)
+            _arenaFile.FadviseDontNeed(Offset, footprint);
+        _arenaManager.ForgetTrackerRange(ArenaId, Offset, footprint);
         Metrics.ArenaReservationCountByTier.AddOrUpdate(_tier,
             0L, static (_, c) => Math.Max(0, c - 1));
         Metrics.ArenaReservationBytesByTier.AddOrUpdate(_tier,

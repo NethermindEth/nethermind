@@ -290,12 +290,20 @@ public sealed class BlobArenaManager : IBlobArenaManager
             // Reclaim the orphaned [0, prev) range while still under _lock — a racing
             // CreateWriter would otherwise lease this file and append at offset 0, and a
             // punch-hole over a range that now holds fresh data would corrupt it.
-            file.FadviseDontNeed(0, prev);
-            if (_punchHoleOnReclaim && Volatile.Read(ref _punchHoleSupported) == 1 && !file.PunchHole(0, prev))
+            bool punched = false;
+            if (_punchHoleOnReclaim && Volatile.Read(ref _punchHoleSupported) == 1)
             {
-                Volatile.Write(ref _punchHoleSupported, 0);
-                Metrics.PersistedSnapshotPunchHoleEnabledByTier[_tier] = 0L;
+                PunchHoleOutcome outcome = file.PunchHole(0, prev);
+                if (outcome == PunchHoleOutcome.Unsupported)
+                {
+                    Volatile.Write(ref _punchHoleSupported, 0);
+                    Metrics.PersistedSnapshotPunchHoleEnabledByTier[_tier] = 0L;
+                }
+                punched = outcome == PunchHoleOutcome.Done;
             }
+            // A successful punch already invalidated the page cache; fadvise only otherwise.
+            if (!punched)
+                file.FadviseDontNeed(0, prev);
 
             file.Frontier = 0;
             file.ReportedFrontier = 0;
