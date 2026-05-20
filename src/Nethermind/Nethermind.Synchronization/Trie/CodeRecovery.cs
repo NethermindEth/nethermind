@@ -8,6 +8,7 @@ using System.Threading.Tasks;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Tasks;
 using Nethermind.Core.Utils;
 using Nethermind.Logging;
