@@ -262,7 +262,7 @@ public readonly struct JsonRpcId : IEquatable<JsonRpcId>
     public override bool Equals(object? obj) =>
         obj switch
         {
-            null => IsNullLike,
+            null => false,
             JsonRpcId other => Equals(other),
             int intValue => _kind == JsonRpcIdKind.Long && _longValue == intValue,
             long longValue => _kind == JsonRpcIdKind.Long && _longValue == longValue,

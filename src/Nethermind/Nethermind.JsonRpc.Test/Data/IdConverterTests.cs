@@ -113,6 +113,13 @@ namespace Nethermind.JsonRpc.Test.Data
             JsonRpcId.FromObject("test").ToObject().Should().Be("test");
         }
 
+        [Test]
+        public void JsonRpcId_object_equals_never_matches_null()
+        {
+            JsonRpcId.Missing.Equals((object?)null).Should().BeFalse();
+            JsonRpcId.Null.Equals((object?)null).Should().BeFalse();
+        }
+
         [TestCaseSource(nameof(JsonRpcResponseIdCases))]
         public void JsonRpcResponse_serializes_typed_ids(JsonRpcId id, string expectedIdJson)
         {
