@@ -467,6 +467,18 @@ public class StartupTests
     }
 
     [Test]
+    public void IsTrustedSource_CachesResultInFeatures()
+    {
+        DefaultHttpContext ctx = CreateFastLaneContext(8551, remoteIp: IPAddress.Parse("8.8.8.8"));
+
+        Assert.That(Startup.IsTrustedSource(ctx, []), Is.False);
+
+        ctx.Connection.RemoteIpAddress = IPAddress.Loopback;
+
+        Assert.That(Startup.IsTrustedSource(ctx, []), Is.False);
+    }
+
+    [Test]
     public void TrustedEngineNewPayloadPost_UsesHttpFastLaneAndKeepsAuthenticatedUrl()
     {
         JsonRpcUrl engineUrl = CreateUrl(isAuthenticated: true);

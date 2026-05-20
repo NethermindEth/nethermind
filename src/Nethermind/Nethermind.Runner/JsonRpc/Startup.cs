@@ -297,7 +297,7 @@ public class Startup : IStartup
         if (ctx.Request.Method == "POST" &&
             jsonRpcUrlCollection.TryGetValue(ctx.Connection.LocalPort, out jsonRpcUrl) &&
             jsonRpcUrl.RpcEndpoint.HasFlag(RpcEndpoint.Http) &&
-            IsTrustedSource(ctx.Connection.RemoteIpAddress, additionalTrustedNetworks) &&
+            IsTrustedSource(ctx, additionalTrustedNetworks) &&
             IsJsonContentType(ctx.Request.ContentType))
         {
             return true;
@@ -312,6 +312,19 @@ public class Startup : IStartup
         contentType.StartsWith(ApplicationJsonContentType, StringComparison.OrdinalIgnoreCase) &&
         (contentType.Length == ApplicationJsonContentType.Length ||
          contentType[ApplicationJsonContentType.Length] == ';');
+
+    internal static bool IsTrustedSource(HttpContext ctx, TrustedCidr[] additionalTrustedNetworks)
+    {
+        TrustedSourceFeature? trustedSourceFeature = ctx.Features.Get<TrustedSourceFeature>();
+        if (trustedSourceFeature is not null)
+        {
+            return trustedSourceFeature.IsTrusted;
+        }
+
+        bool isTrusted = IsTrustedSource(ctx.Connection.RemoteIpAddress, additionalTrustedNetworks);
+        ctx.Features.Set(new TrustedSourceFeature(isTrusted));
+        return isTrusted;
+    }
 
     internal static bool IsTrustedSource(IPAddress? remoteIp, TrustedCidr[] additionalTrustedNetworks)
     {
@@ -357,6 +370,11 @@ public class Startup : IStartup
         }
 
         return parsed.ToArray();
+    }
+
+    private sealed class TrustedSourceFeature(bool isTrusted)
+    {
+        public bool IsTrusted { get; } = isTrusted;
     }
 
     internal readonly struct TrustedCidr
