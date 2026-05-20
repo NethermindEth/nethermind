@@ -18,10 +18,22 @@ namespace Nethermind.Core.Extensions;
 /// hash is correct. Aliased in via <c>using BitOperations = ZkBitOperations</c>
 /// under <c>#if ZK_EVM</c>.
 /// </summary>
-internal static class ZkBitOperations
+public static class ZkBitOperations
 {
     // xxHash64 prime — good avalanche when paired with a high-bit fold.
     private const ulong Prime = 0xD6E8FEB86659FD93UL;
+
+    // 64-bit byte swap. The BCL's ReverseEndianness(ulong) lowers on the ZisK
+    // RISC-V target to two 32-bit swaps stitched with sign-extension glue
+    // (~40 instructions). This all-64-bit three-stage form avoids the 32-bit
+    // ops entirely (~15 instructions, no signextend_w).
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static ulong Bswap64(ulong x)
+    {
+        x = ((x & 0x00FF00FF00FF00FFUL) << 8) | ((x >> 8) & 0x00FF00FF00FF00FFUL);
+        x = ((x & 0x0000FFFF0000FFFFUL) << 16) | ((x >> 16) & 0x0000FFFF0000FFFFUL);
+        return (x << 32) | (x >> 32);
+    }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static uint Crc32C(uint crc, ulong data)
