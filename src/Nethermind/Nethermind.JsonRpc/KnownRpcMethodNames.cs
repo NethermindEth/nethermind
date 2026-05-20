@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
+using System.Text;
 using System.Text.Json;
 
 namespace Nethermind.JsonRpc;
@@ -351,6 +352,41 @@ internal static class KnownRpcMethodNames
         .. Length42,
     ];
 
+    private static readonly byte[][] Length8Utf8 = CreateUtf8MethodNames(Length8);
+    private static readonly byte[][] Length9Utf8 = CreateUtf8MethodNames(Length9);
+    private static readonly byte[][] Length10Utf8 = CreateUtf8MethodNames(Length10);
+    private static readonly byte[][] Length11Utf8 = CreateUtf8MethodNames(Length11);
+    private static readonly byte[][] Length12Utf8 = CreateUtf8MethodNames(Length12);
+    private static readonly byte[][] Length13Utf8 = CreateUtf8MethodNames(Length13);
+    private static readonly byte[][] Length14Utf8 = CreateUtf8MethodNames(Length14);
+    private static readonly byte[][] Length15Utf8 = CreateUtf8MethodNames(Length15);
+    private static readonly byte[][] Length16Utf8 = CreateUtf8MethodNames(Length16);
+    private static readonly byte[][] Length17Utf8 = CreateUtf8MethodNames(Length17);
+    private static readonly byte[][] Length18Utf8 = CreateUtf8MethodNames(Length18);
+    private static readonly byte[][] Length19Utf8 = CreateUtf8MethodNames(Length19);
+    private static readonly byte[][] Length20Utf8 = CreateUtf8MethodNames(Length20);
+    private static readonly byte[][] Length21Utf8 = CreateUtf8MethodNames(Length21);
+    private static readonly byte[][] Length22Utf8 = CreateUtf8MethodNames(Length22);
+    private static readonly byte[][] Length23Utf8 = CreateUtf8MethodNames(Length23);
+    private static readonly byte[][] Length24Utf8 = CreateUtf8MethodNames(Length24);
+    private static readonly byte[][] Length25Utf8 = CreateUtf8MethodNames(Length25);
+    private static readonly byte[][] Length26Utf8 = CreateUtf8MethodNames(Length26);
+    private static readonly byte[][] Length27Utf8 = CreateUtf8MethodNames(Length27);
+    private static readonly byte[][] Length28Utf8 = CreateUtf8MethodNames(Length28);
+    private static readonly byte[][] Length29Utf8 = CreateUtf8MethodNames(Length29);
+    private static readonly byte[][] Length30Utf8 = CreateUtf8MethodNames(Length30);
+    private static readonly byte[][] Length31Utf8 = CreateUtf8MethodNames(Length31);
+    private static readonly byte[][] Length32Utf8 = CreateUtf8MethodNames(Length32);
+    private static readonly byte[][] Length33Utf8 = CreateUtf8MethodNames(Length33);
+    private static readonly byte[][] Length34Utf8 = CreateUtf8MethodNames(Length34);
+    private static readonly byte[][] Length35Utf8 = CreateUtf8MethodNames(Length35);
+    private static readonly byte[][] Length36Utf8 = CreateUtf8MethodNames(Length36);
+    private static readonly byte[][] Length37Utf8 = CreateUtf8MethodNames(Length37);
+    private static readonly byte[][] Length39Utf8 = CreateUtf8MethodNames(Length39);
+    private static readonly byte[][] Length40Utf8 = CreateUtf8MethodNames(Length40);
+    private static readonly byte[][] Length41Utf8 = CreateUtf8MethodNames(Length41);
+    private static readonly byte[][] Length42Utf8 = CreateUtf8MethodNames(Length42);
+
     public static IReadOnlyList<string> All => s_all;
 
     public static string? Intern(ref Utf8JsonReader methodReader)
@@ -361,40 +397,40 @@ internal static class KnownRpcMethodNames
 
         string? methodName = methodLength switch
         {
-            8 => Match(ref methodReader, Length8),
-            9 => Match(ref methodReader, Length9),
-            10 => Match(ref methodReader, Length10),
-            11 => Match(ref methodReader, Length11),
-            12 => Match(ref methodReader, Length12),
-            13 => Match(ref methodReader, Length13),
-            14 => Match(ref methodReader, Length14),
-            15 => Match(ref methodReader, Length15),
-            16 => Match(ref methodReader, Length16),
-            17 => Match(ref methodReader, Length17),
-            18 => Match(ref methodReader, Length18),
-            19 => Match(ref methodReader, Length19),
-            20 => Match(ref methodReader, Length20),
-            21 => Match(ref methodReader, Length21),
-            22 => Match(ref methodReader, Length22),
-            23 => Match(ref methodReader, Length23),
-            24 => Match(ref methodReader, Length24),
-            25 => Match(ref methodReader, Length25),
-            26 => Match(ref methodReader, Length26),
-            27 => Match(ref methodReader, Length27),
-            28 => Match(ref methodReader, Length28),
-            29 => Match(ref methodReader, Length29),
-            30 => Match(ref methodReader, Length30),
-            31 => Match(ref methodReader, Length31),
-            32 => Match(ref methodReader, Length32),
-            33 => Match(ref methodReader, Length33),
-            34 => Match(ref methodReader, Length34),
-            35 => Match(ref methodReader, Length35),
-            36 => Match(ref methodReader, Length36),
-            37 => Match(ref methodReader, Length37),
-            39 => Match(ref methodReader, Length39),
-            40 => Match(ref methodReader, Length40),
-            41 => Match(ref methodReader, Length41),
-            42 => Match(ref methodReader, Length42),
+            8 => Match(ref methodReader, Length8, Length8Utf8),
+            9 => Match(ref methodReader, Length9, Length9Utf8),
+            10 => Match(ref methodReader, Length10, Length10Utf8),
+            11 => Match(ref methodReader, Length11, Length11Utf8),
+            12 => Match(ref methodReader, Length12, Length12Utf8),
+            13 => Match(ref methodReader, Length13, Length13Utf8),
+            14 => Match(ref methodReader, Length14, Length14Utf8),
+            15 => Match(ref methodReader, Length15, Length15Utf8),
+            16 => Match(ref methodReader, Length16, Length16Utf8),
+            17 => Match(ref methodReader, Length17, Length17Utf8),
+            18 => Match(ref methodReader, Length18, Length18Utf8),
+            19 => Match(ref methodReader, Length19, Length19Utf8),
+            20 => Match(ref methodReader, Length20, Length20Utf8),
+            21 => Match(ref methodReader, Length21, Length21Utf8),
+            22 => Match(ref methodReader, Length22, Length22Utf8),
+            23 => Match(ref methodReader, Length23, Length23Utf8),
+            24 => Match(ref methodReader, Length24, Length24Utf8),
+            25 => Match(ref methodReader, Length25, Length25Utf8),
+            26 => Match(ref methodReader, Length26, Length26Utf8),
+            27 => Match(ref methodReader, Length27, Length27Utf8),
+            28 => Match(ref methodReader, Length28, Length28Utf8),
+            29 => Match(ref methodReader, Length29, Length29Utf8),
+            30 => Match(ref methodReader, Length30, Length30Utf8),
+            31 => Match(ref methodReader, Length31, Length31Utf8),
+            32 => Match(ref methodReader, Length32, Length32Utf8),
+            33 => Match(ref methodReader, Length33, Length33Utf8),
+            34 => Match(ref methodReader, Length34, Length34Utf8),
+            35 => Match(ref methodReader, Length35, Length35Utf8),
+            36 => Match(ref methodReader, Length36, Length36Utf8),
+            37 => Match(ref methodReader, Length37, Length37Utf8),
+            39 => Match(ref methodReader, Length39, Length39Utf8),
+            40 => Match(ref methodReader, Length40, Length40Utf8),
+            41 => Match(ref methodReader, Length41, Length41Utf8),
+            42 => Match(ref methodReader, Length42, Length42Utf8),
             _ => null
         };
 
@@ -416,17 +452,27 @@ internal static class KnownRpcMethodNames
         return methodElement.GetString();
     }
 
-    private static string? Match(ref Utf8JsonReader methodReader, string[] methodNames)
+    private static string? Match(ref Utf8JsonReader methodReader, string[] methodNames, byte[][] utf8MethodNames)
     {
         for (int i = 0; i < methodNames.Length; i++)
         {
-            string methodName = methodNames[i];
-            if (methodReader.ValueTextEquals(methodName))
+            if (methodReader.ValueTextEquals(utf8MethodNames[i]))
             {
-                return methodName;
+                return methodNames[i];
             }
         }
 
         return null;
+    }
+
+    private static byte[][] CreateUtf8MethodNames(string[] methodNames)
+    {
+        byte[][] utf8MethodNames = new byte[methodNames.Length][];
+        for (int i = 0; i < methodNames.Length; i++)
+        {
+            utf8MethodNames[i] = Encoding.UTF8.GetBytes(methodNames[i]);
+        }
+
+        return utf8MethodNames;
     }
 }
