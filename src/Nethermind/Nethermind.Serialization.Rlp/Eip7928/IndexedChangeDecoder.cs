@@ -41,12 +41,18 @@ public abstract class IndexedChangeDecoder<T> : IRlpValueDecoder<T>, IRlpStreamE
     public int GetContentLength(T item, RlpBehaviors rlpBehaviors)
         => Rlp.LengthOf(item.Index) + GetValueLength(item);
 
-    /// <summary>Decode Index + value field and return a new T.</summary>
+    /// <summary>
+    /// Decode Index + value field and return a new T.
+    /// </summary>
     protected abstract T DecodeFields(ref Rlp.ValueDecoderContext ctx);
 
-    /// <summary>Encode only the value field (Index is handled by the base).</summary>
+    /// <summary>
+    /// Encode only the value field (Index is handled by the base).
+    /// </summary>
     protected abstract void EncodeValue(RlpStream stream, T item);
 
-    /// <summary>Return the RLP length of the value field.</summary>
+    /// <summary>
+    /// Return the RLP length of the value field.
+    /// </summary>
     protected abstract int GetValueLength(T item);
 }

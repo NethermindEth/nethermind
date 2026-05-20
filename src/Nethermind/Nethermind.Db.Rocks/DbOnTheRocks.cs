@@ -12,6 +12,7 @@ using System.IO;
 using System.IO.Abstractions;
 using System.Linq;
 using System.Reflection;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Text.RegularExpressions;
 using System.Threading;
@@ -244,15 +245,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
             }
         }
 
-        fileMetadataEntries.Sort((item1, item2) =>
-        {
-            // Sort them by level so that lower level get priority
-            int levelDiff = item1.metadata.FileLevel - item2.metadata.FileLevel;
-            if (levelDiff != 0) return levelDiff;
-
-            // Otherwise, we pick which file is newest.
-            return item2.creationTime.CompareTo(item1.creationTime);
-        });
+        CollectionsMarshal.AsSpan(fileMetadataEntries).Sort(default(FileMetadataByLevelThenNewestComparer));
 
         long totalSize = 0;
         fileMetadataEntries = fileMetadataEntries.TakeWhile(metadata =>
@@ -297,6 +290,18 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
                 _logger.Warn($"Exception warming up {fullPath} {e}");
             }
         });
+    }
+
+    private readonly struct FileMetadataByLevelThenNewestComparer : IComparer<(FileMetadata metadata, DateTime creationTime)>
+    {
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public int Compare(
+            (FileMetadata metadata, DateTime creationTime) item1,
+            (FileMetadata metadata, DateTime creationTime) item2)
+        {
+            int levelDiff = item1.metadata.FileLevel - item2.metadata.FileLevel;
+            return levelDiff != 0 ? levelDiff : item2.creationTime.CompareTo(item1.creationTime);
+        }
     }
 
     private void CreateMarkerIfCorrupt(RocksDbSharpException rocksDbException)

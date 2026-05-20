@@ -29,7 +29,7 @@ public class BalRecordingBlockProcessor(
 
         bool shouldFlip = ShouldFlip(suggestedBlock);
         if (shouldFlip) balSwitch.Enabled = true;
-        balManager.ForceMaterializeGeneratedBlockAccessList = store.RecordingEnabled;
+        balManager.ForceConstructGeneratedBlockAccessList = store.RecordingEnabled;
         try
         {
             (Block block, TxReceipt[] receipts) = inner.ProcessOne(suggestedBlock, options, blockTracer, spec, token);

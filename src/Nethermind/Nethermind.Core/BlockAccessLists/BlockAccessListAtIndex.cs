@@ -82,13 +82,12 @@ public class BlockAccessListAtIndex : IJournal<int>, IResettable
 
     public void AddCodeChange(Address address, byte[] before, ReadOnlyMemory<byte> after)
     {
-        AccountChangesAtIndex accountChanges = GetOrAddAccountChanges(address);
-
         if (before.AsSpan().SequenceEqual(after.Span))
         {
             return;
         }
 
+        AccountChangesAtIndex accountChanges = GetOrAddAccountChanges(address);
         byte[] preTxCode = accountChanges.PreTxCode ??= before;
 
         _changes.Add(new()
@@ -105,12 +104,6 @@ public class BlockAccessListAtIndex : IJournal<int>, IResettable
 
     public void AddNonceChange(Address address, ulong newNonce)
     {
-        // BAL convention: a nonce of 0 means "this tx did not modify the account's nonce" —
-        // every active account starts with nonce >= 1 once it has signed any tx, and the
-        // post-prestate value visible on the wire is the latest non-zero nonce. Skipping
-        // newNonce == 0 keeps the generated BAL aligned with the spec: callers reset state
-        // (e.g. EIP-7702 delegation rollback) report 0 to signal "no recorded change",
-        // not "set to 0".
         if (newNonce == 0)
         {
             return;
