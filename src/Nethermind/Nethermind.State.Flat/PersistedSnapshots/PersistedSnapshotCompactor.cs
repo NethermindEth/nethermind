@@ -16,11 +16,13 @@ namespace Nethermind.State.Flat.PersistedSnapshots;
 
 /// <summary>
 /// Logarithmic compaction for one tier's persisted snapshots. Each instance is
-/// parameterised with a <c>[minCompactSize, maxCompactSize]</c> band; it walks
-/// powers of 2 downward from the block's natural alignment (capped at
-/// <c>maxCompactSize</c>) and attempts to merge into the largest size that
-/// fits. The small-tier instance is wired with <c>max = CompactSize/2</c> so
-/// it never produces a <c>CompactSize</c> result (that size is produced
+/// parameterised with a <c>[minCompactSize, maxCompactSize]</c> band. For each
+/// block it takes the block's natural power-of-2 alignment (capped at
+/// <c>maxCompactSize</c>) as the compaction window and merges every persisted
+/// snapshot assembled within that window into one compacted snapshot, as long
+/// as at least two are available — the window need not be fully populated. The
+/// small-tier instance is wired with <c>max = CompactSize/2</c> so it never
+/// produces a <c>CompactSize</c>-or-wider result (that size is produced
 /// directly by <c>PersistenceManager</c> into the large tier). The large-tier
 /// instance is wired with <c>min = 2 * CompactSize</c>.
 /// </summary>
@@ -44,10 +46,12 @@ public class PersistedSnapshotCompactor(
     private readonly PersistedSnapshotTier _tier = tier;
 
     /// <summary>
-    /// Try to compact persisted snapshots using logarithmic compaction. Walks
-    /// powers of 2 downward from the block's natural alignment (capped at
-    /// <c>maxCompactSize</c>), attempting each one until a merge succeeds or
-    /// the size drops below <c>minCompactSize</c>.
+    /// Compact persisted snapshots for the given block. Takes the block's
+    /// natural power-of-2 alignment (capped at <c>maxCompactSize</c>) as the
+    /// compaction window and merges every persisted snapshot assembled within
+    /// that window into a single compacted snapshot, provided at least two are
+    /// available. The window need not be fully populated; does nothing when the
+    /// alignment is below <c>minCompactSize</c>.
     /// </summary>
     public void DoCompactSnapshot(StateId snapshotTo)
     {
@@ -57,17 +61,12 @@ public class PersistedSnapshotCompactor(
         if (blockNumber == 0) return;
 
         int alignment = (int)Math.Min(blockNumber & -blockNumber, _maxCompactSize);
-        int compactSize = alignment;
-        while (compactSize >= _minCompactSize)
-        {
-            if (persistedSnapshotRepository.SnapshotCount < 2) return;
+        if (alignment < _minCompactSize) return;
 
-            long startingBlockNumber = ((blockNumber - 1) / compactSize) * compactSize;
-            if (CompactRange(snapshotTo, startingBlockNumber, compactSize))
-                return;
+        if (persistedSnapshotRepository.SnapshotCount < 2) return;
 
-            compactSize /= 2;
-        }
+        long startingBlockNumber = ((blockNumber - 1) / alignment) * alignment;
+        CompactRange(snapshotTo, startingBlockNumber, alignment);
     }
 
     // Histograms gain a `tier` label so the two instances' samples are distinguishable
@@ -103,12 +102,6 @@ public class PersistedSnapshotCompactor(
     {
         using PersistedSnapshotList snapshots = persistedSnapshotRepository.AssembleSnapshotsForCompaction(snapshotTo, startingBlockNumber);
         if (snapshots.Count < 2) return false;
-
-        if (snapshots[0].From.BlockNumber != startingBlockNumber)
-        {
-            if (_logger.IsDebug) _logger.Debug($"Unable to compile persisted snapshots to compact. {snapshots[0].From.BlockNumber} -> {snapshots[^1].To.BlockNumber}. Starting block number should be {startingBlockNumber}");
-            return false;
-        }
 
         if (_logger.IsDebug) _logger.Debug($"Compacting {snapshots.Count} persisted snapshots at block {snapshotTo.BlockNumber}, compact size {compactSize}, tier {_tier}");
 

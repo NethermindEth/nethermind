@@ -631,31 +631,39 @@ public class PersistedSnapshotCompactorTests
     }
 
     // Config: compactSize=1 (PersistenceManager boundary), minCompactSize=2, maxCompactSize=8.
-    // blockNumber=8 → 8 & -8 = 8. Loop tries 8 → 4 → 2 (each > _compactSize=1).
+    // blockNumber=8 → 8 & -8 = 8, so the compaction window is [0, 8].
     //
     // presentBlocks: which block-slots are populated (snapshot From=states[b-1], To=states[b]).
-    // expectedFromBlock=0 means no compaction expected.
-    private static IEnumerable<TestCaseData> FallbackCompactionCases()
+    // The window need not be fully populated — whatever contiguous chain of ≥2 snapshots
+    // assembles back from block 8 is compacted into a single snapshot.
+    // expectCompacted=false means no compaction expected.
+    private static IEnumerable<TestCaseData> PartialWindowCompactionCases()
     {
-        // Full 8-block range present: compacts at 8. Linked s0→s8.
+        // Full 8-block range present: compacts the whole window. Linked s0→s8.
         yield return new TestCaseData(new[] { 1, 2, 3, 4, 5, 6, 7, 8 }, true, 0L, 8L)
-            .SetName("Fallback_FullRange_CompactsAt8");
+            .SetName("PartialWindow_FullRange_Compacts0To8");
 
-        // Only blocks 5–8 present: falls back to 4. Linked s4→s8.
+        // Blocks 3–8 present: the chain reaches back to s2, a non-power-of-2 boundary.
+        // The old power-of-2 step-down would have compacted only [4,8]; now the whole
+        // assembled chain [2,8] is compacted instead.
+        yield return new TestCaseData(new[] { 3, 4, 5, 6, 7, 8 }, true, 2L, 8L)
+            .SetName("PartialWindow_NonPowerOfTwoStart_Compacts2To8");
+
+        // Only blocks 5–8 present: chain reaches back to s4. Compacts [4,8].
         yield return new TestCaseData(new[] { 5, 6, 7, 8 }, true, 4L, 8L)
-            .SetName("Fallback_Half_CompactsAt4");
+            .SetName("PartialWindow_Half_Compacts4To8");
 
-        // Only blocks 7–8 present: falls back to 2. Linked s6→s8.
+        // Only blocks 7–8 present: chain reaches back to s6. Compacts [6,8].
         yield return new TestCaseData(new[] { 7, 8 }, true, 6L, 8L)
-            .SetName("Fallback_Quarter_CompactsAt2");
+            .SetName("PartialWindow_Quarter_Compacts6To8");
 
         // Only 1 block present: no pair available, no compaction.
         yield return new TestCaseData(new[] { 8 }, false, 0L, 0L)
-            .SetName("Fallback_NoRange_NoCompact");
+            .SetName("PartialWindow_NoRange_NoCompact");
     }
 
-    [TestCaseSource(nameof(FallbackCompactionCases))]
-    public void DoCompactSnapshot_FallsBackToSmallerCompactSize(
+    [TestCaseSource(nameof(PartialWindowCompactionCases))]
+    public void DoCompactSnapshot_CompactsPartialWindow(
         int[] presentBlocks, bool expectCompacted, long expectedFromBlock, long expectedToBlock)
     {
         string testDir = Path.Combine(Path.GetTempPath(), $"nethermind_test_{Guid.NewGuid():N}");
@@ -667,7 +675,7 @@ public class PersistedSnapshotCompactorTests
             using PersistedSnapshotRepository repo = new(smallArena, smallBlobs, new MemDb(), new FlatDbConfig(), new PersistedSnapshotBloomFilterManager());
             repo.LoadFromCatalog();
 
-            // compactSize=1 keeps the loop running for sizes 2, 4, 8 (all > 1).
+            // CompactSize=1 makes every block a boundary; block 8 → window [0, 8].
             IFlatDbConfig config = new FlatDbConfig { CompactSize = 1, MinCompactSize = 2, PersistedSnapshotMaxCompactSize = 8 };
             PersistedSnapshotCompactor compactor = new(
                 repo, smallArena, config, Nethermind.Logging.LimboLogs.Instance, new PersistedSnapshotBloomFilterManager(),
