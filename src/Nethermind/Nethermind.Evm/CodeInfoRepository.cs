@@ -24,6 +24,11 @@ public class CodeInfoRepository : ICodeInfoRepository
     private readonly FrozenDictionary<AddressAsKey, CodeInfo> _localPrecompiles;
     private readonly IWorldState _worldState;
     private readonly Func<Address, ValueHash256, IReleaseSpec, CodeInfo> _codeInfoLoader;
+#if ZK_EVM
+    // Precompile CodeInfo indexed by precompile address number (0x01..0x100):
+    // replaces a FrozenDictionary hash+probe on every precompile CALL.
+    private readonly CodeInfo[] _localPrecompileArray = new CodeInfo[0x101];
+#endif
 
     public CodeInfoRepository(IWorldState worldState, IPrecompileProvider precompileProvider)
         : this(worldState, precompileProvider, codeInfoLoader: null)
@@ -35,6 +40,13 @@ public class CodeInfoRepository : ICodeInfoRepository
         _localPrecompiles = precompileProvider.GetPrecompiles();
         _worldState = worldState;
         _codeInfoLoader = codeInfoLoader ?? DefaultLoad;
+#if ZK_EVM
+        foreach (System.Collections.Generic.KeyValuePair<AddressAsKey, CodeInfo> kv in _localPrecompiles)
+        {
+            int idx = ((Address)kv.Key).PrecompileIndexOrNegative();
+            if ((uint)idx < (uint)_localPrecompileArray.Length) _localPrecompileArray[idx] = kv.Value;
+        }
+#endif
 
         CodeInfo DefaultLoad(Address address, ValueHash256 codeHash, IReleaseSpec spec) =>
             codeHash == ValueKeccak.OfAnEmptyString ? CodeInfo.Empty : GetCodeInfo(worldState, address, in codeHash);
@@ -46,7 +58,11 @@ public class CodeInfoRepository : ICodeInfoRepository
         if (vmSpec.IsPrecompile(codeSource))
         {
             _worldState.AddAccountRead(codeSource);
+#if ZK_EVM
+            return _localPrecompileArray[codeSource.PrecompileIndexOrNegative()];
+#else
             return _localPrecompiles[codeSource];
+#endif
         }
 
         CodeInfo codeInfo = InternalGetCodeInfo(codeSource, vmSpec);

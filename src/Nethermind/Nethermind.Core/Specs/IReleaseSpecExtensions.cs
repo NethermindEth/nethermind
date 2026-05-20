@@ -9,6 +9,30 @@ namespace Nethermind.Core.Specs;
 /// </summary>
 public static class IReleaseSpecExtensions
 {
+#if ZK_EVM
+    // Precompile membership as a bitmask instead of a FrozenSet hash+probe.
+    // The set is fork-fixed, so it is derived once per spec and cached. Single
+    // entry is sufficient: the ZisK guest validates one block (one spec).
+    private static IReleaseSpec? _precompileMaskSpec;
+    private static ulong _precompileMaskLow;
+    private static bool _precompileMaskP256;
+
+    private static void BuildPrecompileMask(IReleaseSpec spec)
+    {
+        ulong low = 0;
+        bool p256 = false;
+        foreach (AddressAsKey p in spec.Precompiles)
+        {
+            int idx = ((Address)p).PrecompileIndexOrNegative();
+            if ((uint)idx < 64) low |= 1UL << idx;
+            else if (idx == 0x100) p256 = true;
+        }
+        _precompileMaskLow = low;
+        _precompileMaskP256 = p256;
+        _precompileMaskSpec = spec;
+    }
+#endif
+
     extension(IReleaseSpec spec)
     {
         //EIP-3860: Limit and meter initcode
@@ -63,7 +87,18 @@ public static class IReleaseSpecExtensions
         /// </summary>
         /// <param name="address">The address to check for precompile status.</param>
         /// <returns>True if the address is a precompiled contract; otherwise, false.</returns>
+#if ZK_EVM
+        public bool IsPrecompile(Address address)
+        {
+            if (!ReferenceEquals(_precompileMaskSpec, spec)) BuildPrecompileMask(spec);
+            int idx = address.PrecompileIndexOrNegative();
+            return (uint)idx < 64
+                ? (_precompileMaskLow & (1UL << idx)) != 0
+                : idx == 0x100 && _precompileMaskP256;
+        }
+#else
         public bool IsPrecompile(Address address) => spec.Precompiles.Contains(address);
+#endif
         public ProofVersion BlobProofVersion => spec.IsEip7594Enabled ? ProofVersion.V1 : ProofVersion.V0;
         public bool CLZEnabled => spec.IsEip7939Enabled;
         public bool BlockLevelAccessListsEnabled => spec.IsEip7928Enabled;

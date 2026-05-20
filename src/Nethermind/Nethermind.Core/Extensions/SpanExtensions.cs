@@ -13,6 +13,12 @@ using System.Runtime.Intrinsics;
 using Arm = System.Runtime.Intrinsics.Arm;
 using x64 = System.Runtime.Intrinsics.X86;
 using Nethermind.Core.Collections;
+#if ZK_EVM
+// RISC-V has no CRC32 instruction; the BCL's BitOperations.Crc32C degrades to a
+// slow software loop. Redirect every BitOperations use in this file to a
+// multiply-fold substitute that lowers to a single hardware MUL.
+using BitOperations = Nethermind.Core.Extensions.ZkBitOperations;
+#endif
 
 namespace Nethermind.Core.Extensions
 {
