@@ -166,7 +166,7 @@ public class RpcModuleProviderTests
     }
 
     [Test]
-    public async Task Caches_direct_invokers_for_zero_parameter_result_wrapper_methods()
+    public async Task Caches_direct_invokers_for_result_wrapper_methods()
     {
         DirectInvokerRpcModule module = new();
         _moduleProvider.Register(new TestModulePool<DirectInvokerRpcModule>(module));
@@ -174,10 +174,15 @@ public class RpcModuleProviderTests
         RpcModuleProvider.ResolvedMethodInfo syncMethod = _moduleProvider.Resolve(nameof(DirectInvokerRpcModule.direct_sync))!;
         RpcModuleProvider.ResolvedMethodInfo asyncMethod = _moduleProvider.Resolve(nameof(DirectInvokerRpcModule.direct_async))!;
         RpcModuleProvider.ResolvedMethodInfo parameterMethod = _moduleProvider.Resolve(nameof(DirectInvokerRpcModule.direct_with_param))!;
+        RpcModuleProvider.ResolvedMethodInfo fourParameterMethod = _moduleProvider.Resolve(nameof(DirectInvokerRpcModule.direct_with_four_params))!;
+        RpcModuleProvider.ResolvedMethodInfo requiredValueParameterMethod = _moduleProvider.Resolve(nameof(DirectInvokerRpcModule.direct_required_value_param))!;
 
         syncMethod.DirectNoParameterInvoker.Should().NotBeNull();
         asyncMethod.DirectNoParameterInvoker.Should().NotBeNull();
         parameterMethod.DirectNoParameterInvoker.Should().BeNull();
+        parameterMethod.DirectParameterInvoker.Should().NotBeNull();
+        fourParameterMethod.DirectParameterInvoker.Should().NotBeNull();
+        requiredValueParameterMethod.DirectParameterInvoker.Should().BeNull();
 
         IResultWrapper syncResult = syncMethod.DirectNoParameterInvoker!(module).Should().BeAssignableTo<IResultWrapper>().Subject;
         syncResult.Data.Should().Be("sync");
@@ -185,8 +190,16 @@ public class RpcModuleProviderTests
         Task<ResultWrapper<long>> asyncResult = asyncMethod.DirectNoParameterInvoker!(module).Should().BeAssignableTo<Task<ResultWrapper<long>>>().Subject;
         (await asyncResult).Data.Should().Be(5);
 
+        IResultWrapper parameterResult = parameterMethod.DirectParameterInvoker!(module, ["param"]).Should().BeAssignableTo<IResultWrapper>().Subject;
+        parameterResult.Data.Should().Be("param");
+
+        IResultWrapper fourParameterResult = fourParameterMethod.DirectParameterInvoker!(module, ["a", "b", "c", "d"]).Should().BeAssignableTo<IResultWrapper>().Subject;
+        fourParameterResult.Data.Should().Be("abcd");
+
         module.SyncCalls.Should().Be(1);
         module.AsyncCalls.Should().Be(1);
+        module.ParameterCalls.Should().Be(1);
+        module.FourParameterCalls.Should().Be(1);
     }
 
     [Test]
@@ -272,6 +285,8 @@ public class RpcModuleProviderTests
     {
         public int SyncCalls { get; private set; }
         public int AsyncCalls { get; private set; }
+        public int ParameterCalls { get; private set; }
+        public int FourParameterCalls { get; private set; }
 
         public ResultWrapper<string> direct_sync()
         {
@@ -285,7 +300,19 @@ public class RpcModuleProviderTests
             return Task.FromResult(ResultWrapper<long>.Success(5));
         }
 
-        public ResultWrapper<string> direct_with_param(string value) => ResultWrapper<string>.Success(value);
+        public ResultWrapper<string> direct_with_param(string value)
+        {
+            ParameterCalls++;
+            return ResultWrapper<string>.Success(value);
+        }
+
+        public ResultWrapper<string> direct_with_four_params(string first, string second, string third, string fourth)
+        {
+            FourParameterCalls++;
+            return ResultWrapper<string>.Success(first + second + third + fourth);
+        }
+
+        public ResultWrapper<int> direct_required_value_param(int value) => ResultWrapper<int>.Success(value);
     }
 
     [RpcModule(ModuleType.Eth)]

@@ -140,9 +140,12 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
             object? invocationResult;
             try
             {
-                invocationResult = parameterCount == 0 && method.DirectNoParameterInvoker is { } directInvoker
-                    ? directInvoker(rpcModule)
-                    : method.Invoker.Invoke(rpcModule, parameters.AsSpan(0, parameterCount));
+                invocationResult = parameterCount switch
+                {
+                    0 when method.DirectNoParameterInvoker is { } directInvoker => directInvoker(rpcModule),
+                    > 0 when method.DirectParameterInvoker is { } directInvoker => directInvoker(rpcModule, parameters!),
+                    _ => method.Invoker.Invoke(rpcModule, parameters.AsSpan(0, parameterCount)),
+                };
             }
             finally
             {

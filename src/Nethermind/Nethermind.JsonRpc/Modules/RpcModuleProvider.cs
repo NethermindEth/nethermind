@@ -282,21 +282,29 @@ namespace Nethermind.JsonRpc.Modules
         {
             private static readonly MethodInfo _createTypedDirectNoParameterInvokerMethod =
                 typeof(ResolvedMethodInfo).GetMethod(nameof(CreateTypedDirectNoParameterInvoker), BindingFlags.NonPublic | BindingFlags.Static)!;
+            private static readonly MethodInfo _createTypedDirectOneParameterInvokerMethod =
+                typeof(ResolvedMethodInfo).GetMethod(nameof(CreateTypedDirectOneParameterInvoker), BindingFlags.NonPublic | BindingFlags.Static)!;
+            private static readonly MethodInfo _createTypedDirectTwoParameterInvokerMethod =
+                typeof(ResolvedMethodInfo).GetMethod(nameof(CreateTypedDirectTwoParameterInvoker), BindingFlags.NonPublic | BindingFlags.Static)!;
+            private static readonly MethodInfo _createTypedDirectThreeParameterInvokerMethod =
+                typeof(ResolvedMethodInfo).GetMethod(nameof(CreateTypedDirectThreeParameterInvoker), BindingFlags.NonPublic | BindingFlags.Static)!;
+            private static readonly MethodInfo _createTypedDirectFourParameterInvokerMethod =
+                typeof(ResolvedMethodInfo).GetMethod(nameof(CreateTypedDirectFourParameterInvoker), BindingFlags.NonPublic | BindingFlags.Static)!;
 
-                public readonly struct ExpectedParameter
-                {
-                    public readonly ParameterInfo Info;
-                    public readonly Type ParameterType;
-                    public readonly JsonTypeInfo? TypeInfo;
-                    public readonly ConstructorInvoker? ConstructorInvoker;
-                    public readonly object? DefaultValue;
-                    private readonly ParameterDetails _introspection;
+            public readonly struct ExpectedParameter
+            {
+                public readonly ParameterInfo Info;
+                public readonly Type ParameterType;
+                public readonly JsonTypeInfo? TypeInfo;
+                public readonly ConstructorInvoker? ConstructorInvoker;
+                public readonly object? DefaultValue;
+                private readonly ParameterDetails _introspection;
 
-                    public ParameterKind Kind { get; }
-                    public bool IsNullable => (_introspection & ParameterDetails.IsNullable) != 0;
-                    public bool IsIJsonRpcParam => ConstructorInvoker is not null;
-                    public bool IsOptional => (_introspection & ParameterDetails.IsOptional) != 0;
-                    public bool ReparseString => (_introspection & ParameterDetails.ReparseString) != 0;
+                public ParameterKind Kind { get; }
+                public bool IsNullable => (_introspection & ParameterDetails.IsNullable) != 0;
+                public bool IsIJsonRpcParam => ConstructorInvoker is not null;
+                public bool IsOptional => (_introspection & ParameterDetails.IsOptional) != 0;
+                public bool ReparseString => (_introspection & ParameterDetails.ReparseString) != 0;
 
                 public IJsonRpcParam CreateRpcParam()
                 {
@@ -423,12 +431,14 @@ namespace Nethermind.JsonRpc.Modules
                 Availability = availability;
                 Invoker = MethodInvoker.Create(methodInfo);
                 DirectNoParameterInvoker = CreateDirectNoParameterInvoker(methodInfo, parameters.Length);
+                DirectParameterInvoker = CreateDirectParameterInvoker(methodInfo, parameters);
             }
 
             public string ModuleType { get; }
             public MethodInfo MethodInfo { get; }
             public MethodInvoker Invoker { get; }
             public Func<IRpcModule, object?>? DirectNoParameterInvoker { get; }
+            public Func<IRpcModule, object?[], object?>? DirectParameterInvoker { get; }
             public ExpectedParameter[] ExpectedParameters { get; }
             public bool ReadOnly { get; }
             public RpcEndpoint Availability { get; }
@@ -476,7 +486,7 @@ namespace Nethermind.JsonRpc.Modules
 
             private static Func<IRpcModule, object?>? CreateDirectNoParameterInvoker(MethodInfo methodInfo, int parameterCount)
             {
-                if (parameterCount != 0 || !CanUseDirectNoParameterInvoker(methodInfo.ReturnType))
+                if (parameterCount != 0 || !CanUseDirectInvokerReturn(methodInfo.ReturnType))
                 {
                     return null;
                 }
@@ -495,7 +505,82 @@ namespace Nethermind.JsonRpc.Modules
                 return module => typedInvoker((TModule)module);
             }
 
-            private static bool CanUseDirectNoParameterInvoker(Type returnType) =>
+            private static Func<IRpcModule, object?[], object?>? CreateDirectParameterInvoker(MethodInfo methodInfo, ParameterInfo[] parameters)
+            {
+                if (!CanUseDirectParameterInvoker(methodInfo.ReturnType, parameters))
+                {
+                    return null;
+                }
+
+                Type? declaringType = methodInfo.DeclaringType;
+                if (declaringType is null)
+                {
+                    return null;
+                }
+
+                return parameters.Length switch
+                {
+                    1 => (Func<IRpcModule, object?[], object?>)_createTypedDirectOneParameterInvokerMethod
+                        .MakeGenericMethod(declaringType, parameters[0].ParameterType, methodInfo.ReturnType)
+                        .Invoke(null, [methodInfo])!,
+                    2 => (Func<IRpcModule, object?[], object?>)_createTypedDirectTwoParameterInvokerMethod
+                        .MakeGenericMethod(declaringType, parameters[0].ParameterType, parameters[1].ParameterType, methodInfo.ReturnType)
+                        .Invoke(null, [methodInfo])!,
+                    3 => (Func<IRpcModule, object?[], object?>)_createTypedDirectThreeParameterInvokerMethod
+                        .MakeGenericMethod(declaringType, parameters[0].ParameterType, parameters[1].ParameterType, parameters[2].ParameterType, methodInfo.ReturnType)
+                        .Invoke(null, [methodInfo])!,
+                    4 => (Func<IRpcModule, object?[], object?>)_createTypedDirectFourParameterInvokerMethod
+                        .MakeGenericMethod(declaringType, parameters[0].ParameterType, parameters[1].ParameterType, parameters[2].ParameterType, parameters[3].ParameterType, methodInfo.ReturnType)
+                        .Invoke(null, [methodInfo])!,
+                    _ => null,
+                };
+            }
+
+            private static Func<IRpcModule, object?[], object?> CreateTypedDirectOneParameterInvoker<TModule, T1, TResult>(MethodInfo methodInfo)
+            {
+                Func<TModule, T1, TResult> typedInvoker = methodInfo.CreateDelegate<Func<TModule, T1, TResult>>();
+                return (module, parameters) => typedInvoker((TModule)module, (T1)parameters[0]!);
+            }
+
+            private static Func<IRpcModule, object?[], object?> CreateTypedDirectTwoParameterInvoker<TModule, T1, T2, TResult>(MethodInfo methodInfo)
+            {
+                Func<TModule, T1, T2, TResult> typedInvoker = methodInfo.CreateDelegate<Func<TModule, T1, T2, TResult>>();
+                return (module, parameters) => typedInvoker((TModule)module, (T1)parameters[0]!, (T2)parameters[1]!);
+            }
+
+            private static Func<IRpcModule, object?[], object?> CreateTypedDirectThreeParameterInvoker<TModule, T1, T2, T3, TResult>(MethodInfo methodInfo)
+            {
+                Func<TModule, T1, T2, T3, TResult> typedInvoker = methodInfo.CreateDelegate<Func<TModule, T1, T2, T3, TResult>>();
+                return (module, parameters) => typedInvoker((TModule)module, (T1)parameters[0]!, (T2)parameters[1]!, (T3)parameters[2]!);
+            }
+
+            private static Func<IRpcModule, object?[], object?> CreateTypedDirectFourParameterInvoker<TModule, T1, T2, T3, T4, TResult>(MethodInfo methodInfo)
+            {
+                Func<TModule, T1, T2, T3, T4, TResult> typedInvoker = methodInfo.CreateDelegate<Func<TModule, T1, T2, T3, T4, TResult>>();
+                return (module, parameters) => typedInvoker((TModule)module, (T1)parameters[0]!, (T2)parameters[1]!, (T3)parameters[2]!, (T4)parameters[3]!);
+            }
+
+            private static bool CanUseDirectParameterInvoker(Type returnType, ParameterInfo[] parameters)
+            {
+                if (parameters.Length is 0 or > 4 || !CanUseDirectInvokerReturn(returnType))
+                {
+                    return false;
+                }
+
+                for (int i = 0; i < parameters.Length; i++)
+                {
+                    Type parameterType = parameters[i].ParameterType;
+                    if (parameterType.IsByRef ||
+                        parameterType.IsValueType && Nullable.GetUnderlyingType(parameterType) is null && !parameters[i].IsOptional)
+                    {
+                        return false;
+                    }
+                }
+
+                return true;
+            }
+
+            private static bool CanUseDirectInvokerReturn(Type returnType) =>
                 returnType.IsAssignableTo(typeof(IResultWrapper)) ||
                 GetTaskResultType(returnType) is { } resultType && resultType.IsAssignableTo(typeof(IResultWrapper));
 
