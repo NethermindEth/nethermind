@@ -24,9 +24,7 @@ public class BlockAccessListAtIndex : IJournal<int>, IResettable
 {
     private const int InitialChangeCapacity = 64;
 
-    // Hard cap on the recycle bin so a pathological block (tens of thousands of unique accounts
-    // touched) doesn't permanently inflate every pooled slice. Sized comfortably above the typical
-    // L1/L2 high-water mark; entries beyond the cap are simply dropped to GC.
+    // Caps pool retention so a one-off oversized block doesn't permanently inflate the slice.
     private const int MaxPooledAccountChanges = 4096;
 
     public uint Index { get; set; }
@@ -38,20 +36,13 @@ public class BlockAccessListAtIndex : IJournal<int>, IResettable
     private readonly Dictionary<Address, AccountChangesAtIndex> _accountChanges = new();
     private readonly List<Change> _changes = new(InitialChangeCapacity);
 
-    // Parallel revert log holding the previous CodeChange snapshot. Kept separate so the per-change
-    // record stays small (CodeChange embeds a managed byte[] plus a 32-byte hash). Code reverts are
-    // rare relative to balance / nonce / storage changes; the indirection costs nothing on the hot
-    // path. Invariant: for every entry in _changes with Type == CodeChange && HasPrevious, there is
-    // one corresponding entry here, in the same order.
+    // Mirrors _changes entries with Type == CodeChange && HasPrevious in insertion order; kept
+    // separate to spare the per-change record from CodeChange's managed byte[] + 32-byte hash.
     private readonly List<CodeChange> _previousCodeChanges = new();
 
-    // Recycle bin for AccountChangesAtIndex instances released by Clear(). On the next block / tx
-    // reuse, GetOrAddAccountChanges prefers popping from here over a fresh allocation, sparing the
-    // inner SortedDictionary / SortedSet / Dictionary wrappers.
     private readonly Stack<AccountChangesAtIndex> _accountChangesPool = new();
 
-    // Concrete ValueCollection type rather than IEnumerable so `foreach` binds the struct
-    // enumerator and avoids the boxing IEnumerable<T> would force on every iteration.
+    // Concrete type (not IEnumerable) so `foreach` binds the struct enumerator.
     public Dictionary<Address, AccountChangesAtIndex>.ValueCollection AccountChanges => _accountChanges.Values;
     public int AccountCount => _accountChanges.Count;
     public bool HasAccount(Address address) => _accountChanges.ContainsKey(address);
@@ -60,8 +51,6 @@ public class BlockAccessListAtIndex : IJournal<int>, IResettable
 
     public void Clear()
     {
-        // Cap retention so the pool can't snowball if one block touches an exceptional number of
-        // accounts; surplus instances are dropped to GC.
         int spareCount = _accountChangesPool.Count;
         foreach (AccountChangesAtIndex value in _accountChanges.Values)
         {
@@ -124,10 +113,8 @@ public class BlockAccessListAtIndex : IJournal<int>, IResettable
 
         AccountChangesAtIndex accountChanges = GetOrAddAccountChanges(address);
 
-        // First call for this account: PreTxCode is null; we adopt `before` and know it differs
-        // from `after` (we just early-returned the equal case), so skip the redundant compare.
-        // Subsequent calls reuse the captured pre-tx baseline; the comparison decides whether the
-        // tx net-changed the code (set to current value) or netted to no-op (clear to null).
+        // First call: preTxCode == before, and we already returned the equal-to-after case above —
+        // so the value must have changed; skip the second SequenceEqual.
         bool isFirstCall = accountChanges.PreTxCode is null;
         byte[] preTxCode = accountChanges.PreTxCode ??= before;
 
@@ -224,8 +211,7 @@ public class BlockAccessListAtIndex : IJournal<int>, IResettable
     {
         AccountChangesAtIndex accountChanges = GetOrAddAccountChanges(address);
 
-        // capture current per-slot changes so revert can restore them
-        // SortedDictionary doesn't allow modifying while enumerating, so snapshot keys first
+        // Snapshot keys before mutating the dictionary in the cleanup loop below.
         using ArrayPoolListRef<UInt256> changedSlots = new(accountChanges.StorageChangeCount);
         foreach (KeyValuePair<UInt256, StorageChange> kv in accountChanges.StorageChanges)
         {
@@ -383,23 +369,10 @@ public class BlockAccessListAtIndex : IJournal<int>, IResettable
     }
 
     /// <summary>
-    /// Single revert-journal record. Discriminated by <see cref="Type"/>: only the fields applicable
-    /// to that variant carry meaningful data, the rest are default-zeroed.
+    /// Revert-journal record. Fields are conditionally meaningful per <see cref="Type"/> /
+    /// <see cref="HasPrevious"/>; <see cref="Slot"/> is storage-only, and the CodeChange byte[]
+    /// payload lives in <c>_previousCodeChanges</c> to keep this struct unmanaged-sized.
     /// </summary>
-    /// <remarks>
-    /// <para>
-    /// Holds a direct <see cref="AccountChangesAtIndex"/> reference (rather than the address) so
-    /// <see cref="Restore"/> skips a dictionary lookup per entry. <see cref="HasPrevious"/> indicates
-    /// whether a prior in-tx change must be restored or the field simply cleared.
-    /// </para>
-    /// <para>
-    /// <see cref="Slot"/> is only set when <see cref="Type"/> is <see cref="ChangeType.StorageChange"/>.
-    /// <see cref="PreviousIndex"/> and <see cref="PreviousValue"/> only carry data when
-    /// <see cref="HasPrevious"/> is true. For <see cref="ChangeType.CodeChange"/>, the previous
-    /// byte[] payload is held in the parallel <c>_previousCodeChanges</c> list (popped in order
-    /// during <see cref="Restore"/>) to keep this struct compact.
-    /// </para>
-    /// </remarks>
     private readonly struct Change
     {
         public AccountChangesAtIndex Account { get; init; }
@@ -411,25 +384,11 @@ public class BlockAccessListAtIndex : IJournal<int>, IResettable
     }
 
     /// <summary>
-    /// Value payload of a journal entry. Stores 32 bytes interpreted per-variant on read:
-    /// <see cref="Balance"/> reads the whole word as a host-endian <see cref="UInt256"/>;
-    /// <see cref="Nonce"/> reads the low 8 bytes; <see cref="Storage"/> reinterprets the bytes as an
-    /// <see cref="EvmWord"/> (big-endian wire form). Only the accessor matching the enclosing
-    /// <see cref="Change.Type"/> is meaningful — the others return reinterpretations of the same memory.
+    /// 32-byte value payload, read per-variant. Storage is reinterpreted bit-for-bit (not numerically)
+    /// because <see cref="StorageChange.Value"/> arrives already in BE wire form. <see langword="readonly"/>
+    /// avoids defensive copies on access through <c>ref readonly Change</c> in <see cref="Restore"/>.
+    /// Same Unsafe.As idiom as <see cref="StorageChange(uint, in UInt256)"/>.
     /// </summary>
-    /// <remarks>
-    /// <para>
-    /// <see langword="readonly"/> so that field/property access through <c>ref readonly Change</c>
-    /// in <see cref="Restore"/> doesn't emit a defensive 32-byte copy per access.
-    /// </para>
-    /// <para>
-    /// The <see cref="Unsafe.As{TFrom,TTo}"/> calls do a bitwise reinterpret between <see cref="UInt256"/>
-    /// and <see cref="EvmWord"/> (same 32-byte footprint, different type label). This is required
-    /// because <see cref="StorageChange.Value"/> is already in BE wire form when it enters the journal;
-    /// going through the <c>StorageChange(uint, in UInt256)</c> ctor's <c>ByteSwap</c> path on read
-    /// would corrupt the bytes. Same idiom as <see cref="StorageChange(uint, in UInt256)"/>.
-    /// </para>
-    /// </remarks>
     private readonly struct ChangeValue
     {
         private readonly UInt256 _data;
@@ -438,16 +397,14 @@ public class BlockAccessListAtIndex : IJournal<int>, IResettable
 
         public ChangeValue(ulong nonce) => _data = new UInt256(nonce);
 
-        // Bitwise reinterpret of the EvmWord bytes as a UInt256 — same 32-byte memory, different type
-        // label. No write through the alias; the ref serves only to satisfy Unsafe.As's signature.
+        // Read-only bit reinterpret; ref only present to satisfy Unsafe.As.
         public ChangeValue(EvmWord storage) => _data = Unsafe.As<EvmWord, UInt256>(ref storage);
 
         public UInt256 Balance => _data;
 
         public ulong Nonce => _data.u0;
 
-        // Unsafe.AsRef strips the readonly off `in _data` so Unsafe.As can accept it; safe because the
-        // returned ref is only read (via the surrounding Unsafe.As reinterpret), never written through.
+        // Read-only bit reinterpret; alias is never written through.
         public EvmWord Storage => Unsafe.As<UInt256, EvmWord>(ref Unsafe.AsRef(in _data));
     }
 }

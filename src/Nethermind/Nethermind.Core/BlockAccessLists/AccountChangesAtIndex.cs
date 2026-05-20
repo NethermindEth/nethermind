@@ -25,11 +25,8 @@ public class AccountChangesAtIndex(Address address)
     public byte[]? PreTxCode { get; set; }
     private Dictionary<UInt256, UInt256>? _preTxStorage;
 
-    // Plain Dictionary / HashSet: all per-tx operations (set / remove / has / try-get) are O(1),
-    // and no consumer between insert and the merge into GeneratedAccountChanges relies on sorted
-    // iteration — the receiving GeneratedAccountChanges, BlockAccessListValidationIndex, and BAL
-    // encoders all sort their own outputs. Same trade-off as the outer _accountChanges dict in
-    // BlockAccessListAtIndex.
+    // Unsorted: no consumer between insert and the merge into GeneratedAccountChanges needs sorted
+    // iteration (receivers sort their own outputs); O(1) ops on the per-tx hot path.
     private readonly Dictionary<UInt256, StorageChange> _storageChanges = new();
     private readonly HashSet<UInt256> _storageReads = new();
 
@@ -56,8 +53,7 @@ public class AccountChangesAtIndex(Address address)
 
     public bool RemoveStorageChange(UInt256 key) => _storageChanges.Remove(key);
 
-    /// <summary>Combined lookup + remove. Saves a redundant hash compared to
-    /// <see cref="TryGetStorageChange"/> followed by <see cref="RemoveStorageChange"/>.</summary>
+    /// <summary>Single-hash combined lookup + remove.</summary>
     public bool TryRemoveStorageChange(UInt256 key, [NotNullWhen(true)] out StorageChange? storageChange)
     {
         if (_storageChanges.Remove(key, out StorageChange existing))
@@ -88,12 +84,8 @@ public class AccountChangesAtIndex(Address address)
         _preTxStorage?.Clear();
     }
 
-    /// <summary>
-    /// Recycles this instance for reuse with a different account. Clears every per-tx field but
-    /// keeps the inner <see cref="Dictionary{TKey,TValue}"/> / <see cref="HashSet{T}"/> wrappers
-    /// alive so a subsequent fill avoids re-allocating them (the buckets and entries arrays are
-    /// preserved at their current capacity — only the live entry count resets to zero).
-    /// </summary>
+    /// <summary>Recycles this instance for reuse with a different account; inner collection wrappers
+    /// and their backing arrays are preserved.</summary>
     public void Reset(Address address)
     {
         Address = address;
