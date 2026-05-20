@@ -125,7 +125,7 @@ public class HistoryPrunerTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(historyPruner.OldestBlockHeader, Is.Not.Null);
+            Assert.That(historyPruner.OldestBlockHeader, Is.Not.Null, "OldestBlockHeader should not be null");
             Assert.That(historyPruner.OldestBlockHeader?.Number, Is.EqualTo(expectedBlocksPointer));
             Assert.That(historyPruner.BalsDeletePointer, Is.EqualTo(expectedBalsPointer));
         }
