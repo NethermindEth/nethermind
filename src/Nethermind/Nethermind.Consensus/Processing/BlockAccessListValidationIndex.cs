@@ -97,14 +97,6 @@ internal sealed class BlockAccessListValidationIndex
         uint lastIndex = GetLastIndex(txCount);
         int rowCount = checked((int)lastIndex + 1);
         Counts counts = new(rowCount);
-        ulong[] hasAccountWords = [];
-
-        foreach (ReadOnlyAccountChanges accountChanges in blockAccessList.AccountChanges)
-        {
-            int accountOrdinal = addressIndex.GetOrAdd(accountChanges.Address);
-            MarkAccount(ref hasAccountWords, accountOrdinal);
-        }
-
         Count(blockAccessList, counts, lastIndex);
 
         Lane<UInt256> balance = Lane<UInt256>.CreateImmutable(counts.Balance);
@@ -112,7 +104,12 @@ internal sealed class BlockAccessListValidationIndex
         Lane<ValueHash256> code = Lane<ValueHash256>.CreateImmutable(counts.Code);
         StorageLane storage = StorageLane.CreateImmutable(counts.Storage);
 
-        Fill(blockAccessList, addressIndex, lastIndex, balance, nonce, code, storage);
+        // AddressIndex is fresh per Build, so GetOrAdd yields ordinals 0..accountCount-1 densely
+        // and the bitmap sizes exactly — FillAndMark OR's in without a resize.
+        int accountCount = blockAccessList.AccountChanges.Count;
+        ulong[] hasAccountWords = new ulong[(accountCount + 63) >> 6];
+
+        FillAndMark(blockAccessList, addressIndex, lastIndex, balance, nonce, code, storage, hasAccountWords);
 
         balance.SortAllRows();
         nonce.SortAllRows();
@@ -485,14 +482,17 @@ internal sealed class BlockAccessListValidationIndex
         }
     }
 
-    private static void Fill(
+    // Fill order across accounts is irrelevant: writes go through per-row cursors over
+    // pre-sized rowStarts, and SortAllRows reorders each row by (accountOrdinal, key) after.
+    private static void FillAndMark(
         ReadOnlyBlockAccessList blockAccessList,
         AddressIndex addressIndex,
         uint lastIndex,
         Lane<UInt256> balance,
         Lane<ulong> nonce,
         Lane<ValueHash256> code,
-        StorageLane storage)
+        StorageLane storage,
+        ulong[] hasAccountWords)
     {
         int[] balanceCursors = balance.CreateFillCursors();
         int[] nonceCursors = nonce.CreateFillCursors();
@@ -501,8 +501,8 @@ internal sealed class BlockAccessListValidationIndex
 
         foreach (ReadOnlyAccountChanges accountChanges in blockAccessList.AccountChanges)
         {
-            bool found = addressIndex.TryGet(accountChanges.Address, out int accountOrdinal);
-            Debug.Assert(found);
+            int accountOrdinal = addressIndex.GetOrAdd(accountChanges.Address);
+            hasAccountWords[accountOrdinal >> 6] |= 1UL << (accountOrdinal & 63);
 
             foreach (BalanceChange change in accountChanges.BalanceChanges)
             {
