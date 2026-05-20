@@ -2,8 +2,12 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Concurrent;
+using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
+using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Text.Json.Serialization.Metadata;
 using Nethermind.Core.Extensions;
 using Nethermind.JsonRpc.Modules.Subscribe;
 
@@ -57,6 +61,12 @@ namespace Nethermind.JsonRpc
         [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
         public object? Result { get; set; }
 
+        [JsonIgnore]
+        internal Type? ResultStaticType { get; set; }
+
+        [JsonIgnore]
+        internal Func<JsonSerializerOptions, JsonTypeInfo>? ResultTypeInfoAccessor { get; set; }
+
         [JsonConstructor]
         public JsonRpcSuccessResponse() : base(null) { }
 
@@ -69,10 +79,43 @@ namespace Nethermind.JsonRpc
             Result is ITuple tuple && HasDisposableItem(tuple) ||
             base.HasDisposableResources;
 
+        /// <summary>
+        /// Gets static result metadata when it is safe to serialize with the RPC method's declared result type.
+        /// </summary>
+        /// <remarks>
+        /// Returns <see langword="false"/> when the runtime result type differs from the declared type, preserving
+        /// existing polymorphic serialization behavior.
+        /// </remarks>
+        public bool TryGetResultTypeInfo(object result, JsonSerializerOptions options, [NotNullWhen(true)] out JsonTypeInfo? typeInfo)
+        {
+            Type? staticType = ResultStaticType;
+            Func<JsonSerializerOptions, JsonTypeInfo>? accessor = ResultTypeInfoAccessor;
+            if (staticType is not null &&
+                accessor is not null &&
+                CanUseStaticTypeInfo(staticType, result.GetType()))
+            {
+                typeInfo = accessor(options);
+                return true;
+            }
+
+            typeInfo = null;
+            return false;
+        }
+
         public override void Dispose()
         {
             Result.TryDispose();
             base.Dispose();
+        }
+
+        private static bool CanUseStaticTypeInfo(Type staticType, Type runtimeType)
+        {
+            if (staticType.IsValueType)
+            {
+                return Nullable.GetUnderlyingType(staticType) is null && runtimeType == staticType;
+            }
+
+            return runtimeType == staticType;
         }
 
         private static bool HasDisposableItem(ITuple tuple)
@@ -87,6 +130,15 @@ namespace Nethermind.JsonRpc
 
             return false;
         }
+    }
+
+    internal static class JsonRpcSuccessResponseMetadata<T>
+    {
+        public static readonly Func<JsonSerializerOptions, JsonTypeInfo> Accessor = GetTypeInfo;
+        private static readonly ConcurrentDictionary<JsonSerializerOptions, JsonTypeInfo> _cache = new();
+
+        private static JsonTypeInfo GetTypeInfo(JsonSerializerOptions options) =>
+            _cache.GetOrAdd(options, static options => options.GetTypeInfo(typeof(T)));
     }
 
     public class JsonRpcErrorResponse : JsonRpcResponse

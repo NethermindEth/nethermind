@@ -334,7 +334,12 @@ internal sealed class HttpJsonRpcResponseSink(
             {
                 if (!TryWriteSimpleResult(jsonWriter, result))
                 {
-                    JsonSerializer.Serialize(jsonWriter, result, GetJsonTypeInfo(result.GetType()));
+                    JsonSerializer.Serialize(
+                        jsonWriter,
+                        result,
+                        successResponse.TryGetResultTypeInfo(result, jsonOptions, out JsonTypeInfo? typeInfo)
+                            ? typeInfo
+                            : GetJsonTypeInfo(result.GetType()));
                 }
             }
             else
