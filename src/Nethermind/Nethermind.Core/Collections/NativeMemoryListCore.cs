@@ -33,15 +33,19 @@ internal static unsafe class NativeMemoryListCore<T> where T : unmanaged
     //
     // ZK_EVM omits AlignedAlloc entirely because the runtime in those environments
     // can fault on aligned-alloc — same carve-out KeccakCache uses.
-#if ZK_EVM
-    private const bool UseAlignedAlloc = false;
-#else
+    // A property (not a const) even in the ZK_EVM case: a compile-time-constant
+    // `false` here would make the AlignedAlloc/AlignedFree branches unreachable
+    // and trip CS0162 (warnings-as-errors). The JIT still folds the constant get
+    // body and drops the dead branch per generic instantiation.
     private static bool UseAlignedAlloc
     {
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
+#if ZK_EVM
+        get => false;
+#else
         get => BitOperations.IsPow2(sizeof(T));
-    }
 #endif
+    }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static T* AllocateBuffer(int capacity, out T[]? pooledArray, out GCHandle pinHandle, out int actualCapacity)
