@@ -38,9 +38,7 @@ public sealed class HardforkLabelsGenerator : IIncrementalGenerator
             ImmutableArray<ForkInfo> all = [.. collected.Where(f => f is not null).Select(f => f!)];
             if (all.IsEmpty) return;
 
-            // Apply only records this fork's own delta. Walk the parent chain to materialize
-            // cumulative IsPostMerge (set on Paris, inherited by all descendants) and Depth (used
-            // to emit labels in fork-progression order rather than alphabetical).
+            // Apply only records this fork's own delta — walk parents for cumulative IsPostMerge and Depth.
             Dictionary<string, ForkInfo> byName = all.ToDictionary(f => f.Name);
             foreach (ForkInfo fork in all)
             {
@@ -148,10 +146,7 @@ public sealed class HardforkLabelsGenerator : IIncrementalGenerator
         // Emit `nameof(global::Nethermind.Specs.Forks.Cancun)` rather than a raw string literal —
         // pins the label name to the actual fork type at compile time, so renaming or removing
         // Forks/Cancun.cs surfaces as a compile error on the generated file.
-        //
-        // Order by parent-chain depth so the generated list reads in fork progression
-        // (Homestead → … → Shanghai → Cancun → Prague → Osaka) rather than alphabetical —
-        // easier to audit for missing forks. Tie-break by name for branches that share depth.
+        // Depth-ordered emit so the generated list reads in fork progression.
         foreach (ForkInfo fork in forks
             .OrderBy(f => f.Depth)
             .ThenBy(f => f.Name, StringComparer.Ordinal))
@@ -215,6 +210,5 @@ internal sealed class ForkInfo
     public List<(int Eip, bool Enabled)> EipDelta { get; set; } = new();
     public bool SetsIsPostMerge { get; set; }
     public bool IsPostMerge { get; set; }
-    /// <summary>Number of ancestors in the fork chain; root forks have depth 0.</summary>
     public int Depth { get; set; }
 }

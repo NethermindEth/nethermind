@@ -51,9 +51,7 @@ public class ChainSpecLoader(IJsonSerializer serializer, ILogManager logManager)
             DataDir = chainSpecJson.DataDir
         };
 
-        // LoadParameters must run before LoadGenesis: it calls ExpandAll, which fans hardfork
-        // labels (shanghai/cancun/...) into the per-EIP transition fields LoadGenesis reads to
-        // decide the genesis header shape (WithdrawalsRoot, ParentBeaconBlockRoot, etc.).
+        // LoadGenesis reads chainSpec.Parameters, which LoadParameters populates and label-expands.
         LoadParameters(chainSpecJson, chainSpec);
         LoadGenesis(chainSpecJson, chainSpec);
         LoadEngine(chainSpecJson, chainSpec);
@@ -345,9 +343,6 @@ public class ChainSpecLoader(IJsonSerializer serializer, ILogManager logManager)
         byte[] extraData = chainSpecJson.Genesis.ExtraData ?? [];
         UInt256 gasLimit = chainSpecJson.Genesis.GasLimit;
         Address beneficiary = chainSpecJson.Genesis.Author ?? Address.Zero;
-        // Read post-expand parameter values: LoadParameters has already fanned out hardfork labels
-        // (shanghai/cancun/...) into the per-EIP fields below. Reading chainSpecJson.Params here
-        // would miss labels that activate a post-merge fork at genesis (e.g. dev chain "shanghai": "0x0").
         ChainParameters parameters = chainSpec.Parameters;
         UInt256 baseFee = parameters.Eip1559Transition switch
         {
