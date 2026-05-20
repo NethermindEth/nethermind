@@ -28,6 +28,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.FileProviders;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Hosting.Internal;
+using Microsoft.Extensions.Primitives;
 using Nethermind.Api;
 using Nethermind.Config;
 using Nethermind.Core.Authentication;
@@ -44,6 +45,9 @@ namespace Nethermind.Runner.JsonRpc;
 
 public class Startup : IStartup
 {
+    private const string ApplicationJsonContentType = "application/json";
+    private static readonly StringValues JsonContentTypeHeader = new(ApplicationJsonContentType);
+
     private JsonRpcProcessor _jsonRpcProcessor = null!;
     private JsonRpcService _jsonRpcService = null!;
     private IJsonRpcLocalStats _jsonRpcLocalStats = null!;
@@ -230,10 +234,15 @@ public class Startup : IStartup
             }
         });
 
-        app.MapWhen(
-            ctx => ctx.Request.ContentType?.Contains("application/json") ?? false,
-            builder => builder.Run(async ctx =>
+        app.Use(async (ctx, next) =>
         {
+            bool isJson = IsJsonContentType(ctx.Request.ContentType);
+            if (!isJson)
+            {
+                await next();
+                return;
+            }
+
             string method = ctx.Request.Method;
             if (method is not "POST" and not "GET")
             {
@@ -252,15 +261,11 @@ public class Startup : IStartup
             {
                 await ctx.Response.WriteAsync("Nethermind JSON RPC");
             }
-            else if (ctx.Request.ContentType?.Contains("application/json") == false)
-            {
-                await PushErrorResponseAsync(ctx, StatusCodes.Status415UnsupportedMediaType, ErrorCodes.InvalidRequest, "Missing 'application/json' Content-Type header");
-            }
             else
             {
                 await ProcessJsonRpcRequestCoreAsync(ctx, jsonRpcUrl);
             }
-        }));
+        });
 
         if (healthChecksConfig.Enabled && healthHostPatterns.Length > 0)
         {
@@ -290,10 +295,10 @@ public class Startup : IStartup
         [NotNullWhen(true)] out JsonRpcUrl? jsonRpcUrl)
     {
         if (ctx.Request.Method == "POST" &&
-            (ctx.Request.ContentType?.Contains("application/json") ?? false) &&
             jsonRpcUrlCollection.TryGetValue(ctx.Connection.LocalPort, out jsonRpcUrl) &&
             jsonRpcUrl.RpcEndpoint.HasFlag(RpcEndpoint.Http) &&
-            IsTrustedSource(ctx.Connection.RemoteIpAddress, additionalTrustedNetworks))
+            IsTrustedSource(ctx.Connection.RemoteIpAddress, additionalTrustedNetworks) &&
+            IsJsonContentType(ctx.Request.ContentType))
         {
             return true;
         }
@@ -301,6 +306,12 @@ public class Startup : IStartup
         jsonRpcUrl = null;
         return false;
     }
+
+    internal static bool IsJsonContentType(string? contentType) =>
+        contentType is not null &&
+        contentType.StartsWith(ApplicationJsonContentType, StringComparison.OrdinalIgnoreCase) &&
+        (contentType.Length == ApplicationJsonContentType.Length ||
+         contentType[ApplicationJsonContentType.Length] == ';');
 
     internal static bool IsTrustedSource(IPAddress? remoteIp, TrustedCidr[] additionalTrustedNetworks)
     {
@@ -391,7 +402,7 @@ public class Startup : IStartup
 
     private async Task PushErrorResponseAsync(HttpContext ctx, int statusCode, int errorCode, string message)
     {
-        ctx.Response.ContentType = "application/json";
+        ctx.Response.Headers.ContentType = JsonContentTypeHeader;
         ctx.Response.StatusCode = statusCode;
         JsonRpcErrorResponse response = _jsonRpcService.GetErrorResponse(errorCode, message);
         await _jsonSerializer.SerializeAsync(ctx.Response.BodyWriter, response);
@@ -450,7 +461,7 @@ public class Startup : IStartup
         {
             responseSink = null;
             if (_logger.IsDebug) LogBadRequest(_logger, e);
-            ctx.Response.ContentType = "application/json";
+            ctx.Response.Headers.ContentType = JsonContentTypeHeader;
             ctx.Response.StatusCode = e.StatusCode;
             JsonRpcErrorResponse errResp = _jsonRpcService.GetErrorResponse(
                 e.StatusCode == StatusCodes.Status413PayloadTooLarge ? ErrorCodes.LimitExceeded : ErrorCodes.InvalidRequest,

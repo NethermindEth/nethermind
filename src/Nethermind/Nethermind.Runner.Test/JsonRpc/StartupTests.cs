@@ -484,6 +484,7 @@ public class StartupTests
     [TestCase("POST", "application/json", "8.8.8.8", RpcEndpoint.Http, false)]
     [TestCase("POST", "application/json", "127.0.0.1", RpcEndpoint.Ws, false)]
     [TestCase("POST", "application/json", "127.0.0.1", RpcEndpoint.Http, true)]
+    [TestCase("POST", "application/json; charset=utf-8", "127.0.0.1", RpcEndpoint.Http, true)]
     public void TrustedHttpFastLane_RequiresTrustedJsonHttpPost(
         string method,
         string contentType,
@@ -497,6 +498,20 @@ public class StartupTests
         bool usesFastLane = Startup.TryGetTrustedHttpJsonRpcUrl(ctx, new TestJsonRpcUrlCollection(jsonRpcUrl), [], out _);
 
         Assert.That(usesFastLane, Is.EqualTo(expected));
+    }
+
+    [TestCase(null, false)]
+    [TestCase("application/json", true)]
+    [TestCase("Application/Json", true)]
+    [TestCase("application/json; charset=utf-8", true)]
+    [TestCase("application/jsonx", false)]
+    [TestCase("text/plain", false)]
+    [TestCase("text/plain application/json", false)]
+    public void IsJsonContentType_MatchesJsonMediaTypeOnly(string? contentType, bool expected)
+    {
+        bool isJson = Startup.IsJsonContentType(contentType);
+
+        Assert.That(isJson, Is.EqualTo(expected));
     }
 
     private static async Task<string> ProcessJsonRpcRequest(
