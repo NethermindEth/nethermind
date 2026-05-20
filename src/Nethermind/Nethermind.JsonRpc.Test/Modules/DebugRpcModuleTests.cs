@@ -81,7 +81,7 @@ public partial class DebugRpcModuleTests
             $"{lastBlockHash}"
         );
 
-        response.Should().BeOfType<JsonRpcSuccessResponse>();
+        RpcTest.AssertSuccess(response);
     }
 
     [TestCase(
@@ -117,9 +117,7 @@ public partial class DebugRpcModuleTests
             transaction, null, new { stateOverrides = stateOverride }
         );
 
-        GethLikeTxTrace trace = response.Should().BeOfType<JsonRpcSuccessResponse>()
-            .Which.Result.Should().BeOfType<GethLikeTxTrace>()
-            .Subject;
+        GethLikeTxTrace trace = RpcTest.AssertSuccess<GethLikeTxTrace>(response);
 
         if (expectedValue != null)
             Convert.ToHexString(trace.ReturnValue).Should().BeEquivalentTo(expectedValue);
@@ -145,9 +143,7 @@ public partial class DebugRpcModuleTests
             new { stateOverrides = stateOverride }
         );
 
-        GethLikeTxTrace trace = response.Should().BeOfType<JsonRpcSuccessResponse>()
-            .Which.Result.Should().BeOfType<GethLikeTxTrace>()
-            .Subject;
+        GethLikeTxTrace trace = RpcTest.AssertSuccess<GethLikeTxTrace>(response);
 
         long gasAvailable = (long)trace.ReturnValue.ToUInt256();
         gasAvailable.Should().BeLessThan(gasCap);
@@ -176,9 +172,7 @@ public partial class DebugRpcModuleTests
             new { stateOverrides = stateOverride }
         );
 
-        GethLikeTxTrace trace = response.Should().BeOfType<JsonRpcSuccessResponse>()
-            .Which.Result.Should().BeOfType<GethLikeTxTrace>()
-            .Subject;
+        GethLikeTxTrace trace = RpcTest.AssertSuccess<GethLikeTxTrace>(response);
 
         UInt256 gasAvailable = trace.ReturnValue.ToUInt256();
         gasAvailable.Should().BeGreaterThan((UInt256)blockGasLimit,

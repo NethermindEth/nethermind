@@ -438,7 +438,9 @@ public partial class EthRpcModuleTests
         test.BlockTree.NewHeadBlock += handleNewBlock;
 
         using JsonRpcResponse newFilterResp = await RpcTest.TestRequest(test.EthRpcModule, "eth_newFilter", new { fromBlock = "latest" });
-        string getFilterLogsSerialized1 = await test.TestEthRpc("eth_getFilterChanges", (newFilterResp as JsonRpcSuccessResponse)!.Result?.ToString() ?? "0x0");
+        UInt256? filterId = RpcTest.AssertSuccess<UInt256?>(newFilterResp);
+        string filterIdParameter = filterId?.ToString() ?? "0x0";
+        string getFilterLogsSerialized1 = await test.TestEthRpc("eth_getFilterChanges", filterIdParameter);
 
         //expect empty - no changes so far
         getFilterLogsSerialized1.Should().Be("{\"jsonrpc\":\"2.0\",\"result\":[],\"id\":67}");
@@ -446,11 +448,11 @@ public partial class EthRpcModuleTests
         await test.AddBlock(createCodeTx);
 
         //expect new transaction logs
-        string getFilterLogsSerialized2 = await test.TestEthRpc("eth_getFilterChanges", (newFilterResp as JsonRpcSuccessResponse)!.Result?.ToString() ?? "0x0");
+        string getFilterLogsSerialized2 = await test.TestEthRpc("eth_getFilterChanges", filterIdParameter);
         getFilterLogsSerialized2.Should().Be("{\"jsonrpc\":\"2.0\",\"result\":[{\"address\":\"0x0ffd3e46594919c04bcfd4e146203c8255670828\",\"blockHash\":\"0xf9fc52a47b7da4e8227cd60e9c368fa7d44df7f3226d5163005eec015588d64b\",\"blockNumber\":\"0x4\",\"blockTimestamp\":\"0x5e47e91a\",\"data\":\"0x0000000000000000000000000000000000000000000000000000000000000000\",\"logIndex\":\"0x0\",\"removed\":false,\"topics\":[],\"transactionHash\":\"0x8c9c109bff7969c8aed8e51ab4ea35c6f835a0c3266bc5c5721821a38cbf5445\",\"transactionIndex\":\"0x0\"}],\"id\":67}");
 
         //expect empty - previous call cleans logs
-        string getFilterLogsSerialized3 = await test.TestEthRpc("eth_getFilterChanges", (newFilterResp as JsonRpcSuccessResponse)!.Result?.ToString() ?? "0x0");
+        string getFilterLogsSerialized3 = await test.TestEthRpc("eth_getFilterChanges", filterIdParameter);
         getFilterLogsSerialized3.Should().Be("{\"jsonrpc\":\"2.0\",\"result\":[],\"id\":67}");
     }
 
@@ -719,11 +721,9 @@ public partial class EthRpcModuleTests
 
         string getLogsSerialized = await test.TestEthRpc("eth_getLogs", $"{{\"blockHash\":\"{blockHash}\"}}");
 
-        using JsonRpcResponse? newFilterResp = await RpcTest.TestRequest(test.EthRpcModule, "eth_newFilter", new { blockHash = blockHash });
-
-        Assert.That(newFilterResp is not null && newFilterResp is JsonRpcSuccessResponse, Is.True);
-
-        string getFilterLogsSerialized = await test.TestEthRpc("eth_getFilterLogs", (newFilterResp as JsonRpcSuccessResponse)!.Result?.ToString() ?? "0x0");
+        using JsonRpcResponse newFilterResp = await RpcTest.TestRequest(test.EthRpcModule, "eth_newFilter", new { blockHash = blockHash });
+        UInt256? filterId = RpcTest.AssertSuccess<UInt256?>(newFilterResp);
+        string getFilterLogsSerialized = await test.TestEthRpc("eth_getFilterLogs", filterId?.ToString() ?? "0x0");
 
         Assert.That(getFilterLogsSerialized, Is.EqualTo(getLogsSerialized));
     }

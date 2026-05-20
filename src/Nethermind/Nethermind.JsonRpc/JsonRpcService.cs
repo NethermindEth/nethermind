@@ -37,12 +37,9 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
     private readonly HashSet<string> _methodsLoggingFiltering = (jsonRpcConfig.MethodsLoggingFiltering ?? []).ToHashSet();
     private readonly int _maxLoggedRequestParametersCharacters = jsonRpcConfig.MaxLoggedRequestParametersCharacters ?? int.MaxValue;
     private static readonly ConcurrentDictionary<Type, TaskResultAccessor> _taskResultAccessors = new();
-    private static readonly ConcurrentDictionary<Type, SuccessResponseAccessor> _successResponseAccessors = new();
     private static readonly MethodInfo _readTaskResultMethod = typeof(JsonRpcService).GetMethod(nameof(ReadTaskResult), BindingFlags.NonPublic | BindingFlags.Static)!;
-    private static readonly MethodInfo _getTypedSuccessResponseMethod = typeof(JsonRpcService).GetMethod(nameof(GetTypedSuccessResponse), BindingFlags.NonPublic | BindingFlags.Static)!;
 
     private delegate IResultWrapper? TaskResultAccessor(Task task);
-    private delegate JsonRpcResponse SuccessResponseAccessor(IResultWrapper wrapper, string methodName, JsonRpcId id, Action? returnAction);
 
     public ValueTask<JsonRpcResponse> SendRequestAsync(JsonRpcRequest rpcRequest, JsonRpcContext context)
     {
@@ -177,15 +174,20 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
             return response.WithResponseContext(request.Id, returnAction);
         }
 
-        Result result = resultWrapper.Result;
-        return result.ResultType != ResultType.Success
-            ? GetErrorResponse(methodName, resultWrapper.ErrorCode, result.Error, resultWrapper.HasErrorData ? resultWrapper.Data : null, request.Id, returnAction, resultWrapper.IsTemporary)
-            : GetSuccessResponse(resultWrapper, methodName, request.Id, returnAction);
+        return HandleUnsupportedResultWrapper(request, methodName, returnAction);
 
         [MethodImpl(MethodImplOptions.NoInlining)]
         JsonRpcResponse HandleMissingResultWrapper(JsonRpcRequest request, string methodName, Action? returnAction)
         {
             string errorMessage = $"Method {methodName} execution result does not implement IResultWrapper";
+            if (_logger.IsError) _logger.Error(errorMessage);
+            return GetErrorResponse(methodName, ErrorCodes.InternalError, errorMessage, null, request.Id, returnAction);
+        }
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        JsonRpcResponse HandleUnsupportedResultWrapper(JsonRpcRequest request, string methodName, Action? returnAction)
+        {
+            string errorMessage = $"Method {methodName} execution result implements IResultWrapper but not JsonRpcResponse";
             if (_logger.IsError) _logger.Error(errorMessage);
             return GetErrorResponse(methodName, ErrorCodes.InternalError, errorMessage, null, request.Id, returnAction);
         }
@@ -575,58 +577,6 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
         where TResult : IResultWrapper =>
         ((Task<TResult>)task).Result;
 
-    private static JsonRpcResponse GetSuccessResponse(
-        IResultWrapper resultWrapper,
-        string methodName,
-        JsonRpcId id,
-        Action? disposableAction) =>
-        _successResponseAccessors.GetOrAdd(resultWrapper.GetType(), static wrapperType => CreateSuccessResponseAccessor(wrapperType))(
-            resultWrapper,
-            methodName,
-            id,
-            disposableAction);
-
-    private static SuccessResponseAccessor CreateSuccessResponseAccessor(Type wrapperType)
-    {
-        Type? resultType = GetResultWrapperDataType(wrapperType);
-        if (resultType is null || resultType == typeof(object))
-        {
-            return static (wrapper, methodName, id, disposableAction) =>
-                GetSuccessResponse(methodName, wrapper.Data, id, disposableAction);
-        }
-
-        return _getTypedSuccessResponseMethod
-            .MakeGenericMethod(resultType)
-            .CreateDelegate<SuccessResponseAccessor>();
-    }
-
-    private static Type? GetResultWrapperDataType(Type wrapperType)
-    {
-        for (Type? type = wrapperType; type is not null; type = type.BaseType)
-        {
-            if (type.IsGenericType && type.GetGenericTypeDefinition() == typeof(ResultWrapper<>))
-            {
-                return type.GetGenericArguments()[0];
-            }
-        }
-
-        return null;
-    }
-
-    private static JsonRpcResponse GetTypedSuccessResponse<T>(
-        IResultWrapper wrapper,
-        string methodName,
-        JsonRpcId id,
-        Action? disposableAction)
-    {
-        if (wrapper is not ResultWrapper<T> typedWrapper)
-        {
-            return GetSuccessResponse(methodName, wrapper.Data, id, disposableAction);
-        }
-
-        return GetSuccessResponse(methodName, typedWrapper.Data, id, disposableAction);
-    }
-
     private void LogRequest(string methodName, JsonElement providedParameters, ExpectedParameter[] expectedParameters)
     {
         if (_logger.IsTrace && !_methodsLoggingFiltering.Contains(methodName))
@@ -960,30 +910,6 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
 
         returnToPool = false;
         return new object?[length];
-    }
-
-    private static JsonRpcResponse GetSuccessResponse(string methodName, object? result, JsonRpcId id, Action? disposableAction)
-    {
-        JsonRpcResponse response = new JsonRpcSuccessResponse(disposableAction)
-        {
-            Result = result,
-            Id = id
-        };
-
-        return response;
-    }
-
-    private static JsonRpcResponse GetSuccessResponse<T>(string methodName, T result, JsonRpcId id, Action? disposableAction)
-    {
-        JsonRpcResponse response = new JsonRpcSuccessResponse(disposableAction)
-        {
-            Result = result,
-            Id = id,
-            ResultStaticType = typeof(T),
-            ResultTypeInfoAccessor = JsonRpcSuccessResponseMetadata<T>.Accessor
-        };
-
-        return response;
     }
 
     public JsonRpcErrorResponse GetErrorResponse(int errorCode, string errorMessage, JsonRpcId? id = null, string? methodName = null) =>
