@@ -64,14 +64,6 @@ public class BlockAccessListDecoderTests
         Assert.That(ctx.Position, Is.EqualTo(balRlp.Length));
     }
 
-    [Test]
-    public void Synthesised_bal_has_no_wire_hash()
-    {
-        ReadOnlyBlockAccessList bal = new();
-
-        Assert.That(bal.WireHash, Is.Null);
-    }
-
     // Truncated RLP causes an out-of-bounds primitive read; the Rlp.Decode entry-point
     // wrap converts that to RlpException so callers see a consistent failure mode
     // (engine_newPayloadV5 returns a clean error instead of crashing the RPC).

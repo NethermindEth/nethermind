@@ -72,7 +72,6 @@ public class ReadOnlyBlockAccessList : IEquatable<ReadOnlyBlockAccessList>
     public ReadOnlyBlockAccessList(ReadOnlyAccountChanges[] orderedAccounts, int itemCount)
         : this(orderedAccounts, itemCount, wireHash: null) { }
 
-    /// <inheritdoc cref="ReadOnlyBlockAccessList(ReadOnlyAccountChanges[], int)"/>
     public ReadOnlyBlockAccessList(ReadOnlyAccountChanges[] orderedAccounts, int itemCount, Hash256? wireHash)
     {
         _orderedAccounts = orderedAccounts;
