@@ -104,8 +104,6 @@ internal sealed class BlockAccessListValidationIndex
         Lane<ValueHash256> code = Lane<ValueHash256>.CreateImmutable(counts.Code);
         StorageLane storage = StorageLane.CreateImmutable(counts.Storage);
 
-        // AddressIndex is fresh per Build, so GetOrAdd yields ordinals 0..accountCount-1 densely
-        // and the bitmap sizes exactly — FillAndMark OR's in without a resize.
         int accountCount = blockAccessList.AccountChanges.Count;
         ulong[] hasAccountWords = new ulong[(accountCount + 63) >> 6];
 
@@ -482,8 +480,6 @@ internal sealed class BlockAccessListValidationIndex
         }
     }
 
-    // Fill order across accounts is irrelevant: writes go through per-row cursors over
-    // pre-sized rowStarts, and SortAllRows reorders each row by (accountOrdinal, key) after.
     private static void FillAndMark(
         ReadOnlyBlockAccessList blockAccessList,
         AddressIndex addressIndex,
