@@ -14,11 +14,9 @@ using Nethermind.Core.Utils;
 using Nethermind.Logging;
 using Nethermind.Network.Contract.P2P;
 using Nethermind.State.Healing;
-using Nethermind.State.Snap;
 using Nethermind.Stats;
 using Nethermind.Synchronization.Peers;
 using Nethermind.Synchronization.Peers.AllocationStrategies;
-using Nethermind.Trie;
 
 namespace Nethermind.Synchronization.Trie;
 
