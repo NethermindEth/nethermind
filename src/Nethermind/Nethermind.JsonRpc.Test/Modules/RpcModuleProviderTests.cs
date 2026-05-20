@@ -256,6 +256,19 @@ public class RpcModuleProviderTests
     }
 
     [Test]
+    public void Rpc_payload_type_info_metrics_track_generated_hits_and_fallbacks()
+    {
+        long generatedHits = Metrics.JsonRpcPayloadTypeInfoGeneratedHits;
+        long resolverFallbacks = Metrics.JsonRpcPayloadTypeInfoResolverFallbacks;
+
+        RpcPayloadTypeInfo<string>.Get(EthereumJsonSerializer.JsonOptions).Should().NotBeNull();
+        RpcPayloadTypeInfo<FallbackPayload>.Get(EthereumJsonSerializer.JsonOptions).Should().NotBeNull();
+
+        Metrics.JsonRpcPayloadTypeInfoGeneratedHits.Should().BeGreaterThan(generatedHits);
+        Metrics.JsonRpcPayloadTypeInfoResolverFallbacks.Should().BeGreaterThan(resolverFallbacks);
+    }
+
+    [Test]
     public void Generated_rpc_type_info_covers_json_rpc_assembly_modules()
     {
         List<string> missing = [];
@@ -496,6 +509,11 @@ public class RpcModuleProviderTests
     private class TestRpcModule : ITestRpcModule
     {
         public TestRpcModule(TestRpcModuleDependencies dependencies) => dependencies.WasRequested = true;
+    }
+
+    private sealed class FallbackPayload
+    {
+        public string? Value { get; set; }
     }
 
     private sealed class TestModulePool<T>(T module) : IRpcModulePool<T> where T : IRpcModule
