@@ -25,7 +25,7 @@ public class JsonRpcLocalStats(ITimestamper timestamper, IJsonRpcConfig jsonRpcC
     private readonly ConcurrentDictionary<string, MethodStats> _allTimeStats = new();
     private DateTime _lastReport = timestamper.UtcNow;
     private readonly ILogger _logger = logManager?.GetClassLogger<JsonRpcLocalStats>() ?? throw new ArgumentNullException(nameof(logManager));
-    private readonly object _reportRotationLock = new();
+    private readonly Lock _reportRotationLock = new();
 
     public MethodStats GetMethodStats(string methodName) => _allTimeStats.GetValueOrDefault(methodName, new MethodStats());
 
