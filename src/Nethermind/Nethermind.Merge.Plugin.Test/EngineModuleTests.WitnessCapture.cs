@@ -242,7 +242,6 @@ public partial class EngineModuleTests
         WitnessCapturingWorldStateProxy proxy = new(inner);
 
         proxy.TryGetAccount(TestItem.AddressA, out _);
-        proxy.GetBalance(TestItem.AddressA);
         proxy.IsContract(TestItem.AddressA);
         proxy.Set(new StorageCell(TestItem.AddressA, UInt256.One), [0xFF]);
 

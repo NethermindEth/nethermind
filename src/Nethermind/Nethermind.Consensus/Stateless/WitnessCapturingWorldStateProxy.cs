@@ -205,16 +205,16 @@ public sealed class WitnessCapturingWorldStateProxy(IWorldState inner) : IWorldS
         return inner.IsDeadAccount(address);
     }
 
-    public UInt256 GetBalance(Address address)
+    public ref readonly UInt256 GetBalance(Address address)
     {
         RecordEmptySlots(address);
-        return inner.GetBalance(address);
+        return ref inner.GetBalance(address);
     }
 
-    public ValueHash256 GetCodeHash(Address address)
+    public ref readonly ValueHash256 GetCodeHash(Address address)
     {
         RecordEmptySlots(address);
-        return inner.GetCodeHash(address);
+        return ref inner.GetCodeHash(address);
     }
 
     public ReadOnlySpan<byte> GetOriginal(in StorageCell storageCell)

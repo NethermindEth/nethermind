@@ -25,9 +25,9 @@ using Nethermind.Merge.Plugin.SszRest;
 using Nethermind.Merge.Plugin.SszRest.Handlers;
 using NSubstitute;
 using NUnit.Framework;
-using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Collections;
 using Nethermind.Serialization.Rlp;
+using Nethermind.Serialization.Rlp.Eip7928;
 
 namespace Nethermind.Merge.Plugin.Test.SszRest;
 
@@ -875,7 +875,7 @@ public class SszMiddlewareTests
             ExcessBlobGas = 0,
             ParentBeaconBlockRoot = TestItem.KeccakA,
             ExecutionRequests = [],
-            BlockAccessList = Rlp.Encode(new BlockAccessList()).Bytes
+            BlockAccessList = BlockAccessListDecoder.EncodeToBytes(new BlockAccessListBuilder().TestObject)
         };
 
         string json = System.Text.Json.JsonSerializer.Serialize(
