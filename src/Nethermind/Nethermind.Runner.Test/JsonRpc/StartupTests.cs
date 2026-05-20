@@ -149,6 +149,7 @@ public class StartupTests
     public async Task ProcessJsonRpcRequest_ReportsHttpCallStats()
     {
         IJsonRpcLocalStats jsonRpcLocalStats = Substitute.For<IJsonRpcLocalStats>();
+        jsonRpcLocalStats.IsEnabled.Returns(true);
         Startup startup = CreateStartup(jsonRpcLocalStats: jsonRpcLocalStats);
 
         string response = await ProcessJsonRpcRequest(
@@ -383,6 +384,7 @@ public class StartupTests
         MemoryStream responseBody = new();
         ctx.Features.Set<IHttpResponseBodyFeature>(new StreamResponseBodyFeature(responseBody));
         IJsonRpcLocalStats jsonRpcLocalStats = Substitute.For<IJsonRpcLocalStats>();
+        jsonRpcLocalStats.IsEnabled.Returns(true);
 
         HttpJsonRpcResponseSink sink = new(
             ctx,
@@ -417,6 +419,7 @@ public class StartupTests
         MemoryStream responseBody = new();
         ctx.Features.Set<IHttpResponseBodyFeature>(new StreamResponseBodyFeature(responseBody));
         IJsonRpcLocalStats jsonRpcLocalStats = Substitute.For<IJsonRpcLocalStats>();
+        jsonRpcLocalStats.IsEnabled.Returns(true);
 
         HttpJsonRpcResponseSink sink = new(
             ctx,

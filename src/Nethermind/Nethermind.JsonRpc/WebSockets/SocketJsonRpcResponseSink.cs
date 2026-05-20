@@ -24,6 +24,7 @@ internal sealed class SocketJsonRpcResponseSink<TStream>(
     private static readonly byte[] JsonComma = [Convert.ToByte(',')];
     private static readonly byte[] JsonClosingBracket = [Convert.ToByte(']')];
 
+    private readonly bool _reportCalls = jsonRpcLocalStats.IsEnabled;
     private long _topLevelResponseBytes;
     private long _batchStartTimestamp;
     private bool _isFirstBatchItem = true;
@@ -39,13 +40,16 @@ internal sealed class SocketJsonRpcResponseSink<TStream>(
 
         try
         {
-            long startTimestamp = Stopwatch.GetTimestamp();
+            long startTimestamp = _reportCalls ? Stopwatch.GetTimestamp() : 0;
             int responseBytes = (int)await jsonSerializer.SerializeAsync(stream, response, cancellationToken, indented: false);
             responseBytes += await stream.WriteEndOfMessageAsync();
 
             BytesWritten += responseBytes;
-            long handlingTimeMicroseconds = (long)Stopwatch.GetElapsedTime(startTimestamp).TotalMicroseconds;
-            jsonRpcLocalStats.ReportCall(report, handlingTimeMicroseconds, responseBytes);
+            if (_reportCalls)
+            {
+                long handlingTimeMicroseconds = (long)Stopwatch.GetElapsedTime(startTimestamp).TotalMicroseconds;
+                jsonRpcLocalStats.ReportCall(report, handlingTimeMicroseconds, responseBytes);
+            }
         }
         finally
         {
@@ -58,7 +62,7 @@ internal sealed class SocketJsonRpcResponseSink<TStream>(
         await sendSemaphore.WaitAsync(cancellationToken);
         _holdsSemaphore = true;
         _topLevelResponseBytes = 1;
-        _batchStartTimestamp = Stopwatch.GetTimestamp();
+        _batchStartTimestamp = _reportCalls ? Stopwatch.GetTimestamp() : 0;
         _isFirstBatchItem = true;
         StopRequested = false;
 
@@ -76,7 +80,10 @@ internal sealed class SocketJsonRpcResponseSink<TStream>(
         _isFirstBatchItem = false;
 
         _topLevelResponseBytes += (int)await jsonSerializer.SerializeAsync(stream, response, cancellationToken, indented: false);
-        jsonRpcLocalStats.ReportCall(report);
+        if (_reportCalls)
+        {
+            jsonRpcLocalStats.ReportCall(report);
+        }
 
         if (!jsonRpcContext.IsAuthenticated && _topLevelResponseBytes > maxBatchResponseBodySize)
         {
@@ -94,8 +101,11 @@ internal sealed class SocketJsonRpcResponseSink<TStream>(
             _topLevelResponseBytes += await stream.WriteEndOfMessageAsync();
             BytesWritten += _topLevelResponseBytes;
 
-            long handlingTimeMicroseconds = (long)Stopwatch.GetElapsedTime(_batchStartTimestamp).TotalMicroseconds;
-            jsonRpcLocalStats.ReportCall(new RpcReport("# collection serialization #", handlingTimeMicroseconds, true), handlingTimeMicroseconds, _topLevelResponseBytes);
+            if (_reportCalls)
+            {
+                long handlingTimeMicroseconds = (long)Stopwatch.GetElapsedTime(_batchStartTimestamp).TotalMicroseconds;
+                jsonRpcLocalStats.ReportCall(new RpcReport("# collection serialization #", handlingTimeMicroseconds, true), handlingTimeMicroseconds, _topLevelResponseBytes);
+            }
         }
         finally
         {

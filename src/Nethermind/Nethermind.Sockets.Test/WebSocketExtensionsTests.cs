@@ -137,6 +137,7 @@ public class WebSocketExtensionsTests
         IJsonRpcService service = Substitute.For<IJsonRpcService>();
 
         IJsonRpcLocalStats localStats = Substitute.For<IJsonRpcLocalStats>();
+        localStats.IsEnabled.Returns(true);
         long receivedBefore = Metrics.JsonRpcBytesReceivedWebSockets;
         long sentBefore = Metrics.JsonRpcBytesSentWebSockets;
 

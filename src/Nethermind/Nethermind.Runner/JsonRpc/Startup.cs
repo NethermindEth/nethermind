@@ -400,7 +400,7 @@ public class Startup : IStartup
 
     internal async Task ProcessJsonRpcRequestCoreAsync(HttpContext ctx, JsonRpcUrl jsonRpcUrl)
     {
-        long startTime = Stopwatch.GetTimestamp();
+        long startTime = _jsonRpcLocalStats.IsEnabled ? Stopwatch.GetTimestamp() : 0;
 
         if (_jsonRpcProcessor.ProcessExit.IsCancellationRequested)
         {

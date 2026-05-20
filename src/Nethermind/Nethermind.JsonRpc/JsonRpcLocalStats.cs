@@ -14,20 +14,32 @@ using Nethermind.Logging;
 
 namespace Nethermind.JsonRpc;
 
-public class JsonRpcLocalStats(ITimestamper timestamper, IJsonRpcConfig jsonRpcConfig, ILogManager logManager)
-    : IJsonRpcLocalStats
+public class JsonRpcLocalStats : IJsonRpcLocalStats
 {
-    private readonly ITimestamper _timestamper = timestamper ?? throw new ArgumentNullException(nameof(timestamper));
-    private readonly TimeSpan _reportingInterval = TimeSpan.FromSeconds(jsonRpcConfig.ReportIntervalSeconds);
-    private readonly bool _enablePerMethodMetrics = jsonRpcConfig.EnablePerMethodMetrics;
-    private ConcurrentDictionary<string, AtomicMethodStats> _currentStats = new();
-    private readonly ConcurrentDictionary<string, AtomicMethodStats> _allTimeStats = new();
-    private DateTime _lastReport = timestamper.UtcNow;
-    private readonly ILogger _logger = logManager?.GetClassLogger<JsonRpcLocalStats>() ?? throw new ArgumentNullException(nameof(logManager));
+    private readonly ITimestamper _timestamper;
+    private readonly TimeSpan _reportingInterval;
+    private readonly bool _enablePerMethodMetrics;
+    private ConcurrentDictionary<string, MethodStats> _currentStats = new();
+    private readonly ConcurrentDictionary<string, MethodStats> _allTimeStats = new();
+    private DateTime _lastReport;
+    private readonly ILogger _logger;
     private readonly Lock _reportRotationLock = new();
 
+    public JsonRpcLocalStats(ITimestamper timestamper, IJsonRpcConfig jsonRpcConfig, ILogManager logManager)
+    {
+        _timestamper = timestamper ?? throw new ArgumentNullException(nameof(timestamper));
+        ArgumentNullException.ThrowIfNull(jsonRpcConfig);
+        _reportingInterval = TimeSpan.FromSeconds(jsonRpcConfig.ReportIntervalSeconds);
+        _enablePerMethodMetrics = jsonRpcConfig.EnablePerMethodMetrics;
+        _logger = logManager?.GetClassLogger<JsonRpcLocalStats>() ?? throw new ArgumentNullException(nameof(logManager));
+        _lastReport = _timestamper.UtcNow;
+        IsEnabled = _enablePerMethodMetrics || _logger.IsInfo;
+    }
+
+    public bool IsEnabled { get; }
+
     public MethodStats GetMethodStats(string methodName) =>
-        _allTimeStats.TryGetValue(methodName, out AtomicMethodStats? methodStats)
+        _allTimeStats.TryGetValue(methodName, out MethodStats? methodStats)
             ? methodStats.Snapshot()
             : new MethodStats();
 
@@ -41,7 +53,7 @@ public class JsonRpcLocalStats(ITimestamper timestamper, IJsonRpcConfig jsonRpcC
             return;
         }
 
-        if (!_enablePerMethodMetrics && !_logger.IsInfo)
+        if (!IsEnabled)
         {
             return;
         }
@@ -64,10 +76,10 @@ public class JsonRpcLocalStats(ITimestamper timestamper, IJsonRpcConfig jsonRpcC
             return;
         }
 
-        ConcurrentDictionary<string, AtomicMethodStats>? statsForReport = RotateStatsForReport();
+        ConcurrentDictionary<string, MethodStats>? statsForReport = RotateStatsForReport();
 
-        AtomicMethodStats methodStats = _currentStats.GetOrAdd(report.Method, static _ => new AtomicMethodStats());
-        AtomicMethodStats allTimeMethodStats = _allTimeStats.GetOrAdd(report.Method, static _ => new AtomicMethodStats());
+        MethodStats methodStats = _currentStats.GetOrAdd(report.Method, static _ => new MethodStats());
+        MethodStats allTimeMethodStats = _allTimeStats.GetOrAdd(report.Method, static _ => new MethodStats());
 
         long responseSize = size ?? 0;
         methodStats.Record(reportHandlingTimeMicroseconds, responseSize, report.Success);
@@ -91,7 +103,7 @@ public class JsonRpcLocalStats(ITimestamper timestamper, IJsonRpcConfig jsonRpcC
 
     private static readonly string _divider = new('-', ReportHeader.Length);
 
-    private ConcurrentDictionary<string, AtomicMethodStats>? RotateStatsForReport()
+    private ConcurrentDictionary<string, MethodStats>? RotateStatsForReport()
     {
         DateTime thisTime = _timestamper.UtcNow;
         if (thisTime - _lastReport <= _reportingInterval)
@@ -108,21 +120,21 @@ public class JsonRpcLocalStats(ITimestamper timestamper, IJsonRpcConfig jsonRpcC
 
             _lastReport = thisTime;
 
-            ConcurrentDictionary<string, AtomicMethodStats> statsForReport = _currentStats;
-            _currentStats = new ConcurrentDictionary<string, AtomicMethodStats>();
+            ConcurrentDictionary<string, MethodStats> statsForReport = _currentStats;
+            _currentStats = new ConcurrentDictionary<string, MethodStats>();
 
             return statsForReport.IsEmpty ? null : statsForReport;
         }
     }
 
-    private void QueueReport(ConcurrentDictionary<string, AtomicMethodStats> statsForReport) =>
+    private void QueueReport(ConcurrentDictionary<string, MethodStats> statsForReport) =>
         ThreadPool.QueueUserWorkItem(static state =>
         {
             ReportWorkItem workItem = (ReportWorkItem)state!;
             workItem.Owner.BuildReport(workItem.Stats);
         }, new ReportWorkItem(this, statsForReport));
 
-    private void BuildReport(ConcurrentDictionary<string, AtomicMethodStats> stats)
+    private void BuildReport(ConcurrentDictionary<string, MethodStats> stats)
     {
         try
         {
@@ -133,22 +145,16 @@ public class JsonRpcLocalStats(ITimestamper timestamper, IJsonRpcConfig jsonRpcC
             reportStringBuilder.AppendLine(ReportHeader);
             reportStringBuilder.AppendLine(_divider);
             MethodStats total = new();
-            foreach (KeyValuePair<string, AtomicMethodStats> methodStats in stats.OrderBy(static kv => kv.Key))
+            foreach (KeyValuePair<string, MethodStats> methodStats in stats.OrderBy(static kv => kv.Key))
             {
                 MethodStats snapshot = methodStats.Value.Snapshot();
-                total.AvgTimeOfSuccesses = total.Successes + snapshot.Successes == 0
-                    ? 0
-                    : (total.AvgTimeOfSuccesses * total.Successes + snapshot.Successes * snapshot.AvgTimeOfSuccesses)
-                      / (total.Successes + snapshot.Successes);
-                total.AvgTimeOfErrors = total.Errors + snapshot.Errors == 0
-                    ? 0
-                    : (total.AvgTimeOfErrors * total.Errors + snapshot.Errors * snapshot.AvgTimeOfErrors)
-                      / (total.Errors + snapshot.Errors);
                 total.Successes += snapshot.Successes;
                 total.Errors += snapshot.Errors;
+                total.TotalTimeOfSuccessesMicros += snapshot.TotalTimeOfSuccessesMicros;
+                total.TotalTimeOfErrorsMicros += snapshot.TotalTimeOfErrorsMicros;
                 total.MaxTimeOfSuccess = Math.Max(total.MaxTimeOfSuccess, snapshot.MaxTimeOfSuccess);
                 total.MaxTimeOfError = Math.Max(total.MaxTimeOfError, snapshot.MaxTimeOfError);
-                total.TotalSize += snapshot.TotalSize;
+                total.TotalSizeBytes += snapshot.TotalSizeBytes;
                 reportStringBuilder.AppendLine(PrepareReportLine(methodStats.Key, snapshot));
             }
 
@@ -169,76 +175,10 @@ public class JsonRpcLocalStats(ITimestamper timestamper, IJsonRpcConfig jsonRpcC
 
     private sealed class ReportWorkItem(
         JsonRpcLocalStats owner,
-        ConcurrentDictionary<string, AtomicMethodStats> stats)
+        ConcurrentDictionary<string, MethodStats> stats)
     {
         public JsonRpcLocalStats Owner { get; } = owner;
-        public ConcurrentDictionary<string, AtomicMethodStats> Stats { get; } = stats;
-    }
-
-    private sealed class AtomicMethodStats
-    {
-        private long _successes;
-        private long _errors;
-        private long _totalSuccessMicroseconds;
-        private long _totalErrorMicroseconds;
-        private long _maxSuccessMicroseconds;
-        private long _maxErrorMicroseconds;
-        private long _totalSize;
-
-        public void Record(long handlingTimeMicroseconds, long size, bool success)
-        {
-            if (success)
-            {
-                Interlocked.Increment(ref _successes);
-                Interlocked.Add(ref _totalSuccessMicroseconds, handlingTimeMicroseconds);
-                SetMax(ref _maxSuccessMicroseconds, handlingTimeMicroseconds);
-            }
-            else
-            {
-                Interlocked.Increment(ref _errors);
-                Interlocked.Add(ref _totalErrorMicroseconds, handlingTimeMicroseconds);
-                SetMax(ref _maxErrorMicroseconds, handlingTimeMicroseconds);
-            }
-
-            Interlocked.Add(ref _totalSize, size);
-        }
-
-        public MethodStats Snapshot()
-        {
-            long successes = Volatile.Read(ref _successes);
-            long errors = Volatile.Read(ref _errors);
-            long totalSuccessMicroseconds = Volatile.Read(ref _totalSuccessMicroseconds);
-            long totalErrorMicroseconds = Volatile.Read(ref _totalErrorMicroseconds);
-
-            return new MethodStats
-            {
-                Successes = ToInt32Count(successes),
-                Errors = ToInt32Count(errors),
-                AvgTimeOfSuccesses = successes == 0 ? 0 : (decimal)totalSuccessMicroseconds / successes,
-                AvgTimeOfErrors = errors == 0 ? 0 : (decimal)totalErrorMicroseconds / errors,
-                MaxTimeOfSuccess = Volatile.Read(ref _maxSuccessMicroseconds),
-                MaxTimeOfError = Volatile.Read(ref _maxErrorMicroseconds),
-                TotalSize = Volatile.Read(ref _totalSize)
-            };
-        }
-
-        private static void SetMax(ref long target, long value)
-        {
-            long current = Volatile.Read(ref target);
-            while (value > current)
-            {
-                long previous = Interlocked.CompareExchange(ref target, value, current);
-                if (previous == current)
-                {
-                    return;
-                }
-
-                current = previous;
-            }
-        }
-
-        private static int ToInt32Count(long value) =>
-            value > int.MaxValue ? int.MaxValue : (int)value;
+        public ConcurrentDictionary<string, MethodStats> Stats { get; } = stats;
     }
 
     [Pure]

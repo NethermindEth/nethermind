@@ -42,6 +42,7 @@ internal sealed class HttpJsonRpcResponseSink(
         new(minimumBufferSize: BufferedResponseInitialCapacity, leaveOpen: true);
     private static readonly ConcurrentDictionary<Type, JsonTypeInfo> _jsonTypeInfoCache = new();
 
+    private readonly bool _reportCalls = jsonRpcLocalStats.IsEnabled;
     private CountingWriter? _writer;
     private Stream? _bufferedStream;
     private bool _isFirstBatchItem = true;
@@ -77,6 +78,11 @@ internal sealed class HttpJsonRpcResponseSink(
 
     private void ReportSingle(RpcReport report)
     {
+        if (!_reportCalls)
+        {
+            return;
+        }
+
         long handlingTimeMicroseconds = (long)Stopwatch.GetElapsedTime(requestStartTimestamp).TotalMicroseconds;
         jsonRpcLocalStats.ReportCall(report, handlingTimeMicroseconds, BytesWritten);
     }
@@ -116,7 +122,10 @@ internal sealed class HttpJsonRpcResponseSink(
 
     private void ReportBatchItem(RpcReport report)
     {
-        jsonRpcLocalStats.ReportCall(report);
+        if (_reportCalls)
+        {
+            jsonRpcLocalStats.ReportCall(report);
+        }
 
         if (!jsonRpcUrl.IsAuthenticated && BytesWritten > jsonRpcConfig.MaxBatchResponseBodySize)
         {
@@ -129,8 +138,11 @@ internal sealed class HttpJsonRpcResponseSink(
     {
         _writer!.Write(JsonClosingBracket);
 
-        long handlingTimeMicroseconds = (long)Stopwatch.GetElapsedTime(requestStartTimestamp).TotalMicroseconds;
-        jsonRpcLocalStats.ReportCall(new RpcReport("# collection serialization #", handlingTimeMicroseconds, true), handlingTimeMicroseconds, BytesWritten);
+        if (_reportCalls)
+        {
+            long handlingTimeMicroseconds = (long)Stopwatch.GetElapsedTime(requestStartTimestamp).TotalMicroseconds;
+            jsonRpcLocalStats.ReportCall(new RpcReport("# collection serialization #", handlingTimeMicroseconds, true), handlingTimeMicroseconds, BytesWritten);
+        }
 
         return ValueTask.CompletedTask;
     }
