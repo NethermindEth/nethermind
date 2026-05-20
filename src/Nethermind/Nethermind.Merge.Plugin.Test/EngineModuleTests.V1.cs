@@ -11,7 +11,9 @@ using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
+using Autofac;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Find;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
@@ -409,6 +411,23 @@ public partial class EngineModuleTests
 
         ResultWrapper<PayloadStatusV1> executePayloadResult = await rpc.engine_newPayloadV1(getPayloadResult);
         executePayloadResult.Data.Status.Should().Be(PayloadStatus.Invalid);
+    }
+
+    [Test]
+    public async Task executePayloadV1_invalid_hash_records_bad_block()
+    {
+        using MergeTestBlockchain chain = await CreateBlockchain();
+        IEngineRpcModule rpc = chain.EngineRpcModule;
+        ExecutionPayload payload = await BuildAndGetPayloadResult(chain, rpc);
+        long blockNumber = payload.BlockNumber;
+        payload.BlockHash = TestItem.KeccakC;
+
+        ResultWrapper<PayloadStatusV1> result = await rpc.engine_newPayloadV1(payload);
+
+        result.Data.Status.Should().Be(PayloadStatus.Invalid);
+        IBadBlockStore badBlockStore = chain.Container.Resolve<IBadBlockStore>();
+        badBlockStore.GetAll().Should().ContainSingle()
+            .Which.Number.Should().Be(blockNumber);
     }
 
     [Test]
