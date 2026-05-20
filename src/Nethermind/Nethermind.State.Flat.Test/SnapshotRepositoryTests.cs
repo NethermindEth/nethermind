@@ -45,16 +45,17 @@ public class SnapshotRepositoryTests
     }
 
     private Snapshot AddSnapshotToRepository(long fromBlock, long toBlock, bool compacted = false, bool withData = false)
+        => AddSnapshotToRepository(CreateStateId(fromBlock), CreateStateId(toBlock), compacted, withData);
+
+    private Snapshot AddSnapshotToRepository(StateId from, StateId to, bool compacted = false, bool withData = false)
     {
-        StateId from = CreateStateId(fromBlock);
-        StateId to = CreateStateId(toBlock);
         Snapshot snapshot = CreateSnapshot(from, to, withData);
 
         bool added = compacted
             ? _repository.TryAddCompactedSnapshot(snapshot)
             : _repository.TryAddSnapshot(snapshot);
 
-        Assert.That(added, Is.True, $"Failed to add snapshot {fromBlock}->{toBlock}");
+        Assert.That(added, Is.True, $"Failed to add snapshot {from}->{to}");
 
         if (!compacted)
         {
@@ -366,4 +367,131 @@ public class SnapshotRepositoryTests
     }
 
     #endregion
+
+    [Test]
+    public void AssembleSnapshots_LinearChain_ReturnsAscendingPathToTarget()
+    {
+        BuildSnapshotChain(0, 5);
+
+        using SnapshotPooledList assembled = _repository.AssembleSnapshots(CreateStateId(5), CreateStateId(0), 10);
+
+        Assert.That(assembled.Count, Is.EqualTo(5));
+        Assert.That(assembled[0].From, Is.EqualTo(CreateStateId(0)));
+        Assert.That(assembled[^1].To, Is.EqualTo(CreateStateId(5)));
+    }
+
+    [Test]
+    public void AssembleSnapshots_CompactedSnapshot_TakesWideHop()
+    {
+        AddSnapshotToRepository(0, 5, compacted: true);
+
+        using SnapshotPooledList assembled = _repository.AssembleSnapshots(CreateStateId(5), CreateStateId(0), 10);
+
+        Assert.That(assembled.Count, Is.EqualTo(1));
+        Assert.That(assembled[0].From, Is.EqualTo(CreateStateId(0)));
+        Assert.That(assembled[0].To, Is.EqualTo(CreateStateId(5)));
+    }
+
+    [Test]
+    public void AssembleSnapshots_CompactedOvershoot_FallsBackToBaseEdges()
+    {
+        BuildSnapshotChain(0, 5);
+        AddSnapshotToRepository(0, 5, compacted: true); // Compacted edge overshoots target 2
+
+        using SnapshotPooledList assembled = _repository.AssembleSnapshots(CreateStateId(5), CreateStateId(2), 10);
+
+        Assert.That(assembled.Count, Is.EqualTo(3));
+        Assert.That(assembled[0].From, Is.EqualTo(CreateStateId(2)));
+        Assert.That(assembled[^1].To, Is.EqualTo(CreateStateId(5)));
+    }
+
+    [Test]
+    public void AssembleSnapshots_BaseEqualsTarget_ReturnsEmpty()
+    {
+        BuildSnapshotChain(0, 3);
+
+        using SnapshotPooledList assembled = _repository.AssembleSnapshots(CreateStateId(3), CreateStateId(3), 10);
+
+        Assert.That(assembled.Count, Is.EqualTo(0));
+    }
+
+    [Test]
+    public void AssembleSnapshots_UnreachableTarget_ReturnsEmpty()
+    {
+        // Chain starts at block 1, so block 0 is not reachable.
+        for (long block = 1; block < 4; block++)
+        {
+            AddSnapshotToRepository(block, block + 1);
+        }
+
+        using SnapshotPooledList assembled = _repository.AssembleSnapshots(CreateStateId(4), CreateStateId(0), 10);
+
+        Assert.That(assembled.Count, Is.EqualTo(0));
+    }
+
+    [Test]
+    public void AssembleSnapshots_SelfReferencingSnapshot_ReturnsEmptyWithoutHanging()
+    {
+        // A snapshot whose From == To must not cause an infinite walk.
+        AddSnapshotToRepository(CreateStateId(1), CreateStateId(1));
+
+        using SnapshotPooledList assembled = _repository.AssembleSnapshots(CreateStateId(1), CreateStateId(0), 10);
+
+        Assert.That(assembled.Count, Is.EqualTo(0));
+    }
+
+    [Test]
+    public void RemoveNonCanonicalStates_LinearChain_RemovesNothing()
+    {
+        BuildSnapshotChain(0, 10);
+
+        _repository.RemoveNonCanonicalStates(CreateStateId(5));
+
+        for (long block = 1; block <= 10; block++)
+        {
+            Assert.That(_repository.HasState(CreateStateId(block)), Is.True, $"State {block} should be kept");
+        }
+    }
+
+    [Test]
+    public void RemoveNonCanonicalStates_OrphanedFork_PrunesUnreachableDescendantsAbovePersistedBlock()
+    {
+        // Common chain 0->1->2->3, then a canonical branch and a non-canonical branch both
+        // diverging at block 3. Persisting canonical block 5 orphans the non-canonical
+        // descendants above block 5 - they must be pruned so HasState stops reporting them.
+        BuildSnapshotChain(0, 3);
+        for (long block = 3; block < 7; block++)
+        {
+            AddSnapshotToRepository(CreateStateId(block), CreateStateId(block + 1));
+        }
+        for (long block = 3; block < 7; block++)
+        {
+            StateId from = block == 3 ? CreateStateId(3) : CreateStateId(block, rootByte: 1);
+            AddSnapshotToRepository(from, CreateStateId(block + 1, rootByte: 1));
+        }
+
+        _repository.RemoveNonCanonicalStates(CreateStateId(5));
+
+        Assert.That(_repository.HasState(CreateStateId(6, rootByte: 1)), Is.False, "orphan NC(6) should be pruned");
+        Assert.That(_repository.HasState(CreateStateId(7, rootByte: 1)), Is.False, "orphan NC(7) should be pruned");
+        Assert.That(_repository.HasState(CreateStateId(6)), Is.True, "canonical C(6) should be kept");
+        Assert.That(_repository.HasState(CreateStateId(7)), Is.True, "canonical C(7) should be kept");
+        Assert.That(_repository.HasState(CreateStateId(5, rootByte: 1)), Is.True, "NC(5) at the persisted block is left to RemoveStatesUntil");
+        Assert.That(_repository.HasState(CreateStateId(4, rootByte: 1)), Is.True, "NC(4) below the persisted block is left to RemoveStatesUntil");
+    }
+
+    [Test]
+    public void RemoveNonCanonicalStates_ForkAbovePersistedBlock_KeepsBothBranches()
+    {
+        // A fork that diverges above the persisted block is still reachable from the
+        // canonical state and must be kept.
+        BuildSnapshotChain(0, 6);
+        AddSnapshotToRepository(CreateStateId(6), CreateStateId(7));
+        AddSnapshotToRepository(CreateStateId(6), CreateStateId(7, rootByte: 1));
+
+        _repository.RemoveNonCanonicalStates(CreateStateId(3));
+
+        Assert.That(_repository.HasState(CreateStateId(7)), Is.True);
+        Assert.That(_repository.HasState(CreateStateId(7, rootByte: 1)), Is.True);
+    }
 }

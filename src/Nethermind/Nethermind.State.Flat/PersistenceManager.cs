@@ -160,6 +160,10 @@ public class PersistenceManager(
             if (snapshotToSave is null) return;
             using Snapshot _ = snapshotToSave; // dispose
 
+            // Prune non-canonical forks orphaned by this persist before committing it, so no reader
+            // can observe an advanced persisted state alongside now-unreachable in-memory snapshots.
+            snapshotRepository.RemoveNonCanonicalStates(snapshotToSave.To);
+
             // Add the canon snapshot
             PersistSnapshot(snapshotToSave);
             _currentPersistedStateId = snapshotToSave.To;
@@ -213,6 +217,9 @@ public class PersistenceManager(
             }
 
             using Snapshot _ = snapshotToPersist;
+
+            snapshotRepository.RemoveNonCanonicalStates(snapshotToPersist.To);
+
             PersistSnapshot(snapshotToPersist);
             _currentPersistedStateId = snapshotToPersist.To;
             currentPersistedState = _currentPersistedStateId;

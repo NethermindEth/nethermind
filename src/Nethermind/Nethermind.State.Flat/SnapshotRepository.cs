@@ -3,6 +3,7 @@
 
 using System.Collections.Concurrent;
 using System.Diagnostics.CodeAnalysis;
+using Collections.Pooled;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -30,16 +31,79 @@ public class SnapshotRepository(ILogManager logManager) : ISnapshotRepository
 
     public SnapshotPooledList AssembleSnapshots(in StateId baseBlock, in StateId targetState, int estimatedSize)
     {
-        SnapshotPooledList list = AssembleSnapshotsUntil(baseBlock, targetState.BlockNumber, estimatedSize);
-        if (list.Count > 0 && list[0].From.BlockNumber == targetState.BlockNumber && list[0].From != targetState)
+        if (baseBlock == targetState) return SnapshotPooledList.Empty();
+
+        // BFS over the snapshot graph: each StateId node has up to 2 edges, explored widest-jump
+        // first - the in-memory compacted snapshot, then the in-memory base snapshot. Finds a path
+        // from `baseBlock` back to exactly `targetState`. `visited` owns a lease on every leased
+        // snapshot; the winning path is re-leased before the finally releases all of them.
+        using ArrayPoolList<(Snapshot Snapshot, int ParentIndex)> visited = new(estimatedSize);
+        using PooledQueue<(StateId Current, int ParentIndex)> queue = new();
+        using PooledSet<StateId> seen = new();
+        try
         {
-            list.Dispose();
+            queue.Enqueue((baseBlock, -1));
+            seen.Add(baseBlock);
+            int winnerIndex = -1;
 
-            // Likely persisted a non-finalized block.
-            throw new InvalidOperationException($"Attempted to compile snapshots from {baseBlock} to {targetState} but target is not reachable from baseBlock");
+            while (queue.Count > 0 && winnerIndex < 0)
+            {
+                (StateId current, int parentIndex) = queue.Dequeue();
+
+                for (int edge = 0; edge < 2; edge++)
+                {
+                    Snapshot? snapshot;
+                    if (edge == 0)
+                    {
+                        if (!TryLeaseCompactedState(current, out snapshot)) continue;
+                    }
+                    else
+                    {
+                        if (!TryLeaseState(current, out snapshot)) continue;
+                    }
+
+                    StateId from = snapshot.From;
+
+                    // In-memory snapshots are persistence-granular, so an edge that lands below the
+                    // target cannot be part of a valid path; a cycle (incl. `from == current`) likewise.
+                    if (from.BlockNumber < targetState.BlockNumber || !seen.Add(from))
+                    {
+                        snapshot.Dispose();
+                        continue;
+                    }
+
+                    int index = visited.Count;
+                    visited.Add((snapshot, parentIndex));
+
+                    if (from == targetState)
+                    {
+                        winnerIndex = index;
+                        break;
+                    }
+
+                    queue.Enqueue((from, index));
+                }
+            }
+
+            if (winnerIndex < 0) return SnapshotPooledList.Empty();
+
+            // Walk winner -> root: yields ascending order directly (result[0].From == targetState,
+            // result[^1].To == baseBlock).
+            SnapshotPooledList result = new(estimatedSize);
+            for (int walk = winnerIndex; walk >= 0; walk = visited[walk].ParentIndex)
+            {
+                visited[walk].Snapshot.TryAcquire();
+                result.Add(visited[walk].Snapshot);
+            }
+            return result;
         }
-
-        return list;
+        finally
+        {
+            for (int i = 0; i < visited.Count; i++)
+            {
+                visited[i].Snapshot.Dispose();
+            }
+        }
     }
 
     public SnapshotPooledList AssembleSnapshotsUntil(in StateId baseBlock, long minBlockNumber, int estimatedSize)
@@ -220,5 +284,74 @@ public class SnapshotRepository(ILogManager logManager) : ISnapshotRepository
             RemoveAndReleaseCompactedKnownState(stateToRemove);
             RemoveAndReleaseKnownState(stateToRemove);
         }
+    }
+
+    public void RemoveNonCanonicalStates(in StateId canonicalStateId)
+    {
+        // A consistent point-in-time set of the states above the persisted block. Sourcing it from
+        // the locked `_sortedSnapshotStateIds` (rather than enumerating the lock-free `_snapshots`)
+        // guarantees that whenever a state is present so is its parent - `AddStateId` runs in block
+        // order - an invariant the disjoint-set below relies on.
+        using ArrayPoolList<StateId> aboveStates = GetStatesAbove(canonicalStateId.BlockNumber);
+        if (aboveStates.Count == 0) return;
+
+        // Disjoint-set over those states. Only the non-compacted snapshot of each state is unioned:
+        // its `From` is a single block back, so no edge crosses the persisted-block boundary and
+        // each fork stays in the component anchored at its own block-`persistBlockNumber` state.
+        // Compacted snapshots are excluded because they can span the boundary and would wrongly
+        // merge the canonical and non-canonical components.
+        using PooledDictionary<StateId, StateId> parent = new();
+
+        StateId Find(StateId node)
+        {
+            StateId root = parent[node];
+            while (root != node)
+            {
+                StateId grandparent = parent[root];
+                parent[node] = grandparent; // Path halving
+                node = root;
+                root = grandparent;
+            }
+            return root;
+        }
+
+        void Union(StateId a, StateId b)
+        {
+            parent.TryAdd(a, a);
+            parent.TryAdd(b, b);
+            StateId rootA = Find(a);
+            StateId rootB = Find(b);
+            if (rootA != rootB) parent[rootA] = rootB;
+        }
+
+        foreach (StateId stateId in aboveStates)
+        {
+            if (_snapshots.TryGetValue(stateId, out Snapshot? snapshot))
+            {
+                Union(snapshot.To, snapshot.From);
+            }
+        }
+
+        parent.TryAdd(canonicalStateId, canonicalStateId);
+        StateId canonicalRoot = Find(canonicalStateId);
+
+        foreach (StateId stateId in aboveStates)
+        {
+            // A state with no entry was never unioned (its snapshot vanished mid-pass); leave it.
+            if (parent.ContainsKey(stateId) && Find(stateId) != canonicalRoot)
+            {
+                RemoveAndReleaseCompactedKnownState(stateId);
+                RemoveAndReleaseKnownState(stateId);
+            }
+        }
+    }
+
+    private ArrayPoolList<StateId> GetStatesAbove(long blockNumber)
+    {
+        using ReadWriteLockBox<SortedSet<StateId>>.Lock _ = _sortedSnapshotStateIds.EnterReadLock(out SortedSet<StateId> sortedSnapshots);
+
+        return sortedSnapshots
+            .GetViewBetween(new StateId(blockNumber + 1, Hash256.Zero), new StateId(long.MaxValue, Keccak.MaxValue))
+            .ToPooledList(0);
     }
 }

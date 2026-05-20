@@ -287,25 +287,15 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
             }
 
 
-            if (snapshots.Count == 0)
+            // The BFS assembly returns a non-empty list only when it reaches the persisted state
+            // exactly. An empty list while the target is not already the persisted state means the
+            // chain was removed concurrently (or is not yet complete) - retry until the deadline.
+            if (snapshots.Count == 0 && persistenceReader.CurrentState != baseBlock)
             {
-                if (persistenceReader.CurrentState != baseBlock)
-                {
-                    persistenceReader.Dispose();
-                    throw new InvalidOperationException($"Unable to gather snapshots for state {baseBlock}.");
-                }
-            }
-            else
-            {
-                if (snapshots[0].From != persistenceReader.CurrentState)
-                {
-                    // Cannot assemble snapshot that reaches the persisted state snapshot. It could be that the snapshots was removed
-                    // concurrently. We will retry.
-                    snapshots.Dispose();
-                    persistenceReader.Dispose();
-                    attempt++;
-                    continue;
-                }
+                snapshots.Dispose();
+                persistenceReader.Dispose();
+                attempt++;
+                continue;
             }
 
             if (_logger.IsTrace) _logger.Trace($"Gathered {baseBlock}. Got {snapshots.Count} known states, Reader state: {persistenceReader.CurrentState}. Persistence state: {_persistenceManager.GetCurrentPersistedStateId()}");
