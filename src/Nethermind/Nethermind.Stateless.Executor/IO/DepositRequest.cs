@@ -11,14 +11,14 @@ namespace Nethermind.Stateless.Execution.IO;
 public partial struct DepositRequest
 {
     [SszVector(48)]
-    public byte[] PublicKey { get; set; }
+    public ReadOnlyMemory<byte> PublicKey { get; set; }
 
     public SszBytes32 WithdrawalCredentials { get; set; }
 
     public ulong Amount { get; set; }
 
     [SszVector(96)]
-    public byte[] Signature { get; set; }
+    public ReadOnlyMemory<byte> Signature { get; set; }
 
     public ulong Index { get; set; }
 
@@ -30,15 +30,16 @@ public partial struct DepositRequest
         ArgumentOutOfRangeException.ThrowIfNotEqual(
             request.RequestData?.Length ?? 0, ExecutionRequestExtensions.DepositRequestsBytesSize, nameof(request.RequestData));
 
-        ReadOnlySpan<byte> buffer = request.RequestData;
+        ReadOnlyMemory<byte> buffer = request.RequestData;
+        ReadOnlySpan<byte> span = buffer.Span;
 
         return new()
         {
-            PublicKey = buffer[0..48].ToArray(),
-            WithdrawalCredentials = new SszBytes32(buffer[48..80]),
-            Amount = BinaryPrimitives.ReadUInt64LittleEndian(buffer[80..88]),
-            Signature = buffer[88..184].ToArray(),
-            Index = BinaryPrimitives.ReadUInt64LittleEndian(buffer[184..192])
+            PublicKey = buffer[0..48],
+            WithdrawalCredentials = new SszBytes32(span[48..80]),
+            Amount = BinaryPrimitives.ReadUInt64LittleEndian(span[80..88]),
+            Signature = buffer[88..184],
+            Index = BinaryPrimitives.ReadUInt64LittleEndian(span[184..192])
         };
     }
 
@@ -47,10 +48,10 @@ public partial struct DepositRequest
         byte[] result = new byte[ExecutionRequestExtensions.DepositRequestsBytesSize];
         Span<byte> buffer = result;
 
-        PublicKey.CopyTo(buffer); // offset = 0
+        PublicKey.Span.CopyTo(buffer); // offset = 0
         WithdrawalCredentials.Hash.Bytes.CopyTo(buffer[48..]); // offset = 48
         BinaryPrimitives.WriteUInt64LittleEndian(buffer[80..], Amount); // offset = 48 + 32
-        Signature.CopyTo(buffer[88..]); // offset = 48 + 32 + 8
+        Signature.Span.CopyTo(buffer[88..]); // offset = 48 + 32 + 8
         BinaryPrimitives.WriteUInt64LittleEndian(buffer[184..], Index); // offset = 48 + 32 + 8 + 96
 
         return new()

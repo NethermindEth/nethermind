@@ -13,10 +13,10 @@ public partial struct ConsolidationRequest
     public Address SourceAddress { get; set; }
 
     [SszVector(48)]
-    public byte[] ValidatorPublicKey { get; set; }
+    public ReadOnlyMemory<byte> ValidatorPublicKey { get; set; }
 
     [SszVector(48)]
-    public byte[] TargetPublicKey { get; set; }
+    public ReadOnlyMemory<byte> TargetPublicKey { get; set; }
 
     public static ConsolidationRequest From(ExecutionRequest request)
     {
@@ -26,13 +26,13 @@ public partial struct ConsolidationRequest
         ArgumentOutOfRangeException.ThrowIfNotEqual(
             request.RequestData?.Length ?? 0, ExecutionRequestExtensions.ConsolidationRequestsBytesSize, nameof(request.RequestData));
 
-        ReadOnlySpan<byte> buffer = request.RequestData;
+        ReadOnlyMemory<byte> buffer = request.RequestData;
 
         return new()
         {
-            SourceAddress = new(buffer[0..20]),
-            ValidatorPublicKey = buffer[20..68].ToArray(),
-            TargetPublicKey = buffer[68..116].ToArray()
+            SourceAddress = new(buffer.Span[0..20]),
+            ValidatorPublicKey = buffer[20..68],
+            TargetPublicKey = buffer[68..116]
         };
     }
 
@@ -42,8 +42,8 @@ public partial struct ConsolidationRequest
         Span<byte> buffer = result;
 
         SourceAddress.Bytes.CopyTo(buffer); // offset = 0
-        ValidatorPublicKey.CopyTo(buffer[20..]); // offset += 20
-        TargetPublicKey.CopyTo(buffer[68..]); // offset += 48
+        ValidatorPublicKey.Span.CopyTo(buffer[20..]); // offset = 20
+        TargetPublicKey.Span.CopyTo(buffer[68..]); // offset = 20 + 48
 
         return new()
         {

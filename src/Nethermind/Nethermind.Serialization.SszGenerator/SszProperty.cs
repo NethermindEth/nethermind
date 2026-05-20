@@ -23,11 +23,8 @@ class SszProperty
             IsArrayProperty = prop.Type is IArrayTypeSymbol,
             IsSpanLikeProperty = SszTypeHelpers.IsSpanType(prop.Type),
             IsReadOnlySpanProperty = SszTypeHelpers.IsReadOnlySpanType(prop.Type),
-            // The declared nullability of the property at its source site. Used to decide whether
-            // the generator must guard the value against null at static-field encode, offset
-            // computation, and merkleize call sites — those don't reach the variable-length
-            // encode null-guard pattern but still flow through static codec methods whose
-            // ISszCodec<T> contract is non-nullable.
+            IsMemoryLikeProperty = SszTypeHelpers.IsMemoryType(prop.Type),
+            IsReadOnlyMemoryProperty = SszTypeHelpers.IsReadOnlyMemoryType(prop.Type),
             IsNullable = prop.Type.NullableAnnotation == NullableAnnotation.Annotated,
         };
 
@@ -70,6 +67,11 @@ class SszProperty
             return ((INamedTypeSymbol)typeSymbol).TypeArguments[0];
         }
 
+        if (SszTypeHelpers.IsMemoryType(typeSymbol))
+        {
+            return ((INamedTypeSymbol)typeSymbol).TypeArguments[0];
+        }
+
         INamedTypeSymbol? iListOfT = compilation.GetTypeByMetadataName("System.Collections.Generic.IList`1");
         INamedTypeSymbol? enumerable = typeSymbol.AllInterfaces.FirstOrDefault(i => SymbolEqualityComparer.Default.Equals(i.OriginalDefinition, iListOfT));
         if (iListOfT != null && enumerable is not null)
@@ -92,6 +94,8 @@ class SszProperty
     public bool IsArrayProperty { get; init; }
     public bool IsSpanLikeProperty { get; init; }
     public bool IsReadOnlySpanProperty { get; init; }
+    public bool IsMemoryLikeProperty { get; init; }
+    public bool IsReadOnlyMemoryProperty { get; init; }
     public bool IsNullable { get; init; }
     public int? FieldIndex { get; set; }
     public byte? SelectorValue { get; set; }

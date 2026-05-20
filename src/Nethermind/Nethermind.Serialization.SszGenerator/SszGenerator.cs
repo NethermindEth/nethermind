@@ -493,10 +493,16 @@ internal static class SszCodecHelpers
         };
 
     private static string EncodeValueExpression(SszProperty property, string expression) =>
-        property.Kind is Kind.BitList or Kind.ProgressiveBitList ? $"{expression} ?? new BitArray(0)" : expression;
+        property.Kind switch
+        {
+            Kind.BitList or Kind.ProgressiveBitList => $"{expression} ?? new BitArray(0)",
+            _ when property.IsMemoryLikeProperty && property.IsCollection => $"{expression}.Span",
+            _ => expression,
+        };
 
     private static string SpanExpression(SszProperty property, string expression) =>
         property.IsSpanLikeProperty ? expression
+            : property.IsMemoryLikeProperty ? $"{expression}.Span"
             : property.IsArrayProperty ? $"{expression}.AsSpan()"
             : $"CollectionsMarshal.AsSpan({expression})";
 
@@ -516,19 +522,20 @@ internal static class SszCodecHelpers
     {
         string destSpan = $"data.Slice({staticOffset}, {property.StaticLength})";
         string valueExpr = $"{containerExpr}.{property.Name}";
+        string encodedValueExpr = EncodeValueExpression(property, valueExpr);
 
         string statement;
         if (property.Type.HasCustomInlineCodec)
         {
             statement = property.Type.CustomEncodeTemplate!
                 .Replace("{0}", destSpan)
-                .Replace("{1}", valueExpr);
+                .Replace("{1}", encodedValueExpr);
         }
         else
         {
             statement = property.HandledByStd
-                ? $"SszLib.Encode({destSpan}, {valueExpr});"
-                : $"{property.Type.StaticMemberAccess}.Encode({destSpan}, {valueExpr});";
+                ? $"SszLib.Encode({destSpan}, {encodedValueExpr});"
+                : $"{property.Type.StaticMemberAccess}.Encode({destSpan}, {encodedValueExpr});";
         }
 
         // Nullable reference-typed static fields skip the write when null; the destination
@@ -588,8 +595,10 @@ internal static class SszCodecHelpers
         string assignment2 = property switch
         {
             { IsReadOnlySpanProperty: true } => $"container.{property.Name} = {variableName};",
+            { IsReadOnlyMemoryProperty: true } => $"container.{property.Name} = {variableName}.ToArray();",
             { IsSpanLikeProperty: true, HandledByStd: true } => $"container.{property.Name} = {variableName}.ToArray();",
             { IsSpanLikeProperty: true } => $"container.{property.Name} = {variableName};",
+            { IsMemoryLikeProperty: true } => $"container.{property.Name} = {variableName}.ToArray();",
             { IsCollection: true } => $"container.{property.Name} = [ ..{variableName}];",
             _ => $"container.{property.Name} = {variableName};",
         };
@@ -720,7 +729,7 @@ internal static class SszCodecHelpers
         return $"{(property.HandledByStd ? "SszLib.Encode" : $"{property.Type.StaticMemberAccess}.Encode")}({arguments});";
     }
 
-    private static bool RequiresNullGuard(SszProperty property) => !(property.Type.IsStruct || property.IsSpanLikeProperty || property.Kind is Kind.BitList or Kind.ProgressiveBitList);
+    private static bool RequiresNullGuard(SszProperty property) => !(property.Type.IsStruct || property.IsSpanLikeProperty || property.IsMemoryLikeProperty || property.Kind is Kind.BitList or Kind.ProgressiveBitList);
 
     private static string UsingsBlock(SszType decl, List<SszType> foundTypes) =>
         string.Join("\n", foundTypes

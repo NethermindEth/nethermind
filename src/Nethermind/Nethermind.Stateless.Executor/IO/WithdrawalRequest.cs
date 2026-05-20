@@ -14,7 +14,7 @@ public partial struct WithdrawalRequest
     public Address SourceAddress { get; set; }
 
     [SszVector(48)]
-    public byte[] ValidatorPublicKey { get; set; }
+    public ReadOnlyMemory<byte> ValidatorPublicKey { get; set; }
 
     public ulong Amount { get; set; }
 
@@ -26,13 +26,14 @@ public partial struct WithdrawalRequest
         ArgumentOutOfRangeException.ThrowIfNotEqual(
             request.RequestData?.Length ?? 0, ExecutionRequestExtensions.WithdrawalRequestsBytesSize, nameof(request.RequestData));
 
-        ReadOnlySpan<byte> buffer = request.RequestData;
+        ReadOnlyMemory<byte> buffer = request.RequestData;
+        ReadOnlySpan<byte> span = buffer.Span;
 
         return new()
         {
-            SourceAddress = new(buffer[0..20]),
-            ValidatorPublicKey = buffer[20..68].ToArray(),
-            Amount = BinaryPrimitives.ReadUInt64LittleEndian(buffer[68..76])
+            SourceAddress = new(span[0..20]),
+            ValidatorPublicKey = buffer[20..68],
+            Amount = BinaryPrimitives.ReadUInt64LittleEndian(span[68..76])
         };
     }
 
@@ -42,8 +43,8 @@ public partial struct WithdrawalRequest
         Span<byte> buffer = result;
 
         SourceAddress.Bytes.CopyTo(buffer); // offset = 0
-        ValidatorPublicKey.CopyTo(buffer[20..]); // offset += 20
-        BinaryPrimitives.WriteUInt64LittleEndian(buffer[68..], Amount); // offset += 48
+        ValidatorPublicKey.Span.CopyTo(buffer[20..]); // offset = 20
+        BinaryPrimitives.WriteUInt64LittleEndian(buffer[68..], Amount); // offset = 20 + 48
 
         return new()
         {
