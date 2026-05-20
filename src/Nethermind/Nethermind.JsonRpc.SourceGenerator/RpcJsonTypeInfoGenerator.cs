@@ -28,32 +28,33 @@ public sealed class RpcJsonTypeInfoGenerator : IIncrementalGenerator
 
     public void Initialize(IncrementalGeneratorInitializationContext context)
     {
-        IncrementalValuesProvider<ImmutableArray<string>> methodTypes = context.SyntaxProvider
+        IncrementalValuesProvider<ImmutableArray<string>> rpcTypes = context.SyntaxProvider
             .CreateSyntaxProvider(
-                predicate: static (node, _) => node is MethodDeclarationSyntax,
+                predicate: static (node, _) => node is TypeDeclarationSyntax,
                 transform: static (context, cancellationToken) => GetRpcJsonTypes(context, cancellationToken));
 
-        IncrementalValueProvider<ImmutableArray<ImmutableArray<string>>> collectedTypes = methodTypes.Collect();
+        IncrementalValueProvider<ImmutableArray<ImmutableArray<string>>> collectedTypes = rpcTypes.Collect();
         context.RegisterSourceOutput(collectedTypes, static (context, types) => Generate(context, types));
     }
 
     private static ImmutableArray<string> GetRpcJsonTypes(GeneratorSyntaxContext context, CancellationToken cancellationToken)
     {
-        MethodDeclarationSyntax methodDeclaration = (MethodDeclarationSyntax)context.Node;
-        if (context.SemanticModel.GetDeclaredSymbol(methodDeclaration, cancellationToken) is not IMethodSymbol method ||
-            method.IsStatic ||
-            method.MethodKind != MethodKind.Ordinary ||
-            method.DeclaredAccessibility != Accessibility.Public ||
-            !IsRpcModule(method.ContainingType))
+        TypeDeclarationSyntax typeDeclaration = (TypeDeclarationSyntax)context.Node;
+        if (context.SemanticModel.GetDeclaredSymbol(typeDeclaration, cancellationToken) is not INamedTypeSymbol type ||
+            !IsRpcModule(type))
         {
             return ImmutableArray<string>.Empty;
         }
 
         ImmutableArray<string>.Builder types = ImmutableArray.CreateBuilder<string>();
-        AddReturnPayloadTypes(method.ReturnType, types);
-        for (int i = 0; i < method.Parameters.Length; i++)
+        AddMethodTypes(type, types);
+        for (int i = 0; i < type.AllInterfaces.Length; i++)
         {
-            AddJsonType(method.Parameters[i].Type, types);
+            INamedTypeSymbol interfaceType = type.AllInterfaces[i];
+            if (IsRpcModule(interfaceType))
+            {
+                AddMethodTypes(interfaceType, types);
+            }
         }
 
         return types.ToImmutable();
@@ -75,6 +76,29 @@ public sealed class RpcJsonTypeInfoGenerator : IIncrementalGenerator
         }
 
         return IsNamedType(type, JsonRpcModulesNamespace, "IRpcModule");
+    }
+
+    private static void AddMethodTypes(INamedTypeSymbol type, ImmutableArray<string>.Builder types)
+    {
+        ImmutableArray<ISymbol> members = type.GetMembers();
+        for (int i = 0; i < members.Length; i++)
+        {
+            if (members[i] is not IMethodSymbol method ||
+                method.IsStatic ||
+                method.IsGenericMethod ||
+                method.IsImplicitlyDeclared ||
+                method.MethodKind != MethodKind.Ordinary ||
+                method.DeclaredAccessibility != Accessibility.Public)
+            {
+                continue;
+            }
+
+            AddReturnPayloadTypes(method.ReturnType, types);
+            for (int j = 0; j < method.Parameters.Length; j++)
+            {
+                AddJsonType(method.Parameters[j].Type, types);
+            }
+        }
     }
 
     private static void AddReturnPayloadTypes(ITypeSymbol returnType, ImmutableArray<string>.Builder types)

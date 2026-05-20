@@ -2,7 +2,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.IO.Abstractions;
+using System.Reflection;
 using System.Threading.Tasks;
 using Autofac;
 using FluentAssertions;
@@ -246,6 +248,25 @@ public class RpcModuleProviderTests
     }
 
     [Test]
+    public void Generated_rpc_type_info_covers_json_rpc_assembly_modules()
+    {
+        List<string> missing = [];
+        Type[] assemblyTypes = typeof(IEthRpcModule).Assembly.GetTypes();
+        for (int i = 0; i < assemblyTypes.Length; i++)
+        {
+            Type moduleType = assemblyTypes[i];
+            if (!typeof(IRpcModule).IsAssignableFrom(moduleType))
+            {
+                continue;
+            }
+
+            AddMissingModulePayloadTypes(moduleType, missing);
+        }
+
+        missing.Should().BeEmpty();
+    }
+
+    [Test]
     public void Can_register_via_constructor()
     {
         JsonRpcConfig jsonRpcConfig = new();
@@ -301,6 +322,95 @@ public class RpcModuleProviderTests
         _moduleProvider = new RpcModuleProvider(_fileSystem, config, new EthereumJsonSerializer(), LimboLogs.Instance);
         _moduleProvider.Register(new TestModulePool<HotEngineRpcModule>(new HotEngineRpcModule()));
         _moduleProvider.Register(new TestModulePool<HotEthRpcModule>(new HotEthRpcModule()));
+    }
+
+    private static void AddMissingModulePayloadTypes(Type moduleType, List<string> missing)
+    {
+        AddMissingMethodPayloadTypes(moduleType.GetMethods(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly), missing);
+
+        Type[] interfaceTypes = moduleType.GetInterfaces();
+        for (int i = 0; i < interfaceTypes.Length; i++)
+        {
+            Type interfaceType = interfaceTypes[i];
+            if (typeof(IRpcModule).IsAssignableFrom(interfaceType))
+            {
+                AddMissingMethodPayloadTypes(interfaceType.GetMethods(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly), missing);
+            }
+        }
+    }
+
+    private static void AddMissingMethodPayloadTypes(MethodInfo[] methods, List<string> missing)
+    {
+        for (int i = 0; i < methods.Length; i++)
+        {
+            MethodInfo method = methods[i];
+            if (method.IsStatic || method.IsSpecialName || method.ContainsGenericParameters)
+            {
+                continue;
+            }
+
+            AddMissingResultPayloadTypes(method, missing);
+            ParameterInfo[] parameters = method.GetParameters();
+            for (int j = 0; j < parameters.Length; j++)
+            {
+                AddMissingPayloadType(method, $"parameter {parameters[j].Name}", parameters[j].ParameterType, missing);
+            }
+        }
+    }
+
+    private static void AddMissingResultPayloadTypes(MethodInfo method, List<string> missing)
+    {
+        Type resultType = UnwrapTaskLike(method.ReturnType);
+        if (!resultType.IsGenericType)
+        {
+            return;
+        }
+
+        Type genericTypeDefinition = resultType.GetGenericTypeDefinition();
+        if (genericTypeDefinition == typeof(ResultWrapper<>))
+        {
+            AddMissingPayloadType(method, "result", resultType.GetGenericArguments()[0], missing);
+            return;
+        }
+
+        if (genericTypeDefinition == typeof(ResultWrapper<,>))
+        {
+            Type[] genericArguments = resultType.GetGenericArguments();
+            AddMissingPayloadType(method, "result", genericArguments[0], missing);
+            AddMissingPayloadType(method, "error data", genericArguments[1], missing);
+        }
+    }
+
+    private static Type UnwrapTaskLike(Type type)
+    {
+        if (type.IsGenericType)
+        {
+            Type genericTypeDefinition = type.GetGenericTypeDefinition();
+            if (genericTypeDefinition == typeof(Task<>) || genericTypeDefinition == typeof(ValueTask<>))
+            {
+                return type.GetGenericArguments()[0];
+            }
+        }
+
+        return type;
+    }
+
+    private static void AddMissingPayloadType(MethodInfo method, string role, Type type, List<string> missing)
+    {
+        if (type.IsByRef)
+        {
+            type = type.GetElementType()!;
+        }
+
+        if (type.ContainsGenericParameters || type == typeof(void))
+        {
+            return;
+        }
+
+        if (!GeneratedRpcTypeInfo.TryGet(type, out _))
+        {
+            missing.Add($"{method.DeclaringType?.FullName}.{method.Name} {role}: {type.FullName ?? type.Name}");
+        }
     }
 
     [RpcModule(ModuleType.Engine)]
