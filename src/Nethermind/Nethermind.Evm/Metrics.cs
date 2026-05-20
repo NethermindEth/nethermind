@@ -21,13 +21,20 @@ namespace Nethermind.Evm;
 /// (account/storage/code reads + writes, EIP-7702 delegation set/clear, block timing breakdown).
 /// </summary>
 /// <remarks>
-/// Default builds compile with metrics on (<see cref="IsActive"/> = <c>true</c>). Define the
-/// <c>NETHERMIND_NO_EXECUTION_METRICS</c> build symbol to flip it to <c>false</c>; the JIT
-/// then folds every <c>if (!ExecutionMetricsFlag.IsActive) return;</c> guard at the head of
-/// the gated <see cref="Metrics"/> methods to a constant <c>true</c> early-return, and with
+/// <para>This is a compile-time gate, deliberately not tied to runtime configuration. Default
+/// builds run with metrics on — every gated <see cref="Metrics"/> Increment* call fires its
+/// underlying <see cref="Interlocked"/> op (~10–15 ns on x64), <b>regardless of</b>
+/// <see cref="BlocksConfig.SlowBlockThresholdMs"/>. The threshold gates slow-block JSON
+/// emission only, not the counter increments — which are also surfaced via Prometheus
+/// independent of the slow-block feature.</para>
+/// <para>To eliminate the counter overhead entirely (e.g. for performance-critical benchmark
+/// builds), rebuild with the <c>NETHERMIND_NO_EXECUTION_METRICS</c> symbol defined: the JIT
+/// folds <see cref="IsActive"/> to <c>false</c>, every <c>if (!ExecutionMetricsFlag.IsActive)
+/// return;</c> guard becomes an unconditional early return, and with
 /// <c>AggressiveInlining</c> the empty bodies are inlined into callers — eliminating both
-/// the call and the underlying <see cref="Interlocked"/> writes.
-/// Pre-existing counters (Calls, SLoad/SStore, CodeDbCache, …) are not gated by this flag.
+/// the call and the atomic write.</para>
+/// <para>Pre-existing counters (Calls, SLoad/SStore, CodeDbCache, …) are not gated by this
+/// flag; their cost is unaffected by the symbol.</para>
 /// </remarks>
 public readonly struct ExecutionMetricsFlag : IFlag
 {
@@ -300,7 +307,12 @@ public class Metrics
         Interlocked.Increment(ref IsBlockProcessingThread ? ref _mainEip7702DelegationsCleared : ref _otherEip7702DelegationsCleared);
     }
 
-    [Description("Time spent on state hashing/merkleization (ticks). Sum of storage merkle + state root.")]
+    // Timing counters below accumulate elapsed <see cref="TimeSpan"/> ticks (100 ns), as produced
+    // by <see cref="Stopwatch.GetElapsedTime"/>.<see cref="TimeSpan.Ticks"/> — NOT raw
+    // <see cref="Stopwatch"/> timestamp ticks. Consumers convert to ms by dividing by
+    // <see cref="TimeSpan.TicksPerMillisecond"/>.
+
+    [Description("Time spent on state hashing/merkleization (TimeSpan ticks). Sum of storage merkle + state root.")]
     public static long StateHashTime => _mainStateHashTime + _otherStateHashTime;
     private static long _mainStateHashTime;
     private static long _otherStateHashTime;

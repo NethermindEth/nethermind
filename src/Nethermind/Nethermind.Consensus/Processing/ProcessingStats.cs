@@ -60,6 +60,13 @@ namespace Nethermind.Consensus.Processing
         /// </summary>
         private readonly long _slowBlockPerTxThresholdMs;
 
+        /// <summary>
+        /// Whether <see cref="BlocksConfig.ParallelExecution"/> was enabled for this node. Emitted in
+        /// the slow-block JSON so cross-client consumers can normalise EVM/state counter values
+        /// (these aggregate across parallel workers and inflate relative to single-threaded clients).
+        /// </summary>
+        private readonly bool _parallelExecution;
+
         private bool _showBlobs;
         private long _lastElapsedRunningMicroseconds;
         private long _lastReportMs;
@@ -115,7 +122,8 @@ namespace Nethermind.Consensus.Processing
         public ProcessingStats(IStateReader stateReader, ILogManager logManager, IBlocksConfig blocksConfig)
             : this(stateReader, logManager.GetClassLogger<ProcessingStats>(), logManager.GetLogger("SlowBlocks"),
                    slowBlockThresholdMs: blocksConfig.SlowBlockThresholdMs,
-                   slowBlockPerTxThresholdMs: blocksConfig.SlowBlockPerTxThresholdMs)
+                   slowBlockPerTxThresholdMs: blocksConfig.SlowBlockPerTxThresholdMs,
+                   parallelExecution: blocksConfig.ParallelExecution)
         {
         }
 
@@ -132,8 +140,10 @@ namespace Nethermind.Consensus.Processing
         /// <see cref="BlocksConfig.SlowBlockThresholdMs"/>; callers that need slow-block JSON
         /// emission must pass an explicit non-negative value (typical: <c>1000</c> for the
         /// production "log blocks slower than 1s" threshold, <c>0</c> to log every block).
+        /// <paramref name="parallelExecution"/> is surfaced in the slow-block JSON so cross-client
+        /// analysers can normalise opcode/state counter values that aggregate across parallel workers.
         /// </remarks>
-        public ProcessingStats(IStateReader stateReader, ILogger logger, ILogger? slowBlockLogger = null, long slowBlockThresholdMs = -1, long slowBlockPerTxThresholdMs = -1)
+        public ProcessingStats(IStateReader stateReader, ILogger logger, ILogger? slowBlockLogger = null, long slowBlockThresholdMs = -1, long slowBlockPerTxThresholdMs = -1, bool parallelExecution = false)
         {
             _executeFromThreadPool = ExecuteFromThreadPool;
 
@@ -142,6 +152,7 @@ namespace Nethermind.Consensus.Processing
             _slowBlockLogger = slowBlockLogger ?? logger;
             _slowBlockThresholdMs = slowBlockThresholdMs;
             _slowBlockPerTxThresholdMs = slowBlockPerTxThresholdMs;
+            _parallelExecution = parallelExecution;
 
             // the line below just to avoid compilation errors
             if (_logger.IsTrace) _logger.Trace($"Processing Stats in debug mode?: {_logger.IsDebug}");
@@ -615,22 +626,29 @@ namespace Nethermind.Consensus.Processing
                 double totalMs = data.ProcessingMicroseconds / 1000.0;
                 // execution_ms: original definition (total - state_hash - commit) for backwards compat
                 double executionMs = totalMs - stateHashMs - commitMs;
-                if (executionMs < 0) executionMs = totalMs;
+                if (executionMs < 0)
+                {
+                    // Indicates the per-phase counters (DeltaStateHashTime / DeltaCommitTime)
+                    // are larger than the block's wall-clock — should not happen on a single
+                    // block-processing thread. Surface it for diagnosis without failing the log.
+                    if (_logger.IsDebug) _logger.Debug($"Slow block {block.Number}: executionMs clamped to total ({totalMs:F3}ms): stateHashMs={stateHashMs:F3} commitMs={commitMs:F3}");
+                    executionMs = totalMs;
+                }
                 // evm_ms: pure EVM execution (excludes blooms + receipts root as well)
                 double evmMs = totalMs - stateHashMs - commitMs - bloomsMs - receiptsRootMs;
-                if (evmMs < 0) evmMs = executionMs;
+                if (evmMs < 0)
+                {
+                    if (_logger.IsDebug) _logger.Debug($"Slow block {block.Number}: evmMs clamped to executionMs ({executionMs:F3}ms): stateHashMs={stateHashMs:F3} commitMs={commitMs:F3} bloomsMs={bloomsMs:F3} receiptsRootMs={receiptsRootMs:F3}");
+                    evmMs = executionMs;
+                }
 
                 double accountHitRate = CalculateHitRate(data.DeltaAccountCacheHits, data.DeltaAccountCacheMisses);
                 double storageHitRate = CalculateHitRate(data.DeltaStorageCacheHits, data.DeltaStorageCacheMisses);
                 double codeHitRate = CalculateHitRate(data.DeltaCodeCacheHits, data.DeltaCodeCacheMisses);
 
-                // Compute blob count on the ThreadPool thread (not block-processing thread)
-                int blobCount = 0;
+                // Blob count was already summed in UpdateStats on the block-processing thread
+                // (BlockData.BlobCount); reuse rather than re-walking transactions here.
                 Transaction[] txs = block.Transactions;
-                for (int i = 0; i < txs.Length; i++)
-                {
-                    blobCount += txs[i].GetBlobCount();
-                }
 
                 ArrayBufferWriter<byte> buffer = new(1024);
                 using (Utf8JsonWriter writer = new(buffer))
@@ -638,6 +656,9 @@ namespace Nethermind.Consensus.Processing
                     writer.WriteStartObject();
                     writer.WriteString("level", "warn");
                     writer.WriteString("msg", "Slow block");
+                    // Top-level flag so cross-client analysers can normalise EVM/state counters,
+                    // which sum across parallel workers when this is true.
+                    writer.WriteBoolean("parallel_execution", _parallelExecution);
 
                     writer.WriteStartObject("block");
                     writer.WriteNumber("number", block.Number);
@@ -645,7 +666,7 @@ namespace Nethermind.Consensus.Processing
                     writer.WriteNumber("gas_used", block.GasUsed);
                     writer.WriteNumber("gas_limit", block.GasLimit);
                     writer.WriteNumber("tx_count", block.Transactions.Length);
-                    writer.WriteNumber("blob_count", blobCount);
+                    writer.WriteNumber("blob_count", data.BlobCount);
                     writer.WriteEndObject();
 
                     writer.WriteStartObject("timing");
@@ -789,6 +810,35 @@ namespace Nethermind.Consensus.Processing
                 data.GasUsed = 0;
                 data.TransactionCount = 0;
                 data.BlobCount = 0;
+
+                // Reset the slow-block Delta* fields too. They're only written when the threshold
+                // is enabled (UpdateStats line ~270), so if a pooled instance was returned without
+                // them being set (threshold flipped off mid-process) the next reuse would otherwise
+                // see stale values.
+                data.DeltaAccountReads = 0;
+                data.DeltaStorageReads = 0;
+                data.DeltaCodeReads = 0;
+                data.DeltaCodeBytesRead = 0;
+                data.DeltaAccountWrites = 0;
+                data.DeltaAccountDeleted = 0;
+                data.DeltaStorageWrites = 0;
+                data.DeltaStorageDeleted = 0;
+                data.DeltaCodeWrites = 0;
+                data.DeltaCodeBytesWritten = 0;
+                data.DeltaStateHashTime = 0;
+                data.DeltaCommitTime = 0;
+                data.DeltaAccountCacheHits = 0;
+                data.DeltaAccountCacheMisses = 0;
+                data.DeltaStorageCacheHits = 0;
+                data.DeltaStorageCacheMisses = 0;
+                data.DeltaCodeCacheHits = 0;
+                data.DeltaCodeCacheMisses = 0;
+                data.DeltaEip7702DelegationsSet = 0;
+                data.DeltaEip7702DelegationsCleared = 0;
+                data.DeltaStorageMerkleTime = 0;
+                data.DeltaStateRootTime = 0;
+                data.DeltaBloomsTime = 0;
+                data.DeltaReceiptsRootTime = 0;
 
                 return true;
             }

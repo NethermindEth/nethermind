@@ -13,6 +13,7 @@ public record SlowBlockLogEntry
 {
     [JsonPropertyName("level")] public string Level { get; init; } = string.Empty;
     [JsonPropertyName("msg")] public string Msg { get; init; } = string.Empty;
+    [JsonPropertyName("parallel_execution")] public bool ParallelExecution { get; init; }
     [JsonPropertyName("block")] public BlockInfo Block { get; init; } = new();
     [JsonPropertyName("timing")] public TimingInfo Timing { get; init; } = new();
     [JsonPropertyName("throughput")] public ThroughputInfo Throughput { get; init; } = new();

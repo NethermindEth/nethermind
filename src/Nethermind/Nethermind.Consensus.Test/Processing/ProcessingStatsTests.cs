@@ -120,6 +120,9 @@ public class ProcessingStatsTests
     [
         ("level", JsonValueKind.String),
         ("msg", JsonValueKind.String),
+        // parallel_execution emits as a JSON boolean (true or false); the schema validator below
+        // accepts either via SchemaKind.Boolean which maps to True|False.
+        ("parallel_execution", JsonValueKind.False),
         ("block.number", JsonValueKind.Number),
         ("block.hash", JsonValueKind.String),
         ("block.gas_used", JsonValueKind.Number),

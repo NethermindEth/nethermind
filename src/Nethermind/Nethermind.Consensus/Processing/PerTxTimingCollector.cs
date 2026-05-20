@@ -11,10 +11,22 @@ namespace Nethermind.Consensus.Processing;
 /// Enabled by <see cref="ProcessingStats"/> when SlowBlockPerTxThresholdMs >= 0.
 /// The tx executor calls <see cref="Prepare"/> and <see cref="Record"/>;
 /// ProcessingStats snapshots via <see cref="Snapshot"/> after block execution.
-/// State is shared across threads so parallel tx workers can record into the
-/// list prepared on the block-processing thread; assumes a single block is
-/// being timing-collected at any moment.
 /// </summary>
+/// <remarks>
+/// <para><b>Threading contract.</b> State is shared across threads (no <c>[ThreadStatic]</c>):
+/// <see cref="Prepare"/> runs on the block-processing thread before parallel tx execution;
+/// parallel workers call <see cref="Record"/> into the list it allocated; <see cref="Snapshot"/>
+/// runs on the block-processing thread after parallel execution returns.</para>
+/// <para><b>Synchronisation.</b> The <c>static</c> fields below are not <c>volatile</c>. Visibility
+/// of the <see cref="Prepare"/> writes to parallel workers relies on the synchronisation barrier
+/// inside <c>ParallelUnbalancedWork.For</c> (which establishes happens-before between the calling
+/// thread and the workers, then again between the workers and the joining thread). If this collector
+/// is ever used outside that join-barrier pattern (e.g. <c>Task.Run</c>-and-forget), reads of
+/// <c>_ticksPerTx</c> on the worker may observe a stale <c>null</c> or a previous block's list.</para>
+/// <para><b>Single-block assumption.</b> The collector assumes only one block is being
+/// timing-collected at any moment; concurrent <see cref="Prepare"/> calls for different blocks
+/// would race on <c>_ticksPerTx</c>.</para>
+/// </remarks>
 public static class PerTxTimingCollector
 {
     private static bool _enabled;

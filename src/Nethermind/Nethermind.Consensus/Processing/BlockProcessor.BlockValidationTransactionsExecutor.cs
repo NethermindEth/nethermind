@@ -25,7 +25,12 @@ public partial class BlockProcessor
     {
         protected IWorldState _stateProvider = stateProvider;
         protected ITransactionProcessedEventHandler? _transactionProcessedEventHandler = transactionProcessedEventHandler;
-        private bool _enableTxTimingMetrics = false;
+
+        // Set once per block in SetupTxTimingMetrics on the block-processing thread, then read by
+        // parallel workers in StartTxTimer/StopTxTimer. Not volatile: visibility relies on the same
+        // ParallelUnbalancedWork.For join barrier that PerTxTimingCollector depends on. See
+        // PerTxTimingCollector's <remarks> for the full threading contract.
+        private bool _enableTxTimingMetrics;
 
         public virtual void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext) => transactionProcessor.SetBlockExecutionContext(in blockExecutionContext);
 
@@ -100,7 +105,6 @@ public partial class BlockProcessor
                 PerTxTimingCollector.Record(i, Stopwatch.GetElapsedTime(txStart).Ticks);
             }
         }
-
 
         [DoesNotReturn, StackTraceHidden]
         internal static void ThrowInvalidTransactionException(TransactionResult result, BlockHeader header, Transaction currentTx, int index) => throw new InvalidTransactionException(header, $"Transaction {currentTx.Hash} at index {index} failed with error {result.ErrorDescription}", result);
