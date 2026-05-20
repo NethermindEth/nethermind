@@ -318,7 +318,21 @@ namespace Nethermind.State
                 return [];
             }
 
-            return GetCode(in account.CodeHash.ValueHash256);
+            try
+            {
+                return GetCode(in account.CodeHash.ValueHash256);
+            }
+            catch (InvalidOperationException ex) when (ex.Message.StartsWith("Code "))
+            {
+                throw new InvalidOperationException(
+                    $"[alchemy-debug] {ex.Message.TrimEnd('.')}. " +
+                    $"address={address} " +
+                    $"nonce={account.Nonce} " +
+                    $"balance={account.Balance} " +
+                    $"storageRoot={account.StorageRoot} " +
+                    $"codeHash={account.CodeHash}",
+                    ex);
+            }
         }
 
         public void DeleteAccount(Address address)

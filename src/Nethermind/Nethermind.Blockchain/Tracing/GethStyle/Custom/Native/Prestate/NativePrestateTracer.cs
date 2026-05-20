@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Text.Json;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -10,6 +11,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Evm;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
+using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
@@ -31,6 +33,8 @@ public class NativePrestateTracer : GethLikeNativeTxTracer
     private readonly HashSet<AddressAsKey> _createdAccounts;
     private readonly HashSet<AddressAsKey> _deletedAccounts;
     private readonly bool _diffMode;
+    private readonly Dictionary<AddressAsKey, string> _prestateOrigin = new();
+    private static readonly ILogger _logger = new ILogger(SimpleConsoleLogger.Instance);
 
     public NativePrestateTracer(
         IWorldState worldState,
@@ -58,9 +62,11 @@ public class NativePrestateTracer : GethLikeNativeTxTracer
             _createdAccounts = new HashSet<AddressAsKey>();
         }
 
-        LookupAccount(from!);
-        LookupAccount(to ?? ContractAddress.From(from, _prestate[from].Nonce ?? 0));
-        LookupAccount(beneficiary ?? Address.Zero);
+        LookupAccount(from!, "tx.from");
+        Address createDest = ContractAddress.From(from, _prestate[from].Nonce ?? 0);
+        LookupAccount(to ?? createDest, to is null ? "tx.create_dest" : "tx.to");
+        LookupAccount(beneficiary ?? Address.Zero, "block.beneficiary");
+        _logger.Info($"[alchemy-debug] tracer constructed: txHash={_txHash} from={from} to={to?.ToString() ?? "(null,CREATE)"} createDest={createDest} beneficiary={beneficiary?.ToString() ?? "(Address.Zero)"}");
     }
 
     protected override GethLikeTxTrace CreateTrace() => new();
@@ -135,7 +141,7 @@ public class NativePrestateTracer : GethLikeNativeTxTracer
                 if (stackLen >= 1)
                 {
                     address = stack.PeekAddress(0);
-                    LookupAccount(address);
+                    LookupAccount(address, $"opcode.{_op}");
                     if (_diffMode && _op == Instruction.SELFDESTRUCT)
                         _deletedAccounts.Add(address);
                 }
@@ -147,7 +153,7 @@ public class NativePrestateTracer : GethLikeNativeTxTracer
                 if (stackLen >= 5)
                 {
                     address = stack.PeekAddress(1);
-                    LookupAccount(address);
+                    LookupAccount(address, $"opcode.{_op}.target");
                 }
                 break;
             case Instruction.CREATE2:
@@ -160,7 +166,7 @@ public class NativePrestateTracer : GethLikeNativeTxTracer
                         ReadOnlySpan<byte> initCode = _memoryTrace.Slice(offset, length);
                         ReadOnlySpan<byte> salt = stack.Peek(3);
                         address = ContractAddress.From(_executingAccount!, salt, initCode);
-                        LookupAccount(address);
+                        LookupAccount(address, "opcode.CREATE2");
                         if (_diffMode)
                             _createdAccounts.Add(address);
                     }
@@ -176,7 +182,7 @@ public class NativePrestateTracer : GethLikeNativeTxTracer
             case Instruction.CREATE:
                 UInt256 nonce = _worldState!.GetNonce(_executingAccount!);
                 address = ContractAddress.From(_executingAccount, nonce);
-                LookupAccount(address!);
+                LookupAccount(address!, "opcode.CREATE");
                 if (_diffMode)
                     _createdAccounts.Add(address);
                 break;
@@ -189,11 +195,15 @@ public class NativePrestateTracer : GethLikeNativeTxTracer
         _error = error;
     }
 
-    protected void LookupAccount(Address addr)
+    protected void LookupAccount(Address addr) => LookupAccount(addr, "untagged");
+
+    protected void LookupAccount(Address addr, string source)
     {
         if (!_prestate.ContainsKey(addr))
         {
-            if (_worldState!.TryGetAccount(addr, out AccountStruct account))
+            _prestateOrigin[addr] = source;
+            bool exists = _worldState!.TryGetAccount(addr, out AccountStruct account);
+            if (exists)
             {
                 UInt256 nonce = account.Nonce;
                 byte[]? code = _worldState.GetCode(addr);
@@ -206,6 +216,7 @@ public class NativePrestateTracer : GethLikeNativeTxTracer
                     Balance = UInt256.Zero
                 });
             }
+            _logger.Info($"[alchemy-debug] LookupAccount added addr={addr} source={source} accountExists={exists}");
         }
     }
 
@@ -223,69 +234,91 @@ public class NativePrestateTracer : GethLikeNativeTxTracer
 
     private void ProcessDiffState()
     {
-        foreach ((AddressAsKey addr, NativePrestateTracerAccount prestateAccount) in _prestate)
+        Address? currentAddr = null;
+        try
         {
-            // If an account was deleted then don't show it in the postState trace
-            if (_deletedAccounts.Contains(addr))
-                continue;
+            foreach ((AddressAsKey addr, NativePrestateTracerAccount prestateAccount) in _prestate)
+            {
+                currentAddr = addr.Value;
 
-            _worldState!.TryGetAccount(addr, out AccountStruct poststateAccountStruct);
-            NativePrestateTracerAccount poststateAccount = new NativePrestateTracerAccount(
-                poststateAccountStruct.Balance,
-                poststateAccountStruct.Nonce,
-                _worldState.GetCode(addr));
-            NativePrestateTracerAccount? diffAccount = new NativePrestateTracerAccount();
+                // If an account was deleted then don't show it in the postState trace
+                if (_deletedAccounts.Contains(addr))
+                    continue;
 
-            bool modified = false;
-            if (!poststateAccount.Balance.Equals(prestateAccount.Balance))
-            {
-                modified = true;
-                diffAccount.Balance = poststateAccount.Balance;
-            }
-            if (!poststateAccount.Nonce.Equals(prestateAccount.Nonce))
-            {
-                modified = true;
-                diffAccount.Nonce = poststateAccount.Nonce;
-            }
-            if (!Bytes.NullableEqualityComparer.Equals(poststateAccount.Code, prestateAccount.Code))
-            {
-                modified = true;
-                diffAccount.Code = poststateAccount.Code;
-            }
+                _worldState!.TryGetAccount(addr, out AccountStruct poststateAccountStruct);
+                NativePrestateTracerAccount poststateAccount = new NativePrestateTracerAccount(
+                    poststateAccountStruct.Balance,
+                    poststateAccountStruct.Nonce,
+                    _worldState.GetCode(addr));
+                NativePrestateTracerAccount? diffAccount = new NativePrestateTracerAccount();
 
-            if (prestateAccount.Storage is not null)
-            {
-                foreach ((UInt256 index, UInt256 prestateStorage) in prestateAccount.Storage)
+                bool modified = false;
+                if (!poststateAccount.Balance.Equals(prestateAccount.Balance))
                 {
-                    // Remove any empty slots from the state diff
-                    if (prestateStorage.IsZero)
-                        prestateAccount.Storage.Remove(index);
+                    modified = true;
+                    diffAccount.Balance = poststateAccount.Balance;
+                }
+                if (!poststateAccount.Nonce.Equals(prestateAccount.Nonce))
+                {
+                    modified = true;
+                    diffAccount.Nonce = poststateAccount.Nonce;
+                }
+                if (!Bytes.NullableEqualityComparer.Equals(poststateAccount.Code, prestateAccount.Code))
+                {
+                    modified = true;
+                    diffAccount.Code = poststateAccount.Code;
+                }
 
-                    UInt256 poststateStorage = new(_worldState!.Get(new StorageCell(addr, index)), true);
-                    if (!prestateStorage.Equals(poststateStorage))
+                if (prestateAccount.Storage is not null)
+                {
+                    foreach ((UInt256 index, UInt256 prestateStorage) in prestateAccount.Storage)
                     {
-                        modified = true;
-                        if (!poststateStorage.IsZero)
+                        // Remove any empty slots from the state diff
+                        if (prestateStorage.IsZero)
+                            prestateAccount.Storage.Remove(index);
+
+                        UInt256 poststateStorage = new(_worldState!.Get(new StorageCell(addr, index)), true);
+                        if (!prestateStorage.Equals(poststateStorage))
                         {
-                            diffAccount.Storage ??= new Dictionary<UInt256, UInt256>();
-                            diffAccount.Storage.Add(index, poststateStorage);
+                            modified = true;
+                            if (!poststateStorage.IsZero)
+                            {
+                                diffAccount.Storage ??= new Dictionary<UInt256, UInt256>();
+                                diffAccount.Storage.Add(index, poststateStorage);
+                            }
+                        }
+                        else
+                        {
+                            // Remove the storage slot from the prestate trace if it wasn't modified
+                            prestateAccount.Storage.Remove(index);
                         }
                     }
-                    else
-                    {
-                        // Remove the storage slot from the prestate trace if it wasn't modified
-                        prestateAccount.Storage.Remove(index);
-                    }
                 }
+
+                // If any account fields were modified then add the account to the poststate trace
+                if (modified)
+                    _poststate.Add(addr, diffAccount);
+
+                // If no account fields were modified or the account was created then remove it from the prestate trace
+                if (!modified || _createdAccounts.Contains(addr))
+                    _prestate.Remove(addr);
             }
-
-            // If any account fields were modified then add the account to the poststate trace
-            if (modified)
-                _poststate.Add(addr, diffAccount);
-
-            // If no account fields were modified or the account was created then remove it from the prestate trace
-            if (!modified || _createdAccounts.Contains(addr))
-                _prestate.Remove(addr);
+        }
+        catch (Exception ex)
+        {
+            _logger.Info($"[alchemy-debug] ProcessDiffState THREW at currentAddr={currentAddr} txHash={_txHash} executionError={_error}");
+            _logger.Info($"[alchemy-debug] _prestate.Count={_prestate.Count}");
+            foreach (KeyValuePair<AddressAsKey, NativePrestateTracerAccount> kv in _prestate)
+            {
+                string origin = _prestateOrigin.TryGetValue(kv.Key, out string? o) ? o : "unknown";
+                _logger.Info($"[alchemy-debug]   addr={kv.Key.Value} origin={origin} balance={kv.Value.Balance} nonce={kv.Value.Nonce} codeLen={kv.Value.Code?.Length ?? -1}");
+            }
+            if (_createdAccounts is { Count: > 0 })
+                _logger.Info($"[alchemy-debug] _createdAccounts: [{string.Join(",", _createdAccounts.Select(a => a.Value.ToString()))}]");
+            if (_deletedAccounts is { Count: > 0 })
+                _logger.Info($"[alchemy-debug] _deletedAccounts: [{string.Join(",", _deletedAccounts.Select(a => a.Value.ToString()))}]");
+            _logger.Info($"[alchemy-debug] exception: {ex.Message}");
+            throw;
         }
     }
 }
