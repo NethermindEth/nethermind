@@ -191,6 +191,28 @@ public class JsonRpcServiceTests
     }
 
     [Test]
+    public void Success_response_dispose_disposes_disposable_result()
+    {
+        DisposableProbe disposable = new();
+        JsonRpcSuccessResponse response = new() { Result = disposable };
+
+        response.Dispose();
+
+        Assert.That(disposable.DisposeCount, Is.EqualTo(1));
+    }
+
+    [Test]
+    public void Success_response_dispose_runs_registered_disposable_action_without_disposable_result()
+    {
+        int disposeCount = 0;
+        JsonRpcSuccessResponse response = new(() => disposeCount++) { Result = "0x1" };
+
+        response.Dispose();
+
+        Assert.That(disposeCount, Is.EqualTo(1));
+    }
+
+    [Test]
     public void GetNewFilterTest()
     {
         IEthRpcModule ethRpcModule = Substitute.For<IEthRpcModule>();
@@ -419,5 +441,12 @@ public class JsonRpcServiceTests
     public interface IMetadataTestRpcModule : IRpcModule
     {
         ResultWrapper<string> test_string(string value);
+    }
+
+    private sealed class DisposableProbe : IDisposable
+    {
+        public int DisposeCount { get; private set; }
+
+        public void Dispose() => DisposeCount++;
     }
 }

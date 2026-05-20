@@ -101,7 +101,11 @@ namespace Nethermind.JsonRpc
 
         public override void Dispose()
         {
-            Result.TryDispose();
+            if (HasDisposableResources)
+            {
+                Result.TryDispose();
+            }
+
             base.Dispose();
         }
 
