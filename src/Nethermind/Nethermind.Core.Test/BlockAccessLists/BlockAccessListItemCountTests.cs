@@ -29,7 +29,6 @@ public class BlockAccessListItemCountTests
         GeneratedBlockAccessList bal = new();
         bal.Merge(slice);
 
-        // Pure account read -> 1 account, 0 storage entries.
         Assert.That(bal.ItemCount, Is.EqualTo(1));
     }
 

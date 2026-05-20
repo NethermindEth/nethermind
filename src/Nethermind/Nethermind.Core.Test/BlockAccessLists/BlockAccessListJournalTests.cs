@@ -66,8 +66,6 @@ public class BlockAccessListJournalTests
     [Test]
     public void Restore_after_delete_account_restores_within_block_change_entries()
     {
-        // DeleteAccount captures the current balance/nonce/code/per-slot changes onto the undo log
-        // as a single batch so Restore can put them back atomically.
         UInt256 slot = 9;
         BlockAccessListAtIndex slice = new() { Index = 1 };
         slice.AddBalanceChange(TestItem.AddressA, before: 0, after: 50);
