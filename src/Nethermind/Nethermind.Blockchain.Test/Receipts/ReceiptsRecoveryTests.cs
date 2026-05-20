@@ -11,6 +11,8 @@ using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test.Receipts;
 
+[Parallelizable(ParallelScope.All)]
+[FixtureLifeCycle(LifeCycle.InstancePerTestCase)]
 public class ReceiptsRecoveryTests
 {
     private IReceiptsRecovery _receiptsRecovery = null!;

@@ -1,8 +1,8 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
-using System.Linq;
 using Nethermind.Core;
 using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
@@ -12,12 +12,12 @@ namespace Nethermind.Blockchain.Tracing;
 public class CompositeBlockTracer : IBlockTracer, ITracerBag
 {
     private readonly List<IBlockTracer> _childTracers = new();
-    public bool IsTracingRewards { get; private set; }
+    private IBlockTracer? _parallelSafeTracerCache;
+    private int _parallelSafeTracerCacheVersion = -1;
+    private int _parallelSafeTracerNestedFingerprint;
+    private int _version;
 
-    public CompositeBlockTracer()
-    {
-        IsTracingRewards = _childTracers.Any(static childTracer => childTracer.IsTracingRewards);
-    }
+    public bool IsTracingRewards { get; private set; }
 
     public void EndTxTrace()
     {
@@ -50,21 +50,32 @@ public class CompositeBlockTracer : IBlockTracer, ITracerBag
 
     public ITxTracer StartNewTxTrace(Transaction? tx)
     {
-        IList<IBlockTracer> childBlockTracers = _childTracers;
+        ITxTracer? singleTracer = null;
+        List<ITxTracer>? tracers = null;
 
-        List<ITxTracer> tracers = new(childBlockTracers.Count);
-
-        for (int i = 0; i < childBlockTracers.Count; i++)
+        for (int i = 0; i < _childTracers.Count; i++)
         {
-            IBlockTracer childBlockTracer = childBlockTracers[i];
-            ITxTracer txTracer = childBlockTracer.StartNewTxTrace(tx);
-            if (txTracer != NullTxTracer.Instance)
+            ITxTracer txTracer = _childTracers[i].StartNewTxTrace(tx);
+
+            if (txTracer == NullTxTracer.Instance)
             {
+                continue;
+            }
+
+            if (singleTracer is null)
+            {
+                singleTracer = txTracer;
+            }
+            else
+            {
+                tracers ??= [singleTracer];
                 tracers.Add(txTracer);
             }
         }
 
-        return tracers.Count > 0 ? new CompositeTxTracer(tracers) : NullTxTracer.Instance;
+        return tracers is not null
+            ? new CompositeTxTracer(tracers)
+            : singleTracer ?? NullTxTracer.Instance;
     }
 
     public void EndBlockTrace()
@@ -80,18 +91,28 @@ public class CompositeBlockTracer : IBlockTracer, ITracerBag
     {
         _childTracers.Add(tracer);
         IsTracingRewards |= tracer.IsTracingRewards;
+        _version++;
     }
 
     public void AddRange(params IBlockTracer[] tracers)
     {
         _childTracers.AddRange(tracers);
-        IsTracingRewards |= tracers.Any(static t => t.IsTracingRewards);
+        for (int i = 0; i < tracers.Length; i++)
+        {
+            IsTracingRewards |= tracers[i].IsTracingRewards;
+        }
+        _version++;
     }
 
     public void Remove(IBlockTracer tracer)
     {
         _childTracers.Remove(tracer);
-        IsTracingRewards = _childTracers.Any(static t => t.IsTracingRewards);
+        IsTracingRewards = false;
+        for (int i = 0; i < _childTracers.Count; i++)
+        {
+            IsTracingRewards |= _childTracers[i].IsTracingRewards;
+        }
+        _version++;
     }
 
     public IBlockTracer GetTracer() =>
@@ -101,4 +122,78 @@ public class CompositeBlockTracer : IBlockTracer, ITracerBag
             1 => _childTracers[0],
             _ => this
         };
+
+    public IBlockTracer GetParallelSafeTracer()
+    {
+        int nestedFingerprint = GetNestedVersionFingerprint();
+        if (_parallelSafeTracerCache is { } cached &&
+            _parallelSafeTracerCacheVersion == _version &&
+            _parallelSafeTracerNestedFingerprint == nestedFingerprint)
+        {
+            return cached;
+        }
+
+        IBlockTracer? singleTracer = null;
+        List<IBlockTracer>? tracers = null;
+
+        for (int i = 0; i < _childTracers.Count; i++)
+        {
+            IBlockTracer tracer = _childTracers[i] switch
+            {
+                IParallelSafeBlockTracer parallelSafe => parallelSafe,
+                CompositeBlockTracer composite => composite.GetParallelSafeTracer(),
+                _ => NullBlockTracer.Instance
+            };
+
+            if (tracer == NullBlockTracer.Instance)
+            {
+                continue;
+            }
+
+            if (singleTracer is null)
+            {
+                singleTracer = tracer;
+            }
+            else
+            {
+                tracers ??= [singleTracer];
+                tracers.Add(tracer);
+            }
+        }
+
+        IBlockTracer result = tracers is not null
+            ? CreateParallelSafeComposite(tracers)
+            : singleTracer ?? NullBlockTracer.Instance;
+
+        _parallelSafeTracerCache = result;
+        _parallelSafeTracerCacheVersion = _version;
+        _parallelSafeTracerNestedFingerprint = nestedFingerprint;
+        return result;
+    }
+
+    private int GetNestedVersionFingerprint()
+    {
+        int fingerprint = 0;
+        for (int i = 0; i < _childTracers.Count; i++)
+        {
+            if (_childTracers[i] is CompositeBlockTracer compositeBlockTracer)
+            {
+                fingerprint = HashCode.Combine(fingerprint, compositeBlockTracer._version, compositeBlockTracer.GetNestedVersionFingerprint());
+            }
+        }
+
+        return fingerprint;
+    }
+
+    private static CompositeBlockTracer CreateParallelSafeComposite(List<IBlockTracer> parallelSafeTracers)
+    {
+        CompositeBlockTracer parallelSafeCompositeBlockTracer = new();
+        parallelSafeCompositeBlockTracer._childTracers.AddRange(parallelSafeTracers);
+        for (int index = 0; index < parallelSafeTracers.Count; index++)
+        {
+            parallelSafeCompositeBlockTracer.IsTracingRewards |= parallelSafeTracers[index].IsTracingRewards;
+        }
+
+        return parallelSafeCompositeBlockTracer;
+    }
 }

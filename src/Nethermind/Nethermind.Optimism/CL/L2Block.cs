@@ -41,16 +41,13 @@ public sealed record L2BlockRef
         SequenceNumber = 0
     };
 
-    public static L2BlockRef From(L2Block? block)
+    public static L2BlockRef From(L2Block? block) => block is null ? Zero : new L2BlockRef
     {
-        return block is null ? Zero : new L2BlockRef
-        {
-            Hash = block.Hash,
-            Number = block.Number,
-            ParentHash = block.ParentHash,
-            Timestamp = block.PayloadAttributes.Timestamp,
-            L1Origin = BlockId.FromL1BlockInfo(block.L1BlockInfo),
-            SequenceNumber = block.L1BlockInfo.SequenceNumber
-        };
-    }
+        Hash = block.Hash,
+        Number = block.Number,
+        ParentHash = block.ParentHash,
+        Timestamp = block.PayloadAttributes.Timestamp,
+        L1Origin = BlockId.FromL1BlockInfo(block.L1BlockInfo),
+        SequenceNumber = block.L1BlockInfo.SequenceNumber
+    };
 }

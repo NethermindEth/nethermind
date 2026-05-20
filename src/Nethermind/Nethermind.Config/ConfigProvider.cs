@@ -72,10 +72,7 @@ public class ConfigProvider : IConfigProvider
         }
     }
 
-    public T GetConfig<T>() where T : IConfig
-    {
-        return (T)GetConfig(typeof(T));
-    }
+    public T GetConfig<T>() where T : IConfig => (T)GetConfig(typeof(T));
 
     public IConfig GetConfig(Type configType)
     {
@@ -92,27 +89,24 @@ public class ConfigProvider : IConfigProvider
         return _instances[configType];
     }
 
-    public object GetRawValue(string category, string name)
+    public object? GetRawValue(string category, string name)
     {
         for (int i = 0; i < _configSource.Count; i++)
         {
-            (bool isSet, string str) = _configSource[i].GetRawValue(category, name);
+            (bool isSet, string? str) = _configSource[i].GetRawValue(category, name);
             if (isSet)
             {
                 return str;
             }
         }
 
-        return Categories.TryGetValue(category, out object value) ? value.GetType()
+        return Categories.TryGetValue(category, out object? value) ? value.GetType()
             .GetProperties(BindingFlags.Instance | BindingFlags.Public)
             .SingleOrDefault(p => string.Equals(p.Name, name, StringComparison.OrdinalIgnoreCase))
             ?.GetValue(value) : null;
     }
 
-    public void AddSource(IConfigSource configSource)
-    {
-        _configSource.Add(configSource);
-    }
+    public void AddSource(IConfigSource configSource) => _configSource.Add(configSource);
 
     public void Initialize()
     {
@@ -123,20 +117,20 @@ public class ConfigProvider : IConfigProvider
             if (directImplementation is not null)
             {
                 Categories.Add(@interface.Name[1..],
-                    Activator.CreateInstance(directImplementation));
+                    Activator.CreateInstance(directImplementation)!);
 
                 _implementations[@interface] = directImplementation;
 
-                object config = Activator.CreateInstance(_implementations[@interface]);
-                _instances[@interface] = (IConfig)config!;
+                object config = Activator.CreateInstance(_implementations[@interface])!;
+                _instances[@interface] = (IConfig)config;
 
                 foreach (PropertyInfo propertyInfo in config.GetType().GetProperties(BindingFlags.Public | BindingFlags.Instance))
                 {
                     for (int i = 0; i < _configSource.Count; i++)
                     {
-                        string category = @interface.IsAssignableFrom(typeof(INoCategoryConfig)) ? null : config.GetType().Name;
+                        string? category = @interface.IsAssignableFrom(typeof(INoCategoryConfig)) ? null : config.GetType().Name;
                         string name = propertyInfo.Name;
-                        (bool isSet, object value) = _configSource[i].GetValue(propertyInfo.PropertyType, category, name);
+                        (bool isSet, object? value) = _configSource[i].GetValue(propertyInfo.PropertyType, category!, name);
                         if (isSet)
                         {
                             try
@@ -156,27 +150,27 @@ public class ConfigProvider : IConfigProvider
         }
     }
 
-    public (string ErrorMsg, IList<(IConfigSource Source, string Category, string Name)> Errors) FindIncorrectSettings()
+    public (string ErrorMsg, IList<(IConfigSource Source, string? Category, string Name)> Errors) FindIncorrectSettings()
     {
         if (_instances.IsEmpty)
         {
             Initialize();
         }
 
-        var propertySet = _instances.Values
-            .SelectMany(i => i.GetType()
+        HashSet<string> propertySet = _instances
+            .SelectMany(static kvp => kvp.Value.GetType()
                 .GetProperties()
-                .Select(p => GetKey(i.GetType().Name, p.Name)))
+                .Select(p => GetKey(kvp.Value.GetType().Name, p.Name)))
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
-        List<(IConfigSource Source, string Category, string Name)> incorrectSettings = [];
+        List<(IConfigSource Source, string? Category, string Name)> incorrectSettings = [];
 
         // Skip the validation for ArgsConfigSource items as they are already validated by the CLI parser
         foreach (IConfigSource source in _configSource.Where(s => s is not ArgsConfigSource))
         {
-            var configs = source.GetConfigKeys();
+            IEnumerable<(string? Category, string Name)> configs = source.GetConfigKeys();
 
-            foreach ((string category, string name) in configs)
+            foreach ((string? category, string name) in configs)
             {
                 if (!propertySet.Contains(GetKey(category, name)))
                 {
@@ -185,11 +179,11 @@ public class ConfigProvider : IConfigProvider
             }
         }
 
-        var msg = string.Join(Environment.NewLine, incorrectSettings.Select(s => $"ConfigType:{GetConfigSourceName(s.Source)}|Category:{s.Category}|Name:{s.Name}"));
+        string msg = string.Join(Environment.NewLine, incorrectSettings.Select(s => $"ConfigType:{GetConfigSourceName(s.Source)}|Category:{s.Category}|Name:{s.Name}"));
 
         return (msg, incorrectSettings);
 
-        static string GetConfigSourceName(IConfigSource source) => source switch
+        static string? GetConfigSourceName(IConfigSource source) => source switch
         {
             ArgsConfigSource => "RuntimeOption",
             EnvConfigSource => "EnvironmentVariable(NETHERMIND_*)",
@@ -197,7 +191,7 @@ public class ConfigProvider : IConfigProvider
             _ => source.ToString()
         };
 
-        static string GetKey(string category, string name)
+        static string GetKey(string? category, string name)
         {
             if (string.IsNullOrEmpty(category))
             {

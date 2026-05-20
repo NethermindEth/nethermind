@@ -2,38 +2,24 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
-using Nethermind.Int256;
-using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
-using System.Linq;
-using System.Runtime.CompilerServices;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace Nethermind.TxPool;
+
 internal sealed class DelegationCache
 {
     private readonly ConcurrentDictionary<AddressAsKey, int> _pendingDelegations = new();
 
-    public bool HasPending(AddressAsKey key)
-    {
-        return _pendingDelegations.ContainsKey(key);
-    }
+    public bool HasPending(AddressAsKey key) => _pendingDelegations.ContainsKey(key);
 
-    public void DecrementDelegationCount(AddressAsKey key)
-    {
-        InternalIncrement(key, false);
-    }
-    public void IncrementDelegationCount(AddressAsKey key)
-    {
-        InternalIncrement(key, true);
-    }
+    public void DecrementDelegationCount(AddressAsKey key) => InternalIncrement(key, false);
+    public void IncrementDelegationCount(AddressAsKey key) => InternalIncrement(key, true);
 
     private void InternalIncrement(AddressAsKey key, bool increment)
     {
         int value = increment ? 1 : -1;
-        var lastCount = _pendingDelegations.AddOrUpdate(key,
+        int lastCount = _pendingDelegations.AddOrUpdate(key,
             (k) =>
             {
                 if (increment)

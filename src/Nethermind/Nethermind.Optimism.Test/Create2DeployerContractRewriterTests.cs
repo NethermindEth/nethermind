@@ -8,8 +8,8 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Evm.State;
-using Nethermind.State;
 using NUnit.Framework;
+using System;
 
 namespace Nethermind.Optimism.Test;
 
@@ -26,9 +26,8 @@ internal class Create2DeployerContractRewriterTests
             CanyonTimestamp = canyonHeader.Timestamp,
         });
 
-        IWorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest();
-        IWorldState ws = worldStateManager.GlobalWorldState;
-        using var _ = ws.BeginScope(IWorldState.PreGenesis);
+        IWorldState ws = TestWorldStateFactory.CreateForTest();
+        using IDisposable _ = ws.BeginScope(IWorldState.PreGenesis);
 
         Create2DeployerContractRewriter rewriter = new(specHelper, new TestSingleReleaseSpecProvider(Cancun.Instance), blockTree);
 

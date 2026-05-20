@@ -14,7 +14,7 @@ namespace Ethereum.Trie.Test
     public static class Permutations
     {
         /// <summary>
-        /// Heap's algorithm to find all pmermutations. Non recursive, more efficient.
+        /// Heap's algorithm to find all permutations. Non recursive, more efficient.
         /// </summary>
         /// <param name="items">Items to permute in each possible ways</param>
         /// <param name="funcExecuteAndTellIfShouldStop"></param>
@@ -28,7 +28,7 @@ namespace Ethereum.Trie.Test
                 return funcExecuteAndTellIfShouldStop(items);
             }
 
-            var indexes = new int[countOfItem];
+            int[] indexes = new int[countOfItem];
             for (int i = 0; i < countOfItem; i++)
             {
                 indexes[i] = 0;

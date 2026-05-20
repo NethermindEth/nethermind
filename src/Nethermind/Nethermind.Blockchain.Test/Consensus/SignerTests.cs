@@ -1,8 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
-using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Consensus;
 using Nethermind.Core;
@@ -16,6 +14,7 @@ using NUnit.Framework;
 namespace Nethermind.Blockchain.Test.Consensus
 {
     [TestFixture]
+    [Parallelizable(ParallelScope.All)]
     public class SignerTests
     {
         [Test, MaxTime(Timeout.MaxTestTime)]
@@ -53,18 +52,22 @@ namespace Nethermind.Blockchain.Test.Consensus
         }
 
         [Test, MaxTime(Timeout.MaxTestTime)]
-        public void Throws_when_trying_to_sign_with_a_null_key()
+        public void TrySign_returns_false_when_key_is_null()
         {
             Signer signer = new(1, (PrivateKey?)null, LimboLogs.Instance);
-            Assert.Throws<InvalidOperationException>(() => signer.Sign(Keccak.Zero));
+            ValueHash256 hash = Keccak.Zero;
+            signer.TrySign(in hash, out Signature signature).Should().BeFalse("signer with no key cannot sign");
+            signature.Should().BeNull();
         }
 
         [Test, MaxTime(Timeout.MaxTestTime)]
-        public async Task Test_signing()
+        public void Test_signing()
         {
             Signer signer = new(1, TestItem.PrivateKeyA, LimboLogs.Instance);
-            await signer.Sign(Build.A.Transaction.TestObject);
-            signer.Sign(Keccak.Zero).Bytes.Length.Should().Be(64);
+            signer.TrySign(Build.A.Transaction.TestObject).Should().BeTrue("signer with key signs a transaction");
+            ValueHash256 hash = Keccak.Zero;
+            signer.TrySign(in hash, out Signature signature).Should().BeTrue("signer with key signs a hash");
+            signature.Bytes.Length.Should().Be(64);
         }
     }
 }

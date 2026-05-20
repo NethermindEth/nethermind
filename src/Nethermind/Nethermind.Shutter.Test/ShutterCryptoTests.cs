@@ -7,7 +7,6 @@ using System.Linq;
 using Nethermind.Int256;
 using NUnit.Framework;
 using Nethermind.Crypto;
-using Nethermind.Serialization.Rlp;
 using Nethermind.Core.Extensions;
 
 namespace Nethermind.Shutter.Test;
@@ -18,6 +17,7 @@ using GT = Bls.PT;
 using EncryptedMessage = ShutterCrypto.EncryptedMessage;
 
 [TestFixture]
+[Parallelizable(ParallelScope.All)]
 class ShutterCryptoTests
 {
     [Test]
@@ -59,7 +59,7 @@ class ShutterCryptoTests
 
         Span<byte> decryptedMessage = stackalloc byte[ShutterCrypto.GetDecryptedDataLength(encryptedMessage)];
         ShutterCrypto.Decrypt(ref decryptedMessage, encryptedMessage, key);
-        Assert.That(msg.SequenceEqual(decryptedMessage.ToArray()));
+        Assert.That(msg.SequenceEqual(decryptedMessage));
 
         EncryptedMessage decoded = ShutterCrypto.DecodeEncryptedMessage(ShutterCrypto.EncodeEncryptedMessage(encryptedMessage));
         Assert.That(encryptedMessage.C1.IsEqual(decoded.C1));

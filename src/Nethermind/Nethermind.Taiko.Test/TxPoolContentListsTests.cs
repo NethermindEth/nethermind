@@ -22,7 +22,6 @@ using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.Handlers;
-using Nethermind.Consensus.Processing;
 using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Serialization.Rlp;
 
@@ -45,17 +44,22 @@ public class TxPoolContentListsTests
         Block block = Build.A.Block.WithHeader(Build.A.BlockHeader.WithGasLimit((long)blockGasLimit).TestObject).TestObject;
         blockFinder.Head.Returns(block);
 
+        BlockExecutionContext? currentContext = null;
         ITransactionProcessor transactionProcessor = Substitute.For<ITransactionProcessor>();
-        transactionProcessor.When(static (x) => x.Execute(Arg.Any<Transaction>(), Arg.Any<BlockExecutionContext>(), Arg.Any<ITxTracer>()))
-            .Do(static info => ((BlockExecutionContext)info[1]).Header.GasUsed += Transaction.BaseTxGasCost);
-
-        transactionProcessor.Execute(Arg.Any<Transaction>(), Arg.Any<BlockExecutionContext>(), Arg.Any<ITxTracer>())
-            .Returns(static info =>
+        transactionProcessor.When(static (x) => x.SetBlockExecutionContext(Arg.Any<BlockExecutionContext>()))
+            .Do(info =>
             {
-                if (((BlockExecutionContext)info[1]).Header.GasUsed <= ((BlockExecutionContext)info[1]).Header.GasLimit)
+                currentContext = ((BlockExecutionContext)info[0]);
+                currentContext.Value.Header.GasUsed += Transaction.BaseTxGasCost;
+            });
+
+        transactionProcessor.Execute(Arg.Any<Transaction>(), Arg.Any<ITxTracer>())
+            .Returns(info =>
+            {
+                if (currentContext!.Value.Header.GasUsed <= currentContext.Value.Header.GasLimit)
                     return TransactionResult.Ok;
 
-                ((BlockExecutionContext)info[1]).Header.GasUsed -= Transaction.BaseTxGasCost;
+                currentContext.Value.Header.GasUsed -= Transaction.BaseTxGasCost;
                 return TransactionResult.BlockGasLimitExceeded;
             });
 
@@ -65,30 +69,7 @@ public class TxPoolContentListsTests
         IShareableTxProcessorSource shareableTxProcessor = Substitute.For<IShareableTxProcessorSource>();
         shareableTxProcessor.Build(Arg.Any<BlockHeader?>()).Returns(scope);
 
-        TaikoEngineRpcModule taikoAuthRpcModule = new(
-            Substitute.For<IAsyncHandler<byte[], ExecutionPayload?>>(),
-            Substitute.For<IAsyncHandler<byte[], GetPayloadV2Result?>>(),
-            Substitute.For<IAsyncHandler<byte[], GetPayloadV3Result?>>(),
-            Substitute.For<IAsyncHandler<byte[], GetPayloadV4Result?>>(),
-            Substitute.For<IAsyncHandler<byte[], GetPayloadV5Result?>>(),
-            Substitute.For<IAsyncHandler<ExecutionPayload, PayloadStatusV1>>(),
-            Substitute.For<IForkchoiceUpdatedHandler>(),
-            Substitute.For<IHandler<IReadOnlyList<Hash256>, IEnumerable<ExecutionPayloadBodyV1Result?>>>(),
-            Substitute.For<IGetPayloadBodiesByRangeV1Handler>(),
-            Substitute.For<IHandler<TransitionConfigurationV1, TransitionConfigurationV1>>(),
-            Substitute.For<IHandler<IEnumerable<string>, IEnumerable<string>>>(),
-            Substitute.For<IAsyncHandler<byte[][], IEnumerable<BlobAndProofV1?>>>(),
-            Substitute.For<IAsyncHandler<byte[][], IEnumerable<BlobAndProofV2>?>>(),
-            Substitute.For<IEngineRequestsTracker>(),
-            Substitute.For<ISpecProvider>(),
-            null!,
-            Substitute.For<ILogManager>(),
-            txPool,
-            blockFinder,
-            shareableTxProcessor,
-            TxDecoder.Instance,
-            Substitute.For<IL1OriginStore>()
-        );
+        TaikoEngineRpcModule taikoAuthRpcModule = CreateRpcModule(txPool, blockFinder, shareableTxProcessor);
 
         ResultWrapper<PreBuiltTxList[]?> result = taikoAuthRpcModule.taikoAuth_txPoolContent(
             Address.Zero,
@@ -108,9 +89,8 @@ public class TxPoolContentListsTests
     {
         get
         {
-            static object[] MakeTestData(Dictionary<int, int[]> txs, int[] localAccounts, ulong blockGasLimit, ulong maxBytesPerTxList, int maxTransactionsLists)
-            {
-                return [
+            static object[] MakeTestData(Dictionary<int, int[]> txs, int[] localAccounts, ulong blockGasLimit, ulong maxBytesPerTxList, int maxTransactionsLists) =>
+                [
                     txs.ToDictionary(
                         static kv => (AddressAsKey)Build.An.Address.FromNumber(kv.Key).TestObject,
                         static kv => kv.Value.Select(static txId =>
@@ -121,7 +101,6 @@ public class TxPoolContentListsTests
                     maxBytesPerTxList,
                     maxTransactionsLists
                 ];
-            }
 
             yield return new TestCaseData(args: MakeTestData(new Dictionary<int, int[]> { { 1, [1] }, { 2, [2] }, { 3, [3] } }, [], 2 * Transaction.BaseTxGasCost, 1000, 2))
             {
@@ -151,4 +130,143 @@ public class TxPoolContentListsTests
             };
         }
     }
+
+    [TestCase(10, 0)]
+    [TestCase(0, 1)]
+    public void MaxGasLimitRatio_FiltersHighGasLimitTransactions(int maxGasLimitRatio, int expectedTxCount)
+    {
+        Transaction tx = Build.A.Transaction
+            .WithType(TxType.EIP1559)
+            .WithMaxFeePerGas(100)
+            .WithGasLimit(2_100_000)  // 100x the actual gas used for this transaction
+            .WithNonce(1)
+            .SignedAndResolved()
+            .TestObject;
+
+        ITxPool txPool = Substitute.For<ITxPool>();
+        txPool.GetPendingTransactionsBySender().Returns(new Dictionary<AddressAsKey, Transaction[]>
+        {
+            { tx.SenderAddress!, [tx] }
+        });
+
+        IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
+        Block block = Build.A.Block.WithHeader(Build.A.BlockHeader.WithGasLimit(30_000_000).TestObject).TestObject;
+        blockFinder.Head.Returns(block);
+
+        ITransactionProcessor transactionProcessor = Substitute.For<ITransactionProcessor>();
+        transactionProcessor.Execute(Arg.Any<Transaction>(), Arg.Any<ITxTracer>())
+            .Returns(call =>
+            {
+                call.Arg<Transaction>().SpentGas = 21_000;
+                return TransactionResult.Ok;
+            });
+
+        IReadOnlyTxProcessingScope scope = Substitute.For<IReadOnlyTxProcessingScope>();
+        scope.TransactionProcessor.Returns(transactionProcessor);
+
+        IShareableTxProcessorSource shareableTxProcessor = Substitute.For<IShareableTxProcessorSource>();
+        shareableTxProcessor.Build(Arg.Any<BlockHeader?>()).Returns(scope);
+
+        TaikoEngineRpcModule rpcModule = CreateRpcModule(txPool, blockFinder, shareableTxProcessor,
+            new Config.SurgeConfig { MaxGasLimitRatio = maxGasLimitRatio });
+
+        ResultWrapper<PreBuiltTxList[]?> result = rpcModule.taikoAuth_txPoolContent(
+            Address.Zero, 1, 30_000_000, 100_000, null, 10);
+
+        Assert.That(result.Result, Is.EqualTo(Result.Success));
+        int totalTxCount = result.Data?.Sum(list => list.TxList.Length) ?? 0;
+        Assert.That(totalTxCount, Is.EqualTo(expectedTxCount));
+    }
+
+    [TestCase(21_000, 120, 0, 2, TestName = "Batch is full by bytes")]
+    [TestCase(2_100_000, 100_000, 10, 1, TestName = "Surge filter rejects transaction")]
+    public void GasUsed_IsNotInflated_WhenTxIsRejectedAfterExecution(
+        int tx1GasLimit, int maxBytesPerTxList,
+        int surgeMaxGasLimitRatio, int expectedBatchCount)
+    {
+        // tx1 is rejected after successful execution, tx2 is accepted
+        Transaction tx1 = Build.A.Transaction
+            .WithType(TxType.EIP1559).WithMaxFeePerGas(100)
+            .WithGasLimit(tx1GasLimit).WithNonce(1)
+            .SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+        Transaction tx2 = Build.A.Transaction
+            .WithType(TxType.EIP1559).WithMaxFeePerGas(100)
+            .WithGasLimit(21_000).WithNonce(1)
+            .SignedAndResolved(TestItem.PrivateKeyB).TestObject;
+
+        ITxPool txPool = Substitute.For<ITxPool>();
+        txPool.GetPendingTransactionsBySender().ReturnsForAnyArgs(new Dictionary<AddressAsKey, Transaction[]>
+        {
+            { tx1.SenderAddress!, [tx1] },
+            { tx2.SenderAddress!, [tx2] },
+        });
+
+        IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
+        Block block = Build.A.Block.WithHeader(Build.A.BlockHeader.WithGasLimit(30_000_000).TestObject).TestObject;
+        blockFinder.Head.Returns(block);
+
+        BlockExecutionContext? currentContext = null;
+        ITransactionProcessor transactionProcessor = Substitute.For<ITransactionProcessor>();
+        transactionProcessor.When(static x => x.SetBlockExecutionContext(Arg.Any<BlockExecutionContext>()))
+            .Do(info =>
+            {
+                currentContext = (BlockExecutionContext)info[0];
+                currentContext.Value.Header.GasUsed += Transaction.BaseTxGasCost;
+            });
+        transactionProcessor.Execute(Arg.Any<Transaction>(), Arg.Any<ITxTracer>())
+            .Returns(static call =>
+            {
+                call.Arg<Transaction>().SpentGas = 21_000;
+                return TransactionResult.Ok;
+            });
+
+        IReadOnlyTxProcessingScope scope = Substitute.For<IReadOnlyTxProcessingScope>();
+        scope.TransactionProcessor.Returns(transactionProcessor);
+
+        IShareableTxProcessorSource shareableTxProcessor = Substitute.For<IShareableTxProcessorSource>();
+        shareableTxProcessor.Build(Arg.Any<BlockHeader?>()).Returns(scope);
+
+        TaikoEngineRpcModule rpcModule = CreateRpcModule(txPool, blockFinder, shareableTxProcessor,
+            new Config.SurgeConfig { MaxGasLimitRatio = surgeMaxGasLimitRatio });
+
+        ResultWrapper<PreBuiltTxList[]?> result = rpcModule.taikoAuth_txPoolContent(
+            Address.Zero, 1, 30_000_000, (ulong)maxBytesPerTxList, null, 10);
+
+        Assert.That(result.Result, Is.EqualTo(Result.Success));
+        Assert.That(result.Data, Has.Length.EqualTo(expectedBatchCount));
+        Assert.That(result.Data![0].EstimatedGasUsed, Is.EqualTo((ulong)Transaction.BaseTxGasCost));
+    }
+
+    private static TaikoEngineRpcModule CreateRpcModule(
+        ITxPool txPool,
+        IBlockFinder blockFinder,
+        IShareableTxProcessorSource shareableTxProcessor,
+        Config.ISurgeConfig? surgeConfig = null) => new(
+            Substitute.For<IAsyncHandler<byte[], ExecutionPayload?>>(),
+            Substitute.For<IAsyncHandler<byte[], GetPayloadV2Result?>>(),
+            Substitute.For<IAsyncHandler<byte[], GetPayloadV3Result?>>(),
+            Substitute.For<IAsyncHandler<byte[], GetPayloadV4Result?>>(),
+            Substitute.For<IAsyncHandler<byte[], GetPayloadV5Result?>>(),
+            Substitute.For<IAsyncHandler<byte[], GetPayloadV6Result?>>(),
+            Substitute.For<IAsyncHandler<ExecutionPayload, PayloadStatusV1>>(),
+            Substitute.For<IForkchoiceUpdatedHandler>(),
+            Substitute.For<IHandler<IReadOnlyList<Hash256>, IReadOnlyList<ExecutionPayloadBodyV1Result?>>>(),
+            Substitute.For<IGetPayloadBodiesByRangeV1Handler>(),
+            Substitute.For<IHandler<TransitionConfigurationV1, TransitionConfigurationV1>>(),
+            Substitute.For<IHandler<IEnumerable<string>, IReadOnlyList<string>>>(),
+            Substitute.For<IAsyncHandler<byte[][], IReadOnlyList<BlobAndProofV1?>>>(),
+            Substitute.For<IAsyncHandler<GetBlobsHandlerV2Request, IReadOnlyList<BlobAndProofV2?>?>>(),
+            Substitute.For<IHandler<IReadOnlyList<Hash256>, IReadOnlyList<ExecutionPayloadBodyV2Result?>>>(),
+            Substitute.For<IGetPayloadBodiesByRangeV2Handler>(),
+            Substitute.For<IEngineRequestsTracker>(),
+            Substitute.For<ISpecProvider>(),
+            null!,
+            Substitute.For<ILogManager>(),
+            txPool,
+            blockFinder,
+            shareableTxProcessor,
+            TxDecoder.Instance,
+            Substitute.For<IL1OriginStore>(),
+            surgeConfig ?? new Config.SurgeConfig()
+        );
 }

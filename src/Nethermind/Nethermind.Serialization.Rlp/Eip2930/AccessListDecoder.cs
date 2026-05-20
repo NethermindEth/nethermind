@@ -1,88 +1,25 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
 using Nethermind.Core.Eip2930;
 using Nethermind.Int256;
+using System.Diagnostics.CodeAnalysis;
 
 namespace Nethermind.Serialization.Rlp.Eip2930
 {
-    public class AccessListDecoder : IRlpStreamDecoder<AccessList?>, IRlpValueDecoder<AccessList?>
+    [method: DynamicDependency(DynamicallyAccessedMemberTypes.PublicConstructors, typeof(AccessListDecoder))]
+    public sealed class AccessListDecoder() : RlpValueDecoder<AccessList?>
     {
         private const int IndexLength = 32;
 
         public static readonly AccessListDecoder Instance = new();
 
-        /// <summary>
-        /// We pay a high code quality tax for the performance optimization on RLP.
-        /// Adding more RLP decoders is costly (time wise) but the path taken saves a lot of allocations and GC.
-        /// Shall we consider code generation for this? We could potentially generate IL from attributes for each
-        /// RLP serializable item and keep it as a compiled call available at runtime.
-        /// It would be slightly slower but still much faster than what we would get from using dynamic serializers.
-        /// </summary>
-        public AccessList? Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-        {
-            if (rlpStream.IsNextItemNull())
-            {
-                rlpStream.ReadByte();
-                return null;
-            }
-
-            int length = rlpStream.ReadSequenceLength();
-            int check = rlpStream.Position + length;
-
-            AccessList.Builder accessListBuilder = new();
-            while (rlpStream.Position < check)
-            {
-                int accessListItemLength = rlpStream.ReadSequenceLength();
-                int accessListItemCheck = rlpStream.Position + accessListItemLength;
-                Address address = rlpStream.DecodeAddress() ?? throw new RlpException("Invalid tx access list format - address is null");
-                accessListBuilder.AddAddress(address);
-
-                if (rlpStream.Position < check)
-                {
-                    int storagesLength = rlpStream.ReadSequenceLength();
-                    int storagesCheck = rlpStream.Position + storagesLength;
-                    while (rlpStream.Position < storagesCheck)
-                    {
-                        int storageItemCheck = rlpStream.Position + IndexLength + 1;
-                        UInt256 index = rlpStream.DecodeUInt256(IndexLength);
-                        accessListBuilder.AddStorage(index);
-                        if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) != RlpBehaviors.AllowExtraBytes)
-                        {
-                            rlpStream.Check(storageItemCheck);
-                        }
-                    }
-                    if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) != RlpBehaviors.AllowExtraBytes)
-                    {
-                        rlpStream.Check(storagesCheck);
-                    }
-                }
-                if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) != RlpBehaviors.AllowExtraBytes)
-                {
-                    rlpStream.Check(accessListItemCheck);
-                }
-            }
-
-            if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) != RlpBehaviors.AllowExtraBytes)
-            {
-                rlpStream.Check(check);
-            }
-
-            return accessListBuilder.Build();
-        }
-
-        /// <summary>
-        /// We pay a big copy-paste tax to maintain ValueDecoders but we believe that the amount of allocations saved
-        /// make it worth it. To be reviewed periodically.
-        /// Question to Lukasz here -> would it be fine to always use ValueDecoderContext only?
-        /// I believe it cannot be done for the network items decoding and is only relevant for the DB loads.
-        /// </summary>
-        public AccessList? Decode(
+        protected override AccessList? DecodeInternal(
             ref Rlp.ValueDecoderContext decoderContext,
             RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            if (decoderContext.IsNextItemNull())
+            if (decoderContext.IsNextItemEmptyList())
             {
                 decoderContext.ReadByte();
                 return null;
@@ -99,27 +36,28 @@ namespace Nethermind.Serialization.Rlp.Eip2930
                 Address address = decoderContext.DecodeAddress() ?? throw new RlpException("Invalid tx access list format - address is null");
                 accessListBuilder.AddAddress(address);
 
-                if (decoderContext.Position < check)
+                if (decoderContext.Position >= accessListItemCheck)
                 {
-                    int storagesLength = decoderContext.ReadSequenceLength();
-                    int storagesCheck = decoderContext.Position + storagesLength;
-                    while (decoderContext.Position < storagesCheck)
-                    {
-                        int storageItemCheck = decoderContext.Position + IndexLength + 1;
-                        UInt256 index = decoderContext.DecodeUInt256(IndexLength);
-                        accessListBuilder.AddStorage(index);
-                        if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) != RlpBehaviors.AllowExtraBytes)
-                        {
-                            decoderContext.Check(storageItemCheck);
-                        }
-                    }
+                    throw new RlpException("Invalid tx access list format - storage keys missing");
+                }
+
+                int storagesLength = decoderContext.ReadSequenceLength();
+                int storagesCheck = decoderContext.Position + storagesLength;
+                while (decoderContext.Position < storagesCheck)
+                {
+                    int storageItemCheck = decoderContext.Position + IndexLength + 1;
+                    UInt256 index = decoderContext.DecodeUInt256(IndexLength);
+                    accessListBuilder.AddStorage(index);
+
                     if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) != RlpBehaviors.AllowExtraBytes)
                     {
-                        decoderContext.Check(storagesCheck);
+                        decoderContext.Check(storageItemCheck);
                     }
                 }
+
                 if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) != RlpBehaviors.AllowExtraBytes)
                 {
+                    decoderContext.Check(storagesCheck);
                     decoderContext.Check(accessListItemCheck);
                 }
             }
@@ -132,11 +70,11 @@ namespace Nethermind.Serialization.Rlp.Eip2930
             return accessListBuilder.Build();
         }
 
-        public void Encode(RlpStream stream, AccessList? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public override void Encode(RlpStream stream, AccessList? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (item is null)
             {
-                stream.WriteByte(Rlp.NullObjectByte);
+                stream.WriteByte(Rlp.EmptyListByte);
                 return;
             }
 
@@ -166,7 +104,7 @@ namespace Nethermind.Serialization.Rlp.Eip2930
             }
         }
 
-        public int GetLength(AccessList? accessList, RlpBehaviors rlpBehaviors)
+        public override int GetLength(AccessList? accessList, RlpBehaviors rlpBehaviors)
         {
             if (accessList is null)
             {

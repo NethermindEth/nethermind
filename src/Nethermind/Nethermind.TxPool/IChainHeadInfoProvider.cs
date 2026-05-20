@@ -4,7 +4,6 @@
 using System;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
-using Nethermind.Evm;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
 
@@ -15,8 +14,6 @@ namespace Nethermind.TxPool
         IChainHeadSpecProvider SpecProvider { get; }
 
         IReadOnlyStateProvider ReadOnlyStateProvider { get; }
-
-        ICodeInfoRepository CodeInfoRepository { get; }
 
         long HeadNumber { get; }
 

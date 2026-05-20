@@ -2,21 +2,19 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Linq;
 using BenchmarkDotNet.Attributes;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Int256;
-using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Benchmarks.Rlp
 {
     public class RlpEncodeHeaderBenchmark
     {
-        private static HeaderDecoder _headerDecoder = new HeaderDecoder();
+        private static HeaderDecoder _headerDecoder = new();
 
         private static BlockHeader _header;
 
@@ -24,7 +22,7 @@ namespace Nethermind.Benchmarks.Rlp
 
         public RlpEncodeHeaderBenchmark()
         {
-            var transactions = new Transaction[100];
+            Transaction[] transactions = new Transaction[100];
             for (int i = 0; i < 100; i++)
             {
                 transactions[i] = Build.A.Transaction.WithData(new byte[] { (byte)i }).WithNonce((UInt256)i).WithValue((UInt256)i).Signed(new EthereumEcdsa(TestBlockchainIds.ChainId), TestItem.PrivateKeyA).TestObject;
@@ -63,21 +61,12 @@ namespace Nethermind.Benchmarks.Rlp
         }
 
         [Benchmark]
-        public byte[] Improved2()
-        {
-            return _headerDecoder.Encode(_header).Bytes;
-        }
+        public byte[] Improved2() => _headerDecoder.Encode(_header).Bytes;
 
         [Benchmark]
-        public byte[] Improved()
-        {
-            throw new NotImplementedException();
-        }
+        public byte[] Improved() => throw new NotImplementedException();
 
         [Benchmark(Baseline = true)]
-        public byte[] Current()
-        {
-            return Serialization.Rlp.Rlp.Encode(_header).Bytes;
-        }
+        public byte[] Current() => Serialization.Rlp.Rlp.Encode(_header).Bytes;
     }
 }

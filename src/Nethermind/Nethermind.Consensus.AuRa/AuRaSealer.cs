@@ -14,30 +14,20 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Consensus.AuRa
 {
-    public class AuRaSealer : ISealer
+    public class AuRaSealer(
+        IBlockTree blockTree,
+        IValidatorStore validatorStore,
+        IAuRaStepCalculator auRaStepCalculator,
+        ISigner signer,
+        IValidSealerStrategy validSealerStrategy,
+        ILogManager logManager) : ISealer
     {
-        private readonly IBlockTree _blockTree;
-        private readonly IValidatorStore _validatorStore;
-        private readonly IAuRaStepCalculator _auRaStepCalculator;
-        private readonly ISigner _signer;
-        private readonly IValidSealerStrategy _validSealerStrategy;
-        private readonly ILogger _logger;
-
-        public AuRaSealer(
-            IBlockTree blockTree,
-            IValidatorStore validatorStore,
-            IAuRaStepCalculator auRaStepCalculator,
-            ISigner signer,
-            IValidSealerStrategy validSealerStrategy,
-            ILogManager logManager)
-        {
-            _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
-            _validatorStore = validatorStore ?? throw new ArgumentNullException(nameof(validatorStore));
-            _auRaStepCalculator = auRaStepCalculator ?? throw new ArgumentNullException(nameof(auRaStepCalculator));
-            _signer = signer ?? throw new ArgumentNullException(nameof(signer));
-            _validSealerStrategy = validSealerStrategy ?? throw new ArgumentNullException(nameof(validSealerStrategy));
-            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
-        }
+        private readonly IBlockTree _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
+        private readonly IValidatorStore _validatorStore = validatorStore ?? throw new ArgumentNullException(nameof(validatorStore));
+        private readonly IAuRaStepCalculator _auRaStepCalculator = auRaStepCalculator ?? throw new ArgumentNullException(nameof(auRaStepCalculator));
+        private readonly ISigner _signer = signer ?? throw new ArgumentNullException(nameof(signer));
+        private readonly IValidSealerStrategy _validSealerStrategy = validSealerStrategy ?? throw new ArgumentNullException(nameof(validSealerStrategy));
+        private readonly ILogger _logger = logManager?.GetClassLogger<AuRaSealer>() ?? throw new ArgumentNullException(nameof(logManager));
 
         public Task<Block> SealBlock(Block block, CancellationToken cancellationToken)
         {
@@ -59,8 +49,12 @@ namespace Nethermind.Consensus.AuRa
                 return null;
             }
 
-            Hash256 headerHash = block.Header.CalculateHash(RlpBehaviors.ForSealing);
-            Signature signature = _signer.Sign(headerHash);
+            ValueHash256 headerHash = block.Header.CalculateValueHash(RlpBehaviors.ForSealing);
+            if (!_signer.TrySign(in headerHash, out Signature signature))
+            {
+                if (_logger.IsWarn) _logger.Warn($"AuRa signer {_signer.Address} could not sign block {block.Number} — skipping seal.");
+                return null;
+            }
             block.Header.AuRaSignature = signature.BytesWithRecovery;
 
             return block;

@@ -3,19 +3,26 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using DotNetty.Buffers;
 using DotNetty.Codecs;
 using DotNetty.Transport.Channels;
-using Nethermind.Logging;
+using Nethermind.Core.Extensions;
 
 namespace Nethermind.Network.Rlpx
 {
-    public class ZeroFrameDecoder : ByteToMessageDecoder
+    public class ZeroFrameDecoder(IFrameCipher frameCipher, FrameMacProcessor frameMacProcessor)
+        : ByteToMessageDecoder
     {
-        private readonly ILogger _logger;
-        private readonly IFrameCipher _cipher;
-        private readonly FrameMacProcessor _authenticator;
+        // 12 MiB: generous upper bound for devp2p frames. Snap responses can reach ~3 MiB,
+        // but block bodies and receipts can be larger. The cap is defense-in-depth against
+        // OOM from malicious peers sending oversized frames — not a protocol-level limit.
+        public readonly static int DefaultMaxInboundFrameSize = (int)12.MiB;
+        private readonly IFrameCipher _cipher = frameCipher ?? throw new ArgumentNullException(nameof(frameCipher));
+        private readonly FrameMacProcessor _authenticator = frameMacProcessor ?? throw new ArgumentNullException(nameof(frameMacProcessor));
+        private readonly int _maxFrameSize = DefaultMaxInboundFrameSize;
 
         private readonly byte[] _headerBytes = new byte[Frame.HeaderSize];
         private readonly byte[] _macBytes = new byte[Frame.MacSize];
@@ -27,12 +34,11 @@ namespace Nethermind.Network.Rlpx
         private int _frameSize;
         private int _remainingPayloadBlocks;
 
-        public ZeroFrameDecoder(IFrameCipher frameCipher, FrameMacProcessor frameMacProcessor, ILogManager logManager)
-        {
-            _cipher = frameCipher ?? throw new ArgumentNullException(nameof(frameCipher));
-            _authenticator = frameMacProcessor ?? throw new ArgumentNullException(nameof(frameMacProcessor));
-            _logger = logManager?.GetClassLogger<ZeroFrameDecoder>() ?? throw new ArgumentNullException(nameof(logManager));
-        }
+        public ZeroFrameDecoder(
+            IFrameCipher frameCipher,
+            FrameMacProcessor frameMacProcessor,
+            int maxFrameSize)
+            : this(frameCipher, frameMacProcessor) => _maxFrameSize = maxFrameSize;
 
         public override void HandlerRemoved(IChannelHandlerContext context)
         {
@@ -45,7 +51,7 @@ namespace Nethermind.Network.Rlpx
 
             // Note that ByteToMessageDecoder handles input.Release calls for us.
             // In fact, we receive here a potentially surviving _internalBuffer of the base class
-            // that is being built by its cumulator.
+            // that is being built by its accumulator.
 
             // Output buffers that we create will be released by the next handler in the pipeline.
             while (input.ReadableBytes >= Frame.BlockSize)
@@ -113,41 +119,35 @@ namespace Nethermind.Network.Rlpx
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void ReadFrameSize()
         {
-            _frameSize = _decryptedBytes[0] & 0xFF;
-            _frameSize = (_frameSize << 8) + (_decryptedBytes[1] & 0xFF);
-            _frameSize = (_frameSize << 8) + (_decryptedBytes[2] & 0xFF);
+            int payloadSize = _decryptedBytes[0] & 0xFF;
+            payloadSize = (payloadSize << 8) + (_decryptedBytes[1] & 0xFF);
+            payloadSize = (payloadSize << 8) + (_decryptedBytes[2] & 0xFF);
 
-            int paddingSize = Frame.CalculatePadding(_frameSize);
-            _frameSize += paddingSize;
+            if (payloadSize > _maxFrameSize)
+                ThrowFrameTooLarge(payloadSize, _maxFrameSize);
+
+            int paddingSize = Frame.CalculatePadding(payloadSize);
+            _frameSize = payloadSize + paddingSize;
             _remainingPayloadBlocks = _frameSize / Frame.BlockSize;
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private void DecryptHeader()
-        {
-            _cipher.Decrypt(_headerBytes, 0, Frame.BlockSize, _decryptedBytes, 0);
-        }
+        private void DecryptHeader() => _cipher.Decrypt(_headerBytes, 0, Frame.BlockSize, _decryptedBytes, 0);
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void AuthenticateHeader(IByteBuffer input)
         {
             input.ReadBytes(_macBytes);
-            bool isValidMac = _authenticator.CheckMac(_macBytes, true);
-            if (!isValidMac)
-            {
-                throw new CorruptedFrameException("Sender delivered a frame with an invalid header MAC");
-            }
+            if (!_authenticator.CheckMac(_macBytes, true))
+                ThrowInvalidMac("header");
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void AuthenticatePayload(IByteBuffer input)
         {
             input.ReadBytes(_macBytes);
-            bool isValidMac = _authenticator.CheckMac(_macBytes, false);
-            if (!isValidMac)
-            {
-                throw new CorruptedFrameException("Sender delivered a frame with an invalid payload MAC");
-            }
+            if (!_authenticator.CheckMac(_macBytes, false))
+                ThrowInvalidMac("payload");
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -167,5 +167,13 @@ namespace Nethermind.Network.Rlpx
             WaitingForPayload,
             WaitingForPayloadMac
         }
+
+        [DoesNotReturn, StackTraceHidden]
+        private static void ThrowFrameTooLarge(int payloadSize, int maxFrameSize)
+            => throw new CorruptedFrameException($"Frame payload too large: {payloadSize} bytes, max {maxFrameSize} bytes");
+
+        [DoesNotReturn, StackTraceHidden]
+        private static void ThrowInvalidMac(string section)
+            => throw new CorruptedFrameException($"Sender delivered a frame with an invalid {section} MAC");
     }
 }

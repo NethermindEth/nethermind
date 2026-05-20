@@ -11,18 +11,11 @@ namespace Nethermind.TxPool.Filters
     /// <summary>
     /// Filters out transactions which gas payments overflow uint256 or simply exceed sender balance
     /// </summary>
-    internal sealed class BalanceTooLowFilter : IIncomingTxFilter
+    internal sealed class BalanceTooLowFilter(TxDistinctSortedPool txs, TxDistinctSortedPool blobTxs, ILogger logger) : IIncomingTxFilter
     {
-        private readonly TxDistinctSortedPool _txs;
-        private readonly TxDistinctSortedPool _blobTxs;
-        private readonly ILogger _logger;
-
-        public BalanceTooLowFilter(TxDistinctSortedPool txs, TxDistinctSortedPool blobTxs, ILogger logger)
-        {
-            _txs = txs;
-            _blobTxs = blobTxs;
-            _logger = logger;
-        }
+        private readonly TxDistinctSortedPool _txs = txs;
+        private readonly TxDistinctSortedPool _blobTxs = blobTxs;
+        private readonly ILogger _logger = logger;
 
         public AcceptTxResult Accept(Transaction tx, ref TxFilteringState state, TxHandlingOptions handlingOptions)
         {

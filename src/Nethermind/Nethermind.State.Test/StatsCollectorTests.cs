@@ -13,8 +13,8 @@ using Nethermind.Specs.Forks;
 using Nethermind.Evm.State;
 using Nethermind.State;
 using Nethermind.Trie;
-using Nethermind.Trie.Pruning;
 using NUnit.Framework;
+using System;
 
 namespace Nethermind.Store.Test
 {
@@ -25,14 +25,14 @@ namespace Nethermind.Store.Test
         public void Can_collect_stats([Values(false, true)] bool parallel)
         {
             MemDb codeDb = new();
-            MemDb stateDb = new MemDb();
-            NodeStorage nodeStorage = new NodeStorage(stateDb);
+            MemDb stateDb = new();
+            NodeStorage nodeStorage = new(stateDb);
             TestRawTrieStore trieStore = new(nodeStorage);
-            WorldState stateProvider = new(trieStore, codeDb, LimboLogs.Instance);
-            StateReader stateReader = new StateReader(trieStore, codeDb, LimboLogs.Instance);
-            Hash256 stateRoot;
+            WorldState stateProvider = new(new TrieStoreScopeProvider(trieStore, codeDb, LimboLogs.Instance), LimboLogs.Instance);
+            StateReader stateReader = new(trieStore, codeDb, LimboLogs.Instance);
+            BlockHeader baseBlock;
 
-            using (var _ = stateProvider.BeginScope(IWorldState.PreGenesis))
+            using (IDisposable _ = stateProvider.BeginScope(IWorldState.PreGenesis))
             {
                 stateProvider.CreateAccount(TestItem.AddressA, 1);
                 stateProvider.InsertCode(TestItem.AddressA, new byte[] { 1, 2, 3 }, Istanbul.Instance);
@@ -50,25 +50,25 @@ namespace Nethermind.Store.Test
 
                 stateProvider.CommitTree(0);
                 stateProvider.CommitTree(1);
-                stateRoot = stateProvider.StateRoot;
+                baseBlock = Build.A.BlockHeader.WithNumber(1).WithStateRoot(stateProvider.StateRoot).TestObject;
             }
 
             codeDb.Delete(Keccak.Compute(new byte[] { 1, 2, 3, 4 })); // missing code
 
             // delete some storage
             Hash256 address = new("0x55227dead52ea912e013e7641ccd6b3b174498e55066b0c174a09c8c3cc4bf5e");
-            TreePath path = new TreePath(new ValueHash256("0x1800000000000000000000000000000000000000000000000000000000000000"), 2);
+            TreePath path = new(new ValueHash256("0x1800000000000000000000000000000000000000000000000000000000000000"), 2);
             Hash256 storageKey = new("0x345e54154080bfa9e8f20c99d7a0139773926479bc59e5b4f830ad94b6425332");
             nodeStorage.Set(address, path, storageKey, null);
 
             TrieStatsCollector statsCollector = new(codeDb, LimboLogs.Instance);
-            VisitingOptions visitingOptions = new VisitingOptions()
+            VisitingOptions visitingOptions = new()
             {
                 MaxDegreeOfParallelism = parallel ? 0 : 1
             };
 
-            stateReader.RunTreeVisitor(statsCollector, stateRoot, visitingOptions);
-            var stats = statsCollector.Stats;
+            stateReader.RunTreeVisitor(statsCollector, baseBlock, visitingOptions);
+            TrieStats stats = statsCollector.Stats;
 
             stats.CodeCount.Should().Be(1);
             stats.MissingCode.Should().Be(1);

@@ -13,23 +13,47 @@ namespace Nethermind.Core.Test.Encoding;
 
 public class LogEntryDecoderTests
 {
-    [TestCase(true)]
-    [TestCase(false)]
-    public void Can_do_roundtrip(bool valueDecode)
-    {
-        LogEntry logEntry = new(TestItem.AddressA, new byte[] { 1, 2, 3 }, new[] { TestItem.KeccakA, TestItem.KeccakB });
-        Rlp rlp = Rlp.Encode(logEntry);
-        LogEntry decoded = valueDecode ? Rlp.Decode<LogEntry>(rlp.Bytes.AsSpan()) : Rlp.Decode<LogEntry>(rlp);
+    private static LogEntry CreateSampleLogEntry() =>
+        new(TestItem.AddressA, new byte[] { 1, 2, 3 }, new[] { TestItem.KeccakA, TestItem.KeccakB });
 
-        Assert.That(decoded.Data, Is.EqualTo(logEntry.Data), "data");
-        Assert.That(decoded.Address, Is.EqualTo(logEntry.Address), "address");
-        Assert.That(decoded.Topics, Is.EqualTo(logEntry.Topics), "topics");
+    private static void AssertLogEntriesEqual(LogEntry expected, LogEntry actual)
+    {
+        Assert.That(actual.Data, Is.EqualTo(expected.Data), "data");
+        Assert.That(actual.Address, Is.EqualTo(expected.Address), "address");
+        Assert.That(actual.Topics, Is.EqualTo(expected.Topics), "topics");
+    }
+
+    [TestCase(true, false)]
+    [TestCase(false, false)]
+    [TestCase(false, true)]
+    public void Can_do_roundtrip(bool valueDecode, bool useDecoderInstance)
+    {
+        LogEntry logEntry = CreateSampleLogEntry();
+
+        Rlp rlp = useDecoderInstance
+            ? LogEntryDecoder.Instance.Encode(logEntry)
+            : Rlp.Encode(logEntry);
+
+        LogEntry decoded;
+        if (useDecoderInstance)
+        {
+            Rlp.ValueDecoderContext ctx = new(rlp.Bytes);
+            decoded = LogEntryDecoder.Instance.Decode(ref ctx)!;
+        }
+        else
+        {
+            decoded = valueDecode
+                ? Rlp.Decode<LogEntry>(rlp.Bytes.AsSpan())
+                : Rlp.Decode<LogEntry>(rlp);
+        }
+
+        AssertLogEntriesEqual(logEntry, decoded);
     }
 
     [Test]
     public void Can_do_roundtrip_ref_struct()
     {
-        LogEntry logEntry = new(TestItem.AddressA, new byte[] { 1, 2, 3 }, new[] { TestItem.KeccakA, TestItem.KeccakB });
+        LogEntry logEntry = CreateSampleLogEntry();
         Rlp rlp = Rlp.Encode(logEntry);
         Rlp.ValueDecoderContext valueDecoderContext = new(rlp.Bytes);
         LogEntryDecoder.DecodeStructRef(ref valueDecoderContext, RlpBehaviors.None, out LogEntryStructRef decoded);
@@ -55,28 +79,68 @@ public class LogEntryDecoderTests
     }
 
     [Test]
-    public void Can_do_roundtrip_rlp_stream()
+    public void Rejects_extra_topic_items_inside_topics_sequence()
     {
-        LogEntry logEntry = new(TestItem.AddressA, new byte[] { 1, 2, 3 }, new[] { TestItem.KeccakA, TestItem.KeccakB });
-        LogEntryDecoder decoder = LogEntryDecoder.Instance;
+        Rlp malformed = Rlp.Encode(
+            Rlp.Encode(TestItem.AddressA.Bytes),
+            Rlp.Encode(Rlp.Encode(TestItem.KeccakA.Bytes), Rlp.OfEmptyByteArray),
+            Rlp.OfEmptyByteArray);
 
-        Rlp encoded = decoder.Encode(logEntry);
-        LogEntry deserialized = decoder.Decode(new RlpStream(encoded.Bytes))!;
+        Assert.Throws<RlpException>(() =>
+        {
+            Rlp.ValueDecoderContext ctx = new(malformed.Bytes);
+            LogEntryDecoder.Instance.Decode(ref ctx);
+        });
+    }
 
-        Assert.That(deserialized.Data, Is.EqualTo(logEntry.Data), "data");
-        Assert.That(deserialized.Address, Is.EqualTo(logEntry.Address), "address");
-        Assert.That(deserialized.Topics, Is.EqualTo(logEntry.Topics), "topics");
+    [TestCase(false)]
+    [TestCase(true)]
+    public void Compact_decoder_rejects_zero_prefix_that_expands_data_beyond_limit(bool useStructRef)
+    {
+        Rlp malformed = CreateCompactLogEntryWithTooLargeZeroPrefix();
+
+        Assert.Throws<RlpLimitException>(() =>
+        {
+            Rlp.ValueDecoderContext ctx = new(malformed.Bytes);
+            if (useStructRef)
+            {
+                CompactLogEntryDecoder.DecodeLogEntryStructRef(ref ctx, RlpBehaviors.None, out _);
+            }
+            else
+            {
+                CompactLogEntryDecoder.Decode(ref ctx);
+            }
+        });
     }
 
     [Test]
-    public void Rlp_stream_and_standard_have_same_results()
+    public void Compact_struct_ref_decoder_rejects_log_entry_length_beyond_limit()
     {
-        LogEntry logEntry = new(TestItem.AddressA, new byte[] { 1, 2, 3 }, new[] { TestItem.KeccakA, TestItem.KeccakB });
-        LogEntryDecoder decoder = LogEntryDecoder.Instance;
+        byte[] malformed = CreateCompactLogEntryWithTooLargeDeclaredLength();
 
-        Rlp rlpStreamResult = decoder.Encode(logEntry);
+        Assert.Throws<RlpLimitException>(() =>
+        {
+            Rlp.ValueDecoderContext ctx = new(malformed);
+            CompactLogEntryDecoder.DecodeLogEntryStructRef(ref ctx, RlpBehaviors.None, out _);
+        });
+    }
 
-        Rlp rlp = decoder.Encode(logEntry);
-        Assert.That(rlpStreamResult.Bytes.ToHexString(), Is.EqualTo(rlp.Bytes.ToHexString()));
+    // This simulates a malformed compact log entry wire payload: [address, topics, zeroPrefix, rlpData].
+    private static Rlp CreateCompactLogEntryWithTooLargeZeroPrefix() => Rlp.Encode(
+        Rlp.Encode(TestItem.AddressA.Bytes),
+        Rlp.OfEmptyList,
+        Rlp.Encode((int)16.MB),
+        Rlp.Encode(new byte[] { 1 }));
+
+    private static byte[] CreateCompactLogEntryWithTooLargeDeclaredLength()
+    {
+        int declaredLength = (int)16.MB + 1;
+        return
+        [
+            0xfa,
+            (byte)(declaredLength >> 16),
+            (byte)(declaredLength >> 8),
+            (byte)declaredLength,
+        ];
     }
 }

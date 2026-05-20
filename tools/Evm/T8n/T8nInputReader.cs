@@ -63,7 +63,7 @@ public static class T8nInputReader
         }
         catch (FileNotFoundException e)
         {
-            throw new T8nException(e, "failed reading {filePath} file: {description}", T8nErrorCodes.ErrorIO);
+            throw new T8nException(e, $"failed reading {filePath} file: {description}", T8nErrorCodes.ErrorIO);
         }
         catch (JsonException e)
         {

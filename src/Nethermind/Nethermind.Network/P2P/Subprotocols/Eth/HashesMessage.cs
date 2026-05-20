@@ -8,19 +8,11 @@ using Nethermind.Network.P2P.Messages;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth
 {
-    public abstract class HashesMessage : P2PMessage
+    public abstract class HashesMessage(IOwnedReadOnlyList<Hash256> hashes) : P2PMessage
     {
-        protected HashesMessage(IOwnedReadOnlyList<Hash256> hashes)
-        {
-            Hashes = hashes ?? throw new ArgumentNullException(nameof(hashes));
-        }
+        public IOwnedReadOnlyList<Hash256> Hashes { get; } = hashes ?? throw new ArgumentNullException(nameof(hashes));
 
-        public IOwnedReadOnlyList<Hash256> Hashes { get; }
-
-        public override string ToString()
-        {
-            return $"{GetType().Name}({Hashes.Count})";
-        }
+        public override string ToString() => $"{GetType().Name}({Hashes.Count})";
 
         public override void Dispose()
         {

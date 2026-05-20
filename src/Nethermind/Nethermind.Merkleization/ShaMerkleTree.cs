@@ -9,7 +9,7 @@ using Nethermind.Serialization.Ssz;
 
 namespace Nethermind.Merkleization;
 
-public class ShaMerkleTree(IKeyValueStore<ulong, byte[]> keyValueStore) : MerkleTree(keyValueStore)
+public class ShaMerkleTree(IKeyValueStore<ulong> keyValueStore) : MerkleTree(keyValueStore)
 {
     private static readonly Bytes32[] _zeroHashes = new Bytes32[32];
 
@@ -38,8 +38,5 @@ public class ShaMerkleTree(IKeyValueStore<ulong, byte[]> keyValueStore) : Merkle
 
     protected override Bytes32[] ZeroHashesInternal => _zeroHashes;
 
-    protected override void Hash(ReadOnlySpan<byte> a, ReadOnlySpan<byte> b, Span<byte> target)
-    {
-        HashStatic(a, b, target);
-    }
+    protected override void Hash(ReadOnlySpan<byte> a, ReadOnlySpan<byte> b, Span<byte> target) => HashStatic(a, b, target);
 }

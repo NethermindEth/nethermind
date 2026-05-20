@@ -5,15 +5,15 @@
     "GenesisHash": "0xd4e56740f876aef8c010b86a40d5f56745a118d0906a34e69aec8c0db1cb8fa3",
     "BaseDbPath": "nethermind_db/mainnet",
     "LogFileName": "mainnet.log",
-    "MemoryHint": 2048000000
+    "MemoryHint": 1024000000
   },
   "Sync": {
     "FastSync": true,
     "SnapSync": true,
-    "PivotNumber": 23306000,
-    "PivotHash": "0x52871961252146a4199dbecdbb576acfd4cae3bc337d731b21c7dcd374133d28",
+    "PivotNumber": 25110000,
+    "PivotHash": "0x76cf4fe5d45efe1add38cada17d7a7ed8e48e552f7b0b13a21641e90e102de88",
     "PivotTotalDifficulty": "58750003716598352816469",
-    "FastSyncCatchUpHeightDelta": "10000000000",
+    "FastSyncCatchUpHeightDelta": 10000000000,
     "AncientReceiptsBarrier": 15537394,
     "AncientBodiesBarrier": 15537394
   },
@@ -24,7 +24,7 @@
     "NodeName": "Mainnet"
   },
   "Blocks": {
-    "TargetBlockGasLimit": 45000000
+    "TargetBlockGasLimit": 60000000
   },
   "JsonRpc": {
     "Enabled": true,

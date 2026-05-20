@@ -5,71 +5,39 @@ using System;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
-namespace Nethermind.Serialization.Json
+namespace Nethermind.Serialization.Json;
+
+public class NullableLongConverter() : NullableJsonConverter<long>(new LongConverter());
+
+public class NullableRawLongConverter : JsonConverter<long?>
 {
-    public class NullableLongConverter : JsonConverter<long?>
+    private readonly LongConverter _converter = new();
+
+    public override long? Read(
+        ref Utf8JsonReader reader,
+        Type typeToConvert,
+        JsonSerializerOptions options)
     {
-        private static readonly LongConverter _converter = new();
-
-        public override long? Read(
-            ref Utf8JsonReader reader,
-            Type typeToConvert,
-            JsonSerializerOptions options)
+        if (reader.TokenType == JsonTokenType.Null)
         {
-            if (reader.TokenType == JsonTokenType.Null)
-            {
-                return null;
-            }
-
-            return _converter.Read(ref reader, typeToConvert, options);
+            return null;
         }
 
-        public override void Write(
-            Utf8JsonWriter writer,
-            long? value,
-            JsonSerializerOptions options)
-        {
-            if (!value.HasValue)
-            {
-                writer.WriteNullValue();
-            }
-            else
-            {
-                _converter.Write(writer, value.GetValueOrDefault(), options);
-            }
-        }
+        return _converter.Read(ref reader, typeToConvert, options);
     }
 
-    public class NullableRawLongConverter : JsonConverter<long?>
+    public override void Write(
+        Utf8JsonWriter writer,
+        long? value,
+        JsonSerializerOptions options)
     {
-        private readonly LongConverter _converter = new();
-
-        public override long? Read(
-            ref Utf8JsonReader reader,
-            Type typeToConvert,
-            JsonSerializerOptions options)
+        if (!value.HasValue)
         {
-            if (reader.TokenType == JsonTokenType.Null)
-            {
-                return null;
-            }
-
-            return _converter.Read(ref reader, typeToConvert, options);
+            writer.WriteNullValue();
         }
-
-        public override void Write(
-            Utf8JsonWriter writer,
-            long? value,
-            JsonSerializerOptions options)
+        else
         {
-            if (!value.HasValue)
-            {
-                writer.WriteNullValue();
-            }
-            else
-            {
-                writer.WriteNumberValue(value.GetValueOrDefault());
-            }
+            writer.WriteNumberValue(value.GetValueOrDefault());
         }
     }
 }

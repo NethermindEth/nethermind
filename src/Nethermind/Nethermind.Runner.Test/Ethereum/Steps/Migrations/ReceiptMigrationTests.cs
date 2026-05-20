@@ -117,16 +117,10 @@ namespace Nethermind.Runner.Test.Ethereum.Steps.Migrations
             }
         }
 
-        private class TestReceiptStorage : IReceiptStorage
+        private class TestReceiptStorage(IReceiptStorage inStorage, IReceiptStorage outStorage) : IReceiptStorage
         {
-            private readonly IReceiptStorage _inStorage;
-            private readonly IReceiptStorage _outStorage;
-
-            public TestReceiptStorage(IReceiptStorage inStorage, IReceiptStorage outStorage)
-            {
-                _inStorage = inStorage;
-                _outStorage = outStorage;
-            }
+            private readonly IReceiptStorage _inStorage = inStorage;
+            private readonly IReceiptStorage _outStorage = outStorage;
 
             public Hash256 FindBlockHash(Hash256 txHash) => _inStorage.FindBlockHash(txHash);
 
@@ -146,10 +140,7 @@ namespace Nethermind.Runner.Test.Ethereum.Steps.Migrations
                 set => _outStorage.MigratedBlockNumber = value;
             }
 
-            public bool HasBlock(long blockNumber, Hash256 hash)
-            {
-                return _outStorage.HasBlock(blockNumber, hash);
-            }
+            public bool HasBlock(long blockNumber, Hash256 hash) => _outStorage.HasBlock(blockNumber, hash);
 
             public void EnsureCanonical(Block block)
             {
@@ -160,7 +151,8 @@ namespace Nethermind.Runner.Test.Ethereum.Steps.Migrations
             }
 
 #pragma warning disable CS0067
-            public event EventHandler<BlockReplacementEventArgs> ReceiptsInserted;
+            public event EventHandler<BlockReplacementEventArgs> NewCanonicalReceipts;
+            public event EventHandler<ReceiptsEventArgs> ReceiptsInserted;
 #pragma warning restore CS0067
         }
     }

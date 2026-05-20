@@ -8,6 +8,7 @@ using Nethermind.Consensus;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Threading;
 using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
 using Nethermind.Merge.Plugin.Data;
@@ -20,7 +21,7 @@ public class BoostBlockImprovementContext : IBlockImprovementContext
     private readonly IBoostRelay _boostRelay;
     private readonly IStateReader _stateReader;
     private readonly FeesTracer _feesTracer = new();
-    private readonly CancellationTokenSource _improvementCancellation;
+    private readonly SharedCancellationTokenSource _improvementCancellation;
     private CancellationTokenSource? _timeOutCancellation;
     private CancellationTokenSource? _linkedCancellation;
 
@@ -32,7 +33,7 @@ public class BoostBlockImprovementContext : IBlockImprovementContext
         IBoostRelay boostRelay,
         IStateReader stateReader,
         DateTimeOffset startDateTime,
-        CancellationTokenSource cts)
+        SharedCancellationTokenSource cts)
     {
         _boostRelay = boostRelay;
         _stateReader = stateReader;
@@ -52,14 +53,15 @@ public class BoostBlockImprovementContext : IBlockImprovementContext
     {
 
         payloadAttributes = await _boostRelay.GetPayloadAttributes(payloadAttributes, cancellationToken);
-        _stateReader.TryGetAccount(parentHeader, payloadAttributes.SuggestedFeeRecipient, out AccountStruct account);
+        Address feeRecipient = payloadAttributes.SuggestedFeeRecipient!;
+        _stateReader.TryGetAccount(parentHeader, feeRecipient, out AccountStruct account);
         UInt256 balanceBefore = account.Balance;
         Block? block = await blockProducer.BuildBlock(parentHeader, _feesTracer, payloadAttributes, IBlockProducer.Flags.None, cancellationToken);
         if (block is not null)
         {
             CurrentBestBlock = block;
             BlockFees = _feesTracer.Fees;
-            _stateReader.TryGetAccount(parentHeader, payloadAttributes.SuggestedFeeRecipient, out account);
+            _stateReader.TryGetAccount(parentHeader, feeRecipient, out account);
             await _boostRelay.SendPayload(new BoostExecutionPayloadV1 { Block = ExecutionPayload.Create(block), Profit = account.Balance - balanceBefore }, cancellationToken);
         }
 
@@ -79,5 +81,5 @@ public class BoostBlockImprovementContext : IBlockImprovementContext
         CancellationTokenExtensions.CancelDisposeAndClear(ref _timeOutCancellation);
     }
 
-    public void CancelOngoingImprovements() => _improvementCancellation.Cancel();
+    public void CancelOngoingImprovements() => _improvementCancellation.CancelAndDispose();
 }

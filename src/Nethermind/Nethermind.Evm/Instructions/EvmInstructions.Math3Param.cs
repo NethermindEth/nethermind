@@ -2,12 +2,15 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Runtime.CompilerServices;
+using System.Runtime.Intrinsics;
 using Nethermind.Core;
+using Nethermind.Evm.GasPolicy;
 
 namespace Nethermind.Evm;
+
 using Int256;
 
-internal static partial class EvmInstructions
+public static partial class EvmInstructions
 {
     public interface IOpMath3Param
     {
@@ -16,24 +19,30 @@ internal static partial class EvmInstructions
     }
 
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionMath3Param<TOpMath, TTracingInst>(VirtualMachine _, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    public static EvmExceptionType InstructionMath3Param<TGasPolicy, TOpMath, TTracingInst>(VirtualMachine<TGasPolicy> _, ref EvmStack stack, ref TGasPolicy gas, ref int programCounter)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TOpMath : struct, IOpMath3Param
         where TTracingInst : struct, IFlag
     {
-        gasAvailable -= TOpMath.GasCost;
+        TGasPolicy.Consume(ref gas, TOpMath.GasCost);
 
-        if (!stack.PopUInt256(out UInt256 a) || !stack.PopUInt256(out UInt256 b) || !stack.PopUInt256(out UInt256 c)) goto StackUnderflow;
+        // Pop a and b, peek the third slot for in-place write; skips the push overflow check.
+        ref byte topRef = ref stack.Pop2Peek32Bytes(out UInt256 a, out UInt256 b, out bool ok);
+        if (!ok) goto StackUnderflow;
 
+        EvmStack.ReadUInt256FromSlot(ref topRef, out UInt256 c);
         if (c.IsZero)
         {
-            stack.PushZero<TTracingInst>();
+            // c-slot already held c; overwrite with zero (matches PushZero semantics).
+            Unsafe.As<byte, Vector256<byte>>(ref topRef) = default;
         }
         else
         {
             TOpMath.Operation(in a, in b, in c, out UInt256 result);
-            stack.PushUInt256<TTracingInst>(in result);
+            EvmStack.WriteUInt256ToSlot(ref topRef, in result);
         }
 
+        if (TTracingInst.IsActive) stack.ReportPushUInt256(ref topRef);
         return EvmExceptionType.None;
     StackUnderflow:
         // Jump forward to be unpredicted by the branch predictor

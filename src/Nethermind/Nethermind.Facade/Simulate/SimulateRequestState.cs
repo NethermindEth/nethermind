@@ -5,10 +5,11 @@ using Nethermind.Int256;
 
 namespace Nethermind.Facade.Simulate;
 
-public class SimulateRequestState
+public class SimulateRequestState : IBlobBaseFeeOverrideProvider
 {
     public bool Validate { get; set; }
     public UInt256? BlobBaseFeeOverride { get; set; }
     public long TotalGasLeft { get; set; }
+    public long BlockGasLeft { get; set; }
     public bool[] TxsWithExplicitGas { get; set; }
 }

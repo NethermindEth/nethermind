@@ -17,7 +17,7 @@ public class ExitOnBlockNumberHandler
         long initConfigExitOnBlockNumber,
         ILogManager logManager)
     {
-        ILogger logger = logManager.GetClassLogger();
+        ILogger logger = logManager.GetClassLogger<ExitOnBlockNumberHandler>();
 
         blockTree.BlockAddedToMain += (sender, args) =>
         {

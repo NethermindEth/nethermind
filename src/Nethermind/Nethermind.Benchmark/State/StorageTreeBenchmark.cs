@@ -18,21 +18,12 @@ namespace Nethermind.Benchmarks.State
         private StorageTree _tree;
 
         [GlobalSetup]
-        public void Setup()
-        {
-            _tree = new StorageTree(NullTrieStore.Instance, NullLogManager.Instance);
-        }
+        public void Setup() => _tree = new StorageTree(NullTrieStore.Instance, NullLogManager.Instance);
 
         [Benchmark]
-        public void Set_index()
-        {
-            _tree.Set(_index, _value);
-        }
+        public void Set_index() => _tree.Set(_index, _value);
 
         [Benchmark]
-        public byte[] Get_index()
-        {
-            return _tree.Get(_index);
-        }
+        public byte[] Get_index() => _tree.Get(_index);
     }
 }

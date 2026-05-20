@@ -17,6 +17,7 @@ using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Test.IO;
+using Nethermind.Core.Test.Modules;
 using Nethermind.Db;
 using Nethermind.Db.FullPruning;
 using Nethermind.Db.Rocks;
@@ -30,6 +31,7 @@ using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test.FullPruning;
 
+[Parallelizable(ParallelScope.All)]
 public class FullPruningDiskTest
 {
     public class PruningTestBlockchain : TestBlockchain
@@ -44,10 +46,7 @@ public class FullPruningDiskTest
         public IChainEstimations _chainEstimations = Substitute.For<IChainEstimations>();
         public IProcessExitSource ProcessExitSource { get; } = Substitute.For<IProcessExitSource>();
 
-        public PruningTestBlockchain()
-        {
-            TempDirectory = TempPath.GetTempDirectory();
-        }
+        public PruningTestBlockchain() => TempDirectory = TempPath.GetTempDirectory();
 
         protected override async Task<TestBlockchain> Build(Action<ContainerBuilder>? containerBuilder = null)
         {
@@ -103,32 +102,29 @@ public class FullPruningDiskTest
             PruningTestBlockchain chain = new()
             {
                 PruningConfig = pruningConfig ?? new PruningConfig(),
-                TestTimout = testTimeoutMs,
+                TestTimeout = testTimeoutMs,
             };
             await chain.Build();
             return chain;
         }
 
-        public class FullTestPruner : FullPruner
+        public class FullTestPruner(
+            IFullPruningDb pruningDb,
+            INodeStorageFactory nodeStorageFactory,
+            INodeStorage mainNodeStorage,
+            IPruningTrigger pruningTrigger,
+            IPruningConfig pruningConfig,
+            IBlockTree blockTree,
+            IStateReader stateReader,
+            IProcessExitSource processExitSource,
+            IDriveInfo driveInfo,
+            IPruningTrieStore trieStore,
+            IChainEstimations chainEstimations,
+            ILogManager logManager)
+            : FullPruner(pruningDb, nodeStorageFactory, mainNodeStorage, pruningTrigger, pruningConfig, blockTree,
+                stateReader, processExitSource, chainEstimations, driveInfo, trieStore, logManager)
         {
             public EventWaitHandle WaitHandle { get; } = new ManualResetEvent(false);
-
-            public FullTestPruner(
-                IFullPruningDb pruningDb,
-                INodeStorageFactory nodeStorageFactory,
-                INodeStorage mainNodeStorage,
-                IPruningTrigger pruningTrigger,
-                IPruningConfig pruningConfig,
-                IBlockTree blockTree,
-                IStateReader stateReader,
-                IProcessExitSource processExitSource,
-                IDriveInfo driveInfo,
-                IPruningTrieStore trieStore,
-                IChainEstimations chainEstimations,
-                ILogManager logManager)
-                : base(pruningDb, nodeStorageFactory, mainNodeStorage, pruningTrigger, pruningConfig, blockTree, stateReader, processExitSource, chainEstimations, driveInfo, trieStore, logManager)
-            {
-            }
 
             protected override async Task RunFullPruning(CancellationToken cancellationToken)
             {
@@ -136,6 +132,12 @@ public class FullPruningDiskTest
                 WaitHandle.Set();
             }
         }
+    }
+
+    [SetUp]
+    public void Setup()
+    {
+        if (PseudoNethermindModule.TestUseFlat) Assert.Ignore("Disabled in flat");
     }
 
     [Test, MaxTime(Timeout.LongTestTime)]

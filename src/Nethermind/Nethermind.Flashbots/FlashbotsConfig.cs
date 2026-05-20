@@ -5,7 +5,7 @@ namespace Nethermind.Flashbots;
 
 public class FlashbotsConfig : IFlashbotsConfig
 {
-    public bool Enabled { get; set; } = true;
+    public bool Enabled { get; set; } = false;
     public bool UseBalanceDiffProfit { get; set; } = false;
 
     public bool ExcludeWithdrawals { get; set; } = false;

@@ -1,13 +1,12 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Linq;
 using Autofac;
+using Autofac.Features.AttributeFilters;
 using Nethermind.Api;
 using Nethermind.Core;
 using Nethermind.Crypto;
 using Nethermind.Db;
-using Nethermind.Init.Steps;
 using Nethermind.Logging;
 using Nethermind.Network;
 using Nethermind.Network.Config;
@@ -43,17 +42,18 @@ public class DiscoveryModule(IInitConfig initConfig, INetworkConfig networkConfi
             .AddKeyedSingleton<INodeSource>(NodeSourceToDiscV4Feeder.SourceKey, ctx => ctx.Resolve<EnrDiscovery>())
 
             // Uses by RPC also.
-            .AddSingleton<IStaticNodesManager, ILogManager>((logManager) => new StaticNodesManager(initConfig.StaticNodesPath, logManager))
+            .AddSingleton<IStaticNodesManager, ILogManager>(logManager =>
+                new StaticNodesManager(initConfig.StaticNodesPath.GetApplicationResourcePath(initConfig.DataDir), logManager))
             // This load from file.
             .AddSingleton<NodesLoader>()
 
-            .AddSingleton<ITrustedNodesManager, ILogManager>((logManager) =>
-                new TrustedNodesManager(initConfig.TrustedNodesPath, logManager))
+            .AddSingleton<ITrustedNodesManager, ILogManager>(logManager =>
+                new TrustedNodesManager(initConfig.TrustedNodesPath.GetApplicationResourcePath(initConfig.DataDir), logManager))
 
             .Bind<INodeSource, IStaticNodesManager>()
 
             // Used by NodesLoader, and ProtocolsManager which add entry on sync peer connected
-            .AddNetworkStorage(DbNames.PeersDb, "peers")
+            .AddNetworkStorage(DbNames.PeersDb, DbNames.PeersDb)
             .Bind<INodeSource, NodesLoader>()
             .AddComposite<INodeSource, CompositeNodeSource>()
 
@@ -67,25 +67,14 @@ public class DiscoveryModule(IInitConfig initConfig, INetworkConfig networkConfi
                 ChainSpec chainSpec = ctx.Resolve<ChainSpec>();
                 IDiscoveryConfig discoveryConfig = ctx.Resolve<IDiscoveryConfig>();
 
-                // Was in `UpdateDiscoveryConfig` step.
-                if (discoveryConfig.Bootnodes != string.Empty)
-                {
-                    if (chainSpec.Bootnodes.Length != 0)
-                    {
-                        discoveryConfig.Bootnodes += "," + string.Join(",", chainSpec.Bootnodes.Select(static bn => bn.ToString()));
-                    }
-                }
-                else if (chainSpec.Bootnodes is not null)
-                {
-                    discoveryConfig.Bootnodes = string.Join(",", chainSpec.Bootnodes.Select(static bn => bn.ToString()));
-                }
-
                 if (networkConfig.DiscoveryDns == null)
                 {
                     string chainName = BlockchainIds.GetBlockchainName(chainSpec!.NetworkId).ToLowerInvariant();
                     networkConfig.DiscoveryDns = $"all.{chainName}.ethdisco.net";
                 }
-                networkConfig.Bootnodes = discoveryConfig.Bootnodes;
+
+                networkConfig.Bootnodes = [.. networkConfig.Bootnodes, .. discoveryConfig.Bootnodes, .. chainSpec.Bootnodes];
+
                 return networkConfig;
             })
 
@@ -115,8 +104,8 @@ public class DiscoveryModule(IInitConfig initConfig, INetworkConfig networkConfi
                 .AddSingleton<IDiscoveryApp, CompositeDiscoveryApp>()
                 .AddSingleton<INodeRecordProvider, NodeRecordProvider>()
 
-                .AddNetworkStorage(DbNames.DiscoveryNodes, "discoveryNodes")
-                .AddSingleton<DiscoveryV5App>()
+                .AddNetworkStorage(DbNames.DiscoveryNodes, DbNames.DiscoveryNodes)
+                .AddNetworkStorage(DbNames.DiscoveryV5Nodes, DbNames.DiscoveryV5Nodes)
 
                 .AddSingleton<INodeDistanceCalculator, NodeDistanceCalculator>()
                 .AddSingleton<INodeTable, NodeTable>()
@@ -125,9 +114,14 @@ public class DiscoveryModule(IInitConfig initConfig, INetworkConfig networkConfi
                 .AddSingleton<IDiscoveryManager, DiscoveryManager>()
                 .AddSingleton<INodesLocator, NodesLocator>()
                 .AddSingleton<DiscoveryPersistenceManager>()
-                .AddSingleton<DiscoveryApp>()
 
                 ;
+
+            // DiscoveryApp and DiscoveryV5App implement IStoppableService via IDiscoveryApp,
+            // but their lifecycle is owned by CompositeDiscoveryApp. Mark ExternallyOwned so
+            // ServiceStopperMiddleware does not double-stop them.
+            builder.RegisterType<DiscoveryV5App>().AsSelf().WithAttributeFiltering().SingleInstance().ExternallyOwned();
+            builder.RegisterType<DiscoveryApp>().AsSelf().WithAttributeFiltering().SingleInstance().ExternallyOwned();
         }
 
 

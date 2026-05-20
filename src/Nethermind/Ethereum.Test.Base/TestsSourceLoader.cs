@@ -5,31 +5,18 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 
-using Ethereum.Test.Base.Interfaces;
-
 namespace Ethereum.Test.Base
 {
-    public class TestsSourceLoader : ITestSourceLoader
+    public class TestsSourceLoader(ITestLoadStrategy testLoadStrategy, string path, string? wildcard = null)
+        : ITestSourceLoader
     {
-        private readonly ITestLoadStrategy _testLoadStrategy;
-        private readonly string _path;
-        private readonly string _wildcard;
+        private readonly ITestLoadStrategy _testLoadStrategy = testLoadStrategy ?? throw new ArgumentNullException(nameof(testLoadStrategy));
+        private readonly string _path = path ?? throw new ArgumentNullException(nameof(path));
 
-        public TestsSourceLoader(ITestLoadStrategy testLoadStrategy, string path, string wildcard = null)
-        {
-            _testLoadStrategy = testLoadStrategy ?? throw new ArgumentNullException(nameof(testLoadStrategy));
-            _path = path ?? throw new ArgumentNullException(nameof(path));
-            _wildcard = wildcard;
-        }
+        public IEnumerable<EthereumTest> LoadTests() =>
+            TestChunkFilter.FilterByChunk(_testLoadStrategy.Load(_path, wildcard));
 
-        public IEnumerable<EthereumTest> LoadTests()
-        {
-            return _testLoadStrategy.Load(_path, _wildcard);
-        }
-        public IEnumerable<TTestType> LoadTests<TTestType>()
-            where TTestType : EthereumTest
-        {
-            return _testLoadStrategy.Load(_path, _wildcard).Cast<TTestType>();
-        }
+        public IEnumerable<TTestType> LoadTests<TTestType>() where TTestType : EthereumTest =>
+            TestChunkFilter.FilterByChunk(_testLoadStrategy.Load(_path, wildcard).OfType<TTestType>());
     }
 }

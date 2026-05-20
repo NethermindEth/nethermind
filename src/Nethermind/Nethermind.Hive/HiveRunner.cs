@@ -2,16 +2,15 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
 using System.IO;
 using System.IO.Abstractions;
-using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
@@ -29,6 +28,8 @@ namespace Nethermind.Hive
         private readonly ILogger _logger = logManager.GetClassLogger<HiveRunner>();
         private readonly SemaphoreSlim _resetEvent = new(0);
         private bool BlockSuggested;
+        private Hash256? _lastProcessedBlockHash;
+        private ProcessingResult _lastProcessingResult;
 
         public async Task Start(CancellationToken cancellationToken)
         {
@@ -54,6 +55,8 @@ namespace Nethermind.Hive
 
         private void BlockProcessingFinished(object? sender, BlockHashEventArgs e)
         {
+            _lastProcessedBlockHash = e.BlockHash;
+            _lastProcessingResult = e.ProcessingResult;
             _logger.Info(e.ProcessingResult == ProcessingResult.Success
                 ? $"HIVE block added to main: {e.BlockHash}"
                 : $"HIVE block skipped: {e.BlockHash}");
@@ -69,7 +72,7 @@ namespace Nethermind.Hive
             // #  - HIVE_TESTNET        whether testnet nonces (2^20) are needed
             // #  - HIVE_NODETYPE       sync and pruning selector (archive, full, light)
             // #  - HIVE_FORK_HOMESTEAD block number of the DAO hard-fork transition
-            // #  - HIVE_FORK_DAO_BLOCK block number of the DAO hard-fork transitionnsition
+            // #  - HIVE_FORK_DAO_BLOCK block number of the DAO hard-fork transition
             // #  - HIVE_FORK_DAO_VOTE  whether the node support (or opposes) the DAO fork
             // #  - HIVE_FORK_TANGERINE block number of TangerineWhistle
             // #  - HIVE_FORK_SPURIOUS  block number of SpuriousDragon
@@ -85,11 +88,22 @@ namespace Nethermind.Hive
                 "HIVE_CHAIN_ID", "HIVE_BOOTNODE", "HIVE_TESTNET", "HIVE_NODETYPE", "HIVE_FORK_HOMESTEAD",
                 "HIVE_FORK_DAO_BLOCK", "HIVE_FORK_DAO_VOTE", "HIVE_FORK_TANGERINE", "HIVE_FORK_SPURIOUS",
                 "HIVE_FORK_METROPOLIS", "HIVE_FORK_BYZANTIUM", "HIVE_FORK_CONSTANTINOPLE", "HIVE_FORK_PETERSBURG",
-                "HIVE_MINER", "HIVE_MINER_EXTRA", "HIVE_FORK_BERLIN", "HIVE_FORK_LONDON"
+                "HIVE_MINER", "HIVE_MINER_EXTRA", "HIVE_FORK_BERLIN", "HIVE_FORK_LONDON",
+                "HIVE_MERGE_BLOCK_ID", "HIVE_SHANGHAI_TIMESTAMP", "HIVE_CANCUN_TIMESTAMP",
+                "HIVE_CANCUN_BLOB_TARGET", "HIVE_CANCUN_BLOB_MAX", "HIVE_CANCUN_BLOB_BASE_FEE_UPDATE_FRACTION",
+                "HIVE_PRAGUE_TIMESTAMP", "HIVE_PRAGUE_BLOB_TARGET", "HIVE_PRAGUE_BLOB_MAX",
+                "HIVE_PRAGUE_BLOB_BASE_FEE_UPDATE_FRACTION", "HIVE_OSAKA_TIMESTAMP", "HIVE_OSAKA_BLOB_TARGET",
+                "HIVE_OSAKA_BLOB_MAX", "HIVE_OSAKA_BLOB_BASE_FEE_UPDATE_FRACTION", "HIVE_AMSTERDAM_TIMESTAMP",
+                "HIVE_AMSTERDAM_BLOB_TARGET", "HIVE_AMSTERDAM_BLOB_MAX", "HIVE_AMSTERDAM_BLOB_BASE_FEE_UPDATE_FRACTION",
+                "HIVE_BPO1_TIMESTAMP", "HIVE_BPO1_BLOB_TARGET", "HIVE_BPO1_BLOB_MAX", "HIVE_BPO1_BLOB_BASE_FEE_UPDATE_FRACTION",
+                "HIVE_BPO2_TIMESTAMP", "HIVE_BPO2_BLOB_TARGET", "HIVE_BPO2_BLOB_MAX", "HIVE_BPO2_BLOB_BASE_FEE_UPDATE_FRACTION",
+                "HIVE_BPO3_TIMESTAMP", "HIVE_BPO3_BLOB_TARGET", "HIVE_BPO3_BLOB_MAX", "HIVE_BPO3_BLOB_BASE_FEE_UPDATE_FRACTION",
+                "HIVE_BPO4_TIMESTAMP", "HIVE_BPO4_BLOB_TARGET", "HIVE_BPO4_BLOB_MAX", "HIVE_BPO4_BLOB_BASE_FEE_UPDATE_FRACTION",
+                "HIVE_BPO5_TIMESTAMP", "HIVE_BPO5_BLOB_TARGET", "HIVE_BPO5_BLOB_MAX", "HIVE_BPO5_BLOB_BASE_FEE_UPDATE_FRACTION"
             };
             foreach (string variableName in variableNames)
             {
-                if (_logger.IsInfo) _logger.Info($"{variableName}: {Environment.GetEnvironmentVariable(variableName)}");
+                if (_logger.IsInfo) _logger.Info($"{variableName}: {Environment.GetEnvironmentVariable(variableName) ?? "null"}");
             }
         }
 
@@ -103,7 +117,8 @@ namespace Nethermind.Hive
 
             if (_logger.IsInfo) _logger.Info($"HIVE Loading blocks from {blocksDir}");
 
-            string[] files = Directory.GetFiles(blocksDir).OrderBy(static x => x).ToArray();
+            string[] files = Directory.GetFiles(blocksDir);
+            Array.Sort(files, StringComparer.Ordinal);
             if (_logger.IsInfo) _logger.Info($"Loaded {files.Length} files with blocks to process.");
 
             BlockHeader? parent = null;
@@ -123,11 +138,11 @@ namespace Nethermind.Hive
                         parent = blockTree.Genesis;
                     }
 
-                    if (_logger.IsInfo)
-                        _logger.Info(
-                            $"HIVE Processing block file: {file} - {block.ToString(Block.Format.Short)}");
-                    await ProcessBlock(block, parent);
-                    parent = block.Header;
+                    if (_logger.IsInfo) _logger.Info($"HIVE Processing block file: {file} - {block.ToString(Block.Format.Short)}");
+                    if (await ProcessBlock(block, parent!))
+                    {
+                        parent = block.Header;
+                    }
                 }
                 catch (RlpException e)
                 {
@@ -145,23 +160,13 @@ namespace Nethermind.Hive
             }
 
             byte[] chainFileContent = fileSystem.File.ReadAllBytes(chainFile);
-            RlpStream rlpStream = new RlpStream(chainFileContent);
-            List<Block> blocks = new List<Block>();
+            BlockHeader? parent = null;
+            int position = 0;
 
             if (_logger.IsInfo) _logger.Info($"HIVE Loading blocks from {chainFile}");
-            while (rlpStream.PeekNumberOfItemsRemaining() > 0)
+            while (position < chainFileContent.Length)
             {
-                rlpStream.PeekNextItem();
-                Block block = Rlp.Decode<Block>(rlpStream, RlpBehaviors.AllowExtraBytes);
-                if (_logger.IsInfo)
-                    _logger.Info($"HIVE Reading a chain.rlp block {block.ToString(Block.Format.Short)}");
-                blocks.Add(block);
-            }
-
-            BlockHeader? parent = null;
-            for (int i = 0; i < blocks.Count; i++)
-            {
-                Block block = blocks[i];
+                Block block = DecodeNextChainBlock(chainFileContent, position, out position);
                 if (_logger.IsInfo)
                     _logger.Info($"HIVE Processing a chain.rlp block {block.ToString(Block.Format.Short)}");
 
@@ -170,15 +175,26 @@ namespace Nethermind.Hive
                     parent = blockTree.Genesis;
                 }
 
-                await ProcessBlock(block, parent);
-                parent = block.Header;
+                if (await ProcessBlock(block, parent!))
+                {
+                    parent = block.Header;
+                }
             }
+        }
+
+        private static Block DecodeNextChainBlock(byte[] chainFileContent, int position, out int nextPosition)
+        {
+            Rlp.ValueDecoderContext rlpContext = new(chainFileContent) { Position = position };
+            rlpContext.PeekNextItem();
+            Block block = Rlp.Decode<Block>(ref rlpContext, RlpBehaviors.AllowExtraBytes);
+            nextPosition = rlpContext.Position;
+            return block;
         }
 
         private Block DecodeBlock(string file)
         {
             byte[] fileContent = File.ReadAllBytes(file);
-            if (_logger.IsInfo) _logger.Info(fileContent.ToHexString());
+            if (_logger.IsDebug) _logger.Debug(fileContent.ToHexString());
             Rlp blockRlp = new(fileContent);
             return Rlp.Decode<Block>(blockRlp);
         }
@@ -187,21 +203,23 @@ namespace Nethermind.Hive
         {
             if (!await semaphore.WaitAsync(5000))
             {
-                throw new InvalidOperationException();
+                throw new InvalidOperationException("Block processing timeout after 5000ms. The block may not have been processed in time.");
             }
         }
 
-        private async Task ProcessBlock(Block block, BlockHeader? parent)
+        private async Task<bool> ProcessBlock(Block block, BlockHeader parent)
         {
             try
             {
                 // Start of block processing, setting flag BlockSuggested to default value: false
                 BlockSuggested = false;
+                _lastProcessedBlockHash = null;
+                _lastProcessingResult = ProcessingResult.Success;
 
                 if (!blockValidator.ValidateSuggestedBlock(block, parent, out string? err))
                 {
                     if (_logger.IsInfo) _logger.Info($"Invalid block {block}. Error: {err}");
-                    return;
+                    return false;
                 }
 
                 // Inside BlockTree.SuggestBlockAsync, if block's total difficulty is higher than highest known,
@@ -211,23 +229,26 @@ namespace Nethermind.Hive
                 if (result != AddBlockResult.Added && result != AddBlockResult.AlreadyKnown)
                 {
                     if (_logger.IsError) _logger.Error($"Cannot add block {block} to the blockTree, add result {result}");
-                    return;
+                    return false;
                 }
 
                 // If block was suggested, we need to wait for processing it.
                 if (BlockSuggested)
                 {
                     await WaitForBlockProcessing(_resetEvent);
+                    return _lastProcessedBlockHash == block.Hash && _lastProcessingResult == ProcessingResult.Success;
                 }
                 // Otherwise, block will be only added and not processed, so there is nothing to wait for.
                 else
                 {
                     _logger.Info($"HIVE skipped suggesting block: {block.Hash}");
+                    return true;
                 }
             }
             catch (Exception e)
             {
                 _logger.Error($"HIVE Invalid block: {block.Hash}, ignoring. ", e);
+                return false;
             }
         }
     }

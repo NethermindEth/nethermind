@@ -16,12 +16,9 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
         public Hash256? GenesisHash { get; set; }
         public ForkId? ForkId { get; set; }
 
-        public override int PacketType { get; } = Eth62MessageCode.Status;
-        public override string Protocol { get; } = "eth";
+        public override int PacketType => Eth62MessageCode.Status;
+        public override string Protocol => "eth";
 
-        public override string ToString()
-        {
-            return $"{Protocol}.{ProtocolVersion} network: {NetworkId} | diff: {TotalDifficulty} | best: {BestHash?.ToShortString()} | genesis: {GenesisHash?.ToShortString()} | fork: {ForkId}";
-        }
+        public override string ToString() => $"{Protocol}.{ProtocolVersion} network: {NetworkId} | diff: {TotalDifficulty} | best: {BestHash?.ToShortString()} | genesis: {GenesisHash?.ToShortString()} | fork: {ForkId}";
     }
 }

@@ -14,14 +14,10 @@ namespace Nethermind.Blockchain.Spec
     {
         private readonly ISpecProvider _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
         private readonly IBlockFinder _blockFinder = blockFinder ?? throw new ArgumentNullException(nameof(blockFinder));
-        private long _lastHeader = -1;
-        private IReleaseSpec? _headerSpec;
-        private readonly Lock _lock = new();
+        private CachedSpec? _cache;
 
-        public void UpdateMergeTransitionInfo(long? blockNumber, UInt256? terminalTotalDifficulty = null)
-        {
+        public void UpdateMergeTransitionInfo(long? blockNumber, UInt256? terminalTotalDifficulty = null) =>
             _specProvider.UpdateMergeTransitionInfo(blockNumber, terminalTotalDifficulty);
-        }
 
         public ForkActivation? MergeBlockNumber => _specProvider.MergeBlockNumber;
 
@@ -31,7 +27,7 @@ namespace Nethermind.Blockchain.Spec
 
         public IReleaseSpec GenesisSpec => _specProvider.GenesisSpec;
 
-        IReleaseSpec ISpecProvider.GetSpecInternal(ForkActivation forkActivation) => _specProvider.GetSpec(forkActivation);
+        public IReleaseSpec GetSpec(ForkActivation forkActivation) => _specProvider.GetSpec(forkActivation);
 
         public long? DaoBlockNumber => _specProvider.DaoBlockNumber;
 
@@ -48,26 +44,22 @@ namespace Nethermind.Blockchain.Spec
             BlockHeader? header = _blockFinder.FindBestSuggestedHeader();
             long headerNumber = header?.Number ?? 0;
 
-            // we are fine with potential concurrency issue here, that the spec will change
-            // between this if and getting actual header spec
-            // this is used only in tx pool and this is not a problem there
-            if (headerNumber == _lastHeader)
+            // Reference-type record keeps the (number, spec) publication atomic.
+            // Don't change to a record struct — 16-byte writes are not atomic.
+            CachedSpec? snapshot = Volatile.Read(ref _cache);
+            if (snapshot is not null && snapshot.Number == headerNumber)
             {
-                IReleaseSpec releaseSpec = _headerSpec;
-                if (releaseSpec is not null)
-                {
-                    return releaseSpec;
-                }
+                return snapshot.Spec;
             }
 
-            // we want to make sure updates to both fields are consistent though
-            lock (_lock)
-            {
-                _lastHeader = headerNumber;
-                return _headerSpec = header is not null
-                    ? _specProvider.GetSpec(header)
-                    : _specProvider.GetSpec((ForkActivation)headerNumber);
-            }
+            IReleaseSpec spec = header is not null
+                ? _specProvider.GetSpec(header)
+                : _specProvider.GetSpec((ForkActivation)headerNumber);
+
+            Volatile.Write(ref _cache, new CachedSpec(headerNumber, spec));
+            return spec;
         }
+
+        private sealed record CachedSpec(long Number, IReleaseSpec Spec);
     }
 }

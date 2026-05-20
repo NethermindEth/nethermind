@@ -12,12 +12,13 @@ using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
+using Nethermind.Db.LogIndex;
 using Nethermind.Evm;
 using Nethermind.Facade;
 using Nethermind.Facade.Eth;
 using Nethermind.Facade.Eth.RpcTransaction;
-using Nethermind.Int256;
 using Nethermind.JsonRpc.Client;
+using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.JsonRpc.Modules.Eth.FeeHistory;
 using Nethermind.JsonRpc.Test.Modules;
 using Nethermind.Logging;
@@ -42,6 +43,34 @@ public class OptimismEthRpcModuleTest
         TxDecoder.Instance.RegisterDecoder(new OptimismLegacyTxDecoder());
     }
 
+    private static IBlockFinder MockBlockFinder(Block block)
+    {
+        IBlockFinder bf = Substitute.For<IBlockFinder>();
+        bf.FindBlock(new BlockParameter(block.Hash!)).Returns(block);
+        bf.FindBlock(new BlockParameter(block.Number)).Returns(block);
+        return bf;
+    }
+
+    private static IReceiptFinder MockReceiptFinder(Block block, params TxReceipt[] receipts)
+    {
+        IReceiptFinder rf = Substitute.For<IReceiptFinder>();
+        rf.Get(block).Returns(receipts);
+        return rf;
+    }
+
+    private static Task<TestRpcBlockchain> BuildOptimismRpc(IBlockFinder blockFinder, IReceiptFinder receiptFinder) =>
+        TestRpcBlockchain
+            .ForTest(sealEngineType: SealEngineType.Optimism)
+            .WithBlockFinder(blockFinder)
+            .WithReceiptFinder(receiptFinder)
+            .WithOptimismEthRpcModule(
+                sequencerRpcClient: Substitute.For<IJsonRpcClient>(),
+                accountStateProvider: Substitute.For<IAccountStateProvider>(),
+                ecdsa: Substitute.For<IEthereumEcdsa>(),
+                sealer: Substitute.For<ITxSealer>(),
+                opSpecHelper: Substitute.For<IOptimismSpecHelper>())
+            .Build();
+
     [Test]
     public async Task Sequencer_send_transaction_with_signature_will_not_try_to_sign()
     {
@@ -50,7 +79,7 @@ public class OptimismEthRpcModuleTest
         txSender.SendTransaction(tx: Arg.Any<Transaction>(), txHandlingOptions: TxHandlingOptions.PersistentBroadcast)
             .Returns(returnThis: (TestItem.KeccakA, AcceptTxResult.Accepted));
 
-        EthereumEcdsa ethereumEcdsa = new EthereumEcdsa(chainId: TestBlockchainIds.ChainId);
+        EthereumEcdsa ethereumEcdsa = new(chainId: TestBlockchainIds.ChainId);
         TestRpcBlockchain rpcBlockchain = await TestRpcBlockchain
             .ForTest(sealEngineType: SealEngineType.Optimism)
             .WithBlockchainBridge(bridge)
@@ -88,7 +117,22 @@ public class OptimismEthRpcModuleTest
         };
 
         IBlockchainBridge bridge = Substitute.For<IBlockchainBridge>();
-        bridge.GetTransaction(TestItem.KeccakA, checkTxnPool: true).Returns((receipt, tx, (UInt256?)0));
+        TransactionLookupResult lookupResult = new(
+            tx,
+            new(
+                chainId: 0,
+                blockHash: receipt.BlockHash!,
+                blockNumber: receipt.BlockNumber,
+                txIndex: receipt.Index,
+                blockTimestamp: 0,
+                baseFee: 0,
+                receipt: receipt));
+        bridge.TryGetTransaction(TestItem.KeccakA, out Arg.Any<TransactionLookupResult?>(), checkTxnPool: true)
+            .Returns(callInfo =>
+            {
+                callInfo[1] = lookupResult;
+                return true;
+            });
 
         TestRpcBlockchain rpcBlockchain = await TestRpcBlockchain
             .ForTest(sealEngineType: SealEngineType.Optimism)
@@ -103,7 +147,7 @@ public class OptimismEthRpcModuleTest
 
 
         string serialized = await rpcBlockchain.TestEthRpc("eth_getTransactionByHash", TestItem.KeccakA);
-        var expected = $$"""
+        string expected = $$"""
                          {
                             "jsonrpc":"2.0",
                             "result": {
@@ -121,6 +165,7 @@ public class OptimismEthRpcModuleTest
                                  "hash": "{{TestItem.KeccakA.Bytes.ToHexString(withZeroX: true)}}",
                                  "blockHash": "{{TestItem.KeccakB.Bytes.ToHexString(withZeroX: true)}}",
                                  "blockNumber": "0x10",
+                                 "blockTimestamp": "0x0",
                                  "transactionIndex": "0x20"
                              },
                             "id":67
@@ -146,7 +191,22 @@ public class OptimismEthRpcModuleTest
         };
 
         IBlockchainBridge bridge = Substitute.For<IBlockchainBridge>();
-        bridge.GetTransaction(TestItem.KeccakA, checkTxnPool: true).Returns((receipt, tx, (UInt256?)0));
+        TransactionLookupResult lookupResult = new(
+            tx,
+            new(
+                chainId: 0,
+                blockHash: receipt.BlockHash!,
+                blockNumber: receipt.BlockNumber,
+                txIndex: receipt.Index,
+                blockTimestamp: 0,
+                baseFee: 0,
+                receipt: receipt));
+        bridge.TryGetTransaction(TestItem.KeccakA, out Arg.Any<TransactionLookupResult?>(), checkTxnPool: true)
+            .Returns(callInfo =>
+            {
+                callInfo[1] = lookupResult;
+                return true;
+            });
 
         TestRpcBlockchain rpcBlockchain = await TestRpcBlockchain
             .ForTest(sealEngineType: SealEngineType.Optimism)
@@ -161,7 +221,7 @@ public class OptimismEthRpcModuleTest
 
 
         string serialized = await rpcBlockchain.TestEthRpc("eth_getTransactionByHash", TestItem.KeccakA);
-        var expected = $$"""
+        string expected = $$"""
                          {
                             "jsonrpc":"2.0",
                             "result": {
@@ -179,6 +239,7 @@ public class OptimismEthRpcModuleTest
                                  "hash": "{{TestItem.KeccakA.Bytes.ToHexString(withZeroX: true)}}",
                                  "blockHash": "{{TestItem.KeccakB.Bytes.ToHexString(withZeroX: true)}}",
                                  "blockNumber": "0x10",
+                                 "blockTimestamp": "0x0",
                                  "transactionIndex": "0x20"
                              },
                             "id":67
@@ -210,26 +271,9 @@ public class OptimismEthRpcModuleTest
             DepositReceiptVersion = 0x30,
         };
 
-        IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
-        blockFinder.FindBlock(new BlockParameter(block.Hash!)).Returns(block);
-        blockFinder.FindBlock(new BlockParameter(block.Number)).Returns(block);
+        TestRpcBlockchain rpcBlockchain = await BuildOptimismRpc(MockBlockFinder(block), MockReceiptFinder(block, receipt));
 
-        IReceiptFinder receiptFinder = Substitute.For<IReceiptFinder>();
-        receiptFinder.Get(block).Returns([receipt]);
-
-        TestRpcBlockchain rpcBlockchain = await TestRpcBlockchain
-            .ForTest(sealEngineType: SealEngineType.Optimism)
-            .WithBlockFinder(blockFinder)
-            .WithReceiptFinder(receiptFinder)
-            .WithOptimismEthRpcModule(
-                sequencerRpcClient: Substitute.For<IJsonRpcClient>(),
-                accountStateProvider: Substitute.For<IAccountStateProvider>(),
-                ecdsa: Substitute.For<IEthereumEcdsa>(),
-                sealer: Substitute.For<ITxSealer>(),
-                opSpecHelper: Substitute.For<IOptimismSpecHelper>())
-            .Build();
-
-        var expected = $$"""
+        string expected = $$"""
                          {
                             "jsonrpc":"2.0",
                             "result": {
@@ -247,7 +291,8 @@ public class OptimismEthRpcModuleTest
                                 "hash": "{{tx.Hash!.Bytes.ToHexString(withZeroX: true)}}",
                                 "blockHash": "{{block.Hash!.Bytes.ToHexString(withZeroX: true)}}",
                                 "blockNumber": "0x10",
-                                "transactionIndex": "0x20"
+                                "blockTimestamp": "0xf4240",
+                                "transactionIndex": "0x0"
                             },
                             "id":67
                          }
@@ -287,26 +332,9 @@ public class OptimismEthRpcModuleTest
             DepositReceiptVersion = 0x30,
         };
 
-        IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
-        blockFinder.FindBlock(new BlockParameter(block.Hash!)).Returns(block);
-        blockFinder.FindBlock(new BlockParameter(block.Number)).Returns(block);
+        TestRpcBlockchain rpcBlockchain = await BuildOptimismRpc(MockBlockFinder(block), MockReceiptFinder(block, receipt));
 
-        IReceiptFinder receiptFinder = Substitute.For<IReceiptFinder>();
-        receiptFinder.Get(block).Returns([receipt]);
-
-        TestRpcBlockchain rpcBlockchain = await TestRpcBlockchain
-            .ForTest(sealEngineType: SealEngineType.Optimism)
-            .WithBlockFinder(blockFinder)
-            .WithReceiptFinder(receiptFinder)
-            .WithOptimismEthRpcModule(
-                sequencerRpcClient: Substitute.For<IJsonRpcClient>(),
-                accountStateProvider: Substitute.For<IAccountStateProvider>(),
-                ecdsa: Substitute.For<IEthereumEcdsa>(),
-                sealer: Substitute.For<ITxSealer>(),
-                opSpecHelper: Substitute.For<IOptimismSpecHelper>())
-            .Build();
-
-        var expected = $$"""
+        string expected = $$"""
                          {
                             "jsonrpc":"2.0",
                             "result": {
@@ -324,7 +352,8 @@ public class OptimismEthRpcModuleTest
                                  "hash": "{{tx.Hash!.Bytes.ToHexString(withZeroX: true)}}",
                                  "blockHash": "{{block.Hash!.Bytes.ToHexString(withZeroX: true)}}",
                                  "blockNumber": "0x10",
-                                 "transactionIndex": "0x20"
+                                 "blockTimestamp": "0xf4240",
+                                 "transactionIndex": "0x0"
                              },
                             "id":67
                          }
@@ -339,6 +368,77 @@ public class OptimismEthRpcModuleTest
             string serialized = await rpcBlockchain.TestEthRpc("eth_getTransactionByBlockNumberAndIndex", block.Number, 0);
             JToken.Parse(serialized).Should().BeEquivalentTo(expected);
         }
+    }
+
+    public enum ReceiptOrder { Aligned, Reversed, Empty }
+
+    [TestCase(ReceiptOrder.Aligned, "0x1", TestName = "Receipts aligned with transactions (fast path)")]
+    [TestCase(ReceiptOrder.Reversed, "0x1", TestName = "Receipts in reverse order (linear fallback)")]
+    [TestCase(ReceiptOrder.Empty, null, TestName = "Empty receipts (no match)")]
+    public async Task GetBlockByHash_WithFullTransactions_SetsDepositReceiptVersionFromMatchingReceipt(
+        ReceiptOrder order, string? expectedDepositVersion)
+    {
+        Transaction depositTx = Build.A.Transaction
+            .WithType(TxType.DepositTx)
+            .WithHash(TestItem.KeccakA)
+            .WithSenderAddress(TestItem.AddressA)
+            .TestObject;
+        Transaction regularTx = Build.A.Transaction
+            .WithType(TxType.EIP1559)
+            .WithHash(TestItem.KeccakB)
+            .WithSenderAddress(TestItem.AddressB)
+            .TestObject;
+
+        Block block = Build.A.Block
+            .WithHeader(Build.A.BlockHeader
+                .WithNumber(1)
+                .WithHash(TestItem.KeccakC)
+                .TestObject)
+            .WithTransactions(depositTx, regularTx)
+            .TestObject;
+
+        OptimismTxReceipt depositReceipt = new()
+        {
+            Sender = depositTx.SenderAddress!,
+            TxType = depositTx.Type,
+            TxHash = depositTx.Hash!,
+            BlockHash = block.Hash,
+            BlockNumber = block.Number,
+            Index = 0,
+            DepositReceiptVersion = 1,
+        };
+        TxReceipt regularReceipt = new()
+        {
+            Sender = regularTx.SenderAddress!,
+            TxType = regularTx.Type,
+            TxHash = regularTx.Hash!,
+            BlockHash = block.Hash,
+            BlockNumber = block.Number,
+            Index = 1,
+        };
+
+        TxReceipt[] receipts = order switch
+        {
+            ReceiptOrder.Aligned => [depositReceipt, regularReceipt],
+            ReceiptOrder.Reversed => [regularReceipt, depositReceipt],
+            ReceiptOrder.Empty => [],
+            _ => throw new System.ArgumentOutOfRangeException(nameof(order)),
+        };
+
+        TestRpcBlockchain rpcBlockchain = await BuildOptimismRpc(MockBlockFinder(block), MockReceiptFinder(block, receipts));
+
+        string serialized = await rpcBlockchain.TestEthRpc("eth_getBlockByHash", block.Hash, true);
+        JToken result = JToken.Parse(serialized)["result"]!;
+        JToken firstTx = result["transactions"]![0]!;
+        JToken secondTx = result["transactions"]![1]!;
+
+        firstTx["hash"]!.Value<string>().Should().Be(depositTx.Hash!.Bytes.ToHexString(withZeroX: true));
+        if (expectedDepositVersion is null)
+            firstTx["depositReceiptVersion"].Should().BeNull();
+        else
+            firstTx["depositReceiptVersion"]!.Value<string>().Should().Be(expectedDepositVersion);
+        secondTx["hash"]!.Value<string>().Should().Be(regularTx.Hash!.Bytes.ToHexString(withZeroX: true));
+        secondTx["depositReceiptVersion"].Should().BeNull();
     }
 
     [Test]
@@ -386,28 +486,10 @@ public class OptimismEthRpcModuleTest
             Index = 1,
         };
 
-        IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
-        blockFinder.FindBlock(new BlockParameter(block.Hash!)).Returns(block);
-        blockFinder.FindBlock(new BlockParameter(block.Number)).Returns(block);
-
-        IReceiptFinder receiptFinder = Substitute.For<IReceiptFinder>();
-        receiptFinder.Get(block).Returns([receiptA, receiptB]);
-
-        TestRpcBlockchain rpcBlockchain = await TestRpcBlockchain
-            .ForTest(sealEngineType: SealEngineType.Optimism)
-            .WithBlockFinder(blockFinder)
-            .WithReceiptFinder(receiptFinder)
-            .WithOptimismEthRpcModule(
-                sequencerRpcClient: Substitute.For<IJsonRpcClient>(),
-                accountStateProvider: Substitute.For<IAccountStateProvider>(),
-                ecdsa: Substitute.For<IEthereumEcdsa>(),
-                sealer: Substitute.For<ITxSealer>(),
-                opSpecHelper: Substitute.For<IOptimismSpecHelper>())
-            .Build();
-
+        TestRpcBlockchain rpcBlockchain = await BuildOptimismRpc(MockBlockFinder(block), MockReceiptFinder(block, receiptA, receiptB));
 
         string serialized = await rpcBlockchain.TestEthRpc("eth_getBlockReceipts", new BlockParameter(block.Number));
-        var expected = $$"""
+        string expected = $$"""
                          {
                             "jsonrpc":"2.0",
                             "result": [
@@ -461,11 +543,13 @@ public class OptimismEthRpcModuleTest
             .WithSenderAddress(TestItem.AddressA)
             .TestObject;
 
+        ulong timestamp = 10;
         Block block = Build.A.Block
             .WithHeader(Build.A.BlockHeader
                 .WithNumber(1)
                 .WithHash(TestItem.KeccakC)
                 .TestObject)
+            .WithTimestamp(timestamp)
             .WithTransactions(tx)
             .TestObject;
 
@@ -481,16 +565,12 @@ public class OptimismEthRpcModuleTest
         };
 
         IBlockchainBridge bridge = Substitute.For<IBlockchainBridge>();
-        bridge.GetReceiptAndGasInfo(tx.Hash!).Returns((receipt, new TxGasInfo(1), 0));
-
-        IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
-        blockFinder.FindBlock(new BlockParameter(block.Hash!)).Returns(block);
-        blockFinder.FindBlock(new BlockParameter(block.Number)).Returns(block);
+        bridge.GetTxReceiptInfo(tx.Hash!).Returns((receipt, timestamp, new TxGasInfo(1), 0));
 
         TestRpcBlockchain rpcBlockchain = await TestRpcBlockchain
             .ForTest(sealEngineType: SealEngineType.Optimism)
             .WithBlockchainBridge(bridge)
-            .WithBlockFinder(blockFinder)
+            .WithBlockFinder(MockBlockFinder(block))
             .WithOptimismEthRpcModule(
                 sequencerRpcClient: Substitute.For<IJsonRpcClient>(),
                 accountStateProvider: Substitute.For<IAccountStateProvider>(),
@@ -501,7 +581,7 @@ public class OptimismEthRpcModuleTest
 
 
         string serialized = await rpcBlockchain.TestEthRpc("eth_getTransactionReceipt", tx.Hash);
-        var expected = $$"""
+        string expected = $$"""
                          {
                             "jsonrpc":"2.0",
                             "result": {
@@ -536,12 +616,12 @@ internal static class TestRpcBlockchainExt
         IAccountStateProvider accountStateProvider,
         IEthereumEcdsa ecdsa,
         ITxSealer sealer,
-        IOptimismSpecHelper opSpecHelper)
-    {
-        return @this.WithEthRpcModule(blockchain => new OptimismEthRpcModule(
+        IOptimismSpecHelper opSpecHelper) =>
+        @this.WithEthRpcModule(blockchain => new OptimismEthRpcModule(
             blockchain.RpcConfig,
             blockchain.Bridge,
             blockchain.BlockFinder,
+            blockchain.BlockTree,
             blockchain.ReceiptFinder,
             blockchain.StateReader,
             blockchain.TxPool,
@@ -557,8 +637,7 @@ internal static class TestRpcBlockchainExt
             blockchain.ProtocolsManager,
             blockchain.ForkInfo,
             new BlocksConfig().SecondsPerSlot,
-
-            sequencerRpcClient, ecdsa, sealer, opSpecHelper
+            sequencerRpcClient, ecdsa, sealer, new LogIndexConfig(), opSpecHelper,
+            new HeadBlockSignal(blockchain.BlockTree)
         ));
-    }
 }

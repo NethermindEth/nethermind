@@ -85,9 +85,69 @@ public class BlockHeaderTests
     }
 
     [Test]
+    public void CreateSimulatedChild_should_use_explicit_header_defaults()
+    {
+        BlockHeader parent = new(
+            TestItem.KeccakA,
+            Keccak.Zero,
+            TestItem.AddressA,
+            UInt256.One,
+            1,
+            30_000_000,
+            100,
+            [1, 2, 3],
+            blobGasUsed: 1,
+            excessBlobGas: 2,
+            parentBeaconBlockRoot: TestItem.KeccakC,
+            requestsHash: TestItem.KeccakD,
+            slotNumber: 3)
+        {
+            Author = TestItem.AddressB,
+            StateRoot = TestItem.KeccakB,
+            TxRoot = TestItem.KeccakB,
+            ReceiptsRoot = TestItem.KeccakB,
+            Bloom = Bloom.Empty,
+            GasUsed = 1,
+            MixHash = TestItem.KeccakB,
+            Nonce = 1,
+            Hash = TestItem.KeccakB,
+            TotalDifficulty = UInt256.One,
+            AuRaSignature = [1],
+            AuRaStep = 1,
+            BaseFeePerGas = 2,
+            WithdrawalsRoot = TestItem.KeccakB,
+            BlockAccessListHash = TestItem.KeccakB,
+            IsPostMerge = true
+        };
+
+        BlockHeader child = parent.CreateSimulatedChild(112);
+
+        child.Should().BeOfType<BlockHeader>();
+        child.ParentHash.Should().Be(parent.Hash!);
+        child.UnclesHash.Should().Be(Keccak.OfAnEmptySequenceRlp);
+        child.Beneficiary.Should().Be(parent.Beneficiary!);
+        child.Difficulty.Should().Be(UInt256.Zero);
+        child.Number.Should().Be(parent.Number + 1);
+        child.GasLimit.Should().Be(parent.GasLimit);
+        child.Timestamp.Should().Be(112);
+        child.ExtraData.Should().BeEmpty();
+        child.MixHash.Should().Be(Hash256.Zero);
+        child.RequestsHash.Should().Be(parent.RequestsHash!);
+        child.Hash.Should().BeNull();
+        child.Bloom.Should().BeNull();
+        child.StateRoot.Should().BeNull();
+        child.TxRoot.Should().BeNull();
+        child.ReceiptsRoot.Should().BeNull();
+        child.BlobGasUsed.Should().BeNull();
+        child.ExcessBlobGas.Should().BeNull();
+        child.ParentBeaconBlockRoot.Should().BeNull();
+        child.SlotNumber.Should().BeNull();
+    }
+
+    [Test]
     public void Eip_1559_CalculateBaseFee_should_returns_zero_when_eip1559_not_enabled()
     {
-        IReleaseSpec releaseSpec = Substitute.For<IReleaseSpec>();
+        IReleaseSpec releaseSpec = ReleaseSpecSubstitute.Create();
         releaseSpec.IsEip1559Enabled.Returns(false);
 
         BlockHeader blockHeader = Build.A.BlockHeader.TestObject;
@@ -108,7 +168,7 @@ public class BlockHeaderTests
     [TestCase(100, 100, 110, 0, 110)]
     public void Eip_1559_CalculateBaseFee(long gasTarget, long baseFee, long expectedBaseFee, long gasUsed, long? minimalBaseFee = null)
     {
-        IReleaseSpec releaseSpec = Substitute.For<IReleaseSpec>();
+        IReleaseSpec releaseSpec = ReleaseSpecSubstitute.Create();
         releaseSpec.BaseFeeCalculator.Returns(new DefaultBaseFeeCalculator());
         releaseSpec.IsEip1559Enabled.Returns(true);
         releaseSpec.Eip1559BaseFeeMinValue.Returns((UInt256?)minimalBaseFee);
@@ -140,7 +200,7 @@ public class BlockHeaderTests
     [TestCaseSource(nameof(Eip1559BaseFeeTestSource))]
     public void Eip_1559_CalculateBaseFee_shared_test_cases((BaseFeeTestCases Info, string Description) testCase)
     {
-        IReleaseSpec releaseSpec = Substitute.For<IReleaseSpec>();
+        IReleaseSpec releaseSpec = ReleaseSpecSubstitute.Create();
         releaseSpec.IsEip1559Enabled.Returns(true);
         releaseSpec.ForkBaseFee.Returns(Eip1559Constants.DefaultForkBaseFee);
         releaseSpec.BaseFeeMaxChangeDenominator.Returns(Eip1559Constants.DefaultBaseFeeMaxChangeDenominator);
