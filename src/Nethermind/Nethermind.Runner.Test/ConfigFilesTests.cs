@@ -14,6 +14,7 @@ using Nethermind.Consensus;
 using Nethermind.Db;
 using Nethermind.EthStats;
 using Nethermind.JsonRpc;
+using Nethermind.JsonRpc.Modules;
 using Nethermind.Monitoring.Config;
 using Nethermind.Network.Config;
 using Nethermind.Network.Discovery;
@@ -151,6 +152,18 @@ public class ConfigFilesTests : ConfigFileTestsBase
         Test<IJsonRpcConfig, bool>(configWildcard, static c => c.Enabled, jsonEnabled);
         Test<IJsonRpcConfig, int>(configWildcard, static c => c.Port, 8545);
         Test<IJsonRpcConfig, string>(configWildcard, static c => c.Host, "127.0.0.1");
+    }
+
+    [TestCase("^spaceneth")]
+    public void Non_dev_configs_keep_default_rpc_module_baseline(string configWildcard)
+    {
+        string[] expectedDefaultModules = ModuleType.DefaultModules.ToArray();
+
+        foreach (TestConfigProvider configProvider in GetConfigProviders(configWildcard))
+        {
+            IJsonRpcConfig jsonRpcConfig = configProvider.GetConfig<IJsonRpcConfig>();
+            Assert.That(jsonRpcConfig.EnabledModules, Is.EqualTo(expectedDefaultModules), configProvider.FileName);
+        }
     }
 
     [TestCase("sepolia", DiscoveryVersion.V4)]

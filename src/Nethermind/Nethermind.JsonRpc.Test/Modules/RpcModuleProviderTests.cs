@@ -3,15 +3,18 @@
 
 using System;
 using System.IO.Abstractions;
+using System.Reflection;
 using System.Threading.Tasks;
 using Autofac;
 using FluentAssertions;
+using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Test.Modules;
 using Nethermind.Era1.JsonRpc;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.Admin;
 using Nethermind.JsonRpc.Modules.Net;
+using Nethermind.JsonRpc.Modules.Personal;
 using Nethermind.JsonRpc.Modules.Proof;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
@@ -61,6 +64,53 @@ public class RpcModuleProviderTests
         _moduleProvider.Check("net_Version", _context).Should().Be(ModuleResolution.Unknown);
         _moduleProvider.Check("Net_Version", _context).Should().Be(ModuleResolution.Unknown);
         _moduleProvider.Check("net_version", _context).Should().Be(ModuleResolution.Enabled);
+    }
+
+    [Test]
+    public void Default_modules_match_safe_baseline()
+    {
+        string[] expectedDefaultModules =
+        [
+            ModuleType.Eth,
+            ModuleType.Subscribe,
+            ModuleType.Trace,
+            ModuleType.TxPool,
+            ModuleType.Web3,
+            ModuleType.Proof,
+            ModuleType.Net,
+            ModuleType.Parity,
+            ModuleType.Health,
+            ModuleType.Rpc
+        ];
+
+        Assert.That(ModuleType.DefaultModules, Is.EqualTo(expectedDefaultModules));
+        Assert.That(new JsonRpcConfig().EnabledModules, Is.EqualTo(expectedDefaultModules));
+        Assert.That(GetDocumentedDefaultModules(), Is.EqualTo(expectedDefaultModules));
+    }
+
+    [Test]
+    public void Personal_module_is_disabled_by_default()
+    {
+        SingletonModulePool<IPersonalRpcModule> pool = new(Substitute.For<IPersonalRpcModule>(), true);
+        _moduleProvider.Register(pool);
+
+        ModuleResolution resolution = _moduleProvider.Check(nameof(IPersonalRpcModule.personal_listAccounts), _context);
+
+        Assert.That(resolution, Is.EqualTo(ModuleResolution.Disabled));
+    }
+
+    [Test]
+    public void Personal_module_can_be_enabled_explicitly()
+    {
+        JsonRpcConfig jsonRpcConfig = new() { EnabledModules = [ModuleType.Personal] };
+        _moduleProvider = new RpcModuleProvider(new RealFileSystem(), jsonRpcConfig, new EthereumJsonSerializer(), LimboLogs.Instance);
+
+        SingletonModulePool<IPersonalRpcModule> pool = new(Substitute.For<IPersonalRpcModule>(), true);
+        _moduleProvider.Register(pool);
+
+        ModuleResolution resolution = _moduleProvider.Check(nameof(IPersonalRpcModule.personal_listAccounts), _context);
+
+        Assert.That(resolution, Is.EqualTo(ModuleResolution.Enabled));
     }
 
     [TestCase("eth_.*", ModuleResolution.Unknown)]
@@ -191,5 +241,16 @@ public class RpcModuleProviderTests
     private class TestRpcModule : ITestRpcModule
     {
         public TestRpcModule(TestRpcModuleDependencies dependencies) => dependencies.WasRequested = true;
+    }
+
+    private static string[] GetDocumentedDefaultModules()
+    {
+        ConfigItemAttribute configItem = typeof(IJsonRpcConfig)
+            .GetProperty(nameof(IJsonRpcConfig.EnabledModules))!
+            .GetCustomAttribute<ConfigItemAttribute>()!;
+
+        return configItem.DefaultValue!
+            .Trim('[', ']')
+            .Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
     }
 }
