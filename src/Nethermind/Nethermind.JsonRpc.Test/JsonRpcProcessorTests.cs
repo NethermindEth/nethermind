@@ -421,7 +421,9 @@ public class JsonRpcProcessorTests(bool returnErrors)
 
         reader.TryRead(out JsonRpcEnvelope envelope).Should().BeTrue();
 
-        envelope.Id.Should().Be(new JsonRpcId("A\n"));
+        JsonRpcId expectedId = new("A\n");
+        envelope.Id.Should().Be(expectedId);
+        envelope.Id.GetHashCode().Should().Be(expectedId.GetHashCode());
         ArrayBufferWriter<byte> buffer = new();
         using (Utf8JsonWriter writer = new(buffer))
         {

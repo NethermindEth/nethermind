@@ -30,6 +30,7 @@ internal enum JsonRpcIdKind : byte
 public readonly struct JsonRpcId : IEquatable<JsonRpcId>
 {
     private readonly byte[]? _rawValue;
+    private readonly string? _stringValue;
     private readonly long _longValue;
     private readonly decimal _decimalValue;
     private readonly JsonRpcIdKind _kind;
@@ -86,6 +87,7 @@ public readonly struct JsonRpcId : IEquatable<JsonRpcId>
         ArgumentNullException.ThrowIfNull(value);
 
         _kind = JsonRpcIdKind.String;
+        _stringValue = value;
         _rawValue = JsonSerializer.SerializeToUtf8Bytes(value);
     }
 
@@ -254,7 +256,7 @@ public readonly struct JsonRpcId : IEquatable<JsonRpcId>
         {
             JsonRpcIdKind.Long => _longValue == other._longValue,
             JsonRpcIdKind.Decimal => _decimalValue == other._decimalValue,
-            JsonRpcIdKind.String => string.Equals(GetStringValue(), other.GetStringValue(), StringComparison.Ordinal),
+            JsonRpcIdKind.String => string.Equals(_stringValue, other._stringValue, StringComparison.Ordinal),
             _ => true
         };
 
@@ -277,7 +279,7 @@ public readonly struct JsonRpcId : IEquatable<JsonRpcId>
         {
             JsonRpcIdKind.Long => HashCode.Combine(_kind, _longValue),
             JsonRpcIdKind.Decimal => HashCode.Combine(_kind, _decimalValue),
-            JsonRpcIdKind.String => HashCode.Combine(_kind, GetStringValue()),
+            JsonRpcIdKind.String => HashCode.Combine(_kind, _stringValue),
             _ => _kind.GetHashCode()
         };
 
@@ -338,16 +340,11 @@ public readonly struct JsonRpcId : IEquatable<JsonRpcId>
 
     private string GetStringValue()
     {
-        byte[]? rawValue = _rawValue;
-        if (rawValue is null)
-        {
-            ThrowMissingStringToken();
-        }
-
-        return JsonSerializer.Deserialize<string>(rawValue)!;
+        string? stringValue = _stringValue;
+        return stringValue ?? ThrowMissingStringToken();
 
         [DoesNotReturn, StackTraceHidden]
-        static void ThrowMissingStringToken() =>
+        static string ThrowMissingStringToken() =>
             throw new NotSupportedException("JSON-RPC string ID is missing its raw token.");
     }
 
@@ -355,5 +352,6 @@ public readonly struct JsonRpcId : IEquatable<JsonRpcId>
     {
         _kind = JsonRpcIdKind.String;
         _rawValue = rawValue;
+        _stringValue = JsonSerializer.Deserialize<string>(rawValue)!;
     }
 }
