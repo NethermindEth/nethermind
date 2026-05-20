@@ -68,6 +68,12 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
     private bool _lastPersistedReachedReorgBoundary;
     private long _toBePersistedBlockNumber = -1;
 
+    // Cooldown for the "Unable to completely prune persisted nodes" warning. The condition can
+    // persist for every block at chain tip on chains with high storage churn (e.g. Base mainnet,
+    // see #11264), so emitting on every occurrence floods logs without adding signal.
+    private static readonly long IncompletePersistedPruneWarnIntervalTicks = Stopwatch.Frequency * 5 * 60;
+    private long _incompletePersistedPruneWarnNextTicks;
+
     private Task _pruningTask = Task.CompletedTask;
     private readonly CancellationTokenSource _pruningTaskCancellationTokenSource = new();
     private readonly IFinalizedStateProvider _finalizedStateProvider;
@@ -627,7 +633,15 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
                     // This should be rare but can happen, notably in mainnet block 4500000 around there, But this
                     // does mean that it will keep retrying to prune persisted nodes. The solution is to either increase
                     // the memory budget or reduce the pruning boundary.
-                    if (_logger.IsWarn) _logger.Warn($"Unable to completely prune persisted nodes. Consider increasing pruning cache limit or reducing pruning boundary");
+                    if (_logger.IsWarn)
+                    {
+                        long now = Stopwatch.GetTimestamp();
+                        if (now >= _incompletePersistedPruneWarnNextTicks)
+                        {
+                            _incompletePersistedPruneWarnNextTicks = now + IncompletePersistedPruneWarnIntervalTicks;
+                            _logger.Warn("Unable to completely prune persisted nodes. Consider increasing pruning cache limit or reducing pruning boundary. Suppressing similar warnings for 5 minutes.");
+                        }
+                    }
                 }
             }
             finally

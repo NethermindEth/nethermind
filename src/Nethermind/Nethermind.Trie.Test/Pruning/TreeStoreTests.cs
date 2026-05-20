@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
@@ -1793,6 +1794,36 @@ namespace Nethermind.Trie.Test.Pruning
             }
 
             persistedHashes.Count.Should().Be(1);
+        }
+
+        [Test]
+        public void Incomplete_persisted_prune_warning_is_rate_limited()
+        {
+            // Repro guard for #11264: on chains with high storage churn (e.g. Base mainnet at tip)
+            // SyncPruneQueue can hit the "still want to prune after one full shard pass" branch on
+            // every block. The warning must back off so logs are not flooded.
+            TestLogger testLogger = new() { IsWarn = true };
+            OneLoggerLogManager logManager = new(new ILogger(testLogger));
+
+            TestPruningStrategy strategy = new(shouldPrune: false) { ShouldPrunePersistedEnabled = true };
+
+            using TrieStore trieStore = new(
+                new NodeStorage(new TestMemDb(), INodeStorage.KeyScheme.HalfPath, requirePath: true),
+                strategy,
+                No.Persistence,
+                new TestFinalizedStateProvider(0),
+                new PruningConfig { PrunePersistedNodePortion = 1.0, TrackPastKeys = false },
+                logManager);
+
+            // Drive the prune path many times in a row — within the cooldown all but the first
+            // call must be suppressed.
+            for (int i = 0; i < 50; i++)
+            {
+                trieStore.SyncPruneQueue();
+            }
+
+            int warnCount = testLogger.LogList.Count(m => m.Contains("Unable to completely prune persisted nodes"));
+            warnCount.Should().Be(1, "rate-limited warning must fire at most once per cooldown window");
         }
 
         private static TrieNode CreateNode(bool isPersisted) =>
