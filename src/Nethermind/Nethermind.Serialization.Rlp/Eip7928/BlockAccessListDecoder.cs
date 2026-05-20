@@ -8,6 +8,7 @@ using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Collections;
+using Nethermind.Core.Crypto;
 
 namespace Nethermind.Serialization.Rlp.Eip7928;
 
@@ -28,7 +29,11 @@ public class BlockAccessListDecoder :
 
     public ReadOnlyBlockAccessList Decode(ref Rlp.ValueDecoderContext ctx, RlpBehaviors rlpBehaviors)
     {
+        // Capture the BAL's RLP slice so the wire hash can be cached on the returned instance;
+        // BlockValidator would otherwise recompute the same keccak per block.
+        int startPosition = ctx.Position;
         ReadOnlyAccountChanges[] accountChanges = ctx.DecodeArray(AccountChangesDecoder.Instance, true, default, _accountsLimit);
+        ReadOnlySpan<byte> wireRlp = ctx.Data.Slice(startPosition, ctx.Position - startPosition);
 
         Address? lastAddress = null;
         int itemCount = 0;
@@ -51,7 +56,8 @@ public class BlockAccessListDecoder :
             itemCount += 1 + a.StorageChanges.Length + a.StorageReads.Length;
         }
 
-        return new ReadOnlyBlockAccessList(accountChanges, itemCount);
+        Hash256 wireHash = new(ValueKeccak.Compute(wireRlp));
+        return new ReadOnlyBlockAccessList(accountChanges, itemCount, wireHash);
     }
 
     /// <summary>
