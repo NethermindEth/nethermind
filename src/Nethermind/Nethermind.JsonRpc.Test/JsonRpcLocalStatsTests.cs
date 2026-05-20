@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Threading;
 using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Metric;
@@ -84,6 +85,7 @@ namespace Nethermind.JsonRpc.Test
                 MakeTimePass(60);
             }
 
+            WaitForLog();
             _testLogger.LogList.Should().HaveCountGreaterThan(0);
         }
 
@@ -150,6 +152,7 @@ namespace Nethermind.JsonRpc.Test
             localStats.ReportCall("B", 3, false);
             MakeTimePass();
             localStats.ReportCall("A", 300, true);
+            WaitForLog();
             _testLogger.LogList[0].IndexOf("A   ", StringComparison.Ordinal).Should().BeLessThan(_testLogger.LogList[0].IndexOf("B   ", StringComparison.Ordinal));
             _testLogger.LogList[0].IndexOf("B   ", StringComparison.Ordinal).Should().BeLessThan(_testLogger.LogList[0].IndexOf("C   ", StringComparison.Ordinal));
         }
@@ -304,6 +307,17 @@ namespace Nethermind.JsonRpc.Test
 
         private void MakeTimePass() => _manualTimestamper.UtcNow = _manualTimestamper.UtcNow.AddSeconds(_config.ReportIntervalSeconds + 1);
 
-        private void CheckLogLine(string line) => _testLogger.LogList.Exists(l => l.Replace(" ", String.Empty).Contains(line)).Should().BeTrue(string.Join(Environment.NewLine, _testLogger.LogList));
+        private void CheckLogLine(string line)
+        {
+            bool hasLine = SpinWait.SpinUntil(
+                () => _testLogger.LogList.Exists(l => l.Replace(" ", String.Empty).Contains(line)),
+                TimeSpan.FromSeconds(5));
+
+            hasLine.Should().BeTrue(string.Join(Environment.NewLine, _testLogger.LogList));
+        }
+
+        private void WaitForLog() =>
+            SpinWait.SpinUntil(() => _testLogger.LogList.Count != 0, TimeSpan.FromSeconds(5))
+                .Should().BeTrue();
     }
 }
