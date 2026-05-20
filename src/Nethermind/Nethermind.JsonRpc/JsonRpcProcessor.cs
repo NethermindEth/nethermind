@@ -27,6 +27,8 @@ namespace Nethermind.JsonRpc;
 
 public sealed class JsonRpcProcessor : IJsonRpcProcessor
 {
+    private static readonly SearchValues<byte> JsonWhitespace = SearchValues.Create(" \t\r\n"u8);
+
     private readonly IJsonRpcConfig _jsonRpcConfig;
     private readonly ILogger _logger;
     private readonly IJsonRpcService _jsonRpcService;
@@ -606,18 +608,8 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
         return span.Length;
     }
 
-    private static bool HasNonWhitespace(ReadOnlySpan<byte> span)
-    {
-        for (int index = 0; index < span.Length; index++)
-        {
-            if (!IsJsonWhitespace(span[index]))
-            {
-                return true;
-            }
-        }
-
-        return false;
-    }
+    private static bool HasNonWhitespace(ReadOnlySpan<byte> span) =>
+        span.IndexOfAnyExcept(JsonWhitespace) >= 0;
 
     private static bool IsJsonWhitespace(byte value) =>
         value is (byte)' ' or (byte)'\t' or (byte)'\r' or (byte)'\n';
