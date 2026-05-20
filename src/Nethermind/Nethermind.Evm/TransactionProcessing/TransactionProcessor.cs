@@ -1158,7 +1158,8 @@ namespace Nethermind.Evm.TransactionProcessing
             return RefundFailedEip8037Gas(tx, spec, opts, in gasPrice, spentGas, blockGas, blockStateGas);
         }
 
-        private GasConsumed RefundOnContractCollision(
+        //Requires to be overridable (plugins) - do not restrict visibility to private
+        protected virtual GasConsumed RefundOnContractCollision(
             Transaction tx,
             IReleaseSpec spec,
             ExecutionOptions opts,
