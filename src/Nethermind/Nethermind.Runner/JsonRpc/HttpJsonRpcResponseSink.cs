@@ -26,7 +26,6 @@ internal sealed class HttpJsonRpcResponseSink(
     JsonRpcUrl jsonRpcUrl,
     IJsonRpcConfig jsonRpcConfig,
     IJsonRpcLocalStats jsonRpcLocalStats,
-    JsonSerializerOptions jsonOptions,
     ILogger logger,
     long requestStartTimestamp) : IJsonRpcResponseSink
 {
@@ -268,7 +267,7 @@ internal sealed class HttpJsonRpcResponseSink(
                     JsonSerializer.Serialize(
                         jsonWriter,
                         result,
-                        successResponse.TryGetResultTypeInfo(result, jsonOptions, out JsonTypeInfo? typeInfo)
+                        successResponse.TryGetResultTypeInfo(result, EthereumJsonSerializer.JsonOptions, out JsonTypeInfo? typeInfo)
                             ? typeInfo
                             : GetJsonTypeInfo(result.GetType()));
                 }
@@ -338,7 +337,7 @@ internal sealed class HttpJsonRpcResponseSink(
     }
 
     private JsonTypeInfo GetJsonTypeInfo(Type type) =>
-        _jsonTypeInfoCache.GetOrAdd(type, static (type, options) => options.GetTypeInfo(type), jsonOptions);
+        _jsonTypeInfoCache.GetOrAdd(type, static type => EthereumJsonSerializer.JsonOptions.GetTypeInfo(type));
 
     private static async ValueTask WriteStreamableResponseAsync(
         CountingWriter writer,

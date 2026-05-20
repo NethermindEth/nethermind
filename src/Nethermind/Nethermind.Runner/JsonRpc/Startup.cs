@@ -460,7 +460,7 @@ public class Startup : IStartup
         {
             await CollectHttpRequestBodyAsync(ctx, contentLength, effectiveMaxRequestBodySize, collectedBody, ctx.RequestAborted);
             using JsonRpcContext jsonRpcContext = JsonRpcContext.Http(jsonRpcUrl);
-            responseSink = new HttpJsonRpcResponseSink(ctx, jsonRpcUrl, _jsonRpcConfig, _jsonRpcLocalStats, EthereumJsonSerializer.JsonOptions, _logger, startTime);
+            responseSink = new HttpJsonRpcResponseSink(ctx, jsonRpcUrl, _jsonRpcConfig, _jsonRpcLocalStats, _logger, startTime);
 
             await _jsonRpcProcessor.ProcessAsync(
                 collectedBody.Memory,
@@ -472,7 +472,7 @@ public class Startup : IStartup
         catch (Exception e) when (e is OperationCanceledException || e.InnerException is OperationCanceledException)
         {
             JsonRpcErrorResponse error = _jsonRpcService.GetErrorResponse(ErrorCodes.Timeout, "Request was canceled due to enabled timeout.");
-            responseSink ??= new HttpJsonRpcResponseSink(ctx, jsonRpcUrl, _jsonRpcConfig, _jsonRpcLocalStats, EthereumJsonSerializer.JsonOptions, _logger, startTime);
+            responseSink ??= new HttpJsonRpcResponseSink(ctx, jsonRpcUrl, _jsonRpcConfig, _jsonRpcLocalStats, _logger, startTime);
             await responseSink.WriteSingleAsync(error, RpcReport.Error, ctx.RequestAborted);
         }
         catch (Microsoft.AspNetCore.Http.BadHttpRequestException e)

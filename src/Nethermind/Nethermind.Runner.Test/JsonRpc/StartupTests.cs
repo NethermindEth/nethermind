@@ -402,7 +402,6 @@ public class StartupTests
             new JsonRpcUrl("http", "127.0.0.1", 0, RpcEndpoint.Http, true, [ModuleType.Engine]),
             new JsonRpcConfig(),
             jsonRpcLocalStats,
-            EthereumJsonSerializer.JsonOptions,
             LimboLogs.Instance.GetClassLogger<StartupTests>(),
             Stopwatch.GetTimestamp());
 
@@ -437,7 +436,6 @@ public class StartupTests
             new JsonRpcUrl("http", "127.0.0.1", 0, RpcEndpoint.Http, false, [ModuleType.Engine]),
             new JsonRpcConfig { BufferResponses = true },
             jsonRpcLocalStats,
-            EthereumJsonSerializer.JsonOptions,
             LimboLogs.Instance.GetClassLogger<StartupTests>(),
             Stopwatch.GetTimestamp());
 
@@ -589,7 +587,6 @@ public class StartupTests
             new JsonRpcUrl("http", "127.0.0.1", 0, RpcEndpoint.Http, false, [ModuleType.Engine]),
             rpcConfig,
             Substitute.For<IJsonRpcLocalStats>(),
-            EthereumJsonSerializer.JsonOptions,
             LimboLogs.Instance.GetClassLogger<StartupTests>(),
             Stopwatch.GetTimestamp());
 
