@@ -19,14 +19,6 @@ namespace Nethermind.Serialization.Json;
 public abstract class CountingWriter : PipeWriter
 {
     public long WrittenCount { get; protected set; }
-    public long FlushCount { get; protected set; }
-    public long FlushTimeMicroseconds { get; protected set; }
-
-    protected void AddFlushMeasurement(long startTimestamp)
-    {
-        FlushCount++;
-        FlushTimeMicroseconds += (long)Stopwatch.GetElapsedTime(startTimestamp).TotalMicroseconds;
-    }
 }
 
 public sealed class CountingPipeWriter : CountingWriter
@@ -61,28 +53,14 @@ public sealed class CountingPipeWriter : CountingWriter
 
     public override ValueTask<FlushResult> FlushAsync(CancellationToken cancellationToken = default)
     {
-        long startTimestamp = Stopwatch.GetTimestamp();
         ValueTask<FlushResult> flushTask = _writer.FlushAsync(cancellationToken);
         if (!flushTask.IsCompletedSuccessfully)
         {
-            return FlushAfterAsync(flushTask, startTimestamp);
+            return flushTask;
         }
 
         FlushResult result = flushTask.GetAwaiter().GetResult();
-        AddFlushMeasurement(startTimestamp);
         return new ValueTask<FlushResult>(result);
-    }
-
-    private async ValueTask<FlushResult> FlushAfterAsync(ValueTask<FlushResult> flushTask, long startTimestamp)
-    {
-        try
-        {
-            return await flushTask.ConfigureAwait(false);
-        }
-        finally
-        {
-            AddFlushMeasurement(startTimestamp);
-        }
     }
 
     public override bool CanGetUnflushedBytes => _writer.CanGetUnflushedBytes;
@@ -157,9 +135,7 @@ public sealed class CountingStreamPipeWriter : CountingWriter
 
         if (_bytesBuffered > _minimumBufferSize)
         {
-            long startTimestamp = Stopwatch.GetTimestamp();
             FlushInternal(writeToStream: true);
-            AddFlushMeasurement(startTimestamp);
         }
     }
 
@@ -351,28 +327,14 @@ public sealed class CountingStreamPipeWriter : CountingWriter
             return new ValueTask<FlushResult>(new FlushResult(isCanceled: false, isCompleted: false));
         }
 
-        long startTimestamp = Stopwatch.GetTimestamp();
         ValueTask<FlushResult> flushTask = FlushAsyncInternal(writeToStream: true, data: Memory<byte>.Empty, cancellationToken);
         if (!flushTask.IsCompletedSuccessfully)
         {
-            return FlushAfterAsync(flushTask, startTimestamp);
+            return flushTask;
         }
 
         FlushResult result = flushTask.GetAwaiter().GetResult();
-        AddFlushMeasurement(startTimestamp);
         return new ValueTask<FlushResult>(result);
-    }
-
-    private async ValueTask<FlushResult> FlushAfterAsync(ValueTask<FlushResult> flushTask, long startTimestamp)
-    {
-        try
-        {
-            return await flushTask.ConfigureAwait(false);
-        }
-        finally
-        {
-            AddFlushMeasurement(startTimestamp);
-        }
     }
 
     /// <inheritdoc />

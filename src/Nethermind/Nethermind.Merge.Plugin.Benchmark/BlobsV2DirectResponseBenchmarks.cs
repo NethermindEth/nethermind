@@ -37,18 +37,13 @@ public class BlobsV2DirectResponseBenchmarks
     public void GlobalSetup() => _response = BuildResponse(Scenario);
 
     [Benchmark]
-    public async ValueTask<WriteStats> WriteToAsync()
+    public async ValueTask<long> WriteToAsync()
     {
         CountingWriter writer = CreateWriter();
         await _response.WriteToAsync(writer, CancellationToken.None);
         await writer.CompleteAsync();
 
-        long flushCount = writer.FlushCount;
-        return new WriteStats(
-            writer.WrittenCount,
-            flushCount,
-            writer.FlushTimeMicroseconds,
-            flushCount == 0 ? writer.WrittenCount : writer.WrittenCount / flushCount);
+        return writer.WrittenCount;
     }
 
     private CountingWriter CreateWriter() =>
@@ -113,9 +108,3 @@ public enum BlobScenario
     PresentOne,
     PresentThree
 }
-
-public readonly record struct WriteStats(
-    long BytesWritten,
-    long FlushCount,
-    long FlushMicroseconds,
-    long BytesPerFlush);
