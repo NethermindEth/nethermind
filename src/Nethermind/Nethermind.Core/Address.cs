@@ -166,12 +166,23 @@ namespace Nethermind.Core
             // Address must be 20 bytes long Vector128 + uint
             ref byte bytes0 = ref Unsafe.AsRef(in FirstByte);
             ref byte bytes1 = ref Unsafe.AsRef(in other.FirstByte);
+#if ZK_EVM
+            // RISC-V has no SIMD; a Vector128 compare lowers to a slow software
+            // helper. Compare the 20 bytes as two ulongs plus a uint instead.
+            return Unsafe.ReadUnaligned<ulong>(ref bytes0)
+                       == Unsafe.ReadUnaligned<ulong>(ref bytes1)
+                && Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes0, 8))
+                       == Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes1, 8))
+                && Unsafe.ReadUnaligned<uint>(ref Unsafe.Add(ref bytes0, 16))
+                       == Unsafe.ReadUnaligned<uint>(ref Unsafe.Add(ref bytes1, 16));
+#else
             // Compare first 16 bytes with Vector128 and last 4 bytes with uint
             return
                 Unsafe.As<byte, Vector128<byte>>(ref bytes0) ==
                 Unsafe.As<byte, Vector128<byte>>(ref bytes1) &&
                 Unsafe.As<byte, uint>(ref Unsafe.Add(ref bytes0, Vector128<byte>.Count)) ==
                 Unsafe.As<byte, uint>(ref Unsafe.Add(ref bytes1, Vector128<byte>.Count));
+#endif
         }
 
         public static Address FromNumber(in UInt256 number)
