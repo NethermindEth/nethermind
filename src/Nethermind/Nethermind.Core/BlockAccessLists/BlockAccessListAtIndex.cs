@@ -3,6 +3,8 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Text;
 using Nethermind.Core.Collections;
@@ -105,7 +107,7 @@ public class BlockAccessListAtIndex : IJournal<int>, IResettable
             Type = ChangeType.BalanceChange,
             HasPrevious = previous.HasValue,
             PreviousIndex = previous?.Index ?? 0,
-            PreviousValue = new ChangeValue { Balance = previous?.Value ?? default },
+            PreviousValue = new ChangeValue(previous?.Value ?? default),
         });
 
         accountChanges.BalanceChange = preTxBalance != after
@@ -159,7 +161,7 @@ public class BlockAccessListAtIndex : IJournal<int>, IResettable
             Type = ChangeType.NonceChange,
             HasPrevious = previous.HasValue,
             PreviousIndex = previous?.Index ?? 0,
-            PreviousValue = new ChangeValue { Nonce = previous?.Value ?? 0 },
+            PreviousValue = new ChangeValue(previous?.Value ?? 0UL),
         });
 
         accountChanges.NonceChange = new NonceChange(Index, newNonce);
@@ -190,7 +192,7 @@ public class BlockAccessListAtIndex : IJournal<int>, IResettable
             Type = ChangeType.StorageChange,
             HasPrevious = oldStorageChange.HasValue,
             PreviousIndex = oldStorageChange?.Index ?? 0,
-            PreviousValue = new ChangeValue { Storage = oldStorageChange?.Value ?? default },
+            PreviousValue = new ChangeValue(oldStorageChange?.Value ?? default),
         });
 
         if (preTxStorage != after)
@@ -235,7 +237,7 @@ public class BlockAccessListAtIndex : IJournal<int>, IResettable
                 Slot = kv.Key,
                 HasPrevious = true,
                 PreviousIndex = kv.Value.Index,
-                PreviousValue = new ChangeValue { Storage = kv.Value.Value },
+                PreviousValue = new ChangeValue(kv.Value.Value),
             });
         }
 
@@ -247,7 +249,7 @@ public class BlockAccessListAtIndex : IJournal<int>, IResettable
                 Type = ChangeType.NonceChange,
                 HasPrevious = true,
                 PreviousIndex = nonce.Index,
-                PreviousValue = new ChangeValue { Nonce = nonce.Value },
+                PreviousValue = new ChangeValue(nonce.Value),
             });
         }
 
@@ -298,9 +300,15 @@ public class BlockAccessListAtIndex : IJournal<int>, IResettable
                         : null;
                     break;
                 case ChangeType.CodeChange:
-                    accountChanges.CodeChange = change.HasPrevious
-                        ? codeReverts[--codeCursor]
-                        : null;
+                    if (change.HasPrevious)
+                    {
+                        Debug.Assert(codeCursor > 0, "Code revert cursor underflow: _previousCodeChanges count does not match _changes journal.");
+                        accountChanges.CodeChange = codeReverts[--codeCursor];
+                    }
+                    else
+                    {
+                        accountChanges.CodeChange = null;
+                    }
                     break;
                 case ChangeType.NonceChange:
                     accountChanges.NonceChange = change.HasPrevious
@@ -403,14 +411,30 @@ public class BlockAccessListAtIndex : IJournal<int>, IResettable
     }
 
     /// <summary>
-    /// Value payload of a journal entry. Three views of the same 32 bytes; only the field matching
-    /// the enclosing <see cref="Change.Type"/> carries meaningful data.
+    /// Value payload of a journal entry. Stores 32 bytes interpreted per-variant on read:
+    /// <see cref="Balance"/> reads the whole word as a host-endian <see cref="UInt256"/>;
+    /// <see cref="Nonce"/> reads the low 8 bytes; <see cref="Storage"/> reinterprets the bytes as an
+    /// <see cref="EvmWord"/> (big-endian wire form). Only the accessor matching the enclosing
+    /// <see cref="Change.Type"/> is meaningful — the others return reinterpretations of the same memory.
     /// </summary>
-    [StructLayout(LayoutKind.Explicit)]
-    private struct ChangeValue
+    /// <remarks>
+    /// <see langword="readonly"/> so that field/property access through <c>ref readonly Change</c>
+    /// in <see cref="Restore"/> doesn't emit a defensive 32-byte copy per access.
+    /// </remarks>
+    private readonly struct ChangeValue
     {
-        [FieldOffset(0)] public UInt256 Balance;
-        [FieldOffset(0)] public ulong Nonce;
-        [FieldOffset(0)] public EvmWord Storage;
+        private readonly UInt256 _data;
+
+        public ChangeValue(UInt256 balance) => _data = balance;
+
+        public ChangeValue(ulong nonce) => _data = new UInt256(nonce);
+
+        public ChangeValue(EvmWord storage) => _data = Unsafe.As<EvmWord, UInt256>(ref storage);
+
+        public UInt256 Balance => _data;
+
+        public ulong Nonce => _data.u0;
+
+        public EvmWord Storage => Unsafe.As<UInt256, EvmWord>(ref Unsafe.AsRef(in _data));
     }
 }
