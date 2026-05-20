@@ -1,20 +1,21 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using Nethermind.Core;
-using Nethermind.Core.Crypto;
+using System;
 using Nethermind.Xdc.Spec;
 using Nethermind.Xdc.Types;
-using System;
-using System.Collections.Frozen;
-using System.Collections.Generic;
-using System.Collections.Immutable;
-using System.Collections.ObjectModel;
 
 namespace Nethermind.Xdc;
-public interface ISnapshotManager
+
+public interface ISnapshotManager : IDisposable
 {
-    Snapshot? GetSnapshot(Hash256 hash);
+    static bool IsTimeForSnapshot(long blockNumber, IXdcReleaseSpec spec)
+    {
+        if (blockNumber == spec.SwitchBlock)
+            return true;
+        return blockNumber % spec.EpochLength == spec.EpochLength - spec.Gap;
+    }
+    Snapshot? GetSnapshotByGapNumber(long gapNumber);
+    Snapshot? GetSnapshotByBlockNumber(long blockNumber, IXdcReleaseSpec spec);
     void StoreSnapshot(Snapshot snapshot);
-    (Address[] Masternodes, Address[] PenalizedNodes) CalculateNextEpochMasternodes(XdcBlockHeader header, IXdcReleaseSpec spec);
 }

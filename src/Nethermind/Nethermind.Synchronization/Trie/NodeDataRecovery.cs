@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -53,10 +52,7 @@ public class NodeDataRecovery(ISyncPeerPool peerPool, INodeStorage nodeStorage, 
         {
             // In case of deeper node that already exist.
             byte[]? nodeRlp = nodeStorage.Get(address, currentPath, currentHash);
-            if (nodeRlp is null)
-            {
-                nodeRlp = await FetchRlp(rootHash, address, currentPath, currentHash, cts.Token);
-            }
+            nodeRlp ??= await FetchRlp(rootHash, address, currentPath, currentHash, cts.Token);
 
             if (nodeRlp is null)
             {
@@ -66,7 +62,7 @@ public class NodeDataRecovery(ISyncPeerPool peerPool, INodeStorage nodeStorage, 
 
             recoveredNodes.Add((currentPath, nodeRlp));
 
-            TrieNode node = new(NodeType.Unknown, nodeRlp);
+            TrieNode? node = new(NodeType.Unknown, nodeRlp);
             node.ResolveNode(EmptyTrieNodeResolver.Instance, currentPath);
 
             if (node.IsBranch)
@@ -97,7 +93,7 @@ public class NodeDataRecovery(ISyncPeerPool peerPool, INodeStorage nodeStorage, 
             {
                 return peerPool.AllocateAndRun(async (peer) =>
                 {
-                    if (peer is null) return null;
+                    if (peer == null) return null;
                     try
                     {
                         byte[]? res = await RecoverNodeFromPeer(peer.SyncPeer, rootHash, address, path, hash, cancellationToken);
@@ -128,19 +124,10 @@ public class NodeDataRecovery(ISyncPeerPool peerPool, INodeStorage nodeStorage, 
         if (syncPeer.ProtocolVersion < EthVersions.Eth67)
         {
             if (_logger.IsTrace) _logger.Trace($"Fetching H {hash} P {treePath} from {syncPeer} via eth");
-            IOwnedReadOnlyList<byte[]>? data = await syncPeer.GetNodeData([hash], cancellationToken);
+            IByteArrayList? data = await syncPeer.GetNodeData([hash], cancellationToken);
             if (data?.Count > 0 && Keccak.Compute(data[0]) == hash)
             {
-                return data[0];
-            }
-        }
-        else if (syncPeer.TryGetSatelliteProtocol(Protocol.NodeData, out INodeDataPeer nodeDataPeer))
-        {
-            if (_logger.IsTrace) _logger.Trace($"Fetching H {hash} P {treePath} from {syncPeer} via nodedata");
-            IOwnedReadOnlyList<byte[]>? data = await nodeDataPeer.GetNodeData([hash], cancellationToken);
-            if (data?.Count > 0 && Keccak.Compute(data[0]) == hash)
-            {
-                return data[0];
+                return data[0].ToArray();
             }
         }
         else if (syncPeer.TryGetSatelliteProtocol(Protocol.Snap, out ISnapSyncPeer snapSyncPeer))
@@ -149,29 +136,33 @@ public class NodeDataRecovery(ISyncPeerPool peerPool, INodeStorage nodeStorage, 
             PathGroup group;
             if (address is null)
             {
-                group = new PathGroup
+                group = new PathGroup()
                 {
-                    Group = [Nibbles.EncodePath(treePath)]
+                    Group = [
+                        Nibbles.EncodePath(treePath)
+                    ]
                 };
             }
             else
             {
-                group = new PathGroup
+                group = new PathGroup()
                 {
-                    Group = [address.Bytes.ToArray(), Nibbles.EncodePath(treePath)]
+                    Group = [
+                        address.Bytes.ToArray(),
+                        Nibbles.EncodePath(treePath)
+                    ]
                 };
             }
 
-            using IOwnedReadOnlyList<byte[]>? item = await snapSyncPeer.GetTrieNodes(new GetTrieNodesRequest()
+            using IByteArrayList? item = await snapSyncPeer.GetTrieNodes(new GetTrieNodesRequest()
             {
                 RootHash = rootHash,
-                AccountAndStoragePaths = new ArrayPoolList<PathGroup>(1)
-                { group },
+                AccountAndStoragePaths = PathGroup.EncodeToRlpPathGroupList([group]),
             }, cancellationToken);
 
             if (item is not null && item.Count > 0)
             {
-                return item[0];
+                return item[0].ToArray();
             }
         }
 

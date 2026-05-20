@@ -11,6 +11,7 @@ using System.Runtime.CompilerServices;
 using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
+using Nethermind.Core.Cpu;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Utils;
 using Nethermind.Logging;
@@ -35,17 +36,31 @@ internal class TrieStoreDirtyNodesCache
     public long TotalDirtyMemory => _totalDirtyMemory;
 
     public readonly long KeyMemoryUsage;
+    private readonly bool _keepRoot;
 
-    public TrieStoreDirtyNodesCache(TrieStore trieStore, bool storeByHash, ILogger logger)
+    internal static void GetDictionarySizing(out int concurrencyLevel, out int initialBuckets)
+    {
+        // Core.Cpu.RuntimeInformation.ProcessorCount floors to 1 where Environment.ProcessorCount
+        // can report 0 (zk-evm). ConcurrentDictionary requires concurrencyLevel >= 1.
+        concurrencyLevel = Math.Min(RuntimeInformation.ProcessorCount * 4, 32);
+        initialBuckets = TrieStore.HashHelpers.GetPrime(Math.Max(31, concurrencyLevel));
+    }
+
+    public TrieStoreDirtyNodesCache(TrieStore trieStore, bool storeByHash, bool keepRoot, ILogger logger)
     {
         _trieStore = trieStore;
         _logger = logger;
         // If the nodestore indicated that path is not required,
         // we will use a map with hash as its key instead of the full Key to reduce memory usage.
         _storeByHash = storeByHash;
+
+        // Keep root causes persisted root nodes to not get pruned out of the cache. This ensure that it will
+        // be deleted when another canonical state is persisted which prevent having incomplete state which can happen
+        // when inner nodes get deleted but the root does not.
+        _keepRoot = keepRoot;
+
         // NOTE: DirtyNodesCache is already sharded.
-        int concurrencyLevel = Math.Min(Environment.ProcessorCount * 4, 32);
-        int initialBuckets = TrieStore.HashHelpers.GetPrime(Math.Max(31, concurrencyLevel));
+        GetDictionarySizing(out int concurrencyLevel, out int initialBuckets);
         if (_storeByHash)
         {
             _byHashObjectCache = new(concurrencyLevel, initialBuckets);
@@ -76,10 +91,7 @@ internal class TrieStoreDirtyNodesCache
         return nodeRecord.Node;
 
         [MethodImpl(MethodImplOptions.NoInlining)]
-        void Trace(TrieNode trieNode)
-        {
-            _logger.Trace($"Creating new node {trieNode}");
-        }
+        void Trace(TrieNode trieNode) => _logger.Trace($"Creating new node {trieNode}");
     }
 
     public TrieNode FromCachedRlpOrUnknown(in Key key)
@@ -87,13 +99,6 @@ internal class TrieStoreDirtyNodesCache
         // ReSharper disable once ConditionIsAlwaysTrueOrFalse
         if (TryGetValue(key, out TrieNode trieNode))
         {
-            if (trieNode!.FullRlp.IsNull)
-            {
-                // // this happens in SyncProgressResolver
-                // throw new InvalidAsynchronousStateException("Read only trie store is trying to read a transient node.");
-                return new TrieNode(NodeType.Unknown, key.Keccak);
-            }
-
             trieNode = _trieStore.CloneForReadOnly(key, trieNode);
 
             Metrics.LoadedFromCacheNodesCount++;
@@ -107,10 +112,7 @@ internal class TrieStoreDirtyNodesCache
         return trieNode;
 
         [MethodImpl(MethodImplOptions.NoInlining)]
-        void Trace(TrieNode trieNode)
-        {
-            _logger.Trace($"Creating new node {trieNode}");
-        }
+        void Trace(TrieNode trieNode) => _logger.Trace($"Creating new node {trieNode}");
     }
 
     public bool IsNodeCached(in Key key)
@@ -119,10 +121,12 @@ internal class TrieStoreDirtyNodesCache
         return _byKeyObjectCache.ContainsKey(key);
     }
 
-    public readonly struct NodeRecord(TrieNode node, long lastCommit)
+    public readonly struct NodeRecord(TrieNode node, long lastCommit) : IEquatable<NodeRecord>
     {
         public readonly TrieNode Node = node;
         public readonly long LastCommit = lastCommit;
+
+        public bool Equals(NodeRecord other) => other.Node == Node && other.LastCommit == LastCommit;
     }
 
     public IEnumerable<KeyValuePair<Key, NodeRecord>> AllNodes
@@ -153,12 +157,9 @@ internal class TrieStoreDirtyNodesCache
         return false;
     }
 
-    public bool TryGetRecord(Key key, out NodeRecord nodeRecord)
-    {
-        return _storeByHash
+    public bool TryGetRecord(Key key, out NodeRecord nodeRecord) => _storeByHash
             ? _byHashObjectCache.TryGetValue(key.Keccak, out nodeRecord)
             : _byKeyObjectCache.TryGetValue(key, out nodeRecord);
-    }
 
     private NodeRecord GetOrAdd(in Key key, TrieStoreDirtyNodesCache cache) => _storeByHash
         ? _byHashObjectCache.GetOrAdd(key.Keccak, static (keccak, cache) =>
@@ -174,30 +175,46 @@ internal class TrieStoreDirtyNodesCache
             return new NodeRecord(trieNode, -1);
         }, cache);
 
-    public NodeRecord GetOrAdd(in Key key, NodeRecord record)
+    public NodeRecord GetOrAdd(in Key key, NodeRecord record) => _storeByHash
+            ? GetOrAdd(_byHashObjectCache, key.Keccak, record)
+            : GetOrAdd(_byKeyObjectCache, key, record);
+
+    private static NodeRecord GetOrAdd<TKey>(ConcurrentDictionary<TKey, NodeRecord> dictionary, TKey key, NodeRecord record)
+        where TKey : notnull
     {
-        return _storeByHash
-            ? _byHashObjectCache.AddOrUpdate(key.Keccak, static (key, arg) => arg,
-                RecordReplacementLogic, record)
-            : _byKeyObjectCache.AddOrUpdate(key, static (key, arg) => arg,
-                RecordReplacementLogic, record);
+        // Avoid AddOrUpdate here: an existing key often merges to the same logical NodeRecord,
+        // and this fast path returns without forcing ConcurrentDictionary's update path.
+        while (true)
+        {
+            if (dictionary.TryGetValue(key, out NodeRecord current))
+            {
+                NodeRecord merged = MergeRecords(current, record);
+                if (merged.Equals(current) || dictionary.TryUpdate(key, merged, current))
+                {
+                    return merged;
+                }
+
+                continue;
+            }
+
+            if (dictionary.TryAdd(key, record))
+            {
+                return record;
+            }
+        }
     }
 
-    private static NodeRecord RecordReplacementLogic(Key key, NodeRecord current, NodeRecord arg)
-    {
-        return RecordReplacementLogic(null, current, arg);
-    }
-
-    private static NodeRecord RecordReplacementLogic(Hash256AsKey keyHash, NodeRecord current, NodeRecord arg)
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal static NodeRecord MergeRecords(NodeRecord current, NodeRecord candidate)
     {
         long lastCommit = current.LastCommit;
-        if (arg.LastCommit > lastCommit)
+        if (candidate.LastCommit > lastCommit)
         {
-            lastCommit = arg.LastCommit;
+            lastCommit = candidate.LastCommit;
         }
 
         TrieNode node = current.Node;
-        if (node.IsPersisted && !arg.Node.IsPersisted)
+        if (node.IsPersisted && !candidate.Node.IsPersisted)
         {
             // This code path happens around 0.8% of the time at 4GB of dirty cache and 16GB total cache.
             //
@@ -205,9 +222,9 @@ internal class TrieStoreDirtyNodesCache
             // This is because although very rare, it is possible that this node is persisted, but its child is not
             // persisted. This can happen when a path is not replaced with another node, but its child is and hence,
             // the child is removed, but the parent is not and remain in the cache as persisted node.
-            // Additionally, it may hold a reference to its child which is marked as persisted eventhough it was
+            // Additionally, it may hold a reference to its child which is marked as persisted even though it was
             // deleted from the cached map.
-            node = arg.Node;
+            node = candidate.Node;
         }
 
         return new NodeRecord(node, lastCommit);
@@ -294,8 +311,8 @@ internal class TrieStoreDirtyNodesCache
         long dirtyNode = 0;
         foreach ((Key key, NodeRecord nodeRecord) in AllNodes)
         {
-            var node = nodeRecord.Node;
-            var lastCommit = nodeRecord.LastCommit;
+            TrieNode node = nodeRecord.Node;
+            long lastCommit = nodeRecord.LastCommit;
             if (node.IsPersisted)
             {
                 // Remove persisted node based on `persistedHashes` if available.
@@ -325,7 +342,7 @@ internal class TrieStoreDirtyNodesCache
                         continue;
                     }
 
-                    if (_trieStore.IsNoLongerNeeded(lastCommit))
+                    if (_trieStore.IsNoLongerNeeded(lastCommit) && !(_keepRoot && key.IsRoot()))
                     {
                         RemoveNodeFromCache(key, node, ref Metrics.PrunedPersistedNodesCount);
                         continue;
@@ -422,10 +439,10 @@ internal class TrieStoreDirtyNodesCache
         {
             if (n.Keccak is null) return;
             if (n.NodeType == NodeType.Unknown) return;
-            Key key = new Key(address, path, n.Keccak);
+            Key key = new(address, path, n.Keccak);
             if (wasPersisted.TryAdd(key, true))
             {
-                nodeStorage.Set(address, path, n.Keccak, n.FullRlp.Span);
+                nodeStorage.Set(address, path, n.Keccak, n.FullRlp.AsSpan());
                 n.IsPersisted = true;
                 persistedCount++;
             }
@@ -462,48 +479,38 @@ internal class TrieStoreDirtyNodesCache
         Interlocked.Exchange(ref _count, 0);
     }
 
-    internal readonly struct Key : IEquatable<Key>
+    internal readonly struct Key(Hash256? address, in TreePath path, Hash256 keccak) : IEquatable<Key>
     {
         internal const long MemoryUsage = 8 + 36 + 8; // (address (probably shared), path, keccak pointer (shared with TrieNode))
-        public readonly Hash256? Address;
+        public readonly Hash256? Address = address;
         // Direct member rather than property for large struct, so members are called directly,
         // rather than struct copy through the property. Could also return a ref through property.
-        public readonly TreePath Path;
-        public Hash256 Keccak { get; }
-
-        public Key(Hash256? address, in TreePath path, Hash256 keccak)
-        {
-            Address = address;
-            Path = path;
-            Keccak = keccak;
-        }
+        public readonly TreePath Path = path;
+        public Hash256 Keccak { get; } = keccak;
 
         [SkipLocalsInit]
         public override int GetHashCode()
         {
-            var addressHash = Address != default ? Address.GetHashCode() : 1;
-            return Keccak.ValueHash256.GetChainedHashCode((uint)Path.GetHashCode()) ^ addressHash;
+            ulong chainedHash = ((ulong)(uint)Path.GetHashCode() << 32) | (uint)(Address?.GetHashCode() ?? 1);
+            return Keccak.ValueHash256.GetChainedHashCode(chainedHash);
         }
 
-        public bool Equals(Key other)
-        {
-            return other.Keccak == Keccak && other.Path == Path && other.Address == Address;
-        }
+        public bool Equals(Key other) => other.Keccak == Keccak && other.Path == Path && other.Address == Address;
 
-        public override bool Equals(object? obj)
-        {
-            return obj is Key other && Equals(other);
-        }
+        public override bool Equals(object? obj) => obj is Key other && Equals(other);
 
-        public override string ToString()
-        {
-            return $"A:{Address} P:{Path} K:{Keccak}";
-        }
+        public override string ToString() => $"A:{Address} P:{Path} K:{Keccak}";
+
+        public bool IsRoot() => Address is null && Path.Length == 0;
     }
 
     public void CopyTo(TrieStoreDirtyNodesCache otherCache)
     {
-        foreach (var kv in AllNodes) otherCache.GetOrAdd(kv.Key, kv.Value);
+        foreach (KeyValuePair<Key, NodeRecord> kv in AllNodes)
+        {
+            kv.Value.Node.PrunePersistedRecursively(1);
+            otherCache.GetOrAdd(kv.Key, kv.Value);
+        }
         Clear();
     }
 }

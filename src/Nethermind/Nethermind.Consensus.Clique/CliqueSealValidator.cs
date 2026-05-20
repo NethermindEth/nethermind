@@ -16,7 +16,7 @@ namespace Nethermind.Consensus.Clique
     {
         private readonly ICliqueConfig _cliqueConfig = cliqueConfig ?? throw new ArgumentNullException(nameof(cliqueConfig));
         private readonly ISnapshotManager _snapshotManager = snapshotManager ?? throw new ArgumentNullException(nameof(snapshotManager));
-        private readonly ILogger _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+        private readonly ILogger _logger = logManager?.GetClassLogger<CliqueSealValidator>() ?? throw new ArgumentNullException(nameof(logManager));
 
         public bool ValidateParams(BlockHeader parent, BlockHeader header, bool isUncle = false)
         {
@@ -128,10 +128,7 @@ namespace Nethermind.Consensus.Clique
             return header.Author is not null;
         }
 
-        private bool IsEpochTransition(long number)
-        {
-            return (ulong)number % _cliqueConfig.Epoch == 0;
-        }
+        private bool IsEpochTransition(long number) => (ulong)number % _cliqueConfig.Epoch == 0;
 
         private bool ValidateCascadingFields(BlockHeader parent, BlockHeader header)
         {
@@ -150,7 +147,7 @@ namespace Nethermind.Consensus.Clique
             {
                 byte[] signersBytes = new byte[snapshot.Signers.Count * Address.Size];
                 int signerIndex = 0;
-                foreach (Address signer in snapshot.Signers.Keys) Array.Copy(signer.Bytes, 0, signersBytes, signerIndex++ * Address.Size, Address.Size);
+                foreach (Address signer in snapshot.Signers.Keys) signer.Bytes.CopyTo(signersBytes.AsSpan(signerIndex++ * Address.Size, Address.Size));
 
                 int extraSuffix = header.ExtraData.Length - Clique.ExtraSealLength - Clique.ExtraVanityLength;
                 if (!header.ExtraData.AsSpan(Clique.ExtraVanityLength, extraSuffix).SequenceEqual(signersBytes))

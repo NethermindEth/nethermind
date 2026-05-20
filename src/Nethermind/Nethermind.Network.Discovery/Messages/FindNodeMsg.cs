@@ -11,22 +11,13 @@ public class FindNodeMsg : DiscoveryMsg
 {
     public byte[] SearchedNodeId { get; set; }
 
-    public override string ToString()
-    {
-        return base.ToString() + $", SearchedNodeId: {SearchedNodeId.ToHexString()}";
-    }
+    public override string ToString() => base.ToString() + $", SearchedNodeId: {SearchedNodeId.ToHexString()}";
 
     public override MsgType MsgType => MsgType.FindNode;
 
     public FindNodeMsg(IPEndPoint farAddress, long expirationDate, byte[] searchedNodeId)
-        : base(farAddress, expirationDate)
-    {
-        SearchedNodeId = searchedNodeId;
-    }
+        : base(farAddress, expirationDate) => SearchedNodeId = searchedNodeId;
 
     public FindNodeMsg(PublicKey farPublicKey, long expirationDate, byte[] searchedNodeId)
-        : base(farPublicKey, expirationDate)
-    {
-        SearchedNodeId = searchedNodeId;
-    }
+        : base(farPublicKey, expirationDate) => SearchedNodeId = searchedNodeId;
 }

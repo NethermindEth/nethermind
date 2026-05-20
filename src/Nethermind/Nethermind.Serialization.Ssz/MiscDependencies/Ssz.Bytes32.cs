@@ -12,10 +12,7 @@ public static partial class Ssz
 {
     public const int Bytes32Length = Bytes32.Length;
 
-    public static byte[] DecodeBytes(ReadOnlySpan<byte> span)
-    {
-        return span.ToArray();
-    }
+    public static byte[] DecodeBytes(ReadOnlySpan<byte> span) => span.ToArray();
 
     private static ReadOnlySpan<byte> DecodeBytes(ReadOnlySpan<byte> span, int count, ref int offset)
     {
@@ -24,10 +21,7 @@ public static partial class Ssz
         return bytes;
     }
 
-    public static Bytes32 DecodeBytes32(ReadOnlySpan<byte> span)
-    {
-        return new Bytes32(span);
-    }
+    public static Bytes32 DecodeBytes32(ReadOnlySpan<byte> span) => new(span);
 
     public static Bytes32[] DecodeBytes32s(ReadOnlySpan<byte> span)
     {
@@ -48,10 +42,7 @@ public static partial class Ssz
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static void Encode(Span<byte> span, Bytes32 value)
-    {
-        Encode(span, value.AsSpan());
-    }
+    public static void Encode(Span<byte> span, Bytes32 value) => Encode(span, value.AsSpan());
 
     public static void Encode(Span<byte> span, IReadOnlyList<Bytes32> value)
     {

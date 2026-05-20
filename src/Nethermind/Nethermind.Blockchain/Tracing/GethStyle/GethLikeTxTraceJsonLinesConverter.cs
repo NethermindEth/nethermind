@@ -55,7 +55,7 @@ internal class GethLikeTxTraceJsonLinesConverter : JsonConverter<GethTxFileTrace
 
         if ((value.Memory?.Length ?? 0) != 0)
         {
-            var memory = string.Concat(value.Memory);
+            string memory = string.Concat(value.Memory);
 
             writer.WritePropertyName("memory");
             writer.WriteStringValue($"0x{memory}");
@@ -66,7 +66,7 @@ internal class GethLikeTxTraceJsonLinesConverter : JsonConverter<GethTxFileTrace
             writer.WritePropertyName("stack");
             writer.WriteStartArray();
 
-            foreach (var s in value.Stack)
+            foreach (string s in value.Stack)
                 writer.WriteStringValue(s);
 
             writer.WriteEndArray();

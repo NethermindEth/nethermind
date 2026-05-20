@@ -3,13 +3,13 @@
 
 using System.Runtime.CompilerServices;
 using System.Runtime.Intrinsics;
+using Nethermind.Core;
+using Nethermind.Evm.GasPolicy;
 using static System.Runtime.CompilerServices.Unsafe;
 
 namespace Nethermind.Evm;
 
-using Word = Vector256<byte>;
-
-internal static partial class EvmInstructions
+public static partial class EvmInstructions
 {
     /// <summary>
     /// Represents a bitwise operation on 256-bit vectors.
@@ -27,42 +27,44 @@ internal static partial class EvmInstructions
         /// <param name="a">The first operand vector.</param>
         /// <param name="b">The second operand vector.</param>
         /// <returns>The result of the bitwise operation.</returns>
-        static abstract Word Operation(in Word a, in Word b);
+        static abstract EvmWord Operation(in EvmWord a, in EvmWord b);
     }
 
     /// <summary>
     /// Executes a bitwise operation defined by <typeparamref name="TOpBitwise"/> on the top two stack elements.
     /// This method reads the operands as 256-bit vectors from unaligned memory and writes the result back directly.
     /// </summary>
+    /// <typeparam name="TGasPolicy">The gas policy used for gas accounting.</typeparam>
     /// <typeparam name="TOpBitwise">The specific bitwise operation to execute.</typeparam>
     /// <param name="_">An unused virtual machine instance parameter.</param>
     /// <param name="stack">The EVM stack from which operands are retrieved and where the result is stored.</param>
-    /// <param name="gasAvailable">The remaining gas, reduced by the operation’s cost.</param>
+    /// <param name="gas">The gas which is updated by the operation's cost.</param>
     /// <param name="programCounter">The program counter (unused in this operation).</param>
     /// <returns>An <see cref="EvmExceptionType"/> indicating success or a stack underflow error.</returns>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionBitwise<TOpBitwise>(VirtualMachine _, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    public static EvmExceptionType InstructionBitwise<TGasPolicy, TOpBitwise>(VirtualMachine<TGasPolicy> _, ref EvmStack stack, ref TGasPolicy gas, ref int programCounter)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TOpBitwise : struct, IOpBitwise
     {
         // Deduct the operation's gas cost.
-        gasAvailable -= TOpBitwise.GasCost;
+        TGasPolicy.Consume(ref gas, TOpBitwise.GasCost);
 
         // Pop the first operand from the stack by reference to minimize copying.
         ref byte bytesRef = ref stack.PopBytesByRef();
         if (IsNullRef(ref bytesRef)) goto StackUnderflow;
         // Read the 256-bit vector from unaligned memory.
-        Word aVec = ReadUnaligned<Word>(ref bytesRef);
+        EvmWord aVec = ReadUnaligned<EvmWord>(ref bytesRef);
 
         // Peek at the top of the stack for the second operand without removing it.
         bytesRef = ref stack.PeekBytesByRef();
         if (IsNullRef(ref bytesRef)) goto StackUnderflow;
-        Word bVec = ReadUnaligned<Word>(ref bytesRef);
+        EvmWord bVec = ReadUnaligned<EvmWord>(ref bytesRef);
 
         // Write the result directly into the memory of the top stack element.
         WriteUnaligned(ref bytesRef, TOpBitwise.Operation(aVec, bVec));
 
         return EvmExceptionType.None;
-    // Jump forward to be unpredicted by the branch predictor.
+        // Jump forward to be unpredicted by the branch predictor.
     StackUnderflow:
         return EvmExceptionType.StackUnderflow;
     }
@@ -72,7 +74,7 @@ internal static partial class EvmInstructions
     /// </summary>
     public struct OpBitwiseAnd : IOpBitwise
     {
-        public static Word Operation(in Word a, in Word b) => Vector256.BitwiseAnd(a, b);
+        public static EvmWord Operation(in EvmWord a, in EvmWord b) => Vector256.BitwiseAnd(a, b);
     }
 
     /// <summary>
@@ -80,7 +82,7 @@ internal static partial class EvmInstructions
     /// </summary>
     public struct OpBitwiseOr : IOpBitwise
     {
-        public static Word Operation(in Word a, in Word b) => Vector256.BitwiseOr(a, b);
+        public static EvmWord Operation(in EvmWord a, in EvmWord b) => Vector256.BitwiseOr(a, b);
     }
 
     /// <summary>
@@ -88,7 +90,7 @@ internal static partial class EvmInstructions
     /// </summary>
     public struct OpBitwiseXor : IOpBitwise
     {
-        public static Word Operation(in Word a, in Word b) => Vector256.Xor(a, b);
+        public static EvmWord Operation(in EvmWord a, in EvmWord b) => Vector256.Xor(a, b);
     }
 
     /// <summary>
@@ -99,7 +101,7 @@ internal static partial class EvmInstructions
     public struct OpBitwiseEq : IOpBitwise
     {
         // Precomputed vector used as a marker for equality (only the last byte is set to 1).
-        public static Word One = Vector256.Create(
+        public static EvmWord One = Vector256.Create(
             (byte)
             0, 0, 0, 0, 0, 0, 0, 0,
             0, 0, 0, 0, 0, 0, 0, 0,
@@ -108,6 +110,6 @@ internal static partial class EvmInstructions
         );
 
         // Returns a non-zero marker vector if the operands are equal.
-        public static Word Operation(in Word a, in Word b) => a == b ? One : default;
+        public static EvmWord Operation(in EvmWord a, in EvmWord b) => a == b ? One : default;
     }
 }

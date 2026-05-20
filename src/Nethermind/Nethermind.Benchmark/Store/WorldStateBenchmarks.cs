@@ -6,6 +6,7 @@ using System.Linq;
 using Autofac;
 using BenchmarkDotNet.Attributes;
 using DotNetty.Common.Utilities;
+using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
@@ -13,7 +14,6 @@ using Nethermind.Core.Test.Modules;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
 using Nethermind.Specs.Forks;
-using Nethermind.State;
 
 namespace Nethermind.Benchmarks.Store;
 
@@ -44,16 +44,16 @@ public class WorldStateBenchmarks
             .AddModule(new TestNethermindModule())
             .Build();
 
-        IWorldState worldState = _globalWorldState = _container.Resolve<IWorldStateManager>().GlobalWorldState;
-        using var _ = worldState.BeginScope(IWorldState.PreGenesis);
+        IWorldState worldState = _globalWorldState = _container.Resolve<IMainProcessingContext>().WorldState;
+        using IDisposable _ = worldState.BeginScope(IWorldState.PreGenesis);
 
-        Random rand = new Random(0);
+        Random rand = new(0);
         byte[] randomBuffer = new byte[20];
         _accounts = new Address[_accountCount];
         for (int i = 0; i < _accountCount; i++)
         {
             rand.NextBytes(randomBuffer);
-            Address account = new Address(randomBuffer.ToArray());
+            Address account = new(randomBuffer.ToArray());
             worldState.AddToBalanceAndCreateIfNotExists(account, (UInt256)rand.NextLong() + 1, _releaseSpec);
             _accounts[i] = account;
         }
@@ -62,7 +62,7 @@ public class WorldStateBenchmarks
         for (int i = 0; i < _contractCount; i++)
         {
             rand.NextBytes(randomBuffer);
-            Address account = new Address(randomBuffer.ToArray());
+            Address account = new(randomBuffer.ToArray());
             worldState.AddToBalanceAndCreateIfNotExists(account, (UInt256)rand.NextLong() + 1, _releaseSpec);
             _contracts[i] = account;
         }
@@ -96,17 +96,14 @@ public class WorldStateBenchmarks
     }
 
     [GlobalCleanup]
-    public void Teardown()
-    {
-        _container.Dispose();
-    }
+    public void Teardown() => _container.Dispose();
 
     [Benchmark]
     public void AccountRead()
     {
-        Random rand = new Random(1);
+        Random rand = new(1);
         IWorldState worldState = _globalWorldState;
-        using var _ = worldState.BeginScope(_baseBlock);
+        using IDisposable _ = worldState.BeginScope(_baseBlock);
 
         for (int i = 0; i < _loopSize; i++)
         {
@@ -119,9 +116,9 @@ public class WorldStateBenchmarks
     [Benchmark]
     public void AccountReadWrite()
     {
-        Random rand = new Random(1);
+        Random rand = new(1);
         IWorldState worldState = _globalWorldState;
-        using var _ = worldState.BeginScope(_baseBlock);
+        using IDisposable _ = worldState.BeginScope(_baseBlock);
 
         for (int i = 0; i < _loopSize; i++)
         {
@@ -143,9 +140,9 @@ public class WorldStateBenchmarks
     [Benchmark]
     public void SlotRead()
     {
-        Random rand = new Random(1);
+        Random rand = new(1);
         IWorldState worldState = _globalWorldState;
-        using var _ = worldState.BeginScope(_baseBlock);
+        using IDisposable _ = worldState.BeginScope(_baseBlock);
 
         for (int i = 0; i < _loopSize; i++)
         {
@@ -159,9 +156,9 @@ public class WorldStateBenchmarks
     [Benchmark]
     public void SlotReadWrite()
     {
-        Random rand = new Random(1);
+        Random rand = new(1);
         IWorldState worldState = _globalWorldState;
-        using var _ = worldState.BeginScope(_baseBlock);
+        using IDisposable _ = worldState.BeginScope(_baseBlock);
         byte[] randomBuffer = new byte[20];
 
         for (int i = 0; i < _loopSize; i++)
@@ -186,9 +183,9 @@ public class WorldStateBenchmarks
     [Benchmark]
     public void SameContractRead()
     {
-        Random rand = new Random(1);
+        Random rand = new(1);
         IWorldState worldState = _globalWorldState;
-        using var _ = worldState.BeginScope(_baseBlock);
+        using IDisposable _ = worldState.BeginScope(_baseBlock);
 
         for (int i = 0; i < _loopSize; i++)
         {
@@ -202,9 +199,9 @@ public class WorldStateBenchmarks
     [Benchmark]
     public void SameContractReadWrite()
     {
-        Random rand = new Random(1);
+        Random rand = new(1);
         IWorldState worldState = _globalWorldState;
-        using var _ = worldState.BeginScope(_baseBlock);
+        using IDisposable _ = worldState.BeginScope(_baseBlock);
         byte[] randomBuffer = new byte[20];
 
         for (int i = 0; i < _loopSize; i++)

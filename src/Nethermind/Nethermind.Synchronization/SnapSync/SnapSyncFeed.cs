@@ -11,54 +11,54 @@ using Nethermind.Synchronization.Peers;
 
 namespace Nethermind.Synchronization.SnapSync
 {
-    public class SnapSyncFeed : SyncFeed<SnapSyncBatch?>, IDisposable
+    public class SnapSyncFeed(ISnapProvider snapProvider, ILogManager logManager) : ISimpleSyncFeed<SnapSyncBatch>
     {
         private readonly Lock _syncLock = new();
 
-        private const int AllowedInvalidResponses = 5;
+        internal const int AllowedInvalidResponses = 5;
         private readonly LinkedList<(PeerInfo peer, AddRangeResult result)> _resultLog = new();
 
         private const SnapSyncBatch EmptyBatch = null;
 
-        private readonly ISnapProvider _snapProvider;
+        private readonly ISnapProvider _snapProvider = snapProvider;
 
-        private readonly ILogger _logger;
-        private bool _disposed = false;
-        public override bool IsMultiFeed => true;
-        public override AllocationContexts Contexts => AllocationContexts.Snap;
+        private readonly ILogger _logger = logManager.GetClassLogger<SnapSyncFeed>();
 
-        public SnapSyncFeed(ISnapProvider snapProvider, ILogManager logManager)
+        public async Task<SnapSyncBatch?> PrepareRequest(CancellationToken token)
         {
-            _snapProvider = snapProvider;
-            _logger = logManager.GetClassLogger();
-        }
-
-        public override Task<SnapSyncBatch?> PrepareRequest(CancellationToken token = default)
-        {
-            try
+            while (!token.IsCancellationRequested)
             {
-                bool finished = _snapProvider.IsFinished(out SnapSyncBatch request);
-
-                if (request is null)
+                try
                 {
-                    if (finished)
+                    bool finished = _snapProvider.IsFinished(out SnapSyncBatch request);
+
+                    if (request is not null)
                     {
-                        Finish();
+                        return request;
                     }
 
-                    return Task.FromResult(EmptyBatch);
+                    if (finished)
+                    {
+                        _snapProvider.Dispose();
+                        return null;
+                    }
+                }
+                catch (OperationCanceledException)
+                {
+                    return EmptyBatch;
+                }
+                catch (Exception e)
+                {
+                    _logger.Error("Error when preparing a batch", e);
                 }
 
-                return Task.FromResult(request);
+                await Task.Delay(50, token);
             }
-            catch (Exception e)
-            {
-                _logger.Error("Error when preparing a batch", e);
-                return Task.FromResult(EmptyBatch);
-            }
+
+            return EmptyBatch;
         }
 
-        public override SyncResponseHandlingResult HandleResponse(SnapSyncBatch? batch, PeerInfo peer)
+        public SyncResponseHandlingResult HandleResponse(SnapSyncBatch batch, PeerInfo? peer = null)
         {
             if (batch is null)
             {
@@ -109,7 +109,7 @@ namespace Nethermind.Synchronization.SnapSync
             return AnalyzeResponsePerPeer(result, peer);
         }
 
-        public SyncResponseHandlingResult AnalyzeResponsePerPeer(AddRangeResult result, PeerInfo peer)
+        public SyncResponseHandlingResult AnalyzeResponsePerPeer(AddRangeResult result, PeerInfo? peer)
         {
             if (peer is null)
             {
@@ -142,10 +142,23 @@ namespace Nethermind.Synchronization.SnapSync
                 int allLastSuccess = 0;
                 int allLastFailures = 0;
                 int peerLastFailures = 0;
+                bool seenOtherPeer = false;
 
                 lock (_syncLock)
                 {
-                    foreach (var item in _resultLog)
+                    // Scan the whole window first so the single-peer guard cannot fire
+                    // prematurely when a healthy peer's entries sit further back in the log
+                    // than the analyzed peer's recent failures.
+                    foreach ((PeerInfo peer, AddRangeResult _) probe in _resultLog)
+                    {
+                        if (probe.peer != peer)
+                        {
+                            seenOtherPeer = true;
+                            break;
+                        }
+                    }
+
+                    foreach ((PeerInfo peer, AddRangeResult result) item in _resultLog)
                     {
                         if (item.result == AddRangeResult.OK)
                         {
@@ -166,6 +179,18 @@ namespace Nethermind.Synchronization.SnapSync
 
                                 if (peerLastFailures > AllowedInvalidResponses)
                                 {
+                                    // With a single peer in the entire window and no successes, the
+                                    // failure stream is more likely a stale pivot than a misbehaving
+                                    // peer — punishing the only available peer would stall sync.
+                                    if (!seenOtherPeer && allLastSuccess == 0)
+                                    {
+                                        _snapProvider.UpdatePivot();
+
+                                        _resultLog.Clear();
+
+                                        break;
+                                    }
+
                                     if (allLastFailures == peerLastFailures)
                                     {
                                         _logger.Trace($"SNAP - peer to be punished:{peer}");
@@ -194,34 +219,5 @@ namespace Nethermind.Synchronization.SnapSync
                 return SyncResponseHandlingResult.OK;
             }
         }
-
-        public void Dispose()
-        {
-            _disposed = true;
-        }
-
-        public override void SyncModeSelectorOnChanged(SyncMode current)
-        {
-            if (_disposed) return;
-            if (CurrentState == SyncFeedState.Dormant)
-            {
-                if ((current & SyncMode.SnapSync) == SyncMode.SnapSync)
-                {
-                    if (_snapProvider.CanSync())
-                    {
-                        Activate();
-                    }
-                }
-            }
-        }
-
-        public override void Finish()
-        {
-            _snapProvider.Dispose();
-            base.Finish();
-        }
-
-        public override bool IsFinished => _snapProvider.IsSnapGetRangesFinished();
-        public override string FeedName => nameof(SnapSyncFeed);
     }
 }

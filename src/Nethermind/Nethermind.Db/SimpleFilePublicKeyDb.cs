@@ -23,42 +23,46 @@ namespace Nethermind.Db
 
         private readonly ILogger _logger;
         private bool _hasPendingChanges;
-        private ConcurrentDictionary<byte[], byte[]> _cache;
-        private ConcurrentDictionary<byte[], byte[]>.AlternateLookup<ReadOnlySpan<byte>> _cacheSpan;
+        private readonly ConcurrentDictionary<byte[], byte[]> _cache = new(Bytes.EqualityComparer);
+        private readonly ConcurrentDictionary<byte[], byte[]>.AlternateLookup<ReadOnlySpan<byte>> _cacheSpan;
 
-        public string DbPath { get; }
+        private string DbPath { get; }
         public string Name { get; }
-        public string Description { get; }
 
-        public ICollection<byte[]> Keys => _cache.Keys.ToArray();
-        public ICollection<byte[]> Values => _cache.Values;
+        public ICollection<byte[]> Keys => _cache.Select(static kvp => kvp.Key).ToArray();
+        public ICollection<byte[]> Values => _cache.Select(static kvp => kvp.Value).ToArray();
         public int Count => _cache.Count;
 
         public SimpleFilePublicKeyDb(string name, string dbDirectoryPath, ILogManager logManager)
         {
-            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+            _logger = logManager?.GetClassLogger<SimpleFilePublicKeyDb>() ?? throw new ArgumentNullException(nameof(logManager));
             ArgumentNullException.ThrowIfNull(dbDirectoryPath);
             Name = name ?? throw new ArgumentNullException(nameof(name));
             DbPath = Path.Combine(dbDirectoryPath, DbFileName);
-            Description = $"{Name}|{DbPath}";
 
             if (!Directory.Exists(dbDirectoryPath))
             {
                 Directory.CreateDirectory(dbDirectoryPath);
             }
 
-            LoadData();
+            _cacheSpan = _cache.GetAlternateLookup<ReadOnlySpan<byte>>();
+
+            if (File.Exists(DbPath))
+            {
+                LoadData();
+            }
         }
 
         public byte[]? this[ReadOnlySpan<byte> key]
         {
-            get => Get(key, ReadFlags.None);
-            set => Set(key, value, WriteFlags.None);
+            get => Get(key);
+            set => Set(key, value);
         }
 
         public byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
         {
-            return _cacheSpan[key];
+            _cacheSpan.TryGetValue(key, out byte[]? value);
+            return value;
         }
 
         public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None)
@@ -72,23 +76,14 @@ namespace Nethermind.Db
                 return;
             }
 
-            bool setValue = true;
-            if (_cacheSpan.TryGetValue(key, out var existingValue))
-            {
-                if (!Bytes.AreEqual(existingValue, value))
-                {
-                    setValue = false;
-                }
-            }
-
-            if (setValue)
+            if (!_cacheSpan.TryGetValue(key, out byte[] existingValue) || !Bytes.AreEqual(existingValue, value))
             {
                 _cacheSpan[key] = value;
                 _hasPendingChanges = true;
             }
         }
 
-        public KeyValuePair<byte[], byte[]>[] this[byte[][] keys] => keys.Select(k => new KeyValuePair<byte[], byte[]>(k, _cache.TryGetValue(k, out var value) ? value : null)).ToArray();
+        public KeyValuePair<byte[], byte[]>[] this[byte[][] keys] => keys.Select(k => new KeyValuePair<byte[], byte[]>(k, _cache.TryGetValue(k, out byte[] value) ? value : null)).ToArray();
 
         public void Remove(ReadOnlySpan<byte> key)
         {
@@ -98,10 +93,7 @@ namespace Nethermind.Db
             }
         }
 
-        public bool KeyExists(ReadOnlySpan<byte> key)
-        {
-            return _cacheSpan.ContainsKey(key);
-        }
+        public bool KeyExists(ReadOnlySpan<byte> key) => _cacheSpan.ContainsKey(key);
 
         public void Flush(bool onlyWal = false) { }
 
@@ -113,14 +105,11 @@ namespace Nethermind.Db
 
         public IEnumerable<KeyValuePair<byte[], byte[]>> GetAll(bool ordered = false) => _cache;
 
-        public IEnumerable<byte[]> GetAllKeys(bool ordered = false) => _cache.Keys;
+        public IEnumerable<byte[]> GetAllKeys(bool ordered = false) => _cache.Select(static kvp => kvp.Key);
 
-        public IEnumerable<byte[]> GetAllValues(bool ordered = false) => _cache.Values;
+        public IEnumerable<byte[]> GetAllValues(bool ordered = false) => _cache.Select(static kvp => kvp.Value);
 
-        public IWriteBatch StartWriteBatch()
-        {
-            return this.LikeABatch(CommitBatch);
-        }
+        public IWriteBatch StartWriteBatch() => this.LikeABatch(CommitBatch);
 
         private void CommitBatch()
         {
@@ -219,17 +208,9 @@ namespace Nethermind.Db
         {
             const int maxLineLength = 2048;
 
-            _cache = new ConcurrentDictionary<byte[], byte[]>(Bytes.EqualityComparer);
-            _cacheSpan = _cache.GetAlternateLookup<ReadOnlySpan<byte>>();
-
-            if (!File.Exists(DbPath))
-            {
-                return;
-            }
-
             using SafeFileHandle fileHandle = File.OpenHandle(DbPath, FileMode.OpenOrCreate);
 
-            using var handle = ArrayPoolDisposableReturn.Rent(maxLineLength, out byte[] rentedBuffer);
+            using ArrayPoolDisposableReturn handle = ArrayPoolDisposableReturn.Rent(maxLineLength, out byte[] rentedBuffer);
             int read = RandomAccess.Read(fileHandle, rentedBuffer, 0);
 
             long offset = 0L;
@@ -240,7 +221,7 @@ namespace Nethermind.Db
                 bytes = rentedBuffer.AsSpan(0, read + bytes.Length);
                 while (true)
                 {
-                    // Store the original span incase need to undo the key slicing if end of line not found
+                    // Store the original span in case we need to undo the key slicing when the end of line is not found
                     Span<byte> iterationSpan = bytes;
                     int commaIndex = bytes.IndexOf((byte)',');
                     Span<byte> key = default;
@@ -306,24 +287,6 @@ namespace Nethermind.Db
             }
         }
 
-        private byte[] Update(byte[] oldValue, byte[] newValue)
-        {
-            if (!Bytes.AreEqual(oldValue, newValue))
-            {
-                _hasPendingChanges = true;
-            }
-
-            return newValue;
-        }
-
-        private byte[] Add(byte[] value)
-        {
-            _hasPendingChanges = true;
-            return value;
-        }
-
-        public void Dispose()
-        {
-        }
+        public void Dispose() { }
     }
 }

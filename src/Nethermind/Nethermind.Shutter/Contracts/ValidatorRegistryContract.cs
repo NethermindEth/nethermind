@@ -13,8 +13,6 @@ using System.Collections.Generic;
 using Nethermind.Core.Extensions;
 using Nethermind.Crypto;
 using Nethermind.Shutter.Config;
-using System.Linq;
-
 using Update = (byte[] Message, byte[] Signature);
 
 namespace Nethermind.Shutter.Contracts;
@@ -28,7 +26,7 @@ public class ValidatorRegistryContract(
     ulong messageVersion)
     : CallableContract(transactionProcessor, abiEncoder, contractAddress), IValidatorRegistryContract
 {
-    private readonly ILogger _logger = logManager.GetClassLogger();
+    private readonly ILogger _logger = logManager.GetClassLogger<ValidatorRegistryContract>();
 
     public UInt256 GetNumUpdates(BlockHeader header) => (UInt256)Call(header, nameof(GetNumUpdates), Address.Zero, [])[0];
 

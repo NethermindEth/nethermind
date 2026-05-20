@@ -25,6 +25,7 @@ using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
 
 namespace Nethermind.Synchronization.Trie;
+
 public class SnapRangeRecovery(ISyncPeerPool peerPool, ILogManager logManager) : IPathRecovery
 {
     // Pick by reduced latency instead of throughput
@@ -44,15 +45,15 @@ public class SnapRangeRecovery(ISyncPeerPool peerPool, ILogManager logManager) :
 
         try
         {
-            using ArrayPoolList<Task<IOwnedReadOnlyList<(TreePath, byte[])>>>? concurrentAttempts = Enumerable.Range(0, ConcurrentAttempt)
-                .Select(_ =>
+            Task<IOwnedReadOnlyList<(TreePath, byte[])>>[] concurrentAttempts = Enumerable.Range(0, ConcurrentAttempt)
+                .Select((_) =>
                 {
                     return peerPool.AllocateAndRun(async (peer) =>
                         {
-                            if (peer is null) return null;
+                            if (peer == null) return null;
                             try
                             {
-                                IOwnedReadOnlyList<(TreePath, byte[])>? result = await RecoverFromPeer(peer.SyncPeer, rootHash, address, startingPath, startingNodeHash,
+                                IOwnedReadOnlyList<(TreePath, byte[])> result = await RecoverFromPeer(peer.SyncPeer, rootHash, address, startingPath, startingNodeHash,
                                     fullPath,
                                     cts.Token);
                                 if (result is not null) return result;
@@ -71,7 +72,7 @@ public class SnapRangeRecovery(ISyncPeerPool peerPool, ILogManager logManager) :
                             return null;
                         }, SnapPeerStrategy, AllocationContexts.Snap, cts.Token);
                 })
-                .ToPooledList(ConcurrentAttempt);
+                .ToArray();
 
             return await Wait.AnyWhere(
                 result => result is not null,
@@ -92,7 +93,7 @@ public class SnapRangeRecovery(ISyncPeerPool peerPool, ILogManager logManager) :
         ValueHash256 queryPath,
         CancellationToken cancellationToken)
     {
-        if (!peer.TryGetSatelliteProtocol(Protocol.Snap, out ISnapSyncPeer? snapProtocol)) return null;
+        if (!peer.TryGetSatelliteProtocol<ISnapSyncPeer>(Protocol.Snap, out ISnapSyncPeer snapProtocol)) return null;
 
         // Sometimes the start path for the missing node and the actual full path that the trie is working on is not the same.
         // So we change the query to match the missing node path.
@@ -102,7 +103,7 @@ public class SnapRangeRecovery(ISyncPeerPool peerPool, ILogManager logManager) :
             queryPath = startingPath.Append(0, 64 - startingPath.Length).Path;
         }
 
-        if (address is null)
+        if (address == null)
         {
             AccountRange accountRange = new(
                 rootHash,
@@ -116,12 +117,13 @@ public class SnapRangeRecovery(ISyncPeerPool peerPool, ILogManager logManager) :
                 return null;
             }
 
+            ReadOnlySpan<PathWithAccount> pathAndAccounts = acc.PathAndAccounts.AsSpan();
             byte[] accountRlp = [];
             ValueHash256 slotPath = default;
-            if (acc.PathAndAccounts.Count > 0)
+            if (pathAndAccounts.Length > 0)
             {
-                accountRlp = _accountDecoder.Encode(acc.PathAndAccounts[0].Account).Bytes;
-                slotPath = acc.PathAndAccounts[0].Path;
+                accountRlp = _accountDecoder.Encode(pathAndAccounts[0].Account).Bytes;
+                slotPath = pathAndAccounts[0].Path;
             }
 
             return AssembleResponse(startingNodeHash, startingPath, slotPath, accountRlp, acc.Proofs);
@@ -143,7 +145,9 @@ public class SnapRangeRecovery(ISyncPeerPool peerPool, ILogManager logManager) :
             };
 
             SlotsAndProofs res = await snapProtocol.GetStorageRange(storageRange, cancellationToken);
-            if ((res.PathsAndSlots.Count == 0 || res.PathsAndSlots[0].Count == 0) && res.Proofs.Count == 0)
+            ReadOnlySpan<IOwnedReadOnlyList<PathWithStorageSlot>> pathsAndSlots = res.PathsAndSlots.AsSpan();
+            ReadOnlySpan<PathWithStorageSlot> firstSlots = pathsAndSlots.Length == 0 ? [] : pathsAndSlots[0].AsSpan();
+            if ((pathsAndSlots.Length == 0 || firstSlots.Length == 0) && res.Proofs.Count == 0)
             {
                 if (_logger.IsWarn) _logger.Warn($"Did not receive any path from {peer}. {res.Proofs.Count}");
                 return null;
@@ -151,10 +155,10 @@ public class SnapRangeRecovery(ISyncPeerPool peerPool, ILogManager logManager) :
 
             byte[] slotRlp = [];
             ValueHash256 slotPath = default;
-            if (res.PathsAndSlots.Count > 0 && res.PathsAndSlots[0].Count > 0)
+            if (firstSlots.Length > 0)
             {
-                slotRlp = res.PathsAndSlots[0][0].SlotRlpValue;
-                slotPath = res.PathsAndSlots[0][0].Path;
+                slotRlp = firstSlots[0].SlotRlpValue;
+                slotPath = firstSlots[0].Path;
             }
 
             return AssembleResponse(startingNodeHash, startingPath, slotPath, slotRlp, res.Proofs);
@@ -166,14 +170,15 @@ public class SnapRangeRecovery(ISyncPeerPool peerPool, ILogManager logManager) :
         TreePath startingPath,
         in ValueHash256 slotPath,
         byte[] value,
-        IReadOnlyList<byte[]> proofs)
+        IByteArrayList proofs)
     {
         ArrayPoolList<(TreePath, byte[])> result = new(1);
 
         ITrieNodeResolver emptyResolver = new EmptyTrieNodeResolver();
         Dictionary<ValueHash256, byte[]> nodes = new();
-        foreach (byte[] proof in proofs)
+        for (int i = 0; i < proofs.Count; i++)
         {
+            byte[] proof = proofs[i].ToArray();
             nodes[ValueKeccak.Compute(proof)] = proof;
         }
         nodes[ValueKeccak.Compute(value)] = value;
@@ -187,12 +192,12 @@ public class SnapRangeRecovery(ISyncPeerPool peerPool, ILogManager logManager) :
             TreePath currentPath = item.Item1;
             Hash256 currentHash = item.Item2;
 
-            if (!nodes.TryGetValue(currentHash, out byte[] rlp))
+            if (!nodes.TryGetValue(currentHash, out byte[]? rlp))
             {
                 if (slotPathAsTreePath.Truncate(currentPath.Length) == currentPath)
                 {
                     // Try using the slot as a leaf with the remaining path as key
-                    TrieNode leafNode = TrieNodeFactory.CreateLeaf(slotPathAsTreePath.ToNibble()[currentPath.Length..], new SpanSource(value));
+                    TrieNode leafNode = TrieNodeFactory.CreateLeaf(slotPathAsTreePath.ToNibble()[currentPath.Length..], new CappedArray<byte>(value));
                     leafNode.ResolveNode(emptyResolver, currentPath);
                     leafNode.ResolveKey(emptyResolver, ref currentPath);
                     if (leafNode.Keccak == currentHash)
@@ -203,7 +208,7 @@ public class SnapRangeRecovery(ISyncPeerPool peerPool, ILogManager logManager) :
             }
 
             // Eh.. what can you do?
-            if (rlp is null) continue;
+            if (rlp == null) continue;
 
             result.Add((currentPath, rlp));
 
@@ -230,7 +235,11 @@ public class SnapRangeRecovery(ISyncPeerPool peerPool, ILogManager logManager) :
             }
         }
 
-        return result.Count == 0 ? null : result;
+        if (result.Count == 0)
+        {
+            return null;
+        }
+        return result;
     }
 
 }

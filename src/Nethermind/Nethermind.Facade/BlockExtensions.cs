@@ -40,7 +40,7 @@ namespace Nethermind.Facade
                     {
                         for (int j = 0; j < receipt.Logs.Length; j++)
                         {
-                            var receiptLog = GetItemAt(receipt.Logs, j, logsFindOrder);
+                            LogEntry receiptLog = GetItemAt(receipt.Logs, j, logsFindOrder);
                             if (comparer.Equals(receiptLog, matchEntry))
                             {
                                 foundEntry = receiptLog;
@@ -74,7 +74,7 @@ namespace Nethermind.Facade
                     {
                         for (int j = 0; j < receipt.Logs.Length; j++)
                         {
-                            var receiptLog = GetItemAt(receipt.Logs, j, logsFindOrder);
+                            LogEntry receiptLog = GetItemAt(receipt.Logs, j, logsFindOrder);
                             if (comparer.Equals(receiptLog, matchEntry))
                             {
                                 yield return receiptLog;
@@ -101,7 +101,7 @@ namespace Nethermind.Facade
                     {
                         for (int j = 0; j < receipt.Logs.Length; j++)
                         {
-                            var receiptLog = GetItemAt(receipt.Logs, j, logsFindOrder);
+                            LogEntry receiptLog = GetItemAt(receipt.Logs, j, logsFindOrder);
                             if (logFilter.Accepts(receiptLog))
                             {
                                 yield return receiptLog;

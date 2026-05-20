@@ -29,7 +29,7 @@ public class BeaconPivotTests
         _syncConfig = new SyncConfig
         {
             FastSync = true,
-            PivotNumber = "1000",
+            PivotNumber = 1000,
             PivotHash = Keccak.Zero.ToString(),
             PivotTotalDifficulty = "1000"
         };

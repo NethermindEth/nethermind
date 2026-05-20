@@ -3,7 +3,6 @@
 
 using System.Collections.Generic;
 using System.IO;
-using Ethereum.Test.Base.Interfaces;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
@@ -13,6 +12,12 @@ namespace Ethereum.Test.Base
 {
     public class GeneralStateTest : EthereumTest
     {
+        /// <summary>
+        /// When true, uses legacy coinbase behavior (create before tx) for backward compatibility
+        /// with old test expectations that were computed with buggy coinbase timing.
+        /// </summary>
+        public bool IsLegacy { get; set; }
+
         public IReleaseSpec? Fork { get; set; }
         public string? ForkName { get; set; }
         public Address? CurrentCoinbase { get; set; }
@@ -31,14 +36,11 @@ namespace Ethereum.Test.Base
         public Hash256? CurrentBeaconRoot { get; set; }
         public Hash256? CurrentWithdrawalsRoot { get; set; }
         public ulong? CurrentExcessBlobGas { get; set; }
-        public UInt256? ParentBlobGasUsed { get; set; }
-        public UInt256? ParentExcessBlobGas { get; set; }
+        public ulong? CurrentSlotNumber { get; set; }
+
 
         public Hash256? RequestsHash { get; set; }
 
-        public override string ToString()
-        {
-            return $"{Path.GetFileName(Category)}.{Name}_{ForkName}";
-        }
+        public override string ToString() => $"{Path.GetFileName(Category)}.{Name}_{ForkName}";
     }
 }

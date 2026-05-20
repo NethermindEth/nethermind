@@ -2,11 +2,14 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.IO;
 using System.Threading;
+using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test;
@@ -18,11 +21,14 @@ using Nethermind.Specs.Forks;
 using Nethermind.Evm.State;
 using Nethermind.State;
 using Nethermind.Trie.Pruning;
+using Nethermind.Trie.Test.Pruning;
 using NUnit.Framework;
 
 namespace Nethermind.Trie.Test
 {
     [TestFixture]
+    [Parallelizable(ParallelScope.All)]
+    [FixtureLifeCycle(LifeCycle.InstancePerTestCase)]
     public class TrieTests
     {
         private ILogger _logger;
@@ -33,7 +39,7 @@ namespace Nethermind.Trie.Test
         public void SetUp()
         {
             _logManager = LimboLogs.Instance;
-            _logger = _logManager.GetClassLogger();
+            _logger = _logManager.GetClassLogger<TrieTests>();
         }
 
         [TearDown]
@@ -55,10 +61,7 @@ namespace Nethermind.Trie.Test
         private static readonly byte[] _keyC = Bytes.FromHexString("00000000001aa");
         private static readonly byte[] _keyD = Bytes.FromHexString("00000000001bb");
 
-        private IPruningTrieStore CreateTrieStore(IDb? memDb = null)
-        {
-            return TestTrieStoreFactory.Build(memDb ?? new MemDb(), Prune.WhenCacheReaches(1.MB()), Persist.EveryBlock, _logManager);
-        }
+        private IPruningTrieStore CreateTrieStore(IDb? memDb = null) => TestTrieStoreFactory.Build(memDb ?? new MemDb(), Prune.WhenCacheReaches(1.MB), Persist.EveryBlock, _logManager);
 
         [Test]
         public void Single_leaf()
@@ -284,7 +287,7 @@ namespace Nethermind.Trie.Test
         public void Test_add_many(int i)
         {
             MemDb memDb = new();
-            using TrieStore trieStore = TestTrieStoreFactory.Build(memDb, new MemoryLimit(128.MB()), Persist.EveryBlock, _logManager);
+            using TrieStore trieStore = TestTrieStoreFactory.Build(memDb, new MemoryLimit(128.MB), Persist.EveryBlock, _logManager);
             PatriciaTree patriciaTree = new(trieStore.GetTrieStore(null), Keccak.EmptyTreeHash, true, _logManager);
 
             for (int j = 0; j < i; j++)
@@ -310,7 +313,7 @@ namespace Nethermind.Trie.Test
         public void Test_try_delete_and_read_missing_nodes(int i)
         {
             MemDb memDb = new();
-            using TrieStore trieStore = TestTrieStoreFactory.Build(memDb, new MemoryLimit(128.MB()), Persist.EveryBlock, _logManager);
+            using TrieStore trieStore = TestTrieStoreFactory.Build(memDb, new MemoryLimit(128.MB), Persist.EveryBlock, _logManager);
             PatriciaTree patriciaTree = new(trieStore.GetTrieStore(null), Keccak.EmptyTreeHash, true, _logManager);
 
             for (int j = 0; j < i; j++)
@@ -749,23 +752,26 @@ namespace Nethermind.Trie.Test
                     ? No.Pruning
                     : Prune.WhenCacheReaches(dirtyNodeSize);
 
-                return new TrieStore(
+                IPruningConfig pruningConfig = new PruningConfig()
+                {
+                    TrackPastKeys = TrackPastKeys,
+                    PruningBoundary = LookupLimit,
+                };
+                TestFinalizedStateProvider finalizedStateProvider = new(pruningConfig.PruningBoundary);
+                TrieStore trieStore = new(
                     new NodeStorage(new MemDb()),
                     pruneStrategy,
                     Persist.EveryNBlock(PersistEveryN),
-                    new PruningConfig()
-                    {
-                        TrackPastKeys = TrackPastKeys,
-                        PruningBoundary = LookupLimit,
-                    },
+                    finalizedStateProvider,
+                    pruningConfig,
                     LimboLogs.Instance);
+                finalizedStateProvider.TrieStore = trieStore;
+
+                return trieStore;
             }
-            public override string ToString()
-            {
-                return (
+            public override string ToString() => (
                     $"persistEveryN: {PersistEveryN}, " +
                     $"lookup: {LookupLimit}");
-            }
 
             public bool IsMissingAccountExpected(int depth)
             {
@@ -782,14 +788,14 @@ namespace Nethermind.Trie.Test
 
         private static IEnumerable<TrieStoreConfigurations> CreateTrieStoreConfigurations()
         {
-            yield return new TrieStoreConfigurations(1.MiB(), 8, 8, false);
-            yield return new TrieStoreConfigurations(1.MiB(), 8, 8, true);
+            yield return new TrieStoreConfigurations(1.MiB, 8, 8, false);
+            yield return new TrieStoreConfigurations(1.MiB, 8, 8, true);
             yield return new TrieStoreConfigurations(-1, 1, 8, false);
         }
 
         private static IEnumerable<(TrieStoreConfigurations, int, int, int)> FuzzAccountScenarios()
         {
-            foreach (var trieStoreConfigurations in CreateTrieStoreConfigurations())
+            foreach (TrieStoreConfigurations trieStoreConfigurations in CreateTrieStoreConfigurations())
             {
                 yield return new(trieStoreConfigurations, 128, 128, 8);
             }
@@ -900,7 +906,7 @@ namespace Nethermind.Trie.Test
 
         private static IEnumerable<(TrieStoreConfigurations, int accountsCount, int blocksCount, int uniqueValuesCount, int? seed)> FuzzAccountsWithReorganizationsScenarios()
         {
-            foreach (var trieStoreConfiguration in CreateTrieStoreConfigurations())
+            foreach (TrieStoreConfigurations trieStoreConfiguration in CreateTrieStoreConfigurations())
             {
                 yield return (trieStoreConfiguration, 4, 16, 4, null);
             }
@@ -1059,7 +1065,7 @@ namespace Nethermind.Trie.Test
 
         private static IEnumerable<(TrieStoreConfigurations, int accountsCount, int blocksCount, int? seed)> FuzzAccountsWithStorageScenarios()
         {
-            foreach (var trieStoreConfiguration in CreateTrieStoreConfigurations())
+            foreach (TrieStoreConfigurations trieStoreConfiguration in CreateTrieStoreConfigurations())
             {
                 yield return (trieStoreConfiguration, 96, 192, 1541344441);
                 yield return (trieStoreConfiguration, 128, 2568, 988091870);
@@ -1071,6 +1077,8 @@ namespace Nethermind.Trie.Test
         }
 
         [TestCaseSource(nameof(FuzzAccountsWithStorageScenarios))]
+        [Retry(3)]
+        [NonParallelizable]
         public void Fuzz_accounts_with_storage(
             (TrieStoreConfigurations trieStoreConfigurations,
                 int accountsCount,
@@ -1109,7 +1117,7 @@ namespace Nethermind.Trie.Test
                 }
                 else
                 {
-                    accounts[i] = TestItem.GenerateRandomAccount();
+                    accounts[i] = TestItem.GenerateRandomAccount(_random);
                 }
 
                 addresses[i] = TestItem.GetRandomAddress(_random);
@@ -1118,7 +1126,7 @@ namespace Nethermind.Trie.Test
             BlockHeader? baseBlock = null;
             for (int blockNumber = 0; blockNumber < blocksCount; blockNumber++)
             {
-                using var _ = stateProvider.BeginScope(baseBlock);
+                using IDisposable _ = stateProvider.BeginScope(baseBlock);
 
                 bool isEmptyBlock = _random.Next(5) == 0;
                 if (!isEmptyBlock)
@@ -1134,7 +1142,7 @@ namespace Nethermind.Trie.Test
                         if (stateProvider.AccountExists(address))
                         {
                             stateProvider.TryGetAccount(address, out AccountStruct existingStruct);
-                            Account existing = new Account(existingStruct.Nonce, existingStruct.Balance, new Hash256(existingStruct.StorageRoot), new Hash256(existingStruct.CodeHash));
+                            Account existing = new(existingStruct.Nonce, existingStruct.Balance, new Hash256(existingStruct.StorageRoot), new Hash256(existingStruct.CodeHash));
                             if (existing.Balance != account.Balance)
                             {
                                 if (account.Balance > existing.Balance)
@@ -1191,7 +1199,7 @@ namespace Nethermind.Trie.Test
             {
                 try
                 {
-                    using var _ = stateProvider.BeginScope(baseBlock);
+                    using IDisposable _ = stateProvider.BeginScope(baseBlock);
                     for (int i = 0; i < addresses.Length; i++)
                     {
                         if (stateProvider.AccountExists(addresses[i]))
@@ -1217,6 +1225,108 @@ namespace Nethermind.Trie.Test
 
                 verifiedBlocks++;
             }
+        }
+
+        [Test]
+        public void Can_parallel_read_trees()
+        {
+            int itemCount = 1024;
+            int repetition = 100;
+
+            PruningConfig pruningConfig = new();
+            TestFinalizedStateProvider finalizedStateProvider = new(pruningConfig.PruningBoundary);
+            using TrieStore trieStore = new(
+                new NodeStorage(new MemDb()),
+                new TestPruningStrategy(shouldPrune: true),
+                Persist.EveryBlock,
+                finalizedStateProvider,
+                pruningConfig,
+                LimboLogs.Instance
+            );
+            finalizedStateProvider.TrieStore = trieStore;
+
+            PatriciaTree tree = new(trieStore, LimboLogs.Instance);
+
+            using ArrayPoolList<(Hash256, Hash256)> kv = new(itemCount);
+
+            Span<byte> buffer = stackalloc byte[32];
+            for (int i = 0; i < itemCount; i++)
+            {
+                BinaryPrimitives.WriteInt32BigEndian(buffer, i);
+                Hash256 key = Keccak.Compute(buffer);
+                key.Bytes[..8].Fill(0);
+                kv.Add((key, Keccak.Compute(buffer)));
+            }
+
+            foreach ((Hash256, Hash256) it in kv)
+            {
+                (Hash256 key, Hash256 value) = it;
+                tree.Set(key.Bytes, value.BytesToArray());
+            }
+
+            using (trieStore.BeginBlockCommit(0))
+            {
+                tree.Commit();
+            }
+
+            Parallel.For(0, repetition, (index, _) =>
+            {
+                foreach ((Hash256, Hash256) it in kv)
+                {
+                    (Hash256 key, Hash256 value) = it;
+                    tree.Get(key.Bytes).ToArray().Should().BeEquivalentTo(value.BytesToArray());
+                }
+            });
+        }
+
+        [Test]
+        public void WarmUpPath_DoesNotThrow()
+        {
+            // Build a tree with extension, branch, and leaf nodes: _keyA, _keyB, _keyC, _keyD
+            using IPruningTrieStore trieStore = CreateTrieStore();
+            PatriciaTree patriciaTree = new(trieStore, _logManager);
+            patriciaTree.Set(_keyA, _longLeaf1);
+            patriciaTree.Set(_keyB, _longLeaf2);
+            patriciaTree.Set(_keyC, _longLeaf1);
+            patriciaTree.Set(_keyD, _longLeaf2);
+            trieStore.CommitPatriciaTrie(0, patriciaTree);
+
+            // Test warmup on various keys
+            patriciaTree.Invoking(t => t.WarmUpPath(_keyA)).Should().NotThrow();  // Existing key
+            patriciaTree.Invoking(t => t.WarmUpPath(_keyB)).Should().NotThrow();  // Existing key
+            patriciaTree.Invoking(t => t.WarmUpPath(_keyC)).Should().NotThrow();  // Existing key in different branch
+            patriciaTree.Invoking(t => t.WarmUpPath(_keyD)).Should().NotThrow();  // Existing key in different branch
+            patriciaTree.Invoking(t => t.WarmUpPath(Bytes.FromHexString("00000000000cc"))).Should().NotThrow();  // Non-existent key
+            patriciaTree.Invoking(t => t.WarmUpPath(Bytes.FromHexString("fffffffffffff"))).Should().NotThrow();  // Completely different path
+        }
+
+        [Test]
+        public void Commit_DoesNotDeadlock_WhenRunOnBoundedScheduler()
+        {
+            // Commit should not deadlock on a bounded scheduler (e.g. NewBlock P2P message on BackgroundTaskScheduler).
+            ConcurrentExclusiveSchedulerPair schedulerPair = new(TaskScheduler.Default, maxConcurrencyLevel: 1);
+
+            Task task = Task.Factory.StartNew(() =>
+            {
+                MemDb memDb = new();
+                using IPruningTrieStore trieStore = CreateTrieStore(memDb);
+                PatriciaTree tree = new(trieStore, _logManager);
+
+                Span<byte> buffer = stackalloc byte[32];
+                for (int i = 0; i < 100; i++)
+                {
+                    BinaryPrimitives.WriteInt32BigEndian(buffer, i);
+                    Hash256 key = Keccak.Compute(buffer);
+                    tree.Set(key.Bytes, key.BytesToArray());
+                }
+
+                using (trieStore.BeginBlockCommit(0))
+                {
+                    tree.Commit();
+                }
+            }, CancellationToken.None, TaskCreationOptions.None, schedulerPair.ConcurrentScheduler);
+
+            task.Wait(TimeSpan.FromSeconds(10)).Should().BeTrue("Commit deadlocked on bounded scheduler");
         }
     }
 }

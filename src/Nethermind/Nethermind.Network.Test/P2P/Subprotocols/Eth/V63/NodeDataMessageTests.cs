@@ -14,8 +14,8 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
         public void Accepts_nulls_inside()
         {
             ArrayPoolList<byte[]> data = new(2) { new byte[] { 1, 2, 3 }, null };
-            using NodeDataMessage message = new(data);
-            Assert.That(message.Data, Is.SameAs(data));
+            using NodeDataMessage message = new(new ByteArrayListAdapter(data));
+            Assert.That(message.Data.Count, Is.EqualTo(2));
         }
 
         [Test]
@@ -29,14 +29,14 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
         public void Sets_values_from_constructor_argument()
         {
             ArrayPoolList<byte[]> data = new(2) { new byte[] { 1, 2, 3 }, new byte[] { 4, 5, 6 } };
-            using NodeDataMessage message = new(data);
-            Assert.That(message.Data, Is.SameAs(data));
+            using NodeDataMessage message = new(new ByteArrayListAdapter(data));
+            Assert.That(message.Data.Count, Is.EqualTo(2));
         }
 
         [Test]
         public void To_string()
         {
-            using NodeDataMessage statusMessage = new(ArrayPoolList<byte[]>.Empty());
+            using NodeDataMessage statusMessage = new(new ByteArrayListAdapter(ArrayPoolList<byte[]>.Empty()));
             _ = statusMessage.ToString();
         }
     }

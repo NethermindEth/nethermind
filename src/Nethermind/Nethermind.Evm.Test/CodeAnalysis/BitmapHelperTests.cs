@@ -34,7 +34,7 @@ public class BitmapHelperTests
         BitmapHelper.CheckCollision(ReadOnlySpan<byte>.Empty, ReadOnlySpan<byte>.Empty).Should().BeFalse();
 
         // One empty, one non-empty
-        var nonEmpty = new byte[] { 0xFF };
+        byte[] nonEmpty = new byte[] { 0xFF };
         BitmapHelper.CheckCollision(ReadOnlySpan<byte>.Empty, nonEmpty).Should().BeFalse();
         BitmapHelper.CheckCollision(nonEmpty, ReadOnlySpan<byte>.Empty).Should().BeFalse();
     }
@@ -58,8 +58,8 @@ public class BitmapHelperTests
     public void CheckCollision_LastByteCollision_ShouldReturnTrue()
     {
         // The collision only occurs at the last byte
-        var codeSegments = new byte[] { 0x00, 0x00, 0x80 };
-        var jumpMask = new byte[] { 0x00, 0x00, 0x80 };
+        byte[] codeSegments = new byte[] { 0x00, 0x00, 0x80 };
+        byte[] jumpMask = new byte[] { 0x00, 0x00, 0x80 };
 
         BitmapHelper.CheckCollision(codeSegments, jumpMask).Should().BeTrue("Expected collision in the last byte.");
     }
@@ -68,8 +68,8 @@ public class BitmapHelperTests
     public void CheckCollision_FirstByteCollision_ShouldReturnTrue()
     {
         // The collision occurs at the very first byte
-        var codeSegments = new byte[] { 0x01, 0x00, 0x00 };
-        var jumpMask = new byte[] { 0x01, 0x00, 0x00 };
+        byte[] codeSegments = new byte[] { 0x01, 0x00, 0x00 };
+        byte[] jumpMask = new byte[] { 0x01, 0x00, 0x00 };
 
         BitmapHelper.CheckCollision(codeSegments, jumpMask).Should().BeTrue("Expected collision in the first byte.");
     }
@@ -77,8 +77,8 @@ public class BitmapHelperTests
     [Test]
     public void CheckCollision_NoCollision_ShouldReturnFalse()
     {
-        var codeSegments = new byte[] { 0xF0, 0xF0, 0xF0, 0xF0 };
-        var jumpMask = new byte[] { 0x0F, 0x0F, 0x0F, 0x0F };
+        byte[] codeSegments = new byte[] { 0xF0, 0xF0, 0xF0, 0xF0 };
+        byte[] jumpMask = new byte[] { 0x0F, 0x0F, 0x0F, 0x0F };
 
         // 0xF0 & 0x0F == 0x00 => no collision
         BitmapHelper.CheckCollision(codeSegments, jumpMask).Should().BeFalse("Expected no collision for complement patterns.");
@@ -88,8 +88,8 @@ public class BitmapHelperTests
     public void CheckCollision_DifferentLengths_CollisionShouldBeBasedOnShorter()
     {
         // codeSegments is longer but collision is in the first part
-        var codeSegments = new byte[] { 0x00, 0x10, 0x00, 0x10 };
-        var jumpMask = new byte[] { 0x00, 0x10 };
+        byte[] codeSegments = new byte[] { 0x00, 0x10, 0x00, 0x10 };
+        byte[] jumpMask = new byte[] { 0x00, 0x10 };
 
         // The second byte in both is 0x10 => 0x10 & 0x10 = 0x10 => collision
         BitmapHelper.CheckCollision(codeSegments, jumpMask).Should().BeTrue("Collision should happen considering the shorter array length.");
@@ -99,8 +99,8 @@ public class BitmapHelperTests
     public void CheckCollision_DifferentLengths_NoCollision()
     {
         // codeSegments is shorter; no collision in shorter region
-        var codeSegments = new byte[] { 0xF0 };
-        var jumpMask = new byte[] { 0x0F, 0xFF, 0xFF };
+        byte[] codeSegments = new byte[] { 0xF0 };
+        byte[] jumpMask = new byte[] { 0x0F, 0xFF, 0xFF };
 
         // Only the first byte is checked => 0xF0 & 0x0F = 0x00 => no collision
         BitmapHelper.CheckCollision(codeSegments, jumpMask).Should().BeFalse("No collision should happen when shorter region has no overlaps.");
@@ -127,8 +127,8 @@ public class BitmapHelperTests
     [TestCase(512)]
     public void CheckCollision_Exhaustive(int length)
     {
-        var codeSegments = new byte[length];
-        var jumpMask = new byte[length];
+        byte[] codeSegments = new byte[length];
+        byte[] jumpMask = new byte[length];
 
         for (int i = 0; i < length; i++)
         {
@@ -151,6 +151,56 @@ public class BitmapHelperTests
 
             expected.Should().Be(actual);
         }
+    }
+
+    /// <summary>
+    /// Naive reference: sets <paramref name="bitCount"/> consecutive bits starting at position <paramref name="pc"/>
+    /// in <paramref name="bitVector"/>, then advances <paramref name="pc"/> by <paramref name="bitCount"/>.
+    /// </summary>
+    private static void NaiveFlagMultipleBits(int bitCount, Span<byte> bitVector, ref int pc)
+    {
+        for (int i = 0; i < bitCount; i++)
+        {
+            bitVector[(pc + i) / 8] |= (byte)(1 << ((pc + i) % 8));
+        }
+        pc += bitCount;
+    }
+
+    [Test]
+    public void FlagMultipleBits_ShouldMatchNaive([Range(0, 32)] int bitCount)
+    {
+        // Test at various bit-alignment offsets (0..7)
+        for (int startPc = 0; startPc < 8; startPc++)
+        {
+            int bitmapSize = (startPc + bitCount) / 8 + 2;
+
+            byte[] expected = new byte[bitmapSize];
+            byte[] actual = new byte[bitmapSize];
+
+            int expectedPc = startPc;
+            int actualPc = startPc;
+
+            NaiveFlagMultipleBits(bitCount, expected, ref expectedPc);
+            BitmapHelper.FlagMultipleBits(bitCount, actual, ref actualPc);
+
+            actualPc.Should().Be(expectedPc, $"pc mismatch for bitCount={bitCount}, startPc={startPc}");
+            actual.Should().BeEquivalentTo(expected,
+                $"bitmap mismatch for bitCount={bitCount}, startPc={startPc}");
+        }
+    }
+
+    [Test]
+    public void FlagMultipleBits_MultipleOf8_ShouldNotSetExtraBit()
+    {
+        // Regression: bitCount=8 must not set a bit at position pc+8
+        byte[] bitVector = new byte[4];
+        int pc = 0;
+
+        BitmapHelper.FlagMultipleBits(8, bitVector, ref pc);
+
+        pc.Should().Be(8);
+        bitVector[0].Should().Be(0xFF, "all 8 bits in byte 0 should be set");
+        bitVector[1].Should().Be(0x00, "byte 1 should remain zero — no extra bit");
     }
 
     private static readonly byte[] _lookup =

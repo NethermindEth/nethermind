@@ -6,14 +6,9 @@ using System;
 namespace Nethermind.Core.Attributes
 {
     [AttributeUsage(AttributeTargets.All)]
-    public class DoNotUseInSecuredContext : Attribute
+    [method: Todo(Improve.Security, "In config file add a switch for secured context and if set then throw an exception whenever this attribute is loaded?")]
+    public class DoNotUseInSecuredContext(string comment) : Attribute
     {
-        private readonly string _comment;
-
-        [Todo(Improve.Security, "In config file add a switch for secured context and if set then throw an exception whenever this attribute is loaded?")]
-        public DoNotUseInSecuredContext(string comment)
-        {
-            _comment = comment;
-        }
+        private readonly string _comment = comment;
     }
 }

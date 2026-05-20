@@ -30,7 +30,7 @@ namespace Nethermind.Consensus.Ethash
 
         public Ethash(ILogManager logManager)
         {
-            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+            _logger = logManager?.GetClassLogger<Ethash>() ?? throw new ArgumentNullException(nameof(logManager));
             _hintBasedCache = new HintBasedCache(BuildCache, logManager);
         }
 
@@ -47,10 +47,7 @@ namespace Nethermind.Consensus.Ethash
         public const int CacheRounds = 3; // blockNumber of rounds in cache production
         public const int Accesses = 64; // blockNumber of accesses in hashimoto loop
 
-        public static uint GetEpoch(long blockNumber)
-        {
-            return (uint)(blockNumber / EpochLength);
-        }
+        public static uint GetEpoch(long blockNumber) => (uint)(blockNumber / EpochLength);
 
         /// Improvement from @AndreaLanfranchi
         public static ulong GetDataSize(uint epoch)
@@ -122,7 +119,7 @@ namespace Nethermind.Consensus.Ethash
 
         public static Hash256 GetSeedHash(uint epoch)
         {
-            ValueHash256 seed = new ValueHash256();
+            ValueHash256 seed = new();
             for (uint i = 0; i < epoch; i++)
             {
                 seed = ValueKeccak.Compute(seed.Bytes);
@@ -155,7 +152,7 @@ namespace Nethermind.Consensus.Ethash
             IEthashDataSet dataSet = _hintBasedCache.Get(epoch);
             if (dataSet is null)
             {
-                if (_logger.IsWarn) _logger.Warn($"Ethash cache miss for block {header.ToString(BlockHeader.Format.Short)}");
+                if (_logger.IsTrace) _logger.Trace($"Ethash cache miss for block {header.ToString(BlockHeader.Format.Short)}");
                 dataSet = BuildCache(epoch);
             }
 
@@ -167,8 +164,7 @@ namespace Nethermind.Consensus.Ethash
             byte[] mixHash;
             while (true)
             {
-                ValueHash256 result;
-                (mixHash, result, _) = Hashimoto(fullSize, dataSet, headerHashed, null, nonce);
+                (mixHash, ValueHash256 result, _) = Hashimoto(fullSize, dataSet, headerHashed, null, nonce);
                 if (IsLessOrEqualThanTarget(result.Bytes, header.Difficulty))
                 {
                     break;
@@ -193,20 +189,11 @@ namespace Nethermind.Consensus.Ethash
             }
         }
 
-        internal static uint Fnv(uint v1, uint v2)
-        {
-            return (v1 * FnvPrime) ^ v2;
-        }
+        internal static uint Fnv(uint v1, uint v2) => (v1 * FnvPrime) ^ v2;
 
-        private static uint GetUInt(byte[] bytes, uint offset)
-        {
-            return BitConverter.ToUInt32(BitConverter.IsLittleEndian ? bytes : Bytes.Reverse(bytes), (int)offset * 4);
-        }
+        private static uint GetUInt(byte[] bytes, uint offset) => BitConverter.ToUInt32(BitConverter.IsLittleEndian ? bytes : Bytes.Reverse(bytes), (int)offset * 4);
 
-        public void HintRange(Guid guid, long start, long end)
-        {
-            _hintBasedCache.Hint(guid, start, end);
-        }
+        public void HintRange(Guid guid, long start, long end) => _hintBasedCache.Hint(guid, start, end);
 
         private readonly Guid _hintBasedCacheUser = Guid.Empty;
 
@@ -216,7 +203,7 @@ namespace Nethermind.Consensus.Ethash
             IEthashDataSet? dataSet = _hintBasedCache.Get(epoch);
             if (dataSet is null)
             {
-                if (_logger.IsWarn) _logger.Warn($"Ethash cache miss for block {header.ToString(BlockHeader.Format.Short)}");
+                if (_logger.IsDebug) _logger.Debug($"Ethash cache miss for block {header.ToString(BlockHeader.Format.Short)}");
                 _hintBasedCache.Hint(_hintBasedCacheUser, header.Number, header.Number);
                 dataSet = _hintBasedCache.Get(epoch);
                 if (dataSet is null)
@@ -243,18 +230,18 @@ namespace Nethermind.Consensus.Ethash
         {
             uint cacheSize = GetCacheSize(epoch);
             Hash256 seed = GetSeedHash(epoch);
-            if (_logger.IsInfo) _logger.Info($"Building ethash cache for epoch {epoch}");
+            if (_logger.IsDebug) _logger.Debug($"Building ethash cache for epoch {epoch}");
             _cacheStopwatch.Restart();
             IEthashDataSet dataSet = new EthashCache(cacheSize, seed.Bytes);
             _cacheStopwatch.Stop();
-            if (_logger.IsInfo)
+            if (_logger.IsDebug)
             {
-                var seedText = seed.Bytes.ToHexString(withZeroX: true);
+                string seedText = seed.Bytes.ToHexString(withZeroX: true);
                 if (seedText.Length > 17)
                 {
                     seedText = $"{seedText[..8]}...{seedText[^6..]}";
                 }
-                _logger.Info($"Cache for epoch {epoch} with size {cacheSize} and seed {seedText} built in {_cacheStopwatch.ElapsedMilliseconds}ms");
+                _logger.Debug($"Cache for epoch {epoch} with size {cacheSize} and seed {seedText} built in {_cacheStopwatch.ElapsedMilliseconds}ms");
             }
             return dataSet;
         }

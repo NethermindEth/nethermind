@@ -7,24 +7,17 @@ using System.Diagnostics;
 using System.Linq;
 using System.Threading.Tasks;
 using Ethereum.Test.Base;
-using Ethereum.Test.Base.Interfaces;
 
 namespace Nethermind.Blockchain.Test.Runner
 {
     internal class Program
     {
-        private static readonly List<string> AllFailingTests = new List<string>();
+        private static readonly List<string> AllFailingTests = new();
         private static double _totalMs;
 
-        public static async Task Main(params string[] args)
-        {
-            await Run();
-        }
+        public static async Task Main(params string[] args) => await Run();
 
-        private static async Task Run()
-        {
-            await RunManualTestingLoop();
-        }
+        private static async Task Run() => await RunManualTestingLoop();
 
         private static async Task RunManualTestingLoop()
         {
@@ -35,7 +28,7 @@ namespace Nethermind.Blockchain.Test.Runner
                 string command = input[0];
                 string testWildcard = input.Length <= 1 ? null : input[1];
 
-                Stopwatch stopwatch = new Stopwatch();
+                Stopwatch stopwatch = new();
                 if (command == "p")
                 {
 #if DEBUG
@@ -76,8 +69,8 @@ namespace Nethermind.Blockchain.Test.Runner
 
         private static void WrapAndRunDirectoryStateTests(IStateTestRunner stateTest)
         {
-            var result = stateTest.RunTests().ToList();
-            var failedTestsInCategory = result.Where(r => !r.Pass).Select(t => t.Name + " " + t.LoadFailure).ToArray();
+            List<EthereumTestResult> result = stateTest.RunTests().ToList();
+            string[] failedTestsInCategory = result.Where(r => !r.Pass).Select(t => t.Name + " " + t.LoadFailure).ToArray();
             AllFailingTests.AddRange(failedTestsInCategory);
             long categoryTimeInMs = (long)result.Sum(t => t.TimeInMs);
             _totalMs += result.Sum(t => t.TimeInMs);
@@ -91,10 +84,10 @@ namespace Nethermind.Blockchain.Test.Runner
 
         private static async Task WrapAndRunDirectoryBlockchainTestsAsync(IBlockchainTestRunner blockchainTestRunner)
         {
-            var result = await blockchainTestRunner.RunTestsAsync();
-            var testResults = result.ToList();
+            IEnumerable<EthereumTestResult> result = await blockchainTestRunner.RunTestsAsync();
+            List<EthereumTestResult> testResults = result.ToList();
 
-            var failedTestsInCategory = testResults.Where(r => !r.Pass).Select(t => t.Name + " " + t.LoadFailure).ToArray();
+            string[] failedTestsInCategory = testResults.Where(r => !r.Pass).Select(t => t.Name + " " + t.LoadFailure).ToArray();
             AllFailingTests.AddRange(failedTestsInCategory);
             long categoryTimeInMs = (long)testResults.Sum(t => t.TimeInMs);
             _totalMs += testResults.Sum(t => t.TimeInMs);
@@ -168,13 +161,6 @@ namespace Nethermind.Blockchain.Test.Runner
             WrapAndRunDirectoryStateTests(testRunnerBuilder(new TestsSourceLoader(new LoadGeneralStateTestsStrategy(), "vmIOandFlowOperations", testWildcard)));
             WrapAndRunDirectoryStateTests(testRunnerBuilder(new TestsSourceLoader(new LoadGeneralStateTestsStrategy(), "vmLogTests", testWildcard)));
             WrapAndRunDirectoryStateTests(testRunnerBuilder(new TestsSourceLoader(new LoadGeneralStateTestsStrategy(), "vmTests", testWildcard)));
-
-            /* 
-            await Run(testRunnerBuilder(new DirectoryTestsSource("bcEIP158ToByzantium", testWildcard));
-            await Run(testRunnerBuilder(new DirectoryTestsSource("bcFrontierToHomestead", testWildcard));
-            await Run(testRunnerBuilder(new DirectoryTestsSource("bcHomesteadToDao", testWildcard));
-            await Run(testRunnerBuilder(new DirectoryTestsSource("bcHomesteadToEIP150", testWildcard));
-            */
         }
 
         private static async Task RunAllBlockchainTestAsync(string testWildcard, Func<ITestSourceLoader, IBlockchainTestRunner> testRunnerBuilder)

@@ -459,8 +459,8 @@ public class VirtualMachineTests : VirtualMachineTestsBase
             MainnetSpecProvider.CancunActivation)
             .BuildResult();
 
-        var copied = traces.Entries.Last().Memory[0];
-        var origin = traces.Entries.Last().Memory[1];
+        string copied = traces.Entries.Last().Memory[0];
+        string origin = traces.Entries.Last().Memory[1];
 
         Assert.That(traces.Entries[^2].GasCost, Is.EqualTo(GasCostOf.VeryLow + GasCostOf.VeryLow * ((data.Length + 31) / 32) + GasCostOf.Memory * 1), "gas");
         Assert.That(origin, Is.EqualTo(copied));
@@ -483,7 +483,7 @@ public class VirtualMachineTests : VirtualMachineTestsBase
             MainnetSpecProvider.CancunActivation)
             .BuildResult();
 
-        var result = traces.Entries.Last().Memory[0];
+        string result = traces.Entries.Last().Memory[0];
 
         Assert.That(traces.Entries[^2].GasCost, Is.EqualTo(GasCostOf.VeryLow + GasCostOf.VeryLow * (SLICE_SIZE + 31) / 32), "gas");
         Assert.That(result, Is.EqualTo("0101020304050607080000000000000000000000000000000000000000000000"), "memory state");
@@ -509,6 +509,19 @@ public class VirtualMachineTests : VirtualMachineTestsBase
     }
 
     [Test]
+    public void MCopy_zero_length_does_not_validate_offsets()
+    {
+        byte[] bytecode = Prepare.EvmCode
+            .MCOPY(UInt256.MaxValue, UInt256.MaxValue, UInt256.Zero)
+            .STOP()
+            .Done;
+
+        TestAllTracerWithOutput receipt = Execute(MainnetSpecProvider.CancunActivation, bytecode);
+
+        Assert.That(receipt.Error, Is.Null);
+    }
+
+    [Test]
     public void MCopy_Overwrite_areas_copy_left()
     {
         int SLICE_SIZE = 8;
@@ -524,7 +537,7 @@ public class VirtualMachineTests : VirtualMachineTestsBase
             MainnetSpecProvider.CancunActivation)
             .BuildResult();
 
-        var result = traces.Entries.Last().Memory[0];
+        string result = traces.Entries.Last().Memory[0];
 
         Assert.That(traces.Entries[^2].GasCost, Is.EqualTo(GasCostOf.VeryLow + GasCostOf.VeryLow * (SLICE_SIZE + 31) / 32), "gas");
         Assert.That(result, Is.EqualTo("0102030405060708080000000000000000000000000000000000000000000000"), "memory state");
@@ -554,7 +567,9 @@ public class VirtualMachineTests : VirtualMachineTestsBase
         byte[] code = Bytes.FromHexString("0x6c726576657274656420646174616000557f726576657274206d657373616765000000000000000000000000000000000000600052600e6000fd");
         TestAllTracerWithOutput receipt = Execute(blockNumber: MainnetSpecProvider.ByzantiumBlockNumber, 100_000, code);
 
-        Assert.That(receipt.Error, Is.EqualTo("revert message"));
+        // Raw revert bytes without an Error(string) selector — GetErrorMessage returns null,
+        // so Error falls back to the Revert sentinel.
+        Assert.That(receipt.Error, Is.EqualTo(Nethermind.Evm.TransactionSubstate.Revert));
         Assert.That(receipt.GasSpent, Is.EqualTo(GasCostOf.Transaction + 20024));
     }
 }

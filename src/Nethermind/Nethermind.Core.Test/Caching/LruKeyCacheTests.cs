@@ -107,7 +107,7 @@ namespace Nethermind.Core.Test.Caching
         {
             Random random = new();
             LruKeyCache<AddressAsKey> cache = new(Capacity, "test");
-            for (var iter = 0; iter < Capacity; iter++)
+            for (int iter = 0; iter < Capacity; iter++)
             {
                 for (int ii = 0; ii < Capacity; ii++)
                 {
@@ -119,20 +119,20 @@ namespace Nethermind.Core.Test.Caching
                     for (int ii = i - 1; ii < i - 1 + Capacity; ii++)
                     {
                         // Fuzz the order of the addresses
-                        var index = random.Next(i - 1, i - 1 + Capacity);
+                        int index = random.Next(i - 1, i - 1 + Capacity);
                         cache.Delete(_addresses[index]).Should().BeTrue();
                         cache.Set(_addresses[index]).Should().BeTrue();
                     }
                     for (int ii = i - 1; ii < i - 1 + Capacity; ii++)
                     {
                         // Fuzz the order of the addresses
-                        var index = random.Next(i - 1, i - 1 + Capacity);
+                        int index = random.Next(i - 1, i - 1 + Capacity);
                         cache.Set(_addresses[index]).Should().BeFalse();
                     }
                     for (int ii = i - 1; ii < i - 1 + Capacity; ii++)
                     {
                         // Fuzz the order of the addresses
-                        var index = random.Next(i - 1, i - 1 + Capacity);
+                        int index = random.Next(i - 1, i - 1 + Capacity);
                         cache.Get(_addresses[index]).Should().BeTrue();
                     }
                     for (int ii = i; ii < i + Capacity; ii++)

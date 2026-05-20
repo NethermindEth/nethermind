@@ -23,6 +23,7 @@ public enum DisconnectReason : byte
     ReplacingSessionWithOppositeDirection,
     OppositeDirectionCleanup,
     BackgroundTaskFailure,
+    ConnectionReset,
     Exception,
 
     // Non sync, non connection related disconnect
@@ -34,6 +35,7 @@ public enum DisconnectReason : byte
     InvalidForkId,
     ProtocolInitTimeout,
     TxFlooding,
+    InvalidTxReceived,
     NoCapabilityMatched,
     ClientFiltered,
     AppClosing,
@@ -53,8 +55,9 @@ public enum DisconnectReason : byte
     InvalidReceiptRoot,
     EthSyncException,
     InvalidBlockRangeUpdate,
+    MessageLimitsBreached,
 
-    // These are from EthDisconnectReason which does not necessarily used in Nethermind.
+    // These are from EthDisconnectReason that does not necessarily use in Nethermind.
     EthDisconnectRequested,
     TcpSubSystemError,
     BreachOfProtocol,
@@ -67,43 +70,43 @@ public enum DisconnectReason : byte
     ReceiveMessageTimeout,
     MultipleHeaderDependencies,
 
-    // Try not to use this. Instead create a new one.
+    // Try not to use this. Instead, create a new one.
     Other,
 }
 
 public static class DisconnectReasonExtension
 {
-    public static EthDisconnectReason ToEthDisconnectReason(this DisconnectReason disconnectReason)
+    public static EthDisconnectReason ToEthDisconnectReason(this DisconnectReason disconnectReason) => disconnectReason switch
     {
-        return disconnectReason switch
-        {
-            DisconnectReason.TooManyPeers => EthDisconnectReason.TooManyPeers,
-            DisconnectReason.HardLimitTooManyPeers => EthDisconnectReason.TooManyPeers,
-            DisconnectReason.SessionAlreadyExist or DisconnectReason.ReplacingSessionWithOppositeDirection or DisconnectReason.OppositeDirectionCleanup or DisconnectReason.DuplicatedConnection or DisconnectReason.SessionIdAlreadyExists => EthDisconnectReason.AlreadyConnected,
-            DisconnectReason.ConnectionClosed or DisconnectReason.OutgoingConnectionFailed => EthDisconnectReason.TcpSubSystemError,
-            DisconnectReason.IncompatibleP2PVersion => EthDisconnectReason.IncompatibleP2PVersion,
-            DisconnectReason.InvalidGenesis or DisconnectReason.MissingForkId or DisconnectReason.InvalidForkId => EthDisconnectReason.BreachOfProtocol,
-            DisconnectReason.ClientFiltered => EthDisconnectReason.DisconnectRequested,
-            DisconnectReason.ProtocolInitTimeout => EthDisconnectReason.ReceiveMessageTimeout,
-            DisconnectReason.InvalidNetworkId or DisconnectReason.SnapServerNotImplemented or DisconnectReason.TxFlooding or DisconnectReason.NoCapabilityMatched => EthDisconnectReason.UselessPeer,
-            DisconnectReason.DropWorstPeer => EthDisconnectReason.TooManyPeers,
-            DisconnectReason.PeerRemoved or DisconnectReason.PeerRefreshFailed => EthDisconnectReason.DisconnectRequested,
-            DisconnectReason.ForwardSyncFailed => EthDisconnectReason.DisconnectRequested,
-            DisconnectReason.GossipingInPoS => EthDisconnectReason.BreachOfProtocol,
-            DisconnectReason.AppClosing => EthDisconnectReason.ClientQuitting,
-            DisconnectReason.InvalidTxOrUncle or DisconnectReason.HeaderResponseTooLong or DisconnectReason.InconsistentHeaderBatch or DisconnectReason.UnexpectedHeaderHash or DisconnectReason.HeaderBatchOnDifferentBranch or DisconnectReason.UnexpectedParentHeader or DisconnectReason.InvalidHeader or DisconnectReason.InvalidReceiptRoot or DisconnectReason.EthSyncException => EthDisconnectReason.BreachOfProtocol,
-            DisconnectReason.EthDisconnectRequested => EthDisconnectReason.DisconnectRequested,
-            DisconnectReason.TcpSubSystemError => EthDisconnectReason.TcpSubSystemError,
-            DisconnectReason.BreachOfProtocol => EthDisconnectReason.BreachOfProtocol,
-            DisconnectReason.UselessPeer => EthDisconnectReason.UselessPeer,
-            DisconnectReason.AlreadyConnected => EthDisconnectReason.AlreadyConnected,
-            DisconnectReason.NullNodeIdentityReceived => EthDisconnectReason.NullNodeIdentityReceived,
-            DisconnectReason.ClientQuitting => EthDisconnectReason.ClientQuitting,
-            DisconnectReason.UnexpectedIdentity => EthDisconnectReason.UnexpectedIdentity,
-            DisconnectReason.IdentitySameAsSelf => EthDisconnectReason.IdentitySameAsSelf,
-            DisconnectReason.ReceiveMessageTimeout => EthDisconnectReason.ReceiveMessageTimeout,
-            DisconnectReason.MultipleHeaderDependencies => EthDisconnectReason.MultipleHeaderDependencies,
-            _ => EthDisconnectReason.Other,
-        };
-    }
+        DisconnectReason.TooManyPeers => EthDisconnectReason.TooManyPeers,
+        DisconnectReason.HardLimitTooManyPeers => EthDisconnectReason.TooManyPeers,
+        DisconnectReason.SessionAlreadyExist or DisconnectReason.ReplacingSessionWithOppositeDirection or DisconnectReason.OppositeDirectionCleanup or DisconnectReason.DuplicatedConnection or DisconnectReason.SessionIdAlreadyExists => EthDisconnectReason.AlreadyConnected,
+        DisconnectReason.ConnectionClosed or DisconnectReason.OutgoingConnectionFailed => EthDisconnectReason.TcpSubSystemError,
+        DisconnectReason.IncompatibleP2PVersion => EthDisconnectReason.IncompatibleP2PVersion,
+        DisconnectReason.InvalidGenesis or DisconnectReason.MissingForkId or DisconnectReason.InvalidForkId => EthDisconnectReason.BreachOfProtocol,
+        DisconnectReason.ClientFiltered => EthDisconnectReason.DisconnectRequested,
+        DisconnectReason.ProtocolInitTimeout => EthDisconnectReason.ReceiveMessageTimeout,
+        DisconnectReason.InvalidNetworkId or DisconnectReason.SnapServerNotImplemented or DisconnectReason.TxFlooding or DisconnectReason.NoCapabilityMatched => EthDisconnectReason.UselessPeer,
+        DisconnectReason.DropWorstPeer => EthDisconnectReason.TooManyPeers,
+        DisconnectReason.PeerRemoved or DisconnectReason.PeerRefreshFailed => EthDisconnectReason.DisconnectRequested,
+        DisconnectReason.ForwardSyncFailed => EthDisconnectReason.DisconnectRequested,
+        DisconnectReason.GossipingInPoS => EthDisconnectReason.BreachOfProtocol,
+        DisconnectReason.AppClosing => EthDisconnectReason.ClientQuitting,
+        DisconnectReason.InvalidTxOrUncle or DisconnectReason.HeaderResponseTooLong or DisconnectReason.InconsistentHeaderBatch or DisconnectReason.UnexpectedHeaderHash or DisconnectReason.HeaderBatchOnDifferentBranch or DisconnectReason.UnexpectedParentHeader or DisconnectReason.InvalidHeader or DisconnectReason.InvalidReceiptRoot or DisconnectReason.EthSyncException or DisconnectReason.InvalidBlockRangeUpdate => EthDisconnectReason.BreachOfProtocol,
+        DisconnectReason.EthDisconnectRequested => EthDisconnectReason.DisconnectRequested,
+        DisconnectReason.TcpSubSystemError => EthDisconnectReason.TcpSubSystemError,
+        DisconnectReason.BreachOfProtocol => EthDisconnectReason.BreachOfProtocol,
+        DisconnectReason.MessageLimitsBreached => EthDisconnectReason.BreachOfProtocol,
+        DisconnectReason.UselessPeer => EthDisconnectReason.UselessPeer,
+        DisconnectReason.AlreadyConnected => EthDisconnectReason.AlreadyConnected,
+        DisconnectReason.NullNodeIdentityReceived => EthDisconnectReason.NullNodeIdentityReceived,
+        DisconnectReason.ClientQuitting => EthDisconnectReason.ClientQuitting,
+        DisconnectReason.UnexpectedIdentity => EthDisconnectReason.UnexpectedIdentity,
+        DisconnectReason.IdentitySameAsSelf => EthDisconnectReason.IdentitySameAsSelf,
+        DisconnectReason.ReceiveMessageTimeout => EthDisconnectReason.ReceiveMessageTimeout,
+        DisconnectReason.MultipleHeaderDependencies => EthDisconnectReason.MultipleHeaderDependencies,
+        DisconnectReason.ConnectionReset => EthDisconnectReason.TcpSubSystemError,
+        DisconnectReason.InvalidTxReceived => EthDisconnectReason.Other,
+        _ => EthDisconnectReason.Other,
+    };
 }

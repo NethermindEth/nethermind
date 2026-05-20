@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -107,30 +108,45 @@ public class DbPersistingBlockTracerTests
     [TestCase(1500)]
     public void check_depth(int depth)
     {
-        // depth = depth / 2 - 1;
-        Test test = new();
-        (_, List<ParityLikeTxTrace> traces) = test.Trace(tracer =>
-            {
-                for (int i = 0; i < depth; i++)
-                {
-                    tracer.ReportAction(100, 50, TestItem.AddressA, TestItem.AddressB, TestItem.RandomDataA, ExecutionType.CALL);
-                }
-
-                for (int i = 0; i < depth; i++)
-                {
-                    tracer.ReportActionEnd(60, TestItem.RandomDataD);
-                }
-            }
-        );
-
-        ParityTraceAction? action = traces.FirstOrDefault()?.Action;
-        int checkedDepth = 0;
-        while (action is not null)
+        // ParityTraceActionConverter.Read() recurses per nesting level during STJ deserialization.
+        // Windows default 1MB stack overflows at ~600 depth, so run on a thread with 4MB stack.
+        Exception? caught = null;
+        Thread thread = new(() =>
         {
-            checkedDepth += 1;
-            action = action.Subtraces.FirstOrDefault();
-        }
+            try
+            {
+                Test test = new();
+                (_, List<ParityLikeTxTrace> traces) = test.Trace(tracer =>
+                    {
+                        for (int i = 0; i < depth; i++)
+                        {
+                            tracer.ReportAction(100, 50, TestItem.AddressA, TestItem.AddressB, TestItem.RandomDataA, ExecutionType.CALL);
+                        }
 
-        checkedDepth.Should().Be(depth);
+                        for (int i = 0; i < depth; i++)
+                        {
+                            tracer.ReportActionEnd(60, TestItem.RandomDataD);
+                        }
+                    }
+                );
+
+                ParityTraceAction? action = traces.FirstOrDefault()?.Action;
+                int checkedDepth = 0;
+                while (action is not null)
+                {
+                    checkedDepth += 1;
+                    action = action.Subtraces.FirstOrDefault();
+                }
+
+                checkedDepth.Should().Be(depth);
+            }
+            catch (Exception ex)
+            {
+                caught = ex;
+            }
+        }, maxStackSize: 4 * 1024 * 1024);
+        thread.Start();
+        thread.Join();
+        if (caught is not null) throw caught;
     }
 }

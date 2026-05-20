@@ -38,7 +38,8 @@ namespace Nethermind.Blockchain.Receipts
         private const int CacheSize = 64;
         private readonly LruCache<ValueHash256, TxReceipt[]> _receiptsCache = new(CacheSize, CacheSize, "receipts");
 
-        public event EventHandler<BlockReplacementEventArgs> ReceiptsInserted;
+        public event EventHandler<BlockReplacementEventArgs>? NewCanonicalReceipts;
+        public event EventHandler<ReceiptsEventArgs>? ReceiptsInserted;
 
         public PersistentReceiptStorage(
             IColumnsDb<ReceiptsColumns> receiptsDb,
@@ -73,9 +74,9 @@ namespace Nethermind.Blockchain.Receipts
         private void BlockTreeOnBlockAddedToMain(object? sender, BlockReplacementEventArgs e)
         {
             EnsureCanonical(e.Block);
-            ReceiptsInserted?.Invoke(this, e);
+            NewCanonicalReceipts?.Invoke(this, e);
 
-            // Dont block main loop
+            // Don't block the main loop
             Task.Run(() =>
             {
                 Block newMain = e.Block;
@@ -94,19 +95,19 @@ namespace Nethermind.Blockchain.Receipts
 
         public Hash256 FindBlockHash(Hash256 txHash)
         {
-            var blockHashData = _transactionDb.Get(txHash);
+            byte[] blockHashData = _transactionDb.Get(txHash);
             if (blockHashData is null) return FindReceiptObsolete(txHash)?.BlockHash;
 
             if (blockHashData.Length == Hash256.Size) return new Hash256(blockHashData);
 
-            long blockNum = new RlpStream(blockHashData).DecodeLong();
+            long blockNum = new Rlp.ValueDecoderContext(blockHashData).DecodeLong();
             return _blockTree.FindBlockHash(blockNum);
         }
 
         // Find receipt stored with old - obsolete format.
         private TxReceipt FindReceiptObsolete(Hash256 hash)
         {
-            var receiptData = _defaultColumn.GetSpan(hash);
+            Span<byte> receiptData = _defaultColumn.GetSpan(hash);
             try
             {
                 return DeserializeReceiptObsolete(hash, receiptData);
@@ -216,13 +217,18 @@ namespace Nethermind.Blockchain.Receipts
 
         public bool TryGetReceiptsIterator(long blockNumber, Hash256 blockHash, out ReceiptsIterator iterator)
         {
-            if (_receiptsCache.TryGet(blockHash, out var receipts))
+            if (_receiptsCache.TryGet(blockHash, out TxReceipt[] receipts))
             {
                 iterator = new ReceiptsIterator(receipts);
                 return true;
             }
 
-            var result = CanGetReceiptsByHash(blockNumber);
+            if (!CanGetReceiptsByHash(blockNumber))
+            {
+                iterator = new ReceiptsIterator();
+                return false;
+            }
+
             Span<byte> receiptsData = GetReceiptData(blockNumber, blockHash);
 
             Func<IReceiptsRecovery.IRecoveryContext?> recoveryContextFactory = () => null;
@@ -244,8 +250,8 @@ namespace Nethermind.Blockchain.Receipts
 
             IReceiptRefDecoder refDecoder = _storageDecoder.GetRefDecoder(receiptsData);
 
-            iterator = result ? new ReceiptsIterator(receiptsData, _receiptsDb, recoveryContextFactory, refDecoder) : new ReceiptsIterator();
-            return result;
+            iterator = new ReceiptsIterator(receiptsData, _receiptsDb, recoveryContextFactory, refDecoder);
+            return true;
         }
 
         public void Insert(Block block, TxReceipt[]? txReceipts, bool ensureCanonical = true, WriteFlags writeFlags = WriteFlags.None, long? lastBlockNumber = null)
@@ -266,7 +272,7 @@ namespace Nethermind.Blockchain.Receipts
 
             _receiptsRecovery.TryRecover(block, txReceipts, false);
 
-            var blockNumber = block.Number;
+            long blockNumber = block.Number;
             RlpBehaviors behaviors = spec.IsEip658Enabled ? RlpBehaviors.Eip658Receipts | RlpBehaviors.Storage : RlpBehaviors.Storage;
 
             using (NettyRlpStream stream = _storageDecoder.EncodeToNewNettyStream(txReceipts, behaviors))
@@ -288,6 +294,8 @@ namespace Nethermind.Blockchain.Receipts
             {
                 EnsureCanonical(block, lastBlockNumber);
             }
+
+            ReceiptsInserted?.Invoke(this, new(block.Header, txReceipts));
         }
 
         public long MigratedBlockNumber
@@ -300,10 +308,7 @@ namespace Nethermind.Blockchain.Receipts
             }
         }
 
-        internal void ClearCache()
-        {
-            _receiptsCache.Clear();
-        }
+        internal void ClearCache() => _receiptsCache.Clear();
 
         [SkipLocalsInit]
         public bool HasBlock(long blockNumber, Hash256 blockHash)
@@ -325,10 +330,7 @@ namespace Nethermind.Blockchain.Receipts
             }
         }
 
-        public void EnsureCanonical(Block block)
-        {
-            EnsureCanonical(block, null);
-        }
+        public void EnsureCanonical(Block block) => EnsureCanonical(block, null);
 
         public void RemoveReceipts(Block block)
         {

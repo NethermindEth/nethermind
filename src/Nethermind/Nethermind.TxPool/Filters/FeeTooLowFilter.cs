@@ -13,24 +13,14 @@ namespace Nethermind.TxPool.Filters
     /// <summary>
     /// Filters out transactions where gas fee properties were set too low.
     /// </summary>
-    internal sealed class FeeTooLowFilter : IIncomingTxFilter
+    internal sealed class FeeTooLowFilter(IChainHeadInfoProvider headInfo, TxDistinctSortedPool txs, TxDistinctSortedPool blobTxs, bool thereIsPriorityContract, ILogger logger) : IIncomingTxFilter
     {
-        private readonly IChainHeadSpecProvider _specProvider;
-        private readonly IChainHeadInfoProvider _headInfo;
-        private readonly TxDistinctSortedPool _txs;
-        private readonly TxDistinctSortedPool _blobTxs;
-        private readonly bool _thereIsPriorityContract;
-        private readonly ILogger _logger;
-
-        public FeeTooLowFilter(IChainHeadInfoProvider headInfo, TxDistinctSortedPool txs, TxDistinctSortedPool blobTxs, bool thereIsPriorityContract, ILogger logger)
-        {
-            _specProvider = headInfo.SpecProvider;
-            _headInfo = headInfo;
-            _txs = txs;
-            _blobTxs = blobTxs;
-            _thereIsPriorityContract = thereIsPriorityContract;
-            _logger = logger;
-        }
+        private readonly IChainHeadSpecProvider _specProvider = headInfo.SpecProvider;
+        private readonly IChainHeadInfoProvider _headInfo = headInfo;
+        private readonly TxDistinctSortedPool _txs = txs;
+        private readonly TxDistinctSortedPool _blobTxs = blobTxs;
+        private readonly bool _thereIsPriorityContract = thereIsPriorityContract;
+        private readonly ILogger _logger = logger;
 
         public AcceptTxResult Accept(Transaction tx, ref TxFilteringState state, TxHandlingOptions handlingOptions)
         {
@@ -48,9 +38,7 @@ namespace Nethermind.TxPool.Filters
             {
                 Metrics.PendingTransactionsTooLowFee++;
                 if (_logger.IsTrace) _logger.Trace($"Skipped adding transaction {tx.ToString("  ")}, too low payable gas price with options {handlingOptions} from {new StackTrace()}");
-                return !isLocal ?
-                    AcceptTxResult.FeeTooLow :
-                    AcceptTxResult.FeeTooLow.WithMessage("Affordable gas price is 0");
+                return AcceptTxResult.FeeTooLow;
             }
 
             TxDistinctSortedPool relevantPool = (tx.SupportsBlobs ? _blobTxs : _txs);
@@ -63,10 +51,7 @@ namespace Nethermind.TxPool.Filters
                     _logger.Trace($"Skipped adding transaction {tx.ToString("  ")}, too low payable gas price with options {handlingOptions} from {new StackTrace()}");
                 }
 
-                return !isLocal ?
-                    AcceptTxResult.FeeTooLow :
-                    AcceptTxResult.FeeTooLow.WithMessage($"FeePerGas needs to be higher than {lastTx.GasBottleneck.Value} to be added to the TxPool. FeePerGas of rejected tx: {affordableGasPrice}.");
-
+                return AcceptTxResult.FeeTooLow;
             }
 
             return AcceptTxResult.Accepted;

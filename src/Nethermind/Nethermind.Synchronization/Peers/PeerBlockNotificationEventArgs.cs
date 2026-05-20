@@ -7,15 +7,9 @@ using Nethermind.Core;
 
 namespace Nethermind.Synchronization.Peers
 {
-    public class PeerBlockNotificationEventArgs : EventArgs
+    public class PeerBlockNotificationEventArgs(ISyncPeer syncPeer, Block block) : EventArgs
     {
-        public ISyncPeer SyncPeer { get; }
-        public Block Block { get; }
-
-        public PeerBlockNotificationEventArgs(ISyncPeer syncPeer, Block block)
-        {
-            SyncPeer = syncPeer;
-            Block = block;
-        }
+        public ISyncPeer SyncPeer { get; } = syncPeer;
+        public Block Block { get; } = block;
     }
 }

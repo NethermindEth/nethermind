@@ -3,7 +3,8 @@
 
 using System.Text.Json.Serialization;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
+using Nethermind.Core.Specs;
+using Nethermind.Crypto;
 using Nethermind.Int256;
 
 namespace Nethermind.Facade.Eth.RpcTransaction;
@@ -15,11 +16,8 @@ public class BlobTransactionForRpc : EIP1559TransactionForRpc, IFromTransaction<
     public override TxType? Type => TxType;
 
     [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
-    [JsonDiscriminator]
     public UInt256? MaxFeePerBlobGas { get; set; }
 
-    // TODO: Each item should be a 32 byte array
-    // Currently we don't enforce this (hashes can have any length)
     [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
     [JsonDiscriminator]
     public byte[][]? BlobVersionedHashes { get; set; }
@@ -27,26 +25,90 @@ public class BlobTransactionForRpc : EIP1559TransactionForRpc, IFromTransaction<
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public byte[][]? Blobs { get; set; }
 
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public byte[][]? Commitments { get; set; }
+
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public byte[][]? Proofs { get; set; }
+
     [JsonConstructor]
     public BlobTransactionForRpc() { }
 
-    public BlobTransactionForRpc(Transaction transaction, int? txIndex = null, Hash256? blockHash = null, long? blockNumber = null, UInt256? baseFee = null, ulong? chainId = null)
-        : base(transaction, txIndex, blockHash, blockNumber, baseFee, chainId)
+    public BlobTransactionForRpc(Transaction transaction, in TransactionForRpcContext extraData)
+        : base(transaction, extraData)
     {
         MaxFeePerBlobGas = transaction.MaxFeePerBlobGas ?? 0;
         BlobVersionedHashes = transaction.BlobVersionedHashes ?? [];
+
+        if (transaction.NetworkWrapper is ShardBlobNetworkWrapper wrapper)
+        {
+            Blobs = wrapper.Blobs;
+            Commitments = wrapper.Commitments;
+            Proofs = wrapper.Proofs;
+        }
     }
 
-    public override Transaction ToTransaction()
+    public override Result<Transaction> ToTransaction(bool validateUserInput = false, long? gasCap = null, IReleaseSpec? spec = null)
     {
-        var tx = base.ToTransaction();
+        if (BlobVersionedHashes is null || BlobVersionedHashes.Length == 0)
+            return RpcTransactionErrors.AtLeastOneBlobInBlobTransaction;
 
-        tx.MaxFeePerBlobGas = MaxFeePerBlobGas;
-        tx.BlobVersionedHashes = BlobVersionedHashes;
+        foreach (byte[]? hash in BlobVersionedHashes)
+        {
+            if (hash is null || hash.Length != Eip4844Constants.BytesPerBlobVersionedHash)
+                return RpcTransactionErrors.InvalidBlobVersionedHashSize;
+
+            if (hash[0] != KzgPolynomialCommitments.KzgBlobHashVersionV1)
+                return RpcTransactionErrors.InvalidBlobVersionedHashVersion;
+        }
+
+        if (To is null)
+            return RpcTransactionErrors.MissingToInBlobTx;
+
+        if (validateUserInput && MaxFeePerBlobGas?.IsZero == true)
+            return RpcTransactionErrors.ZeroMaxFeePerBlobGas;
+
+        Result<Transaction> baseResult = base.ToTransaction(validateUserInput, gasCap, spec);
+        if (!baseResult) return baseResult;
+
+        Transaction tx = baseResult.Data;
+
+        if (tx.SupportsBlobs)
+        {
+            tx.MaxFeePerBlobGas = MaxFeePerBlobGas;
+            tx.BlobVersionedHashes = BlobVersionedHashes;
+        }
 
         return tx;
     }
 
-    public new static BlobTransactionForRpc FromTransaction(Transaction tx, TransactionConverterExtraData extraData)
-        => new(tx, txIndex: extraData.TxIndex, blockHash: extraData.BlockHash, blockNumber: extraData.BlockNumber, baseFee: extraData.BaseFee, chainId: extraData.ChainId);
+    public new static BlobTransactionForRpc FromTransaction(Transaction tx, in TransactionForRpcContext extraData)
+        => new(tx, extraData);
+
+    /// <summary>
+    /// Validates the blob sidecar fields and attaches a <see cref="ShardBlobNetworkWrapper"/>
+    /// to the given <see cref="Transaction"/>. Returns an error string on failure, or
+    /// <c>null</c> on success.
+    /// </summary>
+    public string? TryAttachSidecar(Transaction tx, ProofVersion version)
+    {
+        string? fieldError = this switch
+        {
+            { Blobs: null or { Length: 0 } } => "blob transaction requires non-empty blobs",
+            { Commitments: null } => "commitments must be provided alongside blobs",
+            { Proofs: null } => "proofs must be provided alongside blobs",
+            _ => null
+        };
+        if (fieldError is not null) return fieldError;
+
+        ShardBlobNetworkWrapper wrapper = new(Blobs!, Commitments!, Proofs!, version);
+        IBlobProofsManager manager = IBlobProofsManager.For(version);
+        if (!manager.ValidateLengths(wrapper))
+            return "blob sidecar lengths invalid (blobs/commitments/proofs counts or individual byte sizes)";
+        if (tx.BlobVersionedHashes is not null && !manager.ValidateHashes(wrapper, tx.BlobVersionedHashes))
+            return "blob commitments do not match the supplied blobVersionedHashes";
+
+        tx.NetworkWrapper = wrapper;
+        return null;
+    }
 }

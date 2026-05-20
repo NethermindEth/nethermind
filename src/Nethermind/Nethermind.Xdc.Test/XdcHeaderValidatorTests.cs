@@ -9,6 +9,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Logging;
 using Nethermind.Xdc.Spec;
+using Nethermind.Xdc.Types;
 using NSubstitute;
 using NUnit.Framework;
 using System;
@@ -16,53 +17,56 @@ using System.Collections.Generic;
 
 namespace Nethermind.Xdc.Test;
 
-public class Tests
+[Parallelizable(ParallelScope.All)]
+public class XdcHeaderValidatorTests
 {
     [Test]
     public void Validate_NotAnXdcHeader_ThrowsArgumentException()
     {
         BlockHeader parent = Build.A.BlockHeader.TestObject;
         BlockHeader header = Build.A.BlockHeader.WithParent(parent).TestObject;
-        XdcHeaderValidator validator = new(Substitute.For<IBlockTree>(), Substitute.For<ISealValidator>(), Substitute.For<ISpecProvider>(), Substitute.For<ILogManager>());
+        XdcHeaderValidator validator = new(Substitute.For<IBlockTree>(), Substitute.For<IQuorumCertificateManager>(), Substitute.For<ISealValidator>(), Substitute.For<ISpecProvider>(), Substitute.For<ILogManager>());
 
         Assert.That(() => validator.Validate(header, parent, false, out _), Throws.TypeOf<ArgumentException>());
     }
 
-    public static IEnumerable<object[]> HeaderTestCases()
+    public static IEnumerable<TestCaseData> HeaderTestCases()
     {
         XdcBlockHeaderBuilder blockHeaderBuilder = CreateValidHeader();
 
-        //Base control case
-        yield return [blockHeaderBuilder, true];
+        yield return new TestCaseData(blockHeaderBuilder, true).SetName("Valid header");
 
-        //Missing block seal
         blockHeaderBuilder = CreateValidHeader().WithValidator([]);
-        yield return [blockHeaderBuilder, false];
+        yield return new TestCaseData(blockHeaderBuilder, false).SetName("Missing block seal");
 
-        //No consensus data
         blockHeaderBuilder = CreateValidHeader();
         blockHeaderBuilder.WithExtraData([]);
-        yield return [blockHeaderBuilder, false];
+        yield return new TestCaseData(blockHeaderBuilder, false).SetName("No consensus data");
 
-        //Invalid nonce value
         blockHeaderBuilder = CreateValidHeader();
         blockHeaderBuilder.WithNonce(XdcConstants.NonceDropVoteValue + 1);
-        yield return [blockHeaderBuilder, false];
+        yield return new TestCaseData(blockHeaderBuilder, false).SetName("Invalid nonce above drop vote");
 
-        //Invalid nonce value
         blockHeaderBuilder = CreateValidHeader();
         blockHeaderBuilder.WithNonce(XdcConstants.NonceAuthVoteValue - 1);
-        yield return [blockHeaderBuilder, false];
+        yield return new TestCaseData(blockHeaderBuilder, false).SetName("Invalid nonce below auth vote");
 
-        //Invalid mix hash
         blockHeaderBuilder = CreateValidHeader();
         blockHeaderBuilder.WithMixHash(Hash256.FromBytesWithPadding([0x01]));
-        yield return [blockHeaderBuilder, false];
+        yield return new TestCaseData(blockHeaderBuilder, false).SetName("Invalid mix hash");
 
-        //Invalid uncles hash
         blockHeaderBuilder = CreateValidHeader();
         blockHeaderBuilder.WithUnclesHash(Hash256.FromBytesWithPadding([0x01]));
-        yield return [blockHeaderBuilder, false];
+        yield return new TestCaseData(blockHeaderBuilder, false).SetName("Invalid uncles hash");
+
+        blockHeaderBuilder = CreateValidHeader();
+        blockHeaderBuilder.WithDifficulty(2);
+        yield return new TestCaseData(blockHeaderBuilder, false).SetName("Invalid difficulty");
+
+        blockHeaderBuilder = CreateValidHeader();
+        blockHeaderBuilder.WithDifficulty(2);
+        blockHeaderBuilder.WithTotalDifficulty(1);
+        yield return new TestCaseData(blockHeaderBuilder, false).SetName("Invalid total difficulty");
 
         static XdcBlockHeaderBuilder CreateValidHeader()
         {
@@ -90,8 +94,10 @@ public class Tests
         IXdcReleaseSpec releaseSpec = Substitute.For<IXdcReleaseSpec>();
         releaseSpec.GasLimitBoundDivisor.Returns(1);
         specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(releaseSpec);
-        XdcHeaderValidator validator = new(Substitute.For<IBlockTree>(), sealValidator, specProvider, Substitute.For<ILogManager>());
+        IQuorumCertificateManager quorumCertificateManager = Substitute.For<IQuorumCertificateManager>();
+        quorumCertificateManager.VerifyCertificate(Arg.Any<QuorumCertificate>(), Arg.Any<XdcBlockHeader>(), out _).Returns(true);
+        XdcHeaderValidator validator = new(Substitute.For<IBlockTree>(), quorumCertificateManager, sealValidator, specProvider, Substitute.For<ILogManager>());
 
-        Assert.That(validator.Validate(headerBuilder.TestObject, headerParent, false, out _), Is.EqualTo(expected));
+        Assert.That(validator.Validate(headerBuilder.TestObject, headerParent, false, out string? error), Is.EqualTo(expected), "Error was: " + error);
     }
 }

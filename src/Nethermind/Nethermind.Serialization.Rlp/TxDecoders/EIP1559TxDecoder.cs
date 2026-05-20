@@ -9,12 +9,6 @@ namespace Nethermind.Serialization.Rlp.TxDecoders;
 public class BaseEIP1559TxDecoder<T>(TxType txType, Func<T>? transactionFactory = null)
     : BaseAccessListTxDecoder<T>(txType, transactionFactory) where T : Transaction, new()
 {
-    protected override void DecodeGasPrice(Transaction transaction, RlpStream rlpStream)
-    {
-        base.DecodeGasPrice(transaction, rlpStream);
-        transaction.DecodedMaxFeePerGas = rlpStream.DecodeUInt256();
-    }
-
     protected override void DecodeGasPrice(Transaction transaction, ref Rlp.ValueDecoderContext decoderContext)
     {
         base.DecodeGasPrice(transaction, ref decoderContext);

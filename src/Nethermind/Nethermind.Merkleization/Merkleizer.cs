@@ -10,25 +10,17 @@ using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
+using Nethermind.Serialization.Ssz;
 
 namespace Nethermind.Merkleization;
 
 public ref struct Merkleizer
 {
-    public readonly bool IsKthBitSet(int k)
-    {
-        return (_filled & ((ulong)1 << k)) != 0;
-    }
+    public readonly bool IsKthBitSet(int k) => (_filled & ((ulong)1 << k)) != 0;
 
-    public void SetKthBit(int k)
-    {
-        _filled |= (ulong)1 << k;
-    }
+    public void SetKthBit(int k) => _filled |= (ulong)1 << k;
 
-    public void UnsetKthBit(int k)
-    {
-        _filled &= ~((ulong)1 << k);
-    }
+    public void UnsetKthBit(int k) => _filled &= ~((ulong)1 << k);
 
     private readonly Span<UInt256> _chunks;
     private ulong _filled;
@@ -54,10 +46,7 @@ public ref struct Merkleizer
         _filled = 0;
     }
 
-    public void Feed(UInt256 chunk)
-    {
-        FeedAtLevel(chunk, 0);
-    }
+    public void Feed(UInt256 chunk) => FeedAtLevel(chunk, 0);
 
     public void Feed(long value)
     {
@@ -65,135 +54,63 @@ public ref struct Merkleizer
         Feed(_chunks[^1]);
     }
 
-    public void Feed(ReadOnlySpan<byte> data, int? limit = null)
+    public void Feed(ReadOnlySpan<byte> data, int? limit = null) =>
+        FeedSpan(data, data.Length, sizeof(byte), limit);
+
+    public void Feed(ReadOnlySpan<ushort> data, int? limit = null) =>
+        FeedSpan(MemoryMarshal.Cast<ushort, byte>(data), data.Length, sizeof(ushort), limit);
+
+    public void Feed(ReadOnlySpan<short> data, int? limit = null) =>
+        FeedSpan(MemoryMarshal.Cast<short, byte>(data), data.Length, sizeof(short), limit);
+
+    public void Feed(ReadOnlySpan<uint> data, int? limit = null) =>
+        FeedSpan(MemoryMarshal.Cast<uint, byte>(data), data.Length, sizeof(uint), limit);
+
+    public void Feed(ReadOnlySpan<int> data, int? limit = null) =>
+        FeedSpan(MemoryMarshal.Cast<int, byte>(data), data.Length, sizeof(int), limit);
+
+    public void Feed(ReadOnlySpan<ulong> data, int? limit = null) =>
+        FeedSpan(MemoryMarshal.Cast<ulong, byte>(data), data.Length, sizeof(ulong), limit);
+
+    public void Feed(ReadOnlySpan<long> data, int? limit = null) =>
+        FeedSpan(MemoryMarshal.Cast<long, byte>(data), data.Length, sizeof(long), limit);
+
+    public void Feed(ReadOnlySpan<UInt128> data, int? limit = null) =>
+        FeedSpan(MemoryMarshal.Cast<UInt128, byte>(data), data.Length, 16, limit);
+
+    private void FeedSpan(ReadOnlySpan<byte> byteData, int elementCount, int elementSize, int? limit)
     {
-        if (data.Length is 0)
+        if (limit is not null)
+        {
+            ulong chunkCount = ((ulong)limit.Value * (ulong)elementSize + 31) / 32;
+            Merkle.Merkleize(out _chunks[^1], byteData, chunkCount);
+            Merkle.MixIn(ref _chunks[^1], elementCount);
+        }
+        else if (byteData.Length is 0)
         {
             Merkle.Merkleize(out _chunks[^1], UInt256.Zero);
         }
         else
         {
-            Merkle.Merkleize(out _chunks[^1], data);
+            Merkle.Merkleize(out _chunks[^1], byteData);
         }
-
-        if (limit is not null) Merkle.MixIn(ref _chunks[^1], limit.Value);
-
-        Feed(_chunks[^1]);
-    }
-
-    public void Feed(ReadOnlySpan<ushort> data, int? limit = null)
-    {
-        if (data.Length is 0)
-        {
-            Merkle.Merkleize(out _chunks[^1], UInt256.Zero);
-        }
-        else
-        {
-            Merkle.Merkleize(out _chunks[^1], MemoryMarshal.Cast<ushort, byte>(data));
-        }
-
-        if (limit is not null) Merkle.MixIn(ref _chunks[^1], limit.Value);
-
-        Feed(_chunks[^1]);
-    }
-
-    public void Feed(ReadOnlySpan<short> data, int? limit = null)
-    {
-        if (data.Length is 0)
-        {
-            Merkle.Merkleize(out _chunks[^1], UInt256.Zero);
-        }
-        else
-        {
-            Merkle.Merkleize(out _chunks[^1], MemoryMarshal.Cast<short, byte>(data));
-        }
-
-        if (limit is not null) Merkle.MixIn(ref _chunks[^1], limit.Value);
-
-        Feed(_chunks[^1]);
-    }
-
-    public void Feed(ReadOnlySpan<uint> data, int? limit = null)
-    {
-        if (data.Length is 0)
-        {
-            Merkle.Merkleize(out _chunks[^1], UInt256.Zero);
-        }
-        else
-        {
-            Merkle.Merkleize(out _chunks[^1], MemoryMarshal.Cast<uint, byte>(data));
-        }
-
-        if (limit is not null) Merkle.MixIn(ref _chunks[^1], limit.Value);
-
-        Feed(_chunks[^1]);
-    }
-
-    public void Feed(ReadOnlySpan<int> data, int? limit = null)
-    {
-        if (data.Length is 0)
-        {
-            Merkle.Merkleize(out _chunks[^1], UInt256.Zero);
-        }
-        else
-        {
-            Merkle.Merkleize(out _chunks[^1], MemoryMarshal.Cast<int, byte>(data));
-        }
-
-        if (limit is not null) Merkle.MixIn(ref _chunks[^1], limit.Value);
-
-        Feed(_chunks[^1]);
-    }
-
-    public void Feed(ReadOnlySpan<ulong> data, int? limit = null)
-    {
-        if (data.Length is 0)
-        {
-            Merkle.Merkleize(out _chunks[^1], UInt256.Zero);
-        }
-        else
-        {
-            Merkle.Merkleize(out _chunks[^1], MemoryMarshal.Cast<ulong, byte>(data));
-        }
-
-        if (limit is not null) Merkle.MixIn(ref _chunks[^1], limit.Value);
-
-        Feed(_chunks[^1]);
-    }
-
-    public void Feed(ReadOnlySpan<long> data, int? limit = null)
-    {
-        if (data.Length is 0)
-        {
-            Merkle.Merkleize(out _chunks[^1], UInt256.Zero);
-        }
-        else
-        {
-            Merkle.Merkleize(out _chunks[^1], MemoryMarshal.Cast<long, byte>(data));
-        }
-
-        if (limit is not null) Merkle.MixIn(ref _chunks[^1], limit.Value);
-
-        Feed(_chunks[^1]);
-    }
-
-    public void Feed(ReadOnlySpan<UInt128> data, int? limit = null)
-    {
-        if (data.Length is 0)
-        {
-            Merkle.Merkleize(out _chunks[^1], UInt256.Zero);
-        }
-        else
-        {
-            Merkle.Merkleize(out _chunks[^1], MemoryMarshal.Cast<UInt128, byte>(data));
-        }
-
-        if (limit is not null) Merkle.MixIn(ref _chunks[^1], limit.Value);
 
         Feed(_chunks[^1]);
     }
 
     public void Feed(bool value)
+    {
+        Merkle.Merkleize(out _chunks[^1], value);
+        Feed(_chunks[^1]);
+    }
+
+    public void Feed(byte value)
+    {
+        Merkle.Merkleize(out _chunks[^1], value);
+        Feed(_chunks[^1]);
+    }
+
+    public void Feed(ushort value)
     {
         Merkle.Merkleize(out _chunks[^1], value);
         Feed(_chunks[^1]);
@@ -314,16 +231,32 @@ public ref struct Merkleizer
         Feed(_chunks[^1]);
     }
 
-    public void Feed(Bytes32 value)
-    {
+    public void Feed(Bytes32 value) =>
         // TODO: Is this going to have correct endianness? (the ulongs inside UInt256 are the correct order,
         // and if only used as memory to store bytes, the native order of a ulong (bit or little) shouldn't matter)
         Feed(MemoryMarshal.Cast<byte, UInt256>(value.AsSpan())[0]);
+
+    public void Feed(Root value) => Feed(MemoryMarshal.Cast<byte, UInt256>(value.AsSpan())[0]);
+
+    public void Feed(SszBytes32 value) => Feed(MemoryMarshal.Cast<byte, UInt256>(value.Hash.BytesAsSpan)[0]);
+
+    public void Feed(IReadOnlyList<SszBytes32> value)
+    {
+        using ArrayPoolSpan<UInt256> input = new(value.Count);
+        for (int i = 0; i < value.Count; i++)
+            input[i] = MemoryMarshal.Cast<byte, UInt256>(value[i].Hash.BytesAsSpan)[0];
+        Merkle.Merkleize(out _chunks[^1], input);
+        Feed(_chunks[^1]);
     }
 
-    public void Feed(Root value)
+    public void Feed(IReadOnlyList<SszBytes32> value, ulong maxLength)
     {
-        Feed(MemoryMarshal.Cast<byte, UInt256>(value.AsSpan())[0]);
+        using ArrayPoolSpan<UInt256> subRoots = new(value.Count);
+        for (int i = 0; i < value.Count; i++)
+            subRoots[i] = MemoryMarshal.Cast<byte, UInt256>(value[i].Hash.BytesAsSpan)[0];
+        Merkle.Merkleize(out _chunks[^1], subRoots, maxLength);
+        Merkle.MixIn(ref _chunks[^1], value.Count);
+        Feed(_chunks[^1]);
     }
 
     public void Feed(IReadOnlyList<Bytes32> value)

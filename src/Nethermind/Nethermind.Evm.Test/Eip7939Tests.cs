@@ -3,6 +3,7 @@
 
 using System.Collections.Generic;
 using FluentAssertions;
+using Nethermind.Core;
 using Nethermind.Int256;
 using Nethermind.Specs;
 using NUnit.Framework;
@@ -38,7 +39,7 @@ public class Eip7939Tests : VirtualMachineTestsBase
     [TestCaseSource(nameof(Tests))]
     public int CLZTest(UInt256 value)
     {
-        const long GasCostOfCallingWrapper = GasCostOf.Transaction + GasCostOf.VeryLow * 5 + GasCostOf.Memory;
+        const long gasCostOfCallingWrapper = GasCostOf.Transaction + GasCostOf.VeryLow * 5 + GasCostOf.Memory;
 
         byte[] code = Prepare.EvmCode
             .PushData(value)
@@ -50,7 +51,7 @@ public class Eip7939Tests : VirtualMachineTestsBase
         TestAllTracerWithOutput result = Execute(Activation, 50000, code);
 
         result.StatusCode.Should().Be(StatusCode.Success);
-        AssertGas(result, GasCostOfCallingWrapper + GasCostOf.Low);
+        AssertGas(result, gasCostOfCallingWrapper + GasCostOf.Low);
         return (int)new UInt256(result.ReturnValue, true);
 
     }

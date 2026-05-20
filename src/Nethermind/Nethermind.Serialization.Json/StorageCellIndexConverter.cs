@@ -59,7 +59,7 @@ namespace Nethermind.Serialization.Json
             writer.WriteStartArray();
             Span<byte> bytes = stackalloc byte[32];
 
-            foreach (var value in values)
+            foreach (UInt256 value in values)
             {
                 value.ToBigEndian(bytes);
                 ByteArrayConverter.Convert(writer, bytes, skipLeadingZeros: false);

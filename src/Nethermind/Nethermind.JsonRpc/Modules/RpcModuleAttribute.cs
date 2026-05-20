@@ -5,13 +5,8 @@ using System;
 
 namespace Nethermind.JsonRpc.Modules
 {
-    public class RpcModuleAttribute : Attribute
+    public class RpcModuleAttribute(string moduleType) : Attribute
     {
-        public string ModuleType { get; }
-
-        public RpcModuleAttribute(string moduleType)
-        {
-            ModuleType = moduleType;
-        }
+        public string ModuleType { get; } = moduleType;
     }
 }

@@ -55,10 +55,7 @@ public class PeerRefresher : IPeerRefresher, IAsyncDisposable
         }
     }
 
-    private void TimerOnElapsed(object? sender, EventArgs e)
-    {
-        Refresh(_lastBlockhashes.headBlockhash, _lastBlockhashes.headParentBlockhash, _lastBlockhashes.finalizedBlockhash);
-    }
+    private void TimerOnElapsed(object? sender, EventArgs e) => Refresh(_lastBlockhashes.headBlockhash, _lastBlockhashes.headParentBlockhash, _lastBlockhashes.finalizedBlockhash);
 
     private void Refresh(Hash256 headBlockhash, Hash256 headParentBlockhash, Hash256 finalizedBlockhash)
     {

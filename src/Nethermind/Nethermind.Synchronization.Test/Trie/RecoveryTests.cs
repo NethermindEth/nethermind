@@ -1,14 +1,11 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Net;
 using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
-using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Collections;
@@ -20,7 +17,6 @@ using Nethermind.Logging;
 using Nethermind.Network.Contract.P2P;
 using Nethermind.State.Healing;
 using Nethermind.State.Snap;
-using Nethermind.Stats;
 using Nethermind.Synchronization.Peers;
 using Nethermind.Synchronization.Peers.AllocationStrategies;
 using Nethermind.Synchronization.Trie;
@@ -55,7 +51,7 @@ public class RecoveryTests
     [SetUp]
     public void SetUp()
     {
-        TrieNode node = new TrieNode(new LeafData(Nibbles.BytesToNibbleBytes(Bytes.FromHexString("34000000000000000000000000000000000000000000000000000000000000")), new SpanSource([0])));
+        TrieNode node = new(new LeafData(Nibbles.BytesToNibbleBytes(Bytes.FromHexString("34000000000000000000000000000000000000000000000000000000000000")), new CappedArray<byte>([0])));
         _path = TreePath.FromNibble([1, 2]);
         _nodeRlp = node.RlpEncode(Substitute.For<ITrieNodeResolver>(), ref _path).ToArray()!;
         _returnedRlp = _nodeRlp;
@@ -68,18 +64,18 @@ public class RecoveryTests
         _syncPeerEth66 = Substitute.For<ISyncPeer>();
         _syncPeerEth66.ProtocolVersion.Returns(EthVersions.Eth66);
         _syncPeerEth66.GetNodeData(Arg.Is<IReadOnlyList<Hash256>>(l => l.Contains(_hash)), Arg.Any<CancellationToken>())
-            .Returns(_ => Task.FromResult<IOwnedReadOnlyList<byte[]>>(new ArrayPoolList<byte[]>(1) { _returnedRlp }));
+            .Returns(_ => Task.FromResult<IByteArrayList>(new ByteArrayListAdapter(new ArrayPoolList<byte[]>(1) { _returnedRlp })));
         _peerEth66 = new(_syncPeerEth66);
 
         _snapSyncPeer = Substitute.For<ISnapSyncPeer>();
         _snapSyncPeer.GetAccountRange(Arg.Any<AccountRange>(), Arg.Any<CancellationToken>())
             .Returns(_ => Task.FromResult(new AccountsAndProofs
             {
-                Proofs = new ArrayPoolList<byte[]>(1) { _returnedRlp },
+                Proofs = new ByteArrayListAdapter(new ArrayPoolList<byte[]>(1) { _returnedRlp }),
                 PathAndAccounts = new ArrayPoolList<PathWithAccount>(1) { new(_fullPath, TestItem.GenerateIndexedAccount(0)) },
             }));
         _snapSyncPeer.GetByteCodes(Arg.Any<IReadOnlyList<ValueHash256>>(), Arg.Any<CancellationToken>())
-            .Returns<Task<IOwnedReadOnlyList<byte[]>>>(_ => Task.FromResult((IOwnedReadOnlyList<byte[]>)new ArrayPoolList<byte[]>(1) { _returnedRlp }));
+            .Returns(_ => Task.FromResult<IByteArrayList>(new ByteArrayListAdapter(new ArrayPoolList<byte[]>(1) { _returnedRlp })));
 
         ISyncPeer MakeEth67Peer()
         {
@@ -104,16 +100,15 @@ public class RecoveryTests
     }
 
     [TearDown]
-    public void TearDown()
-    {
+    public void TearDown() =>
         _syncPeerPool?.DisposeAsync();
-    }
 
     [Test]
     public async Task can_recover_eth66()
     {
         IOwnedReadOnlyList<(TreePath, byte[])>? response = await Recover(_nodeDataDataRecovery, _peerEth66);
-        response![0].Should().Be((_path, _nodeRlp));
+        response![0].Item1.Should().Be(_path);
+        response![0].Item2.Should().Equal(_nodeRlp);
     }
 
     [Test]
@@ -127,7 +122,7 @@ public class RecoveryTests
     public async Task cannot_recover_eth66_empty_response()
     {
         _syncPeerEth66.GetNodeData(Arg.Is<IReadOnlyList<Hash256>>(l => l.Contains(_hash)), Arg.Any<CancellationToken>())
-            .Returns(Task.FromResult<IOwnedReadOnlyList<byte[]>>(ArrayPoolList<byte[]>.Empty()));
+            .Returns(Task.FromResult<IByteArrayList>(EmptyByteArrayList.Instance));
         IOwnedReadOnlyList<(TreePath, byte[])>? response = await Recover(_nodeDataDataRecovery, _peerEth66);
         response.Should().BeNull();
     }
@@ -140,18 +135,13 @@ public class RecoveryTests
         response.Should().BeNull();
     }
 
-    [Test]
-    public async Task can_recover_eth67()
+    [TestCase(1)]
+    [TestCase(2)]
+    public async Task can_recover_eth67(int peerCount)
     {
-        IOwnedReadOnlyList<(TreePath, byte[])>? response = await Recover(_snapRecovery, _peerEth67);
-        response![0].Should().Be((_path, _nodeRlp));
-    }
-
-    [Test]
-    public async Task can_recover_eth67_2_peer()
-    {
-        IOwnedReadOnlyList<(TreePath, byte[])>? response = await Recover(_snapRecovery, _peerEth67, _peerEth67_2);
-        response![0].Should().Be((_path, _nodeRlp));
+        IOwnedReadOnlyList<(TreePath, byte[])>? response = await Recover(_snapRecovery, Eth67Peers(peerCount));
+        response![0].Item1.Should().Be(_path);
+        response![0].Item2.Should().Equal(_nodeRlp);
     }
 
     [Test]
@@ -161,17 +151,11 @@ public class RecoveryTests
         response.Should().BeNull();
     }
 
-    [Test]
-    public async Task can_recover_code_eth67()
+    [TestCase(1)]
+    [TestCase(2)]
+    public async Task can_recover_code_eth67(int peerCount)
     {
-        byte[]? response = await RecoverCode(_peerEth67);
-        response!.Should().BeEquivalentTo(_nodeRlp);
-    }
-
-    [Test]
-    public async Task can_recover_code_eth67_2_peer()
-    {
-        byte[]? response = await RecoverCode(_peerEth67, _peerEth67_2);
+        byte[]? response = await RecoverCode(Eth67Peers(peerCount));
         response!.Should().BeEquivalentTo(_nodeRlp);
     }
 
@@ -181,6 +165,8 @@ public class RecoveryTests
         byte[]? response = await RecoverCode(_peerEth66);
         response.Should().BeNull();
     }
+
+    private PeerInfo[] Eth67Peers(int count) => count == 1 ? [_peerEth67] : [_peerEth67, _peerEth67_2];
 
     [Test]
     public async Task cannot_recover_eth67_empty_response()
@@ -203,7 +189,7 @@ public class RecoveryTests
         _syncPeerPool.Allocate(Arg.Any<IPeerAllocationStrategy>(), Arg.Any<AllocationContexts>(), Arg.Any<int>(), Arg.Any<CancellationToken>()).Returns(c =>
         {
             AllocationContexts allocationContexts = (AllocationContexts)c[1];
-            var alloc = new SyncPeerAllocation(peers[0], allocationContexts);
+            SyncPeerAllocation alloc = new(peers[0], allocationContexts);
             return alloc;
         });
     }

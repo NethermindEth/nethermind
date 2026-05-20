@@ -8,7 +8,7 @@ namespace Nethermind.TxPool
     /// <summary>
     /// Describes potential outcomes of adding transaction to the TX pool.
     /// </summary>
-    public readonly struct AcceptTxResult : IEquatable<AcceptTxResult>
+    public readonly struct AcceptTxResult(int id, string code, string? message = null) : IEquatable<AcceptTxResult>
     {
         /// <summary>
         /// The transaction has been accepted. This is the only 'success' outcome.
@@ -110,18 +110,17 @@ namespace Nethermind.TxPool
         /// </summary>
         public static readonly AcceptTxResult Syncing = new(503, nameof(Syncing));
 
-        private int Id { get; }
-        private string Code { get; }
-        private string? Message { get; }
+        /// <summary>
+        /// The signer could not produce a signature for the transaction (locked account, missing key, remote signer rejection).
+        /// </summary>
+        public static readonly AcceptTxResult SignFailed = new(19, nameof(SignFailed), "authentication needed: password or unlock");
 
-        public AcceptTxResult(int id, string code, string? message = null)
-        {
-            Id = id;
-            Code = code;
-            Message = message;
-        }
+        private int Id { get; } = id;
+        private string Code { get; } = code;
+        private string? Message { get; } = message;
 
         public static implicit operator bool(AcceptTxResult result) => result.Id == Accepted.Id;
+        public static implicit operator AcceptTxResult(bool result) => result ? Accepted : Invalid;
         public AcceptTxResult WithMessage(string message) => new(Id, Code, message);
         public static bool operator ==(AcceptTxResult a, AcceptTxResult b) => a.Equals(b);
         public static bool operator !=(AcceptTxResult a, AcceptTxResult b) => !(a == b);

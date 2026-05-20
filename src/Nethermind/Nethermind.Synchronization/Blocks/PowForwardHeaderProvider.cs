@@ -55,57 +55,59 @@ public class PowForwardHeaderProvider(
         }
     }
 
-    public virtual Task<IOwnedReadOnlyList<BlockHeader?>?> GetBlockHeaders(int skipLastN, int maxHeaders, CancellationToken cancellation)
+    public virtual Task<IOwnedReadOnlyList<BlockHeader?>?> GetBlockHeaders(int skipLastN, int maxHeaders, CancellationToken cancellation) => syncPeerPool.AllocateAndRun(async (peerInfo) =>
     {
-        return syncPeerPool.AllocateAndRun(async (peerInfo) =>
+        if (peerInfo != _currentBestPeer)
         {
-            if (peerInfo != _currentBestPeer)
-            {
-                OnNewBestPeer(peerInfo);
-            }
+            OnNewBestPeer(peerInfo);
+        }
 
-            syncReport.FullSyncBlocksDownloaded.TargetValue = peerInfo.HeadNumber;
+        syncReport.FullSyncBlocksDownloaded.TargetValue = peerInfo.HeadNumber;
 
-            if (_logger.IsTrace) _logger.Trace($"Allocated {peerInfo} for PoW header info. currentNumber: {_currentNumber} skipLastN: {skipLastN}, maxHeaders: {maxHeaders}");
+        if (_logger.IsTrace) _logger.Trace($"Allocated {peerInfo} for PoW header info. currentNumber: {_currentNumber} skipLastN: {skipLastN}, maxHeaders: {maxHeaders}");
 
-            // Provide a way so that it does not redownload if part of the. I guess it does not care about skiplastn and maxheaders.
-            // TODO: Unit test this mechanism.
-            IOwnedReadOnlyList<BlockHeader?>? headers = AssembleResponseFromLastResponseBatch();
-            if (headers is not null)
-            {
-                if (_logger.IsTrace) _logger.Trace($"PoW header info from last response from {headers[0].ToString(BlockHeader.Format.Short)} to {headers[1].ToString(BlockHeader.Format.Short)}");
-                return headers;
-            }
-
-            headers = await GetBlockHeaders(peerInfo, skipLastN, maxHeaders, cancellation);
-            if (headers is not null)
-            {
-                if (_logger.IsTrace) _logger.Trace($"Assembled batch from {peerInfo} of {headers.Count} header from {headers[0].ToString(BlockHeader.Format.Short)} to {headers[^1].ToString(BlockHeader.Format.Short)}");
-            }
-            else
-            {
-                if (_logger.IsTrace) _logger.Trace($"No header received");
-            }
-
-            if (headers is not null && headers?.Count > MinCachedHeaderBatchSize) LastResponseBatch = headers.ToPooledList(headers.Count);
+        // Provide a way so that it does not redownload if part of the. I guess it does not care about skiplastn and maxheaders.
+        // TODO: Unit test this mechanism.
+        IOwnedReadOnlyList<BlockHeader?>? headers = AssembleResponseFromLastResponseBatch();
+        if (headers is not null)
+        {
+            ReadOnlySpan<BlockHeader?> headersSpan = headers.AsSpan();
+            if (_logger.IsTrace) _logger.Trace($"PoW header info from last response from {headersSpan[0].ToString(BlockHeader.Format.Short)} to {headersSpan[^1].ToString(BlockHeader.Format.Short)}");
             return headers;
-        }, _bestPeerAllocationStrategy, AllocationContexts.ForwardHeader, cancellation);
-    }
+        }
+
+        headers = await GetBlockHeaders(peerInfo, skipLastN, maxHeaders, cancellation);
+        if (headers is not null)
+        {
+            ReadOnlySpan<BlockHeader?> headersSpan = headers.AsSpan();
+            if (_logger.IsTrace) _logger.Trace($"Assembled batch from {peerInfo} of {headersSpan.Length} header from {headersSpan[0].ToString(BlockHeader.Format.Short)} to {headersSpan[^1].ToString(BlockHeader.Format.Short)}");
+        }
+        else
+        {
+            if (_logger.IsTrace) _logger.Trace($"No header received");
+            _currentBestPeer = null;
+        }
+
+        if (headers is not null && headers.Count > MinCachedHeaderBatchSize) LastResponseBatch = headers.AsSpan().ToPooledList();
+        return headers;
+    }, _bestPeerAllocationStrategy, AllocationContexts.ForwardHeader, cancellation);
 
     private IOwnedReadOnlyList<BlockHeader>? AssembleResponseFromLastResponseBatch()
     {
-        if (LastResponseBatch is null) return null;
+        IOwnedReadOnlyList<BlockHeader>? lastResponseBatch = LastResponseBatch;
+        if (lastResponseBatch is null) return null;
 
         long currentNumber = _currentNumber;
         bool sameFound = false;
         ArrayPoolList<BlockHeader>? newResponse = null;
-        for (int i = 0; i < LastResponseBatch.Count; i++)
+        ReadOnlySpan<BlockHeader> lastResponseBatchSpan = lastResponseBatch.AsSpan();
+        for (int i = 0; i < lastResponseBatchSpan.Length; i++)
         {
-            if (!sameFound && LastResponseBatch[i].Number != currentNumber) continue;
+            if (!sameFound && lastResponseBatchSpan[i].Number != currentNumber) continue;
             sameFound = true;
 
-            newResponse ??= new ArrayPoolList<BlockHeader>(LastResponseBatch.Count - i);
-            newResponse.Add(LastResponseBatch[i]);
+            newResponse ??= new ArrayPoolList<BlockHeader>(lastResponseBatchSpan.Length - i);
+            newResponse.Add(lastResponseBatchSpan[i]);
         }
 
         if (newResponse is null || newResponse.Count <= MinCachedHeaderBatchSize)
@@ -116,7 +118,7 @@ public class PowForwardHeaderProvider(
         }
 
         LastResponseBatch = newResponse;
-        return LastResponseBatch;
+        return newResponse.AsSpan().ToPooledList();
     }
 
     private void OnNewBestPeer(PeerInfo newBestPeer)
@@ -158,20 +160,30 @@ public class PowForwardHeaderProvider(
             {
                 IOwnedReadOnlyList<BlockHeader>? headers =
                     await RequestHeaders(bestPeer, cancellation, _currentNumber, headersToRequest);
-                if (headers.Count < 2)
-                {
-                    // Peer dont have new header
-                    headers.Dispose();
-                    return null;
-                }
 
-                // Remember, we start downloading from currentNumber+1
-                if (!CheckAncestorJump(bestPeer, headers[0], ref _currentNumber)) continue;
+                {
+                    ReadOnlySpan<BlockHeader> headersSpan = headers.AsSpan();
+                    if (headersSpan.Length < 2)
+                    {
+                        // Peer doesn't have a new header
+                        headers.Dispose();
+                        return null;
+                    }
+
+                    // Remember, we start downloading from currentNumber+1
+                    if (!CheckAncestorJump(bestPeer, headersSpan[0], ref _currentNumber)) continue;
+                }
 
                 return headers;
             }
             catch (TimeoutException)
             {
+                syncPeerPool.ReportWeakPeer(bestPeer, AllocationContexts.ForwardHeader);
+                return null;
+            }
+            catch (OperationCanceledException) when (!cancellation.IsCancellationRequested)
+            {
+                // Request was cancelled due to timeout in protocol handler, not because the sync was cancelled
                 syncPeerPool.ReportWeakPeer(bestPeer, AllocationContexts.ForwardHeader);
                 return null;
             }
@@ -185,10 +197,7 @@ public class PowForwardHeaderProvider(
         }
     }
 
-    public virtual void OnSuggestBlock(BlockTreeSuggestOptions options, Block currentBlock, AddBlockResult addResult)
-    {
-        _currentNumber += 1;
-    }
+    public virtual void OnSuggestBlock(BlockTreeSuggestOptions options, Block currentBlock, AddBlockResult addResult) => _currentNumber += 1;
 
     private bool CheckAncestorJump(PeerInfo bestPeer, BlockHeader blockBeforeZero, ref long currentNumber)
     {
@@ -220,15 +229,15 @@ public class PowForwardHeaderProvider(
         headers = FilterPosHeader(headers);
 
         ValidateSeals(headers, cancellation);
-        ValidateBatchConsistency(peer, headers);
+        ValidateBatchConsistency(peer, headers.AsSpan());
         return headers;
     }
 
-    private void ValidateBatchConsistency(PeerInfo bestPeer, IReadOnlyList<BlockHeader?> headers)
+    private void ValidateBatchConsistency(PeerInfo bestPeer, ReadOnlySpan<BlockHeader> headers)
     {
         // in the past (version 1.11) and possibly now too Parity was sending non canonical blocks in responses
         // so we need to confirm that the blocks form a valid subchain
-        for (int i = 1; i < headers.Count; i++)
+        for (int i = 1; i < headers.Length; i++)
         {
             if (headers[i] is not null && headers[i]?.ParentHash != headers[i - 1]?.Hash)
             {
@@ -300,13 +309,7 @@ public class PowForwardHeaderProvider(
         cancellation.ThrowIfCancellationRequested();
     }
 
-    protected virtual bool ImprovementRequirementSatisfied(PeerInfo? bestPeer)
-    {
-        return (bestPeer!.TotalDifficulty ?? UInt256.Zero) > (blockTree.BestSuggestedHeader?.TotalDifficulty ?? UInt256.Zero);
-    }
+    protected virtual bool ImprovementRequirementSatisfied(PeerInfo? bestPeer) => (bestPeer!.TotalDifficulty ?? UInt256.Zero) > (blockTree.BestSuggestedHeader?.TotalDifficulty ?? UInt256.Zero);
 
-    protected virtual IOwnedReadOnlyList<BlockHeader> FilterPosHeader(IOwnedReadOnlyList<BlockHeader> headers)
-    {
-        return headers;
-    }
+    protected virtual IOwnedReadOnlyList<BlockHeader> FilterPosHeader(IOwnedReadOnlyList<BlockHeader> headers) => headers;
 }

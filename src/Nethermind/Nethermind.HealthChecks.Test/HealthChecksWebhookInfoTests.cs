@@ -25,7 +25,7 @@ namespace Nethermind.HealthChecks.Test
 
             string hostname = "hostname";
 
-            HealthChecksWebhookInfo healthChecksWebhookInfo = new HealthChecksWebhookInfo(description, ipResolver, metricsConfig, hostname);
+            HealthChecksWebhookInfo healthChecksWebhookInfo = new(description, ipResolver, metricsConfig, hostname);
 
             string expected = "`description`" + Environment.NewLine
                                               + "NodeName: `nodeName`" + Environment.NewLine

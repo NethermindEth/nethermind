@@ -6,16 +6,10 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.Blockchain.Tracing.Proofs;
 
-public class ProofBlockTracer : BlockTracerBase<ProofTxTracer, ProofTxTracer>
+public class ProofBlockTracer(Hash256? txHash, bool treatZeroAccountDifferently)
+    : BlockTracerBase<ProofTxTracer, ProofTxTracer>(txHash)
 {
-    private readonly bool _treatSystemAccountDifferently;
-
-    public ProofBlockTracer(Hash256? txHash, bool treatSystemAccountDifferently) : base(txHash)
-    {
-        _treatSystemAccountDifferently = treatSystemAccountDifferently;
-    }
-
-    protected override ProofTxTracer OnStart(Transaction? tx) => new(_treatSystemAccountDifferently);
+    protected override ProofTxTracer OnStart(Transaction? tx) => new(treatZeroAccountDifferently);
 
     /// <summary>
     /// Here I decided to return tracer after experimenting with ProofTxTrace class. It encapsulates less but avoid additional type introduction which does not bring much value.

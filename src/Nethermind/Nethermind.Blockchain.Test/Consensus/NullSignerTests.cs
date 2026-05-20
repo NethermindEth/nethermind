@@ -1,17 +1,16 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using NUnit.Framework;
-// ReSharper disable AssignNullToNotNullAttribute
 
 namespace Nethermind.Blockchain.Test.Consensus
 {
     [TestFixture]
+    [Parallelizable(ParallelScope.All)]
     public class NullSignerTests
     {
         [Test, MaxTime(Timeout.MaxTestTime)]
@@ -19,15 +18,17 @@ namespace Nethermind.Blockchain.Test.Consensus
         {
             NullSigner signer = NullSigner.Instance;
             signer.Address.Should().Be(Address.Zero);
-            signer.CanSign.Should().BeTrue();
+            signer.CanSign.Should().BeFalse();
         }
 
         [Test, MaxTime(Timeout.MaxTestTime)]
-        public async Task Test_signing()
+        public void Test_signing()
         {
             NullSigner signer = NullSigner.Instance;
-            await signer.Sign((Transaction)null!);
-            signer.Sign((Hash256)null!).Bytes.Length.Should().Be(64);
+            signer.TrySign((Transaction)null!).Should().BeFalse("null signer cannot sign");
+            ValueHash256 hash = default;
+            signer.TrySign(in hash, out Signature signature).Should().BeFalse("null signer cannot sign a hash");
+            signature.Should().BeNull();
         }
     }
 }

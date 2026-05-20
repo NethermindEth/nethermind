@@ -45,7 +45,7 @@ public sealed class HealingStateTree(
         }
         catch (MissingTrieNodeException e)
         {
-            Hash256 fullPath = new Hash256(rawKey);
+            Hash256 fullPath = new(rawKey);
             if (Recover(e.Path, e.Hash, fullPath))
             {
                 base.Set(rawKey, value);

@@ -11,7 +11,7 @@ public sealed class RegexJsonRpcMethodFilter : IJsonRpcMethodFilter
 
     public RegexJsonRpcMethodFilter(string pattern)
     {
-        _pattern = new Regex(pattern);
+        _pattern = new Regex(pattern, RegexOptions.Compiled);
     }
 
     public bool ShouldSubmit(string methodName) => _pattern.IsMatch(methodName);

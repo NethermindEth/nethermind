@@ -52,7 +52,7 @@ public class WaitForEventTests
     {
         ITestObj stubObj = Substitute.For<ITestObj>();
 
-        CancellationTokenSource cts = new CancellationTokenSource();
+        CancellationTokenSource cts = new();
         Task awaitingEvent = Wait.ForEventCondition<bool>(
             cts.Token,
             (e) => stubObj.TestEvent += e,

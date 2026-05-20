@@ -8,15 +8,10 @@ namespace Nethermind.Blockchain.Tracing.GethStyle.Custom.Native;
 
 public delegate GethLikeNativeTxTracer NativeTracerFactory(Block block, Transaction transaction);
 
-public class GethLikeBlockNativeTracer : BlockTracerBase<GethLikeTxTrace, GethLikeNativeTxTracer>
+public class GethLikeBlockNativeTracer(Hash256? txHash, NativeTracerFactory txTracerFactory) : BlockTracerBase<GethLikeTxTrace, GethLikeNativeTxTracer>(txHash)
 {
-    private readonly NativeTracerFactory _txTracerFactory;
+    private readonly NativeTracerFactory _txTracerFactory = txTracerFactory;
     private Block _block = null!;
-
-    public GethLikeBlockNativeTracer(Hash256? txHash, NativeTracerFactory txTracerFactory) : base(txHash)
-    {
-        _txTracerFactory = txTracerFactory;
-    }
 
     public override void StartNewBlockTrace(Block block)
     {

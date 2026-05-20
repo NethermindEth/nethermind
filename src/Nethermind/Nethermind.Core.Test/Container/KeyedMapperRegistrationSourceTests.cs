@@ -27,7 +27,7 @@ public class KeyedMapperRegistrationSourceTests
     {
         bool adapterWasDisposed = false;
 
-        var builder = new ContainerBuilder()
+        ContainerBuilder builder = new ContainerBuilder()
             .AddKeyedSingleton<ClassA>("Key", new ClassA("Property1"));
 
         if (shouldDispose)
@@ -52,9 +52,6 @@ public class KeyedMapperRegistrationSourceTests
 
     private record ClassB(string Property, Action? onDispose = null) : IDisposable
     {
-        public void Dispose()
-        {
-            onDispose?.Invoke();
-        }
+        public void Dispose() => onDispose?.Invoke();
     }
 }

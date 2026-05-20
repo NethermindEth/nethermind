@@ -9,36 +9,25 @@ using System.Runtime.CompilerServices;
 
 namespace Nethermind.Core
 {
-    public class CompositeComparer<T> : IComparer<T>
+    public class CompositeComparer<T>(IEnumerable<IComparer<T>> comparers) : IComparer<T>
     {
-        internal readonly List<IComparer<T>> _comparers;
+        internal readonly List<IComparer<T>> _comparers = new(comparers);
 
         public CompositeComparer(params IComparer<T>[] comparers) : this((IEnumerable<IComparer<T>>)comparers)
         {
         }
 
-        public CompositeComparer(IEnumerable<IComparer<T>> comparers)
+        public CompositeComparer<T> FirstBy(IComparer<T> comparer) => comparer switch
         {
-            _comparers = new List<IComparer<T>>(comparers);
-        }
+            CompositeComparer<T> compositeComparer => new CompositeComparer<T>(compositeComparer._comparers.Concat(_comparers)),
+            _ => new CompositeComparer<T>(new[] { comparer }.Concat(_comparers)),
+        };
 
-        public CompositeComparer<T> FirstBy(IComparer<T> comparer)
+        public CompositeComparer<T> ThenBy(IComparer<T> comparer) => comparer switch
         {
-            return comparer switch
-            {
-                CompositeComparer<T> compositeComparer => new CompositeComparer<T>(compositeComparer._comparers.Concat(_comparers)),
-                _ => new CompositeComparer<T>(new[] { comparer }.Concat(_comparers)),
-            };
-        }
-
-        public CompositeComparer<T> ThenBy(IComparer<T> comparer)
-        {
-            return comparer switch
-            {
-                CompositeComparer<T> compositeComparer => new CompositeComparer<T>(_comparers.Concat(compositeComparer._comparers)),
-                _ => new CompositeComparer<T>(_comparers.Concat(new[] { comparer })),
-            };
-        }
+            CompositeComparer<T> compositeComparer => new CompositeComparer<T>(_comparers.Concat(compositeComparer._comparers)),
+            _ => new CompositeComparer<T>(_comparers.Concat(new[] { comparer })),
+        };
 
 
         public int Compare(T? x, T? y)

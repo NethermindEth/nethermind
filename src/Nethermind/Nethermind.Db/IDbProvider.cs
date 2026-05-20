@@ -15,6 +15,7 @@ namespace Nethermind.Db
         public IDb BlockNumbersDb => GetDb<IDb>(DbNames.BlockNumbers);
         public IDb BlockInfosDb => GetDb<IDb>(DbNames.BlockInfos);
         public IDb BadBlocksDb => GetDb<IDb>(DbNames.BadBlocks);
+        public IDb BlockAccessListDb => GetDb<IDb>(DbNames.BlockAccessLists);
 
         // BloomDB progress / config (does not contain blooms - they are kept in bloom storage)
         public IDb BloomDb => GetDb<IDb>(DbNames.Bloom);

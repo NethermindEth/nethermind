@@ -17,6 +17,7 @@ using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test.Visitors;
 
+[Parallelizable(ParallelScope.All)]
 public class DbBlocksLoaderTests
 {
     private readonly int _dbLoadTimeout = 5000;

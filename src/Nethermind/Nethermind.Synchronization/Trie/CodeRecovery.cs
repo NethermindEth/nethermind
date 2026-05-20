@@ -8,7 +8,6 @@ using System.Threading.Tasks;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Core.Tasks;
 using Nethermind.Core.Utils;
 using Nethermind.Logging;
@@ -81,14 +80,10 @@ public class CodeRecovery(ISyncPeerPool peerPool, ILogManager logManager) : ICod
         using ArrayPoolList<ValueHash256> hashes = new(1);
         hashes.Add(new ValueHash256(key));
 
-        using IOwnedReadOnlyList<byte[]> ownedReadOnlyList = await snapProtocol.GetByteCodes(hashes, token);
+        using IByteArrayList? result = await snapProtocol.GetByteCodes(hashes, token);
 
-        if (_logger.IsTrace) _logger.Trace($"Fetched code {key} from {peer}: {string.Join(", ", ownedReadOnlyList.Select(b => b.ToHexString()))}");
+        if (_logger.IsTrace) _logger.Trace($"Fetched code {key} from {peer}");
 
-        return ownedReadOnlyList.Count switch
-        {
-            1 => ownedReadOnlyList[0],
-            _ => null
-        };
+        return result is { Count: 1 } ? result[0].ToArray() : null;
     }
 }

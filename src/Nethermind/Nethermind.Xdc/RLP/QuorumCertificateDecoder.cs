@@ -1,37 +1,28 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using Nethermind.Core;
-using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
-using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Xdc.RLP;
 using Nethermind.Xdc.Types;
-using Org.BouncyCastle.Utilities.Encoders;
 using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 using BlockRoundInfo = Nethermind.Xdc.Types.BlockRoundInfo;
 
 namespace Nethermind.Xdc;
-internal class QuorumCertificateDecoder : IRlpValueDecoder<QuorumCert>, IRlpStreamDecoder<QuorumCert>
+
+internal sealed class QuorumCertificateDecoder : RlpValueDecoder<QuorumCertificate>
 {
-    private XdcBlockInfoDecoder _blockInfoDecoder = new XdcBlockInfoDecoder();
-    public QuorumCert Decode(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    private readonly XdcBlockInfoDecoder _blockInfoDecoder = new();
+    protected override QuorumCertificate DecodeInternal(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
-        if (decoderContext.IsNextItemNull())
-            return null;
         int sequenceLength = decoderContext.ReadSequenceLength();
+        if (sequenceLength == 0)
+            return null;
         int endPosition = decoderContext.Position + sequenceLength;
 
         BlockRoundInfo? blockInfo = _blockInfoDecoder.Decode(ref decoderContext, rlpBehaviors);
 
-        byte[][]? signatureBytes = decoderContext.DecodeByteArrays();
-        if (signatureBytes is not null && signatureBytes.Any(s => s.Length != 65))
-            throw new RlpException("One or more invalid signature lengths in quorum certificate.");
+        byte[][]? signatureBytes = decoderContext.DecodeByteArrays(innerSize: Signature.Size);
         Signature[]? signatures = null;
         if (signatureBytes is not null)
         {
@@ -43,39 +34,17 @@ internal class QuorumCertificateDecoder : IRlpValueDecoder<QuorumCert>, IRlpStre
         }
 
         ulong gap = decoderContext.DecodeULong();
-        return new QuorumCert(blockInfo, signatures, gap);
-    }
-
-    public QuorumCert Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-    {
-        if (rlpStream.IsNextItemNull())
-            return null;
-        int sequenceLength = rlpStream.ReadSequenceLength();
-        int endPosition = rlpStream.Position + sequenceLength;
-
-        BlockRoundInfo? blockInfo = _blockInfoDecoder.Decode(rlpStream, rlpBehaviors);
-
-        byte[][]? signatureBytes = rlpStream.DecodeByteArrays();
-        if (signatureBytes is not null && signatureBytes.Any(s => s.Length != 65))
-            throw new RlpException("One or more invalid signature lengths in quorum certificate.");
-        Signature[]? signatures = null;
-        if (signatureBytes is not null)
+        if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) != RlpBehaviors.AllowExtraBytes)
         {
-            signatures = new Signature[signatureBytes.Length];
-            for (int i = 0; i < signatures.Length; i++)
-            {
-                signatures[i] = new Signature(signatureBytes[i].AsSpan(0, 64), signatureBytes[i][64]);
-            }
+            decoderContext.Check(endPosition);
         }
-
-        ulong gap = rlpStream.DecodeULong();
-        return new QuorumCert(blockInfo, signatures, gap);
+        return new QuorumCertificate(blockInfo, signatures, gap);
     }
 
-    public Rlp Encode(QuorumCert item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public Rlp Encode(QuorumCertificate item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (item is null)
-            return Rlp.OfEmptySequence;
+            return Rlp.OfEmptyList;
 
         RlpStream rlpStream = new(GetLength(item, rlpBehaviors));
         Encode(rlpStream, item, rlpBehaviors);
@@ -83,7 +52,7 @@ internal class QuorumCertificateDecoder : IRlpValueDecoder<QuorumCert>, IRlpStre
         return new Rlp(rlpStream.Data.ToArray());
     }
 
-    public void Encode(RlpStream stream, QuorumCert item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public override void Encode(RlpStream stream, QuorumCertificate item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (item is null)
         {
@@ -102,10 +71,11 @@ internal class QuorumCertificateDecoder : IRlpValueDecoder<QuorumCert>, IRlpStre
             {
                 int signatureContentLength = SignaturesLength(item);
                 stream.StartSequence(signatureContentLength);
-                foreach (var sig in item.Signatures)
+                Span<byte> sigBuffer = stackalloc byte[Signature.Size];
+                foreach (Signature sig in item.Signatures)
                 {
-                    //TODO Signature class should be optimized to store full 65 bytes
-                    stream.Encode(sig.BytesWithRecovery);
+                    sig.WriteBytesWithRecoveryTo(sigBuffer);
+                    stream.Encode(sigBuffer);
                 }
             }
         }
@@ -113,11 +83,8 @@ internal class QuorumCertificateDecoder : IRlpValueDecoder<QuorumCert>, IRlpStre
         stream.Encode(item.GapNumber);
     }
 
-    public int GetLength(QuorumCert item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-    {
-        return Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors));
-    }
-    private int GetContentLength(QuorumCert? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public override int GetLength(QuorumCertificate item, RlpBehaviors rlpBehaviors = RlpBehaviors.None) => Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors));
+    private int GetContentLength(QuorumCertificate? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (item is null)
             return 0;
@@ -130,8 +97,5 @@ internal class QuorumCertificateDecoder : IRlpValueDecoder<QuorumCert>, IRlpStre
             + sigLength;
     }
 
-    private static int SignaturesLength(QuorumCert item)
-    {
-        return Rlp.LengthOfSequence(Signature.Size) * (item.Signatures != null ? item.Signatures.Length : 0);
-    }
+    private static int SignaturesLength(QuorumCertificate item) => Rlp.LengthOfSequence(Signature.Size) * (item.Signatures != null ? item.Signatures.Length : 0);
 }
