@@ -20,15 +20,19 @@ public abstract class PrecompileTests<TPrecompile, TTests> : IPrecompileTests
     where TTests : PrecompileTests<TPrecompile, TTests>, IPrecompileTests
 {
     [method: JsonConstructor]
-    public record TestCase(byte[] Input, byte[]? Expected, string Name, long? Gas, string? ExpectedError)
+    public record TestCase(ReadOnlyMemory<byte> Input, byte[]? Expected, string Name, long? Gas, string? ExpectedError)
     {
         public IReleaseSpec Spec { get; internal set; } = DefaultSpec;
 
-        public TestCase(string input, string output, bool status) : this(
+        public TestCase(string input, string output, bool status, IReleaseSpec? spec = null) : this(
             Convert.FromHexString(input), Convert.FromHexString(output),
             Name: input, Gas: null, ExpectedError: status ? null : "<error>"
-        )
-        { }
+        ) => Spec = spec ?? DefaultSpec;
+
+        public TestCase(byte[] Input, byte[]? Expected, bool status, IReleaseSpec? spec = null): this(
+            Input, Expected,
+            Name: Convert.ToHexString(Input), Gas: null, ExpectedError: status ? null : "<error>"
+        ) => Spec = spec ?? DefaultSpec;
     }
     private const string TestFilesDirectory = "PrecompileVectors";
 
@@ -41,7 +45,7 @@ public abstract class PrecompileTests<TPrecompile, TTests> : IPrecompileTests
         EthereumJsonSerializer serializer = new();
 
         foreach ((string file, IReleaseSpec spec) in Enumerable.Union(
-                     TTests.TestFiles().Select(f => (f, (IReleaseSpec)null)),
+                     TTests.TestFiles().Select(static f => (f, (IReleaseSpec)null)),
                      TTests.TestFilesWithSpec()
                  ))
         {
@@ -58,44 +62,29 @@ public abstract class PrecompileTests<TPrecompile, TTests> : IPrecompileTests
     [TestCaseSource(nameof(TestSource))]
     public void TestVectors(TestCase testCase)
     {
-        if (this is not TTests) throw new InvalidOperationException($"Misconfigured tests! Type {GetType()} must be {typeof(TTests)}");
+        if (this is not TTests)
+            throw new InvalidOperationException($"Misconfigured tests! Type {GetType()} must be {typeof(TTests)}");
 
-        byte[] input = testCase.Input;
-        RunTest(input, testCase);
-
-        ReadOnlyMemory<byte> normalized = Instance.NormalizeInput(input);
-        if (!normalized.Span.SequenceEqual(input))
-            RunTest(normalized, testCase, "normalized input should produce same output");
+        RunTest(testCase);
     }
 
-    protected void RunTest(string input, string output, bool status, IReleaseSpec? spec = null)
+    protected void RunTest(TestCase testCase)
     {
-        byte[] inputData = Convert.FromHexString(input);
-        byte[] outputData = Convert.FromHexString(output);
-        RunTest(inputData, outputData, status, spec);
+        RunTestCore(testCase);
 
-        ReadOnlyMemory<byte> normalized = Instance.NormalizeInput(inputData);
-        if (!normalized.Span.SequenceEqual(inputData))
-            RunTest(normalized, outputData, status, spec, "normalized input should produce same output");
+        ReadOnlyMemory<byte> normalized = Instance.NormalizeInput(testCase.Input);
+        if (!normalized.Span.SequenceEqual(testCase.Input.Span))
+            RunTestCore(testCase with {Input = normalized}, "normalized input should produce same output");
     }
 
-    private static void RunTest(ReadOnlyMemory<byte> input, byte[] output, bool status, IReleaseSpec? spec, string? reason = null)
+    protected void RunTest(string input, string output, bool status, IReleaseSpec? spec = null) =>
+        RunTest(new TestCase(Convert.FromHexString(input), Convert.FromHexString(output), status));
+
+    private static void RunTestCore(TestCase testCase, string? reason = null)
     {
-        spec ??= DefaultSpec;
-        Result<byte[]> result = Instance.Run(input, spec);
+        long gas = Instance.BaseGasCost(DefaultSpec) + Instance.DataGasCost(testCase.Input, testCase.Spec);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(result.IsSuccess, Is.EqualTo(status), reason);
-            Assert.That(result.Data, Is.EqualTo(output), reason);
-        }
-    }
-
-    private static void RunTest(ReadOnlyMemory<byte> input, TestCase testCase, string? reason = null)
-    {
-        long gas = Instance.BaseGasCost(DefaultSpec) + Instance.DataGasCost(input, testCase.Spec);
-
-        Result<byte[]> result = Instance.Run(input, testCase.Spec);
+        Result<byte[]> result = Instance.Run(testCase.Input, testCase.Spec);
 
         using (Assert.EnterMultipleScope())
         {
@@ -107,7 +96,6 @@ public abstract class PrecompileTests<TPrecompile, TTests> : IPrecompileTests
                 Assert.That(gas, Is.EqualTo(testCase.Gas), reason);
             }
         }
-
     }
 
     protected static void RunEffectiveInputTest(string input, string? trailing = null, IReleaseSpec? spec = null) =>
