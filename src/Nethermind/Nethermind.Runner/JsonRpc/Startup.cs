@@ -494,7 +494,7 @@ public class Startup : IStartup
 
         if (contentLength is > 0 and <= int.MaxValue)
         {
-            collectedBody.EnsureCapacity((int)contentLength.Value);
+            collectedBody.EnsureExactCapacity((int)contentLength.Value);
         }
         else if (contentLength is null or > int.MaxValue)
         {
@@ -509,22 +509,18 @@ public class Startup : IStartup
                 ReadResult readResult = await bodyReader.ReadAsync(cancellationToken);
                 ReadOnlySequence<byte> buffer = readResult.Buffer;
 
-                foreach (ReadOnlyMemory<byte> segment in buffer)
+                long newBytesRead = collectedBody.BytesRead + buffer.Length;
+                if (maxRequestBodySize is not null && newBytesRead > maxRequestBodySize)
                 {
-                    long bytesRead = collectedBody.BytesRead + segment.Length;
-                    if (maxRequestBodySize is not null && bytesRead > maxRequestBodySize)
-                    {
-                        ThrowRequestBodyTooLarge(maxRequestBodySize.Value);
-                    }
-
-                    if (bytesRead > int.MaxValue)
-                    {
-                        ThrowRequestBodyTooLarge(maxRequestBodySize ?? int.MaxValue);
-                    }
-
-                    collectedBody.Append(segment);
+                    ThrowRequestBodyTooLarge(maxRequestBodySize.Value);
                 }
 
+                if (newBytesRead > int.MaxValue)
+                {
+                    ThrowRequestBodyTooLarge(maxRequestBodySize ?? int.MaxValue);
+                }
+
+                collectedBody.Append(buffer);
                 bodyReader.AdvanceTo(buffer.End);
 
                 if (readResult.IsCompleted || readResult.IsCanceled)
@@ -569,6 +565,16 @@ public class Startup : IStartup
             }
         }
 
+        public void EnsureExactCapacity(int capacity)
+        {
+            if (capacity <= 0 || _buffer?.Length >= capacity)
+            {
+                return;
+            }
+
+            RentCapacity(capacity);
+        }
+
         public void EnsureCapacity(int minCapacity)
         {
             if (minCapacity <= 0 || _buffer?.Length >= minCapacity)
@@ -582,6 +588,11 @@ public class Startup : IStartup
                 newCapacity = newCapacity <= Array.MaxLength / 2 ? newCapacity * 2 : minCapacity;
             }
 
+            RentCapacity(newCapacity);
+        }
+
+        private void RentCapacity(int newCapacity)
+        {
             byte[] newBuffer = ArrayPool<byte>.Shared.Rent(newCapacity);
             if (_buffer is not null)
             {
@@ -592,16 +603,17 @@ public class Startup : IStartup
             _buffer = newBuffer;
         }
 
-        public void Append(ReadOnlyMemory<byte> segment)
+        public void Append(ReadOnlySequence<byte> sequence)
         {
-            if (segment.Length == 0)
+            int sequenceLength = (int)sequence.Length;
+            if (sequenceLength == 0)
             {
                 return;
             }
 
-            int newLength = BytesRead + segment.Length;
+            int newLength = BytesRead + sequenceLength;
             EnsureCapacity(newLength);
-            segment.CopyTo(_buffer!.AsMemory(BytesRead));
+            sequence.CopyTo(_buffer!.AsSpan(BytesRead, sequenceLength));
             BytesRead = newLength;
         }
 
