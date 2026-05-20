@@ -55,6 +55,14 @@ public static class RpcTest
         };
     }
 
+    public static string SerializeResponse(JsonRpcResponse? response)
+    {
+        Assert.That(response, Is.Not.Null);
+        ArrayBufferWriter<byte> writer = new();
+        JsonRpcResponseWriter.Write(writer, response!, EthereumJsonSerializer.JsonOptions);
+        return Encoding.UTF8.GetString(writer.WrittenSpan);
+    }
+
     public static async Task<JsonRpcResponse> TestRequest<T>(T module, string method, params object?[]? parameters) where T : class, IRpcModule
     {
         await using IContainer container = CreateContainerForModule<T>(module);

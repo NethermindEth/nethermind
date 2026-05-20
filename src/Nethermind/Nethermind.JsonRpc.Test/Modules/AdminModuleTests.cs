@@ -50,7 +50,6 @@ public class AdminModuleTests
     private IReceiptStorage _receiptStorage = null!;
     private IReceiptMonitor _receiptCanonicalityMonitor = null!;
     private IJsonRpcDuplexClient _jsonRpcDuplexClient = null!;
-    private IJsonSerializer _jsonSerializer = null!;
     private IBlockTree _blockTree = null!;
     private IStateReader _stateReader = null!;
     private ISubscriptionManager _subscriptionManager = null!;
@@ -67,7 +66,6 @@ public class AdminModuleTests
         _receiptStorage = Substitute.For<IReceiptStorage>();
         _receiptCanonicalityMonitor = new ReceiptCanonicalityMonitor(_receiptStorage, _logManager);
         _jsonRpcDuplexClient = Substitute.For<IJsonRpcDuplexClient>();
-        _jsonSerializer = new EthereumJsonSerializer();
         _blockTree = Build.A.BlockTree().OfChainLength(5).TestObject;
         _stateReader = Substitute.For<IStateReader>();
         _networkConfig = new NetworkConfig();
@@ -385,7 +383,7 @@ public class AdminModuleTests
             out string subscriptionId);
 
         jsonRpcResult.Response.Should().NotBeNull(because: "the subscription must produce a JSON-RPC response when the event fires");
-        string serialized = _jsonSerializer.Serialize(jsonRpcResult.Response);
+        string serialized = RpcTest.SerializeResponse(jsonRpcResult.Response);
         string expectedResult = BuildExpectedPeerLifecycleNotification(subscriptionId, expectedType, TestItem.PublicKeyA.Hash.ToString(false));
         expectedResult.Should().Be(serialized, because: $"a peer-{expectedType} event must serialize with type '{expectedType}'");
     }
@@ -406,7 +404,7 @@ public class AdminModuleTests
             disposeSubscription: true);
 
         jsonRpcResult.Response.Should().NotBeNull(because: "the subscription must produce a JSON-RPC response when the event fires");
-        string serialized = _jsonSerializer.Serialize(jsonRpcResult.Response);
+        string serialized = RpcTest.SerializeResponse(jsonRpcResult.Response);
         string expectedResult = BuildExpectedMessageNotification(subscriptionId, expectedType, TestItem.PublicKeyA.Hash.ToString(false));
         expectedResult.Should().Be(serialized, because: $"a {expectedType} event must serialize with type '{expectedType}'");
     }
@@ -427,7 +425,7 @@ public class AdminModuleTests
             disposeSubscription: true);
         firstResult.Response.Should().NotBeNull(because: "the subscription must notify on the first existing session");
         BuildExpectedMessageNotification(firstSubscriptionId, expectedType, peerHash)
-            .Should().Be(_jsonSerializer.Serialize(firstResult.Response), because: $"first session emits {expectedType}");
+            .Should().Be(RpcTest.SerializeResponse(firstResult.Response), because: $"first session emits {expectedType}");
 
         JsonRpcResult secondResult = RaisePeerEventAndCapture(
             isReceived
@@ -437,7 +435,7 @@ public class AdminModuleTests
             disposeSubscription: true);
         secondResult.Response.Should().NotBeNull(because: "the subscription must also notify on the second existing session");
         BuildExpectedMessageNotification(secondSubscriptionId, expectedType, peerHash)
-            .Should().Be(_jsonSerializer.Serialize(secondResult.Response), because: $"second session emits {expectedType}");
+            .Should().Be(RpcTest.SerializeResponse(secondResult.Response), because: $"second session emits {expectedType}");
     }
 
     [TestCase(true, "msgrecv", TestName = "PeerEvents_OnMsgReceivedFromNewSession_NotifiesNewSessionMsg")]
@@ -464,7 +462,7 @@ public class AdminModuleTests
             out string subscriptionId);
 
         jsonRpcResult.Response.Should().NotBeNull(because: "the subscription must notify on a session created after subscribe");
-        string serialized = _jsonSerializer.Serialize(jsonRpcResult.Response);
+        string serialized = RpcTest.SerializeResponse(jsonRpcResult.Response);
         string expectedResult = BuildExpectedMessageNotification(subscriptionId, expectedType, TestItem.PublicKeyA.Hash.ToString(false));
         expectedResult.Should().Be(serialized, because: $"a {expectedType} event from the new session must serialize with type '{expectedType}'");
     }

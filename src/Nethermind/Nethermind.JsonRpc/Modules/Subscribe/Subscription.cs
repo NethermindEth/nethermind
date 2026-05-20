@@ -41,6 +41,17 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
 
         public virtual void Dispose() => SendChannel.Writer.Complete();
 
+        protected JsonRpcResult CreateSubscriptionMessage<T>(T result, string methodName = SubscriptionMethodName.EthSubscription) => JsonRpcResult.Single(
+                new JsonRpcSubscriptionResponse<T>()
+                {
+                    Params = new JsonRpcSubscriptionResult<T>()
+                    {
+                        Result = result,
+                        Subscription = Id
+                    },
+                    MethodName = methodName
+                }, default);
+
         protected JsonRpcResult CreateSubscriptionMessage(object result, string methodName = SubscriptionMethodName.EthSubscription) => JsonRpcResult.Single(
                 new JsonRpcSubscriptionResponse()
                 {

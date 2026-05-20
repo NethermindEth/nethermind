@@ -46,4 +46,56 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
             writer.WriteEndObject();
         }
     }
+
+    public class JsonRpcSubscriptionResponse<T> : JsonRpcSubscriptionResponse
+    {
+        [JsonPropertyOrder(2)]
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public new JsonRpcSubscriptionResult<T> Params { get; set; }
+
+        internal override void WriteTo(Utf8JsonWriter writer, JsonSerializerOptions options)
+        {
+            JsonRpcResponseWriter.WriteEnvelopeStart(writer);
+
+            if (MethodName is not null)
+            {
+                writer.WriteString("method"u8, MethodName);
+            }
+
+            if (Params is not null)
+            {
+                writer.WritePropertyName("params"u8);
+                WriteParams(writer, options);
+            }
+
+            if (!Id.IsMissing)
+            {
+                writer.WritePropertyName("id"u8);
+                Id.WriteTo(writer);
+            }
+
+            writer.WriteEndObject();
+        }
+
+        private void WriteParams(Utf8JsonWriter writer, JsonSerializerOptions options)
+        {
+            writer.WriteStartObject();
+            writer.WriteString("subscription"u8, Params.Subscription);
+
+            T result = Params.Result;
+            if (result is null)
+            {
+                writer.WriteEndObject();
+                return;
+            }
+
+            writer.WritePropertyName("result"u8);
+            if (!JsonRpcResponseWriter.TryWriteSimpleValue(writer, result))
+            {
+                JsonSerializer.Serialize(writer, result, RpcPayloadTypeInfo<T>.Get(options));
+            }
+
+            writer.WriteEndObject();
+        }
+    }
 }
