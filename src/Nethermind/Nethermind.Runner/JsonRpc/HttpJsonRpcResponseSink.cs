@@ -248,7 +248,6 @@ internal sealed class HttpJsonRpcResponseSink(
     /// Writes a JSON-RPC response with typed serialization for the result/error payload,
     /// avoiding polymorphic dispatch through the JsonRpcResponse base class hierarchy.
     /// </summary>
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private void WriteJsonRpcResponse(IBufferWriter<byte> writer, JsonRpcResponse response)
     {
         using Utf8JsonWriter jsonWriter = new(writer, new JsonWriterOptions { SkipValidation = true });
