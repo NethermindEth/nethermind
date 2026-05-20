@@ -1602,6 +1602,29 @@ public ref struct EvmStack
     /// All it does is <see cref="Unsafe.ReadUnaligned{T}(ref byte)"/> and then reverse endianness if needed. Then it creates <paramref name="result"/>.
     /// </remarks>
     /// <param name="result">The returned value.</param>
+#if ZK_EVM
+    // Reads one big-endian 32-byte stack word into a UInt256. RISC-V has no
+    // byte-swap instruction, so ReverseEndianness is a software shuffle; stack
+    // words produced by PUSH0/PUSH1/PUSH2 etc. have a zero high 24 bytes, so
+    // the common case only swaps the low limb instead of all four.
+    [SkipLocalsInit]
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static UInt256 ReadBeWord(ref byte bytes)
+    {
+        ulong r0 = Unsafe.ReadUnaligned<ulong>(ref bytes);
+        ulong r1 = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, 8));
+        ulong r2 = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, 16));
+        ulong r3 = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, 24));
+        ulong low = BinaryPrimitives.ReverseEndianness(r3);
+        return (r0 | r1 | r2) == 0
+            ? new UInt256(low, 0, 0, 0)
+            : new UInt256(low,
+                BinaryPrimitives.ReverseEndianness(r2),
+                BinaryPrimitives.ReverseEndianness(r1),
+                BinaryPrimitives.ReverseEndianness(r0));
+    }
+#endif
+
     [SkipLocalsInit]
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public bool PopUInt256(out UInt256 result)
@@ -1634,6 +1657,9 @@ public ref struct EvmStack
         }
         else
         {
+#if ZK_EVM
+            result = ReadBeWord(ref bytes);
+#else
             ulong u3, u2, u1, u0;
             if (BitConverter.IsLittleEndian)
             {
@@ -1652,6 +1678,7 @@ public ref struct EvmStack
             }
 
             result = new UInt256(u0, u1, u2, u3);
+#endif
         }
 
         return true;
@@ -1710,6 +1737,10 @@ public ref struct EvmStack
         }
         else
         {
+#if ZK_EVM
+            b = ReadBeWord(ref bytes);
+            a = ReadBeWord(ref Unsafe.Add(ref bytes, 32));
+#else
             // Scalar path - interleave loads across both values
             if (BitConverter.IsLittleEndian)
             {
@@ -1745,6 +1776,7 @@ public ref struct EvmStack
                 b = new UInt256(b0, b1, b2, b3);
                 a = new UInt256(a0, a1, a2, a3);
             }
+#endif
         }
 
         return true;
@@ -1813,6 +1845,11 @@ public ref struct EvmStack
         }
         else
         {
+#if ZK_EVM
+            c = ReadBeWord(ref bytes);
+            b = ReadBeWord(ref Unsafe.Add(ref bytes, 32));
+            a = ReadBeWord(ref Unsafe.Add(ref bytes, 64));
+#else
             // Scalar path - interleave loads across all three values
             // to break dependency chains and hide load-to-use latency.
             // Modern CPUs can have 10+ loads in flight simultaneously.
@@ -1864,6 +1901,7 @@ public ref struct EvmStack
                 b = new UInt256(b0, b1, b2, b3);
                 a = new UInt256(a0, a1, a2, a3);
             }
+#endif
         }
 
         return true;
@@ -1940,6 +1978,12 @@ public ref struct EvmStack
         }
         else
         {
+#if ZK_EVM
+            d = ReadBeWord(ref bytes);
+            c = ReadBeWord(ref Unsafe.Add(ref bytes, 32));
+            b = ReadBeWord(ref Unsafe.Add(ref bytes, 64));
+            a = ReadBeWord(ref Unsafe.Add(ref bytes, 96));
+#else
             // Scalar path - interleave loads across all four values
             // to maximise load unit utilisation and hide latency
             if (BitConverter.IsLittleEndian)
@@ -2000,6 +2044,7 @@ public ref struct EvmStack
                 b = new UInt256(b0, b1, b2, b3);
                 a = new UInt256(a0, a1, a2, a3);
             }
+#endif
         }
 
         return true;
