@@ -233,49 +233,78 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
             return null;
         }
 
-        int providedParametersLength = useUtf8Parameters
-            ? JsonRpcArrayReader.CountItems(providedParametersUtf8)
-            : providedParameters.ValueKind == JsonValueKind.Array ? providedParameters.GetArrayLength() : 0;
-        int missingParamsCount = expectedParameters.Length - providedParametersLength;
-        int initialMissingParamsCount = missingParamsCount;
-
-        if (providedParametersLength > 0)
+        try
         {
             if (useUtf8Parameters)
             {
-                JsonReaderState readerState = default;
-                int offset = 0;
-                bool started = false;
-                while (JsonRpcArrayReader.TryReadNextItem(providedParametersUtf8, ref offset, ref readerState, ref started, out ReadOnlyMemory<byte> item))
+                Span<int> parameterStarts = expectedParameters.Length <= MaxPooledParameterCount
+                    ? stackalloc int[expectedParameters.Length]
+                    : new int[expectedParameters.Length];
+                Span<int> parameterLengths = expectedParameters.Length <= MaxPooledParameterCount
+                    ? stackalloc int[expectedParameters.Length]
+                    : new int[expectedParameters.Length];
+                int providedParametersLength = CollectUtf8ParameterRanges(
+                    providedParametersUtf8,
+                    parameterStarts,
+                    parameterLengths,
+                    expectedParameters.Length,
+                    out int missingParamsCount);
+
+                JsonRpcErrorResponse? validationError = ValidateMissingParameters(
+                    expectedParameters,
+                    methodName,
+                    request.Id,
+                    providedParametersLength,
+                    ref missingParamsCount);
+                if (validationError is not null)
                 {
-                    UpdateMissingParamsCount(item, ref missingParamsCount, initialMissingParamsCount);
+                    return validationError;
                 }
+
+                parameters = DeserializeParameters(
+                    expectedParameters,
+                    providedParametersLength,
+                    providedParametersUtf8,
+                    parameterStarts,
+                    parameterLengths,
+                    missingParamsCount,
+                    out parameterCount,
+                    out returnParametersToPool);
             }
             else
             {
-                foreach (JsonElement item in providedParameters.EnumerateArray())
+                int providedParametersLength = providedParameters.ValueKind == JsonValueKind.Array ? providedParameters.GetArrayLength() : 0;
+                int missingParamsCount = expectedParameters.Length - providedParametersLength;
+                int initialMissingParamsCount = missingParamsCount;
+
+                if (providedParametersLength > 0)
                 {
-                    UpdateMissingParamsCount(item, ref missingParamsCount, initialMissingParamsCount);
+                    foreach (JsonElement item in providedParameters.EnumerateArray())
+                    {
+                        UpdateMissingParamsCount(item, ref missingParamsCount, initialMissingParamsCount);
+                    }
                 }
+
+                JsonRpcErrorResponse? validationError = ValidateMissingParameters(
+                    expectedParameters,
+                    methodName,
+                    request.Id,
+                    providedParametersLength,
+                    ref missingParamsCount);
+                if (validationError is not null)
+                {
+                    return validationError;
+                }
+
+                parameters = DeserializeParameters(
+                    expectedParameters,
+                    providedParametersLength,
+                    providedParameters,
+                    providedParametersUtf8,
+                    missingParamsCount,
+                    out parameterCount,
+                    out returnParametersToPool);
             }
-        }
-
-        JsonRpcErrorResponse? validationError = ValidateMissingParameters(
-            expectedParameters,
-            methodName,
-            request.Id,
-            providedParametersLength,
-            ref missingParamsCount);
-        if (validationError is not null)
-        {
-            return validationError;
-        }
-
-        try
-        {
-            parameters = useUtf8Parameters
-                ? DeserializeParameters(expectedParameters, providedParametersLength, providedParametersUtf8, missingParamsCount, out parameterCount, out returnParametersToPool)
-                : DeserializeParameters(expectedParameters, providedParametersLength, providedParameters, providedParametersUtf8, missingParamsCount, out parameterCount, out returnParametersToPool);
         }
         catch (Exception e)
         {
@@ -292,8 +321,69 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
         ReadOnlyMemory<byte> providedParametersUtf8,
         JsonElement providedParameters) =>
         useUtf8Parameters
-            ? JsonRpcArrayReader.CountItems(providedParametersUtf8) != 0
+            ? HasAnyUtf8Parameter(providedParametersUtf8)
             : providedParameters.ValueKind == JsonValueKind.Array && providedParameters.GetArrayLength() != 0;
+
+    private static bool HasAnyUtf8Parameter(ReadOnlyMemory<byte> providedParametersUtf8)
+    {
+        JsonReaderState readerState = default;
+        int offset = 0;
+        bool started = false;
+        return JsonRpcArrayReader.TryReadNextItemRange(
+            providedParametersUtf8,
+            ref offset,
+            ref readerState,
+            ref started,
+            out _,
+            out _);
+    }
+
+    private static int CollectUtf8ParameterRanges(
+        ReadOnlyMemory<byte> providedParametersUtf8,
+        Span<int> parameterStarts,
+        Span<int> parameterLengths,
+        int expectedParametersLength,
+        out int missingParamsCount)
+    {
+        JsonReaderState readerState = default;
+        int offset = 0;
+        bool started = false;
+        int providedParametersLength = 0;
+        int trailingMissingParamsCount = 0;
+
+        while (providedParametersLength < expectedParametersLength
+            && JsonRpcArrayReader.TryReadNextItemRange(
+                providedParametersUtf8,
+                ref offset,
+                ref readerState,
+                ref started,
+                out int itemStart,
+                out int itemLength))
+        {
+            parameterStarts[providedParametersLength] = itemStart;
+            parameterLengths[providedParametersLength] = itemLength;
+            trailingMissingParamsCount = IsMissingParameterMarker(providedParametersUtf8.Slice(itemStart, itemLength))
+                ? trailingMissingParamsCount + 1
+                : 0;
+            providedParametersLength++;
+        }
+
+        if (providedParametersLength == expectedParametersLength
+            && JsonRpcArrayReader.TryReadNextItemRange(
+                providedParametersUtf8,
+                ref offset,
+                ref readerState,
+                ref started,
+                out _,
+                out _))
+        {
+            missingParamsCount = -1;
+            return expectedParametersLength + 1;
+        }
+
+        missingParamsCount = expectedParametersLength - providedParametersLength + trailingMissingParamsCount;
+        return providedParametersLength;
+    }
 
     private JsonRpcErrorResponse? ValidateMissingParameters(
         ExpectedParameter[] expectedParameters,
@@ -363,7 +453,7 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
         return true;
     }
 
-    private static void UpdateMissingParamsCount(ReadOnlyMemory<byte> item, ref int missingParamsCount, int initialMissingParamsCount)
+    private static bool IsMissingParameterMarker(ReadOnlyMemory<byte> item)
     {
         Utf8JsonReader reader = new(item.Span, isFinalBlock: true, state: default);
         if (!reader.Read())
@@ -371,14 +461,8 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
             ThrowInvalidParameterBytes();
         }
 
-        if (reader.TokenType == JsonTokenType.Null || (reader.TokenType == JsonTokenType.String && reader.ValueTextEquals(ReadOnlySpan<byte>.Empty)))
-        {
-            missingParamsCount++;
-        }
-        else
-        {
-            missingParamsCount = initialMissingParamsCount;
-        }
+        return reader.TokenType == JsonTokenType.Null
+            || (reader.TokenType == JsonTokenType.String && reader.ValueTextEquals(ReadOnlySpan<byte>.Empty));
 
         [DoesNotReturn, StackTraceHidden]
         static void ThrowInvalidParameterBytes() =>
@@ -758,6 +842,8 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
         ExpectedParameter[] expectedParameters,
         int providedParametersLength,
         ReadOnlyMemory<byte> providedParametersUtf8,
+        ReadOnlySpan<int> parameterStarts,
+        ReadOnlySpan<int> parameterLengths,
         int missingParamsCount,
         out int parameterCount,
         out bool returnParametersToPool)
@@ -775,20 +861,12 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
         {
             if (providedParametersLength > 0)
             {
-                JsonReaderState readerState = default;
-                int offset = 0;
-                bool started = false;
-                while (JsonRpcArrayReader.TryReadNextItem(providedParametersUtf8, ref offset, ref readerState, ref started, out ReadOnlyMemory<byte> providedParameterUtf8))
+                for (; i < providedParametersLength; i++)
                 {
                     ExpectedParameter expectedParameter = expectedParameters[i];
+                    ReadOnlyMemory<byte> providedParameterUtf8 = providedParametersUtf8.Slice(parameterStarts[i], parameterLengths[i]);
                     object? parameter = DeserializeParameter(providedParameterUtf8, expectedParameter);
                     executionParameters[i] = parameter;
-                    i++;
-                }
-
-                if (i != providedParametersLength)
-                {
-                    ThrowMismatchedParameterCount();
                 }
             }
 
@@ -805,10 +883,6 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
             returnParametersToPool = false;
             throw;
         }
-
-        [DoesNotReturn, StackTraceHidden]
-        static void ThrowMismatchedParameterCount() =>
-            throw new JsonException("Mismatched JSON-RPC parameter count.");
     }
 
     private static object?[] DeserializeParameters(

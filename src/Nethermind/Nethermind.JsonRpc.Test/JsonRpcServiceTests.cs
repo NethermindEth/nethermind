@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Text;
 using System.Text.Json;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Find;
@@ -11,6 +12,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Evm;
 using Nethermind.Facade.Eth;
 using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Facade.Proxy.Models.Simulate;
@@ -59,10 +61,32 @@ public class JsonRpcServiceTests
 
     private JsonRpcResponse TestRequestWithPool<T>(IRpcModulePool<T> pool, string method, params object?[]? parameters) where T : IRpcModule
     {
+        JsonRpcRequest request = RpcTest.BuildJsonRequest(method, parameters);
+        return SendRequestWithPool(pool, request);
+    }
+
+    private JsonRpcResponse TestRawRequest<T>(T module, string method, string rawParameters) where T : IRpcModule
+    {
+        SingletonModulePool<T> pool = new(new SingletonFactory<T>(module), true);
+
+        return TestRawRequestWithPool(pool, method, rawParameters);
+    }
+
+    private JsonRpcResponse TestRawRequestWithPool<T>(IRpcModulePool<T> pool, string method, string rawParameters) where T : IRpcModule =>
+        SendRequestWithPool(pool, new JsonRpcRequest
+        {
+            JsonRpc = "2.0",
+            Method = method,
+            ParamsUtf8 = Encoding.UTF8.GetBytes(rawParameters),
+            ParamsKind = JsonValueKind.Array,
+            Id = 67
+        });
+
+    private JsonRpcResponse SendRequestWithPool<T>(IRpcModulePool<T> pool, JsonRpcRequest request) where T : IRpcModule
+    {
         RpcModuleProvider moduleProvider = new(new RealFileSystem(), _configurationProvider.GetConfig<IJsonRpcConfig>(), new EthereumJsonSerializer(), LimboLogs.Instance);
         moduleProvider.Register(pool);
         _jsonRpcService = new JsonRpcService(moduleProvider, _logManager, _configurationProvider.GetConfig<IJsonRpcConfig>());
-        JsonRpcRequest request = RpcTest.BuildJsonRequest(method, parameters);
         JsonRpcResponse response = _jsonRpcService.SendRequestAsync(request, _context).Result;
         Assert.That(response.Id, Is.EqualTo(request.Id));
         return response;
@@ -214,6 +238,24 @@ public class JsonRpcServiceTests
     }
 
     [Test]
+    public void Raw_utf8_params_keep_explicit_nullable_trailing_defaults()
+    {
+        IEthRpcModule ethRpcModule = Substitute.For<IEthRpcModule>();
+        ethRpcModule
+            .eth_call(
+                Arg.Any<TransactionForRpc>(),
+                Arg.Any<BlockParameter?>(),
+                Arg.Any<Dictionary<Address, AccountOverride>?>(),
+                Arg.Any<BlockOverride?>())
+            .ReturnsForAnyArgs(static _ => ResultWrapper<string>.Success("0x"));
+
+        string transaction = new EthereumJsonSerializer().Serialize(new LegacyTransactionForRpc());
+        JsonRpcSuccessResponse? response = TestRawRequest(ethRpcModule, "eth_call", $"[{transaction},null]") as JsonRpcSuccessResponse;
+
+        Assert.That(response?.Result, Is.EqualTo("0x"));
+    }
+
+    [Test]
     public void Eth_getTransactionReceipt_properly_fails_given_wrong_parameters()
     {
         IEthRpcModule ethRpcModule = Substitute.For<IEthRpcModule>();
@@ -236,6 +278,28 @@ public class JsonRpcServiceTests
         Assert.That(response?.Error?.Code, Is.EqualTo(ErrorCodes.InvalidParams));
         Assert.That(response?.Error?.Message, Is.EqualTo(expectedMessage));
         Assert.That(response?.Error?.Data, Is.Null);
+    }
+
+    [Test]
+    public void Raw_utf8_params_missing_required_argument_returns_geth_style_error_before_deserialization()
+    {
+        IEthRpcModule ethRpcModule = Substitute.For<IEthRpcModule>();
+        JsonRpcErrorResponse? response = TestRawRequest(ethRpcModule, "eth_feeHistory", """[{},"latest"]""") as JsonRpcErrorResponse;
+
+        Assert.That(response?.Error?.Code, Is.EqualTo(ErrorCodes.InvalidParams));
+        Assert.That(response?.Error?.Message, Is.EqualTo("missing value for required argument 2"));
+        Assert.That(response?.Error?.Data, Is.Null);
+    }
+
+    [Test]
+    public void Raw_utf8_params_reject_extra_argument_before_invocation()
+    {
+        IEthRpcModule ethRpcModule = Substitute.For<IEthRpcModule>();
+        JsonRpcErrorResponse? response = TestRawRequest(ethRpcModule, "eth_getBlockByNumber", """["0x1",false,"extra"]""") as JsonRpcErrorResponse;
+
+        Assert.That(response?.Error?.Code, Is.EqualTo(ErrorCodes.InvalidParams));
+        Assert.That(response?.Error?.Message, Is.EqualTo("Invalid params"));
+        ethRpcModule.DidNotReceive().eth_getBlockByNumber(Arg.Any<BlockParameter>(), Arg.Any<bool>());
     }
 
     [Test]

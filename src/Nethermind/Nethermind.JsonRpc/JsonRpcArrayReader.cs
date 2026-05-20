@@ -48,7 +48,26 @@ internal static class JsonRpcArrayReader
         ref bool started,
         out ReadOnlyMemory<byte> itemBody)
     {
-        itemBody = default;
+        if (!TryReadNextItemRange(arrayBody, ref offset, ref readerState, ref started, out int itemStart, out int itemLength))
+        {
+            itemBody = default;
+            return false;
+        }
+
+        itemBody = arrayBody.Slice(itemStart, itemLength);
+        return true;
+    }
+
+    public static bool TryReadNextItemRange(
+        ReadOnlyMemory<byte> arrayBody,
+        ref int offset,
+        ref JsonReaderState readerState,
+        ref bool started,
+        out int itemStart,
+        out int itemLength)
+    {
+        itemStart = 0;
+        itemLength = 0;
         Utf8JsonReader reader = new(arrayBody.Span[offset..], isFinalBlock: true, state: readerState);
 
         if (!started)
@@ -68,15 +87,15 @@ internal static class JsonRpcArrayReader
 
         if (reader.TokenType == JsonTokenType.EndArray)
         {
-            offset += checked((int)reader.BytesConsumed);
+            offset += (int)reader.BytesConsumed;
             readerState = reader.CurrentState;
             return false;
         }
 
-        int itemStart = checked(offset + (int)reader.TokenStartIndex);
+        itemStart = offset + (int)reader.TokenStartIndex;
         reader.Skip();
-        int itemEnd = checked(offset + (int)reader.BytesConsumed);
-        itemBody = arrayBody.Slice(itemStart, itemEnd - itemStart);
+        int itemEnd = offset + (int)reader.BytesConsumed;
+        itemLength = itemEnd - itemStart;
         offset = itemEnd;
         readerState = reader.CurrentState;
         return true;
