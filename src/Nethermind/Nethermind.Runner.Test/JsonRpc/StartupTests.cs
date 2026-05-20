@@ -16,6 +16,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Http.Features;
+using Nethermind.Core;
 using Nethermind.Core.Authentication;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
@@ -342,27 +343,17 @@ public class StartupTests
     }
 
     [Test]
-    public async Task HttpJsonRpcResponseSink_WritesEthCallHexStringDirectly()
+    public async Task HttpJsonRpcResponseSink_SerializesHexBytesResult()
     {
-        string value = "0x" + new string('a', 64 * 1024);
+        byte[] bytes = GC.AllocateUninitializedArray<byte>(32 * 1024);
+        Array.Fill(bytes, (byte)0xaa);
+        string expectedValue = "0x" + new string('a', bytes.Length * 2);
+
         string response = await WriteHttpJsonRpcResponse(
-            new JsonRpcSuccessResponse { Id = JsonRpcId.FromObject(1), Result = value },
+            new JsonRpcSuccessResponse { Id = JsonRpcId.FromObject(1), Result = new HexBytes(bytes) },
             "eth_call");
 
-        Assert.That(response, Is.EqualTo($"{{\"jsonrpc\":\"2.0\",\"result\":\"{value}\",\"id\":1}}"));
-    }
-
-    [Test]
-    public async Task HttpJsonRpcResponseSink_FallsBackForInvalidEthCallHexString()
-    {
-        const string value = "0x12\"not-hex";
-        string response = await WriteHttpJsonRpcResponse(
-            new JsonRpcSuccessResponse { Id = JsonRpcId.FromObject(1), Result = value },
-            "eth_call");
-
-        using JsonDocument doc = JsonDocument.Parse(response);
-
-        Assert.That(doc.RootElement.GetProperty("result").GetString(), Is.EqualTo(value));
+        Assert.That(response, Is.EqualTo($"{{\"jsonrpc\":\"2.0\",\"result\":\"{expectedValue}\",\"id\":1}}"));
     }
 
     [TestCase(false)]

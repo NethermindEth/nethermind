@@ -10,6 +10,7 @@ using Nethermind.Blockchain.Find;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm;
@@ -51,6 +52,8 @@ public class JsonRpcServiceTests
     private IConfigProvider _configurationProvider = null!;
     private ILogManager _logManager = null!;
     private JsonRpcContext _context = null!;
+
+    private static HexBytes ToHexBytes(string value) => new(Bytes.FromHexString(value));
 
     private JsonRpcResponse TestRequest<T>(T module, string method, params object?[]? parameters) where T : IRpcModule
     {
@@ -130,9 +133,10 @@ public class JsonRpcServiceTests
     public void CanHandleOptionalArguments()
     {
         IEthRpcModule ethRpcModule = Substitute.For<IEthRpcModule>();
-        ethRpcModule.eth_call(Arg.Any<TransactionForRpc>()).ReturnsForAnyArgs(static _ => ResultWrapper<string>.Success("0x1"));
+        HexBytes expected = ToHexBytes("0x01");
+        ethRpcModule.eth_call(Arg.Any<TransactionForRpc>()).ReturnsForAnyArgs(_ => ResultWrapper<HexBytes>.Success(expected));
         JsonRpcSuccessResponse? response = TestRequest(ethRpcModule, "eth_call", new LegacyTransactionForRpc()) as JsonRpcSuccessResponse;
-        Assert.That(response?.Result, Is.EqualTo("0x1"));
+        Assert.That(response?.Result, Is.EqualTo(expected));
     }
 
     [TestCase(false)]
@@ -242,10 +246,11 @@ public class JsonRpcServiceTests
     public void Eth_call_is_working_with_implicit_null_as_the_last_argument()
     {
         IEthRpcModule ethRpcModule = Substitute.For<IEthRpcModule>();
-        ethRpcModule.eth_call(Arg.Any<TransactionForRpc>(), Arg.Any<BlockParameter?>()).ReturnsForAnyArgs(static x => ResultWrapper<string>.Success("0x"));
+        HexBytes expected = ToHexBytes("0x");
+        ethRpcModule.eth_call(Arg.Any<TransactionForRpc>(), Arg.Any<BlockParameter?>()).ReturnsForAnyArgs(_ => ResultWrapper<HexBytes>.Success(expected));
 
         JsonRpcSuccessResponse? response = TestRequest(ethRpcModule, "eth_call", new LegacyTransactionForRpc()) as JsonRpcSuccessResponse;
-        Assert.That(response?.Result, Is.EqualTo("0x"));
+        Assert.That(response?.Result, Is.EqualTo(expected));
     }
 
     [TestCase("")]
@@ -253,10 +258,11 @@ public class JsonRpcServiceTests
     public void Eth_call_is_working_with_explicit_null_as_the_last_argument(string? nullValue)
     {
         IEthRpcModule ethRpcModule = Substitute.For<IEthRpcModule>();
-        ethRpcModule.eth_call(Arg.Any<TransactionForRpc>(), Arg.Any<BlockParameter?>()).ReturnsForAnyArgs(static x => ResultWrapper<string>.Success("0x"));
+        HexBytes expected = ToHexBytes("0x");
+        ethRpcModule.eth_call(Arg.Any<TransactionForRpc>(), Arg.Any<BlockParameter?>()).ReturnsForAnyArgs(_ => ResultWrapper<HexBytes>.Success(expected));
 
         JsonRpcSuccessResponse? response = TestRequest(ethRpcModule, "eth_call", new LegacyTransactionForRpc(), nullValue) as JsonRpcSuccessResponse;
-        Assert.That(response?.Result, Is.EqualTo("0x"));
+        Assert.That(response?.Result, Is.EqualTo(expected));
     }
 
     [Test]
@@ -269,12 +275,12 @@ public class JsonRpcServiceTests
                 Arg.Any<BlockParameter?>(),
                 Arg.Any<Dictionary<Address, AccountOverride>?>(),
                 Arg.Any<BlockOverride?>())
-            .ReturnsForAnyArgs(static _ => ResultWrapper<string>.Success("0x"));
+            .ReturnsForAnyArgs(static _ => ResultWrapper<HexBytes>.Success(default));
 
         string transaction = new EthereumJsonSerializer().Serialize(new LegacyTransactionForRpc());
         JsonRpcSuccessResponse? response = TestRawRequest(ethRpcModule, "eth_call", $"[{transaction},null]") as JsonRpcSuccessResponse;
 
-        Assert.That(response?.Result, Is.EqualTo("0x"));
+        Assert.That(response?.Result, Is.EqualTo(default(HexBytes)));
     }
 
     [Test]

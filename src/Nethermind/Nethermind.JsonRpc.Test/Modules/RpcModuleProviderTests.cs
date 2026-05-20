@@ -273,7 +273,7 @@ public class RpcModuleProviderTests
     [RpcModule(ModuleType.Eth)]
     private sealed class HotEthRpcModule : IRpcModule
     {
-        public ResultWrapper<string> eth_call() => ResultWrapper<string>.Success(string.Empty);
+        public ResultWrapper<HexBytes> eth_call() => ResultWrapper<HexBytes>.Success(default);
 
         public ResultWrapper<string> eth_getBlockByNumber() => ResultWrapper<string>.Success(string.Empty);
 
