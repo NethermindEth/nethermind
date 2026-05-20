@@ -19,11 +19,13 @@ public class RecordedBalStoreTests
     private static string TempDir([System.Runtime.CompilerServices.CallerMemberName] string name = "") =>
         Path.Combine(TestContext.CurrentContext.TestDirectory, $"recordedBal_test_{name}_{System.Threading.Thread.CurrentThread.ManagedThreadId}");
 
-    private static BlockAccessList MakeBal(params Address[] addresses)
+    private static GeneratedBlockAccessList MakeBal(params Address[] addresses)
     {
-        BlockAccessList bal = new();
+        BlockAccessListAtIndex slice = new();
         foreach (Address address in addresses)
-            bal.AddAccountRead(address);
+            slice.AddAccountRead(address);
+        GeneratedBlockAccessList bal = new();
+        bal.Merge(slice);
         return bal;
     }
 
@@ -34,11 +36,11 @@ public class RecordedBalStoreTests
         try
         {
             using RecordedBalStore store = new(new BalRecorderConfig { ReplayEnabled = true, RecordingEnabled = true, Path = dir }, new InitConfig(), LimboLogs.Instance);
-            BlockAccessList bal = MakeBal(TestItem.AddressA, TestItem.AddressB);
+            GeneratedBlockAccessList bal = MakeBal(TestItem.AddressA, TestItem.AddressB);
             Block block = Build.A.Block.WithNumber(100).TestObject;
 
             store.Insert(block, bal);
-            BlockAccessList? result = store.Get(100);
+            ReadOnlyBlockAccessList? result = store.Get(100);
 
             result.Should().NotBeNull();
             result!.GetAccountChanges(TestItem.AddressA).Should().NotBeNull();
@@ -79,14 +81,14 @@ public class RecordedBalStoreTests
             using RecordedBalStore store = new(new BalRecorderConfig { ReplayEnabled = true, RecordingEnabled = true, Path = dir }, new InitConfig(), LimboLogs.Instance);
             Block blockA = Build.A.Block.WithNumber(0).TestObject;
             Block blockB = Build.A.Block.WithNumber(1).TestObject;
-            BlockAccessList balA = MakeBal(TestItem.AddressA);
-            BlockAccessList balB = MakeBal(TestItem.AddressB);
+            GeneratedBlockAccessList balA = MakeBal(TestItem.AddressA);
+            GeneratedBlockAccessList balB = MakeBal(TestItem.AddressB);
 
             store.Insert(blockA, balA);
             store.Insert(blockB, balB);
 
-            BlockAccessList? resultA = store.Get(0);
-            BlockAccessList? resultB = store.Get(1);
+            ReadOnlyBlockAccessList? resultA = store.Get(0);
+            ReadOnlyBlockAccessList? resultB = store.Get(1);
 
             resultA!.GetAccountChanges(TestItem.AddressA).Should().NotBeNull();
             resultA.GetAccountChanges(TestItem.AddressB).Should().BeNull();
@@ -132,7 +134,7 @@ public class RecordedBalStoreTests
             store.Insert(block, MakeBal(TestItem.AddressA));
             store.Insert(block, MakeBal(TestItem.AddressB)); // no-op
 
-            BlockAccessList? result = store.Get(42);
+            ReadOnlyBlockAccessList? result = store.Get(42);
             result!.GetAccountChanges(TestItem.AddressA).Should().NotBeNull();
         }
         finally { Directory.Delete(dir, true); }

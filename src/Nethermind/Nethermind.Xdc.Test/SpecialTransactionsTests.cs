@@ -62,7 +62,7 @@ internal class SpecialTransactionsTests
             .TestObject;
 
         Signer signer = new(chain.SpecProvider.ChainId, source, NullLogManager.Instance);
-        signer.Sign(tx);
+        signer.TrySign(tx);
 
         tx.Hash = tx.CalculateHash();
 
@@ -246,7 +246,7 @@ internal class SpecialTransactionsTests
         moqVm.SetBlockExecutionContext(new BlockExecutionContext(head, spec));
 
         Transaction txSign = SignTransactionManager.CreateTxSign((UInt256)head.Number, head.Hash!, blockChain.TxPool.GetLatestPendingNonce(TestItem.AddressA), spec.BlockSignerContract, blockChain.Signer.Address);
-        await blockChain.Signer.Sign(txSign);
+        blockChain.Signer.TrySign(txSign);
         txSign.Hash = txSign.CalculateHash();
 
         TransactionResult? result = null;
@@ -311,7 +311,7 @@ internal class SpecialTransactionsTests
             .WithNonce(nonce)
             .WithSenderAddress(blockChain.Signer.Address)
             .WithTo(TestItem.AddressA).TestObject;
-        await blockChain.Signer.Sign(tx);
+        blockChain.Signer.TrySign(tx);
 
         TransactionResult? result = null;
 
@@ -359,7 +359,7 @@ internal class SpecialTransactionsTests
         // damage the data field in the tx
         tx.Data = Enumerable.Range(0, 48).Select(i => (byte)i).ToArray();
 
-        await blockChain.Signer.Sign(tx);
+        blockChain.Signer.TrySign(tx);
         tx.Hash = tx.CalculateHash();
 
         AcceptTxResult result = blockChain.TxPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast);
@@ -407,7 +407,7 @@ internal class SpecialTransactionsTests
         // damage the data field in the tx
         txWithSmallerNonce.Data = Enumerable.Range(0, 48).Select(i => (byte)i).ToArray();
 
-        await blockChain.Signer.Sign(txWithSmallerNonce);
+        blockChain.Signer.TrySign(txWithSmallerNonce);
         txWithSmallerNonce.Hash = txWithSmallerNonce.CalculateHash();
 
         TransactionResult? result = null;
@@ -464,7 +464,7 @@ internal class SpecialTransactionsTests
         // damage the data field in the tx
         txWithBiggerNonce.Data = Enumerable.Range(0, 48).Select(i => (byte)i).ToArray();
 
-        await blockChain.Signer.Sign(txWithBiggerNonce);
+        blockChain.Signer.TrySign(txWithBiggerNonce);
         txWithBiggerNonce.Hash = txWithBiggerNonce.CalculateHash();
 
         TransactionResult? result = null;
@@ -521,7 +521,7 @@ internal class SpecialTransactionsTests
         // damage the data field in the tx
         validNonceTx.Data = Enumerable.Range(0, 48).Select(i => (byte)i).ToArray();
 
-        await blockChain.Signer.Sign(validNonceTx);
+        blockChain.Signer.TrySign(validNonceTx);
         validNonceTx.Hash = validNonceTx.CalculateHash();
 
         TransactionResult? result = null;
@@ -564,7 +564,7 @@ internal class SpecialTransactionsTests
             spec.BlockSignerContract,
             blockChain.Signer.Address);
 
-        await blockChain.Signer.Sign(txTooHigh);
+        blockChain.Signer.TrySign(txTooHigh);
         txTooHigh.Hash = txTooHigh.CalculateHash();
 
         AcceptTxResult result = blockChain.TxPool.SubmitTx(txTooHigh, TxHandlingOptions.PersistentBroadcast);
@@ -598,7 +598,7 @@ internal class SpecialTransactionsTests
             spec.BlockSignerContract,
             blockChain.Signer.Address);
 
-        await blockChain.Signer.Sign(txTooLow);
+        blockChain.Signer.TrySign(txTooLow);
         txTooLow.Hash = txTooLow.CalculateHash();
 
         AcceptTxResult result = blockChain.TxPool.SubmitTx(txTooLow, TxHandlingOptions.PersistentBroadcast);
@@ -638,7 +638,7 @@ internal class SpecialTransactionsTests
                 spec.BlockSignerContract,
                 blockChain.Signer.Address);
 
-        await blockChain.Signer.Sign(tx);
+        blockChain.Signer.TrySign(tx);
         tx.Hash = tx.CalculateHash();
 
         AcceptTxResult result = blockChain.TxPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast);
@@ -678,7 +678,7 @@ internal class SpecialTransactionsTests
             privateKey,
             NullLogManager.Instance
         );
-        await signer.Sign(tx);
+        signer.TrySign(tx);
         tx.Hash = tx.CalculateHash();
 
         AcceptTxResult result = blockChain.TxPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast);
@@ -722,7 +722,7 @@ internal class SpecialTransactionsTests
 
         Transaction? tx = SignTransactionManager.CreateTxSign((UInt256)head.Number - 1, head.ParentHash!, initialNonce, spec.BlockSignerContract, blockChain.Signer.Address);
 
-        await blockChain.Signer.Sign(tx);
+        blockChain.Signer.TrySign(tx);
         tx.Hash = tx.CalculateHash();
 
         BlockReceiptsTracer receiptsTracer = new();
@@ -814,7 +814,7 @@ internal class SpecialTransactionsTests
                 .WithSenderAddress(blockChain.Signer.Address)
                 .WithTo(address).TestObject;
 
-            await blockChain.Signer.Sign(tx);
+            blockChain.Signer.TrySign(tx);
 
             int initialCountOfReceipts = receiptsTracer.TxReceipts.Length;
 
@@ -935,7 +935,7 @@ internal class SpecialTransactionsTests
             .WithValue(UInt256.Zero)
             .TestObject;
 
-        await blockChain.Signer.Sign(tx);
+        blockChain.Signer.TrySign(tx);
 
         BlockReceiptsTracer receiptsTracer = new();
         receiptsTracer.StartNewBlockTrace(head);
@@ -1006,7 +1006,7 @@ internal class SpecialTransactionsTests
             .WithValue(UInt256.Zero)
             .TestObject;
 
-        await blockChain.Signer.Sign(tx);
+        blockChain.Signer.TrySign(tx);
 
         BlockReceiptsTracer receiptsTracer = new();
         receiptsTracer.StartNewBlockTrace(head);

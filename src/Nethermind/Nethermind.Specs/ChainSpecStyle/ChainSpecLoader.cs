@@ -408,7 +408,7 @@ public class ChainSpecLoader(IJsonSerializer serializer, ILogManager logManager)
 
         if (slotNumberEnabled)
         {
-            genesisHeader.SlotNumber = 0;
+            genesisHeader.SlotNumber = chainSpecJson.Genesis.SlotNumber ?? 0;
         }
 
         genesisHeader.AuRaStep = step;

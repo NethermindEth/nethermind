@@ -475,12 +475,7 @@ namespace Nethermind.Network.Rlpx
             {
                 try
                 {
-                    const string details = "shutdown";
-                    _session.MarkDisconnected(DisconnectReason.AppClosing, DisconnectType.Local, details);
-                    if (_rlpxHost._sessionActivitySubscriptions.ContainsKey(_session.SessionId))
-                    {
-                        _rlpxHost.OnSessionDisconnected(_session, new DisconnectEventArgs(DisconnectReason.AppClosing, DisconnectType.Local, details));
-                    }
+                    _session.MarkDisconnected(DisconnectReason.AppClosing, DisconnectType.Local, "shutdown");
                 }
                 catch (InvalidOperationException)
                 {

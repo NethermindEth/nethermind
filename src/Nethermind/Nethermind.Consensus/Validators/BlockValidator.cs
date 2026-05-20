@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Text;
 using Nethermind.Blockchain;
@@ -459,13 +458,12 @@ public class BlockValidator(
     {
         // Suggested/engine blocks carry the wire BAL in BlockAccessList. RLP/P2P
         // validation reaches this helper after execution with only GeneratedBlockAccessList.
-        BlockAccessList bal = block.BlockAccessList ?? block.GeneratedBlockAccessList;
+        int itemCount = block.BlockAccessList?.ItemCount ?? block.GeneratedBlockAccessList?.ItemCount ?? 0;
         long maxBalItems = block.Header.GasLimit / Eip7928Constants.ItemCost;
 
-        long balItemCount = bal.ItemCount;
-        if (balItemCount < 0 || balItemCount > maxBalItems)
+        if (itemCount > maxBalItems)
         {
-            error = BlockErrorMessages.BlockAccessListGasLimitExceeded(balItemCount, maxBalItems);
+            error = BlockErrorMessages.BlockAccessListGasLimitExceeded(itemCount, maxBalItems);
             if (_logger.IsWarn) _logger.Warn($"{Invalid(block)} {error}");
             return false;
         }
@@ -477,27 +475,29 @@ public class BlockValidator(
     // (0 = pre-execution, 1..n = transactions, n+1 = post-execution).
     private bool ValidateBlockLevelAccessListIndexBounds(Block block, ref string? error)
     {
-        BlockAccessList bal = block.BlockAccessList!;
+        ReadOnlyBlockAccessList? bal = block.BlockAccessList;
+        if (bal is null) return true;
+
         uint maxAllowed = (uint)block.Transactions.Length + 1;
 
-        foreach (AccountChanges accountChanges in bal.AccountChanges)
+        foreach (ReadOnlyAccountChanges accountChanges in bal.AccountChanges)
         {
             if (!ValidateBlockLevelAccessListIndexBounds(block, accountChanges.BalanceChanges, maxAllowed, ref error)) return false;
             if (!ValidateBlockLevelAccessListIndexBounds(block, accountChanges.NonceChanges, maxAllowed, ref error)) return false;
             if (!ValidateBlockLevelAccessListIndexBounds(block, accountChanges.CodeChanges, maxAllowed, ref error)) return false;
-            foreach (SlotChanges slotChanges in accountChanges.StorageChanges)
+            foreach (ReadOnlySlotChanges slotChanges in accountChanges.StorageChanges)
             {
-                if (!ValidateBlockLevelAccessListIndexBounds(block, slotChanges.Changes.Values, maxAllowed, ref error)) return false;
+                if (!ValidateBlockLevelAccessListIndexBounds(block, slotChanges.Changes, maxAllowed, ref error)) return false;
             }
         }
 
         return true;
     }
 
-    private bool ValidateBlockLevelAccessListIndexBounds<T>(Block block, IReadOnlyList<T> changes, uint maxAllowed, ref string? error)
+    private bool ValidateBlockLevelAccessListIndexBounds<T>(Block block, T[] changes, uint maxAllowed, ref string? error)
         where T : IIndexedChange
     {
-        for (int i = 0; i < changes.Count; i++)
+        for (int i = 0; i < changes.Length; i++)
         {
             uint index = changes[i].Index;
             if (index <= maxAllowed) continue;

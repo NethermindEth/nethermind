@@ -50,13 +50,19 @@ public class ZkGasMeter(ulong blockZkGasLimit = ZkGasSchedule.BlockZkGasLimit, u
 
     /// <summary>
     /// Promotes the current transaction's ZK gas into the finalized block total.
-    /// Returns false if the commit would exceed the block limit.
-    /// When the commit succeeds, <see cref="IsLimitExceeded"/> is reset to <c>false</c>
-    /// so that a temporary projection spike during opcode charging does not bleed into
-    /// subsequent transactions.
+    /// Returns <c>false</c> and leaves block state (<see cref="BlockZkGasUsed"/>,
+    /// <see cref="IsLimitExceeded"/>) unchanged when either <see cref="IsLimitExceeded"/>
+    /// is already set (a prior charge failed mid-tx, leaving <c>_txZkGasUsed</c>
+    /// underestimated) or the commit would overflow the block limit.
     /// </summary>
     public bool CommitTransaction()
     {
+        if (IsLimitExceeded)
+        {
+            _txZkGasUsed = 0;
+            return false;
+        }
+
         ulong next = _blockZkGasUsed + _txZkGasUsed;
         if (next < _blockZkGasUsed) // overflow
         {
@@ -74,7 +80,6 @@ public class ZkGasMeter(ulong blockZkGasLimit = ZkGasSchedule.BlockZkGasLimit, u
 
         _blockZkGasUsed = next;
         _txZkGasUsed = 0;
-        IsLimitExceeded = false; // successful commit – clear any temporary projection spike
         return true;
     }
 
@@ -119,15 +124,12 @@ public class ZkGasMeter(ulong blockZkGasLimit = ZkGasSchedule.BlockZkGasLimit, u
     /// </summary>
     /// <remarks>
     /// <para>
-    /// <strong>Invariant – do not call <see cref="CommitTransaction"/> while
-    /// <see cref="IsLimitExceeded"/> is <c>true</c>.</strong>
     /// When this method returns <c>false</c>, <c>_txZkGasUsed</c> is intentionally <em>not</em>
     /// updated. The opcode has already executed inside the EVM (the tracer charges after
     /// execution), so its ZK cost was consumed but is not reflected in the tracked total.
-    /// At that point <c>_txZkGasUsed</c> understates the true ZK cost of the transaction.
-    /// Committing an under-counted transaction would produce a block that exceeds the ZK
-    /// prover budget and cannot be proven. The caller must cancel the transaction instead
-    /// (via <see cref="CancelTransaction"/>).
+    /// <see cref="CommitTransaction"/> enforces this by refusing to commit when
+    /// <see cref="IsLimitExceeded"/> is set. Call <see cref="CancelTransaction"/> to discard
+    /// the in-flight total and reset the flag.
     /// </para>
     /// </remarks>
     private bool ChargeAmount(ulong rawGas, ulong multiplier)
