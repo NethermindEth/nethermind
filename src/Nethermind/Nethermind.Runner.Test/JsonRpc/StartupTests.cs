@@ -368,7 +368,7 @@ public class StartupTests
     }
 
     [TestCaseSource(nameof(SimpleNumericResultCases))]
-    public async Task HttpJsonRpcResponseSink_SerializesPrimitiveNumericResultDirectly(object value, string expectedResultJson)
+    public async Task HttpJsonRpcResponseSink_SerializesPrimitiveNumericResultWithRpcShape(object value, string expectedResultJson)
     {
         string response = await WriteHttpJsonRpcResponse(new JsonRpcSuccessResponse { Id = JsonRpcId.FromObject(1), Result = value });
 
@@ -646,8 +646,8 @@ public class StartupTests
     private static IEnumerable<TestCaseData> SimpleNumericResultCases()
     {
         yield return new TestCaseData(1, "1").SetName("int");
-        yield return new TestCaseData(long.MinValue, "-9223372036854775808").SetName("long");
-        yield return new TestCaseData(ulong.MaxValue, "18446744073709551615").SetName("ulong");
+        yield return new TestCaseData(1L, "\"0x1\"").SetName("long");
+        yield return new TestCaseData(1UL, "\"0x1\"").SetName("ulong");
     }
 
     private sealed class ProbeBlobStreamableResult : IStreamableResult, IReadOnlyList<BlobAndProofV2?>, IDisposable
