@@ -551,7 +551,7 @@ namespace Nethermind.Facade
 
         public IEnumerable<FilterLog> FindLogs(LogFilter filter, CancellationToken cancellationToken = default) => logFinder.FindLogs(filter, cancellationToken);
 
-        public BlockAccessList? GetBlockAccessList(Hash256 blockHash)
+        public ReadOnlyBlockAccessList? GetBlockAccessList(Hash256 blockHash)
             => balStore.Get(blockHash);
 
         public MemoryManager<byte>? GetBlockAccessListRlp(Hash256 blockHash)

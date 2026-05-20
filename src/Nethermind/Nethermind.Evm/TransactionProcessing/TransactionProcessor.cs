@@ -1158,6 +1158,7 @@ namespace Nethermind.Evm.TransactionProcessing
             return RefundFailedEip8037Gas(tx, spec, opts, in gasPrice, spentGas, blockGas, blockStateGas);
         }
 
+        // Keep available for override for Arbitrum plugin needs
         protected virtual GasConsumed RefundOnContractCollision(
             Transaction tx,
             IReleaseSpec spec,
