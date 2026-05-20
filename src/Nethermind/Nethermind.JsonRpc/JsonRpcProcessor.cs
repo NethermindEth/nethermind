@@ -450,7 +450,8 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
             return;
         }
 
-        JsonReaderState readerState = CreateJsonReaderState(new JsonRpcProcessingOptions(JsonRpcInputMode.SingleDocument));
+        JsonRpcProcessingOptions singleDocumentOptions = new(JsonRpcInputMode.SingleDocument);
+        JsonReaderState readerState = CreateJsonReaderState(singleDocumentOptions);
         JsonDocument? jsonDocument = null;
         try
         {
@@ -459,7 +460,7 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
                 isFinalBlock: true,
                 ref readerState,
                 out jsonDocument,
-                new JsonRpcProcessingOptions(JsonRpcInputMode.SingleDocument));
+                singleDocumentOptions);
 
             if (parsed)
             {
