@@ -1353,29 +1353,36 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
             // Call depth does not change during dispatch; hoist outside the loop so a no-op
             // OnBeforeInstructionTrace doesn't force a per-instruction VmState.Env chase.
             int callDepth = VmState.Env.CallDepth;
-            while ((uint)programCounter < codeLength)
+            // Mirror programCounter in a plain (non-address-exposed) local so the
+            // hot loop keeps it in a register. programCounter is only synced
+            // around the opcode-handler call, which takes it by ref.
+            int pc = programCounter;
+            while ((uint)pc < codeLength)
             {
 #if DEBUG
                 // Allow the debugger to inspect and possibly pause execution for debugging purposes.
+                programCounter = pc;
                 debugger?.TryWait(ref _currentState, ref programCounter, ref gas, ref stack.Head);
+                pc = programCounter;
 #endif
                 // Fetch the current instruction from the code section.
-                Instruction instruction = Unsafe.Add(ref code, programCounter);
+                Instruction instruction = Unsafe.Add(ref code, pc);
 
                 // If cancellation is enabled and cancellation has been requested, throw an exception.
                 if (TCancelable.IsActive && _txTracer.IsCancelled)
                     ThrowOperationCanceledException();
 
                 // Call gas policy hook before instruction execution.
-                TGasPolicy.OnBeforeInstructionTrace(in gas, programCounter, instruction, callDepth);
+                TGasPolicy.OnBeforeInstructionTrace(in gas, pc, instruction, callDepth);
 
                 // If tracing is enabled, start an instruction trace.
                 if (TTracingInst.IsActive)
-                    StartInstructionTrace(instruction, TGasPolicy.GetRemainingGas(in gas), programCounter, in stack);
+                    StartInstructionTrace(instruction, TGasPolicy.GetRemainingGas(in gas), pc, in stack);
 
                 // Advance the program counter to point to the next instruction.
-                programCounter++;
+                pc++;
                 opCodeCount++;
+                programCounter = pc;
 
                 // For the very common POP opcode, use an inlined implementation to reduce overhead.
                 if (Instruction.POP == instruction)
@@ -1390,6 +1397,8 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
                     // Is executed using fast delegate* via calli (see: C# function pointers https://learn.microsoft.com/en-us/dotnet/csharp/language-reference/unsafe-code#function-pointers)
                     exceptionType = opcodeMethod(this, ref stack, ref gas, ref programCounter);
                 }
+                // Resync: an opcode (JUMP/JUMPI) may have moved the counter.
+                pc = programCounter;
 
                 // If gas is exhausted, jump to the out-of-gas handler.
                 if (TGasPolicy.GetRemainingGas(in gas) < 0)
