@@ -7,6 +7,7 @@ using Nethermind.Core.ExecutionRequest;
 using Nethermind.Int256;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs.ChainSpecStyle.Json;
+using Nethermind.Specs.Forks;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -168,27 +169,24 @@ public class GethGenesisLoader(IJsonSerializer serializer) : IChainSpecLoader
         HardforkLabels.ExpandAll(chainSpec.Parameters, config);
     }
 
-<<<<<<< HEAD
-    private readonly record struct BlobScheduleFork(int Order, Func<GethGenesisConfigJson, ulong?> TimestampGetter);
+    private readonly record struct BlobScheduleFork(int Order);
 
     private readonly record struct OrderedBlobScheduleSettings(int ForkOrder, BlobScheduleSettings Settings);
 
     private static readonly Dictionary<string, BlobScheduleFork> _blobScheduleForks =
         new(StringComparer.OrdinalIgnoreCase)
         {
-            [nameof(Cancun)] = new(0, static c => c.CancunTime),
-            [nameof(Prague)] = new(1, static c => c.PragueTime),
-            [nameof(Osaka)] = new(2, static c => c.OsakaTime),
-            [nameof(BPO1)] = new(3, static c => c.Bpo1Time),
-            [nameof(BPO2)] = new(4, static c => c.Bpo2Time),
-            [nameof(Amsterdam)] = new(5, static c => c.AmsterdamTime),
-            [nameof(BPO3)] = new(6, static c => c.Bpo3Time),
-            [nameof(BPO4)] = new(7, static c => c.Bpo4Time),
-            [nameof(BPO5)] = new(8, static c => c.Bpo5Time),
+            [nameof(Cancun)] = new(0),
+            [nameof(Prague)] = new(1),
+            [nameof(Osaka)] = new(2),
+            [nameof(BPO1)] = new(3),
+            [nameof(BPO2)] = new(4),
+            [nameof(Amsterdam)] = new(5),
+            [nameof(BPO3)] = new(6),
+            [nameof(BPO4)] = new(7),
+            [nameof(BPO5)] = new(8),
         };
 
-=======
->>>>>>> 34a7ca9ef3 (review: type IHasNamedForks dicts; route Geth typed props through them)
     private static void LoadGenesis(GethGenesisJson gethGenesisJson, ChainSpec chainSpec)
     {
         UInt256 nonce = gethGenesisJson.Nonce;
