@@ -782,6 +782,7 @@ public partial class EngineModuleTests
         using JsonDocument doc = JsonDocument.Parse(writer.WrittenText);
         doc.RootElement.GetArrayLength().Should().Be(1);
         doc.RootElement[0].GetProperty("proofs").GetArrayLength().Should().Be(0);
+        writer.WrittenText.Should().Be(JsonSerializer.Serialize(response, EthereumJsonSerializer.JsonOptions));
     }
 
     [Test]

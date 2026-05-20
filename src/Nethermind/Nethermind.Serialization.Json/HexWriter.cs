@@ -362,7 +362,7 @@ public static class HexWriter
         private ulong _element0;
     }
 
-    private const int MaxHexRequest = 4096;
+    private const int MaxHexRequest = 16 * 1024;
 
     /// <summary>
     /// Writes a large byte array as hex directly into a <see cref="PipeWriter"/>
