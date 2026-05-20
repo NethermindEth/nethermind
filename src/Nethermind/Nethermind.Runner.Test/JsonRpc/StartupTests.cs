@@ -115,33 +115,18 @@ public class StartupTests
             """;
 
         long receivedBefore = JsonRpcMetrics.JsonRpcBytesReceivedHttp;
-        long withoutContentLengthBefore = JsonRpcMetrics.JsonRpcHttpRequestsWithoutContentLength;
-        long bodyReadsBefore = JsonRpcMetrics.JsonRpcHttpRequestBodyReads;
-        long bodySegmentsBefore = JsonRpcMetrics.JsonRpcHttpRequestBodySegments;
-        long bufferRentsBefore = JsonRpcMetrics.JsonRpcHttpRequestBodyBufferRents;
-        long bufferBytesRentedBefore = JsonRpcMetrics.JsonRpcHttpRequestBodyBufferBytesRented;
         string response = await ProcessJsonRpcRequest(request, setContentLength: false);
         long receivedBytes = JsonRpcMetrics.JsonRpcBytesReceivedHttp - receivedBefore;
-        long withoutContentLength = JsonRpcMetrics.JsonRpcHttpRequestsWithoutContentLength - withoutContentLengthBefore;
-        long bodyReads = JsonRpcMetrics.JsonRpcHttpRequestBodyReads - bodyReadsBefore;
-        long bodySegments = JsonRpcMetrics.JsonRpcHttpRequestBodySegments - bodySegmentsBefore;
-        long bufferRents = JsonRpcMetrics.JsonRpcHttpRequestBodyBufferRents - bufferRentsBefore;
-        long bufferBytesRented = JsonRpcMetrics.JsonRpcHttpRequestBodyBufferBytesRented - bufferBytesRentedBefore;
 
         using JsonDocument doc = JsonDocument.Parse(response);
 
         Assert.That(doc.RootElement.GetProperty("result").ValueKind, Is.EqualTo(JsonValueKind.Array));
         Assert.That(receivedBytes, Is.EqualTo(Encoding.UTF8.GetByteCount(request)));
-        Assert.That(withoutContentLength, Is.EqualTo(1));
-        Assert.That(bodyReads, Is.GreaterThanOrEqualTo(1));
-        Assert.That(bodySegments, Is.GreaterThanOrEqualTo(1));
-        Assert.That(bufferRents, Is.GreaterThanOrEqualTo(1));
-        Assert.That(bufferBytesRented, Is.GreaterThanOrEqualTo(receivedBytes));
     }
 
     [Test]
     [NonParallelizable]
-    public async Task ProcessJsonRpcRequest_WithContentLength_RecordsRequestShape()
+    public async Task ProcessJsonRpcRequest_WithContentLength_ProcessesRequest()
     {
         const string request =
             """
@@ -153,20 +138,11 @@ public class StartupTests
             }
             """;
 
-        long withContentLengthBefore = JsonRpcMetrics.JsonRpcHttpRequestsWithContentLength;
-        long bufferRentsBefore = JsonRpcMetrics.JsonRpcHttpRequestBodyBufferRents;
-        long bufferBytesRentedBefore = JsonRpcMetrics.JsonRpcHttpRequestBodyBufferBytesRented;
         string response = await ProcessJsonRpcRequest(request);
-        long withContentLength = JsonRpcMetrics.JsonRpcHttpRequestsWithContentLength - withContentLengthBefore;
-        long bufferRents = JsonRpcMetrics.JsonRpcHttpRequestBodyBufferRents - bufferRentsBefore;
-        long bufferBytesRented = JsonRpcMetrics.JsonRpcHttpRequestBodyBufferBytesRented - bufferBytesRentedBefore;
 
         using JsonDocument doc = JsonDocument.Parse(response);
 
         Assert.That(doc.RootElement.GetProperty("result").ValueKind, Is.EqualTo(JsonValueKind.Array));
-        Assert.That(withContentLength, Is.EqualTo(1));
-        Assert.That(bufferRents, Is.GreaterThanOrEqualTo(1));
-        Assert.That(bufferBytesRented, Is.GreaterThanOrEqualTo(Encoding.UTF8.GetByteCount(request)));
     }
 
     [Test]
@@ -256,20 +232,14 @@ public class StartupTests
     [NonParallelizable]
     public async Task ProcessJsonRpcRequest_OverMaxRequestBodySize_ReturnsPayloadTooLarge()
     {
-        long bodyReadsBefore = JsonRpcMetrics.JsonRpcHttpRequestBodyReads;
-        long bufferRentsBefore = JsonRpcMetrics.JsonRpcHttpRequestBodyBufferRents;
         (string response, int statusCode) = await ProcessJsonRpcRequestWithStatus(
             "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"engine_getBlobsV1\",\"params\":[[]]}",
             maxRequestBodySize: 1);
-        long bodyReads = JsonRpcMetrics.JsonRpcHttpRequestBodyReads - bodyReadsBefore;
-        long bufferRents = JsonRpcMetrics.JsonRpcHttpRequestBodyBufferRents - bufferRentsBefore;
 
         using JsonDocument doc = JsonDocument.Parse(response);
 
         Assert.That(statusCode, Is.EqualTo(StatusCodes.Status413PayloadTooLarge));
         Assert.That(doc.RootElement.GetProperty("error").GetProperty("code").GetInt32(), Is.EqualTo(ErrorCodes.LimitExceeded));
-        Assert.That(bodyReads, Is.EqualTo(0));
-        Assert.That(bufferRents, Is.EqualTo(0));
     }
 
     [Test]
@@ -413,8 +383,6 @@ public class StartupTests
         MemoryStream responseBody = new();
         ctx.Features.Set<IHttpResponseBodyFeature>(new StreamResponseBodyFeature(responseBody));
         IJsonRpcLocalStats jsonRpcLocalStats = Substitute.For<IJsonRpcLocalStats>();
-        long streamableBefore = JsonRpcMetrics.JsonRpcHttpStreamableResponses;
-        long unbufferedBefore = JsonRpcMetrics.JsonRpcHttpUnbufferedResponses;
 
         HttpJsonRpcResponseSink sink = new(
             ctx,
@@ -435,8 +403,6 @@ public class StartupTests
         await sink.CompleteAsync(CancellationToken.None);
 
         Assert.That(ctx.Response.ContentType, Is.EqualTo("application/json"));
-        Assert.That(JsonRpcMetrics.JsonRpcHttpStreamableResponses - streamableBefore, Is.EqualTo(1));
-        Assert.That(JsonRpcMetrics.JsonRpcHttpUnbufferedResponses - unbufferedBefore, Is.EqualTo(1));
         jsonRpcLocalStats.Received(1).ReportCall(
             Arg.Is<RpcReport>(static report => report.Method == "engine_getBlobsV2"),
             Arg.Any<long>(),
@@ -450,8 +416,6 @@ public class StartupTests
         DefaultHttpContext ctx = new();
         MemoryStream responseBody = new();
         ctx.Features.Set<IHttpResponseBodyFeature>(new StreamResponseBodyFeature(responseBody));
-        long serializedBefore = JsonRpcMetrics.JsonRpcHttpSerializedResponses;
-        long bufferedBefore = JsonRpcMetrics.JsonRpcHttpBufferedResponses;
         IJsonRpcLocalStats jsonRpcLocalStats = Substitute.For<IJsonRpcLocalStats>();
 
         HttpJsonRpcResponseSink sink = new(
@@ -469,8 +433,6 @@ public class StartupTests
             CancellationToken.None);
         await sink.CompleteAsync(CancellationToken.None);
 
-        Assert.That(JsonRpcMetrics.JsonRpcHttpSerializedResponses - serializedBefore, Is.EqualTo(1));
-        Assert.That(JsonRpcMetrics.JsonRpcHttpBufferedResponses - bufferedBefore, Is.EqualTo(1));
         jsonRpcLocalStats.Received(1).ReportCall(
             Arg.Is<RpcReport>(static report => report.Method == "eth_chainId"),
             Arg.Any<long>(),

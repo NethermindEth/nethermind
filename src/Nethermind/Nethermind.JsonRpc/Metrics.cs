@@ -18,14 +18,6 @@ namespace Nethermind.JsonRpc
         public static long JsonRpcRequestDeserializationFailures { get; set; }
 
         [CounterMetric]
-        [Description("Number of JSON RPC HTTP envelopes parsed on the direct UTF-8 path.")]
-        public static long JsonRpcDirectUtf8Parses;
-
-        [CounterMetric]
-        [Description("Number of JSON RPC HTTP documents parsed through the JsonDocument fallback path.")]
-        public static long JsonRpcJsonDocumentFallbackParses;
-
-        [CounterMetric]
         [Description("Number of JSON RPC requests that were invalid.")]
         public static long JsonRpcInvalidRequests { get; set; }
 
@@ -46,22 +38,6 @@ namespace Nethermind.JsonRpc
         public static long JsonRpcBytesSentHttp;
 
         [CounterMetric]
-        [Description("Number of buffered JSON RPC HTTP responses.")]
-        public static long JsonRpcHttpBufferedResponses;
-
-        [CounterMetric]
-        [Description("Number of unbuffered JSON RPC HTTP responses.")]
-        public static long JsonRpcHttpUnbufferedResponses;
-
-        [CounterMetric]
-        [Description("Number of JSON RPC HTTP responses written through IStreamableResult.")]
-        public static long JsonRpcHttpStreamableResponses;
-
-        [CounterMetric]
-        [Description("Number of JSON RPC HTTP responses written through generic JSON serialization.")]
-        public static long JsonRpcHttpSerializedResponses;
-
-        [CounterMetric]
         [Description("Number of JSON RPC bytes sent through web sockets.")]
         public static long JsonRpcBytesSentWebSockets;
 
@@ -76,30 +52,6 @@ namespace Nethermind.JsonRpc
         [CounterMetric]
         [Description("Number of JSON RPC bytes received through http.")]
         public static long JsonRpcBytesReceivedHttp;
-
-        [CounterMetric]
-        [Description("Number of JSON RPC HTTP requests received with a Content-Length header.")]
-        public static long JsonRpcHttpRequestsWithContentLength;
-
-        [CounterMetric]
-        [Description("Number of JSON RPC HTTP requests received without a Content-Length header.")]
-        public static long JsonRpcHttpRequestsWithoutContentLength;
-
-        [CounterMetric]
-        [Description("Number of JSON RPC HTTP request body reads.")]
-        public static long JsonRpcHttpRequestBodyReads;
-
-        [CounterMetric]
-        [Description("Number of JSON RPC HTTP request body segments read.")]
-        public static long JsonRpcHttpRequestBodySegments;
-
-        [CounterMetric]
-        [Description("Number of pooled buffers rented while collecting JSON RPC HTTP request bodies.")]
-        public static long JsonRpcHttpRequestBodyBufferRents;
-
-        [CounterMetric]
-        [Description("Total capacity of pooled buffers rented while collecting JSON RPC HTTP request bodies.")]
-        public static long JsonRpcHttpRequestBodyBufferBytesRented;
 
         [CounterMetric]
         [Description("Number of JSON RPC bytes received through web sockets.")]

@@ -420,7 +420,6 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
         {
             if (TryReadSingleObjectRequest(requestBody, out JsonRpcRequest? directRequest, out JsonDocument? directParamsDocument))
             {
-                Metrics.JsonRpcDirectUtf8Parses++;
                 await ProcessSingleRequestToSink(directRequest, directParamsDocument, context, sink, cancellationToken);
                 return;
             }
@@ -465,7 +464,6 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
 
             if (parsed)
             {
-                Metrics.JsonRpcJsonDocumentFallbackParses++;
                 ReadOnlySequence<byte> trailingBuffer = buffer.TrimStart();
                 if (!trailingBuffer.IsEmpty)
                 {
@@ -847,12 +845,10 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
     {
         if (TryReadObjectRequest(itemBody, out JsonRpcRequest? directRequest, out JsonDocument? paramsDocument))
         {
-            Metrics.JsonRpcDirectUtf8Parses++;
             requestDocument = paramsDocument;
             return directRequest;
         }
 
-        Metrics.JsonRpcJsonDocumentFallbackParses++;
         requestDocument = JsonDocument.Parse(itemBody);
         try
         {
