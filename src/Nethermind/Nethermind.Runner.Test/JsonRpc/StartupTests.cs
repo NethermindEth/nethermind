@@ -342,6 +342,7 @@ public class StartupTests
         Assert.That(doc.RootElement.GetProperty("result").GetArrayLength(), Is.EqualTo(1));
         Assert.That(doc.RootElement.GetProperty("result")[0].ValueKind, Is.EqualTo(JsonValueKind.Null));
         Assert.That(streamableResult.WriteCount, Is.EqualTo(1));
+        Assert.That(streamableResult.DisposeCount, Is.EqualTo(1));
     }
 
     [TestCase("ok")]
@@ -601,9 +602,10 @@ public class StartupTests
         bool isAuthenticated = false) =>
         new("http", "127.0.0.1", 8551, endpoint, isAuthenticated, [ModuleType.Engine]);
 
-    private sealed class ProbeBlobStreamableResult : IStreamableResult, IReadOnlyList<BlobAndProofV2?>
+    private sealed class ProbeBlobStreamableResult : IStreamableResult, IReadOnlyList<BlobAndProofV2?>, IDisposable
     {
         public int WriteCount { get; private set; }
+        public int DisposeCount { get; private set; }
 
         public int Count => 1;
 
@@ -620,6 +622,8 @@ public class StartupTests
             throw new InvalidOperationException("Generic blob serialization path was used.");
 
         System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => GetEnumerator();
+
+        public void Dispose() => DisposeCount++;
     }
 
     private sealed class FlushingStreamableResult : IStreamableResult
