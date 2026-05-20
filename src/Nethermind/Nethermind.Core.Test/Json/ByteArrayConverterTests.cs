@@ -29,7 +29,7 @@ public class ByteArrayConverterTests : ConverterTestBase<byte[]>
     public void Test_roundtrip_large()
     {
         ByteArrayConverter converter = new();
-        for (int i = 0; i < 1024; i++)
+        for (int i = 0; i <= 4096; i++)
         {
             byte[] bytes = new byte[i];
             for (int j = 0; j < i; j++)
