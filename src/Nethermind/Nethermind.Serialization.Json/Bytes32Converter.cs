@@ -26,7 +26,12 @@ namespace Nethermind.Serialization.Json
             Type typeToConvert,
             JsonSerializerOptions options)
         {
-            ReadOnlySpan<byte> hex = reader.HasValueSequence ? reader.ValueSequence.ToArray() : reader.ValueSpan;
+            if (reader.HasValueSequence)
+            {
+                return ReadValueSequence(ref reader);
+            }
+
+            ReadOnlySpan<byte> hex = reader.ValueSpan;
             if (hex.Length >= 2 && Unsafe.As<byte, ushort>(ref MemoryMarshal.GetReference(hex)) == HexPrefix)
             {
                 hex = MemoryMarshal.CreateReadOnlySpan(ref Unsafe.Add(ref MemoryMarshal.GetReference(hex), 2), hex.Length - 2);
@@ -39,8 +44,32 @@ namespace Nethermind.Serialization.Json
 
             if (hex.Length < 64)
             {
-                // Use Vector512<byte> as 64-byte buffer instead of stackalloc (avoids GS cookie)
-                // Fill with '0' (0x30) using single vector broadcast + store
+                byte[] paddedResult = new byte[32];
+                int bytesWritten = (hex.Length >> 1) + (hex.Length & 1);
+                Bytes.FromUtf8HexString(hex, paddedResult.AsSpan(32 - bytesWritten));
+                return paddedResult;
+            }
+
+            byte[] exactResult = GC.AllocateUninitializedArray<byte>(32);
+            Bytes.FromUtf8HexString(hex, exactResult);
+            return exactResult;
+        }
+
+        private static byte[] ReadValueSequence(ref Utf8JsonReader reader)
+        {
+            ReadOnlySpan<byte> hex = reader.ValueSequence.ToArray();
+            if (hex.Length >= 2 && Unsafe.As<byte, ushort>(ref MemoryMarshal.GetReference(hex)) == HexPrefix)
+            {
+                hex = MemoryMarshal.CreateReadOnlySpan(ref Unsafe.Add(ref MemoryMarshal.GetReference(hex), 2), hex.Length - 2);
+            }
+
+            if (hex.Length > 64)
+            {
+                ThrowJsonException();
+            }
+
+            if (hex.Length < 64)
+            {
                 Vector512<byte> hex32Storage = Vector512.Create((byte)'0');
                 ref byte hex32Ref = ref Unsafe.As<Vector512<byte>, byte>(ref hex32Storage);
                 hex.CopyTo(MemoryMarshal.CreateSpan(ref Unsafe.Add(ref hex32Ref, 64 - hex.Length), hex.Length));

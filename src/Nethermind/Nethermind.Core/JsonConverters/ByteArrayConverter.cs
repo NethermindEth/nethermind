@@ -56,6 +56,80 @@ public class ByteArrayConverter : JsonConverter<byte[]>
     }
 
     [SkipLocalsInit]
+    public static bool TryConvertToExactLength(ref Utf8JsonReader reader, scoped Span<byte> destination, bool strictHexFormat = false, bool requireEvenLength = false) =>
+        TryConvertToSpan(ref reader, destination, out int bytesWritten, strictHexFormat, requireEvenLength) &&
+        bytesWritten == destination.Length;
+
+    [SkipLocalsInit]
+    public static bool TryConvertToSpan(
+        ref Utf8JsonReader reader,
+        scoped Span<byte> destination,
+        out int bytesWritten,
+        bool strictHexFormat = false,
+        bool requireEvenLength = false)
+    {
+        JsonTokenType tokenType = reader.TokenType;
+        if (tokenType == JsonTokenType.None || tokenType == JsonTokenType.Null)
+        {
+            bytesWritten = 0;
+            return false;
+        }
+
+        if (tokenType != JsonTokenType.String && tokenType != JsonTokenType.PropertyName)
+        {
+            ThrowInvalidOperationException();
+        }
+
+        if (reader.HasValueSequence)
+        {
+            bytesWritten = 0;
+            return false;
+        }
+
+        return TryConvertValueSpanToSpan(ref reader, destination, out bytesWritten, strictHexFormat, requireEvenLength);
+    }
+
+    private static bool TryConvertValueSpanToSpan(
+        ref Utf8JsonReader reader,
+        scoped Span<byte> destination,
+        out int bytesWritten,
+        bool strictHexFormat,
+        bool requireEvenLength)
+    {
+        ReadOnlySpan<byte> hex = reader.ValueSpan;
+        int length = hex.Length;
+        if (length == 0)
+        {
+            bytesWritten = 0;
+            return false;
+        }
+
+        ref byte hexRef = ref MemoryMarshal.GetReference(hex);
+        if (length >= 2 && Unsafe.As<byte, ushort>(ref hexRef) == HexPrefix)
+        {
+            hex = MemoryMarshal.CreateReadOnlySpan(ref Unsafe.Add(ref hexRef, 2), length - 2);
+        }
+        else if (strictHexFormat)
+        {
+            Bytes.ThrowFormatException(Bytes.ErrMissingPrefix);
+        }
+
+        if (requireEvenLength && hex.Length % 2 != 0)
+        {
+            Bytes.ThrowFormatException(Bytes.ErrOddLength);
+        }
+
+        bytesWritten = (hex.Length >> 1) + (hex.Length & 1);
+        if (bytesWritten > destination.Length)
+        {
+            return false;
+        }
+
+        Bytes.FromUtf8HexString(hex, destination[..bytesWritten]);
+        return true;
+    }
+
+    [SkipLocalsInit]
     [MethodImpl(MethodImplOptions.NoInlining)]
     private static byte[]? ConvertValueSequence(ref Utf8JsonReader reader, bool strictHexFormat, bool requireEvenLength = false)
     {

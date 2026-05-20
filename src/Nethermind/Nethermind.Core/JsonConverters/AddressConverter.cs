@@ -19,13 +19,8 @@ public class AddressConverter : JsonConverter<Address>
 
     internal static Address? ReadAddress(ref Utf8JsonReader reader)
     {
-        if (reader.TokenType == JsonTokenType.Null)
-        {
-            return null;
-        }
-
         Span<byte> bytes = stackalloc byte[Address.Size];
-        if (TryReadAddressBytes(ref reader, bytes))
+        if (ByteArrayConverter.TryConvertToExactLength(ref reader, bytes))
         {
             return new Address(bytes);
         }
@@ -51,7 +46,7 @@ public class AddressConverter : JsonConverter<Address>
     internal static Address ReadAddressPropertyName(ref Utf8JsonReader reader)
     {
         Span<byte> bytes = stackalloc byte[Address.Size];
-        if (TryReadAddressBytes(ref reader, bytes))
+        if (ByteArrayConverter.TryConvertToExactLength(ref reader, bytes))
         {
             return new Address(bytes);
         }
@@ -70,25 +65,4 @@ public class AddressConverter : JsonConverter<Address>
         writer.WritePropertyName(addressBytes);
     }
 
-    private static bool TryReadAddressBytes(ref Utf8JsonReader reader, scoped Span<byte> bytes)
-    {
-        if (reader.HasValueSequence)
-        {
-            return false;
-        }
-
-        ReadOnlySpan<byte> hex = reader.ValueSpan;
-        if (hex.Length >= 2 && hex[0] == (byte)'0' && hex[1] == (byte)'x')
-        {
-            hex = hex[2..];
-        }
-
-        if (hex.Length != Address.Size * 2)
-        {
-            return false;
-        }
-
-        Bytes.FromUtf8HexString(hex, bytes);
-        return true;
-    }
 }

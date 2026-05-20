@@ -15,14 +15,20 @@ public class Hash256Converter(bool strictHexFormat = false) : JsonConverter<Hash
 {
     private readonly bool _strictHexFormat = strictHexFormat;
 
+    [SkipLocalsInit]
     public override Hash256? Read(
         ref Utf8JsonReader reader,
         Type typeToConvert,
         JsonSerializerOptions options)
     {
+        Span<byte> bytes = stackalloc byte[Hash256.Size];
+        if (ByteArrayConverter.TryConvertToExactLength(ref reader, bytes, _strictHexFormat))
+        {
+            return new Hash256(bytes);
+        }
 
-        byte[]? bytes = ByteArrayConverter.Convert(ref reader, _strictHexFormat);
-        return bytes is null ? null : new Hash256(bytes);
+        byte[]? bytesArray = ByteArrayConverter.Convert(ref reader, _strictHexFormat);
+        return bytesArray is null ? null : new Hash256(bytesArray);
     }
 
     [SkipLocalsInit]
@@ -55,10 +61,17 @@ public class Hash256Converter(bool strictHexFormat = false) : JsonConverter<Hash
     }
 
     // Methods needed to ser/de dictionary keys
+    [SkipLocalsInit]
     public override Hash256 ReadAsPropertyName(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
     {
-        byte[]? bytes = ByteArrayConverter.Convert(ref reader, _strictHexFormat);
-        return bytes is null ? null! : new Hash256(bytes);
+        Span<byte> bytes = stackalloc byte[Hash256.Size];
+        if (ByteArrayConverter.TryConvertToExactLength(ref reader, bytes, _strictHexFormat))
+        {
+            return new Hash256(bytes);
+        }
+
+        byte[]? bytesArray = ByteArrayConverter.Convert(ref reader, _strictHexFormat);
+        return bytesArray is null ? null! : new Hash256(bytesArray);
     }
 
     public override void WriteAsPropertyName(Utf8JsonWriter writer, Hash256 value, JsonSerializerOptions options) => writer.WritePropertyName(value.ToString());
