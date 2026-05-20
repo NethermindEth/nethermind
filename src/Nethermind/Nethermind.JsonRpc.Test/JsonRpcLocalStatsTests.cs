@@ -209,6 +209,7 @@ namespace Nethermind.JsonRpc.Test
         public void Records_boundary_metrics_when_report_contains_measurements()
         {
             RecordingMetricObserver boundaryObserver = new();
+            RecordingMetricObserver boundaryPercentObserver = new();
             RecordingMetricObserver preMethodObserver = new();
             RecordingMetricObserver requestBodyCollectionObserver = new();
             RecordingMetricObserver envelopeParseObserver = new();
@@ -219,6 +220,7 @@ namespace Nethermind.JsonRpc.Test
             RecordingMetricObserver responseFlushCountObserver = new();
 
             IMetricObserver previousBoundary = Metrics.JsonRpcBoundaryLatencyMicros;
+            IMetricObserver previousBoundaryPercent = Metrics.JsonRpcBoundaryLatencyPercent;
             IMetricObserver previousPreMethod = Metrics.JsonRpcPreMethodBoundaryLatencyMicros;
             IMetricObserver previousRequestBodyCollection = Metrics.JsonRpcRequestBodyCollectionLatencyMicros;
             IMetricObserver previousEnvelopeParse = Metrics.JsonRpcEnvelopeParseLatencyMicros;
@@ -229,6 +231,7 @@ namespace Nethermind.JsonRpc.Test
             IMetricObserver previousResponseFlushCount = Metrics.JsonRpcResponseFlushCount;
 
             Metrics.JsonRpcBoundaryLatencyMicros = boundaryObserver;
+            Metrics.JsonRpcBoundaryLatencyPercent = boundaryPercentObserver;
             Metrics.JsonRpcPreMethodBoundaryLatencyMicros = preMethodObserver;
             Metrics.JsonRpcRequestBodyCollectionLatencyMicros = requestBodyCollectionObserver;
             Metrics.JsonRpcEnvelopeParseLatencyMicros = envelopeParseObserver;
@@ -263,6 +266,7 @@ namespace Nethermind.JsonRpc.Test
 
                 silentLogger.LogList.Should().BeEmpty();
                 boundaryObserver.Observations.Should().ContainSingle().Which.Value.Should().Be(35);
+                boundaryPercentObserver.Observations.Should().ContainSingle().Which.Value.Should().BeApproximately(35.0 * 100.0 / 135.0, 0.0001);
                 preMethodObserver.Observations.Should().ContainSingle().Which.Value.Should().Be(10);
                 requestBodyCollectionObserver.Observations.Should().ContainSingle().Which.Value.Should().Be(4);
                 envelopeParseObserver.Observations.Should().ContainSingle().Which.Value.Should().Be(6);
@@ -276,6 +280,7 @@ namespace Nethermind.JsonRpc.Test
             finally
             {
                 Metrics.JsonRpcBoundaryLatencyMicros = previousBoundary;
+                Metrics.JsonRpcBoundaryLatencyPercent = previousBoundaryPercent;
                 Metrics.JsonRpcPreMethodBoundaryLatencyMicros = previousPreMethod;
                 Metrics.JsonRpcRequestBodyCollectionLatencyMicros = previousRequestBodyCollection;
                 Metrics.JsonRpcEnvelopeParseLatencyMicros = previousEnvelopeParse;

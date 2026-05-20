@@ -126,6 +126,14 @@ public class JsonRpcLocalStats(ITimestamper timestamper, IJsonRpcConfig jsonRpcC
         }
 
         Metrics.JsonRpcBoundaryLatencyMicros.Observe(timings.BoundaryMicroseconds, label);
+        long measuredMicroseconds = timings.BoundaryMicroseconds + timings.MethodBodyMicroseconds;
+        if (measuredMicroseconds != 0)
+        {
+            Metrics.JsonRpcBoundaryLatencyPercent.Observe(
+                (double)timings.BoundaryMicroseconds * 100.0 / measuredMicroseconds,
+                label);
+        }
+
         Metrics.JsonRpcPreMethodBoundaryLatencyMicros.Observe(timings.PreMethodMicroseconds, label);
         Metrics.JsonRpcRequestBodyCollectionLatencyMicros.Observe(timings.RequestBodyCollectionMicroseconds, label);
         Metrics.JsonRpcEnvelopeParseLatencyMicros.Observe(timings.EnvelopeParseMicroseconds, label);
