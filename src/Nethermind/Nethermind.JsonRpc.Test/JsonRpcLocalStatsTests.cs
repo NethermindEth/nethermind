@@ -181,6 +181,31 @@ namespace Nethermind.JsonRpc.Test
         }
 
         [Test]
+        public void Records_local_stats_latency_when_per_method_enabled()
+        {
+            RecordingMetricObserver observer = new();
+            IMetricObserver previous = Metrics.JsonRpcLocalStatsLatencyMicros;
+            Metrics.JsonRpcLocalStatsLatencyMicros = observer;
+            try
+            {
+                TestLogger silentLogger = new() { IsInfo = false };
+                OneLoggerLogManager silentLogManager = new(new(silentLogger));
+                JsonRpcConfig config = new() { EnablePerMethodMetrics = true };
+                JsonRpcLocalStats localStats = new(_manualTimestamper, config, silentLogManager);
+
+                localStats.ReportCall(new RpcReport("eth_call", 123, true));
+
+                observer.Observations.Should().ContainSingle();
+                observer.Observations[0].Value.Should().BeGreaterThanOrEqualTo(0);
+                observer.Observations[0].Labels.Should().Equal("eth_call", "success");
+            }
+            finally
+            {
+                Metrics.JsonRpcLocalStatsLatencyMicros = previous;
+            }
+        }
+
+        [Test]
         public void Records_boundary_metrics_when_report_contains_measurements()
         {
             RecordingMetricObserver boundaryObserver = new();

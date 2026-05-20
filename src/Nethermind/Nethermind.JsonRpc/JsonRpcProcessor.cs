@@ -18,6 +18,7 @@ using Microsoft.AspNetCore.Connections;
 using Microsoft.AspNetCore.Http;
 using Nethermind.Config;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Metric;
 using Nethermind.Core.Resettables;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
@@ -943,7 +944,7 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
             if (writeTask.IsCompletedSuccessfully)
             {
                 writeTask.GetAwaiter().GetResult();
-                entry.Dispose();
+                DisposeEntry(entry);
                 return ValueTask.CompletedTask;
             }
 
@@ -951,7 +952,7 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
         }
         catch
         {
-            entry.Dispose();
+            DisposeEntry(entry);
             throw;
         }
 
@@ -963,7 +964,7 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
             }
             finally
             {
-                entry.Dispose();
+                DisposeEntry(entry);
             }
         }
     }
@@ -980,7 +981,7 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
             if (writeTask.IsCompletedSuccessfully)
             {
                 writeTask.GetAwaiter().GetResult();
-                entry.Dispose();
+                DisposeEntry(entry);
                 return ValueTask.CompletedTask;
             }
 
@@ -988,7 +989,7 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
         }
         catch
         {
-            entry.Dispose();
+            DisposeEntry(entry);
             throw;
         }
 
@@ -1000,8 +1001,28 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
             }
             finally
             {
-                entry.Dispose();
+                DisposeEntry(entry);
             }
+        }
+    }
+
+    private static void DisposeEntry(JsonRpcResult.Entry entry)
+    {
+        IMetricObserver observer = Metrics.JsonRpcResponseDisposeLatencyMicros;
+        if (!ShouldObserveMetric(observer))
+        {
+            entry.Dispose();
+            return;
+        }
+
+        long startTimestamp = Stopwatch.GetTimestamp();
+        try
+        {
+            entry.Dispose();
+        }
+        finally
+        {
+            observer.Observe(GetElapsedMicroseconds(startTimestamp), new JsonRpcMetricLabels(entry.Report.Method, entry.Report.Success));
         }
     }
 
@@ -1091,19 +1112,36 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
     private JsonRpcResult.Entry RecordResponse(JsonRpcResponse response, in RpcReport report)
     {
         JsonRpcResult.Entry result = new(response, report);
-        return !IsRecordingResponse ? result : RecordResponse(result);
+        return RecordResponse(result);
     }
 
+    private JsonRpcResult.Entry RecordResponse(in JsonRpcResult.Entry result) =>
+        !IsRecordingResponse ? result : RecordResponseSlow(result);
+
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private JsonRpcResult.Entry RecordResponse(in JsonRpcResult.Entry result)
+    private JsonRpcResult.Entry RecordResponseSlow(in JsonRpcResult.Entry result)
     {
-        if (IsRecordingResponse)
+        IMetricObserver observer = Metrics.JsonRpcResponseRecorderLatencyMicros;
+        if (!ShouldObserveMetric(observer))
         {
             _recorder.RecordResponse(SerializeForDiagnostics(result));
+            return result;
+        }
+
+        long startTimestamp = Stopwatch.GetTimestamp();
+        try
+        {
+            _recorder.RecordResponse(SerializeForDiagnostics(result));
+        }
+        finally
+        {
+            observer.Observe(GetElapsedMicroseconds(startTimestamp), new JsonRpcMetricLabels(result.Report.Method, result.Report.Success));
         }
 
         return result;
     }
+
+    private static bool ShouldObserveMetric(IMetricObserver observer) => !ReferenceEquals(observer, NoopMetricObserver.Instance);
 
     private static readonly StreamPipeReaderOptions _pipeReaderOptions = new(leaveOpen: false);
 

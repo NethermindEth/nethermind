@@ -4,12 +4,12 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Diagnostics.Contracts;
 using System.Globalization;
 using System.Linq;
 using System.Text;
 using Nethermind.Core;
-using Nethermind.Core.Metric;
 using Nethermind.Logging;
 
 namespace Nethermind.JsonRpc;
@@ -44,12 +44,20 @@ public class JsonRpcLocalStats(ITimestamper timestamper, IJsonRpcConfig jsonRpcC
             return;
         }
 
-        ReportCallInternal(report, elapsedMicroseconds, size);
-    }
-
-    private record MetricLabel(string method, bool success) : IMetricLabels
-    {
-        public string[] Labels => [method, success ? "success" : "fail"];
+        long startTimestamp = _enablePerMethodMetrics ? Stopwatch.GetTimestamp() : 0;
+        try
+        {
+            ReportCallInternal(report, elapsedMicroseconds, size);
+        }
+        finally
+        {
+            if (_enablePerMethodMetrics)
+            {
+                Metrics.JsonRpcLocalStatsLatencyMicros.Observe(
+                    (long)Stopwatch.GetElapsedTime(startTimestamp).TotalMicroseconds,
+                    new JsonRpcMetricLabels(report.Method, report.Success));
+            }
+        }
     }
 
     private void ReportCallInternal(RpcReport report, long elapsedMicroseconds, long? size)
@@ -58,7 +66,7 @@ public class JsonRpcLocalStats(ITimestamper timestamper, IJsonRpcConfig jsonRpcC
 
         if (_enablePerMethodMetrics)
         {
-            MetricLabel label = new(report.Method, report.Success);
+            JsonRpcMetricLabels label = new(report.Method, report.Success);
             Metrics.JsonRpcCallLatencyMicros.Observe(reportHandlingTimeMicroseconds, label);
             ObserveBoundaryTimings(report.BoundaryTimings, label);
         }
@@ -110,7 +118,7 @@ public class JsonRpcLocalStats(ITimestamper timestamper, IJsonRpcConfig jsonRpcC
         }
     }
 
-    private static void ObserveBoundaryTimings(RpcBoundaryTimings timings, MetricLabel label)
+    private static void ObserveBoundaryTimings(RpcBoundaryTimings timings, JsonRpcMetricLabels label)
     {
         if (!timings.HasMeasurements)
         {
