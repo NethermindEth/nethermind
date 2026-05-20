@@ -19,12 +19,34 @@ namespace Nethermind.Core.BlockAccessLists;
 public class ReadOnlyBlockAccessList : IEquatable<ReadOnlyBlockAccessList>
 {
     private readonly Dictionary<Address, ReadOnlyAccountChanges> _accountChanges;
+    private readonly ReadOnlyAccountChanges[] _orderedAccounts;
 
     [JsonIgnore]
     public int ItemCount { get; }
 
+    /// <summary>
+    /// Sum of <see cref="ReadOnlyAccountChanges.StorageReads"/> lengths across all accounts.
+    /// Cached once at construction so per-block validation doesn't re-walk the BAL.
+    /// </summary>
+    [JsonIgnore]
+    public int TotalStorageReads { get; }
+
+    /// <summary>
+    /// Sum of per-slot change-event counts (<c>StorageChanges[i].Changes.Length</c>) across all
+    /// accounts. Bounds the total (slot, tx) pairs the generator can produce in a valid block.
+    /// </summary>
+    [JsonIgnore]
+    public int TotalStorageChangeEvents { get; }
+
     public EnumerableWithCount<ReadOnlyAccountChanges> AccountChanges
         => new(_accountChanges.Values, _accountChanges.Count);
+
+    /// <summary>
+    /// Span over the address-sorted accounts (same data as <see cref="AccountChanges"/>, but
+    /// skips the dictionary's enumerator for hot walks).
+    /// </summary>
+    [JsonIgnore]
+    public ReadOnlySpan<ReadOnlyAccountChanges> AccountChangesAsSpan => _orderedAccounts;
 
     public bool HasAccount(Address address) => _accountChanges.ContainsKey(address);
 
@@ -41,12 +63,19 @@ public class ReadOnlyBlockAccessList : IEquatable<ReadOnlyBlockAccessList>
     /// </summary>
     public ReadOnlyBlockAccessList(ReadOnlyAccountChanges[] orderedAccounts, int itemCount)
     {
+        _orderedAccounts = orderedAccounts;
         _accountChanges = new Dictionary<Address, ReadOnlyAccountChanges>(orderedAccounts.Length);
+        int totalReads = 0;
+        int totalChangeEvents = 0;
         foreach (ReadOnlyAccountChanges a in orderedAccounts)
         {
             _accountChanges.Add(a.Address, a);
+            totalReads += a.StorageReads.Length;
+            foreach (ReadOnlySlotChanges slot in a.StorageChanges) totalChangeEvents += slot.Changes.Length;
         }
         ItemCount = itemCount;
+        TotalStorageReads = totalReads;
+        TotalStorageChangeEvents = totalChangeEvents;
     }
 
     public bool Equals(ReadOnlyBlockAccessList? other)

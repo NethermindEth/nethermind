@@ -5,14 +5,9 @@ using System.Text.Json.Nodes;
 
 namespace Nethermind.Tools.Kute.JsonRpcValidator;
 
-public sealed class BatchJsonRpcValidator : IJsonRpcValidator
+public sealed class BatchJsonRpcValidator(IJsonRpcValidator singleValidator) : IJsonRpcValidator
 {
-    private readonly IJsonRpcValidator _singleValidator;
-
-    public BatchJsonRpcValidator(IJsonRpcValidator singleValidator)
-    {
-        _singleValidator = singleValidator;
-    }
+    private readonly IJsonRpcValidator _singleValidator = singleValidator;
 
     public bool IsValid(JsonRpc.Request request, JsonRpc.Response response)
     {
@@ -27,14 +22,14 @@ public sealed class BatchJsonRpcValidator : IJsonRpcValidator
                         return false;
                     }
 
-                    var responses = response.Json
+                    List<JsonRpc.Response> responses = response.Json
                         .AsArray()
                         .Select(r => new JsonRpc.Response(r!))
                         .Where(r => r.Id is not null)
                         .OrderBy(r => r.Id)
                         .ToList();
 
-                    var requests = batch
+                    List<JsonRpc.Request.Single> requests = batch
                         .Items()
                         .Select(r => r!)
                         .Where(r => r.Id is not null)
@@ -43,7 +38,7 @@ public sealed class BatchJsonRpcValidator : IJsonRpcValidator
 
                     if (responses.Count != requests.Count) return false;
 
-                    foreach (var (req, res) in requests.Zip(responses))
+                    foreach ((JsonRpc.Request.Single? req, JsonRpc.Response? res) in requests.Zip(responses))
                     {
                         if (req.Id != res.Id) return false;
                         if (_singleValidator.IsInvalid(req, res)) return false;
