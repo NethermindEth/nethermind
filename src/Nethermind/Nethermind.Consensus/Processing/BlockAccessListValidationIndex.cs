@@ -104,8 +104,7 @@ internal sealed class BlockAccessListValidationIndex
         Lane<ValueHash256> code = Lane<ValueHash256>.CreateImmutable(counts.Code);
         StorageLane storage = StorageLane.CreateImmutable(counts.Storage);
 
-        int accountCount = blockAccessList.AccountChanges.Count;
-        ulong[] hasAccountWords = new ulong[(accountCount + 63) >> 6];
+        ulong[] hasAccountWords = new ulong[WordCount(blockAccessList.AccountChanges.Count)];
 
         FillAndMark(blockAccessList, addressIndex, lastIndex, balance, nonce, code, storage, hasAccountWords);
 
@@ -445,7 +444,7 @@ internal sealed class BlockAccessListValidationIndex
             while (word != 0)
             {
                 int bitOffset = BitOperations.TrailingZeroCount(word);
-                yield return (wordIdx << 6) + bitOffset;
+                yield return (wordIdx << WordShift) + bitOffset;
                 word &= word - 1;
             }
         }
@@ -498,7 +497,7 @@ internal sealed class BlockAccessListValidationIndex
         foreach (ReadOnlyAccountChanges accountChanges in blockAccessList.AccountChanges)
         {
             int accountOrdinal = addressIndex.GetOrAdd(accountChanges.Address);
-            hasAccountWords[accountOrdinal >> 6] |= 1UL << (accountOrdinal & 63);
+            SetBit(hasAccountWords, accountOrdinal);
 
             foreach (BalanceChange change in accountChanges.BalanceChanges)
             {
@@ -525,19 +524,31 @@ internal sealed class BlockAccessListValidationIndex
         }
     }
 
-    private bool HasAccountOrdinal(int accountOrdinal)
-    {
-        int word = accountOrdinal >> 6;
-        return (uint)word < (uint)_hasAccountWords.Length
-            && (_hasAccountWords[word] & (1UL << (accountOrdinal & 63))) != 0;
-    }
+    private bool HasAccountOrdinal(int accountOrdinal) => TestBit(_hasAccountWords, accountOrdinal);
 
     private static void MarkAccount(ref ulong[] words, int accountOrdinal)
     {
-        int word = accountOrdinal >> 6;
+        int word = accountOrdinal >> WordShift;
         if ((uint)word >= (uint)words.Length)
             Array.Resize(ref words, Math.Max(word + 1, words.Length == 0 ? 1 : words.Length * 2));
-        words[word] |= 1UL << (accountOrdinal & 63);
+        words[word] |= 1UL << (accountOrdinal & BitMask);
+    }
+
+    private const int WordShift = 6;
+    private const int BitMask = 63;
+
+    private static int WordCount(int bitCount) => (bitCount + BitMask) >> WordShift;
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void SetBit(ulong[] words, int ordinal) =>
+        words[ordinal >> WordShift] |= 1UL << (ordinal & BitMask);
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static bool TestBit(ulong[] words, int ordinal)
+    {
+        int word = ordinal >> WordShift;
+        return (uint)word < (uint)words.Length
+            && (words[word] & (1UL << (ordinal & BitMask))) != 0;
     }
 
     // No callers read `row` on the false return; cheaper to set unconditionally and skip the branch.
