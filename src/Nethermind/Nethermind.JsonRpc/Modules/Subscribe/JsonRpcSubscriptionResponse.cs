@@ -10,7 +10,7 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
         [JsonPropertyName("method")]
         [JsonPropertyOrder(1)]
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-        public new string MethodName { get; set; }
+        public string MethodName { get; set; }
 
         [JsonPropertyOrder(2)]
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]

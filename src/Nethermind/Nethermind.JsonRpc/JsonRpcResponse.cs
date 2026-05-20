@@ -40,9 +40,6 @@ namespace Nethermind.JsonRpc
         [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
         public JsonRpcId Id { get; set; }
 
-        [JsonIgnore]
-        public string MethodName { get; set; }
-
         internal virtual bool HasDisposableResources => action is not null;
 
         public virtual void Dispose()

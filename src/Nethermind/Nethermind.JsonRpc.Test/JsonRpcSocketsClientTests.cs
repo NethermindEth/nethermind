@@ -768,7 +768,6 @@ public class JsonRpcSocketsClientTests
     private static JsonRpcSuccessResponse RandomSuccessResponse(int size, Action? disposeAction = null) =>
         new(disposeAction)
         {
-            MethodName = "mock",
             Id = "42",
             Result = RandomObject(size)
         };

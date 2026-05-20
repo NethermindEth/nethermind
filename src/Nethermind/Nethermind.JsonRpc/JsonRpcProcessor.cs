@@ -1134,13 +1134,11 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
             JsonRpcSuccessResponse { Result: IStreamableResult } successResponse => new JsonRpcSuccessResponse
             {
                 Id = successResponse.Id,
-                MethodName = successResponse.MethodName,
                 Result = "# streamable response omitted #"
             },
             JsonRpcErrorResponse { Error.Data: IStreamableResult } errorResponse => new JsonRpcErrorResponse
             {
                 Id = errorResponse.Id,
-                MethodName = errorResponse.MethodName,
                 Error = new Error
                 {
                     Code = errorResponse.Error.Code,

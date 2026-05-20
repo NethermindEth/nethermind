@@ -962,8 +962,7 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
         JsonRpcResponse response = new JsonRpcSuccessResponse(disposableAction)
         {
             Result = result,
-            Id = id,
-            MethodName = methodName
+            Id = id
         };
 
         return response;
@@ -975,7 +974,6 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
         {
             Result = result,
             Id = id,
-            MethodName = methodName,
             ResultStaticType = typeof(T),
             ResultTypeInfoAccessor = JsonRpcSuccessResponseMetadata<T>.Accessor
         };
@@ -1005,8 +1003,7 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
                 Data = errorData,
                 SuppressWarning = suppressWarning
             },
-            Id = id,
-            MethodName = methodName
+            Id = id
         };
 
         return response;
