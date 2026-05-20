@@ -1,0 +1,159 @@
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
+using System;
+using System.Buffers;
+using System.Diagnostics.CodeAnalysis;
+using System.IO.Pipelines;
+using System.Runtime.CompilerServices;
+using System.Text.Json;
+using System.Threading;
+using System.Threading.Tasks;
+
+namespace Nethermind.JsonRpc;
+
+/// <summary>
+/// Writes server-side JSON-RPC response objects to transport-owned buffers.
+/// </summary>
+public static class JsonRpcResponseWriter
+{
+    private static readonly JsonWriterOptions _writerOptions = new() { SkipValidation = true };
+    private static readonly JsonWriterOptions _indentedWriterOptions = new() { SkipValidation = true, Indented = true };
+
+    /// <summary>
+    /// Writes <paramref name="response"/> as a JSON-RPC response envelope.
+    /// </summary>
+    public static void Write(IBufferWriter<byte> writer, JsonRpcResponse response, JsonSerializerOptions options)
+    {
+        using Utf8JsonWriter jsonWriter = new(writer, options.WriteIndented ? _indentedWriterOptions : _writerOptions);
+        response.WriteTo(jsonWriter, options);
+    }
+
+    /// <summary>
+    /// Returns whether <paramref name="response"/> should map to HTTP 503 on HTTP transports.
+    /// </summary>
+    public static bool IsResourceUnavailableError(JsonRpcResponse? response) =>
+        response?.IsResourceUnavailableError == true;
+
+    /// <summary>
+    /// Gets a streamable success payload when the response must bypass normal JSON serialization.
+    /// </summary>
+    public static bool TryGetStreamableResult(
+        JsonRpcResponse response,
+        [NotNullWhen(true)] out IStreamableResult? streamable) =>
+        response.TryGetStreamableResult(out streamable);
+
+    /// <summary>
+    /// Writes a JSON-RPC success envelope whose result is supplied by <paramref name="streamable"/>.
+    /// </summary>
+    public static async ValueTask WriteStreamableAsync(
+        PipeWriter writer,
+        JsonRpcResponse response,
+        IStreamableResult streamable,
+        CancellationToken cancellationToken)
+    {
+        writer.Write("{\"jsonrpc\":\"2.0\",\"result\":"u8);
+        await streamable.WriteToAsync(writer, cancellationToken);
+        writer.Write(",\"id\":"u8);
+        WriteIdRaw(writer, response.Id);
+        writer.Write("}"u8);
+    }
+
+    internal static void WriteEnvelopeStart(Utf8JsonWriter writer)
+    {
+        writer.WriteStartObject();
+        writer.WriteString("jsonrpc"u8, "2.0"u8);
+    }
+
+    internal static void WriteEnvelopeEnd(Utf8JsonWriter writer, JsonRpcId id)
+    {
+        writer.WritePropertyName("id"u8);
+        id.WriteTo(writer);
+        writer.WriteEndObject();
+    }
+
+    internal static bool TryWriteSimpleValue<T>(Utf8JsonWriter writer, T value)
+    {
+        if (typeof(T) == typeof(string))
+        {
+            writer.WriteStringValue(Unsafe.As<T, string>(ref value));
+            return true;
+        }
+
+        if (typeof(T) == typeof(bool))
+        {
+            writer.WriteBooleanValue(Unsafe.As<T, bool>(ref value));
+            return true;
+        }
+
+        if (typeof(T) == typeof(int))
+        {
+            writer.WriteNumberValue(Unsafe.As<T, int>(ref value));
+            return true;
+        }
+
+        return false;
+    }
+
+    internal static bool TryWriteSimpleObject(Utf8JsonWriter writer, object value)
+    {
+        switch (value)
+        {
+            case string stringValue:
+                writer.WriteStringValue(stringValue);
+                return true;
+            case bool boolValue:
+                writer.WriteBooleanValue(boolValue);
+                return true;
+            case int intValue:
+                writer.WriteNumberValue(intValue);
+                return true;
+            default:
+                return false;
+        }
+    }
+
+    internal static void WriteErrorObject(Utf8JsonWriter writer, Error error, JsonSerializerOptions options)
+    {
+        writer.WriteStartObject();
+        writer.WriteNumber("code"u8, error.Code);
+        writer.WriteString("message"u8, error.Message);
+
+        object? data = error.Data;
+        if (data is not null)
+        {
+            writer.WritePropertyName("data"u8);
+            JsonSerializer.Serialize(writer, data, RpcPayloadTypeInfo.Get(options, data.GetType()));
+        }
+
+        writer.WriteEndObject();
+    }
+
+    private static void WriteIdRaw(PipeWriter writer, JsonRpcId id)
+    {
+        if (!id.HasRawToken && id.TryGetInt64(out long longId))
+        {
+            Span<byte> buffer = writer.GetSpan(20);
+            longId.TryFormat(buffer, out int written);
+            writer.Advance(written);
+            return;
+        }
+
+        if (!id.HasRawToken && id.TryGetDecimal(out decimal decimalId))
+        {
+            Span<byte> buffer = writer.GetSpan(32);
+            decimalId.TryFormat(buffer, out int written);
+            writer.Advance(written);
+            return;
+        }
+
+        WriteOther(writer, id);
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        static void WriteOther(PipeWriter writer, JsonRpcId id)
+        {
+            using Utf8JsonWriter jsonWriter = new(writer, _writerOptions);
+            id.WriteTo(jsonWriter);
+        }
+    }
+}

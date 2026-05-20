@@ -39,7 +39,6 @@ public class JsonRpcSocketsClientTests
         using SemaphoreSlim sendSemaphore = new(1, 1);
         using SocketJsonRpcResponseSink<MemoryMessageStream> sink = new(
             stream,
-            new EthereumJsonSerializer(),
             new NullJsonRpcLocalStats(),
             maxBatchResponseBodySize: 10_000,
             sendSemaphore,
@@ -59,7 +58,6 @@ public class JsonRpcSocketsClientTests
         using SemaphoreSlim sendSemaphore = new(1, 1);
         using SocketJsonRpcResponseSink<MemoryMessageStream> sink = new(
             stream,
-            new EthereumJsonSerializer(),
             new NullJsonRpcLocalStats(),
             maxBatchResponseBodySize: 10_000,
             sendSemaphore,
@@ -84,7 +82,6 @@ public class JsonRpcSocketsClientTests
         using SemaphoreSlim sendSemaphore = new(1, 1);
         using SocketJsonRpcResponseSink<MemoryMessageStream> sink = new(
             stream,
-            new EthereumJsonSerializer(),
             new NullJsonRpcLocalStats(),
             maxBatchResponseBodySize: 1,
             sendSemaphore,
@@ -749,7 +746,6 @@ public class JsonRpcSocketsClientTests
         using SemaphoreSlim sendSemaphore = new(1, 1);
         using SocketJsonRpcResponseSink<TStream> sink = new(
             stream,
-            new EthereumJsonSerializer(),
             new NullJsonRpcLocalStats(),
             maxBatchResponseBodySize,
             sendSemaphore,

@@ -172,6 +172,11 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
             return HandleMissingResultWrapper(request, methodName, returnAction);
         }
 
+        if (resultWrapper is JsonRpcResponse response)
+        {
+            return response.WithResponseContext(request.Id, returnAction);
+        }
+
         Result result = resultWrapper.Result;
         return result.ResultType != ResultType.Success
             ? GetErrorResponse(methodName, resultWrapper.ErrorCode, result.Error, resultWrapper.HasErrorData ? resultWrapper.Data : null, request.Id, returnAction, resultWrapper.IsTemporary)

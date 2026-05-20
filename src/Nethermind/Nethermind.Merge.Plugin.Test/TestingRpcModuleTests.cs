@@ -77,7 +77,7 @@ public class TestingRpcModuleTests
             CreateDefaultPayloadAttributes(parentHeader),
             (byte[][])[]);
 
-        response.Should().BeOfType<JsonRpcSuccessResponse>();
+        response.Should().BeOfType<ResultWrapper<object>>();
     }
 
     [TestCaseSource(nameof(BuildBlockV1ForkCases))]

@@ -303,7 +303,7 @@ public partial class EngineModuleTests
             JsonObject executionPayloadAsJObject = serializer.Deserialize<JsonObject>(executionPayloadString);
             JsonRpcRequest request = RpcTest.BuildJsonRequest(nameof(IEngineRpcModule.engine_newPayloadV3), serializer.Serialize(executionPayloadAsJObject), blobsString, parentBeaconBlockRootString);
             JsonRpcResponse response = await jsonRpcService.SendRequestAsync(request, context);
-            Assert.That(response is JsonRpcSuccessResponse);
+            Assert.That(response, Is.InstanceOf<ResultWrapper<PayloadStatusV1>>());
         }
 
         string[] props = serializer.Deserialize<JsonObject>(serializer.Serialize(new ExecutionPayload()))
@@ -315,9 +315,8 @@ public partial class EngineModuleTests
             executionPayloadAsJObject[prop] = null;
 
             JsonRpcRequest request = RpcTest.BuildJsonRequest(nameof(IEngineRpcModule.engine_newPayloadV3), serializer.Serialize(executionPayloadAsJObject), blobsString);
-            JsonRpcErrorResponse? response = (await jsonRpcService.SendRequestAsync(request, context)) as JsonRpcErrorResponse;
-            Assert.That(response?.Error, Is.Not.Null);
-            Assert.That(response!.Error!.Code, Is.EqualTo(ErrorCodes.InvalidParams));
+            JsonRpcResponse response = await jsonRpcService.SendRequestAsync(request, context);
+            AssertInvalidParams(response);
         }
 
         foreach (string prop in props)
@@ -326,9 +325,25 @@ public partial class EngineModuleTests
             executionPayloadAsJObject.Remove(prop);
 
             JsonRpcRequest request = RpcTest.BuildJsonRequest(nameof(IEngineRpcModule.engine_newPayloadV3), serializer.Serialize(executionPayloadAsJObject), blobsString);
-            JsonRpcErrorResponse? response = (await jsonRpcService.SendRequestAsync(request, context)) as JsonRpcErrorResponse;
-            Assert.That(response?.Error, Is.Not.Null);
-            Assert.That(response!.Error!.Code, Is.EqualTo(ErrorCodes.InvalidParams));
+            JsonRpcResponse response = await jsonRpcService.SendRequestAsync(request, context);
+            AssertInvalidParams(response);
+        }
+
+        static void AssertInvalidParams(JsonRpcResponse response)
+        {
+            switch (response)
+            {
+                case JsonRpcErrorResponse errorResponse:
+                    Assert.That(errorResponse.Error?.Code, Is.EqualTo(ErrorCodes.InvalidParams));
+                    break;
+                case ResultWrapper<PayloadStatusV1> wrapper:
+                    Assert.That(wrapper.Result.ResultType, Is.EqualTo(ResultType.Failure));
+                    Assert.That(wrapper.ErrorCode, Is.EqualTo(ErrorCodes.InvalidParams));
+                    break;
+                default:
+                    Assert.Fail($"Unexpected response type {response.GetType().FullName}");
+                    break;
+            }
         }
     }
 

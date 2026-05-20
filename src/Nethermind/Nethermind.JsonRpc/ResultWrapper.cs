@@ -2,14 +2,16 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Text.Json;
 using System.Threading.Tasks;
 using Nethermind.Core;
+using Nethermind.Core.Extensions;
 using Nethermind.Facade.Proxy;
 using Nethermind.JsonRpc.Modules;
 
 namespace Nethermind.JsonRpc
 {
-    public class ResultWrapper<T> : IResultWrapper, IDisposable
+    public class ResultWrapper<T> : JsonRpcResponse, IResultWrapper
     {
         object? IResultWrapper.Data => Data;
         public T Data { get; init; }
@@ -59,16 +61,126 @@ namespace Nethermind.JsonRpc
 
         public static implicit operator Task<ResultWrapper<T>>(ResultWrapper<T> resultWrapper) => Task.FromResult(resultWrapper);
 
-        public void Dispose()
+        internal override bool IsResourceUnavailableError =>
+            Result.ResultType != ResultType.Success &&
+            ErrorCode is ErrorCodes.ModuleTimeout or ErrorCodes.LimitExceeded;
+
+        internal override JsonRpcResponse WithResponseContext(JsonRpcId id, Action? disposableAction)
         {
-            if (Data is IDisposable disposable)
+            ResultWrapper<T> response = (ResultWrapper<T>)MemberwiseClone();
+            response.Id = id;
+            if (disposableAction is not null)
             {
-                disposable.Dispose();
+                response.AddDisposable(disposableAction);
             }
+
+            return response;
+        }
+
+        internal override bool TryGetError(out Error? error)
+        {
+            if (Result.ResultType == ResultType.Success)
+            {
+                error = null;
+                return false;
+            }
+
+            error = new Error
+            {
+                Code = ErrorCode,
+                Message = Result.Error,
+                SuppressWarning = IsTemporary
+            };
+            return true;
+        }
+
+        internal override bool TryGetStreamableResult(out IStreamableResult? streamable)
+        {
+            if (typeof(T).IsValueType)
+            {
+                streamable = null;
+                return false;
+            }
+
+            streamable = Data as IStreamableResult;
+            return streamable is not null;
+        }
+
+        internal override void WriteTo(Utf8JsonWriter writer, JsonSerializerOptions options)
+        {
+            JsonRpcResponseWriter.WriteEnvelopeStart(writer);
+
+            if (Result.ResultType == ResultType.Success)
+            {
+                writer.WritePropertyName("result"u8);
+                WritePayloadValue(writer, options, Data);
+            }
+            else
+            {
+                WriteError(writer, options);
+            }
+
+            JsonRpcResponseWriter.WriteEnvelopeEnd(writer, Id);
+        }
+
+        public override void Dispose()
+        {
+            DisposePayloads();
+            base.Dispose();
+        }
+
+        protected virtual void DisposePayloads() => DisposeIfReferenceType(Data);
+
+        protected virtual void WriteErrorData(Utf8JsonWriter writer, JsonSerializerOptions options) =>
+            WritePayloadValue(writer, options, Data);
+
+        private void WriteError(Utf8JsonWriter writer, JsonSerializerOptions options)
+        {
+            writer.WritePropertyName("error"u8);
+            writer.WriteStartObject();
+            writer.WriteNumber("code"u8, ErrorCode);
+            writer.WriteString("message"u8, Result.Error);
+
+            if (HasErrorData)
+            {
+                writer.WritePropertyName("data"u8);
+                WriteErrorData(writer, options);
+            }
+
+            writer.WriteEndObject();
+        }
+
+        protected static void WritePayloadValue(Utf8JsonWriter writer, JsonSerializerOptions options, T value)
+        {
+            if (value is null)
+            {
+                writer.WriteNullValue();
+                return;
+            }
+
+            if (!typeof(T).IsValueType && value is IStreamableResult)
+            {
+                throw new InvalidOperationException("Streamable JSON-RPC results must be written by the response sink.");
+            }
+
+            if (!JsonRpcResponseWriter.TryWriteSimpleValue(writer, value))
+            {
+                JsonSerializer.Serialize(writer, value, RpcPayloadTypeInfo<T>.Get(options));
+            }
+        }
+
+        protected static void DisposeIfReferenceType<TValue>(TValue value)
+        {
+            if (typeof(TValue).IsValueType)
+            {
+                return;
+            }
+
+            ((object?)value).TryDispose();
         }
     }
 
-    public class ResultWrapper<T, TErrorData> : ResultWrapper<T>, IResultWrapper, IDisposable
+    public class ResultWrapper<T, TErrorData> : ResultWrapper<T>, IResultWrapper
     {
         public TErrorData ErrorData { get; init; }
 
@@ -89,13 +201,24 @@ namespace Nethermind.JsonRpc
 
         public static implicit operator Task<ResultWrapper<T, TErrorData>>(ResultWrapper<T, TErrorData> resultWrapper) => Task.FromResult(resultWrapper);
 
-        public new void Dispose()
+        protected override void DisposePayloads()
         {
-            base.Dispose();
+            base.DisposePayloads();
+            DisposeIfReferenceType(ErrorData);
+        }
 
-            if (ErrorData is IDisposable disposable)
+        protected override void WriteErrorData(Utf8JsonWriter writer, JsonSerializerOptions options)
+        {
+            TErrorData errorData = ErrorData;
+            if (errorData is null)
             {
-                disposable.Dispose();
+                writer.WriteNullValue();
+                return;
+            }
+
+            if (!JsonRpcResponseWriter.TryWriteSimpleValue(writer, errorData))
+            {
+                JsonSerializer.Serialize(writer, errorData, RpcPayloadTypeInfo<TErrorData>.Get(options));
             }
         }
     }

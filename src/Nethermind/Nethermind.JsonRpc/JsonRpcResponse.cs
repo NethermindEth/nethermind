@@ -41,6 +41,36 @@ namespace Nethermind.JsonRpc
         public JsonRpcId Id { get; set; }
 
         internal virtual bool HasDisposableResources => action is not null;
+        internal virtual bool IsResourceUnavailableError => false;
+
+        internal virtual JsonRpcResponse WithResponseContext(JsonRpcId id, Action? disposableAction)
+        {
+            Id = id;
+            if (disposableAction is not null)
+            {
+                AddDisposable(disposableAction);
+            }
+
+            return this;
+        }
+
+        internal virtual bool TryGetError(out Error? error)
+        {
+            error = null;
+            return false;
+        }
+
+        internal virtual bool TryGetStreamableResult([NotNullWhen(true)] out IStreamableResult? streamable)
+        {
+            streamable = null;
+            return false;
+        }
+
+        internal virtual void WriteTo(Utf8JsonWriter writer, JsonSerializerOptions options)
+        {
+            JsonRpcResponseWriter.WriteEnvelopeStart(writer);
+            JsonRpcResponseWriter.WriteEnvelopeEnd(writer, Id);
+        }
 
         public virtual void Dispose()
         {
@@ -72,6 +102,35 @@ namespace Nethermind.JsonRpc
             Result is IDisposable ||
             Result is ITuple tuple && HasDisposableItem(tuple) ||
             base.HasDisposableResources;
+
+        internal override bool TryGetStreamableResult([NotNullWhen(true)] out IStreamableResult? streamable)
+        {
+            streamable = Result as IStreamableResult;
+            return streamable is not null;
+        }
+
+        internal override void WriteTo(Utf8JsonWriter writer, JsonSerializerOptions options)
+        {
+            JsonRpcResponseWriter.WriteEnvelopeStart(writer);
+
+            writer.WritePropertyName("result"u8);
+            object? result = Result;
+            if (result is null)
+            {
+                writer.WriteNullValue();
+            }
+            else if (!JsonRpcResponseWriter.TryWriteSimpleObject(writer, result))
+            {
+                JsonSerializer.Serialize(
+                    writer,
+                    result,
+                    TryGetResultTypeInfo(result, options, out JsonTypeInfo? typeInfo)
+                        ? typeInfo
+                        : RpcPayloadTypeInfo.Get(options, result.GetType()));
+            }
+
+            JsonRpcResponseWriter.WriteEnvelopeEnd(writer, Id);
+        }
 
         /// <summary>
         /// Gets static result metadata when it is safe to serialize with the RPC method's declared result type.
@@ -150,6 +209,31 @@ namespace Nethermind.JsonRpc
 
         public JsonRpcErrorResponse(Action? disposableAction = null) : base(disposableAction)
         {
+        }
+
+        internal override bool IsResourceUnavailableError => Error is { Code: ErrorCodes.ModuleTimeout or ErrorCodes.LimitExceeded };
+
+        internal override bool TryGetError(out Error? error)
+        {
+            error = Error;
+            return true;
+        }
+
+        internal override void WriteTo(Utf8JsonWriter writer, JsonSerializerOptions options)
+        {
+            JsonRpcResponseWriter.WriteEnvelopeStart(writer);
+
+            writer.WritePropertyName("error"u8);
+            if (Error is null)
+            {
+                writer.WriteNullValue();
+            }
+            else
+            {
+                JsonRpcResponseWriter.WriteErrorObject(writer, Error, options);
+            }
+
+            JsonRpcResponseWriter.WriteEnvelopeEnd(writer, Id);
         }
     }
 }

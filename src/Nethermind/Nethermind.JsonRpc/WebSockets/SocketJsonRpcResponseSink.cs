@@ -4,6 +4,7 @@
 using System;
 using System.Diagnostics;
 using System.IO;
+using System.IO.Pipelines;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Serialization.Json;
@@ -13,7 +14,6 @@ namespace Nethermind.JsonRpc.WebSockets;
 
 internal sealed class SocketJsonRpcResponseSink<TStream>(
     TStream stream,
-    IJsonSerializer jsonSerializer,
     IJsonRpcLocalStats jsonRpcLocalStats,
     long? maxBatchResponseBodySize,
     SemaphoreSlim sendSemaphore,
@@ -23,6 +23,7 @@ internal sealed class SocketJsonRpcResponseSink<TStream>(
     private static readonly byte[] JsonOpeningBracket = [Convert.ToByte('[')];
     private static readonly byte[] JsonComma = [Convert.ToByte(',')];
     private static readonly byte[] JsonClosingBracket = [Convert.ToByte(']')];
+    private static readonly StreamPipeWriterOptions ResponsePipeWriterOptions = new(leaveOpen: true);
 
     private readonly bool _reportCalls = jsonRpcLocalStats.IsEnabled;
     private long _topLevelResponseBytes;
@@ -41,7 +42,7 @@ internal sealed class SocketJsonRpcResponseSink<TStream>(
         try
         {
             long startTimestamp = _reportCalls ? Stopwatch.GetTimestamp() : 0;
-            int responseBytes = (int)await jsonSerializer.SerializeAsync(stream, response, cancellationToken, indented: false);
+            long responseBytes = await WriteResponseAsync(response, cancellationToken);
             responseBytes += await stream.WriteEndOfMessageAsync();
 
             BytesWritten += responseBytes;
@@ -79,7 +80,7 @@ internal sealed class SocketJsonRpcResponseSink<TStream>(
 
         _isFirstBatchItem = false;
 
-        _topLevelResponseBytes += (int)await jsonSerializer.SerializeAsync(stream, response, cancellationToken, indented: false);
+        _topLevelResponseBytes += await WriteResponseAsync(response, cancellationToken);
         if (_reportCalls)
         {
             jsonRpcLocalStats.ReportCall(report);
@@ -114,6 +115,29 @@ internal sealed class SocketJsonRpcResponseSink<TStream>(
     }
 
     public void Dispose() => ReleaseSemaphore();
+
+    private async ValueTask<long> WriteResponseAsync(JsonRpcResponse response, CancellationToken cancellationToken)
+    {
+        CountingStreamPipeWriter writer = new(stream, ResponsePipeWriterOptions);
+        try
+        {
+            if (JsonRpcResponseWriter.TryGetStreamableResult(response, out IStreamableResult? streamable))
+            {
+                await JsonRpcResponseWriter.WriteStreamableAsync(writer, response, streamable, cancellationToken);
+            }
+            else
+            {
+                JsonRpcResponseWriter.Write(writer, response, EthereumJsonSerializer.JsonOptions);
+            }
+
+            await writer.FlushAsync(cancellationToken);
+            return writer.WrittenCount;
+        }
+        finally
+        {
+            await writer.CompleteAsync();
+        }
+    }
 
     private void ReleaseSemaphore()
     {

@@ -19,6 +19,8 @@ namespace Nethermind.JsonRpc.WebSockets;
 
 public class JsonRpcSocketsClient<TStream> : SocketClient<TStream>, IJsonRpcDuplexClient where TStream : Stream, IMessageBorderPreservingStream
 {
+    private static readonly StreamPipeWriterOptions ResponsePipeWriterOptions = new(leaveOpen: true);
+
     public event EventHandler? Closed;
 
     private readonly IJsonRpcProcessor _jsonRpcProcessor;
@@ -123,7 +125,6 @@ public class JsonRpcSocketsClient<TStream> : SocketClient<TStream>, IJsonRpcDupl
         PipeReader request = PipeReader.Create(new ReadOnlySequence<byte>(data));
         using SocketJsonRpcResponseSink<TStream> sink = new(
             _stream,
-            _jsonSerializer,
             _jsonRpcLocalStats,
             _maxBatchResponseBodySize,
             _sendSemaphore,
@@ -170,9 +171,30 @@ public class JsonRpcSocketsClient<TStream> : SocketClient<TStream>, IJsonRpcDupl
         await _sendSemaphore.WaitAsync(cancellationToken);
         try
         {
-            int responseSize = (int)await _jsonSerializer.SerializeAsync(_stream, result.Response, cancellationToken, indented: false);
+            JsonRpcResponse response = result.Response ?? throw new InvalidOperationException("JSON-RPC result does not contain a response.");
+            CountingStreamPipeWriter writer = new(_stream, ResponsePipeWriterOptions);
+            long responseSize;
+            try
+            {
+                if (JsonRpcResponseWriter.TryGetStreamableResult(response, out IStreamableResult? streamable))
+                {
+                    await JsonRpcResponseWriter.WriteStreamableAsync(writer, response, streamable, cancellationToken);
+                }
+                else
+                {
+                    JsonRpcResponseWriter.Write(writer, response, EthereumJsonSerializer.JsonOptions);
+                }
+
+                await writer.FlushAsync(cancellationToken);
+                responseSize = writer.WrittenCount;
+            }
+            finally
+            {
+                await writer.CompleteAsync();
+            }
+
             responseSize += await _stream.WriteEndOfMessageAsync();
-            return responseSize;
+            return (int)responseSize;
         }
         finally
         {

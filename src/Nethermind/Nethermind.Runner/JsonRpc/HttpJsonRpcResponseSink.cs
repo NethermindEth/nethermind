@@ -3,13 +3,9 @@
 
 using System;
 using System.Buffers;
-using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.IO;
 using System.IO.Pipelines;
-using System.Runtime.CompilerServices;
-using System.Text.Json;
-using System.Text.Json.Serialization.Metadata;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Http;
@@ -37,7 +33,6 @@ internal sealed class HttpJsonRpcResponseSink(
     private static readonly StringValues JsonContentTypeHeader = new(JsonContentType);
     private static readonly StreamPipeWriterOptions BufferedResponsePipeWriterOptions =
         new(minimumBufferSize: BufferedResponseInitialCapacity, leaveOpen: true);
-    private static readonly ConcurrentDictionary<Type, JsonTypeInfo> _jsonTypeInfoCache = new();
 
     private readonly bool _reportCalls = jsonRpcLocalStats.IsEnabled;
     private CountingWriter? _writer;
@@ -226,150 +221,18 @@ internal sealed class HttpJsonRpcResponseSink(
     }
 
     private static int GetStatusCode(JsonRpcResponse? response) =>
-        IsResourceUnavailableError(response)
+        JsonRpcResponseWriter.IsResourceUnavailableError(response)
             ? StatusCodes.Status503ServiceUnavailable
             : StatusCodes.Status200OK;
 
-    private static bool IsResourceUnavailableError(JsonRpcResponse? response) => response is JsonRpcErrorResponse { Error.Code: ErrorCodes.ModuleTimeout }
-        or JsonRpcErrorResponse { Error.Code: ErrorCodes.LimitExceeded };
-
     private ValueTask WriteResponseAsync(CountingWriter writer, JsonRpcResponse response, CancellationToken cancellationToken)
     {
-        if (response is JsonRpcSuccessResponse { Result: IStreamableResult streamable })
+        if (JsonRpcResponseWriter.TryGetStreamableResult(response, out IStreamableResult? streamable))
         {
-            return WriteStreamableResponseAsync(writer, response, streamable, cancellationToken);
+            return JsonRpcResponseWriter.WriteStreamableAsync(writer, response, streamable, cancellationToken);
         }
 
-        WriteJsonRpcResponse(writer, response);
+        JsonRpcResponseWriter.Write(writer, response, EthereumJsonSerializer.JsonOptions);
         return ValueTask.CompletedTask;
-    }
-
-    /// <summary>
-    /// Writes a JSON-RPC response with typed serialization for the result/error payload,
-    /// avoiding polymorphic dispatch through the JsonRpcResponse base class hierarchy.
-    /// </summary>
-    private void WriteJsonRpcResponse(IBufferWriter<byte> writer, JsonRpcResponse response)
-    {
-        using Utf8JsonWriter jsonWriter = new(writer, new JsonWriterOptions { SkipValidation = true });
-
-        jsonWriter.WriteStartObject();
-        jsonWriter.WriteString("jsonrpc"u8, "2.0"u8);
-
-        if (response is JsonRpcSuccessResponse successResponse)
-        {
-            jsonWriter.WritePropertyName("result"u8);
-            object? result = successResponse.Result;
-            if (result is not null)
-            {
-                if (!TryWriteSimpleResult(jsonWriter, result))
-                {
-                    JsonSerializer.Serialize(
-                        jsonWriter,
-                        result,
-                        successResponse.TryGetResultTypeInfo(result, EthereumJsonSerializer.JsonOptions, out JsonTypeInfo? typeInfo)
-                            ? typeInfo
-                            : GetJsonTypeInfo(result.GetType()));
-                }
-            }
-            else
-            {
-                jsonWriter.WriteNullValue();
-            }
-        }
-        else if (response is JsonRpcErrorResponse errorResponse)
-        {
-            jsonWriter.WritePropertyName("error"u8);
-            if (errorResponse.Error is not null)
-            {
-                WriteError(jsonWriter, errorResponse.Error);
-            }
-            else
-            {
-                jsonWriter.WriteNullValue();
-            }
-        }
-
-        jsonWriter.WritePropertyName("id"u8);
-        response.Id.WriteTo(jsonWriter);
-
-        jsonWriter.WriteEndObject();
-    }
-
-    private static bool TryWriteSimpleResult(Utf8JsonWriter jsonWriter, object result)
-    {
-        switch (result)
-        {
-            case string value:
-                jsonWriter.WriteStringValue(value);
-                return true;
-            case bool value:
-                jsonWriter.WriteBooleanValue(value);
-                return true;
-            case int value:
-                jsonWriter.WriteNumberValue(value);
-                return true;
-            default:
-                return false;
-        }
-    }
-
-    private void WriteError(Utf8JsonWriter jsonWriter, Error error)
-    {
-        jsonWriter.WriteStartObject();
-        jsonWriter.WriteNumber("code"u8, error.Code);
-        jsonWriter.WriteString("message"u8, error.Message);
-
-        object? data = error.Data;
-        if (data is not null)
-        {
-            jsonWriter.WritePropertyName("data"u8);
-            JsonSerializer.Serialize(jsonWriter, data, GetJsonTypeInfo(data.GetType()));
-        }
-
-        jsonWriter.WriteEndObject();
-    }
-
-    private JsonTypeInfo GetJsonTypeInfo(Type type) =>
-        _jsonTypeInfoCache.GetOrAdd(type, static type => EthereumJsonSerializer.JsonOptions.GetTypeInfo(type));
-
-    private static async ValueTask WriteStreamableResponseAsync(
-        CountingWriter writer,
-        JsonRpcResponse response,
-        IStreamableResult streamable,
-        CancellationToken cancellationToken)
-    {
-        writer.Write("{\"jsonrpc\":\"2.0\",\"result\":"u8);
-        await streamable.WriteToAsync(writer, cancellationToken);
-        writer.Write(",\"id\":"u8);
-        WriteIdRaw(writer, response.Id);
-        writer.Write("}"u8);
-    }
-
-    private static void WriteIdRaw(PipeWriter writer, JsonRpcId id)
-    {
-        if (!id.HasRawToken && id.TryGetInt64(out long longId))
-        {
-            Span<byte> buffer = writer.GetSpan(20);
-            longId.TryFormat(buffer, out int written);
-            writer.Advance(written);
-            return;
-        }
-
-        if (!id.HasRawToken && id.TryGetDecimal(out decimal decimalId))
-        {
-            Span<byte> buffer = writer.GetSpan(32);
-            decimalId.TryFormat(buffer, out int written);
-            writer.Advance(written);
-            return;
-        }
-
-        WriteOther(writer, id);
-
-        [MethodImpl(MethodImplOptions.NoInlining)]
-        static void WriteOther(PipeWriter writer, JsonRpcId id)
-        {
-            using Utf8JsonWriter jsonWriter = new(writer, new JsonWriterOptions { SkipValidation = true });
-            id.WriteTo(jsonWriter);
-        }
     }
 }

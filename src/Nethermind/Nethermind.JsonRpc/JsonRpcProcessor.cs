@@ -1037,14 +1037,14 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
 
     private JsonRpcResult.Entry CreateSingleRequestEntry(JsonRpcRequest request, JsonRpcResponse response, long startTime)
     {
-        JsonRpcErrorResponse localErrorResponse = response as JsonRpcErrorResponse;
-        bool isSuccess = localErrorResponse is null;
+        bool isError = response.TryGetError(out Error? responseError);
+        bool isSuccess = !isError;
         if (!isSuccess)
         {
-            if (localErrorResponse?.Error?.SuppressWarning == false)
+            if (responseError?.SuppressWarning == false)
             {
-                if (_logger.IsWarn) _logger.Warn($"Error response handling JsonRpc Id:{request.Id} Method:{request.Method} | Code: {localErrorResponse.Error.Code} Message: {localErrorResponse.Error.Message}");
-                if (_logger.IsTrace) _logger.Trace($"Error when handling {request} | {JsonSerializer.Serialize(localErrorResponse, EthereumJsonSerializer.JsonOptionsIndented)}");
+                if (_logger.IsWarn) _logger.Warn($"Error response handling JsonRpc Id:{request.Id} Method:{request.Method} | Code: {responseError.Code} Message: {responseError.Message}");
+                if (_logger.IsTrace) _logger.Trace($"Error when handling {request} | {SerializeResponseForDiagnostics(response)}");
             }
             Metrics.JsonRpcErrors++;
         }
@@ -1054,7 +1054,7 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
             Metrics.JsonRpcSuccesses++;
         }
 
-        string reportMethod = localErrorResponse?.Error?.Code == ErrorCodes.MethodNotFound
+        string reportMethod = responseError?.Code == ErrorCodes.MethodNotFound
             ? RpcReport.UnknownMethod
             : request.Method;
         JsonRpcResult.Entry result = new(
@@ -1122,18 +1122,34 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
         }
     }
 
-    private static string SerializeForDiagnostics(in JsonRpcResult.Entry response) =>
-        TryGetDiagnosticResponse(response.Response, out JsonRpcResponse? diagnosticResponse)
-            ? JsonSerializer.Serialize(new JsonRpcResult.Entry(diagnosticResponse, response.Report), EthereumJsonSerializer.JsonOptionsIndented)
-            : JsonSerializer.Serialize(response, EthereumJsonSerializer.JsonOptionsIndented);
+    private static string SerializeForDiagnostics(in JsonRpcResult.Entry response)
+    {
+        JsonRpcResponse responseToSerialize = TryGetDiagnosticResponse(response.Response, out JsonRpcResponse? diagnosticResponse)
+            ? diagnosticResponse
+            : response.Response;
+
+        ArrayBufferWriter<byte> writer = new();
+        JsonRpcResponseWriter.Write(writer, responseToSerialize, EthereumJsonSerializer.JsonOptionsIndented);
+        using JsonDocument document = JsonDocument.Parse(writer.WrittenMemory);
+        return JsonSerializer.Serialize(new DiagnosticJsonRpcResult(document.RootElement, response.Report), EthereumJsonSerializer.JsonOptionsIndented);
+    }
+
+    private static string SerializeResponseForDiagnostics(JsonRpcResponse response)
+    {
+        ArrayBufferWriter<byte> writer = new();
+        JsonRpcResponseWriter.Write(writer, response, EthereumJsonSerializer.JsonOptionsIndented);
+        return Encoding.UTF8.GetString(writer.WrittenSpan);
+    }
+
+    private readonly record struct DiagnosticJsonRpcResult(JsonElement Response, RpcReport Report);
 
     private static bool TryGetDiagnosticResponse(JsonRpcResponse response, [NotNullWhen(true)] out JsonRpcResponse? diagnosticResponse)
     {
         diagnosticResponse = response switch
         {
-            JsonRpcSuccessResponse { Result: IStreamableResult } successResponse => new JsonRpcSuccessResponse
+            _ when response.TryGetStreamableResult(out _) => new JsonRpcSuccessResponse
             {
-                Id = successResponse.Id,
+                Id = response.Id,
                 Result = "# streamable response omitted #"
             },
             JsonRpcErrorResponse { Error.Data: IStreamableResult } errorResponse => new JsonRpcErrorResponse
@@ -1158,7 +1174,7 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
     {
         if (_logger.IsTrace)
         {
-            string json = JsonSerializer.Serialize(response, EthereumJsonSerializer.JsonOptionsIndented);
+            string json = SerializeResponseForDiagnostics(response);
 
             _logger.Trace($"Sending JSON RPC response: {json}");
         }

@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO.Abstractions;
+using System.IO.Pipelines;
 using System.Net.Http.Headers;
 using System.Threading;
 using System.Threading.Tasks;
@@ -200,6 +201,7 @@ internal static class EngineBenchmarkHost
         private static readonly byte[] _jsonOpeningBracket = [(byte)'['];
         private static readonly byte[] _jsonComma = [(byte)','];
         private static readonly byte[] _jsonClosingBracket = [(byte)']'];
+        private static readonly StreamPipeWriterOptions _responsePipeWriterOptions = new(leaveOpen: true);
 
         private bool _isFirstBatchItem = true;
 
@@ -209,7 +211,7 @@ internal static class EngineBenchmarkHost
         public async ValueTask WriteSingleAsync(JsonRpcResponse response, RpcReport report, CancellationToken cancellationToken)
         {
             EnsureStarted();
-            BytesWritten += await Serializer.SerializeAsync(context.Response.Body, response, cancellationToken);
+            BytesWritten += await WriteResponseAsync(response, cancellationToken);
             await context.Response.CompleteAsync();
         }
 
@@ -229,7 +231,7 @@ internal static class EngineBenchmarkHost
             }
 
             _isFirstBatchItem = false;
-            BytesWritten += await Serializer.SerializeAsync(context.Response.Body, response, cancellationToken);
+            BytesWritten += await WriteResponseAsync(response, cancellationToken);
         }
 
         public async ValueTask EndBatchAsync(CancellationToken cancellationToken)
@@ -243,6 +245,29 @@ internal static class EngineBenchmarkHost
         {
             context.Response.StatusCode = 200;
             context.Response.ContentType = "application/json";
+        }
+
+        private async ValueTask<long> WriteResponseAsync(JsonRpcResponse response, CancellationToken cancellationToken)
+        {
+            CountingStreamPipeWriter writer = new(context.Response.Body, _responsePipeWriterOptions);
+            try
+            {
+                if (JsonRpcResponseWriter.TryGetStreamableResult(response, out IStreamableResult? streamable))
+                {
+                    await JsonRpcResponseWriter.WriteStreamableAsync(writer, response, streamable, cancellationToken);
+                }
+                else
+                {
+                    JsonRpcResponseWriter.Write(writer, response, EthereumJsonSerializer.JsonOptions);
+                }
+
+                await writer.FlushAsync(cancellationToken);
+                return writer.WrittenCount;
+            }
+            finally
+            {
+                await writer.CompleteAsync();
+            }
         }
     }
 }
