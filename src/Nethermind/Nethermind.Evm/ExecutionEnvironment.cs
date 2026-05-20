@@ -17,7 +17,11 @@ namespace Nethermind.Evm
     /// </summary>
     public sealed class ExecutionEnvironment : IDisposable
     {
+#if ZK_EVM
+        private static readonly ZkPool<ExecutionEnvironment> _pool = new();
+#else
         private static readonly ConcurrentQueue<ExecutionEnvironment> _pool = new();
+#endif
         private UInt256 _value;
 
         /// <summary>
