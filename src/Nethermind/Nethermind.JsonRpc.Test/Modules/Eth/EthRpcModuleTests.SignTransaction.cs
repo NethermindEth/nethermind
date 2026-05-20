@@ -189,8 +189,7 @@ public partial class EthRpcModuleTests
         JsonRpcSuccessResponse response = new() { Result = result };
         response.Dispose();
 
-        Assert.That(pool.Returned, Has.Count.EqualTo(1));
-        Assert.That(pool.Returned[0], Is.SameAs(rented),
+        Assert.That(pool.Returned, Is.EqualTo([rented]),
             "the rented buffer must come back to the pool - otherwise pooling is strictly " +
             "worse than direct allocation");
     }

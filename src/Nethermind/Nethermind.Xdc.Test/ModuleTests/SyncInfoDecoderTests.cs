@@ -78,7 +78,7 @@ public class SyncInfoDecoderTests
             decoded = decoder.Decode(ref decoderContext);
         }
 
-        AssertSyncInfo(decoded, syncInfo);
+        Assert.That(decoded, Is.EqualTo(syncInfo).UsingPropertiesComparer());
     }
 
     [Test]
@@ -110,9 +110,9 @@ public class SyncInfoDecoderTests
         Rlp.ValueDecoderContext decoderContext = new(stream.Data.AsSpan());
         SyncInfo decodedContext = decoder.Decode(ref decoderContext);
 
-        AssertSyncInfo(decodedStream, syncInfo);
-        AssertSyncInfo(decodedContext, syncInfo);
-        AssertSyncInfo(decodedStream, decodedContext);
+        Assert.That(decodedStream, Is.EqualTo(syncInfo).UsingPropertiesComparer());
+        Assert.That(decodedContext, Is.EqualTo(syncInfo).UsingPropertiesComparer());
+        Assert.That(decodedStream, Is.EqualTo(decodedContext).UsingPropertiesComparer());
     }
 
     [Test]
@@ -170,30 +170,4 @@ public class SyncInfoDecoderTests
         Assert.That(decoded, Is.Null);
     }
 
-    private static void AssertSyncInfo(SyncInfo actual, SyncInfo expected)
-    {
-        AssertQuorumCertificate(actual.HighestQuorumCert, expected.HighestQuorumCert);
-        AssertTimeoutCertificate(actual.HighestTimeoutCert, expected.HighestTimeoutCert);
-    }
-
-    private static void AssertQuorumCertificate(QuorumCertificate actual, QuorumCertificate expected)
-    {
-        AssertBlockRoundInfo(actual.ProposedBlockInfo, expected.ProposedBlockInfo);
-        Assert.That(actual.Signatures, Is.EqualTo(expected.Signatures));
-        Assert.That(actual.GapNumber, Is.EqualTo(expected.GapNumber));
-    }
-
-    private static void AssertTimeoutCertificate(TimeoutCertificate actual, TimeoutCertificate expected)
-    {
-        Assert.That(actual.Round, Is.EqualTo(expected.Round));
-        Assert.That(actual.Signatures, Is.EqualTo(expected.Signatures));
-        Assert.That(actual.GapNumber, Is.EqualTo(expected.GapNumber));
-    }
-
-    private static void AssertBlockRoundInfo(BlockRoundInfo actual, BlockRoundInfo expected)
-    {
-        Assert.That(actual.Hash, Is.EqualTo(expected.Hash));
-        Assert.That(actual.Round, Is.EqualTo(expected.Round));
-        Assert.That(actual.BlockNumber, Is.EqualTo(expected.BlockNumber));
-    }
 }

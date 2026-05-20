@@ -65,7 +65,7 @@ public class VoteDecoderTests
             decoded = decoder.Decode(ref decoderContext);
         }
 
-        AssertVote(decoded, vote);
+        Assert.That(decoded, Is.EqualTo(vote).UsingPropertiesComparer());
     }
 
     [Test]
@@ -88,9 +88,9 @@ public class VoteDecoderTests
         Rlp.ValueDecoderContext decoderContext = new(stream.Data.AsSpan());
         Vote decodedContext = decoder.Decode(ref decoderContext);
 
-        AssertVote(decodedStream, vote);
-        AssertVote(decodedContext, vote);
-        AssertVote(decodedStream, decodedContext);
+        Assert.That(decodedStream, Is.EqualTo(vote).UsingPropertiesComparer());
+        Assert.That(decodedContext, Is.EqualTo(vote).UsingPropertiesComparer());
+        Assert.That(decodedStream, Is.EqualTo(decodedContext).UsingPropertiesComparer());
     }
 
     [Test]
@@ -201,18 +201,4 @@ public class VoteDecoderTests
         Assert.That(hash, Is.Not.EqualTo(Hash256.Zero)); // Should be computed hash
     }
 
-    private static void AssertVote(Vote actual, Vote expected)
-    {
-        AssertBlockRoundInfo(actual.ProposedBlockInfo, expected.ProposedBlockInfo);
-        Assert.That(actual.GapNumber, Is.EqualTo(expected.GapNumber));
-        Assert.That(actual.Signature, Is.EqualTo(expected.Signature));
-        Assert.That(actual.IsMyVote, Is.EqualTo(expected.IsMyVote));
-    }
-
-    private static void AssertBlockRoundInfo(BlockRoundInfo actual, BlockRoundInfo expected)
-    {
-        Assert.That(actual.Hash, Is.EqualTo(expected.Hash));
-        Assert.That(actual.Round, Is.EqualTo(expected.Round));
-        Assert.That(actual.BlockNumber, Is.EqualTo(expected.BlockNumber));
-    }
 }

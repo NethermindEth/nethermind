@@ -126,8 +126,6 @@ namespace Nethermind.Serialization.Rlp
             return span.ToArray();
         }
 
-        internal static ArrayPoolList<byte> ByteSpanToArrayPool(ReadOnlySpan<byte> span) => span.Length == 0 ? ArrayPoolList<byte>.Empty() : span.ToPooledList();
-
         public static IRlpDecoder<T>? GetDecoder<T>(string key = RlpDecoderKey.Default) => Decoders.TryGetValue(new(typeof(T), key), out IRlpDecoder value) ? value as IRlpDecoder<T> : null;
 
         public static ArrayPoolList<T> DecodeArrayPool<T>(ref ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None, RlpLimit? limit = null)
@@ -1847,9 +1845,9 @@ namespace Nethermind.Serialization.Rlp
 
         private static CappedArray<byte>[] CreatePreEncodes()
         {
-            const int MaxCache = 1024;
+            const int maxCache = 1024;
 
-            CappedArray<byte>[] cache = new CappedArray<byte>[MaxCache];
+            CappedArray<byte>[] cache = new CappedArray<byte>[maxCache];
 
             for (int i = 0; i < cache.Length; i++)
             {

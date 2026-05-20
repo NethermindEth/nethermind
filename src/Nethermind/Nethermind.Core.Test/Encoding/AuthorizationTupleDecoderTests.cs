@@ -32,14 +32,7 @@ public class AuthorizationTupleDecoderTests
         Rlp.ValueDecoderContext ctx = new(result.Bytes);
 
         AuthorizationTuple decoded = sut.Decode(ref ctx);
-        Assert.Multiple(() =>
-        {
-            Assert.That(decoded.ChainId, Is.EqualTo(item.ChainId));
-            Assert.That(decoded.CodeAddress, Is.EqualTo(item.CodeAddress));
-            Assert.That(decoded.Nonce, Is.EqualTo(item.Nonce));
-            Assert.That(decoded.AuthoritySignature, Is.EqualTo(item.AuthoritySignature));
-            Assert.That(decoded.Authority, Is.EqualTo(item.Authority));
-        });
+        Assert.That(decoded, Is.EqualTo(item).UsingPropertiesComparer());
     }
 
     [Test]

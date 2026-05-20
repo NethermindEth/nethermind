@@ -33,6 +33,7 @@ public class SnapRangeRecovery(ISyncPeerPool peerPool, ILogManager logManager) :
         new SatelliteProtocolPeerAllocationStrategy<ISnapSyncPeer>(
             new BySpeedStrategy(TransferSpeedType.Latency, false),
             Protocol.Snap);
+    private static readonly AccountDecoder AccountRlpDecoder = AccountDecoder.Instance;
 
     private const int ConcurrentAttempt = 3;
     private readonly ILogger _logger = logManager.GetClassLogger<SnapRangeRecovery>();
@@ -120,7 +121,7 @@ public class SnapRangeRecovery(ISyncPeerPool peerPool, ILogManager logManager) :
             ValueHash256 slotPath = default;
             if (pathAndAccounts.Length > 0)
             {
-                accountRlp = Rlp.Encode(pathAndAccounts[0].Account).Bytes;
+                accountRlp = AccountRlpDecoder.Encode(pathAndAccounts[0].Account).Bytes;
                 slotPath = pathAndAccounts[0].Path;
             }
 
