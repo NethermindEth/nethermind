@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
@@ -205,13 +206,22 @@ public static partial class EvmInstructions
         long gasAvailable = TGasPolicy.GetRemainingGas(in gas);
 
         // EIP-150 63/64 cap. The cap (gasAvailable - gasAvailable/64) is a non-negative long
-        // bounded by 63/64 * long.MaxValue, so min(cap, gasLimit) always fits in long when the
-        // rule is active. The single `>= long.MaxValue` OOG below covers both the post-cap
-        // case (cap < long.MaxValue, never trips) and the no-cap pre-Tangerine-Whistle case
-        // where the caller-supplied gasLimit exceeds the host's representable range.
+        // bounded by 63/64 * long.MaxValue, so clamping gasLimit to cap always yields a value
+        // that fits in long when the rule is active. The single `>= long.MaxValue` OOG below
+        // covers both the post-cap case (cap < long.MaxValue, never trips) and the no-cap
+        // pre-Tangerine-Whistle case where the caller-supplied gasLimit exceeds the host's
+        // representable range.
         if (spec.Use63Over64Rule)
         {
-            gasLimit = UInt256.Min((UInt256)(gasAvailable - gasAvailable / 64), gasLimit);
+            Debug.Assert(gasAvailable >= 0, "GetRemainingGas must be non-negative; (ulong)cap below would otherwise wrap.");
+            long cap = gasAvailable - gasAvailable / 64;
+            // Fast path: when gasLimit fits in 64 bits and is already within cap, skip the
+            // UInt256 assignment entirely. The full 256-bit comparison in UInt256.Min would
+            // dominate the common case where the caller supplies a small uint64-sized limit.
+            if (!gasLimit.IsUint64 || gasLimit.u0 > (ulong)cap)
+            {
+                gasLimit = (UInt256)cap;
+            }
         }
 
         if (gasLimit >= long.MaxValue) goto OutOfGas;
