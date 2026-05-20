@@ -66,9 +66,10 @@ public class PageResidencyTrackerTests
         public void Initialize(IReadOnlyList<SnapshotCatalog.CatalogEntry> entries) => throw new NotSupportedException();
         public ArenaReservation Open(in SnapshotLocation location) => throw new NotSupportedException();
         // No-op so reservation disposal doesn't blow up in tests.
-        public void MarkDead(ArenaFile file, long deadSize) { }
+        public bool MarkDead(ArenaFile file, long deadSize) => false;
         public void ForgetTrackerRange(int arenaId, long byteOffset, long byteSize) { }
         public bool FadviseOnEviction => false;
+        public bool TryPunchHole(ArenaFile file, long offset, long size) => false;
 
         public ArenaFile GetOrCreateFile(int arenaId)
         {

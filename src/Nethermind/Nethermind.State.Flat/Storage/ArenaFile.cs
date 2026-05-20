@@ -211,6 +211,15 @@ public sealed unsafe class ArenaFile : RefCountingDisposable
     }
 
     /// <summary>
+    /// <c>fallocate(PUNCH_HOLE | KEEP_SIZE)</c> over the page-aligned subrange of
+    /// <c>[offset, offset + size)</c>, freeing the dead range's disk blocks without
+    /// changing the file length. Punched pages read back as zero through the mmap.
+    /// </summary>
+    /// <returns>The <see cref="PunchHoleOutcome"/> reported by the kernel.</returns>
+    internal PunchHoleOutcome PunchHole(long offset, long size) =>
+        PosixReclaim.TryPunchHole((int)_handle.DangerousGetHandle(), offset, size);
+
+    /// <summary>
     /// Open a fresh per-reservation mmap view over <c>[offset, offset+size)</c> with
     /// <c>MADV_NORMAL</c> hint, distinct from the global random-access view used by point
     /// queries. When <paramref name="adviseDontNeedOnDispose"/> is true, disposing the

@@ -154,7 +154,8 @@ public class StorageLayerTests
     public void ArenaManager_CancelWrite_AllowsReuse()
     {
         string arenaDir = Path.Combine(_testDir, "arenas");
-        using ArenaManager manager = new(arenaDir, 0, maxArenaSize: 4096);
+        // 64 KiB so two page-aligned reservations fit in one shared arena file.
+        using ArenaManager manager = new(arenaDir, 0, maxArenaSize: 64 * 1024);
         manager.Initialize([]);
 
         // First write some data to establish a baseline
@@ -184,14 +185,16 @@ public class StorageLayerTests
             w.GetWriter().Advance(data.Length);
             (loc, _) = w.Complete();
         }
-        Assert.That(loc.Offset, Is.EqualTo(baselineLoc.Offset + baselineLoc.Size));
+        // The reused write starts at the page-aligned frontier after the baseline reservation.
+        Assert.That(loc.Offset, Is.EqualTo(PageLayout.RoundUpToOsPage(baselineLoc.Offset + baselineLoc.Size)));
     }
 
     [Test]
-    public void ArenaManager_CreateWriter_FrontierAdvancesExactly()
+    public void ArenaManager_CreateWriter_NextReservationIsPageAligned()
     {
         string arenaDir = Path.Combine(_testDir, "arenas");
-        using ArenaManager manager = new(arenaDir, 0, maxArenaSize: 4096);
+        // 64 KiB so two page-aligned reservations fit in one shared arena file.
+        using ArenaManager manager = new(arenaDir, 0, maxArenaSize: 64 * 1024);
         manager.Initialize([]);
 
         // Write small data via ArenaWriter
@@ -205,9 +208,10 @@ public class StorageLayerTests
             (location, _) = arenaWriter.Complete();
         }
 
+        // Size stays the exact byte count; only the frontier is page-padded.
         Assert.That(location.Size, Is.EqualTo(3));
 
-        // Next write should start right after the written data
+        // Next reservation starts at the page-aligned frontier, not right after the data.
         byte[] next = [4, 5];
         SnapshotLocation nextLoc;
         using (ArenaWriter w = manager.CreateWriter(next.Length))
@@ -217,7 +221,7 @@ public class StorageLayerTests
             w.GetWriter().Advance(next.Length);
             (nextLoc, _) = w.Complete();
         }
-        Assert.That(nextLoc.Offset, Is.EqualTo(location.Offset + location.Size));
+        Assert.That(nextLoc.Offset, Is.EqualTo(PageLayout.RoundUpToOsPage(location.Offset + location.Size)));
     }
 
     [Test]

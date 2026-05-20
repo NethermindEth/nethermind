@@ -42,7 +42,13 @@ public sealed class ArenaWriter : IDisposable
         _writer.Flush();
         _completed = true;
         long actualSize = _writer.Written;
-        long newFrontier = _startOffset + actualSize;
+        long dataEnd = _startOffset + actualSize;
+        // Shared arenas pack many reservations per file. Pad the frontier up to an OS-page
+        // boundary so the next reservation starts page-aligned and reclamation syscalls
+        // (fadvise / fallocate punch-hole) over a reservation cover whole pages exactly.
+        long newFrontier = _dedicated
+            ? dataEnd
+            : Math.Min(PageLayout.RoundUpToOsPage(dataEnd), _file.MappedSize);
         _file.Frontier = newFrontier;
 
         if (_dedicated && newFrontier > 0 && newFrontier < _file.MappedSize)

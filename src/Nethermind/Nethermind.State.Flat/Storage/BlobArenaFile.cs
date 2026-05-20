@@ -134,6 +134,23 @@ public sealed class BlobArenaFile : RefCountingDisposable
         return fs;
     }
 
+    /// <summary>
+    /// <c>posix_fadvise(POSIX_FADV_DONTNEED)</c> over <c>[offset, offset + size)</c>,
+    /// dropping the range from the OS file cache. Used when an orphaned file's frontier
+    /// is reset so the stale, soon-to-be-overwritten bytes don't linger in cache.
+    /// </summary>
+    internal void FadviseDontNeed(long offset, long size) =>
+        PosixReclaim.FadviseDontNeed((int)Handle.DangerousGetHandle(), offset, size);
+
+    /// <summary>
+    /// <c>fallocate(PUNCH_HOLE | KEEP_SIZE)</c> over <c>[offset, offset + size)</c>,
+    /// freeing the underlying disk blocks of an orphaned range without changing the
+    /// pre-extended sparse file length.
+    /// </summary>
+    /// <returns>The <see cref="PunchHoleOutcome"/> reported by the kernel.</returns>
+    internal PunchHoleOutcome PunchHole(long offset, long size) =>
+        PosixReclaim.TryPunchHole((int)Handle.DangerousGetHandle(), offset, size);
+
     protected override void CleanUp()
     {
         Handle.Dispose();

@@ -548,19 +548,20 @@ public sealed class PersistedSnapshot : RefCountingDisposable
     public bool TryAcquire() => TryAcquireLease();
 
     /// <summary>
-    /// Advise this snapshot's mmap range cold (<c>madvise(MADV_DONTNEED)</c>) and clear
-    /// the per-arena page-tracker entries that cover it. Intended as a hook for callers
-    /// that have superseded this snapshot but want to drop its resident pages eagerly
-    /// rather than waiting for full disposal — e.g. the compactor releasing sources
-    /// after merging them into a new snapshot.
+    /// Advise this snapshot's mmap range cold (<c>madvise(MADV_DONTNEED)</c> plus
+    /// <c>posix_fadvise(POSIX_FADV_DONTNEED)</c>) and clear the per-arena page-tracker
+    /// entries that cover it. Intended as a hook for callers that have superseded this
+    /// snapshot but want to drop its resident pages eagerly rather than waiting for full
+    /// disposal — e.g. the compactor releasing sources after merging them into a new snapshot.
     /// </summary>
     /// <remarks>
-    /// Does not touch the inline address-bound cache: its 64 bytes stay on the snapshot
-    /// and the cached offsets remain content-verified against the (now-cold) mmap range,
-    /// so subsequent reads still hit the cache and simply pay a cold-page fault on first
-    /// access. Idempotent and safe to call from any thread.
+    /// Drops page-cache pages only — it does not punch a hole, because the snapshot stays
+    /// alive and readable; subsequent reads simply pay a cold-page fault. Does not touch the
+    /// inline address-bound cache: its 64 bytes stay on the snapshot and the cached offsets
+    /// remain content-verified against the (now-cold) mmap range, so subsequent reads still
+    /// hit the cache. Idempotent and safe to call from any thread.
     /// </remarks>
-    public void Demote() => _reservation.AdviseDontNeed();
+    public void Demote() => _reservation.AdviseAndFadviseDontNeed();
 
     /// <summary>
     /// Mark every file this snapshot references (its metadata <see cref="ArenaReservation"/>'s
