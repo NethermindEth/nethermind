@@ -13,7 +13,6 @@ using Nethermind.Config;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Scheduler;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Db;
 using Nethermind.Logging;
