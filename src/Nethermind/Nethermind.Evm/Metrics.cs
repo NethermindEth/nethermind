@@ -17,7 +17,7 @@ using Nethermind.Core.Threading;
 namespace Nethermind.Evm;
 
 /// <summary>
-/// Compile-time switch for the cross-client execution-metrics counters added in PR #11400
+/// Compile-time switch for the cross-client execution-metrics counters
 /// (account/storage/code reads + writes, EIP-7702 delegation set/clear, block timing breakdown).
 /// </summary>
 /// <remarks>
@@ -138,7 +138,7 @@ public class Metrics
     public static long MainThreadContractsAnalysed => _mainContractsAnalysed;
     public static void IncrementContractsAnalysed() => Interlocked.Increment(ref IsBlockProcessingThread ? ref _mainContractsAnalysed : ref _otherContractsAnalysed);
 
-    // Cross-client execution metrics added in PR #11400.
+    // Cross-client execution metrics gated by ExecutionMetricsFlag.
     // Each Increment* method short-circuits when ExecutionMetricsFlag.IsActive is false:
     // since IsActive is a static property folded to a constant by the JIT, flipping the flag to
     // false elides the Interlocked.Increment / Interlocked.Add when inlined.

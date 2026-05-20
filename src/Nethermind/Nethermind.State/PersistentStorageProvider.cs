@@ -277,6 +277,9 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
 
     private ReadOnlySpan<byte> LoadFromTree(in StorageCell storageCell)
     {
+        // Counts SLOAD reads that miss the in-memory cache (and prewarm loads). Hits served
+        // from the cache via GetCurrentValue's TryGetCachedValue branch are deliberately not
+        // counted — state_reads.storage_slots is intended to track DB-backed reads only.
         EvmMetrics.IncrementStorageReads();
         return GetOrCreateStorage(storageCell.Address).LoadFromTree(storageCell);
     }

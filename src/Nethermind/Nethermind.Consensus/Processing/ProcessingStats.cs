@@ -48,8 +48,9 @@ namespace Nethermind.Consensus.Processing
         private readonly Stopwatch _runStopwatch = new();
 
         /// <summary>
-        /// Threshold in milliseconds for slow block logging (default: 1000ms).
-        /// Set to 0 to log all blocks. Set to -1 to disable.
+        /// Threshold in milliseconds for slow block logging. Defaults to -1 (disabled), matching
+        /// <see cref="BlocksConfig.SlowBlockThresholdMs"/>. Set to 0 to log every block, or to a
+        /// positive value to log only blocks slower than that many milliseconds.
         /// </summary>
         private readonly long _slowBlockThresholdMs;
 

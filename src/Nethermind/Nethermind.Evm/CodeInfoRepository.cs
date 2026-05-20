@@ -77,6 +77,10 @@ public class CodeInfoRepository : ICodeInfoRepository
             MissingCode(in codeHash);
         }
 
+        // Counts code reads that miss the in-memory code cache (i.e. require a DB fetch via
+        // IWorldState.GetCode). Cache hits served by CacheCodeInfoRepository.GetOrCacheCodeInfo
+        // are counted separately as Metrics.CodeDbCache, so state_reads.code in the slow-block
+        // JSON tracks DB-backed code reads only and equals cache.code.misses by construction.
         Metrics.IncrementCodeReads();
         Metrics.IncrementCodeBytesRead(code.Length);
 
