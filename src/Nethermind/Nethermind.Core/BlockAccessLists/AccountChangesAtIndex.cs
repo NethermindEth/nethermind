@@ -25,15 +25,18 @@ public class AccountChangesAtIndex(Address address)
     public byte[]? PreTxCode { get; set; }
     private Dictionary<UInt256, UInt256>? _preTxStorage;
 
-    private readonly SortedDictionary<UInt256, StorageChange> _storageChanges
-        = new(GenericComparer.GetOptimized<UInt256>());
-    private readonly SortedSet<UInt256> _storageReads
-        = new(GenericComparer.GetOptimized<UInt256>());
+    // Plain Dictionary / HashSet: all per-tx operations (set / remove / has / try-get) are O(1),
+    // and no consumer between insert and the merge into GeneratedAccountChanges relies on sorted
+    // iteration — the receiving GeneratedAccountChanges, BlockAccessListValidationIndex, and BAL
+    // encoders all sort their own outputs. Same trade-off as the outer _accountChanges dict in
+    // BlockAccessListAtIndex.
+    private readonly Dictionary<UInt256, StorageChange> _storageChanges = new();
+    private readonly HashSet<UInt256> _storageReads = new();
 
-    public IReadOnlyCollection<UInt256> ChangedSlots => _storageChanges.Keys;
-    public IEnumerable<KeyValuePair<UInt256, StorageChange>> StorageChanges => _storageChanges;
+    public Dictionary<UInt256, StorageChange>.KeyCollection ChangedSlots => _storageChanges.Keys;
+    public Dictionary<UInt256, StorageChange> StorageChanges => _storageChanges;
     public int StorageChangeCount => _storageChanges.Count;
-    public IReadOnlyCollection<UInt256> StorageReads => _storageReads;
+    public HashSet<UInt256> StorageReads => _storageReads;
 
     public bool HasStorageChange(UInt256 key) => _storageChanges.ContainsKey(key);
 
@@ -52,6 +55,19 @@ public class AccountChangesAtIndex(Address address)
         => _storageChanges[key] = storageChange;
 
     public bool RemoveStorageChange(UInt256 key) => _storageChanges.Remove(key);
+
+    /// <summary>Combined lookup + remove. Saves a redundant hash compared to
+    /// <see cref="TryGetStorageChange"/> followed by <see cref="RemoveStorageChange"/>.</summary>
+    public bool TryRemoveStorageChange(UInt256 key, [NotNullWhen(true)] out StorageChange? storageChange)
+    {
+        if (_storageChanges.Remove(key, out StorageChange existing))
+        {
+            storageChange = existing;
+            return true;
+        }
+        storageChange = null;
+        return false;
+    }
 
     public void AddStorageRead(UInt256 key) => _storageReads.Add(key);
 
@@ -74,9 +90,9 @@ public class AccountChangesAtIndex(Address address)
 
     /// <summary>
     /// Recycles this instance for reuse with a different account. Clears every per-tx field but
-    /// keeps the inner <see cref="SortedDictionary{TKey,TValue}"/> / <see cref="SortedSet{T}"/> /
-    /// <see cref="Dictionary{TKey,TValue}"/> wrappers alive so a subsequent fill avoids re-allocating
-    /// them (the internal tree nodes / hash entries still become garbage on clear).
+    /// keeps the inner <see cref="Dictionary{TKey,TValue}"/> / <see cref="HashSet{T}"/> wrappers
+    /// alive so a subsequent fill avoids re-allocating them (the buckets and entries arrays are
+    /// preserved at their current capacity — only the live entry count resets to zero).
     /// </summary>
     public void Reset(Address address)
     {

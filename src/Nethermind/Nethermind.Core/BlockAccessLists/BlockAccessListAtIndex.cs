@@ -22,6 +22,11 @@ public class BlockAccessListAtIndex : IJournal<int>, IResettable
 {
     private const int InitialChangeCapacity = 64;
 
+    // Hard cap on the recycle bin so a pathological block (tens of thousands of unique accounts
+    // touched) doesn't permanently inflate every pooled slice. Sized comfortably above the typical
+    // L1/L2 high-water mark; entries beyond the cap are simply dropped to GC.
+    private const int MaxPooledAccountChanges = 4096;
+
     public uint Index { get; set; }
 
     // Plain Dictionary on the per-tx hot path. The sorted iteration the BAL needs is provided
@@ -43,7 +48,9 @@ public class BlockAccessListAtIndex : IJournal<int>, IResettable
     // inner SortedDictionary / SortedSet / Dictionary wrappers.
     private readonly Stack<AccountChangesAtIndex> _accountChangesPool = new();
 
-    public IEnumerable<AccountChangesAtIndex> AccountChanges => _accountChanges.Values;
+    // Concrete ValueCollection type rather than IEnumerable so `foreach` binds the struct
+    // enumerator and avoids the boxing IEnumerable<T> would force on every iteration.
+    public Dictionary<Address, AccountChangesAtIndex>.ValueCollection AccountChanges => _accountChanges.Values;
     public int AccountCount => _accountChanges.Count;
     public bool HasAccount(Address address) => _accountChanges.ContainsKey(address);
     public AccountChangesAtIndex? GetAccountChanges(Address address)
@@ -51,9 +58,14 @@ public class BlockAccessListAtIndex : IJournal<int>, IResettable
 
     public void Clear()
     {
+        // Cap retention so the pool can't snowball if one block touches an exceptional number of
+        // accounts; surplus instances are dropped to GC.
+        int spareCount = _accountChangesPool.Count;
         foreach (AccountChangesAtIndex value in _accountChanges.Values)
         {
+            if (spareCount >= MaxPooledAccountChanges) break;
             _accountChangesPool.Push(value);
+            spareCount++;
         }
         _accountChanges.Clear();
         _changes.Clear();
@@ -109,6 +121,12 @@ public class BlockAccessListAtIndex : IJournal<int>, IResettable
         }
 
         AccountChangesAtIndex accountChanges = GetOrAddAccountChanges(address);
+
+        // First call for this account: PreTxCode is null; we adopt `before` and know it differs
+        // from `after` (we just early-returned the equal case), so skip the redundant compare.
+        // Subsequent calls reuse the captured pre-tx baseline; the comparison decides whether the
+        // tx net-changed the code (set to current value) or netted to no-op (clear to null).
+        bool isFirstCall = accountChanges.PreTxCode is null;
         byte[] preTxCode = accountChanges.PreTxCode ??= before;
 
         CodeChange? previous = accountChanges.CodeChange;
@@ -120,7 +138,7 @@ public class BlockAccessListAtIndex : IJournal<int>, IResettable
             HasPrevious = previous.HasValue,
         });
 
-        accountChanges.CodeChange = !preTxCode.AsSpan().SequenceEqual(after.Span)
+        accountChanges.CodeChange = isFirstCall || !preTxCode.AsSpan().SequenceEqual(after.Span)
             ? new CodeChange(Index, after.ToArray())
             : null;
     }
@@ -161,8 +179,7 @@ public class BlockAccessListAtIndex : IJournal<int>, IResettable
 
         AccountChangesAtIndex accountChanges = GetOrAddAccountChanges(address);
 
-        accountChanges.TryGetStorageChange(key, out StorageChange? oldStorageChange);
-        accountChanges.RemoveStorageChange(key);
+        accountChanges.TryRemoveStorageChange(key, out StorageChange? oldStorageChange);
 
         UInt256 preTxStorage = accountChanges.GetOrCapturePreTxStorage(key, before);
 
