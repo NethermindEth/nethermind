@@ -167,6 +167,40 @@ public class JsonRpcServiceTests
         Assert.That(response.HasErrorData, Is.False);
     }
 
+    [Test]
+    public void Typed_error_data_false_is_serialized()
+    {
+        ResultWrapper<string, bool> response = ResultWrapper<string, bool>.Fail("typed", ErrorCodes.InvalidParams, false);
+        response.Id = 67;
+
+        string serialized = RpcTest.SerializeResponse(response);
+
+        Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32602,\"message\":\"typed\",\"data\":false},\"id\":67}"));
+    }
+
+    [TestCase(null, "null")]
+    [TestCase(1UL, "\"0x1\"")]
+    public void Nullable_quantity_result_serializes_null_and_hex_value(ulong? value, string expectedResult)
+    {
+        ResultWrapper<ulong?> response = ResultWrapper<ulong?>.Success(value);
+        response.Id = 67;
+
+        string serialized = RpcTest.SerializeResponse(response);
+
+        Assert.That(serialized, Is.EqualTo($"{{\"jsonrpc\":\"2.0\",\"result\":{expectedResult},\"id\":67}}"));
+    }
+
+    [Test]
+    public void Web3_client_version_serializes_string_result()
+    {
+        IWeb3RpcModule web3RpcModule = Substitute.For<IWeb3RpcModule>();
+        web3RpcModule.web3_clientVersion().Returns(ResultWrapper<string>.Success("Nethermind/test"));
+
+        string serialized = RpcTest.SerializeResponse(TestRequest(web3RpcModule, "web3_clientVersion"));
+
+        Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":\"Nethermind/test\",\"id\":67}"));
+    }
+
     [TestCase(false)]
     [TestCase(true)]
     public async Task Admin_peers_is_working_with_empty_or_null_params(bool useNullParams)
