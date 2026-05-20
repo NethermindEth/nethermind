@@ -185,21 +185,22 @@ public class ByteArrayConverterTests : ConverterTestBase<byte[]>
         Encoding.UTF8.GetString(ms.ToArray()).Should().Be(expected);
     }
 
-    [Test]
-    public void Write_LargeOutput_UsesArrayPool()
+    [TestCase(126)]
+    [TestCase(127)]
+    [TestCase(1022)]
+    [TestCase(1023)]
+    public void Write_OutputAroundInlineThresholds_IsByteIdentical(int length)
     {
-        // 200 bytes = 400 hex chars + "0x" prefix + quotes > 256 byte InlineArray threshold
-        byte[] input = new byte[200];
+        byte[] input = new byte[length];
         for (int i = 0; i < input.Length; i++) input[i] = (byte)(i & 0xFF);
 
         using System.IO.MemoryStream ms = new();
         using Utf8JsonWriter writer = new(ms);
         ByteArrayConverter.Convert(writer, input, skipLeadingZeros: false);
         writer.Flush();
+
         string output = Encoding.UTF8.GetString(ms.ToArray());
-        output.Should().StartWith("\"0x");
-        output.Should().EndWith("\"");
-        output.Length.Should().Be(404); // 400 hex + 2 prefix + 2 quotes
+        output.Should().Be($"\"0x{System.Convert.ToHexString(input).ToLowerInvariant()}\"");
     }
 
     [TestCase(new byte[] { 0xab, 0xcd }, "{\"0xabcd\":1}")]
@@ -214,6 +215,26 @@ public class ByteArrayConverterTests : ConverterTestBase<byte[]>
         writer.WriteNumberValue(1);
         writer.WriteEndObject();
         writer.Flush();
+        Encoding.UTF8.GetString(ms.ToArray()).Should().Be(expected);
+    }
+
+    [TestCase(127)]
+    [TestCase(1022)]
+    public void WriteAsPropertyName_MediumOutput_IsByteIdentical(int length)
+    {
+        byte[] input = new byte[length];
+        for (int i = 0; i < input.Length; i++) input[i] = (byte)(i & 0xFF);
+
+        ByteArrayConverter converter = new();
+        using System.IO.MemoryStream ms = new();
+        using Utf8JsonWriter writer = new(ms);
+        writer.WriteStartObject();
+        converter.WriteAsPropertyName(writer, input, JsonSerializerOptions.Default);
+        writer.WriteNumberValue(1);
+        writer.WriteEndObject();
+        writer.Flush();
+
+        string expected = $"{{\"0x{System.Convert.ToHexString(input).ToLowerInvariant()}\":1}}";
         Encoding.UTF8.GetString(ms.ToArray()).Should().Be(expected);
     }
 
