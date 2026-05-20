@@ -418,8 +418,17 @@ public class BlockAccessListAtIndex : IJournal<int>, IResettable
     /// <see cref="Change.Type"/> is meaningful — the others return reinterpretations of the same memory.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// <see langword="readonly"/> so that field/property access through <c>ref readonly Change</c>
     /// in <see cref="Restore"/> doesn't emit a defensive 32-byte copy per access.
+    /// </para>
+    /// <para>
+    /// The <see cref="Unsafe.As{TFrom,TTo}"/> calls do a bitwise reinterpret between <see cref="UInt256"/>
+    /// and <see cref="EvmWord"/> (same 32-byte footprint, different type label). This is required
+    /// because <see cref="StorageChange.Value"/> is already in BE wire form when it enters the journal;
+    /// going through the <c>StorageChange(uint, in UInt256)</c> ctor's <c>ByteSwap</c> path on read
+    /// would corrupt the bytes. Same idiom as <see cref="StorageChange(uint, in UInt256)"/>.
+    /// </para>
     /// </remarks>
     private readonly struct ChangeValue
     {
@@ -429,12 +438,16 @@ public class BlockAccessListAtIndex : IJournal<int>, IResettable
 
         public ChangeValue(ulong nonce) => _data = new UInt256(nonce);
 
+        // Bitwise reinterpret of the EvmWord bytes as a UInt256 — same 32-byte memory, different type
+        // label. No write through the alias; the ref serves only to satisfy Unsafe.As's signature.
         public ChangeValue(EvmWord storage) => _data = Unsafe.As<EvmWord, UInt256>(ref storage);
 
         public UInt256 Balance => _data;
 
         public ulong Nonce => _data.u0;
 
+        // Unsafe.AsRef strips the readonly off `in _data` so Unsafe.As can accept it; safe because the
+        // returned ref is only read (via the surrounding Unsafe.As reinterpret), never written through.
         public EvmWord Storage => Unsafe.As<UInt256, EvmWord>(ref Unsafe.AsRef(in _data));
     }
 }
