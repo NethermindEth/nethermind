@@ -25,10 +25,8 @@ public class HealingCodeDb(IKeyValueStoreWithBatching codeDb, Lazy<ICodeRecovery
         return bytes;
     }
 
-    public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None)
-    {
+    public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None) =>
         codeDb.Set(key, value, flags);
-    }
 
     public IWriteBatch StartWriteBatch() => codeDb.StartWriteBatch();
 }
