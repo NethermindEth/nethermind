@@ -140,7 +140,9 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
             object? invocationResult;
             try
             {
-                invocationResult = method.Invoker.Invoke(rpcModule, parameters.AsSpan(0, parameterCount));
+                invocationResult = parameterCount == 0 && method.DirectNoParameterInvoker is { } directInvoker
+                    ? directInvoker(rpcModule)
+                    : method.Invoker.Invoke(rpcModule, parameters.AsSpan(0, parameterCount));
             }
             finally
             {
@@ -429,8 +431,8 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
             TargetParameterCountException or ArgumentException =>
                 GetErrorResponse(methodName, ErrorCodes.InvalidParams, ex.Message, ex.ToString(), request.Id, returnAction),
 
-            TargetInvocationException and { InnerException: JsonException } =>
-                GetErrorResponse(methodName, ErrorCodes.InvalidParams, "Invalid params", ex.InnerException?.ToString(), request.Id, returnAction),
+            JsonException or TargetInvocationException and { InnerException: JsonException } =>
+                GetErrorResponse(methodName, ErrorCodes.InvalidParams, "Invalid params", GetExceptionText(ex), request.Id, returnAction),
 
             OperationCanceledException or { InnerException: OperationCanceledException } =>
                 GetErrorResponse(methodName, ErrorCodes.Timeout,
@@ -441,8 +443,8 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
                 or { InnerException: ConcurrencyLimitReachedException } =>
                 GetErrorResponse(methodName, ErrorCodes.LimitExceeded, "Too many requests", null, request.Id, returnAction),
 
-            { InnerException: InsufficientBalanceException } =>
-                GetErrorResponse(methodName, ErrorCodes.InvalidInput, ex.InnerException.Message, ex.ToString(), request.Id, returnAction),
+            InsufficientBalanceException or { InnerException: InsufficientBalanceException } =>
+                GetErrorResponse(methodName, ErrorCodes.InvalidInput, GetInsufficientBalanceMessage(ex), ex.ToString(), request.Id, returnAction),
 
             InvalidTransactionException or { InnerException: InvalidTransactionException } when (ex as InvalidTransactionException ?? ex.InnerException as InvalidTransactionException) is { Reason.ErrorDescription: var description } =>
                 GetErrorResponse(methodName, ErrorCodes.Default, description, null, request.Id, returnAction),
@@ -464,6 +466,11 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
             if (_logger.IsError) _logger.Error($"Error during method execution, request: {request}", ex);
             return GetErrorResponse(methodName, ErrorCodes.InternalError, "Internal error", ex.ToString(), request.Id, returnAction);
         }
+
+        static string GetExceptionText(Exception ex) => (ex as TargetInvocationException)?.InnerException?.ToString() ?? ex.ToString();
+
+        static string GetInsufficientBalanceMessage(Exception ex) =>
+            (ex as InsufficientBalanceException ?? ex.InnerException as InsufficientBalanceException)!.Message;
 
         JsonRpcErrorResponse HandleMissingTrieNode(MissingTrieNodeException ex, string methodName, JsonRpcRequest request, Action? returnAction)
         {

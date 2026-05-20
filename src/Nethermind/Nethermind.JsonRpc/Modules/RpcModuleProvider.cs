@@ -280,6 +280,9 @@ namespace Nethermind.JsonRpc.Modules
 
         public class ResolvedMethodInfo
         {
+            private static readonly MethodInfo _createTypedDirectNoParameterInvokerMethod =
+                typeof(ResolvedMethodInfo).GetMethod(nameof(CreateTypedDirectNoParameterInvoker), BindingFlags.NonPublic | BindingFlags.Static)!;
+
                 public readonly struct ExpectedParameter
                 {
                     public readonly ParameterInfo Info;
@@ -419,11 +422,13 @@ namespace Nethermind.JsonRpc.Modules
                 ReadOnly = readOnly;
                 Availability = availability;
                 Invoker = MethodInvoker.Create(methodInfo);
+                DirectNoParameterInvoker = CreateDirectNoParameterInvoker(methodInfo, parameters.Length);
             }
 
             public string ModuleType { get; }
             public MethodInfo MethodInfo { get; }
             public MethodInvoker Invoker { get; }
+            public Func<IRpcModule, object?>? DirectNoParameterInvoker { get; }
             public ExpectedParameter[] ExpectedParameters { get; }
             public bool ReadOnly { get; }
             public RpcEndpoint Availability { get; }
@@ -467,6 +472,44 @@ namespace Nethermind.JsonRpc.Modules
                 }
 
                 returnModule(rpcModule);
+            }
+
+            private static Func<IRpcModule, object?>? CreateDirectNoParameterInvoker(MethodInfo methodInfo, int parameterCount)
+            {
+                if (parameterCount != 0 || !CanUseDirectNoParameterInvoker(methodInfo.ReturnType))
+                {
+                    return null;
+                }
+
+                Type? declaringType = methodInfo.DeclaringType;
+                return declaringType is null
+                    ? null
+                    : (Func<IRpcModule, object?>)_createTypedDirectNoParameterInvokerMethod
+                        .MakeGenericMethod(declaringType, methodInfo.ReturnType)
+                        .Invoke(null, [methodInfo])!;
+            }
+
+            private static Func<IRpcModule, object?> CreateTypedDirectNoParameterInvoker<TModule, TResult>(MethodInfo methodInfo)
+            {
+                Func<TModule, TResult> typedInvoker = methodInfo.CreateDelegate<Func<TModule, TResult>>();
+                return module => typedInvoker((TModule)module);
+            }
+
+            private static bool CanUseDirectNoParameterInvoker(Type returnType) =>
+                returnType.IsAssignableTo(typeof(IResultWrapper)) ||
+                GetTaskResultType(returnType) is { } resultType && resultType.IsAssignableTo(typeof(IResultWrapper));
+
+            private static Type? GetTaskResultType(Type taskType)
+            {
+                for (Type? type = taskType; type is not null; type = type.BaseType)
+                {
+                    if (type.IsGenericType && type.GetGenericTypeDefinition() == typeof(Task<>))
+                    {
+                        return type.GetGenericArguments()[0];
+                    }
+                }
+
+                return null;
             }
 
             [DoesNotReturn, StackTraceHidden]

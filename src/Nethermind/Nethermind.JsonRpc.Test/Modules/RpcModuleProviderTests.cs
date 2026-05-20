@@ -166,6 +166,30 @@ public class RpcModuleProviderTests
     }
 
     [Test]
+    public async Task Caches_direct_invokers_for_zero_parameter_result_wrapper_methods()
+    {
+        DirectInvokerRpcModule module = new();
+        _moduleProvider.Register(new TestModulePool<DirectInvokerRpcModule>(module));
+
+        RpcModuleProvider.ResolvedMethodInfo syncMethod = _moduleProvider.Resolve(nameof(DirectInvokerRpcModule.direct_sync))!;
+        RpcModuleProvider.ResolvedMethodInfo asyncMethod = _moduleProvider.Resolve(nameof(DirectInvokerRpcModule.direct_async))!;
+        RpcModuleProvider.ResolvedMethodInfo parameterMethod = _moduleProvider.Resolve(nameof(DirectInvokerRpcModule.direct_with_param))!;
+
+        syncMethod.DirectNoParameterInvoker.Should().NotBeNull();
+        asyncMethod.DirectNoParameterInvoker.Should().NotBeNull();
+        parameterMethod.DirectNoParameterInvoker.Should().BeNull();
+
+        IResultWrapper syncResult = syncMethod.DirectNoParameterInvoker!(module).Should().BeAssignableTo<IResultWrapper>().Subject;
+        syncResult.Data.Should().Be("sync");
+
+        Task<ResultWrapper<long>> asyncResult = asyncMethod.DirectNoParameterInvoker!(module).Should().BeAssignableTo<Task<ResultWrapper<long>>>().Subject;
+        (await asyncResult).Data.Should().Be(5);
+
+        module.SyncCalls.Should().Be(1);
+        module.AsyncCalls.Should().Be(1);
+    }
+
+    [Test]
     public void Can_register_via_constructor()
     {
         JsonRpcConfig jsonRpcConfig = new();
@@ -241,6 +265,27 @@ public class RpcModuleProviderTests
         public ResultWrapper<string> eth_getBlockByNumber() => ResultWrapper<string>.Success(string.Empty);
 
         public ResultWrapper<string> eth_chainId() => ResultWrapper<string>.Success(string.Empty);
+    }
+
+    [RpcModule(ModuleType.Net)]
+    private sealed class DirectInvokerRpcModule : IRpcModule
+    {
+        public int SyncCalls { get; private set; }
+        public int AsyncCalls { get; private set; }
+
+        public ResultWrapper<string> direct_sync()
+        {
+            SyncCalls++;
+            return ResultWrapper<string>.Success("sync");
+        }
+
+        public Task<ResultWrapper<long>> direct_async()
+        {
+            AsyncCalls++;
+            return Task.FromResult(ResultWrapper<long>.Success(5));
+        }
+
+        public ResultWrapper<string> direct_with_param(string value) => ResultWrapper<string>.Success(value);
     }
 
     [RpcModule(ModuleType.Eth)]
