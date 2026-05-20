@@ -1179,13 +1179,13 @@ namespace Nethermind.JsonRpc.Test.Modules
             string serializedLogsUnsub = await RpcTest.TestSerializedRequest(_subscribeRpcModule, "eth_unsubscribe", logsId);
             string expectedLogsUnsub =
                 string.Concat("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32603,\"message\":\"Failed to unsubscribe: ",
-                    logsId, ".\",\"data\":false},\"id\":67}");
+                    logsId, ".\"},\"id\":67}");
             expectedLogsUnsub.Should().Be(serializedLogsUnsub);
 
             string serializedNewPendingTxUnsub = await RpcTest.TestSerializedRequest(_subscribeRpcModule, "eth_unsubscribe", newPendingTxId);
             string expectedNewPendingTxUnsub =
                 string.Concat("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32603,\"message\":\"Failed to unsubscribe: ",
-                    newPendingTxId, ".\",\"data\":false},\"id\":67}");
+                    newPendingTxId, ".\"},\"id\":67}");
             expectedNewPendingTxUnsub.Should().Be(serializedNewPendingTxUnsub);
         }
 

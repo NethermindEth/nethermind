@@ -63,6 +63,7 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
         get => _encodedTransactions;
         set
         {
+            ArgumentNullException.ThrowIfNull(value);
             _encodedTransactions = value;
             _transactions = null;
         }

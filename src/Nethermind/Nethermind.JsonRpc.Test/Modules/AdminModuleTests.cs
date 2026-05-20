@@ -358,7 +358,7 @@ public class AdminModuleTests
         string serializedPeerEventsUnsub = await RpcTest.TestSerializedRequest(_adminRpcModule, "admin_unsubscribe", peerEventsId);
         string expectedPeerEventsUnsub = string.Concat(
             "{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32603,\"message\":\"Failed to unsubscribe: ",
-            peerEventsId, ".\",\"data\":false},\"id\":67}");
+            peerEventsId, ".\"},\"id\":67}");
         expectedPeerEventsUnsub.Should().Be(serializedPeerEventsUnsub, because: "after the client closes, the subscription is removed and unsubscribe fails");
     }
 
