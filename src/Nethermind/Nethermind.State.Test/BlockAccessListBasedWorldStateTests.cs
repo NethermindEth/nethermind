@@ -300,9 +300,11 @@ public class BlockAccessListBasedWorldStateTests
         }
     }
 
-    /// <summary>SLOAD on a slot declared in <c>storage_reads</c> (no in-block change) must fall
-    /// through to the parent reader. Without the fall-through, the BAL-backed world state would
-    /// incorrectly return an empty slot for storage that the block legitimately read.</summary>
+    /// <summary>
+    /// SLOAD on a slot declared in <c>storage_reads</c> (no in-block change) must fall through
+    /// to the parent reader. Without the fall-through, the BAL-backed world state would
+    /// incorrectly return an empty slot for storage that the block legitimately read.
+    /// </summary>
     [Test]
     public void GetStorage_WithStorageReadOnlyDeclaration_ReturnsParentValue()
     {
@@ -330,10 +332,12 @@ public class BlockAccessListBasedWorldStateTests
         }
     }
 
-    /// <summary>SLOAD on a slot not declared anywhere in the account's BAL entry must throw —
-    /// the spec invariant is that every slot the block touches appears either in
-    /// <c>storage_changes</c> or <c>storage_reads</c>. Falling through to parent state silently
-    /// would let a malformed BAL pass validation.</summary>
+    /// <summary>
+    /// SLOAD on a slot not declared anywhere in the account's BAL entry must throw — the spec
+    /// invariant is that every slot the block touches appears either in <c>storage_changes</c>
+    /// or <c>storage_reads</c>. Falling through to parent state silently would let a malformed
+    /// BAL pass validation.
+    /// </summary>
     [Test]
     public void GetStorage_MissingSlotDeclaration_ThrowsBeforeParentFallback()
     {
@@ -360,9 +364,11 @@ public class BlockAccessListBasedWorldStateTests
         }
     }
 
-    /// <summary>TryGetAccount must overlay every BAL-prior change family (balance, nonce, code)
-    /// on top of the parent-state account, not just the field the latest test happened to touch.
-    /// Single-field overlay would let stale parent values leak through for the untouched fields.</summary>
+    /// <summary>
+    /// TryGetAccount must overlay every BAL-prior change family (balance, nonce, code) on top
+    /// of the parent-state account, not just the field the latest test happened to touch.
+    /// Single-field overlay would let stale parent values leak through for the untouched fields.
+    /// </summary>
     [Test]
     public void TryGetAccount_OverlaysPriorChangesOnParentAccount()
     {
@@ -398,9 +404,11 @@ public class BlockAccessListBasedWorldStateTests
         }
     }
 
-    /// <summary>GetAccountChanges filters out BAL entries that have no state changes — accounts
-    /// touched only by storage reads or pure account reads are not "changed" for the purposes of
-    /// the post-execution state-apply pass, so they must not be returned.</summary>
+    /// <summary>
+    /// GetAccountChanges filters out BAL entries that have no state changes — accounts touched
+    /// only by storage reads or pure account reads are not "changed" for the purposes of the
+    /// post-execution state-apply pass, so they must not be returned.
+    /// </summary>
     [Test]
     public void GetAccountChanges_IgnoresStorageReadsWithoutStateChanges()
     {
@@ -433,10 +441,12 @@ public class BlockAccessListBasedWorldStateTests
         }
     }
 
-    /// <summary>IsStorageEmpty must validate account membership in the BAL first, then delegate
-    /// to the parent reader for the actual emptiness check — the BAL only carries within-block
-    /// changes and never describes the pre-block storage shape, so the answer always comes from
-    /// the parent trie.</summary>
+    /// <summary>
+    /// IsStorageEmpty must validate account membership in the BAL first, then delegate to the
+    /// parent reader for the actual emptiness check — the BAL only carries within-block changes
+    /// and never describes the pre-block storage shape, so the answer always comes from the
+    /// parent trie.
+    /// </summary>
     [Test]
     public void IsStorageEmpty_UsesParentStateAfterAccountMembershipValidation()
     {
@@ -461,10 +471,12 @@ public class BlockAccessListBasedWorldStateTests
         }
     }
 
-    /// <summary>An account missing from parent state but introduced by a prior-tx balance change
-    /// must report as existing — the existence overlay covers all three change families (balance,
-    /// nonce, code), not just code. Pairs with the existing code-only test
-    /// <see cref="AccountExists_WithPriorTxCodeChange_ReturnsTrue"/>.</summary>
+    /// <summary>
+    /// An account missing from parent state but introduced by a prior-tx balance change must
+    /// report as existing — the existence overlay covers all three change families (balance,
+    /// nonce, code), not just code. Pairs with the code-only test
+    /// <see cref="AccountExists_WithPriorTxCodeChange_ReturnsTrue"/>.
+    /// </summary>
     [TestCase("balance", TestName = "AccountExists_MissingParentAccountCreatedByPriorBalanceChange_ReturnsTrue")]
     [TestCase("nonce", TestName = "AccountExists_MissingParentAccountCreatedByPriorNonceChange_ReturnsTrue")]
     public void AccountExists_MissingParentAccountCreatedByPriorChange_ReturnsTrue(string changeKind)

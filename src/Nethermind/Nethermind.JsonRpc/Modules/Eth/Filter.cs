@@ -31,9 +31,9 @@ public class Filter : IJsonRpcParam
             if (filter.ValueKind == JsonValueKind.String)
             {
                 string filterString = filter.GetString()!;
-                if (filterString.Length > 1_000_000)
+                if (filterString.Length > JsonRpcLimits.MaxJsonStringArgLength)
                 {
-                    throw new ArgumentException($"filter string length {filterString.Length} exceeds maximum allowed length of 1000000");
+                    throw new ArgumentException($"filter string length {filterString.Length} exceeds maximum allowed length of {JsonRpcLimits.MaxJsonStringArgLength}");
                 }
 
                 doc = JsonDocument.Parse(filterString);
