@@ -65,6 +65,9 @@ public sealed class NewPayloadWithWitnessHandler(
             {
                 if (blockHash is not null)
                     witnessCaptureRegistry.DisarmCapture(blockHash);
+
+                if (captureTask is not null && captureTask.IsCompletedSuccessfully)
+                    (await captureTask)?.Dispose();
             }
 
             return ResultWrapper<NewPayloadWithWitnessV1Result>.Success(

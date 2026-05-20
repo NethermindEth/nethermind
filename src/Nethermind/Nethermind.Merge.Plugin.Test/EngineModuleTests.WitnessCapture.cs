@@ -128,8 +128,8 @@ public partial class EngineModuleTests
         registry.TryDrainCapture(hash, Build.A.BlockHeader.TestObject, proxy);
 
         second.IsCompletedSuccessfully.Should().BeTrue("the replacement TCS is completed by drain");
-        first.IsCompleted.Should().BeFalse(
-            "the original (orphaned) TCS is never completed — expected side-effect of warn-and-replace");
+        first.IsCanceled.Should().BeTrue(
+            "the orphaned TCS must be cancelled so any awaiter gets OperationCanceledException rather than hanging forever");
     }
 
     [Test]
@@ -648,7 +648,7 @@ public partial class EngineModuleTests
 
     [Test]
     [Category("WitnessCapture")]
-    public async Task H_witness_state_nodes_are_consistent_with_parent_state_root()
+    public async Task Witness_state_nodes_are_consistent_with_parent_state_root()
     {
         using MergeTestBlockchain chain = await CreateBlockchain(Amsterdam.Instance);
 
@@ -680,7 +680,7 @@ public partial class EngineModuleTests
 
     [Test]
     [Category("WitnessCapture")]
-    public async Task I_witness_headers_contains_at_least_parent_header()
+    public async Task Witness_headers_contain_at_least_parent_header()
     {
         using MergeTestBlockchain chain = await CreateBlockchain(Amsterdam.Instance);
 
@@ -701,7 +701,7 @@ public partial class EngineModuleTests
 
     [Test]
     [Category("WitnessCapture")]
-    public async Task I_witness_headers_items_are_valid_RLP_encoded_block_headers()
+    public async Task Witness_headers_items_are_valid_RLP_encoded_block_headers()
     {
         using MergeTestBlockchain chain = await CreateBlockchain(Amsterdam.Instance);
 

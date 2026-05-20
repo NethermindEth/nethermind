@@ -135,20 +135,33 @@ public class BranchProcessor(
                     }
                 }
 
-                bool witnessArmed = ArmWitnessCapture(suggestedBlock.Hash);
-
-                (Block processedBlock, TxReceipt[] receipts) = blockProcessor.ProcessOne(
-                    suggestedBlock, options, blockTracer, spec, token);
-                CancellationTokenExtensions.CancelDisposeAndClear(ref backgroundCancellation);
-
-                processedBlocks[i] = processedBlock;
-
-                // be cautious here as AuRa depends on processing
-                PreCommitBlock(suggestedBlock.Header);
-
-                if (witnessArmed)
+                bool witnessArmed = ArmWitnessCapture(suggestedBlock.Hash, options);
+                bool witnessConsumed = false;
+                Block processedBlock;
+                TxReceipt[] receipts;
+                try
                 {
-                    DrainWitnessCapture(suggestedBlock.Hash, preBlockBaseBlock);
+                    (processedBlock, receipts) = blockProcessor.ProcessOne(
+                        suggestedBlock, options, blockTracer, spec, token);
+                    CancellationTokenExtensions.CancelDisposeAndClear(ref backgroundCancellation);
+
+                    processedBlocks[i] = processedBlock;
+
+                    PreCommitBlock(suggestedBlock.Header);
+
+                    if (witnessArmed)
+                    {
+                        DrainWitnessCapture(suggestedBlock.Hash, preBlockBaseBlock);
+                        witnessConsumed = true;
+                    }
+                }
+                finally
+                {
+                    if (witnessArmed && !witnessConsumed)
+                    {
+                        witnessCaptureRegistry?.DisarmCapture(suggestedBlock.Hash!);
+                        _witnessProxy?.Disarm();
+                    }
                 }
 
                 QueueClearCaches(preWarmTask);
@@ -209,9 +222,12 @@ public class BranchProcessor(
         }
     }
 
-    private bool ArmWitnessCapture(Hash256? blockHash)
+    private bool ArmWitnessCapture(Hash256? blockHash, ProcessingOptions options)
     {
         if (witnessCaptureRegistry is null || _witnessProxy is null || blockHash is null)
+            return false;
+
+        if (options.ContainsFlag(ProcessingOptions.ReadOnlyChain))
             return false;
 
         if (!witnessCaptureRegistry.HasPendingCapture(blockHash))

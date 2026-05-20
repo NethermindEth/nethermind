@@ -34,14 +34,18 @@ public sealed class WitnessCaptureRegistry(
         // block-processing thread when SetResult is called inside TryDrainCapture.
         TaskCompletionSource<Witness?> tcs = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
-        if (!_pending.TryAdd(blockHash, tcs))
-        {
-            if (_logger.IsWarn)
-                _logger.Warn($"WitnessCaptureRegistry: duplicate ArmCapture for {blockHash}. Replacing previous entry.");
-            _pending[blockHash] = tcs;
-        }
+        TaskCompletionSource<Witness?> effectiveTcs = _pending.AddOrUpdate(
+            blockHash,
+            tcs,
+            (_, existingTcs) =>
+            {
+                if (_logger.IsWarn)
+                    _logger.Warn($"WitnessCaptureRegistry: duplicate ArmCapture for {blockHash}. Replacing previous entry.");
+                existingTcs.TrySetCanceled();
+                return tcs;
+            });
 
-        return tcs.Task;
+        return effectiveTcs.Task;
     }
 
     public bool HasPendingCapture(Hash256 blockHash) => _pending.ContainsKey(blockHash);
