@@ -15,7 +15,7 @@ namespace Nethermind.Core.BlockAccessLists;
 /// </summary>
 public class AccountChangesAtIndex(Address address)
 {
-    public Address Address { get; } = address;
+    public Address Address { get; private set; } = address;
 
     public BalanceChange? BalanceChange { get; set; }
     public NonceChange? NonceChange { get; set; }
@@ -70,5 +70,24 @@ public class AccountChangesAtIndex(Address address)
         _storageChanges.Clear();
         _storageReads.Clear();
         _preTxStorage?.Clear();
+    }
+
+    /// <summary>
+    /// Recycles this instance for reuse with a different account. Clears every per-tx field but
+    /// keeps the inner <see cref="SortedDictionary{TKey,TValue}"/> / <see cref="SortedSet{T}"/> /
+    /// <see cref="Dictionary{TKey,TValue}"/> wrappers alive so a subsequent fill avoids re-allocating
+    /// them (the internal tree nodes / hash entries still become garbage on clear).
+    /// </summary>
+    public void Reset(Address address)
+    {
+        Address = address;
+        BalanceChange = null;
+        NonceChange = null;
+        CodeChange = null;
+        PreTxBalance = null;
+        PreTxCode = null;
+        _preTxStorage?.Clear();
+        _storageChanges.Clear();
+        _storageReads.Clear();
     }
 }
