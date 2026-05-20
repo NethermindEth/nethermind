@@ -43,13 +43,16 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
 
     public ValueTask<JsonRpcResponse> SendRequestAsync(JsonRpcRequest rpcRequest, JsonRpcContext context)
     {
-        long boundaryStartTimestamp = Stopwatch.GetTimestamp();
+        long serviceStartTimestamp = Stopwatch.GetTimestamp();
+        long boundaryStartTimestamp = rpcRequest.BoundaryStartTimestamp != 0
+            ? rpcRequest.BoundaryStartTimestamp
+            : serviceStartTimestamp;
         (int? errorCode, string? errorMessage, string methodName, ResolvedMethodInfo? method) = Validate(rpcRequest, context);
         if (errorCode.HasValue)
         {
             if (_logger.IsDebug) _logger.Debug($"Validation error when handling request: {rpcRequest}");
             JsonRpcErrorResponse response = GetErrorResponse(methodName, errorCode.Value, errorMessage, null, rpcRequest.Id);
-            response.BoundaryTimings = RpcBoundaryTimings.PreMethodOnly(boundaryStartTimestamp, Stopwatch.GetTimestamp());
+            response.BoundaryTimings = GetPreMethodTimings(rpcRequest, boundaryStartTimestamp, Stopwatch.GetTimestamp());
             return ValueTask.FromResult<JsonRpcResponse>(response);
         }
 
@@ -63,7 +66,7 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
         catch (Exception ex)
         {
             JsonRpcErrorResponse response = ReturnErrorResponse(rpcRequest, ex);
-            response.BoundaryTimings = RpcBoundaryTimings.PreMethodOnly(boundaryStartTimestamp, Stopwatch.GetTimestamp());
+            response.BoundaryTimings = GetPreMethodTimings(rpcRequest, boundaryStartTimestamp, Stopwatch.GetTimestamp());
             return ValueTask.FromResult<JsonRpcResponse>(response);
         }
 
@@ -76,7 +79,7 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
             catch (Exception ex)
             {
                 JsonRpcErrorResponse response = ReturnErrorResponse(rpcRequest, ex);
-                response.BoundaryTimings = RpcBoundaryTimings.PreMethodOnly(boundaryStartTimestamp, Stopwatch.GetTimestamp());
+                response.BoundaryTimings = GetPreMethodTimings(rpcRequest, boundaryStartTimestamp, Stopwatch.GetTimestamp());
                 return response;
             }
         }
@@ -117,7 +120,7 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
             out bool returnParametersToPool);
         if (value is not null)
         {
-            value.BoundaryTimings = RpcBoundaryTimings.PreMethodOnly(boundaryStartTimestamp, Stopwatch.GetTimestamp());
+            value.BoundaryTimings = GetPreMethodTimings(request, boundaryStartTimestamp, Stopwatch.GetTimestamp());
             return value;
         }
 
@@ -164,7 +167,7 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
         {
             methodEndTimestamp = Stopwatch.GetTimestamp();
             JsonRpcErrorResponse errorResponse = HandleInvocationException(ex, methodName, request, returnAction);
-            SetBoundaryTimings(errorResponse, boundaryStartTimestamp, methodStartTimestamp, methodEndTimestamp);
+            SetBoundaryTimings(errorResponse, request, boundaryStartTimestamp, methodStartTimestamp, methodEndTimestamp);
             return errorResponse;
         }
         finally
@@ -178,7 +181,7 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
         if (resultWrapper is null)
         {
             JsonRpcResponse missingWrapperResponse = HandleMissingResultWrapper(request, methodName, returnAction);
-            SetBoundaryTimings(missingWrapperResponse, boundaryStartTimestamp, methodStartTimestamp, methodEndTimestamp);
+            SetBoundaryTimings(missingWrapperResponse, request, boundaryStartTimestamp, methodStartTimestamp, methodEndTimestamp);
             return missingWrapperResponse;
         }
 
@@ -186,7 +189,7 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
         JsonRpcResponse response = result.ResultType != ResultType.Success
             ? GetErrorResponse(methodName, resultWrapper.ErrorCode, result.Error, resultWrapper.Data, request.Id, returnAction, resultWrapper.IsTemporary)
             : GetSuccessResponse(methodName, resultWrapper.Data, request.Id, returnAction);
-        SetBoundaryTimings(response, boundaryStartTimestamp, methodStartTimestamp, methodEndTimestamp);
+        SetBoundaryTimings(response, request, boundaryStartTimestamp, methodStartTimestamp, methodEndTimestamp);
         return response;
 
         [MethodImpl(MethodImplOptions.NoInlining)]
@@ -206,14 +209,19 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
         }
     }
 
-    private static JsonRpcResponse WithPreMethodTimings(JsonRpcResponse response, long boundaryStartTimestamp)
-    {
-        response.BoundaryTimings = RpcBoundaryTimings.PreMethodOnly(boundaryStartTimestamp, Stopwatch.GetTimestamp());
-        return response;
-    }
+    private static RpcBoundaryTimings GetPreMethodTimings(
+        JsonRpcRequest request,
+        long boundaryStartTimestamp,
+        long boundaryEndTimestamp) =>
+        RpcBoundaryTimings.PreMethodOnly(
+            boundaryStartTimestamp,
+            boundaryEndTimestamp,
+            request.RequestBodyCollectionMicroseconds,
+            request.EnvelopeParseMicroseconds);
 
     private static void SetBoundaryTimings(
         JsonRpcResponse response,
+        JsonRpcRequest request,
         long boundaryStartTimestamp,
         long methodStartTimestamp,
         long methodEndTimestamp) =>
@@ -221,7 +229,9 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
             boundaryStartTimestamp,
             methodStartTimestamp,
             methodEndTimestamp,
-            Stopwatch.GetTimestamp());
+            Stopwatch.GetTimestamp(),
+            request.RequestBodyCollectionMicroseconds,
+            request.EnvelopeParseMicroseconds);
 
     private JsonRpcErrorResponse? PrepareParameters(
         JsonRpcRequest request,

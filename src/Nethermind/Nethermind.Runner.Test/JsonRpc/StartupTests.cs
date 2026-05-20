@@ -41,7 +41,8 @@ public class StartupTests
     private static Startup CreateStartup(
         IRpcAuthentication? rpcAuthentication = null,
         IEngineRpcModule? engineModule = null,
-        JsonRpcConfig? rpcConfig = null)
+        JsonRpcConfig? rpcConfig = null,
+        IJsonRpcLocalStats? jsonRpcLocalStats = null)
     {
         rpcConfig ??= new JsonRpcConfig { EnabledModules = [ModuleType.Engine] };
         engineModule ??= CreateEngineModule();
@@ -51,7 +52,7 @@ public class StartupTests
             new SingletonFactory<IEngineRpcModule>(engineModule), true));
 
         EthereumJsonSerializer jsonSerializer = new();
-        IJsonRpcLocalStats jsonRpcLocalStats = Substitute.For<IJsonRpcLocalStats>();
+        jsonRpcLocalStats ??= Substitute.For<IJsonRpcLocalStats>();
         JsonRpcService jsonRpcService = new(moduleProvider, LimboLogs.Instance, rpcConfig);
         JsonRpcProcessor jsonRpcProcessor = new(jsonRpcService, rpcConfig, Substitute.For<IFileSystem>(), LimboLogs.Instance);
 
@@ -154,6 +155,30 @@ public class StartupTests
 
         Assert.That(doc.RootElement.GetProperty("result").ValueKind, Is.EqualTo(JsonValueKind.Array));
         Assert.That(withContentLength, Is.EqualTo(1));
+    }
+
+    [Test]
+    public async Task ProcessJsonRpcRequest_ReportsHttpBoundaryStages()
+    {
+        IJsonRpcLocalStats jsonRpcLocalStats = Substitute.For<IJsonRpcLocalStats>();
+        Startup startup = CreateStartup(jsonRpcLocalStats: jsonRpcLocalStats);
+
+        string response = await ProcessJsonRpcRequest(
+            "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"engine_getBlobsV1\",\"params\":[[]]}",
+            startup: startup);
+
+        using JsonDocument doc = JsonDocument.Parse(response);
+        Assert.That(doc.RootElement.GetProperty("result").ValueKind, Is.EqualTo(JsonValueKind.Array));
+
+        jsonRpcLocalStats.Received(1).ReportCall(
+            Arg.Is<RpcReport>(static report =>
+                report.Method == "engine_getBlobsV1" &&
+                report.BoundaryTimings.HasMeasurements &&
+                report.BoundaryTimings.PreMethodMicroseconds >= report.BoundaryTimings.RequestBodyCollectionMicroseconds &&
+                report.BoundaryTimings.RequestBodyCollectionMicroseconds >= 0 &&
+                report.BoundaryTimings.EnvelopeParseMicroseconds >= 0),
+            Arg.Any<long>(),
+            Arg.Any<long?>());
     }
 
     [Test]

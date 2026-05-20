@@ -185,7 +185,7 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
                 RecordRequest(requestBody);
             }
 
-            await ProcessSingleDocumentMemoryToSink(requestBody, context, sink, cancellationToken);
+            await ProcessSingleDocumentMemoryToSink(requestBody, context, sink, options, cancellationToken);
         }
         finally
         {
@@ -266,7 +266,7 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
                         {
                             JsonDocument jsonDocument = pendingSingleDocument;
                             pendingSingleDocument = null;
-                            await ProcessJsonDocumentToSink(jsonDocument, context, sink, pendingSingleDocumentStartTime, cancellationToken);
+                            await ProcessJsonDocumentToSink(jsonDocument, context, sink, options, pendingSingleDocumentStartTime, 0, cancellationToken);
                             shouldExit = true;
                         }
 
@@ -301,6 +301,7 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
 
                                     try
                                     {
+                                        SetRequestBoundaryTimings(directRequest, options, startTime, 0);
                                         await ProcessSingleRequestToSink(directRequest, directParamsDocument, context, sink, cancellationToken);
                                     }
                                     finally
@@ -334,7 +335,7 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
                                     }
                                     else if (isCompleted)
                                     {
-                                        await ProcessJsonDocumentToSink(jsonDocument, context, sink, startTime, cancellationToken);
+                                        await ProcessJsonDocumentToSink(jsonDocument, context, sink, options, startTime, 0, cancellationToken);
                                         shouldExit = true;
                                     }
                                     else
@@ -348,7 +349,7 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
                                 }
                                 else
                                 {
-                                    await ProcessJsonDocumentToSink(jsonDocument, context, sink, startTime, cancellationToken);
+                                    await ProcessJsonDocumentToSink(jsonDocument, context, sink, options, startTime, 0, cancellationToken);
                                 }
                             }
                             else if (isCompleted && !buffer.IsEmpty)
@@ -409,13 +410,18 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
         ReadOnlyMemory<byte> requestBody,
         JsonRpcContext context,
         IJsonRpcResponseSink sink,
+        JsonRpcProcessingOptions options,
         CancellationToken cancellationToken)
     {
-        long startTime = Stopwatch.GetTimestamp();
+        long startTime = options.BoundaryStartTimestamp != 0
+            ? options.BoundaryStartTimestamp
+            : Stopwatch.GetTimestamp();
         try
         {
+            long envelopeParseStartTimestamp = Stopwatch.GetTimestamp();
             if (TryReadSingleObjectRequest(requestBody, out JsonRpcRequest? directRequest, out JsonDocument? directParamsDocument))
             {
+                SetRequestBoundaryTimings(directRequest, options, startTime, GetElapsedMicroseconds(envelopeParseStartTimestamp));
                 Metrics.JsonRpcDirectUtf8Parses++;
                 await ProcessSingleRequestToSink(directRequest, directParamsDocument, context, sink, cancellationToken);
                 return;
@@ -426,7 +432,7 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
                 return;
             }
 
-            await ProcessSingleDocumentMemoryFallbackToSink(requestBody, context, sink, startTime, cancellationToken);
+            await ProcessSingleDocumentMemoryFallbackToSink(requestBody, context, sink, options, startTime, cancellationToken);
         }
         catch (JsonException ex)
         {
@@ -438,6 +444,7 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
         ReadOnlyMemory<byte> requestBody,
         JsonRpcContext context,
         IJsonRpcResponseSink sink,
+        JsonRpcProcessingOptions options,
         long startTime,
         CancellationToken cancellationToken)
     {
@@ -449,6 +456,7 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
 
         JsonReaderState readerState = CreateJsonReaderState(new JsonRpcProcessingOptions(JsonRpcInputMode.SingleDocument));
         JsonDocument? jsonDocument = null;
+        long envelopeParseStartTimestamp = Stopwatch.GetTimestamp();
         try
         {
             bool parsed = TryParseJson(
@@ -460,6 +468,7 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
 
             if (parsed)
             {
+                long envelopeParseMicroseconds = GetElapsedMicroseconds(envelopeParseStartTimestamp);
                 Metrics.JsonRpcJsonDocumentFallbackParses++;
                 ReadOnlySequence<byte> trailingBuffer = buffer.TrimStart();
                 if (!trailingBuffer.IsEmpty)
@@ -469,7 +478,7 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
                     return;
                 }
 
-                await ProcessJsonDocumentToSink(jsonDocument, context, sink, startTime, cancellationToken);
+                await ProcessJsonDocumentToSink(jsonDocument, context, sink, options, startTime, envelopeParseMicroseconds, cancellationToken);
                 return;
             }
 
@@ -564,6 +573,25 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
             ParamsKind = envelope.HasParams ? envelope.ParamsKind : JsonValueKind.Undefined
         };
 
+    private static void SetRequestBoundaryTimings(
+        JsonRpcRequest request,
+        JsonRpcProcessingOptions options,
+        long boundaryStartTimestamp,
+        long envelopeParseMicroseconds)
+    {
+        if (options.BoundaryStartTimestamp == 0)
+        {
+            return;
+        }
+
+        request.BoundaryStartTimestamp = boundaryStartTimestamp;
+        request.RequestBodyCollectionMicroseconds = options.RequestBodyCollectionMicroseconds;
+        request.EnvelopeParseMicroseconds = envelopeParseMicroseconds;
+    }
+
+    private static long GetElapsedMicroseconds(long startTimestamp) =>
+        (long)Stopwatch.GetElapsedTime(startTimestamp).TotalMicroseconds;
+
     private static int CountLeadingJsonWhitespace(ReadOnlySpan<byte> span)
     {
         for (int index = 0; index < span.Length; index++)
@@ -628,7 +656,9 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
         JsonDocument jsonDocument,
         JsonRpcContext context,
         IJsonRpcResponseSink sink,
+        JsonRpcProcessingOptions options,
         long startTime,
+        long envelopeParseMicroseconds,
         CancellationToken cancellationToken)
     {
         try
@@ -638,6 +668,7 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
             {
                 case JsonValueKind.Object:
                     JsonRpcRequest request = DeserializeObject(rootElement);
+                    SetRequestBoundaryTimings(request, options, startTime, envelopeParseMicroseconds);
                     if (_logger.IsDebug) _logger.Debug($"JSON RPC request {request.Method}");
 
                     JsonRpcResult.Entry singleResponse = await HandleSingleRequest(request, context);

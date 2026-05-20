@@ -7,4 +7,9 @@ namespace Nethermind.JsonRpc;
 /// Provides transport-level options for JSON-RPC request processing.
 /// </summary>
 /// <param name="InputMode">Defines whether one or many top-level JSON documents are accepted.</param>
-public readonly record struct JsonRpcProcessingOptions(JsonRpcInputMode InputMode);
+/// <param name="BoundaryStartTimestamp">Timestamp for the transport boundary start, or zero to start timing in the RPC service.</param>
+/// <param name="RequestBodyCollectionMicroseconds">Elapsed time spent collecting the HTTP request body before JSON-RPC parsing.</param>
+public readonly record struct JsonRpcProcessingOptions(
+    JsonRpcInputMode InputMode,
+    long BoundaryStartTimestamp = 0,
+    long RequestBodyCollectionMicroseconds = 0);

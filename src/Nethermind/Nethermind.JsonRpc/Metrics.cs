@@ -114,6 +114,14 @@ namespace Nethermind.JsonRpc
         public static IMetricObserver JsonRpcPreMethodBoundaryLatencyMicros = NoopMetricObserver.Instance;
 
         [SummaryMetric(LabelNames = ["method", "status"], ObjectiveQuantile = [0.5, 0.9, 0.95, 0.99], ObjectiveEpsilon = [0.05, 0.05, 0.01, 0.005])]
+        [Description("JSON RPC HTTP request body collection latency before JSON-RPC parsing.")]
+        public static IMetricObserver JsonRpcRequestBodyCollectionLatencyMicros = NoopMetricObserver.Instance;
+
+        [SummaryMetric(LabelNames = ["method", "status"], ObjectiveQuantile = [0.5, 0.9, 0.95, 0.99], ObjectiveEpsilon = [0.05, 0.05, 0.01, 0.005])]
+        [Description("JSON RPC envelope parsing latency before parameter deserialization.")]
+        public static IMetricObserver JsonRpcEnvelopeParseLatencyMicros = NoopMetricObserver.Instance;
+
+        [SummaryMetric(LabelNames = ["method", "status"], ObjectiveQuantile = [0.5, 0.9, 0.95, 0.99], ObjectiveEpsilon = [0.05, 0.05, 0.01, 0.005])]
         [Description("JSON RPC latency spent inside the called RPC method body.")]
         public static IMetricObserver JsonRpcMethodBodyLatencyMicros = NoopMetricObserver.Instance;
 

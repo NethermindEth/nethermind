@@ -40,6 +40,9 @@ namespace Nethermind.JsonRpc
 
         internal ReadOnlyMemory<byte> ParamsUtf8 { get; set; }
         internal JsonValueKind ParamsKind { get; set; }
+        internal long BoundaryStartTimestamp { get; set; }
+        internal long RequestBodyCollectionMicroseconds { get; set; }
+        internal long EnvelopeParseMicroseconds { get; set; }
 
         internal void DisposeParsedParamsDocument()
         {

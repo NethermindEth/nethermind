@@ -34,6 +34,8 @@ namespace Nethermind.JsonRpc
             MethodBodyMicroseconds != 0 ||
             PostMethodMicroseconds != 0 ||
             ResponseWriteMicroseconds != 0 ||
+            RequestBodyCollectionMicroseconds != 0 ||
+            EnvelopeParseMicroseconds != 0 ||
             ResponseFlushMicroseconds != 0 ||
             ResponseFlushCount != 0;
 
@@ -45,6 +47,12 @@ namespace Nethermind.JsonRpc
 
         [JsonIgnore]
         public long ResponseFlushCount { get; init; }
+
+        [JsonIgnore]
+        public long RequestBodyCollectionMicroseconds { get; init; }
+
+        [JsonIgnore]
+        public long EnvelopeParseMicroseconds { get; init; }
 
         public RpcBoundaryTimings WithResponseWrite(
             long responseWriteMicroseconds,
@@ -58,21 +66,34 @@ namespace Nethermind.JsonRpc
                 IsMeasured = true
             };
 
-        public static RpcBoundaryTimings PreMethodOnly(long boundaryStartTimestamp, long boundaryEndTimestamp) =>
-            new(GetElapsedMicroseconds(boundaryStartTimestamp, boundaryEndTimestamp), 0, 0, 0) { IsMeasured = true };
+        public static RpcBoundaryTimings PreMethodOnly(
+            long boundaryStartTimestamp,
+            long boundaryEndTimestamp,
+            long requestBodyCollectionMicroseconds = 0,
+            long envelopeParseMicroseconds = 0) =>
+            new(GetElapsedMicroseconds(boundaryStartTimestamp, boundaryEndTimestamp), 0, 0, 0)
+            {
+                IsMeasured = true,
+                RequestBodyCollectionMicroseconds = requestBodyCollectionMicroseconds,
+                EnvelopeParseMicroseconds = envelopeParseMicroseconds
+            };
 
         public static RpcBoundaryTimings FromTimestamps(
             long boundaryStartTimestamp,
             long methodStartTimestamp,
             long methodEndTimestamp,
-            long responseReadyTimestamp) =>
+            long responseReadyTimestamp,
+            long requestBodyCollectionMicroseconds = 0,
+            long envelopeParseMicroseconds = 0) =>
             new(
                 GetElapsedMicroseconds(boundaryStartTimestamp, methodStartTimestamp),
                 GetElapsedMicroseconds(methodStartTimestamp, methodEndTimestamp),
                 GetElapsedMicroseconds(methodEndTimestamp, responseReadyTimestamp),
                 0)
             {
-                IsMeasured = true
+                IsMeasured = true,
+                RequestBodyCollectionMicroseconds = requestBodyCollectionMicroseconds,
+                EnvelopeParseMicroseconds = envelopeParseMicroseconds
             };
 
         private static long GetElapsedMicroseconds(long startTimestamp, long endTimestamp) =>
