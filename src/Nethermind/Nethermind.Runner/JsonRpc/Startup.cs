@@ -400,6 +400,8 @@ public class Startup : IStartup
 
     internal async Task ProcessJsonRpcRequestCoreAsync(HttpContext ctx, JsonRpcUrl jsonRpcUrl)
     {
+        long startTime = Stopwatch.GetTimestamp();
+
         if (_jsonRpcProcessor.ProcessExit.IsCancellationRequested)
         {
             ctx.Response.StatusCode = StatusCodes.Status503ServiceUnavailable;
@@ -421,15 +423,15 @@ public class Startup : IStartup
             }
         }
 
-        long startTime = Stopwatch.GetTimestamp();
         long? contentLength = ctx.Request.ContentLength;
         long? effectiveMaxRequestBodySize = jsonRpcUrl.MaxRequestBodySize ?? _jsonRpcConfig.MaxRequestBodySize;
         CollectedHttpBody collectedBody = new();
         HttpJsonRpcResponseSink? responseSink = null;
         try
         {
+            long requestBodyCollectionStartTimestamp = Stopwatch.GetTimestamp();
             await CollectHttpRequestBodyAsync(ctx, contentLength, effectiveMaxRequestBodySize, collectedBody, ctx.RequestAborted);
-            long requestBodyCollectionMicroseconds = (long)Stopwatch.GetElapsedTime(startTime).TotalMicroseconds;
+            long requestBodyCollectionMicroseconds = (long)Stopwatch.GetElapsedTime(requestBodyCollectionStartTimestamp).TotalMicroseconds;
             using JsonRpcContext jsonRpcContext = JsonRpcContext.Http(jsonRpcUrl);
             responseSink = new HttpJsonRpcResponseSink(ctx, jsonRpcUrl, _jsonRpcConfig, _jsonRpcLocalStats, EthereumJsonSerializer.JsonOptions, _logger, startTime);
 
