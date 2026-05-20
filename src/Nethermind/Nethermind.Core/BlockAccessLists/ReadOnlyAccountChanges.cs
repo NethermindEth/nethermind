@@ -127,17 +127,19 @@ public class ReadOnlyAccountChanges : IEquatable<ReadOnlyAccountChanges>
         }
     }
 
-    /// <summary>True iff this account has no balance/nonce/code/slot change at <paramref name="index"/>.
-    /// Storage reads are not changes; this only inspects mutating entries.</summary>
+    /// <summary>
+    /// True iff this account has no balance/nonce/code/slot change at <paramref name="index"/>.
+    /// Storage reads are not changes; this only inspects mutating entries.
+    /// </summary>
     public bool HasNoChangesAtIndex(uint index)
         => BalanceChangeAtIndex(index) is null
         && NonceChangeAtIndex(index) is null
         && CodeChangeAtIndex(index) is null
         && !HasSlotChangesAtIndex(index);
 
-    /// <summary>True iff this account has any tx-level mutation declared in the BAL. Used by
-    /// <c>BlockAccessListBasedWorldState.GetAccountChanges</c> to enumerate the addresses that
-    /// will be visibly modified by the block. Computed; not serialised.</summary>
+    /// <summary>
+    /// True iff this account has any tx-level mutation declared in the BAL.
+    /// </summary>
     [JsonIgnore]
     public bool HasStateChanges
         => BalanceChanges.Length > 0
@@ -145,7 +147,9 @@ public class ReadOnlyAccountChanges : IEquatable<ReadOnlyAccountChanges>
             || CodeChanges.Length > 0
             || _storageChanges.Count > 0;
 
-    /// <summary>Most recent balance strictly before <paramref name="blockAccessIndex"/>; null if none.</summary>
+    /// <summary>
+    /// Most recent balance strictly before <paramref name="blockAccessIndex"/>; null if none.
+    /// </summary>
     public UInt256? GetBalance(uint blockAccessIndex)
         => TryGetLastBefore(BalanceChanges, blockAccessIndex, out BalanceChange last) ? last.Value : null;
 
@@ -181,8 +185,7 @@ public class ReadOnlyAccountChanges : IEquatable<ReadOnlyAccountChanges>
             if (!other._storageChanges.TryGetValue(kv.Key, out ReadOnlySlotChanges? otherVal) || !kv.Value.Equals(otherVal))
                 return false;
         }
-        // MemoryExtensions.SequenceEqual on ReadOnlySpan<T>: zero-alloc, no iterator,
-        // not LINQ (see coding-style.md). Implicit array->span conversion suffices.
+        // Span casts force MemoryExtensions.SequenceEqual (zero-alloc) over LINQ's.
         return ((ReadOnlySpan<UInt256>)StorageReads).SequenceEqual(other.StorageReads)
             && ((ReadOnlySpan<BalanceChange>)BalanceChanges).SequenceEqual(other.BalanceChanges)
             && ((ReadOnlySpan<NonceChange>)NonceChanges).SequenceEqual(other.NonceChanges)
@@ -205,7 +208,9 @@ public class ReadOnlyAccountChanges : IEquatable<ReadOnlyAccountChanges>
         return sb.ToString();
     }
 
-    /// <summary>Returns the change with <c>Index == index</c> if any; otherwise null.</summary>
+    /// <summary>
+    /// Returns the change with <c>Index == index</c> if any; otherwise null.
+    /// </summary>
     private static T? GetExact<T>(T[] changes, uint index) where T : struct, IIndexedChange
     {
         ReadOnlySpan<T> span = changes;
@@ -219,7 +224,9 @@ public class ReadOnlyAccountChanges : IEquatable<ReadOnlyAccountChanges>
         return span.BinarySearch(new IndexKey<T>(index)) >= 0;
     }
 
-    /// <summary>Returns the entry with the largest Index strictly less than <paramref name="blockAccessIndex"/>, or false if none.</summary>
+    /// <summary>
+    /// Returns the entry with the largest Index strictly less than <paramref name="blockAccessIndex"/>, or false if none.
+    /// </summary>
     private static bool TryGetLastBefore<T>(T[] changes, uint blockAccessIndex, out T last) where T : struct, IIndexedChange
     {
         ReadOnlySpan<T> span = changes;

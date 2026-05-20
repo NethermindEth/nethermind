@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.IO;
@@ -247,13 +248,22 @@ namespace Nethermind.Evm.TransactionProcessing
             if (spec.IsEip8037Enabled && spec.IsEip7708Enabled && statusCode == StatusCode.Success)
             {
                 JournalSet<Address> destroyList = substate.DestroyList;
-                if (destroyList.Count > 1)
+                int count = destroyList.Count;
+                if (count > 1)
                 {
-                    Address[] orderedDestroyList = [.. destroyList];
-                    Array.Sort(orderedDestroyList, GenericComparer.GetOptimized<Address>());
-                    for (int i = 0; i < orderedDestroyList.Length; i++)
+                    Address[] buffer = SafeArrayPool<Address>.Shared.Rent(count);
+                    try
                     {
-                        FinalizeDestroyedAccount(WorldState, in substate, orderedDestroyList[i]);
+                        destroyList.CopyTo(buffer, 0);
+                        buffer.AsSpan(0, count).Sort(default(AddressByBytesComparer));
+                        for (int i = 0; i < count; i++)
+                        {
+                            FinalizeDestroyedAccount(WorldState, in substate, buffer[i]);
+                        }
+                    }
+                    finally
+                    {
+                        SafeArrayPool<Address>.Shared.Return(buffer);
                     }
                 }
                 else
@@ -608,6 +618,27 @@ namespace Nethermind.Evm.TransactionProcessing
                 return TransactionResult.TransactionSizeOverMaxInitCodeSize;
             }
 
+            if (tx.SupportsAuthorizationList)
+            {
+                if (tx.IsContractCreation)
+                {
+                    TraceLogInvalidTx(tx, "SETCODE_TX_CREATE");
+                    return TransactionResult.ErrorType.MalformedTransaction.WithDetail($"{TxErrorMessages.NotAllowedCreateTransaction} (sender {tx.SenderAddress})");
+                }
+                if (!tx.HasAuthorizationList)
+                {
+                    TraceLogInvalidTx(tx, "EMPTY_AUTHORIZATION_LIST");
+                    return TransactionResult.ErrorType.MalformedTransaction.WithDetail($"{TxErrorMessages.MissingAuthorizationList} (sender {tx.SenderAddress})");
+                }
+            }
+
+            if (spec.IsEip8037Enabled && intrinsicGas.ExceedsCap(Eip7825Constants.DefaultTxGasLimitCap, out long regular, out long floor))
+            {
+                TraceLogInvalidTx(tx, $"TX_INTRINSIC_GAS_EXCEEDS_CAP regular={regular} floor={floor} > {Eip7825Constants.DefaultTxGasLimitCap}");
+                return TransactionResult.ErrorType.GasLimitBelowIntrinsicGas.WithDetail(
+                    TxErrorMessages.TxIntrinsicGasExceedsCap(regular, floor, Eip7825Constants.DefaultTxGasLimitCap));
+            }
+
             TGasPolicy standard = intrinsicGas.Standard;
             TGasPolicy minimal = intrinsicGas.MinimalGas;
             long minGasRequired = spec.IsEip8037Enabled
@@ -622,8 +653,7 @@ namespace Nethermind.Evm.TransactionProcessing
             if (tx.GasLimit < minGasRequired)
             {
                 TraceLogInvalidTx(tx, $"GAS_LIMIT_BELOW_INTRINSIC_GAS {tx.GasLimit} < {minGasRequired}");
-                return TransactionResult.ErrorType.GasLimitBelowIntrinsicGas.WithDetail(
-                    $"intrinsic gas too low: have {tx.GasLimit}, want {minGasRequired}");
+                return TransactionResult.ErrorType.GasLimitBelowIntrinsicGas.WithDetail($"intrinsic gas too low: have {tx.GasLimit}, want {minGasRequired}");
             }
 
             if (validate)
@@ -1128,7 +1158,8 @@ namespace Nethermind.Evm.TransactionProcessing
             return RefundFailedEip8037Gas(tx, spec, opts, in gasPrice, spentGas, blockGas, blockStateGas);
         }
 
-        private GasConsumed RefundOnContractCollision(
+        // Keep available for override for Arbitrum plugin needs
+        protected virtual GasConsumed RefundOnContractCollision(
             Transaction tx,
             IReleaseSpec spec,
             ExecutionOptions opts,
@@ -1435,6 +1466,16 @@ namespace Nethermind.Evm.TransactionProcessing
 
         [DoesNotReturn, StackTraceHidden]
         private static void ThrowInvalidDataException(string message) => throw new InvalidDataException(message);
+
+        // Devirtualised wrapper over Address.CompareTo (sealed -> already devirt'd inside) so the EIP-7708
+        // destroy-list sort goes through Sort<TComparer> instead of Comparer<Address>.Default's virtual call.
+        // The IComparer<Address> contract declares nullable parameters; the destroy-list source
+        // (JournalSet<Address>) never contains null entries, so the `!` dereference is safe here.
+        private readonly struct AddressByBytesComparer : IComparer<Address>
+        {
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            public int Compare(Address? x, Address? y) => x!.CompareTo(y);
+        }
     }
 
     /// <summary>

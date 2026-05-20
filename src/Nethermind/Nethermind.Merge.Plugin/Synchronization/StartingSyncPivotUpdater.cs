@@ -22,6 +22,7 @@ namespace Nethermind.Merge.Plugin.Synchronization;
 public class StartingSyncPivotUpdater : IDisposable
 {
     private const string Pivot = "pivot";
+
     private readonly IBlockTree _blockTree;
     private readonly ISyncModeSelector _syncModeSelector;
     private readonly ISyncPeerPool _syncPeerPool;
@@ -74,7 +75,7 @@ public class StartingSyncPivotUpdater : IDisposable
             {
                 _syncModeSelector.Changed -= OnSyncModeChanged;
             }
-            else if (_attemptsLeft-- > 0)
+            else if (_attemptsLeft-- > 0 || _maxAttempts == ISyncConfig.InfiniteAttempts)
             {
                 Interlocked.CompareExchange(ref _updateInProgress, 0, 1);
             }

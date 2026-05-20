@@ -20,6 +20,17 @@ namespace Nethermind.Core.Test.BlockAccessLists;
 public class BlockAccessListJournalTests
 {
     [Test]
+    public void AddCodeChange_with_equal_before_after_does_not_create_account_changes()
+    {
+        BlockAccessListAtIndex slice = new() { Index = 0 };
+        byte[] emptyCode = [];
+
+        slice.AddCodeChange(TestItem.AddressA, emptyCode, emptyCode);
+
+        Assert.That(slice.GetAccountChanges(TestItem.AddressA), Is.Null);
+    }
+
+    [Test]
     public void Restore_reinstates_previous_values_for_interleaved_change_types()
     {
         BlockAccessListAtIndex slice = new() { Index = 1 };
@@ -81,8 +92,7 @@ public class BlockAccessListJournalTests
     [Test]
     public void Restore_to_zero_clears_every_change_made_in_the_slice()
     {
-        // Snapshot at 0 represents "before any mutation"; Restore(0) on a non-empty slice must
-        // unwind every recorded change in reverse order.
+        // Snapshot at 0 represents "before any mutation".
         UInt256 slot = 4;
         BlockAccessListAtIndex slice = new() { Index = 1 };
 

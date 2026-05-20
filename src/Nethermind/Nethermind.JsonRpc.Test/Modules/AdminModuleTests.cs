@@ -336,6 +336,16 @@ public class AdminModuleTests
     }
 
     [Test]
+    public async Task AdminSubscribe_WithTooLongStringArgs_ReturnsInvalidParams()
+    {
+        string args = new('a', 1_000_001);
+        string serialized = await RpcTest.TestSerializedRequest(_adminRpcModule, "admin_subscribe", "peerEvents", args);
+
+        string expectedResult = "{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32602,\"message\":\"Invalid params\",\"data\":\"subscription args string length 1000001 exceeds maximum allowed length of 1000000\"},\"id\":67}";
+        expectedResult.Should().Be(serialized, because: "oversized string args should be rejected before subscription creation");
+    }
+
+    [Test]
     public async Task AdminUnsubscribe_AfterClientCloses_ReturnsFailure()
     {
         string serializedPeerEvents = await RpcTest.TestSerializedRequest(_adminRpcModule, "admin_subscribe", "peerEvents");
@@ -474,7 +484,7 @@ public class AdminModuleTests
             manualResetEvent.Set();
         }));
 
-        _existingSession1.Disconnected += Raise.EventWith(_existingSession1, disconnectEventArgs);
+        _rlpxPeer.SessionDisconnected += Raise.Event<SessionDisconnectedEventHandler>(_rlpxPeer, _existingSession1, disconnectEventArgs);
         _existingSession1.MsgDelivered += Raise.EventWith(new object(), peerEventArgs);
 
         manualResetEvent.WaitOne(TimeSpan.FromMilliseconds(1000)).Should().BeFalse(because: "after disconnect the session is unhooked and must not raise further notifications");
