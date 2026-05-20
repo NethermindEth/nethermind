@@ -269,6 +269,18 @@ public class JsonRpcServiceTests
         Assert.That(response?.Error?.Code, Is.EqualTo(ErrorCodes.InvalidParams));
     }
 
+    [Test]
+    public void Raw_utf8_params_malformed_typed_argument_returns_invalid_params()
+    {
+        IEthRpcModule ethRpcModule = Substitute.For<IEthRpcModule>();
+        JsonRpcErrorResponse? response = TestRawRequest(ethRpcModule, "eth_getBlockByNumber", """[{"blockNumber":{}},false]""") as JsonRpcErrorResponse;
+
+        Assert.That(response?.Error?.Code, Is.EqualTo(ErrorCodes.InvalidParams));
+        Assert.That(response?.Error?.Message, Is.EqualTo("Invalid params"));
+        Assert.That(response?.Error?.Data, Is.Null);
+        ethRpcModule.DidNotReceive().eth_getBlockByNumber(Arg.Any<BlockParameter>(), Arg.Any<bool>());
+    }
+
     [TestCase("eth_getBlockByNumber", new object?[] { }, "missing value for required argument 0", TestName = "FirstArgOmitted")]
     [TestCase("eth_feeHistory", new object?[] { "0x1", "latest" }, "missing value for required argument 2", TestName = "LaterArgOmitted")]
     public void MissingRequiredArgument_ReturnsGethStyleError(string method, object?[] parameters, string expectedMessage)
