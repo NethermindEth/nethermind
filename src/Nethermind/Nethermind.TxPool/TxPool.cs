@@ -554,7 +554,7 @@ namespace Nethermind.TxPool
             TryConvertProofVersion(tx);
 
             TxFilteringState state = new(tx, _accounts);
-            AcceptTxResult accepted;
+            AcceptTxResult accepted = AcceptTxResult.Invalid;
 
             _newHeadLock.EnterReadLock();
             try
@@ -571,15 +571,17 @@ namespace Nethermind.TxPool
             }
             finally
             {
+                // Snapshot must be cleared inside the read lock so a concurrent reader
+                // cannot cache a snapshot taken between AddCore completing and the
+                // null-assignment (which would be missing the just-added tx).
+                if (accepted)
+                {
+                    if (tx.SupportsBlobs)
+                        _blobTransactionSnapshot = null;
+                    else
+                        _transactionSnapshot = null;
+                }
                 _newHeadLock.ExitReadLock();
-            }
-
-            if (accepted)
-            {
-                if (tx.SupportsBlobs)
-                    _blobTransactionSnapshot = null;
-                else
-                    _transactionSnapshot = null;
             }
 
             if (accepted != AcceptTxResult.Invalid)
