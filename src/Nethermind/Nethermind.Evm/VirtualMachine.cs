@@ -1075,6 +1075,95 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
     protected static string GetErrorString(IPrecompile precompile, string? error)
         => $"Precompile {precompile.GetStaticName()} failed with error: {error}";
 
+#if ZK_EVM
+    /// <summary>
+    /// Inline handling of a CALL whose target is a precompile. Precompiles run
+    /// no bytecode, so instead of handing a child frame to the ExecuteTransaction
+    /// dispatch loop we run the precompile and resume the calling frame here.
+    /// Mirrors the loop's frame-finished handling for the (non-create) case.
+    /// </summary>
+    internal EvmExceptionType InlinePrecompileCall<TTracingInst>(
+        ExecutionEnvironment callEnv,
+        TGasPolicy childGas,
+        long outputDestination,
+        long outputLength,
+        ExecutionType executionType,
+        bool isStatic,
+        scoped in Snapshot snapshot,
+        scoped ref EvmStack stack)
+        where TTracingInst : struct, IFlag
+    {
+        VmState<TGasPolicy> parent = _currentState;
+        VmState<TGasPolicy> child = VmState<TGasPolicy>.RentFrame(
+            gas: childGas,
+            outputDestination: outputDestination,
+            outputLength: outputLength,
+            executionType: executionType,
+            isStatic: isStatic,
+            isCreateOnPreExistingAccount: false,
+            env: callEnv,
+            stateForAccessLists: in parent.AccessTracker,
+            snapshot: in snapshot);
+
+        CallResult callResult = ExecutePrecompile(child, _txTracer.IsTracingActions, out Exception? failure, out _);
+
+        if (failure is not null)
+        {
+            // Precompile hard failure (out of gas): mirror HandleFailure + PopAndRestoreParentState.
+            _worldState.Restore(child.Snapshot);
+            RevertParityTouchBugAccount();
+            RemoveAdvancedStateGasRefund(child, ref child.Gas);
+            TGasPolicy.RestoreChildStateGasOnHalt(ref parent.Gas, in child.Gas);
+            child.Dispose();
+            ReturnDataBuffer = Array.Empty<byte>();
+            return stack.PushZero<TTracingInst>();
+        }
+
+        bool reverted = callResult.ShouldRevert;
+        if (!reverted)
+        {
+            IncorporateChildStateGasRefunds(child);
+            TGasPolicy.Refund(ref parent.Gas, in child.Gas);
+        }
+        else
+        {
+            TGasPolicy.UpdateGasUp(ref parent.Gas, TGasPolicy.GetRemainingGas(in child.Gas));
+            RemoveAdvancedStateGasRefund(child, ref child.Gas);
+            TGasPolicy.RestoreChildStateGas(ref parent.Gas, in child.Gas);
+        }
+
+        ReturnDataBuffer = callResult.Output;
+        EvmExceptionType push = stack.PushBytes<TTracingInst>(
+            (reverted ? StatusCode.FailureBytes : StatusCode.SuccessBytes).Span);
+
+        if (push == EvmExceptionType.None && outputLength > 0 && callResult.Output.Length > 0)
+        {
+            ZeroPaddedSpan outSlice = callResult.Output.Span
+                .SliceWithZeroPadding(0, Math.Min(callResult.Output.Length, (int)outputLength));
+            UInt256 dest = (ulong)outputDestination;
+            if (!TGasPolicy.UpdateMemoryCost(ref parent.Gas, in dest, (ulong)outSlice.Length, parent))
+            {
+                push = EvmExceptionType.OutOfGas;
+            }
+            else
+            {
+                parent.Memory.TrySave(in dest, outSlice);
+            }
+        }
+
+        if (reverted)
+        {
+            _worldState.Restore(child.Snapshot);
+        }
+        else
+        {
+            child.CommitToParent(parent);
+        }
+        child.Dispose();
+        return push;
+    }
+#endif
+
     /// <summary>
     /// Executes an EVM call by preparing the execution environment, including account balance adjustments,
     /// stack initialization, and memory updates. It then dispatches the bytecode execution using a
