@@ -1065,8 +1065,6 @@ namespace Nethermind.Blockchain
 
         private readonly record struct DeferredMainChainEvent(BlockReplacementEventArgs BlockAdded, BlockEventArgs? NewHead);
 
-
-        private void TryUpdateSyncPivot()
         private void TryUpdateSyncPivot()
         {
             BlockHeader? newPivotHeader = FinalizedHash is not null
