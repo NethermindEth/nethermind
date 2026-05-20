@@ -106,62 +106,29 @@ namespace Nethermind.TxPool.Test.Collections
             _sortedPool.TryGetBucket(tx.SenderAddress, out _).Should().BeFalse();
         }
 
-        [Test]
-        public void VisitBucket_missing_group_does_not_invoke_visitor()
+        private static IEnumerable<TestCaseData> VisitBucketCases()
         {
-            int visited = 0;
-            _sortedPool.VisitBucket(TestItem.AddressA, ref visited, static (Transaction _, ref int count) =>
-            {
-                count++;
-                return true;
-            });
-
-            visited.Should().Be(0);
+            yield return new TestCaseData(Array.Empty<int>(), int.MaxValue, Array.Empty<int>())
+                .SetName("VisitBucket_missing_group_visits_nothing");
+            yield return new TestCaseData(new[] { 0, 1, 2, 3 }, int.MaxValue, new[] { 0, 1, 2, 3 })
+                .SetName("VisitBucket_iterates_all_items_in_ascending_nonce_order");
+            yield return new TestCaseData(new[] { 0, 1, 2, 3 }, 2, new[] { 0, 1, 2 })
+                .SetName("VisitBucket_stops_after_visitor_returns_false");
         }
 
-        [Test]
-        public void VisitBucket_iterates_all_items_in_ascending_nonce_order()
+        [TestCaseSource(nameof(VisitBucketCases))]
+        public void VisitBucket_visits_expected_nonces(int[] insertNonces, int stopAfterNonce, int[] expectedVisited)
         {
-            InsertNonces(TestItem.AddressA, [0, 1, 2, 3]);
+            InsertNonces(TestItem.AddressA, insertNonces);
 
-            List<UInt256> visited = new();
-            _sortedPool.VisitBucket(TestItem.AddressA, ref visited, static (Transaction tx, ref List<UInt256> acc) =>
+            (List<int> Visited, int StopAfter) state = (new List<int>(), stopAfterNonce);
+            _sortedPool.VisitBucket(TestItem.AddressA, ref state, static (Transaction tx, ref (List<int> Visited, int StopAfter) s) =>
             {
-                acc.Add(tx.Nonce);
-                return true;
+                s.Visited.Add((int)tx.Nonce);
+                return (int)tx.Nonce < s.StopAfter;
             });
 
-            visited.Should().Equal((UInt256)0, (UInt256)1, (UInt256)2, (UInt256)3);
-        }
-
-        [Test]
-        public void VisitBucket_stops_when_visitor_returns_false()
-        {
-            InsertNonces(TestItem.AddressA, [0, 1, 2, 3]);
-
-            (int Count, UInt256 StopAt) state = (0, StopAt: (UInt256)2);
-            _sortedPool.VisitBucket(TestItem.AddressA, ref state, static (Transaction tx, ref (int Count, UInt256 StopAt) s) =>
-            {
-                s.Count++;
-                return tx.Nonce < s.StopAt;
-            });
-
-            state.Count.Should().Be(3);
-        }
-
-        [Test]
-        public void VisitBucket_propagates_state_mutations_via_ref()
-        {
-            InsertNonces(TestItem.AddressA, [0, 1, 2]);
-
-            UInt256 sum = UInt256.Zero;
-            _sortedPool.VisitBucket(TestItem.AddressA, ref sum, static (Transaction tx, ref UInt256 acc) =>
-            {
-                acc += tx.Nonce;
-                return true;
-            });
-
-            sum.Should().Be((UInt256)3);
+            state.Visited.Should().Equal(expectedVisited);
         }
 
         [Test]
