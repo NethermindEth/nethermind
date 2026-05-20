@@ -38,20 +38,20 @@ internal readonly struct AccountIndexLane
         for (int i = 0; i < code; i++) _indices[_codeStart + i] = codeChanges[i].Index;
     }
 
-    private ReadOnlySpan<uint> Balances => _indices.AsSpan(0, _nonceStart);
-    private ReadOnlySpan<uint> Nonces => _indices.AsSpan(_nonceStart, _codeStart - _nonceStart);
-    private ReadOnlySpan<uint> Codes => _indices.AsSpan(_codeStart);
+    private ReadOnlySpan<uint> _balances => _indices.AsSpan(0, _nonceStart);
+    private ReadOnlySpan<uint> _nonces => _indices.AsSpan(_nonceStart, _codeStart - _nonceStart);
+    private ReadOnlySpan<uint> _codes => _indices.AsSpan(_codeStart);
 
-    public BalanceChange? GetExact(BalanceChange[] values, uint index) => IndexLane.GetExact(Balances, values, index);
-    public NonceChange? GetExact(NonceChange[] values, uint index) => IndexLane.GetExact(Nonces, values, index);
-    public CodeChange? GetExact(CodeChange[] values, uint index) => IndexLane.GetExact(Codes, values, index);
+    public BalanceChange? GetExact(BalanceChange[] values, uint index) => IndexLane.GetExact(_balances, values, index);
+    public NonceChange? GetExact(NonceChange[] values, uint index) => IndexLane.GetExact(_nonces, values, index);
+    public CodeChange? GetExact(CodeChange[] values, uint index) => IndexLane.GetExact(_codes, values, index);
 
     public bool TryGetLastBefore(BalanceChange[] values, uint blockAccessIndex, out BalanceChange last)
-        => IndexLane.TryGetLastBefore(Balances, values, blockAccessIndex, out last);
+        => IndexLane.TryGetLastBefore(_balances, values, blockAccessIndex, out last);
 
     public bool TryGetLastBefore(NonceChange[] values, uint blockAccessIndex, out NonceChange last)
-        => IndexLane.TryGetLastBefore(Nonces, values, blockAccessIndex, out last);
+        => IndexLane.TryGetLastBefore(_nonces, values, blockAccessIndex, out last);
 
     public bool TryGetLastBefore(CodeChange[] values, uint blockAccessIndex, out CodeChange last)
-        => IndexLane.TryGetLastBefore(Codes, values, blockAccessIndex, out last);
+        => IndexLane.TryGetLastBefore(_codes, values, blockAccessIndex, out last);
 }
