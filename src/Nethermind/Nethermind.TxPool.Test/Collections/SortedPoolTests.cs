@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Consensus.Comparers;
@@ -103,6 +104,86 @@ namespace Nethermind.TxPool.Test.Collections
 
             _sortedPool.TryRemove(tx.Hash);
             _sortedPool.TryGetBucket(tx.SenderAddress, out _).Should().BeFalse();
+        }
+
+        [Test]
+        public void VisitBucket_missing_group_does_not_invoke_visitor()
+        {
+            int visited = 0;
+            _sortedPool.VisitBucket(TestItem.AddressA, ref visited, static (Transaction _, ref int count) =>
+            {
+                count++;
+                return true;
+            });
+
+            visited.Should().Be(0);
+        }
+
+        [Test]
+        public void VisitBucket_iterates_all_items_in_ascending_nonce_order()
+        {
+            InsertNonces(TestItem.AddressA, [0, 1, 2, 3]);
+
+            List<UInt256> visited = new();
+            _sortedPool.VisitBucket(TestItem.AddressA, ref visited, static (Transaction tx, ref List<UInt256> acc) =>
+            {
+                acc.Add(tx.Nonce);
+                return true;
+            });
+
+            visited.Should().Equal((UInt256)0, (UInt256)1, (UInt256)2, (UInt256)3);
+        }
+
+        [Test]
+        public void VisitBucket_stops_when_visitor_returns_false()
+        {
+            InsertNonces(TestItem.AddressA, [0, 1, 2, 3]);
+
+            (int Count, UInt256 StopAt) state = (0, StopAt: (UInt256)2);
+            _sortedPool.VisitBucket(TestItem.AddressA, ref state, static (Transaction tx, ref (int Count, UInt256 StopAt) s) =>
+            {
+                s.Count++;
+                return tx.Nonce < s.StopAt;
+            });
+
+            state.Count.Should().Be(3);
+        }
+
+        [Test]
+        public void VisitBucket_propagates_state_mutations_via_ref()
+        {
+            InsertNonces(TestItem.AddressA, [0, 1, 2]);
+
+            UInt256 sum = UInt256.Zero;
+            _sortedPool.VisitBucket(TestItem.AddressA, ref sum, static (Transaction tx, ref UInt256 acc) =>
+            {
+                acc += tx.Nonce;
+                return true;
+            });
+
+            sum.Should().Be((UInt256)3);
+        }
+
+        [Test]
+        public void VisitBucket_throws_on_null_visitor()
+        {
+            int unused = 0;
+            Action act = () => _sortedPool.VisitBucket(TestItem.AddressA, ref unused, null!);
+
+            act.Should().Throw<ArgumentNullException>();
+        }
+
+        private void InsertNonces(Address sender, ReadOnlySpan<int> nonces)
+        {
+            foreach (int nonce in nonces)
+            {
+                Transaction tx = Build.A.Transaction
+                    .WithNonce((UInt256)nonce)
+                    .WithSenderAddress(sender)
+                    .TestObject;
+                tx.Hash = tx.CalculateHash();
+                _sortedPool.TryInsert(tx.Hash, tx);
+            }
         }
     }
 }

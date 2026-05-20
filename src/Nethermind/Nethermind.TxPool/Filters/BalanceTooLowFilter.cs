@@ -13,20 +13,12 @@ namespace Nethermind.TxPool.Filters
     /// </summary>
     internal sealed class BalanceTooLowFilter(TxDistinctSortedPool txs, TxDistinctSortedPool blobTxs, ILogger logger) : IIncomingTxFilter
     {
-        private struct BucketBalanceState
+        private struct BucketBalanceState(UInt256 accountNonce, UInt256 txNonce)
         {
-            public readonly long AccountNonce;
-            public readonly long TxNonce;
-            public UInt256 CumulativeCost;
-            public bool Overflow;
-
-            public BucketBalanceState(long accountNonce, long txNonce)
-            {
-                AccountNonce = accountNonce;
-                TxNonce = txNonce;
-                CumulativeCost = UInt256.Zero;
-                Overflow = false;
-            }
+            public readonly UInt256 AccountNonce = accountNonce;
+            public readonly UInt256 TxNonce = txNonce;
+            public UInt256 CumulativeCost = UInt256.Zero;
+            public bool Overflow = false;
         }
 
         private readonly TxDistinctSortedPool _txs = txs;

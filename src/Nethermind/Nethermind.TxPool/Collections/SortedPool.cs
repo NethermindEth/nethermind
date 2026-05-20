@@ -553,12 +553,17 @@ namespace Nethermind.TxPool.Collections
         /// <summary>
         /// Iterates over bucket items under lock until visitor returns false.
         /// </summary>
+        /// <remarks>
+        /// The visitor runs while the pool lock is held, so it must be short and must not call back into the pool.
+        /// Items are visited in the pool's group comparer order (ascending nonce for the tx pool).
+        /// </remarks>
         internal void VisitBucket<TState>(TGroupKey groupKey, ref TState state, BucketVisitor<TState> visitor)
         {
-            using McsLock.Disposable lockRelease = Lock.Acquire();
-
             ArgumentNullException.ThrowIfNull(groupKey);
             ArgumentNullException.ThrowIfNull(visitor);
+
+            using McsLock.Disposable lockRelease = Lock.Acquire();
+
             if (!_buckets.TryGetValue(groupKey, out EnhancedSortedSet<TValue>? bucket))
             {
                 return;
