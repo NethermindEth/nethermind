@@ -60,7 +60,11 @@ namespace Nethermind.Evm.Test
         /// <c>(long)gasLimit</c> cast never trips even when the user pushes <c>UInt256.MaxValue</c>.
         /// </summary>
         [Test]
-        public void Call_with_gas_above_long_max_post_eip150_is_capped_not_out_of_gas()
+        [TestCase(Instruction.CALL)]
+        [TestCase(Instruction.CALLCODE)]
+        [TestCase(Instruction.DELEGATECALL)]
+        [TestCase(Instruction.STATICCALL)]
+        public void Call_with_gas_above_long_max_post_eip150_is_capped_not_out_of_gas(Instruction instruction)
         {
             byte[] code = Prepare.EvmCode
                 .PushData(0)               // retLength
@@ -70,7 +74,7 @@ namespace Nethermind.Evm.Test
                 .PushData(0)               // value
                 .PushData(TestItem.AddressC)
                 .PushData(UInt256.MaxValue) // gasLimit — high bits set; cap clamps it
-                .Op(Instruction.CALL)
+                .Op(instruction)
                 .Done;
 
             TestAllTracerWithOutput result = Execute(Activation, 200_000, code);
@@ -91,8 +95,12 @@ namespace Nethermind.Evm.Test
         protected override long BlockNumber => 0;
         protected override ulong Timestamp => 0;
 
+        // DELEGATECALL and STATICCALL are not yet available at this fork (Homestead / Byzantium),
+        // so the pre-EIP-150 guard can only be exercised through CALL and CALLCODE here.
         [Test]
-        public void Call_with_gas_above_long_max_out_of_gas()
+        [TestCase(Instruction.CALL)]
+        [TestCase(Instruction.CALLCODE)]
+        public void Call_with_gas_above_long_max_out_of_gas(Instruction instruction)
         {
             byte[] code = Prepare.EvmCode
                 .PushData(0)               // retLength
@@ -102,7 +110,7 @@ namespace Nethermind.Evm.Test
                 .PushData(0)               // value
                 .PushData(TestItem.AddressC)
                 .PushData(UInt256.MaxValue) // gasLimit — high bits set, exceeds long.MaxValue
-                .Op(Instruction.CALL)
+                .Op(instruction)
                 .Done;
 
             TestAllTracerWithOutput result = Execute(Activation, 200_000, code);
