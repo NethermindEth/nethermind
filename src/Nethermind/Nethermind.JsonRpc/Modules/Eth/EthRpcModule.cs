@@ -41,8 +41,6 @@ using System.Buffers;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
-using System.Security;
-using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
@@ -334,19 +332,8 @@ public partial class EthRpcModule(
 
     public ResultWrapper<Signature> eth_sign(Address addressData, byte[] message)
     {
-        Signature sig;
-        try
-        {
-            sig = _wallet.SignMessage(message, addressData);
-        }
-        catch (SecurityException e)
-        {
-            return ResultWrapper<Signature>.Fail(e.Message, ErrorCodes.AccountLocked);
-        }
-        catch (Exception)
-        {
-            return ResultWrapper<Signature>.Fail($"Unable to sign as {addressData}");
-        }
+        if (!_wallet.TrySignMessage(message, addressData, out Signature sig))
+            return ResultWrapper<Signature>.Fail("authentication needed: password or unlock", ErrorCodes.AccountLocked);
 
         if (_logger.IsTrace) _logger.Trace($"eth_sign request {addressData}, {message}, result: {sig}");
         return ResultWrapper<Signature>.Success(sig);
@@ -412,14 +399,8 @@ public partial class EthRpcModule(
                 return ResultWrapper<SignTransactionResult>.Fail(attachError, ErrorCodes.InvalidInput);
         }
 
-        try
-        {
-            _wallet.Sign(tx, chainId);
-        }
-        catch (Exception ex) when (ex is SecurityException or InvalidOperationException or CryptographicException)
-        {
+        if (!_wallet.TrySignTransaction(tx, chainId))
             return ResultWrapper<SignTransactionResult>.Fail("authentication needed: password or unlock", ErrorCodes.InvalidInput);
-        }
 
         tx.Hash = tx.CalculateHash();
 
@@ -532,13 +513,12 @@ public partial class EthRpcModule(
             (Hash256 txHash, AcceptTxResult? acceptTxResult) =
                 await _txSender.SendTransaction(tx, txHandlingOptions | TxHandlingOptions.PersistentBroadcast);
 
-            return acceptTxResult.Equals(AcceptTxResult.Accepted)
-                ? ResultWrapper<Hash256>.Success(txHash)
+            if (acceptTxResult.Equals(AcceptTxResult.Accepted))
+                return ResultWrapper<Hash256>.Success(txHash);
+
+            return acceptTxResult.Equals(AcceptTxResult.SignFailed)
+                ? ResultWrapper<Hash256>.Fail("authentication needed: password or unlock", ErrorCodes.AccountLocked)
                 : ResultWrapper<Hash256>.Fail(acceptTxResult?.ToString() ?? string.Empty, ErrorCodes.TransactionRejected);
-        }
-        catch (SecurityException e)
-        {
-            return ResultWrapper<Hash256>.Fail(e.Message, ErrorCodes.AccountLocked);
         }
         catch (Exception e)
         {

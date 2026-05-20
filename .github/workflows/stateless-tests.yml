@@ -47,20 +47,20 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - input: 150026.bin
-            hash: 39cadfc5f37f60c93bb39c9ca2a6db651f7e0f6de1d32177bdedf07c72005fd7
-          - input: 24721542.bin
-            hash: f7075aff304f5011d4e97d759ed30780f65ad8533786f3164f894628686c865d
-          - input: 24723632.bin
-            hash: a61f086b06a477f66944419904b0095f110a74dcca9b183c209300741f143407
-          - input: 24723668.bin
-            hash: 603c28f63cb3fa69206e941027f0af811d24ab062c8188edf32cfa564b94b82e
-          - input: 24772857.bin
-            hash: 5b314cb62f825ad87e1527f1ffb510453b4e3e67ab800e2984483e82214ddd15
-          - input: 24777027.bin
-            hash: 1f739f2c35965e32db367034143dab6b39895b1cc3bca852f80144342c501596
-          - input: 24777988.bin
-            hash: f92a634fe3aec70f825beb49841c2503b810fecf3a1d32beb63eef97519fbe6d
+          - input: 150026.ssz
+            hash: 35b017badd31a71a27b174ecc5088c513324ff66f94b591c5d069325228f6a4e
+          - input: 24721542.ssz
+            hash: 10df0db9fc2f00e2475e7694d9b888f8b91671fc2701ae550d33e8a9e878cdb3
+          - input: 24723632.ssz
+            hash: c598c1a7938287da8c811e763b7576050c92af190d9b8d2662fbc39d0a694572
+          - input: 24723668.ssz
+            hash: f6aaf72032e8c9703aa820cb006d215c5adfc8749094f26c1200be2a5c08b615
+          - input: 24772857.ssz
+            hash: 6f9d6224a33d023ca982b3faf9118e46d07a8cdbe513d2efa5a4408cb2734915
+          - input: 24777027.ssz
+            hash: a159d8cfe2d8cd12a03e725ab607373b92e7fa0e005f51d2bf8a2081b0a50015
+          - input: 24777988.ssz
+            hash: 18c75b1a179bd1aaa09c02011b4c8cd7ab6bef55a56ffb797ca3a0360f2287e7
     steps:
       - name: Check out repository
         uses: actions/checkout@v6
