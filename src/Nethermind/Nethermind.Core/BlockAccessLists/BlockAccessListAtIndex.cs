@@ -23,7 +23,7 @@ public class BlockAccessListAtIndex : IJournal<int>, IResettable
 
     public uint Index { get; set; }
 
-    private readonly Dictionary<Address, AccountChangesAtIndex> _accountChanges = new();
+    private readonly Dictionary<Address, AccountChangesAtIndex> _accountChanges = new(GenericEqualityComparer.GetOptimized<Address>());
     private readonly List<Change> _changes = new(InitialChangeCapacity);
 
     public IEnumerable<AccountChangesAtIndex> AccountChanges => _accountChanges.Values;
@@ -173,7 +173,6 @@ public class BlockAccessListAtIndex : IJournal<int>, IResettable
     {
         AccountChangesAtIndex accountChanges = GetOrAddAccountChanges(address);
 
-        // snapshot keys before mutating — dictionary can't be modified during enumeration
         UInt256[] changedSlots = [.. accountChanges.ChangedSlots];
         foreach (UInt256 slot in changedSlots)
         {

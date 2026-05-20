@@ -17,7 +17,7 @@ namespace Nethermind.Core.BlockAccessLists;
 /// </remarks>
 public class GeneratedBlockAccessList
 {
-    private readonly Dictionary<Address, GeneratedAccountChanges> _accountChanges = new();
+    private readonly Dictionary<Address, GeneratedAccountChanges> _accountChanges = new(GenericEqualityComparer.GetOptimized<Address>());
 
     public EnumerableWithCount<GeneratedAccountChanges> AccountChanges
         => new(_accountChanges.Values, _accountChanges.Values.Count);

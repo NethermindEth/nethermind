@@ -17,9 +17,6 @@ namespace Nethermind.Core.BlockAccessLists;
 /// Per-account changes assembled from one or more <see cref="AccountChangesAtIndex"/> via merging.
 /// Append-only and ordered by index.
 /// </summary>
-/// <remarks>
-/// Storage collections are unsorted; EIP-7928 sort order is materialised at encode time.
-/// </remarks>
 public class GeneratedAccountChanges(Address address) : IComparable<GeneratedAccountChanges>
 {
     [JsonConverter(typeof(AddressConverter))]
@@ -36,8 +33,8 @@ public class GeneratedAccountChanges(Address address) : IComparable<GeneratedAcc
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
     public List<CodeChange> CodeChanges { get; } = [];
 
-    private readonly Dictionary<UInt256, GeneratedSlotChanges> _storageChanges = new();
-    private readonly HashSet<UInt256> _storageReads = [];
+    private readonly Dictionary<UInt256, GeneratedSlotChanges> _storageChanges = new(GenericEqualityComparer.GetOptimized<UInt256>());
+    private readonly HashSet<UInt256> _storageReads = new(GenericEqualityComparer.GetOptimized<UInt256>());
 
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
     public IReadOnlyCollection<GeneratedSlotChanges> StorageChanges => _storageChanges.Values;
