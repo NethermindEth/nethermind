@@ -64,15 +64,14 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
         ref readonly StackAccessTracker accessTracker,
         bool isTracingAccess,
         Address address,
-        Address? delegated,
-        bool chargeForWarm = true);
+        Address? delegated);
 
     static abstract bool ConsumeAccountAccessGas(ref TSelf gas,
         IReleaseSpec spec,
         ref readonly StackAccessTracker accessTracker,
         bool isTracingAccess,
         Address address,
-        bool chargeForWarm = true);
+        AccountAccessKind kind = AccountAccessKind.Default);
 
     static abstract bool ConsumeStorageAccessGas(ref TSelf gas,
         ref readonly StackAccessTracker accessTracker,
@@ -111,7 +110,12 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
 
     // Drop state-gas from block-state accounting without refunding to the gas budget;
     // reverted state charges stay paid by the tx but don't contribute to committed state gas.
-    static virtual void DiscardStateGas(ref TSelf gas, long amount, long stateGasFloor) { }
+    static virtual long DiscardStateGas(ref TSelf gas, long amount, long stateGasFloor, bool trackSpillRefund) => amount;
+
+    static virtual void AddStateGasRefundToReservoir(ref TSelf gas, long amount, bool trackSpillRefund) =>
+        TSelf.UpdateGasUp(ref gas, amount);
+
+    static virtual void RemoveStateGasRefundFromReservoir(ref TSelf gas, long amount) { }
 
     // EIP-8037 top-level halt: snap state-gas back to (R0, intrinsicStateUsed, 0); the
     // post-reset StateGasUsed feeds SpentGas so the user doesn't pay for uncommitted state.
@@ -219,4 +223,16 @@ public readonly record struct IntrinsicGas<TGasPolicy>(TGasPolicy Standard, TGas
 {
     public TGasPolicy MinimalGas { get; } = TGasPolicy.Max(Standard, FloorGas);
     public static explicit operator TGasPolicy(IntrinsicGas<TGasPolicy> gas) => gas.MinimalGas;
+
+    /// <summary>
+    /// EIP-8037: rejects a transaction whose intrinsic regular or floor gas exceeds <paramref name="cap"/>.
+    /// </summary>
+    public bool ExceedsCap(long cap, out long regular, out long floor)
+    {
+        TGasPolicy standard = Standard;
+        TGasPolicy floorGas = FloorGas;
+        regular = TGasPolicy.GetRemainingGas(in standard);
+        floor = TGasPolicy.GetRemainingGas(in floorGas);
+        return regular > cap || floor > cap;
+    }
 }

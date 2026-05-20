@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Numerics;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
@@ -62,11 +63,16 @@ internal sealed class BlockAccessListValidationIndex
         _nonce = Lane<ulong>.CreateMutableLike(suggested._nonce);
         _code = Lane<ValueHash256>.CreateMutableLike(suggested._code);
         _storage = StorageLane.CreateMutableLike(suggested._storage);
-        // +25% slack: reads can over-count due to per-tx duplication before dedup, and invalid
-        // wire BALs may push generated past suggested before lane overflow trips.
-        _generatedStorageReads = new(storageReadsCapacity + (storageReadsCapacity >> 2));
-        _generatedStorageWrites = new(storageWritesCapacity + (storageWritesCapacity >> 2));
+        // Slack covers per-tx duplication before dedup on reads, and invalid wire BALs that push
+        // generated past suggested before lane overflow trips.
+        _generatedStorageReads = new(WithSlack(storageReadsCapacity));
+        _generatedStorageWrites = new(WithSlack(storageWritesCapacity));
     }
+
+    /// <summary>Capacity hint plus headroom so the lists don't immediately resize on the first
+    /// over-count slot.</summary>
+    private const int GeneratedListSlackShift = 2;
+    private static int WithSlack(int capacity) => capacity + (capacity >> GeneratedListSlackShift);
 
     private BlockAccessListValidationIndex(
         AddressIndex addressIndex,
@@ -238,22 +244,22 @@ internal sealed class BlockAccessListValidationIndex
     /// Must only be called on the mutable (generated) index. <c>_generatedStorageReads</c> and
     /// <c>_generatedStorageWrites</c> are null on the immutable (suggested) side.
     /// </remarks>
-    public StructuralMismatchKind FindStructuralMismatch(ReadOnlyBlockAccessList suggested, out Address? mismatchAddress)
+    public StructuralMismatchKind FindStructuralMismatch(ReadOnlyBlockAccessList suggested, out Address? mismatchAddress, out int generatedAccountCount)
     {
         if (!_isMutable)
             throw new InvalidOperationException("FindStructuralMismatch must be called on the generated index.");
 
         mismatchAddress = null;
+        generatedAccountCount = MarkedAccountCount;
 
-        if (suggested.AccountChanges.Count != MarkedAccountCount)
+        if (suggested.AccountChanges.Count != generatedAccountCount)
         {
             return StructuralMismatchKind.AccountCountMismatch;
         }
 
-        // Sort-and-dedup both flat buffers once for the whole walk. After this each is in
-        // (ordinal asc, slot asc) order with no duplicates, so per-ordinal ranges line up with
-        // the suggested.AccountChanges iteration order. Reads/writes walk in lockstep per
-        // account, dropping reads whose slot also has a write — mirroring
+        // After sort+dedup each flat buffer is in (ordinal asc, slot asc) order, so per-ordinal
+        // runs line up with suggested.AccountChanges' address-sorted iteration. Reads/writes
+        // walk in lockstep per account, dropping reads whose slot also has a write — mirroring
         // GeneratedBlockAccessList.Merge's read→write promotion.
         SortAndDedupFlat(_generatedStorageReads, ref _generatedStorageReadsSorted);
         SortAndDedupFlat(_generatedStorageWrites, ref _generatedStorageWritesSorted);
@@ -267,11 +273,11 @@ internal sealed class BlockAccessListValidationIndex
         int writesCursor = 0;
         int lastOrdinal = -1;
 
-        foreach (ReadOnlyAccountChanges sug in suggested.AccountChanges)
+        foreach (ReadOnlyAccountChanges suggestedAccount in suggested.AccountChanges)
         {
-            if (!_addressIndex.TryGet(sug.Address, out int ordinal) || !HasAccountOrdinal(ordinal))
+            if (!_addressIndex.TryGet(suggestedAccount.Address, out int ordinal) || !HasAccountOrdinal(ordinal))
             {
-                mismatchAddress = sug.Address;
+                mismatchAddress = suggestedAccount.Address;
                 return StructuralMismatchKind.MissingInGenerated;
             }
 
@@ -281,45 +287,53 @@ internal sealed class BlockAccessListValidationIndex
             Debug.Assert(ordinal > lastOrdinal, "AccountChanges enumeration must produce ordinals in ascending order.");
             lastOrdinal = ordinal;
 
-            while (readsCursor < reads.Length && reads[readsCursor].Ordinal < ordinal) readsCursor++;
-            int readsRunStart = readsCursor;
-            while (readsCursor < reads.Length && reads[readsCursor].Ordinal == ordinal) readsCursor++;
+            ReadOnlySpan<(int Ordinal, UInt256 Slot)> generatedReadsForOrdinal = TakeOrdinalRun(reads, ordinal, ref readsCursor);
+            ReadOnlySpan<(int Ordinal, UInt256 Slot)> generatedWritesForOrdinal = TakeOrdinalRun(writes, ordinal, ref writesCursor);
 
-            while (writesCursor < writes.Length && writes[writesCursor].Ordinal < ordinal) writesCursor++;
-            int writesRunStart = writesCursor;
-            while (writesCursor < writes.Length && writes[writesCursor].Ordinal == ordinal) writesCursor++;
-
-            ReadOnlySpan<(int Ordinal, UInt256 Slot)> readRun = reads.Slice(readsRunStart, readsCursor - readsRunStart);
-            ReadOnlySpan<(int Ordinal, UInt256 Slot)> writeRun = writes.Slice(writesRunStart, writesCursor - writesRunStart);
-            ReadOnlySpan<UInt256> sugReads = sug.StorageReads;
-
-            // Lockstep walk: yield read slots that are NOT shadowed by a write at the same ordinal.
-            int wi = 0;
-            int sugIdx = 0;
-            for (int ri = 0; ri < readRun.Length; ri++)
+            StructuralMismatchKind mismatch = CompareStorageReadsForAccount(
+                generatedReadsForOrdinal, generatedWritesForOrdinal, suggestedAccount.StorageReads);
+            if (mismatch != StructuralMismatchKind.None)
             {
-                UInt256 slot = readRun[ri].Slot;
-                while (wi < writeRun.Length && writeRun[wi].Slot.CompareTo(slot) < 0) wi++;
-                if (wi < writeRun.Length && writeRun[wi].Slot.Equals(slot)) continue;
-
-                if (sugIdx >= sugReads.Length || !sugReads[sugIdx].Equals(slot))
-                {
-                    mismatchAddress = sug.Address;
-                    return sugIdx >= sugReads.Length
-                        ? StructuralMismatchKind.StorageReadsCountMismatch
-                        : StructuralMismatchKind.StorageReadsContentMismatch;
-                }
-                sugIdx++;
-            }
-
-            if (sugIdx != sugReads.Length)
-            {
-                mismatchAddress = sug.Address;
-                return StructuralMismatchKind.StorageReadsCountMismatch;
+                mismatchAddress = suggestedAccount.Address;
+                return mismatch;
             }
         }
 
         return StructuralMismatchKind.None;
+    }
+
+    /// <summary>Returns the run of entries whose Ordinal equals <paramref name="ordinal"/>,
+    /// advancing <paramref name="cursor"/> past it. Assumes <paramref name="entries"/> is
+    /// sorted by Ordinal ascending and the caller calls in ascending-ordinal order.</summary>
+    private static ReadOnlySpan<(int Ordinal, UInt256 Slot)> TakeOrdinalRun(
+        ReadOnlySpan<(int Ordinal, UInt256 Slot)> entries, int ordinal, ref int cursor)
+    {
+        while (cursor < entries.Length && entries[cursor].Ordinal < ordinal) cursor++;
+        int runStart = cursor;
+        while (cursor < entries.Length && entries[cursor].Ordinal == ordinal) cursor++;
+        return entries.Slice(runStart, cursor - runStart);
+    }
+
+    /// <summary>Compares generated reads (filtered for slots shadowed by writes) against
+    /// suggested reads for a single account. Both sides are slot-sorted ascending.</summary>
+    private static StructuralMismatchKind CompareStorageReadsForAccount(
+        ReadOnlySpan<(int Ordinal, UInt256 Slot)> generatedReads,
+        ReadOnlySpan<(int Ordinal, UInt256 Slot)> generatedWrites,
+        ReadOnlySpan<UInt256> suggestedReads)
+    {
+        int writeIdx = 0;
+        int suggestedIdx = 0;
+        for (int readIdx = 0; readIdx < generatedReads.Length; readIdx++)
+        {
+            UInt256 slot = generatedReads[readIdx].Slot;
+            while (writeIdx < generatedWrites.Length && generatedWrites[writeIdx].Slot.CompareTo(slot) < 0) writeIdx++;
+            if (writeIdx < generatedWrites.Length && generatedWrites[writeIdx].Slot.Equals(slot)) continue;
+
+            if (suggestedIdx >= suggestedReads.Length) return StructuralMismatchKind.StorageReadsCountMismatch;
+            if (!suggestedReads[suggestedIdx].Equals(slot)) return StructuralMismatchKind.StorageReadsContentMismatch;
+            suggestedIdx++;
+        }
+        return suggestedIdx == suggestedReads.Length ? StructuralMismatchKind.None : StructuralMismatchKind.StorageReadsCountMismatch;
     }
 
     private static void SortAndDedupFlat(List<(int Ordinal, UInt256 Slot)>? buffer, ref bool sorted)
@@ -409,17 +423,15 @@ internal sealed class BlockAccessListValidationIndex
         if (_generatedStorageReads is null) return false;
         SortAndDedupFlat(_generatedStorageReads, ref _generatedStorageReadsSorted);
         ReadOnlySpan<(int Ordinal, UInt256 Slot)> reads = CollectionsMarshal.AsSpan(_generatedStorageReads);
-        // Binary search for any entry with this ordinal — we only need presence so check the
-        // (ordinal, default-slot) pair's bracketing.
-        int lo = 0, hi = reads.Length - 1;
-        while (lo <= hi)
-        {
-            int mid = (lo + hi) >> 1;
-            if (reads[mid].Ordinal == ordinal) return true;
-            if (reads[mid].Ordinal < ordinal) lo = mid + 1;
-            else hi = mid - 1;
-        }
-        return false;
+        return reads.BinarySearch((ordinal, default(UInt256)), OrdinalOnlyComparer.Instance) >= 0;
+    }
+
+    /// <summary>BinarySearch by Ordinal only — slot is ignored. The buffer is sorted on
+    /// (Ordinal asc, Slot asc), so any entry with the target Ordinal is a match.</summary>
+    private sealed class OrdinalOnlyComparer : IComparer<(int Ordinal, UInt256 Slot)>
+    {
+        public static readonly OrdinalOnlyComparer Instance = new();
+        public int Compare((int Ordinal, UInt256 Slot) x, (int Ordinal, UInt256 Slot) y) => x.Ordinal.CompareTo(y.Ordinal);
     }
 
     /// <summary>
@@ -790,7 +802,6 @@ internal sealed class BlockAccessListValidationIndex
         private readonly bool[]? _rowTouched;
         private readonly int[]? _touchedRows;
         private readonly bool[]? _rowOverflow;
-        private readonly StorageOrderComparer _orderComparer = new();
         private int[] _orderScratch = [];
         private int[] _accountScratch = [];
         private UInt256[] _keyScratch = [];
@@ -919,16 +930,25 @@ internal sealed class BlockAccessListValidationIndex
             int rowStart = _rowStarts[row];
             int rowLength = RowLength(row);
             ReadOnlySpan<int> ordinals = new(_accountOrdinals, rowStart, rowLength);
-            int idx = ordinals.BinarySearch(ordinal);
-            if (idx < 0) { start = 0; length = 0; return; }
+            int lo = LowerBound(ordinals, ordinal);
+            int hi = LowerBound(ordinals, ordinal + 1);
+            start = rowStart + lo;
+            length = hi - lo;
+        }
 
-            // BinarySearch may return any matching index; step back to find the first.
-            while (idx > 0 && ordinals[idx - 1] == ordinal) idx--;
-            int endIdx = idx;
-            while (endIdx < ordinals.Length && ordinals[endIdx] == ordinal) endIdx++;
-
-            start = rowStart + idx;
-            length = endIdx - idx;
+        /// <summary>Smallest index <c>i</c> such that <c>span[i] &gt;= value</c>, or
+        /// <c>span.Length</c> if no such index exists. O(log n).</summary>
+        private static int LowerBound(ReadOnlySpan<int> span, int value)
+        {
+            int lo = 0;
+            int hi = span.Length;
+            while (lo < hi)
+            {
+                int mid = (int)((uint)(lo + hi) >> 1);
+                if (span[mid] < value) lo = mid + 1;
+                else hi = mid;
+            }
+            return lo;
         }
 
         public void SortAllRows()
@@ -1039,8 +1059,7 @@ internal sealed class BlockAccessListValidationIndex
                 _orderScratch[i] = i;
             }
 
-            _orderComparer.Reset(_accountOrdinals, _keys, start);
-            Array.Sort(_orderScratch, 0, length, _orderComparer);
+            _orderScratch.AsSpan(0, length).Sort(new StorageOrderComparer(_accountOrdinals, _keys, start));
 
             for (int i = 0; i < length; i++)
             {
@@ -1068,19 +1087,13 @@ internal sealed class BlockAccessListValidationIndex
             _valueScratch = new EvmWord[length];
         }
 
-        private sealed class StorageOrderComparer : IComparer<int>
+        private readonly struct StorageOrderComparer(int[] accountOrdinals, UInt256[] keys, int start) : IComparer<int>
         {
-            private int[] _accountOrdinals = [];
-            private UInt256[] _keys = [];
-            private int _start;
+            private readonly int[] _accountOrdinals = accountOrdinals;
+            private readonly UInt256[] _keys = keys;
+            private readonly int _start = start;
 
-            public void Reset(int[] accountOrdinals, UInt256[] keys, int start)
-            {
-                _accountOrdinals = accountOrdinals;
-                _keys = keys;
-                _start = start;
-            }
-
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
             public int Compare(int leftOffset, int rightOffset)
             {
                 int left = _start + leftOffset;

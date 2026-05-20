@@ -93,16 +93,16 @@ public partial class BlockAccessListManager(
     public bool ParallelExecutionEnabled { get; private set; }
 
     /// <summary>
-    /// When set, the manager always builds the materialised GeneratedBlockAccessList even on
+    /// When set, the manager always builds the constructed GeneratedBlockAccessList even on
     /// the parallel-validation path where the column-index validator suffices on its own.
-    /// Wrappers that read the materialised BAL after processing (BAL recorder, RPC diagnostics)
+    /// Wrappers that read the constructed BAL after processing (BAL recorder, RPC diagnostics)
     /// must set this before PrepareForProcessing runs.
     /// </summary>
-    public bool ForceMaterializeGeneratedBlockAccessList { get; set; }
+    public bool ForceConstructGeneratedBlockAccessList { get; set; }
 
-    // Non-null when the manager is materialising the per-block aggregate (always points at
+    // Non-null when the manager is constructing the per-block aggregate (always points at
     // GeneratedBlockAccessList itself in that case); null on the verify-only path where the
-    // column-index validator stands in for the materialised list. Drives both the per-tx
+    // column-index validator stands in for the constructed list. Drives both the per-tx
     // Merge target and the end-of-block encode + Keccak step.
     private GeneratedBlockAccessList? _currentGeneratedBlockAccessList;
     private bool VerifyOnly => _currentGeneratedBlockAccessList is null;
@@ -145,7 +145,7 @@ public partial class BlockAccessListManager(
             }
             _gasRemaining = suggestedBlock.GasUsed;
             _parentStateRoot = ParallelExecutionEnabled ? stateProvider.StateRoot : null;
-            _currentGeneratedBlockAccessList = (ParallelExecutionEnabled && !ForceMaterializeGeneratedBlockAccessList) ? null : GeneratedBlockAccessList;
+            _currentGeneratedBlockAccessList = (ParallelExecutionEnabled && !ForceConstructGeneratedBlockAccessList) ? null : GeneratedBlockAccessList;
         }
     }
 

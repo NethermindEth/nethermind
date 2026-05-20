@@ -205,6 +205,32 @@ public partial class EngineModuleTests
             ? NewPayloadV5_via_manual_block(blockHash, receiptsRoot, stateRoot)
             : NewPayloadV5_via_engine_built(blockHash, receiptsRoot, stateRoot, eip8037Enabled, useSerializedRpc: !useEnginePipeline);
 
+    [Test]
+    public async Task NewPayloadV5_returns_invalid_params_without_block_access_list()
+    {
+        using MergeTestBlockchain chain = await CreateBlockchain(Amsterdam.Instance);
+        Block block = Build.A.Block
+            .WithNumber(chain.BlockTree.Head!.Number + 1)
+            .WithParentBeaconBlockRoot(Keccak.Zero)
+            .WithBlobGasUsed(0)
+            .WithExcessBlobGas(0)
+            .WithSlotNumber(1)
+            .TestObject;
+        ExecutionPayloadV4 executionPayload = ExecutionPayloadV4.Create(block);
+
+        ResultWrapper<PayloadStatusV1> response = await chain.EngineRpcModule.engine_newPayloadV5(
+            executionPayload,
+            [],
+            Keccak.Zero,
+            []);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(response.Result.ResultType, Is.EqualTo(ResultType.Failure));
+            Assert.That(response.ErrorCode, Is.EqualTo(ErrorCodes.InvalidParams));
+        }
+    }
+
     [TestCase(
         "0x43b3722358b0a8b570fdfd846a5b836ad2fae3f7f58b3ac3519858472a997214",
         "0xb7cd7ecf731166baf69674234dc243d3f8931976b0f1a379beafe0981d01bd2e",
@@ -265,14 +291,11 @@ public partial class EngineModuleTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(successResponse, Is.Not.Null);
-            // The verify-only BAL validation path catches the surplus-empty-entry attack via
-            // an account-set structural check rather than a byte-level hash compare; both
-            // legitimately reject the block but with different error messages. Accept either.
             Assert.That(response, Does.Contain("\"status\":\"INVALID\""));
             Assert.That(response, Does.Contain($"\"latestValidHash\":\"{Keccak.Zero.ToString(true)}\""));
             Assert.That(response,
                 Does.Contain($"InvalidBlockLevelAccessListHash: Expected {expectedBalHash}, got {invalidBalHash}")
-                .Or.Contain("InvalidBlockLevelAccessList:"));
+                .Or.Contain("InvalidBlockLevelAccessList: Account-set size mismatch"));
         }
     }
 

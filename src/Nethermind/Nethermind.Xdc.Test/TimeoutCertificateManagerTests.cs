@@ -8,6 +8,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
+using Nethermind.Logging;
 using Nethermind.Synchronization.Peers;
 using Nethermind.Xdc.Spec;
 using Nethermind.Xdc.Types;
@@ -59,7 +60,8 @@ public class TimeoutCertificateManagerTests
             specProvider,
             blockTree,
 
-            Substitute.For<ISigner>());
+            Substitute.For<ISigner>(),
+            NullLogManager.Instance);
 
         bool ok = tcManager.VerifyTimeoutCertificate(tc, out string? err);
         Assert.That(ok, Is.False);
@@ -89,7 +91,8 @@ public class TimeoutCertificateManagerTests
             specProvider,
             blockTree,
 
-            Substitute.For<ISigner>());
+            Substitute.For<ISigner>(),
+            NullLogManager.Instance);
 
         bool ok = tcManager.VerifyTimeoutCertificate(tc, out string? err);
         Assert.That(ok, Is.False);
@@ -162,7 +165,7 @@ public class TimeoutCertificateManagerTests
 
         TimeoutCertificateManager tcManager = new(context, Substitute.For<ITimeoutTimer>(),
             Substitute.For<ISyncPeerPool>(), snapshotManager, epochSwitchManager, specProvider,
-            blockTree, signer);
+            blockTree, signer, NullLogManager.Instance);
 
         Assert.That(tcManager.VerifyTimeoutCertificate(timeoutCertificate, out _), Is.EqualTo(expected));
     }
@@ -206,7 +209,7 @@ public class TimeoutCertificateManagerTests
         TimeoutCertificateManager tcManager = new(context,
             Substitute.For<ITimeoutTimer>(),
             Substitute.For<ISyncPeerPool>(), snapshotManager, epochSwitchManager, specProvider,
-            blockTree, signer);
+            blockTree, signer, NullLogManager.Instance);
 
         PrivateKey key = correctSigner ? keys.First() : keys.Last();
         Timeout timeout = XdcTestHelper.BuildSignedTimeout(key, round, gap);
@@ -223,7 +226,8 @@ public class TimeoutCertificateManagerTests
             Substitute.For<ISpecProvider>(),
             Substitute.For<IBlockTree>(),
 
-            Substitute.For<ISigner>());
+            Substitute.For<ISigner>(),
+            NullLogManager.Instance);
 
     private static TimeoutCertificate BuildTimeoutCertificate(PrivateKey[] keys, ulong round = 1, ulong gap = 0)
     {

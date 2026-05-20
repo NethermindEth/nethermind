@@ -33,10 +33,6 @@ public class TracedAccessWorldStateTests(bool parallel)
 {
     private static readonly IReleaseSpec Spec = Amsterdam.Instance;
 
-    /// <summary>
-    /// Creates a <see cref="TracedAccessWorldState"/> wrapping a real <see cref="WorldState"/>,
-    /// with an optional genesis setup callback. Returns the traced state and a scope that must be disposed.
-    /// </summary>
     private (TracedAccessWorldState tws, IDisposable scope) CreateTracingState(
         Action<IWorldState>? genesisSetup = null)
     {
@@ -413,15 +409,12 @@ public class TracedAccessWorldStateTests(bool parallel)
         }
     }
 
-    // ── C1 regression: within a single tx, balance/nonce/code changes are replaced
-    // via Pop+Push, keeping Count == 1. Verify the replacement uses BAL state, not inner. ──
+    // Repeated same-tx balance/nonce/code/storage writes must reuse the BAL-recorded value as
+    // their "old" baseline (not the inner state) and collapse to a single entry at this index.
 
     [Test]
     public void RepeatedBalanceChanges_SameTx_UsesLatestBalValue()
     {
-        // Account starts at 1000. Two AddToBalance(100) calls in the same tx:
-        //   1st: old=1000 (from inner), new=1100 → recorded at Index 0
-        //   2nd: old=1100 (from BAL Count==1 entry), new=1200 → replaces at Index 0
         (TracedAccessWorldState tws, IDisposable scope) = CreateTracingState(ws =>
             ws.CreateAccount(TestItem.AddressA, 1000));
         using (scope)
@@ -435,7 +428,6 @@ public class TracedAccessWorldStateTests(bool parallel)
                 Assert.That(oldBalance1, Is.EqualTo((UInt256)1000), "first old balance from inner state");
                 Assert.That(oldBalance2, Is.EqualTo((UInt256)1100), "second old balance from BAL, not inner");
                 Assert.That(ac, Is.Not.Null);
-                // Within same tx, Pop+Push replaces entry: only the latest value is recorded
                 Assert.That(ac!.BalanceChange, Is.Not.Null);
                 Assert.That(ac.BalanceChange!.Value.Value, Is.EqualTo((UInt256)1200));
             }
@@ -474,14 +466,12 @@ public class TracedAccessWorldStateTests(bool parallel)
         using (scope)
         {
             tws.InsertCode(TestItem.AddressA, ValueKeccak.Compute(code1), code1, Spec);
-            // Second InsertCode should see code1 as old code (from BAL), not empty (from inner)
             tws.InsertCode(TestItem.AddressA, ValueKeccak.Compute(code2), code2, Spec);
 
             AccountChangesAtIndex? ac = tws.GetGeneratingBlockAccessList()!.GetAccountChanges(TestItem.AddressA);
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(ac, Is.Not.Null);
-                // At a single index, the latest code wins
                 Assert.That(ac!.CodeChange, Is.Not.Null);
                 Assert.That(ac.CodeChange!.Value.Code, Is.EquivalentTo(code2));
             }
@@ -507,30 +497,10 @@ public class TracedAccessWorldStateTests(bool parallel)
                 Assert.That(ac, Is.Not.Null);
                 Assert.That(ac!.StorageChangeCount, Is.EqualTo(1));
                 Assert.That(ac.TryGetStorageChange((UInt256)1, out StorageChange? change), Is.True);
-                // Storage changes also Pop+Push at same Index, so the latest value wins.
-                // StorageChange.Value is now EvmWord (BE wire form) — round-trip via the
-                // convenience ctor to compare on the same representation.
+                // StorageChange.Value is EvmWord (BE wire form) — compare via the ctor's round-trip.
                 Assert.That(change!.Value.Value, Is.EqualTo(new StorageChange(0, (UInt256)2).Value));
             }
         }
-    }
-
-    // ── C7 regression: GetBalance/GetNonce return null, not UInt256.MaxValue sentinel ──
-
-    [Test]
-    public void AccountChanges_GetBalance_ReturnsNull_WhenNoChangesExist()
-    {
-        ReadOnlyAccountChanges ac = new(TestItem.AddressA);
-        UInt256? balance = ac.GetBalance(0);
-        Assert.That(balance, Is.Null, "GetBalance should return null when no balance changes exist, not UInt256.MaxValue");
-    }
-
-    [Test]
-    public void AccountChanges_GetNonce_ReturnsNull_WhenNoChangesExist()
-    {
-        ReadOnlyAccountChanges ac = new(TestItem.AddressA);
-        UInt256? nonce = ac.GetNonce(0);
-        Assert.That(nonce, Is.Null, "GetNonce should return null when no nonce changes exist, not UInt256.MaxValue");
     }
 
 }

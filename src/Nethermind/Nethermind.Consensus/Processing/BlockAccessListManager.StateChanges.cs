@@ -12,7 +12,6 @@ using Nethermind.Core.Specs;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
 using Nethermind.Serialization.Rlp.Eip7928;
-using static Nethermind.State.BlockAccessListBasedWorldState;
 
 namespace Nethermind.Consensus.Processing;
 
@@ -112,38 +111,5 @@ public partial class BlockAccessListManager
         block.GeneratedBlockAccessList = GeneratedBlockAccessList;
         block.EncodedBlockAccessList = BlockAccessListDecoder.EncodeToBytes(GeneratedBlockAccessList);
         block.Header.BlockAccessListHash = new(ValueKeccak.Compute(block.EncodedBlockAccessList).Bytes);
-    }
-
-    private void ValidateStructuralEquivalence(Block block)
-    {
-        BlockAccessListValidationIndex generatedIndex = _generatedValidationIndex!;
-        ReadOnlyBlockAccessList suggested = block.BlockAccessList!;
-
-        // Generated lane Add dropped a row that didn't fit suggested's per-row capacity —
-        // structural mismatch the per-account walk below can't see through HasAt.
-        if (generatedIndex.TryGetGeneratedOverflow(out Address overflowAddress, out uint overflowIndex))
-        {
-            throw new InvalidBlockLevelAccessListException(block.Header,
-                $"Suggested block-level access list contained incorrect changes for {overflowAddress} at index {overflowIndex}.");
-        }
-
-        BlockAccessListValidationIndex.StructuralMismatchKind mismatch =
-            generatedIndex.FindStructuralMismatch(suggested, out Address? mismatchAddress);
-
-        string? error = mismatch switch
-        {
-            BlockAccessListValidationIndex.StructuralMismatchKind.None => null,
-            BlockAccessListValidationIndex.StructuralMismatchKind.AccountCountMismatch
-                => $"Account-set size mismatch: suggested={suggested.AccountChanges.Count}, generated={generatedIndex.MarkedAccountCount}.",
-            BlockAccessListValidationIndex.StructuralMismatchKind.MissingInGenerated
-                => $"Suggested BAL declares account {mismatchAddress} which execution did not touch.",
-            BlockAccessListValidationIndex.StructuralMismatchKind.StorageReadsCountMismatch
-                => $"storage_reads count mismatch for {mismatchAddress}.",
-            BlockAccessListValidationIndex.StructuralMismatchKind.StorageReadsContentMismatch
-                => $"storage_reads mismatch for {mismatchAddress}.",
-            _ => throw new InvalidOperationException($"Unhandled {nameof(BlockAccessListValidationIndex.StructuralMismatchKind)}: {mismatch}"),
-        };
-
-        if (error is not null) throw new InvalidBlockLevelAccessListException(block.Header, error);
     }
 }
