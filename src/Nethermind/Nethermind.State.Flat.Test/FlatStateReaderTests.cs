@@ -36,16 +36,6 @@ public class FlatStateReaderTests
     [TearDown]
     public void TearDown() => _codeDb.Dispose();
 
-    private ReadOnlySnapshotBundle MakeBundle(System.Action<SnapshotContent>? populate = null)
-    {
-        SnapshotContent content = _pool.GetSnapshotContent(ResourcePool.Usage.MainBlockProcessing);
-        populate?.Invoke(content);
-        Snapshot snap = new(StateId.PreGenesis, StateId.PreGenesis, content, _pool, ResourcePool.Usage.MainBlockProcessing);
-        SnapshotPooledList list = new(1);
-        list.Add(snap);
-        return new ReadOnlySnapshotBundle(list, Substitute.For<IPersistence.IPersistenceReader>(), recordDetailedMetrics: false);
-    }
-
     [Test]
     public void TryGetAccount_BundleNull_ReturnsFalse()
     {
@@ -61,7 +51,7 @@ public class FlatStateReaderTests
     public void TryGetAccount_FoundInBundle_ReturnsTrue()
     {
         Account expected = TestItem.GenerateIndexedAccount(7);
-        ReadOnlySnapshotBundle bundle = MakeBundle(c => c.Accounts[new HashedKey<Address>(TestItem.AddressA)] = expected);
+        ReadOnlySnapshotBundle bundle = FlatTestHelpers.MakeBundle(_pool, c => c.Accounts[new HashedKey<Address>(TestItem.AddressA)] = expected);
         _flatDbManager.GatherReadOnlySnapshotBundle(Arg.Any<StateId>()).Returns(bundle);
 
         bool result = _reader.TryGetAccount(Build.A.BlockHeader.TestObject, TestItem.AddressA, out AccountStruct account);
@@ -74,7 +64,7 @@ public class FlatStateReaderTests
     [Test]
     public void TryGetAccount_NotFound_ReturnsFalse()
     {
-        ReadOnlySnapshotBundle bundle = MakeBundle();
+        ReadOnlySnapshotBundle bundle = FlatTestHelpers.MakeBundle(_pool);
         _flatDbManager.GatherReadOnlySnapshotBundle(Arg.Any<StateId>()).Returns(bundle);
 
         bool result = _reader.TryGetAccount(Build.A.BlockHeader.TestObject, TestItem.AddressA, out AccountStruct account);
@@ -98,7 +88,7 @@ public class FlatStateReaderTests
     {
         UInt256 slot = 42;
         SlotValue stored = SlotValue.FromSpanWithoutLeadingZero([0xab, 0xcd]);
-        ReadOnlySnapshotBundle bundle = MakeBundle(c =>
+        ReadOnlySnapshotBundle bundle = FlatTestHelpers.MakeBundle(_pool, c =>
             c.Storages[new HashedKey<(Address, UInt256)>((TestItem.AddressA, slot))] = stored);
         _flatDbManager.GatherReadOnlySnapshotBundle(Arg.Any<StateId>()).Returns(bundle);
 

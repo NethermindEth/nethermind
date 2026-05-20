@@ -95,7 +95,7 @@ public class ImporterTests
     }
 
     [Test]
-    public void Copy_PropagatesCancellation()
+    public async Task Copy_PropagatesCancellation()
     {
         (Address address, Account account)[] accounts = BuildAccounts(3);
         foreach ((Address addr, Account acc) in accounts) _stateTree.Set(addr, acc);
@@ -105,7 +105,7 @@ public class ImporterTests
         using CancellationTokenSource cts = new();
         cts.Cancel();
 
-        Assert.That(async () => await importer.Copy(new StateId(0, _stateTree.RootHash), cts.Token),
+        await Assert.ThatAsync(async () => await importer.Copy(new StateId(0, _stateTree.RootHash), cts.Token),
             Throws.InstanceOf<System.OperationCanceledException>());
     }
 }

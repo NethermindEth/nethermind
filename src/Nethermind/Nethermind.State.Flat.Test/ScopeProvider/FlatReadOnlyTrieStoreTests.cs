@@ -29,16 +29,6 @@ public class FlatReadOnlyTrieStoreTests
         _pool = new ResourcePool(new FlatDbConfig { CompactSize = 2 });
     }
 
-    private ReadOnlySnapshotBundle MakeBundle(System.Action<SnapshotContent>? populate = null)
-    {
-        SnapshotContent content = _pool.GetSnapshotContent(ResourcePool.Usage.MainBlockProcessing);
-        populate?.Invoke(content);
-        Snapshot snap = new(StateId.PreGenesis, StateId.PreGenesis, content, _pool, ResourcePool.Usage.MainBlockProcessing);
-        SnapshotPooledList list = new(1);
-        list.Add(snap);
-        return new ReadOnlySnapshotBundle(list, Substitute.For<IPersistence.IPersistenceReader>(), recordDetailedMetrics: false);
-    }
-
     [Test]
     public void HasRoot_StateRootOnly_AlwaysTrue()
     {
@@ -81,7 +71,7 @@ public class FlatReadOnlyTrieStoreTests
         Hash256 storageAddress = TestItem.KeccakA;
         TrieNode storageNode = new(NodeType.Leaf, [0xc1, 0x02]);
 
-        ReadOnlySnapshotBundle bundle = MakeBundle(c =>
+        ReadOnlySnapshotBundle bundle = FlatTestHelpers.MakeBundle(_pool, c =>
         {
             c.StateNodes[new HashedKey<TreePath>(path)] = stateNode;
             c.StorageNodes[new HashedKey<(Hash256, TreePath)>((storageAddress, path))] = storageNode;
@@ -98,7 +88,7 @@ public class FlatReadOnlyTrieStoreTests
     [Test]
     public void Scope_DisposesBundle_AndPreventsResolve()
     {
-        ReadOnlySnapshotBundle bundle = MakeBundle();
+        ReadOnlySnapshotBundle bundle = FlatTestHelpers.MakeBundle(_pool);
         _flatDbManager.GatherReadOnlySnapshotBundle(Arg.Any<StateId>()).Returns(bundle);
 
         FlatReadOnlyTrieStore store = new(_flatDbManager);

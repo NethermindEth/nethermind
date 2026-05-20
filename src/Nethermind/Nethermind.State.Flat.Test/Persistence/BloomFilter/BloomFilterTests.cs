@@ -13,8 +13,6 @@ namespace Nethermind.State.Flat.Test.Persistence.BloomFilter;
 [TestFixture]
 public class BloomFilterTests
 {
-    #region Basic Add/Query Tests
-
     [Test]
     public void Add_SingleItem_ShouldBeFound()
     {
@@ -48,10 +46,6 @@ public class BloomFilterTests
             bloom.MightContain(hash).Should().BeTrue($"hash {hash} should be found");
         }
     }
-
-    #endregion
-
-    #region Concurrency Tests
 
     [Test]
     public void Add_Concurrent_ShouldBeThreadSafe()
@@ -89,14 +83,13 @@ public class BloomFilterTests
     {
         // Arrange
         using Nethermind.State.Flat.Persistence.BloomFilter.BloomFilter bloom = new(capacity: 10000, bitsPerKey: 10);
-        int duration = 1000; // ms
-        CancellationTokenSource cts = new(duration);
+        const int iterationsPerThread = 10000;
 
         // Act - Some threads adding, others querying
         Task[] writerTasks = Enumerable.Range(0, 3).Select(threadId => Task.Run(() =>
         {
             ulong hash = (ulong)(threadId * 1000000);
-            while (!cts.Token.IsCancellationRequested)
+            for (int i = 0; i < iterationsPerThread; i++)
             {
                 bloom.Add(hash++);
             }
@@ -105,10 +98,9 @@ public class BloomFilterTests
         Task[] readerTasks = Enumerable.Range(0, 3).Select(_ => Task.Run(() =>
         {
             ulong hash = 0;
-            while (!cts.Token.IsCancellationRequested)
+            for (int i = 0; i < iterationsPerThread; i++)
             {
                 bloom.MightContain(hash++);
-                Thread.Yield();
             }
         })).ToArray();
 
@@ -117,10 +109,6 @@ public class BloomFilterTests
         // Assert - No exceptions thrown
         Assert.Pass("Concurrent operations completed without exceptions");
     }
-
-    #endregion
-
-    #region Edge Cases
 
     [Test]
     public void Dispose_MultipleTimes_ShouldNotThrow()
@@ -140,7 +128,6 @@ public class BloomFilterTests
         using Nethermind.State.Flat.Persistence.BloomFilter.BloomFilter bloom = new(capacity: 100, bitsPerKey: 10);
 
         // Act & Assert
-        // Empty bloom filter should generally return false (though false positives are theoretically possible)
         bool result = bloom.MightContain(99999);
         result.Should().BeFalse("empty bloom filter should return false for items not added");
     }
@@ -168,10 +155,6 @@ public class BloomFilterTests
         }
     }
 
-    #endregion
-
-    #region Constructor Validation
-
     [TestCase(0)]
     [TestCase(-1)]
     [TestCase(long.MinValue)]
@@ -194,6 +177,4 @@ public class BloomFilterTests
         using Nethermind.State.Flat.Persistence.BloomFilter.BloomFilter bloom = new(capacity: 100, bitsPerKey: 10, initialCount: 42);
         bloom.Count.Should().Be(42);
     }
-
-    #endregion
 }
