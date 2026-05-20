@@ -376,6 +376,14 @@ public class StartupTests
         Assert.That(doc.RootElement.GetProperty("result").GetBoolean(), Is.EqualTo(value));
     }
 
+    [TestCaseSource(nameof(SimpleNumericResultCases))]
+    public async Task HttpJsonRpcResponseSink_SerializesPrimitiveNumericResultDirectly(object value, string expectedResultJson)
+    {
+        string response = await WriteHttpJsonRpcResponse(new JsonRpcSuccessResponse { Id = JsonRpcId.FromObject(1), Result = value });
+
+        Assert.That(response, Is.EqualTo($"{{\"jsonrpc\":\"2.0\",\"result\":{expectedResultJson},\"id\":1}}"));
+    }
+
     [Test]
     [NonParallelizable]
     public async Task HttpJsonRpcResponseSink_ReportsStreamableFlushCount()
@@ -634,6 +642,13 @@ public class StartupTests
         RpcEndpoint endpoint = RpcEndpoint.Http,
         bool isAuthenticated = false) =>
         new("http", "127.0.0.1", 8551, endpoint, isAuthenticated, [ModuleType.Engine]);
+
+    private static IEnumerable<TestCaseData> SimpleNumericResultCases()
+    {
+        yield return new TestCaseData(1, "1").SetName("int");
+        yield return new TestCaseData(long.MinValue, "-9223372036854775808").SetName("long");
+        yield return new TestCaseData(ulong.MaxValue, "18446744073709551615").SetName("ulong");
+    }
 
     private sealed class ProbeBlobStreamableResult : IStreamableResult, IReadOnlyList<BlobAndProofV2?>, IDisposable
     {

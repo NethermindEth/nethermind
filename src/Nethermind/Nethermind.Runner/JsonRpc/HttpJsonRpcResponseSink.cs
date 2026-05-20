@@ -346,6 +346,15 @@ internal sealed class HttpJsonRpcResponseSink(
             case bool value:
                 jsonWriter.WriteBooleanValue(value);
                 return true;
+            case int value:
+                jsonWriter.WriteNumberValue(value);
+                return true;
+            case long value:
+                jsonWriter.WriteNumberValue(value);
+                return true;
+            case ulong value:
+                jsonWriter.WriteNumberValue(value);
+                return true;
             default:
                 return false;
         }
