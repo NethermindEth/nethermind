@@ -1067,6 +1067,7 @@ namespace Nethermind.Blockchain
 
 
         private void TryUpdateSyncPivot()
+        private void TryUpdateSyncPivot()
         {
             BlockHeader? newPivotHeader = FinalizedHash is not null
                 ? FindHeader(FinalizedHash, BlockTreeLookupOptions.RequireCanonical)
