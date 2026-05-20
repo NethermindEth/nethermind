@@ -1578,18 +1578,18 @@ public partial class EngineModuleTests
         const int oldHead = 4;
         const int lastFinalized = 2;
         IReadOnlyList<ExecutionPayload> blocks = await BuildChainWithLoweredFinalized(chain, rpc, oldHead, lastFinalized);
-        Hash256 finalized = blocks[lastFinalized].BlockHash;
 
+        // Zero request-level finalized/safe so RejectIfInconsistent (which runs before the skip
+        // check) does not reject the offset < 0 case where finalized > head. The skip check still
+        // fires via the BlockTree's internal FinalizedHash set by the helper.
         int newHead = lastFinalized + offset;
-        ForkchoiceStateV1 fcu = new(headBlockHash: blocks[newHead].BlockHash, finalizedBlockHash: finalized, safeBlockHash: finalized);
+        ForkchoiceStateV1 fcu = new(headBlockHash: blocks[newHead].BlockHash, finalizedBlockHash: Keccak.Zero, safeBlockHash: Keccak.Zero);
         ResultWrapper<ForkchoiceUpdatedV1Result> result = await rpc.engine_forkchoiceUpdatedV1(fcu);
         result.Data.PayloadStatus.Status.Should().Be(PayloadStatus.Valid);
 
         if (offset < 0)
         {
             // Skip path: the FCU returns Valid without reorging; the head stays at blocks[oldHead].
-            // Without the skip, RejectIfInconsistent would also fail this FCU because
-            // finalized.Number > head.Number.
             chain.BlockTree.Head!.Hash.Should().Be(blocks[oldHead].BlockHash);
         }
         else
