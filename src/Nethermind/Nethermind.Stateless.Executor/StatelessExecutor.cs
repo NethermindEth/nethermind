@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Text.Json;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Stateless;
@@ -11,6 +12,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Logging;
 using Nethermind.Specs;
+using Nethermind.Specs.Forks;
 
 namespace Nethermind.Stateless.Execution;
 
@@ -19,11 +21,14 @@ public static class StatelessExecutor
     public static Block Execute(ReadOnlySpan<byte> data)
     {
         Witness witness;
-        (Block suggestedBlock, witness, ulong chainId) = InputSerializer.Deserialize(data);
+        (Block suggestedBlock, witness, ulong chainId, byte[]? chainConfigJson) =
+            InputSerializer.DeserializeWithChainConfig(data);
 
         using (witness)
         {
-            ISpecProvider specProvider = GetSpecProvider(chainId);
+            ISpecProvider specProvider = chainConfigJson is { Length: > 0 }
+                ? BuildSpecProviderFromGenesis(chainConfigJson, suggestedBlock.Header.Timestamp)
+                : GetSpecProvider(chainId);
             IReleaseSpec spec = specProvider.GetSpec(suggestedBlock.Header);
             EthereumEcdsa ecdsa = new(chainId);
 
@@ -98,4 +103,40 @@ public static class StatelessExecutor
         BlockchainIds.Sepolia => SepoliaSpecProvider.Instance,
         _ => throw new ArgumentException($"Unsupported chain id: {chainId}", nameof(chainId))
     };
+
+    private static ISpecProvider BuildSpecProviderFromGenesis(byte[] chainConfigJson, ulong blockTimestamp)
+    {
+        using JsonDocument doc = JsonDocument.Parse(chainConfigJson);
+        JsonElement config = doc.RootElement.GetProperty("config");
+        ulong chainId = config.GetProperty("chainId").GetUInt64();
+        IReleaseSpec spec = SelectLatestActivatedSpec(config, blockTimestamp);
+        return new SingleReleaseSpecProvider(spec, networkId: chainId, chainId: chainId);
+    }
+
+    /// <remarks>
+    /// Picks the latest timestamp-based fork whose activation time is &lt;= <paramref name="blockTimestamp"/>.
+    /// Block-number-based forks (Berlin, London, …) are intentionally not handled here: the stateless
+    /// executor is only used against post-Shanghai (Merge-era) chains, where every fork is time-gated.
+    /// A config that does not activate any of the known timestamp forks at <paramref name="blockTimestamp"/>
+    /// is rejected rather than silently downgraded to Frontier, which would otherwise mask
+    /// missing-fork bugs at the application layer.
+    /// </remarks>
+    private static IReleaseSpec SelectLatestActivatedSpec(JsonElement config, ulong blockTimestamp)
+    {
+        if (HasActivatedTime(config, "osakaTime", blockTimestamp)) return Osaka.Instance;
+        if (HasActivatedTime(config, "pragueTime", blockTimestamp)) return Prague.Instance;
+        if (HasActivatedTime(config, "cancunTime", blockTimestamp)) return Cancun.Instance;
+        if (HasActivatedTime(config, "shanghaiTime", blockTimestamp)) return Shanghai.Instance;
+
+        throw new NotSupportedException(
+            $"Embedded chain_config has no recognized timestamp-based fork activated at block " +
+            $"timestamp {blockTimestamp}. The stateless executor supports post-Shanghai chains only " +
+            "(shanghaiTime / cancunTime / pragueTime / osakaTime).");
+    }
+
+    private static bool HasActivatedTime(JsonElement config, string field, ulong blockTimestamp)
+        => config.TryGetProperty(field, out JsonElement v)
+            && v.ValueKind == JsonValueKind.Number
+            && v.TryGetUInt64(out ulong forkTime)
+            && forkTime <= blockTimestamp;
 }
