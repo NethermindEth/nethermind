@@ -667,28 +667,8 @@ namespace Nethermind.Core.Extensions
                 // single UTF8 ASCII vector - the implementation can be shared with UTF8 paths.
                 Vector128<ushort> vec1 = Vector128.LoadUnsafe(ref srcRef, offset);
                 Vector128<ushort> vec2 = Vector128.LoadUnsafe(ref srcRef, offset + (nuint)Vector128<ushort>.Count);
-                Vector128<byte> vec = Vector128.Narrow(vec1, vec2);
 
-                // Based on "Algorithm #3" https://github.com/WojciechMula/toys/blob/master/simd-parse-hex/geoff_algorithm.cpp
-                // by Geoff Langdale and Wojciech Mula
-                // Move digits '0'..'9' into range 0xf6..0xff.
-                Vector128<byte> t1 = vec + Vector128.Create((byte)(0xFF - '9'));
-                // And then correct the range to 0xf0..0xf9.
-                // All other bytes become less than 0xf0.
-                Vector128<byte> t2 = SubtractSaturate(t1, Vector128.Create((byte)6));
-                // Convert into uppercase 'a'..'f' => 'A'..'F' and
-                // move hex letter 'A'..'F' into range 0..5.
-                Vector128<byte> t3 = (vec & Vector128.Create((byte)0xDF)) - Vector128.Create((byte)'A');
-                // And correct the range into 10..15.
-                // The non-hex letters bytes become greater than 0x0f.
-                Vector128<byte> t4 = AddSaturate(t3, Vector128.Create((byte)10));
-                // Convert '0'..'9' into nibbles 0..9. Non-digit bytes become
-                // greater than 0x0f. Finally choose the result: either valid nibble (0..9/10..15)
-                // or some byte greater than 0x0f.
-                Vector128<byte> nibbles = Vector128.Min(t2 - Vector128.Create((byte)0xF0), t4);
-                // Any high bit is a sign that input is not a valid hex data
-                if (!AllCharsInVectorAreAscii(vec1 | vec2) ||
-                    AddSaturate(nibbles, Vector128.Create((byte)(127 - 15))).ExtractMostSignificantBits() != 0)
+                if (!TryParseUtf16HexVector(vec1, vec2, out _, out Vector128<byte> nibbles))
                 {
                     // Input is either non-ASCII or invalid hex data
                     break;
@@ -767,16 +747,7 @@ namespace Nethermind.Core.Extensions
             {
                 Vector128<ushort> vec1 = Vector128.LoadUnsafe(ref srcRef, offset);
                 Vector128<ushort> vec2 = Vector128.LoadUnsafe(ref srcRef, offset + (nuint)Vector128<ushort>.Count);
-                Vector128<byte> vec = Vector128.Narrow(vec1, vec2);
-
-                Vector128<byte> t1 = vec + Vector128.Create((byte)(0xFF - '9'));
-                Vector128<byte> t2 = SubtractSaturate(t1, Vector128.Create((byte)6));
-                Vector128<byte> t3 = (vec & Vector128.Create((byte)0xDF)) - Vector128.Create((byte)'A');
-                Vector128<byte> t4 = AddSaturate(t3, Vector128.Create((byte)10));
-                Vector128<byte> nibbles = Vector128.Min(t2 - Vector128.Create((byte)0xF0), t4);
-
-                if (!AllCharsInVectorAreAscii(vec1 | vec2) ||
-                    AddSaturate(nibbles, Vector128.Create((byte)(127 - 15))).ExtractMostSignificantBits() != 0)
+                if (!TryParseUtf16HexVector(vec1, vec2, out Vector128<byte> vec, out _))
                 {
                     return false;
                 }
@@ -802,6 +773,26 @@ namespace Nethermind.Core.Extensions
             }
 
             return true;
+        }
+
+        private static bool TryParseUtf16HexVector(
+            Vector128<ushort> vec1,
+            Vector128<ushort> vec2,
+            out Vector128<byte> ascii,
+            out Vector128<byte> nibbles)
+        {
+            ascii = Vector128.Narrow(vec1, vec2);
+
+            // Based on "Algorithm #3" https://github.com/WojciechMula/toys/blob/master/simd-parse-hex/geoff_algorithm.cpp
+            // by Geoff Langdale and Wojciech Mula.
+            Vector128<byte> t1 = ascii + Vector128.Create((byte)(0xFF - '9'));
+            Vector128<byte> t2 = SubtractSaturate(t1, Vector128.Create((byte)6));
+            Vector128<byte> t3 = (ascii & Vector128.Create((byte)0xDF)) - Vector128.Create((byte)'A');
+            Vector128<byte> t4 = AddSaturate(t3, Vector128.Create((byte)10));
+            nibbles = Vector128.Min(t2 - Vector128.Create((byte)0xF0), t4);
+
+            return AllCharsInVectorAreAscii(vec1 | vec2) &&
+                AddSaturate(nibbles, Vector128.Create((byte)(127 - 15))).ExtractMostSignificantBits() == 0;
         }
 
         /// <summary>
