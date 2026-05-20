@@ -11,11 +11,12 @@ namespace Nethermind.JsonRpc
 {
     public class ResultWrapper<T> : IResultWrapper, IDisposable
     {
-        object IResultWrapper.Data => Data;
+        object? IResultWrapper.Data => Data;
         public T Data { get; init; }
         public Result Result { get; init; } = Result.Success;
         public int ErrorCode { get; init; }
         public bool IsTemporary { get; init; }
+        public virtual bool HasErrorData { get; init; }
 
         protected ResultWrapper()
         {
@@ -31,13 +32,13 @@ namespace Nethermind.JsonRpc
             new() { Result = Result.Fail(e.ToString()), ErrorCode = ErrorCodes.InternalError };
 
         public static ResultWrapper<T> Fail(string error, int errorCode, T outputData) =>
-            new() { Result = Result.Fail(error), ErrorCode = errorCode, Data = outputData };
+            new() { Result = Result.Fail(error), ErrorCode = errorCode, Data = outputData, HasErrorData = true };
 
         public static ResultWrapper<T> Fail(string error, int errorCode, bool isTemporary = false) =>
             new() { Result = Result.Fail(error), ErrorCode = errorCode, IsTemporary = isTemporary };
 
         public static ResultWrapper<T> Fail(string error, T data) =>
-            new() { Data = data, Result = Result.Fail(error) };
+            new() { Data = data, Result = Result.Fail(error), HasErrorData = true };
 
         public static ResultWrapper<T> Success(T data) =>
             new() { Data = data, Result = Result.Success };
@@ -53,6 +54,7 @@ namespace Nethermind.JsonRpc
             Result = source.Result,
             ErrorCode = source.ErrorCode,
             IsTemporary = source.IsTemporary,
+            HasErrorData = source.HasErrorData,
         };
 
         public static implicit operator Task<ResultWrapper<T>>(ResultWrapper<T> resultWrapper) => Task.FromResult(resultWrapper);
@@ -70,7 +72,9 @@ namespace Nethermind.JsonRpc
     {
         public TErrorData ErrorData { get; init; }
 
-        object IResultWrapper.Data => ErrorData;
+        object? IResultWrapper.Data => ErrorData;
+
+        public override bool HasErrorData { get; init; }
 
 
         private ResultWrapper()
@@ -78,7 +82,7 @@ namespace Nethermind.JsonRpc
         }
 
         public static ResultWrapper<T, TErrorData> Fail(string error, int errorCode, TErrorData errorData) =>
-            new() { ErrorCode = errorCode, ErrorData = errorData, Result = Result.Fail(error) };
+            new() { ErrorCode = errorCode, ErrorData = errorData, Result = Result.Fail(error), HasErrorData = true };
 
         public new static ResultWrapper<T, TErrorData> Success(T data) =>
             new() { Data = data, ErrorData = default, Result = Result.Success };

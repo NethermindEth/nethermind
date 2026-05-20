@@ -174,7 +174,7 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
 
         Result result = resultWrapper.Result;
         return result.ResultType != ResultType.Success
-            ? GetErrorResponse(methodName, resultWrapper.ErrorCode, result.Error, resultWrapper.Data, request.Id, returnAction, resultWrapper.IsTemporary)
+            ? GetErrorResponse(methodName, resultWrapper.ErrorCode, result.Error, resultWrapper.HasErrorData ? resultWrapper.Data : null, request.Id, returnAction, resultWrapper.IsTemporary)
             : GetSuccessResponse(resultWrapper, methodName, request.Id, returnAction);
 
         [MethodImpl(MethodImplOptions.NoInlining)]

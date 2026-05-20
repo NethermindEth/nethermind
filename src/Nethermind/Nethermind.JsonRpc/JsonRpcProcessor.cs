@@ -18,7 +18,6 @@ using Microsoft.AspNetCore.Connections;
 using Microsoft.AspNetCore.Http;
 using Nethermind.Config;
 using Nethermind.Core.Extensions;
-using Nethermind.Core.Metric;
 using Nethermind.Core.Resettables;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;

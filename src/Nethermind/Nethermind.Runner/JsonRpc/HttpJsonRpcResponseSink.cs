@@ -326,16 +326,12 @@ internal sealed class HttpJsonRpcResponseSink(
         jsonWriter.WriteStartObject();
         jsonWriter.WriteNumber("code"u8, error.Code);
         jsonWriter.WriteString("message"u8, error.Message);
-        jsonWriter.WritePropertyName("data"u8);
 
         object? data = error.Data;
         if (data is not null)
         {
+            jsonWriter.WritePropertyName("data"u8);
             JsonSerializer.Serialize(jsonWriter, data, GetJsonTypeInfo(data.GetType()));
-        }
-        else
-        {
-            jsonWriter.WriteNullValue();
         }
 
         jsonWriter.WriteEndObject();

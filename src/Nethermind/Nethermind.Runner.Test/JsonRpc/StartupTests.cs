@@ -376,6 +376,18 @@ public class StartupTests
     }
 
     [Test]
+    public async Task HttpJsonRpcResponseSink_OmitsNullErrorData()
+    {
+        string response = await WriteHttpJsonRpcResponse(new JsonRpcErrorResponse
+        {
+            Id = JsonRpcId.FromObject(1),
+            Error = new Error { Code = ErrorCodes.ExecutionError, Message = "out of gas" }
+        });
+
+        Assert.That(response, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32003,\"message\":\"out of gas\"},\"id\":1}"));
+    }
+
+    [Test]
     [NonParallelizable]
     public async Task HttpJsonRpcResponseSink_ReportsStreamableFlushCount()
     {

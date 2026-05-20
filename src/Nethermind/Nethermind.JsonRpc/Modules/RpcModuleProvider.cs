@@ -407,7 +407,7 @@ namespace Nethermind.JsonRpc.Modules
                         EthereumJsonSerializer.JsonOptions.TryGetTypeInfo(paramType, out typeInfo);
 
                         JsonConverter converter = EthereumJsonSerializer.JsonOptions.GetConverter(paramType);
-                        if (converter.GetType().Namespace?.StartsWith("System.", StringComparison.Ordinal) == true)
+                        if (ShouldReparseStringParameter(paramType, converter))
                         {
                             details |= ParameterDetails.ReparseString;
                         }
@@ -583,6 +583,10 @@ namespace Nethermind.JsonRpc.Modules
             private static bool CanUseDirectInvokerReturn(Type returnType) =>
                 returnType.IsAssignableTo(typeof(IResultWrapper)) ||
                 GetTaskResultType(returnType) is { } resultType && resultType.IsAssignableTo(typeof(IResultWrapper));
+
+            private static bool ShouldReparseStringParameter(Type parameterType, JsonConverter converter) =>
+                converter.GetType().Namespace?.StartsWith("System.", StringComparison.Ordinal) == true ||
+                parameterType.IsArray && parameterType != typeof(byte[]);
 
             private static Type? GetTaskResultType(Type taskType)
             {

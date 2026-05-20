@@ -139,6 +139,19 @@ public class JsonRpcServiceTests
         Assert.That(response?.Result, Is.EqualTo(expected));
     }
 
+    [Test]
+    public void Value_type_result_failure_without_error_data_does_not_emit_default_data()
+    {
+        IEthRpcModule ethRpcModule = Substitute.For<IEthRpcModule>();
+        ethRpcModule.eth_call(Arg.Any<TransactionForRpc>()).ReturnsForAnyArgs(_ => ResultWrapper<HexBytes>.Fail("out of gas", ErrorCodes.ExecutionError));
+
+        JsonRpcErrorResponse? response = TestRequest(ethRpcModule, "eth_call", new LegacyTransactionForRpc()) as JsonRpcErrorResponse;
+
+        Assert.That(response?.Error?.Code, Is.EqualTo(ErrorCodes.ExecutionError));
+        Assert.That(response?.Error?.Message, Is.EqualTo("out of gas"));
+        Assert.That(response?.Error?.Data, Is.Null);
+    }
+
     [TestCase(false)]
     [TestCase(true)]
     public async Task Admin_peers_is_working_with_empty_or_null_params(bool useNullParams)
@@ -385,6 +398,23 @@ public class JsonRpcServiceTests
         Assert.That(captured, Is.EqualTo("""{"a":1}"""));
     }
 
+    [Test]
+    public void Array_parameter_reparses_string_wrapped_json_with_custom_converter()
+    {
+        IMetadataTestRpcModule metadataTestRpcModule = Substitute.For<IMetadataTestRpcModule>();
+        byte[][]? captured = null;
+        metadataTestRpcModule.test_byte_arrays(Arg.Any<byte[][]>()).Returns(callInfo =>
+        {
+            captured = callInfo.Arg<byte[][]>();
+            return ResultWrapper<int>.Success(captured.Length);
+        });
+
+        JsonRpcSuccessResponse? response = TestRequest(metadataTestRpcModule, "test_byte_arrays", "[]") as JsonRpcSuccessResponse;
+
+        Assert.That(response?.Result, Is.EqualTo(0));
+        Assert.That(captured, Is.Empty);
+    }
+
     [TestCaseSource(nameof(BlockForRpcTestSource))]
     public void BlockForRpc_should_expose_withdrawals_if_any((bool Expected, Block Block) item)
     {
@@ -446,7 +476,11 @@ public class JsonRpcServiceTests
     [RpcModule(ModuleType.Eth)]
     public interface IMetadataTestRpcModule : IRpcModule
     {
+        [JsonRpcMethod(Description = "Test method used to verify JSON-RPC parameter metadata handling.")]
         ResultWrapper<string> test_string(string value);
+
+        [JsonRpcMethod(Description = "Test method used to verify JSON-RPC array parameter metadata handling.")]
+        ResultWrapper<int> test_byte_arrays(byte[][] value);
     }
 
     private sealed class DisposableProbe : IDisposable
