@@ -17,6 +17,7 @@ using Nethermind.JsonRpc.Modules.Admin;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.JsonRpc.Modules.Net;
 using Nethermind.JsonRpc.Modules.Proof;
+using Nethermind.JsonRpc.Modules.Subscribe;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using NSubstitute;
@@ -245,6 +246,13 @@ public class RpcModuleProviderTests
     {
         GeneratedRpcTypeInfo.TryGet<FeeHistoryResults>(out _).Should().BeTrue();
         GeneratedRpcTypeInfo.TryGet<TransactionForRpc>(out _).Should().BeTrue();
+    }
+
+    [Test]
+    public void Generated_rpc_type_info_includes_subscription_payloads()
+    {
+        GeneratedRpcTypeInfo.TryGet<PeerEventResponse>(out _).Should().BeTrue();
+        GeneratedRpcTypeInfo.TryGet<SyncingSubscription.SubscriptionSyncingResult>(out _).Should().BeTrue();
     }
 
     [Test]
