@@ -10,6 +10,7 @@ using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics;
 using System.Runtime.Intrinsics.X86;
 using System.Text.Json;
+using Nethermind.Core;
 using Nethermind.Int256;
 
 namespace Nethermind.Serialization.Json;
@@ -362,7 +363,7 @@ public static class HexWriter
         private ulong _element0;
     }
 
-    private const int MaxHexRequest = 16 * 1024;
+    private const int MaxHexRequest = (int)Eip4844Constants.GasPerBlob * 2;
 
     /// <summary>
     /// Writes a large byte array as hex directly into a <see cref="PipeWriter"/>

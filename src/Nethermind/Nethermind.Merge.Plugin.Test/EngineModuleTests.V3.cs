@@ -768,7 +768,7 @@ public partial class EngineModuleTests
     [Test]
     public async Task BlobsV2DirectResponse_WriteToAsync_flushes_large_entries_for_backpressure()
     {
-        byte[] blob = new byte[40 * 1024];
+        byte[] blob = new byte[(int)Eip4844Constants.GasPerBlob];
         Random.Shared.NextBytes(blob);
         byte[]?[] blobs = [blob];
         ReadOnlyMemory<byte[]>[] proofs = [Array.Empty<byte[]>()];
@@ -778,6 +778,7 @@ public partial class EngineModuleTests
         await response.WriteToAsync(writer, CancellationToken.None);
 
         writer.FlushCount.Should().Be(1);
+        writer.MaxSpanSizeHint.Should().Be(blob.Length * 2);
 
         using JsonDocument doc = JsonDocument.Parse(writer.WrittenText);
         doc.RootElement.GetArrayLength().Should().Be(1);
@@ -1082,6 +1083,7 @@ public partial class EngineModuleTests
         private long _unflushedBytes;
 
         public int FlushCount { get; private set; }
+        public int MaxSpanSizeHint { get; private set; }
 
         public string WrittenText => Encoding.UTF8.GetString(_buffer.WrittenSpan);
 
@@ -1095,9 +1097,17 @@ public partial class EngineModuleTests
             _unflushedBytes += bytes;
         }
 
-        public override Memory<byte> GetMemory(int sizeHint = 0) => _buffer.GetMemory(sizeHint);
+        public override Memory<byte> GetMemory(int sizeHint = 0)
+        {
+            MaxSpanSizeHint = Math.Max(MaxSpanSizeHint, sizeHint);
+            return _buffer.GetMemory(sizeHint);
+        }
 
-        public override Span<byte> GetSpan(int sizeHint = 0) => _buffer.GetSpan(sizeHint);
+        public override Span<byte> GetSpan(int sizeHint = 0)
+        {
+            MaxSpanSizeHint = Math.Max(MaxSpanSizeHint, sizeHint);
+            return _buffer.GetSpan(sizeHint);
+        }
 
         public override void CancelPendingFlush() { }
 
