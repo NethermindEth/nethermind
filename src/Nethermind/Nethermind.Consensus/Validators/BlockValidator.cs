@@ -555,9 +555,6 @@ public class BlockValidator(
             return header.BlockAccessListHash is null;
         }
 
-        // The decoder caches the wire RLP hash on the BAL, so on the consensus hot path this
-        // becomes a single Hash256 equality check instead of a per-block keccak. Synthesised BALs
-        // (e.g. test fixtures) lack the cache and still fall back to hashing the encoded bytes.
         balRoot = bal.WireHash ?? new Hash256(ValueKeccak.Compute(block.EncodedBlockAccessList!));
 
         return balRoot == header.BlockAccessListHash;

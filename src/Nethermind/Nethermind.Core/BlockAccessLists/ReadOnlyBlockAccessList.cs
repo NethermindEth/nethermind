@@ -40,14 +40,9 @@ public class ReadOnlyBlockAccessList : IEquatable<ReadOnlyBlockAccessList>
     public int TotalStorageChangeEvents { get; }
 
     /// <summary>
-    /// Keccak of the BAL's wire (RLP) encoding, or <c>null</c> when the instance was synthesised
-    /// in-process rather than decoded from the wire.
+    /// Keccak of the BAL's wire (RLP) encoding, cached by the decoder so the consensus-side hash
+    /// check avoids re-hashing per block. <c>null</c> for BALs synthesised in-process.
     /// </summary>
-    /// <remarks>
-    /// Populated by <see cref="Nethermind.Serialization.Rlp.Eip7928.BlockAccessListDecoder"/>
-    /// so the consensus-side hash check in <c>BlockValidator</c> avoids re-hashing the same
-    /// bytes once per block. Immutable for the lifetime of the BAL.
-    /// </remarks>
     [JsonIgnore]
     public Hash256? WireHash { get; }
 
@@ -78,10 +73,6 @@ public class ReadOnlyBlockAccessList : IEquatable<ReadOnlyBlockAccessList>
         : this(orderedAccounts, itemCount, wireHash: null) { }
 
     /// <inheritdoc cref="ReadOnlyBlockAccessList(ReadOnlyAccountChanges[], int)"/>
-    /// <remarks>
-    /// Decoder-only overload that caches the keccak of the BAL's wire RLP encoding on the
-    /// instance — see <see cref="WireHash"/>.
-    /// </remarks>
     public ReadOnlyBlockAccessList(ReadOnlyAccountChanges[] orderedAccounts, int itemCount, Hash256? wireHash)
     {
         _orderedAccounts = orderedAccounts;

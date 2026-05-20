@@ -32,8 +32,6 @@ public class BlockAccessListDecoderTests
         Assert.That(encoded, Is.EqualTo(rlp));
     }
 
-    // Decoder must cache the keccak of the BAL's wire RLP so BlockValidator can skip the per-block
-    // re-hash. The cached value must match a fresh ValueKeccak over the same bytes byte-for-byte.
     [TestCaseSource(nameof(BlockAccessListTestSource))]
     public void Decode_caches_wire_hash_matching_full_rlp_keccak(string rlp, ReadOnlyBlockAccessList _)
     {
@@ -47,8 +45,6 @@ public class BlockAccessListDecoderTests
     [Test]
     public void Decode_handles_envelope_with_trailing_bytes_and_hashes_only_the_bal_slice()
     {
-        // Embed a BAL inside an envelope so its bytes are not at the start of the input. The
-        // decoder must hash only the BAL's own RLP, not the surrounding bytes.
         ReadOnlyBlockAccessList bal = Build.A.BlockAccessList
             .WithAccountChanges(Build.An.AccountChanges.WithAddress(TestItem.AddressA).TestObject)
             .TestObject;
