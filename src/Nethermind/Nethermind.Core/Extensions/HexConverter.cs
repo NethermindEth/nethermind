@@ -730,6 +730,81 @@ namespace Nethermind.Core.Extensions
         }
 
         /// <summary>
+        /// Validates that <paramref name="chars"/> contains only hexadecimal characters and copies
+        /// those ASCII characters to <paramref name="utf8"/>.
+        /// </summary>
+        /// <remarks>
+        /// The destination may be partially written when the method returns <see langword="false"/>.
+        /// Callers that need all-or-nothing output should only publish the written bytes after a
+        /// successful return.
+        /// </remarks>
+        public static bool TryCopyHexToUtf8(ReadOnlySpan<char> chars, Span<byte> utf8)
+        {
+            Debug.Assert(utf8.Length >= chars.Length, "Target buffer not right-sized for provided characters");
+
+            if ((Sse2.IsSupported || AdvSimd.Arm64.IsSupported) &&
+                chars.Length >= Vector128<ushort>.Count * 2)
+            {
+                return TryCopyHexToUtf8_Vector128(chars, utf8);
+            }
+
+            return TryCopyHexToUtf8Scalar(chars, utf8);
+        }
+
+        private static bool TryCopyHexToUtf8_Vector128(ReadOnlySpan<char> chars, Span<byte> utf8)
+        {
+            Debug.Assert(Sse2.IsSupported || AdvSimd.Arm64.IsSupported);
+            Debug.Assert(utf8.Length >= chars.Length);
+
+            nuint offset = 0;
+            nuint length = (nuint)chars.Length;
+            nuint vectorCharCount = (nuint)Vector128<ushort>.Count * 2;
+
+            ref ushort srcRef = ref Unsafe.As<char, ushort>(ref MemoryMarshal.GetReference(chars));
+            ref byte destRef = ref MemoryMarshal.GetReference(utf8);
+
+            while (offset + vectorCharCount <= length)
+            {
+                Vector128<ushort> vec1 = Vector128.LoadUnsafe(ref srcRef, offset);
+                Vector128<ushort> vec2 = Vector128.LoadUnsafe(ref srcRef, offset + (nuint)Vector128<ushort>.Count);
+                Vector128<byte> vec = Vector128.Narrow(vec1, vec2);
+
+                Vector128<byte> t1 = vec + Vector128.Create((byte)(0xFF - '9'));
+                Vector128<byte> t2 = SubtractSaturate(t1, Vector128.Create((byte)6));
+                Vector128<byte> t3 = (vec & Vector128.Create((byte)0xDF)) - Vector128.Create((byte)'A');
+                Vector128<byte> t4 = AddSaturate(t3, Vector128.Create((byte)10));
+                Vector128<byte> nibbles = Vector128.Min(t2 - Vector128.Create((byte)0xF0), t4);
+
+                if (!AllCharsInVectorAreAscii(vec1 | vec2) ||
+                    AddSaturate(nibbles, Vector128.Create((byte)(127 - 15))).ExtractMostSignificantBits() != 0)
+                {
+                    return false;
+                }
+
+                vec.StoreUnsafe(ref destRef, offset);
+                offset += vectorCharCount;
+            }
+
+            return TryCopyHexToUtf8Scalar(chars[(int)offset..], utf8[(int)offset..]);
+        }
+
+        private static bool TryCopyHexToUtf8Scalar(ReadOnlySpan<char> chars, Span<byte> utf8)
+        {
+            for (int i = 0; i < chars.Length; i++)
+            {
+                char c = chars[i];
+                if (!IsHexChar(c))
+                {
+                    return false;
+                }
+
+                utf8[i] = (byte)c;
+            }
+
+            return true;
+        }
+
+        /// <summary>
         /// Returns true iff the Vector128 represents 8 ASCII UTF-16 characters in machine endianness.
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]

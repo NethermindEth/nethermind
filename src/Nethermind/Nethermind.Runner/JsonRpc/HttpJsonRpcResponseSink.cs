@@ -14,6 +14,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Primitives;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Resettables;
 using Nethermind.JsonRpc;
 using Nethermind.Logging;
@@ -33,6 +34,7 @@ internal sealed class HttpJsonRpcResponseSink(
     private static ReadOnlySpan<byte> JsonOpeningBracket => [(byte)'['];
     private static ReadOnlySpan<byte> JsonComma => [(byte)','];
     private static ReadOnlySpan<byte> JsonClosingBracket => [(byte)']'];
+    private static ReadOnlySpan<byte> JsonRpcHexStringResultPrefix => "{\"jsonrpc\":\"2.0\",\"result\":\""u8;
     private const string JsonContentType = "application/json";
     private const int BufferedResponseInitialCapacity = 16 * 1024;
     private static readonly StringValues JsonContentTypeHeader = new(JsonContentType);
@@ -65,7 +67,7 @@ internal sealed class HttpJsonRpcResponseSink(
 
     private ValueTask WriteSingleStartedAsync(JsonRpcResponse response, RpcReport report, long responseWriteStartTimestamp, CancellationToken cancellationToken)
     {
-        ValueTask writeTask = WriteResponseAsync(_writer!, response, cancellationToken);
+        ValueTask writeTask = WriteResponseAsync(_writer!, response, report, cancellationToken);
         if (!writeTask.IsCompletedSuccessfully)
         {
             return WriteSingleAfterWriteAsync(writeTask, report, responseWriteStartTimestamp);
@@ -84,7 +86,7 @@ internal sealed class HttpJsonRpcResponseSink(
         CancellationToken cancellationToken)
     {
         await startTask;
-        await WriteResponseAsync(_writer!, response, cancellationToken);
+        await WriteResponseAsync(_writer!, response, report, cancellationToken);
         ReportSingle(report, responseWriteStartTimestamp);
     }
 
@@ -134,7 +136,7 @@ internal sealed class HttpJsonRpcResponseSink(
 
         _isFirstBatchItem = false;
 
-        ValueTask writeTask = WriteResponseAsync(_writer!, response, cancellationToken);
+        ValueTask writeTask = WriteResponseAsync(_writer!, response, report, cancellationToken);
         if (!writeTask.IsCompletedSuccessfully)
         {
             return WriteBatchItemAfterWriteAsync(writeTask, report, responseWriteStartTimestamp);
@@ -297,7 +299,7 @@ internal sealed class HttpJsonRpcResponseSink(
     private static bool IsResourceUnavailableError(JsonRpcResponse? response) => response is JsonRpcErrorResponse { Error.Code: ErrorCodes.ModuleTimeout }
         or JsonRpcErrorResponse { Error.Code: ErrorCodes.LimitExceeded };
 
-    private ValueTask WriteResponseAsync(CountingWriter writer, JsonRpcResponse response, CancellationToken cancellationToken)
+    private ValueTask WriteResponseAsync(CountingWriter writer, JsonRpcResponse response, RpcReport report, CancellationToken cancellationToken)
     {
         if (response is JsonRpcSuccessResponse { Result: IStreamableResult streamable })
         {
@@ -306,8 +308,45 @@ internal sealed class HttpJsonRpcResponseSink(
         }
 
         Interlocked.Increment(ref Metrics.JsonRpcHttpSerializedResponses);
+        if (TryWriteTrustedHexStringResponse(writer, response, report.Method))
+        {
+            return ValueTask.CompletedTask;
+        }
+
         WriteJsonRpcResponse(writer, response);
         return ValueTask.CompletedTask;
+    }
+
+    private static bool TryWriteTrustedHexStringResponse(PipeWriter writer, JsonRpcResponse response, string method)
+    {
+        if (method != "eth_call" ||
+            response is not JsonRpcSuccessResponse { Result: string value })
+        {
+            return false;
+        }
+
+        if (value.Length < 2 || value[0] != '0' || value[1] != 'x')
+        {
+            return false;
+        }
+
+        ReadOnlySpan<byte> prefix = JsonRpcHexStringResultPrefix;
+        Span<byte> buffer = writer.GetSpan(prefix.Length + value.Length);
+        prefix.CopyTo(buffer);
+        buffer[prefix.Length] = (byte)'0';
+        buffer[prefix.Length + 1] = (byte)'x';
+        if (!HexConverter.TryCopyHexToUtf8(
+                value.AsSpan(2),
+                buffer.Slice(prefix.Length + 2, value.Length - 2)))
+        {
+            return false;
+        }
+
+        writer.Advance(prefix.Length + value.Length);
+        writer.Write("\",\"id\":"u8);
+        WriteIdRaw(writer, response.Id);
+        writer.Write("}"u8);
+        return true;
     }
 
     /// <summary>

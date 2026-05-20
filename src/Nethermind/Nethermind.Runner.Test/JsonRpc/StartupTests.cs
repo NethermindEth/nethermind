@@ -356,6 +356,30 @@ public class StartupTests
         Assert.That(doc.RootElement.GetProperty("result").GetString(), Is.EqualTo(value));
     }
 
+    [Test]
+    public async Task HttpJsonRpcResponseSink_WritesEthCallHexStringDirectly()
+    {
+        string value = "0x" + new string('a', 64 * 1024);
+        string response = await WriteHttpJsonRpcResponse(
+            new JsonRpcSuccessResponse { Id = JsonRpcId.FromObject(1), Result = value },
+            "eth_call");
+
+        Assert.That(response, Is.EqualTo($"{{\"jsonrpc\":\"2.0\",\"result\":\"{value}\",\"id\":1}}"));
+    }
+
+    [Test]
+    public async Task HttpJsonRpcResponseSink_FallsBackForInvalidEthCallHexString()
+    {
+        const string value = "0x12\"not-hex";
+        string response = await WriteHttpJsonRpcResponse(
+            new JsonRpcSuccessResponse { Id = JsonRpcId.FromObject(1), Result = value },
+            "eth_call");
+
+        using JsonDocument doc = JsonDocument.Parse(response);
+
+        Assert.That(doc.RootElement.GetProperty("result").GetString(), Is.EqualTo(value));
+    }
+
     [TestCase(false)]
     [TestCase(true)]
     public async Task HttpJsonRpcResponseSink_SerializesBooleanResultSafely(bool value)
@@ -539,7 +563,7 @@ public class StartupTests
         return (Encoding.UTF8.GetString(responseBody.ToArray()), ctx.Response.StatusCode);
     }
 
-    private static async Task<string> WriteHttpJsonRpcResponse(JsonRpcResponse response)
+    private static async Task<string> WriteHttpJsonRpcResponse(JsonRpcResponse response, string method = "test")
     {
         DefaultHttpContext ctx = new();
         MemoryStream responseBody = new();
@@ -555,7 +579,7 @@ public class StartupTests
             LimboLogs.Instance.GetClassLogger<StartupTests>(),
             Stopwatch.GetTimestamp());
 
-        await sink.WriteSingleAsync(response, new RpcReport("test", 0, true), CancellationToken.None);
+        await sink.WriteSingleAsync(response, new RpcReport(method, 0, true), CancellationToken.None);
         await sink.CompleteAsync(CancellationToken.None);
 
         return Encoding.UTF8.GetString(responseBody.ToArray());

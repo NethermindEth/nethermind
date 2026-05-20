@@ -50,6 +50,27 @@ namespace Nethermind.Core.Test
                 Assert.That(expectedResult, Is.EqualTo(bytes[0]), "new");
         }
 
+        [TestCase("", true)]
+        [TestCase("0123456789abcdefABCDEF", true)]
+        [TestCase("0123456789abcdefABCDEF0123456789abcdef", true)]
+        [TestCase("0123456789abcdefg", false)]
+        [TestCase("0123456789abcdef\u0100", false)]
+        public void TryCopyHexToUtf8_validates_and_copies_hex_chars(string hex, bool expected)
+        {
+            byte[] utf8 = new byte[hex.Length];
+
+            bool actual = HexConverter.TryCopyHexToUtf8(hex, utf8);
+
+            Assert.That(actual, Is.EqualTo(expected));
+            if (expected)
+            {
+                for (int i = 0; i < hex.Length; i++)
+                {
+                    Assert.That(utf8[i], Is.EqualTo((byte)hex[i]));
+                }
+            }
+        }
+
         [TestCase(null)]
         public void FromHexStringThrows(string? hexString) => Assert.That(() => Bytes.FromHexString(hexString!), Throws.TypeOf<ArgumentNullException>());
 
