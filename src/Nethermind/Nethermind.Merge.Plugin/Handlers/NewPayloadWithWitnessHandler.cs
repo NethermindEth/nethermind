@@ -3,7 +3,6 @@
 
 using System;
 using System.Threading.Tasks;
-using Nethermind.Blockchain;
 using Nethermind.Consensus.Stateless;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -24,8 +23,7 @@ namespace Nethermind.Merge.Plugin.Handlers;
 /// </remarks>
 public sealed class NewPayloadWithWitnessHandler(
     Func<ExecutionPayloadV4, byte[]?[], Hash256?, byte[][]?, Task<ResultWrapper<PayloadStatusV1>>> newPayloadV5,
-    IBlockTree blockTree,
-    IWitnessGeneratingBlockProcessingEnvFactory witnessEnvFactory,
+    IWitnessCaptureRegistry witnessCaptureRegistry,
     ILogManager logManager) : INewPayloadWithWitnessHandler
 {
     private readonly ILogger _logger = logManager.GetClassLogger<NewPayloadWithWitnessHandler>();
@@ -36,6 +34,12 @@ public sealed class NewPayloadWithWitnessHandler(
         Hash256? parentBeaconBlockRoot,
         byte[][]? executionRequests)
     {
+        Hash256? blockHash = executionPayload.BlockHash;
+
+        Task<Witness?>? captureTask = blockHash is not null
+            ? witnessCaptureRegistry.ArmCapture(blockHash)
+            : null;
+
         ResultWrapper<PayloadStatusV1> statusResult = await newPayloadV5(
             executionPayload, blobVersionedHashes, parentBeaconBlockRoot, executionRequests);
 
@@ -43,6 +47,9 @@ public sealed class NewPayloadWithWitnessHandler(
         {
             if (statusResult.Result.ResultType != ResultType.Success)
             {
+                if (blockHash is not null)
+                    witnessCaptureRegistry.DisarmCapture(blockHash);
+
                 return ResultWrapper<NewPayloadWithWitnessV1Result>.Fail(
                     statusResult.Result.Error ?? "engine_newPayloadV5 failed",
                     statusResult.ErrorCode);
@@ -53,67 +60,27 @@ public sealed class NewPayloadWithWitnessHandler(
 
             if (payloadStatus.Status == PayloadStatus.Valid)
             {
-                // TODO(perf): TryGenerateWitnessForBlock re-executes the block via a second
-                // WitnessCollector.GetWitnessForExistingBlock → ProcessOne call after
-                // engine_newPayloadV5 has already processed it once. The parent spec
-                // (execution-apis #773) was designed to eliminate this double-execution.
-                // Wiring witness collection into the primary processing path is a follow-up.
-                // https://github.com/NethermindEth/nethermind/issues/11636
-                witness = TryGenerateWitnessForBlock(executionPayload);
-                if (witness is null && _logger.IsError)
+                if (captureTask is not null)
                 {
-                    _logger.Error(
-                        $"engine_newPayloadWithWitness: payload is VALID but execution witness could not be generated " +
-                        $"for block {executionPayload.BlockHash}. " +
-                        $"The block has been accepted; returning witness=None per spec Union[None, T] arm.");
+                    witness = await captureTask;
+
+                    if (witness is null && _logger.IsError)
+                    {
+                        _logger.Error(
+                            $"engine_newPayloadWithWitness: payload is VALID but execution witness could not be " +
+                            $"generated for block {blockHash}. " +
+                            $"The block has been accepted; returning witness=None per spec Union[None, T] arm.");
+                    }
                 }
+            }
+            else
+            {
+                if (blockHash is not null)
+                    witnessCaptureRegistry.DisarmCapture(blockHash);
             }
 
             return ResultWrapper<NewPayloadWithWitnessV1Result>.Success(
                 NewPayloadWithWitnessV1Result.FromPayloadStatus(payloadStatus, witness));
-        }
-    }
-
-    private Witness? TryGenerateWitnessForBlock(ExecutionPayloadV4 executionPayload)
-    {
-        BlockDecodingResult decodingResult = executionPayload.TryGetBlock();
-        Block? block = decodingResult.Block;
-        if (block is null)
-        {
-            if (_logger.IsWarn)
-                _logger.Warn($"engine_newPayloadWithWitness: witness generation skipped — could not decode block from ExecutionPayloadV4 " +
-                             $"(hash={executionPayload.BlockHash}). Decode error: {decodingResult.Error}");
-            return null;
-        }
-
-        BlockHeader? parent = blockTree.FindHeader(
-            block.ParentHash!,
-            BlockTreeLookupOptions.DoNotCreateLevelIfMissing);
-        if (parent is null)
-        {
-            if (_logger.IsWarn)
-                _logger.Warn($"engine_newPayloadWithWitness: witness generation skipped — parent header not found for block " +
-                             $"{block.Hash} (parentHash={block.ParentHash}).");
-            return null;
-        }
-
-        try
-        {
-            using IWitnessGeneratingBlockProcessingEnvScope scope = witnessEnvFactory.CreateScope();
-            IExistingBlockWitnessCollector collector = scope.Env.CreateExistingBlockWitnessCollector();
-            return collector.GetWitnessForExistingBlock(parent, block);
-        }
-        catch (OperationCanceledException ex)
-        {
-            if (_logger.IsWarn)
-                _logger.Warn($"engine_newPayloadWithWitness: witness generation cancelled for block {block.Hash}: {ex.Message}");
-            return null;
-        }
-        catch (Exception ex)
-        {
-            if (_logger.IsError)
-                _logger.Error($"engine_newPayloadWithWitness: witness generation failed for block {block.Hash}: {ex.Message}", ex);
-            return null;
         }
     }
 }

@@ -6,7 +6,6 @@ using System.Buffers;
 using System.Text.Json;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Http;
-using Nethermind.Blockchain;
 using Nethermind.Consensus.Stateless;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -24,8 +23,7 @@ namespace Nethermind.Merge.Plugin.SszRest.Handlers;
 /// </summary>
 public sealed class NewPayloadWithWitnessSszHandler(
     IEngineRpcModule engineModule,
-    IBlockTree blockTree,
-    IWitnessGeneratingBlockProcessingEnvFactory witnessEnvFactory,
+    IWitnessCaptureRegistry witnessCaptureRegistry,
     ILogManager logManager) : SszEndpointHandlerBase
 {
     private readonly ILogger _logger = logManager.GetClassLogger<NewPayloadWithWitnessSszHandler>();
@@ -57,6 +55,12 @@ public sealed class NewPayloadWithWitnessSszHandler(
             return;
         }
 
+        Hash256? blockHash = request.ExecutionPayload.BlockHash;
+
+        Task<Witness?>? captureTask = blockHash is not null
+            ? witnessCaptureRegistry.ArmCapture(blockHash)
+            : null;
+
         ResultWrapper<PayloadStatusV1> result = await engineModule.engine_newPayloadV5(
             request.ExecutionPayload,
             request.ExpectedBlobVersionedHashes,
@@ -67,15 +71,18 @@ public sealed class NewPayloadWithWitnessSszHandler(
         {
             if (result.Result.ResultType != ResultType.Success)
             {
+                if (blockHash is not null)
+                    witnessCaptureRegistry.DisarmCapture(blockHash);
+
                 int httpStatus = result.ErrorCode switch
                 {
                     MergeErrorCodes.UnsupportedFork => StatusCodes.Status400BadRequest,
-                    _ => StatusCodes.Status500InternalServerError
+                    _ => StatusCodes.Status500InternalServerError,
                 };
                 int jsonRpcCode = result.ErrorCode switch
                 {
                     MergeErrorCodes.UnsupportedFork => MergeErrorCodes.UnsupportedFork,
-                    _ => ErrorCodes.InternalError
+                    _ => ErrorCodes.InternalError,
                 };
                 await WriteErrorAsync(ctx, httpStatus, result.Result.Error ?? "Unknown error", jsonRpcCode);
                 return;
@@ -86,22 +93,23 @@ public sealed class NewPayloadWithWitnessSszHandler(
 
             if (status.Status == PayloadStatus.Valid)
             {
-                // TODO(perf): TryGenerateWitness re-executes the block via a second
-                // WitnessCollector.GetWitnessForExistingBlock → ProcessOne call after
-                // engine_newPayloadV5 has already processed it once. The parent spec
-                // (execution-apis #773) was designed to eliminate this double-execution.
-                // Wiring witness collection into the primary processing path is a follow-up.
-                // https://github.com/NethermindEth/nethermind/issues/11636.
-                witness = TryGenerateWitness(request.ExecutionPayload);
-
-                if (witness is null)
+                if (captureTask is not null)
                 {
-                    if (_logger.IsError)
+                    witness = await captureTask;
+
+                    if (witness is null && _logger.IsError)
+                    {
                         _logger.Error(
-                            $"Payload executed with VALID status but the execution witness could " +
-                            $"not be generated for block {request.ExecutionPayload.BlockHash}. " +
+                            $"Payload executed with VALID status but the execution witness could not be " +
+                            $"generated for block {blockHash}. " +
                             $"The block has been accepted; returning witness=None per spec Union[None, T] arm.");
+                    }
                 }
+            }
+            else
+            {
+                if (blockHash is not null)
+                    witnessCaptureRegistry.DisarmCapture(blockHash);
             }
 
             await WriteSszNewPayloadWithWitnessAsync(ctx, status, witness);
@@ -142,47 +150,6 @@ public sealed class NewPayloadWithWitnessSszHandler(
         await ctx.Response.CompleteAsync();
     }
 
-    private Witness? TryGenerateWitness(ExecutionPayloadV4 executionPayload)
-    {
-        BlockDecodingResult decodingResult = executionPayload.TryGetBlock();
-        Block? block = decodingResult.Block;
-        if (block is null)
-        {
-            if (_logger.IsWarn)
-                _logger.Warn($"Witness generation skipped: could not decode block from ExecutionPayloadV4 " +
-                             $"(hash={executionPayload.BlockHash}). Decode error: {decodingResult.Error}");
-            return null;
-        }
-
-        BlockHeader? parent = blockTree.FindHeader(block.ParentHash!, BlockTreeLookupOptions.DoNotCreateLevelIfMissing);
-        if (parent is null)
-        {
-            if (_logger.IsWarn)
-                _logger.Warn($"Witness generation skipped: parent header not found for block " +
-                             $"{block.Hash} (parentHash={block.ParentHash}).");
-            return null;
-        }
-
-        try
-        {
-            using IWitnessGeneratingBlockProcessingEnvScope scope = witnessEnvFactory.CreateScope();
-            IExistingBlockWitnessCollector collector = scope.Env.CreateExistingBlockWitnessCollector();
-            return collector.GetWitnessForExistingBlock(parent, block);
-        }
-        catch (OperationCanceledException ex)
-        {
-            if (_logger.IsWarn)
-                _logger.Warn($"Witness generation cancelled for block {block.Hash}: {ex.Message}");
-            return null;
-        }
-        catch (Exception ex)
-        {
-            if (_logger.IsError)
-                _logger.Error($"Witness generation failed for block {block.Hash}: {ex.Message}", ex);
-            return null;
-        }
-    }
-
     private static NewPayloadV5Params? DeserializeRequest(ReadOnlySequence<byte> body)
     {
         try
@@ -196,17 +163,21 @@ public sealed class NewPayloadWithWitnessSszHandler(
             if (!reader.Read() || reader.TokenType != JsonTokenType.StartArray) return null;
 
             if (!reader.Read()) return null;
-            ExecutionPayloadV4? payload = JsonSerializer.Deserialize<ExecutionPayloadV4>(ref reader, EthereumJsonSerializer.JsonOptions);
+            ExecutionPayloadV4? payload = JsonSerializer.Deserialize<ExecutionPayloadV4>(
+                ref reader, EthereumJsonSerializer.JsonOptions);
             if (payload is null) return null;
 
             if (!reader.Read()) return null;
-            byte[]?[]? blobHashes = JsonSerializer.Deserialize<byte[]?[]>(ref reader, EthereumJsonSerializer.JsonOptions);
+            byte[]?[]? blobHashes = JsonSerializer.Deserialize<byte[]?[]>(
+                ref reader, EthereumJsonSerializer.JsonOptions);
 
             if (!reader.Read()) return null;
-            Hash256? parentBeaconBlockRoot = JsonSerializer.Deserialize<Hash256?>(ref reader, EthereumJsonSerializer.JsonOptions);
+            Hash256? parentBeaconBlockRoot = JsonSerializer.Deserialize<Hash256?>(
+                ref reader, EthereumJsonSerializer.JsonOptions);
 
             if (!reader.Read()) return null;
-            byte[][]? executionRequests = JsonSerializer.Deserialize<byte[][]>(ref reader, EthereumJsonSerializer.JsonOptions);
+            byte[][]? executionRequests = JsonSerializer.Deserialize<byte[][]>(
+                ref reader, EthereumJsonSerializer.JsonOptions);
 
             if (!reader.Read() || reader.TokenType != JsonTokenType.EndArray) return null;
 

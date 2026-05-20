@@ -12,7 +12,6 @@ using Microsoft.AspNetCore.Http;
 using Nethermind.Config;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Stateless;
-using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Authentication;
 using Nethermind.Core.Crypto;
@@ -36,8 +35,7 @@ namespace Nethermind.Merge.Plugin.Test.SszRest;
 public class SszMiddlewareTests
 {
     private IEngineRpcModule _engineModule = null!;
-    private IBlockTree _blockTree = null!;
-    private IWitnessGeneratingBlockProcessingEnvFactory _witnessEnvFactory = null!;
+    private IWitnessCaptureRegistry _witnessCaptureRegistry = null!;
 
     private IJsonRpcUrlCollection _urlCollection = null!;
     private IRpcAuthentication _auth = null!;
@@ -55,8 +53,7 @@ public class SszMiddlewareTests
     public void SetUp()
     {
         _engineModule = Substitute.For<IEngineRpcModule>();
-        _blockTree = Substitute.For<IBlockTree>();
-        _witnessEnvFactory = Substitute.For<IWitnessGeneratingBlockProcessingEnvFactory>();
+        _witnessCaptureRegistry = Substitute.For<IWitnessCaptureRegistry>();
 
         _urlCollection = Substitute.For<IJsonRpcUrlCollection>();
         _auth = Substitute.For<IRpcAuthentication>();
@@ -107,7 +104,7 @@ public class SszMiddlewareTests
 
             new ClientVersionSszHandler(_engineModule),
             new CapabilitiesSszHandler(_engineModule),
-            new NewPayloadWithWitnessSszHandler(_engineModule, _blockTree, _witnessEnvFactory, LimboLogs.Instance),
+            new NewPayloadWithWitnessSszHandler(_engineModule, _witnessCaptureRegistry, LimboLogs.Instance),
         ];
 
         return new SszMiddleware(
@@ -668,21 +665,9 @@ public class SszMiddlewareTests
         body.Should().Contain("\"code\"");
     }
 
-    private void ConfigureWitnessFactory(Witness? witness)
-    {
-        IExistingBlockWitnessCollector stubCollector = Substitute.For<IExistingBlockWitnessCollector>();
-        stubCollector
-            .GetWitnessForExistingBlock(Arg.Any<BlockHeader>(), Arg.Any<Block>())
-            .Returns(witness);
-
-        IWitnessGeneratingBlockProcessingEnv stubEnv = Substitute.For<IWitnessGeneratingBlockProcessingEnv>();
-        stubEnv.CreateExistingBlockWitnessCollector().Returns(stubCollector);
-
-        IWitnessGeneratingBlockProcessingEnvScope stubScope = Substitute.For<IWitnessGeneratingBlockProcessingEnvScope>();
-        stubScope.Env.Returns(stubEnv);
-
-        _witnessEnvFactory.CreateScope().Returns(stubScope);
-    }
+    private void ConfigureRegistry(Witness? witness) => _witnessCaptureRegistry
+            .ArmCapture(Arg.Any<Hash256>())
+            .Returns(Task.FromResult(witness));
 
     [Test]
     public async Task NewPayloadWithWitness_returns_200_with_octet_stream_and_decodable_ssz_for_valid_status()
@@ -700,10 +685,7 @@ public class SszMiddlewareTests
             Headers = new ArrayPoolList<byte[]>(0),
         };
 
-        ConfigureWitnessFactory(stubWitness);
-
-        _blockTree.FindHeader(Arg.Any<Hash256>(), Arg.Any<BlockTreeLookupOptions>())
-            .Returns(Build.A.BlockHeader.TestObject);
+        ConfigureRegistry(stubWitness);
 
         byte[] body = BuildMinimalWitnessRequestBody();
         DefaultHttpContext ctx = MakeJsonPostContext("/new-payload-with-witness", body);
@@ -737,8 +719,7 @@ public class SszMiddlewareTests
                 Arg.Any<ExecutionPayloadV4>(), Arg.Any<byte[]?[]>(), Arg.Any<Hash256?>(), Arg.Any<byte[][]?>())
             .Returns(ResultWrapper<PayloadStatusV1>.Success(status));
 
-        _blockTree.FindHeader(Arg.Any<Hash256>(), Arg.Any<BlockTreeLookupOptions>())
-            .Returns((BlockHeader?)null);
+        ConfigureRegistry(null);
 
         byte[] body = BuildMinimalWitnessRequestBody();
         DefaultHttpContext ctx = MakeJsonPostContext("/new-payload-with-witness", body);

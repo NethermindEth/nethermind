@@ -15,6 +15,7 @@ using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Processing;
+using Nethermind.Core.Container;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Stateless;
@@ -44,6 +45,7 @@ using Nethermind.Synchronization;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
+using Nethermind.Blockchain.Headers;
 
 namespace Nethermind.Merge.Plugin;
 
@@ -289,6 +291,20 @@ public class BaseMergePluginModule : Module
             .AddSingleton<IPoSSwitcher, PoSSwitcher>()
             .AddDecorator<IBetterPeerStrategy, MergeBetterPeerStrategy>()
 
+            // Single-execution witness capture — eliminates the double ProcessOne that the
+            // previous WitnessCollector.GetWitnessForExistingBlock approach caused.
+            // WitnessCapturingMainProcessingModule installs WitnessCapturingWorldStateProxy
+            // as the IWorldState decorator in the main processing scope; BranchProcessor
+            // arms/disarms it around each ProcessOne call when the registry is populated.
+            // IHeaderFinder is injected so BuildWitness can populate Witness.Headers via
+            // WitnessGeneratingHeaderFinder (execution-apis#773 §ExecutionWitnessV1).
+            .AddSingleton<IWitnessCaptureRegistry>(ctx =>
+                new WitnessCaptureRegistry(
+                    ctx.Resolve<IStateReader>(),
+                    ctx.Resolve<IHeaderFinder>(),
+                    ctx.Resolve<ILogManager>()))
+            .AddSingleton<IMainProcessingModule, WitnessCapturingMainProcessingModule>()
+
             .AddSingleton<IPeerRefresher, PeerRefresher>()
             .ResolveOnServiceActivation<IPeerRefresher, ISynchronizer>()
 
@@ -335,8 +351,7 @@ public class BaseMergePluginModule : Module
                     return new NewPayloadWithWitnessHandler(
                         (payload, hashes, root, requests) =>
                             lazyModule.Value.engine_newPayloadV5(payload, hashes, root, requests),
-                        ctx.Resolve<IBlockTree>(),
-                        ctx.Resolve<IWitnessGeneratingBlockProcessingEnvFactory>(),
+                        ctx.Resolve<IWitnessCaptureRegistry>(),
                         ctx.Resolve<ILogManager>());
                 })
 
