@@ -121,19 +121,22 @@ namespace Nethermind.Xdc
 
         private void OnNewRound(object sender, NewRoundEventArgs args)
         {
+            if (args.LastRoundDuration is { } lastRoundDuration)
+                _logger.Info($"Round {args.PreviousRound} completed in {lastRoundDuration.TotalSeconds:F2}s");
+
+            ulong currentRound = _xdcContext.CurrentRound;
+            if (args.NewRound != currentRound) return;
+
             if (_blockTree.Head?.Header is not XdcBlockHeader head)
                 throw new InvalidOperationException("BlockTree head is not XdcBlockHeader.");
             if (_blockTree.IsSyncing().isSyncing) return;
 
             _lastActivityTime = DateTime.UtcNow;
 
-            IXdcReleaseSpec spec = _specProvider.GetXdcSpec(head, args.NewRound);
+            IXdcReleaseSpec spec = _specProvider.GetXdcSpec(head, currentRound);
             _timeoutTimer.Reset(TimeSpan.FromSeconds(spec.TimeoutPeriod));
 
-            if (args.LastRoundDuration is { } lastRoundDuration)
-                _logger.Info($"Round {args.PreviousRound} completed in {lastRoundDuration.TotalSeconds:F2}s");
-
-            StartRoundTask(head, args.NewRound);
+            StartRoundTask(head, currentRound);
         }
 
         // ── Round task ───────────────────────────────────────────────────────────
@@ -263,7 +266,6 @@ namespace Nethermind.Xdc
                 throw new InvalidOperationException("Head block missing consensus data.");
 
             long votingRound = (long)head.ExtraConsensusData.BlockRound;
-            if (!TryAdvance(ref _highestVotedRound, votingRound)) return;
 
             if (!IsMasternode(epochInfo, _signer.Address))
             {
@@ -272,20 +274,25 @@ namespace Nethermind.Xdc
                 return;
             }
 
-            if (!head.IsSelfMined && !_votesManager.VerifyVotingRules(head, out string? error))
+            if(votingRound <= _highestVotedRound) return;
+
+            if (!_votesManager.VerifyVotingRules(head, out string? error))
             {
                 if (_logger.IsDebug)
                     _logger.Debug($"Round {votingRound}: Voting rule not satisfied for block #{head.Number}, hash={head.Hash}: {error}");
                 return;
             }
 
+            if (!TryAdvance(ref _highestVotedRound, votingRound)) return;
+
+            if (_logger.IsInfo)
+                _logger.Info($"Round {votingRound}: Voting for block #{head.Number}, hash={head.Hash}");
+
             try
             {
                 BlockRoundInfo voteInfo = new(head.Hash!, head.ExtraConsensusData.BlockRound, head.Number);
                 await _votesManager.CastVote(voteInfo);
                 _lastActivityTime = DateTime.UtcNow;
-                if (_logger.IsInfo)
-                    _logger.Info($"Round {votingRound}: Voted for block #{head.Number}, hash={head.Hash}");
             }
             catch (Exception ex)
             {
