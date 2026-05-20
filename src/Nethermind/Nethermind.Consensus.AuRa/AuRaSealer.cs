@@ -49,8 +49,12 @@ namespace Nethermind.Consensus.AuRa
                 return null;
             }
 
-            Hash256 headerHash = block.Header.CalculateHash(RlpBehaviors.ForSealing);
-            Signature signature = _signer.Sign(headerHash);
+            ValueHash256 headerHash = block.Header.CalculateValueHash(RlpBehaviors.ForSealing);
+            if (!_signer.TrySign(in headerHash, out Signature signature))
+            {
+                if (_logger.IsWarn) _logger.Warn($"AuRa signer {_signer.Address} could not sign block {block.Number} — skipping seal.");
+                return null;
+            }
             block.Header.AuRaSignature = signature.BytesWithRecovery;
 
             return block;
