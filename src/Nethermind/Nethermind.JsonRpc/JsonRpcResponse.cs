@@ -12,7 +12,6 @@ using Nethermind.JsonRpc.Modules.Subscribe;
 namespace Nethermind.JsonRpc
 {
     [JsonDerivedType(typeof(JsonRpcResponse))]
-    [JsonDerivedType(typeof(JsonRpcSuccessResponse))]
     [JsonDerivedType(typeof(JsonRpcErrorResponse))]
     [JsonDerivedType(typeof(JsonRpcSubscriptionResponse))]
     public class JsonRpcResponse(Action? action = null) : IDisposable
