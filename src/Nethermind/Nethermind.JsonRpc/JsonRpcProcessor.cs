@@ -569,12 +569,42 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
 
     private static int CountLeadingJsonWhitespace(ReadOnlySpan<byte> span)
     {
+        if (span.IsEmpty || !IsJsonWhitespace(span[0]))
+        {
+            return 0;
+        }
+
+        if (span.Length == 1)
+        {
+            return 1;
+        }
+
         int index = span.IndexOfAnyExcept(JsonWhitespace);
         return index >= 0 ? index : span.Length;
     }
 
-    private static bool HasNonWhitespace(ReadOnlySpan<byte> span) =>
-        span.IndexOfAnyExcept(JsonWhitespace) >= 0;
+    private static bool HasNonWhitespace(ReadOnlySpan<byte> span)
+    {
+        if (span.IsEmpty)
+        {
+            return false;
+        }
+
+        if (!IsJsonWhitespace(span[0]))
+        {
+            return true;
+        }
+
+        if (span.Length == 1)
+        {
+            return false;
+        }
+
+        return span.IndexOfAnyExcept(JsonWhitespace) >= 0;
+    }
+
+    private static bool IsJsonWhitespace(byte value) =>
+        value is (byte)' ' or (byte)'\t' or (byte)'\r' or (byte)'\n';
 
     private void Handle(ConnectionResetException e)
     {
