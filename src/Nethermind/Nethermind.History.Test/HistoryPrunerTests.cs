@@ -125,6 +125,7 @@ public class HistoryPrunerTests
 
         using (Assert.EnterMultipleScope())
         {
+            Assert.That(historyPruner.OldestBlockHeader, Is.Not.Null);
             Assert.That(historyPruner.OldestBlockHeader?.Number, Is.EqualTo(expectedBlocksPointer));
             Assert.That(historyPruner.BalsDeletePointer, Is.EqualTo(expectedBalsPointer));
         }
@@ -144,7 +145,7 @@ public class HistoryPrunerTests
         };
 
         using BasicTestBlockchain testBlockchain = await CreateBlockchainWithBlocks(historyConfig, (int)head, syncPivot: head);
-        HistoryPruner historyPruner = (HistoryPruner)testBlockchain.Container.Resolve<IHistoryPruner>();
+        IHistoryPruner historyPruner = testBlockchain.Container.Resolve<IHistoryPruner>();
 
         Assert.That(historyPruner.BalCutoffBlockNumber, Is.EqualTo(expectedCutoff));
     }

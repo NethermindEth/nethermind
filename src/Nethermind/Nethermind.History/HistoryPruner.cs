@@ -51,8 +51,8 @@ public class HistoryPruner : IHistoryPruner
     private long _lastSavedBlocksDeletePointer = 1;
     private long _lastSavedBalsDeletePointer = 1;
     private BlockHeader? _oldestBlockHeader;
-    private bool _hasLoadedDeletePointers = false;
-    private int _currentlyPruning = 0;
+    private bool _hasLoadedDeletePointers;
+    private int _currentlyPruning;
 
     public event EventHandler<OnNewOldestBlockArgs>? NewOldestBlock;
 
@@ -380,11 +380,14 @@ public class HistoryPruner : IHistoryPruner
                         if (_logger.IsDebug) _logger.Debug($"Deleting old block {number} with hash {blockInfo.BlockHash}.");
                         _blockTree.DeleteOldBlock(number, blockInfo.BlockHash);
                         _receiptStorage.RemoveReceipts(block);
-                        // BAL is pruned alongside the block so we never leave orphaned BAL entries when block deletion is the more aggressive boundary.
-                        _blockAccessListStore.Delete(blockInfo.BlockHash);
+                        // Only delete the BAL if the BAL-only pass hasn't already covered this block; otherwise the delete is a no-op and the counter would over-report.
+                        if (number >= _balsDeletePointer)
+                        {
+                            _blockAccessListStore.Delete(blockInfo.BlockHash);
+                            Metrics.BlockAccessListsPruned++;
+                        }
                         deletedBlocks++;
                         Metrics.BlocksPruned++;
-                        Metrics.BlockAccessListsPruned++;
                     }
                 }
 

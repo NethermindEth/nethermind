@@ -19,6 +19,7 @@ public interface IHistoryConfig : IConfig
         DefaultValue = "82125")]
     uint RetentionEpochs { get; set; }
 
+    // Default matches the mainnet weak-subjectivity period — BALs older than that are not useful for state reconstruction during weak-subjectivity sync
     [ConfigItem(
         Description = "The number of epochs to retain block access lists (BALs).",
         DefaultValue = "3533",
