@@ -184,65 +184,12 @@ namespace Nethermind.JsonRpc.Test
         }
 
         [Test]
-        public void Records_local_stats_latency_when_per_method_enabled()
-        {
-            RecordingMetricObserver observer = new();
-            IMetricObserver previous = Metrics.JsonRpcLocalStatsLatencyMicros;
-            Metrics.JsonRpcLocalStatsLatencyMicros = observer;
-            try
-            {
-                TestLogger silentLogger = new() { IsInfo = false };
-                OneLoggerLogManager silentLogManager = new(new(silentLogger));
-                JsonRpcConfig config = new() { EnablePerMethodMetrics = true };
-                JsonRpcLocalStats localStats = new(_manualTimestamper, config, silentLogManager);
-
-                localStats.ReportCall(new RpcReport("eth_call", 123, true));
-
-                observer.Observations.Should().ContainSingle();
-                observer.Observations[0].Value.Should().BeGreaterThanOrEqualTo(0);
-                observer.Observations[0].Labels.Should().Equal("eth_call", "success");
-            }
-            finally
-            {
-                Metrics.JsonRpcLocalStatsLatencyMicros = previous;
-            }
-        }
-
-        [Test]
         public void Records_boundary_metrics_when_report_contains_measurements()
         {
             RecordingMetricObserver boundaryObserver = new();
-            RecordingMetricObserver boundaryPercentObserver = new();
-            RecordingMetricObserver preMethodObserver = new();
-            RecordingMetricObserver requestBodyCollectionObserver = new();
-            RecordingMetricObserver envelopeParseObserver = new();
-            RecordingMetricObserver methodBodyObserver = new();
-            RecordingMetricObserver postMethodObserver = new();
-            RecordingMetricObserver responseWriteObserver = new();
-            RecordingMetricObserver responseFlushObserver = new();
-            RecordingMetricObserver responseFlushCountObserver = new();
-
             IMetricObserver previousBoundary = Metrics.JsonRpcBoundaryLatencyMicros;
-            IMetricObserver previousBoundaryPercent = Metrics.JsonRpcBoundaryLatencyPercent;
-            IMetricObserver previousPreMethod = Metrics.JsonRpcPreMethodBoundaryLatencyMicros;
-            IMetricObserver previousRequestBodyCollection = Metrics.JsonRpcRequestBodyCollectionLatencyMicros;
-            IMetricObserver previousEnvelopeParse = Metrics.JsonRpcEnvelopeParseLatencyMicros;
-            IMetricObserver previousMethodBody = Metrics.JsonRpcMethodBodyLatencyMicros;
-            IMetricObserver previousPostMethod = Metrics.JsonRpcPostMethodBoundaryLatencyMicros;
-            IMetricObserver previousResponseWrite = Metrics.JsonRpcResponseWriteLatencyMicros;
-            IMetricObserver previousResponseFlush = Metrics.JsonRpcResponseFlushLatencyMicros;
-            IMetricObserver previousResponseFlushCount = Metrics.JsonRpcResponseFlushCount;
 
             Metrics.JsonRpcBoundaryLatencyMicros = boundaryObserver;
-            Metrics.JsonRpcBoundaryLatencyPercent = boundaryPercentObserver;
-            Metrics.JsonRpcPreMethodBoundaryLatencyMicros = preMethodObserver;
-            Metrics.JsonRpcRequestBodyCollectionLatencyMicros = requestBodyCollectionObserver;
-            Metrics.JsonRpcEnvelopeParseLatencyMicros = envelopeParseObserver;
-            Metrics.JsonRpcMethodBodyLatencyMicros = methodBodyObserver;
-            Metrics.JsonRpcPostMethodBoundaryLatencyMicros = postMethodObserver;
-            Metrics.JsonRpcResponseWriteLatencyMicros = responseWriteObserver;
-            Metrics.JsonRpcResponseFlushLatencyMicros = responseFlushObserver;
-            Metrics.JsonRpcResponseFlushCount = responseFlushCountObserver;
 
             try
             {
@@ -257,41 +204,17 @@ namespace Nethermind.JsonRpc.Test
                         MethodBodyMicroseconds: 100,
                         PostMethodMicroseconds: 20,
                         ResponseWriteMicroseconds: 5)
-                    {
-                        RequestBodyCollectionMicroseconds = 4,
-                        EnvelopeParseMicroseconds = 6,
-                        ResponseFlushMicroseconds = 3,
-                        ResponseFlushCount = 2
-                    }
                 };
 
                 localStats.ReportCall(report, elapsedMicroseconds: 135);
 
                 silentLogger.LogList.Should().BeEmpty();
                 boundaryObserver.Observations.Should().ContainSingle().Which.Value.Should().Be(35);
-                boundaryPercentObserver.Observations.Should().ContainSingle().Which.Value.Should().BeApproximately(35.0 * 100.0 / 135.0, 0.0001);
-                preMethodObserver.Observations.Should().ContainSingle().Which.Value.Should().Be(10);
-                requestBodyCollectionObserver.Observations.Should().ContainSingle().Which.Value.Should().Be(4);
-                envelopeParseObserver.Observations.Should().ContainSingle().Which.Value.Should().Be(6);
-                methodBodyObserver.Observations.Should().ContainSingle().Which.Value.Should().Be(100);
-                postMethodObserver.Observations.Should().ContainSingle().Which.Value.Should().Be(20);
-                responseWriteObserver.Observations.Should().ContainSingle().Which.Value.Should().Be(5);
-                responseFlushObserver.Observations.Should().ContainSingle().Which.Value.Should().Be(3);
-                responseFlushCountObserver.Observations.Should().ContainSingle().Which.Value.Should().Be(2);
                 boundaryObserver.Observations[0].Labels.Should().Equal("engine_newPayloadV4", "success");
             }
             finally
             {
                 Metrics.JsonRpcBoundaryLatencyMicros = previousBoundary;
-                Metrics.JsonRpcBoundaryLatencyPercent = previousBoundaryPercent;
-                Metrics.JsonRpcPreMethodBoundaryLatencyMicros = previousPreMethod;
-                Metrics.JsonRpcRequestBodyCollectionLatencyMicros = previousRequestBodyCollection;
-                Metrics.JsonRpcEnvelopeParseLatencyMicros = previousEnvelopeParse;
-                Metrics.JsonRpcMethodBodyLatencyMicros = previousMethodBody;
-                Metrics.JsonRpcPostMethodBoundaryLatencyMicros = previousPostMethod;
-                Metrics.JsonRpcResponseWriteLatencyMicros = previousResponseWrite;
-                Metrics.JsonRpcResponseFlushLatencyMicros = previousResponseFlush;
-                Metrics.JsonRpcResponseFlushCount = previousResponseFlushCount;
             }
         }
 

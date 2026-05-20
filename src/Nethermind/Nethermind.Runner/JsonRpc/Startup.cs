@@ -429,9 +429,7 @@ public class Startup : IStartup
         HttpJsonRpcResponseSink? responseSink = null;
         try
         {
-            long requestBodyCollectionStartTimestamp = Stopwatch.GetTimestamp();
             await CollectHttpRequestBodyAsync(ctx, contentLength, effectiveMaxRequestBodySize, collectedBody, ctx.RequestAborted);
-            long requestBodyCollectionMicroseconds = (long)Stopwatch.GetElapsedTime(requestBodyCollectionStartTimestamp).TotalMicroseconds;
             using JsonRpcContext jsonRpcContext = JsonRpcContext.Http(jsonRpcUrl);
             responseSink = new HttpJsonRpcResponseSink(ctx, jsonRpcUrl, _jsonRpcConfig, _jsonRpcLocalStats, EthereumJsonSerializer.JsonOptions, _logger, startTime);
 
@@ -439,7 +437,7 @@ public class Startup : IStartup
                 collectedBody.Memory,
                 jsonRpcContext,
                 responseSink,
-                new JsonRpcProcessingOptions(JsonRpcInputMode.SingleDocument, startTime, requestBodyCollectionMicroseconds),
+                new JsonRpcProcessingOptions(JsonRpcInputMode.SingleDocument, startTime),
                 ctx.RequestAborted);
         }
         catch (Exception e) when (e is OperationCanceledException || e.InnerException is OperationCanceledException)

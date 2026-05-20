@@ -14,7 +14,6 @@ using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Config;
-using Nethermind.Core.Metric;
 using Nethermind.Logging;
 using Nethermind.JsonRpc.Modules;
 using NSubstitute;
@@ -535,40 +534,6 @@ public class JsonRpcProcessorTests(bool returnErrors)
     }
 
     [Test]
-    [NonParallelizable]
-    public async Task Response_recorder_reports_latency_when_enabled()
-    {
-        RecordingMetricObserver observer = new();
-        IMetricObserver previous = Metrics.JsonRpcResponseRecorderLatencyMicros;
-        Metrics.JsonRpcResponseRecorderLatencyMicros = observer;
-        try
-        {
-            List<string> records = [];
-            IFileSystem fileSystem = CreateRecordingFileSystem(records);
-            JsonRpcProcessor processor = new(
-                CreateEchoService(),
-                CreateRecorderConfig(RpcRecorderState.Response),
-                fileSystem,
-                LimboLogs.Instance);
-
-            CollectedJsonRpcResponses result = await ProcessAsync(
-                processor,
-                CreateReader("{\"id\":1,\"jsonrpc\":\"2.0\",\"method\":\"eth_blockNumber\",\"params\":[]}"),
-                new JsonRpcContext(RpcEndpoint.Http));
-
-            records.Should().ContainSingle(record => record.Contains("eth_blockNumber"));
-            observer.Observations.Should().ContainSingle();
-            observer.Observations[0].Value.Should().BeGreaterThanOrEqualTo(0);
-            observer.Observations[0].Labels.Should().Equal("eth_blockNumber", "success");
-            result.DisposeItems();
-        }
-        finally
-        {
-            Metrics.JsonRpcResponseRecorderLatencyMicros = previous;
-        }
-    }
-
-    [Test]
     public async Task Response_recorder_captures_batch_responses()
     {
         List<string> records = [];
@@ -672,70 +637,6 @@ public class JsonRpcProcessorTests(bool returnErrors)
 
         disposedDuringWrite.Should().BeFalse();
         disposed.Should().BeTrue();
-    }
-
-    [Test]
-    [NonParallelizable]
-    public async Task Response_dispose_reports_latency_when_metric_is_enabled()
-    {
-        RecordingMetricObserver observer = new();
-        IMetricObserver previous = Metrics.JsonRpcResponseDisposeLatencyMicros;
-        Metrics.JsonRpcResponseDisposeLatencyMicros = observer;
-        try
-        {
-            bool disposed = false;
-            IJsonRpcService service = CreateService(capturedRequest => new JsonRpcSuccessResponse(() => disposed = true) { Id = capturedRequest.Id });
-            JsonRpcProcessor processor = new(
-                service,
-                new JsonRpcConfig { RpcRecorderState = RpcRecorderState.None },
-                Substitute.For<IFileSystem>(),
-                LimboLogs.Instance);
-
-            CollectedJsonRpcResponses result = await ProcessAsync(
-                processor,
-                CreateReader("{\"id\":1,\"jsonrpc\":\"2.0\",\"method\":\"eth_blockNumber\",\"params\":[]}"),
-                new JsonRpcContext(RpcEndpoint.Http));
-
-            disposed.Should().BeTrue();
-            observer.Observations.Should().ContainSingle();
-            observer.Observations[0].Value.Should().BeGreaterThanOrEqualTo(0);
-            observer.Observations[0].Labels.Should().Equal("eth_blockNumber", "success");
-            result.DisposeItems();
-        }
-        finally
-        {
-            Metrics.JsonRpcResponseDisposeLatencyMicros = previous;
-        }
-    }
-
-    [Test]
-    [NonParallelizable]
-    public async Task Response_dispose_skips_latency_metric_when_response_has_no_disposable_resources()
-    {
-        RecordingMetricObserver observer = new();
-        IMetricObserver previous = Metrics.JsonRpcResponseDisposeLatencyMicros;
-        Metrics.JsonRpcResponseDisposeLatencyMicros = observer;
-        try
-        {
-            IJsonRpcService service = CreateService(capturedRequest => new JsonRpcSuccessResponse { Id = capturedRequest.Id });
-            JsonRpcProcessor processor = new(
-                service,
-                new JsonRpcConfig { RpcRecorderState = RpcRecorderState.None },
-                Substitute.For<IFileSystem>(),
-                LimboLogs.Instance);
-
-            CollectedJsonRpcResponses result = await ProcessAsync(
-                processor,
-                CreateReader("{\"id\":1,\"jsonrpc\":\"2.0\",\"method\":\"eth_blockNumber\",\"params\":[]}"),
-                new JsonRpcContext(RpcEndpoint.Http));
-
-            observer.Observations.Should().BeEmpty();
-            result.DisposeItems();
-        }
-        finally
-        {
-            Metrics.JsonRpcResponseDisposeLatencyMicros = previous;
-        }
     }
 
     private static IJsonRpcService CreateService(Func<JsonRpcRequest, JsonRpcResponse> responseFactory)
@@ -1395,14 +1296,6 @@ public class JsonRpcProcessorTests(bool returnErrors)
             BytesWritten++;
             return ValueTask.CompletedTask;
         }
-    }
-
-    private sealed class RecordingMetricObserver : IMetricObserver
-    {
-        public List<(double Value, string[] Labels)> Observations { get; } = [];
-
-        public void Observe(double value, IMetricLabels? labels = null) =>
-            Observations.Add((value, labels?.Labels ?? Array.Empty<string>()));
     }
 
     private sealed class CollectedJsonRpcResponses : IReadOnlyList<CollectedJsonRpcResult>, IDisposable

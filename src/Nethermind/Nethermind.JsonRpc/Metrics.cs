@@ -116,53 +116,5 @@ namespace Nethermind.JsonRpc
         [SummaryMetric(LabelNames = ["method", "status"], ObjectiveQuantile = [0.5, 0.9, 0.95, 0.99], ObjectiveEpsilon = [0.05, 0.05, 0.01, 0.005])]
         [Description("JSON RPC boundary latency outside the called RPC method body.")]
         public static IMetricObserver JsonRpcBoundaryLatencyMicros = NoopMetricObserver.Instance;
-
-        [SummaryMetric(LabelNames = ["method", "status"], ObjectiveQuantile = [0.5, 0.9, 0.95, 0.99], ObjectiveEpsilon = [0.05, 0.05, 0.01, 0.005])]
-        [Description("JSON RPC boundary latency as a percentage of boundary plus method-body latency.")]
-        public static IMetricObserver JsonRpcBoundaryLatencyPercent = NoopMetricObserver.Instance;
-
-        [SummaryMetric(LabelNames = ["method", "status"], ObjectiveQuantile = [0.5, 0.9, 0.95, 0.99], ObjectiveEpsilon = [0.05, 0.05, 0.01, 0.005])]
-        [Description("JSON RPC latency before invoking the called RPC method.")]
-        public static IMetricObserver JsonRpcPreMethodBoundaryLatencyMicros = NoopMetricObserver.Instance;
-
-        [SummaryMetric(LabelNames = ["method", "status"], ObjectiveQuantile = [0.5, 0.9, 0.95, 0.99], ObjectiveEpsilon = [0.05, 0.05, 0.01, 0.005])]
-        [Description("JSON RPC HTTP request body collection latency before JSON-RPC parsing.")]
-        public static IMetricObserver JsonRpcRequestBodyCollectionLatencyMicros = NoopMetricObserver.Instance;
-
-        [SummaryMetric(LabelNames = ["method", "status"], ObjectiveQuantile = [0.5, 0.9, 0.95, 0.99], ObjectiveEpsilon = [0.05, 0.05, 0.01, 0.005])]
-        [Description("JSON RPC envelope parsing latency before parameter deserialization.")]
-        public static IMetricObserver JsonRpcEnvelopeParseLatencyMicros = NoopMetricObserver.Instance;
-
-        [SummaryMetric(LabelNames = ["method", "status"], ObjectiveQuantile = [0.5, 0.9, 0.95, 0.99], ObjectiveEpsilon = [0.05, 0.05, 0.01, 0.005])]
-        [Description("JSON RPC latency spent inside the called RPC method body.")]
-        public static IMetricObserver JsonRpcMethodBodyLatencyMicros = NoopMetricObserver.Instance;
-
-        [SummaryMetric(LabelNames = ["method", "status"], ObjectiveQuantile = [0.5, 0.9, 0.95, 0.99], ObjectiveEpsilon = [0.05, 0.05, 0.01, 0.005])]
-        [Description("JSON RPC latency after the called RPC method body returns and before response writing.")]
-        public static IMetricObserver JsonRpcPostMethodBoundaryLatencyMicros = NoopMetricObserver.Instance;
-
-        [SummaryMetric(LabelNames = ["method", "status"], ObjectiveQuantile = [0.5, 0.9, 0.95, 0.99], ObjectiveEpsilon = [0.05, 0.05, 0.01, 0.005])]
-        [Description("JSON RPC response writing latency.")]
-        public static IMetricObserver JsonRpcResponseWriteLatencyMicros = NoopMetricObserver.Instance;
-
-        [SummaryMetric(LabelNames = ["method", "status"], ObjectiveQuantile = [0.5, 0.9, 0.95, 0.99], ObjectiveEpsilon = [0.05, 0.05, 0.01, 0.005])]
-        [Description("JSON RPC response PipeWriter flush latency during response writing.")]
-        public static IMetricObserver JsonRpcResponseFlushLatencyMicros = NoopMetricObserver.Instance;
-
-        [SummaryMetric(LabelNames = ["method", "status"], ObjectiveQuantile = [0.5, 0.9, 0.95, 0.99], ObjectiveEpsilon = [0.05, 0.05, 0.01, 0.005])]
-        [Description("JSON RPC response PipeWriter flush count during response writing.")]
-        public static IMetricObserver JsonRpcResponseFlushCount = NoopMetricObserver.Instance;
-
-        [SummaryMetric(LabelNames = ["method", "status"], ObjectiveQuantile = [0.5, 0.9, 0.95, 0.99], ObjectiveEpsilon = [0.05, 0.05, 0.01, 0.005])]
-        [Description("JSON RPC local stats reporting latency after response writing.")]
-        public static IMetricObserver JsonRpcLocalStatsLatencyMicros = NoopMetricObserver.Instance;
-
-        [SummaryMetric(LabelNames = ["method", "status"], ObjectiveQuantile = [0.5, 0.9, 0.95, 0.99], ObjectiveEpsilon = [0.05, 0.05, 0.01, 0.005])]
-        [Description("JSON RPC response recorder latency after method execution.")]
-        public static IMetricObserver JsonRpcResponseRecorderLatencyMicros = NoopMetricObserver.Instance;
-
-        [SummaryMetric(LabelNames = ["method", "status"], ObjectiveQuantile = [0.5, 0.9, 0.95, 0.99], ObjectiveEpsilon = [0.05, 0.05, 0.01, 0.005])]
-        [Description("JSON RPC response disposal latency after response writing.")]
-        public static IMetricObserver JsonRpcResponseDisposeLatencyMicros = NoopMetricObserver.Instance;
     }
 }

@@ -4,7 +4,6 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.Diagnostics.Contracts;
 using System.Globalization;
 using System.Linq;
@@ -44,20 +43,7 @@ public class JsonRpcLocalStats(ITimestamper timestamper, IJsonRpcConfig jsonRpcC
             return;
         }
 
-        long startTimestamp = _enablePerMethodMetrics ? Stopwatch.GetTimestamp() : 0;
-        try
-        {
-            ReportCallInternal(report, elapsedMicroseconds, size);
-        }
-        finally
-        {
-            if (_enablePerMethodMetrics)
-            {
-                Metrics.JsonRpcLocalStatsLatencyMicros.Observe(
-                    (long)Stopwatch.GetElapsedTime(startTimestamp).TotalMicroseconds,
-                    new JsonRpcMetricLabels(report.Method, report.Success));
-            }
-        }
+        ReportCallInternal(report, elapsedMicroseconds, size);
     }
 
     private void ReportCallInternal(RpcReport report, long elapsedMicroseconds, long? size)
@@ -131,22 +117,6 @@ public class JsonRpcLocalStats(ITimestamper timestamper, IJsonRpcConfig jsonRpcC
         }
 
         Metrics.JsonRpcBoundaryLatencyMicros.Observe(timings.BoundaryMicroseconds, label);
-        long measuredMicroseconds = timings.BoundaryMicroseconds + timings.MethodBodyMicroseconds;
-        if (measuredMicroseconds != 0)
-        {
-            Metrics.JsonRpcBoundaryLatencyPercent.Observe(
-                (double)timings.BoundaryMicroseconds * 100.0 / measuredMicroseconds,
-                label);
-        }
-
-        Metrics.JsonRpcPreMethodBoundaryLatencyMicros.Observe(timings.PreMethodMicroseconds, label);
-        Metrics.JsonRpcRequestBodyCollectionLatencyMicros.Observe(timings.RequestBodyCollectionMicroseconds, label);
-        Metrics.JsonRpcEnvelopeParseLatencyMicros.Observe(timings.EnvelopeParseMicroseconds, label);
-        Metrics.JsonRpcMethodBodyLatencyMicros.Observe(timings.MethodBodyMicroseconds, label);
-        Metrics.JsonRpcPostMethodBoundaryLatencyMicros.Observe(timings.PostMethodMicroseconds, label);
-        Metrics.JsonRpcResponseWriteLatencyMicros.Observe(timings.ResponseWriteMicroseconds, label);
-        Metrics.JsonRpcResponseFlushLatencyMicros.Observe(timings.ResponseFlushMicroseconds, label);
-        Metrics.JsonRpcResponseFlushCount.Observe(timings.ResponseFlushCount, label);
     }
 
     private const string ReportHeader = "method                                  | " +

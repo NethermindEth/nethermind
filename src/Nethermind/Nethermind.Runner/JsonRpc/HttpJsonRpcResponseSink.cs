@@ -46,8 +46,6 @@ internal sealed class HttpJsonRpcResponseSink(
     private Stream? _bufferedStream;
     private bool _isFirstBatchItem = true;
     private bool _completed;
-    private long _reportedFlushCount;
-    private long _reportedFlushTimeMicroseconds;
 
     public long BytesWritten => _writer?.WrittenCount ?? 0;
     public bool StopRequested { get; private set; }
@@ -139,23 +137,9 @@ internal sealed class HttpJsonRpcResponseSink(
         }
     }
 
-    private RpcBoundaryTimings GetResponseWriteTimings(RpcReport report, long responseWriteStartTimestamp)
-    {
-        long responseFlushCount = 0;
-        long responseFlushMicroseconds = 0;
-        if (_writer is not null)
-        {
-            responseFlushCount = _writer.FlushCount - _reportedFlushCount;
-            responseFlushMicroseconds = _writer.FlushTimeMicroseconds - _reportedFlushTimeMicroseconds;
-            _reportedFlushCount = _writer.FlushCount;
-            _reportedFlushTimeMicroseconds = _writer.FlushTimeMicroseconds;
-        }
-
-        return report.BoundaryTimings.WithResponseWrite(
-            (long)Stopwatch.GetElapsedTime(responseWriteStartTimestamp).TotalMicroseconds,
-            responseFlushMicroseconds,
-            responseFlushCount);
-    }
+    private static RpcBoundaryTimings GetResponseWriteTimings(RpcReport report, long responseWriteStartTimestamp) =>
+        report.BoundaryTimings.WithResponseWrite(
+            (long)Stopwatch.GetElapsedTime(responseWriteStartTimestamp).TotalMicroseconds);
 
     public ValueTask EndBatchAsync(CancellationToken cancellationToken)
     {

@@ -170,7 +170,7 @@ public class StartupTests
     }
 
     [Test]
-    public async Task ProcessJsonRpcRequest_ReportsHttpBoundaryStages()
+    public async Task ProcessJsonRpcRequest_ReportsHttpBoundaryTiming()
     {
         IJsonRpcLocalStats jsonRpcLocalStats = Substitute.For<IJsonRpcLocalStats>();
         Startup startup = CreateStartup(jsonRpcLocalStats: jsonRpcLocalStats);
@@ -186,9 +186,7 @@ public class StartupTests
             Arg.Is<RpcReport>(static report =>
                 report.Method == "engine_getBlobsV1" &&
                 report.BoundaryTimings.HasMeasurements &&
-                report.BoundaryTimings.PreMethodMicroseconds >= report.BoundaryTimings.RequestBodyCollectionMicroseconds &&
-                report.BoundaryTimings.RequestBodyCollectionMicroseconds >= 0 &&
-                report.BoundaryTimings.EnvelopeParseMicroseconds >= 0),
+                report.BoundaryTimings.BoundaryMicroseconds >= report.BoundaryTimings.PreMethodMicroseconds),
             Arg.Any<long>(),
             Arg.Any<long?>());
     }
@@ -445,8 +443,7 @@ public class StartupTests
         jsonRpcLocalStats.Received(1).ReportCall(
             Arg.Is<RpcReport>(static report =>
                 report.Method == "engine_getBlobsV2" &&
-                report.BoundaryTimings.ResponseFlushCount == 2 &&
-                report.BoundaryTimings.ResponseFlushMicroseconds >= 0),
+                report.BoundaryTimings.HasMeasurements),
             Arg.Any<long>(),
             Arg.Any<long?>());
     }
@@ -480,7 +477,7 @@ public class StartupTests
         Assert.That(JsonRpcMetrics.JsonRpcHttpSerializedResponses - serializedBefore, Is.EqualTo(1));
         Assert.That(JsonRpcMetrics.JsonRpcHttpBufferedResponses - bufferedBefore, Is.EqualTo(1));
         jsonRpcLocalStats.Received(1).ReportCall(
-            Arg.Is<RpcReport>(static report => report.BoundaryTimings.ResponseFlushCount == 0),
+            Arg.Is<RpcReport>(static report => report.BoundaryTimings.HasMeasurements),
             Arg.Any<long>(),
             Arg.Any<long?>());
     }

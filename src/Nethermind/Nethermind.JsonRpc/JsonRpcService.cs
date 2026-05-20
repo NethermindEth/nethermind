@@ -223,9 +223,7 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
         long boundaryEndTimestamp) =>
         RpcBoundaryTimings.PreMethodOnly(
             boundaryStartTimestamp,
-            boundaryEndTimestamp,
-            request.RequestBodyCollectionMicroseconds,
-            request.EnvelopeParseMicroseconds);
+            boundaryEndTimestamp);
 
     private static void SetBoundaryTimings(
         JsonRpcResponse response,
@@ -237,9 +235,7 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
             boundaryStartTimestamp,
             methodStartTimestamp,
             methodEndTimestamp,
-            Stopwatch.GetTimestamp(),
-            request.RequestBodyCollectionMicroseconds,
-            request.EnvelopeParseMicroseconds);
+            Stopwatch.GetTimestamp());
 
     private JsonRpcErrorResponse? PrepareParameters(
         JsonRpcRequest request,
