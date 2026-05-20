@@ -299,9 +299,28 @@ public static partial class EvmInstructions
             outputOffset = 0;
         }
 
+        TGasPolicy childGas = TGasPolicy.CreateChildFrameGas(ref gas, gasLimitUl);
+
+#if ZK_EVM
+        // Precompiles run no bytecode: handle them inline, skipping the child
+        // frame's round trip through the ExecuteTransaction dispatch loop.
+        if (codeInfo.IsPrecompile)
+        {
+            return vm.InlinePrecompileCall<TTracingInst>(
+                callEnv,
+                childGas,
+                outputOffset.ToLong(),
+                outputLength.ToLong(),
+                TOpCall.ExecutionType,
+                TOpCall.IsStatic || vm.VmState.IsStatic,
+                in snapshot,
+                ref stack);
+        }
+#endif
+
         // Rent a new call frame for executing the call.
         vm.ReturnData = VmState<TGasPolicy>.RentFrame(
-            gas: TGasPolicy.CreateChildFrameGas(ref gas, gasLimitUl),
+            gas: childGas,
             outputDestination: outputOffset.ToLong(),
             outputLength: outputLength.ToLong(),
             executionType: TOpCall.ExecutionType,
