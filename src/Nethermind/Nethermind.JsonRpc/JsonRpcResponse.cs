@@ -43,9 +43,6 @@ namespace Nethermind.JsonRpc
         [JsonIgnore]
         public string MethodName { get; set; }
 
-        [JsonIgnore]
-        public RpcBoundaryTimings BoundaryTimings { get; set; }
-
         internal virtual bool HasDisposableResources => action is not null;
 
         public virtual void Dispose()

@@ -183,41 +183,6 @@ namespace Nethermind.JsonRpc.Test
             }
         }
 
-        [Test]
-        public void Records_boundary_metrics_when_report_contains_measurements()
-        {
-            RecordingMetricObserver boundaryObserver = new();
-            IMetricObserver previousBoundary = Metrics.JsonRpcBoundaryLatencyMicros;
-
-            Metrics.JsonRpcBoundaryLatencyMicros = boundaryObserver;
-
-            try
-            {
-                TestLogger silentLogger = new() { IsInfo = false };
-                OneLoggerLogManager silentLogManager = new(new(silentLogger));
-                JsonRpcConfig config = new() { EnablePerMethodMetrics = true };
-                JsonRpcLocalStats localStats = new(_manualTimestamper, config, silentLogManager);
-                RpcReport report = new("engine_newPayloadV4", 0, true)
-                {
-                    BoundaryTimings = new RpcBoundaryTimings(
-                        PreMethodMicroseconds: 10,
-                        MethodBodyMicroseconds: 100,
-                        PostMethodMicroseconds: 20,
-                        ResponseWriteMicroseconds: 5)
-                };
-
-                localStats.ReportCall(report, elapsedMicroseconds: 135);
-
-                silentLogger.LogList.Should().BeEmpty();
-                boundaryObserver.Observations.Should().ContainSingle().Which.Value.Should().Be(35);
-                boundaryObserver.Observations[0].Labels.Should().Equal("engine_newPayloadV4", "success");
-            }
-            finally
-            {
-                Metrics.JsonRpcBoundaryLatencyMicros = previousBoundary;
-            }
-        }
-
         private sealed class RecordingMetricObserver : IMetricObserver
         {
             public List<(double Value, string[] Labels)> Observations { get; } = new();

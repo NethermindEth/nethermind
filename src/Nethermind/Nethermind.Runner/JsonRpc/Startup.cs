@@ -437,7 +437,7 @@ public class Startup : IStartup
                 collectedBody.Memory,
                 jsonRpcContext,
                 responseSink,
-                new JsonRpcProcessingOptions(JsonRpcInputMode.SingleDocument, startTime),
+                new JsonRpcProcessingOptions(JsonRpcInputMode.SingleDocument),
                 ctx.RequestAborted);
         }
         catch (Exception e) when (e is OperationCanceledException || e.InnerException is OperationCanceledException)

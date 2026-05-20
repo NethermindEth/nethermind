@@ -45,10 +45,6 @@ internal sealed class SocketJsonRpcResponseSink<TStream>(
 
             BytesWritten += responseBytes;
             long handlingTimeMicroseconds = (long)Stopwatch.GetElapsedTime(startTimestamp).TotalMicroseconds;
-            report = report with
-            {
-                BoundaryTimings = report.BoundaryTimings.WithResponseWrite(handlingTimeMicroseconds)
-            };
             jsonRpcLocalStats.ReportCall(report, handlingTimeMicroseconds, responseBytes);
         }
         finally
@@ -71,7 +67,6 @@ internal sealed class SocketJsonRpcResponseSink<TStream>(
 
     public async ValueTask WriteBatchItemAsync(JsonRpcResponse response, RpcReport report, CancellationToken cancellationToken)
     {
-        long responseWriteStartTimestamp = Stopwatch.GetTimestamp();
         if (!_isFirstBatchItem)
         {
             await stream.WriteAsync(JsonComma, cancellationToken);
@@ -81,10 +76,6 @@ internal sealed class SocketJsonRpcResponseSink<TStream>(
         _isFirstBatchItem = false;
 
         _topLevelResponseBytes += (int)await jsonSerializer.SerializeAsync(stream, response, cancellationToken, indented: false);
-        report = report with
-        {
-            BoundaryTimings = report.BoundaryTimings.WithResponseWrite((long)Stopwatch.GetElapsedTime(responseWriteStartTimestamp).TotalMicroseconds)
-        };
         jsonRpcLocalStats.ReportCall(report);
 
         if (!jsonRpcContext.IsAuthenticated && _topLevelResponseBytes > maxBatchResponseBodySize)

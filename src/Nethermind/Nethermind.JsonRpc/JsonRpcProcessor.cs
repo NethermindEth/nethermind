@@ -304,7 +304,6 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
 
                                     try
                                     {
-                                        SetRequestBoundaryTimings(directRequest, options, startTime);
                                         await ProcessSingleRequestToSink(directRequest, directParamsDocument, context, sink, cancellationToken);
                                     }
                                     finally
@@ -416,14 +415,11 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
         JsonRpcProcessingOptions options,
         CancellationToken cancellationToken)
     {
-        long startTime = options.BoundaryStartTimestamp != 0
-            ? options.BoundaryStartTimestamp
-            : Stopwatch.GetTimestamp();
+        long startTime = Stopwatch.GetTimestamp();
         try
         {
             if (TryReadSingleObjectRequest(requestBody, out JsonRpcRequest? directRequest, out JsonDocument? directParamsDocument))
             {
-                SetRequestBoundaryTimings(directRequest, options, startTime);
                 Metrics.JsonRpcDirectUtf8Parses++;
                 await ProcessSingleRequestToSink(directRequest, directParamsDocument, context, sink, cancellationToken);
                 return;
@@ -573,19 +569,6 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
             ParamsKind = envelope.HasParams ? envelope.ParamsKind : JsonValueKind.Undefined
         };
 
-    private static void SetRequestBoundaryTimings(
-        JsonRpcRequest request,
-        JsonRpcProcessingOptions options,
-        long boundaryStartTimestamp)
-    {
-        if (options.BoundaryStartTimestamp == 0)
-        {
-            return;
-        }
-
-        request.BoundaryStartTimestamp = boundaryStartTimestamp;
-    }
-
     private static int CountLeadingJsonWhitespace(ReadOnlySpan<byte> span)
     {
         for (int index = 0; index < span.Length; index++)
@@ -651,7 +634,6 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
             {
                 case JsonValueKind.Object:
                     JsonRpcRequest request = DeserializeObject(rootElement);
-                    SetRequestBoundaryTimings(request, options, startTime);
                     if (_logger.IsDebug) _logger.Debug($"JSON RPC request {request.Method}");
 
                     JsonRpcResult.Entry singleResponse = await HandleSingleRequest(request, context);
@@ -1061,10 +1043,7 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
             : request.Method;
         JsonRpcResult.Entry result = new(
             response,
-            new RpcReport(reportMethod, (long)Stopwatch.GetElapsedTime(startTime).TotalMicroseconds, isSuccess)
-            {
-                BoundaryTimings = response.BoundaryTimings
-            });
+            new RpcReport(reportMethod, (long)Stopwatch.GetElapsedTime(startTime).TotalMicroseconds, isSuccess));
 
         if (_logger.IsTrace) TraceResult(result);
         return result;
@@ -1140,14 +1119,12 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
             {
                 Id = successResponse.Id,
                 MethodName = successResponse.MethodName,
-                BoundaryTimings = successResponse.BoundaryTimings,
                 Result = "# streamable response omitted #"
             },
             JsonRpcErrorResponse { Error.Data: IStreamableResult } errorResponse => new JsonRpcErrorResponse
             {
                 Id = errorResponse.Id,
                 MethodName = errorResponse.MethodName,
-                BoundaryTimings = errorResponse.BoundaryTimings,
                 Error = new Error
                 {
                     Code = errorResponse.Error.Code,

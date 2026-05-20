@@ -52,37 +52,31 @@ internal sealed class HttpJsonRpcResponseSink(
 
     public ValueTask WriteSingleAsync(JsonRpcResponse response, RpcReport report, CancellationToken cancellationToken)
     {
-        long responseWriteStartTimestamp = Stopwatch.GetTimestamp();
         EnsureStarted(isCollection: false, response);
-        return WriteSingleStartedAsync(response, report, responseWriteStartTimestamp, cancellationToken);
+        return WriteSingleStartedAsync(response, report, cancellationToken);
     }
 
-    private ValueTask WriteSingleStartedAsync(JsonRpcResponse response, RpcReport report, long responseWriteStartTimestamp, CancellationToken cancellationToken)
+    private ValueTask WriteSingleStartedAsync(JsonRpcResponse response, RpcReport report, CancellationToken cancellationToken)
     {
         ValueTask writeTask = WriteResponseAsync(_writer!, response, report, cancellationToken);
         if (!writeTask.IsCompletedSuccessfully)
         {
-            return WriteSingleAfterWriteAsync(writeTask, report, responseWriteStartTimestamp);
+            return WriteSingleAfterWriteAsync(writeTask, report);
         }
 
         writeTask.GetAwaiter().GetResult();
-        ReportSingle(report, responseWriteStartTimestamp);
+        ReportSingle(report);
         return ValueTask.CompletedTask;
     }
 
-    private async ValueTask WriteSingleAfterWriteAsync(ValueTask writeTask, RpcReport report, long responseWriteStartTimestamp)
+    private async ValueTask WriteSingleAfterWriteAsync(ValueTask writeTask, RpcReport report)
     {
         await writeTask;
-        ReportSingle(report, responseWriteStartTimestamp);
+        ReportSingle(report);
     }
 
-    private void ReportSingle(RpcReport report, long responseWriteStartTimestamp)
+    private void ReportSingle(RpcReport report)
     {
-        report = report with
-        {
-            BoundaryTimings = GetResponseWriteTimings(report, responseWriteStartTimestamp)
-        };
-
         long handlingTimeMicroseconds = (long)Stopwatch.GetElapsedTime(requestStartTimestamp).TotalMicroseconds;
         jsonRpcLocalStats.ReportCall(report, handlingTimeMicroseconds, BytesWritten);
     }
@@ -96,7 +90,6 @@ internal sealed class HttpJsonRpcResponseSink(
 
     public ValueTask WriteBatchItemAsync(JsonRpcResponse response, RpcReport report, CancellationToken cancellationToken)
     {
-        long responseWriteStartTimestamp = Stopwatch.GetTimestamp();
         if (!_isFirstBatchItem)
         {
             _writer!.Write(JsonComma);
@@ -107,27 +100,22 @@ internal sealed class HttpJsonRpcResponseSink(
         ValueTask writeTask = WriteResponseAsync(_writer!, response, report, cancellationToken);
         if (!writeTask.IsCompletedSuccessfully)
         {
-            return WriteBatchItemAfterWriteAsync(writeTask, report, responseWriteStartTimestamp);
+            return WriteBatchItemAfterWriteAsync(writeTask, report);
         }
 
         writeTask.GetAwaiter().GetResult();
-        ReportBatchItem(report, responseWriteStartTimestamp);
+        ReportBatchItem(report);
         return ValueTask.CompletedTask;
     }
 
-    private async ValueTask WriteBatchItemAfterWriteAsync(ValueTask writeTask, RpcReport report, long responseWriteStartTimestamp)
+    private async ValueTask WriteBatchItemAfterWriteAsync(ValueTask writeTask, RpcReport report)
     {
         await writeTask;
-        ReportBatchItem(report, responseWriteStartTimestamp);
+        ReportBatchItem(report);
     }
 
-    private void ReportBatchItem(RpcReport report, long responseWriteStartTimestamp)
+    private void ReportBatchItem(RpcReport report)
     {
-        report = report with
-        {
-            BoundaryTimings = GetResponseWriteTimings(report, responseWriteStartTimestamp)
-        };
-
         jsonRpcLocalStats.ReportCall(report);
 
         if (!jsonRpcUrl.IsAuthenticated && BytesWritten > jsonRpcConfig.MaxBatchResponseBodySize)
@@ -136,10 +124,6 @@ internal sealed class HttpJsonRpcResponseSink(
             StopRequested = true;
         }
     }
-
-    private static RpcBoundaryTimings GetResponseWriteTimings(RpcReport report, long responseWriteStartTimestamp) =>
-        report.BoundaryTimings.WithResponseWrite(
-            (long)Stopwatch.GetElapsedTime(responseWriteStartTimestamp).TotalMicroseconds);
 
     public ValueTask EndBatchAsync(CancellationToken cancellationToken)
     {

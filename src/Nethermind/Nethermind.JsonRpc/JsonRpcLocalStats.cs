@@ -54,7 +54,6 @@ public class JsonRpcLocalStats(ITimestamper timestamper, IJsonRpcConfig jsonRpcC
         {
             JsonRpcMetricLabels label = new(report.Method, report.Success);
             Metrics.JsonRpcCallLatencyMicros.Observe(reportHandlingTimeMicroseconds, label);
-            ObserveBoundaryTimings(report.BoundaryTimings, label);
         }
 
         if (!_logger.IsInfo)
@@ -107,16 +106,6 @@ public class JsonRpcLocalStats(ITimestamper timestamper, IJsonRpcConfig jsonRpcC
         {
             QueueReport(statsForReport);
         }
-    }
-
-    private static void ObserveBoundaryTimings(RpcBoundaryTimings timings, JsonRpcMetricLabels label)
-    {
-        if (!timings.HasMeasurements)
-        {
-            return;
-        }
-
-        Metrics.JsonRpcBoundaryLatencyMicros.Observe(timings.BoundaryMicroseconds, label);
     }
 
     private const string ReportHeader = "method                                  | " +

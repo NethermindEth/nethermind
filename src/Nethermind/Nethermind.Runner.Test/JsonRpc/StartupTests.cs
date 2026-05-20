@@ -170,7 +170,7 @@ public class StartupTests
     }
 
     [Test]
-    public async Task ProcessJsonRpcRequest_ReportsHttpBoundaryTiming()
+    public async Task ProcessJsonRpcRequest_ReportsHttpCallStats()
     {
         IJsonRpcLocalStats jsonRpcLocalStats = Substitute.For<IJsonRpcLocalStats>();
         Startup startup = CreateStartup(jsonRpcLocalStats: jsonRpcLocalStats);
@@ -183,10 +183,7 @@ public class StartupTests
         Assert.That(doc.RootElement.GetProperty("result").ValueKind, Is.EqualTo(JsonValueKind.Array));
 
         jsonRpcLocalStats.Received(1).ReportCall(
-            Arg.Is<RpcReport>(static report =>
-                report.Method == "engine_getBlobsV1" &&
-                report.BoundaryTimings.HasMeasurements &&
-                report.BoundaryTimings.BoundaryMicroseconds >= report.BoundaryTimings.PreMethodMicroseconds),
+            Arg.Is<RpcReport>(static report => report.Method == "engine_getBlobsV1"),
             Arg.Any<long>(),
             Arg.Any<long?>());
     }
@@ -441,9 +438,7 @@ public class StartupTests
         Assert.That(JsonRpcMetrics.JsonRpcHttpStreamableResponses - streamableBefore, Is.EqualTo(1));
         Assert.That(JsonRpcMetrics.JsonRpcHttpUnbufferedResponses - unbufferedBefore, Is.EqualTo(1));
         jsonRpcLocalStats.Received(1).ReportCall(
-            Arg.Is<RpcReport>(static report =>
-                report.Method == "engine_getBlobsV2" &&
-                report.BoundaryTimings.HasMeasurements),
+            Arg.Is<RpcReport>(static report => report.Method == "engine_getBlobsV2"),
             Arg.Any<long>(),
             Arg.Any<long?>());
     }
@@ -477,7 +472,7 @@ public class StartupTests
         Assert.That(JsonRpcMetrics.JsonRpcHttpSerializedResponses - serializedBefore, Is.EqualTo(1));
         Assert.That(JsonRpcMetrics.JsonRpcHttpBufferedResponses - bufferedBefore, Is.EqualTo(1));
         jsonRpcLocalStats.Received(1).ReportCall(
-            Arg.Is<RpcReport>(static report => report.BoundaryTimings.HasMeasurements),
+            Arg.Is<RpcReport>(static report => report.Method == "eth_chainId"),
             Arg.Any<long>(),
             Arg.Any<long?>());
     }

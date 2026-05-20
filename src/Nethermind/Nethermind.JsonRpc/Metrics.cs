@@ -112,9 +112,5 @@ namespace Nethermind.JsonRpc
         [SummaryMetric(LabelNames = ["method", "status"], ObjectiveQuantile = [0.5, 0.9, 0.95, 0.99], ObjectiveEpsilon = [0.05, 0.05, 0.01, 0.005])]
         [Description("Individual rpc latency metric calls")]
         public static IMetricObserver JsonRpcCallLatencyMicros = NoopMetricObserver.Instance;
-
-        [SummaryMetric(LabelNames = ["method", "status"], ObjectiveQuantile = [0.5, 0.9, 0.95, 0.99], ObjectiveEpsilon = [0.05, 0.05, 0.01, 0.005])]
-        [Description("JSON RPC boundary latency outside the called RPC method body.")]
-        public static IMetricObserver JsonRpcBoundaryLatencyMicros = NoopMetricObserver.Instance;
     }
 }
