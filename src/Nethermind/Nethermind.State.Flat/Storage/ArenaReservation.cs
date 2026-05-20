@@ -161,6 +161,20 @@ public sealed class ArenaReservation : RefCountingDisposable
         _arenaManager.ForgetTrackerRange(ArenaId, Offset, Size);
 
     /// <summary>
+    /// Demote variant of <see cref="AdviseDontNeed"/>: <c>madvise(MADV_DONTNEED)</c> plus
+    /// <c>posix_fadvise(POSIX_FADV_DONTNEED)</c> over the reservation's range, then the
+    /// matching tracker-forget. Drops both the mmap working set and the OS file-cache pages
+    /// without freeing disk blocks — unlike <see cref="CleanUp"/> it must not punch a hole,
+    /// because the owning snapshot stays alive and readable.
+    /// </summary>
+    public void AdviseAndFadviseDontNeed()
+    {
+        _arenaFile.AdviseDontNeed(Offset, Size);
+        _arenaFile.FadviseDontNeed(Offset, Size);
+        _arenaManager.ForgetTrackerRange(ArenaId, Offset, Size);
+    }
+
+    /// <summary>
     /// Forward a shutdown-preserve request to the underlying <see cref="ArenaFile"/>. Called
     /// by <see cref="PersistedSnapshots.PersistedSnapshot.PersistOnShutdown"/> as the snapshot
     /// is being marked for survival across the next session.
@@ -173,9 +187,11 @@ public sealed class ArenaReservation : RefCountingDisposable
         // MarkDead just does the atomic set/dict/metric bookkeeping, then we drop our lease
         // and let the file's own CleanUp delete the on-disk file when its refcount hits zero.
         _arenaFile.AdviseDontNeed(Offset, Size);
-        if (_arenaManager.FadviseOnEviction)
-            _arenaFile.FadviseDontNeed(Offset, Size);
-        _arenaManager.MarkDead(_arenaFile, Size);
+        _arenaFile.FadviseDontNeed(Offset, Size);
+        // Punch-hole only when the file survives in the manager: a file MarkDead removes is
+        // about to be deleted once our lease drops, so reclaiming its blocks is wasted work.
+        if (_arenaManager.MarkDead(_arenaFile, Size))
+            _arenaManager.TryPunchHole(_arenaFile, Offset, Size);
         _arenaManager.ForgetTrackerRange(ArenaId, Offset, Size);
         Metrics.ArenaReservationCountByTier.AddOrUpdate(_tier,
             0L, static (_, c) => Math.Max(0, c - 1));

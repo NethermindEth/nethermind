@@ -196,6 +196,10 @@ public static class Metrics
     [KeyIsLabel("tier")]
     public static ConcurrentDictionary<PersistedSnapshotTier, long> ActivePersistedSnapshotCountByTier { get; } = new();
 
+    [Description("1 if fallocate(PUNCH_HOLE) disk reclamation is active for the tier, 0 if disabled (config off or filesystem unsupported)")]
+    [KeyIsLabel("tier")]
+    public static ConcurrentDictionary<PersistedSnapshotTier, long> PersistedSnapshotPunchHoleEnabledByTier { get; } = new();
+
     // Per-tier PageResidencyTracker gauges. ResidentBytes is refreshed by ArenaManager on a
     // 1-second System.Threading.Timer so the tracker's hot path stays untouched; the gauge
     // lags reality by at most ~1s. MetadataBytes and MaxBytes are fixed at tracker construction.

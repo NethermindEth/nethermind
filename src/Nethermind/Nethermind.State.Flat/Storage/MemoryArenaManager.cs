@@ -37,7 +37,9 @@ public sealed class MemoryArenaManager : IArenaManager
 
     public void QueueEviction(int arenaId, int pageIdx) => _inner.QueueEviction(arenaId, pageIdx);
 
-    public void MarkDead(ArenaFile file, long deadSize) => _inner.MarkDead(file, deadSize);
+    public bool MarkDead(ArenaFile file, long deadSize) => _inner.MarkDead(file, deadSize);
+
+    public void TryPunchHole(ArenaFile file, long offset, long size) => _inner.TryPunchHole(file, offset, size);
 
     public void ForgetTrackerRange(int arenaId, long byteOffset, long byteSize) =>
         _inner.ForgetTrackerRange(arenaId, byteOffset, byteSize);

@@ -23,6 +23,7 @@ public sealed class ArenaManager : IArenaManager
     private readonly long _maxArenaSize;
     private readonly long _dedicatedArenaThreshold;
     private readonly bool _fadviseOnEviction;
+    private readonly bool _punchHoleOnReclaim;
     private readonly PersistedSnapshotTier _tier;
     // Make it prefer earlier arena.
     private readonly ConcurrentDictionary<int, ArenaFile> _arenas = new();
@@ -52,6 +53,9 @@ public sealed class ArenaManager : IArenaManager
     private long _evictionsDispatched;
     private int _nextArenaId;
     private bool _disposed;
+    // 1 while fallocate(PUNCH_HOLE) is usable on the arena filesystem; latched to 0 the
+    // first time the kernel reports it permanently unsupported.
+    private int _punchHoleSupported = 1;
 
     internal long EvictionsQueued => Volatile.Read(ref _evictionsQueued);
     internal long EvictionsInlineFallback => Volatile.Read(ref _evictionsInlineFallback);
@@ -62,12 +66,13 @@ public sealed class ArenaManager : IArenaManager
 
     public PersistedSnapshotTier Tier => _tier;
 
-    public ArenaManager(string basePath, long pageCacheBytes, long maxArenaSize = 1L * 1024 * 1024 * 1024, bool fadviseOnEviction = false, long dedicatedArenaThreshold = DefaultDedicatedArenaThreshold, PersistedSnapshotTier? tier = null)
+    public ArenaManager(string basePath, long pageCacheBytes, long maxArenaSize = 1L * 1024 * 1024 * 1024, bool fadviseOnEviction = false, long dedicatedArenaThreshold = DefaultDedicatedArenaThreshold, PersistedSnapshotTier? tier = null, bool punchHoleOnReclaim = true)
     {
         _basePath = basePath;
         _maxArenaSize = maxArenaSize;
         _dedicatedArenaThreshold = dedicatedArenaThreshold;
         _fadviseOnEviction = fadviseOnEviction;
+        _punchHoleOnReclaim = punchHoleOnReclaim;
         // Default to Small for tests/benchmarks that don't care; FlatWorldStateModule
         // passes the actual tier explicitly.
         _tier = tier ?? PersistedSnapshotTier.Small;
@@ -79,6 +84,7 @@ public sealed class ArenaManager : IArenaManager
         Metrics.PageTrackerMetadataBytesByTier[_tier] = _pageTracker.MetadataBytes;
         Metrics.PageTrackerMaxBytesByTier[_tier] =
             (long)_pageTracker.MaxCapacity * Environment.SystemPageSize;
+        Metrics.PersistedSnapshotPunchHoleEnabledByTier[_tier] = _punchHoleOnReclaim ? 1L : 0L;
         // Poll the tracker's _residentPages counter once a second rather than pushing on
         // every Inserted — the hot path stays untouched and the gauge lags by at most ~1s.
         // Skip when the tracker is disabled (MaxCapacity == 0): no residency, no point ticking.
@@ -248,18 +254,24 @@ public sealed class ArenaManager : IArenaManager
     /// file's dead-byte total has caught up with its frontier, drop the manager's dict ref so
     /// the file self-cleans once its last reservation releases its lease. The caller (typically
     /// <see cref="ArenaReservation.CleanUp"/>) already holds the file ref and handles file-side
-    /// ops (<c>madvise</c> / optional <c>posix_fadvise</c>) and tracker-forget itself — this
-    /// method's sole job is the atomic set/dict/metric mutation that needs the manager lock.
+    /// ops (<c>madvise</c> / <c>posix_fadvise</c>) and tracker-forget itself — this method's
+    /// sole job is the atomic set/dict/metric mutation that needs the manager lock.
     /// </summary>
-    public void MarkDead(ArenaFile file, long deadSize)
+    /// <returns>
+    /// <c>true</c> if the file survives in the manager; <c>false</c> if this call removed it
+    /// (all bytes dead) or the manager is disposed.
+    /// </returns>
+    public bool MarkDead(ArenaFile file, long deadSize)
     {
         lock (_lock)
         {
             // After Dispose, on-disk files must be preserved for the next session — skip
-            // dead-byte accounting and file deletion entirely.
-            if (_disposed) return;
+            // dead-byte accounting and file deletion entirely. Reporting "not surviving"
+            // also makes ArenaReservation.CleanUp skip the hole punch, so a file the next
+            // session rehydrates is never zeroed.
+            if (_disposed) return false;
             file.DeadBytes += deadSize;
-            if (file.DeadBytes < file.Frontier) return;
+            if (file.DeadBytes < file.Frontier) return true;
             _standaloneFiles.Remove(file.Id);
             _mutableArenas.Remove(file.Id);
             if (_arenas.TryRemove(file.Id, out _))
@@ -267,13 +279,31 @@ public sealed class ArenaManager : IArenaManager
                 OnArenaRemoved(file);
                 file.Dispose();
             }
+            return false;
         }
     }
 
+    /// <inheritdoc/>
+    public void TryPunchHole(ArenaFile file, long offset, long size)
+    {
+        if (!_punchHoleOnReclaim || Volatile.Read(ref _punchHoleSupported) == 0) return;
+        if (file.PunchHole(offset, size)) return;
+        // First permanent "unsupported" from the kernel — stop trying on every later cleanup.
+        Volatile.Write(ref _punchHoleSupported, 0);
+        Metrics.PersistedSnapshotPunchHoleEnabledByTier[_tier] = 0L;
+    }
+
     /// <summary>
-    /// Whether <see cref="ArenaReservation.CleanUp"/> should also issue a
-    /// <c>posix_fadvise(POSIX_FADV_DONTNEED)</c> after the <c>madvise(MADV_DONTNEED)</c>.
-    /// Mirrors the <c>fadviseOnEviction</c> ctor argument.
+    /// Whether the adaptive punch-hole support flag is still set — i.e. no
+    /// filesystem-unsupported error has been seen. Independent of the operator config flag.
+    /// </summary>
+    internal bool PunchHoleSupported => Volatile.Read(ref _punchHoleSupported) == 1;
+
+    /// <summary>
+    /// Whether the per-page eviction drain (<see cref="DispatchEvictionInline"/>) should issue
+    /// a <c>posix_fadvise(POSIX_FADV_DONTNEED)</c> after the <c>madvise(MADV_DONTNEED)</c>.
+    /// Mirrors the <c>fadviseOnEviction</c> ctor argument. Whole-reservation cleanup and snapshot
+    /// demote fadvise unconditionally, independent of this flag.
     /// </summary>
     public bool FadviseOnEviction => _fadviseOnEviction;
 
