@@ -54,11 +54,13 @@ public class BalRecordingBranchProcessor(
 
     private bool ShouldFlip(IReadOnlyList<Block> suggestedBlocks)
     {
+        bool recording = store.RecordingEnabled;
+        bool replay = store.ReplayEnabled;
         foreach (Block block in suggestedBlocks)
         {
             if (block.IsGenesis) continue;
-            if (store.RecordingEnabled) return true;
-            if (store.ReplayEnabled && block.BlockAccessList is not null) return true;
+            if (recording) return true;
+            if (replay && block.BlockAccessList is not null) return true;
         }
         return false;
     }

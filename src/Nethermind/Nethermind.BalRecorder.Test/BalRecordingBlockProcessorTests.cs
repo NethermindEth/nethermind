@@ -36,6 +36,7 @@ public class BalRecordingBlockProcessorTests
         (Block block, _) = sut.ProcessOne(processed, ProcessingOptions.None, NullBlockTracer.Instance, Substitute.For<IReleaseSpec>(), CancellationToken.None);
 
         block.Should().BeSameAs(processed);
+        balManager.Received(1).ForceConstructGeneratedBlockAccessList = recordingEnabled;
         if (recordingEnabled)
             store.Inserted.Should().ContainSingle().Which.Should().Be((9L, generated));
         else
