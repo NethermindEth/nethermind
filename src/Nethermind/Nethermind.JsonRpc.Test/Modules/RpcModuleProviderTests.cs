@@ -9,8 +9,10 @@ using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Test.Modules;
 using Nethermind.Era1.JsonRpc;
+using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.Admin;
+using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.JsonRpc.Modules.Net;
 using Nethermind.JsonRpc.Modules.Proof;
 using Nethermind.Logging;
@@ -234,6 +236,13 @@ public class RpcModuleProviderTests
         module.AsyncCalls.Should().Be(1);
         module.ParameterCalls.Should().Be(1);
         module.FourParameterCalls.Should().Be(1);
+    }
+
+    [Test]
+    public void Generated_rpc_type_info_includes_rpc_result_and_parameter_payloads()
+    {
+        GeneratedRpcTypeInfo.TryGet<FeeHistoryResults>(out _).Should().BeTrue();
+        GeneratedRpcTypeInfo.TryGet<TransactionForRpc>(out _).Should().BeTrue();
     }
 
     [Test]

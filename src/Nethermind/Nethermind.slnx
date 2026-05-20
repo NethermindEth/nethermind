@@ -119,6 +119,7 @@
   <Project Path="Nethermind.History/Nethermind.History.csproj" />
   <Project Path="Nethermind.Init.Snapshot/Nethermind.Init.Snapshot.csproj" />
   <Project Path="Nethermind.Init/Nethermind.Init.csproj" />
+  <Project Path="Nethermind.JsonRpc.SourceGenerator/Nethermind.JsonRpc.SourceGenerator.csproj" />
   <Project Path="Nethermind.JsonRpc/Nethermind.JsonRpc.csproj" />
   <Project Path="Nethermind.KeyStore/Nethermind.KeyStore.csproj" />
   <Project Path="Nethermind.Merge.AuRa/Nethermind.Merge.AuRa.csproj" />
