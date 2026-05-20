@@ -34,7 +34,10 @@ internal sealed class HttpJsonRpcResponseSink(
     private static ReadOnlySpan<byte> JsonComma => [(byte)','];
     private static ReadOnlySpan<byte> JsonClosingBracket => [(byte)']'];
     private const string JsonContentType = "application/json";
+    private const int BufferedResponseInitialCapacity = 16 * 1024;
     private static readonly StringValues JsonContentTypeHeader = new(JsonContentType);
+    private static readonly StreamPipeWriterOptions BufferedResponsePipeWriterOptions =
+        new(minimumBufferSize: BufferedResponseInitialCapacity, leaveOpen: true);
     private static readonly ConcurrentDictionary<Type, JsonTypeInfo> _jsonTypeInfoCache = new();
 
     private CountingWriter? _writer;
@@ -262,8 +265,8 @@ internal sealed class HttpJsonRpcResponseSink(
         }
 
         bool bufferResponse = jsonRpcConfig.BufferResponses && !(jsonRpcUrl.IsAuthenticated && !isCollection);
-        _bufferedStream = bufferResponse ? RecyclableStream.GetStream("http") : null;
-        _writer = _bufferedStream is not null ? new CountingStreamPipeWriter(_bufferedStream) : new CountingPipeWriter(context.Response.BodyWriter);
+        _bufferedStream = bufferResponse ? RecyclableStream.GetStream("http", BufferedResponseInitialCapacity) : null;
+        _writer = _bufferedStream is not null ? new CountingStreamPipeWriter(_bufferedStream, BufferedResponsePipeWriterOptions) : new CountingPipeWriter(context.Response.BodyWriter);
         if (_bufferedStream is null)
         {
             Interlocked.Increment(ref Metrics.JsonRpcHttpUnbufferedResponses);

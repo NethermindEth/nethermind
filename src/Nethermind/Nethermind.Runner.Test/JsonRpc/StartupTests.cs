@@ -417,24 +417,29 @@ public class StartupTests
         ctx.Features.Set<IHttpResponseBodyFeature>(new StreamResponseBodyFeature(responseBody));
         long serializedBefore = JsonRpcMetrics.JsonRpcHttpSerializedResponses;
         long bufferedBefore = JsonRpcMetrics.JsonRpcHttpBufferedResponses;
+        IJsonRpcLocalStats jsonRpcLocalStats = Substitute.For<IJsonRpcLocalStats>();
 
         HttpJsonRpcResponseSink sink = new(
             ctx,
             new JsonRpcUrl("http", "127.0.0.1", 0, RpcEndpoint.Http, false, [ModuleType.Engine]),
             new JsonRpcConfig { BufferResponses = true },
-            Substitute.For<IJsonRpcLocalStats>(),
+            jsonRpcLocalStats,
             EthereumJsonSerializer.JsonOptions,
             LimboLogs.Instance.GetClassLogger<StartupTests>(),
             Stopwatch.GetTimestamp());
 
         await sink.WriteSingleAsync(
-            new JsonRpcSuccessResponse { Id = JsonRpcId.FromObject(1), Result = true },
+            new JsonRpcSuccessResponse { Id = JsonRpcId.FromObject(1), Result = new string('x', 8 * 1024) },
             new RpcReport("eth_chainId", 0, true),
             CancellationToken.None);
         await sink.CompleteAsync(CancellationToken.None);
 
         Assert.That(JsonRpcMetrics.JsonRpcHttpSerializedResponses - serializedBefore, Is.EqualTo(1));
         Assert.That(JsonRpcMetrics.JsonRpcHttpBufferedResponses - bufferedBefore, Is.EqualTo(1));
+        jsonRpcLocalStats.Received(1).ReportCall(
+            Arg.Is<RpcReport>(static report => report.BoundaryTimings.ResponseFlushCount == 0),
+            Arg.Any<long>(),
+            Arg.Any<long?>());
     }
 
     [TestCase("127.0.0.1", true)]
