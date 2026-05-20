@@ -33,6 +33,9 @@ public sealed partial class JwtAuthentication : IRpcAuthentication
     private static readonly Task<bool> True = Task.FromResult(true);
     private static readonly Task<bool> False = Task.FromResult(false);
 
+    [ThreadStatic]
+    private static HMACSHA256? _hmac;
+
     // Known HS256 JWT header Base64Url encodings used by consensus clients
     // {"alg":"HS256","typ":"JWT"}
     private const string HeaderAlgTyp = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9";
@@ -233,7 +236,7 @@ public sealed partial class JwtAuthentication : IRpcAuthentication
             return false;
 
         Span<byte> computedHash = stackalloc byte[SHA256HashBytes];
-        HMACSHA256.HashData(_secretBytes, signedBytes, computedHash);
+        (_hmac ??= new HMACSHA256(_secretBytes)).TryComputeHash(signedBytes, computedHash, out _);
 
         Span<byte> sigBytes = stackalloc byte[SHA256HashBytes];
         if (Base64Url.DecodeFromChars(signature, sigBytes, out _, out int sigBytesWritten) != OperationStatus.Done
