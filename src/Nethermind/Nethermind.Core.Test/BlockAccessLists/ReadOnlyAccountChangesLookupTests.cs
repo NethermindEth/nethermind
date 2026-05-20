@@ -10,19 +10,13 @@ using NUnit.Framework;
 namespace Nethermind.Core.Test.BlockAccessLists;
 
 /// <summary>
-/// Pins the per-index lookup semantics on <see cref="ReadOnlyAccountChanges"/>. These methods
-/// (<see cref="ReadOnlyAccountChanges.GetBalance"/> / <c>GetNonce</c> / <c>GetCode</c> /
-/// <c>GetCodeHash</c> and the corresponding <c>TryGetLast*ChangeBefore</c>) are the per-account
-/// half of how <see cref="Nethermind.State.BlockAccessListBasedWorldState"/> resolves reads at
-/// the current block-access index: each returns the last in-block change strictly less than the
-/// queried index, or <c>null</c> if no such change exists — and that <c>null</c> is what triggers
-/// the parent-state-reader fallthrough one level up.
+/// Pins the per-index lookup semantics on <see cref="ReadOnlyAccountChanges"/>:
+/// <see cref="ReadOnlyAccountChanges.GetBalance"/> / <c>GetNonce</c> / <c>GetCode</c> /
+/// <c>GetCodeHash</c> and the <c>TryGetLast*ChangeBefore</c> family return the last in-block
+/// change strictly before the queried index, or <c>null</c> if none. The <c>null</c> is what
+/// triggers <see cref="Nethermind.State.BlockAccessListBasedWorldState"/>'s fallthrough to its
+/// parent-state reader.
 /// </summary>
-/// <remarks>
-/// Replaces master's <c>AccountChangesPrestateTests</c>: this branch holds no in-BAL prestate
-/// entry (prestate lives in the parent-reader snapshot), so the test surface is the index filter
-/// itself, not the <c>PrestateIndex</c> sentinel ordering.
-/// </remarks>
 [TestFixture]
 public class ReadOnlyAccountChangesLookupTests
 {
@@ -86,17 +80,15 @@ public class ReadOnlyAccountChangesLookupTests
     [Test]
     public void GetCode_and_GetCodeHash_return_null_when_no_prior_code_change()
     {
-        // On the branch, GetCode/GetCodeHash return null rather than throwing — the caller
-        // (BlockAccessListBasedWorldState) treats null as "ask the parent reader."
+        // Null signals "no in-block change" so callers fall through to the parent-state reader.
         ReadOnlyAccountChanges ac = Build.An.AccountChanges.WithAddress(TestItem.AddressA).TestObject;
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(ac.GetCode(0), Is.Null);
-            // Regression for the ternary-type-inference bug in GetCodeHash(uint): without an
-            // explicit (ValueHash256?) on the null branch, C# picked Hash256?->ValueHash256's
-            // user-defined implicit operator and the false branch became default(ValueHash256)
-            // lifted to HasValue=true.
+            // Regression for GetCodeHash(uint)'s ternary: without an explicit (ValueHash256?)
+            // on the null branch, C# routes via Hash256?->ValueHash256's user-defined implicit
+            // operator and the false branch lifts to HasValue=true.
             Assert.That(ac.GetCodeHash(0).HasValue, Is.False);
         }
     }
@@ -143,9 +135,8 @@ public class ReadOnlyAccountChangesLookupTests
     [Test]
     public void Last_change_via_indexer_is_the_highest_indexed_change()
     {
-        // ApplyStateChanges reads [^1] to apply the final state for the account. With the
-        // prestate sentinel gone from this branch, [^1] is just the highest-index in-block
-        // change — no need for a separate "ignore the prestate slot" check on the read side.
+        // ApplyStateChanges reads [^1] to apply the final state for the account, so [^1] must
+        // return the highest-index in-block change.
         ReadOnlyAccountChanges ac = Build.An.AccountChanges
             .WithAddress(TestItem.AddressA)
             .WithBalanceChanges(new BalanceChange(0, 100), new BalanceChange(2, 300))

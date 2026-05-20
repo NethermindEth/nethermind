@@ -84,9 +84,8 @@ public class GeneratedAccountChanges(Address address)
     public bool TryGetSlotChanges(UInt256 key, [NotNullWhen(true)] out GeneratedSlotChanges? slotChanges)
         => _storageChanges.TryGetValue(key, out slotChanges);
 
-    /// <summary>Per-family change lists are appended in monotonically increasing <c>Index</c>
-    /// order during <see cref="Merge"/>, so we binary-search via <see cref="IndexKey{T}"/>
-    /// rather than scanning. Mirrors <see cref="ReadOnlyAccountChanges"/>.</summary>
+    /// <summary>Binary-search the entry with <c>Index == index</c>; null if none.
+    /// Lists are kept sorted by <c>Index</c> via the monotonic <see cref="Merge"/> contract.</summary>
     public BalanceChange? BalanceChangeAtIndex(uint index) => GetExact(_balanceChanges.AsSpan(), index);
     public NonceChange? NonceChangeAtIndex(uint index) => GetExact(_nonceChanges.AsSpan(), index);
     public CodeChange? CodeChangeAtIndex(uint index) => GetExact(_codeChanges.AsSpan(), index);
@@ -108,11 +107,8 @@ public class GeneratedAccountChanges(Address address)
         && CodeChangeAtIndex(index) is null
         && !HasSlotChangesAtIndex(index);
 
-    /// <summary>Structural equality of the per-index slice of this account against the suggested
-    /// (decoded) account. Address is not compared (callers ensure they're matched). Walks both
-    /// sides without allocating: per-slot lookup is an O(log n) binary search via
-    /// <see cref="IndexKey{T}"/>, and the suggested side's slot list is sorted-by-key so the
-    /// generated side is paired with it via a binary search per slot.</summary>
+    /// <summary>Structural equality of this account's slice at <paramref name="index"/> against
+    /// the suggested (decoded) account. Address is not compared (callers ensure they match).</summary>
     public bool ChangesAtIndexEqual(ReadOnlyAccountChanges other, uint index)
     {
         if (BalanceChangeAtIndex(index) != other.BalanceChangeAtIndex(index)) return false;
@@ -225,7 +221,9 @@ public class GeneratedAccountChanges(Address address)
         }
     }
 
-    /// <summary>Merge the per-index source into this accumulator. Caller must ensure indices arrive monotonically.</summary>
+    /// <summary>
+    /// Merge the per-index source into this accumulator. Caller must ensure indices arrive monotonically.
+    /// </summary>
     public void Merge(AccountChangesAtIndex other)
     {
         if (other.BalanceChange is not null)
@@ -251,7 +249,6 @@ public class GeneratedAccountChanges(Address address)
 
         foreach (UInt256 read in other.StorageReads)
         {
-            // only add reads where there's no existing change for the slot
             if (!_storageChanges.ContainsKey(read))
             {
                 _storageReads.Add(read);

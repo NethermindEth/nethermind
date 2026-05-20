@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using Ethereum.Test.Base;
 using Evm.T8n.Errors;
 using Evm.T8n.JsonTypes;
 using Nethermind.Core.Specs;
@@ -31,7 +30,7 @@ public static class T8nInputProcessor
 
         T8nValidator.ApplyChecks(inputData.Env, specProvider, spec);
 
-        var gethTraceOptions = new GethTraceOptions
+        GethTraceOptions gethTraceOptions = new()
         {
             EnableMemory = arguments.TraceMemory,
             DisableStack = arguments.TraceNoStack

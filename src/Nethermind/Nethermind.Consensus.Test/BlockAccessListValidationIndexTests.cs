@@ -137,18 +137,14 @@ public class BlockAccessListValidationIndexTests
     [Test]
     public void ChangesEqual_does_not_detect_surplus_read_only_account_in_generated()
     {
-        // A generated slice containing a read-only account that the suggested BAL doesn't
-        // declare is invisible to the column-index fast path: no row data lands in either
-        // index for that address (read-only entries have no balance/nonce/code/storage
-        // changes to populate a lane). ChangesEqual therefore returns true. The
-        // BlockAccessListManager wraps this index with the _hasGeneratedRequiredReadAccountMismatch
-        // flag, set inside RegisterGeneratedSlice, to force the fallback walk that does
-        // catch the surplus.
+        // Read-only accounts produce no lane rows, so the column-index can't see a surplus
+        // one — ChangesEqual returns true. The manager's _hasGeneratedRequiredReadAccountMismatch
+        // flag (set in RegisterGeneratedSlice) catches it instead.
         ReadOnlyBlockAccessList suggested = Bal(
             Account(TestItem.AddressA, balance: new BalanceChange(1, 1)));
 
         BlockAccessListValidationIndex suggestedIndex = BlockAccessListValidationIndex.Build(suggested, txCount: 1, _addressIndex);
-        BlockAccessListValidationIndex generatedIndex = new(1, _addressIndex, suggestedIndex);
+        BlockAccessListValidationIndex generatedIndex = new(1, _addressIndex, suggestedIndex, suggested.TotalStorageReads, suggested.TotalStorageChangeEvents);
 
         // Generated slice: AddressA matches, AddressB has only a read.
         BlockAccessListAtIndex slice = new() { Index = 1 };
@@ -202,7 +198,7 @@ public class BlockAccessListValidationIndexTests
         out BlockAccessListValidationIndex suggestedIndex)
     {
         suggestedIndex = BlockAccessListValidationIndex.Build(suggested, txCount, _addressIndex);
-        BlockAccessListValidationIndex generatedIndex = new(txCount, _addressIndex, suggestedIndex);
+        BlockAccessListValidationIndex generatedIndex = new(txCount, _addressIndex, suggestedIndex, suggested.TotalStorageReads, suggested.TotalStorageChangeEvents);
         // BlockAccessListValidationIndex.Add only accepts per-tx slices (one BlockAccessListAtIndex
         // per block-access index). Tests phrase the generated side as a full ReadOnlyBlockAccessList
         // for symmetry with the suggested side, so we shred it back into per-index slices here.

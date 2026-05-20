@@ -55,27 +55,18 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
             ISnapServer snapServer)
             : base(session, nodeStats, serializer, backgroundTaskScheduler, logManager)
         {
-            _getAccountRangeRequests = new(Send);
-            _getStorageRangeRequests = new(Send);
-            _getByteCodesRequests = new(Send);
-            _getTrieNodesRequests = new(Send);
+            _getAccountRangeRequests = new(this);
+            _getStorageRangeRequests = new(this);
+            _getByteCodesRequests = new(this);
+            _getTrieNodesRequests = new(this);
             SyncServer = snapServer;
             CanServe = snapServer.CanServe;
             SnapMessageLimits.GetTrieNodesPathsPerGroupRlpLimit = RlpLimit.For<PathGroup>(syncConfig.SnapServingMaxPathsPerGroup, nameof(PathGroup.Group));
         }
 
-        public override event EventHandler<ProtocolInitializedEventArgs>? ProtocolInitialized;
-        public override event EventHandler<ProtocolEventArgs>? SubprotocolRequested
-        {
-            add { }
-            remove { }
-        }
+        public override void Init() => NotifyProtocolInitialized(new ProtocolInitializedEventArgs(this));
 
-        public override void Init() => ProtocolInitialized?.Invoke(this, new ProtocolInitializedEventArgs(this));
-
-        public override void Dispose() =>
-            // Clear Events if set
-            ProtocolInitialized = null;
+        public override void Dispose() => ClearProtocolEvents();
 
         protected override void HandleMessageCore(ZeroPacket message)
         {
@@ -267,9 +258,10 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
         {
             using DeferredRlpItemList.Builder builder = new();
             DeferredRlpItemList.Builder.Writer rootWriter = builder.BeginRootContainer();
-            for (int i = 0; i < request.Paths.Count; i++)
+            ReadOnlySpan<AccountWithStorageStartingHash> paths = request.Paths.AsSpan();
+            for (int i = 0; i < paths.Length; i++)
             {
-                AccountWithStorageStartingHash path = request.Paths[i];
+                AccountWithStorageStartingHash path = paths[i];
                 using DeferredRlpItemList.Builder.Writer groupWriter = rootWriter.BeginContainer();
                 groupWriter.WriteValue(path.PathAndAccount.Path.Bytes);
                 groupWriter.WriteValue(_emptyBytes);
