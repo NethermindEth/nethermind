@@ -3,7 +3,6 @@
 
 using System;
 using System.Buffers;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
@@ -36,10 +35,6 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
     private readonly IRpcModuleProvider _rpcModuleProvider = rpcModuleProvider;
     private readonly HashSet<string> _methodsLoggingFiltering = (jsonRpcConfig.MethodsLoggingFiltering ?? []).ToHashSet();
     private readonly int _maxLoggedRequestParametersCharacters = jsonRpcConfig.MaxLoggedRequestParametersCharacters ?? int.MaxValue;
-    private static readonly ConcurrentDictionary<Type, TaskResultAccessor> _taskResultAccessors = new();
-    private static readonly MethodInfo _readTaskResultMethod = typeof(JsonRpcService).GetMethod(nameof(ReadTaskResult), BindingFlags.NonPublic | BindingFlags.Static)!;
-
-    private delegate IResultWrapper? TaskResultAccessor(Task task);
 
     public ValueTask<JsonRpcResponse> SendRequestAsync(JsonRpcRequest rpcRequest, JsonRpcContext context)
     {
@@ -146,7 +141,7 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
                     break;
                 case Task task:
                     await task;
-                    resultWrapper = GetTaskResult(task);
+                    resultWrapper = method.ReadTaskResult(task);
                     break;
                 default:
                     break;
@@ -545,37 +540,6 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
             return GetErrorResponse(methodName, ErrorCodes.ResourceNotFound, ex.Message, ex.ToString(), request.Id, returnAction);
         }
     }
-
-    private static IResultWrapper? GetTaskResult(Task task) =>
-        _taskResultAccessors.GetOrAdd(task.GetType(), static taskType => CreateTaskResultAccessor(taskType))(task);
-
-    private static TaskResultAccessor CreateTaskResultAccessor(Type taskType)
-    {
-        Type? resultType = GetTaskResultType(taskType);
-        if (resultType is null || !resultType.IsAssignableTo(typeof(IResultWrapper)))
-        {
-            return static _ => null;
-        }
-
-        return _readTaskResultMethod.MakeGenericMethod(resultType).CreateDelegate<TaskResultAccessor>();
-    }
-
-    private static Type? GetTaskResultType(Type taskType)
-    {
-        for (Type? type = taskType; type is not null; type = type.BaseType)
-        {
-            if (type.IsGenericType && type.GetGenericTypeDefinition() == typeof(Task<>))
-            {
-                return type.GetGenericArguments()[0];
-            }
-        }
-
-        return null;
-    }
-
-    private static IResultWrapper? ReadTaskResult<TResult>(Task task)
-        where TResult : IResultWrapper =>
-        ((Task<TResult>)task).Result;
 
     private void LogRequest(string methodName, JsonElement providedParameters, ExpectedParameter[] expectedParameters)
     {

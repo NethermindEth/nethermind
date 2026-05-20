@@ -176,6 +176,8 @@ public class RpcModuleProviderTests
         RpcModuleProvider.ResolvedMethodInfo parameterMethod = _moduleProvider.Resolve(nameof(DirectInvokerRpcModule.direct_with_param))!;
         RpcModuleProvider.ResolvedMethodInfo fourParameterMethod = _moduleProvider.Resolve(nameof(DirectInvokerRpcModule.direct_with_four_params))!;
         RpcModuleProvider.ResolvedMethodInfo requiredValueParameterMethod = _moduleProvider.Resolve(nameof(DirectInvokerRpcModule.direct_required_value_param))!;
+        RpcModuleProvider.ResolvedMethodInfo typedErrorDataMethod = _moduleProvider.Resolve(nameof(DirectInvokerRpcModule.direct_typed_error_data))!;
+        RpcModuleProvider.ResolvedMethodInfo asyncTypedErrorDataMethod = _moduleProvider.Resolve(nameof(DirectInvokerRpcModule.direct_async_typed_error_data))!;
 
         syncMethod.DirectNoParameterInvoker.Should().NotBeNull();
         asyncMethod.DirectNoParameterInvoker.Should().NotBeNull();
@@ -184,17 +186,47 @@ public class RpcModuleProviderTests
         fourParameterMethod.DirectParameterInvoker.Should().NotBeNull();
         requiredValueParameterMethod.DirectParameterInvoker.Should().BeNull();
 
+        syncMethod.IsTaskWrapped.Should().BeFalse();
+        syncMethod.ResultWrapperType.Should().Be(typeof(ResultWrapper<string>));
+        syncMethod.SuccessPayloadType.Should().Be(typeof(string));
+        syncMethod.SuccessPayloadTypeInfo.Should().NotBeNull();
+        syncMethod.ErrorDataPayloadType.Should().BeNull();
+        syncMethod.TaskResultAccessor.Should().BeNull();
+
+        asyncMethod.IsTaskWrapped.Should().BeTrue();
+        asyncMethod.ResultWrapperType.Should().Be(typeof(ResultWrapper<long>));
+        asyncMethod.SuccessPayloadType.Should().Be(typeof(long));
+        asyncMethod.SuccessPayloadTypeInfo.Should().NotBeNull();
+        asyncMethod.ErrorDataPayloadType.Should().BeNull();
+        asyncMethod.TaskResultAccessor.Should().NotBeNull();
+
+        typedErrorDataMethod.ResultWrapperType.Should().Be(typeof(ResultWrapper<string, bool>));
+        typedErrorDataMethod.SuccessPayloadType.Should().Be(typeof(string));
+        typedErrorDataMethod.ErrorDataPayloadType.Should().Be(typeof(bool));
+        typedErrorDataMethod.ErrorDataPayloadTypeInfo.Should().NotBeNull();
+
+        asyncTypedErrorDataMethod.IsTaskWrapped.Should().BeTrue();
+        asyncTypedErrorDataMethod.ResultWrapperType.Should().Be(typeof(ResultWrapper<string, string>));
+        asyncTypedErrorDataMethod.SuccessPayloadType.Should().Be(typeof(string));
+        asyncTypedErrorDataMethod.ErrorDataPayloadType.Should().Be(typeof(string));
+        asyncTypedErrorDataMethod.TaskResultAccessor.Should().NotBeNull();
+
         IResultWrapper syncResult = syncMethod.DirectNoParameterInvoker!(module).Should().BeAssignableTo<IResultWrapper>().Subject;
         syncResult.Data.Should().Be("sync");
 
         Task<ResultWrapper<long>> asyncResult = asyncMethod.DirectNoParameterInvoker!(module).Should().BeAssignableTo<Task<ResultWrapper<long>>>().Subject;
         (await asyncResult).Data.Should().Be(5);
+        asyncMethod.ReadTaskResult(asyncResult)!.Data.Should().Be(5);
 
         IResultWrapper parameterResult = parameterMethod.DirectParameterInvoker!(module, ["param"]).Should().BeAssignableTo<IResultWrapper>().Subject;
         parameterResult.Data.Should().Be("param");
 
         IResultWrapper fourParameterResult = fourParameterMethod.DirectParameterInvoker!(module, ["a", "b", "c", "d"]).Should().BeAssignableTo<IResultWrapper>().Subject;
         fourParameterResult.Data.Should().Be("abcd");
+
+        Task<ResultWrapper<string, string>> asyncTypedErrorResult = asyncTypedErrorDataMethod.DirectNoParameterInvoker!(module)
+            .Should().BeAssignableTo<Task<ResultWrapper<string, string>>>().Subject;
+        asyncTypedErrorDataMethod.ReadTaskResult(asyncTypedErrorResult)!.Data.Should().Be("error-data");
 
         module.SyncCalls.Should().Be(1);
         module.AsyncCalls.Should().Be(1);
@@ -313,6 +345,12 @@ public class RpcModuleProviderTests
         }
 
         public ResultWrapper<int> direct_required_value_param(int value) => ResultWrapper<int>.Success(value);
+
+        public ResultWrapper<string, bool> direct_typed_error_data() =>
+            ResultWrapper<string, bool>.Fail("typed", ErrorCodes.InvalidParams, false);
+
+        public Task<ResultWrapper<string, string>> direct_async_typed_error_data() =>
+            Task.FromResult(ResultWrapper<string, string>.Fail("typed", ErrorCodes.InvalidParams, "error-data"));
     }
 
     [RpcModule(ModuleType.Eth)]

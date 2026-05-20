@@ -290,6 +290,10 @@ namespace Nethermind.JsonRpc.Modules
                 typeof(ResolvedMethodInfo).GetMethod(nameof(CreateTypedDirectThreeParameterInvoker), BindingFlags.NonPublic | BindingFlags.Static)!;
             private static readonly MethodInfo _createTypedDirectFourParameterInvokerMethod =
                 typeof(ResolvedMethodInfo).GetMethod(nameof(CreateTypedDirectFourParameterInvoker), BindingFlags.NonPublic | BindingFlags.Static)!;
+            private static readonly MethodInfo _readTaskResultMethod =
+                typeof(ResolvedMethodInfo).GetMethod(nameof(ReadTaskResult), BindingFlags.NonPublic | BindingFlags.Static)!;
+
+            internal delegate IResultWrapper? TaskResultReader(Task task);
 
             public readonly struct ExpectedParameter
             {
@@ -429,6 +433,26 @@ namespace Nethermind.JsonRpc.Modules
                 ExpectedParameters = expectedParameters;
                 ReadOnly = readOnly;
                 Availability = availability;
+                IsTaskWrapped = TryGetTaskResultType(methodInfo.ReturnType, out Type? taskResultType);
+                ResultWrapperType = IsTaskWrapped ? taskResultType : methodInfo.ReturnType;
+                if (!ResultWrapperType.IsAssignableTo(typeof(IResultWrapper)))
+                {
+                    ResultWrapperType = null;
+                }
+
+                if (ResultWrapperType is not null)
+                {
+                    SuccessPayloadType = GetResultWrapperPayloadType(ResultWrapperType);
+                    ErrorDataPayloadType = GetResultWrapperErrorDataType(ResultWrapperType);
+                    SuccessPayloadTypeInfo = GetJsonTypeInfo(SuccessPayloadType);
+                    ErrorDataPayloadTypeInfo = GetJsonTypeInfo(ErrorDataPayloadType);
+
+                    if (IsTaskWrapped)
+                    {
+                        TaskResultAccessor = CreateTaskResultAccessor(ResultWrapperType);
+                    }
+                }
+
                 Invoker = MethodInvoker.Create(methodInfo);
                 DirectNoParameterInvoker = CreateDirectNoParameterInvoker(methodInfo, parameters.Length);
                 DirectParameterInvoker = CreateDirectParameterInvoker(methodInfo, parameters);
@@ -442,6 +466,13 @@ namespace Nethermind.JsonRpc.Modules
             public ExpectedParameter[] ExpectedParameters { get; }
             public bool ReadOnly { get; }
             public RpcEndpoint Availability { get; }
+            internal Type? ResultWrapperType { get; }
+            internal Type? SuccessPayloadType { get; }
+            internal Type? ErrorDataPayloadType { get; }
+            internal JsonTypeInfo? SuccessPayloadTypeInfo { get; }
+            internal JsonTypeInfo? ErrorDataPayloadTypeInfo { get; }
+            internal bool IsTaskWrapped { get; }
+            internal TaskResultReader? TaskResultAccessor { get; }
             internal IRpcModulePool? ModulePool { get; private set; }
 
             public override string ToString() => MethodInfo.Name;
@@ -582,23 +613,77 @@ namespace Nethermind.JsonRpc.Modules
 
             private static bool CanUseDirectInvokerReturn(Type returnType) =>
                 returnType.IsAssignableTo(typeof(IResultWrapper)) ||
-                GetTaskResultType(returnType) is { } resultType && resultType.IsAssignableTo(typeof(IResultWrapper));
+                TryGetTaskResultType(returnType, out Type? resultType) && resultType.IsAssignableTo(typeof(IResultWrapper));
 
             private static bool ShouldReparseStringParameter(Type parameterType, JsonConverter converter) =>
                 converter.GetType().Namespace?.StartsWith("System.", StringComparison.Ordinal) == true ||
                 parameterType.IsArray && parameterType != typeof(byte[]);
 
-            private static Type? GetTaskResultType(Type taskType)
+            internal IResultWrapper? ReadTaskResult(Task task) => TaskResultAccessor?.Invoke(task);
+
+            private static TaskResultReader CreateTaskResultAccessor(Type resultType) =>
+                _readTaskResultMethod.MakeGenericMethod(resultType).CreateDelegate<TaskResultReader>();
+
+            private static IResultWrapper? ReadTaskResult<TResult>(Task task)
+                where TResult : IResultWrapper =>
+                ((Task<TResult>)task).Result;
+
+            private static bool TryGetTaskResultType(Type taskType, [NotNullWhen(true)] out Type? resultType)
             {
                 for (Type? type = taskType; type is not null; type = type.BaseType)
                 {
                     if (type.IsGenericType && type.GetGenericTypeDefinition() == typeof(Task<>))
+                    {
+                        resultType = type.GetGenericArguments()[0];
+                        return true;
+                    }
+                }
+
+                resultType = null;
+                return false;
+            }
+
+            private static Type? GetResultWrapperPayloadType(Type resultWrapperType)
+            {
+                for (Type? type = resultWrapperType; type is not null; type = type.BaseType)
+                {
+                    if (!type.IsGenericType)
+                    {
+                        continue;
+                    }
+
+                    Type genericTypeDefinition = type.GetGenericTypeDefinition();
+                    if (genericTypeDefinition == typeof(ResultWrapper<>) || genericTypeDefinition == typeof(ResultWrapper<,>))
                     {
                         return type.GetGenericArguments()[0];
                     }
                 }
 
                 return null;
+            }
+
+            private static Type? GetResultWrapperErrorDataType(Type resultWrapperType)
+            {
+                for (Type? type = resultWrapperType; type is not null; type = type.BaseType)
+                {
+                    if (type.IsGenericType && type.GetGenericTypeDefinition() == typeof(ResultWrapper<,>))
+                    {
+                        return type.GetGenericArguments()[1];
+                    }
+                }
+
+                return null;
+            }
+
+            private static JsonTypeInfo? GetJsonTypeInfo(Type? payloadType)
+            {
+                if (payloadType is null)
+                {
+                    return null;
+                }
+
+                EthereumJsonSerializer.JsonOptions.TryGetTypeInfo(payloadType, out JsonTypeInfo? typeInfo);
+                return typeInfo;
             }
 
             [DoesNotReturn, StackTraceHidden]
