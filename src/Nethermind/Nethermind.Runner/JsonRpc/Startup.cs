@@ -481,6 +481,8 @@ public class Startup : IStartup
                 Interlocked.Add(ref Metrics.JsonRpcBytesReceivedHttp, collectedBody.BytesRead);
                 Interlocked.Add(ref Metrics.JsonRpcHttpRequestBodyReads, collectedBody.ReadCount);
                 Interlocked.Add(ref Metrics.JsonRpcHttpRequestBodySegments, collectedBody.SegmentCount);
+                Interlocked.Add(ref Metrics.JsonRpcHttpRequestBodyBufferRents, collectedBody.BufferRentCount);
+                Interlocked.Add(ref Metrics.JsonRpcHttpRequestBodyBufferBytesRented, collectedBody.BufferBytesRented);
             }
             finally
             {
@@ -567,6 +569,8 @@ public class Startup : IStartup
         public int BytesRead { get; private set; }
         public int ReadCount { get; private set; }
         public int SegmentCount { get; private set; }
+        public int BufferRentCount { get; private set; }
+        public long BufferBytesRented { get; private set; }
 
         public ReadOnlyMemory<byte> Memory =>
             _buffer is null ? ReadOnlyMemory<byte>.Empty : _buffer.AsMemory(0, BytesRead);
@@ -593,6 +597,8 @@ public class Startup : IStartup
             }
 
             byte[] newBuffer = ArrayPool<byte>.Shared.Rent(newCapacity);
+            BufferRentCount++;
+            BufferBytesRented += newBuffer.Length;
             if (_buffer is not null)
             {
                 _buffer.AsSpan(0, BytesRead).CopyTo(newBuffer);
@@ -637,6 +643,8 @@ public class Startup : IStartup
             BytesRead = 0;
             ReadCount = 0;
             SegmentCount = 0;
+            BufferRentCount = 0;
+            BufferBytesRented = 0;
         }
     }
 }

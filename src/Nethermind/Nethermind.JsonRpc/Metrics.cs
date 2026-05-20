@@ -94,6 +94,14 @@ namespace Nethermind.JsonRpc
         public static long JsonRpcHttpRequestBodySegments;
 
         [CounterMetric]
+        [Description("Number of pooled buffers rented while collecting JSON RPC HTTP request bodies.")]
+        public static long JsonRpcHttpRequestBodyBufferRents;
+
+        [CounterMetric]
+        [Description("Total capacity of pooled buffers rented while collecting JSON RPC HTTP request bodies.")]
+        public static long JsonRpcHttpRequestBodyBufferBytesRented;
+
+        [CounterMetric]
         [Description("Number of JSON RPC bytes received through web sockets.")]
         public static long JsonRpcBytesReceivedWebSockets;
 

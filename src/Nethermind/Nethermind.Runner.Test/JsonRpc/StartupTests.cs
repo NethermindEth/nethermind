@@ -118,11 +118,15 @@ public class StartupTests
         long withoutContentLengthBefore = JsonRpcMetrics.JsonRpcHttpRequestsWithoutContentLength;
         long bodyReadsBefore = JsonRpcMetrics.JsonRpcHttpRequestBodyReads;
         long bodySegmentsBefore = JsonRpcMetrics.JsonRpcHttpRequestBodySegments;
+        long bufferRentsBefore = JsonRpcMetrics.JsonRpcHttpRequestBodyBufferRents;
+        long bufferBytesRentedBefore = JsonRpcMetrics.JsonRpcHttpRequestBodyBufferBytesRented;
         string response = await ProcessJsonRpcRequest(request, setContentLength: false);
         long receivedBytes = JsonRpcMetrics.JsonRpcBytesReceivedHttp - receivedBefore;
         long withoutContentLength = JsonRpcMetrics.JsonRpcHttpRequestsWithoutContentLength - withoutContentLengthBefore;
         long bodyReads = JsonRpcMetrics.JsonRpcHttpRequestBodyReads - bodyReadsBefore;
         long bodySegments = JsonRpcMetrics.JsonRpcHttpRequestBodySegments - bodySegmentsBefore;
+        long bufferRents = JsonRpcMetrics.JsonRpcHttpRequestBodyBufferRents - bufferRentsBefore;
+        long bufferBytesRented = JsonRpcMetrics.JsonRpcHttpRequestBodyBufferBytesRented - bufferBytesRentedBefore;
 
         using JsonDocument doc = JsonDocument.Parse(response);
 
@@ -131,6 +135,8 @@ public class StartupTests
         Assert.That(withoutContentLength, Is.EqualTo(1));
         Assert.That(bodyReads, Is.GreaterThanOrEqualTo(1));
         Assert.That(bodySegments, Is.GreaterThanOrEqualTo(1));
+        Assert.That(bufferRents, Is.GreaterThanOrEqualTo(1));
+        Assert.That(bufferBytesRented, Is.GreaterThanOrEqualTo(receivedBytes));
     }
 
     [Test]
@@ -148,13 +154,19 @@ public class StartupTests
             """;
 
         long withContentLengthBefore = JsonRpcMetrics.JsonRpcHttpRequestsWithContentLength;
+        long bufferRentsBefore = JsonRpcMetrics.JsonRpcHttpRequestBodyBufferRents;
+        long bufferBytesRentedBefore = JsonRpcMetrics.JsonRpcHttpRequestBodyBufferBytesRented;
         string response = await ProcessJsonRpcRequest(request);
         long withContentLength = JsonRpcMetrics.JsonRpcHttpRequestsWithContentLength - withContentLengthBefore;
+        long bufferRents = JsonRpcMetrics.JsonRpcHttpRequestBodyBufferRents - bufferRentsBefore;
+        long bufferBytesRented = JsonRpcMetrics.JsonRpcHttpRequestBodyBufferBytesRented - bufferBytesRentedBefore;
 
         using JsonDocument doc = JsonDocument.Parse(response);
 
         Assert.That(doc.RootElement.GetProperty("result").ValueKind, Is.EqualTo(JsonValueKind.Array));
         Assert.That(withContentLength, Is.EqualTo(1));
+        Assert.That(bufferRents, Is.GreaterThanOrEqualTo(1));
+        Assert.That(bufferBytesRented, Is.GreaterThanOrEqualTo(Encoding.UTF8.GetByteCount(request)));
     }
 
     [Test]
