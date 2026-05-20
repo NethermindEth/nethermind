@@ -10,27 +10,26 @@ namespace Nethermind.Core.BlockAccessLists;
 
 /// <summary>
 /// Block-level access list assembled by merging <see cref="BlockAccessListAtIndex"/> contributions
-/// (one per transaction) into per-account, append-only collections. Ready for RLP encoding.
+/// (one per transaction). Ready for RLP encoding.
 /// </summary>
 /// <remarks>
-/// Backed by a plain <see cref="Dictionary{TKey, TValue}"/> keyed by address; ordering is deferred
-/// to the encoder rather than paid as O(log n) on every per-tx merge.
+/// Address ordering is deferred to the encoder boundary, not paid on every per-tx merge.
 /// </remarks>
 public class GeneratedBlockAccessList
 {
-    private static readonly Comparison<GeneratedAccountChanges> _byAddress = static (a, b) => a.Address.CompareTo(b.Address);
-
     private readonly Dictionary<Address, GeneratedAccountChanges> _accountChanges = new();
 
     public EnumerableWithCount<GeneratedAccountChanges> AccountChanges
         => new(_accountChanges.Values, _accountChanges.Values.Count);
 
-    /// <summary>Address-sorted snapshot of the account-change values; pooled, dispose after use.</summary>
+    /// <summary>
+    /// Address-sorted snapshot; pooled, dispose after use.
+    /// </summary>
     public ArrayPoolListRef<GeneratedAccountChanges> GetSortedAccountChanges()
     {
         ArrayPoolListRef<GeneratedAccountChanges> result = new(_accountChanges.Count);
         foreach (GeneratedAccountChanges ac in _accountChanges.Values) result.Add(ac);
-        result.AsSpan().Sort(_byAddress);
+        result.AsSpan().Sort(GenericComparer.GetOptimized<GeneratedAccountChanges>());
         return result;
     }
 

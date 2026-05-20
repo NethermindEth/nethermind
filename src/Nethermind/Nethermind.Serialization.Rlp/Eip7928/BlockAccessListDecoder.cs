@@ -54,8 +54,9 @@ public class BlockAccessListDecoder :
         return new ReadOnlyBlockAccessList(accountChanges, itemCount);
     }
 
-    /// <summary>One-pass RLP encode of a generated BAL into a freshly allocated byte buffer.
-    /// Used on the hot path that finalises the BAL hash for each block.</summary>
+    /// <summary>
+    /// One-pass RLP encode of a generated BAL into a freshly allocated byte buffer.
+    /// </summary>
     public static byte[] EncodeToBytes(GeneratedBlockAccessList item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         using ArrayPoolListRef<GeneratedAccountChanges> sortedAccounts = item.GetSortedAccountChanges();
