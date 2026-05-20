@@ -167,6 +167,23 @@ public class ChainSpecHardforkLabelTests
             .WithMessage("*Cancun*Eip4844TransitionTimestamp*");
     }
 
+    /// <remarks>
+    /// Regression for the case where a post-merge label activates at genesis: the loader must
+    /// expand the label into per-EIP fields before constructing the genesis header, otherwise
+    /// withdrawal / parent-beacon-block / request roots end up null and the genesis block fails
+    /// peer validation. Each label only expands its own fork's EIPs, so to exercise all
+    /// genesis-header switches we activate shanghai (4895), cancun (4788), and prague (6110/7002/7251).
+    /// </remarks>
+    [Test]
+    public void Post_merge_labels_at_genesis_populate_header_roots()
+    {
+        ChainSpec spec = Load("\"shanghai\": \"0x0\", \"cancun\": \"0x0\", \"prague\": \"0x0\"");
+
+        spec.Genesis.Header.WithdrawalsRoot.Should().NotBeNull("Shanghai EIP-4895 (withdrawals) is active at genesis");
+        spec.Genesis.Header.ParentBeaconBlockRoot.Should().NotBeNull("Cancun EIP-4788 is active at genesis");
+        spec.Genesis.Header.RequestsHash.Should().NotBeNull("Prague EIP-6110/7002/7251 requests are active at genesis");
+    }
+
     [Test]
     public void Per_eip_only_chainspec_is_unaffected()
     {

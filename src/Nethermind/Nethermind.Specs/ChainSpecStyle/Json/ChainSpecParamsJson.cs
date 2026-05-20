@@ -207,8 +207,40 @@ public class ChainSpecParamsJson : IHasNamedForks
     [JsonExtensionData]
     public Dictionary<string, JsonElement>? NamedForks { get; set; } = new(StringComparer.OrdinalIgnoreCase);
 
-    IReadOnlyDictionary<string, long>? IHasNamedForks.NamedForkBlocks => Project<long>(HardforkLabelKind.Block);
-    IReadOnlyDictionary<string, ulong>? IHasNamedForks.NamedForkTimestamps => Project<ulong>(HardforkLabelKind.Timestamp);
+    // Cached projections — Project<T> allocates a fresh dictionary, and ExpandAll triggers one
+    // access per label (~20+), so naïve recomputation would allocate a dict per label. The result
+    // can legitimately be null (no recognized labels), so an explicit "computed" flag is needed
+    // rather than a null-coalescing sentinel.
+    [JsonIgnore] private Dictionary<string, long>? _namedForkBlocks;
+    [JsonIgnore] private Dictionary<string, ulong>? _namedForkTimestamps;
+    [JsonIgnore] private bool _namedForkBlocksComputed;
+    [JsonIgnore] private bool _namedForkTimestampsComputed;
+
+    IReadOnlyDictionary<string, long>? IHasNamedForks.NamedForkBlocks
+    {
+        get
+        {
+            if (!_namedForkBlocksComputed)
+            {
+                _namedForkBlocks = Project<long>(HardforkLabelKind.Block);
+                _namedForkBlocksComputed = true;
+            }
+            return _namedForkBlocks;
+        }
+    }
+
+    IReadOnlyDictionary<string, ulong>? IHasNamedForks.NamedForkTimestamps
+    {
+        get
+        {
+            if (!_namedForkTimestampsComputed)
+            {
+                _namedForkTimestamps = Project<ulong>(HardforkLabelKind.Timestamp);
+                _namedForkTimestampsComputed = true;
+            }
+            return _namedForkTimestamps;
+        }
+    }
 
     /// <summary>
     /// Parses the <c>[JsonExtensionData]</c> entries whose keys match a <see cref="HardforkLabels"/>

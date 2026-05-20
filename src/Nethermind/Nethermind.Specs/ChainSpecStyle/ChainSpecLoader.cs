@@ -51,11 +51,14 @@ public class ChainSpecLoader(IJsonSerializer serializer, ILogManager logManager)
             DataDir = chainSpecJson.DataDir
         };
 
+        // LoadParameters must run before LoadGenesis: it calls ExpandAll, which fans hardfork
+        // labels (shanghai/cancun/...) into the per-EIP transition fields LoadGenesis reads to
+        // decide the genesis header shape (WithdrawalsRoot, ParentBeaconBlockRoot, etc.).
+        LoadParameters(chainSpecJson, chainSpec);
         LoadGenesis(chainSpecJson, chainSpec);
         LoadEngine(chainSpecJson, chainSpec);
         LoadAllocations(chainSpecJson, chainSpec);
         LoadBootnodes(chainSpecJson, chainSpec);
-        LoadParameters(chainSpecJson, chainSpec);
         LoadTransitions(chainSpecJson, chainSpec);
 
         return chainSpec;
@@ -342,7 +345,11 @@ public class ChainSpecLoader(IJsonSerializer serializer, ILogManager logManager)
         byte[] extraData = chainSpecJson.Genesis.ExtraData ?? [];
         UInt256 gasLimit = chainSpecJson.Genesis.GasLimit;
         Address beneficiary = chainSpecJson.Genesis.Author ?? Address.Zero;
-        UInt256 baseFee = chainSpecJson.Params.Eip1559Transition switch
+        // Read post-expand parameter values: LoadParameters has already fanned out hardfork labels
+        // (shanghai/cancun/...) into the per-EIP fields below. Reading chainSpecJson.Params here
+        // would miss labels that activate a post-merge fork at genesis (e.g. dev chain "shanghai": "0x0").
+        ChainParameters parameters = chainSpec.Parameters;
+        UInt256 baseFee = parameters.Eip1559Transition switch
         {
             null => chainSpecJson.Genesis.BaseFeePerGas ?? UInt256.Zero,
             0 => chainSpecJson.Genesis.BaseFeePerGas ?? Eip1559Constants.DefaultForkBaseFee,
@@ -374,12 +381,12 @@ public class ChainSpecLoader(IJsonSerializer serializer, ILogManager logManager)
             BaseFeePerGas = baseFee
         };
 
-        bool withdrawalsEnabled = chainSpecJson.Params.Eip4895TransitionTimestamp is not null && genesisHeader.Timestamp >= chainSpecJson.Params.Eip4895TransitionTimestamp;
-        bool depositsEnabled = chainSpecJson.Params.Eip6110TransitionTimestamp is not null && genesisHeader.Timestamp >= chainSpecJson.Params.Eip6110TransitionTimestamp;
-        bool withdrawalRequestsEnabled = chainSpecJson.Params.Eip7002TransitionTimestamp is not null && genesisHeader.Timestamp >= chainSpecJson.Params.Eip7002TransitionTimestamp;
-        bool consolidationRequestsEnabled = chainSpecJson.Params.Eip7251TransitionTimestamp is not null && genesisHeader.Timestamp >= chainSpecJson.Params.Eip7251TransitionTimestamp;
-        bool blockAccessListsEnabled = chainSpecJson.Params.Eip7928TransitionTimestamp is not null && genesisHeader.Timestamp >= chainSpecJson.Params.Eip7928TransitionTimestamp;
-        bool slotNumberEnabled = chainSpecJson.Params.Eip7843TransitionTimestamp is not null && genesisHeader.Timestamp >= chainSpecJson.Params.Eip7843TransitionTimestamp;
+        bool withdrawalsEnabled = parameters.Eip4895TransitionTimestamp is not null && genesisHeader.Timestamp >= parameters.Eip4895TransitionTimestamp;
+        bool depositsEnabled = parameters.Eip6110TransitionTimestamp is not null && genesisHeader.Timestamp >= parameters.Eip6110TransitionTimestamp;
+        bool withdrawalRequestsEnabled = parameters.Eip7002TransitionTimestamp is not null && genesisHeader.Timestamp >= parameters.Eip7002TransitionTimestamp;
+        bool consolidationRequestsEnabled = parameters.Eip7251TransitionTimestamp is not null && genesisHeader.Timestamp >= parameters.Eip7251TransitionTimestamp;
+        bool blockAccessListsEnabled = parameters.Eip7928TransitionTimestamp is not null && genesisHeader.Timestamp >= parameters.Eip7928TransitionTimestamp;
+        bool slotNumberEnabled = parameters.Eip7843TransitionTimestamp is not null && genesisHeader.Timestamp >= parameters.Eip7843TransitionTimestamp;
 
         if (withdrawalsEnabled)
         {
@@ -392,14 +399,14 @@ public class ChainSpecLoader(IJsonSerializer serializer, ILogManager logManager)
             genesisHeader.RequestsHash = ExecutionRequestExtensions.EmptyRequestsHash;
         }
 
-        bool isEip4844Enabled = chainSpecJson.Params.Eip4844TransitionTimestamp is not null && genesisHeader.Timestamp >= chainSpecJson.Params.Eip4844TransitionTimestamp;
+        bool isEip4844Enabled = parameters.Eip4844TransitionTimestamp is not null && genesisHeader.Timestamp >= parameters.Eip4844TransitionTimestamp;
         if (isEip4844Enabled)
         {
             genesisHeader.BlobGasUsed = chainSpecJson.Genesis.BlobGasUsed;
             genesisHeader.ExcessBlobGas = chainSpecJson.Genesis.ExcessBlobGas;
         }
 
-        bool isEip4788Enabled = chainSpecJson.Params.Eip4788TransitionTimestamp is not null && genesisHeader.Timestamp >= chainSpecJson.Params.Eip4788TransitionTimestamp;
+        bool isEip4788Enabled = parameters.Eip4788TransitionTimestamp is not null && genesisHeader.Timestamp >= parameters.Eip4788TransitionTimestamp;
         if (isEip4788Enabled)
         {
             genesisHeader.ParentBeaconBlockRoot = Keccak.Zero;
