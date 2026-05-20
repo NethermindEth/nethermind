@@ -369,7 +369,13 @@ public static class HexWriter
     /// Writes a large byte array as hex directly into a <see cref="PipeWriter"/>
     /// in chunks, bounded by the actual span size returned by GetSpan.
     /// </summary>
-    public static void WriteHexChunked(PipeWriter writer, byte[] data)
+    public static void WriteHexChunked(PipeWriter writer, byte[] data) => WriteHexChunked(writer, (ReadOnlySpan<byte>)data);
+
+    /// <summary>
+    /// Writes a large byte span as hex directly into a <see cref="PipeWriter"/>
+    /// in chunks, bounded by the actual span size returned by GetSpan.
+    /// </summary>
+    public static void WriteHexChunked(PipeWriter writer, ReadOnlySpan<byte> data)
     {
         ReadOnlySpan<byte> remaining = data;
         while (remaining.Length > 0)
@@ -386,12 +392,17 @@ public static class HexWriter
     /// <summary>
     /// Writes a small byte array as hex in a single span into a <see cref="PipeWriter"/>.
     /// </summary>
-    public static void WriteHexSmall(PipeWriter writer, byte[] data)
+    public static void WriteHexSmall(PipeWriter writer, byte[] data) => WriteHexSmall(writer, (ReadOnlySpan<byte>)data);
+
+    /// <summary>
+    /// Writes a small byte span as hex in a single span into a <see cref="PipeWriter"/>.
+    /// </summary>
+    public static void WriteHexSmall(PipeWriter writer, ReadOnlySpan<byte> data)
     {
         int hexLen = data.Length * 2;
         Span<byte> hex = writer.GetSpan(hexLen);
         int inputLen = Math.Min(data.Length, hex.Length / 2);
-        EncodeToHex(((ReadOnlySpan<byte>)data)[..inputLen], ref MemoryMarshal.GetReference(hex));
+        EncodeToHex(data[..inputLen], ref MemoryMarshal.GetReference(hex));
         writer.Advance(inputLen * 2);
     }
 

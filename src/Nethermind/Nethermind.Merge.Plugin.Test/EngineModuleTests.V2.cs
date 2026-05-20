@@ -3,7 +3,11 @@
 
 using System;
 using System.Collections.Generic;
+using System.IO.Pipelines;
 using System.Linq;
+using System.Text;
+using System.Text.Json;
+using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Blockchain;
@@ -19,6 +23,7 @@ using Nethermind.Int256;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Test;
 using Nethermind.Merge.Plugin.Data;
+using Nethermind.Serialization.Json;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
 using Nethermind.State;
@@ -522,6 +527,39 @@ public partial class EngineModuleTests
             rpc.engine_getPayloadBodiesByRangeV1(1, 7).Result.Data;
 
         payloadBodies.Count.Should().Be(5);
+    }
+
+    [Test]
+    public async Task PayloadBodiesV1DirectResponse_WriteToAsync_produces_valid_json()
+    {
+        Transaction transaction = Build.A.Transaction.SignedAndResolved().TestObject;
+        Withdrawal[] withdrawals =
+        [
+            new()
+            {
+                Index = 1,
+                ValidatorIndex = 2,
+                Address = TestItem.AddressA,
+                AmountInGwei = 3
+            }
+        ];
+
+        using PayloadBodiesV1DirectResponse response = new([
+            new ExecutionPayloadBodyV1Result([transaction], withdrawals),
+            null,
+            new ExecutionPayloadBodyV1Result([], null)
+        ]);
+
+        Pipe pipe = new();
+        await response.WriteToAsync(pipe.Writer, CancellationToken.None);
+        await pipe.Writer.CompleteAsync();
+
+        ReadResult readResult = await pipe.Reader.ReadAsync();
+        string streamedJson = Encoding.UTF8.GetString(readResult.Buffer);
+        pipe.Reader.AdvanceTo(readResult.Buffer.End);
+
+        string stjJson = JsonSerializer.Serialize(response, EthereumJsonSerializer.JsonOptions);
+        streamedJson.Should().Be(stjJson);
     }
 
     [Test]

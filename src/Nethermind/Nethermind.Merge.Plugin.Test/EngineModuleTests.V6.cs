@@ -4,6 +4,7 @@
 using System.Threading.Tasks;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Extensions;
 using Nethermind.JsonRpc;
@@ -17,15 +18,19 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Crypto;
 using Nethermind.Evm;
 using System.Collections.Generic;
+using System.IO.Pipelines;
 using System.Linq;
+using System.Text;
 using System.Text.Json;
 using Nethermind.State;
 using Nethermind.TxPool;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Test;
 using System;
+using System.Threading;
 using Nethermind.Core.Test;
 using Nethermind.Crypto;
+using Nethermind.Serialization.Json;
 
 namespace Nethermind.Merge.Plugin.Test;
 
@@ -459,6 +464,45 @@ public partial class EngineModuleTests
             Assert.That(response.Result.ResultType, Is.EqualTo(ResultType.Success));
             Assert.That(response.Data.Count, Is.EqualTo(4)); // cutoff at head
         }
+    }
+
+    [Test]
+    public async Task PayloadBodiesV2DirectResponse_WriteToAsync_produces_valid_json()
+    {
+        Transaction transaction = Build.A.Transaction.SignedAndResolved().TestObject;
+        Withdrawal[] withdrawals =
+        [
+            new()
+            {
+                Index = 1,
+                ValidatorIndex = 2,
+                Address = TestItem.AddressA,
+                AmountInGwei = 3
+            }
+        ];
+
+        PayloadBodiesV2DirectResponse.PayloadBody?[] items =
+        [
+            PayloadBodiesV2DirectResponse.CreatePayloadBody(
+                [transaction],
+                withdrawals,
+                ArrayMemoryManager.From([0x01, 0x02, 0x03])),
+            null,
+            PayloadBodiesV2DirectResponse.CreatePayloadBody([], null, null)
+        ];
+
+        using PayloadBodiesV2DirectResponse response = new(items);
+
+        Pipe pipe = new();
+        await response.WriteToAsync(pipe.Writer, CancellationToken.None);
+        await pipe.Writer.CompleteAsync();
+
+        ReadResult readResult = await pipe.Reader.ReadAsync();
+        string streamedJson = Encoding.UTF8.GetString(readResult.Buffer);
+        pipe.Reader.AdvanceTo(readResult.Buffer.End);
+
+        string stjJson = JsonSerializer.Serialize(response, EthereumJsonSerializer.JsonOptions);
+        Assert.That(streamedJson, Is.EqualTo(stjJson));
     }
 
     [Test]

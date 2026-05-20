@@ -27,6 +27,21 @@ public class ExecutionPayloadBodyV2Result
         BlockAccessList = blockAccessList;
     }
 
+    private ExecutionPayloadBodyV2Result(IReadOnlyList<byte[]> transactions, IReadOnlyList<Withdrawal>? withdrawals, byte[]? blockAccessList)
+    {
+        ArgumentNullException.ThrowIfNull(transactions);
+
+        Transactions = transactions;
+        Withdrawals = withdrawals;
+        BlockAccessList = blockAccessList;
+    }
+
+    internal static ExecutionPayloadBodyV2Result FromEncodedTransactions(
+        IReadOnlyList<byte[]> transactions,
+        IReadOnlyList<Withdrawal>? withdrawals,
+        byte[]? blockAccessList) =>
+        new(transactions, withdrawals, blockAccessList);
+
     public IReadOnlyList<byte[]> Transactions { get; set; }
 
     [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
