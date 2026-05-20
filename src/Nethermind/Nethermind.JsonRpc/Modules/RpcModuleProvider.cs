@@ -408,7 +408,7 @@ namespace Nethermind.JsonRpc.Modules
                             kind = ParameterKind.JsonElement;
                         }
 
-                        EthereumJsonSerializer.JsonOptions.TryGetTypeInfo(paramType, out typeInfo);
+                        typeInfo = RpcParameterTypeInfo.Get(paramType);
 
                         JsonConverter converter = EthereumJsonSerializer.JsonOptions.GetConverter(paramType);
                         if (ShouldReparseStringParameter(paramType, converter))

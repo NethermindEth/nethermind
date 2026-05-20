@@ -185,6 +185,8 @@ public class RpcModuleProviderTests
         parameterMethod.DirectParameterInvoker.Should().NotBeNull();
         fourParameterMethod.DirectParameterInvoker.Should().NotBeNull();
         requiredValueParameterMethod.DirectParameterInvoker.Should().BeNull();
+        requiredValueParameterMethod.ExpectedParameters[0].TypeInfo.Should().NotBeNull();
+        RpcParameterTypeInfo<int>.Get().Should().NotBeNull();
 
         syncMethod.IsTaskWrapped.Should().BeFalse();
         syncMethod.ResultWrapperType.Should().Be(typeof(ResultWrapper<string>));
