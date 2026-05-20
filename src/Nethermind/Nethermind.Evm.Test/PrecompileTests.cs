@@ -29,7 +29,7 @@ public abstract class PrecompileTests<TPrecompile, TTests> : IPrecompileTests
             Name: input, Gas: null, ExpectedError: status ? null : "<error>"
         ) => Spec = spec ?? DefaultSpec;
 
-        public TestCase(byte[] Input, byte[]? Expected, bool status, IReleaseSpec? spec = null): this(
+        public TestCase(byte[] Input, byte[]? Expected, bool status, IReleaseSpec? spec = null) : this(
             Input, Expected,
             Name: Convert.ToHexString(Input), Gas: null, ExpectedError: status ? null : "<error>"
         ) => Spec = spec ?? DefaultSpec;
@@ -74,7 +74,7 @@ public abstract class PrecompileTests<TPrecompile, TTests> : IPrecompileTests
 
         ReadOnlyMemory<byte> normalized = Instance.NormalizeInput(testCase.Input);
         if (!normalized.Span.SequenceEqual(testCase.Input.Span))
-            RunTestCore(testCase with {Input = normalized}, "normalized input should produce same output");
+            RunTestCore(testCase with { Input = normalized }, "normalized input should produce same output");
     }
 
     protected void RunTest(string input, string output, bool status, IReleaseSpec? spec = null) =>
