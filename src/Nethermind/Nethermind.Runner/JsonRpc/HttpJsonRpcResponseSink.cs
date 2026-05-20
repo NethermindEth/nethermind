@@ -13,6 +13,7 @@ using System.Text.Json.Serialization.Metadata;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.Primitives;
 using Nethermind.Core.Resettables;
 using Nethermind.JsonRpc;
 using Nethermind.Logging;
@@ -33,6 +34,7 @@ internal sealed class HttpJsonRpcResponseSink(
     private static ReadOnlySpan<byte> JsonComma => [(byte)','];
     private static ReadOnlySpan<byte> JsonClosingBracket => [(byte)']'];
     private const string JsonContentType = "application/json";
+    private static readonly StringValues JsonContentTypeHeader = new(JsonContentType);
     private static readonly ConcurrentDictionary<Type, JsonTypeInfo> _jsonTypeInfoCache = new();
 
     private CountingWriter? _writer;
@@ -271,7 +273,7 @@ internal sealed class HttpJsonRpcResponseSink(
             Interlocked.Increment(ref Metrics.JsonRpcHttpBufferedResponses);
         }
 
-        context.Response.ContentType = JsonContentType;
+        context.Response.Headers.ContentType = JsonContentTypeHeader;
         context.Response.StatusCode = isCollection
             ? StatusCodes.Status200OK
             : GetStatusCode(response);

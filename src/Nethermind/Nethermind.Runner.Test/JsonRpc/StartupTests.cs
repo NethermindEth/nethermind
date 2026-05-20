@@ -396,6 +396,7 @@ public class StartupTests
         await sink.WriteSingleAsync(response, new RpcReport("engine_getBlobsV2", 0, true), CancellationToken.None);
         await sink.CompleteAsync(CancellationToken.None);
 
+        Assert.That(ctx.Response.ContentType, Is.EqualTo("application/json"));
         Assert.That(JsonRpcMetrics.JsonRpcHttpStreamableResponses - streamableBefore, Is.EqualTo(1));
         Assert.That(JsonRpcMetrics.JsonRpcHttpUnbufferedResponses - unbufferedBefore, Is.EqualTo(1));
         jsonRpcLocalStats.Received(1).ReportCall(
