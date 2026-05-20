@@ -198,33 +198,22 @@ public static class BaseFlatPersistence
         public void Dispose() => view.Dispose();
     }
 
-    public readonly struct WriteBatch(
+    public struct WriteBatch(
+        ISortedKeyValueStore stateSnap,
         ISortedKeyValueStore storageSnap,
-        IWriteOnlyKeyValueStore state,
-        IWriteOnlyKeyValueStore storage,
+        IWriteBatch state,
+        IWriteBatch storage,
         WriteFlags flags
     ) : BasePersistence.IHashedFlatWriteBatch
     {
         [SkipLocalsInit]
         public void SelfDestruct(in ValueHash256 accountPath)
         {
-            Span<byte> firstKey = stackalloc byte[StoragePrefixPortion]; // Because slot 0 is a thing, it's just the address prefix.
-            Span<byte> lastKey = stackalloc byte[StorageKeyLength + 1]; // The +1 is because the upper bound is exclusive
+            Span<byte> firstKey = stackalloc byte[StoragePrefixPortion];
+            Span<byte> lastKey = stackalloc byte[StorageKeyLength + 1];
             BasePersistence.CreateStorageRange(accountPath.Bytes, firstKey, lastKey);
-
-            using ISortedView storageReader = storageSnap.GetViewBetween(firstKey, lastKey);
-            IWriteOnlyKeyValueStore storageWriter = storage;
-            while (storageReader.MoveNext())
-            {
-                // FlatInTrie
-                if (storageReader.CurrentKey.Length != StorageKeyLength) continue;
-
-                // If we have a storage prefix portion, we need to double-check that the last 16 bytes match.
-                if (Bytes.AreEqual(storageReader.CurrentKey[(StoragePrefixPortion + StorageSlotKeySize)..], accountPath.Bytes[StoragePrefixPortion..(StoragePrefixPortion + StoragePostfixPortion)]))
-                {
-                    storageWriter.Remove(storageReader.CurrentKey);
-                }
-            }
+            BasePersistence.DeleteMatchingKeys(storageSnap, storage, firstKey, lastKey,
+                StoragePrefixPortion + StorageSlotKeySize, accountPath.Bytes[StoragePrefixPortion..(StoragePrefixPortion + StoragePostfixPortion)]);
         }
 
         public void RemoveAccount(in ValueHash256 addrHash)
@@ -252,6 +241,29 @@ public static class BaseFlatPersistence
         {
             ReadOnlySpan<byte> key = addrHash.Bytes[..AccountKeyLength];
             state.PutSpan(key, account, flags);
+        }
+
+        [SkipLocalsInit]
+        public void DeleteAccountRange(in ValueHash256 fromPath, in ValueHash256 toPath)
+        {
+            Span<byte> firstKey = stackalloc byte[AccountKeyLength];
+            Span<byte> lastKey = stackalloc byte[AccountKeyLength + 1]; // +1 for exclusive upper bound
+            fromPath.Bytes[..AccountKeyLength].CopyTo(firstKey);
+            toPath.Bytes[..AccountKeyLength].CopyTo(lastKey);
+            lastKey[AccountKeyLength] = 0;
+            BasePersistence.DeleteMatchingKeys(stateSnap, state, firstKey, lastKey, AccountKeyLength);
+        }
+
+        [SkipLocalsInit]
+        public void DeleteStorageRange(in ValueHash256 addressHash, in ValueHash256 fromPath, in ValueHash256 toPath)
+        {
+            Span<byte> firstKey = stackalloc byte[StorageKeyLength];
+            Span<byte> lastKey = stackalloc byte[StorageKeyLength + 1];
+            EncodeStorageKeyHashedWithShortPrefix(firstKey, addressHash, fromPath);
+            EncodeStorageKeyHashedWithShortPrefix(lastKey[..StorageKeyLength], addressHash, toPath);
+            lastKey[StorageKeyLength] = 0;
+            BasePersistence.DeleteMatchingKeys(storageSnap, storage, firstKey, lastKey,
+                StoragePrefixPortion + StorageSlotKeySize, addressHash.Bytes[StoragePrefixPortion..(StoragePrefixPortion + StoragePostfixPortion)]);
         }
     }
 }

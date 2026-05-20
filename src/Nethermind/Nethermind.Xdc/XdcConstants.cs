@@ -9,6 +9,9 @@ namespace Nethermind.Xdc;
 
 internal static class XdcConstants
 {
+    public const string XDPoS = nameof(XDPoS);
+    public const string XDPoSSubnet = nameof(XDPoSSubnet);
+
     public const ulong EpochLength = 900UL; // Default number of blocks after which to checkpoint and reset the pending votes
 
     public const int ExtraVanity = 32; // Fixed number of extra-data prefix bytes reserved for signer vanity
@@ -23,7 +26,8 @@ internal static class XdcConstants
 
     public const int BlockSignersCacheLimit = 9000;
 
-    public const long DefaultTargetGasLimit = 84000000; // XDC default gas limit per block
+    // XDC default gas limit per block https://github.com/XinFinOrg/XDPoSChain/blob/dev-upgrade/cicd/mainnet/start.sh#L120
+    public const long DefaultTargetGasLimit = 420_000_000;
 
     public const byte ConsensusVersion = 0x02;
 

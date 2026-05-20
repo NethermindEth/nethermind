@@ -5,11 +5,13 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Config;
 using Nethermind.Core;
+using Nethermind.Core.Test;
 using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State.Flat.ScopeProvider;
 using NSubstitute;
+using NSubstitute.Exceptions;
 using NUnit.Framework;
 
 namespace Nethermind.State.Flat.Test;
@@ -38,16 +40,14 @@ public class TrieWarmerTests
     [Test]
     public async Task PushAddressJob_CallsWarmUpStateTrie()
     {
-        TrieWarmer warmer = new TrieWarmer(_processExitSource, _logManager, _config);
+        TrieWarmer warmer = new(_processExitSource, _logManager, _config);
 
         ITrieWarmer.IAddressWarmer addressWarmer = Substitute.For<ITrieWarmer.IAddressWarmer>();
-        Address address = new Address("0x1234567890123456789012345678901234567890");
+        Address address = new("0x1234567890123456789012345678901234567890");
 
         warmer.PushAddressJob(addressWarmer, address, sequenceId: 1);
 
-        await Task.Delay(200);
-
-        addressWarmer.Received().WarmUpStateTrie(address, 1);
+        await Eventually.AssertAsync<ReceivedCallsException>(() => addressWarmer.Received().WarmUpStateTrie(address, 1));
 
         _cts.Cancel();
         await warmer.DisposeAsync();
@@ -56,16 +56,14 @@ public class TrieWarmerTests
     [Test]
     public async Task PushSlotJob_CallsWarmUpStorageTrie()
     {
-        TrieWarmer warmer = new TrieWarmer(_processExitSource, _logManager, _config);
+        TrieWarmer warmer = new(_processExitSource, _logManager, _config);
 
         ITrieWarmer.IStorageWarmer storageWarmer = Substitute.For<ITrieWarmer.IStorageWarmer>();
         UInt256 index = 42;
 
         warmer.PushSlotJob(storageWarmer, index, sequenceId: 5);
 
-        await Task.Delay(200);
-
-        storageWarmer.Received().WarmUpStorageTrie(index, 5);
+        await Eventually.AssertAsync<ReceivedCallsException>(() => storageWarmer.Received().WarmUpStorageTrie(index, 5));
 
         _cts.Cancel();
         await warmer.DisposeAsync();
@@ -74,16 +72,14 @@ public class TrieWarmerTests
     [Test]
     public async Task PushAddressJob_PassesCorrectSequenceId()
     {
-        TrieWarmer warmer = new TrieWarmer(_processExitSource, _logManager, _config);
+        TrieWarmer warmer = new(_processExitSource, _logManager, _config);
 
         ITrieWarmer.IAddressWarmer addressWarmer = Substitute.For<ITrieWarmer.IAddressWarmer>();
-        Address address = new Address("0x1111111111111111111111111111111111111111");
+        Address address = new("0x1111111111111111111111111111111111111111");
 
         warmer.PushAddressJob(addressWarmer, address, sequenceId: 999);
 
-        await Task.Delay(200);
-
-        addressWarmer.Received().WarmUpStateTrie(address, 999);
+        await Eventually.AssertAsync<ReceivedCallsException>(() => addressWarmer.Received().WarmUpStateTrie(address, 999));
 
         _cts.Cancel();
         await warmer.DisposeAsync();

@@ -7,16 +7,10 @@ namespace Nethermind.Consensus
 {
     /// <summary>Block producer is setting current context and thanks to this context
     /// other classes like gas price comparison know what base fee they should be used</summary>
-    public readonly struct BlockPreparationContext
+    public readonly struct BlockPreparationContext(in UInt256 baseFee, long blockNumber)
     {
-        public UInt256 BaseFee { get; }
+        public UInt256 BaseFee { get; } = baseFee;
 
-        public long BlockNumber { get; }
-
-        public BlockPreparationContext(in UInt256 baseFee, long blockNumber)
-        {
-            BaseFee = baseFee;
-            BlockNumber = blockNumber;
-        }
+        public long BlockNumber { get; } = blockNumber;
     }
 }

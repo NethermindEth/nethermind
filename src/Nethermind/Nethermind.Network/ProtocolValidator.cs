@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
@@ -11,7 +12,6 @@ using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.EventArg;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
-using System;
 using System.Text.RegularExpressions;
 
 namespace Nethermind.Network
@@ -19,6 +19,7 @@ namespace Nethermind.Network
     [Todo(Improve.Refactor, "Allow protocols validators to be loaded per protocol")]
     public class ProtocolValidator : IProtocolValidator
     {
+        private static readonly TimeSpan ClientIdMatcherTimeout = TimeSpan.FromMilliseconds(250);
         protected readonly ILogger _logger;
         protected readonly IBlockTree _blockTree;
         protected virtual bool MustValidateForkId { get; set; } = true;
@@ -39,7 +40,7 @@ namespace Nethermind.Network
         {
             if (networkConfig.ClientIdMatcher is not null)
             {
-                _clientIdPattern = new Regex(networkConfig.ClientIdMatcher, RegexOptions.Compiled);
+                _clientIdPattern = new Regex(networkConfig.ClientIdMatcher, RegexOptions.Compiled, ClientIdMatcherTimeout);
             }
             _logger = logManager.GetClassLogger<ProtocolValidator>();
             _nodeStatsManager = nodeStatsManager;
@@ -48,15 +49,12 @@ namespace Nethermind.Network
             _peerManager = peerManager;
         }
 
-        public bool DisconnectOnInvalid(string protocol, ISession session, ProtocolInitializedEventArgs eventArgs)
+        public bool DisconnectOnInvalid(string protocol, ISession session, ProtocolInitializedEventArgs eventArgs) => protocol switch
         {
-            return protocol switch
-            {
-                Protocol.P2P => ValidateP2PProtocol(session, eventArgs),
-                Protocol.Eth => (session.Node.ValidatedProtocol = ValidateEthProtocol(session, eventArgs)).Value,
-                _ => true,
-            };
-        }
+            Protocol.P2P => ValidateP2PProtocol(session, eventArgs),
+            Protocol.Eth => (session.Node.ValidatedProtocol = ValidateEthProtocol(session, eventArgs)).Value,
+            _ => true,
+        };
 
         private bool ValidateP2PProtocol(ISession session, ProtocolInitializedEventArgs eventArgs)
         {
@@ -64,9 +62,17 @@ namespace Nethermind.Network
             bool valid = ValidateP2PVersion(args.P2PVersion) || Disconnect(session, DisconnectReason.IncompatibleP2PVersion, CompatibilityValidationType.P2PVersion, $"p2p.{args.P2PVersion}");
             if (!valid) return false;
 
-            if (_clientIdPattern?.IsMatch(args.ClientId) == false)
+            try
             {
-                session.InitiateDisconnect(DisconnectReason.ClientFiltered, $"clientId: {args.ClientId}");
+                if (_clientIdPattern?.IsMatch(args.ClientId) == false)
+                {
+                    session.InitiateDisconnect(DisconnectReason.ClientFiltered, $"clientId: {args.ClientId}");
+                    return false;
+                }
+            }
+            catch (RegexMatchTimeoutException)
+            {
+                session.InitiateDisconnect(DisconnectReason.ClientFiltered, "clientId regex timeout");
                 return false;
             }
 

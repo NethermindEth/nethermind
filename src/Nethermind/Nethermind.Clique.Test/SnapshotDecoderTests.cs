@@ -54,7 +54,7 @@ namespace Nethermind.Clique.Test
 
         private Snapshot GenerateSnapshot(Hash256 hash, long number, Address candidate)
         {
-            SortedList<Address, long> signers = new(AddressComparer.Instance);
+            SortedList<Address, long> signers = new(GenericComparer.GetOptimized<Address>());
             signers.Add(_signer1, number - 2);
             signers.Add(_signer2, number - 1);
             signers.Add(_signer3, number - 3);

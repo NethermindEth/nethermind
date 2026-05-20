@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Autofac;
@@ -23,7 +23,7 @@ public class XdcPlugin(ChainSpec chainSpec) : IConsensusPlugin
     public string Name => Xdc;
     public string Description => "Xdc support for Nethermind";
     public bool Enabled => chainSpec.SealEngineType == SealEngineType;
-    public string SealEngineType => Core.SealEngineType.XDPoS;
+    public string SealEngineType => XdcConstants.XDPoS;
     public IModule Module => new XdcModule();
 
     public Task Init(INethermindApi nethermindApi)
@@ -34,23 +34,23 @@ public class XdcPlugin(ChainSpec chainSpec) : IConsensusPlugin
 
     public Task InitNetworkProtocol()
     {
+        // Remove default ETH 68 capability (XDC uses 62-63 and 100)
+        _nethermindApi.ProtocolsManager!.RemoveSupportedCapability(new(Protocol.Eth, 68));
+
         _nethermindApi.ProtocolsManager!.AddSupportedCapability(new(Protocol.Eth, 62));
         _nethermindApi.ProtocolsManager!.AddSupportedCapability(new(Protocol.Eth, 63));
-        _nethermindApi.ProtocolsManager!.AddSupportedCapability(new(Protocol.Eth, 64));
-        _nethermindApi.ProtocolsManager!.AddSupportedCapability(new(Protocol.Eth, 65));
         _nethermindApi.ProtocolsManager!.AddSupportedCapability(new(Protocol.Eth, 100));
         return Task.CompletedTask;
     }
 
     // IConsensusPlugin
-    public IBlockProducerRunner InitBlockProducerRunner(IBlockProducer blockProducer)
-    {
-        return new XdcHotStuff(
+    public IBlockProducerRunner InitBlockProducerRunner(IBlockProducer blockProducer) => new XdcHotStuff(
             _nethermindApi.Context.Resolve<IBlockTree>(),
             _nethermindApi.Context.Resolve<IXdcConsensusContext>(),
             _nethermindApi.Context.Resolve<ISpecProvider>(),
             blockProducer,
             _nethermindApi.Context.Resolve<IEpochSwitchManager>(),
+            _nethermindApi.Context.Resolve<ISnapshotManager>(),
             _nethermindApi.Context.Resolve<IMasternodesCalculator>(),
             _nethermindApi.Context.Resolve<IQuorumCertificateManager>(),
             _nethermindApi.Context.Resolve<IVotesManager>(),
@@ -60,7 +60,6 @@ public class XdcPlugin(ChainSpec chainSpec) : IConsensusPlugin
             _nethermindApi.Context.Resolve<ISignTransactionManager>(),
             _nethermindApi.Context.Resolve<ILogManager>()
             );
-    }
     public IBlockProducer InitBlockProducer()
     {
         StartXdcBlockProducer start = _nethermindApi.Context.Resolve<StartXdcBlockProducer>();

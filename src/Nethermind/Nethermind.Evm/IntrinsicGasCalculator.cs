@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -16,7 +16,7 @@ public readonly record struct EthereumIntrinsicGas(long Standard, long FloorGas)
     public long MinimalGas { get; } = Math.Max(Standard, FloorGas);
     public static explicit operator long(EthereumIntrinsicGas gas) => gas.MinimalGas;
     public static implicit operator EthereumIntrinsicGas(IntrinsicGas<EthereumGasPolicy> gas) =>
-        new(gas.Standard.Value, gas.FloorGas.Value);
+        new(gas.Standard.Value + gas.Standard.StateReservoir, gas.FloorGas.Value);
 }
 
 public static class IntrinsicGasCalculator
@@ -24,16 +24,17 @@ public static class IntrinsicGasCalculator
     /// <summary>
     /// Calculates intrinsic gas with TGasPolicy type, allowing MultiGas breakdown for Arbitrum.
     /// </summary>
-    private static IntrinsicGas<TGasPolicy> Calculate<TGasPolicy>(Transaction transaction, IReleaseSpec releaseSpec)
+    private static IntrinsicGas<TGasPolicy> Calculate<TGasPolicy>(Transaction transaction, IReleaseSpec releaseSpec, long blockGasLimit = 0)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy> =>
-        TGasPolicy.CalculateIntrinsicGas(transaction, releaseSpec);
+        TGasPolicy.CalculateIntrinsicGas(transaction, releaseSpec, blockGasLimit);
 
     /// <summary>
     /// Non-generic backward-compatible Calculate method.
     /// </summary>
-    public static EthereumIntrinsicGas Calculate(Transaction transaction, IReleaseSpec releaseSpec) =>
-        Calculate<EthereumGasPolicy>(transaction, releaseSpec);
+    public static EthereumIntrinsicGas Calculate(Transaction transaction, IReleaseSpec releaseSpec, long blockGasLimit = 0) =>
+        Calculate<EthereumGasPolicy>(transaction, releaseSpec, blockGasLimit);
 
     public static long AccessListCost(Transaction transaction, IReleaseSpec releaseSpec) =>
-        IGasPolicy<EthereumGasPolicy>.AccessListCost(transaction, releaseSpec);
+        IGasPolicy<EthereumGasPolicy>.AccessListCost(transaction, releaseSpec,
+            IGasPolicy<EthereumGasPolicy>.CalculateFloorTokensInAccessList(transaction, releaseSpec));
 }

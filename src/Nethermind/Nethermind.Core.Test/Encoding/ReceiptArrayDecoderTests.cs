@@ -54,10 +54,7 @@ namespace Nethermind.Core.Test.Encoding
                 return receiptBuilder.TestObject;
             }
 
-            TxReceipt[] GetExpectedArray()
-            {
-                return new[] { GetExpected(), GetExpected() };
-            }
+            TxReceipt[] GetExpectedArray() => new[] { GetExpected(), GetExpected() };
 
             TxReceipt BuildReceipt()
             {

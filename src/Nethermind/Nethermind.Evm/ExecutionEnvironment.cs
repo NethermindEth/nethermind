@@ -3,7 +3,9 @@
 
 using System;
 using System.Collections.Concurrent;
+#if DEBUG
 using System.Diagnostics;
+#endif
 using Nethermind.Core;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Int256;

@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Xdc.Types;
@@ -66,16 +67,17 @@ public sealed class TimeoutDecoder : RlpValueDecoder<Timeout>
             if (item.Signature is null)
                 stream.EncodeNullObject();
             else
-                stream.Encode(item.Signature.BytesWithRecovery);
+            {
+                Span<byte> sigBuffer = stackalloc byte[Signature.Size];
+                item.Signature.WriteBytesWithRecoveryTo(sigBuffer);
+                stream.Encode(sigBuffer);
+            }
         }
 
         stream.Encode(item.GapNumber);
     }
 
-    public override int GetLength(Timeout item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-    {
-        return Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors));
-    }
+    public override int GetLength(Timeout item, RlpBehaviors rlpBehaviors = RlpBehaviors.None) => Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors));
     public int GetContentLength(Timeout? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (item is null)

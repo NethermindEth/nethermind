@@ -41,7 +41,7 @@ public class BlobTxStorageTests
     public void TryGetMany_should_return_zero_for_empty_batch()
     {
         BlobTxStorage blobTxStorage = new();
-        Transaction[] results = new Transaction[0];
+        Transaction[] results = Array.Empty<Transaction>();
 
         int found = blobTxStorage.TryGetMany([], 0, results);
         found.Should().Be(0);
@@ -60,8 +60,8 @@ public class BlobTxStorageTests
         {
             txs[i] = Build.A.Transaction
                 .WithShardBlobTxTypeAndFields()
-                .WithMaxFeePerGas(1.GWei())
-                .WithMaxPriorityFeePerGas(1.GWei())
+                .WithMaxFeePerGas(1.GWei)
+                .WithMaxPriorityFeePerGas(1.GWei)
                 .WithNonce((UInt256)i)
                 .SignedAndResolved(ecdsa, TestItem.PrivateKeys[i]).TestObject;
 
@@ -92,8 +92,8 @@ public class BlobTxStorageTests
         {
             txs[i] = Build.A.Transaction
                 .WithShardBlobTxTypeAndFields()
-                .WithMaxFeePerGas(1.GWei())
-                .WithMaxPriorityFeePerGas(1.GWei())
+                .WithMaxFeePerGas(1.GWei)
+                .WithMaxPriorityFeePerGas(1.GWei)
                 .WithNonce((UInt256)i)
                 .SignedAndResolved(ecdsa, TestItem.PrivateKeys[i]).TestObject;
 

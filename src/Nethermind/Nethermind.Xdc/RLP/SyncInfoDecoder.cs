@@ -58,10 +58,7 @@ internal class SyncInfoDecoder : RlpValueDecoder<SyncInfo>
         _timeoutCertificateDecoder.Encode(stream, item.HighestTimeoutCert, rlpBehaviors);
     }
 
-    public override int GetLength(SyncInfo item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-    {
-        return Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors));
-    }
+    public override int GetLength(SyncInfo item, RlpBehaviors rlpBehaviors = RlpBehaviors.None) => Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors));
 
     public int GetContentLength(SyncInfo item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {

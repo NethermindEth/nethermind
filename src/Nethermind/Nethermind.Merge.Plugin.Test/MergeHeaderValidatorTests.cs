@@ -49,7 +49,7 @@ public class MergeHeaderValidatorTests
             .WithTotalDifficulty(900)
             .TestObject;
 
-        Context ctx = new Context();
+        Context ctx = new();
         ctx.PoSSwitcher.IsPostMerge(header).Returns(false);
 
         ctx.MergeHeaderValidator.Validate(header, parent).Should().BeFalse();

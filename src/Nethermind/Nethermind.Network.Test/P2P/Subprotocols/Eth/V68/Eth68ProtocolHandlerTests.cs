@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using DotNetty.Buffers;
 using FluentAssertions;
 using Nethermind.Consensus;
 using Nethermind.Core;
@@ -117,7 +116,7 @@ public class Eth68ProtocolHandlerTests
 
         GenerateLists(txCount, out ArrayPoolList<byte> types, out ArrayPoolList<int> sizes, out ArrayPoolList<Hash256> hashes);
 
-        using var msg = new NewPooledTransactionHashesMessage68(types, sizes, hashes);
+        using NewPooledTransactionHashesMessage68 msg = new(types, sizes, hashes);
 
         HandleIncomingStatusMessage();
         HandleZeroMessage(msg, Eth68MessageCode.NewPooledTransactionHashes);
@@ -140,7 +139,7 @@ public class Eth68ProtocolHandlerTests
             types.RemoveAt(sizes.Count - 1);
         }
 
-        using var msg = new NewPooledTransactionHashesMessage68(types, sizes, hashes);
+        using NewPooledTransactionHashesMessage68 msg = new(types, sizes, hashes);
 
         HandleIncomingStatusMessage();
         Action action = () => HandleZeroMessage(msg, Eth68MessageCode.NewPooledTransactionHashes);
@@ -185,7 +184,7 @@ public class Eth68ProtocolHandlerTests
         Transaction tx = Build.A.Transaction.WithType(TxType.EIP1559).WithData(new byte[2 * 1024 * 1024])
             .WithHash(TestItem.KeccakA).TestObject;
 
-        using var msg = new NewPooledTransactionHashesMessage68(new ArrayPoolList<byte>(1) { (byte)tx.Type },
+        using NewPooledTransactionHashesMessage68 msg = new(new ArrayPoolList<byte>(1) { (byte)tx.Type },
             new ArrayPoolList<int>(1) { tx.GetLength() }, new ArrayPoolList<Hash256>(1) { tx.Hash });
 
         HandleIncomingStatusMessage();
@@ -289,18 +288,18 @@ public class Eth68ProtocolHandlerTests
 
     private void HandleIncomingStatusMessage()
     {
-        var statusMsg = new StatusMessage();
+        StatusMessage statusMsg = new();
         statusMsg.GenesisHash = _genesisBlock.Hash;
         statusMsg.BestHash = _genesisBlock.Hash;
 
-        IByteBuffer statusPacket = _svc.ZeroSerialize(statusMsg);
+        using DisposableByteBuffer statusPacket = _svc.ZeroSerialize(statusMsg).AsDisposable();
         statusPacket.ReadByte();
         _handler.HandleMessage(new ZeroPacket(statusPacket) { PacketType = 0 });
     }
 
     private void HandleZeroMessage<T>(T msg, byte messageCode) where T : MessageBase
     {
-        IByteBuffer getBlockHeadersPacket = _svc.ZeroSerialize(msg);
+        using DisposableByteBuffer getBlockHeadersPacket = _svc.ZeroSerialize(msg).AsDisposable();
         getBlockHeadersPacket.ReadByte();
         _handler.HandleMessage(new ZeroPacket(getBlockHeadersPacket) { PacketType = messageCode });
     }

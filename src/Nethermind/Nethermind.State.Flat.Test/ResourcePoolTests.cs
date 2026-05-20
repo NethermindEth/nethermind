@@ -36,7 +36,7 @@ public class ResourcePoolTests
         ResourcePool.Usage usage = ResourcePool.Usage.MainBlockProcessing;
         SnapshotContent content1 = _resourcePool.GetSnapshotContent(usage);
 
-        content1.Accounts[new AddressAsKey(new Address("0x1234567890123456789012345678901234567890"))] = new Account(1, 2);
+        content1.Accounts[new Address("0x1234567890123456789012345678901234567890")] = new Account(1, 2);
         Assert.That(content1.Accounts, Is.Not.Empty);
 
         _resourcePool.ReturnSnapshotContent(usage, content1);
@@ -55,7 +55,7 @@ public class ResourcePoolTests
         // For MainBlockProcessing: capacity = config.CompactSize + 8 = 2 + 8 = 10
         ResourcePool.Usage usage = ResourcePool.Usage.MainBlockProcessing;
         int capacity = _config.CompactSize + 8;
-        List<SnapshotContent> items = new List<SnapshotContent>();
+        List<SnapshotContent> items = new();
 
         for (int i = 0; i < capacity + 5; i++)
         {
@@ -128,8 +128,8 @@ public class ResourcePoolTests
     [Test]
     public void Test_CreateSnapshot_UsesPool()
     {
-        StateId from = new StateId(1, Keccak.Zero);
-        StateId to = new StateId(2, Keccak.Zero);
+        StateId from = new(1, Keccak.Zero);
+        StateId to = new(2, Keccak.Zero);
         ResourcePool.Usage usage = ResourcePool.Usage.MainBlockProcessing;
 
         SnapshotContent content;

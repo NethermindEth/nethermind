@@ -14,7 +14,7 @@ public class MpmcRingBufferTests
     [Test]
     public void SmokeTest()
     {
-        MpmcRingBuffer<int> jobQueue = new MpmcRingBuffer<int>(16);
+        MpmcRingBuffer<int> jobQueue = new(16);
 
         jobQueue.TryEnqueue(1);
         jobQueue.TryEnqueue(2);
@@ -37,7 +37,7 @@ public class MpmcRingBufferTests
     [Test]
     public void RollingSmokeTest()
     {
-        MpmcRingBuffer<int> jobQueue = new MpmcRingBuffer<int>(16);
+        MpmcRingBuffer<int> jobQueue = new(16);
 
         jobQueue.TryEnqueue(1);
         jobQueue.TryEnqueue(2);
@@ -57,7 +57,7 @@ public class MpmcRingBufferTests
     [Test]
     public void SmokeTestFullAndRolling()
     {
-        MpmcRingBuffer<int> jobQueue = new MpmcRingBuffer<int>(16);
+        MpmcRingBuffer<int> jobQueue = new(16);
 
         for (int i = 0; i < 16; i++)
         {
@@ -92,7 +92,7 @@ public class MpmcRingBufferTests
         int ProducerCount = 4;
         int ConsumerCount = 4;
 
-        MpmcRingBuffer<int> buffer = new MpmcRingBuffer<int>(Capacity);
+        MpmcRingBuffer<int> buffer = new(Capacity);
         int[] consumedCounts = new int[ItemsToProduce];
         long totalConsumed = 0;
 

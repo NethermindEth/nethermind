@@ -1,11 +1,14 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using Nethermind.Core;
+using System;
+using System.Collections.Concurrent;
+using System.Collections.Generic;
+using Nethermind.Core.Collections;
+using Nethermind.Core.Specs;
 using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Specs.ChainSpecStyle;
-using System;
 
 namespace Nethermind.Xdc.Spec;
 
@@ -14,13 +17,49 @@ public class XdcChainSpecBasedSpecProvider(ChainSpec chainSpec,
     ILogManager logManager)
     : ChainSpecBasedSpecProvider(chainSpec, logManager)
 {
-    private const int ExtraVanity = 32; // Fixed number of extra-data prefix bytes reserved for signer vanity
-    private const int ExtraSeal = 65; // Fixed number of extra-data suffix bytes reserved for signer seal
+    private readonly ConcurrentDictionary<(int blockIndex, int roundIndex), XdcReleaseSpec> _specCache = new();
+
+    public IXdcReleaseSpec GetXdcSpec(XdcBlockHeader header, ulong round = 0)
+    {
+        if (round == 0)
+            round = header.ExtraConsensusData?.BlockRound ?? 0;
+        return GetXdcSpec(header.Number, round);
+    }
+
+    public IXdcReleaseSpec GetXdcSpec(long blockNumber, ulong round = 0)
+    {
+        int blockIndex = GetBlockTransitionIndex(blockNumber);
+        int roundIndex = GetRoundConfigIndex(round);
+
+        if (_specCache.TryGetValue((blockIndex, roundIndex), out XdcReleaseSpec? cached))
+            return cached;
+
+        XdcReleaseSpec baseSpec = (XdcReleaseSpec)_blockTransitions[blockIndex].Spec;
+        XdcReleaseSpec copy = (XdcReleaseSpec)baseSpec.Clone();
+        copy.ApplyV2Config(round);
+
+        return _specCache.GetOrAdd((blockIndex, roundIndex), copy);
+    }
+
+    private int GetBlockTransitionIndex(long blockNumber)
+    {
+        int result = _blockTransitions.BinarySearch(new ForkActivation(blockNumber),
+            static (a, t) => a.CompareTo(t.Activation));
+        return result >= 0 ? result : ~result - 1;
+    }
+
+    private int GetRoundConfigIndex(ulong round)
+    {
+        List<V2ConfigParams> configs = chainSpecEngineParameters.V2Configs;
+        int result = configs.BinarySearch(round,
+            static (r, c) => r.CompareTo(c.SwitchRound));
+        return result >= 0 ? result : ~result - 1;
+    }
 
     protected override ReleaseSpec CreateEmptyReleaseSpec() => new XdcReleaseSpec();
     protected override ReleaseSpec CreateReleaseSpec(ChainSpec chainSpec, long releaseStartBlock, ulong? releaseStartTimestamp = null)
     {
-        var releaseSpec = (XdcReleaseSpec)base.CreateReleaseSpec(chainSpec, releaseStartBlock, releaseStartTimestamp);
+        XdcReleaseSpec releaseSpec = (XdcReleaseSpec)base.CreateReleaseSpec(chainSpec, releaseStartBlock, releaseStartTimestamp);
 
         releaseSpec.EpochLength = chainSpecEngineParameters.Epoch;
         releaseSpec.Gap = chainSpecEngineParameters.Gap;
@@ -31,12 +70,16 @@ public class XdcChainSpecBasedSpecProvider(ChainSpec chainSpec,
         releaseSpec.Reward = chainSpecEngineParameters.Reward;
         releaseSpec.MasternodeVotingContract = chainSpecEngineParameters.MasternodeVotingContract;
         releaseSpec.BlockSignerContract = chainSpecEngineParameters.BlockSignerContract;
+        releaseSpec.MasternodeReward = chainSpecEngineParameters.MasternodeReward;
+        releaseSpec.ProtectorReward = chainSpecEngineParameters.ProtectorReward;
+        releaseSpec.ObserverReward = chainSpecEngineParameters.ObserverReward;
 
         releaseSpec.IsTipTrc21FeeEnabled = (chainSpecEngineParameters.TipTrc21Fee ?? 0) <= releaseStartBlock;
         releaseSpec.IsBlackListingEnabled = chainSpecEngineParameters.BlackListHFNumber <= releaseStartBlock;
         releaseSpec.IsTIP2019 = chainSpecEngineParameters.TIP2019Block <= releaseStartBlock;
         releaseSpec.IsTIPXDCXMiner = chainSpecEngineParameters.TipXDCX <= releaseStartBlock && releaseStartBlock < chainSpecEngineParameters.TIPXDCXMinerDisable;
         releaseSpec.IsDynamicGasLimitBlock = chainSpecEngineParameters.DynamicGasLimitBlock <= releaseStartBlock;
+        releaseSpec.IsTipUpgradeRewardEnabled = (chainSpecEngineParameters.TipUpgradeReward ?? long.MaxValue) <= releaseStartBlock;
         releaseSpec.IsTipUpgradePenaltyEnabled = (chainSpecEngineParameters.TipUpgradePenalty ?? long.MaxValue) <= releaseStartBlock;
 
         releaseSpec.MergeSignRange = chainSpecEngineParameters.MergeSignRange;
@@ -58,7 +101,9 @@ public class XdcChainSpecBasedSpecProvider(ChainSpec chainSpec,
         if (releaseSpec.SwitchBlock == 0)
         {
             //We can parse genesis masternodes from genesis if the chain starts as V2
-            releaseSpec.GenesisMasterNodes = ParseGenesisMasternodes(chainSpec);
+            byte[] genesisExtraData = chainSpec.Genesis?.ExtraData
+                ?? throw new ArgumentException("Genesis ExtraData is required when SwitchBlock is 0", nameof(chainSpec));
+            releaseSpec.GenesisMasterNodes = genesisExtraData.ParseV1Masternodes();
         }
         else
         {
@@ -66,17 +111,6 @@ public class XdcChainSpecBasedSpecProvider(ChainSpec chainSpec,
         }
 
         return releaseSpec;
-    }
-
-    private Address[] ParseGenesisMasternodes(ChainSpec chainSpec)
-    {
-        int length = (chainSpec.Genesis.ExtraData.Length - ExtraVanity - ExtraSeal) / Address.Size;
-        Address[] signers = new Address[length];
-        for (int i = 0; i < length; i++)
-        {
-            signers[i] = new Address(chainSpec.Genesis.ExtraData.AsSpan(ExtraVanity + i * Address.Size, Address.Size));
-        }
-        return signers;
     }
 
 }

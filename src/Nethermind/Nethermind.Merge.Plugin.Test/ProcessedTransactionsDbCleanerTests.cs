@@ -29,15 +29,13 @@ public class ProcessedTransactionsDbCleanerTests
     [Test]
     public async Task should_remove_processed_txs_from_db_after_finalization([Values(0, 1, 42, 358)] long blockOfTxs, [Values(1, 42, 358)] long finalizedBlock)
     {
-        Transaction GetTx(PrivateKey sender)
-        {
-            return Build.A.Transaction
+        Transaction GetTx(PrivateKey sender) =>
+            Build.A.Transaction
                 .WithShardBlobTxTypeAndFields()
                 .WithMaxFeePerGas(UInt256.One)
                 .WithMaxPriorityFeePerGas(UInt256.One)
                 .WithNonce(UInt256.Zero)
                 .SignedAndResolved(new EthereumEcdsa(_specProvider.ChainId), sender).TestObject;
-        }
 
         IColumnsDb<BlobTxsColumns> columnsDb = new MemColumnsDb<BlobTxsColumns>(BlobTxsColumns.ProcessedTxs);
         BlobTxStorage blobTxStorage = new(columnsDb);

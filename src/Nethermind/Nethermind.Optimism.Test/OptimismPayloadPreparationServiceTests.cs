@@ -35,7 +35,7 @@ public class OptimismPayloadPreparationServiceTests
 {
     private static IEnumerable<(OptimismPayloadAttributes, EIP1559Parameters?)> TestCases()
     {
-        foreach (var noTxPool in (bool[])[true, false])
+        foreach (bool noTxPool in (bool[])[true, false])
         {
             // V0
             yield return (new() { EIP1559Params = [0, 0, 0, 8, 0, 0, 0, 2], NoTxPool = noTxPool }, new EIP1559Parameters(0, 8, 2));

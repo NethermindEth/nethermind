@@ -11,4 +11,5 @@ public interface IPersistenceManager
     StateId GetCurrentPersistedStateId();
     void AddToPersistence(StateId latestSnapshot);
     StateId FlushToPersistence();
+    void ResetPersistedStateId();
 }

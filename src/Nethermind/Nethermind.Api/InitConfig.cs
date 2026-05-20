@@ -41,6 +41,8 @@ namespace Nethermind.Api
         public int BackgroundTaskMaxNumber { get; set; } = 2048;
         public bool InRunnerTest { get; set; } = false;
         public string? DataDir { get; set; }
+        public bool HealCanonicalChain { get; set; } = false;
+        public long HealCanonicalChainDepth { get; set; } = 8192;
 
         [Obsolete("Use DiagnosticMode with MemDb instead")]
         public bool UseMemDb

@@ -67,8 +67,8 @@ public abstract class JsonRpc
                 {
                     if (Items().Any())
                     {
-                        var first = Items().First()?.Id;
-                        var last = Items().Last()?.Id;
+                        string? first = Items().First()?.Id;
+                        string? last = Items().Last()?.Id;
 
                         if (first is not null && last is not null)
                         {

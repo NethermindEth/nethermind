@@ -23,7 +23,7 @@ public abstract class OptimismProtocolVersion : IEquatable<OptimismProtocolVersi
     {
         if (span.Length < ByteLength) throw new ParseException($"Expected at least {ByteLength} bytes");
 
-        var version = span[0];
+        byte version = span[0];
         return version switch
         {
             0 => V0.Read(span),
@@ -70,17 +70,17 @@ public abstract class OptimismProtocolVersion : IEquatable<OptimismProtocolVersi
 
         public new static V0 Read(ReadOnlySpan<byte> span)
         {
-            var version = span[0];
+            byte version = span[0];
             if (version != 0) throw new ParseException($"Expected version 0, got {version}");
 
-            var reserved = span.TakeAndMove(7);
+            ReadOnlySpan<byte> reserved = span.TakeAndMove(7);
             if (!reserved.IsZero()) throw new ParseException("Expected reserved bytes to be zero");
 
-            var build = span.TakeAndMove(8);
-            var major = BinaryPrimitives.ReadUInt32BigEndian(span.TakeAndMove(4));
-            var minor = BinaryPrimitives.ReadUInt32BigEndian(span.TakeAndMove(4));
-            var patch = BinaryPrimitives.ReadUInt32BigEndian(span.TakeAndMove(4));
-            var preRelease = BinaryPrimitives.ReadUInt32BigEndian(span.TakeAndMove(4));
+            ReadOnlySpan<byte> build = span.TakeAndMove(8);
+            uint major = BinaryPrimitives.ReadUInt32BigEndian(span.TakeAndMove(4));
+            uint minor = BinaryPrimitives.ReadUInt32BigEndian(span.TakeAndMove(4));
+            uint patch = BinaryPrimitives.ReadUInt32BigEndian(span.TakeAndMove(4));
+            uint preRelease = BinaryPrimitives.ReadUInt32BigEndian(span.TakeAndMove(4));
 
             return new V0(build, major, minor, patch, preRelease);
         }
@@ -106,13 +106,13 @@ public abstract class OptimismProtocolVersion : IEquatable<OptimismProtocolVersi
 
             if (other is not V0 otherVersion) throw new ArgumentException("Object is not a valid OptimismProtocolVersion.V0", nameof(other));
 
-            var majorComparison = Major.CompareTo(otherVersion.Major);
+            int majorComparison = Major.CompareTo(otherVersion.Major);
             if (majorComparison != 0) return majorComparison;
 
-            var minorComparison = Minor.CompareTo(otherVersion.Minor);
+            int minorComparison = Minor.CompareTo(otherVersion.Minor);
             if (minorComparison != 0) return minorComparison;
 
-            var patchComparison = Patch.CompareTo(otherVersion.Patch);
+            int patchComparison = Patch.CompareTo(otherVersion.Patch);
             if (patchComparison != 0) return patchComparison;
 
             return (PreRelease, otherVersion.PreRelease) switch

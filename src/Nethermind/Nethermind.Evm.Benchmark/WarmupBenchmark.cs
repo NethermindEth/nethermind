@@ -5,7 +5,6 @@ using System;
 using BenchmarkDotNet.Attributes;
 using BenchmarkDotNet.Columns;
 using BenchmarkDotNet.Configs;
-using BenchmarkDotNet.Exporters.Json;
 using BenchmarkDotNet.Jobs;
 using BenchmarkDotNet.Toolchains.InProcess.NoEmit;
 using Nethermind.Blockchain;
@@ -15,7 +14,6 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
@@ -89,7 +87,7 @@ public class WarmupBenchmark
         _stateProvider = TestWorldStateFactory.CreateForTest();
         _stateScope = _stateProvider.BeginScope(IWorldState.PreGenesis);
 
-        _stateProvider.CreateAccount(TestItem.AddressA, 1_000_000_000.Ether());
+        _stateProvider.CreateAccount(TestItem.AddressA, 1_000_000_000.Ether);
         _stateProvider.CreateAccount(TestItem.AddressB, UInt256.Zero);
         _stateProvider.InsertCode(TestItem.AddressB, ContractCode, Spec);
         _stateProvider.Commit(Spec);
@@ -98,7 +96,7 @@ public class WarmupBenchmark
         _header = Build.A.BlockHeader
             .WithNumber(1)
             .WithGasLimit(30_000_000)
-            .WithBaseFee(10.GWei())
+            .WithBaseFee(10.GWei)
             .WithStateRoot(_stateProvider.StateRoot)
             .TestObject;
 
@@ -117,18 +115,18 @@ public class WarmupBenchmark
 
         _simpleTx = Build.A.Transaction
             .WithTo(TestItem.AddressC)
-            .WithValue(1.Ether())
+            .WithValue(1.Ether)
             .WithGasLimit(50_000)
-            .WithGasPrice(20.GWei())
+            .WithGasPrice(20.GWei)
             .SignedAndResolved(TestItem.PrivateKeyA)
             .TestObject;
 
         _accessListTx = Build.A.Transaction
             .WithType(TxType.AccessList)
             .WithTo(TestItem.AddressC)
-            .WithValue(1.Ether())
+            .WithValue(1.Ether)
             .WithGasLimit(100_000)
-            .WithGasPrice(20.GWei())
+            .WithGasPrice(20.GWei)
             .WithAccessList(SampleAccessList)
             .SignedAndResolved(TestItem.PrivateKeyA)
             .TestObject;
@@ -136,17 +134,17 @@ public class WarmupBenchmark
         _eip1559Tx = Build.A.Transaction
             .WithType(TxType.EIP1559)
             .WithTo(TestItem.AddressC)
-            .WithValue(1.Ether())
+            .WithValue(1.Ether)
             .WithGasLimit(100_000)
-            .WithMaxFeePerGas(20.GWei())
-            .WithMaxPriorityFeePerGas(2.GWei())
+            .WithMaxFeePerGas(20.GWei)
+            .WithMaxPriorityFeePerGas(2.GWei)
             .SignedAndResolved(TestItem.PrivateKeyA)
             .TestObject;
 
         _contractCallTx = Build.A.Transaction
             .WithTo(TestItem.AddressB)
             .WithGasLimit(100_000)
-            .WithGasPrice(20.GWei())
+            .WithGasPrice(20.GWei)
             .SignedAndResolved(TestItem.PrivateKeyA)
             .TestObject;
 

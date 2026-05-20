@@ -66,7 +66,7 @@ public class SnapshotRepositoryTests
 
     private List<Snapshot> BuildSnapshotChain(long startBlock, long endBlock)
     {
-        List<Snapshot> snapshots = new List<Snapshot>();
+        List<Snapshot> snapshots = new();
         for (long i = startBlock; i < endBlock; i++)
         {
             snapshots.Add(AddSnapshotToRepository(i, i + 1));
@@ -287,6 +287,19 @@ public class SnapshotRepositoryTests
         ArrayPoolList<StateId> states = _repository.GetSnapshotBeforeStateId(target);
 
         Assert.That(states.Count, Is.EqualTo(3));
+        states.Dispose();
+    }
+
+    [TestCase(-1)]
+    [TestCase(long.MinValue)]
+    public void GetSnapshotBeforeStateId_NegativeBlockNumber_ReturnsEmpty(long blockNumber)
+    {
+        _repository.AddStateId(CreateStateId(1));
+
+        StateId target = new(blockNumber, Keccak.EmptyTreeHash);
+        ArrayPoolList<StateId> states = _repository.GetSnapshotBeforeStateId(target);
+
+        Assert.That(states.Count, Is.EqualTo(0));
         states.Dispose();
     }
 

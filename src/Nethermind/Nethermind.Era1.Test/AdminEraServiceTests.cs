@@ -13,7 +13,7 @@ public class AdminEraServiceTests
     public void CanCallImport()
     {
         IEraImporter importer = Substitute.For<IEraImporter>();
-        AdminEraService adminEraService = new AdminEraService(
+        AdminEraService adminEraService = new(
             importer,
             Substitute.For<IEraExporter>(),
             Substitute.For<IProcessExitSource>(),
@@ -27,9 +27,9 @@ public class AdminEraServiceTests
     public void ThrowsWhenExistingImportIsRunning()
     {
         IEraImporter importer = Substitute.For<IEraImporter>();
-        TaskCompletionSource importTcs = new TaskCompletionSource();
+        TaskCompletionSource importTcs = new();
         importer.Import("somewhere", 99, 999, null).Returns(importTcs.Task);
-        AdminEraService adminEraService = new AdminEraService(
+        AdminEraService adminEraService = new(
             importer,
             Substitute.For<IEraExporter>(),
             Substitute.For<IProcessExitSource>(),
@@ -49,7 +49,7 @@ public class AdminEraServiceTests
     public void CanCallExport()
     {
         IEraExporter exporter = Substitute.For<IEraExporter>();
-        AdminEraService adminEraService = new AdminEraService(
+        AdminEraService adminEraService = new(
             Substitute.For<IEraImporter>(),
             exporter,
             Substitute.For<IProcessExitSource>(),
@@ -63,9 +63,9 @@ public class AdminEraServiceTests
     public void ThrowsWhenExistingExportIsRunning()
     {
         IEraExporter exporter = Substitute.For<IEraExporter>();
-        TaskCompletionSource importTcs = new TaskCompletionSource();
+        TaskCompletionSource importTcs = new();
         exporter.Export("somewhere", 99, 999).Returns(importTcs.Task);
-        AdminEraService adminEraService = new AdminEraService(
+        AdminEraService adminEraService = new(
             Substitute.For<IEraImporter>(),
             exporter,
             Substitute.For<IProcessExitSource>(),

@@ -135,17 +135,11 @@ namespace Nethermind.HealthChecks
 
         public bool CheckClAlive() => clHealthTracker?.CheckClAlive() ?? true;
 
-        private ulong? GetBlockProcessorIntervalHint()
-        {
-            return healthChecksConfig.MaxIntervalWithoutProcessedBlock ??
+        private ulong? GetBlockProcessorIntervalHint() => healthChecksConfig.MaxIntervalWithoutProcessedBlock ??
                    healthHintService.MaxSecondsIntervalForProcessingBlocksHint();
-        }
 
-        private ulong? GetBlockProducerIntervalHint()
-        {
-            return healthChecksConfig.MaxIntervalWithoutProducedBlock ??
+        private ulong? GetBlockProducerIntervalHint() => healthChecksConfig.MaxIntervalWithoutProducedBlock ??
                    healthHintService.MaxSecondsIntervalForProducingBlocksHint();
-        }
 
         private static bool CheckSyncPostMerge(ICollection<(string Description, string LongDescription)> messages,
             ICollection<string> errors, SyncingResult syncingResult)
@@ -184,7 +178,7 @@ namespace Nethermind.HealthChecks
             ICollection<string> errors, long netPeerCount)
         {
             bool hasPeers = netPeerCount > 0;
-            if (hasPeers == false)
+            if (!hasPeers)
             {
                 errors.Add(ErrorStrings.NoPeers);
                 messages.Add(("Node is not connected to any peers", "Node is not connected to any peers"));
@@ -201,7 +195,7 @@ namespace Nethermind.HealthChecks
         {
             ulong? maxIntervalHint = GetBlockProducerIntervalHint();
             bool producingBlocks = blockProducerRunner.IsProducingBlocks(maxIntervalHint);
-            if (producingBlocks == false)
+            if (!producingBlocks)
             {
                 errors.Add(ErrorStrings.NotProducingBlocks);
                 messages.Add(("Stopped producing blocks", "The node stopped producing blocks"));
@@ -214,7 +208,7 @@ namespace Nethermind.HealthChecks
         {
             ulong? maxIntervalHint = GetBlockProcessorIntervalHint();
             bool processingBlocks = blockchainProcessor.IsProcessingBlocks(maxIntervalHint);
-            if (processingBlocks == false)
+            if (!processingBlocks)
             {
                 errors.Add(ErrorStrings.NotProcessingBlocks);
                 messages.Add(("Stopped processing blocks", "The node stopped processing blocks"));
@@ -230,20 +224,11 @@ namespace Nethermind.HealthChecks
         }
 
         private static void AddStillSyncingMessage(ICollection<(string Description, string LongDescription)> messages,
-            SyncingResult ethSyncing)
-        {
-            messages.Add(("Still syncing",
+            SyncingResult ethSyncing) => messages.Add(("Still syncing",
                 $"The node is still syncing, CurrentBlock: {ethSyncing.CurrentBlock}, HighestBlock: {ethSyncing.HighestBlock}. The status will change to healthy once synced"));
-        }
 
-        private static void AddFullySyncMessage(ICollection<(string Description, string LongDescription)> messages)
-        {
-            messages.Add(("Fully synced", $"The node is now fully synced with a network"));
-        }
+        private static void AddFullySyncMessage(ICollection<(string Description, string LongDescription)> messages) => messages.Add(("Fully synced", $"The node is now fully synced with a network"));
 
-        private static void AddLowDiskSpaceMessage(ICollection<(string Description, string LongDescription)> messages, IDriveInfo drive, double freeSpacePercent)
-        {
-            messages.Add(("Low free disk space", $"The node is running out of free disk space in '{drive.RootDirectory.FullName}' - only {drive.GetFreeSpaceInGiB():F2} GB ({freeSpacePercent:F2}%) left"));
-        }
+        private static void AddLowDiskSpaceMessage(ICollection<(string Description, string LongDescription)> messages, IDriveInfo drive, double freeSpacePercent) => messages.Add(("Low free disk space", $"The node is running out of free disk space in '{drive.RootDirectory.FullName}' - only {drive.GetFreeSpaceInGiB():F2} GB ({freeSpacePercent:F2}%) left"));
     }
 }

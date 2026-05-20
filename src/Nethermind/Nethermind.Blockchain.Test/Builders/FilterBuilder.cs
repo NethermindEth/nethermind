@@ -17,10 +17,7 @@ namespace Nethermind.Blockchain.Test.Builders
         private AddressFilter _address = AddressFilter.AnyAddress;
         private SequenceTopicsFilter _topicsFilter = new();
 
-        private FilterBuilder(int id)
-        {
-            _id = id;
-        }
+        private FilterBuilder(int id) => _id = id;
 
         public static FilterBuilder New()
         {

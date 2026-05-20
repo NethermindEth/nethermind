@@ -4,7 +4,6 @@
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using FluentAssertions;
 using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
@@ -70,8 +69,8 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
 
             _ctx.ProtocolHandler.HandleMessage(receiptsPacket);
 
-            using var result = await task;
-            result.Should().HaveCount(count);
+            using IOwnedReadOnlyList<TxReceipt[]> result = await task;
+            Assert.That(result, Has.Count.EqualTo(count));
         }
 
         [Test]
@@ -131,8 +130,9 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
         [Test]
         public void Should_not_exceed_soft_message_size_limit_for_receipts()
         {
-            _ctx.SyncServer.GetReceipts(Arg.Any<Hash256>()).Returns(
-                Enumerable.Repeat(Build.A.Receipt.WithAllFieldsFilled.TestObject, 512).ToArray());
+            TxReceipt[] receipts = Enumerable.Repeat(Build.A.Receipt.WithAllFieldsFilled.TestObject, 512).ToArray();
+            int expectedCount = SoftLimitTestHelper.CountReceiptBlocksWithinSoftLimit(receipts, 512);
+            _ctx.SyncServer.GetReceipts(Arg.Any<Hash256>()).Returns(receipts);
 
             using GetReceiptsMessage getReceiptsMessage = new(
                 RepeatPooled(Keccak.Zero, 512));
@@ -140,7 +140,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
                 new("eth", Eth63MessageCode.GetReceipts, _ctx._getReceiptMessageSerializer.Serialize(getReceiptsMessage));
 
             _ctx.ProtocolHandler.HandleMessage(getReceiptsPacket);
-            _ctx.Session.Received().DeliverMessage(Arg.Is<ReceiptsMessage>(static r => r.TxReceipts.Count == 64));
+            _ctx.Session.Received().DeliverMessage(Arg.Is<ReceiptsMessage>(r => r.TxReceipts.Count == expectedCount));
         }
 
         private class Context
@@ -165,7 +165,9 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
                         return _protocolHandler;
                     }
 
-                    var nodeStatsManager = Substitute.For<INodeStatsManager>();
+                    SyncServer.FindHeader(Arg.Any<Hash256>()).Returns(Build.A.BlockHeader.TestObject);
+
+                    INodeStatsManager nodeStatsManager = Substitute.For<INodeStatsManager>();
                     nodeStatsManager.GetOrAdd(Arg.Any<Node>()).Returns((c) => new NodeStatsLight((Node)c[0]));
 
                     _protocolHandler = new Eth63ProtocolHandler(

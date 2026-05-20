@@ -58,7 +58,7 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer
     {
         GethLikeTxTrace result = base.BuildResult();
 
-        Debug.Assert(_callStack.Count == 1, $"Unexpected frames on call stack, expected only master frame, found {_callStack.Count} frames.");
+        Debug.Assert(_callStack.Count <= 1, $"Unexpected frames on call stack, expected at most one master frame, found {_callStack.Count} frames.");
 
         if (_callStack.Count is not 0)
         {
@@ -163,7 +163,7 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer
         base.ReportSelfDestruct(address, balance, refundAddress);
         if (!_config.OnlyTopCall && _callStack.Count > 0)
         {
-            NativeCallTracerCallFrame callFrame = new NativeCallTracerCallFrame
+            NativeCallTracerCallFrame callFrame = new()
             {
                 Type = Instruction.SELFDESTRUCT,
                 From = address,
@@ -174,32 +174,39 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer
         }
     }
 
-    public override void MarkAsSuccess(Address recipient, GasConsumed gasSpent, byte[] output, LogEntry[] logs, Hash256? stateRoot = null)
+    public override void MarkAsSuccess(Address recipient, in GasConsumed gasSpent, byte[] output, LogEntry[] logs, Hash256? stateRoot = null)
     {
         base.MarkAsSuccess(recipient, gasSpent, output, logs, stateRoot);
+
+        if (_callStack.Count == 0) return;
         NativeCallTracerCallFrame firstCallFrame = _callStack[0];
         firstCallFrame.GasUsed = gasSpent.SpentGas;
         firstCallFrame.Output = new ArrayPoolList<byte>(output);
     }
 
-    public override void MarkAsFailed(Address recipient, GasConsumed gasSpent, byte[] output, string? error, Hash256? stateRoot = null)
+    public override void MarkAsFailed(Address recipient, in GasConsumed gasSpent, byte[] output, string? error, Hash256? stateRoot = null)
     {
         base.MarkAsFailed(recipient, gasSpent, output, error, stateRoot);
+
+        if (_callStack.Count == 0) return;
         NativeCallTracerCallFrame firstCallFrame = _callStack[0];
         firstCallFrame.GasUsed = gasSpent.SpentGas;
         if (output is not null)
             firstCallFrame.Output = new ArrayPoolList<byte>(output);
 
-        EvmExceptionType errorType = _error!.Value;
-        firstCallFrame.Error = errorType.GetEvmExceptionDescription();
-        if (errorType == EvmExceptionType.Revert && error is not TransactionSubstate.Revert)
+        if (_error is not null)
         {
-            firstCallFrame.RevertReason = ValidateRevertReason(error);
+            EvmExceptionType errorType = _error.Value;
+            firstCallFrame.Error = errorType.GetEvmExceptionDescription();
+            if (errorType == EvmExceptionType.Revert && error is not TransactionSubstate.Revert)
+            {
+                firstCallFrame.RevertReason = ValidateRevertReason(error);
+            }
         }
 
         if (_config.WithLog)
         {
-            ClearFailedLogs(firstCallFrame, false);
+            ClearFailedLogs(firstCallFrame, true);
         }
     }
 

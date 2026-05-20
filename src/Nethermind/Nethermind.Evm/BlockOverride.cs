@@ -11,7 +11,7 @@ namespace Nethermind.Evm;
 public class BlockOverride
 {
     public ulong? Number { get; set; }
-    public Hash256 PrevRandao { get; set; } = Keccak.Zero;
+    public Hash256? PrevRandao { get; set; }
     public ulong? Time { get; set; }
     public ulong? GasLimit { get; set; }
     public Address? FeeRecipient { get; set; }
@@ -25,14 +25,22 @@ public class BlockOverride
         {
             if (GasLimit > long.MaxValue)
             {
-                throw new OverflowException($"GasLimit value is too large, max value {ulong.MaxValue}");
+                throw new OverflowException($"GasLimit value is too large, max value {long.MaxValue}");
             }
             result.GasLimit = (long)GasLimit.Value;
         }
 
         if (Number is not null) result.Number = (long)Number.Value;
-        if (FeeRecipient is not null) result.Beneficiary = FeeRecipient;
+        if (FeeRecipient is not null)
+        {
+            // Set Author as well because GasBeneficiary = Author ?? Beneficiary.
+            // Mirrors geth: blockCtx.Coinbase = *o.FeeRecipient.
+            result.Beneficiary = result.Author = FeeRecipient;
+        }
         if (BaseFeePerGas is not null) result.BaseFeePerGas = BaseFeePerGas.Value;
         if (PrevRandao is not null && PrevRandao != Hash256.Zero) result.MixHash = PrevRandao;
+        // BlobBaseFee is not a direct header field — it is derived from ExcessBlobGas via the
+        // EIP-4844 formula. The override is applied via BlobBaseFeeOverrideCalculatorDecorator
+        // (and for simulate via IBlobBaseFeeOverrideProvider) instead.
     }
 }

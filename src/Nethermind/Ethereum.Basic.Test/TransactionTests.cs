@@ -52,7 +52,7 @@ public class TransactionTests
 
         BigInteger expectedS = decodedSigned.Signature.S.Span.ToUnsignedBigInteger();
         BigInteger actualS = decodedUnsigned.Signature.S.Span.ToUnsignedBigInteger();
-        BigInteger otherS = (BigInteger)Secp256K1Curve.N - actualS;
+        BigInteger otherS = (BigInteger)SecP256k1Curve.N - actualS;
 
         Assert.That(otherS == expectedS || actualS == expectedS, "S is wrong");
 

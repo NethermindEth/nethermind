@@ -5,16 +5,13 @@
 
 using System;
 using System.Diagnostics;
-using System.Threading;
 using Autofac;
 using BenchmarkDotNet.Attributes;
 using BenchmarkDotNet.Columns;
 using BenchmarkDotNet.Configs;
-using BenchmarkDotNet.Exporters.Json;
 using BenchmarkDotNet.Jobs;
 using BenchmarkDotNet.Toolchains.InProcess.NoEmit;
 using Nethermind.Blockchain.Tracing;
-using Nethermind.Consensus.ExecutionRequests;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Eip2930;
@@ -28,7 +25,6 @@ using Nethermind.Core.Test.Db;
 using Nethermind.Core.Test.Modules;
 using Nethermind.Db;
 using Nethermind.Evm.State;
-using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Specs.Forks;
@@ -160,7 +156,7 @@ public class BlockProcessingBenchmark
         _header = Build.A.BlockHeader
             .WithNumber(1)
             .WithGasLimit(30_000_000)
-            .WithBaseFee(1.GWei())
+            .WithBaseFee(1.GWei)
             .WithTimestamp(1)
             .TestObject;
 
@@ -213,7 +209,7 @@ public class BlockProcessingBenchmark
 
         using (stateProvider.BeginScope(IWorldState.PreGenesis))
         {
-            stateProvider.CreateAccount(_sender, 1_000_000.Ether());
+            stateProvider.CreateAccount(_sender, 1_000_000.Ether);
 
             stateProvider.CreateAccount(TestItem.AddressB, UInt256.Zero);
             stateProvider.InsertCode(TestItem.AddressB, ContractCode, Spec);
@@ -353,9 +349,9 @@ public class BlockProcessingBenchmark
             txs[i] = Build.A.Transaction
                 .WithNonce((UInt256)(startNonce + i))
                 .WithTo(TestItem.AddressC)
-                .WithValue(1.Wei())
+                .WithValue(1.Wei)
                 .WithGasLimit(21_000)
-                .WithGasPrice(2.GWei())
+                .WithGasPrice(2.GWei)
                 .SignedAndResolved(_senderKey)
                 .TestObject;
         }
@@ -371,10 +367,10 @@ public class BlockProcessingBenchmark
                 .WithType(TxType.EIP1559)
                 .WithNonce((UInt256)(startNonce + i))
                 .WithTo(TestItem.AddressC)
-                .WithValue(1.Wei())
+                .WithValue(1.Wei)
                 .WithGasLimit(21_000)
-                .WithMaxFeePerGas(2.GWei())
-                .WithMaxPriorityFeePerGas(1.GWei())
+                .WithMaxFeePerGas(2.GWei)
+                .WithMaxPriorityFeePerGas(1.GWei)
                 .SignedAndResolved(_senderKey)
                 .TestObject;
         }
@@ -390,9 +386,9 @@ public class BlockProcessingBenchmark
                 .WithType(TxType.AccessList)
                 .WithNonce((UInt256)(startNonce + i))
                 .WithTo(TestItem.AddressC)
-                .WithValue(1.Wei())
+                .WithValue(1.Wei)
                 .WithGasLimit(50_000)
-                .WithGasPrice(2.GWei())
+                .WithGasPrice(2.GWei)
                 .WithAccessList(SampleAccessList)
                 .SignedAndResolved(_senderKey)
                 .TestObject;
@@ -410,7 +406,7 @@ public class BlockProcessingBenchmark
                 .WithTo(null)
                 .WithData(ContractCode)
                 .WithGasLimit(100_000)
-                .WithGasPrice(2.GWei())
+                .WithGasPrice(2.GWei)
                 .SignedAndResolved(_senderKey)
                 .TestObject;
         }
@@ -426,7 +422,7 @@ public class BlockProcessingBenchmark
                 .WithNonce((UInt256)(startNonce + i))
                 .WithTo(TestItem.AddressB)
                 .WithGasLimit(50_000)
-                .WithGasPrice(2.GWei())
+                .WithGasPrice(2.GWei)
                 .SignedAndResolved(_senderKey)
                 .TestObject;
         }

@@ -29,7 +29,7 @@ namespace Nethermind.Trie.Test.Pruning
         {
             long latestCommittedBlock = 100;
             long lastPersistedBlock = latestCommittedBlock - PruneBoundary - MaxBlockFromPersisted;
-            var state = new TrieStoreState(100, 200, latestCommittedBlock, lastPersistedBlock);
+            TrieStoreState state = new(100, 200, latestCommittedBlock, lastPersistedBlock);
 
             _baseStrategy.ShouldPruneDirtyNode(state).Returns(false);
             _strategy.ShouldPruneDirtyNode(state).Should().BeTrue();
@@ -40,7 +40,7 @@ namespace Nethermind.Trie.Test.Pruning
         {
             long latestCommittedBlock = 100;
             long lastPersistedBlock = latestCommittedBlock - PruneBoundary - MaxBlockFromPersisted + 1;
-            var state = new TrieStoreState(100, 200, latestCommittedBlock, lastPersistedBlock);
+            TrieStoreState state = new(100, 200, latestCommittedBlock, lastPersistedBlock);
 
             _baseStrategy.ShouldPruneDirtyNode(state).Returns(true);
             _strategy.ShouldPruneDirtyNode(state).Should().BeTrue();

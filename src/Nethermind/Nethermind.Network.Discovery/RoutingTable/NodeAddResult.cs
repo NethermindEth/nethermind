@@ -12,18 +12,9 @@ public class NodeAddResult
     private static readonly NodeAddResult? _added = null;
     private static readonly NodeAddResult? _dropped = null;
 
-    public static NodeAddResult Added()
-    {
-        return _added ?? new NodeAddResult { ResultType = NodeAddResultType.Added };
-    }
+    public static NodeAddResult Added() => _added ?? new NodeAddResult { ResultType = NodeAddResultType.Added };
 
-    public static NodeAddResult Full(NodeBucketItem evictionCandidate)
-    {
-        return new NodeAddResult { ResultType = NodeAddResultType.Full, EvictionCandidate = evictionCandidate };
-    }
+    public static NodeAddResult Full(NodeBucketItem evictionCandidate) => new() { ResultType = NodeAddResultType.Full, EvictionCandidate = evictionCandidate };
 
-    public static NodeAddResult Dropped()
-    {
-        return _dropped ?? new NodeAddResult { ResultType = NodeAddResultType.Dropped };
-    }
+    public static NodeAddResult Dropped() => _dropped ?? new NodeAddResult { ResultType = NodeAddResultType.Dropped };
 }

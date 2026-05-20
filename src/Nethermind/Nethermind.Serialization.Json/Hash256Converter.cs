@@ -11,14 +11,9 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.Serialization.Json;
 
-public class Hash256Converter : JsonConverter<Hash256>
+public class Hash256Converter(bool strictHexFormat = false) : JsonConverter<Hash256>
 {
-    private readonly bool _strictHexFormat;
-
-    public Hash256Converter(bool strictHexFormat = false)
-    {
-        _strictHexFormat = strictHexFormat;
-    }
+    private readonly bool _strictHexFormat = strictHexFormat;
 
     public override Hash256? Read(
         ref Utf8JsonReader reader,
@@ -34,10 +29,7 @@ public class Hash256Converter : JsonConverter<Hash256>
     public override void Write(
         Utf8JsonWriter writer,
         Hash256 keccak,
-        JsonSerializerOptions options)
-    {
-        WriteHashHex(writer, in keccak.ValueHash256);
-    }
+        JsonSerializerOptions options) => WriteHashHex(writer, in keccak.ValueHash256);
 
     /// <summary>
     /// SIMD-accelerated hex encoding for 32-byte hashes.
@@ -69,8 +61,5 @@ public class Hash256Converter : JsonConverter<Hash256>
         return bytes is null ? null! : new Hash256(bytes);
     }
 
-    public override void WriteAsPropertyName(Utf8JsonWriter writer, Hash256 value, JsonSerializerOptions options)
-    {
-        writer.WritePropertyName(value.ToString());
-    }
+    public override void WriteAsPropertyName(Utf8JsonWriter writer, Hash256 value, JsonSerializerOptions options) => writer.WritePropertyName(value.ToString());
 }

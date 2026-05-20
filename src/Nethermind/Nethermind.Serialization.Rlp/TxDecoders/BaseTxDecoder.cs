@@ -15,7 +15,7 @@ public abstract class BaseTxDecoder<T>(TxType txType, Func<T>? transactionFactor
     private readonly Func<T> _createTransaction = transactionFactory ?? (static () => new T());
 
     // 30MB should be good enough for 300MGas block just filled with call data
-    private static readonly RlpLimit _dataRlpLimit = RlpLimit.For<Transaction>((int)30.MiB(), nameof(Transaction.Data));
+    private static readonly RlpLimit _dataRlpLimit = RlpLimit.For<Transaction>((int)30.MiB, nameof(Transaction.Data));
 
     public TxType Type => txType;
 
@@ -90,16 +90,13 @@ public abstract class BaseTxDecoder<T>(TxType txType, Func<T>? transactionFactor
     {
         transaction.Nonce = decoderContext.DecodeUInt256();
         DecodeGasPrice(transaction, ref decoderContext);
-        transaction.GasLimit = decoderContext.DecodeLong();
+        transaction.GasLimit = decoderContext.DecodePositiveLong();
         transaction.To = decoderContext.DecodeAddress();
         transaction.Value = decoderContext.DecodeUInt256();
         transaction.Data = decoderContext.DecodeByteArrayMemory(_dataRlpLimit);
     }
 
-    protected virtual void DecodeGasPrice(Transaction transaction, ref Rlp.ValueDecoderContext decoderContext)
-    {
-        transaction.GasPrice = decoderContext.DecodeUInt256();
-    }
+    protected virtual void DecodeGasPrice(Transaction transaction, ref Rlp.ValueDecoderContext decoderContext) => transaction.GasPrice = decoderContext.DecodeUInt256();
 
     protected Signature? DecodeSignature(Transaction transaction, ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
@@ -122,10 +119,7 @@ public abstract class BaseTxDecoder<T>(TxType txType, Func<T>? transactionFactor
         stream.Encode(transaction.Data);
     }
 
-    protected virtual void EncodeGasPrice(Transaction transaction, RlpStream stream)
-    {
-        stream.Encode(transaction.GasPrice);
-    }
+    protected virtual void EncodeGasPrice(Transaction transaction, RlpStream stream) => stream.Encode(transaction.GasPrice);
 
     protected virtual int GetContentLength(Transaction transaction, RlpBehaviors rlpBehaviors, bool forSigning, bool isEip155Enabled = false, ulong chainId = 0) =>
         GetPayloadLength(transaction) + GetSignatureLength(transaction.Signature, forSigning, isEip155Enabled, chainId);

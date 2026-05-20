@@ -9,22 +9,18 @@ using System.Collections.Immutable;
 
 namespace Nethermind.Xdc;
 
-public class XdcSubnetBlockHeader : XdcBlockHeader
+public class XdcSubnetBlockHeader(
+    Hash256 parentHash,
+    Hash256 unclesHash,
+    Address beneficiary,
+    in UInt256 difficulty,
+    long number,
+    long gasLimit,
+    ulong timestamp,
+    byte[] extraData,
+    bool isSelfMined = false) : XdcBlockHeader(parentHash, unclesHash, beneficiary, difficulty, number, gasLimit, timestamp, extraData, isSelfMined)
 {
     private static readonly XdcSubnetHeaderDecoder _headerDecoder = new();
-
-    public XdcSubnetBlockHeader(
-        Hash256 parentHash,
-        Hash256 unclesHash,
-        Address beneficiary,
-        in UInt256 difficulty,
-        long number,
-        long gasLimit,
-        ulong timestamp,
-        byte[] extraData)
-        : base(parentHash, unclesHash, beneficiary, difficulty, number, gasLimit, timestamp, extraData)
-    {
-    }
 
     public byte[]? NextValidators { get; set; }
 
@@ -43,8 +39,28 @@ public class XdcSubnetBlockHeader : XdcBlockHeader
 
     public override ValueHash256 CalculateHash()
     {
-        KeccakRlpStream rlpStream = new KeccakRlpStream();
+        KeccakRlpStream rlpStream = new();
         _headerDecoder.Encode(rlpStream, this);
         return rlpStream.GetHash();
+    }
+
+    /// <inheritdoc />
+    public override BlockHeader CreateSimulatedChild(ulong timestamp)
+    {
+        Hash256? requestsHash = RequestsHash;
+        return new XdcSubnetBlockHeader(
+            Hash!,
+            Keccak.OfAnEmptySequenceRlp,
+            Beneficiary!,
+            UInt256.Zero,
+            Number + 1,
+            GasLimit,
+            timestamp,
+            [],
+            IsSelfMined)
+        {
+            MixHash = Hash256.Zero,
+            RequestsHash = requestsHash,
+        };
     }
 }

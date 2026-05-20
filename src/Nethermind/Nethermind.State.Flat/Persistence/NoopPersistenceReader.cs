@@ -16,15 +16,15 @@ public class NoopPersistenceReader : IPersistence.IPersistenceReader
 
     public bool TryGetSlot(Address address, in UInt256 slot, ref SlotValue outValue) => false;
 
-    public StateId CurrentState => new StateId(0, Keccak.EmptyTreeHash);
+    public StateId CurrentState => new(0, Keccak.EmptyTreeHash);
 
     public byte[]? TryLoadStateRlp(in TreePath path, ReadFlags flags) => null;
 
     public byte[]? TryLoadStorageRlp(Hash256 address, in TreePath path, ReadFlags flags) => null;
 
-    public byte[]? GetAccountRaw(Hash256? addrHash) => null;
+    public byte[]? GetAccountRaw(in ValueHash256 addrHash) => null;
 
-    public bool TryGetStorageRaw(Hash256 addrHash, Hash256 slotHash, ref SlotValue value) => false;
+    public bool TryGetStorageRaw(in ValueHash256 addrHash, in ValueHash256 slotHash, ref SlotValue value) => false;
 
     public IPersistence.IFlatIterator CreateAccountIterator(in ValueHash256 startKey, in ValueHash256 endKey) => new EmptyIterator();
 

@@ -1,9 +1,10 @@
-// SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Messages;
 using Nethermind.Core.Specs;
 using Nethermind.Specs;
 using Nethermind.Core.Test.Builders;
@@ -43,10 +44,7 @@ internal class TransactionProcessorEip4844Tests
     }
 
     [TearDown]
-    public void TearDown()
-    {
-        _worldStateCloser?.Dispose();
-    }
+    public void TearDown() => _worldStateCloser?.Dispose();
 
     [TestCaseSource(nameof(BalanceIsAffectedByBlobGasTestCaseSource))]
     [TestCaseSource(nameof(BalanceIsNotAffectedWhenNotEnoughFunds))]
@@ -76,7 +74,7 @@ internal class TransactionProcessorEip4844Tests
             .WithBaseFeePerGas(1)
             .TestObject;
 
-        var blkCtx = new BlockExecutionContext(block.Header, _specProvider.GetSpec(block.Header));
+        BlockExecutionContext blkCtx = new(block.Header, _specProvider.GetSpec(block.Header));
         _transactionProcessor.CallAndRestore(blobTx, blkCtx, NullTxTracer.Instance);
         UInt256 deltaBalance = balance - _stateProvider.GetBalance(TestItem.PrivateKeyA.Address);
         Assert.That(deltaBalance, Is.EqualTo(UInt256.Zero));
@@ -87,6 +85,44 @@ internal class TransactionProcessorEip4844Tests
         return deltaBalance;
     }
 
+    [Test]
+    public void Rejects_blob_tx_when_max_fee_per_blob_gas_is_below_current_blob_fee()
+    {
+        UInt256 balance = 1.Ether;
+        _stateProvider.CreateAccount(TestItem.AddressA, balance);
+        _stateProvider.Commit(_specProvider.GenesisSpec);
+        _stateProvider.CommitTree(0);
+
+        long gasLimit = GasCostOf.Transaction;
+        Transaction blobTx = Build.A.Transaction
+            .WithGasPrice(1)
+            .WithMaxFeePerGas(1)
+            .WithMaxFeePerBlobGas(1)
+            .WithGasLimit(gasLimit)
+            .WithShardBlobTxTypeAndFields(1)
+            .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA)
+            .TestObject;
+
+        Block block = Build.A.Block
+            .WithNumber(1)
+            .WithTransactions(blobTx)
+            .WithGasLimit(gasLimit)
+            .WithExcessBlobGas((ulong)Cancun.Instance.BlobBaseFeeUpdateFraction)
+            .WithBaseFeePerGas(1)
+            .TestObject;
+
+        BlockExecutionContext blkCtx = new(block.Header, _specProvider.GetSpec(block.Header));
+        TransactionResult result = _transactionProcessor.Execute(blobTx, blkCtx, NullTxTracer.Instance);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.TransactionExecuted, Is.False);
+            Assert.That(result.ErrorDescription, Does.Contain(BlockErrorMessages.InsufficientMaxFeePerBlobGas));
+            Assert.That(_stateProvider.GetBalance(TestItem.PrivateKeyA.Address), Is.EqualTo(balance));
+            Assert.That(_stateProvider.GetNonce(TestItem.PrivateKeyA.Address), Is.EqualTo(UInt256.Zero));
+        }
+    }
+
     public static IEnumerable<TestCaseData> BalanceIsAffectedByBlobGasTestCaseSource()
     {
         yield return new TestCaseData((UInt256)(GasCostOf.Transaction + Eip4844Constants.GasPerBlob), 1, 1ul, 0ul, 0ul)
@@ -94,32 +130,32 @@ internal class TransactionProcessorEip4844Tests
             TestName = "Blob gas consumed for 1 blob, minimal balance",
             ExpectedResult = (UInt256)(GasCostOf.Transaction + Eip4844Constants.GasPerBlob),
         };
-        yield return new TestCaseData(1.Ether(), 1, 1ul, 0ul, 0ul)
+        yield return new TestCaseData(1.Ether, 1, 1ul, 0ul, 0ul)
         {
             TestName = "Blob gas consumed for 1 blob",
             ExpectedResult = (UInt256)(GasCostOf.Transaction + Eip4844Constants.GasPerBlob),
         };
-        yield return new TestCaseData(1.Ether(), 2, 1ul, 0ul, 0ul)
+        yield return new TestCaseData(1.Ether, 2, 1ul, 0ul, 0ul)
         {
             TestName = "Blob gas consumed for 2 blobs",
             ExpectedResult = (UInt256)(GasCostOf.Transaction + 2 * Eip4844Constants.GasPerBlob),
         };
-        yield return new TestCaseData(1.Ether(), (int)Cancun.Instance.MaxBlobCount, 1ul, 0ul, 0ul)
+        yield return new TestCaseData(1.Ether, (int)Cancun.Instance.MaxBlobCount, 1ul, 0ul, 0ul)
         {
             TestName = "Blob gas consumed for max blobs",
             ExpectedResult = (UInt256)(GasCostOf.Transaction + Cancun.Instance.GasCosts.MaxBlobGasPerBlock),
         };
-        yield return new TestCaseData(1.Ether(), 1, 10ul, 0ul, 0ul)
+        yield return new TestCaseData(1.Ether, 1, 10ul, 0ul, 0ul)
         {
             TestName = $"Blob gas consumed for 1 blob, with {nameof(Transaction.MaxFeePerBlobGas)} more than needed",
             ExpectedResult = (UInt256)(GasCostOf.Transaction + Eip4844Constants.GasPerBlob),
         };
-        yield return new TestCaseData(1.Ether(), 1, 10ul, (ulong)Cancun.Instance.BlobBaseFeeUpdateFraction, 0ul)
+        yield return new TestCaseData(1.Ether, 1, 10ul, (ulong)Cancun.Instance.BlobBaseFeeUpdateFraction, 0ul)
         {
             TestName = $"Blob gas consumed for 1 blob, with blob gas price hiking",
             ExpectedResult = (UInt256)(GasCostOf.Transaction + Eip4844Constants.GasPerBlob * 2),
         };
-        yield return new TestCaseData(1.Ether(), 1, 10ul, (ulong)Cancun.Instance.BlobBaseFeeUpdateFraction, 2ul)
+        yield return new TestCaseData(1.Ether, 1, 10ul, (ulong)Cancun.Instance.BlobBaseFeeUpdateFraction, 2ul)
         {
             TestName = $"Blob gas consumed for 1 blob, with blob gas price hiking and some {nameof(Transaction.Value)}",
             ExpectedResult = (UInt256)(GasCostOf.Transaction + Eip4844Constants.GasPerBlob * 2 + 2),

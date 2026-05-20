@@ -19,6 +19,8 @@ public class PatriciaTreeSyncStore(INodeStorage nodeStorage, ILogManager logMana
     public void SaveNode(Hash256? address, in TreePath path, in ValueHash256 hash, ReadOnlySpan<byte> data) =>
         nodeStorage.Set(address, path, hash, data);
 
+    public void EnsureStorageEmpty(Hash256 address) { }
+
     public void FinalizeSync(BlockHeader pivotHeader) =>
         // Patricia trie doesn't need block header info, just flush
         nodeStorage.Flush(onlyWal: false);
@@ -42,5 +44,7 @@ public class PatriciaTreeSyncStore(INodeStorage nodeStorage, ILogManager logMana
 
         public Account? GetAccount(Hash256 addressHash) =>
             _stateTree.Get(addressHash);
+
+        public void Dispose() { }
     }
 }

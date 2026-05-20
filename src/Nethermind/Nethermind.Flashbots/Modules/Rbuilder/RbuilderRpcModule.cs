@@ -20,10 +20,7 @@ public class RbuilderRpcModule(IBlockFinder blockFinder, ISpecProvider specProvi
     : IRbuilderRpcModule
 {
 
-    public ResultWrapper<byte[]?> rbuilder_getCodeByHash(Hash256 hash)
-    {
-        return ResultWrapper<byte[]?>.Success(stateReader.GetCode(hash));
-    }
+    public ResultWrapper<byte[]?> rbuilder_getCodeByHash(Hash256 hash) => ResultWrapper<byte[]?>.Success(stateReader.GetCode(hash));
 
     public ResultWrapper<Hash256> rbuilder_calculateStateRoot(BlockParameter blockParam, IDictionary<Address, AccountChange> accountDiff)
     {

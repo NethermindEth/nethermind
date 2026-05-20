@@ -320,7 +320,7 @@ public class BlockhashCacheTests
     [Test]
     public async Task DoesNot_cache_cancelled_searches()
     {
-        SlowHeaderStore headerStore = new(new HeaderStore(new MemDb(), new MemDb()));
+        SlowHeaderStore headerStore = new(new HeaderStore(new MemDb(), new MemDb())) { SlowBlockNumber = long.MaxValue };
         (BlockTree tree, BlockhashCache cache) = BuildTest(260, headerStore);
 
         BlockHeader head = tree.FindHeader(FlatCacheItemLength, BlockTreeLookupOptions.None)!;

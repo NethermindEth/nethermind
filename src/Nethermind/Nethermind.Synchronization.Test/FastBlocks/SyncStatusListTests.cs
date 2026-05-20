@@ -92,7 +92,7 @@ public class SyncStatusListTests
     {
         const long length = 4096;
 
-        for (var len = 0; len < length; len++)
+        for (int len = 0; len < length; len++)
         {
             FastBlockStatusList list = CreateFastBlockStatusList(len);
             Parallel.For(0, len, (i) =>
@@ -107,7 +107,7 @@ public class SyncStatusListTests
     {
         const long length = 4096;
 
-        for (var len = 0; len < length; len++)
+        for (int len = 0; len < length; len++)
         {
             FastBlockStatusList list = CreateFastBlockStatusList(len, false);
             for (int i = 0; i < len; i++)
@@ -145,7 +145,7 @@ public class SyncStatusListTests
     {
         const long length = 4096;
 
-        for (var len = 0; len < length; len++)
+        for (int len = 0; len < length; len++)
         {
             FastBlockStatusList list = CreateFastBlockStatusList(len);
             Parallel.For(0, len, (i) =>

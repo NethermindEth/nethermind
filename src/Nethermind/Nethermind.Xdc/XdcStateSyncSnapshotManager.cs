@@ -12,32 +12,23 @@ using System;
 namespace Nethermind.Xdc;
 
 /// <summary>
-/// In XDC, header verification requires snapshots from previous blocks; 
-/// however, these are not loaded during fast sync because previous headers are not processed normally. 
+/// In XDC, header verification requires snapshots from previous blocks;
+/// however, these are not loaded during fast sync because previous headers are not processed normally.
 /// This class calculates the required gap block numbers and stores their snapshots.
 /// </summary>
-public class XdcStateSyncSnapshotManager
+public class XdcStateSyncSnapshotManager(
+    ISpecProvider specProvider,
+    IEpochSwitchManager epochSwitchManager,
+    IBlockTree blockTree,
+    ISnapshotManager snapshotManager,
+    IMasternodeVotingContract masternodeVotingContract
+    ) : IXdcStateSyncSnapshotManager
 {
-    private readonly ISpecProvider _specProvider;
-    private readonly IEpochSwitchManager _epochSwitchManager;
-    private readonly IBlockTree _blockTree;
-    private readonly ISnapshotManager _snapshotManager;
-    private readonly IMasternodeVotingContract _masternodeVotingContract;
-
-    public XdcStateSyncSnapshotManager(
-        ISpecProvider specProvider,
-        IEpochSwitchManager epochSwitchManager,
-        IBlockTree blockTree,
-        ISnapshotManager snapshotManager,
-        IMasternodeVotingContract masternodeVotingContract
-    )
-    {
-        _specProvider = specProvider;
-        _epochSwitchManager = epochSwitchManager;
-        _blockTree = blockTree;
-        _snapshotManager = snapshotManager;
-        _masternodeVotingContract = masternodeVotingContract;
-    }
+    private readonly ISpecProvider _specProvider = specProvider;
+    private readonly IEpochSwitchManager _epochSwitchManager = epochSwitchManager;
+    private readonly IBlockTree _blockTree = blockTree;
+    private readonly ISnapshotManager _snapshotManager = snapshotManager;
+    private readonly IMasternodeVotingContract _masternodeVotingContract = masternodeVotingContract;
 
     public XdcBlockHeader[] GetGapBlocks(XdcBlockHeader pivotHeader)
     {
@@ -54,6 +45,19 @@ public class XdcStateSyncSnapshotManager
             epochSwitchHeader.Number - epochSwitchHeader.Number % spec.EpochLength,
             spec.EpochLength
          ) - spec.Gap;
+
+        if (gapBlockNum + spec.Gap == spec.SwitchBlock)
+        {
+            XdcBlockHeader checkpointHeader = (XdcBlockHeader)_blockTree.FindHeader(spec.SwitchBlock);
+            XdcBlockHeader gapBlockHeader = (XdcBlockHeader)_blockTree.FindHeader(gapBlockNum);
+            if (checkpointHeader is null || gapBlockHeader is null)
+                throw new InvalidOperationException($"Switch block {spec.SwitchBlock} or gap block {gapBlockNum} not found in block tree");
+
+            Snapshot snapshot = new(gapBlockHeader.Number, gapBlockHeader.Hash, checkpointHeader.ExtraData.ParseV1Masternodes());
+            _snapshotManager.StoreSnapshot(snapshot);
+
+            gapBlockNum += spec.EpochLength;
+        }
 
         if (gapBlockNum > pivotHeader.Number)
         {
@@ -78,13 +82,5 @@ public class XdcStateSyncSnapshotManager
         Address[] candidates = _masternodeVotingContract.GetCandidatesByStake(gapBlockHeader);
         Snapshot snapshot = new(gapBlockHeader.Number, gapBlockHeader.Hash, candidates);
         _snapshotManager.StoreSnapshot(snapshot);
-    }
-
-    public void StoreSnapshots(XdcBlockHeader pivotHeader)
-    {
-        foreach (XdcBlockHeader gapBlockHeader in GetGapBlocks(pivotHeader))
-        {
-            StoreSnapshot(gapBlockHeader);
-        }
     }
 }

@@ -103,16 +103,16 @@ public class TxPoolSourceTests
         // Create a high-priority blob tx (high gas price)
         Transaction highPriorityBlobTx = Build.A.Transaction
             .WithShardBlobTxTypeAndFields()
-            .WithMaxFeePerGas(1000.GWei())
-            .WithMaxPriorityFeePerGas(500.GWei())
+            .WithMaxFeePerGas(1000.GWei)
+            .WithMaxPriorityFeePerGas(500.GWei)
             .SignedAndResolved(TestItem.PrivateKeyA)
             .TestObject;
 
         // Create a lower-priority regular tx (lower gas price)
         Transaction lowerPriorityRegularTx = Build.A.Transaction
             .WithType(TxType.EIP1559)
-            .WithMaxFeePerGas(100.GWei())
-            .WithMaxPriorityFeePerGas(50.GWei())
+            .WithMaxFeePerGas(100.GWei)
+            .WithMaxPriorityFeePerGas(50.GWei)
             .SignedAndResolved(TestItem.PrivateKeyB)
             .TestObject;
 

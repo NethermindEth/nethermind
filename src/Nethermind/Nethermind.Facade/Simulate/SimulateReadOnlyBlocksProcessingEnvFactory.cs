@@ -39,8 +39,11 @@ public class SimulateReadOnlyBlocksProcessingEnvFactory(
 
         IHeaderStore mainHeaderStore = new HeaderStore(editableDbProvider.HeadersDb, editableDbProvider.BlockNumbersDb);
         SimulateDictionaryHeaderStore tmpHeaderStore = new(mainHeaderStore);
-        BlockTree tempBlockTree = CreateTempBlockTree(editableDbProvider, specProvider, logManager, editableDbProvider, tmpHeaderStore);
-        BlockTreeOverlay overrideBlockTree = new BlockTreeOverlay(baseBlockTree, tempBlockTree);
+
+        IBlockAccessListStore mainBalStore = new BlockAccessListStore(editableDbProvider.BlockAccessListDb);
+
+        BlockTree tempBlockTree = CreateTempBlockTree(editableDbProvider, specProvider, logManager, editableDbProvider, tmpHeaderStore, mainBalStore);
+        BlockTreeOverlay overrideBlockTree = new(baseBlockTree, tempBlockTree);
 
         ILifetimeScope envLifetimeScope = rootLifetimeScope.BeginLifetimeScope((builder) => builder
             .AddModule(overridableEnv) // worldstate related override here
@@ -53,12 +56,12 @@ public class SimulateReadOnlyBlocksProcessingEnvFactory(
             .AddModule(validationModules)
             .AddDecorator<IBlockhashProvider, SimulateBlockhashProvider>()
             .AddDecorator<IBlockValidator, SimulateBlockValidatorProxy>()
-            .AddDecorator<ITransactionProcessor.IBlobBaseFeeCalculator, SimulateBlobBaseFeeCalculatorDecorator>()
+            .AddDecorator<ITransactionProcessor.IBlobBaseFeeCalculator, BlobBaseFeeOverrideCalculatorDecorator>()
             .AddDecorator<IBlockProcessor.IBlockTransactionsExecutor, SimulateBlockValidationTransactionsExecutor>()
             .AddSingleton<ITransactionProcessorAdapter, SimulateTransactionProcessorAdapter>()
             .AddSingleton<IReceiptStorage>(NullReceiptStorage.Instance)
-
             .AddScoped<SimulateRequestState>()
+            .BindScoped<IBlobBaseFeeOverrideProvider, SimulateRequestState>()
             .AddScoped<SimulateReadOnlyBlocksProcessingEnv>());
 
         envLifetimeScope.Disposer.AddInstanceForDisposal(editableDbProvider);
@@ -71,7 +74,8 @@ public class SimulateReadOnlyBlocksProcessingEnvFactory(
         ISpecProvider? specProvider,
         ILogManager logManager,
         IReadOnlyDbProvider editableDbProvider,
-        SimulateDictionaryHeaderStore tmpHeaderStore)
+        SimulateDictionaryHeaderStore tmpHeaderStore,
+        IBlockAccessListStore tmpBalStore)
     {
         IBlockStore mainBlockStore = new BlockStore(editableDbProvider.BlocksDb);
         const int badBlocksStored = 1;
@@ -84,6 +88,7 @@ public class SimulateReadOnlyBlocksProcessingEnvFactory(
             editableDbProvider.BlockInfosDb,
             editableDbProvider.MetadataDb,
             badBlockStore,
+            tmpBalStore,
             new ChainLevelInfoRepository(readOnlyDbProvider.BlockInfosDb),
             specProvider,
             NullBloomStorage.Instance,
@@ -105,14 +110,6 @@ public class SimulateReadOnlyBlocksProcessingEnvFactory(
             return !baseLogger.IsDebug ? NullLogger.Instance : baseLogger;
         }
 
-        public ILogger GetClassLogger(string filePath = "")
-        {
-            return baseLogManager.GetClassLogger(filePath);
-        }
-
-        public ILogger GetLogger(string loggerName)
-        {
-            return baseLogManager.GetLogger(loggerName);
-        }
+        public ILogger GetLogger(string loggerName) => baseLogManager.GetLogger(loggerName);
     }
 }

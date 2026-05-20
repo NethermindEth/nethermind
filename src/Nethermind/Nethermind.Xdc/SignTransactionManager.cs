@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 
@@ -17,25 +17,32 @@ namespace Nethermind.Xdc;
 
 internal class SignTransactionManager(ISigner signer, ITxPool txPool, ILogger logger) : ISignTransactionManager
 {
-    public async Task SubmitTransactionSign(XdcBlockHeader header, IXdcReleaseSpec spec)
+    public Task SubmitTransactionSign(XdcBlockHeader header, IXdcReleaseSpec spec)
     {
         UInt256 nonce = txPool.GetLatestPendingNonce(signer.Address);
         Transaction transaction = CreateTxSign((UInt256)header.Number, header.Hash ?? header.CalculateHash().ToHash256(), nonce, spec.BlockSignerContract, signer.Address);
 
-        await signer.Sign(transaction);
+        if (!signer.TrySign(transaction))
+        {
+            if (logger.IsWarn) logger.Warn($"XDC signer {signer.Address} could not sign block-sign tx for header {header.Number} — skipping submission.");
+            return Task.CompletedTask;
+        }
+
+        transaction.Hash = transaction.CalculateHash();
 
         AcceptTxResult added = txPool.SubmitTx(transaction, TxHandlingOptions.PersistentBroadcast);
         if (!added)
         {
             logger.Warn($"Failed to add signed transaction to the pool: {added} {header.ToString(BlockHeader.Format.FullHashAndNumber)}");
         }
+        return Task.CompletedTask;
     }
 
     internal static Transaction CreateTxSign(UInt256 number, Hash256 hash, UInt256 nonce, Address blockSignersAddress, Address sender)
     {
         byte[] inputData = [.. XdcConstants.SignMethod, .. number.PaddedBytes(32), .. hash.Bytes.PadLeft(32)];
 
-        var transaction = new Transaction();
+        Transaction transaction = new();
         transaction.Nonce = nonce;
         transaction.To = blockSignersAddress;
         transaction.Value = 0;
@@ -45,8 +52,6 @@ internal class SignTransactionManager(ISigner signer, ITxPool txPool, ILogger lo
         transaction.SenderAddress = sender;
 
         transaction.Type = TxType.Legacy;
-
-        transaction.Hash = transaction.CalculateHash();
 
         return transaction;
     }

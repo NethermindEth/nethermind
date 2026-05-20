@@ -151,10 +151,8 @@ public class CliqueSealEngineTests
         return extraDataString.ToString();
     }
 
-    private static void MineBlock(BlockTree tree, Block block)
-    {
+    private static void MineBlock(BlockTree tree, Block block) =>
         tree.SuggestBlock(block);
-    }
 
     private Block CreateBlock(int blockDifficulty, int blockNumber, Block lastBlock)
     {

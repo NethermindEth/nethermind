@@ -1,9 +1,12 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
+using System.Buffers.Binary;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Exceptions;
+using Nethermind.Core.Extensions;
+using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Trie;
@@ -26,6 +29,98 @@ public static class BasePersistence
 {
     public const int StoragePrefixPortion = 4;
 
+    private static readonly byte[] CurrentStateKey = Keccak.Compute("CurrentState").BytesToArray();
+    private static readonly byte[] LayoutKey = Keccak.Compute("Layout").BytesToArray();
+
+    internal static StateId ReadCurrentState(IReadOnlyKeyValueStore kv)
+    {
+        byte[]? bytes = kv.Get(CurrentStateKey);
+        return bytes is null || bytes.Length == 0
+            ? new StateId(-1, ValueKeccak.EmptyTreeHash)
+            : new StateId(BinaryPrimitives.ReadInt64BigEndian(bytes), new ValueHash256(bytes[8..]));
+    }
+
+    internal static void SetCurrentState(IWriteOnlyKeyValueStore kv, in StateId stateId)
+    {
+        Span<byte> bytes = stackalloc byte[8 + 32];
+        BinaryPrimitives.WriteInt64BigEndian(bytes[..8], stateId.BlockNumber);
+        stateId.StateRoot.BytesAsSpan.CopyTo(bytes[8..]);
+        kv.PutSpan(CurrentStateKey, bytes);
+    }
+
+    internal static FlatLayout? ReadLayout(IReadOnlyKeyValueStore kv)
+    {
+        byte[]? bytes = kv.Get(LayoutKey);
+        if (bytes is null || bytes.Length == 0) return null;
+        if (!Enum.IsDefined((FlatLayout)bytes[0]))
+            throw new InvalidConfigurationException(
+                $"Flat DB metadata contains an unrecognized layout byte '{bytes[0]}'. The DB may be corrupt or was written by a newer version.",
+                -1);
+        return (FlatLayout)bytes[0];
+    }
+
+    internal static void SetLayout(IWriteOnlyKeyValueStore kv, FlatLayout layout)
+    {
+        Span<byte> bytes = stackalloc byte[1];
+        bytes[0] = (byte)layout;
+        kv.PutSpan(LayoutKey, bytes);
+    }
+
+    /// <summary>
+    /// Validates that <paramref name="layout"/> matches the value previously persisted in the flat DB's
+    /// metadata column. Throws <see cref="InvalidConfigurationException"/> on mismatch.
+    /// On a fresh DB (no stored value) the check is a no-op; the layout is written by the first write
+    /// batch through <see cref="RecordLayoutOnFirstBatch"/>.
+    /// </summary>
+    internal static void ValidateLayout(IColumnsDb<FlatDbColumns> db, FlatLayout layout)
+    {
+        FlatLayout? stored = ReadLayout(db.GetColumnDb(FlatDbColumns.Metadata));
+        if (stored is not null && stored != layout)
+        {
+            throw new InvalidConfigurationException(
+                $"Flat DB was previously synced with layout '{stored}', but the configured layout is '{layout}'. " +
+                $"Either set 'IFlatDbConfig.Layout' back to '{stored}', or wipe the flat DB and re-sync.",
+                -1);
+        }
+    }
+
+    /// <summary>
+    /// Calls <see cref="ValidateLayout"/> and returns 0 for use as the initial value of the
+    /// per-persistence "layout recorded" field (which is written on the first batch via
+    /// <see cref="RecordLayoutOnFirstBatch"/>).
+    /// </summary>
+    internal static int ValidateLayoutReturnFlag(IColumnsDb<FlatDbColumns> db, FlatLayout layout)
+    {
+        ValidateLayout(db, layout);
+        return 0;
+    }
+
+    /// <summary>
+    /// On the first call, records the persistence's <see cref="FlatLayout"/> in the supplied batch's
+    /// metadata column. Subsequent calls are no-ops. The write goes through the batch, so it is
+    /// committed atomically with the rest of the batch's contents.
+    /// </summary>
+    internal static void RecordLayoutOnFirstBatch(IWriteOnlyKeyValueStore metadataBatch, ref int flag, FlatLayout layout)
+    {
+        if (Interlocked.CompareExchange(ref flag, 1, 0) == 0)
+        {
+            SetLayout(metadataBatch, layout);
+        }
+    }
+
+    internal static void ClearAllColumns(IColumnsDb<FlatDbColumns> db)
+    {
+        using IColumnsWriteBatch<FlatDbColumns> batch = db.StartWriteBatch();
+        foreach (FlatDbColumns column in Enum.GetValues<FlatDbColumns>())
+        {
+            IWriteBatch columnBatch = batch.GetColumnBatch(column);
+            foreach (byte[] key in db.GetColumnDb(column).GetAllKeys())
+            {
+                columnBatch.Remove(key);
+            }
+        }
+    }
+
     internal static void CreateStorageRange(
         ReadOnlySpan<byte> accountPath,
         Span<byte> firstKey,
@@ -35,6 +130,44 @@ public static class BasePersistence
         accountPath[..StoragePrefixPortion].CopyTo(lastKey);
         firstKey[StoragePrefixPortion..].Clear();
         lastKey[StoragePrefixPortion..].Fill(0xff);
+    }
+
+    /// <summary>
+    /// Scan a key range and delete all entries matching the expected key length.
+    /// </summary>
+    internal static void DeleteMatchingKeys(
+        ISortedKeyValueStore snap,
+        IWriteBatch batch,
+        ReadOnlySpan<byte> firstKey,
+        ReadOnlySpan<byte> lastKey,
+        int expectedKeyLength)
+    {
+        using ISortedView view = snap.GetViewBetween(firstKey, lastKey);
+        while (view.MoveNext())
+        {
+            if (view.CurrentKey.Length == expectedKeyLength)
+                batch.Remove(view.CurrentKey);
+        }
+    }
+
+    /// <summary>
+    /// Scan a key range and delete entries matching the address suffix at the given offset.
+    /// </summary>
+    internal static void DeleteMatchingKeys(
+        ISortedKeyValueStore snap,
+        IWriteBatch batch,
+        ReadOnlySpan<byte> firstKey,
+        ReadOnlySpan<byte> lastKey,
+        int suffixOffset,
+        ReadOnlySpan<byte> expectedSuffix)
+    {
+        using ISortedView view = snap.GetViewBetween(firstKey, lastKey);
+        while (view.MoveNext())
+        {
+            ReadOnlySpan<byte> key = view.CurrentKey;
+            if (key.Length >= suffixOffset + expectedSuffix.Length && Bytes.AreEqual(key[suffixOffset..], expectedSuffix))
+                batch.Remove(view.CurrentKey);
+        }
     }
 
     public interface IHashedFlatReader
@@ -55,13 +188,17 @@ public static class BasePersistence
         public void SetAccount(in ValueHash256 address, ReadOnlySpan<byte> value);
 
         public void SetStorage(in ValueHash256 address, in ValueHash256 slotHash, in SlotValue? value);
+
+        public void DeleteAccountRange(in ValueHash256 fromPath, in ValueHash256 toPath);
+
+        public void DeleteStorageRange(in ValueHash256 addressHash, in ValueHash256 fromPath, in ValueHash256 toPath);
     }
 
     public interface IFlatReader
     {
         public Account? GetAccount(Address address);
         public bool TryGetSlot(Address address, in UInt256 slot, ref SlotValue outValue);
-        public byte[]? GetAccountRaw(Hash256 addrHash);
+        public byte[]? GetAccountRaw(in ValueHash256 addrHash);
         public bool TryGetSlotRaw(in ValueHash256 address, in ValueHash256 slotHash, ref SlotValue outValue);
         public IPersistence.IFlatIterator CreateAccountIterator(in ValueHash256 startKey, in ValueHash256 endKey);
         public IPersistence.IFlatIterator CreateStorageIterator(in ValueHash256 accountKey, in ValueHash256 startSlotKey, in ValueHash256 endSlotKey);
@@ -76,9 +213,13 @@ public static class BasePersistence
 
         public void SetStorage(Address addr, in UInt256 slot, in SlotValue? value);
 
-        public void SetStorageRaw(Hash256 addrHash, Hash256 slotHash, in SlotValue? value);
+        public void SetStorageRaw(in ValueHash256 addrHash, in ValueHash256 slotHash, in SlotValue? value);
 
-        public void SetAccountRaw(Hash256 addrHash, Account account);
+        public void SetAccountRaw(in ValueHash256 addrHash, Account account);
+
+        public void DeleteAccountRange(in ValueHash256 fromPath, in ValueHash256 toPath);
+
+        public void DeleteStorageRange(in ValueHash256 addressHash, in ValueHash256 fromPath, in ValueHash256 toPath);
     }
 
     public interface ITrieReader
@@ -92,6 +233,8 @@ public static class BasePersistence
         public void SelfDestruct(in ValueHash256 address);
         public void SetStateTrieNode(in TreePath path, TrieNode tnValue);
         public void SetStorageTrieNode(Hash256 address, in TreePath path, TrieNode tnValue);
+        public void DeleteStateTrieNodeRange(in TreePath fromPath, in TreePath toPath);
+        public void DeleteStorageTrieNodeRange(in ValueHash256 addressHash, in TreePath fromPath, in TreePath toPath);
     }
 
     public struct ToHashedWriteBatch<TWriteBatch>(
@@ -124,14 +267,20 @@ public static class BasePersistence
             _flatWriteBatch.SetStorage(addr.ToAccountPath, hashBuffer, value);
         }
 
-        public void SetStorageRaw(Hash256? addrHash, Hash256 slotHash, in SlotValue? value) =>
+        public void SetStorageRaw(in ValueHash256 addrHash, in ValueHash256 slotHash, in SlotValue? value) =>
             _flatWriteBatch.SetStorage(addrHash, slotHash, value);
 
-        public void SetAccountRaw(Hash256 addrHash, Account account)
+        public void SetAccountRaw(in ValueHash256 addrHash, Account account)
         {
             using NettyRlpStream stream = _accountDecoder.EncodeToNewNettyStream(account);
             _flatWriteBatch.SetAccount(addrHash, stream.AsSpan());
         }
+
+        public void DeleteAccountRange(in ValueHash256 fromPath, in ValueHash256 toPath) =>
+            _flatWriteBatch.DeleteAccountRange(fromPath, toPath);
+
+        public void DeleteStorageRange(in ValueHash256 addressHash, in ValueHash256 fromPath, in ValueHash256 toPath) =>
+            _flatWriteBatch.DeleteStorageRange(addressHash, fromPath, toPath);
     }
 
     public struct ToHashedFlatReader<TFlatReader>(
@@ -165,10 +314,10 @@ public static class BasePersistence
             return TryGetSlotRaw(address.ToAccountPath, slotHash, ref outValue);
         }
 
-        public byte[]? GetAccountRaw(Hash256 addrHash)
+        public byte[]? GetAccountRaw(in ValueHash256 addrHash)
         {
             Span<byte> valueBuffer = stackalloc byte[_accountSpanBufferSize];
-            int responseSize = _flatReader.GetAccount(addrHash.ValueHash256, valueBuffer);
+            int responseSize = _flatReader.GetAccount(addrHash, valueBuffer);
             return responseSize == 0 ? null : valueBuffer[..responseSize].ToArray();
         }
 
@@ -212,10 +361,10 @@ public static class BasePersistence
         public byte[]? TryLoadStorageRlp(Hash256 address, in TreePath path, ReadFlags flags) =>
             _trieReader.TryLoadStorageRlp(address, path, flags);
 
-        public byte[]? GetAccountRaw(Hash256 addrHash) =>
+        public byte[]? GetAccountRaw(in ValueHash256 addrHash) =>
             _flatReader.GetAccountRaw(addrHash);
 
-        public bool TryGetStorageRaw(Hash256 addrHash, Hash256 slotHash, ref SlotValue value) =>
+        public bool TryGetStorageRaw(in ValueHash256 addrHash, in ValueHash256 slotHash, ref SlotValue value) =>
             _flatReader.TryGetSlotRaw(addrHash, slotHash, ref value);
 
         public IPersistence.IFlatIterator CreateAccountIterator(in ValueHash256 startKey, in ValueHash256 endKey) =>
@@ -258,10 +407,22 @@ public static class BasePersistence
         public void SetStorageTrieNode(Hash256 address, in TreePath path, TrieNode tnValue) =>
             _trieWriteBatch.SetStorageTrieNode(address, path, tnValue);
 
-        public void SetStorageRaw(Hash256 addrHash, Hash256 slotHash, in SlotValue? value) =>
+        public void SetStorageRaw(in ValueHash256 addrHash, in ValueHash256 slotHash, in SlotValue? value) =>
             _flatWriter.SetStorageRaw(addrHash, slotHash, value);
 
-        public void SetAccountRaw(Hash256 addrHash, Account account) =>
+        public void SetAccountRaw(in ValueHash256 addrHash, Account account) =>
             _flatWriter.SetAccountRaw(addrHash, account);
+
+        public void DeleteAccountRange(in ValueHash256 fromPath, in ValueHash256 toPath) =>
+            _flatWriter.DeleteAccountRange(fromPath, toPath);
+
+        public void DeleteStorageRange(in ValueHash256 addressHash, in ValueHash256 fromPath, in ValueHash256 toPath) =>
+            _flatWriter.DeleteStorageRange(addressHash, fromPath, toPath);
+
+        public void DeleteStateTrieNodeRange(in TreePath fromPath, in TreePath toPath) =>
+            _trieWriteBatch.DeleteStateTrieNodeRange(fromPath, toPath);
+
+        public void DeleteStorageTrieNodeRange(in ValueHash256 addressHash, in TreePath fromPath, in TreePath toPath) =>
+            _trieWriteBatch.DeleteStorageTrieNodeRange(addressHash, fromPath, toPath);
     }
 }

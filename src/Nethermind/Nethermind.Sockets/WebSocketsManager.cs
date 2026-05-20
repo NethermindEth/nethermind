@@ -21,6 +21,6 @@ namespace Nethermind.Sockets
             }
         }
 
-        public IWebSocketsModule GetModule(string name) => _modules.TryGetValue(name, out var module) ? module : _defaultModule;
+        public IWebSocketsModule GetModule(string name) => _modules.TryGetValue(name, out IWebSocketsModule? module) ? module : _defaultModule;
     }
 }

@@ -3,6 +3,7 @@
 
 using System.Linq;
 using Nethermind.Blockchain;
+using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.ExecutionRequest;
 using Nethermind.Core.Specs;
@@ -167,10 +168,7 @@ namespace Nethermind.Core.Test.Builders
             return this;
         }
 
-        public BlockBuilder WithParent(Block block)
-        {
-            return WithParent(block.Header);
-        }
+        public BlockBuilder WithParent(Block block) => WithParent(block.Header);
 
         public BlockBuilder WithPostMergeRules()
         {
@@ -269,9 +267,9 @@ namespace Nethermind.Core.Test.Builders
 
         public BlockBuilder WithWithdrawals(int count)
         {
-            var withdrawals = new Withdrawal[count];
+            Withdrawal[] withdrawals = new Withdrawal[count];
 
-            for (var i = 0; i < count; i++)
+            for (int i = 0; i < count; i++)
                 withdrawals[i] = new();
 
             return WithWithdrawals(withdrawals);
@@ -298,6 +296,30 @@ namespace Nethermind.Core.Test.Builders
         public BlockBuilder WithEncodedSize(int? encodedSize)
         {
             TestObjectInternal.EncodedSize = encodedSize;
+            return this;
+        }
+
+        public BlockBuilder WithBlockAccessListHash(Hash256? hash)
+        {
+            TestObjectInternal.Header.BlockAccessListHash = hash;
+            return this;
+        }
+
+        public BlockBuilder WithSlotNumber(ulong? slotNumber)
+        {
+            TestObjectInternal.Header.SlotNumber = slotNumber;
+            return this;
+        }
+
+        public BlockBuilder WithBlockAccessList(ReadOnlyBlockAccessList? bal)
+        {
+            TestObjectInternal.BlockAccessList = bal;
+            return this;
+        }
+
+        public BlockBuilder WithEncodedBlockAccessList(byte[]? bal)
+        {
+            TestObjectInternal.EncodedBlockAccessList = bal;
             return this;
         }
     }

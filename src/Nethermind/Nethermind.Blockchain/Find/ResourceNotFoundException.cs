@@ -5,9 +5,6 @@ using System;
 
 namespace Nethermind.Blockchain.Find;
 
-public class ResourceNotFoundException : ArgumentException
+public class ResourceNotFoundException(string message) : ArgumentException(message)
 {
-    public ResourceNotFoundException(string message) : base(message)
-    {
-    }
 }

@@ -8,13 +8,16 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
+using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Filters.Topics;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Test.Builders;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Logging;
@@ -22,9 +25,9 @@ using Nethermind.Db.Blooms;
 using Nethermind.Db.LogIndex;
 using Nethermind.Facade.Filters;
 using Nethermind.Facade.Find;
+using Nethermind.Serialization.Rlp;
 using NSubstitute;
 using NUnit.Framework;
-using NUnit.Framework.Internal;
 
 namespace Nethermind.Blockchain.Test.Find;
 
@@ -39,20 +42,18 @@ public class LogFinderTests
     private IBloomStorage _bloomStorage = null!;
     private IReceiptsRecovery _receiptsRecovery = null!;
     private Block _headTestBlock = null!;
+    private ISpecProvider? _specProvider;
 
     [SetUp]
-    public void SetUp()
-    {
-        SetUp(true);
-    }
+    public void SetUp() => SetUp(true);
 
     [TearDown]
     public void TearDown() => _bloomStorage?.Dispose();
 
     private void SetUp(bool allowReceiptIterator, int chainLength = 5)
     {
-        var specProvider = Substitute.For<ISpecProvider>();
-        specProvider.GetSpec(Arg.Any<ForkActivation>()).IsEip155Enabled.Returns(true);
+        _specProvider = Substitute.For<ISpecProvider>();
+        _specProvider.GetSpec(Arg.Any<ForkActivation>()).IsEip155Enabled.Returns(true);
         _receiptStorage = new InMemoryReceiptStorage(allowReceiptIterator);
         _rawBlockTree = Build.A.BlockTree()
             .WithTransactions(_receiptStorage, LogsForBlockBuilder)
@@ -115,10 +116,10 @@ public class LogFinderTests
     {
         SetUp(allowReceiptIterator);
         StoreTreeBlooms(withBloomDb);
-        var logFilter = AllBlockFilter().Build();
-        var logs = _logFinder.FindLogs(logFilter).ToArray();
+        LogFilter logFilter = AllBlockFilter().Build();
+        FilterLog[] logs = _logFinder.FindLogs(logFilter).ToArray();
         logs.Length.Should().Be(5);
-        var indexes = logs.Select(static l => (int)l.LogIndex).ToArray();
+        int[] indexes = logs.Select(static l => (int)l.LogIndex).ToArray();
         // indexes[0].Should().Be(0);
         // indexes[1].Should().Be(1);
         // indexes[2].Should().Be(0);
@@ -133,7 +134,7 @@ public class LogFinderTests
         SetUp(allowReceiptIterator);
         LogFilter logFilter = AllBlockFilter().Build();
         FilterLog[] logs = _logFinder.FindLogs(logFilter).ToArray();
-        var indexes = logs.Select(static l => (int)l.LogIndex).ToArray();
+        int[] indexes = logs.Select(static l => (int)l.LogIndex).ToArray();
         Assert.That(indexes, Is.EqualTo([0, 1, 0, 1, 2]));
     }
 
@@ -144,7 +145,7 @@ public class LogFinderTests
         _receiptStorage = NullReceiptStorage.Instance;
         _logFinder = CreateLogFinder();
 
-        var logFilter = AllBlockFilter().Build();
+        LogFilter logFilter = AllBlockFilter().Build();
 
         _logFinder.Invoking(it => it.FindLogs(logFilter))
             .Should()
@@ -159,7 +160,7 @@ public class LogFinderTests
 
         SetupHeadWithNoTransaction();
 
-        var logFilter = AllBlockFilter().Build();
+        LogFilter logFilter = AllBlockFilter().Build();
 
         _logFinder.Invoking(it => it.FindLogs(logFilter))
             .Should()
@@ -170,10 +171,10 @@ public class LogFinderTests
     public void filter_all_logs_should_throw_when_to_block_is_not_found([ValueSource(nameof(WithBloomValues))] bool withBloomDb)
     {
         StoreTreeBlooms(withBloomDb);
-        var blockFinder = Substitute.For<IBlockFinder>();
+        IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
         _logFinder = CreateLogFinder(blockFinder);
-        var logFilter = AllBlockFilter().Build();
-        var action = new Func<IEnumerable<FilterLog>>(() => _logFinder.FindLogs(logFilter));
+        LogFilter logFilter = AllBlockFilter().Build();
+        Func<IEnumerable<FilterLog>> action = new(() => _logFinder.FindLogs(logFilter));
         action.Should().Throw<ResourceNotFoundException>();
         blockFinder.Received().FindHeader(logFilter.ToBlock, false);
         blockFinder.DidNotReceive().FindHeader(logFilter.FromBlock);
@@ -201,11 +202,11 @@ public class LogFinderTests
     public void filter_by_address(Address[] addresses, int expectedCount, bool withBloomDb)
     {
         StoreTreeBlooms(withBloomDb);
-        var filterBuilder = AllBlockFilter();
+        FilterBuilder filterBuilder = AllBlockFilter();
         filterBuilder = addresses.Length == 1 ? filterBuilder.WithAddress(addresses[0]) : filterBuilder.WithAddresses(addresses);
-        var logFilter = filterBuilder.Build();
+        LogFilter logFilter = filterBuilder.Build();
 
-        var logs = _logFinder.FindLogs(logFilter).ToArray();
+        FilterLog[] logs = _logFinder.FindLogs(logFilter).ToArray();
 
         logs.Length.Should().Be(expectedCount);
     }
@@ -234,11 +235,11 @@ public class LogFinderTests
     public void filter_by_topics_and_return_logs_in_order(TopicExpression[] topics, bool withBloomDb, long[] expectedBlockNumbers)
     {
         StoreTreeBlooms(withBloomDb);
-        var logFilter = AllBlockFilter().WithTopicExpressions(topics).Build();
+        LogFilter logFilter = AllBlockFilter().WithTopicExpressions(topics).Build();
 
-        var logs = _logFinder.FindLogs(logFilter).ToArray();
+        FilterLog[] logs = _logFinder.FindLogs(logFilter).ToArray();
 
-        var blockNumbers = logs.Select(static (log) => log.BlockNumber).ToArray();
+        long[] blockNumbers = logs.Select(static (log) => log.BlockNumber).ToArray();
         Assert.That(expectedBlockNumbers, Is.EqualTo(blockNumbers));
     }
 
@@ -266,7 +267,7 @@ public class LogFinderTests
     public void filter_by_blocks(LogFilter filter, int expectedCount, bool withBloomDb)
     {
         StoreTreeBlooms(withBloomDb);
-        var logs = _logFinder.FindLogs(filter).ToArray();
+        FilterLog[] logs = _logFinder.FindLogs(filter).ToArray();
         logs.Length.Should().Be(expectedCount);
     }
 
@@ -275,8 +276,8 @@ public class LogFinderTests
     {
         StoreTreeBlooms(withBloomDb);
         _logFinder = CreateLogFinder();
-        var filter = FilterBuilder.New().FromLatestBlock().ToLatestBlock().Build();
-        var logs = _logFinder.FindLogs(filter).ToArray();
+        LogFilter filter = FilterBuilder.New().FromLatestBlock().ToLatestBlock().Build();
+        FilterLog[] logs = _logFinder.FindLogs(filter).ToArray();
 
         logs.Length.Should().Be(3);
     }
@@ -307,7 +308,7 @@ public class LogFinderTests
     public void complex_filter(LogFilter filter, int expectedCount, bool withBloomDb)
     {
         StoreTreeBlooms(withBloomDb);
-        var logs = _logFinder.FindLogs(filter).ToArray();
+        FilterLog[] logs = _logFinder.FindLogs(filter).ToArray();
         logs.Length.Should().Be(expectedCount);
     }
 
@@ -315,14 +316,14 @@ public class LogFinderTests
     [NonParallelizable]
     public async Task Throw_log_finder_operation_canceled_after_given_timeout([Values(2, 0.01)] double waitTime)
     {
-        var timeout = TimeSpan.FromMilliseconds(Timeout.MaxWaitTime);
+        TimeSpan timeout = TimeSpan.FromMilliseconds(Timeout.MaxWaitTime);
         using CancellationTokenSource cancellationTokenSource = new(timeout);
         CancellationToken cancellationToken = cancellationTokenSource.Token;
 
         StoreTreeBlooms(true);
         _logFinder = CreateLogFinder();
-        var logFilter = AllBlockFilter().Build();
-        var logs = _logFinder.FindLogs(logFilter, cancellationToken);
+        LogFilter logFilter = AllBlockFilter().Build();
+        IEnumerable<FilterLog> logs = _logFinder.FindLogs(logFilter, cancellationToken);
 
         await Task.Delay(timeout * waitTime);
 
@@ -409,7 +410,7 @@ public class LogFinderTests
     {
         SetUp(true, chainLength: 10);
 
-        var logIndexStorage = Substitute.For<ILogIndexStorage>();
+        ILogIndexStorage logIndexStorage = Substitute.For<ILogIndexStorage>();
         logIndexStorage.Enabled.Returns(true);
         logIndexStorage.MinBlockNumber.Returns(indexFrom);
         logIndexStorage.MaxBlockNumber.Returns(indexTo);
@@ -424,7 +425,7 @@ public class LogFinderTests
             .WithAddress(address)
             .Build();
 
-        var logFinder = new IndexedLogFinder(
+        IndexedLogFinder logFinder = new(
             _blockTree, _receiptStorage, _receiptStorage, _bloomStorage, LimboLogs.Instance, _receiptsRecovery,
             logIndexStorage, minBlocksToUseIndex: 1
         );
@@ -434,6 +435,24 @@ public class LogFinderTests
             logIndexStorage.Received(1).GetEnumerator(address, exFrom.Value, exTo.Value);
         else
             logIndexStorage.DidNotReceiveWithAnyArgs().GetEnumerator(Arg.Any<Address>(), Arg.Any<int>(), Arg.Any<int>());
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void filter_throws_descriptive_exception_when_receipts_exist_in_compact_encoding_but_block_missing()
+    {
+        PersistentReceiptStorage receiptStorage = CreateCompactEncodedReceiptStorage();
+        Block block = _rawBlockTree.FindBlock(1, BlockTreeLookupOptions.None)!;
+
+        receiptStorage.Insert(block, [
+            Build.A.Receipt.WithLogs(Build.A.LogEntry.WithAddress(TestItem.AddressA).TestObject).TestObject,
+            Build.A.Receipt.TestObject
+        ]);
+        receiptStorage.ClearCache();
+
+        CreateLogFinder(_rawBlockTree, receiptStorage)
+            .Invoking(lf => lf.FindLogs(FilterBuilder.New().FromBlock(1).ToBlock(1).Build()).ToArray())
+            .Should().Throw<InvalidOperationException>()
+            .WithMessage("*missing block data*");
     }
 
     private static FilterBuilder AllBlockFilter() => FilterBuilder.New().FromEarliestBlock().ToPendingBlock();
@@ -449,6 +468,18 @@ public class LogFinderTests
         }
     }
 
-    private LogFinder CreateLogFinder(IBlockFinder? blockFinder = null) =>
-        new(blockFinder ?? _blockTree, _receiptStorage, _receiptStorage, _bloomStorage, LimboLogs.Instance, _receiptsRecovery);
+    private LogFinder CreateLogFinder(IBlockFinder? blockFinder = null, IReceiptStorage? receiptStorage = null) =>
+        new(blockFinder ?? _blockTree, receiptStorage ?? _receiptStorage, receiptStorage ?? _receiptStorage, _bloomStorage, LimboLogs.Instance, _receiptsRecovery);
+
+    private PersistentReceiptStorage CreateCompactEncodedReceiptStorage()
+    {
+        TestMemColumnsDb<ReceiptsColumns> receiptsDb = new();
+        receiptsDb.GetColumnDb(ReceiptsColumns.Blocks).Set(Keccak.Zero, []);
+
+        return new PersistentReceiptStorage(
+            receiptsDb, _specProvider!, _receiptsRecovery, _rawBlockTree, new BlockStore(new MemDb()),
+            new ReceiptConfig(), new ReceiptArrayStorageDecoder(true)
+        )
+        { MigratedBlockNumber = 0 };
+    }
 }

@@ -109,7 +109,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             GasPriceOracle testGasPriceOracle = new(blockFinder, specProvider, LimboLogs.Instance, gasPrice);
 
             UInt256 estimate = await testGasPriceOracle.GetGasPriceEstimate();
-            UInt256 expectedGasPrice = 110 * (gasPrice ?? 1.Wei()) / 100;
+            UInt256 expectedGasPrice = 110 * (gasPrice ?? 1.Wei) / 100;
             estimate.Should().BeEquivalentTo(expectedGasPrice);
         }
 
@@ -133,7 +133,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         [TestCase(100ul)]
         public async ValueTask GasPriceEstimate_EmptyChain_BaseFeeIncluded(ulong? gasPrice)
         {
-            UInt256 baseFeePerGas = 10.GWei();
+            UInt256 baseFeePerGas = 10.GWei;
             Block headBlock = Build.A.Block.WithBaseFeePerGas(baseFeePerGas).TestObject;
             IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
             blockFinder.FindBlock(0).Returns(headBlock);
@@ -142,13 +142,13 @@ namespace Nethermind.JsonRpc.Test.Modules
             GasPriceOracle testGasPriceOracle = new(blockFinder, specProvider, LimboLogs.Instance, gasPrice);
 
             UInt256 estimate = await testGasPriceOracle.GetGasPriceEstimate();
-            estimate.Should().Be((baseFeePerGas + (gasPrice ?? 1.Wei())) * 110 / 100);
+            estimate.Should().Be((baseFeePerGas + (gasPrice ?? 1.Wei)) * 110 / 100);
         }
 
         [Test]
         public async ValueTask GasPriceEstimate_IfCalculatedGasPriceGreaterThanMax_MaxGasPriceReturned()
         {
-            Transaction tx = Build.A.Transaction.WithGasPrice(501.GWei()).TestObject;
+            Transaction tx = Build.A.Transaction.WithGasPrice(501.GWei).TestObject;
             Block headBlock = Build.A.Block.WithTransactions(tx).TestObject;
             IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
             blockFinder.FindBlock(0).Returns(headBlock);
@@ -158,7 +158,7 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             UInt256 result = await testGasPriceOracle.GetGasPriceEstimate();
 
-            result.Should().Be(500.GWei());
+            result.Should().Be(500.GWei);
         }
 
         [Test]

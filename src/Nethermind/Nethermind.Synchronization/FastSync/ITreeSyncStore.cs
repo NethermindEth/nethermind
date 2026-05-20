@@ -30,6 +30,12 @@ public interface ITreeSyncStore
     void SaveNode(Hash256? address, in TreePath path, in ValueHash256 hash, ReadOnlySpan<byte> data);
 
     /// <summary>
+    /// Ensure all storage entries for the given address are deleted.
+    /// Called when an account's storage root is EmptyTreeHash (e.g. after self-destruct).
+    /// </summary>
+    void EnsureStorageEmpty(Hash256 address);
+
+    /// <summary>
     /// Called when sync is complete and state should be finalized and flushed.
     /// </summary>
     /// <param name="pivotHeader">The block header containing the synced state root.</param>
@@ -46,7 +52,7 @@ public interface ITreeSyncStore
 /// Context for verifying storage roots during sync.
 /// Allows querying accounts from in-flight (not yet persisted) trie data.
 /// </summary>
-public interface ITreeSyncVerificationContext
+public interface ITreeSyncVerificationContext : IDisposable
 {
     /// <summary>
     /// Get an account by its address hash for verification purposes.

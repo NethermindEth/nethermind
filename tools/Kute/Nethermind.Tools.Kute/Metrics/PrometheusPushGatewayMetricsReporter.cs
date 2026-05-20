@@ -41,13 +41,13 @@ public sealed class PrometheusPushGatewayMetricsReporter : IMetricsReporter
         _singleDuration = factory.CreateHistogram(GetMetricName("single_duration_seconds"), "", labelNames: ["jsonrpc_id", "method"]);
         _batchDuration = factory.CreateHistogram(GetMetricName("batch_duration_seconds"), "", labelNames: ["jsonrpc_id"]);
 
-        string instanceLabel = labels.TryGetValue("instance", out var instance) ? instance : Guid.NewGuid().ToString();
+        string instanceLabel = labels.TryGetValue("instance", out string? instance) ? instance : Guid.NewGuid().ToString();
         labels.Remove("instance");
 
         var httpClient = new HttpClient();
         if (user is not null && password is not null)
         {
-            var authParameter = Convert.ToBase64String(Encoding.UTF8.GetBytes($"{user}:{password}"));
+            string authParameter = Convert.ToBase64String(Encoding.UTF8.GetBytes($"{user}:{password}"));
             httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Basic", authParameter);
         }
 
@@ -125,8 +125,8 @@ public sealed class PrometheusPushGatewayMetricsReporter : IMetricsReporter
 
     private static string GetMetricName(string name)
     {
-        var lowerName = name.ToLowerInvariant();
-        var sanitizedName = lowerName.Replace(" ", "_").Replace("-", "_");
+        string lowerName = name.ToLowerInvariant();
+        string sanitizedName = lowerName.Replace(" ", "_").Replace("-", "_");
         return $"{JobName}_{sanitizedName}";
     }
 }

@@ -7,9 +7,6 @@ namespace Nethermind.Api
 {
     public static class BasicApiExtensions
     {
-        public static T Config<T>(this IBasicApi api) where T : IConfig
-        {
-            return api.ConfigProvider.GetConfig<T>();
-        }
+        public static T Config<T>(this IBasicApi api) where T : IConfig => api.ConfigProvider.GetConfig<T>();
     }
 }

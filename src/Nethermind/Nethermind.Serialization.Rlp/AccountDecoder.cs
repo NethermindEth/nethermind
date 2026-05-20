@@ -19,10 +19,7 @@ namespace Nethermind.Serialization.Rlp
         public AccountDecoder() { }
 
         [DynamicDependency(DynamicallyAccessedMemberTypes.PublicConstructors, typeof(AccountDecoder))]
-        public AccountDecoder(bool slimFormat = false)
-        {
-            _slimFormat = slimFormat;
-        }
+        public AccountDecoder(bool slimFormat = false) => _slimFormat = slimFormat;
 
         public (Hash256 CodeHash, Hash256 StorageRoot) DecodeHashesOnly(ref Rlp.ValueDecoderContext context)
         {
@@ -41,7 +38,7 @@ namespace Nethermind.Serialization.Rlp
             context.SkipLength();
             context.SkipItem();
             context.SkipItem();
-            Hash256 storageRoot = DecodeStorageRoot(context);
+            Hash256 storageRoot = DecodeStorageRoot(ref context);
             return storageRoot;
         }
 
@@ -132,7 +129,7 @@ namespace Nethermind.Serialization.Rlp
                 return 0;
             }
 
-            var contentLength = Rlp.LengthOf(item.Nonce);
+            int contentLength = Rlp.LengthOf(item.Nonce);
             contentLength += Rlp.LengthOf(item.Balance);
 
             if (_slimFormat && !item.HasStorage)
@@ -155,23 +152,6 @@ namespace Nethermind.Serialization.Rlp
 
             return contentLength;
         }
-
-        private Hash256 DecodeStorageRoot(Rlp.ValueDecoderContext context)
-        {
-            Hash256 storageRoot;
-            if (_slimFormat && context.IsNextItemEmptyByteArray())
-            {
-                context.ReadByte();
-                storageRoot = Keccak.EmptyTreeHash;
-            }
-            else
-            {
-                storageRoot = context.DecodeKeccak()!;
-            }
-
-            return storageRoot;
-        }
-
 
         protected override Account? DecodeInternal(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {

@@ -8,6 +8,7 @@ using DotNetty.Common.Utilities;
 using Nethermind.Consensus.Scheduler;
 using Nethermind.Core.Extensions;
 using Nethermind.Logging;
+using Nethermind.Network.P2P.Messages;
 using Nethermind.Network.Rlpx;
 using Nethermind.Stats;
 
@@ -36,7 +37,15 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
             }
         }
 
-        public abstract void HandleMessage(ZeroPacket message);
+        public void HandleMessage(ZeroPacket message)
+        {
+            BeforeHandleMessage(message);
+            HandleMessageCore(message);
+        }
+
+        protected virtual void BeforeHandleMessage(ZeroPacket message) { }
+
+        protected abstract void HandleMessageCore(ZeroPacket message);
 
         protected Task<TResponse> SendRequestGeneric<TRequest, TResponse>(
             MessageQueue<TRequest, TResponse> messageQueue,
@@ -44,7 +53,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
             TransferSpeedType speedType,
             Func<TRequest, string> describeRequestFunc,
             CancellationToken token
-        ) where TRequest : MessageBase
+        ) where TRequest : P2PMessage
         {
             Request<TRequest, TResponse> request = new(message);
             messageQueue.Send(request);
@@ -76,13 +85,20 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
 
             if (ReferenceEquals(firstTask, task))
             {
-                long elapsed = request.FinishMeasuringTime();
-
                 delayCancellation.Cancel();
 
-                long bytesPerMillisecond = (long)((decimal)request.ResponseSize / Math.Max(1, elapsed));
-                if (Logger.IsTrace) Logger.Trace($"{this} speed is {request.ResponseSize}/{elapsed} = {bytesPerMillisecond}");
-                StatsManager.ReportTransferSpeedEvent(Session.Node, speedType, bytesPerMillisecond);
+                if (task.IsCompletedSuccessfully)
+                {
+                    long elapsed = request.FinishMeasuringTime();
+                    long bytesPerMillisecond = (long)((decimal)request.ResponseSize / Math.Max(1, elapsed));
+                    if (Logger.IsTrace) Logger.Trace($"{this} speed is {request.ResponseSize}/{elapsed} = {bytesPerMillisecond}");
+                    StatsManager.ReportTransferSpeedEvent(Session.Node, speedType, bytesPerMillisecond);
+                }
+                else
+                {
+                    StatsManager.ReportTransferSpeedEvent(Session.Node, speedType, 0L);
+                    if (Logger.IsTrace) Logger.Trace($"{Session} Request {(task.IsCanceled ? "cancelled" : "failed")}: {describeRequestFunc(request.Message)}");
+                }
             }
             else
             {

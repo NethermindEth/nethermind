@@ -5,7 +5,6 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
-using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics;
@@ -15,44 +14,30 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Resettables;
-using Nethermind.Core.Threading;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing.State;
-using Nethermind.Logging;
 using Nethermind.Int256;
+using Nethermind.Logging;
 
 namespace Nethermind.State;
-
-using Nethermind.Core.Cpu;
 
 /// <summary>
 /// Manages persistent storage allowing for snapshotting and restoring
 /// Persists data to ITrieStore
 /// </summary>
-internal sealed class PersistentStorageProvider : PartialStorageProviderBase
+internal sealed partial class PersistentStorageProvider(StateProvider stateProvider, ILogManager logManager)
+    : PartialStorageProviderBase(logManager)
 {
     private IWorldStateScopeProvider.IScope _currentScope;
-    private readonly StateProvider _stateProvider;
+    private readonly StateProvider _stateProvider = stateProvider;
     private readonly Dictionary<AddressAsKey, PerContractState> _storages = new(4_096);
-    private readonly Dictionary<AddressAsKey, bool> _toUpdateRoots = new();
+    private readonly Dictionary<AddressAsKey, bool> _toUpdateRoots = [];
 
     /// <summary>
-    /// EIP-1283
+    /// <see href="https://eips.ethereum.org/EIPS/eip-1283"/>
     /// </summary>
-    private readonly Dictionary<StorageCell, byte[]> _originalValues = new();
-
-    private readonly HashSet<StorageCell> _committedThisRound = new();
-
-    /// <summary>
-    /// Manages persistent storage allowing for snapshotting and restoring
-    /// Persists data to ITrieStore
-    /// </summary>
-    public PersistentStorageProvider(
-        StateProvider stateProvider,
-        ILogManager logManager) : base(logManager)
-    {
-        _stateProvider = stateProvider;
-    }
+    private readonly Dictionary<StorageCell, byte[]> _originalValues = [];
+    private readonly HashSet<StorageCell> _committedThisRound = [];
 
     /// <summary>
     /// Reset the storage state
@@ -69,10 +54,7 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
         }
     }
 
-    public void SetBackendScope(IWorldStateScopeProvider.IScope scope)
-    {
-        _currentScope = scope;
-    }
+    public void SetBackendScope(IWorldStateScopeProvider.IScope scope) => _currentScope = scope;
 
     /// <summary>
     /// Get the current value at the specified location
@@ -87,9 +69,9 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
     /// </summary>
     /// <param name="storageCell"></param>
     /// <returns></returns>
-    public byte[] GetOriginal(in StorageCell storageCell)
+    public ReadOnlySpan<byte> GetOriginal(in StorageCell storageCell)
     {
-        if (!_originalValues.TryGetValue(storageCell, out var value))
+        if (!_originalValues.TryGetValue(storageCell, out byte[] value))
         {
             throw new InvalidOperationException("Get original should only be called after get within the same caching round");
         }
@@ -108,13 +90,9 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
         return value;
     }
 
-    public Hash256 GetStorageRoot(Address address)
-    {
-        return GetOrCreateStorage(address).StorageRoot;
-    }
+    public Hash256 GetStorageRoot(Address address) => GetOrCreateStorage(address).StorageRoot;
 
-    public bool IsStorageEmpty(Address address) =>
-        GetOrCreateStorage(address).IsEmpty;
+    public bool IsStorageEmpty(Address address) => GetOrCreateStorage(address).IsEmpty;
 
     private HashSet<AddressAsKey>? _tempToUpdateRoots;
     /// <summary>
@@ -136,7 +114,7 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
             throw new InvalidOperationException($"Change at current position {currentPosition} was null when committing {nameof(PartialStorageProviderBase)}");
         }
 
-        HashSet<AddressAsKey> toUpdateRoots = (_tempToUpdateRoots ??= new());
+        HashSet<AddressAsKey> toUpdateRoots = (_tempToUpdateRoots ??= []);
 
         bool isTracing = tracer.IsTracingStorage;
         Dictionary<StorageCell, StorageChangeTrace>? trace = null;
@@ -237,97 +215,45 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
     internal void FlushToTree(IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch)
     {
         if (_toUpdateRoots.Count == 0)
-        {
             return;
-        }
 
-        // Is overhead of parallel foreach worth it?
-        if (_toUpdateRoots.Count < 3)
-        {
-            UpdateRootHashesSingleThread();
-        }
-        else
-        {
-            UpdateRootHashesMultiThread();
-        }
+        UpdateRootHashes(writeBatch);
 
         _toUpdateRoots.Clear();
-
-        void UpdateRootHashesSingleThread()
-        {
-            foreach (KeyValuePair<AddressAsKey, PerContractState> kvp in _storages)
-            {
-                if (!_toUpdateRoots.TryGetValue(kvp.Key, out bool hasChanges) || !hasChanges)
-                {
-                    // Wasn't updated don't recalculate
-                    continue;
-                }
-
-                PerContractState contractState = kvp.Value;
-                (int writes, int skipped) = contractState.ProcessStorageChanges(writeBatch.CreateStorageWriteBatch(kvp.Key, kvp.Value.EstimatedChanges));
-                ReportMetrics(writes, skipped);
-            }
-        }
-
-        void UpdateRootHashesMultiThread()
-        {
-            // We can recalculate the roots in parallel as they are all independent tries
-            using ArrayPoolList<(AddressAsKey Key, PerContractState ContractState, IWorldStateScopeProvider.IStorageWriteBatch WriteBatch)> storages = _storages
-                // Only consider contracts that actually have pending changes
-                .Where(kv => _toUpdateRoots.TryGetValue(kv.Key, out bool hasChanges) && hasChanges)
-                // Schedule larger changes first to help balance the work
-                .OrderByDescending(kv => kv.Value.EstimatedChanges)
-                .Select((kv) => (
-                    kv.Key,
-                    kv.Value,
-                    writeBatch.CreateStorageWriteBatch(kv.Key, kv.Value.EstimatedChanges)
-                ))
-                .ToPooledList(_storages.Count);
-
-            ParallelUnbalancedWork.For(
-                0,
-                storages.Count,
-                RuntimeInformation.ParallelOptionsPhysicalCoresUpTo16,
-                (storages, toUpdateRoots: _toUpdateRoots, writes: 0, skips: 0),
-                static (i, state) =>
-                {
-                    ref var kvp = ref state.storages.GetRef(i);
-                    (int writes, int skipped) = kvp.ContractState.ProcessStorageChanges(kvp.WriteBatch);
-                    if (writes == 0)
-                    {
-                        // Mark as no changes; we set as false rather than removing so
-                        // as not to modify the non-concurrent collection without synchronization
-                        state.toUpdateRoots[kvp.Key] = false;
-                    }
-                    else
-                    {
-                        state.writes += writes;
-                    }
-
-                    state.skips += skipped;
-
-                    return state;
-                },
-                (state) => ReportMetrics(state.writes, state.skips));
-        }
-
-        static void ReportMetrics(int writes, int skipped)
-        {
-            if (skipped > 0)
-            {
-                Db.Metrics.IncrementStorageSkippedWrites(skipped);
-            }
-            if (writes > 0)
-            {
-                Db.Metrics.IncrementStorageTreeWrites(writes);
-            }
-        }
     }
 
-    public void ClearStorageMap()
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private partial void UpdateRootHashes(IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch);
+
+    private void UpdateRootHashesSingleThread(IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch)
     {
-        _storages.Clear();
+        foreach (KeyValuePair<AddressAsKey, PerContractState> kvp in _storages)
+        {
+            if (!_toUpdateRoots.TryGetValue(kvp.Key, out bool hasChanges) || !hasChanges)
+            {
+                // Wasn't updated don't recalculate
+                continue;
+            }
+
+            PerContractState contractState = kvp.Value;
+
+            (int writes, int skipped) = contractState.ProcessStorageChanges(
+                writeBatch.CreateStorageWriteBatch(kvp.Key, kvp.Value.EstimatedChanges));
+
+            ReportMetrics(writes, skipped);
+        }
     }
+
+    private static void ReportMetrics(int writes, int skipped)
+    {
+        if (skipped > 0)
+            Db.Metrics.IncrementStorageSkippedWrites(skipped);
+
+        if (writes > 0)
+            Db.Metrics.IncrementStorageTreeWrites(writes);
+    }
+
+    public void ClearStorageMap() => _storages.Clear();
 
     private PerContractState GetOrCreateStorage(Address address)
     {
@@ -338,19 +264,11 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
 
     public void WarmUp(in StorageCell storageCell, bool isEmpty)
     {
-        if (isEmpty)
-        {
-        }
-        else
-        {
+        if (!isEmpty)
             LoadFromTree(in storageCell);
-        }
     }
 
-    private ReadOnlySpan<byte> LoadFromTree(in StorageCell storageCell)
-    {
-        return GetOrCreateStorage(storageCell.Address).LoadFromTree(storageCell);
-    }
+    private ReadOnlySpan<byte> LoadFromTree(in StorageCell storageCell) => GetOrCreateStorage(storageCell.Address).LoadFromTree(storageCell);
 
     private void PushToRegistryOnly(in StorageCell cell, byte[] value)
     {
@@ -444,10 +362,7 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
                 => MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(in obj, 1)).FastHash();
         }
 
-        public void UnmarkClear()
-        {
-            _missingAreDefault = false;
-        }
+        public void UnmarkClear() => _missingAreDefault = false;
     }
 
     private sealed class PerContractState : IReturnable
@@ -538,6 +453,12 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
             {
                 valueChanges = new StorageChangeTrace(valueChanges.Before, value);
             }
+
+            if (!storageCell.IsHash)
+            {
+                EnsureStorageTree();
+                _backend.HintSet(storageCell.Index, value);
+            }
         }
 
         public ReadOnlySpan<byte> LoadFromTree(in StorageCell storageCell)
@@ -568,13 +489,9 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
                 : _backend.Get(storageCell.Hash);
         }
 
-        private static byte[] LoadFromTreeStorage(StorageCell storageCell, PerContractState @this)
-            => @this.LoadFromTreeStorage(storageCell);
-
         public (int writes, int skipped) ProcessStorageChanges(IWorldStateScopeProvider.IStorageWriteBatch storageWriteBatch)
         {
             EnsureStorageTree();
-
             using IWorldStateScopeProvider.IStorageWriteBatch _ = storageWriteBatch;
 
             int writes = 0;
@@ -586,7 +503,7 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
                 BlockChange.UnmarkClear(); // Note: Until the storage write batch is disposed, this BlockCache will pass read through the uncleared storage tree
             }
 
-            foreach (var kvp in BlockChange)
+            foreach (KeyValuePair<UInt256, StorageChangeTrace> kvp in BlockChange)
             {
                 byte[] after = kvp.Value.After;
                 if (!Bytes.AreEqual(kvp.Value.Before, after) || kvp.Value.IsInitialValue)
@@ -605,10 +522,7 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
             return (writes, skipped);
         }
 
-        public void RemoveStorageTree()
-        {
-            _backend = null;
-        }
+        public void RemoveStorageTree() => _backend = null;
 
         internal static PerContractState Rent(Address address, PersistentStorageProvider persistentStorageProvider)
             => Pool.Rent(address, persistentStorageProvider);

@@ -31,7 +31,7 @@ public class LastNStateRootTrackerTests
 
         BlockTree tree = Build.A.BlockTree().WithBlocks(blocks.ToArray()).TestObject;
 
-        LastNStateRootTracker tracker = new LastNStateRootTracker(tree, 10);
+        LastNStateRootTracker tracker = new(tree, 10);
 
         for (int i = 0; i < 30; i++)
         {
@@ -57,7 +57,7 @@ public class LastNStateRootTrackerTests
 
         BlockTree tree = Build.A.BlockTree().WithBlocks(blocks.ToArray()).TestObject;
 
-        LastNStateRootTracker tracker = new LastNStateRootTracker(tree, 10);
+        LastNStateRootTracker tracker = new(tree, 10);
 
         currentBlock = Build.A.Block
             .WithParent(currentBlock)
@@ -90,7 +90,7 @@ public class LastNStateRootTrackerTests
 
         BlockTree tree = Build.A.BlockTree().WithBlocks(blocks.ToArray()).TestObject;
 
-        LastNStateRootTracker tracker = new LastNStateRootTracker(tree, 10);
+        LastNStateRootTracker tracker = new(tree, 10);
 
         currentBlock = Build.A.Block
             .WithParent(tree.FindBlock(15, BlockTreeLookupOptions.All)!)
@@ -126,7 +126,7 @@ public class LastNStateRootTrackerTests
         BlockTree tree = Build.A.BlockTree().WithBlocks(blocks.ToArray()).TestObject;
 
         // Test with a custom depth of 256 blocks (useful for networks with fast block times like Arbitrum)
-        LastNStateRootTracker tracker = new LastNStateRootTracker(tree, 256);
+        LastNStateRootTracker tracker = new(tree, 256);
 
         for (int i = 0; i < 320; i++)
         {

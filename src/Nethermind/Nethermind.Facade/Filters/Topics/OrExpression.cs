@@ -9,17 +9,12 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.Blockchain.Filters.Topics
 {
-    public class OrExpression : TopicExpression, IEquatable<OrExpression>
+    public class OrExpression(params TopicExpression[] subexpressions) : TopicExpression, IEquatable<OrExpression>
     {
-        private readonly TopicExpression[] _subexpressions;
+        private readonly TopicExpression[] _subexpressions = subexpressions;
 
         public IEnumerable<TopicExpression> SubExpressions => _subexpressions;
         public override bool AcceptsAnyBlock => _subexpressions.Any(static e => e.AcceptsAnyBlock);
-
-        public OrExpression(params TopicExpression[] subexpressions)
-        {
-            _subexpressions = subexpressions;
-        }
 
         public override bool Accepts(Hash256 topic)
         {

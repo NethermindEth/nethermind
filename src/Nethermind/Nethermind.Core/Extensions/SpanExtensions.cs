@@ -3,7 +3,9 @@
 
 using System;
 using System.Buffers;
+using System.Buffers.Binary;
 using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
@@ -11,7 +13,6 @@ using System.Runtime.Intrinsics;
 using Arm = System.Runtime.Intrinsics.Arm;
 using x64 = System.Runtime.Intrinsics.X86;
 using Nethermind.Core.Collections;
-using Nethermind.Core.Crypto;
 
 namespace Nethermind.Core.Extensions
 {
@@ -80,7 +81,7 @@ namespace Nethermind.Core.Extensions
 
             fixed (byte* input = &Unsafe.Add(ref MemoryMarshal.GetReference(bytes), leadingZeros / 2))
             {
-                var createParams = new StringParams(input, bytes.Length, leadingZeros, withZeroX);
+                StringParams createParams = new(input, bytes.Length, leadingZeros, withZeroX);
                 return string.Create(length, createParams, static (chars, state) =>
                 {
 
@@ -101,64 +102,25 @@ namespace Nethermind.Core.Extensions
 
         private static string ToHexStringWithEip55Checksum(ReadOnlySpan<byte> bytes, bool withZeroX, bool skipLeadingZeros)
         {
-            string hashHex = Keccak.Compute(bytes.ToHexString(false)).ToString(false);
-
             int leadingZeros = skipLeadingZeros ? bytes.CountLeadingNibbleZeros() : 0;
             int length = bytes.Length * 2 + (withZeroX ? 2 : 0) - leadingZeros;
-            if (leadingZeros >= 2)
+            if (skipLeadingZeros && length == (withZeroX ? 2 : 0))
             {
-                bytes = bytes[(leadingZeros / 2)..];
+                return withZeroX ? Bytes.ZeroHexValue : Bytes.ZeroValue;
             }
+
             char[] charArray = ArrayPool<char>.Shared.Rent(length);
 
             Span<char> chars = charArray.AsSpan(0, length);
-
-            if (withZeroX)
+            try
             {
-                // In reverse, bounds check on [1] will elide bounds check on [0]
-                chars[1] = 'x';
-                chars[0] = '0';
-                // Trim off the two chars from the span
-                chars = chars[2..];
+                bytes.OutputBytesToCharHexWithEip55Checksum(chars, withZeroX, leadingZeros);
+                return new string(chars);
             }
-
-            uint[] lookup32 = Bytes.Lookup32;
-
-            bool odd = (leadingZeros & 1) != 0;
-            int oddity = odd ? 2 : 0;
-            if (odd)
+            finally
             {
-                // Odd number of hex chars, handle the first
-                // separately so loop can work in pairs
-                uint val = lookup32[bytes[0]];
-                char char2 = (char)(val >> 16);
-                chars[0] = char.IsLetter(char2) && hashHex[1] > '7'
-                            ? char.ToUpper(char2)
-                            : char2;
-
-                // Trim off the first byte and char from the spans
-                chars = chars[1..];
-                bytes = bytes[1..];
+                ArrayPool<char>.Shared.Return(charArray);
             }
-
-            for (int i = 0; i < chars.Length; i += 2)
-            {
-                uint val = lookup32[bytes[i / 2]];
-                char char1 = (char)val;
-                char char2 = (char)(val >> 16);
-
-                chars[i] = char.IsLetter(char1) && hashHex[i + oddity] > '7'
-                            ? char.ToUpper(char1)
-                            : char1;
-                chars[i + 1] = char.IsLetter(char2) && hashHex[i + 1 + oddity] > '7'
-                            ? char.ToUpper(char2)
-                            : char2;
-            }
-
-            string result = new string(charArray.AsSpan(0, length));
-            ArrayPool<char>.Shared.Return(charArray);
-
-            return result;
         }
 
         public static ReadOnlySpan<T> TakeAndMove<T>(this ref ReadOnlySpan<T> span, int length)
@@ -531,6 +493,91 @@ namespace Nethermind.Core.Extensions
             }
         }
 
+        public static long ToPositiveLong(this ReadOnlySpan<byte> bytes)
+        {
+            return bytes.Length switch
+            {
+                0 => 0,
+                // 1-7 bytes can never exceed long.MaxValue (they are at most 56 bits).
+                < 8 => (long)ReadUInt64BigEndian1To7(bytes),
+                // 8 bytes - only overflow if the top bit is set.
+                8 => ReadInt64BigEndianChecked(bytes),
+                _ => ParseLargeSpan(bytes),
+            };
+
+            static long ReadInt64BigEndianChecked(ReadOnlySpan<byte> bytes)
+            {
+                ulong value = BinaryPrimitives.ReadUInt64BigEndian(bytes);
+                if (value > long.MaxValue)
+                    ThrowExceedsMaxValue(bytes);
+
+                return (long)value;
+            }
+
+            [MethodImpl(MethodImplOptions.NoInlining)]
+            static long ParseLargeSpan(ReadOnlySpan<byte> bytes)
+            {
+                // length > 8:
+                // Value fits in 64 bits iff the prefix (everything before the last 8 bytes) is all zeros.
+                int prefixLen = bytes.Length - 8;
+
+                // Vectorised in modern runtimes for byte spans.
+                if (bytes.Slice(0, prefixLen).IndexOfAnyExcept((byte)0) >= 0)
+                    ThrowExceedsMaxValue(bytes);
+
+                ReadOnlySpan<byte> tail = bytes.Slice(prefixLen); // exactly 8 bytes
+
+                ulong value = BinaryPrimitives.ReadUInt64BigEndian(tail);
+                if (value > long.MaxValue)
+                    ThrowExceedsMaxValue(bytes);
+
+                return (long)value;
+            }
+
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            static ulong ReadUInt64BigEndian1To7(ReadOnlySpan<byte> s)
+            {
+                Debug.Assert((uint)s.Length - 1u < 7u);
+
+                ref byte r0 = ref MemoryMarshal.GetReference(s);
+
+                return s.Length switch
+                {
+                    1 => r0,
+
+                    2 => ((ulong)r0 << 8)
+                       | Unsafe.Add(ref r0, 1),
+
+                    3 => ((ulong)r0 << 16)
+                       | ((ulong)Unsafe.Add(ref r0, 1) << 8)
+                       | Unsafe.Add(ref r0, 2),
+
+                    4 => BinaryPrimitives.ReadUInt32BigEndian(s),
+
+                    5 => ((ulong)BinaryPrimitives.ReadUInt32BigEndian(s) << 8)
+                       | Unsafe.Add(ref r0, 4),
+
+                    6 => ((ulong)BinaryPrimitives.ReadUInt32BigEndian(s) << 16)
+                       | ((ulong)Unsafe.Add(ref r0, 4) << 8)
+                       | Unsafe.Add(ref r0, 5),
+
+                    7 => ((ulong)BinaryPrimitives.ReadUInt32BigEndian(s) << 24)
+                       | ((ulong)Unsafe.Add(ref r0, 4) << 16)
+                       | ((ulong)Unsafe.Add(ref r0, 5) << 8)
+                       | Unsafe.Add(ref r0, 6),
+
+                    _ => 0 // unreachable
+                };
+            }
+
+            [DoesNotReturn, StackTraceHidden]
+            static void ThrowExceedsMaxValue(ReadOnlySpan<byte> bytes)
+            {
+                BigInteger value = new(bytes, isUnsigned: true, isBigEndian: true);
+                throw new OverflowException($"Value {value} exceeds maximum allowed value");
+            }
+        }
+
         /// <summary>
         /// Computes a very fast, non-cryptographic 64-bit hash of exactly 32 bytes.
         /// </summary>
@@ -549,9 +596,19 @@ namespace Nethermind.Core.Extensions
                 Vector128<byte> key = Unsafe.As<byte, Vector128<byte>>(ref start);
                 Vector128<byte> data = Unsafe.As<byte, Vector128<byte>>(ref Unsafe.Add(ref start, 16));
                 key ^= Vector128.CreateScalar(seed).AsByte();
-                Vector128<byte> mixed = x64.Aes.IsSupported
-                    ? x64.Aes.Encrypt(data, key)
-                    : Arm.Aes.MixColumns(Arm.Aes.Encrypt(data, key));
+                // Two AES rounds for full diffusion: after round 1, variation spreads to one column;
+                // after round 2, every output byte depends on every input byte.
+                Vector128<byte> mixed;
+                if (x64.Aes.IsSupported)
+                {
+                    mixed = x64.Aes.Encrypt(data, key);
+                    mixed = x64.Aes.Encrypt(mixed, key);
+                }
+                else
+                {
+                    mixed = Arm.Aes.MixColumns(Arm.Aes.Encrypt(data, key));
+                    mixed = Arm.Aes.MixColumns(Arm.Aes.Encrypt(mixed, key));
+                }
                 return (long)(mixed.AsUInt64().GetElement(0) ^ mixed.AsUInt64().GetElement(1));
             }
 
@@ -582,9 +639,20 @@ namespace Nethermind.Core.Extensions
                 uint last4 = Unsafe.ReadUnaligned<uint>(ref Unsafe.Add(ref start, 16));
                 Vector128<byte> data = Vector128.CreateScalar(last4).AsByte();
                 key ^= Vector128.CreateScalar(seed).AsByte();
-                Vector128<byte> mixed = x64.Aes.IsSupported
-                    ? x64.Aes.Encrypt(data, key)
-                    : Arm.Aes.MixColumns(Arm.Aes.Encrypt(data, key));
+                // Two AES rounds for full diffusion: a single round only spreads the varying
+                // bytes (16-19) to one column, leaving the low 32 bits of the output constant
+                // when bytes 0-15 are constant (e.g., zero-padded small-integer addresses).
+                Vector128<byte> mixed;
+                if (x64.Aes.IsSupported)
+                {
+                    mixed = x64.Aes.Encrypt(data, key);
+                    mixed = x64.Aes.Encrypt(mixed, key);
+                }
+                else
+                {
+                    mixed = Arm.Aes.MixColumns(Arm.Aes.Encrypt(data, key));
+                    mixed = Arm.Aes.MixColumns(Arm.Aes.Encrypt(mixed, key));
+                }
                 return (long)(mixed.AsUInt64().GetElement(0) ^ mixed.AsUInt64().GetElement(1));
             }
 

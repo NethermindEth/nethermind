@@ -13,46 +13,40 @@ namespace Nethermind.Network.Discovery;
 /// Manages connections (Netty <see cref="IChannel"/>) allocated for all Discovery protocol versions.
 /// </summary>
 /// <remarks> Not thread-safe </remarks>
-public class DiscoveryConnectionsPool : IConnectionsPool
+public class DiscoveryConnectionsPool(ILogger logger, INetworkConfig networkConfig, IDiscoveryConfig discoveryConfig) : IConnectionsPool
 {
-    private readonly ILogger _logger;
-    private readonly INetworkConfig _networkConfig;
-    private readonly IDiscoveryConfig _discoveryConfig;
-    private readonly IPAddress _ip;
+    private readonly ILogger _logger = logger;
+    private readonly INetworkConfig _networkConfig = networkConfig;
+    private readonly IDiscoveryConfig _discoveryConfig = discoveryConfig;
+    private readonly IPAddress _ip = IPAddress.Parse(networkConfig.LocalIp!);
     private readonly Dictionary<int, Task<IChannel>> _byPort = new();
-
-    public DiscoveryConnectionsPool(ILogger logger, INetworkConfig networkConfig, IDiscoveryConfig discoveryConfig)
-    {
-        _logger = logger;
-        _networkConfig = networkConfig;
-        _discoveryConfig = discoveryConfig;
-        _ip = IPAddress.Parse(networkConfig.LocalIp!);
-    }
 
     public async Task<IChannel> BindAsync(Bootstrap bootstrap, int port)
     {
         if (_byPort.TryGetValue(port, out Task<IChannel>? task)) return await task;
 
-        task = NetworkHelper.HandlePortTakenError(() => bootstrap.BindAsync(_ip, port), port);
+        task = BindAsync(bootstrap, port, _ip);
         _byPort.Add(port, task);
 
-        return await task.ContinueWith(t =>
-        {
-            if (t.IsFaulted)
-            {
-                _logger.Error(
-                    $"Error when establishing discovery connection on Address: {_ip}({_networkConfig.LocalIp}:{port})",
-                    t.Exception
-                );
-            }
+        return await task;
+    }
 
-            return t.Result;
-        });
+    private async Task<IChannel> BindAsync(Bootstrap bootstrap, int port, IPAddress ip)
+    {
+        try
+        {
+            return await NetworkHelper.HandlePortTakenError(() => bootstrap.BindAsync(ip, port), port);
+        }
+        catch (Exception e)
+        {
+            _logger.Error($"Error when establishing discovery connection on Address: {ip}({_networkConfig.LocalIp}:{port})", e);
+            throw;
+        }
     }
 
     public async Task StopAsync()
     {
-        foreach ((var port, Task<IChannel> channel) in _byPort)
+        foreach ((int port, Task<IChannel> channel) in _byPort)
             await StopAsync(port, channel);
     }
 
@@ -64,12 +58,12 @@ public class DiscoveryConnectionsPool : IConnectionsPool
             _logger.Info($"Stopping discovery udp channel on port {port}");
 
             Task closeTask = channel.CloseAsync();
-            CancellationTokenSource delayCancellation = new();
+            using CancellationTokenSource delayCancellation = new();
 
             if (await Task.WhenAny(closeTask, Task.Delay(_discoveryConfig.UdpChannelCloseTimeout, delayCancellation.Token)) != closeTask)
                 _logger.Error($"Could not close udp connection in {_discoveryConfig.UdpChannelCloseTimeout} milliseconds");
             else
-                await delayCancellation.CancelAsync();
+                delayCancellation.Cancel();
         }
         catch (Exception e)
         {

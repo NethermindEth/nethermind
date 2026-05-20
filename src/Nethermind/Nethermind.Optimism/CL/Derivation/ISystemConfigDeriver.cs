@@ -68,10 +68,7 @@ public record SystemConfig
     public override int GetHashCode() =>
         HashCode.Combine(BatcherAddress, GasLimit, Overhead, Scalar, EIP1559Params);
 
-    public override string ToString()
-    {
-        return $"BatcherAddress: {BatcherAddress}, GasLimit: {GasLimit}, Overhead: {Overhead.ToHexString()}, Scalar: {Scalar.ToHexString()}, EIP1559Params: {EIP1559Params.ToHexString()}";
-    }
+    public override string ToString() => $"BatcherAddress: {BatcherAddress}, GasLimit: {GasLimit}, Overhead: {Overhead.ToHexString()}, Scalar: {Scalar.ToHexString()}, EIP1559Params: {EIP1559Params.ToHexString()}";
 
     public static readonly SystemConfig Empty = new()
     {

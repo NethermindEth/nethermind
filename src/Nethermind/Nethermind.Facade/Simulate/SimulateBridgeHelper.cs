@@ -11,7 +11,6 @@ using Nethermind.Crypto;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Facade.Proxy.Models.Simulate;
-using Nethermind.Int256;
 using Nethermind.State;
 using System;
 using System.Collections.Generic;
@@ -61,7 +60,7 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
         CancellationToken cancellationToken)
     {
         List<SimulateBlockResult<TTrace>> list = new();
-        SimulateOutput<TTrace> result = new SimulateOutput<TTrace>()
+        SimulateOutput<TTrace> result = new()
         {
             Items = list
         };
@@ -129,7 +128,7 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
                 PrepareState(blockCall, env.WorldState, env.CodeInfoRepository, callHeader.Number, spec);
 
                 BlockBody body = AssembleBody(calls, stateProvider, nonceCache, spec);
-                Block callBlock = new Block(callHeader, body);
+                Block callBlock = new(callHeader, body);
 
                 ProcessingOptions processingFlags = payload.Validation
                     ? SimulateProcessingOptions
@@ -181,7 +180,7 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
             withdrawals = [];
         }
 
-        BlockBody body = new BlockBody(transactions, null, withdrawals);
+        BlockBody body = new(transactions, null, withdrawals);
         return body;
     }
 
@@ -250,24 +249,10 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
         BlockHeader parent,
         bool validate)
     {
-        BlockHeader result = new BlockHeader(
-            parent.Hash!,
-            Keccak.OfAnEmptySequenceRlp,
-            parent.Beneficiary,
-            UInt256.Zero,
-            parent.Number + 1,
-            parent.GasLimit,
-            parent.Timestamp + blocksConfig.SecondsPerSlot,
-            [],
-            requestsHash: parent.RequestsHash)
-        {
-            MixHash = Hash256.Zero,
-            RequestsHash = parent.RequestsHash,
-        };
+        BlockHeader result = parent.CreateSimulatedChild(parent.Timestamp + blocksConfig.SecondsPerSlot);
 
         if ((ForkActivation)result.Number >= specProvider.MergeBlockNumber)
         {
-            result.Difficulty = UInt256.Zero;
             result.IsPostMerge = true;
         }
         else

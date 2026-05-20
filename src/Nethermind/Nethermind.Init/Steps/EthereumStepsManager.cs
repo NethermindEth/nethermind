@@ -84,7 +84,7 @@ namespace Nethermind.Init.Steps
                 }
 
                 // Remove absent optional dependencies
-                for (var i = 0; i < stepWrapper.Dependencies.Count; i++)
+                for (int i = 0; i < stepWrapper.Dependencies.Count; i++)
                 {
                     Type dep = stepWrapper.Dependencies[i];
                     if (!stepInfoMap.ContainsKey(dep))
@@ -188,16 +188,16 @@ namespace Nethermind.Init.Steps
         private string BuildStepDependencyTree(Dictionary<Type, StepWrapper> stepInfoMap)
         {
             // Map each step to its direct dependencies
-            var depsMap = stepInfoMap.ToDictionary(
+            Dictionary<string, List<string>> depsMap = stepInfoMap.ToDictionary(
                 kv => kv.Key.Name,
                 kv => kv.Value.Dependencies.Select(d => d.Name).ToList()
             );
 
             // Build children map for topological sorting (parent -> children)
-            var dependentsMap = stepInfoMap.Keys.ToDictionary(t => t.Name, t => new List<string>());
+            Dictionary<string, List<string>> dependentsMap = stepInfoMap.Keys.ToDictionary(t => t.Name, t => new List<string>());
             foreach (KeyValuePair<Type, StepWrapper> kv in stepInfoMap)
             {
-                var node = kv.Key.Name;
+                string node = kv.Key.Name;
                 foreach (Type dependency in kv.Value.Dependencies)
                 {
                     if (dependentsMap.ContainsKey(dependency.Name))
@@ -212,9 +212,9 @@ namespace Nethermind.Init.Steps
             Dictionary<string, int> degree = new(inDegree);
             while (queue.Count > 0)
             {
-                var n = queue.Dequeue();
+                string n = queue.Dequeue();
                 sorted.Add(n);
-                foreach (var dependent in dependentsMap[n].OrderBy((c) => dependentsMap[c].Count))
+                foreach (string? dependent in dependentsMap[n].OrderBy((c) => dependentsMap[c].Count))
                 {
                     degree[dependent]--;
                     if (degree[dependent] == 0)
@@ -239,7 +239,7 @@ namespace Nethermind.Init.Steps
             }
 
             Dictionary<string, List<string>> deduplicatedDependency = new();
-            foreach (var node in sorted)
+            foreach (string node in sorted)
             {
                 HashSet<string> childOnlyAllCombinedDeps = depsMap[node].SelectMany(d => allCombinedDeps[d]).ToHashSet();
                 deduplicatedDependency[node] = depsMap[node].Where(d => !childOnlyAllCombinedDeps.Contains(d)).ToList();
@@ -247,7 +247,7 @@ namespace Nethermind.Init.Steps
 
             // Build the indented output using reversed indentation
             StringBuilder sb = new();
-            foreach (var node in sorted)
+            foreach (string node in sorted)
             {
                 int lvl = depth[node];
                 sb.Append(new string(' ', lvl * 2));

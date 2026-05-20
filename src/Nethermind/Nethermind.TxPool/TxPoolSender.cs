@@ -10,20 +10,12 @@ using Nethermind.Int256;
 
 namespace Nethermind.TxPool
 {
-    public class TxPoolSender : ITxSender
+    public class TxPoolSender(ITxPool txPool, ITxSealer sealer, INonceManager nonceManager, IEthereumEcdsa ecdsa) : ITxSender
     {
-        private readonly ITxPool _txPool;
-        private readonly ITxSealer _sealer;
-        private readonly INonceManager _nonceManager;
-        private readonly IEthereumEcdsa _ecdsa;
-
-        public TxPoolSender(ITxPool txPool, ITxSealer sealer, INonceManager nonceManager, IEthereumEcdsa ecdsa)
-        {
-            _txPool = txPool ?? throw new ArgumentNullException(nameof(txPool));
-            _sealer = sealer ?? throw new ArgumentNullException(nameof(sealer));
-            _nonceManager = nonceManager ?? throw new ArgumentNullException(nameof(nonceManager));
-            _ecdsa = ecdsa ?? throw new ArgumentNullException(nameof(ecdsa));
-        }
+        private readonly ITxPool _txPool = txPool ?? throw new ArgumentNullException(nameof(txPool));
+        private readonly ITxSealer _sealer = sealer ?? throw new ArgumentNullException(nameof(sealer));
+        private readonly INonceManager _nonceManager = nonceManager ?? throw new ArgumentNullException(nameof(nonceManager));
+        private readonly IEthereumEcdsa _ecdsa = ecdsa ?? throw new ArgumentNullException(nameof(ecdsa));
 
         public ValueTask<(Hash256, AcceptTxResult?)> SendTransaction(Transaction tx, TxHandlingOptions txHandlingOptions)
         {
@@ -55,7 +47,9 @@ namespace Nethermind.TxPool
 
         private AcceptTxResult SubmitTx(NonceLocker locker, Transaction tx, TxHandlingOptions txHandlingOptions)
         {
-            _sealer.Seal(tx, txHandlingOptions);
+            if (!_sealer.TrySeal(tx, txHandlingOptions))
+                return AcceptTxResult.SignFailed;
+
             AcceptTxResult result = _txPool.SubmitTx(tx, txHandlingOptions);
 
             if (result == AcceptTxResult.Accepted)

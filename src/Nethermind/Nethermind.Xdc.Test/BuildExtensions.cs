@@ -1,0 +1,18 @@
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
+using Nethermind.Xdc.Test.Helpers;
+
+namespace Nethermind.Core.Test.Builders;
+
+public static class BuildExtensions
+{
+    public static XdcBlockHeaderBuilder XdcBlockHeader(this Build build) =>
+        new();
+
+    public static XdcSubnetBlockHeaderBuilder XdcSubnetBlockHeader(this Build build) =>
+        new();
+
+    public static QuorumCertificateBuilder QuorumCertificate(this Build build) =>
+        new();
+}

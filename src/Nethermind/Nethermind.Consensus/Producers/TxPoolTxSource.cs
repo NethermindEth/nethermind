@@ -213,7 +213,7 @@ namespace Nethermind.Consensus.Producers
                 if (countOfRemainingBlobs <= leftoverCapacity)
                 {
                     // We can take all, no optimal picking needed.
-                    foreach (var tx in candidates.AsSpan())
+                    foreach ((Transaction tx, long blobChain) tx in candidates.AsSpan())
                     {
                         selectedBlobTxs.Add(tx.tx);
                     }
@@ -390,7 +390,7 @@ namespace Nethermind.Consensus.Producers
             => _transactionComparerProvider.GetDefaultProducerComparer(blockPreparationContext);
 
         internal static IEnumerable<Transaction> Order(IDictionary<AddressAsKey, Transaction[]> pendingTransactions, IComparer<Transaction> comparer, Func<Transaction, bool> filter, long gasLimit) =>
-            OrderCore(pendingTransactions, comparer, static tx => tx.SpentGas, filter, gasLimit).Select(static tx => tx.tx);
+            OrderCore(pendingTransactions, comparer, static tx => tx.BlockGasUsed, filter, gasLimit).Select(static tx => tx.tx);
 
         private static IEnumerable<(Transaction tx, long resource)> OrderCore(
             IDictionary<AddressAsKey, Transaction[]> pendingTransactions,

@@ -4,8 +4,8 @@
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using NUnit.Framework;
-using Nethermind.Evm.Precompiles.Bls;
 using Nethermind.Specs;
+using Nethermind.Evm.Precompiles;
 
 namespace Nethermind.Evm.Test;
 
@@ -28,16 +28,16 @@ public class Eip2537Tests : VirtualMachineTestsBase
     public void Test_g1_add_before_prague()
     {
         _timestampAdjustment = -12;
-        Assert.That(Spec.IsPrecompile(G1AddPrecompile.Address), Is.False);
+        Assert.That(Spec.IsPrecompile(Bls12381G1AddPrecompile.Address), Is.False);
     }
 
     [Test]
     public void Test_g1_add_after_prague()
     {
-        Assert.That(Spec.IsPrecompile(G1AddPrecompile.Address), Is.True);
+        Assert.That(Spec.IsPrecompile(Bls12381G1AddPrecompile.Address), Is.True);
 
         byte[] code = Prepare.EvmCode
-            .CallWithInput(G1AddPrecompile.Address, 1000L, new byte[256])
+            .CallWithInput(Bls12381G1AddPrecompile.Address, 1000L, new byte[256])
             .Done;
 
         TestAllTracerWithOutput result = Execute(code);
@@ -56,16 +56,16 @@ public class Eip2537Tests : VirtualMachineTestsBase
     public void Test_g2_add_before_prague()
     {
         _timestampAdjustment = -12;
-        Assert.That(Spec.IsPrecompile(G2AddPrecompile.Address), Is.False);
+        Assert.That(Spec.IsPrecompile(Bls12381G2AddPrecompile.Address), Is.False);
     }
 
     [Test]
     public void Test_g2_add_after_prague()
     {
-        Assert.That(Spec.IsPrecompile(G2AddPrecompile.Address), Is.True);
+        Assert.That(Spec.IsPrecompile(Bls12381G2AddPrecompile.Address), Is.True);
 
         byte[] code = Prepare.EvmCode
-            .CallWithInput(G2AddPrecompile.Address, 1000L, new byte[512])
+            .CallWithInput(Bls12381G2AddPrecompile.Address, 1000L, new byte[512])
             .Done;
 
         TestAllTracerWithOutput result = Execute(code);
@@ -84,16 +84,16 @@ public class Eip2537Tests : VirtualMachineTestsBase
     public void Test_g1_msm_before_prague()
     {
         _timestampAdjustment = -12;
-        Assert.That(Spec.IsPrecompile(G1MSMPrecompile.Address), Is.False);
+        Assert.That(Spec.IsPrecompile(Bls12381G1MsmPrecompile.Address), Is.False);
     }
 
     [Test]
     public void Test_g1_msm_after_prague()
     {
-        Assert.That(Spec.IsPrecompile(G1MSMPrecompile.Address), Is.True);
+        Assert.That(Spec.IsPrecompile(Bls12381G1MsmPrecompile.Address), Is.True);
 
         byte[] code = Prepare.EvmCode
-            .CallWithInput(G1MSMPrecompile.Address, 100000L, new byte[160])
+            .CallWithInput(Bls12381G1MsmPrecompile.Address, 100000L, new byte[160])
             .Done;
 
         TestAllTracerWithOutput result = Execute(code);
@@ -112,16 +112,16 @@ public class Eip2537Tests : VirtualMachineTestsBase
     public void Test_g2_msm_before_prague()
     {
         _timestampAdjustment = -12;
-        Assert.That(Spec.IsPrecompile(G2MSMPrecompile.Address), Is.False);
+        Assert.That(Spec.IsPrecompile(Bls12381G2MsmPrecompile.Address), Is.False);
     }
 
     [Test]
     public void Test_g2_msm_after_prague()
     {
-        Assert.That(Spec.IsPrecompile(G2MSMPrecompile.Address), Is.True);
+        Assert.That(Spec.IsPrecompile(Bls12381G2MsmPrecompile.Address), Is.True);
 
         byte[] code = Prepare.EvmCode
-            .CallWithInput(G2MSMPrecompile.Address, 100000L, new byte[288])
+            .CallWithInput(Bls12381G2MsmPrecompile.Address, 100000L, new byte[288])
             .Done;
 
         TestAllTracerWithOutput result = Execute(code);
@@ -140,16 +140,16 @@ public class Eip2537Tests : VirtualMachineTestsBase
     public void Test_pairing_before_prague()
     {
         _timestampAdjustment = -12;
-        Assert.That(Spec.IsPrecompile(PairingCheckPrecompile.Address), Is.False);
+        Assert.That(Spec.IsPrecompile(Bls12381PairingCheckPrecompile.Address), Is.False);
     }
 
     [Test]
     public void Test_pairing_check_after_prague()
     {
-        Assert.That(Spec.IsPrecompile(PairingCheckPrecompile.Address), Is.True);
+        Assert.That(Spec.IsPrecompile(Bls12381PairingCheckPrecompile.Address), Is.True);
 
         byte[] code = Prepare.EvmCode
-            .CallWithInput(PairingCheckPrecompile.Address, 100000L, new byte[384])
+            .CallWithInput(Bls12381PairingCheckPrecompile.Address, 100000L, new byte[384])
             .Done;
 
         TestAllTracerWithOutput result = Execute(code);
@@ -168,16 +168,16 @@ public class Eip2537Tests : VirtualMachineTestsBase
     public void Test_map_fp_to_g1_before_prague()
     {
         _timestampAdjustment = -12;
-        Assert.That(Spec.IsPrecompile(MapFpToG1Precompile.Address), Is.False);
+        Assert.That(Spec.IsPrecompile(Bls12381FpToG1Precompile.Address), Is.False);
     }
 
     [Test]
     public void Test_map_fp_to_g1_after_prague()
     {
-        Assert.That(Spec.IsPrecompile(MapFpToG1Precompile.Address), Is.True);
+        Assert.That(Spec.IsPrecompile(Bls12381FpToG1Precompile.Address), Is.True);
 
         byte[] code = Prepare.EvmCode
-            .CallWithInput(MapFpToG1Precompile.Address, 10000L, new byte[64])
+            .CallWithInput(Bls12381FpToG1Precompile.Address, 10000L, new byte[64])
             .Done;
 
         TestAllTracerWithOutput result = Execute(code);
@@ -196,16 +196,16 @@ public class Eip2537Tests : VirtualMachineTestsBase
     public void Test_map_fp2_to_g2_before_prague()
     {
         _timestampAdjustment = -12;
-        Assert.That(Spec.IsPrecompile(MapFp2ToG2Precompile.Address), Is.False);
+        Assert.That(Spec.IsPrecompile(Bls12381Fp2ToG2Precompile.Address), Is.False);
     }
 
     [Test]
     public void Test_map_fp2_to_g2_after_prague()
     {
-        Assert.That(Spec.IsPrecompile(MapFp2ToG2Precompile.Address), Is.True);
+        Assert.That(Spec.IsPrecompile(Bls12381Fp2ToG2Precompile.Address), Is.True);
 
         byte[] code = Prepare.EvmCode
-            .CallWithInput(MapFp2ToG2Precompile.Address, 100000L, new byte[128])
+            .CallWithInput(Bls12381Fp2ToG2Precompile.Address, 100000L, new byte[128])
             .Done;
 
         TestAllTracerWithOutput result = Execute(code);

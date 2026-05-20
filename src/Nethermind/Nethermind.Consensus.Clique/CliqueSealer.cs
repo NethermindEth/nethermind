@@ -23,7 +23,7 @@ namespace Nethermind.Consensus.Clique
 
         public CliqueSealer(ISigner signer, ICliqueConfig config, ISnapshotManager snapshotManager, ILogManager logManager)
         {
-            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+            _logger = logManager?.GetClassLogger<CliqueSealer>() ?? throw new ArgumentNullException(nameof(logManager));
             _snapshotManager = snapshotManager ?? throw new ArgumentNullException(nameof(snapshotManager));
             _config = config ?? throw new ArgumentNullException(nameof(config));
             _signer = signer ?? throw new ArgumentNullException(nameof(signer));
@@ -64,16 +64,23 @@ namespace Nethermind.Consensus.Clique
             // Sign all the things!
             ValueHash256 headerHash = SnapshotManager.CalculateCliqueHeaderHash(header);
             Signature signature;
+            bool signed;
             if (_signer is IHeaderSigner headerSigner)
             {
                 BlockHeader clone = header.Clone();
                 clone.ExtraData = SnapshotManager.SliceExtraSealFromExtraData(clone.ExtraData);
                 clone.Hash = new Hash256(headerHash);
-                signature = headerSigner.Sign(clone);
+                signed = headerSigner.TrySign(clone, out signature);
             }
             else
             {
-                signature = _signer.Sign(headerHash);
+                signed = _signer.TrySign(in headerHash, out signature);
+            }
+
+            if (!signed)
+            {
+                if (_logger.IsWarn) _logger.Warn($"Clique signer {_signer.Address} could not sign block {block.Number} — skipping seal.");
+                return null;
             }
 
             // Copy signature bytes (R and S)

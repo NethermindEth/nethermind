@@ -4,20 +4,16 @@
 using System;
 using DotNetty.Buffers;
 using DotNetty.Common.Utilities;
+using Nethermind.Core.Buffers;
+using Nethermind.Core.Collections;
 
 namespace Nethermind.Serialization.Rlp
 {
-    public sealed class NettyRlpStream : RlpStream, IDisposable
+    public sealed class NettyRlpStream(IByteBuffer buffer) : RlpStream, IDisposable
     {
-        private readonly IByteBuffer _buffer;
+        private readonly IByteBuffer _buffer = buffer;
 
-        private readonly int _initialPosition;
-
-        public NettyRlpStream(IByteBuffer buffer)
-        {
-            _buffer = buffer;
-            _initialPosition = buffer.ReaderIndex;
-        }
+        private readonly int _initialPosition = buffer.ReaderIndex;
 
         public override void Write(ReadOnlySpan<byte> bytesToWrite)
         {
@@ -61,9 +57,57 @@ namespace Nethermind.Serialization.Rlp
 
         public Memory<byte> AsMemory() => _buffer.AsMemory(_initialPosition);
 
-        public void Dispose()
+        public void Dispose() => _buffer.SafeRelease();
+
+        public static bool TryWriteByteArrayList(IByteBuffer byteBuffer, IByteArrayList list)
         {
-            _buffer.SafeRelease();
+            if (list is not IRlpWrapper rlpWrapper) return false;
+            byteBuffer.EnsureWritable(rlpWrapper.RlpLength);
+            rlpWrapper.Write(new NettyRlpStream(byteBuffer));
+            return true;
+        }
+
+        public static void WriteByteArrayList(IByteBuffer byteBuffer, IByteArrayList list)
+        {
+            if (TryWriteByteArrayList(byteBuffer, list))
+                return;
+
+            int contentLength = 0;
+            for (int i = 0; i < list.Count; i++)
+            {
+                contentLength += Rlp.LengthOf(list[i]);
+            }
+
+            int length = Rlp.LengthOfSequence(contentLength);
+            byteBuffer.EnsureWritable(length);
+            NettyRlpStream rlpStream = new(byteBuffer);
+            rlpStream.StartSequence(contentLength);
+            for (int i = 0; i < list.Count; i++)
+            {
+                rlpStream.Encode(list[i]);
+            }
+        }
+
+        public static RlpByteArrayList DecodeByteArrayList(IByteBuffer byteBuffer)
+        {
+            NettyBufferMemoryOwner? memoryOwner = new(byteBuffer);
+            Rlp.ValueDecoderContext ctx = new(memoryOwner.Memory, true);
+            int startPos = ctx.Position;
+            RlpByteArrayList? list = null;
+
+            try
+            {
+                list = RlpByteArrayList.DecodeList(ref ctx, memoryOwner);
+                memoryOwner = null;
+                byteBuffer.SetReaderIndex(byteBuffer.ReaderIndex + (ctx.Position - startPos));
+                return list;
+            }
+            catch
+            {
+                list?.Dispose();
+                memoryOwner?.Dispose();
+                throw;
+            }
         }
     }
 }

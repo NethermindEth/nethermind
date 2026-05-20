@@ -20,29 +20,20 @@ namespace Nethermind.Db
 
         public MemColumnsDb(params TKey[] keys)
         {
-            foreach (var key in keys)
+            foreach (TKey key in keys)
             {
                 GetColumnDb(key);
             }
         }
 
-        public IDb GetColumnDb(TKey key) => !_columnDbs.TryGetValue(key, out var db) ? _columnDbs[key] = new MemDb() : db;
+        public IDb GetColumnDb(TKey key) => !_columnDbs.TryGetValue(key, out IDb db) ? _columnDbs[key] = new MemDb() : db;
         public IEnumerable<TKey> ColumnKeys => _columnDbs.Keys;
 
-        public IReadOnlyColumnDb<TKey> CreateReadOnly(bool createInMemWriteStore)
-        {
-            return new ReadOnlyColumnsDb<TKey>(this, createInMemWriteStore);
-        }
+        public IReadOnlyColumnDb<TKey> CreateReadOnly(bool createInMemWriteStore) => new ReadOnlyColumnsDb<TKey>(this, createInMemWriteStore);
 
-        public IColumnsWriteBatch<TKey> StartWriteBatch()
-        {
-            return new InMemoryColumnWriteBatch<TKey>(this);
-        }
+        public IColumnsWriteBatch<TKey> StartWriteBatch() => new InMemoryColumnWriteBatch<TKey>(this);
 
-        public IColumnDbSnapshot<TKey> CreateSnapshot()
-        {
-            throw new NotSupportedException("Snapshot not supported");
-        }
+        public IColumnDbSnapshot<TKey> CreateSnapshot() => throw new NotSupportedException("Snapshot not supported");
 
         public void Dispose() { }
         public void Flush(bool onlyWal = false) { }

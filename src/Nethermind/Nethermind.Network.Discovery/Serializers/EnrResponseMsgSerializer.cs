@@ -4,6 +4,7 @@
 using Autofac.Features.AttributeFilters;
 using DotNetty.Buffers;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Crypto;
 using Nethermind.Network.Discovery.Messages;
 using Nethermind.Network.Enr;
@@ -11,15 +12,9 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.Discovery.Serializers;
 
-public class EnrResponseMsgSerializer : DiscoveryMsgSerializerBase, IZeroInnerMessageSerializer<EnrResponseMsg>
+public class EnrResponseMsgSerializer(IEcdsa ecdsa, [KeyFilter(IProtectedPrivateKey.NodeKey)] IPrivateKeyGenerator nodeKey, INodeIdResolver nodeIdResolver) : DiscoveryMsgSerializerBase(ecdsa, nodeKey, nodeIdResolver), IZeroInnerMessageSerializer<EnrResponseMsg>
 {
-    private readonly NodeRecordSigner _nodeRecordSigner;
-
-    public EnrResponseMsgSerializer(IEcdsa ecdsa, [KeyFilter(IProtectedPrivateKey.NodeKey)] IPrivateKeyGenerator nodeKey, INodeIdResolver nodeIdResolver)
-        : base(ecdsa, nodeKey, nodeIdResolver)
-    {
-        _nodeRecordSigner = new NodeRecordSigner(ecdsa, nodeKey.Generate());
-    }
+    private readonly NodeRecordSigner _nodeRecordSigner = new(ecdsa, nodeKey.Generate());
 
     public void Serialize(IByteBuffer byteBuffer, EnrResponseMsg msg)
     {
@@ -49,7 +44,7 @@ public class EnrResponseMsgSerializer : DiscoveryMsgSerializerBase, IZeroInnerMe
         NodeRecord nodeRecord = _nodeRecordSigner.Deserialize(ref ctx);
         if (!_nodeRecordSigner.Verify(nodeRecord))
         {
-            string resHex = data.ReadBytes(positionForHex).ReadAllHex();
+            string resHex = data.AsSpan()[..positionForHex].ToHexString();
             throw new NetworkingException($"Invalid ENR signature: {resHex}", NetworkExceptionType.Discovery);
         }
 

@@ -15,8 +15,10 @@ using Nethermind.Core.Test.Modules;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Specs.Forks;
+using System;
 using Nethermind.Evm.State;
 using Nethermind.State;
+using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
 using NSubstitute;
 using NUnit.Framework;
@@ -25,27 +27,29 @@ namespace Nethermind.Store.Test;
 
 public class WorldStateManagerTests
 {
-    [Test]
-    public void ShouldProxyGlobalWorldState()
+    private static (IWorldStateScopeProvider worldState, IPruningTrieStore trieStore, WorldStateManager manager) CreateWorldStateManager()
     {
         IWorldStateScopeProvider worldState = Substitute.For<IWorldStateScopeProvider>();
         IPruningTrieStore trieStore = Substitute.For<IPruningTrieStore>();
         IDbProvider dbProvider = TestMemDbProvider.Init();
-        WorldStateManager worldStateManager = new WorldStateManager(worldState, trieStore, dbProvider, LimboLogs.Instance);
+        WorldStateManager manager = new(worldState, trieStore, dbProvider, LimboLogs.Instance);
+        return (worldState, trieStore, manager);
+    }
 
-        worldStateManager.GlobalWorldState.Should().Be(worldState);
+    [Test]
+    public void ShouldProxyGlobalWorldState()
+    {
+        (IWorldStateScopeProvider worldState, _, WorldStateManager manager) = CreateWorldStateManager();
+        manager.GlobalWorldState.Should().Be(worldState);
     }
 
     [Test]
     public void ShouldProxyReorgBoundaryEvent()
     {
-        IWorldStateScopeProvider worldState = Substitute.For<IWorldStateScopeProvider>();
-        IPruningTrieStore trieStore = Substitute.For<IPruningTrieStore>();
-        IDbProvider dbProvider = TestMemDbProvider.Init();
-        WorldStateManager worldStateManager = new WorldStateManager(worldState, trieStore, dbProvider, LimboLogs.Instance);
+        (_, IPruningTrieStore trieStore, WorldStateManager manager) = CreateWorldStateManager();
 
         bool gotEvent = false;
-        worldStateManager.ReorgBoundaryReached += (sender, reached) => gotEvent = true;
+        manager.ReorgBoundaryReached += (sender, reached) => gotEvent = true;
         trieStore.ReorgBoundaryReached += Raise.EventWith<ReorgBoundaryReached>(new ReorgBoundaryReached(1));
 
         gotEvent.Should().BeTrue();
@@ -55,21 +59,18 @@ public class WorldStateManagerTests
     [TestCase(INodeStorage.KeyScheme.HalfPath, false)]
     public void ShouldNotSupportHashLookupOnHalfpath(INodeStorage.KeyScheme keyScheme, bool hashSupported)
     {
-        IWorldStateScopeProvider worldState = Substitute.For<IWorldStateScopeProvider>();
-        IPruningTrieStore trieStore = Substitute.For<IPruningTrieStore>();
+        (_, IPruningTrieStore trieStore, WorldStateManager manager) = CreateWorldStateManager();
         IReadOnlyTrieStore readOnlyTrieStore = Substitute.For<IReadOnlyTrieStore>();
         trieStore.AsReadOnly().Returns(readOnlyTrieStore);
         trieStore.Scheme.Returns(keyScheme);
-        IDbProvider dbProvider = TestMemDbProvider.Init();
-        WorldStateManager worldStateManager = new WorldStateManager(worldState, trieStore, dbProvider, LimboLogs.Instance);
 
         if (hashSupported)
         {
-            worldStateManager.HashServer.Should().NotBeNull();
+            manager.HashServer.Should().NotBeNull();
         }
         else
         {
-            worldStateManager.HashServer.Should().BeNull();
+            manager.HashServer.Should().BeNull();
         }
     }
 
@@ -123,5 +124,54 @@ public class WorldStateManagerTests
         }
 
         blockTree.Received().BestPersistedState = lastBlock - reorgDepth;
+    }
+
+    [Test]
+    [TestCase(false)]
+    [TestCase(true)]
+    public void CreateReadOnlyTrieStore_can_resolve_state_root(bool useFlat)
+    {
+        IConfigProvider configProvider = new ConfigProvider();
+        if (useFlat)
+        {
+            configProvider.GetConfig<IFlatDbConfig>().Enabled = true;
+        }
+
+        using IContainer ctx = new ContainerBuilder()
+            .AddModule(new TestNethermindModule(configProvider))
+            .Build();
+
+        IWorldState worldState = ctx.Resolve<IMainProcessingContext>().WorldState;
+
+        Hash256 stateRoot;
+        using (worldState.BeginScope(IWorldState.PreGenesis))
+        {
+            worldState.CreateAccount(TestItem.AddressA, 1, 2);
+            worldState.Commit(Cancun.Instance);
+            worldState.CommitTree(0);
+            stateRoot = worldState.StateRoot;
+        }
+
+        BlockHeader parentHeader = Build.A.BlockHeader
+            .WithStateRoot(stateRoot)
+            .WithNumber(0)
+            .TestObject;
+
+        IWorldStateManager wsm = ctx.Resolve<IWorldStateManager>();
+        using ITrieStore readOnlyTrieStore = wsm.CreateReadOnlyTrieStore();
+        using IDisposable scope = readOnlyTrieStore.BeginScope(parentHeader);
+
+        IScopedTrieStore scopedStore = readOnlyTrieStore.GetTrieStore(null);
+        TrieNode rootNode = scopedStore.FindCachedOrUnknown(TreePath.Empty, stateRoot);
+
+        if (rootNode.NodeType == NodeType.Unknown)
+        {
+            byte[] rlp = scopedStore.TryLoadRlp(TreePath.Empty, stateRoot);
+            rlp.Should().NotBeNull("state root trie node should be resolvable from read-only trie store");
+        }
+        else
+        {
+            rootNode.NodeType.Should().NotBe(NodeType.Unknown, "state root should be resolvable");
+        }
     }
 }

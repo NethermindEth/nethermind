@@ -29,10 +29,7 @@ public class StandardDbInitializerTests
     private string _folderWithDbs = null!;
 
     [OneTimeSetUp]
-    public void Initialize()
-    {
-        _folderWithDbs = Guid.NewGuid().ToString();
-    }
+    public void Initialize() => _folderWithDbs = Guid.NewGuid().ToString();
 
     [TestCase(false)]
     [TestCase(true)]
@@ -90,7 +87,7 @@ public class StandardDbInitializerTests
             {
                 DownloadReceiptsInFastSync = useReceipts
             }))
-            .AddModule(new WorldStateModule(initConfig)) // For the full pruning db
+            .AddModule(new PruningTrieStoreModule(initConfig)) // For the full pruning db
             .AddSingleton<IPruningConfig>(new PruningConfig())
             .AddSingleton<IDbConfig>(new DbConfig())
             .AddSingleton<IInitConfig>(initConfig)

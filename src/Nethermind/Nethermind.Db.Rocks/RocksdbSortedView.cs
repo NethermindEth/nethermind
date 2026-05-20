@@ -8,23 +8,18 @@ using RocksDbSharp;
 
 namespace Nethermind.Db.Rocks;
 
-internal class RocksdbSortedView : ISortedView
+internal class RocksdbSortedView(Iterator iterator, ReadOptions readOptions, IntPtr lowerBound = default, IntPtr upperBound = default) : ISortedView
 {
-    private readonly Iterator _iterator;
-    private readonly IntPtr _lowerBound;
-    private readonly IntPtr _upperBound;
+    private readonly Iterator _iterator = iterator;
+    private readonly ReadOptions _readOptions = readOptions;
+    private readonly IntPtr _lowerBound = lowerBound;
+    private readonly IntPtr _upperBound = upperBound;
     private bool _started = false;
-
-    public RocksdbSortedView(Iterator iterator, IntPtr lowerBound = default, IntPtr upperBound = default)
-    {
-        _iterator = iterator;
-        _lowerBound = lowerBound;
-        _upperBound = upperBound;
-    }
 
     public void Dispose()
     {
         _iterator.Dispose();
+        RocksDbReader.DestroyReadOptions(_readOptions);
         if (_lowerBound != IntPtr.Zero)
         {
             Marshal.FreeHGlobal(_lowerBound);

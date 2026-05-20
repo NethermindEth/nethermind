@@ -7,7 +7,6 @@ using Autofac;
 using Nethermind.Config;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs;
@@ -25,10 +24,7 @@ public class TestNethermindModule(IConfigProvider configProvider, ChainSpec chai
 {
     private readonly IReleaseSpec? _releaseSpec;
 
-    public TestNethermindModule(IReleaseSpec? releaseSpec = null) : this(new ConfigProvider())
-    {
-        _releaseSpec = releaseSpec;
-    }
+    public TestNethermindModule(IReleaseSpec? releaseSpec = null) : this(new ConfigProvider()) => _releaseSpec = releaseSpec;
 
     public TestNethermindModule(params IConfig[] configs) : this(new ConfigProvider(configs))
     {
@@ -51,7 +47,7 @@ public class TestNethermindModule(IConfigProvider configProvider, ChainSpec chai
 
     public static TestNethermindModule CreateWithRealChainSpec()
     {
-        var loader = new ChainSpecFileLoader(new EthereumJsonSerializer(), LimboLogs.Instance);
+        ChainSpecFileLoader loader = new(new EthereumJsonSerializer(), LimboLogs.Instance);
         ChainSpec spec = loader.LoadEmbeddedOrFromFile("chainspec/foundation.json");
         return new TestNethermindModule(new ConfigProvider(), spec, useTestSpecProvider: false);
     }

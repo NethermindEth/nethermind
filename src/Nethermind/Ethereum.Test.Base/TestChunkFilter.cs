@@ -3,7 +3,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.Linq;
 
 namespace Ethereum.Test.Base;
 
@@ -14,6 +13,8 @@ namespace Ethereum.Test.Base;
 /// </summary>
 public static class TestChunkFilter
 {
+    internal static bool IsEnabled => GetChunkConfig() is not null;
+
     public static IEnumerable<T> FilterByChunk<T>(IEnumerable<T> tests)
     {
         (int Index, int Total)? chunkConfig = GetChunkConfig();
@@ -23,38 +24,45 @@ public static class TestChunkFilter
             return tests;
         }
 
-        ICollection<T> testList = tests as ICollection<T> ?? [.. tests];
         (int chunkIndex, int totalChunks) = chunkConfig.Value;
+        return FilterByChunkIterator(tests, chunkIndex, totalChunks);
+    }
 
-        int count = testList.Count;
-        int chunkSize = count / totalChunks;
-        int remainder = count % totalChunks;
-
-        int skip = (chunkIndex - 1) * chunkSize;
-        int take = chunkSize + (chunkIndex == totalChunks ? remainder : 0);
-
-        return testList.Skip(skip).Take(take);
-
-        static (int Index, int Total)? GetChunkConfig()
+    private static IEnumerable<T> FilterByChunkIterator<T>(IEnumerable<T> tests, int chunkIndex, int totalChunks)
+    {
+        // Interleaved distribution: test 0→chunk 1, test 1→chunk 2, etc.
+        // Spreads heavy tests evenly across chunks instead of clustering them.
+        int testIndex = 0;
+        foreach (T test in tests)
         {
-            string? chunkEnv = Environment.GetEnvironmentVariable("TEST_CHUNK");
-
-            if (string.IsNullOrEmpty(chunkEnv))
+            if (testIndex % totalChunks == chunkIndex - 1)
             {
-                return null;
+                yield return test;
             }
 
-            string[] parts = chunkEnv.Split("of", StringSplitOptions.None);
-
-            if (parts.Length != 2 ||
-                !int.TryParse(parts[0], out int index) ||
-                !int.TryParse(parts[1], out int total) ||
-                index < 1 || index > total || total < 1)
-            {
-                throw new ArgumentException($"Invalid TEST_CHUNK format: '{chunkEnv}'. Expected format: '1of3', '2of5', etc.");
-            }
-
-            return (index, total);
+            testIndex++;
         }
+    }
+
+    private static (int Index, int Total)? GetChunkConfig()
+    {
+        string? chunkEnv = Environment.GetEnvironmentVariable("TEST_CHUNK");
+
+        if (string.IsNullOrEmpty(chunkEnv))
+        {
+            return null;
+        }
+
+        string[] parts = chunkEnv.Split("of");
+
+        if (parts.Length != 2 ||
+            !int.TryParse(parts[0], out int index) ||
+            !int.TryParse(parts[1], out int total) ||
+            index < 1 || index > total || total < 1)
+        {
+            throw new ArgumentException($"Invalid TEST_CHUNK format: '{chunkEnv}'. Expected format: '1of3', '2of5', etc.");
+        }
+
+        return (index, total);
     }
 }

@@ -43,7 +43,7 @@ public class EthereumL1Bridge : IL1Bridge
         _batchSubmitter = engineParameters.BatchSubmitter;
         _batcherInboxAddress = engineParameters.BatcherInboxAddress;
         _l1BeaconGenesisSlotTime = engineParameters.L1BeaconGenesisSlotTime.Value;
-        _logger = logManager.GetClassLogger();
+        _logger = logManager.GetClassLogger<EthereumL1Bridge>();
     }
 
     public async Task<L1BridgeStepResult> Step(CancellationToken token)

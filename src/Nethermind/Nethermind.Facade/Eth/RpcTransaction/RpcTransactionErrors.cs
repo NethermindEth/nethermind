@@ -9,7 +9,6 @@ public static class RpcTransactionErrors
 {
     public const string ContractCreationWithoutData = "contract creation without any data provided";
     public const string GasPriceInEip1559 = "both gasPrice and (maxFeePerGas or maxPriorityFeePerGas) specified";
-    public const string ZeroMaxFeePerGas = "maxFeePerGas must be non-zero";
     public const string AtLeastOneBlobInBlobTransaction = "need at least 1 blob for a blob transaction";
     public const string InvalidBlobVersionedHashSize = "blob versioned hash must be 32 bytes";
     public const string InvalidBlobVersionedHashVersion = "blob versioned hash version must be 0x01";

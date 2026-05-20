@@ -6,14 +6,10 @@ using Nethermind.Logging;
 
 namespace Nethermind.Network.Dns;
 
-public class EnrTreeCrawler
+public class EnrTreeCrawler(ILogger logger)
 {
-    private readonly ILogger _logger;
+    private readonly ILogger _logger = logger;
 
-    public EnrTreeCrawler(ILogger logger)
-    {
-        _logger = logger;
-    }
     public IAsyncEnumerable<string> SearchTree(string domain, CancellationToken cancellationToken = default)
     {
         if (domain.StartsWith("enrtree://", StringComparison.OrdinalIgnoreCase))
@@ -82,10 +78,7 @@ public class EnrTreeCrawler
 
     private class SearchContext
     {
-        public SearchContext(string startRef)
-        {
-            RefsToVisit.Enqueue(startRef);
-        }
+        public SearchContext(string startRef) => RefsToVisit.Enqueue(startRef);
 
         public HashSet<string> VisitedRefs { get; } = new();
 

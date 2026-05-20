@@ -13,9 +13,6 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
 
         public (Hash256, long)[] BlockHashes { get; } = blockHashes;
 
-        public override string ToString()
-        {
-            return $"{nameof(NewBlockHashesMessage)}({BlockHashes?.Length ?? 0})";
-        }
+        public override string ToString() => $"{nameof(NewBlockHashesMessage)}({BlockHashes?.Length ?? 0})";
     }
 }

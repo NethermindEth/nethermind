@@ -55,7 +55,7 @@ namespace Nethermind.Network.Discovery.Test
                 _nodeTable,
                 new NetworkStorage(new MemDb(), LimboLogs.Instance),
                 config,
-                null,
+                new NetworkConfig(),
                 LimboLogs.Instance);
             _nodesLocator = new NodesLocator(_nodeTable, manager, config, LimboLogs.Instance);
         }
@@ -86,9 +86,6 @@ namespace Nethermind.Network.Discovery.Test
         }
 
         [Test]
-        public void Throws_when_uninitialized()
-        {
-            Assert.ThrowsAsync<InvalidOperationException>(() => _nodesLocator!.LocateNodesAsync(CancellationToken.None));
-        }
+        public void Throws_when_uninitialized() => Assert.ThrowsAsync<InvalidOperationException>(() => _nodesLocator!.LocateNodesAsync(CancellationToken.None));
     }
 }

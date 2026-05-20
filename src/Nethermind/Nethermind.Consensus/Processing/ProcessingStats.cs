@@ -59,6 +59,7 @@ namespace Nethermind.Consensus.Processing
         private long _chunkTx;
         private long _chunkBlobs;
         private long _chunkBlocks;
+        private long _chunkFirstBlockNumber = -1;
         private long _opCodes;
         private long _callOps;
         private long _emptyCalls;
@@ -74,7 +75,7 @@ namespace Nethermind.Consensus.Processing
             _executeFromThreadPool = ExecuteFromThreadPool;
 
             _stateReader = stateReader;
-            _logger = logManager.GetClassLogger();
+            _logger = logManager.GetClassLogger<ProcessingStats>();
 
             // the line below just to avoid compilation errors
             if (_logger.IsTrace) _logger.Trace($"Processing Stats in debug mode?: {_logger.IsDebug}");
@@ -85,24 +86,45 @@ namespace Nethermind.Consensus.Processing
 
         public void CaptureStartStats()
         {
-            _startSLoadOps = Evm.Metrics.ThreadLocalSLoadOpcode;
-            _startSStoreOps = Evm.Metrics.ThreadLocalSStoreOpcode;
-            _startCallOps = Evm.Metrics.ThreadLocalCalls;
-            _startEmptyCalls = Evm.Metrics.ThreadLocalEmptyCalls;
-            _startCachedContractsUsed = Evm.Metrics.ThreadLocalCodeDbCache;
-            _startContractsAnalyzed = Evm.Metrics.ThreadLocalContractsAnalysed;
-            _startCreateOps = Evm.Metrics.ThreadLocalCreates;
-            _startSelfDestructOps = Evm.Metrics.ThreadLocalSelfDestructs;
-            _startOpCodes = Evm.Metrics.ThreadLocalOpCodes;
+            _startSLoadOps = Evm.Metrics.MainThreadSLoadOpcode;
+            _startSStoreOps = Evm.Metrics.MainThreadSStoreOpcode;
+            _startCallOps = Evm.Metrics.MainThreadCalls;
+            _startEmptyCalls = Evm.Metrics.MainThreadEmptyCalls;
+            _startCachedContractsUsed = Evm.Metrics.MainThreadCodeDbCache;
+            _startContractsAnalyzed = Evm.Metrics.MainThreadContractsAnalysed;
+            _startCreateOps = Evm.Metrics.MainThreadCreates;
+            _startSelfDestructOps = Evm.Metrics.MainThreadSelfDestructs;
+            _startOpCodes = Evm.Metrics.MainThreadOpCodes;
         }
 
-        public void UpdateStats(Block? block, BlockHeader? baseBlock, long blockProcessingTimeInMicros)
+        public void UpdateStats(IReadOnlyList<Block> blocks, BlockHeader? baseBlock, long blockProcessingTimeInMicros)
         {
-            if (block is null) return;
+            if (blocks.Count == 0) return;
+
+            Block lastBlock = blocks[^1];
+            long gasUsed = 0;
+            long transactionCount = 0;
+            long blobCount = 0;
+            for (int i = 0; i < blocks.Count; i++)
+            {
+                Block block = blocks[i];
+                gasUsed += block.GasUsed;
+                Transaction[] transactions = block.Transactions;
+                transactionCount += transactions.Length;
+                for (int j = 0; j < transactions.Length; j++)
+                {
+                    blobCount += transactions[j].GetBlobCount();
+                }
+            }
 
             BlockData blockData = _dataPool.Get();
-            blockData.Block = block;
+            blockData.Block = lastBlock;
             blockData.BaseBlock = baseBlock;
+            blockData.BlockCount = blocks.Count;
+            blockData.FirstBlockNumber = blocks[0].Number;
+            blockData.GasUsed = gasUsed;
+            blockData.TransactionCount = transactionCount;
+            blockData.BlobCount = blobCount;
             blockData.RunningMicroseconds = _runStopwatch.ElapsedMicroseconds();
             blockData.RunMicroseconds = (_runStopwatch.ElapsedMicroseconds() - _lastElapsedRunningMicroseconds);
             blockData.StartOpCodes = _startOpCodes;
@@ -115,15 +137,15 @@ namespace Nethermind.Consensus.Processing
             blockData.StartCreateOps = _startCreateOps;
             blockData.StartSelfDestructOps = _startSelfDestructOps;
             blockData.ProcessingMicroseconds = blockProcessingTimeInMicros;
-            blockData.CurrentOpCodes = Evm.Metrics.ThreadLocalOpCodes;
-            blockData.CurrentSLoadOps = Evm.Metrics.ThreadLocalSLoadOpcode;
-            blockData.CurrentSStoreOps = Evm.Metrics.ThreadLocalSStoreOpcode;
-            blockData.CurrentCallOps = Evm.Metrics.ThreadLocalCalls;
-            blockData.CurrentEmptyCalls = Evm.Metrics.ThreadLocalEmptyCalls;
-            blockData.CurrentCachedContractsUsed = Evm.Metrics.ThreadLocalCodeDbCache;
-            blockData.CurrentContractsAnalyzed = Evm.Metrics.ThreadLocalContractsAnalysed;
-            blockData.CurrentCreatesOps = Evm.Metrics.ThreadLocalCreates;
-            blockData.CurrentSelfDestructOps = Evm.Metrics.ThreadLocalSelfDestructs;
+            blockData.CurrentOpCodes = Evm.Metrics.MainThreadOpCodes;
+            blockData.CurrentSLoadOps = Evm.Metrics.MainThreadSLoadOpcode;
+            blockData.CurrentSStoreOps = Evm.Metrics.MainThreadSStoreOpcode;
+            blockData.CurrentCallOps = Evm.Metrics.MainThreadCalls;
+            blockData.CurrentEmptyCalls = Evm.Metrics.MainThreadEmptyCalls;
+            blockData.CurrentCachedContractsUsed = Evm.Metrics.MainThreadCodeDbCache;
+            blockData.CurrentContractsAnalyzed = Evm.Metrics.MainThreadContractsAnalysed;
+            blockData.CurrentCreatesOps = Evm.Metrics.MainThreadCreates;
+            blockData.CurrentSelfDestructOps = Evm.Metrics.MainThreadSelfDestructs;
 
             CaptureReportData(blockData);
         }
@@ -169,27 +191,35 @@ namespace Nethermind.Consensus.Processing
             if (block is null) return;
 
             long blockNumber = data.Block.Number;
-            double chunkMGas = (_chunkMGas += block.GasUsed / 1_000_000.0);
+            double chunkMGas = (_chunkMGas += data.GasUsed / 1_000_000.0);
 
             // We want the rate here
-            double mgas = block.GasUsed / 1_000_000.0;
+            double mgas = data.GasUsed / 1_000_000.0;
             double timeSec = data.ProcessingMicroseconds / 1_000_000.0;
             Metrics.BlockMGasPerSec.Observe(mgas / timeSec);
             Metrics.BlockProcessingTimeMicros.Observe(data.ProcessingMicroseconds);
 
-            Metrics.Mgas += block.GasUsed / 1_000_000.0;
+            Metrics.Mgas += data.GasUsed / 1_000_000.0;
             Transaction[] txs = block.Transactions;
             double chunkMicroseconds = (_chunkProcessingMicroseconds += data.ProcessingMicroseconds);
-            double chunkTx = (_chunkTx += txs.Length);
+            double chunkTx = (_chunkTx += data.TransactionCount);
 
-            long chunkBlocks = (++_chunkBlocks);
+            long chunkFirstBlockNumber = _chunkFirstBlockNumber;
+            if (chunkFirstBlockNumber == -1)
+            {
+                chunkFirstBlockNumber = data.FirstBlockNumber;
+                _chunkFirstBlockNumber = chunkFirstBlockNumber;
+            }
+
+            long chunkBlocks = (_chunkBlocks += data.BlockCount);
 
             Metrics.Blocks = blockNumber;
             Metrics.BlockchainHeight = blockNumber;
 
-            Metrics.Transactions += txs.Length;
+            Metrics.Transactions += data.TransactionCount;
             Metrics.TotalDifficulty = block.TotalDifficulty ?? UInt256.Zero;
             Metrics.LastDifficulty = block.Difficulty;
+            // These gauges describe the latest processed block; chunk totals above use data.GasUsed and data.TransactionCount.
             Metrics.GasUsed = block.GasUsed;
             Metrics.GasLimit = block.GasLimit;
 
@@ -210,6 +240,13 @@ namespace Nethermind.Consensus.Processing
             {
                 // Mev reward with in last tx
                 isMev = true;
+            }
+
+            _chunkBlobs += data.BlobCount;
+            long blobs = _chunkBlobs;
+            if (blobs > 0)
+            {
+                _showBlobs = true;
             }
 
             if (data.BaseBlock is null || !_stateReader.HasStateForBlock(data.BaseBlock) || block.StateRoot is null || !_stateReader.HasStateForBlock(block.Header))
@@ -238,17 +275,7 @@ namespace Nethermind.Consensus.Processing
                 if (_logger.IsError) _logger.Error("Error when calculating block rewards", ex);
             }
 
-            foreach (Transaction tx in txs)
-            {
-                _chunkBlobs += tx.GetBlobCount();
-            }
-            long blobs = _chunkBlobs;
-            if (blobs > 0)
-            {
-                _showBlobs = true;
-            }
-
-            long reportMs = Environment.TickCount64;
+            long reportMs = GetReportMs();
             if (reportMs - _lastReportMs > 1000 || _logger.IsDebug)
             {
                 _lastReportMs = reportMs;
@@ -260,6 +287,7 @@ namespace Nethermind.Consensus.Processing
 
             _chunkBlobs = 0;
             _chunkBlocks = 0;
+            _chunkFirstBlockNumber = -1;
             _chunkMGas = 0;
             _chunkTx = 0;
             _chunkProcessingMicroseconds = 0;
@@ -298,7 +326,7 @@ namespace Nethermind.Consensus.Processing
             NewProcessingStatistics?.Invoke(this, new BlockStatistics()
             {
                 BlockCount = chunkBlocks,
-                BlockFrom = block.Number - chunkBlocks + 1,
+                BlockFrom = chunkFirstBlockNumber,
                 BlockTo = block.Number,
 
                 ProcessingMs = chunkMs,
@@ -317,7 +345,7 @@ namespace Nethermind.Consensus.Processing
             {
                 if (chunkBlocks > 1)
                 {
-                    _logger.Info($"Processed    {block.Number - chunkBlocks + 1,10}...{block.Number,9}   | {chunkMs,10:N1} ms  | slot    {runMs,11:N0} ms |{blockGas}");
+                    _logger.Info($"Processed    {chunkFirstBlockNumber,10}...{block.Number,9}   | {chunkMs,10:N1} ms  | slot    {runMs,11:N0} ms |{blockGas}");
                 }
                 else
                 {
@@ -335,7 +363,7 @@ namespace Nethermind.Consensus.Processing
                         > 3 => darkCyanText, // 5.625 MGas
                         _ => blueText
                     };
-                    var chunkColor = chunkMs switch
+                    string chunkColor = chunkMs switch
                     {
                         < 200 => greenText,
                         < 300 => darkGreenText,
@@ -358,7 +386,7 @@ namespace Nethermind.Consensus.Processing
                     > 0.5f => orangeText, // 15 MGas/s
                     _ => redText
                 };
-                var sstoreColor = chunkBlocks > 1 ? "" : chunkSstore switch
+                string sstoreColor = chunkBlocks > 1 ? "" : chunkSstore switch
                 {
                     > 3500 => redText,
                     > 2500 => orangeText,
@@ -367,7 +395,7 @@ namespace Nethermind.Consensus.Processing
                     > 900 when chunkCalls > 900 => whiteText,
                     _ => ""
                 };
-                var callsColor = chunkBlocks > 1 ? "" : chunkCalls switch
+                string callsColor = chunkBlocks > 1 ? "" : chunkCalls switch
                 {
                     > 3500 => redText,
                     > 2500 => orangeText,
@@ -376,7 +404,7 @@ namespace Nethermind.Consensus.Processing
                     > 900 when chunkSstore > 900 => whiteText,
                     _ => ""
                 };
-                var createsColor = chunkBlocks > 1 ? "" : chunkCreates switch
+                string createsColor = chunkBlocks > 1 ? "" : chunkCreates switch
                 {
                     > 300 => redText,
                     > 200 => orangeText,
@@ -385,8 +413,8 @@ namespace Nethermind.Consensus.Processing
                     _ => ""
                 };
 
-                var recoveryQueue = Metrics.RecoveryQueueSize;
-                var processingQueue = Metrics.ProcessingQueueSize;
+                long recoveryQueue = Metrics.RecoveryQueueSize;
+                long processingQueue = Metrics.ProcessingQueueSize;
 
                 _logger.Info($" Block{(chunkBlocks > 1 ? $"s  x{chunkBlocks,-9:N0} " : $"{(isMev ? " mb" : "   ")} {rewards.ToDecimal(null) / weiToEth,6:N4}{BlocksConfig.GasTokenTicker,4}")}{(chunkBlocks == 1 ? mgasColor : "")} {chunkMGas,8:F2}{resetColor} MGas    | {chunkTx,8:N0}   txs | calls {callsColor}{chunkCalls,10:N0}{resetColor} {darkGreyText}({chunkEmptyCalls,3:N0}){resetColor} | sload {chunkSload,7:N0} | sstore {sstoreColor}{chunkSstore,6:N0}{resetColor} | create {createsColor}{chunkCreates,3:N0}{resetColor}{(chunkSelfDestructs > 0 ? $"{darkGreyText}({-chunkSelfDestructs,3:N0}){resetColor}" : "")}");
                 string blobsOrBlocksPerSec = _showBlobs switch
@@ -413,11 +441,13 @@ namespace Nethermind.Consensus.Processing
             }
         }
 
+        protected virtual long GetReportMs() => Environment.TickCount64;
+
         public void Start()
         {
             if (!_runStopwatch.IsRunning)
             {
-                _lastReportMs = Environment.TickCount64;
+                _lastReportMs = GetReportMs();
                 _runStopwatch.Start();
             }
         }
@@ -432,12 +462,17 @@ namespace Nethermind.Consensus.Processing
 
         private class BlockDataPolicy() : IPooledObjectPolicy<BlockData>
         {
-            public BlockData Create() => new BlockData();
+            public BlockData Create() => new();
             public bool Return(BlockData data)
             {
                 // Release the object references so we don't hold them from being GC'd
                 data.Block = null;
                 data.BaseBlock = null;
+                data.BlockCount = 0;
+                data.FirstBlockNumber = 0;
+                data.GasUsed = 0;
+                data.TransactionCount = 0;
+                data.BlobCount = 0;
 
                 return true;
             }
@@ -447,6 +482,11 @@ namespace Nethermind.Consensus.Processing
         {
             public Block Block;
             public BlockHeader? BaseBlock;
+            public long BlockCount;
+            public long FirstBlockNumber;
+            public long GasUsed;
+            public long TransactionCount;
+            public long BlobCount;
             public long CurrentOpCodes;
             public long CurrentSLoadOps;
             public long CurrentSStoreOps;

@@ -1,13 +1,14 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Text.Json.Serialization;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Int256;
+using Nethermind.Serialization.Json;
 // ReSharper disable VirtualMemberCallInConstructor
 
 namespace Nethermind.Facade.Eth.RpcTransaction;
@@ -37,9 +38,11 @@ public class LegacyTransactionForRpc : TransactionForRpc, ITxTyped, IFromTransac
     // Accept during deserialization, ignore during serialization
     // See: https://github.com/NethermindEth/nethermind/pull/6067
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    [JsonConverter(typeof(StrictHexByteArrayConverter))]
     public byte[]? Data { set { Input = value; } private get { return null; } }
 
     [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
+    [JsonConverter(typeof(StrictHexByteArrayConverter))]
     public byte[]? Input { get; set; }
 
     [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
@@ -88,23 +91,31 @@ public class LegacyTransactionForRpc : TransactionForRpc, ITxTyped, IFromTransac
         }
     }
 
-    public override Result<Transaction> ToTransaction(bool validateUserInput = false)
+    public override Result<Transaction> ToTransaction(bool validateUserInput = false, long? gasCap = null, IReleaseSpec? spec = null)
     {
         if (validateUserInput && To is null && Input is null or { Length: 0 })
             return RpcTransactionErrors.ContractCreationWithoutData;
 
-        Result<Transaction> baseResult = base.ToTransaction(validateUserInput);
+        Result<Transaction> baseResult = base.ToTransaction(validateUserInput, gasCap, spec);
         if (baseResult.IsError) return baseResult;
 
         Transaction tx = baseResult.Data;
         tx.Nonce = Nonce ?? UInt256.Zero; // TODO: Should we pick the last nonce?
         tx.To = To;
-        tx.GasLimit = Gas ?? 90_000;
         tx.Value = Value ?? UInt256.Zero;
         tx.Data = Input;
         tx.GasPrice = GasPrice ?? UInt256.Zero;
         tx.ChainId = ChainId;
         tx.SenderAddress = From ?? Address.Zero;
+
+        // null Gas → caller didn't specify, default to gasCap (uncapped if gasCap is unset).
+        // explicit Gas (including 0) → use as-is, capped at gasCap. This matches Geth: gas: 0x0
+        // is a literal request that fails the intrinsic gas check, not a "missing" signal.
+        long effectiveCap = gasCap is null or 0 ? long.MaxValue : gasCap.Value;
+        tx.GasLimit = Gas is null
+            ? effectiveCap
+            : long.Min(Gas.Value, effectiveCap);
+
         if ((R?.IsZero == false || S?.IsZero == false) && (R is not null || S is not null))
         {
             ulong v = V is null ? 0
@@ -116,18 +127,6 @@ public class LegacyTransactionForRpc : TransactionForRpc, ITxTyped, IFromTransac
         }
 
         return tx;
-    }
-
-    public override void EnsureDefaults(long? gasCap)
-    {
-        if (gasCap is null or 0)
-            gasCap = long.MaxValue;
-
-        Gas = Gas is null or 0
-            ? gasCap
-            : Math.Min(gasCap.Value, Gas.Value);
-
-        From ??= Address.Zero;
     }
 
     public override bool ShouldSetBaseFee() => GasPrice.IsPositive();

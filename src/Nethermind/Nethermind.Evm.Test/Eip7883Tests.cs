@@ -33,15 +33,12 @@ public class Eip7883Tests
         public UInt256 ExpLength { get; set; }
         public UInt256 ModulusLength { get; set; }
         public long Result { get; set; }
-        public override string ToString()
-        {
-            return $"Lp: {Lp}, " +
+        public override string ToString() => $"Lp: {Lp}, " +
                    $"FusakaEnabled: {FusakaEnabled}, " +
                    $"BaseLength: {BaseLength}, " +
                    $"ExpLength: {ExpLength}, " +
                    $"ModulusLength: {ModulusLength}, " +
                    $"Result: {Result}";
-        }
     }
 
     private static IEnumerable<Eip7883TestCase> Eip7883TestCases()
@@ -113,7 +110,7 @@ public class Eip7883Tests
 
     private static ReadOnlyMemory<byte> PrepareInput(UInt256 baseLength, UInt256 expLength, UInt256 modulusLength)
     {
-        var inputBytes = new byte[(int)(96 + baseLength + expLength + modulusLength)];
+        byte[] inputBytes = new byte[(int)(96 + baseLength + expLength + modulusLength)];
 
         Array.Copy(baseLength.ToBigEndian(), 0, inputBytes, 0, 32);
         Array.Copy(expLength.ToBigEndian(), 0, inputBytes, 32, 32);

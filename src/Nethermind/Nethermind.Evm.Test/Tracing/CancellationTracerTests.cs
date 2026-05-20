@@ -42,7 +42,7 @@ namespace Nethermind.Evm.Test.Tracing
         [Test]
         public void Creates_inner_tx_cancellation_tracers()
         {
-            CancellationBlockTracer blockTracer = new CancellationBlockTracer(Substitute.For<IBlockTracer>());
+            CancellationBlockTracer blockTracer = new(Substitute.For<IBlockTracer>());
             Transaction transaction = Build.A.Transaction.TestObject;
             blockTracer.StartNewTxTrace(transaction).Should().BeOfType<CancellationTxTracer>();
         }

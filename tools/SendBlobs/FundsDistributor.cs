@@ -131,7 +131,7 @@ internal class FundsDistributor
             ? []
             : File.ReadAllLines(_keyFilePath).Select(k => new Signer(_chainId, new PrivateKey(k), _logManager));
 
-        ILogger log = _logManager.GetClassLogger();
+        ILogger log = _logManager.GetClassLogger<FundsDistributor>();
         List<string> txHashes = [];
         foreach (var signer in privateSigners)
         {
@@ -179,7 +179,8 @@ internal class FundsDistributor
 
     private async Task<string?> SignAndSendAsync(Signer signer, Transaction tx)
     {
-        await signer.Sign(tx);
+        if (!signer.TrySign(tx))
+            throw new InvalidOperationException($"Signer {signer.Address} could not sign transaction.");
 
         string txRlp = Convert.ToHexStringLower(TxDecoderInstance
             .Encode(tx, RlpBehaviors.SkipTypedWrapping | RlpBehaviors.InMempoolForm).Bytes);

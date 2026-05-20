@@ -4,9 +4,11 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Linq;
 using FluentAssertions;
 using Nethermind.Core.Extensions;
 using Nethermind.JsonRpc;
+using Nethermind.KeyStore.Config;
 using Nethermind.Network.Config;
 using NUnit.Framework;
 
@@ -21,15 +23,12 @@ namespace Nethermind.Config.Test
         [TestCase(typeof(long), 0L)]
         public void GetDefault_returns_correct_default_value_for_value_types(Type type, object expected)
         {
-            object result = ConfigSourceHelper.GetDefault(type);
+            object? result = ConfigSourceHelper.GetDefault(type);
             Assert.That(result, Is.EqualTo(expected));
         }
 
         [Test]
-        public void GetDefault_returns_null_for_reference_types()
-        {
-            Assert.That(ConfigSourceHelper.GetDefault(typeof(string)), Is.Null);
-        }
+        public void GetDefault_returns_null_for_reference_types() => Assert.That(ConfigSourceHelper.GetDefault(typeof(string)), Is.Null);
     }
 
     [TestFixture]
@@ -45,15 +44,6 @@ namespace Nethermind.Config.Test
         }
 
         public int DefaultTestProperty { get; set; } = 5;
-
-        // [Test]
-        // public void Can_read_defaults_from_registered_categories()
-        // {
-        //     ConfigProvider configProvider = new ConfigProvider();
-        //     configProvider.RegisterCategory("Nananana", typeof(DefaultConfigProviderTests));
-        //     var result = configProvider.GetRawValue("Nananana", nameof(DefaultTestProperty));
-        //     Assert.AreEqual(5, result);
-        // }
 
         [Test]
         public void Can_read_overwrites()
@@ -112,6 +102,102 @@ namespace Nethermind.Config.Test
             IConfigProvider configProvider = new ConfigProvider(blocksConfig);
 
             configProvider.GetConfig<IBlocksConfig>().MinGasPrice.Should().Be(12345);
+        }
+    }
+
+    [TestFixture]
+    [Parallelizable(ParallelScope.None)]
+    public class GetNonDefaultValuesTests
+    {
+        [Test]
+        public void Returns_empty_when_no_overrides() =>
+            Assert.That(Provider().GetNonDefaultValues(), Is.Empty);
+
+        [Test]
+        public void Returns_overridden_value_with_current_and_default()
+        {
+            List<NonDefaultConfigValue> nonDefaults = Provider(("Network.DiscoveryPort", "12345"))
+                .GetNonDefaultValues()
+                .Where(static x => x.Category == "Network" && x.Name == nameof(INetworkConfig.DiscoveryPort))
+                .ToList();
+
+            Assert.That(nonDefaults, Has.Count.EqualTo(1));
+            Assert.That(nonDefaults[0].CurrentValue, Is.EqualTo(12345));
+            Assert.That(nonDefaults[0].DefaultValue, Is.EqualTo(30303));
+        }
+
+        public static IEnumerable<TestCaseData> ReportedKeyCases()
+        {
+            yield return new TestCaseData(
+                new[] { ("Network.DiscoveryPort", "12345"), ("JsonRpc.Enabled", "true") },
+                new[] { "Network.DiscoveryPort", "JsonRpc.Enabled" },
+                Array.Empty<string>())
+                .SetName("Surfaces overrides across categories");
+
+            yield return new TestCaseData(
+                new[]
+                {
+                    ("KeyStore.TestNodeKey", "0xdeadbeef"),
+                    ("KeyStore.Passwords", "[\"hunter2\"]"),
+                    ("KeyStore.KeyStoreDirectory", "custom-keystore")
+                },
+                new[] { $"KeyStore.{nameof(IKeyStoreConfig.KeyStoreDirectory)}" },
+                new[]
+                {
+                    $"KeyStore.{nameof(IKeyStoreConfig.TestNodeKey)}",
+                    $"KeyStore.{nameof(IKeyStoreConfig.Passwords)}"
+                })
+                .SetName("Skips sensitive properties");
+        }
+
+        [TestCaseSource(nameof(ReportedKeyCases))]
+        public void Reports_expected_keys(
+            (string Key, string Value)[] overrides,
+            string[] mustContain,
+            string[] mustNotContain)
+        {
+            HashSet<string> keys = NonDefaultKeys(Provider(overrides));
+
+            foreach (string key in mustContain) Assert.That(keys, Does.Contain(key));
+            foreach (string key in mustNotContain) Assert.That(keys, Does.Not.Contain(key));
+        }
+
+        [Test]
+        public void Failing_provider_for_one_type_does_not_poison_others()
+        {
+            FailingProvider failing = new(Provider(("Network.DiscoveryPort", "12345")), typeof(IJsonRpcConfig));
+            List<(Type ConfigType, Exception Error)> errors = [];
+
+            HashSet<string> keys = NonDefaultKeys(failing, (t, e) => errors.Add((t, e)));
+
+            Assert.That(keys, Does.Contain("Network.DiscoveryPort"));
+            Assert.That(errors, Has.Some.Matches<(Type, Exception)>(static x => x.Item1 == typeof(IJsonRpcConfig)));
+        }
+
+        private static IConfigProvider Provider(params (string Key, string Value)[] overrides)
+        {
+            ConfigProvider provider = new();
+            if (overrides.Length > 0)
+                provider.AddSource(new ArgsConfigSource(overrides.ToDictionary(static o => o.Key, static o => o.Value)));
+            provider.Initialize();
+            return provider;
+        }
+
+        private static HashSet<string> NonDefaultKeys(IConfigProvider provider, Action<Type, Exception>? onError = null) =>
+            provider.GetNonDefaultValues(onError)
+                .Select(static x => $"{x.Category}.{x.Name}")
+                .ToHashSet();
+
+        private sealed class FailingProvider(IConfigProvider inner, Type failingType) : IConfigProvider
+        {
+            public T GetConfig<T>() where T : IConfig => (T)GetConfig(typeof(T));
+
+            public IConfig GetConfig(Type configType) =>
+                configType == failingType
+                    ? throw new InvalidOperationException("simulated failure")
+                    : inner.GetConfig(configType);
+
+            public object? GetRawValue(string category, string name) => inner.GetRawValue(category, name);
         }
     }
 }

@@ -103,6 +103,14 @@
     "eip7623TransitionTimestamp": "0x68122dbc",
     "eip7702TransitionTimestamp": "0x68122dbc",
     "eip4844FeeCollectorTransitionTimestamp": "0x68122dbc",
+    "eip7594TransitionTimestamp": "0x69de2dbc",
+    "eip7823TransitionTimestamp": "0x69de2dbc",
+    "eip7825TransitionTimestamp": "0x69de2dbc",
+    "eip7883TransitionTimestamp": "0x69de2dbc",
+    "eip7918TransitionTimestamp": "0x69de2dbc",
+    "eip7934TransitionTimestamp": "0x69de2dbc",
+    "eip7939TransitionTimestamp": "0x69de2dbc",
+    "eip7951TransitionTimestamp": "0x69de2dbc",
     "depositContractAddress": "0x0B98057eA310F4d31F2a452B414647007d1645d9",
     "blobSchedule": [
       {

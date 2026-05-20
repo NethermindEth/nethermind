@@ -32,7 +32,7 @@ public class ShutterIntegrationTests : BaseEngineModuleTests
             Timestamp = BuildingSlotTimestamp
         };
 
-        using var chain = (ShutterTestBlockchain)await new ShutterTestBlockchain(rnd, timestamper).Build(ShutterTestsCommon.SpecProvider);
+        using ShutterTestBlockchain chain = (ShutterTestBlockchain)await new ShutterTestBlockchain(rnd, timestamper).Build(ShutterTestsCommon.SpecProvider);
         IEngineRpcModule rpc = chain.EngineRpcModule;
         IReadOnlyList<ExecutionPayload> executionPayloads = await ProduceBranchV1(rpc, chain, BuildingSlot - 2, CreateParentBlockRequestOnHead(chain.BlockTree), true, null, 5);
         ExecutionPayload lastPayload = executionPayloads[^1];
@@ -42,7 +42,7 @@ public class ShutterIntegrationTests : BaseEngineModuleTests
         chain.Api.AdvanceSlot(20);
 
         // no events loaded initially
-        var txs = chain.Api.TxSource.GetTransactions(chain.BlockTree!.Head!.Header, 0, payloadAttributes).ToList();
+        List<Transaction> txs = chain.Api.TxSource.GetTransactions(chain.BlockTree!.Head!.Header, 0, payloadAttributes).ToList();
         Assert.That(txs, Has.Count.EqualTo(0));
 
         // after timeout they should be loaded
@@ -70,13 +70,13 @@ public class ShutterIntegrationTests : BaseEngineModuleTests
             Timestamp = BuildingSlotTimestamp
         };
 
-        using var chain = (ShutterTestBlockchain)await new ShutterTestBlockchain(rnd, timestamper).Build(ShutterTestsCommon.SpecProvider);
+        using ShutterTestBlockchain chain = (ShutterTestBlockchain)await new ShutterTestBlockchain(rnd, timestamper).Build(ShutterTestsCommon.SpecProvider);
         IEngineRpcModule rpc = chain.EngineRpcModule;
         IReadOnlyList<ExecutionPayload> executionPayloads = await ProduceBranchV1(rpc, chain, BuildingSlot - 2, CreateParentBlockRequestOnHead(chain.BlockTree), true, null, 5);
         ExecutionPayload lastPayload = executionPayloads[^1];
 
         // no events loaded initially
-        var txs = chain.Api.TxSource.GetTransactions(chain.BlockTree.Head!.Header, 0, payloadAttributes).ToList();
+        List<Transaction> txs = chain.Api.TxSource.GetTransactions(chain.BlockTree.Head!.Header, 0, payloadAttributes).ToList();
         Assert.That(txs, Has.Count.EqualTo(0));
 
         chain.Api.AdvanceSlot(20);
@@ -103,7 +103,7 @@ public class ShutterIntegrationTests : BaseEngineModuleTests
 
         Metrics.ShutterKeysMissed = 0;
 
-        using var chain = (ShutterTestBlockchain)await new ShutterTestBlockchain(rnd, timestamper).Build(ShutterTestsCommon.SpecProvider);
+        using ShutterTestBlockchain chain = (ShutterTestBlockchain)await new ShutterTestBlockchain(rnd, timestamper).Build(ShutterTestsCommon.SpecProvider);
         IEngineRpcModule rpc = chain.EngineRpcModule;
 
         ExecutionPayload lastPayload = CreateParentBlockRequestOnHead(chain.BlockTree);

@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -21,37 +21,11 @@ public sealed class SpecGasCosts : IEquatable<SpecGasCosts>
     public readonly long ExpByteCost;
     public readonly long SStoreResetCost;
     public readonly long TxDataNonZeroMultiplier;
+    public readonly long TotalCostFloorPerToken;
 
-#if DEBUG
-    public long NetMeteredSStoreCost
-    {
-        get => GetWithFreeGuard(field);
-        init;
-    }
-
-    public long ClearReversalRefund
-    {
-        get => GetWithFreeGuard(field);
-        init;
-    }
-
-    public long SetReversalRefund
-    {
-        get => GetWithFreeGuard(field);
-        init;
-    }
-
-    private static long GetWithFreeGuard(long field) =>
-        field == GasCostOf.Free
-            ? throw new InvalidOperationException("Asking about the net metered cost when net metering not enabled")
-            : field;
-
-#else
     public readonly long NetMeteredSStoreCost;
-
     public readonly long ClearReversalRefund;
     public readonly long SetReversalRefund;
-#endif
     public readonly long SClearRefund;
     public readonly long DestroyRefund;
 
@@ -128,6 +102,12 @@ public sealed class SpecGasCosts : IEquatable<SpecGasCosts>
             ? GasCostOf.TxDataNonZeroMultiplierEip2028
             : GasCostOf.TxDataNonZeroMultiplier;
 
+        TotalCostFloorPerToken = spec.IsEip7976Enabled
+            ? GasCostOf.TotalCostFloorPerTokenEip7976
+            : spec.IsEip7623Enabled
+                ? GasCostOf.TotalCostFloorPerTokenEip7623
+                : GasCostOf.Free;
+
         SClearRefund = spec.IsEip3529Enabled
             ? RefundOf.SClearAfterEip3529
             : RefundOf.SClearBeforeEip3529;
@@ -137,23 +117,29 @@ public sealed class SpecGasCosts : IEquatable<SpecGasCosts>
             : RefundOf.DestroyBeforeEip3529;
 
         int hashCode1 = HashCode.Combine(SLoadCost, BalanceCost, ExtCodeCost, ExtCodeHashCost, CallCost, ExpByteCost, sStoreResetCost, netMeteredSStoreCost);
-        int hashCode2 = HashCode.Combine(TxDataNonZeroMultiplier, clearReversalRefund, setReversalRefund, SClearRefund, MaxBlobGasPerBlock, MaxBlobGasPerTx, TargetBlobGasPerBlock, DestroyRefund);
-        _hashCode = HashCode.Combine(hashCode1, hashCode2);
+        int hashCode2 = HashCode.Combine(TxDataNonZeroMultiplier, TotalCostFloorPerToken, clearReversalRefund, setReversalRefund, SClearRefund, MaxBlobGasPerBlock, MaxBlobGasPerTx, TargetBlobGasPerBlock);
+        _hashCode = HashCode.Combine(hashCode1, hashCode2, DestroyRefund);
     }
+
+    public long RefundFromReversal(bool originalIsZero) => originalIsZero
+        ? SetReversalRefund
+        : ClearReversalRefund;
 
     public bool Equals(SpecGasCosts? other)
     {
         if (other is null) return false;
         if (ReferenceEquals(this, other)) return true;
-        return SLoadCost == other.SLoadCost
+        return _hashCode == other._hashCode
+            && SLoadCost == other.SLoadCost
             && BalanceCost == other.BalanceCost
             && ExtCodeCost == other.ExtCodeCost
             && ExtCodeHashCost == other.ExtCodeHashCost
             && CallCost == other.CallCost
             && ExpByteCost == other.ExpByteCost
             && SStoreResetCost == other.SStoreResetCost
-            && NetMeteredSStoreCost == other.NetMeteredSStoreCost
             && TxDataNonZeroMultiplier == other.TxDataNonZeroMultiplier
+            && TotalCostFloorPerToken == other.TotalCostFloorPerToken
+            && NetMeteredSStoreCost == other.NetMeteredSStoreCost
             && ClearReversalRefund == other.ClearReversalRefund
             && SetReversalRefund == other.SetReversalRefund
             && SClearRefund == other.SClearRefund

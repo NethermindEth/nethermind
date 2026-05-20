@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.Linq;
 using FluentAssertions;
 using Nethermind.Core.Collections;
@@ -16,10 +17,7 @@ namespace Nethermind.Core.Test.Collections
         private List<int> _original;
 
         [SetUp]
-        public void SetUp()
-        {
-            _original = new List<int> { 0, 1, 2, 3, 4, 5 };
-        }
+        public void SetUp() => _original = new List<int> { 0, 1, 2, 3, 4, 5 };
 
         [Test]
         public void Slice_WithStartAndCount_ReturnsCorrectSlice()
@@ -42,7 +40,7 @@ namespace Nethermind.Core.Test.Collections
         [Test]
         public void Slice_InvalidParameters_ThrowsArgumentOutOfRangeException()
         {
-            var readOnly = _original.AsReadOnly();
+            ReadOnlyCollection<int> readOnly = _original.AsReadOnly();
 
             // Negative start index
             Action actNegativeStart = () => readOnly.Slice(-1, 2);
@@ -66,7 +64,7 @@ namespace Nethermind.Core.Test.Collections
             slice[3].Should().Be(4);
 
             // Attempting to access an out-of-range index should throw an exception.
-            Action actOutOfRange = () => { var _ = slice[4]; };
+            Action actOutOfRange = () => { int _ = slice[4]; };
             actOutOfRange.Should().Throw<ArgumentOutOfRangeException>();
         }
 
@@ -75,7 +73,7 @@ namespace Nethermind.Core.Test.Collections
         {
             // Verify the enumerator returns all the expected elements.
             IReadOnlyList<int> slice = _original.AsReadOnly().Slice(2, 3);
-            var enumeratedList = slice.ToList();
+            List<int> enumeratedList = slice.ToList();
             enumeratedList.Should().Equal(new List<int> { 2, 3, 4 });
         }
     }

@@ -22,42 +22,44 @@ namespace Nethermind.TxPool
     {
         private const int SafeCapacity = 1024 * 16;
 
-        private readonly ClockKeyCache<ValueHash256> _longTermCache = new(
+        private readonly AssociativeKeyCache<ValueHash256> _longTermCache = new(
             MemoryAllowance.TxHashCacheSize);
 
-        private readonly ClockKeyCache<ValueHash256> _currentBlockCache = new(
+        private readonly AssociativeKeyCache<ValueHash256> _currentBlockCache = new(
             SafeCapacity);
 
         public bool Get(Hash256 hash)
         {
-            return _currentBlockCache.Get(hash) || _longTermCache.Get(hash);
+            ref readonly ValueHash256 valueHash = ref hash.ValueHash256;
+            return _currentBlockCache.GetNoRefresh(in valueHash) || _longTermCache.Get(in valueHash);
         }
 
         public void SetLongTerm(Hash256 hash)
         {
-            _longTermCache.Set(hash);
+            ref readonly ValueHash256 valueHash = ref hash.ValueHash256;
+            _longTermCache.Set(in valueHash);
         }
 
         public void SetForCurrentBlock(Hash256 hash)
         {
-            _currentBlockCache.Set(hash);
+            ref readonly ValueHash256 valueHash = ref hash.ValueHash256;
+            _currentBlockCache.Set(in valueHash);
         }
 
         public void DeleteFromLongTerm(Hash256 hash)
         {
-            _longTermCache.Delete(hash);
+            ref readonly ValueHash256 valueHash = ref hash.ValueHash256;
+            _longTermCache.Delete(in valueHash);
         }
 
         public void Delete(Hash256 hash)
         {
-            _longTermCache.Delete(hash);
-            _currentBlockCache.Delete(hash);
+            ref readonly ValueHash256 valueHash = ref hash.ValueHash256;
+            _longTermCache.Delete(in valueHash);
+            _currentBlockCache.Delete(in valueHash);
         }
 
-        public void ClearCurrentBlockCache()
-        {
-            _currentBlockCache.Clear();
-        }
+        public void ClearCurrentBlockCache() => _currentBlockCache.Clear();
 
         /// <summary>
         /// Clears both long-term and current block caches.

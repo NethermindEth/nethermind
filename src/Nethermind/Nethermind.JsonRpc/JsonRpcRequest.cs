@@ -18,9 +18,6 @@ namespace Nethermind.JsonRpc
         [JsonConverter(typeof(IdConverter))]
         public object Id { get; set; }
 
-        public override string ToString()
-        {
-            return $"Id:{Id}, {Method}({Params})";
-        }
+        public override string ToString() => $"Id:{Id}, {Method}({Params})";
     }
 }

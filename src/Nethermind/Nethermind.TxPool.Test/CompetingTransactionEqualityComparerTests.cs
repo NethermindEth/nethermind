@@ -16,7 +16,7 @@ namespace Nethermind.TxPool.Test
         {
             get
             {
-                var transaction = Build.A.Transaction.WithSenderAddress(TestItem.AddressA).WithNonce(2).TestObject;
+                Transaction transaction = Build.A.Transaction.WithSenderAddress(TestItem.AddressA).WithNonce(2).TestObject;
 
                 yield return new TestCaseData(null, null) { ExpectedResult = true };
 

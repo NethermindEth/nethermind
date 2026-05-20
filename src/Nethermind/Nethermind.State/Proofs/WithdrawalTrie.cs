@@ -26,9 +26,9 @@ public sealed class WithdrawalTrie : PatriciaTrie<Withdrawal>
 
     protected override void Initialize(ReadOnlySpan<Withdrawal> withdrawals)
     {
-        var key = 0;
+        int key = 0;
 
-        foreach (var withdrawal in withdrawals)
+        foreach (Withdrawal withdrawal in withdrawals)
         {
             Set(Rlp.Encode(key++).Bytes, _codec.Encode(withdrawal).Bytes);
         }

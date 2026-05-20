@@ -9,16 +9,10 @@ namespace Nethermind.TxPool.Filters;
 /// <summary>
 /// Filters out transactions types that are not supported
 /// </summary>
-internal sealed class NotSupportedTxFilter : IIncomingTxFilter
+internal sealed class NotSupportedTxFilter(ITxPoolConfig txPoolConfig, ILogger logger) : IIncomingTxFilter
 {
-    private readonly ITxPoolConfig _txPoolConfig;
-    private readonly ILogger _logger;
-
-    public NotSupportedTxFilter(ITxPoolConfig txPoolConfig, ILogger logger)
-    {
-        _txPoolConfig = txPoolConfig;
-        _logger = logger;
-    }
+    private readonly ITxPoolConfig _txPoolConfig = txPoolConfig;
+    private readonly ILogger _logger = logger;
 
     public AcceptTxResult Accept(Transaction tx, ref TxFilteringState state, TxHandlingOptions txHandlingOptions)
     {

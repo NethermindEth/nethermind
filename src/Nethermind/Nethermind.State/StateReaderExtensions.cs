@@ -32,10 +32,7 @@ namespace Nethermind.State
             return account.StorageRoot;
         }
 
-        public static byte[] GetCode(this IStateReader stateReader, BlockHeader? baseBlock, Address address)
-        {
-            return stateReader.GetCode(GetCodeHash(stateReader, baseBlock, address)) ?? [];
-        }
+        public static byte[] GetCode(this IStateReader stateReader, BlockHeader? baseBlock, Address address) => stateReader.GetCode(GetCodeHash(stateReader, baseBlock, address)) ?? [];
 
         public static ValueHash256 GetCodeHash(this IStateReader stateReader, BlockHeader? baseBlock, Address address)
         {
@@ -49,7 +46,7 @@ namespace Nethermind.State
             stateProvider.RunTreeVisitor(collector, baseBlock, new VisitingOptions
             {
                 MaxDegreeOfParallelism = Environment.ProcessorCount,
-                FullScanMemoryBudget = 16.GiB(), // Gonna guess that if you are running this, you have a decent setup.
+                FullScanMemoryBudget = 16.GiB, // Gonna guess that if you are running this, you have a decent setup.
             });
             collector.Finish();
             return collector.Stats;

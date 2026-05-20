@@ -36,16 +36,17 @@ public sealed class ReceiptTrie : PatriciaTrie<TxReceipt>
 
     private void Initialize(ReadOnlySpan<TxReceipt> receipts, IReceiptSpec spec)
     {
-        RlpBehaviors behavior = (spec.IsEip658Enabled ? RlpBehaviors.Eip658Receipts : RlpBehaviors.None) | RlpBehaviors.SkipTypedWrapping;
+        RlpBehaviors behavior = (spec.IsEip658Enabled ? RlpBehaviors.Eip658Receipts : RlpBehaviors.None)
+            | RlpBehaviors.SkipTypedWrapping;
         int key = 0;
 
         foreach (TxReceipt? receipt in receipts)
         {
-            SpanSource buffer = _decoder.EncodeToSpanSource(receipt, rlpBehaviors: behavior, bufferPool: _bufferPool);
-            SpanSource keyBuffer = key.EncodeToSpanSource(_bufferPool);
+            CappedArray<byte> buffer = _decoder.EncodeToCappedArray(receipt, rlpBehaviors: behavior, bufferPool: _bufferPool);
+            CappedArray<byte> keyBuffer = key.EncodeToCappedArray(_bufferPool);
             key++;
 
-            Set(keyBuffer.Span, buffer);
+            Set(keyBuffer.AsSpan(), buffer);
         }
     }
 
