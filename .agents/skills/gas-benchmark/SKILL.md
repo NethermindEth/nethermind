@@ -97,6 +97,8 @@ Parse `$ARGUMENTS` for these flags:
 | `--network` | `perf-devnet-3` | Network name (perf-devnet-3, jochemnet, mainnet) |
 | `--fork` | `amsterdam` | Fork name (amsterdam, osaka) |
 | `--dottrace` | (ask user) | Enable dotTrace profiling — builds diag image, passes diagnostics flags |
+| `--gas-size` | `100M` | Gas size filter (appended as `benchmark_<size>` to filter). Default 100M. |
+| `--no-restart` | (false) | Disable restart-before-testing for stateful tests (restart is on by default) |
 | `--release` | (discovered) | Override release tag — skips interactive selection |
 | `--gas-benchmarks-ref` | (discovered) | Override gas-benchmarks branch — skips discovery |
 | `--analyze-run` | (none) | Skip Phases 0-3; go straight to Phase 4 analysis on an existing run. Value is a run ID or URL (e.g., `--analyze-run 25725558942` or `--analyze-run https://github.com/NethermindEth/gas-benchmarks/actions/runs/25725558942`) |
@@ -184,6 +186,8 @@ Gas-benchmarks:   <branch>
 Network:          <network>
 Image:            <image or "will build from <branch>">
 Filter:           <filter or "none (all tests)">
+Gas size:         <100M (default) or user-specified>
+Restart on test:  <yes (default for stateful) / no>
 dotTrace:         <yes/no>
 ```
 Ask: "Proceed?"
@@ -224,7 +228,19 @@ Skip if `--image` is provided.
 
 Capture timestamp before triggering: `BEFORE=$(date -u +%Y-%m-%dT%H:%M:%SZ)`
 
-Build the workflow trigger using only the inputs the workflow accepts (from Step 0c):
+Build the workflow trigger using only the inputs the workflow accepts (from Step 0c).
+
+**Gas size filtering:** The `filter` input in `run.sh` supports AND logic using the `and` keyword. Comma-separated patterns use OR (any match), but within each entry `" and "` requires ALL parts to match.
+
+Always append ` and benchmark_<gas-size>` to the user's filter to restrict to a single gas size. Default gas size is `100M` (override with `--gas-size`). Examples:
+- User filter `bloated` → effective filter sent to workflow: `bloated and benchmark_100M`
+- User filter `sstore_bloated` → effective filter: `sstore_bloated and benchmark_100M`
+- No user filter → effective filter: `benchmark_100M`
+- User says "all gas sizes for bloated" → effective filter: `bloated` (no gas size appended)
+- User passes `--gas-size 200M` with filter `bloated` → effective filter: `bloated and benchmark_200M`
+
+**Restart before testing:** For stateful tests (`repricings_stateful/`), always pass `restart_before_testing=true` unless `--no-restart` was specified. This restarts the execution client container before each measured test for clean measurements.
+
 ```
 MSYS_NO_PATHCONV=1 gh workflow run repricing-nethermind.yml \
   --repo NethermindEth/gas-benchmarks \
@@ -233,9 +249,10 @@ MSYS_NO_PATHCONV=1 gh workflow run repricing-nethermind.yml \
   -f fork="<fork>" \
   -f release_tag="<release>" \
   -f genesis_file="<genesis-file>" \
-  -f filter="<filter>" \
+  -f filter="<effective-filter-with-gas-size>" \
   -f 'runner=["stateful-generator"]' \
-  -f 'images={"nethermind":"<image>"}'
+  -f 'images={"nethermind":"<image>"}' \
+  -f restart_before_testing="true"
 ```
 
 Only add diagnostics flags when `--dottrace` is set AND image is a diag build:
@@ -243,6 +260,8 @@ Only add diagnostics flags when `--dottrace` is set AND image is a diag build:
   -f diagnostics_mode="dottrace" \
   -f diagnostics_xml="true"
 ```
+
+Only add `restart_before_testing` when the workflow supports it (check Step 0c) and the test is stateful. Omit if `--no-restart` was specified.
 
 **Critical:** Do NOT pass `diagnostics_mode=dottrace` if the image was not built with `Dockerfile.diag` — the container will crash with `exec: dottrace: not found`.
 
@@ -287,57 +306,73 @@ Note: do NOT exclude `dotnet` — real Nethermind exceptions contain .NET runtim
 
 **Confirm shutdown:** grep for `Nethermind is shut down` — if absent, the node crashed or was killed.
 
-### 4b. Timing analysis — block phase classification
+### 4b. Timing analysis — use results artifacts (NOT raw logs)
 
-Blocks in the log belong to three phases, identifiable by the `Extra Data:` field in the `Received New Block:` log lines:
+**Always use the results artifacts for timing data.** Do NOT parse `Processed` lines from raw logs — with restart-before-testing, block numbers repeat across test cycles, making log-based correlation unreliable.
 
-| Phase | Extra Data pattern | Meaning |
-|-------|-------------------|---------|
-| **Gas bump** | `Nethermind v...` | Empty blocks that ramp the gas limit. **Ignore for timing.** |
-| **Setup** | `setup:...` | Pre-state preparation (deploying contracts, filling storage). **Ignore for timing.** |
-| **Testing** | `testing:...` | Actual benchmark execution. **Only these matter.** |
-
-**Step 1 — Identify phase boundaries:**
-```
-# Find block number ranges for each phase
-grep "Received New Block" <logs> | grep "Extra Data" | \
-  awk '/Nethermind v/{type="gasbump"} /setup:/{type="setup"} /testing:/{type="testing"} {
-    match($0, /Block: *([0-9]+)/, m); print type, m[1]
-  }' | sort -k1,1 -k2,2n | awk '{
-    if($1!=prev) { if(prev) printf "%s: %s-%s (%d blocks)\n", prev, first, last, count; first=$2; count=0 }
-    last=$2; count++; prev=$1
-  } END { printf "%s: %s-%s (%d blocks)\n", prev, first, last, count }'
+**Step 1 — Download results artifacts:**
+```bash
+mkdir -p /tmp/gb-results
+gh run download <run-id> --repo NethermindEth/gas-benchmarks \
+  -n "results-1-nethermind-<cleaned-test-path>" -D /tmp/gb-results
+cd /tmp/gb-results && unzip -o *.zip
 ```
 
-**Step 2 — CRITICAL: Check for zero testing blocks:**
-```
-grep "Received New Block" <logs> | grep "Extra Data.*testing:" | wc -l
-```
-If this returns 0, **the release has no testing payloads for the selected filter**. Report this prominently:
-> ⚠️ **No testing blocks found.** The release `<tag>` does not contain testing payloads for filter `<filter>` on network `<network>`. All blocks were gas-bump or setup blocks. The timing data below reflects only setup overhead, NOT actual test execution. The release may be incomplete or the filter may be too restrictive.
+**Step 2 — Extract per-test timings from result files:**
+Each test produces a `nethermind_results_1_<test-name>.txt` file containing `engine_newPayloadV5` timing (the actual block processing time).
 
-**Step 3 — Extract test block timings (testing phase only):**
-Correlate `Received New Block` lines (to identify phase) with `Processed` lines (to get timing) by block number. Only report timings for blocks in the testing phase.
-
+```bash
+cd /tmp/gb-results/results
+ls nethermind_results_1_*.txt | while IFS= read -r f; do
+  ms=$(grep -A3 "engine_newPayloadV5:" "$f" | grep "Average:" | awk '{print $2}')
+  name=$(echo "$f" | sed 's/nethermind_results_1_//;s/\.txt$//')
+  echo "$ms $name"
+done | sort -rn
 ```
-# Get testing block numbers
-grep "Received New Block" <logs> | grep "testing:" | \
-  sed 's/.*Block: *//' | awk '{gsub(/[^0-9]/, "", $1); print $1}' | sort -un > /tmp/testing-blocks.txt
 
-# Extract Processed timings only for testing blocks
-grep "Processed" <logs> | grep "ms" | while read line; do
-  block=$(echo "$line" | sed 's/.*Processed *//' | awk '{gsub(/[^0-9.]/, "", $1); print $1}')
-  if grep -q "^${block}$" /tmp/testing-blocks.txt; then
-    echo "$line"
+**Step 3 — Compute aggregates:**
+```bash
+ls nethermind_results_1_*.txt | while IFS= read -r f; do
+  ms=$(grep -A3 "engine_newPayloadV5:" "$f" | grep "Average:" | awk '{print $2}')
+  [ -n "$ms" ] && echo "$ms"
+done | awk '{sum+=$1; vals[NR]=$1; n=NR} END {
+  asort(vals)
+  printf "COUNT:%d AVG:%.1f MEDIAN:%.1f P90:%.1f P95:%.1f MAX:%.1f\n",
+    n, sum/n, vals[int(n/2+0.5)], vals[int(n*0.9+0.5)], vals[int(n*0.95+0.5)], vals[n]
+}'
+```
+
+### 4b-compare. Comparing two runs (artifact-based)
+
+When comparing two runs (e.g., PR vs baseline), download both results artifacts to separate directories, then compare per-test timings:
+
+```bash
+# Download both
+mkdir -p /tmp/gb-pr /tmp/gb-base
+gh run download <pr-run-id> --repo NethermindEth/gas-benchmarks \
+  -n "results-1-nethermind-<cleaned-test-path>" -D /tmp/gb-pr
+gh run download <base-run-id> --repo NethermindEth/gas-benchmarks \
+  -n "results-1-nethermind-<cleaned-test-path>" -D /tmp/gb-base
+cd /tmp/gb-pr && unzip -o *.zip
+cd /tmp/gb-base && unzip -o *.zip
+
+# Compare per-test (sorted by delta)
+cd /tmp/gb-pr/results
+ls nethermind_results_1_*.txt | while IFS= read -r f; do
+  pr_ms=$(grep -A3 "engine_newPayloadV5:" "$f" | grep "Average:" | awk '{print $2}')
+  base_ms=$(grep -A3 "engine_newPayloadV5:" "/tmp/gb-base/results/$f" 2>/dev/null \
+    | grep "Average:" | awk '{print $2}')
+  if [ -n "$pr_ms" ] && [ -n "$base_ms" ]; then
+    short=$(echo "$f" | sed 's/nethermind_results_1_//;s/\.txt$//')
+    delta=$(awk "BEGIN{printf \"%.1f\", (($pr_ms-$base_ms)/$base_ms)*100}")
+    echo "$delta|$pr_ms|$base_ms|$short"
   fi
+done | sort -t'|' -k1 -n | while IFS='|' read -r d p b name; do
+  printf "%7s%% | PR: %9s ms | Base: %9s ms | %s\n" "$d" "$p" "$b" "$name"
 done
 ```
 
-**Step 4 — Compute percentiles for testing blocks only:**
-Report: COUNT, MIN, MEDIAN, AVG, P90, P95, P99, MAX.
-
-**Step 5 — Sort by processing time descending. Report top 10 heaviest test blocks.**
-Match each block to its test scenario using the preceding `[INFO] [SETUP]` or scenario name log lines.
+Present results as a markdown table sorted by delta, then show aggregates (AVG, MEDIAN, P90, P95, MAX) for both runs with delta percentages.
 
 ### 4c. Block stats
 
@@ -427,6 +462,8 @@ Then the summary table (timings ONLY from testing blocks):
 | Image | ... |
 | Gas-benchmarks ref | ... |
 | Release | ... |
+| Gas size | 100M |
+| Restart on test | yes/no |
 | Run URL | ... |
 | Status | success/failure |
 | Exceptions | none / list |
@@ -507,3 +544,5 @@ The `filter` input is a substring match against the test fixture filenames. Exam
 - `existing_slots_True` — only tests with pre-existing storage slots
 - `NO_CACHE` — only tests with no caching strategy
 - (empty) — run all tests
+
+**Note:** The gas-size constraint (`benchmark_100M` by default) is always appended automatically. You do not need to include it in the filter manually.
