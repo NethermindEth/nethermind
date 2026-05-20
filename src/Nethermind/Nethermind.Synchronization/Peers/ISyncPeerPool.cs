@@ -186,7 +186,8 @@ namespace Nethermind.Synchronization.Peers
                     AllocationContexts.Headers,
                     token);
 
-                return headers?.Count == 1 ? headers[0] : null;
+                ReadOnlySpan<BlockHeader> headersSpan = headers is null ? [] : headers.AsSpan();
+                return headersSpan.Length == 1 ? headersSpan[0] : null;
             }
 
             static async Task<BlockHeader?> FetchHeader(PeerInfo peer, Hash256 headerHash, CancellationToken token)

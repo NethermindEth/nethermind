@@ -156,8 +156,9 @@ public class TrieStoreScopeProvider(ITrieStore trieStore, IKeyValueStoreWithBatc
                 if (account is null) continue;
                 account = account.WithChangedStorageRoot(storageRoot);
                 _dirtyAccounts[key] = account;
-                OnAccountUpdated?.Invoke(key, new IWorldStateScopeProvider.AccountUpdated(key, account));
-                if (logger.IsTrace) Trace(key, storageRoot, account);
+                Address address = key.Value;
+                OnAccountUpdated?.Invoke(address, new IWorldStateScopeProvider.AccountUpdated(address, account));
+                if (logger.IsTrace) Trace(address, storageRoot, account);
             }
 
             using (StateTree.StateTreeBulkSetter stateSetter = scope._backingStateTree.BeginSet(_dirtyAccounts.Count))
