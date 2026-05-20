@@ -168,8 +168,10 @@ public partial class BlockAccessListManager
             }
         }
 
-        /// <summary>Detaches the worker's populated BAL into the per-tx slot and recycles
-        /// the processor immediately, so workers never block on the validator.</summary>
+        /// <summary>
+        /// Detaches the worker's populated BAL into the per-tx slot and recycles the processor
+        /// immediately, so workers never block on the validator.
+        /// </summary>
         public void Return(uint balIndex)
         {
             int idx = ClampBalIndex(balIndex);

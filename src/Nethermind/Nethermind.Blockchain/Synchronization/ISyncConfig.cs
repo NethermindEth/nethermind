@@ -10,6 +10,9 @@ namespace Nethermind.Blockchain.Synchronization;
 
 public interface ISyncConfig : IConfig
 {
+    /// <summary>Sentinel for <see cref="MaxAttemptsToUpdatePivot"/> meaning "retry forever, never fall back to the static pivot".</summary>
+    public const int InfiniteAttempts = -1;
+
     [ConfigItem(Description = "Whether to connect to peers and sync.", DefaultValue = "true")]
     bool NetworkingEnabled { get; set; }
 
@@ -56,7 +59,7 @@ public interface ISyncConfig : IConfig
     [ConfigItem(DisabledForCli = true, HiddenFromDocs = true, DefaultValue = "0")]
     UInt256 PivotTotalDifficultyParsed => UInt256.Parse(PivotTotalDifficulty ?? "0");
 
-    [ConfigItem(Description = "The max number of attempts to update the pivot block based on the FCU message from the consensus client.", DefaultValue = "2147483647")]
+    [ConfigItem(Description = "The max number of attempts to update the pivot block based on the FCU message from the consensus client. Set to `-1` to retry forever (recommended for nodes that may start before the consensus client is available).", DefaultValue = "-1")]
     int MaxAttemptsToUpdatePivot { get; set; }
 
     [ConfigItem(Description = $$"""
