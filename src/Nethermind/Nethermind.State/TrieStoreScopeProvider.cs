@@ -30,15 +30,18 @@ public class TrieStoreScopeProvider : IWorldStateScopeProvider
     private readonly KeyValueWithBatchingBackedCodeDb _codeDb;
 
     /// <param name="codeDbIsPersistent">
-    /// Whether <paramref name="codeDb"/> is durable storage (true, default) or a transient
-    /// overlay whose writes are discarded on reset (false, e.g. <c>debug_traceCall</c>
-    /// scopes or any caller layering on top of a <c>ReadOnlyDb</c> temp buffer).
-    /// MUST be false for transient overlays — otherwise the wrapping ICodeDb's persisted-code
-    /// hint cache will remember writes that get discarded with the overlay, and subsequent
-    /// scopes on the same StateProvider will skip re-inserting the bytes, throwing
-    /// "Code 0x… is missing from the database" on the next read. See StateProvider.InsertCode.
+    /// Default <c>false</c> is the safe, fail-closed setting: the wrapping ICodeDb assumes
+    /// nothing about durability and never reports cached "already persisted" hints.
+    /// Callers MUST explicitly pass <c>true</c> when <paramref name="codeDb"/> is durable
+    /// production storage (i.e. backed directly by RocksDB or equivalent) so the persisted-code
+    /// hint cache used by <c>StateProvider.InsertCode</c> can short-circuit redundant writes
+    /// of popular contract bytecode (factory contracts etc.).
+    /// Leaving it <c>false</c> for transient overlays is mandatory — otherwise the hint cache
+    /// would remember writes that get discarded with the overlay, and a subsequent scope on
+    /// the same StateProvider would skip re-inserting the bytes, throwing
+    /// "Code 0x… is missing from the database" on the next read.
     /// </param>
-    public TrieStoreScopeProvider(ITrieStore trieStore, IKeyValueStoreWithBatching codeDb, ILogManager logManager, bool codeDbIsPersistent = true)
+    public TrieStoreScopeProvider(ITrieStore trieStore, IKeyValueStoreWithBatching codeDb, ILogManager logManager, bool codeDbIsPersistent = false)
     {
         _trieStore = trieStore;
         _logManager = logManager;
@@ -323,7 +326,7 @@ public class TrieStoreScopeProvider : IWorldStateScopeProvider
         // _codeBatch insert, and ProcessDiffState would then fail to find just-deployed code.
         private readonly ClockKeyCacheNonConcurrent<ValueHash256>? _persistedHint;
 
-        public KeyValueWithBatchingBackedCodeDb(IKeyValueStoreWithBatching codeDb, bool isPersistent = true)
+        public KeyValueWithBatchingBackedCodeDb(IKeyValueStoreWithBatching codeDb, bool isPersistent = false)
         {
             _codeDb = codeDb;
             _persistedHint = isPersistent ? new ClockKeyCacheNonConcurrent<ValueHash256>(1_024) : null;

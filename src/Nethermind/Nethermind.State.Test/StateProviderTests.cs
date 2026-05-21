@@ -288,7 +288,7 @@ public class StateProviderTests(bool useFlat)
     public void Same_code_can_be_redeployed_across_overlay_resets()
     {
         IDbProvider dbProvider = TestMemDbProvider.Init();
-        using WorldStateManager manager = TestWorldStateFactory.CreateWorldStateManagerForTest(dbProvider, LimboLogs.Instance);
+        WorldStateManager manager = TestWorldStateFactory.CreateWorldStateManagerForTest(dbProvider, LimboLogs.Instance);
 
         // One long-lived overridable scope reused across two BeginScope calls — mirrors
         // OverridableEnv reusing _worldState across BuildAndOverride.
