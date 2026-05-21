@@ -146,25 +146,17 @@ internal abstract class BaseSnapshotManager<TSnapshot> : ISnapshotManager
 
         if (gapBlockHeader.Hash is null || !_blockTree.WasProcessed(gapBlockHeader.Number, gapBlockHeader.Hash))
         {
-            if (_logger.IsDebug) _logger.Debug($"Cannot recover snapshot for block {gapBlockHeader.Number} ({gapBlockHeader.Hash}): block not processed");
+            if (_logger.IsWarn) _logger.Warn($"Cannot recover snapshot for block {gapBlockHeader.Number} ({gapBlockHeader.Hash}): block not processed");
             return null;
         }
 
         if (!_stateReader.HasStateForBlock(gapBlockHeader))
         {
-            if (_logger.IsDebug) _logger.Debug($"Cannot recover snapshot for block {gapBlockHeader.Number} ({gapBlockHeader.Hash}): state unavailable");
+            if (_logger.IsWarn) _logger.Warn($"Cannot recover snapshot for block {gapBlockHeader.Number} ({gapBlockHeader.Hash}): state unavailable");
             return null;
         }
 
-        try
-        {
-            UpdateMasterNodes(gapBlockHeader);
-        }
-        catch (Exception ex)
-        {
-            if (_logger.IsWarn) _logger.Warn($"Snapshot recovery failed for block {gapBlockHeader.Number} ({gapBlockHeader.Hash}): {ex.Message}");
-            return null;
-        }
+        UpdateMasterNodes(gapBlockHeader);
 
         TSnapshot? snapshot = GetSnapshot(gapBlockHeader.Hash!);
 
