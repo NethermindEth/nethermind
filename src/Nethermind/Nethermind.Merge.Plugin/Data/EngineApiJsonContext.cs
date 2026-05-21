@@ -18,10 +18,5 @@ namespace Nethermind.Merge.Plugin.Data;
 [JsonSerializable(typeof(ExecutionPayloadV3))]
 [JsonSerializable(typeof(byte[][]))]
 [JsonSerializable(typeof(PayloadAttributes))]
-[JsonSerializable(typeof(BlobAndProofV1))]
-[JsonSerializable(typeof(BlobAndProofV2))]
-[JsonSerializable(typeof(BlobsBundleV1))]
-[JsonSerializable(typeof(BlobsBundleV2))]
 [JsonSerializable(typeof(GetBlobsHandlerV2Request))]
-[JsonSerializable(typeof(ExecutionPayloadBodyV1Result))]
 internal partial class EngineApiJsonContext : JsonSerializerContext;
