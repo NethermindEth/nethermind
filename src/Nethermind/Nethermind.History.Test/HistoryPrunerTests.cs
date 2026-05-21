@@ -235,16 +235,23 @@ public class HistoryPrunerTests
         CheckHeadPreserved(testBlockchain, blocks);
     }
 
-    [TestCase(0, 100000u, false)]
-    [TestCase(100, 10u, true)]
-    public void Validates_config(int minHistoryRetentionEpochs, uint retentionEpochs, bool shouldThrow)
+    [TestCase(0, 100000u, 0L, 3533u, false)]
+    [TestCase(100, 10u, 0L, 3533u, true)]      // block retention below min
+    [TestCase(0, 100000u, 3533L, 3000u, true)] // BAL retention below min
+    [TestCase(0, 100000u, 3533L, 3533u, false)] // BAL retention exactly at min
+    public void Validates_config(int minHistoryRetentionEpochs, uint retentionEpochs, long minBalRetentionEpochs, uint balRetentionEpochs, bool shouldThrow)
     {
         IHistoryConfig historyConfig = new HistoryConfig
         {
             Pruning = PruningModes.Rolling,
             RetentionEpochs = retentionEpochs,
+            BalRetentionEpochs = balRetentionEpochs,
         };
-        ISpecProvider specProvider = new TestSpecProvider(new ReleaseSpec { MinHistoryRetentionEpochs = minHistoryRetentionEpochs });
+        ISpecProvider specProvider = new TestSpecProvider(new ReleaseSpec
+        {
+            MinHistoryRetentionEpochs = minHistoryRetentionEpochs,
+            MinBalRetentionEpochs = minBalRetentionEpochs,
+        });
         IDbProvider dbProvider = Substitute.For<IDbProvider>();
         dbProvider.MetadataDb.Returns(new TestMemDb());
 

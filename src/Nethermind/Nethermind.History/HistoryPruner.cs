@@ -42,6 +42,7 @@ public class HistoryPruner : IHistoryPruner
     private readonly bool _enabled;
     private readonly long _pruningInterval;
     private readonly long _minHistoryRetentionEpochs;
+    private readonly long _minBalRetentionEpochs;
     private readonly int _deletionProgressLoggingInterval;
     private readonly long _ancientBarrier;
     private readonly long _minDeletableBlockNumber;
@@ -86,6 +87,7 @@ public class HistoryPruner : IHistoryPruner
         _enabled = historyConfig.Enabled();
         _pruningInterval = historyConfig.PruningInterval * SlotsPerEpoch;
         _minHistoryRetentionEpochs = specProvider.GenesisSpec.MinHistoryRetentionEpochs;
+        _minBalRetentionEpochs = specProvider.GenesisSpec.MinBalRetentionEpochs;
         _minDeletableBlockNumber = (_blockTree.Genesis?.Number ?? 0) + 1; // do not remove genesis
 
         CheckConfig();
@@ -328,6 +330,10 @@ public class HistoryPruner : IHistoryPruner
         {
             throw new HistoryPrunerException($"HistoryRetentionEpochs must be at least {_minHistoryRetentionEpochs}.");
         }
+        if (_historyConfig.BalRetentionEpochs < _minBalRetentionEpochs)
+        {
+            throw new HistoryPrunerException($"BalRetentionEpochs must be at least {_minBalRetentionEpochs}.");
+        }
     }
 
     private bool ShouldPruneHistory()
@@ -359,10 +365,10 @@ public class HistoryPruner : IHistoryPruner
                     break;
                 }
 
-                if (number < _minDeletableBlockNumber)
+                // defensive guards against deleting genesis or anything past the (possibly moving) sync pivot
+                if (number < _minDeletableBlockNumber || number >= _blockTree.SyncPivot.BlockNumber)
                 {
-                    // defensive guard against deleting genesis
-                    if (_logger.IsWarn) _logger.Warn($"Encountered unexpected block #{number} while pruning history, this block will not be deleted. Should be in range [{_minDeletableBlockNumber}, {upperExclusive}).");
+                    if (_logger.IsWarn) _logger.Warn($"Encountered unexpected block #{number} while pruning history, this block will not be deleted. Should be in range [{_minDeletableBlockNumber}, {_blockTree.SyncPivot.BlockNumber}).");
                     continue;
                 }
 
@@ -431,7 +437,7 @@ public class HistoryPruner : IHistoryPruner
                     break;
                 }
 
-                if (number < _minDeletableBlockNumber)
+                if (number < _minDeletableBlockNumber || number >= _blockTree.SyncPivot.BlockNumber)
                 {
                     continue;
                 }
