@@ -508,7 +508,35 @@ public ref struct HsstIndexBuilder<TWriter, TReader, TPin>
             //     post-strip-width budget; value-slot widening is allowed.
             //   - WouldCrossNewPage: candidate node would straddle a 4 KiB page
             //     boundary the committed node does not.
-            int newEffSepLen = newMaxSepLen - newCommonLen;
+            //
+            // The effective separator looks ahead two children — `curr` plus the
+            // entry after it — rather than just `curr`. When that following entry
+            // carries a high separator, breaking before `curr` makes it an
+            // internal (non-first) child of the next node, so the high separator
+            // stays at this level instead of surfacing one level up as the next
+            // node's parent-level separator.
+            int effMaxSepLen = newMaxSepLen;
+            int effCommonLen = newCommonLen;
+            int next2Idx = childIdx + childCount + 1;
+            if (next2Idx < level.Length)
+            {
+                HsstIndexNodeInfo next2 = level[next2Idx];
+                int next2NaturalSep = Math.Min(commonPrefixArr[next2.FirstEntry] + 1, _keyLength);
+                int next2SepLen = Math.Max(next2NaturalSep, next2.PrefixLen);
+                if (next2SepLen > effMaxSepLen) effMaxSepLen = next2SepLen;
+
+                // Chain the running group prefix against next2's separator bytes,
+                // capped at min(newCommonLen, next2SepLen). sepBuf currently holds
+                // curr's bytes — already consumed by the newCommonLen computation
+                // above — so overwriting it with next2's bytes here is safe.
+                int next2Boundary = Math.Min(effCommonLen, next2SepLen);
+                if (next2Boundary > 0)
+                    levelFirstKeys.Slice(next2Idx * _keyLength, next2Boundary).CopyTo(sepBuf);
+                effCommonLen = effCommonLen == 0
+                    ? 0
+                    : CommonPrefixLength(firstSep[..next2Boundary], sepBuf[..next2Boundary]);
+            }
+            int newEffSepLen = effMaxSepLen - effCommonLen;
             int candidateSize = IntermediateNodeSizeUpperBound(newCount, newSumSep, valueSlotSize);
             int committedSize = IntermediateNodeSizeUpperBound(childCount, sumSepBytes, committedValueSlot);
             if (childCount >= minChildren &&
