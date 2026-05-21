@@ -9,4 +9,7 @@
     <PackageReference Include="Spectre.Console" />
     <PackageReference Include="System.CommandLine" />
   </ItemGroup>
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
 </Project>
