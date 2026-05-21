@@ -32,14 +32,14 @@ namespace Nethermind.Xdc
         ILogManager logManager) : IBlockProducerRunner
     {
         private readonly IBlockTree _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
-        private readonly IXdcConsensusContext _xdcContext = xdcContext;
+        private readonly IXdcConsensusContext _xdcContext = xdcContext ?? throw new ArgumentNullException(nameof(xdcContext));
         private readonly ISpecProvider _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
         private readonly IBlockProducer _blockBuilder = blockBuilder ?? throw new ArgumentNullException(nameof(blockBuilder));
         private readonly IEpochSwitchManager _epochSwitchManager = epochSwitchManager ?? throw new ArgumentNullException(nameof(epochSwitchManager));
         private readonly IMasternodesCalculator _masternodesCalculator = masternodesCalculator ?? throw new ArgumentNullException(nameof(masternodesCalculator));
         private readonly IVotesManager _votesManager = votesManager ?? throw new ArgumentNullException(nameof(votesManager));
         private readonly ISigner _signer = signer ?? throw new ArgumentNullException(nameof(signer));
-        private readonly ITimeoutTimer _timeoutTimer = timeoutTimer;
+        private readonly ITimeoutTimer _timeoutTimer = timeoutTimer ?? throw new ArgumentNullException(nameof(timeoutTimer));
         private readonly ILogger _logger = logManager?.GetClassLogger<XdcHotStuff>() ?? throw new ArgumentNullException(nameof(logManager));
         // Injected to activate SignTransactionManager (subscribes to BlockAddedToMain on construction).
         // TODO: find a better activation mechanism.
@@ -121,7 +121,7 @@ namespace Nethermind.Xdc
             StartRoundTask(xdcHead, _xdcContext.CurrentRound);
         }
 
-        private void OnNewRound(object sender, NewRoundEventArgs args)
+        private void OnNewRound(object? sender, NewRoundEventArgs args)
         {
             if (!IsSynced()) return;
 
@@ -170,57 +170,61 @@ namespace Nethermind.Xdc
                 if (spec.SwitchBlock < head.Number)
                     await Vote(head, epochInfo);
 
-                // Cast vote might advance round
+                // Voting may advance the round, which cancels this task.
                 if (ct.IsCancellationRequested) return;
 
-                // Proposal path: always build on the highest certified block, not necessarily head —
-                // QC can arrive via P2P before the block itself, leaving head behind.
-                QuorumCertificate? qc = _xdcContext.HighestQC;
-                if (qc is null) return;
-
-                if (_blockTree.FindHeader(qc.ProposedBlockInfo.Hash, qc.ProposedBlockInfo.BlockNumber)
-                    is not XdcBlockHeader proposalParent) return;
-
-                EpochSwitchInfo? proposalEpochInfo = _epochSwitchManager.GetEpochSwitchInfo(proposalParent);
-                if (proposalEpochInfo?.Masternodes is null || proposalEpochInfo.Masternodes.Length == 0) return;
-
-                IXdcReleaseSpec proposalSpec = _specProvider.GetXdcSpec(proposalParent, round);
-
-                if (!IsMyTurn(proposalParent, round, proposalSpec)) return;
-
-                if (!TryAdvance(ref _highestSelfMinedRound, (long)round)) return;
-
-                _logger.Info($"Round {round}: I am leader, committee={proposalEpochInfo.Masternodes.Length}, parent=#{proposalParent.Number}");
-
-                // Gate 1: enforce minimum mine period since parent block was produced
-                long now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
-                long mineReadyAt = (long)proposalParent.Timestamp + proposalSpec.MinePeriod;
-                if (mineReadyAt > now)
-                    await Task.Delay(TimeSpan.FromSeconds(mineReadyAt - now), ct);
-
-                if (ct.IsCancellationRequested) return;
-
-                // Gate 2: if head has no QC yet, wait for late votes to form one.
-                // If QC arrives, NewRoundSetEvent fires and cancels this task via ct.
-                // If fallback elapses without QC, propose on the last certified block.
-                bool headHasQc = head.Hash == qc.ProposedBlockInfo.Hash;
-                if (!headHasQc)
-                {
-                    long fallbackReadyAt = (long)head.Timestamp + proposalSpec.TimeoutPeriod / 2;
-                    now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
-                    if (fallbackReadyAt > now)
-                        await Task.Delay(TimeSpan.FromSeconds(fallbackReadyAt - now), ct);
-                }
-
-                if (ct.IsCancellationRequested) return;
-
-                await BuildAndProposeBlock(proposalParent, qc, round, proposalSpec, ct);
+                await TryPropose(head, round, ct);
             }
             catch (OperationCanceledException) { }
             catch (Exception ex)
             {
                 _logger.Error($"RunRound failed for round {round}", ex);
             }
+        }
+
+        private async Task TryPropose(XdcBlockHeader head, ulong round, CancellationToken ct)
+        {
+            // Always build on the highest certified block, not necessarily head
+            QuorumCertificate? qc = _xdcContext.HighestQC;
+            if (qc is null) return;
+
+            if (_blockTree.FindHeader(qc.ProposedBlockInfo.Hash, qc.ProposedBlockInfo.BlockNumber)
+                is not XdcBlockHeader proposalParent) return;
+
+            EpochSwitchInfo? proposalEpochInfo = _epochSwitchManager.GetEpochSwitchInfo(proposalParent);
+            if (proposalEpochInfo?.Masternodes is null || proposalEpochInfo.Masternodes.Length == 0) return;
+
+            IXdcReleaseSpec proposalSpec = _specProvider.GetXdcSpec(proposalParent, round);
+
+            if (!IsMyTurn(proposalParent, round, proposalSpec)) return;
+
+            if (!TryAdvance(ref _highestSelfMinedRound, (long)round)) return;
+
+            _logger.Info($"Round {round}: I am leader, committee={proposalEpochInfo.Masternodes.Length}, parent=#{proposalParent.Number}");
+
+            // Gate 1: enforce minimum mine period since parent block was produced
+            long now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+            long mineReadyAt = (long)proposalParent.Timestamp + proposalSpec.MinePeriod;
+            if (mineReadyAt > now)
+                await Task.Delay(TimeSpan.FromSeconds(mineReadyAt - now), ct);
+
+            if (ct.IsCancellationRequested) return;
+
+            // Gate 2: if head has no QC yet, wait for late votes to form one.
+            // If QC arrives, NewRoundSetEvent fires and cancels this task via ct.
+            // If fallback elapses without QC, propose on the last certified block.
+            bool headHasQc = head.Hash == qc.ProposedBlockInfo.Hash;
+            if (!headHasQc)
+            {
+                long fallbackReadyAt = (long)head.Timestamp + proposalSpec.TimeoutPeriod / 2;
+                now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+                if (fallbackReadyAt > now)
+                    await Task.Delay(TimeSpan.FromSeconds(fallbackReadyAt - now), ct);
+            }
+
+            if (ct.IsCancellationRequested) return;
+
+            await BuildAndProposeBlock(proposalParent, qc, round, proposalSpec, ct);
         }
 
         // ── Block proposal ───────────────────────────────────────────────────────
