@@ -128,7 +128,7 @@ internal static class Program
         builder.AppendLine("    [ModuleInitializer]");
         builder.AppendLine("    internal static void Register()");
         builder.AppendLine("    {");
-        builder.AppendLine("        EthereumJsonSerializer.AddTypeInfoResolver(Default);");
+        builder.AppendLine("        EthereumJsonSerializer.AddTypeInfoResolver(Default, JsonTypeInfoResolverPriority.GeneratedRpc);");
         builder.AppendLine("    }");
         builder.AppendLine("}");
         return builder.ToString();
