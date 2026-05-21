@@ -20,6 +20,7 @@ using Nethermind.JsonRpc.Modules.Proof;
 using Nethermind.JsonRpc.Modules.Subscribe;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin;
+using Nethermind.Merge.Plugin.Data;
 using Nethermind.Serialization.Json;
 using NSubstitute;
 using NUnit.Framework;
@@ -262,7 +263,7 @@ public class RpcModuleProviderTests
         long generatedHits = Metrics.JsonRpcPayloadTypeInfoGeneratedHits;
         long resolverFallbacks = Metrics.JsonRpcPayloadTypeInfoResolverFallbacks;
 
-        RpcPayloadTypeInfo<string>.Get(EthereumJsonSerializer.JsonOptions).Should().NotBeNull();
+        RpcPayloadTypeInfo<PayloadStatusV1>.Get(EthereumJsonSerializer.JsonOptions).Should().NotBeNull();
         RpcPayloadTypeInfo<FallbackPayload>.Get(EthereumJsonSerializer.JsonOptions).Should().NotBeNull();
 
         Metrics.JsonRpcPayloadTypeInfoGeneratedHits.Should().BeGreaterThan(generatedHits);
