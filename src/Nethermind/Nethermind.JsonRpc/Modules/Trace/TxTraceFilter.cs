@@ -19,6 +19,8 @@ namespace Nethermind.JsonRpc.Modules.Trace
         private int _after = after;
         private int? _count = count;
 
+        public bool IsCountExhausted => _count is not null && _count <= 0;
+
         public IEnumerable<ParityTxTraceFromStore> FilterTxTraces(IEnumerable<ParityTxTraceFromStore> txTraces)
         {
             foreach (ParityTxTraceFromStore? txTrace in txTraces)

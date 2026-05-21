@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Channels;
@@ -46,13 +47,6 @@ public sealed class ChannelParityLikeBlockTracer : ParityLikeBlockTracer
         _cancellationToken = cancellationToken;
     }
 
-    public ChannelParityLikeBlockTracer(Hash256 txHash, ParityTraceTypes types, ChannelWriter<ParityLikeTxTrace> writer, CancellationToken cancellationToken)
-        : base(txHash, types)
-    {
-        _writer = writer;
-        _cancellationToken = cancellationToken;
-    }
-
     public ChannelParityLikeBlockTracer(IDictionary<Hash256, ParityTraceTypes> typesByTransaction, ChannelWriter<ParityLikeTxTrace> writer, CancellationToken cancellationToken)
         : base(typesByTransaction)
     {
@@ -70,7 +64,6 @@ public sealed class ChannelParityLikeBlockTracer : ParityLikeBlockTracer
             _writer.WriteAsync(_held, _cancellationToken).AsTask().GetAwaiter().GetResult();
         }
         _held = trace;
-
     }
 
     public override void ReportReward(Address author, string rewardType, UInt256 rewardValue)
@@ -95,6 +88,7 @@ public sealed class ChannelParityLikeBlockTracer : ParityLikeBlockTracer
 
     public override void EndBlockTrace()
     {
+        Exception? fault = null;
         try
         {
             if (_held is not null)
@@ -103,10 +97,16 @@ public sealed class ChannelParityLikeBlockTracer : ParityLikeBlockTracer
                 _held = null;
             }
         }
+        catch (Exception ex)
+        {
+            fault = ex;
+            throw;
+        }
         finally
         {
-            // Always complete the channel so the consumer is not left waiting.
-            _writer.TryComplete();
+            // Pass any exception so the consumer's ReadAllAsync throws instead of
+            // returning a clean end-of-stream that would silently drop the last trace.
+            _writer.TryComplete(fault);
         }
     }
 }

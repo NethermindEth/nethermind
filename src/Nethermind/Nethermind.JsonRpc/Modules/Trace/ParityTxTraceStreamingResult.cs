@@ -5,6 +5,7 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.IO.Pipelines;
+using System.Linq;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Threading;
@@ -35,7 +36,6 @@ public sealed class ParityTxTraceStreamingResult<T>(IAsyncEnumerable<T> source)
 
         jsonWriter.WriteStartArray();
         jsonWriter.Flush();
-        await pipeWriter.FlushAsync(cancellationToken);
 
         await foreach (T item in source.WithCancellation(cancellationToken))
         {
@@ -51,7 +51,9 @@ public sealed class ParityTxTraceStreamingResult<T>(IAsyncEnumerable<T> source)
     }
 
     public IEnumerator<T> GetEnumerator() =>
-        source.ToBlockingEnumerable().GetEnumerator();
+        // ToListAsync blocks a single thread and lets
+        // the EVM producer (Task.Run) run without an additional coordination layer.
+        source.ToListAsync(CancellationToken.None).AsTask().GetAwaiter().GetResult().GetEnumerator();
 
     IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
 }
@@ -66,7 +68,7 @@ public sealed class ParityTxTraceStreamingResultConverterFactory : JsonConverter
     {
         Type itemType = typeToConvert.GetGenericArguments()[0];
         Type converterType = typeof(ParityTxTraceStreamingResultConverter<>).MakeGenericType(itemType);
-        return (JsonConverter)Activator.CreateInstance(converterType)!;
+        return (JsonConverter)Activator.CreateInstance(converterType);
     }
 }
 

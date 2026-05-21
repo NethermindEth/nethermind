@@ -338,14 +338,6 @@ namespace Nethermind.JsonRpc.Modules.Trace
             return ResultWrapper<IEnumerable<ParityTxTraceFromStore>>.Success(ParityTxTraceFromStore.FromTxTrace(txTrace));
         }
 
-        private IReadOnlyCollection<ParityLikeTxTrace> TraceBlock(Block block, ParityLikeBlockTracer tracer)
-        {
-            using Scope<ITracer> env = tracerEnv.BuildAndOverride(block.Header);
-            ITracer tracer2 = env.Component;
-
-            return TraceBlockDirect(tracer2, block, tracer);
-        }
-
         private IReadOnlyCollection<ParityLikeTxTrace> TraceBlockDirect(ITracer tracer, Block block, ParityLikeBlockTracer parityTracer)
         {
             using CancellationTokenSource timeout = BuildTimeoutCancellationTokenSource();
@@ -435,23 +427,34 @@ namespace Nethermind.JsonRpc.Modules.Trace
             {
                 cancellationToken.ThrowIfCancellationRequested();
 
-                if (blockSearch.IsError) yield break;
+                if (blockSearch.IsError) throw new InvalidOperationException(blockSearch.Error);
 
                 Block block = blockSearch.Object!;
-                if (!blockchainBridge.HasStateForBlock(block.Header)) yield break;
+                if (!blockchainBridge.HasStateForBlock(block.Header))
+                    throw new InvalidOperationException($"No state available for block {block.Header.ToString(BlockHeader.Format.FullHashAndNumber)}");
 
                 SearchResult<BlockHeader> parentSearch = blockFinder.SearchForHeader(new BlockParameter(block.Header.ParentHash));
-                if (parentSearch.IsError) yield break;
-                if (!blockchainBridge.HasStateForBlock(parentSearch.Object)) yield break;
+                if (parentSearch.IsError) throw new InvalidOperationException(parentSearch.Error);
+                if (!blockchainBridge.HasStateForBlock(parentSearch.Object))
+                    throw new InvalidOperationException($"No state available for block {parentSearch.Object.ToString(BlockHeader.Format.FullHashAndNumber)}");
 
-                IReadOnlyCollection<ParityLikeTxTrace> blockTraces = ExecuteBlock(
-                    parentSearch.Object, block, new(ParityTraceTypes.Trace | ParityTraceTypes.Rewards));
+                IAsyncEnumerable<ParityLikeTxTrace> txTraces = StreamBlockViaChannelAsync(
+                    parentSearch.Object, block,
+                    static (writer, ct) => new ChannelParityLikeBlockTracer(ParityTraceTypes.Trace | ParityTraceTypes.Rewards, writer, ct),
+                    static (tracer, b, blockTracer) => tracer.Execute(b, blockTracer),
+                    cancellationToken);
 
-                foreach (ParityTxTraceFromStore t in txTracerFilter.FilterTxTraces(ParityTxTraceFromStore.FromTxTrace(blockTraces)))
+                await foreach (ParityLikeTxTrace trace in txTraces)
                 {
-                    yield return t;
+                    foreach (ParityTxTraceFromStore t in txTracerFilter.FilterTxTraces(ParityTxTraceFromStore.FromTxTrace(trace)))
+                    {
+                        yield return t;
+                    }
+
+                    if (txTracerFilter.IsCountExhausted) yield break;
                 }
-                // blockTraces is eligible for GC after this block's iteration.
+
+                if (txTracerFilter.IsCountExhausted) yield break;
             }
         }
 
@@ -459,7 +462,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
             IAsyncEnumerable<ParityLikeTxTrace> source,
             [EnumeratorCancellation] CancellationToken cancellationToken = default)
         {
-            await foreach (ParityLikeTxTrace trace in TaskAsyncEnumerableExtensions.WithCancellation(source, cancellationToken))
+            await foreach (ParityLikeTxTrace trace in source.WithCancellation(cancellationToken))
             {
                 foreach (ParityTxTraceFromStore item in ParityTxTraceFromStore.FromTxTrace(trace))
                     yield return item;
@@ -471,7 +474,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
             bool includeTransactionHash = false,
             [EnumeratorCancellation] CancellationToken cancellationToken = default)
         {
-            await foreach (ParityLikeTxTrace trace in TaskAsyncEnumerableExtensions.WithCancellation(source, cancellationToken))
+            await foreach (ParityLikeTxTrace trace in source.WithCancellation(cancellationToken))
                 yield return new ParityTxTraceFromReplay(trace, includeTransactionHash);
         }
 
