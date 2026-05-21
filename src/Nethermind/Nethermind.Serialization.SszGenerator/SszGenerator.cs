@@ -53,13 +53,14 @@ public class SszGenerator : IIncrementalGenerator
             string? generatedCode = GenerateClassCode(spc, decl.Value.Type, decl.Value.FoundTypes, decl.Value.Location);
             if (generatedCode is not null)
             {
-                spc.AddSource($"Serialization.SszCodec.{decl.Value.Type.Name}.cs", SourceText.From(generatedCode, Encoding.UTF8));
+                spc.AddSource($"Serialization.SszCodec.{decl.Value.Type.HintName}.cs", SourceText.From(generatedCode, Encoding.UTF8));
             }
         });
     }
 
     private static string PartialTypeDeclaration(SszType decl) =>
-        $"partial {(decl.IsStruct ? "struct" : "class")} {decl.Name} : ISszCodec<{decl.Name}>";
+        $"partial {(decl.IsStruct ? "struct" : "class")} {decl.TypeReferenceName} : ISszCodec<{decl.TypeReferenceName}>"
+        + (string.IsNullOrEmpty(decl.TypeParameterConstraints) ? string.Empty : $" {decl.TypeParameterConstraints}");
 
     private static string NamespaceLine(SszType decl) =>
         string.IsNullOrEmpty(decl.Namespace) ? string.Empty : $"namespace {decl.Namespace};";
@@ -80,8 +81,21 @@ public class SszGenerator : IIncrementalGenerator
                 {
                     INamedTypeSymbol typeSymbol = (INamedTypeSymbol)context.SemanticModel.GetDeclaredSymbol(classDeclaration)!;
                     List<SszType> foundTypes = [.. SszType.BasicTypes];
+                    SszType sszType = SszType.From(context.SemanticModel, foundTypes, typeSymbol);
+                    // Carry the `where T : ...` clauses verbatim from syntax — the symbol-side API
+                    // would require us to reassemble each constraint, and the textual form already matches.
+                    sszType.TypeParameterConstraints = string.Join(" ", classDeclaration.ConstraintClauses.Select(c => c.ToString()));
+                    foreach (ITypeParameterSymbol tp in typeSymbol.TypeParameters)
+                    {
+                        foreach (ITypeSymbol ct in tp.ConstraintTypes)
+                        {
+                            string? ns = ct.ContainingNamespace?.ToString();
+                            if (!string.IsNullOrEmpty(ns))
+                                sszType.TypeParameterConstraintNamespaces.Add(ns!);
+                        }
+                    }
                     return (
-                        SszType.From(context.SemanticModel, foundTypes, typeSymbol),
+                        sszType,
                         foundTypes,
                         classDeclaration.Identifier.GetLocation(),
                         typeSymbol.ContainingType is not null);
@@ -469,20 +483,28 @@ internal static class SszCodecHelpers
     private static string ValidationStatement(SszType decl, SszProperty property, string expression) =>
         property.Kind switch
         {
-            Kind.Vector when property.Type.Name == "BitArray" => $"ValidateSszBitvectorLength({expression}, {property.Length}, nameof({decl.Name}), nameof({decl.Name}.{property.Name}));",
-            Kind.Vector => $"ValidateSszVectorLength({SpanExpression(property, expression)}, {property.Length}, nameof({decl.Name}), nameof({decl.Name}.{property.Name}));",
-            Kind.List when property.Type.Name == "BitArray" => $"ValidateSszBitlistLimit({expression}, {property.Limit}, nameof({decl.Name}), nameof({decl.Name}.{property.Name}));",
-            Kind.List => $"ValidateSszListLimit({SpanExpression(property, expression)}, {property.Limit}, nameof({decl.Name}), nameof({decl.Name}.{property.Name}));",
-            Kind.BitVector => $"ValidateSszBitvectorLength({expression}, {property.Length}, nameof({decl.Name}), nameof({decl.Name}.{property.Name}));",
-            Kind.BitList => $"ValidateSszBitlistLimit({expression}, {property.Limit}, nameof({decl.Name}), nameof({decl.Name}.{property.Name}));",
+            Kind.Vector when property.Type.Name == "BitArray" => $"ValidateSszBitvectorLength({expression}, {property.Length}, nameof({decl.TypeReferenceName}), nameof({property.Name}));",
+            Kind.Vector => $"ValidateSszVectorLength({SpanExpression(property, expression)}, {property.Length}, nameof({decl.TypeReferenceName}), nameof({property.Name}));",
+            Kind.List when property.Type.Name == "BitArray" => $"ValidateSszBitlistLimit({expression}, {property.Limit}, nameof({decl.TypeReferenceName}), nameof({property.Name}));",
+            Kind.List => $"ValidateSszListLimit({SpanExpression(property, expression)}, {property.Limit}, nameof({decl.TypeReferenceName}), nameof({property.Name}));",
+            Kind.BitVector => $"ValidateSszBitvectorLength({expression}, {property.Length}, nameof({decl.TypeReferenceName}), nameof({property.Name}));",
+            Kind.BitList => $"ValidateSszBitlistLimit({expression}, {property.Limit}, nameof({decl.TypeReferenceName}), nameof({property.Name}));",
             _ => string.Empty,
         };
 
     private static string EncodeValueExpression(SszProperty property, string expression) =>
-        property.Kind is Kind.BitList or Kind.ProgressiveBitList ? $"{expression} ?? new BitArray(0)" : expression;
+        property.Kind switch
+        {
+            Kind.BitList or Kind.ProgressiveBitList => $"{expression} ?? new BitArray(0)",
+            _ when property.IsMemoryLikeProperty && property.IsCollection => $"{expression}.Span",
+            _ => expression,
+        };
 
     private static string SpanExpression(SszProperty property, string expression) =>
-        property.IsArrayProperty ? $"{expression}.AsSpan()" : $"CollectionsMarshal.AsSpan({expression})";
+        property.IsSpanLikeProperty ? expression
+            : property.IsMemoryLikeProperty ? $"{expression}.Span"
+            : property.IsArrayProperty ? $"{expression}.AsSpan()"
+            : $"CollectionsMarshal.AsSpan({expression})";
 
     private static IEnumerable<string> ValidationStatements(SszType decl, IEnumerable<SszProperty> properties, string expressionPrefix)
     {
@@ -500,17 +522,26 @@ internal static class SszCodecHelpers
     {
         string destSpan = $"data.Slice({staticOffset}, {property.StaticLength})";
         string valueExpr = $"{containerExpr}.{property.Name}";
+        string encodedValueExpr = EncodeValueExpression(property, valueExpr);
 
+        string statement;
         if (property.Type.HasCustomInlineCodec)
         {
-            return property.Type.CustomEncodeTemplate!
+            statement = property.Type.CustomEncodeTemplate!
                 .Replace("{0}", destSpan)
-                .Replace("{1}", valueExpr);
+                .Replace("{1}", encodedValueExpr);
+        }
+        else
+        {
+            statement = property.HandledByStd
+                ? $"SszLib.Encode({destSpan}, {encodedValueExpr});"
+                : $"{property.Type.StaticMemberAccess}.Encode({destSpan}, {encodedValueExpr});";
         }
 
-        return property.HandledByStd
-            ? $"SszLib.Encode({destSpan}, {valueExpr});"
-            : $"{property.Type.Name}.Encode({destSpan}, {valueExpr});";
+        // Nullable reference-typed static fields skip the write when null; the destination
+        // slice is already zero-initialized, matching the "absent field encodes as zeros"
+        // semantic and aligning class and struct (default-valued) container behaviour.
+        return property.IsNullable ? $"if ({valueExpr} is not null) {statement}" : statement;
     }
 
     private static string DecodeAndAssign(SszType decl, SszProperty property, string sliceExpression)
@@ -521,7 +552,7 @@ internal static class SszCodecHelpers
         {
             string decodeStatement = property.Type.CustomDecodeTemplate!
                 .Replace("{0}", sliceExpression)
-                .Replace("{1}", $"{property.Type.Name} {variableName}");
+                .Replace("{1}", $"{property.Type.TypeReferenceName} {variableName}");
             string assignment = $"container.{property.Name} = {variableName};";
             return $"{decodeStatement} {assignment}";
         }
@@ -531,45 +562,54 @@ internal static class SszCodecHelpers
             int itemSize = property.Type.StaticLength;
             string decodeBody = property.Type.CustomDecodeTemplate!
                 .Replace("{0}", $"{sliceExpression}.Slice(__i * {itemSize}, {itemSize})")
-                .Replace("{1}", $"{property.Type.Name} __item");
+                .Replace("{1}", $"{property.Type.TypeReferenceName} __item");
             string countExpr = property.Kind == Kind.Vector
                 ? property.Length!.Value.ToString()
                 : $"{sliceExpression}.Length / {itemSize}";
             string remainderGuard = property.Kind == Kind.List
-                ? $"if ({sliceExpression}.Length % {itemSize} != 0) throw new System.IO.InvalidDataException($\"{decl.Name}.{property.Name}: expected a multiple of {itemSize} bytes, got {{{sliceExpression}.Length}}\");"
+                ? $"if ({sliceExpression}.Length % {itemSize} != 0) throw new System.IO.InvalidDataException($\"{decl.TypeReferenceName}.{property.Name}: expected a multiple of {itemSize} bytes, got {{{sliceExpression}.Length}}\");"
                 : string.Empty;
             string limitGuard = (property.Kind == Kind.List && property.Limit.HasValue)
-                ? $"if (__count > {property.Limit.Value}) throw new System.IO.InvalidDataException($\"{decl.Name}.{property.Name}: list count {{__count}} exceeds SSZ limit {property.Limit.Value}\");"
+                ? $"if (__count > {property.Limit.Value}) throw new System.IO.InvalidDataException($\"{decl.TypeReferenceName}.{property.Name}: list count {{__count}} exceeds SSZ limit {property.Limit.Value}\");"
                 : string.Empty;
             string validation = ValidationStatement(decl, property, $"container.{property.Name}");
-            string loop = $"{{ {remainderGuard} int __count = {countExpr}; {limitGuard} {property.Type.Name}[] {variableName} = new {property.Type.Name}[__count]; for (int __i = 0; __i < __count; __i++) {{ {decodeBody} {variableName}[__i] = __item; }} container.{property.Name} = {variableName}; }}";
+            string loop = $"{{ {remainderGuard} int __count = {countExpr}; {limitGuard} {property.Type.TypeReferenceName}[] {variableName} = new {property.Type.TypeReferenceName}[__count]; for (int __i = 0; __i < __count; __i++) {{ {decodeBody} {variableName}[__i] = __item; }} container.{property.Name} = {variableName}; }}";
             return string.IsNullOrEmpty(validation) ? loop : $"{loop} {validation}";
         }
 
         string outType = property.Kind switch
         {
             Kind.BitVector or Kind.BitList or Kind.ProgressiveBitList => "BitArray",
-            _ when property.IsCollection => property.HandledByStd ? $"ReadOnlySpan<{property.Type.Name}>" : $"{property.Type.Name}[]",
-            _ => property.Type.Name,
+            _ when property.IsCollection => property.HandledByStd ? $"ReadOnlySpan<{property.Type.TypeReferenceName}>" : $"{property.Type.TypeReferenceName}[]",
+            _ => property.Type.TypeReferenceName,
         };
 
         string decode = property.Kind switch
         {
             Kind.BitVector => $"DecodeSszBitVector({sliceExpression}, {property.Length}, out {outType} {variableName});",
-            Kind.BitList or Kind.ProgressiveBitList => $"DecodeSszBitList({sliceExpression}, nameof({decl.Name}), out {outType} {variableName});",
+            Kind.BitList or Kind.ProgressiveBitList => $"DecodeSszBitList({sliceExpression}, nameof({decl.TypeReferenceName}), out {outType} {variableName});",
             _ when property.HandledByStd => $"SszLib.Decode({sliceExpression}, out {outType} {variableName});",
-            _ => $"{property.Type.Name}.Decode({sliceExpression}, out {outType} {variableName});",
+            _ => $"{property.Type.StaticMemberAccess}.Decode({sliceExpression}, out {outType} {variableName});",
         };
 
-        string assignment2 = property.IsCollection ? $"container.{property.Name} = [ ..{variableName}];" : $"container.{property.Name} = {variableName};";
+        string assignment2 = property switch
+        {
+            { IsReadOnlySpanProperty: true } => $"container.{property.Name} = {variableName};",
+            { IsReadOnlyMemoryProperty: true } => $"container.{property.Name} = {variableName}.ToArray();",
+            { IsSpanLikeProperty: true, HandledByStd: true } => $"container.{property.Name} = {variableName}.ToArray();",
+            { IsSpanLikeProperty: true } => $"container.{property.Name} = {variableName};",
+            { IsMemoryLikeProperty: true } => $"container.{property.Name} = {variableName}.ToArray();",
+            { IsCollection: true } => $"container.{property.Name} = [ ..{variableName}];",
+            _ => $"container.{property.Name} = {variableName};",
+        };
         string validation2 = ValidationStatement(decl, property, $"container.{property.Name}");
 
         string preAllocationListGuard = string.Empty;
         if (property.Kind == Kind.List && property.Limit.HasValue && !property.HandledByStd)
         {
             preAllocationListGuard = property.Type.IsVariable
-                ? $"if ({sliceExpression}.Length >= {SszType.PointerLength}) {{ SszLib.Decode({sliceExpression}.Slice(0, {SszType.PointerLength}), out int __firstOffset); int __preCount = __firstOffset / {SszType.PointerLength}; if (__preCount > {property.Limit.Value}) throw new System.IO.InvalidDataException($\"{decl.Name}.{property.Name}: list count {{__preCount}} exceeds SSZ limit {property.Limit.Value}\"); }}"
-                : $"{{ int __preCount = {sliceExpression}.Length / {property.Type.StaticLength}; if (__preCount > {property.Limit.Value}) throw new System.IO.InvalidDataException($\"{decl.Name}.{property.Name}: list count {{__preCount}} exceeds SSZ limit {property.Limit.Value}\"); }}";
+                ? $"if ({sliceExpression}.Length >= {SszType.PointerLength}) {{ SszLib.Decode({sliceExpression}.Slice(0, {SszType.PointerLength}), out int __firstOffset); int __preCount = __firstOffset / {SszType.PointerLength}; if (__preCount > {property.Limit.Value}) throw new System.IO.InvalidDataException($\"{decl.TypeReferenceName}.{property.Name}: list count {{__preCount}} exceeds SSZ limit {property.Limit.Value}\"); }}"
+                : $"{{ int __preCount = {sliceExpression}.Length / {property.Type.StaticLength}; if (__preCount > {property.Limit.Value}) throw new System.IO.InvalidDataException($\"{decl.TypeReferenceName}.{property.Name}: list count {{__preCount}} exceeds SSZ limit {property.Limit.Value}\"); }}";
         }
 
         return string.IsNullOrEmpty(validation2) ? $"{preAllocationListGuard} {decode} {assignment2}" : $"{preAllocationListGuard} {decode} {assignment2} {validation2}";
@@ -606,20 +646,28 @@ internal static class SszCodecHelpers
             Kind.Vector when property.Type.Kind == Kind.Basic && property.Type.IsRefType => $"MerkleizeRefTypeVector({SpanExpression(property, expression)}, {property.Length}, {property.Type.StaticLength}, (item, buf) => {{ {property.Type.CustomEncodeTemplate!.Replace("{0}", "buf").Replace("{1}", "item")} }}, out {rootName});",
             Kind.List when property.Type.Kind == Kind.Basic && property.Type.IsRefType => $"MerkleizeRefTypeList({SpanExpression(property, expression)}, {property.Limit}, {property.Type.StaticLength}, (item, buf) => {{ {property.Type.CustomEncodeTemplate!.Replace("{0}", "buf").Replace("{1}", "item")} }}, out {rootName});",
             Kind.ProgressiveList when property.Type.Kind == Kind.Basic && property.Type.IsRefType => $"MerkleizeRefTypeProgressiveList({SpanExpression(property, expression)}, {property.Type.StaticLength}, (item, buf) => {{ {property.Type.CustomEncodeTemplate!.Replace("{0}", "buf").Replace("{1}", "item")} }}, out {rootName});",
-            Kind.Vector => $"{property.Type.Name}.MerkleizeVector({SpanExpression(property, expression)}, out {rootName});",
-            Kind.List => $"{property.Type.Name}.MerkleizeList({SpanExpression(property, expression)}, {property.Limit}, out {rootName});",
-            Kind.ProgressiveList => $"{property.Type.Name}.MerkleizeProgressiveList({SpanExpression(property, expression)}, out {rootName});",
-            _ => $"{property.Type.Name}.Merkleize({expression}, out {rootName});",
+            Kind.Vector => $"{property.Type.StaticMemberAccess}.MerkleizeVector({SpanExpression(property, expression)}, out {rootName});",
+            Kind.List => $"{property.Type.StaticMemberAccess}.MerkleizeList({SpanExpression(property, expression)}, {property.Limit}, out {rootName});",
+            Kind.ProgressiveList => $"{property.Type.StaticMemberAccess}.MerkleizeProgressiveList({SpanExpression(property, expression)}, out {rootName});",
+            _ => $"{property.Type.StaticMemberAccess}.Merkleize({expression}, out {rootName});",
         };
 
-    private static string MerkleizeFeedStatement(SszProperty property, string expression) =>
-        property.Kind switch
+    private static string MerkleizeFeedStatement(SszProperty property, string expression)
+    {
+        string body = property.Kind switch
         {
             Kind.Basic when property.Type.IsRefType => $"{MerkleizeRootStatement(property, expression, $"UInt256 {VarName(property.Name)}Root")} merkleizer.Feed({VarName(property.Name)}Root);",
             Kind.Basic or Kind.BitVector => $"merkleizer.Feed({expression});",
             Kind.BitList => $"merkleizer.Feed({expression} ?? new BitArray(0), {property.Limit});",
             _ => $"{MerkleizeRootStatement(property, expression, $"UInt256 {VarName(property.Name)}Root")} merkleizer.Feed({VarName(property.Name)}Root);",
         };
+
+        // Nullable reference-typed members feed the zero root when absent, matching the
+        // "encode as zeros" semantic on the encode/length paths.
+        return property.IsNullable && !property.IsSpanLikeProperty && property.Kind is not (Kind.BitList or Kind.ProgressiveBitList)
+            ? $"if ({expression} is null) {{ merkleizer.Feed(default(UInt256)); }} else {{ {body} }}"
+            : body;
+    }
 
     private static string DynamicLength(SszType container, SszProperty m)
     {
@@ -630,9 +678,13 @@ internal static class SszCodecHelpers
                 : $"({m.Type.StaticLength} * {SpanExpression(m, $"container.{m.Name}")}.Length)";
         }
 
-        return m.IsCollection
-            ? $"{m.Type.Name}.GetLength({SpanExpression(m, $"container.{m.Name}")})"
-            : $"{m.Type.Name}.GetLength(container.{m.Name})";
+        string call = m.IsCollection
+            ? $"{m.Type.StaticMemberAccess}.GetLength({SpanExpression(m, $"container.{m.Name}")})"
+            : $"{m.Type.StaticMemberAccess}.GetLength(container.{m.Name})";
+
+        // A null reference-typed property contributes zero bytes to the variable-length region —
+        // matches the static-field encode's "skip on null" behaviour and keeps offsets consistent.
+        return m.IsNullable ? $"(container.{m.Name} is null ? 0 : {call})" : call;
     }
 
     private static string ByteArrayLiteral(byte[] value) => $"[{string.Join(", ", value)}]";
@@ -660,8 +712,8 @@ internal static class SszCodecHelpers
             int itemSize = property.Type.StaticLength;
             string encodeBody = property.Type.CustomEncodeTemplate!
                 .Replace("{0}", $"{target}.Slice(__i * {itemSize}, {itemSize})")
-                .Replace("{1}", $"{expression}[__i]");
-            return $"{{ var __arr = {expression}; for (int __i = 0; __i < __arr.Length; __i++) {{ {encodeBody} }} }}";
+                .Replace("{1}", "__items[__i]");
+            return $"{{ ReadOnlySpan<{property.Type.TypeReferenceName}> __items = {SpanExpression(property, expression)}; for (int __i = 0; __i < __items.Length; __i++) {{ {encodeBody} }} }}";
         }
 
         string arguments = $"{target}, {EncodeValueExpression(property, expression)}";
@@ -674,14 +726,15 @@ internal static class SszCodecHelpers
             arguments += $", {UnboundedBitlistLimit}";
         }
 
-        return $"{(property.HandledByStd ? "SszLib.Encode" : $"{property.Type.Name}.Encode")}({arguments});";
+        return $"{(property.HandledByStd ? "SszLib.Encode" : $"{property.Type.StaticMemberAccess}.Encode")}({arguments});";
     }
 
-    private static bool RequiresNullGuard(SszProperty property) => !(property.Type.IsStruct || property.Kind is Kind.BitList or Kind.ProgressiveBitList);
+    private static bool RequiresNullGuard(SszProperty property) => !(property.Type.IsStruct || property.IsSpanLikeProperty || property.IsMemoryLikeProperty || property.Kind is Kind.BitList or Kind.ProgressiveBitList);
 
-    private static string UsingsBlock(List<SszType> foundTypes) =>
+    private static string UsingsBlock(SszType decl, List<SszType> foundTypes) =>
         string.Join("\n", foundTypes
             .Select(x => x.Namespace)
+            .Concat(decl.TypeParameterConstraintNamespaces)
             .Distinct()
             .OrderBy(x => x)
             .Where(x => !string.IsNullOrEmpty(x) && x != "Nethermind.Serialization.Ssz")
@@ -747,7 +800,7 @@ using System.Linq;
 using System.Runtime.InteropServices;
 using Nethermind.Serialization.Ssz;
 using static Nethermind.Serialization.SszCodecHelpers;
-{UsingsBlock(foundTypes)}
+{UsingsBlock(decl, foundTypes)}
 {Whitespace}
 using SszLib = Nethermind.Serialization.Ssz.Ssz;
 {Whitespace}
@@ -755,7 +808,7 @@ using SszLib = Nethermind.Serialization.Ssz.Ssz;
 {Whitespace}
 {PartialTypeDeclaration(decl)}
 {{
-    public static int GetLength({decl.Name}{(decl.IsStruct ? "" : "?")} container)
+    public static int GetLength({decl.TypeReferenceName}{(decl.IsStruct ? "" : "?")} container)
     {{
         {(decl.IsStruct ? "" : @"if(container is null)
         {
@@ -766,10 +819,10 @@ using SszLib = Nethermind.Serialization.Ssz.Ssz;
         return {DynamicLength(decl, variables[0])};
     }}
 {Whitespace}
-    public static int GetLength(ReadOnlySpan<{decl.Name}> container)
+    public static int GetLength(ReadOnlySpan<{decl.TypeReferenceName}> container)
     {{
         int length = container.Length * {SszType.PointerLength};
-        foreach({decl.Name} item in container)
+        foreach({decl.TypeReferenceName} item in container)
         {{
             length += GetLength(item);
         }}
@@ -777,7 +830,7 @@ using SszLib = Nethermind.Serialization.Ssz.Ssz;
         return length;
     }}
 {Whitespace}
-    public static byte[] Encode({decl.Name}{(decl.IsStruct ? "" : "?")} container)
+    public static byte[] Encode({decl.TypeReferenceName}{(decl.IsStruct ? "" : "?")} container)
     {{
         {(decl.IsStruct ? "" : @"if(container is null)
         {
@@ -788,7 +841,7 @@ using SszLib = Nethermind.Serialization.Ssz.Ssz;
         return buf;
     }}
 {Whitespace}
-    public static void Encode(Span<byte> data, {decl.Name}{(decl.IsStruct ? "" : "?")} container)
+    public static void Encode(Span<byte> data, {decl.TypeReferenceName}{(decl.IsStruct ? "" : "?")} container)
     {{
         {(decl.IsStruct ? "" : @"if(container is null)
         {
@@ -799,20 +852,20 @@ using SszLib = Nethermind.Serialization.Ssz.Ssz;
         {(RequiresNullGuard(variables[0]) ? $"if (container.{variables[0].Name} is not null) " : string.Empty)}{EncodeStatement("data", variables[0], $"container.{variables[0].Name}")}
     }}
 {Whitespace}
-    public static byte[] Encode(ReadOnlySpan<{decl.Name}> items)
+    public static byte[] Encode(ReadOnlySpan<{decl.TypeReferenceName}> items)
     {{
         byte[] buf = new byte[GetLength(items)];
         Encode(buf, items);
         return buf;
     }}
 {Whitespace}
-    public static void Encode(Span<byte> data, ReadOnlySpan<{decl.Name}> items)
+    public static void Encode(Span<byte> data, ReadOnlySpan<{decl.TypeReferenceName}> items)
     {{
 {Whitespace}
         int offset = items.Length * {(SszType.PointerLength)};
         int itemOffset = 0;
 {Whitespace}
-        foreach({decl.Name} item in items)
+        foreach({decl.TypeReferenceName} item in items)
         {{
             SszLib.Encode(data.Slice(itemOffset, {(SszType.PointerLength)}), offset);
             itemOffset += {(SszType.PointerLength)};
@@ -822,16 +875,16 @@ using SszLib = Nethermind.Serialization.Ssz.Ssz;
         }}
     }}
 {Whitespace}
-    public static void Decode(ReadOnlySpan<byte> data, out {decl.Name} container)
+    public static void Decode(ReadOnlySpan<byte> data, out {decl.TypeReferenceName} container)
     {{
         container = new();
 {Whitespace}
         {DecodeAndAssign(decl, variables[0], "data")}
     }}
 {Whitespace}
-    {SequenceDecodeMethod(decl.Name)}
+    {SequenceDecodeMethod(decl.TypeReferenceName)}
 {Whitespace}
-    public static void Decode(ReadOnlySpan<byte> data, out {decl.Name}[] container)
+    public static void Decode(ReadOnlySpan<byte> data, out {decl.TypeReferenceName}[] container)
     {{
         if(data.Length is 0)
         {{
@@ -839,18 +892,18 @@ using SszLib = Nethermind.Serialization.Ssz.Ssz;
             return;
         }}
 {Whitespace}
-        {(decl.IsVariable ? $@"ValidateSszMinimumLength(data.Length, {SszType.PointerLength}, ""{decl.Name}[]"");
+        {(decl.IsVariable ? $@"ValidateSszMinimumLength(data.Length, {SszType.PointerLength}, ""{decl.TypeReferenceName}[]"");
         SszLib.Decode(data.Slice(0, 4), out int firstOffset);
-        int length = ValidateSszVariableItemCount(data, firstOffset, ""{decl.Name}[]"")" : $@"ValidateSszMultipleOf(data.Length, {decl.StaticLength}, ""{decl.Name}[]"");
+        int length = ValidateSszVariableItemCount(data, firstOffset, ""{decl.TypeReferenceName}[]"")" : $@"ValidateSszMultipleOf(data.Length, {decl.StaticLength}, ""{decl.TypeReferenceName}[]"");
         int length = data.Length / {decl.StaticLength}")};
-        container = new {decl.Name}[length];
+        container = new {decl.TypeReferenceName}[length];
 {Whitespace}
         {(decl.IsVariable ? @$"int index = 0;
         int offset = firstOffset;
         for(int nextOffsetIndex = {SszType.PointerLength}; index < length - 1; index++, nextOffsetIndex += {SszType.PointerLength})
         {{
             SszLib.Decode(data.Slice(nextOffsetIndex, {SszType.PointerLength}), out int nextOffset);
-            ValidateSszNextOffset(data, offset, nextOffset, ""{decl.Name}[]"");
+            ValidateSszNextOffset(data, offset, nextOffset, ""{decl.TypeReferenceName}[]"");
             Decode(data.Slice(offset, nextOffset - offset), out container[index]);
             offset = nextOffset;
         }}
@@ -863,7 +916,7 @@ using SszLib = Nethermind.Serialization.Ssz.Ssz;
         }}")}
     }}
 {Whitespace}
-    public static void Merkleize({decl.Name}{(decl.IsStruct ? "" : "?")} container, out UInt256 root)
+    public static void Merkleize({decl.TypeReferenceName}{(decl.IsStruct ? "" : "?")} container, out UInt256 root)
     {{
         {(decl.IsStruct ? "" : @"if(container is null)
         {
@@ -874,7 +927,7 @@ using SszLib = Nethermind.Serialization.Ssz.Ssz;
         {MerkleizeRootStatement(variables[0], $"container.{variables[0].Name}", "root")}
     }}
 {Whitespace}
-    public static void MerkleizeVector(ReadOnlySpan<{decl.Name}> container, out UInt256 root)
+    public static void MerkleizeVector(ReadOnlySpan<{decl.TypeReferenceName}> container, out UInt256 root)
     {{
         int count = container.Length;
         UInt256[] subRoots = ArrayPool<UInt256>.Shared.Rent(count);
@@ -893,7 +946,7 @@ using SszLib = Nethermind.Serialization.Ssz.Ssz;
         }}
     }}
 {Whitespace}
-    public static void MerkleizeList(ReadOnlySpan<{decl.Name}> container, ulong limit, out UInt256 root)
+    public static void MerkleizeList(ReadOnlySpan<{decl.TypeReferenceName}> container, ulong limit, out UInt256 root)
     {{
         int count = container.Length;
         UInt256[] subRoots = ArrayPool<UInt256>.Shared.Rent(count);
@@ -913,7 +966,7 @@ using SszLib = Nethermind.Serialization.Ssz.Ssz;
         Merkle.MixIn(ref root, count);
     }}
 {Whitespace}
-    public static void MerkleizeProgressiveList(ReadOnlySpan<{decl.Name}> container, out UInt256 root)
+    public static void MerkleizeProgressiveList(ReadOnlySpan<{decl.TypeReferenceName}> container, out UInt256 root)
     {{
         int count = container.Length;
         UInt256[] subRoots = ArrayPool<UInt256>.Shared.Rent(count);
@@ -942,7 +995,7 @@ using System.Linq;
 using System.Runtime.InteropServices;
 using Nethermind.Serialization.Ssz;
 using static Nethermind.Serialization.SszCodecHelpers;
-{UsingsBlock(foundTypes)}
+{UsingsBlock(decl, foundTypes)}
 {Whitespace}
 using SszLib = Nethermind.Serialization.Ssz.Ssz;
 {Whitespace}
@@ -950,7 +1003,7 @@ using SszLib = Nethermind.Serialization.Ssz.Ssz;
 {Whitespace}
 {PartialTypeDeclaration(decl)}
 {{
-    public static int GetLength({decl.Name}{(decl.IsStruct ? "" : "?")} container)
+    public static int GetLength({decl.TypeReferenceName}{(decl.IsStruct ? "" : "?")} container)
     {{
         {(decl.IsStruct ? "" : @"if(container is null)
         {
@@ -963,10 +1016,10 @@ using SszLib = Nethermind.Serialization.Ssz.Ssz;
 {Shift(4, variables.Select(m => $"+ {DynamicLength(decl, m)}"), ";")}
     }}
 {Whitespace}
-    public static int GetLength(ReadOnlySpan<{decl.Name}> container)
+    public static int GetLength(ReadOnlySpan<{decl.TypeReferenceName}> container)
     {{
         {(decl.IsVariable ? @$"int length = container.Length * {SszType.PointerLength};
-        foreach({decl.Name} item in container)
+        foreach({decl.TypeReferenceName} item in container)
         {{
             length += GetLength(item);
         }}
@@ -974,7 +1027,7 @@ using SszLib = Nethermind.Serialization.Ssz.Ssz;
         return length;" : $"return container.Length * {(decl.StaticLength)};")}
     }}
 {Whitespace}
-    public static byte[] Encode({decl.Name}{(decl.IsStruct ? "" : "?")} container)
+    public static byte[] Encode({decl.TypeReferenceName}{(decl.IsStruct ? "" : "?")} container)
     {{
         {(decl.IsStruct ? "" : @"if(container is null)
         {
@@ -985,7 +1038,7 @@ using SszLib = Nethermind.Serialization.Ssz.Ssz;
         return buf;
     }}
 {Whitespace}
-    public static void Encode(Span<byte> data, {decl.Name}{(decl.IsStruct ? "" : "?")} container)
+    public static void Encode(Span<byte> data, {decl.TypeReferenceName}{(decl.IsStruct ? "" : "?")} container)
     {{
         {(decl.IsStruct ? "" : @"if(container is null)
         {
@@ -1001,20 +1054,20 @@ using SszLib = Nethermind.Serialization.Ssz.Ssz;
 {Shift(2, variables.Select((m, i) => (RequiresNullGuard(m) ? $"if (container.{m.Name} is not null) " : "") + EncodeStatement($"data.Slice(offset{i + 1}, {(i + 1 == variables.Count ? "data.Length" : $"offset{i + 2}")} - offset{i + 1})", m, $"container.{m.Name}")))}
     }}
 {Whitespace}
-    public static byte[] Encode(ReadOnlySpan<{decl.Name}> items)
+    public static byte[] Encode(ReadOnlySpan<{decl.TypeReferenceName}> items)
     {{
         byte[] buf = new byte[GetLength(items)];
         Encode(buf, items);
         return buf;
     }}
 {Whitespace}
-    public static void Encode(Span<byte> data, ReadOnlySpan<{decl.Name}> items)
+    public static void Encode(Span<byte> data, ReadOnlySpan<{decl.TypeReferenceName}> items)
     {{
 {Whitespace}
         {(decl.IsVariable ? @$"int offset = items.Length * {(SszType.PointerLength)};
         int itemOffset = 0;
 {Whitespace}
-        foreach({decl.Name} item in items)
+        foreach({decl.TypeReferenceName} item in items)
         {{
             SszLib.Encode(data.Slice(itemOffset, {(SszType.PointerLength)}), offset);
             itemOffset += {(SszType.PointerLength)};
@@ -1022,7 +1075,7 @@ using SszLib = Nethermind.Serialization.Ssz.Ssz;
             Encode(data.Slice(offset, length), item);
             offset += length;
         }}" : @$"int offset = 0;
-        foreach({decl.Name} item in items)
+        foreach({decl.TypeReferenceName} item in items)
         {{
             int length = GetLength(item);
             Encode(data.Slice(offset, length), item);
@@ -1030,21 +1083,21 @@ using SszLib = Nethermind.Serialization.Ssz.Ssz;
         }}")}
     }}
 {Whitespace}
-    public static void Decode(ReadOnlySpan<byte> data, out {decl.Name} container)
+    public static void Decode(ReadOnlySpan<byte> data, out {decl.TypeReferenceName} container)
     {{
-        {(decl.IsVariable ? $"ValidateSszMinimumLength(data.Length, {decl.StaticLength}, nameof({decl.Name}));" : $"ValidateSszExactLength(data.Length, {decl.StaticLength}, nameof({decl.Name}));")}
+        {(decl.IsVariable ? $"ValidateSszMinimumLength(data.Length, {decl.StaticLength}, nameof({decl.TypeReferenceName}));" : $"ValidateSszExactLength(data.Length, {decl.StaticLength}, nameof({decl.TypeReferenceName}));")}
         container = new();
 {Whitespace}
 {Shift(2, BuildStaticDecodeLines(decl))}
 {Whitespace}
-        {(variables.Any() ? $"ValidateSszDynamicOffsets(data, {decl.StaticLength}, nameof({decl.Name}), [{string.Join(", ", Enumerable.Range(1, variables.Count).Select(i => $"offset{i}"))}]);" : string.Empty)}
+        {(variables.Any() ? $"ValidateSszDynamicOffsets(data, {decl.StaticLength}, nameof({decl.TypeReferenceName}), [{string.Join(", ", Enumerable.Range(1, variables.Count).Select(i => $"offset{i}"))}]);" : string.Empty)}
 {Whitespace}
 {Shift(2, variables.Select((m, i) => DecodeAndAssign(decl, m, $"data.Slice(offset{i + 1}, {(i + 1 == variables.Count ? "data.Length" : $"offset{i + 2}")} - offset{i + 1})")))}
     }}
 {Whitespace}
-    {SequenceDecodeMethod(decl.Name)}
+    {SequenceDecodeMethod(decl.TypeReferenceName)}
 {Whitespace}
-    public static void Decode(ReadOnlySpan<byte> data, out {decl.Name}[] container)
+    public static void Decode(ReadOnlySpan<byte> data, out {decl.TypeReferenceName}[] container)
     {{
         if(data.Length is 0)
         {{
@@ -1052,18 +1105,18 @@ using SszLib = Nethermind.Serialization.Ssz.Ssz;
             return;
         }}
 {Whitespace}
-        {(decl.IsVariable ? $@"ValidateSszMinimumLength(data.Length, {SszType.PointerLength}, ""{decl.Name}[]"");
+        {(decl.IsVariable ? $@"ValidateSszMinimumLength(data.Length, {SszType.PointerLength}, ""{decl.TypeReferenceName}[]"");
         SszLib.Decode(data.Slice(0, 4), out int firstOffset);
-        int length = ValidateSszVariableItemCount(data, firstOffset, ""{decl.Name}[]"")" : $@"ValidateSszMultipleOf(data.Length, {decl.StaticLength}, ""{decl.Name}[]"");
+        int length = ValidateSszVariableItemCount(data, firstOffset, ""{decl.TypeReferenceName}[]"")" : $@"ValidateSszMultipleOf(data.Length, {decl.StaticLength}, ""{decl.TypeReferenceName}[]"");
         int length = data.Length / {decl.StaticLength}")};
-        container = new {decl.Name}[length];
+        container = new {decl.TypeReferenceName}[length];
 {Whitespace}
         {(decl.IsVariable ? @$"int index = 0;
         int offset = firstOffset;
         for(int nextOffsetIndex = {SszType.PointerLength}; index < length - 1; index++, nextOffsetIndex += {SszType.PointerLength})
         {{
             SszLib.Decode(data.Slice(nextOffsetIndex, {SszType.PointerLength}), out int nextOffset);
-            ValidateSszNextOffset(data, offset, nextOffset, ""{decl.Name}[]"");
+            ValidateSszNextOffset(data, offset, nextOffset, ""{decl.TypeReferenceName}[]"");
             Decode(data.Slice(offset, nextOffset - offset), out container[index]);
             offset = nextOffset;
         }}
@@ -1076,7 +1129,7 @@ using SszLib = Nethermind.Serialization.Ssz.Ssz;
         }}")}
     }}
 {Whitespace}
-    public static void Merkleize({decl.Name}{(decl.IsStruct ? "" : "?")} container, out UInt256 root)
+    public static void Merkleize({decl.TypeReferenceName}{(decl.IsStruct ? "" : "?")} container, out UInt256 root)
     {{
         {(decl.IsStruct ? "" : @"if(container is null)
         {
@@ -1088,7 +1141,7 @@ using SszLib = Nethermind.Serialization.Ssz.Ssz;
 {Shift(2, containerMerkleizeBody.Split('\n'))}
     }}
 {Whitespace}
-    public static void MerkleizeVector(ReadOnlySpan<{decl.Name}> container, out UInt256 root)
+    public static void MerkleizeVector(ReadOnlySpan<{decl.TypeReferenceName}> container, out UInt256 root)
     {{
         int count = container.Length;
         UInt256[] subRoots = ArrayPool<UInt256>.Shared.Rent(count);
@@ -1107,7 +1160,7 @@ using SszLib = Nethermind.Serialization.Ssz.Ssz;
         }}
     }}
 {Whitespace}
-    public static void MerkleizeList(ReadOnlySpan<{decl.Name}> container, ulong limit, out UInt256 root)
+    public static void MerkleizeList(ReadOnlySpan<{decl.TypeReferenceName}> container, ulong limit, out UInt256 root)
     {{
         int count = container.Length;
         UInt256[] subRoots = ArrayPool<UInt256>.Shared.Rent(count);
@@ -1127,7 +1180,7 @@ using SszLib = Nethermind.Serialization.Ssz.Ssz;
         Merkle.MixIn(ref root, count);
     }}
 {Whitespace}
-    public static void MerkleizeProgressiveList(ReadOnlySpan<{decl.Name}> container, out UInt256 root)
+    public static void MerkleizeProgressiveList(ReadOnlySpan<{decl.TypeReferenceName}> container, out UInt256 root)
     {{
         int count = container.Length;
         UInt256[] subRoots = ArrayPool<UInt256>.Shared.Rent(count);
@@ -1156,7 +1209,7 @@ using System.Linq;
 using System.Runtime.InteropServices;
 using Nethermind.Serialization.Ssz;
 using static Nethermind.Serialization.SszCodecHelpers;
-{UsingsBlock(foundTypes)}
+{UsingsBlock(decl, foundTypes)}
 {Whitespace}
 using SszLib = Nethermind.Serialization.Ssz.Ssz;
 {Whitespace}
@@ -1164,7 +1217,7 @@ using SszLib = Nethermind.Serialization.Ssz.Ssz;
 {Whitespace}
 {PartialTypeDeclaration(decl)}
 {{
-    public static int GetLength({decl.Name}{(decl.IsStruct ? "" : "?")} container)
+    public static int GetLength({decl.TypeReferenceName}{(decl.IsStruct ? "" : "?")} container)
     {{
         {(decl.IsStruct ? "" : @"if(container is null)
         {
@@ -1176,18 +1229,18 @@ using SszLib = Nethermind.Serialization.Ssz.Ssz;
     string validation = ValidationStatement(decl, m, $"container.{m.Name}");
     string length = m.IsVariable ? DynamicLength(decl, m) : m.StaticLength.ToString();
     return string.IsNullOrEmpty(validation)
-        ? $"case {decl.Selector!.Type.Name}.{m.Name}: return 1 + {length};"
-        : $"case {decl.Selector!.Type.Name}.{m.Name}: {validation} return 1 + {length};";
+        ? $"case {decl.Selector!.Type.StaticMemberAccess}.{m.Name}: return 1 + {length};"
+        : $"case {decl.Selector!.Type.StaticMemberAccess}.{m.Name}: {validation} return 1 + {length};";
 }))}
             default:
-                return ThrowInvalidSszData<int>(nameof({decl.Name}), $""unsupported union selector {{(byte)container.Selector}}."");
+                return ThrowInvalidSszData<int>(nameof({decl.TypeReferenceName}), $""unsupported union selector {{(byte)container.Selector}}."");
         }}
     }}
 {Whitespace}
-    public static int GetLength(ReadOnlySpan<{decl.Name}> container)
+    public static int GetLength(ReadOnlySpan<{decl.TypeReferenceName}> container)
     {{
         int length = container.Length * {SszType.PointerLength};
-        foreach({decl.Name} item in container)
+        foreach({decl.TypeReferenceName} item in container)
         {{
             length += GetLength(item);
         }}
@@ -1195,7 +1248,7 @@ using SszLib = Nethermind.Serialization.Ssz.Ssz;
         return length;
     }}
 {Whitespace}
-    public static byte[] Encode({decl.Name}{(decl.IsStruct ? "" : "?")} container)
+    public static byte[] Encode({decl.TypeReferenceName}{(decl.IsStruct ? "" : "?")} container)
     {{
         {(decl.IsStruct ? "" : @"if(container is null)
         {
@@ -1206,35 +1259,35 @@ using SszLib = Nethermind.Serialization.Ssz.Ssz;
         return buf;
     }}
 {Whitespace}
-    public static void Encode(Span<byte> data, {decl.Name}{(decl.IsStruct ? "" : "?")} container)
+    public static void Encode(Span<byte> data, {decl.TypeReferenceName}{(decl.IsStruct ? "" : "?")} container)
     {{
         {(decl.IsStruct ? "" : @"if(container is null)
         {
             return;
         }")}
-        ValidateSszExactLength(data.Length, GetLength(container), nameof({decl.Name}));
+        ValidateSszExactLength(data.Length, GetLength(container), nameof({decl.TypeReferenceName}));
         SszLib.Encode(data.Slice(0, 1), (byte)container.Selector);
 {Whitespace}
         switch(container.Selector) {{
-{Shift(3, decl.CompatibleUnionMembers!.Select(m => $"case {decl.Selector!.Type.Name}.{m.Name}: {EncodeStatement("data.Slice(1)", m, $"container.{m.Name}")} break;"))}
+{Shift(3, decl.CompatibleUnionMembers!.Select(m => $"case {decl.Selector!.Type.StaticMemberAccess}.{m.Name}: {EncodeStatement("data.Slice(1)", m, $"container.{m.Name}")} break;"))}
             default:
-                ThrowInvalidSszData(nameof({decl.Name}), $""unsupported union selector {{(byte)container.Selector}}."");
+                ThrowInvalidSszData(nameof({decl.TypeReferenceName}), $""unsupported union selector {{(byte)container.Selector}}."");
                 break;
         }};
     }}
 {Whitespace}
-    public static byte[] Encode(ReadOnlySpan<{decl.Name}> items)
+    public static byte[] Encode(ReadOnlySpan<{decl.TypeReferenceName}> items)
     {{
         byte[] buf = new byte[GetLength(items)];
         Encode(buf, items);
         return buf;
     }}
 {Whitespace}
-    public static void Encode(Span<byte> data, ReadOnlySpan<{decl.Name}> items)
+    public static void Encode(Span<byte> data, ReadOnlySpan<{decl.TypeReferenceName}> items)
     {{
         int offset = items.Length * {(SszType.PointerLength)};
         int itemOffset = 0;
-        foreach({decl.Name} item in items)
+        foreach({decl.TypeReferenceName} item in items)
         {{
             SszLib.Encode(data.Slice(itemOffset, {(SszType.PointerLength)}), offset);
             itemOffset += {(SszType.PointerLength)};
@@ -1244,7 +1297,7 @@ using SszLib = Nethermind.Serialization.Ssz.Ssz;
         }}
     }}
 {Whitespace}
-    public static void Decode(ReadOnlySpan<byte> data, out {decl.Name}[] container)
+    public static void Decode(ReadOnlySpan<byte> data, out {decl.TypeReferenceName}[] container)
     {{
         if(data.Length is 0)
         {{
@@ -1252,17 +1305,17 @@ using SszLib = Nethermind.Serialization.Ssz.Ssz;
             return;
         }}
 {Whitespace}
-        ValidateSszMinimumLength(data.Length, {SszType.PointerLength}, ""{decl.Name}[]"");
+        ValidateSszMinimumLength(data.Length, {SszType.PointerLength}, ""{decl.TypeReferenceName}[]"");
         SszLib.Decode(data.Slice(0, 4), out int firstOffset);
-        int length = ValidateSszVariableItemCount(data, firstOffset, ""{decl.Name}[]"");
-        container = new {decl.Name}[length];
+        int length = ValidateSszVariableItemCount(data, firstOffset, ""{decl.TypeReferenceName}[]"");
+        container = new {decl.TypeReferenceName}[length];
 {Whitespace}
         int index = 0;
         int offset = firstOffset;
         for(int nextOffsetIndex = {SszType.PointerLength}; index < length - 1; index++, nextOffsetIndex += {SszType.PointerLength})
         {{
             SszLib.Decode(data.Slice(nextOffsetIndex, {SszType.PointerLength}), out int nextOffset);
-            ValidateSszNextOffset(data, offset, nextOffset, ""{decl.Name}[]"");
+            ValidateSszNextOffset(data, offset, nextOffset, ""{decl.TypeReferenceName}[]"");
             Decode(data.Slice(offset, nextOffset - offset), out container[index]);
             offset = nextOffset;
         }}
@@ -1270,23 +1323,23 @@ using SszLib = Nethermind.Serialization.Ssz.Ssz;
         Decode(data.Slice(offset), out container[index]);
     }}
 {Whitespace}
-    public static void Decode(ReadOnlySpan<byte> data, out {decl.Name} container)
+    public static void Decode(ReadOnlySpan<byte> data, out {decl.TypeReferenceName} container)
     {{
         container = new();
-        ValidateSszMinimumLength(data.Length, 1, nameof({decl.Name}));
-        container.Selector = ({decl.Selector!.Type.Name})data[0];
+        ValidateSszMinimumLength(data.Length, 1, nameof({decl.TypeReferenceName}));
+        container.Selector = ({decl.Selector!.Type.StaticMemberAccess})data[0];
         switch(container.Selector) {{
-{Shift(3, decl.CompatibleUnionMembers!.Select(m => $"case {decl.Selector!.Type.Name}.{m.Name}: {DecodeAndAssign(decl, m, "data.Slice(1)")} break;"))}
+{Shift(3, decl.CompatibleUnionMembers!.Select(m => $"case {decl.Selector!.Type.StaticMemberAccess}.{m.Name}: {DecodeAndAssign(decl, m, "data.Slice(1)")} break;"))}
             default:
-                ThrowInvalidSszData(nameof({decl.Name}), $""unsupported union selector {{data[0]}}."");
+                ThrowInvalidSszData(nameof({decl.TypeReferenceName}), $""unsupported union selector {{data[0]}}."");
                 break;
         }};
-        ValidateSszExactLength(data.Length, GetLength(container), nameof({decl.Name}));
+        ValidateSszExactLength(data.Length, GetLength(container), nameof({decl.TypeReferenceName}));
     }}
 {Whitespace}
-    {SequenceDecodeMethod(decl.Name)}
+    {SequenceDecodeMethod(decl.TypeReferenceName)}
 {Whitespace}
-    public static void Merkleize({decl.Name}{(decl.IsStruct ? "" : "?")} container, out UInt256 root)
+    public static void Merkleize({decl.TypeReferenceName}{(decl.IsStruct ? "" : "?")} container, out UInt256 root)
     {{
         {(decl.IsStruct ? "" : @"if(container is null)
         {
@@ -1299,17 +1352,17 @@ using SszLib = Nethermind.Serialization.Ssz.Ssz;
     string validation = ValidationStatement(decl, m, $"container.{m.Name}");
     string merkleize = MerkleizeRootStatement(m, $"container.{m.Name}", "root");
     return string.IsNullOrEmpty(validation)
-        ? $"case {decl.Selector!.Type.Name}.{m.Name}: {merkleize} break;"
-        : $"case {decl.Selector!.Type.Name}.{m.Name}: {validation} {merkleize} break;";
+        ? $"case {decl.Selector!.Type.StaticMemberAccess}.{m.Name}: {merkleize} break;"
+        : $"case {decl.Selector!.Type.StaticMemberAccess}.{m.Name}: {validation} {merkleize} break;";
 }))}
             default:
-                root = ThrowInvalidSszData<UInt256>(nameof({decl.Name}), $""unsupported union selector {{(byte)container.Selector}}."");
+                root = ThrowInvalidSszData<UInt256>(nameof({decl.TypeReferenceName}), $""unsupported union selector {{(byte)container.Selector}}."");
                 break;
         }};
         Merkle.MixIn(ref root, (byte)container.Selector);
     }}
 {Whitespace}
-    public static void MerkleizeVector(ReadOnlySpan<{decl.Name}> container, out UInt256 root)
+    public static void MerkleizeVector(ReadOnlySpan<{decl.TypeReferenceName}> container, out UInt256 root)
     {{
         int count = container.Length;
         UInt256[] subRoots = ArrayPool<UInt256>.Shared.Rent(count);
@@ -1328,7 +1381,7 @@ using SszLib = Nethermind.Serialization.Ssz.Ssz;
         }}
     }}
 {Whitespace}
-    public static void MerkleizeList(ReadOnlySpan<{decl.Name}> container, ulong limit, out UInt256 root)
+    public static void MerkleizeList(ReadOnlySpan<{decl.TypeReferenceName}> container, ulong limit, out UInt256 root)
     {{
         int count = container.Length;
         UInt256[] subRoots = ArrayPool<UInt256>.Shared.Rent(count);
@@ -1348,7 +1401,7 @@ using SszLib = Nethermind.Serialization.Ssz.Ssz;
         Merkle.MixIn(ref root, count);
     }}
 {Whitespace}
-    public static void MerkleizeProgressiveList(ReadOnlySpan<{decl.Name}> container, out UInt256 root)
+    public static void MerkleizeProgressiveList(ReadOnlySpan<{decl.TypeReferenceName}> container, out UInt256 root)
     {{
         int count = container.Length;
         UInt256[] subRoots = ArrayPool<UInt256>.Shared.Rent(count);
