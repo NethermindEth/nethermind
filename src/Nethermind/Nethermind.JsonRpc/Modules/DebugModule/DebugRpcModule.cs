@@ -45,6 +45,7 @@ public class DebugRpcModule(
     : IDebugRpcModule
 {
     private readonly ILogger _logger = logManager.GetClassLogger<DebugRpcModule>();
+    private static readonly TxDecoder TxRlpDecoder = TxDecoder.Instance;
     private readonly BlockDecoder _blockDecoder = new();
     private readonly ulong _secondsPerSlot = blocksConfig.SecondsPerSlot;
 
@@ -499,7 +500,7 @@ public class DebugRpcModule(
 
         RlpBehaviors encodingSettings = RlpBehaviors.SkipTypedWrapping | (transaction.IsInMempoolForm() ? RlpBehaviors.InMempoolForm : RlpBehaviors.None);
 
-        using NettyRlpStream stream = TxDecoder.Instance.EncodeToNewNettyStream(transaction, encodingSettings);
+        using NettyRlpStream stream = TxRlpDecoder.EncodeToNewNettyStream(transaction, encodingSettings);
         return ResultWrapper<string?>.Success(stream.AsSpan().ToHexString(true));
     }
 
@@ -831,7 +832,8 @@ public class DebugRpcModule(
 
         try
         {
-            block = _blockDecoder.Decode(blockRlp.Bytes);
+            Rlp.ValueDecoderContext context = blockRlp.Bytes.AsRlpValueContext();
+            block = _blockDecoder.Decode(ref context);
             if (block is null)
             {
                 error = GetRlpDecodingFailureResult<TResult>(blockRlp);

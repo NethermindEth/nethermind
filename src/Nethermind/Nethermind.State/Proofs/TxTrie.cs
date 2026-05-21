@@ -33,7 +33,7 @@ public sealed class TxTrie : PatriciaTrie<Transaction>
             CappedArray<byte> buffer = (rlp.Length > 0) ?
                 CopyExistingRlp(rlp.Span, _bufferPool) :
                 _txDecoder.EncodeToCappedArray(transaction, rlpBehaviors: RlpBehaviors.SkipTypedWrapping, bufferPool: _bufferPool);
-            CappedArray<byte> keyBuffer = key.EncodeToCappedArray(_bufferPool);
+            CappedArray<byte> keyBuffer = Rlp.EncodeToCappedArray(key, _bufferPool);
             key++;
 
             Set(keyBuffer.AsSpan(), buffer);
@@ -51,7 +51,7 @@ public sealed class TxTrie : PatriciaTrie<Transaction>
     {
         for (int key = 0; key < list.Length; key++)
         {
-            CappedArray<byte> keyBuffer = key.EncodeToCappedArray(_bufferPool);
+            CappedArray<byte> keyBuffer = Rlp.EncodeToCappedArray(key, _bufferPool);
             Set(keyBuffer.AsSpan(), list[key]);
         }
     }

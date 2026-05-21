@@ -12,8 +12,6 @@ namespace Nethermind.Core.Test.Builders
 {
     public class TrieBuilder : BuilderBase<PatriciaTree>
     {
-        private readonly AccountDecoder _accountDecoder = new();
-
         public TrieBuilder(INodeStorage db) => TestObjectInternal = new PatriciaTree(new RawScopedTrieStore(db), Keccak.EmptyTreeHash, true, LimboLogs.Instance);
 
         public TrieBuilder WithAccountsByIndex(int start, int count)
@@ -53,7 +51,7 @@ namespace Nethermind.Core.Test.Builders
         private byte[] GenerateIndexedAccountRlp(int index)
         {
             Account account = GenerateIndexedAccount(index);
-            byte[] value = _accountDecoder.Encode(account).Bytes;
+            byte[] value = Rlp.Encode(account).Bytes;
             return value;
         }
 

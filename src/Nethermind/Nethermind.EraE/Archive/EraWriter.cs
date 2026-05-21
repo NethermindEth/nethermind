@@ -37,7 +37,7 @@ public sealed class EraWriter : IDisposable
     private const int IndexFieldSize = 8; // sizeof(long) — each ComponentIndex field is a little-endian int64
 
     private readonly HeaderDecoder _headerDecoder = new();
-    private readonly BlockBodyDecoder _blockBodyDecoder = new();
+    private readonly BlockBodyDecoder _blockBodyDecoder = BlockBodyDecoder.Instance;
     private readonly E2StoreWriter _e2StoreWriter;
     private readonly ISpecProvider _specProvider;
     private readonly IBeaconRootsProvider? _beaconRootsProvider;

@@ -98,17 +98,17 @@ public partial class BlockAccessListManager
 
         CheckInitialized();
         MergeAndReturnBal(uint.MaxValue);
-        block.GeneratedBlockAccessList = GeneratedBlockAccessList;
 
-        if (ParallelExecutionEnabled)
+        if (VerifyOnly)
         {
             // IncrementalValidation only covered indices 0..txCount; the post-execution row
             // (txCount + 1) was just merged but not yet compared.
             ValidateBlockAccessList(block, (uint)(block.Transactions.Length + 1));
-            ValidateStructuralEquivalence(block, GeneratedBlockAccessList);
+            ValidateStructuralEquivalence(block);
             return;
         }
 
+        block.GeneratedBlockAccessList = GeneratedBlockAccessList;
         block.EncodedBlockAccessList = BlockAccessListDecoder.EncodeToBytes(GeneratedBlockAccessList);
         block.Header.BlockAccessListHash = new(ValueKeccak.Compute(block.EncodedBlockAccessList).Bytes);
     }
