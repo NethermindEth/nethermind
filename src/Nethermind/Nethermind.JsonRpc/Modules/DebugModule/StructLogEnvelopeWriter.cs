@@ -67,7 +67,8 @@ internal static class StructLogEnvelopeWriter
         writer.WritePropertyName("structLogs"u8);
         writer.WriteStartArray();
         writer.WriteEndArray();
-        WriteFooter(writer, trace: null, errorMessage, ErrorCodes.InvalidInput, fallbackGas: gasLimit);
+        string? formattedMessage = errorMessage is null ? null : $"tracing failed: {errorMessage}";
+        WriteFooter(writer, trace: null, formattedMessage, ErrorCodes.InvalidInput, fallbackGas: gasLimit);
     }
 
     internal static int ResolveErrorCode(Exception failure)
@@ -99,6 +100,7 @@ internal static class StructLogEnvelopeWriter
             ErrorType.NonceOverflow => ReplacePrefix(detail, "nonce overflow", "nonce has max value"),
             ErrorType.MinerPremiumNegative => ReplacePrefix(detail, "miner premium is negative", "max priority fee per gas higher than max fee per gas"),
             ErrorType.TransactionSizeOverMaxInitCodeSize => ReplacePrefix(detail, "EIP-3860 - transaction size over max init code size", "max initcode size exceeded"),
+            ErrorType.BlockGasLimitExceeded => ReplacePrefix(detail, "Block gas limit exceeded", "exceeds block gas limit"),
             _ => detail,
         };
     }

@@ -27,7 +27,7 @@ public partial class DebugRpcModuleTests
         using CancellationTokenSource requestCts = new();
         CancellationTokenSource timeoutCts = new();
 
-        GethLikeTxTraceStreamingSingleResult result = new(
+        using GethLikeTxTraceStreamingSingleResult result = new(
             (writer, _, ct) =>
             {
                 writer.WriteStartObject();
@@ -121,7 +121,7 @@ public partial class DebugRpcModuleTests
         using CancellationTokenSource requestCts = new();
         CancellationTokenSource timeoutCts = new();
 
-        GethLikeTxTraceStreamingBlockResult result = new(
+        using GethLikeTxTraceStreamingBlockResult result = new(
             (writer, _, ct) =>
             {
                 writer.WriteStartObject();
