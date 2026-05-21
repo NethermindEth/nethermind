@@ -3,6 +3,7 @@
 
 using System;
 using System.Buffers;
+using System.Buffers.Text;
 using System.Text;
 using System.Text.Json;
 
@@ -282,16 +283,43 @@ internal static class EthStatsMessageParser
 
     private static bool TryReadInt64(ref Utf8JsonReader reader, out long value)
     {
+        value = 0;
+
         switch (reader.TokenType)
         {
             case JsonTokenType.Number:
                 return reader.TryGetInt64(out value);
             case JsonTokenType.String:
-                value = 0;
-                return long.TryParse(reader.GetString(), out value);
+                return TryParseInt64String(ref reader, out value);
             default:
-                value = 0;
                 return false;
         }
+    }
+
+    private static bool TryParseInt64String(ref Utf8JsonReader reader, out long value)
+    {
+        // A signed 64-bit integer is at most 20 ASCII bytes ("-9223372036854775808"); anything
+        // longer cannot be a valid long, so we can reject without allocating.
+        const int maxInt64Digits = 20;
+        Span<byte> sequenceBuffer = stackalloc byte[maxInt64Digits];
+        ReadOnlySpan<byte> raw;
+
+        if (reader.HasValueSequence)
+        {
+            if (reader.ValueSequence.Length > maxInt64Digits)
+            {
+                value = 0;
+                return false;
+            }
+
+            reader.ValueSequence.CopyTo(sequenceBuffer);
+            raw = sequenceBuffer[..(int)reader.ValueSequence.Length];
+        }
+        else
+        {
+            raw = reader.ValueSpan;
+        }
+
+        return Utf8Parser.TryParse(raw, out value, out int consumed) && consumed == raw.Length;
     }
 }
