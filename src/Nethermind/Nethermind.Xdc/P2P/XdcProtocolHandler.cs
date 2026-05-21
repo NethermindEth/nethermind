@@ -10,10 +10,7 @@ using Nethermind.Logging;
 using Nethermind.Network;
 using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.ProtocolHandlers;
-using Nethermind.Network.P2P.Subprotocols.Eth.V62;
-using Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V63;
-using Nethermind.Serialization.Rlp;
 using Nethermind.Network.Rlpx;
 using Nethermind.Stats;
 using Nethermind.Synchronization;
@@ -89,28 +86,10 @@ internal class XdcProtocolHandler(
                 }
             default:
                 {
-                    try
-                    {
-                        base.HandleMessageCore(message);
-                    }
-                    catch (RlpLimitException) when (packetType == Eth62MessageCode.Transactions)
-                    {
-                        // already logged by HandleRlpLimitException — swallow so the peer stays connected
-                    }
+                    base.HandleMessageCore(message);
                     break;
                 }
         }
-    }
-
-    protected override void HandleRlpLimitException<T>(int dataLength, RlpLimitException e)
-    {
-        if (typeof(T) == typeof(TransactionsMessage))
-        {
-            if (Logger.IsDebug) Logger.Debug($"Ignoring RLP limit exception for TransactionsMessage from XDC peer {Session.RemoteNodeId}: {e.Message}");
-            ReportIn($"{nameof(TransactionsMessage)} - Deserialization limit exception (ignored)", dataLength);
-            return;
-        }
-        base.HandleRlpLimitException<T>(dataLength, e);
     }
 
     private void Handle(VoteMsg voteMsg) => _ = votesManager.OnReceiveVote(voteMsg.Vote);
