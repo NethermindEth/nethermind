@@ -97,6 +97,7 @@ public partial class EthRpcModule(
     protected readonly IProtocolsManager _protocolsManager = protocolsManager ?? throw new ArgumentNullException(nameof(protocolsManager));
     protected readonly ulong _secondsPerSlot = secondsPerSlot ?? throw new ArgumentNullException(nameof(secondsPerSlot));
     private readonly HeadBlockSignal _headBlockSignal = headBlockSignal ?? throw new ArgumentNullException(nameof(headBlockSignal));
+    private ResultWrapper<ulong>? _chainIdResponse;
     readonly JsonSerializerOptions UnchangedDictionaryKeyOptions = new(EthereumJsonSerializer.JsonOptionsIndented) { DictionaryKeyPolicy = null };
 
     public ResultWrapper<string> eth_protocolVersion()
@@ -953,15 +954,41 @@ public partial class EthRpcModule(
 
     public ResultWrapper<ulong> eth_chainId()
     {
+        ResultWrapper<ulong>? cachedResponse = Volatile.Read(ref _chainIdResponse);
+        if (cachedResponse is not null)
+        {
+            return cachedResponse;
+        }
+
         try
         {
             ulong chainId = _blockchainBridge.GetChainId();
-            return ResultWrapper<ulong>.Success(chainId);
+            CachedChainIdResponse response = new(chainId);
+            return Interlocked.CompareExchange(ref _chainIdResponse, response, null) ?? response;
         }
         catch (Exception ex)
         {
-            return ResultWrapper<ulong>.Fail(ex.Message, ErrorCodes.InternalError, 0L);
+            return ResultWrapper<ulong>.Fail(ex.Message, ErrorCodes.InternalError, 0ul);
         }
+    }
+
+    private sealed class CachedChainIdResponse : ResultWrapper<ulong>, IJsonRpcRawResponse
+    {
+        private readonly byte[] _rawResult;
+
+        public CachedChainIdResponse(ulong chainId)
+        {
+            Data = chainId;
+            string hexChainId = chainId.ToHexString(skipLeadingZeros: true);
+            byte[] rawResult = GC.AllocateUninitializedArray<byte>(hexChainId.Length + 2);
+            rawResult[0] = (byte)'"';
+            Encoding.ASCII.GetBytes(hexChainId, rawResult.AsSpan(1));
+            rawResult[^1] = (byte)'"';
+            _rawResult = rawResult;
+        }
+
+        void IJsonRpcRawResponse.WriteRaw(IBufferWriter<byte> writer) =>
+            JsonRpcResponseWriter.WriteRawSuccess(writer, _rawResult, Id);
     }
 
     protected void RecoverTxSenderIfNeeded(Transaction transaction) => transaction.SenderAddress ??= _blockchainBridge.RecoverTxSender(transaction);

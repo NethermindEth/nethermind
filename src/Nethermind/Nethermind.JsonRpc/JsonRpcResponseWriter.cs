@@ -18,6 +18,9 @@ namespace Nethermind.JsonRpc;
 /// </summary>
 public static class JsonRpcResponseWriter
 {
+    private static ReadOnlySpan<byte> SuccessEnvelopeStart => "{\"jsonrpc\":\"2.0\",\"result\":"u8;
+    private static ReadOnlySpan<byte> IdSeparator => ",\"id\":"u8;
+    private static ReadOnlySpan<byte> EnvelopeEnd => "}"u8;
     private static readonly JsonWriterOptions _streamableIdWriterOptions = new()
     {
         SkipValidation = true,
@@ -29,6 +32,12 @@ public static class JsonRpcResponseWriter
     /// </summary>
     public static void Write(IBufferWriter<byte> writer, JsonRpcResponse response, JsonSerializerOptions options)
     {
+        if (!options.WriteIndented && response is IJsonRpcRawResponse rawResponse)
+        {
+            rawResponse.WriteRaw(writer);
+            return;
+        }
+
         using Utf8JsonWriter jsonWriter = new(writer, CreateWriterOptions(options));
         response.WriteTo(jsonWriter, options);
     }
@@ -74,6 +83,15 @@ public static class JsonRpcResponseWriter
         writer.WritePropertyName("id"u8);
         id.WriteTo(writer);
         writer.WriteEndObject();
+    }
+
+    internal static void WriteRawSuccess(IBufferWriter<byte> writer, ReadOnlySpan<byte> rawResult, JsonRpcId id)
+    {
+        writer.Write(SuccessEnvelopeStart);
+        writer.Write(rawResult);
+        writer.Write(IdSeparator);
+        WriteIdRaw(writer, id);
+        writer.Write(EnvelopeEnd);
     }
 
     internal static bool TryWriteSimpleValue<T>(Utf8JsonWriter writer, T value)
@@ -133,7 +151,7 @@ public static class JsonRpcResponseWriter
         writer.WriteEndObject();
     }
 
-    private static void WriteIdRaw(PipeWriter writer, JsonRpcId id)
+    private static void WriteIdRaw(IBufferWriter<byte> writer, JsonRpcId id)
     {
         if (!id.HasRawToken && id.TryGetInt64(out long longId))
         {
@@ -154,7 +172,7 @@ public static class JsonRpcResponseWriter
         WriteOther(writer, id);
 
         [MethodImpl(MethodImplOptions.NoInlining)]
-        static void WriteOther(PipeWriter writer, JsonRpcId id)
+        static void WriteOther(IBufferWriter<byte> writer, JsonRpcId id)
         {
             using Utf8JsonWriter jsonWriter = new(writer, _streamableIdWriterOptions);
             id.WriteTo(jsonWriter);
@@ -168,4 +186,9 @@ public static class JsonRpcResponseWriter
         Encoder = options.Encoder,
         MaxDepth = options.MaxDepth
     };
+}
+
+internal interface IJsonRpcRawResponse
+{
+    void WriteRaw(IBufferWriter<byte> writer);
 }

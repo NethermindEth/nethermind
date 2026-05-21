@@ -1373,6 +1373,24 @@ public partial class EthRpcModuleTests
     }
 
     [Test]
+    public async Task Eth_chain_id_caches_success_response_and_keeps_request_id_dynamic()
+    {
+        IBlockchainBridge bridge = Substitute.For<IBlockchainBridge>();
+        bridge.GetChainId().Returns(TestBlockchainIds.ChainId);
+        using Context ctx = await Context.Create(blockchainBridge: bridge);
+        _ = ctx.Test;
+        bridge.ClearReceivedCalls();
+
+        string firstSerialized = await ctx.Test.TestEthRpc("eth_chainId");
+        using JsonRpcResponse secondResponse = ctx.Test.EthRpcModule.eth_chainId().WithResponseContext("client-id", null);
+        string secondSerialized = RpcTest.SerializeResponse(secondResponse);
+
+        Assert.That(firstSerialized, Is.EqualTo($"{{\"jsonrpc\":\"2.0\",\"result\":\"0x{TestBlockchainIds.ChainId:X}\",\"id\":67}}"));
+        Assert.That(secondSerialized, Is.EqualTo($"{{\"jsonrpc\":\"2.0\",\"result\":\"0x{TestBlockchainIds.ChainId:X}\",\"id\":\"client-id\"}}"));
+        bridge.Received(1).GetChainId();
+    }
+
+    [Test]
     public async Task Send_transaction_with_signature_will_not_try_to_sign()
     {
         using Context ctx = await Context.Create();
