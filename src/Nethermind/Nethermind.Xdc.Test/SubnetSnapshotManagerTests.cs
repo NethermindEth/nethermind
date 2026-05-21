@@ -62,7 +62,7 @@ internal class SubnetSnapshotManagerTests
         // Act
         SubnetSnapshot? result = _snapshotManager.GetSnapshotByGapNumber(gapBlock) as SubnetSnapshot;
 
-        XdcTestAssertions.AssertSubnetSnapshot(result, snapshot);
+        Assert.That(result, Is.EqualTo(snapshot).UsingXdcProperties());
     }
 
     [Test]

@@ -114,19 +114,5 @@ public static class BlockTestAssertions
     }
 
     private static void AssertAccountChangesEquivalent(ArrayPoolList<AddressAsKey>? actual, ArrayPoolList<AddressAsKey>? expected)
-    {
-        if (expected is null)
-        {
-            Assert.That(actual, Is.Null);
-            return;
-        }
-
-        Assert.That(actual, Is.Not.Null);
-        if (actual is null)
-        {
-            return;
-        }
-
-        Assert.That(actual.ToArray(), Is.EqualTo(expected.ToArray()));
-    }
+        => Assert.That(actual?.ToArray(), Is.EqualTo(expected?.ToArray()));
 }

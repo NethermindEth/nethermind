@@ -35,7 +35,7 @@ public class SnapshotDecoderTests
         }
         else
         {
-            XdcTestAssertions.AssertSnapshot(decoded, original);
+            Assert.That(decoded, Is.EqualTo(original).UsingXdcProperties());
         }
     }
 
@@ -48,6 +48,6 @@ public class SnapshotDecoderTests
 
         SnapshotDecoder decoder = new();
         Snapshot decoded = decoder.Decode(stream.Data.AsSpan());
-        XdcTestAssertions.AssertSnapshot(decoded, original);
+        Assert.That(decoded, Is.EqualTo(original).UsingXdcProperties());
     }
 }

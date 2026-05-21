@@ -59,7 +59,7 @@ internal class SnapshotManagerTests
         Snapshot? result = _snapshotManager.GetSnapshotByGapNumber(gapBlock);
 
         // assert that it was retrieved from cache
-        XdcTestAssertions.AssertSnapshot(result, snapshot);
+        Assert.That(result, Is.EqualTo(snapshot).UsingXdcProperties());
     }
 
     [Test]
@@ -85,7 +85,7 @@ internal class SnapshotManagerTests
         Snapshot? saved = _snapshotManager.GetSnapshotByGapNumber(gapBlock);
 
         // Assert
-        XdcTestAssertions.AssertSnapshot(saved, snapshot);
+        Assert.That(saved, Is.EqualTo(snapshot).UsingXdcProperties());
     }
 
     [Test]
@@ -102,7 +102,7 @@ internal class SnapshotManagerTests
         Snapshot? fromDb = _snapshotManager.GetSnapshotByGapNumber(gapBlock);
 
         // Assert
-        XdcTestAssertions.AssertSnapshot(fromDb, snapshot);
+        Assert.That(fromDb, Is.EqualTo(snapshot).UsingXdcProperties());
     }
 
     [Test]
@@ -117,7 +117,7 @@ internal class SnapshotManagerTests
         Snapshot? result = _snapshotManager.GetSnapshotByGapNumber(gapBlock1);
 
         // assert that it was retrieved from db
-        XdcTestAssertions.AssertSnapshot(result, snapshot1);
+        Assert.That(result, Is.EqualTo(snapshot1).UsingXdcProperties());
 
         // store another snapshot with the same hash but different data
 
@@ -130,7 +130,7 @@ internal class SnapshotManagerTests
         result = _snapshotManager.GetSnapshotByBlockNumber(900, _xdcReleaseSpec);
 
         // assert that the original snapshot is still returned
-        XdcTestAssertions.AssertSnapshot(result, snapshot2);
+        Assert.That(result, Is.EqualTo(snapshot2).UsingXdcProperties());
     }
 
     [TestCase(1, 0)]
@@ -150,7 +150,7 @@ internal class SnapshotManagerTests
         Snapshot? result = _snapshotManager.GetSnapshotByBlockNumber(blockNumber, _xdcReleaseSpec);
 
         // assert that it was retrieved from db
-        XdcTestAssertions.AssertSnapshot(result, snapshot);
+        Assert.That(result, Is.EqualTo(snapshot).UsingXdcProperties());
     }
 
     [TestCase(450)]

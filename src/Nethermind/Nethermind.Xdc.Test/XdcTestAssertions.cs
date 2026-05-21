@@ -4,7 +4,6 @@
 using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Test;
-using Nethermind.Xdc.Types;
 using NUnit.Framework;
 using NUnit.Framework.Constraints;
 
@@ -12,35 +11,6 @@ namespace Nethermind.Xdc.Test;
 
 internal static class XdcTestAssertions
 {
-    public static void AssertExtraFields(ExtraFieldsV2? actual, ExtraFieldsV2 expected) =>
-        Assert.That(actual, Is.EqualTo(expected).UsingXdcProperties());
-
-    public static void AssertSyncInfo(SyncInfo? actual, SyncInfo expected) =>
-        Assert.That(actual, Is.EqualTo(expected).UsingXdcProperties());
-
-    public static void AssertTimeoutCertificate(TimeoutCertificate? actual, TimeoutCertificate expected) =>
-        Assert.That(actual, Is.EqualTo(expected).UsingXdcProperties());
-
-    public static void AssertQuorumCertificate(QuorumCertificate? actual, QuorumCertificate? expected) =>
-        Assert.That(actual, Is.EqualTo(expected).UsingXdcProperties());
-
-    public static void AssertVote(Vote? actual, Vote expected, bool compareSigner = false) =>
-        Assert.That(actual, compareSigner
-            ? Is.EqualTo(expected).UsingXdcProperties()
-            : Is.EqualTo(expected).UsingXdcProperties(nameof(Vote.Signer)));
-
-    public static void AssertBlockRoundInfo(BlockRoundInfo? actual, BlockRoundInfo expected) =>
-        Assert.That(actual, Is.EqualTo(expected).UsingXdcProperties());
-
-    public static void AssertEpochSwitchInfo(EpochSwitchInfo? actual, EpochSwitchInfo expected) =>
-        Assert.That(actual, Is.EqualTo(expected).UsingXdcProperties());
-
-    public static void AssertSnapshot(Snapshot? actual, Snapshot expected) =>
-        Assert.That(actual, Is.EqualTo(expected).UsingXdcProperties());
-
-    public static void AssertSubnetSnapshot(SubnetSnapshot? actual, SubnetSnapshot expected) =>
-        Assert.That(actual, Is.EqualTo(expected).UsingXdcProperties());
-
     public static void AssertXdcHeader(XdcBlockHeader? actual, XdcBlockHeader expected, bool compareHash = true)
     {
         Assert.That(actual, Is.Not.Null);
@@ -98,7 +68,7 @@ internal static class XdcTestAssertions
         }
     }
 
-    private static EqualConstraint UsingXdcProperties(this EqualConstraint constraint, params string[] excludedProperties)
+    public static EqualConstraint UsingXdcProperties(this EqualConstraint constraint, params string[] excludedProperties)
     {
         constraint = constraint.Using<Address[]>(AddressArraysEquivalent);
         return excludedProperties.Length == 0

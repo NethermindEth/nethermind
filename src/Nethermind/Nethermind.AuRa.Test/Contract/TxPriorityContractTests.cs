@@ -80,8 +80,10 @@ public class TxPriorityContractTests
             new(TestItem.AddressB, FnSignature2, 4, TxPriorityContract.DestinationSource.Contract, 1),
         };
 
-        AssertDestinationsEquivalent(priorities, expected, includeBlockNumber: false);
-        AssertDestinationsEquivalent(prioritiesInContract, expected);
+        Assert.That(priorities, Is.EquivalentTo(expected)
+            .UsingPropertiesComparer<TxPriorityContract.Destination>(
+                static options => options.Excluding(static destination => destination.BlockNumber)));
+        Assert.That(prioritiesInContract, Is.EquivalentTo(expected).UsingPropertiesComparer());
     }
 
     [Test]
@@ -97,9 +99,11 @@ public class TxPriorityContractTests
             new(TestItem.AddressB, FnSignature, 2, TxPriorityContract.DestinationSource.Contract, 2),
         };
 
-        AssertDestinationsEquivalent(minGasPrices, expected, includeBlockNumber: false);
+        Assert.That(minGasPrices, Is.EquivalentTo(expected)
+            .UsingPropertiesComparer<TxPriorityContract.Destination>(
+                static options => options.Excluding(static destination => destination.BlockNumber)));
 
-        AssertDestinationsEquivalent(minGasPricesInContract, expected);
+        Assert.That(minGasPricesInContract, Is.EquivalentTo(expected).UsingPropertiesComparer());
     }
 
     [Test]
@@ -164,7 +168,8 @@ public class TxPriorityContractTests
             TxPriorityContract.LocalData localData = chain.LocalDataSource.Data;
             if (localData is not null)
             {
-                AssertDestinationsEquivalent(chain.LocalDataSource.Data.Priorities, expected.Where(e => e.Source == TxPriorityContract.DestinationSource.Local));
+                Assert.That(chain.LocalDataSource.Data.Priorities,
+                    Is.EquivalentTo(expected.Where(e => e.Source == TxPriorityContract.DestinationSource.Local)).UsingPropertiesComparer());
                 semaphoreSlim.Release();
             }
         };
@@ -183,7 +188,7 @@ public class TxPriorityContractTests
         }
 
         IEnumerable<TxPriorityContract.Destination> priorities = chain.Priorities.GetItemsFromContractAtBlock(chain.BlockTree.Head.Header);
-        AssertDestinationsEquivalent(priorities, expected);
+        Assert.That(priorities, Is.EquivalentTo(expected).UsingPropertiesComparer());
     }
 
     [Test]
@@ -208,7 +213,8 @@ public class TxPriorityContractTests
             TxPriorityContract.LocalData localData = chain.LocalDataSource.Data;
             if (localData is not null)
             {
-                AssertDestinationsEquivalent(chain.LocalDataSource.Data.MinGasPrices, expected.Where(e => e.Source == TxPriorityContract.DestinationSource.Local));
+                Assert.That(chain.LocalDataSource.Data.MinGasPrices,
+                    Is.EquivalentTo(expected.Where(e => e.Source == TxPriorityContract.DestinationSource.Local)).UsingPropertiesComparer());
                 semaphoreSlim.Release();
             }
         };
@@ -227,23 +233,7 @@ public class TxPriorityContractTests
         }
 
         IEnumerable<TxPriorityContract.Destination> minGasPrices = chain.MinGasPrices.GetItemsFromContractAtBlock(chain.BlockTree.Head.Header);
-        AssertDestinationsEquivalent(minGasPrices, expected);
-    }
-
-    private static void AssertDestinationsEquivalent(
-        IEnumerable<TxPriorityContract.Destination> actual,
-        IEnumerable<TxPriorityContract.Destination> expected,
-        bool includeBlockNumber = true)
-    {
-        if (includeBlockNumber)
-        {
-            Assert.That(actual, Is.EquivalentTo(expected).UsingPropertiesComparer());
-            return;
-        }
-
-        Assert.That(actual, Is.EquivalentTo(expected)
-            .UsingPropertiesComparer<TxPriorityContract.Destination>(
-                static options => options.Excluding(static destination => destination.BlockNumber)));
+        Assert.That(minGasPrices, Is.EquivalentTo(expected).UsingPropertiesComparer());
     }
 
     public class TxPermissionContractBlockchain : TestContractBlockchain

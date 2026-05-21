@@ -12,9 +12,9 @@ internal static class TraceStoreAssertions
 
     public static void AssertWrapper<T>(ResultWrapper<T> actual, ResultWrapper<T> expected)
     {
-        Assert.That(actual.Result, Is.EqualTo(expected.Result));
-        Assert.That(actual.ErrorCode, Is.EqualTo(expected.ErrorCode));
-        Assert.That(actual.IsTemporary, Is.EqualTo(expected.IsTemporary));
+        Assert.That(actual, Is.EqualTo(expected)
+            .UsingPropertiesComparer<ResultWrapper<T>>(
+                static options => options.Excluding(static result => result.Data)));
         AssertJsonEquivalent(actual.Data, expected.Data);
     }
 

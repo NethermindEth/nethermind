@@ -35,7 +35,7 @@ public class SubnetSnapshotDecoderTests
         }
         else
         {
-            XdcTestAssertions.AssertSubnetSnapshot(decoded, original);
+            Assert.That(decoded, Is.EqualTo(original).UsingXdcProperties());
         }
     }
 
@@ -48,6 +48,6 @@ public class SubnetSnapshotDecoderTests
 
         SubnetSnapshotDecoder decoder = new();
         SubnetSnapshot decoded = decoder.Decode(stream.Data.AsSpan());
-        XdcTestAssertions.AssertSubnetSnapshot(decoded, original);
+        Assert.That(decoded, Is.EqualTo(original).UsingXdcProperties());
     }
 }

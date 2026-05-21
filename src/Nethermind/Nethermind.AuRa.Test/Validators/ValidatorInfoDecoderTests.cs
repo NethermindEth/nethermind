@@ -16,12 +16,7 @@ namespace Nethermind.AuRa.Test.Validators
             ValidatorInfo info = new(10, 5, new[] { TestItem.AddressA, TestItem.AddressC });
             Rlp rlp = Rlp.Encode(info);
             ValidatorInfo decoded = Rlp.Decode<ValidatorInfo>(rlp);
-            Assert.Multiple(() =>
-            {
-                Assert.That(decoded.FinalizingBlockNumber, Is.EqualTo(info.FinalizingBlockNumber));
-                Assert.That(decoded.PreviousFinalizingBlockNumber, Is.EqualTo(info.PreviousFinalizingBlockNumber));
-                Assert.That(decoded.Validators, Is.EqualTo(info.Validators));
-            });
+            Assert.That(decoded, Is.EqualTo(info).UsingPropertiesComparer());
         }
     }
 }

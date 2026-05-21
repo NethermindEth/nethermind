@@ -4,6 +4,7 @@
 using System;
 using System.Buffers;
 using System.Collections.Generic;
+using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
@@ -179,16 +180,13 @@ public class SszCodecTests
         Hash256? parentBeaconBlockRoot, Hash256 expectedParentRoot,
         byte[][]? requests, byte[] expectedRequest)
     {
-        Assert.That(hashes.Length, Is.EqualTo(expectedHashes.Length));
-        for (int i = 0; i < expectedHashes.Length; i++)
-            Assert.That(hashes[i], Is.EqualTo(expectedHashes[i].Bytes.ToArray()));
+        Assert.That(hashes, Is.EqualTo(expectedHashes.Select(static hash => hash.Bytes.ToArray()).ToArray()));
 
         Assert.That(parentBeaconBlockRoot, Is.Not.Null);
         Assert.That(parentBeaconBlockRoot, Is.EqualTo(expectedParentRoot));
 
         Assert.That(requests, Is.Not.Null);
-        Assert.That(requests!.Length, Is.EqualTo(1));
-        Assert.That(requests![0], Is.EqualTo(expectedRequest));
+        Assert.That(requests, Is.EqualTo(new[] { expectedRequest }));
     }
 
     [Test]

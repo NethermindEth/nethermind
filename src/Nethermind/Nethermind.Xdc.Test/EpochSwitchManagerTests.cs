@@ -482,7 +482,7 @@ internal class EpochSwitchManagerTests
 
         _tree.FindHeader(blockNumber).Returns(header);
         EpochSwitchInfo? result = _epochSwitchManager.GetEpochSwitchInfo(header);
-        XdcTestAssertions.AssertEpochSwitchInfo(result, expected);
+        Assert.That(result, Is.EqualTo(expected).UsingXdcProperties());
     }
 
     [Test]
@@ -506,7 +506,7 @@ internal class EpochSwitchManagerTests
         EpochSwitchInfo? result = _epochSwitchManager.GetEpochSwitchInfo(chainHead.Hash!);
 
         Assert.That(result, Is.Not.Null);
-        XdcTestAssertions.AssertEpochSwitchInfo(result, expected);
+        Assert.That(result, Is.EqualTo(expected).UsingXdcProperties());
     }
 
     [Test]
@@ -539,7 +539,7 @@ internal class EpochSwitchManagerTests
 
         EpochSwitchInfo? result = _epochSwitchManager.GetEpochSwitchInfo(chainHead.Hash!);
         Assert.That(result, Is.Not.Null);
-        XdcTestAssertions.AssertEpochSwitchInfo(result, expected);
+        Assert.That(result, Is.EqualTo(expected).UsingXdcProperties());
     }
 
     [Test]

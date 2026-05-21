@@ -50,9 +50,9 @@ public class VoteTests
             await votesManager.HandleVote(newVote);
         }
         // Check same values as before: qc has not yet been processed, so there should be no changes
-        XdcTestAssertions.AssertQuorumCertificate(ctx.LockQC, initialLockQc);
+        Assert.That(ctx.LockQC, Is.EqualTo(initialLockQc).UsingXdcProperties());
         Assert.That(ctx.CurrentRound, Is.EqualTo(initialRound));
-        XdcTestAssertions.AssertQuorumCertificate(ctx.HighestQC, initialHighestQc);
+        Assert.That(ctx.HighestQC, Is.EqualTo(initialHighestQc).UsingXdcProperties());
 
         // Create another vote which is signed by someone not from the master node list
         PrivateKey randomKey = blockchain.RandomKeys.First();
@@ -60,9 +60,9 @@ public class VoteTests
         await votesManager.HandleVote(randomVote);
 
         // Again same check: vote is not valid so threshold is not yet reached
-        XdcTestAssertions.AssertQuorumCertificate(ctx.LockQC, initialLockQc);
+        Assert.That(ctx.LockQC, Is.EqualTo(initialLockQc).UsingXdcProperties());
         Assert.That(ctx.CurrentRound, Is.EqualTo(initialRound));
-        XdcTestAssertions.AssertQuorumCertificate(ctx.HighestQC, initialHighestQc);
+        Assert.That(ctx.HighestQC, Is.EqualTo(initialHighestQc).UsingXdcProperties());
 
         // Create a vote message that should trigger qc processing and increment the round
         Vote lastVote = XdcTestHelper.BuildSignedVote(blockInfo, gap, keys.Last());
@@ -73,7 +73,7 @@ public class VoteTests
         Assert.That(ctx.LockQC, Is.Not.Null);
         Assert.That(ctx.LockQC.ProposedBlockInfo.Round, Is.EqualTo(initialRound - 1));
         // The highestQC proposedBlockInfo shall be the same as the one from its votes
-        XdcTestAssertions.AssertBlockRoundInfo(ctx.HighestQC.ProposedBlockInfo, blockInfo);
+        Assert.That(ctx.HighestQC.ProposedBlockInfo, Is.EqualTo(blockInfo).UsingXdcProperties());
     }
 
     private VotesManager CreateVotesManager(XdcTestBlockchain blockchain) =>

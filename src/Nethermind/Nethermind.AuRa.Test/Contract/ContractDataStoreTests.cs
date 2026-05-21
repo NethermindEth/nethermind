@@ -232,18 +232,13 @@ public abstract class ContractDataStoreTests
             Is.EqualTo(3).After(200, 20)
         );
 
-        AssertDestinationsEquivalent(testCase.ContractDataStore.GetItemsFromContractAtBlock(secondBlock.Header), new[]
+        Assert.That(testCase.ContractDataStore.GetItemsFromContractAtBlock(secondBlock.Header), Is.EquivalentTo(new[]
         {
             new TxPriorityContract.Destination(TestItem.AddressB, new byte[] {0, 1, 2, 3}, 6),
             new TxPriorityContract.Destination(TestItem.AddressB, new byte[] {0, 1, 2, 5}, 4),
             new TxPriorityContract.Destination(TestItem.AddressA, new byte[] {0, 1, 2, 3}, 1)
-        });
+        }).UsingPropertiesComparer());
     }
-
-    private static void AssertDestinationsEquivalent(
-        IEnumerable<TxPriorityContract.Destination> actual,
-        IEnumerable<TxPriorityContract.Destination> expected) =>
-        Assert.That(actual, Is.EquivalentTo(expected).UsingPropertiesComparer());
 
     protected virtual TestCase<T> BuildTestCase<T>(IComparer<T> keyComparer = null, IComparer<T> valueComparer = null)
     {
