@@ -64,7 +64,7 @@ public partial class DebugRpcModuleTests
     {
         CancellationTokenSource timeoutCts = new();
 
-        GethLikeTxTraceStreamingSingleResult result = new(
+        using GethLikeTxTraceStreamingSingleResult result = new(
             (writer, _, _) =>
             {
                 writer.WriteStartObject();
@@ -159,7 +159,7 @@ public partial class DebugRpcModuleTests
     {
         CancellationTokenSource timeoutCts = new();
 
-        GethLikeTxTraceStreamingBlockResult result = new(
+        using GethLikeTxTraceStreamingBlockResult result = new(
             (writer, _, _) =>
             {
                 writer.WriteStartObject();
@@ -187,5 +187,6 @@ public partial class DebugRpcModuleTests
 
         JToken sentinel = parsed[1]!;
         ((string)sentinel["error"]!).Should().Contain("simulated mid-block failure", "the sentinel must carry the human-readable failure reason");
+        ((int)sentinel["errorCode"]!).Should().Be(ErrorCodes.InternalError, "the sentinel must carry the Geth-equivalent errorCode (generic exceptions map to InternalError)");
     }
 }

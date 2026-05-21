@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Text.Json;
 using System.Threading.Tasks;
 using Autofac;
@@ -46,27 +47,42 @@ public partial class DebugRpcModuleTests
         public void Dispose() => Blockchain.Dispose();
     }
 
-    [Test]
-    public async Task Debug_traceCall_fails_when_not_enough_balance()
+    [TestCaseSource(nameof(TraceCallGethCompatFailureCases))]
+    public async Task Debug_traceCall_failure_returns_geth_compatible_error(object txArgs, string expectedErrorPrefix, int expectedErrorCode)
     {
         using Context ctx = await Context.Create();
 
-        Address address = Build.An.Address.TestObject;
-        UInt256 balance = 100.Ether, send = balance / 2;
-
-        // Default struct-log tracer streams: pre-flight failures arrive after the response
-        // envelope has started, so the existing JSON-RPC error path is replaced by a success
-        // response with failed:true plus a Nethermind-extension "error" field carrying the
-        // human-readable reason. Pin both with a serialised round-trip.
-        string response = await RpcTest.TestSerializedRequest(ctx.DebugRpcModule, "debug_traceCall",
-            new { from = $"{address}", to = $"{TestItem.AddressC}", value = send.ToString("X") }
-        );
+        string response = await RpcTest.TestSerializedRequest(ctx.DebugRpcModule, "debug_traceCall", txArgs);
 
         JToken result = JToken.Parse(response)["result"]!;
-        ((bool)result["failed"]!).Should().BeTrue("insufficient balance must surface as failed:true");
+        ((bool)result["failed"]!).Should().BeTrue("pre-flight failures surface as failed:true under streaming");
         ((string)result["returnValue"]!).Should().Be("0x");
-        ((string)result["error"]!).Should().Contain("insufficient", "the human-readable reason should be preserved in the error field");
-        ((int)result["errorCode"]!).Should().Be(ErrorCodes.InvalidInput, "tracing-failure errorCode mirrors the buffered ErrorCodes.InvalidInput");
+        ((string)result["error"]!).Should().StartWith(expectedErrorPrefix, "Geth-compatible wording must be preserved verbatim");
+        ((int)result["errorCode"]!).Should().Be(expectedErrorCode, "errorCode mirrors Geth's per-scenario JSON-RPC code");
+    }
+
+    private static IEnumerable<TestCaseData> TraceCallGethCompatFailureCases()
+    {
+        Address freshA = Build.An.Address.TestObject;
+        yield return new TestCaseData(
+            (object)new { from = $"{freshA}", to = $"{TestItem.AddressC}", value = 50.Ether.ToString("X") },
+            "tracing failed: insufficient funds for transfer: address ",
+            ErrorCodes.InvalidInput)
+        { TestName = "InsufficientFundsForTransfer" };
+
+        Address freshB = Build.An.Address.TestObject;
+        yield return new TestCaseData(
+            (object)new { from = $"{freshB}", to = $"{TestItem.AddressC}", gas = "0x64" },
+            "tracing failed: intrinsic gas too low: have 100, want ",
+            ErrorCodes.InvalidInput)
+        { TestName = "IntrinsicGasTooLow" };
+
+        Address freshC = Build.An.Address.TestObject;
+        yield return new TestCaseData(
+            (object)new { from = $"{freshC}", to = $"{TestItem.AddressC}", maxFeePerGas = "0x1", maxPriorityFeePerGas = "0x1" },
+            "tracing failed: insufficient funds for gas * price + value: address ",
+            ErrorCodes.InvalidInput)
+        { TestName = "InsufficientFundsForGasPriceValue" };
     }
 
     [Test]

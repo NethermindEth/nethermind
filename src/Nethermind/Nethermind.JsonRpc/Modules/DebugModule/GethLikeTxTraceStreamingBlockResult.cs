@@ -57,7 +57,9 @@ public sealed class GethLikeTxTraceStreamingBlockResult : StreamingResultBase, I
             {
                 writer.WriteStartObject();
                 writer.WritePropertyName("error"u8);
-                writer.WriteStringValue($"tracing failed: {failure.Message}");
+                writer.WriteStringValue(StructLogEnvelopeWriter.FormatErrorMessage(failure));
+                writer.WritePropertyName("errorCode"u8);
+                writer.WriteNumberValue(StructLogEnvelopeWriter.ResolveErrorCode(failure));
                 writer.WriteEndObject();
             }
             writer.WriteEndArray();

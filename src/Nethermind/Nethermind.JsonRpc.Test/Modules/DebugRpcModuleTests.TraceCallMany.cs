@@ -101,7 +101,7 @@ public partial class DebugRpcModuleTests
         JToken trace = result[0][0]!;
         ((bool)trace["failed"]!).Should().BeTrue("insufficient balance must surface as failed:true");
         ((long)trace["gas"]!).Should().BeGreaterThan(0, "failed trace gas reflects the tx gas limit");
-        ((string)trace["error"]!).Should().Contain("insufficient", "the human-readable reason should be preserved in the error field");
+        ((string)trace["error"]!).Should().Contain("insufficient funds", "Nethermind wording is translated to Geth's wording for compat");
         ((int)trace["errorCode"]!).Should().Be(ErrorCodes.InvalidInput, "tracing-failure errorCode mirrors the buffered ErrorCodes.InvalidInput");
     }
 

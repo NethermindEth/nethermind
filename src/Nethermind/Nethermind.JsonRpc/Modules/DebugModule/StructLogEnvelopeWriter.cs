@@ -5,11 +5,14 @@ using System;
 using System.IO.Pipelines;
 using System.Text.Json;
 using System.Threading;
+using Nethermind.Blockchain;
 using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Core;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using Nethermind.State;
+using ErrorType = Nethermind.Evm.TransactionProcessing.TransactionResult.ErrorType;
 
 namespace Nethermind.JsonRpc.Modules.DebugModule;
 
@@ -46,8 +49,8 @@ internal static class StructLogEnvelopeWriter
         finally
         {
             writer.WriteEndArray();
-            string? errorMessage = failure is null ? null : $"tracing failed: {failure.Message}";
-            int errorCode = failure is null ? ErrorCodes.InvalidInput : ResolveErrorCode(failure);
+            string? errorMessage = failure is null ? null : FormatErrorMessage(failure);
+            int errorCode = failure is null ? default : ResolveErrorCode(failure);
             WriteFooter(writer, trace, errorMessage, errorCode, fallbackGas);
         }
 
@@ -67,7 +70,7 @@ internal static class StructLogEnvelopeWriter
         WriteFooter(writer, trace: null, errorMessage, ErrorCodes.InvalidInput, fallbackGas: gasLimit);
     }
 
-    private static int ResolveErrorCode(Exception failure)
+    internal static int ResolveErrorCode(Exception failure)
     {
         ArgumentNullException.ThrowIfNull(failure);
 
@@ -78,6 +81,30 @@ internal static class StructLogEnvelopeWriter
 
         return ErrorCodes.InternalError;
     }
+
+    internal static string FormatErrorMessage(Exception failure) => failure switch
+    {
+        InvalidTransactionException tx => $"tracing failed: {FormatErrorDescription(tx.Reason)}",
+        _ => $"tracing failed: {failure.Message}",
+    };
+
+    private static string FormatErrorDescription(TransactionResult result)
+    {
+        string detail = result.ErrorDescription;
+        return result.Error switch
+        {
+            ErrorType.InsufficientSenderBalance => ReplacePrefix(detail, "insufficient sender balance for transfer", "insufficient funds for transfer"),
+            ErrorType.InsufficientMaxFeePerGasForSenderBalance => ReplacePrefix(detail, "insufficient sender balance for gas * price + value", "insufficient funds for gas * price + value"),
+            ErrorType.SenderHasDeployedCode => ReplacePrefix(detail, "sender has deployed code", "sender not an eoa"),
+            ErrorType.NonceOverflow => ReplacePrefix(detail, "nonce overflow", "nonce has max value"),
+            ErrorType.MinerPremiumNegative => ReplacePrefix(detail, "miner premium is negative", "max priority fee per gas higher than max fee per gas"),
+            ErrorType.TransactionSizeOverMaxInitCodeSize => ReplacePrefix(detail, "EIP-3860 - transaction size over max init code size", "max initcode size exceeded"),
+            _ => detail,
+        };
+    }
+
+    private static string ReplacePrefix(string s, string oldPrefix, string newPrefix)
+        => s.StartsWith(oldPrefix, StringComparison.Ordinal) ? newPrefix + s[oldPrefix.Length..] : s;
 
     private static void WriteFooter(Utf8JsonWriter writer, GethLikeTxTrace? trace, string? errorMessage, int errorCode, long fallbackGas)
     {
