@@ -757,8 +757,14 @@ public class EthSimulateTestsBlocksAndTransactions
     /// block override. The decorated calculator must be used for validation, not the static
     /// <c>BlobGasCalculator.TryCalculateFeePerBlobGas</c> which reads from the raw header.
     /// </summary>
-    [Test]
-    public async Task eth_simulateV1_blob_tx_rejected_when_max_fee_per_blob_gas_below_block_override()
+    /// <remarks>
+    /// With <c>validation = false</c>, <see cref="ProcessingOptions.NoValidation"/> is set but
+    /// <c>ShouldValidateGas</c> still returns <c>true</c> when <c>MaxFeePerGas != 0</c>, so the
+    /// blob fee cap check runs regardless and the result is identical.
+    /// </remarks>
+    [TestCase(true, TestName = "validation=true rejects blob tx when maxFeePerBlobGas below blobBaseFee override")]
+    [TestCase(false, TestName = "validation=false rejects blob tx when maxFeePerBlobGas below blobBaseFee override")]
+    public async Task eth_simulateV1_blob_tx_rejected_when_max_fee_per_blob_gas_below_block_override(bool validation)
     {
         // excessBlobGas=0 so the static calculator gives feePerBlobGas=1 (would pass),
         // but the blobBaseFee override is 11 > maxFeePerBlobGas=10, so must fail.
@@ -792,7 +798,7 @@ public class EthSimulateTestsBlocksAndTransactions
                     ]
                 }
             ],
-            Validation = true
+            Validation = validation
         };
 
         ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result =

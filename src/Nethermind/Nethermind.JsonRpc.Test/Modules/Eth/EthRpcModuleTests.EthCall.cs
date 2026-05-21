@@ -914,7 +914,7 @@ public partial class EthRpcModuleTests
         {
             parsed["error"]?.Should().BeNull("opcode must be valid under Cancun");
             UInt256 fee = Bytes.FromHexString(parsed["result"]!.Value<string>()!).ToUInt256();
-            fee.Should().Be((UInt256)0x02);
+            fee.Should().Be(Bytes.FromHexString(expectedResult!).ToUInt256());
         }
         else
         {
