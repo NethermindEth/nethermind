@@ -240,6 +240,8 @@ public class NativePrestateTracer : GethLikeNativeTxTracer
             foreach ((AddressAsKey addr, NativePrestateTracerAccount prestateAccount) in _prestate)
             {
                 currentAddr = addr.Value;
+                string iterOrigin = _prestateOrigin.TryGetValue(addr, out string? o) ? o : "unknown";
+                _logger.Info($"[alchemy-debug] ProcessDiffState iter addr={currentAddr} origin={iterOrigin}");
 
                 // If an account was deleted then don't show it in the postState trace
                 if (_deletedAccounts.Contains(addr))
