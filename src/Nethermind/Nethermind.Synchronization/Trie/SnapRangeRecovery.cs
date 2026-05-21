@@ -33,6 +33,7 @@ public class SnapRangeRecovery(ISyncPeerPool peerPool, ILogManager logManager) :
         new SatelliteProtocolPeerAllocationStrategy<ISnapSyncPeer>(
             new BySpeedStrategy(TransferSpeedType.Latency, false),
             Protocol.Snap);
+
     private static readonly AccountDecoder AccountRlpDecoder = AccountDecoder.Instance;
 
     private const int ConcurrentAttempt = 3;
