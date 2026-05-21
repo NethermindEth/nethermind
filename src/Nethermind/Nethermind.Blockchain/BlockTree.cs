@@ -796,7 +796,7 @@ namespace Nethermind.Blockchain
         {
             if (badBlock.Hash is null)
             {
-                if (Logger.IsWarn) Logger.Warn($"{nameof(ReportBadBlock)} call has been made for a block without a null hash.");
+                if (Logger.IsWarn) Logger.Warn($"{nameof(ReportBadBlock)} call has been made for a block with a null hash.");
                 return;
             }
 
@@ -808,7 +808,7 @@ namespace Nethermind.Blockchain
         {
             if (invalidBlock.Hash is null)
             {
-                if (Logger.IsWarn) Logger.Warn($"{nameof(DeleteInvalidBlock)} call has been made for a block without a null hash.");
+                if (Logger.IsWarn) Logger.Warn($"{nameof(DeleteInvalidBlock)} call has been made for a block with a null hash.");
                 return;
             }
 
