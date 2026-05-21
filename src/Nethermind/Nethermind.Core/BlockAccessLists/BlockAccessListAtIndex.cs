@@ -29,11 +29,7 @@ public class BlockAccessListAtIndex : IJournal<int>, IResettable
 
     public uint Index { get; set; }
 
-    // Plain Dictionary on the per-tx hot path. The sorted iteration the BAL needs is provided
-    // later by GeneratedBlockAccessList._accountChanges (itself a SortedDictionary) when this
-    // slice is merged in; sorting on every AddBalanceChange/AddNonceChange/AddStorageChange
-    // was O(log n) per call for a property no one between insert and merge consumes.
-    private readonly Dictionary<Address, AccountChangesAtIndex> _accountChanges = new();
+    private readonly Dictionary<Address, AccountChangesAtIndex> _accountChanges = new(GenericEqualityComparer.GetOptimized<Address>());
     private readonly List<Change> _changes = new(InitialChangeCapacity);
 
     // Mirrors _changes entries with Type == CodeChange && HasPrevious in insertion order; kept

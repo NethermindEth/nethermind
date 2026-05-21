@@ -8,7 +8,7 @@ using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Serialization.Rlp;
 
-namespace Nethermind.Stateless.Execution;
+namespace Nethermind.StatelessInputGen;
 
 /// <summary>
 /// Provides methods for zkVM input serialization. <see cref="Witness.Keys"/> are ignored.

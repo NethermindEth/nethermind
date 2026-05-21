@@ -27,8 +27,8 @@ public class AccountChangesAtIndex(Address address)
 
     // Unsorted: no consumer between insert and the merge into GeneratedAccountChanges needs sorted
     // iteration (receivers sort their own outputs); O(1) ops on the per-tx hot path.
-    private readonly Dictionary<UInt256, StorageChange> _storageChanges = new();
-    private readonly HashSet<UInt256> _storageReads = new();
+    private readonly Dictionary<UInt256, StorageChange> _storageChanges = new(GenericEqualityComparer.GetOptimized<UInt256>());
+    private readonly HashSet<UInt256> _storageReads = new(GenericEqualityComparer.GetOptimized<UInt256>());
 
     public Dictionary<UInt256, StorageChange>.KeyCollection ChangedSlots => _storageChanges.Keys;
     public Dictionary<UInt256, StorageChange> StorageChanges => _storageChanges;
