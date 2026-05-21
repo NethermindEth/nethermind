@@ -37,7 +37,7 @@ internal class EraSlimReceiptDecoderTests
         EraSlimReceiptDecoder sut = new();
         TxReceipt[] receipts = sut.Decode(encoded.AsMemory());
 
-        Assert.That((receipts).Length, Is.EqualTo(1));
+        Assert.That(receipts, Has.Length.EqualTo(1));
         Assert.That(receipts[0].PostTransactionState, Is.EqualTo(expectedStateRoot), "pre-Byzantium go-ethereum receipts encode the state root in the status field; " +
             "the decoder must restore PostTransactionState, not StatusCode");
         Assert.That(receipts[0].StatusCode, Is.EqualTo(0), "StatusCode must not be set for pre-Byzantium receipts");
@@ -52,7 +52,7 @@ internal class EraSlimReceiptDecoderTests
         EraSlimReceiptDecoder sut = new();
         TxReceipt[] receipts = sut.Decode(encoded.AsMemory());
 
-        Assert.That((receipts).Length, Is.EqualTo(1));
+        Assert.That(receipts, Has.Length.EqualTo(1));
         Assert.That(receipts[0].StatusCode, Is.EqualTo(1));
         Assert.That(receipts[0].PostTransactionState, Is.Null);
     }
@@ -66,7 +66,7 @@ internal class EraSlimReceiptDecoderTests
         EraSlimReceiptDecoder sut = new();
         TxReceipt[] receipts = sut.Decode(encoded.AsMemory());
 
-        Assert.That((receipts).Length, Is.EqualTo(1));
+        Assert.That(receipts, Has.Length.EqualTo(1));
         Assert.That(receipts[0].StatusCode, Is.EqualTo(0));
         Assert.That(receipts[0].PostTransactionState, Is.Null);
     }
@@ -81,7 +81,7 @@ internal class EraSlimReceiptDecoderTests
         EraSlimReceiptDecoder sut = new();
         TxReceipt[] receipts = sut.Decode(encoded.AsMemory());
 
-        Assert.That((receipts).Length, Is.EqualTo(1));
+        Assert.That(receipts, Has.Length.EqualTo(1));
         Assert.That(receipts[0].TxType, Is.EqualTo((TxType)txType));
         Assert.That(receipts[0].StatusCode, Is.EqualTo(1));
     }
@@ -95,7 +95,7 @@ internal class EraSlimReceiptDecoderTests
         EraSlimReceiptDecoder sut = new();
         TxReceipt[] receipts = sut.Decode(encoded.AsMemory());
 
-        Assert.That((receipts).Length, Is.EqualTo(1));
+        Assert.That(receipts, Has.Length.EqualTo(1));
         Assert.That(receipts[0].GasUsedTotal, Is.EqualTo(100));
     }
 

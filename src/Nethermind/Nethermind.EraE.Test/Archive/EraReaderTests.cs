@@ -72,7 +72,7 @@ internal class EraReaderTests
         using EraReader sut = new(file.FilePath);
 
         List<(Block, TxReceipt[])> result = await sut.ToListAsync();
-        Assert.That((result).Count, Is.EqualTo(3));
+        Assert.That(result, Has.Count.EqualTo(3));
         Assert.That(result.Select(r => r.Item1.Number), Is.EqualTo([0L, 1L, 2L]));
     }
 

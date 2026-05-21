@@ -1698,7 +1698,7 @@ public partial class EthRpcModuleTests
         // Contract address is deterministic: keccak256(rlp([sender, nonce=0]))[12:]
         Address expectedContract = ContractAddress.From(new Address(CreateAccessListSender), UInt256.Zero);
         JToken[] accessList = result["accessList"]!.ToArray();
-        Assert.That((accessList).Length, Is.EqualTo(1));
+        Assert.That(accessList, Has.Length.EqualTo(1));
         Assert.That(accessList[0]["address"]!.Value<string>(), Is.EqualTo(expectedContract.ToString().ToLowerInvariant()));
         Assert.That(accessList[0]["storageKeys"]!.ToArray(), Has.Exactly(1).Matches<JToken>(k => k.Value<string>() == "0x0000000000000000000000000000000000000000000000000000000000000081"));
     }

@@ -149,7 +149,7 @@ public class AdminModuleTests
         Assert.That(nodeInfo.Ports.Discovery, Is.EqualTo(_networkConfig.DiscoveryPort), "discovery port comes from network config");
         Assert.That(nodeInfo.Ports.Listener, Is.EqualTo(_networkConfig.P2PPort), "listener port comes from network config");
 
-        Assert.That((nodeInfo.Protocols).Count, Is.EqualTo(1), "only the eth protocol is registered in this test setup");
+        Assert.That(nodeInfo.Protocols, Has.Count.EqualTo(1), "only the eth protocol is registered in this test setup");
         Assert.That(nodeInfo.Protocols["eth"].Difficulty, Is.EqualTo(_blockTree.Head?.TotalDifficulty ?? 0), "difficulty mirrors the head total difficulty");
         Assert.That(nodeInfo.Protocols["eth"].HeadHash, Is.EqualTo(_blockTree.HeadHash), "head hash mirrors the block tree head");
         Assert.That(nodeInfo.Protocols["eth"].GenesisHash, Is.EqualTo(_blockTree.GenesisHash), "genesis hash mirrors the block tree genesis");
@@ -496,7 +496,7 @@ public class AdminModuleTests
 
         ResultWrapper<PeerInfo[]> result = module.admin_peers();
 
-        Assert.That((result.Data).Length, Is.EqualTo(1), "the peer pool was seeded with exactly one peer");
+        Assert.That(result.Data, Has.Length.EqualTo(1), "the peer pool was seeded with exactly one peer");
         PeerInfo peerInfo = result.Data[0];
         Assert.That(peerInfo.Id, Is.EqualTo(TestItem.PublicKeyA), "the peer id is the public key passed to CreateTestPeer");
         Assert.That(peerInfo.Name, Is.EqualTo("Geth/v1.15.10-stable-2bf8a789/linux-amd64/go1.24.2"), "the peer's client id is reported under name");

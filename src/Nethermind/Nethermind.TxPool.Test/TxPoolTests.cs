@@ -923,8 +923,8 @@ namespace Nethermind.TxPool.Test
                 Transaction[] transactionsForFirstTask = transactions.Where(t => t.Nonce == 8).ToArray();
                 Transaction[] transactionsForSecondTask = transactions.Where(t => t.Nonce == 6).ToArray();
                 Transaction[] transactionsForThirdTask = transactions.Where(t => t.Nonce == 7).ToArray();
-                Assert.That((transactions).Length, Is.EqualTo(transactionsPerPeer * 10));
-                Assert.That((transactionsForFirstTask).Length, Is.EqualTo(transactionsPerPeer));
+                Assert.That(transactions, Has.Length.EqualTo(transactionsPerPeer * 10));
+                Assert.That(transactionsForFirstTask, Has.Length.EqualTo(transactionsPerPeer));
                 Task firstTask = Task.Run(() => DeleteTransactionsFromPool(transactionsForFirstTask));
                 Task secondTask = Task.Run(() => DeleteTransactionsFromPool(transactionsForSecondTask));
                 Task thirdTask = Task.Run(() => DeleteTransactionsFromPool(transactionsForThirdTask));

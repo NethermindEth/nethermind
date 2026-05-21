@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Test;
 using NUnit.Framework;
@@ -83,23 +82,6 @@ internal static class XdcTestAssertions
             return actual is null && expected is null;
         }
 
-        if (actual.Length != expected.Length)
-        {
-            return false;
-        }
-
-        List<Address> unmatched = [.. actual];
-        foreach (Address expectedAddress in expected)
-        {
-            int index = unmatched.IndexOf(expectedAddress);
-            if (index < 0)
-            {
-                return false;
-            }
-
-            unmatched.RemoveAt(index);
-        }
-
-        return true;
+        return Is.EquivalentTo(expected).ApplyTo(actual).IsSuccess;
     }
 }

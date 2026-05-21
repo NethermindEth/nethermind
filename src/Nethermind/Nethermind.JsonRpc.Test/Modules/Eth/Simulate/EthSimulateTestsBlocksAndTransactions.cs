@@ -187,7 +187,7 @@ public class EthSimulateTestsBlocksAndTransactions
         ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result = executor.Execute(payload, BlockParameter.Latest);
         IReadOnlyList<SimulateBlockResult<SimulateCallResult>> data = result.Data;
         Assert.That((bool)result.Result, Is.EqualTo(true), result.Result.ToString());
-        Assert.That((data).Count, Is.EqualTo(7));
+        Assert.That(data, Has.Count.EqualTo(7));
 
         SimulateBlockResult<SimulateCallResult> blockResult = data.Last();
         Assert.That(blockResult.Calls.Select(static c => c.Status), Is.EqualTo(new[] { (ulong)ResultType.Success, (ulong)ResultType.Success }));
@@ -434,7 +434,7 @@ public class EthSimulateTestsBlocksAndTransactions
         Assert.That((bool)result.Result, Is.True, result.Result.ToString());
 
         SimulateBlockResult<SimulateCallResult> block = result.Data.First();
-        Assert.That((block.Calls).Count, Is.EqualTo(2));
+        Assert.That(block.Calls, Has.Count.EqualTo(2));
 
         SimulateCallResult[] calls = block.Calls.ToArray();
 

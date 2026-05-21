@@ -119,7 +119,7 @@ namespace Nethermind.Store.Test.Proofs
             AccountProofCollector accountProofCollector = new(TestItem.AddressC, new UInt256[] { 1, 2, 3 });
             tree.Accept(accountProofCollector, tree.RootHash);
             AccountProof proof = accountProofCollector.BuildResult();
-            Assert.That((proof.Proof).Length, Is.EqualTo(1));
+            Assert.That(proof.Proof, Has.Length.EqualTo(1));
             Assert.That(proof.Address, Is.EqualTo(TestItem.AddressC));
             Assert.That(proof.CodeHash, Is.EqualTo(Keccak.OfAnEmptyString));
             Assert.That(proof.StorageRoot, Is.EqualTo(Keccak.EmptyTreeHash));
@@ -141,7 +141,7 @@ namespace Nethermind.Store.Test.Proofs
             AccountProofCollector accountProofCollector = new(TestItem.AddressC, new UInt256[] { 1, 2, 3 });
             tree.Accept(accountProofCollector, tree.RootHash);
             AccountProof proof = accountProofCollector.BuildResult();
-            Assert.That((proof.Proof).Length, Is.EqualTo(1));
+            Assert.That(proof.Proof, Has.Length.EqualTo(1));
             Assert.That(proof.Address, Is.EqualTo(TestItem.AddressC));
             Assert.That(proof.CodeHash, Is.EqualTo(Keccak.OfAnEmptyString));
             Assert.That(proof.StorageRoot, Is.EqualTo(Keccak.EmptyTreeHash));
@@ -174,7 +174,7 @@ namespace Nethermind.Store.Test.Proofs
             AccountProofCollector accountProofCollector = new(a);
             tree.Accept(accountProofCollector, tree.RootHash);
             AccountProof proof = accountProofCollector.BuildResult();
-            Assert.That((proof.Proof).Length, Is.EqualTo(1));
+            Assert.That(proof.Proof, Has.Length.EqualTo(1));
 
             // and because the account does not exist, the balance should be 0
             Assert.That(proof.Balance, Is.EqualTo(UInt256.Zero));
@@ -384,8 +384,8 @@ namespace Nethermind.Store.Test.Proofs
             Assert.That(proof.StorageProofs?[3].Value?.Span.ToHexString(true) ?? "0x", Is.EqualTo("0x00"));
             Assert.That(proof.StorageProofs?[4].Value?.Span.ToHexString(true) ?? "0x", Is.EqualTo(StorageValueHexes[4]));
 
-            Assert.That((proof.StorageProofs?[1].Proof).Length, Is.EqualTo(2));
-            Assert.That((proof.StorageProofs?[3].Proof).Length, Is.EqualTo(1));
+            Assert.That(proof.StorageProofs?[1].Proof, Has.Length.EqualTo(2));
+            Assert.That(proof.StorageProofs?[3].Proof, Has.Length.EqualTo(1));
         }
 
         [Test]

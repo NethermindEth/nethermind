@@ -118,7 +118,7 @@ public class HistoricalSummariesRpcProviderTests
 
         HistoricalSummary[] result = await sut.GetHistoricalSummariesAsync();
 
-        Assert.That((result).Length, Is.EqualTo(1));
+        Assert.That(result, Has.Length.EqualTo(1));
     }
 
     private static HistoricalSummariesRpcProvider Build(string responseBody) =>

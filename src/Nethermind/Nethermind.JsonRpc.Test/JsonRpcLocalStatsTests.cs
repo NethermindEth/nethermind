@@ -84,7 +84,7 @@ namespace Nethermind.JsonRpc.Test
                 MakeTimePass(60);
             }
 
-            Assert.That((_testLogger.LogList).Count, Is.GreaterThan(0));
+            Assert.That(_testLogger.LogList, Has.Count.GreaterThan(0));
         }
 
         [Test]
@@ -98,7 +98,7 @@ namespace Nethermind.JsonRpc.Test
             localStats.ReportCall("A", 100, true);
             MakeTimePass();
             localStats.ReportCall("A", 300, true);
-            Assert.That((_testLogger.LogList).Count, Is.EqualTo(0));
+            Assert.That(_testLogger.LogList, Has.Count.EqualTo(0));
         }
 
         [Test]
@@ -107,7 +107,7 @@ namespace Nethermind.JsonRpc.Test
             JsonRpcLocalStats localStats = new(_manualTimestamper, _config, _logManager);
             MakeTimePass();
             localStats.ReportCall("A", 300, true);
-            Assert.That((_testLogger.LogList).Count, Is.EqualTo(0));
+            Assert.That(_testLogger.LogList, Has.Count.EqualTo(0));
         }
 
         [Test]
@@ -170,7 +170,7 @@ namespace Nethermind.JsonRpc.Test
                 await localStats.ReportCall(new RpcReport("eth_call", 0, true), elapsedMicroseconds: 123);
 
                 Assert.That(silentLogger.LogList, Is.Empty);
-                Assert.That((observer.Observations).Count, Is.EqualTo(1));
+                Assert.That(observer.Observations, Has.Count.EqualTo(1));
                 Assert.That(observer.Observations[0].Value, Is.EqualTo(123));
                 Assert.That(observer.Observations[0].Labels, Is.EqualTo(new[] { "eth_call", "success" }));
             }

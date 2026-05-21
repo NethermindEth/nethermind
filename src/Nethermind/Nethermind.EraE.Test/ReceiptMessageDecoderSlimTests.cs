@@ -49,7 +49,7 @@ public class ReceiptMessageDecoderSlimTests
 
         Assert.That(decoded.StatusCode, Is.EqualTo(original.StatusCode));
         Assert.That(decoded.GasUsedTotal, Is.EqualTo(original.GasUsedTotal));
-        Assert.That((decoded.Logs!).Length, Is.EqualTo(original.Logs!.Length));
+        Assert.That(decoded.Logs!, Has.Length.EqualTo(original.Logs!.Length));
         Assert.That(decoded.Logs[0].Data, Is.EqualTo(original.Logs[0].Data));
     }
 

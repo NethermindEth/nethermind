@@ -48,7 +48,7 @@ namespace Nethermind.Network.Test
             Assert.That(_staticNodesManager.Nodes.Count(), Is.EqualTo(0));
             await _staticNodesManager.AddAsync(Enode, false);
             Assert.That(_staticNodesManager.Nodes.Count(), Is.EqualTo(1));
-            Assert.That((await listTask).Count, Is.EqualTo(1));
+            Assert.That(await listTask, Has.Count.EqualTo(1));
         }
 
         [Test]

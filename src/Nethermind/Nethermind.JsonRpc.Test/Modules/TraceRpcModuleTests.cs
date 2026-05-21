@@ -1106,7 +1106,7 @@ public class TraceRpcModuleTests
         else
         {
             request.ReadJson(doc.RootElement, EthereumJsonSerializer.JsonOptions);
-            Assert.That((request.Calls).Count, Is.EqualTo(expectedCount));
+            Assert.That(request.Calls, Has.Count.EqualTo(expectedCount));
         }
     }
 

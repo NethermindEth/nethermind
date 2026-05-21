@@ -688,7 +688,7 @@ namespace Nethermind.Network.Test
             ctx.PeerPool.GetOrAdd(node);
             ctx.PeerPool.GetOrAdd(node);
             await Task.Delay(_delayLong);
-            Assert.That((ctx.PeerManager.ActivePeers).Count, Is.EqualTo(1));
+            Assert.That(ctx.PeerManager.ActivePeers, Has.Count.EqualTo(1));
         }
 
         [Test]

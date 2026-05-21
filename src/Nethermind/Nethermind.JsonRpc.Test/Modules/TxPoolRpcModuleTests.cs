@@ -101,7 +101,7 @@ public class TxPoolRpcModuleTests
 
         TxPoolContentFrom result = txPoolRpcModule.txpool_contentFrom(TestItem.AddressA).Data;
 
-        Assert.That((result.Pending).Count, Is.EqualTo(2), "AddressA has exactly 2 pending transactions");
+        Assert.That(result.Pending, Has.Count.EqualTo(2), "AddressA has exactly 2 pending transactions");
         Assert.That(result.Pending.ContainsKey(1ul), Is.True, "nonce 1 belongs to AddressA");
         Assert.That(result.Pending.ContainsKey(2ul), Is.True, "nonce 2 belongs to AddressA");
         Assert.That(result.Queued, Is.Empty, "no queued transactions were set up for AddressA");

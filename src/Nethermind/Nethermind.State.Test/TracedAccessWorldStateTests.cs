@@ -214,7 +214,7 @@ public class TracedAccessWorldStateTests(bool parallel)
 
             AccountChangesAtIndex? ac = tws.GetGeneratingBlockAccessList()!.GetAccountChanges(TestItem.AddressA);
             Assert.That(ac, Is.Not.Null);
-            Assert.That((ac!.StorageReads).Count, Is.EqualTo(1));
+            Assert.That(ac!.StorageReads, Has.Count.EqualTo(1));
             Assert.That(ac.StorageReads.First(), Is.EqualTo((UInt256)2));
         }
     }

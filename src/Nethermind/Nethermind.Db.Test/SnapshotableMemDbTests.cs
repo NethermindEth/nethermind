@@ -187,7 +187,7 @@ namespace Nethermind.Db.Test
             SnapshotableMemDb memDb = new();
             memDb.Set(TestItem.KeccakA, _sampleValue);
             memDb.Set(TestItem.KeccakB, _sampleValue);
-            Assert.That((memDb.Values).Count, Is.EqualTo(2));
+            Assert.That(memDb.Values, Has.Count.EqualTo(2));
         }
 
         [Test]
@@ -275,7 +275,7 @@ namespace Nethermind.Db.Test
                 values.Add(view.CurrentValue.ToArray());
             }
 
-            Assert.That((keys).Count, Is.EqualTo(3));
+            Assert.That(keys, Has.Count.EqualTo(3));
             Assert.That(keys[0], Is.EqualTo(keyB));
             Assert.That(keys[1], Is.EqualTo(keyC));
             Assert.That(keys[2], Is.EqualTo(keyD));
@@ -317,7 +317,7 @@ namespace Nethermind.Db.Test
                 values.Add(view.CurrentValue.ToArray());
             }
 
-            Assert.That((values).Count, Is.EqualTo(3));
+            Assert.That(values, Has.Count.EqualTo(3));
             Assert.That(values[0], Is.EqualTo(new byte[] { 1 }));
             Assert.That(values[1], Is.EqualTo(new byte[] { 2 })); // Old version
             Assert.That(values[2], Is.EqualTo(new byte[] { 3 }));

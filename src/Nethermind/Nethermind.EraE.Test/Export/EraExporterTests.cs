@@ -167,7 +167,7 @@ public class EraExporterTests
         await container.Resolve<IEraExporter>().Export(tmpDirectory, 1, 0);
 
         string[] eraFiles = Directory.GetFiles(tmpDirectory, $"*{EraPathUtils.FileExtension}");
-        Assert.That((eraFiles).Length, Is.EqualTo(1), "one epoch for blocks 1-15");
+        Assert.That(eraFiles, Has.Length.EqualTo(1), "one epoch for blocks 1-15");
 
         List<ushort> types = EraFileFormatComplianceTests.ReadAllEntries(eraFiles[0]).Select(e => e.Type).ToList();
         Assert.That(types, Does.Not.Contain(EntryTypes.Proof), "post-merge epochs have no Proof entries");

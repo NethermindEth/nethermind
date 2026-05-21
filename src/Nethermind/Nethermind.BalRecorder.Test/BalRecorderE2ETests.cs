@@ -56,7 +56,7 @@ public class BalRecorderE2ETests
                 BlockBuilder builder = recorder.Resolve<BlockBuilder>();
                 await builder.StartAndBuildBlocks(BlocksToBuild, cts.Token);
                 recorded = CaptureRecordedBals(recorder, BlocksToBuild);
-                Assert.That((recorded).Count, Is.EqualTo(BlocksToBuild));
+                Assert.That(recorded, Has.Count.EqualTo(BlocksToBuild));
                 Assert.That(Directory.GetFiles(dir, "*.bal"), Is.Not.Empty);
             }
 

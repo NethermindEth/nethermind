@@ -129,7 +129,7 @@ public class ReceiptsMessageSerializerTests
     {
         ReceiptsMessageSerializer serializer = new(MainnetSpecProvider.Instance);
         using ReceiptsMessage receiptsMessage = serializer.Deserialize([]);
-        Assert.That((receiptsMessage.TxReceipts).Count, Is.EqualTo(0));
+        Assert.That(receiptsMessage.TxReceipts, Has.Count.EqualTo(0));
     }
 
     [Test]

@@ -109,7 +109,7 @@ namespace Nethermind.Db.Test
             memDb.Set(TestItem.KeccakA, _sampleValue);
             memDb.Set(TestItem.KeccakB, _sampleValue);
             KeyValuePair<byte[], byte[]>[] result = memDb[new[] { TestItem.KeccakB.BytesToArray(), TestItem.KeccakB.BytesToArray(), TestItem.KeccakC.BytesToArray() }];
-            Assert.That((result).Length, Is.EqualTo(3));
+            Assert.That(result, Has.Length.EqualTo(3));
             Assert.That(result[0].Value, Is.Not.Null);
             Assert.That(result[1].Value, Is.Not.Null);
             Assert.That(result[2].Value, Is.Null);
@@ -130,7 +130,7 @@ namespace Nethermind.Db.Test
             MemDb memDb = new();
             memDb.Set(TestItem.KeccakA, _sampleValue);
             memDb.Set(TestItem.KeccakB, _sampleValue);
-            Assert.That((memDb.Values).Count, Is.EqualTo(2));
+            Assert.That(memDb.Values, Has.Count.EqualTo(2));
         }
 
         [Test]
