@@ -29,11 +29,11 @@ public class TrieStoreScopeProvider : IWorldStateScopeProvider
     protected StateTree _backingStateTree;
     private readonly KeyValueWithBatchingBackedCodeDb _codeDb;
 
-    public TrieStoreScopeProvider(ITrieStore trieStore, IKeyValueStoreWithBatching codeDb, ILogManager logManager)
+    public TrieStoreScopeProvider(ITrieStore trieStore, IKeyValueStoreWithBatching codeDb, ILogManager logManager, bool codeDbIsPersistent = true)
     {
         _trieStore = trieStore;
         _logManager = logManager;
-        _codeDb = new KeyValueWithBatchingBackedCodeDb(codeDb);
+        _codeDb = new KeyValueWithBatchingBackedCodeDb(codeDb, codeDbIsPersistent);
 
         _backingStateTree = CreateStateTree();
     }
