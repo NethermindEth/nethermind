@@ -33,7 +33,9 @@ public class PosForwardHeaderProviderCacheTests
     public void SetUp()
     {
         _chainLevelHelper = Substitute.For<IChainLevelHelper>();
-        _chainLevelHelper.GetNextHeaders(default, default, default).ReturnsForAnyArgs(_ => BuildSequentialHeaders(start: 1, count: CachedBatchSize));
+        // `ChainLevelHelper.GetStartingPoint` in the typical walk-back path returns the anchor at
+        // `BestKnownNumber`, so the first header is `BestKnownNumber` (here `0`), not `BestKnownNumber + 1`.
+        _chainLevelHelper.GetNextHeaders(default, default, default).ReturnsForAnyArgs(_ => BuildSequentialHeaders(start: 0, count: CachedBatchSize));
 
         IPoSSwitcher poSSwitcher = Substitute.For<IPoSSwitcher>();
         poSSwitcher.HasEverReachedTerminalBlock().Returns(true);
@@ -98,13 +100,13 @@ public class PosForwardHeaderProviderCacheTests
     {
         using IOwnedReadOnlyList<BlockHeader?>? first = await _provider.GetBlockHeaders(0, Requested, CancellationToken.None);
         first!.Count.Should().Be(Requested);
-        first[0]!.Number.Should().Be(1);
+        first[0]!.Number.Should().Be(0);
 
         _blockTree.BestKnownNumber.Returns(20L);
         using IOwnedReadOnlyList<BlockHeader?>? second = await _provider.GetBlockHeaders(0, Requested, CancellationToken.None);
 
         second!.Count.Should().Be(Requested);
-        second[0]!.Number.Should().Be(21);
+        second[0]!.Number.Should().Be(20);
         _chainLevelHelper.ReceivedWithAnyArgs(1).GetNextHeaders(default, default, default);
     }
 

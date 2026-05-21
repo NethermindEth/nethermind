@@ -55,13 +55,18 @@ public class PosForwardHeaderProvider(
         BlockHeader?[]? slice = TryServeFromCache(maxHeader, skipLastN);
         if (slice is not null)
         {
+            // Re-validate per slice so terminal-block / random-index checks run on the served window
+            // rather than only at fill time.
+            ValidateSeals(slice!, cancellation);
             if (_logger.IsTrace) _logger.Trace($"Served {slice.Length} headers from forward-header cache");
             return Task.FromResult<IOwnedReadOnlyList<BlockHeader?>?>(slice.ToPooledList(slice.Length));
         }
 
         // Fetch a larger batch than asked so subsequent peer allocations can be served from the cache.
         int fetchSize = Math.Max(maxHeader * CacheBatchMultiplier, MinCachedHeaderBatchSize);
-        BlockHeader?[]? fresh = chainLevelHelper.GetNextHeaders(fetchSize, long.MaxValue, skipLastBlockCount: 0);
+        // Forward `skipLastN` so `ChainLevelHelper` enforces the same chain-tip exclusion as the
+        // pre-cache implementation; trim the slice tail again at serve time to honour per-call values.
+        BlockHeader?[]? fresh = chainLevelHelper.GetNextHeaders(fetchSize, long.MaxValue, skipLastBlockCount: skipLastN);
         if (fresh is null || fresh.Length <= 1)
         {
             if (_logger.IsTrace) _logger.Trace("Chain level helper got no headers suggestion");
@@ -71,9 +76,11 @@ public class PosForwardHeaderProvider(
         // Alternatively we can do this in BeaconHeadersSyncFeed, but this seems easier.
         ValidateSeals(fresh!, cancellation);
 
-        UpdateCache(fresh!);
+        // Only cache a full-sized batch; a truncated fetch implies we reached the chain tip and the
+        // cached tail would diverge from the original `skipLastBlockCount` semantics on later calls.
+        if (fresh.Length >= fetchSize) UpdateCache(fresh!);
 
-        return Task.FromResult<IOwnedReadOnlyList<BlockHeader?>?>(BuildSlice(fresh!, maxHeader, skipLastN));
+        return Task.FromResult<IOwnedReadOnlyList<BlockHeader?>?>(BuildSlice(fresh!, maxHeader, skipLastN: 0));
     }
 
     private BlockHeader?[]? TryServeFromCache(int maxHeader, int skipLastN)
@@ -95,7 +102,11 @@ public class PosForwardHeaderProvider(
         long currentNumber = processDestination?.Number ?? long.MaxValue;
         if (cachedHash != currentHash || cachedNumber != currentNumber) return null;
 
-        long desiredStart = Math.Min(_blockTree.BestKnownNumber + 1, currentNumber);
+        // `ChainLevelHelper.GetStartingPoint` returns the *anchor* (last processed block) in the
+        // active beacon-sync walk-back path, i.e. `headers[0].Number == BestKnownNumber`.
+        // Use `BestKnownNumber` (not `+1`) so the served slice retains the anchor at index 0,
+        // matching the contract `BlockDownloader.AssembleRequest` relies on.
+        long desiredStart = Math.Min(_blockTree.BestKnownNumber, currentNumber);
         long cacheStart = cached[0].Number;
         long cacheEnd = cached[^1].Number;
         if (desiredStart < cacheStart || desiredStart > cacheEnd) return null;
