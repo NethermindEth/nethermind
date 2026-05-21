@@ -19,6 +19,7 @@ public class ReleaseSpec : IReleaseSpec
     public long MaxCodeSize { get; set; }
     public long MinGasLimit { get; set; }
     public long MinHistoryRetentionEpochs { get; set; }
+    public long MinBalRetentionEpochs { get; set; }
     public long GasLimitBoundDivisor { get; set; }
     public UInt256 BlockReward { get; set; }
     public long DifficultyBombDelay { get; set; }
