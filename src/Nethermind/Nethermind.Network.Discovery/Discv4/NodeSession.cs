@@ -14,20 +14,29 @@ public record NodeSession(INodeStats NodeStats, ITimestamper Timestamper)
     public static readonly TimeSpan PingRetryTimeout = TimeSpan.FromMinutes(10);
     public const int AuthenticatedRequestFailureLimit = 5;
 
-    private long AuthenticatedRequestFailureCount { get; set; }
-    private DateTimeOffset LastPongReceived { get; set; } = DateTimeOffset.MinValue;
-    private DateTimeOffset LastPingReceived { get; set; } = DateTimeOffset.MinValue;
-    private DateTimeOffset LastPingSent { get; set; } = DateTimeOffset.MinValue;
+    private int _authenticatedRequestFailureCount;
+    private long _lastPongReceivedTicks;
+    private long _lastPingReceivedTicks;
+    private long _lastPingSentTicks;
 
-    public bool HasReceivedPing => LastPingReceived + BondTimeout > Timestamper.UtcNowOffset;
-    public bool NotTooManyFailure => AuthenticatedRequestFailureCount <= AuthenticatedRequestFailureLimit;
-    public bool HasReceivedPong => LastPongReceived + BondTimeout > Timestamper.UtcNowOffset;
-    public bool HasTriedPingRecently => LastPingSent + PingRetryTimeout > Timestamper.UtcNowOffset;
-    public void ResetAuthenticatedRequestFailure() => AuthenticatedRequestFailureCount = 0;
-    public void OnAuthenticatedRequestFailure() => AuthenticatedRequestFailureCount++;
+    public bool HasReceivedPing => Volatile.Read(ref _lastPingReceivedTicks) + BondTimeout.Ticks > Timestamper.UtcNow.Ticks;
+    public bool NotTooManyFailure => Volatile.Read(ref _authenticatedRequestFailureCount) <= AuthenticatedRequestFailureLimit;
+    public bool HasReceivedPong => Volatile.Read(ref _lastPongReceivedTicks) + BondTimeout.Ticks > Timestamper.UtcNow.Ticks;
+    public bool HasTriedPingRecently => Volatile.Read(ref _lastPingSentTicks) + PingRetryTimeout.Ticks > Timestamper.UtcNow.Ticks;
+    public void ResetAuthenticatedRequestFailure() => Interlocked.Exchange(ref _authenticatedRequestFailureCount, 0);
 
-    public void OnPongReceived() => LastPongReceived = Timestamper.UtcNowOffset;
-    public void OnPingReceived() => LastPingReceived = Timestamper.UtcNowOffset;
+    public void OnAuthenticatedRequestFailure()
+    {
+        while (true)
+        {
+            int failureCount = Volatile.Read(ref _authenticatedRequestFailureCount);
+            if (failureCount > AuthenticatedRequestFailureLimit) return;
+            if (Interlocked.CompareExchange(ref _authenticatedRequestFailureCount, failureCount + 1, failureCount) == failureCount) return;
+        }
+    }
+
+    public void OnPongReceived() => Volatile.Write(ref _lastPongReceivedTicks, Timestamper.UtcNow.Ticks);
+    public void OnPingReceived() => Volatile.Write(ref _lastPingReceivedTicks, Timestamper.UtcNow.Ticks);
 
     public void RecordStatsForOutgoingMsg(DiscoveryMsg msg)
     {
@@ -79,5 +88,5 @@ public record NodeSession(INodeStats NodeStats, ITimestamper Timestamper)
         }
     }
 
-    public void OnPingSent() => LastPingSent = Timestamper.UtcNowOffset;
+    public void OnPingSent() => Volatile.Write(ref _lastPingSentTicks, Timestamper.UtcNow.Ticks);
 }

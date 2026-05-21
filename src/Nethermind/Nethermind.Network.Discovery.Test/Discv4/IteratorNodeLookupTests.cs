@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Logging;
@@ -43,6 +44,7 @@ namespace Nethermind.Network.Discovery.Test.Discv4
                 kademliaConfig,
                 _msgSender,
                 new PublicKeyKeyOperator(),
+                new ManualTimestamper(new DateTime(2025, 5, 13, 21, 0, 0, DateTimeKind.Utc)),
                 logManager);
         }
 

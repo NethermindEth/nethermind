@@ -31,6 +31,11 @@ public class KademliaConfig<TNode>
     public TimeSpan RefreshInterval { get; set; } = TimeSpan.FromMinutes(30);
 
     /// <summary>
+    /// Minimum age before an individual non-empty bucket is refreshed again.
+    /// </summary>
+    public TimeSpan BucketRefreshInterval { get; set; } = TimeSpan.FromHours(1);
+
+    /// <summary>
     /// The timeout for each find neighbour call lookup
     /// </summary>
     public TimeSpan LookupFindNeighbourHardTimout { get; set; } = TimeSpan.FromSeconds(10);

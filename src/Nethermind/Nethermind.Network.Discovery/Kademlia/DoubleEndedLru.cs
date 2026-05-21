@@ -32,12 +32,8 @@ public class DoubleEndedLru<TNode>(int capacity) where TNode : notnull
         }
 
         listNode = _queue.AddFirst((hash, node));
-        if (_hashMapping.TryAdd(hash, listNode) && _queue.Count <= capacity) return BucketAddResult.Added;
-
-        _queue.Remove((hash, node));
-        _hashMapping.TryRemove(hash, out listNode);
-
-        return BucketAddResult.Full;
+        _hashMapping.TryAdd(hash, listNode);
+        return BucketAddResult.Added;
     }
 
     public bool TryPopHead(out ValueHash256 hash, out TNode? node)

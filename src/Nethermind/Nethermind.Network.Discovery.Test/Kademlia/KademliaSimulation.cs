@@ -230,6 +230,7 @@ public class KademliaSimulation
             builder
                 .AddModule(new KademliaModule<ValueHash256, TestNode>())
                 .AddSingleton<ILogManager>(new TestLogManager(LogLevel.Error))
+                .AddSingleton<ITimestamper>(new ManualTimestamper(new DateTime(2025, 5, 13, 21, 0, 0, DateTimeKind.Utc)))
                 .AddSingleton<IKeyOperator<ValueHash256, TestNode>>(_nodeHashProvider)
                 .AddSingleton(new KademliaConfig<TestNode>
                 {

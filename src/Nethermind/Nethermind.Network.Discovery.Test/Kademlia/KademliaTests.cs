@@ -23,6 +23,7 @@ public class KademliaTests
         new ContainerBuilder()
             .AddModule(new KademliaModule<ValueHash256, ValueHash256>())
             .AddSingleton<ILogManager>(new TestLogManager(LogLevel.Trace))
+            .AddSingleton<ITimestamper>(new ManualTimestamper(new System.DateTime(2025, 5, 13, 21, 0, 0, System.DateTimeKind.Utc)))
             .AddSingleton<IKeyOperator<ValueHash256, ValueHash256>>(new ValueHashNodeHashProvider())
             .AddSingleton(config)
             .AddSingleton(_kademliaMessageSender)
@@ -48,6 +49,29 @@ public class KademliaTests
         kad.AddOrRefresh(testHash);
 
         Assert.That(nodeAddedTriggered, Is.EqualTo(1));
+    }
+
+    [Test]
+    public void TestNodeRemoved()
+    {
+        Kademlia<ValueHash256, ValueHash256> kad = CreateKad(new KademliaConfig<ValueHash256>
+        {
+            KSize = 5,
+            Beta = 0,
+        });
+
+        int nodeRemovedTriggered = 0;
+        ValueHash256 testHash = new("0x1111111111111111111111111111111111111111111111111111111111111111");
+        kad.AddOrRefresh(testHash);
+        kad.OnNodeRemoved += (sender, hash256) =>
+        {
+            nodeRemovedTriggered++;
+            Assert.That(hash256, Is.EqualTo(testHash));
+        };
+
+        kad.Remove(testHash);
+
+        Assert.That(nodeRemovedTriggered, Is.EqualTo(1));
     }
 
     [Test]

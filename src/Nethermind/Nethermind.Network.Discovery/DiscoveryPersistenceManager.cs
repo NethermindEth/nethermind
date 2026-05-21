@@ -58,13 +58,9 @@ public class DiscoveryPersistenceManager(
             {
                 node = new Node(networkNode.NodeId, networkNode.Host, networkNode.Port);
             }
-            catch (Exception)
+            catch (Exception e)
             {
-                if (_logger.IsDebug)
-                {
-                    _logger.Error(
-                        $"ERROR/DEBUG peer could not be loaded for {networkNode.NodeId}@{networkNode.Host}:{networkNode.Port}");
-                }
+                _logger.DebugError($"Peer could not be loaded for {networkNode.NodeId}@{networkNode.Host}:{networkNode.Port}. {e}");
 
                 continue;
             }
@@ -79,13 +75,9 @@ public class DiscoveryPersistenceManager(
             {
                 continue;
             }
-            catch (Exception)
+            catch (Exception e)
             {
-                if (_logger.IsDebug)
-                {
-                    _logger.Error(
-                        $"ERROR/DEBUG error when pinging persisted node {networkNode.NodeId}@{networkNode.Host}:{networkNode.Port}");
-                }
+                if (_logger.IsDebug) _logger.Debug($"Error when pinging persisted node {networkNode.NodeId}@{networkNode.Host}:{networkNode.Port}. {e}");
 
                 continue;
             }

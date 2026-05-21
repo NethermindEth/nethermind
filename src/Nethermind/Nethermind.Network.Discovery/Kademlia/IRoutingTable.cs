@@ -15,5 +15,6 @@ public interface IRoutingTable<TNode> where TNode : notnull
     TNode? GetByHash(ValueHash256 nodeId);
     void LogDebugInfo();
     event EventHandler<TNode>? OnNodeAdded;
+    event EventHandler<TNode>? OnNodeRemoved;
     int Size { get; }
 }

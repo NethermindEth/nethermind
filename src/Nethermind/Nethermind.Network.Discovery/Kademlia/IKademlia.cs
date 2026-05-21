@@ -58,6 +58,11 @@ public interface IKademlia<TKey, TNode>
     event EventHandler<TNode> OnNodeAdded;
 
     /// <summary>
+    /// Called when a TNode is removed from the routing table.
+    /// </summary>
+    event EventHandler<TNode> OnNodeRemoved;
+
+    /// <summary>
     /// Iterate all nodes with no ordering
     /// </summary>
     /// <returns></returns>

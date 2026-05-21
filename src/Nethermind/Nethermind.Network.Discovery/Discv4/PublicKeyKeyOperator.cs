@@ -13,10 +13,16 @@ public class PublicKeyKeyOperator : IKeyOperator<PublicKey, Node>
 
     public ValueHash256 GetKeyHash(PublicKey key) => key.Hash;
 
+    /// <summary>
+    /// Creates a random discv4 lookup target.
+    /// </summary>
+    /// <remarks>
+    /// Discv4 FINDNODE carries a public key, while bucket refresh starts from a desired node-id hash prefix.
+    /// Constructing a public key whose Keccak hash lands in that prefix is not practical, so this uses a random
+    /// 64-byte target and treats discv4 bucket refresh as best-effort sampling.
+    /// </remarks>
     public PublicKey CreateRandomKeyAtDistance(ValueHash256 nodePrefix, int depth)
     {
-        // Obviously, we can't generate this. So we just randomly pick something.
-        // I guess we can brute force it if needed.
         Span<byte> randomBytes = new byte[64];
         Random.Shared.NextBytes(randomBytes);
         return new PublicKey(randomBytes);

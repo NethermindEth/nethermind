@@ -97,12 +97,12 @@ public class KBucketTree<TNode> : IRoutingTable<TNode> where TNode : notnull
         {
             if (current.IsLeaf)
             {
-                _logger.Debug($"Reached leaf node at depth {depth}");
+                if (_logger.IsDebug) _logger.Debug($"Reached leaf node at depth {depth}");
                 return current.Bucket;
             }
 
             bool goRight = GetBit(nodeHash, depth);
-            _logger.Debug($"Traversing {(goRight ? "right" : "left")} at depth {depth}");
+            if (_logger.IsDebug) _logger.Debug($"Traversing {(goRight ? "right" : "left")} at depth {depth}");
 
             current = goRight ? current.Right! : current.Left!;
             depth++;
@@ -112,7 +112,7 @@ public class KBucketTree<TNode> : IRoutingTable<TNode> where TNode : notnull
     private bool ShouldSplit(int depth, int targetLogDistance)
     {
         bool shouldSplit = depth < 256 && targetLogDistance + _b >= depth;
-        _logger.Debug($"ShouldSplit at depth {depth}: {shouldSplit}");
+        if (_logger.IsDebug) _logger.Debug($"ShouldSplit at depth {depth}: {shouldSplit}");
         return shouldSplit;
     }
 
@@ -123,7 +123,7 @@ public class KBucketTree<TNode> : IRoutingTable<TNode> where TNode : notnull
         rightPrefixBytes[depth / 8] |= (byte)(1 << (7 - (depth % 8)));
         node.Right = new TreeNode(_k, new ValueHash256(rightPrefixBytes));
 
-        _logger.Debug($"Created children at depth {depth + 1}");
+        if (_logger.IsDebug) _logger.Debug($"Created children at depth {depth + 1}");
 
         // The reverse is because the bucket is iterated from the most recent. Without it
         // reading would have reversed this order.
@@ -132,30 +132,38 @@ public class KBucketTree<TNode> : IRoutingTable<TNode> where TNode : notnull
             ValueHash256 itemHash = item.Item1;
             TreeNode? targetNode = GetBit(itemHash, depth) ? node.Right : node.Left;
             targetNode.Bucket.TryAddOrRefresh(itemHash, item.Item2, out _);
-            _logger.Debug($"Moved item {item} to {(GetBit(itemHash, depth) ? "right" : "left")} child");
+            if (_logger.IsDebug) _logger.Debug($"Moved item {item} to {(GetBit(itemHash, depth) ? "right" : "left")} child");
         }
 
         node.Bucket.Clear();
-        _logger.Debug($"Finished splitting bucket. Left count: {node.Left.Bucket.Count}, Right count: {node.Right.Bucket.Count}");
+        if (_logger.IsDebug) _logger.Debug($"Finished splitting bucket. Left count: {node.Left.Bucket.Count}, Right count: {node.Right.Bucket.Count}");
     }
 
     public bool Remove(in ValueHash256 nodeHash)
     {
         using McsLock.Disposable _ = _lock.Acquire();
 
-        _logger.Debug($"Attempting to remove node {nodeHash} with hash {nodeHash}");
+        if (_logger.IsDebug) _logger.Debug($"Attempting to remove node {nodeHash} with hash {nodeHash}");
 
-        return GetBucketForHash(nodeHash).RemoveAndReplace(nodeHash);
+        KBucket<TNode> bucket = GetBucketForHash(nodeHash);
+        TNode? removedNode = bucket.GetByHash(nodeHash);
+        bool removed = bucket.RemoveAndReplace(nodeHash);
+        if (removed && removedNode is not null)
+        {
+            OnNodeRemoved?.Invoke(this, removedNode);
+        }
+
+        return removed;
     }
 
     public TNode[] GetAllAtDistance(int distance)
     {
         using McsLock.Disposable _ = _lock.Acquire();
 
-        _logger.Debug($"Getting all nodes at distance {distance}");
+        if (_logger.IsDebug) _logger.Debug($"Getting all nodes at distance {distance}");
         List<TNode> result = [];
         GetAllAtDistanceRecursive(_root, 0, distance, result);
-        _logger.Debug($"Found {result.Count} nodes at distance {distance}");
+        if (_logger.IsDebug) _logger.Debug($"Found {result.Count} nodes at distance {distance}");
         return [.. result];
     }
 
@@ -378,12 +386,15 @@ public class KBucketTree<TNode> : IRoutingTable<TNode> where TNode : notnull
 
         TraverseTree(_root, 0);
 
-        _logger.Debug($"Tree Statistics:\n" +
-                     $"Total Nodes: {totalNodes}\n" +
-                     $"Total Buckets: {totalBuckets}\n" +
-                     $"Max Depth: {maxDepth}\n" +
-                     $"Total Items: {totalItems}\n" +
-                     $"Average Items per Bucket: {(double)totalItems / totalBuckets:F2}");
+        if (_logger.IsDebug)
+        {
+            _logger.Debug($"Tree Statistics:\n" +
+                         $"Total Nodes: {totalNodes}\n" +
+                         $"Total Buckets: {totalBuckets}\n" +
+                         $"Max Depth: {maxDepth}\n" +
+                         $"Total Items: {totalItems}\n" +
+                         $"Average Items per Bucket: {(double)totalItems / totalBuckets:F2}");
+        }
     }
     private void LogTreeStructure()
     {
@@ -399,6 +410,7 @@ public class KBucketTree<TNode> : IRoutingTable<TNode> where TNode : notnull
     }
 
     public event EventHandler<TNode>? OnNodeAdded;
+    public event EventHandler<TNode>? OnNodeRemoved;
 
     public int Size
     {

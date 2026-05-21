@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Runtime.CompilerServices;
+using Nethermind.Core;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -24,6 +25,7 @@ public class IteratorNodeLookup<TKey, TNode>(
     KademliaConfig<TNode> kademliaConfig,
     IKademliaMessageSender<TKey, TNode> msgSender,
     IKeyOperator<TKey, TNode> keyOperator,
+    ITimestamper timestamper,
     ILogManager logManager) : IIteratorNodeLookup<TKey, TNode> where TNode : notnull
 {
     private readonly ILogger _logger = logManager.GetClassLogger<IteratorNodeLookup<TKey, TNode>>();
@@ -181,7 +183,7 @@ public class IteratorNodeLookup<TKey, TNode>(
         try
         {
             if (_unreacheableNodes.TryGet(keyOperator.GetNodeHash(node), out DateTimeOffset lastAttempt) &&
-                lastAttempt + TimeSpan.FromMinutes(5) > DateTimeOffset.Now)
+                lastAttempt + TimeSpan.FromMinutes(5) > timestamper.UtcNowOffset)
             {
                 return [];
             }
@@ -190,7 +192,7 @@ public class IteratorNodeLookup<TKey, TNode>(
         }
         catch (OperationCanceledException)
         {
-            _unreacheableNodes.Set(keyOperator.GetNodeHash(node), DateTimeOffset.Now);
+            _unreacheableNodes.Set(keyOperator.GetNodeHash(node), timestamper.UtcNowOffset);
             return null;
         }
         catch (Exception e)

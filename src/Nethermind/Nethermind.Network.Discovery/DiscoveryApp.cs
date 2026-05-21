@@ -83,6 +83,7 @@ public class DiscoveryApp : IDiscoveryApp, IAsyncDisposable
             });
 
         (_kademliaNodeSource, _persistenceManager, _discv4Adapter, _kademlia, _discoveryHandlerFactory) = _discv4Services.Resolve<DiscV4Services>();
+        _kademlia.OnNodeRemoved += OnKademliaNodeRemoved;
     }
 
     /// <summary>
@@ -248,6 +249,13 @@ public class DiscoveryApp : IDiscoveryApp, IAsyncDisposable
 
     public IAsyncEnumerable<Node> DiscoverNodes(CancellationToken token) => _kademliaNodeSource.DiscoverNodes(token);
 
-    public event EventHandler<NodeEventArgs>? NodeRemoved { add { } remove { } }
-    public ValueTask DisposeAsync() => _discv4Services.DisposeAsync();
+    private void OnKademliaNodeRemoved(object? sender, Node node) => NodeRemoved?.Invoke(sender, new NodeEventArgs(node));
+
+    public event EventHandler<NodeEventArgs>? NodeRemoved;
+
+    public async ValueTask DisposeAsync()
+    {
+        _kademlia.OnNodeRemoved -= OnKademliaNodeRemoved;
+        await _discv4Services.DisposeAsync();
+    }
 }

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Diagnostics;
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
 
@@ -20,7 +21,11 @@ public class Kademlia<TKey, TNode> : IKademlia<TKey, TNode> where TNode : notnul
     private readonly ValueHash256 _currentNodeIdAsHash;
     private readonly int _kSize;
     private readonly TimeSpan _refreshInterval;
+    private readonly TimeSpan _bucketRefreshInterval;
     private readonly IReadOnlyList<TNode> _bootNodes;
+    private readonly ITimestamper _timestamper;
+    private readonly Dictionary<ValueHash256, long> _lastBucketRefreshTicks = [];
+    private readonly object _lastBucketRefreshLock = new();
 
     public Kademlia(
         IKeyOperator<TKey, TNode> keyOperator,
@@ -29,6 +34,7 @@ public class Kademlia<TKey, TNode> : IKademlia<TKey, TNode> where TNode : notnul
         ILookupAlgo<TNode> lookupAlgo,
         ILogManager logManager,
         INodeHealthTracker<TNode> nodeHealthTracker,
+        ITimestamper timestamper,
         KademliaConfig<TNode> config)
     {
         _keyOperator = keyOperator;
@@ -42,7 +48,9 @@ public class Kademlia<TKey, TNode> : IKademlia<TKey, TNode> where TNode : notnul
         _currentNodeIdAsHash = _keyOperator.GetNodeHash(_currentNodeId);
         _kSize = config.KSize;
         _refreshInterval = config.RefreshInterval;
+        _bucketRefreshInterval = config.BucketRefreshInterval;
         _bootNodes = config.BootNodes;
+        _timestamper = timestamper;
 
         AddOrRefresh(_currentNodeId);
     }
@@ -113,10 +121,12 @@ public class Kademlia<TKey, TNode> : IKademlia<TKey, TNode> where TNode : notnul
 
         token.ThrowIfCancellationRequested();
 
-        // Refreshes all bucket. one by one. That is not empty.
-        // A refresh means to do a k-nearest node lookup for a random hash for that particular bucket.
+        // Refresh stale non-empty buckets one by one. A refresh means to do a k-nearest node lookup for a random hash
+        // for that particular bucket.
         foreach ((ValueHash256 Prefix, int Distance, KBucket<TNode> Bucket) in _routingTable.IterateBuckets())
         {
+            if (!ShouldRefreshBucket(Prefix, Bucket)) continue;
+
             TKey? keyToLookup = _keyOperator.CreateRandomKeyAtDistance(Prefix, Distance);
             await LookupNodesClosest(keyToLookup, token);
         }
@@ -125,6 +135,24 @@ public class Kademlia<TKey, TNode> : IKademlia<TKey, TNode> where TNode : notnul
         {
             _logger.Debug($"Bootstrap completed. Took {sw}.");
             _routingTable.LogDebugInfo();
+        }
+    }
+
+    private bool ShouldRefreshBucket(ValueHash256 prefix, KBucket<TNode> bucket)
+    {
+        if (bucket.Count == 0) return false;
+
+        long nowTicks = _timestamper.UtcNow.Ticks;
+        lock (_lastBucketRefreshLock)
+        {
+            if (_lastBucketRefreshTicks.TryGetValue(prefix, out long lastRefreshTicks) &&
+                nowTicks - lastRefreshTicks < _bucketRefreshInterval.Ticks)
+            {
+                return false;
+            }
+
+            _lastBucketRefreshTicks[prefix] = nowTicks;
+            return true;
         }
     }
 
@@ -140,6 +168,12 @@ public class Kademlia<TKey, TNode> : IKademlia<TKey, TNode> where TNode : notnul
     {
         add => _routingTable.OnNodeAdded += value;
         remove => _routingTable.OnNodeAdded -= value;
+    }
+
+    public event EventHandler<TNode> OnNodeRemoved
+    {
+        add => _routingTable.OnNodeRemoved += value;
+        remove => _routingTable.OnNodeRemoved -= value;
     }
 
     public IEnumerable<TNode> IterateNodes()

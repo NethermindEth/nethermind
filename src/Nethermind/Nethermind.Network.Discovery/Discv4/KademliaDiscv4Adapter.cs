@@ -29,6 +29,8 @@ public class KademliaDiscv4Adapter(
     ILogManager logManager
 ) : IKademliaDiscv4Adapter
 {
+    private const int MaxNodesPerNeighborsMsg = 12;
+
     private readonly TimeSpan _requestEnrTimeout = TimeSpan.FromMilliseconds(discoveryConfig.EnrTimeout);
     private readonly TimeSpan _findNeighbourTimeout = TimeSpan.FromMilliseconds(discoveryConfig.SendNodeTimeout);
     private readonly TimeSpan _pingTimeout = TimeSpan.FromMilliseconds(discoveryConfig.PingTimeout);
@@ -44,13 +46,10 @@ public class KademliaDiscv4Adapter(
 
     #region Authentication and utils
 
-    public NodeSession GetSession(Node node)
-    {
-        if (_sessions.TryGet(node.IdHash, out NodeSession? session)) return session;
-        session = new NodeSession(nodeStatsManager.GetOrAdd(node), timestamper);
-        _sessions.Set(node.IdHash, session);
-        return session;
-    }
+    public NodeSession GetSession(Node node) => _sessions.SetOrGet(
+        node.IdHash.ValueHash256,
+        (node, nodeStatsManager, timestamper),
+        static (_, state) => new NodeSession(state.nodeStatsManager.GetOrAdd(state.node), state.timestamper));
 
     private async Task EnsureOutgoingMessageBondedPeer(Node node, NodeSession nodeSession, CancellationToken token)
     {
@@ -236,15 +235,16 @@ public class KademliaDiscv4Adapter(
 
         PublicKey publicKey = new(msg.SearchedNodeId);
         Node[] nodes = kademlia.Value.GetKNeighbour(publicKey, node, false);
-        if (nodes.Length <= 12)
+        if (nodes.Length == 0)
         {
             await SendMessage(session, new NeighborsMsg(node.Address, CalculateExpirationTime(), nodes), token);
+            return;
         }
-        else
+
+        for (int i = 0; i < nodes.Length; i += MaxNodesPerNeighborsMsg)
         {
-            // Split into two because the size of message when nodes is > 12 is larger than mtu size.
-            await SendMessage(session, new NeighborsMsg(node.Address, CalculateExpirationTime(), nodes[..12]), token);
-            await SendMessage(session, new NeighborsMsg(node.Address, CalculateExpirationTime(), nodes[12..16]), token);
+            int batchEnd = Math.Min(i + MaxNodesPerNeighborsMsg, nodes.Length);
+            await SendMessage(session, new NeighborsMsg(node.Address, CalculateExpirationTime(), nodes[i..batchEnd]), token);
         }
     }
 
@@ -330,7 +330,7 @@ public class KademliaDiscv4Adapter(
 
     private bool HandleViaMessageHandlers(Node node, DiscoveryMsg msg)
     {
-        (Hash256 IdHash, MsgType MsgType) key = (node.IdHash, msg.MsgType);
+        (ValueHash256 IdHash, MsgType MsgType) key = (node.IdHash.ValueHash256, msg.MsgType);
         if (!_incomingMessageHandlers.TryGetValue(key, out IMessageHandler[]? handlers)) return false;
         foreach (IMessageHandler messageHandler in handlers!)
         {

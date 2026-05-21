@@ -104,6 +104,12 @@ public class NodeHealthTrackerTests
             remove { }
         }
 
+        public event EventHandler<string>? OnNodeRemoved
+        {
+            add { }
+            remove { }
+        }
+
         public int Size => AddCalls.Count;
     }
 }

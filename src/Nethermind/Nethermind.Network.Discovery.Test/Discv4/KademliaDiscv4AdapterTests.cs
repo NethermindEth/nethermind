@@ -40,6 +40,7 @@ namespace Nethermind.Network.Discovery.Test.Discv4
         private ILogManager _logManager = null!;
         private ITimestamper _timestamper = null!;
         private IMsgSender _msgSender = null!;
+        private INodeStatsManager _nodeStatsManager = null!;
         private Node _testNode = null!;
         private PublicKey _testPublicKey = null!;
 
@@ -90,8 +91,8 @@ namespace Nethermind.Network.Discovery.Test.Discv4
 
             INodeRecordProvider nodeRecordProvider = Substitute.For<INodeRecordProvider>();
             nodeRecordProvider.Current.Returns(_selfNodeRecord);
-            INodeStatsManager nodeStatsManager = Substitute.For<INodeStatsManager>();
-            nodeStatsManager.GetOrAdd(Arg.Any<Node>()).Returns(Substitute.For<INodeStats>());
+            _nodeStatsManager = Substitute.For<INodeStatsManager>();
+            _nodeStatsManager.GetOrAdd(Arg.Any<Node>()).Returns(Substitute.For<INodeStats>());
 
             _adapter = new KademliaDiscv4Adapter(
                 new Lazy<IKademlia<PublicKey, Node>>(() => _kademliaMessageReceiver),
@@ -99,12 +100,23 @@ namespace Nethermind.Network.Discovery.Test.Discv4
                 new DiscoveryConfig(),
                 _kademliaConfig,
                 nodeRecordProvider,
-                nodeStatsManager,
+                _nodeStatsManager,
                 _timestamper,
                 Substitute.For<IProcessExitSource>(),
                 _logManager
             );
             _adapter.MsgSender = _msgSender;
+        }
+
+        [Test]
+        public async Task GetSession_should_return_single_session_for_concurrent_calls()
+        {
+            Node[] nodes = Enumerable.Repeat(_receiver, 128).ToArray();
+
+            NodeSession[] sessions = await Task.WhenAll(nodes.Select(node => Task.Run(() => _adapter.GetSession(node))));
+
+            Assert.That(sessions.All(session => ReferenceEquals(session, sessions[0])), Is.True);
+            _nodeStatsManager.Received(1).GetOrAdd(Arg.Is<Node>(node => node.Id == _receiver.Id));
         }
 
         private NodeRecord CreateNodeRecord()
@@ -274,7 +286,7 @@ namespace Nethermind.Network.Discovery.Test.Discv4
             FindNodeMsg findNodeMsg = new(_receiver.Address, _timestamper.UnixTime.SecondsLong + 20, _testPublicKey.Bytes);
             findNodeMsg = AddReceiverFarAddress(findNodeMsg);
 
-            Node[] expectedNodes = Enumerable.Repeat(new Node(TestItem.PublicKeyD, "192.168.1.3", 30303), 16).ToArray();
+            Node[] expectedNodes = Enumerable.Repeat(new Node(TestItem.PublicKeyD, "192.168.1.3", 30303), 20).ToArray();
             _kademliaMessageReceiver.GetKNeighbour(
                 Arg.Any<PublicKey>(),
                 Arg.Any<Node>())
@@ -288,13 +300,13 @@ namespace Nethermind.Network.Discovery.Test.Discv4
                 Arg.Is<PublicKey>(pk => pk.Bytes!.SequenceEqual(_testPublicKey.Bytes!)),
                 Arg.Is<Node>(n => n.Id == _receiver.Id));
 
-            // Send out two message instead of one because of MTU limit.
+            // Send out two messages instead of one because of MTU limit.
             await _msgSender.Received(1).SendMsg(Arg.Is<NeighborsMsg>(m =>
                 m.FarAddress!.Equals(_receiver.Address) &&
                 m.Nodes.Count == 12));
             await _msgSender.Received(1).SendMsg(Arg.Is<NeighborsMsg>(m =>
                 m.FarAddress!.Equals(_receiver.Address) &&
-                m.Nodes.Count == 4));
+                m.Nodes.Count == 8));
         }
 
         [Test]
