@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Text.Json.Serialization.Metadata;
 using System.Threading;
 
@@ -13,7 +14,15 @@ namespace Nethermind.JsonRpc;
 public static class RpcGeneratedTypeInfoRegistry
 {
     private static readonly object _lock = new();
+    private static Dictionary<RuntimeTypeHandle, RegisteredProvider> _registrations = new();
     private static Func<Type, JsonTypeInfo?>[] _providers = [];
+
+    private readonly struct RegisteredProvider(Type type, Func<Type, JsonTypeInfo?> provider)
+    {
+        public Type Type { get; } = type;
+
+        public Func<Type, JsonTypeInfo?> Provider { get; } = provider;
+    }
 
     /// <summary>
     /// Registers a generated provider that can resolve JSON metadata for RPC payload types declared by its assembly.
@@ -33,8 +42,41 @@ public static class RpcGeneratedTypeInfoRegistry
         }
     }
 
+    /// <summary>
+    /// Registers generated metadata provider entries for the specified RPC payload types.
+    /// </summary>
+    /// <param name="types">The generated payload types known to the provider.</param>
+    /// <param name="provider">A generated lookup delegate that returns metadata for registered types.</param>
+    public static void Register(Type[] types, Func<Type, JsonTypeInfo?> provider)
+    {
+        ArgumentNullException.ThrowIfNull(types);
+        ArgumentNullException.ThrowIfNull(provider);
+
+        lock (_lock)
+        {
+            Dictionary<RuntimeTypeHandle, RegisteredProvider> registrations = new(_registrations);
+            for (int i = 0; i < types.Length; i++)
+            {
+                Type type = types[i] ?? throw new ArgumentException("Registered RPC payload types cannot contain null.", nameof(types));
+                registrations.TryAdd(type.TypeHandle, new RegisteredProvider(type, provider));
+            }
+
+            Volatile.Write(ref _registrations, registrations);
+        }
+    }
+
     internal static bool TryGet(Type type, out JsonTypeInfo? typeInfo)
     {
+        Dictionary<RuntimeTypeHandle, RegisteredProvider> registrations = Volatile.Read(ref _registrations);
+        if (registrations.TryGetValue(type.TypeHandle, out RegisteredProvider registration))
+        {
+            typeInfo = registration.Provider(registration.Type);
+            if (typeInfo is not null)
+            {
+                return true;
+            }
+        }
+
         Func<Type, JsonTypeInfo?>[] providers = Volatile.Read(ref _providers);
         for (int i = 0; i < providers.Length; i++)
         {

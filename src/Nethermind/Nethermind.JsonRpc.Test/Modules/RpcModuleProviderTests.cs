@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.IO.Abstractions;
 using System.Reflection;
+using System.Text.Json.Serialization.Metadata;
 using System.Threading.Tasks;
 using Autofac;
 using FluentAssertions;
@@ -258,15 +259,19 @@ public class RpcModuleProviderTests
     }
 
     [Test]
-    public void Rpc_payload_type_info_metrics_track_generated_hits_and_fallbacks()
+    public void Rpc_payload_type_info_caches_generated_hits_and_tracks_fallbacks()
     {
         long generatedHits = Metrics.JsonRpcPayloadTypeInfoGeneratedHits;
         long resolverFallbacks = Metrics.JsonRpcPayloadTypeInfoResolverFallbacks;
 
-        RpcPayloadTypeInfo<PayloadStatusV1>.Get(EthereumJsonSerializer.JsonOptions).Should().NotBeNull();
+        JsonTypeInfo<PayloadStatusV1> firstGeneratedLookup = RpcPayloadTypeInfo<PayloadStatusV1>.Get(EthereumJsonSerializer.JsonOptions);
+        long generatedHitsAfterFirstLookup = Metrics.JsonRpcPayloadTypeInfoGeneratedHits;
+        JsonTypeInfo<PayloadStatusV1> secondGeneratedLookup = RpcPayloadTypeInfo<PayloadStatusV1>.Get(EthereumJsonSerializer.JsonOptions);
         RpcPayloadTypeInfo<FallbackPayload>.Get(EthereumJsonSerializer.JsonOptions).Should().NotBeNull();
 
-        Metrics.JsonRpcPayloadTypeInfoGeneratedHits.Should().BeGreaterThan(generatedHits);
+        firstGeneratedLookup.Should().BeSameAs(secondGeneratedLookup);
+        generatedHitsAfterFirstLookup.Should().BeGreaterOrEqualTo(generatedHits);
+        Metrics.JsonRpcPayloadTypeInfoGeneratedHits.Should().BeGreaterOrEqualTo(generatedHitsAfterFirstLookup);
         Metrics.JsonRpcPayloadTypeInfoResolverFallbacks.Should().BeGreaterThan(resolverFallbacks);
     }
 

@@ -47,24 +47,24 @@ public sealed class RpcJsonTypeInfoGenerator : IIncrementalGenerator
         builder.AppendLine("    [ModuleInitializer]");
         builder.AppendLine("    internal static void Register()");
         builder.AppendLine("    {");
-        builder.AppendLine("        RpcGeneratedTypeInfoRegistry.Register(TryGet);");
+        builder.AppendLine("        RpcGeneratedTypeInfoRegistry.Register(RpcTypes, TryGet);");
         builder.AppendLine("    }");
         builder.AppendLine();
-        builder.AppendLine("    private static JsonTypeInfo? TryGet(Type type)");
+        builder.AppendLine("    private static readonly Type[] RpcTypes =");
         builder.AppendLine("    {");
         for (int i = 0; i < sortedTypes.Length; i++)
         {
-            builder.Append("        if (type == typeof(");
+            builder.Append("        typeof(");
             builder.Append(sortedTypes[i]);
-            builder.AppendLine("))");
-            builder.AppendLine("        {");
-            builder.AppendLine("            JsonTypeInfo? typeInfo;");
-            builder.AppendLine("            EthereumJsonSerializer.JsonOptions.TryGetTypeInfo(type, out typeInfo);");
-            builder.AppendLine("            return typeInfo;");
-            builder.AppendLine("        }");
-            builder.AppendLine();
+            builder.AppendLine("),");
         }
-        builder.AppendLine("        return null;");
+        builder.AppendLine("    };");
+        builder.AppendLine();
+        builder.AppendLine("    private static JsonTypeInfo? TryGet(Type type)");
+        builder.AppendLine("    {");
+        builder.AppendLine("        JsonTypeInfo? typeInfo;");
+        builder.AppendLine("        EthereumJsonSerializer.JsonOptions.TryGetTypeInfo(type, out typeInfo);");
+        builder.AppendLine("        return typeInfo;");
         builder.AppendLine("    }");
         builder.AppendLine("}");
 
