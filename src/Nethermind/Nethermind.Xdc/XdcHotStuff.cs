@@ -46,7 +46,7 @@ namespace Nethermind.Xdc
         private readonly ISignTransactionManager _signTransactionManager = signTransactionManager ?? throw new ArgumentNullException(nameof(signTransactionManager));
 
         private readonly object _lockObject = new();
-        private CancellationTokenSource? _cancellationTokenSource;
+        private volatile bool _running;
         private CancellationTokenSource? _roundCts;
 
         private DateTime _lastActivityTime = DateTime.UtcNow;
@@ -61,38 +61,34 @@ namespace Nethermind.Xdc
         {
             lock (_lockObject)
             {
-                if (_cancellationTokenSource is not null)
+                if (_running)
                 {
                     _logger.Info("XdcHotStuff already started, ignoring duplicate Start() call");
                     return;
                 }
 
-                _cancellationTokenSource = new CancellationTokenSource();
+                _running = true;
                 _blockTree.NewHeadBlock += OnNewHeadBlock;
                 _xdcContext.NewRoundSetEvent += OnNewRound;
                 _logger.Info("XdcHotStuff consensus runner started");
             }
 
-            if (_blockTree.Head?.Header is not XdcBlockHeader head)
-                throw new InvalidOperationException($"Expected XdcBlockHeader but got {_blockTree.Head?.Header?.GetType().FullName}");
-            if (head.ExtraConsensusData is null) return;
-            if (_xdcContext.CurrentRound == 0) return;
-            if (_blockTree.IsSyncing().isSyncing) return;
-            StartRoundTask(head, _xdcContext.CurrentRound);
+            if (IsSynced() && _xdcContext.CurrentRound != 0)
+            {
+                XdcBlockHeader head = (XdcBlockHeader)_blockTree.Head!.Header;
+                StartRoundTask(head, _xdcContext.CurrentRound);
+            }
         }
 
         public Task StopAsync()
         {
             lock (_lockObject)
             {
-                if (_cancellationTokenSource is null) return Task.CompletedTask;
+                if (!_running) return Task.CompletedTask;
 
+                _running = false;
                 _blockTree.NewHeadBlock -= OnNewHeadBlock;
                 _xdcContext.NewRoundSetEvent -= OnNewRound;
-
-                _cancellationTokenSource.Cancel();
-                _cancellationTokenSource.Dispose();
-                _cancellationTokenSource = null;
 
                 _roundCts?.Cancel();
                 _roundCts?.Dispose();
@@ -106,7 +102,7 @@ namespace Nethermind.Xdc
         public bool IsProducingBlocks(ulong? maxProducingInterval)
         {
             if (!maxProducingInterval.HasValue)
-                return _cancellationTokenSource is not null && !_cancellationTokenSource.IsCancellationRequested;
+                return _running;
 
             TimeSpan elapsed = DateTime.UtcNow - _lastActivityTime;
             TimeSpan maxInterval = TimeSpan.FromSeconds(maxProducingInterval.Value);
@@ -117,34 +113,30 @@ namespace Nethermind.Xdc
 
         private void OnNewHeadBlock(object? sender, BlockEventArgs e)
         {
-            if (e.Block.Header is not XdcBlockHeader xdcHead)
-                throw new InvalidOperationException($"Expected XdcBlockHeader but got {e.Block.Header.GetType().FullName}");
-            if (xdcHead.ExtraConsensusData is null) return;
-            if (_blockTree.IsSyncing().isSyncing) return;
+            if (!IsSynced()) return;
 
             _lastActivityTime = DateTime.UtcNow;
 
+            XdcBlockHeader xdcHead = (XdcBlockHeader)e.Block.Header;
             StartRoundTask(xdcHead, _xdcContext.CurrentRound);
         }
 
         private void OnNewRound(object sender, NewRoundEventArgs args)
         {
+            if (!IsSynced()) return;
+
+            _lastActivityTime = DateTime.UtcNow;
+
             if (args.LastRoundDuration is { } lastRoundDuration)
                 _logger.Info($"Round {args.PreviousRound} completed in {lastRoundDuration.TotalSeconds:F2}s");
 
-            ulong currentRound = _xdcContext.CurrentRound;
-            if (args.NewRound != currentRound) return;
-
-            if (_blockTree.Head?.Header is not XdcBlockHeader head)
-                throw new InvalidOperationException("BlockTree head is not XdcBlockHeader.");
-            if (_blockTree.IsSyncing().isSyncing) return;
-
-            _lastActivityTime = DateTime.UtcNow;
+            XdcBlockHeader head = (XdcBlockHeader)_blockTree.Head!.Header;
+            ulong currentRound = args.NewRound;
 
             IXdcReleaseSpec spec = _specProvider.GetXdcSpec(head, currentRound);
             _timeoutTimer.Reset(TimeSpan.FromSeconds(spec.TimeoutPeriod));
 
-            StartRoundTask(head, currentRound);
+            StartRoundTask(head, args.NewRound);
         }
 
         // ── Round task ───────────────────────────────────────────────────────────
@@ -154,11 +146,11 @@ namespace Nethermind.Xdc
             CancellationToken token;
             lock (_lockObject)
             {
-                if (_cancellationTokenSource is null) return;
+                if (!_running) return;
 
                 _roundCts?.Cancel();
                 _roundCts?.Dispose();
-                _roundCts = CancellationTokenSource.CreateLinkedTokenSource(_cancellationTokenSource.Token);
+                _roundCts = new CancellationTokenSource();
                 token = _roundCts.Token;
             }
             _ = RunRound(head, round, token); // fire-and-forget: runs as background round task
@@ -350,5 +342,8 @@ namespace Nethermind.Xdc
 
         private static bool IsMasternode(EpochSwitchInfo epochInfo, Address node) =>
             epochInfo.Masternodes.AsSpan().IndexOf(node) != -1;
+
+        // TODO: consider using a another sync indicator
+        private bool IsSynced() => !_blockTree.IsSyncing().isSyncing;
     }
 }
