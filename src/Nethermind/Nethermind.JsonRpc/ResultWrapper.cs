@@ -96,7 +96,7 @@ namespace Nethermind.JsonRpc
 
         internal override bool TryGetStreamableResult(out IStreamableResult? streamable)
         {
-            if (typeof(T).IsValueType)
+            if (Result.ResultType != ResultType.Success || typeof(T).IsValueType)
             {
                 streamable = null;
                 return false;
@@ -132,7 +132,7 @@ namespace Nethermind.JsonRpc
         protected virtual void DisposePayloads() => DisposeIfReferenceType(Data);
 
         protected virtual void WriteErrorData(Utf8JsonWriter writer, JsonSerializerOptions options) =>
-            WritePayloadValue(writer, options, Data);
+            WritePayloadValue(writer, options, Data, rejectStreamable: false);
 
         private void WriteError(Utf8JsonWriter writer, JsonSerializerOptions options)
         {
@@ -150,7 +150,10 @@ namespace Nethermind.JsonRpc
             writer.WriteEndObject();
         }
 
-        protected static void WritePayloadValue(Utf8JsonWriter writer, JsonSerializerOptions options, T value)
+        protected static void WritePayloadValue(Utf8JsonWriter writer, JsonSerializerOptions options, T value) =>
+            WritePayloadValue(writer, options, value, rejectStreamable: true);
+
+        private static void WritePayloadValue(Utf8JsonWriter writer, JsonSerializerOptions options, T value, bool rejectStreamable)
         {
             if (value is null)
             {
@@ -158,7 +161,7 @@ namespace Nethermind.JsonRpc
                 return;
             }
 
-            if (!typeof(T).IsValueType && value is IStreamableResult)
+            if (rejectStreamable && !typeof(T).IsValueType && value is IStreamableResult)
             {
                 throw new InvalidOperationException("Streamable JSON-RPC results must be written by the response sink.");
             }
