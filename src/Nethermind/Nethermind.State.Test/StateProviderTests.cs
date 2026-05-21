@@ -287,43 +287,61 @@ public class StateProviderTests(bool useFlat)
     [Test]
     public void Same_code_can_be_redeployed_across_overlay_resets()
     {
-        IDbProvider dbProvider = TestMemDbProvider.Init();
-        WorldStateManager manager = TestWorldStateFactory.CreateWorldStateManagerForTest(dbProvider, LimboLogs.Instance);
-
-        // One long-lived overridable scope reused across two BeginScope calls — mirrors
-        // OverridableEnv reusing _worldState across BuildAndOverride.
-        using IOverridableWorldScope overridableScope = manager.CreateOverridableWorldScope();
-        IWorldState worldState = new WorldState(overridableScope.WorldState, LimboLogs.Instance);
-
-        byte[] code = [0x60, 0x60, 0x60, 0x40, 0x52, 0x00];
-        Address addr = TestItem.AddressA;
-        IReleaseSpec spec = Prague.Instance;
-
-        // First scope — deploy + commit. Commit triggers CommitCodeAsync which, before
-        // the fix, marked the shared filter on StateProvider as "persisted".
-        using (worldState.BeginScope(IWorldState.PreGenesis))
+        IContainer? containerToDispose = null;
+        IWorldStateManager manager;
+        if (useFlat)
         {
-            worldState.CreateAccount(addr, 0);
-            worldState.InsertCode(addr, code, spec);
-            worldState.Commit(spec);
-
-            worldState.GetCode(addr).Should().BeEquivalentTo(code);
+            (_, IContainer container) = TestWorldStateFactory.CreateFlatScopeProvider();
+            containerToDispose = container;
+            manager = container.Resolve<IWorldStateManager>();
+        }
+        else
+        {
+            IDbProvider dbProvider = TestMemDbProvider.Init();
+            manager = TestWorldStateFactory.CreateWorldStateManagerForTest(dbProvider, LimboLogs.Instance);
         }
 
-        // End of scope #1 — overlay's temp KV is discarded.
-        overridableScope.ResetOverrides();
-
-        // Second scope — same hash, fresh overlay. Before the fix, InsertCode consulted
-        // the stale "persisted" filter, skipped the _codeBatch write, and the next
-        // GetCode threw "Code 0x… is missing from the database".
-        using (worldState.BeginScope(IWorldState.PreGenesis))
+        try
         {
-            worldState.CreateAccount(addr, 0);
-            worldState.InsertCode(addr, code, spec);
+            // One long-lived overridable scope reused across two BeginScope calls — mirrors
+            // OverridableEnv reusing _worldState across BuildAndOverride.
+            using IOverridableWorldScope overridableScope = manager.CreateOverridableWorldScope();
+            IWorldState worldState = new WorldState(overridableScope.WorldState, LimboLogs.Instance);
 
-            Action getCode = () => worldState.GetCode(addr);
-            getCode.Should().NotThrow();
-            worldState.GetCode(addr).Should().BeEquivalentTo(code);
+            byte[] code = [0x60, 0x60, 0x60, 0x40, 0x52, 0x00];
+            Address addr = TestItem.AddressA;
+            IReleaseSpec spec = Prague.Instance;
+
+            // First scope — deploy + commit. Commit triggers CommitCodeAsync which, before
+            // the fix, marked the shared filter on StateProvider as "persisted".
+            using (worldState.BeginScope(IWorldState.PreGenesis))
+            {
+                worldState.CreateAccount(addr, 0);
+                worldState.InsertCode(addr, code, spec);
+                worldState.Commit(spec);
+
+                worldState.GetCode(addr).Should().BeEquivalentTo(code);
+            }
+
+            // End of scope #1 — overlay's temp KV is discarded.
+            overridableScope.ResetOverrides();
+
+            // Second scope — same hash, fresh overlay. Before the fix, InsertCode consulted
+            // the stale "persisted" filter, skipped the _codeBatch write, and the next
+            // GetCode threw "Code 0x… is missing from the database".
+            using (worldState.BeginScope(IWorldState.PreGenesis))
+            {
+                worldState.CreateAccount(addr, 0);
+                worldState.InsertCode(addr, code, spec);
+
+                Action getCode = () => worldState.GetCode(addr);
+                getCode.Should().NotThrow();
+                worldState.GetCode(addr).Should().BeEquivalentTo(code);
+            }
+        }
+        finally
+        {
+            containerToDispose?.Dispose();
         }
     }
 }
