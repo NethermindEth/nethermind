@@ -118,7 +118,9 @@ namespace Nethermind.JsonRpc.Modules.Eth
                         return ResultWrapper<TResult, string?>.Fail(revertMessage, ErrorCodes.ExecutionReverted, null);
                     }
 
-                    return ResultWrapper<TResult>.Fail(errorMessage ?? "", ErrorCodes.InvalidInput, bodyData);
+                    return bodyData is null
+                        ? ResultWrapper<TResult>.Fail(errorMessage ?? "", ErrorCodes.InvalidInput)
+                        : ResultWrapper<TResult>.Fail(errorMessage ?? "", ErrorCodes.InvalidInput, bodyData);
                 }
 
                 return ResultWrapper<TResult>.Success(bodyData);
