@@ -16,6 +16,47 @@
     <None Include="**/*.zkevm.cs" />
   </ItemGroup>
 
+  <Target Name="_GenerateRpcJsonSerializerContext"
+    BeforeTargets="CoreCompile"
+    DependsOnTargets="ResolveReferences"
+    Condition="'$(GenerateRpcJsonContext)' == 'true'">
+
+    <PropertyGroup>
+      <_RpcJsonContextGeneratorProject>$(MSBuildThisFileDirectory)Nethermind.JsonRpc.SourceGenerator.Build\Nethermind.JsonRpc.SourceGenerator.Build.csproj</_RpcJsonContextGeneratorProject>
+      <_RpcJsonContextOutputDir>$(IntermediateOutputPath)RpcJsonSourceGeneration\</_RpcJsonContextOutputDir>
+      <_RpcJsonContextOutputFile>$(_RpcJsonContextOutputDir)GeneratedRpcJsonContext.g.cs</_RpcJsonContextOutputFile>
+      <_RpcJsonContextSourcesFile>$(_RpcJsonContextOutputDir)sources.txt</_RpcJsonContextSourcesFile>
+      <_RpcJsonContextReferencesFile>$(_RpcJsonContextOutputDir)references.txt</_RpcJsonContextReferencesFile>
+    </PropertyGroup>
+
+    <MakeDir Directories="$(_RpcJsonContextOutputDir)" />
+    <WriteLinesToFile File="$(_RpcJsonContextSourcesFile)" Lines="@(Compile->'%(FullPath)')" Overwrite="true" />
+    <WriteLinesToFile File="$(_RpcJsonContextReferencesFile)" Lines="@(ReferencePath->'%(FullPath)')" Overwrite="true" />
+
+    <MSBuild Projects="$(_RpcJsonContextGeneratorProject)"
+      Targets="Build"
+      Properties="Configuration=$(Configuration);GenerateRpcJsonContext=false"
+      BuildInParallel="false" />
+    <MSBuild Projects="$(_RpcJsonContextGeneratorProject)"
+      Targets="GetTargetPath"
+      Properties="Configuration=$(Configuration);GenerateRpcJsonContext=false"
+      BuildInParallel="false">
+      <Output TaskParameter="TargetOutputs" PropertyName="_RpcJsonContextGeneratorPath" />
+    </MSBuild>
+
+    <Exec Command="dotnet &quot;$(_RpcJsonContextGeneratorPath)&quot; --output &quot;$(_RpcJsonContextOutputFile)&quot; --sources &quot;$(_RpcJsonContextSourcesFile)&quot; --references &quot;$(_RpcJsonContextReferencesFile)&quot; --assembly-name &quot;$(AssemblyName)&quot; --define-constants &quot;$(DefineConstants)&quot;" />
+
+    <ItemGroup>
+      <FileWrites Include="$(_RpcJsonContextSourcesFile)" />
+      <FileWrites Include="$(_RpcJsonContextReferencesFile)" />
+    </ItemGroup>
+
+    <ItemGroup Condition="Exists('$(_RpcJsonContextOutputFile)')">
+      <Compile Include="$(_RpcJsonContextOutputFile)" />
+      <FileWrites Include="$(_RpcJsonContextOutputFile)" />
+    </ItemGroup>
+  </Target>
+
   <!-- Share native runtimes dir across projects during with a shared location and junctions/symlinks.
     Enable with `-p:SaveDiskSpace=true` or an environment variable. -->
   <PropertyGroup Condition="'$(SaveDiskSpace)' == 'true'">

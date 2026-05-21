@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <Nullable>enable</Nullable>
+    <GenerateRpcJsonContext>false</GenerateRpcJsonContext>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp" />
+    <ProjectReference Include="..\Nethermind.JsonRpc.SourceGenerator\Nethermind.JsonRpc.SourceGenerator.csproj" />
+  </ItemGroup>
+
+</Project>

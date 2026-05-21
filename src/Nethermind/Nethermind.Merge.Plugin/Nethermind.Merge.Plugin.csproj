@@ -3,6 +3,7 @@
   <PropertyGroup>
     <RootNamespace>Nethermind.Merge.Plugin</RootNamespace>
     <Nullable>enable</Nullable>
+    <GenerateRpcJsonContext>true</GenerateRpcJsonContext>
   </PropertyGroup>
 
   <ItemGroup>
