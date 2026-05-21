@@ -12,15 +12,6 @@ internal static partial class GeneratedRpcTypeInfo
     public static bool TryGet(Type type, [NotNullWhen(true)] out JsonTypeInfo? typeInfo) =>
         RpcGeneratedTypeInfoRegistry.TryGet(type, out typeInfo);
 
-    public static bool TryGet<T>([NotNullWhen(true)] out JsonTypeInfo<T>? typeInfo)
-    {
-        if (TryGet(typeof(T), out JsonTypeInfo? found) && found is JsonTypeInfo<T> typed)
-        {
-            typeInfo = typed;
-            return true;
-        }
-
-        typeInfo = null;
-        return false;
-    }
+    public static bool TryGet<T>([NotNullWhen(true)] out JsonTypeInfo<T>? typeInfo) =>
+        RpcGeneratedTypeInfoRegistry.TryGet(out typeInfo);
 }

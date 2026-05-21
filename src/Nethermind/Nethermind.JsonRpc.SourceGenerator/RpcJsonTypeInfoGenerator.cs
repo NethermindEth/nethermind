@@ -48,6 +48,7 @@ public sealed class RpcJsonTypeInfoGenerator : IIncrementalGenerator
         builder.AppendLine("    internal static void Register()");
         builder.AppendLine("    {");
         builder.AppendLine("        RpcGeneratedTypeInfoRegistry.Register(RpcTypes, TryGet);");
+        builder.AppendLine("        RegisterGenericProviders();");
         builder.AppendLine("    }");
         builder.AppendLine();
         builder.AppendLine("    private static readonly Type[] RpcTypes =");
@@ -66,6 +67,20 @@ public sealed class RpcJsonTypeInfoGenerator : IIncrementalGenerator
         builder.AppendLine("        EthereumJsonSerializer.JsonOptions.TryGetTypeInfo(type, out typeInfo);");
         builder.AppendLine("        return typeInfo;");
         builder.AppendLine("    }");
+        builder.AppendLine();
+        builder.AppendLine("    private static void RegisterGenericProviders()");
+        builder.AppendLine("    {");
+        for (int i = 0; i < sortedTypes.Length; i++)
+        {
+            builder.Append("        RegisterGeneric<");
+            builder.Append(sortedTypes[i]);
+            builder.AppendLine(">();");
+        }
+        builder.AppendLine("    }");
+        builder.AppendLine();
+        builder.AppendLine("    private static void RegisterGeneric<T>() =>");
+        builder.AppendLine("        RpcGeneratedTypeInfoRegistry.Register(static () =>");
+        builder.AppendLine("            (JsonTypeInfo<T>)EthereumJsonSerializer.JsonOptions.GetTypeInfo(typeof(T)));");
         builder.AppendLine("}");
 
         context.AddSource("GeneratedRpcJsonTypeInfoProvider.g.cs", SourceText.From(builder.ToString(), Encoding.UTF8));

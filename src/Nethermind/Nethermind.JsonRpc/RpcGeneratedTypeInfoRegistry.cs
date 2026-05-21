@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.Text.Json.Serialization.Metadata;
 using System.Threading;
 
@@ -65,6 +66,21 @@ public static class RpcGeneratedTypeInfoRegistry
         }
     }
 
+    /// <summary>
+    /// Registers a generated metadata provider for a statically known RPC payload type.
+    /// </summary>
+    /// <typeparam name="T">The RPC payload type.</typeparam>
+    /// <param name="provider">A generated lookup delegate that returns metadata for <typeparamref name="T"/>.</param>
+    public static void Register<T>(Func<JsonTypeInfo<T>> provider)
+    {
+        ArgumentNullException.ThrowIfNull(provider);
+
+        RpcGeneratedTypeInfoRegistry<T>.Register(provider);
+    }
+
+    internal static bool TryGet<T>([NotNullWhen(true)] out JsonTypeInfo<T>? typeInfo) =>
+        RpcGeneratedTypeInfoRegistry<T>.TryGet(out typeInfo);
+
     internal static bool TryGet(Type type, out JsonTypeInfo? typeInfo)
     {
         Dictionary<RuntimeTypeHandle, RegisteredProvider> registrations = Volatile.Read(ref _registrations);
@@ -89,5 +105,40 @@ public static class RpcGeneratedTypeInfoRegistry
 
         typeInfo = null;
         return false;
+    }
+}
+
+internal static class RpcGeneratedTypeInfoRegistry<T>
+{
+    private static Func<JsonTypeInfo<T>>? _provider;
+    private static JsonTypeInfo<T>? _typeInfo;
+
+    public static void Register(Func<JsonTypeInfo<T>> provider) =>
+        Volatile.Write(ref _provider, provider);
+
+    public static bool TryGet([NotNullWhen(true)] out JsonTypeInfo<T>? typeInfo)
+    {
+        JsonTypeInfo<T>? cached = Volatile.Read(ref _typeInfo);
+        if (cached is not null)
+        {
+            typeInfo = cached;
+            return true;
+        }
+
+        Func<JsonTypeInfo<T>>? provider = Volatile.Read(ref _provider);
+        if (provider is null)
+        {
+            typeInfo = null;
+            return false;
+        }
+
+        typeInfo = Cache(provider());
+        return true;
+    }
+
+    private static JsonTypeInfo<T> Cache(JsonTypeInfo<T> generated)
+    {
+        JsonTypeInfo<T>? existing = Interlocked.CompareExchange(ref _typeInfo, generated, null);
+        return existing ?? generated;
     }
 }
