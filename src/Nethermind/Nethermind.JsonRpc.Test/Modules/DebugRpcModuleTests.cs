@@ -272,11 +272,11 @@ public partial class DebugRpcModuleTests
         // rather than relying on internal cache ordering.
         for (int i = 1; i <= 3; i++)
         {
-            JsonRpcResponse response = await RpcTest.TestRequest(
+            string result = await RpcTest.TestSerializedRequest(
                 ctx.DebugRpcModule, "debug_traceCall", transaction, null, tracerOptions);
 
-            response.Should().BeOfType<JsonRpcSuccessResponse>(
-                $"call #{i} of the same CREATE payload must succeed — " +
+            result.Should().Contain("\"code\":\"0x00\"",
+                $"call #{i} must complete and report the deployed runtime in post.code — " +
                 "the persisted-code hint must not survive overlay reset");
         }
     }

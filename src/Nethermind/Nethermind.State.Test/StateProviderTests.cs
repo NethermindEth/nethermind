@@ -259,30 +259,6 @@ public class StateProviderTests(bool useFlat)
         action.Should().Throw<InvalidOperationException>();
     }
 
-    // Regression: a "persisted code" hint cache previously lived on StateProvider and was
-    // Set after every code-flush — including flushes that went to a *transient* overlay
-    // codeDb (used by debug_traceCall / eth_call with state overrides). On overlay reset
-    // the bytes were discarded but the hint was not, so a subsequent overlay scope on
-    // the same StateProvider would skip writing the bytes into _codeBatch, and the next
-    // GetCode would throw "Code 0x… is missing from the database".
-    //
-    // The fix moves the hint to ICodeDb itself and disables it for overlay codeDbs
-    // (KeyValueWithBatchingBackedCodeDb(_, isPersistent: false)). These tests lock that in.
-
-    [TestCase(true, true, TestName = "Persistent codeDb remembers MarkCodePersisted")]
-    [TestCase(false, false, TestName = "Overlay codeDb (isPersistent: false) does not")]
-    public void KeyValueWithBatchingBackedCodeDb_ContainsCode_respects_isPersistent_flag(bool isPersistent, bool expectedContains)
-    {
-        IKeyValueStoreWithBatching backing = new MemDb();
-        TrieStoreScopeProvider.KeyValueWithBatchingBackedCodeDb codeDb = new(backing, isPersistent);
-        ValueHash256 hash = Keccak.Compute("any code").ValueHash256;
-
-        codeDb.MarkCodePersisted(hash);
-
-        codeDb.ContainsCode(hash).Should().Be(expectedContains,
-            "false positives in the persisted-code hint are exactly the bug being prevented");
-    }
-
     [Test]
     public void Same_code_can_be_redeployed_across_overlay_resets()
     {
@@ -340,5 +316,23 @@ public class StateProviderTests(bool useFlat)
         {
             containerToDispose?.Dispose();
         }
+    }
+}
+
+[TestFixture]
+[Parallelizable(ParallelScope.All)]
+public class CodeDbTests
+{
+    [TestCase(true, true)]
+    [TestCase(false, false)]
+    public void KeyValueWithBatchingBackedCodeDb_ContainsCode_respects_isPersistent_flag(bool isPersistent, bool expectedContains)
+    {
+        IKeyValueStoreWithBatching backing = new MemDb();
+        TrieStoreScopeProvider.KeyValueWithBatchingBackedCodeDb codeDb = new(backing, isPersistent);
+        ValueHash256 hash = Keccak.Compute("any code").ValueHash256;
+
+        codeDb.MarkCodePersisted(hash);
+
+        codeDb.ContainsCode(hash).Should().Be(expectedContains);
     }
 }
