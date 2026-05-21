@@ -98,21 +98,6 @@ public sealed class WitnessCapturingWorldStateProxy(IWorldState inner) : IWorldS
         foreach (byte[] node in stateNodes)
             state.Add(node);
 
-        int totalKeys = 0;
-        foreach (KeyValuePair<Address, HashSet<UInt256>> kvp in slots)
-        {
-            totalKeys++;
-            totalKeys += kvp.Value.Count;
-        }
-
-        ArrayPoolList<byte[]> keys = new(totalKeys);
-        foreach (KeyValuePair<Address, HashSet<UInt256>> kvp in slots)
-        {
-            keys.Add(kvp.Key.Bytes.ToArray());
-            foreach (UInt256 slot in kvp.Value)
-                keys.Add(slot.ToBigEndian());
-        }
-
         // Populate headers from every BLOCKHASH accessed during execution (execution-apis#773).
         IOwnedReadOnlyList<byte[]> rawHeaders = perBlockHeaderFinder.GetWitnessHeaders(parentHeader.Hash!);
         ArrayPoolList<byte[]> headers = new(rawHeaders.Count);
@@ -124,7 +109,7 @@ public sealed class WitnessCapturingWorldStateProxy(IWorldState inner) : IWorldS
         {
             State = state,
             Codes = codes,
-            Keys = keys,
+            Keys = ArrayPoolList<byte[]>.Empty(),
             Headers = headers,
         };
     }
