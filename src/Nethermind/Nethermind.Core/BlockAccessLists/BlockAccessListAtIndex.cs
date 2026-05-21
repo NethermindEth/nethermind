@@ -27,7 +27,7 @@ public class BlockAccessListAtIndex : IJournal<int>, IResettable
     // later by GeneratedBlockAccessList._accountChanges (itself a SortedDictionary) when this
     // slice is merged in; sorting on every AddBalanceChange/AddNonceChange/AddStorageChange
     // was O(log n) per call for a property no one between insert and merge consumes.
-    private readonly Dictionary<Address, AccountChangesAtIndex> _accountChanges = new();
+    private readonly Dictionary<Address, AccountChangesAtIndex> _accountChanges = [];
     private readonly List<Change> _changes = new(InitialChangeCapacity);
 
     public IEnumerable<AccountChangesAtIndex> AccountChanges => _accountChanges.Values;

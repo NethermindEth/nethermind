@@ -448,7 +448,7 @@ public class ChainSpecLoader(IJsonSerializer serializer, ILogManager logManager)
             chainSpecJson.CodeHashes[Hash256.Zero.ToString()] = [];
         }
 
-        chainSpec.Allocations = new Dictionary<Address, ChainSpecAllocation>();
+        chainSpec.Allocations = [];
         foreach (KeyValuePair<string, AllocationJson> account in chainSpecJson.Accounts)
         {
             if (account.Value.BuiltIn is not null && account.Value.Balance is null)

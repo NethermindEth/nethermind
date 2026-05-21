@@ -70,7 +70,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
 
             NetworkDiagTracer.IsEnabled = true;
 
-            _disposables = new();
+            _disposables = [];
             _session = Substitute.For<ISession>();
             Node node = new(TestItem.PublicKeyA, new IPEndPoint(IPAddress.Broadcast, 30303));
             _session.Node.Returns(node);
@@ -406,8 +406,8 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
 
         private sealed class RecordingBackgroundTaskScheduler : IBackgroundTaskScheduler
         {
-            public List<Delegate> ScheduledFulfillFuncs { get; } = new();
-            public List<bool> ScheduledRequestsHaveDelegateFields { get; } = new();
+            public List<Delegate> ScheduledFulfillFuncs { get; } = [];
+            public List<bool> ScheduledRequestsHaveDelegateFields { get; } = [];
 
             public bool TryScheduleTask<TReq>(TReq request, Func<TReq, CancellationToken, Task> fulfillFunc, TimeSpan? timeout = null, string? source = null)
             {

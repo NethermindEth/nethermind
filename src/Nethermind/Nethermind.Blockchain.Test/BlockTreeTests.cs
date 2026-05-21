@@ -1390,7 +1390,7 @@ public class BlockTreeTests
         tree.SuggestBlock(genesis);
         Block parent = genesis;
 
-        List<Block> blocks = new() { genesis };
+        List<Block> blocks = [genesis];
 
         for (long i = 1; i < 100; i++)
         {

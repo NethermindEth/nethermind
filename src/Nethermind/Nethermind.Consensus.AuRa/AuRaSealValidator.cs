@@ -189,7 +189,7 @@ namespace Nethermind.Consensus.AuRa
             }
 
             private readonly List<AuthorBlockForStep> _list
-                = new();
+                = [];
 
             private const int CacheSizeFullRoundsMultiplier = 4;
 

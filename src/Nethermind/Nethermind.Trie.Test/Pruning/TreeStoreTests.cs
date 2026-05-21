@@ -813,7 +813,7 @@ namespace Nethermind.Trie.Test.Pruning
                 }
             }
 
-            List<Task> tasks = new();
+            List<Task> tasks = [];
             for (int i = 0; i < 2; i++)
             {
                 Task task = new(CheckChildren);
@@ -1407,7 +1407,7 @@ namespace Nethermind.Trie.Test.Pruning
                 ptree.Commit();
             }
 
-            HashSet<Hash256> rootsToTests = new();
+            HashSet<Hash256> rootsToTests = [];
             void VerifyAllTrie()
             {
                 PatriciaTree readOnlyPTree = new(fullTrieStore.AsReadOnly().GetTrieStore(null), LimboLogs.Instance);
@@ -1633,7 +1633,7 @@ namespace Nethermind.Trie.Test.Pruning
                 ptree.Commit();
             }
 
-            List<Hash256> rootsToTests = new();
+            List<Hash256> rootsToTests = [];
             void VerifyAllTrieExceptGenesis()
             {
                 PatriciaTree readOnlyPTree = new(fullTrieStore.AsReadOnly().GetTrieStore(null), LimboLogs.Instance);

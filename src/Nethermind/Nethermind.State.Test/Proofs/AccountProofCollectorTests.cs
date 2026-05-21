@@ -593,7 +593,7 @@ storage: 10075208144087594565017167249218046892267736431914869828855077415926031
             const int accountsCount = 100;
 
             CryptoRandom random = new();
-            List<AddressWithStorage> addressesWithStorage = new();
+            List<AddressWithStorage> addressesWithStorage = [];
 
             for (int i = 0; i < accountsCount; i++)
             {

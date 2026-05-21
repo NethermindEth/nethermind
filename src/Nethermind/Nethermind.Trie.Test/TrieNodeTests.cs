@@ -902,7 +902,7 @@ public class TrieNodeTests
             }
         }
 
-        List<Task> tasks = new();
+        List<Task> tasks = [];
         for (int i = 0; i < 4; i++)
         {
             Task task = new(CheckChildren);
@@ -1065,8 +1065,8 @@ public class TrieNodeTests
 
     private class TreeVisitorMock : ITreeVisitor<TreePathContext>
     {
-        public readonly Dictionary<(TreePath path, TrieNode), int> VisitExtensionReceived = new();
-        public readonly Dictionary<(TreePath path, TrieNode), int> VisitBranchReceived = new();
+        public readonly Dictionary<(TreePath path, TrieNode), int> VisitExtensionReceived = [];
+        public readonly Dictionary<(TreePath path, TrieNode), int> VisitBranchReceived = [];
         public readonly Dictionary<(TreePath path, TrieNode, byte[]), int> VisitLeafReceived = new(new LeafComparer());
 
         public bool IsFullDbScan => false;

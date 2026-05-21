@@ -74,7 +74,7 @@ public class StateSyncFeedHealingTests : StateSyncFeedTestsBase
         Hash256[] rootHashAtBlock = new Hash256[blockJumps + 1];
 
         // Initialize accounts
-        SortedDictionary<Hash256, Account> accounts = new();
+        SortedDictionary<Hash256, Account> accounts = [];
 
         // Generate initial Remote Tree (block 0)
         for (int accountIndex = 0; accountIndex < 10000; accountIndex++)

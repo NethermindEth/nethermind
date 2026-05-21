@@ -30,9 +30,9 @@ internal class StateProvider(ILogManager logManager) : IJournal<int>
 {
     private static readonly UInt256 _zero = UInt256.Zero;
 
-    private readonly Dictionary<AddressAsKey, StackList<int>> _intraTxCache = new();
-    private readonly HashSet<AddressAsKey> _committedThisRound = new();
-    private readonly HashSet<AddressAsKey> _nullAccountReads = new();
+    private readonly Dictionary<AddressAsKey, StackList<int>> _intraTxCache = [];
+    private readonly HashSet<AddressAsKey> _committedThisRound = [];
+    private readonly HashSet<AddressAsKey> _nullAccountReads = [];
     // Only guarding against hot duplicates so filter doesn't need to be too big
     // Note:
     // False negatives are fine as they will just result in a overwrite set

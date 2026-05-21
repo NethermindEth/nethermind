@@ -30,7 +30,7 @@ public class NonceManager(IAccountStateProvider accounts) : INonceManager
 
     private class AddressNonceManager
     {
-        private readonly HashSet<UInt256> _usedNonces = new();
+        private readonly HashSet<UInt256> _usedNonces = [];
         private UInt256 _currentNonce;
         private UInt256 _reservedNonce;
         private UInt256 _previousAccountNonce;

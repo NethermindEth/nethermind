@@ -100,7 +100,7 @@ namespace Nethermind.Consensus.Clique
                 return snapshot;
             }
 
-            List<BlockHeader> headers = new();
+            List<BlockHeader> headers = [];
             lock (_snapshotCreationLock)
             {
                 BlockHeader? header = null;

@@ -26,7 +26,7 @@ namespace Nethermind.Consensus.AuRa.Validators
 
             int addressSequenceLength = decoderContext.ReadSequenceLength();
             int addressCheck = decoderContext.Position + addressSequenceLength;
-            List<Address> addresses = new();
+            List<Address> addresses = [];
             while (decoderContext.Position < addressCheck)
             {
                 addresses.Add(decoderContext.DecodeAddress());

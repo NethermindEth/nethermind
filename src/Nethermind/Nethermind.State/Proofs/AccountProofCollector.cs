@@ -26,7 +26,7 @@ namespace Nethermind.State.Proofs
         private readonly Nibble[] _fullAccountPath;
         private readonly Nibble[][] _fullStoragePaths;
 
-        private readonly List<byte[]> _accountProofItems = new();
+        private readonly List<byte[]> _accountProofItems = [];
         private readonly List<byte[]>[] _storageProofItems;
 
         private readonly Dictionary<Hash256AsKey, StorageNodeInfo> _storageNodeInfos = new(Hash256AsKeyComparer.Instance);
@@ -38,7 +38,7 @@ namespace Nethermind.State.Proofs
         private class StorageNodeInfo
         {
             public int PathIndex { get; set; }
-            public List<int> StorageIndices { get; } = new();
+            public List<int> StorageIndices { get; } = [];
         }
 
         private static ValueHash256 ToKey(byte[] index) => ValueKeccak.Compute(index);
@@ -69,7 +69,7 @@ namespace Nethermind.State.Proofs
             _storageProofItems = new List<byte[]>[length];
             for (int i = 0; i < _storageProofItems.Length; i++)
             {
-                _storageProofItems[i] = new List<byte[]>();
+                _storageProofItems[i] = [];
             }
 
             if (keccakStorageKeys is not null)
@@ -161,7 +161,7 @@ namespace Nethermind.State.Proofs
 
             if (trieVisitContext.IsStorage)
             {
-                HashSet<int> bumpedIndexes = new();
+                HashSet<int> bumpedIndexes = [];
                 foreach (int storageIndex in _storageNodeInfos[node.Keccak].StorageIndices)
                 {
                     Nibble childIndex = _fullStoragePaths[storageIndex][_pathTraversalIndex];

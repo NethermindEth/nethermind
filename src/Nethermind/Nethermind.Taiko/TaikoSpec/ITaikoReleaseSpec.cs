@@ -25,7 +25,7 @@ public interface ITaikoReleaseSpec : IReleaseSpec
     internal static FrozenSet<AddressAsKey> BuildTaikoPrecompilesCache(
         FrozenSet<AddressAsKey> baseCache, bool isRip7728Enabled, bool isL1StaticCallEnabled)
     {
-        HashSet<AddressAsKey> cache = new(baseCache);
+        HashSet<AddressAsKey> cache = [.. baseCache];
         if (isRip7728Enabled) cache.Add(L1SloadPrecompile.Address);
         if (isL1StaticCallEnabled) cache.Add(L1StaticCallPrecompile.Address);
         return cache.ToFrozenSet();

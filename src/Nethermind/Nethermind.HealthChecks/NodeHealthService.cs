@@ -63,8 +63,8 @@ namespace Nethermind.HealthChecks
 
         public CheckHealthResult CheckHealth()
         {
-            List<(string Message, string LongMessage)> messages = new();
-            List<string> errors = new();
+            List<(string Message, string LongMessage)> messages = [];
+            List<string> errors = [];
             bool healthy = false;
             long netPeerCount = syncServer.GetPeerCount();
             SyncingResult syncingResult = ethSyncingInfo.GetFullInfo();

@@ -131,12 +131,13 @@ public class ReleaseSpec : IReleaseSpec
     public long Eip2935RingBufferSize { get; set; } = Eip2935Constants.RingBufferSize;
     public virtual FrozenSet<AddressAsKey> BuildPrecompilesCache()
     {
-        HashSet<AddressAsKey> cache = new();
-
-        cache.Add(PrecompiledAddresses.ECRecover);
-        cache.Add(PrecompiledAddresses.Sha256);
-        cache.Add(PrecompiledAddresses.Ripemd160);
-        cache.Add(PrecompiledAddresses.Identity);
+        HashSet<AddressAsKey> cache =
+        [
+            PrecompiledAddresses.ECRecover,
+            PrecompiledAddresses.Sha256,
+            PrecompiledAddresses.Ripemd160,
+            PrecompiledAddresses.Identity,
+        ];
 
         if (IsEip198Enabled) cache.Add(PrecompiledAddresses.ModExp);
         if (IsEip196Enabled && IsEip197Enabled)
