@@ -31,7 +31,7 @@ namespace Nethermind.StateComposition.Snapshots;
 /// <see cref="RlpException"/> and are discarded by the plugin, which then
 /// triggers a fresh scan to rebuild the baseline with the new schema.
 /// </summary>
-public sealed class StateCompositionSnapshotDecoder : RlpValueDecoder<StateCompositionSnapshot>
+public sealed class StateCompositionSnapshotDecoder : RlpDecoder<StateCompositionSnapshot>
 {
     public static StateCompositionSnapshotDecoder Instance { get; } = new();
 
