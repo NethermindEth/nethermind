@@ -243,4 +243,41 @@ public partial class DebugRpcModuleTests
             JToken.Parse(resultNoOverride).Should().NotBeEquivalentTo(resultOverrideAfter);
         }
     }
+
+    [Test]
+    public async Task Debug_traceCall_CREATE_replayed_back_to_back_does_not_throw_code_missing()
+    {
+        using Context ctx = await Context.Create();
+
+        // Minimal CREATE init code that deploys a 1-byte STOP runtime:
+        //   PUSH1 1 PUSH1 12 PUSH1 0 CODECOPY  PUSH1 1 PUSH1 0 RETURN  <runtime=0x00>
+        // Picking a non-empty runtime is required so its codeHash != keccak("") and the
+        // codeDb is actually consulted on GetCode — that's the path that exposes the bug.
+        object? transaction = JsonSerializer.Deserialize<object>(
+            """{"from":"0x7f554713be84160fdf0178cc8df86f5aabd33397","data":"0x6001600c60003960016000f300","value":"0x0"}""");
+
+        object? stateOverride = JsonSerializer.Deserialize<object>(
+            """{"0x7f554713be84160fdf0178cc8df86f5aabd33397":{"balance":"0xffffffffffff"}}""");
+
+        object tracerOptions = new
+        {
+            tracer = "prestateTracer",
+            tracerConfig = new { diffMode = true },
+            stateOverrides = stateOverride
+        };
+
+        // Run the same CREATE three times against the same pooled IDebugRpcModule. The bug
+        // (filter survives overlay reset across pooled-instance reuse) only manifests from
+        // the second call onward, so we run a third to make the regression deterministic
+        // rather than relying on internal cache ordering.
+        for (int i = 1; i <= 3; i++)
+        {
+            JsonRpcResponse response = await RpcTest.TestRequest(
+                ctx.DebugRpcModule, "debug_traceCall", transaction, null, tracerOptions);
+
+            response.Should().BeOfType<JsonRpcSuccessResponse>(
+                $"call #{i} of the same CREATE payload must succeed — " +
+                "the persisted-code hint must not survive overlay reset");
+        }
+    }
 }
