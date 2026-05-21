@@ -173,15 +173,14 @@ public class Startup : IStartup
         // Trusted JSON-RPC HTTP POSTs dispatch directly, skipping routing, CORS,
         // compression, and WebSocket middleware. Authentication is still enforced
         // inside the handler for authenticated endpoints.
-        app.Use(async (ctx, next) =>
+        app.Use((ctx, next) =>
         {
             if (!TryGetTrustedHttpJsonRpcUrl(ctx, jsonRpcUrlCollection, additionalTrustedNetworks, out JsonRpcUrl? jsonRpcUrl))
             {
-                await next();
-                return;
+                return next();
             }
 
-            await ProcessJsonRpcRequestCoreAsync(ctx, jsonRpcUrl);
+            return ProcessJsonRpcRequestCoreAsync(ctx, jsonRpcUrl);
         });
 
         app.UseRouting();
@@ -193,6 +192,8 @@ public class Startup : IStartup
             !IsLocalhost(ctx.Connection.RemoteIpAddress!) &&
             !(jsonRpcUrlCollection.TryGetValue(ctx.Connection.LocalPort, out JsonRpcUrl url) && url.IsAuthenticated),
             builder => builder.UseResponseCompression());
+
+        app.Use((ctx, next) => HandleJsonRpcHttpRequestAsync(ctx, next, jsonRpcUrlCollection));
 
         if (initConfig.WebSocketsEnabled)
         {
@@ -234,39 +235,6 @@ public class Startup : IStartup
             }
         });
 
-        app.Use(async (ctx, next) =>
-        {
-            bool isJson = IsJsonContentType(ctx.Request.ContentType);
-            if (!isJson)
-            {
-                await next();
-                return;
-            }
-
-            string method = ctx.Request.Method;
-            if (method is not "POST" and not "GET")
-            {
-                ctx.Response.StatusCode = StatusCodes.Status405MethodNotAllowed;
-                return;
-            }
-
-            if (!jsonRpcUrlCollection.TryGetValue(ctx.Connection.LocalPort, out JsonRpcUrl jsonRpcUrl) || !jsonRpcUrl.RpcEndpoint.HasFlag(RpcEndpoint.Http))
-            {
-                ctx.Response.StatusCode = StatusCodes.Status404NotFound;
-                return;
-            }
-
-            if (method == "GET" && ctx.Request.Headers.Accept.Count > 0 &&
-                !ctx.Request.Headers.Accept[0]!.Contains("text/html", StringComparison.Ordinal))
-            {
-                await ctx.Response.WriteAsync("Nethermind JSON RPC");
-            }
-            else
-            {
-                await ProcessJsonRpcRequestCoreAsync(ctx, jsonRpcUrl);
-            }
-        });
-
         if (healthChecksConfig.Enabled && healthHostPatterns.Length > 0)
         {
             ManifestEmbeddedFileProvider fileProvider = new(typeof(Startup).Assembly, "wwwroot");
@@ -305,6 +273,41 @@ public class Startup : IStartup
 
         jsonRpcUrl = null;
         return false;
+    }
+
+    internal Task HandleJsonRpcHttpRequestAsync(HttpContext ctx, Func<Task> next, IJsonRpcUrlCollection jsonRpcUrlCollection)
+    {
+        if (ctx.GetEndpoint() is not null)
+        {
+            return next();
+        }
+
+        bool isJson = IsJsonContentType(ctx.Request.ContentType);
+        if (!isJson)
+        {
+            return next();
+        }
+
+        string method = ctx.Request.Method;
+        if (method is not "POST" and not "GET")
+        {
+            ctx.Response.StatusCode = StatusCodes.Status405MethodNotAllowed;
+            return Task.CompletedTask;
+        }
+
+        if (!jsonRpcUrlCollection.TryGetValue(ctx.Connection.LocalPort, out JsonRpcUrl jsonRpcUrl) || !jsonRpcUrl.RpcEndpoint.HasFlag(RpcEndpoint.Http))
+        {
+            ctx.Response.StatusCode = StatusCodes.Status404NotFound;
+            return Task.CompletedTask;
+        }
+
+        if (method == "GET" && ctx.Request.Headers.Accept.Count > 0 &&
+            !ctx.Request.Headers.Accept[0]!.Contains("text/html", StringComparison.Ordinal))
+        {
+            return ctx.Response.WriteAsync("Nethermind JSON RPC");
+        }
+
+        return ProcessJsonRpcRequestCoreAsync(ctx, jsonRpcUrl);
     }
 
     internal static bool IsJsonContentType(string? contentType) =>

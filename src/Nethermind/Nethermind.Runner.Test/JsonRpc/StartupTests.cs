@@ -521,6 +521,24 @@ public class StartupTests
         Assert.That(usesFastLane, Is.EqualTo(expected));
     }
 
+    [Test]
+    public async Task JsonRpcHttpMiddleware_PassesThroughSelectedEndpoint()
+    {
+        JsonRpcUrl jsonRpcUrl = CreateUrl();
+        DefaultHttpContext ctx = CreateFastLaneContext(jsonRpcUrl.Port);
+        ctx.SetEndpoint(new Endpoint(static _ => Task.CompletedTask, new EndpointMetadataCollection(), "health"));
+        bool nextCalled = false;
+
+        await new Startup().HandleJsonRpcHttpRequestAsync(ctx, () =>
+        {
+            nextCalled = true;
+            return Task.CompletedTask;
+        }, new TestJsonRpcUrlCollection(jsonRpcUrl));
+
+        Assert.That(nextCalled, Is.True);
+        Assert.That(ctx.Response.HasStarted, Is.False);
+    }
+
     [TestCase(null, false)]
     [TestCase("application/json", true)]
     [TestCase("Application/Json", true)]
