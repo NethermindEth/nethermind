@@ -1820,10 +1820,6 @@ namespace Nethermind.Serialization.Rlp
         public static void GuardLimit(int count, int bytesLeft, RlpLimit? limit = null)
         {
             RlpLimit l = limit ?? RlpLimit.DefaultLimit;
-            // Unsigned compares fold the `count < 0` guard into the upper-bound checks: a
-            // negative count reinterprets above int.MaxValue and so exceeds any non-negative
-            // bytesLeft or limit. bytesLeft is Length - Position and limit.Limit is positive
-            // (see RlpLimit defaults), so both bounds are safe to treat as unsigned.
             if ((uint)count > (uint)bytesLeft || (uint)count > (uint)l.Limit)
             {
                 ThrowCountOverLimit((uint)count, bytesLeft, l);
@@ -1834,8 +1830,7 @@ namespace Nethermind.Serialization.Rlp
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void GuardSize(int actual, int expected)
         {
-            // Most callers pass the sentinel expected = -1 (no constraint), so checking the
-            // sentinel first short-circuits the common case in one branch.
+            // expected == -1 is the sentinel for "no constraint".
             if (expected >= 0 && actual != expected)
             {
                 ThrowUnexpectedCount(actual, expected);

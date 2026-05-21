@@ -113,9 +113,7 @@ public class Eth70ProtocolHandler : Eth69ProtocolHandler, IStaticProtocolInfo
 
                 TxReceipt[] receipts = SyncServer.GetReceipts(blockHash);
                 long requestedStartIndex = blockIndex == 0 ? getReceiptsMessage.FirstBlockReceiptIndex : 0;
-                // Promote both sides to ulong so the unsigned compare also catches a negative
-                // `requestedStartIndex` arriving from an adversarial peer without truncating
-                // the long to a uint first (which would silently drop the high bits).
+                // ulong (not uint) so an adversarial negative long isn't truncated.
                 if ((ulong)requestedStartIndex > (uint)receipts.Length)
                 {
                     throw new SubprotocolException($"Invalid firstBlockReceiptIndex {requestedStartIndex} for block receipts length {receipts.Length}");

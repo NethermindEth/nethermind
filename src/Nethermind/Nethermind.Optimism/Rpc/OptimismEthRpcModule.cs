@@ -210,9 +210,6 @@ public class OptimismEthRpcModule(
         }
 
         Block block = searchResult.Object;
-        // positionIndex is UInt256 so `< 0` is dead; the previous `> Length - 1` shape also
-        // underflowed to -1 on empty transaction lists, accidentally rejecting via signed
-        // wrap. Match the base class form which compares directly against Length.
         if (positionIndex >= block!.Transactions.Length)
         {
             return ResultWrapper<TransactionForRpc?>.Success(null);

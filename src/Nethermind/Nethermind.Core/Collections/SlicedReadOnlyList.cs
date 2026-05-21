@@ -20,11 +20,9 @@ public class SlicedReadOnlyList<T> : IReadOnlyList<T>
     public SlicedReadOnlyList(IReadOnlyList<T> list, int start, int count)
     {
         ArgumentNullException.ThrowIfNull(list);
-        // Unsigned compares fold the implicit `< 0` check into the upper bound. The
-        // `count` check avoids overflow on `start + count` by reading the remaining
-        // capacity (which is non-negative once `start` is in range) instead.
         if ((uint)start > (uint)list.Count)
             throw new ArgumentOutOfRangeException(nameof(start), "Start index is out of range.");
+        // Compare against remaining capacity to avoid start + count overflow.
         if ((uint)count > (uint)(list.Count - start))
             throw new ArgumentOutOfRangeException(nameof(count), "Count is out of range.");
 
