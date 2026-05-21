@@ -167,6 +167,39 @@ public class TimeoutCertificateManagerTests
         Assert.That(tcManager.VerifyTimeoutCertificate(timeoutCertificate, out _), Is.EqualTo(expected));
     }
 
+    [Test]
+    public async Task HandleTimeoutVote_ThresholdReachedMultipleTimes_BuildsTcOnlyOnce()
+    {
+        PrivateKeyGenerator keyBuilder = new();
+        PrivateKey[] keys = keyBuilder.Generate(3).ToArray();
+        Address[] masternodes = keys.Select(k => k.Address).ToArray();
+
+        IEpochSwitchManager epochSwitchManager = Substitute.For<IEpochSwitchManager>();
+        EpochSwitchInfo epochSwitchInfo = new(masternodes, [], [], new BlockRoundInfo(Hash256.Zero, 1, 0));
+        epochSwitchManager.GetEpochSwitchInfo(Arg.Any<XdcBlockHeader>()).Returns(epochSwitchInfo);
+
+        IXdcReleaseSpec xdcSpec = Substitute.For<IXdcReleaseSpec>();
+        xdcSpec.CertificateThreshold.Returns(0.667);
+        ISpecProvider specProvider = Substitute.For<ISpecProvider>();
+        specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(xdcSpec);
+
+        IBlockTree blockTree = Substitute.For<IBlockTree>();
+        XdcBlockHeader header = Build.A.XdcBlockHeader().TestObject;
+        blockTree.Head.Returns(new Block(header, new BlockBody()));
+
+        XdcConsensusContext ctx = new() { CurrentRound = 1 };
+        TimeoutCertificateManager tcManager = new(ctx, Substitute.For<ITimeoutTimer>(),
+            Substitute.For<ISyncPeerPool>(), Substitute.For<ISnapshotManager>(),
+            epochSwitchManager, specProvider, blockTree, Substitute.For<ISigner>());
+
+        Timeout[] timeouts = keys.Select(k => XdcTestHelper.BuildSignedTimeout(k, 1, 0)).ToArray();
+
+        await Task.WhenAll(timeouts.Select(t => tcManager.HandleTimeoutVote(t)));
+
+        // ProcessTimeoutCertificate calls SetNewRound(2) — must happen exactly once
+        Assert.That(ctx.CurrentRound, Is.EqualTo(2));
+    }
+
     [TestCase(4UL)]
     [TestCase(6UL)]
     public async Task HandleTimeoutVote_RoundDoesNotMatchCurrentRound_ShouldReturnEarly(ulong round)
