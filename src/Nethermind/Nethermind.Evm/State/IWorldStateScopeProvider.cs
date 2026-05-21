@@ -73,6 +73,22 @@ public interface IWorldStateScopeProvider
         byte[]? GetCode(in ValueHash256 codeHash);
 
         ICodeSetter BeginCodeWrite();
+
+        /// <summary>
+        /// Hint: returns true only if this code is durably persisted in this codeDb.
+        /// Used by callers to avoid redundant inserts. Implementations must never produce
+        /// false positives — a true return means the code is retrievable via <see cref="GetCode"/>.
+        /// For transient (overlay) codeDbs that cannot durably persist anything, this must
+        /// always return false.
+        /// </summary>
+        bool ContainsCode(in ValueHash256 codeHash);
+
+        /// <summary>
+        /// Hint: the code with the given hash was just persisted to this codeDb. Permits
+        /// the implementation to update an internal cache used by <see cref="ContainsCode"/>.
+        /// Transient/overlay codeDbs must treat this as a no-op.
+        /// </summary>
+        void MarkCodePersisted(in ValueHash256 codeHash);
     }
 
     public interface IStorageTree

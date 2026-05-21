@@ -11,6 +11,7 @@ using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
+using Nethermind.Core.Caching;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Evm.State;
@@ -302,16 +303,41 @@ public class TrieStoreScopeProvider : IWorldStateScopeProvider
         }
     }
 
-    public class KeyValueWithBatchingBackedCodeDb(IKeyValueStoreWithBatching codeDb) : IWorldStateScopeProvider.ICodeDb
+    public class KeyValueWithBatchingBackedCodeDb : IWorldStateScopeProvider.ICodeDb
     {
+        private readonly IKeyValueStoreWithBatching _codeDb;
+
+        // Persisted-code hint cache. Non-null only when this codeDb is durable (production).
+        // For overlay/transient codeDbs we leave this null so ContainsCode always reports false
+        // and MarkCodePersisted is a no-op — overlay writes are not durable and must never
+        // poison the hint cache. False positives here would cause InsertCode to skip the
+        // _codeBatch insert, and ProcessDiffState would then fail to find just-deployed code.
+        private readonly ClockKeyCacheNonConcurrent<ValueHash256>? _persistedHint;
+
+        public KeyValueWithBatchingBackedCodeDb(IKeyValueStoreWithBatching codeDb, bool isPersistent = true)
+        {
+            _codeDb = codeDb;
+            _persistedHint = isPersistent ? new ClockKeyCacheNonConcurrent<ValueHash256>(1_024) : null;
+        }
+
         public byte[]? GetCode(in ValueHash256 codeHash)
         {
-            return codeDb[codeHash.Bytes]?.ToArray();
+            return _codeDb[codeHash.Bytes]?.ToArray();
         }
 
         public IWorldStateScopeProvider.ICodeSetter BeginCodeWrite()
         {
-            return new CodeSetter(codeDb.StartWriteBatch());
+            return new CodeSetter(_codeDb.StartWriteBatch());
+        }
+
+        public bool ContainsCode(in ValueHash256 codeHash)
+        {
+            return _persistedHint?.Get(codeHash) ?? false;
+        }
+
+        public void MarkCodePersisted(in ValueHash256 codeHash)
+        {
+            _persistedHint?.Set(codeHash);
         }
 
         private class CodeSetter(IWriteBatch writeBatch) : IWorldStateScopeProvider.ICodeSetter
