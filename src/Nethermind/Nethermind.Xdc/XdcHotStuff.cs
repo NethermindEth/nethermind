@@ -6,7 +6,6 @@ using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Logging;
-using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Xdc.Spec;
 using Nethermind.Xdc.Types;
 using System;
@@ -73,6 +72,13 @@ namespace Nethermind.Xdc
                 _xdcContext.NewRoundSetEvent += OnNewRound;
                 _logger.Info("XdcHotStuff consensus runner started");
             }
+
+            if (_blockTree.Head?.Header is not XdcBlockHeader head)
+                throw new InvalidOperationException($"Expected XdcBlockHeader but got {_blockTree.Head?.Header?.GetType().FullName}");
+            if (head.ExtraConsensusData is null) return;
+            if (_xdcContext.CurrentRound == 0) return;
+            if (_blockTree.IsSyncing().isSyncing) return;
+            StartRoundTask(head, _xdcContext.CurrentRound);
         }
 
         public Task StopAsync()
@@ -143,7 +149,7 @@ namespace Nethermind.Xdc
 
         // ── Round task ───────────────────────────────────────────────────────────
 
-        private void StartRoundTask(XdcBlockHeader head, ulong round)
+        internal void StartRoundTask(XdcBlockHeader head, ulong round)
         {
             CancellationToken token;
             lock (_lockObject)
@@ -276,7 +282,7 @@ namespace Nethermind.Xdc
                 return;
             }
 
-            if(votingRound <= _highestVotedRound) return;
+            if (votingRound <= _highestVotedRound) return;
 
             if (!_votesManager.VerifyVotingRules(head, out string? error))
             {

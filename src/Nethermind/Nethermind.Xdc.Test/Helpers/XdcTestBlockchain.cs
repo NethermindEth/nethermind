@@ -543,6 +543,7 @@ public class XdcTestBlockchain : TestBlockchain
             //by setting the correct signer the block producer runner should trigger trying to propose a block
             Address leader = ConsensusModule.GetLeaderAddress(head, XdcContext.CurrentRound, spec);
             Signer.SetSigner(MasterNodeCandidates.First(k => k.Address == leader));
+            ConsensusModule.StartRoundTask(head, XdcContext.CurrentRound);
 
             Task waitingForHead = await Task.WhenAny(newHeadWaitHandle.Task, Task.Delay(10_000));
             if (waitingForHead != newHeadWaitHandle.Task)
