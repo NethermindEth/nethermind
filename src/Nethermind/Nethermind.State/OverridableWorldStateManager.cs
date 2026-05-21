@@ -19,10 +19,7 @@ public class OverridableWorldStateManager : IOverridableWorldScope
         _dbProvider = readOnlyDbProvider;
         OverlayTrieStore overlayTrieStore = new(readOnlyDbProvider.StateDb, trieStore);
         _reader = new(overlayTrieStore, readOnlyDbProvider.CodeDb, logManager);
-        // codeDbIsPersistent: false — overlay writes go to readOnlyDbProvider's temp buffer
-        // and are discarded on ResetOverrides. The persisted-code hint on the wrapping
-        // ICodeDb must not remember anything written to a transient overlay.
-        WorldState = new TrieStoreScopeProvider(overlayTrieStore, readOnlyDbProvider.CodeDb, logManager, codeDbIsPersistent: false);
+        WorldState = new TrieStoreScopeProvider(overlayTrieStore, readOnlyDbProvider.CodeDb, logManager);
     }
 
     public IWorldStateScopeProvider WorldState { get; }
