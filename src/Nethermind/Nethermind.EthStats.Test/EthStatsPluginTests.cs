@@ -18,9 +18,7 @@ private INethermindPlugin _plugin = null!;
     [SetUp]
     public void Setup() => _context = Build.ContextWithMocks();
 
-    [TestCase(true)]
-    [TestCase(false)]
-    public void Init_eth_stats_plugin_does_not_throw_exception(bool enabled)
+public void Init_eth_stats_plugin_does_not_throw_exception([Values] bool enabled)
     {
         _plugin = new EthStatsPlugin(new EthStatsConfig() { Enabled = enabled });
 
