@@ -757,7 +757,10 @@ namespace Nethermind.Consensus.Processing
             }
             catch (Exception ex)
             {
-                if (_logger.IsDebug) _logger.Debug($"Error logging slow block: {ex.Message}");
+                // Defensive: never fail block processing because of a slow-block log failure.
+                // Log at Error with the full exception (stack trace included) so a serialization
+                // regression is diagnosable rather than silently dropping JSON entries.
+                if (_logger.IsError) _logger.Error($"Error logging slow block {block.Number}", ex);
             }
 
             static void WriteCacheEntry(Utf8JsonWriter writer, string name, long hits, long misses, double hitRate)

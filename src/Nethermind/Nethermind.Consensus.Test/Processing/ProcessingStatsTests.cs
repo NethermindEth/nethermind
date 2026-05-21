@@ -4,7 +4,6 @@
 using System;
 using System.Linq;
 using System.Text.Json;
-using System.Threading;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Test;
@@ -22,14 +21,14 @@ namespace Nethermind.Consensus.Test.Processing;
 public class ProcessingStatsTests
 {
     private TestLogger _logger = null!;
-    private TestLogger _slowBlockLogger = null!;
+    private WaitableTestLogger _slowBlockLogger = null!;
     private IStateReader _stateReader = null!;
 
     [SetUp]
     public void Setup()
     {
         _logger = new TestLogger();
-        _slowBlockLogger = new TestLogger();
+        _slowBlockLogger = new WaitableTestLogger();
         _stateReader = Substitute.For<IStateReader>();
         _stateReader.HasStateForBlock(Arg.Any<BlockHeader>()).Returns(true);
     }
@@ -43,10 +42,8 @@ public class ProcessingStatsTests
         stats.CaptureStartStats();
         stats.UpdateStats(new[] { block }, Build.A.BlockHeader.TestObject, blockProcessingTimeInMicros: processingMicros);
 
-        // Report is queued to ThreadPool — wait deterministically (SpinUntil does an
-        // initial busy-spin then exponential Sleep backoff, so it's both faster than
-        // Thread.Sleep(50) polling for fast cases and quieter under load).
-        SpinWait.SpinUntil(() => _slowBlockLogger.LogList.Any(), TimeSpan.FromSeconds(5));
+        // Report is queued to ThreadPool — wait deterministically on the logger's MRES.
+        _slowBlockLogger.WaitForEntry(TimeSpan.FromSeconds(5));
 
         if (!_slowBlockLogger.LogList.Any()) return null;
         return JsonSerializer.Deserialize<SlowBlockLogEntry>(_slowBlockLogger.LogList.Last());

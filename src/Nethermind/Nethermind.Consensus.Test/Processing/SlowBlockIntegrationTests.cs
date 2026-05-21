@@ -4,7 +4,6 @@
 using System;
 using System.Linq;
 using System.Text.Json;
-using System.Threading;
 using Nethermind.Blockchain;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
@@ -40,7 +39,7 @@ public class SlowBlockIntegrationTests
     private ITransactionProcessor _txProcessor = null!;
     private IWorldState _worldState = null!;
     private IDisposable _scope = null!;
-    private TestLogger _slowBlockLogger = null!;
+    private WaitableTestLogger _slowBlockLogger = null!;
     private ProcessingStats _stats = null!;
 
     [SetUp]
@@ -60,7 +59,7 @@ public class SlowBlockIntegrationTests
 
         IStateReader stateReader = Substitute.For<IStateReader>();
         stateReader.HasStateForBlock(Arg.Any<BlockHeader>()).Returns(true);
-        _slowBlockLogger = new TestLogger();
+        _slowBlockLogger = new WaitableTestLogger();
         _stats = new ProcessingStats(stateReader, new ILogger(new TestLogger()), new ILogger(_slowBlockLogger), slowBlockThresholdMs: 0);
     }
 
@@ -88,10 +87,8 @@ public class SlowBlockIntegrationTests
         _txProcessor.Execute(tx, new BlockExecutionContext(block.Header, _specProvider.GetSpec(block.Header)), Evm.Tracing.NullTxTracer.Instance);
         _stats.UpdateStats(new[] { block }, Build.A.BlockHeader.TestObject, blockProcessingTimeInMicros: 100_000);
 
-        // Report is queued to ThreadPool — wait deterministically (SpinUntil does an
-        // initial busy-spin then exponential Sleep backoff, so it's both faster than
-        // Thread.Sleep(50) polling for fast cases and quieter under load).
-        SpinWait.SpinUntil(() => _slowBlockLogger.LogList.Any(), TimeSpan.FromSeconds(5));
+        // Report is queued to ThreadPool — wait deterministically on the logger's MRES.
+        _slowBlockLogger.WaitForEntry(TimeSpan.FromSeconds(5));
         Assert.That(_slowBlockLogger.LogList, Is.Not.Empty, "Expected slow block log");
         SlowBlockLogEntry? entry = JsonSerializer.Deserialize<SlowBlockLogEntry>(_slowBlockLogger.LogList.Last());
         Assert.That(entry, Is.Not.Null);
