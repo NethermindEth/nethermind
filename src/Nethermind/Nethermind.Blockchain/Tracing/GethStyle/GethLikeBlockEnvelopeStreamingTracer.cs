@@ -75,6 +75,8 @@ public sealed class GethLikeBlockEnvelopeStreamingTracer : BlockTracerBase<GethL
         return trace;
     }
 
+    protected override void AddTrace(GethLikeTxTrace trace) { }
+
     public void Dispose()
     {
         if (!_innerEnvelopeOpen) return;
