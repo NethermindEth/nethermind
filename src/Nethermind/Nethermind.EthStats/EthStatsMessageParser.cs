@@ -301,25 +301,23 @@ internal static class EthStatsMessageParser
         // A signed 64-bit integer is at most 20 ASCII bytes ("-9223372036854775808"); anything
         // longer cannot be a valid long, so we can reject without allocating.
         const int maxInt64Digits = 20;
-        Span<byte> sequenceBuffer = stackalloc byte[maxInt64Digits];
-        ReadOnlySpan<byte> raw;
 
         if (reader.HasValueSequence)
         {
-            if (reader.ValueSequence.Length > maxInt64Digits)
+            long sequenceLength = reader.ValueSequence.Length;
+            if (sequenceLength > maxInt64Digits)
             {
                 value = 0;
                 return false;
             }
 
+            Span<byte> sequenceBuffer = stackalloc byte[maxInt64Digits];
             reader.ValueSequence.CopyTo(sequenceBuffer);
-            raw = sequenceBuffer[..(int)reader.ValueSequence.Length];
-        }
-        else
-        {
-            raw = reader.ValueSpan;
+            ReadOnlySpan<byte> sequenceRaw = sequenceBuffer[..(int)sequenceLength];
+            return Utf8Parser.TryParse(sequenceRaw, out value, out int sequenceConsumed) && sequenceConsumed == sequenceRaw.Length;
         }
 
+        ReadOnlySpan<byte> raw = reader.ValueSpan;
         return Utf8Parser.TryParse(raw, out value, out int consumed) && consumed == raw.Length;
     }
 }
