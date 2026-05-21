@@ -44,8 +44,6 @@ public class XdcConsensusContext : IXdcConsensusContext
             RoundStarted = DateTime.UtcNow;
             eventArgs = new NewRoundEventArgs(round, last, previousTimeoutCounter, RoundStarted - lastRoundStarted);
         }
-        // Invoked outside the lock so subscribers receive the specific round that this call advanced to,
-        // rather than a potentially newer round already set by a concurrent caller.
         NewRoundSetEvent?.Invoke(this, eventArgs);
     }
 }
