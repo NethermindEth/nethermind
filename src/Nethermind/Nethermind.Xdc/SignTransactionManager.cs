@@ -78,7 +78,7 @@ internal class SignTransactionManager : ISignTransactionManager, IDisposable
         if (_alreadySigned.Contains(xdcHeader.Hash))
             return;
 
-        ulong round = xdcHeader.ExtraConsensusData.BlockRound;
+        ulong round = xdcHeader.ExtraConsensusData!.BlockRound;
         IXdcReleaseSpec spec = _specProvider.GetXdcSpec(xdcHeader, round);
         if (spec is null)
             return;
