@@ -446,6 +446,8 @@ namespace Nethermind.JsonRpc.Modules
                     ErrorDataPayloadType = GetResultWrapperErrorDataType(ResultWrapperType);
                     SuccessPayloadTypeInfo = GetJsonTypeInfo(SuccessPayloadType);
                     ErrorDataPayloadTypeInfo = GetJsonTypeInfo(ErrorDataPayloadType);
+                    SuccessPayloadCanHaveDerivedRuntimeType = RpcPayloadTypeShape.CanHaveDerivedRuntimeType(SuccessPayloadType);
+                    ErrorDataPayloadCanHaveDerivedRuntimeType = RpcPayloadTypeShape.CanHaveDerivedRuntimeType(ErrorDataPayloadType);
 
                     if (IsTaskWrapped)
                     {
@@ -471,6 +473,8 @@ namespace Nethermind.JsonRpc.Modules
             internal Type? ErrorDataPayloadType { get; }
             internal JsonTypeInfo? SuccessPayloadTypeInfo { get; }
             internal JsonTypeInfo? ErrorDataPayloadTypeInfo { get; }
+            internal bool SuccessPayloadCanHaveDerivedRuntimeType { get; }
+            internal bool ErrorDataPayloadCanHaveDerivedRuntimeType { get; }
             internal bool IsTaskWrapped { get; }
             internal TaskResultReader? TaskResultAccessor { get; }
             internal IRpcModulePool? ModulePool { get; private set; }

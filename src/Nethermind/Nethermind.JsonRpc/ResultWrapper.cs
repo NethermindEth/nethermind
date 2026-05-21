@@ -97,7 +97,7 @@ namespace Nethermind.JsonRpc
 
         internal override bool TryGetStreamableResult(out IStreamableResult? streamable)
         {
-            if (Result.ResultType != ResultType.Success || typeof(T).IsValueType)
+            if (Result.ResultType != ResultType.Success || !RpcPayloadTypeShape<T>.CanBeStreamable)
             {
                 streamable = null;
                 return false;
@@ -162,7 +162,7 @@ namespace Nethermind.JsonRpc
                 return;
             }
 
-            if (rejectStreamable && !typeof(T).IsValueType && value is IStreamableResult)
+            if (rejectStreamable && RpcPayloadTypeShape<TValue>.CanBeStreamable && value is IStreamableResult)
             {
                 throw new InvalidOperationException("Streamable JSON-RPC results must be written by the response sink.");
             }
@@ -182,7 +182,7 @@ namespace Nethermind.JsonRpc
 
         private static JsonTypeInfo? GetRuntimePayloadTypeInfo<TValue>(JsonSerializerOptions options, TValue value)
         {
-            if (typeof(TValue).IsValueType)
+            if (!RpcPayloadTypeShape<TValue>.CanHaveDerivedRuntimeType)
             {
                 return null;
             }

@@ -103,3 +103,18 @@ internal static class RpcPayloadTypeInfo<T>
     private static JsonTypeInfo<T> GetCached(JsonSerializerOptions options) =>
         _cache.GetOrAdd(options, static options => (JsonTypeInfo<T>)options.GetTypeInfo(typeof(T)));
 }
+
+internal static class RpcPayloadTypeShape
+{
+    public static bool CanHaveDerivedRuntimeType(Type? type) =>
+        type is not null && !type.IsValueType && !type.IsSealed;
+}
+
+internal static class RpcPayloadTypeShape<T>
+{
+    public static readonly bool CanHaveDerivedRuntimeType = RpcPayloadTypeShape.CanHaveDerivedRuntimeType(typeof(T));
+
+    public static readonly bool CanBeStreamable =
+        !typeof(T).IsValueType &&
+        (CanHaveDerivedRuntimeType || typeof(IStreamableResult).IsAssignableFrom(typeof(T)));
+}

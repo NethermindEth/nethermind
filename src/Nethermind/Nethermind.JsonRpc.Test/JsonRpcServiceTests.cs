@@ -179,6 +179,56 @@ public class JsonRpcServiceTests
     }
 
     [Test]
+    public void Payload_type_shape_classifies_runtime_polymorphic_types()
+    {
+        Assert.That(RpcPayloadTypeShape<int>.CanHaveDerivedRuntimeType, Is.False);
+        Assert.That(RpcPayloadTypeShape<SealedPayload>.CanHaveDerivedRuntimeType, Is.False);
+        Assert.That(RpcPayloadTypeShape<object>.CanHaveDerivedRuntimeType, Is.True);
+        Assert.That(RpcPayloadTypeShape<PolymorphicBasePayload>.CanHaveDerivedRuntimeType, Is.True);
+        Assert.That(RpcPayloadTypeShape<SealedPayload>.CanBeStreamable, Is.False);
+        Assert.That(RpcPayloadTypeShape<PolymorphicBasePayload>.CanBeStreamable, Is.True);
+    }
+
+    [Test]
+    public void Runtime_polymorphic_success_payload_uses_runtime_type_info()
+    {
+        ResultWrapper<PolymorphicBasePayload> response = ResultWrapper<PolymorphicBasePayload>.Success(new PolymorphicDerivedPayload
+        {
+            BaseValue = "base",
+            DerivedValue = "derived"
+        });
+        response.Id = 67;
+
+        string serialized = RpcTest.SerializeResponse(response);
+
+        using JsonDocument document = JsonDocument.Parse(serialized);
+        JsonElement result = document.RootElement.GetProperty("result");
+        Assert.That(result.GetProperty("baseValue").GetString(), Is.EqualTo("base"));
+        Assert.That(result.GetProperty("derivedValue").GetString(), Is.EqualTo("derived"));
+    }
+
+    [Test]
+    public void Runtime_polymorphic_error_data_uses_runtime_type_info()
+    {
+        ResultWrapper<string, PolymorphicBasePayload> response = ResultWrapper<string, PolymorphicBasePayload>.Fail(
+            "typed",
+            ErrorCodes.InvalidParams,
+            new PolymorphicDerivedPayload
+            {
+                BaseValue = "base",
+                DerivedValue = "derived"
+            });
+        response.Id = 67;
+
+        string serialized = RpcTest.SerializeResponse(response);
+
+        using JsonDocument document = JsonDocument.Parse(serialized);
+        JsonElement data = document.RootElement.GetProperty("error").GetProperty("data");
+        Assert.That(data.GetProperty("baseValue").GetString(), Is.EqualTo("base"));
+        Assert.That(data.GetProperty("derivedValue").GetString(), Is.EqualTo("derived"));
+    }
+
+    [Test]
     public void Error_message_serialization_uses_relaxed_json_escaping()
     {
         JsonRpcErrorResponse response = new()
@@ -574,5 +624,20 @@ public class JsonRpcServiceTests
         public int DisposeCount { get; private set; }
 
         public void Dispose() => DisposeCount++;
+    }
+
+    public class PolymorphicBasePayload
+    {
+        public string? BaseValue { get; init; }
+    }
+
+    public sealed class PolymorphicDerivedPayload : PolymorphicBasePayload
+    {
+        public string? DerivedValue { get; init; }
+    }
+
+    public sealed class SealedPayload
+    {
+        public string? Value { get; init; }
     }
 }

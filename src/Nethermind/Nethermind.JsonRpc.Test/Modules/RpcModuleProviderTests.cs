@@ -186,6 +186,7 @@ public class RpcModuleProviderTests
         RpcModuleProvider.ResolvedMethodInfo requiredValueParameterMethod = _moduleProvider.Resolve(nameof(DirectInvokerRpcModule.direct_required_value_param))!;
         RpcModuleProvider.ResolvedMethodInfo typedErrorDataMethod = _moduleProvider.Resolve(nameof(DirectInvokerRpcModule.direct_typed_error_data))!;
         RpcModuleProvider.ResolvedMethodInfo asyncTypedErrorDataMethod = _moduleProvider.Resolve(nameof(DirectInvokerRpcModule.direct_async_typed_error_data))!;
+        RpcModuleProvider.ResolvedMethodInfo polymorphicMethod = _moduleProvider.Resolve(nameof(DirectInvokerRpcModule.direct_polymorphic))!;
 
         syncMethod.DirectNoParameterInvoker.Should().NotBeNull();
         asyncMethod.DirectNoParameterInvoker.Should().NotBeNull();
@@ -200,13 +201,16 @@ public class RpcModuleProviderTests
         syncMethod.ResultWrapperType.Should().Be(typeof(ResultWrapper<string>));
         syncMethod.SuccessPayloadType.Should().Be(typeof(string));
         syncMethod.SuccessPayloadTypeInfo.Should().NotBeNull();
+        syncMethod.SuccessPayloadCanHaveDerivedRuntimeType.Should().BeFalse();
         syncMethod.ErrorDataPayloadType.Should().BeNull();
+        syncMethod.ErrorDataPayloadCanHaveDerivedRuntimeType.Should().BeFalse();
         syncMethod.TaskResultAccessor.Should().BeNull();
 
         asyncMethod.IsTaskWrapped.Should().BeTrue();
         asyncMethod.ResultWrapperType.Should().Be(typeof(ResultWrapper<long>));
         asyncMethod.SuccessPayloadType.Should().Be(typeof(long));
         asyncMethod.SuccessPayloadTypeInfo.Should().NotBeNull();
+        asyncMethod.SuccessPayloadCanHaveDerivedRuntimeType.Should().BeFalse();
         asyncMethod.ErrorDataPayloadType.Should().BeNull();
         asyncMethod.TaskResultAccessor.Should().NotBeNull();
 
@@ -214,12 +218,19 @@ public class RpcModuleProviderTests
         typedErrorDataMethod.SuccessPayloadType.Should().Be(typeof(string));
         typedErrorDataMethod.ErrorDataPayloadType.Should().Be(typeof(bool));
         typedErrorDataMethod.ErrorDataPayloadTypeInfo.Should().NotBeNull();
+        typedErrorDataMethod.SuccessPayloadCanHaveDerivedRuntimeType.Should().BeFalse();
+        typedErrorDataMethod.ErrorDataPayloadCanHaveDerivedRuntimeType.Should().BeFalse();
 
         asyncTypedErrorDataMethod.IsTaskWrapped.Should().BeTrue();
         asyncTypedErrorDataMethod.ResultWrapperType.Should().Be(typeof(ResultWrapper<string, string>));
         asyncTypedErrorDataMethod.SuccessPayloadType.Should().Be(typeof(string));
         asyncTypedErrorDataMethod.ErrorDataPayloadType.Should().Be(typeof(string));
+        asyncTypedErrorDataMethod.SuccessPayloadCanHaveDerivedRuntimeType.Should().BeFalse();
+        asyncTypedErrorDataMethod.ErrorDataPayloadCanHaveDerivedRuntimeType.Should().BeFalse();
         asyncTypedErrorDataMethod.TaskResultAccessor.Should().NotBeNull();
+
+        polymorphicMethod.SuccessPayloadType.Should().Be(typeof(PolymorphicPayload));
+        polymorphicMethod.SuccessPayloadCanHaveDerivedRuntimeType.Should().BeTrue();
 
         IResultWrapper syncResult = syncMethod.DirectNoParameterInvoker!(module).Should().BeAssignableTo<IResultWrapper>().Subject;
         syncResult.Data.Should().Be("sync");
@@ -514,6 +525,9 @@ public class RpcModuleProviderTests
 
         public Task<ResultWrapper<string, string>> direct_async_typed_error_data() =>
             Task.FromResult(ResultWrapper<string, string>.Fail("typed", ErrorCodes.InvalidParams, "error-data"));
+
+        public ResultWrapper<PolymorphicPayload> direct_polymorphic() =>
+            ResultWrapper<PolymorphicPayload>.Success(new PolymorphicPayload());
     }
 
     [RpcModule(ModuleType.Eth)]
@@ -535,6 +549,10 @@ public class RpcModuleProviderTests
     private sealed class FallbackPayload
     {
         public string? Value { get; set; }
+    }
+
+    private class PolymorphicPayload
+    {
     }
 
     private sealed class TestModulePool<T>(T module) : IRpcModulePool<T> where T : IRpcModule
