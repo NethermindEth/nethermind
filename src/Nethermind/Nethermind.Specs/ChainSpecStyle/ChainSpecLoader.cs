@@ -100,6 +100,7 @@ public class ChainSpecLoader(IJsonSerializer serializer, ILogManager logManager)
             MaximumExtraDataSize = chainSpecJson.Params.MaximumExtraDataSize ?? 32,
             MinGasLimit = chainSpecJson.Params.MinGasLimit ?? 5000,
             MinHistoryRetentionEpochs = chainSpecJson.Params.MinHistoryRetentionEpochs ?? 82125,
+            MinBalRetentionEpochs = chainSpecJson.Params.MinBalRetentionEpochs ?? 3533,
             MaxCodeSize = chainSpecJson.Params.MaxCodeSize,
             MaxCodeSizeTransition = chainSpecJson.Params.MaxCodeSizeTransition,
             MaxCodeSizeTransitionTimestamp = chainSpecJson.Params.MaxCodeSizeTransitionTimestamp,
