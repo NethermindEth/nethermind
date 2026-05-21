@@ -164,12 +164,11 @@ public class StateCompositionSnapshotStoreTests
     }
 
     [Test]
-    public void ReadSnapshot_TruncatedChunk_DegradesToEmptyMapsInsteadOfThrowing()
+    public void ReadSnapshot_TruncatedChunk_ReturnsNullToForceRescan()
     {
         // Disk-read boundary: a snapshot whose chunk header was written but the
-        // payload was truncated mid-flush must not propagate
-        // ArgumentOutOfRangeException to the startup path. The reader bails to
-        // "no more entries" so the plugin can fall back to a fresh scan.
+        // payload was truncated mid-flush should be treated as corrupt so startup
+        // uses the bootstrap-scan recovery path.
         MemDb db = new();
         StateCompositionSnapshotStore store = new(db, LimboLogs.Instance, entriesPerChunk: 100);
 
@@ -187,16 +186,14 @@ public class StateCompositionSnapshotStoreTests
         // Header claims 4 entries (160 bytes payload) but only 3 bytes follow.
         db.Set(truncatedChunkKey, [0, 0, 0, 4, 0xAA, 0xBB, 0xCC]);
 
-        StateCompositionSnapshot loaded = store.ReadLatestSnapshot()!.Value;
-        Assert.That(loaded.SlotCountByAddress, Is.Empty);
+        Assert.That(store.ReadLatestSnapshot(), Is.Null);
     }
 
     [Test]
-    public void ReadSnapshot_MidSequenceTruncatedChunk_KeepsPriorEntries()
+    public void ReadSnapshot_MidSequenceTruncatedChunk_ReturnsNullToForceRescan()
     {
-        // First chunk is intact; chunk 1 is truncated mid-flush. Reader must
-        // stop at the corruption boundary, keep chunk 0's entries, and not
-        // throw — the plugin will rescan to repair the missing tail.
+        // First chunk is intact; chunk 1 is truncated mid-flush. Treat the map as
+        // corrupt and force startup rescan instead of restoring a partial tracker.
         MemDb db = new();
         StateCompositionSnapshotStore store = new(db, LimboLogs.Instance, entriesPerChunk: 2);
 
@@ -214,9 +211,7 @@ public class StateCompositionSnapshotStoreTests
         ];
         db.Set(truncatedChunk1, [0, 0, 0, 2, 0xAA, 0xBB, 0xCC, 0xDD, 0xEE]);
 
-        StateCompositionSnapshot loaded = store.ReadLatestSnapshot()!.Value;
-        Assert.That(loaded.SlotCountByAddress, Has.Count.EqualTo(2),
-            "Chunk 0's entries survive; truncated chunk 1 stops the iteration without throwing.");
+        Assert.That(store.ReadLatestSnapshot(), Is.Null);
     }
 
     [Test]

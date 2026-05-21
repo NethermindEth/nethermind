@@ -123,9 +123,15 @@ internal sealed class StateCompositionSnapshotStore
             return null;
         }
 
-        Dictionary<ValueHash256, long> slotCounts = ReadLongMap(blockNumber, SlotCountKind);
-        Dictionary<ValueHash256, int> codeRefcounts = ReadIntMap(blockNumber, CodeRefcountKind);
-        Dictionary<ValueHash256, int> codeSizes = ReadIntMap(blockNumber, CodeSizeKind);
+        if (!TryReadLongMap(blockNumber, SlotCountKind, out Dictionary<ValueHash256, long> slotCounts) ||
+            !TryReadIntMap(blockNumber, CodeRefcountKind, out Dictionary<ValueHash256, int> codeRefcounts) ||
+            !TryReadIntMap(blockNumber, CodeSizeKind, out Dictionary<ValueHash256, int> codeSizes))
+        {
+            if (_logger.IsWarn)
+                _logger.Warn($"StateComposition: snapshot at block {blockNumber} has corrupt chunk data. " +
+                             "Discarding persisted snapshot and falling back to a fresh scan.");
+            return null;
+        }
 
         return snapshot with
         {
@@ -263,31 +269,29 @@ internal sealed class StateCompositionSnapshotStore
         }
     }
 
-    private Dictionary<ValueHash256, long> ReadLongMap(long blockNumber, byte kind)
+    private bool TryReadLongMap(long blockNumber, byte kind, out Dictionary<ValueHash256, long> result)
     {
-        Dictionary<ValueHash256, long> result = [];
-        ReadMap(blockNumber, kind, 32 + 8, (entry, dict) =>
+        result = [];
+        return TryReadMap(blockNumber, kind, 32 + 8, (entry, dict) =>
         {
             ValueHash256 hash = new(entry[..32]);
             long value = BinaryPrimitives.ReadInt64BigEndian(entry[32..40]);
             dict[hash] = value;
         }, result);
-        return result;
     }
 
-    private Dictionary<ValueHash256, int> ReadIntMap(long blockNumber, byte kind)
+    private bool TryReadIntMap(long blockNumber, byte kind, out Dictionary<ValueHash256, int> result)
     {
-        Dictionary<ValueHash256, int> result = [];
-        ReadMap(blockNumber, kind, 32 + 4, (entry, dict) =>
+        result = [];
+        return TryReadMap(blockNumber, kind, 32 + 4, (entry, dict) =>
         {
             ValueHash256 hash = new(entry[..32]);
             int value = BinaryPrimitives.ReadInt32BigEndian(entry[32..36]);
             dict[hash] = value;
         }, result);
-        return result;
     }
 
-    private void ReadMap<TDict>(
+    private bool TryReadMap<TDict>(
         long blockNumber,
         byte kind,
         int entrySize,
@@ -305,22 +309,19 @@ internal sealed class StateCompositionSnapshotStore
             if (data is null) break;
 
             // Disk-read boundary: validate the chunk-count prefix and the
-            // declared payload length before slicing, so a truncated or
-            // mid-read corrupted chunk degrades to "no more entries"
-            // instead of throwing ArgumentOutOfRangeException up the stack.
-            // Truncation mid-sequence (chunkIdx > 0) leaves a partially-loaded
-            // map; warn once so a follow-up rescan can be diagnosed and the
-            // discrepancy isn't silent.
+            // declared payload length before slicing. Any corruption is a hard
+            // load failure so startup falls back to a full rescan rather than
+            // restoring partially-loaded tracker maps.
             if (data.Length < 4)
             {
-                LogChunkTruncated(blockNumber, kind, chunkIdx);
-                break;
+                LogChunkCorrupted(blockNumber, kind, chunkIdx);
+                return false;
             }
             int chunkCount = BinaryPrimitives.ReadInt32BigEndian(data.AsSpan(0, 4));
             if (chunkCount < 0 || data.Length < 4 + (long)chunkCount * entrySize)
             {
-                LogChunkTruncated(blockNumber, kind, chunkIdx);
-                break;
+                LogChunkCorrupted(blockNumber, kind, chunkIdx);
+                return false;
             }
             int pos = 4;
             for (int i = 0; i < chunkCount; i++)
@@ -330,14 +331,16 @@ internal sealed class StateCompositionSnapshotStore
             }
             chunkIdx++;
         }
+
+        return true;
     }
 
     private delegate void EntryReader<TDict>(ReadOnlySpan<byte> entry, TDict dict);
 
-    private void LogChunkTruncated(long blockNumber, byte kind, int chunkIdx)
+    private void LogChunkCorrupted(long blockNumber, byte kind, int chunkIdx)
     {
         if (_logger.IsWarn)
             _logger.Warn($"StateComposition: corrupt chunk {chunkIdx} for block {blockNumber} kind {kind:x2}; " +
-                         $"loaded {chunkIdx} valid chunk(s) before truncation. Plugin will rescan.");
+                         "discarding snapshot and triggering rescan.");
     }
 }
