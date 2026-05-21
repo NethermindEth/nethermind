@@ -1,6 +1,9 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+using System.Buffers;
+using System.Text;
 using System.Text.Json;
 
 namespace Nethermind.EthStats;
@@ -25,6 +28,11 @@ internal readonly record struct EthStatsIncomingMessage(
 
 internal static class EthStatsMessageParser
 {
+    private const string History = "history";
+    private const string NodePing = "node-ping";
+    private const string NodePong = "node-pong";
+    private const int StackBufferThreshold = 512;
+
     public static bool TryParse(string? message, out EthStatsIncomingMessage incomingMessage)
     {
         incomingMessage = new EthStatsIncomingMessage(string.Empty, EthStatsIncomingMessageType.Unknown, null, null);
@@ -34,102 +42,256 @@ internal static class EthStatsMessageParser
             return false;
         }
 
+        int maxByteCount = Encoding.UTF8.GetMaxByteCount(message.Length);
+        byte[]? rented = null;
+        Span<byte> buffer = maxByteCount <= StackBufferThreshold
+            ? stackalloc byte[StackBufferThreshold]
+            : (rented = ArrayPool<byte>.Shared.Rent(maxByteCount));
+
         try
         {
-            using JsonDocument document = JsonDocument.Parse(message);
-            JsonElement root = document.RootElement;
-
-            if (!root.TryGetProperty("emit", out JsonElement emit) ||
-                emit.ValueKind != JsonValueKind.Array ||
-                emit.GetArrayLength() == 0)
-            {
-                return false;
-            }
-
-            JsonElement eventTypeElement = emit[0];
-            if (eventTypeElement.ValueKind != JsonValueKind.String)
-            {
-                return false;
-            }
-
-            string? eventType = eventTypeElement.GetString();
-            if (string.IsNullOrWhiteSpace(eventType))
-            {
-                return false;
-            }
-
-            JsonElement payload = emit.GetArrayLength() > 1 ? emit[1] : default;
-            if (eventType == "history")
-            {
-                if (!TryReadHistoryRequest(payload, out EthStatsHistoryRequest historyRequest))
-                {
-                    return false;
-                }
-
-                incomingMessage = new EthStatsIncomingMessage(eventType, EthStatsIncomingMessageType.History, historyRequest, null);
-                return true;
-            }
-
-            incomingMessage = eventType switch
-            {
-                "node-ping" =>
-                    new EthStatsIncomingMessage(eventType, EthStatsIncomingMessageType.NodePing, null, ReadNodeTiming(payload)),
-                "node-pong" =>
-                    new EthStatsIncomingMessage(eventType, EthStatsIncomingMessageType.NodePong, null, ReadNodeTiming(payload)),
-                _ =>
-                    new EthStatsIncomingMessage(eventType, EthStatsIncomingMessageType.Unknown, null, null)
-            };
-
-            return true;
+            int written = Encoding.UTF8.GetBytes(message, buffer);
+            return TryParseCore(buffer[..written], out incomingMessage);
         }
         catch (JsonException)
         {
             return false;
         }
+        finally
+        {
+            if (rented is not null)
+            {
+                ArrayPool<byte>.Shared.Return(rented);
+            }
+        }
     }
 
-    private static bool TryReadHistoryRequest(JsonElement payload, out EthStatsHistoryRequest historyRequest)
+    private static bool TryParseCore(ReadOnlySpan<byte> utf8Bytes, out EthStatsIncomingMessage incomingMessage)
     {
-        historyRequest = default;
+        incomingMessage = new EthStatsIncomingMessage(string.Empty, EthStatsIncomingMessageType.Unknown, null, null);
 
-        if (!TryGetInt64(payload, "min", out long min) ||
-            !TryGetInt64(payload, "max", out long max))
+        Utf8JsonReader reader = new(utf8Bytes);
+
+        if (!reader.Read() || reader.TokenType != JsonTokenType.StartObject)
         {
             return false;
         }
 
-        historyRequest = new EthStatsHistoryRequest(min, max);
+        while (reader.Read())
+        {
+            if (reader.TokenType == JsonTokenType.EndObject)
+            {
+                return false;
+            }
+
+            if (reader.TokenType != JsonTokenType.PropertyName)
+            {
+                return false;
+            }
+
+            if (!reader.ValueTextEquals("emit"u8))
+            {
+                reader.Skip();
+                continue;
+            }
+
+            if (!reader.Read() || reader.TokenType != JsonTokenType.StartArray)
+            {
+                return false;
+            }
+
+            if (!reader.Read() || reader.TokenType != JsonTokenType.String)
+            {
+                return false;
+            }
+
+            string eventType;
+            EthStatsIncomingMessageType messageType;
+
+            if (reader.ValueTextEquals("history"u8))
+            {
+                eventType = History;
+                messageType = EthStatsIncomingMessageType.History;
+            }
+            else if (reader.ValueTextEquals("node-ping"u8))
+            {
+                eventType = NodePing;
+                messageType = EthStatsIncomingMessageType.NodePing;
+            }
+            else if (reader.ValueTextEquals("node-pong"u8))
+            {
+                eventType = NodePong;
+                messageType = EthStatsIncomingMessageType.NodePong;
+            }
+            else
+            {
+                eventType = reader.GetString() ?? string.Empty;
+                if (string.IsNullOrWhiteSpace(eventType))
+                {
+                    return false;
+                }
+                messageType = EthStatsIncomingMessageType.Unknown;
+            }
+
+            if (!reader.Read())
+            {
+                return false;
+            }
+
+            if (reader.TokenType == JsonTokenType.EndArray)
+            {
+                if (messageType == EthStatsIncomingMessageType.History)
+                {
+                    return false;
+                }
+
+                EthStatsNodeTiming? emptyTiming = messageType is EthStatsIncomingMessageType.NodePing or EthStatsIncomingMessageType.NodePong
+                    ? new EthStatsNodeTiming(null)
+                    : null;
+                incomingMessage = new EthStatsIncomingMessage(eventType, messageType, null, emptyTiming);
+                return true;
+            }
+
+            if (reader.TokenType != JsonTokenType.StartObject)
+            {
+                return false;
+            }
+
+            switch (messageType)
+            {
+                case EthStatsIncomingMessageType.History:
+                {
+                    if (!TryReadHistoryRequest(ref reader, out EthStatsHistoryRequest historyRequest))
+                    {
+                        return false;
+                    }
+
+                    incomingMessage = new EthStatsIncomingMessage(eventType, EthStatsIncomingMessageType.History, historyRequest, null);
+                    return true;
+                }
+                case EthStatsIncomingMessageType.NodePing:
+                case EthStatsIncomingMessageType.NodePong:
+                {
+                    EthStatsNodeTiming timing = ReadNodeTiming(ref reader);
+                    incomingMessage = new EthStatsIncomingMessage(eventType, messageType, null, timing);
+                    return true;
+                }
+                default:
+                {
+                    incomingMessage = new EthStatsIncomingMessage(eventType, EthStatsIncomingMessageType.Unknown, null, null);
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    private static bool TryReadHistoryRequest(ref Utf8JsonReader reader, out EthStatsHistoryRequest historyRequest)
+    {
+        historyRequest = default;
+        long? min = null;
+        long? max = null;
+
+        while (reader.Read())
+        {
+            if (reader.TokenType == JsonTokenType.EndObject)
+            {
+                break;
+            }
+
+            if (reader.TokenType != JsonTokenType.PropertyName)
+            {
+                return false;
+            }
+
+            bool isMin = reader.ValueTextEquals("min"u8);
+            bool isMax = !isMin && reader.ValueTextEquals("max"u8);
+
+            if (!reader.Read())
+            {
+                return false;
+            }
+
+            if (isMin)
+            {
+                if (!TryReadInt64(ref reader, out long value))
+                {
+                    return false;
+                }
+                min = value;
+            }
+            else if (isMax)
+            {
+                if (!TryReadInt64(ref reader, out long value))
+                {
+                    return false;
+                }
+                max = value;
+            }
+            else
+            {
+                reader.Skip();
+            }
+        }
+
+        if (min is null || max is null)
+        {
+            return false;
+        }
+
+        historyRequest = new EthStatsHistoryRequest(min.Value, max.Value);
         return true;
     }
 
-    private static EthStatsNodeTiming ReadNodeTiming(JsonElement payload)
+    private static EthStatsNodeTiming ReadNodeTiming(ref Utf8JsonReader reader)
     {
-        long? clientTime = TryGetInt64(payload, "clientTime", out long parsedClientTime) ? parsedClientTime : null;
+        long? clientTime = null;
+
+        while (reader.Read())
+        {
+            if (reader.TokenType == JsonTokenType.EndObject)
+            {
+                break;
+            }
+
+            if (reader.TokenType != JsonTokenType.PropertyName)
+            {
+                break;
+            }
+
+            bool isClientTime = reader.ValueTextEquals("clientTime"u8);
+
+            if (!reader.Read())
+            {
+                break;
+            }
+
+            if (isClientTime && TryReadInt64(ref reader, out long value))
+            {
+                clientTime = value;
+            }
+            else if (!isClientTime)
+            {
+                reader.Skip();
+            }
+        }
 
         return new EthStatsNodeTiming(clientTime);
     }
 
-    private static bool TryGetInt64(JsonElement payload, string propertyName, out long value)
+    private static bool TryReadInt64(ref Utf8JsonReader reader, out long value)
     {
-        value = 0;
-
-        if (payload.ValueKind != JsonValueKind.Object)
+        switch (reader.TokenType)
         {
-            return false;
+            case JsonTokenType.Number:
+                return reader.TryGetInt64(out value);
+            case JsonTokenType.String:
+                value = 0;
+                return long.TryParse(reader.GetString(), out value);
+            default:
+                value = 0;
+                return false;
         }
-
-        return payload.TryGetProperty(propertyName, out JsonElement element) && TryReadInt64(element, out value);
-    }
-
-    private static bool TryReadInt64(JsonElement element, out long value)
-    {
-        value = 0;
-
-        return element.ValueKind switch
-        {
-            JsonValueKind.Number => element.TryGetInt64(out value),
-            JsonValueKind.String => long.TryParse(element.GetString(), out value),
-            _ => false
-        };
     }
 }
