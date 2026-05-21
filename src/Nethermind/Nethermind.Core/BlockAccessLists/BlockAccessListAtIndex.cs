@@ -358,11 +358,6 @@ public class BlockAccessListAtIndex : IJournal<int>, IResettable
         StorageChange = 3,
     }
 
-    /// <summary>
-    /// Revert-journal record. Fields are conditionally meaningful per <see cref="Type"/> /
-    /// <see cref="HasPrevious"/>; <see cref="Slot"/> is storage-only, and the CodeChange byte[]
-    /// payload lives in <c>_previousCodeChanges</c> to keep this struct unmanaged-sized.
-    /// </summary>
     private readonly struct Change
     {
         public AccountChangesAtIndex Account { get; init; }
@@ -373,12 +368,6 @@ public class BlockAccessListAtIndex : IJournal<int>, IResettable
         public ChangeValue PreviousValue { get; init; }
     }
 
-    /// <summary>
-    /// 32-byte value payload, read per-variant. Storage is reinterpreted bit-for-bit (not numerically)
-    /// because <see cref="StorageChange.Value"/> arrives already in BE wire form. <see langword="readonly"/>
-    /// avoids defensive copies on access through <c>ref readonly Change</c> in <see cref="Restore"/>.
-    /// Same Unsafe.As idiom as <see cref="StorageChange(uint, in UInt256)"/>.
-    /// </summary>
     private readonly struct ChangeValue
     {
         private readonly UInt256 _data;
