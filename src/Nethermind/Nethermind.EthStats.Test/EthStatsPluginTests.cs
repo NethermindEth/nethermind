@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
 using Nethermind.EthStats.Configs;
@@ -13,7 +12,7 @@ namespace Nethermind.EthStats.Test;
 public class EthStatsPluginTests
 {
     private NethermindApi _context = null!;
-private INethermindPlugin _plugin = null!;
+    private INethermindPlugin _plugin = null!;
 
     [SetUp]
     public void Setup() => _context = Build.ContextWithMocks();
