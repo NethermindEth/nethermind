@@ -1799,9 +1799,6 @@ namespace Nethermind.Trie.Test.Pruning
         [Test]
         public void Incomplete_persisted_prune_warning_is_rate_limited()
         {
-            // Repro guard for #11264: on chains with high storage churn (e.g. Base mainnet at tip)
-            // SyncPruneQueue can hit the "still want to prune after one full shard pass" branch on
-            // every block. The warning must back off so logs are not flooded.
             TestLogger testLogger = new() { IsWarn = true };
             OneLoggerLogManager logManager = new(new ILogger(testLogger));
 
@@ -1815,8 +1812,6 @@ namespace Nethermind.Trie.Test.Pruning
                 new PruningConfig { PrunePersistedNodePortion = 1.0, TrackPastKeys = false },
                 logManager);
 
-            // Drive the prune path many times in a row — within the cooldown all but the first
-            // call must be suppressed.
             for (int i = 0; i < 50; i++)
             {
                 trieStore.SyncPruneQueue();

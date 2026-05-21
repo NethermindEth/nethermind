@@ -68,9 +68,6 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
     private bool _lastPersistedReachedReorgBoundary;
     private long _toBePersistedBlockNumber = -1;
 
-    // Cooldown for the "Unable to completely prune persisted nodes" warning. The condition can
-    // persist for every block at chain tip on chains with high storage churn (e.g. Base mainnet,
-    // see #11264), so emitting on every occurrence floods logs without adding signal.
     private static readonly long IncompletePersistedPruneWarnIntervalTicks = Stopwatch.Frequency * 5 * 60;
     private long _incompletePersistedPruneWarnNextTicks;
 
@@ -629,10 +626,6 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
 
                 if (!IsInCommitBufferMode && _lastPrunedShardIdx - startingShard >= _shardedDirtyNodeCount && _pruningStrategy.ShouldPrunePersistedNode(CaptureCurrentState()))
                 {
-                    // A persisted node that was recommitted and is still within the pruning boundary cannot be evicted.
-                    // Historically rare (notably mainnet around block 4_500_000), but on Optimism-derived chains such
-                    // as Base this branch fires repeatedly at the chain tip; the warning is rate-limited below to
-                    // avoid log spam. The lasting fix is still to raise the memory budget or shrink the pruning boundary.
                     if (_logger.IsWarn)
                     {
                         long now = Stopwatch.GetTimestamp();
