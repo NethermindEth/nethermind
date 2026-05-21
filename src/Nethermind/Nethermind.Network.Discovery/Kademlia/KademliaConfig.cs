@@ -16,7 +16,7 @@ public class KademliaConfig<TNode>
     public int KSize { get; set; } = 16;
 
     /// <summary>
-    /// Alpha, as in the parallelism of the lookup algorith.
+    /// Alpha, as in the parallelism of the lookup algorithm.
     /// </summary>
     public int Alpha { get; set; } = 3;
 

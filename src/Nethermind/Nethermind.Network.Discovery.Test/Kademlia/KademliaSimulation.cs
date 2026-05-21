@@ -273,7 +273,7 @@ public class KademliaSimulation
                 Interlocked.Increment(ref fabric.FindNeighbourCount);
 
                 await fabric.DoSimulateLatency(token);
-                fabric.Debug($"findn from {sender} to {node}");
+                fabric.Debug($"find neighbours from {sender} to {node}");
                 if (fabric.TryGetReceiver(node, out ReceiverForNode receiver))
                 {
                     return (await receiver.FindNeighbours(sender, hash, token)).Select((node) => new TestNode(node.Hash)).ToArray();

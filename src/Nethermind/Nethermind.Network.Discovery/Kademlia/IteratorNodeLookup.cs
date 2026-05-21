@@ -32,7 +32,7 @@ public class IteratorNodeLookup<TKey, TNode>(
     private readonly ValueHash256 _currentNodeIdAsHash = keyOperator.GetNodeHash(kademliaConfig.CurrentNodeId);
 
     // Small lru of unreachable nodes, prevent retrying. Pretty effective, although does not improve discovery overall.
-    private readonly LruCache<ValueHash256, DateTimeOffset> _unreacheableNodes = new(256, "");
+    private readonly LruCache<ValueHash256, DateTimeOffset> _unreachableNodes = new(256, "");
 
     // The maximum round per lookup. Higher means that it will 'see' deeper into the network, but come at a latency
     // cost of trying many node for increasingly lower new node.
@@ -182,7 +182,7 @@ public class IteratorNodeLookup<TKey, TNode>(
     {
         try
         {
-            if (_unreacheableNodes.TryGet(keyOperator.GetNodeHash(node), out DateTimeOffset lastAttempt) &&
+            if (_unreachableNodes.TryGet(keyOperator.GetNodeHash(node), out DateTimeOffset lastAttempt) &&
                 lastAttempt + TimeSpan.FromMinutes(5) > timestamper.UtcNowOffset)
             {
                 return [];
@@ -192,7 +192,7 @@ public class IteratorNodeLookup<TKey, TNode>(
         }
         catch (OperationCanceledException)
         {
-            _unreacheableNodes.Set(keyOperator.GetNodeHash(node), timestamper.UtcNowOffset);
+            _unreachableNodes.Set(keyOperator.GetNodeHash(node), timestamper.UtcNowOffset);
             return null;
         }
         catch (Exception e)
