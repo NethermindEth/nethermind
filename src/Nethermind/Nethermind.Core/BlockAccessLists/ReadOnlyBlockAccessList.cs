@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Text;
 using System.Text.Json.Serialization;
 using Nethermind.Core.Collections;
+using Nethermind.Core.Crypto;
 
 namespace Nethermind.Core.BlockAccessLists;
 
@@ -38,6 +39,13 @@ public class ReadOnlyBlockAccessList : IEquatable<ReadOnlyBlockAccessList>
     [JsonIgnore]
     public int TotalStorageChangeEvents { get; }
 
+    /// <summary>
+    /// Keccak of the BAL's wire (RLP) encoding, cached by the decoder so the consensus-side hash
+    /// check avoids re-hashing per block. <c>null</c> for BALs synthesised in-process.
+    /// </summary>
+    [JsonIgnore]
+    public Hash256? WireHash { get; }
+
     public EnumerableWithCount<ReadOnlyAccountChanges> AccountChanges
         => new(_accountChanges.Values, _accountChanges.Count);
 
@@ -62,6 +70,9 @@ public class ReadOnlyBlockAccessList : IEquatable<ReadOnlyBlockAccessList>
     /// loading, which only mutates per-account fields, so the sorted iteration is preserved.
     /// </summary>
     public ReadOnlyBlockAccessList(ReadOnlyAccountChanges[] orderedAccounts, int itemCount)
+        : this(orderedAccounts, itemCount, wireHash: null) { }
+
+    public ReadOnlyBlockAccessList(ReadOnlyAccountChanges[] orderedAccounts, int itemCount, Hash256? wireHash)
     {
         _orderedAccounts = orderedAccounts;
         _accountChanges = new Dictionary<Address, ReadOnlyAccountChanges>(orderedAccounts.Length);
@@ -76,6 +87,7 @@ public class ReadOnlyBlockAccessList : IEquatable<ReadOnlyBlockAccessList>
         ItemCount = itemCount;
         TotalStorageReads = totalReads;
         TotalStorageChangeEvents = totalChangeEvents;
+        WireHash = wireHash;
     }
 
     public bool Equals(ReadOnlyBlockAccessList? other)
