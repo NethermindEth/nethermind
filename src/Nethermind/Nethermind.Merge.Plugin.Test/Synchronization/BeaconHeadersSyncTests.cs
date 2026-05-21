@@ -408,8 +408,11 @@ public class BeaconHeadersSyncTests
         Assert.That(ctx.BeaconSync.ShouldBeInBeaconHeaders(), Is.True);
         Assert.That(blockTree.BestKnownNumber, Is.EqualTo(bestPointer));
         BlockHeader? startBestHeader = syncedBlockTree.FindHeader(bestPointer, BlockTreeLookupOptions.None);
-        MergeTestAssertions.AssertHeaderEquivalent(blockTree.BestSuggestedHeader, startBestHeader);
-        MergeTestAssertions.AssertHeaderEquivalent(blockTree.LowestInsertedBeaconHeader, syncedBlockTree.FindHeader(pivot.PivotNumber, BlockTreeLookupOptions.None));
+        BlockHeader? pivotHeader = syncedBlockTree.FindHeader(pivot.PivotNumber, BlockTreeLookupOptions.None);
+        Assert.That(blockTree.BestSuggestedHeader?.Hash, Is.EqualTo(startBestHeader?.Hash));
+        Assert.That(blockTree.BestSuggestedHeader?.Number, Is.EqualTo(startBestHeader?.Number));
+        Assert.That(blockTree.LowestInsertedBeaconHeader?.Hash, Is.EqualTo(pivotHeader?.Hash));
+        Assert.That(blockTree.LowestInsertedBeaconHeader?.Number, Is.EqualTo(pivotHeader?.Number));
 
         BuildHeadersSyncBatches(ctx, blockTree, syncedBlockTree, pivot, endLowestBeaconHeader);
 
@@ -419,7 +422,8 @@ public class BeaconHeadersSyncTests
         Assert.That(blockTree.FindHeader(pivot.PivotNumber - 1, BlockTreeLookupOptions.TotalDifficultyNotNeeded), Is.Not.Null);
         Assert.That(blockTree.LowestInsertedBeaconHeader?.Hash, Is.EqualTo(syncedBlockTree.FindHeader(endLowestBeaconHeader, BlockTreeLookupOptions.None)?.Hash));
         Assert.That(blockTree.BestKnownNumber, Is.EqualTo(bestPointer));
-        MergeTestAssertions.AssertHeaderEquivalent(blockTree.BestSuggestedHeader, startBestHeader);
+        Assert.That(blockTree.BestSuggestedHeader?.Hash, Is.EqualTo(startBestHeader?.Hash));
+        Assert.That(blockTree.BestSuggestedHeader?.Number, Is.EqualTo(startBestHeader?.Number));
         Assert.That(ctx.Feed.CurrentState, Is.EqualTo(SyncFeedState.Dormant));
         Assert.That(ctx.BeaconSync.ShouldBeInBeaconHeaders(), Is.False);
     }

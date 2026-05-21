@@ -1056,8 +1056,9 @@ public partial class EngineModuleTests
         Assert.That(blockTree.BestSuggestedBody?.Header, Is.EqualTo(pointers.BestSuggestedBody?.Header));
         Assert.That(blockTree.BestSuggestedBody?.Body, Is.EqualTo(pointers.BestSuggestedBody?.Body));
         // TODO: post merge sync change to best beacon block
-        Assert.That((blockTree.BestSuggestedBeaconHeader?.Number ?? 0), Is.EqualTo(pointers.BestKnownBeaconBlock));
-        MergeTestAssertions.AssertHeaderEquivalent(blockTree.LowestInsertedBeaconHeader, pointers.LowestInsertedBeaconHeader);
+        Assert.That(blockTree.BestSuggestedBeaconHeader?.Number ?? 0, Is.EqualTo(pointers.BestKnownBeaconBlock));
+        Assert.That(blockTree.LowestInsertedBeaconHeader?.Hash, Is.EqualTo(pointers.LowestInsertedBeaconHeader?.Hash));
+        Assert.That(blockTree.LowestInsertedBeaconHeader?.Number, Is.EqualTo(pointers.LowestInsertedBeaconHeader?.Number));
     }
 
     private void AssertBeaconPivotValues(IBeaconPivot beaconPivot, BlockHeader blockHeader)
