@@ -92,10 +92,10 @@ public class TransactionForRpcTests
         using JsonDocument jsonDocument = JsonDocument.Parse(serialized);
         JsonElement json = jsonDocument.RootElement;
 
-        RpcTransactionAssertions.AssertMatchesWhenPresent(json.GetProperty("hash").GetString(), "^0x[0-9a-fA-F]{64}$");
-        RpcTransactionAssertions.AssertMatchesWhenPresent(json.GetProperty("transactionIndex").GetString(), "^0x([1-9a-f]+[0-9a-f]*|0)$");
-        RpcTransactionAssertions.AssertMatchesWhenPresent(json.GetProperty("blockHash").GetString(), "^0x[0-9a-fA-F]{64}$");
-        RpcTransactionAssertions.AssertMatchesWhenPresent(json.GetProperty("blockNumber").GetString(), "^0x([1-9a-f]+[0-9a-f]*|0)$");
+        Assert.That(json.GetProperty("hash").GetString(), Is.Null.Or.Matches("^0x[0-9a-fA-F]{64}$"));
+        Assert.That(json.GetProperty("transactionIndex").GetString(), Is.Null.Or.Matches("^0x([1-9a-f]+[0-9a-f]*|0)$"));
+        Assert.That(json.GetProperty("blockHash").GetString(), Is.Null.Or.Matches("^0x[0-9a-fA-F]{64}$"));
+        Assert.That(json.GetProperty("blockNumber").GetString(), Is.Null.Or.Matches("^0x([1-9a-f]+[0-9a-f]*|0)$"));
     }
 
     [Test]

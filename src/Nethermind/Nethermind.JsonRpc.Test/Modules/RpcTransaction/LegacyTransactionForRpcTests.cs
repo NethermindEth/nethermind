@@ -5,6 +5,7 @@ using System.Text.Json;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
+using NUnit.Framework;
 
 namespace Nethermind.JsonRpc.Test.Modules.RpcTransaction;
 
@@ -56,21 +57,21 @@ public static class LegacyTransactionForRpcTests
 
     public static void ValidateSchema(JsonElement json)
     {
-        RpcTransactionAssertions.AssertMatchesWhenPresent(json.GetProperty("type").GetString(), "^0x0$");
-        RpcTransactionAssertions.AssertMatchesWhenPresent(json.GetProperty("nonce").GetString(), "^0x([1-9a-f]+[0-9a-f]*|0)$");
-        RpcTransactionAssertions.AssertMatchesWhenPresent(json.GetProperty("to").GetString(), "^0x[0-9a-fA-F]{40}$");
-        RpcTransactionAssertions.AssertMatchesWhenPresent(json.GetProperty("from").GetString(), "^0x[0-9a-fA-F]{40}$");
-        RpcTransactionAssertions.AssertMatchesWhenPresent(json.GetProperty("gas").GetString(), "^0x([1-9a-f]+[0-9a-f]*|0)$");
-        RpcTransactionAssertions.AssertMatchesWhenPresent(json.GetProperty("value").GetString(), "^0x([1-9a-f]+[0-9a-f]*|0)$");
-        RpcTransactionAssertions.AssertMatchesWhenPresent(json.GetProperty("input").GetString(), "^0x[0-9a-f]*$");
-        RpcTransactionAssertions.AssertMatchesWhenPresent(json.GetProperty("gasPrice").GetString(), "^0x([1-9a-f]+[0-9a-f]*|0)$");
+        Assert.That(json.GetProperty("type").GetString(), Is.Not.Null.And.Matches("^0x0$"));
+        Assert.That(json.GetProperty("nonce").GetString(), Is.Not.Null.And.Matches("^0x([1-9a-f]+[0-9a-f]*|0)$"));
+        Assert.That(json.GetProperty("to").GetString(), Is.Null.Or.Matches("^0x[0-9a-fA-F]{40}$"));
+        Assert.That(json.GetProperty("from").GetString(), Is.Null.Or.Matches("^0x[0-9a-fA-F]{40}$"));
+        Assert.That(json.GetProperty("gas").GetString(), Is.Not.Null.And.Matches("^0x([1-9a-f]+[0-9a-f]*|0)$"));
+        Assert.That(json.GetProperty("value").GetString(), Is.Not.Null.And.Matches("^0x([1-9a-f]+[0-9a-f]*|0)$"));
+        Assert.That(json.GetProperty("input").GetString(), Is.Not.Null.And.Matches("^0x[0-9a-f]*$"));
+        Assert.That(json.GetProperty("gasPrice").GetString(), Is.Not.Null.And.Matches("^0x([1-9a-f]+[0-9a-f]*|0)$"));
         bool hasChainId = json.TryGetProperty("chainId", out JsonElement chainId);
         if (hasChainId)
         {
-            RpcTransactionAssertions.AssertMatchesWhenPresent(chainId.GetString(), "^0x([1-9a-f]+[0-9a-f]*|0)$");
+            Assert.That(chainId.GetString(), Is.Not.Null.And.Matches("^0x([1-9a-f]+[0-9a-f]*|0)$"));
         }
-        RpcTransactionAssertions.AssertMatchesWhenPresent(json.GetProperty("v").GetString(), "^0x([1-9a-f]+[0-9a-f]*|0)$");
-        RpcTransactionAssertions.AssertMatchesWhenPresent(json.GetProperty("r").GetString(), "^0x([1-9a-f]+[0-9a-f]*|0)$");
-        RpcTransactionAssertions.AssertMatchesWhenPresent(json.GetProperty("s").GetString(), "^0x([1-9a-f]+[0-9a-f]*|0)$");
+        Assert.That(json.GetProperty("v").GetString(), Is.Not.Null.And.Matches("^0x([1-9a-f]+[0-9a-f]*|0)$"));
+        Assert.That(json.GetProperty("r").GetString(), Is.Not.Null.And.Matches("^0x([1-9a-f]+[0-9a-f]*|0)$"));
+        Assert.That(json.GetProperty("s").GetString(), Is.Not.Null.And.Matches("^0x([1-9a-f]+[0-9a-f]*|0)$"));
     }
 }

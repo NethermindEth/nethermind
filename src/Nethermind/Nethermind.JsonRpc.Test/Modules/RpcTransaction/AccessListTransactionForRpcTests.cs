@@ -73,30 +73,30 @@ public static class AccessListTransactionForRpcTests
 
     public static void ValidateSchema(JsonElement json)
     {
-        RpcTransactionAssertions.AssertMatchesWhenPresent(json.GetProperty("type").GetString(), "^0x1$");
-        RpcTransactionAssertions.AssertMatchesWhenPresent(json.GetProperty("nonce").GetString(), "^0x([1-9a-f]+[0-9a-f]*|0)$");
-        RpcTransactionAssertions.AssertMatchesWhenPresent(json.GetProperty("to").GetString(), "^0x[0-9a-fA-F]{40}$");
-        RpcTransactionAssertions.AssertMatchesWhenPresent(json.GetProperty("gas").GetString(), "^0x([1-9a-f]+[0-9a-f]*|0)$");
-        RpcTransactionAssertions.AssertMatchesWhenPresent(json.GetProperty("value").GetString(), "^0x([1-9a-f]+[0-9a-f]*|0)$");
-        RpcTransactionAssertions.AssertMatchesWhenPresent(json.GetProperty("input").GetString(), "^0x[0-9a-f]*$");
-        RpcTransactionAssertions.AssertMatchesWhenPresent(json.GetProperty("gasPrice").GetString(), "^0x([1-9a-f]+[0-9a-f]*|0)$");
+        Assert.That(json.GetProperty("type").GetString(), Is.Not.Null.And.Matches("^0x1$"));
+        Assert.That(json.GetProperty("nonce").GetString(), Is.Not.Null.And.Matches("^0x([1-9a-f]+[0-9a-f]*|0)$"));
+        Assert.That(json.GetProperty("to").GetString(), Is.Null.Or.Matches("^0x[0-9a-fA-F]{40}$"));
+        Assert.That(json.GetProperty("gas").GetString(), Is.Not.Null.And.Matches("^0x([1-9a-f]+[0-9a-f]*|0)$"));
+        Assert.That(json.GetProperty("value").GetString(), Is.Not.Null.And.Matches("^0x([1-9a-f]+[0-9a-f]*|0)$"));
+        Assert.That(json.GetProperty("input").GetString(), Is.Not.Null.And.Matches("^0x[0-9a-f]*$"));
+        Assert.That(json.GetProperty("gasPrice").GetString(), Is.Not.Null.And.Matches("^0x([1-9a-f]+[0-9a-f]*|0)$"));
         JsonElement.ArrayEnumerator accessList = json.GetProperty("accessList").EnumerateArray();
         foreach (JsonElement item in accessList)
         {
-            RpcTransactionAssertions.AssertMatchesWhenPresent(item.GetProperty("address").GetString(), "^0x[0-9a-fA-F]{40}$");
+            Assert.That(item.GetProperty("address").GetString(), Is.Not.Null.And.Matches("^0x[0-9a-fA-F]{40}$"));
             foreach (JsonElement key in item.GetProperty("storageKeys").EnumerateArray())
             {
-                RpcTransactionAssertions.AssertMatchesWhenPresent(key.GetString(), "^0x[0-9a-f]{64}$");
+                Assert.That(key.GetString(), Is.Not.Null.And.Matches("^0x[0-9a-f]{64}$"));
             }
         }
-        RpcTransactionAssertions.AssertMatchesWhenPresent(json.GetProperty("chainId").GetString(), "^0x([1-9a-f]+[0-9a-f]*|0)$");
+        Assert.That(json.GetProperty("chainId").GetString(), Is.Not.Null.And.Matches("^0x([1-9a-f]+[0-9a-f]*|0)$"));
         string? yParity = json.GetProperty("yParity").GetString();
-        Assert.That(yParity, Does.Match("^0x([1-9a-f]+[0-9a-f]*|0)$"));
+        Assert.That(yParity, Is.Not.Null.And.Matches("^0x([1-9a-f]+[0-9a-f]*|0)$"));
         if (json.TryGetProperty("v", out JsonElement v))
         {
             Assert.That(v.GetString(), Is.EqualTo(yParity));
         }
-        RpcTransactionAssertions.AssertMatchesWhenPresent(json.GetProperty("r").GetString(), "^0x([1-9a-f]+[0-9a-f]*|0)$");
-        RpcTransactionAssertions.AssertMatchesWhenPresent(json.GetProperty("s").GetString(), "^0x([1-9a-f]+[0-9a-f]*|0)$");
+        Assert.That(json.GetProperty("r").GetString(), Is.Not.Null.And.Matches("^0x([1-9a-f]+[0-9a-f]*|0)$"));
+        Assert.That(json.GetProperty("s").GetString(), Is.Not.Null.And.Matches("^0x([1-9a-f]+[0-9a-f]*|0)$"));
     }
 }
