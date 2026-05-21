@@ -20,4 +20,15 @@ public class BlobBaseFeeOverrideCalculatorDecorator(
             overrideProvider.BlobBaseFeeOverride is not null
                 ? !UInt256.MultiplyOverflow(BlobGasCalculator.CalculateBlobGas(transaction), overrideProvider.BlobBaseFeeOverride.Value, out blobBaseFee)
             : blobBaseFeeCalculatorBase.TryCalculateBlobBaseFee(header, transaction, blobGasPriceUpdateFraction, out blobBaseFee);
+
+    public bool TryCalculateFeePerBlobGas(BlockHeader header, UInt256 blobGasPriceUpdateFraction,
+        out UInt256 feePerBlobGas)
+    {
+        if (overrideProvider.BlobBaseFeeOverride is not null)
+        {
+            feePerBlobGas = overrideProvider.BlobBaseFeeOverride.Value;
+            return true;
+        }
+        return blobBaseFeeCalculatorBase.TryCalculateFeePerBlobGas(header, blobGasPriceUpdateFraction, out feePerBlobGas);
+    }
 }

@@ -21,4 +21,15 @@ public class SimulateBlobBaseFeeCalculatorDecorator(ITransactionProcessor.IBlobB
 
         return blobBaseFeeCalculatorBase.TryCalculateBlobBaseFee(header, transaction, blobGasPriceUpdateFraction, out blobBaseFee);
     }
+
+    public bool TryCalculateFeePerBlobGas(BlockHeader header, UInt256 blobGasPriceUpdateFraction,
+        out UInt256 feePerBlobGas)
+    {
+        if (simulateState.BlobBaseFeeOverride is not null)
+        {
+            feePerBlobGas = simulateState.BlobBaseFeeOverride.Value;
+            return true;
+        }
+        return blobBaseFeeCalculatorBase.TryCalculateFeePerBlobGas(header, blobGasPriceUpdateFraction, out feePerBlobGas);
+    }
 }

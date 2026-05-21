@@ -58,6 +58,10 @@ namespace Nethermind.Evm.TransactionProcessing
         public bool TryCalculateBlobBaseFee(BlockHeader header, Transaction transaction,
             UInt256 blobGasPriceUpdateFraction, out UInt256 blobBaseFee) =>
             BlobGasCalculator.TryCalculateBlobBaseFee(header, transaction, blobGasPriceUpdateFraction, out blobBaseFee);
+
+        public bool TryCalculateFeePerBlobGas(BlockHeader header, UInt256 blobGasPriceUpdateFraction,
+            out UInt256 feePerBlobGas) =>
+            BlobGasCalculator.TryCalculateFeePerBlobGas(header, blobGasPriceUpdateFraction, out feePerBlobGas);
     }
 
     public abstract class TransactionProcessorBase<TGasPolicy> : ITransactionProcessor
@@ -810,7 +814,7 @@ namespace Nethermind.Evm.TransactionProcessing
             {
                 if (validate)
                 {
-                    if (!BlobGasCalculator.TryCalculateFeePerBlobGas(header, spec.BlobBaseFeeUpdateFraction, out UInt256 feePerBlobGas))
+                    if (!_blobBaseFeeCalculator.TryCalculateFeePerBlobGas(header, spec.BlobBaseFeeUpdateFraction, out UInt256 feePerBlobGas))
                     {
                         overflows = true;
                     }
