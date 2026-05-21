@@ -116,19 +116,17 @@ public class GeneratedAccountChanges(Address address) : IComparable<GeneratedAcc
         StorageChange aChange = default, bChange = default;
         while (true)
         {
-            bool aMatched = false;
-            while (i < a.Length)
+            for (; i < a.Length; i++)
             {
-                if (TryGetSlotChangeAtIndex(a[i], index, out aChange)) { aMatched = true; break; }
-                i++;
+                if (TryGetSlotChangeAtIndex(a[i], index, out aChange)) break;
             }
-            bool bMatched = false;
-            while (j < b.Length)
+            for (; j < b.Length; j++)
             {
-                if (TryGetSlotChangeAtIndex(b[j], index, out bChange)) { bMatched = true; break; }
-                j++;
+                if (TryGetSlotChangeAtIndex(b[j], index, out bChange)) break;
             }
 
+            bool aMatched = i < a.Length;
+            bool bMatched = j < b.Length;
             if (!aMatched && !bMatched) return true;
             if (aMatched != bMatched) return false;
             if (a[i].Key != b[j].Key) return false;
