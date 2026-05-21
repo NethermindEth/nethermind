@@ -46,12 +46,16 @@ internal class SignTransactionManager : ISignTransactionManager, IDisposable
         _blockTree.BlockAddedToMain += OnBlockAddedToMain;
     }
 
-    public async Task SubmitTransactionSign(XdcBlockHeader header, IXdcReleaseSpec spec)
+    public Task SubmitTransactionSign(XdcBlockHeader header, IXdcReleaseSpec spec)
     {
         UInt256 nonce = _txPool.GetLatestPendingNonce(_signer.Address);
         Transaction transaction = CreateTxSign((UInt256)header.Number, header.Hash ?? header.CalculateHash().ToHash256(), nonce, spec.BlockSignerContract, _signer.Address);
 
-        await _signer.Sign(transaction);
+        if (!_signer.TrySign(transaction))
+        {
+            if (_logger.IsWarn) _logger.Warn($"XDC signer {_signer.Address} could not sign block-sign tx for header {header.Number} — skipping submission.");
+            return Task.CompletedTask;
+        }
 
         transaction.Hash = transaction.CalculateHash();
 
@@ -60,6 +64,7 @@ internal class SignTransactionManager : ISignTransactionManager, IDisposable
         {
             _logger.Warn($"Failed to add signed transaction to the pool: {added} {header.ToString(BlockHeader.Format.FullHashAndNumber)}");
         }
+        return Task.CompletedTask;
     }
 
     private void OnBlockAddedToMain(object? sender, BlockReplacementEventArgs e)

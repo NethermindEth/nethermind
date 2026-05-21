@@ -13,13 +13,11 @@ using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading;
 using Nethermind.Core;
-using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 using Nethermind.Logging;
-using Nethermind.Serialization.Rlp.Eip7928;
 
 namespace Nethermind.Serialization.Rlp
 {
@@ -268,9 +266,6 @@ namespace Nethermind.Serialization.Rlp
 
         public static Rlp Encode(LogEntry item, RlpBehaviors behaviors = RlpBehaviors.None)
             => LogEntryDecoder.Instance.Encode(item, behaviors);
-
-        public static Rlp Encode(BlockAccessList item, RlpBehaviors behaviors = RlpBehaviors.None)
-            => new(BlockAccessListDecoder.EncodeToBytes(item, behaviors));
 
         public static Rlp Encode<T>(T item, RlpBehaviors behaviors = RlpBehaviors.None)
         {
