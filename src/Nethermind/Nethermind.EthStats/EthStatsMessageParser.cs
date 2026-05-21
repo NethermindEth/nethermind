@@ -161,27 +161,27 @@ internal static class EthStatsMessageParser
             switch (messageType)
             {
                 case EthStatsIncomingMessageType.History:
-                {
-                    if (!TryReadHistoryRequest(ref reader, out EthStatsHistoryRequest historyRequest))
                     {
-                        return false;
-                    }
+                        if (!TryReadHistoryRequest(ref reader, out EthStatsHistoryRequest historyRequest))
+                        {
+                            return false;
+                        }
 
-                    incomingMessage = new EthStatsIncomingMessage(eventType, EthStatsIncomingMessageType.History, historyRequest, null);
-                    return true;
-                }
+                        incomingMessage = new EthStatsIncomingMessage(eventType, EthStatsIncomingMessageType.History, historyRequest, null);
+                        return true;
+                    }
                 case EthStatsIncomingMessageType.NodePing:
                 case EthStatsIncomingMessageType.NodePong:
-                {
-                    EthStatsNodeTiming timing = ReadNodeTiming(ref reader);
-                    incomingMessage = new EthStatsIncomingMessage(eventType, messageType, null, timing);
-                    return true;
-                }
+                    {
+                        EthStatsNodeTiming timing = ReadNodeTiming(ref reader);
+                        incomingMessage = new EthStatsIncomingMessage(eventType, messageType, null, timing);
+                        return true;
+                    }
                 default:
-                {
-                    incomingMessage = new EthStatsIncomingMessage(eventType, EthStatsIncomingMessageType.Unknown, null, null);
-                    return true;
-                }
+                    {
+                        incomingMessage = new EthStatsIncomingMessage(eventType, EthStatsIncomingMessageType.Unknown, null, null);
+                        return true;
+                    }
             }
         }
 
