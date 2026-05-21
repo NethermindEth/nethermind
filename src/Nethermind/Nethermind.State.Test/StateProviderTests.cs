@@ -302,8 +302,6 @@ public class StateProviderTests(bool useFlat)
 
         try
         {
-            // One long-lived overridable scope reused across two BeginScope calls — mirrors
-            // OverridableEnv reusing _worldState across BuildAndOverride.
             using IOverridableWorldScope overridableScope = manager.CreateOverridableWorldScope();
             IWorldState worldState = new WorldState(overridableScope.WorldState, LimboLogs.Instance);
 
