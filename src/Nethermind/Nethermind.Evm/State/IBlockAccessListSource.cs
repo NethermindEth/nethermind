@@ -5,7 +5,11 @@ using Nethermind.Core.BlockAccessLists;
 
 namespace Nethermind.Evm.State;
 
+/// <summary>
+/// Surfaces the per-tx BAL slice currently being recorded so transaction processing
+/// can read in-flight changes (e.g. EIP-8037 self-destruct refund accounting).
+/// </summary>
 public interface IBlockAccessListSource
 {
-    BlockAccessList GeneratedBlockAccessList { get; }
+    BlockAccessListAtIndex? GeneratedBlockAccessList { get; }
 }

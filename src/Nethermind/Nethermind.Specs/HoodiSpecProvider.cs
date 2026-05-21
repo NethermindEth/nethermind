@@ -4,14 +4,12 @@
 using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
-using Nethermind.Int256;
 using Nethermind.Specs.Forks;
 
 namespace Nethermind.Specs;
 
-public class HoodiSpecProvider : ISpecProvider
+public class HoodiSpecProvider : ForkScheduleSpecProvider
 {
-    public const ulong GenesisTimestamp = 0x0;
     public const ulong ShanghaiTimestamp = 0x0;
     public const ulong CancunTimestamp = 0x0;
     public const ulong PragueTimestamp = 0x67e41118;
@@ -24,43 +22,27 @@ public class HoodiSpecProvider : ISpecProvider
     private static IReleaseSpec Prague => LazyInitializer.EnsureInitialized(ref _prague,
         static () => new Prague { DepositContractAddress = Eip6110Constants.HoodiDepositContractAddress });
 
-    private HoodiSpecProvider() { }
-
-    public IReleaseSpec GetSpec(ForkActivation forkActivation) => forkActivation.Timestamp switch
+    private HoodiSpecProvider() : this(new ForkSchedule
     {
-        null or < ShanghaiTimestamp => GenesisSpec,
-        < PragueTimestamp => Cancun.Instance,
-        < OsakaTimestamp => Prague,
-        < BPO1Timestamp => Osaka.Instance,
-        < BPO2Timestamp => BPO1.Instance,
-        _ => BPO2.Instance
-    };
+        [GenesisBlockNumber] = London.Instance,
+        [ShanghaiTimestamp] = Shanghai.Instance,
+        [CancunTimestamp] = Cancun.Instance,
+        [PragueTimestamp] = Prague,
+        [OsakaTimestamp] = Osaka.Instance,
+        [BPO1Timestamp] = BPO1.Instance,
+        [BPO2Timestamp] = BPO2.Instance,
+    })
+    { }
 
-    public void UpdateMergeTransitionInfo(long? blockNumber, UInt256? terminalTotalDifficulty = null)
-    {
-        if (blockNumber is not null)
-            MergeBlockNumber = (ForkActivation)blockNumber;
-        if (terminalTotalDifficulty is not null)
-            TerminalTotalDifficulty = terminalTotalDifficulty;
-    }
+    private HoodiSpecProvider(ForkSchedule schedule) : base(schedule,
+        terminalTotalDifficulty: 0,
+        mergeBlockNumber: (GenesisBlockNumber, GenesisTimestamp)) =>
+        TransitionActivations = schedule.ToTransitionActivations(
+            postMergeBlock: GenesisBlockNumber + 1);
 
-    public ulong NetworkId => BlockchainIds.Hoodi;
-    public ulong ChainId => NetworkId;
-    public long? DaoBlockNumber => null;
-    public ulong? BeaconChainGenesisTimestamp => GenesisTimestamp;
-    public ForkActivation? MergeBlockNumber { get; private set; } = (0, GenesisTimestamp);
-    public ulong TimestampFork => ShanghaiTimestamp;
-    public UInt256? TerminalTotalDifficulty { get; private set; } = 0;
-    public IReleaseSpec GenesisSpec { get; } = London.Instance;
-    public ForkActivation[] TransitionActivations { get; } =
-    [
-        (1, ShanghaiTimestamp),
-        (2, CancunTimestamp),
-        (3, PragueTimestamp),
-        (4, OsakaTimestamp),
-        (5, BPO1Timestamp),
-        (6, BPO2Timestamp),
-    ];
+    public override ulong TimestampFork => ShanghaiTimestamp;
+    public override ulong NetworkId => BlockchainIds.Hoodi;
+    public override ulong? BeaconChainGenesisTimestamp => GenesisTimestamp;
 
     public static readonly HoodiSpecProvider Instance = new();
 }

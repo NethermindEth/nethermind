@@ -21,5 +21,6 @@ namespace Nethermind.Db
         public const int BlockAccessListsBarrierWhenStarted = 14;
         public const int LowestInsertedBodyNumber = 15;
         public const int LowestInsertedBlockAccessListBlockNumber = 16;
+        public const int BlockAccessListPruningDeletePointer = 17;
     }
 }

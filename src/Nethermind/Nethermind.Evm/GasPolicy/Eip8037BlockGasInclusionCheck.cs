@@ -6,7 +6,7 @@ using Nethermind.Core;
 
 namespace Nethermind.Evm.GasPolicy;
 
-// EIP-8037 per-tx 2D block-gas inclusion check (execution-specs PR 2703).
+// EIP-8037 per-tx 2D block-gas inclusion check.
 // Both regular and state dimensions must independently fit in the remaining per-dim block
 // budget at inclusion time. Block-end validation still enforces max(R, S) <= gas_limit.
 public static class Eip8037BlockGasInclusionCheck
@@ -31,9 +31,8 @@ public static class Eip8037BlockGasInclusionCheck
         if (worstCaseRegular > regularAvailable)
             return Outcome.RegularDimensionExceeded;
 
-        // Per execution-specs PR 2703, the state dimension has no per-tx equivalent of
-        // EIP-7825's DefaultTxGasLimitCap; state-heavy work may be funded by the state
-        // reservoir above that regular-dimension cap.
+        // The state dimension has no per-tx equivalent of EIP-7825's DefaultTxGasLimitCap;
+        // state-heavy work may be funded by the state reservoir above that regular-dimension cap.
         long worstCaseState = Math.Max(0, txGas - intrinsicRegular);
         if (worstCaseState > stateAvailable)
             return Outcome.StateDimensionExceeded;

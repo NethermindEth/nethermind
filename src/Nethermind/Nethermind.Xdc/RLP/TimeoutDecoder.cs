@@ -8,7 +8,7 @@ using Nethermind.Xdc.Types;
 
 namespace Nethermind.Xdc.RLP;
 
-public sealed class TimeoutDecoder : RlpValueDecoder<Timeout>
+public sealed class TimeoutDecoder : RlpDecoder<Timeout>
 {
     protected override Timeout DecodeInternal(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
@@ -38,7 +38,7 @@ public sealed class TimeoutDecoder : RlpValueDecoder<Timeout>
         return new Timeout(round, signature, gapNumber);
     }
 
-    public Rlp Encode(Timeout item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public override Rlp Encode(Timeout item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (item is null)
             return Rlp.OfEmptyList;

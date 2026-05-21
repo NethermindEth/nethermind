@@ -255,12 +255,18 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
 
                     if (!callResult.ShouldRevert)
                     {
+                        bool isCreate = previousState.ExecutionType.IsAnyCreate();
+                        if (!isCreate)
+                        {
+                            IncorporateChildStateGasRefunds(previousState);
+                        }
+
                         // Refund the remaining gas from the completed call frame (success path).
                         TGasPolicy.Refund(ref _currentState.Gas, in previousState.Gas);
                         long gasAvailableForCodeDeposit = TGasPolicy.GetRemainingGas(previousState.Gas);
 
                         // Process contract creation calls differently from regular calls.
-                        if (previousState.ExecutionType.IsAnyCreate())
+                        if (isCreate)
                         {
                             PrepareCreateData(previousState, ref previousCallOutput);
                             HandleCreate(
@@ -279,14 +285,18 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
                         if (previousStateSucceeded)
                         {
                             previousState.CommitToParent(_currentState);
-                            IncorporateChildStateGasRefunds(previousState);
+                            if (isCreate)
+                            {
+                                IncorporateChildStateGasRefunds(previousState);
+                            }
                         }
                     }
                     else
                     {
                         // On revert, return remaining regular gas and restore state gas to parent reservoir.
                         TGasPolicy.UpdateGasUp(ref _currentState.Gas, TGasPolicy.GetRemainingGas(in previousState.Gas));
-                        TGasPolicy.RestoreChildStateGas(ref _currentState.Gas, in previousState.Gas, previousState.InitialStateReservoir, previousState.StateGasRefund);
+                        RemoveAdvancedStateGasRefund(previousState, ref previousState.Gas);
+                        TGasPolicy.RestoreChildStateGas(ref _currentState.Gas, in previousState.Gas);
                         if (previousState.ExecutionType.IsAnyCreate())
                         {
                             CreditStateGasRefund(ref _currentState.Gas, TGasPolicy.GetCreateStateCost(in _currentState.Gas));
@@ -448,8 +458,9 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
             // Refund already merged the child's state gas (reservoir, stateGasUsed) into the parent,
             // but halt semantics require restoring the full initial state reservoir and discarding
             // the child's stateGasUsed (since the child's state changes are being reverted).
-            TGasPolicy.RevertRefundToHalt(ref _currentState.Gas, in previousState.Gas, previousState.InitialStateReservoir);
+            TGasPolicy.RevertRefundToHalt(ref _currentState.Gas, in previousState.Gas);
             CreditStateGasRefund(ref _currentState.Gas, TGasPolicy.GetCreateStateCost(in _currentState.Gas), trackSpillRefund: false);
+            RemoveAdvancedStateGasRefund(previousState, ref _currentState.Gas);
             _worldState.Restore(previousState.Snapshot);
             if (!previousState.IsCreateOnPreExistingAccount)
             {
@@ -603,7 +614,8 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
     {
         VmState<TGasPolicy> childState = _currentState;
         _currentState = _stateStack.Pop();
-        TGasPolicy.RestoreChildStateGasOnHalt(ref _currentState.Gas, in childState.Gas, childState.InitialStateReservoir);
+        RemoveAdvancedStateGasRefund(childState, ref childState.Gas);
+        TGasPolicy.RestoreChildStateGasOnHalt(ref _currentState.Gas, in childState.Gas);
         _currentState.IsContinuation = true;
         childState.Dispose();
     }
@@ -626,7 +638,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal void CreditStateGasRefund(ref TGasPolicy gas, long amount, bool trackSpillRefund = true)
     {
-        if (amount <= 0)
+        if (!Spec.IsEip8037Enabled || amount <= 0)
         {
             return;
         }
@@ -639,24 +651,53 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         if (appliedRefund > 0)
         {
             TGasPolicy.RefundStateGas(ref gas, appliedRefund, stateGasFloor, trackSpillRefund);
-            vmState.StateGasRefund += appliedRefund;
         }
 
         long pendingRefund = amount - appliedRefund;
         if (pendingRefund > 0)
         {
+            // The restored state gas may have been paid by an ancestor frame. It is still
+            // immediately spendable in the restoring frame, but the state-gas-used reduction
+            // must propagate upward separately so child state gas is not erased on return.
+            TGasPolicy.AddStateGasRefundToReservoir(ref gas, pendingRefund, trackSpillRefund);
             vmState.StateGasRefundPending += pendingRefund;
+            vmState.StateGasRefundAdvanced += pendingRefund;
         }
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private void IncorporateChildStateGasRefunds(VmState<TGasPolicy> childState)
     {
-        _currentState.StateGasRefund += childState.StateGasRefund;
         if (childState.StateGasRefundPending > 0)
         {
-            CreditStateGasRefund(ref _currentState.Gas, childState.StateGasRefundPending);
+            long pendingRefund = childState.StateGasRefundPending;
+            long unappliedRefund = TGasPolicy.DiscardStateGas(
+                ref _currentState.Gas,
+                pendingRefund,
+                _currentState.InitialStateGasUsed,
+                trackSpillRefund: true);
+
+            if (unappliedRefund > 0)
+            {
+                _currentState.StateGasRefundPending += unappliedRefund;
+                _currentState.StateGasRefundAdvanced += unappliedRefund;
+            }
+
+            childState.StateGasRefundPending = 0;
+            childState.StateGasRefundAdvanced = 0;
         }
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void RemoveAdvancedStateGasRefund(VmState<TGasPolicy> vmState, ref TGasPolicy gas)
+    {
+        if (vmState.StateGasRefundAdvanced > 0)
+        {
+            TGasPolicy.RemoveStateGasRefundFromReservoir(ref gas, vmState.StateGasRefundAdvanced);
+            vmState.StateGasRefundAdvanced = 0;
+        }
+
+        vmState.StateGasRefundPending = 0;
     }
 
     /// <summary>
@@ -1433,7 +1474,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    internal void AddSelfDestructLog<TEip8037, TEip7708>(Address executingAccount, Address inheritor, in UInt256 value)
+    public void AddSelfDestructLog<TEip8037, TEip7708>(Address executingAccount, Address inheritor, in UInt256 value)
         where TEip8037 : struct, IFlag
         where TEip7708 : struct, IFlag
     {

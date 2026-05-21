@@ -19,6 +19,7 @@ public class ChainParameters
     public long MaximumExtraDataSize { get; set; }
     public long MinGasLimit { get; set; }
     public long MinHistoryRetentionEpochs { get; set; }
+    public long MinBalRetentionEpochs { get; set; }
     public Hash256 ForkCanonHash { get; set; }
     public long? ForkBlock { get; set; }
     public long? Eip7Transition { get; set; }

@@ -17,6 +17,8 @@ namespace Nethermind.Core.Test
     [TestFixture]
     public class RlpTests
     {
+        private static readonly TxDecoder TransactionDecoder = TxDecoder.Instance;
+
         public record DecoderCase(string Name, Func<Rlp.ValueDecoderContext, dynamic> Invoke, int? Size)
         {
             public override string ToString() => Name;
@@ -154,7 +156,7 @@ namespace Nethermind.Core.Test
         public void Long_encode_decode([ValueSource(nameof(LongValues))] long value, [Values] bool useBuffer)
         {
             Rlp.ValueDecoderContext context = useBuffer
-                ? new(Rlp.Encode(value, stackalloc byte[9]).ToArray())
+                ? new(Rlp.Encode(value, stackalloc byte[9]))
                 : new(Rlp.Encode(value).Bytes);
 
             long decoded = context.DecodeLong();
@@ -166,7 +168,7 @@ namespace Nethermind.Core.Test
         public void ULong_encode_decode([ValueSource(nameof(ULongValues))] ulong value, [Values] bool useBuffer)
         {
             Rlp.ValueDecoderContext context = useBuffer
-                ? new(Rlp.Encode(value, stackalloc byte[9]).ToArray())
+                ? new(Rlp.Encode(value, stackalloc byte[9]))
                 : new(Rlp.Encode(value).Bytes);
 
             ulong decoded = context.DecodeULong();
@@ -407,14 +409,14 @@ namespace Nethermind.Core.Test
         public void Encode_stream_with_null_items_produces_empty_list()
         {
             RlpStream stream = new(Rlp.OfEmptyList.Length);
-            TxDecoder.Instance.Encode(stream, (Transaction[]?)null);
+            TransactionDecoder.Encode(stream, (Transaction[]?)null);
             Assert.That(stream.Data.ToArray(), Is.EqualTo(Rlp.OfEmptyList.Bytes));
         }
 
         [Test]
-        public void Encode_object_with_null_items_produces_empty_list()
+        public void Encode_array_with_null_items_produces_empty_list()
         {
-            Rlp result = AccountDecoder.Instance.Encode((Account[]?)null);
+            Rlp result = Rlp.Encode<Account>((Account[]?)null!);
             Assert.That(result, Is.EqualTo(Rlp.OfEmptyList));
         }
 
@@ -579,6 +581,17 @@ namespace Nethermind.Core.Test
             pLen2.Should().Be(1 + lengthOfLength, $"ValueRlpStream prefix length for {prefix}");
             cLen2.Should().Be(contentLength, $"ValueRlpStream content length for {prefix}");
         }
+
+        [TestCase(new byte[] { 0xBB, 0x7F, 0xFF, 0xFF, 0xFF }, TestName = "LongString_4ByteLength_Int32Max")]
+        [TestCase(new byte[] { 0xFB, 0x7F, 0xFF, 0xFF, 0xFF }, TestName = "LongList_4ByteLength_Int32Max")]
+        [TestCase(new byte[] { 0xB8, 0x64, 0x01, 0x02 }, TestName = "LongString_1ByteLength_100")]
+        [TestCase(new byte[] { 0xF8, 0x64, 0x01, 0x02 }, TestName = "LongList_1ByteLength_100")]
+        public void PeekPrefixAndContentLength_invalid(byte[] data) =>
+            Assert.Throws<RlpException>(() =>
+            {
+                Rlp.ValueDecoderContext ctx = new(data);
+                ctx.PeekPrefixAndContentLength();
+            });
 
         [Test]
         public void PeekNumberOfItemsRemaining_mixed_items()

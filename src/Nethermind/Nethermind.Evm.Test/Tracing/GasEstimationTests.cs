@@ -46,7 +46,7 @@ namespace Nethermind.Evm.Test.Tracing
             testEnvironment.tracer.ReportActionEnd(600, Array.Empty<byte>());
 
             testEnvironment.estimator.Estimate(tx, block.Header, testEnvironment.tracer, out string? err).Should().Be(0);
-            Assert.That(err, Is.EqualTo("insufficient funds for transfer"));
+            Assert.That(err, Is.EqualTo("insufficient sender balance for transfer"));
         }
 
         [Test]
@@ -76,7 +76,7 @@ namespace Nethermind.Evm.Test.Tracing
             testEnvironment.tracer.ReportActionEnd(600, Array.Empty<byte>());
 
             testEnvironment.estimator.Estimate(tx, block.Header, testEnvironment.tracer, out string? err).Should().Be(0);
-            Assert.That(err, Is.EqualTo("insufficient funds for transfer"));
+            Assert.That(err, Is.EqualTo("insufficient sender balance for transfer"));
         }
 
         [Test]
