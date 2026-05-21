@@ -427,16 +427,16 @@ public ref struct HsstIndexBuilder<TWriter, TReader, TPin>
         // Slot 0 carries a separator just like every other slot: the natural
         // LCP-derived length widened to at least the child's own planner-picked
         // prefix (WriteIndexNode applies max(natural, PrefixLen) to every slot,
-        // index 0 included). Seed sumSepBytes / maxSepLen / commonLen / firstSep
-        // from that same length so the heuristic models what the writer emits —
-        // for a non-first group the boundary LCP can exceed firstChild.PrefixLen.
+        // index 0 included). Seed maxSepLen / commonLen / firstSep from that same
+        // length so the heuristic models what the writer emits — for a non-first
+        // group the boundary LCP can exceed firstChild.PrefixLen.
         HsstIndexNodeInfo firstChild = level[childIdx];
         int firstNaturalSep = Math.Min(commonPrefixArr[firstChild.FirstEntry] + 1, _keyLength);
         int firstSepLen = Math.Max(firstNaturalSep, firstChild.PrefixLen);
         int childCount = 1;
-        int sumSepBytes = firstSepLen;
-        // Max separator length seen so far — used internally for the split heuristic
-        // (forcing a split when the next child would widen the planner's Uniform key slot).
+        // Max separator length seen so far. Drives both the split heuristic (forcing a
+        // split when the next child would widen the planner's Uniform key slot) and the
+        // keys-section size estimate — the planner widens every slot to a {2,4,8} width.
         int maxSepLen = firstSepLen;
         // BaseOffset is fixed at the leftmost child's absolute offset; remaining
         // children encode as deltas. valueSlotSize tracks the min byte width for
@@ -490,18 +490,21 @@ public ref struct HsstIndexBuilder<TWriter, TReader, TPin>
                 : CommonPrefixLength(firstSep[..boundary], sepBuf[..boundary]);
 
             int newCount = childCount + 1;
-            int newSumSep = sumSepBytes + sepLen;
+            // Keys-section size as the writer emits it: a Uniform node packs newCount
+            // fixed-width slots, each widened to the planner's {2,4,8} SIMD slot.
+            int newKeysBytes = newCount * BSearchIndexLayoutPlanner.WidenedSlotWidth(newMaxSepLen, _keyLength);
             // Phantom slot 0 restored: keys array carries newCount real separators
             // (one per child) and values array carries newCount deltas.
-            int estimated = newCount * valueSlotSize + newSumSep;
+            int estimated = newCount * valueSlotSize + newKeysBytes;
             if (estimated > byteThreshold) break;
 
             // Dynamic split heuristics. Once minChildren is reached, break only
             // when:
-            //   - effective separator (post-LCP-strip) would exceed 4 bytes —
-            //     mirrors the leaf splitter's `gap > 4` rule. Combines the old
-            //     "max sep widened" and "LCP shrank" checks into a single
-            //     post-strip-width budget; value-slot widening is allowed.
+            //   - effective separator (post-LCP-strip) would exceed 8 bytes — past
+            //     that the planner can no longer snap to a SIMD-eligible {2,4,8}
+            //     Uniform slot. Combines the old "max sep widened" and "LCP shrank"
+            //     checks into a single post-strip-width budget; value-slot widening
+            //     is allowed.
             //   - WouldCrossNewPage: candidate node would straddle a 4 KiB page
             //     boundary the committed node does not.
             //
@@ -533,16 +536,18 @@ public ref struct HsstIndexBuilder<TWriter, TReader, TPin>
                     : CommonPrefixLength(firstSep[..next2Boundary], sepBuf[..next2Boundary]);
             }
             int newEffSepLen = effMaxSepLen - effCommonLen;
-            int candidateSize = IntermediateNodeSizeUpperBound(newCount, newSumSep, valueSlotSize);
-            int committedSize = IntermediateNodeSizeUpperBound(childCount, sumSepBytes, committedValueSlot);
+            int candidateSize = IntermediateNodeSizeUpperBound(newCount, newKeysBytes, valueSlotSize);
+            int committedSize = IntermediateNodeSizeUpperBound(
+                childCount,
+                childCount * BSearchIndexLayoutPlanner.WidenedSlotWidth(maxSepLen, _keyLength),
+                committedValueSlot);
             if (childCount >= minChildren &&
                 committedSize >= minBytes &&
-                (newEffSepLen > 4 ||
+                (newEffSepLen > 8 ||
                  WouldCrossNewPage(nodeStart, firstOffset, committedSize, candidateSize)))
                 break;
 
             childCount = newCount;
-            sumSepBytes = newSumSep;
             maxOff = newMaxOff;
             committedValueSlot = valueSlotSize;
             maxSepLen = newMaxSepLen;
@@ -583,15 +588,16 @@ public ref struct HsstIndexBuilder<TWriter, TReader, TPin>
     private const int NodeHeaderUpperBound = 16;
 
     // Conservative upper bound on an intermediate node's serialised size with phantom
-    // slot 0 restored: a node holding <paramref name="count"/> children emits
-    // <paramref name="count"/> keys and <paramref name="count"/> values. The per-entry
-    // term (2 + valueSlotSize) intentionally over-allocates by 2 bytes per value:
-    // Uniform values on disk are just valueSlotSize bytes each (no length prefix),
-    // but the +2 absorbs Variable-section length-table overhead and rounding slack
-    // so the bound stays above the actual size for every layout the planner picks.
+    // slot 0 restored: a node holding <paramref name="count"/> children emits a
+    // <paramref name="keysSectionBytes"/>-byte keys section and <paramref name="count"/>
+    // values. The per-entry term (2 + valueSlotSize) intentionally over-allocates by 2
+    // bytes per value: Uniform values on disk are just valueSlotSize bytes each (no
+    // length prefix), but the +2 absorbs Variable-section length-table overhead and
+    // rounding slack so the bound stays above the actual size for every layout the
+    // planner picks.
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static int IntermediateNodeSizeUpperBound(int count, int sumSepBytes, int valueSlotSize)
-        => NodeHeaderUpperBound + sumSepBytes + count * (2 + valueSlotSize);
+    private static int IntermediateNodeSizeUpperBound(int count, int keysSectionBytes, int valueSlotSize)
+        => NodeHeaderUpperBound + keysSectionBytes + count * (2 + valueSlotSize);
 
     /// <summary>
     /// True if a node of <paramref name="candidateSize"/> bytes starting at

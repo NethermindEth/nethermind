@@ -39,9 +39,10 @@ internal static class BSearchIndexLayoutPlanner
     /// </param>
     /// <param name="keyLength">
     /// Per-key byte budget — the uniform key length declared by the HSST. Used to decide
-    /// whether the planner can widen short uniform separators up to a 4-byte slot
-    /// (Uniform slot=4 is SIMD-eligible via uint32 LE compare). Widening only fires when
-    /// the post-strip total <c>prefixLen + keySlotSize</c> stays within this budget.
+    /// whether the planner can widen short uniform separators up to a 4-byte slot (Uniform
+    /// slot=4 is SIMD-eligible via uint32 LE compare) or an 8-byte slot (slot=8 via uint64
+    /// LE compare). Widening only fires when the post-strip total
+    /// <c>prefixLen + keySlotSize</c> stays within this budget.
     /// </param>
     /// <param name="commonKeyPrefixLen">Out: post-gating LCP. 0 if not worth stripping.</param>
     /// <param name="keyType">Out: 0=Variable, 1=Uniform.</param>
@@ -120,18 +121,13 @@ internal static class BSearchIndexLayoutPlanner
         out bool keyLittleEndian,
         bool disablePrefix = false)
     {
-        // Slot widening: when every natural separator fits in {2, 4} and the keyLength
+        // Slot widening: when every natural separator fits in {2, 4, 8} and the keyLength
         // budget allows, pretend they're all `target` bytes — the builder pads each slot
         // from key data. The downstream Uniform branch then snaps to a power-of-2 SIMD
         // slot when the post-strip budget allows; cases where the budget is too tight
         // keep a non-SIMD slot rather than sacrificing lcp.
-        int target = 0;
-        if (firstLen > 0)
-        {
-            if (maxLen <= 2 && keyLength >= 2) target = 2;
-            else if (maxLen <= 4 && keyLength >= 4) target = 4;
-        }
-        if (target > 0)
+        int target = firstLen > 0 ? WidenedSlotWidth(maxLen, keyLength) : maxLen;
+        if (target > maxLen)
         {
             firstLen = target;
             minLen = target;
@@ -171,7 +167,7 @@ internal static class BSearchIndexLayoutPlanner
         //     from the key data section past the natural separator.
         //   * Variable: only chosen when effMaxLen > 8 and lengths actually vary,
         //     where padding every entry up to effMaxLen would cost more than the
-        //     Variable layout's 4 B/entry overhead. The splitter's `gap > 4` quality
+        //     Variable layout's 4 B/entry overhead. The splitter's `gap > 8` quality
         //     gate keeps within-leaf length variance small, so this path is rare.
         int effMaxLen = maxLen - lcp;
 
@@ -198,5 +194,19 @@ internal static class BSearchIndexLayoutPlanner
             keyType == 0 ||
             (keyType == 1 && keySlotSize is 2 or 4 or 8);
     }
+
+    /// <summary>
+    /// Slot-widening rule shared by <see cref="PlanFromProfile"/> and callers that size a
+    /// node before planning it (e.g. <c>HsstIndexBuilder</c>'s split heuristic): the
+    /// SIMD-eligible Uniform slot width a node whose longest separator is
+    /// <paramref name="maxLen"/> bytes is widened up to — {2, 4, 8} when the per-key
+    /// <paramref name="keyLength"/> budget allows — or <paramref name="maxLen"/> unchanged
+    /// when no widening applies (longer than 8 bytes, or the budget is too tight).
+    /// </summary>
+    internal static int WidenedSlotWidth(int maxLen, int keyLength) =>
+        maxLen <= 2 && keyLength >= 2 ? 2 :
+        maxLen <= 4 && keyLength >= 4 ? 4 :
+        maxLen <= 8 && keyLength >= 8 ? 8 :
+        maxLen;
 
 }

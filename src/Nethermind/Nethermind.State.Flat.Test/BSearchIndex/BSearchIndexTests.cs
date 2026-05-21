@@ -762,15 +762,15 @@ public class BSearchIndexTests
     /// lcp can take the full <c>crossEntryLcp</c> (clamped only by minLen, keyLength-1,
     /// and the MaxCommonKeyPrefixLen header field) because the builder pads each slot
     /// from the key's data section past the natural separator. The user-observed leaf
-    /// (firstLen=4, others=5, crossEntryLcp=4, 105 entries) lands at Uniform slot=2
-    /// (SIMD-eligible) rather than UWL slot=2, unlocking the SIMD floor-scan path
-    /// at the same on-disk size. Last row exercises a tight-budget case
-    /// (keyLength == minLen) where the keyLength-1 clamp binds and the snap can't
-    /// reach a SIMD slot — proves we don't sacrifice lcp to chase SIMD.
+    /// (firstLen=4, others=5, crossEntryLcp=4, 105 entries) widens to an 8-byte slot and,
+    /// after the 4-byte lcp strip, lands at SIMD-eligible Uniform slot=4. Last row
+    /// exercises a tight-budget case (keyLength == minLen) where the keyLength-1 clamp
+    /// binds and the snap can't reach a SIMD slot — proves we don't sacrifice lcp to
+    /// chase SIMD.
     /// </summary>
-    [TestCase(4, 5, 105, 4, 32, 4, 1, 2, true, TestName = "Plan_FullLcp_UserScenario_105Entries")]
-    [TestCase(4, 5, 2, 10, 32, 4, 1, 2, true, TestName = "Plan_FullLcp_TwoEntries_ClampedByMinLen")]
-    [TestCase(5, 6, 10, 5, 32, 5, 1, 2, true, TestName = "Plan_FullLcp_MinLen5_FirstShorter")]
+    [TestCase(4, 5, 105, 4, 32, 4, 1, 4, true, TestName = "Plan_FullLcp_UserScenario_105Entries")]
+    [TestCase(4, 5, 2, 10, 32, 8, 1, 2, true, TestName = "Plan_FullLcp_TwoEntries_ClampedByMinLen")]
+    [TestCase(5, 6, 10, 5, 32, 5, 1, 4, true, TestName = "Plan_FullLcp_MinLen5_FirstShorter")]
     [TestCase(5, 5, 10, 5, 5, 4, 1, 1, false, TestName = "Plan_FullLcp_AllSameLen_TightBudget_NoSimd")]
     public void LayoutPlanner_FullLcpPlusUniformSnap(
         int firstLen, int otherLen, int count, int crossEntryLcp, int keyLength,
@@ -786,18 +786,20 @@ public class BSearchIndexTests
     }
 
     /// <summary>
-    /// Mixed-length suffix profiles (firstLen != otherLen) with small <c>effMaxLen</c>
-    /// now land in Uniform — the non-niche UWL branch is gone. The builder pads each
-    /// slot from key data past the natural separator, so the slot can exceed the
-    /// individual entry's tail without losing correctness. Last row pins the
-    /// <c>effMaxLen &gt; 8</c> boundary: mixed-length large suffixes still fall to
-    /// Variable, not Uniform with a bloated slot. All rows pick firstLen ≥ 5 so
-    /// slot-widening (maxLen ≤ 4) doesn't fire and the mixed-length path is the
-    /// load-bearing route through the planner.
+    /// Mixed-length suffix profiles (firstLen != otherLen) land in Uniform — the
+    /// non-niche UWL branch is gone. The builder pads each slot from key data past the
+    /// natural separator, so the slot can exceed the individual entry's tail without
+    /// losing correctness. Profiles whose longest separator is ≤ 8 bytes are widened to
+    /// an 8-byte slot (then snapped down by the lcp strip when one applies); the
+    /// maxLen=9 row keeps a natural slot and the maxLen=10 row pins the
+    /// <c>effMaxLen &gt; 8</c> boundary where mixed-length large suffixes fall to
+    /// Variable rather than a bloated Uniform slot.
     /// </summary>
-    [TestCase(5, 6, 10, 4, 32, 4, 1, 2, true, TestName = "Plan_Mixed_EffMax2_UniformSnap2")]
-    [TestCase(6, 7, 10, 4, 32, 4, 1, 4, true, TestName = "Plan_Mixed_EffMax3_UniformSnap4")]
-    [TestCase(7, 8, 10, 4, 32, 4, 1, 4, true, TestName = "Plan_Mixed_EffMax4_UniformSnap4")]
+    [TestCase(5, 6, 10, 4, 32, 4, 1, 4, true, TestName = "Plan_Mixed_Widen6to8_LcpSnap4")]
+    [TestCase(6, 7, 10, 4, 32, 4, 1, 4, true, TestName = "Plan_Mixed_Widen7to8_LcpSnap4")]
+    [TestCase(7, 8, 10, 4, 32, 4, 1, 4, true, TestName = "Plan_Mixed_MaxLen8_LcpSnap4")]
+    [TestCase(5, 7, 10, 0, 32, 0, 1, 8, true, TestName = "Plan_Mixed_Widen7to8_NoLcp_Snap8")]
+    [TestCase(5, 6, 10, 0, 8, 0, 1, 8, true, TestName = "Plan_Mixed_Widen_KeyLength8_Snap8")]
     [TestCase(8, 9, 10, 1, 32, 1, 1, 8, true, TestName = "Plan_Mixed_EffMax8_UniformSnap8")]
     [TestCase(9, 10, 10, 0, 32, 0, 0, 0, true, TestName = "Plan_Mixed_EffMax10_FallsToVariable")]
     public void LayoutPlanner_MixedLength_LandsInUniformNotUwl(
@@ -838,6 +840,26 @@ public class BSearchIndexTests
         Assert.That(keySlotSize, Is.EqualTo(expectedKeySlotSize));
         Assert.That(keyLittleEndian, Is.EqualTo(expectedLe));
     }
+
+    /// <summary>
+    /// <see cref="BSearchIndexLayoutPlanner.WidenedSlotWidth"/> buckets the longest
+    /// separator into a SIMD-eligible {2,4,8} slot when the key-length budget allows,
+    /// and returns the length unchanged when no widening applies (longer than 8 bytes,
+    /// or the budget is too tight for the matching bucket).
+    /// </summary>
+    [TestCase(1, 33, 2, TestName = "Widen_1to2")]
+    [TestCase(2, 33, 2, TestName = "Widen_2_StaysAt2")]
+    [TestCase(3, 33, 4, TestName = "Widen_3to4")]
+    [TestCase(4, 33, 4, TestName = "Widen_4_StaysAt4")]
+    [TestCase(5, 33, 8, TestName = "Widen_5to8")]
+    [TestCase(8, 33, 8, TestName = "Widen_8_StaysAt8")]
+    [TestCase(9, 33, 9, TestName = "Widen_9_NoWidening")]
+    [TestCase(20, 33, 20, TestName = "Widen_20_NoWidening")]
+    [TestCase(5, 8, 8, TestName = "Widen_5to8_KeyLength8")]
+    [TestCase(6, 7, 6, TestName = "Widen_6_BudgetTooTightFor8")]
+    [TestCase(3, 3, 3, TestName = "Widen_3_BudgetTooTightFor4")]
+    public void LayoutPlanner_WidenedSlotWidth_BucketsToSimdSlot(int maxLen, int keyLength, int expected)
+        => Assert.That(BSearchIndexLayoutPlanner.WidenedSlotWidth(maxLen, keyLength), Is.EqualTo(expected));
 
     /// <summary>
     /// Cap-vs-MaxCommonKeyPrefixLen ordering: when both <c>crossEntryLcp</c> and
