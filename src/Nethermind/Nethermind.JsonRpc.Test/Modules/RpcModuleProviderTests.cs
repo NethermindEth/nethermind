@@ -273,8 +273,16 @@ public class RpcModuleProviderTests
     public void Generated_rpc_type_info_covers_json_rpc_assembly_modules()
     {
         List<string> missing = [];
+        AddMissingAssemblyPayloadTypes(typeof(Nethermind.Consensus.Clique.ICliqueRpcModule).Assembly, missing);
+        AddMissingAssemblyPayloadTypes(typeof(Nethermind.Era1.JsonRpc.IEraAdminRpcModule).Assembly, missing);
+        AddMissingAssemblyPayloadTypes(typeof(Nethermind.EraE.JsonRpc.IEraAdminRpcModule).Assembly, missing);
+        AddMissingAssemblyPayloadTypes(typeof(Nethermind.Flashbots.Modules.Flashbots.IFlashbotsRpcModule).Assembly, missing);
+        AddMissingAssemblyPayloadTypes(typeof(Nethermind.HealthChecks.IHealthRpcModule).Assembly, missing);
         AddMissingAssemblyPayloadTypes(typeof(IEthRpcModule).Assembly, missing);
         AddMissingAssemblyPayloadTypes(typeof(IEngineRpcModule).Assembly, missing);
+        AddMissingAssemblyPayloadTypes(typeof(Nethermind.Optimism.Rpc.IOptimismEngineRpcModule).Assembly, missing);
+        AddMissingAssemblyPayloadTypes(typeof(Nethermind.StateComposition.Rpc.IStateCompositionRpcModule).Assembly, missing);
+        AddMissingAssemblyPayloadTypes(typeof(Nethermind.Taiko.Rpc.ITaikoEngineRpcModule).Assembly, missing);
 
         missing.Should().BeEmpty();
     }
