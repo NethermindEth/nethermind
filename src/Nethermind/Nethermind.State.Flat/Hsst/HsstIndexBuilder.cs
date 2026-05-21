@@ -155,8 +155,7 @@ public ref struct HsstIndexBuilder<TWriter, TReader, TPin>
                     maxIntermediateEntries, maxIntermediateBytes,
                     minIntermediateChildren, minIntermediateBytes,
                     _writer.Written, firstOffset,
-                    commonPrefixArr,
-                    out int crossEntryLcp);
+                    commonPrefixArr);
                 ReadOnlySpan<HsstIndexNodeInfo> children = current.Slice(childIdx, childCount);
                 ReadOnlySpan<byte> childFirstKeys = _keyLength == 0
                     ? default
@@ -419,24 +418,21 @@ public ref struct HsstIndexBuilder<TWriter, TReader, TPin>
         int maxChildren, int byteThreshold,
         int minChildren, int minBytes,
         long nodeStart, long firstOffset,
-        byte[] commonPrefixArr,
-        out int crossEntryLcp)
+        byte[] commonPrefixArr)
     {
-        // Running chain-min over _commonPrefixArr covering the range between the first
-        // sep's right-key and the latest committed sep's right-key. Surfaced so the
-        // planner can derive the leaf-wide common prefix without scanning sep bytes.
-        // Upper-bound init: planner caps via min(minLen, crossEntryLcp).
-        crossEntryLcp = MaxKeyLen;
         int remaining = level.Length - childIdx;
         int hardMax = Math.Min(maxChildren, remaining);
         if (hardMax <= 1) return hardMax;
 
-        // Phantom slot 0 is in play: children[childIdx]'s separator is emitted with
-        // length children[childIdx].PrefixLen so the parent's separator carries every
-        // byte of the child's own common prefix. Seed sumSepBytes / maxSepLen / commonLen
-        // from that, and seed firstSep with children[childIdx]'s firstKey[..PrefixLen].
+        // Slot 0 carries a separator just like every other slot: the natural
+        // LCP-derived length widened to at least the child's own planner-picked
+        // prefix (WriteIndexNode applies max(natural, PrefixLen) to every slot,
+        // index 0 included). Seed sumSepBytes / maxSepLen / commonLen / firstSep
+        // from that same length so the heuristic models what the writer emits —
+        // for a non-first group the boundary LCP can exceed firstChild.PrefixLen.
         HsstIndexNodeInfo firstChild = level[childIdx];
-        int firstSepLen = firstChild.PrefixLen;
+        int firstNaturalSep = Math.Min(commonPrefixArr[firstChild.FirstEntry] + 1, _keyLength);
+        int firstSepLen = Math.Max(firstNaturalSep, firstChild.PrefixLen);
         int childCount = 1;
         int sumSepBytes = firstSepLen;
         // Max separator length seen so far — used internally for the split heuristic
@@ -544,21 +540,6 @@ public ref struct HsstIndexBuilder<TWriter, TReader, TPin>
                 (newEffSepLen > 4 ||
                  WouldCrossNewPage(nodeStart, firstOffset, committedSize, candidateSize)))
                 break;
-
-            // Absorb commonPrefixArr range [prevRight+1, currRight] into crossEntryLcp once
-            // we have at least one committed sep to compare against. With phantom slot 0
-            // restored the first committed child already has a separator, so the fire
-            // condition drops from childCount >= 2 to childCount >= 1.
-            if (childCount >= 1)
-            {
-                int prevRight = level[childIdx + childCount - 1].FirstEntry;
-                int currRight = curr.FirstEntry;
-                for (int j = prevRight + 1; j <= currRight; j++)
-                {
-                    byte v = commonPrefixArr[j];
-                    if (v < crossEntryLcp) crossEntryLcp = v;
-                }
-            }
 
             childCount = newCount;
             sumSepBytes = newSumSep;
