@@ -186,7 +186,7 @@ public class HsstDenseByteIndexTests
         private int _scratchCursor;
         private long _written;
 
-        public Span<byte> GetSpan(int sizeHint = 0)
+        public Span<byte> GetSpan(int sizeHint)
         {
             if (sizeHint > _scratch.Length - _scratchCursor)
                 throw new InvalidOperationException(

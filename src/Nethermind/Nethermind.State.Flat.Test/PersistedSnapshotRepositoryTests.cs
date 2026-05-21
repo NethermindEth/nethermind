@@ -68,6 +68,42 @@ public class PersistedSnapshotRepositoryTests
         persisted.Dispose();
     }
 
+    /// <summary>
+    /// Regression: an address with 256k sequential storage slots fills four fully-dense
+    /// 30-byte slot-prefix groups (65536 slots each). The builder writes the per-address
+    /// slot column through <c>ArenaBufferWriter</c> (see <see cref="PersistedSnapshotRepository"/>),
+    /// and a full prefix group's inner sub-slot HSST exceeds that writer's 1 MiB buffer — so the
+    /// single <c>HsstBTreeBuilder.Add</c> for the oversized prefix-group value must still round-trip.
+    /// </summary>
+    [Test]
+    public void ConvertSnapshot_SequentialSlotsAcrossDensePrefixGroups_RoundTrips()
+    {
+        // 64 MiB shared arena: a 256k-slot snapshot (~10 MiB) stays below the 512 MiB
+        // dedicated-arena threshold, so it must fit within a single shared arena file.
+        using ArenaManager smallArena = new(Path.Combine(_testDir, "arenas", "base"), 0, maxArenaSize: 64 * 1024 * 1024);
+        using BlobArenaManager smallBlobs = new(Path.Combine(_testDir, "blobs", "small"), 4 * 1024 * 1024, PersistedSnapshotTier.Small);
+        using PersistedSnapshotRepository repo = new(smallArena, smallBlobs, new MemDb(), new FlatDbConfig(), new PersistedSnapshotBloomFilterManager());
+        repo.LoadFromCatalog();
+
+        const int slotCount = 256 * 1024;
+        SnapshotContent content = new();
+        TestFixtureHelpers.AddSequentialSlots(content, TestItem.AddressA, firstSlot: 1, count: slotCount);
+
+        StateId s0 = new(0, Keccak.EmptyTreeHash);
+        StateId s1 = new(1, Keccak.Compute("seq-slots"));
+        using PersistedSnapshot persisted = repo.ConvertSnapshotToPersistedSnapshot(
+            new Snapshot(s0, s1, content, _pool, ResourcePool.Usage.MainBlockProcessing));
+
+        // Probe slots spanning multiple prefix groups (group boundaries fall on multiples of 65536).
+        foreach (int probe in new[] { 1, 65535, 65536, 131072, slotCount })
+        {
+            SlotValue slot = default;
+            Assert.That(persisted.TryGetSlot(TestItem.AddressA, (UInt256)probe, ref slot), Is.True, $"slot {probe} missing");
+            Assert.That(slot.AsReadOnlySpan.SequenceEqual(TestFixtureHelpers.SequentialSlotValue(probe)), Is.True,
+                $"slot {probe} value mismatch");
+        }
+    }
+
     [Test]
     public void NewerSnapshot_OverridesOlderValue()
     {

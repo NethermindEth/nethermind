@@ -36,7 +36,7 @@ public sealed class PooledByteBufferWriter(int initialCapacity, long firstOffset
             _firstOffset = firstOffset;
         }
 
-        public Span<byte> GetSpan(int sizeHint = 0)
+        public Span<byte> GetSpan(int sizeHint)
         {
             int remaining = _capacity - _written;
             if (sizeHint > remaining) Grow(sizeHint);

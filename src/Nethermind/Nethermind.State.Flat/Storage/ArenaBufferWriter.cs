@@ -34,6 +34,7 @@ public unsafe struct ArenaBufferWriter(Stream stream, long firstOffset, ArenaBuf
     : IByteBufferWriterWithReader<ArenaBufferReader, NoOpPin>, IDisposable
 {
     private const int BufferSize = 1024 * 1024; // 1 MiB
+    private const int MaxSizeHint = 8 * 1024 * 1024; // 8 MiB — largest single span a caller may request
 
     /// <summary>
     /// Opens a read view over the writer-relative range
@@ -59,14 +60,27 @@ public unsafe struct ArenaBufferWriter(Stream stream, long firstOffset, ArenaBuf
     private byte[]? _pinnedReaderBuffer;
     private GCHandle _pinnedReaderHandle;
 
-    public Span<byte> GetSpan(int sizeHint = 0)
+    public Span<byte> GetSpan(int sizeHint)
     {
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(sizeHint, MaxSizeHint);
+
         if (sizeHint > _buffer.Length - _buffered)
         {
             if (_pinnedReaderBuffer is not null)
+            {
                 PromoteBufferForActiveReader(sizeHint);
+            }
             else
+            {
                 Flush();
+                // Honor the hint exactly: after the flush the buffer is empty and its
+                // bytes are on the stream, so it can be swapped for a larger rented one.
+                if (sizeHint > _buffer.Length)
+                {
+                    ArrayPool<byte>.Shared.Return(_buffer);
+                    _buffer = ArrayPool<byte>.Shared.Rent(sizeHint);
+                }
+            }
         }
 
         return _buffer.AsSpan(_buffered);

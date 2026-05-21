@@ -122,6 +122,76 @@ public class PersistedSnapshotCompactorTests
     }
 
     /// <summary>
+    /// Regression for large-tier boundary compaction of an address with 256k sequential
+    /// storage slots. Each big-endian-contiguous run of 65536 slots forms one dense 30-byte
+    /// slot-prefix group; merging the per-block slices accumulates a group's inner sub-slot
+    /// HSST past <c>ArenaBufferWriter</c>'s 1 MiB buffer. No single source snapshot crosses
+    /// that threshold (16384 slots per block), so the oversized value first appears inside
+    /// <c>NWayNestedStreamingSlotMerge</c> during the merge — the mainnet crash site.
+    /// </summary>
+    [Test]
+    public void DoCompactSnapshot_SequentialSlotsAcrossDensePrefixGroups_RoundTrips()
+    {
+        const int snapshotCount = 16;
+        const int slotsPerSnapshot = 16 * 1024; // 16 × 16384 = 256k merged slots
+
+        string testDir = Path.Combine(Path.GetTempPath(), $"nethermind_test_{Guid.NewGuid():N}");
+        Directory.CreateDirectory(testDir);
+        try
+        {
+            // 64 MiB shared arena: the per-block snapshots and the ~10 MiB compacted output
+            // stay below the 512 MiB dedicated-arena threshold, so each must fit a shared file.
+            using ArenaManager smallArena = new(Path.Combine(testDir, "arenas", "base"), 0, maxArenaSize: 64 * 1024 * 1024);
+            using BlobArenaManager smallBlobs = new(Path.Combine(testDir, "blobs", "small"), 4 * 1024 * 1024, PersistedSnapshotTier.Small);
+            using PersistedSnapshotRepository repo = new(smallArena, smallBlobs, new MemDb(), new FlatDbConfig(), new PersistedSnapshotBloomFilterManager());
+            repo.LoadFromCatalog();
+
+            IFlatDbConfig config = new FlatDbConfig { CompactSize = 4, MinCompactSize = 2 };
+            PersistedSnapshotCompactor compactor = new(
+                repo, smallArena, config, Nethermind.Logging.LimboLogs.Instance, new PersistedSnapshotBloomFilterManager(),
+                minCompactSize: config.CompactSize * 2,
+                maxCompactSize: config.PersistedSnapshotMaxCompactSize,
+                tier: PersistedSnapshotTier.Large);
+
+            // Each block writes a contiguous 16384-slot slice on AddressA. A slice stays well
+            // under ArenaBufferWriter's 1 MiB buffer, so every per-block build succeeds; only
+            // the merged 65536-slot prefix groups cross the threshold.
+            StateId prev = new(0, Keccak.EmptyTreeHash);
+            for (int i = 1; i <= snapshotCount; i++)
+            {
+                StateId next = new(i, Keccak.Compute($"s{i}"));
+                SnapshotContent c = new();
+                TestFixtureHelpers.AddSequentialSlots(c, TestItem.AddressA,
+                    firstSlot: (i - 1) * slotsPerSnapshot + 1, count: slotsPerSnapshot);
+                repo.ConvertSnapshotToPersistedSnapshot(
+                    new Snapshot(prev, next, c, _pool, ResourcePool.Usage.MainBlockProcessing)).Dispose();
+                prev = next;
+            }
+
+            compactor.DoCompactSnapshot(prev);
+
+            Assert.That(repo.TryLeaseCompactedSnapshotTo(prev, out PersistedSnapshot? compacted), Is.True);
+            try
+            {
+                int totalSlots = snapshotCount * slotsPerSnapshot;
+                foreach (int probe in new[] { 1, 65535, 65536, 131072, totalSlots })
+                {
+                    SlotValue slot = default;
+                    Assert.That(compacted!.TryGetSlot(TestItem.AddressA, (UInt256)probe, ref slot), Is.True, $"slot {probe} missing");
+                    Assert.That(slot.AsReadOnlySpan.SequenceEqual(TestFixtureHelpers.SequentialSlotValue(probe)), Is.True,
+                        $"slot {probe} value mismatch");
+                }
+            }
+            finally { compacted!.Dispose(); }
+        }
+        finally
+        {
+            if (Directory.Exists(testDir))
+                Directory.Delete(testDir, recursive: true);
+        }
+    }
+
+    /// <summary>
     /// Regression for the matchCount==1 byte-copy fast path in NWayMergePerAddressColumn.
     /// Each successful <c>HsstReader.TrySeek</c> narrows the reader's internal bound to
     /// the matched sub-tag's value scope, so sibling sub-tag seeks must reset the bound

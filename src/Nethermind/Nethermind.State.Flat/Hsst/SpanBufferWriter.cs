@@ -9,7 +9,7 @@ namespace Nethermind.State.Flat.Hsst;
 
 public interface IByteBufferWriter
 {
-    Span<byte> GetSpan(int sizeHint = 0);
+    Span<byte> GetSpan(int sizeHint);
     void Advance(int count);
     long Written { get; }
 
@@ -101,7 +101,7 @@ public unsafe struct SpanBufferWriter(Span<byte> buffer, long firstOffset = 0) :
     private readonly long _firstOffset = firstOffset;
     private int _written;
 
-    public readonly Span<byte> GetSpan(int sizeHint = 0) => new(_buffer + _written, _length - _written);
+    public readonly Span<byte> GetSpan(int sizeHint) => new(_buffer + _written, _length - _written);
     public void Advance(int count) => _written += count;
     public readonly long Written => _written;
     public readonly long FirstOffset => _firstOffset;

@@ -21,6 +21,7 @@ namespace Nethermind.State.Flat.Test;
 public class ArenaBufferWriterReaderTests
 {
     private const int BufferSize = 1024 * 1024; // mirrors ArenaBufferWriter.BufferSize
+    private const int MaxSizeHint = 8 * 1024 * 1024; // mirrors ArenaBufferWriter.MaxSizeHint
     private string _tmpDir = null!;
 
     [SetUp]
@@ -211,6 +212,47 @@ public class ArenaBufferWriterReaderTests
             full.AsSpan(0, filler).SequenceEqual(fillerBytes).Should().BeTrue();
             full.AsSpan(filler, dataSection).SequenceEqual(dataBytes).Should().BeTrue();
             full.AsSpan(filler + dataSection, postBytes.Length).SequenceEqual(postBytes).Should().BeTrue();
+        }
+        finally { writer.Dispose(); }
+    }
+
+    [TestCase(2 * 1024 * 1024)]
+    [TestCase(4 * 1024 * 1024)]
+    [TestCase(MaxSizeHint)]
+    public unsafe void GetSpan_LargerThanBufferWithNoReader_GrowsAndRoundTrips(int sizeHint)
+    {
+        using FileStream fs = NewFile();
+        ArenaBufferWriter writer = new(fs, firstOffset: 0,
+            (_, _) => throw new InvalidOperationException("fast path expected"));
+        try
+        {
+            // With no active reader, GetSpan must grow the write buffer to honor a
+            // sizeHint larger than the 1 MiB default — not silently return 1 MiB.
+            Span<byte> span = writer.GetSpan(sizeHint);
+            span.Length.Should().BeGreaterThanOrEqualTo(sizeHint, "GetSpan must honor sizeHint");
+
+            byte[] payload = MakePattern(sizeHint, seed: 0x55);
+            payload.CopyTo(span);
+            writer.Advance(sizeHint);
+            writer.Written.Should().Be(sizeHint);
+
+            ArenaBufferReader reader = writer.OpenReader(sizeHint);
+            ReadAndAssert(reader, payload);
+            writer.DisposeActiveReader();
+        }
+        finally { writer.Dispose(); }
+    }
+
+    [Test]
+    public unsafe void GetSpan_AboveMaxSizeHint_Throws()
+    {
+        using FileStream fs = NewFile();
+        ArenaBufferWriter writer = new(fs, firstOffset: 0,
+            (_, _) => throw new InvalidOperationException("OpenView must not be called"));
+        try
+        {
+            Action tooBig = () => writer.GetSpan(MaxSizeHint + 1);
+            tooBig.Should().Throw<ArgumentOutOfRangeException>();
         }
         finally { writer.Dispose(); }
     }
