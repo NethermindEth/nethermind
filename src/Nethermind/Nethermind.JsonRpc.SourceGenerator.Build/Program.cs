@@ -9,7 +9,6 @@ using System.Text;
 using System.Threading;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
-using Nethermind.JsonRpc.SourceGenerator;
 
 namespace Nethermind.JsonRpc.SourceGenerator.Build;
 

@@ -41,10 +41,6 @@
     <WriteLinesToFile File="$(_RpcJsonContextReferencesFile)" Lines="@(ReferencePath->'%(FullPath)')" Overwrite="true" />
 
     <MSBuild Projects="$(_RpcJsonContextGeneratorProject)"
-      Targets="Build"
-      Properties="Configuration=$(Configuration);GenerateRpcJsonContext=false"
-      BuildInParallel="false" />
-    <MSBuild Projects="$(_RpcJsonContextGeneratorProject)"
       Targets="GetTargetPath"
       Properties="Configuration=$(Configuration);GenerateRpcJsonContext=false"
       BuildInParallel="false">
