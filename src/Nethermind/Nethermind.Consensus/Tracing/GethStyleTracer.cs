@@ -241,11 +241,11 @@ public class GethStyleTracer(
 
     public GethLikeTxTrace? TraceStreaming(Hash256 txHash, GethTraceOptions options, Utf8JsonWriter writer, PipeWriter? pipeWriter, CancellationToken cancellationToken)
     {
-        Hash256? blockHash = receiptStorage.FindBlockHash(txHash);
-        if (blockHash is null) return null;
+        Hash256 blockHash = receiptStorage.FindBlockHash(txHash)
+                            ?? throw new InvalidOperationException($"Cannot find transactionTrace for hash: {txHash}");
 
-        Block? block = blockTree.FindBlock(blockHash, BlockTreeLookupOptions.RequireCanonical);
-        if (block is null) return null;
+        Block block = blockTree.FindBlock(blockHash, BlockTreeLookupOptions.RequireCanonical)
+                      ?? throw new InvalidOperationException($"Cannot find transactionTrace for hash: {txHash}");
 
         return TraceWithFactory(block, txHash, cancellationToken, options, ProcessingOptions.Trace,
             _ => new GethLikeBlockStreamingMemoryTracer(options with { TxHash = txHash }, writer, pipeWriter, cancellationToken));
