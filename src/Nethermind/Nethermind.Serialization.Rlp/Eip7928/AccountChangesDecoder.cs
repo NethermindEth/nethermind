@@ -8,6 +8,7 @@ using System.Diagnostics.CodeAnalysis;
 using System.Runtime.InteropServices;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
+using Nethermind.Core.Collections;
 using Nethermind.Int256;
 
 namespace Nethermind.Serialization.Rlp.Eip7928;
@@ -134,8 +135,14 @@ public class AccountChangesDecoder : RlpDecoder<ReadOnlyAccountChanges>
     {
         stream.StartSequence(lengths.ContentLength);
         stream.Encode(item.Address);
-        EncodeGeneratedSlotChanges(stream, item.StorageChanges, lengths.StorageChangesContentLength, rlpBehaviors);
-        EncodeStorageReads(stream, item.StorageReads, lengths.StorageReadsContentLength, rlpBehaviors);
+        using (ArrayPoolListRef<GeneratedSlotChanges> sortedSlots = item.GetSortedStorageChanges())
+        {
+            EncodeGeneratedSlotChanges(stream, sortedSlots.AsSpan(), lengths.StorageChangesContentLength, rlpBehaviors);
+        }
+        using (ArrayPoolListRef<UInt256> sortedReads = item.GetSortedStorageReads())
+        {
+            EncodeStorageReads(stream, sortedReads.AsSpan(), lengths.StorageReadsContentLength, rlpBehaviors);
+        }
         EncodeIndexed<BalanceChange>(stream, CollectionsMarshal.AsSpan(item.BalanceChanges), lengths.BalanceContentLength, BalanceChangeDecoder.Instance, rlpBehaviors);
         EncodeIndexed<NonceChange>(stream, CollectionsMarshal.AsSpan(item.NonceChanges), lengths.NonceContentLength, NonceChangeDecoder.Instance, rlpBehaviors);
         EncodeIndexed<CodeChange>(stream, CollectionsMarshal.AsSpan(item.CodeChanges), lengths.CodeContentLength, CodeChangeDecoder.Instance, rlpBehaviors);
@@ -236,11 +243,14 @@ public class AccountChangesDecoder : RlpDecoder<ReadOnlyAccountChanges>
         }
     }
 
-    private static void EncodeGeneratedSlotChanges(RlpStream stream, IReadOnlyCollection<GeneratedSlotChanges> items, int contentLength, RlpBehaviors rlpBehaviors)
+    private static void EncodeGeneratedSlotChanges(RlpStream stream, ReadOnlySpan<GeneratedSlotChanges> items, int contentLength, RlpBehaviors rlpBehaviors)
     {
         SlotChangesDecoder decoder = SlotChangesDecoder.Instance;
         stream.StartSequence(contentLength);
-        foreach (GeneratedSlotChanges s in items) decoder.Encode(stream, s, rlpBehaviors);
+        for (int i = 0; i < items.Length; i++)
+        {
+            decoder.Encode(stream, items[i], rlpBehaviors);
+        }
     }
 
     private static void EncodeStorageReads(RlpStream stream, ReadOnlySpan<UInt256> items, int contentLength, RlpBehaviors rlpBehaviors)
@@ -251,13 +261,6 @@ public class AccountChangesDecoder : RlpDecoder<ReadOnlyAccountChanges>
         {
             decoder.Encode(stream, items[i], rlpBehaviors);
         }
-    }
-
-    private static void EncodeStorageReads(RlpStream stream, IReadOnlyCollection<UInt256> items, int contentLength, RlpBehaviors rlpBehaviors)
-    {
-        UInt256Decoder decoder = UInt256Decoder.Instance;
-        stream.StartSequence(contentLength);
-        foreach (UInt256 v in items) decoder.Encode(stream, v, rlpBehaviors);
     }
 
     private static void EncodeIndexed<T>(RlpStream stream, ReadOnlySpan<T> items, int contentLength, RlpDecoder<T> encoder, RlpBehaviors rlpBehaviors)

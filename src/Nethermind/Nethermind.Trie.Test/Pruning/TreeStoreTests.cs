@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
@@ -1792,6 +1793,31 @@ namespace Nethermind.Trie.Test.Pruning
             }
 
             persistedHashes.Count.Should().Be(1);
+        }
+
+        [Test]
+        public void Incomplete_persisted_prune_warning_is_rate_limited()
+        {
+            TestLogger testLogger = new() { IsWarn = true };
+            OneLoggerLogManager logManager = new(new ILogger(testLogger));
+
+            TestPruningStrategy strategy = new(shouldPrune: false) { ShouldPrunePersistedEnabled = true };
+
+            using TrieStore trieStore = new(
+                new NodeStorage(new TestMemDb(), INodeStorage.KeyScheme.HalfPath, requirePath: true),
+                strategy,
+                No.Persistence,
+                new TestFinalizedStateProvider(0),
+                new PruningConfig { PrunePersistedNodePortion = 1.0, TrackPastKeys = false },
+                logManager);
+
+            for (int i = 0; i < 50; i++)
+            {
+                trieStore.SyncPruneQueue();
+            }
+
+            int warnCount = testLogger.LogList.Count(m => m.Contains("Unable to completely prune persisted nodes"));
+            warnCount.Should().Be(1, "rate-limited warning must fire at most once per cooldown window");
         }
 
         private static TrieNode CreateNode(bool isPersisted) =>
