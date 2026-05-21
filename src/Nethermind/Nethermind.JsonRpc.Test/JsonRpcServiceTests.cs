@@ -185,6 +185,8 @@ public class JsonRpcServiceTests
         Assert.That(RpcPayloadTypeShape<SealedPayload>.CanHaveDerivedRuntimeType, Is.False);
         Assert.That(RpcPayloadTypeShape<object>.CanHaveDerivedRuntimeType, Is.True);
         Assert.That(RpcPayloadTypeShape<PolymorphicBasePayload>.CanHaveDerivedRuntimeType, Is.True);
+        Assert.That(RpcPayloadTypeShape<SealedPayload[]>.CanHaveDerivedRuntimeType, Is.False);
+        Assert.That(RpcPayloadTypeShape<PolymorphicBasePayload[]>.CanHaveDerivedRuntimeType, Is.True);
         Assert.That(RpcPayloadTypeShape<SealedPayload>.CanBeStreamable, Is.False);
         Assert.That(RpcPayloadTypeShape<PolymorphicBasePayload>.CanBeStreamable, Is.True);
     }
@@ -203,6 +205,29 @@ public class JsonRpcServiceTests
 
         using JsonDocument document = JsonDocument.Parse(serialized);
         JsonElement result = document.RootElement.GetProperty("result");
+        Assert.That(result.GetProperty("baseValue").GetString(), Is.EqualTo("base"));
+        Assert.That(result.GetProperty("derivedValue").GetString(), Is.EqualTo("derived"));
+    }
+
+    [Test]
+    public void Runtime_polymorphic_array_success_payload_uses_runtime_type_info()
+    {
+        PolymorphicDerivedPayload[] payloads =
+        [
+            new PolymorphicDerivedPayload
+            {
+                BaseValue = "base",
+                DerivedValue = "derived"
+            }
+        ];
+
+        ResultWrapper<PolymorphicBasePayload[]> response = ResultWrapper<PolymorphicBasePayload[]>.Success(payloads);
+        response.Id = 67;
+
+        string serialized = RpcTest.SerializeResponse(response);
+
+        using JsonDocument document = JsonDocument.Parse(serialized);
+        JsonElement result = document.RootElement.GetProperty("result")[0];
         Assert.That(result.GetProperty("baseValue").GetString(), Is.EqualTo("base"));
         Assert.That(result.GetProperty("derivedValue").GetString(), Is.EqualTo("derived"));
     }

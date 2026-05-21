@@ -107,7 +107,9 @@ internal static class RpcPayloadTypeInfo<T>
 internal static class RpcPayloadTypeShape
 {
     public static bool CanHaveDerivedRuntimeType(Type? type) =>
-        type is not null && !type.IsValueType && !type.IsSealed;
+        type is not null &&
+        !type.IsValueType &&
+        (!type.IsSealed || type.IsArray && CanHaveDerivedRuntimeType(type.GetElementType()));
 }
 
 internal static class RpcPayloadTypeShape<T>
