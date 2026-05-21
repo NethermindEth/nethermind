@@ -17,12 +17,12 @@ public class AccountChangesAtIndex(Address address)
 {
     public Address Address { get; private set; } = address;
 
-    public BalanceChange? BalanceChange { get; set; }
-    public NonceChange? NonceChange { get; set; }
-    public CodeChange? CodeChange { get; set; }
+    public BalanceChange? BalanceChange { get; internal set; }
+    public NonceChange? NonceChange { get; internal set; }
+    public CodeChange? CodeChange { get; internal set; }
 
-    public UInt256? PreTxBalance { get; set; }
-    public byte[]? PreTxCode { get; set; }
+    public UInt256? PreTxBalance { get; internal set; }
+    public byte[]? PreTxCode { get; internal set; }
     private Dictionary<UInt256, UInt256>? _preTxStorage;
 
     // Unsorted: no consumer between insert and the merge into GeneratedAccountChanges needs sorted
