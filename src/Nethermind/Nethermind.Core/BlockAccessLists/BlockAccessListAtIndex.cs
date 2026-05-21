@@ -393,8 +393,8 @@ public class BlockAccessListAtIndex : IJournal<int>, IResettable
 
         public ChangeValue(ulong nonce) => _data = new UInt256(nonce);
 
-        // Read-only bit reinterpret; ref only present to satisfy Unsafe.As.
-        public ChangeValue(EvmWord storage) => _data = Unsafe.As<EvmWord, UInt256>(ref storage);
+        // Read-only bit reinterpret; refs only present to satisfy Unsafe.As / strip readonly.
+        public ChangeValue(in EvmWord storage) => _data = Unsafe.As<EvmWord, UInt256>(ref Unsafe.AsRef(in storage));
 
         public UInt256 Balance => _data;
 

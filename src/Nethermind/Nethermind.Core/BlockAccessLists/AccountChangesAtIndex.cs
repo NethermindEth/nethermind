@@ -31,8 +31,11 @@ public class AccountChangesAtIndex(Address address)
     private readonly HashSet<UInt256> _storageReads = new(GenericEqualityComparer.GetOptimized<UInt256>());
 
     public Dictionary<UInt256, StorageChange>.KeyCollection ChangedSlots => _storageChanges.Keys;
+    // Read-only by convention: concrete type exposed so `foreach` binds the struct enumerator;
+    // mutations must go through Set/Remove/TryGet/TryRemove helpers above.
     public Dictionary<UInt256, StorageChange> StorageChanges => _storageChanges;
     public int StorageChangeCount => _storageChanges.Count;
+    // Read-only by convention: see <see cref="StorageChanges"/> note.
     public HashSet<UInt256> StorageReads => _storageReads;
 
     public bool HasStorageChange(UInt256 key) => _storageChanges.ContainsKey(key);
