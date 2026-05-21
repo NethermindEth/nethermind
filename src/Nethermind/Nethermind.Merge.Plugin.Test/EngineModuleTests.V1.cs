@@ -431,6 +431,32 @@ public partial class EngineModuleTests
     }
 
     [Test]
+    public async Task executePayloadV1_invalid_orphan_records_bad_block()
+    {
+        using MergeTestBlockchain chain = await CreateBlockchain();
+        IEngineRpcModule rpc = chain.EngineRpcModule;
+        ExecutionPayload payload = await BuildAndGetPayloadResult(chain, rpc);
+        long blockNumber = payload.BlockNumber;
+
+        // Detach from any known parent so `NewPayloadHandler` enters the orphaned-block validation
+        // branch, then break a header-level invariant (`GasUsed > GasLimit`) so
+        // `IBlockValidator.ValidateOrphanedBlock` fails and `RecordBadBlock` is invoked.
+        payload.ParentHash = TestItem.KeccakF;
+        payload.GasUsed = payload.GasLimit + 1;
+        if (TryCalculateHash(payload, out Hash256? hash))
+        {
+            payload.BlockHash = hash;
+        }
+
+        ResultWrapper<PayloadStatusV1> result = await rpc.engine_newPayloadV1(payload);
+
+        result.Data.Status.Should().Be(PayloadStatus.Invalid);
+        IBadBlockStore badBlockStore = chain.Container.Resolve<IBadBlockStore>();
+        badBlockStore.GetAll().Should().ContainSingle()
+            .Which.Number.Should().Be(blockNumber);
+    }
+
+    [Test]
     public async Task executePayloadV1_rejects_block_with_invalid_timestamp()
     {
         using MergeTestBlockchain chain = await CreateBlockchain();
