@@ -19,6 +19,7 @@ using Nethermind.JsonRpc.Modules.Net;
 using Nethermind.JsonRpc.Modules.Proof;
 using Nethermind.JsonRpc.Modules.Subscribe;
 using Nethermind.Logging;
+using Nethermind.Merge.Plugin;
 using Nethermind.Serialization.Json;
 using NSubstitute;
 using NUnit.Framework;
@@ -272,7 +273,15 @@ public class RpcModuleProviderTests
     public void Generated_rpc_type_info_covers_json_rpc_assembly_modules()
     {
         List<string> missing = [];
-        Type[] assemblyTypes = typeof(IEthRpcModule).Assembly.GetTypes();
+        AddMissingAssemblyPayloadTypes(typeof(IEthRpcModule).Assembly, missing);
+        AddMissingAssemblyPayloadTypes(typeof(IEngineRpcModule).Assembly, missing);
+
+        missing.Should().BeEmpty();
+    }
+
+    private static void AddMissingAssemblyPayloadTypes(Assembly assembly, List<string> missing)
+    {
+        Type[] assemblyTypes = assembly.GetTypes();
         for (int i = 0; i < assemblyTypes.Length; i++)
         {
             Type moduleType = assemblyTypes[i];
@@ -283,8 +292,6 @@ public class RpcModuleProviderTests
 
             AddMissingModulePayloadTypes(moduleType, missing);
         }
-
-        missing.Should().BeEmpty();
     }
 
     [Test]

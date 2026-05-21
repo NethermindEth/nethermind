@@ -203,14 +203,21 @@ public sealed class RpcJsonTypeInfoGenerator : IIncrementalGenerator
         StringBuilder builder = new();
         builder.AppendLine(GeneratedSourceHeader);
         builder.AppendLine("using System;");
+        builder.AppendLine("using System.Runtime.CompilerServices;");
         builder.AppendLine("using System.Text.Json.Serialization.Metadata;");
         builder.AppendLine("using Nethermind.Serialization.Json;");
         builder.AppendLine();
         builder.AppendLine("namespace Nethermind.JsonRpc;");
         builder.AppendLine();
-        builder.AppendLine("internal static partial class GeneratedRpcTypeInfo");
+        builder.AppendLine("internal static class GeneratedRpcJsonTypeInfoProvider");
         builder.AppendLine("{");
-        builder.AppendLine("    static partial void TryGetCore(Type type, ref JsonTypeInfo? typeInfo)");
+        builder.AppendLine("    [ModuleInitializer]");
+        builder.AppendLine("    internal static void Register()");
+        builder.AppendLine("    {");
+        builder.AppendLine("        RpcGeneratedTypeInfoRegistry.Register(TryGet);");
+        builder.AppendLine("    }");
+        builder.AppendLine();
+        builder.AppendLine("    private static JsonTypeInfo? TryGet(Type type)");
         builder.AppendLine("    {");
         for (int i = 0; i < sortedTypes.Length; i++)
         {
@@ -218,14 +225,16 @@ public sealed class RpcJsonTypeInfoGenerator : IIncrementalGenerator
             builder.Append(sortedTypes[i]);
             builder.AppendLine("))");
             builder.AppendLine("        {");
+            builder.AppendLine("            JsonTypeInfo? typeInfo;");
             builder.AppendLine("            EthereumJsonSerializer.JsonOptions.TryGetTypeInfo(type, out typeInfo);");
-            builder.AppendLine("            return;");
+            builder.AppendLine("            return typeInfo;");
             builder.AppendLine("        }");
             builder.AppendLine();
         }
+        builder.AppendLine("        return null;");
         builder.AppendLine("    }");
         builder.AppendLine("}");
 
-        context.AddSource("GeneratedRpcJsonContext.g.cs", SourceText.From(builder.ToString(), Encoding.UTF8));
+        context.AddSource("GeneratedRpcJsonTypeInfoProvider.g.cs", SourceText.From(builder.ToString(), Encoding.UTF8));
     }
 }

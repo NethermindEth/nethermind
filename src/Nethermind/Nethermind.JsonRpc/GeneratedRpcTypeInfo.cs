@@ -9,12 +9,8 @@ namespace Nethermind.JsonRpc;
 
 internal static partial class GeneratedRpcTypeInfo
 {
-    public static bool TryGet(Type type, [NotNullWhen(true)] out JsonTypeInfo? typeInfo)
-    {
-        typeInfo = null;
-        TryGetCore(type, ref typeInfo);
-        return typeInfo is not null;
-    }
+    public static bool TryGet(Type type, [NotNullWhen(true)] out JsonTypeInfo? typeInfo) =>
+        RpcGeneratedTypeInfoRegistry.TryGet(type, out typeInfo);
 
     public static bool TryGet<T>([NotNullWhen(true)] out JsonTypeInfo<T>? typeInfo)
     {
@@ -27,6 +23,4 @@ internal static partial class GeneratedRpcTypeInfo
         typeInfo = null;
         return false;
     }
-
-    static partial void TryGetCore(Type type, ref JsonTypeInfo? typeInfo);
 }
