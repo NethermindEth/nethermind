@@ -20,10 +20,11 @@ public class SlicedReadOnlyList<T> : IReadOnlyList<T>
     public SlicedReadOnlyList(IReadOnlyList<T> list, int start, int count)
     {
         ArgumentNullException.ThrowIfNull(list);
-        if ((uint)start > (uint)list.Count)
+        int listCount = list.Count;
+        if ((uint)start > (uint)listCount)
             throw new ArgumentOutOfRangeException(nameof(start), "Start index is out of range.");
         // Compare against remaining capacity to avoid start + count overflow.
-        if ((uint)count > (uint)(list.Count - start))
+        if ((uint)count > (uint)(listCount - start))
             throw new ArgumentOutOfRangeException(nameof(count), "Count is out of range.");
 
         _list = list;
@@ -64,9 +65,10 @@ public static class ReadOnlyListExtensions
     public static IReadOnlyList<T> Slice<T>(this IReadOnlyList<T> list, int start)
     {
         ArgumentNullException.ThrowIfNull(list);
-        if ((uint)start > (uint)list.Count)
+        int listCount = list.Count;
+        if ((uint)start > (uint)listCount)
             throw new ArgumentOutOfRangeException(nameof(start), "Start index is out of range.");
 
-        return new SlicedReadOnlyList<T>(list, start, list.Count - start);
+        return new SlicedReadOnlyList<T>(list, start, listCount - start);
     }
 }
