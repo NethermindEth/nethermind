@@ -15,23 +15,13 @@ namespace Nethermind.Merge.Plugin.Data;
     DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
     IncludeFields = true,
     Converters = new[] { typeof(ByteArrayArrayConverter) })]
-[JsonSerializable(typeof(ExecutionPayload))]
 [JsonSerializable(typeof(ExecutionPayloadV3))]
-[JsonSerializable(typeof(PayloadStatusV1))]
 [JsonSerializable(typeof(byte[][]))]
-[JsonSerializable(typeof(ForkchoiceStateV1))]
-[JsonSerializable(typeof(ForkchoiceUpdatedV1Result))]
 [JsonSerializable(typeof(PayloadAttributes))]
 [JsonSerializable(typeof(BlobAndProofV1))]
 [JsonSerializable(typeof(BlobAndProofV2))]
 [JsonSerializable(typeof(BlobsBundleV1))]
 [JsonSerializable(typeof(BlobsBundleV2))]
-[JsonSerializable(typeof(GetPayloadV2Result))]
-[JsonSerializable(typeof(GetPayloadV3Result))]
-[JsonSerializable(typeof(GetPayloadV4Result))]
-[JsonSerializable(typeof(GetPayloadV5Result))]
 [JsonSerializable(typeof(GetBlobsHandlerV2Request))]
 [JsonSerializable(typeof(ExecutionPayloadBodyV1Result))]
-[JsonSerializable(typeof(TransitionConfigurationV1))]
-[JsonSerializable(typeof(ClientVersionV1))]
 internal partial class EngineApiJsonContext : JsonSerializerContext;
