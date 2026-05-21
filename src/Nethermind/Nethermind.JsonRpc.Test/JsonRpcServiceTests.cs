@@ -178,6 +178,20 @@ public class JsonRpcServiceTests
         Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32602,\"message\":\"typed\",\"data\":false},\"id\":67}"));
     }
 
+    [Test]
+    public void Error_message_serialization_uses_relaxed_json_escaping()
+    {
+        JsonRpcErrorResponse response = new()
+        {
+            Error = new Error { Code = ErrorCodes.InvalidInput, Message = "missing \"to\" and 1 < 2" },
+            Id = 67
+        };
+
+        string serialized = RpcTest.SerializeResponse(response);
+
+        Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32000,\"message\":\"missing \\\"to\\\" and 1 < 2\"},\"id\":67}"));
+    }
+
     [TestCase(null, "null")]
     [TestCase(1UL, "\"0x1\"")]
     public void Nullable_quantity_result_serializes_null_and_hex_value(ulong? value, string expectedResult)

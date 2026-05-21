@@ -6,6 +6,7 @@ using System.Buffers;
 using System.Diagnostics.CodeAnalysis;
 using System.IO.Pipelines;
 using System.Runtime.CompilerServices;
+using System.Text.Encodings.Web;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
@@ -17,15 +18,18 @@ namespace Nethermind.JsonRpc;
 /// </summary>
 public static class JsonRpcResponseWriter
 {
-    private static readonly JsonWriterOptions _writerOptions = new() { SkipValidation = true };
-    private static readonly JsonWriterOptions _indentedWriterOptions = new() { SkipValidation = true, Indented = true };
+    private static readonly JsonWriterOptions _streamableIdWriterOptions = new()
+    {
+        SkipValidation = true,
+        Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping
+    };
 
     /// <summary>
     /// Writes <paramref name="response"/> as a JSON-RPC response envelope.
     /// </summary>
     public static void Write(IBufferWriter<byte> writer, JsonRpcResponse response, JsonSerializerOptions options)
     {
-        using Utf8JsonWriter jsonWriter = new(writer, options.WriteIndented ? _indentedWriterOptions : _writerOptions);
+        using Utf8JsonWriter jsonWriter = new(writer, CreateWriterOptions(options));
         response.WriteTo(jsonWriter, options);
     }
 
@@ -152,8 +156,16 @@ public static class JsonRpcResponseWriter
         [MethodImpl(MethodImplOptions.NoInlining)]
         static void WriteOther(PipeWriter writer, JsonRpcId id)
         {
-            using Utf8JsonWriter jsonWriter = new(writer, _writerOptions);
+            using Utf8JsonWriter jsonWriter = new(writer, _streamableIdWriterOptions);
             id.WriteTo(jsonWriter);
         }
     }
+
+    private static JsonWriterOptions CreateWriterOptions(JsonSerializerOptions options) => new()
+    {
+        SkipValidation = true,
+        Indented = options.WriteIndented,
+        Encoder = options.Encoder,
+        MaxDepth = options.MaxDepth
+    };
 }
