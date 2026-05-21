@@ -1820,7 +1820,8 @@ namespace Nethermind.Serialization.Rlp
         public static void GuardLimit(int count, int bytesLeft, RlpLimit? limit = null)
         {
             RlpLimit l = limit ?? RlpLimit.DefaultLimit;
-            if ((uint)count > (uint)bytesLeft || (uint)count > (uint)l.Limit)
+            // First test rejects either bound being negative.
+            if ((bytesLeft | l.Limit) < 0 || (uint)count > (uint)bytesLeft || (uint)count > (uint)l.Limit)
             {
                 ThrowCountOverLimit((uint)count, bytesLeft, l);
             }
