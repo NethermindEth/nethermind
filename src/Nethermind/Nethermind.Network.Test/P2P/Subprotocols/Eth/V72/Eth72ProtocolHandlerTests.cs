@@ -38,6 +38,8 @@ using Nethermind.Synchronization;
 using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
+using PooledTransactionsMessage65 = Nethermind.Network.P2P.Subprotocols.Eth.V65.Messages.PooledTransactionsMessage;
+using PooledTransactionsMessage66 = Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages.PooledTransactionsMessage;
 
 namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V72;
 
@@ -424,6 +426,71 @@ public class Eth72ProtocolHandlerTests
             m.Sizes[0] < fullTxLength));
     }
 
+    [TestCase(true)]
+    [TestCase(false)]
+    public void should_disconnect_if_pooled_blob_tx_shape_differs_from_eth72_announcement(bool wrongSize)
+    {
+        Transaction tx = Build.A.Transaction
+            .WithShardBlobTxTypeAndFields(spec: Osaka.Instance)
+            .WithNonce(UInt256.Zero)
+            .SignedAndResolved()
+            .TestObject;
+        Transaction elidedTx = BuildElidedBlobTransaction(tx);
+        int announcedSize = elidedTx.GetLength();
+        TxType announcedType = TxType.Blob;
+        if (wrongSize)
+        {
+            announcedSize++;
+        }
+        else
+        {
+            announcedType = TxType.EIP1559;
+        }
+
+        AnnounceBlobTransaction(tx.Hash!, announcedSize, announcedType);
+
+        using PooledTransactionsMessage66 response = new(1111, new PooledTransactionsMessage65(new[] { elidedTx }.ToPooledList()));
+        HandleZeroMessage(response, Eth66MessageCode.PooledTransactions);
+
+        _session.Received().InitiateDisconnect(DisconnectReason.BackgroundTaskFailure, "invalid pooled tx type or size");
+    }
+
+    [Test]
+    public void should_disconnect_if_eth72_pooled_blob_tx_has_empty_sparse_sidecar()
+    {
+        Transaction tx = Build.A.Transaction
+            .WithShardBlobTxTypeAndFields(spec: Osaka.Instance)
+            .WithNonce(UInt256.Zero)
+            .SignedAndResolved()
+            .TestObject;
+        Transaction txWithEmptySidecar = BuildBlobTransactionWithEmptySparseSidecar(tx);
+
+        AnnounceBlobTransaction(tx.Hash!, txWithEmptySidecar.GetLength(), TxType.Blob);
+
+        using PooledTransactionsMessage66 response = new(1111, new PooledTransactionsMessage65(new[] { txWithEmptySidecar }.ToPooledList()));
+        HandleZeroMessage(response, Eth66MessageCode.PooledTransactions);
+
+        _session.Received().InitiateDisconnect(DisconnectReason.BackgroundTaskFailure, "invalid pooled tx type or size");
+    }
+
+    [Test]
+    public void should_disconnect_if_eth72_pooled_blob_tx_commitments_do_not_match_hashes()
+    {
+        Transaction tx = Build.A.Transaction
+            .WithShardBlobTxTypeAndFields(spec: Osaka.Instance)
+            .WithNonce(UInt256.Zero)
+            .SignedAndResolved()
+            .TestObject;
+        Transaction txWithMismatchedCommitment = BuildBlobTransactionWithMismatchedCommitment(tx);
+
+        AnnounceBlobTransaction(tx.Hash!, txWithMismatchedCommitment.GetLength(), TxType.Blob);
+
+        using PooledTransactionsMessage66 response = new(1111, new PooledTransactionsMessage65(new[] { txWithMismatchedCommitment }.ToPooledList()));
+        HandleZeroMessage(response, Eth66MessageCode.PooledTransactions);
+
+        _session.Received().InitiateDisconnect(DisconnectReason.BackgroundTaskFailure, "invalid pooled tx type or size");
+    }
+
     [Test]
     public void should_validate_sparse_v1_wrapper_lengths_without_full_blob_array()
     {
@@ -488,6 +555,118 @@ public class Eth72ProtocolHandlerTests
             m.Cells.Length == 1 &&
             m.Cells[0].Length == availableCells.Length &&
             m.Cells[0].Zip(availableCells, static (left, right) => left.SequenceEqual(right)).All(static equal => equal)));
+    }
+
+    [Test]
+    public void should_include_multiple_hashes_in_cells_response_when_available_masks_match()
+    {
+        Transaction firstTx = Build.A.Transaction
+            .WithShardBlobTxTypeAndFields(spec: Osaka.Instance)
+            .WithNonce(UInt256.Zero)
+            .SignedAndResolved()
+            .TestObject;
+        Transaction secondTx = Build.A.Transaction
+            .WithShardBlobTxTypeAndFields(spec: Osaka.Instance)
+            .WithNonce(UInt256.One)
+            .SignedAndResolved()
+            .TestObject;
+        BlobCellMask requestedMask = BlobCellMask.FromIndices([1, 3]);
+        BlobCellMask availableMask = BlobCellMask.FromIndices([3]);
+        Assert.That(BlobCellsHelper.TryGetFlattenedCells((ShardBlobNetworkWrapper)firstTx.NetworkWrapper!, availableMask, out byte[][] firstCells), Is.True);
+        Assert.That(BlobCellsHelper.TryGetFlattenedCells((ShardBlobNetworkWrapper)secondTx.NetworkWrapper!, availableMask, out byte[][] secondCells), Is.True);
+        SetupGetCellsResponse(firstTx, requestedMask, availableMask, firstCells);
+        SetupGetCellsResponse(secondTx, availableMask, availableMask, secondCells);
+
+        using GetCellsMessage72 request = new(1234, [firstTx.Hash!, secondTx.Hash!], requestedMask.ToBytes());
+
+        HandleIncomingStatusMessage();
+        HandleZeroMessage(request, Eth72MessageCode.GetCells);
+
+        _session.Received(1).DeliverMessage(Arg.Is<CellsMessage72>(m =>
+            m.RequestId == request.RequestId &&
+            m.Hashes.SequenceEqual(new[] { firstTx.Hash!, secondTx.Hash! }) &&
+            m.CellMask.SequenceEqual(availableMask.ToBytes()) &&
+            m.Cells.Length == 2 &&
+            m.Cells[0].Zip(firstCells, static (left, right) => left.SequenceEqual(right)).All(static equal => equal) &&
+            m.Cells[1].Zip(secondCells, static (left, right) => left.SequenceEqual(right)).All(static equal => equal)));
+    }
+
+    [Test]
+    public void should_exclude_later_hashes_from_cells_response_when_available_mask_differs()
+    {
+        Transaction firstTx = Build.A.Transaction
+            .WithShardBlobTxTypeAndFields(spec: Osaka.Instance)
+            .WithNonce(UInt256.Zero)
+            .SignedAndResolved()
+            .TestObject;
+        Transaction secondTx = Build.A.Transaction
+            .WithShardBlobTxTypeAndFields(spec: Osaka.Instance)
+            .WithNonce(UInt256.One)
+            .SignedAndResolved()
+            .TestObject;
+        BlobCellMask requestedMask = BlobCellMask.FromIndices([1, 3]);
+        BlobCellMask firstAvailableMask = BlobCellMask.FromIndices([3]);
+        BlobCellMask secondAvailableMask = BlobCellMask.FromIndices([1]);
+        Assert.That(BlobCellsHelper.TryGetFlattenedCells((ShardBlobNetworkWrapper)firstTx.NetworkWrapper!, firstAvailableMask, out byte[][] firstCells), Is.True);
+        Assert.That(BlobCellsHelper.TryGetFlattenedCells((ShardBlobNetworkWrapper)secondTx.NetworkWrapper!, secondAvailableMask, out byte[][] secondCells), Is.True);
+        SetupGetCellsResponse(firstTx, requestedMask, firstAvailableMask, firstCells);
+        SetupGetCellsResponse(secondTx, requestedMask, secondAvailableMask, secondCells);
+
+        using GetCellsMessage72 request = new(1234, [firstTx.Hash!, secondTx.Hash!], requestedMask.ToBytes());
+
+        HandleIncomingStatusMessage();
+        HandleZeroMessage(request, Eth72MessageCode.GetCells);
+
+        _session.Received(1).DeliverMessage(Arg.Is<CellsMessage72>(m =>
+            m.RequestId == request.RequestId &&
+            m.Hashes.SequenceEqual(new[] { firstTx.Hash! }) &&
+            m.CellMask.SequenceEqual(firstAvailableMask.ToBytes()) &&
+            m.Cells.Length == 1 &&
+            m.Cells[0].Zip(firstCells, static (left, right) => left.SequenceEqual(right)).All(static equal => equal)));
+    }
+
+    [Test]
+    public void should_merge_only_columns_present_for_all_blobs_from_cells_response()
+    {
+        RecreateHandler();
+        _blobCustodyTracker.Update(SupernodeCustodyMask());
+        Transaction tx = BuildBlobTransaction(fullProvider: false);
+        BlobCellMask requestedMask = BlobCellMask.FromIndices([4, 9]);
+        BlobCellMask availableMask = BlobCellMask.FromIndices([4]);
+        Assert.That(BlobCellsHelper.TryGetFlattenedCells((ShardBlobNetworkWrapper)tx.NetworkWrapper!, availableMask, out byte[][] availableCells), Is.True);
+        byte[][] responseCells = new byte[tx.BlobVersionedHashes!.Length * requestedMask.Count][];
+        for (int i = 0; i < tx.BlobVersionedHashes.Length; i++)
+        {
+            responseCells[i * requestedMask.Count] = availableCells[i];
+            responseCells[i * requestedMask.Count + 1] = [];
+        }
+
+        _transactionPool.NotifyAboutTx(tx.Hash!, Arg.Any<IMessageHandler<PooledTransactionRequestMessage>>())
+            .Returns(AnnounceResult.RequestRequired);
+        bool pendingTransactionAvailable = false;
+        _transactionPool.TryGetPendingBlobTransaction(tx.Hash!, out Arg.Any<Transaction>())
+            .Returns(x =>
+            {
+                x[1] = pendingTransactionAvailable ? tx : null!;
+                return pendingTransactionAvailable;
+            });
+        _transactionPool.TryMergeBlobCells(tx.Hash!, availableMask, Arg.Any<byte[][]>()).Returns(true);
+
+        using NewPooledTransactionHashesMessage72 announcement = new(
+            [(byte)TxType.Blob],
+            [1024],
+            [tx.Hash!],
+            requestedMask.ToBytes());
+        using CellsMessage72 response = new([tx.Hash!], [responseCells], requestedMask.ToBytes());
+
+        HandleIncomingStatusMessage();
+        HandleZeroMessage(announcement, Eth72MessageCode.NewPooledTransactionHashes);
+        pendingTransactionAvailable = true;
+        HandleZeroMessage(response, Eth72MessageCode.Cells);
+
+        _transactionPool.Received(1).TryMergeBlobCells(tx.Hash!, availableMask, Arg.Is<byte[][]>(m =>
+            m.Length == availableCells.Length &&
+            m.Zip(availableCells, static (left, right) => left.SequenceEqual(right)).All(static equal => equal)));
     }
 
     [Test]
@@ -1210,18 +1389,77 @@ public class Eth72ProtocolHandlerTests
             && wrapper.Cells is not null
             && wrapper.Cells.Length == cellsLength;
 
+    private void AnnounceBlobTransaction(Hash256 hash, int announcedSize, TxType announcedType)
+    {
+        _transactionPool.NotifyAboutTx(hash, Arg.Any<IMessageHandler<PooledTransactionRequestMessage>>())
+            .Returns(AnnounceResult.RequestRequired);
+
+        using NewPooledTransactionHashesMessage72 announcement = new(
+            [(byte)announcedType],
+            [announcedSize],
+            [hash],
+            BlobCellMask.Full.ToBytes());
+
+        HandleIncomingStatusMessage();
+        HandleZeroMessage(announcement, Eth72MessageCode.NewPooledTransactionHashes);
+    }
+
+    private void SetupGetCellsResponse(Transaction tx, BlobCellMask requestedMask, BlobCellMask availableMask, byte[][] cells)
+    {
+        _transactionPool.TryGetPendingBlobTransaction(tx.Hash!, out Arg.Any<Transaction>())
+            .Returns(x =>
+            {
+                x[1] = tx;
+                return true;
+            });
+        _transactionPool.TryGetBlobCells(tx.Hash!, requestedMask, out Arg.Any<BlobCellMask>(), out Arg.Any<byte[][]>())
+            .Returns(x =>
+            {
+                x[2] = availableMask;
+                x[3] = cells;
+                return true;
+            });
+    }
+
     private static Transaction BuildSparseBlobTransaction(out BlobCellMask cellMask, out byte[][] cells)
         => BuildSparseBlobTransaction(out cellMask, out cells, out _);
 
-    private static int GetElidedBlobTransactionLength(Transaction tx)
+    private static Transaction BuildElidedBlobTransaction(Transaction tx)
     {
-        ShardBlobNetworkWrapper wrapper = (ShardBlobNetworkWrapper)tx.NetworkWrapper!;
         Transaction clone = new();
         tx.CopyTo(clone);
+        ShardBlobNetworkWrapper wrapper = (ShardBlobNetworkWrapper)tx.NetworkWrapper!;
         clone.NetworkWrapper = wrapper with { Blobs = [] };
         clone.ClearLengthCache();
-        return clone.GetLength();
+        return clone;
     }
+
+    private static Transaction BuildBlobTransactionWithEmptySparseSidecar(Transaction tx)
+    {
+        Transaction clone = new();
+        tx.CopyTo(clone);
+        clone.NetworkWrapper = new ShardBlobNetworkWrapper([], [], [], ProofVersion.V1);
+        clone.ClearLengthCache();
+        return clone;
+    }
+
+    private static Transaction BuildBlobTransactionWithMismatchedCommitment(Transaction tx)
+    {
+        Transaction clone = BuildElidedBlobTransaction(tx);
+        ShardBlobNetworkWrapper wrapper = (ShardBlobNetworkWrapper)clone.NetworkWrapper!;
+        byte[][] commitments = new byte[wrapper.Commitments.Length][];
+        for (int i = 0; i < commitments.Length; i++)
+        {
+            commitments[i] = [.. wrapper.Commitments[i]];
+        }
+
+        commitments[0] = new byte[commitments[0].Length];
+        clone.NetworkWrapper = wrapper with { Commitments = commitments };
+        clone.ClearLengthCache();
+        return clone;
+    }
+
+    private static int GetElidedBlobTransactionLength(Transaction tx) => BuildElidedBlobTransaction(tx).GetLength();
 
     private static Transaction BuildSparseBlobTransaction(out BlobCellMask cellMask, out byte[][] cells, out byte[][] fullCells)
     {

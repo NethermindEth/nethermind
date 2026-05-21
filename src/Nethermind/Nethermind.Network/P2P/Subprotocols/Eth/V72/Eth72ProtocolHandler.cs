@@ -15,6 +15,7 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
+using Nethermind.Crypto;
 using Nethermind.Logging;
 using Nethermind.Network.Contract.P2P;
 using Nethermind.Network.P2P.ProtocolHandlers;
@@ -75,6 +76,7 @@ public class Eth72ProtocolHandler(
     private readonly ConcurrentQueue<CellStateKey> _pendingCellRequestOrder = new();
     private readonly ConcurrentQueue<CellStateKey> _sentCellRequestOrder = new();
     private readonly ConcurrentQueue<CellStateKey> _pendingCellsOrder = new();
+    private readonly ClockCache<ValueHash256, (int Size, TxType Type)> _txShapeAnnouncements = new(MemoryAllowance.TxHashCacheSize / 10, lockPartition: 1);
     private readonly Lock _cellStateLock = new();
     private readonly int _maxCellsPerTransaction = GetMaxCellsPerTransaction(specProvider);
     private readonly IBlobCustodyTracker _blobCustodyTracker = blobCustodyTracker;
@@ -262,6 +264,8 @@ public class Eth72ProtocolHandler(
             if (shouldRequestTx
                 && (_blobSupportEnabled || !txType.SupportsBlobs()))
             {
+                _txShapeAnnouncements.Set(hash, (txSize, txType));
+
                 if ((txSize > packetSizeLeft && toRequestCount > 0) || toRequestCount >= 256)
                 {
                     Send(GetPooledTransactionsMessage66.New(hashesToRequest));
@@ -453,6 +457,11 @@ public class Eth72ProtocolHandler(
                 }
 
                 Transaction tx = transactionsSpan[i];
+                if (!ValidateAnnouncedPooledTransaction(tx))
+                {
+                    throw new SubprotocolException("invalid pooled tx type or size");
+                }
+
                 if (!tx.SupportsBlobs)
                 {
                     PrepareAndSubmitTransaction(tx, isTrace);
@@ -944,6 +953,35 @@ public class Eth72ProtocolHandler(
         Hash256 sampleHash = Keccak.Compute(input);
         ushort sample = BinaryPrimitives.ReadUInt16BigEndian(sampleHash.Bytes[..2]);
         return sample % MaxProviderProbabilityPercent < _providerThresholdPercent;
+    }
+
+    private bool ValidateAnnouncedPooledTransaction(Transaction tx)
+    {
+        if (!_txShapeAnnouncements.Delete(tx.Hash, out (int Size, TxType Type) txShape))
+        {
+            return true;
+        }
+
+        if (tx.GetLength() != txShape.Size || tx.Type != txShape.Type)
+        {
+            return false;
+        }
+
+        return !tx.Type.SupportsBlobs() || ValidateSparsePooledBlobTransaction(tx);
+    }
+
+    private static bool ValidateSparsePooledBlobTransaction(Transaction tx)
+    {
+        if (tx.NetworkWrapper is not ShardBlobNetworkWrapper { Blobs.Length: 0, Commitments.Length: > 0, Proofs.Length: > 0 } wrapper
+            || tx.BlobVersionedHashes is not { Length: > 0 } blobVersionedHashes
+            || wrapper.Commitments.Length != blobVersionedHashes.Length)
+        {
+            return false;
+        }
+
+        IBlobProofsManager proofsVerifier = IBlobProofsManager.For(wrapper.Version);
+        return proofsVerifier.ValidateLengths(wrapper)
+            && proofsVerifier.ValidateHashes(wrapper, blobVersionedHashes);
     }
 
     private bool CanRequestCellsNow(Hash256 hash, BlobCellMask requestMask)
