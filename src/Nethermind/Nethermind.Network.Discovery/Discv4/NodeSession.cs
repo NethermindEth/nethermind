@@ -24,16 +24,7 @@ public record NodeSession(INodeStats NodeStats, ITimestamper Timestamper)
     public bool HasReceivedPong => Volatile.Read(ref _lastPongReceivedTicks) + BondTimeout.Ticks > Timestamper.UtcNow.Ticks;
     public bool HasTriedPingRecently => Volatile.Read(ref _lastPingSentTicks) + PingRetryTimeout.Ticks > Timestamper.UtcNow.Ticks;
     public void ResetAuthenticatedRequestFailure() => Interlocked.Exchange(ref _authenticatedRequestFailureCount, 0);
-
-    public void OnAuthenticatedRequestFailure()
-    {
-        while (true)
-        {
-            int failureCount = Volatile.Read(ref _authenticatedRequestFailureCount);
-            if (failureCount > AuthenticatedRequestFailureLimit) return;
-            if (Interlocked.CompareExchange(ref _authenticatedRequestFailureCount, failureCount + 1, failureCount) == failureCount) return;
-        }
-    }
+    public void OnAuthenticatedRequestFailure() => Interlocked.Increment(ref _authenticatedRequestFailureCount);
 
     public void OnPongReceived() => Volatile.Write(ref _lastPongReceivedTicks, Timestamper.UtcNow.Ticks);
     public void OnPingReceived() => Volatile.Write(ref _lastPingReceivedTicks, Timestamper.UtcNow.Ticks);
