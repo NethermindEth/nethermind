@@ -629,10 +629,10 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
 
                 if (!IsInCommitBufferMode && _lastPrunedShardIdx - startingShard >= _shardedDirtyNodeCount && _pruningStrategy.ShouldPrunePersistedNode(CaptureCurrentState()))
                 {
-                    // A persisted nodes that was recommitted and is still within pruning boundary cannot be pruned.
-                    // This should be rare but can happen, notably in mainnet block 4500000 around there, But this
-                    // does mean that it will keep retrying to prune persisted nodes. The solution is to either increase
-                    // the memory budget or reduce the pruning boundary.
+                    // A persisted node that was recommitted and is still within the pruning boundary cannot be evicted.
+                    // Historically rare (notably mainnet around block 4_500_000), but on Optimism-derived chains such
+                    // as Base this branch fires repeatedly at the chain tip; the warning is rate-limited below to
+                    // avoid log spam. The lasting fix is still to raise the memory budget or shrink the pruning boundary.
                     if (_logger.IsWarn)
                     {
                         long now = Stopwatch.GetTimestamp();
