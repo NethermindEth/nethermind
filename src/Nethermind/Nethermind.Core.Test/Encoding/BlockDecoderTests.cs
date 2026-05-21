@@ -109,7 +109,7 @@ public class BlockDecoderTests
     public void Can_do_roundtrip_null()
     {
         BlockDecoder decoder = new();
-        Rlp result = decoder.Encode(null);
+        Rlp result = decoder.Encode((Block?)null);
         Block decoded = Rlp.Decode<Block>(result.Bytes.AsSpan());
         Assert.That(decoded, Is.Null);
     }
@@ -204,7 +204,7 @@ public class BlockDecoderTests
     public void Get_length_null()
     {
         BlockDecoder decoder = new();
-        Assert.That(decoder.GetLength(null, RlpBehaviors.None), Is.EqualTo(1));
+        Assert.That(decoder.GetLength((Block?)null, RlpBehaviors.None), Is.EqualTo(1));
     }
 
     public static byte[][] MalformedInput =

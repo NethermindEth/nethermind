@@ -14,7 +14,7 @@ namespace Nethermind.Serialization.Rlp
 {
     [Decoder(RlpDecoderKey.Storage)]
     [method: DynamicDependency(DynamicallyAccessedMemberTypes.PublicConstructors, typeof(CompactReceiptStorageDecoder))]
-    public sealed class CompactReceiptStorageDecoder() : RlpValueDecoder<TxReceipt>, IRlpObjectDecoder<TxReceipt>, IReceiptRefDecoder
+    public sealed class CompactReceiptStorageDecoder() : RlpDecoder<TxReceipt>, IReceiptRefDecoder
     {
         public static readonly CompactReceiptStorageDecoder Instance = new();
 
@@ -50,7 +50,7 @@ namespace Nethermind.Serialization.Rlp
             using ArrayPoolListRef<LogEntry> logEntries = new(sequenceLength * 2 / Rlp.LengthOfAddressRlp);
             while (decoderContext.Position < lastCheck)
             {
-                logEntries.Add(CompactLogEntryDecoder.Decode(ref decoderContext, RlpBehaviors.AllowExtraBytes));
+                logEntries.Add(CompactLogEntryDecoder.Instance.Decode(ref decoderContext, RlpBehaviors.AllowExtraBytes));
             }
 
             txReceipt.Logs = logEntries.ToArray();
@@ -124,13 +124,6 @@ namespace Nethermind.Serialization.Rlp
         // Refstruct decode does not generate bloom
         public bool CanDecodeBloom => false;
 
-        public Rlp Encode(TxReceipt item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-        {
-            RlpStream rlpStream = new(GetLength(item, rlpBehaviors));
-            Encode(rlpStream, item, rlpBehaviors);
-            return new Rlp(rlpStream.Data.ToArray());
-        }
-
         public override void Encode(RlpStream rlpStream, TxReceipt? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (item is null)
@@ -162,7 +155,7 @@ namespace Nethermind.Serialization.Rlp
             LogEntry[] logs = item.Logs ?? [];
             for (int i = 0; i < logs.Length; i++)
             {
-                CompactLogEntryDecoder.Encode(rlpStream, logs[i]);
+                CompactLogEntryDecoder.Instance.Encode(rlpStream, logs[i]);
             }
         }
 
