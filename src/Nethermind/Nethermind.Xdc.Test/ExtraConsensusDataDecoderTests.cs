@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using FluentAssertions;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Serialization.Rlp;
@@ -27,31 +26,21 @@ internal class ExtraConsensusDataDecoderTests
         Rlp.ValueDecoderContext encodedContext = encodedExtraData.Bytes.AsRlpValueContext();
         ExtraFieldsV2 unencoded = decoder.Decode(ref encodedContext);
 
-        unencoded.Should().BeEquivalentTo(decodedExtraData);
+        Assert.That(unencoded, Is.EqualTo(decodedExtraData).UsingPropertiesComparer());
     }
 
-    [TestCase(true)]
-    [TestCase(false)]
-    public void Decode_XdcExtraDataRlp_IsEquivalentAfterReencoding(bool useRlpStream)
+    [Test]
+    public void EncodeToStream_RoundTrip_Matches_AllFields()
     {
         ExtraFieldsV2 extraFields = new(1, new QuorumCertificate(new BlockRoundInfo(Hash256.Zero, 1, 1), [new Signature(new byte[64], 0), new Signature(new byte[64], 0), new Signature(new byte[64], 0)], 0));
         ExtraConsensusDataDecoder decoder = new();
         RlpStream stream = new(decoder.GetLength(extraFields));
         decoder.Encode(stream, extraFields);
 
-        ExtraFieldsV2 decodedExtraData;
-        if (useRlpStream)
-        {
-            Rlp.ValueDecoderContext context = new(stream.Data);
-            decodedExtraData = decoder.Decode(ref context);
-        }
-        else
-        {
-            Rlp.ValueDecoderContext context = new(stream.Data);
-            decodedExtraData = decoder.Decode(ref context);
-        }
+        Rlp.ValueDecoderContext context = new(stream.Data);
+        ExtraFieldsV2 decodedExtraData = decoder.Decode(ref context);
 
-        decodedExtraData.Should().BeEquivalentTo(extraFields);
+        Assert.That(decodedExtraData, Is.EqualTo(extraFields).UsingPropertiesComparer());
     }
 
     [Test]
@@ -65,7 +54,7 @@ internal class ExtraConsensusDataDecoderTests
         Rlp.ValueDecoderContext context = encodedExtraData.Bytes.AsRlpValueContext();
         ExtraFieldsV2 unencoded = decoder.Decode(ref context);
 
-        unencoded.Should().BeEquivalentTo(extraFieldsV2);
+        Assert.That(unencoded, Is.EqualTo(extraFieldsV2).UsingPropertiesComparer());
     }
 
 }

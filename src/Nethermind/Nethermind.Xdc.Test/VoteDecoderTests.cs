@@ -21,8 +21,7 @@ public class VoteDecoderTests
                     new BlockRoundInfo(Hash256.Zero, 1, 1),
                     0,
                     new Signature(new byte[64], 0)
-                ),
-                true
+                )
             );
 
             yield return new TestCaseData(
@@ -30,46 +29,25 @@ public class VoteDecoderTests
                     new BlockRoundInfo(Hash256.Zero, ulong.MaxValue, long.MaxValue),
                     ulong.MaxValue,
                     new Signature(new byte[64], 0)
-                ),
-                true
-            );
-
-            yield return new TestCaseData(
-                new Vote(
-                    new BlockRoundInfo(Hash256.Zero, 1, 1),
-                    0,
-                    new Signature(new byte[64], 0)
-                ),
-                false
+                )
             );
         }
     }
 
     [TestCaseSource(nameof(VoteCases))]
-    public void EncodeDecode_RoundTrip_Matches_AllFields(Vote vote, bool useRlpStream)
+    public void EncodeDecode_RoundTrip_Matches_AllFields(Vote vote)
     {
         VoteDecoder decoder = new();
 
         Rlp encoded = decoder.Encode(vote);
-        RlpStream stream = new(encoded.Bytes);
-        Vote decoded;
-
-        if (useRlpStream)
-        {
-            Rlp.ValueDecoderContext decoderContext = new(stream.Data.AsSpan());
-            decoded = decoder.Decode(ref decoderContext);
-        }
-        else
-        {
-            Rlp.ValueDecoderContext decoderContext = new(stream.Data.AsSpan());
-            decoded = decoder.Decode(ref decoderContext);
-        }
+        Rlp.ValueDecoderContext decoderContext = encoded.Bytes.AsRlpValueContext();
+        Vote decoded = decoder.Decode(ref decoderContext);
 
         Assert.That(decoded, Is.EqualTo(vote).UsingPropertiesComparer());
     }
 
     [Test]
-    public void Encode_UseBothRlpStreamAndValueDecoderContext_IsEquivalentAfterReencoding()
+    public void EncodeToStream_RoundTrip_Matches_AllFields()
     {
         Vote vote = new(
             new BlockRoundInfo(Hash256.Zero, 1, 1),
@@ -82,15 +60,10 @@ public class VoteDecoderTests
         decoder.Encode(stream, vote);
         stream.Position = 0;
 
-        Rlp.ValueDecoderContext streamCtx = new(stream.Data.AsSpan());
-        Vote decodedStream = decoder.Decode(ref streamCtx);
-
         Rlp.ValueDecoderContext decoderContext = new(stream.Data.AsSpan());
-        Vote decodedContext = decoder.Decode(ref decoderContext);
+        Vote decoded = decoder.Decode(ref decoderContext);
 
-        Assert.That(decodedStream, Is.EqualTo(vote).UsingPropertiesComparer());
-        Assert.That(decodedContext, Is.EqualTo(vote).UsingPropertiesComparer());
-        Assert.That(decodedStream, Is.EqualTo(decodedContext).UsingPropertiesComparer());
+        Assert.That(decoded, Is.EqualTo(vote).UsingPropertiesComparer());
     }
 
     [Test]

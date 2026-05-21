@@ -28,8 +28,7 @@ public class SyncInfoDecoderTests
                         [new Signature(new byte[64], 0), new Signature(new byte[64], 0)],
                         0
                     )
-                ),
-                true
+                )
             );
 
             yield return new TestCaseData(
@@ -40,8 +39,7 @@ public class SyncInfoDecoderTests
                         0
                     ),
                     new TimeoutCertificate(1, [], 0)
-                ),
-                false
+                )
             );
 
             yield return new TestCaseData(
@@ -52,37 +50,25 @@ public class SyncInfoDecoderTests
                         ulong.MaxValue
                     ),
                     new TimeoutCertificate(ulong.MaxValue, [], ulong.MaxValue)
-                ),
-                true
+                )
             );
         }
     }
 
     [TestCaseSource(nameof(SyncInfoCases))]
-    public void EncodeDecode_RoundTrip_Matches_AllFields(SyncInfo syncInfo, bool useRlpStream)
+    public void EncodeDecode_RoundTrip_Matches_AllFields(SyncInfo syncInfo)
     {
         SyncInfoDecoder decoder = new();
 
         Rlp encoded = decoder.Encode(syncInfo);
-        RlpStream stream = new(encoded.Bytes);
-        SyncInfo decoded;
-
-        if (useRlpStream)
-        {
-            Rlp.ValueDecoderContext decoderContext = new(stream.Data.AsSpan());
-            decoded = decoder.Decode(ref decoderContext);
-        }
-        else
-        {
-            Rlp.ValueDecoderContext decoderContext = new(stream.Data.AsSpan());
-            decoded = decoder.Decode(ref decoderContext);
-        }
+        Rlp.ValueDecoderContext decoderContext = encoded.Bytes.AsRlpValueContext();
+        SyncInfo decoded = decoder.Decode(ref decoderContext);
 
         Assert.That(decoded, Is.EqualTo(syncInfo).UsingPropertiesComparer());
     }
 
     [Test]
-    public void Encode_UseBothRlpStreamAndValueDecoderContext_IsEquivalentAfterReencoding()
+    public void EncodeToStream_RoundTrip_Matches_AllFields()
     {
         SyncInfo syncInfo = new(
             new QuorumCertificate(
@@ -102,17 +88,10 @@ public class SyncInfoDecoderTests
         decoder.Encode(stream, syncInfo);
         stream.Position = 0;
 
-        // Decode with ValueDecoderContext
-        Rlp.ValueDecoderContext streamCtx = new(stream.Data.AsSpan());
-        SyncInfo decodedStream = decoder.Decode(ref streamCtx);
-
-        // Decode with ValueDecoderContext
         Rlp.ValueDecoderContext decoderContext = new(stream.Data.AsSpan());
-        SyncInfo decodedContext = decoder.Decode(ref decoderContext);
+        SyncInfo decoded = decoder.Decode(ref decoderContext);
 
-        Assert.That(decodedStream, Is.EqualTo(syncInfo).UsingPropertiesComparer());
-        Assert.That(decodedContext, Is.EqualTo(syncInfo).UsingPropertiesComparer());
-        Assert.That(decodedStream, Is.EqualTo(decodedContext).UsingPropertiesComparer());
+        Assert.That(decoded, Is.EqualTo(syncInfo).UsingPropertiesComparer());
     }
 
     [Test]
