@@ -32,13 +32,10 @@ public class BlockAccessListAtIndex : IJournal<int>, IResettable
     private readonly Dictionary<Address, AccountChangesAtIndex> _accountChanges = new(GenericEqualityComparer.GetOptimized<Address>());
     private readonly List<Change> _changes = new(InitialChangeCapacity);
 
-    // Mirrors _changes entries with Type == CodeChange && HasPrevious in insertion order; kept
-    // separate to spare the per-change record from CodeChange's managed byte[] + 32-byte hash.
     private readonly List<CodeChange> _previousCodeChanges = new();
 
     private readonly Stack<AccountChangesAtIndex> _accountChangesPool = new();
 
-    // Concrete type (not IEnumerable) so `foreach` binds the struct enumerator.
     public Dictionary<Address, AccountChangesAtIndex>.ValueCollection AccountChanges => _accountChanges.Values;
     public int AccountCount => _accountChanges.Count;
     public bool HasAccount(Address address) => _accountChanges.ContainsKey(address);
@@ -109,8 +106,6 @@ public class BlockAccessListAtIndex : IJournal<int>, IResettable
 
         AccountChangesAtIndex accountChanges = GetOrAddAccountChanges(address);
 
-        // First call: preTxCode == before, and we already returned the equal-to-after case above —
-        // so the value must have changed; skip the second SequenceEqual.
         bool isFirstCall = accountChanges.PreTxCode is null;
         byte[] preTxCode = accountChanges.PreTxCode ??= before;
 
@@ -207,7 +202,6 @@ public class BlockAccessListAtIndex : IJournal<int>, IResettable
     {
         AccountChangesAtIndex accountChanges = GetOrAddAccountChanges(address);
 
-        // Snapshot keys before mutating the dictionary in the cleanup loop below.
         using ArrayPoolListRef<UInt256> changedSlots = new(accountChanges.StorageChangeCount);
         foreach (KeyValuePair<UInt256, StorageChange> kv in accountChanges.StorageChanges)
         {
@@ -393,14 +387,12 @@ public class BlockAccessListAtIndex : IJournal<int>, IResettable
 
         public ChangeValue(ulong nonce) => _data = new UInt256(nonce);
 
-        // Read-only bit reinterpret; refs only present to satisfy Unsafe.As / strip readonly.
         public ChangeValue(in EvmWord storage) => _data = Unsafe.As<EvmWord, UInt256>(ref Unsafe.AsRef(in storage));
 
         public UInt256 Balance => _data;
 
         public ulong Nonce => _data.u0;
 
-        // Read-only bit reinterpret; alias is never written through.
         public EvmWord Storage => Unsafe.As<UInt256, EvmWord>(ref Unsafe.AsRef(in _data));
     }
 }

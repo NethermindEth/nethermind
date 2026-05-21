@@ -25,17 +25,12 @@ public class AccountChangesAtIndex(Address address)
     public byte[]? PreTxCode { get; internal set; }
     private Dictionary<UInt256, UInt256>? _preTxStorage;
 
-    // Unsorted: no consumer between insert and the merge into GeneratedAccountChanges needs sorted
-    // iteration (receivers sort their own outputs); O(1) ops on the per-tx hot path.
     private readonly Dictionary<UInt256, StorageChange> _storageChanges = new(GenericEqualityComparer.GetOptimized<UInt256>());
     private readonly HashSet<UInt256> _storageReads = new(GenericEqualityComparer.GetOptimized<UInt256>());
 
     public Dictionary<UInt256, StorageChange>.KeyCollection ChangedSlots => _storageChanges.Keys;
-    // Read-only by convention: concrete type exposed so `foreach` binds the struct enumerator;
-    // mutations must go through Set/Remove/TryGet/TryRemove helpers above.
     public Dictionary<UInt256, StorageChange> StorageChanges => _storageChanges;
     public int StorageChangeCount => _storageChanges.Count;
-    // Read-only by convention: see <see cref="StorageChanges"/> note.
     public HashSet<UInt256> StorageReads => _storageReads;
 
     public bool HasStorageChange(UInt256 key) => _storageChanges.ContainsKey(key);
@@ -56,7 +51,6 @@ public class AccountChangesAtIndex(Address address)
 
     public bool RemoveStorageChange(UInt256 key) => _storageChanges.Remove(key);
 
-    /// <summary>Single-hash combined lookup + remove.</summary>
     public bool TryRemoveStorageChange(UInt256 key, [NotNullWhen(true)] out StorageChange? storageChange)
     {
         if (_storageChanges.Remove(key, out StorageChange existing))
@@ -87,8 +81,6 @@ public class AccountChangesAtIndex(Address address)
         _preTxStorage?.Clear();
     }
 
-    /// <summary>Recycles this instance for reuse with a different account; inner collection wrappers
-    /// and their backing arrays are preserved.</summary>
     public void Reset(Address address)
     {
         Address = address;
