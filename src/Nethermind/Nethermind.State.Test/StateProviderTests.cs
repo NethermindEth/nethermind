@@ -9,10 +9,13 @@ using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
+using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.Db;
+using Nethermind.Db;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
-using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
 using Nethermind.Blockchain.Tracing.ParityStyle;
 using Nethermind.Logging;
@@ -255,5 +258,72 @@ public class StateProviderTests(bool useFlat)
         }
 
         action.Should().Throw<InvalidOperationException>();
+    }
+
+    // Regression: a "persisted code" hint cache previously lived on StateProvider and was
+    // Set after every code-flush — including flushes that went to a *transient* overlay
+    // codeDb (used by debug_traceCall / eth_call with state overrides). On overlay reset
+    // the bytes were discarded but the hint was not, so a subsequent overlay scope on
+    // the same StateProvider would skip writing the bytes into _codeBatch, and the next
+    // GetCode would throw "Code 0x… is missing from the database".
+    //
+    // The fix moves the hint to ICodeDb itself and disables it for overlay codeDbs
+    // (KeyValueWithBatchingBackedCodeDb(_, isPersistent: false)). These tests lock that in.
+
+    [TestCase(true, true, TestName = "Persistent codeDb remembers MarkCodePersisted")]
+    [TestCase(false, false, TestName = "Overlay codeDb (isPersistent: false) does not")]
+    public void KeyValueWithBatchingBackedCodeDb_ContainsCode_respects_isPersistent_flag(bool isPersistent, bool expectedContains)
+    {
+        IKeyValueStoreWithBatching backing = new MemDb();
+        var codeDb = new TrieStoreScopeProvider.KeyValueWithBatchingBackedCodeDb(backing, isPersistent);
+        ValueHash256 hash = Keccak.Compute("any code").ValueHash256;
+
+        codeDb.MarkCodePersisted(hash);
+
+        codeDb.ContainsCode(hash).Should().Be(expectedContains,
+            "false positives in the persisted-code hint are exactly the bug being prevented");
+    }
+
+    [Test]
+    public void Same_code_can_be_redeployed_across_overlay_resets()
+    {
+        IDbProvider dbProvider = TestMemDbProvider.Init();
+        using WorldStateManager manager = TestWorldStateFactory.CreateWorldStateManagerForTest(dbProvider, LimboLogs.Instance);
+
+        // One long-lived overridable scope reused across two BeginScope calls — mirrors
+        // OverridableEnv reusing _worldState across BuildAndOverride.
+        using IOverridableWorldScope overridableScope = manager.CreateOverridableWorldScope();
+        IWorldState worldState = new WorldState(overridableScope.WorldState, LimboLogs.Instance);
+
+        byte[] code = [0x60, 0x60, 0x60, 0x40, 0x52, 0x00];
+        Address addr = TestItem.AddressA;
+        IReleaseSpec spec = Prague.Instance;
+
+        // First scope — deploy + commit. Commit triggers CommitCodeAsync which, before
+        // the fix, marked the shared filter on StateProvider as "persisted".
+        using (worldState.BeginScope(IWorldState.PreGenesis))
+        {
+            worldState.CreateAccount(addr, 0);
+            worldState.InsertCode(addr, code, spec);
+            worldState.Commit(spec);
+
+            worldState.GetCode(addr).Should().BeEquivalentTo(code);
+        }
+
+        // End of scope #1 — overlay's temp KV is discarded.
+        overridableScope.ResetOverrides();
+
+        // Second scope — same hash, fresh overlay. Before the fix, InsertCode consulted
+        // the stale "persisted" filter, skipped the _codeBatch write, and the next
+        // GetCode threw "Code 0x… is missing from the database".
+        using (worldState.BeginScope(IWorldState.PreGenesis))
+        {
+            worldState.CreateAccount(addr, 0);
+            worldState.InsertCode(addr, code, spec);
+
+            Action getCode = () => worldState.GetCode(addr);
+            getCode.Should().NotThrow();
+            worldState.GetCode(addr).Should().BeEquivalentTo(code);
+        }
     }
 }

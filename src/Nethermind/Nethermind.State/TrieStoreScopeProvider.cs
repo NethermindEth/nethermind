@@ -29,6 +29,15 @@ public class TrieStoreScopeProvider : IWorldStateScopeProvider
     protected StateTree _backingStateTree;
     private readonly KeyValueWithBatchingBackedCodeDb _codeDb;
 
+    /// <param name="codeDbIsPersistent">
+    /// Whether <paramref name="codeDb"/> is durable storage (true, default) or a transient
+    /// overlay whose writes are discarded on reset (false, e.g. <c>debug_traceCall</c>
+    /// scopes or any caller layering on top of a <c>ReadOnlyDb</c> temp buffer).
+    /// MUST be false for transient overlays — otherwise the wrapping ICodeDb's persisted-code
+    /// hint cache will remember writes that get discarded with the overlay, and subsequent
+    /// scopes on the same StateProvider will skip re-inserting the bytes, throwing
+    /// "Code 0x… is missing from the database" on the next read. See StateProvider.InsertCode.
+    /// </param>
     public TrieStoreScopeProvider(ITrieStore trieStore, IKeyValueStoreWithBatching codeDb, ILogManager logManager, bool codeDbIsPersistent = true)
     {
         _trieStore = trieStore;
