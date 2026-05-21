@@ -31,7 +31,7 @@ public sealed class WitnessCapturingWorldStateProxy(IWorldState inner) : IWorldS
     private Dictionary<ValueHash256, byte[]>? _bytecodes;
 
     // 1 = armed, 0 = unarmed. Interlocked to be safe across threads.
-    private int _armed;
+    private volatile int _armed;
 
     /// <summary>Allocates fresh tracking collections before a block execution.</summary>
     /// <exception cref="InvalidOperationException">Thrown if already armed.</exception>
@@ -167,6 +167,10 @@ public sealed class WitnessCapturingWorldStateProxy(IWorldState inner) : IWorldS
 
     public byte[]? GetCode(in ValueHash256 codeHash)
     {
+        // NOTE: This overload has no Address context, so RecordEmptySlots cannot be called here.
+        // Callers that have both address and codeHash (e.g. CodeInfoRepository.GetCodeInfo) must
+        // call GetCode(Address) first so the address trip-path is captured in the witness.
+        // RecordBytecode is still called here to capture the bytecode in the witness.
         byte[]? code = inner.GetCode(in codeHash);
         RecordBytecode(code);
         return code;

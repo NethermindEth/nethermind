@@ -351,7 +351,8 @@ public class BaseMergePluginModule : Module
                     return new NewPayloadWithWitnessHandler(
                         (payload, hashes, root, requests) =>
                             lazyModule.Value.engine_newPayloadV5(payload, hashes, root, requests),
-                        ctx.Resolve<IWitnessCaptureRegistry>());
+                        ctx.Resolve<IWitnessCaptureRegistry>(),
+                        ctx.Resolve<ILogManager>());
                 })
 
                 .AddSingleton<NoSyncGcRegionStrategy>()

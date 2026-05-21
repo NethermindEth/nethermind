@@ -43,7 +43,7 @@ public sealed class SszMiddleware
     /// Corresponds to <c>MAX_REQUEST_BODY_SIZE</c> defined in the Engine API SSZ-REST spec
     /// (see https://github.com/ethereum/execution-apis/pull/764)
     /// </summary>
-    public const int MaxBodySize = 0x1000000;
+    public const int MaxBodySize = 0x4000000;
 
     private readonly FrozenDictionary<string, List<ISszEndpointHandler>> _postRoutes;
     private readonly FrozenDictionary<string, List<ISszEndpointHandler>> _getRoutes;

@@ -7,6 +7,7 @@ using Nethermind.Consensus.Stateless;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.JsonRpc;
+using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Data;
 
 namespace Nethermind.Merge.Plugin.Handlers;
@@ -22,8 +23,11 @@ namespace Nethermind.Merge.Plugin.Handlers;
 /// </remarks>
 public sealed class NewPayloadWithWitnessHandler(
     Func<ExecutionPayloadV4, byte[]?[], Hash256?, byte[][]?, Task<ResultWrapper<PayloadStatusV1>>> newPayloadV5,
-    IWitnessCaptureRegistry witnessCaptureRegistry) : INewPayloadWithWitnessHandler
+    IWitnessCaptureRegistry witnessCaptureRegistry,
+    ILogManager? logManager = null) : INewPayloadWithWitnessHandler
 {
+    private readonly ILogger _logger = (logManager ?? LimboLogs.Instance).GetClassLogger<NewPayloadWithWitnessHandler>();
+
     public async Task<ResultWrapper<NewPayloadWithWitnessV1Result>> HandleAsync(
         ExecutionPayloadV4 executionPayload,
         byte[]?[] blobVersionedHashes,
@@ -32,9 +36,19 @@ public sealed class NewPayloadWithWitnessHandler(
     {
         Hash256? blockHash = executionPayload.BlockHash;
 
-        Task<Witness?>? captureTask = blockHash is not null
-            ? witnessCaptureRegistry.ArmCapture(blockHash)
-            : null;
+        // A null BlockHash is a malformed payload: witness generation is impossible without
+        // a block hash to key the capture registry. Log a warning and skip arming — the call
+        // is still forwarded to newPayloadV5 so the CL gets a proper status response.
+        Task<Witness?>? captureTask = null;
+        if (blockHash is not null)
+        {
+            captureTask = witnessCaptureRegistry.ArmCapture(blockHash);
+        }
+        else
+        {
+            if (_logger.IsWarn)
+                _logger.Warn("engine_newPayloadWithWitness: payload BlockHash is null — witness generation skipped. The payload may be malformed.");
+        }
 
         ResultWrapper<PayloadStatusV1> statusResult = await newPayloadV5(
             executionPayload, blobVersionedHashes, parentBeaconBlockRoot, executionRequests);
@@ -57,9 +71,7 @@ public sealed class NewPayloadWithWitnessHandler(
             if (payloadStatus.Status == PayloadStatus.Valid)
             {
                 if (captureTask is not null)
-                {
                     witness = await captureTask;
-                }
             }
             else
             {
