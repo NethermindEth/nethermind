@@ -582,210 +582,174 @@ public class EthSimulateTestsBlocksAndTransactions
             $"Expected block.timestamp = {futureTimestamp} (overridden), got {returnedTimestamp}");
     }
 
-    /// <summary>
-    /// Regression test for https://github.com/NethermindEth/nethermind/issues/11217.
-    /// eth_simulateV1 must return -38014 with the spec-mandated message when the sender has
-    /// insufficient funds, regardless of the <c>validation</c> flag.
-    /// </summary>
-    [TestCase(true)]
-    [TestCase(false)]
-    public async Task eth_simulateV1_insufficient_funds_returns_spec_error_code_and_message(bool validation)
+    private static SimulatePayload<TransactionForRpc> BlockNumberNotIncreasingPayload() => new()
     {
-        TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
-        SimulatePayload<TransactionForRpc> payload = new()
-        {
-            BlockStateCalls =
-            [
-                new() { Calls = [new LegacyTransactionForRpc { From = TestItem.AddressA, To = TestItem.AddressB, Value = 1_000_000.Ether }] }
-            ],
-            Validation = validation
-        };
+        BlockStateCalls =
+        [
+            new() { BlockOverrides = new BlockOverride { Number = 10 }, Calls = [] },
+            // Strictly less than the previous BlockStateCall.
+            new() { BlockOverrides = new BlockOverride { Number = 9 }, Calls = [] }
+        ]
+    };
 
-        ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result =
-            chain.EthRpcModule.eth_simulateV1(payload, BlockParameter.Latest);
-
-        Assert.That(result.Result!.Error, Is.EqualTo(SimulateErrorMessages.InsufficientFunds));
-        Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InsufficientFunds));
-    }
-
-    /// <summary>
-    /// Regression test for https://github.com/NethermindEth/nethermind/issues/11215
-    /// eth_simulateV1 with validation:true and maxFeePerGas below block baseFee must return
-    /// code -38012 with message "max fee per gas less than block base fee".
-    /// </summary>
-    [Test]
-    public async Task eth_simulateV1_fee_cap_below_base_fee_returns_spec_error_code_and_message()
+    private static SimulatePayload<TransactionForRpc> InsufficientFundsPayload(bool validation) => new()
     {
-        TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
+        BlockStateCalls =
+        [
+            new() { Calls = [new LegacyTransactionForRpc { From = TestItem.AddressA, To = TestItem.AddressB, Value = 1_000_000.Ether }] }
+        ],
+        Validation = validation
+    };
 
+    private static SimulatePayload<TransactionForRpc> FeeCapBelowBaseFeePayload() => new()
+    {
         // baseFeePerGas = 100 gwei, maxFeePerGas = 1 gwei → fee cap is below base fee
-        UInt256 baseFee = 100.GWei;
-        UInt256 feeCap = 1.GWei;
-
-        SimulatePayload<TransactionForRpc> payload = new()
-        {
-            BlockStateCalls =
-            [
-                new()
+        BlockStateCalls =
+        [
+            new()
+            {
+                BlockOverrides = new BlockOverride { BaseFeePerGas = 100.GWei },
+                StateOverrides = new Dictionary<Address, AccountOverride>
                 {
-                    BlockOverrides = new BlockOverride { BaseFeePerGas = baseFee },
-                    StateOverrides = new Dictionary<Address, AccountOverride>
+                    { TestItem.AddressA, new AccountOverride { Balance = 100.Ether } }
+                },
+                Calls =
+                [
+                    new EIP1559TransactionForRpc
                     {
-                        { TestItem.AddressA, new AccountOverride { Balance = 100.Ether } }
-                    },
-                    Calls =
-                    [
-                        new EIP1559TransactionForRpc
-                        {
-                            From = TestItem.AddressA,
-                            To = TestItem.AddressB,
-                            Value = UInt256.Zero,
-                            Gas = 21_000,
-                            MaxFeePerGas = feeCap,
-                            MaxPriorityFeePerGas = UInt256.Zero
-                        }
-                    ]
-                }
-            ],
-            Validation = true
-        };
+                        From = TestItem.AddressA,
+                        To = TestItem.AddressB,
+                        Value = UInt256.Zero,
+                        Gas = 21_000,
+                        MaxFeePerGas = 1.GWei,
+                        MaxPriorityFeePerGas = UInt256.Zero
+                    }
+                ]
+            }
+        ],
+        Validation = true
+    };
 
-        ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result =
-            chain.EthRpcModule.eth_simulateV1(payload, BlockParameter.Latest);
-
-        Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.FeeCapBelowBaseFee));
-        Assert.That(result.Result!.Error, Is.EqualTo(SimulateErrorMessages.FeeCapBelowBaseFee));
-    }
-
-    /// <summary>
-    /// Regression test for https://github.com/NethermindEth/nethermind/issues/11218.
-    /// eth_simulateV1 must return -38013 with the spec-mandated message when the transaction
-    /// gas limit is below the intrinsic gas cost.
-    /// </summary>
-    [Test]
-    public async Task eth_simulateV1_intrinsic_gas_returns_spec_error_code_and_message()
+    private static SimulatePayload<TransactionForRpc> IntrinsicGasPayload() => new()
     {
-        TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
-
         // Gas = 1 is below the intrinsic gas cost of 21_000 for a basic transfer.
-        SimulatePayload<TransactionForRpc> payload = new()
-        {
-            BlockStateCalls =
-            [
-                new()
+        BlockStateCalls =
+        [
+            new()
+            {
+                BlockOverrides = new BlockOverride { BaseFeePerGas = UInt256.Zero },
+                StateOverrides = new Dictionary<Address, AccountOverride>
                 {
-                    BlockOverrides = new BlockOverride { BaseFeePerGas = UInt256.Zero },
-                    StateOverrides = new Dictionary<Address, AccountOverride>
+                    { TestItem.AddressA, new AccountOverride { Balance = 1.Ether } }
+                },
+                Calls =
+                [
+                    new LegacyTransactionForRpc
                     {
-                        { TestItem.AddressA, new AccountOverride { Balance = 1.Ether } }
-                    },
-                    Calls =
-                    [
-                        new LegacyTransactionForRpc
-                        {
-                            From = TestItem.AddressA,
-                            To = TestItem.AddressB,
-                            Value = UInt256.Zero,
-                            Gas = 1,
-                            GasPrice = UInt256.Zero
-                        }
-                    ]
-                }
-            ],
-            Validation = true
-        };
+                        From = TestItem.AddressA,
+                        To = TestItem.AddressB,
+                        Value = UInt256.Zero,
+                        Gas = 1,
+                        GasPrice = UInt256.Zero
+                    }
+                ]
+            }
+        ],
+        Validation = true
+    };
 
-        ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result =
-            chain.EthRpcModule.eth_simulateV1(payload, BlockParameter.Latest);
+    private static SimulatePayload<TransactionForRpc> NoncePayload(UInt256 accountNonce, UInt256 txNonce) => new()
+    {
+        BlockStateCalls =
+        [
+            new()
+            {
+                StateOverrides = new Dictionary<Address, AccountOverride>
+                {
+                    { TestItem.AddressA, new AccountOverride { Balance = 1.Ether, Nonce = accountNonce } }
+                },
+                Calls =
+                [
+                    new LegacyTransactionForRpc
+                    {
+                        From = TestItem.AddressA,
+                        To = TestItem.AddressB,
+                        Value = UInt256.Zero,
+                        Nonce = txNonce,
+                        GasPrice = UInt256.Zero,
+                        Gas = 21_000
+                    }
+                ]
+            }
+        ],
+        Validation = true
+    };
 
-        Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.IntrinsicGas));
-        Assert.That(result.Result!.Error, Is.EqualTo(SimulateErrorMessages.IntrinsicGas));
+    private static IEnumerable<TestCaseData> SpecErrorCases()
+    {
+        yield return new TestCaseData(
+            (Func<SimulatePayload<TransactionForRpc>>)BlockNumberNotIncreasingPayload,
+            ErrorCodes.InvalidInputBlocksOutOfOrder,
+            SimulateErrorMessages.BlockNumberNotIncreasing)
+            .SetName("BlockNumberNotIncreasing_38020");
+
+        yield return new TestCaseData(
+            (Func<SimulatePayload<TransactionForRpc>>)(static () => InsufficientFundsPayload(validation: true)),
+            ErrorCodes.InsufficientFunds,
+            SimulateErrorMessages.InsufficientFunds)
+            .SetName("InsufficientFunds_validation_true_38014");
+
+        yield return new TestCaseData(
+            (Func<SimulatePayload<TransactionForRpc>>)(static () => InsufficientFundsPayload(validation: false)),
+            ErrorCodes.InsufficientFunds,
+            SimulateErrorMessages.InsufficientFunds)
+            .SetName("InsufficientFunds_validation_false_38014");
+
+        yield return new TestCaseData(
+            (Func<SimulatePayload<TransactionForRpc>>)FeeCapBelowBaseFeePayload,
+            ErrorCodes.FeeCapBelowBaseFee,
+            SimulateErrorMessages.FeeCapBelowBaseFee)
+            .SetName("FeeCapBelowBaseFee_38012");
+
+        yield return new TestCaseData(
+            (Func<SimulatePayload<TransactionForRpc>>)IntrinsicGasPayload,
+            ErrorCodes.IntrinsicGas,
+            SimulateErrorMessages.IntrinsicGas)
+            .SetName("IntrinsicGas_38013");
+
+        yield return new TestCaseData(
+            (Func<SimulatePayload<TransactionForRpc>>)(static () => NoncePayload(accountNonce: 10, txNonce: 0)),
+            ErrorCodes.NonceTooLow,
+            null)
+            .SetName("NonceTooLow_38010");
+
+        yield return new TestCaseData(
+            (Func<SimulatePayload<TransactionForRpc>>)(static () => NoncePayload(accountNonce: 0, txNonce: 100)),
+            ErrorCodes.NonceTooHigh,
+            null)
+            .SetName("NonceTooHigh_38011");
     }
 
     /// <summary>
-    /// Regression test: eth_simulateV1 with validation:true and a nonce below the account's current
-    /// nonce must return -38010 (NonceTooLow).
+    /// Regression test covering the execution-apis spec error codes/messages eth_simulateV1 must
+    /// return for well-known input/validation failures. See linked issues per case:
+    /// 11217 (insufficient funds), 11215 (fee cap below base fee), 11218 (intrinsic gas), 11219
+    /// (block number not increasing), nonce too low/high.
     /// </summary>
-    [Test]
-    public async Task eth_simulateV1_nonce_too_low_returns_spec_error_code()
+    [TestCaseSource(nameof(SpecErrorCases))]
+    public async Task eth_simulateV1_returns_spec_error(
+        Func<SimulatePayload<TransactionForRpc>> payloadFactory,
+        int expectedErrorCode,
+        string? expectedMessage)
     {
         TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
 
-        // Set the account's nonce to 10, then send a tx with nonce 0 (below current).
-        SimulatePayload<TransactionForRpc> payload = new()
-        {
-            BlockStateCalls =
-            [
-                new()
-                {
-                    StateOverrides = new Dictionary<Address, AccountOverride>
-                    {
-                        { TestItem.AddressA, new AccountOverride { Balance = 1.Ether, Nonce = 10 } }
-                    },
-                    Calls =
-                    [
-                        new LegacyTransactionForRpc
-                        {
-                            From = TestItem.AddressA,
-                            To = TestItem.AddressB,
-                            Value = UInt256.Zero,
-                            Nonce = 0,
-                            GasPrice = UInt256.Zero,
-                            Gas = 21_000
-                        }
-                    ]
-                }
-            ],
-            Validation = true
-        };
-
         ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result =
-            chain.EthRpcModule.eth_simulateV1(payload, BlockParameter.Latest);
+            chain.EthRpcModule.eth_simulateV1(payloadFactory(), BlockParameter.Latest);
 
-        Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.NonceTooLow));
-    }
-
-    /// <summary>
-    /// Regression test: eth_simulateV1 with validation:true and a nonce above the account's current
-    /// nonce must return -38011 (NonceTooHigh).
-    /// </summary>
-    [Test]
-    public async Task eth_simulateV1_nonce_too_high_returns_spec_error_code()
-    {
-        TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
-
-        // Account nonce is 0; send a tx with nonce 100 (way above current).
-        SimulatePayload<TransactionForRpc> payload = new()
-        {
-            BlockStateCalls =
-            [
-                new()
-                {
-                    StateOverrides = new Dictionary<Address, AccountOverride>
-                    {
-                        { TestItem.AddressA, new AccountOverride { Balance = 1.Ether } }
-                    },
-                    Calls =
-                    [
-                        new LegacyTransactionForRpc
-                        {
-                            From = TestItem.AddressA,
-                            To = TestItem.AddressB,
-                            Value = UInt256.Zero,
-                            Nonce = 100,
-                            GasPrice = UInt256.Zero,
-                            Gas = 21_000
-                        }
-                    ]
-                }
-            ],
-            Validation = true
-        };
-
-        ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result =
-            chain.EthRpcModule.eth_simulateV1(payload, BlockParameter.Latest);
-
-        Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.NonceTooHigh));
+        Assert.That(result.ErrorCode, Is.EqualTo(expectedErrorCode));
+        if (expectedMessage is not null)
+            Assert.That(result.Result!.Error, Is.EqualTo(expectedMessage));
     }
 
     /// <summary>

@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Numerics;
 using System.Text;
+using System.Text.Json;
 using MathNet.Numerics;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
@@ -669,5 +670,28 @@ public class AbiTests
             Encoding.ASCII.GetBytes("1234567890"),
             Encoding.ASCII.GetBytes("Hello, world!"));
         Assert.That(encoded.ToHexString(), Is.EqualTo(expectedValue.ToHexString()));
+    }
+
+    [TestCase("tuple", typeof(AbiTuple), "()")]
+    [TestCase("tuple[]", typeof(AbiArray), "()[]")]
+    [TestCase("tuple[3]", typeof(AbiFixedLengthArray), "()[3]")]
+    [TestCase("tuple[][]", typeof(AbiArray), "()[][]")]
+    [TestCase("tuple[2][]", typeof(AbiArray), "()[2][]")]
+    public void AbiTypeConverter_Parses_Tuple_Variants(string typeName, Type expectedType, string expectedName)
+    {
+        AbiType result = JsonSerializer.Deserialize<AbiType>($"\"{typeName}\"")!;
+
+        Assert.That(result, Is.TypeOf(expectedType));
+        Assert.That(result.Name, Is.EqualTo(expectedName));
+    }
+
+    [Test]
+    public void AbiTuple_Name_Reflects_Elements()
+    {
+        AbiTuple tuple = new(AbiType.UInt8, AbiType.UInt64);
+        Assert.That(tuple.Name, Is.EqualTo("(uint8,uint64)"));
+
+        AbiArray tupleArray = new(tuple);
+        Assert.That(tupleArray.Name, Is.EqualTo("(uint8,uint64)[]"));
     }
 }

@@ -28,10 +28,11 @@ public class AuthorizationTupleDecoderTests
     {
         AuthorizationTupleDecoder sut = new();
 
-        RlpStream result = sut.Encode(item);
-        Rlp.ValueDecoderContext ctx = new(result.Data);
+        Rlp result = sut.Encode(item);
+        Rlp.ValueDecoderContext ctx = new(result.Bytes);
 
-        Assert.That(sut.Decode(ref ctx), Is.EqualTo(item).UsingPropertiesComparer());
+        AuthorizationTuple decoded = sut.Decode(ref ctx);
+        Assert.That(decoded, Is.EqualTo(item).UsingPropertiesComparer());
     }
 
     [Test]

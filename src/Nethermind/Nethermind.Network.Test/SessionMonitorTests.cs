@@ -10,7 +10,6 @@ using Nethermind.Logging;
 using Nethermind.Network.Config;
 using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.Analyzers;
-using Nethermind.Stats.Model;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -35,12 +34,14 @@ namespace Nethermind.Network.Test
         }
 
         [Test]
-        public void Will_unregister_on_disconnect()
+        public void Can_remove_session()
         {
             ISession session = CreateSession();
             SessionMonitor sessionMonitor = new(new NetworkConfig(), LimboLogs.Instance);
             sessionMonitor.AddSession(session);
-            session.MarkDisconnected(DisconnectReason.Other, DisconnectType.Remote, "test");
+            sessionMonitor.RemoveSession(session);
+
+            Assert.That(sessionMonitor.Sessions, Is.Empty);
         }
 
         [Test]

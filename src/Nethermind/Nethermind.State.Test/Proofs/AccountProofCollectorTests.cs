@@ -437,9 +437,11 @@ namespace Nethermind.Store.Test.Proofs
             IScopedTrieStore scopedTrieStore = new RawScopedTrieStore(memDb);
             StateTree tree = new(scopedTrieStore, LimboLogs.Instance);
             StorageTree storageTree = new(new RawScopedTrieStore(memDb, TestItem.AddressA.ToAccountPath.ToCommitment()), Keccak.EmptyTreeHash, LimboLogs.Instance);
-            storageTree.Set(Bytes.FromHexString("1000000000000000000000000000000000000000000000000000000000000000"), Bytes.FromHexString("aa"));
-            storageTree.Set(Bytes.FromHexString("3000000000000000000000000000000000000000000000000000000000000000"), Bytes.FromHexString("ab"));
-            storageTree.Set(Bytes.FromHexString("3000000000000000000000000000000000000000000000000000000000000010"), Bytes.FromHexString("1111111111111111111111111111111111111111111111111111111111111111"));
+            // Wrap values in Rlp.Encode so the trie matches production usage (StorageTree.Set RLP-encodes by default);
+            // this lets the values stay small enough to inline while keeping the leaf payload valid RLP.
+            storageTree.Set(Bytes.FromHexString("1000000000000000000000000000000000000000000000000000000000000000"), Rlp.Encode(Bytes.FromHexString("aa")));
+            storageTree.Set(Bytes.FromHexString("3000000000000000000000000000000000000000000000000000000000000000"), Rlp.Encode(Bytes.FromHexString("ab")));
+            storageTree.Set(Bytes.FromHexString("3000000000000000000000000000000000000000000000000000000000000010"), Rlp.Encode(Bytes.FromHexString("1111111111111111111111111111111111111111111111111111111111111111")));
             storageTree.Commit();
             storageTree = new(new RawScopedTrieStore(memDb, TestItem.AddressA.ToAccountPath.ToCommitment()), storageTree.RootHash, LimboLogs.Instance);
             Account account1 = Build.An.Account.WithBalance(1).WithStorageRoot(storageTree.RootHash).TestObject;

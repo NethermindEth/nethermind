@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Frozen;
 using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
@@ -14,11 +15,12 @@ using Nethermind.Specs.ChainSpecStyle.Json;
 
 namespace Nethermind.Specs.ChainSpecStyle
 {
-    public class ChainSpecBasedSpecProvider : SpecProviderBase, ISpecProvider
+    public class ChainSpecBasedSpecProvider : SpecProviderBase, IForkAwareSpecProvider
     {
         private readonly ChainSpec _chainSpec;
+        private IForkAwareSpecProvider? _forkAware;
 
-        public ChainSpecBasedSpecProvider(ChainSpec chainSpec, ILogManager logManager = null)
+        public ChainSpecBasedSpecProvider(ChainSpec chainSpec, ILogManager? logManager = null)
             : base(logManager?.GetClassLogger<ChainSpecBasedSpecProvider>() ?? LimboTraceLogger.Instance)
         {
             _chainSpec = chainSpec ?? throw new ArgumentNullException(nameof(chainSpec));
@@ -124,6 +126,7 @@ namespace Nethermind.Specs.ChainSpecStyle
             LoadTransitions(allTransitions);
 
             TransitionActivations = CreateTransitionActivations(transitionBlockNumbers, transitionTimestamps);
+            _forkAware = ForkAwareForChain(_chainSpec.ChainId);
 
             if (_chainSpec.Parameters.TerminalPoWBlockNumber is not null)
             {
@@ -132,6 +135,38 @@ namespace Nethermind.Specs.ChainSpecStyle
 
             TerminalTotalDifficulty = _chainSpec.Parameters.TerminalTotalDifficulty;
         }
+
+        private static readonly List<IForkAwareSpecProvider> _knownProviders =
+        [
+            MainnetSpecProvider.Instance,
+            GnosisSpecProvider.Instance,
+            ChiadoSpecProvider.Instance,
+            SepoliaSpecProvider.Instance,
+            HoodiSpecProvider.Instance,
+            MordenSpecProvider.Instance,
+        ];
+        private static FrozenDictionary<ulong, IForkAwareSpecProvider>? _knownProvidersByChainId;
+
+        /// <summary>
+        /// Built-in plus plugin-registered <see cref="IForkAwareSpecProvider"/>s, keyed by chain id.
+        /// The dictionary is rebuilt lazily after each <see cref="RegisterProvider"/> call.
+        /// </summary>
+        /// <remarks>Plugin registration is expected at startup only; not safe for concurrent mutation.</remarks>
+        public static FrozenDictionary<ulong, IForkAwareSpecProvider> KnownProvidersByChainId =>
+            _knownProvidersByChainId ??= _knownProviders.ToFrozenDictionary(static p => p.ChainId);
+
+        /// <summary>
+        /// Registers an additional <see cref="IForkAwareSpecProvider"/> (e.g. from a plugin) so that
+        /// <see cref="ChainSpecBasedSpecProvider"/> can resolve forks for its chain id. Call at startup.
+        /// </summary>
+        public static void RegisterProvider(IForkAwareSpecProvider provider)
+        {
+            _knownProviders.Add(provider);
+            _knownProvidersByChainId = null;
+        }
+
+        private static IForkAwareSpecProvider? ForkAwareForChain(ulong chainId) =>
+            KnownProvidersByChainId.GetValueOrDefault(chainId);
 
         private (ForkActivation, IReleaseSpec Spec)[] CreateTransitions(
             ChainSpec chainSpec,
@@ -189,6 +224,7 @@ namespace Nethermind.Specs.ChainSpecStyle
             releaseSpec.MaximumExtraDataSize = chainSpec.Parameters.MaximumExtraDataSize;
             releaseSpec.MinGasLimit = chainSpec.Parameters.MinGasLimit;
             releaseSpec.MinHistoryRetentionEpochs = chainSpec.Parameters.MinHistoryRetentionEpochs;
+            releaseSpec.MinBalRetentionEpochs = chainSpec.Parameters.MinBalRetentionEpochs;
             releaseSpec.GasLimitBoundDivisor = chainSpec.Parameters.GasLimitBoundDivisor;
             releaseSpec.IsEip170Enabled = (chainSpec.Parameters.MaxCodeSizeTransition ?? long.MaxValue) <= releaseStartBlock ||
                                           (chainSpec.Parameters.MaxCodeSizeTransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
@@ -386,5 +422,12 @@ namespace Nethermind.Specs.ChainSpecStyle
         public ulong NetworkId => _chainSpec.NetworkId;
         public ulong ChainId => _chainSpec.ChainId;
         public string SealEngine => _chainSpec.SealEngineType;
+        public IEnumerable<string> AvailableForks => _forkAware?.AvailableForks ?? [];
+
+        public bool TryGetForkSpec(string forkName, out IReleaseSpec? spec)
+        {
+            spec = null;
+            return _forkAware?.TryGetForkSpec(forkName, out spec) ?? false;
+        }
     }
 }

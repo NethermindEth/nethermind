@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
@@ -33,8 +34,6 @@ namespace Nethermind.Trie.Test.Pruning
     {
         private readonly ILogManager _logManager = LimboLogs.Instance;
         // new OneLoggerLogManager(new NUnitLogger(LogLevel.Trace));
-
-        private readonly AccountDecoder _accountDecoder = new();
 
         private TrieStore CreateTrieStore(
             IPruningStrategy? pruningStrategy = null,
@@ -578,7 +577,7 @@ namespace Nethermind.Trie.Test.Pruning
 
             TrieNode a = new(NodeType.Leaf);
             Account account = new(1, 1, storage1.Keccak, Keccak.OfAnEmptyString);
-            a.Value = _accountDecoder.Encode(account).Bytes;
+            a.Value = Rlp.Encode(account).Bytes;
             a.Key = Nibbles.BytesToNibbleBytes(TestItem.KeccakA.BytesToArray());
             a.ResolveKey(NullTrieNodeResolver.Instance, ref emptyPath);
 
@@ -633,7 +632,7 @@ namespace Nethermind.Trie.Test.Pruning
 
             TrieNode a = new(NodeType.Leaf);
             Account account = new(1, 1, storage1.Keccak, Keccak.OfAnEmptyString);
-            a.Value = _accountDecoder.Encode(account).Bytes;
+            a.Value = Rlp.Encode(account).Bytes;
             a.Key = Bytes.FromHexString("abc");
             a.ResolveKey(NullTrieNodeResolver.Instance, ref emptyPath);
 
@@ -695,7 +694,7 @@ namespace Nethermind.Trie.Test.Pruning
 
             TrieNode a = new(NodeType.Leaf);
             Account account = new(1, 1, storage1.Keccak, Keccak.OfAnEmptyString);
-            a.Value = _accountDecoder.Encode(account).Bytes;
+            a.Value = Rlp.Encode(account).Bytes;
             a.Key = storage1Nib[1..];
             a.ResolveKey(NullTrieNodeResolver.Instance, ref emptyPath);
 
@@ -704,7 +703,7 @@ namespace Nethermind.Trie.Test.Pruning
 
             TrieNode b = new(NodeType.Leaf);
             Account accountB = new(2, 1, storage2.Keccak, Keccak.OfAnEmptyString);
-            b.Value = _accountDecoder.Encode(accountB).Bytes;
+            b.Value = Rlp.Encode(accountB).Bytes;
             b.Key = storage2Nib[1..];
             b.ResolveKey(NullTrieNodeResolver.Instance, ref emptyPath);
 
@@ -1567,6 +1566,10 @@ namespace Nethermind.Trie.Test.Pruning
 
             await persistTask;
 
+            // The fire-and-forget flush from BeginScope's dispose can lose the lock race; force it
+            // here so block 12 leaves the commit buffer before the follow-up commits.
+            fullTrieStore.FlushNonBlockingBuffer();
+
             // Write a bit more
             for (int i = 13; i < 13 + pruningBoundary; i++)
             {
@@ -1745,6 +1748,7 @@ namespace Nethermind.Trie.Test.Pruning
 
             Assert.That(commitBlock1, Throws.Nothing);
         }
+
     }
 
     [TestFixture]
@@ -1788,6 +1792,31 @@ namespace Nethermind.Trie.Test.Pruning
             }
 
             Assert.That(persistedHashes.Count, Is.EqualTo(1));
+        }
+
+        [Test]
+        public void Incomplete_persisted_prune_warning_is_rate_limited()
+        {
+            TestLogger testLogger = new() { IsWarn = true };
+            OneLoggerLogManager logManager = new(new ILogger(testLogger));
+
+            TestPruningStrategy strategy = new(shouldPrune: false) { ShouldPrunePersistedEnabled = true };
+
+            using TrieStore trieStore = new(
+                new NodeStorage(new TestMemDb(), INodeStorage.KeyScheme.HalfPath, requirePath: true),
+                strategy,
+                No.Persistence,
+                new TestFinalizedStateProvider(0),
+                new PruningConfig { PrunePersistedNodePortion = 1.0, TrackPastKeys = false },
+                logManager);
+
+            for (int i = 0; i < 50; i++)
+            {
+                trieStore.SyncPruneQueue();
+            }
+
+            int warnCount = testLogger.LogList.Count(m => m.Contains("Unable to completely prune persisted nodes"));
+            Assert.That(warnCount, Is.EqualTo(1), "rate-limited warning must fire at most once per cooldown window");
         }
 
         private static TrieNode CreateNode(bool isPersisted) =>

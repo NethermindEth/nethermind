@@ -21,7 +21,7 @@ public static class ExceptionAssertionExtensions
         }
         catch
         {
-            // FluentAssertions NotThrow<TException> ignored other exception types.
+            // The old assertion helper ignored other exception types.
         }
     }
 }

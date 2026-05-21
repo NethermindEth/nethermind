@@ -583,6 +583,27 @@ public class TxValidatorTests
     }
 
     [Test]
+    public void IsWellFormed_Eip8037FloorGasExceedingRegularCap_ReturnsFalse()
+    {
+        byte[] data = new byte[262_000];
+        Array.Fill(data, (byte)0xff);
+        Transaction tx = Build.A.Transaction
+            .WithGasLimit(20_000_000)
+            .WithData(data)
+            .WithChainId(TestBlockchainIds.ChainId)
+            .SignedAndResolved().TestObject;
+
+        TxValidator txValidator = new(TestBlockchainIds.ChainId);
+        ValidationResult result = txValidator.IsWellFormed(tx, Amsterdam.Instance);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.AsBool, Is.False);
+            Assert.That(result.Error, Does.StartWith(TxErrorMessages.IntrinsicGasTooLow));
+        }
+    }
+
+    [Test]
     public void IsWellFormed_Nonce_Under_Limit([Values(TxType.AccessList, TxType.Legacy)] TxType txType)
     {
         ValidationResult result = IsWellFormed_Nonce_Limit(ulong.MaxValue - 1, txType);

@@ -27,6 +27,7 @@ using Nethermind.Synchronization;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.TxPool;
 using NSubstitute;
+using Newtonsoft.Json.Linq;
 using NUnit.Framework;
 
 namespace Nethermind.Optimism.Test.Rpc;
@@ -40,6 +41,34 @@ public class OptimismEthRpcModuleTest
         TxDecoder.Instance.RegisterDecoder(new OptimismTxDecoder<Transaction>());
         TxDecoder.Instance.RegisterDecoder(new OptimismLegacyTxDecoder());
     }
+
+    private static IBlockFinder MockBlockFinder(Block block)
+    {
+        IBlockFinder bf = Substitute.For<IBlockFinder>();
+        bf.FindBlock(new BlockParameter(block.Hash!)).Returns(block);
+        bf.FindBlock(new BlockParameter(block.Number)).Returns(block);
+        return bf;
+    }
+
+    private static IReceiptFinder MockReceiptFinder(Block block, params TxReceipt[] receipts)
+    {
+        IReceiptFinder rf = Substitute.For<IReceiptFinder>();
+        rf.Get(block).Returns(receipts);
+        return rf;
+    }
+
+    private static Task<TestRpcBlockchain> BuildOptimismRpc(IBlockFinder blockFinder, IReceiptFinder receiptFinder) =>
+        TestRpcBlockchain
+            .ForTest(sealEngineType: SealEngineType.Optimism)
+            .WithBlockFinder(blockFinder)
+            .WithReceiptFinder(receiptFinder)
+            .WithOptimismEthRpcModule(
+                sequencerRpcClient: Substitute.For<IJsonRpcClient>(),
+                accountStateProvider: Substitute.For<IAccountStateProvider>(),
+                ecdsa: Substitute.For<IEthereumEcdsa>(),
+                sealer: Substitute.For<ITxSealer>(),
+                opSpecHelper: Substitute.For<IOptimismSpecHelper>())
+            .Build();
 
     [Test]
     public async Task Sequencer_send_transaction_with_signature_will_not_try_to_sign()
@@ -241,24 +270,7 @@ public class OptimismEthRpcModuleTest
             DepositReceiptVersion = 0x30,
         };
 
-        IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
-        blockFinder.FindBlock(new BlockParameter(block.Hash!)).Returns(block);
-        blockFinder.FindBlock(new BlockParameter(block.Number)).Returns(block);
-
-        IReceiptFinder receiptFinder = Substitute.For<IReceiptFinder>();
-        receiptFinder.Get(block).Returns([receipt]);
-
-        TestRpcBlockchain rpcBlockchain = await TestRpcBlockchain
-            .ForTest(sealEngineType: SealEngineType.Optimism)
-            .WithBlockFinder(blockFinder)
-            .WithReceiptFinder(receiptFinder)
-            .WithOptimismEthRpcModule(
-                sequencerRpcClient: Substitute.For<IJsonRpcClient>(),
-                accountStateProvider: Substitute.For<IAccountStateProvider>(),
-                ecdsa: Substitute.For<IEthereumEcdsa>(),
-                sealer: Substitute.For<ITxSealer>(),
-                opSpecHelper: Substitute.For<IOptimismSpecHelper>())
-            .Build();
+        TestRpcBlockchain rpcBlockchain = await BuildOptimismRpc(MockBlockFinder(block), MockReceiptFinder(block, receipt));
 
         string expected = $$"""
                          {
@@ -319,24 +331,7 @@ public class OptimismEthRpcModuleTest
             DepositReceiptVersion = 0x30,
         };
 
-        IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
-        blockFinder.FindBlock(new BlockParameter(block.Hash!)).Returns(block);
-        blockFinder.FindBlock(new BlockParameter(block.Number)).Returns(block);
-
-        IReceiptFinder receiptFinder = Substitute.For<IReceiptFinder>();
-        receiptFinder.Get(block).Returns([receipt]);
-
-        TestRpcBlockchain rpcBlockchain = await TestRpcBlockchain
-            .ForTest(sealEngineType: SealEngineType.Optimism)
-            .WithBlockFinder(blockFinder)
-            .WithReceiptFinder(receiptFinder)
-            .WithOptimismEthRpcModule(
-                sequencerRpcClient: Substitute.For<IJsonRpcClient>(),
-                accountStateProvider: Substitute.For<IAccountStateProvider>(),
-                ecdsa: Substitute.For<IEthereumEcdsa>(),
-                sealer: Substitute.For<ITxSealer>(),
-                opSpecHelper: Substitute.For<IOptimismSpecHelper>())
-            .Build();
+        TestRpcBlockchain rpcBlockchain = await BuildOptimismRpc(MockBlockFinder(block), MockReceiptFinder(block, receipt));
 
         string expected = $$"""
                          {
@@ -372,6 +367,77 @@ public class OptimismEthRpcModuleTest
             string serialized = await rpcBlockchain.TestEthRpc("eth_getTransactionByBlockNumberAndIndex", block.Number, 0);
             JsonTestAssertions.AssertEquivalent(serialized, expected);
         }
+    }
+
+    public enum ReceiptOrder { Aligned, Reversed, Empty }
+
+    [TestCase(ReceiptOrder.Aligned, "0x1", TestName = "Receipts aligned with transactions (fast path)")]
+    [TestCase(ReceiptOrder.Reversed, "0x1", TestName = "Receipts in reverse order (linear fallback)")]
+    [TestCase(ReceiptOrder.Empty, null, TestName = "Empty receipts (no match)")]
+    public async Task GetBlockByHash_WithFullTransactions_SetsDepositReceiptVersionFromMatchingReceipt(
+        ReceiptOrder order, string? expectedDepositVersion)
+    {
+        Transaction depositTx = Build.A.Transaction
+            .WithType(TxType.DepositTx)
+            .WithHash(TestItem.KeccakA)
+            .WithSenderAddress(TestItem.AddressA)
+            .TestObject;
+        Transaction regularTx = Build.A.Transaction
+            .WithType(TxType.EIP1559)
+            .WithHash(TestItem.KeccakB)
+            .WithSenderAddress(TestItem.AddressB)
+            .TestObject;
+
+        Block block = Build.A.Block
+            .WithHeader(Build.A.BlockHeader
+                .WithNumber(1)
+                .WithHash(TestItem.KeccakC)
+                .TestObject)
+            .WithTransactions(depositTx, regularTx)
+            .TestObject;
+
+        OptimismTxReceipt depositReceipt = new()
+        {
+            Sender = depositTx.SenderAddress!,
+            TxType = depositTx.Type,
+            TxHash = depositTx.Hash!,
+            BlockHash = block.Hash,
+            BlockNumber = block.Number,
+            Index = 0,
+            DepositReceiptVersion = 1,
+        };
+        TxReceipt regularReceipt = new()
+        {
+            Sender = regularTx.SenderAddress!,
+            TxType = regularTx.Type,
+            TxHash = regularTx.Hash!,
+            BlockHash = block.Hash,
+            BlockNumber = block.Number,
+            Index = 1,
+        };
+
+        TxReceipt[] receipts = order switch
+        {
+            ReceiptOrder.Aligned => [depositReceipt, regularReceipt],
+            ReceiptOrder.Reversed => [regularReceipt, depositReceipt],
+            ReceiptOrder.Empty => [],
+            _ => throw new System.ArgumentOutOfRangeException(nameof(order)),
+        };
+
+        TestRpcBlockchain rpcBlockchain = await BuildOptimismRpc(MockBlockFinder(block), MockReceiptFinder(block, receipts));
+
+        string serialized = await rpcBlockchain.TestEthRpc("eth_getBlockByHash", block.Hash, true);
+        JToken result = JToken.Parse(serialized)["result"]!;
+        JToken firstTx = result["transactions"]![0]!;
+        JToken secondTx = result["transactions"]![1]!;
+
+        Assert.That(firstTx["hash"]!.Value<string>(), Is.EqualTo(depositTx.Hash!.Bytes.ToHexString(withZeroX: true)));
+        if (expectedDepositVersion is null)
+            Assert.That(firstTx["depositReceiptVersion"], Is.Null);
+        else
+            Assert.That(firstTx["depositReceiptVersion"]!.Value<string>(), Is.EqualTo(expectedDepositVersion));
+        Assert.That(secondTx["hash"]!.Value<string>(), Is.EqualTo(regularTx.Hash!.Bytes.ToHexString(withZeroX: true)));
+        Assert.That(secondTx["depositReceiptVersion"], Is.Null);
     }
 
     [Test]
@@ -419,25 +485,7 @@ public class OptimismEthRpcModuleTest
             Index = 1,
         };
 
-        IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
-        blockFinder.FindBlock(new BlockParameter(block.Hash!)).Returns(block);
-        blockFinder.FindBlock(new BlockParameter(block.Number)).Returns(block);
-
-        IReceiptFinder receiptFinder = Substitute.For<IReceiptFinder>();
-        receiptFinder.Get(block).Returns([receiptA, receiptB]);
-
-        TestRpcBlockchain rpcBlockchain = await TestRpcBlockchain
-            .ForTest(sealEngineType: SealEngineType.Optimism)
-            .WithBlockFinder(blockFinder)
-            .WithReceiptFinder(receiptFinder)
-            .WithOptimismEthRpcModule(
-                sequencerRpcClient: Substitute.For<IJsonRpcClient>(),
-                accountStateProvider: Substitute.For<IAccountStateProvider>(),
-                ecdsa: Substitute.For<IEthereumEcdsa>(),
-                sealer: Substitute.For<ITxSealer>(),
-                opSpecHelper: Substitute.For<IOptimismSpecHelper>())
-            .Build();
-
+        TestRpcBlockchain rpcBlockchain = await BuildOptimismRpc(MockBlockFinder(block), MockReceiptFinder(block, receiptA, receiptB));
 
         string serialized = await rpcBlockchain.TestEthRpc("eth_getBlockReceipts", new BlockParameter(block.Number));
         string expected = $$"""
@@ -518,14 +566,10 @@ public class OptimismEthRpcModuleTest
         IBlockchainBridge bridge = Substitute.For<IBlockchainBridge>();
         bridge.GetTxReceiptInfo(tx.Hash!).Returns((receipt, timestamp, new TxGasInfo(1), 0));
 
-        IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
-        blockFinder.FindBlock(new BlockParameter(block.Hash!)).Returns(block);
-        blockFinder.FindBlock(new BlockParameter(block.Number)).Returns(block);
-
         TestRpcBlockchain rpcBlockchain = await TestRpcBlockchain
             .ForTest(sealEngineType: SealEngineType.Optimism)
             .WithBlockchainBridge(bridge)
-            .WithBlockFinder(blockFinder)
+            .WithBlockFinder(MockBlockFinder(block))
             .WithOptimismEthRpcModule(
                 sequencerRpcClient: Substitute.For<IJsonRpcClient>(),
                 accountStateProvider: Substitute.For<IAccountStateProvider>(),

@@ -137,7 +137,7 @@ public class SszMultiSegmentDecodeTests
         Assert.That(decoded.ExpectedBlobVersionedHashes!.Length, Is.EqualTo(2));
         Assert.That(decoded.ExpectedBlobVersionedHashes![0], Is.EqualTo(TestItem.KeccakA));
         Assert.That(decoded.ExpectedBlobVersionedHashes[1], Is.EqualTo(TestItem.KeccakB));
-        ExecutionPayloadV3 payload = decoded.ExecutionPayload.Unwrap();
+        ExecutionPayloadV3 payload = decoded.ExecutionPayload.AsExecutionPayload();
         Assert.That(payload.BlockNumber, Is.EqualTo(100));
         Assert.That(payload.BlockHash, Is.EqualTo(TestItem.KeccakE));
     }

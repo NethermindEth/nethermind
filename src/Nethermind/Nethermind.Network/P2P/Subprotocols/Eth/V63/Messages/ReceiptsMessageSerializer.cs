@@ -17,16 +17,14 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages
         private static readonly RlpLimit ReceiptsRlpLimit = RlpLimit.For<ReceiptsMessage>(NethermindSyncLimits.MaxHashesFetch, nameof(ReceiptsMessage.TxReceipts));
         private static readonly RlpLimit BlockReceiptsRlpLimit = RlpLimit.For<TxReceipt[]>(NethermindSyncLimits.MaxHashesFetch, nameof(ReceiptsMessage.TxReceipts));
         private readonly ISpecProvider _specProvider;
-        private readonly IRlpStreamEncoder<TxReceipt> _encoder;
-        private readonly IRlpValueDecoder<TxReceipt> _decoder;
+        private readonly IRlpDecoder<TxReceipt> _decoder;
         private readonly DecodeRlpValue<TxReceipt[]> _decodeArrayFunc;
 
-        public ReceiptsMessageSerializer(ISpecProvider specProvider) : this(specProvider, (RlpValueDecoder<TxReceipt>)Rlp.GetValueDecoder<TxReceipt>()!) { }
+        public ReceiptsMessageSerializer(ISpecProvider specProvider) : this(specProvider, Rlp.GetDecoder<TxReceipt>()!) { }
 
-        protected ReceiptsMessageSerializer(ISpecProvider specProvider, RlpValueDecoder<TxReceipt> decoder)
+        protected ReceiptsMessageSerializer(ISpecProvider specProvider, IRlpDecoder<TxReceipt> decoder)
         {
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
-            _encoder = decoder;
             _decoder = decoder;
             _decodeArrayFunc = (ref Rlp.ValueDecoderContext ctx) => ctx.DecodeArray((ref Rlp.ValueDecoderContext nestedContext) => _decoder.Decode(ref nestedContext), limit: BlockReceiptsRlpLimit) ?? [];
         }
@@ -43,7 +41,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages
             long lastBlockNumber = -1;
             RlpBehaviors behaviors = RlpBehaviors.None;
 
-            foreach (TxReceipt?[]? txReceipts in message.TxReceipts)
+            foreach (TxReceipt?[]? txReceipts in message.TxReceipts.AsSpan())
             {
                 if (txReceipts is null)
                 {
@@ -69,7 +67,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages
                         behaviors = receiptSpec.IsEip658Enabled ? RlpBehaviors.Eip658Receipts : RlpBehaviors.None;
                     }
 
-                    _encoder.Encode(stream, txReceipt, behaviors);
+                    _decoder.Encode(stream, txReceipt, behaviors);
                 }
             }
         }
@@ -102,9 +100,10 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages
         {
             contentLength = 0;
 
-            for (int i = 0; i < message.TxReceipts.Count; i++)
+            ReadOnlySpan<TxReceipt[]?> txReceiptsSpan = message.TxReceipts.AsSpan();
+            for (int i = 0; i < txReceiptsSpan.Length; i++)
             {
-                TxReceipt?[]? txReceipts = message.TxReceipts[i];
+                TxReceipt?[]? txReceipts = txReceiptsSpan[i];
                 if (txReceipts is null)
                 {
                     contentLength += Rlp.OfEmptyList.Length;

@@ -117,8 +117,8 @@ public class BlockTreeTests
         using MemoryManager<byte>? missingBal = blockAccessListStore.GetRlp(block.Hash!);
         Assert.That(missingBal, Is.Null);
 
-        byte[] encodedBal = Rlp.Encode(new BlockAccessList()).Bytes;
-        block.GeneratedBlockAccessList = new BlockAccessList();
+        byte[] encodedBal = Rlp.Encode(new ReadOnlyBlockAccessList()).Bytes;
+        block.GeneratedBlockAccessList = new GeneratedBlockAccessList();
         block.EncodedBlockAccessList = encodedBal;
         block.Header.BlockAccessListHash = new Hash256(ValueKeccak.Compute(encodedBal).Bytes);
 
@@ -220,6 +220,53 @@ public class BlockTreeTests
 
         Assert.That(newHeadBlockNotifications, Is.EqualTo(1), "new head block");
         Assert.That(blockAddedToMainNotifications, Is.EqualTo(3), "block added to main");
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void UpdateMainChain_fires_main_chain_events_after_chain_level_repository_batch_flushed()
+    {
+        BlockTree blockTree = BuildBlockTree();
+        Block block0 = Build.A.Block.WithNumber(0).WithDifficulty(1).TestObject;
+        Block block1 = Build.A.Block.WithNumber(1).WithDifficulty(2).WithParent(block0).TestObject;
+        Block block2 = Build.A.Block.WithNumber(2).WithDifficulty(3).WithParent(block1).TestObject;
+
+        AddToMain(blockTree, block0);
+        blockTree.SuggestBlock(block1);
+        blockTree.SuggestBlock(block2);
+
+        List<bool> blockAddedDbObservations = new();
+        bool newHeadDbObserved = false;
+        bool onUpdateDbObserved = false;
+
+        // A new ChainLevelInfoRepository instance starts with an empty cache, so HasBlockOnMainChain
+        // can only be observed via the underlying IDb. Pre-fix, UpdateMainChain held its write batch
+        // open across the event invocations, so a fresh repository would miss the new canonical
+        // markers. After the fix, the batch is disposed (and therefore flushed) before any of these
+        // events fires, so each subscriber observes a fully persisted level.
+        blockTree.BlockAddedToMain += (_, e) =>
+        {
+            ChainLevelInfoRepository freshRepo = new(_blocksInfosDb);
+            ChainLevelInfo? level = freshRepo.LoadLevel(e.Block.Number);
+            blockAddedDbObservations.Add(level?.HasBlockOnMainChain == true);
+        };
+        blockTree.NewHeadBlock += (_, e) =>
+        {
+            ChainLevelInfoRepository freshRepo = new(_blocksInfosDb);
+            ChainLevelInfo? level = freshRepo.LoadLevel(e.Block.Number);
+            newHeadDbObserved = level?.HasBlockOnMainChain == true;
+        };
+        blockTree.OnUpdateMainChain += (_, e) =>
+        {
+            ChainLevelInfoRepository freshRepo = new(_blocksInfosDb);
+            ChainLevelInfo? level = freshRepo.LoadLevel(e.Blocks[^1].Number);
+            onUpdateDbObserved = level?.HasBlockOnMainChain == true;
+        };
+
+        blockTree.UpdateMainChain([block1, block2], wereProcessed: true);
+
+        Assert.That(blockAddedDbObservations, Is.EqualTo(new[] { true, true }));
+        Assert.That(newHeadDbObserved, Is.True);
+        Assert.That(onUpdateDbObserved, Is.True);
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]

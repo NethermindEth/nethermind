@@ -557,7 +557,7 @@ public class SszMiddlewareTests
     private static byte[] BuildMinimalV2NewPayloadRequest() =>
         NewPayloadV2RequestWire.Encode(new NewPayloadV2RequestWire
         {
-            ExecutionPayload = new SszExecutionPayload(SszTestData.MakeMinimalPayload())
+            ExecutionPayload = new SszExecutionPayloadV2(SszTestData.MakeMinimalPayload())
         });
 
     private static byte[] BuildForkchoiceRequest()

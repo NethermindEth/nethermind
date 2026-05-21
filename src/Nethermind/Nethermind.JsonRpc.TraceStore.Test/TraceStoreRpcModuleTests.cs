@@ -100,6 +100,20 @@ public class TraceStoreRpcModuleTests
         TraceStoreAssertions.AssertWrapper(test.Module.trace_filter(new TraceFilterForRpc { FromBlock = BlockParameter.Latest, ToBlock = BlockParameter.Latest }), ResultWrapper<IEnumerable<ParityTxTraceFromStore>>.Success(test.DbTraces.SelectMany(ParityTxTraceFromStore.FromTxTrace)));
     }
 
+    [TestCase(0)]
+    [TestCase(1)]
+    [TestCase(2)]
+    public void trace_filter_returns_from_inner_module_when_any_block_trace_is_missing(int parallelization)
+    {
+        TestContext test = new(parallelization: parallelization);
+
+        TraceStoreAssertions.AssertWrapper(
+            test.Module.trace_filter(new TraceFilterForRpc { FromBlock = new BlockParameter(1), ToBlock = BlockParameter.Latest }),
+            ResultWrapper<IEnumerable<ParityTxTraceFromStore>>.Success(test.NonDbTraces.SelectMany(ParityTxTraceFromStore.FromTxTrace)));
+
+        test.InnerModule.Received().trace_filter(Arg.Any<TraceFilterForRpc>());
+    }
+
     private class TestContext
     {
         public ParityLikeTxTrace DbTrace { get; }
@@ -111,14 +125,14 @@ public class TraceStoreRpcModuleTests
         public IReceiptFinder ReceiptFinder { get; }
         public TraceStoreRpcModule Module { get; }
 
-        public TestContext()
+        public TestContext(int parallelization = 0)
         {
             InnerModule = Substitute.For<ITraceRpcModule>();
             Store = new MemDb();
             BlockFinder = Build.A.BlockTree().OfChainLength(3).TestObject;
             ReceiptFinder = Substitute.For<IReceiptFinder>();
             ParityLikeTraceSerializer serializer = new(LimboLogs.Instance);
-            Module = new TraceStoreRpcModule(InnerModule, Store, BlockFinder, ReceiptFinder, serializer, LimboLogs.Instance);
+            Module = new TraceStoreRpcModule(InnerModule, Store, BlockFinder, ReceiptFinder, serializer, LimboLogs.Instance, parallelization);
             Hash256 dbTransaction = Build.A.Transaction.TestObject.Hash!;
             Hash256 dbBlock = BlockFinder.Head!.Hash!;
             DbTrace = new() { BlockHash = dbBlock, TransactionHash = dbTransaction };

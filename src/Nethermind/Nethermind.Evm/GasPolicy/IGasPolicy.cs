@@ -19,15 +19,17 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
 
     static virtual TSelf CreateSystemTransactionIntrinsicGas(long blockGasLimit) => TSelf.FromLong(0);
 
+    static virtual TSelf CreateSystemTransactionAvailableGas(long gasLimit, in TSelf intrinsicGas, IReleaseSpec spec) =>
+        TSelf.CreateAvailableFromIntrinsic(gasLimit, in intrinsicGas, spec);
+
     static abstract long GetRemainingGas(in TSelf gas);
 
     // EIP-8037 state-cost accessors. Pre-EIP-8037 policies return the constant fallback.
-    static virtual long GetCostPerStateByte(in TSelf gas) => GasCostOf.CostPerStateByte;
     static virtual long GetStorageSetStateCost(in TSelf gas) => GasCostOf.SSetState;
     static virtual long GetCreateStateCost(in TSelf gas) => GasCostOf.CreateState;
     static virtual long GetNewAccountStateCost(in TSelf gas) => GasCostOf.NewAccountState;
     static virtual long GetPerAuthBaseStateCost(in TSelf gas) => GasCostOf.PerAuthBaseState;
-    static virtual long GetCodeDepositStateCost(in TSelf gas, int byteCodeLength) => GasCostOf.CalculateCodeDepositState(GasCostOf.CostPerStateByte, byteCodeLength);
+    static virtual long GetCodeDepositStateCost(in TSelf gas, int byteCodeLength) => GasCostOf.CodeDepositState * byteCodeLength;
     static virtual long GetStorageSetReversalRefund(in TSelf gas) => RefundOf.SSetReversedEip8037;
 
     // EIP-8037 state-accounting accessors. Pre-EIP-8037 policies return 0.
@@ -48,12 +50,12 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
     static abstract void ConsumeCodeDeposit(ref TSelf gas, long cost);
     static abstract void Refund(ref TSelf gas, in TSelf childGas);
 
-    // Revert path: drop child inline state-gas refunds (burned at revert boundary).
-    static virtual void RestoreChildStateGas(ref TSelf parentGas, in TSelf childGas, long initialStateReservoir, long childStateRefund) { }
+    // Revert path: restore the child's state gas into the parent reservoir.
+    static virtual void RestoreChildStateGas(ref TSelf parentGas, in TSelf childGas) { }
     // Halt path: preserve inline state-gas refunds (call chain resets to top-most failing call).
-    static virtual void RestoreChildStateGasOnHalt(ref TSelf parentGas, in TSelf childGas, long initialStateReservoir) { }
+    static virtual void RestoreChildStateGasOnHalt(ref TSelf parentGas, in TSelf childGas) { }
     // Code-deposit-failure path: undo prior Refund's state-gas merge and apply halt restoration.
-    static virtual void RevertRefundToHalt(ref TSelf parentGas, in TSelf childGas, long initialStateReservoir) { }
+    static virtual void RevertRefundToHalt(ref TSelf parentGas, in TSelf childGas) { }
 
     static abstract void SetOutOfGas(ref TSelf gasState);
 
@@ -62,15 +64,14 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
         ref readonly StackAccessTracker accessTracker,
         bool isTracingAccess,
         Address address,
-        Address? delegated,
-        bool chargeForWarm = true);
+        Address? delegated);
 
     static abstract bool ConsumeAccountAccessGas(ref TSelf gas,
         IReleaseSpec spec,
         ref readonly StackAccessTracker accessTracker,
         bool isTracingAccess,
         Address address,
-        bool chargeForWarm = true);
+        AccountAccessKind kind = AccountAccessKind.Default);
 
     static abstract bool ConsumeStorageAccessGas(ref TSelf gas,
         ref readonly StackAccessTracker accessTracker,
@@ -109,7 +110,12 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
 
     // Drop state-gas from block-state accounting without refunding to the gas budget;
     // reverted state charges stay paid by the tx but don't contribute to committed state gas.
-    static virtual void DiscardStateGas(ref TSelf gas, long amount, long stateGasFloor) { }
+    static virtual long DiscardStateGas(ref TSelf gas, long amount, long stateGasFloor, bool trackSpillRefund) => amount;
+
+    static virtual void AddStateGasRefundToReservoir(ref TSelf gas, long amount, bool trackSpillRefund) =>
+        TSelf.UpdateGasUp(ref gas, amount);
+
+    static virtual void RemoveStateGasRefundFromReservoir(ref TSelf gas, long amount) { }
 
     // EIP-8037 top-level halt: snap state-gas back to (R0, intrinsicStateUsed, 0); the
     // post-reset StateGasUsed feeds SpentGas so the user doesn't pay for uncommitted state.
@@ -175,7 +181,7 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
             throw new InvalidDataException($"Transaction with an access list received within the context of {spec.Name}. EIP-2930 is not enabled.");
     }
 
-    public static (long RegularCost, long StateCost) AuthorizationListCost(Transaction transaction, IReleaseSpec spec, long blockGasLimit = 0)
+    public static (long RegularCost, long StateCost) AuthorizationListCost(Transaction transaction, IReleaseSpec spec)
     {
         AuthorizationTuple[]? authList = transaction.AuthorizationList;
         if (authList is null)
@@ -189,11 +195,10 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
         }
 
         long authCount = authList.Length;
-        long costPerStateByte = GasCostOf.CalculateCostPerStateByte(blockGasLimit);
         return spec.IsEip8037Enabled
             ? (
                 authCount * GasCostOf.PerAuthBaseRegular,
-                authCount * (GasCostOf.CalculateNewAccountState(costPerStateByte) + GasCostOf.CalculatePerAuthBaseState(costPerStateByte))
+                authCount * (GasCostOf.NewAccountState + GasCostOf.PerAuthBaseState)
             )
             : (authCount * GasCostOf.NewAccount, 0);
 
@@ -218,4 +223,16 @@ public readonly record struct IntrinsicGas<TGasPolicy>(TGasPolicy Standard, TGas
 {
     public TGasPolicy MinimalGas { get; } = TGasPolicy.Max(Standard, FloorGas);
     public static explicit operator TGasPolicy(IntrinsicGas<TGasPolicy> gas) => gas.MinimalGas;
+
+    /// <summary>
+    /// EIP-8037: rejects a transaction whose intrinsic regular or floor gas exceeds <paramref name="cap"/>.
+    /// </summary>
+    public bool ExceedsCap(long cap, out long regular, out long floor)
+    {
+        TGasPolicy standard = Standard;
+        TGasPolicy floorGas = FloorGas;
+        regular = TGasPolicy.GetRemainingGas(in standard);
+        floor = TGasPolicy.GetRemainingGas(in floorGas);
+        return regular > cap || floor > cap;
+    }
 }

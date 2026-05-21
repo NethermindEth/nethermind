@@ -233,6 +233,32 @@ public partial class EngineModuleTests
         Assert.That(response.ErrorCode, Is.EqualTo(ErrorCodes.InvalidParams));
     }
 
+    [Test]
+    public async Task NewPayloadV4_returns_invalid_params_for_block_access_list()
+    {
+        using MergeTestBlockchain chain = await CreateBlockchain(Prague.Instance);
+        Block block = Build.A.Block
+            .WithNumber(chain.BlockTree.Head!.Number + 1)
+            .WithParentBeaconBlockRoot(Keccak.Zero)
+            .WithBlobGasUsed(0)
+            .WithExcessBlobGas(0)
+            .TestObject;
+        ExecutionPayloadV3 executionPayload = ExecutionPayloadV3.Create(block);
+        executionPayload.BlockAccessList = Bytes.FromHexString("0xc0");
+
+        ResultWrapper<PayloadStatusV1> response = await chain.EngineRpcModule.engine_newPayloadV4(
+            executionPayload,
+            [],
+            Keccak.Zero,
+            []);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(response.Result.ResultType, Is.EqualTo(ResultType.Failure));
+            Assert.That(response.ErrorCode, Is.EqualTo(ErrorCodes.InvalidParams));
+        }
+    }
+
     [TestCase(30)]
     public async Task can_progress_chain_one_by_one_v4(int count)
     {
@@ -271,7 +297,7 @@ public partial class EngineModuleTests
     {
         List<ExecutionPayload> blocks = new();
         ExecutionPayload parentBlock = startingParentBlock;
-        Block? block = parentBlock.TryGetBlock().Block;
+        Block? block = parentBlock.TryGetBlock().Data;
         UInt256? startingTotalDifficulty = block!.IsGenesis
             ? block.Difficulty : chain.BlockFinder.FindHeader(block!.Header!.ParentHash!)!.TotalDifficulty;
         BlockHeader parentHeader = block!.Header;
@@ -295,7 +321,7 @@ public partial class EngineModuleTests
 
             blocks.Add(getPayloadResult);
             parentBlock = getPayloadResult;
-            block = parentBlock.TryGetBlock().Block!;
+            block = parentBlock.TryGetBlock().Data!;
             block.Header.TotalDifficulty = parentHeader.TotalDifficulty + block.Header.Difficulty;
             parentHeader = block.Header;
         }

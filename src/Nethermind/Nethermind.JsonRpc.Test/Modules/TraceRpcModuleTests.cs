@@ -1199,4 +1199,160 @@ public class TraceRpcModuleTests
             Substitute.For<ISpecProvider>(),
             Substitute.For<IBlocksConfig>());
     }
+
+    // AllowTestChainOverride=false prevents TestBlockchain from wrapping this instance and stripping IForkAwareSpecProvider.
+    private sealed class ForkAwareTestSpecProvider : TestSpecProvider, IForkAwareSpecProvider
+    {
+        private readonly IForkAwareSpecProvider _forkAware;
+
+        public ForkAwareTestSpecProvider(IReleaseSpec blockchainSpec, IForkAwareSpecProvider forkAware) : base(blockchainSpec)
+        {
+            _forkAware = forkAware;
+            AllowTestChainOverride = false;
+        }
+
+        public IEnumerable<string> AvailableForks => _forkAware.AvailableForks;
+        public bool TryGetForkSpec(string forkName, out IReleaseSpec? spec) => _forkAware.TryGetForkSpec(forkName, out spec);
+    }
+
+    [TestCase(nameof(Berlin))]
+    [TestCase(nameof(Istanbul))]
+    [TestCase(nameof(Cancun))]
+    public async Task trace_block_with_valid_fork_name_returns_success(string forkName)
+    {
+        Context context = new();
+        await context.Build(new ForkAwareTestSpecProvider(Berlin.Instance, MainnetSpecProvider.Instance));
+
+        ResultWrapper<IEnumerable<ParityTxTraceFromStore>> result =
+            context.TraceRpcModule.trace_block(BlockParameter.Latest, forkName);
+
+        Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success));
+    }
+
+    [Test]
+    public async Task trace_block_fork_parameter_json_applies_berlin_gas_rules()
+    {
+        (Context context, BlockParameter block) = await BuildModExpBlockAsync();
+
+        string blockHex = "0x" + context.Blockchain.BlockTree.Head!.Number.ToString("x");
+        string serialized = await RpcTest.TestSerializedRequest(
+            context.TraceRpcModule, "trace_block", blockHex, "berlin");
+
+        Assert.That(serialized, Does.Contain("\"gasUsed\":\"0x550\""),
+            "Berlin fork (EIP-2565) ModExp gas for 32-byte inputs must be 1360 (0x550)");
+    }
+
+    [Test]
+    public async Task trace_block_unknown_fork_returns_invalid_params_failure_listing_known_forks()
+    {
+        Context context = new();
+        await context.Build(new ForkAwareTestSpecProvider(Berlin.Instance, MainnetSpecProvider.Instance));
+
+        ResultWrapper<IEnumerable<ParityTxTraceFromStore>> result =
+            context.TraceRpcModule.trace_block(BlockParameter.Latest, "NonExistentFork");
+
+        Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Failure));
+        Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InvalidParams));
+        Assert.That(result.Result.Error, Does.Contain(nameof(Berlin)),
+            "the error message must list known fork names so callers can correct the request");
+    }
+
+    [Test]
+    public async Task trace_block_non_fork_aware_provider_returns_invalid_params_failure_mentioning_not_supported()
+    {
+        Context context = new();
+        await context.Build(new TestSpecProvider(Berlin.Instance));
+
+        ResultWrapper<IEnumerable<ParityTxTraceFromStore>> result =
+            context.TraceRpcModule.trace_block(BlockParameter.Latest, nameof(Berlin));
+
+        Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Failure));
+        Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InvalidParams));
+        Assert.That(result.Result.Error, Does.Contain("does not support fork overrides"));
+    }
+
+    private static byte[] BuildModExpInput()
+    {
+        byte[] input = new byte[96 + 32 + 32 + 32];
+        input[31] = 32;          // base_length = 32
+        input[63] = 32;          // exp_length  = 32
+        input[95] = 32;          // mod_length  = 32
+        input[96 + 31] = 2;      // base = 2
+        input[96 + 32] = 0x80;   // exp = 2^255 (MSB set)
+        input[96 + 64 + 31] = 3; // mod = 3
+        return input;
+    }
+
+    private static async Task<(Context context, BlockParameter block)> BuildModExpBlockAsync()
+    {
+        Context context = new();
+        await context.Build(new ForkAwareTestSpecProvider(Byzantium.Instance, MainnetSpecProvider.Instance));
+
+        UInt256 nonce = context.Blockchain.StateReader.GetNonce(
+            context.Blockchain.BlockTree.Head!.Header, TestItem.AddressB);
+
+        Transaction tx = Build.A.Transaction
+            .WithTo(Address.FromNumber(5))
+            .WithData(BuildModExpInput())
+            .WithGasLimit(50_000)
+            .WithNonce(nonce)
+            .SignedAndResolved(context.Blockchain.EthereumEcdsa, TestItem.PrivateKeyB)
+            .TestObject;
+
+        await context.Blockchain.AddBlock(tx);
+        return (context, new BlockParameter(context.Blockchain.BlockTree.Head!.Number));
+    }
+
+    private static long ModExpGasUsed(
+        Context context, BlockParameter block, string forkName) =>
+        context.TraceRpcModule
+            .trace_block(block, forkName)
+            .Data.First(t => t.Type == "call").Result!.GasUsed;
+
+    [TestCase(nameof(Istanbul), 13056L, "pre-EIP-2565 formula: 32^2 * 255 / 20 = 13056")]
+    [TestCase(nameof(Berlin), 1360L, "EIP-2565 formula: ceil(32/8)^2 * 255 / 3 = 16 * 255 / 3 = 1360")]
+    public async Task trace_block_modexp_gas_cost_respects_fork_override(string forkName, long expectedGas, string reason)
+    {
+        (Context context, BlockParameter block) = await BuildModExpBlockAsync();
+
+        long gasUsed = ModExpGasUsed(context, block, forkName);
+
+        Assert.That(gasUsed, Is.EqualTo(expectedGas), reason);
+    }
+
+    [Test]
+    public async Task trace_block_fork_override_does_not_persist_between_calls()
+    {
+        (Context context, BlockParameter block) = await BuildModExpBlockAsync();
+
+        long firstIstanbulGas = ModExpGasUsed(context, block, nameof(Istanbul));
+        ModExpGasUsed(context, block, nameof(Berlin));
+        long secondIstanbulGas = ModExpGasUsed(context, block, nameof(Istanbul));
+
+        Assert.That(secondIstanbulGas, Is.EqualTo(firstIstanbulGas),
+            "the Berlin override from the intervening call must not leak into subsequent calls");
+    }
+
+    [Test]
+    public async Task trace_block_pre_1559_fork_override_on_london_block_zeroes_base_fee()
+    {
+        OverridableReleaseSpec londonSpec = new(London.Instance) { Eip1559TransitionBlock = 1 };
+        ForkAwareTestSpecProvider specProvider = new(londonSpec, MainnetSpecProvider.Instance);
+
+        Context context = new();
+        await context.Build(specProvider);
+
+        BlockHeader? block1 = context.Blockchain.BlockTree.FindHeader(1, BlockTreeLookupOptions.None);
+        Assert.That(block1, Is.Not.Null);
+        Assert.That(block1!.BaseFeePerGas, Is.GreaterThan(UInt256.Zero),
+            "the London fork-activation block must carry a non-zero base fee so the test is meaningful");
+
+        // Re-executing this London block with a Berlin (pre-EIP-1559) fork override must succeed:
+        // AdjustHeaderForSpec must zero BaseFeePerGas for pre-1559 specs.
+        ResultWrapper<IEnumerable<ParityTxTraceFromStore>> result =
+            context.TraceRpcModule.trace_block(new BlockParameter(1L), nameof(Berlin));
+
+        Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success),
+            "tracing a London block with a pre-EIP-1559 fork override must succeed (AdjustHeaderForSpec zeroes BaseFeePerGas)");
+    }
 }

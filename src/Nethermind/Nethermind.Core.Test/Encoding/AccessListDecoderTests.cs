@@ -121,7 +121,7 @@ namespace Nethermind.Core.Test.Encoding
         }
 
         [Test]
-        public void Get_length_returns_1_for_null() => Assert.That(_decoder.GetLength(null, RlpBehaviors.None), Is.EqualTo(1));
+        public void Get_length_returns_1_for_null() => Assert.That(_decoder.GetLength((AccessList?)null, RlpBehaviors.None), Is.EqualTo(1));
 
         [Test]
         public void Rejects_entry_missing_storage_keys_array()

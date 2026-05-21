@@ -55,7 +55,7 @@ public class CompressingStoreTests
     {
         Context ctx = new();
 
-        Rlp encoded = new AccountDecoder().Encode(new(1));
+        Rlp encoded = Rlp.Encode(new Account(1));
         ctx.Compressed[Key] = encoded.Bytes;
 
         Assert.That(encoded.Bytes, Is.EqualTo(ctx.Compressed[Key]).AsCollection);
@@ -67,7 +67,7 @@ public class CompressingStoreTests
     {
         Context ctx = new();
 
-        Rlp encoded = new AccountDecoder().Encode(new(1));
+        Rlp encoded = Rlp.Encode(new Account(1));
         ctx.Compressed.PutSpan(Key, encoded.Bytes);
 
         Assert.That(encoded.Bytes, Is.EqualTo(ctx.Compressed[Key]).AsCollection);
@@ -138,7 +138,7 @@ public class CompressingStoreTests
         }
     }
 
-    private static readonly byte[] EOABytes = new AccountDecoder().Encode((Account)new(1)).Bytes;
+    private static readonly byte[] EOABytes = Rlp.Encode(new Account(1)).Bytes;
 
     private static readonly byte[] Key = { 1 };
 }

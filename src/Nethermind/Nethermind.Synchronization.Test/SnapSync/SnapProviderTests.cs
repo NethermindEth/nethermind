@@ -271,7 +271,13 @@ public class SnapProviderTests
                 CompressionMode.Decompress);
         BadReq asReq = JsonSerializer.Deserialize<BadReq>(decompressor)!;
         AccountDecoder acd = new();
-        Account[] accounts = asReq.Accounts.Select((bt) => acd.Decode((ReadOnlySpan<byte>)Bytes.FromHexString(bt))!).ToArray();
+        Account[] accounts = new Account[asReq.Accounts.Count];
+        for (int i = 0; i < accounts.Length; i++)
+        {
+            Rlp.ValueDecoderContext context = Bytes.FromHexString(asReq.Accounts[i]).AsRlpValueContext();
+            accounts[i] = acd.Decode(ref context)!;
+        }
+
         ValueHash256[] paths = asReq.Paths.Select((bt) => new ValueHash256(Bytes.FromHexString(bt))).ToArray();
         List<PathWithAccount> pathWithAccounts = accounts.Select((acc, idx) => new PathWithAccount(paths[idx], acc)).ToList();
         List<byte[]> proofs = asReq.Proofs.Select((str) => Bytes.FromHexString(str)).ToList();

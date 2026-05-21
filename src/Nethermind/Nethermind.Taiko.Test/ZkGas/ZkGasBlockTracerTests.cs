@@ -92,7 +92,8 @@ public class ZkGasBlockTracerTests
     {
         IBlockTracer inner = Substitute.For<IBlockTracer>();
         inner.StartNewTxTrace(Arg.Any<Transaction?>()).Returns(NullTxTracer.Instance);
-        ZkGasBlockTracer blockTracer = new(inner);
+        // txIntrinsicZkGas:0 isolates the reset-behavior assertion from the intrinsic charge.
+        ZkGasBlockTracer blockTracer = new(inner, txIntrinsicZkGas: 0);
 
         blockTracer.StartNewBlockTrace(MakeBlock());
 
@@ -136,7 +137,8 @@ public class ZkGasBlockTracerTests
     {
         IBlockTracer inner = Substitute.For<IBlockTracer>();
         inner.StartNewTxTrace(Arg.Any<Transaction?>()).Returns(NullTxTracer.Instance);
-        ZkGasBlockTracer blockTracer = new(inner);
+        // txIntrinsicZkGas:0 isolates the discard-behavior assertion from the intrinsic charge.
+        ZkGasBlockTracer blockTracer = new(inner, txIntrinsicZkGas: 0);
 
         blockTracer.StartNewBlockTrace(MakeBlock());
 
@@ -205,5 +207,111 @@ public class ZkGasBlockTracerTests
         blockTracer.ReportReward(TestItem.AddressA, "block", 1);
 
         inner.Received(1).ReportReward(TestItem.AddressA, "block", (UInt256)1);
+    }
+
+    // ── tx intrinsic ZK gas ───────────────────────────────────────────────────
+
+    /// <summary>
+    /// StartNewTxTrace charges the flat per-transaction intrinsic ZK gas immediately
+    /// after resetting in-flight gas, before any opcode can run.
+    /// </summary>
+    [Test]
+    public void StartNewTxTrace_ChargesIntrinsicBeforeTracing()
+    {
+        IBlockTracer inner = Substitute.For<IBlockTracer>();
+        inner.StartNewTxTrace(Arg.Any<Transaction?>()).Returns(NullTxTracer.Instance);
+        // Explicitly set a known intrinsic to decouple from the schedule constant.
+        const ulong intrinsic = 243_000UL;
+        ZkGasBlockTracer blockTracer = new(inner, txIntrinsicZkGas: intrinsic);
+
+        blockTracer.StartNewBlockTrace(MakeBlock());
+        blockTracer.StartNewTxTrace(MakeTx());
+
+        Assert.That(blockTracer.Meter.TxZkGasUsed, Is.EqualTo(intrinsic),
+            "Intrinsic charge must appear in TxZkGasUsed immediately after StartNewTxTrace");
+    }
+
+    /// <summary>
+    /// When txIntrinsicZkGas is 0 (Masaya), StartNewTxTrace leaves TxZkGasUsed at zero.
+    /// </summary>
+    [Test]
+    public void StartNewTxTrace_IntrinsicIsZero_OnMasaya()
+    {
+        IBlockTracer inner = Substitute.For<IBlockTracer>();
+        inner.StartNewTxTrace(Arg.Any<Transaction?>()).Returns(NullTxTracer.Instance);
+        ZkGasBlockTracer blockTracer = new(inner, txIntrinsicZkGas: 0);
+
+        blockTracer.StartNewBlockTrace(MakeBlock());
+        blockTracer.StartNewTxTrace(MakeTx());
+
+        Assert.That(blockTracer.Meter.TxZkGasUsed, Is.EqualTo(0UL),
+            "Zero intrinsic (Masaya) must leave TxZkGasUsed at zero");
+    }
+
+    /// <summary>
+    /// When the intrinsic alone would push the projected block total past the limit,
+    /// IsLimitExceeded is set immediately by StartNewTxTrace.
+    /// </summary>
+    [Test]
+    public void StartNewTxTrace_IntrinsicAlone_SetsLimitExceeded_WhenBudgetTooSmall()
+    {
+        IBlockTracer inner = Substitute.For<IBlockTracer>();
+        inner.StartNewTxTrace(Arg.Any<Transaction?>()).Returns(NullTxTracer.Instance);
+        const ulong intrinsic = 243_000UL;
+        const ulong tinyLimit = intrinsic - 1; // one under the intrinsic cost
+        ZkGasBlockTracer blockTracer = new(inner, blockZkGasLimit: tinyLimit, txIntrinsicZkGas: intrinsic);
+
+        blockTracer.StartNewBlockTrace(MakeBlock());
+        blockTracer.StartNewTxTrace(MakeTx());
+
+        Assert.That(blockTracer.Meter.IsLimitExceeded, Is.True,
+            "Intrinsic that exceeds the block budget must set IsLimitExceeded");
+    }
+
+    // ── validation regression: IsLimitExceeded must survive EndTxTrace ────────
+
+    [Test]
+    public void EndTxTrace_PreservesLimitExceeded_WhenChargeFailedMidTx()
+    {
+        IBlockTracer inner = Substitute.For<IBlockTracer>();
+        inner.StartNewTxTrace(Arg.Any<Transaction?>()).Returns(NullTxTracer.Instance);
+        ZkGasBlockTracer blockTracer = new(inner, blockZkGasLimit: 1000, txIntrinsicZkGas: 0);
+
+        blockTracer.StartNewBlockTrace(MakeBlock());
+        blockTracer.StartNewTxTrace(MakeTx());
+
+        blockTracer.Meter.ChargeOpcode(0xf0, 800); // succeeds: 800 in-flight
+        blockTracer.Meter.ChargeOpcode(0xf0, 300); // fails: 800+300 > 1000, _txZkGasUsed stays at 800
+        Assert.That(blockTracer.Meter.IsLimitExceeded, Is.True);
+
+        // EndTxTrace must not commit the partial 800-unit total and clear the flag.
+        blockTracer.EndTxTrace();
+
+        Assert.That(blockTracer.Meter.IsLimitExceeded, Is.True);
+        Assert.That(blockTracer.Meter.BlockZkGasUsed, Is.EqualTo(0UL));
+    }
+
+    [Test]
+    public void EndTxTrace_PreservesLimitExceeded_WhenIntrinsicFailed()
+    {
+        IBlockTracer inner = Substitute.For<IBlockTracer>();
+        inner.StartNewTxTrace(Arg.Any<Transaction?>()).Returns(NullTxTracer.Instance);
+        // Limit=800, intrinsic=500. Pre-fill 600 units so only 200 budget remains.
+        ZkGasBlockTracer blockTracer = new(inner, blockZkGasLimit: 800, txIntrinsicZkGas: 500);
+
+        blockTracer.StartNewBlockTrace(MakeBlock());
+
+        // Pre-fill block to 600 via direct meter manipulation (bypasses intrinsic charge).
+        blockTracer.Meter.ChargeOpcode(0xf0, 600);
+        blockTracer.Meter.CommitTransaction(); // blockZkGasUsed = 600; 200 budget left
+
+        // Second tx: intrinsic (500) > remaining budget (200) → StartNewTxTrace sets the flag.
+        blockTracer.StartNewTxTrace(MakeTx());
+        Assert.That(blockTracer.Meter.IsLimitExceeded, Is.True);
+
+        blockTracer.EndTxTrace();
+
+        Assert.That(blockTracer.Meter.IsLimitExceeded, Is.True);
+        Assert.That(blockTracer.Meter.BlockZkGasUsed, Is.EqualTo(600UL));
     }
 }

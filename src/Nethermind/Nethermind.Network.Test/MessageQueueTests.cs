@@ -24,7 +24,7 @@ public class MessageQueueTests
     public void Setup()
     {
         _recordedSends.Clear();
-        _queue = new((message) => _recordedSends.Add(message));
+        _queue = new(RecordingProtocolHandler.Create(_recordedSends));
     }
 
     [Test]
@@ -200,7 +200,7 @@ public class MessageQueueTests
     [Test]
     public void Handle_disposes_tuple_disposable_component_when_no_current_request()
     {
-        MessageQueue<GetBlockHeadersMessage, (IDisposable, long)> queue = new(_ => { });
+        MessageQueue<GetBlockHeadersMessage, (IDisposable, long)> queue = new(RecordingProtocolHandler.Create<GetBlockHeadersMessage>());
         IDisposable inner = Substitute.For<IDisposable>();
 
         Assert.That(() => queue.Handle((inner, 100L), 100), Throws.TypeOf<SubprotocolException>());

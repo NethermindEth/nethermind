@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Linq;
 using DotNetty.Buffers;
 using Nethermind.Core;
@@ -87,7 +86,8 @@ public class ReceiptsMessageSerializerTests
         ReceiptMessageDecoder decoder = new(skipStateAndStatus: true);
         byte[] encoded = decoder.EncodeNew(receipt);
 
-        TxReceipt decoded = decoder.Decode((ReadOnlySpan<byte>)encoded);
+        Rlp.ValueDecoderContext context = encoded.AsRlpValueContext();
+        TxReceipt decoded = decoder.Decode(ref context);
 
         TxReceipt expectedDecoded = new()
         {

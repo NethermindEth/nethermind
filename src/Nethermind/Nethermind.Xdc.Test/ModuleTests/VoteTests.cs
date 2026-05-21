@@ -4,6 +4,7 @@
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
+using Nethermind.Logging;
 using Nethermind.Synchronization.Peers;
 using Nethermind.Xdc.Spec;
 using Nethermind.Xdc.Test.Helpers;
@@ -85,5 +86,6 @@ public class VoteTests
             blockchain.QuorumCertificateManager,
             blockchain.SpecProvider,
             blockchain.Signer,
-            Substitute.For<IForensicsProcessor>());
+            Substitute.For<IForensicsProcessor>(),
+            NullLogManager.Instance);
 }

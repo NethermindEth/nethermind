@@ -10,7 +10,7 @@ public class TimerTests
     [Test]
     public async Task Timer_ComputesElapsedTime()
     {
-        var t = new Timer();
+        Timer t = new();
         using (t.Time())
         {
             await Task.Delay(TimeSpan.FromMilliseconds(100));
@@ -23,7 +23,7 @@ public class TimerTests
     [Test]
     public async Task Timer_AddsAllElapsedTimes()
     {
-        var t = new Timer();
+        Timer t = new();
         using (t.Time())
         {
             await Task.Delay(TimeSpan.FromMilliseconds(50));
@@ -40,7 +40,7 @@ public class TimerTests
     [Test]
     public async Task Timer_IgnoresTimeOutsideOfUsing()
     {
-        var t = new Timer();
+        Timer t = new();
         using (t.Time())
         {
             await Task.Delay(TimeSpan.FromMilliseconds(50));

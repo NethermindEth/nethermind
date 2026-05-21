@@ -2365,6 +2365,102 @@ namespace Nethermind.TxPool.Test
             AssertTransactionsEquivalent(tx2, txsA[1], nameof(Transaction.PoolIndex));
         }
 
+        [Test]
+        public async Task should_return_fresh_pending_transactions_snapshot_after_head_change()
+        {
+            const long blockNumber = 358;
+
+            ITxPoolConfig txPoolConfig = new TxPoolConfig()
+            {
+                Size = 128,
+                BlobsSupport = BlobsSupportMode.Disabled
+            };
+            _txPool = CreatePool(txPoolConfig, GetCancunSpecProvider());
+
+            EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
+            EnsureSenderBalance(TestItem.AddressB, UInt256.MaxValue);
+
+            Transaction txA = GetTx(TestItem.PrivateKeyA);
+            Transaction txB = GetTx(TestItem.PrivateKeyB);
+
+            Assert.That(_txPool.SubmitTx(txA, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+            Assert.That(_txPool.SubmitTx(txB, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+
+            // Cache the snapshot before head change
+            Transaction[] snapshotBefore = _txPool.GetPendingTransactions();
+            Assert.That(snapshotBefore, Has.Length.EqualTo(2));
+
+            // Process block that includes txA
+            Block block = Build.A.Block.WithNumber(blockNumber).WithTransactions(txA).TestObject;
+            await RaiseBlockAddedToMainAndWaitForNewHead(block);
+
+            // Snapshot must reflect the updated pool state, not the stale cache
+            Transaction[] snapshotAfter = _txPool.GetPendingTransactions();
+            Assert.That(snapshotAfter, Has.Length.EqualTo(1));
+            Assert.That(snapshotAfter, Has.One.Matches<Transaction>(t => t.Hash == txB.Hash));
+            Assert.That(snapshotAfter, Has.None.Matches<Transaction>(t => t.Hash == txA.Hash));
+        }
+
+        [Test]
+        public async Task should_return_valid_snapshot_when_reading_concurrently_during_head_change()
+        {
+            const long blockNumber = 358;
+            const int maxTryCount = 5;
+
+            for (int attempt = 0; attempt < maxTryCount; attempt++)
+            {
+                ITxPoolConfig txPoolConfig = new TxPoolConfig()
+                {
+                    Size = 128,
+                    BlobsSupport = BlobsSupportMode.Disabled
+                };
+                _txPool = CreatePool(txPoolConfig, GetCancunSpecProvider());
+
+                EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
+                EnsureSenderBalance(TestItem.AddressB, UInt256.MaxValue);
+
+                Transaction txA = GetTx(TestItem.PrivateKeyA);
+                Transaction txB = GetTx(TestItem.PrivateKeyB);
+
+                Assert.That(_txPool.SubmitTx(txA, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+                Assert.That(_txPool.SubmitTx(txB, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+
+                // Warm up the snapshot cache
+                Assert.That(_txPool.GetPendingTransactions(), Has.Length.EqualTo(2));
+
+                // Start concurrent readers
+                bool stopReading = false;
+                Task[] readers = new Task[4];
+                for (int i = 0; i < readers.Length; i++)
+                {
+                    readers[i] = Task.Run(() =>
+                    {
+                        while (!Volatile.Read(ref stopReading))
+                        {
+                            _txPool.GetPendingTransactions();
+                        }
+                    });
+                }
+
+                // Process block that includes txA
+                Block block = Build.A.Block.WithNumber(blockNumber).WithTransactions(txA).TestObject;
+                await RaiseBlockAddedToMainAndWaitForNewHead(block);
+
+                Volatile.Write(ref stopReading, true);
+                await Task.WhenAll(readers);
+
+                // After head processing completes, snapshot must be up-to-date
+                Transaction[] snapshot = _txPool.GetPendingTransactions();
+                Assert.That(snapshot, Has.Length.EqualTo(1));
+                Assert.That(snapshot, Has.One.Matches<Transaction>(t => t.Hash == txB.Hash));
+                Assert.That(snapshot, Has.None.Matches<Transaction>(t => t.Hash == txA.Hash));
+
+                // Re-create test state for the next attempt
+                await _txPool.DisposeAsync();
+                Setup();
+            }
+        }
+
         private static void AssertTransactionsEquivalent(
             IEnumerable<Transaction> actual,
             IEnumerable<Transaction> expected,

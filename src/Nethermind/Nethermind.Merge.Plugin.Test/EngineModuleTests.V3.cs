@@ -159,7 +159,7 @@ public partial class EngineModuleTests
 
         payload.ParentHash = TestItem.KeccakA;
         payload.BlockNumber = 2;
-        Block? b = payload.TryGetBlock().Block;
+        Block? b = payload.TryGetBlock().Data;
         payload.BlockHash = b!.CalculateHash();
 
         byte[]?[] blobVersionedHashes = transactions.SelectMany(static tx => tx.BlobVersionedHashes ?? []).ToArray();
@@ -176,7 +176,7 @@ public partial class EngineModuleTests
         ExecutionPayloadV3 payload = (await prevRpcModule.engine_getPayloadV3(Bytes.FromHexString(payloadId!))).Data!.ExecutionPayload;
 
         payload.BlockNumber = 2;
-        Block? b = payload.TryGetBlock().Block;
+        Block? b = payload.TryGetBlock().Data;
         payload.BlockHash = b!.CalculateHash();
 
         byte[]?[] blobVersionedHashes = transactions.SelectMany(static tx => tx.BlobVersionedHashes ?? []).ToArray();
@@ -194,7 +194,7 @@ public partial class EngineModuleTests
         ExecutionPayloadV3 payload = (await prevRpcModule.engine_getPayloadV3(Bytes.FromHexString(payloadId!))).Data!.ExecutionPayload;
 
         payload.StateRoot = Keccak.Zero;
-        Block? b = payload.TryGetBlock().Block;
+        Block? b = payload.TryGetBlock().Data;
         payload.BlockHash = b!.CalculateHash();
 
         byte[]?[] blobVersionedHashes = transactions.SelectMany(static tx => tx.BlobVersionedHashes ?? []).ToArray();
@@ -211,8 +211,8 @@ public partial class EngineModuleTests
         (IEngineRpcModule prevRpcModule, string? payloadId, Transaction[] transactions, _) = await BuildAndGetPayloadV3Result(Cancun.Instance, 1);
         ExecutionPayloadV3 payload = (await prevRpcModule.engine_getPayloadV3(Bytes.FromHexString(payloadId!))).Data!.ExecutionPayload;
 
-        Block? b = payload.TryGetBlock().Block;
-        byte[] txRlp = TxDecoder.Instance.EncodeTx(payload.TryGetTransactions().Transactions[0], RlpBehaviors.SkipTypedWrapping).Bytes;
+        Block? b = payload.TryGetBlock().Data;
+        byte[] txRlp = TxDecoder.Instance.EncodeTx(payload.TryGetTransactions().Data![0], RlpBehaviors.SkipTypedWrapping).Bytes;
         txRlp[0] = 100; // set TxType to 100
         payload.Transactions = [txRlp];
         payload.BlockHash = b!.CalculateHash();

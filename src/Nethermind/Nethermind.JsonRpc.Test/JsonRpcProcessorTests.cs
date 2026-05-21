@@ -7,6 +7,7 @@ using System.IO.Abstractions;
 using System.IO.Pipelines;
 using System.Linq;
 using System.Text;
+using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core.Extensions;
@@ -566,5 +567,69 @@ public class JsonRpcProcessorTests(bool returnErrors)
         Assert.That(result[0].Report!.Value.Method, Is.EqualTo("eth_getTransactionCount"));
         Assert.That(result[0].Report!.Value.Success, Is.True);
         result.DisposeItems();
+    }
+
+    [TestCase(50, false, TestName = "Input below the 64-depth limit is accepted")]
+    [TestCase(65, true, TestName = "Input above the 64-depth limit is rejected as parse error")]
+    public async Task Input_depth_is_bounded_by_reader_default_max_depth(int paramNestingDepth, bool expectParseError)
+    {
+        JsonRpcRequest? captured = null;
+        IJsonRpcService service = Substitute.For<IJsonRpcService>();
+        service.SendRequestAsync(Arg.Any<JsonRpcRequest>(), Arg.Any<JsonRpcContext>())
+            .Returns(ci =>
+            {
+                captured = ci.Arg<JsonRpcRequest>();
+                return new JsonRpcSuccessResponse { Id = captured.Id };
+            });
+        service.GetErrorResponse(0, null!).ReturnsForAnyArgs(_errorResponse);
+        service.GetErrorResponse(0, null!, null!, null!).ReturnsForAnyArgs(_errorResponse);
+
+        JsonRpcConfig config = new() { RpcRecorderState = RpcRecorderState.None };
+        JsonRpcProcessor processor = new(service, config, Substitute.For<IFileSystem>(), LimboLogs.Instance);
+
+        string nested = BuildNestedArrayParams(paramNestingDepth);
+        string request = $"{{\"id\":1,\"jsonrpc\":\"2.0\",\"method\":\"eth_getTransactionCount\",\"params\":[{nested}]}}";
+
+        List<JsonRpcResult> result = await processor.ProcessAsync(request, new JsonRpcContext(RpcEndpoint.Http)).ToListAsync();
+
+        Assert.That(result, Has.Count.EqualTo(1));
+
+        if (expectParseError)
+        {
+            Assert.That(result[0].Response, Is.SameAs(_errorResponse));
+            Assert.That(captured, Is.Null, "a depth-rejected request must never reach the service");
+        }
+        else
+        {
+            Assert.That(result[0].Response, Is.TypeOf<JsonRpcSuccessResponse>());
+            Assert.That(result[0].Response!.Id, Is.EqualTo(1));
+
+            Assert.That(captured, Is.Not.Null);
+            Assert.That(captured!.Method, Is.EqualTo("eth_getTransactionCount"));
+
+            JsonElement paramsArr = captured.Params;
+            Assert.That(paramsArr.ValueKind, Is.EqualTo(JsonValueKind.Array));
+            Assert.That(paramsArr.GetArrayLength(), Is.EqualTo(1));
+
+            int observedDepth = 1;
+            JsonElement node = paramsArr[0];
+            while (node.ValueKind == JsonValueKind.Array && node.GetArrayLength() > 0)
+            {
+                node = node[0];
+                observedDepth++;
+            }
+            Assert.That(node.ValueKind, Is.EqualTo(JsonValueKind.Array));
+            Assert.That(node.GetArrayLength(), Is.EqualTo(0), "innermost array of the constructed chain is empty");
+            Assert.That(observedDepth, Is.EqualTo(paramNestingDepth));
+        }
+        result.DisposeItems();
+    }
+
+    private static string BuildNestedArrayParams(int depth)
+    {
+        StringBuilder sb = new(depth * 2);
+        for (int i = 0; i < depth; i++) sb.Append('[');
+        for (int i = 0; i < depth; i++) sb.Append(']');
+        return sb.ToString();
     }
 }

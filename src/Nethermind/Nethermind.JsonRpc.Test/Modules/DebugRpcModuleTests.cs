@@ -57,7 +57,7 @@ public partial class DebugRpcModuleTests
 
         Assert.That(response, Is.TypeOf<JsonRpcErrorResponse>());
         JsonRpcErrorResponse errorResponse = (JsonRpcErrorResponse)response;
-        Assert.That(errorResponse.Error?.Message, Does.Contain("insufficient funds"));
+        Assert.That(errorResponse.Error?.Message, Does.Contain("insufficient sender balance"));
     }
 
     [Test]

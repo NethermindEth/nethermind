@@ -62,6 +62,28 @@ public class CodeInfoRepositoryTests
         Assert.That(sut.TryGetDelegation(TestItem.AddressA, _releaseSpec, out _), Is.EqualTo(false));
     }
 
+    [TestCase(false, TestName = "Missing account")]
+    [TestCase(true, TestName = "Existing empty-code account")]
+    public void TryGetDelegation_AccountWithoutCode_DoesNotLoadCodeInfo(bool createAccount)
+    {
+        IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
+        using IDisposable scope = stateProvider.BeginScope(IWorldState.PreGenesis);
+        if (createAccount)
+        {
+            stateProvider.CreateAccount(TestItem.AddressA, 0);
+        }
+
+        bool codeInfoLoaderCalled = false;
+        CodeInfoRepository sut = new(stateProvider, new EthereumPrecompileProvider(), (_, _, _) =>
+        {
+            codeInfoLoaderCalled = true;
+            return CodeInfo.Empty;
+        });
+
+        Assert.That(sut.TryGetDelegation(TestItem.AddressA, _releaseSpec, out _), Is.False);
+
+        Assert.That(codeInfoLoaderCalled, Is.False);
+    }
 
     public static IEnumerable<TestCaseData> DelegationCodeCases()
     {

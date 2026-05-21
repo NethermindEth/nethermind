@@ -200,6 +200,7 @@ public class PeerManagerFilteringIntegrationTests
         public PublicKey LocalNodeId { get; } = TestItem.PublicKeyA;
         public int LocalPort => 30303;
         public event EventHandler<SessionEventArgs>? SessionCreated;
+        public event SessionDisconnectedEventHandler? SessionDisconnected { add { } remove { } }
         public ISessionMonitor SessionMonitor => Substitute.For<ISessionMonitor>();
     }
 
@@ -225,6 +226,7 @@ public class PeerManagerFilteringIntegrationTests
         public PublicKey LocalNodeId { get; } = TestItem.PublicKeyA;
         public int LocalPort => 30303;
         public event EventHandler<SessionEventArgs>? SessionCreated { add { } remove { } }
+        public event SessionDisconnectedEventHandler? SessionDisconnected { add { } remove { } }
         public ISessionMonitor SessionMonitor => Substitute.For<ISessionMonitor>();
     }
 

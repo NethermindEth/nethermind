@@ -64,6 +64,12 @@ public class ForkchoiceUpdatedHandler(
             ?? StartBuildingPayload(newHeadHeader!, forkchoiceState, payloadAttributes);
     }
 
+    /// <summary>
+    /// MAY-skip clause from
+    /// <see href="https://github.com/ethereum/execution-apis/pull/786">execution-apis#786</see>:
+    /// returns Valid when <paramref name="newHeadHeader"/> is a canonical ancestor of the latest
+    /// known finalized block, so the FCU is answered without performing a reorg.
+    /// </summary>
     protected virtual bool IsOnMainChainBehindFinalized(BlockHeader newHeadHeader, ForkchoiceStateV1 forkchoiceState,
         [NotNullWhen(true)] out ResultWrapper<ForkchoiceUpdatedV1Result>? result)
     {
@@ -232,6 +238,14 @@ public class ForkchoiceUpdatedHandler(
             return ForkchoiceUpdatedV1Result.Invalid(Keccak.Zero);
         }
 
+        // Spec ordering within a single FCU: finalized <= safe <= head. Ancestry must be
+        // re-validated on every FCU - the binding is (head, finalized, safe), so a repeated
+        // finalized/safe hash paired with a new head on a sibling branch is still a spec violation.
+        long finalizedNumber = finalizedHeader?.Number ?? 0;
+
+        if (RejectIfInconsistent(finalizedHeader, 0, "finalized", newHeadHeader, requestStr) is { } finalizedError) return finalizedError;
+        if (RejectIfInconsistent(safeBlockHeader, finalizedNumber, "safe", newHeadHeader, requestStr) is { } safeError) return safeError;
+
         IReadOnlyList<Block>? blocks = EnsureNewHead(newHeadHeader, out string? setHeadErrorMsg);
         if (setHeadErrorMsg is not null)
         {
@@ -250,14 +264,6 @@ public class ForkchoiceUpdatedHandler(
         {
             _blockTree.UpdateMainChain(blocks!, true, true);
         }
-
-        // Spec ordering within a single FCU: finalized <= safe <= head. Ancestry must be
-        // re-validated on every FCU - the binding is (head, finalized, safe), so a repeated
-        // finalized/safe hash paired with a new head on a sibling branch is still a spec violation.
-        long finalizedNumber = finalizedHeader?.Number ?? 0;
-
-        if (RejectIfInconsistent(finalizedHeader, 0, "finalized", newHeadHeader, requestStr) is { } finalizedError) return finalizedError;
-        if (RejectIfInconsistent(safeBlockHeader, finalizedNumber, "safe", newHeadHeader, requestStr) is { } safeError) return safeError;
 
         bool nonZeroFinalizedBlockHash = finalizedBlockHash != Keccak.Zero;
         if (nonZeroFinalizedBlockHash)
