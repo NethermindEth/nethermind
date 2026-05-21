@@ -12,7 +12,7 @@ public sealed class PatternJsonRpcMethodFilter : IJsonRpcMethodFilter
     {
         string[] splitted = pattern.Split(PatternSeparator);
 
-        var regex = new RegexJsonRpcMethodFilter(splitted[0]);
+        RegexJsonRpcMethodFilter regex = new(splitted[0]);
         _filter = splitted.Length switch
         {
             1 => regex,

@@ -71,6 +71,12 @@ namespace Nethermind.JsonRpc.Modules.Eth
         ResultWrapper<UInt256?> eth_blobBaseFee();
 
         [JsonRpcMethod(IsImplemented = true,
+            Description = "Returns the base fee of the next block in wei",
+            IsSharable = true,
+            ExampleResponse = "0x3b9aca00")]
+        ResultWrapper<UInt256?> eth_baseFee();
+
+        [JsonRpcMethod(IsImplemented = true,
             Description = "Returns a list of addresses owned by the client",
             IsSharable = true,
             ExampleResponse = "[\"0x9b96a7841d6e0b76872c85c86082959189a27342\"]")]
@@ -347,9 +353,9 @@ namespace Nethermind.JsonRpc.Modules.Eth
         ResultWrapper<JsonNode> eth_config();
 
         [JsonRpcMethod(Description = "Retrieves block access list for a block by hash.")]
-        ResultWrapper<BlockAccessList?> eth_getBlockAccessListByHash(Hash256 blockHash);
+        ResultWrapper<ReadOnlyBlockAccessList?> eth_getBlockAccessListByHash(Hash256 blockHash);
 
         [JsonRpcMethod(Description = "Retrieves block access list for a block by number.")]
-        ResultWrapper<BlockAccessList?> eth_getBlockAccessListByNumber(long number);
+        ResultWrapper<ReadOnlyBlockAccessList?> eth_getBlockAccessListByNumber(long number);
     }
 }

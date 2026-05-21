@@ -25,8 +25,8 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
     IDisposable BeginScope(BlockHeader? baseBlock);
     bool IsInScope { get; }
     IWorldStateScopeProvider ScopeProvider { get; }
-    new UInt256 GetBalance(Address address);
-    new ValueHash256 GetCodeHash(Address address);
+    new ref readonly UInt256 GetBalance(Address address);
+    new ref readonly ValueHash256 GetCodeHash(Address address);
     bool HasStateForBlock(BlockHeader? baseBlock);
 
     /// <summary>

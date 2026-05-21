@@ -1005,7 +1005,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
         PersistOnShutdown();
     }
 
-    private void FlushNonBlockingBuffer()
+    internal void FlushNonBlockingBuffer()
     {
         using Lock.Scope _ = _scopeLock.EnterScope();
         if (_commitBuffer is null) return;
