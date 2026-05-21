@@ -13,10 +13,7 @@ using Nethermind.Int256;
 
 namespace Nethermind.Serialization.Rlp.Eip7928;
 
-public class AccountChangesDecoder :
-    IRlpValueDecoder<ReadOnlyAccountChanges>,
-    IRlpStreamEncoder<ReadOnlyAccountChanges>,
-    IRlpStreamEncoder<GeneratedAccountChanges>
+public class AccountChangesDecoder : RlpDecoder<ReadOnlyAccountChanges>
 {
     public static readonly AccountChangesDecoder Instance = new();
 
@@ -37,7 +34,7 @@ public class AccountChangesDecoder :
     private static readonly RlpLimit _storageLimit = new(Eip7928Constants.MaxSlots, "", ReadOnlyMemory<char>.Empty);
     private static readonly RlpLimit _txLimit = new(Eip7928Constants.MaxTxs, "", ReadOnlyMemory<char>.Empty);
 
-    public ReadOnlyAccountChanges Decode(ref Rlp.ValueDecoderContext ctx, RlpBehaviors rlpBehaviors)
+    protected override ReadOnlyAccountChanges DecodeInternal(ref Rlp.ValueDecoderContext ctx, RlpBehaviors rlpBehaviors)
     {
         int length = ctx.ReadSequenceLength();
         int check = length + ctx.Position;
@@ -97,13 +94,13 @@ public class AccountChangesDecoder :
         return new ReadOnlyAccountChanges(address, slotChanges, storageReads, balanceChanges, nonceChanges, codeChanges);
     }
 
-    public int GetLength(ReadOnlyAccountChanges item, RlpBehaviors rlpBehaviors)
+    public override int GetLength(ReadOnlyAccountChanges item, RlpBehaviors rlpBehaviors)
         => Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors));
 
     public int GetLength(GeneratedAccountChanges item, RlpBehaviors rlpBehaviors)
         => Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors));
 
-    public void Encode(RlpStream stream, ReadOnlyAccountChanges item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public override void Encode(RlpStream stream, ReadOnlyAccountChanges item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         EncodingLengths lengths = PrepareEncodingLengths(item, rlpBehaviors);
         EncodePrepared(stream, item, in lengths, rlpBehaviors);
@@ -226,7 +223,7 @@ public class AccountChangesDecoder :
         return len;
     }
 
-    private static int IndexedContentLength<T>(ReadOnlySpan<T> items, IRlpStreamEncoder<T> encoder, RlpBehaviors rlpBehaviors)
+    private static int IndexedContentLength<T>(ReadOnlySpan<T> items, RlpDecoder<T> encoder, RlpBehaviors rlpBehaviors)
     {
         int len = 0;
         for (int i = 0; i < items.Length; i++)
@@ -266,7 +263,7 @@ public class AccountChangesDecoder :
         }
     }
 
-    private static void EncodeIndexed<T>(RlpStream stream, ReadOnlySpan<T> items, int contentLength, IRlpStreamEncoder<T> encoder, RlpBehaviors rlpBehaviors)
+    private static void EncodeIndexed<T>(RlpStream stream, ReadOnlySpan<T> items, int contentLength, RlpDecoder<T> encoder, RlpBehaviors rlpBehaviors)
     {
         stream.StartSequence(contentLength);
         for (int i = 0; i < items.Length; i++)
