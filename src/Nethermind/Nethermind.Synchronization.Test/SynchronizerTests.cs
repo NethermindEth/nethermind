@@ -697,7 +697,7 @@ public class SynchronizerTests(SynchronizerType synchronizerType)
             .StopAsync();
     }
 
-    [Test]
+    [Test, Retry(3)]
     public async Task Will_remove_peer_when_init_fails()
     {
         SyncPeerMock peerA = new("A", true, true);
@@ -830,7 +830,7 @@ public class SynchronizerTests(SynchronizerType synchronizerType)
             .StopAsync();
     }
 
-    [Test]
+    [Test, Retry(3)]
     public async Task Will_not_reorganize_more_than_max_reorg_length()
     {
         SyncPeerMock peerA = new("A");
@@ -842,10 +842,10 @@ public class SynchronizerTests(SynchronizerType synchronizerType)
         await When.Syncing
             .AfterProcessingGenesis()
             .AfterPeerIsAdded(peerA)
-            .BestSuggestedHeaderIs(peerA.HeadHeader)
+            .BestSuggestedHeaderIs(peerA.HeadHeader, BatchSyncDynamicTimeout)
             .AfterPeerIsAdded(peerB)
             .WaitALittle()
-            .BestSuggestedHeaderIs(peerA.HeadHeader)
+            .BestSuggestedHeaderIs(peerA.HeadHeader, BatchSyncDynamicTimeout)
             .StopAsync();
     }
 

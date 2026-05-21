@@ -15,6 +15,9 @@
   "Pruning": {
     "PruningBoundary": 4096
   },
+  "Blocks": {
+    "TargetBlockGasLimit": 420000000
+  },
   "TxPool": {
     "BlobsSupport": "Disabled"
   },

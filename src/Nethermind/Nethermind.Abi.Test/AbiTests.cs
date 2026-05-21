@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Numerics;
 using System.Text;
+using System.Text.Json;
 using FluentAssertions;
 using MathNet.Numerics;
 using Nethermind.Core;
@@ -670,5 +671,28 @@ public class AbiTests
             Encoding.ASCII.GetBytes("1234567890"),
             Encoding.ASCII.GetBytes("Hello, world!"));
         encoded.ToHexString().Should().BeEquivalentTo(expectedValue.ToHexString());
+    }
+
+    [TestCase("tuple", typeof(AbiTuple), "()")]
+    [TestCase("tuple[]", typeof(AbiArray), "()[]")]
+    [TestCase("tuple[3]", typeof(AbiFixedLengthArray), "()[3]")]
+    [TestCase("tuple[][]", typeof(AbiArray), "()[][]")]
+    [TestCase("tuple[2][]", typeof(AbiArray), "()[2][]")]
+    public void AbiTypeConverter_Parses_Tuple_Variants(string typeName, Type expectedType, string expectedName)
+    {
+        AbiType result = JsonSerializer.Deserialize<AbiType>($"\"{typeName}\"")!;
+
+        result.Should().BeOfType(expectedType);
+        result.Name.Should().Be(expectedName);
+    }
+
+    [Test]
+    public void AbiTuple_Name_Reflects_Elements()
+    {
+        AbiTuple tuple = new(AbiType.UInt8, AbiType.UInt64);
+        tuple.Name.Should().Be("(uint8,uint64)");
+
+        AbiArray tupleArray = new(tuple);
+        tupleArray.Name.Should().Be("(uint8,uint64)[]");
     }
 }

@@ -85,6 +85,55 @@ class SszType
     public required string? Namespace { get; init; }
     public required Kind Kind { get; init; }
 
+    private string? _typeReferenceName;
+    /// <summary>
+    /// How this type is spelled at a use site — closed generics like <c>NewPayloadRequest&lt;TExecutionPayload&gt;</c>
+    /// or primitive keywords like <c>int</c>. Defaults to <see cref="Name"/> for hand-registered basic types.
+    /// </summary>
+    public string TypeReferenceName
+    {
+        get => _typeReferenceName ?? Name;
+        init => _typeReferenceName = value;
+    }
+
+    private string? _staticMemberAccess;
+    /// <summary>
+    /// Fully-qualified spelling used as the receiver for static-member access in generated code
+    /// (e.g. <c>global::Ns.Foo.Encode(...)</c>). Must be used at every <c>{Type}.{StaticMethod}(...)</c>
+    /// emission site so the call cannot be shadowed by an instance property of the same simple name
+    /// declared on the enclosing partial.
+    /// </summary>
+    /// <remarks>
+    /// Defaults to a <c>global::</c>-prefixed namespace concatenation for hand-registered basic types
+    /// and falls back to the bare <see cref="TypeReferenceName"/> when no containing namespace is known
+    /// (e.g. open type parameters).
+    /// </remarks>
+    public string StaticMemberAccess
+    {
+        get => _staticMemberAccess ?? (string.IsNullOrEmpty(Namespace) ? TypeReferenceName : $"global::{Namespace}.{TypeReferenceName}");
+        init => _staticMemberAccess = value;
+    }
+
+    /// <summary>Generic constraint clauses (e.g. <c>where T : ...</c>) for the root type declaration. Empty when there are none.</summary>
+    public string TypeParameterConstraints { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Namespaces of types referenced from <see cref="TypeParameterConstraints"/>. The generator emits a
+    /// <c>using</c> for each so the constraint clause resolves in the generated file.
+    /// </summary>
+    public List<string> TypeParameterConstraintNamespaces { get; } = [];
+
+    /// <summary><c>true</c> when this <see cref="SszType"/> represents an open type parameter (forces variable-size encoding).</summary>
+    public bool IsTypeParameter { get; init; }
+
+    /// <summary>Filename-safe form of <see cref="TypeReferenceName"/> used as the <c>AddSource</c> hint.</summary>
+    public string HintName => TypeReferenceName
+        .Replace('<', '_')
+        .Replace('>', '_')
+        .Replace(',', '_')
+        .Replace(' ', '_')
+        .Replace('.', '_');
+
     public SszProperty[]? Members { get; set; }
     public byte[]? ActiveFieldsBytes { get; set; }
     public int ActiveFieldsBitLength { get; set; }
@@ -107,7 +156,7 @@ class SszType
         private set => _length = value;
     }
 
-    public bool IsVariable => (Members is not null && Members.Any(x => x.IsVariable)) || Kind is Kind.CompatibleUnion;
+    public bool IsVariable => IsTypeParameter || (Members is not null && Members.Any(x => x.IsVariable)) || Kind is Kind.CompatibleUnion;
 
     public bool IsSszListItself { get; private set; }
 
@@ -117,8 +166,14 @@ class SszType
     {
         string? @namespace = GetNamespace(type);
         string name = GetTypeName(type);
+        string typeReferenceName = GetTypeReferenceName(type);
+        string staticMemberAccess = GetStaticMemberAccess(type, typeReferenceName);
 
-        SszType? existingType = types.FirstOrDefault(t => t.Name == name && t.Namespace == @namespace);
+        // Hand-registered basic types (e.g. byte, Int32) use BCL casing in Name while a
+        // user-site reference comes back in keyword form ("byte", "int") via MinimallyQualifiedFormat —
+        // so reconcile to the basic-type entry by Name in that case.
+        SszType? existingType = types.FirstOrDefault(t => t.Namespace == @namespace
+            && (t.TypeReferenceName == typeReferenceName || (t.Kind == Kind.Basic && t.Name == name)));
         if (existingType is not null)
         {
             return existingType;
@@ -131,7 +186,10 @@ class SszType
         {
             Namespace = @namespace,
             Name = name,
+            TypeReferenceName = typeReferenceName,
+            StaticMemberAccess = staticMemberAccess,
             Kind = kind,
+            IsTypeParameter = type is ITypeParameterSymbol,
         };
         types.Add(result);
 
@@ -461,10 +519,30 @@ class SszType
     private static bool HasAnyFieldIndex(ITypeSymbol typeSymbol) =>
         GetPublicProperties(typeSymbol).Any(property => property.GetAttributes().Any(a => a.AttributeClass?.Name == "SszFieldAttribute"));
 
-    private static string? GetNamespace(ITypeSymbol syntaxNode) => syntaxNode.ContainingNamespace?.ToString();
+    private static string? GetNamespace(ITypeSymbol syntaxNode) =>
+        syntaxNode.ContainingNamespace is { IsGlobalNamespace: false } ns ? ns.ToString() : null;
 
     private static string GetTypeName(ITypeSymbol syntaxNode) =>
         string.IsNullOrEmpty(syntaxNode.ContainingNamespace?.ToString()) ? syntaxNode.ToString() : syntaxNode.Name.Replace(syntaxNode.ContainingNamespace! + ".", "");
+
+    // Strip the nullable reference-type annotation so the resulting name is usable both as a
+    // bare type identifier in static-member access (e.g. `Foo.Encode(...)`) and as a parameter
+    // type where the generator decides nullability contextually (see <see cref="IsStruct"/>).
+    // Leaving `?` baked in would emit invalid syntax like `Foo?.Encode(...)` at static call sites.
+    private static string GetTypeReferenceName(ITypeSymbol typeSymbol) =>
+        typeSymbol.WithNullableAnnotation(NullableAnnotation.NotAnnotated)
+            .ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat);
+
+    // Globally-rooted form (e.g. `global::Ns.Foo<global::Other.Bar>`) used wherever the generator
+    // emits a static-member access on the type. Disambiguates against instance members of the
+    // same simple name on the enclosing partial and qualifies any closed-generic type arguments
+    // embedded in the reference. Type parameters resolve at the use site and degrade to their
+    // declared identifier (e.g. `T`).
+    private static string GetStaticMemberAccess(ITypeSymbol typeSymbol, string typeReferenceName) =>
+        typeSymbol is ITypeParameterSymbol
+            ? typeReferenceName
+            : typeSymbol.WithNullableAnnotation(NullableAnnotation.NotAnnotated)
+                .ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
 
     public override string ToString() => $"type({Kind},{Name},{(IsVariable ? "v" : "f")})";
 

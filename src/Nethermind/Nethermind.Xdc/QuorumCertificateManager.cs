@@ -45,7 +45,11 @@ internal class QuorumCertificateManager : IQuorumCertificateManager, IDisposable
 
         BlockHeader? head = _blockTree.Head?.Header;
         if (head is not null)
-            Initialize((XdcBlockHeader)head);
+        {
+            if (head is not XdcBlockHeader xdcHead)
+                throw new InvalidOperationException($"Expected an XDC header for chain head, but got {head.GetType().FullName}");
+            Initialize(xdcHead);
+        }
     }
 
     public QuorumCertificate HighestKnownCertificate => _context.HighestQC;

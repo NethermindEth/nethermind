@@ -7,6 +7,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
+using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Synchronization.Peers;
 using Nethermind.Xdc.Errors;
@@ -35,6 +36,7 @@ public class TimeoutCertificateManager : ITimeoutCertificateManager
     private readonly ISpecProvider _specProvider;
     private readonly IBlockTree _blockTree;
     private readonly ISigner _signer;
+    private readonly ILogger _logger;
     private readonly XdcPool<Timeout> _timeouts = new();
     private readonly ConcurrentDictionary<ulong, byte> _tcBuildStartedByRound = new();
 
@@ -46,7 +48,8 @@ public class TimeoutCertificateManager : ITimeoutCertificateManager
         IEpochSwitchManager epochSwitchManager,
         ISpecProvider specProvider,
         IBlockTree blockTree,
-        ISigner signer)
+        ISigner signer,
+        ILogManager logManager)
     {
         _consensusContext = context;
         this._timeoutTimer = timeoutTimer;
@@ -56,6 +59,7 @@ public class TimeoutCertificateManager : ITimeoutCertificateManager
         this._specProvider = specProvider;
         this._blockTree = blockTree;
         this._signer = signer;
+        _logger = logManager.GetClassLogger<TimeoutCertificateManager>();
         _timeoutTimer.TimeoutElapsed += (s, e) => OnCountdownTimer();
     }
 
@@ -273,7 +277,11 @@ public class TimeoutCertificateManager : ITimeoutCertificateManager
         }
 
         ValueHash256 msgHash = ComputeTimeoutMsgHash(currentRound, (ulong)gapNumber);
-        Signature signedHash = _signer.Sign(msgHash);
+        if (!_signer.TrySign(in msgHash, out Signature signedHash))
+        {
+            if (_logger.IsWarn) _logger.Warn($"XDC signer {_signer.Address} could not sign timeout for round {currentRound} — skipping broadcast.");
+            return;
+        }
         Timeout timeoutMsg = new(currentRound, signedHash, (ulong)gapNumber, isMyVote: true);
         timeoutMsg.Signer = _signer.Address;
 

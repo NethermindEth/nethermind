@@ -65,14 +65,14 @@ public static class SszCodec
     public static int EncodeGetPayloadV2Response(GetPayloadV2Result? r, IBufferWriter<byte> writer)
         => EncodeToWriter(new GetPayloadResponseV2Wire
         {
-            ExecutionPayload = new SszExecutionPayload(r!.ExecutionPayload),
+            ExecutionPayload = new SszExecutionPayloadV2(r!.ExecutionPayload),
             BlockValue = r.BlockValue
         }, writer);
 
     public static int EncodeGetPayloadV3Response(GetPayloadV3Result? r, IBufferWriter<byte> writer)
         => EncodeToWriter(new GetPayloadResponseV3Wire
         {
-            ExecutionPayload = new SszExecutionPayloadV3((ExecutionPayloadV3)r!.ExecutionPayload),
+            ExecutionPayload = new SszExecutionPayloadV3(r!.ExecutionPayload),
             BlockValue = r.BlockValue,
             BlobsBundle = r.BlobsBundle.ToWire(),
             ShouldOverrideBuilder = r.ShouldOverrideBuilder
@@ -81,7 +81,7 @@ public static class SszCodec
     public static int EncodeGetPayloadV4Response(GetPayloadV4Result? r, IBufferWriter<byte> writer)
         => EncodeToWriter(new GetPayloadResponseV4Wire
         {
-            ExecutionPayload = new SszExecutionPayloadV3((ExecutionPayloadV3)r!.ExecutionPayload),
+            ExecutionPayload = new SszExecutionPayloadV3(r!.ExecutionPayload),
             BlockValue = r.BlockValue,
             BlobsBundle = r.BlobsBundle.ToWire(),
             ShouldOverrideBuilder = r.ShouldOverrideBuilder,
@@ -91,7 +91,7 @@ public static class SszCodec
     public static int EncodeGetPayloadV5Response(GetPayloadV5Result? r, IBufferWriter<byte> writer)
         => EncodeToWriter(new GetPayloadResponseV5Wire
         {
-            ExecutionPayload = new SszExecutionPayloadV3((ExecutionPayloadV3)r!.ExecutionPayload),
+            ExecutionPayload = new SszExecutionPayloadV3(r!.ExecutionPayload),
             BlockValue = r.BlockValue,
             BlobsBundle = r.BlobsBundle.ToWire(),
             ShouldOverrideBuilder = r.ShouldOverrideBuilder,
@@ -101,7 +101,7 @@ public static class SszCodec
     public static int EncodeGetPayloadV6Response(GetPayloadV6Result? r, IBufferWriter<byte> writer)
         => EncodeToWriter(new GetPayloadResponseV6Wire
         {
-            ExecutionPayload = new SszExecutionPayloadV4((ExecutionPayloadV4)r!.ExecutionPayload),
+            ExecutionPayload = new SszExecutionPayloadV4(r!.ExecutionPayload),
             BlockValue = r.BlockValue,
             BlobsBundle = r.BlobsBundle.ToWire(),
             ShouldOverrideBuilder = r.ShouldOverrideBuilder,

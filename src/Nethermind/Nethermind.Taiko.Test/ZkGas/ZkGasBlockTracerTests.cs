@@ -267,4 +267,51 @@ public class ZkGasBlockTracerTests
         Assert.That(blockTracer.Meter.IsLimitExceeded, Is.True,
             "Intrinsic that exceeds the block budget must set IsLimitExceeded");
     }
+
+    // ── validation regression: IsLimitExceeded must survive EndTxTrace ────────
+
+    [Test]
+    public void EndTxTrace_PreservesLimitExceeded_WhenChargeFailedMidTx()
+    {
+        IBlockTracer inner = Substitute.For<IBlockTracer>();
+        inner.StartNewTxTrace(Arg.Any<Transaction?>()).Returns(NullTxTracer.Instance);
+        ZkGasBlockTracer blockTracer = new(inner, blockZkGasLimit: 1000, txIntrinsicZkGas: 0);
+
+        blockTracer.StartNewBlockTrace(MakeBlock());
+        blockTracer.StartNewTxTrace(MakeTx());
+
+        blockTracer.Meter.ChargeOpcode(0xf0, 800); // succeeds: 800 in-flight
+        blockTracer.Meter.ChargeOpcode(0xf0, 300); // fails: 800+300 > 1000, _txZkGasUsed stays at 800
+        Assert.That(blockTracer.Meter.IsLimitExceeded, Is.True);
+
+        // EndTxTrace must not commit the partial 800-unit total and clear the flag.
+        blockTracer.EndTxTrace();
+
+        Assert.That(blockTracer.Meter.IsLimitExceeded, Is.True);
+        Assert.That(blockTracer.Meter.BlockZkGasUsed, Is.EqualTo(0UL));
+    }
+
+    [Test]
+    public void EndTxTrace_PreservesLimitExceeded_WhenIntrinsicFailed()
+    {
+        IBlockTracer inner = Substitute.For<IBlockTracer>();
+        inner.StartNewTxTrace(Arg.Any<Transaction?>()).Returns(NullTxTracer.Instance);
+        // Limit=800, intrinsic=500. Pre-fill 600 units so only 200 budget remains.
+        ZkGasBlockTracer blockTracer = new(inner, blockZkGasLimit: 800, txIntrinsicZkGas: 500);
+
+        blockTracer.StartNewBlockTrace(MakeBlock());
+
+        // Pre-fill block to 600 via direct meter manipulation (bypasses intrinsic charge).
+        blockTracer.Meter.ChargeOpcode(0xf0, 600);
+        blockTracer.Meter.CommitTransaction(); // blockZkGasUsed = 600; 200 budget left
+
+        // Second tx: intrinsic (500) > remaining budget (200) → StartNewTxTrace sets the flag.
+        blockTracer.StartNewTxTrace(MakeTx());
+        Assert.That(blockTracer.Meter.IsLimitExceeded, Is.True);
+
+        blockTracer.EndTxTrace();
+
+        Assert.That(blockTracer.Meter.IsLimitExceeded, Is.True);
+        Assert.That(blockTracer.Meter.BlockZkGasUsed, Is.EqualTo(600UL));
+    }
 }
