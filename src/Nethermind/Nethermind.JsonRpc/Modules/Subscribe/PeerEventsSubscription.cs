@@ -39,9 +39,9 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
             {
                 session.MsgDelivered += OnMsgDelivered;
                 session.MsgReceived += OnMsgReceived;
-                session.Disconnected += OnSessionDisconnected;
             }
             _rlpxHost.SessionCreated += OnSessionCreated;
+            _rlpxHost.SessionDisconnected += OnSessionDisconnected;
             if (_logger.IsTrace) _logger.Trace($"admin_subscription {Id} will track PeerAdded, PeerRemoved, MsgDelivered and MsgReceived.");
         }
 
@@ -142,15 +142,12 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
         {
             args.Session.MsgDelivered += OnMsgDelivered;
             args.Session.MsgReceived += OnMsgReceived;
-            args.Session.Disconnected += OnSessionDisconnected;
         }
 
-        private void OnSessionDisconnected(object sender, DisconnectEventArgs e)
+        private void OnSessionDisconnected(object sender, ISession session, DisconnectEventArgs e)
         {
-            ISession session = (ISession)sender;
             session.MsgDelivered -= OnMsgDelivered;
             session.MsgReceived -= OnMsgReceived;
-            session.Disconnected -= OnSessionDisconnected;
         }
 
         public override string Type => SubscriptionType.AdminSubscription.PeerEvents;
@@ -163,9 +160,9 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
             {
                 session.MsgDelivered -= OnMsgDelivered;
                 session.MsgReceived -= OnMsgReceived;
-                session.Disconnected -= OnSessionDisconnected;
             }
             _rlpxHost.SessionCreated -= OnSessionCreated;
+            _rlpxHost.SessionDisconnected -= OnSessionDisconnected;
             base.Dispose();
             if (_logger.IsTrace) _logger.Trace($"admin_subscription.peerEvent {Id} is no longer subscribed.");
         }
