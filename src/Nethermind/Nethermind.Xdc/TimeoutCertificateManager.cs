@@ -111,8 +111,6 @@ public class TimeoutCertificateManager : ITimeoutCertificateManager
         TimeoutCertificate timeoutCertificate = new(timeout.Round, signatures, timeout.GapNumber);
 
         ProcessTimeoutCertificate(timeoutCertificate);
-
-        CleanupTimeouts(timeoutCertificate.Round);
     }
 
     public void ProcessTimeoutCertificate(TimeoutCertificate timeoutCertificate)
@@ -126,6 +124,8 @@ public class TimeoutCertificateManager : ITimeoutCertificateManager
         {
             _consensusContext.SetNewRound(timeoutCertificate.Round + 1);
         }
+
+        CleanupTimeouts(timeoutCertificate.Round);
     }
 
     private void CleanupTimeouts(ulong round)
