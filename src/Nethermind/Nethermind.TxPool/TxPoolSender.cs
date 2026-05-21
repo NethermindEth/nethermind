@@ -47,7 +47,9 @@ namespace Nethermind.TxPool
 
         private AcceptTxResult SubmitTx(NonceLocker locker, Transaction tx, TxHandlingOptions txHandlingOptions)
         {
-            _sealer.Seal(tx, txHandlingOptions);
+            if (!_sealer.TrySeal(tx, txHandlingOptions))
+                return AcceptTxResult.SignFailed;
+
             AcceptTxResult result = _txPool.SubmitTx(tx, txHandlingOptions);
 
             if (result == AcceptTxResult.Accepted)

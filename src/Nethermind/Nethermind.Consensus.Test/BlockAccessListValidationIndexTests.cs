@@ -144,7 +144,7 @@ public class BlockAccessListValidationIndexTests
             Account(TestItem.AddressA, balance: new BalanceChange(1, 1)));
 
         BlockAccessListValidationIndex suggestedIndex = BlockAccessListValidationIndex.Build(suggested, txCount: 1, _addressIndex);
-        BlockAccessListValidationIndex generatedIndex = new(1, _addressIndex, suggestedIndex);
+        BlockAccessListValidationIndex generatedIndex = new(1, _addressIndex, suggestedIndex, suggested.TotalStorageReads, suggested.TotalStorageChangeEvents);
 
         // Generated slice: AddressA matches, AddressB has only a read.
         BlockAccessListAtIndex slice = new() { Index = 1 };
@@ -198,7 +198,7 @@ public class BlockAccessListValidationIndexTests
         out BlockAccessListValidationIndex suggestedIndex)
     {
         suggestedIndex = BlockAccessListValidationIndex.Build(suggested, txCount, _addressIndex);
-        BlockAccessListValidationIndex generatedIndex = new(txCount, _addressIndex, suggestedIndex);
+        BlockAccessListValidationIndex generatedIndex = new(txCount, _addressIndex, suggestedIndex, suggested.TotalStorageReads, suggested.TotalStorageChangeEvents);
         // BlockAccessListValidationIndex.Add only accepts per-tx slices (one BlockAccessListAtIndex
         // per block-access index). Tests phrase the generated side as a full ReadOnlyBlockAccessList
         // for symmetry with the suggested side, so we shred it back into per-index slices here.

@@ -12,10 +12,13 @@
     <Project Path="Nethermind.Evm/Nethermind.Evm.csproj" />
     <Project Path="Nethermind.History/Nethermind.History.csproj" />
     <Project Path="Nethermind.Logging/Nethermind.Logging.csproj" />
+    <Project Path="Nethermind.Merkleization/Nethermind.Merkleization.csproj" />
     <Project Path="Nethermind.Network.Contract/Nethermind.Network.Contract.csproj" />
     <Project Path="Nethermind.Network.Stats/Nethermind.Network.Stats.csproj" />
     <Project Path="Nethermind.Serialization.Json/Nethermind.Serialization.Json.csproj" />
     <Project Path="Nethermind.Serialization.Rlp/Nethermind.Serialization.Rlp.csproj" />
+    <Project Path="Nethermind.Serialization.Ssz/Nethermind.Serialization.Ssz.csproj" />
+    <Project Path="Nethermind.Serialization.SszGenerator/Nethermind.Serialization.SszGenerator.csproj" />
     <Project Path="Nethermind.Specs/Nethermind.Specs.csproj" />
     <Project Path="Nethermind.State/Nethermind.State.csproj" />
     <Project Path="Nethermind.Synchronization/Nethermind.Synchronization.csproj" />

@@ -40,7 +40,7 @@ public class JsonRpcFilterTests
     [TestCaseSource(nameof(UnlimitedMethodTestCases))]
     public void AcceptsUnlimitedMethods(List<string> patterns, List<string> methodsNames)
     {
-        var filter = CreateFilter(patterns);
+        IJsonRpcMethodFilter filter = CreateFilter(patterns);
 
         foreach (string methodName in methodsNames)
         {
@@ -74,7 +74,7 @@ public class JsonRpcFilterTests
     [TestCaseSource(nameof(UnlimitedMethodNegativeTestCases))]
     public void RejectsUnlimitedMethods(List<string> patterns, List<string> methodsNames)
     {
-        var filter = CreateFilter(patterns);
+        IJsonRpcMethodFilter filter = CreateFilter(patterns);
 
         foreach (string methodName in methodsNames)
         {
@@ -112,7 +112,7 @@ public class JsonRpcFilterTests
     [TestCaseSource(nameof(LimitedMethodTestCases))]
     public void AcceptsLimitedMethods(List<string> patterns, string methodName, int count)
     {
-        var filter = CreateFilter(patterns);
+        IJsonRpcMethodFilter filter = CreateFilter(patterns);
 
         for (int i = 0; i < count; i++)
         {
@@ -123,7 +123,5 @@ public class JsonRpcFilterTests
 
     private static IJsonRpcMethodFilter CreateFilter(IEnumerable<string> patterns) =>
         new ComposedJsonRpcMethodFilter(
-            patterns
-                .Select(pattern => new PatternJsonRpcMethodFilter(pattern) as IJsonRpcMethodFilter)
-                .ToList());
+            [.. patterns.Select(pattern => new PatternJsonRpcMethodFilter(pattern) as IJsonRpcMethodFilter)]);
 }

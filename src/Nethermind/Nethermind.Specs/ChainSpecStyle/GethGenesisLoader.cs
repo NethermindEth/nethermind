@@ -65,34 +65,26 @@ public class GethGenesisLoader(IJsonSerializer serializer) : IChainSpecLoader
         GethGenesisConfigJson config = gethGenesis.Config;
 
         Dictionary<ulong, OrderedBlobScheduleSettings> blobSchedulesByTimestamp = [];
-        if (config.BlobSchedule is not null)
+        IReadOnlyDictionary<string, ulong>? timestamps = ((IHasNamedForks)config).NamedForkTimestamps;
+        if (config.BlobSchedule is not null && timestamps is not null)
         {
             foreach ((string forkName, GethBlobScheduleEntry blobSettings) in config.BlobSchedule)
             {
-                if (!_blobScheduleForks.TryGetValue(forkName, out BlobScheduleFork fork))
-                {
-                    continue;
-                }
-
-                ulong? timestamp = fork.TimestampGetter(config);
-
-                if (timestamp is null)
-                {
-                    continue;
-                }
+                if (!_blobScheduleForks.TryGetValue(forkName, out BlobScheduleFork fork)) continue;
+                if (!timestamps.TryGetValue(forkName, out ulong timestamp)) continue;
 
                 BlobScheduleSettings settings = new()
                 {
-                    Timestamp = timestamp.Value,
+                    Timestamp = timestamp,
                     Target = blobSettings.Target,
                     Max = blobSettings.Max,
                     BaseFeeUpdateFraction = blobSettings.BaseFeeUpdateFraction
                 };
 
-                if (!blobSchedulesByTimestamp.TryGetValue(timestamp.Value, out OrderedBlobScheduleSettings existing)
+                if (!blobSchedulesByTimestamp.TryGetValue(timestamp, out OrderedBlobScheduleSettings existing)
                     || fork.Order > existing.ForkOrder)
                 {
-                    blobSchedulesByTimestamp[timestamp.Value] = new OrderedBlobScheduleSettings(fork.Order, settings);
+                    blobSchedulesByTimestamp[timestamp] = new OrderedBlobScheduleSettings(fork.Order, settings);
                 }
             }
         }
@@ -160,76 +152,39 @@ public class GethGenesisLoader(IJsonSerializer serializer) : IChainSpecLoader
             MergeForkIdTransition = config.MergeNetsplitBlock,
             TerminalTotalDifficulty = config.TerminalTotalDifficulty,
 
-            Eip3651TransitionTimestamp = config.ShanghaiTime,
-            Eip3855TransitionTimestamp = config.ShanghaiTime,
-            Eip3860TransitionTimestamp = config.ShanghaiTime,
-            Eip4895TransitionTimestamp = config.ShanghaiTime,
-
-            Eip1153TransitionTimestamp = config.CancunTime,
-            Eip4844TransitionTimestamp = config.CancunTime,
-            Eip4788TransitionTimestamp = config.CancunTime,
+            // Post-merge per-EIP timestamp fan-out is driven off `HardforkLabels.All` below; only
+            // the side-effects that don't fit the bulk-label pattern stay here as conditional gates.
             Eip4788ContractAddress = config.CancunTime is null ? null : Eip4788Constants.BeaconRootsAddress,
-            Eip5656TransitionTimestamp = config.CancunTime,
-            Eip6780TransitionTimestamp = config.CancunTime,
-
-            Eip2537TransitionTimestamp = config.PragueTime,
-            Eip2935TransitionTimestamp = config.PragueTime,
             Eip2935ContractAddress = config.PragueTime is null ? null : Eip2935Constants.BlockHashHistoryAddress,
-
-            Eip6110TransitionTimestamp = config.PragueTime,
-            DepositContractAddress = config.PragueTime is null
-                ? null
-                : config.DepositContractAddress ?? Eip6110Constants.MainnetDepositContractAddress,
-
-            Eip7002TransitionTimestamp = config.PragueTime,
+            DepositContractAddress = config.PragueTime is null ? null : config.DepositContractAddress ?? Eip6110Constants.MainnetDepositContractAddress,
             Eip7002ContractAddress = config.PragueTime is null ? null : Eip7002Constants.WithdrawalRequestPredeployAddress,
-
-            Eip7251TransitionTimestamp = config.PragueTime,
             Eip7251ContractAddress = config.PragueTime is null ? null : Eip7251Constants.ConsolidationRequestPredeployAddress,
-
-            Eip7623TransitionTimestamp = config.PragueTime,
-            Eip7702TransitionTimestamp = config.PragueTime,
-
-            Eip7594TransitionTimestamp = config.OsakaTime,
-            Eip7823TransitionTimestamp = config.OsakaTime,
-            Eip7825TransitionTimestamp = config.OsakaTime,
-            Eip7883TransitionTimestamp = config.OsakaTime,
-            Eip7918TransitionTimestamp = config.OsakaTime,
-            Eip7934TransitionTimestamp = config.OsakaTime,
             Eip7934MaxRlpBlockSize = Eip7934Constants.DefaultMaxRlpBlockSize,
-            Eip7939TransitionTimestamp = config.OsakaTime,
-            Eip7951TransitionTimestamp = config.OsakaTime,
-
-            Eip7708TransitionTimestamp = config.AmsterdamTime,
-            Eip7778TransitionTimestamp = config.AmsterdamTime,
-            Eip7843TransitionTimestamp = config.AmsterdamTime,
-            Eip7928TransitionTimestamp = config.AmsterdamTime,
-            Eip7954TransitionTimestamp = config.AmsterdamTime,
-            Eip7976TransitionTimestamp = config.AmsterdamTime,
-            Eip7981TransitionTimestamp = config.AmsterdamTime,
-            Eip8024TransitionTimestamp = config.AmsterdamTime,
-            Eip8037TransitionTimestamp = config.AmsterdamTime,
 
             BlobSchedule = blobSchedule
         };
+
+        // Fan out Shanghai/Cancun/Prague/Osaka/Amsterdam timestamps via the shared HardforkLabels
+        // table — same source of truth as the Parity loader, driven by Forks/*.cs.
+        HardforkLabels.ExpandAll(chainSpec.Parameters, config);
     }
 
-    private readonly record struct BlobScheduleFork(int Order, Func<GethGenesisConfigJson, ulong?> TimestampGetter);
+    private readonly record struct BlobScheduleFork(int Order);
 
     private readonly record struct OrderedBlobScheduleSettings(int ForkOrder, BlobScheduleSettings Settings);
 
     private static readonly Dictionary<string, BlobScheduleFork> _blobScheduleForks =
         new(StringComparer.OrdinalIgnoreCase)
         {
-            [nameof(Cancun)] = new(0, static c => c.CancunTime),
-            [nameof(Prague)] = new(1, static c => c.PragueTime),
-            [nameof(Osaka)] = new(2, static c => c.OsakaTime),
-            [nameof(BPO1)] = new(3, static c => c.Bpo1Time),
-            [nameof(BPO2)] = new(4, static c => c.Bpo2Time),
-            [nameof(Amsterdam)] = new(5, static c => c.AmsterdamTime),
-            [nameof(BPO3)] = new(6, static c => c.Bpo3Time),
-            [nameof(BPO4)] = new(7, static c => c.Bpo4Time),
-            [nameof(BPO5)] = new(8, static c => c.Bpo5Time),
+            [nameof(Cancun)] = new(0),
+            [nameof(Prague)] = new(1),
+            [nameof(Osaka)] = new(2),
+            [nameof(BPO1)] = new(3),
+            [nameof(BPO2)] = new(4),
+            [nameof(Amsterdam)] = new(5),
+            [nameof(BPO3)] = new(6),
+            [nameof(BPO4)] = new(7),
+            [nameof(BPO5)] = new(8),
         };
 
     private static void LoadGenesis(GethGenesisJson gethGenesisJson, ChainSpec chainSpec)

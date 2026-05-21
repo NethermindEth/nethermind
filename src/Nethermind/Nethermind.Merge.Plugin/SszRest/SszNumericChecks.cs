@@ -17,7 +17,7 @@ internal static class SszNumericChecks
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static long CheckedLong(ulong value)
     {
-        if (value > (ulong)long.MaxValue)
+        if (value > long.MaxValue)
             ThrowLongOutOfRange(value);
 
         return (long)value;

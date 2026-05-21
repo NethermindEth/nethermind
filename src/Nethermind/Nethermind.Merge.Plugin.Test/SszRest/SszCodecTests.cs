@@ -207,7 +207,7 @@ public class SszCodecTests
         byte[] encoded = NewPayloadV4RequestWire.Encode(wire);
 
         NewPayloadV4RequestWire.Decode(encoded, out NewPayloadV4RequestWire decoded);
-        ExecutionPayloadV3 payload = decoded.ExecutionPayload.Unwrap();
+        ExecutionPayloadV3 payload = decoded.ExecutionPayload.AsExecutionPayload();
         byte[]?[] hashes = decoded.ExpectedBlobVersionedHashes.ToBytesArrays();
         byte[][]? requests = decoded.ExecutionRequests.ToExecutionRequests();
 
@@ -242,7 +242,7 @@ public class SszCodecTests
         byte[] encoded = NewPayloadV5RequestWire.Encode(wire);
 
         NewPayloadV5RequestWire.Decode(encoded, out NewPayloadV5RequestWire decoded);
-        ExecutionPayloadV4 payload = decoded.ExecutionPayload.Unwrap();
+        ExecutionPayloadV4 payload = decoded.ExecutionPayload.AsExecutionPayload();
         byte[]?[] hashes = decoded.ExpectedBlobVersionedHashes.ToBytesArrays();
         byte[][]? requests = decoded.ExecutionRequests.ToExecutionRequests();
 
