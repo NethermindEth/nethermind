@@ -269,11 +269,12 @@ public class TrieStoreScopeProvider(ITrieStore trieStore, IKeyValueStoreWithBatc
 
     public class KeyValueWithBatchingBackedCodeDb(IKeyValueStoreWithBatching codeDb, bool isPersistent = false) : IWorldStateScopeProvider.ICodeDb
     {
-        // Persisted-code hint cache. Non-null only when this codeDb is durable (production).
-        // For overlay/transient codeDbs we leave this null so ContainsCode always reports false
-        // and MarkCodePersisted is a no-op — overlay writes are not durable and must never
-        // poison the hint cache. False positives here would cause InsertCode to skip the
-        // _codeBatch insert, and ProcessDiffState would then fail to find just-deployed code.
+        // Persisted-code hint cache. Non-null only for durable codeDbs (production).
+        // Overlay codeDbs leave this null — overlay writes are not durable and must never
+        // populate a hint that survives the overlay's reset.
+        // Capacity 1_024: 4x the per-block filter (256) to cover hot factory-deployed
+        // bytecode across multiple recent blocks. False negatives just cause a redundant
+        // write; false positives would lose the just-deployed code (the bug being prevented).
         private readonly AssociativeKeyCache<ValueHash256>? _persistedHint
             = isPersistent ? new AssociativeKeyCache<ValueHash256>(1_024) : null;
 

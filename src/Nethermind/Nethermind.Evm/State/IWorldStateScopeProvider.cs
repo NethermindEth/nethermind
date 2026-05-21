@@ -78,17 +78,16 @@ public interface IWorldStateScopeProvider
         /// Hint: returns true only if this code is durably persisted in this codeDb.
         /// Used by callers to avoid redundant inserts. Implementations must never produce
         /// false positives — a true return means the code is retrievable via <see cref="GetCode"/>.
-        /// For transient (overlay) codeDbs that cannot durably persist anything, this must
-        /// always return false.
+        /// Default returns false (safe overlay behaviour: never claim something is persisted).
         /// </summary>
-        bool ContainsCode(in ValueHash256 codeHash);
+        bool ContainsCode(in ValueHash256 codeHash) => false;
 
         /// <summary>
         /// Hint: the code with the given hash was just persisted to this codeDb. Permits
         /// the implementation to update an internal cache used by <see cref="ContainsCode"/>.
-        /// Transient/overlay codeDbs must treat this as a no-op.
+        /// Default is a no-op (safe overlay behaviour).
         /// </summary>
-        void MarkCodePersisted(in ValueHash256 codeHash);
+        void MarkCodePersisted(in ValueHash256 codeHash) { }
     }
 
     public interface IStorageTree
