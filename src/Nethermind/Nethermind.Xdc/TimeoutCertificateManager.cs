@@ -81,12 +81,13 @@ public class TimeoutCertificateManager : ITimeoutCertificateManager
         BroadcastTimeout(timeout);
 
         IXdcReleaseSpec spec = _specProvider.GetXdcSpec(xdcHeader, timeout.Round);
-        double CertificateThreshold = spec.CertificateThreshold;
-        if (collectedTimeouts.Count >= epochSwitchInfo.Masternodes.Length * CertificateThreshold
-            && _tcBuildStartedByRound.TryAdd(timeout.Round, 0))
-        {
-            OnTimeoutPoolThresholdReached(collectedTimeouts, timeout);
-        }
+        if (collectedTimeouts.Count < epochSwitchInfo.Masternodes.Length * spec.CertificateThreshold)
+            return Task.CompletedTask;
+
+        if (!_tcBuildStartedByRound.TryAdd(timeout.Round, 0))
+            return Task.CompletedTask;
+
+        OnTimeoutPoolThresholdReached(collectedTimeouts, timeout);
         return Task.CompletedTask;
     }
 
