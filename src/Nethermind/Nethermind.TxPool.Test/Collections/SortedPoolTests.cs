@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Consensus.Comparers;
@@ -103,6 +104,53 @@ namespace Nethermind.TxPool.Test.Collections
 
             _sortedPool.TryRemove(tx.Hash);
             _sortedPool.TryGetBucket(tx.SenderAddress, out _).Should().BeFalse();
+        }
+
+        private static IEnumerable<TestCaseData> VisitBucketCases()
+        {
+            yield return new TestCaseData(Array.Empty<int>(), int.MaxValue, Array.Empty<int>())
+                .SetName("VisitBucket_missing_group_visits_nothing");
+            yield return new TestCaseData(new[] { 0, 1, 2, 3 }, int.MaxValue, new[] { 0, 1, 2, 3 })
+                .SetName("VisitBucket_iterates_all_items_in_ascending_nonce_order");
+            yield return new TestCaseData(new[] { 0, 1, 2, 3 }, 2, new[] { 0, 1, 2 })
+                .SetName("VisitBucket_stops_after_visitor_returns_false");
+        }
+
+        [TestCaseSource(nameof(VisitBucketCases))]
+        public void VisitBucket_visits_expected_nonces(int[] insertNonces, int stopAfterNonce, int[] expectedVisited)
+        {
+            InsertNonces(TestItem.AddressA, insertNonces);
+
+            (List<int> Visited, int StopAfter) state = (new List<int>(), stopAfterNonce);
+            _sortedPool.VisitBucket(TestItem.AddressA, ref state, static (Transaction tx, ref (List<int> Visited, int StopAfter) s) =>
+            {
+                s.Visited.Add((int)tx.Nonce);
+                return (int)tx.Nonce < s.StopAfter;
+            });
+
+            state.Visited.Should().Equal(expectedVisited);
+        }
+
+        [Test]
+        public void VisitBucket_throws_on_null_visitor()
+        {
+            int unused = 0;
+            Action act = () => _sortedPool.VisitBucket(TestItem.AddressA, ref unused, null!);
+
+            act.Should().Throw<ArgumentNullException>();
+        }
+
+        private void InsertNonces(Address sender, ReadOnlySpan<int> nonces)
+        {
+            foreach (int nonce in nonces)
+            {
+                Transaction tx = Build.A.Transaction
+                    .WithNonce((UInt256)nonce)
+                    .WithSenderAddress(sender)
+                    .TestObject;
+                tx.Hash = tx.CalculateHash();
+                _sortedPool.TryInsert(tx.Hash, tx);
+            }
         }
     }
 }
