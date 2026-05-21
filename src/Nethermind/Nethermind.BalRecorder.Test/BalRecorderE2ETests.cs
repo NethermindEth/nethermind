@@ -64,7 +64,7 @@ public class BalRecorderE2ETests
             IRecordedBalStore store = replayContainer.Resolve<IRecordedBalStore>();
             foreach ((long number, byte[] expected) in recorded)
             {
-                BlockAccessList? reread = store.Get(number);
+                ReadOnlyBlockAccessList? reread = store.Get(number);
                 reread.Should().NotBeNull();
                 using NettyRlpStream reencoded = BlockAccessListDecoder.Instance.EncodeToNewNettyStream(reread!);
                 reencoded.AsSpan().ToArray().Should().BeEquivalentTo(expected);
@@ -85,7 +85,7 @@ public class BalRecorderE2ETests
         {
             Block? block = blockTree.FindBlock(i);
             block.Should().NotBeNull();
-            BlockAccessList? bal = store.Get(block!.Number);
+            ReadOnlyBlockAccessList? bal = store.Get(block!.Number);
             bal.Should().NotBeNull($"block {i} should have a recorded BAL");
             using NettyRlpStream encoded = BlockAccessListDecoder.Instance.EncodeToNewNettyStream(bal!);
             result.Add((block.Number, encoded.AsSpan().ToArray()));

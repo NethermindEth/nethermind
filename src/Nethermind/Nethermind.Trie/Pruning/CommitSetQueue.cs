@@ -111,4 +111,9 @@ public class CommitSetQueue
     {
         lock (_queue) _queue.Remove(blockCommitSet);
     }
+
+    public void Clear()
+    {
+        lock (_queue) _queue.Clear();
+    }
 }
