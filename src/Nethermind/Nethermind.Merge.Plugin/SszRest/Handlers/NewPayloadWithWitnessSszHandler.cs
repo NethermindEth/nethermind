@@ -86,16 +86,14 @@ public sealed class NewPayloadWithWitnessSszHandler(
         }
     }
 
-    /// <param name="witness">Caller transfers ownership — this method disposes the instance.</param>
+    /// <param name="witness">Caller retains ownership — the enclosing ResultWrapper disposes it.</param>
     private static async Task WriteSszNewPayloadWithWitnessAsync(HttpContext ctx, PayloadStatusV1 status, Witness? witness)
     {
-        using Witness? w = witness;
-
         ArrayBufferWriter<byte> buffer = new();
         int length;
         try
         {
-            length = SszCodec.EncodeNewPayloadWithWitnessResponse(status, w, buffer);
+            length = SszCodec.EncodeNewPayloadWithWitnessResponse(status, witness, buffer);
         }
         catch
         {
