@@ -62,7 +62,7 @@ public class JsonRpcProcessorTests(bool returnErrors)
     [Test]
     public async Task Can_process_guid_ids()
     {
-        using CollectedJsonRpcResponses result = await ProcessAsync("{\"id\":\"840b55c4-18b0-431c-be1d-6d22198b53f2\",\"jsonrpc\":\"2.0\",\"method\":\"eth_getTransactionCount\",\"params\":[\"0x7f01d9b227593e033bf8d6fc86e634d27aa85568\",\"0x668c24\"]}");
+        using CollectedJsonRpcResponses result = await ProcessAsync(CreateTransactionCountRequest("\"840b55c4-18b0-431c-be1d-6d22198b53f2\""));
         Assert.That(AssertSingleResponse(result).Response!.Id, Is.EqualTo(new JsonRpcId("840b55c4-18b0-431c-be1d-6d22198b53f2")));
     }
 
@@ -84,7 +84,7 @@ public class JsonRpcProcessorTests(bool returnErrors)
 
         await ProcessAsync(
             processor,
-            CreateReader("{\"id\":1,\"jsonrpc\":\"2.0\",\"method\":\"engine_newPayloadV4\",\"params\":[{\"parentHash\":\"0x0\"},[],null,null]}"),
+            CreateReader(CreateRequest("1", "engine_newPayloadV4", "[{\"parentHash\":\"0x0\"},[],null,null]")),
             new JsonRpcContext(RpcEndpoint.Http));
 
         capturedMethod.Should().Be("engine_newPayloadV4");
@@ -107,9 +107,7 @@ public class JsonRpcProcessorTests(bool returnErrors)
 
         JsonRpcProcessor processor = CreateProcessor(service);
 
-        string request = inBatch
-            ? $$"""[{"id":1,"jsonrpc":"2.0","method":"{{methodName}}","params":[]}]"""
-            : $$"""{"id":1,"jsonrpc":"2.0","method":"{{methodName}}","params":[]}""";
+        string request = inBatch ? CreateBatchRequest(CreateRequest("1", methodName)) : CreateRequest("1", methodName);
 
         await ProcessAsync(
             processor,
@@ -230,7 +228,7 @@ public class JsonRpcProcessorTests(bool returnErrors)
         CollectingJsonRpcResponseSink sink = new() { StopAfterBatchItems = 1 };
 
         await ProcessAsync(processor,
-            "[{\"id\":1,\"jsonrpc\":\"2.0\",\"method\":\"eth_getTransactionCount\",\"params\":[]},{\"id\":2,\"jsonrpc\":\"2.0\",\"method\":\"eth_blockNumber\",\"params\":[]},{\"id\":3,\"jsonrpc\":\"2.0\",\"method\":\"net_version\",\"params\":[]}]",
+            CreateBatchRequest(CreateRequest("1", "eth_getTransactionCount"), CreateRequest("2", "eth_blockNumber"), CreateRequest("3", "net_version")),
             new JsonRpcContext(RpcEndpoint.Http),
             sink);
 
@@ -250,7 +248,7 @@ public class JsonRpcProcessorTests(bool returnErrors)
         CollectingJsonRpcResponseSink sink = new();
         JsonRpcProcessor processor = CreateFixtureProcessor();
 
-        await ProcessAsync(processor, "{\"id\":67,\"jsonrpc\":\"2.0\",\"method\":\"eth_getTransactionCount\",\"params\":[]}", new JsonRpcContext(RpcEndpoint.Http), sink);
+        await ProcessAsync(processor, CreateTransactionCountRequest("67", paramsJson: "[]"), new JsonRpcContext(RpcEndpoint.Http), sink);
 
         AssertSingleResponse(sink.Responses).Response!.Id.Should().Be(67);
     }
@@ -270,7 +268,7 @@ public class JsonRpcProcessorTests(bool returnErrors)
         JsonRpcProcessor processor = CreateProcessor(service);
         CollectingJsonRpcResponseSink sink = new();
 
-        await ProcessAsync(processor, " \r\n{\"id\":67,\"jsonrpc\":\"2.0\",\"method\":\"eth_getTransactionCount\",\"params\":[{\"a\":2}]}\t ", new JsonRpcContext(RpcEndpoint.Http), sink);
+        await ProcessAsync(processor, " \r\n" + CreateTransactionCountRequest("67", paramsJson: "[{\"a\":2}]") + "\t ", new JsonRpcContext(RpcEndpoint.Http), sink);
 
         inspected.Should().BeTrue();
         AssertSingleResponse(sink.Responses).Response!.Id.Should().Be(67);
@@ -279,6 +277,10 @@ public class JsonRpcProcessorTests(bool returnErrors)
     private static PipeReader CreateReader(string request) =>
         PipeReader.Create(new ReadOnlySequence<byte>(Encoding.UTF8.GetBytes(request)));
 
+    private static string CreateRequest(string idJson, string method, string paramsJson = "[]") => $$"""{"id":{{idJson}},"jsonrpc":"2.0","method":"{{method}}","params":{{paramsJson}}}""";
+
+    private static string CreateBatchRequest(params string[] requests) => "[" + string.Join(",", requests) + "]";
+
     private static string CreateTransactionCountRequest(string idJson, string? paramsName = "params", string paramsJson = TransactionCountParamsJson) =>
         paramsName is null
             ? $$"""{"id":{{idJson}},"jsonrpc":"2.0","method":"eth_getTransactionCount"}"""
@@ -286,28 +288,24 @@ public class JsonRpcProcessorTests(bool returnErrors)
 
     private static string CreateTransactionCountBatchRequest(int count, bool omitLastParams = false)
     {
-        StringBuilder request = new("[");
+        string[] requests = new string[count];
         for (int i = 0; i < count; i++)
         {
-            if (i != 0) request.Append(',');
-            request.Append(CreateTransactionCountRequest("67", omitLastParams && i == count - 1 ? null : "params"));
+            requests[i] = CreateTransactionCountRequest("67", omitLastParams && i == count - 1 ? null : "params");
         }
 
-        request.Append(']');
-        return request.ToString();
+        return CreateBatchRequest(requests);
     }
 
     private static string CreateTransactionCountBatchRequest(params string[] paramsJsons)
     {
-        StringBuilder request = new("[");
+        string[] requests = new string[paramsJsons.Length];
         for (int i = 0; i < paramsJsons.Length; i++)
         {
-            if (i != 0) request.Append(',');
-            request.Append(CreateTransactionCountRequest("67", paramsJson: paramsJsons[i]));
+            requests[i] = CreateTransactionCountRequest("67", paramsJson: paramsJsons[i]);
         }
 
-        request.Append(']');
-        return request.ToString();
+        return CreateBatchRequest(requests);
     }
 
     private static ReadOnlySequence<byte> CreateSequence(string first, string second)
@@ -333,7 +331,7 @@ public class JsonRpcProcessorTests(bool returnErrors)
     [Test]
     public void JsonRpcEnvelopeReader_reads_matching_shape_from_json_element()
     {
-        JsonRpcEnvelope envelope = ReadEnvelope("{\"jsonrpc\":\"2.0\",\"id\":\"\\u0041\\n\",\"method\":\"engine_newPayloadV4\",\"params\":[{\"a\":2}]}", out byte[] body);
+        JsonRpcEnvelope envelope = ReadEnvelope(CreateRequest("\"\\u0041\\n\"", "engine_newPayloadV4", "[{\"a\":2}]"), out byte[] body);
         using JsonDocument document = JsonDocument.Parse(body);
 
         JsonRpcEnvelope elementEnvelope = JsonRpcEnvelopeReader.Read(document.RootElement, out JsonElement paramsElement);
@@ -426,8 +424,8 @@ public class JsonRpcProcessorTests(bool returnErrors)
         JsonRpcProcessor processor = CreateRecordingProcessor(RpcRecorderState.Request, records);
 
         string request = endpoint == RpcEndpoint.Http
-            ? "{\"id\":1,\"jsonrpc\":\"2.0\",\"method\":\"eth_blockNumber\",\"params\":[]}"
-            : "{\"id\":1,\"jsonrpc\":\"2.0\",\"method\":\"eth_blockNumber\",\"params\":[]}{\"id\":2,\"jsonrpc\":\"2.0\",\"method\":\"net_version\",\"params\":[]}";
+            ? CreateRequest("1", "eth_blockNumber")
+            : CreateRequest("1", "eth_blockNumber") + CreateRequest("2", "net_version");
 
         using CollectedJsonRpcResponses result = await ProcessAsync(processor, request, new JsonRpcContext(endpoint));
 
@@ -445,8 +443,8 @@ public class JsonRpcProcessorTests(bool returnErrors)
         List<string> records = [];
         JsonRpcProcessor processor = CreateRecordingProcessor(RpcRecorderState.Response, records);
         string request = isBatch
-            ? "[{\"id\":1,\"jsonrpc\":\"2.0\",\"method\":\"eth_blockNumber\",\"params\":[]},{\"id\":2,\"jsonrpc\":\"2.0\",\"method\":\"net_version\",\"params\":[]}]"
-            : "{\"id\":1,\"jsonrpc\":\"2.0\",\"method\":\"eth_blockNumber\",\"params\":[]}";
+            ? CreateBatchRequest(CreateRequest("1", "eth_blockNumber"), CreateRequest("2", "net_version"))
+            : CreateRequest("1", "eth_blockNumber");
 
         using CollectedJsonRpcResponses result = await ProcessAsync(processor, request, new JsonRpcContext(RpcEndpoint.Http));
 
@@ -473,8 +471,8 @@ public class JsonRpcProcessorTests(bool returnErrors)
             : new() { OnSingleWrite = (_, _) => capturedParams.ValueKind.Should().Be(JsonValueKind.Array) };
         JsonRpcProcessor processor = CreateProcessor(service);
         string request = isBatch
-            ? "[{\"id\":1,\"jsonrpc\":\"2.0\",\"method\":\"eth_blockNumber\",\"params\":[1]},{\"id\":2,\"jsonrpc\":\"2.0\",\"method\":\"net_version\",\"params\":[2]}]"
-            : "{\"id\":1,\"jsonrpc\":\"2.0\",\"method\":\"eth_blockNumber\",\"params\":[{\"a\":1}]}";
+            ? CreateBatchRequest(CreateRequest("1", "eth_blockNumber", "[1]"), CreateRequest("2", "net_version", "[2]"))
+            : CreateRequest("1", "eth_blockNumber", "[{\"a\":1}]");
 
         await ProcessAsync(processor, request, new JsonRpcContext(RpcEndpoint.Http), sink);
 
@@ -494,7 +492,7 @@ public class JsonRpcProcessorTests(bool returnErrors)
         };
         JsonRpcProcessor processor = CreateProcessor(service);
 
-        await ProcessAsync(processor, "{\"id\":1,\"jsonrpc\":\"2.0\",\"method\":\"eth_blockNumber\",\"params\":[]}", new JsonRpcContext(RpcEndpoint.Http), sink);
+        await ProcessAsync(processor, CreateRequest("1", "eth_blockNumber"), new JsonRpcContext(RpcEndpoint.Http), sink);
 
         disposedDuringWrite.Should().BeFalse();
         disposed.Should().BeTrue();
@@ -745,7 +743,7 @@ public class JsonRpcProcessorTests(bool returnErrors)
     {
         JsonRpcProcessor processor = CreateShutdownProcessor(out _);
         Pipe pipe = new();
-        await pipe.Writer.WriteAsync(Encoding.UTF8.GetBytes("{\"id\":1,\"jsonrpc\":\"2.0\",\"method\":\"eth_blockNumber\",\"params\":[]}"));
+        await pipe.Writer.WriteAsync(Encoding.UTF8.GetBytes(CreateRequest("1", "eth_blockNumber")));
 
         using CollectedJsonRpcResponses results = await ProcessAsync(processor, pipe.Reader, new JsonRpcContext(RpcEndpoint.Http));
 
@@ -820,7 +818,7 @@ public class JsonRpcProcessorTests(bool returnErrors)
             : new JsonRpcSuccessResponse { Id = request.Id });
 
         JsonRpcProcessor processor = CreateProcessor(service);
-        using CollectedJsonRpcResponses result = await ProcessAsync(processor, $$"""{"id":1,"jsonrpc":"2.0","method":"{{methodName}}","params":[]}""", new JsonRpcContext(RpcEndpoint.Http));
+        using CollectedJsonRpcResponses result = await ProcessAsync(processor, CreateRequest("1", methodName), new JsonRpcContext(RpcEndpoint.Http));
 
         RpcReport? report = AssertOnlyResult(result).Report;
         report.Should().NotBeNull();
@@ -859,7 +857,7 @@ public class JsonRpcProcessorTests(bool returnErrors)
         JsonRpcProcessor processor = CreateProcessor(service);
 
         string nested = BuildNestedArrayParams(paramNestingDepth);
-        string request = $"{{\"id\":1,\"jsonrpc\":\"2.0\",\"method\":\"eth_getTransactionCount\",\"params\":[{nested}]}}";
+        string request = CreateTransactionCountRequest("1", paramsJson: $"[{nested}]");
 
         using CollectedJsonRpcResponses result = await ProcessAsync(processor, request, new JsonRpcContext(RpcEndpoint.Http));
 
