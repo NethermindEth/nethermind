@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 using Nethermind.Merge.Plugin.Data;
@@ -24,12 +25,12 @@ public class TaikoExecutionPayloadV3 : ExecutionPayloadV3
         _ => 1
     };
 
-    public override BlockDecodingResult TryGetBlock(UInt256? totalDifficulty = null)
+    public override Result<Block> TryGetBlock(UInt256? totalDifficulty = null)
     {
-        BlockDecodingResult result = base.TryGetBlock(totalDifficulty);
-        if (result.Block is not null && HeaderDifficulty is not null)
+        Result<Block> result = base.TryGetBlock(totalDifficulty);
+        if (result.IsSuccess && HeaderDifficulty is not null)
         {
-            result.Block.Header.Difficulty = HeaderDifficulty.Value;
+            result.Data.Header.Difficulty = HeaderDifficulty.Value;
         }
         return result;
     }

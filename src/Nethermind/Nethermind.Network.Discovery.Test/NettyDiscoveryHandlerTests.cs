@@ -35,9 +35,9 @@ namespace Nethermind.Network.Discovery.Test
     {
         private readonly PrivateKey _privateKey = new("49a7b37aa6f6645917e7b807e9d1c00d4fa71f18343b0d4122a4d2df64dd6fee");
         private readonly PrivateKey _privateKey2 = new("3a1076bf45ab87712ad64ccb3b10217737f7faacbf2872e88fdd9a537d8fe266");
-        private List<IChannel> _channels = new();
-        private List<NettyDiscoveryHandler> _discoveryHandlers = new();
-        private List<IKademliaDiscv4Adapter> _kademliaAdaptersMocks = new();
+        private List<IChannel> _channels = [];
+        private List<NettyDiscoveryHandler> _discoveryHandlers = [];
+        private List<IKademliaDiscv4Adapter> _kademliaAdaptersMocks = [];
         private readonly IPEndPoint _address = new(IPAddress.Loopback, 10001);
         private readonly IPEndPoint _address2 = new(IPAddress.Loopback, 10002);
         private int _channelActivatedCounter;
@@ -46,9 +46,9 @@ namespace Nethermind.Network.Discovery.Test
         [SetUp]
         public async Task Initialize()
         {
-            _channels = new List<IChannel>();
-            _discoveryHandlers = new List<NettyDiscoveryHandler>();
-            _kademliaAdaptersMocks = new List<IKademliaDiscv4Adapter>();
+            _channels = [];
+            _discoveryHandlers = [];
+            _kademliaAdaptersMocks = [];
             _channelActivatedCounter = 0;
             IKademliaDiscv4Adapter? kademliaAdapterMock = Substitute.For<IKademliaDiscv4Adapter>();
             kademliaAdapterMock.OnIncomingMsg(Arg.Any<DiscoveryMsg>()).Returns(Task.CompletedTask);

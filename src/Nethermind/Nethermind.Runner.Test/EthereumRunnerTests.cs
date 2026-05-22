@@ -101,7 +101,7 @@ public class EthereumRunnerTests
         });
 
         // Sort so that is is consistent so that its easy to run via Rider.
-        List<(string, ConfigProvider)> result = new(resultQueue);
+        List<(string, ConfigProvider)> result = [.. resultQueue];
         result.Sort();
 
         {

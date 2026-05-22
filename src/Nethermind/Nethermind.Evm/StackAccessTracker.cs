@@ -99,7 +99,7 @@ public struct StackAccessTracker(bool isTracingAccess) : IDisposable
 
         public JournalSet<Address> AccessedAddresses { get; } = new(Address.EqualityComparer);
         public JournalSet<StorageCell> AccessedStorageCells { get; } = new(StorageCell.EqualityComparer);
-        public JournalCollection<LogEntry> Logs { get; } = new();
+        public JournalCollection<LogEntry> Logs { get; } = [];
         public JournalSet<Address> DestroyList { get; } = new(Address.EqualityComparer);
         public HashSet<AddressAsKey> CreateList { get; } = new(AddressAsKey.EqualityComparer);
 

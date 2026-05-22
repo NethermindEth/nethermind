@@ -252,10 +252,10 @@ namespace Nethermind.Network
 
         private class CandidateSelection
         {
-            public List<Peer> PreCandidates { get; } = new();
-            public List<Peer> Candidates { get; } = new();
-            public List<Peer> Incompatible { get; } = new();
-            public Dictionary<string, int> Counters { get; } = new();
+            public List<Peer> PreCandidates { get; } = [];
+            public List<Peer> Candidates { get; } = [];
+            public List<Peer> Incompatible { get; } = [];
+            public Dictionary<string, int> Counters { get; } = [];
         }
 
         private readonly CandidateSelection _currentSelection = new();

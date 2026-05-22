@@ -35,7 +35,7 @@ namespace Nethermind.JsonRpc.Modules.Proof
         : IProofRpcModule
     {
         private readonly HeaderDecoder _headerDecoder = new();
-        private static readonly IRlpStreamEncoder<TxReceipt> _receiptEncoder = Rlp.GetStreamEncoder<TxReceipt>();
+        private static readonly IRlpDecoder<TxReceipt> _receiptEncoder = Rlp.GetDecoder<TxReceipt>();
 
         public ResultWrapper<CallResultWithProof> proof_call(TransactionForRpc tx, BlockParameter blockParameter)
         {
@@ -177,7 +177,7 @@ namespace Nethermind.JsonRpc.Modules.Proof
 
         private AccountProof[] CollectAccountProofs(ITracer tracer, BlockHeader? baseBlock, ProofTxTracer proofTxTracer)
         {
-            List<AccountProof> accountProofs = new();
+            List<AccountProof> accountProofs = [];
             foreach (Address address in proofTxTracer.Accounts)
             {
                 AccountProofCollector collector = new(address, proofTxTracer.Storages
@@ -193,7 +193,7 @@ namespace Nethermind.JsonRpc.Modules.Proof
 
         private byte[][] CollectHeaderBytes(ProofTxTracer proofTxTracer, BlockHeader tracedBlockHeader)
         {
-            List<BlockHeader> relevantHeaders = new() { tracedBlockHeader };
+            List<BlockHeader> relevantHeaders = [tracedBlockHeader];
             foreach (Hash256 blockHash in proofTxTracer.BlockHashes)
             {
                 relevantHeaders.Add(blockFinder.FindHeader(blockHash));

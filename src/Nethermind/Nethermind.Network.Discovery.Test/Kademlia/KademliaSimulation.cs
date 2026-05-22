@@ -120,7 +120,7 @@ public class KademliaSimulation
         ValueHash256 mainNodeHash = RandomKeccak(rand);
         Kademlia<ValueHash256, TestNode> mainNode = fabric.CreateNode(mainNodeHash);
 
-        List<ValueHash256> nodeIds = new();
+        List<ValueHash256> nodeIds = [];
         for (int i = 0; i < nodeCount; i++)
         {
             ValueHash256 nodeHash = RandomKeccak(rand);

@@ -127,7 +127,8 @@ public class OptimismEthRpcModule(
             return ResultWrapper<Hash256>.Fail("Failed to recover sender");
         }
 
-        await sealer.Seal(tx, TxHandlingOptions.None);
+        if (!sealer.TrySeal(tx, TxHandlingOptions.None))
+            return ResultWrapper<Hash256>.Fail("authentication needed: password or unlock", ErrorCodes.AccountLocked);
 
         return await eth_sendRawTransaction(Rlp.Encode(tx, RlpBehaviors.SkipTypedWrapping).Bytes);
     }
@@ -209,7 +210,7 @@ public class OptimismEthRpcModule(
         }
 
         Block block = searchResult.Object;
-        if (positionIndex < 0 || positionIndex > block!.Transactions.Length - 1)
+        if (positionIndex >= block!.Transactions.Length)
         {
             return ResultWrapper<TransactionForRpc?>.Success(null);
         }

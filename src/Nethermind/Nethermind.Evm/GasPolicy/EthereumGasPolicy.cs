@@ -199,14 +199,13 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
         ref readonly StackAccessTracker accessTracker,
         bool isTracingAccess,
         Address address,
-        Address? delegated,
-        bool chargeForWarm = true)
+        Address? delegated)
     {
         if (!spec.UseHotAndColdStorage)
             return true;
 
-        bool notOutOfGas = ConsumeAccountAccessGas(ref gas, spec, in accessTracker, isTracingAccess, address, chargeForWarm);
-        return notOutOfGas && (delegated is null || ConsumeAccountAccessGas(ref gas, spec, in accessTracker, isTracingAccess, delegated, chargeForWarm));
+        bool notOutOfGas = ConsumeAccountAccessGas(ref gas, spec, in accessTracker, isTracingAccess, address);
+        return notOutOfGas && (delegated is null || ConsumeAccountAccessGas(ref gas, spec, in accessTracker, isTracingAccess, delegated));
     }
 
     public static bool ConsumeAccountAccessGas(ref EthereumGasPolicy gas,
@@ -214,27 +213,21 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
         ref readonly StackAccessTracker accessTracker,
         bool isTracingAccess,
         Address address,
-        bool chargeForWarm = true)
+        AccountAccessKind kind = AccountAccessKind.Default)
     {
-        bool result = true;
-        if (spec.UseHotAndColdStorage)
+        if (!spec.UseHotAndColdStorage) return true;
+        if (isTracingAccess)
         {
-            if (isTracingAccess)
-            {
-                accessTracker.WarmUp(address);
-            }
-
-            if (!spec.IsPrecompile(address) && accessTracker.WarmUp(address))
-            {
-                result = UpdateGas(ref gas, GasCostOf.ColdAccountAccess);
-            }
-            else if (chargeForWarm)
-            {
-                result = UpdateGas(ref gas, GasCostOf.WarmStateRead);
-            }
+            // Ensure that tracing simulates access-list behavior.
+            accessTracker.WarmUp(address);
         }
 
-        return result;
+        return (!spec.IsPrecompile(address) && accessTracker.WarmUp(address)) switch
+        {
+            true => UpdateGas(ref gas, GasCostOf.ColdAccountAccess),
+            false when kind == AccountAccessKind.SelfDestructBeneficiary => true,
+            false => UpdateGas(ref gas, GasCostOf.WarmStateRead)
+        };
     }
 
     public static bool ConsumeStorageAccessGas(ref EthereumGasPolicy gas,

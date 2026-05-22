@@ -26,7 +26,7 @@ public class SnappyTests
 
         public byte[] TestDecode(byte[] input)
         {
-            List<object> result = new();
+            List<object> result = [];
             Decode(null, new Packet(input), result);
             return ((Packet)result[0]).Data;
         }

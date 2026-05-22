@@ -714,7 +714,7 @@ namespace Nethermind.Network.Test
             public INetworkConfig NetworkConfig { get; }
             public IStaticNodesManager StaticNodesManager { get; }
             public TestNodeSource TestNodeSource { get; }
-            public List<Session> Sessions { get; } = new();
+            public List<Session> Sessions { get; } = [];
 
             public Context(int parallelism = 0, int maxActivePeers = 25)
             {
@@ -779,7 +779,7 @@ namespace Nethermind.Network.Test
 
             public List<NetworkNode> CreateNodes(int count)
             {
-                List<NetworkNode> nodes = new();
+                List<NetworkNode> nodes = [];
                 for (int i = 0; i < count; i++)
                 {
                     PrivateKeyGenerator generator = new();
@@ -881,7 +881,7 @@ namespace Nethermind.Network.Test
 
             public void CreateIncoming(params Session[] sessions)
             {
-                List<Session> incomingSessions = new();
+                List<Session> incomingSessions = [];
                 foreach (Session session in sessions)
                 {
                     Session sessionIn = new(30313, Substitute.For<IChannel>(), NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);

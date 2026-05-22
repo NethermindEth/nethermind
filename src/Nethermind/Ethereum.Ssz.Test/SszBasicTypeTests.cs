@@ -201,7 +201,7 @@ public class SszBasicTypeTests
     private static string ReadYamlValue(string filePath)
     {
         using StreamReader reader = new(filePath);
-        YamlStream yaml = new();
+        YamlStream yaml = [];
         yaml.Load(reader);
         YamlScalarNode rootNode = (YamlScalarNode)yaml.Documents[0].RootNode;
         return rootNode.Value!;

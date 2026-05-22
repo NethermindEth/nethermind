@@ -129,7 +129,7 @@ namespace Nethermind.Core.Test
 
         public Task<BlockHeader?> GetHeadBlockHeader(Hash256? hash, CancellationToken token) => Task.FromResult(_remoteTree.Head?.Header);
 
-        private readonly BlockingCollection<Action> _sendQueue = new();
+        private readonly BlockingCollection<Action> _sendQueue = [];
 
         public void NotifyOfNewBlock(Block block, SendBlockMode mode)
         {
