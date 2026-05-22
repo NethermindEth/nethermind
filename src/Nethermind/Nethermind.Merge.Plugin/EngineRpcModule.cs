@@ -37,6 +37,7 @@ public partial class EngineRpcModule(
     GCKeeper gcKeeper,
     ILogManager logManager) : IEngineRpcModule
 {
+
     private readonly IHandler<HashSet<string>, IReadOnlyList<string>> _capabilitiesHandler = capabilitiesHandler ?? throw new ArgumentNullException(nameof(capabilitiesHandler));
     protected readonly ISpecProvider _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
     protected readonly ILogger _logger = logManager.GetClassLogger<EngineRpcModule>();
@@ -44,6 +45,5 @@ public partial class EngineRpcModule(
     public ResultWrapper<IReadOnlyList<string>> engine_exchangeCapabilities(IEnumerable<string> methods)
         => _capabilitiesHandler.Handle(methods as HashSet<string> ?? [.. methods]);
 
-    public ResultWrapper<ClientVersionV1[]> engine_getClientVersionV1(ClientVersionV1 clientVersionV1)
-        => ResultWrapper<ClientVersionV1[]>.Success([new ClientVersionV1()]);
+    public ResultWrapper<ClientVersionV1[]> engine_getClientVersionV1(ClientVersionV1 clientVersionV1) => ResultWrapper<ClientVersionV1[]>.Success([new ClientVersionV1()]);
 }
