@@ -74,14 +74,6 @@ public class JsonRpcServiceTests
         Assert.That(payload.GetProperty("derivedValue").GetString(), Is.EqualTo("derived"));
     }
 
-    private static T AssertSuccessResponse<T>(JsonRpcResponse response)
-    {
-        Assert.That(response, Is.InstanceOf<ResultWrapper<T>>());
-        ResultWrapper<T> result = (ResultWrapper<T>)response;
-        Assert.That(result.Result.ResultType, Is.EqualTo(Nethermind.Core.ResultType.Success));
-        return result.Data;
-    }
-
     private static ResultWrapper<T> AssertWrapperResponse<T>(JsonRpcResponse response)
     {
         Assert.That(response, Is.InstanceOf<ResultWrapper<T>>());
@@ -181,7 +173,7 @@ public class JsonRpcServiceTests
         IEthRpcModule ethRpcModule = Substitute.For<IEthRpcModule>();
         ISpecProvider specProvider = Substitute.For<ISpecProvider>();
         ethRpcModule.eth_getBlockByNumber(Arg.Any<BlockParameter>(), true).ReturnsForAnyArgs(x => ResultWrapper<BlockForRpc>.Success(new BlockForRpc(Build.A.Block.WithNumber(2).TestObject, true, specProvider)));
-        BlockForRpc result = AssertSuccessResponse<BlockForRpc>(TestRequest(ethRpcModule, "eth_getBlockByNumber", "0x1b4", "true"));
+        BlockForRpc result = RpcTest.AssertSuccess<BlockForRpc>(TestRequest(ethRpcModule, "eth_getBlockByNumber", "0x1b4", "true"));
         Assert.That(assertSize ? result.Size : result.Number, Is.EqualTo(expected));
     }
 
@@ -195,7 +187,7 @@ public class JsonRpcServiceTests
         ethRpcModule.eth_simulateV1(payload).ReturnsForAnyArgs(static _ =>
             ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>>.Success(Array.Empty<SimulateBlockResult<SimulateCallResult>>()));
         IReadOnlyList<SimulateBlockResult<SimulateCallResult>> result =
-            AssertSuccessResponse<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>>(TestRequest(ethRpcModule, "eth_simulateV1", serializedCall));
+            RpcTest.AssertSuccess<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>>(TestRequest(ethRpcModule, "eth_simulateV1", serializedCall));
         Assert.That(result, Is.EqualTo(Array.Empty<SimulateBlockResult<SimulateCallResult>>()));
     }
 
@@ -206,7 +198,7 @@ public class JsonRpcServiceTests
         IEthRpcModule ethRpcModule = Substitute.For<IEthRpcModule>();
         HexBytes expected = ToHexBytes("0x01");
         ethRpcModule.eth_call(Arg.Any<TransactionForRpc>()).ReturnsForAnyArgs(_ => ResultWrapper<HexBytes>.Success(expected));
-        HexBytes result = AssertSuccessResponse<HexBytes>(TestRequest(ethRpcModule, "eth_call", new LegacyTransactionForRpc()));
+        HexBytes result = RpcTest.AssertSuccess<HexBytes>(TestRequest(ethRpcModule, "eth_call", new LegacyTransactionForRpc()));
         Assert.That(result, Is.EqualTo(expected));
     }
 
@@ -307,7 +299,7 @@ public class JsonRpcServiceTests
             ? await RpcTest.TestRequest(adminRpcModule, "admin_peers", (object?[]?)null)
             : await RpcTest.TestRequest(adminRpcModule, "admin_peers");
 
-        PeerInfo[] result = AssertSuccessResponse<PeerInfo[]>(response);
+        PeerInfo[] result = RpcTest.AssertSuccess<PeerInfo[]>(response);
         Assert.That(result, Is.SameAs(expectedPeers));
         adminRpcModule.Received(1).admin_peers(false);
     }
@@ -393,7 +385,7 @@ public class JsonRpcServiceTests
             }
         };
 
-        UInt256? result = AssertSuccessResponse<UInt256?>(TestRequest(ethRpcModule, "eth_newFilter", JsonSerializer.Serialize(parameters)));
+        UInt256? result = RpcTest.AssertSuccess<UInt256?>(TestRequest(ethRpcModule, "eth_newFilter", JsonSerializer.Serialize(parameters)));
         Assert.That(result, Is.EqualTo(UInt256.One));
     }
 
@@ -404,7 +396,7 @@ public class JsonRpcServiceTests
         HexBytes expected = ToHexBytes("0x");
         ethRpcModule.eth_call(Arg.Any<TransactionForRpc>(), Arg.Any<BlockParameter?>()).ReturnsForAnyArgs(_ => ResultWrapper<HexBytes>.Success(expected));
 
-        HexBytes result = AssertSuccessResponse<HexBytes>(TestRequest(ethRpcModule, "eth_call", parameters));
+        HexBytes result = RpcTest.AssertSuccess<HexBytes>(TestRequest(ethRpcModule, "eth_call", parameters));
         Assert.That(result, Is.EqualTo(expected));
     }
 
@@ -421,7 +413,7 @@ public class JsonRpcServiceTests
             .ReturnsForAnyArgs(static _ => ResultWrapper<HexBytes>.Success(default));
 
         string transaction = new EthereumJsonSerializer().Serialize(new LegacyTransactionForRpc());
-        HexBytes result = AssertSuccessResponse<HexBytes>(TestRawRequest(ethRpcModule, "eth_call", $"[{transaction},null]"));
+        HexBytes result = RpcTest.AssertSuccess<HexBytes>(TestRawRequest(ethRpcModule, "eth_call", $"[{transaction},null]"));
 
         Assert.That(result, Is.EqualTo(default(HexBytes)));
     }
@@ -472,7 +464,7 @@ public class JsonRpcServiceTests
         INetRpcModule netRpcModule = Substitute.For<INetRpcModule>();
         netRpcModule.net_version().ReturnsForAnyArgs(static x => ResultWrapper<string>.Success("1"));
         JsonRpcResponse response = TestRequest(netRpcModule, "net_version", null);
-        string result = AssertSuccessResponse<string>(response);
+        string result = RpcTest.AssertSuccess<string>(response);
         Assert.That(result, Is.EqualTo("1"));
         Assert.That(response, Is.Not.InstanceOf<JsonRpcErrorResponse>());
     }
@@ -505,7 +497,7 @@ public class JsonRpcServiceTests
     {
         IWeb3RpcModule web3RpcModule = Substitute.For<IWeb3RpcModule>();
         web3RpcModule.web3_sha3(Arg.Any<byte[]>()).ReturnsForAnyArgs(static _ => ResultWrapper<Hash256>.Success(TestItem.KeccakA));
-        Hash256 result = AssertSuccessResponse<Hash256>(TestRequest(web3RpcModule, "web3_sha3", "0x68656c6c6f20776f726c64"));
+        Hash256 result = RpcTest.AssertSuccess<Hash256>(TestRequest(web3RpcModule, "web3_sha3", "0x68656c6c6f20776f726c64"));
         Assert.That(result, Is.EqualTo(TestItem.KeccakA));
     }
 
@@ -520,7 +512,7 @@ public class JsonRpcServiceTests
             return ResultWrapper<string>.Success("ok");
         });
 
-        string result = AssertSuccessResponse<string>(TestRequest(metadataTestRpcModule, "test_string", new { a = 1 }));
+        string result = RpcTest.AssertSuccess<string>(TestRequest(metadataTestRpcModule, "test_string", new { a = 1 }));
 
         Assert.That(result, Is.EqualTo("ok"));
         Assert.That(captured, Is.EqualTo("""{"a":1}"""));
@@ -537,7 +529,7 @@ public class JsonRpcServiceTests
             return ResultWrapper<int>.Success(captured.Length);
         });
 
-        int result = AssertSuccessResponse<int>(TestRequest(metadataTestRpcModule, "test_byte_arrays", "[]"));
+        int result = RpcTest.AssertSuccess<int>(TestRequest(metadataTestRpcModule, "test_byte_arrays", "[]"));
 
         Assert.That(result, Is.EqualTo(0));
         Assert.That(captured, Is.Empty);
