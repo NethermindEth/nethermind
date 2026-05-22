@@ -132,24 +132,12 @@ public class StartupTests
             Arg.Any<long?>());
     }
 
-    [Test]
-    public async Task ProcessJsonRpcRequest_RejectsAdjacentTopLevelValues()
+    [TestCase(false, TestName = "Rejects object followed by object")]
+    [TestCase(true, TestName = "Rejects object followed by array")]
+    public async Task ProcessJsonRpcRequest_RejectsAdjacentTopLevelValues(bool secondValueIsArray)
     {
-        string request =
-            CreateJsonRpcRequest() + CreateJsonRpcRequest(idJson: "2");
-
-        string response = await ProcessJsonRpcRequest(request);
-
-        using JsonDocument doc = JsonDocument.Parse(response);
-
-        Assert.That(doc.RootElement.GetProperty("error").GetProperty("code").GetInt32(), Is.EqualTo(ErrorCodes.ParseError));
-    }
-
-    [Test]
-    public async Task ProcessJsonRpcRequest_RejectsObjectThenArrayTopLevelValues()
-    {
-        string request =
-            CreateJsonRpcRequest() + "[" + CreateJsonRpcRequest(idJson: "2") + "]";
+        string secondValue = secondValueIsArray ? "[" + CreateJsonRpcRequest(idJson: "2") + "]" : CreateJsonRpcRequest(idJson: "2");
+        string request = CreateJsonRpcRequest() + secondValue;
 
         string response = await ProcessJsonRpcRequest(request);
 
