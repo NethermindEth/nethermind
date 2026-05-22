@@ -170,16 +170,10 @@ internal static class Program
         {
             foreach (KeyValuePair<string, string> generatedTypeName in candidate.GeneratedTypeNames)
             {
-                if (ownerByGeneratedName.TryGetValue(generatedTypeName.Key, out string? existingOwner))
+                if (!ownerByGeneratedName.TryAdd(generatedTypeName.Key, generatedTypeName.Value) &&
+                    ownerByGeneratedName[generatedTypeName.Key] != generatedTypeName.Value)
                 {
-                    if (existingOwner != generatedTypeName.Value)
-                    {
-                        collisions.Add(generatedTypeName.Key);
-                    }
-                }
-                else
-                {
-                    ownerByGeneratedName.Add(generatedTypeName.Key, generatedTypeName.Value);
+                    collisions.Add(generatedTypeName.Key);
                 }
             }
         }
@@ -407,13 +401,8 @@ internal static class Program
         {
             string generatedTypeName = GetGeneratedTypeName(type);
             string displayName = RpcJsonTypeDiscovery.GetTypeDisplayString(type);
-            if (generatedTypeNames.TryGetValue(generatedTypeName, out string? existingDisplayName))
-            {
-                return existingDisplayName == displayName;
-            }
-
-            generatedTypeNames.Add(generatedTypeName, displayName);
-            return true;
+            return generatedTypeNames.TryAdd(generatedTypeName, displayName) ||
+                generatedTypeNames[generatedTypeName] == displayName;
         }
 
         private static string GetGeneratedTypeName(ITypeSymbol type) =>
