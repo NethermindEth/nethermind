@@ -126,17 +126,16 @@ public class JsonRpcServiceTests
     }
 
     private JsonRpcResponse TestRawRequest<T>(T module, string method, string rawParameters) where T : IRpcModule =>
-        TestRawRequestWithPool(new SingletonModulePool<T>(new SingletonFactory<T>(module), true), method, rawParameters);
-
-    private JsonRpcResponse TestRawRequestWithPool<T>(IRpcModulePool<T> pool, string method, string rawParameters) where T : IRpcModule =>
-        SendRequestWithPool(pool, new JsonRpcRequest
-        {
-            JsonRpc = "2.0",
-            Method = method,
-            ParamsUtf8 = Encoding.UTF8.GetBytes(rawParameters),
-            ParamsKind = JsonValueKind.Array,
-            Id = 67
-        });
+        SendRequestWithPool(
+            new SingletonModulePool<T>(new SingletonFactory<T>(module), true),
+            new JsonRpcRequest
+            {
+                JsonRpc = "2.0",
+                Method = method,
+                ParamsUtf8 = Encoding.UTF8.GetBytes(rawParameters),
+                ParamsKind = JsonValueKind.Array,
+                Id = 67
+            });
 
     private JsonRpcResponse SendRequestWithPool<T>(IRpcModulePool<T> pool, JsonRpcRequest request) where T : IRpcModule
     {
