@@ -157,11 +157,6 @@ public sealed class WitnessCapturingWorldStateProxy(IWorldState inner) : IWorldS
         return inner.TryGetAccount(address, out account);
     }
 
-    // The default IWorldState / IAccountStateProvider implementations of these methods
-    // route through TryGetAccount and so see only the committed AccountStruct. The real
-    // WorldState overrides them to consult the in-flight storage provider; we must
-    // forward to `inner` so those overrides run (e.g. SELFDESTRUCT-then-CREATE in a
-    // single block needs IsStorageEmpty / IsNonZeroAccount to reflect pending changes).
     public UInt256 GetNonce(Address address)
     {
         RecordEmptySlots(address);
@@ -211,10 +206,8 @@ public sealed class WitnessCapturingWorldStateProxy(IWorldState inner) : IWorldS
 
     public byte[]? GetCode(in ValueHash256 codeHash)
     {
-        // NOTE: This overload has no Address context, so RecordEmptySlots cannot be called here.
-        // Callers that have both address and codeHash (e.g. CodeInfoRepository.GetCodeInfo) must
-        // call GetCode(Address) first so the address trip-path is captured in the witness.
-        // RecordBytecode is still called here to capture the bytecode in the witness.
+        // No Address context here; address recording happens on the GetCodeHash(Address) call
+        // that precedes every code lookup in CodeInfoRepository.InternalGetCodeInfo.
         byte[]? code = inner.GetCode(in codeHash);
         RecordBytecode(code);
         return code;

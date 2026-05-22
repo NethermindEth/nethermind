@@ -70,7 +70,8 @@ public class CodeInfoRepository : ICodeInfoRepository
 
     internal static CodeInfo GetCodeInfo(IWorldState worldState, Address address, in ValueHash256 codeHash)
     {
-        byte[]? code = worldState.GetCode(address) ?? worldState.GetCode(in codeHash);
+        // When executing in parallel must get by address
+        byte[]? code = worldState.GetCode(in codeHash) ?? worldState.GetCode(address);
         if (code is null)
         {
             MissingCode(in codeHash);
