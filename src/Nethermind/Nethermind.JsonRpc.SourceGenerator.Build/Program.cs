@@ -618,14 +618,13 @@ internal static class Program
         File.WriteAllText(path, content, Encoding.UTF8);
     }
 
-    private sealed class Arguments
+    private sealed record Arguments(
+        string OutputPath,
+        string SourcesFile,
+        string ReferencesFile,
+        string AssemblyName,
+        string DefineConstants)
     {
-        public required string OutputPath { get; init; }
-        public required string SourcesFile { get; init; }
-        public required string ReferencesFile { get; init; }
-        public required string AssemblyName { get; init; }
-        public required string DefineConstants { get; init; }
-
         public static Arguments Parse(string[] args)
         {
             Dictionary<string, string> values = new(StringComparer.Ordinal);
@@ -639,14 +638,12 @@ internal static class Program
                 values[args[i]] = args[i + 1];
             }
 
-            return new Arguments
-            {
-                OutputPath = GetRequired(values, "--output"),
-                SourcesFile = GetRequired(values, "--sources"),
-                ReferencesFile = GetRequired(values, "--references"),
-                AssemblyName = GetRequired(values, "--assembly-name"),
-                DefineConstants = values.GetValueOrDefault("--define-constants", string.Empty)
-            };
+            return new Arguments(
+                GetRequired(values, "--output"),
+                GetRequired(values, "--sources"),
+                GetRequired(values, "--references"),
+                GetRequired(values, "--assembly-name"),
+                values.GetValueOrDefault("--define-constants", string.Empty));
         }
 
         private static string GetRequired(Dictionary<string, string> values, string name)
