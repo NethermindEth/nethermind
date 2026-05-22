@@ -167,9 +167,7 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
         {
             if (ProcessExit.IsCancellationRequested)
             {
-                JsonRpcErrorResponse response = _jsonRpcService.GetErrorResponse(ErrorCodes.ResourceUnavailable, "Shutting down");
-                using JsonRpcResult.Entry entry = RecordResponse(response, new RpcReport("Shutdown", 0, false));
-                await sink.WriteSingleAsync(entry.Response, entry.Report, cancellationToken);
+                await WriteShutdownResponseAsync(sink, cancellationToken);
                 return;
             }
 
@@ -211,9 +209,7 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
         {
             if (ProcessExit.IsCancellationRequested)
             {
-                JsonRpcErrorResponse response = _jsonRpcService.GetErrorResponse(ErrorCodes.ResourceUnavailable, "Shutting down");
-                using JsonRpcResult.Entry entry = RecordResponse(response, new RpcReport("Shutdown", 0, false));
-                await sink.WriteSingleAsync(entry.Response, entry.Report, cancellationToken);
+                await WriteShutdownResponseAsync(sink, cancellationToken);
                 return;
             }
 
@@ -705,9 +701,7 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
 
         if (!context.IsAuthenticated && requestCount > _jsonRpcConfig.MaxBatchSize)
         {
-            if (_logger.IsWarn) _logger.Warn($"The batch size limit was exceeded. The requested batch size {requestCount}, and the current config setting is JsonRpc.{nameof(_jsonRpcConfig.MaxBatchSize)} = {_jsonRpcConfig.MaxBatchSize}.");
-            JsonRpcErrorResponse errorResponse = _jsonRpcService.GetErrorResponse(ErrorCodes.LimitExceeded, "Batch size limit exceeded");
-            await WriteSingleEntryAsync(new JsonRpcResult.Entry(errorResponse, RpcReport.Error), sink, cancellationToken);
+            await WriteBatchSizeLimitErrorAsync(requestCount, sink, cancellationToken);
             return;
         }
 
@@ -721,13 +715,7 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
             {
                 JsonRpcRequest jsonRpcRequest = DeserializeObject(item);
                 JsonRpcResult.Entry response = isStopped
-                    ? new JsonRpcResult.Entry(
-                        _jsonRpcService.GetErrorResponse(
-                            ErrorCodes.LimitExceeded,
-                            jsonRpcRequest.Method,
-                            jsonRpcRequest.Id,
-                            $"{nameof(IJsonRpcConfig.MaxBatchResponseBodySize)} of {_jsonRpcConfig.MaxBatchResponseBodySize / 1.KB}KB exceeded"),
-                        RpcReport.Error)
+                    ? CreateBatchResponseLimitEntry(jsonRpcRequest)
                     : await HandleSingleRequest(jsonRpcRequest, context);
 
                 if (_logger.IsTrace) _logger.Trace($"  {++requestIndex}/{requestCount} JSON RPC request - {jsonRpcRequest} handled after {response.Report.HandlingTimeMicroseconds}");
@@ -772,9 +760,7 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
             requestCount = JsonRpcArrayReader.CountItems(batchBody);
             if (requestCount > _jsonRpcConfig.MaxBatchSize)
             {
-                if (_logger.IsWarn) _logger.Warn($"The batch size limit was exceeded. The requested batch size {requestCount}, and the current config setting is JsonRpc.{nameof(_jsonRpcConfig.MaxBatchSize)} = {_jsonRpcConfig.MaxBatchSize}.");
-                JsonRpcErrorResponse errorResponse = _jsonRpcService.GetErrorResponse(ErrorCodes.LimitExceeded, "Batch size limit exceeded");
-                await WriteSingleEntryAsync(new JsonRpcResult.Entry(errorResponse, RpcReport.Error), sink, cancellationToken);
+                await WriteBatchSizeLimitErrorAsync(requestCount.Value, sink, cancellationToken);
                 return;
             }
         }
@@ -812,13 +798,7 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
                 }
 
                 JsonRpcResult.Entry response = isStopped
-                    ? new JsonRpcResult.Entry(
-                        _jsonRpcService.GetErrorResponse(
-                            ErrorCodes.LimitExceeded,
-                            jsonRpcRequest.Method,
-                            jsonRpcRequest.Id,
-                            $"{nameof(IJsonRpcConfig.MaxBatchResponseBodySize)} of {_jsonRpcConfig.MaxBatchResponseBodySize / 1.KB}KB exceeded"),
-                        RpcReport.Error)
+                    ? CreateBatchResponseLimitEntry(jsonRpcRequest)
                     : await HandleSingleRequest(jsonRpcRequest, context);
 
                 if (_logger.IsTrace)
@@ -899,6 +879,29 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
         JsonRpcResult.Entry result = new(invalidResponse, new RpcReport("# parsing error #", (long)Stopwatch.GetElapsedTime(startTime).TotalMicroseconds, false));
         await WriteSingleEntryAsync(result, sink, cancellationToken);
     }
+
+    private async ValueTask WriteShutdownResponseAsync(IJsonRpcResponseSink sink, CancellationToken cancellationToken)
+    {
+        JsonRpcErrorResponse response = _jsonRpcService.GetErrorResponse(ErrorCodes.ResourceUnavailable, "Shutting down");
+        using JsonRpcResult.Entry entry = RecordResponse(response, new RpcReport("Shutdown", 0, false));
+        await sink.WriteSingleAsync(entry.Response, entry.Report, cancellationToken);
+    }
+
+    private async ValueTask WriteBatchSizeLimitErrorAsync(int requestCount, IJsonRpcResponseSink sink, CancellationToken cancellationToken)
+    {
+        if (_logger.IsWarn) _logger.Warn($"The batch size limit was exceeded. The requested batch size {requestCount}, and the current config setting is JsonRpc.{nameof(_jsonRpcConfig.MaxBatchSize)} = {_jsonRpcConfig.MaxBatchSize}.");
+        JsonRpcErrorResponse errorResponse = _jsonRpcService.GetErrorResponse(ErrorCodes.LimitExceeded, "Batch size limit exceeded");
+        await WriteSingleEntryAsync(new JsonRpcResult.Entry(errorResponse, RpcReport.Error), sink, cancellationToken);
+    }
+
+    private JsonRpcResult.Entry CreateBatchResponseLimitEntry(JsonRpcRequest jsonRpcRequest) =>
+        new(
+            _jsonRpcService.GetErrorResponse(
+                ErrorCodes.LimitExceeded,
+                jsonRpcRequest.Method,
+                jsonRpcRequest.Id,
+                $"{nameof(IJsonRpcConfig.MaxBatchResponseBodySize)} of {_jsonRpcConfig.MaxBatchResponseBodySize / 1.KB}KB exceeded"),
+            RpcReport.Error);
 
     private async ValueTask WriteParsingErrorAsync(
         ReadOnlySequence<byte> buffer,
