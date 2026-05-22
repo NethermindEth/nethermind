@@ -539,60 +539,53 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
 
     private void LogRequest(string methodName, JsonElement providedParameters, ExpectedParameter[] expectedParameters)
     {
-        if (_logger.IsTrace && !_methodsLoggingFiltering.Contains(methodName))
+        if (!_logger.IsTrace || _methodsLoggingFiltering.Contains(methodName))
         {
-            StringBuilder builder = new();
-            builder.Append("Executing JSON RPC call ");
-            builder.Append(methodName);
-            builder.Append(" with params [");
-
-            int paramsLength = 0;
-            int paramsCount = 0;
-
-            if (providedParameters.ValueKind == JsonValueKind.Array)
-            {
-                foreach (JsonElement param in providedParameters.EnumerateArray())
-                {
-                    string? parameter = IsPassphraseParameter(paramsCount, expectedParameters)
-                        ? "{passphrase}"
-                        : param.GetRawText();
-                    if (!AppendLogParameter(builder, parameter, ref paramsLength, paramsCount)) break;
-                    paramsCount++;
-                }
-            }
-            builder.Append(']');
-            string log = builder.ToString();
-            _logger.Trace(log);
+            return;
         }
+
+        StringBuilder builder = new($"Executing JSON RPC call {methodName} with params [");
+        int paramsLength = 0;
+        int paramsCount = 0;
+
+        if (providedParameters.ValueKind == JsonValueKind.Array)
+        {
+            foreach (JsonElement param in providedParameters.EnumerateArray())
+            {
+                string? parameter = IsPassphraseParameter(paramsCount, expectedParameters)
+                    ? "{passphrase}"
+                    : param.GetRawText();
+                if (!AppendLogParameter(builder, parameter, ref paramsLength, paramsCount)) break;
+                paramsCount++;
+            }
+        }
+
+        _logger.Trace(builder.Append(']').ToString());
     }
 
     private void LogRequest(string methodName, ReadOnlyMemory<byte> providedParameters, ExpectedParameter[] expectedParameters)
     {
-        if (_logger.IsTrace && !_methodsLoggingFiltering.Contains(methodName))
+        if (!_logger.IsTrace || _methodsLoggingFiltering.Contains(methodName))
         {
-            StringBuilder builder = new();
-            builder.Append("Executing JSON RPC call ");
-            builder.Append(methodName);
-            builder.Append(" with params [");
-
-            int paramsLength = 0;
-            int paramsCount = 0;
-            JsonReaderState readerState = default;
-            int offset = 0;
-            bool started = false;
-            while (JsonRpcArrayReader.TryReadNextItem(providedParameters, ref offset, ref readerState, ref started, out ReadOnlyMemory<byte> param))
-            {
-                string parameter = IsPassphraseParameter(paramsCount, expectedParameters)
-                    ? "{passphrase}"
-                    : Encoding.UTF8.GetString(param.Span);
-                if (!AppendLogParameter(builder, parameter, ref paramsLength, paramsCount)) break;
-                paramsCount++;
-            }
-
-            builder.Append(']');
-            string log = builder.ToString();
-            _logger.Trace(log);
+            return;
         }
+
+        StringBuilder builder = new($"Executing JSON RPC call {methodName} with params [");
+        int paramsLength = 0;
+        int paramsCount = 0;
+        JsonReaderState readerState = default;
+        int offset = 0;
+        bool started = false;
+        while (JsonRpcArrayReader.TryReadNextItem(providedParameters, ref offset, ref readerState, ref started, out ReadOnlyMemory<byte> param))
+        {
+            string parameter = IsPassphraseParameter(paramsCount, expectedParameters)
+                ? "{passphrase}"
+                : Encoding.UTF8.GetString(param.Span);
+            if (!AppendLogParameter(builder, parameter, ref paramsLength, paramsCount)) break;
+            paramsCount++;
+        }
+
+        _logger.Trace(builder.Append(']').ToString());
     }
 
     private bool AppendLogParameter(StringBuilder builder, string? parameter, ref int paramsLength, int paramsCount)
