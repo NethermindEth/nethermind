@@ -46,26 +46,38 @@ internal sealed class HttpJsonRpcResponseSink(
     public ValueTask WriteSingleAsync(JsonRpcResponse response, RpcReport report, CancellationToken cancellationToken)
     {
         EnsureStarted(isCollection: false, response);
-        return WriteSingleStartedAsync(response, report, cancellationToken);
+        return WriteStartedAsync(response, report, isBatch: false, cancellationToken);
     }
 
-    private ValueTask WriteSingleStartedAsync(JsonRpcResponse response, RpcReport report, CancellationToken cancellationToken)
+    private ValueTask WriteStartedAsync(JsonRpcResponse response, RpcReport report, bool isBatch, CancellationToken cancellationToken)
     {
         ValueTask writeTask = JsonRpcResponseWriter.WriteAsync(_writer!, response, EthereumJsonSerializer.JsonOptions, cancellationToken);
         if (!writeTask.IsCompletedSuccessfully)
         {
-            return WriteSingleAfterWriteAsync(writeTask, report);
+            return WriteAfterWriteAsync(writeTask, report, isBatch);
         }
 
         writeTask.GetAwaiter().GetResult();
-        ReportSingle(report);
+        ReportWrite(report, isBatch);
         return ValueTask.CompletedTask;
     }
 
-    private async ValueTask WriteSingleAfterWriteAsync(ValueTask writeTask, RpcReport report)
+    private async ValueTask WriteAfterWriteAsync(ValueTask writeTask, RpcReport report, bool isBatch)
     {
         await writeTask;
-        ReportSingle(report);
+        ReportWrite(report, isBatch);
+    }
+
+    private void ReportWrite(RpcReport report, bool isBatch)
+    {
+        if (isBatch)
+        {
+            ReportBatchItem(report);
+        }
+        else
+        {
+            ReportSingle(report);
+        }
     }
 
     private void ReportSingle(RpcReport report)
@@ -94,22 +106,7 @@ internal sealed class HttpJsonRpcResponseSink(
         }
 
         _isFirstBatchItem = false;
-
-        ValueTask writeTask = JsonRpcResponseWriter.WriteAsync(_writer!, response, EthereumJsonSerializer.JsonOptions, cancellationToken);
-        if (!writeTask.IsCompletedSuccessfully)
-        {
-            return WriteBatchItemAfterWriteAsync(writeTask, report);
-        }
-
-        writeTask.GetAwaiter().GetResult();
-        ReportBatchItem(report);
-        return ValueTask.CompletedTask;
-    }
-
-    private async ValueTask WriteBatchItemAfterWriteAsync(ValueTask writeTask, RpcReport report)
-    {
-        await writeTask;
-        ReportBatchItem(report);
+        return WriteStartedAsync(response, report, isBatch: true, cancellationToken);
     }
 
     private void ReportBatchItem(RpcReport report)
