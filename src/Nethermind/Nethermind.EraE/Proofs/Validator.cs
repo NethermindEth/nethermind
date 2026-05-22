@@ -81,17 +81,21 @@ public sealed class Validator
 
     private bool TrustedAccumulatorsProvided() => _trustedAccumulators is { Count: > 0 };
 
-    private ValueHash256? GetAccumulatorForEpoch(long epochIdx) =>
-        _trustedAccumulators is not null && _trustedAccumulators.Count > epochIdx
-            ? _trustedAccumulators[(int)epochIdx]
-            : null;
+    private ValueHash256? GetAccumulatorForEpoch(long epochIdx)
+    {
+        if (_trustedAccumulators is null || epochIdx < 0 || epochIdx >= _trustedAccumulators.Count)
+            return null;
+
+        return _trustedAccumulators[(int)epochIdx];
+    }
 
     private ValueHash256? GetHistoricalRoot(long slotNumber)
     {
         long idx = slotNumber / SlotsPerHistoricalRoot;
-        return _trustedHistoricalRoots is not null && _trustedHistoricalRoots.Count > idx
-            ? _trustedHistoricalRoots[(int)idx]
-            : null;
+        if (_trustedHistoricalRoots is null || idx < 0 || idx >= _trustedHistoricalRoots.Count)
+            return null;
+
+        return _trustedHistoricalRoots[(int)idx];
     }
 
     private async Task<HistoricalSummary?> GetHistoricalSummary(long slotNumber, CancellationToken cancellation = default)
