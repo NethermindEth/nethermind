@@ -15,7 +15,8 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Merge.Plugin.Data;
 
-internal sealed class PayloadBodiesV1DirectResponse(IReadOnlyList<ExecutionPayloadBodyV1Result?> items)
+/// <summary>Wraps payload body V1 results and writes JSON directly into a <see cref="PipeWriter"/>.</summary>
+public sealed class PayloadBodiesV1DirectResponse(IReadOnlyList<ExecutionPayloadBodyV1Result?> items)
     : IStreamableResult, IReadOnlyList<ExecutionPayloadBodyV1Result?>
 {
     private readonly IReadOnlyList<ExecutionPayloadBodyV1Result?> _items = items;

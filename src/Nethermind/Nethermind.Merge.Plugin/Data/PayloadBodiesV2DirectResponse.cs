@@ -13,7 +13,8 @@ using Nethermind.JsonRpc;
 
 namespace Nethermind.Merge.Plugin.Data;
 
-internal sealed class PayloadBodiesV2DirectResponse : IStreamableResult, IReadOnlyList<ExecutionPayloadBodyV2Result?>, IDisposable
+/// <summary>Wraps payload body V2 results and writes JSON directly into a <see cref="PipeWriter"/>.</summary>
+public sealed class PayloadBodiesV2DirectResponse : IStreamableResult, IReadOnlyList<ExecutionPayloadBodyV2Result?>, IDisposable
 {
     private readonly PayloadBody?[] _items;
     private bool _disposed;
