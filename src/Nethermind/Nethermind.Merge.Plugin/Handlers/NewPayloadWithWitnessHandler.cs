@@ -47,8 +47,19 @@ public sealed class NewPayloadWithWitnessHandler(
 
         Task<Witness?> captureTask = witnessCaptureRegistry.ArmCapture(blockHash);
 
-        ResultWrapper<PayloadStatusV1> statusResult = await engineModule.Value.engine_newPayloadV5(
-            executionPayload, blobVersionedHashes, parentBeaconBlockRoot, executionRequests);
+        ResultWrapper<PayloadStatusV1> statusResult;
+        try
+        {
+            statusResult = await engineModule.Value.engine_newPayloadV5(
+                executionPayload, blobVersionedHashes, parentBeaconBlockRoot, executionRequests);
+        }
+        catch
+        {
+            // engine_newPayloadV5 threw before producing a status; ensure the capture entry
+            // doesn't outlive this request as a leaked TCS in the registry dictionary.
+            witnessCaptureRegistry.DisarmCapture(blockHash);
+            throw;
+        }
 
         using (statusResult)
         {

@@ -59,9 +59,12 @@ public sealed class WitnessCapturingWorldStateProxy(IWorldState inner) : IWorldS
     /// </remarks>
     internal void Disarm()
     {
+        // Flip the flag first so any recorder observing _armed sees the disarmed state before
+        // we null the backing collections; otherwise a recorder could pass its `_armed == 0`
+        // early-return check, read _storageSlots, then NRE if we nulled it between.
+        Interlocked.Exchange(ref _armed, 0);
         Interlocked.Exchange(ref _storageSlots, null);
         Interlocked.Exchange(ref _bytecodes, null);
-        Interlocked.Exchange(ref _armed, 0);
     }
 
     /// <summary>
