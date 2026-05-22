@@ -32,67 +32,64 @@ namespace Nethermind.JsonRpc.Test;
 [Parallelizable(ParallelScope.Children)]
 public class JsonRpcSocketsClientTests
 {
-    [Test]
-    public async Task Socket_sink_writes_single_response_with_one_message_boundary()
+    [TestCase(false, TestName = "Single response")]
+    [TestCase(true, TestName = "Batch response")]
+    public async Task Socket_sink_writes_response_with_one_message_boundary(bool isBatch)
     {
-        MemoryMessageStream stream = new();
-        using SemaphoreSlim sendSemaphore = new(1, 1);
-        using SocketJsonRpcResponseSink<MemoryMessageStream> sink = new(
-            stream,
-            new NullJsonRpcLocalStats(),
-            maxBatchResponseBodySize: 10_000,
-            sendSemaphore,
-            new JsonRpcContext(RpcEndpoint.Ws));
+        using SocketSinkFixture fixture = CreateSocketSink();
 
-        await sink.WriteSingleAsync(new JsonRpcSuccessResponse { Id = 1, Result = "0x1" }, new RpcReport("eth_blockNumber", 1, true), CancellationToken.None);
+        if (isBatch)
+        {
+            await fixture.Sink.BeginBatchAsync(CancellationToken.None);
+            await fixture.Sink.WriteBatchItemAsync(new JsonRpcSuccessResponse { Id = 1, Result = "0x1" }, new RpcReport("eth_blockNumber", 1, true), CancellationToken.None);
+            await fixture.Sink.WriteBatchItemAsync(new JsonRpcSuccessResponse { Id = 2, Result = "0x2" }, new RpcReport("eth_chainId", 1, true), CancellationToken.None);
+            await fixture.Sink.EndBatchAsync(CancellationToken.None);
+        }
+        else
+        {
+            await fixture.Sink.WriteSingleAsync(new JsonRpcSuccessResponse { Id = 1, Result = "0x1" }, new RpcReport("eth_blockNumber", 1, true), CancellationToken.None);
+        }
 
-        byte[] response = stream.ToArray();
+        byte[] response = fixture.Stream.ToArray();
+        if (isBatch)
+        {
+            response[0].Should().Be((byte)'[');
+        }
+
         Enumerable.Count(response, static b => b == (byte)'\n').Should().Be(1);
-        sink.BytesWritten.Should().Be(response.Length);
-    }
-
-    [Test]
-    public async Task Socket_sink_writes_batch_with_one_message_boundary()
-    {
-        MemoryMessageStream stream = new();
-        using SemaphoreSlim sendSemaphore = new(1, 1);
-        using SocketJsonRpcResponseSink<MemoryMessageStream> sink = new(
-            stream,
-            new NullJsonRpcLocalStats(),
-            maxBatchResponseBodySize: 10_000,
-            sendSemaphore,
-            new JsonRpcContext(RpcEndpoint.Ws));
-
-        await sink.BeginBatchAsync(CancellationToken.None);
-        await sink.WriteBatchItemAsync(new JsonRpcSuccessResponse { Id = 1, Result = "0x1" }, new RpcReport("eth_blockNumber", 1, true), CancellationToken.None);
-        await sink.WriteBatchItemAsync(new JsonRpcSuccessResponse { Id = 2, Result = "0x2" }, new RpcReport("eth_chainId", 1, true), CancellationToken.None);
-        await sink.EndBatchAsync(CancellationToken.None);
-
-        byte[] response = stream.ToArray();
-        response[0].Should().Be((byte)'[');
-        Enumerable.Count(response, static b => b == (byte)'\n').Should().Be(1);
-        sink.BytesWritten.Should().Be(response.Length);
+        fixture.Sink.BytesWritten.Should().Be(response.Length);
     }
 
     [TestCase(RpcEndpoint.Ws, true)]
     [TestCase(RpcEndpoint.IPC, false)]
     public async Task Socket_sink_response_limit_stop_depends_on_authentication(RpcEndpoint endpoint, bool expectedStopRequested)
     {
+        using SocketSinkFixture fixture = CreateSocketSink(endpoint, maxBatchResponseBodySize: 1);
+
+        await fixture.Sink.BeginBatchAsync(CancellationToken.None);
+        await fixture.Sink.WriteBatchItemAsync(new JsonRpcSuccessResponse { Id = 1, Result = "0x1" }, new RpcReport("eth_blockNumber", 1, true), CancellationToken.None);
+
+        fixture.Sink.StopRequested.Should().Be(expectedStopRequested);
+
+        await fixture.Sink.EndBatchAsync(CancellationToken.None);
+    }
+
+    private static SocketSinkFixture CreateSocketSink(RpcEndpoint endpoint = RpcEndpoint.Ws, long maxBatchResponseBodySize = 10_000)
+    {
         MemoryMessageStream stream = new();
-        using SemaphoreSlim sendSemaphore = new(1, 1);
-        using SocketJsonRpcResponseSink<MemoryMessageStream> sink = new(
-            stream,
-            new NullJsonRpcLocalStats(),
-            maxBatchResponseBodySize: 1,
-            sendSemaphore,
-            new JsonRpcContext(endpoint));
+        SemaphoreSlim sendSemaphore = new(1, 1);
+        SocketJsonRpcResponseSink<MemoryMessageStream> sink = new(stream, new NullJsonRpcLocalStats(), maxBatchResponseBodySize, sendSemaphore, new JsonRpcContext(endpoint));
+        return new SocketSinkFixture(stream, sendSemaphore, sink);
+    }
 
-        await sink.BeginBatchAsync(CancellationToken.None);
-        await sink.WriteBatchItemAsync(new JsonRpcSuccessResponse { Id = 1, Result = "0x1" }, new RpcReport("eth_blockNumber", 1, true), CancellationToken.None);
-
-        sink.StopRequested.Should().Be(expectedStopRequested);
-
-        await sink.EndBatchAsync(CancellationToken.None);
+    private readonly record struct SocketSinkFixture(MemoryMessageStream Stream, SemaphoreSlim SendSemaphore, SocketJsonRpcResponseSink<MemoryMessageStream> Sink) : IDisposable
+    {
+        public void Dispose()
+        {
+            Sink.Dispose();
+            SendSemaphore.Dispose();
+            Stream.Dispose();
+        }
     }
 
     public class UsingIpc
