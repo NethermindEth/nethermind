@@ -139,7 +139,7 @@ public class DebugTraceStreamingBenchmarks
         Memory = ["0x0000000000000000000000000000000000000000000000000000000000000000"],
         Stack = ["0x1", "0x2"],
         Error = null,
-        Storage = new Dictionary<string, string>(),
+        Storage = [],
     };
 
     // Mirrors PipeWriter's drain-immediately behaviour: bytes written via Advance are dropped.
