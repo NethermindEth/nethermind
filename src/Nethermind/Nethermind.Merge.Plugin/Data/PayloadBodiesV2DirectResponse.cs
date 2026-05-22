@@ -27,9 +27,8 @@ public sealed class PayloadBodiesV2DirectResponse : IStreamableResult, IReadOnly
     {
         get
         {
-            if ((uint)index >= (uint)_items.Length) throw new ArgumentOutOfRangeException(nameof(index));
-
-            return _items[index] is { } item ? item.ToResult() : null;
+            ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual((uint)index, (uint)_items.Length, nameof(index));
+            return _items[index]?.ToResult();
         }
     }
 
