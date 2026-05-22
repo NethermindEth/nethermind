@@ -146,9 +146,13 @@ internal static class Program
         {
             ITypeSymbol type = typeSymbols[i];
             string displayName = RpcJsonTypeDiscovery.GetTypeDisplayString(type);
-            if (!candidatesByDisplayName.ContainsKey(displayName) &&
-                eligibility.TryCreateCandidate(type, displayName, out JsonTypeCandidate? candidate) &&
-                candidate is not null)
+            if (candidatesByDisplayName.ContainsKey(displayName))
+            {
+                continue;
+            }
+
+            JsonTypeCandidate? candidate = eligibility.CreateCandidate(type, displayName);
+            if (candidate is not null)
             {
                 candidatesByDisplayName.Add(displayName, candidate);
             }
@@ -210,27 +214,21 @@ internal static class Program
 
         // The context is emitted into the target assembly, so roots that require inaccessible
         // converters or colliding generated metadata names must stay on the existing resolver path.
-        public bool TryCreateCandidate(
-            ITypeSymbol type,
-            string displayName,
-            out JsonTypeCandidate? candidate)
+        public JsonTypeCandidate? CreateCandidate(ITypeSymbol type, string displayName)
         {
             if (!IsRootOwnedByCurrentAssembly(type))
             {
-                candidate = null;
-                return false;
+                return null;
             }
 
             Dictionary<string, string> generatedTypeNames = new(StringComparer.Ordinal);
             HashSet<string> visitedTypes = new(StringComparer.Ordinal);
             if (!CanGenerateMetadata(type, generatedTypeNames, visitedTypes))
             {
-                candidate = null;
-                return false;
+                return null;
             }
 
-            candidate = new JsonTypeCandidate(displayName, generatedTypeNames);
-            return true;
+            return new JsonTypeCandidate(displayName, generatedTypeNames);
         }
 
         private bool IsRootOwnedByCurrentAssembly(ITypeSymbol type)
@@ -394,31 +392,14 @@ internal static class Program
                 return false;
             }
 
-            if (member is IPropertySymbol property)
+            return member switch
             {
-                if (property.IsStatic ||
-                    property.Parameters.Length != 0 ||
-                    !IsJsonVisible(property))
-                {
-                    return true;
-                }
-
-                return CanGenerateMetadata(property.Type, generatedTypeNames, visitedTypes);
-            }
-
-            if (member is IFieldSymbol field)
-            {
-                if (field.IsStatic ||
-                    field.IsConst ||
-                    !IsJsonVisible(field))
-                {
-                    return true;
-                }
-
-                return CanGenerateMetadata(field.Type, generatedTypeNames, visitedTypes);
-            }
-
-            return true;
+                IPropertySymbol { IsStatic: false, Parameters.Length: 0 } property when IsJsonVisible(property) =>
+                    CanGenerateMetadata(property.Type, generatedTypeNames, visitedTypes),
+                IFieldSymbol { IsStatic: false, IsConst: false } field when IsJsonVisible(field) =>
+                    CanGenerateMetadata(field.Type, generatedTypeNames, visitedTypes),
+                _ => true
+            };
         }
 
         private static bool IsJsonVisible(IPropertySymbol property) =>
