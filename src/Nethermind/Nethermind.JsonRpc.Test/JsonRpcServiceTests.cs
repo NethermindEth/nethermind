@@ -82,6 +82,13 @@ public class JsonRpcServiceTests
         return (ResultWrapper<T>)response;
     }
 
+    private static IEnumerable<TestCaseData> EthCallNullableTrailingArgumentCases()
+    {
+        yield return new TestCaseData((object)new object?[] { new LegacyTransactionForRpc() }).SetName("Implicit null");
+        yield return new TestCaseData((object)new object?[] { new LegacyTransactionForRpc(), "" }).SetName("Explicit empty string");
+        yield return new TestCaseData((object)new object?[] { new LegacyTransactionForRpc(), null }).SetName("Explicit null");
+    }
+
     private JsonRpcResponse TestRequest<T>(T module, string method, params object?[]? parameters) where T : IRpcModule
     {
         SingletonModulePool<T> pool = new(new SingletonFactory<T>(module), true);
@@ -122,24 +129,15 @@ public class JsonRpcServiceTests
         return response;
     }
 
-    [Test]
-    public void GetBlockByNumberTest()
+    [TestCase(false, 2L, TestName = "Number")]
+    [TestCase(true, 513L, TestName = "Size")]
+    public void Eth_module_populates_block_data(bool assertSize, long expected)
     {
         IEthRpcModule ethRpcModule = Substitute.For<IEthRpcModule>();
         ISpecProvider specProvider = Substitute.For<ISpecProvider>();
         ethRpcModule.eth_getBlockByNumber(Arg.Any<BlockParameter>(), true).ReturnsForAnyArgs(x => ResultWrapper<BlockForRpc>.Success(new BlockForRpc(Build.A.Block.WithNumber(2).TestObject, true, specProvider)));
         BlockForRpc result = AssertSuccessResponse<BlockForRpc>(TestRequest(ethRpcModule, "eth_getBlockByNumber", "0x1b4", "true"));
-        Assert.That(result.Number, Is.EqualTo(2L));
-    }
-
-    [Test]
-    public void Eth_module_populates_size_when_returning_block_data()
-    {
-        IEthRpcModule ethRpcModule = Substitute.For<IEthRpcModule>();
-        ISpecProvider specProvider = Substitute.For<ISpecProvider>();
-        ethRpcModule.eth_getBlockByNumber(Arg.Any<BlockParameter>(), true).ReturnsForAnyArgs(x => ResultWrapper<BlockForRpc>.Success(new BlockForRpc(Build.A.Block.WithNumber(2).TestObject, true, specProvider)));
-        BlockForRpc result = AssertSuccessResponse<BlockForRpc>(TestRequest(ethRpcModule, "eth_getBlockByNumber", "0x1b4", "true"));
-        Assert.That(result.Size, Is.EqualTo(513L));
+        Assert.That(assertSize ? result.Size : result.Number, Is.EqualTo(expected));
     }
 
 
@@ -383,26 +381,14 @@ public class JsonRpcServiceTests
         Assert.That(result, Is.EqualTo(UInt256.One));
     }
 
-    [Test]
-    public void Eth_call_is_working_with_implicit_null_as_the_last_argument()
+    [TestCaseSource(nameof(EthCallNullableTrailingArgumentCases))]
+    public void Eth_call_is_working_with_nullable_last_argument(object?[] parameters)
     {
         IEthRpcModule ethRpcModule = Substitute.For<IEthRpcModule>();
         HexBytes expected = ToHexBytes("0x");
         ethRpcModule.eth_call(Arg.Any<TransactionForRpc>(), Arg.Any<BlockParameter?>()).ReturnsForAnyArgs(_ => ResultWrapper<HexBytes>.Success(expected));
 
-        HexBytes result = AssertSuccessResponse<HexBytes>(TestRequest(ethRpcModule, "eth_call", new LegacyTransactionForRpc()));
-        Assert.That(result, Is.EqualTo(expected));
-    }
-
-    [TestCase("")]
-    [TestCase(null)]
-    public void Eth_call_is_working_with_explicit_null_as_the_last_argument(string? nullValue)
-    {
-        IEthRpcModule ethRpcModule = Substitute.For<IEthRpcModule>();
-        HexBytes expected = ToHexBytes("0x");
-        ethRpcModule.eth_call(Arg.Any<TransactionForRpc>(), Arg.Any<BlockParameter?>()).ReturnsForAnyArgs(_ => ResultWrapper<HexBytes>.Success(expected));
-
-        HexBytes result = AssertSuccessResponse<HexBytes>(TestRequest(ethRpcModule, "eth_call", new LegacyTransactionForRpc(), nullValue));
+        HexBytes result = AssertSuccessResponse<HexBytes>(TestRequest(ethRpcModule, "eth_call", parameters));
         Assert.That(result, Is.EqualTo(expected));
     }
 
