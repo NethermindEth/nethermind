@@ -18,19 +18,15 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Crypto;
 using Nethermind.Evm;
 using System.Collections.Generic;
-using System.IO.Pipelines;
 using System.Linq;
-using System.Text;
 using System.Text.Json;
 using Nethermind.State;
 using Nethermind.TxPool;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Test;
 using System;
-using System.Threading;
 using Nethermind.Core.Test;
 using Nethermind.Crypto;
-using Nethermind.Serialization.Json;
 
 namespace Nethermind.Merge.Plugin.Test;
 
@@ -493,16 +489,7 @@ public partial class EngineModuleTests
 
         using PayloadBodiesV2DirectResponse response = new(items);
 
-        Pipe pipe = new();
-        await response.WriteToAsync(pipe.Writer, CancellationToken.None);
-        await pipe.Writer.CompleteAsync();
-
-        ReadResult readResult = await pipe.Reader.ReadAsync();
-        string streamedJson = Encoding.UTF8.GetString(readResult.Buffer);
-        pipe.Reader.AdvanceTo(readResult.Buffer.End);
-
-        string stjJson = JsonSerializer.Serialize(response, EthereumJsonSerializer.JsonOptions);
-        Assert.That(streamedJson, Is.EqualTo(stjJson));
+        await AssertStreamedJsonMatchesSerializer(response);
     }
 
     [Test]

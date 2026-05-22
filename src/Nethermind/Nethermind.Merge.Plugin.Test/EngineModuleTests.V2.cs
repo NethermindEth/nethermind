@@ -3,11 +3,7 @@
 
 using System;
 using System.Collections.Generic;
-using System.IO.Pipelines;
 using System.Linq;
-using System.Text;
-using System.Text.Json;
-using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Blockchain;
@@ -23,7 +19,6 @@ using Nethermind.Int256;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Test;
 using Nethermind.Merge.Plugin.Data;
-using Nethermind.Serialization.Json;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
 using Nethermind.State;
@@ -550,16 +545,7 @@ public partial class EngineModuleTests
             new ExecutionPayloadBodyV1Result([], null)
         ]);
 
-        Pipe pipe = new();
-        await response.WriteToAsync(pipe.Writer, CancellationToken.None);
-        await pipe.Writer.CompleteAsync();
-
-        ReadResult readResult = await pipe.Reader.ReadAsync();
-        string streamedJson = Encoding.UTF8.GetString(readResult.Buffer);
-        pipe.Reader.AdvanceTo(readResult.Buffer.End);
-
-        string stjJson = JsonSerializer.Serialize(response, EthereumJsonSerializer.JsonOptions);
-        streamedJson.Should().Be(stjJson);
+        await AssertStreamedJsonMatchesSerializer(response);
     }
 
     [Test]
