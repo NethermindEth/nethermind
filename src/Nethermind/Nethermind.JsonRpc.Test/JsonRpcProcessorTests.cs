@@ -491,8 +491,9 @@ public class JsonRpcProcessorTests(bool returnErrors)
         }
     }
 
-    [Test]
-    public async Task Single_request_params_document_is_disposed_after_sink_write()
+    [TestCase(false, TestName = "Single request")]
+    [TestCase(true, TestName = "Batch request")]
+    public async Task Params_document_is_disposed_after_sink_write(bool isBatch)
     {
         JsonElement capturedParams = default;
         IJsonRpcService service = CreateService(capturedRequest =>
@@ -500,40 +501,17 @@ public class JsonRpcProcessorTests(bool returnErrors)
             capturedParams = capturedRequest.Params;
             return new JsonRpcSuccessResponse { Id = capturedRequest.Id };
         });
-        CollectingJsonRpcResponseSink sink = new()
-        {
-            OnSingleWrite = (_, _) => capturedParams.ValueKind.Should().Be(JsonValueKind.Array)
-        };
+        CollectingJsonRpcResponseSink sink = isBatch
+            ? new() { OnEndBatch = () => capturedParams.ValueKind.Should().Be(JsonValueKind.Array) }
+            : new() { OnSingleWrite = (_, _) => capturedParams.ValueKind.Should().Be(JsonValueKind.Array) };
         JsonRpcProcessor processor = CreateProcessor(service, new JsonRpcConfig { RpcRecorderState = RpcRecorderState.None });
+        string request = isBatch
+            ? "[{\"id\":1,\"jsonrpc\":\"2.0\",\"method\":\"eth_blockNumber\",\"params\":[1]},{\"id\":2,\"jsonrpc\":\"2.0\",\"method\":\"net_version\",\"params\":[2]}]"
+            : "{\"id\":1,\"jsonrpc\":\"2.0\",\"method\":\"eth_blockNumber\",\"params\":[{\"a\":1}]}";
 
         await ProcessAsync(
             processor,
-            CreateReader("{\"id\":1,\"jsonrpc\":\"2.0\",\"method\":\"eth_blockNumber\",\"params\":[{\"a\":1}]}"),
-            new JsonRpcContext(RpcEndpoint.Http),
-            sink);
-
-        Action readAfterProcessing = () => _ = capturedParams.ValueKind;
-        readAfterProcessing.Should().Throw<ObjectDisposedException>();
-    }
-
-    [Test]
-    public async Task Batch_request_document_is_disposed_after_last_sink_write()
-    {
-        JsonElement capturedParams = default;
-        IJsonRpcService service = CreateService(capturedRequest =>
-        {
-            capturedParams = capturedRequest.Params;
-            return new JsonRpcSuccessResponse { Id = capturedRequest.Id };
-        });
-        CollectingJsonRpcResponseSink sink = new()
-        {
-            OnEndBatch = () => capturedParams.ValueKind.Should().Be(JsonValueKind.Array)
-        };
-        JsonRpcProcessor processor = CreateProcessor(service, new JsonRpcConfig { RpcRecorderState = RpcRecorderState.None });
-
-        await ProcessAsync(
-            processor,
-            CreateReader("[{\"id\":1,\"jsonrpc\":\"2.0\",\"method\":\"eth_blockNumber\",\"params\":[1]},{\"id\":2,\"jsonrpc\":\"2.0\",\"method\":\"net_version\",\"params\":[2]}]"),
+            CreateReader(request),
             new JsonRpcContext(RpcEndpoint.Http),
             sink);
 
@@ -606,10 +584,13 @@ public class JsonRpcProcessorTests(bool returnErrors)
         return fileSystem;
     }
 
-    private void AssertBatchItemsTypeMatchesFixtureMode(IReadOnlyList<JsonRpcResponse>? batchItems)
+    private void AssertBatchResponse(CollectedJsonRpcResult result, int expectedCount)
     {
-        batchItems.Should().NotBeNull();
-        batchItems.Should().AllSatisfy(AssertResponseTypeMatchesFixtureMode);
+        result.Response.Should().BeNull();
+        result.BatchItems.Should().NotBeNull();
+        result.BatchItems.Should().HaveCount(expectedCount);
+        result.BatchItems.Should().AllSatisfy(AssertResponseTypeMatchesFixtureMode);
+        result.BatchItems.Should().NotContain(_errorResponse);
     }
 
     private void AssertResponseTypeMatchesFixtureMode(JsonRpcResponse response) =>
@@ -653,10 +634,7 @@ public class JsonRpcProcessorTests(bool returnErrors)
     {
         using CollectedJsonRpcResponses result = await ProcessAsync(CreateTransactionCountBatchRequest(firstParamsJson, secondParamsJson));
         result.Should().HaveCount(1);
-        result[0].Response.Should().BeNull();
-        AssertBatchItemsTypeMatchesFixtureMode(result[0].BatchItems);
-        result[0].BatchItems.Should().HaveCount(2);
-        result[0].BatchItems.Should().NotContain(_errorResponse);
+        AssertBatchResponse(result[0], 2);
     }
 
     [Test]
@@ -674,8 +652,7 @@ public class JsonRpcProcessorTests(bool returnErrors)
     {
         using CollectedJsonRpcResponses result = await ProcessAsync(CreateTransactionCountBatchRequest(4, omitLastParams));
         result.Should().HaveCount(1);
-        result[0].BatchItems.Should().NotBeNull();
-        result[0].Response.Should().BeNull();
+        AssertBatchResponse(result[0], 4);
     }
 
     [TestCaseSource(nameof(MultipleDocumentRequestCases))]
@@ -686,10 +663,7 @@ public class JsonRpcProcessorTests(bool returnErrors)
         AssertSingleResponse(result[0]);
         if (secondIsBatch)
         {
-            result[1].Response.Should().BeNull();
-            AssertBatchItemsTypeMatchesFixtureMode(result[1].BatchItems);
-            result[1].BatchItems.Should().HaveCount(2);
-            result[1].BatchItems.Should().NotContain(_errorResponse);
+            AssertBatchResponse(result[1], 2);
         }
         else
         {
