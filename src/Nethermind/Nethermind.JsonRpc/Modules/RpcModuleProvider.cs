@@ -280,20 +280,18 @@ namespace Nethermind.JsonRpc.Modules
 
         public class ResolvedMethodInfo
         {
-            private static readonly MethodInfo _createTypedDirectNoParameterInvokerMethod =
-                typeof(ResolvedMethodInfo).GetMethod(nameof(CreateTypedDirectNoParameterInvoker), BindingFlags.NonPublic | BindingFlags.Static)!;
-            private static readonly MethodInfo _createTypedDirectOneParameterInvokerMethod =
-                typeof(ResolvedMethodInfo).GetMethod(nameof(CreateTypedDirectOneParameterInvoker), BindingFlags.NonPublic | BindingFlags.Static)!;
-            private static readonly MethodInfo _createTypedDirectTwoParameterInvokerMethod =
-                typeof(ResolvedMethodInfo).GetMethod(nameof(CreateTypedDirectTwoParameterInvoker), BindingFlags.NonPublic | BindingFlags.Static)!;
-            private static readonly MethodInfo _createTypedDirectThreeParameterInvokerMethod =
-                typeof(ResolvedMethodInfo).GetMethod(nameof(CreateTypedDirectThreeParameterInvoker), BindingFlags.NonPublic | BindingFlags.Static)!;
-            private static readonly MethodInfo _createTypedDirectFourParameterInvokerMethod =
-                typeof(ResolvedMethodInfo).GetMethod(nameof(CreateTypedDirectFourParameterInvoker), BindingFlags.NonPublic | BindingFlags.Static)!;
-            private static readonly MethodInfo _readTaskResultMethod =
-                typeof(ResolvedMethodInfo).GetMethod(nameof(ReadTaskResult), BindingFlags.NonPublic | BindingFlags.Static)!;
+            private const BindingFlags NonPublicStatic = BindingFlags.NonPublic | BindingFlags.Static;
+            private static readonly MethodInfo _createTypedDirectNoParameterInvokerMethod = GetStaticMethod(nameof(CreateTypedDirectNoParameterInvoker));
+            private static readonly MethodInfo _createTypedDirectOneParameterInvokerMethod = GetStaticMethod(nameof(CreateTypedDirectOneParameterInvoker));
+            private static readonly MethodInfo _createTypedDirectTwoParameterInvokerMethod = GetStaticMethod(nameof(CreateTypedDirectTwoParameterInvoker));
+            private static readonly MethodInfo _createTypedDirectThreeParameterInvokerMethod = GetStaticMethod(nameof(CreateTypedDirectThreeParameterInvoker));
+            private static readonly MethodInfo _createTypedDirectFourParameterInvokerMethod = GetStaticMethod(nameof(CreateTypedDirectFourParameterInvoker));
+            private static readonly MethodInfo _readTaskResultMethod = GetStaticMethod(nameof(ReadTaskResult));
 
             internal delegate IResultWrapper? TaskResultReader(Task task);
+
+            private static MethodInfo GetStaticMethod(string methodName) =>
+                typeof(ResolvedMethodInfo).GetMethod(methodName, NonPublicStatic)!;
 
             public readonly struct ExpectedParameter
             {
