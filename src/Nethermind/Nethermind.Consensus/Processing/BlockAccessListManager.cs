@@ -247,9 +247,6 @@ public partial class BlockAccessListManager(
         _gasRemaining = null;
         _parentStateRoot = null;
         GeneratedBlockAccessList.Reset();
-        // Dispose pooled buffers held by the validation indexes before dropping the references.
-        // Reset runs at the start of PrepareForProcessing, so the indexes from the previous
-        // block (if any) are no longer in use.
         DisposableExtensions.DisposeAndNull(ref _suggestedValidationIndex);
         DisposableExtensions.DisposeAndNull(ref _generatedValidationIndex);
         _suggestedChargeableStorageReads = 0;
