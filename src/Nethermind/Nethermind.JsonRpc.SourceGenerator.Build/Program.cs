@@ -453,16 +453,14 @@ internal static class Program
             return [];
         }
 
-        string[] parts = defineConstants.Split([';', ','], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-        List<string> symbols = new(parts.Length);
-        for (int i = 0; i < parts.Length; i++)
+        string[] symbols = defineConstants.Split([';', ','], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        for (int i = 0; i < symbols.Length; i++)
         {
-            string part = parts[i];
-            int equalsIndex = part.IndexOf('=');
-            symbols.Add(equalsIndex >= 0 ? part[..equalsIndex] : part);
+            int equalsIndex = symbols[i].IndexOf('=');
+            if (equalsIndex >= 0) symbols[i] = symbols[i][..equalsIndex];
         }
 
-        return [.. symbols];
+        return symbols;
     }
 
     private static string[] ReadExistingLines(string path)
