@@ -35,25 +35,15 @@ namespace Nethermind.JsonRpc.Test
             _localStats = CreateStats();
         }
 
-        [Test]
-        public void Success_average_is_fine()
+        [TestCase(new long[] { 100, 200 }, "A|2|0.150|0.200|0|0.000|0.000|", "TOTAL|2|0.150|0.200|0|0.000|0.000|", TestName = "Success average")]
+        [TestCase(new long[] { 100 }, "A|1|0.100|0.100|0|0.000|0.000|", "TOTAL|1|0.100|0.100|0|0.000|0.000|", TestName = "Single average")]
+        public void Success_average_is_fine(long[] handlingTimes, string methodLine, string totalLine)
         {
-            _localStats.ReportCall("A", 100, true);
-            _localStats.ReportCall("A", 200, true);
-            MakeTimePass();
-            _localStats.ReportCall("A", 300, true);
-            CheckLogLine("A|2|0.150|0.200|0|0.000|0.000|");
-            CheckLogLine("TOTAL|2|0.150|0.200|0|0.000|0.000|");
-        }
+            Report("A", true, handlingTimes);
 
-        [Test]
-        public void Single_average_is_fine()
-        {
-            _localStats.ReportCall("A", 100, true);
             MakeTimePass();
             _localStats.ReportCall("A", 300, true);
-            CheckLogLine("A|1|0.100|0.100|0|0.000|0.000|");
-            CheckLogLine("TOTAL|1|0.100|0.100|0|0.000|0.000|");
+            CheckLogLines(methodLine, totalLine);
         }
 
         [Test]
@@ -110,16 +100,11 @@ namespace Nethermind.JsonRpc.Test
         [Test]
         public void Multiple_have_no_decimal_places()
         {
-            _localStats.ReportCall("A", 30, true);
-            _localStats.ReportCall("A", 20, true);
-            _localStats.ReportCall("A", 50, true);
-            _localStats.ReportCall("A", 60, false);
-            _localStats.ReportCall("A", 40, false);
-            _localStats.ReportCall("A", 100, false);
+            Report("A", true, 30, 20, 50);
+            Report("A", false, 60, 40, 100);
             MakeTimePass();
             _localStats.ReportCall("A", 300, true);
-            CheckLogLine("A|3|0.033|0.050|3|0.067|0.100|");
-            CheckLogLine("TOTAL|3|0.033|0.050|3|0.067|0.100|");
+            CheckLogLines("A|3|0.033|0.050|3|0.067|0.100|", "TOTAL|3|0.033|0.050|3|0.067|0.100|");
         }
 
         [Test]
@@ -131,9 +116,10 @@ namespace Nethermind.JsonRpc.Test
             _localStats.ReportCall("B", 175, false);
             MakeTimePass();
             _localStats.ReportCall("A", 300, true);
-            CheckLogLine("A|1|0.025|0.025|1|0.125|0.125|");
-            CheckLogLine("B|1|0.075|0.075|1|0.175|0.175|");
-            CheckLogLine("TOTAL|2|0.050|0.075|2|0.150|0.175|");
+            CheckLogLines(
+                "A|1|0.025|0.025|1|0.125|0.125|",
+                "B|1|0.075|0.075|1|0.175|0.175|",
+                "TOTAL|2|0.050|0.075|2|0.150|0.175|");
         }
 
         [Test]
@@ -187,6 +173,16 @@ namespace Nethermind.JsonRpc.Test
         private void MakeTimePass(int seconds) => _manualTimestamper.UtcNow = _manualTimestamper.UtcNow.AddSeconds(seconds);
 
         private void MakeTimePass() => _manualTimestamper.UtcNow = _manualTimestamper.UtcNow.AddSeconds(_config.ReportIntervalSeconds + 1);
+
+        private void Report(string method, bool success, params long[] handlingTimes)
+        {
+            foreach (long handlingTime in handlingTimes) _localStats.ReportCall(method, handlingTime, success);
+        }
+
+        private void CheckLogLines(params string[] lines)
+        {
+            foreach (string line in lines) CheckLogLine(line);
+        }
 
         private void CheckLogLine(string line)
         {
