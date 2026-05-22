@@ -114,9 +114,7 @@ internal static class Program
             """);
         for (int i = 0; i < sortedTypes.Length; i++)
         {
-            builder.Append("[JsonSerializable(typeof(");
-            builder.Append(sortedTypes[i]);
-            builder.AppendLine("))]");
+            builder.AppendLine($"[JsonSerializable(typeof({sortedTypes[i]}))]");
         }
 
         builder.AppendLine(

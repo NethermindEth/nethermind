@@ -66,9 +66,7 @@ public sealed class RpcJsonTypeInfoGenerator : IIncrementalGenerator
             .AppendLine("    {");
         for (int i = 0; i < sortedTypes.Length; i++)
         {
-            builder.Append("        typeof(");
-            builder.Append(sortedTypes[i]);
-            builder.AppendLine("),");
+            builder.AppendLine($"        typeof({sortedTypes[i]}),");
         }
         builder
             .AppendLine("    };")
@@ -80,9 +78,7 @@ public sealed class RpcJsonTypeInfoGenerator : IIncrementalGenerator
             .AppendLine("    {");
         for (int i = 0; i < sortedTypes.Length; i++)
         {
-            builder.Append("        RegisterGeneric<");
-            builder.Append(sortedTypes[i]);
-            builder.AppendLine(">();");
+            builder.AppendLine($"        RegisterGeneric<{sortedTypes[i]}>();");
         }
         builder
             .AppendLine("    }")
@@ -121,9 +117,7 @@ public sealed class RpcJsonTypeInfoGenerator : IIncrementalGenerator
             .AppendLine("    {");
         for (int i = 0; i < methodNames.Length; i++)
         {
-            builder.Append("        \"");
-            builder.Append(EscapeStringLiteral(methodNames[i]));
-            builder.AppendLine("\",");
+            builder.AppendLine($"        \"{EscapeStringLiteral(methodNames[i])}\",");
         }
         builder
             .AppendLine("    };")
