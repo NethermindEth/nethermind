@@ -101,8 +101,7 @@ namespace Nethermind.Blockchain.Contracts.Json
                 if (lastBracket >= 0 && type.EndsWith(']'))
                 {
                     if (arrayDepth >= MaxArrayDepth)
-                        throw new AbiException(
-                            $"ABI array nesting exceeds maximum depth of {MaxArrayDepth}.");
+                        throw new AbiException($"ABI array nesting exceeds maximum depth of {MaxArrayDepth}.");
 
                     string bracketContent = type[(lastBracket + 1)..^1];
                     string elementTypeStr = type[..lastBracket];

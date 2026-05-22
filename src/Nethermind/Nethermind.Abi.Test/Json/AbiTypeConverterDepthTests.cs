@@ -10,32 +10,19 @@ namespace Nethermind.Abi.Test.Json;
 
 public class AbiTypeConverterDepthTests
 {
-    private static AbiType Deserialize(string type) =>
-        JsonSerializer.Deserialize<AbiType>(
-            $"\"{type}\"",
-            new JsonSerializerOptions
-            {
-                Converters = { new AbiTypeConverter() }
-            })!;
-
-    private static string ArrayType(string baseType, int depth) =>
-        new StringBuilder(baseType).Insert(baseType.Length, "[]", depth).ToString();
-
-    [Test]
-    public void Rejects_array_nesting_above_limit()
+    [TestCase(32, false)]
+    [TestCase(33, true)]
+    public void Enforces_array_nesting_limit(int depth, bool shouldThrow)
     {
-        string payload = ArrayType("uint256", 33);
+        string payload = new StringBuilder("uint256").Insert("uint256".Length, "[]", depth).ToString();
 
-        Assert.Throws<AbiException>(() => Deserialize(payload));
-    }
+        TestDelegate act = () => JsonSerializer.Deserialize<AbiType>(
+            $"\"{payload}\"",
+            new JsonSerializerOptions { Converters = { new AbiTypeConverter() } });
 
-    [Test]
-    public void Accepts_array_nesting_at_limit()
-    {
-        string payload = ArrayType("uint256", 32);
-
-        AbiType result = Deserialize(payload);
-
-        Assert.That(result, Is.Not.Null);
+        if (shouldThrow)
+            Assert.Throws<AbiException>(act);
+        else
+            Assert.DoesNotThrow(act);
     }
 }
