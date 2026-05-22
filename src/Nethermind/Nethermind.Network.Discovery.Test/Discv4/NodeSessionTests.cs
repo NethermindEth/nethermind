@@ -28,34 +28,33 @@ namespace Nethermind.Network.Discovery.Test.Discv4
             _nodeSession = new(_nodeStats, _timestamper);
         }
 
-        [Test]
-        public void Test_HasReceivedPing()
-        {
-            Assert.That(_nodeSession.HasReceivedPing, Is.False);
-            _nodeSession.OnPingReceived();
-            Assert.That(_nodeSession.HasReceivedPing, Is.True);
-            _timestamper.Add(NodeSession.BondTimeout);
-            Assert.That(_nodeSession.HasReceivedPing, Is.False);
-        }
+        private static readonly TestCaseData[] FlagTimeoutCases =
+        [
+            new TestCaseData(
+                (Func<NodeSession, bool>)(s => s.HasReceivedPing),
+                (Action<NodeSession>)(s => s.OnPingReceived()),
+                NodeSession.BondTimeout).SetName(nameof(NodeSession.HasReceivedPing)),
+            new TestCaseData(
+                (Func<NodeSession, bool>)(s => s.HasReceivedPong),
+                (Action<NodeSession>)(s => s.OnPongReceived()),
+                NodeSession.BondTimeout).SetName(nameof(NodeSession.HasReceivedPong)),
+            new TestCaseData(
+                (Func<NodeSession, bool>)(s => s.HasTriedPingRecently),
+                (Action<NodeSession>)(s => s.OnPingSent()),
+                NodeSession.PingRetryTimeout).SetName(nameof(NodeSession.HasTriedPingRecently)),
+        ];
 
-        [Test]
-        public void Test_HasReceivedPong()
+        [TestCaseSource(nameof(FlagTimeoutCases))]
+        public void Flag_is_set_on_event_and_cleared_after_timeout(
+            Func<NodeSession, bool> getter,
+            Action<NodeSession> trigger,
+            TimeSpan timeout)
         {
-            Assert.That(_nodeSession.HasReceivedPong, Is.False);
-            _nodeSession.OnPongReceived();
-            Assert.That(_nodeSession.HasReceivedPong, Is.True);
-            _timestamper.Add(NodeSession.BondTimeout);
-            Assert.That(_nodeSession.HasReceivedPong, Is.False);
-        }
-
-        [Test]
-        public void Test_HasTriedPingRecently()
-        {
-            Assert.That(_nodeSession.HasTriedPingRecently, Is.False);
-            _nodeSession.OnPingSent();
-            Assert.That(_nodeSession.HasTriedPingRecently, Is.True);
-            _timestamper.Add(NodeSession.PingRetryTimeout);
-            Assert.That(_nodeSession.HasTriedPingRecently, Is.False);
+            Assert.That(getter(_nodeSession), Is.False);
+            trigger(_nodeSession);
+            Assert.That(getter(_nodeSession), Is.True);
+            _timestamper.Add(timeout);
+            Assert.That(getter(_nodeSession), Is.False);
         }
 
         [Test]

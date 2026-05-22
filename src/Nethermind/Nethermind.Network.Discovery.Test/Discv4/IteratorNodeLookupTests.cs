@@ -22,6 +22,9 @@ namespace Nethermind.Network.Discovery.Test.Discv4
     [TestFixture]
     public class IteratorNodeLookupTests
     {
+        private static readonly Node InitialNode = new(TestItem.PublicKeyC, "192.168.1.3", 30303);
+        private static readonly Node NeighbourNode = new(TestItem.PublicKeyD, "192.168.1.4", 30303);
+
         private IRoutingTable<Node> _routingTable = null!;
         private IteratorNodeLookup<PublicKey, Node> _lookup = null!;
         private IKademliaMessageSender<PublicKey, Node> _msgSender = null!;
@@ -48,18 +51,30 @@ namespace Nethermind.Network.Discovery.Test.Discv4
                 logManager);
         }
 
+        private void RoutingTableReturns(params Node[] nodes) =>
+            _routingTable.GetKNearestNeighbour(Arg.Any<ValueHash256>(), Arg.Any<ValueHash256?>())
+                .Returns(nodes);
+
+        private void FindNeighboursReturns(Node from, params Node[] result) =>
+            _msgSender.FindNeighbours(from, _targetKey, Arg.Any<CancellationToken>())
+                .Returns(result);
+
+        private void FindNeighboursThrows(Node from, Exception exception) =>
+            _msgSender.FindNeighbours(from, _targetKey, Arg.Any<CancellationToken>())
+                .Returns(Task.FromException<Node[]>(exception));
+
+        private Task AssertFindNeighboursCalledOnce(Node node) =>
+            _msgSender.Received(1).FindNeighbours(
+                Arg.Is<Node>(n => n == node),
+                Arg.Is<PublicKey>(k => k == _targetKey),
+                Arg.Any<CancellationToken>());
+
         [Test]
         [CancelAfter(10000)]
         public async Task Lookup_should_return_nodes_from_routing_table(CancellationToken token)
         {
-            Node[] expectedNodes =
-            [
-                new(TestItem.PublicKeyC, "192.168.1.3", 30303),
-                new(TestItem.PublicKeyD, "192.168.1.4", 30303)
-            ];
-
-            _routingTable.GetKNearestNeighbour(Arg.Any<ValueHash256>(), Arg.Any<ValueHash256?>())
-                .Returns(expectedNodes);
+            Node[] expectedNodes = [InitialNode, NeighbourNode];
+            RoutingTableReturns(expectedNodes);
 
             List<Node> result = await _lookup.Lookup(_targetKey, token).ToListAsync(token);
 
@@ -73,38 +88,24 @@ namespace Nethermind.Network.Discovery.Test.Discv4
         [CancelAfter(10000)]
         public async Task Lookup_should_query_nodes_and_return_neighbours(CancellationToken token)
         {
-            Node initialNode = new(TestItem.PublicKeyC, "192.168.1.3", 30303);
-            Node neighbourNode = new(TestItem.PublicKeyD, "192.168.1.4", 30303);
-
-            _routingTable.GetKNearestNeighbour(Arg.Any<ValueHash256>(), Arg.Any<ValueHash256?>())
-                .Returns([initialNode]);
-
-            _msgSender.FindNeighbours(initialNode, _targetKey, Arg.Any<CancellationToken>())
-                .Returns([neighbourNode]);
+            RoutingTableReturns(InitialNode);
+            FindNeighboursReturns(InitialNode, NeighbourNode);
 
             List<Node> result = await _lookup.Lookup(_targetKey, token).ToListAsync(token);
 
-            Assert.That(result, Has.Count.EqualTo(2));
-            Assert.That(result, Does.Contain(initialNode));
-            Assert.That(result, Does.Contain(neighbourNode));
-
-            await _msgSender.Received(1).FindNeighbours(
-                Arg.Is<Node>(n => n == initialNode),
-                Arg.Is<PublicKey>(k => k == _targetKey),
-                Arg.Any<CancellationToken>());
+            Assert.That(result, Is.EquivalentTo(new[] { InitialNode, NeighbourNode }));
+            await AssertFindNeighboursCalledOnce(InitialNode);
         }
 
         [Test]
         [CancelAfter(10000)]
         public async Task Lookup_should_not_query_self_node(CancellationToken token)
         {
-            _routingTable.GetKNearestNeighbour(Arg.Any<ValueHash256>(), Arg.Any<ValueHash256?>())
-                .Returns([_currentNode]);
+            RoutingTableReturns(_currentNode);
 
             List<Node> result = await _lookup.Lookup(_targetKey, token).ToListAsync(token);
 
-            Assert.That(result, Has.Count.EqualTo(1));
-            Assert.That(result, Does.Contain(_currentNode));
+            Assert.That(result, Is.EquivalentTo(new[] { _currentNode }));
 
             await _msgSender.DidNotReceive().FindNeighbours(
                 Arg.Any<Node>(),
@@ -116,56 +117,33 @@ namespace Nethermind.Network.Discovery.Test.Discv4
         [CancelAfter(10000)]
         public async Task Lookup_should_handle_empty_neighbour_response(CancellationToken token)
         {
-            Node initialNode = new(TestItem.PublicKeyC, "192.168.1.3", 30303);
-
-            _routingTable.GetKNearestNeighbour(Arg.Any<ValueHash256>(), Arg.Any<ValueHash256?>())
-                .Returns([initialNode]);
-
-            _msgSender.FindNeighbours(initialNode, _targetKey, Arg.Any<CancellationToken>())
-                .Returns([]);
+            RoutingTableReturns(InitialNode);
+            FindNeighboursReturns(InitialNode);
 
             List<Node> result = await _lookup.Lookup(_targetKey, token).ToListAsync(token);
 
-            Assert.That(result, Has.Count.EqualTo(1));
-            Assert.That(result, Does.Contain(initialNode));
-
-            await _msgSender.Received(1).FindNeighbours(
-                Arg.Is<Node>(n => n == initialNode),
-                Arg.Is<PublicKey>(k => k == _targetKey),
-                Arg.Any<CancellationToken>());
+            Assert.That(result, Is.EquivalentTo(new[] { InitialNode }));
+            await AssertFindNeighboursCalledOnce(InitialNode);
         }
 
         [Test]
         [CancelAfter(10000)]
         public async Task Lookup_should_handle_exception_in_find_neighbours(CancellationToken token)
         {
-            Node initialNode = new(TestItem.PublicKeyC, "192.168.1.3", 30303);
-
-            _routingTable.GetKNearestNeighbour(Arg.Any<ValueHash256>(), Arg.Any<ValueHash256?>())
-                .Returns([initialNode]);
-
-            _msgSender.FindNeighbours(initialNode, _targetKey, Arg.Any<CancellationToken>())
-                .Returns(Task.FromException<Node[]>(new Exception("Test exception")));
+            RoutingTableReturns(InitialNode);
+            FindNeighboursThrows(InitialNode, new Exception("Test exception"));
 
             List<Node> result = await _lookup.Lookup(_targetKey, token).ToListAsync(token);
 
-            Assert.That(result, Has.Count.EqualTo(1));
-            Assert.That(result, Does.Contain(initialNode));
-
-            await _msgSender.Received(1).FindNeighbours(
-                Arg.Is<Node>(n => n == initialNode),
-                Arg.Is<PublicKey>(k => k == _targetKey),
-                Arg.Any<CancellationToken>());
+            Assert.That(result, Is.EquivalentTo(new[] { InitialNode }));
+            await AssertFindNeighboursCalledOnce(InitialNode);
         }
 
         [Test]
         [CancelAfter(10000)]
-        public async Task Lookup_should_respect_cancellation_token(CancellationToken token)
+        public void Lookup_should_respect_cancellation_token(CancellationToken token)
         {
-            Node initialNode = new(TestItem.PublicKeyC, "192.168.1.3", 30303);
-
-            _routingTable.GetKNearestNeighbour(Arg.Any<ValueHash256>(), Arg.Any<ValueHash256?>())
-                .Returns([initialNode]);
+            RoutingTableReturns(InitialNode);
 
             using CancellationTokenSource cts = new();
             cts.Cancel();
@@ -177,56 +155,28 @@ namespace Nethermind.Network.Discovery.Test.Discv4
         [CancelAfter(10000)]
         public async Task Lookup_should_not_query_same_node_twice(CancellationToken token)
         {
-            Node initialNode = new(TestItem.PublicKeyC, "192.168.1.3", 30303);
-            Node neighbourNode = new(TestItem.PublicKeyD, "192.168.1.4", 30303);
-
-            _routingTable.GetKNearestNeighbour(Arg.Any<ValueHash256>(), Arg.Any<ValueHash256?>())
-                .Returns([initialNode]);
-
-            _msgSender.FindNeighbours(initialNode, _targetKey, Arg.Any<CancellationToken>())
-                .Returns([neighbourNode]);
-
-            _msgSender.FindNeighbours(neighbourNode, _targetKey, Arg.Any<CancellationToken>())
-                .Returns([initialNode]);
+            RoutingTableReturns(InitialNode);
+            FindNeighboursReturns(InitialNode, NeighbourNode);
+            FindNeighboursReturns(NeighbourNode, InitialNode);
 
             List<Node> result = await _lookup.Lookup(_targetKey, token).ToListAsync();
 
-            Assert.That(result, Has.Count.EqualTo(2));
-            Assert.That(result, Does.Contain(initialNode));
-            Assert.That(result, Does.Contain(neighbourNode));
-
-            await _msgSender.Received(1).FindNeighbours(
-                Arg.Is<Node>(n => n == initialNode),
-                Arg.Is<PublicKey>(k => k == _targetKey),
-                Arg.Any<CancellationToken>());
-
-            await _msgSender.Received(1).FindNeighbours(
-                Arg.Is<Node>(n => n == neighbourNode),
-                Arg.Is<PublicKey>(k => k == _targetKey),
-                Arg.Any<CancellationToken>());
+            Assert.That(result, Is.EquivalentTo(new[] { InitialNode, NeighbourNode }));
+            await AssertFindNeighboursCalledOnce(InitialNode);
+            await AssertFindNeighboursCalledOnce(NeighbourNode);
         }
 
         [Test]
         [CancelAfter(10000)]
         public async Task Lookup_should_not_return_duplicate_nodes(CancellationToken token)
         {
-            Node initialNode = new(TestItem.PublicKeyC, "192.168.1.3", 30303);
-            Node neighbourNode = new(TestItem.PublicKeyD, "192.168.1.4", 30303);
-
-            _routingTable.GetKNearestNeighbour(Arg.Any<ValueHash256>(), Arg.Any<ValueHash256?>())
-                .Returns([initialNode]);
-
-            _msgSender.FindNeighbours(initialNode, _targetKey, Arg.Any<CancellationToken>())
-                .Returns([neighbourNode]);
-
-            _msgSender.FindNeighbours(neighbourNode, _targetKey, Arg.Any<CancellationToken>())
-                .Returns([initialNode, neighbourNode]);
+            RoutingTableReturns(InitialNode);
+            FindNeighboursReturns(InitialNode, NeighbourNode);
+            FindNeighboursReturns(NeighbourNode, InitialNode, NeighbourNode);
 
             List<Node> result = await _lookup.Lookup(_targetKey, token).ToListAsync();
 
-            Assert.That(result, Has.Count.EqualTo(2));
-            Assert.That(result, Does.Contain(initialNode));
-            Assert.That(result, Does.Contain(neighbourNode));
+            Assert.That(result, Is.EquivalentTo(new[] { InitialNode, NeighbourNode }));
         }
     }
 }

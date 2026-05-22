@@ -154,21 +154,7 @@ namespace Nethermind.Network.Discovery.Test.Discv4
         [CancelAfter(10000)]
         public async Task Ping_should_send_ping_and_receive_pong(CancellationToken token)
         {
-            _msgSender
-                .When(x => x.SendMsg(Arg.Any<PingMsg>()))
-                .Do(ci =>
-                {
-                    PingMsg sent = (PingMsg)ci[0]!;
-                    IByteBuffer buffer = _receiverSerializationManager.ZeroSerialize(sent);
-                    PingMsg msg = _receiverSerializationManager.Deserialize<PingMsg>(buffer);
-
-                    PongMsg pong = new(
-                        msg.FarPublicKey!,
-                        _timestamper.UnixTime.SecondsLong + 1,
-                        sent.Mdc!);
-                    pong.FarAddress = _receiver.Address;
-                    Task.Run(() => _adapter.OnIncomingMsg(pong));
-                });
+            ConfigureBondCallback();
 
             await _adapter.Ping(_receiver, token);
 
