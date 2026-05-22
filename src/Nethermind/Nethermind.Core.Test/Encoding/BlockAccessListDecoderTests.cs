@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.IO;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Collections;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
@@ -29,6 +30,38 @@ public class BlockAccessListDecoderTests
         Console.WriteLine(encoded);
         Console.WriteLine(rlp);
         Assert.That(encoded, Is.EqualTo(rlp));
+    }
+
+    [TestCaseSource(nameof(BlockAccessListTestSource))]
+    public void Decode_caches_wire_hash_matching_full_rlp_keccak(string rlp, ReadOnlyBlockAccessList _)
+    {
+        byte[] bytes = Bytes.FromHexString(rlp);
+        ReadOnlyBlockAccessList bal = Rlp.Decode<ReadOnlyBlockAccessList>(bytes);
+
+        Assert.That(bal.WireHash, Is.Not.Null);
+        Assert.That(bal.WireHash, Is.EqualTo(new Hash256(ValueKeccak.Compute(bytes))));
+    }
+
+    [Test]
+    public void Decode_handles_envelope_with_trailing_bytes_and_hashes_only_the_bal_slice()
+    {
+        ReadOnlyBlockAccessList bal = Build.A.BlockAccessList
+            .WithAccountChanges(Build.An.AccountChanges.WithAddress(TestItem.AddressA).TestObject)
+            .TestObject;
+        byte[] balRlp = Rlp.Encode(bal).Bytes;
+
+        byte[] envelope = new byte[balRlp.Length + 4];
+        Buffer.BlockCopy(balRlp, 0, envelope, 0, balRlp.Length);
+        envelope[^4] = 0xde;
+        envelope[^3] = 0xad;
+        envelope[^2] = 0xbe;
+        envelope[^1] = 0xef;
+
+        Rlp.ValueDecoderContext ctx = new(envelope);
+        ReadOnlyBlockAccessList decoded = BlockAccessListDecoder.Instance.Decode(ref ctx, RlpBehaviors.None);
+
+        Assert.That(decoded.WireHash, Is.EqualTo(new Hash256(ValueKeccak.Compute(balRlp))));
+        Assert.That(ctx.Position, Is.EqualTo(balRlp.Length));
     }
 
     // Truncated RLP causes an out-of-bounds primitive read; the Rlp.Decode entry-point
@@ -615,12 +648,12 @@ public class BlockAccessListDecoderTests
         return stream.Data.ToArray()!;
     }
 
-    private sealed class ThrowingByteDecoder : IRlpValueDecoder<byte>
+    private sealed class ThrowingByteDecoder : RlpDecoder<byte>
     {
         public const string Error = "semantic failure";
         private int _calls;
 
-        public byte Decode(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        protected override byte DecodeInternal(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             byte value = decoderContext.DecodeByte();
             _calls++;
@@ -632,7 +665,9 @@ public class BlockAccessListDecoderTests
             return value;
         }
 
-        public int GetLength(byte item, RlpBehaviors rlpBehaviors = RlpBehaviors.None) => 1;
+        public override void Encode(RlpStream stream, byte item, RlpBehaviors rlpBehaviors = RlpBehaviors.None) => stream.Encode(item);
+
+        public override int GetLength(byte item, RlpBehaviors rlpBehaviors = RlpBehaviors.None) => 1;
     }
 
     private sealed class DisposableElement : IDisposable
@@ -642,12 +677,12 @@ public class BlockAccessListDecoderTests
         public void Dispose() => DisposedCount++;
     }
 
-    private sealed class ThrowingDisposableDecoder : IRlpValueDecoder<DisposableElement>
+    private sealed class ThrowingDisposableDecoder : RlpDecoder<DisposableElement>
     {
         public const string Error = "disposable semantic failure";
         private int _calls;
 
-        public DisposableElement Decode(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        protected override DisposableElement DecodeInternal(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             decoderContext.DecodeByte();
             _calls++;
@@ -659,15 +694,17 @@ public class BlockAccessListDecoderTests
             return new DisposableElement();
         }
 
-        public int GetLength(DisposableElement item, RlpBehaviors rlpBehaviors = RlpBehaviors.None) => 1;
+        public override void Encode(RlpStream stream, DisposableElement item, RlpBehaviors rlpBehaviors = RlpBehaviors.None) => stream.Encode(0);
+
+        public override int GetLength(DisposableElement item, RlpBehaviors rlpBehaviors = RlpBehaviors.None) => 1;
     }
 
-    private sealed class ThrowingObjectDecoder : IRlpValueDecoder<object>
+    private sealed class ThrowingObjectDecoder : RlpDecoder<object>
     {
         public const string Error = "object semantic failure";
         private int _calls;
 
-        public object Decode(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        protected override object DecodeInternal(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             decoderContext.DecodeByte();
             _calls++;
@@ -679,17 +716,21 @@ public class BlockAccessListDecoderTests
             return new DisposableElement();
         }
 
-        public int GetLength(object item, RlpBehaviors rlpBehaviors = RlpBehaviors.None) => 1;
+        public override void Encode(RlpStream stream, object item, RlpBehaviors rlpBehaviors = RlpBehaviors.None) => stream.Encode(0);
+
+        public override int GetLength(object item, RlpBehaviors rlpBehaviors = RlpBehaviors.None) => 1;
     }
 
-    private sealed class ThrowingArgumentDecoder : IRlpValueDecoder<byte>
+    private sealed class ThrowingArgumentDecoder : RlpDecoder<byte>
     {
-        public byte Decode(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        protected override byte DecodeInternal(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             decoderContext.DecodeByte();
             throw new ArgumentException("semantic argument failure");
         }
 
-        public int GetLength(byte item, RlpBehaviors rlpBehaviors = RlpBehaviors.None) => 1;
+        public override void Encode(RlpStream stream, byte item, RlpBehaviors rlpBehaviors = RlpBehaviors.None) => stream.Encode(item);
+
+        public override int GetLength(byte item, RlpBehaviors rlpBehaviors = RlpBehaviors.None) => 1;
     }
 }

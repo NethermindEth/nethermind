@@ -521,7 +521,9 @@ public class XdcTestBlockchain : TestBlockchain
         {
             KeccakRlpStream stream = new();
             voteDecoder.Encode(stream, vote, RlpBehaviors.ForSealing);
-            vote.Signature = RandomSigner!.Sign(stream.GetValueHash());
+            ValueHash256 hash = stream.GetValueHash();
+            RandomSigner!.TrySign(in hash, out Signature signature);
+            vote.Signature = signature;
             vote.Signer = RandomSigner.Address;
         }
     }

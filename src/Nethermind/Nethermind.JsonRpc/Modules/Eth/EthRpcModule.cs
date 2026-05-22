@@ -41,8 +41,6 @@ using System.Buffers;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
-using System.Security;
-using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
@@ -92,6 +90,7 @@ public partial class EthRpcModule(
     protected readonly IWallet _wallet = wallet ?? throw new ArgumentNullException(nameof(wallet));
     protected readonly ISpecProvider _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
     protected readonly ILogger _logger = logManager.GetClassLogger<EthRpcModule>();
+    private static readonly TxDecoder TxRlpDecoder = TxDecoder.Instance;
     protected readonly IGasPriceOracle _gasPriceOracle = gasPriceOracle ?? throw new ArgumentNullException(nameof(gasPriceOracle));
     protected readonly IEthSyncingInfo _ethSyncingInfo = ethSyncingInfo ?? throw new ArgumentNullException(nameof(ethSyncingInfo));
     protected readonly IFeeHistoryOracle _feeHistoryOracle = feeHistoryOracle ?? throw new ArgumentNullException(nameof(feeHistoryOracle));
@@ -334,19 +333,8 @@ public partial class EthRpcModule(
 
     public ResultWrapper<Signature> eth_sign(Address addressData, byte[] message)
     {
-        Signature sig;
-        try
-        {
-            sig = _wallet.SignMessage(message, addressData);
-        }
-        catch (SecurityException e)
-        {
-            return ResultWrapper<Signature>.Fail(e.Message, ErrorCodes.AccountLocked);
-        }
-        catch (Exception)
-        {
-            return ResultWrapper<Signature>.Fail($"Unable to sign as {addressData}");
-        }
+        if (!_wallet.TrySignMessage(message, addressData, out Signature sig))
+            return ResultWrapper<Signature>.Fail("authentication needed: password or unlock", ErrorCodes.AccountLocked);
 
         if (_logger.IsTrace) _logger.Trace($"eth_sign request {addressData}, {message}, result: {sig}");
         return ResultWrapper<Signature>.Success(sig);
@@ -372,7 +360,7 @@ public partial class EthRpcModule(
     {
         try
         {
-            Transaction tx = TxDecoder.Instance.DecodeCompleteNotNull(transaction,
+            Transaction tx = TxRlpDecoder.DecodeCompleteNotNull(transaction,
                 RlpBehaviors.AllowUnsigned | RlpBehaviors.SkipTypedWrapping | RlpBehaviors.InMempoolForm);
             return await SendTx(tx);
         }
@@ -412,14 +400,8 @@ public partial class EthRpcModule(
                 return ResultWrapper<SignTransactionResult>.Fail(attachError, ErrorCodes.InvalidInput);
         }
 
-        try
-        {
-            _wallet.Sign(tx, chainId);
-        }
-        catch (Exception ex) when (ex is SecurityException or InvalidOperationException or CryptographicException)
-        {
+        if (!_wallet.TrySignTransaction(tx, chainId))
             return ResultWrapper<SignTransactionResult>.Fail("authentication needed: password or unlock", ErrorCodes.InvalidInput);
-        }
 
         tx.Hash = tx.CalculateHash();
 
@@ -532,13 +514,12 @@ public partial class EthRpcModule(
             (Hash256 txHash, AcceptTxResult? acceptTxResult) =
                 await _txSender.SendTransaction(tx, txHandlingOptions | TxHandlingOptions.PersistentBroadcast);
 
-            return acceptTxResult.Equals(AcceptTxResult.Accepted)
-                ? ResultWrapper<Hash256>.Success(txHash)
+            if (acceptTxResult.Equals(AcceptTxResult.Accepted))
+                return ResultWrapper<Hash256>.Success(txHash);
+
+            return acceptTxResult.Equals(AcceptTxResult.SignFailed)
+                ? ResultWrapper<Hash256>.Fail("authentication needed: password or unlock", ErrorCodes.AccountLocked)
                 : ResultWrapper<Hash256>.Fail(acceptTxResult?.ToString() ?? string.Empty, ErrorCodes.TransactionRejected);
-        }
-        catch (SecurityException e)
-        {
-            return ResultWrapper<Hash256>.Fail(e.Message, ErrorCodes.AccountLocked);
         }
         catch (Exception e)
         {
@@ -651,7 +632,7 @@ public partial class EthRpcModule(
 
         RlpBehaviors encodingSettings = RlpBehaviors.SkipTypedWrapping | (transaction.IsInMempoolForm() ? RlpBehaviors.InMempoolForm : RlpBehaviors.None);
 
-        using NettyRlpStream stream = TxDecoder.Instance.EncodeToNewNettyStream(transaction, encodingSettings);
+        using NettyRlpStream stream = TxRlpDecoder.EncodeToNewNettyStream(transaction, encodingSettings);
         return ResultWrapper<string?>.Success(stream.AsSpan().ToHexString(true));
     }
 
@@ -715,7 +696,7 @@ public partial class EthRpcModule(
 
         Transaction transaction = block.Transactions[(int)positionIndex];
         // Block-stored txs never carry a sidecar (blob commitments live separately), so consensus form only.
-        using NettyRlpStream stream = TxDecoder.Instance.EncodeToNewNettyStream(transaction, RlpBehaviors.SkipTypedWrapping);
+        using NettyRlpStream stream = TxRlpDecoder.EncodeToNewNettyStream(transaction, RlpBehaviors.SkipTypedWrapping);
         return ResultWrapper<string?>.Success(stream.AsSpan().ToHexString(true));
     }
 

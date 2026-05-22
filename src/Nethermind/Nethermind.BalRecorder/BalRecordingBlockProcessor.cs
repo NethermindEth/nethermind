@@ -29,12 +29,11 @@ public class BalRecordingBlockProcessor(
 
         bool shouldFlip = ShouldFlip(suggestedBlock);
         if (shouldFlip) balSwitch.Enabled = true;
+        balManager.ForceConstructGeneratedBlockAccessList = store.RecordingEnabled;
         try
         {
             (Block block, TxReceipt[] receipts) = inner.ProcessOne(suggestedBlock, options, blockTracer, spec, token);
             if (store.RecordingEnabled)
-                // GeneratedBlockAccessList is fully populated by this point:
-                // BlockProcessor calls SetBlockAccessList (which merges per-tx BALs) before returning.
                 store.Insert(block, balManager.GeneratedBlockAccessList);
             return (block, receipts);
         }

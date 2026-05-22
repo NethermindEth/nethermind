@@ -155,7 +155,7 @@ public class TaikoModule : Module
             .AddStep(typeof(InitializeBlockchainTaiko))
 
             // L1 origin store
-            .AddSingleton<RlpValueDecoder<L1Origin>, L1OriginDecoder>()
+            .AddSingleton<RlpDecoder<L1Origin>, L1OriginDecoder>()
             .AddDatabase(L1OriginStore.L1OriginDbName, L1OriginStore.L1OriginDbName, L1OriginStore.L1OriginDbName.ToLower())
             .AddSingleton<IL1OriginStore, L1OriginStore>()
 
@@ -183,9 +183,8 @@ public class TaikoModule : Module
             .AddScoped<IExecutionRequestsProcessor, TaikoExecutionRequestsProcessor>()
             .AddScoped<IBlockProducerEnvFactory, TaikoBlockProductionEnvFactory>()
 
-            .AddSingleton<IRlpValueDecoder<Transaction>>((_) => Rlp.GetValueDecoder<Transaction>()!)
-            .AddSingleton<IRlpStreamEncoder<Transaction>>((_) => TxDecoder.Instance)
-            .AddSingleton<IPayloadPreparationService, IBlockProducerEnvFactory, L1OriginStore, ISpecProvider, IRlpValueDecoder<Transaction>, ILogManager>(CreatePayloadPreparationService)
+            .AddSingleton<IRlpDecoder<Transaction>>((_) => TxDecoder.Instance)
+            .AddSingleton<IPayloadPreparationService, IBlockProducerEnvFactory, L1OriginStore, ISpecProvider, IRlpDecoder<Transaction>, ILogManager>(CreatePayloadPreparationService)
             .AddSingleton<IHealthHintService, IBlocksConfig>(blocksConfig =>
                 new ManualHealthHintService(blocksConfig.SecondsPerSlot * 6, HealthHintConstants.InfinityHint))
 
@@ -238,7 +237,7 @@ public class TaikoModule : Module
             // Need to set the rlp globally
             .OnBuild(ctx =>
             {
-                Rlp.RegisterDecoder(typeof(L1Origin), ctx.Resolve<RlpValueDecoder<L1Origin>>());
+                Rlp.RegisterDecoder(typeof(L1Origin), ctx.Resolve<RlpDecoder<L1Origin>>());
             })
             ;
     }
@@ -247,7 +246,7 @@ public class TaikoModule : Module
         IBlockProducerEnvFactory blockProducerEnvFactory,
         L1OriginStore l1OriginStore,
         ISpecProvider specProvider,
-        IRlpValueDecoder<Transaction> txDecoder,
+        IRlpDecoder<Transaction> txDecoder,
         ILogManager logManager)
     {
         IBlockProducerEnv blockProducerEnv = blockProducerEnvFactory.CreatePersistent();

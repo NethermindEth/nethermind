@@ -7,6 +7,7 @@ using System.Diagnostics.CodeAnalysis;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.Json.Serialization;
+using Nethermind.Core.Collections;
 using Nethermind.Int256;
 using Nethermind.Serialization.Json;
 
@@ -14,13 +15,14 @@ namespace Nethermind.Core.BlockAccessLists;
 
 /// <summary>
 /// Per-account changes assembled from one or more <see cref="AccountChangesAtIndex"/> via merging.
-/// Append-only and ordered by index; uses simple <see cref="List{T}"/> per change family because
-/// merge contributions arrive sorted, so no <see cref="SortedList{TKey, TValue}"/> is needed.
+/// Append-only and ordered by index.
 /// </summary>
-public class GeneratedAccountChanges(Address address)
+public class GeneratedAccountChanges(Address address) : IComparable<GeneratedAccountChanges>
 {
     [JsonConverter(typeof(AddressConverter))]
     public Address Address { get; } = address;
+
+    public int CompareTo(GeneratedAccountChanges? other) => other is null ? 1 : Address.CompareTo(other.Address);
 
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
     public List<BalanceChange> BalanceChanges { get; } = [];
@@ -31,10 +33,8 @@ public class GeneratedAccountChanges(Address address)
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
     public List<CodeChange> CodeChanges { get; } = [];
 
-    private readonly SortedDictionary<UInt256, GeneratedSlotChanges> _storageChanges
-        = new(GenericComparer.GetOptimized<UInt256>());
-    private readonly SortedSet<UInt256> _storageReads
-        = new(GenericComparer.GetOptimized<UInt256>());
+    private readonly Dictionary<UInt256, GeneratedSlotChanges> _storageChanges = new(GenericEqualityComparer.GetOptimized<UInt256>());
+    private readonly HashSet<UInt256> _storageReads = new(GenericEqualityComparer.GetOptimized<UInt256>());
 
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
     public IReadOnlyCollection<GeneratedSlotChanges> StorageChanges => _storageChanges.Values;
@@ -42,11 +42,31 @@ public class GeneratedAccountChanges(Address address)
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
     public IReadOnlyCollection<UInt256> StorageReads => _storageReads;
 
+    /// <summary>
+    /// Slot-key-sorted snapshot; pooled, dispose after use.
+    /// </summary>
+    public ArrayPoolListRef<GeneratedSlotChanges> GetSortedStorageChanges()
+    {
+        ArrayPoolListRef<GeneratedSlotChanges> result = new(_storageChanges.Count);
+        foreach (GeneratedSlotChanges sc in _storageChanges.Values) result.Add(sc);
+        result.AsSpan().Sort(GenericComparer.GetOptimized<GeneratedSlotChanges>());
+        return result;
+    }
+
+    /// <summary>
+    /// Slot-key-sorted snapshot; pooled, dispose after use.
+    /// </summary>
+    public ArrayPoolListRef<UInt256> GetSortedStorageReads()
+    {
+        ArrayPoolListRef<UInt256> result = new(_storageReads.Count);
+        foreach (UInt256 r in _storageReads) result.Add(r);
+        result.AsSpan().Sort(GenericComparer.GetOptimized<UInt256>());
+        return result;
+    }
+
     public bool TryGetSlotChanges(UInt256 key, [NotNullWhen(true)] out GeneratedSlotChanges? slotChanges)
         => _storageChanges.TryGetValue(key, out slotChanges);
 
-    /// <summary>Binary-search the entry with <c>Index == index</c>; null if none.
-    /// Lists are kept sorted by <c>Index</c> via the monotonic <see cref="Merge"/> contract.</summary>
     public BalanceChange? BalanceChangeAtIndex(uint index) => GetExact(BalanceChanges, index);
     public NonceChange? NonceChangeAtIndex(uint index) => GetExact(NonceChanges, index);
     public CodeChange? CodeChangeAtIndex(uint index) => GetExact(CodeChanges, index);
@@ -60,16 +80,18 @@ public class GeneratedAccountChanges(Address address)
         return false;
     }
 
-    /// <summary>True iff this account has no balance/nonce/code/slot change at <paramref name="index"/>.
-    /// Storage reads are not changes; this only inspects mutating entries.</summary>
+    /// <summary>
+    /// True iff there is no balance/nonce/code/slot change at <paramref name="index"/>; reads are ignored.
+    /// </summary>
     public bool HasNoChangesAtIndex(uint index)
         => BalanceChangeAtIndex(index) is null
         && NonceChangeAtIndex(index) is null
         && CodeChangeAtIndex(index) is null
         && !HasSlotChangesAtIndex(index);
 
-    /// <summary>Structural equality of this account's slice at <paramref name="index"/> against
-    /// the suggested (decoded) account. Address is not compared (callers ensure they match).</summary>
+    /// <summary>
+    /// Structural equality at <paramref name="index"/> vs the suggested account (address not compared).
+    /// </summary>
     public bool ChangesAtIndexEqual(ReadOnlyAccountChanges other, uint index)
     {
         if (BalanceChangeAtIndex(index) != other.BalanceChangeAtIndex(index)) return false;
@@ -85,48 +107,33 @@ public class GeneratedAccountChanges(Address address)
 
     private bool SlotChangesAtIndexEqual(ReadOnlyAccountChanges other, uint index)
     {
-        // Both sides iterate slots in sorted-by-key order (SortedDictionary on this side, decoded
-        // array on the other), so the walk is a single linear merge. The concrete struct
-        // enumerator is taken explicitly to dodge IEnumerable boxing; that rules out a `using`
-        // block, hence the manual finally-Dispose.
-        SortedDictionary<UInt256, GeneratedSlotChanges>.ValueCollection.Enumerator a
-            = _storageChanges.Values.GetEnumerator();
-        try
-        {
-            ReadOnlySlotChanges[] b = other.StorageChanges;
-            int j = 0;
-            bool aHas = a.MoveNext();
-            StorageChange aChange = default, bChange = default;
+        // Linear walk in slot-key order: generated side sorted once, suggested side already sorted.
+        using ArrayPoolListRef<GeneratedSlotChanges> sortedGen = GetSortedStorageChanges();
+        ReadOnlySpan<GeneratedSlotChanges> a = sortedGen.AsSpan();
+        ReadOnlySpan<ReadOnlySlotChanges> b = other.StorageChanges;
 
-            while (true)
+        int i = 0, j = 0;
+        StorageChange aChange = default, bChange = default;
+        while (true)
+        {
+            for (; i < a.Length; i++)
             {
-                // Advance each side to the next slot with a change at `index`, capturing the
-                // change in the same binary search to avoid re-searching after presence.
-                bool aMatched = false;
-                while (aHas)
-                {
-                    if (TryGetSlotChangeAtIndex(a.Current, index, out aChange)) { aMatched = true; break; }
-                    aHas = a.MoveNext();
-                }
-                bool bMatched = false;
-                while (j < b.Length)
-                {
-                    if (TryGetSlotChangeAtIndex(b[j], index, out bChange)) { bMatched = true; break; }
-                    j++;
-                }
-
-                if (!aMatched && !bMatched) return true;
-                if (aMatched != bMatched) return false;
-                if (a.Current.Key != b[j].Key) return false;
-                if (!aChange.Equals(bChange)) return false;
-
-                aHas = a.MoveNext();
-                j++;
+                if (TryGetSlotChangeAtIndex(a[i], index, out aChange)) break;
             }
-        }
-        finally
-        {
-            a.Dispose();
+            for (; j < b.Length; j++)
+            {
+                if (TryGetSlotChangeAtIndex(b[j], index, out bChange)) break;
+            }
+
+            bool aMatched = i < a.Length;
+            bool bMatched = j < b.Length;
+            if (!aMatched && !bMatched) return true;
+            if (aMatched != bMatched) return false;
+            if (a[i].Key != b[j].Key) return false;
+            if (!aChange.Equals(bChange)) return false;
+
+            i++;
+            j++;
         }
     }
 
@@ -156,8 +163,6 @@ public class GeneratedAccountChanges(Address address)
         return false;
     }
 
-    /// <summary>O(log n) lookup of the entry with <c>Index == index</c> over a list kept sorted
-    /// by index (the merge contract on <see cref="GeneratedAccountChanges"/> guarantees that).</summary>
     private static T? GetExact<T>(List<T> changes, uint index) where T : struct, IIndexedChange
     {
         ReadOnlySpan<T> span = CollectionsMarshal.AsSpan(changes);
@@ -184,7 +189,7 @@ public class GeneratedAccountChanges(Address address)
     }
 
     /// <summary>
-    /// Merge the per-index source into this accumulator. Caller must ensure indices arrive monotonically.
+    /// Merge per-index source. Caller ensures indices arrive monotonically.
     /// </summary>
     public void Merge(AccountChangesAtIndex other)
     {
@@ -205,7 +210,6 @@ public class GeneratedAccountChanges(Address address)
         {
             GeneratedSlotChanges slotChanges = GetOrAddSlotChanges(kv.Key);
             slotChanges.Changes.Add(kv.Value);
-            // a change supersedes any prior read for the same slot
             _storageReads.Remove(kv.Key);
         }
 
@@ -225,8 +229,27 @@ public class GeneratedAccountChanges(Address address)
         if (BalanceChanges.Count > 0) sb.Append($" balance=[{string.Join(", ", BalanceChanges)}]");
         if (NonceChanges.Count > 0) sb.Append($" nonce=[{string.Join(", ", NonceChanges)}]");
         if (CodeChanges.Count > 0) sb.Append($" code=[{string.Join(", ", CodeChanges)}]");
-        if (_storageChanges.Count > 0) sb.Append($" storage=[{string.Join(", ", _storageChanges.Values)}]");
-        if (_storageReads.Count > 0) sb.Append($" reads=[{string.Join(", ", _storageReads)}]");
+        if (_storageChanges.Count > 0)
+        {
+            using ArrayPoolListRef<GeneratedSlotChanges> sorted = GetSortedStorageChanges();
+            AppendJoined(sb, " storage=[", sorted.AsSpan(), "]");
+        }
+        if (_storageReads.Count > 0)
+        {
+            using ArrayPoolListRef<UInt256> sorted = GetSortedStorageReads();
+            AppendJoined(sb, " reads=[", sorted.AsSpan(), "]");
+        }
         return sb.ToString();
+    }
+
+    private static void AppendJoined<T>(StringBuilder sb, string prefix, ReadOnlySpan<T> values, string suffix)
+    {
+        sb.Append(prefix);
+        for (int i = 0; i < values.Length; i++)
+        {
+            if (i > 0) sb.Append(", ");
+            if (values[i] is not null) sb.Append(values[i]!.ToString());
+        }
+        sb.Append(suffix);
     }
 }

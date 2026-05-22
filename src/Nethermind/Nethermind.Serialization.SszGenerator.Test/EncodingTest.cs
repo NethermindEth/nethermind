@@ -274,6 +274,30 @@ public class EncodingTest
         Assert.That(decoded.X, Is.EqualTo(original.X));
     }
 
+    [Test]
+    public void ReadOnlyMemory_vector_encodes_and_decodes()
+    {
+        ReadOnlyMemoryVectorContainer original = new() { Bytes = new byte[] { 1, 2, 3, 4 } };
+
+        byte[] encoded = Encode(original);
+        Decode(encoded, out ReadOnlyMemoryVectorContainer decoded);
+
+        Assert.That(encoded, Is.EqualTo(original.Bytes.ToArray()));
+        Assert.That(decoded.Bytes.ToArray(), Is.EqualTo(original.Bytes.ToArray()));
+    }
+
+    [Test]
+    public void Memory_vector_encodes_and_decodes()
+    {
+        MemoryVectorContainer original = new() { Bytes = new byte[] { 1, 2, 3, 4 } };
+
+        byte[] encoded = Encode(original);
+        Decode(encoded, out MemoryVectorContainer decoded);
+
+        Assert.That(encoded, Is.EqualTo(original.Bytes.ToArray()));
+        Assert.That(decoded.Bytes.ToArray(), Is.EqualTo(original.Bytes.ToArray()));
+    }
+
     [TestCaseSource(nameof(InvalidInputCases))]
     public void Encoding_rejects_invalid_input(Action action) =>
         Assert.That(action, Throws.InstanceOf<InvalidDataException>());

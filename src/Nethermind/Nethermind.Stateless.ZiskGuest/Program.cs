@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using Nethermind.Core;
 using Nethermind.Stateless.Execution;
 using Nethermind.Zkvm.Abstractions;
 
@@ -13,14 +12,12 @@ class Program
     static int Main()
     {
         ReadOnlySpan<byte> input = IO.ReadInput();
+        ReadOnlySpan<byte> output = StatelessExecutor.Execute(input);
 
-        Block block = StatelessExecutor.Execute(input);
+        IO.WriteOutput(output);
 
-        // TODO: Output zkEVM standard format when ready
-        IO.WriteOutput(block.Hash!.Bytes);
-
-        // TODO: Remove when zkEVM standard output format is ready
-        IO.PrintLine(block.Hash.ToString());
+        // For debugging purposes
+        IO.PrintLine(Convert.ToHexStringLower(output));
 
         return 0;
     }
