@@ -29,12 +29,22 @@ public class ModExpPrecompileTests : PrecompileTests<ModExpPrecompile, ModExpPre
     [TestCase(
         "00000000000000000000000000000000000000000000000000000000000000010000000000000000000000000000000000000000000000000000000000000000ffffffff0000000000000000000000000000000000000000000000000000000000000001",
         "11223344",
-        TestName = "expLength=uint.MaxValue overflow path"
+        TestName = "modulusLength uint32 overflow path"
+    )]
+    [TestCase(
+        "0000000000000000000000000000000000000000000000000000000000000000ffffffff000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+        "11223344",
+        TestName = "expLength uint32 overflow path"
+    )]
+    [TestCase(
+        "ffffffff000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001",
+        "11223344",
+        TestName = "baseLength uint32 overflow path"
     )]
     public void NormalizedInput_SameOutput(string input, string trailing)
     {
-        RunEffectiveInputTest(Instance, input, trailing, Prague.Instance);
-        RunEffectiveInputTest(Instance, input, trailing, Osaka.Instance);
+        RunEffectiveInputTest(input, trailing, Prague.Instance);
+        RunEffectiveInputTest(input, trailing, Osaka.Instance);
     }
 
     [TestCaseSource(nameof(OversizedLengths))]
