@@ -23,7 +23,6 @@ using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Exceptions;
-using Nethermind.Core.Specs;
 using Nethermind.Db;
 using Nethermind.Facade.Proxy;
 using Nethermind.HealthChecks;
@@ -46,7 +45,6 @@ using Nethermind.Synchronization;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
-using Nethermind.Blockchain.Headers;
 
 namespace Nethermind.Merge.Plugin;
 

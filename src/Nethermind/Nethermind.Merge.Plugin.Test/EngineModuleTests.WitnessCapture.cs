@@ -5,7 +5,6 @@ using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
-using Autofac;
 using FluentAssertions;
 using Nethermind.Blockchain.Headers;
 using Nethermind.Consensus.Processing;
