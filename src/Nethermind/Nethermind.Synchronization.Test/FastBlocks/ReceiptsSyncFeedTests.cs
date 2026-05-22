@@ -386,7 +386,7 @@ public class ReceiptsSyncFeedTests
         /* we have only 256 receipts altogether but we start with many peers
            so most of our requests will be empty */
 
-        List<ReceiptsSyncBatch?> batches = new();
+        List<ReceiptsSyncBatch?> batches = [];
         for (int i = 0; i < 100; i++)
         {
             batches.Add(await _feed.PrepareRequest());
@@ -412,11 +412,12 @@ public class ReceiptsSyncFeedTests
     {
         LoadScenario(_1024BodiesWithOneTxEach);
         using ReceiptsSyncBatch? batch = await _feed.PrepareRequest();
-        ArrayPoolList<TxReceipt[]?> response = new(batch!.Infos.Length, batch!.Infos.Length);
-
-        // default receipts that we use when constructing receipt root for tests have stats code 0
-        // so by using 1 here we create a different tx root
-        response[0] = new[] { Build.A.Receipt.WithStatusCode(1).TestObject };
+        ArrayPoolList<TxReceipt[]?> response = new(batch!.Infos.Length, batch!.Infos.Length)
+        {
+            // default receipts that we use when constructing receipt root for tests have stats code 0
+            // so by using 1 here we create a different tx root
+            [0] = new[] { Build.A.Receipt.WithStatusCode(1).TestObject }
+        };
 
         batch!.Response = response!;
 

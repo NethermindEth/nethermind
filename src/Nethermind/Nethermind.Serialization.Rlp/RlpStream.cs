@@ -56,14 +56,21 @@ namespace Nethermind.Serialization.Rlp
                 WriteByte(Rlp.EmptyListByte);
                 return;
             }
-            IRlpStreamEncoder<T> decoder = Rlp.GetStreamEncoder<T>();
+            IRlpDecoder<T> decoder = Rlp.GetDecoder<T>();
             int contentLength = decoder.GetContentLength(items);
 
             StartSequence(contentLength);
 
             foreach (T? item in items)
             {
-                decoder.Encode(this, item, rlpBehaviors);
+                if (item is null)
+                {
+                    WriteByte(Rlp.EmptyListByte);
+                }
+                else
+                {
+                    decoder.Encode(this, item, rlpBehaviors);
+                }
             }
         }
         public void Encode(Block value) => _blockDecoder.Encode(this, value);
@@ -79,7 +86,9 @@ namespace Nethermind.Serialization.Rlp
 
         public void Encode(BlockInfo value) => _blockInfoDecoder.Encode(this, value);
 
-        public void Encode(BlockAccessList value) => _blockAccessListDecoder.Encode(this, value);
+        public void Encode(ReadOnlyBlockAccessList value) => _blockAccessListDecoder.Encode(this, value);
+
+        public void Encode(GeneratedBlockAccessList value) => _blockAccessListDecoder.Encode(this, value);
 
         public void StartByteArray(int contentLength, bool firstByteLessThan128)
         {

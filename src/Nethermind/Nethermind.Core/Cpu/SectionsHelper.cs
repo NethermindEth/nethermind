@@ -17,7 +17,7 @@ internal static partial class SectionsHelper
 
     public static Dictionary<string, string> ParseSection(string? content, char separator)
     {
-        Dictionary<string, string> values = new();
+        Dictionary<string, string> values = [];
         string[]? list = content?.Split(newline, StringSplitOptions.RemoveEmptyEntries);
         if (list is not null)
             foreach (string line in list)

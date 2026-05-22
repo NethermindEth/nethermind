@@ -26,7 +26,7 @@ public sealed class EraStore : IEraStore
     private readonly Proofs.Validator? _validator;
 
     private readonly Dictionary<long, string> _epochs;
-    private readonly Dictionary<long, ValueHash256> _checksumsByEpoch = new();
+    private readonly Dictionary<long, ValueHash256> _checksumsByEpoch = [];
 
     private readonly ConcurrentDictionary<long, bool> _verifiedEpochs = new();
     private readonly ConcurrentDictionary<long, SemaphoreSlim> _epochLocks = new();

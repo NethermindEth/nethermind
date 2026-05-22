@@ -39,7 +39,7 @@ internal class PenaltyHandler(IBlockTree tree, ISpecProvider specProvider, IEpoc
     public Address[] HandlePenalties(long number, Hash256 parentHash, Address[] candidates)
     {
         List<Hash256> listBlockHash = [parentHash];
-        Dictionary<Address, int> minerStatistics = new();
+        Dictionary<Address, int> minerStatistics = [];
 
         long parentNumber = number - 1;
         Hash256 currentHash = parentHash;
@@ -63,7 +63,7 @@ internal class PenaltyHandler(IBlockTree tree, ISpecProvider specProvider, IEpoc
         XdcBlockHeader header = (XdcBlockHeader)tree.FindHeader(parentHash, number - 1);
         IXdcReleaseSpec currentSpec = specProvider.GetXdcSpec(header!);
         Address[] preMasternodes = epochSwitchManager.GetEpochSwitchInfo(parentHash)!.Masternodes;
-        HashSet<Address> penalties = new();
+        HashSet<Address> penalties = [];
 
         int minMinerBlockPerEpoch = currentSpec.IsTipUpgradePenaltyEnabled
             ? currentSpec.MinimumMinerBlockPerEpoch
@@ -86,7 +86,7 @@ internal class PenaltyHandler(IBlockTree tree, ISpecProvider specProvider, IEpoc
                 Address[] prevPenalties = GetPreviousPenalties(parentHash, currentSpec, (ulong)currentSpec.LimitPenaltyEpochV2);
                 HashSet<Address> penComebacks = prevPenalties.Intersect(candidates).ToHashSet();
 
-                HashSet<Hash256> blockHashes = new();
+                HashSet<Hash256> blockHashes = [];
                 int startRange = Math.Min((int)currentSpec.RangeReturnSigner, listBlockHash.Count) - 1;
 
                 for (int i = startRange; i >= 0; i--)
@@ -120,7 +120,7 @@ internal class PenaltyHandler(IBlockTree tree, ISpecProvider specProvider, IEpoc
             long comebackHeight = limitPenaltyEpoch * currentSpec.EpochLength + currentSpec.SwitchBlock;
             if (number > comebackHeight)
             {
-                Dictionary<Address, ulong> penaltyParolees = new();
+                Dictionary<Address, ulong> penaltyParolees = [];
                 Address[] lastPenalty = [];
 
                 for (long i = 0; i < limitPenaltyEpoch; i++)
@@ -136,8 +136,8 @@ internal class PenaltyHandler(IBlockTree tree, ISpecProvider specProvider, IEpoc
                     if (i == 0) lastPenalty = previousPenalties;
                 }
 
-                HashSet<Hash256> blockHashes = new();
-                Dictionary<Address, int> txSignerMap = new();
+                HashSet<Hash256> blockHashes = [];
+                Dictionary<Address, int> txSignerMap = [];
                 int startRange = Math.Min(currentSpec.EpochLength, listBlockHash.Count) - 1;
 
                 for (int i = startRange; i >= 0; i--)

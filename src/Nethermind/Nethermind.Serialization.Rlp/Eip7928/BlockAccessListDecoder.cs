@@ -2,30 +2,38 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Buffers;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
+using Nethermind.Core.Collections;
+using Nethermind.Core.Crypto;
 
 namespace Nethermind.Serialization.Rlp.Eip7928;
 
-public class BlockAccessListDecoder : IRlpValueDecoder<BlockAccessList>, IRlpStreamEncoder<BlockAccessList>
+public class BlockAccessListDecoder : RlpDecoder<ReadOnlyBlockAccessList>
 {
     public static readonly BlockAccessListDecoder Instance = new();
 
     private static readonly RlpLimit _accountsLimit = new(Eip7928Constants.MaxAccounts, "", ReadOnlyMemory<char>.Empty);
 
-    public int GetLength(BlockAccessList item, RlpBehaviors rlpBehaviors)
+    public override int GetLength(ReadOnlyBlockAccessList item, RlpBehaviors rlpBehaviors)
         => Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors));
 
-    public BlockAccessList Decode(ref Rlp.ValueDecoderContext ctx, RlpBehaviors rlpBehaviors)
+    public int GetLength(GeneratedBlockAccessList item, RlpBehaviors rlpBehaviors)
+        => Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors));
+
+    protected override ReadOnlyBlockAccessList DecodeInternal(ref Rlp.ValueDecoderContext ctx, RlpBehaviors rlpBehaviors)
     {
-        AccountChanges[] accountChanges = ctx.DecodeArray(AccountChangesDecoder.Instance, true, default, _accountsLimit);
+        // Capture the BAL's RLP slice so the wire hash can be cached on the returned instance;
+        // BlockValidator would otherwise recompute the same keccak per block.
+        int startPosition = ctx.Position;
+        ReadOnlyAccountChanges[] accountChanges = ctx.DecodeArray(AccountChangesDecoder.Instance, true, default, _accountsLimit);
+        ReadOnlySpan<byte> wireRlp = ctx.Data.Slice(startPosition, ctx.Position - startPosition);
 
         Address? lastAddress = null;
-        long itemCount = 0;
-        foreach (AccountChanges a in accountChanges)
+        int itemCount = 0;
+        foreach (ReadOnlyAccountChanges a in accountChanges)
         {
             // EIP-7928 AccountChanges is a 6-field sequence; an empty inner
             // list (RLP 0xc0) is rejected by DecodeArray as defaultElement -> null.
@@ -41,85 +49,140 @@ public class BlockAccessListDecoder : IRlpValueDecoder<BlockAccessList>, IRlpStr
             }
             lastAddress = address;
 
-            itemCount += 1L + a.StorageChanges.Length + a.StorageReads.Count;
+            itemCount += 1 + a.StorageChanges.Length + a.StorageReads.Length;
         }
 
-        return BlockAccessList.FromSortedAccountChanges(accountChanges, itemCount);
+        Hash256 wireHash = new(ValueKeccak.Compute(wireRlp));
+        return new ReadOnlyBlockAccessList(accountChanges, itemCount, wireHash);
     }
 
-    public static byte[] EncodeToBytes(BlockAccessList item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    /// <summary>
+    /// One-pass RLP encode of a generated BAL into a freshly allocated byte buffer.
+    /// </summary>
+    public static byte[] EncodeToBytes(GeneratedBlockAccessList item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
-        ReadOnlySpan<AccountChanges> accounts = item.AccountChangesByAddress;
-        AccountChangesDecoder.EncodingLengths[] accountLengths = ArrayPool<AccountChangesDecoder.EncodingLengths>.Shared.Rent(accounts.Length);
-
-        PrepareAccountLengths(accounts, accountLengths, rlpBehaviors, out int contentLength);
-
+        using ArrayPoolListRef<GeneratedAccountChanges> sortedAccounts = item.GetSortedAccountChanges();
+        using ArrayPoolListRef<AccountChangesDecoder.EncodingLengths> accountLengths = new(sortedAccounts.Count, sortedAccounts.Count);
+        PrepareGeneratedLengths(sortedAccounts.AsSpan(), accountLengths.AsSpan(), rlpBehaviors, out int contentLength);
         RlpStream stream = new(Rlp.LengthOfSequence(contentLength));
-        EncodePrepared(stream, accounts, accountLengths, contentLength, rlpBehaviors);
-        byte[] result = stream.Data.ToArray();
-        ArrayPool<AccountChangesDecoder.EncodingLengths>.Shared.Return(accountLengths);
-        return result;
+        EncodeGeneratedPrepared(stream, sortedAccounts.AsSpan(), accountLengths.AsSpan(), contentLength, rlpBehaviors);
+        return stream.Data.ToArray();
     }
 
-    public void Encode(RlpStream stream, BlockAccessList item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    /// <inheritdoc cref="EncodeToBytes(GeneratedBlockAccessList, RlpBehaviors)"/>
+    public static byte[] EncodeToBytes(ReadOnlyBlockAccessList item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
-        ReadOnlySpan<AccountChanges> accounts = item.AccountChangesByAddress;
-        AccountChangesDecoder.EncodingLengths[] accountLengths = ArrayPool<AccountChangesDecoder.EncodingLengths>.Shared.Rent(accounts.Length);
-        try
-        {
-            PrepareAccountLengths(accounts, accountLengths, rlpBehaviors, out int contentLength);
-            EncodePrepared(stream, accounts, accountLengths, contentLength, rlpBehaviors);
-        }
-        finally
-        {
-            ArrayPool<AccountChangesDecoder.EncodingLengths>.Shared.Return(accountLengths);
-        }
+        int accountCount = item.AccountChanges.Count;
+        using ArrayPoolListRef<AccountChangesDecoder.EncodingLengths> accountLengths = new(accountCount, accountCount);
+        PrepareReadOnlyLengths(item, accountLengths.AsSpan(), rlpBehaviors, out int contentLength);
+        RlpStream stream = new(Rlp.LengthOfSequence(contentLength));
+        EncodeReadOnlyPrepared(stream, item, accountLengths.AsSpan(), contentLength, rlpBehaviors);
+        return stream.Data.ToArray();
     }
 
-    private static int GetContentLength(BlockAccessList item, RlpBehaviors rlpBehaviors)
+    public override void Encode(RlpStream stream, ReadOnlyBlockAccessList item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    {
+        int accountCount = item.AccountChanges.Count;
+        using ArrayPoolListRef<AccountChangesDecoder.EncodingLengths> accountLengths = new(accountCount, accountCount);
+        PrepareReadOnlyLengths(item, accountLengths.AsSpan(), rlpBehaviors, out int contentLength);
+        EncodeReadOnlyPrepared(stream, item, accountLengths.AsSpan(), contentLength, rlpBehaviors);
+    }
+
+    public void Encode(RlpStream stream, GeneratedBlockAccessList item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    {
+        using ArrayPoolListRef<GeneratedAccountChanges> sortedAccounts = item.GetSortedAccountChanges();
+        using ArrayPoolListRef<AccountChangesDecoder.EncodingLengths> accountLengths = new(sortedAccounts.Count, sortedAccounts.Count);
+        PrepareGeneratedLengths(sortedAccounts.AsSpan(), accountLengths.AsSpan(), rlpBehaviors, out int contentLength);
+        EncodeGeneratedPrepared(stream, sortedAccounts.AsSpan(), accountLengths.AsSpan(), contentLength, rlpBehaviors);
+    }
+
+    private static int GetContentLength(ReadOnlyBlockAccessList item, RlpBehaviors rlpBehaviors)
     {
         int contentLength = 0;
-        foreach (AccountChanges accountChanges in item.UnorderedAccountChanges)
+        foreach (ReadOnlyAccountChanges a in item.AccountChanges)
         {
-            contentLength += AccountChangesDecoder.Instance.GetLength(accountChanges, rlpBehaviors);
+            contentLength += AccountChangesDecoder.Instance.GetLength(a, rlpBehaviors);
         }
-
         return contentLength;
     }
 
-    private static void PrepareAccountLengths(
-        ReadOnlySpan<AccountChanges> accounts,
-        AccountChangesDecoder.EncodingLengths[] accountLengths,
+    private static int GetContentLength(GeneratedBlockAccessList item, RlpBehaviors rlpBehaviors)
+    {
+        int contentLength = 0;
+        foreach (GeneratedAccountChanges a in item.AccountChanges)
+        {
+            contentLength += AccountChangesDecoder.Instance.GetLength(a, rlpBehaviors);
+        }
+        return contentLength;
+    }
+
+    private static void PrepareReadOnlyLengths(
+        ReadOnlyBlockAccessList item,
+        Span<AccountChangesDecoder.EncodingLengths> accountLengths,
         RlpBehaviors rlpBehaviors,
         out int contentLength)
     {
-        Debug.Assert(accountLengths.Length >= accounts.Length);
+        Debug.Assert(accountLengths.Length >= item.AccountChanges.Count);
 
         contentLength = 0;
-
-        for (int i = 0; i < accounts.Length; i++)
+        int i = 0;
+        foreach (ReadOnlyAccountChanges a in item.AccountChanges)
         {
-            AccountChangesDecoder.EncodingLengths accountLength = AccountChangesDecoder.PrepareEncodingLengths(accounts[i], rlpBehaviors);
+            AccountChangesDecoder.EncodingLengths accountLength = AccountChangesDecoder.PrepareEncodingLengths(a, rlpBehaviors);
+            accountLengths[i++] = accountLength;
+            contentLength += Rlp.LengthOfSequence(accountLength.ContentLength);
+        }
+    }
+
+    private static void PrepareGeneratedLengths(
+        ReadOnlySpan<GeneratedAccountChanges> sortedAccounts,
+        Span<AccountChangesDecoder.EncodingLengths> accountLengths,
+        RlpBehaviors rlpBehaviors,
+        out int contentLength)
+    {
+        Debug.Assert(accountLengths.Length >= sortedAccounts.Length);
+
+        contentLength = 0;
+        for (int i = 0; i < sortedAccounts.Length; i++)
+        {
+            AccountChangesDecoder.EncodingLengths accountLength = AccountChangesDecoder.PrepareEncodingLengths(sortedAccounts[i], rlpBehaviors);
             accountLengths[i] = accountLength;
             contentLength += Rlp.LengthOfSequence(accountLength.ContentLength);
         }
     }
 
-    private static void EncodePrepared(
+    private static void EncodeReadOnlyPrepared(
         RlpStream stream,
-        ReadOnlySpan<AccountChanges> accounts,
-        AccountChangesDecoder.EncodingLengths[] accountLengths,
+        ReadOnlyBlockAccessList item,
+        ReadOnlySpan<AccountChangesDecoder.EncodingLengths> accountLengths,
         int contentLength,
         RlpBehaviors rlpBehaviors)
     {
-        Debug.Assert(accountLengths.Length >= accounts.Length);
+        Debug.Assert(accountLengths.Length >= item.AccountChanges.Count);
 
         stream.StartSequence(contentLength);
-
         AccountChangesDecoder accountChangesDecoder = AccountChangesDecoder.Instance;
-        for (int i = 0; i < accounts.Length; i++)
+        int i = 0;
+        foreach (ReadOnlyAccountChanges a in item.AccountChanges)
         {
-            accountChangesDecoder.EncodePrepared(stream, accounts[i], in accountLengths[i], rlpBehaviors);
+            accountChangesDecoder.EncodePrepared(stream, a, in accountLengths[i++], rlpBehaviors);
+        }
+    }
+
+    private static void EncodeGeneratedPrepared(
+        RlpStream stream,
+        ReadOnlySpan<GeneratedAccountChanges> sortedAccounts,
+        ReadOnlySpan<AccountChangesDecoder.EncodingLengths> accountLengths,
+        int contentLength,
+        RlpBehaviors rlpBehaviors)
+    {
+        Debug.Assert(accountLengths.Length >= sortedAccounts.Length);
+
+        stream.StartSequence(contentLength);
+        AccountChangesDecoder accountChangesDecoder = AccountChangesDecoder.Instance;
+        for (int i = 0; i < sortedAccounts.Length; i++)
+        {
+            accountChangesDecoder.EncodePrepared(stream, sortedAccounts[i], in accountLengths[i], rlpBehaviors);
         }
     }
 

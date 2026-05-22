@@ -18,10 +18,10 @@ public class XdcSpecProviderTests
     [Test]
     public void V2Configs_ShouldThrow_IfMissingDefaultRoundZero()
     {
-        List<V2ConfigParams> bad = new()
-        {
+        List<V2ConfigParams> bad =
+        [
             new() { SwitchRound = 2000 }
-        };
+        ];
 
         XdcChainSpecEngineParameters p = new();
         Action action = () => p.V2Configs = bad;
@@ -32,12 +32,12 @@ public class XdcSpecProviderTests
     [Test]
     public void V2Configs_ShouldThrow_IfDuplicateSwitchRound()
     {
-        List<V2ConfigParams> dup = new()
-        {
+        List<V2ConfigParams> dup =
+        [
             new() { SwitchRound = 0 },
             new() { SwitchRound = 2000 },
             new() { SwitchRound = 2000 },
-        };
+        ];
 
         XdcChainSpecEngineParameters p = new();
         Action action = () => p.V2Configs = dup;
@@ -48,12 +48,12 @@ public class XdcSpecProviderTests
     [Test]
     public void V2Configs_ShouldBeSortedBySwitchRound()
     {
-        List<V2ConfigParams> unsorted = new()
-        {
+        List<V2ConfigParams> unsorted =
+        [
             new() { SwitchRound = 8000 },
             new() { SwitchRound = 0 },
             new() { SwitchRound = 2000 },
-        };
+        ];
 
         XdcChainSpecEngineParameters p = new() { V2Configs = unsorted };
 
@@ -71,13 +71,13 @@ public class XdcSpecProviderTests
     public void ApplyV2Config_PicksExpectedConfigForRound(
         ulong round, ulong expectedSwitchRound)
     {
-        List<V2ConfigParams> v2Configs = new()
-        {
+        List<V2ConfigParams> v2Configs =
+        [
             new() { SwitchRound = 0 },
             new() { SwitchRound = 2000 },
             new() { SwitchRound = 8000 },
             new() { SwitchRound = 220000 },
-        };
+        ];
 
         V2ConfigParams cfg = XdcReleaseSpec.GetConfigAtRound(v2Configs, round);
 

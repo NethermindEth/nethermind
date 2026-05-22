@@ -13,7 +13,7 @@ public class ArgsConfigSourceTests
     [Test]
     public void Works_fine_with_unset_values()
     {
-        Dictionary<string, string> args = new();
+        Dictionary<string, string> args = [];
         ArgsConfigSource configSource = new(args);
         Assert.That(configSource.GetValue(typeof(int), "a", "a").IsSet, Is.False);
     }
@@ -21,8 +21,10 @@ public class ArgsConfigSourceTests
     [Test]
     public void Is_case_insensitive()
     {
-        Dictionary<string, string> args = new();
-        args.Add("A.a", "12");
+        Dictionary<string, string> args = new()
+        {
+            { "A.a", "12" }
+        };
         ArgsConfigSource configSource = new(args);
         Assert.That(configSource.GetValue(typeof(int), "a", "A").IsSet, Is.True);
     }
@@ -36,8 +38,10 @@ public class ArgsConfigSourceTests
     [TestCase(typeof(bool), "false", false)]
     public void Can_parse_various_values(Type valueType, string valueString, object parsedValue)
     {
-        Dictionary<string, string> args = new();
-        args.Add("A.a", valueString);
+        Dictionary<string, string> args = new()
+        {
+            { "A.a", valueString }
+        };
         ArgsConfigSource configSource = new(args);
         Assert.That(configSource.GetValue(valueType, "a", "A").Value, Is.EqualTo(parsedValue));
     }

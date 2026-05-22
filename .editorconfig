@@ -118,4 +118,5 @@ dotnet_diagnostic.IDE0074.severity = warning
 dotnet_diagnostic.IDE0150.severity = warning
 dotnet_diagnostic.IDE0270.severity = warning
 dotnet_diagnostic.IDE1005.severity = warning
+dotnet_diagnostic.IDE0028.severity = warning
 

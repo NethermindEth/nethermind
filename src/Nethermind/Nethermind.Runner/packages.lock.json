@@ -908,7 +908,8 @@
           "Nethermind.Network.Dns": "[1.39.0-unstable, )",
           "Nethermind.Network.Enr": "[1.39.0-unstable, )",
           "Nethermind.Specs": "[1.39.0-unstable, )",
-          "Nethermind.State.Flat": "[1.39.0-unstable, )"
+          "Nethermind.State.Flat": "[1.39.0-unstable, )",
+          "Nethermind.Synchronization": "[1.39.0-unstable, )"
         }
       },
       "nethermind.init.snapshot": {

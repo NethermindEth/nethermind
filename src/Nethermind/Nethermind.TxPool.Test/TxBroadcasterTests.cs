@@ -146,7 +146,7 @@ public class TxBroadcasterTests
         int expectedCount = Math.Min(addedTxsCount * threshold / 100 + 1, addedTxsCount);
         pickedTxs.Count.Should().Be(expectedCount);
 
-        List<Transaction> expectedTxs = new();
+        List<Transaction> expectedTxs = [];
 
         for (int i = 1; i <= expectedCount; i++)
         {
@@ -293,7 +293,7 @@ public class TxBroadcasterTests
         int expectedCount = Math.Min(addedTxsCount * threshold / 100 + 1, addedTxsCount - currentBaseFeeInGwei);
         pickedTxs.Count.Should().Be(expectedCount);
 
-        List<Transaction> expectedTxs = new();
+        List<Transaction> expectedTxs = [];
 
         for (int i = 1; i <= expectedCount; i++)
         {
@@ -368,7 +368,7 @@ public class TxBroadcasterTests
         int expectedCount = Math.Min(addedTxsCount * threshold / 100 + 1, addedTxsCount - currentBaseFeeInGwei);
         pickedTxs.Count.Should().Be(expectedCount);
 
-        List<Transaction> expectedTxs = new();
+        List<Transaction> expectedTxs = [];
 
         for (int i = 1; i <= expectedCount; i++)
         {
@@ -411,7 +411,7 @@ public class TxBroadcasterTests
         int expectedCount = Math.Min(addedTxsCount * threshold / 100 + 1, addedTxsCount - currentFeePerBlobGas);
 
         // prepare list of expected hashes to broadcast
-        List<Transaction> expectedTxs = new();
+        List<Transaction> expectedTxs = [];
         for (int i = 1; i <= expectedCount; i++)
         {
             expectedTxs.Add(transactions[addedTxsCount - i]);
@@ -452,7 +452,7 @@ public class TxBroadcasterTests
         IList<Transaction> pickedTxs = _broadcaster.GetPersistentTxsToSend().TransactionsToSend;
         pickedTxs.Count.Should().Be(1);
 
-        List<Transaction> expectedTxs = new() { transactions[0] };
+        List<Transaction> expectedTxs = [transactions[0]];
         expectedTxs.Should().BeEquivalentTo(pickedTxs);
     }
 
@@ -727,8 +727,8 @@ public class TxBroadcasterTests
 
     private (IList<Transaction> expectedTxs, IList<Hash256> expectedHashes) GetTxsAndHashesExpectedToBroadcast(Transaction[] transactions, int expectedCountTotal)
     {
-        List<Transaction> expectedTxs = new();
-        List<Hash256> expectedHashes = new();
+        List<Transaction> expectedTxs = [];
+        List<Hash256> expectedHashes = [];
 
         for (int i = 0; i < expectedCountTotal; i++)
         {
