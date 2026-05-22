@@ -423,8 +423,6 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
 
         private void WarmupFromBal(ParallelOptions parallelOptions, ObjectPool<IReadOnlyTxProcessorSource> envPool)
         {
-            // Span-construct avoids the boxed enumerator that AccountChanges.ToPooledList would
-            // walk, and the underlying array is reused via the array pool.
             using ArrayPoolList<ReadOnlyAccountChanges> accounts = new(Bal!.AccountChanges.AsSpan());
 
             WarmingState<ArrayPoolList<ReadOnlyAccountChanges>> baseState = new(envPool, accounts, parent);

@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Text;
 using System.Text.Json.Serialization;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 using Nethermind.Serialization.Json;
@@ -49,8 +50,6 @@ public class ReadOnlyAccountChanges : IEquatable<ReadOnlyAccountChanges>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
     public CodeChange[] CodeChanges { get; }
 
-    // Lazy: most accounts in a typical block (EOAs in balance-only transfers) have zero
-    // storage changes — keeping the dictionary null on that path drops ~48 B per account.
     private readonly Dictionary<UInt256, ReadOnlySlotChanges>? _storageChanges;
     private readonly HashSet<UInt256>? _storageReadSet;
 
@@ -93,14 +92,7 @@ public class ReadOnlyAccountChanges : IEquatable<ReadOnlyAccountChanges>
     public ReadOnlyAccountChanges(Address address) : this(address, [], [], [], [], []) { }
 
     public bool TryGetSlotChanges(UInt256 key, [NotNullWhen(true)] out ReadOnlySlotChanges? slotChanges)
-    {
-        if (_storageChanges is null)
-        {
-            slotChanges = null;
-            return false;
-        }
-        return _storageChanges.TryGetValue(key, out slotChanges);
-    }
+        => _storageChanges.TryGetValueOrNull(key, out slotChanges);
 
     public bool IsStorageRead(UInt256 slot)
     {
@@ -196,8 +188,6 @@ public class ReadOnlyAccountChanges : IEquatable<ReadOnlyAccountChanges>
     {
         if (other is null) return false;
         if (Address != other.Address) return false;
-        // _storageChanges is null iff StorageChanges is empty; the equivalent zero-check
-        // here covers the (null vs empty-dict) cross-pairing.
         if (StorageChanges.Length != other.StorageChanges.Length) return false;
         if (_storageChanges is not null)
         {

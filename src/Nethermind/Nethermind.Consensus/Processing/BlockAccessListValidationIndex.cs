@@ -39,9 +39,6 @@ internal sealed class BlockAccessListValidationIndex : IDisposable
     private readonly Lane<ulong> _nonce;
     private readonly Lane<ValueHash256> _code;
     private readonly StorageLane _storage;
-    // Always pool-rented. Build seeds it with the exact wordCount; the mutable ctor seeds it
-    // with a single-word buffer and MarkAccount grows it via Rent/Copy/Return, so Dispose has
-    // a single return path regardless of how the index was constructed.
     private ulong[] _hasAccountWords;
     private bool _disposed;
     private bool _hasOutOfRangeChange;
@@ -72,8 +69,6 @@ internal sealed class BlockAccessListValidationIndex : IDisposable
         // generated past suggested before lane overflow trips.
         _generatedStorageReads = new(WithSlack(storageReadsCapacity));
         _generatedStorageWrites = new(WithSlack(storageWritesCapacity));
-        // Seed the bitmap with a single-word rent so growth still goes through the pool — see
-        // MarkAccount's Rent/Copy/Return pattern below.
         _hasAccountWords = SafeArrayPool<ulong>.Shared.Rent(1);
         _hasAccountWords.AsSpan().Clear();
     }
@@ -107,10 +102,6 @@ internal sealed class BlockAccessListValidationIndex : IDisposable
         int rowCount = checked((int)lastIndex + 1);
         ReadOnlySpan<ReadOnlyAccountChanges> accounts = blockAccessList.AccountChanges.AsSpan();
 
-        // Pool the four per-row counter buffers via ArrayPoolListRef — its ctor rents from
-        // SafeArrayPool<int> and zeroes the [0, rowCount) prefix (pool buffers come back dirty,
-        // and the counter loop below assumes a zero start). Dispose returns the buffers on every
-        // exit path, throw or otherwise.
         using ArrayPoolListRef<int> balanceCounts = new(rowCount, rowCount);
         using ArrayPoolListRef<int> nonceCounts = new(rowCount, rowCount);
         using ArrayPoolListRef<int> codeCounts = new(rowCount, rowCount);
@@ -130,9 +121,6 @@ internal sealed class BlockAccessListValidationIndex : IDisposable
             code = Lane<ValueHash256>.CreateImmutable(codeCounts.AsSpan());
             storage = StorageLane.CreateImmutable(storageCounts.AsSpan());
 
-            // Rent the account-presence bitmap from the pool; it lives until the index is
-            // disposed (BlockAccessListManager.Reset). Cleared on rent — pool buffers come
-            // back dirty.
             int wordCount = WordCount(accounts.Length);
             hasAccountWords = SafeArrayPool<ulong>.Shared.Rent(Math.Max(wordCount, 1));
             hasAccountWords.AsSpan(0, wordCount).Clear();
@@ -530,8 +518,6 @@ internal sealed class BlockAccessListValidationIndex : IDisposable
         StorageLane storage,
         ulong[] hasAccountWords)
     {
-        // Cursors track per-row write positions during Fill — purely transient. Pooled via
-        // ArrayPoolListRef so a 30k-tx block doesn't allocate 4 × (rowCount+1) ints per Build.
         int cursorSize = balance.CursorCount;
         using ArrayPoolListRef<int> balanceCursors = new(cursorSize, cursorSize);
         using ArrayPoolListRef<int> nonceCursors = new(cursorSize, cursorSize);
@@ -587,8 +573,6 @@ internal sealed class BlockAccessListValidationIndex : IDisposable
             ArrayPool<ulong> pool = SafeArrayPool<ulong>.Shared;
             int newSize = Math.Max(word + 1, words.Length == 0 ? 1 : words.Length * 2);
             ulong[] newWords = pool.Rent(newSize);
-            // Copy existing bits into the new (potentially over-sized) buffer and clear the
-            // remaining slack so MarkAccount's |= doesn't fold stale pool contents.
             words.AsSpan().CopyTo(newWords);
             newWords.AsSpan(words.Length).Clear();
             pool.Return(words);
@@ -663,81 +647,180 @@ internal sealed class BlockAccessListValidationIndex : IDisposable
         public readonly Span<int> Storage = storage;
     }
 
-    private sealed class Lane<TValue> : IDisposable
-        where TValue : IEquatable<TValue>
+    /// <summary>
+    /// Shared row-indexing, mutable bookkeeping (<c>rowFilled</c> / <c>rowTouched</c> /
+    /// <c>rowOverflow</c>), sort scaffolding, and pool lifecycle for <see cref="Lane{TValue}"/>
+    /// and <see cref="StorageLane"/>. The derived classes own the per-entry value payload
+    /// (one or two parallel arrays) and the row-level <c>SortRow</c> implementation.
+    /// </summary>
+    private abstract class LaneBase(
+        int[] rowStarts,
+        int rowStartsLength,
+        int[]? rowFilled,
+        int[] accountOrdinals,
+        int entriesLength,
+        bool[]? rowTouched,
+        int[]? touchedRows,
+        bool[]? rowOverflow) : IDisposable
     {
-        // All four backing buffers are pool-rented; the lane keeps the logical lengths
-        // separately (RowCount / total-entry count) so we never read past valid data even when
-        // the pool hands back oversized arrays.
-        private readonly int[] _rowStarts;
-        private readonly int _rowStartsLength;
-        private readonly int[]? _rowFilled;
-        private readonly int[] _accountOrdinals;
-        private readonly int _entriesLength;
-        private readonly TValue[] _values;
-        private readonly bool[]? _rowTouched;
-        private readonly int[]? _touchedRows;
-        private readonly bool[]? _rowOverflow;
+        // _rowStarts[r] .. _rowStarts[r+1] is row r's slice of _accountOrdinals + the derived
+        // class's value array(s). Logical lengths (_rowStartsLength / _entriesLength) are
+        // tracked separately so oversized pool buffers never leak through reads.
+        protected readonly int[] _rowStarts = rowStarts;
+        private readonly int _rowStartsLength = rowStartsLength;
+        protected readonly int[]? _rowFilled = rowFilled;
+        protected readonly int[] _accountOrdinals = accountOrdinals;
+        protected readonly int _entriesLength = entriesLength;
+        private readonly bool[]? _rowTouched = rowTouched;
+        private readonly int[]? _touchedRows = touchedRows;
+        private readonly bool[]? _rowOverflow = rowOverflow;
         private int _touchedCount;
 
-        private Lane(
-            int[] rowStarts,
-            int rowStartsLength,
-            int[]? rowFilled,
-            int[] accountOrdinals,
-            int entriesLength,
-            TValue[] values,
-            bool[]? rowTouched,
-            int[]? touchedRows,
-            bool[]? rowOverflow)
+        public int RowCount => _rowStartsLength - 1;
+        public int CursorCount => _rowStartsLength;
+
+        public void CopyRowStartsTo(Span<int> destination)
+            => _rowStarts.AsSpan(0, _rowStartsLength).CopyTo(destination);
+
+        protected int Capacity(int row) => _rowStarts[row + 1] - _rowStarts[row];
+
+        protected int RowLength(int row) => _rowFilled is null ? Capacity(row) : _rowFilled[row];
+
+        protected bool HasOverflow(int row) => _rowOverflow is not null && _rowOverflow[row];
+
+        /// <summary>
+        /// Reserve the next slot in <paramref name="row"/>. Returns the absolute offset to
+        /// write into, or <c>-1</c> if the row is full (in which case the overflow flag is
+        /// latched and the caller must report failure).
+        /// </summary>
+        protected int ReserveNextOffset(int row)
         {
-            _rowStarts = rowStarts;
-            _rowStartsLength = rowStartsLength;
-            _rowFilled = rowFilled;
-            _accountOrdinals = accountOrdinals;
-            _entriesLength = entriesLength;
-            _values = values;
-            _rowTouched = rowTouched;
-            _touchedRows = touchedRows;
-            _rowOverflow = rowOverflow;
+            int[] rowFilled = _rowFilled ?? throw new InvalidOperationException("Cannot append to immutable lane.");
+            int filled = rowFilled[row];
+            if ((uint)filled >= (uint)Capacity(row))
+            {
+                _rowOverflow![row] = true;
+                return -1;
+            }
+            int offset = _rowStarts[row] + filled;
+            rowFilled[row] = filled + 1;
+            MarkTouched(row);
+            return offset;
         }
+
+        public void SortAllRows()
+        {
+            for (int row = 0; row < RowCount; row++)
+                SortRow(row, Capacity(row));
+        }
+
+        public void SortTouchedRows()
+        {
+            if (_touchedCount == 0) return;
+            bool[] rowTouched = _rowTouched!;
+            int[] touchedRows = _touchedRows!;
+            int[] rowFilled = _rowFilled!;
+            for (int i = 0; i < _touchedCount; i++)
+            {
+                int row = touchedRows[i];
+                SortRow(row, rowFilled[row]);
+                rowTouched[row] = false;
+            }
+            _touchedCount = 0;
+        }
+
+        protected abstract void SortRow(int row, int length);
+
+        private void MarkTouched(int row)
+        {
+            bool[] rowTouched = _rowTouched!;
+            if (rowTouched[row]) return;
+            rowTouched[row] = true;
+            _touchedRows![_touchedCount++] = row;
+        }
+
+        public virtual void Dispose()
+        {
+            PooledArrays.Return(_rowStarts);
+            PooledArrays.Return(_accountOrdinals);
+            if (_rowFilled is not null) PooledArrays.Return(_rowFilled);
+            if (_touchedRows is not null) PooledArrays.Return(_touchedRows);
+            if (_rowTouched is not null) PooledArrays.Return(_rowTouched);
+            if (_rowOverflow is not null) PooledArrays.Return(_rowOverflow);
+        }
+
+        /// <summary>Pool-rents and fills the row-starts prefix-sum array; returns the total
+        /// entry count via <paramref name="total"/>.</summary>
+        protected static int[] RentRowStarts(ReadOnlySpan<int> counts, out int total)
+        {
+            int[] rowStarts = PooledArrays.Rent<int>(counts.Length + 1);
+            FillRowStarts(counts, rowStarts);
+            total = rowStarts[counts.Length];
+            return rowStarts;
+        }
+
+        /// <summary>Pool-rents a row-starts buffer and copies the first <paramref name="length"/>
+        /// entries from <paramref name="source"/> — used when cloning the immutable layout into
+        /// a mutable lane.</summary>
+        protected static int[] CloneRowStarts(int[] source, int length)
+        {
+            int[] dest = PooledArrays.Rent<int>(length);
+            source.AsSpan(0, length).CopyTo(dest);
+            return dest;
+        }
+    }
+
+    /// <summary>
+    /// Small static helper around <see cref="SafeArrayPool{T}"/> that normalises the
+    /// <c>Math.Max(size, 1)</c> floor and provides the cleared-rent variant used when a row
+    /// of bookkeeping must start at zero.
+    /// </summary>
+    private static class PooledArrays
+    {
+        public static T[] Rent<T>(int minLength) => SafeArrayPool<T>.Shared.Rent(Math.Max(minLength, 1));
+
+        public static T[] RentCleared<T>(int length)
+        {
+            T[] arr = Rent<T>(length);
+            arr.AsSpan(0, length).Clear();
+            return arr;
+        }
+
+        public static void Return<T>(T[] array) => SafeArrayPool<T>.Shared.Return(array);
+    }
+
+    private sealed class Lane<TValue>(
+        int[] rowStarts, int rowStartsLength, int[]? rowFilled,
+        int[] accountOrdinals, int entriesLength, TValue[] values,
+        bool[]? rowTouched, int[]? touchedRows, bool[]? rowOverflow)
+        : LaneBase(rowStarts, rowStartsLength, rowFilled, accountOrdinals, entriesLength,
+                   rowTouched, touchedRows, rowOverflow)
+        where TValue : IEquatable<TValue>
+    {
+        private readonly TValue[] _values = values;
 
         public static Lane<TValue> CreateImmutable(ReadOnlySpan<int> counts)
         {
-            int rowStartsLength = counts.Length + 1;
-            int[] rowStarts = SafeArrayPool<int>.Shared.Rent(rowStartsLength);
-            FillRowStarts(counts, rowStarts);
-            int total = rowStarts[counts.Length];
-            int[] accountOrdinals = SafeArrayPool<int>.Shared.Rent(Math.Max(total, 1));
-            TValue[] values = SafeArrayPool<TValue>.Shared.Rent(Math.Max(total, 1));
-            return new(rowStarts, rowStartsLength, null, accountOrdinals, total, values, null, null, null);
+            int[] rowStarts = RentRowStarts(counts, out int total);
+            return new(
+                rowStarts, counts.Length + 1, rowFilled: null,
+                PooledArrays.Rent<int>(total), total, PooledArrays.Rent<TValue>(total),
+                rowTouched: null, touchedRows: null, rowOverflow: null);
         }
 
         public static Lane<TValue> CreateMutableLike(Lane<TValue> other)
         {
             int rowCount = other.RowCount;
-            int rowStartsLength = other._rowStartsLength;
-            int[] rowStarts = SafeArrayPool<int>.Shared.Rent(rowStartsLength);
-            other._rowStarts.AsSpan(0, rowStartsLength).CopyTo(rowStarts);
+            int rowStartsLength = other.CursorCount;
             int entries = other._entriesLength;
-            int[] accountOrdinals = SafeArrayPool<int>.Shared.Rent(Math.Max(entries, 1));
-            TValue[] values = SafeArrayPool<TValue>.Shared.Rent(Math.Max(entries, 1));
-            int[] rowFilled = SafeArrayPool<int>.Shared.Rent(Math.Max(rowCount, 1));
-            int[] touchedRows = SafeArrayPool<int>.Shared.Rent(Math.Max(rowCount, 1));
-            bool[] rowTouched = SafeArrayPool<bool>.Shared.Rent(Math.Max(rowCount, 1));
-            bool[] rowOverflow = SafeArrayPool<bool>.Shared.Rent(Math.Max(rowCount, 1));
-            rowFilled.AsSpan(0, rowCount).Clear();
-            rowTouched.AsSpan(0, rowCount).Clear();
-            rowOverflow.AsSpan(0, rowCount).Clear();
-            return new(rowStarts, rowStartsLength, rowFilled, accountOrdinals, entries, values, rowTouched, touchedRows, rowOverflow);
+            return new(
+                CloneRowStarts(other._rowStarts, rowStartsLength), rowStartsLength,
+                PooledArrays.RentCleared<int>(rowCount),
+                PooledArrays.Rent<int>(entries), entries, PooledArrays.Rent<TValue>(entries),
+                PooledArrays.RentCleared<bool>(rowCount),
+                PooledArrays.Rent<int>(rowCount),
+                PooledArrays.RentCleared<bool>(rowCount));
         }
-
-        public int RowCount => _rowStartsLength - 1;
-
-        public int CursorCount => _rowStartsLength;
-
-        public void CopyRowStartsTo(Span<int> destination)
-            => _rowStarts.AsSpan(0, _rowStartsLength).CopyTo(destination);
 
         public void Fill(int row, Span<int> cursors, int accountOrdinal, TValue value)
         {
@@ -748,35 +831,18 @@ internal sealed class BlockAccessListValidationIndex : IDisposable
 
         public bool Add(int row, int accountOrdinal, TValue value)
         {
-            int[] rowFilled = _rowFilled ?? throw new InvalidOperationException("Cannot append to immutable lane.");
-            int filled = rowFilled[row];
-            if ((uint)filled >= (uint)Capacity(row))
-            {
-                _rowOverflow![row] = true;
-                return false;
-            }
-
-            int offset = _rowStarts[row] + filled;
+            int offset = ReserveNextOffset(row);
+            if (offset < 0) return false;
             _accountOrdinals[offset] = accountOrdinal;
             _values[offset] = value;
-            rowFilled[row] = filled + 1;
-            MarkTouched(row);
             return true;
         }
 
         public bool ChangesEqual(Lane<TValue> other, int row)
         {
-            if (HasOverflow(row) || other.HasOverflow(row))
-            {
-                return false;
-            }
-
+            if (HasOverflow(row) || other.HasOverflow(row)) return false;
             int length = RowLength(row);
-            if (length != other.RowLength(row))
-            {
-                return false;
-            }
-
+            if (length != other.RowLength(row)) return false;
             int start = _rowStarts[row];
             int otherStart = other._rowStarts[row];
             return new ReadOnlySpan<int>(_accountOrdinals, start, length)
@@ -810,69 +876,12 @@ internal sealed class BlockAccessListValidationIndex : IDisposable
             return true;
         }
 
-        public void SortAllRows()
+        protected override void SortRow(int row, int length)
         {
-            for (int row = 0; row < RowCount; row++)
-            {
-                SortRow(row, Capacity(row));
-            }
-        }
-
-        public void SortTouchedRows()
-        {
-            if (_touchedCount == 0)
-            {
-                return;
-            }
-
-            bool[] rowTouched = _rowTouched!;
-            int[] touchedRows = _touchedRows!;
-            int[] rowFilled = _rowFilled!;
-            for (int i = 0; i < _touchedCount; i++)
-            {
-                int row = touchedRows[i];
-                SortRow(row, rowFilled[row]);
-                rowTouched[row] = false;
-            }
-            _touchedCount = 0;
-        }
-
-        private int Capacity(int row) =>
-            _rowStarts[row + 1] - _rowStarts[row];
-
-        private int RowLength(int row) =>
-            _rowFilled is null ? Capacity(row) : _rowFilled[row];
-
-        private bool HasOverflow(int row) =>
-            _rowOverflow is not null && _rowOverflow[row];
-
-        private void MarkTouched(int row)
-        {
-            bool[] rowTouched = _rowTouched!;
-            if (rowTouched[row])
-            {
-                return;
-            }
-
-            rowTouched[row] = true;
-            _touchedRows![_touchedCount++] = row;
-        }
-
-        private void SortRow(int row, int length)
-        {
-            if (length <= 1)
-            {
-                return;
-            }
-
+            if (length <= 1) return;
             int start = _rowStarts[row];
-            if (length <= 8)
-            {
-                InsertionSort(start, length);
-                return;
-            }
-
-            Array.Sort(_accountOrdinals, _values, start, length);
+            if (length <= 8) InsertionSort(start, length);
+            else Array.Sort(_accountOrdinals, _values, start, length);
         }
 
         private void InsertionSort(int start, int length)
@@ -888,106 +897,59 @@ internal sealed class BlockAccessListValidationIndex : IDisposable
                     _values[start + j + 1] = _values[start + j];
                     j--;
                 }
-
                 _accountOrdinals[start + j + 1] = accountOrdinal;
                 _values[start + j + 1] = value;
             }
         }
 
-        public void Dispose()
+        public override void Dispose()
         {
-            SafeArrayPool<int>.Shared.Return(_rowStarts);
-            SafeArrayPool<int>.Shared.Return(_accountOrdinals);
-            SafeArrayPool<TValue>.Shared.Return(_values);
-            if (_rowFilled is not null) SafeArrayPool<int>.Shared.Return(_rowFilled);
-            if (_touchedRows is not null) SafeArrayPool<int>.Shared.Return(_touchedRows);
-            if (_rowTouched is not null) SafeArrayPool<bool>.Shared.Return(_rowTouched);
-            if (_rowOverflow is not null) SafeArrayPool<bool>.Shared.Return(_rowOverflow);
+            base.Dispose();
+            PooledArrays.Return(_values);
         }
     }
 
-    private sealed class StorageLane : IDisposable
+    private sealed class StorageLane(
+        int[] rowStarts, int rowStartsLength, int[]? rowFilled,
+        int[] accountOrdinals, int entriesLength,
+        UInt256[] keys, EvmWord[] values,
+        bool[]? rowTouched, int[]? touchedRows, bool[]? rowOverflow)
+        : LaneBase(rowStarts, rowStartsLength, rowFilled, accountOrdinals, entriesLength,
+                   rowTouched, touchedRows, rowOverflow)
     {
-        // Same pool-everything pattern as Lane<T>. Sort scratch arrays auto-grow via
-        // EnsureScratch; they're allocated lazily and disposed alongside the lane.
-        private readonly int[] _rowStarts;
-        private readonly int _rowStartsLength;
-        private readonly int[]? _rowFilled;
-        private readonly int[] _accountOrdinals;
-        private readonly int _entriesLength;
-        private readonly UInt256[] _keys;
-        private readonly EvmWord[] _values;
-        private readonly bool[]? _rowTouched;
-        private readonly int[]? _touchedRows;
-        private readonly bool[]? _rowOverflow;
+        private readonly UInt256[] _keys = keys;
+        private readonly EvmWord[] _values = values;
+        // Sort scratch buffers grow on demand via EnsureScratch; empty sentinels for the
+        // common "small rows, insertion sort only" case so we don't pay the rent up front.
         private int[] _orderScratch = [];
         private int[] _accountScratch = [];
         private UInt256[] _keyScratch = [];
         private EvmWord[] _valueScratch = [];
-        private int _touchedCount;
-
-        private StorageLane(
-            int[] rowStarts,
-            int rowStartsLength,
-            int[]? rowFilled,
-            int[] accountOrdinals,
-            int entriesLength,
-            UInt256[] keys,
-            EvmWord[] values,
-            bool[]? rowTouched,
-            int[]? touchedRows,
-            bool[]? rowOverflow)
-        {
-            _rowStarts = rowStarts;
-            _rowStartsLength = rowStartsLength;
-            _rowFilled = rowFilled;
-            _accountOrdinals = accountOrdinals;
-            _entriesLength = entriesLength;
-            _keys = keys;
-            _values = values;
-            _rowTouched = rowTouched;
-            _touchedRows = touchedRows;
-            _rowOverflow = rowOverflow;
-        }
 
         public static StorageLane CreateImmutable(ReadOnlySpan<int> counts)
         {
-            int rowStartsLength = counts.Length + 1;
-            int[] rowStarts = SafeArrayPool<int>.Shared.Rent(rowStartsLength);
-            FillRowStarts(counts, rowStarts);
-            int total = rowStarts[counts.Length];
-            int[] accountOrdinals = SafeArrayPool<int>.Shared.Rent(Math.Max(total, 1));
-            UInt256[] keys = SafeArrayPool<UInt256>.Shared.Rent(Math.Max(total, 1));
-            EvmWord[] values = SafeArrayPool<EvmWord>.Shared.Rent(Math.Max(total, 1));
-            return new(rowStarts, rowStartsLength, null, accountOrdinals, total, keys, values, null, null, null);
+            int[] rowStarts = RentRowStarts(counts, out int total);
+            return new(
+                rowStarts, counts.Length + 1, rowFilled: null,
+                PooledArrays.Rent<int>(total), total,
+                PooledArrays.Rent<UInt256>(total), PooledArrays.Rent<EvmWord>(total),
+                rowTouched: null, touchedRows: null, rowOverflow: null);
         }
 
         public static StorageLane CreateMutableLike(StorageLane other)
         {
             int rowCount = other.RowCount;
-            int rowStartsLength = other._rowStartsLength;
-            int[] rowStarts = SafeArrayPool<int>.Shared.Rent(rowStartsLength);
-            other._rowStarts.AsSpan(0, rowStartsLength).CopyTo(rowStarts);
+            int rowStartsLength = other.CursorCount;
             int entries = other._entriesLength;
-            int[] accountOrdinals = SafeArrayPool<int>.Shared.Rent(Math.Max(entries, 1));
-            UInt256[] keys = SafeArrayPool<UInt256>.Shared.Rent(Math.Max(entries, 1));
-            EvmWord[] values = SafeArrayPool<EvmWord>.Shared.Rent(Math.Max(entries, 1));
-            int[] rowFilled = SafeArrayPool<int>.Shared.Rent(Math.Max(rowCount, 1));
-            int[] touchedRows = SafeArrayPool<int>.Shared.Rent(Math.Max(rowCount, 1));
-            bool[] rowTouched = SafeArrayPool<bool>.Shared.Rent(Math.Max(rowCount, 1));
-            bool[] rowOverflow = SafeArrayPool<bool>.Shared.Rent(Math.Max(rowCount, 1));
-            rowFilled.AsSpan(0, rowCount).Clear();
-            rowTouched.AsSpan(0, rowCount).Clear();
-            rowOverflow.AsSpan(0, rowCount).Clear();
-            return new(rowStarts, rowStartsLength, rowFilled, accountOrdinals, entries, keys, values, rowTouched, touchedRows, rowOverflow);
+            return new(
+                CloneRowStarts(other._rowStarts, rowStartsLength), rowStartsLength,
+                PooledArrays.RentCleared<int>(rowCount),
+                PooledArrays.Rent<int>(entries), entries,
+                PooledArrays.Rent<UInt256>(entries), PooledArrays.Rent<EvmWord>(entries),
+                PooledArrays.RentCleared<bool>(rowCount),
+                PooledArrays.Rent<int>(rowCount),
+                PooledArrays.RentCleared<bool>(rowCount));
         }
-
-        public int RowCount => _rowStartsLength - 1;
-
-        public int CursorCount => _rowStartsLength;
-
-        public void CopyRowStartsTo(Span<int> destination)
-            => _rowStarts.AsSpan(0, _rowStartsLength).CopyTo(destination);
 
         public void Fill(int row, Span<int> cursors, int accountOrdinal, UInt256 key, EvmWord value)
         {
@@ -999,36 +961,19 @@ internal sealed class BlockAccessListValidationIndex : IDisposable
 
         public bool Add(int row, int accountOrdinal, UInt256 key, EvmWord value)
         {
-            int[] rowFilled = _rowFilled ?? throw new InvalidOperationException("Cannot append to immutable lane.");
-            int filled = rowFilled[row];
-            if ((uint)filled >= (uint)Capacity(row))
-            {
-                _rowOverflow![row] = true;
-                return false;
-            }
-
-            int offset = _rowStarts[row] + filled;
+            int offset = ReserveNextOffset(row);
+            if (offset < 0) return false;
             _accountOrdinals[offset] = accountOrdinal;
             _keys[offset] = key;
             _values[offset] = value;
-            rowFilled[row] = filled + 1;
-            MarkTouched(row);
             return true;
         }
 
         public bool ChangesEqual(StorageLane other, int row)
         {
-            if (HasOverflow(row) || other.HasOverflow(row))
-            {
-                return false;
-            }
-
+            if (HasOverflow(row) || other.HasOverflow(row)) return false;
             int length = RowLength(row);
-            if (length != other.RowLength(row))
-            {
-                return false;
-            }
-
+            if (length != other.RowLength(row)) return false;
             int start = _rowStarts[row];
             int otherStart = other._rowStarts[row];
             return new ReadOnlySpan<int>(_accountOrdinals, start, length)
@@ -1055,19 +1000,16 @@ internal sealed class BlockAccessListValidationIndex : IDisposable
         public bool SlotsEqualAt(StorageLane other, int row, int ordinal)
         {
             if (HasOverflow(row) || other.HasOverflow(row)) return false;
-
             GetOrdinalRange(row, ordinal, out int thisStart, out int thisLen);
             other.GetOrdinalRange(row, ordinal, out int otherStart, out int otherLen);
-
             if (thisLen != otherLen) return false;
-
             return new ReadOnlySpan<UInt256>(_keys, thisStart, thisLen)
                        .SequenceEqual(new ReadOnlySpan<UInt256>(other._keys, otherStart, thisLen)) &&
                    new ReadOnlySpan<EvmWord>(_values, thisStart, thisLen)
                        .SequenceEqual(new ReadOnlySpan<EvmWord>(other._values, otherStart, thisLen));
         }
 
-        // Row data is sorted by (ordinal, key); locates the contiguous range with the given ordinal.
+        // Row data is sorted by (ordinal, key); locates the contiguous run with the given ordinal.
         private void GetOrdinalRange(int row, int ordinal, out int start, out int length)
         {
             int rowStart = _rowStarts[row];
@@ -1094,76 +1036,15 @@ internal sealed class BlockAccessListValidationIndex : IDisposable
             return lo;
         }
 
-        public void SortAllRows()
+        // Array.Sort has no overload that sorts three parallel arrays without boxing, so we
+        // keep a bespoke sort: insertion-sort for small rows, indirection-array + scratch
+        // gather for larger ones.
+        protected override void SortRow(int row, int length)
         {
-            for (int row = 0; row < RowCount; row++)
-            {
-                SortRow(row, Capacity(row));
-            }
-        }
-
-        public void SortTouchedRows()
-        {
-            if (_touchedCount == 0)
-            {
-                return;
-            }
-
-            bool[] rowTouched = _rowTouched!;
-            int[] touchedRows = _touchedRows!;
-            int[] rowFilled = _rowFilled!;
-            for (int i = 0; i < _touchedCount; i++)
-            {
-                int row = touchedRows[i];
-                SortRow(row, rowFilled[row]);
-                rowTouched[row] = false;
-            }
-            _touchedCount = 0;
-        }
-
-        private int Capacity(int row) =>
-            _rowStarts[row + 1] - _rowStarts[row];
-
-        private int RowLength(int row) =>
-            _rowFilled is null ? Capacity(row) : _rowFilled[row];
-
-        private bool HasOverflow(int row) =>
-            _rowOverflow is not null && _rowOverflow[row];
-
-        private void MarkTouched(int row)
-        {
-            bool[] rowTouched = _rowTouched!;
-            if (rowTouched[row])
-            {
-                return;
-            }
-
-            rowTouched[row] = true;
-            _touchedRows![_touchedCount++] = row;
-        }
-
-        // The sort needs to keep three parallel arrays in lock-step, keyed on
-        // (accountOrdinal, key) but moving the value alongside. Array.Sort has
-        // no overload that sorts three parallel arrays without either boxing
-        // (object[] keys) or an indirection array, so we keep a bespoke sort
-        // here. Small rows use a stable in-place insertion sort; larger rows
-        // sort an index array via Array.Sort + a custom comparer and then
-        // gather into scratch buffers (SortWithScratch).
-        private void SortRow(int row, int length)
-        {
-            if (length <= 1)
-            {
-                return;
-            }
-
+            if (length <= 1) return;
             int start = _rowStarts[row];
-            if (length <= 8)
-            {
-                InsertionSort(start, length);
-                return;
-            }
-
-            SortWithScratch(start, length);
+            if (length <= 8) InsertionSort(start, length);
+            else SortWithScratch(start, length);
         }
 
         private void InsertionSort(int start, int length)
@@ -1181,7 +1062,6 @@ internal sealed class BlockAccessListValidationIndex : IDisposable
                     _values[start + j + 1] = _values[start + j];
                     j--;
                 }
-
                 _accountOrdinals[start + j + 1] = accountOrdinal;
                 _keys[start + j + 1] = key;
                 _values[start + j + 1] = value;
@@ -1197,10 +1077,7 @@ internal sealed class BlockAccessListValidationIndex : IDisposable
         private void SortWithScratch(int start, int length)
         {
             EnsureScratch(length);
-            for (int i = 0; i < length; i++)
-            {
-                _orderScratch[i] = i;
-            }
+            for (int i = 0; i < length; i++) _orderScratch[i] = i;
 
             _orderScratch.AsSpan(0, length).Sort(new StorageOrderComparer(_accountOrdinals, _keys, start));
 
@@ -1219,37 +1096,29 @@ internal sealed class BlockAccessListValidationIndex : IDisposable
 
         private void EnsureScratch(int length)
         {
-            if (_orderScratch.Length >= length)
-            {
-                return;
-            }
-
-            // Return any prior scratch buffer before renting a bigger one (skip empty
-            // sentinels — ArrayPool.Return on Array.Empty is harmless but wasteful).
-            if (_orderScratch.Length > 0) SafeArrayPool<int>.Shared.Return(_orderScratch);
-            if (_accountScratch.Length > 0) SafeArrayPool<int>.Shared.Return(_accountScratch);
-            if (_keyScratch.Length > 0) SafeArrayPool<UInt256>.Shared.Return(_keyScratch);
-            if (_valueScratch.Length > 0) SafeArrayPool<EvmWord>.Shared.Return(_valueScratch);
-            _orderScratch = SafeArrayPool<int>.Shared.Rent(length);
-            _accountScratch = SafeArrayPool<int>.Shared.Rent(length);
-            _keyScratch = SafeArrayPool<UInt256>.Shared.Rent(length);
-            _valueScratch = SafeArrayPool<EvmWord>.Shared.Rent(length);
+            if (_orderScratch.Length >= length) return;
+            ReturnScratchIfRented();
+            _orderScratch = PooledArrays.Rent<int>(length);
+            _accountScratch = PooledArrays.Rent<int>(length);
+            _keyScratch = PooledArrays.Rent<UInt256>(length);
+            _valueScratch = PooledArrays.Rent<EvmWord>(length);
         }
 
-        public void Dispose()
+        private void ReturnScratchIfRented()
         {
-            SafeArrayPool<int>.Shared.Return(_rowStarts);
-            SafeArrayPool<int>.Shared.Return(_accountOrdinals);
-            SafeArrayPool<UInt256>.Shared.Return(_keys);
-            SafeArrayPool<EvmWord>.Shared.Return(_values);
-            if (_rowFilled is not null) SafeArrayPool<int>.Shared.Return(_rowFilled);
-            if (_touchedRows is not null) SafeArrayPool<int>.Shared.Return(_touchedRows);
-            if (_rowTouched is not null) SafeArrayPool<bool>.Shared.Return(_rowTouched);
-            if (_rowOverflow is not null) SafeArrayPool<bool>.Shared.Return(_rowOverflow);
-            if (_orderScratch.Length > 0) SafeArrayPool<int>.Shared.Return(_orderScratch);
-            if (_accountScratch.Length > 0) SafeArrayPool<int>.Shared.Return(_accountScratch);
-            if (_keyScratch.Length > 0) SafeArrayPool<UInt256>.Shared.Return(_keyScratch);
-            if (_valueScratch.Length > 0) SafeArrayPool<EvmWord>.Shared.Return(_valueScratch);
+            // Skip empty sentinels — ArrayPool.Return on Array.Empty is harmless but wasteful.
+            if (_orderScratch.Length > 0) PooledArrays.Return(_orderScratch);
+            if (_accountScratch.Length > 0) PooledArrays.Return(_accountScratch);
+            if (_keyScratch.Length > 0) PooledArrays.Return(_keyScratch);
+            if (_valueScratch.Length > 0) PooledArrays.Return(_valueScratch);
+        }
+
+        public override void Dispose()
+        {
+            base.Dispose();
+            PooledArrays.Return(_keys);
+            PooledArrays.Return(_values);
+            ReturnScratchIfRented();
         }
 
         private readonly struct StorageOrderComparer(int[] accountOrdinals, UInt256[] keys, int start) : IComparer<int>

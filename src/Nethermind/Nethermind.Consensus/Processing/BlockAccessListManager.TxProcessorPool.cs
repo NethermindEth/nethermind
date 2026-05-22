@@ -179,8 +179,6 @@ public partial class BlockAccessListManager
             TxProcessorWithWorldState? processor = _inUse[idx];
             if (processor is null) return;
 
-            // Defensive: if a prior Return for this slot was never consumed by
-            // MergeAndReturnBal, the stashed BAL would be silently replaced and leaked.
             BlockAccessListAtIndex? previousStashed = _perTxBal[idx];
             _perTxBal[idx] = processor.WorldState.GetGeneratingBlockAccessList();
             if (previousStashed is not null)
@@ -208,9 +206,6 @@ public partial class BlockAccessListManager
             BlockAccessListAtIndex? source = _perTxBal[idx];
             if (source is null) return;
 
-            // Detach the slot before invoking caller callbacks so the BAL is owned by exactly one
-            // code path. The try/finally guarantees the slice is returned even if Merge or
-            // onSlice throws — otherwise the StaticPool slowly leaks across failed blocks.
             _perTxBal[idx] = null;
             try
             {
