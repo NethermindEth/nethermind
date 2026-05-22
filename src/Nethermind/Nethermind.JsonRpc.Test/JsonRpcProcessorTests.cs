@@ -28,7 +28,15 @@ namespace Nethermind.JsonRpc.Test;
 [TestFixture(false)]
 public class JsonRpcProcessorTests(bool returnErrors)
 {
-    private const string TransactionCountParamsJson = "[\"0x7f01d9b227593e033bf8d6fc86e634d27aa85568\",\"0x668c24\"]";
+    private const string TransactionCountAddress = "0x7f01d9b227593e033bf8d6fc86e634d27aa85568";
+    private const string TransactionCountBlock = "0x668c24";
+    private const string TransactionCountParamsJson = "[\"" + TransactionCountAddress + "\",\"" + TransactionCountBlock + "\"]";
+    private const string TransactionCountObjectParamsJson = "[{\"a\":\"" + TransactionCountAddress + "\",\"b\":\"" + TransactionCountBlock + "\"}]";
+    private const string TransactionCountNestedArrayParamsJson = "[" + TransactionCountObjectParamsJson + "]";
+    private const string TransactionCountNestedArrayWithValueParamsJson = "[[{\"a\":\"" + TransactionCountAddress + "\",\"b\":\"" + TransactionCountBlock + "\"}, 1]]";
+    private const string TransactionCountAddressParamJson = "\"" + TransactionCountAddress + "\"";
+    private const string TransactionCountBlockParamJson = "\"" + TransactionCountBlock + "\"";
+    private const string TransactionCountInvalidObjectParamsJson = "{\"a\":\"" + TransactionCountAddress + "\",\"" + TransactionCountBlock + "\"}";
 
     private readonly JsonRpcErrorResponse _errorResponse = new();
     private static readonly object[] CachedMethodNameCases =
@@ -214,6 +222,14 @@ public class JsonRpcProcessorTests(bool returnErrors)
 
     private static string GetKnownMethodName(string methodName) =>
         TryGetKnownMethodName(methodName) ?? throw new InvalidOperationException($"Missing generated method name {methodName}.");
+
+    private static IEnumerable<TestCaseData> MultipleDocumentRequestCases()
+    {
+        yield return new TestCaseData(CreateTransactionCountRequest("67") + "\r\n" + CreateTransactionCountRequest("68"), false, false).SetName("Two single requests");
+        yield return new TestCaseData(CreateTransactionCountRequest("67") + CreateTransactionCountBatchRequest(2), true, false).SetName("Single request and batch");
+        yield return new TestCaseData(CreateTransactionCountRequest("67") + CreateTransactionCountRequest("68")[..^1], false, true).SetName("Second request not closed");
+        yield return new TestCaseData(CreateTransactionCountRequest("67") + "{aaa}", false, true).SetName("Second request invalid");
+    }
 
     private ValueTask<CollectedJsonRpcResponses> ProcessAsync(string request, JsonRpcContext? context = null, JsonRpcConfig? config = null) =>
         ProcessAsync(Initialize(config), CreateReader(request), context ?? new JsonRpcContext(RpcEndpoint.Http));
@@ -423,6 +439,19 @@ public class JsonRpcProcessorTests(bool returnErrors)
         {
             if (i != 0) request.Append(',');
             request.Append(CreateTransactionCountRequest("67", omitLastParams && i == count - 1 ? null : "params"));
+        }
+
+        request.Append(']');
+        return request.ToString();
+    }
+
+    private static string CreateTransactionCountBatchRequest(params string[] paramsJsons)
+    {
+        StringBuilder request = new("[");
+        for (int i = 0; i < paramsJsons.Length; i++)
+        {
+            if (i != 0) request.Append(',');
+            request.Append(CreateTransactionCountRequest("67", paramsJson: paramsJsons[i]));
         }
 
         request.Append(']');
@@ -698,6 +727,20 @@ public class JsonRpcProcessorTests(bool returnErrors)
     private void AssertResponseTypeMatchesFixtureMode(JsonRpcResponse response) =>
         response.Should().BeOfType(returnErrors ? typeof(JsonRpcErrorResponse) : typeof(JsonRpcSuccessResponse));
 
+    private void AssertSingleResponse(CollectedJsonRpcResult result, bool shouldBeParseError = false)
+    {
+        result.Response.Should().NotBeNull();
+        result.BatchItems.Should().BeNull();
+        if (shouldBeParseError)
+        {
+            result.Response.Should().BeSameAs(_errorResponse);
+        }
+        else
+        {
+            result.Response.Should().NotBeSameAs(_errorResponse);
+        }
+    }
+
     [TestCaseSource(nameof(JsonRpcIdCases))]
     public async Task Can_process_ids(string idJson, JsonRpcId expectedId)
     {
@@ -715,111 +758,55 @@ public class JsonRpcProcessorTests(bool returnErrors)
         AssertResponseTypeMatchesFixtureMode(result[0].Response!);
     }
 
-    [Test]
-    public async Task Can_process_batch_request_with_nested_object_params()
+    [TestCase(TransactionCountObjectParamsJson, TransactionCountObjectParamsJson, TestName = "Nested object params")]
+    [TestCase(TransactionCountNestedArrayParamsJson, TransactionCountNestedArrayWithValueParamsJson, TestName = "Nested array params")]
+    [TestCase(TransactionCountAddressParamJson, TransactionCountBlockParamJson, TestName = "Value params")]
+    public async Task Can_process_batch_request_with_nonstandard_params(string firstParamsJson, string secondParamsJson)
     {
-        using CollectedJsonRpcResponses result = await ProcessAsync("[{\"id\":67,\"jsonrpc\":\"2.0\",\"method\":\"eth_getTransactionCount\",\"params\":[{\"a\":\"0x7f01d9b227593e033bf8d6fc86e634d27aa85568\",\"b\":\"0x668c24\"}]},{\"id\":67,\"jsonrpc\":\"2.0\",\"method\":\"eth_getTransactionCount\",\"params\":[{\"a\":\"0x7f01d9b227593e033bf8d6fc86e634d27aa85568\",\"b\":\"0x668c24\"}]}]");
+        using CollectedJsonRpcResponses result = await ProcessAsync(CreateTransactionCountBatchRequest(firstParamsJson, secondParamsJson));
         result.Should().HaveCount(1);
+        result[0].Response.Should().BeNull();
         AssertBatchItemsTypeMatchesFixtureMode(result[0].BatchItems);
+        result[0].BatchItems.Should().HaveCount(2);
+        result[0].BatchItems.Should().NotContain(_errorResponse);
     }
 
     [Test]
-    public async Task Can_process_batch_request_with_nested_array_params()
+    public async Task Can_process_batch_request_with_invalid_object_params()
     {
-        using CollectedJsonRpcResponses result = await ProcessAsync("[{\"id\":67,\"jsonrpc\":\"2.0\",\"method\":\"eth_getTransactionCount\",\"params\":[[{\"a\":\"0x7f01d9b227593e033bf8d6fc86e634d27aa85568\",\"b\":\"0x668c24\"}]]},{\"id\":67,\"jsonrpc\":\"2.0\",\"method\":\"eth_getTransactionCount\",\"params\":[[{\"a\":\"0x7f01d9b227593e033bf8d6fc86e634d27aa85568\",\"b\":\"0x668c24\"}, 1]]}]");
-        result.Should().HaveCount(1);
-        AssertBatchItemsTypeMatchesFixtureMode(result[0].BatchItems);
-    }
-
-    [Test]
-    public async Task Can_process_batch_request_with_object_params()
-    {
-        using CollectedJsonRpcResponses result = await ProcessAsync("[{\"id\":67,\"jsonrpc\":\"2.0\",\"method\":\"eth_getTransactionCount\",\"params\":{\"a\":\"0x7f01d9b227593e033bf8d6fc86e634d27aa85568\",\"0x668c24\"}},{\"id\":67,\"jsonrpc\":\"2.0\",\"method\":\"eth_getTransactionCount\",\"params\":{\"a\":\"0x7f01d9b227593e033bf8d6fc86e634d27aa85568\",\"0x668c24\"}}]");
+        using CollectedJsonRpcResponses result = await ProcessAsync(CreateTransactionCountBatchRequest(TransactionCountInvalidObjectParamsJson, TransactionCountInvalidObjectParamsJson));
         result.Should().HaveCount(1);
         result[0].Response.Should().NotBeNull();
         result[0].Response.Should().BeOfType<JsonRpcErrorResponse>();
     }
 
-    [Test]
-    public async Task Can_process_batch_request_with_value_params()
+    [TestCase(false, TestName = "All params present")]
+    [TestCase(true, TestName = "Last params omitted")]
+    public async Task Can_process_batch_request(bool omitLastParams)
     {
-        using CollectedJsonRpcResponses result = await ProcessAsync("[{\"id\":67,\"jsonrpc\":\"2.0\",\"method\":\"eth_getTransactionCount\",\"params\":\"0x7f01d9b227593e033bf8d6fc86e634d27aa85568\"},{\"id\":67,\"jsonrpc\":\"2.0\",\"method\":\"eth_getTransactionCount\",\"params\":\"0x668c24\"}]");
-        result.Should().HaveCount(1);
-        result[0].Response.Should().BeNull();
-        result[0].BatchItems.Should().NotBeNull();
-        IReadOnlyList<JsonRpcResponse> resultList = result[0].BatchItems!;
-        resultList.Should().HaveCount(2);
-        Assert.That(resultList.All(r => r != _errorResponse), Is.True);
-    }
-
-    [Test]
-    public async Task Can_process_batch_request()
-    {
-        using CollectedJsonRpcResponses result = await ProcessAsync(CreateTransactionCountBatchRequest(4));
+        using CollectedJsonRpcResponses result = await ProcessAsync(CreateTransactionCountBatchRequest(4, omitLastParams));
         result.Should().HaveCount(1);
         result[0].BatchItems.Should().NotBeNull();
         result[0].Response.Should().BeNull();
     }
 
-    [Test]
-    public async Task Can_process_batch_request_with_some_params_missing()
+    [TestCaseSource(nameof(MultipleDocumentRequestCases))]
+    public async Task Can_process_multiple_document_requests(string request, bool secondIsBatch, bool secondIsParseError)
     {
-        using CollectedJsonRpcResponses result = await ProcessAsync(CreateTransactionCountBatchRequest(4, omitLastParams: true));
-        result.Should().HaveCount(1);
-        result[0].BatchItems.Should().NotBeNull();
-        result[0].Response.Should().BeNull();
-    }
-
-    [Test]
-    public async Task Can_process_batch_request_with_two_requests()
-    {
-        using CollectedJsonRpcResponses result = await ProcessAsync(CreateTransactionCountRequest("67") + "\r\n" + CreateTransactionCountRequest("68"), new JsonRpcContext(RpcEndpoint.Ws));
+        using CollectedJsonRpcResponses result = await ProcessAsync(request, new JsonRpcContext(RpcEndpoint.Ws));
         result.Should().HaveCount(2);
-        result[0].Response.Should().NotBeNull();
-        result[0].BatchItems.Should().BeNull();
-        result[0].Response.Should().NotBeSameAs(_errorResponse);
-        result[1].Response.Should().NotBeNull();
-        result[1].BatchItems.Should().BeNull();
-        result[1].Response.Should().NotBeSameAs(_errorResponse);
-    }
-
-    [Test]
-    public async Task Can_process_batch_request_with_single_request_and_array_with_two()
-    {
-        using CollectedJsonRpcResponses result = await ProcessAsync(CreateTransactionCountRequest("67") + CreateTransactionCountBatchRequest(2), new JsonRpcContext(RpcEndpoint.Ws));
-        result.Should().HaveCount(2);
-        result[0].Response.Should().NotBeNull();
-        result[0].Response.Should().NotBeSameAs(_errorResponse);
-        result[0].BatchItems.Should().BeNull();
-        result[1].Response.Should().BeNull();
-        result[1].BatchItems.Should().NotBeNull();
-        IReadOnlyList<JsonRpcResponse> resultList = result[1].BatchItems!;
-        resultList.Should().HaveCount(2);
-        Assert.That(resultList.All(r => r != _errorResponse), Is.True);
-    }
-
-    [Test]
-    public async Task Can_process_batch_request_with_second_not_closed_request()
-    {
-        using CollectedJsonRpcResponses result = await ProcessAsync("{\"id\":67,\"jsonrpc\":\"2.0\",\"method\":\"eth_getTransactionCount\",\"params\":[\"0x7f01d9b227593e033bf8d6fc86e634d27aa85568\",\"0x668c24\"]}{\"id\":68,\"jsonrpc\":\"2.0\",\"method\":\"eth_getTransactionCount\",\"params\":[\"0x7f01d9b227593e033bf8d6fc86e634d27aa85568\",\"0x668c24\"]", new JsonRpcContext(RpcEndpoint.Ws));
-        result.Should().HaveCount(2);
-        result[0].Response.Should().NotBeNull();
-        result[0].BatchItems.Should().BeNull();
-        result[0].Response.Should().NotBeSameAs(_errorResponse);
-        result[1].Response.Should().NotBeNull();
-        result[1].BatchItems.Should().BeNull();
-        result[1].Response.Should().BeSameAs(_errorResponse);
-    }
-
-    [Test]
-    public async Task Can_process_batch_request_with_single_request_and_incorrect()
-    {
-        using CollectedJsonRpcResponses result = await ProcessAsync(CreateTransactionCountRequest("67") + "{aaa}", new JsonRpcContext(RpcEndpoint.Ws));
-        result.Should().HaveCount(2);
-        result[0].Response.Should().NotBeNull();
-        result[0].BatchItems.Should().BeNull();
-        result[1].Response.Should().BeSameAs(_errorResponse);
-        result[1].BatchItems.Should().BeNull();
+        AssertSingleResponse(result[0]);
+        if (secondIsBatch)
+        {
+            result[1].Response.Should().BeNull();
+            AssertBatchItemsTypeMatchesFixtureMode(result[1].BatchItems);
+            result[1].BatchItems.Should().HaveCount(2);
+            result[1].BatchItems.Should().NotContain(_errorResponse);
+        }
+        else
+        {
+            AssertSingleResponse(result[1], secondIsParseError);
+        }
     }
 
     [Test]
