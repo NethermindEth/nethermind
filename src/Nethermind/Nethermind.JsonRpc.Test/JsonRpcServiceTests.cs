@@ -55,6 +55,19 @@ public class JsonRpcServiceTests
 
     private static HexBytes ToHexBytes(string value) => new(Bytes.FromHexString(value));
 
+    private static PolymorphicDerivedPayload CreatePolymorphicPayload() =>
+        new()
+        {
+            BaseValue = "base",
+            DerivedValue = "derived"
+        };
+
+    private static void AssertPolymorphicPayload(JsonElement payload)
+    {
+        Assert.That(payload.GetProperty("baseValue").GetString(), Is.EqualTo("base"));
+        Assert.That(payload.GetProperty("derivedValue").GetString(), Is.EqualTo("derived"));
+    }
+
     private static T AssertSuccessResponse<T>(JsonRpcResponse response)
     {
         Assert.That(response, Is.InstanceOf<ResultWrapper<T>>());
@@ -194,42 +207,26 @@ public class JsonRpcServiceTests
     [Test]
     public void Runtime_polymorphic_success_payload_uses_runtime_type_info()
     {
-        ResultWrapper<PolymorphicBasePayload> response = ResultWrapper<PolymorphicBasePayload>.Success(new PolymorphicDerivedPayload
-        {
-            BaseValue = "base",
-            DerivedValue = "derived"
-        });
+        ResultWrapper<PolymorphicBasePayload> response = ResultWrapper<PolymorphicBasePayload>.Success(CreatePolymorphicPayload());
         response.Id = 67;
 
         string serialized = RpcTest.SerializeResponse(response);
 
         using JsonDocument document = JsonDocument.Parse(serialized);
-        JsonElement result = document.RootElement.GetProperty("result");
-        Assert.That(result.GetProperty("baseValue").GetString(), Is.EqualTo("base"));
-        Assert.That(result.GetProperty("derivedValue").GetString(), Is.EqualTo("derived"));
+        AssertPolymorphicPayload(document.RootElement.GetProperty("result"));
     }
 
     [Test]
     public void Runtime_polymorphic_array_success_payload_uses_runtime_type_info()
     {
-        PolymorphicDerivedPayload[] payloads =
-        [
-            new PolymorphicDerivedPayload
-            {
-                BaseValue = "base",
-                DerivedValue = "derived"
-            }
-        ];
-
+        PolymorphicDerivedPayload[] payloads = [CreatePolymorphicPayload()];
         ResultWrapper<PolymorphicBasePayload[]> response = ResultWrapper<PolymorphicBasePayload[]>.Success(payloads);
         response.Id = 67;
 
         string serialized = RpcTest.SerializeResponse(response);
 
         using JsonDocument document = JsonDocument.Parse(serialized);
-        JsonElement result = document.RootElement.GetProperty("result")[0];
-        Assert.That(result.GetProperty("baseValue").GetString(), Is.EqualTo("base"));
-        Assert.That(result.GetProperty("derivedValue").GetString(), Is.EqualTo("derived"));
+        AssertPolymorphicPayload(document.RootElement.GetProperty("result")[0]);
     }
 
     [Test]
@@ -238,19 +235,13 @@ public class JsonRpcServiceTests
         ResultWrapper<string, PolymorphicBasePayload> response = ResultWrapper<string, PolymorphicBasePayload>.Fail(
             "typed",
             ErrorCodes.InvalidParams,
-            new PolymorphicDerivedPayload
-            {
-                BaseValue = "base",
-                DerivedValue = "derived"
-            });
+            CreatePolymorphicPayload());
         response.Id = 67;
 
         string serialized = RpcTest.SerializeResponse(response);
 
         using JsonDocument document = JsonDocument.Parse(serialized);
-        JsonElement data = document.RootElement.GetProperty("error").GetProperty("data");
-        Assert.That(data.GetProperty("baseValue").GetString(), Is.EqualTo("base"));
-        Assert.That(data.GetProperty("derivedValue").GetString(), Is.EqualTo("derived"));
+        AssertPolymorphicPayload(document.RootElement.GetProperty("error").GetProperty("data"));
     }
 
     [Test]
