@@ -47,7 +47,7 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
 
         try
         {
-            ValueTask<JsonRpcResponse> responseTask = ExecuteRequestAsync(rpcRequest, methodName, method!, context);
+            ValueTask<JsonRpcResponse> responseTask = ExecuteAsync(rpcRequest, methodName, method!, context);
             return responseTask.IsCompletedSuccessfully
                 ? responseTask
                 : AwaitRequestAsync(responseTask, rpcRequest);
@@ -88,9 +88,6 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
         if (_logger.IsError) _logger.Error($"Error during method execution, request: {rpcRequest}", ex);
         return GetErrorResponse(rpcRequest.Method, errorCode, errorText, ex.ToString(), rpcRequest.Id);
     }
-
-    private ValueTask<JsonRpcResponse> ExecuteRequestAsync(JsonRpcRequest rpcRequest, string methodName, ResolvedMethodInfo method, JsonRpcContext context) =>
-        ExecuteAsync(rpcRequest, methodName, method, context);
 
     private async ValueTask<JsonRpcResponse> ExecuteAsync(JsonRpcRequest request, string methodName, ResolvedMethodInfo method, JsonRpcContext context)
     {
