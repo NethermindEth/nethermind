@@ -326,19 +326,9 @@ public class StartupTests
     [NonParallelizable]
     public async Task HttpJsonRpcResponseSink_ReportsStreamableFlushCount()
     {
-        DefaultHttpContext ctx = new();
-        MemoryStream responseBody = new();
-        ctx.Features.Set<IHttpResponseBodyFeature>(new StreamResponseBodyFeature(responseBody));
         IJsonRpcLocalStats jsonRpcLocalStats = Substitute.For<IJsonRpcLocalStats>();
         jsonRpcLocalStats.IsEnabled.Returns(true);
-
-        HttpJsonRpcResponseSink sink = new(
-            ctx,
-            new JsonRpcUrl("http", "127.0.0.1", 0, RpcEndpoint.Http, true, [ModuleType.Engine]),
-            new JsonRpcConfig(),
-            jsonRpcLocalStats,
-            LimboLogs.Instance.GetClassLogger<StartupTests>(),
-            Stopwatch.GetTimestamp());
+        HttpJsonRpcResponseSinkFixture fixture = CreateHttpJsonRpcResponseSink(isAuthenticated: true, jsonRpcLocalStats: jsonRpcLocalStats);
 
         JsonRpcSuccessResponse response = new()
         {
@@ -346,10 +336,10 @@ public class StartupTests
             Result = new FlushingStreamableResult()
         };
 
-        await sink.WriteSingleAsync(response, new RpcReport(GetBlobsV2Method, 0, true), CancellationToken.None);
-        await sink.CompleteAsync(CancellationToken.None);
+        await fixture.Sink.WriteSingleAsync(response, new RpcReport(GetBlobsV2Method, 0, true), CancellationToken.None);
+        await fixture.Sink.CompleteAsync(CancellationToken.None);
 
-        Assert.That(ctx.Response.ContentType, Is.EqualTo("application/json"));
+        Assert.That(fixture.Context.Response.ContentType, Is.EqualTo("application/json"));
         jsonRpcLocalStats.Received(1).ReportCall(
             Arg.Is<RpcReport>(static report => report.Method == GetBlobsV2Method),
             Arg.Any<long>(),
@@ -360,25 +350,15 @@ public class StartupTests
     [NonParallelizable]
     public async Task HttpJsonRpcResponseSink_ReportsBufferedSerializedShape()
     {
-        DefaultHttpContext ctx = new();
-        MemoryStream responseBody = new();
-        ctx.Features.Set<IHttpResponseBodyFeature>(new StreamResponseBodyFeature(responseBody));
         IJsonRpcLocalStats jsonRpcLocalStats = Substitute.For<IJsonRpcLocalStats>();
         jsonRpcLocalStats.IsEnabled.Returns(true);
+        HttpJsonRpcResponseSinkFixture fixture = CreateHttpJsonRpcResponseSink(new JsonRpcConfig { BufferResponses = true }, jsonRpcLocalStats: jsonRpcLocalStats);
 
-        HttpJsonRpcResponseSink sink = new(
-            ctx,
-            new JsonRpcUrl("http", "127.0.0.1", 0, RpcEndpoint.Http, false, [ModuleType.Engine]),
-            new JsonRpcConfig { BufferResponses = true },
-            jsonRpcLocalStats,
-            LimboLogs.Instance.GetClassLogger<StartupTests>(),
-            Stopwatch.GetTimestamp());
-
-        await sink.WriteSingleAsync(
+        await fixture.Sink.WriteSingleAsync(
             new JsonRpcSuccessResponse { Id = JsonRpcId.FromObject(1), Result = new string('x', 8 * 1024) },
             new RpcReport("eth_chainId", 0, true),
             CancellationToken.None);
-        await sink.CompleteAsync(CancellationToken.None);
+        await fixture.Sink.CompleteAsync(CancellationToken.None);
 
         jsonRpcLocalStats.Received(1).ReportCall(
             Arg.Is<RpcReport>(static report => report.Method == "eth_chainId"),
@@ -533,24 +513,36 @@ public class StartupTests
 
     private static async Task<string> WriteHttpJsonRpcResponse(JsonRpcResponse response, string method = "test")
     {
+        HttpJsonRpcResponseSinkFixture fixture = CreateHttpJsonRpcResponseSink();
+
+        await fixture.Sink.WriteSingleAsync(response, new RpcReport(method, 0, true), CancellationToken.None);
+        await fixture.Sink.CompleteAsync(CancellationToken.None);
+
+        return Encoding.UTF8.GetString(fixture.ResponseBody.ToArray());
+    }
+
+    private static HttpJsonRpcResponseSinkFixture CreateHttpJsonRpcResponseSink(
+        JsonRpcConfig? rpcConfig = null,
+        bool isAuthenticated = false,
+        IJsonRpcLocalStats? jsonRpcLocalStats = null)
+    {
         DefaultHttpContext ctx = new();
         MemoryStream responseBody = new();
         ctx.Features.Set<IHttpResponseBodyFeature>(new StreamResponseBodyFeature(responseBody));
 
-        JsonRpcConfig rpcConfig = new();
+        jsonRpcLocalStats ??= Substitute.For<IJsonRpcLocalStats>();
         HttpJsonRpcResponseSink sink = new(
             ctx,
-            new JsonRpcUrl("http", "127.0.0.1", 0, RpcEndpoint.Http, false, [ModuleType.Engine]),
-            rpcConfig,
-            Substitute.For<IJsonRpcLocalStats>(),
+            new JsonRpcUrl("http", "127.0.0.1", 0, RpcEndpoint.Http, isAuthenticated, [ModuleType.Engine]),
+            rpcConfig ?? new JsonRpcConfig(),
+            jsonRpcLocalStats,
             LimboLogs.Instance.GetClassLogger<StartupTests>(),
             Stopwatch.GetTimestamp());
 
-        await sink.WriteSingleAsync(response, new RpcReport(method, 0, true), CancellationToken.None);
-        await sink.CompleteAsync(CancellationToken.None);
-
-        return Encoding.UTF8.GetString(responseBody.ToArray());
+        return new(sink, ctx, responseBody, jsonRpcLocalStats);
     }
+
+    private readonly record struct HttpJsonRpcResponseSinkFixture(HttpJsonRpcResponseSink Sink, DefaultHttpContext Context, MemoryStream ResponseBody, IJsonRpcLocalStats LocalStats);
 
     private static string CreateBlobsBatchRequest(int count)
     {
