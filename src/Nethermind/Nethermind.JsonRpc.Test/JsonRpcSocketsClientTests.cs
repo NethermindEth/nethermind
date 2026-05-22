@@ -403,7 +403,7 @@ public class JsonRpcSocketsClientTests
             List<byte[]> sentMessages = [];
             List<byte[]> receivedMessages = [];
 
-            Task<int> receiveMessages = OneShotServer(ipEndPoint, async socket => await ReadMessages(socket, receivedMessages));
+            Task<int> receiveMessages = OneShotServer(ipEndPoint, socket => ReadMessages(socket, receivedMessages));
 
             Task<int> sendMessages = Task.Run(async () =>
             {
@@ -555,9 +555,9 @@ public class JsonRpcSocketsClientTests
         [TestCase(50)]
         public async Task Can_send_multiple_messages(int messageCount)
         {
-            CancellationTokenSource cts = new();
+            using CancellationTokenSource cts = new();
 
-            Task<int> receiveMessages = OneShotServer("http://localhost:1337/", async webSocket => await CountMessages(webSocket, cts.Token));
+            Task<int> receiveMessages = OneShotServer("http://localhost:1337/", webSocket => CountMessages(webSocket, cts.Token));
 
             Task<int> sendMessages = Task.Run(async () =>
             {
@@ -585,9 +585,9 @@ public class JsonRpcSocketsClientTests
         [TestCase(50)]
         public async Task Can_send_collections(int elements)
         {
-            CancellationTokenSource cts = new();
+            using CancellationTokenSource cts = new();
 
-            Task<int> server = OneShotServer("http://localhost:1337/", async webSocket => await CountMessages(webSocket, cts.Token));
+            Task<int> server = OneShotServer("http://localhost:1337/", webSocket => CountMessages(webSocket, cts.Token));
 
             Task sendCollection = Task.Run(async () =>
             {
@@ -607,9 +607,9 @@ public class JsonRpcSocketsClientTests
         [Ignore("Feature does not work correctly")]
         public async Task Stops_on_limited_body_size(int maxByteCount)
         {
-            CancellationTokenSource cts = new();
+            using CancellationTokenSource cts = new();
 
-            Task<long> receiveBytes = OneShotServer("http://localhost:1337/", async webSocket => await CountBytes(webSocket, cts.Token));
+            Task<long> receiveBytes = OneShotServer("http://localhost:1337/", webSocket => CountBytes(webSocket, cts.Token));
 
             Task<int> sendCollection = Task.Run(async () =>
             {
