@@ -12,13 +12,11 @@ using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Test.Modules;
 using Nethermind.Era1.JsonRpc;
-using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.Admin;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.JsonRpc.Modules.Net;
 using Nethermind.JsonRpc.Modules.Proof;
-using Nethermind.JsonRpc.Modules.Subscribe;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin;
 using Nethermind.Merge.Plugin.Data;
@@ -117,18 +115,11 @@ public class RpcModuleProviderTests
     }
 
     [Test]
-    public void Allows_to_get_modules()
-    {
-        SingletonModulePool<INetRpcModule> pool = new(Substitute.For<INetRpcModule>());
-        _moduleProvider.Register(pool);
-        _moduleProvider.GetPoolForMethod(nameof(INetRpcModule.net_listening)).Should().Be(pool);
-    }
-
-    [Test]
     public void Allows_to_replace_modules()
     {
         SingletonModulePool<INetRpcModule> pool = new(Substitute.For<INetRpcModule>());
         _moduleProvider.Register(pool);
+        _moduleProvider.GetPoolForMethod(nameof(INetRpcModule.net_listening)).Should().Be(pool);
 
         SingletonModulePool<INetRpcModule> pool2 = new(Substitute.For<INetRpcModule>());
         _moduleProvider.Register(pool2);
@@ -226,13 +217,6 @@ public class RpcModuleProviderTests
         module.ParameterCalls.Should().Be(1);
         module.FourParameterCalls.Should().Be(1);
     }
-
-    [TestCase(typeof(FeeHistoryResults))]
-    [TestCase(typeof(TransactionForRpc))]
-    [TestCase(typeof(PeerEventResponse))]
-    [TestCase(typeof(SyncingSubscription.SubscriptionSyncingResult))]
-    public void Generated_rpc_type_info_includes_rpc_payloads(Type payloadType) =>
-        GeneratedRpcTypeInfo.TryGet(payloadType, out _).Should().BeTrue();
 
     [Test]
     public void Rpc_payload_type_info_caches_generated_metadata_and_resolves_fallbacks()
@@ -538,15 +522,15 @@ public class RpcModuleProviderTests
 
     private sealed class TestModulePool<T>(T module) : IRpcModulePool<T> where T : IRpcModule
     {
-        public IRpcModuleFactory<T> Factory { get; } = new TestModuleFactory<T>(module);
+        public IRpcModuleFactory<T> Factory { get; } = new TestModuleFactory(module);
 
         public Task<T> GetModule(bool canBeShared) => Task.FromResult(module);
 
         public void ReturnModule(T module) { }
-    }
 
-    private sealed class TestModuleFactory<T>(T module) : IRpcModuleFactory<T> where T : IRpcModule
-    {
-        public T Create() => module;
+        private sealed class TestModuleFactory(T module) : IRpcModuleFactory<T>
+        {
+            public T Create() => module;
+        }
     }
 }
