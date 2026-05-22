@@ -695,8 +695,13 @@ public class PersistenceManager(
         // persistable is written the same regions are dropped from the page cache (below) —
         // they won't be read again. The leases are held for the whole method.
         using PersistedSnapshotList bases = _repo.LeaseBaseSnapshotsInRange(snapshot.From, snapshot.To);
+        long warmedBlobBytes = 0;
         foreach (PersistedSnapshot baseSnapshot in bases)
+        {
             baseSnapshot.AdviseWillNeedBlobRange();
+            warmedBlobBytes += baseSnapshot.BlobRange.Length;
+        }
+        Metrics.FlatPersistenceBlobWarmedSize.Observe(warmedBlobBytes);
 
         using WholeReadSession session = snapshot.BeginWholeReadSession();
         PersistedSnapshotScanner scanner = new(session, snapshot);

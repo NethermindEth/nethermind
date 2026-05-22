@@ -34,6 +34,11 @@ public static class Metrics
     public static IMetricObserver FlatPersistenceSnapshotSize { get; set; } = new NoopMetricObserver();
 
     [DetailedMetric]
+    [Description("Blob-arena trie-RLP bytes WILLNEED-prefetched per persisted-snapshot persistence")]
+    [ExponentialPowerHistogramMetric(Start = 1, Factor = 1.5, Count = 30)]
+    public static IMetricObserver FlatPersistenceBlobWarmedSize { get; set; } = new NoopMetricObserver();
+
+    [DetailedMetric]
     [CounterMetric]
     [Description("Importer entries count")]
     public static long ImporterEntriesCount { get; set; }
