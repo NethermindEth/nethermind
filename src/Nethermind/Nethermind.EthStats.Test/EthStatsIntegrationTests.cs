@@ -95,7 +95,7 @@ public class EthStatsIntegrationTests
 
     private static bool HasHistoryBlocks(HistoryMessage message, long firstBlockNumber, long secondBlockNumber)
     {
-        List<long> numbers = new();
+        List<long> numbers = [];
         foreach (EthStatsBlock block in message.History)
         {
             numbers.Add(block.Number);

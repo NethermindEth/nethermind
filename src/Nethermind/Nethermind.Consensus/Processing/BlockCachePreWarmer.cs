@@ -263,7 +263,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
 
     private static Dictionary<AddressAsKey, ArrayPoolList<(int Index, Transaction Tx)>> GroupTransactionsBySender(Block block)
     {
-        Dictionary<AddressAsKey, ArrayPoolList<(int, Transaction)>> groups = new();
+        Dictionary<AddressAsKey, ArrayPoolList<(int, Transaction)>> groups = [];
 
         for (int i = 0; i < block.Transactions.Length; i++)
         {

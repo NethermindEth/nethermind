@@ -62,13 +62,13 @@ public class UInt256DictionaryKeyConverterTests
                 }
             }
         };
-        List<Dictionary<string, Dictionary<UInt256, Dictionary<string, Dictionary<UInt256, Hash256>>>>> expectedBlockStateCalls = new()
-        {
+        List<Dictionary<string, Dictionary<UInt256, Dictionary<string, Dictionary<UInt256, Hash256>>>>> expectedBlockStateCalls =
+        [
             new()
             {
                 {"stateOverrides", expectedStateOverrides}
             }
-        };
+        ];
         Dictionary<string, List<Dictionary<string, Dictionary<UInt256, Dictionary<string, Dictionary<UInt256, Hash256>>>>>> expected = new()
         {
             {"blockStateCalls", expectedBlockStateCalls}
@@ -89,7 +89,7 @@ public class UInt256DictionaryKeyConverterTests
     public void ReadJson_EmptyObject_ReturnsEmptyDictionary()
     {
         Dictionary<UInt256, Hash256>? result = JsonSerializer.Deserialize<Dictionary<UInt256, Hash256>>("{}", Options);
-        Dictionary<UInt256, Hash256> empty = new();
+        Dictionary<UInt256, Hash256> empty = [];
 
         result.Should().BeEquivalentTo(empty);
     }

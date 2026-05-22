@@ -306,7 +306,7 @@ public class DiscoveryManager : IDiscoveryManager
 
     private static HashSet<IPAddress> GetValidDestinationAddresses(INetworkConfig networkConfig, INodeTable nodeTable)
     {
-        HashSet<IPAddress> addresses = new();
+        HashSet<IPAddress> addresses = [];
 
         if (nodeTable.MasterNode?.Address.Address is { } masterAddress)
         {

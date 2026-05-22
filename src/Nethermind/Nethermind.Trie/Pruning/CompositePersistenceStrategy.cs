@@ -8,7 +8,7 @@ namespace Nethermind.Trie.Pruning;
 
 public class CompositePersistenceStrategy : IPersistenceStrategy
 {
-    private readonly List<IPersistenceStrategy> _strategies = new();
+    private readonly List<IPersistenceStrategy> _strategies = [];
 
     public CompositePersistenceStrategy(params IPersistenceStrategy[] strategies) => _strategies.AddRange(strategies);
 

@@ -91,7 +91,7 @@ public abstract partial class BaseEngineModuleTests
         int count, ExecutionPayload startingParentBlock, bool setHead, Hash256? random = null,
         ulong slotLength = 12)
     {
-        List<ExecutionPayload> blocks = new();
+        List<ExecutionPayload> blocks = [];
         ExecutionPayload parentBlock = startingParentBlock;
         Block? block = parentBlock.TryGetBlock().Data;
         UInt256? startingTotalDifficulty = block!.IsGenesis
