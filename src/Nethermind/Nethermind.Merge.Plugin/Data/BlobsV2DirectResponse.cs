@@ -10,15 +10,10 @@ using System.IO.Pipelines;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.JsonRpc;
-using Nethermind.Serialization.Json;
 
 namespace Nethermind.Merge.Plugin.Data;
 
-/// <summary>
-/// Wraps parallel arrays of blobs and proofs and writes JSON directly into a
-/// <see cref="PipeWriter"/>, bypassing <see cref="System.Text.Json.Utf8JsonWriter"/>
-/// to avoid extra buffer copies for large blob payloads.
-/// </summary>
+/// <summary>Writes blob/proof V2 results directly into a <see cref="PipeWriter"/>.</summary>
 public sealed class BlobsV2DirectResponse : IStreamableResult, IReadOnlyList<BlobAndProofV2?>
 {
     private readonly byte[]?[] _blobs;
@@ -76,17 +71,15 @@ public sealed class BlobsV2DirectResponse : IStreamableResult, IReadOnlyList<Blo
                 return;
             }
 
-            writer.Write("{\"blob\":\"0x"u8);
-            HexWriter.WriteHexChunked(writer, blob);
-            writer.Write("\",\"proofs\":["u8);
+            writer.Write("{\"blob\":"u8);
+            PayloadBodiesDirectResponseWriter.WriteHexString(writer, blob, chunked: true);
+            writer.Write(",\"proofs\":["u8);
 
             ReadOnlySpan<byte[]> proofs = proofsByBlob[index].Span;
             for (int p = 0; p < proofs.Length; p++)
             {
                 if (p > 0) writer.Write(","u8);
-                writer.Write("\"0x"u8);
-                HexWriter.WriteHexSmall(writer, proofs[p]);
-                writer.Write("\""u8);
+                PayloadBodiesDirectResponseWriter.WriteHexString(writer, proofs[p], chunked: false);
             }
 
             writer.Write("]}"u8);

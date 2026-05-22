@@ -10,15 +10,10 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core.Collections;
 using Nethermind.JsonRpc;
-using Nethermind.Serialization.Json;
 
 namespace Nethermind.Merge.Plugin.Data;
 
-/// <summary>
-/// Wraps an <see cref="ArrayPoolList{T}"/> of <see cref="BlobAndProofV1"/> and writes JSON
-/// directly into a <see cref="PipeWriter"/>, bypassing <see cref="System.Text.Json.Utf8JsonWriter"/>
-/// to avoid extra buffer copies for large blob payloads.
-/// </summary>
+/// <summary>Writes blob/proof V1 results directly into a <see cref="PipeWriter"/>.</summary>
 public sealed class BlobsV1DirectResponse(ArrayPoolList<BlobAndProofV1?> items) : IStreamableResult, IReadOnlyList<BlobAndProofV1?>, IDisposable
 {
     private readonly ArrayPoolList<BlobAndProofV1?> _items = items;
@@ -47,11 +42,11 @@ public sealed class BlobsV1DirectResponse(ArrayPoolList<BlobAndProofV1?> items) 
                 return;
             }
 
-            writer.Write("{\"blob\":\"0x"u8);
-            HexWriter.WriteHexChunked(writer, item.Blob);
-            writer.Write("\",\"proof\":\"0x"u8);
-            HexWriter.WriteHexSmall(writer, item.Proof);
-            writer.Write("\"}"u8);
+            writer.Write("{\"blob\":"u8);
+            PayloadBodiesDirectResponseWriter.WriteHexString(writer, item.Blob, chunked: true);
+            writer.Write(",\"proof\":"u8);
+            PayloadBodiesDirectResponseWriter.WriteHexString(writer, item.Proof, chunked: false);
+            writer.Write("}"u8);
         }
     }
 }
