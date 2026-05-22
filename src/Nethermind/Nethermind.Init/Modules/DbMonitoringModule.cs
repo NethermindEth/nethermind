@@ -118,22 +118,18 @@ public class DbMonitoringModule : Module
             }
         }
 
-        // Uses IDictionary<TKey,TValue>.Remove so it works for both the default NonBlocking.ConcurrentDictionary
+        // Cast to IDictionary<string, long> so this works for both the default NonBlocking.ConcurrentDictionary
         // and the plain Dictionary used under the ZK_EVM compile flag.
+        private static readonly IDictionary<string, long>[] _perDbMetricMaps =
+        {
+            Db.Metrics.DbReads, Db.Metrics.DbWrites, Db.Metrics.DbSize,
+            Db.Metrics.DbMemtableSize, Db.Metrics.DbBlockCacheSize, Db.Metrics.DbIndexFilterSize,
+        };
+
         private static void RemoveStaleMetricEntry(string name)
         {
-            IDictionary<string, long> reads = Db.Metrics.DbReads;
-            IDictionary<string, long> writes = Db.Metrics.DbWrites;
-            IDictionary<string, long> size = Db.Metrics.DbSize;
-            IDictionary<string, long> memtable = Db.Metrics.DbMemtableSize;
-            IDictionary<string, long> blockCache = Db.Metrics.DbBlockCacheSize;
-            IDictionary<string, long> indexFilter = Db.Metrics.DbIndexFilterSize;
-            reads.Remove(name);
-            writes.Remove(name);
-            size.Remove(name);
-            memtable.Remove(name);
-            blockCache.Remove(name);
-            indexFilter.Remove(name);
+            foreach (IDictionary<string, long> map in _perDbMetricMaps)
+                map.Remove(name);
         }
 
         public class DbFactoryInterceptor(DbTracker tracker, IDbFactory baseFactory) : IDbFactory
