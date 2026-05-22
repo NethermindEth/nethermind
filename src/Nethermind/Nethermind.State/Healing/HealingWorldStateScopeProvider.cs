@@ -16,7 +16,7 @@ public class HealingWorldStateScopeProvider(
     Lazy<IPathRecovery> recovery,
     Lazy<ICodeRecovery> codeRecovery,
     ILogManager logManager)
-    : TrieStoreScopeProvider(trieStore, new HealingCodeDb(codeDb, codeRecovery), logManager)
+    : TrieStoreScopeProvider(trieStore, new HealingCodeDb(codeDb, codeRecovery), logManager, codeDbIsPersistent: true)
 {
     private readonly ILogManager? _logManager = logManager;
     private readonly ITrieStore _trieStore = trieStore;

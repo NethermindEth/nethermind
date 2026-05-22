@@ -266,6 +266,10 @@ public class WriteBatchBenchmark
         public IWorldStateScopeProvider.ICodeSetter BeginCodeWrite()
             => NullCodeSetter.Instance;
 
+        public bool ContainsCode(in ValueHash256 codeHash) => false;
+
+        public void MarkCodePersisted(in ValueHash256 codeHash) { }
+
         private sealed class NullCodeSetter : IWorldStateScopeProvider.ICodeSetter
         {
             public static readonly NullCodeSetter Instance = new();

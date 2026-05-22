@@ -117,8 +117,8 @@ public partial class NewPayloadRequest<TExecutionPayload>
 
         payload.ExecutionRequests = [.. pool];
 
-        BlockDecodingResult result = payload.TryGetBlock();
+        Result<Block> result = payload.TryGetBlock();
 
-        return result.Block ?? throw new InvalidOperationException(result.Error);
+        return result.Data ?? throw new InvalidOperationException(result.Error);
     }
 }

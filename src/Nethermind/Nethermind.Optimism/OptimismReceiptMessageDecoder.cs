@@ -14,7 +14,7 @@ namespace Nethermind.Optimism;
 public sealed class OptimismReceiptTrieDecoder() : OptimismReceiptMessageDecoder(true);
 
 [Rlp.Decoder]
-public class OptimismReceiptMessageDecoder(bool isEncodedForTrie = false, bool skipStateAndStatus = false) : RlpValueDecoder<TxReceipt>
+public class OptimismReceiptMessageDecoder(bool isEncodedForTrie = false, bool skipStateAndStatus = false) : RlpDecoder<TxReceipt>
 {
     private readonly bool _skipStateAndStatus = skipStateAndStatus;
 
