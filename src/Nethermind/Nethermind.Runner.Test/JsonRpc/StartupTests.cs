@@ -35,6 +35,9 @@ namespace Nethermind.Runner.Test.JsonRpc;
 [TestFixture]
 public class StartupTests
 {
+    private const string GetBlobsV1Method = "engine_getBlobsV1";
+    private const string GetBlobsV2Method = "engine_getBlobsV2";
+
     private static readonly Startup Startup;
 
     static StartupTests() => Startup = CreateStartup();
@@ -82,16 +85,7 @@ public class StartupTests
     public async Task ProcessJsonRpcRequest_EscapesId()
     {
         const string injId = "x\"\\\n\u0001";
-        string response = await ProcessJsonRpcRequest(
-            $$"""
-            {
-                "jsonrpc":"2.0",
-                "id": {{JsonSerializer.Serialize(injId)}},
-                "method":"engine_getBlobsV1",
-                "params":[[]]
-            }
-            """
-        );
+        string response = await ProcessJsonRpcRequest(CreateJsonRpcRequest(idJson: JsonSerializer.Serialize(injId)));
 
         using JsonDocument doc = JsonDocument.Parse(response);
 
@@ -105,15 +99,7 @@ public class StartupTests
     [NonParallelizable]
     public async Task ProcessJsonRpcRequest_WithoutContentLength_ProcessesAndCountsActualBytes()
     {
-        const string request =
-            """
-            {
-                "jsonrpc":"2.0",
-                "id": 1,
-                "method":"engine_getBlobsV1",
-                "params":[[]]
-            }
-            """;
+        string request = CreateJsonRpcRequest();
 
         long receivedBefore = JsonRpcMetrics.JsonRpcBytesReceivedHttp;
         string response = await ProcessJsonRpcRequest(request, setContentLength: false);
@@ -129,15 +115,7 @@ public class StartupTests
     [NonParallelizable]
     public async Task ProcessJsonRpcRequest_WithContentLength_ProcessesRequest()
     {
-        const string request =
-            """
-            {
-                "jsonrpc":"2.0",
-                "id": 1,
-                "method":"engine_getBlobsV1",
-                "params":[[]]
-            }
-            """;
+        string request = CreateJsonRpcRequest();
 
         string response = await ProcessJsonRpcRequest(request);
 
@@ -154,14 +132,14 @@ public class StartupTests
         Startup startup = CreateStartup(jsonRpcLocalStats: jsonRpcLocalStats);
 
         string response = await ProcessJsonRpcRequest(
-            "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"engine_getBlobsV1\",\"params\":[[]]}",
+            CreateJsonRpcRequest(),
             startup: startup);
 
         using JsonDocument doc = JsonDocument.Parse(response);
         Assert.That(doc.RootElement.GetProperty("result").ValueKind, Is.EqualTo(JsonValueKind.Array));
 
         jsonRpcLocalStats.Received(1).ReportCall(
-            Arg.Is<RpcReport>(static report => report.Method == "engine_getBlobsV1"),
+            Arg.Is<RpcReport>(static report => report.Method == GetBlobsV1Method),
             Arg.Any<long>(),
             Arg.Any<long?>());
     }
@@ -169,10 +147,8 @@ public class StartupTests
     [Test]
     public async Task ProcessJsonRpcRequest_RejectsAdjacentTopLevelValues()
     {
-        const string request =
-            """
-            {"jsonrpc":"2.0","id":1,"method":"engine_getBlobsV1","params":[[]]}{"jsonrpc":"2.0","id":2,"method":"engine_getBlobsV1","params":[[]]}
-            """;
+        string request =
+            CreateJsonRpcRequest() + CreateJsonRpcRequest(idJson: "2");
 
         string response = await ProcessJsonRpcRequest(request);
 
@@ -184,10 +160,8 @@ public class StartupTests
     [Test]
     public async Task ProcessJsonRpcRequest_RejectsObjectThenArrayTopLevelValues()
     {
-        const string request =
-            """
-            {"jsonrpc":"2.0","id":1,"method":"engine_getBlobsV1","params":[[]]}[{"jsonrpc":"2.0","id":2,"method":"engine_getBlobsV1","params":[[]]}]
-            """;
+        string request =
+            CreateJsonRpcRequest() + "[" + CreateJsonRpcRequest(idJson: "2") + "]";
 
         string response = await ProcessJsonRpcRequest(request);
 
@@ -199,7 +173,7 @@ public class StartupTests
     [Test]
     public async Task ProcessJsonRpcRequest_AcceptsTrailingWhitespaceAfterSingleDocument()
     {
-        const string request = "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"engine_getBlobsV1\",\"params\":[[]]}\r\n\t ";
+        string request = CreateJsonRpcRequest() + "\r\n\t ";
 
         string response = await ProcessJsonRpcRequest(request);
 
@@ -212,10 +186,7 @@ public class StartupTests
     [Test]
     public async Task ProcessJsonRpcRequest_AcceptsBatchDocument()
     {
-        const string request =
-            """
-            [{"jsonrpc":"2.0","id":1,"method":"engine_getBlobsV1","params":[[]]},{"jsonrpc":"2.0","id":2,"method":"engine_getBlobsV1","params":[[]]}]
-            """;
+        string request = CreateBlobsBatchRequest(2);
 
         string response = await ProcessJsonRpcRequest(request);
 
@@ -235,7 +206,7 @@ public class StartupTests
     public async Task ProcessJsonRpcRequest_OverMaxRequestBodySize_ReturnsPayloadTooLarge()
     {
         (string response, int statusCode) = await ProcessJsonRpcRequestWithStatus(
-            "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"engine_getBlobsV1\",\"params\":[[]]}",
+            CreateJsonRpcRequest(),
             maxRequestBodySize: 1);
 
         using JsonDocument doc = JsonDocument.Parse(response);
@@ -251,7 +222,7 @@ public class StartupTests
         rpcAuthentication.Authenticate(Arg.Any<string>()).Returns(Task.FromResult(false));
 
         (string response, int statusCode) = await ProcessJsonRpcRequestWithStatus(
-            "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"engine_getBlobsV1\",\"params\":[[]]}",
+            CreateJsonRpcRequest(),
             startup: CreateStartup(rpcAuthentication),
             isAuthenticated: true);
 
@@ -299,7 +270,7 @@ public class StartupTests
     [Test]
     public async Task ProcessJsonRpcRequest_SerializesTypedErrorData()
     {
-        const string request = "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"engine_getBlobsV2\",\"params\":[[]]}";
+        string request = CreateJsonRpcRequest(GetBlobsV2Method);
 
         string response = await ProcessJsonRpcRequest(request);
 
@@ -320,7 +291,7 @@ public class StartupTests
             .Returns(Task.FromResult(ResultWrapper<IReadOnlyList<BlobAndProofV2?>?>.Success(streamableResult)));
 
         string response = await ProcessJsonRpcRequest(
-            "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"engine_getBlobsV2\",\"params\":[[]]}",
+            CreateJsonRpcRequest(GetBlobsV2Method),
             startup: CreateStartup(engineModule: engineModule));
 
         using JsonDocument doc = JsonDocument.Parse(response);
@@ -411,12 +382,12 @@ public class StartupTests
             Result = new FlushingStreamableResult()
         };
 
-        await sink.WriteSingleAsync(response, new RpcReport("engine_getBlobsV2", 0, true), CancellationToken.None);
+        await sink.WriteSingleAsync(response, new RpcReport(GetBlobsV2Method, 0, true), CancellationToken.None);
         await sink.CompleteAsync(CancellationToken.None);
 
         Assert.That(ctx.Response.ContentType, Is.EqualTo("application/json"));
         jsonRpcLocalStats.Received(1).ReportCall(
-            Arg.Is<RpcReport>(static report => report.Method == "engine_getBlobsV2"),
+            Arg.Is<RpcReport>(static report => report.Method == GetBlobsV2Method),
             Arg.Any<long>(),
             Arg.Any<long?>());
     }
@@ -593,6 +564,9 @@ public class StartupTests
         return (Encoding.UTF8.GetString(responseBody.ToArray()), ctx.Response.StatusCode);
     }
 
+    private static string CreateJsonRpcRequest(string method = GetBlobsV1Method, string idJson = "1", string paramsJson = "[[]]") =>
+        $$"""{"jsonrpc":"2.0","id":{{idJson}},"method":"{{method}}","params":{{paramsJson}}}""";
+
     private static async Task<string> WriteHttpJsonRpcResponse(JsonRpcResponse response, string method = "test")
     {
         DefaultHttpContext ctx = new();
@@ -624,9 +598,7 @@ public class StartupTests
                 request.Append(',');
             }
 
-            request.Append("{\"jsonrpc\":\"2.0\",\"id\":");
-            request.Append(i);
-            request.Append(",\"method\":\"engine_getBlobsV1\",\"params\":[[]]}");
+            request.Append(CreateJsonRpcRequest(idJson: i.ToString()));
         }
 
         request.Append(']');
@@ -639,15 +611,13 @@ public class StartupTests
         string contentType = "application/json",
         IPAddress? remoteIp = null)
     {
-        const string request = "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"engine_newPayloadV4\",\"params\":[null,[],null,null]}";
-
         DefaultHttpContext ctx = new()
         {
             Request =
             {
                 Method = method,
                 ContentType = contentType,
-                Body = new MemoryStream(Encoding.UTF8.GetBytes(request))
+                Body = new MemoryStream(Encoding.UTF8.GetBytes(CreateJsonRpcRequest("engine_newPayloadV4", paramsJson: "[null,[],null,null]")))
             }
         };
 

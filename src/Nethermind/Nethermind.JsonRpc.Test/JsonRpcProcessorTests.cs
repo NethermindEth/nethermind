@@ -28,6 +28,8 @@ namespace Nethermind.JsonRpc.Test;
 [TestFixture(false)]
 public class JsonRpcProcessorTests(bool returnErrors)
 {
+    private const string TransactionCountParamsJson = "[\"0x7f01d9b227593e033bf8d6fc86e634d27aa85568\",\"0x668c24\"]";
+
     private readonly JsonRpcErrorResponse _errorResponse = new();
     private static readonly object[] CachedMethodNameCases =
     [
@@ -43,6 +45,15 @@ public class JsonRpcProcessorTests(bool returnErrors)
         new object[] { "eth_chainId", true, true },
         new object[] { "eth_unknown", false, false },
         new object[] { "eth_unknown", true, false },
+    ];
+    private static readonly object[] JsonRpcIdCases =
+    [
+        new object[] { "12345678901234567890", new JsonRpcId(decimal.Parse("12345678901234567890")) },
+        new object[] { "\"0xa1aa12434\"", new JsonRpcId("0xa1aa12434") },
+        new object[] { "67", new JsonRpcId(67) },
+        new object[] { "9223372036854775807", new JsonRpcId(long.MaxValue) },
+        new object[] { "\";\\\\\\\"\"", new JsonRpcId(";\\\"") },
+        new object[] { "null", JsonRpcId.Null },
     ];
 
     static JsonRpcProcessorTests()
@@ -432,6 +443,9 @@ public class JsonRpcProcessorTests(bool returnErrors)
     private static PipeReader CreateReader(string request) =>
         PipeReader.Create(new ReadOnlySequence<byte>(Encoding.UTF8.GetBytes(request)));
 
+    private static string CreateTransactionCountRequest(string idJson, string paramsName = "params", string paramsJson = TransactionCountParamsJson) =>
+        $$"""{"id":{{idJson}},"jsonrpc":"2.0","method":"eth_getTransactionCount","{{paramsName}}":{{paramsJson}}}""";
+
     private static ReadOnlySequence<byte> CreateSequence(string first, string second)
     {
         BufferSegment start = new(Encoding.UTF8.GetBytes(first));
@@ -726,37 +740,19 @@ public class JsonRpcProcessorTests(bool returnErrors)
         return fileSystem;
     }
 
-    [Test]
-    public async Task Can_process_non_hex_ids()
+    [TestCaseSource(nameof(JsonRpcIdCases))]
+    public async Task Can_process_ids(string idJson, JsonRpcId expectedId)
     {
-        CollectedJsonRpcResponses result = await ProcessAsync("{\"id\":12345678901234567890,\"jsonrpc\":\"2.0\",\"method\":\"eth_getTransactionCount\",\"params\":[\"0x7f01d9b227593e033bf8d6fc86e634d27aa85568\",\"0x668c24\"]}");
+        CollectedJsonRpcResponses result = await ProcessAsync(CreateTransactionCountRequest(idJson));
         result.Should().HaveCount(1);
-        Assert.That(result[0].Response!.Id, Is.EqualTo(new JsonRpcId(decimal.Parse("12345678901234567890"))));
-        result.DisposeItems();
-    }
-
-    [Test]
-    public async Task Can_process_hex_ids()
-    {
-        CollectedJsonRpcResponses result = await ProcessAsync("{\"id\":\"0xa1aa12434\",\"jsonrpc\":\"2.0\",\"method\":\"eth_getTransactionCount\",\"params\":[\"0x7f01d9b227593e033bf8d6fc86e634d27aa85568\",\"0x668c24\"]}");
-        result.Should().HaveCount(1);
-        Assert.That(result[0].Response!.Id, Is.EqualTo(new JsonRpcId("0xa1aa12434")));
-        result.DisposeItems();
-    }
-
-    [Test]
-    public async Task Can_process_int()
-    {
-        CollectedJsonRpcResponses result = await ProcessAsync("{\"id\":67,\"jsonrpc\":\"2.0\",\"method\":\"eth_getTransactionCount\",\"params\":[\"0x7f01d9b227593e033bf8d6fc86e634d27aa85568\",\"0x668c24\"]}");
-        result.Should().HaveCount(1);
-        Assert.That(result[0].Response!.Id, Is.EqualTo(new JsonRpcId(67)));
+        Assert.That(result[0].Response!.Id, Is.EqualTo(expectedId));
         result.DisposeItems();
     }
 
     [Test]
     public async Task Can_process_uppercase_params()
     {
-        CollectedJsonRpcResponses result = await ProcessAsync("{\"id\":67,\"jsonrpc\":\"2.0\",\"method\":\"eth_getTransactionCount\",\"Params\":[\"0x7f01d9b227593e033bf8d6fc86e634d27aa85568\",\"0x668c24\"]}");
+        CollectedJsonRpcResponses result = await ProcessAsync(CreateTransactionCountRequest("67", "Params"));
         result.Should().HaveCount(1);
         Assert.That(result[0].Response!.Id, Is.EqualTo(new JsonRpcId(67)));
         if (returnErrors)
@@ -770,33 +766,6 @@ public class JsonRpcProcessorTests(bool returnErrors)
         result.DisposeItems();
     }
 
-
-    [Test]
-    public async Task Can_process_long_ids()
-    {
-        CollectedJsonRpcResponses result = await ProcessAsync("{\"id\":9223372036854775807,\"jsonrpc\":\"2.0\",\"method\":\"eth_getTransactionCount\",\"params\":[\"0x7f01d9b227593e033bf8d6fc86e634d27aa85568\",\"0x668c24\"]}");
-        result.Should().HaveCount(1);
-        Assert.That(result[0].Response!.Id, Is.EqualTo(new JsonRpcId(long.MaxValue)));
-        result.DisposeItems();
-    }
-
-    [Test]
-    public async Task Can_process_special_characters_in_ids()
-    {
-        CollectedJsonRpcResponses result = await ProcessAsync("{\"id\":\";\\\\\\\"\",\"jsonrpc\":\"2.0\",\"method\":\"eth_getTransactionCount\",\"params\":[\"0x7f01d9b227593e033bf8d6fc86e634d27aa85568\",\"0x668c24\"]}");
-        result.Should().HaveCount(1);
-        Assert.That(result[0].Response!.Id, Is.EqualTo(new JsonRpcId(";\\\"")));
-        result.DisposeItems();
-    }
-
-    [Test]
-    public async Task Can_process_null_in_ids()
-    {
-        CollectedJsonRpcResponses result = await ProcessAsync("{\"id\":null,\"jsonrpc\":\"2.0\",\"method\":\"eth_getTransactionCount\",\"params\":[\"0x7f01d9b227593e033bf8d6fc86e634d27aa85568\",\"0x668c24\"]}");
-        result.Should().HaveCount(1);
-        Assert.That(result[0].Response!.Id, Is.EqualTo(JsonRpcId.Null));
-        result.DisposeItems();
-    }
 
     [Test]
     public async Task Can_process_batch_request_with_nested_object_params()
