@@ -9,14 +9,10 @@ using System.Threading;
 
 namespace Nethermind.JsonRpc;
 
-/// <summary>
-/// Registers generated JSON-RPC method names that can be reused while parsing request envelopes.
-/// </summary>
+/// <summary>Registers generated JSON-RPC method names that can be reused while parsing request envelopes.</summary>
 public static class RpcKnownMethodNamesRegistry
 {
-    /// <summary>
-    /// Registers method names discovered from an RPC module assembly.
-    /// </summary>
+    /// <summary>Registers method names discovered from an RPC module assembly.</summary>
     public static void Register(string[] methodNames) => KnownRpcMethodNames.Register(methodNames);
 }
 
@@ -110,10 +106,8 @@ internal static class KnownRpcMethodNames
         }
     }
 
-    private readonly struct MethodName(string name)
+    private readonly record struct MethodName(string Name)
     {
-        public string Name { get; } = name;
-
-        public byte[] Utf8 { get; } = Encoding.UTF8.GetBytes(name);
+        public byte[] Utf8 { get; } = Encoding.UTF8.GetBytes(Name);
     }
 }
