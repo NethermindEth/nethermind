@@ -248,7 +248,7 @@ public class Startup : IStartup
     }
 
     private static bool IsLocalhost(IPAddress remoteIp)
-        => IPAddress.IsLoopback(remoteIp) || remoteIp.Equals(IPAddress.IPv6Loopback);
+        => IPAddress.IsLoopback(remoteIp);
 
     internal static bool TryGetTrustedHttpJsonRpcUrl(
         HttpContext ctx,
