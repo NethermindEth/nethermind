@@ -64,6 +64,12 @@ public class ForkchoiceUpdatedHandler(
             ?? StartBuildingPayload(newHeadHeader!, forkchoiceState, payloadAttributes);
     }
 
+    /// <summary>
+    /// MAY-skip clause from
+    /// <see href="https://github.com/ethereum/execution-apis/pull/786">execution-apis#786</see>:
+    /// returns Valid when <paramref name="newHeadHeader"/> is a canonical ancestor of the latest
+    /// known finalized block, so the FCU is answered without performing a reorg.
+    /// </summary>
     protected virtual bool IsOnMainChainBehindFinalized(BlockHeader newHeadHeader, ForkchoiceStateV1 forkchoiceState,
         [NotNullWhen(true)] out ResultWrapper<ForkchoiceUpdatedV1Result>? result)
     {

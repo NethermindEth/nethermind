@@ -106,7 +106,7 @@ public class TransactionJsonTest : GeneralStateTestBase
                     Nonce = UInt256.Zero,
                     Balance = UInt256.Parse("1000000000000000000000"),
                     Code = [],
-                    Storage = new()
+                    Storage = []
                 }
             },
             // Expected post-state root from pyspec fixture (pre-state unchanged)

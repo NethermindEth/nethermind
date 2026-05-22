@@ -40,7 +40,7 @@ public sealed class HttpRemoteEraClient : IRemoteEraClient, IDisposable
         await using Stream stream = await response.Content.ReadAsStreamAsync(cancellation).ConfigureAwait(false);
         using StreamReader reader = new(stream);
 
-        Dictionary<int, RemoteEraEntry> manifest = new();
+        Dictionary<int, RemoteEraEntry> manifest = [];
 
         while (await reader.ReadLineAsync(cancellation).ConfigureAwait(false) is { } line)
         {

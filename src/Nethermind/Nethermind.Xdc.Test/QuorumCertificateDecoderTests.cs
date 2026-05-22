@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using FluentAssertions;
 using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Xdc.Types;
@@ -32,30 +31,7 @@ internal class QuorumCertificateDecoderTests
         Rlp.ValueDecoderContext ctx = new(stream.Data.AsSpan());
         QuorumCertificate decoded = decoder.Decode(ref ctx);
 
-        decoded.Should().BeEquivalentTo(quorumCert);
-    }
-
-    [TestCase(true)]
-    [TestCase(false)]
-    public void Encode_UseBothRlpStreamAndValueDecoderContext_IsEquivalentAfterReencoding(bool useRlpStream)
-    {
-        QuorumCertificate quorumCert = new(new BlockRoundInfo(Hash256.Zero, 1, 1), [new Signature(new byte[64], 0), new Signature(new byte[64], 0), new Signature(new byte[64], 0)], 0);
-        QuorumCertificateDecoder decoder = new();
-        RlpStream stream = new(decoder.GetLength(quorumCert));
-        decoder.Encode(stream, quorumCert);
-        QuorumCertificate decoded;
-        if (useRlpStream)
-        {
-            Rlp.ValueDecoderContext decoderContext = new(stream.Data.AsSpan());
-            decoded = decoder.Decode(ref decoderContext);
-        }
-        else
-        {
-            Rlp.ValueDecoderContext decoderContext = new(stream.Data.AsSpan());
-            decoded = decoder.Decode(ref decoderContext);
-        }
-
-        decoded.Should().BeEquivalentTo(quorumCert);
+        Assert.That(decoded, Is.EqualTo(quorumCert).UsingPropertiesComparer());
     }
 
 }

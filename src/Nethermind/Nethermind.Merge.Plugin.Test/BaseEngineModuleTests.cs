@@ -91,9 +91,9 @@ public abstract partial class BaseEngineModuleTests
         int count, ExecutionPayload startingParentBlock, bool setHead, Hash256? random = null,
         ulong slotLength = 12)
     {
-        List<ExecutionPayload> blocks = new();
+        List<ExecutionPayload> blocks = [];
         ExecutionPayload parentBlock = startingParentBlock;
-        Block? block = parentBlock.TryGetBlock().Block;
+        Block? block = parentBlock.TryGetBlock().Data;
         UInt256? startingTotalDifficulty = block!.IsGenesis
             ? block.Difficulty
             : chain.BlockFinder.FindHeader(block.Header.ParentHash!)!.TotalDifficulty;
@@ -115,7 +115,7 @@ public abstract partial class BaseEngineModuleTests
 
             blocks.Add(getPayloadResult);
             parentBlock = getPayloadResult;
-            block = parentBlock.TryGetBlock().Block!;
+            block = parentBlock.TryGetBlock().Data!;
             block.Header.TotalDifficulty = parentHeader.TotalDifficulty + block.Header.Difficulty;
             parentHeader = block.Header;
         }

@@ -10,7 +10,7 @@ using System.Diagnostics.CodeAnalysis;
 namespace Nethermind.Serialization.Rlp
 {
     [method: DynamicDependency(DynamicallyAccessedMemberTypes.PublicConstructors, typeof(LogEntryDecoder))]
-    public sealed class LogEntryDecoder() : RlpValueDecoder<LogEntry>
+    public sealed class LogEntryDecoder() : RlpDecoder<LogEntry?>
     {
         private static readonly RlpLimit RlpLimit = RlpLimit.For<LogEntry>((int)16.MB, nameof(LogEntry));
         public static LogEntryDecoder Instance { get; } = new();
@@ -42,18 +42,6 @@ namespace Nethermind.Serialization.Rlp
             decoderContext.Check(logEntryCheck);
 
             return new LogEntry(address, data, topics);
-        }
-
-        public Rlp Encode(LogEntry? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-        {
-            if (item is null)
-            {
-                return Rlp.OfEmptyList;
-            }
-
-            RlpStream rlpStream = new(GetLength(item, rlpBehaviors));
-            Encode(rlpStream, item, rlpBehaviors);
-            return new Rlp(rlpStream.Data.ToArray());
         }
 
         public override void Encode(RlpStream rlpStream, LogEntry? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)

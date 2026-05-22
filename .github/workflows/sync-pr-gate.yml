@@ -1,10 +1,8 @@
 name: Sync PR Gate (Hoodi)
 
 on:
-  pull_request_target:
+  pull_request:
     branches: [master]
-  pull_request_review:
-    types: [submitted]
 
 concurrency:
   group: sync-pr-${{ github.event.pull_request.number }}
@@ -14,37 +12,13 @@ env:
   DOTNET_SYSTEM_CONSOLE_ALLOW_ANSI_COLOR_REDIRECTION: "1"
   TERM: xterm
 
+permissions:
+  contents: read
+
 jobs:
-  check-approval:
-    name: "Check PR approval"
-    if: >-
-      github.event_name == 'pull_request_target' ||
-      github.event.review.state == 'approved'
-    runs-on: ubuntu-latest
-    outputs:
-      run: ${{ steps.check.outputs.run }}
-    steps:
-      - name: Check if sync should run
-        id: check
-        env:
-          GH_TOKEN: ${{ github.token }}
-          IS_FORK: ${{ github.event.pull_request.head.repo.fork }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-        run: |
-          if [ "$IS_FORK" != "true" ]; then
-            echo "run=true" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-
-          # Fork PR: only run if at least one approval exists
-          approved=$(gh api "repos/${{ github.repository }}/pulls/${PR_NUMBER}/reviews" \
-            --jq '[.[] | select(.state == "APPROVED")] | length > 0')
-          echo "run=$approved" >> "$GITHUB_OUTPUT"
-
   sync-hoodi:
     name: "Sync hoodi (${{ matrix.mode }})"
-    needs: check-approval
-    if: needs.check-approval.outputs.run == 'true'
+    if: github.event.pull_request.head.repo.fork == false
     runs-on: ubuntu-arm64-8-core
     timeout-minutes: 180
     strategy:
@@ -60,7 +34,7 @@ jobs:
     steps:
       - name: Authenticate App
         id: gh-app
-        uses: actions/create-github-app-token@v2
+        uses: actions/create-github-app-token@v3
         with:
           app-id: ${{ vars.APP_ID }}
           private-key: ${{ secrets.APP_PRIVATE_KEY }}
@@ -70,6 +44,7 @@ jobs:
         uses: actions/checkout@v6
         with:
           ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
 
       - name: Checkout tests repository
         uses: actions/checkout@v6
@@ -78,6 +53,7 @@ jobs:
           path: tests
           token: ${{ steps.gh-app.outputs.token }}
           clean: true
+          persist-credentials: false
 
       - name: Cache apt packages
         uses: awalsh128/cache-apt-pkgs-action@v1

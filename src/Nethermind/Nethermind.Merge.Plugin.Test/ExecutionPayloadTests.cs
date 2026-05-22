@@ -21,12 +21,12 @@ public class ExecutionPayloadTests
         byte[] validRlp = EncodeTx(txType);
 
         ExecutionPayload payload = new() { Transactions = [validRlp] };
-        TransactionDecodingResult result = payload.TryGetTransactions();
+        Result<Transaction[]> result = payload.TryGetTransactions();
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Error, Is.Null);
-            Assert.That(result.Transactions, Has.Length.EqualTo(1));
+            Assert.That(result.Data, Has.Length.EqualTo(1));
         }
     }
 
@@ -39,7 +39,7 @@ public class ExecutionPayloadTests
         byte[] mutated = [.. validRlp, .. garbage];
 
         ExecutionPayload payload = new() { Transactions = [EncodeTx(txType), mutated, EncodeTx(txType)] };
-        TransactionDecodingResult result = payload.TryGetTransactions();
+        Result<Transaction[]> result = payload.TryGetTransactions();
 
         Assert.That(result.Error, Contains.Substring("checkpoint failed"));
     }

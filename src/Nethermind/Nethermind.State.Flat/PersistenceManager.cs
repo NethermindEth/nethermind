@@ -30,7 +30,7 @@ public class PersistenceManager(
     private readonly int _minReorgDepth = configuration.MinReorgDepth;
     private readonly int _maxReorgDepth = configuration.MaxReorgDepth;
     private readonly int _compactSize = configuration.CompactSize;
-    private readonly List<(Hash256, TreePath)> _trieNodesSortBuffer = new(); // Presort make it faster
+    private readonly List<(Hash256, TreePath)> _trieNodesSortBuffer = []; // Presort make it faster
     private readonly Lock _persistenceLock = new();
 
     private StateId _currentPersistedStateId = StateId.PreGenesis;

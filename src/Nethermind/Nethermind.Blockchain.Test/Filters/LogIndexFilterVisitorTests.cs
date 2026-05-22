@@ -384,7 +384,7 @@ public class LogIndexFilterVisitorTests
     {
         Random random = new(42);
 
-        Dictionary<Address, List<int>> addressRanges = new();
+        Dictionary<Address, List<int>> addressRanges = [];
         foreach (Address address in new[] { TestItem.AddressA, TestItem.AddressB, TestItem.AddressC, TestItem.AddressD, TestItem.AddressE })
         {
             List<int> range = Enumerable.Range((int)FromBlock, (int)(ToBlock + 1)).Where(_ => random.NextDouble() < 0.3).ToList();

@@ -257,7 +257,7 @@ namespace Nethermind.Network.Test.P2P
         public void Hello_starts_highest_agreed_eth_version_only()
         {
             P2PProtocolHandler p2PProtocolHandler = CreateSession();
-            List<ProtocolEventArgs> requestedProtocols = new();
+            List<ProtocolEventArgs> requestedProtocols = [];
 
             p2PProtocolHandler.AddSupportedCapability(new Capability(Protocol.Eth, 68));
             p2PProtocolHandler.AddSupportedCapability(new Capability(Protocol.Eth, 69));
