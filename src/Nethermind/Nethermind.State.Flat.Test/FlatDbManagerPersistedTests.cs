@@ -54,7 +54,7 @@ public class FlatDbManagerPersistedTests
     public async Task ConstructorAcceptsPersistedRepository()
     {
         using ArenaManager smallArena = new(Path.Combine(_testDir, "arenas", "base"), 0, maxArenaSize: 4096);
-        using BlobArenaManager smallBlobs = new(Path.Combine(_testDir, "blobs", "small"), 1024 * 1024, PersistedSnapshotTier.Small);
+        using BlobArenaManager smallBlobs = new(Path.Combine(_testDir, "blobs", "small"), 1024 * 1024, PersistedSnapshotTier.Persisted);
         using PersistedSnapshotRepository repo = new(smallArena, smallBlobs, new MemDb(), new FlatDbConfig(), new PersistedSnapshotBloomFilterManager());
         repo.LoadFromCatalog();
 
@@ -69,7 +69,7 @@ public class FlatDbManagerPersistedTests
             new BlocksConfig(),
             LimboLogs.Instance,
             enableDetailedMetrics: false,
-            persistedSnapshotRepositories: new PersistedSnapshotRepositories(repo, repo),
+            persistedSnapshotRepository: repo,
             persistedBloomManager: new PersistedSnapshotBloomFilterManager());
 
         Assert.That(manager, Is.Not.Null);
@@ -89,7 +89,7 @@ public class FlatDbManagerPersistedTests
         Snapshot snap = new(s0, s1, content, _pool, ResourcePool.Usage.MainBlockProcessing);
 
         using ArenaManager smallArena = new(Path.Combine(_testDir, "arenas", "base"), 0, maxArenaSize: 4096);
-        using BlobArenaManager smallBlobs = new(Path.Combine(_testDir, "blobs", "small"), 1024 * 1024, PersistedSnapshotTier.Small);
+        using BlobArenaManager smallBlobs = new(Path.Combine(_testDir, "blobs", "small"), 1024 * 1024, PersistedSnapshotTier.Persisted);
         using PersistedSnapshotRepository repo = new(smallArena, smallBlobs, new MemDb(), new FlatDbConfig(), new PersistedSnapshotBloomFilterManager());
         repo.LoadFromCatalog();
         repo.ConvertSnapshotToPersistedSnapshot(snap).Dispose();
@@ -102,7 +102,7 @@ public class FlatDbManagerPersistedTests
         persistenceManager.GetCurrentPersistedStateId().Returns(s0);
 
         // Real snapshot repository that chains into persisted snapshots
-        SnapshotRepository snapshotRepo = new(new PersistedSnapshotRepositories(repo, repo), LimboLogs.Instance);
+        SnapshotRepository snapshotRepo = new(repo, LimboLogs.Instance);
 
         await using FlatDbManager manager = new(
             Substitute.For<IResourcePool>(),
@@ -115,7 +115,7 @@ public class FlatDbManagerPersistedTests
             new BlocksConfig(),
             LimboLogs.Instance,
             enableDetailedMetrics: false,
-            persistedSnapshotRepositories: new PersistedSnapshotRepositories(repo, repo),
+            persistedSnapshotRepository: repo,
             persistedBloomManager: new PersistedSnapshotBloomFilterManager());
 
         ReadOnlySnapshotBundle bundle = manager.GatherReadOnlySnapshotBundle(s1);
@@ -131,7 +131,7 @@ public class FlatDbManagerPersistedTests
     public async Task DisposeAsync_DisposesPersistedRepository()
     {
         ArenaManager smallArena = new(Path.Combine(_testDir, "arenas", "base"), 0, maxArenaSize: 4096);
-        BlobArenaManager smallBlobs = new(Path.Combine(_testDir, "blobs", "small"), 1024 * 1024, PersistedSnapshotTier.Small);
+        BlobArenaManager smallBlobs = new(Path.Combine(_testDir, "blobs", "small"), 1024 * 1024, PersistedSnapshotTier.Persisted);
         PersistedSnapshotRepository repo = new(smallArena, smallBlobs, new MemDb(), new FlatDbConfig(), new PersistedSnapshotBloomFilterManager());
         repo.LoadFromCatalog();
 
@@ -153,7 +153,7 @@ public class FlatDbManagerPersistedTests
             new BlocksConfig(),
             LimboLogs.Instance,
             enableDetailedMetrics: false,
-            persistedSnapshotRepositories: new PersistedSnapshotRepositories(repo, repo),
+            persistedSnapshotRepository: repo,
             persistedBloomManager: new PersistedSnapshotBloomFilterManager());
 
         await manager.DisposeAsync();

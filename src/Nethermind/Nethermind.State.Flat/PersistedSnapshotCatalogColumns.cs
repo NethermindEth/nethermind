@@ -5,6 +5,5 @@ namespace Nethermind.State.Flat;
 
 public enum PersistedSnapshotCatalogColumns
 {
-    Small,
-    Large,
+    Catalog,
 }

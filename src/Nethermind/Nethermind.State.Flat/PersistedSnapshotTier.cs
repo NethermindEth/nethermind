@@ -6,22 +6,22 @@ using Nethermind.Core.Metric;
 namespace Nethermind.State.Flat;
 
 /// <summary>
-/// Tier of a persisted-snapshot pool. The pool is split into two sibling instances —
-/// short-range (<see cref="Small"/>) and long-range (<see cref="Large"/>) — wired by
-/// <c>FlatWorldStateModule</c>. Use the static singletons; equality is reference-based.
+/// Label for the persisted-snapshot pool. The pool is a single instance wired by
+/// <c>FlatWorldStateModule</c>; this type survives as the key of the per-pool metric
+/// dictionaries. Use the static <see cref="Persisted"/> singleton; equality is
+/// reference-based.
 ///
 /// <para>
 /// Implements <see cref="IMetricLabels"/> so the type can be used directly as the key of
-/// per-tier metric dictionaries. <see cref="MetricsController"/>'s
+/// per-pool metric dictionaries. <see cref="MetricsController"/>'s
 /// <c>KeyIsLabelGaugeMetricUpdater</c> dispatches on <see cref="IMetricLabels"/> and
-/// reads <see cref="Labels"/> for the Prometheus label values — wire format stays
-/// <c>"small"</c> / <c>"large"</c>.
+/// reads <see cref="Labels"/> for the Prometheus label values — wire format is
+/// <c>"persisted"</c>.
 /// </para>
 /// </summary>
 public sealed class PersistedSnapshotTier : IMetricLabels
 {
-    public static readonly PersistedSnapshotTier Small = new("small");
-    public static readonly PersistedSnapshotTier Large = new("large");
+    public static readonly PersistedSnapshotTier Persisted = new("persisted");
 
     public string Name { get; }
     private readonly string[] _labels;

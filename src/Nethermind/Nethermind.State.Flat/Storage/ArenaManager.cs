@@ -73,9 +73,7 @@ public sealed class ArenaManager : IArenaManager
         _dedicatedArenaThreshold = dedicatedArenaThreshold;
         _fadviseOnEviction = fadviseOnEviction;
         _punchHoleOnReclaim = punchHoleOnReclaim;
-        // Default to Small for tests/benchmarks that don't care; FlatWorldStateModule
-        // passes the actual tier explicitly.
-        _tier = tier ?? PersistedSnapshotTier.Small;
+        _tier = tier ?? PersistedSnapshotTier.Persisted;
         Directory.CreateDirectory(basePath);
         _pageTracker = PageResidencyTracker.FromByteBudget(pageCacheBytes);
         // Per-tier static facts: metadata footprint and configured cap. ResidentBytes is

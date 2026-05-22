@@ -13,20 +13,16 @@ using Prometheus;
 namespace Nethermind.State.Flat.PersistedSnapshots;
 
 /// <summary>
-/// Per-tier persisted-snapshot store. The codebase wires two instances:
+/// The single persisted-snapshot store, holding three buckets keyed by <c>StateId.To</c>:
 /// <list type="bullet">
-///   <item>Small repo: accepts snapshots whose block range
-///   <c>To - From &lt; CompactSize</c> as base inputs; its compactor merges
-///   them into sub-CompactSize spans (never CompactSize itself).</item>
-///   <item>Large repo: accepts snapshots of size exactly <c>CompactSize</c>
-///   (written by <c>PersistenceManager</c> at boundary blocks) as base inputs;
-///   its compactor merges these into 2×, 4×, ... CompactSize spans.</item>
+///   <item><c>_baseSnapshots</c> — in-memory snapshots persisted directly. Each owns a
+///   contiguous trie-RLP region in one blob arena (<see cref="PersistedSnapshot.BlobRange"/>).</item>
+///   <item><c>_compactedSnapshots</c> — merged (linked) snapshots: sub-<c>CompactSize</c>
+///   intermediates and the <c>&gt;CompactSize</c> hierarchical merges. No blob region —
+///   <c>NodeRef</c>s reference the base blob arenas via <c>ref_ids</c>.</item>
+///   <item><c>_persistableCompactedSnapshots</c> — the <c>CompactSize</c>-wide linked
+///   snapshots written to RocksDB by <c>PersistenceManager</c>.</item>
 /// </list>
-/// Each instance owns its <c>(ArenaManager, BlobArenaManager,
-/// SnapshotCatalog)</c> set. The pool tier is read off the arena manager
-/// (<see cref="IArenaManager.Tier"/>) for histogram labelling. Blob arena ids are unique
-/// within a repo, not across repos; <c>PersistedSnapshot</c>s only ever resolve <c>NodeRef</c>s
-/// through their own repo's blob manager.
 /// </summary>
 public sealed class PersistedSnapshotRepository(
     IArenaManager arenaManager,
@@ -49,6 +45,7 @@ public sealed class PersistedSnapshotRepository(
     // (catalog prune, dispose), which run off the metric / read paths.
     private readonly ConcurrentDictionary<StateId, PersistedSnapshot> _baseSnapshots = new();
     private readonly ConcurrentDictionary<StateId, PersistedSnapshot> _compactedSnapshots = new();
+    private readonly ConcurrentDictionary<StateId, PersistedSnapshot> _persistableCompactedSnapshots = new();
     // Running totals matching the dictionaries above. Mutated under _catalogLock at
     // every insert/remove site; read lock-free via Interlocked.Read by the Prometheus
     // scrape thread so the metrics stay O(1) regardless of snapshot count. The count
@@ -57,8 +54,10 @@ public sealed class PersistedSnapshotRepository(
     // lock and briefly blocks writers.
     private long _baseSnapshotMemoryBytes;
     private long _compactedSnapshotMemoryBytes;
+    private long _persistableSnapshotMemoryBytes;
     private long _baseSnapshotCount;
     private long _compactedSnapshotCount;
+    private long _persistableSnapshotCount;
     // Shared across both per-tier repos. Owned by the DI container, not this repo —
     // see <see cref="Dispose"/> which does NOT dispose the manager.
     private readonly PersistedSnapshotBloomFilterManager _bloomManager = bloomManager;
@@ -73,9 +72,13 @@ public sealed class PersistedSnapshotRepository(
     private bool BloomEnabled => _bloomBitsPerKey > 0;
 
     public int SnapshotCount =>
-        (int)(Interlocked.Read(ref _baseSnapshotCount) + Interlocked.Read(ref _compactedSnapshotCount));
+        (int)(Interlocked.Read(ref _baseSnapshotCount)
+            + Interlocked.Read(ref _compactedSnapshotCount)
+            + Interlocked.Read(ref _persistableSnapshotCount));
     public long BaseSnapshotMemory => Interlocked.Read(ref _baseSnapshotMemoryBytes);
-    public long CompactedSnapshotMemory => Interlocked.Read(ref _compactedSnapshotMemoryBytes);
+    // Persistable snapshots are compacted (linked) snapshots — count their bytes here too.
+    public long CompactedSnapshotMemory =>
+        Interlocked.Read(ref _compactedSnapshotMemoryBytes) + Interlocked.Read(ref _persistableSnapshotMemoryBytes);
 
     /// <inheritdoc/>
     public StateId? LastRegisteredState
@@ -103,11 +106,9 @@ public sealed class PersistedSnapshotRepository(
     }
 
     /// <summary>
-    /// Load this tier's persisted snapshots from its catalog. Routes each
-    /// loaded snapshot into the right in-memory dictionary based on its block
-    /// range: <c>range &gt; CompactSize</c> ⇒ compacted output, otherwise base
-    /// input (covers small-tier <c>&lt; CompactSize</c> entries and the
-    /// large-tier's exactly-<c>CompactSize</c> atoms).
+    /// Load the persisted snapshots from the catalog, routing each into its bucket by the
+    /// stored <see cref="SnapshotKind"/> (range alone cannot tell a base from a
+    /// sub-<c>CompactSize</c> compacted snapshot apart).
     /// </summary>
     public void LoadFromCatalog()
     {
@@ -133,13 +134,12 @@ public sealed class PersistedSnapshotRepository(
 
     private void LoadSnapshot(SnapshotCatalog.CatalogEntry entry)
     {
-        long range = entry.To.BlockNumber - entry.From.BlockNumber;
         ArenaReservation reservation = _arena.Open(entry.Location);
 
         // The PersistedSnapshot ctor walks its own ref_ids metadata and leases each blob
         // arena file; on partial failure it releases what it took and disposes the
         // reservation lease before rethrowing — no repository-side cleanup needed.
-        PersistedSnapshot snapshot = new(entry.From, entry.To, reservation, _blobs, _arena.Tier);
+        PersistedSnapshot snapshot = new(entry.From, entry.To, reservation, _blobs, _arena.Tier, entry.BlobRange);
 
         // One WholeReadSession, one Build call. The bloom covers all key flavours
         // (address / slot / SD / state-trie / storage-trie) in a single filter.
@@ -155,22 +155,28 @@ public sealed class PersistedSnapshotRepository(
         }
         RegisterBlooms(snapshot, bloom);
 
-        if (range > _compactSize)
+        switch (entry.Kind)
         {
-            _compactedSnapshots[entry.To] = snapshot;
-            Interlocked.Add(ref _compactedSnapshotMemoryBytes, snapshot.Size);
-            Interlocked.Increment(ref _compactedSnapshotCount);
-            Interlocked.Add(ref Metrics._compactedPersistedSnapshotMemory, snapshot.Size);
-            Interlocked.Increment(ref Metrics._persistedSnapshotCount);
+            case SnapshotKind.Compacted:
+                _compactedSnapshots[entry.To] = snapshot;
+                Interlocked.Add(ref _compactedSnapshotMemoryBytes, snapshot.Size);
+                Interlocked.Increment(ref _compactedSnapshotCount);
+                Interlocked.Add(ref Metrics._compactedPersistedSnapshotMemory, snapshot.Size);
+                break;
+            case SnapshotKind.Persistable:
+                _persistableCompactedSnapshots[entry.To] = snapshot;
+                Interlocked.Add(ref _persistableSnapshotMemoryBytes, snapshot.Size);
+                Interlocked.Increment(ref _persistableSnapshotCount);
+                Interlocked.Add(ref Metrics._compactedPersistedSnapshotMemory, snapshot.Size);
+                break;
+            default:
+                _baseSnapshots[entry.To] = snapshot;
+                Interlocked.Add(ref _baseSnapshotMemoryBytes, snapshot.Size);
+                Interlocked.Increment(ref _baseSnapshotCount);
+                Interlocked.Add(ref Metrics._persistedSnapshotMemory, snapshot.Size);
+                break;
         }
-        else
-        {
-            _baseSnapshots[entry.To] = snapshot;
-            Interlocked.Add(ref _baseSnapshotMemoryBytes, snapshot.Size);
-            Interlocked.Increment(ref _baseSnapshotCount);
-            Interlocked.Add(ref Metrics._persistedSnapshotMemory, snapshot.Size);
-            Interlocked.Increment(ref Metrics._persistedSnapshotCount);
-        }
+        Interlocked.Increment(ref Metrics._persistedSnapshotCount);
 
         // LoadFromCatalog already holds `_catalogLock`. Catalog order is insertion order, so
         // the last entry processed wins as the tip.
@@ -180,11 +186,9 @@ public sealed class PersistedSnapshotRepository(
     private readonly Histogram _persistedSnapshotSize = Prometheus.Metrics.CreateHistogram("persisted_snapshot_size", "persisted_snapshot_size", "tier");
 
     /// <summary>
-    /// Persist an in-memory snapshot to this tier as a base input. Caller is
-    /// responsible for dispatching to the correct repo (small vs large) — the
-    /// repo writes unconditionally to its own <see cref="_arena"/> +
-    /// <see cref="_blobs"/> with its configured tags and inserts into
-    /// <see cref="_baseSnapshots"/>.
+    /// Persist an in-memory snapshot as a base input: write its HSST metadata + a contiguous
+    /// trie-RLP region into the arena / blob pools, record the region as a
+    /// <see cref="BlobRange"/> in the catalog, and insert it into <see cref="_baseSnapshots"/>.
     /// </summary>
     public PersistedSnapshot ConvertSnapshotToPersistedSnapshot(Snapshot snapshot)
     {
@@ -219,16 +223,23 @@ public sealed class PersistedSnapshotRepository(
         }
         blobWriter.Complete();
 
+        // The base snapshot's trie RLPs occupy one contiguous run in the single blob arena
+        // this writer targeted — record it so persistence can prefetch it (a base that wrote
+        // no trie nodes has an empty run).
+        BlobRange blobRange = blobWriter.Written > blobWriter.StartOffset
+            ? new BlobRange(blobWriter.BlobArenaId, blobWriter.StartOffset, blobWriter.Written - blobWriter.StartOffset)
+            : BlobRange.None;
+
         // PersistedSnapshot's ctor reads its own ref_ids metadata and leases each blob
         // arena file. The single id written above (blobWriter.BlobArenaId) is the only
         // entry the new metadata carries, so the ctor's iterator yields exactly that id.
         PersistedSnapshot persisted;
         lock (_catalogLock)
         {
-            _catalog.Add(new SnapshotCatalog.CatalogEntry(snapshot.From, snapshot.To, location));
+            _catalog.Add(new SnapshotCatalog.CatalogEntry(snapshot.From, snapshot.To, location, blobRange, SnapshotKind.Base));
             _catalog.Save();
 
-            persisted = new PersistedSnapshot(snapshot.From, snapshot.To, reservation, _blobs, _arena.Tier);
+            persisted = new PersistedSnapshot(snapshot.From, snapshot.To, reservation, _blobs, _arena.Tier, blobRange);
             RegisterBlooms(persisted, bloom);
             if (_validatePersistedSnapshot)
                 PersistedSnapshotUtils.ValidatePersistedSnapshot(snapshot, persisted, _bloomManager);
@@ -254,22 +265,34 @@ public sealed class PersistedSnapshotRepository(
     /// Store a compacted snapshot with a pre-computed location and reservation. The
     /// snapshot's referenced blob arena ids are read off its own metadata HSST by the
     /// <see cref="PersistedSnapshot"/> ctor, which leases each one and rolls back on
-    /// partial failure.
+    /// partial failure. <paramref name="isPersistable"/> routes a <c>CompactSize</c>-wide
+    /// merge into <see cref="_persistableCompactedSnapshots"/> (the RocksDB-bound bucket);
+    /// otherwise it lands in <see cref="_compactedSnapshots"/>.
     /// </summary>
-    public PersistedSnapshot AddCompactedSnapshot(StateId from, StateId to, SnapshotLocation location, ArenaReservation reservation, BloomFilter bloom)
+    public PersistedSnapshot AddCompactedSnapshot(StateId from, StateId to, SnapshotLocation location, ArenaReservation reservation, BloomFilter bloom, bool isPersistable = false)
     {
         PersistedSnapshot snapshot;
         lock (_catalogLock)
         {
-            _catalog.Add(new SnapshotCatalog.CatalogEntry(from, to, location));
+            _catalog.Add(new SnapshotCatalog.CatalogEntry(from, to, location, BlobRange.None,
+                isPersistable ? SnapshotKind.Persistable : SnapshotKind.Compacted));
             _catalog.Save();
 
             snapshot = new PersistedSnapshot(from, to, reservation, _blobs, _arena.Tier);
             RegisterBlooms(snapshot, bloom);
 
-            _compactedSnapshots[to] = snapshot;
-            Interlocked.Add(ref _compactedSnapshotMemoryBytes, snapshot.Size);
-            Interlocked.Increment(ref _compactedSnapshotCount);
+            if (isPersistable)
+            {
+                _persistableCompactedSnapshots[to] = snapshot;
+                Interlocked.Add(ref _persistableSnapshotMemoryBytes, snapshot.Size);
+                Interlocked.Increment(ref _persistableSnapshotCount);
+            }
+            else
+            {
+                _compactedSnapshots[to] = snapshot;
+                Interlocked.Add(ref _compactedSnapshotMemoryBytes, snapshot.Size);
+                Interlocked.Increment(ref _compactedSnapshotCount);
+            }
             Interlocked.Add(ref Metrics._compactedPersistedSnapshotMemory, snapshot.Size);
             Interlocked.Increment(ref Metrics._persistedSnapshotCount);
             RegisterStateIdLocked(to);
@@ -286,7 +309,8 @@ public sealed class PersistedSnapshotRepository(
 
     /// <summary>
     /// Assemble persisted snapshots for compaction, walking backward from toStateId.
-    /// If a compacted snapshot spans too far back (below minBlockNumber), fall back to base.
+    /// At each hop the widest snapshot that does not span past minBlockNumber is chosen —
+    /// compacted, then the CompactSize-wide persistable, then base.
     /// Returns oldest-first list, or empty if fewer than 2 snapshots found.
     /// Mirrors <see cref="SnapshotRepository.AssembleSnapshotsUntil"/>.
     /// </summary>
@@ -297,40 +321,9 @@ public sealed class PersistedSnapshotRepository(
 
         while (true)
         {
-            PersistedSnapshot? snapshot;
-
-            // Try compacted first
-            if (_compactedSnapshots.TryGetValue(current, out PersistedSnapshot? compacted))
-            {
-                if (compacted.From.BlockNumber < minBlockNumber)
-                {
-                    // Compacted spans too far back, try base
-                    if (_baseSnapshots.TryGetValue(current, out PersistedSnapshot? baseSnap))
-                    {
-                        if (baseSnap.From.BlockNumber < minBlockNumber)
-                            break; // Base also spans too far
-                        snapshot = baseSnap;
-                    }
-                    else
-                    {
-                        break;
-                    }
-                }
-                else
-                {
-                    snapshot = compacted;
-                }
-            }
-            else if (_baseSnapshots.TryGetValue(current, out PersistedSnapshot? baseSnap))
-            {
-                if (baseSnap.From.BlockNumber < minBlockNumber)
-                    break;
-                snapshot = baseSnap;
-            }
-            else
-            {
+            PersistedSnapshot? snapshot = SelectForCompaction(current, minBlockNumber);
+            if (snapshot is null)
                 break;
-            }
 
             if (!snapshot.TryAcquire())
             {
@@ -359,6 +352,26 @@ public sealed class PersistedSnapshotRepository(
         return result;
     }
 
+    /// <summary>
+    /// Pick the widest snapshot ending at <paramref name="current"/> whose <c>From</c> does
+    /// not span past <paramref name="minBlockNumber"/>: compacted, then the CompactSize-wide
+    /// persistable, then base. The persistable tier MUST be walked — it is the only source
+    /// the &gt;CompactSize boundary compaction has.
+    /// </summary>
+    private PersistedSnapshot? SelectForCompaction(StateId current, long minBlockNumber)
+    {
+        if (_compactedSnapshots.TryGetValue(current, out PersistedSnapshot? compacted)
+            && compacted.From.BlockNumber >= minBlockNumber)
+            return compacted;
+        if (_persistableCompactedSnapshots.TryGetValue(current, out PersistedSnapshot? persistable)
+            && persistable.From.BlockNumber >= minBlockNumber)
+            return persistable;
+        if (_baseSnapshots.TryGetValue(current, out PersistedSnapshot? baseSnap)
+            && baseSnap.From.BlockNumber >= minBlockNumber)
+            return baseSnap;
+        return null;
+    }
+
     public bool TryLeaseSnapshotTo(StateId toState, [NotNullWhen(true)] out PersistedSnapshot? snapshot)
     {
         if (_baseSnapshots.TryGetValue(toState, out snapshot) && snapshot.TryAcquire())
@@ -371,8 +384,44 @@ public sealed class PersistedSnapshotRepository(
     {
         if (_compactedSnapshots.TryGetValue(toState, out snapshot) && snapshot.TryAcquire())
             return true;
+        if (_persistableCompactedSnapshots.TryGetValue(toState, out snapshot) && snapshot.TryAcquire())
+            return true;
         snapshot = null;
         return false;
+    }
+
+    /// <summary>
+    /// Lease the <c>CompactSize</c>-wide persistable snapshot ending at <paramref name="toState"/>
+    /// — the candidate <c>PersistenceManager</c> writes to RocksDB.
+    /// </summary>
+    public bool TryLeasePersistableCompactedSnapshotTo(StateId toState, [NotNullWhen(true)] out PersistedSnapshot? snapshot)
+    {
+        if (_persistableCompactedSnapshots.TryGetValue(toState, out snapshot) && snapshot.TryAcquire())
+            return true;
+        snapshot = null;
+        return false;
+    }
+
+    /// <summary>
+    /// Lease every base snapshot tiling <c>(from, to]</c>, walking <c>From</c> pointers back
+    /// from <paramref name="to"/>. Used to bulk-prefetch the base blob-RLP regions before a
+    /// linked persistable is scanned. Best-effort — stops at the first gap. Caller disposes
+    /// the returned list.
+    /// </summary>
+    public PersistedSnapshotList LeaseBaseSnapshotsInRange(StateId from, StateId to)
+    {
+        PersistedSnapshotList result = new(0);
+        StateId current = to;
+        while (current != from && current.BlockNumber > from.BlockNumber)
+        {
+            if (!_baseSnapshots.TryGetValue(current, out PersistedSnapshot? snapshot) || !snapshot.TryAcquire())
+                break;
+            result.Add(snapshot);
+            if (snapshot.From == current)
+                break; // Prevent infinite loop
+            current = snapshot.From;
+        }
+        return result;
     }
 
     /// <summary>
@@ -409,6 +458,14 @@ public sealed class PersistedSnapshotRepository(
             if (_compactedSnapshots.TryGetValue(current, out PersistedSnapshot? compacted))
             {
                 StateId next = compacted.From;
+                if (next.BlockNumber >= fromState.BlockNumber && seen.Add(next))
+                    queue.Enqueue(next);
+            }
+
+            // Skip pointer: the CompactSize-wide persistable is navigated but never returned.
+            if (_persistableCompactedSnapshots.TryGetValue(current, out PersistedSnapshot? persistable))
+            {
+                StateId next = persistable.From;
                 if (next.BlockNumber >= fromState.BlockNumber && seen.Add(next))
                     queue.Enqueue(next);
             }
@@ -485,6 +542,29 @@ public sealed class PersistedSnapshotRepository(
                 }
             }
 
+            // Prune persistable compacted snapshots
+            using ArrayPoolList<StateId> persistableToRemove = new(0);
+            foreach (KeyValuePair<StateId, PersistedSnapshot> kv in _persistableCompactedSnapshots)
+            {
+                if (kv.Value.To.BlockNumber < stateId.BlockNumber)
+                    persistableToRemove.Add(kv.Key);
+            }
+            foreach (StateId key in persistableToRemove)
+            {
+                if (_persistableCompactedSnapshots.TryRemove(key, out PersistedSnapshot? snapshot))
+                {
+                    Interlocked.Add(ref _persistableSnapshotMemoryBytes, -snapshot.Size);
+                    Interlocked.Decrement(ref _persistableSnapshotCount);
+                    Interlocked.Add(ref Metrics._compactedPersistedSnapshotMemory, -snapshot.Size);
+                    Interlocked.Decrement(ref Metrics._persistedSnapshotCount);
+                    Interlocked.Increment(ref Metrics._persistedSnapshotPrunes);
+                    RemoveFromCatalog(snapshot.To);
+                    UnregisterStateIdLocked(snapshot.To);
+                    snapshot.Dispose();
+                    pruned++;
+                }
+            }
+
             _bloomManager.PruneBefore(stateId);
 
             if (pruned > 0) _catalog.Save();
@@ -523,6 +603,8 @@ public sealed class PersistedSnapshotRepository(
                 kv.Value.PersistOnShutdown();
             foreach (KeyValuePair<StateId, PersistedSnapshot> kv in _compactedSnapshots)
                 kv.Value.PersistOnShutdown();
+            foreach (KeyValuePair<StateId, PersistedSnapshot> kv in _persistableCompactedSnapshots)
+                kv.Value.PersistOnShutdown();
             // Dispose snapshots: drops their reservation + blob leases. Files self-clean
             // as their refcount hits zero; the preserve flag set above keeps the on-disk
             // file in place for any snapshot that opted in.
@@ -530,15 +612,20 @@ public sealed class PersistedSnapshotRepository(
                 kv.Value.Dispose();
             foreach (KeyValuePair<StateId, PersistedSnapshot> kv in _compactedSnapshots)
                 kv.Value.Dispose();
+            foreach (KeyValuePair<StateId, PersistedSnapshot> kv in _persistableCompactedSnapshots)
+                kv.Value.Dispose();
             _baseSnapshots.Clear();
             _compactedSnapshots.Clear();
+            _persistableCompactedSnapshots.Clear();
             long baseMem = Interlocked.Exchange(ref _baseSnapshotMemoryBytes, 0);
             long compactedMem = Interlocked.Exchange(ref _compactedSnapshotMemoryBytes, 0);
+            long persistableMem = Interlocked.Exchange(ref _persistableSnapshotMemoryBytes, 0);
             long baseCount = Interlocked.Exchange(ref _baseSnapshotCount, 0);
             long compactedCount = Interlocked.Exchange(ref _compactedSnapshotCount, 0);
+            long persistableCount = Interlocked.Exchange(ref _persistableSnapshotCount, 0);
             Interlocked.Add(ref Metrics._persistedSnapshotMemory, -baseMem);
-            Interlocked.Add(ref Metrics._compactedPersistedSnapshotMemory, -compactedMem);
-            Interlocked.Add(ref Metrics._persistedSnapshotCount, -(baseCount + compactedCount));
+            Interlocked.Add(ref Metrics._compactedPersistedSnapshotMemory, -(compactedMem + persistableMem));
+            Interlocked.Add(ref Metrics._persistedSnapshotCount, -(baseCount + compactedCount + persistableCount));
             _orderedStateIds.Clear();
             _lastRegisteredState = null;
             // Drop the managers' dictionary refs; any file still alive cleans up here.

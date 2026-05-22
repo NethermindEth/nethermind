@@ -47,7 +47,7 @@ public class PersistenceManagerTests
 
         _resourcePool = new ResourcePool(_config);
         _finalizedStateProvider = new TestFinalizedStateProvider();
-        _snapshotRepository = new SnapshotRepository(new PersistedSnapshotRepositories(NullPersistedSnapshotRepository.Instance, NullPersistedSnapshotRepository.Instance), LimboLogs.Instance);
+        _snapshotRepository = new SnapshotRepository(NullPersistedSnapshotRepository.Instance, LimboLogs.Instance);
         _persistence = Substitute.For<IPersistence>();
 
         IPersistence.IPersistenceReader persistenceReader = Substitute.For<IPersistence.IPersistenceReader>();
@@ -65,7 +65,7 @@ public class PersistenceManagerTests
             _snapshotRepository,
             LimboLogs.Instance,
             new PersistedSnapshotCompactors(_persistedSnapshotCompactor, _persistedSnapshotCompactor),
-            new PersistedSnapshotRepositories(_persistedSnapshotRepository, _persistedSnapshotRepository));
+            _persistedSnapshotRepository);
     }
 
     [TearDown]
@@ -186,7 +186,7 @@ public class PersistenceManagerTests
             _snapshotRepository,
             LimboLogs.Instance,
             new PersistedSnapshotCompactors(_persistedSnapshotCompactor, _persistedSnapshotCompactor),
-            new PersistedSnapshotRepositories(_persistedSnapshotRepository, _persistedSnapshotRepository));
+            _persistedSnapshotRepository);
 
         StateId persisted = Block0;
         StateId latest = CreateStateId(300);
@@ -373,7 +373,7 @@ public class PersistenceManagerTests
         // Don't create any in-memory snapshots — configure persisted snapshot fallback
         using ArenaWriter emptyWriter = _memArena.CreateWriter(0);
         (_, ArenaReservation emptyRes) = emptyWriter.Complete();
-        PersistedSnapshot persisted = new(Block0, target, emptyRes, NullBlobArenaManager.Instance, PersistedSnapshotTier.Small);
+        PersistedSnapshot persisted = new(Block0, target, emptyRes, NullBlobArenaManager.Instance, PersistedSnapshotTier.Persisted);
         _persistedSnapshotRepository.TryLeaseSnapshotTo(target, out Arg.Any<PersistedSnapshot?>())
             .Returns(x => { x[1] = persisted; return true; });
 

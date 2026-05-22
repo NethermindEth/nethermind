@@ -15,16 +15,14 @@ using Prometheus;
 namespace Nethermind.State.Flat.PersistedSnapshots;
 
 /// <summary>
-/// Logarithmic compaction for one tier's persisted snapshots. Each instance is
-/// parameterised with a <c>[minCompactSize, maxCompactSize]</c> band. For each
-/// block it takes the block's natural power-of-2 alignment (capped at
-/// <c>maxCompactSize</c>) as the compaction window and merges every persisted
-/// snapshot assembled within that window into one compacted snapshot, as long
-/// as at least two are available — the window need not be fully populated. The
-/// small-tier instance is wired with <c>max = CompactSize/2</c> so it never
-/// produces a <c>CompactSize</c>-or-wider result (that size is produced
-/// directly by <c>PersistenceManager</c> into the large tier). The large-tier
-/// instance is wired with <c>min = 2 * CompactSize</c>.
+/// Logarithmic compaction for the persisted snapshots. Each instance is parameterised with a
+/// <c>[minCompactSize, maxCompactSize]</c> band. For each block it takes the block's natural
+/// power-of-2 alignment (capped at <c>maxCompactSize</c>) as the compaction window and merges
+/// every persisted snapshot assembled within that window into one compacted snapshot, as long
+/// as at least two are available — the window need not be fully populated. Two instances are
+/// wired over the one repository: the <em>batched</em> one with <c>max = CompactSize</c> (its
+/// <c>CompactSize</c>-wide output is the persistable snapshot), and the <em>boundary</em> one
+/// with <c>min = 2 * CompactSize</c> for the wider hierarchical merges.
 /// </summary>
 public class PersistedSnapshotCompactor(
     IPersistedSnapshotRepository persistedSnapshotRepository,
@@ -33,8 +31,7 @@ public class PersistedSnapshotCompactor(
     ILogManager logManager,
     PersistedSnapshotBloomFilterManager bloomManager,
     int minCompactSize,
-    int maxCompactSize,
-    PersistedSnapshotTier tier) : IPersistedSnapshotCompactor
+    int maxCompactSize) : IPersistedSnapshotCompactor
 {
     private readonly ILogger _logger = logManager.GetClassLogger<PersistedSnapshotCompactor>();
     private readonly int _minCompactSize = Math.Max(minCompactSize, 2);
@@ -43,7 +40,6 @@ public class PersistedSnapshotCompactor(
     private readonly bool _validatePersistedSnapshot = config.ValidatePersistedSnapshot;
     private readonly double _bloomBitsPerKey = config.PersistedSnapshotBloomBitsPerKey;
     private readonly long _maxCompactedSourceBytes = config.PersistedSnapshotMaxCompactedSourceBytes;
-    private readonly PersistedSnapshotTier _tier = tier;
 
     /// <summary>
     /// Compact persisted snapshots for the given block. Takes the block's
@@ -66,17 +62,17 @@ public class PersistedSnapshotCompactor(
         if (persistedSnapshotRepository.SnapshotCount < 2) return;
 
         long startingBlockNumber = ((blockNumber - 1) / alignment) * alignment;
-        CompactRange(snapshotTo, startingBlockNumber, alignment);
+        // A CompactSize-wide window produces the persistable snapshot (the RocksDB-bound
+        // bucket); wider windows produce ordinary hierarchical merges.
+        CompactRange(snapshotTo, startingBlockNumber, alignment, isPersistable: alignment == _compactSize);
     }
 
-    // Histograms gain a `tier` label so the two instances' samples are distinguishable
-    // in dashboards.
     private readonly Histogram _persistedSnapshotSize =
-        Prometheus.Metrics.CreateHistogram("persisted_snapshot_compacted_size", "persisted_snapshot_compacted_size", "tier", "size");
+        Prometheus.Metrics.CreateHistogram("persisted_snapshot_compacted_size", "persisted_snapshot_compacted_size", "size");
     private readonly Histogram _persistedSnapshotCompactTime =
-        Prometheus.Metrics.CreateHistogram("persisted_snapshot_compact_time", "persisted_snapshot_compact_time", "tier", "size");
+        Prometheus.Metrics.CreateHistogram("persisted_snapshot_compact_time", "persisted_snapshot_compact_time", "size");
 
-    // Compact sizes are powers of 2; cache one Histogram.Child per (tier, sizeLabel) so the
+    // Compact sizes are powers of 2; cache one Histogram.Child per sizeLabel so the
     // observe path is a single array read instead of two WithLabels lookups + a string
     // interpolation. Indexed by BitOperations.Log2(compactSize). Filled lazily on first use.
     private (Histogram.Child Size, Histogram.Child Time)[]? _sizeMetricsByLog2;
@@ -91,19 +87,19 @@ public class PersistedSnapshotCompactor(
         {
             string sizeLabel = $"size{compactSize}";
             entry = (
-                _persistedSnapshotSize.WithLabels(_tier.Name, sizeLabel),
-                _persistedSnapshotCompactTime.WithLabels(_tier.Name, sizeLabel));
+                _persistedSnapshotSize.WithLabels(sizeLabel),
+                _persistedSnapshotCompactTime.WithLabels(sizeLabel));
             table[log2] = entry;
         }
         return entry;
     }
 
-    private bool CompactRange(StateId snapshotTo, long startingBlockNumber, int compactSize)
+    private bool CompactRange(StateId snapshotTo, long startingBlockNumber, int compactSize, bool isPersistable)
     {
         using PersistedSnapshotList snapshots = persistedSnapshotRepository.AssembleSnapshotsForCompaction(snapshotTo, startingBlockNumber);
         if (snapshots.Count < 2) return false;
 
-        if (_logger.IsDebug) _logger.Debug($"Compacting {snapshots.Count} persisted snapshots at block {snapshotTo.BlockNumber}, compact size {compactSize}, tier {_tier}");
+        if (_logger.IsDebug) _logger.Debug($"Compacting {snapshots.Count} persisted snapshots at block {snapshotTo.BlockNumber}, compact size {compactSize}, persistable {isPersistable}");
 
         StateId from = snapshots[0].From;
         StateId to = snapshots[^1].To;
@@ -170,21 +166,21 @@ public class PersistedSnapshotCompactor(
             // file via a ref-struct iterator — no ushort[] materialisation here. The
             // returned snapshot is pre-leased; dispose it via `using` once we're done
             // with the post-write step.
-            using (PersistedSnapshot compacted = persistedSnapshotRepository.AddCompactedSnapshot(from, to, location, reservation, mergedBloom))
+            using (PersistedSnapshot compacted = persistedSnapshotRepository.AddCompactedSnapshot(from, to, location, reservation, mergedBloom, isPersistable))
             {
-                if (_tier == PersistedSnapshotTier.Small && compactSize == _maxCompactSize)
+                if (compactSize < _compactSize)
                 {
-                    // Invariant: small tier's _maxCompactSize is CompactSize/2, so this
-                    // branch fires only on the topmost small-tier output. No further
-                    // small-tier compaction will absorb it (the large tier writes its
-                    // base snapshot from scratch via PersistenceManager, not by
-                    // re-reading small-tier outputs), so its pages would otherwise sit
-                    // hot in the page cache and tracker until the snapshot is finally
+                    // Sub-CompactSize intermediate. Drop its freshly-written pages from the
+                    // cache + tracker; they would otherwise sit hot until the snapshot is
                     // pruned.
                     compacted.Demote();
                 }
-                else if (_tier == PersistedSnapshotTier.Large)
+                else
                 {
+                    // The persistable (== CompactSize) is scanned in full by
+                    // PersistPersistedSnapshot; wider hierarchical merges are queried as
+                    // snapshot-bundle skip pointers. Pre-fault the address column index so
+                    // the first query doesn't chain inline page faults.
                     WarmAddressColumnIndex(compacted);
                 }
             }

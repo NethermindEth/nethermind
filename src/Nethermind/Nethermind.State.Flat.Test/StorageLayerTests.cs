@@ -61,8 +61,8 @@ public class StorageLayerTests
         StateId s2 = new(200, Keccak.Compute("block200"));
 
         SnapshotCatalog catalog = new(catalogDb);
-        catalog.Add(new(s0, s1, new(0, 0, 1024)));
-        catalog.Add(new(s1, s2, new(0, 1024, 2048)));
+        catalog.Add(new(s0, s1, new(0, 0, 1024), new BlobRange(3, 4096, 8192), SnapshotKind.Base));
+        catalog.Add(new(s1, s2, new(0, 1024, 2048), BlobRange.None, SnapshotKind.Persistable));
         catalog.Save();
 
         // Load in new instance
@@ -75,11 +75,15 @@ public class StorageLayerTests
         Assert.That(e1.From.BlockNumber, Is.EqualTo(0));
         Assert.That(e1.To.BlockNumber, Is.EqualTo(100));
         Assert.That(e1.Location, Is.EqualTo(new SnapshotLocation(0, 0, 1024)));
+        Assert.That(e1.BlobRange, Is.EqualTo(new BlobRange(3, 4096, 8192)));
+        Assert.That(e1.Kind, Is.EqualTo(SnapshotKind.Base));
 
         SnapshotCatalog.CatalogEntry e2 = loaded.Entries[1];
         Assert.That(e2.From.BlockNumber, Is.EqualTo(100));
         Assert.That(e2.To.BlockNumber, Is.EqualTo(200));
         Assert.That(e2.Location, Is.EqualTo(new SnapshotLocation(0, 1024, 2048)));
+        Assert.That(e2.BlobRange, Is.EqualTo(BlobRange.None));
+        Assert.That(e2.Kind, Is.EqualTo(SnapshotKind.Persistable));
     }
 
     [Test]
@@ -91,8 +95,8 @@ public class StorageLayerTests
         StateId missing = new(999, Keccak.Compute("missing"));
 
         SnapshotCatalog catalog = new(new MemDb());
-        catalog.Add(new(s0, s1, new(0, 0, 100)));
-        catalog.Add(new(s1, s2, new(0, 100, 200)));
+        catalog.Add(new(s0, s1, new(0, 0, 100), BlobRange.None, SnapshotKind.Base));
+        catalog.Add(new(s1, s2, new(0, 100, 200), BlobRange.None, SnapshotKind.Base));
 
         Assert.That(catalog.Find(s1), Is.Not.Null);
         Assert.That(catalog.Remove(s1), Is.True);
@@ -110,7 +114,7 @@ public class StorageLayerTests
         SnapshotCatalog catalog = new(new MemDb());
         SnapshotLocation origLoc = new(0, 0, 100);
         SnapshotLocation newLoc = new(1, 500, 100);
-        catalog.Add(new(s0, s1, origLoc));
+        catalog.Add(new(s0, s1, origLoc, BlobRange.None, SnapshotKind.Base));
 
         catalog.UpdateLocation(s1, newLoc);
 

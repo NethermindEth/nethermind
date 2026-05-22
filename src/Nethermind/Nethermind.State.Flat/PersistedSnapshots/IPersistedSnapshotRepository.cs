@@ -28,10 +28,16 @@ public interface IPersistedSnapshotRepository : IDisposable
     // repo). Pre-leasing closes a use-after-free window between return and use when a
     // concurrent PruneBefore may dispose the repo's dict entry.
     PersistedSnapshot ConvertSnapshotToPersistedSnapshot(Snapshot snapshot);
-    PersistedSnapshot AddCompactedSnapshot(StateId from, StateId to, SnapshotLocation location, ArenaReservation reservation, BloomFilter bloom);
+    PersistedSnapshot AddCompactedSnapshot(StateId from, StateId to, SnapshotLocation location, ArenaReservation reservation, BloomFilter bloom, bool isPersistable = false);
 
     // Compaction assembly (mirrors SnapshotRepository.AssembleSnapshotsUntil)
     PersistedSnapshotList AssembleSnapshotsForCompaction(StateId toStateId, long minBlockNumber);
+
+    /// <summary>
+    /// Lease every base snapshot tiling <c>(from, to]</c> — used to bulk-prefetch their blob
+    /// RLP regions before a linked persistable is persisted. Caller disposes the list.
+    /// </summary>
+    PersistedSnapshotList LeaseBaseSnapshotsInRange(StateId from, StateId to);
 
     // Lookup
     PersistedSnapshot? TryGetSnapshotFrom(StateId fromState, StateId seedState);
@@ -44,6 +50,7 @@ public interface IPersistedSnapshotRepository : IDisposable
     PersistedSnapshot? TryGetSnapshotFrom(StateId fromState);
     bool TryLeaseSnapshotTo(StateId toState, [NotNullWhen(true)] out PersistedSnapshot? snapshot);
     bool TryLeaseCompactedSnapshotTo(StateId toState, [NotNullWhen(true)] out PersistedSnapshot? snapshot);
+    bool TryLeasePersistableCompactedSnapshotTo(StateId toState, [NotNullWhen(true)] out PersistedSnapshot? snapshot);
 
     // Lifecycle
     int PruneBefore(StateId stateId);

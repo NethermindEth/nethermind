@@ -29,6 +29,7 @@ internal static class PosixReclaim
     private const int FALLOC_FL_KEEP_SIZE = 0x01;
     private const int FALLOC_FL_PUNCH_HOLE = 0x02;
     private const int POSIX_FADV_DONTNEED = 4;
+    private const int POSIX_FADV_WILLNEED = 3;
     // errno values that mean the call will never succeed on this filesystem/kernel.
     private const int ENOSYS = 38;
     private const int EOPNOTSUPP = 95;
@@ -51,6 +52,24 @@ internal static class PosixReclaim
         (long start, long len) = AlignInward(offset, size);
         if (len <= 0) return;
         PosixFadvise(fd, start, len, POSIX_FADV_DONTNEED);
+    }
+
+    /// <summary>
+    /// <c>posix_fadvise(POSIX_FADV_WILLNEED)</c> over <c>[offset, offset + size)</c>, asking
+    /// the kernel to start asynchronous read-ahead for the range. No-op on non-Linux;
+    /// fire-and-forget (the errno is not inspected).
+    /// </summary>
+    /// <remarks>
+    /// Unlike <see cref="FadviseDontNeed"/> the range is passed unaligned: <c>WILLNEED</c>
+    /// must <em>cover</em> the whole region (including the partial pages at either end), and
+    /// the kernel page-aligns the request internally. Inward alignment would shave the first
+    /// and last page — a base snapshot's region boundaries are not page-aligned.
+    /// </remarks>
+    internal static void FadviseWillNeed(int fd, long offset, long size)
+    {
+        if (!OperatingSystem.IsLinux()) return;
+        if (size <= 0) return;
+        PosixFadvise(fd, offset, size, POSIX_FADV_WILLNEED);
     }
 
     /// <summary>

@@ -32,10 +32,10 @@ public class SnapshotRepositoryTests
     {
         _config = new FlatDbConfig { CompactSize = 16 };
         _resourcePool = new ResourcePool(_config);
-        _repository = new SnapshotRepository(new PersistedSnapshotRepositories(NullPersistedSnapshotRepository.Instance, NullPersistedSnapshotRepository.Instance), LimboLogs.Instance);
+        _repository = new SnapshotRepository(NullPersistedSnapshotRepository.Instance, LimboLogs.Instance);
         _memArena = new MemoryArenaManager();
         _blobsDir = Path.Combine(Path.GetTempPath(), $"nm-sreptest-blobs-{Guid.NewGuid():N}");
-        _blobs = new BlobArenaManager(_blobsDir, 4L * 1024 * 1024, PersistedSnapshotTier.Small);
+        _blobs = new BlobArenaManager(_blobsDir, 4L * 1024 * 1024, PersistedSnapshotTier.Persisted);
     }
 
     [TearDown]
@@ -359,7 +359,7 @@ public class SnapshotRepositoryTests
         writer.GetWriter().Advance(data.Length);
         (_, ArenaReservation reservation) = writer.Complete();
         TestFixtureHelpers.LeaseBlobIdsFromHsst(reservation, _blobs);
-        return new PersistedSnapshot(from, to, reservation, _blobs, PersistedSnapshotTier.Small);
+        return new PersistedSnapshot(from, to, reservation, _blobs, PersistedSnapshotTier.Persisted);
     }
 
     private static void SetupSnapshotTo(IPersistedSnapshotRepository mockRepo, StateId toState, PersistedSnapshot snapshot) =>
@@ -458,7 +458,7 @@ public class SnapshotRepositoryTests
         else
             SetupSnapshotTo(mockRepo, s5, persisted);
 
-        SnapshotRepository repo = new(new PersistedSnapshotRepositories(mockRepo, mockRepo), LimboLogs.Instance);
+        SnapshotRepository repo = new(mockRepo, LimboLogs.Instance);
         using AssembledSnapshotResult result = repo.AssembleSnapshots(s5, s2, 4);
 
         Assert.That(result.Persisted.Count, Is.EqualTo(1));
@@ -489,7 +489,7 @@ public class SnapshotRepositoryTests
         using PersistedSnapshot persisted = CreatePersistedSnapshot(s2, s5);
         SetupSnapshotTo(mockRepo, s5, persisted);
 
-        SnapshotRepository repo = new(new PersistedSnapshotRepositories(mockRepo, mockRepo), LimboLogs.Instance);
+        SnapshotRepository repo = new(mockRepo, LimboLogs.Instance);
         using AssembledSnapshotResult result = repo.AssembleSnapshots(s5, s2, 4);
 
         Assert.That(result.Persisted.Count, Is.EqualTo(1));

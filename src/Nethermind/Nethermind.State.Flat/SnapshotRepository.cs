@@ -12,11 +12,10 @@ using Nethermind.State.Flat.PersistedSnapshots;
 
 namespace Nethermind.State.Flat;
 
-public class SnapshotRepository(PersistedSnapshotRepositories persistedSnapshotRepositories, ILogManager logManager) : ISnapshotRepository
+public class SnapshotRepository(IPersistedSnapshotRepository persistedSnapshotRepository, ILogManager logManager) : ISnapshotRepository
 {
     private readonly ILogger _logger = logManager.GetClassLogger<SnapshotRepository>();
-    private readonly IPersistedSnapshotRepository _smallPersisted = persistedSnapshotRepositories.Small;
-    private readonly IPersistedSnapshotRepository _largePersisted = persistedSnapshotRepositories.Large;
+    private readonly IPersistedSnapshotRepository _persisted = persistedSnapshotRepository;
 
     // Do NOT iterate these dictionaries: entry counts can reach hundreds of thousands
     // in production. Use TryGetValue / TryLease* for point lookups. Aggregates (the
@@ -77,17 +76,15 @@ public class SnapshotRepository(PersistedSnapshotRepositories persistedSnapshotR
             {
                 (StateId current, bool currentPersisted, int parentIdx) = queue.Dequeue();
 
-                // Expand up to 6 edges from `current`, in widest-jump-first order:
-                //   0: in-memory compacted          — widest in-RAM hop, no disk read
-                //   1: Large-tier persisted compacted
-                //   2: Large-tier persisted base     — both are CompactSize-wide
-                //   3: in-memory base                — one-block hop, no disk read
-                //   4: Small-tier persisted compacted
-                //   5: Small-tier persisted base     — narrowest hops, last resort
+                // Expand up to 4 edges from `current`, in widest-jump-first order:
+                //   0: in-memory compacted   — widest in-RAM hop, no disk read
+                //   1: persisted compacted   — >CompactSize merges and the CompactSize persistable
+                //   2: persisted base        — sub-CompactSize, narrowest persisted hop
+                //   3: in-memory base        — one-block hop, no disk read
                 // Persisted snapshots only chain back to other persisted snapshots by
                 // construction, so once on a persisted edge the in-memory edges (0, 3)
                 // are guaranteed misses — gated below by the edgeIsInMemory check.
-                for (int e = 0; e < 6; e++)
+                for (int e = 0; e < 4; e++)
                 {
                     bool edgeIsInMemory = e == 0 || e == 3;
                     if (currentPersisted && edgeIsInMemory) continue;
@@ -101,25 +98,17 @@ public class SnapshotRepository(PersistedSnapshotRepositories persistedSnapshotR
                             if (!TryLeaseCompactedState(current, out Snapshot? sc)) continue;
                             snapshot = sc; from = sc.From;
                             break;
-                        case 1: // persisted compacted (large tier)
-                            if (!_largePersisted.TryLeaseCompactedSnapshotTo(current, out PersistedSnapshot? pcL)) continue;
-                            snapshot = pcL; from = pcL.From;
+                        case 1: // persisted compacted (>CompactSize merges + the persistable)
+                            if (!_persisted.TryLeaseCompactedSnapshotTo(current, out PersistedSnapshot? pc)) continue;
+                            snapshot = pc; from = pc.From;
                             break;
-                        case 2: // persisted base (large tier — boundary CompactSize snapshots)
-                            if (!_largePersisted.TryLeaseSnapshotTo(current, out PersistedSnapshot? pbL)) continue;
-                            snapshot = pbL; from = pbL.From;
+                        case 2: // persisted base (sub-CompactSize)
+                            if (!_persisted.TryLeaseSnapshotTo(current, out PersistedSnapshot? pb)) continue;
+                            snapshot = pb; from = pb.From;
                             break;
                         case 3: // in-memory base
                             if (!TryLeaseState(current, out Snapshot? sb)) continue;
                             snapshot = sb; from = sb.From;
-                            break;
-                        case 4: // persisted compacted (small tier)
-                            if (!_smallPersisted.TryLeaseCompactedSnapshotTo(current, out PersistedSnapshot? pcS)) continue;
-                            snapshot = pcS; from = pcS.From;
-                            break;
-                        case 5: // persisted base (small tier — sub-CompactSize)
-                            if (!_smallPersisted.TryLeaseSnapshotTo(current, out PersistedSnapshot? pbS)) continue;
-                            snapshot = pbS; from = pbS.From;
                             break;
                         default: continue;
                     }
@@ -383,10 +372,7 @@ public class SnapshotRepository(PersistedSnapshotRepositories persistedSnapshotR
     public bool HasState(in StateId stateId)
     {
         if (_snapshots.ContainsKey(stateId)) return true;
-        // Base snapshots can live in either tier: small holds sub-CompactSize bases,
-        // large holds boundary CompactSize bases written directly by PersistenceManager.
-        if (_largePersisted.HasBaseSnapshot(stateId)) return true;
-        if (_smallPersisted.HasBaseSnapshot(stateId)) return true;
+        if (_persisted.HasBaseSnapshot(stateId)) return true;
         return false;
     }
 

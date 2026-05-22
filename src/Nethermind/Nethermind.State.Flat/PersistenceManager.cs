@@ -31,7 +31,7 @@ public class PersistenceManager(
     ISnapshotRepository snapshotRepository,
     ILogManager logManager,
     PersistedSnapshotCompactors persistedSnapshotCompactors,
-    PersistedSnapshotRepositories persistedSnapshotRepositories) : IPersistenceManager
+    IPersistedSnapshotRepository persistedSnapshotRepository) : IPersistenceManager
 {
     private readonly ILogger _logger = logManager.GetClassLogger<PersistenceManager>();
     private readonly int _minReorgDepth = configuration.MinReorgDepth;
@@ -42,10 +42,9 @@ public class PersistenceManager(
     private readonly IPersistence _persistence = persistence;
     private readonly ISnapshotRepository _snapshotRepository = snapshotRepository;
     private readonly IFinalizedStateProvider _finalizedStateProvider = finalizedStateProvider;
-    private readonly IPersistedSnapshotCompactor _smallCompactor = persistedSnapshotCompactors.Small;
-    private readonly IPersistedSnapshotCompactor _largeCompactor = persistedSnapshotCompactors.Large;
-    private readonly IPersistedSnapshotRepository _smallRepo = persistedSnapshotRepositories.Small;
-    private readonly IPersistedSnapshotRepository _largeRepo = persistedSnapshotRepositories.Large;
+    private readonly IPersistedSnapshotCompactor _batchedCompactor = persistedSnapshotCompactors.Batched;
+    private readonly IPersistedSnapshotCompactor _boundaryCompactor = persistedSnapshotCompactors.Boundary;
+    private readonly IPersistedSnapshotRepository _repo = persistedSnapshotRepository;
     private readonly List<(Hash256, TreePath)> _trieNodesSortBuffer = []; // Presort make it faster
     private readonly Lock _persistenceLock = new();
 
@@ -106,8 +105,6 @@ public class PersistenceManager(
     {
         if (batch.Count == 0) return;
 
-        // Offload boundary states (block divisible by _compactSize — heaviest merges) to the
-        // parallel boundary channel so the next batch can start before these compactions finish.
         using ArrayPoolList<StateId> boundaries = new(batch.Count);
         SortedDictionary<int, List<StateId>> buckets = new();
         for (int i = 0; i < batch.Count; i++)
@@ -116,24 +113,24 @@ public class PersistenceManager(
             long b = s.BlockNumber;
             if (b == 0) continue;
 
-            if (b % _compactSize == 0)
-            {
-                boundaries.Add(s);
-                continue;
-            }
+            if (b % _compactSize == 0) boundaries.Add(s);
 
-            // Non-boundary: lowest-set-bit alignment is strictly < _compactSize.
-            int compactSize = (int)(b & -b);
+            // Bucket every state by its power-of-2 alignment, capped at CompactSize so a
+            // boundary block lands in the last (CompactSize) bucket — the batched compactor's
+            // CompactSize-wide merge for a boundary block IS the persistable snapshot.
+            int compactSize = (int)Math.Min(b & -b, _compactSize);
             if (!buckets.TryGetValue(compactSize, out List<StateId>? bucket))
                 buckets[compactSize] = bucket = [];
             bucket.Add(s);
         }
 
-        // Non-boundary states live only in the small repo (see AddToPersistence:
-        // _smallRepo.ConvertSnapshotToPersistedSnapshot for non-boundary blocks).
+        // Ascending bucket order: each layer's inputs (the previous layer's outputs) exist
+        // before it runs. The CompactSize bucket runs last, producing the persistables.
         foreach (KeyValuePair<int, List<StateId>> kv in buckets)
-            Parallel.ForEach(kv.Value, state => _smallCompactor.DoCompactSnapshot(state));
+            Parallel.ForEach(kv.Value, state => _batchedCompactor.DoCompactSnapshot(state));
 
+        // The persistable layer is now produced; hand each boundary to the boundary compactor
+        // for the >CompactSize hierarchical merges.
         foreach (StateId boundary in boundaries)
             await _boundaryCompactJobs.Writer.WriteAsync(boundary, _cancelTokenSource.Token);
     }
@@ -146,9 +143,9 @@ public class PersistenceManager(
             {
                 try
                 {
-                    // Boundary snapshots always live in the large repo (see AddToPersistence:
-                    // _largeRepo.ConvertSnapshotToPersistedSnapshot at the boundary block).
-                    _largeCompactor.DoCompactSnapshot(state);
+                    // The persistable for this boundary was already produced by the batched
+                    // compactor; the boundary compactor only does the >CompactSize merges.
+                    _boundaryCompactor.DoCompactSnapshot(state);
                 }
                 catch (Exception ex)
                 {
@@ -199,8 +196,7 @@ public class PersistenceManager(
     ///   <see cref="IFinalizedStateProvider"/> — the boundary is always locally synced even
     ///   during catch-up sync where the CL-reported finalized tip is beyond the chain head.</item>
     ///   <item>Else if <c>snapshotsDepth &gt; LongFinalityReorgDepth</c> (backstop, finalization
-    ///   stalled) → seed = latest persisted-snapshot tier state (large tier preferred,
-    ///   small fallback).</item>
+    ///   stalled) → seed = latest persisted-snapshot tier state.</item>
     ///   <item>Else → no seed; Phase 1 doesn't run, fall through to Phase 2.</item>
     /// </list>
     /// Phase 2 runs only with <see cref="_enableLongFinality"/> enabled AND
@@ -234,7 +230,7 @@ public class PersistenceManager(
         }
         else if (snapshotsDepth > _longFinalityReorgDepth)
         {
-            seed = _largeRepo.LastRegisteredState ?? _smallRepo.LastRegisteredState;
+            seed = _repo.LastRegisteredState;
         }
 
         if (seed is not null)
@@ -258,18 +254,19 @@ public class PersistenceManager(
     /// <paramref name="currentPersistedState"/>. At each visited <c>StateId</c> the four candidate
     /// sources are tried in this fixed priority order:
     /// <list type="number">
-    ///   <item><c>_largeRepo.TryLeaseSnapshotTo</c> — persisted base, depth == CompactSize</item>
-    ///   <item><c>_smallRepo.TryLeaseSnapshotTo</c> — persisted base, sub-CompactSize</item>
+    ///   <item><c>_repo.TryLeasePersistableCompactedSnapshotTo</c> — the CompactSize-wide
+    ///   persistable (one persist covers the whole window)</item>
+    ///   <item><c>_repo.TryLeaseSnapshotTo</c> — a persisted base (fallback when the
+    ///   persistable for this window has not been compacted yet)</item>
     ///   <item><c>_snapshotRepository.TryLeaseCompactedState</c> filtered to depth == CompactSize —
     ///   in-memory boundary compacted</item>
     ///   <item><c>_snapshotRepository.TryLeaseState</c> — in-memory base, depth == 1</item>
     /// </list>
     /// </summary>
     /// <remarks>
-    /// Compacted persisted entries (large hierarchical / small compacted) and non-boundary
-    /// in-memory compacted entries are not returnable candidates; they are still traversed for
-    /// navigation, acting as skip pointers that jump multiple blocks per hop and shorten the path
-    /// to a candidate.
+    /// &gt;CompactSize compacted persisted entries and non-boundary in-memory compacted entries
+    /// are not returnable candidates; they are still traversed for navigation, acting as skip
+    /// pointers that jump multiple blocks per hop and shorten the path to a candidate.
     /// </remarks>
     private (PersistedSnapshot? Persisted, Snapshot? InMemory) TryFindSnapshotToPersist(
         StateId seed, StateId currentPersistedState)
@@ -282,20 +279,22 @@ public class PersistenceManager(
 
         while (queue.TryDequeue(out StateId current))
         {
-            // Priority 1: persisted base in the Large tier (depth == CompactSize).
-            if (_largeRepo.TryLeaseSnapshotTo(current, out PersistedSnapshot? largeBase))
+            // Priority 1: the CompactSize-wide persistable — the fast path, one persist
+            // covers a whole CompactSize window.
+            if (_repo.TryLeasePersistableCompactedSnapshotTo(current, out PersistedSnapshot? persistable))
             {
-                if (largeBase!.From == currentPersistedState) return (largeBase, null);
-                EnqueueAncestor(largeBase.From, currentPersistedState, visited, queue);
-                largeBase.Dispose();
+                if (persistable!.From == currentPersistedState) return (persistable, null);
+                EnqueueAncestor(persistable.From, currentPersistedState, visited, queue);
+                persistable.Dispose();
             }
 
-            // Priority 2: persisted base in the Small tier (sub-CompactSize).
-            if (_smallRepo.TryLeaseSnapshotTo(current, out PersistedSnapshot? smallBase))
+            // Priority 2: a persisted base — the fallback when the persistable for this
+            // window has not been produced by the batched compactor yet.
+            if (_repo.TryLeaseSnapshotTo(current, out PersistedSnapshot? persistedBase))
             {
-                if (smallBase!.From == currentPersistedState) return (smallBase, null);
-                EnqueueAncestor(smallBase.From, currentPersistedState, visited, queue);
-                smallBase.Dispose();
+                if (persistedBase!.From == currentPersistedState) return (persistedBase, null);
+                EnqueueAncestor(persistedBase.From, currentPersistedState, visited, queue);
+                persistedBase.Dispose();
             }
 
             // Priority 3: in-memory boundary compacted (depth == CompactSize).
@@ -316,17 +315,12 @@ public class PersistenceManager(
                 inMemBase.Dispose();
             }
 
-            // Pure navigation: compacted persisted entries are never returned as candidates but
-            // act as skip pointers (their range covers multiple blocks per hop).
-            if (_largeRepo.TryLeaseCompactedSnapshotTo(current, out PersistedSnapshot? largeCompacted))
+            // Pure navigation: >CompactSize compacted entries are never returned as candidates
+            // but act as skip pointers (their range covers multiple blocks per hop).
+            if (_repo.TryLeaseCompactedSnapshotTo(current, out PersistedSnapshot? compacted))
             {
-                EnqueueAncestor(largeCompacted!.From, currentPersistedState, visited, queue);
-                largeCompacted.Dispose();
-            }
-            if (_smallRepo.TryLeaseCompactedSnapshotTo(current, out PersistedSnapshot? smallCompacted))
-            {
-                EnqueueAncestor(smallCompacted!.From, currentPersistedState, visited, queue);
-                smallCompacted.Dispose();
+                EnqueueAncestor(compacted!.From, currentPersistedState, visited, queue);
+                compacted.Dispose();
             }
         }
 
@@ -341,16 +335,16 @@ public class PersistenceManager(
 
     /// <summary>
     /// Phase 2 — scan in-memory snapshots in ascending block-number order using two passes so
-    /// boundary-CompactSize compacted candidates (Branch A → large tier) globally win over
-    /// base candidates (Branch B → small tier), regardless of block-number ordering. Boundary
-    /// compacted exist only at multiples of <see cref="_compactSize"/> while bases exist at
-    /// every block, so a single-pass ascending walk would always pick the smallest-block base
-    /// first and starve the large tier.
+    /// boundary-CompactSize compacted candidates (Branch A) globally win over base candidates
+    /// (Branch B), regardless of block-number ordering. Boundary compacted exist only at
+    /// multiples of <see cref="_compactSize"/> while bases exist at every block, so a
+    /// single-pass ascending walk would always pick the smallest-block base first and starve
+    /// the boundary candidates.
     /// </summary>
     /// <remarks>
     /// Both passes share the same <c>ordered</c> list and the same on-disk gate
     /// (<see cref="IsOnDisk"/> — either equals <paramref name="currentPersistedState"/> or is
-    /// the <c>To</c> of an existing persisted snapshot in either tier). Pass 1 keeps the
+    /// the <c>To</c> of an existing persisted base snapshot). Pass 1 keeps the
     /// <c>span == _compactSize</c> guard so sub-CompactSize compacted (width 1/2/4/8/16,
     /// produced by <see cref="SnapshotCompactor"/> at non-boundary blocks) cannot be
     /// returned as boundary candidates.
@@ -359,7 +353,7 @@ public class PersistenceManager(
     {
         using ArrayPoolList<StateId> ordered = _snapshotRepository.GetSnapshotBeforeStateId(long.MaxValue);
 
-        // Pass 1 (global): boundary-CompactSize in-memory compacted → Branch A → large repo.
+        // Pass 1 (global): boundary-CompactSize in-memory compacted → Branch A.
         foreach (StateId X in ordered)
         {
             if (!_snapshotRepository.TryLeaseCompactedState(X, out Snapshot? compacted)) continue;
@@ -372,7 +366,7 @@ public class PersistenceManager(
             compacted.Dispose();
         }
 
-        // Pass 2 (fallback): in-memory base → Branch B → small repo.
+        // Pass 2 (fallback): in-memory base → Branch B.
         foreach (StateId X in ordered)
         {
             if (!_snapshotRepository.TryLeaseState(X, out Snapshot? baseSnap)) continue;
@@ -388,9 +382,7 @@ public class PersistenceManager(
     }
 
     private bool IsOnDisk(in StateId state, in StateId currentPersistedState) =>
-        state == currentPersistedState
-        || _largeRepo.HasBaseSnapshot(state)
-        || _smallRepo.HasBaseSnapshot(state);
+        state == currentPersistedState || _repo.HasBaseSnapshot(state);
 
     internal sealed record ConversionCandidate(Snapshot? Compacted, Snapshot? Base);
 
@@ -432,17 +424,17 @@ public class PersistenceManager(
     }
 
     /// <summary>
-    /// Drop persisted-snapshot tier entries whose <c>To.BlockNumber &lt; newPersisted.BlockNumber</c>
-    /// from both tiers. Called after every successful RocksDB persist (in-memory or tier source)
-    /// so the tier doesn't accumulate entries that RocksDB has already superseded.
+    /// Drop persisted-snapshot tier entries whose <c>To.BlockNumber &lt; newPersisted.BlockNumber</c>.
+    /// Called after every successful RocksDB persist (in-memory or tier source) so the tier
+    /// doesn't accumulate entries that RocksDB has already superseded.
     /// </summary>
     /// <remarks>
-    /// The per-removal metric updates (count / memory / prunes) happen delta-wise inside each
+    /// The per-removal metric updates (count / memory / prunes) happen delta-wise inside the
     /// repo's <c>PruneBefore</c>, so no metric recompute is needed here.
     /// </remarks>
     private void PrunePersistedTierBefore(StateId newPersisted)
     {
-        int pruned = _smallRepo.PruneBefore(newPersisted) + _largeRepo.PruneBefore(newPersisted);
+        int pruned = _repo.PruneBefore(newPersisted);
         if (pruned > 0 && _logger.IsDebug)
             _logger.Debug($"Pruned {pruned} persisted snapshots before block {newPersisted.BlockNumber}");
     }
@@ -451,8 +443,10 @@ public class PersistenceManager(
     {
         if (candidate.Compacted is not null)
         {
-            // Branch A — boundary CompactSize compacted: batch-convert every in-memory entry in
-            // the range it spans, then promote the compacted itself.
+            // Branch A — boundary CompactSize compacted: convert every in-memory base in the
+            // range it spans and queue them for batched compaction. The CompactSize persistable
+            // is produced by the batched compactor (a linked merge of the bases), not here, so
+            // the compacted in-memory snapshot is used only to delimit the block range.
             Snapshot compacted = candidate.Compacted;
             try
             {
@@ -477,16 +471,11 @@ public class PersistenceManager(
                             long sw = Stopwatch.GetTimestamp();
                             // Pre-leased return — dispose the caller's lease immediately;
                             // the repository's dict entry holds its own lease.
-                            _smallRepo.ConvertSnapshotToPersistedSnapshot(snap).Dispose();
+                            _repo.ConvertSnapshotToPersistedSnapshot(snap).Dispose();
                             _persistedSnapshotConvertTime.WithLabels("base").Observe(Stopwatch.GetTimestamp() - sw);
                             snap.Dispose();
                         }
                     });
-
-                long sw2 = Stopwatch.GetTimestamp();
-                using PersistedSnapshot baseLarge = _largeRepo.ConvertSnapshotToPersistedSnapshot(compacted);
-                _persistedSnapshotConvertTime.WithLabels("full32").Observe(Stopwatch.GetTimestamp() - sw2);
-                PersistedSnapshotCompactor.WarmAddressColumnIndex(baseLarge);
 
                 EnsureCompactorStarted();
                 _compactPersistedJobs.Writer.WriteAsync(allStateIds).AsTask().Wait();
@@ -508,7 +497,7 @@ public class PersistenceManager(
                 long sw = Stopwatch.GetTimestamp();
                 // Pre-leased return — dispose the caller's lease immediately;
                 // the repository's dict entry holds its own lease.
-                _smallRepo.ConvertSnapshotToPersistedSnapshot(baseSnap).Dispose();
+                _repo.ConvertSnapshotToPersistedSnapshot(baseSnap).Dispose();
                 _persistedSnapshotConvertTime.WithLabels("base").Observe(Stopwatch.GetTimestamp() - sw);
 
                 EnsureCompactorStarted();
@@ -686,6 +675,15 @@ public class PersistenceManager(
     internal void PersistPersistedSnapshot(PersistedSnapshot snapshot)
     {
         long sw = Stopwatch.GetTimestamp();
+
+        // A linked persistable's NodeRefs scatter across the base snapshots' blob arenas, so
+        // the HSST scan below reads blobs out of order. Prefetch every base's contiguous RLP
+        // region up front so the kernel can stream them in as bulk read-ahead.
+        using (PersistedSnapshotList bases = _repo.LeaseBaseSnapshotsInRange(snapshot.From, snapshot.To))
+        {
+            foreach (PersistedSnapshot baseSnapshot in bases)
+                baseSnapshot.AdviseWillNeedBlobRange();
+        }
 
         using WholeReadSession session = snapshot.BeginWholeReadSession();
         PersistedSnapshotScanner scanner = new(session, snapshot);

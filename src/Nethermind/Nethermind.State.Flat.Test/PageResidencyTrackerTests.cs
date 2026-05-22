@@ -60,7 +60,7 @@ public class PageResidencyTrackerTests
         private readonly Dictionary<int, ArenaFile> _files = [];
 
         public PageResidencyTracker PageTracker => tracker;
-        public PersistedSnapshotTier Tier => PersistedSnapshotTier.Small;
+        public PersistedSnapshotTier Tier => PersistedSnapshotTier.Persisted;
         public void QueueEviction(int arenaId, int pageIdx) => handler.OnPageEvicted(arenaId, pageIdx);
         public ArenaWriter CreateWriter(long estimatedSize) => throw new NotSupportedException();
         public void Initialize(IReadOnlyList<SnapshotCatalog.CatalogEntry> entries) => throw new NotSupportedException();

@@ -44,7 +44,7 @@ public class ArenaReclaimPunchHoleTests
         string arenaDir = Path.Combine(_testDir, "arena");
 
         using ArenaManager manager = new(arenaDir, pageCacheBytes: 0,
-            maxArenaSize: 8L * 1024 * 1024, tier: PersistedSnapshotTier.Small,
+            maxArenaSize: 8L * 1024 * 1024, tier: PersistedSnapshotTier.Persisted,
             punchHoleOnReclaim: punchHoleOnReclaim);
 
         // Two reservations in one shared arena file: disposing the first leaves the file
@@ -82,7 +82,7 @@ public class ArenaReclaimPunchHoleTests
         string blobDir = Path.Combine(_testDir, "blob");
 
         using BlobArenaManager blobs = new(blobDir, 8L * 1024 * 1024,
-            PersistedSnapshotTier.Small, punchHoleOnReclaim: punchHoleOnReclaim);
+            PersistedSnapshotTier.Persisted, punchHoleOnReclaim: punchHoleOnReclaim);
 
         ushort blobId;
         using (BlobArenaWriter writer = blobs.CreateWriter(rlpSize * rlpCount))

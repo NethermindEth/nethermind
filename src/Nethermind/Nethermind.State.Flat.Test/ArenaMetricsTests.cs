@@ -40,7 +40,7 @@ public class ArenaMetricsTests
     public void ArenaWriter_Complete_AdvancesAllocatedBytes_ByFrontierDelta_NotMappedSize()
     {
         // Use a per-tier delta so parallel-running tests with the same tier don't interfere.
-        PersistedSnapshotTier tier = PersistedSnapshotTier.Small;
+        PersistedSnapshotTier tier = PersistedSnapshotTier.Persisted;
         const long maxArenaSize = 64 * 1024;  // 64 KiB sparse arena file
         const int payloadBytes = 4096;        // write 4 KiB into it
 
@@ -93,7 +93,7 @@ public class ArenaMetricsTests
     [Test]
     public void BlobArenaWriter_Complete_AdvancesBlobAllocatedBytes_AndKeepsArenaGaugeAtZero()
     {
-        PersistedSnapshotTier tier = PersistedSnapshotTier.Large;
+        PersistedSnapshotTier tier = PersistedSnapshotTier.Persisted;
         const long maxFileSize = 64 * 1024;
         const int blobBytes = 1024;
 

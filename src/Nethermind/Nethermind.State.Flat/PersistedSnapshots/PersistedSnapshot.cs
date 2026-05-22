@@ -92,6 +92,14 @@ public sealed class PersistedSnapshot : RefCountingDisposable
     public StateId To { get; }
     public PersistedSnapshotTier Tier { get; }
 
+    /// <summary>
+    /// The contiguous trie-RLP region this snapshot occupies in its blob arena. Non-empty
+    /// only for base snapshots (which write all their RLPs through one
+    /// <see cref="BlobArenaWriter"/>); <see cref="BlobRange.None"/> for compacted /
+    /// persistable snapshots, whose <c>NodeRef</c>s scatter across many blob arenas.
+    /// </summary>
+    public BlobRange BlobRange { get; }
+
     public long Size => _reservation.Size;
 
     internal ArenaReservation Reservation => _reservation;
@@ -125,11 +133,12 @@ public sealed class PersistedSnapshot : RefCountingDisposable
     /// for caller compatibility but no longer affects the cache.
     /// </remarks>
     public PersistedSnapshot(StateId from, StateId to, ArenaReservation reservation,
-        IBlobArenaManager blobManager, PersistedSnapshotTier tier)
+        IBlobArenaManager blobManager, PersistedSnapshotTier tier, BlobRange blobRange = default)
     {
         From = from;
         To = to;
         Tier = tier;
+        BlobRange = blobRange;
         _reservation = reservation;
         _blobManager = blobManager;
         _reservation.AcquireLease();
@@ -536,6 +545,22 @@ public sealed class PersistedSnapshot : RefCountingDisposable
     }
 
     public void AdviseDontNeed() => _reservation.AdviseDontNeed();
+
+    /// <summary>
+    /// Issue <c>posix_fadvise(WILLNEED)</c> over this base snapshot's contiguous trie-RLP
+    /// region so the kernel prefetches it ahead of a random-access read pass. No-op for
+    /// compacted / persistable snapshots (<see cref="BlobRange.None"/>) or empty regions.
+    /// </summary>
+    /// <remarks>
+    /// Used by <see cref="PersistenceManager"/> before scanning a linked persistable: its
+    /// <c>NodeRef</c>s scatter across the base snapshots' blob arenas, so bulk-prefetching
+    /// each base's region turns the otherwise-random blob reads into kernel read-ahead.
+    /// </remarks>
+    public void AdviseWillNeedBlobRange()
+    {
+        if (BlobRange.IsEmpty) return;
+        _blobManager.GetFile(BlobRange.BlobArenaId).FadviseWillNeed(BlobRange.Offset, BlobRange.Length);
+    }
 
     /// <summary>
     /// Drop this snapshot's pages from the arena's <see cref="PageResidencyTracker"/> without

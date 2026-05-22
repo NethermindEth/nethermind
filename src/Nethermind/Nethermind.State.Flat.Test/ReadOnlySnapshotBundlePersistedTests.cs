@@ -31,7 +31,7 @@ public class ReadOnlySnapshotBundlePersistedTests
         _pool = new ResourcePool(new FlatDbConfig());
         _memArena = new MemoryArenaManager();
         _blobsDir = Path.Combine(Path.GetTempPath(), $"nm-robtest-blobs-{Guid.NewGuid():N}");
-        _blobs = new BlobArenaManager(_blobsDir, 4L * 1024 * 1024, PersistedSnapshotTier.Small);
+        _blobs = new BlobArenaManager(_blobsDir, 4L * 1024 * 1024, PersistedSnapshotTier.Persisted);
     }
 
     [TearDown]
@@ -187,6 +187,6 @@ public class ReadOnlySnapshotBundlePersistedTests
         writer.GetWriter().Advance(data.Length);
         (_, ArenaReservation reservation) = writer.Complete();
         TestFixtureHelpers.LeaseBlobIdsFromHsst(reservation, _blobs);
-        return new PersistedSnapshot(from, to, reservation, _blobs, PersistedSnapshotTier.Small);
+        return new PersistedSnapshot(from, to, reservation, _blobs, PersistedSnapshotTier.Persisted);
     }
 }

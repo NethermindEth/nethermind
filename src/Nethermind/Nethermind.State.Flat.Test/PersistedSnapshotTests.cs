@@ -31,7 +31,7 @@ public class PersistedSnapshotTests
         _resourcePool = new ResourcePool(new FlatDbConfig());
         _memArena = new MemoryArenaManager();
         _blobsDir = Path.Combine(Path.GetTempPath(), $"nm-pstest-blobs-{Guid.NewGuid():N}");
-        _blobs = new BlobArenaManager(_blobsDir, 4L * 1024 * 1024, PersistedSnapshotTier.Small);
+        _blobs = new BlobArenaManager(_blobsDir, 4L * 1024 * 1024, PersistedSnapshotTier.Persisted);
     }
 
     [TearDown]
@@ -43,7 +43,7 @@ public class PersistedSnapshotTests
     }
 
     private PersistedSnapshot CreatePersistedSnapshot(StateId from, StateId to, byte[] data) =>
-        CreatePersistedSnapshot(from, to, data, PersistedSnapshotTier.Small);
+        CreatePersistedSnapshot(from, to, data, PersistedSnapshotTier.Persisted);
 
     private PersistedSnapshot CreatePersistedSnapshot(StateId from, StateId to, byte[] data, PersistedSnapshotTier tier)
     {
@@ -196,38 +196,33 @@ public class PersistedSnapshotTests
     }
 
     [Test]
-    public void ActivePersistedSnapshotCount_TracksConstructionAndDisposalByTier()
+    public void ActivePersistedSnapshotCount_TracksConstructionAndDisposal()
     {
         StateId from = new(0, Keccak.EmptyTreeHash);
-        StateId toSmall = new(1, Keccak.Compute("small"));
-        StateId toLarge = new(2, Keccak.Compute("large"));
+        StateId to1 = new(1, Keccak.Compute("one"));
+        StateId to2 = new(2, Keccak.Compute("two"));
 
-        Snapshot inMemSmall = new(from, toSmall, new SnapshotContent(), _resourcePool, ResourcePool.Usage.MainBlockProcessing);
-        Snapshot inMemLarge = new(from, toLarge, new SnapshotContent(), _resourcePool, ResourcePool.Usage.MainBlockProcessing);
-        byte[] dataSmall = PersistedSnapshotBuilderTestExtensions.Build(inMemSmall, _blobs);
-        byte[] dataLarge = PersistedSnapshotBuilderTestExtensions.Build(inMemLarge, _blobs);
+        Snapshot inMem1 = new(from, to1, new SnapshotContent(), _resourcePool, ResourcePool.Usage.MainBlockProcessing);
+        Snapshot inMem2 = new(from, to2, new SnapshotContent(), _resourcePool, ResourcePool.Usage.MainBlockProcessing);
+        byte[] data1 = PersistedSnapshotBuilderTestExtensions.Build(inMem1, _blobs);
+        byte[] data2 = PersistedSnapshotBuilderTestExtensions.Build(inMem2, _blobs);
 
-        long baselineSmall = Active(PersistedSnapshotTier.Small);
-        long baselineLarge = Active(PersistedSnapshotTier.Large);
+        long baseline = Active();
 
-        PersistedSnapshot small = CreatePersistedSnapshot(from, toSmall, dataSmall, PersistedSnapshotTier.Small);
-        PersistedSnapshot large = CreatePersistedSnapshot(from, toLarge, dataLarge, PersistedSnapshotTier.Large);
+        PersistedSnapshot s1 = CreatePersistedSnapshot(from, to1, data1, PersistedSnapshotTier.Persisted);
+        PersistedSnapshot s2 = CreatePersistedSnapshot(from, to2, data2, PersistedSnapshotTier.Persisted);
 
-        Assert.That(small.Tier, Is.EqualTo(PersistedSnapshotTier.Small));
-        Assert.That(large.Tier, Is.EqualTo(PersistedSnapshotTier.Large));
-        Assert.That(Active(PersistedSnapshotTier.Small), Is.EqualTo(baselineSmall + 1));
-        Assert.That(Active(PersistedSnapshotTier.Large), Is.EqualTo(baselineLarge + 1));
+        Assert.That(s1.Tier, Is.EqualTo(PersistedSnapshotTier.Persisted));
+        Assert.That(Active(), Is.EqualTo(baseline + 2));
 
-        small.Dispose();
-        Assert.That(Active(PersistedSnapshotTier.Small), Is.EqualTo(baselineSmall));
-        Assert.That(Active(PersistedSnapshotTier.Large), Is.EqualTo(baselineLarge + 1));
+        s1.Dispose();
+        Assert.That(Active(), Is.EqualTo(baseline + 1));
 
-        large.Dispose();
-        Assert.That(Active(PersistedSnapshotTier.Small), Is.EqualTo(baselineSmall));
-        Assert.That(Active(PersistedSnapshotTier.Large), Is.EqualTo(baselineLarge));
+        s2.Dispose();
+        Assert.That(Active(), Is.EqualTo(baseline));
 
-        static long Active(PersistedSnapshotTier tier) =>
-            Metrics.ActivePersistedSnapshotCountByTier.TryGetValue(tier, out long c) ? c : 0;
+        static long Active() =>
+            Metrics.ActivePersistedSnapshotCountByTier.TryGetValue(PersistedSnapshotTier.Persisted, out long c) ? c : 0;
     }
 
     [Test]
@@ -240,10 +235,10 @@ public class PersistedSnapshotTests
         TreePath path = new(Keccak.Compute("p"), 8);
         inMem.Content.StateNodes[path] = new TrieNode(NodeType.Leaf, [0xC2, 0x80, 0x80]);
 
-        long baselineBytes = Bytes(PersistedSnapshotTier.Small);
+        long baselineBytes = Bytes(PersistedSnapshotTier.Persisted);
         // Build writes the trie-node RLPs into _blobs; afterBuild captures that growth.
         byte[] data = PersistedSnapshotBuilderTestExtensions.Build(inMem, _blobs);
-        long afterBuild = Bytes(PersistedSnapshotTier.Small);
+        long afterBuild = Bytes(PersistedSnapshotTier.Persisted);
         Assert.That(afterBuild, Is.GreaterThan(baselineBytes), "Building a snapshot with trie nodes should grow blob-allocated bytes");
 
         // Inline construction (skip LeaseBlobIdsFromHsst): the helper acquires an extra
@@ -255,13 +250,13 @@ public class PersistedSnapshotTests
             data.CopyTo(span);
             writer.GetWriter().Advance(data.Length);
             (_, ArenaReservation reservation) = writer.Complete();
-            PersistedSnapshot persisted = new(from, to, reservation, _blobs, PersistedSnapshotTier.Small);
+            PersistedSnapshot persisted = new(from, to, reservation, _blobs, PersistedSnapshotTier.Persisted);
             persisted.Dispose();
         }
 
         // After the last external lease drops, the manager's TryResetOrphanedFrontier
         // should have reset the file's frontier and pushed the delta back to the gauge.
-        Assert.That(Bytes(PersistedSnapshotTier.Small), Is.EqualTo(baselineBytes),
+        Assert.That(Bytes(PersistedSnapshotTier.Persisted), Is.EqualTo(baselineBytes),
             "Blob-allocated bytes must drop back to baseline once the last referencing snapshot is disposed");
 
         static long Bytes(PersistedSnapshotTier tier) =>

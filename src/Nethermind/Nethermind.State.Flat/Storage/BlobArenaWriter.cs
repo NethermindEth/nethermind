@@ -80,6 +80,12 @@ public sealed class BlobArenaWriter : IDisposable
     public long Written => _written;
 
     /// <summary>
+    /// File-absolute offset of the first byte this writer appends — the start of the
+    /// contiguous RLP region it produces. Equals the file's frontier when the writer opened.
+    /// </summary>
+    public long StartOffset => _startOffset;
+
+    /// <summary>
     /// Append <paramref name="rlp"/> to the blob arena file, padding to keep it within a
     /// single 4 KiB page when it would otherwise straddle. Returns the <see cref="NodeRef"/>
     /// that the caller embeds in the metadata HSST in place of the inline RLP.

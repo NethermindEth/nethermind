@@ -20,13 +20,15 @@ public sealed class NullPersistedSnapshotRepository : IPersistedSnapshotReposito
     public void LoadFromCatalog() { }
     public PersistedSnapshot ConvertSnapshotToPersistedSnapshot(Snapshot snapshot)
         => throw new NotSupportedException($"{nameof(NullPersistedSnapshotRepository)} cannot host persisted snapshots.");
-    public PersistedSnapshot AddCompactedSnapshot(StateId from, StateId to, SnapshotLocation location, ArenaReservation reservation, BloomFilter bloom)
+    public PersistedSnapshot AddCompactedSnapshot(StateId from, StateId to, SnapshotLocation location, ArenaReservation reservation, BloomFilter bloom, bool isPersistable = false)
         => throw new NotSupportedException($"{nameof(NullPersistedSnapshotRepository)} cannot host compacted snapshots.");
     public PersistedSnapshotList AssembleSnapshotsForCompaction(StateId toStateId, long minBlockNumber) => PersistedSnapshotList.Empty();
+    public PersistedSnapshotList LeaseBaseSnapshotsInRange(StateId from, StateId to) => PersistedSnapshotList.Empty();
     public PersistedSnapshot? TryGetSnapshotFrom(StateId fromState, StateId seedState) => null;
     public PersistedSnapshot? TryGetSnapshotFrom(StateId fromState) => null;
     public bool TryLeaseSnapshotTo(StateId toState, [NotNullWhen(true)] out PersistedSnapshot? snapshot) { snapshot = null; return false; }
     public bool TryLeaseCompactedSnapshotTo(StateId toState, [NotNullWhen(true)] out PersistedSnapshot? snapshot) { snapshot = null; return false; }
+    public bool TryLeasePersistableCompactedSnapshotTo(StateId toState, [NotNullWhen(true)] out PersistedSnapshot? snapshot) { snapshot = null; return false; }
     public int PruneBefore(StateId stateId) => 0;
     public bool HasBaseSnapshot(in StateId stateId) => false;
     public void Dispose() { }
