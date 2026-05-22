@@ -78,7 +78,10 @@ public sealed class SszMiddlewareConfigurer(IComponentContext ctx) : IJsonRpcSer
         foreach (Type handler in SingletonHandlers)
             services.AddSingleton(typeof(ISszEndpointHandler), handler);
 
-        services.AddSingleton<ISszEndpointHandler, NewPayloadWithWitnessSszHandler>();
+        // Register as the concrete type so SszMiddleware can take it directly (and as
+        // ISszEndpointHandler so DI doesn't double-construct on resolution).
+        services.AddSingleton<NewPayloadWithWitnessSszHandler>();
+        services.AddSingleton<ISszEndpointHandler>(static sp => sp.GetRequiredService<NewPayloadWithWitnessSszHandler>());
     }
 }
 

@@ -382,7 +382,3 @@ public partial struct ExecutionWitnessV1Wire
     [SszList(1048576)] public SszWitnessItem[]? Headers { get; set; }
 }
 
-// NewPayloadWithWitnessResponseV1 uses SSZ Union[None, T] (selector 0 / 1 ++ variant) for
-// its optional fields per execution-apis#773. [SszCompatibleUnion] only supports selectors
-// 1-127, so the None selector cannot be code-generated — encode/decode is hand-written in
-// SszCodec.EncodeNewPayloadWithWitnessResponse / DecodeNewPayloadWithWitnessResponse.

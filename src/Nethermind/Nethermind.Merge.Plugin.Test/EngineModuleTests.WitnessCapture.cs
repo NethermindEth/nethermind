@@ -12,6 +12,7 @@ using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Stateless;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
@@ -33,6 +34,57 @@ namespace Nethermind.Merge.Plugin.Test;
 
 public partial class EngineModuleTests
 {
+    private static Witness MakeStubWitness() => new()
+    {
+        State = new ArrayPoolList<byte[]>(1) { new byte[] { 0xDE, 0xAD } },
+        Codes = new ArrayPoolList<byte[]>(0),
+        Keys = new ArrayPoolList<byte[]>(0),
+        Headers = new ArrayPoolList<byte[]>(0),
+    };
+
+    private sealed class WitnessHandlerBuilder
+    {
+        public IEngineRpcModule EngineModule { get; set; }
+            = SucceedingEngineModule(new PayloadStatusV1 { Status = PayloadStatus.Valid, LatestValidHash = TestItem.KeccakA });
+
+        public IWitnessCaptureRegistry Registry { get; set; } = RegistryReturning(MakeStubWitness());
+
+        public NewPayloadWithWitnessHandler Build() =>
+            new(new Lazy<IEngineRpcModule>(() => EngineModule), Registry);
+
+        public static IEngineRpcModule SucceedingEngineModule(PayloadStatusV1 status)
+        {
+            IEngineRpcModule module = Substitute.For<IEngineRpcModule>();
+            module
+                .engine_newPayloadV5(Arg.Any<ExecutionPayloadV4>(), Arg.Any<byte[]?[]>(), Arg.Any<Hash256?>(), Arg.Any<byte[][]?>())
+                .Returns(ResultWrapper<PayloadStatusV1>.Success(status));
+            return module;
+        }
+
+        public static IEngineRpcModule FailingEngineModule(string error, int errorCode)
+        {
+            IEngineRpcModule module = Substitute.For<IEngineRpcModule>();
+            module
+                .engine_newPayloadV5(Arg.Any<ExecutionPayloadV4>(), Arg.Any<byte[]?[]>(), Arg.Any<Hash256?>(), Arg.Any<byte[][]?>())
+                .Returns(ResultWrapper<PayloadStatusV1>.Fail(error, errorCode));
+            return module;
+        }
+
+        public static IWitnessCaptureRegistry RegistryReturning(Witness? witness)
+        {
+            IWitnessCaptureRegistry registry = Substitute.For<IWitnessCaptureRegistry>();
+            registry.ArmCapture(Arg.Any<Hash256>()).Returns(Task.FromResult(witness));
+            return registry;
+        }
+
+        public static IWitnessCaptureRegistry RegistryNoop()
+        {
+            IWitnessCaptureRegistry registry = Substitute.For<IWitnessCaptureRegistry>();
+            registry.ArmCapture(Arg.Any<Hash256>()).Returns(new TaskCompletionSource<Witness?>().Task);
+            return registry;
+        }
+    }
+
     [Test]
     [Category("WitnessCapture")]
     public void Registry_ArmCapture_returns_incomplete_task_before_drain()
@@ -194,7 +246,7 @@ public partial class EngineModuleTests
         IWorldState inner = Substitute.For<IWorldState>();
         inner.TryGetAccount(Arg.Any<Address>(), out Arg.Any<AccountStruct>()).Returns(false);
 
-        WitnessCapturingWorldStateProxy proxy = new(inner);
+        WitnessCapturingWorldStateProxy proxy = new(inner, Substitute.For<IWitnessCaptureRegistry>());
         proxy.Arm();
 
         StorageCell writeCell = new(TestItem.AddressA, UInt256.One);
@@ -221,7 +273,7 @@ public partial class EngineModuleTests
         IWorldState inner = Substitute.For<IWorldState>();
         inner.GetCode(Arg.Any<Address>()).Returns(code);
 
-        WitnessCapturingWorldStateProxy proxy = new(inner);
+        WitnessCapturingWorldStateProxy proxy = new(inner, Substitute.For<IWitnessCaptureRegistry>());
         proxy.Arm();
         proxy.GetCode(TestItem.AddressA);
 
@@ -242,7 +294,7 @@ public partial class EngineModuleTests
         IWorldState inner = Substitute.For<IWorldState>();
         inner.TryGetAccount(Arg.Any<Address>(), out Arg.Any<AccountStruct>()).Returns(false);
 
-        WitnessCapturingWorldStateProxy proxy = new(inner);
+        WitnessCapturingWorldStateProxy proxy = new(inner, Substitute.For<IWitnessCaptureRegistry>());
 
         proxy.TryGetAccount(TestItem.AddressA, out _);
         proxy.IsContract(TestItem.AddressA);
@@ -371,6 +423,25 @@ public partial class EngineModuleTests
         result.Result.ResultType.Should().Be(ResultType.Success);
         result.Data.Status.Should().Be(PayloadStatus.Valid);
         result.Data.ExecutionWitness.Should().BeSameAs(expectedWitness);
+    }
+
+    [Test]
+    [Category("WitnessCapture")]
+    public async Task Handler_valid_status_with_null_witness_from_registry_yields_null_witness()
+    {
+        NewPayloadWithWitnessHandler handler = new WitnessHandlerBuilder
+        {
+            Registry = WitnessHandlerBuilder.RegistryReturning(null),
+            EngineModule = WitnessHandlerBuilder.SucceedingEngineModule(
+                new PayloadStatusV1 { Status = PayloadStatus.Valid, LatestValidHash = TestItem.KeccakB }),
+        }.Build();
+
+        ResultWrapper<NewPayloadWithWitnessV1Result> result =
+            await handler.HandleAsync(new ExecutionPayloadV4 { BlockHash = TestItem.KeccakA }, [], TestItem.KeccakA, []);
+
+        result.Result.ResultType.Should().Be(ResultType.Success);
+        result.Data.Status.Should().Be(PayloadStatus.Valid);
+        result.Data.ExecutionWitness.Should().BeNull();
     }
 
     private static IEnumerable<TestCaseData> NonValidOutcomes()
@@ -734,7 +805,7 @@ public partial class EngineModuleTests
     {
         IWorldState inner = Substitute.For<IWorldState>();
         inner.TryGetAccount(Arg.Any<Address>(), out Arg.Any<AccountStruct>()).Returns(false);
-        return new WitnessCapturingWorldStateProxy(inner);
+        return new WitnessCapturingWorldStateProxy(inner, Substitute.For<IWitnessCaptureRegistry>());
     }
 
     private static WitnessCapturingWorldStateProxy MakeArmedProxy()

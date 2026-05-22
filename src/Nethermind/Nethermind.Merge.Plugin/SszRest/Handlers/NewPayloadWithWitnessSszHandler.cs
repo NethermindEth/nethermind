@@ -16,9 +16,9 @@ using Nethermind.Serialization.Json;
 namespace Nethermind.Merge.Plugin.SszRest.Handlers;
 
 /// <summary>
-/// Handles <c>POST /new-payload-with-witness</c> as specified in the Engine API REST extensions.
-/// Accepts the same JSON parameters as <c>engine_newPayloadV5</c> and returns an SSZ-encoded
-/// <c>NewPayloadWithWitnessResponseV1</c> that includes the execution witness when status is VALID.
+/// Handles <c>POST /new-payload-with-witness</c>. Per execution-apis#773 the request is JSON
+/// (same shape as <c>engine_newPayloadV5</c> params) and the response is SSZ-encoded
+/// <c>NewPayloadWithWitnessResponseV1</c> — the only mixed-format endpoint in the SSZ-REST surface.
 /// </summary>
 public sealed class NewPayloadWithWitnessSszHandler(
     IEngineRpcModule engineModule) : SszEndpointHandlerBase

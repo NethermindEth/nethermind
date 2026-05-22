@@ -101,14 +101,16 @@ public class SszMiddlewareTests
 
             new ClientVersionSszHandler(_engineModule),
             new CapabilitiesSszHandler(_engineModule),
-            new NewPayloadWithWitnessSszHandler(_engineModule),
         ];
+
+        NewPayloadWithWitnessSszHandler witness = new(_engineModule);
 
         return new SszMiddleware(
             passthrough,
             _urlCollection,
             _auth,
             handlers,
+            witness,
             _processExitSource,
             LimboLogs.Instance);
     }
@@ -518,7 +520,7 @@ public class SszMiddlewareTests
         // 204 No Content rather than 200 OK with Content-Length: 0.
         ZeroLengthEncodeHandler handler = new();
         SszMiddleware middleware = new(
-            _ => Task.CompletedTask, _urlCollection, _auth, [handler], _processExitSource, LimboLogs.Instance);
+            _ => Task.CompletedTask, _urlCollection, _auth, [handler], witnessHandler: null, _processExitSource, LimboLogs.Instance);
 
         DefaultHttpContext ctx = MakePostContext($"/engine/v1/{ZeroLengthEncodeHandler.ResourceName}", []);
 

@@ -53,44 +53,35 @@ public sealed class SszMiddleware
         IJsonRpcUrlCollection urlCollection,
         IRpcAuthentication auth,
         IEnumerable<ISszEndpointHandler> handlers,
+        NewPayloadWithWitnessSszHandler? witnessHandler,
         IProcessExitSource processExitSource,
         ILogManager logManager)
     {
         _next = next;
         _urlCollection = urlCollection;
         _auth = auth;
+        _witnessHandler = witnessHandler;
         _logger = logManager.GetClassLogger<SszMiddleware>();
         _processExitToken = processExitSource.Token;
 
-        IReadOnlyList<ISszEndpointHandler> hs = handlers as IReadOnlyList<ISszEndpointHandler> ?? [.. handlers];
-
-        (_postRoutes, _getRoutes, _postPrefixRoutes, _getPrefixRoutes) = BuildRoutes(hs);
+        (_postRoutes, _getRoutes, _postPrefixRoutes, _getPrefixRoutes) = BuildRoutes(handlers);
         _postLookup = _postRoutes.GetAlternateLookup<ReadOnlySpan<char>>();
         _getLookup = _getRoutes.GetAlternateLookup<ReadOnlySpan<char>>();
-
-        foreach (ISszEndpointHandler h in hs)
-        {
-            if (h.Resource.Equals(SszRestPaths.NewPayloadWithWitness, StringComparison.OrdinalIgnoreCase))
-            {
-                _witnessHandler = h;
-                break;
-            }
-        }
     }
 
     private static (FrozenDictionary<string, List<ISszEndpointHandler>> post,
                     FrozenDictionary<string, List<ISszEndpointHandler>> get,
                     (string, List<ISszEndpointHandler>)[] postPrefix,
                     (string, List<ISszEndpointHandler>)[] getPrefix)
-        BuildRoutes(IReadOnlyList<ISszEndpointHandler> handlers)
+        BuildRoutes(IEnumerable<ISszEndpointHandler> handlers)
     {
         Dictionary<string, List<ISszEndpointHandler>> postDict = [];
         Dictionary<string, List<ISszEndpointHandler>> getDict = [];
 
         foreach (ISszEndpointHandler h in handlers)
         {
-            if (h.Resource.Equals(SszRestPaths.NewPayloadWithWitness, StringComparison.OrdinalIgnoreCase))
-                continue;
+            // The witness handler is injected directly and dispatched via its own fast-path.
+            if (h is NewPayloadWithWitnessSszHandler) continue;
 
             string resource = h.Resource.ToLowerInvariant();
             Dictionary<string, List<ISszEndpointHandler>> dict =
@@ -166,12 +157,9 @@ public sealed class SszMiddleware
             }
             else
             {
-                if (_logger.IsTrace)
-                {
-                    _logger.Trace(extra.IsEmpty
-                        ? $"SSZ-REST {ctx.Request.Method} /engine/v{version}/{handler!.Resource}"
-                        : $"SSZ-REST {ctx.Request.Method} /engine/v{version}/{handler!.Resource}/{extra.Span}");
-                }
+                if (_logger.IsTrace) _logger.Trace(extra.IsEmpty
+                    ? $"SSZ-REST {ctx.Request.Method} /engine/v{version}/{handler!.Resource}"
+                    : $"SSZ-REST {ctx.Request.Method} /engine/v{version}/{handler!.Resource}/{extra.Span}");
 
                 await DispatchAsync(ctx, handler!, version, extra);
             }
