@@ -15,8 +15,7 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Merge.Plugin.Data;
 
-/// <summary>Wraps payload body V1 results and writes JSON directly into a <see cref="PipeWriter"/>.</summary>
-public sealed class PayloadBodiesV1DirectResponse(IReadOnlyList<ExecutionPayloadBodyV1Result?> items)
+internal sealed class PayloadBodiesV1DirectResponse(IReadOnlyList<ExecutionPayloadBodyV1Result?> items)
     : IStreamableResult, IReadOnlyList<ExecutionPayloadBodyV1Result?>
 {
     private readonly IReadOnlyList<ExecutionPayloadBodyV1Result?> _items = items;
@@ -91,9 +90,7 @@ internal static class PayloadBodiesDirectResponseWriter
         {
             if (i > 0) writer.Write(","u8);
 
-            writer.Write("\"0x"u8);
-            HexWriter.WriteHexChunked(writer, transactions[i]);
-            writer.Write("\""u8);
+            WriteHexString(writer, transactions[i], chunked: true);
         }
 
         writer.Write("]"u8);

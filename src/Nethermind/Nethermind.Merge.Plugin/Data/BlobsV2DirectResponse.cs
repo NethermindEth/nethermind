@@ -42,8 +42,6 @@ public sealed class BlobsV2DirectResponse : IStreamableResult, IReadOnlyList<Blo
     public ValueTask WriteToAsync(PipeWriter writer, CancellationToken cancellationToken) =>
         StreamableResultWriter.WriteArrayAsync(writer, _count, new ItemWriter(_blobs, _proofs), cancellationToken);
 
-    // Explicit interface implementation: only used by tests via IEnumerable<T> cast.
-    // Production serialization goes through IStreamableResult.WriteToAsync.
     IEnumerator<BlobAndProofV2?> IEnumerable<BlobAndProofV2?>.GetEnumerator()
     {
         for (int i = 0; i < _count; i++)
