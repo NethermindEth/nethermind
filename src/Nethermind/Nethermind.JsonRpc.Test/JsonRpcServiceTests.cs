@@ -162,7 +162,6 @@ public class JsonRpcServiceTests
         Assert.That(assertSize ? result.Size : result.Number, Is.EqualTo(expected));
     }
 
-
     [Test]
     public void CanRunEthSimulateV1Empty()
     {
@@ -175,7 +174,6 @@ public class JsonRpcServiceTests
             RpcTest.AssertSuccess<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>>(TestRequest(ethRpcModule, "eth_simulateV1", serializedCall));
         Assert.That(result, Is.EqualTo(Array.Empty<SimulateBlockResult<SimulateCallResult>>()));
     }
-
 
     [Test]
     public void CanHandleOptionalArguments()
@@ -561,9 +559,7 @@ public class JsonRpcServiceTests
         ethRpcModule.eth_getLogs(Arg.Any<Filter>())
             .Throws(new MissingTrieNodeException("Node missing", null, TreePath.Empty, TestItem.KeccakA));
 
-        JsonRpcErrorResponse response = AssertJsonRpcError(TestRequest(ethRpcModule, "eth_getLogs", "{}"), ErrorCodes.ResourceNotFound, "Node missing");
-
-        response.Dispose();
+        using JsonRpcErrorResponse response = AssertJsonRpcError(TestRequest(ethRpcModule, "eth_getLogs", "{}"), ErrorCodes.ResourceNotFound, "Node missing");
     }
 
     [RpcModule(ModuleType.Eth)]
