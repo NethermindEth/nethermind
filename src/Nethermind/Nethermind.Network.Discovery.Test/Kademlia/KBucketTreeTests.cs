@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
@@ -15,11 +14,16 @@ public class KBucketTreeTests
 {
     private static readonly ValueHash256 SelfHash = new("0x0000000000000000000000000000000000000000000000000000000000000000");
 
-    private static KBucketTree<ValueHash256> CreateTree(int k = 4, int beta = 0) =>
-        new(
-            new KademliaConfig<ValueHash256> { CurrentNodeId = SelfHash, KSize = k, Beta = beta },
-            new IdentityNodeHashProvider(),
-            LimboLogs.Instance);
+    private static KBucketTree<ValueHash256> CreateTree(int k = 4, int beta = 0) => new(
+        new KademliaConfig<ValueHash256> { CurrentNodeId = SelfHash, KSize = k, Beta = beta },
+        IdentityNodeHashProvider.Instance,
+        LimboLogs.Instance);
+
+    private static void Add(KBucketTree<ValueHash256> tree, ValueHash256 hash) =>
+        tree.TryAddOrRefresh(hash, hash, out _);
+
+    private static ValueHash256 HashAtDistance(int distance, byte tag) =>
+        Hash256XorUtils.GetRandomHashAtDistance(SelfHash, distance, new Random(tag));
 
     [Test]
     public void Split_should_preserve_lru_order_in_child_buckets()
@@ -31,18 +35,13 @@ public class KBucketTreeTests
         ValueHash256 right0 = HashAtDistance(254, 0x20);
         ValueHash256 right1 = HashAtDistance(254, 0x21);
 
-        tree.TryAddOrRefresh(left0, left0, out _);
-        tree.TryAddOrRefresh(right0, right0, out _);
-        tree.TryAddOrRefresh(left1, left1, out _);
-        tree.TryAddOrRefresh(right1, right1, out _);
+        Add(tree, left0);
+        Add(tree, right0);
+        Add(tree, left1);
+        Add(tree, right1);
 
-        ValueHash256[] leftBucket = tree.GetAllAtDistance(255);
-        ValueHash256[] rightBucket = tree.GetAllAtDistance(254);
-
-        Assert.That(leftBucket[0], Is.EqualTo(left1));
-        Assert.That(leftBucket[1], Is.EqualTo(left0));
-        Assert.That(rightBucket[0], Is.EqualTo(right1));
-        Assert.That(rightBucket[1], Is.EqualTo(right0));
+        Assert.That(tree.GetAllAtDistance(255), Is.EqualTo(new[] { left1, left0 }));
+        Assert.That(tree.GetAllAtDistance(254), Is.EqualTo(new[] { right1, right0 }));
     }
 
     [Test]
@@ -54,23 +53,13 @@ public class KBucketTreeTests
         ValueHash256 deep2 = HashAtDistance(252, 0x41);
         ValueHash256 deep3 = HashAtDistance(252, 0x42);
 
-        tree.TryAddOrRefresh(deep1, deep1, out _);
-        tree.TryAddOrRefresh(deep2, deep2, out _);
-        tree.TryAddOrRefresh(deep3, deep3, out _);
+        Add(tree, deep1);
+        Add(tree, deep2);
+        Add(tree, deep3);
 
-        HashSet<ValueHash256> atDistance = tree.GetAllAtDistance(252).ToHashSet();
-        Assert.That(atDistance, Is.SupersetOf(new[] { deep1, deep2 }));
-        Assert.That(atDistance.IsSubsetOf(new[] { deep1, deep2, deep3 }), Is.True);
-    }
-
-    private static ValueHash256 HashAtDistance(int distance, byte tag)
-    {
-        ValueHash256 h = Hash256XorUtils.GetRandomHashAtDistance(SelfHash, distance, new Random(tag));
-        return h;
-    }
-
-    private sealed class IdentityNodeHashProvider : INodeHashProvider<ValueHash256>
-    {
-        public ValueHash256 GetHash(ValueHash256 node) => node;
+        ValueHash256[] expectedCandidates = [deep1, deep2, deep3];
+        ValueHash256[] result = tree.GetAllAtDistance(252);
+        Assert.That(result, Is.SupersetOf(new[] { deep1, deep2 }));
+        Assert.That(result.All(expectedCandidates.Contains), Is.True);
     }
 }

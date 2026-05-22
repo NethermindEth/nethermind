@@ -22,6 +22,9 @@ namespace Nethermind.Network.Discovery.Test
     [Parallelizable(ParallelScope.Self)]
     public class DiscoveryPersistenceManagerTests
     {
+        private static readonly NetworkNode NodeA = new(TestItem.PublicKeyA, "192.168.1.1", 30303, 0);
+        private static readonly NetworkNode NodeB = new(TestItem.PublicKeyB, "192.168.1.2", 30303, 0);
+
         private MemDb _discoveryDb = null!;
         private INetworkStorage _networkStorage = null!;
         private INodeStatsManager _nodeStatsManager = null!;
@@ -47,13 +50,7 @@ namespace Nethermind.Network.Discovery.Test
             _logManager = LimboLogs.Instance;
             _kademlia = Substitute.For<IKademlia<PublicKey, Node>>();
 
-            _persistenceManager = new DiscoveryPersistenceManager(
-                _networkStorage,
-                _nodeStatsManager,
-                _discv4Adapter,
-                _kademlia,
-                _discoveryConfig,
-                _logManager);
+            _persistenceManager = CreateManager(_networkStorage);
         }
 
         [TearDown]
@@ -63,22 +60,30 @@ namespace Nethermind.Network.Discovery.Test
             _discoveryDb.Dispose();
         }
 
+        private DiscoveryPersistenceManager CreateManager(INetworkStorage storage) => new(
+            storage,
+            _nodeStatsManager,
+            _discv4Adapter,
+            _kademlia,
+            _discoveryConfig,
+            _logManager);
+
+        private static Task PingReceived(IKademliaDiscv4Adapter adapter, NetworkNode node, int times = 1) =>
+            adapter.Received(times).Ping(
+                Arg.Is<Node>(n => n.Id.Equals(node.NodeId)),
+                Arg.Any<CancellationToken>());
+
         [Test]
         [CancelAfter(10000)]
         public async Task AddPersistedNodes_Should_Ping_Each_Valid_Node(CancellationToken cancellationToken)
         {
-            NetworkNode[] networkNodes =
-            [
-                new NetworkNode(TestItem.PublicKeyA, "192.168.1.1", 30303, 0),
-                new NetworkNode(TestItem.PublicKeyB, "192.168.1.2", 30303, 0)
-            ];
-
-            _networkStorage.UpdateNodes(networkNodes);
+            NetworkNode[] nodes = [NodeA, NodeB];
+            _networkStorage.UpdateNodes(nodes);
 
             await _persistenceManager.LoadPersistedNodes(cancellationToken);
 
-            await _discv4Adapter.Received(networkNodes.Length).Ping(
-                Arg.Is<Node>(n => networkNodes.Any(nn => nn.NodeId.Equals(n.Id) && nn.Host == n.Host && nn.Port == n.Port)),
+            await _discv4Adapter.Received(nodes.Length).Ping(
+                Arg.Is<Node>(n => nodes.Any(nn => nn.NodeId.Equals(n.Id) && nn.Host == n.Host && nn.Port == n.Port)),
                 Arg.Any<CancellationToken>());
         }
 
@@ -87,23 +92,12 @@ namespace Nethermind.Network.Discovery.Test
         public async Task AddPersistedNodes_Should_Skip_Nodes_That_Fail_Node_Construction(CancellationToken cancellationToken)
         {
             INetworkStorage storageMock = Substitute.For<INetworkStorage>();
-            NetworkNode goodNode = new(TestItem.PublicKeyA, "192.168.1.1", 30303, 0);
             NetworkNode badNode = new(TestItem.PublicKeyB, "192.168.1.2", -1, 0);
-            storageMock.GetPersistedNodes().Returns([badNode, goodNode]);
+            storageMock.GetPersistedNodes().Returns([badNode, NodeA]);
 
-            DiscoveryPersistenceManager manager = new(
-                storageMock,
-                _nodeStatsManager,
-                _discv4Adapter,
-                _kademlia,
-                _discoveryConfig,
-                _logManager);
+            await CreateManager(storageMock).LoadPersistedNodes(cancellationToken);
 
-            await manager.LoadPersistedNodes(cancellationToken);
-
-            await _discv4Adapter.Received(1).Ping(
-                Arg.Is<Node>(n => n.Id.Equals(goodNode.NodeId)),
-                Arg.Any<CancellationToken>());
+            await PingReceived(_discv4Adapter, NodeA);
             await _discv4Adapter.DidNotReceive().Ping(
                 Arg.Is<Node>(n => n.Id.Equals(badNode.NodeId)),
                 Arg.Any<CancellationToken>());
@@ -113,23 +107,11 @@ namespace Nethermind.Network.Discovery.Test
         [CancelAfter(10000)]
         public async Task AddPersistedNodes_Should_Handle_Ping_Exceptions(CancellationToken cancellationToken)
         {
-            NetworkNode[] networkNodes =
-            [
-                new NetworkNode(TestItem.PublicKeyA, "192.168.1.1", 30303, 0),
-                new NetworkNode(TestItem.PublicKeyB, "192.168.1.2", 30303, 0)
-            ];
+            _networkStorage.UpdateNodes([NodeA, NodeB]);
 
-            _networkStorage.UpdateNodes(networkNodes);
-
-            // First ping succeeds, second one throws
-            _discv4Adapter.Ping(
-                    Arg.Is<Node>(n => n.Id.Equals(networkNodes[0].NodeId)),
-                    Arg.Any<CancellationToken>())
+            _discv4Adapter.Ping(Arg.Is<Node>(n => n.Id.Equals(NodeA.NodeId)), Arg.Any<CancellationToken>())
                 .Returns(Task.CompletedTask);
-
-            _discv4Adapter.Ping(
-                    Arg.Is<Node>(n => n.Id.Equals(networkNodes[1].NodeId)),
-                    Arg.Any<CancellationToken>())
+            _discv4Adapter.Ping(Arg.Is<Node>(n => n.Id.Equals(NodeB.NodeId)), Arg.Any<CancellationToken>())
                 .Returns(x => throw new Exception("Test exception"));
 
             await _persistenceManager.LoadPersistedNodes(cancellationToken);
