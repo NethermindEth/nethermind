@@ -151,18 +151,10 @@ internal sealed partial class BlockAccessListValidationIndex
                 int accountOrdinal = addressIndex.GetOrAdd(account.Address);
                 SetBit(hasAccountWords, accountOrdinal);
 
-                foreach (BalanceChange change in account.BalanceChanges)
-                    if (TryGetRow(change.Index, lastIndex, out int row)) _balance.Fill(row, c.Balance, accountOrdinal, change.Value);
-
-                foreach (NonceChange change in account.NonceChanges)
-                    if (TryGetRow(change.Index, lastIndex, out int row)) _nonce.Fill(row, c.Nonce, accountOrdinal, change.Value);
-
-                foreach (CodeChange change in account.CodeChanges)
-                    if (TryGetRow(change.Index, lastIndex, out int row)) _code.Fill(row, c.Code, accountOrdinal, change.CodeHash);
-
-                foreach (ReadOnlySlotChanges slotChanges in account.StorageChanges)
-                    foreach (StorageChange change in slotChanges.Changes)
-                        if (TryGetRow(change.Index, lastIndex, out int row)) _storage.Fill(row, c.Storage, accountOrdinal, slotChanges.Key, change.Value);
+                _balance.FillFromChanges<BalanceChange>(account.BalanceChanges, c.Balance, accountOrdinal, lastIndex, static b => b.Value);
+                _nonce.FillFromChanges<NonceChange>(account.NonceChanges, c.Nonce, accountOrdinal, lastIndex, static n => n.Value);
+                _code.FillFromChanges<CodeChange>(account.CodeChanges, c.Code, accountOrdinal, lastIndex, static cc => cc.CodeHash);
+                _storage.FillFromStorageChanges(account.StorageChanges, c.Storage, accountOrdinal, lastIndex);
             }
         }
 
@@ -439,6 +431,20 @@ internal sealed partial class BlockAccessListValidationIndex
             _values[offset] = value;
         }
 
+        /// <summary>
+        /// Fill the lane with one account's <typeparamref name="TChange"/> entries. Each change's
+        /// (Index, value) is routed into the appropriate row via the supplied cursors. Indices
+        /// past <paramref name="lastIndex"/> are skipped — the caller already validated them.
+        /// </summary>
+        public void FillFromChanges<TChange>(
+            ReadOnlySpan<TChange> changes, Span<int> cursors, int accountOrdinal, uint lastIndex,
+            Func<TChange, TValue> select)
+            where TChange : struct, IIndexedChange
+        {
+            foreach (TChange change in changes)
+                if (TryGetRow(change.Index, lastIndex, out int row)) Fill(row, cursors, accountOrdinal, select(change));
+        }
+
         public bool Add(int row, int accountOrdinal, TValue value)
         {
             int offset = ReserveNextOffset(row);
@@ -455,10 +461,8 @@ internal sealed partial class BlockAccessListValidationIndex
             if (length != other.RowLength(row)) return false;
             int start = RowStarts[row];
             int otherStart = other.RowStarts[row];
-            return new ReadOnlySpan<int>(AccountOrdinals, start, length)
-                       .SequenceEqual(new ReadOnlySpan<int>(other.AccountOrdinals, otherStart, length)) &&
-                   new ReadOnlySpan<TValue>(_values, start, length)
-                       .SequenceEqual(new ReadOnlySpan<TValue>(other._values, otherStart, length));
+            return SliceEqual(AccountOrdinals, start, other.AccountOrdinals, otherStart, length) &&
+                   SliceEqual(_values, start, other._values, otherStart, length);
         }
 
         /// <summary>
@@ -541,6 +545,19 @@ internal sealed partial class BlockAccessListValidationIndex
             _values[offset] = value;
         }
 
+        /// <summary>
+        /// Fill the lane with one account's storage_changes. Walks each slot's per-tx
+        /// <see cref="StorageChange"/> sequence; (Index, slotKey, value) for each in-range
+        /// change is routed into the appropriate row via the supplied cursors.
+        /// </summary>
+        public void FillFromStorageChanges(
+            ReadOnlySpan<ReadOnlySlotChanges> storageChanges, Span<int> cursors, int accountOrdinal, uint lastIndex)
+        {
+            foreach (ReadOnlySlotChanges slotChanges in storageChanges)
+                foreach (StorageChange change in slotChanges.Changes)
+                    if (TryGetRow(change.Index, lastIndex, out int row)) Fill(row, cursors, accountOrdinal, slotChanges.Key, change.Value);
+        }
+
         public bool Add(int row, int accountOrdinal, UInt256 key, EvmWord value)
         {
             int offset = ReserveNextOffset(row);
@@ -558,12 +575,9 @@ internal sealed partial class BlockAccessListValidationIndex
             if (length != other.RowLength(row)) return false;
             int start = RowStarts[row];
             int otherStart = other.RowStarts[row];
-            return new ReadOnlySpan<int>(AccountOrdinals, start, length)
-                       .SequenceEqual(new ReadOnlySpan<int>(other.AccountOrdinals, otherStart, length)) &&
-                   new ReadOnlySpan<UInt256>(_keys, start, length)
-                       .SequenceEqual(new ReadOnlySpan<UInt256>(other._keys, otherStart, length)) &&
-                   new ReadOnlySpan<EvmWord>(_values, start, length)
-                       .SequenceEqual(new ReadOnlySpan<EvmWord>(other._values, otherStart, length));
+            return SliceEqual(AccountOrdinals, start, other.AccountOrdinals, otherStart, length) &&
+                   SliceEqual(_keys, start, other._keys, otherStart, length) &&
+                   SliceEqual(_values, start, other._values, otherStart, length);
         }
 
         /// <summary>
@@ -585,10 +599,8 @@ internal sealed partial class BlockAccessListValidationIndex
             GetOrdinalRange(row, ordinal, out int thisStart, out int thisLen);
             other.GetOrdinalRange(row, ordinal, out int otherStart, out int otherLen);
             if (thisLen != otherLen) return false;
-            return new ReadOnlySpan<UInt256>(_keys, thisStart, thisLen)
-                       .SequenceEqual(new ReadOnlySpan<UInt256>(other._keys, otherStart, thisLen)) &&
-                   new ReadOnlySpan<EvmWord>(_values, thisStart, thisLen)
-                       .SequenceEqual(new ReadOnlySpan<EvmWord>(other._values, otherStart, thisLen));
+            return SliceEqual(_keys, thisStart, other._keys, otherStart, thisLen) &&
+                   SliceEqual(_values, thisStart, other._values, otherStart, thisLen);
         }
 
         // Row data is sorted by (ordinal, key); locates the contiguous run with the given ordinal.
@@ -637,9 +649,9 @@ internal sealed partial class BlockAccessListValidationIndex
                 _scratch.Values[i] = _values[source];
             }
 
-            _scratch.Account.AsSpan(0, length).CopyTo(AccountOrdinals.AsSpan(start, length));
-            _scratch.Keys.AsSpan(0, length).CopyTo(_keys.AsSpan(start, length));
-            _scratch.Values.AsSpan(0, length).CopyTo(_values.AsSpan(start, length));
+            CopySlice(_scratch.Account, AccountOrdinals, start, length);
+            CopySlice(_scratch.Keys, _keys, start, length);
+            CopySlice(_scratch.Values, _values, start, length);
         }
 
         public override void Dispose()
@@ -671,4 +683,12 @@ internal sealed partial class BlockAccessListValidationIndex
             rowStarts[i + 1] = checked(rowStarts[i] + counts[i]);
         }
     }
+
+    /// <summary><c>a[aStart..aStart+length]</c> equals <c>b[bStart..bStart+length]</c>.</summary>
+    private static bool SliceEqual<T>(T[] a, int aStart, T[] b, int bStart, int length) where T : IEquatable<T> =>
+        new ReadOnlySpan<T>(a, aStart, length).SequenceEqual(new ReadOnlySpan<T>(b, bStart, length));
+
+    /// <summary>Copy <c>src[..length]</c> to <c>dst[dstStart..dstStart+length]</c>.</summary>
+    private static void CopySlice<T>(T[] src, T[] dst, int dstStart, int length) =>
+        src.AsSpan(0, length).CopyTo(dst.AsSpan(dstStart, length));
 }
