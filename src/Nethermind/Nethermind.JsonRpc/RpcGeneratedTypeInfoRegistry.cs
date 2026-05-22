@@ -13,10 +13,8 @@ namespace Nethermind.JsonRpc;
 public static class RpcGeneratedTypeInfoRegistry
 {
     private static readonly object _lock = new();
-    private static Dictionary<RuntimeTypeHandle, RegisteredProvider> _registrations = new();
+    private static Dictionary<RuntimeTypeHandle, Func<Type, JsonTypeInfo?>> _registrations = new();
     private static Func<Type, JsonTypeInfo?>[] _providers = [];
-
-    private readonly record struct RegisteredProvider(Type Type, Func<Type, JsonTypeInfo?> Provider);
 
     /// <summary>Registers a generated provider that can resolve JSON metadata for RPC payload types declared by its assembly.</summary>
     /// <param name="provider">A generated lookup delegate that returns metadata for known types and null otherwise.</param>
@@ -44,11 +42,11 @@ public static class RpcGeneratedTypeInfoRegistry
 
         lock (_lock)
         {
-            Dictionary<RuntimeTypeHandle, RegisteredProvider> registrations = new(_registrations);
+            Dictionary<RuntimeTypeHandle, Func<Type, JsonTypeInfo?>> registrations = new(_registrations);
             for (int i = 0; i < types.Length; i++)
             {
                 Type type = types[i] ?? throw new ArgumentException("Registered RPC payload types cannot contain null.", nameof(types));
-                registrations.TryAdd(type.TypeHandle, new RegisteredProvider(type, provider));
+                registrations.TryAdd(type.TypeHandle, provider);
             }
 
             Volatile.Write(ref _registrations, registrations);
@@ -70,10 +68,10 @@ public static class RpcGeneratedTypeInfoRegistry
 
     internal static bool TryGet(Type type, out JsonTypeInfo? typeInfo)
     {
-        Dictionary<RuntimeTypeHandle, RegisteredProvider> registrations = Volatile.Read(ref _registrations);
-        if (registrations.TryGetValue(type.TypeHandle, out RegisteredProvider registration))
+        Dictionary<RuntimeTypeHandle, Func<Type, JsonTypeInfo?>> registrations = Volatile.Read(ref _registrations);
+        if (registrations.TryGetValue(type.TypeHandle, out Func<Type, JsonTypeInfo?>? provider))
         {
-            typeInfo = registration.Provider(registration.Type);
+            typeInfo = provider(type);
             if (typeInfo is not null)
             {
                 return true;
