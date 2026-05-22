@@ -211,8 +211,6 @@ internal sealed class HttpJsonRpcResponseSink(
         context.Response.StatusCode = isCollection
             ? StatusCodes.Status200OK
             : GetStatusCode(response);
-
-        return;
     }
 
     private static int GetStatusCode(JsonRpcResponse? response) =>

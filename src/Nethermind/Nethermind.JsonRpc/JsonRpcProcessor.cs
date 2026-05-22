@@ -94,32 +94,14 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
 
     private static JsonRpcId DeserializeId(JsonElement idElement)
     {
-        if (idElement.ValueKind == JsonValueKind.Number)
+        return idElement.ValueKind switch
         {
-            if (idElement.TryGetInt64(out long idNumber))
-            {
-                return new JsonRpcId(idNumber);
-            }
-
-            if (idElement.TryGetDecimal(out decimal value) && value.Scale == 0)
-            {
-                return new JsonRpcId(value);
-            }
-
-            return ThrowUnsupportedId();
-        }
-
-        if (idElement.ValueKind == JsonValueKind.Null)
-        {
-            return JsonRpcId.Null;
-        }
-
-        if (idElement.ValueKind == JsonValueKind.String)
-        {
-            return new JsonRpcId(idElement.GetString()!);
-        }
-
-        return ThrowUnsupportedId();
+            JsonValueKind.Number when idElement.TryGetInt64(out long idNumber) => new JsonRpcId(idNumber),
+            JsonValueKind.Number when idElement.TryGetDecimal(out decimal value) && value.Scale == 0 => new JsonRpcId(value),
+            JsonValueKind.Null => JsonRpcId.Null,
+            JsonValueKind.String => new JsonRpcId(idElement.GetString()!),
+            _ => ThrowUnsupportedId()
+        };
 
         [DoesNotReturn, StackTraceHidden]
         static JsonRpcId ThrowUnsupportedId() =>
@@ -492,12 +474,8 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
         request = null;
         paramsDocument = null;
 
-        if (!TryGetSingleDocumentBody(memory, JsonTokenType.StartObject, out ReadOnlyMemory<byte> objectBody))
-        {
-            return false;
-        }
-
-        return TryReadObjectRequest(objectBody, out request, out paramsDocument);
+        return TryGetSingleDocumentBody(memory, JsonTokenType.StartObject, out ReadOnlyMemory<byte> objectBody)
+            && TryReadObjectRequest(objectBody, out request, out paramsDocument);
     }
 
     private static bool TryGetSingleDocumentBody(
