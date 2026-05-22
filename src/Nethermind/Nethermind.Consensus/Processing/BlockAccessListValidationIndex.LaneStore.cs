@@ -8,6 +8,7 @@ using System.Runtime.CompilerServices;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 
 namespace Nethermind.Consensus.Processing;
@@ -465,8 +466,8 @@ internal sealed partial class BlockAccessListValidationIndex
             if (length != other.RowLength(row)) return false;
             int start = RowStarts[row];
             int otherStart = other.RowStarts[row];
-            return SliceEqual(AccountOrdinals, start, other.AccountOrdinals, otherStart, length) &&
-                   SliceEqual(_values, start, other._values, otherStart, length);
+            return AccountOrdinals.SliceEqual(start, other.AccountOrdinals, otherStart, length) &&
+                   _values.SliceEqual(start, other._values, otherStart, length);
         }
 
         /// <summary>
@@ -579,9 +580,9 @@ internal sealed partial class BlockAccessListValidationIndex
             if (length != other.RowLength(row)) return false;
             int start = RowStarts[row];
             int otherStart = other.RowStarts[row];
-            return SliceEqual(AccountOrdinals, start, other.AccountOrdinals, otherStart, length) &&
-                   SliceEqual(_keys, start, other._keys, otherStart, length) &&
-                   SliceEqual(_values, start, other._values, otherStart, length);
+            return AccountOrdinals.SliceEqual(start, other.AccountOrdinals, otherStart, length) &&
+                   _keys.SliceEqual(start, other._keys, otherStart, length) &&
+                   _values.SliceEqual(start, other._values, otherStart, length);
         }
 
         /// <summary>
@@ -603,8 +604,8 @@ internal sealed partial class BlockAccessListValidationIndex
             GetOrdinalRange(row, ordinal, out int thisStart, out int thisLen);
             other.GetOrdinalRange(row, ordinal, out int otherStart, out int otherLen);
             if (thisLen != otherLen) return false;
-            return SliceEqual(_keys, thisStart, other._keys, otherStart, thisLen) &&
-                   SliceEqual(_values, thisStart, other._values, otherStart, thisLen);
+            return _keys.SliceEqual(thisStart, other._keys, otherStart, thisLen) &&
+                   _values.SliceEqual(thisStart, other._values, otherStart, thisLen);
         }
 
         // Row data is sorted by (ordinal, key); locates the contiguous run with the given ordinal.
@@ -653,9 +654,9 @@ internal sealed partial class BlockAccessListValidationIndex
                 _scratch.Values[i] = _values[source];
             }
 
-            CopySlice(_scratch.Account, AccountOrdinals, start, length);
-            CopySlice(_scratch.Keys, _keys, start, length);
-            CopySlice(_scratch.Values, _values, start, length);
+            _scratch.Account.CopySlice(0, AccountOrdinals, start, length);
+            _scratch.Keys.CopySlice(0, _keys, start, length);
+            _scratch.Values.CopySlice(0, _values, start, length);
         }
 
         public override void Dispose()
@@ -687,12 +688,4 @@ internal sealed partial class BlockAccessListValidationIndex
             rowStarts[i + 1] = checked(rowStarts[i] + counts[i]);
         }
     }
-
-    /// <summary><c>a[aStart..aStart+length]</c> equals <c>b[bStart..bStart+length]</c>.</summary>
-    private static bool SliceEqual<T>(T[] a, int aStart, T[] b, int bStart, int length) where T : IEquatable<T> =>
-        new ReadOnlySpan<T>(a, aStart, length).SequenceEqual(new ReadOnlySpan<T>(b, bStart, length));
-
-    /// <summary>Copy <c>src[..length]</c> to <c>dst[dstStart..dstStart+length]</c>.</summary>
-    private static void CopySlice<T>(T[] src, T[] dst, int dstStart, int length) =>
-        src.AsSpan(0, length).CopyTo(dst.AsSpan(dstStart, length));
 }
