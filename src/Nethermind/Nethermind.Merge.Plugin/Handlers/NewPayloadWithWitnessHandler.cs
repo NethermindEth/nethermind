@@ -12,12 +12,9 @@ using Nethermind.Merge.Plugin.Data;
 
 namespace Nethermind.Merge.Plugin.Handlers;
 
-/// <summary>
-/// Concrete implementation of <see cref="INewPayloadWithWitnessHandler"/>.
-/// </summary>
 /// <remarks>
-/// Takes <see cref="IEngineRpcModule"/> via <see cref="Lazy{T}"/> to break the
-/// construction cycle (the module composes this handler).
+/// <see cref="IEngineRpcModule"/> is taken via <see cref="Lazy{T}"/> to break the construction
+/// cycle (the module composes this handler).
 /// </remarks>
 public sealed class NewPayloadWithWitnessHandler(
     Lazy<IEngineRpcModule> engineModule,
@@ -34,9 +31,6 @@ public sealed class NewPayloadWithWitnessHandler(
     {
         Hash256? blockHash = executionPayload.BlockHash;
 
-        // A null BlockHash is unambiguously a malformed JSON-RPC payload: there is no way
-        // to key the capture registry, and engine_newPayloadV5 would itself reject it.
-        // Fail fast with InvalidParams so the caller gets a precise diagnosis.
         if (blockHash is null)
         {
             if (_logger.IsWarn)
@@ -55,8 +49,7 @@ public sealed class NewPayloadWithWitnessHandler(
         }
         catch
         {
-            // engine_newPayloadV5 threw before producing a status; ensure the capture entry
-            // doesn't outlive this request as a leaked TCS in the registry dictionary.
+            // Prevent the armed TCS from outliving the request as a registry leak.
             witnessCaptureRegistry.DisarmCapture(blockHash);
             throw;
         }
@@ -76,10 +69,9 @@ public sealed class NewPayloadWithWitnessHandler(
 
             if (payloadStatus.Status == PayloadStatus.Valid)
             {
-                // Invariant: BranchProcessor completes the TCS synchronously inside ProcessOne
-                // before engine_newPayloadV5 returns. If captureTask is still pending here, the
-                // block went through an early-return path (already-known, etc.) and was never
-                // processed — disarm so the await does not block forever.
+                // BranchProcessor normally completes the TCS synchronously inside ProcessOne.
+                // If it didn't, the block took an early-return path (already known, etc.) and
+                // was never processed — disarm so the await below doesn't block forever.
                 if (!captureTask.IsCompleted)
                     witnessCaptureRegistry.DisarmCapture(blockHash);
 
@@ -89,9 +81,6 @@ public sealed class NewPayloadWithWitnessHandler(
                 }
                 catch (OperationCanceledException)
                 {
-                    // A concurrent ArmCapture for the same blockHash cancelled our task, OR
-                    // we just disarmed because BranchProcessor did not run. Either way the
-                    // block executed successfully — return VALID with a null witness.
                     if (_logger.IsWarn)
                         _logger.Warn($"engine_newPayloadWithWitness: witness capture cancelled for {blockHash}. Returning VALID with no witness.");
                 }

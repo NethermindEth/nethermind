@@ -13,10 +13,8 @@ using Nethermind.State;
 namespace Nethermind.Consensus.Stateless;
 
 /// <summary>
-/// Thread-safe implementation of <see cref="IWitnessCaptureRegistry"/>.
-/// Entries are added by the RPC handler thread and removed by the block-processing thread;
-/// multiple concurrent armed entries for distinct block hashes are supported. A duplicate
-/// <see cref="ArmCapture"/> for the same hash cancels the prior TCS and replaces it.
+/// Thread-safe registry. Multiple armed entries for distinct block hashes coexist;
+/// a duplicate <see cref="ArmCapture"/> cancels the prior TCS and replaces it.
 /// </summary>
 public sealed class WitnessCaptureRegistry(
     IStateReader stateReader,
@@ -30,8 +28,8 @@ public sealed class WitnessCaptureRegistry(
 
     public Task<Witness?> ArmCapture(Hash256 blockHash)
     {
-        // RunContinuationsAsynchronously: the TCS continuation must not run on the
-        // block-processing thread when SetResult is called inside TryDrainCapture.
+        // RunContinuationsAsynchronously: TryDrainCapture's SetResult must not run the
+        // handler's continuation on the block-processing thread.
         TaskCompletionSource<Witness?> tcs = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
         TaskCompletionSource<Witness?> effectiveTcs = _pending.AddOrUpdate(

@@ -19,10 +19,7 @@ namespace Nethermind.Merge.Plugin.SszRest;
 
 public static class SszCodec
 {
-    /// <summary>
-    /// SSZ-encodes <paramref name="value"/> directly into <paramref name="writer"/>'s buffer
-    /// (no intermediate pooled allocation) and returns the number of bytes written.
-    /// </summary>
+    /// <summary>Encode directly into the writer's buffer (no intermediate alloc); returns bytes written.</summary>
     private static int EncodeToWriter<T>(T value, IBufferWriter<byte> writer) where T : ISszCodec<T>
     {
         int length = T.GetLength(value);
@@ -116,13 +113,7 @@ public static class SszCodec
         return totalLen;
     }
 
-    /// <summary>
-    /// Decodes a <c>NewPayloadWithWitnessResponseV1</c> SSZ blob produced by
-    /// <see cref="EncodeNewPayloadWithWitnessResponse"/>. Used in tests to round-trip the response.
-    /// </summary>
-    /// <returns>
-    /// A tuple of (<c>status</c> byte, <c>latestValidHash</c> or null, <c>witnessPresent</c>).
-    /// </returns>
+    /// <summary>Test helper: round-trip decode of NewPayloadWithWitnessResponseV1 SSZ output.</summary>
     public static (byte Status, Hash256? LatestValidHash, bool WitnessPresent)
         DecodeNewPayloadWithWitnessResponse(ReadOnlySpan<byte> data)
     {
@@ -131,21 +122,15 @@ public static class SszCodec
             throw new ArgumentException("Response too short to be a valid NewPayloadWithWitnessResponseV1");
 
         byte status = data[0];
-
-        // read offset to latest_valid_hash
         int off1 = BinaryPrimitives.ReadInt32LittleEndian(data.Slice(1, 4));
-        // read offset to validation_error (to bound the latest_valid_hash slice)
         int off2 = BinaryPrimitives.ReadInt32LittleEndian(data.Slice(5, 4));
-        // read offset to witness
         int off3 = BinaryPrimitives.ReadInt32LittleEndian(data.Slice(9, 4));
 
-        // decode latest_valid_hash Union
         ReadOnlySpan<byte> lvhSlice = data.Slice(off1, off2 - off1);
         Hash256? latestValidHash = null;
         if (lvhSlice.Length >= 1 && lvhSlice[0] == 0x01)
             latestValidHash = new Hash256(lvhSlice.Slice(1, 32));
 
-        // decode witness Union (just check presence; don't fully decode)
         ReadOnlySpan<byte> witnessSlice = data.Slice(off3);
         bool witnessPresent = witnessSlice.Length >= 1 && witnessSlice[0] == 0x01;
 

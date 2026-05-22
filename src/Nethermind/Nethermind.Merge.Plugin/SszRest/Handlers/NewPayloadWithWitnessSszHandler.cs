@@ -26,18 +26,12 @@ public sealed class NewPayloadWithWitnessSszHandler(
 
     public override string HttpMethod => "POST";
 
-    // This handler uses a non-versioned path outside /engine/v{N}/.
-    // The SszMiddleware dispatches to it via a dedicated fast path for this resource constant.
+    // Non-versioned path; SszMiddleware routes via a dedicated fast path for this resource.
     public override string Resource => SszRestPaths.NewPayloadWithWitness;
-
-    // Version is null; this endpoint has no version prefix in its path.
     public override int? Version => null;
 
     public override async Task HandleAsync(HttpContext ctx, int version, ReadOnlyMemory<char> extra, ReadOnlySequence<byte> body)
     {
-        // Content-Type is validated upstream in SszMiddleware.DispatchWitnessAsync;
-        // any non-JSON POST is rejected with 415 before reaching this handler.
-
         NewPayloadV5Params? request = DeserializeRequest(body);
         if (request is null)
         {
@@ -80,7 +74,7 @@ public sealed class NewPayloadWithWitnessSszHandler(
         }
     }
 
-    /// <param name="witness">Caller retains ownership — the enclosing ResultWrapper disposes it.</param>
+    // Witness ownership stays with the caller — the enclosing ResultWrapper disposes it.
     private static async Task WriteSszNewPayloadWithWitnessAsync(HttpContext ctx, PayloadStatusV1 status, Witness? witness)
     {
         ArrayBufferWriter<byte> buffer = new();

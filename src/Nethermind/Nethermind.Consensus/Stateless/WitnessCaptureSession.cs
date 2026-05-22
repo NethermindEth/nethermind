@@ -9,16 +9,10 @@ using Nethermind.Core.Crypto;
 namespace Nethermind.Consensus.Stateless;
 
 /// <summary>
-/// Lifetime helper coupling <see cref="IWitnessCaptureRegistry"/> with
-/// <see cref="WitnessCapturingWorldStateProxy"/> for the duration of a single block.
-/// Use with <c>using</c> so an unconsumed session (e.g. when <c>ProcessOne</c> throws)
-/// disarms the proxy and cancels the pending capture automatically.
+/// Arm-on-construct, drain-or-disarm-on-dispose session for a single block's witness capture.
 /// </summary>
 /// <remarks>
-/// Declared as a <c>ref struct</c>: the session holds mutable state (<c>_consumed</c>)
-/// and an Armed-side-effect in its constructor, so a copy would silently break the
-/// Drain/Dispose state machine. <c>ref struct</c> prevents the type from being boxed,
-/// stored in heap fields, or captured by lambdas — making misuse a compile-time error.
+/// <c>ref struct</c> so a copy can't silently split the Drain/Dispose state.
 /// </remarks>
 public ref struct WitnessCaptureSession : IDisposable
 {
@@ -35,10 +29,7 @@ public ref struct WitnessCaptureSession : IDisposable
         proxy.Arm();
     }
 
-    /// <summary>
-    /// Arms the proxy if a capture is pending for <paramref name="blockHash"/> and processing is
-    /// not read-only; otherwise returns a no-op session.
-    /// </summary>
+    /// <summary>Arms the proxy if a capture is pending and not read-only; otherwise returns a no-op session.</summary>
     public static WitnessCaptureSession TryArm(
         IWitnessCaptureRegistry? registry,
         WitnessCapturingWorldStateProxy? proxy,
@@ -59,9 +50,8 @@ public ref struct WitnessCaptureSession : IDisposable
     public readonly bool IsArmed => _proxy is not null && !_consumed;
 
     /// <summary>
-    /// Builds the witness from the recorded state and completes the pending capture.
-    /// If <paramref name="parentHeader"/> is null the capture is cancelled (no parent state
-    /// root means no proof can be built). Safe to call on a no-op or already-drained session.
+    /// Builds the witness and completes the capture. With a null <paramref name="parentHeader"/>
+    /// the capture is cancelled — no parent state root, no provable proof. Safe to call repeatedly.
     /// </summary>
     public void Drain(BlockHeader? parentHeader)
     {

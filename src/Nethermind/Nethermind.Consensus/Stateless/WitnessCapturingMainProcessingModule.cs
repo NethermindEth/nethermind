@@ -10,16 +10,9 @@ using Nethermind.Evm.State;
 namespace Nethermind.Merge.Plugin;
 
 /// <summary>
-/// Autofac <see cref="IMainProcessingModule"/> that installs
-/// <see cref="WitnessCapturingWorldStateProxy"/> as a decorator over the main
-/// processing scope's <see cref="IWorldState"/>.
+/// Installs <see cref="WitnessCapturingWorldStateProxy"/> as the main-processing
+/// <see cref="IWorldState"/> decorator when <paramref name="enabled"/>; no-op otherwise.
 /// </summary>
-/// <remarks>
-/// Gated on <paramref name="enabled"/>: pre-Amsterdam chains pay no per-call
-/// proxy overhead because the decorator is not registered at all. The flag is
-/// derived from <c>ISpecProvider.GetFinalSpec().IsEip7928Enabled</c> at
-/// container build time.
-/// </remarks>
 public sealed class WitnessCapturingMainProcessingModule(bool enabled) : Module, IMainProcessingModule
 {
     protected override void Load(ContainerBuilder builder)

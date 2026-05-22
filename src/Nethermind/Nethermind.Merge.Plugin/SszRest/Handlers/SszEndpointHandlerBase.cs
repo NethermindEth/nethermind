@@ -14,19 +14,10 @@ using Nethermind.Merge.Plugin.Data;
 
 namespace Nethermind.Merge.Plugin.SszRest.Handlers;
 
-/// <summary>
-/// JSON error envelope written by <see cref="SszEndpointHandlerBase.WriteErrorAsync"/>.
-/// </summary>
-/// <remarks>
-/// Serialized through the source-gen <see cref="EngineApiJsonContext"/> to avoid the
-/// allocation + reflection cost of an anonymous object on the error path.
-/// </remarks>
+/// <summary>JSON error envelope written by <see cref="SszEndpointHandlerBase.WriteErrorAsync"/>.</summary>
 public sealed record SszErrorResponse(int Code, string Message);
 
-/// <summary>
-/// Base class for SSZ-REST endpoint handlers. Encoders write directly into the
-/// response <see cref="PipeWriter"/>; no intermediate pooled buffer is held.
-/// </summary>
+/// <summary>Base for SSZ-REST endpoint handlers. Encoders write directly into the response <see cref="PipeWriter"/>.</summary>
 public abstract class SszEndpointHandlerBase : ISszEndpointHandler
 {
     private const string OctetStream = "application/octet-stream";
@@ -44,8 +35,6 @@ public abstract class SszEndpointHandlerBase : ISszEndpointHandler
 
     private static async Task WriteSszAsync<T>(HttpContext ctx, T value, Func<T, IBufferWriter<byte>, int> encode)
     {
-        // GetSpan/Advance buffer into the response pipe without starting the response;
-        // headers (incl. ContentLength) remain settable until FlushAsync.
         PipeWriter pipe = ctx.Response.BodyWriter;
         Debug.Assert(!ctx.Response.HasStarted, "response must not have started before SSZ encode");
         long before = pipe.UnflushedBytes;
@@ -56,8 +45,8 @@ public abstract class SszEndpointHandlerBase : ISszEndpointHandler
         }
         catch
         {
-            // Encode advanced bytes into the pipe before throwing; we can't rewind.
-            // Abort the connection so the CL doesn't see a 500 with garbled-binary body.
+            // Encoder already wrote bytes into the pipe — abort the connection so the CL
+            // doesn't see a 500 with a half-written binary body.
             ctx.Abort();
             throw;
         }
@@ -65,9 +54,7 @@ public abstract class SszEndpointHandlerBase : ISszEndpointHandler
 
         if (length == 0)
         {
-            // Encoder produced an empty body for non-null input — semantically equivalent
-            // to no-content. Mirrors the SetNoContent path so success-with-empty-body and
-            // null-data return the same 204 status.
+            // Empty encode output is treated as 204, matching the Data=null branch in WriteSszResultAsync.
             ctx.Response.StatusCode = StatusCodes.Status204NoContent;
             return;
         }

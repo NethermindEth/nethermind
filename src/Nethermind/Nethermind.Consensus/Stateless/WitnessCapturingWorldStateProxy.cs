@@ -33,12 +33,10 @@ public sealed class WitnessCapturingWorldStateProxy(IWorldState inner) : IWorldS
     // 1 = armed, 0 = unarmed. Interlocked to be safe across threads.
     private volatile int _armed;
 
-    /// <summary>Allocates fresh tracking collections before a block execution.</summary>
     /// <exception cref="InvalidOperationException">Thrown if already armed; state is left unchanged.</exception>
     internal void Arm()
     {
-        // CompareExchange so the double-arm exception case leaves the tracking collections
-        // intact; only after we successfully claim the flag do we allocate fresh dicts.
+        // CompareExchange leaves the tracking dicts intact on double-arm so the in-flight capture survives.
         if (Interlocked.CompareExchange(ref _armed, 1, 0) != 0)
             throw new InvalidOperationException(
                 $"{nameof(WitnessCapturingWorldStateProxy)} is already armed. Nested arming is not supported.");
@@ -47,29 +45,14 @@ public sealed class WitnessCapturingWorldStateProxy(IWorldState inner) : IWorldS
         _bytecodes = [];
     }
 
-    /// <summary>
-    /// Disarms the proxy and releases the tracking collections.
-    /// </summary>
-    /// <remarks>
-    /// Must be called from a <c>finally</c> block even if <c>ProcessOne</c> throws.
-    /// In the normal-success flow <see cref="BuildWitness"/> has already consumed and
-    /// nulled the collections; this just makes the failure-path (ProcessOne threw) and
-    /// success-path observationally identical, so the proxy never holds stale data
-    /// between blocks.
-    /// </remarks>
     internal void Disarm()
     {
-        // Null the dicts (recorders snapshot the reference at entry and tolerate null) then
-        // release the Arm flag so the next Arm() can claim it via CompareExchange.
         Interlocked.Exchange(ref _storageSlots, null);
         Interlocked.Exchange(ref _bytecodes, null);
         Interlocked.Exchange(ref _armed, 0);
     }
 
-    /// <summary>
-    /// Builds a <see cref="Witness"/> from data recorded during the most recent armed execution.
-    /// Consumes and nulls the tracking collections. Must be called between <see cref="Disarm"/> and the next <see cref="Arm"/>.
-    /// </summary>
+    /// <summary>Consumes the tracking collections to produce a <see cref="Witness"/>; null if not armed.</summary>
     internal Witness? BuildWitness(
         BlockHeader parentHeader,
         IStateReader stateReader,
@@ -81,13 +64,11 @@ public sealed class WitnessCapturingWorldStateProxy(IWorldState inner) : IWorldS
         if (slots is null || bytecodes is null)
             return null;
 
-        // Build Merkle proof nodes for every touched address and storage slot.
-        // Proof traversal reads the parent state root (pre-execution), as required by stateless verifiers.
         // AccountProofCollector also covers reverted write paths missed by raw node interception.
         using PooledSet<byte[]> stateNodes = new(Bytes.EqualityComparer);
         WitnessProofCollector.CollectAccountProofs(slots, stateReader, parentHeader, stateNodes);
 
-        // Include the state root node when no accounts were touched so the witness is non-empty.
+        // Stateless verifiers expect at least the state root node when no account was touched.
         if (stateNodes.Count == 0)
         {
             AccountProofCollector emptyCollector = new(Address.Zero, (byte[][])[]);
@@ -104,7 +85,6 @@ public sealed class WitnessCapturingWorldStateProxy(IWorldState inner) : IWorldS
         foreach (byte[] node in stateNodes)
             state.Add(node);
 
-        // Populate headers from every BLOCKHASH accessed during execution (execution-apis#773).
         IOwnedReadOnlyList<byte[]> rawHeaders = perBlockHeaderFinder.GetWitnessHeaders(parentHeader.Hash!);
         ArrayPoolList<byte[]> headers = new(rawHeaders.Count);
         foreach (byte[] h in rawHeaders)
@@ -120,11 +100,10 @@ public sealed class WitnessCapturingWorldStateProxy(IWorldState inner) : IWorldS
         };
     }
 
+    // Snapshot the dictionary at entry so a concurrent Disarm-null doesn't NRE this recorder.
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private void RecordAddress(Address address)
     {
-        // Snapshot the dictionary reference; Disarm may concurrently null it, but a non-null
-        // snapshot is safe to use even if the field is nulled afterwards.
         Dictionary<Address, HashSet<UInt256>>? slots = _storageSlots;
         if (slots is null) return;
         CollectionsMarshal.GetValueRefOrAddDefault(slots, address, out _) ??= [];
@@ -211,16 +190,16 @@ public sealed class WitnessCapturingWorldStateProxy(IWorldState inner) : IWorldS
 
     public byte[]? GetCode(in ValueHash256 codeHash)
     {
-        // No Address context here; address recording happens on the GetCodeHash(Address) call
-        // that precedes every code lookup in CodeInfoRepository.InternalGetCodeInfo.
+        // Address recording for this lookup happens via the GetCodeHash(Address) call upstream
+        // in CodeInfoRepository.InternalGetCodeInfo — this overload has no Address.
         byte[]? code = inner.GetCode(in codeHash);
         RecordBytecode(in codeHash, code);
         return code;
     }
 
-    // The address overloads do not surface the code hash; in production the canonical path goes
-    // through GetCode(in ValueHash256) (where the hash is already known and no rehash is needed),
-    // so this slow fallback only fires on the parallel-BAL re-lookup path noted in CodeInfoRepository.
+    // Slow path: the GetCode(Address) caller doesn't surface the hash, so recompute it. Fires only
+    // on the parallel-BAL re-lookup branch in CodeInfoRepository; the canonical path uses the
+    // GetCode(in ValueHash256) overload above where the hash is already known.
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private void RecordBytecodeWithHashCompute(byte[]? code)
     {

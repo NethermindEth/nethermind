@@ -10,18 +10,10 @@ using Nethermind.State.Proofs;
 
 namespace Nethermind.Consensus.Stateless;
 
-/// <summary>
-/// Shared helpers for assembling Merkle-proof state nodes from a per-address slot map.
-/// Used by both <see cref="WitnessGeneratingWorldState"/> (post-hoc) and
-/// <see cref="WitnessCapturingWorldStateProxy"/> (in-flight).
-/// </summary>
+/// <summary>Shared per-address proof collection used by both the post-hoc and in-flight witness paths.</summary>
 internal static class WitnessProofCollector
 {
-    /// <summary>
-    /// For each (address, slots) entry runs an <see cref="AccountProofCollector"/> tree
-    /// visit against <paramref name="parentHeader"/> and appends every node from the
-    /// account proof + storage proofs into <paramref name="stateNodes"/>.
-    /// </summary>
+    /// <summary>Runs <see cref="AccountProofCollector"/> for each (address, slots) entry and aggregates the nodes.</summary>
     public static void CollectAccountProofs(
         IReadOnlyDictionary<Address, HashSet<UInt256>> storageSlots,
         IStateReader stateReader,

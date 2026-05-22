@@ -32,17 +32,10 @@ public sealed class SszMiddleware
     private readonly ILogger _logger;
     private readonly CancellationToken _processExitToken;
 
-    // Path: /engine/v{N}/{resource}[/{extra}]
     private const string EnginePrefix = "/engine/v";
-
-    // Non-versioned path prefix for the witness endpoint
     private const string WitnessPath = "/new-payload-with-witness";
 
-    /// <summary>
-    /// Maximum allowed request body size in bytes (16 MiB).
-    /// Corresponds to <c>MAX_REQUEST_BODY_SIZE</c> defined in the Engine API SSZ-REST spec
-    /// (see https://github.com/ethereum/execution-apis/pull/764)
-    /// </summary>
+    /// <summary>MAX_REQUEST_BODY_SIZE per execution-apis#764 (16 MiB).</summary>
     public const int MaxBodySize = 0x1000000;
 
     private readonly FrozenDictionary<string, List<ISszEndpointHandler>> _postRoutes;
@@ -53,7 +46,6 @@ public sealed class SszMiddleware
     private readonly (string Resource, List<ISszEndpointHandler> Handlers)[] _postPrefixRoutes;
     private readonly (string Resource, List<ISszEndpointHandler> Handlers)[] _getPrefixRoutes;
 
-    // Dedicated fast-path handler for POST /new-payload-with-witness (non-versioned, JSON body)
     private readonly ISszEndpointHandler? _witnessHandler;
 
     public SszMiddleware(
@@ -168,8 +160,7 @@ public sealed class SszMiddleware
             else if (!TryResolveHandler(ctx.Request.Method, pathSegment, version, out ISszEndpointHandler? handler, out ReadOnlyMemory<char> extra))
             {
                 Metrics.SszRestRequestsClientErrorTotal++;
-                // Use .Span in the interpolation: ROM<char>.ToString() would allocate a separate
-                // intermediate string; appending the span goes straight into the format buffer.
+                // .Span avoids the extra ROM<char>.ToString() allocation in the interpolation.
                 await SszEndpointHandlerBase.WriteErrorAsync(ctx, StatusCodes.Status404NotFound,
                     $"Unknown method: {ctx.Request.Method} /engine/v{version}/{pathSegment.Span}", ErrorCodes.MethodNotFound);
             }
@@ -192,7 +183,6 @@ public sealed class SszMiddleware
 
     private async Task DispatchWitnessAsync(HttpContext ctx)
     {
-        // Reject any method other than POST with 405.
         if (!string.Equals(ctx.Request.Method, "POST", StringComparison.OrdinalIgnoreCase))
         {
             Metrics.SszRestRequestsClientErrorTotal++;
@@ -225,16 +215,9 @@ public sealed class SszMiddleware
         await DispatchAsync(ctx, _witnessHandler, version: 0, extra: default);
     }
 
-    /// <summary>
-    /// Shared body-read + handler invocation + metrics + error mapping for both the versioned
-    /// <c>/engine/v{N}/...</c> dispatch and the non-versioned witness path.
-    /// </summary>
+    /// <summary>Shared body-read + handler invocation + metrics + error mapping for both routes.</summary>
     private async Task DispatchAsync(HttpContext ctx, ISszEndpointHandler handler, int version, ReadOnlyMemory<char> extra)
     {
-        // Read directly from PipeReader: the buffer is a ReadOnlySequence over Kestrel's
-        // pooled blocks (~4 KB each), so multi-segment is the common case for blob-bearing
-        // payloads. The generated SSZ codecs accept ReadOnlySequence<byte> — single-segment
-        // is zero-copy, multi-segment consolidates once via ArrayPool.
         PipeReader reader = ctx.Request.BodyReader;
         ReadOnlySequence<byte> body = default;
         bool bodyRead = false;
@@ -266,10 +249,7 @@ public sealed class SszMiddleware
         }
         catch (Exception ex) when (ex is InvalidDataException or IndexOutOfRangeException or EndOfStreamException)
         {
-            // Per execution-apis #764 (Engine API SSZ Transport spec, "HTTP status codes" section):
-            // malformed SSZ encoding is 400 Bad Request. 422 Unprocessable Entity is reserved
-            // for "Invalid payload attributes" and is emitted by the handler chain via
-            // ErrorCodeToHttpStatus when the engine module returns InvalidPayloadAttributes.
+            // Malformed SSZ → 400 per execution-apis#764. 422 is reserved for InvalidPayloadAttributes.
             Metrics.SszRestDecodeFailuresTotal++;
             Metrics.SszRestRequestsClientErrorTotal++;
             if (_logger.IsDebug) _logger.Debug($"SSZ-REST malformed body at {ctx.Request.Path.Value}: {ex.Message}");
@@ -280,9 +260,7 @@ public sealed class SszMiddleware
             Metrics.SszRestRequestsServerErrorTotal++;
             if (_logger.IsError) _logger.Error($"SSZ-REST handler error for {ctx.Request.Path.Value}", ex);
 
-            // If the inner code already aborted the request (e.g. encode failed mid-stream
-            // and called ctx.Abort), don't try to write a 500 — WriteAsync would throw
-            // OperationCanceledException, producing a duplicate exception in the logs.
+            // Skip the 500 write if the handler already aborted (writing would throw OCE and log twice).
             if (!ctx.RequestAborted.IsCancellationRequested)
                 await SszEndpointHandlerBase.WriteErrorAsync(ctx, StatusCodes.Status500InternalServerError, "Internal server error", ErrorCodes.InternalError);
         }
@@ -314,9 +292,8 @@ public sealed class SszMiddleware
         span = span[(slashPos + 1)..];
         if (span.IsEmpty) return false;
 
-        // Allowed path-segment chars: ASCII alphanumeric, '-' (kebab-case resources),
-        // and '/' (between resource and extra). Reject runs of '/' in the same pass —
-        // saves an extra scan and gives one rejection point for both validations.
+        // Allowed segment chars: ASCII alphanumeric, '-' (kebab-case resources), '/' (resource/extra
+        // separator). Reject '//' in the same pass to fail malformed paths at one point.
         bool prevSlash = false;
         foreach (char c in span)
         {
@@ -331,8 +308,7 @@ public sealed class SszMiddleware
             prevSlash = false;
         }
 
-        // Slice into the original path string — zero-allocation; the memory stays valid
-        // for the lifetime of the request because Path.Value is held by ctx.Request.
+        // Zero-alloc slice — backing string lives as long as the request.
         pathSegment = path.AsMemory(offset);
         return true;
     }
