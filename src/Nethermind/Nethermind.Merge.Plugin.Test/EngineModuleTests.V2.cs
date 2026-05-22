@@ -539,7 +539,7 @@ public partial class EngineModuleTests
             }
         ];
 
-        using PayloadBodiesV1DirectResponse response = new([
+        PayloadBodiesV1DirectResponse response = new([
             new ExecutionPayloadBodyV1Result([transaction], withdrawals),
             null,
             new ExecutionPayloadBodyV1Result([], null)

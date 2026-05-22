@@ -16,7 +16,7 @@ namespace Nethermind.Merge.Plugin.Data;
 
 /// <summary>Wraps payload body V1 results and writes JSON directly into a <see cref="PipeWriter"/>.</summary>
 public sealed class PayloadBodiesV1DirectResponse(IReadOnlyList<ExecutionPayloadBodyV1Result?> items)
-    : IStreamableResult, IReadOnlyList<ExecutionPayloadBodyV1Result?>, IDisposable
+    : IStreamableResult, IReadOnlyList<ExecutionPayloadBodyV1Result?>
 {
     private readonly IReadOnlyList<ExecutionPayloadBodyV1Result?> _items = items;
 
@@ -30,8 +30,6 @@ public sealed class PayloadBodiesV1DirectResponse(IReadOnlyList<ExecutionPayload
     public IEnumerator<ExecutionPayloadBodyV1Result?> GetEnumerator() => _items.GetEnumerator();
 
     IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
-
-    public void Dispose() { }
 
     private readonly struct ItemWriter(IReadOnlyList<ExecutionPayloadBodyV1Result?> items) : IJsonArrayItemWriter
     {
