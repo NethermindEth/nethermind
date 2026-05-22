@@ -31,14 +31,6 @@ internal static class JsonRpcArrayReader
         }
 
         return ThrowIncompleteJsonArray();
-
-        [DoesNotReturn, StackTraceHidden]
-        static void ThrowExpectedJsonArray() =>
-            throw new JsonException("Expected JSON array.");
-
-        [DoesNotReturn, StackTraceHidden]
-        static int ThrowIncompleteJsonArray() =>
-            throw new JsonException("Incomplete JSON array.");
     }
 
     public static bool TryReadNextItem(
@@ -99,13 +91,13 @@ internal static class JsonRpcArrayReader
         offset = itemEnd;
         readerState = reader.CurrentState;
         return true;
-
-        [DoesNotReturn, StackTraceHidden]
-        static void ThrowExpectedJsonArray() =>
-            throw new JsonException("Expected JSON array.");
-
-        [DoesNotReturn, StackTraceHidden]
-        static void ThrowIncompleteJsonArray() =>
-            throw new JsonException("Incomplete JSON array.");
     }
+
+    [DoesNotReturn, StackTraceHidden]
+    private static void ThrowExpectedJsonArray() =>
+        throw new JsonException("Expected JSON array.");
+
+    [DoesNotReturn, StackTraceHidden]
+    private static int ThrowIncompleteJsonArray() =>
+        throw new JsonException("Incomplete JSON array.");
 }
