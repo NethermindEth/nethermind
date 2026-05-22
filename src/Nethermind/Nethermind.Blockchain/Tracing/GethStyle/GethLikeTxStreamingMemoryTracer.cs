@@ -6,7 +6,6 @@ using System.IO.Pipelines;
 using System.Text.Json;
 using System.Threading;
 using Nethermind.Core;
-using Nethermind.Serialization.Json;
 
 namespace Nethermind.Blockchain.Tracing.GethStyle;
 
@@ -54,7 +53,7 @@ public sealed class GethLikeTxStreamingMemoryTracer : GethLikeTxMemoryTracer
 
     protected override void AddTraceEntry(GethTxMemoryTraceEntry entry)
     {
-        JsonSerializer.Serialize(_writer, entry, EthereumJsonSerializer.JsonOptions);
+        GethTxTraceEntryJsonWriter.Write(_writer, entry);
 
         if (_pipeWriter is null) return;
         if (++_entriesSinceLastFlush < _flushIntervalEntries) return;

@@ -17,19 +17,13 @@ public class DebugTraceStreamingBenchmarks
     [Params(1_000, 10_000, 100_000)]
     public int OpcodeCount { get; set; }
 
-    [Benchmark(Baseline = true, Description = "Buffered: accumulate N entries, then serialize the full envelope")]
-    public int Buffered()
+    [Benchmark(Baseline = true, Description = "Throughput: buffered — accumulate N entries, then serialize the full envelope")]
+    public int Throughput_Buffered()
     {
         List<GethTxTraceEntry> entries = new(OpcodeCount);
         for (int i = 0; i < OpcodeCount; i++) entries.Add(BuildEntry(i));
 
-        GethLikeTxTrace trace = new()
-        {
-            Entries = entries,
-            Gas = 21000,
-            Failed = false,
-            ReturnValue = Array.Empty<byte>(),
-        };
+        GethLikeTxTrace trace = new() { Entries = entries, Gas = 21000, ReturnValue = [] };
 
         ArrayBufferWriter<byte> sink = new();
         using Utf8JsonWriter writer = new(sink);
@@ -37,19 +31,74 @@ public class DebugTraceStreamingBenchmarks
         return sink.WrittenCount;
     }
 
-    [Benchmark(Description = "Streaming: emit each entry to the writer as it's produced; previous entry is GC-eligible immediately")]
-    public int Streaming()
+    [Benchmark(Description = "Throughput: streaming — emit each entry inline via direct Utf8JsonWriter writes")]
+    public int Throughput_Streaming()
     {
         ArrayBufferWriter<byte> sink = new();
         using Utf8JsonWriter writer = new(sink);
+        WriteStreamingEnvelope(writer, OpcodeCount);
+        return sink.WrittenCount;
+    }
+
+    [Benchmark(Description = "PeakHeap: 16 concurrent buffered traces, output drained (pipe-like)")]
+    public long PeakHeap_Buffered()
+    {
+        const int Concurrency = 16;
+        GC.Collect();
+        GC.WaitForPendingFinalizers();
+        long baseline = GC.GetTotalMemory(true);
+
+        List<GethLikeTxTrace> live = new(Concurrency);
+        for (int n = 0; n < Concurrency; n++)
+        {
+            List<GethTxTraceEntry> entries = new(OpcodeCount);
+            for (int i = 0; i < OpcodeCount; i++) entries.Add(BuildEntry(i));
+            GethLikeTxTrace trace = new() { Entries = entries, Gas = 21000, ReturnValue = [] };
+
+            DiscardingBufferWriter sink = new();
+            using Utf8JsonWriter writer = new(sink);
+            JsonSerializer.Serialize(writer, trace, EthereumJsonSerializer.JsonOptions);
+
+            live.Add(trace);
+        }
+
+        long peak = GC.GetTotalMemory(false);
+        GC.KeepAlive(live);
+        return peak - baseline;
+    }
+
+    [Benchmark(Description = "PeakHeap: 16 concurrent streaming traces, output drained (pipe-like)")]
+    public long PeakHeap_Streaming()
+    {
+        const int Concurrency = 16;
+        GC.Collect();
+        GC.WaitForPendingFinalizers();
+        long baseline = GC.GetTotalMemory(true);
+
+        List<DiscardingBufferWriter> live = new(Concurrency);
+        for (int n = 0; n < Concurrency; n++)
+        {
+            DiscardingBufferWriter sink = new();
+            using Utf8JsonWriter writer = new(sink);
+            WriteStreamingEnvelope(writer, OpcodeCount);
+            live.Add(sink);
+        }
+
+        long peak = GC.GetTotalMemory(false);
+        GC.KeepAlive(live);
+        return peak - baseline;
+    }
+
+    private static void WriteStreamingEnvelope(Utf8JsonWriter writer, int opcodeCount)
+    {
         writer.WriteStartObject();
         writer.WritePropertyName("structLogs"u8);
         writer.WriteStartArray();
 
-        for (int i = 0; i < OpcodeCount; i++)
+        for (int i = 0; i < opcodeCount; i++)
         {
             GethTxMemoryTraceEntry entry = BuildEntry(i);
-            JsonSerializer.Serialize(writer, entry, EthereumJsonSerializer.JsonOptions);
+            GethTxTraceEntryJsonWriter.Write(writer, entry);
         }
 
         writer.WriteEndArray();
@@ -58,7 +107,6 @@ public class DebugTraceStreamingBenchmarks
         writer.WritePropertyName("returnValue"u8);
         JsonSerializer.Serialize(writer, Array.Empty<byte>(), EthereumJsonSerializer.JsonOptions);
         writer.WriteEndObject();
-        return sink.WrittenCount;
     }
 
     private static GethTxMemoryTraceEntry BuildEntry(int pc) => new()
@@ -73,4 +121,22 @@ public class DebugTraceStreamingBenchmarks
         Error = null,
         Storage = new Dictionary<string, string>(),
     };
+
+    // Mirrors PipeWriter's drain-immediately behaviour: bytes written via Advance are dropped.
+    // Lets us measure entry/serializer overhead without inflating peak heap with accumulated output.
+    private sealed class DiscardingBufferWriter : IBufferWriter<byte>
+    {
+        private byte[] _buffer = new byte[4096];
+        public int WrittenCount { get; private set; }
+
+        public void Advance(int count) => WrittenCount += count;
+
+        public Memory<byte> GetMemory(int sizeHint = 0)
+        {
+            if (sizeHint > _buffer.Length) _buffer = new byte[Math.Max(sizeHint, _buffer.Length * 2)];
+            return _buffer;
+        }
+
+        public Span<byte> GetSpan(int sizeHint = 0) => GetMemory(sizeHint).Span;
+    }
 }
