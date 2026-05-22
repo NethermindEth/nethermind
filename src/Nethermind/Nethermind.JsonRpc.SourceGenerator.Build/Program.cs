@@ -79,8 +79,7 @@ internal static class Program
         for (int i = 0; i < syntaxTrees.Length; i++)
         {
             SemanticModel semanticModel = compilation.GetSemanticModel(syntaxTrees[i]);
-            SyntaxNode root = syntaxTrees[i].GetRoot();
-            foreach (SyntaxNode node in root.DescendantNodes())
+            foreach (SyntaxNode node in syntaxTrees[i].GetRoot().DescendantNodes())
             {
                 ImmutableArray<ITypeSymbol> jsonTypes = RpcJsonTypeDiscovery.GetJsonTypeSymbols(semanticModel, node, CancellationToken.None);
                 if (!jsonTypes.IsDefaultOrEmpty)
@@ -140,13 +139,8 @@ internal static class Program
         {
             ITypeSymbol type = typeSymbols[i];
             string displayName = RpcJsonTypeDiscovery.GetTypeDisplayString(type);
-            if (candidatesByDisplayName.ContainsKey(displayName))
-            {
-                continue;
-            }
-
-            JsonTypeCandidate? candidate = eligibility.CreateCandidate(type, displayName);
-            if (candidate is not null)
+            if (!candidatesByDisplayName.ContainsKey(displayName) &&
+                eligibility.CreateCandidate(type, displayName) is { } candidate)
             {
                 candidatesByDisplayName.Add(displayName, candidate);
             }
@@ -217,12 +211,9 @@ internal static class Program
 
             Dictionary<string, string> generatedTypeNames = new(StringComparer.Ordinal);
             HashSet<string> visitedTypes = new(StringComparer.Ordinal);
-            if (!CanGenerateMetadata(type, generatedTypeNames, visitedTypes))
-            {
-                return null;
-            }
-
-            return new JsonTypeCandidate(displayName, generatedTypeNames);
+            return CanGenerateMetadata(type, generatedTypeNames, visitedTypes)
+                ? new JsonTypeCandidate(displayName, generatedTypeNames)
+                : null;
         }
 
         private bool IsRootOwnedByCurrentAssembly(ITypeSymbol type)
@@ -385,18 +376,10 @@ internal static class Program
             for (int i = 0; i < attributes.Length; i++)
             {
                 AttributeData attribute = attributes[i];
-                if (!IsAttribute(attribute.AttributeClass, JsonSerializationNamespace, "JsonConverterAttribute"))
-                {
-                    continue;
-                }
-
-                if (attribute.ConstructorArguments.Length == 0 ||
-                    attribute.ConstructorArguments[0].Value is not INamedTypeSymbol converterType)
-                {
-                    continue;
-                }
-
-                if (!IsAccessibleFromGeneratedContext(converterType))
+                if (IsAttribute(attribute.AttributeClass, JsonSerializationNamespace, "JsonConverterAttribute") &&
+                    attribute.ConstructorArguments.Length != 0 &&
+                    attribute.ConstructorArguments[0].Value is INamedTypeSymbol converterType &&
+                    !IsAccessibleFromGeneratedContext(converterType))
                 {
                     return false;
                 }
@@ -541,12 +524,7 @@ internal static class Program
         File.WriteAllText(path, content, Encoding.UTF8);
     }
 
-    private sealed record Arguments(
-        string OutputPath,
-        string SourcesFile,
-        string ReferencesFile,
-        string AssemblyName,
-        string DefineConstants)
+    private sealed record Arguments(string OutputPath, string SourcesFile, string ReferencesFile, string AssemblyName, string DefineConstants)
     {
         public static Arguments Parse(string[] args)
         {
@@ -569,14 +547,9 @@ internal static class Program
                 values.GetValueOrDefault("--define-constants", string.Empty));
         }
 
-        private static string GetRequired(Dictionary<string, string> values, string name)
-        {
-            if (values.TryGetValue(name, out string? value) && !string.IsNullOrWhiteSpace(value))
-            {
-                return value;
-            }
-
-            throw new ArgumentException($"Missing required argument {name}.");
-        }
+        private static string GetRequired(Dictionary<string, string> values, string name) =>
+            values.TryGetValue(name, out string? value) && !string.IsNullOrWhiteSpace(value)
+                ? value
+                : throw new ArgumentException($"Missing required argument {name}.");
     }
 }
