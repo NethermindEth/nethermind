@@ -461,11 +461,11 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
 
         return reader.TokenType == JsonTokenType.Null
             || (reader.TokenType == JsonTokenType.String && reader.ValueTextEquals(ReadOnlySpan<byte>.Empty));
-
-        [DoesNotReturn, StackTraceHidden]
-        static void ThrowInvalidParameterBytes() =>
-            throw new JsonException("Invalid JSON-RPC parameter bytes.");
     }
+
+    [DoesNotReturn, StackTraceHidden]
+    private static void ThrowInvalidParameterBytes() =>
+        throw new JsonException("Invalid JSON-RPC parameter bytes.");
 
     private static void UpdateMissingParamsCount(JsonElement item, ref int missingParamsCount, int initialMissingParamsCount)
     {
@@ -634,29 +634,23 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
                 : expectedParameter.DefaultValue;
         }
 
-        object? executionParam;
         if (expectedParameter.Kind == ParameterKind.String)
         {
-            executionParam = providedParameter.ValueKind == JsonValueKind.String ?
-                providedParameter.GetString() :
-                providedParameter.GetRawText();
+            return providedParameter.ValueKind == JsonValueKind.String
+                ? providedParameter.GetString()
+                : providedParameter.GetRawText();
         }
-        else if (expectedParameter.Kind == ParameterKind.JsonRpcParam)
+
+        if (expectedParameter.Kind == ParameterKind.JsonRpcParam)
         {
             IJsonRpcParam jsonRpcParam = expectedParameter.CreateRpcParam();
             jsonRpcParam!.ReadJson(providedParameter, EthereumJsonSerializer.JsonOptions);
-            executionParam = jsonRpcParam;
-        }
-        else if (expectedParameter.Kind != ParameterKind.JsonElement && !providedParameterUtf8.IsEmpty)
-        {
-            executionParam = DeserializeTypedParameter(providedParameter, expectedParameter, providedParameterUtf8);
-        }
-        else
-        {
-            executionParam = DeserializeTypedParameter(providedParameter, expectedParameter);
+            return jsonRpcParam;
         }
 
-        return executionParam;
+        return expectedParameter.Kind != ParameterKind.JsonElement && !providedParameterUtf8.IsEmpty
+            ? DeserializeTypedParameter(providedParameter, expectedParameter, providedParameterUtf8)
+            : DeserializeTypedParameter(providedParameter, expectedParameter);
     }
 
     private static object? DeserializeParameter(ReadOnlyMemory<byte> providedParameterUtf8, ExpectedParameter expectedParameter)
@@ -698,10 +692,6 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
         return typeInfo is not null
             ? JsonSerializer.Deserialize(providedParameterUtf8.Span, typeInfo)
             : JsonSerializer.Deserialize(providedParameterUtf8.Span, expectedParameter.ParameterType, EthereumJsonSerializer.JsonOptions);
-
-        [DoesNotReturn, StackTraceHidden]
-        static void ThrowInvalidParameterBytes() =>
-            throw new JsonException("Invalid JSON-RPC parameter bytes.");
     }
 
     private static object? DeserializeTypedParameter(JsonElement providedParameter, ExpectedParameter expectedParameter, ReadOnlyMemory<byte> providedParameterUtf8 = default)
@@ -835,14 +825,8 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
 
     private static object?[] RentParameterArray(int length, out bool returnToPool)
     {
-        if (length <= MaxPooledParameterCount)
-        {
-            returnToPool = true;
-            return ArrayPool<object?>.Shared.Rent(length);
-        }
-
-        returnToPool = false;
-        return new object?[length];
+        returnToPool = length <= MaxPooledParameterCount;
+        return returnToPool ? ArrayPool<object?>.Shared.Rent(length) : new object?[length];
     }
 
     public JsonRpcErrorResponse GetErrorResponse(int errorCode, string errorMessage, JsonRpcId? id = null, string? methodName = null) =>
