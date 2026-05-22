@@ -182,67 +182,7 @@ public sealed class SszMiddleware
                         : $"SSZ-REST {ctx.Request.Method} /engine/v{version}/{handler!.Resource}/{extra.Span}");
                 }
 
-                // Read directly from PipeReader: the buffer is a ReadOnlySequence over Kestrel's
-                // pooled blocks (~4 KB each), so multi-segment is the common case for blob-bearing
-                // payloads. The generated SSZ codecs accept ReadOnlySequence<byte> — single-segment
-                // is zero-copy, multi-segment consolidates once via ArrayPool. Both paths skip the
-                // MemoryStream + ToArray dance the previous implementation needed.
-                PipeReader reader = ctx.Request.BodyReader;
-                ReadOnlySequence<byte> body = default;
-                bool bodyRead = false;
-                try
-                {
-                    body = await ReadBodyAsync(ctx, reader);
-                    bodyRead = true;
-                    Metrics.SszRestRequestBytesTotal += body.Length;
-
-                    await handler!.HandleAsync(ctx, version, extra, body);
-
-                    int status = ctx.Response.StatusCode;
-                    switch (status)
-                    {
-                        case >= 200 and < 300:
-                            Metrics.SszRestRequestsSuccessTotal++;
-                            break;
-                        case >= 400 and < 500:
-                            Metrics.SszRestRequestsClientErrorTotal++;
-                            break;
-                        case >= 500:
-                            Metrics.SszRestRequestsServerErrorTotal++;
-                            break;
-                    }
-                }
-                catch (InvalidOperationException ex) when (!bodyRead)
-                {
-                    Metrics.SszRestRequestsClientErrorTotal++;
-                    await SszEndpointHandlerBase.WriteErrorAsync(ctx, StatusCodes.Status413PayloadTooLarge, ex.Message, ErrorCodes.ParseError);
-                }
-                catch (Exception ex) when (ex is InvalidDataException or IndexOutOfRangeException or EndOfStreamException)
-                {
-                    // Per execution-apis #764 (Engine API SSZ Transport spec, "HTTP status codes" section):
-                    // malformed SSZ encoding is 400 Bad Request. 422 Unprocessable Entity is reserved
-                    // for "Invalid payload attributes" and is emitted by the handler chain via
-                    // ErrorCodeToHttpStatus when the engine module returns InvalidPayloadAttributes.
-                    Metrics.SszRestDecodeFailuresTotal++;
-                    Metrics.SszRestRequestsClientErrorTotal++;
-                    if (_logger.IsDebug) _logger.Debug($"SSZ-REST malformed body at {ctx.Request.Path.Value}: {ex.Message}");
-                    await SszEndpointHandlerBase.WriteErrorAsync(ctx, StatusCodes.Status400BadRequest, "Malformed SSZ body", ErrorCodes.ParseError);
-                }
-                catch (Exception ex)
-                {
-                    Metrics.SszRestRequestsServerErrorTotal++;
-                    if (_logger.IsError) _logger.Error($"SSZ-REST handler error for {ctx.Request.Path.Value}", ex);
-
-                    // If the inner code already aborted the request (e.g. encode failed mid-stream
-                    // and called ctx.Abort), don't try to write a 500 — WriteAsync would throw
-                    // OperationCanceledException, producing a duplicate exception in the logs.
-                    if (!ctx.RequestAborted.IsCancellationRequested)
-                        await SszEndpointHandlerBase.WriteErrorAsync(ctx, StatusCodes.Status500InternalServerError, "Internal server error", ErrorCodes.InternalError);
-                }
-                finally
-                {
-                    if (bodyRead) reader.AdvanceTo(body.End);
-                }
+                await DispatchAsync(ctx, handler!, version, extra);
             }
         }
     }
@@ -282,6 +222,19 @@ public sealed class SszMiddleware
 
         if (_logger.IsTrace) _logger.Trace($"SSZ-REST POST {WitnessPath}");
 
+        await DispatchAsync(ctx, _witnessHandler, version: 0, extra: default);
+    }
+
+    /// <summary>
+    /// Shared body-read + handler invocation + metrics + error mapping for both the versioned
+    /// <c>/engine/v{N}/...</c> dispatch and the non-versioned witness path.
+    /// </summary>
+    private async Task DispatchAsync(HttpContext ctx, ISszEndpointHandler handler, int version, ReadOnlyMemory<char> extra)
+    {
+        // Read directly from PipeReader: the buffer is a ReadOnlySequence over Kestrel's
+        // pooled blocks (~4 KB each), so multi-segment is the common case for blob-bearing
+        // payloads. The generated SSZ codecs accept ReadOnlySequence<byte> — single-segment
+        // is zero-copy, multi-segment consolidates once via ArrayPool.
         PipeReader reader = ctx.Request.BodyReader;
         ReadOnlySequence<byte> body = default;
         bool bodyRead = false;
@@ -291,10 +244,9 @@ public sealed class SszMiddleware
             bodyRead = true;
             Metrics.SszRestRequestBytesTotal += body.Length;
 
-            await _witnessHandler.HandleAsync(ctx, 0, default, body);
+            await handler.HandleAsync(ctx, version, extra, body);
 
-            int status = ctx.Response.StatusCode;
-            switch (status)
+            switch (ctx.Response.StatusCode)
             {
                 case >= 200 and < 300:
                     Metrics.SszRestRequestsSuccessTotal++;
@@ -312,10 +264,25 @@ public sealed class SszMiddleware
             Metrics.SszRestRequestsClientErrorTotal++;
             await SszEndpointHandlerBase.WriteErrorAsync(ctx, StatusCodes.Status413PayloadTooLarge, ex.Message, ErrorCodes.ParseError);
         }
+        catch (Exception ex) when (ex is InvalidDataException or IndexOutOfRangeException or EndOfStreamException)
+        {
+            // Per execution-apis #764 (Engine API SSZ Transport spec, "HTTP status codes" section):
+            // malformed SSZ encoding is 400 Bad Request. 422 Unprocessable Entity is reserved
+            // for "Invalid payload attributes" and is emitted by the handler chain via
+            // ErrorCodeToHttpStatus when the engine module returns InvalidPayloadAttributes.
+            Metrics.SszRestDecodeFailuresTotal++;
+            Metrics.SszRestRequestsClientErrorTotal++;
+            if (_logger.IsDebug) _logger.Debug($"SSZ-REST malformed body at {ctx.Request.Path.Value}: {ex.Message}");
+            await SszEndpointHandlerBase.WriteErrorAsync(ctx, StatusCodes.Status400BadRequest, "Malformed SSZ body", ErrorCodes.ParseError);
+        }
         catch (Exception ex)
         {
             Metrics.SszRestRequestsServerErrorTotal++;
-            if (_logger.IsError) _logger.Error($"SSZ-REST handler error for {WitnessPath}", ex);
+            if (_logger.IsError) _logger.Error($"SSZ-REST handler error for {ctx.Request.Path.Value}", ex);
+
+            // If the inner code already aborted the request (e.g. encode failed mid-stream
+            // and called ctx.Abort), don't try to write a 500 — WriteAsync would throw
+            // OperationCanceledException, producing a duplicate exception in the logs.
             if (!ctx.RequestAborted.IsCancellationRequested)
                 await SszEndpointHandlerBase.WriteErrorAsync(ctx, StatusCodes.Status500InternalServerError, "Internal server error", ErrorCodes.InternalError);
         }
