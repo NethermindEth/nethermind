@@ -71,7 +71,19 @@ public sealed class NewPayloadWithWitnessHandler(
             if (payloadStatus.Status == PayloadStatus.Valid)
             {
                 if (captureTask is not null)
-                    witness = await captureTask;
+                {
+                    try
+                    {
+                        witness = await captureTask;
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        // A concurrent ArmCapture for the same blockHash cancelled our task.
+                        // The block executed successfully — return VALID with a null witness.
+                        if (_logger.IsWarn)
+                            _logger.Warn($"engine_newPayloadWithWitness: witness capture cancelled for {blockHash} (likely duplicate concurrent call). Returning VALID with no witness.");
+                    }
+                }
             }
             else
             {
