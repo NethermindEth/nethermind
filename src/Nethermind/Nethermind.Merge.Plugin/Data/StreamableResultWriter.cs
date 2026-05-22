@@ -36,20 +36,10 @@ internal static class StreamableResultWriter
         writer.Write("]"u8);
     }
 
-    public static ValueTask<bool> FlushIfNeededAsync(PipeWriter writer, CancellationToken cancellationToken)
-    {
-        if (cancellationToken.IsCancellationRequested)
-        {
-            return new ValueTask<bool>(true);
-        }
-
-        if (writer.CanGetUnflushedBytes && writer.UnflushedBytes < FlushThresholdBytes)
-        {
-            return new ValueTask<bool>(false);
-        }
-
-        return FlushAsync(writer, cancellationToken);
-    }
+    public static ValueTask<bool> FlushIfNeededAsync(PipeWriter writer, CancellationToken cancellationToken) =>
+        cancellationToken.IsCancellationRequested ? new ValueTask<bool>(true) :
+        writer.CanGetUnflushedBytes && writer.UnflushedBytes < FlushThresholdBytes ? new ValueTask<bool>(false) :
+        FlushAsync(writer, cancellationToken);
 
     private static async ValueTask<bool> FlushAsync(PipeWriter writer, CancellationToken cancellationToken)
     {
