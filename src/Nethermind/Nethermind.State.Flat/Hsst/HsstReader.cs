@@ -11,12 +11,17 @@ namespace Nethermind.State.Flat.Hsst;
 /// <see cref="IHsstByteReader"/> works — mmap, heap array, file handle, etc.
 ///
 /// Maintains an active <see cref="Bound"/> (absolute offset+length within the reader).
-/// <see cref="TrySeek"/> dispatches by <see cref="IndexType"/> into the per-layout reader
-/// (<see cref="HsstBTreeReader"/>, <see cref="HsstPackedArrayReader"/>,
+/// <see cref="TrySeek"/> dispatches by the trailing <see cref="IndexType"/> byte into the
+/// per-layout reader (<see cref="HsstBTreeReader"/>, <see cref="HsstPackedArrayReader"/>,
 /// <see cref="HsstDenseByteIndexReader"/>) and repositions the bound to the matched entry's
 /// value region, also returning that bound via <c>out matched</c>. To save/restore
 /// scope across sibling seeks, capture <see cref="GetBound"/> beforehand and restore
 /// with <see cref="SetBound"/>.
+///
+/// The keys-first two-byte-slot variants (<see cref="IndexType.TwoByteSlotValue"/> /
+/// <see cref="IndexType.TwoByteSlotValueLarge"/>) carry their <see cref="IndexType"/> byte
+/// at byte 0, not the tail; they are always nested and reached via
+/// <see cref="TrySeekTwoByteSlot"/>, which dispatches forward with no tail seek.
 /// </summary>
 public ref struct HsstReader<TReader, TPin>(scoped in TReader reader, Bound initialBound) : IDisposable
     where TPin : struct, IBufferPin, allows ref struct
@@ -106,6 +111,40 @@ public ref struct HsstReader<TReader, TPin>(scoped in TReader reader, Bound init
                 }
                 matched = default;
                 return false;
+            // TwoByteSlotValue / TwoByteSlotValueLarge are keys-first nested blobs whose
+            // IndexType byte leads the blob (byte 0), not the tail. They are never
+            // top-level, so they cannot be reached by this last-byte dispatch — callers
+            // that descend into one use TrySeekTwoByteSlot instead.
+            default:
+                matched = default;
+                return false;
+        }
+    }
+
+    /// <summary>
+    /// Exact-match lookup over a nested keys-first two-byte-slot HSST
+    /// (<see cref="IndexType.TwoByteSlotValue"/> / <see cref="IndexType.TwoByteSlotValueLarge"/>),
+    /// whose <see cref="IndexType"/> byte leads the blob at byte 0. Unlike <see cref="TrySeek"/>
+    /// this dispatches on the first byte, so the lookup is a single forward read with no tail
+    /// seek — the caller must already know the current bound is one of these two variants.
+    /// </summary>
+    public bool TrySeekTwoByteSlot(scoped ReadOnlySpan<byte> key, out Bound matched) =>
+        TrySeekTwoByteSlotCore(key, exactMatch: true, out matched);
+
+    /// <summary>Floor variant of <see cref="TrySeekTwoByteSlot"/> (largest stored key ≤ <paramref name="key"/>).</summary>
+    public bool TrySeekTwoByteSlotFloor(scoped ReadOnlySpan<byte> key, out Bound matched) =>
+        TrySeekTwoByteSlotCore(key, exactMatch: false, out matched);
+
+    [SkipLocalsInit]
+    private bool TrySeekTwoByteSlotCore(scoped ReadOnlySpan<byte> key, bool exactMatch, out Bound matched)
+    {
+        if (_bound.Length < 2) { matched = default; return false; }
+
+        // IndexType byte leads the blob — read byte 0 forward, no tail seek.
+        Span<byte> idxType = stackalloc byte[1];
+        if (!_reader.TryRead(_bound.Offset, idxType)) { matched = default; return false; }
+        switch ((IndexType)idxType[0])
+        {
             case IndexType.TwoByteSlotValue:
                 if (HsstTwoByteSlotValueReader.TrySeek<TReader, TPin>(in _reader, _bound, key, exactMatch, out Bound tbsvBound))
                 {

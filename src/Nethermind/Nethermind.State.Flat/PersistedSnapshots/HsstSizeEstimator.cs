@@ -353,9 +353,9 @@ internal static class HsstSizeEstimator
     }
 
     /// <summary>
-    /// Exact size of a <c>TwoByteSlotValue</c> HSST: trailer is
-    /// <c>(N − 1)·2 + N·2 + 2 + 1 = 4·N + 1</c> bytes (offsets array with first omitted,
-    /// keys array, u16 keycount, u8 index-type), plus the concatenated value bytes.
+    /// Exact size of a <c>TwoByteSlotValue</c> HSST: non-value overhead is
+    /// <c>1 + 2 + N·2 + (N − 1)·2 = 4·N + 1</c> bytes (u8 index-type, u16 keycount,
+    /// keys array, offsets array with first omitted), plus the concatenated value bytes.
     /// Caller must ensure <paramref name="sumValueBytes"/> ≤ <c>ushort.MaxValue</c>.
     /// </summary>
     internal static int EstimateTwoByteSlotValueSize(int entryCount, int sumValueBytes)
@@ -365,9 +365,9 @@ internal static class HsstSizeEstimator
     }
 
     /// <summary>
-    /// Exact size of a <c>TwoByteSlotValueLarge</c> HSST: trailer is
-    /// <c>(N − 1)·3 + N·2 + 2 + 1 = 5·N</c> bytes (u24 offsets array with first omitted,
-    /// keys array, u16 keycount, u8 index-type), plus the concatenated value bytes.
+    /// Exact size of a <c>TwoByteSlotValueLarge</c> HSST: non-value overhead is
+    /// <c>1 + 2 + N·2 + (N − 1)·3 = 5·N</c> bytes (u8 index-type, u16 keycount,
+    /// keys array, u24 offsets array with first omitted), plus the concatenated value bytes.
     /// Caller must ensure <paramref name="sumValueBytes"/> ≤ <c>(1 &lt;&lt; 24) − 1</c>.
     /// </summary>
     internal static int EstimateTwoByteSlotValueLargeSize(int entryCount, int sumValueBytes)

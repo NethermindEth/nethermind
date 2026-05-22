@@ -200,9 +200,10 @@ public sealed class PersistedSnapshotScanner(WholeReadSession session, Persisted
     }
 
     /// <summary>
-    /// Two-level walk over a per-address slot HSST: outer 30-byte prefix BTree → inner
-    /// 2-byte suffix BTree. The address is supplied by the enclosing
-    /// <see cref="PerAddressEntry"/>; this enumerator yields only (slot, value) pairs.
+    /// Two-level walk over a per-address slot HSST: outer 30-byte prefix BTreeKeyFirst →
+    /// inner 2-byte suffix keys-first TwoByteSlotValue / -Large blob. The address is
+    /// supplied by the enclosing <see cref="PerAddressEntry"/>; this enumerator yields
+    /// only (slot, value) pairs.
     /// </summary>
     public ref struct SlotEnumerator : IDisposable
     {
@@ -249,7 +250,10 @@ public sealed class PersistedSnapshotScanner(WholeReadSession session, Persisted
                     if (_prefixEnum.MoveNext())
                     {
                         _curPrefixLen = _prefixEnum.CopyCurrentLogicalKey(_curPrefix).Length;
-                        _suffixEnum = new HsstRefEnumerator<WholeReadSessionReader, NoOpPin>(in _reader, _prefixEnum.Current.ValueBound);
+                        // The prefix entry's value is a keys-first TwoByteSlotValue / -Large
+                        // sub-slot blob — front-dispatch on byte 0, no tail read.
+                        _suffixEnum = HsstRefEnumerator<WholeReadSessionReader, NoOpPin>.CreateTwoByteSlot(
+                            in _reader, _prefixEnum.Current.ValueBound);
                         _level = 2;
                         continue;
                     }

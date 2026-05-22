@@ -28,6 +28,11 @@ namespace Nethermind.State.Flat.Hsst;
 ///   - <see cref="IndexType.PackedArray"/>     → <c>PackedArrayVariant</c> (no offset table; fixed stride).
 ///   - <see cref="IndexType.BTree"/>           → <c>BTreeVariant</c>       (offset table; leaves only reachable by recursing the index tree).
 ///
+/// The keys-first two-byte-slot variants (<see cref="IndexType.TwoByteSlotValue"/> /
+/// <see cref="IndexType.TwoByteSlotValueLarge"/>) carry their <see cref="IndexType"/> byte
+/// at byte 0, not the tail; they are always nested and opened via
+/// <see cref="CreateTwoByteSlot"/>, which dispatches forward with no tail read.
+///
 /// <see cref="MoveNext"/> consumes the reader (variants need it for LEB128 / Ends-array
 /// reads) and caches the current key/value bounds. Subsequent <see cref="CurrentKeyLength"/>
 /// access is a property read; <see cref="GetCurrentValue"/> takes the reader only to
@@ -81,6 +86,29 @@ public struct HsstEnumerator<TReader, TPin> : IDisposable
                 _btree = new BTreeVariant(in reader, scope, keyFirst: true);
                 _kind = VariantKind.BTreeKeyFirst;
                 break;
+            // DenseByteIndex is used for the persisted-snapshot outer + per-address
+            // containers, which the merge code accesses directly via TryGet rather
+            // than via this enumerator. TwoByteSlotValue / TwoByteSlotValueLarge lead
+            // with their IndexType byte (byte 0), never the tail — they are nested-only
+            // and opened via CreateTwoByteSlot, so this last-byte dispatch never resolves
+            // them. Defensive empty enumeration: never invoked in production paths but
+            // avoids crashing the BTree parser if the trailer ever reaches this constructor.
+            default:
+                _kind = VariantKind.Empty;
+                break;
+        }
+    }
+
+    /// <summary>
+    /// Front-dispatch constructor for the keys-first two-byte-slot variants, whose
+    /// <see cref="IndexType"/> byte leads the blob at byte 0. Used by
+    /// <see cref="CreateTwoByteSlot"/>; non-two-byte-slot <paramref name="frontTag"/>
+    /// values yield an empty enumerator.
+    /// </summary>
+    private HsstEnumerator(scoped in TReader reader, Bound scope, IndexType frontTag)
+    {
+        switch (frontTag)
+        {
             case IndexType.TwoByteSlotValue:
                 _tbsv = TwoByteSlotValueVariant.TryCreate(in reader, scope);
                 _kind = _tbsv is not null ? VariantKind.TwoByteSlotValue : VariantKind.Empty;
@@ -89,15 +117,29 @@ public struct HsstEnumerator<TReader, TPin> : IDisposable
                 _tbsvLarge = TwoByteSlotValueLargeVariant.TryCreate(in reader, scope);
                 _kind = _tbsvLarge is not null ? VariantKind.TwoByteSlotValueLarge : VariantKind.Empty;
                 break;
-            // DenseByteIndex is used for the persisted-snapshot outer + per-address
-            // containers, which the merge code accesses directly via TryGet rather
-            // than via this enumerator. Defensive empty enumeration: never invoked
-            // in production paths but avoids crashing the BTree parser if the
-            // trailer ever reaches this constructor.
             default:
                 _kind = VariantKind.Empty;
                 break;
         }
+    }
+
+    /// <summary>
+    /// Open an enumerator over a nested keys-first two-byte-slot HSST scope
+    /// (<see cref="IndexType.TwoByteSlotValue"/> / <see cref="IndexType.TwoByteSlotValueLarge"/>).
+    /// Dispatches on the leading <see cref="IndexType"/> byte (byte 0) — no tail read. The
+    /// caller must already know <paramref name="scope"/> is one of these two variants.
+    /// </summary>
+    public static HsstEnumerator<TReader, TPin> CreateTwoByteSlot(scoped in TReader reader, Bound scope)
+    {
+        // 5 = smallest valid two-byte-slot blob (1 IndexType + 2 KeyCount + 2 key).
+        if (scope.Length < 5) return default;
+
+        IndexType tag;
+        using (TPin tagPin = reader.PinBuffer(scope.Offset, 1))
+        {
+            tag = (IndexType)tagPin.Buffer[0];
+        }
+        return new HsstEnumerator<TReader, TPin>(in reader, scope, tag);
     }
 
     public long Count => _kind switch

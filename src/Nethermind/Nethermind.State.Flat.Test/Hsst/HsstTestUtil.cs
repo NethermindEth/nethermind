@@ -60,6 +60,32 @@ internal static class HsstTestUtil
         return true;
     }
 
+    /// <summary>
+    /// Test helper: front-dispatch lookup over a keys-first two-byte-slot HSST blob
+    /// (<see cref="IndexType.TwoByteSlotValue"/> / <see cref="IndexType.TwoByteSlotValueLarge"/>),
+    /// whose IndexType byte leads the blob at byte 0.
+    /// </summary>
+    public static bool TryGetTwoByteSlot(ReadOnlySpan<byte> data, scoped ReadOnlySpan<byte> key, out byte[] value)
+    {
+        SpanByteReader reader = new(data);
+        using HsstReader<SpanByteReader, NoOpPin> r = new(in reader);
+        if (!r.TrySeekTwoByteSlot(key, out _)) { value = []; return false; }
+        Bound b = r.GetBound();
+        value = b.Length == 0 ? [] : data.Slice((int)b.Offset, (int)b.Length).ToArray();
+        return true;
+    }
+
+    /// <summary>Test helper: floor-seek variant of <see cref="TryGetTwoByteSlot"/>.</summary>
+    public static bool TryGetTwoByteSlotFloor(ReadOnlySpan<byte> data, scoped ReadOnlySpan<byte> key, out byte[] value)
+    {
+        SpanByteReader reader = new(data);
+        using HsstReader<SpanByteReader, NoOpPin> r = new(in reader);
+        if (!r.TrySeekTwoByteSlotFloor(key, out _)) { value = []; return false; }
+        Bound b = r.GetBound();
+        value = b.Length == 0 ? [] : data.Slice((int)b.Offset, (int)b.Length).ToArray();
+        return true;
+    }
+
     /// <summary>Test helper: single-byte-key overload for the dense-byte-index format.</summary>
     public static bool TryGet(ReadOnlySpan<byte> data, byte key, out byte[] value) =>
         TryGet(data, [key], out value);

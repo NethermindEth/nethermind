@@ -12,13 +12,16 @@ namespace Nethermind.State.Flat.Hsst;
 /// reader prefetch keys/offsets ahead of the bulk values.
 ///
 /// Output:
-/// <c>[KeyCount: u16 LE = N − 1][Key_0: 2 bytes]…[Key_{N-1}: 2 bytes][Offset_1: u16 LE]…[Offset_{N-1}: u16 LE][Value_0]…[Value_{N-1}][IndexType: u8 = 0x05]</c>.
+/// <c>[IndexType: u8 = 0x05][KeyCount: u16 LE = N − 1][Key_0: 2 bytes]…[Key_{N-1}: 2 bytes][Offset_1: u16 LE]…[Offset_{N-1}: u16 LE][Value_0]…[Value_{N-1}]</c>.
+///
+/// The <see cref="IndexType"/> byte leads the blob (not a trailer) so a reader that
+/// already knows it is descending into a keys-first sub-slot dispatches on byte 0 and
+/// then reads <c>KeyCount</c>, keys and offsets in the same forward pass — no tail seek.
 ///
 /// <c>Offset_i</c> is the exclusive start offset of <c>Value_i</c> measured from the
 /// start of the values section (= byte after the offsets array). <c>Offset_0</c> is
 /// omitted because it is always 0; <c>Offset_N</c> (one-past-end of the values section)
-/// is derived by the reader from the blob length minus the trailing
-/// <see cref="IndexType"/> byte. Hence per-entry value bounds are
+/// is derived by the reader as the blob's end. Hence per-entry value bounds are
 /// <c>[Offset_i, Offset_{i+1})</c> within the values section.
 ///
 /// Fixed u16 offsets cap the cumulative value bytes at <c>ushort.MaxValue</c>
@@ -150,7 +153,7 @@ public ref struct HsstTwoByteSlotValueBuilder<TWriter>
     }
 
     /// <summary>
-    /// Emit the HSST: <c>[KeyCount][Keys][Offsets][Values][IndexType]</c>. Throws on empty
+    /// Emit the HSST: <c>[IndexType][KeyCount][Keys][Offsets][Values]</c>. Throws on empty
     /// maps and on values-section overflow.
     /// </summary>
     public void Build()
@@ -162,7 +165,13 @@ public ref struct HsstTwoByteSlotValueBuilder<TWriter>
         if ((ulong)_valueBytes > ushort.MaxValue)
             throw new InvalidOperationException($"TwoByteSlotValue values {_valueBytes} bytes exceeds {MaxDataBytes}");
 
-        // Header: KeyCount (N − 1) u16 LE at byte 0.
+        // IndexType byte at byte 0 — leads the blob so a nested-slot reader dispatches
+        // on the first byte and reads the rest of the metadata forward without a tail seek.
+        Span<byte> indexType = _writer.GetSpan(1);
+        indexType[0] = (byte)IndexType.TwoByteSlotValue;
+        _writer.Advance(1);
+
+        // Header: KeyCount (N − 1) u16 LE.
         Span<byte> header = _writer.GetSpan(2);
         BinaryPrimitives.WriteUInt16LittleEndian(header, (ushort)(n - 1));
         _writer.Advance(2);
@@ -198,11 +207,5 @@ public ref struct HsstTwoByteSlotValueBuilder<TWriter>
             _values.AsSpan(0, _valueBytes).CopyTo(valuesSpan);
             _writer.Advance(_valueBytes);
         }
-
-        // Trailer: single IndexType byte. Stays at the tail so HsstReader still
-        // dispatches on the last byte.
-        Span<byte> trailer = _writer.GetSpan(1);
-        trailer[0] = (byte)IndexType.TwoByteSlotValue;
-        _writer.Advance(1);
     }
 }

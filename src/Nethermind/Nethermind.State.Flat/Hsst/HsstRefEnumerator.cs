@@ -24,17 +24,39 @@ namespace Nethermind.State.Flat.Hsst;
 /// stay valid for the reader's lifetime — no per-MoveNext invalidation, since neither
 /// involves enumerator-owned storage.
 /// </summary>
-public ref struct HsstRefEnumerator<TReader, TPin>(scoped in TReader reader, Bound bound) : IDisposable
+public ref struct HsstRefEnumerator<TReader, TPin> : IDisposable
     where TPin : struct, IBufferPin, allows ref struct
     where TReader : IHsstByteReader<TPin>, allows ref struct
 {
-    private TReader _reader = reader;
-    private HsstEnumerator<TReader, TPin> _inner = new(in reader, bound);
-
-    // _inner is a struct now: default(HsstRefEnumerator) gives default(HsstEnumerator)
+    private TReader _reader;
+    // _inner is a struct: default(HsstRefEnumerator) gives default(HsstEnumerator)
     // whose _kind is Empty, so MoveNext returns false and Current is empty — which is
     // the behaviour callers like PersistedSnapshotScanner.StorageEnumerator rely on
     // when they reset the field to `default` between uses.
+    private HsstEnumerator<TReader, TPin> _inner;
+
+    /// <summary>Open over an HSST scope, dispatching on the trailing <see cref="IndexType"/> byte.</summary>
+    public HsstRefEnumerator(scoped in TReader reader, Bound bound)
+    {
+        _reader = reader;
+        _inner = new HsstEnumerator<TReader, TPin>(in reader, bound);
+    }
+
+    private HsstRefEnumerator(scoped in TReader reader, HsstEnumerator<TReader, TPin> inner)
+    {
+        _reader = reader;
+        _inner = inner;
+    }
+
+    /// <summary>
+    /// Open over a nested keys-first two-byte-slot HSST scope
+    /// (<see cref="IndexType.TwoByteSlotValue"/> / <see cref="IndexType.TwoByteSlotValueLarge"/>),
+    /// dispatching on the leading <see cref="IndexType"/> byte — no tail read. See
+    /// <see cref="HsstEnumerator{TReader,TPin}.CreateTwoByteSlot"/>.
+    /// </summary>
+    public static HsstRefEnumerator<TReader, TPin> CreateTwoByteSlot(scoped in TReader reader, Bound bound)
+        => new(in reader, HsstEnumerator<TReader, TPin>.CreateTwoByteSlot(in reader, bound));
+
     public bool MoveNext() => _inner.MoveNext(in _reader);
 
     public readonly KeyValueEntry Current => new(_inner.CurrentKeyLength, _inner.CurrentValue);

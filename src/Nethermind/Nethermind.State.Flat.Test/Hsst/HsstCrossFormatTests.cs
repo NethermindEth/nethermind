@@ -67,9 +67,7 @@ public class HsstCrossFormatTests
 
         for (int i = 0; i < keys.Length; i++)
         {
-            using HsstReader<SpanByteReader, NoOpPin> r = new(in reader);
-            Assert.That(r.TrySeek(keys[i], out _), Is.True, $"missing key #{i} in {format}");
-            Bound vb = r.GetBound();
+            Assert.That(Seek(format, data, keys[i], out Bound vb), Is.True, $"missing key #{i} in {format}");
             byte[] got = data.AsSpan().Slice((int)vb.Offset, (int)vb.Length).ToArray();
             Assert.That(got, Is.EqualTo(values[i]), $"value mismatch at #{i} in {format}");
         }
@@ -78,8 +76,7 @@ public class HsstCrossFormatTests
         byte[]? missing = TryMakeMissingKey(format, keySize, keys);
         if (missing is not null)
         {
-            using HsstReader<SpanByteReader, NoOpPin> r = new(in reader);
-            Assert.That(r.TrySeek(missing, out _), Is.False, $"unexpected hit for unstored key in {format}");
+            Assert.That(Seek(format, data, missing, out _), Is.False, $"unexpected hit for unstored key in {format}");
         }
 
         // DenseByteIndex is the persisted-snapshot outer / per-address container and is
@@ -90,7 +87,11 @@ public class HsstCrossFormatTests
 
         List<(byte[] Key, byte[] Value)> enumerated = [];
         Span<byte> keyScratch = stackalloc byte[64];
-        using (HsstRefEnumerator<SpanByteReader, NoOpPin> e = new(in reader, new Bound(0, data.Length)))
+        // Keys-first two-byte-slot blobs carry their IndexType byte at byte 0, so they
+        // open via the front-dispatch factory; every other format tail-dispatches.
+        using (HsstRefEnumerator<SpanByteReader, NoOpPin> e = IsTwoByteSlot(format)
+                   ? HsstRefEnumerator<SpanByteReader, NoOpPin>.CreateTwoByteSlot(in reader, new Bound(0, data.Length))
+                   : new HsstRefEnumerator<SpanByteReader, NoOpPin>(in reader, new Bound(0, data.Length)))
         {
             while (e.MoveNext())
             {
@@ -145,7 +146,12 @@ public class HsstCrossFormatTests
             if (keys[i].AsSpan().SequenceCompareTo(probe) <= 0) floorIdx = i; else break;
         }
 
-        bool ok = HsstTestUtil.TryGetFloor(data, probe, out byte[] got);
+        bool ok;
+        byte[] got;
+        if (IsTwoByteSlot(format))
+            ok = HsstTestUtil.TryGetTwoByteSlotFloor(data, probe, out got);
+        else
+            ok = HsstTestUtil.TryGetFloor(data, probe, out got);
         if (floorIdx < 0)
         {
             Assert.That(ok, Is.False, $"expected no floor for {Convert.ToHexString(probe)} in {format}");
@@ -155,6 +161,25 @@ public class HsstCrossFormatTests
             Assert.That(ok, Is.True, $"expected floor for {Convert.ToHexString(probe)} in {format}");
             Assert.That(got, Is.EqualTo(values[floorIdx]), $"floor value mismatch for {Convert.ToHexString(probe)} in {format}");
         }
+    }
+
+    private static bool IsTwoByteSlot(Format format) =>
+        format is Format.TwoByteSlotValue or Format.TwoByteSlotValueLarge;
+
+    /// <summary>
+    /// Exact-seek dispatch: the keys-first two-byte-slot variants front-dispatch on byte 0
+    /// via <see cref="HsstReader{TReader,TPin}.TrySeekTwoByteSlot"/>; every other format
+    /// uses the generic last-byte dispatch.
+    /// </summary>
+    private static bool Seek(Format format, ReadOnlySpan<byte> data, scoped ReadOnlySpan<byte> key, out Bound bound)
+    {
+        SpanByteReader reader = new(data);
+        using HsstReader<SpanByteReader, NoOpPin> r = new(in reader);
+        bool ok = IsTwoByteSlot(format)
+            ? r.TrySeekTwoByteSlot(key, out _)
+            : r.TrySeek(key, out _);
+        bound = ok ? r.GetBound() : default;
+        return ok;
     }
 
     private static byte[] Build(Format format, int keySize, int valueSize, byte[][] keys, byte[][] values)

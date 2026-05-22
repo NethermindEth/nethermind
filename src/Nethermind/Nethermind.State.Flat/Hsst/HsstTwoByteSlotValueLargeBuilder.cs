@@ -13,11 +13,13 @@ namespace Nethermind.State.Flat.Hsst;
 /// are added in strictly ascending byte order.
 ///
 /// Output:
-/// <c>[KeyCount: u16 LE = N − 1][Key_0: 2 bytes]…[Key_{N-1}: 2 bytes][Offset_1: u24 LE]…[Offset_{N-1}: u24 LE][Value_0]…[Value_{N-1}][IndexType: u8 = 0x06]</c>.
+/// <c>[IndexType: u8 = 0x06][KeyCount: u16 LE = N − 1][Key_0: 2 bytes]…[Key_{N-1}: 2 bytes][Offset_1: u24 LE]…[Offset_{N-1}: u24 LE][Value_0]…[Value_{N-1}]</c>.
+///
+/// The <see cref="IndexType"/> byte leads the blob (not a trailer); see
+/// <see cref="HsstTwoByteSlotValueBuilder{TWriter}"/> for the rationale.
 ///
 /// <c>Offset_0</c> is omitted (always 0); <c>Offset_N</c> (one-past-end of the values
-/// section) is derived by the reader from the blob length minus the trailing
-/// <see cref="IndexType"/> byte.
+/// section) is derived by the reader as the blob's end.
 /// </summary>
 public ref struct HsstTwoByteSlotValueLargeBuilder<TWriter>
     where TWriter : IByteBufferWriter
@@ -140,7 +142,7 @@ public ref struct HsstTwoByteSlotValueLargeBuilder<TWriter>
     }
 
     /// <summary>
-    /// Emit the HSST: <c>[KeyCount][Keys][Offsets][Values][IndexType]</c>. Throws on empty
+    /// Emit the HSST: <c>[IndexType][KeyCount][Keys][Offsets][Values]</c>. Throws on empty
     /// maps and on values-section overflow.
     /// </summary>
     public void Build()
@@ -152,7 +154,13 @@ public ref struct HsstTwoByteSlotValueLargeBuilder<TWriter>
         if ((ulong)_valueBytes > (ulong)MaxDataBytes)
             throw new InvalidOperationException($"TwoByteSlotValueLarge values {_valueBytes} bytes exceeds {MaxDataBytes}");
 
-        // Header: KeyCount (N − 1) u16 LE at byte 0.
+        // IndexType byte at byte 0 — leads the blob so a nested-slot reader dispatches
+        // on the first byte and reads the rest of the metadata forward without a tail seek.
+        Span<byte> indexType = _writer.GetSpan(1);
+        indexType[0] = (byte)IndexType.TwoByteSlotValueLarge;
+        _writer.Advance(1);
+
+        // Header: KeyCount (N − 1) u16 LE.
         Span<byte> header = _writer.GetSpan(2);
         BinaryPrimitives.WriteUInt16LittleEndian(header, (ushort)(n - 1));
         _writer.Advance(2);
@@ -189,10 +197,5 @@ public ref struct HsstTwoByteSlotValueLargeBuilder<TWriter>
             _values.AsSpan(0, _valueBytes).CopyTo(valuesSpan);
             _writer.Advance(_valueBytes);
         }
-
-        // Trailer: single IndexType byte.
-        Span<byte> trailer = _writer.GetSpan(1);
-        trailer[0] = (byte)IndexType.TwoByteSlotValueLarge;
-        _writer.Advance(1);
     }
 }

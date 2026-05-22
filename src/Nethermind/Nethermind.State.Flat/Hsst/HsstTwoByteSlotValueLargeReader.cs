@@ -14,7 +14,7 @@ namespace Nethermind.State.Flat.Hsst;
 /// their ref-struct state.
 ///
 /// Wire shape (keys-first):
-/// <c>[KeyCount: u16 LE][Keys: N·2][Offsets: (N-1)·3][Values][IndexType: u8]</c>.
+/// <c>[IndexType: u8][KeyCount: u16 LE][Keys: N·2][Offsets: (N-1)·3][Values]</c>.
 /// </summary>
 internal static class HsstTwoByteSlotValueLargeReader
 {
@@ -32,35 +32,36 @@ internal static class HsstTwoByteSlotValueLargeReader
         public long OffsetsStart;
         /// <summary>Absolute offset of the values section (byte after offsets).</summary>
         public long ValuesStart;
-        /// <summary>Absolute one-past-end of the values section (= byte before <see cref="IndexType"/>).</summary>
+        /// <summary>Absolute one-past-end of the values section (= the blob's end).</summary>
         public long ValuesEnd;
     }
 
     /// <summary>
     /// Parse the TwoByteSlotValueLarge header. Returns false on truncation or invalid count.
-    /// Caller must have already verified the trailing <see cref="IndexType"/> byte equals
-    /// <see cref="IndexType.TwoByteSlotValueLarge"/>.
+    /// Caller must have already dispatched on the leading <see cref="IndexType"/> byte
+    /// (byte 0 of <paramref name="bound"/>) as <see cref="IndexType.TwoByteSlotValueLarge"/>.
     /// </summary>
     public static bool TryReadLayout<TReader, TPin>(scoped in TReader reader, Bound bound, out Layout layout)
         where TPin : struct, IBufferPin, allows ref struct
         where TReader : IHsstByteReader<TPin>, allows ref struct
     {
         layout = default;
-        // Smallest valid HSST: 1 entry with empty value = 2 (count) + 2 (key) + 0 (offsets) + 0 (values) + 1 (type) = 5 bytes.
+        // Smallest valid HSST: 1 entry with empty value = 1 (type) + 2 (count) + 2 (key) + 0 (offsets) + 0 (values) = 5 bytes.
         if (bound.Length < 5) return false;
 
+        // KeyCount sits right after the leading IndexType byte.
         Span<byte> countBuf = stackalloc byte[2];
-        if (!reader.TryRead(bound.Offset, countBuf)) return false;
+        if (!reader.TryRead(bound.Offset + 1, countBuf)) return false;
         int count = BinaryPrimitives.ReadUInt16LittleEndian(countBuf) + 1;
 
-        // Header + keys + offsets + IndexType = 5N; reject if it exceeds the blob.
+        // IndexType + header + keys + offsets = 5N; reject if it exceeds the blob.
         long overhead = 5L * count;
         if (overhead > bound.Length) return false;
 
-        long keysStart = bound.Offset + 2;
+        long keysStart = bound.Offset + 3;
         long offsetsStart = keysStart + (long)count * KeyLength;
         long valuesStart = offsetsStart + (long)(count - 1) * OffsetSize;
-        long valuesEnd = bound.Offset + bound.Length - 1;
+        long valuesEnd = bound.Offset + bound.Length;
 
         layout.Count = count;
         layout.KeysStart = keysStart;

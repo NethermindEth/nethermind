@@ -709,7 +709,10 @@ public static class PersistedSnapshotMerger
                 using NoOpPin suffixPin = srcReader.PinBuffer(vb.Offset, vb.Length);
                 if (outerBuilder.TryAddAligned(outerKey, suffixPin.Buffer))
                 {
-                    HsstEnumerator<WholeReadSessionReader, NoOpPin> suffixEnum = new(in srcReader, vb);
+                    // The outer entry's value is a keys-first TwoByteSlotValue / -Large
+                    // sub-slot blob — front-dispatch on byte 0, no tail read.
+                    HsstEnumerator<WholeReadSessionReader, NoOpPin> suffixEnum =
+                        HsstEnumerator<WholeReadSessionReader, NoOpPin>.CreateTwoByteSlot(in srcReader, vb);
                     while (suffixEnum.MoveNext(in srcReader))
                     {
                         suffixEnum.CopyCurrentLogicalKey(in srcReader, slotKeyBuf.Slice(OuterKeyLen, InnerKeyLen));
@@ -741,7 +744,8 @@ public static class PersistedSnapshotMerger
                         int srcIdx = outerMatches[k];
                         Bound vb = outerEnums[srcIdx].CurrentValue;
                         WholeReadSessionReader r = Reader(views[srcIdx]);
-                        innerEnums[k] = new HsstEnumerator(in r, new Bound(vb.Offset, vb.Length));
+                        // Outer entry value is a keys-first TwoByteSlotValue / -Large blob.
+                        innerEnums[k] = HsstEnumerator.CreateTwoByteSlot(in r, new Bound(vb.Offset, vb.Length));
                         innerHasMore[k] = innerEnums[k].MoveNext(in r);
                         if (innerHasMore[k])
                             innerEnums[k].CopyCurrentLogicalKey(in r, iKeyBuf.Slice(k * InnerKeyLen, InnerKeyLen));
@@ -1087,7 +1091,8 @@ public static class PersistedSnapshotMerger
         {
             outerEnum.CopyCurrentLogicalKey(in reader, slotKey[..30]);
             Bound innerScope = outerEnum.CurrentValue;
-            HsstEnumerator<TReader, TPin> innerEnum = new(in reader, innerScope);
+            // The outer entry's value is a keys-first TwoByteSlotValue / -Large sub-slot blob.
+            HsstEnumerator<TReader, TPin> innerEnum = HsstEnumerator<TReader, TPin>.CreateTwoByteSlot(in reader, innerScope);
             while (innerEnum.MoveNext(in reader))
             {
                 innerEnum.CopyCurrentLogicalKey(in reader, slotKey.Slice(30, 2));

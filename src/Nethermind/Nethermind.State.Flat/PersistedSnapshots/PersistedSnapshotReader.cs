@@ -109,8 +109,8 @@ public static class PersistedSnapshotReader
         where TReader : IHsstByteReader<TPin>, allows ref struct
     {
         // Per-address sub-tag step is always DenseByteIndex — resolve in one pinned trailer
-        // read. The nested HSST inside the sub-tag value (slot-prefix → slot-suffix → value)
-        // has a non-fixed layout, so the inner walk goes back through HsstReader's dispatch.
+        // read. The slot-prefix step is a BTreeKeyFirst HSST; the slot-suffix step is a
+        // keys-first TwoByteSlotValue / -Large blob reached via the front-dispatch seek.
         if (!HsstDenseByteIndexReader.TryResolveSingleTag<TReader, TPin>(
                 in reader, addressBound, PersistedSnapshotTags.SlotSubTagByte, out Bound slotSubTagBound) ||
             slotSubTagBound.Length == 0)
@@ -121,8 +121,11 @@ public static class PersistedSnapshotReader
         Span<byte> slotKey = stackalloc byte[32];
         index.ToBigEndian(slotKey);
         using HsstReader<TReader, TPin> r = new(in reader, slotSubTagBound);
+        // Outer 30-byte slot-prefix step is a BTreeKeyFirst HSST (tail-dispatched); the
+        // inner 2-byte suffix step is a keys-first TwoByteSlotValue / -Large blob whose
+        // IndexType byte leads at byte 0, so it dispatches forward with no tail seek.
         if (!r.TrySeek(slotKey[..SlotPrefixLength], out _) ||
-            !r.TrySeek(slotKey[SlotPrefixLength..], out _))
+            !r.TrySeekTwoByteSlot(slotKey[SlotPrefixLength..], out _))
         {
             slotBound = default;
             return false;

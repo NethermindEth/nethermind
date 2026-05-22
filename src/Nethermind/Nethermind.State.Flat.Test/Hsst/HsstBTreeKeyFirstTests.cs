@@ -10,15 +10,9 @@ namespace Nethermind.State.Flat.Test;
 [TestFixture]
 public class HsstBTreeKeyFirstTests
 {
-    private static bool TryGet(ReadOnlySpan<byte> data, scoped ReadOnlySpan<byte> key, out byte[] value)
-    {
-        SpanByteReader reader = new(data);
-        using HsstReader<SpanByteReader, NoOpPin> r = new(in reader);
-        if (!r.TrySeek(key, out _)) { value = []; return false; }
-        Bound b = r.GetBound();
-        value = b.Length == 0 ? [] : data.Slice((int)b.Offset, (int)b.Length).ToArray();
-        return true;
-    }
+    // Inner sub-slots are keys-first TwoByteSlotValue blobs — front-dispatched on byte 0.
+    private static bool TryGet(ReadOnlySpan<byte> data, scoped ReadOnlySpan<byte> key, out byte[] value) =>
+        HsstTestUtil.TryGetTwoByteSlot(data, key, out value);
 
     [Test]
     public void IndexType_Byte_Is_BTreeKeyFirst_At_Tail()
@@ -95,8 +89,8 @@ public class HsstBTreeKeyFirstTests
             Bound innerBound = r.GetBound();
             ReadOnlySpan<byte> innerBytes = outerBytes.AsSpan((int)innerBound.Offset, (int)innerBound.Length);
 
-            // Inner trailer must be the keys-first sub-slot type.
-            Assert.That(innerBytes[^1], Is.EqualTo((byte)IndexType.TwoByteSlotValue));
+            // Inner blob leads with the keys-first sub-slot type byte at byte 0.
+            Assert.That(innerBytes[0], Is.EqualTo((byte)IndexType.TwoByteSlotValue));
 
             for (int i = 0; i < innerKeysPer[o].Length; i++)
             {

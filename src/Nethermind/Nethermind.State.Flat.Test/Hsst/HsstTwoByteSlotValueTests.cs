@@ -39,7 +39,7 @@ public class HsstTwoByteSlotValueTests
     }
 
     private static bool TryGet(ReadOnlySpan<byte> data, ReadOnlySpan<byte> key, out byte[] value) =>
-        HsstTestUtil.TryGet(data, key, out value);
+        HsstTestUtil.TryGetTwoByteSlot(data, key, out value);
 
     [TestCase(false)]
     [TestCase(true)]
@@ -196,7 +196,7 @@ public class HsstTwoByteSlotValueTests
         }
 
         byte[] data = Build(large: true, keys, vals);
-        Assert.That(data[^1], Is.EqualTo((byte)IndexType.TwoByteSlotValueLarge));
+        Assert.That(data[0], Is.EqualTo((byte)IndexType.TwoByteSlotValueLarge));
 
         foreach (int idx in new[] { 0, n / 2, n - 1 })
         {
@@ -209,7 +209,7 @@ public class HsstTwoByteSlotValueTests
     public void WireFormat_KeysFirst_PinsBytes_U16()
     {
         // Three entries, 2-byte values. Validate every byte of the keys-first layout:
-        // header (KeyCount) + keys + offsets + values + IndexType trailer.
+        // leading IndexType byte + header (KeyCount) + keys + offsets + values.
         byte[][] keys =
         [
             [0x00, 0x10],
@@ -226,18 +226,18 @@ public class HsstTwoByteSlotValueTests
         byte[] data = Build(large: false, keys, vals);
 
         // Expected wire format (total 19 bytes):
+        //   indextype:   05
         //   keycount:    02 00                (N − 1 = 2)
         //   keys:        10 00 20 00 30 00    (LE-stored: input 00:10 → 10 00, etc.)
         //   offsets:     02 00 04 00          (Offset_1 = 2, Offset_2 = 4, relative to values start)
         //   values:      aa bb cc dd ee ff
-        //   indextype:   05
         byte[] expected =
         [
+            0x05,
             0x02, 0x00,
             0x10, 0x00, 0x20, 0x00, 0x30, 0x00,
             0x02, 0x00, 0x04, 0x00,
             0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff,
-            0x05,
         ];
         Assert.That(data, Is.EqualTo(expected));
 
@@ -267,18 +267,18 @@ public class HsstTwoByteSlotValueTests
         byte[] data = Build(large: true, keys, vals);
 
         // Expected wire format (total 21 bytes):
+        //   indextype:   06                          (1)
         //   keycount:    02 00                       (N − 1 = 2)
         //   keys:        10 00 20 00 30 00           (LE-stored, 3·2)
         //   offsets:     02 00 00 04 00 00           (2·3 = 6, Offset_1 = 2 u24 LE, Offset_2 = 4 u24 LE)
         //   values:      aa bb cc dd ee ff           (6)
-        //   indextype:   06                          (1)
         byte[] expected =
         [
+            0x06,
             0x02, 0x00,
             0x10, 0x00, 0x20, 0x00, 0x30, 0x00,
             0x02, 0x00, 0x00, 0x04, 0x00, 0x00,
             0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff,
-            0x06,
         ];
         Assert.That(data, Is.EqualTo(expected));
 
