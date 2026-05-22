@@ -6,6 +6,7 @@ using System.IO.Pipelines;
 using System.Text.Json;
 using System.Threading;
 using Nethermind.Core;
+using Nethermind.Core.Extensions;
 
 namespace Nethermind.Blockchain.Tracing.GethStyle;
 
@@ -22,23 +23,32 @@ public sealed class GethLikeBlockStreamingMemoryTracer(
     CancellationToken cancellationToken)
     : BlockTracerBase<GethLikeTxTrace, GethLikeTxDirectStreamingTracer>(options.TxHash), IDisposable
 {
-    private GethLikeTxDirectStreamingTracer? _currentTxTracer;
+    private GethLikeTxDirectStreamingTracer? _reusableTxTracer;
 
     protected override GethLikeTxDirectStreamingTracer OnStart(Transaction? tx)
     {
-        _currentTxTracer = new GethLikeTxDirectStreamingTracer(tx, options, writer, pipeWriter, cancellationToken);
-        return _currentTxTracer;
+        if (_reusableTxTracer is null)
+        {
+            _reusableTxTracer = new GethLikeTxDirectStreamingTracer(tx, options, writer, pipeWriter, cancellationToken);
+        }
+        else
+        {
+            _reusableTxTracer.ResetForNextTx(tx);
+        }
+        return _reusableTxTracer;
     }
 
-    protected override GethLikeTxTrace OnEnd(GethLikeTxDirectStreamingTracer txTracer)
+    protected override GethLikeTxTrace OnEnd(GethLikeTxDirectStreamingTracer txTracer) => txTracer.BuildResult();
+
+    public override void EndBlockTrace()
     {
-        try { return txTracer.BuildResult(); }
-        finally { _currentTxTracer = null; }
+        _reusableTxTracer?.ReleaseResources();
+        base.EndBlockTrace();
     }
 
     public void Dispose()
     {
-        _currentTxTracer?.Dispose();
-        _currentTxTracer = null;
+        _reusableTxTracer?.ReleaseResources();
+        DisposableExtensions.DisposeAndNull(ref _reusableTxTracer);
     }
 }

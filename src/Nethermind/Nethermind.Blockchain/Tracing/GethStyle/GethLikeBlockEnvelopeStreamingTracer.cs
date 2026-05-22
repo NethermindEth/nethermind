@@ -7,6 +7,7 @@ using System.Text.Json;
 using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Serialization.Json;
 
 namespace Nethermind.Blockchain.Tracing.GethStyle;
@@ -26,7 +27,7 @@ public sealed class GethLikeBlockEnvelopeStreamingTracer : BlockTracerBase<GethL
     private readonly CancellationToken _cancellationToken;
     private bool _innerEnvelopeOpen;
     private Hash256? _currentTxHash;
-    private GethLikeTxDirectStreamingTracer? _currentTxTracer;
+    private GethLikeTxDirectStreamingTracer? _reusableTxTracer;
 
     public GethLikeBlockEnvelopeStreamingTracer(
         GethTraceOptions options,
@@ -52,14 +53,20 @@ public sealed class GethLikeBlockEnvelopeStreamingTracer : BlockTracerBase<GethL
         _writer.WriteStartArray();
         _innerEnvelopeOpen = true;
         _currentTxHash = tx?.Hash;
-        _currentTxTracer = new GethLikeTxDirectStreamingTracer(tx, _options, _writer, _pipeWriter, _cancellationToken);
-        return _currentTxTracer;
+        if (_reusableTxTracer is null)
+        {
+            _reusableTxTracer = new GethLikeTxDirectStreamingTracer(tx, _options, _writer, _pipeWriter, _cancellationToken);
+        }
+        else
+        {
+            _reusableTxTracer.ResetForNextTx(tx);
+        }
+        return _reusableTxTracer;
     }
 
     protected override GethLikeTxTrace OnEnd(GethLikeTxDirectStreamingTracer txTracer)
     {
         GethLikeTxTrace trace = txTracer.BuildResult();
-        _currentTxTracer = null;
 
         _writer.WriteEndArray();
         ForcedNumberConversion.WriteRawLong(_writer, "gas"u8, trace.Gas);
@@ -75,16 +82,21 @@ public sealed class GethLikeBlockEnvelopeStreamingTracer : BlockTracerBase<GethL
         _innerEnvelopeOpen = false;
         _currentTxHash = null;
 
-        FlushPerTxEnvelope();
         return trace;
     }
 
     protected override void AddTrace(GethLikeTxTrace trace) { }
 
+    public override void EndBlockTrace()
+    {
+        _reusableTxTracer?.ReleaseResources();
+        base.EndBlockTrace();
+    }
+
     public void Dispose()
     {
-        _currentTxTracer?.Dispose();
-        _currentTxTracer = null;
+        _reusableTxTracer?.ReleaseResources();
+        DisposableExtensions.DisposeAndNull(ref _reusableTxTracer);
 
         if (!_innerEnvelopeOpen) return;
 
@@ -101,12 +113,5 @@ public sealed class GethLikeBlockEnvelopeStreamingTracer : BlockTracerBase<GethL
         _writer.WriteEndObject();
         _innerEnvelopeOpen = false;
         _currentTxHash = null;
-    }
-
-    private void FlushPerTxEnvelope()
-    {
-        if (_pipeWriter is null) return;
-        _writer.Flush();
-        _pipeWriter.FlushAsync(_cancellationToken).GetAwaiter().GetResult();
     }
 }
