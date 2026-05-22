@@ -42,17 +42,7 @@ public class ByteArrayConverter : JsonConverter<byte[]>
         ReadOnlySpan<byte> hex = reader.ValueSpan;
         int length = hex.Length;
         if (length == 0) return null;
-        ref byte hexRef = ref MemoryMarshal.GetReference(hex);
-        if (length >= 2 && Unsafe.As<byte, ushort>(ref hexRef) == HexPrefix)
-        {
-            hex = MemoryMarshal.CreateReadOnlySpan(ref Unsafe.Add(ref hexRef, 2), length - 2);
-        }
-        else if (strictHexFormat) Bytes.ThrowFormatException(Bytes.ErrMissingPrefix);
-
-        if (requireEvenLength && hex.Length % 2 != 0)
-            Bytes.ThrowFormatException(Bytes.ErrOddLength);
-
-        return Bytes.FromUtf8HexString(hex);
+        return Bytes.FromUtf8HexString(GetHexValueSpan(hex, strictHexFormat, requireEvenLength));
     }
 
     [SkipLocalsInit]
@@ -104,10 +94,25 @@ public class ByteArrayConverter : JsonConverter<byte[]>
             return false;
         }
 
-        ref byte hexRef = ref MemoryMarshal.GetReference(hex);
-        if (length >= 2 && Unsafe.As<byte, ushort>(ref hexRef) == HexPrefix)
+        hex = GetHexValueSpan(hex, strictHexFormat, requireEvenLength);
+
+        bytesWritten = (hex.Length >> 1) + (hex.Length & 1);
+        if (bytesWritten > destination.Length)
         {
-            hex = MemoryMarshal.CreateReadOnlySpan(ref Unsafe.Add(ref hexRef, 2), length - 2);
+            return false;
+        }
+
+        Bytes.FromUtf8HexString(hex, destination[..bytesWritten]);
+        return true;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static ReadOnlySpan<byte> GetHexValueSpan(ReadOnlySpan<byte> hex, bool strictHexFormat, bool requireEvenLength)
+    {
+        ref byte hexRef = ref MemoryMarshal.GetReference(hex);
+        if (hex.Length >= 2 && Unsafe.As<byte, ushort>(ref hexRef) == HexPrefix)
+        {
+            hex = MemoryMarshal.CreateReadOnlySpan(ref Unsafe.Add(ref hexRef, 2), hex.Length - 2);
         }
         else if (strictHexFormat)
         {
@@ -119,14 +124,7 @@ public class ByteArrayConverter : JsonConverter<byte[]>
             Bytes.ThrowFormatException(Bytes.ErrOddLength);
         }
 
-        bytesWritten = (hex.Length >> 1) + (hex.Length & 1);
-        if (bytesWritten > destination.Length)
-        {
-            return false;
-        }
-
-        Bytes.FromUtf8HexString(hex, destination[..bytesWritten]);
-        return true;
+        return hex;
     }
 
     [SkipLocalsInit]
