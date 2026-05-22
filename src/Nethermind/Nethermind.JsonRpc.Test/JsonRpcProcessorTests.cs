@@ -608,22 +608,20 @@ public class JsonRpcProcessorTests(bool returnErrors)
         AssertResponseTypeMatchesFixtureMode(response);
     }
 
-    [TestCase(TransactionCountObjectParamsJson, TransactionCountObjectParamsJson, TestName = "Nested object params")]
-    [TestCase(TransactionCountNestedArrayParamsJson, TransactionCountNestedArrayWithValueParamsJson, TestName = "Nested array params")]
-    [TestCase(TransactionCountAddressParamJson, TransactionCountBlockParamJson, TestName = "Value params")]
-    public async Task Can_process_batch_request_with_nonstandard_params(string firstParamsJson, string secondParamsJson)
+    [TestCase(TransactionCountObjectParamsJson, TransactionCountObjectParamsJson, false, TestName = "Nested object params")]
+    [TestCase(TransactionCountNestedArrayParamsJson, TransactionCountNestedArrayWithValueParamsJson, false, TestName = "Nested array params")]
+    [TestCase(TransactionCountAddressParamJson, TransactionCountBlockParamJson, false, TestName = "Value params")]
+    [TestCase(TransactionCountInvalidObjectParamsJson, TransactionCountInvalidObjectParamsJson, true, TestName = "Invalid object params")]
+    public async Task Can_process_batch_request_with_nonstandard_params(string firstParamsJson, string secondParamsJson, bool expectSingleError)
     {
         using CollectedJsonRpcResponses result = await ProcessAsync(CreateTransactionCountBatchRequest(firstParamsJson, secondParamsJson));
-        AssertBatchResponse(result, 2);
-    }
+        if (!expectSingleError)
+        {
+            AssertBatchResponse(result, 2);
+            return;
+        }
 
-    [Test]
-    public async Task Can_process_batch_request_with_invalid_object_params()
-    {
-        using CollectedJsonRpcResponses result = await ProcessAsync(CreateTransactionCountBatchRequest(TransactionCountInvalidObjectParamsJson, TransactionCountInvalidObjectParamsJson));
-        CollectedJsonRpcResult response = AssertOnlyResult(result);
-        response.Response.Should().NotBeNull();
-        response.Response.Should().BeOfType<JsonRpcErrorResponse>();
+        AssertOnlyResult(result).Response.Should().BeOfType<JsonRpcErrorResponse>();
     }
 
     [TestCase(false, TestName = "All params present")]
