@@ -42,7 +42,7 @@ partial struct ValueHash256Vector
     }
 }
 
-file static class HistoricalRootConstants
+internal static class HistoricalRootConstants
 {
     public const int SlotsPerHistoricalRoot = 8192;
 

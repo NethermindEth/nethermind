@@ -17,8 +17,6 @@ public sealed class Validator
     private readonly IReadOnlyList<ValueHash256>? _trustedHistoricalRoots;
     private readonly SlotTime? _slotTime;
 
-    private const int SlotsPerHistoricalRoot = 8192;
-
     public Validator(
         ISpecProvider specProvider,
         IReadOnlyList<ValueHash256>? trustedAccumulators,
@@ -44,7 +42,7 @@ public sealed class Validator
     public bool VerifyAccumulator(long blockNumber, ValueHash256 accumulatorRoot)
     {
         if (!TrustedAccumulatorsProvided()) return true;
-        ValueHash256? trusted = GetAccumulatorForEpoch(blockNumber / SlotsPerHistoricalRoot);
+        ValueHash256? trusted = GetAccumulatorForEpoch(blockNumber / HistoricalRootConstants.SlotsPerHistoricalRoot);
         return trusted is null
             ? throw new EraVerificationException("Trusted accumulator root was not provided.")
             : trusted.Equals(accumulatorRoot);
@@ -91,7 +89,7 @@ public sealed class Validator
 
     private ValueHash256? GetHistoricalRoot(long slotNumber)
     {
-        long idx = slotNumber / SlotsPerHistoricalRoot;
+        long idx = slotNumber / HistoricalRootConstants.SlotsPerHistoricalRoot;
         if (_trustedHistoricalRoots is null || idx < 0 || idx >= _trustedHistoricalRoots.Count)
             return null;
 
@@ -100,7 +98,7 @@ public sealed class Validator
 
     private async Task<HistoricalSummary?> GetHistoricalSummary(long slotNumber, CancellationToken cancellation = default)
     {
-        long idx = slotNumber / SlotsPerHistoricalRoot;
+        long idx = slotNumber / HistoricalRootConstants.SlotsPerHistoricalRoot;
         return _historicalSummariesProvider is null
             ? null
             : await _historicalSummariesProvider.GetHistoricalSummary((int)idx, cancellationToken: cancellation);
