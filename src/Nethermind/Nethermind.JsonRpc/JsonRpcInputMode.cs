@@ -3,18 +3,12 @@
 
 namespace Nethermind.JsonRpc;
 
-/// <summary>
-/// Selects how many top-level JSON documents the inbound parser accepts from one transport payload.
-/// </summary>
+/// <summary>Selects how many top-level JSON documents the inbound parser accepts from one transport payload.</summary>
 public enum JsonRpcInputMode
 {
-    /// <summary>
-    /// Accepts exactly one top-level JSON document and rejects trailing non-whitespace data.
-    /// </summary>
+    /// <summary>Accepts exactly one top-level JSON document and rejects trailing non-whitespace data.</summary>
     SingleDocument,
 
-    /// <summary>
-    /// Accepts multiple adjacent top-level JSON documents from one framed transport payload.
-    /// </summary>
+    /// <summary>Accepts multiple adjacent top-level JSON documents from one framed transport payload.</summary>
     MultipleDocuments
 }

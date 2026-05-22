@@ -3,8 +3,6 @@
 
 namespace Nethermind.JsonRpc;
 
-/// <summary>
-/// Provides transport-level options for JSON-RPC request processing.
-/// </summary>
+/// <summary>Provides transport-level options for JSON-RPC request processing.</summary>
 /// <param name="InputMode">Defines whether one or many top-level JSON documents are accepted.</param>
 public readonly record struct JsonRpcProcessingOptions(JsonRpcInputMode InputMode);
