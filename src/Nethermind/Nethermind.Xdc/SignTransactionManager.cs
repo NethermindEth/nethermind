@@ -28,6 +28,7 @@ internal class SignTransactionManager(
     ISpecProvider specProvider,
     ILogManager logManager) : ISignTransactionManager, IStartable, IDisposable
 {
+    // Lazy: ISigner and ITxPool are registered during InitializeBlockchain, after this class is instantiated.
     private readonly Lazy<ISigner> _signer = signer;
     private readonly Lazy<ITxPool> _txPool = txPool;
     private readonly IBlockTree _blockTree = blockTree;
