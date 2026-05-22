@@ -44,50 +44,53 @@ public sealed class RpcJsonTypeInfoGenerator : IIncrementalGenerator
         }
 
         StringBuilder builder = new();
-        builder.AppendLine(GeneratedSourceHeader);
-        builder.AppendLine("using System;");
-        builder.AppendLine("using System.Runtime.CompilerServices;");
-        builder.AppendLine("using System.Text.Json.Serialization.Metadata;");
-        builder.AppendLine("using Nethermind.Serialization.Json;");
-        builder.AppendLine();
-        builder.AppendLine("namespace Nethermind.JsonRpc;");
-        builder.AppendLine();
-        builder.AppendLine("internal static class GeneratedRpcJsonTypeInfoProvider");
-        builder.AppendLine("{");
-        builder.AppendLine("    [ModuleInitializer]");
-        builder.AppendLine("    internal static void Register()");
-        builder.AppendLine("    {");
-        builder.AppendLine("        RpcGeneratedTypeInfoRegistry.Register(RpcTypes, TryGet);");
-        builder.AppendLine("        RegisterGenericProviders();");
-        builder.AppendLine("    }");
-        builder.AppendLine();
-        builder.AppendLine("    private static readonly Type[] RpcTypes =");
-        builder.AppendLine("    {");
+        builder
+            .AppendLine(GeneratedSourceHeader)
+            .AppendLine("using System;")
+            .AppendLine("using System.Runtime.CompilerServices;")
+            .AppendLine("using System.Text.Json.Serialization.Metadata;")
+            .AppendLine("using Nethermind.Serialization.Json;")
+            .AppendLine()
+            .AppendLine("namespace Nethermind.JsonRpc;")
+            .AppendLine()
+            .AppendLine("internal static class GeneratedRpcJsonTypeInfoProvider")
+            .AppendLine("{")
+            .AppendLine("    [ModuleInitializer]")
+            .AppendLine("    internal static void Register()")
+            .AppendLine("    {")
+            .AppendLine("        RpcGeneratedTypeInfoRegistry.Register(RpcTypes, TryGet);")
+            .AppendLine("        RegisterGenericProviders();")
+            .AppendLine("    }")
+            .AppendLine()
+            .AppendLine("    private static readonly Type[] RpcTypes =")
+            .AppendLine("    {");
         for (int i = 0; i < sortedTypes.Length; i++)
         {
             builder.Append("        typeof(");
             builder.Append(sortedTypes[i]);
             builder.AppendLine("),");
         }
-        builder.AppendLine("    };");
-        builder.AppendLine();
-        builder.AppendLine("    private static JsonTypeInfo? TryGet(Type type) =>");
-        builder.AppendLine("        EthereumJsonSerializer.JsonOptions.TryGetTypeInfo(type, out JsonTypeInfo? typeInfo) ? typeInfo : null;");
-        builder.AppendLine();
-        builder.AppendLine("    private static void RegisterGenericProviders()");
-        builder.AppendLine("    {");
+        builder
+            .AppendLine("    };")
+            .AppendLine()
+            .AppendLine("    private static JsonTypeInfo? TryGet(Type type) =>")
+            .AppendLine("        EthereumJsonSerializer.JsonOptions.TryGetTypeInfo(type, out JsonTypeInfo? typeInfo) ? typeInfo : null;")
+            .AppendLine()
+            .AppendLine("    private static void RegisterGenericProviders()")
+            .AppendLine("    {");
         for (int i = 0; i < sortedTypes.Length; i++)
         {
             builder.Append("        RegisterGeneric<");
             builder.Append(sortedTypes[i]);
             builder.AppendLine(">();");
         }
-        builder.AppendLine("    }");
-        builder.AppendLine();
-        builder.AppendLine("    private static void RegisterGeneric<T>() =>");
-        builder.AppendLine("        RpcGeneratedTypeInfoRegistry.Register(static () =>");
-        builder.AppendLine("            (JsonTypeInfo<T>)EthereumJsonSerializer.JsonOptions.GetTypeInfo(typeof(T)));");
-        builder.AppendLine("}");
+        builder
+            .AppendLine("    }")
+            .AppendLine()
+            .AppendLine("    private static void RegisterGeneric<T>() =>")
+            .AppendLine("        RpcGeneratedTypeInfoRegistry.Register(static () =>")
+            .AppendLine("            (JsonTypeInfo<T>)EthereumJsonSerializer.JsonOptions.GetTypeInfo(typeof(T)));")
+            .AppendLine("}");
 
         context.AddSource("GeneratedRpcJsonTypeInfoProvider.g.cs", SourceText.From(builder.ToString(), Encoding.UTF8));
 
@@ -100,29 +103,31 @@ public sealed class RpcJsonTypeInfoGenerator : IIncrementalGenerator
     private static string GenerateMethodNamesSource(string[] methodNames)
     {
         StringBuilder builder = new();
-        builder.AppendLine(GeneratedSourceHeader);
-        builder.AppendLine("using System.Runtime.CompilerServices;");
-        builder.AppendLine();
-        builder.AppendLine("namespace Nethermind.JsonRpc;");
-        builder.AppendLine();
-        builder.AppendLine("internal static class GeneratedRpcMethodNamesProvider");
-        builder.AppendLine("{");
-        builder.AppendLine("    [ModuleInitializer]");
-        builder.AppendLine("    internal static void Register()");
-        builder.AppendLine("    {");
-        builder.AppendLine("        RpcKnownMethodNamesRegistry.Register(RpcMethodNames);");
-        builder.AppendLine("    }");
-        builder.AppendLine();
-        builder.AppendLine("    private static readonly string[] RpcMethodNames =");
-        builder.AppendLine("    {");
+        builder
+            .AppendLine(GeneratedSourceHeader)
+            .AppendLine("using System.Runtime.CompilerServices;")
+            .AppendLine()
+            .AppendLine("namespace Nethermind.JsonRpc;")
+            .AppendLine()
+            .AppendLine("internal static class GeneratedRpcMethodNamesProvider")
+            .AppendLine("{")
+            .AppendLine("    [ModuleInitializer]")
+            .AppendLine("    internal static void Register()")
+            .AppendLine("    {")
+            .AppendLine("        RpcKnownMethodNamesRegistry.Register(RpcMethodNames);")
+            .AppendLine("    }")
+            .AppendLine()
+            .AppendLine("    private static readonly string[] RpcMethodNames =")
+            .AppendLine("    {");
         for (int i = 0; i < methodNames.Length; i++)
         {
             builder.Append("        \"");
             builder.Append(EscapeStringLiteral(methodNames[i]));
             builder.AppendLine("\",");
         }
-        builder.AppendLine("    };");
-        builder.AppendLine("}");
+        builder
+            .AppendLine("    };")
+            .AppendLine("}");
         return builder.ToString();
     }
 
