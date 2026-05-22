@@ -250,11 +250,7 @@ public static partial class EvmInstructions
             return pushResult;
         }
 
-        // EIP-7702: load delegated code only after the preflight checks above all pass
-        // (gas for delegation access_cost, depth limit, value-transfer balance for CALL/CALLCODE).
-        // Per EIP-7928, the delegated address must NOT appear in the BAL if any of those checks
-        // fail, so both the explicit AddAccountRead and the world-state code lookup are deferred
-        // until here. See https://github.com/ethereum/EIPs/pull/11699.
+        // EIP-7928 (PR 11699): defer delegated load past the depth/balance preflight so a failed check doesn't leak delegation into BAL.
         if (delegated is not null)
         {
             // EIP-7928: decorator fast-path skips world-state reads; record explicitly.

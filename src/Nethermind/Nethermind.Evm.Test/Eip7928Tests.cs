@@ -1167,8 +1167,8 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
         }
     }
 
-    [TestCase(Instruction.CALL, TestName = "EIP7702_call_into_delegated_eoa_with_insufficient_balance_excludes_delegation_target_from_BAL_for_CALL")]
-    [TestCase(Instruction.CALLCODE, TestName = "EIP7702_call_into_delegated_eoa_with_insufficient_balance_excludes_delegation_target_from_BAL_for_CALLCODE")]
+    [TestCase(Instruction.CALL, TestName = "EIP7702_call_with_insufficient_balance_excludes_delegation_from_BAL_for_CALL")]
+    [TestCase(Instruction.CALLCODE, TestName = "EIP7702_call_with_insufficient_balance_excludes_delegation_from_BAL_for_CALLCODE")]
     public void Call_into_7702_delegated_eoa_with_insufficient_balance_does_not_record_delegation_target(Instruction callOpcode)
     {
         InitWorldState(TestState);
@@ -1176,17 +1176,15 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
         (TracedAccessWorldState tracedState, TransactionProcessor<EthereumGasPolicy> processor) = CreateTracedProcessor();
         Block block = Build.A.Block.TestObject;
 
-        // EIP-7928 (https://github.com/ethereum/EIPs/pull/11699): when a value-transferring
-        // CALL/CALLCODE targets a 7702-delegated EOA but the sender's balance does not cover
-        // the value transfer, the delegation target MUST NOT appear in the BAL. The original
-        // call target is still recorded because it was accessed to resolve the delegation.
-        UInt256 senderBalance = 100;
+        // EIP-7928 (PR 11699): value-transferring CALL/CALLCODE with sender_balance < value
+        // must not load the delegation; only the original call target is recorded.
+        UInt256 callerBalance = 100;
         UInt256 callValue = 1000;
         byte[] code = callOpcode == Instruction.CALL
             ? Prepare.EvmCode.CallWithValue(_callTargetAddress, 50_000, callValue).Done
             : Prepare.EvmCode.CallCode(_callTargetAddress, 50_000, callValue).Done;
 
-        Transaction tx = BuildContractTx(code, executionGas: 100_000, senderBalance, block.Header);
+        Transaction tx = BuildContractTx(code, executionGas: 100_000, callerBalance, block.Header);
 
         processor.SetBlockExecutionContext(new BlockExecutionContext(block.Header, Amsterdam.Instance));
         CallOutputTracer tracer = new();
@@ -1196,10 +1194,8 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
         using (Assert.EnterMultipleScope())
         {
             Assert.That(res.TransactionExecuted);
-            Assert.That(bal.GetAccountChanges(_callTargetAddress), Is.Not.Null,
-                "EIP-7702 delegated EOA must be recorded as the CALL target (accessed to resolve delegation)");
-            Assert.That(bal.GetAccountChanges(_delegationTargetAddress), Is.Null,
-                "EIP-7702 delegation target must not be recorded when the value-transferring call fails because sender balance < value");
+            Assert.That(bal.GetAccountChanges(_callTargetAddress), Is.Not.Null);
+            Assert.That(bal.GetAccountChanges(_delegationTargetAddress), Is.Null);
         }
     }
 
