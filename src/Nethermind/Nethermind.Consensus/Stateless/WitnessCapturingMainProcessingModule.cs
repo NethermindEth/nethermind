@@ -2,12 +2,11 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Autofac;
-using Nethermind.Consensus.Stateless;
 using Nethermind.Core;
 using Nethermind.Core.Container;
 using Nethermind.Evm.State;
 
-namespace Nethermind.Merge.Plugin;
+namespace Nethermind.Consensus.Stateless;
 
 /// <summary>
 /// Installs <see cref="WitnessCapturingWorldStateProxy"/> as the main-processing

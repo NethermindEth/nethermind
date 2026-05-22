@@ -62,16 +62,17 @@ public static class SszCodec
 
         dst[pos++] = EngineStatusToSsz(ps.Status);
 
-        int off1 = FixedHeaderBytes;
-        BinaryPrimitives.WriteInt32LittleEndian(dst.Slice(pos, 4), off1);
+        // SSZ offsets are uint32; all three are bounded by MaxBodySize (16 MiB) << 2^31.
+        uint off1 = (uint)FixedHeaderBytes;
+        BinaryPrimitives.WriteUInt32LittleEndian(dst.Slice(pos, 4), off1);
         pos += 4;
 
-        int off2 = off1 + lvhLen;
-        BinaryPrimitives.WriteInt32LittleEndian(dst.Slice(pos, 4), off2);
+        uint off2 = off1 + (uint)lvhLen;
+        BinaryPrimitives.WriteUInt32LittleEndian(dst.Slice(pos, 4), off2);
         pos += 4;
 
-        int off3 = off2 + errorLen;
-        BinaryPrimitives.WriteInt32LittleEndian(dst.Slice(pos, 4), off3);
+        uint off3 = off2 + (uint)errorLen;
+        BinaryPrimitives.WriteUInt32LittleEndian(dst.Slice(pos, 4), off3);
         pos += 4;
 
         if (hasLvh)
@@ -122,9 +123,10 @@ public static class SszCodec
             throw new ArgumentException("Response too short to be a valid NewPayloadWithWitnessResponseV1");
 
         byte status = data[0];
-        int off1 = BinaryPrimitives.ReadInt32LittleEndian(data.Slice(1, 4));
-        int off2 = BinaryPrimitives.ReadInt32LittleEndian(data.Slice(5, 4));
-        int off3 = BinaryPrimitives.ReadInt32LittleEndian(data.Slice(9, 4));
+        // Spec offsets are uint32; cast to int for slicing (we're well within int range).
+        int off1 = (int)BinaryPrimitives.ReadUInt32LittleEndian(data.Slice(1, 4));
+        int off2 = (int)BinaryPrimitives.ReadUInt32LittleEndian(data.Slice(5, 4));
+        int off3 = (int)BinaryPrimitives.ReadUInt32LittleEndian(data.Slice(9, 4));
 
         ReadOnlySpan<byte> lvhSlice = data.Slice(off1, off2 - off1);
         Hash256? latestValidHash = null;
