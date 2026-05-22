@@ -396,7 +396,6 @@ public static class SszCodec
         PayloadStatus.Invalid => 1,
         PayloadStatus.Syncing => 2,
         PayloadStatus.Accepted => 3,
-        PayloadStatus.InvalidBlockHash => 4,
         _ => throw new InvalidOperationException($"Unknown payload status '{status}': cannot map to SSZ wire byte")
     };
 
