@@ -99,10 +99,7 @@ public class JsonRpcSocketsClientTests
         {
             IPEndPoint ipEndPoint = IPEndPoint.Parse("127.0.0.1:1337");
 
-            Task<int> receiveBytes = OneShotServer(
-                ipEndPoint,
-                CountNumberOfBytes
-            );
+            Task<int> receiveBytes = OneShotServer(ipEndPoint, CountNumberOfBytes);
 
             JsonRpcSuccessResponse bigObject = RandomSuccessResponse(200_000);
             Task<int> sendJsonRpcResult = Task.Run(async () =>
@@ -159,10 +156,7 @@ public class JsonRpcSocketsClientTests
 
             IPEndPoint ipEndPoint = IPEndPoint.Parse("127.0.0.1:1337");
 
-            Task<int> receiveMessages = OneShotServer(
-                ipEndPoint,
-                CountNumberOfMessages
-            );
+            Task<int> receiveMessages = OneShotServer(ipEndPoint, CountNumberOfMessages);
 
             Task<int> sendMessages = Task.Run(async () =>
             {
@@ -409,10 +403,7 @@ public class JsonRpcSocketsClientTests
             List<byte[]> sentMessages = [];
             List<byte[]> receivedMessages = [];
 
-            Task<int> receiveMessages = OneShotServer(
-                ipEndPoint,
-                async socket => await ReadMessages(socket, receivedMessages)
-            );
+            Task<int> receiveMessages = OneShotServer(ipEndPoint, async socket => await ReadMessages(socket, receivedMessages));
 
             Task<int> sendMessages = Task.Run(async () =>
             {
@@ -566,10 +557,7 @@ public class JsonRpcSocketsClientTests
         {
             CancellationTokenSource cts = new();
 
-            Task<int> receiveMessages = OneShotServer(
-                "http://localhost:1337/",
-                async webSocket => await CountMessages(webSocket, cts.Token)
-            );
+            Task<int> receiveMessages = OneShotServer("http://localhost:1337/", async webSocket => await CountMessages(webSocket, cts.Token));
 
             Task<int> sendMessages = Task.Run(async () =>
             {
@@ -599,10 +587,7 @@ public class JsonRpcSocketsClientTests
         {
             CancellationTokenSource cts = new();
 
-            Task<int> server = OneShotServer(
-                "http://localhost:1337/",
-                async webSocket => await CountMessages(webSocket, cts.Token)
-            );
+            Task<int> server = OneShotServer("http://localhost:1337/", async webSocket => await CountMessages(webSocket, cts.Token));
 
             Task sendCollection = Task.Run(async () =>
             {
@@ -624,10 +609,7 @@ public class JsonRpcSocketsClientTests
         {
             CancellationTokenSource cts = new();
 
-            Task<long> receiveBytes = OneShotServer(
-                "http://localhost:1337/",
-                async webSocket => await CountBytes(webSocket, cts.Token)
-            );
+            Task<long> receiveBytes = OneShotServer("http://localhost:1337/", async webSocket => await CountBytes(webSocket, cts.Token));
 
             Task<int> sendCollection = Task.Run(async () =>
             {
