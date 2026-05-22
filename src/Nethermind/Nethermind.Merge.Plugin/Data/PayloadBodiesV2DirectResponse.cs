@@ -10,7 +10,6 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.JsonRpc;
-using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Merge.Plugin.Data;
 
@@ -63,17 +62,9 @@ public sealed class PayloadBodiesV2DirectResponse : IStreamableResult, IReadOnly
         IReadOnlyList<Withdrawal>? withdrawals,
         MemoryManager<byte>? blockAccessList)
     {
-        ArgumentNullException.ThrowIfNull(transactions);
-
         try
         {
-            byte[][] encodedTransactions = new byte[transactions.Count][];
-            for (int i = 0, count = encodedTransactions.Length; i < count; i++)
-            {
-                encodedTransactions[i] = Rlp.Encode(transactions[i], RlpBehaviors.SkipTypedWrapping).Bytes;
-            }
-
-            return new PayloadBody(encodedTransactions, withdrawals, blockAccessList);
+            return new PayloadBody(PayloadBodiesDirectResponseWriter.EncodeTransactions(transactions), withdrawals, blockAccessList);
         }
         catch
         {
@@ -107,21 +98,8 @@ public sealed class PayloadBodiesV2DirectResponse : IStreamableResult, IReadOnly
 
     internal readonly struct PayloadBody(IReadOnlyList<byte[]> transactions, IReadOnlyList<Withdrawal>? withdrawals, MemoryManager<byte>? blockAccessList) : IDisposable
     {
-        public void WriteTo(PipeWriter writer)
-        {
-            writer.Write("{\"transactions\":"u8);
-            PayloadBodiesDirectResponseWriter.WriteTransactions(writer, transactions);
-            writer.Write(",\"withdrawals\":"u8);
-            PayloadBodiesDirectResponseWriter.WriteWithdrawals(writer, withdrawals);
-
-            if (blockAccessList is not null)
-            {
-                writer.Write(",\"blockAccessList\":"u8);
-                PayloadBodiesDirectResponseWriter.WriteHexString(writer, blockAccessList.Memory.Span, chunked: true);
-            }
-
-            writer.Write("}"u8);
-        }
+        public void WriteTo(PipeWriter writer) =>
+            PayloadBodiesDirectResponseWriter.WritePayloadBody(writer, transactions, withdrawals, blockAccessList);
 
         public ExecutionPayloadBodyV2Result ToResult() =>
             ExecutionPayloadBodyV2Result.FromEncodedTransactions(

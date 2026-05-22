@@ -322,16 +322,8 @@ public partial class EngineModuleTests
     [Test]
     public async Task BlobsV2DirectResponse_WriteToAsync_produces_valid_json()
     {
-        // Build a small list with one real entry and one null
-        byte[] blob = new byte[16];
-        Random.Shared.NextBytes(blob);
-        byte[] proof1 = new byte[48];
-        Random.Shared.NextBytes(proof1);
-        byte[] proof2 = new byte[48];
-        Random.Shared.NextBytes(proof2);
-
-        byte[]?[] blobs = [blob, null];
-        ReadOnlyMemory<byte[]>[] proofs = [new ReadOnlyMemory<byte[]>([proof1, proof2]), default];
+        byte[]?[] blobs = [RandomBytes(16), null];
+        ReadOnlyMemory<byte[]>[] proofs = [new ReadOnlyMemory<byte[]>([RandomBytes(48), RandomBytes(48)]), default];
 
         BlobsV2DirectResponse response = new(blobs, proofs, 2);
         await AssertStreamedJsonMatchesSerializer(response);

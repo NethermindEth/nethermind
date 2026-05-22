@@ -99,6 +99,24 @@ namespace Nethermind.Merge.Plugin.Test
             return streamedJson;
         }
 
+        private static Withdrawal[] CreateDirectResponseWithdrawals() =>
+        [
+            new()
+            {
+                Index = 1,
+                ValidatorIndex = 2,
+                Address = TestItem.AddressA,
+                AmountInGwei = 3
+            }
+        ];
+
+        private static byte[] RandomBytes(int length)
+        {
+            byte[] bytes = new byte[length];
+            Random.Shared.NextBytes(bytes);
+            return bytes;
+        }
+
         private (UInt256, UInt256) AddTransactions(MergeTestBlockchain chain, ExecutionPayload executePayloadRequest,
             PrivateKey from, Address to, uint count, int value, out BlockHeader parentHeader)
         {

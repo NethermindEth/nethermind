@@ -11,6 +11,7 @@ using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.JsonRpc;
 using Nethermind.Serialization.Json;
+using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Merge.Plugin.Data;
 
@@ -42,22 +43,43 @@ public sealed class PayloadBodiesV1DirectResponse(IReadOnlyList<ExecutionPayload
                 return;
             }
 
-            PayloadBodiesDirectResponseWriter.WritePayloadBodyV1(writer, item.Transactions, item.Withdrawals);
+            PayloadBodiesDirectResponseWriter.WritePayloadBody(writer, item.Transactions, item.Withdrawals);
         }
     }
 }
 
 internal static class PayloadBodiesDirectResponseWriter
 {
-    public static void WritePayloadBodyV1(
+    public static byte[][] EncodeTransactions(IReadOnlyList<Transaction> transactions)
+    {
+        ArgumentNullException.ThrowIfNull(transactions);
+
+        byte[][] encodedTransactions = new byte[transactions.Count][];
+        for (int i = 0, count = encodedTransactions.Length; i < count; i++)
+        {
+            encodedTransactions[i] = Rlp.Encode(transactions[i], RlpBehaviors.SkipTypedWrapping).Bytes;
+        }
+
+        return encodedTransactions;
+    }
+
+    public static void WritePayloadBody(
         PipeWriter writer,
         IReadOnlyList<byte[]> transactions,
-        IReadOnlyList<Withdrawal>? withdrawals)
+        IReadOnlyList<Withdrawal>? withdrawals,
+        MemoryManager<byte>? blockAccessList = null)
     {
         writer.Write("{\"transactions\":"u8);
         WriteTransactions(writer, transactions);
         writer.Write(",\"withdrawals\":"u8);
         WriteWithdrawals(writer, withdrawals);
+
+        if (blockAccessList is not null)
+        {
+            writer.Write(",\"blockAccessList\":"u8);
+            WriteHexString(writer, blockAccessList.Memory.Span, chunked: true);
+        }
+
         writer.Write("}"u8);
     }
 

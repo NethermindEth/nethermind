@@ -3,9 +3,8 @@
 
 using System;
 using System.Collections.Generic;
-using Nethermind.Core;
-using Nethermind.Serialization.Rlp;
 using System.Text.Json.Serialization;
+using Nethermind.Core;
 
 namespace Nethermind.Merge.Plugin.Data;
 
@@ -13,16 +12,7 @@ public class ExecutionPayloadBodyV2Result
 {
     public ExecutionPayloadBodyV2Result(IReadOnlyList<Transaction> transactions, IReadOnlyList<Withdrawal>? withdrawals, byte[]? blockAccessList)
     {
-        ArgumentNullException.ThrowIfNull(transactions);
-
-        byte[][] t = new byte[transactions.Count][];
-
-        for (int i = 0, count = t.Length; i < count; i++)
-        {
-            t[i] = Rlp.Encode(transactions[i], RlpBehaviors.SkipTypedWrapping).Bytes;
-        }
-
-        Transactions = t;
+        Transactions = PayloadBodiesDirectResponseWriter.EncodeTransactions(transactions);
         Withdrawals = withdrawals;
         BlockAccessList = blockAccessList;
     }

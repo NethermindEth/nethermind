@@ -528,16 +528,7 @@ public partial class EngineModuleTests
     public async Task PayloadBodiesV1DirectResponse_WriteToAsync_produces_valid_json()
     {
         Transaction transaction = Build.A.Transaction.SignedAndResolved().TestObject;
-        Withdrawal[] withdrawals =
-        [
-            new()
-            {
-                Index = 1,
-                ValidatorIndex = 2,
-                Address = TestItem.AddressA,
-                AmountInGwei = 3
-            }
-        ];
+        Withdrawal[] withdrawals = CreateDirectResponseWithdrawals();
 
         PayloadBodiesV1DirectResponse response = new([
             new ExecutionPayloadBodyV1Result([transaction], withdrawals),

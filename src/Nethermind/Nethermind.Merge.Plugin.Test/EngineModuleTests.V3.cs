@@ -740,14 +740,9 @@ public partial class EngineModuleTests
     [Test]
     public async Task BlobsV1DirectResponse_WriteToAsync_produces_valid_json()
     {
-        byte[] blob = new byte[16];
-        Random.Shared.NextBytes(blob);
-        byte[] proof = new byte[48];
-        Random.Shared.NextBytes(proof);
-
         ArrayPoolList<BlobAndProofV1?> items = new(2)
         {
-            new BlobAndProofV1(blob, proof),
+            new BlobAndProofV1(RandomBytes(16), RandomBytes(48)),
             null
         };
 
@@ -774,8 +769,7 @@ public partial class EngineModuleTests
     [Test]
     public async Task BlobsV2DirectResponse_WriteToAsync_flushes_large_entries_for_backpressure()
     {
-        byte[] blob = new byte[(int)Eip4844Constants.GasPerBlob];
-        Random.Shared.NextBytes(blob);
+        byte[] blob = RandomBytes((int)Eip4844Constants.GasPerBlob);
         byte[]?[] blobs = [blob];
         ReadOnlyMemory<byte[]>[] proofs = [Array.Empty<byte[]>()];
         BlobsV2DirectResponse response = new(blobs, proofs, 1);
