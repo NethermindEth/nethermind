@@ -876,21 +876,25 @@ public class JsonRpcProcessorTests(bool returnErrors)
         }
     }
 
-    [Test]
-    public async Task Can_handle_invalid_request()
+    [TestCase("invalid", TestName = "Invalid JSON")]
+    [TestCase("\"aaa\"", TestName = "String root")]
+    [TestCase("null", TestName = "Null root")]
+    public async Task Can_handle_invalid_or_value_request(string request)
     {
-        using CollectedJsonRpcResponses result = await ProcessAsync("invalid");
+        using CollectedJsonRpcResponses result = await ProcessAsync(request);
         result.Should().HaveCount(1);
         result[0].Response.Should().BeSameAs(_errorResponse);
     }
 
-    [Test]
-    public async Task Can_handle_empty_array_request()
+    [TestCase("[]", 0, TestName = "Empty array")]
+    [TestCase("[{},{},{}]", 3, TestName = "Array of empty requests")]
+    public async Task Can_handle_empty_batch_requests(string request, int expectedBatchItems)
     {
-        using CollectedJsonRpcResponses result = await ProcessAsync("[]");
+        using CollectedJsonRpcResponses result = await ProcessAsync(request);
         result.Should().HaveCount(1);
         result[0].Response.Should().BeNull();
         result[0].BatchItems.Should().NotBeNull();
+        result[0].BatchItems.Should().HaveCount(expectedBatchItems);
         Assert.That(result[0].BatchItems!.All(r => r != _errorResponse), Is.True);
     }
 
@@ -902,38 +906,6 @@ public class JsonRpcProcessorTests(bool returnErrors)
         result[0].Response.Should().NotBeNull();
         result[0].BatchItems.Should().BeNull();
         result[0].Response.Should().NotBeSameAs(_errorResponse);
-    }
-
-    [Test]
-    public async Task Can_handle_array_of_empty_requests()
-    {
-        using CollectedJsonRpcResponses result = await ProcessAsync("[{},{},{}]");
-        result.Should().HaveCount(1);
-        result[0].Response.Should().BeNull();
-        result[0].BatchItems.Should().NotBeNull();
-        IReadOnlyList<JsonRpcResponse> resultList = result[0].BatchItems!;
-        resultList.Should().HaveCount(3);
-        Assert.That(resultList.All(r => r != _errorResponse), Is.True);
-    }
-
-    [Test]
-    public async Task Can_handle_value_request()
-    {
-        using CollectedJsonRpcResponses result = await ProcessAsync("\"aaa\"");
-        result.Should().HaveCount(1);
-        result[0].Response.Should().NotBeNull();
-        result[0].BatchItems.Should().BeNull();
-        result[0].Response.Should().BeSameAs(_errorResponse);
-    }
-
-    [Test]
-    public async Task Can_handle_null_request()
-    {
-        using CollectedJsonRpcResponses result = await ProcessAsync("null");
-        result.Should().HaveCount(1);
-        result[0].Response.Should().NotBeNull();
-        result[0].BatchItems.Should().BeNull();
-        result[0].Response.Should().BeSameAs(_errorResponse);
     }
 
     [Test]
