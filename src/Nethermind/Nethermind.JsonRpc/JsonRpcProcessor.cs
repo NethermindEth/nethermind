@@ -810,7 +810,7 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
             if (writeTask.IsCompletedSuccessfully)
             {
                 writeTask.GetAwaiter().GetResult();
-                DisposeEntry(entry);
+                entry.Dispose();
                 return ValueTask.CompletedTask;
             }
 
@@ -818,7 +818,7 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
         }
         catch
         {
-            DisposeEntry(entry);
+            entry.Dispose();
             throw;
         }
     }
@@ -831,11 +831,9 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
         }
         finally
         {
-            DisposeEntry(entry);
+            entry.Dispose();
         }
     }
-
-    private static void DisposeEntry(JsonRpcResult.Entry entry) => entry.Dispose();
 
     private JsonRpcResult.Entry GetParsingError(long startTime, ref readonly ReadOnlySequence<byte> buffer, string error, Exception? exception = null)
     {
@@ -916,11 +914,8 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
     private bool IsRecordingRequest => (_jsonRpcConfig.RpcRecorderState & RpcRecorderState.Request) != 0;
     private bool IsRecordingResponse => (_jsonRpcConfig.RpcRecorderState & RpcRecorderState.Response) != 0;
 
-    private JsonRpcResult.Entry RecordResponse(JsonRpcResponse response, in RpcReport report)
-    {
-        JsonRpcResult.Entry result = new(response, report);
-        return RecordResponse(result);
-    }
+    private JsonRpcResult.Entry RecordResponse(JsonRpcResponse response, in RpcReport report) =>
+        RecordResponse(new JsonRpcResult.Entry(response, report));
 
     private JsonRpcResult.Entry RecordResponse(in JsonRpcResult.Entry result) =>
         !IsRecordingResponse ? result : RecordResponseSlow(result);
