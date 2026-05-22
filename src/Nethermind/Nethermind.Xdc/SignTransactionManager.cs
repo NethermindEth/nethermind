@@ -21,15 +21,15 @@ using Nethermind.Xdc.Types;
 namespace Nethermind.Xdc;
 
 internal class SignTransactionManager(
-    ISigner signer,
-    ITxPool txPool,
+    Lazy<ISigner> signer,
+    Lazy<ITxPool> txPool,
     IBlockTree blockTree,
     ISnapshotManager snapshotManager,
     ISpecProvider specProvider,
     ILogManager logManager) : ISignTransactionManager, IStartable, IDisposable
 {
-    private readonly ISigner _signer = signer;
-    private readonly ITxPool _txPool = txPool;
+    private readonly Lazy<ISigner> _signer = signer;
+    private readonly Lazy<ITxPool> _txPool = txPool;
     private readonly IBlockTree _blockTree = blockTree;
     private readonly ISnapshotManager _snapshotManager = snapshotManager;
     private readonly ISpecProvider _specProvider = specProvider;
@@ -40,18 +40,18 @@ internal class SignTransactionManager(
 
     public Task SubmitTransactionSign(XdcBlockHeader header, IXdcReleaseSpec spec)
     {
-        UInt256 nonce = _txPool.GetLatestPendingNonce(_signer.Address);
-        Transaction transaction = CreateTxSign((UInt256)header.Number, header.Hash ?? header.CalculateHash().ToHash256(), nonce, spec.BlockSignerContract, _signer.Address);
+        UInt256 nonce = _txPool.Value.GetLatestPendingNonce(_signer.Value.Address);
+        Transaction transaction = CreateTxSign((UInt256)header.Number, header.Hash ?? header.CalculateHash().ToHash256(), nonce, spec.BlockSignerContract, _signer.Value.Address);
 
-        if (!_signer.TrySign(transaction))
+        if (!_signer.Value.TrySign(transaction))
         {
-            if (_logger.IsWarn) _logger.Warn($"XDC signer {_signer.Address} could not sign block-sign tx for header {header.Number} — skipping submission.");
+            if (_logger.IsWarn) _logger.Warn($"XDC signer {_signer.Value.Address} could not sign block-sign tx for header {header.Number} — skipping submission.");
             return Task.CompletedTask;
         }
 
         transaction.Hash = transaction.CalculateHash();
 
-        AcceptTxResult added = _txPool.SubmitTx(transaction, TxHandlingOptions.PersistentBroadcast);
+        AcceptTxResult added = _txPool.Value.SubmitTx(transaction, TxHandlingOptions.PersistentBroadcast);
         if (!added)
         {
             _logger.Warn($"Failed to add signed transaction to the pool: {added} {header.ToString(BlockHeader.Format.FullHashAndNumber)}");
@@ -82,7 +82,7 @@ internal class SignTransactionManager(
         if (snapshot is null)
             return;
 
-        if (IsMasternode(snapshot, _signer.Address))
+        if (IsMasternode(snapshot, _signer.Value.Address))
         {
             _alreadySigned.Set(xdcHeader.Hash);
             _ = SubmitTransactionSign(xdcHeader, spec)
