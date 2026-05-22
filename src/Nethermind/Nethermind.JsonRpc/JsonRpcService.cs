@@ -538,7 +538,7 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
 
     private void LogRequest(string methodName, JsonElement providedParameters, ExpectedParameter[] expectedParameters)
     {
-        if (!_logger.IsTrace || _methodsLoggingFiltering.Contains(methodName))
+        if (_methodsLoggingFiltering.Contains(methodName))
         {
             return;
         }
@@ -564,7 +564,7 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
 
     private void LogRequest(string methodName, ReadOnlyMemory<byte> providedParameters, ExpectedParameter[] expectedParameters)
     {
-        if (!_logger.IsTrace || _methodsLoggingFiltering.Contains(methodName))
+        if (_methodsLoggingFiltering.Contains(methodName))
         {
             return;
         }
