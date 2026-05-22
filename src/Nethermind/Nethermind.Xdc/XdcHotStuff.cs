@@ -31,7 +31,6 @@ namespace Nethermind.Xdc
         ISigner signer,
         ITimeoutTimer timeoutTimer,
         IProcessExitSource processExit,
-        ISignTransactionManager signTransactionManager,
         ILogManager logManager) : IBlockProducerRunner
     {
         private readonly IBlockTree _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
@@ -46,9 +45,6 @@ namespace Nethermind.Xdc
         private readonly ITimeoutTimer _timeoutTimer = timeoutTimer;
         private readonly IProcessExitSource _processExit = processExit;
         private readonly ILogger _logger = logManager?.GetClassLogger<XdcHotStuff>() ?? throw new ArgumentNullException(nameof(logManager));
-        // Injected to activate SignTransactionManager (subscribes to BlockAddedToMain on construction).
-        // TODO: find a better activation mechanism.
-        private readonly ISignTransactionManager _signTransactionManager = signTransactionManager ?? throw new ArgumentNullException(nameof(signTransactionManager));
 
         private CancellationTokenSource? _cancellationTokenSource;
         private Task? _runTask;

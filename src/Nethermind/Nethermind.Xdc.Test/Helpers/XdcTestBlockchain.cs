@@ -118,6 +118,10 @@ public class XdcTestBlockchain : TestBlockchain
 
         Container = builder.Build();
 
+        if (!_useHotStuffModule)
+            // HotStuff is not running; unsubscribe SignTransactionManager so sign txs are not auto-submitted.
+            ((IDisposable)Container.Resolve<ISignTransactionManager>()).Dispose();
+
         RandomSigner = new TestRandomSigner(MasterNodeCandidates, Container.Resolve<IBlockTree>(), Container.Resolve<IEpochSwitchManager>());
 
         _fromXdcContainer = Container.Resolve<FromXdcContainer>();

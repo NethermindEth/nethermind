@@ -3,6 +3,7 @@
 
 using System;
 using System.Threading.Tasks;
+using Autofac;
 using Nethermind.Blockchain;
 using Nethermind.Consensus;
 using Nethermind.Core;
@@ -19,32 +20,23 @@ using Nethermind.Xdc.Types;
 
 namespace Nethermind.Xdc;
 
-internal class SignTransactionManager : ISignTransactionManager, IDisposable
+internal class SignTransactionManager(
+    ISigner signer,
+    ITxPool txPool,
+    IBlockTree blockTree,
+    ISnapshotManager snapshotManager,
+    ISpecProvider specProvider,
+    ILogManager logManager) : ISignTransactionManager, IStartable, IDisposable
 {
-    private readonly ISigner _signer;
-    private readonly ITxPool _txPool;
-    private readonly IBlockTree _blockTree;
-    private readonly ISnapshotManager _snapshotManager;
-    private readonly ISpecProvider _specProvider;
-    private readonly ILogger _logger;
+    private readonly ISigner _signer = signer;
+    private readonly ITxPool _txPool = txPool;
+    private readonly IBlockTree _blockTree = blockTree;
+    private readonly ISnapshotManager _snapshotManager = snapshotManager;
+    private readonly ISpecProvider _specProvider = specProvider;
+    private readonly ILogger _logger = logManager.GetClassLogger<SignTransactionManager>();
     private readonly AssociativeKeyCache<ValueHash256> _alreadySigned = new(128);
 
-    public SignTransactionManager(
-        ISigner signer,
-        ITxPool txPool,
-        IBlockTree blockTree,
-        ISnapshotManager snapshotManager,
-        ISpecProvider specProvider,
-        ILogManager logManager)
-    {
-        _signer = signer;
-        _txPool = txPool;
-        _blockTree = blockTree;
-        _snapshotManager = snapshotManager;
-        _specProvider = specProvider;
-        _logger = logManager.GetClassLogger<SignTransactionManager>();
-        _blockTree.BlockAddedToMain += OnBlockAddedToMain;
-    }
+    public void Start() => _blockTree.BlockAddedToMain += OnBlockAddedToMain;
 
     public Task SubmitTransactionSign(XdcBlockHeader header, IXdcReleaseSpec spec)
     {
