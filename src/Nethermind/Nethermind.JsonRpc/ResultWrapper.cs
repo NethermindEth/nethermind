@@ -210,7 +210,6 @@ namespace Nethermind.JsonRpc
 
         public override bool HasErrorData { get; init; }
 
-
         private ResultWrapper()
         {
         }
@@ -229,10 +228,7 @@ namespace Nethermind.JsonRpc
             DisposeIfReferenceType(ErrorData);
         }
 
-        protected override void WriteErrorData(Utf8JsonWriter writer, JsonSerializerOptions options)
-        {
-            TErrorData errorData = ErrorData;
-            WritePayloadValueCore(writer, options, errorData, rejectStreamable: false);
-        }
+        protected override void WriteErrorData(Utf8JsonWriter writer, JsonSerializerOptions options) =>
+            WritePayloadValueCore(writer, options, ErrorData, rejectStreamable: false);
     }
 }

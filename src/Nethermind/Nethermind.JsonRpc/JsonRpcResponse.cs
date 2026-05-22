@@ -3,7 +3,6 @@
 
 using System;
 using System.Diagnostics.CodeAnalysis;
-using System.Runtime.CompilerServices;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Nethermind.Core.Extensions;
@@ -34,10 +33,9 @@ namespace Nethermind.JsonRpc
 
         [JsonConverter(typeof(JsonRpcIdConverter))]
         [JsonPropertyOrder(2)]
-        [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
+            [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
         public JsonRpcId Id { get; set; }
 
-        internal virtual bool HasDisposableResources => action is not null;
         internal virtual bool IsResourceUnavailableError => false;
 
         internal virtual JsonRpcResponse WithResponseContext(JsonRpcId id, Action? disposableAction)
@@ -89,11 +87,6 @@ namespace Nethermind.JsonRpc
         {
         }
 
-        internal override bool HasDisposableResources =>
-            Result is IDisposable ||
-            Result is ITuple tuple && HasDisposableItem(tuple) ||
-            base.HasDisposableResources;
-
         internal override bool TryGetStreamableResult([NotNullWhen(true)] out IStreamableResult? streamable)
         {
             streamable = Result as IStreamableResult;
@@ -123,25 +116,8 @@ namespace Nethermind.JsonRpc
 
         public override void Dispose()
         {
-            if (HasDisposableResources)
-            {
-                Result.TryDispose();
-            }
-
+            Result.TryDispose();
             base.Dispose();
-        }
-
-        private static bool HasDisposableItem(ITuple tuple)
-        {
-            for (int i = 0; i < tuple.Length; i++)
-            {
-                if (tuple[i] is IDisposable)
-                {
-                    return true;
-                }
-            }
-
-            return false;
         }
     }
 
