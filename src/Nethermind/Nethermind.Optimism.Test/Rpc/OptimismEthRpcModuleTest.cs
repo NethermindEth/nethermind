@@ -18,7 +18,6 @@ using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.JsonRpc.Client;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.JsonRpc.Modules.Eth.FeeHistory;
-using Nethermind.JsonRpc.Test;
 using Nethermind.JsonRpc.Test.Modules;
 using Nethermind.Logging;
 using Nethermind.Optimism.Rpc;
