@@ -243,12 +243,8 @@ internal static class Program
                 return namedType.TypeArguments.Length == 0 || HasCurrentAssemblyTypeArgument(namedType);
             }
 
-            if (SymbolEqualityComparer.Default.Equals(namedType.ContainingAssembly, _currentAssembly))
-            {
-                return true;
-            }
-
-            return namedType.IsGenericType && HasCurrentAssemblyTypeArgument(namedType);
+            return SymbolEqualityComparer.Default.Equals(namedType.ContainingAssembly, _currentAssembly) ||
+                namedType.IsGenericType && HasCurrentAssemblyTypeArgument(namedType);
         }
 
         private bool HasCurrentAssemblyTypeArgument(INamedTypeSymbol type)
@@ -264,25 +260,14 @@ internal static class Program
             return false;
         }
 
-        private bool IsCurrentAssemblyType(ITypeSymbol type)
-        {
-            if (type is IArrayTypeSymbol arrayType)
+        private bool IsCurrentAssemblyType(ITypeSymbol type) =>
+            type switch
             {
-                return IsCurrentAssemblyType(arrayType.ElementType);
-            }
-
-            if (type is not INamedTypeSymbol namedType)
-            {
-                return false;
-            }
-
-            if (SymbolEqualityComparer.Default.Equals(namedType.ContainingAssembly, _currentAssembly))
-            {
-                return true;
-            }
-
-            return HasCurrentAssemblyTypeArgument(namedType);
-        }
+                IArrayTypeSymbol arrayType => IsCurrentAssemblyType(arrayType.ElementType),
+                INamedTypeSymbol namedType => SymbolEqualityComparer.Default.Equals(namedType.ContainingAssembly, _currentAssembly) ||
+                    HasCurrentAssemblyTypeArgument(namedType),
+                _ => false
+            };
 
         private bool CanGenerateMetadata(
             ITypeSymbol type,
@@ -368,25 +353,16 @@ internal static class Program
             return true;
         }
 
-        private bool CanGenerateMemberMetadata(
-            ISymbol member,
-            Dictionary<string, string> generatedTypeNames,
-            HashSet<string> visitedTypes)
-        {
-            if (!HasOnlyAccessibleJsonConverterAttributes(member))
-            {
-                return false;
-            }
-
-            return member switch
+        private bool CanGenerateMemberMetadata(ISymbol member, Dictionary<string, string> generatedTypeNames, HashSet<string> visitedTypes) =>
+            HasOnlyAccessibleJsonConverterAttributes(member) &&
+            (member switch
             {
                 IPropertySymbol { IsStatic: false, Parameters.Length: 0 } property when IsJsonVisible(property) =>
                     CanGenerateMetadata(property.Type, generatedTypeNames, visitedTypes),
                 IFieldSymbol { IsStatic: false, IsConst: false } field when IsJsonVisible(field) =>
                     CanGenerateMetadata(field.Type, generatedTypeNames, visitedTypes),
                 _ => true
-            };
-        }
+            });
 
         private static bool IsJsonVisible(IPropertySymbol property) =>
             property.DeclaredAccessibility == Accessibility.Public ||
@@ -461,20 +437,13 @@ internal static class Program
             return true;
         }
 
-        private static string GetGeneratedTypeName(ITypeSymbol type)
-        {
-            if (type is IArrayTypeSymbol arrayType)
+        private static string GetGeneratedTypeName(ITypeSymbol type) =>
+            type switch
             {
-                return GetGeneratedTypeName(arrayType.ElementType) + "Array";
-            }
-
-            if (type is INamedTypeSymbol namedType)
-            {
-                return GetNamedGeneratedTypeName(namedType);
-            }
-
-            return type.MetadataName;
-        }
+                IArrayTypeSymbol arrayType => GetGeneratedTypeName(arrayType.ElementType) + "Array",
+                INamedTypeSymbol namedType => GetNamedGeneratedTypeName(namedType),
+                _ => type.MetadataName
+            };
 
         private static string GetNamedGeneratedTypeName(INamedTypeSymbol type)
         {
@@ -499,14 +468,11 @@ internal static class Program
             return builder.ToString();
         }
 
-        private static bool HasNamespacePrefix(INamespaceSymbol namespaceSymbol, string namespaceName)
+        private static bool IsSystemType(INamedTypeSymbol type)
         {
-            string fullName = namespaceSymbol.ToDisplayString();
-            return fullName == namespaceName || fullName.StartsWith(namespaceName + ".", StringComparison.Ordinal);
+            string fullName = type.ContainingNamespace.ToDisplayString();
+            return fullName == SystemNamespace || fullName.StartsWith(SystemNamespace + ".", StringComparison.Ordinal);
         }
-
-        private static bool IsSystemType(INamedTypeSymbol type) =>
-            HasNamespacePrefix(type.ContainingNamespace, SystemNamespace);
 
         private static bool HasAttribute(ISymbol symbol, string namespaceName, string metadataName)
         {
