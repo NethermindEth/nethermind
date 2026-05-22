@@ -19,8 +19,11 @@ public class GeneratedBlockAccessList
 {
     private readonly Dictionary<Address, GeneratedAccountChanges> _accountChanges = new(GenericEqualityComparer.GetOptimized<Address>());
 
-    public EnumerableWithCount<GeneratedAccountChanges> AccountChanges
-        => new(_accountChanges.Values, _accountChanges.Values.Count);
+    /// <summary>
+    /// Insertion-ordered view over the BAL's accounts.
+    /// struct enumerator; <c>.Count</c> exposes the underlying dictionary size.
+    /// </summary>
+    public GeneratedAccountChangesView AccountChanges => new(_accountChanges);
 
     /// <summary>
     /// Address-sorted snapshot; pooled, dispose after use.
