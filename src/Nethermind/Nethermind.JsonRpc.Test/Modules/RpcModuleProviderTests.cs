@@ -180,7 +180,7 @@ public class RpcModuleProviderTests
         fourParameterMethod.DirectParameterInvoker.Should().NotBeNull();
         requiredValueParameterMethod.DirectParameterInvoker.Should().BeNull();
         requiredValueParameterMethod.ExpectedParameters[0].TypeInfo.Should().NotBeNull();
-        RpcParameterTypeInfo<int>.Get().Should().NotBeNull();
+        RpcParameterTypeInfo.Get(typeof(int)).Should().NotBeNull();
 
         AssertResultMetadata(syncMethod, typeof(ResultWrapper<string>), typeof(string));
         AssertResultMetadata(asyncMethod, typeof(ResultWrapper<long>), typeof(long), isTaskWrapped: true);
@@ -374,32 +374,30 @@ public class RpcModuleProviderTests
         }
 
         Type genericTypeDefinition = resultType.GetGenericTypeDefinition();
-        if (genericTypeDefinition == typeof(ResultWrapper<>))
+        if (genericTypeDefinition != typeof(ResultWrapper<>) && genericTypeDefinition != typeof(ResultWrapper<,>))
         {
-            AddMissingPayloadType(method, "result", resultType.GetGenericArguments()[0], missing);
             return;
         }
 
+        Type[] genericArguments = resultType.GetGenericArguments();
+        AddMissingPayloadType(method, "result", genericArguments[0], missing);
         if (genericTypeDefinition == typeof(ResultWrapper<,>))
         {
-            Type[] genericArguments = resultType.GetGenericArguments();
-            AddMissingPayloadType(method, "result", genericArguments[0], missing);
             AddMissingPayloadType(method, "error data", genericArguments[1], missing);
         }
     }
 
     private static Type UnwrapTaskLike(Type type)
     {
-        if (type.IsGenericType)
+        if (!type.IsGenericType)
         {
-            Type genericTypeDefinition = type.GetGenericTypeDefinition();
-            if (genericTypeDefinition == typeof(Task<>) || genericTypeDefinition == typeof(ValueTask<>))
-            {
-                return type.GetGenericArguments()[0];
-            }
+            return type;
         }
 
-        return type;
+        Type genericTypeDefinition = type.GetGenericTypeDefinition();
+        return genericTypeDefinition == typeof(Task<>) || genericTypeDefinition == typeof(ValueTask<>)
+            ? type.GetGenericArguments()[0]
+            : type;
     }
 
     private static void AddMissingPayloadType(MethodInfo method, string role, Type type, List<string> missing)
