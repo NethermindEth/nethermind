@@ -72,11 +72,7 @@ internal static class KnownRpcMethodNames
         {
             string[] all = Volatile.Read(ref _all);
             HashSet<string> names = new(all, StringComparer.Ordinal);
-            for (int i = 0; i < methodNames.Length; i++)
-            {
-                names.Add(methodNames[i]);
-            }
-
+            names.UnionWith(methodNames);
             string[] updated = new string[names.Count];
             names.CopyTo(updated);
             Array.Sort(updated, StringComparer.Ordinal);
