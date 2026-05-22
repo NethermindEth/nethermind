@@ -382,7 +382,6 @@ internal sealed class BlockAccessListValidationIndex : IDisposable
         if (!ScalarLaneEqualAt(_lanes.Balance, other._lanes.Balance, row, ordinal)) return false;
         if (!ScalarLaneEqualAt(_lanes.Nonce, other._lanes.Nonce, row, ordinal)) return false;
         if (!ScalarLaneEqualAt(_lanes.Code, other._lanes.Code, row, ordinal)) return false;
-
         return _lanes.Storage.SlotsEqualAt(other._lanes.Storage, row, ordinal);
     }
 
@@ -483,33 +482,23 @@ internal sealed class BlockAccessListValidationIndex : IDisposable
         LaneSpans c = PartitionInQuarters(cursors.AsSpan(), cursorSize);
         lanes.CopyAllRowStartsTo(c);
 
-        foreach (ReadOnlyAccountChanges accountChanges in accounts)
+        foreach (ReadOnlyAccountChanges account in accounts)
         {
-            int accountOrdinal = addressIndex.GetOrAdd(accountChanges.Address);
+            int accountOrdinal = addressIndex.GetOrAdd(account.Address);
             SetBit(hasAccountWords, accountOrdinal);
 
-            foreach (BalanceChange change in accountChanges.BalanceChanges)
-            {
+            foreach (BalanceChange change in account.BalanceChanges)
                 if (TryGetRow(change.Index, lastIndex, out int row)) lanes.Balance.Fill(row, c.Balance, accountOrdinal, change.Value);
-            }
 
-            foreach (NonceChange change in accountChanges.NonceChanges)
-            {
+            foreach (NonceChange change in account.NonceChanges)
                 if (TryGetRow(change.Index, lastIndex, out int row)) lanes.Nonce.Fill(row, c.Nonce, accountOrdinal, change.Value);
-            }
 
-            foreach (CodeChange change in accountChanges.CodeChanges)
-            {
+            foreach (CodeChange change in account.CodeChanges)
                 if (TryGetRow(change.Index, lastIndex, out int row)) lanes.Code.Fill(row, c.Code, accountOrdinal, change.CodeHash);
-            }
 
-            foreach (ReadOnlySlotChanges slotChanges in accountChanges.StorageChanges)
-            {
+            foreach (ReadOnlySlotChanges slotChanges in account.StorageChanges)
                 foreach (StorageChange change in slotChanges.Changes)
-                {
                     if (TryGetRow(change.Index, lastIndex, out int row)) lanes.Storage.Fill(row, c.Storage, accountOrdinal, slotChanges.Key, change.Value);
-                }
-            }
         }
     }
 
