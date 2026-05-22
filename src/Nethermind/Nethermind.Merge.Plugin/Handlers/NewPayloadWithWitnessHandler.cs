@@ -70,16 +70,26 @@ public sealed class NewPayloadWithWitnessHandler(
             {
                 if (captureTask is not null)
                 {
+                    // Invariant: BranchProcessor completes the TCS synchronously inside ProcessOne
+                    // before engine_newPayloadV5 returns. If captureTask is still pending here, the
+                    // block went through an early-return path (already-known, etc.) and was never
+                    // processed — disarm so the await does not block forever.
+                    if (!captureTask.IsCompleted)
+                    {
+                        witnessCaptureRegistry.DisarmCapture(blockHash!);
+                    }
+
                     try
                     {
                         witness = await captureTask;
                     }
                     catch (OperationCanceledException)
                     {
-                        // A concurrent ArmCapture for the same blockHash cancelled our task.
-                        // The block executed successfully — return VALID with a null witness.
+                        // A concurrent ArmCapture for the same blockHash cancelled our task, OR
+                        // we just disarmed because BranchProcessor did not run. Either way the
+                        // block executed successfully — return VALID with a null witness.
                         if (_logger.IsWarn)
-                            _logger.Warn($"engine_newPayloadWithWitness: witness capture cancelled for {blockHash} (likely duplicate concurrent call). Returning VALID with no witness.");
+                            _logger.Warn($"engine_newPayloadWithWitness: witness capture cancelled for {blockHash}. Returning VALID with no witness.");
                     }
                 }
             }
