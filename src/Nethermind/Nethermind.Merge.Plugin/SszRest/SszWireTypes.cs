@@ -382,13 +382,7 @@ public partial struct ExecutionWitnessV1Wire
     [SszList(1048576)] public SszWitnessItem[]? Headers { get; set; }
 }
 
-// NewPayloadWithWitnessResponseV1 is NOT represented as a generated [SszContainer] struct.
-// The spec (execution-apis #773) defines latest_valid_hash, validation_error, and witness as
-// SSZ Union[None, T] fields. The SSZ Union encoding (selector_byte ++ variant_bytes) is NOT
-// the same as the List[T, max=1] convention used elsewhere in this codebase. The SszGenerator's
-// [SszCompatibleUnion] attribute only supports selectors in [1, 127], making it impossible to
-// model the None selector (0x00) via code generation.
-//
-// Encoding and decoding for this type is therefore hand-written in SszCodec.cs:
-//   SszCodec.EncodeNewPayloadWithWitnessResponse()
-//   SszCodec.DecodeNewPayloadWithWitnessResponse()
+// NewPayloadWithWitnessResponseV1 uses SSZ Union[None, T] (selector 0 / 1 ++ variant) for
+// its optional fields per execution-apis#773. [SszCompatibleUnion] only supports selectors
+// 1-127, so the None selector cannot be code-generated — encode/decode is hand-written in
+// SszCodec.EncodeNewPayloadWithWitnessResponse / DecodeNewPayloadWithWitnessResponse.
