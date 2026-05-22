@@ -148,11 +148,13 @@ internal sealed class HttpJsonRpcResponseSink(
 
         _completed = true;
         ValueTask writerCompleteTask = _writer.CompleteAsync();
-        if (!writerCompleteTask.IsCompletedSuccessfully)
-        {
-            return CompleteAfterWriterAsync(writerCompleteTask, cancellationToken);
-        }
+        return writerCompleteTask.IsCompletedSuccessfully
+            ? CompleteAfterCompletedWriter(writerCompleteTask, cancellationToken)
+            : CompleteAfterWriterAsync(writerCompleteTask, cancellationToken);
+    }
 
+    private ValueTask CompleteAfterCompletedWriter(ValueTask writerCompleteTask, CancellationToken cancellationToken)
+    {
         writerCompleteTask.GetAwaiter().GetResult();
         return CompleteResponseAsync(cancellationToken);
     }
@@ -172,13 +174,9 @@ internal sealed class HttpJsonRpcResponseSink(
 
         Interlocked.Add(ref Metrics.JsonRpcBytesSentHttp, BytesWritten);
         Task completeTask = context.Response.CompleteAsync();
-        if (!completeTask.IsCompletedSuccessfully)
-        {
-            return new ValueTask(completeTask);
-        }
-
-        completeTask.GetAwaiter().GetResult();
-        return ValueTask.CompletedTask;
+        return completeTask.IsCompletedSuccessfully
+            ? ValueTask.CompletedTask
+            : new ValueTask(completeTask);
     }
 
     private async ValueTask CompleteBufferedResponseAsync(CancellationToken cancellationToken)

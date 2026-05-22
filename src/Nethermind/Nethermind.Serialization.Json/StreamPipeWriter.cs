@@ -54,13 +54,9 @@ public sealed class CountingPipeWriter : CountingWriter
     public override ValueTask<FlushResult> FlushAsync(CancellationToken cancellationToken = default)
     {
         ValueTask<FlushResult> flushTask = _writer.FlushAsync(cancellationToken);
-        if (!flushTask.IsCompletedSuccessfully)
-        {
-            return flushTask;
-        }
-
-        FlushResult result = flushTask.GetAwaiter().GetResult();
-        return new ValueTask<FlushResult>(result);
+        return flushTask.IsCompletedSuccessfully
+            ? new ValueTask<FlushResult>(flushTask.GetAwaiter().GetResult())
+            : flushTask;
     }
 
     public override bool CanGetUnflushedBytes => _writer.CanGetUnflushedBytes;
@@ -328,13 +324,9 @@ public sealed class CountingStreamPipeWriter : CountingWriter
         }
 
         ValueTask<FlushResult> flushTask = FlushAsyncInternal(writeToStream: true, data: Memory<byte>.Empty, cancellationToken);
-        if (!flushTask.IsCompletedSuccessfully)
-        {
-            return flushTask;
-        }
-
-        FlushResult result = flushTask.GetAwaiter().GetResult();
-        return new ValueTask<FlushResult>(result);
+        return flushTask.IsCompletedSuccessfully
+            ? new ValueTask<FlushResult>(flushTask.GetAwaiter().GetResult())
+            : flushTask;
     }
 
     /// <inheritdoc />
