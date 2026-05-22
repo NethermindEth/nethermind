@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-namespace Nethermind.Network.Discovery.Kademlia;
+namespace Nethermind.Kademlia;
 
 /// <summary>
 /// Main kademlia interface. High level code is expected to interface with this interface.
@@ -51,6 +51,12 @@ public interface IKademlia<TKey, TNode>
     /// <param name="excluding"></param>
     /// <param name="excludeSelf"></param>
     TNode[] GetKNeighbour(TKey target, TNode? excluding = default, bool excludeSelf = false);
+
+    /// <summary>
+    /// Return all table entries whose hash is at the requested log distance from the local node.
+    /// </summary>
+    /// <param name="distance">The XOR log distance from the local node.</param>
+    TNode[] GetAllAtDistance(int distance);
 
     /// <summary>
     /// Called when a TNode is added to the routing table.

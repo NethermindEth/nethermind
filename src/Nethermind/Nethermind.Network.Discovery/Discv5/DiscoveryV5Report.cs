@@ -1,8 +1,10 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using Lantern.Discv5.WireProtocol;
+using Nethermind.Core.Crypto;
+using Nethermind.Kademlia;
 using Nethermind.Logging;
+using Nethermind.Stats.Model;
 
 namespace Nethermind.Network.Discovery.Discv5;
 
@@ -11,7 +13,7 @@ internal class DiscoveryV5Report
     int RecentlyChecked = 0;
     int TotalChecked = 0;
 
-    public DiscoveryV5Report(IDiscv5Protocol discv5Protocol, ILogManager logManager, CancellationToken token)
+    public DiscoveryV5Report(IKademlia<PublicKey, Node> kademlia, ILogManager logManager, CancellationToken token)
     {
         ILogger logger = logManager.GetClassLogger<DiscoveryV5Report>();
         if (!logger.IsDebug)
@@ -23,7 +25,7 @@ internal class DiscoveryV5Report
         {
             while (!token.IsCancellationRequested)
             {
-                logger.Debug($"Nodes checked: {Interlocked.Exchange(ref RecentlyChecked, 0)}, in total {TotalChecked}. Kademlia table state: {discv5Protocol.GetActiveNodes.Count()} active nodes, {discv5Protocol.GetAllNodes.Count()} all nodes.");
+                logger.Debug($"Nodes checked: {Interlocked.Exchange(ref RecentlyChecked, 0)}, in total {TotalChecked}. Kademlia table state: {kademlia.IterateNodes().Count()} nodes.");
                 await Task.Delay(10_000, token);
             }
         }, token);

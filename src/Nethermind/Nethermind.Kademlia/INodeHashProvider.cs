@@ -1,9 +1,8 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using Nethermind.Core.Crypto;
 
-namespace Nethermind.Network.Discovery.Kademlia;
+namespace Nethermind.Kademlia;
 
 /// <summary>
 /// Just a convenient interface with only one generic parameter.
@@ -11,5 +10,5 @@ namespace Nethermind.Network.Discovery.Kademlia;
 /// <typeparam name="TNode"></typeparam>
 public interface INodeHashProvider<in TNode>
 {
-    ValueHash256 GetHash(TNode node);
+    KademliaHash GetHash(TNode node);
 }

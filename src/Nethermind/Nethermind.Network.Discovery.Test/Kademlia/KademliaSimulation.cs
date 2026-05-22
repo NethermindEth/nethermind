@@ -11,6 +11,7 @@ using Autofac;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
+using Nethermind.Kademlia;
 using Nethermind.Network.Discovery.Kademlia;
 using NonBlocking;
 using NUnit.Framework;
@@ -146,7 +147,7 @@ public class KademliaSimulation
         {
             TestNode[] nodesClosest = await mainNode.LookupNodesClosest(targetNode, cts.Token);
             HashSet<ValueHash256> expectedNodeClosestK = nodeIds
-                .Order(Comparer<ValueHash256>.Create((n1, n2) => Hash256XorUtils.Compare(n1, n2, targetNode)))
+                .Order(Comparer<ValueHash256>.Create((n1, n2) => Hash256XorUtils.Compare(ToKademliaHash(n1), ToKademliaHash(n2), ToKademliaHash(targetNode))))
                 .Take(_config.KSize)
                 .ToHashSet();
 
@@ -184,16 +185,20 @@ public class KademliaSimulation
         return val;
     }
 
+    private static KademliaHash ToKademliaHash(ValueHash256 hash) => KademliaHash.FromBytes(hash.BytesAsSpan);
+
+    private static ValueHash256 ToValueHash(KademliaHash hash) => new(hash.Bytes);
+
     private class ValueHashNodeHashProvider : IKeyOperator<ValueHash256, TestNode>
     {
         public ValueHash256 GetKey(TestNode node) => node.Hash;
 
-        public ValueHash256 GetKeyHash(ValueHash256 key) => key;
+        public KademliaHash GetKeyHash(ValueHash256 key) => ToKademliaHash(key);
 
-        public ValueHash256 CreateRandomKeyAtDistance(ValueHash256 nodePrefix, int depth) =>
-            Hash256XorUtils.GetRandomHashAtDistance(nodePrefix, depth);
+        public ValueHash256 CreateRandomKeyAtDistance(KademliaHash nodePrefix, int depth) =>
+            ToValueHash(Hash256XorUtils.GetRandomHashAtDistance(nodePrefix, depth));
 
-        public ValueHash256 GetHash(ValueHash256 key) => key;
+        public KademliaHash GetHash(ValueHash256 key) => ToKademliaHash(key);
     }
 
     private class TestFabric(KademliaConfig<ValueHash256> config)

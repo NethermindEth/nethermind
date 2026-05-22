@@ -11,7 +11,6 @@ using DotNetty.Buffers;
 using DotNetty.Transport.Channels;
 using DotNetty.Transport.Channels.Embedded;
 using DotNetty.Transport.Channels.Sockets;
-using FluentAssertions;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using NSubstitute;
@@ -46,9 +45,9 @@ namespace Nethermind.Network.Discovery.Test
             await _handler.SendAsync(data, to);
 
             DatagramPacket packet = _channel.ReadOutbound<DatagramPacket>();
-            packet.Should().NotBeNull();
-            packet.Content.ReadAllBytesAsArray().Should().BeEquivalentTo(data);
-            packet.Recipient.Should().Be(to);
+            Assert.That(packet, Is.Not.Null);
+            Assert.That(packet.Content.ReadAllBytesAsArray(), Is.EqualTo(data));
+            Assert.That(packet.Recipient, Is.EqualTo(to));
         }
 
         [Test]
@@ -62,17 +61,17 @@ namespace Nethermind.Network.Discovery.Test
             IAsyncEnumerator<UdpReceiveResult> enumerator = _handler
                 .ReadMessagesAsync(cancellationSource.Token)
                 .GetAsyncEnumerator(cancellationSource.Token);
+            ValueTask<bool> readTask = enumerator.MoveNextAsync();
 
             IChannelHandlerContext ctx = Substitute.For<IChannelHandlerContext>();
 
             _handler.ChannelRead(ctx, new DatagramPacket(Unpooled.WrappedBuffer(data), from, to));
 
-            (await enumerator.MoveNextAsync()).Should().BeTrue();
+            Assert.That(await readTask, Is.True);
             UdpReceiveResult forwardedPacket = enumerator.Current;
 
-            forwardedPacket.Should().NotBeNull();
-            forwardedPacket.Buffer.Should().BeEquivalentTo(data);
-            forwardedPacket.RemoteEndPoint.Should().Be(from);
+            Assert.That(forwardedPacket.Buffer, Is.EqualTo(data));
+            Assert.That(forwardedPacket.RemoteEndPoint, Is.EqualTo(from));
         }
 
         [TestCase(0)]
@@ -88,6 +87,7 @@ namespace Nethermind.Network.Discovery.Test
             IAsyncEnumerator<UdpReceiveResult> enumerator = _handler
                 .ReadMessagesAsync(cancellationSource.Token)
                 .GetAsyncEnumerator(cancellationSource.Token);
+            ValueTask<bool> readTask = enumerator.MoveNextAsync();
 
             IChannelHandlerContext ctx = Substitute.For<IChannelHandlerContext>();
 
@@ -96,9 +96,9 @@ namespace Nethermind.Network.Discovery.Test
             _handler.ChannelRead(ctx, new DatagramPacket(Unpooled.WrappedBuffer((byte[])invalidData.Clone()), from, to));
             _handler.Close();
 
-            (await enumerator.MoveNextAsync()).Should().BeTrue();
-            enumerator.Current.Buffer.Should().BeEquivalentTo(data);
-            (await enumerator.MoveNextAsync()).Should().BeFalse();
+            Assert.That(await readTask, Is.True);
+            Assert.That(enumerator.Current.Buffer, Is.EqualTo(data));
+            Assert.That(await enumerator.MoveNextAsync(), Is.False);
         }
     }
 }

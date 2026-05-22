@@ -11,17 +11,25 @@ namespace Nethermind.Network.Enr;
 /// <summary>
 /// https://eips.ethereum.org/EIPS/eip-778
 /// </summary>
-public class NodeRecordSigner(IEcdsa? ethereumEcdsa, PrivateKey? privateKey) : INodeRecordSigner
+public class NodeRecordSigner(IEcdsa? ethereumEcdsa, PrivateKey? privateKey = null) : INodeRecordSigner
 {
     private readonly IEcdsa _ecdsa = ethereumEcdsa ?? throw new ArgumentNullException(nameof(ethereumEcdsa));
 
-    private readonly PrivateKey _privateKey = privateKey ?? throw new ArgumentNullException(nameof(privateKey));
+    private readonly PrivateKey? _privateKey = privateKey;
 
     /// <summary>
     /// Signs the node record with own private key.
     /// </summary>
     /// <param name="nodeRecord"></param>
-    public void Sign(NodeRecord nodeRecord) => nodeRecord.Signature = _ecdsa.Sign(_privateKey, in nodeRecord.ContentHash.ValueHash256);
+    public void Sign(NodeRecord nodeRecord)
+    {
+        if (_privateKey is null)
+        {
+            throw new InvalidOperationException("Cannot sign an ENR without a private key.");
+        }
+
+        nodeRecord.Signature = _ecdsa.Sign(_privateKey, in nodeRecord.ContentHash.ValueHash256);
+    }
 
     /// <summary>
     /// Deserializes a <see cref="NodeRecord"/> from an <see cref="RlpStream"/>.
@@ -46,14 +54,14 @@ public class NodeRecordSigner(IEcdsa? ethereumEcdsa, PrivateKey? privateKey) : I
         int startPosition = ctx.Position;
         int recordRlpLength = ctx.ReadSequenceLength();
         if (recordRlpLength > 300)
-            throw new NetworkingException("RLP received for ENR is bigger than 300 bytes", NetworkExceptionType.Discovery);
+            throw new RlpException("RLP received for ENR is bigger than 300 bytes");
         NodeRecord nodeRecord = new();
 
         ReadOnlySpan<byte> sigBytes = ctx.DecodeByteArraySpan(RlpLimit.L65);
         Signature signature = new(sigBytes, 0);
 
         bool canVerify = true;
-        long enrSequence = ctx.DecodeLong();
+        ulong enrSequence = ctx.DecodeULong();
         while (ctx.Position < startPosition + recordRlpLength)
         {
             ReadOnlySpan<byte> key = ctx.DecodeByteArraySpan();

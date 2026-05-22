@@ -5,9 +5,9 @@ using System.Net;
 using System.Net.Sockets;
 using System.Threading.Channels;
 using DotNetty.Buffers;
+using DotNetty.Common.Utilities;
 using DotNetty.Transport.Channels;
 using DotNetty.Transport.Channels.Sockets;
-using Lantern.Discv5.WireProtocol.Connection;
 using Microsoft.Extensions.DependencyInjection;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
@@ -15,24 +15,32 @@ using Nethermind.Serialization.Rlp;
 namespace Nethermind.Network.Discovery;
 
 /// <summary>
-/// Adapter, integrating DotNetty externally-managed <see cref="IChannel"/> with Lantern.Discv5
+/// DotNetty UDP bridge used by the native discv5 implementation.
 /// </summary>
-public class NettyDiscoveryV5Handler(ILogManager loggerManager) : NettyDiscoveryBaseHandler(loggerManager), IUdpConnection
+public class NettyDiscoveryV5Handler(ILogManager loggerManager) : NettyDiscoveryBaseHandler(loggerManager)
 {
     private const int MaxMessagesBuffered = 1024;
 
     private readonly ILogger _logger = loggerManager.GetClassLogger<NettyDiscoveryV5Handler>();
-    private readonly Channel<UdpReceiveResult> _inboundQueue = Channel.CreateBounded<UdpReceiveResult>(MaxMessagesBuffered);
+    private readonly Channel<DatagramPacket> _inboundQueue = Channel.CreateBounded<DatagramPacket>(MaxMessagesBuffered);
 
     private IChannel? _nettyChannel;
+    private int _activeReaders;
 
     public void InitializeChannel(IChannel channel) => _nettyChannel = channel;
 
     protected override void ChannelRead0(IChannelHandlerContext ctx, DatagramPacket msg)
     {
-        UdpReceiveResult udpPacket = new(msg.Content.ReadAllBytesAsArray(), (IPEndPoint)msg.Sender);
+        msg.Retain();
+        DatagramPacket queuedPacket = msg;
 
-        if (!_inboundQueue.Writer.TryWrite(udpPacket) && _logger.IsDebug)
+        if (_inboundQueue.Writer.TryWrite(queuedPacket))
+        {
+            return;
+        }
+
+        ReferenceCountUtil.Release(queuedPacket);
+        if (_logger.IsDebug)
         {
             _logger.Warn("Skipping discovery v5 message as inbound buffer is full");
         }
@@ -55,13 +63,47 @@ public class NettyDiscoveryV5Handler(ILogManager loggerManager) : NettyDiscovery
         }
     }
 
-    public IAsyncEnumerable<UdpReceiveResult> ReadMessagesAsync(CancellationToken token = default) =>
-        _inboundQueue.Reader.ReadAllAsync(token);
+    public async IAsyncEnumerable<UdpReceiveResult> ReadMessagesAsync([System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken token = default)
+    {
+        Interlocked.Increment(ref _activeReaders);
+        try
+        {
+            await foreach (DatagramPacket packet in _inboundQueue.Reader.ReadAllAsync(token))
+            {
+                try
+                {
+                    yield return new UdpReceiveResult(packet.Content.ReadAllBytesAsArray(), (IPEndPoint)packet.Sender);
+                }
+                finally
+                {
+                    ReferenceCountUtil.Release(packet);
+                }
+            }
+        }
+        finally
+        {
+            Interlocked.Decrement(ref _activeReaders);
+            ReleaseQueuedPackets();
+        }
+    }
 
     public Task ListenAsync(CancellationToken token = default) => Task.CompletedTask;
-    public void Close() => _inboundQueue.Writer.Complete();
+    public void Close()
+    {
+        _inboundQueue.Writer.TryComplete();
+        if (Volatile.Read(ref _activeReaders) == 0)
+        {
+            ReleaseQueuedPackets();
+        }
+    }
 
-    public static void Register(IServiceCollection services) => services
-        .AddSingleton<NettyDiscoveryV5Handler>()
-        .AddSingleton<IUdpConnection>(static p => p.GetRequiredService<NettyDiscoveryV5Handler>());
+    private void ReleaseQueuedPackets()
+    {
+        while (_inboundQueue.Reader.TryRead(out DatagramPacket? packet))
+        {
+            ReferenceCountUtil.Release(packet);
+        }
+    }
+
+    public static void Register(IServiceCollection services) => services.AddSingleton<NettyDiscoveryV5Handler>();
 }

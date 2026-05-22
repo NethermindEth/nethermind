@@ -7,7 +7,7 @@ using System.Runtime.CompilerServices;
 using System.Threading.Channels;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
-using Nethermind.Network.Discovery.Kademlia;
+using Nethermind.Kademlia;
 using Nethermind.Stats.Model;
 
 namespace Nethermind.Network.Discovery.Discv4;
@@ -25,6 +25,8 @@ public class KademliaNodeSource(
     public async IAsyncEnumerable<Node> DiscoverNodes([EnumeratorCancellation] CancellationToken token)
     {
         if (_logger.IsDebug) _logger.Debug($"Starting discover nodes");
+        using CancellationTokenSource disposeCts = CancellationTokenSource.CreateLinkedTokenSource(token);
+        CancellationToken discoveryToken = disposeCts.Token;
         Channel<Node> ch = Channel.CreateBounded<Node>(64);
         ConcurrentDictionary<ValueHash256, ValueHash256> writtenNodes = new();
         int duplicated = 0;
@@ -36,7 +38,7 @@ public class KademliaNodeSource(
             bool anyFound = false;
             int count = 0;
 
-            await foreach (Node node in lookup.Lookup(target, token))
+            await foreach (Node node in lookup.Lookup(target, discoveryToken))
             {
                 if (!discv4Adapter.GetSession(node).HasReceivedPong)
                 {
@@ -47,7 +49,7 @@ public class KademliaNodeSource(
                     }
                     try
                     {
-                        await discv4Adapter.Ping(node, token);
+                        await discv4Adapter.Ping(node, discoveryToken);
                     }
                     catch (OperationCanceledException)
                     {
@@ -63,7 +65,7 @@ public class KademliaNodeSource(
                     duplicated++;
                     continue;
                 }
-                await ch.Writer.WriteAsync(node, token);
+                await ch.Writer.WriteAsync(node, discoveryToken);
             }
 
             if (!anyFound)
@@ -80,7 +82,7 @@ public class KademliaNodeSource(
         {
             Random random = new();
             byte[] randomBytes = new byte[64];
-            while (!token.IsCancellationRequested)
+            while (!discoveryToken.IsCancellationRequested)
             {
                 Stopwatch iterationTime = Stopwatch.StartNew();
 
@@ -92,7 +94,7 @@ public class KademliaNodeSource(
                     // Prevent high CPU when all node is not reachable due to network connectivity issue.
                     if (iterationTime.Elapsed < TimeSpan.FromSeconds(1))
                     {
-                        await Task.Delay(TimeSpan.FromSeconds(1), token);
+                        await Task.Delay(TimeSpan.FromSeconds(1), discoveryToken);
                     }
                 }
                 catch (OperationCanceledException)
@@ -118,8 +120,15 @@ public class KademliaNodeSource(
         finally
         {
             kademlia.OnNodeAdded -= Handler;
+            await disposeCts.CancelAsync();
             ch.Writer.TryComplete();
-            await discoverTask;
+            try
+            {
+                await discoverTask;
+            }
+            catch (OperationCanceledException) when (discoveryToken.IsCancellationRequested)
+            {
+            }
         }
 
         yield break;

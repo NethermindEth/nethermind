@@ -37,7 +37,7 @@ public abstract class DiscoveryMsgSerializerBase(IEcdsa ecdsa,
 
         byteBuffer.SetWriterIndex(startWriteIndex + 32 + 65);
         byteBuffer.WriteByte(type);
-        byteBuffer.WriteBytes(data.ToArray(), 0, data.Length);
+        byteBuffer.WriteBytes(data);
 
         byteBuffer.SetReaderIndex(startReadIndex + 32 + 65);
         ValueHash256 toSign = ValueKeccak.Compute(byteBuffer.ReadAllBytesAsSpan());
@@ -54,7 +54,7 @@ public abstract class DiscoveryMsgSerializerBase(IEcdsa ecdsa,
         byteBuffer.SetReaderIndex(startReadIndex);
 
         byteBuffer.SetWriterIndex(startWriteIndex);
-        byteBuffer.WriteBytes(mdc.BytesAsSpan.ToArray(), 0, 32);
+        byteBuffer.WriteBytes(mdc.BytesAsSpan);
         byteBuffer.SetWriterIndex(startWriteIndex + length);
     }
 
@@ -82,7 +82,7 @@ public abstract class DiscoveryMsgSerializerBase(IEcdsa ecdsa,
         byteBuffer.SetReaderIndex(startReadIndex);
 
         byteBuffer.SetWriterIndex(startWriteIndex);
-        byteBuffer.WriteBytes(mdc.BytesAsSpan.ToArray(), 0, 32);
+        byteBuffer.WriteBytes(mdc.BytesAsSpan);
 
         byteBuffer.SetReaderIndex(startReadIndex);
         byteBuffer.SetWriterIndex(startWriteIndex + length);

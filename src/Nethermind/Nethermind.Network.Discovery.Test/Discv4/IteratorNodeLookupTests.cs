@@ -11,7 +11,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Logging;
 using Nethermind.Network.Discovery.Discv4;
-using Nethermind.Network.Discovery.Kademlia;
+using Nethermind.Kademlia;
 using Nethermind.Stats.Model;
 using NSubstitute;
 using NUnit.Framework;
@@ -52,7 +52,7 @@ namespace Nethermind.Network.Discovery.Test.Discv4
         }
 
         private void RoutingTableReturns(params Node[] nodes) =>
-            _routingTable.GetKNearestNeighbour(Arg.Any<ValueHash256>(), Arg.Any<ValueHash256?>())
+            _routingTable.GetKNearestNeighbour(Arg.Any<KademliaHash>(), Arg.Any<KademliaHash?>())
                 .Returns(nodes);
 
         private void FindNeighboursReturns(Node from, params Node[] result) =>
@@ -80,8 +80,8 @@ namespace Nethermind.Network.Discovery.Test.Discv4
 
             Assert.That(result, Is.EquivalentTo(expectedNodes));
             _routingTable.Received(1).GetKNearestNeighbour(
-                Arg.Is<ValueHash256>(h => h == _targetKey.Hash),
-                Arg.Any<ValueHash256?>());
+                Arg.Is<KademliaHash>(h => h == TargetHash),
+                Arg.Any<KademliaHash?>());
         }
 
         [Test]
@@ -178,5 +178,7 @@ namespace Nethermind.Network.Discovery.Test.Discv4
 
             Assert.That(result, Is.EquivalentTo(new[] { InitialNode, NeighbourNode }));
         }
+
+        private KademliaHash TargetHash => KademliaHash.FromBytes(_targetKey.Hash.Bytes);
     }
 }

@@ -2,15 +2,14 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Numerics;
-using Nethermind.Core.Crypto;
 
-namespace Nethermind.Network.Discovery.Kademlia;
+namespace Nethermind.Kademlia;
 
 public static class Hash256XorUtils
 {
-    public static int CalculateLogDistance(ValueHash256 h1, ValueHash256 h2)
+    public static int CalculateLogDistance(KademliaHash h1, KademliaHash h2)
     {
-        ValueHash256 xor = XorDistance(h1, h2);
+        KademliaHash xor = XorDistance(h1, h2);
         int zeros = 0;
         for (int i = 0; i < 32; i += 1)
         {
@@ -35,19 +34,18 @@ public static class Hash256XorUtils
 
     public const int MaxDistance = 256;
 
-    public static int Compare(ValueHash256 a, ValueHash256 b, ValueHash256 c)
+    public static int Compare(KademliaHash a, KademliaHash b, KademliaHash c)
     {
-        ValueHash256 ac = XorDistance(a, c);
-        ValueHash256 bc = XorDistance(b, c);
+        KademliaHash ac = XorDistance(a, c);
+        KademliaHash bc = XorDistance(b, c);
         return ac.CompareTo(bc);
     }
 
-    public static ValueHash256 XorDistance(ValueHash256 hash1, ValueHash256 hash2)
+    public static KademliaHash XorDistance(KademliaHash hash1, KademliaHash hash2)
     {
-        ValueHash256 bc = new();
-        ReadOnlySpan<byte> hash1Bytes = hash1.BytesAsSpan;
-        ReadOnlySpan<byte> hash2Bytes = hash2.BytesAsSpan;
-        Span<byte> result = bc.BytesAsSpan;
+        ReadOnlySpan<byte> hash1Bytes = hash1.Bytes;
+        ReadOnlySpan<byte> hash2Bytes = hash2.Bytes;
+        Span<byte> result = stackalloc byte[KademliaHash.Length];
 
         int i = 0;
         for (; i <= result.Length - Vector<byte>.Count; i += Vector<byte>.Count)
@@ -60,12 +58,12 @@ public static class Hash256XorUtils
             result[i] = (byte)(hash1Bytes[i] ^ hash2Bytes[i]);
         }
 
-        return bc;
+        return KademliaHash.FromBytes(result);
     }
 
-    public static ValueHash256 GetRandomHashAtDistance(ValueHash256 currentHash, int distance) => GetRandomHashAtDistance(currentHash, distance, Random.Shared);
+    public static KademliaHash GetRandomHashAtDistance(KademliaHash currentHash, int distance) => GetRandomHashAtDistance(currentHash, distance, Random.Shared);
 
-    public static ValueHash256 GetRandomHashAtDistance(ValueHash256 currentHash, int distance, Random random)
+    public static KademliaHash GetRandomHashAtDistance(KademliaHash currentHash, int distance, Random random)
     {
         // TODO: Just add a min/max range per bucket and randomized between them.
         if (distance == MaxDistance)
@@ -73,23 +71,23 @@ public static class Hash256XorUtils
             return currentHash;
         }
 
-        ValueHash256 randomized = new();
-        random.NextBytes(randomized.BytesAsSpan);
+        Span<byte> randomized = stackalloc byte[KademliaHash.Length];
+        random.NextBytes(randomized);
         return CopyForRandom(currentHash, randomized, MaxDistance - distance);
     }
 
-    private static ValueHash256 CopyForRandom(ValueHash256 currentHash, ValueHash256 randomizedHash, int distance)
+    private static KademliaHash CopyForRandom(KademliaHash currentHash, Span<byte> randomizedHash, int distance)
     {
         if (distance >= 256) return currentHash;
 
-        currentHash.Bytes[0..(distance / 8)].CopyTo(randomizedHash.BytesAsSpan);
+        currentHash.Bytes[0..(distance / 8)].CopyTo(randomizedHash);
 
         int remainingBit = distance % 8;
         int remainingBitByte = distance / 8;
         byte mask = (byte)(~((1 << (8 - remainingBit)) - 1));
-        byte randomized = randomizedHash.BytesAsSpan[remainingBitByte];
-        byte original = currentHash.BytesAsSpan[remainingBitByte];
-        randomizedHash.BytesAsSpan[remainingBitByte] = (byte)((original & mask) | (randomized & (~mask)));
+        byte randomized = randomizedHash[remainingBitByte];
+        byte original = currentHash.Bytes[remainingBitByte];
+        randomizedHash[remainingBitByte] = (byte)((original & mask) | (randomized & (~mask)));
 
         if (distance <= 255)
         {
@@ -98,13 +96,13 @@ public static class Hash256XorUtils
             int nextBit = distance % 8;
             int nextBitByte = distance / 8;
             mask = (byte)(1 << (7 - nextBit));
-            randomized = randomizedHash.BytesAsSpan[nextBitByte];
-            byte opposite = (byte)~(currentHash.BytesAsSpan[nextBitByte]);
+            randomized = randomizedHash[nextBitByte];
+            byte opposite = (byte)~(currentHash.Bytes[nextBitByte]);
 
             byte final = (byte)((opposite & mask) | (randomized & ~(mask)));
-            randomizedHash.BytesAsSpan[nextBitByte] = final;
+            randomizedHash[nextBitByte] = final;
         }
 
-        return randomizedHash;
+        return KademliaHash.FromBytes(randomizedHash);
     }
 }

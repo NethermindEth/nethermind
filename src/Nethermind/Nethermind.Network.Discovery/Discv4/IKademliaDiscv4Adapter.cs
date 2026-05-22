@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core.Crypto;
-using Nethermind.Network.Discovery.Kademlia;
+using Nethermind.Kademlia;
 using Nethermind.Network.Discovery.Messages;
 using Nethermind.Stats.Model;
 

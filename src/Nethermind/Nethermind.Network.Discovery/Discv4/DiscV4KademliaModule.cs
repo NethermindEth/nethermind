@@ -4,6 +4,7 @@
 using Autofac;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Kademlia;
 using Nethermind.Network.Discovery.Kademlia;
 using Nethermind.Stats.Model;
 

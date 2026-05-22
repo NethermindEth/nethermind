@@ -1,25 +1,24 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Threading;
 using NonBlocking;
 
-namespace Nethermind.Network.Discovery.Kademlia;
+namespace Nethermind.Kademlia;
 
 public class DoubleEndedLru<TNode>(int capacity) where TNode : notnull
 {
     private readonly McsLock _lock = new();
 
-    private readonly LinkedList<(ValueHash256, TNode)> _queue = new();
-    private readonly ConcurrentDictionary<ValueHash256, LinkedListNode<(ValueHash256, TNode)>> _hashMapping = new();
+    private readonly LinkedList<(KademliaHash, TNode)> _queue = new();
+    private readonly ConcurrentDictionary<KademliaHash, LinkedListNode<(KademliaHash, TNode)>> _hashMapping = new();
     public int Count => _queue.Count;
 
-    public BucketAddResult AddOrRefresh(in ValueHash256 hash, TNode node)
+    public BucketAddResult AddOrRefresh(in KademliaHash hash, TNode node)
     {
         using McsLock.Disposable _ = _lock.Acquire();
 
-        if (_hashMapping.TryGetValue(hash, out LinkedListNode<(ValueHash256, TNode)>? listNode))
+        if (_hashMapping.TryGetValue(hash, out LinkedListNode<(KademliaHash, TNode)>? listNode))
         {
             _queue.Remove(listNode);
             _queue.AddFirst(listNode);
@@ -36,11 +35,11 @@ public class DoubleEndedLru<TNode>(int capacity) where TNode : notnull
         return BucketAddResult.Added;
     }
 
-    public bool TryPopHead(out ValueHash256 hash, out TNode? node)
+    public bool TryPopHead(out KademliaHash hash, out TNode? node)
     {
         using McsLock.Disposable _ = _lock.Acquire();
 
-        LinkedListNode<(ValueHash256, TNode)>? front = _queue.First;
+        LinkedListNode<(KademliaHash, TNode)>? front = _queue.First;
         if (front == null)
         {
             hash = default;
@@ -60,7 +59,7 @@ public class DoubleEndedLru<TNode>(int capacity) where TNode : notnull
     {
         using McsLock.Disposable _ = _lock.Acquire();
 
-        LinkedListNode<(ValueHash256, TNode)>? lastNode = _queue.Last;
+        LinkedListNode<(KademliaHash, TNode)>? lastNode = _queue.Last;
         if (lastNode == null)
         {
             last = default;
@@ -71,11 +70,11 @@ public class DoubleEndedLru<TNode>(int capacity) where TNode : notnull
         return true;
     }
 
-    public bool Remove(ValueHash256 hash)
+    public bool Remove(KademliaHash hash)
     {
         using McsLock.Disposable _ = _lock.Acquire();
 
-        if (_hashMapping.TryRemove(hash, out LinkedListNode<(ValueHash256, TNode)>? listNode))
+        if (_hashMapping.TryRemove(hash, out LinkedListNode<(KademliaHash, TNode)>? listNode))
         {
             _queue.Remove(listNode);
             return true;
@@ -89,21 +88,28 @@ public class DoubleEndedLru<TNode>(int capacity) where TNode : notnull
         using McsLock.Disposable _ = _lock.Acquire();
         TNode[] result = new TNode[_queue.Count];
         int i = 0;
-        foreach ((ValueHash256, TNode node) entry in _queue) result[i++] = entry.node;
+        foreach ((KademliaHash, TNode node) entry in _queue) result[i++] = entry.node;
         return result;
     }
 
-    public (ValueHash256, TNode)[] GetAllWithHash()
+    public (KademliaHash, TNode)[] GetAllWithHash()
     {
         using McsLock.Disposable _ = _lock.Acquire();
-        (ValueHash256, TNode)[] result = new (ValueHash256, TNode)[_queue.Count];
+        (KademliaHash, TNode)[] result = new (KademliaHash, TNode)[_queue.Count];
         int i = 0;
-        foreach ((ValueHash256, TNode) entry in _queue) result[i++] = entry;
+        foreach ((KademliaHash, TNode) entry in _queue) result[i++] = entry;
         return result;
     }
 
-    public bool Contains(in ValueHash256 hash) => _hashMapping.ContainsKey(hash);
+    public bool Contains(in KademliaHash hash) => _hashMapping.ContainsKey(hash);
 
-    public TNode? GetByHash(ValueHash256 hash) =>
-        _hashMapping.TryGetValue(hash, out LinkedListNode<(ValueHash256, TNode)>? listNode) ? listNode.Value.Item2 : default;
+    public TNode? GetByHash(KademliaHash hash)
+    {
+        if (_hashMapping.TryGetValue(hash, out LinkedListNode<(KademliaHash, TNode)>? listNode))
+        {
+            return listNode.Value.Item2;
+        }
+
+        return default;
+    }
 }

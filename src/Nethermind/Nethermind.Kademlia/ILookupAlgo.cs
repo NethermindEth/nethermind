@@ -1,9 +1,8 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using Nethermind.Core.Crypto;
 
-namespace Nethermind.Network.Discovery.Kademlia;
+namespace Nethermind.Kademlia;
 
 /// <summary>
 /// Main find closest-k node within the network. See the kademlia paper, 2.3.
@@ -23,7 +22,7 @@ public interface ILookupAlgo<TNode>
     /// <param name="token"></param>
     /// <returns></returns>
     Task<TNode[]> Lookup(
-        ValueHash256 targetHash,
+        KademliaHash targetHash,
         int k,
         Func<TNode, CancellationToken, Task<TNode[]?>> findNeighbourOp,
         CancellationToken token

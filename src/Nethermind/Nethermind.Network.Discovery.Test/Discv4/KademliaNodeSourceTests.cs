@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
@@ -12,7 +13,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Utils;
 using Nethermind.Logging;
 using Nethermind.Network.Discovery.Discv4;
-using Nethermind.Network.Discovery.Kademlia;
+using Nethermind.Kademlia;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using NSubstitute;
@@ -71,11 +72,11 @@ namespace Nethermind.Network.Discovery.Test.Discv4
             Node node2 = new(TestItem.PublicKeyB, "192.168.1.2", 30303);
             _nodeSession.OnPongReceived();
 
-            _lookup.Lookup(Arg.Any<PublicKey>(), token)
+            _lookup.Lookup(Arg.Any<PublicKey>(), Arg.Any<CancellationToken>())
                 .Returns(CreateAsyncEnumerable(node1, node2));
-            _discv4Adapter.Ping(node1, token)
+            _discv4Adapter.Ping(node1, Arg.Any<CancellationToken>())
                 .Returns(Task.CompletedTask);
-            _discv4Adapter.Ping(node2, token)
+            _discv4Adapter.Ping(node2, Arg.Any<CancellationToken>())
                 .Returns(Task.CompletedTask);
 
             IAsyncEnumerator<Node> enumerator = _nodeSource.DiscoverNodes(token).GetAsyncEnumerator(token);
@@ -84,7 +85,7 @@ namespace Nethermind.Network.Discovery.Test.Discv4
             await enumerator.MoveNextAsync();
             Assert.That(enumerator.Current, Is.EqualTo(node2));
 
-            _lookup.Received().Lookup(Arg.Any<PublicKey>(), token);
+            _lookup.Received().Lookup(Arg.Any<PublicKey>(), Arg.Any<CancellationToken>());
         }
 
         [Test]
@@ -92,7 +93,7 @@ namespace Nethermind.Network.Discovery.Test.Discv4
         public async Task DiscoverNodes_should_ping_nodes_that_have_not_received_pong(CancellationToken token)
         {
             Node node = new(TestItem.PublicKeyA, "192.168.1.1", 30303);
-            _lookup.Lookup(Arg.Any<PublicKey>(), token)
+            _lookup.Lookup(Arg.Any<PublicKey>(), Arg.Any<CancellationToken>())
                 .Returns(CreateAsyncEnumerable(node));
 
             IAsyncEnumerable<Node> discoveryEnumerable = _nodeSource.DiscoverNodes(token);
@@ -102,7 +103,7 @@ namespace Nethermind.Network.Discovery.Test.Discv4
             // Assert - Verify that ping was called
             await _discv4Adapter.Received(2).Ping(
                 Arg.Is<Node>(n => n == node),
-                token);
+                Arg.Any<CancellationToken>());
         }
 
         [Test]
@@ -123,7 +124,7 @@ namespace Nethermind.Network.Discovery.Test.Discv4
             // Set up session2 to have received a pong
             session2.OnPongReceived();
 
-            _lookup.Lookup(Arg.Any<PublicKey>(), token)
+            _lookup.Lookup(Arg.Any<PublicKey>(), Arg.Any<CancellationToken>())
                 .Returns(CreateAsyncEnumerable(node1, node2));
 
             IAsyncEnumerable<Node> discoveryEnumerable = _nodeSource.DiscoverNodes(token);
@@ -134,7 +135,7 @@ namespace Nethermind.Network.Discovery.Test.Discv4
 
             await _discv4Adapter.DidNotReceive().Ping(
                 Arg.Is<Node>(n => n == node1),
-                token);
+                Arg.Any<CancellationToken>());
         }
 
         [Test]
@@ -144,12 +145,12 @@ namespace Nethermind.Network.Discovery.Test.Discv4
             Node node1 = new(TestItem.PublicKeyA, "192.168.1.1", 30303);
             Node node2 = new(TestItem.PublicKeyB, "192.168.1.2", 30303);
 
-            _discv4Adapter.Ping(node1, token)
+            _discv4Adapter.Ping(node1, Arg.Any<CancellationToken>())
                 .Returns(Task.FromException(new OperationCanceledException()));
-            _discv4Adapter.Ping(node2, token)
+            _discv4Adapter.Ping(node2, Arg.Any<CancellationToken>())
                 .Returns(Task.CompletedTask);
 
-            _lookup.Lookup(Arg.Any<PublicKey>(), token)
+            _lookup.Lookup(Arg.Any<PublicKey>(), Arg.Any<CancellationToken>())
                 .Returns(CreateAsyncEnumerable(node1, node2));
 
             IAsyncEnumerable<Node> discoveryEnumerable = _nodeSource.DiscoverNodes(token);
@@ -160,7 +161,7 @@ namespace Nethermind.Network.Discovery.Test.Discv4
 
             await _discv4Adapter.Received(2).Ping(
                 Arg.Is<Node>(n => n == node1),
-                token);
+                Arg.Any<CancellationToken>());
         }
 
         [Test]
@@ -172,7 +173,7 @@ namespace Nethermind.Network.Discovery.Test.Discv4
 
             _nodeSession.OnPongReceived();
 
-            _lookup.Lookup(Arg.Any<PublicKey>(), token)
+            _lookup.Lookup(Arg.Any<PublicKey>(), Arg.Any<CancellationToken>())
                 .Returns(CreateAsyncEnumerable(node1));
 
             IAsyncEnumerable<Node> discoveryEnumerable = _nodeSource.DiscoverNodes(token);
@@ -220,7 +221,7 @@ namespace Nethermind.Network.Discovery.Test.Discv4
 
             // Set up the lookup to return different nodes for different calls
             int callCount = 0;
-            _lookup.Lookup(Arg.Any<PublicKey>(), token)
+            _lookup.Lookup(Arg.Any<PublicKey>(), Arg.Any<CancellationToken>())
                 .Returns(_ =>
                 {
                     callCount++;
@@ -238,7 +239,22 @@ namespace Nethermind.Network.Discovery.Test.Discv4
             // Assert - Verify that lookup was called at least twice
             _lookup.Received(2).Lookup(
                 Arg.Any<PublicKey>(),
-                token);
+                Arg.Any<CancellationToken>());
+        }
+
+        [Test]
+        [CancelAfter(10000)]
+        public async Task DiscoverNodes_should_stop_background_jobs_when_enumeration_is_disposed(CancellationToken token)
+        {
+            _discoveryConfig.ConcurrentDiscoveryJob = 1;
+            Node node = new(TestItem.PublicKeyA, "192.168.1.1", 30303);
+            _nodeSession.OnPongReceived();
+            _lookup.Lookup(Arg.Any<PublicKey>(), Arg.Any<CancellationToken>())
+                .Returns(CreateAsyncEnumerable(node));
+
+            List<Node> nodes = await _nodeSource.DiscoverNodes(CancellationToken.None).Take(1).ToListAsync(token);
+
+            Assert.That(nodes, Is.EqualTo(new[] { node }));
         }
 
         private static async IAsyncEnumerable<T> CreateAsyncEnumerable<T>(params IEnumerable<T> items)

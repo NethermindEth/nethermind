@@ -6,8 +6,8 @@ using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core.Crypto;
+using Nethermind.Kademlia;
 using Nethermind.Logging;
-using Nethermind.Network.Discovery.Kademlia;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -25,7 +25,7 @@ public class LookupKNearestNeighbourTests
     private static (LookupKNearestNeighbour<ValueHash256, ValueHash256> Lookup, IRoutingTable<ValueHash256> Routing, INodeHealthTracker<ValueHash256> Health) CreateLookup(int alpha, TimeSpan hardTimeout, ValueHash256[] seeds)
     {
         IRoutingTable<ValueHash256> routing = Substitute.For<IRoutingTable<ValueHash256>>();
-        routing.GetKNearestNeighbour(Arg.Any<ValueHash256>(), Arg.Any<ValueHash256?>()).Returns(seeds);
+        routing.GetKNearestNeighbour(Arg.Any<KademliaHash>(), Arg.Any<KademliaHash?>()).Returns(seeds);
 
         INodeHealthTracker<ValueHash256> health = Substitute.For<INodeHealthTracker<ValueHash256>>();
 
@@ -56,7 +56,7 @@ public class LookupKNearestNeighbourTests
         using CancellationTokenSource cts = CancellationTokenSource.CreateLinkedTokenSource(token);
 
         Task<ValueHash256[]> task = lookup.Lookup(
-            Seed1,
+            IdentityNodeHashProvider.ToKademliaHash(Seed1),
             8,
             async (_, t) =>
             {
@@ -87,7 +87,7 @@ public class LookupKNearestNeighbourTests
         };
 
         ValueHash256[] result = await lookup.Lookup(
-            Self,
+            IdentityNodeHashProvider.ToKademliaHash(Self),
             8,
             (node, _) => Task.FromResult<ValueHash256[]?>(neighbours.GetValueOrDefault(node, [])),
             token);

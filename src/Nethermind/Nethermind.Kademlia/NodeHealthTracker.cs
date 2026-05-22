@@ -2,11 +2,10 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core.Caching;
-using Nethermind.Core.Crypto;
 using Nethermind.Logging;
 using NonBlocking;
 
-namespace Nethermind.Network.Discovery.Kademlia;
+namespace Nethermind.Kademlia;
 
 public class NodeHealthTracker<TKey, TNode>(
     KademliaConfig<TNode> config,
@@ -18,16 +17,16 @@ public class NodeHealthTracker<TKey, TNode>(
 {
     private readonly ILogger _logger = logManager.GetClassLogger<NodeHealthTracker<TKey, TNode>>();
 
-    private readonly ConcurrentDictionary<ValueHash256, bool> _isRefreshing = new();
-    private readonly LruCache<ValueHash256, int> _peerFailures = new(1024, "peer failure");
-    private readonly ValueHash256 _currentNodeIdAsHash = nodeHashProvider.GetHash(config.CurrentNodeId);
+    private readonly ConcurrentDictionary<KademliaHash, bool> _isRefreshing = new();
+    private readonly LruCache<KademliaHash, int> _peerFailures = new(1024, "peer failure");
+    private readonly KademliaHash _currentNodeIdAsHash = nodeHashProvider.GetHash(config.CurrentNodeId);
     private readonly TimeSpan _refreshPingTimeout = config.RefreshPingTimeout;
 
     private bool SameAsSelf(TNode node) => nodeHashProvider.GetHash(node) == _currentNodeIdAsHash;
 
     private void TryRefresh(TNode toRefresh)
     {
-        ValueHash256 nodeHash = nodeHashProvider.GetHash(toRefresh);
+        KademliaHash nodeHash = nodeHashProvider.GetHash(toRefresh);
         if (_isRefreshing.TryAdd(nodeHash, true))
         {
             Task.Run(async () =>
@@ -94,7 +93,7 @@ public class NodeHealthTracker<TKey, TNode>(
     /// <param name="node"></param>
     public void OnRequestFailed(TNode node)
     {
-        ValueHash256 hash = nodeHashProvider.GetHash(node);
+        KademliaHash hash = nodeHashProvider.GetHash(node);
         if (!_peerFailures.TryGet(hash, out int currentFailure))
         {
             _peerFailures.Set(hash, 1);

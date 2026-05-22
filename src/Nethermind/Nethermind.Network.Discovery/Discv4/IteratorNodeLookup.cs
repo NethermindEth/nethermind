@@ -4,11 +4,10 @@
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Utils;
+using Nethermind.Kademlia;
 using Nethermind.Logging;
-using Nethermind.Network.Discovery.Kademlia;
 using NonBlocking;
 
 namespace Nethermind.Network.Discovery.Discv4;
@@ -29,10 +28,10 @@ public class IteratorNodeLookup<TKey, TNode>(
     ILogManager logManager) : IIteratorNodeLookup<TKey, TNode> where TNode : notnull
 {
     private readonly ILogger _logger = logManager.GetClassLogger<IteratorNodeLookup<TKey, TNode>>();
-    private readonly ValueHash256 _currentNodeIdAsHash = keyOperator.GetNodeHash(kademliaConfig.CurrentNodeId);
+    private readonly KademliaHash _currentNodeIdAsHash = keyOperator.GetNodeHash(kademliaConfig.CurrentNodeId);
 
     // Small lru of unreachable nodes, prevent retrying. Pretty effective, although does not improve discovery overall.
-    private readonly LruCache<ValueHash256, DateTimeOffset> _unreachableNodes = new(256, "");
+    private readonly LruCache<KademliaHash, DateTimeOffset> _unreachableNodes = new(256, "");
 
     // The maximum round per lookup. Higher means that it will 'see' deeper into the network, but come at a latency
     // cost of trying many node for increasingly lower new node.
@@ -46,23 +45,23 @@ public class IteratorNodeLookup<TKey, TNode>(
 
     public async IAsyncEnumerable<TNode> Lookup(TKey target, [EnumeratorCancellation] CancellationToken token)
     {
-        ValueHash256 targetHash = keyOperator.GetKeyHash(target);
+        KademliaHash targetHash = keyOperator.GetKeyHash(target);
         if (_logger.IsDebug) _logger.Debug($"Initiate lookup for hash {targetHash}");
 
         using AutoCancelTokenSource cts = token.CreateChildTokenSource();
         token = cts.Token;
 
-        ConcurrentDictionary<ValueHash256, TNode> queried = new();
-        ConcurrentDictionary<ValueHash256, TNode> seen = new();
+        ConcurrentDictionary<KademliaHash, TNode> queried = new();
+        ConcurrentDictionary<KademliaHash, TNode> seen = new();
 
-        IComparer<ValueHash256> comparer = Comparer<ValueHash256>.Create((h1, h2) =>
+        IComparer<KademliaHash> comparer = Comparer<KademliaHash>.Create((h1, h2) =>
             Hash256XorUtils.Compare(h1, h2, targetHash));
 
         // Ordered by lowest distance. Will get popped for next round.
-        PriorityQueue<(ValueHash256, TNode), ValueHash256> queryQueue = new(comparer);
+        PriorityQueue<(KademliaHash, TNode), KademliaHash> queryQueue = new(comparer);
 
         // Used to determine if the worker should stop
-        ValueHash256 bestNodeId = ValueKeccak.Zero;
+        KademliaHash bestNodeId = KademliaHash.Zero;
         int closestNodeRound = 0;
         int currentRound = 0;
         int totalResult = 0;
@@ -70,14 +69,14 @@ public class IteratorNodeLookup<TKey, TNode>(
         // Check internal table first
         foreach (TNode node in routingTable.GetKNearestNeighbour(targetHash, null))
         {
-            ValueHash256 nodeHash = keyOperator.GetNodeHash(node);
+            KademliaHash nodeHash = keyOperator.GetNodeHash(node);
             seen.TryAdd(nodeHash, node);
 
             queryQueue.Enqueue((nodeHash, node), nodeHash);
 
             yield return node;
 
-            if (bestNodeId == ValueKeccak.Zero || comparer.Compare(nodeHash, bestNodeId) < 0)
+            if (bestNodeId == KademliaHash.Zero || comparer.Compare(nodeHash, bestNodeId) < 0)
             {
                 bestNodeId = nodeHash;
             }
@@ -86,7 +85,7 @@ public class IteratorNodeLookup<TKey, TNode>(
         while (true)
         {
             token.ThrowIfCancellationRequested();
-            if (!queryQueue.TryDequeue(out (ValueHash256 hash, TNode node) toQuery, out ValueHash256 hash256))
+            if (!queryQueue.TryDequeue(out (KademliaHash hash, TNode node) toQuery, out KademliaHash hash256))
             {
                 // No node to query and running query.
                 if (_logger.IsTrace) _logger.Trace("Stopping lookup. No node to query.");
@@ -109,7 +108,7 @@ public class IteratorNodeLookup<TKey, TNode>(
             int seenIgnored = 0;
             foreach (TNode neighbour in neighbours!)
             {
-                ValueHash256 neighbourHash = keyOperator.GetNodeHash(neighbour);
+                KademliaHash neighbourHash = keyOperator.GetNodeHash(neighbour);
 
                 // Already queried, we ignore
                 if (queried.ContainsKey(neighbourHash))

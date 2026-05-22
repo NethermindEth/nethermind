@@ -2,27 +2,26 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Text;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Threading;
 using Nethermind.Logging;
 
-namespace Nethermind.Network.Discovery.Kademlia;
+namespace Nethermind.Kademlia;
 
 public class KBucketTree<TNode> : IRoutingTable<TNode> where TNode : notnull
 {
-    private class TreeNode(int k, ValueHash256 prefix)
+    private class TreeNode(int k, KademliaHash prefix)
     {
         public KBucket<TNode> Bucket { get; } = new KBucket<TNode>(k);
         public TreeNode? Left { get; set; }
         public TreeNode? Right { get; set; }
-        public ValueHash256 Prefix { get; } = prefix;
+        public KademliaHash Prefix { get; } = prefix;
         public bool IsLeaf => Left == null && Right == null;
     }
 
     private readonly TreeNode _root;
     private readonly int _b;
     private readonly int _k;
-    private readonly ValueHash256 _currentNodeHash;
+    private readonly KademliaHash _currentNodeHash;
     private readonly ILogger _logger;
 
     // TODO: Double check and probably make lockless
@@ -33,12 +32,12 @@ public class KBucketTree<TNode> : IRoutingTable<TNode> where TNode : notnull
         _k = config.KSize;
         _b = config.Beta;
         _currentNodeHash = nodeHashProvider.GetHash(config.CurrentNodeId);
-        _root = new TreeNode(config.KSize, new ValueHash256());
+        _root = new TreeNode(config.KSize, KademliaHash.Zero);
         _logger = logManager.GetClassLogger<KBucketTree<TNode>>();
         if (_logger.IsDebug) _logger.Debug($"Initialized KBucketTree with k={_k}, currentNodeId={_currentNodeHash}");
     }
 
-    public BucketAddResult TryAddOrRefresh(in ValueHash256 nodeHash, TNode node, out TNode? toRefresh)
+    public BucketAddResult TryAddOrRefresh(in KademliaHash nodeHash, TNode node, out TNode? toRefresh)
     {
         BucketAddResult resp;
         bool fireAdded;
@@ -86,13 +85,13 @@ public class KBucketTree<TNode> : IRoutingTable<TNode> where TNode : notnull
         return resp;
     }
 
-    public TNode? GetByHash(ValueHash256 hash)
+    public TNode? GetByHash(KademliaHash hash)
     {
         using McsLock.Disposable _ = _lock.Acquire();
         return GetBucketForHash(hash).GetByHash(hash);
     }
 
-    private KBucket<TNode> GetBucketForHash(ValueHash256 nodeHash)
+    private KBucket<TNode> GetBucketForHash(KademliaHash nodeHash)
     {
         TreeNode current = _root;
         int depth = 0;
@@ -124,15 +123,15 @@ public class KBucketTree<TNode> : IRoutingTable<TNode> where TNode : notnull
         node.Left = new TreeNode(_k, node.Prefix);
         byte[] rightPrefixBytes = node.Prefix.Bytes.ToArray();
         rightPrefixBytes[depth / 8] |= (byte)(1 << (7 - (depth % 8)));
-        node.Right = new TreeNode(_k, new ValueHash256(rightPrefixBytes));
+        node.Right = new TreeNode(_k, KademliaHash.FromBytes(rightPrefixBytes));
 
         if (_logger.IsDebug) _logger.Debug($"Created children at depth {depth + 1}");
 
         // Iterate from oldest to newest so the new buckets preserve original LRU order.
-        (ValueHash256, TNode)[] items = node.Bucket.GetAllWithHash();
+        (KademliaHash, TNode)[] items = node.Bucket.GetAllWithHash();
         for (int i = items.Length - 1; i >= 0; i--)
         {
-            (ValueHash256 itemHash, TNode value) = items[i];
+            (KademliaHash itemHash, TNode value) = items[i];
             TreeNode? targetNode = GetBit(itemHash, depth) ? node.Right : node.Left;
             targetNode.Bucket.TryAddOrRefresh(itemHash, value, out _);
             if (_logger.IsDebug) _logger.Debug($"Moved item ({itemHash}, {value}) to {(GetBit(itemHash, depth) ? "right" : "left")} child");
@@ -142,7 +141,7 @@ public class KBucketTree<TNode> : IRoutingTable<TNode> where TNode : notnull
         if (_logger.IsDebug) _logger.Debug($"Finished splitting bucket. Left count: {node.Left.Bucket.Count}, Right count: {node.Right.Bucket.Count}");
     }
 
-    public bool Remove(in ValueHash256 nodeHash)
+    public bool Remove(in KademliaHash nodeHash)
     {
         bool removed;
         TNode? removedNode;
@@ -177,7 +176,7 @@ public class KBucketTree<TNode> : IRoutingTable<TNode> where TNode : notnull
         {
             if (depth <= targetDepth)
             {
-                foreach ((ValueHash256 hash, TNode item) in node.Bucket.GetAllWithHash())
+                foreach ((KademliaHash hash, TNode item) in node.Bucket.GetAllWithHash())
                 {
                     if (Hash256XorUtils.CalculateLogDistance(hash, _currentNodeHash) == distance)
                     {
@@ -225,7 +224,7 @@ public class KBucketTree<TNode> : IRoutingTable<TNode> where TNode : notnull
         }
     }
 
-    public IEnumerable<(ValueHash256 Prefix, int Distance, KBucket<TNode> Bucket)> IterateBuckets()
+    public IEnumerable<(KademliaHash Prefix, int Distance, KBucket<TNode> Bucket)> IterateBuckets()
     {
         using McsLock.Disposable _ = _lock.Acquire();
 
@@ -233,7 +232,7 @@ public class KBucketTree<TNode> : IRoutingTable<TNode> where TNode : notnull
         return DoIterateBucketRandomHashes(_root, 0).ToArray();
     }
 
-    private IEnumerable<(ValueHash256 Prefix, int Distance, KBucket<TNode> Bucket)> DoIterateBucketRandomHashes(TreeNode node, int depth)
+    private IEnumerable<(KademliaHash Prefix, int Distance, KBucket<TNode> Bucket)> DoIterateBucketRandomHashes(TreeNode node, int depth)
     {
         if (node.IsLeaf)
         {
@@ -241,30 +240,30 @@ public class KBucketTree<TNode> : IRoutingTable<TNode> where TNode : notnull
         }
         else
         {
-            foreach ((ValueHash256 Prefix, int Distance, KBucket<TNode> Bucket) bucketInfo in DoIterateBucketRandomHashes(node.Left!, depth + 1))
+            foreach ((KademliaHash Prefix, int Distance, KBucket<TNode> Bucket) bucketInfo in DoIterateBucketRandomHashes(node.Left!, depth + 1))
             {
                 yield return bucketInfo;
             }
 
-            foreach ((ValueHash256 Prefix, int Distance, KBucket<TNode> Bucket) bucketInfo in DoIterateBucketRandomHashes(node.Right!, depth + 1))
+            foreach ((KademliaHash Prefix, int Distance, KBucket<TNode> Bucket) bucketInfo in DoIterateBucketRandomHashes(node.Right!, depth + 1))
             {
                 yield return bucketInfo;
             }
         }
     }
 
-    private IEnumerable<(ValueHash256, TNode)> IterateNeighbour(ValueHash256 hash)
+    private IEnumerable<(KademliaHash, TNode)> IterateNeighbour(KademliaHash hash)
     {
         foreach (TreeNode treeNode in IterateNodeFromClosestToTarget(_root, 0, hash))
         {
-            foreach ((ValueHash256, TNode) entry in treeNode.Bucket.GetAllWithHash())
+            foreach ((KademliaHash, TNode) entry in treeNode.Bucket.GetAllWithHash())
             {
                 yield return entry;
             }
         }
     }
 
-    private IEnumerable<TreeNode> IterateNodeFromClosestToTarget(TreeNode currentNode, int depth, ValueHash256 target)
+    private IEnumerable<TreeNode> IterateNodeFromClosestToTarget(TreeNode currentNode, int depth, KademliaHash target)
     {
         if (currentNode.IsLeaf)
         {
@@ -299,7 +298,7 @@ public class KBucketTree<TNode> : IRoutingTable<TNode> where TNode : notnull
         }
     }
 
-    public TNode[] GetKNearestNeighbour(ValueHash256 hash, ValueHash256? exclude, bool excludeSelf)
+    public TNode[] GetKNearestNeighbour(KademliaHash hash, KademliaHash? exclude, bool excludeSelf)
     {
         using McsLock.Disposable _ = _lock.Acquire();
 
@@ -320,7 +319,7 @@ public class KBucketTree<TNode> : IRoutingTable<TNode> where TNode : notnull
 
         TNode[] resultArr = new TNode[_k];
         int count = 0;
-        foreach ((ValueHash256 itemHash, TNode item) in IterateNeighbour(hash))
+        foreach ((KademliaHash itemHash, TNode item) in IterateNeighbour(hash))
         {
             if (exclude != null && itemHash == exclude.Value) continue;
             if (excludeSelf && itemHash == _currentNodeHash) continue;
@@ -334,7 +333,7 @@ public class KBucketTree<TNode> : IRoutingTable<TNode> where TNode : notnull
         return truncated;
     }
 
-    private bool GetBit(ValueHash256 hash, int index)
+    private bool GetBit(KademliaHash hash, int index)
     {
         int byteIndex = index / 8;
         int bitIndex = index % 8;
@@ -423,7 +422,7 @@ public class KBucketTree<TNode> : IRoutingTable<TNode> where TNode : notnull
         get
         {
             int total = 0;
-            foreach ((ValueHash256 Prefix, int Distance, KBucket<TNode> Bucket) in IterateBuckets())
+            foreach ((KademliaHash Prefix, int Distance, KBucket<TNode> Bucket) in IterateBuckets())
             {
                 total += Bucket.Count;
             }

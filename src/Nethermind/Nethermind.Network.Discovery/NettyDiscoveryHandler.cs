@@ -109,10 +109,6 @@ public class NettyDiscoveryHandler(
         EndPoint address = packet.Sender;
 
         int size = content.ReadableBytes;
-        using ArrayPoolDisposableReturn handle = ArrayPoolDisposableReturn.Rent(size, out byte[] msgBytes);
-
-        content.ReadBytes(msgBytes, 0, size);
-
         Interlocked.Add(ref Metrics.DiscoveryBytesReceived, size);
 
         if (size < 98)
@@ -121,11 +117,14 @@ public class NettyDiscoveryHandler(
             return false;
         }
 
-        if (FromMsgTypeByte(msgBytes[97]) is not { } type)
+        int readerIndex = content.ReaderIndex;
+        byte msgTypeByte = content.GetByte(readerIndex + 97);
+        if (FromMsgTypeByte(msgTypeByte) is not { } type)
         {
-            if (_logger.IsDebug) _logger.Debug($"Unsupported message type: {msgBytes[97]}, sender: {address}, message {msgBytes.AsSpan(0, size).ToHexString()}");
+            if (_logger.IsDebug) _logger.Debug($"Unsupported message type: {msgTypeByte}, sender: {address}");
             return false;
         }
+
         if (_logger.IsTrace) _logger.Trace($"Received message: {type}");
 
         if (address is IPEndPoint remoteEndpoint && !TryAcceptInbound(remoteEndpoint))
@@ -134,6 +133,9 @@ public class NettyDiscoveryHandler(
             shouldForward = false;
             return false;
         }
+
+        using ArrayPoolDisposableReturn handle = ArrayPoolDisposableReturn.Rent(size, out byte[] msgBytes);
+        content.GetBytes(readerIndex, msgBytes, 0, size);
 
         try
         {

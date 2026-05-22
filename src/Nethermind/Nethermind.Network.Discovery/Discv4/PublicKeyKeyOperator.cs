@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core.Crypto;
-using Nethermind.Network.Discovery.Kademlia;
+using Nethermind.Kademlia;
 using Nethermind.Stats.Model;
 
 namespace Nethermind.Network.Discovery.Discv4;
@@ -11,7 +11,7 @@ public class PublicKeyKeyOperator : IKeyOperator<PublicKey, Node>
 {
     public PublicKey GetKey(Node node) => node.Id;
 
-    public ValueHash256 GetKeyHash(PublicKey key) => key.Hash;
+    public KademliaHash GetKeyHash(PublicKey key) => KademliaHash.FromBytes(key.Hash.Bytes);
 
     /// <summary>
     /// Creates a random discv4 lookup target.
@@ -21,7 +21,7 @@ public class PublicKeyKeyOperator : IKeyOperator<PublicKey, Node>
     /// Constructing a public key whose Keccak hash lands in that prefix is not practical, so this uses a random
     /// 64-byte target and treats discv4 bucket refresh as best-effort sampling.
     /// </remarks>
-    public PublicKey CreateRandomKeyAtDistance(ValueHash256 nodePrefix, int depth)
+    public PublicKey CreateRandomKeyAtDistance(KademliaHash nodePrefix, int depth)
     {
         Span<byte> randomBytes = new byte[64];
         Random.Shared.NextBytes(randomBytes);

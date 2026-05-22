@@ -4,8 +4,8 @@
 using System;
 using System.Linq;
 using Nethermind.Core.Crypto;
+using Nethermind.Kademlia;
 using Nethermind.Logging;
-using Nethermind.Network.Discovery.Kademlia;
 using NUnit.Framework;
 
 namespace Nethermind.Network.Discovery.Test.Kademlia;
@@ -20,10 +20,12 @@ public class KBucketTreeTests
         LimboLogs.Instance);
 
     private static void Add(KBucketTree<ValueHash256> tree, ValueHash256 hash) =>
-        tree.TryAddOrRefresh(hash, hash, out _);
+        tree.TryAddOrRefresh(IdentityNodeHashProvider.ToKademliaHash(hash), hash, out _);
 
     private static ValueHash256 HashAtDistance(int distance, byte tag) =>
-        Hash256XorUtils.GetRandomHashAtDistance(SelfHash, distance, new Random(tag));
+        ToValueHash(Hash256XorUtils.GetRandomHashAtDistance(IdentityNodeHashProvider.ToKademliaHash(SelfHash), distance, new Random(tag)));
+
+    private static ValueHash256 ToValueHash(KademliaHash hash) => new(hash.Bytes);
 
     [Test]
     public void Split_should_preserve_lru_order_in_child_buckets()

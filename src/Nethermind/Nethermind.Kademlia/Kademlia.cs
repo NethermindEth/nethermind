@@ -3,10 +3,9 @@
 
 using System.Diagnostics;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.Logging;
 
-namespace Nethermind.Network.Discovery.Kademlia;
+namespace Nethermind.Kademlia;
 
 public class Kademlia<TKey, TNode> : IKademlia<TKey, TNode> where TNode : notnull
 {
@@ -18,13 +17,13 @@ public class Kademlia<TKey, TNode> : IKademlia<TKey, TNode> where TNode : notnul
     private readonly ILogger _logger;
 
     private readonly TNode _currentNodeId;
-    private readonly ValueHash256 _currentNodeIdAsHash;
+    private readonly KademliaHash _currentNodeIdAsHash;
     private readonly int _kSize;
     private readonly TimeSpan _refreshInterval;
     private readonly TimeSpan _bucketRefreshInterval;
     private readonly IReadOnlyList<TNode> _bootNodes;
     private readonly ITimestamper _timestamper;
-    private readonly Dictionary<ValueHash256, long> _lastBucketRefreshTicks = [];
+    private readonly Dictionary<KademliaHash, long> _lastBucketRefreshTicks = [];
     private readonly object _lastBucketRefreshLock = new();
 
     public Kademlia(
@@ -72,7 +71,7 @@ public class Kademlia<TKey, TNode> : IKademlia<TKey, TNode> where TNode : notnul
             {
                 if (SameAsSelf(nextNode))
                 {
-                    ValueHash256 keyHash = _keyOperator.GetKeyHash(key);
+                    KademliaHash keyHash = _keyOperator.GetKeyHash(key);
                     return _routingTable.GetKNearestNeighbour(keyHash);
                 }
                 return await _kademliaMessageSender.FindNeighbours(nextNode, key, token);
@@ -135,7 +134,7 @@ public class Kademlia<TKey, TNode> : IKademlia<TKey, TNode> where TNode : notnul
 
         // Refresh stale non-empty buckets one by one. A refresh means to do a k-nearest node lookup for a random hash
         // for that particular bucket.
-        foreach ((ValueHash256 Prefix, int Distance, KBucket<TNode> Bucket) in _routingTable.IterateBuckets())
+        foreach ((KademliaHash Prefix, int Distance, KBucket<TNode> Bucket) in _routingTable.IterateBuckets())
         {
             if (!ShouldRefreshBucket(Prefix, Bucket)) continue;
 
@@ -150,7 +149,7 @@ public class Kademlia<TKey, TNode> : IKademlia<TKey, TNode> where TNode : notnul
         }
     }
 
-    private bool ShouldRefreshBucket(ValueHash256 prefix, KBucket<TNode> bucket)
+    private bool ShouldRefreshBucket(KademliaHash prefix, KBucket<TNode> bucket)
     {
         if (bucket.Count == 0) return false;
 
@@ -170,9 +169,9 @@ public class Kademlia<TKey, TNode> : IKademlia<TKey, TNode> where TNode : notnul
 
     public TNode[] GetKNeighbour(TKey target, TNode? excluding = default, bool excludeSelf = false)
     {
-        ValueHash256? excludeHash = null;
+        KademliaHash? excludeHash = null;
         if (excluding != null) excludeHash = _keyOperator.GetNodeHash(excluding);
-        ValueHash256 hash = _keyOperator.GetKeyHash(target);
+        KademliaHash hash = _keyOperator.GetKeyHash(target);
         return _routingTable.GetKNearestNeighbour(hash, excludeHash, excludeSelf);
     }
 
@@ -190,7 +189,7 @@ public class Kademlia<TKey, TNode> : IKademlia<TKey, TNode> where TNode : notnul
 
     public IEnumerable<TNode> IterateNodes()
     {
-        foreach ((ValueHash256 _, int _, KBucket<TNode> Bucket) in _routingTable.IterateBuckets())
+        foreach ((KademliaHash _, int _, KBucket<TNode> Bucket) in _routingTable.IterateBuckets())
         {
             foreach (TNode node in Bucket.GetAll())
             {

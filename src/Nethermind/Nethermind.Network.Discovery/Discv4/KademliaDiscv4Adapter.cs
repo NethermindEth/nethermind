@@ -8,7 +8,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Utils;
 using Nethermind.Logging;
-using Nethermind.Network.Discovery.Kademlia;
+using Nethermind.Kademlia;
 using Nethermind.Network.Discovery.Messages;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Stats;
@@ -240,7 +240,7 @@ public class KademliaDiscv4Adapter(
         for (int i = 0; i < nodes.Length; i += MaxNodesPerNeighborsMsg)
         {
             int batchEnd = Math.Min(i + MaxNodesPerNeighborsMsg, nodes.Length);
-            await SendMessage(session, new NeighborsMsg(node.Address, CalculateExpirationTime(), nodes[i..batchEnd]), token);
+            await SendMessage(session, new NeighborsMsg(node.Address, CalculateExpirationTime(), new ArraySegment<Node>(nodes, i, batchEnd - i)), token);
         }
     }
 

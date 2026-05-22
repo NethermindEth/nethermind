@@ -120,6 +120,7 @@
   <Project Path="Nethermind.Init.Snapshot/Nethermind.Init.Snapshot.csproj" />
   <Project Path="Nethermind.Init/Nethermind.Init.csproj" />
   <Project Path="Nethermind.JsonRpc/Nethermind.JsonRpc.csproj" />
+  <Project Path="Nethermind.Kademlia/Nethermind.Kademlia.csproj" />
   <Project Path="Nethermind.KeyStore/Nethermind.KeyStore.csproj" />
   <Project Path="Nethermind.Merge.AuRa/Nethermind.Merge.AuRa.csproj" />
   <Project Path="Nethermind.Merkleization/Nethermind.Merkleization.csproj" />

@@ -67,7 +67,6 @@ public class E2EDiscoveryTests(DiscoveryVersion discoveryVersion)
     [Parallelizable(ParallelScope.None)]
     public async Task TestDiscovery()
     {
-        if (discoveryVersion == DiscoveryVersion.V5) Assert.Ignore("DiscV5 does not seems to work.");
         CancellationTokenSource cancellationTokenSource = new CancellationTokenSource().ThatCancelAfter(TestTimeout);
 
         await using IContainer boot = CreateNode(TestItem.PrivateKeys[0]);

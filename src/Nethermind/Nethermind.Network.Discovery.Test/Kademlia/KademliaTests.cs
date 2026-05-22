@@ -9,6 +9,7 @@ using Autofac;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
+using Nethermind.Kademlia;
 using Nethermind.Network.Discovery.Kademlia;
 using NSubstitute;
 using NUnit.Framework;
@@ -88,7 +89,7 @@ public class KademliaTests
             Beta = 0,
         });
 
-        ValueHash256[] testHashes = Enumerable.Range(0, 10).Select((k) => Hash256XorUtils.GetRandomHashAtDistance(ValueKeccak.Zero, 250)).ToArray();
+        ValueHash256[] testHashes = Enumerable.Range(0, 10).Select((k) => RandomValueHashAtDistance(ValueKeccak.Zero, 250)).ToArray();
         foreach (ValueHash256 valueHash256 in testHashes[..10])
         {
             kad.AddOrRefresh(valueHash256);
@@ -157,16 +158,16 @@ public class KademliaTests
         ValueHash256[] testHashes = new IEnumerable<ValueHash256>[]
         {
             Enumerable.Range(0, 5).Select((k) =>
-                Hash256XorUtils.GetRandomHashAtDistance(new("0x0000000000000000000000000000000000000000000000000000000000000000"), 248)
+                RandomValueHashAtDistance(new("0x0000000000000000000000000000000000000000000000000000000000000000"), 248)
             ),
             Enumerable.Range(0, 5).Select((k) =>
-                Hash256XorUtils.GetRandomHashAtDistance(new("0x0100000000000000000000000000000000000000000000000000000000000000"), 248)
+                RandomValueHashAtDistance(new("0x0100000000000000000000000000000000000000000000000000000000000000"), 248)
             ),
             Enumerable.Range(0, 5).Select((k) =>
-                Hash256XorUtils.GetRandomHashAtDistance(new("0x0200000000000000000000000000000000000000000000000000000000000000"), 248)
+                RandomValueHashAtDistance(new("0x0200000000000000000000000000000000000000000000000000000000000000"), 248)
             ),
             Enumerable.Range(0, 5).Select((k) =>
-                Hash256XorUtils.GetRandomHashAtDistance(new("0x0300000000000000000000000000000000000000000000000000000000000000"), 248)
+                RandomValueHashAtDistance(new("0x0300000000000000000000000000000000000000000000000000000000000000"), 248)
             ),
         }.SelectMany(it => it).ToArray();
 
@@ -181,13 +182,20 @@ public class KademliaTests
         Assert.That(kad.GetAllAtDistance(250).ToHashSet(), Is.EquivalentTo(testHashes[10..].ToHashSet()));
     }
 
+    private static KademliaHash ToKademliaHash(ValueHash256 hash) => KademliaHash.FromBytes(hash.BytesAsSpan);
+
+    private static ValueHash256 ToValueHash(KademliaHash hash) => new(hash.Bytes);
+
+    private static ValueHash256 RandomValueHashAtDistance(ValueHash256 currentHash, int distance) =>
+        ToValueHash(Hash256XorUtils.GetRandomHashAtDistance(ToKademliaHash(currentHash), distance));
+
     private class ValueHashNodeHashProvider : IKeyOperator<ValueHash256, ValueHash256>
     {
         public ValueHash256 GetKey(ValueHash256 node) => node;
 
-        public ValueHash256 GetKeyHash(ValueHash256 key) => key;
+        public KademliaHash GetKeyHash(ValueHash256 key) => ToKademliaHash(key);
 
-        public ValueHash256 CreateRandomKeyAtDistance(ValueHash256 nodePrefix, int depth) =>
-            Hash256XorUtils.GetRandomHashAtDistance(nodePrefix, depth);
+        public ValueHash256 CreateRandomKeyAtDistance(KademliaHash nodePrefix, int depth) =>
+            ToValueHash(Hash256XorUtils.GetRandomHashAtDistance(nodePrefix, depth));
     }
 }

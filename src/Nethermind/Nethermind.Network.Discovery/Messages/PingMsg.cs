@@ -20,7 +20,7 @@ public class PingMsg : DiscoveryMsg
     /// <summary>
     /// https://eips.ethereum.org/EIPS/eip-868
     /// </summary>
-    public long? EnrSequence { get; set; }
+    public ulong? EnrSequence { get; set; }
 
     public PingMsg(PublicKey farPublicKey, long expirationTime, IPEndPoint source, IPEndPoint destination, byte[] mdc)
         : base(farPublicKey, expirationTime)

@@ -69,7 +69,7 @@ public class PingMsgSerializer(IEcdsa ecdsa, [KeyFilter(IProtectedPrivateKey.Nod
         {
             if (ctx.Position < ctx.Length)
             {
-                long enrSequence = ctx.DecodeLong();
+                ulong enrSequence = ctx.DecodeULong();
                 msg.EnrSequence = enrSequence;
             }
         }

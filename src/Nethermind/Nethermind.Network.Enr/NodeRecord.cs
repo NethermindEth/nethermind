@@ -1,13 +1,11 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Text;
-using DotNetty.Buffers;
-using DotNetty.Codecs.Base64;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Crypto;
 using Nethermind.Serialization.Rlp;
+using Convert = System.Convert;
 
 namespace Nethermind.Network.Enr;
 
@@ -16,7 +14,7 @@ namespace Nethermind.Network.Enr;
 /// </summary>
 public class NodeRecord
 {
-    private long _enrSequence;
+    private ulong _enrSequence;
 
     private string? _enrString;
 
@@ -36,7 +34,7 @@ public class NodeRecord
     /// update to the node data. Setting sequence on this class wipes out <see cref="EnrString"/> and
     /// <see cref="ContentHash"/>.
     /// </summary>
-    public long EnrSequence
+    public ulong EnrSequence
     {
         get => _enrSequence;
         set
@@ -89,6 +87,39 @@ public class NodeRecord
     public bool Snap { get; set; }
 
     public NodeRecord() => SetEntry(IdEntry.Instance);
+
+    public static NodeRecord FromEnrString(string enrString)
+    {
+        const string prefix = "enr:";
+        if (!enrString.StartsWith(prefix, StringComparison.Ordinal))
+        {
+            throw new ArgumentException("ENR must start with the 'enr:' prefix.", nameof(enrString));
+        }
+
+        string base64 = enrString[prefix.Length..].Replace('-', '+').Replace('_', '/');
+        int padding = (4 - base64.Length % 4) % 4;
+        if (padding is not 0)
+        {
+            base64 = string.Concat(base64, new string('=', padding));
+        }
+
+        return FromBytes(Convert.FromBase64String(base64));
+    }
+
+    public static NodeRecord FromBytes(ReadOnlySpan<byte> bytes)
+        => FromBytes(bytes.ToArray());
+
+    public static NodeRecord FromBytes(byte[] bytes)
+    {
+        NodeRecordSigner signer = new(new Ecdsa());
+        NodeRecord nodeRecord = signer.Deserialize(new RlpStream(bytes));
+        if (!signer.Verify(nodeRecord))
+        {
+            throw new RlpException("Invalid ENR signature.");
+        }
+
+        return nodeRecord;
+    }
 
     /// <summary>
     /// Sets one of the record entries. Entries are then automatically sorted by keys.
@@ -195,6 +226,14 @@ public class NodeRecord
         return rlpStream.Data.AsSpan().ToHexString();
     }
 
+    public byte[] ToRlpBytes()
+    {
+        int rlpLength = GetRlpLengthWithSignature();
+        RlpStream rlpStream = new(rlpLength);
+        Encode(rlpStream);
+        return rlpStream.Data.ToArray()!;
+    }
+
     /// <summary>
     /// Applies Rlp([signature, seq, k, v, ...]]).
     /// </summary>
@@ -218,28 +257,9 @@ public class NodeRecord
         RequireSignature();
 
         const string prefix = "enr:";
-        int rlpLength = GetRlpLengthWithSignature();
-        IByteBuffer buffer = NethermindBuffers.Default.Buffer(rlpLength);
-        try
-        {
-            NettyRlpStream rlpStream = new(buffer);
-            Encode(rlpStream);
-            IByteBuffer resultBuffer = Base64.Encode(buffer, Base64Dialect.URL_SAFE);
-            try
-            {
-                string base64String = resultBuffer.ReadString(resultBuffer.ReadableBytes, Encoding.UTF8);
-                int skipLast = base64String[^2] == '=' ? 2 : base64String[^1] == '=' ? 1 : 0;
-                return string.Concat(prefix, base64String.AsSpan(0, base64String.Length - skipLast));
-            }
-            finally
-            {
-                resultBuffer.Release();
-            }
-        }
-        finally
-        {
-            buffer.Release();
-        }
+        string base64String = Convert.ToBase64String(ToRlpBytes()).Replace('+', '-').Replace('/', '_');
+        int skipLast = base64String[^2] == '=' ? 2 : base64String[^1] == '=' ? 1 : 0;
+        return string.Concat(prefix, base64String.AsSpan(0, base64String.Length - skipLast));
     }
 
     private void RequireSignature()
