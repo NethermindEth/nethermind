@@ -168,12 +168,7 @@ internal static class RpcJsonTypeDiscovery
         ImmutableArray<ISymbol> members = type.GetMembers();
         for (int i = 0; i < members.Length; i++)
         {
-            if (members[i] is not IMethodSymbol method ||
-                method.IsStatic ||
-                method.IsGenericMethod ||
-                method.IsImplicitlyDeclared ||
-                method.MethodKind != MethodKind.Ordinary ||
-                method.DeclaredAccessibility != Accessibility.Public)
+            if (GetPublicRpcMethod(members[i]) is not { } method)
             {
                 continue;
             }
@@ -191,12 +186,7 @@ internal static class RpcJsonTypeDiscovery
         ImmutableArray<ISymbol> members = type.GetMembers();
         for (int i = 0; i < members.Length; i++)
         {
-            if (members[i] is not IMethodSymbol method ||
-                method.IsStatic ||
-                method.IsGenericMethod ||
-                method.IsImplicitlyDeclared ||
-                method.MethodKind != MethodKind.Ordinary ||
-                method.DeclaredAccessibility != Accessibility.Public ||
+            if (GetPublicRpcMethod(members[i]) is not { } method ||
                 !HasJsonRpcMethodAttribute(method))
             {
                 continue;
@@ -205,6 +195,16 @@ internal static class RpcJsonTypeDiscovery
             names.Add(method.Name);
         }
     }
+
+    private static IMethodSymbol? GetPublicRpcMethod(ISymbol member) =>
+        member is IMethodSymbol
+        {
+            IsStatic: false,
+            IsGenericMethod: false,
+            IsImplicitlyDeclared: false,
+            MethodKind: MethodKind.Ordinary,
+            DeclaredAccessibility: Accessibility.Public
+        } method ? method : null;
 
     private static bool HasJsonRpcMethodAttribute(IMethodSymbol method)
     {
@@ -243,18 +243,12 @@ internal static class RpcJsonTypeDiscovery
         }
     }
 
-    private static ITypeSymbol UnwrapTaskLike(ITypeSymbol type)
-    {
-        if (type is INamedTypeSymbol namedType &&
-            namedType.IsGenericType &&
-            (IsNamedType(namedType.ConstructedFrom, SystemThreadingTasksNamespace, "Task`1") ||
-             IsNamedType(namedType.ConstructedFrom, SystemThreadingTasksNamespace, "ValueTask`1")))
-        {
-            return namedType.TypeArguments[0];
-        }
-
-        return type;
-    }
+    private static ITypeSymbol UnwrapTaskLike(ITypeSymbol type) =>
+        type is INamedTypeSymbol { IsGenericType: true } namedType &&
+        (IsNamedType(namedType.ConstructedFrom, SystemThreadingTasksNamespace, "Task`1") ||
+         IsNamedType(namedType.ConstructedFrom, SystemThreadingTasksNamespace, "ValueTask`1"))
+            ? namedType.TypeArguments[0]
+            : type;
 
     private static void AddJsonType(ITypeSymbol type, ImmutableArray<ITypeSymbol>.Builder types)
     {
