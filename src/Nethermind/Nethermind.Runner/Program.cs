@@ -599,26 +599,6 @@ static class BasicOptions
         HelpName = "path"
     };
 
-    public static Option<string> LoggerConfigurationSource { get; } =
-        new("--logger-config", "--loggerConfigSource", "-lcs")
-        {
-            Description = "The path to the logging configuration file.",
-            HelpName = "path"
-        };
-
-    public static Option<string> LogLevel { get; } = new("--log", "-l")
-    {
-        Description = "Log level (severity). Allowed values: off, trace, debug, info, warn, error.",
-        HelpName = "level"
-    };
-
-    public static Option<string> LoggingFormat { get; } = new("--logging-format", "--loggingFormat")
-    {
-        Description = "Console log output format. Allowed values: plain (default), ecs, gcp, logstash, gelf.",
-        HelpName = "format",
-        DefaultValueFactory = _ => "plain"
-    };
-
     public static Option<bool> ForceResync { get; } = CreateForceResyncOption();
 
     private static Option<bool> CreateForceResyncOption()
@@ -637,6 +617,26 @@ static class BasicOptions
 
         return option;
     }
+
+    public static Option<string> LoggerConfigurationSource { get; } =
+        new("--logger-config", "--loggerConfigSource", "-lcs")
+        {
+            Description = "The path to the logging configuration file.",
+            HelpName = "path"
+        };
+
+    public static Option<string> LoggingFormat { get; } = new("--logging-format")
+    {
+        Description = "Console log output format. Allowed values: plain, ecs, gcp, logstash, gelf.",
+        HelpName = "format",
+        DefaultValueFactory = _ => "plain"
+    };
+
+    public static Option<string> LogLevel { get; } = new("--log", "-l")
+    {
+        Description = "Log level (severity). Allowed values: off, trace, debug, info, warn, error.",
+        HelpName = "level"
+    };
 
     public static Option<string> PluginsDirectory { get; } =
         new("--plugins-dir", "--pluginsDirectory", "-pd")
