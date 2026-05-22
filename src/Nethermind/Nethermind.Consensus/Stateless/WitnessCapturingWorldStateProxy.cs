@@ -122,32 +122,32 @@ public sealed class WitnessCapturingWorldStateProxy(IWorldState inner) : IWorldS
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private HashSet<UInt256> RecordEmptySlots(Address address)
+    private void RecordAddress(Address address)
     {
-        if (_armed == 0) return _emptySlots;
-
-        ref HashSet<UInt256>? slot =
-            ref CollectionsMarshal.GetValueRefOrAddDefault(_storageSlots!, address, out _);
-        slot ??= [];
-        return slot;
+        // Snapshot the dictionary reference; Disarm may concurrently null it, but a non-null
+        // snapshot is safe to use even if the field is nulled afterwards.
+        Dictionary<Address, HashSet<UInt256>>? slots = _storageSlots;
+        if (slots is null) return;
+        CollectionsMarshal.GetValueRefOrAddDefault(slots, address, out _) ??= [];
     }
-
-    // Shared sentinel for the unarmed hot path, never mutated.
-    private static readonly HashSet<UInt256> _emptySlots = [];
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private void RecordSlot(in StorageCell storageCell)
     {
-        // Only mutate when armed; _emptySlots must never be written to.
-        if (_armed == 0) return;
-        RecordEmptySlots(storageCell.Address).Add(storageCell.Index);
+        Dictionary<Address, HashSet<UInt256>>? slots = _storageSlots;
+        if (slots is null) return;
+        ref HashSet<UInt256>? set =
+            ref CollectionsMarshal.GetValueRefOrAddDefault(slots, storageCell.Address, out _);
+        set ??= [];
+        set.Add(storageCell.Index);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private void RecordBytecode(in ValueHash256 codeHash, byte[]? code)
     {
-        if (_armed == 0 || code is not { Length: > 0 }) return;
-        _bytecodes!.TryAdd(codeHash, code);
+        Dictionary<ValueHash256, byte[]>? bytecodes = _bytecodes;
+        if (bytecodes is null || code is not { Length: > 0 }) return;
+        bytecodes.TryAdd(codeHash, code);
     }
 
     public bool HasStateForBlock(BlockHeader? baseBlock) => inner.HasStateForBlock(baseBlock);
@@ -159,37 +159,37 @@ public sealed class WitnessCapturingWorldStateProxy(IWorldState inner) : IWorldS
 
     public bool TryGetAccount(Address address, out AccountStruct account)
     {
-        RecordEmptySlots(address);
+        RecordAddress(address);
         return inner.TryGetAccount(address, out account);
     }
 
     public UInt256 GetNonce(Address address)
     {
-        RecordEmptySlots(address);
+        RecordAddress(address);
         return inner.GetNonce(address);
     }
 
     public bool IsStorageEmpty(Address address)
     {
-        RecordEmptySlots(address);
+        RecordAddress(address);
         return inner.IsStorageEmpty(address);
     }
 
     public bool HasCode(Address address)
     {
-        RecordEmptySlots(address);
+        RecordAddress(address);
         return inner.HasCode(address);
     }
 
     public bool IsNonZeroAccount(Address address, out bool accountExists)
     {
-        RecordEmptySlots(address);
+        RecordAddress(address);
         return inner.IsNonZeroAccount(address, out accountExists);
     }
 
     public bool IsDelegatedCode(Address address)
     {
-        RecordEmptySlots(address);
+        RecordAddress(address);
         byte[]? code = inner.GetCode(address);
         RecordBytecodeWithHashCompute(code);
         return Eip7702Constants.IsDelegatedCode(code);
@@ -204,7 +204,7 @@ public sealed class WitnessCapturingWorldStateProxy(IWorldState inner) : IWorldS
 
     public byte[]? GetCode(Address address)
     {
-        RecordEmptySlots(address);
+        RecordAddress(address);
         byte[]? code = inner.GetCode(address);
         RecordBytecodeWithHashCompute(code);
         return code;
@@ -225,38 +225,39 @@ public sealed class WitnessCapturingWorldStateProxy(IWorldState inner) : IWorldS
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private void RecordBytecodeWithHashCompute(byte[]? code)
     {
-        if (_armed == 0 || code is not { Length: > 0 }) return;
+        Dictionary<ValueHash256, byte[]>? bytecodes = _bytecodes;
+        if (bytecodes is null || code is not { Length: > 0 }) return;
         Hash256 hash = Keccak.Compute(code);
-        _bytecodes!.TryAdd(hash, code);
+        bytecodes.TryAdd(hash, code);
     }
 
     public bool IsContract(Address address)
     {
-        RecordEmptySlots(address);
+        RecordAddress(address);
         return inner.IsContract(address);
     }
 
     public bool AccountExists(Address address)
     {
-        RecordEmptySlots(address);
+        RecordAddress(address);
         return inner.AccountExists(address);
     }
 
     public bool IsDeadAccount(Address address)
     {
-        RecordEmptySlots(address);
+        RecordAddress(address);
         return inner.IsDeadAccount(address);
     }
 
     public ref readonly UInt256 GetBalance(Address address)
     {
-        RecordEmptySlots(address);
+        RecordAddress(address);
         return ref inner.GetBalance(address);
     }
 
     public ref readonly ValueHash256 GetCodeHash(Address address)
     {
-        RecordEmptySlots(address);
+        RecordAddress(address);
         return ref inner.GetCodeHash(address);
     }
 
@@ -295,7 +296,7 @@ public sealed class WitnessCapturingWorldStateProxy(IWorldState inner) : IWorldS
 
     public void ClearStorage(Address address)
     {
-        RecordEmptySlots(address);
+        RecordAddress(address);
         inner.ClearStorage(address);
     }
 
@@ -303,61 +304,61 @@ public sealed class WitnessCapturingWorldStateProxy(IWorldState inner) : IWorldS
 
     public void DeleteAccount(Address address)
     {
-        RecordEmptySlots(address);
+        RecordAddress(address);
         inner.DeleteAccount(address);
     }
 
     public void CreateAccount(Address address, in UInt256 balance, in UInt256 nonce = default)
     {
-        RecordEmptySlots(address);
+        RecordAddress(address);
         inner.CreateAccount(address, in balance, in nonce);
     }
 
     public void CreateAccountIfNotExists(Address address, in UInt256 balance, in UInt256 nonce = default)
     {
-        RecordEmptySlots(address);
+        RecordAddress(address);
         inner.CreateAccountIfNotExists(address, in balance, in nonce);
     }
 
     public bool InsertCode(Address address, in ValueHash256 codeHash, ReadOnlyMemory<byte> code, IReleaseSpec spec, bool isGenesis = false)
     {
-        RecordEmptySlots(address);
+        RecordAddress(address);
         return inner.InsertCode(address, in codeHash, code, spec, isGenesis);
     }
 
     public void AddToBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec, out UInt256 oldBalance)
     {
-        RecordEmptySlots(address);
+        RecordAddress(address);
         inner.AddToBalance(address, in balanceChange, spec, out oldBalance);
     }
 
     public bool AddToBalanceAndCreateIfNotExists(Address address, in UInt256 balanceChange, IReleaseSpec spec, out UInt256 oldBalance)
     {
-        RecordEmptySlots(address);
+        RecordAddress(address);
         return inner.AddToBalanceAndCreateIfNotExists(address, in balanceChange, spec, out oldBalance);
     }
 
     public void SubtractFromBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec, out UInt256 oldBalance)
     {
-        RecordEmptySlots(address);
+        RecordAddress(address);
         inner.SubtractFromBalance(address, in balanceChange, spec, out oldBalance);
     }
 
     public void IncrementNonce(Address address, UInt256 delta, out UInt256 oldNonce)
     {
-        RecordEmptySlots(address);
+        RecordAddress(address);
         inner.IncrementNonce(address, delta, out oldNonce);
     }
 
     public void DecrementNonce(Address address, UInt256 delta)
     {
-        RecordEmptySlots(address);
+        RecordAddress(address);
         inner.DecrementNonce(address, delta);
     }
 
     public void SetNonce(Address address, in UInt256 nonce)
     {
-        RecordEmptySlots(address);
+        RecordAddress(address);
         inner.SetNonce(address, in nonce);
     }
 
@@ -370,13 +371,13 @@ public sealed class WitnessCapturingWorldStateProxy(IWorldState inner) : IWorldS
 
     public void CreateEmptyAccountIfDeleted(Address address)
     {
-        RecordEmptySlots(address);
+        RecordAddress(address);
         inner.CreateEmptyAccountIfDeleted(address);
     }
 
     public void AddAccountRead(Address address)
     {
-        RecordEmptySlots(address);
+        RecordAddress(address);
         inner.AddAccountRead(address);
     }
 
