@@ -912,15 +912,24 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
         await WriteSingleEntryAsync(result, sink, cancellationToken);
     }
 
-    private ValueTask WriteSingleEntryAsync(
+    private ValueTask WriteSingleEntryAsync(JsonRpcResult.Entry entry, IJsonRpcResponseSink sink, CancellationToken cancellationToken) =>
+        WriteEntryAsync(entry, sink, isBatch: false, cancellationToken);
+
+    private ValueTask WriteBatchEntryAsync(JsonRpcResult.Entry entry, IJsonRpcResponseSink sink, CancellationToken cancellationToken) =>
+        WriteEntryAsync(entry, sink, isBatch: true, cancellationToken);
+
+    private ValueTask WriteEntryAsync(
         JsonRpcResult.Entry entry,
         IJsonRpcResponseSink sink,
+        bool isBatch,
         CancellationToken cancellationToken)
     {
         try
         {
             JsonRpcResult.Entry recorded = RecordResponse(entry);
-            ValueTask writeTask = sink.WriteSingleAsync(recorded.Response, recorded.Report, cancellationToken);
+            ValueTask writeTask = isBatch
+                ? sink.WriteBatchItemAsync(recorded.Response, recorded.Report, cancellationToken)
+                : sink.WriteSingleAsync(recorded.Response, recorded.Report, cancellationToken);
             if (writeTask.IsCompletedSuccessfully)
             {
                 writeTask.GetAwaiter().GetResult();
@@ -934,55 +943,18 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
         {
             DisposeEntry(entry);
             throw;
-        }
-
-        static async ValueTask AwaitAndDisposeAsync(ValueTask writeTask, JsonRpcResult.Entry entry)
-        {
-            try
-            {
-                await writeTask;
-            }
-            finally
-            {
-                DisposeEntry(entry);
-            }
         }
     }
 
-    private ValueTask WriteBatchEntryAsync(
-        JsonRpcResult.Entry entry,
-        IJsonRpcResponseSink sink,
-        CancellationToken cancellationToken)
+    private static async ValueTask AwaitAndDisposeAsync(ValueTask writeTask, JsonRpcResult.Entry entry)
     {
         try
         {
-            JsonRpcResult.Entry recorded = RecordResponse(entry);
-            ValueTask writeTask = sink.WriteBatchItemAsync(recorded.Response, recorded.Report, cancellationToken);
-            if (writeTask.IsCompletedSuccessfully)
-            {
-                writeTask.GetAwaiter().GetResult();
-                DisposeEntry(entry);
-                return ValueTask.CompletedTask;
-            }
-
-            return AwaitAndDisposeAsync(writeTask, entry);
+            await writeTask;
         }
-        catch
+        finally
         {
             DisposeEntry(entry);
-            throw;
-        }
-
-        static async ValueTask AwaitAndDisposeAsync(ValueTask writeTask, JsonRpcResult.Entry entry)
-        {
-            try
-            {
-                await writeTask;
-            }
-            finally
-            {
-                DisposeEntry(entry);
-            }
         }
     }
 
