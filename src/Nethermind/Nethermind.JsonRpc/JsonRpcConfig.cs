@@ -49,6 +49,7 @@ public class JsonRpcConfig : IJsonRpcConfig
     public long? MaxRequestBodySize { get; set; } = 30000000;
     public int MaxLogsPerResponse { get; set; } = 20_000;
     public bool EnableTracingStreamMode { get; set; } = true;
+    public int? DebugModuleConcurrentInstances { get; set; } = null;
     public int? EthModuleConcurrentInstances { get; set; } = null;
     public string JwtSecretFile { get; set; } = null;
     public bool UnsecureDevNoRpcAuthentication { get; set; }
