@@ -95,33 +95,21 @@ public class StartupTests
         );
     }
 
-    [Test]
+    [TestCase(false)]
+    [TestCase(true)]
     [NonParallelizable]
-    public async Task ProcessJsonRpcRequest_WithoutContentLength_ProcessesAndCountsActualBytes()
+    public async Task ProcessJsonRpcRequest_ProcessesAndCountsBytes(bool setContentLength)
     {
         string request = CreateJsonRpcRequest();
 
         long receivedBefore = JsonRpcMetrics.JsonRpcBytesReceivedHttp;
-        string response = await ProcessJsonRpcRequest(request, setContentLength: false);
+        string response = await ProcessJsonRpcRequest(request, setContentLength: setContentLength);
         long receivedBytes = JsonRpcMetrics.JsonRpcBytesReceivedHttp - receivedBefore;
 
         using JsonDocument doc = JsonDocument.Parse(response);
 
         Assert.That(doc.RootElement.GetProperty("result").ValueKind, Is.EqualTo(JsonValueKind.Array));
         Assert.That(receivedBytes, Is.EqualTo(Encoding.UTF8.GetByteCount(request)));
-    }
-
-    [Test]
-    [NonParallelizable]
-    public async Task ProcessJsonRpcRequest_WithContentLength_ProcessesRequest()
-    {
-        string request = CreateJsonRpcRequest();
-
-        string response = await ProcessJsonRpcRequest(request);
-
-        using JsonDocument doc = JsonDocument.Parse(response);
-
-        Assert.That(doc.RootElement.GetProperty("result").ValueKind, Is.EqualTo(JsonValueKind.Array));
     }
 
     [Test]
