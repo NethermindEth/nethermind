@@ -22,13 +22,12 @@ namespace Nethermind.JsonRpc.Test
 
         private ManualTimestamper _manualTimestamper = null!;
 
-        private readonly DateTime _startTime = DateTime.MinValue;
         private OneLoggerLogManager _logManager = null!;
 
         [SetUp]
         public void Setup()
         {
-            _manualTimestamper = new ManualTimestamper(_startTime);
+            _manualTimestamper = new ManualTimestamper(DateTime.MinValue);
             _testLogger = new TestLogger();
             _logManager = new OneLoggerLogManager(new(_testLogger));
         }
@@ -36,7 +35,7 @@ namespace Nethermind.JsonRpc.Test
         [Test]
         public void Success_average_is_fine()
         {
-            JsonRpcLocalStats localStats = new(_manualTimestamper, _config, _logManager);
+            JsonRpcLocalStats localStats = CreateStats();
             localStats.ReportCall("A", 100, true);
             localStats.ReportCall("A", 200, true);
             MakeTimePass();
@@ -48,7 +47,7 @@ namespace Nethermind.JsonRpc.Test
         [Test]
         public void Single_average_is_fine()
         {
-            JsonRpcLocalStats localStats = new(_manualTimestamper, _config, _logManager);
+            JsonRpcLocalStats localStats = CreateStats();
             localStats.ReportCall("A", 100, true);
             MakeTimePass();
             localStats.ReportCall("A", 300, true);
@@ -59,7 +58,7 @@ namespace Nethermind.JsonRpc.Test
         [Test]
         public void Swaps_properly()
         {
-            JsonRpcLocalStats localStats = new(_manualTimestamper, _config, _logManager);
+            JsonRpcLocalStats localStats = CreateStats();
             localStats.ReportCall("A", 100, true);
             MakeTimePass();
             localStats.ReportCall("A", 300, true);
@@ -78,7 +77,7 @@ namespace Nethermind.JsonRpc.Test
         [Test]
         public void Calls_do_not_delay_report()
         {
-            JsonRpcLocalStats localStats = new(_manualTimestamper, _config, _logManager);
+            JsonRpcLocalStats localStats = CreateStats();
             for (int i = 0; i < 100; i++)
             {
                 localStats.ReportCall("A", 300, true);
@@ -92,11 +91,9 @@ namespace Nethermind.JsonRpc.Test
         [Test]
         public void Does_not_report_when_info_not_enabled()
         {
-            _testLogger = new TestLogger();
-            _testLogger.IsInfo = false;
+            _testLogger = new TestLogger { IsInfo = false };
 
-            OneLoggerLogManager logManager = new(new(_testLogger));
-            JsonRpcLocalStats localStats = new(_manualTimestamper, _config, logManager);
+            JsonRpcLocalStats localStats = CreateStats(logManager: new OneLoggerLogManager(new(_testLogger)));
             localStats.ReportCall("A", 100, true);
             MakeTimePass();
             localStats.ReportCall("A", 300, true);
@@ -106,7 +103,7 @@ namespace Nethermind.JsonRpc.Test
         [Test]
         public void Does_not_report_when_nothing_to_report()
         {
-            JsonRpcLocalStats localStats = new(_manualTimestamper, _config, _logManager);
+            JsonRpcLocalStats localStats = CreateStats();
             MakeTimePass();
             localStats.ReportCall("A", 300, true);
             _testLogger.LogList.Should().HaveCount(0);
@@ -115,7 +112,7 @@ namespace Nethermind.JsonRpc.Test
         [Test]
         public void Multiple_have_no_decimal_places()
         {
-            JsonRpcLocalStats localStats = new(_manualTimestamper, _config, _logManager);
+            JsonRpcLocalStats localStats = CreateStats();
             localStats.ReportCall("A", 30, true);
             localStats.ReportCall("A", 20, true);
             localStats.ReportCall("A", 50, true);
@@ -131,7 +128,7 @@ namespace Nethermind.JsonRpc.Test
         [Test]
         public void Single_of_each_is_fine()
         {
-            JsonRpcLocalStats localStats = new(_manualTimestamper, _config, _logManager);
+            JsonRpcLocalStats localStats = CreateStats();
             localStats.ReportCall("A", 25, true);
             localStats.ReportCall("A", 125, false);
             localStats.ReportCall("B", 75, true);
@@ -146,7 +143,7 @@ namespace Nethermind.JsonRpc.Test
         [Test]
         public void Orders_alphabetically()
         {
-            JsonRpcLocalStats localStats = new(_manualTimestamper, _config, _logManager);
+            JsonRpcLocalStats localStats = CreateStats();
             localStats.ReportCall("C", 1, true);
             localStats.ReportCall("A", 2, true);
             localStats.ReportCall("B", 3, false);
@@ -167,8 +164,7 @@ namespace Nethermind.JsonRpc.Test
             {
                 TestLogger silentLogger = new() { IsInfo = false };
                 OneLoggerLogManager silentLogManager = new(new(silentLogger));
-                JsonRpcConfig config = new() { EnablePerMethodMetrics = true };
-                JsonRpcLocalStats localStats = new(_manualTimestamper, config, silentLogManager);
+                JsonRpcLocalStats localStats = CreateStats(new JsonRpcConfig { EnablePerMethodMetrics = true }, silentLogManager);
 
                 localStats.ReportCall(new RpcReport("eth_call", 0, true), elapsedMicroseconds: 123);
 
@@ -190,6 +186,8 @@ namespace Nethermind.JsonRpc.Test
             public void Observe(double value, IMetricLabels? labels = null) =>
                 Observations.Add((value, labels?.Labels ?? Array.Empty<string>()));
         }
+
+        private JsonRpcLocalStats CreateStats(IJsonRpcConfig? config = null, ILogManager? logManager = null) => new(_manualTimestamper, config ?? _config, logManager ?? _logManager);
 
         private void MakeTimePass(int seconds) => _manualTimestamper.UtcNow = _manualTimestamper.UtcNow.AddSeconds(seconds);
 
