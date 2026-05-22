@@ -24,19 +24,14 @@ namespace Nethermind.Serialization.Json
     {
         /// <summary>Engine API payload metadata. This is the most latency-sensitive RPC path.</summary>
         EngineApi = 0,
-
         /// <summary>Broad first-party RPC metadata generated at build time.</summary>
         GeneratedRpc = 10,
-
         /// <summary>Common facade RPC metadata such as block, transaction, and log DTOs.</summary>
         Facade = 20,
-
         /// <summary>Eth/debug/trace metadata for proofs, traces, and related payloads.</summary>
         EthRpc = 30,
-
         /// <summary>JSON-RPC response envelope metadata kept for legacy and fallback paths.</summary>
         JsonRpcResponse = 40,
-
         /// <summary>External or unclassified resolvers registered by plugins.</summary>
         External = 100,
     }
