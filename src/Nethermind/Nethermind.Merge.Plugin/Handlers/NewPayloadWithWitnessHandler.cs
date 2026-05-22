@@ -16,13 +16,11 @@ namespace Nethermind.Merge.Plugin.Handlers;
 /// Concrete implementation of <see cref="INewPayloadWithWitnessHandler"/>.
 /// </summary>
 /// <remarks>
-/// The V5 execution step is supplied as a delegate so this handler has no dependency on
-/// <see cref="EngineRpcModule"/>, neither a back-reference nor a test-driven interface on
-/// the production type. In production the module passes <c>engine_newPayloadV5</c> as a
-/// method-group; tests inject a plain lambda.
+/// Takes <see cref="IEngineRpcModule"/> via <see cref="Lazy{T}"/> to break the
+/// construction cycle (the module composes this handler).
 /// </remarks>
 public sealed class NewPayloadWithWitnessHandler(
-    Func<ExecutionPayloadV4, byte[]?[], Hash256?, byte[][]?, Task<ResultWrapper<PayloadStatusV1>>> newPayloadV5,
+    Lazy<IEngineRpcModule> engineModule,
     IWitnessCaptureRegistry witnessCaptureRegistry,
     ILogManager? logManager = null) : INewPayloadWithWitnessHandler
 {
@@ -50,7 +48,7 @@ public sealed class NewPayloadWithWitnessHandler(
                 _logger.Warn("engine_newPayloadWithWitness: payload BlockHash is null — witness generation skipped. The payload may be malformed.");
         }
 
-        ResultWrapper<PayloadStatusV1> statusResult = await newPayloadV5(
+        ResultWrapper<PayloadStatusV1> statusResult = await engineModule.Value.engine_newPayloadV5(
             executionPayload, blobVersionedHashes, parentBeaconBlockRoot, executionRequests);
 
         using (statusResult)

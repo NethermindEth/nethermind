@@ -31,21 +31,31 @@ public partial class EngineModuleTests
 
     private sealed class WitnessHandlerBuilder
     {
-        public Func<ExecutionPayloadV4, byte[]?[], Hash256?, byte[][]?, Task<ResultWrapper<PayloadStatusV1>>> NewPayloadV5 { get; set; }
-            = SucceedingNewPayloadV5(new PayloadStatusV1 { Status = PayloadStatus.Valid, LatestValidHash = TestItem.KeccakA });
+        public IEngineRpcModule EngineModule { get; set; }
+            = SucceedingEngineModule(new PayloadStatusV1 { Status = PayloadStatus.Valid, LatestValidHash = TestItem.KeccakA });
 
         public IWitnessCaptureRegistry Registry { get; set; } = RegistryReturning(MakeStubWitness());
 
         public NewPayloadWithWitnessHandler Build() =>
-            new(NewPayloadV5, Registry);
+            new(new Lazy<IEngineRpcModule>(() => EngineModule), Registry);
 
-        public static Func<ExecutionPayloadV4, byte[]?[], Hash256?, byte[][]?, Task<ResultWrapper<PayloadStatusV1>>>
-            SucceedingNewPayloadV5(PayloadStatusV1 status) =>
-            (_, _, _, _) => Task.FromResult(ResultWrapper<PayloadStatusV1>.Success(status));
+        public static IEngineRpcModule SucceedingEngineModule(PayloadStatusV1 status)
+        {
+            IEngineRpcModule module = Substitute.For<IEngineRpcModule>();
+            module
+                .engine_newPayloadV5(Arg.Any<ExecutionPayloadV4>(), Arg.Any<byte[]?[]>(), Arg.Any<Hash256?>(), Arg.Any<byte[][]?>())
+                .Returns(ResultWrapper<PayloadStatusV1>.Success(status));
+            return module;
+        }
 
-        public static Func<ExecutionPayloadV4, byte[]?[], Hash256?, byte[][]?, Task<ResultWrapper<PayloadStatusV1>>>
-            FailingNewPayloadV5(string error, int errorCode) =>
-            (_, _, _, _) => Task.FromResult(ResultWrapper<PayloadStatusV1>.Fail(error, errorCode));
+        public static IEngineRpcModule FailingEngineModule(string error, int errorCode)
+        {
+            IEngineRpcModule module = Substitute.For<IEngineRpcModule>();
+            module
+                .engine_newPayloadV5(Arg.Any<ExecutionPayloadV4>(), Arg.Any<byte[]?[]>(), Arg.Any<Hash256?>(), Arg.Any<byte[][]?>())
+                .Returns(ResultWrapper<PayloadStatusV1>.Fail(error, errorCode));
+            return module;
+        }
 
         public static IWitnessCaptureRegistry RegistryReturning(Witness? witness)
         {
@@ -74,7 +84,7 @@ public partial class EngineModuleTests
 
         NewPayloadWithWitnessHandler handler = new WitnessHandlerBuilder
         {
-            NewPayloadV5 = WitnessHandlerBuilder.SucceedingNewPayloadV5(
+            EngineModule = WitnessHandlerBuilder.SucceedingEngineModule(
                 new PayloadStatusV1 { Status = PayloadStatus.Valid, LatestValidHash = TestItem.KeccakA }),
             Registry = WitnessHandlerBuilder.RegistryReturning(MakeStubWitness()),
         }.Build();
@@ -99,7 +109,7 @@ public partial class EngineModuleTests
         // Null parent forces witness generation to bail out early.
         NewPayloadWithWitnessHandler handler = new WitnessHandlerBuilder
         {
-            NewPayloadV5 = WitnessHandlerBuilder.SucceedingNewPayloadV5(
+            EngineModule = WitnessHandlerBuilder.SucceedingEngineModule(
                 new PayloadStatusV1 { Status = PayloadStatus.Valid, LatestValidHash = TestItem.KeccakB }),
             Registry = WitnessHandlerBuilder.RegistryReturning(null),
         }.Build();
@@ -124,7 +134,7 @@ public partial class EngineModuleTests
         IWitnessCaptureRegistry registry = WitnessHandlerBuilder.RegistryNoop();
         NewPayloadWithWitnessHandler handler = new WitnessHandlerBuilder
         {
-            NewPayloadV5 = WitnessHandlerBuilder.SucceedingNewPayloadV5(
+            EngineModule = WitnessHandlerBuilder.SucceedingEngineModule(
                 new PayloadStatusV1 { Status = PayloadStatus.Syncing }),
             Registry = registry,
         }.Build();
@@ -150,7 +160,7 @@ public partial class EngineModuleTests
         IWitnessCaptureRegistry registry = WitnessHandlerBuilder.RegistryNoop();
         NewPayloadWithWitnessHandler handler = new WitnessHandlerBuilder
         {
-            NewPayloadV5 = WitnessHandlerBuilder.SucceedingNewPayloadV5(new PayloadStatusV1
+            EngineModule = WitnessHandlerBuilder.SucceedingEngineModule(new PayloadStatusV1
             {
                 Status = PayloadStatus.Invalid,
                 LatestValidHash = TestItem.KeccakD,
@@ -178,7 +188,7 @@ public partial class EngineModuleTests
 
         NewPayloadWithWitnessHandler handler = new WitnessHandlerBuilder
         {
-            NewPayloadV5 = WitnessHandlerBuilder.FailingNewPayloadV5("Unsupported fork", MergeErrorCodes.UnsupportedFork),
+            EngineModule = WitnessHandlerBuilder.FailingEngineModule("Unsupported fork", MergeErrorCodes.UnsupportedFork),
             Registry = WitnessHandlerBuilder.RegistryNoop(),
         }.Build();
 

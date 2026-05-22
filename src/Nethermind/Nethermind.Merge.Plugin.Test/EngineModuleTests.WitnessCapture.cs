@@ -358,7 +358,7 @@ public partial class EngineModuleTests
         NewPayloadWithWitnessHandler handler = new WitnessHandlerBuilder
         {
             Registry = WitnessHandlerBuilder.RegistryReturning(expectedWitness),
-            NewPayloadV5 = WitnessHandlerBuilder.SucceedingNewPayloadV5(
+            EngineModule = WitnessHandlerBuilder.SucceedingEngineModule(
                 new PayloadStatusV1 { Status = PayloadStatus.Valid, LatestValidHash = TestItem.KeccakA }),
         }.Build();
 
@@ -379,7 +379,7 @@ public partial class EngineModuleTests
             .Returns(new TaskCompletionSource<Witness?>().Task);
 
         NewPayloadWithWitnessHandler handler = new(
-            WitnessHandlerBuilder.SucceedingNewPayloadV5(new PayloadStatusV1 { Status = PayloadStatus.Syncing }),
+            new Lazy<IEngineRpcModule>(() => WitnessHandlerBuilder.SucceedingEngineModule(new PayloadStatusV1 { Status = PayloadStatus.Syncing })),
             registry);
 
         await handler.HandleAsync(new ExecutionPayloadV4 { BlockHash = TestItem.KeccakA }, [], TestItem.KeccakA, []);
@@ -396,12 +396,12 @@ public partial class EngineModuleTests
             .Returns(new TaskCompletionSource<Witness?>().Task);
 
         NewPayloadWithWitnessHandler handler = new(
-            WitnessHandlerBuilder.SucceedingNewPayloadV5(new PayloadStatusV1
+            new Lazy<IEngineRpcModule>(() => WitnessHandlerBuilder.SucceedingEngineModule(new PayloadStatusV1
             {
                 Status = PayloadStatus.Invalid,
                 LatestValidHash = TestItem.KeccakD,
                 ValidationError = "bad block"
-            }),
+            })),
             registry);
 
         await handler.HandleAsync(new ExecutionPayloadV4 { BlockHash = TestItem.KeccakA }, [], TestItem.KeccakA, []);
@@ -418,7 +418,7 @@ public partial class EngineModuleTests
             .Returns(new TaskCompletionSource<Witness?>().Task);
 
         NewPayloadWithWitnessHandler handler = new(
-            WitnessHandlerBuilder.FailingNewPayloadV5("Unsupported fork", MergeErrorCodes.UnsupportedFork),
+            new Lazy<IEngineRpcModule>(() => WitnessHandlerBuilder.FailingEngineModule("Unsupported fork", MergeErrorCodes.UnsupportedFork)),
             registry);
 
         await handler.HandleAsync(new ExecutionPayloadV4 { BlockHash = TestItem.KeccakA }, [], TestItem.KeccakA, []);
@@ -433,8 +433,8 @@ public partial class EngineModuleTests
         IWitnessCaptureRegistry registry = Substitute.For<IWitnessCaptureRegistry>();
 
         NewPayloadWithWitnessHandler handler = new(
-            WitnessHandlerBuilder.SucceedingNewPayloadV5(
-                new PayloadStatusV1 { Status = PayloadStatus.Valid, LatestValidHash = TestItem.KeccakA }),
+            new Lazy<IEngineRpcModule>(() => WitnessHandlerBuilder.SucceedingEngineModule(
+                new PayloadStatusV1 { Status = PayloadStatus.Valid, LatestValidHash = TestItem.KeccakA })),
             registry);
 
         ExecutionPayloadV4 payload = new()
