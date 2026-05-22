@@ -157,6 +157,50 @@ public sealed class WitnessCapturingWorldStateProxy(IWorldState inner) : IWorldS
         return inner.TryGetAccount(address, out account);
     }
 
+    // The default IWorldState / IAccountStateProvider implementations of these methods
+    // route through TryGetAccount and so see only the committed AccountStruct. The real
+    // WorldState overrides them to consult the in-flight storage provider; we must
+    // forward to `inner` so those overrides run (e.g. SELFDESTRUCT-then-CREATE in a
+    // single block needs IsStorageEmpty / IsNonZeroAccount to reflect pending changes).
+    public UInt256 GetNonce(Address address)
+    {
+        RecordEmptySlots(address);
+        return inner.GetNonce(address);
+    }
+
+    public bool IsStorageEmpty(Address address)
+    {
+        RecordEmptySlots(address);
+        return inner.IsStorageEmpty(address);
+    }
+
+    public bool HasCode(Address address)
+    {
+        RecordEmptySlots(address);
+        return inner.HasCode(address);
+    }
+
+    public bool IsNonZeroAccount(Address address, out bool accountExists)
+    {
+        RecordEmptySlots(address);
+        return inner.IsNonZeroAccount(address, out accountExists);
+    }
+
+    public bool IsDelegatedCode(Address address)
+    {
+        RecordEmptySlots(address);
+        byte[]? code = inner.GetCode(address);
+        RecordBytecode(code);
+        return Eip7702Constants.IsDelegatedCode(code);
+    }
+
+    public bool IsDelegatedCode(in ValueHash256 codeHash)
+    {
+        byte[]? code = inner.GetCode(in codeHash);
+        RecordBytecode(code);
+        return Eip7702Constants.IsDelegatedCode(code);
+    }
+
     public byte[]? GetCode(Address address)
     {
         RecordEmptySlots(address);
