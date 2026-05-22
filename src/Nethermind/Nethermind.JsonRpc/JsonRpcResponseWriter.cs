@@ -43,6 +43,20 @@ public static class JsonRpcResponseWriter
     }
 
     /// <summary>
+    /// Writes <paramref name="response"/>, using the streamable result path when required.
+    /// </summary>
+    public static ValueTask WriteAsync(PipeWriter writer, JsonRpcResponse response, JsonSerializerOptions options, CancellationToken cancellationToken)
+    {
+        if (TryGetStreamableResult(response, out IStreamableResult? streamable))
+        {
+            return WriteStreamableAsync(writer, response, streamable, cancellationToken);
+        }
+
+        Write(writer, response, options);
+        return ValueTask.CompletedTask;
+    }
+
+    /// <summary>
     /// Returns whether <paramref name="response"/> should map to HTTP 503 on HTTP transports.
     /// </summary>
     public static bool IsResourceUnavailableError(JsonRpcResponse? response) =>

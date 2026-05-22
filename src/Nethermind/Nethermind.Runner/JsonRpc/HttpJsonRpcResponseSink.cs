@@ -51,7 +51,7 @@ internal sealed class HttpJsonRpcResponseSink(
 
     private ValueTask WriteSingleStartedAsync(JsonRpcResponse response, RpcReport report, CancellationToken cancellationToken)
     {
-        ValueTask writeTask = WriteResponseAsync(_writer!, response, cancellationToken);
+        ValueTask writeTask = JsonRpcResponseWriter.WriteAsync(_writer!, response, EthereumJsonSerializer.JsonOptions, cancellationToken);
         if (!writeTask.IsCompletedSuccessfully)
         {
             return WriteSingleAfterWriteAsync(writeTask, report);
@@ -95,7 +95,7 @@ internal sealed class HttpJsonRpcResponseSink(
 
         _isFirstBatchItem = false;
 
-        ValueTask writeTask = WriteResponseAsync(_writer!, response, cancellationToken);
+        ValueTask writeTask = JsonRpcResponseWriter.WriteAsync(_writer!, response, EthereumJsonSerializer.JsonOptions, cancellationToken);
         if (!writeTask.IsCompletedSuccessfully)
         {
             return WriteBatchItemAfterWriteAsync(writeTask, report);
@@ -225,14 +225,4 @@ internal sealed class HttpJsonRpcResponseSink(
             ? StatusCodes.Status503ServiceUnavailable
             : StatusCodes.Status200OK;
 
-    private ValueTask WriteResponseAsync(CountingWriter writer, JsonRpcResponse response, CancellationToken cancellationToken)
-    {
-        if (JsonRpcResponseWriter.TryGetStreamableResult(response, out IStreamableResult? streamable))
-        {
-            return JsonRpcResponseWriter.WriteStreamableAsync(writer, response, streamable, cancellationToken);
-        }
-
-        JsonRpcResponseWriter.Write(writer, response, EthereumJsonSerializer.JsonOptions);
-        return ValueTask.CompletedTask;
-    }
 }

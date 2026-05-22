@@ -121,15 +121,7 @@ internal sealed class SocketJsonRpcResponseSink<TStream>(
         CountingStreamPipeWriter writer = new(stream, ResponsePipeWriterOptions);
         try
         {
-            if (JsonRpcResponseWriter.TryGetStreamableResult(response, out IStreamableResult? streamable))
-            {
-                await JsonRpcResponseWriter.WriteStreamableAsync(writer, response, streamable, cancellationToken);
-            }
-            else
-            {
-                JsonRpcResponseWriter.Write(writer, response, EthereumJsonSerializer.JsonOptions);
-            }
-
+            await JsonRpcResponseWriter.WriteAsync(writer, response, EthereumJsonSerializer.JsonOptions, cancellationToken);
             await writer.FlushAsync(cancellationToken);
             return writer.WrittenCount;
         }
