@@ -56,17 +56,10 @@ public class JsonRpcServiceTests
     private static HexBytes ToHexBytes(string value) => new(Bytes.FromHexString(value));
 
     private static PolymorphicDerivedPayload CreatePolymorphicPayload() =>
-        new()
-        {
-            BaseValue = "base",
-            DerivedValue = "derived"
-        };
+        new() { BaseValue = "base", DerivedValue = "derived" };
 
-    private static ResultWrapper<PolymorphicBasePayload[]> CreatePolymorphicArrayResponse()
-    {
-        PolymorphicDerivedPayload[] payloads = [CreatePolymorphicPayload()];
-        return ResultWrapper<PolymorphicBasePayload[]>.Success(payloads);
-    }
+    private static ResultWrapper<PolymorphicBasePayload[]> CreatePolymorphicArrayResponse() =>
+        ResultWrapper<PolymorphicBasePayload[]>.Success(new PolymorphicDerivedPayload[] { CreatePolymorphicPayload() });
 
     private static void AssertPolymorphicPayload(JsonElement payload)
     {
@@ -126,12 +119,8 @@ public class JsonRpcServiceTests
         Assert.That(errorResponse.Error?.Data, Is.Null);
     }
 
-    private JsonRpcResponse TestRequest<T>(T module, string method, params object?[]? parameters) where T : IRpcModule
-    {
-        SingletonModulePool<T> pool = new(new SingletonFactory<T>(module), true);
-
-        return TestRequestWithPool(pool, method, parameters);
-    }
+    private JsonRpcResponse TestRequest<T>(T module, string method, params object?[]? parameters) where T : IRpcModule =>
+        TestRequestWithPool(new SingletonModulePool<T>(new SingletonFactory<T>(module), true), method, parameters);
 
     private JsonRpcResponse TestRequestWithPool<T>(IRpcModulePool<T> pool, string method, params object?[]? parameters) where T : IRpcModule
     {
@@ -139,12 +128,8 @@ public class JsonRpcServiceTests
         return SendRequestWithPool(pool, request);
     }
 
-    private JsonRpcResponse TestRawRequest<T>(T module, string method, string rawParameters) where T : IRpcModule
-    {
-        SingletonModulePool<T> pool = new(new SingletonFactory<T>(module), true);
-
-        return TestRawRequestWithPool(pool, method, rawParameters);
-    }
+    private JsonRpcResponse TestRawRequest<T>(T module, string method, string rawParameters) where T : IRpcModule =>
+        TestRawRequestWithPool(new SingletonModulePool<T>(new SingletonFactory<T>(module), true), method, rawParameters);
 
     private JsonRpcResponse TestRawRequestWithPool<T>(IRpcModulePool<T> pool, string method, string rawParameters) where T : IRpcModule =>
         SendRequestWithPool(pool, new JsonRpcRequest
@@ -423,11 +408,7 @@ public class JsonRpcServiceTests
     {
         IEthRpcModule ethRpcModule = Substitute.For<IEthRpcModule>();
 
-        string[] parameters =
-        [
-            """["0x80757153e93d1b475e203406727b62a501187f63e23b8fa999279e219ee3be71"]"""
-        ];
-        AssertJsonRpcError(TestRequest(ethRpcModule, "eth_getTransactionReceipt", parameters), ErrorCodes.InvalidParams);
+        AssertJsonRpcError(TestRequest(ethRpcModule, "eth_getTransactionReceipt", """["0x80757153e93d1b475e203406727b62a501187f63e23b8fa999279e219ee3be71"]"""), ErrorCodes.InvalidParams);
     }
 
     [TestCase("eth_getBlockByNumber", new object?[] { }, "missing value for required argument 0", TestName = "FirstArgOmitted")]
