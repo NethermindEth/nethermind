@@ -82,7 +82,7 @@ public class JsonRpcProcessorTests(bool returnErrors)
     [Test]
     public async Task Can_process_guid_ids()
     {
-        CollectedJsonRpcResponses result = await ProcessAsync("{\"id\":\"840b55c4-18b0-431c-be1d-6d22198b53f2\",\"jsonrpc\":\"2.0\",\"method\":\"eth_getTransactionCount\",\"params\":[\"0x7f01d9b227593e033bf8d6fc86e634d27aa85568\",\"0x668c24\"]}");
+        using CollectedJsonRpcResponses result = await ProcessAsync("{\"id\":\"840b55c4-18b0-431c-be1d-6d22198b53f2\",\"jsonrpc\":\"2.0\",\"method\":\"eth_getTransactionCount\",\"params\":[\"0x7f01d9b227593e033bf8d6fc86e634d27aa85568\",\"0x668c24\"]}");
         result.Should().HaveCount(1);
         Assert.That(result[0].Response!.Id, Is.EqualTo(new JsonRpcId("840b55c4-18b0-431c-be1d-6d22198b53f2")));
     }
@@ -542,14 +542,13 @@ public class JsonRpcProcessorTests(bool returnErrors)
             ? "{\"id\":1,\"jsonrpc\":\"2.0\",\"method\":\"eth_blockNumber\",\"params\":[]}"
             : "{\"id\":1,\"jsonrpc\":\"2.0\",\"method\":\"eth_blockNumber\",\"params\":[]}{\"id\":2,\"jsonrpc\":\"2.0\",\"method\":\"net_version\",\"params\":[]}";
 
-        CollectedJsonRpcResponses result = await ProcessAsync(processor, CreateReader(request), new JsonRpcContext(endpoint));
+        using CollectedJsonRpcResponses result = await ProcessAsync(processor, CreateReader(request), new JsonRpcContext(endpoint));
 
         records.Should().ContainSingle(record => record.Contains("\"method\":\"eth_blockNumber\""));
         if (endpoint != RpcEndpoint.Http)
         {
             records[0].Should().Contain("\"method\":\"net_version\"");
         }
-        result.DisposeItems();
     }
 
     [Test]
@@ -559,10 +558,9 @@ public class JsonRpcProcessorTests(bool returnErrors)
         IFileSystem fileSystem = CreateRecordingFileSystem(records);
         JsonRpcProcessor processor = CreateProcessor(CreateEchoService(), CreateRecorderConfig(RpcRecorderState.Response), fileSystem);
 
-        CollectedJsonRpcResponses result = await ProcessAsync(processor, CreateReader("{\"id\":1,\"jsonrpc\":\"2.0\",\"method\":\"eth_blockNumber\",\"params\":[]}"), new JsonRpcContext(RpcEndpoint.Http));
+        using CollectedJsonRpcResponses result = await ProcessAsync(processor, CreateReader("{\"id\":1,\"jsonrpc\":\"2.0\",\"method\":\"eth_blockNumber\",\"params\":[]}"), new JsonRpcContext(RpcEndpoint.Http));
 
         records.Should().ContainSingle(record => record.Contains("eth_blockNumber"));
-        result.DisposeItems();
     }
 
     [Test]
@@ -572,7 +570,7 @@ public class JsonRpcProcessorTests(bool returnErrors)
         IFileSystem fileSystem = CreateRecordingFileSystem(records);
         JsonRpcProcessor processor = CreateProcessor(CreateEchoService(), CreateRecorderConfig(RpcRecorderState.Response), fileSystem);
 
-        CollectedJsonRpcResponses result = await ProcessAsync(
+        using CollectedJsonRpcResponses result = await ProcessAsync(
             processor,
             CreateReader("[{\"id\":1,\"jsonrpc\":\"2.0\",\"method\":\"eth_blockNumber\",\"params\":[]},{\"id\":2,\"jsonrpc\":\"2.0\",\"method\":\"net_version\",\"params\":[]}]"),
             new JsonRpcContext(RpcEndpoint.Http));
@@ -580,7 +578,6 @@ public class JsonRpcProcessorTests(bool returnErrors)
         records.Should().HaveCount(2);
         records.Should().Contain(record => record.Contains("eth_blockNumber"));
         records.Should().Contain(record => record.Contains("net_version"));
-        result.DisposeItems();
     }
 
     [Test]
@@ -687,16 +684,15 @@ public class JsonRpcProcessorTests(bool returnErrors)
     [TestCaseSource(nameof(JsonRpcIdCases))]
     public async Task Can_process_ids(string idJson, JsonRpcId expectedId)
     {
-        CollectedJsonRpcResponses result = await ProcessAsync(CreateTransactionCountRequest(idJson));
+        using CollectedJsonRpcResponses result = await ProcessAsync(CreateTransactionCountRequest(idJson));
         result.Should().HaveCount(1);
         Assert.That(result[0].Response!.Id, Is.EqualTo(expectedId));
-        result.DisposeItems();
     }
 
     [Test]
     public async Task Can_process_uppercase_params()
     {
-        CollectedJsonRpcResponses result = await ProcessAsync(CreateTransactionCountRequest("67", "Params"));
+        using CollectedJsonRpcResponses result = await ProcessAsync(CreateTransactionCountRequest("67", "Params"));
         result.Should().HaveCount(1);
         Assert.That(result[0].Response!.Id, Is.EqualTo(new JsonRpcId(67)));
         if (returnErrors)
@@ -707,14 +703,13 @@ public class JsonRpcProcessorTests(bool returnErrors)
         {
             result[0].Response.Should().BeOfType<JsonRpcSuccessResponse>();
         }
-        result.DisposeItems();
     }
 
 
     [Test]
     public async Task Can_process_batch_request_with_nested_object_params()
     {
-        CollectedJsonRpcResponses result = await ProcessAsync("[{\"id\":67,\"jsonrpc\":\"2.0\",\"method\":\"eth_getTransactionCount\",\"params\":[{\"a\":\"0x7f01d9b227593e033bf8d6fc86e634d27aa85568\",\"b\":\"0x668c24\"}]},{\"id\":67,\"jsonrpc\":\"2.0\",\"method\":\"eth_getTransactionCount\",\"params\":[{\"a\":\"0x7f01d9b227593e033bf8d6fc86e634d27aa85568\",\"b\":\"0x668c24\"}]}]");
+        using CollectedJsonRpcResponses result = await ProcessAsync("[{\"id\":67,\"jsonrpc\":\"2.0\",\"method\":\"eth_getTransactionCount\",\"params\":[{\"a\":\"0x7f01d9b227593e033bf8d6fc86e634d27aa85568\",\"b\":\"0x668c24\"}]},{\"id\":67,\"jsonrpc\":\"2.0\",\"method\":\"eth_getTransactionCount\",\"params\":[{\"a\":\"0x7f01d9b227593e033bf8d6fc86e634d27aa85568\",\"b\":\"0x668c24\"}]}]");
         result.Should().HaveCount(1);
         result[0].BatchItems.Should().NotBeNull();
         if (returnErrors)
@@ -725,13 +720,12 @@ public class JsonRpcProcessorTests(bool returnErrors)
         {
             result[0].BatchItems.Should().AllBeOfType<JsonRpcSuccessResponse>();
         }
-        result.DisposeItems();
     }
 
     [Test]
     public async Task Can_process_batch_request_with_nested_array_params()
     {
-        CollectedJsonRpcResponses result = await ProcessAsync("[{\"id\":67,\"jsonrpc\":\"2.0\",\"method\":\"eth_getTransactionCount\",\"params\":[[{\"a\":\"0x7f01d9b227593e033bf8d6fc86e634d27aa85568\",\"b\":\"0x668c24\"}]]},{\"id\":67,\"jsonrpc\":\"2.0\",\"method\":\"eth_getTransactionCount\",\"params\":[[{\"a\":\"0x7f01d9b227593e033bf8d6fc86e634d27aa85568\",\"b\":\"0x668c24\"}, 1]]}]");
+        using CollectedJsonRpcResponses result = await ProcessAsync("[{\"id\":67,\"jsonrpc\":\"2.0\",\"method\":\"eth_getTransactionCount\",\"params\":[[{\"a\":\"0x7f01d9b227593e033bf8d6fc86e634d27aa85568\",\"b\":\"0x668c24\"}]]},{\"id\":67,\"jsonrpc\":\"2.0\",\"method\":\"eth_getTransactionCount\",\"params\":[[{\"a\":\"0x7f01d9b227593e033bf8d6fc86e634d27aa85568\",\"b\":\"0x668c24\"}, 1]]}]");
         result.Should().HaveCount(1);
         result[0].BatchItems.Should().NotBeNull();
         if (returnErrors)
@@ -742,56 +736,51 @@ public class JsonRpcProcessorTests(bool returnErrors)
         {
             result[0].BatchItems.Should().AllBeOfType<JsonRpcSuccessResponse>();
         }
-        result.DisposeItems();
     }
 
     [Test]
     public async Task Can_process_batch_request_with_object_params()
     {
-        CollectedJsonRpcResponses result = await ProcessAsync("[{\"id\":67,\"jsonrpc\":\"2.0\",\"method\":\"eth_getTransactionCount\",\"params\":{\"a\":\"0x7f01d9b227593e033bf8d6fc86e634d27aa85568\",\"0x668c24\"}},{\"id\":67,\"jsonrpc\":\"2.0\",\"method\":\"eth_getTransactionCount\",\"params\":{\"a\":\"0x7f01d9b227593e033bf8d6fc86e634d27aa85568\",\"0x668c24\"}}]");
+        using CollectedJsonRpcResponses result = await ProcessAsync("[{\"id\":67,\"jsonrpc\":\"2.0\",\"method\":\"eth_getTransactionCount\",\"params\":{\"a\":\"0x7f01d9b227593e033bf8d6fc86e634d27aa85568\",\"0x668c24\"}},{\"id\":67,\"jsonrpc\":\"2.0\",\"method\":\"eth_getTransactionCount\",\"params\":{\"a\":\"0x7f01d9b227593e033bf8d6fc86e634d27aa85568\",\"0x668c24\"}}]");
         result.Should().HaveCount(1);
         result[0].Response.Should().NotBeNull();
         result[0].Response.Should().BeOfType<JsonRpcErrorResponse>();
-        result.DisposeItems();
     }
 
     [Test]
     public async Task Can_process_batch_request_with_value_params()
     {
-        CollectedJsonRpcResponses result = await ProcessAsync("[{\"id\":67,\"jsonrpc\":\"2.0\",\"method\":\"eth_getTransactionCount\",\"params\":\"0x7f01d9b227593e033bf8d6fc86e634d27aa85568\"},{\"id\":67,\"jsonrpc\":\"2.0\",\"method\":\"eth_getTransactionCount\",\"params\":\"0x668c24\"}]");
+        using CollectedJsonRpcResponses result = await ProcessAsync("[{\"id\":67,\"jsonrpc\":\"2.0\",\"method\":\"eth_getTransactionCount\",\"params\":\"0x7f01d9b227593e033bf8d6fc86e634d27aa85568\"},{\"id\":67,\"jsonrpc\":\"2.0\",\"method\":\"eth_getTransactionCount\",\"params\":\"0x668c24\"}]");
         result.Should().HaveCount(1);
         result[0].Response.Should().BeNull();
         result[0].BatchItems.Should().NotBeNull();
         IReadOnlyList<JsonRpcResponse> resultList = result[0].BatchItems!;
         resultList.Should().HaveCount(2);
         Assert.That(resultList.All(r => r != _errorResponse), Is.True);
-        result.DisposeItems();
     }
 
     [Test]
     public async Task Can_process_batch_request()
     {
-        CollectedJsonRpcResponses result = await ProcessAsync("[{\"id\":67,\"jsonrpc\":\"2.0\",\"method\":\"eth_getTransactionCount\",\"params\":[\"0x7f01d9b227593e033bf8d6fc86e634d27aa85568\",\"0x668c24\"]},{\"id\":67,\"jsonrpc\":\"2.0\",\"method\":\"eth_getTransactionCount\",\"params\":[\"0x7f01d9b227593e033bf8d6fc86e634d27aa85568\",\"0x668c24\"]},{\"id\":67,\"jsonrpc\":\"2.0\",\"method\":\"eth_getTransactionCount\",\"params\":[\"0x7f01d9b227593e033bf8d6fc86e634d27aa85568\",\"0x668c24\"]},{\"id\":67,\"jsonrpc\":\"2.0\",\"method\":\"eth_getTransactionCount\",\"params\":[\"0x7f01d9b227593e033bf8d6fc86e634d27aa85568\",\"0x668c24\"]}]");
+        using CollectedJsonRpcResponses result = await ProcessAsync("[{\"id\":67,\"jsonrpc\":\"2.0\",\"method\":\"eth_getTransactionCount\",\"params\":[\"0x7f01d9b227593e033bf8d6fc86e634d27aa85568\",\"0x668c24\"]},{\"id\":67,\"jsonrpc\":\"2.0\",\"method\":\"eth_getTransactionCount\",\"params\":[\"0x7f01d9b227593e033bf8d6fc86e634d27aa85568\",\"0x668c24\"]},{\"id\":67,\"jsonrpc\":\"2.0\",\"method\":\"eth_getTransactionCount\",\"params\":[\"0x7f01d9b227593e033bf8d6fc86e634d27aa85568\",\"0x668c24\"]},{\"id\":67,\"jsonrpc\":\"2.0\",\"method\":\"eth_getTransactionCount\",\"params\":[\"0x7f01d9b227593e033bf8d6fc86e634d27aa85568\",\"0x668c24\"]}]");
         result.Should().HaveCount(1);
         result[0].BatchItems.Should().NotBeNull();
         result[0].Response.Should().BeNull();
-        result.DisposeItems();
     }
 
     [Test]
     public async Task Can_process_batch_request_with_some_params_missing()
     {
-        CollectedJsonRpcResponses result = await ProcessAsync("[{\"id\":67,\"jsonrpc\":\"2.0\",\"method\":\"eth_getTransactionCount\",\"params\":[\"0x7f01d9b227593e033bf8d6fc86e634d27aa85568\",\"0x668c24\"]},{\"id\":67,\"jsonrpc\":\"2.0\",\"method\":\"eth_getTransactionCount\",\"params\":[\"0x7f01d9b227593e033bf8d6fc86e634d27aa85568\",\"0x668c24\"]},{\"id\":67,\"jsonrpc\":\"2.0\",\"method\":\"eth_getTransactionCount\",\"params\":[\"0x7f01d9b227593e033bf8d6fc86e634d27aa85568\",\"0x668c24\"]},{\"id\":67,\"jsonrpc\":\"2.0\",\"method\":\"eth_getTransactionCount\"}]");
+        using CollectedJsonRpcResponses result = await ProcessAsync("[{\"id\":67,\"jsonrpc\":\"2.0\",\"method\":\"eth_getTransactionCount\",\"params\":[\"0x7f01d9b227593e033bf8d6fc86e634d27aa85568\",\"0x668c24\"]},{\"id\":67,\"jsonrpc\":\"2.0\",\"method\":\"eth_getTransactionCount\",\"params\":[\"0x7f01d9b227593e033bf8d6fc86e634d27aa85568\",\"0x668c24\"]},{\"id\":67,\"jsonrpc\":\"2.0\",\"method\":\"eth_getTransactionCount\",\"params\":[\"0x7f01d9b227593e033bf8d6fc86e634d27aa85568\",\"0x668c24\"]},{\"id\":67,\"jsonrpc\":\"2.0\",\"method\":\"eth_getTransactionCount\"}]");
         result.Should().HaveCount(1);
         result[0].BatchItems.Should().NotBeNull();
         result[0].Response.Should().BeNull();
-        result.DisposeItems();
     }
 
     [Test]
     public async Task Can_process_batch_request_with_two_requests()
     {
-        CollectedJsonRpcResponses result = await ProcessAsync("{\"id\":67,\"jsonrpc\":\"2.0\",\"method\":\"eth_getTransactionCount\",\"params\":[\"0x7f01d9b227593e033bf8d6fc86e634d27aa85568\",\"0x668c24\"]}\r\n{\"id\":68,\"jsonrpc\":\"2.0\",\"method\":\"eth_getTransactionCount\",\"params\":[\"0x7f01d9b227593e033bf8d6fc86e634d27aa85568\",\"0x668c24\"]}", new JsonRpcContext(RpcEndpoint.Ws));
+        using CollectedJsonRpcResponses result = await ProcessAsync("{\"id\":67,\"jsonrpc\":\"2.0\",\"method\":\"eth_getTransactionCount\",\"params\":[\"0x7f01d9b227593e033bf8d6fc86e634d27aa85568\",\"0x668c24\"]}\r\n{\"id\":68,\"jsonrpc\":\"2.0\",\"method\":\"eth_getTransactionCount\",\"params\":[\"0x7f01d9b227593e033bf8d6fc86e634d27aa85568\",\"0x668c24\"]}", new JsonRpcContext(RpcEndpoint.Ws));
         result.Should().HaveCount(2);
         result[0].Response.Should().NotBeNull();
         result[0].BatchItems.Should().BeNull();
@@ -799,13 +788,12 @@ public class JsonRpcProcessorTests(bool returnErrors)
         result[1].Response.Should().NotBeNull();
         result[1].BatchItems.Should().BeNull();
         result[1].Response.Should().NotBeSameAs(_errorResponse);
-        result.DisposeItems();
     }
 
     [Test]
     public async Task Can_process_batch_request_with_single_request_and_array_with_two()
     {
-        CollectedJsonRpcResponses result = await ProcessAsync("{\"id\":67,\"jsonrpc\":\"2.0\",\"method\":\"eth_getTransactionCount\",\"params\":[\"0x7f01d9b227593e033bf8d6fc86e634d27aa85568\",\"0x668c24\"]}[{\"id\":67,\"jsonrpc\":\"2.0\",\"method\":\"eth_getTransactionCount\",\"params\":[\"0x7f01d9b227593e033bf8d6fc86e634d27aa85568\",\"0x668c24\"]},{\"id\":67,\"jsonrpc\":\"2.0\",\"method\":\"eth_getTransactionCount\",\"params\":[\"0x7f01d9b227593e033bf8d6fc86e634d27aa85568\",\"0x668c24\"]}]", new JsonRpcContext(RpcEndpoint.Ws));
+        using CollectedJsonRpcResponses result = await ProcessAsync("{\"id\":67,\"jsonrpc\":\"2.0\",\"method\":\"eth_getTransactionCount\",\"params\":[\"0x7f01d9b227593e033bf8d6fc86e634d27aa85568\",\"0x668c24\"]}[{\"id\":67,\"jsonrpc\":\"2.0\",\"method\":\"eth_getTransactionCount\",\"params\":[\"0x7f01d9b227593e033bf8d6fc86e634d27aa85568\",\"0x668c24\"]},{\"id\":67,\"jsonrpc\":\"2.0\",\"method\":\"eth_getTransactionCount\",\"params\":[\"0x7f01d9b227593e033bf8d6fc86e634d27aa85568\",\"0x668c24\"]}]", new JsonRpcContext(RpcEndpoint.Ws));
         result.Should().HaveCount(2);
         result[0].Response.Should().NotBeNull();
         result[0].Response.Should().NotBeSameAs(_errorResponse);
@@ -815,13 +803,12 @@ public class JsonRpcProcessorTests(bool returnErrors)
         IReadOnlyList<JsonRpcResponse> resultList = result[1].BatchItems!;
         resultList.Should().HaveCount(2);
         Assert.That(resultList.All(r => r != _errorResponse), Is.True);
-        result.DisposeItems();
     }
 
     [Test]
     public async Task Can_process_batch_request_with_second_not_closed_request()
     {
-        CollectedJsonRpcResponses result = await ProcessAsync("{\"id\":67,\"jsonrpc\":\"2.0\",\"method\":\"eth_getTransactionCount\",\"params\":[\"0x7f01d9b227593e033bf8d6fc86e634d27aa85568\",\"0x668c24\"]}{\"id\":68,\"jsonrpc\":\"2.0\",\"method\":\"eth_getTransactionCount\",\"params\":[\"0x7f01d9b227593e033bf8d6fc86e634d27aa85568\",\"0x668c24\"]", new JsonRpcContext(RpcEndpoint.Ws));
+        using CollectedJsonRpcResponses result = await ProcessAsync("{\"id\":67,\"jsonrpc\":\"2.0\",\"method\":\"eth_getTransactionCount\",\"params\":[\"0x7f01d9b227593e033bf8d6fc86e634d27aa85568\",\"0x668c24\"]}{\"id\":68,\"jsonrpc\":\"2.0\",\"method\":\"eth_getTransactionCount\",\"params\":[\"0x7f01d9b227593e033bf8d6fc86e634d27aa85568\",\"0x668c24\"]", new JsonRpcContext(RpcEndpoint.Ws));
         result.Should().HaveCount(2);
         result[0].Response.Should().NotBeNull();
         result[0].BatchItems.Should().BeNull();
@@ -829,19 +816,17 @@ public class JsonRpcProcessorTests(bool returnErrors)
         result[1].Response.Should().NotBeNull();
         result[1].BatchItems.Should().BeNull();
         result[1].Response.Should().BeSameAs(_errorResponse);
-        result.DisposeItems();
     }
 
     [Test]
     public async Task Can_process_batch_request_with_single_request_and_incorrect()
     {
-        CollectedJsonRpcResponses result = await ProcessAsync("{\"id\":67,\"jsonrpc\":\"2.0\",\"method\":\"eth_getTransactionCount\",\"params\":[\"0x7f01d9b227593e033bf8d6fc86e634d27aa85568\",\"0x668c24\"]}{aaa}", new JsonRpcContext(RpcEndpoint.Ws));
+        using CollectedJsonRpcResponses result = await ProcessAsync("{\"id\":67,\"jsonrpc\":\"2.0\",\"method\":\"eth_getTransactionCount\",\"params\":[\"0x7f01d9b227593e033bf8d6fc86e634d27aa85568\",\"0x668c24\"]}{aaa}", new JsonRpcContext(RpcEndpoint.Ws));
         result.Should().HaveCount(2);
         result[0].Response.Should().NotBeNull();
         result[0].BatchItems.Should().BeNull();
         result[1].Response.Should().BeSameAs(_errorResponse);
         result[1].BatchItems.Should().BeNull();
-        result.DisposeItems();
     }
 
     [Test]
@@ -858,10 +843,9 @@ public class JsonRpcProcessorTests(bool returnErrors)
         }
         request.Append(']');
 
-        CollectedJsonRpcResponses result = await ProcessAsync(request.ToString());
+        using CollectedJsonRpcResponses result = await ProcessAsync(request.ToString());
         result.Should().HaveCount(1);
         result[0].Response.Should().BeAssignableTo<JsonRpcErrorResponse>();
-        result.DisposeItems();
     }
 
     [Test]
@@ -880,21 +864,20 @@ public class JsonRpcProcessorTests(bool returnErrors)
 
         JsonRpcUrl url = new(string.Empty, string.Empty, 0, RpcEndpoint.Http, true, []);
         JsonRpcContext context = new(RpcEndpoint.Http, url: url);
-        CollectedJsonRpcResponses result = await ProcessAsync(request.ToString(), context, new JsonRpcConfig() { MaxBatchResponseBodySize = 1 });
+        using CollectedJsonRpcResponses result = await ProcessAsync(request.ToString(), context, new JsonRpcConfig() { MaxBatchResponseBodySize = 1 });
         result.Should().HaveCount(1);
         IReadOnlyList<JsonRpcResponse> batchedResults = result[0].BatchItems!;
         batchedResults.Should().HaveCount(maxBatchSize + 1);
         batchedResults.Should().AllSatisfy(rpcResult =>
             rpcResult.Should().BeOfType(returnErrors ? typeof(JsonRpcErrorResponse) : typeof(JsonRpcSuccessResponse))
         );
-        result.DisposeItems();
     }
 
     [Test]
     public async Task Can_process_batch_request_with_result_limit([Values(false, true)] bool limit)
     {
         CollectingJsonRpcResponseSink sink = new() { StopAfterBatchItems = limit ? 1 : int.MaxValue };
-        CollectedJsonRpcResponses result = await ProcessAsync(
+        using CollectedJsonRpcResponses result = await ProcessAsync(
             Initialize(recorderState: RpcRecorderState.None),
             CreateReader("[{\"id\":67,\"jsonrpc\":\"2.0\",\"method\":\"eth_getTransactionCount\",\"params\":[\"0x7f01d9b227593e033bf8d6fc86e634d27aa85568\",\"0x668c24\"]},{\"id\":68,\"jsonrpc\":\"2.0\",\"method\":\"eth_getTransactionCount\",\"params\":[\"0x7f01d9b227593e033bf8d6fc86e634d27aa85568\",\"0x668c24\"]}]"),
             new JsonRpcContext(RpcEndpoint.Http),
@@ -918,74 +901,66 @@ public class JsonRpcProcessorTests(bool returnErrors)
         {
             result[0].BatchItems![1].Should().NotBeOfType<JsonRpcErrorResponse>();
         }
-
-        result.DisposeItems();
     }
 
     [Test]
     public async Task Can_handle_invalid_request()
     {
-        CollectedJsonRpcResponses result = await ProcessAsync("invalid");
+        using CollectedJsonRpcResponses result = await ProcessAsync("invalid");
         result.Should().HaveCount(1);
         result[0].Response.Should().BeSameAs(_errorResponse);
-        result.DisposeItems();
     }
 
     [Test]
     public async Task Can_handle_empty_array_request()
     {
-        CollectedJsonRpcResponses result = await ProcessAsync("[]");
+        using CollectedJsonRpcResponses result = await ProcessAsync("[]");
         result.Should().HaveCount(1);
         result[0].Response.Should().BeNull();
         result[0].BatchItems.Should().NotBeNull();
         Assert.That(result[0].BatchItems!.All(r => r != _errorResponse), Is.True);
-        result.DisposeItems();
     }
 
     [Test]
     public async Task Can_handle_empty_object_request()
     {
-        CollectedJsonRpcResponses result = await ProcessAsync("{}");
+        using CollectedJsonRpcResponses result = await ProcessAsync("{}");
         result.Should().HaveCount(1);
         result[0].Response.Should().NotBeNull();
         result[0].BatchItems.Should().BeNull();
         result[0].Response.Should().NotBeSameAs(_errorResponse);
-        result.DisposeItems();
     }
 
     [Test]
     public async Task Can_handle_array_of_empty_requests()
     {
-        CollectedJsonRpcResponses result = await ProcessAsync("[{},{},{}]");
+        using CollectedJsonRpcResponses result = await ProcessAsync("[{},{},{}]");
         result.Should().HaveCount(1);
         result[0].Response.Should().BeNull();
         result[0].BatchItems.Should().NotBeNull();
         IReadOnlyList<JsonRpcResponse> resultList = result[0].BatchItems!;
         resultList.Should().HaveCount(3);
         Assert.That(resultList.All(r => r != _errorResponse), Is.True);
-        result.DisposeItems();
     }
 
     [Test]
     public async Task Can_handle_value_request()
     {
-        CollectedJsonRpcResponses result = await ProcessAsync("\"aaa\"");
+        using CollectedJsonRpcResponses result = await ProcessAsync("\"aaa\"");
         result.Should().HaveCount(1);
         result[0].Response.Should().NotBeNull();
         result[0].BatchItems.Should().BeNull();
         result[0].Response.Should().BeSameAs(_errorResponse);
-        result.DisposeItems();
     }
 
     [Test]
     public async Task Can_handle_null_request()
     {
-        CollectedJsonRpcResponses result = await ProcessAsync("null");
+        using CollectedJsonRpcResponses result = await ProcessAsync("null");
         result.Should().HaveCount(1);
         result[0].Response.Should().NotBeNull();
         result[0].BatchItems.Should().BeNull();
         result[0].Response.Should().BeSameAs(_errorResponse);
-        result.DisposeItems();
     }
 
     [Test]
@@ -1001,13 +976,12 @@ public class JsonRpcProcessorTests(bool returnErrors)
         JsonRpcProcessor processor = CreateProcessor(service, processExitSource: processExitSource);
 
         string request = "{\"id\":67,\"jsonrpc\":\"2.0\",\"method\":\"eth_getTransactionCount\",\"params\":[\"0x7f01d9b227593e033bf8d6fc86e634d27aa85568\",\"0x668c24\"]}";
-        CollectedJsonRpcResponses results = await ProcessAsync(processor, CreateReader(request), new JsonRpcContext(RpcEndpoint.Http));
+        using CollectedJsonRpcResponses results = await ProcessAsync(processor, CreateReader(request), new JsonRpcContext(RpcEndpoint.Http));
 
         results.Should().HaveCount(1);
         results[0].Response.Should().BeOfType<JsonRpcErrorResponse>();
         ((JsonRpcErrorResponse)results[0].Response!).Error!.Code.Should().Be(ErrorCodes.ResourceUnavailable);
         await service.DidNotReceive().SendRequestAsync(Arg.Any<JsonRpcRequest>(), Arg.Any<JsonRpcContext>());
-        results.DisposeItems();
     }
 
     [Test]
@@ -1025,7 +999,7 @@ public class JsonRpcProcessorTests(bool returnErrors)
         Pipe pipe = new();
         await pipe.Writer.WriteAsync(Encoding.UTF8.GetBytes("{\"id\":1,\"jsonrpc\":\"2.0\",\"method\":\"eth_blockNumber\",\"params\":[]}"));
 
-        CollectedJsonRpcResponses results = await ProcessAsync(processor, pipe.Reader, new JsonRpcContext(RpcEndpoint.Http));
+        using CollectedJsonRpcResponses results = await ProcessAsync(processor, pipe.Reader, new JsonRpcContext(RpcEndpoint.Http));
 
         results.Should().HaveCount(1);
         results[0].Response.Should().BeOfType<JsonRpcErrorResponse>();
@@ -1033,8 +1007,6 @@ public class JsonRpcProcessorTests(bool returnErrors)
         // Verify PipeReader was completed by the processor (reading again should throw)
         await FluentActions.Invoking(async () => await pipe.Reader.ReadAsync())
             .Should().ThrowAsync<InvalidOperationException>();
-
-        results.DisposeItems();
     }
 
     [Test]
@@ -1071,13 +1043,12 @@ public class JsonRpcProcessorTests(bool returnErrors)
         await pipe.Writer.CompleteAsync();
 
         // Verify all 5 requests processed
-        CollectedJsonRpcResponses results = await processTask;
+        using CollectedJsonRpcResponses results = await processTask;
         results.Should().HaveCount(5);
         for (int i = 0; i < 5; i++)
         {
             results[i].Response.Should().NotBeNull();
         }
-        results.DisposeItems();
     }
 
     private static string CreateLargeRequest(int id, int targetSize)
@@ -1113,13 +1084,12 @@ public class JsonRpcProcessorTests(bool returnErrors)
             });
 
         JsonRpcProcessor processor = CreateProcessor(service);
-        CollectedJsonRpcResponses result = await ProcessAsync(processor, CreateReader("{\"id\":1,\"jsonrpc\":\"2.0\",\"method\":\"foo_unregistered\",\"params\":[]}"), new JsonRpcContext(RpcEndpoint.Http));
+        using CollectedJsonRpcResponses result = await ProcessAsync(processor, CreateReader("{\"id\":1,\"jsonrpc\":\"2.0\",\"method\":\"foo_unregistered\",\"params\":[]}"), new JsonRpcContext(RpcEndpoint.Http));
 
         result.Should().HaveCount(1);
         result[0].Report.Should().NotBeNull();
         result[0].Report!.Value.Method.Should().Be(RpcReport.UnknownMethod);
         result[0].Report!.Value.Success.Should().BeFalse();
-        result.DisposeItems();
     }
 
     [Test]
@@ -1130,12 +1100,11 @@ public class JsonRpcProcessorTests(bool returnErrors)
             .Returns(ci => new JsonRpcSuccessResponse { Id = ci.Arg<JsonRpcRequest>().Id });
 
         JsonRpcProcessor processor = CreateProcessor(service);
-        CollectedJsonRpcResponses result = await ProcessAsync(processor, CreateReader("{\"id\":1,\"jsonrpc\":\"2.0\",\"method\":\"eth_getTransactionCount\",\"params\":[]}"), new JsonRpcContext(RpcEndpoint.Http));
+        using CollectedJsonRpcResponses result = await ProcessAsync(processor, CreateReader("{\"id\":1,\"jsonrpc\":\"2.0\",\"method\":\"eth_getTransactionCount\",\"params\":[]}"), new JsonRpcContext(RpcEndpoint.Http));
 
         result.Should().HaveCount(1);
         result[0].Report!.Value.Method.Should().Be("eth_getTransactionCount");
         result[0].Report!.Value.Success.Should().BeTrue();
-        result.DisposeItems();
     }
 
     [TestCase(50, false, TestName = "Input below the 64-depth limit is accepted")]
@@ -1178,7 +1147,7 @@ public class JsonRpcProcessorTests(bool returnErrors)
         string nested = BuildNestedArrayParams(paramNestingDepth);
         string request = $"{{\"id\":1,\"jsonrpc\":\"2.0\",\"method\":\"eth_getTransactionCount\",\"params\":[{nested}]}}";
 
-        CollectedJsonRpcResponses result = await ProcessAsync(processor, CreateReader(request), new JsonRpcContext(RpcEndpoint.Http));
+        using CollectedJsonRpcResponses result = await ProcessAsync(processor, CreateReader(request), new JsonRpcContext(RpcEndpoint.Http));
 
         result.Should().HaveCount(1);
 
@@ -1195,7 +1164,6 @@ public class JsonRpcProcessorTests(bool returnErrors)
             capturedMethod.Should().Be("eth_getTransactionCount");
             observedDepth.Should().Be(paramNestingDepth);
         }
-        result.DisposeItems();
     }
 
     private static string BuildNestedArrayParams(int depth)
@@ -1278,9 +1246,6 @@ public class JsonRpcProcessorTests(bool returnErrors)
 
         public IEnumerator<CollectedJsonRpcResult> GetEnumerator() => _results.GetEnumerator();
         IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
-
-        public void DisposeItems() => Dispose();
-
         public void Dispose()
         {
             foreach (CollectedJsonRpcResult result in _results)
