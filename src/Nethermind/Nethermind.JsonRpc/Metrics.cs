@@ -61,14 +61,6 @@ namespace Nethermind.JsonRpc
         [Description("Number of JSON RPC bytes received through IPC.")]
         public static long JsonRpcBytesReceivedIpc;
 
-        [CounterMetric]
-        [Description("Number of JSON RPC payload metadata lookups resolved by generated metadata.")]
-        public static long JsonRpcPayloadTypeInfoGeneratedHits;
-
-        [CounterMetric]
-        [Description("Number of JSON RPC payload metadata lookups resolved through serializer fallback for canonical JSON options.")]
-        public static long JsonRpcPayloadTypeInfoResolverFallbacks;
-
         [HistogramMetric(
             LabelNames = ["method", "status"],
             Buckets = [10, 50, 100, 250, 500, 1_000, 2_500, 5_000, 10_000, 25_000, 50_000, 100_000, 250_000, 500_000, 1_000_000])]

@@ -37,7 +37,6 @@ internal static class RpcPayloadTypeInfo
             return CacheCanonicalGenerated(type, generated);
         }
 
-        Interlocked.Increment(ref Metrics.JsonRpcPayloadTypeInfoResolverFallbacks);
         return EthereumJsonSerializer.JsonOptions.GetTypeInfo(type);
     }
 
@@ -45,7 +44,6 @@ internal static class RpcPayloadTypeInfo
     {
         if (_canonicalGeneratedCache.TryAdd(type, generated))
         {
-            Interlocked.Increment(ref Metrics.JsonRpcPayloadTypeInfoGeneratedHits);
             return generated;
         }
 
@@ -84,7 +82,6 @@ internal static class RpcPayloadTypeInfo<T>
             return CacheCanonicalGenerated(generated);
         }
 
-        Interlocked.Increment(ref Metrics.JsonRpcPayloadTypeInfoResolverFallbacks);
         return (JsonTypeInfo<T>)EthereumJsonSerializer.JsonOptions.GetTypeInfo(typeof(T));
     }
 
@@ -96,7 +93,6 @@ internal static class RpcPayloadTypeInfo<T>
             return existing;
         }
 
-        Interlocked.Increment(ref Metrics.JsonRpcPayloadTypeInfoGeneratedHits);
         return generated;
     }
 
