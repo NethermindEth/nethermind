@@ -147,7 +147,7 @@ public static class JsonRpcResponseWriter
 
     private static void WriteIdRaw(IBufferWriter<byte> writer, JsonRpcId id)
     {
-        if (!id.HasRawToken && id.TryGetInt64(out long longId))
+        if (id.TryGetInt64(out long longId))
         {
             Span<byte> buffer = writer.GetSpan(20);
             longId.TryFormat(buffer, out int written);
@@ -155,7 +155,7 @@ public static class JsonRpcResponseWriter
             return;
         }
 
-        if (!id.HasRawToken && id.TryGetDecimal(out decimal decimalId))
+        if (id.TryGetDecimal(out decimal decimalId))
         {
             Span<byte> buffer = writer.GetSpan(32);
             decimalId.TryFormat(buffer, out int written);
