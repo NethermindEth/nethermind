@@ -23,23 +23,9 @@ public class MethodStats
 
     public long TotalTimeOfErrorsMicros { get => Volatile.Read(ref _totalTimeOfErrorsMicros); set => Volatile.Write(ref _totalTimeOfErrorsMicros, value); }
 
-    public decimal AvgTimeOfErrors
-    {
-        get
-        {
-            long errors = Errors;
-            return errors == 0 ? 0 : (decimal)TotalTimeOfErrorsMicros / errors;
-        }
-    }
+    public decimal AvgTimeOfErrors => Average(TotalTimeOfErrorsMicros, Errors);
 
-    public decimal AvgTimeOfSuccesses
-    {
-        get
-        {
-            long successes = Successes;
-            return successes == 0 ? 0 : (decimal)TotalTimeOfSuccessesMicros / successes;
-        }
-    }
+    public decimal AvgTimeOfSuccesses => Average(TotalTimeOfSuccessesMicros, Successes);
 
     public long MaxTimeOfError { get => Volatile.Read(ref _maxTimeOfError); set => Volatile.Write(ref _maxTimeOfError, value); }
 
@@ -49,14 +35,7 @@ public class MethodStats
 
     public decimal TotalSize => TotalSizeBytes;
 
-    public decimal AvgSize
-    {
-        get
-        {
-            long calls = Calls;
-            return calls == 0 ? 0 : (decimal)TotalSizeBytes / calls;
-        }
-    }
+    public decimal AvgSize => Average(TotalSizeBytes, Calls);
 
     public long Calls => Successes + Errors;
 
@@ -104,6 +83,8 @@ public class MethodStats
             current = previous;
         }
     }
+
+    private static decimal Average(long total, long count) => count == 0 ? 0 : (decimal)total / count;
 }
 
 public interface IJsonRpcLocalStats
