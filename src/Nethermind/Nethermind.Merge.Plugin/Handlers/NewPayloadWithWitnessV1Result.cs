@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Text.Json.Serialization;
 using Nethermind.Consensus.Stateless;
 using Nethermind.Core.Crypto;
@@ -14,7 +15,7 @@ namespace Nethermind.Merge.Plugin.Data;
 /// <see cref="PayloadStatus.Valid"/>.
 /// <seealso href="https://github.com/ethereum/execution-apis/pull/773"/>
 /// </summary>
-public class NewPayloadWithWitnessV1Result
+public class NewPayloadWithWitnessV1Result : IDisposable
 {
     public string Status { get; set; } = PayloadStatus.Invalid;
 
@@ -35,4 +36,6 @@ public class NewPayloadWithWitnessV1Result
             ValidationError = status.ValidationError,
             ExecutionWitness = witness
         };
+
+    public void Dispose() => ExecutionWitness?.Dispose();
 }
