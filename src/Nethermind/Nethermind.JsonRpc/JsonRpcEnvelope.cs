@@ -5,20 +5,11 @@ using System.Text.Json;
 
 namespace Nethermind.JsonRpc;
 
-internal readonly struct JsonRpcEnvelope(
-    string? jsonRpc,
-    JsonRpcId id,
-    string? method,
-    bool hasParams,
-    JsonValueKind paramsKind,
-    int paramsStart,
-    int paramsLength)
-{
-    public string? JsonRpc { get; } = jsonRpc;
-    public JsonRpcId Id { get; } = id;
-    public string? Method { get; } = method;
-    public bool HasParams { get; } = hasParams;
-    public JsonValueKind ParamsKind { get; } = paramsKind;
-    public int ParamsStart { get; } = paramsStart;
-    public int ParamsLength { get; } = paramsLength;
-}
+internal readonly record struct JsonRpcEnvelope(
+    string? JsonRpc,
+    JsonRpcId Id,
+    string? Method,
+    bool HasParams,
+    JsonValueKind ParamsKind,
+    int ParamsStart,
+    int ParamsLength);
