@@ -3,11 +3,9 @@
 
 using System;
 using System.Buffers;
-using System.Collections;
 using System.Collections.Generic;
 using System.IO.Abstractions;
 using System.IO.Pipelines;
-using System.Linq;
 using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Text;
@@ -62,7 +60,6 @@ public class JsonRpcProcessorTests(bool returnErrors)
         service.GetErrorResponse(0, null!).ReturnsForAnyArgs(_errorResponse);
         service.GetErrorResponse(0, null!, null!, null!).ReturnsForAnyArgs(_errorResponse);
 
-        // we enable recorder always to have an easy smoke test for recording and this is fine because recorder is a non-critical component
         config ??= new JsonRpcConfig();
         config.RpcRecorderState = recorderState;
 
@@ -162,7 +159,7 @@ public class JsonRpcProcessorTests(bool returnErrors)
     [Test]
     public void Generated_known_method_names_cover_rpc_module_interfaces()
     {
-        HashSet<string> knownMethods = KnownRpcMethodNames.All.ToHashSet(StringComparer.Ordinal);
+        HashSet<string> knownMethods = new(KnownRpcMethodNames.All, StringComparer.Ordinal);
         Assembly[] assemblies =
         [
             typeof(IRpcModule).Assembly,
@@ -560,7 +557,11 @@ public class JsonRpcProcessorTests(bool returnErrors)
         result.Response.Should().BeNull();
         result.BatchItems.Should().NotBeNull();
         result.BatchItems.Should().HaveCount(expectedCount);
-        result.BatchItems.Should().AllSatisfy(AssertResponseTypeMatchesFixtureMode);
+        if (expectedCount != 0)
+        {
+            result.BatchItems.Should().AllSatisfy(AssertResponseTypeMatchesFixtureMode);
+        }
+
         result.BatchItems.Should().NotContain(_errorResponse);
         return result;
     }
@@ -713,11 +714,7 @@ public class JsonRpcProcessorTests(bool returnErrors)
     public async Task Can_handle_empty_batch_requests(string request, int expectedBatchItems)
     {
         using CollectedJsonRpcResponses result = await ProcessAsync(request);
-        CollectedJsonRpcResult response = AssertOnlyResult(result);
-        response.Response.Should().BeNull();
-        response.BatchItems.Should().NotBeNull();
-        response.BatchItems.Should().HaveCount(expectedBatchItems);
-        Assert.That(response.BatchItems!.All(r => r != _errorResponse), Is.True);
+        AssertBatchResponse(result, expectedBatchItems);
     }
 
     [Test]
@@ -767,12 +764,9 @@ public class JsonRpcProcessorTests(bool returnErrors)
         JsonRpcProcessor processor = Initialize(recorderState: RpcRecorderState.None);
         JsonRpcContext context = new(RpcEndpoint.Ws);
 
-        List<string> requests = Enumerable.Range(0, 5)
-            .Select(i => CreateLargeRequest(i, targetSize: 10_000))
-            .ToList();
-
-        string allRequestsJson = string.Join("\n", requests);
-        byte[] bytes = Encoding.UTF8.GetBytes(allRequestsJson);
+        string[] requests = new string[5];
+        for (int i = 0; i < requests.Length; i++) requests[i] = CreateLargeRequest(i, targetSize: 10_000);
+        byte[] bytes = Encoding.UTF8.GetBytes(string.Join("\n", requests));
 
         ValueTask<CollectedJsonRpcResponses> processTask = ProcessAsync(processor, pipe.Reader, context);
 
@@ -785,7 +779,6 @@ public class JsonRpcProcessorTests(bool returnErrors)
         }
         await pipe.Writer.CompleteAsync();
 
-        // Verify all 5 requests processed
         using CollectedJsonRpcResponses results = await processTask;
         results.Should().HaveCount(5);
         for (int i = 0; i < 5; i++)
@@ -950,28 +943,21 @@ public class JsonRpcProcessorTests(bool returnErrors)
         }
     }
 
-    private sealed class CollectedJsonRpcResponses : IReadOnlyList<CollectedJsonRpcResult>, IDisposable
+    private sealed class CollectedJsonRpcResponses : List<CollectedJsonRpcResult>, IDisposable
     {
-        private readonly List<CollectedJsonRpcResult> _results = [];
-
-        public int Count => _results.Count;
-        public CollectedJsonRpcResult this[int index] => _results[index];
-
         public void AddSingle(JsonRpcResponse response, RpcReport report) =>
-            _results.Add(CollectedJsonRpcResult.Single(response, report));
+            Add(CollectedJsonRpcResult.Single(response, report));
 
         public CollectedJsonRpcResult AddBatch()
         {
             CollectedJsonRpcResult batch = CollectedJsonRpcResult.Batch();
-            _results.Add(batch);
+            Add(batch);
             return batch;
         }
 
-        public IEnumerator<CollectedJsonRpcResult> GetEnumerator() => _results.GetEnumerator();
-        IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
         public void Dispose()
         {
-            foreach (CollectedJsonRpcResult result in _results)
+            foreach (CollectedJsonRpcResult result in this)
             {
                 result.Dispose();
             }
