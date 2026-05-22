@@ -97,8 +97,7 @@ public class DebugTraceStreamingBenchmarks
 
         for (int i = 0; i < opcodeCount; i++)
         {
-            GethTxMemoryTraceEntry entry = BuildEntry(i);
-            GethTxTraceEntryJsonWriter.Write(writer, entry);
+            WriteSyntheticOpcode(writer, i);
         }
 
         writer.WriteEndArray();
@@ -106,6 +105,27 @@ public class DebugTraceStreamingBenchmarks
         writer.WriteBoolean("failed"u8, false);
         writer.WritePropertyName("returnValue"u8);
         JsonSerializer.Serialize(writer, Array.Empty<byte>(), EthereumJsonSerializer.JsonOptions);
+        writer.WriteEndObject();
+    }
+
+    private static void WriteSyntheticOpcode(Utf8JsonWriter writer, int pc)
+    {
+        writer.WriteStartObject();
+        writer.WriteNumber("pc"u8, pc);
+        writer.WriteString("op"u8, "ADD");
+        writer.WriteNumber("gas"u8, 1_000_000 - pc);
+        writer.WriteNumber("gasCost"u8, 3);
+        writer.WriteNumber("depth"u8, 1);
+        writer.WriteNull("error"u8);
+        writer.WriteStartArray("stack"u8);
+        writer.WriteStringValue("0x1");
+        writer.WriteStringValue("0x2");
+        writer.WriteEndArray();
+        writer.WriteStartArray("memory"u8);
+        writer.WriteStringValue("0x0000000000000000000000000000000000000000000000000000000000000000");
+        writer.WriteEndArray();
+        writer.WriteStartObject("storage"u8);
+        writer.WriteEndObject();
         writer.WriteEndObject();
     }
 

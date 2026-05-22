@@ -14,10 +14,11 @@ namespace Nethermind.Blockchain.Tracing.GethStyle;
 /// <summary>
 /// Block tracer that writes Geth's per-tx envelope (<c>{"result": {…}, "txHash": "…"}</c>)
 /// straight to the response <see cref="Utf8JsonWriter"/> as each transaction completes,
-/// with the per-tx struct-log entries streamed through a <see cref="GethLikeTxStreamingMemoryTracer"/>.
-/// Memory is bounded by one in-flight opcode entry regardless of block size.
+/// with the per-tx struct-log entries streamed through a <see cref="GethLikeTxDirectStreamingTracer"/>.
+/// Memory is bounded by one in-flight opcode regardless of block size; storage map is
+/// mutated in place rather than cloned per opcode.
 /// </summary>
-public sealed class GethLikeBlockEnvelopeStreamingTracer : BlockTracerBase<GethLikeTxTrace, GethLikeTxStreamingMemoryTracer>, IDisposable
+public sealed class GethLikeBlockEnvelopeStreamingTracer : BlockTracerBase<GethLikeTxTrace, GethLikeTxDirectStreamingTracer>, IDisposable
 {
     private readonly GethTraceOptions _options;
     private readonly Utf8JsonWriter _writer;
@@ -41,7 +42,7 @@ public sealed class GethLikeBlockEnvelopeStreamingTracer : BlockTracerBase<GethL
         _cancellationToken = cancellationToken;
     }
 
-    protected override GethLikeTxStreamingMemoryTracer OnStart(Transaction? tx)
+    protected override GethLikeTxDirectStreamingTracer OnStart(Transaction? tx)
     {
         _writer.WriteStartObject();
         _writer.WritePropertyName("result"u8);
@@ -50,10 +51,10 @@ public sealed class GethLikeBlockEnvelopeStreamingTracer : BlockTracerBase<GethL
         _writer.WriteStartArray();
         _innerEnvelopeOpen = true;
         _currentTxHash = tx?.Hash;
-        return new GethLikeTxStreamingMemoryTracer(tx, _options, _writer, _pipeWriter, _cancellationToken);
+        return new GethLikeTxDirectStreamingTracer(tx, _options, _writer, _pipeWriter, _cancellationToken);
     }
 
-    protected override GethLikeTxTrace OnEnd(GethLikeTxStreamingMemoryTracer txTracer)
+    protected override GethLikeTxTrace OnEnd(GethLikeTxDirectStreamingTracer txTracer)
     {
         GethLikeTxTrace trace = txTracer.BuildResult();
 

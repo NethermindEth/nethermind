@@ -9,19 +9,20 @@ using Nethermind.Core;
 namespace Nethermind.Blockchain.Tracing.GethStyle;
 
 /// <summary>
-/// Block-level wrapper around <see cref="GethLikeTxStreamingMemoryTracer"/>.
+/// Block-level wrapper around <see cref="GethLikeTxDirectStreamingTracer"/>.
 /// Mirrors <see cref="GethLikeBlockMemoryTracer"/> but every per-tx tracer it
-/// creates writes its struct-log entries straight to the supplied JSON writer.
+/// creates writes its struct-log entries straight to the supplied JSON writer
+/// without allocating per-opcode entries or cloning the storage dictionary.
 /// </summary>
 public sealed class GethLikeBlockStreamingMemoryTracer(
     GethTraceOptions options,
     Utf8JsonWriter writer,
     PipeWriter? pipeWriter,
     CancellationToken cancellationToken)
-    : BlockTracerBase<GethLikeTxTrace, GethLikeTxStreamingMemoryTracer>(options.TxHash)
+    : BlockTracerBase<GethLikeTxTrace, GethLikeTxDirectStreamingTracer>(options.TxHash)
 {
-    protected override GethLikeTxStreamingMemoryTracer OnStart(Transaction? tx)
+    protected override GethLikeTxDirectStreamingTracer OnStart(Transaction? tx)
         => new(tx, options, writer, pipeWriter, cancellationToken);
 
-    protected override GethLikeTxTrace OnEnd(GethLikeTxStreamingMemoryTracer txTracer) => txTracer.BuildResult();
+    protected override GethLikeTxTrace OnEnd(GethLikeTxDirectStreamingTracer txTracer) => txTracer.BuildResult();
 }
