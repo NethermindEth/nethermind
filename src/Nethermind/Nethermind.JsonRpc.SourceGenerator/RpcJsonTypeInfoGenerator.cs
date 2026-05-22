@@ -46,7 +46,6 @@ public sealed class RpcJsonTypeInfoGenerator : IIncrementalGenerator
         StringBuilder builder = new();
         builder
             .AppendLine(GeneratedSourceHeader)
-            .AppendLine("using System;")
             .AppendLine("using System.Runtime.CompilerServices;")
             .AppendLine("using System.Text.Json.Serialization.Metadata;")
             .AppendLine("using Nethermind.Serialization.Json;")
@@ -66,7 +65,7 @@ public sealed class RpcJsonTypeInfoGenerator : IIncrementalGenerator
         builder
             .AppendLine("    }")
             .AppendLine()
-            .AppendLine("    private static readonly Type[] RpcTypes =")
+            .AppendLine("    private static readonly System.Type[] RpcTypes =")
             .AppendLine("    {");
         for (int i = 0; i < sortedTypes.Length; i++)
         {
@@ -75,7 +74,7 @@ public sealed class RpcJsonTypeInfoGenerator : IIncrementalGenerator
         builder
             .AppendLine("    };")
             .AppendLine()
-            .AppendLine("    private static JsonTypeInfo? TryGet(Type type) =>")
+            .AppendLine("    private static JsonTypeInfo? TryGet(System.Type type) =>")
             .AppendLine("        EthereumJsonSerializer.JsonOptions.TryGetTypeInfo(type, out JsonTypeInfo? typeInfo) ? typeInfo : null;")
             .AppendLine()
             .AppendLine("    private static void RegisterGeneric<T>() =>")
