@@ -385,7 +385,7 @@ public class BlockAccessListBasedWorldState(IWorldState innerWorldState, ILogMan
 
         // Built once per block; entries are immutable across the block. TryGetCodeByHash filters
         // by Index < _blockAccessIndex at lookup time so future-tx code stays invisible.
-        Dictionary<ValueHash256, (uint Index, byte[] Code)> codeChangesByHash = [];
+        Dictionary<ValueHash256, (uint Index, byte[] Code)> codeChangesByHash = new(GenericEqualityComparer.GetOptimized<ValueHash256>());
         foreach (ReadOnlyAccountChanges accountChanges in _suggestedBlockAccessList.AccountChanges)
         {
             foreach (CodeChange codeChange in accountChanges.CodeChanges)
