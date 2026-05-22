@@ -39,6 +39,7 @@ public class JsonRpcProcessorTests(bool returnErrors)
     private readonly JsonRpcErrorResponse _errorResponse = new();
     private static readonly object[] JsonRpcIdCases =
     [
+        new object[] { "\"840b55c4-18b0-431c-be1d-6d22198b53f2\"", new JsonRpcId("840b55c4-18b0-431c-be1d-6d22198b53f2") },
         new object[] { "12345678901234567890", new JsonRpcId(decimal.Parse("12345678901234567890")) },
         new object[] { "\"0xa1aa12434\"", new JsonRpcId("0xa1aa12434") },
         new object[] { "67", new JsonRpcId(67) },
@@ -58,13 +59,6 @@ public class JsonRpcProcessorTests(bool returnErrors)
 
     private static JsonRpcProcessor CreateProcessor(IJsonRpcService service, IJsonRpcConfig? config = null, IFileSystem? fileSystem = null, IProcessExitSource? processExitSource = null) =>
         new(service, config ?? new JsonRpcConfig(), fileSystem ?? Substitute.For<IFileSystem>(), LimboLogs.Instance, processExitSource);
-
-    [Test]
-    public async Task Can_process_guid_ids()
-    {
-        using CollectedJsonRpcResponses result = await ProcessAsync(CreateTransactionCountRequest("\"840b55c4-18b0-431c-be1d-6d22198b53f2\""));
-        Assert.That(AssertSingleResponse(result).Response!.Id, Is.EqualTo(new JsonRpcId("840b55c4-18b0-431c-be1d-6d22198b53f2")));
-    }
 
     [Test]
     public async Task Http_engine_newPayloadV4_keeps_envelope_and_params_on_direct_utf8_path()
@@ -701,13 +695,14 @@ public class JsonRpcProcessorTests(bool returnErrors)
         batchItems[1].Should().BeOfType(limit || returnErrors ? typeof(JsonRpcErrorResponse) : typeof(JsonRpcSuccessResponse));
     }
 
-    [TestCase("invalid", TestName = "Invalid JSON")]
-    [TestCase("\"aaa\"", TestName = "String root")]
-    [TestCase("null", TestName = "Null root")]
-    public async Task Can_handle_invalid_or_value_request(string request)
+    [TestCase("invalid", true, TestName = "Invalid JSON")]
+    [TestCase("\"aaa\"", true, TestName = "String root")]
+    [TestCase("null", true, TestName = "Null root")]
+    [TestCase("{}", false, TestName = "Empty object")]
+    public async Task Can_handle_single_response_request_shapes(string request, bool shouldBeParseError)
     {
         using CollectedJsonRpcResponses result = await ProcessAsync(request);
-        AssertSingleResponse(result, shouldBeParseError: true);
+        AssertSingleResponse(result, shouldBeParseError);
     }
 
     [TestCase("[]", 0, TestName = "Empty array")]
@@ -716,13 +711,6 @@ public class JsonRpcProcessorTests(bool returnErrors)
     {
         using CollectedJsonRpcResponses result = await ProcessAsync(request);
         AssertBatchResponse(result, expectedBatchItems);
-    }
-
-    [Test]
-    public async Task Can_handle_empty_object_request()
-    {
-        using CollectedJsonRpcResponses result = await ProcessAsync("{}");
-        AssertSingleResponse(result);
     }
 
     [Test]
