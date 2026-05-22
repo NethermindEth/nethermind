@@ -310,7 +310,7 @@ public partial class EngineModuleTests
         ExecutionPayload[] invalidRequests = CreateBlockRequestBranch(chain, requests[0], TestItem.AddressD, 1);
         foreach (ExecutionPayload r in invalidRequests)
         {
-            Block? newBlock = r.TryGetBlock().Block;
+            Block? newBlock = r.TryGetBlock().Data;
             newBlock!.Header.GasLimit = long.MaxValue; // incorrect gas limit
             newBlock.Header.Hash = newBlock.CalculateHash();
             ResultWrapper<PayloadStatusV1> payloadStatus = await rpc.engine_newPayloadV1(ExecutionPayload.Create(newBlock));
@@ -339,7 +339,7 @@ public partial class EngineModuleTests
         }
 
         int pivotNum = 3;
-        Block? pivotBlock = requests[pivotNum].TryGetBlock().Block;
+        Block? pivotBlock = requests[pivotNum].TryGetBlock().Data;
         // initiate sync
         ForkchoiceStateV1 forkchoiceStateV1 = new(pivotBlock!.Hash!, startingHead, startingHead);
         ResultWrapper<ForkchoiceUpdatedV1Result> forkchoiceUpdatedResult =
@@ -704,7 +704,7 @@ public partial class EngineModuleTests
                                                      | BlockTreeInsertHeaderOptions.TotalDifficultyNotNeeded;
         for (int i = 0; i < requests.Length - 2; i++)
         {
-            Block? block = requests[i].TryGetBlock().Block;
+            Block? block = requests[i].TryGetBlock().Data;
             chain.BlockTree.Insert(block!.Header, headerOptions);
         }
 
@@ -739,14 +739,14 @@ public partial class EngineModuleTests
         Block[] missingBlocks = new Block[gap];
         for (int i = 0; i < gap; i++)
         {
-            missingBlocks[i] = branchBlocks[i].TryGetBlock().Block!;
+            missingBlocks[i] = branchBlocks[i].TryGetBlock().Data!;
         }
 
         // setting up beacon pivot
         ExecutionPayload pivotRequest = branchBlocks[gap];
         ResultWrapper<PayloadStatusV1> payloadStatus = await rpc.engine_newPayloadV1(pivotRequest);
         payloadStatus.Data.Status.Should().Be(nameof(PayloadStatusV1.Syncing).ToUpper());
-        Block? pivotBlock = pivotRequest.TryGetBlock().Block;
+        Block? pivotBlock = pivotRequest.TryGetBlock().Data;
         // check block tree pointers
         BlockTreePointers pointers = new()
         {
@@ -799,7 +799,7 @@ public partial class EngineModuleTests
         chain.BeaconSync.IsBeaconSyncFinished(chain.BlockTree.BestSuggestedBeaconHeader).Should().BeFalse();
 
         // finish beacon forwards sync
-        Block? bestBeaconBlock = bestBeaconBlockRequest.TryGetBlock().Block;
+        Block? bestBeaconBlock = bestBeaconBlockRequest.TryGetBlock().Data;
         SemaphoreSlim bestBlockProcessed = new(0);
         chain.BranchProcessor.BlockProcessed += (_, e) =>
         {
@@ -915,7 +915,7 @@ public partial class EngineModuleTests
         ExecutionPayload pivotRequest = CreateBlockRequest(chain, requests[^1], Address.Zero);
         ResultWrapper<PayloadStatusV1> payloadStatus = await rpc.engine_newPayloadV1(pivotRequest);
         payloadStatus.Data.Status.Should().Be(nameof(PayloadStatusV1.Syncing).ToUpper());
-        Block? pivotBlock = pivotRequest.TryGetBlock().Block;
+        Block? pivotBlock = pivotRequest.TryGetBlock().Data;
         // check block tree pointers
         BlockTreePointers pointers = new()
         {
@@ -942,12 +942,12 @@ public partial class EngineModuleTests
                                                      BlockTreeInsertHeaderOptions.TotalDifficultyNotNeeded;
         for (int i = requests.Length; i-- > 0;)
         {
-            Block? block = requests[i].TryGetBlock().Block;
+            Block? block = requests[i].TryGetBlock().Data;
             chain.BlockTree.Insert(block!.Header, headerOptions);
         }
 
         // verify correct pointers
-        Block? destinationBlock = requests[0].TryGetBlock().Block;
+        Block? destinationBlock = requests[0].TryGetBlock().Data;
         pointers.LowestInsertedBeaconHeader = destinationBlock!.Header;
         pointers.BestKnownBeaconBlock = 13;
         AssertBlockTreePointers(chain.BlockTree, pointers);

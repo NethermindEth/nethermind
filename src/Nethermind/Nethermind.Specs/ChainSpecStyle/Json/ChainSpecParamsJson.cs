@@ -30,6 +30,8 @@ public class ChainSpecParamsJson : IHasNamedForks
 
     public long? MinHistoryRetentionEpochs { get; set; }
 
+    public long? MinBalRetentionEpochs { get; set; }
+
     public long? ForkBlock { get; set; }
 
     public Hash256 ForkCanonHash { get; set; }

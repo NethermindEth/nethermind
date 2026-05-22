@@ -33,11 +33,11 @@ internal class StateProvider(ILogManager logManager) : IJournal<int>
     private readonly Dictionary<AddressAsKey, StackList<int>> _intraTxCache = new();
     private readonly HashSet<AddressAsKey> _committedThisRound = new();
     private readonly HashSet<AddressAsKey> _nullAccountReads = new();
-    // Only guarding against hot duplicates so filter doesn't need to be too big
-    // Note:
-    // False negatives are fine as they will just result in a overwrite set
-    // False positives would be problematic as the code _must_ be persisted
-    private readonly AssociativeKeyCache<ValueHash256> _persistedCodeInsertFilter = new(1_024);
+    // Only guarding against hot duplicates within the current block; the cross-block
+    // "already persisted" hint now lives on ICodeDb itself (see ICodeDb.ContainsCode).
+    // This is intentional: the lifetime of "is this code durably persisted" must match
+    // the lifetime of the durable storage, not the StateProvider — otherwise a transient
+    // (overlay) codeDb could poison the hint with non-durable entries.
     private readonly AssociativeKeyCache<ValueHash256> _blockCodeInsertFilter = new(256);
     private readonly Dictionary<AddressAsKey, ChangeTrace> _blockChanges = new(4_096);
 
@@ -113,7 +113,7 @@ internal class StateProvider(ILogManager logManager) : IJournal<int>
         // Don't reinsert if already inserted. This can be the case when the same
         // code is used by multiple deployments. Either from factory contracts (e.g. LPs)
         // or people copy and pasting popular contracts
-        if (!_blockCodeInsertFilter.Get(codeHash) && !_persistedCodeInsertFilter.Get(codeHash))
+        if (!_blockCodeInsertFilter.Get(codeHash) && !(_codeDb?.ContainsCode(codeHash) == true))
         {
             if (_codeBatch is null)
             {
@@ -631,9 +631,12 @@ internal class StateProvider(ILogManager logManager) : IJournal<int>
                         batch.Set(kvp.Key.Value, kvp.Value);
                 }
 
-                // Mark all inserted codes as persisted
+                // Mark all inserted codes as persisted on the codeDb itself. For durable
+                // codeDbs this populates a hint cache used by ContainsCode; for transient
+                // (overlay) codeDbs this is a no-op — overlay writes must not be reported
+                // as durably persisted.
                 foreach (Hash256AsKey kvp in dict.Keys)
-                    _persistedCodeInsertFilter.Set(kvp.Value.ValueHash256);
+                    codeDb.MarkCodePersisted(kvp.Value.ValueHash256);
 
                 // Reuse Dictionary if not already re-initialized
                 dict.Clear();

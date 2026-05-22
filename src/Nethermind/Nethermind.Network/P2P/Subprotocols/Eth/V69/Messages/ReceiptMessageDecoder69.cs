@@ -11,7 +11,7 @@ using Nethermind.Serialization.Rlp;
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V69.Messages;
 
 [Rlp.SkipGlobalRegistration] // Created explicitly
-public sealed class ReceiptMessageDecoder69(bool skipStateAndStatus = false) : RlpValueDecoder<TxReceipt>
+public sealed class ReceiptMessageDecoder69(bool skipStateAndStatus = false) : RlpDecoder<TxReceipt>
 {
     // A 100M gas ceiling still allows roughly 266k LOG0 emissions after intrinsic gas.
     private static readonly RlpLimit LogsRlpLimit = RlpLimit.For<TxReceipt>(270_000, nameof(TxReceipt.Logs));
