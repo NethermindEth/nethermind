@@ -186,7 +186,7 @@ public partial class BlockAccessListManager
         // Pass 1: walk generated; for each account, look up the matching entry in suggested
         // via the dictionary (O(1)) instead of a sorted merge-walk. Catches "missing-from-
         // suggested" and "incorrect changes at this index".
-        foreach (GeneratedAccountChanges gen in generated.AccountChangesValues)
+        foreach (GeneratedAccountChanges gen in generated.AccountChanges)
         {
             int genReads = IsSystemContract(gen.Address) ? 0 : gen.StorageReads.Count;
             generatedReads += genReads;
@@ -217,7 +217,7 @@ public partial class BlockAccessListManager
 
         // Pass 2: walk suggested; only accounts NOT present in generated need attention.
         // Tally suggested reads here for the storage-read gas-budget check below.
-        foreach (ReadOnlyAccountChanges sug in suggested.AccountChangesAsSpan)
+        foreach (ReadOnlyAccountChanges sug in suggested.AccountChanges)
         {
             suggestedReads += IsSystemContract(sug.Address) ? 0 : sug.StorageReads.Length;
 
@@ -408,7 +408,7 @@ public partial class BlockAccessListManager
         {
             BlockAccessListValidationIndex.StructuralMismatchKind.None => null,
             BlockAccessListValidationIndex.StructuralMismatchKind.AccountCountMismatch
-                => $"Account-set size mismatch: suggested={suggested.AccountChangesAsSpan.Length}, generated={generatedAccountCount}.",
+                => $"Account-set size mismatch: suggested={suggested.AccountChanges.Count}, generated={generatedAccountCount}.",
             BlockAccessListValidationIndex.StructuralMismatchKind.MissingInGenerated
                 => $"Suggested BAL declares account {mismatchAddress} which execution did not touch.",
             BlockAccessListValidationIndex.StructuralMismatchKind.StorageReadsCountMismatch

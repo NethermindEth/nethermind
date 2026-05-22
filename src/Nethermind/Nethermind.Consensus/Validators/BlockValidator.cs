@@ -480,7 +480,7 @@ public class BlockValidator(
 
         uint maxAllowed = (uint)block.Transactions.Length + 1;
 
-        foreach (ReadOnlyAccountChanges accountChanges in bal.AccountChangesAsSpan)
+        foreach (ReadOnlyAccountChanges accountChanges in bal.AccountChanges)
         {
             if (!ValidateBlockLevelAccessListIndexBounds(block, accountChanges.BalanceChanges, maxAllowed, ref error)) return false;
             if (!ValidateBlockLevelAccessListIndexBounds(block, accountChanges.NonceChanges, maxAllowed, ref error)) return false;

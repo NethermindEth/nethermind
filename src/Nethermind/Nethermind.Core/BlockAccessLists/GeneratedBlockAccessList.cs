@@ -19,16 +19,11 @@ public class GeneratedBlockAccessList
 {
     private readonly Dictionary<Address, GeneratedAccountChanges> _accountChanges = new(GenericEqualityComparer.GetOptimized<Address>());
 
-    public EnumerableWithCount<GeneratedAccountChanges> AccountChanges
-        => new(_accountChanges.Values, _accountChanges.Values.Count);
-
     /// <summary>
-    /// Typed value-collection view. Iterating this with <c>foreach</c> uses the dictionary's
-    /// struct enumerator and avoids the <see cref="System.Collections.Generic.IEnumerator{T}"/>
-    /// box that <see cref="AccountChanges"/> incurs.
+    /// Insertion-ordered view over the BAL's accounts. <c>foreach</c> uses the dictionary's
+    /// struct enumerator; <c>.Count</c> exposes the underlying dictionary size.
     /// </summary>
-    public Dictionary<Address, GeneratedAccountChanges>.ValueCollection AccountChangesValues
-        => _accountChanges.Values;
+    public GeneratedAccountChangesView AccountChanges => new(_accountChanges);
 
     /// <summary>
     /// Address-sorted snapshot; pooled, dispose after use.

@@ -137,7 +137,7 @@ public partial class BlockAccessListManager(
                 _suggestedValidationIndex = BlockAccessListValidationIndex.Build(suggested, suggestedBlock.Transactions.Length, addressIndex);
                 _generatedValidationIndex = new(suggestedBlock.Transactions.Length, addressIndex, _suggestedValidationIndex, suggested.TotalStorageReads, suggested.TotalStorageChangeEvents);
                 int suggestedReads = 0;
-                foreach (ReadOnlyAccountChanges ac in suggested.AccountChangesAsSpan)
+                foreach (ReadOnlyAccountChanges ac in suggested.AccountChanges)
                 {
                     if (!IsSystemContract(ac.Address)) suggestedReads += ac.StorageReads.Length;
                 }
@@ -211,6 +211,10 @@ public partial class BlockAccessListManager(
         {
             _parallelTxProcessorWithWorldStateManager.Value.Dispose();
         }
+        _suggestedValidationIndex?.Dispose();
+        _suggestedValidationIndex = null;
+        _generatedValidationIndex?.Dispose();
+        _generatedValidationIndex = null;
     }
 
     /// <summary>
@@ -244,7 +248,12 @@ public partial class BlockAccessListManager(
         _gasRemaining = null;
         _parentStateRoot = null;
         GeneratedBlockAccessList.Reset();
+        // Dispose pooled buffers held by the validation indexes before dropping the references.
+        // Reset runs at the start of PrepareForProcessing, so the indexes from the previous
+        // block (if any) are no longer in use.
+        _suggestedValidationIndex?.Dispose();
         _suggestedValidationIndex = null;
+        _generatedValidationIndex?.Dispose();
         _generatedValidationIndex = null;
         _suggestedChargeableStorageReads = 0;
         _generatedChargeableStorageReads = 0;

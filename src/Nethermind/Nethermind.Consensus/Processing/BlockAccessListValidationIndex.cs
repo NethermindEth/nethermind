@@ -30,7 +30,7 @@ namespace Nethermind.Consensus.Processing;
 //     against the suggested index. _hasOutOfRangeChange flips when a generated
 //     change targets an index past the suggested last index — in that case
 //     full-slow validation is required.
-internal sealed class BlockAccessListValidationIndex
+internal sealed class BlockAccessListValidationIndex : IDisposable
 {
     private readonly AddressIndex _addressIndex;
     private readonly uint _lastIndex;
@@ -39,7 +39,11 @@ internal sealed class BlockAccessListValidationIndex
     private readonly Lane<ulong> _nonce;
     private readonly Lane<ValueHash256> _code;
     private readonly StorageLane _storage;
-    private ulong[] _hasAccountWords = [];
+    // Always pool-rented. Build seeds it with the exact wordCount; the mutable ctor seeds it
+    // with a single-word buffer and MarkAccount grows it via Rent/Copy/Return, so Dispose has
+    // a single return path regardless of how the index was constructed.
+    private ulong[] _hasAccountWords;
+    private bool _disposed;
     private bool _hasOutOfRangeChange;
     // Generated-side accumulators (mutable index only). Flat (ordinal, slot) lists sorted
     // lazily on first structural-equivalence query. Writes mirror StorageChanges and gate
@@ -68,6 +72,10 @@ internal sealed class BlockAccessListValidationIndex
         // generated past suggested before lane overflow trips.
         _generatedStorageReads = new(WithSlack(storageReadsCapacity));
         _generatedStorageWrites = new(WithSlack(storageWritesCapacity));
+        // Seed the bitmap with a single-word rent so growth still goes through the pool — see
+        // MarkAccount's Rent/Copy/Return pattern below.
+        _hasAccountWords = SafeArrayPool<ulong>.Shared.Rent(1);
+        _hasAccountWords.AsSpan().Clear();
     }
 
     /// <summary>Capacity hint plus headroom so the lists don't immediately resize on the first
@@ -97,7 +105,7 @@ internal sealed class BlockAccessListValidationIndex
     {
         uint lastIndex = GetLastIndex(txCount);
         int rowCount = checked((int)lastIndex + 1);
-        ReadOnlySpan<ReadOnlyAccountChanges> accounts = blockAccessList.AccountChangesAsSpan;
+        ReadOnlySpan<ReadOnlyAccountChanges> accounts = blockAccessList.AccountChanges.AsSpan();
 
         // Pool the four per-row counter arrays so a 30k-tx block doesn't allocate 4 fresh int[]
         // for every block validated. Cleared on rent so we don't pick up the previous block's
@@ -105,21 +113,42 @@ internal sealed class BlockAccessListValidationIndex
         using PooledCounts counts = PooledCounts.Rent(rowCount);
         Count(accounts, counts.AsCountsView(), lastIndex);
 
-        Lane<UInt256> balance = Lane<UInt256>.CreateImmutable(counts.BalanceSpan);
-        Lane<ulong> nonce = Lane<ulong>.CreateImmutable(counts.NonceSpan);
-        Lane<ValueHash256> code = Lane<ValueHash256>.CreateImmutable(counts.CodeSpan);
-        StorageLane storage = StorageLane.CreateImmutable(counts.StorageSpan);
+        Lane<UInt256>? balance = null;
+        Lane<ulong>? nonce = null;
+        Lane<ValueHash256>? code = null;
+        StorageLane? storage = null;
+        ulong[]? hasAccountWords = null;
+        try
+        {
+            balance = Lane<UInt256>.CreateImmutable(counts.BalanceSpan);
+            nonce = Lane<ulong>.CreateImmutable(counts.NonceSpan);
+            code = Lane<ValueHash256>.CreateImmutable(counts.CodeSpan);
+            storage = StorageLane.CreateImmutable(counts.StorageSpan);
 
-        ulong[] hasAccountWords = new ulong[WordCount(accounts.Length)];
+            // Rent the account-presence bitmap from the pool; it lives until the index is
+            // disposed (BlockAccessListManager.Reset). Cleared on rent — pool buffers come
+            // back dirty.
+            int wordCount = WordCount(accounts.Length);
+            hasAccountWords = SafeArrayPool<ulong>.Shared.Rent(Math.Max(wordCount, 1));
+            hasAccountWords.AsSpan(0, wordCount).Clear();
+            FillAndMark(accounts, addressIndex, lastIndex, balance, nonce, code, storage, hasAccountWords);
 
-        FillAndMark(accounts, addressIndex, lastIndex, balance, nonce, code, storage, hasAccountWords);
+            balance.SortAllRows();
+            nonce.SortAllRows();
+            code.SortAllRows();
+            storage.SortAllRows();
 
-        balance.SortAllRows();
-        nonce.SortAllRows();
-        code.SortAllRows();
-        storage.SortAllRows();
-
-        return new(addressIndex, lastIndex, balance, nonce, code, storage, hasAccountWords);
+            return new(addressIndex, lastIndex, balance, nonce, code, storage, hasAccountWords);
+        }
+        catch
+        {
+            if (hasAccountWords is not null) SafeArrayPool<ulong>.Shared.Return(hasAccountWords);
+            storage?.Dispose();
+            code?.Dispose();
+            nonce?.Dispose();
+            balance?.Dispose();
+            throw;
+        }
     }
 
     /// <summary>
@@ -252,7 +281,7 @@ internal sealed class BlockAccessListValidationIndex
         mismatchAddress = null;
         generatedAccountCount = MarkedAccountCount;
 
-        ReadOnlySpan<ReadOnlyAccountChanges> suggestedAccounts = suggested.AccountChangesAsSpan;
+        ReadOnlySpan<ReadOnlyAccountChanges> suggestedAccounts = suggested.AccountChanges.AsSpan();
         if (suggestedAccounts.Length != generatedAccountCount)
         {
             return StructuralMismatchKind.AccountCountMismatch;
@@ -496,38 +525,57 @@ internal sealed class BlockAccessListValidationIndex
         StorageLane storage,
         ulong[] hasAccountWords)
     {
-        int[] balanceCursors = balance.CreateFillCursors();
-        int[] nonceCursors = nonce.CreateFillCursors();
-        int[] codeCursors = code.CreateFillCursors();
-        int[] storageCursors = storage.CreateFillCursors();
-
-        foreach (ReadOnlyAccountChanges accountChanges in accounts)
+        // The cursors track per-row write positions during Fill. They live only for the
+        // duration of FillAndMark, so we rent them from the pool and return on exit; for
+        // a 30k-tx block that saves 4 × (rowCount+1) int allocations.
+        ArrayPool<int> intPool = SafeArrayPool<int>.Shared;
+        int cursorSize = balance.CursorCount;
+        int[] balanceCursors = intPool.Rent(cursorSize);
+        int[] nonceCursors = intPool.Rent(cursorSize);
+        int[] codeCursors = intPool.Rent(cursorSize);
+        int[] storageCursors = intPool.Rent(cursorSize);
+        try
         {
-            int accountOrdinal = addressIndex.GetOrAdd(accountChanges.Address);
-            SetBit(hasAccountWords, accountOrdinal);
+            balance.CopyRowStartsTo(balanceCursors);
+            nonce.CopyRowStartsTo(nonceCursors);
+            code.CopyRowStartsTo(codeCursors);
+            storage.CopyRowStartsTo(storageCursors);
 
-            foreach (BalanceChange change in accountChanges.BalanceChanges)
+            foreach (ReadOnlyAccountChanges accountChanges in accounts)
             {
-                if (TryGetRow(change.Index, lastIndex, out int row)) balance.Fill(row, balanceCursors, accountOrdinal, change.Value);
-            }
+                int accountOrdinal = addressIndex.GetOrAdd(accountChanges.Address);
+                SetBit(hasAccountWords, accountOrdinal);
 
-            foreach (NonceChange change in accountChanges.NonceChanges)
-            {
-                if (TryGetRow(change.Index, lastIndex, out int row)) nonce.Fill(row, nonceCursors, accountOrdinal, change.Value);
-            }
-
-            foreach (CodeChange change in accountChanges.CodeChanges)
-            {
-                if (TryGetRow(change.Index, lastIndex, out int row)) code.Fill(row, codeCursors, accountOrdinal, change.CodeHash);
-            }
-
-            foreach (ReadOnlySlotChanges slotChanges in accountChanges.StorageChanges)
-            {
-                foreach (StorageChange change in slotChanges.Changes)
+                foreach (BalanceChange change in accountChanges.BalanceChanges)
                 {
-                    if (TryGetRow(change.Index, lastIndex, out int row)) storage.Fill(row, storageCursors, accountOrdinal, slotChanges.Key, change.Value);
+                    if (TryGetRow(change.Index, lastIndex, out int row)) balance.Fill(row, balanceCursors, accountOrdinal, change.Value);
+                }
+
+                foreach (NonceChange change in accountChanges.NonceChanges)
+                {
+                    if (TryGetRow(change.Index, lastIndex, out int row)) nonce.Fill(row, nonceCursors, accountOrdinal, change.Value);
+                }
+
+                foreach (CodeChange change in accountChanges.CodeChanges)
+                {
+                    if (TryGetRow(change.Index, lastIndex, out int row)) code.Fill(row, codeCursors, accountOrdinal, change.CodeHash);
+                }
+
+                foreach (ReadOnlySlotChanges slotChanges in accountChanges.StorageChanges)
+                {
+                    foreach (StorageChange change in slotChanges.Changes)
+                    {
+                        if (TryGetRow(change.Index, lastIndex, out int row)) storage.Fill(row, storageCursors, accountOrdinal, slotChanges.Key, change.Value);
+                    }
                 }
             }
+        }
+        finally
+        {
+            intPool.Return(balanceCursors);
+            intPool.Return(nonceCursors);
+            intPool.Return(codeCursors);
+            intPool.Return(storageCursors);
         }
     }
 
@@ -537,7 +585,17 @@ internal sealed class BlockAccessListValidationIndex
     {
         int word = accountOrdinal >> WordShift;
         if ((uint)word >= (uint)words.Length)
-            Array.Resize(ref words, Math.Max(word + 1, words.Length == 0 ? 1 : words.Length * 2));
+        {
+            ArrayPool<ulong> pool = SafeArrayPool<ulong>.Shared;
+            int newSize = Math.Max(word + 1, words.Length == 0 ? 1 : words.Length * 2);
+            ulong[] newWords = pool.Rent(newSize);
+            // Copy existing bits into the new (potentially over-sized) buffer and clear the
+            // remaining slack so MarkAccount's |= doesn't fold stale pool contents.
+            words.AsSpan().CopyTo(newWords);
+            newWords.AsSpan(words.Length).Clear();
+            pool.Return(words);
+            words = newWords;
+        }
         words[word] |= 1UL << (accountOrdinal & BitMask);
     }
 
@@ -679,12 +737,17 @@ internal sealed class BlockAccessListValidationIndex
         }
     }
 
-    private sealed class Lane<TValue>
+    private sealed class Lane<TValue> : IDisposable
         where TValue : IEquatable<TValue>
     {
+        // All four backing buffers are pool-rented; the lane keeps the logical lengths
+        // separately (RowCount / total-entry count) so we never read past valid data even when
+        // the pool hands back oversized arrays.
         private readonly int[] _rowStarts;
+        private readonly int _rowStartsLength;
         private readonly int[]? _rowFilled;
         private readonly int[] _accountOrdinals;
+        private readonly int _entriesLength;
         private readonly TValue[] _values;
         private readonly bool[]? _rowTouched;
         private readonly int[]? _touchedRows;
@@ -693,16 +756,20 @@ internal sealed class BlockAccessListValidationIndex
 
         private Lane(
             int[] rowStarts,
+            int rowStartsLength,
             int[]? rowFilled,
             int[] accountOrdinals,
+            int entriesLength,
             TValue[] values,
             bool[]? rowTouched,
             int[]? touchedRows,
             bool[]? rowOverflow)
         {
             _rowStarts = rowStarts;
+            _rowStartsLength = rowStartsLength;
             _rowFilled = rowFilled;
             _accountOrdinals = accountOrdinals;
+            _entriesLength = entriesLength;
             _values = values;
             _rowTouched = rowTouched;
             _touchedRows = touchedRows;
@@ -711,21 +778,40 @@ internal sealed class BlockAccessListValidationIndex
 
         public static Lane<TValue> CreateImmutable(ReadOnlySpan<int> counts)
         {
-            int[] rowStarts = CreateRowStarts(counts);
-            return new(rowStarts, null, new int[rowStarts[^1]], new TValue[rowStarts[^1]], null, null, null);
+            int rowStartsLength = counts.Length + 1;
+            int[] rowStarts = SafeArrayPool<int>.Shared.Rent(rowStartsLength);
+            FillRowStarts(counts, rowStarts);
+            int total = rowStarts[counts.Length];
+            int[] accountOrdinals = SafeArrayPool<int>.Shared.Rent(Math.Max(total, 1));
+            TValue[] values = SafeArrayPool<TValue>.Shared.Rent(Math.Max(total, 1));
+            return new(rowStarts, rowStartsLength, null, accountOrdinals, total, values, null, null, null);
         }
 
         public static Lane<TValue> CreateMutableLike(Lane<TValue> other)
         {
             int rowCount = other.RowCount;
-            int[] rowStarts = (int[])other._rowStarts.Clone();
-            return new(rowStarts, new int[rowCount], new int[other._accountOrdinals.Length], new TValue[other._values.Length], new bool[rowCount], new int[rowCount], new bool[rowCount]);
+            int rowStartsLength = other._rowStartsLength;
+            int[] rowStarts = SafeArrayPool<int>.Shared.Rent(rowStartsLength);
+            other._rowStarts.AsSpan(0, rowStartsLength).CopyTo(rowStarts);
+            int entries = other._entriesLength;
+            int[] accountOrdinals = SafeArrayPool<int>.Shared.Rent(Math.Max(entries, 1));
+            TValue[] values = SafeArrayPool<TValue>.Shared.Rent(Math.Max(entries, 1));
+            int[] rowFilled = SafeArrayPool<int>.Shared.Rent(Math.Max(rowCount, 1));
+            int[] touchedRows = SafeArrayPool<int>.Shared.Rent(Math.Max(rowCount, 1));
+            bool[] rowTouched = SafeArrayPool<bool>.Shared.Rent(Math.Max(rowCount, 1));
+            bool[] rowOverflow = SafeArrayPool<bool>.Shared.Rent(Math.Max(rowCount, 1));
+            rowFilled.AsSpan(0, rowCount).Clear();
+            rowTouched.AsSpan(0, rowCount).Clear();
+            rowOverflow.AsSpan(0, rowCount).Clear();
+            return new(rowStarts, rowStartsLength, rowFilled, accountOrdinals, entries, values, rowTouched, touchedRows, rowOverflow);
         }
 
-        public int RowCount => _rowStarts.Length - 1;
+        public int RowCount => _rowStartsLength - 1;
 
-        public int[] CreateFillCursors() =>
-            (int[])_rowStarts.Clone();
+        public int CursorCount => _rowStartsLength;
+
+        public void CopyRowStartsTo(Span<int> destination)
+            => _rowStarts.AsSpan(0, _rowStartsLength).CopyTo(destination);
 
         public void Fill(int row, int[] cursors, int accountOrdinal, TValue value)
         {
@@ -881,13 +967,28 @@ internal sealed class BlockAccessListValidationIndex
                 _values[start + j + 1] = value;
             }
         }
+
+        public void Dispose()
+        {
+            SafeArrayPool<int>.Shared.Return(_rowStarts);
+            SafeArrayPool<int>.Shared.Return(_accountOrdinals);
+            SafeArrayPool<TValue>.Shared.Return(_values);
+            if (_rowFilled is not null) SafeArrayPool<int>.Shared.Return(_rowFilled);
+            if (_touchedRows is not null) SafeArrayPool<int>.Shared.Return(_touchedRows);
+            if (_rowTouched is not null) SafeArrayPool<bool>.Shared.Return(_rowTouched);
+            if (_rowOverflow is not null) SafeArrayPool<bool>.Shared.Return(_rowOverflow);
+        }
     }
 
-    private sealed class StorageLane
+    private sealed class StorageLane : IDisposable
     {
+        // Same pool-everything pattern as Lane<T>. Sort scratch arrays auto-grow via
+        // EnsureScratch; they're allocated lazily and disposed alongside the lane.
         private readonly int[] _rowStarts;
+        private readonly int _rowStartsLength;
         private readonly int[]? _rowFilled;
         private readonly int[] _accountOrdinals;
+        private readonly int _entriesLength;
         private readonly UInt256[] _keys;
         private readonly EvmWord[] _values;
         private readonly bool[]? _rowTouched;
@@ -901,8 +1002,10 @@ internal sealed class BlockAccessListValidationIndex
 
         private StorageLane(
             int[] rowStarts,
+            int rowStartsLength,
             int[]? rowFilled,
             int[] accountOrdinals,
+            int entriesLength,
             UInt256[] keys,
             EvmWord[] values,
             bool[]? rowTouched,
@@ -910,8 +1013,10 @@ internal sealed class BlockAccessListValidationIndex
             bool[]? rowOverflow)
         {
             _rowStarts = rowStarts;
+            _rowStartsLength = rowStartsLength;
             _rowFilled = rowFilled;
             _accountOrdinals = accountOrdinals;
+            _entriesLength = entriesLength;
             _keys = keys;
             _values = values;
             _rowTouched = rowTouched;
@@ -921,21 +1026,42 @@ internal sealed class BlockAccessListValidationIndex
 
         public static StorageLane CreateImmutable(ReadOnlySpan<int> counts)
         {
-            int[] rowStarts = CreateRowStarts(counts);
-            return new(rowStarts, null, new int[rowStarts[^1]], new UInt256[rowStarts[^1]], new EvmWord[rowStarts[^1]], null, null, null);
+            int rowStartsLength = counts.Length + 1;
+            int[] rowStarts = SafeArrayPool<int>.Shared.Rent(rowStartsLength);
+            FillRowStarts(counts, rowStarts);
+            int total = rowStarts[counts.Length];
+            int[] accountOrdinals = SafeArrayPool<int>.Shared.Rent(Math.Max(total, 1));
+            UInt256[] keys = SafeArrayPool<UInt256>.Shared.Rent(Math.Max(total, 1));
+            EvmWord[] values = SafeArrayPool<EvmWord>.Shared.Rent(Math.Max(total, 1));
+            return new(rowStarts, rowStartsLength, null, accountOrdinals, total, keys, values, null, null, null);
         }
 
         public static StorageLane CreateMutableLike(StorageLane other)
         {
             int rowCount = other.RowCount;
-            int[] rowStarts = (int[])other._rowStarts.Clone();
-            return new(rowStarts, new int[rowCount], new int[other._accountOrdinals.Length], new UInt256[other._keys.Length], new EvmWord[other._values.Length], new bool[rowCount], new int[rowCount], new bool[rowCount]);
+            int rowStartsLength = other._rowStartsLength;
+            int[] rowStarts = SafeArrayPool<int>.Shared.Rent(rowStartsLength);
+            other._rowStarts.AsSpan(0, rowStartsLength).CopyTo(rowStarts);
+            int entries = other._entriesLength;
+            int[] accountOrdinals = SafeArrayPool<int>.Shared.Rent(Math.Max(entries, 1));
+            UInt256[] keys = SafeArrayPool<UInt256>.Shared.Rent(Math.Max(entries, 1));
+            EvmWord[] values = SafeArrayPool<EvmWord>.Shared.Rent(Math.Max(entries, 1));
+            int[] rowFilled = SafeArrayPool<int>.Shared.Rent(Math.Max(rowCount, 1));
+            int[] touchedRows = SafeArrayPool<int>.Shared.Rent(Math.Max(rowCount, 1));
+            bool[] rowTouched = SafeArrayPool<bool>.Shared.Rent(Math.Max(rowCount, 1));
+            bool[] rowOverflow = SafeArrayPool<bool>.Shared.Rent(Math.Max(rowCount, 1));
+            rowFilled.AsSpan(0, rowCount).Clear();
+            rowTouched.AsSpan(0, rowCount).Clear();
+            rowOverflow.AsSpan(0, rowCount).Clear();
+            return new(rowStarts, rowStartsLength, rowFilled, accountOrdinals, entries, keys, values, rowTouched, touchedRows, rowOverflow);
         }
 
-        public int RowCount => _rowStarts.Length - 1;
+        public int RowCount => _rowStartsLength - 1;
 
-        public int[] CreateFillCursors() =>
-            (int[])_rowStarts.Clone();
+        public int CursorCount => _rowStartsLength;
+
+        public void CopyRowStartsTo(Span<int> destination)
+            => _rowStarts.AsSpan(0, _rowStartsLength).CopyTo(destination);
 
         public void Fill(int row, int[] cursors, int accountOrdinal, UInt256 key, EvmWord value)
         {
@@ -1172,10 +1298,32 @@ internal sealed class BlockAccessListValidationIndex
                 return;
             }
 
-            _orderScratch = new int[length];
-            _accountScratch = new int[length];
-            _keyScratch = new UInt256[length];
-            _valueScratch = new EvmWord[length];
+            // Return any prior scratch buffer before renting a bigger one (skip empty
+            // sentinels — ArrayPool.Return on Array.Empty is harmless but wasteful).
+            if (_orderScratch.Length > 0) SafeArrayPool<int>.Shared.Return(_orderScratch);
+            if (_accountScratch.Length > 0) SafeArrayPool<int>.Shared.Return(_accountScratch);
+            if (_keyScratch.Length > 0) SafeArrayPool<UInt256>.Shared.Return(_keyScratch);
+            if (_valueScratch.Length > 0) SafeArrayPool<EvmWord>.Shared.Return(_valueScratch);
+            _orderScratch = SafeArrayPool<int>.Shared.Rent(length);
+            _accountScratch = SafeArrayPool<int>.Shared.Rent(length);
+            _keyScratch = SafeArrayPool<UInt256>.Shared.Rent(length);
+            _valueScratch = SafeArrayPool<EvmWord>.Shared.Rent(length);
+        }
+
+        public void Dispose()
+        {
+            SafeArrayPool<int>.Shared.Return(_rowStarts);
+            SafeArrayPool<int>.Shared.Return(_accountOrdinals);
+            SafeArrayPool<UInt256>.Shared.Return(_keys);
+            SafeArrayPool<EvmWord>.Shared.Return(_values);
+            if (_rowFilled is not null) SafeArrayPool<int>.Shared.Return(_rowFilled);
+            if (_touchedRows is not null) SafeArrayPool<int>.Shared.Return(_touchedRows);
+            if (_rowTouched is not null) SafeArrayPool<bool>.Shared.Return(_rowTouched);
+            if (_rowOverflow is not null) SafeArrayPool<bool>.Shared.Return(_rowOverflow);
+            if (_orderScratch.Length > 0) SafeArrayPool<int>.Shared.Return(_orderScratch);
+            if (_accountScratch.Length > 0) SafeArrayPool<int>.Shared.Return(_accountScratch);
+            if (_keyScratch.Length > 0) SafeArrayPool<UInt256>.Shared.Return(_keyScratch);
+            if (_valueScratch.Length > 0) SafeArrayPool<EvmWord>.Shared.Return(_valueScratch);
         }
 
         private readonly struct StorageOrderComparer(int[] accountOrdinals, UInt256[] keys, int start) : IComparer<int>
@@ -1195,14 +1343,24 @@ internal sealed class BlockAccessListValidationIndex
         }
     }
 
-    private static int[] CreateRowStarts(ReadOnlySpan<int> counts)
+    private static void FillRowStarts(ReadOnlySpan<int> counts, int[] rowStarts)
     {
-        int[] rowStarts = new int[counts.Length + 1];
+        rowStarts[0] = 0;
         for (int i = 0; i < counts.Length; i++)
         {
             rowStarts[i + 1] = checked(rowStarts[i] + counts[i]);
         }
+    }
 
-        return rowStarts;
+    public void Dispose()
+    {
+        if (_disposed) return;
+        _disposed = true;
+        _balance.Dispose();
+        _nonce.Dispose();
+        _code.Dispose();
+        _storage.Dispose();
+        SafeArrayPool<ulong>.Shared.Return(_hasAccountWords);
+        _hasAccountWords = [];
     }
 }

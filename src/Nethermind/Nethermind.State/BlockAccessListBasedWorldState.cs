@@ -301,7 +301,7 @@ public class BlockAccessListBasedWorldState(IWorldState innerWorldState, ILogMan
     {
         CheckInitialized();
 
-        ReadOnlySpan<ReadOnlyAccountChanges> accounts = _suggestedBlockAccessList.AccountChangesAsSpan;
+        ReadOnlySpan<ReadOnlyAccountChanges> accounts = _suggestedBlockAccessList.AccountChanges.AsSpan();
         ArrayPoolList<AddressAsKey> result = new(accounts.Length);
         foreach (ReadOnlyAccountChanges accountChanges in accounts)
         {
@@ -389,7 +389,7 @@ public class BlockAccessListBasedWorldState(IWorldState innerWorldState, ILogMan
         // dictionary itself is only allocated when at least one account declares a code change,
         // so most blocks (which rarely contain deployments) skip the per-block allocation.
         Dictionary<ValueHash256, (uint Index, byte[] Code)>? codeChangesByHash = null;
-        foreach (ReadOnlyAccountChanges accountChanges in _suggestedBlockAccessList.AccountChangesAsSpan)
+        foreach (ReadOnlyAccountChanges accountChanges in _suggestedBlockAccessList.AccountChanges)
         {
             ReadOnlySpan<CodeChange> codeChanges = accountChanges.CodeChanges;
             if (codeChanges.Length == 0) continue;

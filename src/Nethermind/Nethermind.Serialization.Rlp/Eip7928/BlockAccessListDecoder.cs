@@ -72,7 +72,7 @@ public class BlockAccessListDecoder : RlpDecoder<ReadOnlyBlockAccessList>
     /// <inheritdoc cref="EncodeToBytes(GeneratedBlockAccessList, RlpBehaviors)"/>
     public static byte[] EncodeToBytes(ReadOnlyBlockAccessList item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
-        ReadOnlySpan<ReadOnlyAccountChanges> accounts = item.AccountChangesAsSpan;
+        ReadOnlySpan<ReadOnlyAccountChanges> accounts = item.AccountChanges.AsSpan();
         using ArrayPoolListRef<AccountChangesDecoder.EncodingLengths> accountLengths = new(accounts.Length, accounts.Length);
         PrepareReadOnlyLengths(accounts, accountLengths.AsSpan(), rlpBehaviors, out int contentLength);
         RlpStream stream = new(Rlp.LengthOfSequence(contentLength));
@@ -82,7 +82,7 @@ public class BlockAccessListDecoder : RlpDecoder<ReadOnlyBlockAccessList>
 
     public override void Encode(RlpStream stream, ReadOnlyBlockAccessList item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
-        ReadOnlySpan<ReadOnlyAccountChanges> accounts = item.AccountChangesAsSpan;
+        ReadOnlySpan<ReadOnlyAccountChanges> accounts = item.AccountChanges.AsSpan();
         using ArrayPoolListRef<AccountChangesDecoder.EncodingLengths> accountLengths = new(accounts.Length, accounts.Length);
         PrepareReadOnlyLengths(accounts, accountLengths.AsSpan(), rlpBehaviors, out int contentLength);
         EncodeReadOnlyPrepared(stream, accounts, accountLengths.AsSpan(), contentLength, rlpBehaviors);
@@ -100,7 +100,7 @@ public class BlockAccessListDecoder : RlpDecoder<ReadOnlyBlockAccessList>
     {
         AccountChangesDecoder decoder = AccountChangesDecoder.Instance;
         int contentLength = 0;
-        foreach (ReadOnlyAccountChanges a in item.AccountChangesAsSpan)
+        foreach (ReadOnlyAccountChanges a in item.AccountChanges)
         {
             contentLength += decoder.GetLength(a, rlpBehaviors);
         }
@@ -111,7 +111,7 @@ public class BlockAccessListDecoder : RlpDecoder<ReadOnlyBlockAccessList>
     {
         AccountChangesDecoder decoder = AccountChangesDecoder.Instance;
         int contentLength = 0;
-        foreach (GeneratedAccountChanges a in item.AccountChangesValues)
+        foreach (GeneratedAccountChanges a in item.AccountChanges)
         {
             contentLength += decoder.GetLength(a, rlpBehaviors);
         }
