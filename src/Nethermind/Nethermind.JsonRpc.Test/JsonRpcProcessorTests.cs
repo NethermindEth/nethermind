@@ -218,6 +218,9 @@ public class JsonRpcProcessorTests(bool returnErrors)
     private ValueTask<CollectedJsonRpcResponses> ProcessAsync(string request, JsonRpcContext? context = null, JsonRpcConfig? config = null) =>
         ProcessAsync(Initialize(config), CreateReader(request), context ?? new JsonRpcContext(RpcEndpoint.Http));
 
+    private static ValueTask<CollectedJsonRpcResponses> ProcessAsync(JsonRpcProcessor processor, string request, JsonRpcContext context, CollectingJsonRpcResponseSink? sink = null) =>
+        ProcessAsync(processor, CreateReader(request), context, sink);
+
     private static async ValueTask<CollectedJsonRpcResponses> ProcessAsync(
         JsonRpcProcessor processor,
         PipeReader reader,
@@ -240,11 +243,10 @@ public class JsonRpcProcessorTests(bool returnErrors)
         JsonRpcProcessor processor = CreateProcessor(service, new JsonRpcConfig { RpcRecorderState = RpcRecorderState.None });
         CollectingJsonRpcResponseSink sink = new() { StopAfterBatchItems = 1 };
 
-        await processor.ProcessAsync(
-            CreateReader("[{\"id\":1,\"jsonrpc\":\"2.0\",\"method\":\"eth_getTransactionCount\",\"params\":[]},{\"id\":2,\"jsonrpc\":\"2.0\",\"method\":\"eth_blockNumber\",\"params\":[]},{\"id\":3,\"jsonrpc\":\"2.0\",\"method\":\"net_version\",\"params\":[]}]"),
+        await ProcessAsync(processor,
+            "[{\"id\":1,\"jsonrpc\":\"2.0\",\"method\":\"eth_getTransactionCount\",\"params\":[]},{\"id\":2,\"jsonrpc\":\"2.0\",\"method\":\"eth_blockNumber\",\"params\":[]},{\"id\":3,\"jsonrpc\":\"2.0\",\"method\":\"net_version\",\"params\":[]}]",
             new JsonRpcContext(RpcEndpoint.Http),
-            sink,
-            new JsonRpcProcessingOptions(JsonRpcInputMode.SingleDocument));
+            sink);
 
         List<JsonRpcResponse> batchItems = sink.Responses[0].BatchItems!;
         batchItems.Should().HaveCount(3);
@@ -262,11 +264,7 @@ public class JsonRpcProcessorTests(bool returnErrors)
         CollectingJsonRpcResponseSink sink = new();
         JsonRpcProcessor processor = Initialize(recorderState: RpcRecorderState.None);
 
-        await processor.ProcessAsync(
-            CreateReader("{\"id\":67,\"jsonrpc\":\"2.0\",\"method\":\"eth_getTransactionCount\",\"params\":[]}"),
-            new JsonRpcContext(RpcEndpoint.Http),
-            sink,
-            new JsonRpcProcessingOptions(JsonRpcInputMode.SingleDocument));
+        await ProcessAsync(processor, "{\"id\":67,\"jsonrpc\":\"2.0\",\"method\":\"eth_getTransactionCount\",\"params\":[]}", new JsonRpcContext(RpcEndpoint.Http), sink);
 
         sink.Responses.Should().HaveCount(1);
         sink.Responses[0].Response!.Id.Should().Be(67);
@@ -290,11 +288,7 @@ public class JsonRpcProcessorTests(bool returnErrors)
         JsonRpcProcessor processor = CreateProcessor(service, new JsonRpcConfig { RpcRecorderState = RpcRecorderState.None });
         CollectingJsonRpcResponseSink sink = new();
 
-        await processor.ProcessAsync(
-            CreateReader(" \r\n{\"id\":67,\"jsonrpc\":\"2.0\",\"method\":\"eth_getTransactionCount\",\"params\":[{\"a\":2}]}\t "),
-            new JsonRpcContext(RpcEndpoint.Http),
-            sink,
-            new JsonRpcProcessingOptions(JsonRpcInputMode.SingleDocument));
+        await ProcessAsync(processor, " \r\n{\"id\":67,\"jsonrpc\":\"2.0\",\"method\":\"eth_getTransactionCount\",\"params\":[{\"a\":2}]}\t ", new JsonRpcContext(RpcEndpoint.Http), sink);
 
         inspected.Should().BeTrue();
         sink.Responses.Should().HaveCount(1);
@@ -462,7 +456,7 @@ public class JsonRpcProcessorTests(bool returnErrors)
             ? "{\"id\":1,\"jsonrpc\":\"2.0\",\"method\":\"eth_blockNumber\",\"params\":[]}"
             : "{\"id\":1,\"jsonrpc\":\"2.0\",\"method\":\"eth_blockNumber\",\"params\":[]}{\"id\":2,\"jsonrpc\":\"2.0\",\"method\":\"net_version\",\"params\":[]}";
 
-        using CollectedJsonRpcResponses result = await ProcessAsync(processor, CreateReader(request), new JsonRpcContext(endpoint));
+        using CollectedJsonRpcResponses result = await ProcessAsync(processor, request, new JsonRpcContext(endpoint));
 
         records.Should().ContainSingle(record => record.Contains("\"method\":\"eth_blockNumber\""));
         if (endpoint != RpcEndpoint.Http)
@@ -481,7 +475,7 @@ public class JsonRpcProcessorTests(bool returnErrors)
             ? "[{\"id\":1,\"jsonrpc\":\"2.0\",\"method\":\"eth_blockNumber\",\"params\":[]},{\"id\":2,\"jsonrpc\":\"2.0\",\"method\":\"net_version\",\"params\":[]}]"
             : "{\"id\":1,\"jsonrpc\":\"2.0\",\"method\":\"eth_blockNumber\",\"params\":[]}";
 
-        using CollectedJsonRpcResponses result = await ProcessAsync(processor, CreateReader(request), new JsonRpcContext(RpcEndpoint.Http));
+        using CollectedJsonRpcResponses result = await ProcessAsync(processor, request, new JsonRpcContext(RpcEndpoint.Http));
 
         records.Should().HaveCount(expectedRecordCount);
         records.Should().Contain(record => record.Contains("eth_blockNumber"));
@@ -509,11 +503,7 @@ public class JsonRpcProcessorTests(bool returnErrors)
             ? "[{\"id\":1,\"jsonrpc\":\"2.0\",\"method\":\"eth_blockNumber\",\"params\":[1]},{\"id\":2,\"jsonrpc\":\"2.0\",\"method\":\"net_version\",\"params\":[2]}]"
             : "{\"id\":1,\"jsonrpc\":\"2.0\",\"method\":\"eth_blockNumber\",\"params\":[{\"a\":1}]}";
 
-        await ProcessAsync(
-            processor,
-            CreateReader(request),
-            new JsonRpcContext(RpcEndpoint.Http),
-            sink);
+        await ProcessAsync(processor, request, new JsonRpcContext(RpcEndpoint.Http), sink);
 
         Action readAfterProcessing = () => _ = capturedParams.ValueKind;
         readAfterProcessing.Should().Throw<ObjectDisposedException>();
@@ -531,11 +521,7 @@ public class JsonRpcProcessorTests(bool returnErrors)
         };
         JsonRpcProcessor processor = CreateProcessor(service, new JsonRpcConfig { RpcRecorderState = RpcRecorderState.None });
 
-        await ProcessAsync(
-            processor,
-            CreateReader("{\"id\":1,\"jsonrpc\":\"2.0\",\"method\":\"eth_blockNumber\",\"params\":[]}"),
-            new JsonRpcContext(RpcEndpoint.Http),
-            sink);
+        await ProcessAsync(processor, "{\"id\":1,\"jsonrpc\":\"2.0\",\"method\":\"eth_blockNumber\",\"params\":[]}", new JsonRpcContext(RpcEndpoint.Http), sink);
 
         disposedDuringWrite.Should().BeFalse();
         disposed.Should().BeTrue();
@@ -679,7 +665,7 @@ public class JsonRpcProcessorTests(bool returnErrors)
         JsonRpcProcessor processor = CreateProcessor(service, new JsonRpcConfig { RpcRecorderState = RpcRecorderState.None, MaxBatchSize = 1 });
         using JsonRpcContext context = CreateHttpContext(isAuthenticated);
 
-        using CollectedJsonRpcResponses result = await ProcessAsync(processor, CreateReader(CreateTransactionCountBatchRequest(2)), context);
+        using CollectedJsonRpcResponses result = await ProcessAsync(processor, CreateTransactionCountBatchRequest(2), context);
 
         result.Should().HaveCount(1);
         if (!isAuthenticated)
@@ -705,7 +691,7 @@ public class JsonRpcProcessorTests(bool returnErrors)
         CollectingJsonRpcResponseSink sink = new() { StopAfterBatchItems = limit ? 1 : int.MaxValue };
         using CollectedJsonRpcResponses result = await ProcessAsync(
             Initialize(recorderState: RpcRecorderState.None),
-            CreateReader(CreateTransactionCountBatchRequest(TransactionCountParamsJson, TransactionCountParamsJson)),
+            CreateTransactionCountBatchRequest(TransactionCountParamsJson, TransactionCountParamsJson),
             new JsonRpcContext(RpcEndpoint.Http),
             sink);
         result[0].IsCollection.Should().BeTrue();
@@ -752,7 +738,7 @@ public class JsonRpcProcessorTests(bool returnErrors)
     {
         JsonRpcProcessor processor = CreateShutdownProcessor(out IJsonRpcService service);
         string request = CreateTransactionCountRequest("67");
-        using CollectedJsonRpcResponses results = await ProcessAsync(processor, CreateReader(request), new JsonRpcContext(RpcEndpoint.Http));
+        using CollectedJsonRpcResponses results = await ProcessAsync(processor, request, new JsonRpcContext(RpcEndpoint.Http));
 
         results.Should().HaveCount(1);
         results[0].Response.Should().BeOfType<JsonRpcErrorResponse>();
@@ -845,7 +831,7 @@ public class JsonRpcProcessorTests(bool returnErrors)
             : new JsonRpcSuccessResponse { Id = request.Id });
 
         JsonRpcProcessor processor = CreateProcessor(service);
-        using CollectedJsonRpcResponses result = await ProcessAsync(processor, CreateReader($$"""{"id":1,"jsonrpc":"2.0","method":"{{methodName}}","params":[]}"""), new JsonRpcContext(RpcEndpoint.Http));
+        using CollectedJsonRpcResponses result = await ProcessAsync(processor, $$"""{"id":1,"jsonrpc":"2.0","method":"{{methodName}}","params":[]}""", new JsonRpcContext(RpcEndpoint.Http));
 
         result.Should().HaveCount(1);
         result[0].Report.Should().NotBeNull();
@@ -893,7 +879,7 @@ public class JsonRpcProcessorTests(bool returnErrors)
         string nested = BuildNestedArrayParams(paramNestingDepth);
         string request = $"{{\"id\":1,\"jsonrpc\":\"2.0\",\"method\":\"eth_getTransactionCount\",\"params\":[{nested}]}}";
 
-        using CollectedJsonRpcResponses result = await ProcessAsync(processor, CreateReader(request), new JsonRpcContext(RpcEndpoint.Http));
+        using CollectedJsonRpcResponses result = await ProcessAsync(processor, request, new JsonRpcContext(RpcEndpoint.Http));
 
         result.Should().HaveCount(1);
 
