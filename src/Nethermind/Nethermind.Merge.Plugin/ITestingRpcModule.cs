@@ -23,5 +23,5 @@ public interface ITestingRpcModule : IRpcModule
         Description = "Build a block from provided transactions on top of the current chain head, commit it, and wait for the BlockchainProcessor to advance the canonical head to the committed block before returning. Returns the committed block hash. Concurrent invocations are serialized inside the implementation, so callers do not need their own mutex; serialization order between simultaneous calls is unspecified.",
         IsSharable = true,
         IsImplemented = true)]
-    public Task<ResultWrapper<Hash256>> testing_commitBlockV1(PayloadAttributes payloadAttributes, IEnumerable<byte[]> txRlps, byte[]? extraData = null);
+    public Task<ResultWrapper<Hash256>> testing_commitBlockV1(PayloadAttributes payloadAttributes, IEnumerable<byte[]>? txRlps, byte[]? extraData = null);
 }

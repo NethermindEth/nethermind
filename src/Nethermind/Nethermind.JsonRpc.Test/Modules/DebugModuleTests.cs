@@ -469,4 +469,65 @@ public class DebugModuleTests
         actual.ErrorCode.Should().Be(ErrorCodes.ResourceUnavailable);
         actual.Result.Error.Should().Contain("No state available");
     }
+
+    [Test]
+    public void Debug_intermediateRoots_returns_post_tx_roots_from_bridge()
+    {
+        Hash256 blockHash = TestItem.KeccakA;
+        BlockHeader header = Build.A.BlockHeader.WithNumber(1).TestObject;
+        _blockFinder.FindHeader(blockHash).Returns(header);
+        _blockchainBridge.HasStateForBlock(Arg.Is(header)).Returns(true);
+
+        Hash256[] expected = [TestItem.KeccakB, TestItem.KeccakC];
+        _debugBridge
+            .GetBlockIntermediateRoots(Arg.Is(blockHash), Arg.Any<CancellationToken>(), Arg.Any<GethTraceOptions?>())
+            .Returns(expected);
+
+        DebugRpcModule rpcModule = CreateDebugRpcModule(_debugBridge);
+        ResultWrapper<IReadOnlyCollection<Hash256>> actual = rpcModule.debug_intermediateRoots(blockHash);
+
+        actual.Result.ResultType.Should().Be(ResultType.Success);
+        actual.Data.Should().BeEquivalentTo(expected);
+    }
+
+    private static IEnumerable<TestCaseData> IntermediateRootsErrorCases()
+    {
+        yield return new TestCaseData(
+            (Action<Hash256, IBlockFinder, IBlockchainBridge>)((blockHash, finder, _) =>
+                finder.FindHeader(blockHash).ReturnsNull()),
+            ErrorCodes.ResourceNotFound,
+            "Cannot find header")
+        { TestName = "block_not_found" };
+
+        yield return new TestCaseData(
+            (Action<Hash256, IBlockFinder, IBlockchainBridge>)((blockHash, finder, bridge) =>
+            {
+                BlockHeader header = Build.A.BlockHeader.WithNumber(1).TestObject;
+                finder.FindHeader(blockHash).Returns(header);
+                bridge.HasStateForBlock(Arg.Is(header)).Returns(false);
+            }),
+            ErrorCodes.ResourceUnavailable,
+            null)
+        { TestName = "state_unavailable" };
+    }
+
+    [TestCaseSource(nameof(IntermediateRootsErrorCases))]
+    public void Debug_intermediateRoots_fails(
+        Action<Hash256, IBlockFinder, IBlockchainBridge> setup,
+        int expectedErrorCode,
+        string? expectedErrorSubstring)
+    {
+        Hash256 blockHash = TestItem.KeccakA;
+        setup(blockHash, _blockFinder, _blockchainBridge);
+
+        DebugRpcModule rpcModule = CreateDebugRpcModule(_debugBridge);
+        ResultWrapper<IReadOnlyCollection<Hash256>> actual = rpcModule.debug_intermediateRoots(blockHash);
+
+        actual.Result.ResultType.Should().Be(ResultType.Failure);
+        actual.ErrorCode.Should().Be(expectedErrorCode);
+        if (expectedErrorSubstring is not null)
+        {
+            actual.Result.Error.Should().Contain(expectedErrorSubstring);
+        }
+    }
 }

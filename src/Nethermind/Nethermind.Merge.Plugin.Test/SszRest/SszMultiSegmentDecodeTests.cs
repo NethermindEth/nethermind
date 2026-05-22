@@ -137,7 +137,7 @@ public class SszMultiSegmentDecodeTests
         decoded.ExpectedBlobVersionedHashes.Should().NotBeNull().And.HaveCount(2);
         decoded.ExpectedBlobVersionedHashes![0].Should().Be(TestItem.KeccakA);
         decoded.ExpectedBlobVersionedHashes[1].Should().Be(TestItem.KeccakB);
-        ExecutionPayloadV3 payload = decoded.ExecutionPayload.Unwrap();
+        ExecutionPayloadV3 payload = decoded.ExecutionPayload.AsExecutionPayload();
         payload.BlockNumber.Should().Be(100);
         payload.BlockHash.Should().Be(TestItem.KeccakE);
     }
