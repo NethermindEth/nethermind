@@ -20,9 +20,9 @@ internal sealed class SocketJsonRpcResponseSink<TStream>(
     JsonRpcContext jsonRpcContext) : IJsonRpcResponseSink, IDisposable
     where TStream : Stream, IMessageBorderPreservingStream
 {
-    private static readonly byte[] JsonOpeningBracket = [Convert.ToByte('[')];
-    private static readonly byte[] JsonComma = [Convert.ToByte(',')];
-    private static readonly byte[] JsonClosingBracket = [Convert.ToByte(']')];
+    private static readonly byte[] JsonOpeningBracket = [(byte)'['];
+    private static readonly byte[] JsonComma = [(byte)','];
+    private static readonly byte[] JsonClosingBracket = [(byte)']'];
     private readonly bool _reportCalls = jsonRpcLocalStats.IsEnabled;
     private long _topLevelResponseBytes;
     private long _batchStartTimestamp;

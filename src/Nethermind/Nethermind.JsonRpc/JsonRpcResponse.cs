@@ -69,9 +69,7 @@ namespace Nethermind.JsonRpc
         [JsonConstructor]
         public JsonRpcSuccessResponse() : base(null) { }
 
-        public JsonRpcSuccessResponse(Action? disposableAction = null) : base(disposableAction)
-        {
-        }
+        public JsonRpcSuccessResponse(Action? disposableAction = null) : base(disposableAction) { }
 
         internal override bool TryGetStreamableResult([NotNullWhen(true)] out IStreamableResult? streamable) =>
             (streamable = Result as IStreamableResult) is not null;
@@ -113,9 +111,7 @@ namespace Nethermind.JsonRpc
         [JsonConstructor]
         public JsonRpcErrorResponse() : base(null) { }
 
-        public JsonRpcErrorResponse(Action? disposableAction = null) : base(disposableAction)
-        {
-        }
+        public JsonRpcErrorResponse(Action? disposableAction = null) : base(disposableAction) { }
 
         internal override bool IsResourceUnavailableError => Error is { Code: ErrorCodes.ModuleTimeout or ErrorCodes.LimitExceeded };
 
