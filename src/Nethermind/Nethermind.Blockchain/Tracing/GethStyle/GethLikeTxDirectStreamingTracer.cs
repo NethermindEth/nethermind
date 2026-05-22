@@ -23,7 +23,7 @@ namespace Nethermind.Blockchain.Tracing.GethStyle;
 /// </summary>
 public sealed class GethLikeTxDirectStreamingTracer : GethLikeTxTracer
 {
-    private const int DefaultFlushIntervalEntries = 2048;
+    private const int DefaultFlushIntervalEntries = 8192;
     private const int EvmWordSize = 32;
     private static readonly JsonEncodedText ZeroMemoryWord = JsonEncodedText.Encode(new string('0', EvmWordSize * 2));
     private const int InitialStorageMapCapacity = 8;
