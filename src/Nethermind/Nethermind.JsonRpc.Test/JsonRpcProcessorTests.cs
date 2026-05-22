@@ -258,10 +258,11 @@ public class JsonRpcProcessorTests(bool returnErrors)
             sink,
             new JsonRpcProcessingOptions(JsonRpcInputMode.SingleDocument));
 
-        sink.BatchItems.Should().HaveCount(3);
-        sink.BatchItems[0].Should().BeOfType<JsonRpcSuccessResponse>();
-        JsonRpcErrorResponse second = sink.BatchItems[1].Should().BeOfType<JsonRpcErrorResponse>().Subject;
-        JsonRpcErrorResponse third = sink.BatchItems[2].Should().BeOfType<JsonRpcErrorResponse>().Subject;
+        List<JsonRpcResponse> batchItems = sink.Responses[0].BatchItems!;
+        batchItems.Should().HaveCount(3);
+        batchItems[0].Should().BeOfType<JsonRpcSuccessResponse>();
+        JsonRpcErrorResponse second = batchItems[1].Should().BeOfType<JsonRpcErrorResponse>().Subject;
+        JsonRpcErrorResponse third = batchItems[2].Should().BeOfType<JsonRpcErrorResponse>().Subject;
         second.Id.Should().Be(2);
         third.Id.Should().Be(3);
         await service.Received(1).SendRequestAsync(Arg.Any<JsonRpcRequest>(), Arg.Any<JsonRpcContext>());
@@ -279,8 +280,8 @@ public class JsonRpcProcessorTests(bool returnErrors)
             sink,
             new JsonRpcProcessingOptions(JsonRpcInputMode.SingleDocument));
 
-        sink.Singles.Should().HaveCount(1);
-        sink.Singles[0].Id.Should().Be(67);
+        sink.Responses.Should().HaveCount(1);
+        sink.Responses[0].Response!.Id.Should().Be(67);
     }
 
     [Test]
@@ -308,8 +309,8 @@ public class JsonRpcProcessorTests(bool returnErrors)
             new JsonRpcProcessingOptions(JsonRpcInputMode.SingleDocument));
 
         inspected.Should().BeTrue();
-        sink.Singles.Should().HaveCount(1);
-        sink.Singles[0].Id.Should().Be(67);
+        sink.Responses.Should().HaveCount(1);
+        sink.Responses[0].Response!.Id.Should().Be(67);
     }
 
     private static PipeReader CreateReader(string request) =>
@@ -965,13 +966,10 @@ public class JsonRpcProcessorTests(bool returnErrors)
     private sealed class CollectingJsonRpcResponseSink : IJsonRpcResponseSink
     {
         private CollectedJsonRpcResult? _currentBatch;
+        private int _batchItemCount;
 
         public CollectedJsonRpcResponses Responses { get; } = new();
-        public List<JsonRpcResponse> Singles { get; } = [];
-        public List<JsonRpcResponse> BatchItems { get; } = [];
-        public List<string> BatchEvents { get; } = [];
         public Action<JsonRpcResponse, RpcReport>? OnSingleWrite { get; init; }
-        public Action<JsonRpcResponse, RpcReport>? OnBatchItemWrite { get; init; }
         public Action? OnEndBatch { get; init; }
         public int StopAfterBatchItems { get; init; } = int.MaxValue;
         public long BytesWritten { get; private set; }
@@ -980,7 +978,6 @@ public class JsonRpcProcessorTests(bool returnErrors)
         public ValueTask WriteSingleAsync(JsonRpcResponse response, RpcReport report, CancellationToken cancellationToken)
         {
             OnSingleWrite?.Invoke(response, report);
-            Singles.Add(response);
             Responses.AddSingle(response, report);
             BytesWritten++;
             return ValueTask.CompletedTask;
@@ -988,27 +985,24 @@ public class JsonRpcProcessorTests(bool returnErrors)
 
         public ValueTask BeginBatchAsync(CancellationToken cancellationToken)
         {
-            BatchEvents.Add("begin");
             _currentBatch = Responses.AddBatch();
+            _batchItemCount = 0;
             BytesWritten++;
             return ValueTask.CompletedTask;
         }
 
         public ValueTask WriteBatchItemAsync(JsonRpcResponse response, RpcReport report, CancellationToken cancellationToken)
         {
-            OnBatchItemWrite?.Invoke(response, report);
-            BatchEvents.Add("item");
-            BatchItems.Add(response);
             _currentBatch!.AddBatchItem(response, report);
+            _batchItemCount++;
             BytesWritten++;
-            StopRequested = BatchItems.Count >= StopAfterBatchItems;
+            StopRequested = _batchItemCount >= StopAfterBatchItems;
             return ValueTask.CompletedTask;
         }
 
         public ValueTask EndBatchAsync(CancellationToken cancellationToken)
         {
             OnEndBatch?.Invoke();
-            BatchEvents.Add("end");
             _currentBatch = null;
             BytesWritten++;
             return ValueTask.CompletedTask;
