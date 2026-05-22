@@ -15,17 +15,7 @@ namespace Nethermind.JsonRpc
     [JsonDerivedType(typeof(JsonRpcSubscriptionResponse))]
     public class JsonRpcResponse(Action? action = null) : IDisposable
     {
-        public void AddDisposable(Action disposableAction)
-        {
-            if (action is null)
-            {
-                action = disposableAction;
-            }
-            else
-            {
-                action += disposableAction;
-            }
-        }
+        public void AddDisposable(Action disposableAction) => action += disposableAction;
 
         [JsonPropertyName("jsonrpc")]
         [JsonPropertyOrder(0)]
