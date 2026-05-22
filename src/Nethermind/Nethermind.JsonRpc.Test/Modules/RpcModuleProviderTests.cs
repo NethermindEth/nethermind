@@ -75,7 +75,7 @@ public class RpcModuleProviderTests
     {
         JsonRpcConfig config = new();
         _fileSystem.File.Exists(Arg.Any<string>()).Returns(true);
-        _fileSystem.File.ReadLines(Arg.Any<string>()).Returns(new[] { regex });
+        _fileSystem.File.ReadLines(Arg.Any<string>()).Returns([regex]);
         _moduleProvider = CreateProvider(config, _fileSystem);
 
         SingletonModulePool<INetRpcModule> pool = new(new NetRpcModule(LimboLogs.Instance, Substitute.For<INetBridge>()), true);
@@ -102,14 +102,9 @@ public class RpcModuleProviderTests
 
         JsonRpcUrl url = new("http", "127.0.0.1", 8888, RpcEndpoint.Http, false, new[] { "net" });
 
-        ModuleResolution inScopeResolution = _moduleProvider.Check("net_version", JsonRpcContext.Http(url));
-        Assert.That(inScopeResolution, Is.EqualTo(ModuleResolution.Enabled));
-
-        ModuleResolution outOfScopeResolution = _moduleProvider.Check("proof_call", JsonRpcContext.Http(url));
-        Assert.That(outOfScopeResolution, Is.EqualTo(ModuleResolution.Disabled));
-
-        ModuleResolution fallbackResolution = _moduleProvider.Check("proof_call", new JsonRpcContext(RpcEndpoint.Http));
-        Assert.That(fallbackResolution, Is.EqualTo(ModuleResolution.Enabled));
+        _moduleProvider.Check("net_version", JsonRpcContext.Http(url)).Should().Be(ModuleResolution.Enabled);
+        _moduleProvider.Check("proof_call", JsonRpcContext.Http(url)).Should().Be(ModuleResolution.Disabled);
+        _moduleProvider.Check("proof_call", new JsonRpcContext(RpcEndpoint.Http)).Should().Be(ModuleResolution.Enabled);
     }
 
     [Test]
@@ -485,8 +480,7 @@ public class RpcModuleProviderTests
         public Task<ResultWrapper<string, string>> direct_async_typed_error_data() =>
             Task.FromResult(ResultWrapper<string, string>.Fail("typed", ErrorCodes.InvalidParams, "error-data"));
 
-        public ResultWrapper<PolymorphicPayload> direct_polymorphic() =>
-            ResultWrapper<PolymorphicPayload>.Success(new PolymorphicPayload());
+        public ResultWrapper<PolymorphicPayload> direct_polymorphic() => ResultWrapper<PolymorphicPayload>.Success(new());
     }
 
     [RpcModule(ModuleType.Eth)]
@@ -508,9 +502,6 @@ public class RpcModuleProviderTests
 
         public void ReturnModule(T module) { }
 
-        private sealed class TestModuleFactory(T module) : IRpcModuleFactory<T>
-        {
-            public T Create() => module;
-        }
+        private sealed class TestModuleFactory(T module) : IRpcModuleFactory<T> { public T Create() => module; }
     }
 }
