@@ -198,40 +198,11 @@ public class RpcModuleProviderTests
         requiredValueParameterMethod.ExpectedParameters[0].TypeInfo.Should().NotBeNull();
         RpcParameterTypeInfo<int>.Get().Should().NotBeNull();
 
-        syncMethod.IsTaskWrapped.Should().BeFalse();
-        syncMethod.ResultWrapperType.Should().Be(typeof(ResultWrapper<string>));
-        syncMethod.SuccessPayloadType.Should().Be(typeof(string));
-        syncMethod.SuccessPayloadTypeInfo.Should().NotBeNull();
-        syncMethod.SuccessPayloadCanHaveDerivedRuntimeType.Should().BeFalse();
-        syncMethod.ErrorDataPayloadType.Should().BeNull();
-        syncMethod.ErrorDataPayloadCanHaveDerivedRuntimeType.Should().BeFalse();
-        syncMethod.TaskResultAccessor.Should().BeNull();
-
-        asyncMethod.IsTaskWrapped.Should().BeTrue();
-        asyncMethod.ResultWrapperType.Should().Be(typeof(ResultWrapper<long>));
-        asyncMethod.SuccessPayloadType.Should().Be(typeof(long));
-        asyncMethod.SuccessPayloadTypeInfo.Should().NotBeNull();
-        asyncMethod.SuccessPayloadCanHaveDerivedRuntimeType.Should().BeFalse();
-        asyncMethod.ErrorDataPayloadType.Should().BeNull();
-        asyncMethod.TaskResultAccessor.Should().NotBeNull();
-
-        typedErrorDataMethod.ResultWrapperType.Should().Be(typeof(ResultWrapper<string, bool>));
-        typedErrorDataMethod.SuccessPayloadType.Should().Be(typeof(string));
-        typedErrorDataMethod.ErrorDataPayloadType.Should().Be(typeof(bool));
-        typedErrorDataMethod.ErrorDataPayloadTypeInfo.Should().NotBeNull();
-        typedErrorDataMethod.SuccessPayloadCanHaveDerivedRuntimeType.Should().BeFalse();
-        typedErrorDataMethod.ErrorDataPayloadCanHaveDerivedRuntimeType.Should().BeFalse();
-
-        asyncTypedErrorDataMethod.IsTaskWrapped.Should().BeTrue();
-        asyncTypedErrorDataMethod.ResultWrapperType.Should().Be(typeof(ResultWrapper<string, string>));
-        asyncTypedErrorDataMethod.SuccessPayloadType.Should().Be(typeof(string));
-        asyncTypedErrorDataMethod.ErrorDataPayloadType.Should().Be(typeof(string));
-        asyncTypedErrorDataMethod.SuccessPayloadCanHaveDerivedRuntimeType.Should().BeFalse();
-        asyncTypedErrorDataMethod.ErrorDataPayloadCanHaveDerivedRuntimeType.Should().BeFalse();
-        asyncTypedErrorDataMethod.TaskResultAccessor.Should().NotBeNull();
-
-        polymorphicMethod.SuccessPayloadType.Should().Be(typeof(PolymorphicPayload));
-        polymorphicMethod.SuccessPayloadCanHaveDerivedRuntimeType.Should().BeTrue();
+        AssertResultMetadata(syncMethod, typeof(ResultWrapper<string>), typeof(string));
+        AssertResultMetadata(asyncMethod, typeof(ResultWrapper<long>), typeof(long), isTaskWrapped: true);
+        AssertResultMetadata(typedErrorDataMethod, typeof(ResultWrapper<string, bool>), typeof(string), typeof(bool));
+        AssertResultMetadata(asyncTypedErrorDataMethod, typeof(ResultWrapper<string, string>), typeof(string), typeof(string), isTaskWrapped: true);
+        AssertResultMetadata(polymorphicMethod, typeof(ResultWrapper<PolymorphicPayload>), typeof(PolymorphicPayload), successPayloadCanHaveDerivedRuntimeType: true);
 
         IResultWrapper syncResult = syncMethod.DirectNoParameterInvoker!(module).Should().BeAssignableTo<IResultWrapper>().Subject;
         syncResult.Data.Should().Be("sync");
@@ -362,6 +333,29 @@ public class RpcModuleProviderTests
         _moduleProvider = CreateProvider(config, _fileSystem);
         _moduleProvider.Register(new TestModulePool<HotEngineRpcModule>(new HotEngineRpcModule()));
         _moduleProvider.Register(new TestModulePool<HotEthRpcModule>(new HotEthRpcModule()));
+    }
+
+    private static void AssertResultMetadata(
+        RpcModuleProvider.ResolvedMethodInfo method,
+        Type resultWrapperType,
+        Type successPayloadType,
+        Type? errorDataPayloadType = null,
+        bool isTaskWrapped = false,
+        bool successPayloadCanHaveDerivedRuntimeType = false)
+    {
+        method.IsTaskWrapped.Should().Be(isTaskWrapped);
+        method.ResultWrapperType.Should().Be(resultWrapperType);
+        method.SuccessPayloadType.Should().Be(successPayloadType);
+        method.SuccessPayloadTypeInfo.Should().NotBeNull();
+        method.SuccessPayloadCanHaveDerivedRuntimeType.Should().Be(successPayloadCanHaveDerivedRuntimeType);
+        method.ErrorDataPayloadType.Should().Be(errorDataPayloadType);
+        method.ErrorDataPayloadCanHaveDerivedRuntimeType.Should().BeFalse();
+        (method.TaskResultAccessor is not null).Should().Be(isTaskWrapped);
+
+        if (errorDataPayloadType is not null)
+        {
+            method.ErrorDataPayloadTypeInfo.Should().NotBeNull();
+        }
     }
 
     private static void AddMissingModulePayloadTypes(Type moduleType, List<string> missing)
