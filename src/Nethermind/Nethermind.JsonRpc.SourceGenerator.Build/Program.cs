@@ -475,7 +475,7 @@ internal static class Program
         for (int i = 0; i < lines.Length; i++)
         {
             string line = lines[i];
-            if (!string.IsNullOrWhiteSpace(line) && File.Exists(line)) existing.Add(line);
+            if (File.Exists(line)) existing.Add(line);
         }
 
         return [.. existing];

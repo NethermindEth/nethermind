@@ -86,8 +86,7 @@ internal static class RpcJsonTypeDiscovery
             }
         }
 
-        string[] sortedTypes = new string[uniqueTypes.Count];
-        uniqueTypes.CopyTo(sortedTypes);
+        string[] sortedTypes = [.. uniqueTypes];
         Array.Sort(sortedTypes, StringComparer.Ordinal);
         return sortedTypes;
     }
