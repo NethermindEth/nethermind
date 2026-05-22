@@ -64,11 +64,7 @@ internal static class Program
         string[] sortedTypes = GetSourceGeneratedTypes(typeSymbols, compilation.Assembly);
         if (sortedTypes.Length == 0)
         {
-            if (File.Exists(arguments.OutputPath))
-            {
-                File.Delete(arguments.OutputPath);
-            }
-
+            File.Delete(arguments.OutputPath);
             return;
         }
 
@@ -287,15 +283,7 @@ internal static class Program
                 return true;
             }
 
-            for (int i = 0; i < namedType.TypeArguments.Length; i++)
-            {
-                if (IsCurrentAssemblyType(namedType.TypeArguments[i]))
-                {
-                    return true;
-                }
-            }
-
-            return false;
+            return HasCurrentAssemblyTypeArgument(namedType);
         }
 
         private bool CanGenerateMetadata(
@@ -573,10 +561,7 @@ internal static class Program
         for (int i = 0; i < lines.Length; i++)
         {
             string line = lines[i];
-            if (!string.IsNullOrWhiteSpace(line) && File.Exists(line))
-            {
-                existing.Add(line);
-            }
+            if (!string.IsNullOrWhiteSpace(line) && File.Exists(line)) existing.Add(line);
         }
 
         return [.. existing];
