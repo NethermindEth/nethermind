@@ -995,39 +995,27 @@ public class JsonRpcProcessorTests(bool returnErrors)
         return sb.ToString();
     }
 
-    [Test]
-    public async Task Method_not_found_response_is_reported_with_unknown_method_label()
+    [TestCase("foo_unregistered", true, RpcReport.UnknownMethod, false, TestName = "Unknown method")]
+    [TestCase("eth_getTransactionCount", false, "eth_getTransactionCount", true, TestName = "Resolved method")]
+    public async Task Response_report_keeps_expected_method_label(string methodName, bool methodNotFound, string expectedReportMethod, bool expectedSuccess)
     {
         IJsonRpcService service = Substitute.For<IJsonRpcService>();
         service.SendRequestAsync(Arg.Any<JsonRpcRequest>(), Arg.Any<JsonRpcContext>())
-            .Returns(ci => new JsonRpcErrorResponse
+            .Returns(ci =>
             {
-                Id = ci.Arg<JsonRpcRequest>().Id,
-                Error = new Error { Code = ErrorCodes.MethodNotFound, Message = "Method not found" }
+                JsonRpcRequest request = ci.Arg<JsonRpcRequest>();
+                return methodNotFound
+                    ? new JsonRpcErrorResponse { Id = request.Id, Error = new Error { Code = ErrorCodes.MethodNotFound, Message = "Method not found" } }
+                    : new JsonRpcSuccessResponse { Id = request.Id };
             });
 
         JsonRpcProcessor processor = CreateProcessor(service);
-        using CollectedJsonRpcResponses result = await ProcessAsync(processor, CreateReader("{\"id\":1,\"jsonrpc\":\"2.0\",\"method\":\"foo_unregistered\",\"params\":[]}"), new JsonRpcContext(RpcEndpoint.Http));
+        using CollectedJsonRpcResponses result = await ProcessAsync(processor, CreateReader($$"""{"id":1,"jsonrpc":"2.0","method":"{{methodName}}","params":[]}"""), new JsonRpcContext(RpcEndpoint.Http));
 
         result.Should().HaveCount(1);
         result[0].Report.Should().NotBeNull();
-        result[0].Report!.Value.Method.Should().Be(RpcReport.UnknownMethod);
-        result[0].Report!.Value.Success.Should().BeFalse();
-    }
-
-    [Test]
-    public async Task Resolved_method_response_keeps_original_method_name_in_report()
-    {
-        IJsonRpcService service = Substitute.For<IJsonRpcService>();
-        service.SendRequestAsync(Arg.Any<JsonRpcRequest>(), Arg.Any<JsonRpcContext>())
-            .Returns(ci => new JsonRpcSuccessResponse { Id = ci.Arg<JsonRpcRequest>().Id });
-
-        JsonRpcProcessor processor = CreateProcessor(service);
-        using CollectedJsonRpcResponses result = await ProcessAsync(processor, CreateReader("{\"id\":1,\"jsonrpc\":\"2.0\",\"method\":\"eth_getTransactionCount\",\"params\":[]}"), new JsonRpcContext(RpcEndpoint.Http));
-
-        result.Should().HaveCount(1);
-        result[0].Report!.Value.Method.Should().Be("eth_getTransactionCount");
-        result[0].Report!.Value.Success.Should().BeTrue();
+        result[0].Report!.Value.Method.Should().Be(expectedReportMethod);
+        result[0].Report!.Value.Success.Should().Be(expectedSuccess);
     }
 
     [TestCase(50, false, TestName = "Input below the 64-depth limit is accepted")]
