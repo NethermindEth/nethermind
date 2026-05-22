@@ -58,9 +58,6 @@ public class JsonRpcServiceTests
     private static PolymorphicDerivedPayload CreatePolymorphicPayload() =>
         new() { BaseValue = "base", DerivedValue = "derived" };
 
-    private static ResultWrapper<PolymorphicBasePayload[]> CreatePolymorphicArrayResponse() =>
-        ResultWrapper<PolymorphicBasePayload[]>.Success(new PolymorphicDerivedPayload[] { CreatePolymorphicPayload() });
-
     private static void AssertPolymorphicPayload(JsonElement payload)
     {
         Assert.That(payload.GetProperty("baseValue").GetString(), Is.EqualTo("base"));
@@ -93,7 +90,7 @@ public class JsonRpcServiceTests
             ResultWrapper<PolymorphicBasePayload>.Success(CreatePolymorphicPayload()),
             new Func<JsonElement, JsonElement>(static root => root.GetProperty("result"))).SetName("Success payload");
         yield return new TestCaseData(
-            CreatePolymorphicArrayResponse(),
+            ResultWrapper<PolymorphicBasePayload[]>.Success(new PolymorphicDerivedPayload[] { CreatePolymorphicPayload() }),
             new Func<JsonElement, JsonElement>(static root => root.GetProperty("result")[0])).SetName("Success array payload");
         yield return new TestCaseData(
             ResultWrapper<string, PolymorphicBasePayload>.Fail("typed", ErrorCodes.InvalidParams, CreatePolymorphicPayload()),
