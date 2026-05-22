@@ -820,28 +820,26 @@ public class JsonRpcProcessorTests(bool returnErrors)
         }
     }
 
-    [Test]
-    public async Task Will_return_error_when_batch_request_is_too_large()
+    [TestCase(false, TestName = "Unauthenticated batch over limit is rejected")]
+    [TestCase(true, TestName = "Authenticated batch over limit is processed")]
+    public async Task Batch_size_limit_respects_authentication(bool isAuthenticated)
     {
         int maxBatchSize = new JsonRpcConfig().MaxBatchSize;
-        using CollectedJsonRpcResponses result = await ProcessAsync(CreateTransactionCountBatchRequest(maxBatchSize + 1));
-        result.Should().HaveCount(1);
-        result[0].Response.Should().BeAssignableTo<JsonRpcErrorResponse>();
-    }
+        JsonRpcContext context = isAuthenticated
+            ? new JsonRpcContext(RpcEndpoint.Http, url: new JsonRpcUrl(string.Empty, string.Empty, 0, RpcEndpoint.Http, true, []))
+            : new JsonRpcContext(RpcEndpoint.Http);
 
-    [Test]
-    public async Task Will_not_return_error_when_batch_request_is_too_large_but_endpoint_is_authenticated()
-    {
-        int maxBatchSize = new JsonRpcConfig().MaxBatchSize;
-        JsonRpcUrl url = new(string.Empty, string.Empty, 0, RpcEndpoint.Http, true, []);
-        JsonRpcContext context = new(RpcEndpoint.Http, url: url);
         using CollectedJsonRpcResponses result = await ProcessAsync(CreateTransactionCountBatchRequest(maxBatchSize + 1), context, new JsonRpcConfig() { MaxBatchResponseBodySize = 1 });
         result.Should().HaveCount(1);
-        IReadOnlyList<JsonRpcResponse> batchedResults = result[0].BatchItems!;
-        batchedResults.Should().HaveCount(maxBatchSize + 1);
-        batchedResults.Should().AllSatisfy(rpcResult =>
-            rpcResult.Should().BeOfType(returnErrors ? typeof(JsonRpcErrorResponse) : typeof(JsonRpcSuccessResponse))
-        );
+        if (!isAuthenticated)
+        {
+            result[0].Response.Should().BeAssignableTo<JsonRpcErrorResponse>();
+            return;
+        }
+
+        result[0].BatchItems.Should().HaveCount(maxBatchSize + 1);
+        result[0].BatchItems.Should().AllSatisfy(rpcResult =>
+            rpcResult.Should().BeOfType(returnErrors ? typeof(JsonRpcErrorResponse) : typeof(JsonRpcSuccessResponse)));
     }
 
     [Test]
@@ -850,28 +848,14 @@ public class JsonRpcProcessorTests(bool returnErrors)
         CollectingJsonRpcResponseSink sink = new() { StopAfterBatchItems = limit ? 1 : int.MaxValue };
         using CollectedJsonRpcResponses result = await ProcessAsync(
             Initialize(recorderState: RpcRecorderState.None),
-            CreateReader("[{\"id\":67,\"jsonrpc\":\"2.0\",\"method\":\"eth_getTransactionCount\",\"params\":[\"0x7f01d9b227593e033bf8d6fc86e634d27aa85568\",\"0x668c24\"]},{\"id\":68,\"jsonrpc\":\"2.0\",\"method\":\"eth_getTransactionCount\",\"params\":[\"0x7f01d9b227593e033bf8d6fc86e634d27aa85568\",\"0x668c24\"]}]"),
+            CreateReader(CreateTransactionCountBatchRequest(TransactionCountParamsJson, TransactionCountParamsJson)),
             new JsonRpcContext(RpcEndpoint.Http),
             sink);
         result[0].IsCollection.Should().BeTrue();
         result[0].BatchItems.Should().NotBeNull();
-        if (returnErrors)
-        {
-            result[0].BatchItems![0].Should().BeOfType<JsonRpcErrorResponse>();
-        }
-        else
-        {
-            result[0].BatchItems![0].Should().NotBeOfType<JsonRpcErrorResponse>();
-        }
-
-        if (limit || returnErrors)
-        {
-            result[0].BatchItems![1].Should().BeOfType<JsonRpcErrorResponse>();
-        }
-        else
-        {
-            result[0].BatchItems![1].Should().NotBeOfType<JsonRpcErrorResponse>();
-        }
+        IReadOnlyList<JsonRpcResponse> batchItems = result[0].BatchItems!;
+        batchItems[0].Should().BeOfType(returnErrors ? typeof(JsonRpcErrorResponse) : typeof(JsonRpcSuccessResponse));
+        batchItems[1].Should().BeOfType(limit || returnErrors ? typeof(JsonRpcErrorResponse) : typeof(JsonRpcSuccessResponse));
     }
 
     [TestCase("invalid", TestName = "Invalid JSON")]
