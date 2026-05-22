@@ -39,21 +39,6 @@ public class JsonRpcProcessorTests(bool returnErrors)
     private const string TransactionCountInvalidObjectParamsJson = "{\"a\":\"" + TransactionCountAddress + "\",\"" + TransactionCountBlock + "\"}";
 
     private readonly JsonRpcErrorResponse _errorResponse = new();
-    private static readonly object[] CachedMethodNameCases =
-    [
-        new object[] { "engine_newPayloadV4", false, true },
-        new object[] { "engine_newPayloadV4", true, true },
-        new object[] { "engine_getBlobsV2", false, true },
-        new object[] { "engine_getBlobsV2", true, true },
-        new object[] { "eth_call", false, true },
-        new object[] { "eth_call", true, true },
-        new object[] { "eth_getBlockByNumber", false, true },
-        new object[] { "eth_getBlockByNumber", true, true },
-        new object[] { "eth_chainId", false, true },
-        new object[] { "eth_chainId", true, true },
-        new object[] { "eth_unknown", false, false },
-        new object[] { "eth_unknown", true, false },
-    ];
     private static readonly object[] JsonRpcIdCases =
     [
         new object[] { "12345678901234567890", new JsonRpcId(decimal.Parse("12345678901234567890")) },
@@ -121,9 +106,12 @@ public class JsonRpcProcessorTests(bool returnErrors)
         capturedParamsKind.Should().Be(JsonValueKind.Array);
     }
 
-    [TestCaseSource(nameof(CachedMethodNameCases))]
-    public async Task Http_generated_method_names_use_cached_instances(string methodName, bool inBatch, bool expectedCached)
+    [Test]
+    public async Task Http_generated_method_names_use_cached_instances(
+        [Values("engine_newPayloadV4", "engine_getBlobsV2", "eth_call", "eth_getBlockByNumber", "eth_chainId", "eth_unknown")] string methodName,
+        [Values(false, true)] bool inBatch)
     {
+        bool expectedCached = methodName != "eth_unknown";
         string? capturedMethod = null;
         IJsonRpcService service = CreateService(request =>
         {
