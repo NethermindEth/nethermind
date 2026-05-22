@@ -181,7 +181,7 @@ namespace Nethermind.Blockchain.FullPruning
             }
 
             if (_logger.IsInfo) _logger.Info($"Full Pruning Ready to start: pruning garbage before state {stateToCopy} with root {header.StateRoot}");
-            if (CopyTrie(pruningContext, header, cancellationToken))
+            if (TryCopyTrie(pruningContext, header, cancellationToken))
             {
                 _stateBoundary.OldestStateBlock = stateToCopy;
             }
@@ -224,7 +224,7 @@ namespace Nethermind.Blockchain.FullPruning
             }
         }
 
-        private bool CopyTrie(IPruningContext pruning, BlockHeader? baseBlock, CancellationToken cancellationToken)
+        private bool TryCopyTrie(IPruningContext pruning, BlockHeader? baseBlock, CancellationToken cancellationToken)
         {
             INodeStorage.KeyScheme originalKeyScheme = _nodeStorage.Scheme;
             ICopyTreeVisitor visitor = null;
