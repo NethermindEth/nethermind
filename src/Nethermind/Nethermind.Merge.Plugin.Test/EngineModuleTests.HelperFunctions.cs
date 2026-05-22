@@ -84,7 +84,7 @@ namespace Nethermind.Merge.Plugin.Test
             errorCode.Should().Be(MergeErrorCodes.UnknownPayload);
         }
 
-        private static async Task AssertStreamedJsonMatchesSerializer<TResponse>(TResponse response)
+        private static async Task<string> AssertStreamedJsonMatchesSerializer<TResponse>(TResponse response)
             where TResponse : IStreamableResult
         {
             Pipe pipe = new();
@@ -96,6 +96,7 @@ namespace Nethermind.Merge.Plugin.Test
             pipe.Reader.AdvanceTo(readResult.Buffer.End);
 
             streamedJson.Should().Be(JsonSerializer.Serialize(response, EthereumJsonSerializer.JsonOptions));
+            return streamedJson;
         }
 
         private (UInt256, UInt256) AddTransactions(MergeTestBlockchain chain, ExecutionPayload executePayloadRequest,

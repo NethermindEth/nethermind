@@ -5,8 +5,6 @@ using System;
 using System.Collections.Generic;
 using System.IO.Pipelines;
 using System.Linq;
-using System.Text;
-using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
@@ -21,7 +19,6 @@ using Nethermind.Crypto;
 using Nethermind.Evm;
 using Nethermind.JsonRpc;
 using Nethermind.Merge.Plugin.Data;
-using Nethermind.Serialization.Json;
 using Nethermind.Specs.Forks;
 using Nethermind.TxPool;
 using NUnit.Framework;
@@ -337,20 +334,7 @@ public partial class EngineModuleTests
         ReadOnlyMemory<byte[]>[] proofs = [new ReadOnlyMemory<byte[]>([proof1, proof2]), default];
 
         BlobsV2DirectResponse response = new(blobs, proofs, 2);
-
-        // Write via streaming path
-        Pipe pipe = new();
-        await response.WriteToAsync(pipe.Writer, CancellationToken.None);
-        await pipe.Writer.CompleteAsync();
-
-        ReadResult readResult = await pipe.Reader.ReadAsync();
-        string streamedJson = Encoding.UTF8.GetString(readResult.Buffer);
-        pipe.Reader.AdvanceTo(readResult.Buffer.End);
-
-        // Write via STJ for comparison
-        string stjJson = JsonSerializer.Serialize(response, EthereumJsonSerializer.JsonOptions);
-
-        streamedJson.Should().Be(stjJson);
+        await AssertStreamedJsonMatchesSerializer(response);
     }
 
     [Test]
@@ -358,14 +342,7 @@ public partial class EngineModuleTests
     {
         BlobsV2DirectResponse response = new([], [], 0);
 
-        Pipe pipe = new();
-        await response.WriteToAsync(pipe.Writer, CancellationToken.None);
-        await pipe.Writer.CompleteAsync();
-
-        ReadResult readResult = await pipe.Reader.ReadAsync();
-        string json = Encoding.UTF8.GetString(readResult.Buffer);
-        pipe.Reader.AdvanceTo(readResult.Buffer.End);
-
+        string json = await AssertStreamedJsonMatchesSerializer(response);
         json.Should().Be("[]");
     }
 
