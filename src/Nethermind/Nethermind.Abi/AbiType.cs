@@ -82,9 +82,23 @@ namespace Nethermind.Blockchain.Contracts.Json
     [JsonDerivedType(typeof(AbiUFixed))]
     public class AbiTypeConverter : JsonConverter<AbiType>
     {
+        private const int MaxArrayDepth = 32;
+
+        private static void ValidateArrayDepth(string type)
+        {
+            int depth = 0;
+            foreach (char c in type)
+            {
+                if (c == '[' && ++depth > MaxArrayDepth)
+                    throw new AbiException(
+                        $"ABI array nesting exceeds maximum depth of {MaxArrayDepth}.");
+            }
+        }
+
         public override AbiType? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
         {
             string? type = reader.GetString()!;
+            ValidateArrayDepth(type);
             return ParseAbiType(type);
 
             static AbiType ParseAbiType(string type)

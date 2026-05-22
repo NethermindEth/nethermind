@@ -108,4 +108,35 @@ namespace Nethermind.Abi.Test.Json
             public int C { get; set; }
         }
     }
+
+public class AbiTypeConverterDepthTests
+{
+    private static AbiType Deserialize(string type) =>
+        JsonSerializer.Deserialize<AbiType>(
+            $"\"{type}\"",
+            new JsonSerializerOptions
+            {
+                Converters = { new AbiTypeConverter() }
+            })!;
+
+    [Test]
+    public void Rejects_array_nesting_above_limit()
+    {
+        string payload =
+            "uint256" + string.Concat(System.Linq.Enumerable.Repeat("[]", 33));
+
+        Assert.Throws<AbiException>(() => Deserialize(payload));
+    }
+
+    [Test]
+    public void Accepts_array_nesting_at_limit()
+    {
+        string payload =
+            "uint256" + string.Concat(System.Linq.Enumerable.Repeat("[]", 32));
+
+        AbiType result = Deserialize(payload);
+
+        Assert.That(result, Is.Not.Null);
+        }
+    }
 }
