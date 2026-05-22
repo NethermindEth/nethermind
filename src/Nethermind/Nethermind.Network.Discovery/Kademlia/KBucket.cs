@@ -44,7 +44,7 @@ public class KBucket<TNode>(int k) where TNode : notnull
 
     public TNode[] GetAll() => _cachedArray;
 
-    public IEnumerable<(ValueHash256, TNode)> GetAllWithHash() => _items.GetAllWithHash();
+    public (ValueHash256, TNode)[] GetAllWithHash() => _items.GetAllWithHash();
 
     public bool RemoveAndReplace(in ValueHash256 hash)
     {

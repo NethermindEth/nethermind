@@ -84,6 +84,33 @@ namespace Nethermind.Network.Discovery.Test
 
         [Test]
         [CancelAfter(10000)]
+        public async Task AddPersistedNodes_Should_Skip_Nodes_That_Fail_Node_Construction(CancellationToken cancellationToken)
+        {
+            INetworkStorage storageMock = Substitute.For<INetworkStorage>();
+            NetworkNode goodNode = new(TestItem.PublicKeyA, "192.168.1.1", 30303, 0);
+            NetworkNode badNode = new(TestItem.PublicKeyB, "192.168.1.2", -1, 0);
+            storageMock.GetPersistedNodes().Returns([badNode, goodNode]);
+
+            DiscoveryPersistenceManager manager = new(
+                storageMock,
+                _nodeStatsManager,
+                _discv4Adapter,
+                _kademlia,
+                _discoveryConfig,
+                _logManager);
+
+            await manager.LoadPersistedNodes(cancellationToken);
+
+            await _discv4Adapter.Received(1).Ping(
+                Arg.Is<Node>(n => n.Id.Equals(goodNode.NodeId)),
+                Arg.Any<CancellationToken>());
+            await _discv4Adapter.DidNotReceive().Ping(
+                Arg.Is<Node>(n => n.Id.Equals(badNode.NodeId)),
+                Arg.Any<CancellationToken>());
+        }
+
+        [Test]
+        [CancelAfter(10000)]
         public async Task AddPersistedNodes_Should_Handle_Ping_Exceptions(CancellationToken cancellationToken)
         {
             NetworkNode[] networkNodes =

@@ -84,9 +84,23 @@ public class DoubleEndedLru<TNode>(int capacity) where TNode : notnull
         return false;
     }
 
-    public TNode[] GetAll() => [.. _hashMapping.Select(kv => kv.Value.Value.Item2)];
+    public TNode[] GetAll()
+    {
+        using McsLock.Disposable _ = _lock.Acquire();
+        TNode[] result = new TNode[_queue.Count];
+        int i = 0;
+        foreach ((ValueHash256, TNode node) entry in _queue) result[i++] = entry.node;
+        return result;
+    }
 
-    public IEnumerable<(ValueHash256, TNode)> GetAllWithHash() => _queue;
+    public (ValueHash256, TNode)[] GetAllWithHash()
+    {
+        using McsLock.Disposable _ = _lock.Acquire();
+        (ValueHash256, TNode)[] result = new (ValueHash256, TNode)[_queue.Count];
+        int i = 0;
+        foreach ((ValueHash256, TNode) entry in _queue) result[i++] = entry;
+        return result;
+    }
 
     public bool Contains(in ValueHash256 hash) => _hashMapping.ContainsKey(hash);
 

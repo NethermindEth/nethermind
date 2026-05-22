@@ -40,7 +40,7 @@ public class DiscV4KademliaModule(PublicKey masterNode, IReadOnlyList<Node> boot
                 Alpha = discoveryConfig.Concurrency,
                 Beta = discoveryConfig.BitsPerHop,
 
-                LookupFindNeighbourHardTimout = TimeSpan.FromMilliseconds(discoveryConfig.SendNodeTimeout), // TODO: This seems very low.
+                LookupFindNeighbourHardTimeout = TimeSpan.FromMilliseconds(discoveryConfig.SendNodeTimeout), // TODO: This seems very low.
                 RefreshPingTimeout = TimeSpan.FromMilliseconds(discoveryConfig.PingTimeout),
                 RefreshInterval = TimeSpan.FromMilliseconds(discoveryConfig.DiscoveryInterval),
                 BootNodes = bootNodes

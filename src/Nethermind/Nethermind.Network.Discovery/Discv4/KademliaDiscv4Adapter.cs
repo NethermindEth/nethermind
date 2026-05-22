@@ -174,7 +174,7 @@ public class KademliaDiscv4Adapter(
 
         PingMsg msg = new(receiver.Address, CalculateExpirationTime(), kademliaConfig.CurrentNodeId.Address)
         {
-            EnrSequence = nodeRecordProvider.Current.EnrSequence // optional and does not seems to be used anywhere.
+            EnrSequence = nodeRecordProvider.Current.EnrSequence // optional and does not seem to be used anywhere.
         };
         session.OnPingSent();
         _ = await CallAndWaitForResponse(MsgType.Pong, new PongMsgHandler(msg), receiver, session, msg, token);
@@ -205,7 +205,7 @@ public class KademliaDiscv4Adapter(
 
             EnrRequestMsg msg = new(receiver.Address, CalculateExpirationTime());
 
-            return await CallAndWaitForResponse(MsgType.EnrResponse, new EnrResponseHandler(), receiver, session, msg, token);
+            return await CallAndWaitForResponse(MsgType.EnrResponse, new EnrResponseHandler(msg), receiver, session, msg, token);
         }, token);
     }
 

@@ -38,7 +38,7 @@ public class KademliaConfig<TNode>
     /// <summary>
     /// The timeout for each find neighbour call lookup
     /// </summary>
-    public TimeSpan LookupFindNeighbourHardTimout { get; set; } = TimeSpan.FromSeconds(10);
+    public TimeSpan LookupFindNeighbourHardTimeout { get; set; } = TimeSpan.FromSeconds(10);
 
     /// <summary>
     /// The timeout for a ping message during a refresh after which the node is considered to be offline.

@@ -33,7 +33,7 @@ public static class Hash256XorUtils
         return MaxDistance - zeros;
     }
 
-    public static int MaxDistance => 256;
+    public const int MaxDistance = 256;
 
     public static int Compare(ValueHash256 a, ValueHash256 b, ValueHash256 c)
     {

@@ -40,47 +40,50 @@ public class KBucketTree<TNode> : IRoutingTable<TNode> where TNode : notnull
 
     public BucketAddResult TryAddOrRefresh(in ValueHash256 nodeHash, TNode node, out TNode? toRefresh)
     {
-        using McsLock.Disposable _ = _lock.Acquire();
-
-        if (_logger.IsDebug) _logger.Debug($"Adding node {node} with XOR distance {Hash256XorUtils.XorDistance(_currentNodeHash, nodeHash)}");
-
-        TreeNode current = _root;
-        // As in, what would be the depth of the node assuming all branch on the traversal is populated.
-        int logDistance = Hash256XorUtils.MaxDistance - Hash256XorUtils.CalculateLogDistance(_currentNodeHash, nodeHash);
-        int depth = 0;
-        while (true)
+        BucketAddResult resp;
+        bool fireAdded;
+        using (_lock.Acquire())
         {
-            if (current.IsLeaf)
+            if (_logger.IsDebug) _logger.Debug($"Adding node {node} with XOR distance {Hash256XorUtils.XorDistance(_currentNodeHash, nodeHash)}");
+
+            TreeNode current = _root;
+            // As in, what would be the depth of the node assuming all branch on the traversal is populated.
+            int logDistance = Hash256XorUtils.MaxDistance - Hash256XorUtils.CalculateLogDistance(_currentNodeHash, nodeHash);
+            int depth = 0;
+            while (true)
             {
-                if (_logger.IsTrace) _logger.Trace($"Reached leaf node at depth {depth}");
-                BucketAddResult resp = current.Bucket.TryAddOrRefresh(nodeHash, node, out toRefresh);
-                if (resp == BucketAddResult.Added)
+                if (current.IsLeaf)
                 {
-                    OnNodeAdded?.Invoke(this, node);
-                }
-                if (resp is BucketAddResult.Added or BucketAddResult.Refreshed)
-                {
-                    if (_logger.IsDebug) _logger.Debug($"Successfully added/refreshed node {node} in bucket at depth {depth}");
-                    return resp;
+                    if (_logger.IsTrace) _logger.Trace($"Reached leaf node at depth {depth}");
+                    resp = current.Bucket.TryAddOrRefresh(nodeHash, node, out toRefresh);
+                    fireAdded = resp == BucketAddResult.Added;
+                    if (resp is BucketAddResult.Added or BucketAddResult.Refreshed)
+                    {
+                        if (_logger.IsDebug) _logger.Debug($"Successfully added/refreshed node {node} in bucket at depth {depth}");
+                        break;
+                    }
+
+                    if (resp == BucketAddResult.Full && ShouldSplit(depth, logDistance))
+                    {
+                        if (_logger.IsTrace) _logger.Trace($"Splitting bucket at depth {depth}");
+                        SplitBucket(depth, current);
+                        continue;
+                    }
+
+                    if (_logger.IsDebug) _logger.Debug($"Failed to add node {nodeHash} {node}. Bucket at depth {depth} is full. {_k} {current.Bucket.Count}");
+                    break;
                 }
 
-                if (resp == BucketAddResult.Full && ShouldSplit(depth, logDistance))
-                {
-                    if (_logger.IsTrace) _logger.Trace($"Splitting bucket at depth {depth}");
-                    SplitBucket(depth, current);
-                    continue;
-                }
+                bool goRight = GetBit(nodeHash, depth);
+                if (_logger.IsTrace) _logger.Trace($"Traversing {(goRight ? "right" : "left")} at depth {depth}");
 
-                if (_logger.IsDebug) _logger.Debug($"Failed to add node {nodeHash} {node}. Bucket at depth {depth} is full. {_k} {current.Bucket.GetAllWithHash().Count()}");
-                return resp;
+                current = goRight ? current.Right! : current.Left!;
+                depth++;
             }
-
-            bool goRight = GetBit(nodeHash, depth);
-            if (_logger.IsTrace) _logger.Trace($"Traversing {(goRight ? "right" : "left")} at depth {depth}");
-
-            current = goRight ? current.Right! : current.Left!;
-            depth++;
         }
+
+        if (fireAdded) OnNodeAdded?.Invoke(this, node);
+        return resp;
     }
 
     public TNode? GetByHash(ValueHash256 hash)
@@ -125,14 +128,14 @@ public class KBucketTree<TNode> : IRoutingTable<TNode> where TNode : notnull
 
         if (_logger.IsDebug) _logger.Debug($"Created children at depth {depth + 1}");
 
-        // The reverse is because the bucket is iterated from the most recent. Without it
-        // reading would have reversed this order.
-        foreach ((ValueHash256, TNode) item in node.Bucket.GetAllWithHash().Reverse())
+        // Iterate from oldest to newest so the new buckets preserve original LRU order.
+        (ValueHash256, TNode)[] items = node.Bucket.GetAllWithHash();
+        for (int i = items.Length - 1; i >= 0; i--)
         {
-            ValueHash256 itemHash = item.Item1;
+            (ValueHash256 itemHash, TNode value) = items[i];
             TreeNode? targetNode = GetBit(itemHash, depth) ? node.Right : node.Left;
-            targetNode.Bucket.TryAddOrRefresh(itemHash, item.Item2, out _);
-            if (_logger.IsDebug) _logger.Debug($"Moved item {item} to {(GetBit(itemHash, depth) ? "right" : "left")} child");
+            targetNode.Bucket.TryAddOrRefresh(itemHash, value, out _);
+            if (_logger.IsDebug) _logger.Debug($"Moved item ({itemHash}, {value}) to {(GetBit(itemHash, depth) ? "right" : "left")} child");
         }
 
         node.Bucket.Clear();
@@ -141,18 +144,18 @@ public class KBucketTree<TNode> : IRoutingTable<TNode> where TNode : notnull
 
     public bool Remove(in ValueHash256 nodeHash)
     {
-        using McsLock.Disposable _ = _lock.Acquire();
-
-        if (_logger.IsDebug) _logger.Debug($"Attempting to remove node {nodeHash} with hash {nodeHash}");
-
-        KBucket<TNode> bucket = GetBucketForHash(nodeHash);
-        TNode? removedNode = bucket.GetByHash(nodeHash);
-        bool removed = bucket.RemoveAndReplace(nodeHash);
-        if (removed && removedNode is not null)
+        bool removed;
+        TNode? removedNode;
+        using (_lock.Acquire())
         {
-            OnNodeRemoved?.Invoke(this, removedNode);
+            if (_logger.IsDebug) _logger.Debug($"Attempting to remove node {nodeHash} with hash {nodeHash}");
+
+            KBucket<TNode> bucket = GetBucketForHash(nodeHash);
+            removedNode = bucket.GetByHash(nodeHash);
+            removed = bucket.RemoveAndReplace(nodeHash);
         }
 
+        if (removed && removedNode is not null) OnNodeRemoved?.Invoke(this, removedNode);
         return removed;
     }
 
@@ -174,9 +177,13 @@ public class KBucketTree<TNode> : IRoutingTable<TNode> where TNode : notnull
         {
             if (depth <= targetDepth)
             {
-                result.AddRange(node.Bucket.GetAllWithHash()
-                    .Where(kv => Hash256XorUtils.CalculateLogDistance(kv.Item1, _currentNodeHash) == distance)
-                    .Select(kv => kv.Item2));
+                foreach ((ValueHash256 hash, TNode item) in node.Bucket.GetAllWithHash())
+                {
+                    if (Hash256XorUtils.CalculateLogDistance(hash, _currentNodeHash) == distance)
+                    {
+                        result.Add(item);
+                    }
+                }
             }
             else
             {
@@ -311,21 +318,20 @@ public class KBucketTree<TNode> : IRoutingTable<TNode> where TNode : notnull
             }
         }
 
-        IEnumerable<(ValueHash256, TNode)> iterator = IterateNeighbour(hash);
-
-        if (exclude != null)
+        TNode[] resultArr = new TNode[_k];
+        int count = 0;
+        foreach ((ValueHash256 itemHash, TNode item) in IterateNeighbour(hash))
         {
-            iterator = iterator
-                .Where(kv => kv.Item1 != exclude.Value);
+            if (exclude != null && itemHash == exclude.Value) continue;
+            if (excludeSelf && itemHash == _currentNodeHash) continue;
+            resultArr[count++] = item;
+            if (count == _k) break;
         }
 
-        if (excludeSelf)
-        {
-            iterator = iterator
-                .Where(kv => kv.Item1 != _currentNodeHash);
-        }
-
-        return [.. iterator.Take(_k).Select(kv => kv.Item2)];
+        if (count == _k) return resultArr;
+        TNode[] truncated = new TNode[count];
+        Array.Copy(resultArr, truncated, count);
+        return truncated;
     }
 
     private bool GetBit(ValueHash256 hash, int index)

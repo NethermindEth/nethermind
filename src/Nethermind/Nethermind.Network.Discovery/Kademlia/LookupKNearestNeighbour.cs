@@ -24,7 +24,7 @@ public class LookupKNearestNeighbour<TKey, TNode>(
     KademliaConfig<TNode> config,
     ILogManager logManager) : ILookupAlgo<TNode> where TNode : notnull
 {
-    private readonly TimeSpan _findNeighbourHardTimeout = config.LookupFindNeighbourHardTimout;
+    private readonly TimeSpan _findNeighbourHardTimeout = config.LookupFindNeighbourHardTimeout;
     private readonly ILogger _logger = logManager.GetClassLogger<LookupKNearestNeighbour<TKey, TNode>>();
 
     public async Task<TNode[]> Lookup(
@@ -62,7 +62,7 @@ public class LookupKNearestNeighbour<TKey, TNode>(
             bestSeen.Enqueue((nodeHash, node), nodeHash);
         }
 
-        TaskCompletionSource roundComplete = new(token);
+        TaskCompletionSource roundComplete = new(TaskCreationOptions.RunContinuationsAsynchronously);
         int closestNodeRound = 0;
         int currentRound = 0;
         int queryingTask = 0;
@@ -70,7 +70,7 @@ public class LookupKNearestNeighbour<TKey, TNode>(
 
         Task[] worker = [.. Enumerable.Range(0, config.Alpha).Select((i) => Task.Run(async () =>
         {
-            while (!finished)
+            while (!Volatile.Read(ref finished))
             {
                 token.ThrowIfCancellationRequested();
                 if (!TryGetNodeToQuery(out (ValueHash256 hash, TNode node)? toQuery))
@@ -78,7 +78,7 @@ public class LookupKNearestNeighbour<TKey, TNode>(
                     if (queryingTask > 0)
                     {
                         // Need to wait for all querying tasks first here.
-                        await Task.WhenAny(roundComplete.Task, Task.Delay(100, token));
+                        await Task.WhenAny(Volatile.Read(ref roundComplete).Task, Task.Delay(100, token));
                         continue;
                     }
 
@@ -104,7 +104,14 @@ public class LookupKNearestNeighbour<TKey, TNode>(
                 finally
                 {
                     Interlocked.Decrement(ref queryingTask);
-                    if (roundComplete.TrySetResult()) roundComplete = new TaskCompletionSource(token);
+                    TaskCompletionSource current = Volatile.Read(ref roundComplete);
+                    if (current.TrySetResult())
+                    {
+                        Interlocked.CompareExchange(
+                            ref roundComplete,
+                            new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously),
+                            current);
+                    }
                 }
             }
         }, token))];
@@ -112,7 +119,7 @@ public class LookupKNearestNeighbour<TKey, TNode>(
         // When any of the worker is finished, we consider the whole query as done.
         // This prevent this operation from hanging on a timed out request
         await Task.WhenAny(worker);
-        finished = true;
+        Volatile.Write(ref finished, true);
         await cts.CancelAsync();
 
         return CompileResult();

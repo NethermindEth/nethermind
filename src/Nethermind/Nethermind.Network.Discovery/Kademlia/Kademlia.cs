@@ -57,9 +57,7 @@ public class Kademlia<TKey, TNode> : IKademlia<TKey, TNode> where TNode : notnul
 
     public TNode CurrentNode => _currentNodeId;
 
-    public void AddOrRefresh(TNode node) =>
-        // It add to routing table and does the whole refresh logid.
-        _nodeHealthTracker.OnIncomingMessageFrom(node);
+    public void AddOrRefresh(TNode node) => _nodeHealthTracker.OnIncomingMessageFrom(node);
 
     public void Remove(TNode node) => _routingTable.Remove(_keyOperator.GetNodeHash(node));
 
@@ -86,8 +84,18 @@ public class Kademlia<TKey, TNode> : IKademlia<TKey, TNode> where TNode : notnul
     {
         while (true)
         {
-            await Bootstrap(token);
-            // The main loop can potentially be parallelized with multiple concurrent lookups to improve efficiency.
+            try
+            {
+                await Bootstrap(token);
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch (Exception e)
+            {
+                if (_logger.IsError) _logger.Error("Bootstrap iteration failed.", e);
+            }
 
             await Task.Delay(_refreshInterval, token);
         }
@@ -111,6 +119,10 @@ public class Kademlia<TKey, TNode> : IKademlia<TKey, TNode> where TNode : notnul
             catch (OperationCanceledException)
             {
                 // Unreachable
+            }
+            catch (Exception e)
+            {
+                if (_logger.IsDebug) _logger.Debug($"Bootnode ping failed for {node}. {e}");
             }
         });
 
