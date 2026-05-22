@@ -31,17 +31,11 @@ namespace Nethermind.JsonRpc
         public static ResultWrapper<T> Fail(string error) =>
             new() { Result = Result.Fail(error), ErrorCode = ErrorCodes.InternalError };
 
-        public static ResultWrapper<T> Fail(Exception e) =>
-            new() { Result = Result.Fail(e.ToString()), ErrorCode = ErrorCodes.InternalError };
-
         public static ResultWrapper<T> Fail(string error, int errorCode, T outputData) =>
             new() { Result = Result.Fail(error), ErrorCode = errorCode, Data = outputData, HasErrorData = true };
 
         public static ResultWrapper<T> Fail(string error, int errorCode, bool isTemporary = false) =>
             new() { Result = Result.Fail(error), ErrorCode = errorCode, IsTemporary = isTemporary };
-
-        public static ResultWrapper<T> Fail(string error, T data) =>
-            new() { Data = data, Result = Result.Fail(error), HasErrorData = true };
 
         public static ResultWrapper<T> Success(T data) =>
             new() { Data = data, Result = Result.Success };
