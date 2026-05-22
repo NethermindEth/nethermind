@@ -79,9 +79,6 @@ public readonly struct JsonRpcId : IEquatable<JsonRpcId>
     /// <summary>Gets whether this value represents an explicit JSON null ID.</summary>
     public bool IsNull => _kind == JsonRpcIdKind.Null;
 
-    /// <summary>Gets whether this value represents either a missing or explicit-null ID.</summary>
-    public bool IsNullLike => _kind is JsonRpcIdKind.Missing or JsonRpcIdKind.Null;
-
     internal static JsonRpcId FromValidatedRawStringToken(ReadOnlySpan<byte> rawToken)
     {
         if (rawToken.IsEmpty)
@@ -194,21 +191,6 @@ public readonly struct JsonRpcId : IEquatable<JsonRpcId>
     {
         value = _decimalValue;
         return _kind == JsonRpcIdKind.Decimal;
-    }
-
-    /// <summary>Tries to get this ID as a string.</summary>
-    /// <param name="value">The string ID value when this method returns true.</param>
-    /// <returns>True when this ID stores a string; otherwise false.</returns>
-    public bool TryGetString(out string? value)
-    {
-        if (_kind != JsonRpcIdKind.String)
-        {
-            value = null;
-            return false;
-        }
-
-        value = GetStringValue();
-        return true;
     }
 
     /// <inheritdoc/>
