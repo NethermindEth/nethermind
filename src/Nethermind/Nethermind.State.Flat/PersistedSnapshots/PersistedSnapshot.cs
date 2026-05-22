@@ -44,12 +44,12 @@ public sealed class PersistedSnapshot : RefCountingDisposable
     //   bit 63: REF — armed on every hit and insert, cleared by the clock hand on a miss-pass.
     //   bit 62: VALID — distinguishes an empty (0L) slot from a stored (tag=0, offset=0) entry.
     //   bits 46..61: 16-bit tag (bytes 4..6 of the raw Address).
-    //   bits 0..45: 46-bit absolute offset of the LEB128 value-length byte in the outer
+    //   bits 0..45: 46-bit absolute offset of the entry's FlagByte in the outer
     //               column 0x01 entry. 46 bits = 64 TiB, ample for any real snapshot.
-    // Layout: keyFirst=false BTree entry shape is [Value][LEB128][FullKey]. On a tag match
-    // we read 26 bytes at lebStart covering the LEB128 (≤ 6 bytes) plus the 20-byte stored
-    // raw Address, then compare to the lookup Address to catch tag collisions / layout drift.
-    // The cached Bound is (lebStart - valueLength, valueLength).
+    // Layout: keyFirst=false BTree entry shape is [Value][FlagByte][LEB128][FullKey]. On a
+    // tag match we read 27 bytes at the FlagByte covering it, the LEB128 (≤ 6 bytes) and the
+    // 20-byte stored raw Address, then compare to the lookup Address to catch tag collisions /
+    // layout drift. The cached Bound is (flagByteOffset - valueLength, valueLength).
     //
     // Hot path: lock-free 8-way Volatile.Read scan; <see cref="Interlocked.Or"/> re-arms REF
     // after the disk probe confirms the cached tag isn't a collision. Miss path: take the
@@ -65,7 +65,8 @@ public sealed class PersistedSnapshot : RefCountingDisposable
     private const int AddressBoundCacheWayMask = AddressBoundCacheWays - 1;
     private const int AddressBoundCacheMetaLockBit = 1 << 7;
     private const int AddressBoundCacheMetaHandMask = 0x7;
-    private const int AddressBoundCacheProbeBytes = 6 + PersistedSnapshotTags.AddressKeyLength;
+    // FlagByte (1) + LEB128 value-length (≤ 6) + raw Address (20).
+    private const int AddressBoundCacheProbeBytes = 1 + 6 + PersistedSnapshotTags.AddressKeyLength;
 
     // On address-bound cache miss, pre-fault the trailing slice of the per-address inner HSST
     // in one madvise(MADV_POPULATE_READ) syscall over a fixed window at the tail of the bound.
@@ -280,10 +281,11 @@ public sealed class PersistedSnapshot : RefCountingDisposable
             if ((s & AddressBoundCacheValidBit) == 0) continue;
             if ((ushort)((s >>> AddressBoundCacheTagShift) & 0xFFFF) != hashTag) continue;
 
-            long lebOffset = s & AddressBoundCacheOffsetMask;
+            long flagOffset = s & AddressBoundCacheOffsetMask;
             Span<byte> probe = stackalloc byte[AddressBoundCacheProbeBytes];
-            if (!reader.TryRead(lebOffset, probe)) continue;
-            int pos = 0;
+            if (!reader.TryRead(flagOffset, probe)) continue;
+            // probe[0] is the entry's FlagByte; the LEB128 value-length starts at probe[1].
+            int pos = 1;
             long valueLength = Leb128.Read(probe, ref pos);
             if (!probe.Slice(pos, PersistedSnapshotTags.AddressKeyLength)
                     .SequenceEqual(address.Bytes))
@@ -291,7 +293,7 @@ public sealed class PersistedSnapshot : RefCountingDisposable
 
             if ((s & AddressBoundCacheRefBit) == 0)
                 Interlocked.Or(ref slots[w], AddressBoundCacheRefBit);
-            addressBound = new Bound(lebOffset - valueLength, valueLength);
+            addressBound = new Bound(flagOffset - valueLength, valueLength);
             useSpanReader = addressBound.Length <= AddressBoundWarmupBytes;
             return true;
         }
@@ -309,13 +311,13 @@ public sealed class PersistedSnapshot : RefCountingDisposable
         _reservation.TouchRangePopulate(warmStart, warmLen);
         useSpanReader = warmLen >= addressBound.Length;
 
-        // keyFirst=false bound is (lebStart - valueLength, valueLength), so
-        // lebStart = bound.Offset + bound.Length.
-        long newLebStart = addressBound.Offset + addressBound.Length;
+        // keyFirst=false bound is (flagByteOffset - valueLength, valueLength), so the
+        // entry's FlagByte offset = bound.Offset + bound.Length.
+        long newFlagOffset = addressBound.Offset + addressBound.Length;
         long newEntry = AddressBoundCacheValidBit
                       | AddressBoundCacheRefBit
                       | ((long)hashTag << AddressBoundCacheTagShift)
-                      | (newLebStart & AddressBoundCacheOffsetMask);
+                      | (newFlagOffset & AddressBoundCacheOffsetMask);
         InsertAddressBound(newEntry);
         return true;
     }
