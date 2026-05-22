@@ -125,11 +125,7 @@ public sealed class NewPayloadWithWitnessSszHandler(
     {
         try
         {
-            ReadOnlySpan<byte> span = body.IsSingleSegment
-                ? body.FirstSpan
-                : body.ToArray();
-
-            Utf8JsonReader reader = new(span);
+            Utf8JsonReader reader = new(body);
 
             if (!reader.Read() || reader.TokenType != JsonTokenType.StartArray) return null;
 

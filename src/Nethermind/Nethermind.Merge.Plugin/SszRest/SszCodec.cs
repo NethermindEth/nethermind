@@ -109,7 +109,8 @@ public static class SszCodec
             dst[pos++] = 0x00;
         }
 
-        System.Diagnostics.Debug.Assert(pos == totalLen, "encoded byte count must match calculated total");
+        if (pos != totalLen)
+            throw new InvalidOperationException($"NewPayloadWithWitnessResponseV1 encode length mismatch: wrote {pos} bytes but expected {totalLen}");
         writer.Advance(totalLen);
         return totalLen;
     }
