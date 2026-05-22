@@ -21,14 +21,24 @@ public sealed class RpcJsonTypeInfoGenerator : IIncrementalGenerator
                 predicate: static (node, _) => node is TypeDeclarationSyntax or InvocationExpressionSyntax,
                 transform: static (context, cancellationToken) => RpcJsonTypeDiscovery.GetJsonTypes(context, cancellationToken));
 
+        IncrementalValuesProvider<ImmutableArray<string>> rpcMethodNames = context.SyntaxProvider
+            .CreateSyntaxProvider(
+                predicate: static (node, _) => node is TypeDeclarationSyntax,
+                transform: static (context, cancellationToken) => RpcJsonTypeDiscovery.GetRpcMethodNames(context, cancellationToken));
+
         IncrementalValueProvider<ImmutableArray<ImmutableArray<string>>> collectedTypes = rpcTypes.Collect();
-        context.RegisterSourceOutput(collectedTypes, static (context, types) => Generate(context, types));
+        IncrementalValueProvider<ImmutableArray<ImmutableArray<string>>> collectedMethodNames = rpcMethodNames.Collect();
+        context.RegisterSourceOutput(collectedTypes.Combine(collectedMethodNames), static (context, values) => Generate(context, values.Left, values.Right));
     }
 
-    private static void Generate(SourceProductionContext context, ImmutableArray<ImmutableArray<string>> typeGroups)
+    private static void Generate(
+        SourceProductionContext context,
+        ImmutableArray<ImmutableArray<string>> typeGroups,
+        ImmutableArray<ImmutableArray<string>> methodNameGroups)
     {
         string[] sortedTypes = RpcJsonTypeDiscovery.GetSortedUniqueTypes(typeGroups);
-        if (sortedTypes.Length == 0)
+        string[] sortedMethodNames = RpcJsonTypeDiscovery.GetSortedUniqueMethodNames(methodNameGroups);
+        if (sortedTypes.Length == 0 && sortedMethodNames.Length == 0)
         {
             return;
         }
@@ -84,5 +94,42 @@ public sealed class RpcJsonTypeInfoGenerator : IIncrementalGenerator
         builder.AppendLine("}");
 
         context.AddSource("GeneratedRpcJsonTypeInfoProvider.g.cs", SourceText.From(builder.ToString(), Encoding.UTF8));
+
+        if (sortedMethodNames.Length != 0)
+        {
+            context.AddSource("GeneratedRpcMethodNamesProvider.g.cs", SourceText.From(GenerateMethodNamesSource(sortedMethodNames), Encoding.UTF8));
+        }
     }
+
+    private static string GenerateMethodNamesSource(string[] methodNames)
+    {
+        StringBuilder builder = new();
+        builder.AppendLine(GeneratedSourceHeader);
+        builder.AppendLine("using System.Runtime.CompilerServices;");
+        builder.AppendLine();
+        builder.AppendLine("namespace Nethermind.JsonRpc;");
+        builder.AppendLine();
+        builder.AppendLine("internal static class GeneratedRpcMethodNamesProvider");
+        builder.AppendLine("{");
+        builder.AppendLine("    [ModuleInitializer]");
+        builder.AppendLine("    internal static void Register()");
+        builder.AppendLine("    {");
+        builder.AppendLine("        RpcKnownMethodNamesRegistry.Register(RpcMethodNames);");
+        builder.AppendLine("    }");
+        builder.AppendLine();
+        builder.AppendLine("    private static readonly string[] RpcMethodNames =");
+        builder.AppendLine("    {");
+        for (int i = 0; i < methodNames.Length; i++)
+        {
+            builder.Append("        \"");
+            builder.Append(EscapeStringLiteral(methodNames[i]));
+            builder.AppendLine("\",");
+        }
+        builder.AppendLine("    };");
+        builder.AppendLine("}");
+        return builder.ToString();
+    }
+
+    private static string EscapeStringLiteral(string value) =>
+        value.Replace("\\", "\\\\").Replace("\"", "\\\"");
 }

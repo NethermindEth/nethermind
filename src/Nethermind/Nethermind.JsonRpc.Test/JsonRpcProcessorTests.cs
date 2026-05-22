@@ -8,6 +8,8 @@ using System.Collections.Generic;
 using System.IO.Abstractions;
 using System.IO.Pipelines;
 using System.Linq;
+using System.Reflection;
+using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.Json;
 using System.Threading;
@@ -27,7 +29,27 @@ namespace Nethermind.JsonRpc.Test;
 public class JsonRpcProcessorTests(bool returnErrors)
 {
     private readonly JsonRpcErrorResponse _errorResponse = new();
-    private static IReadOnlyList<string> CachedMethodNames => KnownRpcMethodNames.All;
+    private static readonly object[] CachedMethodNameCases =
+    [
+        new object[] { "engine_newPayloadV4", false, true },
+        new object[] { "engine_newPayloadV4", true, true },
+        new object[] { "engine_getBlobsV2", false, true },
+        new object[] { "engine_getBlobsV2", true, true },
+        new object[] { "eth_call", false, true },
+        new object[] { "eth_call", true, true },
+        new object[] { "eth_getBlockByNumber", false, true },
+        new object[] { "eth_getBlockByNumber", true, true },
+        new object[] { "eth_chainId", false, true },
+        new object[] { "eth_chainId", true, true },
+        new object[] { "eth_unknown", false, false },
+        new object[] { "eth_unknown", true, false },
+    ];
+
+    static JsonRpcProcessorTests()
+    {
+        RuntimeHelpers.RunModuleConstructor(typeof(KnownRpcMethodNames).Module.ModuleHandle);
+        RuntimeHelpers.RunModuleConstructor(typeof(Nethermind.Merge.Plugin.IEngineRpcModule).Module.ModuleHandle);
+    }
 
     private JsonRpcProcessor Initialize(JsonRpcConfig? config = null, RpcRecorderState recorderState = RpcRecorderState.All)
     {
@@ -85,8 +107,8 @@ public class JsonRpcProcessorTests(bool returnErrors)
         capturedParamsKind.Should().Be(JsonValueKind.Array);
     }
 
-    [TestCaseSource(nameof(CachedMethodNames))]
-    public async Task Http_known_hot_methods_use_cached_method_names_on_direct_utf8_path(string methodName)
+    [TestCaseSource(nameof(CachedMethodNameCases))]
+    public async Task Http_generated_method_names_use_cached_instances(string methodName, bool inBatch, bool expectedCached)
     {
         string? capturedMethod = null;
         IJsonRpcService service = Substitute.For<IJsonRpcService>();
@@ -103,40 +125,27 @@ public class JsonRpcProcessorTests(bool returnErrors)
             Substitute.For<IFileSystem>(),
             LimboLogs.Instance);
 
+        string request = inBatch
+            ? $$"""[{"id":1,"jsonrpc":"2.0","method":"{{methodName}}","params":[]}]"""
+            : $$"""{"id":1,"jsonrpc":"2.0","method":"{{methodName}}","params":[]}""";
+
         await ProcessAsync(
             processor,
-            CreateReader($$"""{"id":1,"jsonrpc":"2.0","method":"{{methodName}}","params":[]}"""),
+            CreateReader(request),
             new JsonRpcContext(RpcEndpoint.Http));
 
         capturedMethod.Should().Be(methodName);
-        ReferenceEquals(capturedMethod, string.Intern(methodName)).Should().BeTrue();
-    }
-
-    [TestCaseSource(nameof(CachedMethodNames))]
-    public async Task Http_batch_known_hot_methods_use_cached_method_names_on_document_path(string methodName)
-    {
-        string? capturedMethod = null;
-        IJsonRpcService service = Substitute.For<IJsonRpcService>();
-        service.SendRequestAsync(Arg.Any<JsonRpcRequest>(), Arg.Any<JsonRpcContext>()).Returns(callInfo =>
+        string? knownMethodName = TryGetKnownMethodName(methodName);
+        if (expectedCached)
         {
-            JsonRpcRequest request = callInfo.Arg<JsonRpcRequest>();
-            capturedMethod = request.Method;
-            return new JsonRpcSuccessResponse { Id = request.Id };
-        });
-
-        JsonRpcProcessor processor = new(
-            service,
-            new JsonRpcConfig { RpcRecorderState = RpcRecorderState.None },
-            Substitute.For<IFileSystem>(),
-            LimboLogs.Instance);
-
-        await ProcessAsync(
-            processor,
-            CreateReader($$"""[{"id":1,"jsonrpc":"2.0","method":"{{methodName}}","params":[]}]"""),
-            new JsonRpcContext(RpcEndpoint.Http));
-
-        capturedMethod.Should().Be(methodName);
-        ReferenceEquals(capturedMethod, string.Intern(methodName)).Should().BeTrue();
+            knownMethodName.Should().NotBeNull();
+            capturedMethod.Should().BeSameAs(knownMethodName);
+        }
+        else
+        {
+            knownMethodName.Should().BeNull();
+            capturedMethod.Should().NotBeSameAs(methodName);
+        }
     }
 
     [Test]
@@ -152,8 +161,55 @@ public class JsonRpcProcessorTests(bool returnErrors)
         string? methodName = KnownRpcMethodNames.Intern(ref reader);
 
         methodName.Should().Be("engine_newPayloadV4");
-        ReferenceEquals(methodName, string.Intern("engine_newPayloadV4")).Should().BeTrue();
+        methodName.Should().BeSameAs(GetKnownMethodName("engine_newPayloadV4"));
     }
+
+    [Test]
+    public void Generated_known_method_names_cover_rpc_module_interfaces()
+    {
+        HashSet<string> knownMethods = KnownRpcMethodNames.All.ToHashSet(StringComparer.Ordinal);
+        Assembly[] assemblies =
+        [
+            typeof(IRpcModule).Assembly,
+            typeof(Nethermind.Merge.Plugin.IEngineRpcModule).Assembly,
+        ];
+
+        foreach (Assembly assembly in assemblies)
+        {
+            foreach (Type type in assembly.GetTypes())
+            {
+                if (!type.IsInterface || !typeof(IRpcModule).IsAssignableFrom(type) || type == typeof(IRpcModule))
+                {
+                    continue;
+                }
+
+                foreach (MethodInfo method in type.GetMethods(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly))
+                {
+                    if (method.GetCustomAttribute<JsonRpcMethodAttribute>() is not null)
+                    {
+                        knownMethods.Should().Contain(method.Name);
+                    }
+                }
+            }
+        }
+    }
+
+    private static string? TryGetKnownMethodName(string methodName)
+    {
+        IReadOnlyList<string> methods = KnownRpcMethodNames.All;
+        for (int i = 0; i < methods.Count; i++)
+        {
+            if (methods[i] == methodName)
+            {
+                return methods[i];
+            }
+        }
+
+        return null;
+    }
+
+    private static string GetKnownMethodName(string methodName) =>
+        TryGetKnownMethodName(methodName) ?? throw new InvalidOperationException($"Missing generated method name {methodName}.");
 
     private ValueTask<CollectedJsonRpcResponses> ProcessAsync(string request, JsonRpcContext? context = null, JsonRpcConfig? config = null) =>
         ProcessAsync(Initialize(config), CreateReader(request), context ?? new JsonRpcContext(RpcEndpoint.Http));

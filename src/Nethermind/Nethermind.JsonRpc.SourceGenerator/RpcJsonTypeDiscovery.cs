@@ -23,6 +23,9 @@ internal static class RpcJsonTypeDiscovery
     public static ImmutableArray<string> GetJsonTypes(GeneratorSyntaxContext context, CancellationToken cancellationToken) =>
         GetJsonTypes(context.SemanticModel, context.Node, cancellationToken);
 
+    public static ImmutableArray<string> GetRpcMethodNames(GeneratorSyntaxContext context, CancellationToken cancellationToken) =>
+        GetRpcMethodNames(context.SemanticModel, context.Node, cancellationToken);
+
     public static ImmutableArray<string> GetJsonTypes(SemanticModel semanticModel, SyntaxNode node, CancellationToken cancellationToken)
     {
         ImmutableArray<ITypeSymbol> typeSymbols = GetJsonTypeSymbols(semanticModel, node, cancellationToken);
@@ -48,6 +51,33 @@ internal static class RpcJsonTypeDiscovery
             _ => ImmutableArray<ITypeSymbol>.Empty
         };
 
+    public static ImmutableArray<string> GetRpcMethodNames(SemanticModel semanticModel, SyntaxNode node, CancellationToken cancellationToken)
+    {
+        if (node is not TypeDeclarationSyntax typeDeclaration ||
+            semanticModel.GetDeclaredSymbol(typeDeclaration, cancellationToken) is not INamedTypeSymbol type ||
+            !IsRpcModule(type))
+        {
+            return ImmutableArray<string>.Empty;
+        }
+
+        ImmutableArray<string>.Builder names = ImmutableArray.CreateBuilder<string>();
+        if (type.TypeKind == TypeKind.Interface)
+        {
+            AddMethodNames(type, names);
+        }
+
+        for (int i = 0; i < type.AllInterfaces.Length; i++)
+        {
+            INamedTypeSymbol interfaceType = type.AllInterfaces[i];
+            if (IsRpcModule(interfaceType))
+            {
+                AddMethodNames(interfaceType, names);
+            }
+        }
+
+        return names.ToImmutable();
+    }
+
     public static string GetTypeDisplayString(ITypeSymbol type) => type.ToDisplayString(TypeDisplayFormat);
 
     public static string[] GetSortedUniqueTypes(ImmutableArray<ImmutableArray<string>> typeGroups)
@@ -67,6 +97,9 @@ internal static class RpcJsonTypeDiscovery
         Array.Sort(sortedTypes, StringComparer.Ordinal);
         return sortedTypes;
     }
+
+    public static string[] GetSortedUniqueMethodNames(ImmutableArray<ImmutableArray<string>> methodNameGroups) =>
+        GetSortedUniqueTypes(methodNameGroups);
 
     private static ImmutableArray<ITypeSymbol> GetRpcModuleJsonTypeSymbols(
         SemanticModel semanticModel,
@@ -151,6 +184,41 @@ internal static class RpcJsonTypeDiscovery
                 AddJsonType(method.Parameters[j].Type, types);
             }
         }
+    }
+
+    private static void AddMethodNames(INamedTypeSymbol type, ImmutableArray<string>.Builder names)
+    {
+        ImmutableArray<ISymbol> members = type.GetMembers();
+        for (int i = 0; i < members.Length; i++)
+        {
+            if (members[i] is not IMethodSymbol method ||
+                method.IsStatic ||
+                method.IsGenericMethod ||
+                method.IsImplicitlyDeclared ||
+                method.MethodKind != MethodKind.Ordinary ||
+                method.DeclaredAccessibility != Accessibility.Public ||
+                !HasJsonRpcMethodAttribute(method))
+            {
+                continue;
+            }
+
+            names.Add(method.Name);
+        }
+    }
+
+    private static bool HasJsonRpcMethodAttribute(IMethodSymbol method)
+    {
+        ImmutableArray<AttributeData> attributes = method.GetAttributes();
+        for (int i = 0; i < attributes.Length; i++)
+        {
+            if (attributes[i].AttributeClass is INamedTypeSymbol attributeType &&
+                IsNamedType(attributeType, JsonRpcModulesNamespace, "JsonRpcMethodAttribute"))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private static void AddReturnPayloadTypes(ITypeSymbol returnType, ImmutableArray<ITypeSymbol>.Builder types)
