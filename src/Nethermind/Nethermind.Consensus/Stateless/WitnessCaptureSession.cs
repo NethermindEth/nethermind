@@ -14,7 +14,13 @@ namespace Nethermind.Consensus.Stateless;
 /// Use with <c>using</c> so an unconsumed session (e.g. when <c>ProcessOne</c> throws)
 /// disarms the proxy and cancels the pending capture automatically.
 /// </summary>
-public struct WitnessCaptureSession : IDisposable
+/// <remarks>
+/// Declared as a <c>ref struct</c>: the session holds mutable state (<c>_consumed</c>)
+/// and an Armed-side-effect in its constructor, so a copy would silently break the
+/// Drain/Dispose state machine. <c>ref struct</c> prevents the type from being boxed,
+/// stored in heap fields, or captured by lambdas — making misuse a compile-time error.
+/// </remarks>
+public ref struct WitnessCaptureSession : IDisposable
 {
     private readonly IWitnessCaptureRegistry? _registry;
     private readonly WitnessCapturingWorldStateProxy? _proxy;

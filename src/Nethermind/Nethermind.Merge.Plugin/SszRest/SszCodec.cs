@@ -3,6 +3,7 @@
 
 using System;
 using System.Buffers;
+using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.Text;
 using Nethermind.Consensus.Stateless;
@@ -57,23 +58,23 @@ public static class SszCodec
 
         int totalLen = FixedHeaderBytes + lvhLen + errorLen + witnessLen;
 
+        // No dst.Clear() — every byte in [0, totalLen) is overwritten below.
         Span<byte> dst = writer.GetSpan(totalLen)[..totalLen];
-        dst.Clear();
 
         int pos = 0;
 
         dst[pos++] = EngineStatusToSsz(ps.Status);
 
         int off1 = FixedHeaderBytes;
-        System.Buffers.Binary.BinaryPrimitives.WriteInt32LittleEndian(dst.Slice(pos, 4), off1);
+        BinaryPrimitives.WriteInt32LittleEndian(dst.Slice(pos, 4), off1);
         pos += 4;
 
         int off2 = off1 + lvhLen;
-        System.Buffers.Binary.BinaryPrimitives.WriteInt32LittleEndian(dst.Slice(pos, 4), off2);
+        BinaryPrimitives.WriteInt32LittleEndian(dst.Slice(pos, 4), off2);
         pos += 4;
 
         int off3 = off2 + errorLen;
-        System.Buffers.Binary.BinaryPrimitives.WriteInt32LittleEndian(dst.Slice(pos, 4), off3);
+        BinaryPrimitives.WriteInt32LittleEndian(dst.Slice(pos, 4), off3);
         pos += 4;
 
         if (hasLvh)
@@ -132,11 +133,11 @@ public static class SszCodec
         byte status = data[0];
 
         // read offset to latest_valid_hash
-        int off1 = System.Buffers.Binary.BinaryPrimitives.ReadInt32LittleEndian(data.Slice(1, 4));
+        int off1 = BinaryPrimitives.ReadInt32LittleEndian(data.Slice(1, 4));
         // read offset to validation_error (to bound the latest_valid_hash slice)
-        int off2 = System.Buffers.Binary.BinaryPrimitives.ReadInt32LittleEndian(data.Slice(5, 4));
+        int off2 = BinaryPrimitives.ReadInt32LittleEndian(data.Slice(5, 4));
         // read offset to witness
-        int off3 = System.Buffers.Binary.BinaryPrimitives.ReadInt32LittleEndian(data.Slice(9, 4));
+        int off3 = BinaryPrimitives.ReadInt32LittleEndian(data.Slice(9, 4));
 
         // decode latest_valid_hash Union
         ReadOnlySpan<byte> lvhSlice = data.Slice(off1, off2 - off1);

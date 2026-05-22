@@ -14,8 +14,17 @@ namespace Nethermind.Merge.Plugin;
 /// <see cref="WitnessCapturingWorldStateProxy"/> as a decorator over the main
 /// processing scope's <see cref="IWorldState"/>.
 /// </summary>
-public sealed class WitnessCapturingMainProcessingModule : Module, IMainProcessingModule
+/// <remarks>
+/// Gated on <paramref name="enabled"/>: pre-Amsterdam chains pay no per-call
+/// proxy overhead because the decorator is not registered at all. The flag is
+/// derived from <c>ISpecProvider.GetFinalSpec().IsEip7928Enabled</c> at
+/// container build time.
+/// </remarks>
+public sealed class WitnessCapturingMainProcessingModule(bool enabled) : Module, IMainProcessingModule
 {
-    protected override void Load(ContainerBuilder builder) =>
-        builder.AddDecorator<IWorldState, WitnessCapturingWorldStateProxy>();
+    protected override void Load(ContainerBuilder builder)
+    {
+        if (enabled)
+            builder.AddDecorator<IWorldState, WitnessCapturingWorldStateProxy>();
+    }
 }

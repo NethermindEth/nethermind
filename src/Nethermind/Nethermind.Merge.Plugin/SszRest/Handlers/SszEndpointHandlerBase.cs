@@ -5,12 +5,23 @@ using System;
 using System.Buffers;
 using System.Diagnostics;
 using System.IO.Pipelines;
+using System.Text.Json;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Http;
 using Nethermind.Core;
 using Nethermind.JsonRpc;
+using Nethermind.Merge.Plugin.Data;
 
 namespace Nethermind.Merge.Plugin.SszRest.Handlers;
+
+/// <summary>
+/// JSON error envelope written by <see cref="SszEndpointHandlerBase.WriteErrorAsync"/>.
+/// </summary>
+/// <remarks>
+/// Serialized through the source-gen <see cref="EngineApiJsonContext"/> to avoid the
+/// allocation + reflection cost of an anonymous object on the error path.
+/// </remarks>
+public sealed record SszErrorResponse(int Code, string Message);
 
 /// <summary>
 /// Base class for SSZ-REST endpoint handlers. Encoders write directly into the
@@ -91,7 +102,9 @@ public abstract class SszEndpointHandlerBase : ISszEndpointHandler
     {
         ctx.Response.StatusCode = status;
         ctx.Response.ContentType = "application/json";
-        string json = System.Text.Json.JsonSerializer.Serialize(new { code = jsonRpcCode, message });
+        string json = JsonSerializer.Serialize(
+            new SszErrorResponse(jsonRpcCode, message),
+            EngineApiJsonContext.Default.SszErrorResponse);
         await ctx.Response.WriteAsync(json, ctx.RequestAborted);
     }
 

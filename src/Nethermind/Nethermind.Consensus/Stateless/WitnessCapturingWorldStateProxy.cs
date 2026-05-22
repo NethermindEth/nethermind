@@ -48,10 +48,21 @@ public sealed class WitnessCapturingWorldStateProxy(IWorldState inner) : IWorldS
     }
 
     /// <summary>
-    /// Disarms the proxy; tracking collections remain alive for <see cref="BuildWitness"/> to consume.
-    /// Must be called from a <c>finally</c> block even if <c>ProcessOne</c> throws.
+    /// Disarms the proxy and releases the tracking collections.
     /// </summary>
-    internal void Disarm() => Interlocked.Exchange(ref _armed, 0);
+    /// <remarks>
+    /// Must be called from a <c>finally</c> block even if <c>ProcessOne</c> throws.
+    /// In the normal-success flow <see cref="BuildWitness"/> has already consumed and
+    /// nulled the collections; this just makes the failure-path (ProcessOne threw) and
+    /// success-path observationally identical, so the proxy never holds stale data
+    /// between blocks.
+    /// </remarks>
+    internal void Disarm()
+    {
+        Interlocked.Exchange(ref _storageSlots, null);
+        Interlocked.Exchange(ref _bytecodes, null);
+        Interlocked.Exchange(ref _armed, 0);
+    }
 
     /// <summary>
     /// Builds a <see cref="Witness"/> from data recorded during the most recent armed execution.

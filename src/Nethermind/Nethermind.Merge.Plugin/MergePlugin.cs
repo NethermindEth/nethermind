@@ -23,6 +23,7 @@ using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Exceptions;
+using Nethermind.Core.Specs;
 using Nethermind.Db;
 using Nethermind.Facade.Proxy;
 using Nethermind.HealthChecks;
@@ -298,12 +299,16 @@ public class BaseMergePluginModule : Module
             // arms/disarms it around each ProcessOne call when the registry is populated.
             // IHeaderFinder is injected so BuildWitness can populate Witness.Headers via
             // WitnessGeneratingHeaderFinder (execution-apis#773 §ExecutionWitnessV1).
+            // The decorator is gated on IsEip7928Enabled: pre-Amsterdam chains pay no
+            // per-call proxy overhead because the decorator is never registered.
             .AddSingleton<IWitnessCaptureRegistry>(ctx =>
                 new WitnessCaptureRegistry(
                     ctx.Resolve<IStateReader>(),
                     ctx.Resolve<IHeaderFinder>(),
                     ctx.Resolve<ILogManager>()))
-            .AddSingleton<IMainProcessingModule, WitnessCapturingMainProcessingModule>()
+            .AddSingleton<IMainProcessingModule>(ctx =>
+                new WitnessCapturingMainProcessingModule(
+                    ctx.Resolve<ISpecProvider>().GetFinalSpec().IsEip7928Enabled))
 
             .AddSingleton<IPeerRefresher, PeerRefresher>()
             .ResolveOnServiceActivation<IPeerRefresher, ISynchronizer>()

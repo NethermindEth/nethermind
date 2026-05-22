@@ -170,15 +170,18 @@ public partial class EngineModuleTests
 
     [Test]
     [Category("WitnessCapture")]
-    public void Proxy_Arm_Disarm_BuildWitness_then_second_Arm_succeeds()
+    public void Proxy_BuildWitness_Disarm_then_second_Arm_succeeds()
     {
+        // Mirrors the production order: BuildWitness runs inside TryDrainCapture,
+        // and Disarm runs in the finally block after. The proxy must be reusable
+        // after this sequence so the next block can re-arm.
         IStateReader reader = Substitute.For<IStateReader>();
         WitnessCapturingWorldStateProxy proxy = MakeUnarmedProxy();
 
         proxy.Arm();
         proxy.TryGetAccount(TestItem.AddressA, out _);
-        proxy.Disarm();
         proxy.BuildWitness(Build.A.BlockHeader.TestObject, reader, MakeHeaderFinder());
+        proxy.Disarm();
 
         Action secondArm = () => proxy.Arm();
         secondArm.Should().NotThrow("a second Arm after BuildWitness consumes the collections must succeed");
@@ -198,10 +201,10 @@ public partial class EngineModuleTests
         StorageCell readCell = new(TestItem.AddressB, UInt256.MaxValue);
         proxy.Set(writeCell, [0x01]);
         proxy.Set(readCell, [0x02]);
-        proxy.Disarm();
 
         IStateReader reader = Substitute.For<IStateReader>();
         Witness? witness = proxy.BuildWitness(Build.A.BlockHeader.TestObject, reader, MakeHeaderFinder());
+        proxy.Disarm();
 
         reader.Received(3).RunTreeVisitor(
             Arg.Any<AccountProofCollector>(),
@@ -221,10 +224,10 @@ public partial class EngineModuleTests
         WitnessCapturingWorldStateProxy proxy = new(inner);
         proxy.Arm();
         proxy.GetCode(TestItem.AddressA);
-        proxy.Disarm();
 
         IStateReader reader = Substitute.For<IStateReader>();
         Witness? witness = proxy.BuildWitness(Build.A.BlockHeader.TestObject, reader, MakeHeaderFinder());
+        proxy.Disarm();
 
         witness.Should().NotBeNull();
         witness!.Codes.Count.Should().Be(1,
@@ -400,7 +403,7 @@ public partial class EngineModuleTests
 
     [Test]
     [Category("WitnessCapture")]
-    public async Task Handler_does_not_arm_when_blockHash_is_null()
+    public async Task Handler_rejects_null_blockHash_with_InvalidParams_and_does_not_arm()
     {
         IWitnessCaptureRegistry registry = Substitute.For<IWitnessCaptureRegistry>();
 
@@ -417,8 +420,9 @@ public partial class EngineModuleTests
             await handler.HandleAsync(payload, [], TestItem.KeccakA, []);
 
         await registry.DidNotReceive().ArmCapture(Arg.Any<Hash256>());
-        result.Result.ResultType.Should().Be(ResultType.Success);
-        result.Data.ExecutionWitness.Should().BeNull("no registry slot means no witness");
+        result.Result.ResultType.Should().Be(ResultType.Failure,
+            "a null blockHash is a malformed payload — return InvalidParams instead of forwarding");
+        result.ErrorCode.Should().Be(ErrorCodes.InvalidParams);
     }
 
     [Test]

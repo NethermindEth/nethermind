@@ -35,14 +35,8 @@ public sealed class NewPayloadWithWitnessSszHandler(
 
     public override async Task HandleAsync(HttpContext ctx, int version, ReadOnlyMemory<char> extra, ReadOnlySequence<byte> body)
     {
-        string? contentType = ctx.Request.ContentType;
-        if (contentType is null || !contentType.Contains("application/json", StringComparison.OrdinalIgnoreCase))
-        {
-            ctx.Response.Headers["Accept"] = "application/json";
-            await WriteErrorAsync(ctx, StatusCodes.Status415UnsupportedMediaType,
-                "Content-Type must be application/json", ErrorCodes.ParseError);
-            return;
-        }
+        // Content-Type is validated upstream in SszMiddleware.DispatchWitnessAsync;
+        // any non-JSON POST is rejected with 415 before reaching this handler.
 
         NewPayloadV5Params? request = DeserializeRequest(body);
         if (request is null)

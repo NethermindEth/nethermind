@@ -34,19 +34,18 @@ public sealed class NewPayloadWithWitnessHandler(
     {
         Hash256? blockHash = executionPayload.BlockHash;
 
-        // A null BlockHash is a malformed payload: witness generation is impossible without
-        // a block hash to key the capture registry. Log a warning and skip arming — the call
-        // is still forwarded to newPayloadV5 so the CL gets a proper status response.
-        Task<Witness?>? captureTask = null;
-        if (blockHash is not null)
-        {
-            captureTask = witnessCaptureRegistry.ArmCapture(blockHash);
-        }
-        else
+        // A null BlockHash is unambiguously a malformed JSON-RPC payload: there is no way
+        // to key the capture registry, and engine_newPayloadV5 would itself reject it.
+        // Fail fast with InvalidParams so the caller gets a precise diagnosis.
+        if (blockHash is null)
         {
             if (_logger.IsWarn)
-                _logger.Warn("engine_newPayloadWithWitness: payload BlockHash is null — witness generation skipped. The payload may be malformed.");
+                _logger.Warn("engine_newPayloadWithWitness: payload BlockHash is null — rejecting as InvalidParams.");
+            return ResultWrapper<NewPayloadWithWitnessV1Result>.Fail(
+                "executionPayload.blockHash is required", ErrorCodes.InvalidParams);
         }
+
+        Task<Witness?> captureTask = witnessCaptureRegistry.ArmCapture(blockHash);
 
         ResultWrapper<PayloadStatusV1> statusResult = await engineModule.Value.engine_newPayloadV5(
             executionPayload, blobVersionedHashes, parentBeaconBlockRoot, executionRequests);
@@ -55,9 +54,7 @@ public sealed class NewPayloadWithWitnessHandler(
         {
             if (statusResult.Result.ResultType != ResultType.Success)
             {
-                if (blockHash is not null)
-                    witnessCaptureRegistry.DisarmCapture(blockHash);
-
+                witnessCaptureRegistry.DisarmCapture(blockHash);
                 return ResultWrapper<NewPayloadWithWitnessV1Result>.Fail(
                     statusResult.Result.Error ?? "engine_newPayloadV5 failed",
                     statusResult.ErrorCode);
@@ -68,37 +65,30 @@ public sealed class NewPayloadWithWitnessHandler(
 
             if (payloadStatus.Status == PayloadStatus.Valid)
             {
-                if (captureTask is not null)
-                {
-                    // Invariant: BranchProcessor completes the TCS synchronously inside ProcessOne
-                    // before engine_newPayloadV5 returns. If captureTask is still pending here, the
-                    // block went through an early-return path (already-known, etc.) and was never
-                    // processed — disarm so the await does not block forever.
-                    if (!captureTask.IsCompleted)
-                    {
-                        witnessCaptureRegistry.DisarmCapture(blockHash!);
-                    }
+                // Invariant: BranchProcessor completes the TCS synchronously inside ProcessOne
+                // before engine_newPayloadV5 returns. If captureTask is still pending here, the
+                // block went through an early-return path (already-known, etc.) and was never
+                // processed — disarm so the await does not block forever.
+                if (!captureTask.IsCompleted)
+                    witnessCaptureRegistry.DisarmCapture(blockHash);
 
-                    try
-                    {
-                        witness = await captureTask;
-                    }
-                    catch (OperationCanceledException)
-                    {
-                        // A concurrent ArmCapture for the same blockHash cancelled our task, OR
-                        // we just disarmed because BranchProcessor did not run. Either way the
-                        // block executed successfully — return VALID with a null witness.
-                        if (_logger.IsWarn)
-                            _logger.Warn($"engine_newPayloadWithWitness: witness capture cancelled for {blockHash}. Returning VALID with no witness.");
-                    }
+                try
+                {
+                    witness = await captureTask;
+                }
+                catch (OperationCanceledException)
+                {
+                    // A concurrent ArmCapture for the same blockHash cancelled our task, OR
+                    // we just disarmed because BranchProcessor did not run. Either way the
+                    // block executed successfully — return VALID with a null witness.
+                    if (_logger.IsWarn)
+                        _logger.Warn($"engine_newPayloadWithWitness: witness capture cancelled for {blockHash}. Returning VALID with no witness.");
                 }
             }
             else
             {
-                if (blockHash is not null)
-                    witnessCaptureRegistry.DisarmCapture(blockHash);
-
-                if (captureTask is not null && captureTask.IsCompletedSuccessfully)
+                witnessCaptureRegistry.DisarmCapture(blockHash);
+                if (captureTask.IsCompletedSuccessfully)
                     (await captureTask)?.Dispose();
             }
 
