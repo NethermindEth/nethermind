@@ -62,7 +62,7 @@ public class JsonRpcProcessorTests(bool returnErrors)
     }
 
     private static JsonRpcProcessor CreateProcessor(IJsonRpcService service, IJsonRpcConfig? config = null, IFileSystem? fileSystem = null, IProcessExitSource? processExitSource = null) =>
-        new(service, config ?? new JsonRpcConfig { RpcRecorderState = RpcRecorderState.None }, fileSystem ?? Substitute.For<IFileSystem>(), LimboLogs.Instance, processExitSource);
+        new(service, config ?? new JsonRpcConfig(), fileSystem ?? Substitute.For<IFileSystem>(), LimboLogs.Instance, processExitSource);
 
     [Test]
     public async Task Can_process_guid_ids()
@@ -669,7 +669,7 @@ public class JsonRpcProcessorTests(bool returnErrors)
     public async Task Batch_size_limit_respects_authentication(bool isAuthenticated, int expectedDispatchCount)
     {
         IJsonRpcService service = CreateEchoService();
-        JsonRpcProcessor processor = CreateProcessor(service, new JsonRpcConfig { RpcRecorderState = RpcRecorderState.None, MaxBatchSize = 1 });
+        JsonRpcProcessor processor = CreateProcessor(service, new JsonRpcConfig { MaxBatchSize = 1 });
         using JsonRpcContext context = CreateHttpContext(isAuthenticated);
 
         using CollectedJsonRpcResponses result = await ProcessAsync(processor, CreateTransactionCountBatchRequest(2), context);
