@@ -13,11 +13,9 @@ namespace Nethermind.JsonRpc
 
         private JsonRpcResult(in Entry singleResult) => SingleResponse = singleResult;
 
-        public static JsonRpcResult Single(JsonRpcResponse response, in RpcReport report)
-            => new(new Entry(response, report));
+        public static JsonRpcResult Single(JsonRpcResponse response, in RpcReport report) => new(new Entry(response, report));
 
-        public static JsonRpcResult Single(in Entry entry)
-            => new(entry);
+        public static JsonRpcResult Single(in Entry entry) => new(entry);
 
         public readonly struct Entry(JsonRpcResponse response, RpcReport report) : IDisposable
         {

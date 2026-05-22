@@ -31,11 +31,7 @@ namespace Nethermind.JsonRpc
         internal virtual JsonRpcResponse WithResponseContext(JsonRpcId id, Action? disposableAction)
         {
             Id = id;
-            if (disposableAction is not null)
-            {
-                AddDisposable(disposableAction);
-            }
-
+            if (disposableAction is not null) AddDisposable(disposableAction);
             return this;
         }
 
@@ -77,11 +73,8 @@ namespace Nethermind.JsonRpc
         {
         }
 
-        internal override bool TryGetStreamableResult([NotNullWhen(true)] out IStreamableResult? streamable)
-        {
-            streamable = Result as IStreamableResult;
-            return streamable is not null;
-        }
+        internal override bool TryGetStreamableResult([NotNullWhen(true)] out IStreamableResult? streamable) =>
+            (streamable = Result as IStreamableResult) is not null;
 
         internal override void WriteTo(Utf8JsonWriter writer, JsonSerializerOptions options)
         {

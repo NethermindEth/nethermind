@@ -59,11 +59,11 @@ public static class JsonRpcResponseWriter
         IStreamableResult streamable,
         CancellationToken cancellationToken)
     {
-        writer.Write("{\"jsonrpc\":\"2.0\",\"result\":"u8);
+        writer.Write(SuccessEnvelopeStart);
         await streamable.WriteToAsync(writer, cancellationToken);
-        writer.Write(",\"id\":"u8);
+        writer.Write(IdSeparator);
         WriteIdRaw(writer, response.Id);
-        writer.Write("}"u8);
+        writer.Write(EnvelopeEnd);
     }
 
     internal static void WriteEnvelopeStart(Utf8JsonWriter writer)
