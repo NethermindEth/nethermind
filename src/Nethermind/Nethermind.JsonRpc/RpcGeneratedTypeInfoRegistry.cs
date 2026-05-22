@@ -13,7 +13,7 @@ namespace Nethermind.JsonRpc;
 public static class RpcGeneratedTypeInfoRegistry
 {
     private static readonly object _lock = new();
-    private static Dictionary<RuntimeTypeHandle, Func<Type, JsonTypeInfo?>> _registrations = new();
+    private static Dictionary<RuntimeTypeHandle, Func<Type, JsonTypeInfo?>> _registrations = [];
     private static Func<Type, JsonTypeInfo?>[] _providers = [];
 
     /// <summary>Registers a generated provider that can resolve JSON metadata for RPC payload types declared by its assembly.</summary>

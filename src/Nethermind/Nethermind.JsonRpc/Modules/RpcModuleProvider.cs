@@ -28,7 +28,7 @@ namespace Nethermind.JsonRpc.Modules
         private readonly HashSet<string> _modules = new(StringComparer.OrdinalIgnoreCase);
         private readonly HashSet<string> _enabledModules = new(StringComparer.OrdinalIgnoreCase);
 
-        private Dictionary<string, ResolvedMethodInfo> _methods = new();
+        private Dictionary<string, ResolvedMethodInfo> _methods = [];
         private FrozenDictionary<string, ResolvedMethodInfo>? _frozenMethods = null;
         private ResolvedMethodInfo? _engineNewPayloadV4Method;
         private ResolvedMethodInfo? _engineGetBlobsV2Method;

@@ -44,7 +44,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
     private bool _isDisposing;
     private bool _isDisposed;
 
-    private readonly ConcurrentHashSet<IWriteBatch> _currentBatches = new();
+    private readonly ConcurrentHashSet<IWriteBatch> _currentBatches = [];
 
     internal readonly RocksDb _db;
 
@@ -88,7 +88,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
 
     private string CorruptMarkerPath => Path.Join(_fullPath, "corrupt.marker");
 
-    private readonly List<IDisposable> _metricsUpdaters = new();
+    private readonly List<IDisposable> _metricsUpdaters = [];
 
     internal long _allocatedSpan = 0;
     private long _totalReads;
@@ -160,7 +160,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
             ColumnFamilies? columnFamilies = null;
             if (columnNames is not null)
             {
-                columnFamilies = new ColumnFamilies();
+                columnFamilies = [];
                 foreach (string enumColumnName in columnNames)
                 {
                     string columnFamily = enumColumnName;
@@ -229,7 +229,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
     {
         long availableMemory = GC.GetGCMemoryInfo().TotalAvailableMemoryBytes;
         _logger.Info($"Warming up database {Name} assuming {availableMemory} bytes of available memory");
-        List<(FileMetadata metadata, DateTime creationTime)> fileMetadataEntries = new();
+        List<(FileMetadata metadata, DateTime creationTime)> fileMetadataEntries = [];
 
         foreach (LiveFileMetadata liveFileMetadata in db.GetLiveFilesMetadata())
         {
@@ -442,7 +442,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
 
     public static IDictionary<string, string> ExtractOptions(string dbOptions)
     {
-        Dictionary<string, string> asDict = new();
+        Dictionary<string, string> asDict = [];
         if (string.IsNullOrEmpty(dbOptions)) return asDict;
 
         foreach (Match match in ExtractDbOptionsRegex().Matches(dbOptions))

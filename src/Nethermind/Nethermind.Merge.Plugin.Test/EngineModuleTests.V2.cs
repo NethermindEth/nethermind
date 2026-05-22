@@ -676,7 +676,7 @@ public partial class EngineModuleTests
         IEngineRpcModule rpc = chain.EngineRpcModule;
 
         // get initial balances
-        List<UInt256> initialBalances = new();
+        List<UInt256> initialBalances = [];
         foreach ((Address Account, UInt256 BalanceIncrease) accountIncrease in input.ExpectedAccountIncrease)
         {
             UInt256 initialBalance =

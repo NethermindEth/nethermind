@@ -82,7 +82,7 @@ public class AdminModuleTests
 
         _existingSession1 = Substitute.For<ISession>();
         _existingSession2 = Substitute.For<ISession>();
-        List<ISession> existingSessionsList = new() { _existingSession1, _existingSession2 };
+        List<ISession> existingSessionsList = [_existingSession1, _existingSession2];
         _rlpxPeer = Substitute.For<IRlpxHost>();
         _rlpxPeer.SessionMonitor.Sessions.Returns(existingSessionsList);
 

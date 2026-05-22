@@ -50,8 +50,8 @@ namespace Nethermind.Serialization.Json
         public const int DefaultMaxDepth = 4096;
         private static readonly object _globalOptionsLock = new();
 
-        private static readonly List<JsonConverter> _additionalConverters = new();
-        private static readonly List<JsonTypeInfoResolverRegistration> _additionalResolvers = new();
+        private static readonly List<JsonConverter> _additionalConverters = [];
+        private static readonly List<JsonTypeInfoResolverRegistration> _additionalResolvers = [];
         private static bool _strictHexFormat;
         private static int _optionsVersion;
 
@@ -361,11 +361,7 @@ namespace Nethermind.Serialization.Json
                 return clone;
             }
 
-            List<JsonConverter> list = new();
-            foreach (JsonConverter converter in converters)
-            {
-                list.Add(converter);
-            }
+            List<JsonConverter> list = [.. converters];
 
             return [.. list];
         }

@@ -886,7 +886,7 @@ public partial class EngineModuleTests
         Block block = blockResult.Data!;
         ReadOnlyBlockAccessList validBal = block.BlockAccessList!;
 
-        SortedDictionary<Address, ReadOnlyAccountChanges> modifiedAccounts = new();
+        SortedDictionary<Address, ReadOnlyAccountChanges> modifiedAccounts = [];
         Address senderAddress = TestItem.AddressA;
 
         ReadOnlyBlockAccessList modifiedBal = CreateBlockAccessList();

@@ -86,7 +86,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Subscribe
                 _logManager,
                 filter);
 
-            List<JsonRpcResult> jsonRpcResults = new();
+            List<JsonRpcResult> jsonRpcResults = [];
             SemaphoreSlim semaphoreSlim = new(0, 1);
 
             subscription.JsonRpcDuplexClient.SendJsonRpcResult(Arg.Do<JsonRpcResult>(j =>
@@ -165,7 +165,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Subscribe
 
             TransactionHashesFilter filter = new()
             {
-                TransactionHashes = new HashSet<ValueHash256> { TestItem.KeccakA }
+                TransactionHashes = [TestItem.KeccakA]
             };
 
             TxReceipt receipt1 = Build.A.Receipt.WithBlockNumber(blockNumber).WithTransactionHash(TestItem.KeccakA).WithIndex(0).TestObject;
@@ -191,7 +191,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Subscribe
 
             TransactionHashesFilter filter = new()
             {
-                TransactionHashes = new HashSet<ValueHash256> { TestItem.KeccakA, TestItem.KeccakC }
+                TransactionHashes = [TestItem.KeccakA, TestItem.KeccakC]
             };
 
             TxReceipt receipt1 = Build.A.Receipt.WithBlockNumber(blockNumber).WithTransactionHash(TestItem.KeccakA).WithIndex(0).TestObject;
@@ -220,7 +220,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Subscribe
 
             TransactionHashesFilter filter = new()
             {
-                TransactionHashes = new HashSet<ValueHash256> { TestItem.KeccakD, TestItem.KeccakE }
+                TransactionHashes = [TestItem.KeccakD, TestItem.KeccakE]
             };
 
             TxReceipt receipt1 = Build.A.Receipt.WithBlockNumber(blockNumber).WithTransactionHash(TestItem.KeccakA).WithIndex(0).TestObject;
@@ -242,7 +242,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Subscribe
 
             TransactionHashesFilter filter = new()
             {
-                TransactionHashes = new HashSet<ValueHash256> { TestItem.KeccakA, TestItem.KeccakD }
+                TransactionHashes = [TestItem.KeccakA, TestItem.KeccakD]
             };
 
             TxReceipt receipt1 = Build.A.Receipt.WithBlockNumber(blockNumber).WithTransactionHash(TestItem.KeccakA).WithIndex(0).TestObject;

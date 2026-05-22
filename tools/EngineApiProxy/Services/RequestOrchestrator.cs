@@ -374,7 +374,7 @@ public class RequestOrchestrator(
             JsonNode executionPayload = (payload["executionPayload"] ?? payload).DeepClone();
 
             // Use provided blobVersionedHashes or empty array
-            blobVersionedHashes ??= new JsonArray();
+            blobVersionedHashes ??= [];
             _logger.Debug($"CreateNewPayloadRequest: Including {blobVersionedHashes.Count} blobVersionedHashes in synthetic newPayload");
 
             // Check if parentBeaconBlockRoot is provided
@@ -421,13 +421,13 @@ public class RequestOrchestrator(
             }
 
             // Create the parameter array for the newPayload request
-            JsonArray parameters = new()
-            {
+            JsonArray parameters =
+            [
                 executionPayload,          // First parameter: executionPayload
                 blobVersionedHashes,       // Second parameter: blobVersionedHashes
                 parentBeaconBlockRoot,     // Third parameter: parentBeaconBlockRoot
                 new JsonArray()            // Fourth parameter: execution_payload_preparation_info
-            };
+            ];
 
             _logger.Debug($"Created {_config.NewPayloadMethod} request with {blobVersionedHashes.Count} blobVersionedHashes, parentBeaconBlockRoot: {parentBeaconBlockRoot}");
 

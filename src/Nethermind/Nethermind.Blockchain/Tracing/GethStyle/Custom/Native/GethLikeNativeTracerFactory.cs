@@ -17,7 +17,7 @@ public static class GethLikeNativeTracerFactory
 {
     static GethLikeNativeTracerFactory() => RegisterNativeTracers();
 
-    private static readonly Dictionary<string, GethLikeNativeTracerFactoryDelegate> _tracers = new();
+    private static readonly Dictionary<string, GethLikeNativeTracerFactoryDelegate> _tracers = [];
 
     public static bool IsNativeTracer(string tracerName) => !string.IsNullOrWhiteSpace(tracerName) && _tracers.ContainsKey(tracerName);
 

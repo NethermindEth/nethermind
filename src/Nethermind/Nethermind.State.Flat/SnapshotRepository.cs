@@ -17,7 +17,7 @@ public class SnapshotRepository(ILogManager logManager) : ISnapshotRepository
 
     private readonly ConcurrentDictionary<StateId, Snapshot> _compactedSnapshots = new();
     private readonly ConcurrentDictionary<StateId, Snapshot> _snapshots = new();
-    private readonly ReadWriteLockBox<SortedSet<StateId>> _sortedSnapshotStateIds = new(new SortedSet<StateId>());
+    private readonly ReadWriteLockBox<SortedSet<StateId>> _sortedSnapshotStateIds = new([]);
 
     public int SnapshotCount => _snapshots.Count;
     public int CompactedSnapshotCount => _compactedSnapshots.Count;

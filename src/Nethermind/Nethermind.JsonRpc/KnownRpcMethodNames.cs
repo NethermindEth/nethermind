@@ -19,7 +19,7 @@ public static class RpcKnownMethodNamesRegistry
 internal static class KnownRpcMethodNames
 {
     private static readonly Lock _lock = new();
-    private static Dictionary<int, MethodName[]> _methodNamesByLength = new();
+    private static Dictionary<int, MethodName[]> _methodNamesByLength = [];
     private static string[] _all = [];
 
     public static IReadOnlyList<string> All => Volatile.Read(ref _all);
@@ -81,7 +81,7 @@ internal static class KnownRpcMethodNames
             names.CopyTo(updated);
             Array.Sort(updated, StringComparer.Ordinal);
 
-            Dictionary<int, List<MethodName>> buildersByLength = new();
+            Dictionary<int, List<MethodName>> buildersByLength = [];
             for (int i = 0; i < updated.Length; i++)
             {
                 string methodName = updated[i];
