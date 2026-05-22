@@ -621,45 +621,27 @@ public class SszMiddlewareTests
         return request;
     }
 
-    [Test]
-    public async Task Error_responses_use_application_json_content_type()
+    // Spec mandates Content-Type: application/json + JSON object with code/message for every error
+    // path (404 unknown resource, 401 auth failure, etc.).
+    [TestCase("unknown-resource", false, StatusCodes.Status404NotFound)]
+    [TestCase("auth-failure", true, StatusCodes.Status401Unauthorized)]
+    public async Task Error_response_is_json_object_with_code_and_message(string scenario, bool failAuth, int expectedStatus)
     {
-        DefaultHttpContext ctx = MakePostContext("/engine/v1/unknown-resource", []);
+        _ = scenario;
+        if (failAuth) _auth.Authenticate(Arg.Any<string>()).Returns(false);
+        DefaultHttpContext ctx = MakePostContext(
+            failAuth ? "/engine/v1/payloads" : "/engine/v1/unknown-resource",
+            failAuth ? BuildMinimalV1NewPayloadRequest() : []);
 
         await _middleware.InvokeAsync(ctx);
 
-        ctx.Response.StatusCode.Should().Be(StatusCodes.Status404NotFound);
-        ctx.Response.ContentType.Should().Contain("application/json",
-            "spec mandates Content-Type: application/json for all error responses");
-    }
-
-    [Test]
-    public async Task Error_response_body_is_json_object_with_code_and_message()
-    {
-        DefaultHttpContext ctx = MakePostContext("/engine/v1/unknown-resource", []);
-
-        await _middleware.InvokeAsync(ctx);
-
-        string body = System.Text.Encoding.UTF8.GetString(ResponseBytes(ctx));
-        body.Should().Contain("\"code\"", "error body must have a 'code' field");
-        body.Should().Contain("\"message\"", "error body must have a 'message' field");
-
-        Action parse = () => System.Text.Json.JsonDocument.Parse(body);
-        parse.Should().NotThrow("error body must be valid JSON");
-    }
-
-    [Test]
-    public async Task Auth_failure_error_response_is_application_json()
-    {
-        _auth.Authenticate(Arg.Any<string>()).Returns(false);
-        DefaultHttpContext ctx = MakePostContext("/engine/v1/payloads", BuildMinimalV1NewPayloadRequest());
-
-        await _middleware.InvokeAsync(ctx);
-
-        ctx.Response.StatusCode.Should().Be(StatusCodes.Status401Unauthorized);
+        ctx.Response.StatusCode.Should().Be(expectedStatus);
         ctx.Response.ContentType.Should().Contain("application/json");
         string body = System.Text.Encoding.UTF8.GetString(ResponseBytes(ctx));
         body.Should().Contain("\"code\"");
+        body.Should().Contain("\"message\"");
+        Action parse = () => System.Text.Json.JsonDocument.Parse(body);
+        parse.Should().NotThrow("error body must be valid JSON");
     }
 
     [Test]

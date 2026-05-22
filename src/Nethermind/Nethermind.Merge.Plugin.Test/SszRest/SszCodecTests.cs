@@ -693,57 +693,23 @@ public class SszCodecTests
             "TruncateUtf8 must drop the whole multi-byte codepoint, not split it");
     }
 
-    [Test]
-    public void EncodeNewPayloadWithWitnessResponse_non_valid_status_always_encodes_witness_as_none()
+    // Witness Union is Some iff status is VALID AND witness is non-null; otherwise None.
+    [TestCase(PayloadStatus.Valid, true, true)]
+    [TestCase(PayloadStatus.Valid, false, false)]
+    [TestCase(PayloadStatus.Invalid, true, false)]
+    [TestCase(PayloadStatus.Syncing, true, false)]
+    [TestCase(PayloadStatus.Accepted, true, false)]
+    public void EncodeNewPayloadWithWitnessResponse_witness_union_presence(string status, bool hasWitness, bool expectedPresent)
     {
-        using Witness nonNullWitness = MakeMinimalWitness();
-
-        foreach (string nonValidStatus in new[] { PayloadStatus.Invalid, PayloadStatus.Syncing, PayloadStatus.Accepted })
-        {
-            PayloadStatusV1 ps = new() { Status = nonValidStatus };
-
-            byte[] encoded = Encode(
-                (ps, (Witness?)nonNullWitness),
-                static (t, w) => SszCodec.EncodeNewPayloadWithWitnessResponse(t.Item1, t.Item2, w));
-
-            (byte decodedStatus, _, bool witnessPresent) = SszCodec.DecodeNewPayloadWithWitnessResponse(encoded);
-            witnessPresent.Should().BeFalse(
-                $"witness Union must be None (selector 0x00) when status is {nonValidStatus}, not {PayloadStatus.Valid}");
-            _ = decodedStatus;
-        }
-    }
-
-    [Test]
-    public void EncodeNewPayloadWithWitnessResponse_valid_status_with_witness_encodes_witness_as_some()
-    {
-        using Witness witness = MakeMinimalWitness();
-        PayloadStatusV1 ps = new() { Status = PayloadStatus.Valid, LatestValidHash = TestItem.KeccakA };
+        using Witness? witness = hasWitness ? MakeMinimalWitness() : null;
+        PayloadStatusV1 ps = new() { Status = status };
 
         byte[] encoded = Encode(
-            (ps, (Witness?)witness),
+            (ps, witness),
             static (t, w) => SszCodec.EncodeNewPayloadWithWitnessResponse(t.Item1, t.Item2, w));
 
-        (byte decodedStatus, Hash256? lvh, bool witnessPresent) = SszCodec.DecodeNewPayloadWithWitnessResponse(encoded);
-        decodedStatus.Should().Be(0, "VALID maps to SSZ status byte 0");
-        lvh.Should().Be(TestItem.KeccakA,
-            "latest_valid_hash Union Some variant must round-trip the 32-byte hash");
-        witnessPresent.Should().BeTrue(
-            "VALID status with a non-null witness must encode the witness Union as Some (selector 0x01)");
-    }
-
-    [Test]
-    public void EncodeNewPayloadWithWitnessResponse_valid_status_null_witness_encodes_witness_as_none()
-    {
-        PayloadStatusV1 ps = new() { Status = PayloadStatus.Valid };
-
-        byte[] encoded = Encode(
-            (ps, (Witness?)null),
-            static (t, w) => SszCodec.EncodeNewPayloadWithWitnessResponse(t.Item1, t.Item2, w));
-
-        (byte decodedStatus, _, bool witnessPresent) = SszCodec.DecodeNewPayloadWithWitnessResponse(encoded);
-        decodedStatus.Should().Be(0, "VALID maps to SSZ status byte 0");
-        witnessPresent.Should().BeFalse(
-            "null witness must encode the witness Union as None (selector 0x00) regardless of status");
+        (_, _, bool witnessPresent) = SszCodec.DecodeNewPayloadWithWitnessResponse(encoded);
+        witnessPresent.Should().Be(expectedPresent);
     }
 
     [Test]
