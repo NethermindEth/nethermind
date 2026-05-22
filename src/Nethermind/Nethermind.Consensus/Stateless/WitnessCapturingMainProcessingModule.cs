@@ -4,19 +4,20 @@
 using Autofac;
 using Nethermind.Core;
 using Nethermind.Core.Container;
+using Nethermind.Core.Specs;
 using Nethermind.Evm.State;
 
 namespace Nethermind.Consensus.Stateless;
 
 /// <summary>
 /// Installs <see cref="WitnessCapturingWorldStateProxy"/> as the main-processing
-/// <see cref="IWorldState"/> decorator when <paramref name="enabled"/>; no-op otherwise.
+/// <see cref="IWorldState"/> decorator when EIP-7928 is enabled on the final spec.
 /// </summary>
-public sealed class WitnessCapturingMainProcessingModule(bool enabled) : Module, IMainProcessingModule
+public sealed class WitnessCapturingMainProcessingModule(ISpecProvider specProvider) : Module, IMainProcessingModule
 {
     protected override void Load(ContainerBuilder builder)
     {
-        if (enabled)
+        if (specProvider.GetFinalSpec().IsEip7928Enabled)
             builder.AddDecorator<IWorldState, WitnessCapturingWorldStateProxy>();
     }
 }

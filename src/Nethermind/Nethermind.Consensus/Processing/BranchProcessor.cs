@@ -24,15 +24,14 @@ public class BranchProcessor(
     IBeaconBlockRootHandler beaconBlockRootHandler,
     IBlockhashProvider blockhashProvider,
     ILogManager logManager,
-    IBlockCachePreWarmer? preWarmer = null,
-    IWitnessCaptureRegistry? witnessCaptureRegistry = null)
+    IBlockCachePreWarmer? preWarmer = null)
     : IBranchProcessor
 {
     private readonly ILogger _logger = logManager.GetClassLogger<BranchProcessor>();
     private Task _clearTask = Task.CompletedTask;
 
-    private readonly WitnessCapturingWorldStateProxy? _witnessProxy =
-        stateProvider as WitnessCapturingWorldStateProxy;
+    // Non-null only when the main-processing scope installs the witness-capturing decorator.
+    private readonly WitnessCapturingWorldStateProxy? _witnessProxy = stateProvider as WitnessCapturingWorldStateProxy;
 
     private const int MaxUncommittedBlocks = 64;
     private readonly Action<Task> _clearCaches = _ => preWarmer?.ClearCaches();
@@ -135,8 +134,9 @@ public class BranchProcessor(
                     }
                 }
 
-                using WitnessCaptureSession witness = WitnessCaptureSession.TryArm(
-                    witnessCaptureRegistry, _witnessProxy, suggestedBlock.Hash, options);
+                using WitnessCaptureSession witness = _witnessProxy is null
+                    ? default
+                    : _witnessProxy.BeginCapture(suggestedBlock.Hash, options);
 
                 (Block processedBlock, TxReceipt[] receipts) = blockProcessor.ProcessOne(suggestedBlock, options, blockTracer, spec, token);
 

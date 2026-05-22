@@ -33,8 +33,7 @@ public sealed class NewPayloadWithWitnessHandler(
 
         if (blockHash is null)
         {
-            if (_logger.IsWarn)
-                _logger.Warn("engine_newPayloadWithWitness: payload BlockHash is null — rejecting as InvalidParams.");
+            if (_logger.IsWarn) _logger.Warn("engine_newPayloadWithWitness: payload BlockHash is null — rejecting as InvalidParams.");
             return ResultWrapper<NewPayloadWithWitnessV1Result>.Fail(
                 "executionPayload.blockHash is required", ErrorCodes.InvalidParams);
         }
@@ -81,8 +80,7 @@ public sealed class NewPayloadWithWitnessHandler(
                 }
                 catch (OperationCanceledException)
                 {
-                    if (_logger.IsWarn)
-                        _logger.Warn($"engine_newPayloadWithWitness: witness capture cancelled for {blockHash}. Returning VALID with no witness.");
+                    if (_logger.IsWarn) _logger.Warn($"engine_newPayloadWithWitness: witness capture cancelled for {blockHash}. Returning VALID with no witness.");
                 }
             }
             else

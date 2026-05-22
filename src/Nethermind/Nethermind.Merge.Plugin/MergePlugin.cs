@@ -292,23 +292,10 @@ public class BaseMergePluginModule : Module
             .AddSingleton<IPoSSwitcher, PoSSwitcher>()
             .AddDecorator<IBetterPeerStrategy, MergeBetterPeerStrategy>()
 
-            // Single-execution witness capture — eliminates the double ProcessOne that the
-            // previous WitnessCollector.GetWitnessForExistingBlock approach caused.
-            // WitnessCapturingMainProcessingModule installs WitnessCapturingWorldStateProxy
-            // as the IWorldState decorator in the main processing scope; BranchProcessor
-            // arms/disarms it around each ProcessOne call when the registry is populated.
-            // IHeaderFinder is injected so BuildWitness can populate Witness.Headers via
-            // WitnessGeneratingHeaderFinder (execution-apis#773 §ExecutionWitnessV1).
-            // The decorator is gated on IsEip7928Enabled: pre-Amsterdam chains pay no
-            // per-call proxy overhead because the decorator is never registered.
-            .AddSingleton<IWitnessCaptureRegistry>(ctx =>
-                new WitnessCaptureRegistry(
-                    ctx.Resolve<IStateReader>(),
-                    ctx.Resolve<IHeaderFinder>(),
-                    ctx.Resolve<ILogManager>()))
-            .AddSingleton<IMainProcessingModule>(ctx =>
-                new WitnessCapturingMainProcessingModule(
-                    ctx.Resolve<ISpecProvider>().GetFinalSpec().IsEip7928Enabled))
+            // Single-execution witness capture — BranchProcessor arms/disarms the proxy
+            // around ProcessOne; the proxy decorator is installed only when EIP-7928 is on.
+            .AddSingleton<IWitnessCaptureRegistry, WitnessCaptureRegistry>()
+            .AddSingleton<IMainProcessingModule, WitnessCapturingMainProcessingModule>()
 
             .AddSingleton<IPeerRefresher, PeerRefresher>()
             .ResolveOnServiceActivation<IPeerRefresher, ISynchronizer>()

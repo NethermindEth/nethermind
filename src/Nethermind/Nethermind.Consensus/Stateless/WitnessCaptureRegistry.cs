@@ -37,8 +37,7 @@ public sealed class WitnessCaptureRegistry(
             tcs,
             (_, existingTcs) =>
             {
-                if (_logger.IsWarn)
-                    _logger.Warn($"WitnessCaptureRegistry: duplicate ArmCapture for {blockHash}. Replacing previous entry.");
+                if (_logger.IsWarn) _logger.Warn($"WitnessCaptureRegistry: duplicate ArmCapture for {blockHash}. Replacing previous entry.");
                 existingTcs.TrySetCanceled();
                 return tcs;
             });
@@ -61,8 +60,7 @@ public sealed class WitnessCaptureRegistry(
         }
         catch (Exception ex)
         {
-            if (_logger.IsError)
-                _logger.Error($"WitnessCaptureRegistry: witness build failed for block {blockHash}", ex);
+            if (_logger.IsError) _logger.Error($"WitnessCaptureRegistry: witness build failed for block {blockHash}", ex);
         }
         finally
         {
@@ -78,8 +76,7 @@ public sealed class WitnessCaptureRegistry(
         {
             tcs.TrySetCanceled();
 
-            if (_logger.IsTrace)
-                _logger.Trace($"WitnessCaptureRegistry: capture disarmed for {blockHash}");
+            if (_logger.IsTrace) _logger.Trace($"WitnessCaptureRegistry: capture disarmed for {blockHash}");
         }
     }
 }

@@ -29,24 +29,23 @@ public ref struct WitnessCaptureSession : IDisposable
         proxy.Arm();
     }
 
-    /// <summary>Arms the proxy if a capture is pending and not read-only; otherwise returns a no-op session.</summary>
+    /// <summary>
+    /// Arms the proxy if a capture is pending and not read-only; otherwise returns a no-op session.
+    /// </summary>
     public static WitnessCaptureSession TryArm(
         IWitnessCaptureRegistry? registry,
         WitnessCapturingWorldStateProxy? proxy,
         Hash256? blockHash,
-        ProcessingOptions options)
-    {
-        if (registry is null || proxy is null || blockHash is null
+        ProcessingOptions options) =>
+        registry is null || proxy is null || blockHash is null
             || options.ContainsFlag(ProcessingOptions.ReadOnlyChain)
-            || !registry.HasPendingCapture(blockHash))
-        {
-            return default;
-        }
+            || !registry.HasPendingCapture(blockHash)
+            ? default
+            : new WitnessCaptureSession(registry, proxy, blockHash);
 
-        return new WitnessCaptureSession(registry, proxy, blockHash);
-    }
-
-    /// <summary>True when this session armed a capture and has not yet been drained or disposed.</summary>
+    /// <summary>
+    /// True when this session armed a capture and has not yet been drained or disposed.
+    /// </summary>
     public readonly bool IsArmed => _proxy is not null && !_consumed;
 
     /// <summary>
@@ -70,7 +69,9 @@ public ref struct WitnessCaptureSession : IDisposable
         }
     }
 
-    /// <summary>If not already drained, cancels the pending capture and disarms the proxy.</summary>
+    /// <summary>
+    /// If not already drained, cancels the pending capture and disarms the proxy.
+    /// </summary>
     public void Dispose()
     {
         if (_consumed || _proxy is null) return;

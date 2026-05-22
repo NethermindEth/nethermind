@@ -10,6 +10,7 @@ using Collections.Pooled;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Consensus.Processing;
 using Nethermind.Core.Eip2930;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
@@ -25,8 +26,16 @@ namespace Nethermind.Consensus.Stateless;
 /// Transparent <see cref="IWorldState"/> decorator that records touched addresses, storage slots,
 /// and bytecodes during block execution to build a <see cref="Witness"/> without a second execution.
 /// </summary>
-public sealed class WitnessCapturingWorldStateProxy(IWorldState inner) : IWorldState
+public sealed class WitnessCapturingWorldStateProxy(IWorldState inner, IWitnessCaptureRegistry registry) : IWorldState
 {
+    /// <summary>
+    /// Arms capture for <paramref name="blockHash"/> if the registry has a pending entry and
+    /// processing is not read-only; returns a no-op session otherwise.
+    /// </summary>
+    public WitnessCaptureSession BeginCapture(Hash256? blockHash, ProcessingOptions options) =>
+        WitnessCaptureSession.TryArm(registry, this, blockHash, options);
+
+
     private Dictionary<Address, HashSet<UInt256>>? _storageSlots;
     private Dictionary<ValueHash256, byte[]>? _bytecodes;
 
