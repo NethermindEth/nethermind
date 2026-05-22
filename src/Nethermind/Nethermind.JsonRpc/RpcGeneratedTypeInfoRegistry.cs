@@ -52,17 +52,15 @@ public static class RpcGeneratedTypeInfoRegistry
     internal static bool TryGet(Type type, out JsonTypeInfo? typeInfo)
     {
         Dictionary<RuntimeTypeHandle, Func<Type, JsonTypeInfo?>> registrations = Volatile.Read(ref _registrations);
-        if (registrations.TryGetValue(type.TypeHandle, out Func<Type, JsonTypeInfo?>? provider))
+        if (!registrations.TryGetValue(type.TypeHandle, out Func<Type, JsonTypeInfo?>? provider) ||
+            provider(type) is not { } generated)
         {
-            typeInfo = provider(type);
-            if (typeInfo is not null)
-            {
-                return true;
-            }
+            typeInfo = null;
+            return false;
         }
 
-        typeInfo = null;
-        return false;
+        typeInfo = generated;
+        return true;
     }
 }
 
@@ -90,13 +88,8 @@ internal static class RpcGeneratedTypeInfoRegistry<T>
             return false;
         }
 
-        typeInfo = Cache(provider());
+        JsonTypeInfo<T> generated = provider();
+        typeInfo = Interlocked.CompareExchange(ref _typeInfo, generated, null) ?? generated;
         return true;
-    }
-
-    private static JsonTypeInfo<T> Cache(JsonTypeInfo<T> generated)
-    {
-        JsonTypeInfo<T>? existing = Interlocked.CompareExchange(ref _typeInfo, generated, null);
-        return existing ?? generated;
     }
 }

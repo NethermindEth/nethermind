@@ -15,15 +15,10 @@ internal static class RpcPayloadTypeInfo
     private static readonly ConcurrentDictionary<(JsonSerializerOptions Options, Type Type), JsonTypeInfo> _cache = new();
     private static readonly ConcurrentDictionary<Type, JsonTypeInfo> _canonicalGeneratedCache = new();
 
-    public static JsonTypeInfo Get(JsonSerializerOptions options, Type type)
-    {
-        if (ReferenceEquals(options, EthereumJsonSerializer.JsonOptions))
-        {
-            return GetCanonical(type);
-        }
-
-        return GetCached(options, type);
-    }
+    public static JsonTypeInfo Get(JsonSerializerOptions options, Type type) =>
+        ReferenceEquals(options, EthereumJsonSerializer.JsonOptions)
+            ? GetCanonical(type)
+            : GetCached(options, type);
 
     private static JsonTypeInfo GetCanonical(Type type)
     {
@@ -34,14 +29,11 @@ internal static class RpcPayloadTypeInfo
 
         if (RpcGeneratedTypeInfoRegistry.TryGet(type, out JsonTypeInfo? generated))
         {
-            return CacheCanonicalGenerated(type, generated);
+            return _canonicalGeneratedCache.GetOrAdd(type, generated);
         }
 
         return EthereumJsonSerializer.JsonOptions.GetTypeInfo(type);
     }
-
-    private static JsonTypeInfo CacheCanonicalGenerated(Type type, JsonTypeInfo generated)
-        => _canonicalGeneratedCache.GetOrAdd(type, generated);
 
     private static JsonTypeInfo GetCached(JsonSerializerOptions options, Type type) =>
         _cache.GetOrAdd((options, type), static key => key.Options.GetTypeInfo(key.Type));
@@ -52,15 +44,10 @@ internal static class RpcPayloadTypeInfo<T>
     private static readonly ConcurrentDictionary<JsonSerializerOptions, JsonTypeInfo<T>> _cache = new();
     private static JsonTypeInfo<T>? _canonicalGeneratedTypeInfo;
 
-    public static JsonTypeInfo<T> Get(JsonSerializerOptions options)
-    {
-        if (ReferenceEquals(options, EthereumJsonSerializer.JsonOptions))
-        {
-            return GetCanonical();
-        }
-
-        return GetCached(options);
-    }
+    public static JsonTypeInfo<T> Get(JsonSerializerOptions options) =>
+        ReferenceEquals(options, EthereumJsonSerializer.JsonOptions)
+            ? GetCanonical()
+            : GetCached(options);
 
     private static JsonTypeInfo<T> GetCanonical()
     {
@@ -72,14 +59,11 @@ internal static class RpcPayloadTypeInfo<T>
 
         if (RpcGeneratedTypeInfoRegistry.TryGet(out JsonTypeInfo<T>? generated))
         {
-            return CacheCanonicalGenerated(generated);
+            return Interlocked.CompareExchange(ref _canonicalGeneratedTypeInfo, generated, null) ?? generated;
         }
 
         return (JsonTypeInfo<T>)EthereumJsonSerializer.JsonOptions.GetTypeInfo(typeof(T));
     }
-
-    private static JsonTypeInfo<T> CacheCanonicalGenerated(JsonTypeInfo<T> generated)
-        => Interlocked.CompareExchange(ref _canonicalGeneratedTypeInfo, generated, null) ?? generated;
 
     private static JsonTypeInfo<T> GetCached(JsonSerializerOptions options) =>
         _cache.GetOrAdd(options, static options => (JsonTypeInfo<T>)options.GetTypeInfo(typeof(T)));

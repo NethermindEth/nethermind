@@ -11,12 +11,11 @@ internal static class RpcParameterTypeInfo
 {
     public static JsonTypeInfo? Get(Type type)
     {
-        if (RpcGeneratedTypeInfoRegistry.TryGet(type, out JsonTypeInfo? typeInfo))
+        if (!RpcGeneratedTypeInfoRegistry.TryGet(type, out JsonTypeInfo? typeInfo))
         {
-            return typeInfo;
+            EthereumJsonSerializer.JsonOptions.TryGetTypeInfo(type, out typeInfo);
         }
 
-        EthereumJsonSerializer.JsonOptions.TryGetTypeInfo(type, out typeInfo);
         return typeInfo;
     }
 }
