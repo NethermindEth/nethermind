@@ -101,10 +101,8 @@ public class JsonRpcProcessorTests(bool returnErrors)
         string? capturedMethod = null;
         bool capturedRawParams = false;
         JsonValueKind capturedParamsKind = JsonValueKind.Undefined;
-        IJsonRpcService service = Substitute.For<IJsonRpcService>();
-        service.SendRequestAsync(Arg.Any<JsonRpcRequest>(), Arg.Any<JsonRpcContext>()).Returns(callInfo =>
+        IJsonRpcService service = CreateService(request =>
         {
-            JsonRpcRequest request = callInfo.Arg<JsonRpcRequest>();
             capturedMethod = request.Method;
             capturedRawParams = !request.ParamsUtf8.IsEmpty;
             capturedParamsKind = request.ParamsKind;
@@ -127,10 +125,8 @@ public class JsonRpcProcessorTests(bool returnErrors)
     public async Task Http_generated_method_names_use_cached_instances(string methodName, bool inBatch, bool expectedCached)
     {
         string? capturedMethod = null;
-        IJsonRpcService service = Substitute.For<IJsonRpcService>();
-        service.SendRequestAsync(Arg.Any<JsonRpcRequest>(), Arg.Any<JsonRpcContext>()).Returns(callInfo =>
+        IJsonRpcService service = CreateService(request =>
         {
-            JsonRpcRequest request = callInfo.Arg<JsonRpcRequest>();
             capturedMethod = request.Method;
             return new JsonRpcSuccessResponse { Id = request.Id };
         });
@@ -881,15 +877,9 @@ public class JsonRpcProcessorTests(bool returnErrors)
     [TestCase("eth_getTransactionCount", false, "eth_getTransactionCount", true, TestName = "Resolved method")]
     public async Task Response_report_keeps_expected_method_label(string methodName, bool methodNotFound, string expectedReportMethod, bool expectedSuccess)
     {
-        IJsonRpcService service = Substitute.For<IJsonRpcService>();
-        service.SendRequestAsync(Arg.Any<JsonRpcRequest>(), Arg.Any<JsonRpcContext>())
-            .Returns(ci =>
-            {
-                JsonRpcRequest request = ci.Arg<JsonRpcRequest>();
-                return methodNotFound
-                    ? new JsonRpcErrorResponse { Id = request.Id, Error = new Error { Code = ErrorCodes.MethodNotFound, Message = "Method not found" } }
-                    : new JsonRpcSuccessResponse { Id = request.Id };
-            });
+        IJsonRpcService service = CreateService(request => methodNotFound
+            ? new JsonRpcErrorResponse { Id = request.Id, Error = new Error { Code = ErrorCodes.MethodNotFound, Message = "Method not found" } }
+            : new JsonRpcSuccessResponse { Id = request.Id });
 
         JsonRpcProcessor processor = CreateProcessor(service);
         using CollectedJsonRpcResponses result = await ProcessAsync(processor, CreateReader($$"""{"id":1,"jsonrpc":"2.0","method":"{{methodName}}","params":[]}"""), new JsonRpcContext(RpcEndpoint.Http));
