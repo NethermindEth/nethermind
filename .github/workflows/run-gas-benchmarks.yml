@@ -290,6 +290,10 @@ jobs:
               emoji = '❌';
               title = 'Gas Benchmark Failed';
               message = `Gas benchmarks failed${filterText}. Please check the workflow logs for details.`;
+            } else if (benchmarkStatus === 'skipped') {
+              emoji = '❌';
+              title = 'Gas Benchmark Failed to Start';
+              message = `Gas benchmarks could not start${filterText}. A setup step (Docker build or runner provisioning) may have failed.`;
             } else {
               emoji = '⚠️';
               title = 'Gas Benchmark Cancelled';
