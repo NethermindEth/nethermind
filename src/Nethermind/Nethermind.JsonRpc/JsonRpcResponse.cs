@@ -23,7 +23,7 @@ namespace Nethermind.JsonRpc
 
         [JsonConverter(typeof(JsonRpcIdConverter))]
         [JsonPropertyOrder(2)]
-            [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
+        [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
         public JsonRpcId Id { get; set; }
 
         internal virtual bool IsResourceUnavailableError => false;
