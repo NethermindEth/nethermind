@@ -9,6 +9,7 @@ using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
 using Nethermind.Evm.State;
@@ -211,10 +212,8 @@ public partial class BlockAccessListManager(
         {
             _parallelTxProcessorWithWorldStateManager.Value.Dispose();
         }
-        _suggestedValidationIndex?.Dispose();
-        _suggestedValidationIndex = null;
-        _generatedValidationIndex?.Dispose();
-        _generatedValidationIndex = null;
+        DisposableExtensions.DisposeAndNull(ref _suggestedValidationIndex);
+        DisposableExtensions.DisposeAndNull(ref _generatedValidationIndex);
     }
 
     /// <summary>
@@ -251,10 +250,8 @@ public partial class BlockAccessListManager(
         // Dispose pooled buffers held by the validation indexes before dropping the references.
         // Reset runs at the start of PrepareForProcessing, so the indexes from the previous
         // block (if any) are no longer in use.
-        _suggestedValidationIndex?.Dispose();
-        _suggestedValidationIndex = null;
-        _generatedValidationIndex?.Dispose();
-        _generatedValidationIndex = null;
+        DisposableExtensions.DisposeAndNull(ref _suggestedValidationIndex);
+        DisposableExtensions.DisposeAndNull(ref _generatedValidationIndex);
         _suggestedChargeableStorageReads = 0;
         _generatedChargeableStorageReads = 0;
         _hasGeneratedValidationIndexUpdates = false;
