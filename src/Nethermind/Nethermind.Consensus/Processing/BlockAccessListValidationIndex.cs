@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Buffers;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Numerics;
@@ -35,10 +34,7 @@ internal sealed class BlockAccessListValidationIndex : IDisposable
     private readonly AddressIndex _addressIndex;
     private readonly uint _lastIndex;
     private readonly bool _isMutable;
-    private readonly Lane<UInt256> _balance;
-    private readonly Lane<ulong> _nonce;
-    private readonly Lane<ValueHash256> _code;
-    private readonly StorageLane _storage;
+    private readonly Lanes _lanes;
     private ulong[] _hasAccountWords;
     private bool _disposed;
     private bool _hasOutOfRangeChange;
@@ -61,16 +57,14 @@ internal sealed class BlockAccessListValidationIndex : IDisposable
         if (_lastIndex != suggested._lastIndex)
             throw new ArgumentException("Suggested validation index has a different row count.", nameof(suggested));
         _isMutable = true;
-        _balance = Lane<UInt256>.CreateMutableLike(suggested._balance);
-        _nonce = Lane<ulong>.CreateMutableLike(suggested._nonce);
-        _code = Lane<ValueHash256>.CreateMutableLike(suggested._code);
-        _storage = StorageLane.CreateMutableLike(suggested._storage);
+        _lanes = Lanes.CreateMutableLike(suggested._lanes);
         // Slack covers per-tx duplication before dedup on reads, and invalid wire BALs that push
         // generated past suggested before lane overflow trips.
         _generatedStorageReads = new(WithSlack(storageReadsCapacity));
         _generatedStorageWrites = new(WithSlack(storageWritesCapacity));
-        _hasAccountWords = SafeArrayPool<ulong>.Shared.Rent(1);
-        _hasAccountWords.AsSpan().Clear();
+        // Start with an empty bitmap; MarkAccount grows it through the pool on first use, so
+        // blocks that never call MarkAccount don't rent anything.
+        _hasAccountWords = [];
     }
 
     /// <summary>Capacity hint plus headroom so the lists don't immediately resize on the first
@@ -81,18 +75,12 @@ internal sealed class BlockAccessListValidationIndex : IDisposable
     private BlockAccessListValidationIndex(
         AddressIndex addressIndex,
         uint lastIndex,
-        Lane<UInt256> balance,
-        Lane<ulong> nonce,
-        Lane<ValueHash256> code,
-        StorageLane storage,
+        Lanes lanes,
         ulong[] hasAccountWords)
     {
         _addressIndex = addressIndex;
         _lastIndex = lastIndex;
-        _balance = balance;
-        _nonce = nonce;
-        _code = code;
-        _storage = storage;
+        _lanes = lanes;
         _hasAccountWords = hasAccountWords;
     }
 
@@ -105,45 +93,25 @@ internal sealed class BlockAccessListValidationIndex : IDisposable
         // One pooled buffer carved into four per-row counter spans, instead of four separate
         // rents — each lane occupies a contiguous rowCount-sized window.
         using ArrayPoolListRef<int> counters = new(rowCount * 4, rowCount * 4);
-        Span<int> all = counters.AsSpan();
-        CountsView counts = new(
-            all.Slice(0, rowCount),
-            all.Slice(rowCount, rowCount),
-            all.Slice(rowCount * 2, rowCount),
-            all.Slice(rowCount * 3, rowCount));
+        LaneSpans counts = PartitionInQuarters(counters.AsSpan(), rowCount);
 
         Count(accounts, counts, lastIndex);
 
-        Lane<UInt256>? balance = null;
-        Lane<ulong>? nonce = null;
-        Lane<ValueHash256>? code = null;
-        StorageLane? storage = null;
+        Lanes lanes = default;
         ulong[]? hasAccountWords = null;
         try
         {
-            balance = Lane<UInt256>.CreateImmutable(counts.Balance);
-            nonce = Lane<ulong>.CreateImmutable(counts.Nonce);
-            code = Lane<ValueHash256>.CreateImmutable(counts.Code);
-            storage = StorageLane.CreateImmutable(counts.Storage);
-
+            lanes = Lanes.CreateImmutable(counts);
             int wordCount = WordCount(accounts.Length);
-            hasAccountWords = PooledArrays.RentCleared<ulong>(wordCount);
-            FillAndMark(accounts, addressIndex, lastIndex, balance, nonce, code, storage, hasAccountWords);
-
-            balance.SortAllRows();
-            nonce.SortAllRows();
-            code.SortAllRows();
-            storage.SortAllRows();
-
-            return new(addressIndex, lastIndex, balance, nonce, code, storage, hasAccountWords);
+            hasAccountWords = wordCount == 0 ? [] : PooledArrays.RentCleared<ulong>(wordCount);
+            FillAndMark(accounts, addressIndex, lastIndex, lanes, hasAccountWords);
+            lanes.SortAllRows();
+            return new(addressIndex, lastIndex, lanes, hasAccountWords);
         }
         catch
         {
-            if (hasAccountWords is not null) PooledArrays.Return(hasAccountWords);
-            storage?.Dispose();
-            code?.Dispose();
-            nonce?.Dispose();
-            balance?.Dispose();
+            if (hasAccountWords is { Length: > 0 }) PooledArrays.Return(hasAccountWords);
+            lanes.Dispose();
             throw;
         }
     }
@@ -167,19 +135,19 @@ internal sealed class BlockAccessListValidationIndex : IDisposable
 
             if (accountChanges.BalanceChange is { } balance)
             {
-                if (TryGetRow(balance.Index, _lastIndex, out int row)) RecordIfOverflow(_balance.Add(row, accountOrdinal, balance.Value), balance.Index, accountChanges.Address);
+                if (TryGetRow(balance.Index, _lastIndex, out int row)) RecordIfOverflow(_lanes.Balance.Add(row, accountOrdinal, balance.Value), balance.Index, accountChanges.Address);
                 else _hasOutOfRangeChange = true;
             }
 
             if (accountChanges.NonceChange is { } nonce)
             {
-                if (TryGetRow(nonce.Index, _lastIndex, out int row)) RecordIfOverflow(_nonce.Add(row, accountOrdinal, nonce.Value), nonce.Index, accountChanges.Address);
+                if (TryGetRow(nonce.Index, _lastIndex, out int row)) RecordIfOverflow(_lanes.Nonce.Add(row, accountOrdinal, nonce.Value), nonce.Index, accountChanges.Address);
                 else _hasOutOfRangeChange = true;
             }
 
             if (accountChanges.CodeChange is { } code)
             {
-                if (TryGetRow(code.Index, _lastIndex, out int row)) RecordIfOverflow(_code.Add(row, accountOrdinal, code.CodeHash), code.Index, accountChanges.Address);
+                if (TryGetRow(code.Index, _lastIndex, out int row)) RecordIfOverflow(_lanes.Code.Add(row, accountOrdinal, code.CodeHash), code.Index, accountChanges.Address);
                 else _hasOutOfRangeChange = true;
             }
 
@@ -187,7 +155,7 @@ internal sealed class BlockAccessListValidationIndex : IDisposable
             int writesCountBefore = writes.Count;
             foreach (KeyValuePair<UInt256, StorageChange> kv in accountChanges.StorageChanges)
             {
-                if (TryGetRow(kv.Value.Index, _lastIndex, out int row)) RecordIfOverflow(_storage.Add(row, accountOrdinal, kv.Key, kv.Value.Value), kv.Value.Index, accountChanges.Address);
+                if (TryGetRow(kv.Value.Index, _lastIndex, out int row)) RecordIfOverflow(_lanes.Storage.Add(row, accountOrdinal, kv.Key, kv.Value.Value), kv.Value.Index, accountChanges.Address);
                 else _hasOutOfRangeChange = true;
                 writes.Add((accountOrdinal, kv.Key));
             }
@@ -201,10 +169,7 @@ internal sealed class BlockAccessListValidationIndex : IDisposable
             }
         }
 
-        _balance.SortTouchedRows();
-        _nonce.SortTouchedRows();
-        _code.SortTouchedRows();
-        _storage.SortTouchedRows();
+        _lanes.SortTouchedRows();
     }
 
     private void RecordIfOverflow(bool added, uint index, Address address)
@@ -395,18 +360,18 @@ internal sealed class BlockAccessListValidationIndex : IDisposable
         }
 
         int row = (int)index;
-        return _balance.ChangesEqual(other._balance, row) &&
-               _nonce.ChangesEqual(other._nonce, row) &&
-               _code.ChangesEqual(other._code, row) &&
-               _storage.ChangesEqual(other._storage, row);
+        return _lanes.Balance.ChangesEqual(other._lanes.Balance, row) &&
+               _lanes.Nonce.ChangesEqual(other._lanes.Nonce, row) &&
+               _lanes.Code.ChangesEqual(other._lanes.Code, row) &&
+               _lanes.Storage.ChangesEqual(other._lanes.Storage, row);
     }
 
     /// <summary>
     /// True iff any of the four lanes has data at (<paramref name="row"/>, <paramref name="ordinal"/>).
     /// </summary>
     public bool HasChangesAtRow(int row, int ordinal) =>
-        _balance.HasAt(row, ordinal) || _nonce.HasAt(row, ordinal) ||
-        _code.HasAt(row, ordinal) || _storage.HasAt(row, ordinal);
+        _lanes.Balance.HasAt(row, ordinal) || _lanes.Nonce.HasAt(row, ordinal) ||
+        _lanes.Code.HasAt(row, ordinal) || _lanes.Storage.HasAt(row, ordinal);
 
     /// <summary>
     /// True iff both indexes have the same per-lane data at (<paramref name="row"/>, <paramref name="ordinal"/>).
@@ -414,31 +379,23 @@ internal sealed class BlockAccessListValidationIndex : IDisposable
     public bool ChangesAtRowEqualForOrdinal(BlockAccessListValidationIndex other, int row, int ordinal)
     {
         // Each scalar lane: presence must match; if both present, value must match.
-        if (_balance.HasAt(row, ordinal))
-        {
-            if (!other._balance.TryGetAt(row, ordinal, out UInt256 otherBal)) return false;
-            _balance.TryGetAt(row, ordinal, out UInt256 thisBal);
-            if (!thisBal.Equals(otherBal)) return false;
-        }
-        else if (other._balance.HasAt(row, ordinal)) return false;
+        if (!ScalarLaneEqualAt(_lanes.Balance, other._lanes.Balance, row, ordinal)) return false;
+        if (!ScalarLaneEqualAt(_lanes.Nonce, other._lanes.Nonce, row, ordinal)) return false;
+        if (!ScalarLaneEqualAt(_lanes.Code, other._lanes.Code, row, ordinal)) return false;
 
-        if (_nonce.HasAt(row, ordinal))
-        {
-            if (!other._nonce.TryGetAt(row, ordinal, out ulong otherN)) return false;
-            _nonce.TryGetAt(row, ordinal, out ulong thisN);
-            if (thisN != otherN) return false;
-        }
-        else if (other._nonce.HasAt(row, ordinal)) return false;
+        return _lanes.Storage.SlotsEqualAt(other._lanes.Storage, row, ordinal);
+    }
 
-        if (_code.HasAt(row, ordinal))
+    private static bool ScalarLaneEqualAt<TValue>(Lane<TValue> a, Lane<TValue> b, int row, int ordinal)
+        where TValue : IEquatable<TValue>
+    {
+        if (a.HasAt(row, ordinal))
         {
-            if (!other._code.TryGetAt(row, ordinal, out ValueHash256 otherC)) return false;
-            _code.TryGetAt(row, ordinal, out ValueHash256 thisC);
-            if (!thisC.Equals(otherC)) return false;
+            if (!b.TryGetAt(row, ordinal, out TValue bVal)) return false;
+            a.TryGetAt(row, ordinal, out TValue aVal);
+            return aVal.Equals(bVal);
         }
-        else if (other._code.HasAt(row, ordinal)) return false;
-
-        return _storage.SlotsEqualAt(other._storage, row, ordinal);
+        return !b.HasAt(row, ordinal);
     }
 
     /// <summary>
@@ -485,7 +442,7 @@ internal sealed class BlockAccessListValidationIndex : IDisposable
 
     public bool HasAccount(int ordinal) => HasAccountOrdinal(ordinal);
 
-    private static void Count(ReadOnlySpan<ReadOnlyAccountChanges> accounts, CountsView counts, uint lastIndex)
+    private static void Count(ReadOnlySpan<ReadOnlyAccountChanges> accounts, LaneSpans counts, uint lastIndex)
     {
         foreach (ReadOnlyAccountChanges accountChanges in accounts)
         {
@@ -516,25 +473,15 @@ internal sealed class BlockAccessListValidationIndex : IDisposable
         ReadOnlySpan<ReadOnlyAccountChanges> accounts,
         AddressIndex addressIndex,
         uint lastIndex,
-        Lane<UInt256> balance,
-        Lane<ulong> nonce,
-        Lane<ValueHash256> code,
-        StorageLane storage,
+        Lanes lanes,
         ulong[] hasAccountWords)
     {
-        // One pooled buffer sliced into four per-lane cursor windows. Each lane's CopyRowStartsTo
-        // seeds its slice with the immutable row offsets, then Fill advances the cursor per write.
-        int cursorSize = balance.CursorCount;
+        // One pooled buffer sliced into four per-lane cursor windows. CopyAllRowStartsTo seeds
+        // each slice with the immutable row offsets; Fill advances the cursor per write.
+        int cursorSize = lanes.Balance.CursorCount;
         using ArrayPoolListRef<int> cursors = new(cursorSize * 4, cursorSize * 4);
-        Span<int> allCursors = cursors.AsSpan();
-        Span<int> balanceCursorsSpan = allCursors.Slice(0, cursorSize);
-        Span<int> nonceCursorsSpan = allCursors.Slice(cursorSize, cursorSize);
-        Span<int> codeCursorsSpan = allCursors.Slice(cursorSize * 2, cursorSize);
-        Span<int> storageCursorsSpan = allCursors.Slice(cursorSize * 3, cursorSize);
-        balance.CopyRowStartsTo(balanceCursorsSpan);
-        nonce.CopyRowStartsTo(nonceCursorsSpan);
-        code.CopyRowStartsTo(codeCursorsSpan);
-        storage.CopyRowStartsTo(storageCursorsSpan);
+        LaneSpans c = PartitionInQuarters(cursors.AsSpan(), cursorSize);
+        lanes.CopyAllRowStartsTo(c);
 
         foreach (ReadOnlyAccountChanges accountChanges in accounts)
         {
@@ -543,24 +490,24 @@ internal sealed class BlockAccessListValidationIndex : IDisposable
 
             foreach (BalanceChange change in accountChanges.BalanceChanges)
             {
-                if (TryGetRow(change.Index, lastIndex, out int row)) balance.Fill(row, balanceCursorsSpan, accountOrdinal, change.Value);
+                if (TryGetRow(change.Index, lastIndex, out int row)) lanes.Balance.Fill(row, c.Balance, accountOrdinal, change.Value);
             }
 
             foreach (NonceChange change in accountChanges.NonceChanges)
             {
-                if (TryGetRow(change.Index, lastIndex, out int row)) nonce.Fill(row, nonceCursorsSpan, accountOrdinal, change.Value);
+                if (TryGetRow(change.Index, lastIndex, out int row)) lanes.Nonce.Fill(row, c.Nonce, accountOrdinal, change.Value);
             }
 
             foreach (CodeChange change in accountChanges.CodeChanges)
             {
-                if (TryGetRow(change.Index, lastIndex, out int row)) code.Fill(row, codeCursorsSpan, accountOrdinal, change.CodeHash);
+                if (TryGetRow(change.Index, lastIndex, out int row)) lanes.Code.Fill(row, c.Code, accountOrdinal, change.CodeHash);
             }
 
             foreach (ReadOnlySlotChanges slotChanges in accountChanges.StorageChanges)
             {
                 foreach (StorageChange change in slotChanges.Changes)
                 {
-                    if (TryGetRow(change.Index, lastIndex, out int row)) storage.Fill(row, storageCursorsSpan, accountOrdinal, slotChanges.Key, change.Value);
+                    if (TryGetRow(change.Index, lastIndex, out int row)) lanes.Storage.Fill(row, c.Storage, accountOrdinal, slotChanges.Key, change.Value);
                 }
             }
         }
@@ -629,16 +576,113 @@ internal sealed class BlockAccessListValidationIndex : IDisposable
     }
 
     /// <summary>
-    /// Span-based view over four per-row counter buffers. Used by <see cref="Count"/> so it can
-    /// fill counters without taking a dependency on whether the buffers came from
-    /// <see cref="System.Buffers.ArrayPool{T}"/> or were freshly allocated.
+    /// Four per-lane <c>Span&lt;int&gt;</c> views — same shape for the row-counters in
+    /// <see cref="Build"/> and the row-fill cursors in <see cref="FillAndMark"/>.
+    /// <see cref="PartitionInQuarters"/> carves a single pooled buffer into one of these.
     /// </summary>
-    private readonly ref struct CountsView(Span<int> balance, Span<int> nonce, Span<int> code, Span<int> storage)
+    private readonly ref struct LaneSpans(Span<int> balance, Span<int> nonce, Span<int> code, Span<int> storage)
     {
         public readonly Span<int> Balance = balance;
         public readonly Span<int> Nonce = nonce;
         public readonly Span<int> Code = code;
         public readonly Span<int> Storage = storage;
+    }
+
+    /// <summary>Carve <paramref name="source"/> into four equal <paramref name="chunkSize"/>-sized
+    /// per-lane spans.</summary>
+    private static LaneSpans PartitionInQuarters(Span<int> source, int chunkSize) => new(
+        source.Slice(0, chunkSize),
+        source.Slice(chunkSize, chunkSize),
+        source.Slice(chunkSize * 2, chunkSize),
+        source.Slice(chunkSize * 3, chunkSize));
+
+    /// <summary>
+    /// The four lanes (balance / nonce / code / storage) bundled with their shared lifetime
+    /// operations: factory-with-internal-exception-safety, <see cref="SortAllRows"/>,
+    /// <see cref="SortTouchedRows"/>, and <see cref="Dispose"/>. Lets the index hold a single
+    /// <see cref="Lanes"/> field instead of four parallel ones.
+    /// </summary>
+    private readonly struct Lanes(
+        Lane<UInt256> balance,
+        Lane<ulong> nonce,
+        Lane<ValueHash256> code,
+        StorageLane storage)
+    {
+        public readonly Lane<UInt256> Balance = balance;
+        public readonly Lane<ulong> Nonce = nonce;
+        public readonly Lane<ValueHash256> Code = code;
+        public readonly StorageLane Storage = storage;
+
+        public static Lanes CreateImmutable(LaneSpans counts)
+        {
+            Lane<UInt256>? b = null; Lane<ulong>? n = null; Lane<ValueHash256>? c = null; StorageLane? s = null;
+            try
+            {
+                b = Lane<UInt256>.CreateImmutable(counts.Balance);
+                n = Lane<ulong>.CreateImmutable(counts.Nonce);
+                c = Lane<ValueHash256>.CreateImmutable(counts.Code);
+                s = StorageLane.CreateImmutable(counts.Storage);
+                return new Lanes(b, n, c, s);
+            }
+            catch
+            {
+                s?.Dispose(); c?.Dispose(); n?.Dispose(); b?.Dispose();
+                throw;
+            }
+        }
+
+        public static Lanes CreateMutableLike(Lanes other)
+        {
+            Lane<UInt256>? b = null; Lane<ulong>? n = null; Lane<ValueHash256>? c = null; StorageLane? s = null;
+            try
+            {
+                b = Lane<UInt256>.CreateMutableLike(other.Balance);
+                n = Lane<ulong>.CreateMutableLike(other.Nonce);
+                c = Lane<ValueHash256>.CreateMutableLike(other.Code);
+                s = StorageLane.CreateMutableLike(other.Storage);
+                return new Lanes(b, n, c, s);
+            }
+            catch
+            {
+                s?.Dispose(); c?.Dispose(); n?.Dispose(); b?.Dispose();
+                throw;
+            }
+        }
+
+        public void SortAllRows()
+        {
+            Balance.SortAllRows();
+            Nonce.SortAllRows();
+            Code.SortAllRows();
+            Storage.SortAllRows();
+        }
+
+        public void SortTouchedRows()
+        {
+            Balance.SortTouchedRows();
+            Nonce.SortTouchedRows();
+            Code.SortTouchedRows();
+            Storage.SortTouchedRows();
+        }
+
+        /// <summary>Seed the supplied span quartet with each lane's row-starts.</summary>
+        public void CopyAllRowStartsTo(LaneSpans destinations)
+        {
+            Balance.CopyRowStartsTo(destinations.Balance);
+            Nonce.CopyRowStartsTo(destinations.Nonce);
+            Code.CopyRowStartsTo(destinations.Code);
+            Storage.CopyRowStartsTo(destinations.Storage);
+        }
+
+        public void Dispose()
+        {
+            // Null-tolerant because `default(Lanes)` is a legal sentinel — Build seats `lanes`
+            // before any factory runs, and the catch path may see a still-default value.
+            Balance?.Dispose();
+            Nonce?.Dispose();
+            Code?.Dispose();
+            Storage?.Dispose();
+        }
     }
 
     /// <summary>
@@ -771,8 +815,9 @@ internal sealed class BlockAccessListValidationIndex : IDisposable
 
         /// <summary>
         /// Grow <paramref name="array"/> to fit at least <paramref name="newMinLength"/> entries
-        /// while keeping the existing contents. The old buffer is returned to the pool; new
-        /// slack is zero-filled so callers can read past the prior length safely.
+        /// while keeping the existing contents. A non-empty old buffer is returned to the pool;
+        /// new slack is zero-filled so callers can read past the prior length safely. Safe to
+        /// call when <paramref name="array"/> is empty (sentinel start state).
         /// </summary>
         public static void Grow<T>(ref T[] array, int newMinLength)
         {
@@ -780,7 +825,7 @@ internal sealed class BlockAccessListValidationIndex : IDisposable
             T[] newArray = Rent<T>(newSize);
             array.AsSpan().CopyTo(newArray);
             newArray.AsSpan(array.Length).Clear();
-            Return(array);
+            if (array.Length > 0) Return(array);
             array = newArray;
         }
     }
@@ -1179,11 +1224,10 @@ internal sealed class BlockAccessListValidationIndex : IDisposable
     {
         if (_disposed) return;
         _disposed = true;
-        _balance.Dispose();
-        _nonce.Dispose();
-        _code.Dispose();
-        _storage.Dispose();
-        SafeArrayPool<ulong>.Shared.Return(_hasAccountWords);
+        _lanes.Dispose();
+        // Empty on the mutable side if MarkAccount was never called; on the immutable side if
+        // the block had zero accounts. ArrayPool.Return on Array.Empty is invalid usage.
+        if (_hasAccountWords.Length > 0) PooledArrays.Return(_hasAccountWords);
         _hasAccountWords = [];
     }
 }
