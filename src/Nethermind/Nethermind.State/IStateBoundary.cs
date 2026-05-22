@@ -15,6 +15,11 @@ public interface IStateBoundary
     /// completes (= pivot) and after a full pruning run completes (= copied state's block).
     /// Null if never set (archive node syncing from genesis).
     /// </summary>
+    /// <remarks>
+    /// Monotonically non-decreasing while non-null — setting a smaller value is a no-op.
+    /// Setting to <c>null</c> is allowed as an explicit reset (e.g. when wiping a corrupt
+    /// state DB), so callers should not rely on equality with a previously-set value.
+    /// </remarks>
     long? OldestStateBlock { get; set; }
 
     /// <summary>

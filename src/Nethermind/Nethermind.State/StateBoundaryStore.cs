@@ -38,6 +38,11 @@ public sealed class StateBoundaryStore(IKeyValueStore kv)
             lock (_lock)
             {
                 if (_value == value) return;
+                // The floor is monotonically non-decreasing: state sync writes the pivot, then
+                // full pruning writes the (later) copied block. Reject backward non-null writes
+                // so a stale caller can't regress the reported availability. Null reset is allowed
+                // for explicit recovery (e.g. wiping a corrupt state DB).
+                if (value.HasValue && _value.HasValue && value.Value < _value.Value) return;
                 _value = value;
                 if (value.HasValue)
                     kv[OldestStateBlockKey] = Rlp.Encode(value.Value).Bytes;
