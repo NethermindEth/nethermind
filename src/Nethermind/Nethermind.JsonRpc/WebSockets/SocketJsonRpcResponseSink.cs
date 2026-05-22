@@ -23,8 +23,6 @@ internal sealed class SocketJsonRpcResponseSink<TStream>(
     private static readonly byte[] JsonOpeningBracket = [Convert.ToByte('[')];
     private static readonly byte[] JsonComma = [Convert.ToByte(',')];
     private static readonly byte[] JsonClosingBracket = [Convert.ToByte(']')];
-    private static readonly StreamPipeWriterOptions ResponsePipeWriterOptions = new(leaveOpen: true);
-
     private readonly bool _reportCalls = jsonRpcLocalStats.IsEnabled;
     private long _topLevelResponseBytes;
     private long _batchStartTimestamp;
@@ -42,8 +40,7 @@ internal sealed class SocketJsonRpcResponseSink<TStream>(
         try
         {
             long startTimestamp = _reportCalls ? Stopwatch.GetTimestamp() : 0;
-            long responseBytes = await WriteResponseAsync(response, cancellationToken);
-            responseBytes += await stream.WriteEndOfMessageAsync();
+            long responseBytes = await SocketJsonRpcResponseWriter.WriteMessageAsync(stream, response, cancellationToken);
 
             BytesWritten += responseBytes;
             if (_reportCalls)
@@ -80,7 +77,7 @@ internal sealed class SocketJsonRpcResponseSink<TStream>(
 
         _isFirstBatchItem = false;
 
-        _topLevelResponseBytes += await WriteResponseAsync(response, cancellationToken);
+        _topLevelResponseBytes += await SocketJsonRpcResponseWriter.WriteAsync(stream, response, cancellationToken);
         if (_reportCalls)
         {
             jsonRpcLocalStats.ReportCall(report);
@@ -116,7 +113,30 @@ internal sealed class SocketJsonRpcResponseSink<TStream>(
 
     public void Dispose() => ReleaseSemaphore();
 
-    private async ValueTask<long> WriteResponseAsync(JsonRpcResponse response, CancellationToken cancellationToken)
+    private void ReleaseSemaphore()
+    {
+        if (!_holdsSemaphore)
+        {
+            return;
+        }
+
+        _holdsSemaphore = false;
+        sendSemaphore.Release();
+    }
+}
+
+internal static class SocketJsonRpcResponseWriter
+{
+    private static readonly StreamPipeWriterOptions ResponsePipeWriterOptions = new(leaveOpen: true);
+
+    public static async ValueTask<long> WriteMessageAsync<TStream>(TStream stream, JsonRpcResponse response, CancellationToken cancellationToken)
+        where TStream : Stream, IMessageBorderPreservingStream
+    {
+        long responseBytes = await WriteAsync(stream, response, cancellationToken);
+        return responseBytes + await stream.WriteEndOfMessageAsync();
+    }
+
+    public static async ValueTask<long> WriteAsync(Stream stream, JsonRpcResponse response, CancellationToken cancellationToken)
     {
         CountingStreamPipeWriter writer = new(stream, ResponsePipeWriterOptions);
         try
@@ -129,16 +149,5 @@ internal sealed class SocketJsonRpcResponseSink<TStream>(
         {
             await writer.CompleteAsync();
         }
-    }
-
-    private void ReleaseSemaphore()
-    {
-        if (!_holdsSemaphore)
-        {
-            return;
-        }
-
-        _holdsSemaphore = false;
-        sendSemaphore.Release();
     }
 }

@@ -19,8 +19,6 @@ namespace Nethermind.JsonRpc.WebSockets;
 
 public class JsonRpcSocketsClient<TStream> : SocketClient<TStream>, IJsonRpcDuplexClient where TStream : Stream, IMessageBorderPreservingStream
 {
-    private static readonly StreamPipeWriterOptions ResponsePipeWriterOptions = new(leaveOpen: true);
-
     public event EventHandler? Closed;
 
     private readonly IJsonRpcProcessor _jsonRpcProcessor;
@@ -172,20 +170,7 @@ public class JsonRpcSocketsClient<TStream> : SocketClient<TStream>, IJsonRpcDupl
         try
         {
             JsonRpcResponse response = result.Response ?? throw new InvalidOperationException("JSON-RPC result does not contain a response.");
-            CountingStreamPipeWriter writer = new(_stream, ResponsePipeWriterOptions);
-            long responseSize;
-            try
-            {
-                await JsonRpcResponseWriter.WriteAsync(writer, response, EthereumJsonSerializer.JsonOptions, cancellationToken);
-                await writer.FlushAsync(cancellationToken);
-                responseSize = writer.WrittenCount;
-            }
-            finally
-            {
-                await writer.CompleteAsync();
-            }
-
-            responseSize += await _stream.WriteEndOfMessageAsync();
+            long responseSize = await SocketJsonRpcResponseWriter.WriteMessageAsync(_stream, response, cancellationToken);
             return (int)responseSize;
         }
         finally
