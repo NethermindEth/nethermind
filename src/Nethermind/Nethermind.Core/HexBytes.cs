@@ -5,28 +5,20 @@ using System;
 
 namespace Nethermind.Core;
 
-/// <summary>
-/// Wraps a byte sequence that is represented as a 0x-prefixed hex string in JSON.
-/// </summary>
+/// <summary>Wraps bytes represented as a 0x-prefixed hex JSON string.</summary>
 public readonly struct HexBytes : IEquatable<HexBytes>
 {
-    /// <summary>
-    /// The bytes to write as hex.
-    /// </summary>
+    /// <summary>The bytes to write as hex.</summary>
     public ReadOnlyMemory<byte> Bytes { get; }
 
-    /// <summary>
-    /// Initializes a new instance from an owned or externally stable byte array.
-    /// </summary>
+    /// <summary>Initializes a new instance from an owned or externally stable byte array.</summary>
     public HexBytes(byte[] bytes)
     {
         ArgumentNullException.ThrowIfNull(bytes);
         Bytes = bytes;
     }
 
-    /// <summary>
-    /// Initializes a new instance from an owned or externally stable memory region.
-    /// </summary>
+    /// <summary>Initializes a new instance from an owned or externally stable memory region.</summary>
     public HexBytes(ReadOnlyMemory<byte> bytes) => Bytes = bytes;
 
     /// <inheritdoc/>
@@ -46,18 +38,12 @@ public readonly struct HexBytes : IEquatable<HexBytes>
     /// <inheritdoc/>
     public override string ToString() => "0x" + Convert.ToHexStringLower(Bytes.Span);
 
-    /// <summary>
-    /// Returns whether two values contain the same byte sequence.
-    /// </summary>
+    /// <summary>Returns whether two values contain the same byte sequence.</summary>
     public static bool operator ==(HexBytes left, HexBytes right) => left.Equals(right);
 
-    /// <summary>
-    /// Returns whether two values contain different byte sequences.
-    /// </summary>
+    /// <summary>Returns whether two values contain different byte sequences.</summary>
     public static bool operator !=(HexBytes left, HexBytes right) => !left.Equals(right);
 
-    /// <summary>
-    /// Wraps a byte array for hex JSON serialization.
-    /// </summary>
+    /// <summary>Wraps a byte array for hex JSON serialization.</summary>
     public static implicit operator HexBytes(byte[] bytes) => new(bytes);
 }

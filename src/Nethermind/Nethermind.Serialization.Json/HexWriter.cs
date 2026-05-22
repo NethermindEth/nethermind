@@ -15,14 +15,9 @@ using Nethermind.Int256;
 
 namespace Nethermind.Serialization.Json;
 
-/// <summary>
-/// Shared low-level hex encoding primitives used by JSON converters.
-/// </summary>
+/// <summary>Shared low-level hex encoding primitives used by JSON converters.</summary>
 public static class HexWriter
 {
-    /// <summary>
-    /// Encode the low 8 bytes of a Vector128 to 16 hex chars using SSSE3 PSHUFB.
-    /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal static void Ssse3Encode8Bytes(ref byte dest, Vector128<byte> input)
     {
@@ -38,9 +33,6 @@ public static class HexWriter
         Ssse3.Shuffle(hexLookup, Sse2.UnpackLow(hi, lo)).StoreUnsafe(ref dest);
     }
 
-    /// <summary>
-    /// Encode 16 bytes of a Vector128 to 32 hex chars using SSSE3 PSHUFB.
-    /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal static void Ssse3Encode16Bytes(ref byte dest, Vector128<byte> input)
     {
@@ -57,11 +49,7 @@ public static class HexWriter
         Ssse3.Shuffle(hexLookup, Sse2.UnpackHigh(hi, lo)).StoreUnsafe(ref Unsafe.Add(ref dest, 16));
     }
 
-    /// <summary>
-    /// Encode 32 bytes to 64 hex chars using AVX-512 VBMI cross-lane byte permutation.
-    /// vpermi2b does arbitrary byte interleave across the full 256-bit register in a single
-    /// instruction, eliminating the UnpackLow/UnpackHigh + lane-crossing overhead of SSSE3/AVX2.
-    /// </summary>
+    // vpermi2b interleaves high/low nibbles across the full 256-bit register, avoiding SSSE3/AVX2 lane-crossing overhead.
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal static void Avx512VbmiEncode32Bytes(ref byte dest, Vector256<byte> input)
     {
@@ -96,11 +84,7 @@ public static class HexWriter
         Avx2.Shuffle(hexLookup, interleaved1).StoreUnsafe(ref Unsafe.Add(ref dest, 32));
     }
 
-    /// <summary>
-    /// 512-byte lookup table: for byte value i, HexByteLookup[i*2] and [i*2+1] are the
-    /// two lowercase hex ASCII chars. Single indexed load + 16-bit store per byte,
-    /// replacing ~10 ALU ops of a branchless arithmetic approach.
-    /// </summary>
+    // Two lowercase hex ASCII chars per byte; replaces branchless arithmetic with one indexed load and one 16-bit store.
     private static ReadOnlySpan<byte> HexByteLookup =>
         "000102030405060708090a0b0c0d0e0f"u8 +
         "101112131415161718191a1b1c1d1e1f"u8 +
@@ -119,16 +103,10 @@ public static class HexWriter
         "e0e1e2e3e4e5e6e7e8e9eaebecedeeef"u8 +
         "f0f1f2f3f4f5f6f7f8f9fafbfcfdfeff"u8;
 
-    /// <summary>
-    /// Scalar: encode one byte to 2 hex chars via lookup table.
-    /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal static void EncodeByte(ref byte dest, int byteVal) => Unsafe.WriteUnaligned(ref dest,
             Unsafe.ReadUnaligned<ushort>(ref Unsafe.Add(ref MemoryMarshal.GetReference(HexByteLookup), byteVal * 2)));
 
-    /// <summary>
-    /// Scalar: encode a ulong (big-endian byte order) to 16 hex chars.
-    /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal static void EncodeUlongScalar(ref byte dest, ulong value)
     {
@@ -141,9 +119,6 @@ public static class HexWriter
         }
     }
 
-    /// <summary>
-    /// Scalar: encode a byte span to hex chars.
-    /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal static void EncodeBytesScalar(ref byte dest, ReadOnlySpan<byte> src)
     {
@@ -155,9 +130,6 @@ public static class HexWriter
         }
     }
 
-    /// <summary>
-    /// Encode a ulong to 16 hex chars, dispatching to SSSE3 or scalar.
-    /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal static void EncodeUlong(ref byte dest, ulong value)
     {
@@ -172,9 +144,6 @@ public static class HexWriter
         }
     }
 
-    /// <summary>
-    /// Encode 32 bytes to 64 hex chars, dispatching to AVX-512 VBMI, SSSE3, or scalar.
-    /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal static void Encode32Bytes(ref byte dest, ReadOnlySpan<byte> src)
     {
@@ -194,10 +163,6 @@ public static class HexWriter
         }
     }
 
-    /// <summary>
-    /// Write a non-zero ulong as a hex JSON string value ("0x...") using WriteRawValue.
-    /// Used by LongConverter and ULongConverter.
-    /// </summary>
     [SkipLocalsInit]
     internal static void WriteUlongHexRawValue(Utf8JsonWriter writer, ulong value)
     {
@@ -222,9 +187,6 @@ public static class HexWriter
             skipInputValidation: true);
     }
 
-    /// <summary>
-    /// Write a UInt256 as a hex JSON string value ("0x...") using WriteRawValue.
-    /// </summary>
     [SkipLocalsInit]
     internal static void WriteUInt256HexRawValue(Utf8JsonWriter writer, UInt256 value, bool zeroPadded = false)
     {
@@ -238,9 +200,6 @@ public static class HexWriter
             skipInputValidation: true);
     }
 
-    /// <summary>
-    /// Write a UInt256 as a hex property name ("0x...").
-    /// </summary>
     [SkipLocalsInit]
     internal static void WriteUInt256HexPropertyName(Utf8JsonWriter writer, UInt256 value, bool zeroPadded = false)
     {
@@ -335,28 +294,13 @@ public static class HexWriter
         }
     }
 
-    /// <summary>
-    /// 24-byte inline buffer for ulong hex encoding (20 bytes needed, rounded up to
-    /// 3 x 8-byte ulong elements for alignment). Used instead of stackalloc to avoid
-    /// GS cookie (stack canary) overhead. The JIT inserts a cookie write in the prologue
-    /// and a verify + CORINFO_HELP_FAIL_FAST call in the epilogue for every stackalloc
-    /// buffer, adding ~35 bytes per method. Inline array structs are treated as regular
-    /// locals and avoid this.
-    /// </summary>
+    // Inline buffers avoid stackalloc GS-cookie overhead on hot hex writers.
     [InlineArray(3)]
     private struct HexBuffer24
     {
         private ulong _element0;
     }
 
-    /// <summary>
-    /// 72-byte inline buffer for hash/UInt256 hex encoding (68 bytes needed, rounded up
-    /// to 9 x 8-byte ulong elements for alignment). Used instead of stackalloc to avoid
-    /// GS cookie (stack canary) overhead. The JIT inserts a cookie write in the prologue
-    /// and a verify + CORINFO_HELP_FAIL_FAST call in the epilogue for every stackalloc
-    /// buffer, adding ~35 bytes per method. Inline array structs are treated as regular
-    /// locals and avoid this.
-    /// </summary>
     [InlineArray(9)]
     internal struct HexBuffer72
     {
@@ -365,16 +309,10 @@ public static class HexWriter
 
     private const int MaxHexRequest = (int)Eip4844Constants.GasPerBlob * 2;
 
-    /// <summary>
-    /// Writes a large byte array as hex directly into a <see cref="PipeWriter"/>
-    /// in chunks, bounded by the actual span size returned by GetSpan.
-    /// </summary>
+    /// <summary>Writes a large byte array as hex directly into a <see cref="PipeWriter"/>.</summary>
     public static void WriteHexChunked(PipeWriter writer, byte[] data) => WriteHexChunked(writer, (ReadOnlySpan<byte>)data);
 
-    /// <summary>
-    /// Writes a large byte span as hex directly into a <see cref="PipeWriter"/>
-    /// in chunks, bounded by the actual span size returned by GetSpan.
-    /// </summary>
+    /// <summary>Writes a large byte span as hex directly into a <see cref="PipeWriter"/>.</summary>
     public static void WriteHexChunked(PipeWriter writer, ReadOnlySpan<byte> data)
     {
         ReadOnlySpan<byte> remaining = data;
@@ -389,14 +327,10 @@ public static class HexWriter
         }
     }
 
-    /// <summary>
-    /// Writes a small byte array as hex in a single span into a <see cref="PipeWriter"/>.
-    /// </summary>
+    /// <summary>Writes a small byte array as hex in a single span into a <see cref="PipeWriter"/>.</summary>
     public static void WriteHexSmall(PipeWriter writer, byte[] data) => WriteHexSmall(writer, (ReadOnlySpan<byte>)data);
 
-    /// <summary>
-    /// Writes a small byte span as hex in a single span into a <see cref="PipeWriter"/>.
-    /// </summary>
+    /// <summary>Writes a small byte span as hex in a single span into a <see cref="PipeWriter"/>.</summary>
     public static void WriteHexSmall(PipeWriter writer, ReadOnlySpan<byte> data)
     {
         int hexLen = data.Length * 2;
@@ -406,9 +340,6 @@ public static class HexWriter
         writer.Advance(inputLen * 2);
     }
 
-    /// <summary>
-    /// Encode arbitrary-length bytes to hex using SIMD (AVX-512 VBMI / SSSE3) with scalar tail.
-    /// </summary>
     private static void EncodeToHex(ReadOnlySpan<byte> src, ref byte dest)
     {
         int offset = 0;

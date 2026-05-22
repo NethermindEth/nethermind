@@ -9,9 +9,7 @@ using System.Text.Json.Serialization;
 
 namespace Nethermind.JsonRpc;
 
-/// <summary>
-/// Serializes and deserializes <see cref="JsonRpcId"/> values.
-/// </summary>
+/// <summary>Serializes and deserializes <see cref="JsonRpcId"/> values.</summary>
 public sealed class JsonRpcIdConverter : JsonConverter<JsonRpcId>
 {
     /// <inheritdoc/>

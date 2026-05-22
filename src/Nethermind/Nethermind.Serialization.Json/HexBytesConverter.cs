@@ -10,9 +10,7 @@ using Nethermind.Core;
 
 namespace Nethermind.Serialization.Json;
 
-/// <summary>
-/// Serializes <see cref="HexBytes"/> as a 0x-prefixed hex JSON string.
-/// </summary>
+/// <summary>Serializes <see cref="HexBytes"/> as a 0x-prefixed hex JSON string.</summary>
 public sealed class HexBytesConverter : JsonConverter<HexBytes>
 {
     /// <inheritdoc/>
