@@ -32,7 +32,7 @@ internal static class RpcPayloadTypeInfo
             return cached;
         }
 
-        if (GeneratedRpcTypeInfo.TryGet(type, out JsonTypeInfo? generated))
+        if (RpcGeneratedTypeInfoRegistry.TryGet(type, out JsonTypeInfo? generated))
         {
             return CacheCanonicalGenerated(type, generated);
         }
@@ -70,7 +70,7 @@ internal static class RpcPayloadTypeInfo<T>
             return cached;
         }
 
-        if (GeneratedRpcTypeInfo.TryGet(out JsonTypeInfo<T>? generated))
+        if (RpcGeneratedTypeInfoRegistry.TryGet(out JsonTypeInfo<T>? generated))
         {
             return CacheCanonicalGenerated(generated);
         }

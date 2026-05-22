@@ -11,7 +11,7 @@ internal static class RpcParameterTypeInfo
 {
     public static JsonTypeInfo? Get(Type type)
     {
-        if (GeneratedRpcTypeInfo.TryGet(type, out JsonTypeInfo? generated))
+        if (RpcGeneratedTypeInfoRegistry.TryGet(type, out JsonTypeInfo? generated))
         {
             return generated;
         }

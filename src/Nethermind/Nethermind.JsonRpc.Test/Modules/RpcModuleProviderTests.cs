@@ -414,7 +414,7 @@ public class RpcModuleProviderTests
             return;
         }
 
-        if (!GeneratedRpcTypeInfo.TryGet(type, out _))
+        if (!RpcGeneratedTypeInfoRegistry.TryGet(type, out _))
         {
             missing.Add($"{method.DeclaringType?.FullName}.{method.Name} {role}: {type.FullName ?? type.Name}");
         }
