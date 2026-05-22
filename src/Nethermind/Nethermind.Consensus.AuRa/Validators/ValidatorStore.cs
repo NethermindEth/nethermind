@@ -60,7 +60,13 @@ namespace Nethermind.Consensus.AuRa.Validators
                 Rlp.ValueDecoderContext ctx = new(_db.Get(PendingValidatorsKey) ?? Rlp.OfEmptyList.Bytes);
                 return PendingValidatorsDecoder.Decode(ref ctx);
             }
-            set => _db.Set(PendingValidatorsKey, PendingValidatorsDecoder.Encode(value).Bytes);
+            set => StorePendingValidators(value);
+        }
+
+        private void StorePendingValidators(PendingValidators value)
+        {
+            using NettyRlpStream stream = PendingValidatorsDecoder.EncodeToNewNettyStream(value);
+            _db.PutSpan(PendingValidatorsKey.Bytes, stream.AsSpan());
         }
 
         private ValidatorInfo FindValidatorInfo(in long blockNumber)

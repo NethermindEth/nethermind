@@ -27,7 +27,6 @@ namespace Nethermind.Xdc
         IEpochSwitchManager epochSwitchManager,
         ISnapshotManager snapshotManager,
         IMasternodesCalculator masternodesCalculator,
-        IQuorumCertificateManager quorumCertificateManager,
         IVotesManager votesManager,
         ISigner signer,
         ITimeoutTimer timeoutTimer,
@@ -42,7 +41,6 @@ namespace Nethermind.Xdc
         private readonly IEpochSwitchManager _epochSwitchManager = epochSwitchManager ?? throw new ArgumentNullException(nameof(epochSwitchManager));
         private readonly ISnapshotManager _snapshotManager = snapshotManager ?? throw new ArgumentNullException(nameof(snapshotManager));
         private readonly IMasternodesCalculator _masternodesCalculator = masternodesCalculator ?? throw new ArgumentNullException(nameof(masternodesCalculator));
-        private readonly IQuorumCertificateManager _quorumCertificateManager = quorumCertificateManager ?? throw new ArgumentNullException(nameof(quorumCertificateManager));
         private readonly IVotesManager _votesManager = votesManager ?? throw new ArgumentNullException(nameof(votesManager));
         private readonly ISigner _signer = signer ?? throw new ArgumentNullException(nameof(signer));
         private readonly ITimeoutTimer _timeoutTimer = timeoutTimer;
@@ -160,8 +158,6 @@ namespace Nethermind.Xdc
         {
             if (_blockTree.Head.Header is not XdcBlockHeader xdcHead)
                 throw new InvalidBlockException(_blockTree.Head, "Head is not XdcBlockHeader.");
-
-            _quorumCertificateManager.Initialize(xdcHead);
             _logger.Info($"Initialized round {_xdcContext.CurrentRound} from head.");
         }
 
@@ -220,7 +216,7 @@ namespace Nethermind.Xdc
 
             if (spec.SwitchBlock < roundParent.Number)
             {
-                await CommitCertificateAndVote(roundParent, epochInfo);
+                await CastVote(roundParent, epochInfo);
             }
 
             bool isMyTurn = IsMyTurn(roundParent, currentRound, spec);
@@ -300,9 +296,9 @@ namespace Nethermind.Xdc
         }
 
         /// <summary>
-        /// Voter path - commit received QC, check voting rule, cast vote.
+        /// Voter path - check voting rule, cast vote.
         /// </summary>
-        private async Task CommitCertificateAndVote(XdcBlockHeader head, EpochSwitchInfo epochInfo)
+        private async Task CastVote(XdcBlockHeader head, EpochSwitchInfo epochInfo)
         {
             if (head.ExtraConsensusData?.QuorumCert is null)
                 throw new InvalidOperationException("Head block missing consensus data.");
@@ -310,12 +306,6 @@ namespace Nethermind.Xdc
             ulong votingRound = head.ExtraConsensusData.BlockRound;
             if (_highestVotedRound >= votingRound)
                 return;
-
-            if (head.ExtraConsensusData.QuorumCert.Hash != _xdcContext.HighestQC?.Hash)
-            {
-                // Commit/record the header's QC
-                _quorumCertificateManager.CommitCertificate(head.ExtraConsensusData.QuorumCert);
-            }
 
             // Check if we are in the masternode set
             if (!IsMasternode(epochInfo, _signer.Address))

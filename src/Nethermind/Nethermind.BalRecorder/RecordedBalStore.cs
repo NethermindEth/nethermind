@@ -12,6 +12,7 @@ namespace Nethermind.BalRecorder;
 
 public class RecordedBalStore(IBalRecorderConfig config, IInitConfig initConfig, ILogManager logManager) : IRecordedBalStore
 {
+    private static readonly BlockAccessListDecoder BalDecoder = BlockAccessListDecoder.Instance;
     private readonly ILogger _logger = logManager.GetClassLogger<RecordedBalStore>();
     private readonly SlotStore _store = new(
         config.Path.GetApplicationResourcePath(initConfig.BaseDbPath), "bal");
@@ -23,7 +24,7 @@ public class RecordedBalStore(IBalRecorderConfig config, IInitConfig initConfig,
 
     public void Insert(Block block, GeneratedBlockAccessList bal)
     {
-        using NettyRlpStream rlp = BlockAccessListDecoder.Instance.EncodeToNewNettyStream(bal);
+        using NettyRlpStream rlp = BalDecoder.EncodeToNewNettyStream(bal);
         if (!_store.Write(block.Number, rlp.AsSpan()))
             if (_logger.IsDebug) _logger.Debug($"BAL slot for block {block.Number} already filled; skipping.");
     }
@@ -33,7 +34,7 @@ public class RecordedBalStore(IBalRecorderConfig config, IInitConfig initConfig,
         ReadState state = new() { Logger = _logger, BlockNumber = blockNumber };
         _store.TryRead(blockNumber, static (data, s) =>
         {
-            try { s.Value = BlockAccessListDecoder.Instance.Decode(data); }
+            try { s.Value = BalDecoder.Decode(data); }
             catch (RlpException ex) { s.Logger.Warn($"Corrupt BAL slot for block {s.BlockNumber}: {ex.Message}"); }
         }, state);
         return state.Value;

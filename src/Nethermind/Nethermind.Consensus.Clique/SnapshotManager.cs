@@ -227,20 +227,12 @@ namespace Nethermind.Consensus.Clique
         [Todo(Improve.Refactor, "I guess it was only added here because of the use of blocksdb")]
         private Snapshot? LoadSnapshot(Hash256 hash)
         {
-            Hash256 key = GetSnapshotKey(hash);
-            byte[]? bytes = _blocksDb.Get(key);
-            if (bytes is null) return null;
-
-            return _decoder.Decode(bytes);
+            byte[]? bytes = _blocksDb.Get(GetSnapshotKey(hash));
+            return bytes is null ? null : _decoder.Decode(bytes);
         }
 
-        private void Store(Snapshot snapshot)
-        {
-            RlpStream stream = new(_decoder.GetLength(snapshot, RlpBehaviors.None));
-            _decoder.Encode(stream, snapshot);
-            Hash256 key = GetSnapshotKey(snapshot.Hash);
-            _blocksDb.Set(key, stream.Data);
-        }
+        private void Store(Snapshot snapshot) =>
+            _blocksDb.Set(GetSnapshotKey(snapshot.Hash), _decoder.Encode(snapshot).Bytes);
 
         private Snapshot Apply(Snapshot original, List<BlockHeader> headers, ulong epoch)
         {

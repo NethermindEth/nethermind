@@ -162,7 +162,7 @@ public class SszCodecTests
         yield return new TestCaseData((Action<IBufferWriter<byte>>)(w =>
         {
             ExecutionPayloadV3 ep = SszTestData.MakeV3Payload();
-            Block block = ep.TryGetBlock().Block!;
+            Block block = (Block)ep.TryGetBlock();
             SszCodec.EncodeGetPayloadV3Response(new GetPayloadV3Result(block, UInt256.One, new BlobsBundleV1(block), false), w);
         })).SetName(nameof(Encoded_buffer_is_non_empty) + "_GetPayloadV3");
     }
@@ -472,7 +472,7 @@ public class SszCodecTests
     {
         UInt256 blockValue = new(0xCAFEBABEu);
         ExecutionPayloadV3 ep = SszTestData.MakeV3Payload();
-        Block block = ep.TryGetBlock().Block!;
+        Block block = (Block)ep.TryGetBlock();
 
         ArrayBufferWriter<byte> w = new();
         SszCodec.EncodeGetPayloadV3Response(
@@ -607,7 +607,7 @@ public class SszCodecTests
     {
         UInt256 blockValue = new(0xDEADF00Du);
         ExecutionPayloadV3 ep = SszTestData.MakeV3Payload();
-        Block block = ep.TryGetBlock().Block!;
+        Block block = (Block)ep.TryGetBlock();
 
         ArrayBufferWriter<byte> w = new();
         SszCodec.EncodeGetPayloadV4Response(
