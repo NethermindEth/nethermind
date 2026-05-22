@@ -26,7 +26,7 @@ namespace Nethermind.AuRa.Test.Reward
             _block.Header.Number = blockNumber;
             StaticRewardCalculator calculator = new(blockReward);
             BlockReward[] result = calculator.CalculateRewards(_block);
-            AssertReward(result, new BlockReward(_block.Beneficiary, expectedReward));
+            Assert.That(result, Is.EquivalentTo(new[] { new BlockReward(_block.Beneficiary, expectedReward) }).UsingPropertiesComparer());
         }
 
         [TestCase(0, 200ul)]
@@ -37,7 +37,7 @@ namespace Nethermind.AuRa.Test.Reward
             _block.Header.Number = blockNumber;
             StaticRewardCalculator calculator = new(blockReward);
             BlockReward[] result = calculator.CalculateRewards(_block);
-            AssertReward(result, new BlockReward(_block.Beneficiary, expectedReward));
+            Assert.That(result, Is.EquivalentTo(new[] { new BlockReward(_block.Beneficiary, expectedReward) }).UsingPropertiesComparer());
         }
 
         [TestCase(0, 0ul)]
@@ -47,7 +47,7 @@ namespace Nethermind.AuRa.Test.Reward
             _block.Header.Number = blockNumber;
             StaticRewardCalculator calculator = new(null);
             BlockReward[] result = calculator.CalculateRewards(_block);
-            AssertReward(result, new BlockReward(_block.Beneficiary, expectedReward));
+            Assert.That(result, Is.EquivalentTo(new[] { new BlockReward(_block.Beneficiary, expectedReward) }).UsingPropertiesComparer());
         }
 
         [TestCase(9, 0ul)]
@@ -58,7 +58,7 @@ namespace Nethermind.AuRa.Test.Reward
             _block.Header.Number = blockNumber;
             StaticRewardCalculator calculator = new(blockReward);
             BlockReward[] result = calculator.CalculateRewards(_block);
-            AssertReward(result, new BlockReward(_block.Beneficiary, expectedReward));
+            Assert.That(result, Is.EquivalentTo(new[] { new BlockReward(_block.Beneficiary, expectedReward) }).UsingPropertiesComparer());
         }
 
         [TestCase(1, 0ul)]
@@ -68,10 +68,7 @@ namespace Nethermind.AuRa.Test.Reward
             _block.Header.Number = blockNumber;
             StaticRewardCalculator calculator = new(blockReward);
             BlockReward[] result = calculator.CalculateRewards(_block);
-            AssertReward(result, new BlockReward(_block.Beneficiary, expectedReward));
+            Assert.That(result, Is.EquivalentTo(new[] { new BlockReward(_block.Beneficiary, expectedReward) }).UsingPropertiesComparer());
         }
-
-        private static void AssertReward(BlockReward[] actual, BlockReward expected) =>
-            Assert.That(actual, Is.EquivalentTo(new[] { expected }).UsingPropertiesComparer());
     }
 }

@@ -5,7 +5,6 @@ using System;
 using Nethermind.Core.Test.Builders;
 using NSubstitute;
 using NUnit.Framework;
-using static Nethermind.Core.Test.ExceptionAssertionExtensions;
 
 namespace Nethermind.Blockchain.Test;
 
@@ -58,7 +57,7 @@ public class ReadOnlyBlockTreeTests
         }
         else
         {
-            AssertDoesNotThrowExceptionOfType<InvalidOperationException>(action);
+            Assert.That(action, Throws.Nothing);
         }
     }
 }

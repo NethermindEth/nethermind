@@ -48,9 +48,9 @@ public class FilterManagerTests
     public async Task removing_filter_removes_data()
     {
         LogsShouldNotBeEmpty(static _ => { }, static _ => { });
-        NUnit.Framework.Assert.That(_filterManager.GetLogs(0), Is.Not.Empty);
+        Assert.That(_filterManager.GetLogs(0), Is.Not.Empty);
         await Task.Delay(600);
-        NUnit.Framework.Assert.That(_filterManager.GetLogs(0), Is.Empty);
+        Assert.That(_filterManager.GetLogs(0), Is.Empty);
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
@@ -256,7 +256,7 @@ public class FilterManagerTests
     {
         const int txCount = 10;
 
-        Assert(
+        AssertFilterLogs(
             filterBuilder: (builder, _) => builder
                 .FromBlock(1L)
                 .ToBlock(10L)
@@ -274,7 +274,7 @@ public class FilterManagerTests
                         .WithTopics(TestItem.KeccakB, TestItem.KeccakC).TestObject
                 ).ToArray()),
             receiptCount: txCount,
-            logsAssertion: logs => NUnit.Framework.Assert.That(logs.Select(l => l.LogIndex), Is.EqualTo(Enumerable.Range(0, txCount * logsPerTx)))
+            logsAssertion: logs => Assert.That(logs.Select(l => l.LogIndex), Is.EqualTo(Enumerable.Range(0, txCount * logsPerTx)))
         );
     }
 
@@ -322,7 +322,7 @@ public class FilterManagerTests
         allTasks.Add(consumer);
         await Task.WhenAll(allTasks);
 
-        NUnit.Framework.Assert.That(totalPolled, Is.EqualTo(blockCount));
+        Assert.That(totalPolled, Is.EqualTo(blockCount));
     }
 
     private void LogsShouldNotBeEmpty(Action<FilterBuilder> filterBuilder, Action<ReceiptBuilder> receiptBuilder)
@@ -332,21 +332,21 @@ public class FilterManagerTests
         => LogsShouldBeEmpty([filterBuilder], [receiptBuilder]);
 
     private void LogsShouldNotBeEmpty(IEnumerable<Action<FilterBuilder>> filterBuilders, IEnumerable<Action<ReceiptBuilder>> receiptBuilders)
-        => Assert(filterBuilders, receiptBuilders, static logs => NUnit.Framework.Assert.That(logs, Is.Not.Empty));
+        => AssertFilterLogs(filterBuilders, receiptBuilders, static logs => Assert.That(logs, Is.Not.Empty));
 
     private void LogsShouldBeEmpty(IEnumerable<Action<FilterBuilder>> filterBuilders, IEnumerable<Action<ReceiptBuilder>> receiptBuilders)
-        => Assert(filterBuilders, receiptBuilders, static logs => NUnit.Framework.Assert.That(logs, Is.Empty));
+        => AssertFilterLogs(filterBuilders, receiptBuilders, static logs => Assert.That(logs, Is.Empty));
 
-    private void Assert(Action<FilterBuilder, int> filterBuilder, int filterCount,
+    private void AssertFilterLogs(Action<FilterBuilder, int> filterBuilder, int filterCount,
         Action<ReceiptBuilder, int> receiptBuilder, int receiptCount,
         Action<IEnumerable<FilterLog>> logsAssertion)
-        => Assert(
+        => AssertFilterLogs(
             Enumerable.Range(0, filterCount).Select<int, Action<FilterBuilder>>(i => builder => filterBuilder(builder, i)),
             Enumerable.Range(0, receiptCount).Select<int, Action<ReceiptBuilder>>(i => builder => receiptBuilder(builder, i)),
             logsAssertion
         );
 
-    private void Assert(IEnumerable<Action<FilterBuilder>> filterBuilders,
+    private void AssertFilterLogs(IEnumerable<Action<FilterBuilder>> filterBuilders,
         IEnumerable<Action<ReceiptBuilder>> receiptBuilders,
         Action<IEnumerable<FilterLog>> logsAssertion)
     {
@@ -381,7 +381,7 @@ public class FilterManagerTests
             index++;
         }
 
-        NUnit.Framework.Assert.Multiple(() =>
+        Assert.Multiple(() =>
         {
             foreach (LogFilter filter in filters.OfType<LogFilter>())
             {
@@ -390,7 +390,7 @@ public class FilterManagerTests
             }
 
             Hash256[] hashes = _filterManager.GetBlocksHashes(blockFilter.Id);
-            NUnit.Framework.Assert.That(hashes.Length, Is.EqualTo(1));
+            Assert.That(hashes.Length, Is.EqualTo(1));
         });
     }
 

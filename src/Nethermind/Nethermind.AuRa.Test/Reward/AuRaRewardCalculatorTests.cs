@@ -96,7 +96,7 @@ namespace Nethermind.AuRa.Test.Reward
             _block.Header.Number = blockNumber;
             AuRaRewardCalculator calculator = new(_auraParameters, _abiEncoder, _transactionProcessor);
             BlockReward[] result = calculator.CalculateRewards(_block);
-            AssertRewards(result, new[] { new BlockReward(_block.Beneficiary, expectedReward) });
+            Assert.That(result, Is.EquivalentTo(new[] { new BlockReward(_block.Beneficiary, expectedReward) }).UsingPropertiesComparer());
         }
 
         [Test]
@@ -117,7 +117,7 @@ namespace Nethermind.AuRa.Test.Reward
             SetupBlockRewards(new Dictionary<Address, BlockReward[]>() { { _address10, new[] { expected } } });
             AuRaRewardCalculator calculator = new(_auraParameters, _abiEncoder, _transactionProcessor);
             BlockReward[] result = calculator.CalculateRewards(_block);
-            AssertRewards(result, new[] { expected });
+            Assert.That(result, Is.EquivalentTo(new[] { expected }).UsingPropertiesComparer());
         }
 
         public static IEnumerable SubsequentTransitionsTestCases
@@ -143,7 +143,7 @@ namespace Nethermind.AuRa.Test.Reward
             SetupBlockRewards(new Dictionary<Address, BlockReward[]>() { { address, new[] { expected } } });
             AuRaRewardCalculator calculator = new(_auraParameters, _abiEncoder, _transactionProcessor);
             BlockReward[] result = calculator.CalculateRewards(_block);
-            AssertRewards(result, new[] { expected });
+            Assert.That(result, Is.EquivalentTo(new[] { expected }).UsingPropertiesComparer());
         }
 
         [TestCase(10, 100ul)]
@@ -166,7 +166,7 @@ namespace Nethermind.AuRa.Test.Reward
             SetupBlockRewards(new Dictionary<Address, BlockReward[]>() { { _address10, expected } });
             AuRaRewardCalculator calculator = new(_auraParameters, _abiEncoder, _transactionProcessor);
             BlockReward[] result = calculator.CalculateRewards(_block);
-            AssertRewards(result, expected);
+            Assert.That(result, Is.EquivalentTo(expected).UsingPropertiesComparer());
         }
 
         [Test]
@@ -189,11 +189,8 @@ namespace Nethermind.AuRa.Test.Reward
             SetupBlockRewards(new Dictionary<Address, BlockReward[]>() { { _address10, expected } });
             AuRaRewardCalculator calculator = new(_auraParameters, _abiEncoder, _transactionProcessor);
             BlockReward[] result = calculator.CalculateRewards(_block);
-            AssertRewards(result, expected);
+            Assert.That(result, Is.EquivalentTo(expected).UsingPropertiesComparer());
         }
-
-        private static void AssertRewards(BlockReward[] actual, IEnumerable<BlockReward> expected) =>
-            Assert.That(actual, Is.EquivalentTo(expected).UsingPropertiesComparer());
 
         private void SetupBlockRewards(IDictionary<Address, BlockReward[]> rewards) =>
             _transactionProcessor.When(x => x.Execute(

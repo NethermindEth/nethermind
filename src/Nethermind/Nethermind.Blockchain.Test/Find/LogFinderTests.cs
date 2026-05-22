@@ -27,7 +27,6 @@ using Nethermind.Facade.Find;
 using Nethermind.Serialization.Rlp;
 using NSubstitute;
 using NUnit.Framework;
-using static Nethermind.Core.Test.ExceptionAssertionExtensions;
 
 namespace Nethermind.Blockchain.Test.Find;
 
@@ -154,7 +153,7 @@ public class LogFinderTests
 
         LogFilter logFilter = AllBlockFilter().Build();
 
-        AssertDoesNotThrowExceptionOfType<ResourceNotFoundException>(() => _logFinder.FindLogs(logFilter));
+        Assert.That(() => _logFinder.FindLogs(logFilter), Throws.Nothing);
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]

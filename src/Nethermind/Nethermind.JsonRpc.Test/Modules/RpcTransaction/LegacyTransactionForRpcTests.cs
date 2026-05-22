@@ -57,21 +57,21 @@ public static class LegacyTransactionForRpcTests
 
     public static void ValidateSchema(JsonElement json)
     {
-        Assert.That(json.GetProperty("type").GetString(), Is.Not.Null.And.Matches("^0x0$"));
-        Assert.That(json.GetProperty("nonce").GetString(), Is.Not.Null.And.Matches("^0x([1-9a-f]+[0-9a-f]*|0)$"));
+        Assert.That(json.GetProperty("type").GetString(), Does.Match("^0x0$"));
+        Assert.That(json.GetProperty("nonce").GetString(), Does.Match("^0x([1-9a-f]+[0-9a-f]*|0)$"));
         Assert.That(json.GetProperty("to").GetString(), Is.Null.Or.Matches("^0x[0-9a-fA-F]{40}$"));
         Assert.That(json.GetProperty("from").GetString(), Is.Null.Or.Matches("^0x[0-9a-fA-F]{40}$"));
-        Assert.That(json.GetProperty("gas").GetString(), Is.Not.Null.And.Matches("^0x([1-9a-f]+[0-9a-f]*|0)$"));
-        Assert.That(json.GetProperty("value").GetString(), Is.Not.Null.And.Matches("^0x([1-9a-f]+[0-9a-f]*|0)$"));
-        Assert.That(json.GetProperty("input").GetString(), Is.Not.Null.And.Matches("^0x[0-9a-f]*$"));
-        Assert.That(json.GetProperty("gasPrice").GetString(), Is.Not.Null.And.Matches("^0x([1-9a-f]+[0-9a-f]*|0)$"));
+        Assert.That(json.GetProperty("gas").GetString(), Does.Match("^0x([1-9a-f]+[0-9a-f]*|0)$"));
+        Assert.That(json.GetProperty("value").GetString(), Does.Match("^0x([1-9a-f]+[0-9a-f]*|0)$"));
+        Assert.That(json.GetProperty("input").GetString(), Does.Match("^0x[0-9a-f]*$"));
+        Assert.That(json.GetProperty("gasPrice").GetString(), Does.Match("^0x([1-9a-f]+[0-9a-f]*|0)$"));
         bool hasChainId = json.TryGetProperty("chainId", out JsonElement chainId);
         if (hasChainId)
         {
-            Assert.That(chainId.GetString(), Is.Not.Null.And.Matches("^0x([1-9a-f]+[0-9a-f]*|0)$"));
+            Assert.That(chainId.GetString(), Does.Match("^0x([1-9a-f]+[0-9a-f]*|0)$"));
         }
-        Assert.That(json.GetProperty("v").GetString(), Is.Not.Null.And.Matches("^0x([1-9a-f]+[0-9a-f]*|0)$"));
-        Assert.That(json.GetProperty("r").GetString(), Is.Not.Null.And.Matches("^0x([1-9a-f]+[0-9a-f]*|0)$"));
-        Assert.That(json.GetProperty("s").GetString(), Is.Not.Null.And.Matches("^0x([1-9a-f]+[0-9a-f]*|0)$"));
+        Assert.That(json.GetProperty("v").GetString(), Does.Match("^0x([1-9a-f]+[0-9a-f]*|0)$"));
+        Assert.That(json.GetProperty("r").GetString(), Does.Match("^0x([1-9a-f]+[0-9a-f]*|0)$"));
+        Assert.That(json.GetProperty("s").GetString(), Does.Match("^0x([1-9a-f]+[0-9a-f]*|0)$"));
     }
 }
