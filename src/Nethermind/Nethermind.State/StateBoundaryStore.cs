@@ -43,11 +43,13 @@ public sealed class StateBoundaryStore(IKeyValueStore kv)
                 // so a stale caller can't regress the reported availability. Null reset is allowed
                 // for explicit recovery (e.g. wiping a corrupt state DB).
                 if (value.HasValue && _value.HasValue && value.Value < _value.Value) return;
-                _value = value;
+                // Persist before caching so the in-memory value can never diverge from disk
+                // (a thrown kv write leaves both at the previous value).
                 if (value.HasValue)
                     kv[OldestStateBlockKey] = Rlp.Encode(value.Value).Bytes;
                 else
                     kv.Remove(OldestStateBlockKey);
+                _value = value;
             }
         }
     }
