@@ -14,9 +14,7 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Merge.Plugin.Data;
 
-/// <summary>
-/// Wraps payload body V2 results and writes JSON directly into a <see cref="PipeWriter"/>.
-/// </summary>
+/// <summary>Wraps payload body V2 results and writes JSON directly into a <see cref="PipeWriter"/>.</summary>
 public sealed class PayloadBodiesV2DirectResponse : IStreamableResult, IReadOnlyList<ExecutionPayloadBodyV2Result?>, IDisposable
 {
     private readonly PayloadBody?[] _items;
@@ -110,33 +108,19 @@ public sealed class PayloadBodiesV2DirectResponse : IStreamableResult, IReadOnly
         }
     }
 
-    internal readonly struct PayloadBody : IDisposable
+    internal readonly struct PayloadBody(IReadOnlyList<byte[]> transactions, IReadOnlyList<Withdrawal>? withdrawals, MemoryManager<byte>? blockAccessList) : IDisposable
     {
-        private readonly IReadOnlyList<byte[]> _transactions;
-        private readonly IReadOnlyList<Withdrawal>? _withdrawals;
-        private readonly MemoryManager<byte>? _blockAccessList;
-
-        internal PayloadBody(
-            IReadOnlyList<byte[]> transactions,
-            IReadOnlyList<Withdrawal>? withdrawals,
-            MemoryManager<byte>? blockAccessList)
-        {
-            _transactions = transactions;
-            _withdrawals = withdrawals;
-            _blockAccessList = blockAccessList;
-        }
-
         public void WriteTo(PipeWriter writer)
         {
             writer.Write("{\"transactions\":"u8);
-            PayloadBodiesDirectResponseWriter.WriteTransactions(writer, _transactions);
+            PayloadBodiesDirectResponseWriter.WriteTransactions(writer, transactions);
             writer.Write(",\"withdrawals\":"u8);
-            PayloadBodiesDirectResponseWriter.WriteWithdrawals(writer, _withdrawals);
+            PayloadBodiesDirectResponseWriter.WriteWithdrawals(writer, withdrawals);
 
-            if (_blockAccessList is not null)
+            if (blockAccessList is not null)
             {
                 writer.Write(",\"blockAccessList\":"u8);
-                PayloadBodiesDirectResponseWriter.WriteHexString(writer, _blockAccessList.Memory.Span, chunked: true);
+                PayloadBodiesDirectResponseWriter.WriteHexString(writer, blockAccessList.Memory.Span, chunked: true);
             }
 
             writer.Write("}"u8);
@@ -144,10 +128,10 @@ public sealed class PayloadBodiesV2DirectResponse : IStreamableResult, IReadOnly
 
         public ExecutionPayloadBodyV2Result ToResult() =>
             ExecutionPayloadBodyV2Result.FromEncodedTransactions(
-                _transactions,
-                _withdrawals,
-                _blockAccessList?.Memory.ToArray());
+                transactions,
+                withdrawals,
+                blockAccessList?.Memory.ToArray());
 
-        public void Dispose() => (_blockAccessList as IDisposable)?.Dispose();
+        public void Dispose() => (blockAccessList as IDisposable)?.Dispose();
     }
 }

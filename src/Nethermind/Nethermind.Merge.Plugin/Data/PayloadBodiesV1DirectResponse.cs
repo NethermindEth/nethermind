@@ -14,9 +14,7 @@ using Nethermind.Serialization.Json;
 
 namespace Nethermind.Merge.Plugin.Data;
 
-/// <summary>
-/// Wraps payload body V1 results and writes JSON directly into a <see cref="PipeWriter"/>.
-/// </summary>
+/// <summary>Wraps payload body V1 results and writes JSON directly into a <see cref="PipeWriter"/>.</summary>
 public sealed class PayloadBodiesV1DirectResponse(IReadOnlyList<ExecutionPayloadBodyV1Result?> items)
     : IStreamableResult, IReadOnlyList<ExecutionPayloadBodyV1Result?>, IDisposable
 {
