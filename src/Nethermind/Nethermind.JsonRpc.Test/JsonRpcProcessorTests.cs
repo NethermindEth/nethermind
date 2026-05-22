@@ -696,6 +696,17 @@ public class JsonRpcProcessorTests(bool returnErrors)
         return service;
     }
 
+    private static JsonRpcProcessor CreateShutdownProcessor(out IJsonRpcService service)
+    {
+        service = Substitute.For<IJsonRpcService>();
+        service.GetErrorResponse(Arg.Any<int>(), Arg.Any<string>())
+            .Returns(new JsonRpcErrorResponse { Error = new Error { Code = ErrorCodes.ResourceUnavailable, Message = "Shutting down" } });
+
+        IProcessExitSource processExitSource = Substitute.For<IProcessExitSource>();
+        processExitSource.Token.Returns(new CancellationToken(canceled: true));
+        return CreateProcessor(service, processExitSource: processExitSource);
+    }
+
     private static JsonRpcConfig CreateRecorderConfig(RpcRecorderState recorderState) =>
         new()
         {
@@ -898,16 +909,8 @@ public class JsonRpcProcessorTests(bool returnErrors)
     [Test]
     public async Task Should_stop_processing_when_shutdown_requested()
     {
-        IJsonRpcService service = Substitute.For<IJsonRpcService>();
-        service.GetErrorResponse(Arg.Any<int>(), Arg.Any<string>())
-            .Returns(new JsonRpcErrorResponse { Error = new Error { Code = ErrorCodes.ResourceUnavailable, Message = "Shutting down" } });
-
-        IProcessExitSource processExitSource = Substitute.For<IProcessExitSource>();
-        processExitSource.Token.Returns(new CancellationToken(canceled: true));
-
-        JsonRpcProcessor processor = CreateProcessor(service, processExitSource: processExitSource);
-
-        string request = "{\"id\":67,\"jsonrpc\":\"2.0\",\"method\":\"eth_getTransactionCount\",\"params\":[\"0x7f01d9b227593e033bf8d6fc86e634d27aa85568\",\"0x668c24\"]}";
+        JsonRpcProcessor processor = CreateShutdownProcessor(out IJsonRpcService service);
+        string request = CreateTransactionCountRequest("67");
         using CollectedJsonRpcResponses results = await ProcessAsync(processor, CreateReader(request), new JsonRpcContext(RpcEndpoint.Http));
 
         results.Should().HaveCount(1);
@@ -919,15 +922,7 @@ public class JsonRpcProcessorTests(bool returnErrors)
     [Test]
     public async Task Should_complete_pipe_reader_when_shutdown_requested()
     {
-        IJsonRpcService service = Substitute.For<IJsonRpcService>();
-        service.GetErrorResponse(Arg.Any<int>(), Arg.Any<string>())
-            .Returns(new JsonRpcErrorResponse { Error = new Error { Code = ErrorCodes.ResourceUnavailable, Message = "Shutting down" } });
-
-        IProcessExitSource processExitSource = Substitute.For<IProcessExitSource>();
-        processExitSource.Token.Returns(new CancellationToken(canceled: true));
-
-        JsonRpcProcessor processor = CreateProcessor(service, processExitSource: processExitSource);
-
+        JsonRpcProcessor processor = CreateShutdownProcessor(out _);
         Pipe pipe = new();
         await pipe.Writer.WriteAsync(Encoding.UTF8.GetBytes("{\"id\":1,\"jsonrpc\":\"2.0\",\"method\":\"eth_blockNumber\",\"params\":[]}"));
 
@@ -936,7 +931,6 @@ public class JsonRpcProcessorTests(bool returnErrors)
         results.Should().HaveCount(1);
         results[0].Response.Should().BeOfType<JsonRpcErrorResponse>();
 
-        // Verify PipeReader was completed by the processor (reading again should throw)
         await FluentActions.Invoking(async () => await pipe.Reader.ReadAsync())
             .Should().ThrowAsync<InvalidOperationException>();
     }
@@ -953,7 +947,6 @@ public class JsonRpcProcessorTests(bool returnErrors)
         JsonRpcProcessor processor = Initialize(recorderState: RpcRecorderState.None);
         JsonRpcContext context = new(RpcEndpoint.Ws);
 
-        // Create 5 large JSON-RPC requests (~10KB each)
         List<string> requests = Enumerable.Range(0, 5)
             .Select(i => CreateLargeRequest(i, targetSize: 10_000))
             .ToList();
@@ -961,10 +954,8 @@ public class JsonRpcProcessorTests(bool returnErrors)
         string allRequestsJson = string.Join("\n", requests);
         byte[] bytes = Encoding.UTF8.GetBytes(allRequestsJson);
 
-        // Start processing task (reads from pipe.Reader)
         ValueTask<CollectedJsonRpcResponses> processTask = ProcessAsync(processor, pipe.Reader, context);
 
-        // Write data in 1KB chunks with small delays to simulate network
         const int chunkSize = 1024;
         for (int i = 0; i < bytes.Length; i += chunkSize)
         {
