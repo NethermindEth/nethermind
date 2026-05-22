@@ -947,11 +947,6 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
     [MethodImpl(MethodImplOptions.NoInlining)]
     private async ValueTask<PipeReader> RecordRequest(PipeReader reader)
     {
-        if (!IsRecordingRequest)
-        {
-            return reader;
-        }
-
         Stream memoryStream = RecyclableStream.GetStream("recorder");
         await reader.CopyToAsync(memoryStream);
         memoryStream.Seek(0, SeekOrigin.Begin);
@@ -968,12 +963,8 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
     [MethodImpl(MethodImplOptions.NoInlining)]
     private void TraceResult(in JsonRpcResult.Entry response)
     {
-        if (_logger.IsTrace)
-        {
-            string json = SerializeForDiagnostics(response);
-
-            _logger.Trace($"Sending JSON RPC response: {json}");
-        }
+        string json = SerializeForDiagnostics(response);
+        _logger.Trace($"Sending JSON RPC response: {json}");
     }
 
     private static string SerializeForDiagnostics(in JsonRpcResult.Entry response)
@@ -1026,11 +1017,7 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
     [MethodImpl(MethodImplOptions.NoInlining)]
     private void TraceResult(JsonRpcErrorResponse response)
     {
-        if (_logger.IsTrace)
-        {
-            string json = SerializeResponseForDiagnostics(response);
-
-            _logger.Trace($"Sending JSON RPC response: {json}");
-        }
+        string json = SerializeResponseForDiagnostics(response);
+        _logger.Trace($"Sending JSON RPC response: {json}");
     }
 }
