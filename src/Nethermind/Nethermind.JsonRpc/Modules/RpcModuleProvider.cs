@@ -72,12 +72,8 @@ namespace Nethermind.JsonRpc.Modules
 
         public IReadOnlyCollection<string> All => _modules;
 
-        private void RegisterNonGeneric(Type moduleType, IRpcModulePool pool)
-        {
-            // Hey its either this of changing like, 5 class.
-            MethodInfo generic = _registerMethod.MakeGenericMethod(moduleType);
-            generic.Invoke(this, [pool]);
-        }
+        private void RegisterNonGeneric(Type moduleType, IRpcModulePool pool) =>
+            _registerMethod.MakeGenericMethod(moduleType).Invoke(this, [pool]);
 
         public void Register<T>(IRpcModulePool<T> pool) where T : IRpcModule
         {
