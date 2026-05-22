@@ -30,12 +30,8 @@ namespace Nethermind.JsonRpc.Modules
 
         private static readonly string[] HotMethodNames =
         [
-            "engine_newPayloadV4",
-            "engine_getBlobsV2",
-            "engine_forkchoiceUpdatedV3",
-            "eth_call",
-            "eth_getBlockByNumber",
-            "eth_chainId"
+            "engine_newPayloadV4", "engine_getBlobsV2", "engine_forkchoiceUpdatedV3",
+            "eth_call", "eth_getBlockByNumber", "eth_chainId"
         ];
 
         private Dictionary<string, ResolvedMethodInfo> _methods = [];
