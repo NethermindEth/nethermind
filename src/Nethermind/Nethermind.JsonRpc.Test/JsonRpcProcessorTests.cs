@@ -411,8 +411,23 @@ public class JsonRpcProcessorTests(bool returnErrors)
     private static PipeReader CreateReader(string request) =>
         PipeReader.Create(new ReadOnlySequence<byte>(Encoding.UTF8.GetBytes(request)));
 
-    private static string CreateTransactionCountRequest(string idJson, string paramsName = "params", string paramsJson = TransactionCountParamsJson) =>
-        $$"""{"id":{{idJson}},"jsonrpc":"2.0","method":"eth_getTransactionCount","{{paramsName}}":{{paramsJson}}}""";
+    private static string CreateTransactionCountRequest(string idJson, string? paramsName = "params", string paramsJson = TransactionCountParamsJson) =>
+        paramsName is null
+            ? $$"""{"id":{{idJson}},"jsonrpc":"2.0","method":"eth_getTransactionCount"}"""
+            : $$"""{"id":{{idJson}},"jsonrpc":"2.0","method":"eth_getTransactionCount","{{paramsName}}":{{paramsJson}}}""";
+
+    private static string CreateTransactionCountBatchRequest(int count, bool omitLastParams = false)
+    {
+        StringBuilder request = new("[");
+        for (int i = 0; i < count; i++)
+        {
+            if (i != 0) request.Append(',');
+            request.Append(CreateTransactionCountRequest("67", omitLastParams && i == count - 1 ? null : "params"));
+        }
+
+        request.Append(']');
+        return request.ToString();
+    }
 
     private static ReadOnlySequence<byte> CreateSequence(string first, string second)
     {
@@ -747,7 +762,7 @@ public class JsonRpcProcessorTests(bool returnErrors)
     [Test]
     public async Task Can_process_batch_request()
     {
-        using CollectedJsonRpcResponses result = await ProcessAsync("[{\"id\":67,\"jsonrpc\":\"2.0\",\"method\":\"eth_getTransactionCount\",\"params\":[\"0x7f01d9b227593e033bf8d6fc86e634d27aa85568\",\"0x668c24\"]},{\"id\":67,\"jsonrpc\":\"2.0\",\"method\":\"eth_getTransactionCount\",\"params\":[\"0x7f01d9b227593e033bf8d6fc86e634d27aa85568\",\"0x668c24\"]},{\"id\":67,\"jsonrpc\":\"2.0\",\"method\":\"eth_getTransactionCount\",\"params\":[\"0x7f01d9b227593e033bf8d6fc86e634d27aa85568\",\"0x668c24\"]},{\"id\":67,\"jsonrpc\":\"2.0\",\"method\":\"eth_getTransactionCount\",\"params\":[\"0x7f01d9b227593e033bf8d6fc86e634d27aa85568\",\"0x668c24\"]}]");
+        using CollectedJsonRpcResponses result = await ProcessAsync(CreateTransactionCountBatchRequest(4));
         result.Should().HaveCount(1);
         result[0].BatchItems.Should().NotBeNull();
         result[0].Response.Should().BeNull();
@@ -756,7 +771,7 @@ public class JsonRpcProcessorTests(bool returnErrors)
     [Test]
     public async Task Can_process_batch_request_with_some_params_missing()
     {
-        using CollectedJsonRpcResponses result = await ProcessAsync("[{\"id\":67,\"jsonrpc\":\"2.0\",\"method\":\"eth_getTransactionCount\",\"params\":[\"0x7f01d9b227593e033bf8d6fc86e634d27aa85568\",\"0x668c24\"]},{\"id\":67,\"jsonrpc\":\"2.0\",\"method\":\"eth_getTransactionCount\",\"params\":[\"0x7f01d9b227593e033bf8d6fc86e634d27aa85568\",\"0x668c24\"]},{\"id\":67,\"jsonrpc\":\"2.0\",\"method\":\"eth_getTransactionCount\",\"params\":[\"0x7f01d9b227593e033bf8d6fc86e634d27aa85568\",\"0x668c24\"]},{\"id\":67,\"jsonrpc\":\"2.0\",\"method\":\"eth_getTransactionCount\"}]");
+        using CollectedJsonRpcResponses result = await ProcessAsync(CreateTransactionCountBatchRequest(4, omitLastParams: true));
         result.Should().HaveCount(1);
         result[0].BatchItems.Should().NotBeNull();
         result[0].Response.Should().BeNull();
@@ -765,7 +780,7 @@ public class JsonRpcProcessorTests(bool returnErrors)
     [Test]
     public async Task Can_process_batch_request_with_two_requests()
     {
-        using CollectedJsonRpcResponses result = await ProcessAsync("{\"id\":67,\"jsonrpc\":\"2.0\",\"method\":\"eth_getTransactionCount\",\"params\":[\"0x7f01d9b227593e033bf8d6fc86e634d27aa85568\",\"0x668c24\"]}\r\n{\"id\":68,\"jsonrpc\":\"2.0\",\"method\":\"eth_getTransactionCount\",\"params\":[\"0x7f01d9b227593e033bf8d6fc86e634d27aa85568\",\"0x668c24\"]}", new JsonRpcContext(RpcEndpoint.Ws));
+        using CollectedJsonRpcResponses result = await ProcessAsync(CreateTransactionCountRequest("67") + "\r\n" + CreateTransactionCountRequest("68"), new JsonRpcContext(RpcEndpoint.Ws));
         result.Should().HaveCount(2);
         result[0].Response.Should().NotBeNull();
         result[0].BatchItems.Should().BeNull();
@@ -778,7 +793,7 @@ public class JsonRpcProcessorTests(bool returnErrors)
     [Test]
     public async Task Can_process_batch_request_with_single_request_and_array_with_two()
     {
-        using CollectedJsonRpcResponses result = await ProcessAsync("{\"id\":67,\"jsonrpc\":\"2.0\",\"method\":\"eth_getTransactionCount\",\"params\":[\"0x7f01d9b227593e033bf8d6fc86e634d27aa85568\",\"0x668c24\"]}[{\"id\":67,\"jsonrpc\":\"2.0\",\"method\":\"eth_getTransactionCount\",\"params\":[\"0x7f01d9b227593e033bf8d6fc86e634d27aa85568\",\"0x668c24\"]},{\"id\":67,\"jsonrpc\":\"2.0\",\"method\":\"eth_getTransactionCount\",\"params\":[\"0x7f01d9b227593e033bf8d6fc86e634d27aa85568\",\"0x668c24\"]}]", new JsonRpcContext(RpcEndpoint.Ws));
+        using CollectedJsonRpcResponses result = await ProcessAsync(CreateTransactionCountRequest("67") + CreateTransactionCountBatchRequest(2), new JsonRpcContext(RpcEndpoint.Ws));
         result.Should().HaveCount(2);
         result[0].Response.Should().NotBeNull();
         result[0].Response.Should().NotBeSameAs(_errorResponse);
@@ -806,7 +821,7 @@ public class JsonRpcProcessorTests(bool returnErrors)
     [Test]
     public async Task Can_process_batch_request_with_single_request_and_incorrect()
     {
-        using CollectedJsonRpcResponses result = await ProcessAsync("{\"id\":67,\"jsonrpc\":\"2.0\",\"method\":\"eth_getTransactionCount\",\"params\":[\"0x7f01d9b227593e033bf8d6fc86e634d27aa85568\",\"0x668c24\"]}{aaa}", new JsonRpcContext(RpcEndpoint.Ws));
+        using CollectedJsonRpcResponses result = await ProcessAsync(CreateTransactionCountRequest("67") + "{aaa}", new JsonRpcContext(RpcEndpoint.Ws));
         result.Should().HaveCount(2);
         result[0].Response.Should().NotBeNull();
         result[0].BatchItems.Should().BeNull();
@@ -817,18 +832,8 @@ public class JsonRpcProcessorTests(bool returnErrors)
     [Test]
     public async Task Will_return_error_when_batch_request_is_too_large()
     {
-        StringBuilder request = new();
         int maxBatchSize = new JsonRpcConfig().MaxBatchSize;
-        request.Append('[');
-        for (int i = 0; i < maxBatchSize + 1; i++)
-        {
-            if (i != 0) request.Append(',');
-            request.Append(
-                "{\"id\":67,\"jsonrpc\":\"2.0\",\"method\":\"eth_getTransactionCount\",\"params\":[\"0x7f01d9b227593e033bf8d6fc86e634d27aa85568\",\"0x668c24\"]}");
-        }
-        request.Append(']');
-
-        using CollectedJsonRpcResponses result = await ProcessAsync(request.ToString());
+        using CollectedJsonRpcResponses result = await ProcessAsync(CreateTransactionCountBatchRequest(maxBatchSize + 1));
         result.Should().HaveCount(1);
         result[0].Response.Should().BeAssignableTo<JsonRpcErrorResponse>();
     }
@@ -836,20 +841,10 @@ public class JsonRpcProcessorTests(bool returnErrors)
     [Test]
     public async Task Will_not_return_error_when_batch_request_is_too_large_but_endpoint_is_authenticated()
     {
-        StringBuilder request = new();
         int maxBatchSize = new JsonRpcConfig().MaxBatchSize;
-        request.Append('[');
-        for (int i = 0; i < maxBatchSize + 1; i++)
-        {
-            if (i != 0) request.Append(',');
-            request.Append(
-                "{\"id\":67,\"jsonrpc\":\"2.0\",\"method\":\"eth_getTransactionCount\",\"params\":[\"0x7f01d9b227593e033bf8d6fc86e634d27aa85568\",\"0x668c24\"]}");
-        }
-        request.Append(']');
-
         JsonRpcUrl url = new(string.Empty, string.Empty, 0, RpcEndpoint.Http, true, []);
         JsonRpcContext context = new(RpcEndpoint.Http, url: url);
-        using CollectedJsonRpcResponses result = await ProcessAsync(request.ToString(), context, new JsonRpcConfig() { MaxBatchResponseBodySize = 1 });
+        using CollectedJsonRpcResponses result = await ProcessAsync(CreateTransactionCountBatchRequest(maxBatchSize + 1), context, new JsonRpcConfig() { MaxBatchResponseBodySize = 1 });
         result.Should().HaveCount(1);
         IReadOnlyList<JsonRpcResponse> batchedResults = result[0].BatchItems!;
         batchedResults.Should().HaveCount(maxBatchSize + 1);
