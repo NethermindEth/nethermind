@@ -41,14 +41,7 @@ internal static class RpcPayloadTypeInfo
     }
 
     private static JsonTypeInfo CacheCanonicalGenerated(Type type, JsonTypeInfo generated)
-    {
-        if (_canonicalGeneratedCache.TryAdd(type, generated))
-        {
-            return generated;
-        }
-
-        return _canonicalGeneratedCache[type];
-    }
+        => _canonicalGeneratedCache.GetOrAdd(type, generated);
 
     private static JsonTypeInfo GetCached(JsonSerializerOptions options, Type type) =>
         _cache.GetOrAdd((options, type), static key => key.Options.GetTypeInfo(key.Type));
@@ -86,15 +79,7 @@ internal static class RpcPayloadTypeInfo<T>
     }
 
     private static JsonTypeInfo<T> CacheCanonicalGenerated(JsonTypeInfo<T> generated)
-    {
-        JsonTypeInfo<T>? existing = Interlocked.CompareExchange(ref _canonicalGeneratedTypeInfo, generated, null);
-        if (existing is not null)
-        {
-            return existing;
-        }
-
-        return generated;
-    }
+        => Interlocked.CompareExchange(ref _canonicalGeneratedTypeInfo, generated, null) ?? generated;
 
     private static JsonTypeInfo<T> GetCached(JsonSerializerOptions options) =>
         _cache.GetOrAdd(options, static options => (JsonTypeInfo<T>)options.GetTypeInfo(typeof(T)));
