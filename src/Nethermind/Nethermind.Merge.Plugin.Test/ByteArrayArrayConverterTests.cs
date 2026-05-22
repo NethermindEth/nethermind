@@ -14,17 +14,11 @@ namespace Nethermind.Merge.Plugin.Test;
 public class ByteArrayArrayConverterTests
 {
     [Test]
-    public void Engine_context_registers_converter_for_byte_array_arrays()
+    public void Engine_context_reads_and_writes_hex_arrays()
     {
         JsonTypeInfo typeInfo = EngineApiJsonContext.Default.GetTypeInfo(typeof(byte[][]))!;
 
         Assert.That(typeInfo.Converter, Is.TypeOf<ByteArrayArrayConverter>());
-    }
-
-    [Test]
-    public void Engine_context_reads_and_writes_hex_arrays()
-    {
-        JsonTypeInfo typeInfo = EngineApiJsonContext.Default.GetTypeInfo(typeof(byte[][]))!;
 
         byte[][]? decoded = JsonSerializer.Deserialize("""["0x0102","0x",null,"0x0f"]"""u8, typeInfo) as byte[][];
         Assert.That(decoded, Is.Not.Null);
