@@ -54,8 +54,7 @@ public class RpcModuleProviderTests
         JsonRpcConfig jsonRpcConfig = new() { EnabledModules = [] };
         _moduleProvider = CreateProvider(jsonRpcConfig);
         _moduleProvider.Register(new SingletonModulePool<IProofRpcModule>(Substitute.For<IProofRpcModule>(), false));
-        ModuleResolution resolution = _moduleProvider.Check("proof_call", _context);
-        Assert.That(resolution, Is.EqualTo(ModuleResolution.Disabled));
+        _moduleProvider.Check("proof_call", _context).Should().Be(ModuleResolution.Disabled);
     }
 
     [Test]
@@ -92,8 +91,7 @@ public class RpcModuleProviderTests
         SingletonModulePool<INetRpcModule> pool = new(Substitute.For<INetRpcModule>(), true);
         _moduleProvider.Register(pool);
 
-        ModuleResolution resolution = _moduleProvider.Check("unknown_method", _context);
-        Assert.That(resolution, Is.EqualTo(ModuleResolution.Unknown));
+        _moduleProvider.Check("unknown_method", _context).Should().Be(ModuleResolution.Unknown);
     }
 
     [Test]
@@ -265,8 +263,7 @@ public class RpcModuleProviderTests
     public void Can_register_via_constructor()
     {
         IRpcModuleProvider moduleProvider = CreateEraAdminModuleProvider();
-        ModuleResolution resolution = moduleProvider.Check("admin_exportHistory", _context);
-        Assert.That(resolution, Is.EqualTo(ModuleResolution.Enabled));
+        moduleProvider.Check("admin_exportHistory", _context).Should().Be(ModuleResolution.Enabled);
     }
 
     [Test]
@@ -495,20 +492,11 @@ public class RpcModuleProviderTests
     [RpcModule(ModuleType.Eth)]
     private interface ITestRpcModule : IRpcModule { }
 
-    private class TestRpcModuleDependencies
-    {
-        internal bool WasRequested;
-    }
+    private class TestRpcModuleDependencies { internal bool WasRequested; }
 
-    private class TestRpcModule : ITestRpcModule
-    {
-        public TestRpcModule(TestRpcModuleDependencies dependencies) => dependencies.WasRequested = true;
-    }
+    private class TestRpcModule : ITestRpcModule { public TestRpcModule(TestRpcModuleDependencies dependencies) => dependencies.WasRequested = true; }
 
-    private sealed class FallbackPayload
-    {
-        public string? Value { get; set; }
-    }
+    private sealed class FallbackPayload { public string? Value { get; set; } }
 
     private class PolymorphicPayload { }
 
