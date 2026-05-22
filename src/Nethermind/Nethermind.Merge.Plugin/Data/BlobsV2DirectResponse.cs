@@ -34,7 +34,7 @@ public sealed class BlobsV2DirectResponse : IStreamableResult, IReadOnlyList<Blo
     {
         get
         {
-            if ((uint)index >= (uint)_count) throw new ArgumentOutOfRangeException(nameof(index));
+            ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual((uint)index, (uint)_count, nameof(index));
             return BuildBlobAndProofV2(index);
         }
     }
