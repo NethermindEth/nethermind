@@ -53,13 +53,8 @@ public class JsonRpcProcessorTests(bool returnErrors)
         RuntimeHelpers.RunModuleConstructor(typeof(Nethermind.Merge.Plugin.IEngineRpcModule).Module.ModuleHandle);
     }
 
-    private JsonRpcProcessor Initialize(JsonRpcConfig? config = null, RpcRecorderState recorderState = RpcRecorderState.None)
-    {
-        config ??= new JsonRpcConfig();
-        config.RpcRecorderState = recorderState;
-
-        return CreateProcessor(CreateService(request => returnErrors ? new JsonRpcErrorResponse { Id = request.Id } : new JsonRpcSuccessResponse { Id = request.Id }, _errorResponse), config);
-    }
+    private JsonRpcProcessor CreateFixtureProcessor(IJsonRpcConfig? config = null) =>
+        CreateProcessor(CreateService(request => returnErrors ? new JsonRpcErrorResponse { Id = request.Id } : new JsonRpcSuccessResponse { Id = request.Id }, _errorResponse), config);
 
     private static JsonRpcProcessor CreateProcessor(IJsonRpcService service, IJsonRpcConfig? config = null, IFileSystem? fileSystem = null, IProcessExitSource? processExitSource = null) =>
         new(service, config ?? new JsonRpcConfig(), fileSystem ?? Substitute.For<IFileSystem>(), LimboLogs.Instance, processExitSource);
@@ -207,7 +202,7 @@ public class JsonRpcProcessorTests(bool returnErrors)
     }
 
     private ValueTask<CollectedJsonRpcResponses> ProcessAsync(string request, JsonRpcContext? context = null, JsonRpcConfig? config = null) =>
-        ProcessAsync(Initialize(config), CreateReader(request), context ?? new JsonRpcContext(RpcEndpoint.Http));
+        ProcessAsync(CreateFixtureProcessor(config), CreateReader(request), context ?? new JsonRpcContext(RpcEndpoint.Http));
 
     private static ValueTask<CollectedJsonRpcResponses> ProcessAsync(JsonRpcProcessor processor, string request, JsonRpcContext context, CollectingJsonRpcResponseSink? sink = null) =>
         ProcessAsync(processor, CreateReader(request), context, sink);
@@ -253,7 +248,7 @@ public class JsonRpcProcessorTests(bool returnErrors)
     public async Task Sink_processor_entry_point_writes_to_sink()
     {
         CollectingJsonRpcResponseSink sink = new();
-        JsonRpcProcessor processor = Initialize();
+        JsonRpcProcessor processor = CreateFixtureProcessor();
 
         await ProcessAsync(processor, "{\"id\":67,\"jsonrpc\":\"2.0\",\"method\":\"eth_getTransactionCount\",\"params\":[]}", new JsonRpcContext(RpcEndpoint.Http), sink);
 
@@ -530,9 +525,8 @@ public class JsonRpcProcessorTests(bool returnErrors)
 
     private static JsonRpcProcessor CreateShutdownProcessor(out IJsonRpcService service)
     {
-        service = Substitute.For<IJsonRpcService>();
-        service.GetErrorResponse(Arg.Any<int>(), Arg.Any<string>())
-            .Returns(new JsonRpcErrorResponse { Error = new Error { Code = ErrorCodes.ResourceUnavailable, Message = "Shutting down" } });
+        JsonRpcErrorResponse shutdownResponse = new() { Error = new Error { Code = ErrorCodes.ResourceUnavailable, Message = "Shutting down" } };
+        service = CreateService(static request => new JsonRpcSuccessResponse { Id = request.Id }, shutdownResponse);
 
         IProcessExitSource processExitSource = Substitute.For<IProcessExitSource>();
         processExitSource.Token.Returns(new CancellationToken(canceled: true));
@@ -697,7 +691,7 @@ public class JsonRpcProcessorTests(bool returnErrors)
     {
         CollectingJsonRpcResponseSink sink = new() { StopAfterBatchItems = limit ? 1 : int.MaxValue };
         using CollectedJsonRpcResponses result = await ProcessAsync(
-            Initialize(),
+            CreateFixtureProcessor(),
             CreateTransactionCountBatchRequest(TransactionCountParamsJson, TransactionCountParamsJson),
             new JsonRpcContext(RpcEndpoint.Http),
             sink);
@@ -770,7 +764,7 @@ public class JsonRpcProcessorTests(bool returnErrors)
     public async Task Can_process_multiple_large_requests_arriving_in_chunks()
     {
         Pipe pipe = new();
-        JsonRpcProcessor processor = Initialize();
+        JsonRpcProcessor processor = CreateFixtureProcessor();
         JsonRpcContext context = new(RpcEndpoint.Ws);
 
         string[] requests = new string[5];
