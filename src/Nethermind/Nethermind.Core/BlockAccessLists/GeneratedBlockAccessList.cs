@@ -20,7 +20,7 @@ public class GeneratedBlockAccessList
     private readonly Dictionary<Address, GeneratedAccountChanges> _accountChanges = new(GenericEqualityComparer.GetOptimized<Address>());
 
     /// <summary>
-    /// Insertion-ordered view over the BAL's accounts. <c>foreach</c> uses the dictionary's
+    /// Insertion-ordered view over the BAL's accounts.
     /// struct enumerator; <c>.Count</c> exposes the underlying dictionary size.
     /// </summary>
     public GeneratedAccountChangesView AccountChanges => new(_accountChanges);
