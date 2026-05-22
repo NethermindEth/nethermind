@@ -192,12 +192,8 @@ internal static class Program
         return collisions;
     }
 
-    private sealed class JsonTypeCandidate(string displayName, Dictionary<string, string> generatedTypeNames)
+    private sealed record JsonTypeCandidate(string DisplayName, Dictionary<string, string> GeneratedTypeNames)
     {
-        public string DisplayName { get; } = displayName;
-
-        public Dictionary<string, string> GeneratedTypeNames { get; } = generatedTypeNames;
-
         public bool UsesAnyGeneratedTypeName(HashSet<string> generatedTypeNames)
         {
             foreach (string generatedTypeName in GeneratedTypeNames.Keys)
