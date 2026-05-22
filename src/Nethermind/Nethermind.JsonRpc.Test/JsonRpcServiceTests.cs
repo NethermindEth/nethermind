@@ -62,6 +62,12 @@ public class JsonRpcServiceTests
             DerivedValue = "derived"
         };
 
+    private static ResultWrapper<PolymorphicBasePayload[]> CreatePolymorphicArrayResponse()
+    {
+        PolymorphicDerivedPayload[] payloads = [CreatePolymorphicPayload()];
+        return ResultWrapper<PolymorphicBasePayload[]>.Success(payloads);
+    }
+
     private static void AssertPolymorphicPayload(JsonElement payload)
     {
         Assert.That(payload.GetProperty("baseValue").GetString(), Is.EqualTo("base"));
@@ -87,6 +93,45 @@ public class JsonRpcServiceTests
         yield return new TestCaseData((object)new object?[] { new LegacyTransactionForRpc() }).SetName("Implicit null");
         yield return new TestCaseData((object)new object?[] { new LegacyTransactionForRpc(), "" }).SetName("Explicit empty string");
         yield return new TestCaseData((object)new object?[] { new LegacyTransactionForRpc(), null }).SetName("Explicit null");
+    }
+
+    private static IEnumerable<TestCaseData> InvalidRawUtf8ParamCases()
+    {
+        yield return new TestCaseData(nameof(IEthRpcModule.eth_getBlockByNumber), """[{"blockNumber":{}},false]""", "Invalid params").SetName("Malformed typed argument");
+        yield return new TestCaseData(nameof(IEthRpcModule.eth_feeHistory), """[{},"latest"]""", "missing value for required argument 2").SetName("Missing required argument");
+        yield return new TestCaseData(nameof(IEthRpcModule.eth_getBlockByNumber), """["0x1",false,"extra"]""", "Invalid params").SetName("Extra argument");
+    }
+
+    private static IEnumerable<TestCaseData> RuntimePolymorphicPayloadCases()
+    {
+        yield return new TestCaseData(
+            ResultWrapper<PolymorphicBasePayload>.Success(CreatePolymorphicPayload()),
+            new Func<JsonElement, JsonElement>(static root => root.GetProperty("result"))).SetName("Success payload");
+        yield return new TestCaseData(
+            CreatePolymorphicArrayResponse(),
+            new Func<JsonElement, JsonElement>(static root => root.GetProperty("result")[0])).SetName("Success array payload");
+        yield return new TestCaseData(
+            ResultWrapper<string, PolymorphicBasePayload>.Fail("typed", ErrorCodes.InvalidParams, CreatePolymorphicPayload()),
+            new Func<JsonElement, JsonElement>(static root => root.GetProperty("error").GetProperty("data"))).SetName("Error data payload");
+    }
+
+    private static JsonRpcErrorResponse AssertJsonRpcError(JsonRpcResponse response, int expectedCode, string? expectedMessage = null)
+    {
+        Assert.That(response, Is.InstanceOf<JsonRpcErrorResponse>());
+        JsonRpcErrorResponse errorResponse = (JsonRpcErrorResponse)response;
+        Assert.That(errorResponse.Error?.Code, Is.EqualTo(expectedCode));
+        if (expectedMessage is not null)
+        {
+            Assert.That(errorResponse.Error?.Message, Is.EqualTo(expectedMessage));
+        }
+
+        return errorResponse;
+    }
+
+    private static void AssertInvalidParamsWithoutData(JsonRpcResponse response, string expectedMessage)
+    {
+        JsonRpcErrorResponse errorResponse = AssertJsonRpcError(response, ErrorCodes.InvalidParams, expectedMessage);
+        Assert.That(errorResponse.Error?.Data, Is.Null);
     }
 
     private JsonRpcResponse TestRequest<T>(T module, string method, params object?[]? parameters) where T : IRpcModule
@@ -202,44 +247,15 @@ public class JsonRpcServiceTests
         Assert.That(RpcPayloadTypeShape<PolymorphicBasePayload>.CanBeStreamable, Is.True);
     }
 
-    [Test]
-    public void Runtime_polymorphic_success_payload_uses_runtime_type_info()
+    [TestCaseSource(nameof(RuntimePolymorphicPayloadCases))]
+    public void Runtime_polymorphic_payload_uses_runtime_type_info(JsonRpcResponse response, Func<JsonElement, JsonElement> getPayload)
     {
-        ResultWrapper<PolymorphicBasePayload> response = ResultWrapper<PolymorphicBasePayload>.Success(CreatePolymorphicPayload());
         response.Id = 67;
 
         string serialized = RpcTest.SerializeResponse(response);
 
         using JsonDocument document = JsonDocument.Parse(serialized);
-        AssertPolymorphicPayload(document.RootElement.GetProperty("result"));
-    }
-
-    [Test]
-    public void Runtime_polymorphic_array_success_payload_uses_runtime_type_info()
-    {
-        PolymorphicDerivedPayload[] payloads = [CreatePolymorphicPayload()];
-        ResultWrapper<PolymorphicBasePayload[]> response = ResultWrapper<PolymorphicBasePayload[]>.Success(payloads);
-        response.Id = 67;
-
-        string serialized = RpcTest.SerializeResponse(response);
-
-        using JsonDocument document = JsonDocument.Parse(serialized);
-        AssertPolymorphicPayload(document.RootElement.GetProperty("result")[0]);
-    }
-
-    [Test]
-    public void Runtime_polymorphic_error_data_uses_runtime_type_info()
-    {
-        ResultWrapper<string, PolymorphicBasePayload> response = ResultWrapper<string, PolymorphicBasePayload>.Fail(
-            "typed",
-            ErrorCodes.InvalidParams,
-            CreatePolymorphicPayload());
-        response.Id = 67;
-
-        string serialized = RpcTest.SerializeResponse(response);
-
-        using JsonDocument document = JsonDocument.Parse(serialized);
-        AssertPolymorphicPayload(document.RootElement.GetProperty("error").GetProperty("data"));
+        AssertPolymorphicPayload(getPayload(document.RootElement));
     }
 
     [Test]
@@ -419,21 +435,7 @@ public class JsonRpcServiceTests
         [
             """["0x80757153e93d1b475e203406727b62a501187f63e23b8fa999279e219ee3be71"]"""
         ];
-        JsonRpcErrorResponse? response = TestRequest(ethRpcModule, "eth_getTransactionReceipt", parameters) as JsonRpcErrorResponse;
-
-        Assert.That(response?.Error?.Code, Is.EqualTo(ErrorCodes.InvalidParams));
-    }
-
-    [Test]
-    public void Raw_utf8_params_malformed_typed_argument_returns_invalid_params()
-    {
-        IEthRpcModule ethRpcModule = Substitute.For<IEthRpcModule>();
-        JsonRpcErrorResponse? response = TestRawRequest(ethRpcModule, "eth_getBlockByNumber", """[{"blockNumber":{}},false]""") as JsonRpcErrorResponse;
-
-        Assert.That(response?.Error?.Code, Is.EqualTo(ErrorCodes.InvalidParams));
-        Assert.That(response?.Error?.Message, Is.EqualTo("Invalid params"));
-        Assert.That(response?.Error?.Data, Is.Null);
-        ethRpcModule.DidNotReceive().eth_getBlockByNumber(Arg.Any<BlockParameter>(), Arg.Any<bool>());
+        AssertJsonRpcError(TestRequest(ethRpcModule, "eth_getTransactionReceipt", parameters), ErrorCodes.InvalidParams);
     }
 
     [TestCase("eth_getBlockByNumber", new object?[] { }, "missing value for required argument 0", TestName = "FirstArgOmitted")]
@@ -441,40 +443,28 @@ public class JsonRpcServiceTests
     public void MissingRequiredArgument_ReturnsGethStyleError(string method, object?[] parameters, string expectedMessage)
     {
         IEthRpcModule ethRpcModule = Substitute.For<IEthRpcModule>();
-        JsonRpcErrorResponse? response = TestRequest(ethRpcModule, method, parameters) as JsonRpcErrorResponse;
-        Assert.That(response?.Error?.Code, Is.EqualTo(ErrorCodes.InvalidParams));
-        Assert.That(response?.Error?.Message, Is.EqualTo(expectedMessage));
-        Assert.That(response?.Error?.Data, Is.Null);
+        AssertInvalidParamsWithoutData(TestRequest(ethRpcModule, method, parameters), expectedMessage);
     }
 
-    [Test]
-    public void Raw_utf8_params_missing_required_argument_returns_geth_style_error_before_deserialization()
+    [TestCaseSource(nameof(InvalidRawUtf8ParamCases))]
+    public void Raw_utf8_params_invalid_arguments_return_invalid_params_before_invocation(string method, string rawParameters, string expectedMessage)
     {
         IEthRpcModule ethRpcModule = Substitute.For<IEthRpcModule>();
-        JsonRpcErrorResponse? response = TestRawRequest(ethRpcModule, "eth_feeHistory", """[{},"latest"]""") as JsonRpcErrorResponse;
+        AssertInvalidParamsWithoutData(TestRawRequest(ethRpcModule, method, rawParameters), expectedMessage);
 
-        Assert.That(response?.Error?.Code, Is.EqualTo(ErrorCodes.InvalidParams));
-        Assert.That(response?.Error?.Message, Is.EqualTo("missing value for required argument 2"));
-        Assert.That(response?.Error?.Data, Is.Null);
+        if (method == nameof(IEthRpcModule.eth_getBlockByNumber))
+        {
+            ethRpcModule.DidNotReceive().eth_getBlockByNumber(Arg.Any<BlockParameter>(), Arg.Any<bool>());
+        }
+        else
+        {
+            ethRpcModule.DidNotReceive().eth_feeHistory(Arg.Any<int>(), Arg.Any<BlockParameter>(), Arg.Any<double[]>());
+        }
     }
 
     [Test]
-    public void Raw_utf8_params_reject_extra_argument_before_invocation()
-    {
-        IEthRpcModule ethRpcModule = Substitute.For<IEthRpcModule>();
-        JsonRpcErrorResponse? response = TestRawRequest(ethRpcModule, "eth_getBlockByNumber", """["0x1",false,"extra"]""") as JsonRpcErrorResponse;
-
-        Assert.That(response?.Error?.Code, Is.EqualTo(ErrorCodes.InvalidParams));
-        Assert.That(response?.Error?.Message, Is.EqualTo("Invalid params"));
-        ethRpcModule.DidNotReceive().eth_getBlockByNumber(Arg.Any<BlockParameter>(), Arg.Any<bool>());
-    }
-
-    [Test]
-    public void IncorrectMethodNameTest()
-    {
-        JsonRpcErrorResponse? response = TestRequest(Substitute.For<IEthRpcModule>(), "incorrect_method") as JsonRpcErrorResponse;
-        Assert.That(response?.Error?.Code, Is.EqualTo(ErrorCodes.MethodNotFound));
-    }
+    public void IncorrectMethodNameTest() =>
+        AssertJsonRpcError(TestRequest(Substitute.For<IEthRpcModule>(), "incorrect_method"), ErrorCodes.MethodNotFound);
 
     [Test]
     public void NetVersionTest()
@@ -604,11 +594,9 @@ public class JsonRpcServiceTests
         ethRpcModule.eth_getLogs(Arg.Any<Filter>())
             .Throws(new MissingTrieNodeException("Node missing", null, TreePath.Empty, TestItem.KeccakA));
 
-        JsonRpcErrorResponse? response = TestRequest(ethRpcModule, "eth_getLogs", "{}") as JsonRpcErrorResponse;
+        JsonRpcErrorResponse response = AssertJsonRpcError(TestRequest(ethRpcModule, "eth_getLogs", "{}"), ErrorCodes.ResourceNotFound, "Node missing");
 
-        Assert.That(response?.Error?.Code, Is.EqualTo(ErrorCodes.ResourceNotFound));
-        Assert.That(response?.Error?.Message, Is.EqualTo("Node missing"));
-        response?.Dispose();
+        response.Dispose();
     }
 
     [RpcModule(ModuleType.Eth)]
