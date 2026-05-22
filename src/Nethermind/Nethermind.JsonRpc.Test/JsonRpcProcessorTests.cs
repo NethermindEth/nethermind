@@ -981,7 +981,7 @@ public class JsonRpcProcessorTests(bool returnErrors)
 
         public ValueTask WriteBatchItemAsync(JsonRpcResponse response, RpcReport report, CancellationToken cancellationToken)
         {
-            _currentBatch!.AddBatchItem(response, report);
+            _currentBatch!.AddBatchItem(response);
             _batchItemCount++;
             BytesWritten++;
             StopRequested = _batchItemCount >= StopAfterBatchItems;
@@ -1027,31 +1027,25 @@ public class JsonRpcProcessorTests(bool returnErrors)
 
     private sealed class CollectedJsonRpcResult : IDisposable
     {
-        private CollectedJsonRpcResult(JsonRpcResponse? response, RpcReport? report, List<JsonRpcResponse>? batchItems, List<RpcReport>? batchReports)
+        private CollectedJsonRpcResult(JsonRpcResponse? response, RpcReport? report, List<JsonRpcResponse>? batchItems)
         {
             Response = response;
             Report = report;
             BatchItems = batchItems;
-            BatchReports = batchReports;
         }
 
         public JsonRpcResponse? Response { get; }
         public RpcReport? Report { get; }
         public List<JsonRpcResponse>? BatchItems { get; }
-        public List<RpcReport>? BatchReports { get; }
         public bool IsCollection => BatchItems is not null;
 
         public static CollectedJsonRpcResult Single(JsonRpcResponse response, RpcReport report) =>
-            new(response, report, null, null);
+            new(response, report, null);
 
         public static CollectedJsonRpcResult Batch() =>
-            new(null, null, [], []);
+            new(null, null, []);
 
-        public void AddBatchItem(JsonRpcResponse response, RpcReport report)
-        {
-            BatchItems!.Add(response);
-            BatchReports!.Add(report);
-        }
+        public void AddBatchItem(JsonRpcResponse response) => BatchItems!.Add(response);
 
         public void Dispose()
         {
