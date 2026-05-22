@@ -428,10 +428,7 @@ public class StartupTests
                 Body = new MemoryStream(requestBytes)
             }
         };
-        if (setContentLength)
-        {
-            ctx.Request.ContentLength = requestBytes.Length;
-        }
+        if (setContentLength) ctx.Request.ContentLength = requestBytes.Length;
 
         ctx.Request.Headers.Authorization = "Bearer test";
         MemoryStream responseBody = new();
@@ -483,10 +480,7 @@ public class StartupTests
 
     private static void AssertArrayResult(JsonElement root, long? expectedId = null)
     {
-        if (expectedId is not null)
-        {
-            Assert.That(root.GetProperty("id").GetInt64(), Is.EqualTo(expectedId.Value));
-        }
+        if (expectedId is not null) Assert.That(root.GetProperty("id").GetInt64(), Is.EqualTo(expectedId.Value));
 
         Assert.That(root.GetProperty("result").ValueKind, Is.EqualTo(JsonValueKind.Array));
     }
@@ -527,19 +521,9 @@ public class StartupTests
 
     private static string CreateBlobsBatchRequest(int count)
     {
-        StringBuilder request = new("[");
-        for (int i = 1; i <= count; i++)
-        {
-            if (i != 1)
-            {
-                request.Append(',');
-            }
-
-            request.Append(CreateJsonRpcRequest(idJson: i.ToString()));
-        }
-
-        request.Append(']');
-        return request.ToString();
+        string[] requests = new string[count];
+        for (int i = 0; i < count; i++) requests[i] = CreateJsonRpcRequest(idJson: (i + 1).ToString());
+        return "[" + string.Join(",", requests) + "]";
     }
 
     private static DefaultHttpContext CreateFastLaneContext(
@@ -617,15 +601,13 @@ public class StartupTests
 
     private sealed class TestJsonRpcUrlCollection : Dictionary<int, JsonRpcUrl>, IJsonRpcUrlCollection
     {
-        private readonly string[] _urls;
-
         public TestJsonRpcUrlCollection(JsonRpcUrl url)
             : base(capacity: 1)
         {
             Add(url.Port, url);
-            _urls = [url.ToString()];
+            Urls = [url.ToString()];
         }
 
-        public string[] Urls => _urls;
+        public string[] Urls { get; }
     }
 }
