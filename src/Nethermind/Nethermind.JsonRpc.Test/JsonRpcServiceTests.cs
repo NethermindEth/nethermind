@@ -58,12 +58,6 @@ public class JsonRpcServiceTests
     private static PolymorphicDerivedPayload CreatePolymorphicPayload() =>
         new() { BaseValue = "base", DerivedValue = "derived" };
 
-    private static void AssertPolymorphicPayload(JsonElement payload)
-    {
-        Assert.That(payload.GetProperty("baseValue").GetString(), Is.EqualTo("base"));
-        Assert.That(payload.GetProperty("derivedValue").GetString(), Is.EqualTo("derived"));
-    }
-
     private static ResultWrapper<T> AssertWrapperResponse<T>(JsonRpcResponse response)
     {
         Assert.That(response, Is.InstanceOf<ResultWrapper<T>>());
@@ -226,7 +220,9 @@ public class JsonRpcServiceTests
         string serialized = RpcTest.SerializeResponse(response);
 
         using JsonDocument document = JsonDocument.Parse(serialized);
-        AssertPolymorphicPayload(getPayload(document.RootElement));
+        JsonElement payload = getPayload(document.RootElement);
+        Assert.That(payload.GetProperty("baseValue").GetString(), Is.EqualTo("base"));
+        Assert.That(payload.GetProperty("derivedValue").GetString(), Is.EqualTo("derived"));
     }
 
     [Test]
