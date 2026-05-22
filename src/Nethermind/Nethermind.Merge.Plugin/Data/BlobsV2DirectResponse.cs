@@ -52,11 +52,8 @@ public sealed class BlobsV2DirectResponse : IStreamableResult, IReadOnlyList<Blo
         }
     }
 
-    private BlobAndProofV2? BuildBlobAndProofV2(int i)
-    {
-        byte[]? blob = _blobs[i];
-        return blob is null ? null : new BlobAndProofV2(blob, _proofs[i].ToArray());
-    }
+    private BlobAndProofV2? BuildBlobAndProofV2(int i) =>
+        _blobs[i] is { } blob ? new BlobAndProofV2(blob, _proofs[i].ToArray()) : null;
 
     IEnumerator IEnumerable.GetEnumerator() => ((IEnumerable<BlobAndProofV2?>)this).GetEnumerator();
 

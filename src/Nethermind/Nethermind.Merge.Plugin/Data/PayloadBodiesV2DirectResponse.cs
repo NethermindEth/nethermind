@@ -86,10 +86,7 @@ public sealed class PayloadBodiesV2DirectResponse : IStreamableResult, IReadOnly
     {
         for (int i = 0; i < items.Length; i++)
         {
-            if (items[i] is { } item)
-            {
-                item.Dispose();
-            }
+            if (items[i] is { } item) item.Dispose();
         }
     }
 
