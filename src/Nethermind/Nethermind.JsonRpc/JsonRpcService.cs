@@ -724,25 +724,7 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
             throw new JsonException("Invalid JSON-RPC parameter bytes.");
     }
 
-    private static object? DeserializeTypedParameter(JsonElement providedParameter, ExpectedParameter expectedParameter)
-    {
-        Type paramType = expectedParameter.ParameterType;
-        JsonTypeInfo? typeInfo = expectedParameter.TypeInfo;
-        if (providedParameter.ValueKind == JsonValueKind.String)
-        {
-            return expectedParameter.ReparseString
-                ? JsonSerializer.Deserialize(providedParameter.GetString(), paramType, EthereumJsonSerializer.JsonOptions)
-                : typeInfo is not null
-                    ? providedParameter.Deserialize(typeInfo)
-                    : providedParameter.Deserialize(paramType, EthereumJsonSerializer.JsonOptions);
-        }
-
-        return typeInfo is not null
-            ? providedParameter.Deserialize(typeInfo)
-            : providedParameter.Deserialize(paramType, EthereumJsonSerializer.JsonOptions);
-    }
-
-    private static object? DeserializeTypedParameter(JsonElement providedParameter, ExpectedParameter expectedParameter, ReadOnlyMemory<byte> providedParameterUtf8)
+    private static object? DeserializeTypedParameter(JsonElement providedParameter, ExpectedParameter expectedParameter, ReadOnlyMemory<byte> providedParameterUtf8 = default)
     {
         Type paramType = expectedParameter.ParameterType;
         if (providedParameter.ValueKind == JsonValueKind.String && expectedParameter.ReparseString)
@@ -751,6 +733,13 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
         }
 
         JsonTypeInfo? typeInfo = expectedParameter.TypeInfo;
+        if (providedParameterUtf8.IsEmpty)
+        {
+            return typeInfo is not null
+                ? providedParameter.Deserialize(typeInfo)
+                : providedParameter.Deserialize(paramType, EthereumJsonSerializer.JsonOptions);
+        }
+
         return typeInfo is not null
             ? JsonSerializer.Deserialize(providedParameterUtf8.Span, typeInfo)
             : JsonSerializer.Deserialize(providedParameterUtf8.Span, paramType, EthereumJsonSerializer.JsonOptions);
