@@ -44,12 +44,10 @@ public sealed class Validator
     public bool VerifyAccumulator(long blockNumber, ValueHash256 accumulatorRoot)
     {
         if (!TrustedAccumulatorsProvided()) return true;
-
-        long epochIdx = blockNumber / SlotsPerHistoricalRoot;
-        if (_trustedAccumulators!.Count <= epochIdx)
-            throw new EraVerificationException("Trusted accumulator root was not provided.");
-
-        return _trustedAccumulators[(int)epochIdx].Equals(accumulatorRoot);
+        ValueHash256? trusted = GetAccumulatorForEpoch(blockNumber / SlotsPerHistoricalRoot);
+        return trusted is null
+            ? throw new EraVerificationException("Trusted accumulator root was not provided.")
+            : trusted.Equals(accumulatorRoot);
     }
 
     public async Task VerifyBlocksRootContext(BlocksRootContext context, CancellationToken cancellation = default)
@@ -82,6 +80,11 @@ public sealed class Validator
     }
 
     private bool TrustedAccumulatorsProvided() => _trustedAccumulators is { Count: > 0 };
+
+    private ValueHash256? GetAccumulatorForEpoch(long epochIdx) =>
+        _trustedAccumulators is not null && _trustedAccumulators.Count > epochIdx
+            ? _trustedAccumulators[(int)epochIdx]
+            : null;
 
     private ValueHash256? GetHistoricalRoot(long slotNumber)
     {
