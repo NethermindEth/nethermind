@@ -37,7 +37,6 @@ public class FlatWorldStateManager(
 
     private readonly FlatTrieVerifier _trieVerifier = new(flatDbManager, persistence, logManager);
 
-    // OldestStateBlock co-located with state in the flat metadata column.
     private readonly StateBoundaryStore _boundaryStore = new(flatDb.GetColumnDb(FlatDbColumns.Metadata));
 
     private FlatSnapServer? _snapServer;
@@ -51,8 +50,6 @@ public class FlatWorldStateManager(
         logManager);
     public IReadOnlyKeyValueStore? HashServer => null;
 
-    // No memory-pruning rolling window. State retention is driven by snapshot persistence and
-    // is reported through OldestStateBlock instead.
     public long? RetentionWindowBlocks => null;
 
     public long? OldestStateBlock

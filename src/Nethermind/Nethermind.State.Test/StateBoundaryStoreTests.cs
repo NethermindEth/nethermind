@@ -11,12 +11,8 @@ namespace Nethermind.Store.Test;
 public class StateBoundaryStoreTests
 {
     [Test]
-    public void Reads_null_when_key_absent()
-    {
-        TestMemDb kv = new();
-        StateBoundaryStore store = new(kv);
-        store.OldestStateBlock.Should().BeNull();
-    }
+    public void Reads_null_when_key_absent() =>
+        new StateBoundaryStore(new TestMemDb()).OldestStateBlock.Should().BeNull();
 
     [Test]
     public void Round_trips_value_through_kv_store()
@@ -24,6 +20,20 @@ public class StateBoundaryStoreTests
         TestMemDb kv = new();
         new StateBoundaryStore(kv).OldestStateBlock = 1234;
         new StateBoundaryStore(kv).OldestStateBlock.Should().Be(1234);
+    }
+
+    [TestCase(100L, 200L, 200L, TestName = "Forward write advances the floor")]
+    [TestCase(200L, 100L, 200L, TestName = "Backward write is rejected")]
+    [TestCase(100L, 100L, 100L, TestName = "Equal write is a no-op")]
+    public void Set_against_existing_value(long initial, long attempted, long expected)
+    {
+        TestMemDb kv = new();
+        StateBoundaryStore store = new(kv) { OldestStateBlock = initial };
+
+        store.OldestStateBlock = attempted;
+
+        store.OldestStateBlock.Should().Be(expected);
+        new StateBoundaryStore(kv).OldestStateBlock.Should().Be(expected);
     }
 
     [Test]
@@ -35,31 +45,7 @@ public class StateBoundaryStoreTests
 
         store.OldestStateBlock = 42;
 
-        kv.Count.Should().Be(0, "setting the same value should not re-encode and write");
-    }
-
-    [Test]
-    public void Allows_monotonic_increase()
-    {
-        TestMemDb kv = new();
-        StateBoundaryStore store = new(kv) { OldestStateBlock = 100 };
-
-        store.OldestStateBlock = 200;
-
-        store.OldestStateBlock.Should().Be(200);
-        new StateBoundaryStore(kv).OldestStateBlock.Should().Be(200);
-    }
-
-    [Test]
-    public void Rejects_backward_write()
-    {
-        TestMemDb kv = new();
-        StateBoundaryStore store = new(kv) { OldestStateBlock = 200 };
-
-        store.OldestStateBlock = 100;
-
-        store.OldestStateBlock.Should().Be(200);
-        new StateBoundaryStore(kv).OldestStateBlock.Should().Be(200);
+        kv.Count.Should().Be(0);
     }
 
     [Test]

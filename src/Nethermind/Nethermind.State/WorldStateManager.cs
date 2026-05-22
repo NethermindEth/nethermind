@@ -38,7 +38,6 @@ public class WorldStateManager : IWorldStateManager
         _trieStore = trieStore;
         _readOnlyTrieStore = trieStore.AsReadOnly();
         _logManager = logManager;
-        // OldestStateBlock is co-located with state nodes — wiping the state DB drops it too.
         _boundaryStore = new StateBoundaryStore(dbProvider.StateDb);
 
         IReadOnlyDbProvider readOnlyDbProvider = dbProvider.AsReadOnly(false);

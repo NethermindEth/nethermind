@@ -10,17 +10,12 @@ namespace Nethermind.JsonRpc.Modules.Eth;
 /// <summary>
 /// Response for eth_capabilities — describes the head block and the historical data availability of each resource type.
 /// Follows ethereum/execution-apis#755.
-/// <para>
-/// Tx and Logs alias Receipts: tx-by-hash lookup goes through IReceiptStorage, and the log index
-/// (when enabled) is built from receipts so its coverage equals receipt coverage. If a node enables
-/// LogIndex only from a later block, the index won't serve logs below that block; eth_getLogs falls
-/// back to the receipt scanner, so the receipts floor remains the correct lower bound for routing.
-/// </para>
-/// <para>
-/// <c>JsonPropertyOrder</c> matches the spec's example-payload key order for visual parity in the
-/// generated docs — JSON object key order is not part of the wire contract.
-/// </para>
 /// </summary>
+/// <remarks>
+/// Tx and Logs alias Receipts because both lookups flow through receipt storage, so their coverage
+/// equals receipt coverage. <c>JsonPropertyOrder</c> mirrors the spec's example key order for doc
+/// parity — JSON object key order is not part of the wire contract.
+/// </remarks>
 /// <param name="Head">The current chain head.</param>
 /// <param name="State">Historical account and storage state availability.</param>
 /// <param name="Receipts">Receipt lookup availability (also exposed as <see cref="Tx"/> and <see cref="Logs"/>).</param>
@@ -58,7 +53,7 @@ public readonly record struct ResourceAvailability(
 
 /// <summary>Rolling-window deletion strategy for a resource.</summary>
 /// <param name="Type">Strategy type — currently always <c>"window"</c>; the spec uses <c>oneOf</c> to leave room for future strategies.</param>
-/// <param name="RetentionBlocks">Number of recent blocks retained. Per spec this is a JSON integer (not a hex quantity), so the default Ethereum hex converter is overridden.</param>
+/// <param name="RetentionBlocks">Number of recent blocks retained. Per spec this is a JSON integer (not a hex quantity).</param>
 public readonly record struct DeleteStrategy(
     string Type,
     [property: JsonConverter(typeof(LongRawJsonConverter))] long RetentionBlocks);
