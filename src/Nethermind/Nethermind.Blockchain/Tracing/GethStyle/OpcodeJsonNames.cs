@@ -9,9 +9,9 @@ namespace Nethermind.Blockchain.Tracing.GethStyle;
 
 internal static class OpcodeJsonNames
 {
-    private static readonly JsonEncodedText[] s_names = BuildLookup();
+    private static readonly JsonEncodedText[] _names = BuildLookup();
 
-    public static JsonEncodedText Get(Instruction opcode) => s_names[(byte)opcode];
+    public static JsonEncodedText Get(Instruction opcode) => _names[(byte)opcode];
 
     private static JsonEncodedText[] BuildLookup()
     {
