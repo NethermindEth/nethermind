@@ -514,12 +514,7 @@ public class ByteArrayConverter : JsonConverter<byte[]>
     public override void WriteAsPropertyName(Utf8JsonWriter writer, byte[] value, JsonSerializerOptions options) => Convert(writer, value, static (w, h) => w.WritePropertyName(h), skipLeadingZeros: false, addQuotations: false, addHexPrefix: true);
 }
 
-/// <summary>
-/// A strict variant of <see cref="ByteArrayConverter"/> that enforces canonical hex encoding:
-/// the <c>0x</c> prefix is required and the hex string must have an even number of digits.
-/// Matches Geth, Reth, and Erigon behaviour — returns -32602 for malformed input.
-/// Use on RPC transaction fields (input, data) to reject malformed calldata before it reaches the EVM.
-/// </summary>
+/// <summary>Strict byte-array converter for RPC transaction fields that require a <c>0x</c> prefix and even hex digit count.</summary>
 public class StrictHexByteArrayConverter : JsonConverter<byte[]>
 {
     public override byte[]? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)

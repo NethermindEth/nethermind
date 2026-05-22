@@ -60,14 +60,13 @@ public sealed class ByteArrayArrayConverter : JsonConverter<byte[][]>
         writer.WriteStartArray();
         for (int i = 0; i < value.Length; i++)
         {
-            byte[]? item = value[i];
-            if (item is null)
+            if (value[i] is byte[] item)
             {
-                writer.WriteNullValue();
+                ByteArrayConverter.Convert(writer, item, skipLeadingZeros: false);
             }
             else
             {
-                ByteArrayConverter.Convert(writer, item, skipLeadingZeros: false);
+                writer.WriteNullValue();
             }
         }
 
