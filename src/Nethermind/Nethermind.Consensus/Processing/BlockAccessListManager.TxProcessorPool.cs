@@ -179,12 +179,7 @@ public partial class BlockAccessListManager
             TxProcessorWithWorldState? processor = _inUse[idx];
             if (processor is null) return;
 
-            BlockAccessListAtIndex? previousStashed = _perTxBal[idx];
             _perTxBal[idx] = processor.WorldState.GetGeneratingBlockAccessList();
-            if (previousStashed is not null)
-            {
-                StaticPool<BlockAccessListAtIndex>.Return(previousStashed);
-            }
             processor.WorldState.SetGeneratingBlockAccessList(null);
             processor.ClearParentReader();
             _inUse[idx] = null;
