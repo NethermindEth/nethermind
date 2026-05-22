@@ -4,7 +4,6 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
-using System.Diagnostics.Contracts;
 using System.Globalization;
 using System.Linq;
 using System.Text;
@@ -175,7 +174,6 @@ public class JsonRpcLocalStats : IJsonRpcLocalStats
 
     private sealed record ReportWorkItem(JsonRpcLocalStats Owner, ConcurrentDictionary<string, MethodStats> Stats);
 
-    [Pure]
     private static string PrepareReportLine(in string key, MethodStats methodStats) =>
         $"{key,-40}| " +
         $"{methodStats.Successes,9} | " +
