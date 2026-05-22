@@ -48,7 +48,7 @@ internal static class JsonRpcGenerator
             }
         }
 
-        Dictionary<string, IEnumerable<MethodInfo>> methodMap = new();
+        Dictionary<string, IEnumerable<MethodInfo>> methodMap = [];
 
         foreach (Type type in types)
         {

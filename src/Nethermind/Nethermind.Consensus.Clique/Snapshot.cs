@@ -21,12 +21,12 @@ namespace Nethermind.Consensus.Clique
             Number = number;
             Hash = hash;
             Signers = new SortedList<Address, long>(signers, GenericComparer.GetOptimized<Address>());
-            Votes = new List<Vote>();
+            Votes = [];
             Tally = tally;
         }
 
         internal Snapshot(long number, Hash256 hash, SortedList<Address, long> signers)
-            : this(number, hash, signers, new Dictionary<Address, Tally>())
+            : this(number, hash, signers, [])
         {
         }
 

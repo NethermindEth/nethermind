@@ -32,7 +32,7 @@ public class InvalidChainTracker(
     private readonly LruCache<ValueHash256, Node> _tree = new(1024, nameof(InvalidChainTracker));
 
     // CompositeDisposable only available on System.Reactive. So this will do for now.
-    private readonly List<Action> _disposables = new();
+    private readonly List<Action> _disposables = [];
 
     public void SetupBlockchainProcessorInterceptor(IBlockchainProcessor blockchainProcessor)
     {
@@ -76,7 +76,7 @@ public class InvalidChainTracker(
     {
         Queue<Node> bfsQue = new();
         bfsQue.Enqueue(node);
-        HashSet<Node> visited = new() { node };
+        HashSet<Node> visited = [node];
 
         while (bfsQue.Count > 0)
         {
@@ -166,7 +166,7 @@ public class InvalidChainTracker(
 
     class Node
     {
-        public HashSet<Hash256> Children { get; } = new();
+        public HashSet<Hash256> Children { get; } = [];
         public Hash256? LastValidHash { get; set; }
     }
 

@@ -235,7 +235,7 @@ public class BlockTreeTests
         blockTree.SuggestBlock(block1);
         blockTree.SuggestBlock(block2);
 
-        List<bool> blockAddedDbObservations = new();
+        List<bool> blockAddedDbObservations = [];
         bool newHeadDbObserved = false;
         bool onUpdateDbObserved = false;
 
@@ -1437,7 +1437,7 @@ public class BlockTreeTests
         tree.SuggestBlock(genesis);
         Block parent = genesis;
 
-        List<Block> blocks = new() { genesis };
+        List<Block> blocks = [genesis];
 
         for (long i = 1; i < 100; i++)
         {

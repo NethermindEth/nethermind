@@ -31,7 +31,7 @@ internal sealed class MethodResolver(Assembly assembly)
 
     public MethodInfo? ResolveMethod(string? typeName, string methodName, string? typeParams, string? classTypeParams = null)
     {
-        List<(Type Type, MethodInfo Method)> candidates = new();
+        List<(Type Type, MethodInfo Method)> candidates = [];
 
         if (typeName is not null)
         {
@@ -383,7 +383,7 @@ internal sealed class MethodResolver(Assembly assembly)
             return [];
         }
 
-        List<MethodInfo> results = new();
+        List<MethodInfo> results = [];
         foreach (Type type in assembly.GetTypes())
         {
             results.AddRange(FindMethods(type, methodName));

@@ -8,7 +8,7 @@ namespace Nethermind.Merkleization;
 
 public class MemMerkleTreeStore : IKeyValueStore<ulong>
 {
-    private readonly Dictionary<ulong, byte[]?> _dictionary = new();
+    private readonly Dictionary<ulong, byte[]?> _dictionary = [];
 
     public byte[]? this[ulong key]
     {

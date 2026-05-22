@@ -91,9 +91,32 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages
         public ReceiptsMessage Deserialize(ref Rlp.ValueDecoderContext ctx)
         {
             ArrayPoolList<TxReceipt[]> data = ctx.DecodeArrayPoolList(_decodeArrayFunc, defaultElement: [], limit: ReceiptsRlpLimit);
-            ReceiptsMessage message = new(data);
+            try
+            {
+                ValidateReceiptPayload(data);
+            }
+            catch
+            {
+                data.Dispose();
+                throw;
+            }
 
-            return message;
+            return new ReceiptsMessage(data);
+        }
+
+        private static void ValidateReceiptPayload(ArrayPoolList<TxReceipt[]> data)
+        {
+            for (int blockIndex = 0; blockIndex < data.Count; blockIndex++)
+            {
+                TxReceipt[] blockReceipts = data[blockIndex];
+                for (int receiptIndex = 0; receiptIndex < blockReceipts.Length; receiptIndex++)
+                {
+                    if (blockReceipts[receiptIndex] is null)
+                    {
+                        throw new RlpException("Unexpected null receipt payload");
+                    }
+                }
+            }
         }
 
         public int GetLength(ReceiptsMessage message, out int contentLength)

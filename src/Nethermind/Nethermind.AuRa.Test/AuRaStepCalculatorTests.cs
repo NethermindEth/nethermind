@@ -65,7 +65,7 @@ namespace Nethermind.AuRa.Test
         {
             get
             {
-                IList<(long SecondsOffset, long StepDuration)> secondsDurations = new List<(long SecondsOffset, long StepDuration)>() { (0, 5), (7, 7), (25, 10) };
+                IList<(long SecondsOffset, long StepDuration)> secondsDurations = [(0, 5), (7, 7), (25, 10)];
                 yield return new TestCaseData(secondsDurations, 0, BaseOffset / 5, 5) { TestName = "0 seconds" };
                 yield return new TestCaseData(secondsDurations, 3, BaseOffset / 5, 2) { TestName = "3 seconds" };
                 yield return new TestCaseData(secondsDurations, 10, BaseOffset / 5 + 2, 7) { TestName = "10 seconds" };
