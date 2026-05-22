@@ -58,8 +58,12 @@ public sealed class RpcJsonTypeInfoGenerator : IIncrementalGenerator
             .AppendLine("    [ModuleInitializer]")
             .AppendLine("    internal static void Register()")
             .AppendLine("    {")
-            .AppendLine("        RpcGeneratedTypeInfoRegistry.Register(RpcTypes, TryGet);")
-            .AppendLine("        RegisterGenericProviders();")
+            .AppendLine("        RpcGeneratedTypeInfoRegistry.Register(RpcTypes, TryGet);");
+        for (int i = 0; i < sortedTypes.Length; i++)
+        {
+            builder.AppendLine($"        RegisterGeneric<{sortedTypes[i]}>();");
+        }
+        builder
             .AppendLine("    }")
             .AppendLine()
             .AppendLine("    private static readonly Type[] RpcTypes =")
@@ -73,15 +77,6 @@ public sealed class RpcJsonTypeInfoGenerator : IIncrementalGenerator
             .AppendLine()
             .AppendLine("    private static JsonTypeInfo? TryGet(Type type) =>")
             .AppendLine("        EthereumJsonSerializer.JsonOptions.TryGetTypeInfo(type, out JsonTypeInfo? typeInfo) ? typeInfo : null;")
-            .AppendLine()
-            .AppendLine("    private static void RegisterGenericProviders()")
-            .AppendLine("    {");
-        for (int i = 0; i < sortedTypes.Length; i++)
-        {
-            builder.AppendLine($"        RegisterGeneric<{sortedTypes[i]}>();");
-        }
-        builder
-            .AppendLine("    }")
             .AppendLine()
             .AppendLine("    private static void RegisterGeneric<T>() =>")
             .AppendLine("        RpcGeneratedTypeInfoRegistry.Register(static () =>")
