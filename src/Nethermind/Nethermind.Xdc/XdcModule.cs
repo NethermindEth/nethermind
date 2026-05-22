@@ -102,7 +102,6 @@ public class XdcModule : Module
             .AddSingleton<IEpochSwitchManager, EpochSwitchManager>()
             .AddSingleton<IXdcConsensusContext, XdcConsensusContext>()
             .AddDatabase(XdcRocksDbConfigFactory.XdcSnapshotDbName)
-            .AddSingleton<ISignTransactionManager, SignTransactionManager>()
             .AddSingleton<IPenaltyHandler, PenaltyHandler>()
             .AddSingleton<ITimeoutTimer, TimeoutTimer>()
             .AddSingleton<ISyncInfoManager, SyncInfoManager>()
@@ -134,6 +133,7 @@ public class XdcModule : Module
             .AddScoped<IProducedBlockSuggester, XdcBlockSuggester>();
 
         builder.RegisterType<SnapshotManager>().As<ISnapshotManager>().WithAttributeFiltering().SingleInstance();
+        builder.RegisterType<SignTransactionManager>().As<ISignTransactionManager>().As<IStartable>().SingleInstance();
 
         // Overrides DiscoveryApp and NodeLifecycleManagerFactory registered in DiscoveryModule (via NethermindModule).
         // Safe: plugins are always loaded after NethermindModule in NethermindRunnerModule, so last-registration-wins is guaranteed.
