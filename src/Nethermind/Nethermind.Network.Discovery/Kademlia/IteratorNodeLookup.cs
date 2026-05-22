@@ -169,12 +169,7 @@ public class IteratorNodeLookup<TKey, TNode>(
                 return true;
             }
 
-            if (round >= MaxRounds)
-            {
-                return true;
-            }
-
-            return false;
+            return round >= MaxRounds;
         }
     }
 
@@ -182,13 +177,10 @@ public class IteratorNodeLookup<TKey, TNode>(
     {
         try
         {
-            if (_unreachableNodes.TryGet(keyOperator.GetNodeHash(node), out DateTimeOffset lastAttempt) &&
-                lastAttempt + TimeSpan.FromMinutes(5) > timestamper.UtcNowOffset)
-            {
-                return [];
-            }
-
-            return await msgSender.FindNeighbours(node, target, token);
+            return _unreachableNodes.TryGet(keyOperator.GetNodeHash(node), out DateTimeOffset lastAttempt) &&
+                   lastAttempt + TimeSpan.FromMinutes(5) > timestamper.UtcNowOffset
+                ? []
+                : await msgSender.FindNeighbours(node, target, token);
         }
         catch (OperationCanceledException)
         {

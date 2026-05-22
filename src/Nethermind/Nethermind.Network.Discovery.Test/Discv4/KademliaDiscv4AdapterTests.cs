@@ -154,21 +154,7 @@ namespace Nethermind.Network.Discovery.Test.Discv4
         [CancelAfter(10000)]
         public async Task Ping_should_send_ping_and_receive_pong(CancellationToken token)
         {
-            _msgSender
-                .When(x => x.SendMsg(Arg.Any<PingMsg>()))
-                .Do(ci =>
-                {
-                    PingMsg sent = (PingMsg)ci[0]!;
-                    IByteBuffer buffer = _receiverSerializationManager.ZeroSerialize(sent);
-                    PingMsg msg = _receiverSerializationManager.Deserialize<PingMsg>(buffer);
-
-                    PongMsg pong = new(
-                        msg.FarPublicKey!,
-                        _timestamper.UnixTime.SecondsLong + 1,
-                        sent.Mdc!);
-                    pong.FarAddress = _receiver.Address;
-                    Task.Run(() => _adapter.OnIncomingMsg(pong));
-                });
+            ConfigureBondCallback();
 
             await _adapter.Ping(_receiver, token);
 
@@ -208,18 +194,16 @@ namespace Nethermind.Network.Discovery.Test.Discv4
         [CancelAfter(10000)]
         public async Task SendEnrRequest_should_ping_then_enr_request_and_return_response(CancellationToken token)
         {
-            EnrResponseMsg expectedResponse = new(
-                _receiver.Address,
-                _selfNodeRecord,
-                new(new byte[32]));
-
             ConfigureBondCallback();
 
+            byte[] requestHash = TestItem.KeccakA.BytesToArray();
             _msgSender
                 .When(x => x.SendMsg(Arg.Any<EnrRequestMsg>()))
                 .Do(ci =>
                 {
-                    EnrResponseMsg response = AddReceiverFarAddress(expectedResponse);
+                    EnrRequestMsg sent = (EnrRequestMsg)ci[0]!;
+                    sent.Hash = requestHash;
+                    EnrResponseMsg response = AddReceiverFarAddress(new EnrResponseMsg(_receiver.Address, _selfNodeRecord, new Hash256(requestHash)));
                     Task.Run(() => _adapter.OnIncomingMsg(response));
                 });
 
@@ -227,6 +211,29 @@ namespace Nethermind.Network.Discovery.Test.Discv4
 
             await _msgSender.Received(1).SendMsg(Arg.Is<EnrRequestMsg>(m => m.FarAddress!.Equals(_receiver.Address)));
             Assert.That(result.NodeRecord.GetHex(), Is.EqualTo(_selfNodeRecord.GetHex()));
+        }
+
+        [Test]
+        [CancelAfter(10000)]
+        public void SendEnrRequest_should_reject_unsolicited_response_with_wrong_keccak(CancellationToken token)
+        {
+            ConfigureBondCallback();
+
+            _msgSender
+                .When(x => x.SendMsg(Arg.Any<EnrRequestMsg>()))
+                .Do(ci =>
+                {
+                    EnrRequestMsg sent = (EnrRequestMsg)ci[0]!;
+                    sent.Hash = TestItem.KeccakA.BytesToArray();
+                    EnrResponseMsg response = AddReceiverFarAddress(new EnrResponseMsg(_receiver.Address, _selfNodeRecord, TestItem.KeccakB));
+                    Task.Run(() => _adapter.OnIncomingMsg(response));
+                });
+
+            using CancellationTokenSource shortTimeout = CancellationTokenSource.CreateLinkedTokenSource(token);
+            shortTimeout.CancelAfter(500);
+
+            Assert.ThrowsAsync(Is.InstanceOf<OperationCanceledException>(),
+                async () => await _adapter.SendEnrRequest(_receiver, shortTimeout.Token));
         }
 
         [Test]

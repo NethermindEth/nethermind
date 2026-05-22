@@ -29,54 +29,25 @@ public record NodeSession(INodeStats NodeStats, ITimestamper Timestamper)
     public void OnPongReceived() => Volatile.Write(ref _lastPongReceivedTicks, Timestamper.UtcNow.Ticks);
     public void OnPingReceived() => Volatile.Write(ref _lastPingReceivedTicks, Timestamper.UtcNow.Ticks);
 
-    public void RecordStatsForOutgoingMsg(DiscoveryMsg msg)
-    {
-        switch (msg.MsgType)
-        {
-            case MsgType.Ping:
-                NodeStats.AddNodeStatsEvent(NodeStatsEventType.DiscoveryPingOut);
-                break;
-            case MsgType.FindNode:
-                NodeStats.AddNodeStatsEvent(NodeStatsEventType.DiscoveryFindNodeOut);
-                break;
-            case MsgType.EnrRequest:
-                NodeStats.AddNodeStatsEvent(NodeStatsEventType.DiscoveryEnrRequestOut);
-                break;
-            case MsgType.Neighbors:
-                NodeStats.AddNodeStatsEvent(NodeStatsEventType.DiscoveryNeighboursOut);
-                break;
-            case MsgType.Pong:
-                NodeStats.AddNodeStatsEvent(NodeStatsEventType.DiscoveryPongOut);
-                break;
-            case MsgType.EnrResponse:
-                NodeStats.AddNodeStatsEvent(NodeStatsEventType.DiscoveryEnrResponseOut);
-                break;
-        }
-    }
+    public void RecordStatsForOutgoingMsg(DiscoveryMsg msg) => RecordStatsForMsg(msg, outgoing: true);
+    public void RecordStatsForIncomingMsg(DiscoveryMsg msg) => RecordStatsForMsg(msg, outgoing: false);
 
-    public void RecordStatsForIncomingMsg(DiscoveryMsg msg)
+    private void RecordStatsForMsg(DiscoveryMsg msg, bool outgoing)
     {
-        switch (msg.MsgType)
+        // The Discovery* members in NodeStatsEventType are laid out as ...Out, ...In pairs,
+        // so the incoming counterpart is always one position after the outgoing one.
+        NodeStatsEventType eventType = msg.MsgType switch
         {
-            case MsgType.Ping:
-                NodeStats.AddNodeStatsEvent(NodeStatsEventType.DiscoveryPingIn);
-                break;
-            case MsgType.FindNode:
-                NodeStats.AddNodeStatsEvent(NodeStatsEventType.DiscoveryFindNodeIn);
-                break;
-            case MsgType.EnrRequest:
-                NodeStats.AddNodeStatsEvent(NodeStatsEventType.DiscoveryEnrRequestIn);
-                break;
-            case MsgType.Neighbors:
-                NodeStats.AddNodeStatsEvent(NodeStatsEventType.DiscoveryNeighboursIn);
-                break;
-            case MsgType.Pong:
-                NodeStats.AddNodeStatsEvent(NodeStatsEventType.DiscoveryPongIn);
-                break;
-            case MsgType.EnrResponse:
-                NodeStats.AddNodeStatsEvent(NodeStatsEventType.DiscoveryEnrResponseIn);
-                break;
-        }
+            MsgType.Ping => NodeStatsEventType.DiscoveryPingOut,
+            MsgType.FindNode => NodeStatsEventType.DiscoveryFindNodeOut,
+            MsgType.EnrRequest => NodeStatsEventType.DiscoveryEnrRequestOut,
+            MsgType.Neighbors => NodeStatsEventType.DiscoveryNeighboursOut,
+            MsgType.Pong => NodeStatsEventType.DiscoveryPongOut,
+            MsgType.EnrResponse => NodeStatsEventType.DiscoveryEnrResponseOut,
+            _ => NodeStatsEventType.None,
+        };
+        if (eventType == NodeStatsEventType.None) return;
+        NodeStats.AddNodeStatsEvent(outgoing ? eventType : eventType + 1);
     }
 
     public void OnPingSent() => Volatile.Write(ref _lastPingSentTicks, Timestamper.UtcNow.Ticks);

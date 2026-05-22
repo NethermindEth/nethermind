@@ -44,8 +44,6 @@ public class KademliaDiscv4Adapter(
     private readonly ConcurrentDictionary<(ValueHash256, MsgType), IMessageHandler[]> _incomingMessageHandlers = new();
     private readonly LruCache<ValueHash256, NodeSession> _sessions = new(discoveryConfig.MaxNodeLifecycleManagersCount, "node_sessions");
 
-    #region Authentication and utils
-
     public NodeSession GetSession(Node node) => _sessions.SetOrGet(
         node.IdHash.ValueHash256,
         (node, nodeStatsManager, timestamper),
@@ -168,8 +166,6 @@ public class KademliaDiscv4Adapter(
 
     private long CalculateExpirationTime() => (long)(_expirationTime.TotalSeconds + timestamper.UnixTime.SecondsLong);
 
-    #endregion
-
     public async Task Ping(Node receiver, CancellationToken token)
     {
         using AutoCancelTokenSource cts = token.CreateChildTokenSource(_pingTimeout);
@@ -178,7 +174,7 @@ public class KademliaDiscv4Adapter(
 
         PingMsg msg = new(receiver.Address, CalculateExpirationTime(), kademliaConfig.CurrentNodeId.Address)
         {
-            EnrSequence = nodeRecordProvider.Current.EnrSequence // optional and does not seems to be used anywhere.
+            EnrSequence = nodeRecordProvider.Current.EnrSequence // optional and does not seem to be used anywhere.
         };
         session.OnPingSent();
         _ = await CallAndWaitForResponse(MsgType.Pong, new PongMsgHandler(msg), receiver, session, msg, token);
@@ -209,7 +205,7 @@ public class KademliaDiscv4Adapter(
 
             EnrRequestMsg msg = new(receiver.Address, CalculateExpirationTime());
 
-            return await CallAndWaitForResponse(MsgType.EnrResponse, new EnrResponseHandler(), receiver, session, msg, token);
+            return await CallAndWaitForResponse(MsgType.EnrResponse, new EnrResponseHandler(msg), receiver, session, msg, token);
         }, token);
     }
 

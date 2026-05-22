@@ -17,7 +17,6 @@ using NUnit.Framework;
 
 namespace Nethermind.Network.Discovery.Test.Kademlia;
 
-[TestFixture(3, 0)]
 [TestFixture(1, 0)]
 [TestFixture(1, 4)]
 [TestFixture(3, 0)]

@@ -14,7 +14,7 @@ namespace Nethermind.Network.Discovery.Discv4;
 
 public class KademliaNodeSource(
     IKademlia<PublicKey, Node> kademlia,
-    IIteratorNodeLookup<PublicKey, Node> lookup2,
+    IIteratorNodeLookup<PublicKey, Node> lookup,
     IKademliaDiscv4Adapter discv4Adapter,
     IDiscoveryConfig discoveryConfig,
     ILogManager logManager)
@@ -36,7 +36,7 @@ public class KademliaNodeSource(
             bool anyFound = false;
             int count = 0;
 
-            await foreach (Node node in lookup2.Lookup(target, token))
+            await foreach (Node node in lookup.Lookup(target, token))
             {
                 if (!discv4Adapter.GetSession(node).HasReceivedPong)
                 {
@@ -117,8 +117,9 @@ public class KademliaNodeSource(
         }
         finally
         {
-            await discoverTask;
             kademlia.OnNodeAdded -= Handler;
+            ch.Writer.TryComplete();
+            await discoverTask;
         }
 
         yield break;
