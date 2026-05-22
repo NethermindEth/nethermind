@@ -16,7 +16,6 @@ using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing.State;
 using Nethermind.Int256;
 using Nethermind.State;
-using Nethermind.State.Proofs;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
 
