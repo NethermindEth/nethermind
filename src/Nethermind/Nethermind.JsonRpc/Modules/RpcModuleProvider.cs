@@ -28,14 +28,19 @@ namespace Nethermind.JsonRpc.Modules
         private readonly HashSet<string> _modules = new(StringComparer.OrdinalIgnoreCase);
         private readonly HashSet<string> _enabledModules = new(StringComparer.OrdinalIgnoreCase);
 
+        private static readonly string[] HotMethodNames =
+        [
+            "engine_newPayloadV4",
+            "engine_getBlobsV2",
+            "engine_forkchoiceUpdatedV3",
+            "eth_call",
+            "eth_getBlockByNumber",
+            "eth_chainId"
+        ];
+
         private Dictionary<string, ResolvedMethodInfo> _methods = [];
         private FrozenDictionary<string, ResolvedMethodInfo>? _frozenMethods = null;
-        private ResolvedMethodInfo? _engineNewPayloadV4Method;
-        private ResolvedMethodInfo? _engineGetBlobsV2Method;
-        private ResolvedMethodInfo? _engineForkchoiceUpdatedV3Method;
-        private ResolvedMethodInfo? _ethCallMethod;
-        private ResolvedMethodInfo? _ethGetBlockByNumberMethod;
-        private ResolvedMethodInfo? _ethChainIdMethod;
+        private readonly ResolvedMethodInfo?[] _hotMethods = new ResolvedMethodInfo?[HotMethodNames.Length];
 
         private readonly IRpcMethodFilter _filter = NullRpcMethodFilter.Instance;
 
@@ -141,12 +146,11 @@ namespace Nethermind.JsonRpc.Modules
             }
 
             FrozenDictionary<string, ResolvedMethodInfo> frozenMethods = _methods.ToFrozenDictionary(StringComparer.Ordinal);
-            _engineNewPayloadV4Method = Resolve(frozenMethods, "engine_newPayloadV4");
-            _engineGetBlobsV2Method = Resolve(frozenMethods, "engine_getBlobsV2");
-            _engineForkchoiceUpdatedV3Method = Resolve(frozenMethods, "engine_forkchoiceUpdatedV3");
-            _ethCallMethod = Resolve(frozenMethods, "eth_call");
-            _ethGetBlockByNumberMethod = Resolve(frozenMethods, "eth_getBlockByNumber");
-            _ethChainIdMethod = Resolve(frozenMethods, "eth_chainId");
+            for (int i = 0; i < HotMethodNames.Length; i++)
+            {
+                _hotMethods[i] = Resolve(frozenMethods, HotMethodNames[i]);
+            }
+
             _frozenMethods = frozenMethods;
 
             static ResolvedMethodInfo? Resolve(FrozenDictionary<string, ResolvedMethodInfo> methods, string methodName) =>
@@ -156,12 +160,7 @@ namespace Nethermind.JsonRpc.Modules
         private void ClearMethodCache()
         {
             _frozenMethods = null;
-            _engineNewPayloadV4Method = null;
-            _engineGetBlobsV2Method = null;
-            _engineForkchoiceUpdatedV3Method = null;
-            _ethCallMethod = null;
-            _ethGetBlockByNumberMethod = null;
-            _ethChainIdMethod = null;
+            Array.Clear(_hotMethods);
         }
 
         private bool TryGetResolvedMethod(string methodName, [NotNullWhen(true)] out ResolvedMethodInfo? method)
@@ -184,12 +183,14 @@ namespace Nethermind.JsonRpc.Modules
 
         private ResolvedMethodInfo? TryGetInternedHotMethod(string methodName)
         {
-            if (ReferenceEquals(methodName, "engine_newPayloadV4")) return _engineNewPayloadV4Method;
-            if (ReferenceEquals(methodName, "engine_getBlobsV2")) return _engineGetBlobsV2Method;
-            if (ReferenceEquals(methodName, "engine_forkchoiceUpdatedV3")) return _engineForkchoiceUpdatedV3Method;
-            if (ReferenceEquals(methodName, "eth_call")) return _ethCallMethod;
-            if (ReferenceEquals(methodName, "eth_getBlockByNumber")) return _ethGetBlockByNumberMethod;
-            if (ReferenceEquals(methodName, "eth_chainId")) return _ethChainIdMethod;
+            for (int i = 0; i < HotMethodNames.Length; i++)
+            {
+                if (ReferenceEquals(methodName, HotMethodNames[i]))
+                {
+                    return _hotMethods[i];
+                }
+            }
+
             return null;
         }
 
