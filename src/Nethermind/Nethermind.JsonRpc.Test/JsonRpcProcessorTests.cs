@@ -839,21 +839,19 @@ public class JsonRpcProcessorTests(bool returnErrors)
 
         using CollectedJsonRpcResponses result = await ProcessAsync(processor, request, new JsonRpcContext(RpcEndpoint.Http));
 
-        CollectedJsonRpcResult response = AssertOnlyResult(result);
+        CollectedJsonRpcResult response = AssertSingleResponse(result, expectParseError);
 
         if (expectParseError)
         {
-            response.Response.Should().BeSameAs(_errorResponse);
             requestCaptured.Should().BeFalse("a depth-rejected request must never reach the service");
+            return;
         }
-        else
-        {
-            response.Response.Should().BeOfType<JsonRpcSuccessResponse>();
-            response.Response!.Id.Should().Be(1);
-            requestCaptured.Should().BeTrue();
-            capturedMethod.Should().Be("eth_getTransactionCount");
-            observedDepth.Should().Be(paramNestingDepth);
-        }
+
+        response.Response.Should().BeOfType<JsonRpcSuccessResponse>();
+        response.Response!.Id.Should().Be(1);
+        requestCaptured.Should().BeTrue();
+        capturedMethod.Should().Be("eth_getTransactionCount");
+        observedDepth.Should().Be(paramNestingDepth);
     }
 
     private static string BuildNestedArrayParams(int depth)
