@@ -15,6 +15,7 @@ using Nethermind.JsonRpc.Modules.Trace;
 using Nethermind.Serialization.Json;
 
 using NUnit.Framework;
+using Newtonsoft.Json.Linq;
 
 namespace Nethermind.JsonRpc.Test
 {
@@ -141,7 +142,14 @@ namespace Nethermind.JsonRpc.Test
 
             if (compareJson)
             {
-                AssertJsonEquivalentWithoutError(await source1.GetJsonData(), await source2.GetJsonData());
+                string dataJson = await source1.GetJsonData();
+                string expectationJson = await source2.GetJsonData();
+                JsonNode data = JsonHelper.ParseNormalize(dataJson);
+                JsonNode expectation = JsonHelper.ParseNormalize(expectationJson);
+                Assert.That(JToken.Parse(data.ToJsonString()), Is.EqualTo(JToken.Parse(expectation.ToJsonString())).Using(JToken.EqualityComparer));
+
+                JsonNode? error = data["error"];
+                Assert.That(error, Is.Null, error?.ToString());
             }
             else
             {
@@ -150,7 +158,9 @@ namespace Nethermind.JsonRpc.Test
                 {
                     (_, dataJson) = await source1.GetData();
                     (_, expectationJson) = await source2.GetData();
-                    AssertNormalizedJsonEquivalent(dataJson, expectationJson);
+                    JsonNode data = JsonHelper.ParseNormalize(dataJson);
+                    JsonNode expectation = JsonHelper.ParseNormalize(expectationJson);
+                    Assert.That(JToken.Parse(data.ToJsonString()), Is.EqualTo(JToken.Parse(expectation.ToJsonString())).Using(JToken.EqualityComparer));
                 }
                 finally
                 {
@@ -166,7 +176,14 @@ namespace Nethermind.JsonRpc.Test
 
             if (compareJson)
             {
-                AssertJsonEquivalentWithoutError(await source1.GetJsonData(), await source2.GetJsonData());
+                string dataJson = await source1.GetJsonData();
+                string expectationJson = await source2.GetJsonData();
+                JsonNode data = JsonHelper.ParseNormalize(dataJson);
+                JsonNode expectation = JsonHelper.ParseNormalize(expectationJson);
+                Assert.That(JToken.Parse(data.ToJsonString()), Is.EqualTo(JToken.Parse(expectation.ToJsonString())).Using(JToken.EqualityComparer));
+
+                JsonNode? error = data["error"];
+                Assert.That(error, Is.Null, error?.ToString());
             }
             else
             {
@@ -175,7 +192,9 @@ namespace Nethermind.JsonRpc.Test
                 {
                     (_, dataJson) = await source1.GetData();
                     (_, expectationJson) = await source2.GetData();
-                    AssertNormalizedJsonEquivalent(dataJson, expectationJson);
+                    JsonNode data = JsonHelper.ParseNormalize(dataJson);
+                    JsonNode expectation = JsonHelper.ParseNormalize(expectationJson);
+                    Assert.That(JToken.Parse(data.ToJsonString()), Is.EqualTo(JToken.Parse(expectation.ToJsonString())).Using(JToken.EqualityComparer));
                 }
                 finally
                 {
@@ -183,22 +202,6 @@ namespace Nethermind.JsonRpc.Test
                 }
 
             }
-        }
-
-        private static void AssertJsonEquivalentWithoutError(string dataJson, string expectationJson)
-        {
-            AssertNormalizedJsonEquivalent(dataJson, expectationJson);
-
-            JsonNode data = JsonHelper.ParseNormalize(dataJson);
-            JsonNode? error = data["error"];
-            Assert.That(error, Is.Null, error?.ToString());
-        }
-
-        private static void AssertNormalizedJsonEquivalent(string dataJson, string expectationJson)
-        {
-            JsonNode data = JsonHelper.ParseNormalize(dataJson);
-            JsonNode expectation = JsonHelper.ParseNormalize(expectationJson);
-            JsonTestAssertions.AssertEquivalent(data.ToJsonString(), expectation.ToJsonString());
         }
 
         private static async Task WriteOutJson(string dataJson, string expectationJson)

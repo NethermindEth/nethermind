@@ -13,7 +13,9 @@ using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Blockchain.Tracing.ParityStyle;
 using Nethermind.Logging;
+using Nethermind.Serialization.Json;
 using NUnit.Framework;
+using Newtonsoft.Json.Linq;
 
 namespace Nethermind.JsonRpc.TraceStore.Tests;
 
@@ -61,8 +63,9 @@ public class DbPersistingBlockTracerTests
             }
         );
 
-        TraceStoreAssertions.AssertJsonEquivalent(traces, new ParityLikeTxTrace[]
-        {
+        EthereumJsonSerializer serializer = new();
+        ParityLikeTxTrace[] expected =
+        [
             new()
             {
                 BlockHash = hash,
@@ -99,7 +102,9 @@ public class DbPersistingBlockTracerTests
                     ]
                 }
             }
-        });
+        ];
+
+        Assert.That(JToken.Parse(serializer.Serialize(traces)), Is.EqualTo(JToken.Parse(serializer.Serialize(expected))).Using(JToken.EqualityComparer));
     }
 
     [TestCase(510)]

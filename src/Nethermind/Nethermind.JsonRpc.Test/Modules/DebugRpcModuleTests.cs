@@ -14,6 +14,7 @@ using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Modules.DebugModule;
 using NUnit.Framework;
+using Newtonsoft.Json.Linq;
 
 namespace Nethermind.JsonRpc.Test.Modules;
 
@@ -238,8 +239,8 @@ public partial class DebugRpcModuleTests
 
         using (Assert.EnterMultipleScope())
         {
-            JsonTestAssertions.AssertEquivalent(resultOverrideBefore, resultOverrideAfter);
-            JsonTestAssertions.AssertNotEquivalent(resultNoOverride, resultOverrideAfter);
+            Assert.That(JToken.Parse(resultOverrideBefore), Is.EqualTo(JToken.Parse(resultOverrideAfter)).Using(JToken.EqualityComparer));
+            Assert.That(JToken.Parse(resultNoOverride), Is.Not.EqualTo(JToken.Parse(resultOverrideAfter)).Using(JToken.EqualityComparer));
         }
     }
 }

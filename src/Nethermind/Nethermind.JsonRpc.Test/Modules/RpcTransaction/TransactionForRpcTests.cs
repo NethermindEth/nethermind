@@ -6,10 +6,10 @@ using System.Text.Json;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
-using Nethermind.Core.Test.Json;
 using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Int256;
 using Nethermind.Serialization.Json;
+using Newtonsoft.Json.Linq;
 using NUnit.Framework;
 
 namespace Nethermind.JsonRpc.Test.Modules.RpcTransaction;
@@ -46,12 +46,10 @@ public class TransactionForRpcTests
 
         EthereumJsonSerializer serializer = new();
         string serialized = serializer.Serialize(txForRpc);
+        JToken json = JToken.Parse(serialized);
 
-        string expectedS = """{ "s": "0x20000000000000000000000000000000000000000000000000000000000"}""";
-        string expectedR = """{ "r": "0x1000000000000000000000000000000000000000000000000000000000000"}""";
-
-        Assert.That(serialized, JsonSubtree.Containing(expectedS));
-        Assert.That(serialized, JsonSubtree.Containing(expectedR));
+        Assert.That(json.Value<string>("s"), Is.EqualTo("0x20000000000000000000000000000000000000000000000000000000000"));
+        Assert.That(json.Value<string>("r"), Is.EqualTo("0x1000000000000000000000000000000000000000000000000000000000000"));
     }
 
     [TestCaseSource(nameof(Transactions))]

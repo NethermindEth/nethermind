@@ -30,6 +30,7 @@ using Nethermind.Serialization.Rlp;
 using NSubstitute;
 using NSubstitute.ReturnsExtensions;
 using NUnit.Framework;
+using Newtonsoft.Json.Linq;
 
 namespace Nethermind.JsonRpc.Test.Modules;
 
@@ -379,9 +380,7 @@ public class DebugModuleTests
 
         Assert.That(debugTraceCall.Result, Is.EqualTo(expected.Result));
         Assert.That(debugTraceCall.ErrorCode, Is.EqualTo(expected.ErrorCode));
-        JsonTestAssertions.AssertEquivalent(
-            JsonSerializer.Serialize(debugTraceCall.Data),
-            JsonSerializer.Serialize(expected.Data));
+        Assert.That(JToken.Parse(JsonSerializer.Serialize(debugTraceCall.Data)), Is.EqualTo(JToken.Parse(JsonSerializer.Serialize(expected.Data))).Using(JToken.EqualityComparer));
     }
 
     [Test]

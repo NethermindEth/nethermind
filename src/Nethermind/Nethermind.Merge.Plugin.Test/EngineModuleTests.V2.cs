@@ -24,6 +24,7 @@ using Nethermind.State;
 using NSubstitute;
 using NSubstitute.Core;
 using NUnit.Framework;
+using Newtonsoft.Json.Linq;
 
 namespace Nethermind.Merge.Plugin.Test;
 
@@ -326,7 +327,7 @@ public partial class EngineModuleTests
             new(Array.Empty<Transaction>(), withdrawals), null, new(txs, withdrawals)
         };
 
-        MergeTestAssertions.AssertJsonEquivalent(payloadBodies, expected);
+        Assert.That(JToken.Parse(chain.JsonSerializer.Serialize(payloadBodies)), Is.EqualTo(JToken.Parse(chain.JsonSerializer.Serialize(expected))).Using(JToken.EqualityComparer));
     }
 
     [TestCaseSource(nameof(GetPayloadWithdrawalsTestCases))]
@@ -352,7 +353,7 @@ public partial class EngineModuleTests
             rpc.engine_getPayloadBodiesByRangeV1(1, 3).Result.Data;
         ExecutionPayloadBodyV1Result?[] expected = { new(txs, withdrawals) };
 
-        MergeTestAssertions.AssertJsonEquivalent(payloadBodies, expected);
+        Assert.That(JToken.Parse(chain.JsonSerializer.Serialize(payloadBodies)), Is.EqualTo(JToken.Parse(chain.JsonSerializer.Serialize(expected))).Using(JToken.EqualityComparer));
     }
 
     [Test]
@@ -442,7 +443,7 @@ public partial class EngineModuleTests
                 new(Array.Empty<Transaction>(), withdrawals), new(txsA, withdrawals)
             ];
 
-            MergeTestAssertions.AssertJsonEquivalent(payloadBodies, expected);
+            Assert.That(JToken.Parse(chain.JsonSerializer.Serialize(payloadBodies)), Is.EqualTo(JToken.Parse(chain.JsonSerializer.Serialize(expected))).Using(JToken.EqualityComparer));
         }
 
         // Second branch
@@ -471,7 +472,7 @@ public partial class EngineModuleTests
                 new(Array.Empty<Transaction>(), withdrawals), new(Array.Empty<Transaction>(), withdrawals)
             ];
 
-            MergeTestAssertions.AssertJsonEquivalent(payloadBodies, expected);
+            Assert.That(JToken.Parse(chain.JsonSerializer.Serialize(payloadBodies)), Is.EqualTo(JToken.Parse(chain.JsonSerializer.Serialize(expected))).Using(JToken.EqualityComparer));
         }
     }
 
@@ -497,7 +498,7 @@ public partial class EngineModuleTests
         IReadOnlyList<ExecutionPayloadBodyV1Result?> payloadBodies =
             rpc.engine_getPayloadBodiesByRangeV1(1, 5).Result.Data;
 
-        MergeTestAssertions.AssertJsonEquivalent(payloadBodies, input.Outcome);
+        Assert.That(JToken.Parse(chain.JsonSerializer.Serialize(payloadBodies)), Is.EqualTo(JToken.Parse(chain.JsonSerializer.Serialize(input.Outcome))).Using(JToken.EqualityComparer));
     }
 
     [Test]

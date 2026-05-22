@@ -32,9 +32,9 @@ using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
 using Nethermind.JsonRpc.Data;
 using Nethermind.Serialization.Rlp;
-using Newtonsoft.Json.Linq;
 using Nethermind.State;
 using Nethermind.State.OverridableEnv;
+using Newtonsoft.Json.Linq;
 
 namespace Nethermind.JsonRpc.Test.Modules;
 
@@ -475,9 +475,8 @@ public class TraceRpcModuleTests
         long[] positions = { 0 };
         ResultWrapper<IEnumerable<ParityTxTraceFromStore>> tracesGet = context.TraceRpcModule.trace_get(transaction2.Hash!, positions);
         Assert.That(traces.Data.ElementAt(0).TransactionHash, Is.EqualTo(transaction2.Hash));
-        JsonTestAssertions.AssertEquivalent(
-            new EthereumJsonSerializer().Serialize(traces.Data.ElementAt(1)),
-            new EthereumJsonSerializer().Serialize(tracesGet.Data.ElementAt(0)));
+        EthereumJsonSerializer serializer = new();
+        Assert.That(JToken.Parse(serializer.Serialize(traces.Data.ElementAt(1))), Is.EqualTo(JToken.Parse(serializer.Serialize(tracesGet.Data.ElementAt(0)))).Using(JToken.EqualityComparer));
     }
 
     [Test]
@@ -998,7 +997,7 @@ public class TraceRpcModuleTests
             context.TraceRpcModule,
             "trace_call", transaction, new[] { traceType }, "latest", stateOverride);
 
-        Assert.That(JToken.Parse(serialized), Is.EqualTo(JToken.Parse(expectedResult)));
+        Assert.That(JToken.Parse(serialized), Is.EqualTo(JToken.Parse(expectedResult)).Using(JToken.EqualityComparer));
     }
 
     [TestCase(
@@ -1032,8 +1031,8 @@ public class TraceRpcModuleTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(JToken.Parse(resultOverrideBefore), Is.EqualTo(JToken.Parse(resultOverrideAfter)));
-            Assert.That(JToken.Parse(resultNoOverride), Is.Not.EqualTo(JToken.Parse(resultOverrideAfter)));
+            Assert.That(JToken.Parse(resultOverrideBefore), Is.EqualTo(JToken.Parse(resultOverrideAfter)).Using(JToken.EqualityComparer));
+            Assert.That(JToken.Parse(resultNoOverride), Is.Not.EqualTo(JToken.Parse(resultOverrideAfter)).Using(JToken.EqualityComparer));
         }
     }
 

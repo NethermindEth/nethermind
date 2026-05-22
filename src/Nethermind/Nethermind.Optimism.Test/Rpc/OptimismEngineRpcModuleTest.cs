@@ -9,9 +9,9 @@ using Nethermind.Merge.Plugin;
 using Nethermind.Optimism.ProtocolVersion;
 using Nethermind.Optimism.Rpc;
 using Nethermind.Serialization.Json;
-using Newtonsoft.Json.Linq;
 using NSubstitute;
 using NUnit.Framework;
+using Newtonsoft.Json.Linq;
 
 namespace Nethermind.Optimism.Test.Rpc;
 
@@ -121,6 +121,6 @@ public class OptimismEngineRpcModuleTest
         OptimismSuperchainSignal signal = new EthereumJsonSerializer().Deserialize<OptimismSuperchainSignal>(testCase.Signal);
         string response = await RpcTest.TestSerializedRequest(rpcModule, "engine_signalSuperchainV1", signal);
 
-        Assert.That(JToken.Parse(response), Is.EqualTo(JToken.Parse($$"""{"jsonrpc":"2.0","result":{{testCase.Expected}},"id":67}""")));
+        Assert.That(JToken.Parse(response), Is.EqualTo(JToken.Parse($$"""{"jsonrpc":"2.0","result":{{testCase.Expected}},"id":67}""")).Using(JToken.EqualityComparer));
     }
 }

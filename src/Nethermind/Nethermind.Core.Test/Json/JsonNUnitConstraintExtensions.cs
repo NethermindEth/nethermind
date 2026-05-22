@@ -5,64 +5,28 @@ using System;
 using System.Diagnostics.CodeAnalysis;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
+using NUnit.Framework;
 using NUnit.Framework.Constraints;
 
 namespace Nethermind.Core.Test.Json;
 
-/// <summary>
-/// NUnit constraints and helpers for asserting that JSON contains a structural subtree.
-/// </summary>
-public static class JsonSubtree
+public static class JsonNUnitConstraintExtensions
 {
-    /// <summary>
-    /// Builds a constraint that succeeds when the actual JSON contains <paramref name="expectedJson"/>.
-    /// </summary>
-    public static Constraint Containing(string expectedJson)
+    extension(Does)
     {
-        ArgumentNullException.ThrowIfNull(expectedJson);
+        public static Constraint ContainSubtree(string expectedJson)
+        {
+            ArgumentNullException.ThrowIfNull(expectedJson);
 
-        return new JsonSubtreeConstraint(JToken.Parse(expectedJson));
-    }
+            return new JsonSubtreeConstraint(JToken.Parse(expectedJson));
+        }
 
-    /// <summary>
-    /// Builds a constraint that succeeds when the actual JSON contains <paramref name="expected"/>.
-    /// </summary>
-    public static Constraint Containing(JToken expected)
-    {
-        ArgumentNullException.ThrowIfNull(expected);
+        public static Constraint ContainSubtree(JToken expected)
+        {
+            ArgumentNullException.ThrowIfNull(expected);
 
-        return new JsonSubtreeConstraint(expected);
-    }
-
-    /// <summary>
-    /// Extends NUnit constraint expressions with a JSON subtree constraint.
-    /// </summary>
-    public static Constraint ContainSubtree(this ConstraintExpression expression, string expectedJson)
-    {
-        ArgumentNullException.ThrowIfNull(expression);
-
-        return expression.Append(Containing(expectedJson));
-    }
-
-    /// <summary>
-    /// Extends NUnit constraint expressions with a JSON subtree constraint.
-    /// </summary>
-    public static Constraint ContainSubtree(this ConstraintExpression expression, JToken expected)
-    {
-        ArgumentNullException.ThrowIfNull(expression);
-
-        return expression.Append(Containing(expected));
-    }
-
-    /// <summary>
-    /// Returns whether <paramref name="actual"/> contains <paramref name="expected"/> as a structural JSON subtree.
-    /// </summary>
-    public static bool Contains(JToken actual, JToken expected)
-    {
-        ArgumentNullException.ThrowIfNull(actual);
-        ArgumentNullException.ThrowIfNull(expected);
-
-        return ContainsSubtree(actual, expected);
+            return new JsonSubtreeConstraint(expected);
+        }
     }
 
     private static bool ContainsSubtree(JToken actual, JToken expected)
@@ -88,35 +52,40 @@ public static class JsonSubtree
 
         if (actual is JArray actualArray && expected is JArray expectedArray)
         {
-            bool[] matched = new bool[actualArray.Count];
+            bool[] matchedActualItems = new bool[actualArray.Count];
             foreach (JToken expectedItem in expectedArray)
             {
-                bool found = false;
-                for (int i = 0; i < actualArray.Count; i++)
-                {
-                    if (matched[i])
-                    {
-                        continue;
-                    }
-
-                    if (ContainsSubtree(actualArray[i], expectedItem))
-                    {
-                        matched[i] = true;
-                        found = true;
-                        break;
-                    }
-                }
-
-                if (!found)
+                int matchIndex = FindMatchingSubtree(actualArray, matchedActualItems, expectedItem);
+                if (matchIndex == -1)
                 {
                     return false;
                 }
+
+                matchedActualItems[matchIndex] = true;
             }
 
             return true;
         }
 
         return false;
+    }
+
+    private static int FindMatchingSubtree(JArray actualArray, bool[] matchedActualItems, JToken expected)
+    {
+        for (int i = 0; i < actualArray.Count; i++)
+        {
+            if (matchedActualItems[i])
+            {
+                continue;
+            }
+
+            if (ContainsSubtree(actualArray[i], expected))
+            {
+                return i;
+            }
+        }
+
+        return -1;
     }
 
     private sealed class JsonSubtreeConstraint(JToken expected) : Constraint

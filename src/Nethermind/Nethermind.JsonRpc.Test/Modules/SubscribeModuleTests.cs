@@ -34,6 +34,7 @@ using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
 using Nethermind.Network.Rlpx;
+using Newtonsoft.Json.Linq;
 
 namespace Nethermind.JsonRpc.Test.Modules
 {
@@ -863,7 +864,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             Assert.That(jsonRpcResult.Response, Is.Not.Null);
             string serialized = _jsonSerializer.Serialize(jsonRpcResult.Response);
 
-            JsonTestAssertions.AssertEquivalent(serialized, $$$$"""{"jsonrpc":"2.0","method":"eth_subscription","params":{"subscription":"{{{{subscriptionId}}}}","result":{"nonce":"0x0","blockHash":null,"blockNumber":null,"blockTimestamp":null,"transactionIndex":null,"to":"0x0000000000000000000000000000000000000000","value":"0x1","gasPrice":"0x1","gas":"0x5208","input":"0x","type":"0x0","hash":null,"v":"0x0","r":"0x0","s":"0x0","from":null}}}""");
+            Assert.That(JToken.Parse(serialized), Is.EqualTo(JToken.Parse($$$$"""{"jsonrpc":"2.0","method":"eth_subscription","params":{"subscription":"{{{{subscriptionId}}}}","result":{"nonce":"0x0","blockHash":null,"blockNumber":null,"blockTimestamp":null,"transactionIndex":null,"to":"0x0000000000000000000000000000000000000000","value":"0x1","gasPrice":"0x1","gas":"0x5208","input":"0x","type":"0x0","hash":null,"v":"0x0","r":"0x0","s":"0x0","from":null}}}""")).Using(JToken.EqualityComparer));
         }
 
         [TestCase(2)]

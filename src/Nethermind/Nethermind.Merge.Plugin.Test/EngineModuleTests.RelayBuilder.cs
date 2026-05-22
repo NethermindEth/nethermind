@@ -26,6 +26,7 @@ using Nethermind.State;
 using NSubstitute;
 using NUnit.Framework;
 using RichardSzalay.MockHttp;
+using Newtonsoft.Json.Linq;
 
 namespace Nethermind.Merge.Plugin.Test;
 
@@ -84,7 +85,7 @@ public partial class EngineModuleTests
         Assert.That(executionPayloadV1.FeeRecipient, Is.EqualTo(TestItem.AddressA));
         Assert.That(executionPayloadV1.PrevRandao, Is.EqualTo(TestItem.KeccakA));
         Assert.That(executionPayloadV1.GasLimit, Is.EqualTo(10_000_000L));
-        MergeTestAssertions.AssertJsonEquivalent(executionPayloadV1, sentItem!.Block);
+        Assert.That(JToken.Parse(chain.JsonSerializer.Serialize(executionPayloadV1)), Is.EqualTo(JToken.Parse(chain.JsonSerializer.Serialize(sentItem!.Block))).Using(JToken.EqualityComparer));
         Assert.That(sentItem.Profit, Is.EqualTo(UInt256.Zero));
     }
 

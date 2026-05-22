@@ -5,6 +5,7 @@ using Nethermind.Abi;
 using Nethermind.Blockchain.Contracts.Json;
 using Nethermind.Core.Test.Json;
 using Nethermind.Xdc.Contracts;
+using Newtonsoft.Json.Linq;
 using NUnit.Framework;
 using System;
 
@@ -19,6 +20,6 @@ internal class XdcAbiLoadTests
         string json = AbiDefinitionParser.LoadContract(contractType);
         AbiDefinition contract = parser.Parse(json);
         string serialized = AbiDefinitionParser.Serialize(contract);
-        Assert.That(serialized, JsonSubtree.Containing(json));
+        Assert.That(JToken.Parse(serialized), Does.ContainSubtree(json));
     }
 }

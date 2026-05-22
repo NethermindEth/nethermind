@@ -170,7 +170,7 @@ public class OptimismEthRpcModuleTest
                             "id":67
                          }
                          """;
-        JsonTestAssertions.AssertEquivalent(serialized, expected);
+        Assert.That(JToken.Parse(serialized), Is.EqualTo(JToken.Parse(expected)).Using(JToken.EqualityComparer));
     }
 
     [Test]
@@ -244,7 +244,7 @@ public class OptimismEthRpcModuleTest
                             "id":67
                          }
                          """;
-        JsonTestAssertions.AssertEquivalent(serialized, expected);
+        Assert.That(JToken.Parse(serialized), Is.EqualTo(JToken.Parse(expected)).Using(JToken.EqualityComparer));
     }
 
     [Test]
@@ -299,12 +299,12 @@ public class OptimismEthRpcModuleTest
         {
             // By block hash
             string serialized = await rpcBlockchain.TestEthRpc("eth_getTransactionByBlockHashAndIndex", block.Hash, 0);
-            JsonTestAssertions.AssertEquivalent(serialized, expected);
+            Assert.That(JToken.Parse(serialized), Is.EqualTo(JToken.Parse(expected)).Using(JToken.EqualityComparer));
         }
         {
             // By block number
             string serialized = await rpcBlockchain.TestEthRpc("eth_getTransactionByBlockNumberAndIndex", block.Number, 0);
-            JsonTestAssertions.AssertEquivalent(serialized, expected);
+            Assert.That(JToken.Parse(serialized), Is.EqualTo(JToken.Parse(expected)).Using(JToken.EqualityComparer));
         }
     }
 
@@ -360,12 +360,12 @@ public class OptimismEthRpcModuleTest
         {
             // By block hash
             string serialized = await rpcBlockchain.TestEthRpc("eth_getTransactionByBlockHashAndIndex", block.Hash, 0);
-            JsonTestAssertions.AssertEquivalent(serialized, expected);
+            Assert.That(JToken.Parse(serialized), Is.EqualTo(JToken.Parse(expected)).Using(JToken.EqualityComparer));
         }
         {
             // By block number
             string serialized = await rpcBlockchain.TestEthRpc("eth_getTransactionByBlockNumberAndIndex", block.Number, 0);
-            JsonTestAssertions.AssertEquivalent(serialized, expected);
+            Assert.That(JToken.Parse(serialized), Is.EqualTo(JToken.Parse(expected)).Using(JToken.EqualityComparer));
         }
     }
 
@@ -530,7 +530,7 @@ public class OptimismEthRpcModuleTest
                             "id":67
                          }
                          """;
-        JsonTestAssertions.AssertEquivalent(serialized, expected);
+        Assert.That(JToken.Parse(serialized), Is.EqualTo(JToken.Parse(expected)).Using(JToken.EqualityComparer));
     }
 
     [Test]
@@ -603,7 +603,7 @@ public class OptimismEthRpcModuleTest
                             "id":67
                          }
                          """;
-        JsonTestAssertions.AssertEquivalent(serialized, expected);
+        Assert.That(JToken.Parse(serialized), Is.EqualTo(JToken.Parse(expected)).Using(JToken.EqualityComparer));
     }
 }
 

@@ -39,6 +39,7 @@ using Nethermind.Specs.Forks;
 using Nethermind.State;
 using NSubstitute;
 using NUnit.Framework;
+using Newtonsoft.Json.Linq;
 
 namespace Nethermind.Merge.Plugin.Test;
 
@@ -176,7 +177,7 @@ public partial class EngineModuleTests
         expected.PrevRandao = random;
         expected.ExtraData = Encoding.UTF8.GetBytes("Nethermind");
 
-        MergeTestAssertions.AssertJsonEquivalent(executionPayloadV1, expected);
+        Assert.That(JToken.Parse(chain.JsonSerializer.Serialize(executionPayloadV1)), Is.EqualTo(JToken.Parse(chain.JsonSerializer.Serialize(expected))).Using(JToken.EqualityComparer));
         Hash256 actualHead = chain.BlockTree.HeadHash;
         Assert.That(actualHead, Is.Not.EqualTo(expected.BlockHash));
         Assert.That(actualHead, Is.EqualTo(startingHead));
@@ -875,7 +876,7 @@ public partial class EngineModuleTests
         ExecutionPayload executionPayload = ExecutionPayload.Create(firstPoSBlock);
         ResultWrapper<PayloadStatusV1> resultWrapper = await rpc.engine_newPayloadV1(executionPayload);
         Assert.That(resultWrapper.Data.Status, Is.EqualTo(PayloadStatus.Valid));
-        MergeTestAssertions.AssertJsonEquivalent(ExecutionPayload.Create(chain.BlockTree.BestSuggestedBody!), executionPayload);
+        Assert.That(JToken.Parse(chain.JsonSerializer.Serialize(ExecutionPayload.Create(chain.BlockTree.BestSuggestedBody!))), Is.EqualTo(JToken.Parse(chain.JsonSerializer.Serialize(executionPayload))).Using(JToken.EqualityComparer));
     }
 
     [CancelAfter(30000)]
@@ -923,7 +924,7 @@ public partial class EngineModuleTests
         ExecutionPayload executionPayload = CreateBlockRequest(chain, CreateParentBlockRequestOnHead(chain.BlockTree), TestItem.AddressD);
         ResultWrapper<PayloadStatusV1> resultWrapper = await rpc.engine_newPayloadV1(executionPayload);
         Assert.That(resultWrapper.Data.Status, Is.EqualTo(PayloadStatus.Valid));
-        MergeTestAssertions.AssertJsonEquivalent(ExecutionPayload.Create(chain.BlockTree.BestSuggestedBody!), executionPayload);
+        Assert.That(JToken.Parse(chain.JsonSerializer.Serialize(ExecutionPayload.Create(chain.BlockTree.BestSuggestedBody!))), Is.EqualTo(JToken.Parse(chain.JsonSerializer.Serialize(executionPayload))).Using(JToken.EqualityComparer));
     }
 
     [Test]

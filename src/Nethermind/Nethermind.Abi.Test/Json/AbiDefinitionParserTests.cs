@@ -5,6 +5,7 @@ using System;
 using Nethermind.Blockchain.Contracts.Json;
 using Nethermind.Consensus.AuRa.Contracts;
 using Nethermind.Core.Test.Json;
+using Newtonsoft.Json.Linq;
 using NUnit.Framework;
 
 namespace Nethermind.Abi.Test.Json
@@ -22,7 +23,7 @@ namespace Nethermind.Abi.Test.Json
             string json = AbiDefinitionParser.LoadContract(contractType);
             AbiDefinition contract = parser.Parse(json);
             string serialized = AbiDefinitionParser.Serialize(contract);
-            Assert.That(serialized, JsonSubtree.Containing(json));
+            Assert.That(JToken.Parse(serialized), Does.ContainSubtree(json));
         }
     }
 }
