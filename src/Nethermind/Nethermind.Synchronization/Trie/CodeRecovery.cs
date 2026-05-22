@@ -83,6 +83,6 @@ public class CodeRecovery(ISyncPeerPool peerPool, ILogManager logManager) : ICod
 
         if (_logger.IsTrace) _logger.Trace($"Fetched code {key} from {peer}");
 
-        return result is { Count: 1 } ? result[0].ToArray() : null;
+        return result is { Count: 1 } && ValueKeccak.Compute(result[0]) == hashes[0] ? result[0].ToArray() : null;
     }
 }
