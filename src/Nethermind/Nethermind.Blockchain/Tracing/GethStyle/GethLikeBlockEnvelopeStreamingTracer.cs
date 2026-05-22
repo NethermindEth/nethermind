@@ -96,7 +96,6 @@ public sealed class GethLikeBlockEnvelopeStreamingTracer : BlockTracerBase<GethL
         _currentTxHash = null;
     }
 
-    // Flush after each tx so the client sees per-tx TTFB; Kestrel otherwise buffers indefinitely on slow consumers.
     private void FlushPerTxEnvelope()
     {
         if (_pipeWriter is null) return;
