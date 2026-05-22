@@ -924,30 +924,6 @@ public partial class EthRpcModuleTests
     }
 
     [Test]
-    public async Task Eth_call_blob_tx_rejected_when_maxFeePerBlobGas_0x1000_below_block_blobBaseFee()
-    {
-        // ExcessBlobGas of 30_000_000 produces blobBaseFee ≈ 7984 via fake_exponential, which exceeds
-        // maxFeePerBlobGas 0x1000 (4096). No block override — the rejection must come from the block's
-        // natural blob base fee.
-        ISpecProvider specProvider = new TestSpecProvider(Cancun.Instance);
-        Block[] blocks = [Build.A.Block.WithNumber(0).WithExcessBlobGas(30_000_000ul).TestObject];
-        BlockTree blockTree = Build.A.BlockTree(blocks[0]).WithBlocks(blocks).TestObject;
-        using TestRpcBlockchain test = await TestRpcBlockchain
-            .ForTest(SealEngineType.NethDev)
-            .WithBlockFinder(blockTree)
-            .Build(specProvider);
-
-        object? tx = JsonSerializer.Deserialize<object>(
-            """{"from":"0x742d35Cc6634C0532925a3b844Bc454e4438f44e","to":"0xd3CdA913deB6f4967b2Ef3aa68f5A843aFB83557","type":"0x3","maxFeePerGas":"0x3B9ACA00","maxPriorityFeePerGas":"0x100","maxFeePerBlobGas":"0x1000","blobVersionedHashes":["0x0122000000000000000000000000000000000000000000000000000000000000"]}""");
-        object? stateOverride = JsonSerializer.Deserialize<object>(
-            """{"0x742d35Cc6634C0532925a3b844Bc454e4438f44e":{"balance":"0x56BC75E2D63100000"}}""");
-
-        string serialized = await test.TestEthRpc("eth_call", tx, "latest", stateOverride, null);
-        JToken.Parse(serialized)["error"]!["message"]!.Value<string>()
-            .Should().Contain(BlockErrorMessages.InsufficientMaxFeePerBlobGas);
-    }
-
-    [Test]
     public async Task Eth_call_blob_tx_rejected_when_maxFeePerBlobGas_below_block_blobBaseFee()
     {
         // ExcessBlobGas of 10_000_000 produces blobBaseFee ≈ 20 via fake_exponential(1, 10_000_000, 3338477).
