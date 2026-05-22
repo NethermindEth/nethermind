@@ -15,27 +15,17 @@ namespace Nethermind.Serialization.Json;
 /// <remarks>Reuses <see cref="ByteArrayConverter"/> for each element while avoiding the generic collection converter pipeline for hot engine payload fields.</remarks>
 public sealed class ByteArrayArrayConverter : JsonConverter<byte[][]>
 {
-    private const int InitialCapacity = 4;
-
     /// <inheritdoc/>
     public override byte[][]? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
     {
-        if (reader.TokenType == JsonTokenType.Null)
-        {
-            return null;
-        }
+        if (reader.TokenType == JsonTokenType.Null) return null;
 
-        if (reader.TokenType != JsonTokenType.StartArray)
+        if (reader.TokenType != JsonTokenType.StartArray || !reader.Read())
         {
             ThrowJsonException();
         }
 
-        if (!reader.Read())
-        {
-            ThrowJsonException();
-        }
-
-        using ArrayPoolListRef<byte[]> values = new(reader.TokenType == JsonTokenType.EndArray ? 0 : InitialCapacity);
+        using ArrayPoolListRef<byte[]> values = new(reader.TokenType == JsonTokenType.EndArray ? 0 : 4);
         while (reader.TokenType != JsonTokenType.EndArray)
         {
             values.Add(ByteArrayConverter.Convert(ref reader)!);
@@ -51,11 +41,7 @@ public sealed class ByteArrayArrayConverter : JsonConverter<byte[][]>
     /// <inheritdoc/>
     public override void Write(Utf8JsonWriter writer, byte[][] value, JsonSerializerOptions options)
     {
-        if (value is null)
-        {
-            writer.WriteNullValue();
-            return;
-        }
+        if (value is null) { writer.WriteNullValue(); return; }
 
         writer.WriteStartArray();
         for (int i = 0; i < value.Length; i++)
