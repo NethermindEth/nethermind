@@ -266,17 +266,6 @@ public class StartupTests
         Assert.That(streamableResult.DisposeCount, Is.EqualTo(1));
     }
 
-    [TestCase("ok")]
-    [TestCase("x\"\\\n\u0001")]
-    public async Task HttpJsonRpcResponseSink_SerializesStringResultSafely(string value)
-    {
-        string response = await WriteHttpJsonRpcResponse(new JsonRpcSuccessResponse { Id = JsonRpcId.FromObject(1), Result = value });
-
-        using JsonDocument doc = JsonDocument.Parse(response);
-
-        Assert.That(doc.RootElement.GetProperty("result").GetString(), Is.EqualTo(value));
-    }
-
     [Test]
     public async Task HttpJsonRpcResponseSink_SerializesHexBytesResult()
     {
@@ -291,19 +280,8 @@ public class StartupTests
         Assert.That(response, Is.EqualTo($"{{\"jsonrpc\":\"2.0\",\"result\":\"{expectedValue}\",\"id\":1}}"));
     }
 
-    [TestCase(false)]
-    [TestCase(true)]
-    public async Task HttpJsonRpcResponseSink_SerializesBooleanResultSafely(bool value)
-    {
-        string response = await WriteHttpJsonRpcResponse(new JsonRpcSuccessResponse { Id = JsonRpcId.FromObject(1), Result = value });
-
-        using JsonDocument doc = JsonDocument.Parse(response);
-
-        Assert.That(doc.RootElement.GetProperty("result").GetBoolean(), Is.EqualTo(value));
-    }
-
-    [TestCaseSource(nameof(SimpleNumericResultCases))]
-    public async Task HttpJsonRpcResponseSink_SerializesPrimitiveNumericResultWithRpcShape(object value, string expectedResultJson)
+    [TestCaseSource(nameof(SimpleResultCases))]
+    public async Task HttpJsonRpcResponseSink_SerializesSimpleResultWithRpcShape(object value, string expectedResultJson)
     {
         string response = await WriteHttpJsonRpcResponse(new JsonRpcSuccessResponse { Id = JsonRpcId.FromObject(1), Result = value });
 
@@ -587,8 +565,12 @@ public class StartupTests
         bool isAuthenticated = false) =>
         new("http", "127.0.0.1", 8551, endpoint, isAuthenticated, [ModuleType.Engine]);
 
-    private static IEnumerable<TestCaseData> SimpleNumericResultCases()
+    private static IEnumerable<TestCaseData> SimpleResultCases()
     {
+        yield return new TestCaseData("ok", "\"ok\"").SetName("string");
+        yield return new TestCaseData("x\"\\\n\u0001", JsonSerializer.Serialize("x\"\\\n\u0001", EthereumJsonSerializer.JsonOptions)).SetName("escaped string");
+        yield return new TestCaseData(false, "false").SetName("false");
+        yield return new TestCaseData(true, "true").SetName("true");
         yield return new TestCaseData(1, "1").SetName("int");
         yield return new TestCaseData(1L, "\"0x1\"").SetName("long");
         yield return new TestCaseData(1UL, "\"0x1\"").SetName("ulong");
