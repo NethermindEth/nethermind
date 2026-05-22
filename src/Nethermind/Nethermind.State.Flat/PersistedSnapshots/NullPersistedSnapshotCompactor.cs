@@ -16,4 +16,6 @@ public sealed class NullPersistedSnapshotCompactor : IPersistedSnapshotCompactor
     private NullPersistedSnapshotCompactor() { }
 
     public void DoCompactSnapshot(StateId state) { }
+
+    public void DoCompactPersistable(StateId state) { }
 }

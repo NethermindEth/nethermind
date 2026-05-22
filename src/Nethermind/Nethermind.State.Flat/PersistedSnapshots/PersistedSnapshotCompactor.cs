@@ -15,14 +15,14 @@ using Prometheus;
 namespace Nethermind.State.Flat.PersistedSnapshots;
 
 /// <summary>
-/// Logarithmic compaction for the persisted snapshots. Each instance is parameterised with a
-/// <c>[minCompactSize, maxCompactSize]</c> band. For each block it takes the block's natural
-/// power-of-2 alignment (capped at <c>maxCompactSize</c>) as the compaction window and merges
-/// every persisted snapshot assembled within that window into one compacted snapshot, as long
-/// as at least two are available — the window need not be fully populated. Two instances are
-/// wired over the one repository: the <em>batched</em> one with <c>max = CompactSize</c> (its
-/// <c>CompactSize</c>-wide output is the persistable snapshot), and the <em>boundary</em> one
-/// with <c>min = 2 * CompactSize</c> for the wider hierarchical merges.
+/// Logarithmic compaction for the persisted snapshots, parameterised with a
+/// <c>[minCompactSize, maxCompactSize]</c> band. A single instance is wired over the
+/// repository. <see cref="DoCompactSnapshot"/> compacts a block's natural power-of-2 window —
+/// the sub-<c>CompactSize</c> intermediates and the <c>&gt;CompactSize</c> hierarchical
+/// merges; <see cref="DoCompactPersistable"/> produces the <c>CompactSize</c>-wide
+/// persistable snapshot. Each window merges every persisted snapshot assembled within it into
+/// one compacted snapshot when at least two are available — the window need not be fully
+/// populated.
 /// </summary>
 public class PersistedSnapshotCompactor(
     IPersistedSnapshotRepository persistedSnapshotRepository,
@@ -41,14 +41,12 @@ public class PersistedSnapshotCompactor(
     private readonly double _bloomBitsPerKey = config.PersistedSnapshotBloomBitsPerKey;
     private readonly long _maxCompactedSourceBytes = config.PersistedSnapshotMaxCompactedSourceBytes;
 
-    /// <summary>
-    /// Compact persisted snapshots for the given block. Takes the block's
-    /// natural power-of-2 alignment (capped at <c>maxCompactSize</c>) as the
-    /// compaction window and merges every persisted snapshot assembled within
-    /// that window into a single compacted snapshot, provided at least two are
-    /// available. The window need not be fully populated; does nothing when the
-    /// alignment is below <c>minCompactSize</c>.
-    /// </summary>
+    /// <inheritdoc/>
+    /// <remarks>
+    /// Does nothing when the block's window is below <c>minCompactSize</c>, or exactly
+    /// <c>CompactSize</c> — that window is the persistable's, produced by
+    /// <see cref="DoCompactPersistable"/>.
+    /// </remarks>
     public void DoCompactSnapshot(StateId snapshotTo)
     {
         if (_maxCompactSize < _minCompactSize) return;
@@ -58,13 +56,25 @@ public class PersistedSnapshotCompactor(
 
         int alignment = (int)Math.Min(blockNumber & -blockNumber, _maxCompactSize);
         if (alignment < _minCompactSize) return;
+        // The CompactSize-wide window is the persistable's — see DoCompactPersistable.
+        if (alignment == _compactSize) return;
 
         if (persistedSnapshotRepository.SnapshotCount < 2) return;
 
         long startingBlockNumber = ((blockNumber - 1) / alignment) * alignment;
-        // A CompactSize-wide window produces the persistable snapshot (the RocksDB-bound
-        // bucket); wider windows produce ordinary hierarchical merges.
-        CompactRange(snapshotTo, startingBlockNumber, alignment, isPersistable: alignment == _compactSize);
+        CompactRange(snapshotTo, startingBlockNumber, alignment, isPersistable: false);
+    }
+
+    /// <inheritdoc/>
+    public void DoCompactPersistable(StateId snapshotTo)
+    {
+        long blockNumber = snapshotTo.BlockNumber;
+        if (blockNumber == 0 || blockNumber % _compactSize != 0) return;
+
+        if (persistedSnapshotRepository.SnapshotCount < 2) return;
+
+        // The window is exactly (blockNumber - CompactSize, blockNumber].
+        CompactRange(snapshotTo, blockNumber - _compactSize, _compactSize, isPersistable: true);
     }
 
     private readonly Histogram _persistedSnapshotSize =

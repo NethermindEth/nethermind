@@ -563,6 +563,22 @@ public sealed class PersistedSnapshot : RefCountingDisposable
     }
 
     /// <summary>
+    /// Issue <c>posix_fadvise(DONTNEED)</c> over this base snapshot's contiguous trie-RLP
+    /// region, dropping it from the OS page cache. No-op for compacted / persistable
+    /// snapshots (<see cref="BlobRange.None"/>) or empty regions.
+    /// </summary>
+    /// <remarks>
+    /// The counterpart to <see cref="AdviseWillNeedBlobRange"/>: called once the persistable
+    /// referencing this base has been written to RocksDB, so the prefetched pages are
+    /// released rather than lingering until the base snapshot is pruned.
+    /// </remarks>
+    public void AdviseDontNeedBlobRange()
+    {
+        if (BlobRange.IsEmpty) return;
+        _blobManager.GetFile(BlobRange.BlobArenaId).FadviseDontNeed(BlobRange.Offset, BlobRange.Length);
+    }
+
+    /// <summary>
     /// Drop this snapshot's pages from the arena's <see cref="PageResidencyTracker"/> without
     /// re-issuing <c>madvise(MADV_DONTNEED)</c>. Use after a code path that has already
     /// advised the same range (e.g. a freshly-closed <see cref="WholeReadSession"/>) and

@@ -62,8 +62,8 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
             .AddSingleton<ISnapshotCompactor, SnapshotCompactor>()
             .AddSingleton<IPersistenceManager, PersistenceManager>()
             // The (ArenaManager, BlobArenaManager, PersistedSnapshotRepository,
-            // PersistedSnapshotCompactor x2) set is built in a single factory so the repo and
-            // both compactors share the same ArenaManager instance.
+            // PersistedSnapshotCompactor) set is built in a single factory so the repo and the
+            // compactor share the same ArenaManager instance.
             .AddSingleton<PersistedSnapshotComponents>((ctx) =>
             {
                 IFlatDbConfig cfg = ctx.Resolve<IFlatDbConfig>();
@@ -77,7 +77,7 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
                 {
                     return new PersistedSnapshotComponents(
                         NullPersistedSnapshotRepository.Instance,
-                        new PersistedSnapshotCompactors(NullPersistedSnapshotCompactor.Instance, NullPersistedSnapshotCompactor.Instance));
+                        NullPersistedSnapshotCompactor.Instance);
                 }
 
                 ILogManager logManager = ctx.Resolve<ILogManager>();
@@ -90,24 +90,16 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
                 BlobArenaManager blobs = new(Path.Combine(basePath, "blob"), cfg.ArenaFileSizeBytes, PersistedSnapshotTier.Persisted, punchHoleOnReclaim: cfg.PersistedSnapshotPunchHoleOnReclaim);
                 IDb catalogDb = catalogColumns.GetColumnDb(PersistedSnapshotCatalogColumns.Catalog);
                 PersistedSnapshotRepository repo = new(arena, blobs, catalogDb, cfg, bloomManager);
-                // Batched compactor: covers [MinCompactSize, CompactSize]; its CompactSize-wide
-                // merge is the persistable. Boundary compactor: the >CompactSize merges.
-                PersistedSnapshotCompactor batchedCompactor = new(
+                PersistedSnapshotCompactor compactor = new(
                     repo, arena, cfg, logManager, bloomManager,
                     minCompactSize: cfg.MinCompactSize,
-                    maxCompactSize: cfg.CompactSize);
-                PersistedSnapshotCompactor boundaryCompactor = new(
-                    repo, arena, cfg, logManager, bloomManager,
-                    minCompactSize: cfg.CompactSize * 2,
                     maxCompactSize: cfg.PersistedSnapshotMaxCompactSize);
 
                 repo.LoadFromCatalog();
-                return new PersistedSnapshotComponents(
-                    repo,
-                    new PersistedSnapshotCompactors(batchedCompactor, boundaryCompactor));
+                return new PersistedSnapshotComponents(repo, compactor);
             })
             .AddSingleton<IPersistedSnapshotRepository>((ctx) => ctx.Resolve<PersistedSnapshotComponents>().Repository)
-            .AddSingleton<PersistedSnapshotCompactors>((ctx) => ctx.Resolve<PersistedSnapshotComponents>().Compactors)
+            .AddSingleton<IPersistedSnapshotCompactor>((ctx) => ctx.Resolve<PersistedSnapshotComponents>().Compactor)
             .AddSingleton<ISnapshotRepository, SnapshotRepository>()
             .AddSingleton<ITrieWarmer>(flatDbConfig.TrieWarmerWorkerCount == 0
                 ? _ => new NoopTrieWarmer()

@@ -64,7 +64,7 @@ public class PersistenceManagerTests
             _persistence,
             _snapshotRepository,
             LimboLogs.Instance,
-            new PersistedSnapshotCompactors(_persistedSnapshotCompactor, _persistedSnapshotCompactor),
+            _persistedSnapshotCompactor,
             _persistedSnapshotRepository);
     }
 
@@ -185,7 +185,7 @@ public class PersistenceManagerTests
             _persistence,
             _snapshotRepository,
             LimboLogs.Instance,
-            new PersistedSnapshotCompactors(_persistedSnapshotCompactor, _persistedSnapshotCompactor),
+            _persistedSnapshotCompactor,
             _persistedSnapshotRepository);
 
         StateId persisted = Block0;

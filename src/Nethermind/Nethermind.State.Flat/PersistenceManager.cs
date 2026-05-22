@@ -30,7 +30,7 @@ public class PersistenceManager(
     IPersistence persistence,
     ISnapshotRepository snapshotRepository,
     ILogManager logManager,
-    PersistedSnapshotCompactors persistedSnapshotCompactors,
+    IPersistedSnapshotCompactor persistedSnapshotCompactor,
     IPersistedSnapshotRepository persistedSnapshotRepository) : IPersistenceManager
 {
     private readonly ILogger _logger = logManager.GetClassLogger<PersistenceManager>();
@@ -42,8 +42,7 @@ public class PersistenceManager(
     private readonly IPersistence _persistence = persistence;
     private readonly ISnapshotRepository _snapshotRepository = snapshotRepository;
     private readonly IFinalizedStateProvider _finalizedStateProvider = finalizedStateProvider;
-    private readonly IPersistedSnapshotCompactor _batchedCompactor = persistedSnapshotCompactors.Batched;
-    private readonly IPersistedSnapshotCompactor _boundaryCompactor = persistedSnapshotCompactors.Boundary;
+    private readonly IPersistedSnapshotCompactor _compactor = persistedSnapshotCompactor;
     private readonly IPersistedSnapshotRepository _repo = persistedSnapshotRepository;
     private readonly List<(Hash256, TreePath)> _trieNodesSortBuffer = []; // Presort make it faster
     private readonly Lock _persistenceLock = new();
@@ -113,31 +112,39 @@ public class PersistenceManager(
             long b = s.BlockNumber;
             if (b == 0) continue;
 
-            // Only a boundary whose highest power of two exceeds CompactSize is worth handing
-            // to the boundary compactor (band [2*CompactSize, ...]). One whose highest power of
-            // two is exactly CompactSize can only yield a CompactSize-wide merge — the
-            // persistable, already produced by the batched compactor below — so queueing it
-            // would just be a no-op hop through the boundary channel.
-            if ((b & -b) > _compactSize) boundaries.Add(s);
+            if (b % _compactSize == 0)
+            {
+                // A CompactSize boundary — its persistable is produced below via
+                // DoCompactPersistable, so it is not bucketed for DoCompactSnapshot.
+                boundaries.Add(s);
+                continue;
+            }
 
-            // Bucket every state by its power-of-2 alignment, capped at CompactSize so a
-            // boundary block lands in the last (CompactSize) bucket — the batched compactor's
-            // CompactSize-wide merge for a boundary block IS the persistable snapshot.
-            int compactSize = (int)Math.Min(b & -b, _compactSize);
+            // Non-boundary: bucket by power-of-2 alignment (always < CompactSize).
+            int compactSize = (int)(b & -b);
             if (!buckets.TryGetValue(compactSize, out List<StateId>? bucket))
                 buckets[compactSize] = bucket = [];
             bucket.Add(s);
         }
 
-        // Ascending bucket order: each layer's inputs (the previous layer's outputs) exist
-        // before it runs. The CompactSize bucket runs last, producing the persistables.
+        // Ascending bucket order: each sub-CompactSize layer's inputs (the previous layer's
+        // outputs) exist before it runs.
         foreach (KeyValuePair<int, List<StateId>> kv in buckets)
-            Parallel.ForEach(kv.Value, state => _batchedCompactor.DoCompactSnapshot(state));
+            Parallel.ForEach(kv.Value, state => _compactor.DoCompactSnapshot(state));
 
-        // The persistable layer is now produced; hand each boundary to the boundary compactor
-        // for the >CompactSize hierarchical merges.
+        // The sub-CompactSize layers are in place — produce each boundary's persistable.
         foreach (StateId boundary in boundaries)
-            await _boundaryCompactJobs.Writer.WriteAsync(boundary, _cancelTokenSource.Token);
+            _compactor.DoCompactPersistable(boundary);
+
+        // Hand a boundary to the boundary compactor only when its highest power of two
+        // exceeds CompactSize — i.e. it has a >CompactSize hierarchical-merge window. One
+        // whose highest power of two is exactly CompactSize would just no-op there.
+        foreach (StateId boundary in boundaries)
+        {
+            long b = boundary.BlockNumber;
+            if ((b & -b) > _compactSize)
+                await _boundaryCompactJobs.Writer.WriteAsync(boundary, _cancelTokenSource.Token);
+        }
     }
 
     private async Task RunBoundaryCompactor(CancellationToken cancellationToken)
@@ -148,9 +155,10 @@ public class PersistenceManager(
             {
                 try
                 {
-                    // The persistable for this boundary was already produced by the batched
-                    // compactor; the boundary compactor only does the >CompactSize merges.
-                    _boundaryCompactor.DoCompactSnapshot(state);
+                    // The persistable for this boundary was already produced in
+                    // ProcessCompactBatch; DoCompactSnapshot here only does the
+                    // >CompactSize hierarchical merges.
+                    _compactor.DoCompactSnapshot(state);
                 }
                 catch (Exception ex)
                 {
@@ -683,12 +691,12 @@ public class PersistenceManager(
 
         // A linked persistable's NodeRefs scatter across the base snapshots' blob arenas, so
         // the HSST scan below reads blobs out of order. Prefetch every base's contiguous RLP
-        // region up front so the kernel can stream them in as bulk read-ahead.
-        using (PersistedSnapshotList bases = _repo.LeaseBaseSnapshotsInRange(snapshot.From, snapshot.To))
-        {
-            foreach (PersistedSnapshot baseSnapshot in bases)
-                baseSnapshot.AdviseWillNeedBlobRange();
-        }
+        // region up front so the kernel can stream them in as bulk read-ahead; once the
+        // persistable is written the same regions are dropped from the page cache (below) —
+        // they won't be read again. The leases are held for the whole method.
+        using PersistedSnapshotList bases = _repo.LeaseBaseSnapshotsInRange(snapshot.From, snapshot.To);
+        foreach (PersistedSnapshot baseSnapshot in bases)
+            baseSnapshot.AdviseWillNeedBlobRange();
 
         using WholeReadSession session = snapshot.BeginWholeReadSession();
         PersistedSnapshotScanner scanner = new(session, snapshot);
@@ -717,6 +725,11 @@ public class PersistenceManager(
             foreach (PersistedSnapshotScanner.StorageNodeEntry entry in scanner.StorageNodes)
                 batch.SetStorageTrieNode(entry.AddressHash.ToCommitment(), entry.Path, entry.Rlp);
         }
+
+        // The persistable is now in RocksDB — drop the prefetched base blob ranges from the
+        // page cache rather than leaving them hot until the base snapshots are pruned.
+        foreach (PersistedSnapshot baseSnapshot in bases)
+            baseSnapshot.AdviseDontNeedBlobRange();
 
         Metrics.FlatPersistenceTime.Observe(Stopwatch.GetTimestamp() - sw);
     }
