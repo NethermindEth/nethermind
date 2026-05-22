@@ -29,16 +29,16 @@ public class JsonRpcSocketsClient<TStream> : SocketClient<TStream>, IJsonRpcDupl
     private readonly SemaphoreSlim _sendSemaphore = new(1, 1);
     private readonly Channel<ProcessRequest> _processChannel;
 
-    private record ProcessRequest(Memory<byte> Buffer, IMemoryOwner<byte> BufferOwner) : IAsyncDisposable
+    private sealed record ProcessRequest(Memory<byte> Buffer, IMemoryOwner<byte> BufferOwner) : IAsyncDisposable
     {
-        private bool _disposed = false;
+        private bool _disposed;
+
         public ValueTask DisposeAsync()
         {
-            if (Interlocked.CompareExchange(ref _disposed, true, false)) return ValueTask.CompletedTask;
-            BufferOwner.Dispose();
+            if (!Interlocked.CompareExchange(ref _disposed, true, false)) BufferOwner.Dispose();
             return ValueTask.CompletedTask;
         }
-    };
+    }
 
     private readonly int _workerTaskCount = 1;
 
@@ -138,30 +138,16 @@ public class JsonRpcSocketsClient<TStream> : SocketClient<TStream>, IJsonRpcDupl
         IncrementBytesSentMetric(sink.BytesWritten);
     }
 
-    private void IncrementBytesReceivedMetric(long size)
+    private void IncrementBytesReceivedMetric(long size) =>
+        IncrementBytesMetric(size, ref Metrics.JsonRpcBytesReceivedWebSockets, ref Metrics.JsonRpcBytesReceivedIpc);
+
+    private void IncrementBytesSentMetric(long size) =>
+        IncrementBytesMetric(size, ref Metrics.JsonRpcBytesSentWebSockets, ref Metrics.JsonRpcBytesSentIpc);
+
+    private void IncrementBytesMetric(long size, ref long webSocketsMetric, ref long ipcMetric)
     {
-        if (_jsonRpcContext.RpcEndpoint == RpcEndpoint.Ws)
-        {
-            Interlocked.Add(ref Metrics.JsonRpcBytesReceivedWebSockets, size);
-        }
-
-        if (_jsonRpcContext.RpcEndpoint == RpcEndpoint.IPC)
-        {
-            Interlocked.Add(ref Metrics.JsonRpcBytesReceivedIpc, size);
-        }
-    }
-
-    private void IncrementBytesSentMetric(long size)
-    {
-        if (_jsonRpcContext.RpcEndpoint == RpcEndpoint.Ws)
-        {
-            Interlocked.Add(ref Metrics.JsonRpcBytesSentWebSockets, size);
-        }
-
-        if (_jsonRpcContext.RpcEndpoint == RpcEndpoint.IPC)
-        {
-            Interlocked.Add(ref Metrics.JsonRpcBytesSentIpc, size);
-        }
+        if (_jsonRpcContext.RpcEndpoint == RpcEndpoint.Ws) Interlocked.Add(ref webSocketsMetric, size);
+        if (_jsonRpcContext.RpcEndpoint == RpcEndpoint.IPC) Interlocked.Add(ref ipcMetric, size);
     }
 
     public virtual async Task<int> SendJsonRpcResult(JsonRpcResult result, CancellationToken cancellationToken = default)

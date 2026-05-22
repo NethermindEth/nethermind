@@ -7,7 +7,6 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.IO.Pipelines;
-using System.Linq;
 using System.Net;
 using System.Net.Sockets;
 using System.Net.WebSockets;
@@ -56,7 +55,7 @@ public class JsonRpcSocketsClientTests
             response[0].Should().Be((byte)'[');
         }
 
-        Enumerable.Count(response, static b => b == (byte)'\n').Should().Be(1);
+        response.AsSpan().Count((byte)'\n').Should().Be(1);
         fixture.Sink.BytesWritten.Should().Be(response.Length);
     }
 
