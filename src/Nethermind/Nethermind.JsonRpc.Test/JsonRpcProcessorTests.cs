@@ -681,6 +681,15 @@ public class JsonRpcProcessorTests(bool returnErrors)
         return fileSystem;
     }
 
+    private void AssertBatchItemsTypeMatchesFixtureMode(IReadOnlyList<JsonRpcResponse>? batchItems)
+    {
+        batchItems.Should().NotBeNull();
+        batchItems.Should().AllSatisfy(AssertResponseTypeMatchesFixtureMode);
+    }
+
+    private void AssertResponseTypeMatchesFixtureMode(JsonRpcResponse response) =>
+        response.Should().BeOfType(returnErrors ? typeof(JsonRpcErrorResponse) : typeof(JsonRpcSuccessResponse));
+
     [TestCaseSource(nameof(JsonRpcIdCases))]
     public async Task Can_process_ids(string idJson, JsonRpcId expectedId)
     {
@@ -695,31 +704,15 @@ public class JsonRpcProcessorTests(bool returnErrors)
         using CollectedJsonRpcResponses result = await ProcessAsync(CreateTransactionCountRequest("67", "Params"));
         result.Should().HaveCount(1);
         Assert.That(result[0].Response!.Id, Is.EqualTo(new JsonRpcId(67)));
-        if (returnErrors)
-        {
-            result[0].Response.Should().BeOfType<JsonRpcErrorResponse>();
-        }
-        else
-        {
-            result[0].Response.Should().BeOfType<JsonRpcSuccessResponse>();
-        }
+        AssertResponseTypeMatchesFixtureMode(result[0].Response!);
     }
-
 
     [Test]
     public async Task Can_process_batch_request_with_nested_object_params()
     {
         using CollectedJsonRpcResponses result = await ProcessAsync("[{\"id\":67,\"jsonrpc\":\"2.0\",\"method\":\"eth_getTransactionCount\",\"params\":[{\"a\":\"0x7f01d9b227593e033bf8d6fc86e634d27aa85568\",\"b\":\"0x668c24\"}]},{\"id\":67,\"jsonrpc\":\"2.0\",\"method\":\"eth_getTransactionCount\",\"params\":[{\"a\":\"0x7f01d9b227593e033bf8d6fc86e634d27aa85568\",\"b\":\"0x668c24\"}]}]");
         result.Should().HaveCount(1);
-        result[0].BatchItems.Should().NotBeNull();
-        if (returnErrors)
-        {
-            result[0].BatchItems.Should().AllBeOfType<JsonRpcErrorResponse>();
-        }
-        else
-        {
-            result[0].BatchItems.Should().AllBeOfType<JsonRpcSuccessResponse>();
-        }
+        AssertBatchItemsTypeMatchesFixtureMode(result[0].BatchItems);
     }
 
     [Test]
@@ -727,15 +720,7 @@ public class JsonRpcProcessorTests(bool returnErrors)
     {
         using CollectedJsonRpcResponses result = await ProcessAsync("[{\"id\":67,\"jsonrpc\":\"2.0\",\"method\":\"eth_getTransactionCount\",\"params\":[[{\"a\":\"0x7f01d9b227593e033bf8d6fc86e634d27aa85568\",\"b\":\"0x668c24\"}]]},{\"id\":67,\"jsonrpc\":\"2.0\",\"method\":\"eth_getTransactionCount\",\"params\":[[{\"a\":\"0x7f01d9b227593e033bf8d6fc86e634d27aa85568\",\"b\":\"0x668c24\"}, 1]]}]");
         result.Should().HaveCount(1);
-        result[0].BatchItems.Should().NotBeNull();
-        if (returnErrors)
-        {
-            result[0].BatchItems.Should().AllBeOfType<JsonRpcErrorResponse>();
-        }
-        else
-        {
-            result[0].BatchItems.Should().AllBeOfType<JsonRpcSuccessResponse>();
-        }
+        AssertBatchItemsTypeMatchesFixtureMode(result[0].BatchItems);
     }
 
     [Test]
