@@ -71,12 +71,8 @@ public sealed class RpcJsonTypeInfoGenerator : IIncrementalGenerator
         }
         builder.AppendLine("    };");
         builder.AppendLine();
-        builder.AppendLine("    private static JsonTypeInfo? TryGet(Type type)");
-        builder.AppendLine("    {");
-        builder.AppendLine("        JsonTypeInfo? typeInfo;");
-        builder.AppendLine("        EthereumJsonSerializer.JsonOptions.TryGetTypeInfo(type, out typeInfo);");
-        builder.AppendLine("        return typeInfo;");
-        builder.AppendLine("    }");
+        builder.AppendLine("    private static JsonTypeInfo? TryGet(Type type) =>");
+        builder.AppendLine("        EthereumJsonSerializer.JsonOptions.TryGetTypeInfo(type, out JsonTypeInfo? typeInfo) ? typeInfo : null;");
         builder.AppendLine();
         builder.AppendLine("    private static void RegisterGenericProviders()");
         builder.AppendLine("    {");

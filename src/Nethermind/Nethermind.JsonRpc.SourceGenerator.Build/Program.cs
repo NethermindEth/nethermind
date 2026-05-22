@@ -89,10 +89,7 @@ internal static class Program
                 ImmutableArray<ITypeSymbol> jsonTypes = RpcJsonTypeDiscovery.GetJsonTypeSymbols(semanticModel, node, CancellationToken.None);
                 if (!jsonTypes.IsDefaultOrEmpty)
                 {
-                    for (int j = 0; j < jsonTypes.Length; j++)
-                    {
-                        types.Add(jsonTypes[j]);
-                    }
+                    types.AddRange(jsonTypes);
                 }
             }
         }
@@ -104,18 +101,21 @@ internal static class Program
     {
         StringBuilder builder = new();
         builder.AppendLine(GeneratedSourceHeader);
-        builder.AppendLine("using System.Runtime.CompilerServices;");
-        builder.AppendLine("using System.Text.Json.Serialization;");
-        builder.AppendLine("using Nethermind.Serialization.Json;");
-        builder.AppendLine();
-        builder.AppendLine("namespace Nethermind.JsonRpc;");
-        builder.AppendLine();
-        builder.AppendLine("[JsonSourceGenerationOptions(");
-        builder.AppendLine("    GenerationMode = JsonSourceGenerationMode.Metadata,");
-        builder.AppendLine("    PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase,");
-        builder.AppendLine("    PropertyNameCaseInsensitive = true,");
-        builder.AppendLine("    DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,");
-        builder.AppendLine("    IncludeFields = true)]");
+        builder.AppendLine(
+            """
+            using System.Runtime.CompilerServices;
+            using System.Text.Json.Serialization;
+            using Nethermind.Serialization.Json;
+
+            namespace Nethermind.JsonRpc;
+
+            [JsonSourceGenerationOptions(
+                GenerationMode = JsonSourceGenerationMode.Metadata,
+                PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase,
+                PropertyNameCaseInsensitive = true,
+                DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
+                IncludeFields = true)]
+            """);
         for (int i = 0; i < sortedTypes.Length; i++)
         {
             builder.Append("[JsonSerializable(typeof(");
@@ -123,14 +123,17 @@ internal static class Program
             builder.AppendLine("))]");
         }
 
-        builder.AppendLine("internal partial class GeneratedRpcJsonContext : JsonSerializerContext");
-        builder.AppendLine("{");
-        builder.AppendLine("    [ModuleInitializer]");
-        builder.AppendLine("    internal static void Register()");
-        builder.AppendLine("    {");
-        builder.AppendLine("        EthereumJsonSerializer.AddTypeInfoResolver(Default, JsonTypeInfoResolverPriority.GeneratedRpc);");
-        builder.AppendLine("    }");
-        builder.AppendLine("}");
+        builder.AppendLine(
+            """
+            internal partial class GeneratedRpcJsonContext : JsonSerializerContext
+            {
+                [ModuleInitializer]
+                internal static void Register()
+                {
+                    EthereumJsonSerializer.AddTypeInfoResolver(Default, JsonTypeInfoResolverPriority.GeneratedRpc);
+                }
+            }
+            """);
         return builder.ToString();
     }
 
@@ -194,18 +197,8 @@ internal static class Program
 
     private sealed record JsonTypeCandidate(string DisplayName, Dictionary<string, string> GeneratedTypeNames)
     {
-        public bool UsesAnyGeneratedTypeName(HashSet<string> generatedTypeNames)
-        {
-            foreach (string generatedTypeName in GeneratedTypeNames.Keys)
-            {
-                if (generatedTypeNames.Contains(generatedTypeName))
-                {
-                    return true;
-                }
-            }
-
-            return false;
-        }
+        public bool UsesAnyGeneratedTypeName(HashSet<string> generatedTypeNames) =>
+            generatedTypeNames.Overlaps(GeneratedTypeNames.Keys);
     }
 
     private sealed class JsonContextEligibility(IAssemblySymbol currentAssembly)
