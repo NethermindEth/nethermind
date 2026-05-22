@@ -173,13 +173,7 @@ public class JsonRpcLocalStats : IJsonRpcLocalStats
         }
     }
 
-    private sealed class ReportWorkItem(
-        JsonRpcLocalStats owner,
-        ConcurrentDictionary<string, MethodStats> stats)
-    {
-        public JsonRpcLocalStats Owner { get; } = owner;
-        public ConcurrentDictionary<string, MethodStats> Stats { get; } = stats;
-    }
+    private sealed record ReportWorkItem(JsonRpcLocalStats Owner, ConcurrentDictionary<string, MethodStats> Stats);
 
     [Pure]
     private static string PrepareReportLine(in string key, MethodStats methodStats) =>
