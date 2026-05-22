@@ -351,8 +351,8 @@ public class FilterManagerTests
         IEnumerable<Action<ReceiptBuilder>> receiptBuilders,
         Action<IEnumerable<FilterLog>> logsAssertion)
     {
-        List<FilterBase> filters = new();
-        List<TxReceipt> receipts = new();
+        List<FilterBase> filters = [];
+        List<TxReceipt> receipts = [];
         foreach (Action<FilterBuilder> filterBuilder in filterBuilders)
         {
             filters.Add(BuildFilter(filterBuilder));

@@ -63,7 +63,7 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
     private readonly TaskCompletionSource<int> _pivotSource = new(RunContinuationsAsynchronously);
     private readonly Task<int> _pivotTask;
 
-    private readonly List<Task> _tasks = new();
+    private readonly List<Task> _tasks = [];
 
     private DirectionStates _directions;
 

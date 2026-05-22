@@ -27,7 +27,7 @@ internal class EraReaderTests
         {
             TempPath tmpFile = TempPath.GetTempFile();
             using EraWriter builder = new(tmpFile.Path, Substitute.For<ISpecProvider>());
-            List<(Block, TxReceipt[])> addedContents = new();
+            List<(Block, TxReceipt[])> addedContents = [];
             HeaderDecoder headerDecoder = new();
 
             async Task AddBlock(Block block, TxReceipt[] receipts)

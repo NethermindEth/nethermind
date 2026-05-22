@@ -23,7 +23,7 @@ namespace Nethermind.Network
         private readonly ILogger _logger;
 
         private readonly TimeSpan _pingInterval;
-        private readonly List<Task<bool>> _pingTasks = new();
+        private readonly List<Task<bool>> _pingTasks = [];
 
         private CancellationTokenSource? _cancellationTokenSource;
 

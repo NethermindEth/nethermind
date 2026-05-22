@@ -30,7 +30,7 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer
     private readonly Hash256? _txHash;
     private readonly NativeCallTracerConfig _config;
     private readonly ArrayPoolList<NativeCallTracerCallFrame> _callStack = new(1024);
-    private readonly CompositeDisposable _disposables = new();
+    private readonly CompositeDisposable _disposables = [];
 
     private EvmExceptionType? _error;
     private long _remainingGas;
