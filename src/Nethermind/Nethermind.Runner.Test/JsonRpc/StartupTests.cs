@@ -208,39 +208,27 @@ public class StartupTests
         Assert.That(doc.RootElement.GetProperty("error").GetProperty("code").GetInt32(), Is.EqualTo(ErrorCodes.InvalidRequest));
     }
 
-    [Test]
-    public async Task ProcessJsonRpcRequest_UnauthenticatedBatchResponseSizeLimitStopsDispatch()
+    [TestCase(false, 1)]
+    [TestCase(true, 3)]
+    public async Task ProcessJsonRpcRequest_BatchResponseSizeLimitDispatchesExpected(bool isAuthenticated, int expectedDispatches)
     {
         IEngineRpcModule engineModule = CreateEngineModule();
         JsonRpcConfig rpcConfig = new() { EnabledModules = [ModuleType.Engine], MaxBatchResponseBodySize = 1 };
-
-        string response = await ProcessJsonRpcRequest(
-            CreateBlobsBatchRequest(3),
-            startup: CreateStartup(engineModule: engineModule, rpcConfig: rpcConfig));
-
-        using JsonDocument doc = JsonDocument.Parse(response);
-
-        Assert.That(doc.RootElement.GetArrayLength(), Is.EqualTo(3));
-        await engineModule.Received(1).engine_getBlobsV1(Arg.Any<byte[][]>());
-    }
-
-    [Test]
-    public async Task ProcessJsonRpcRequest_AuthenticatedBatchResponseSizeLimitDispatchesAll()
-    {
-        IEngineRpcModule engineModule = CreateEngineModule();
-        JsonRpcConfig rpcConfig = new() { EnabledModules = [ModuleType.Engine], MaxBatchResponseBodySize = 1 };
-        IRpcAuthentication rpcAuthentication = Substitute.For<IRpcAuthentication>();
-        rpcAuthentication.Authenticate(Arg.Any<string>()).Returns(Task.FromResult(true));
+        IRpcAuthentication? rpcAuthentication = isAuthenticated ? Substitute.For<IRpcAuthentication>() : null;
+        if (rpcAuthentication is not null)
+        {
+            rpcAuthentication.Authenticate(Arg.Any<string>()).Returns(Task.FromResult(true));
+        }
 
         string response = await ProcessJsonRpcRequest(
             CreateBlobsBatchRequest(3),
             startup: CreateStartup(rpcAuthentication, engineModule, rpcConfig),
-            isAuthenticated: true);
+            isAuthenticated: isAuthenticated);
 
         using JsonDocument doc = JsonDocument.Parse(response);
 
         Assert.That(doc.RootElement.GetArrayLength(), Is.EqualTo(3));
-        await engineModule.Received(3).engine_getBlobsV1(Arg.Any<byte[][]>());
+        await engineModule.Received(expectedDispatches).engine_getBlobsV1(Arg.Any<byte[][]>());
     }
 
     [Test]
