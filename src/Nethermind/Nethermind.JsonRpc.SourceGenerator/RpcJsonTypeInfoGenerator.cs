@@ -19,12 +19,12 @@ public sealed class RpcJsonTypeInfoGenerator : IIncrementalGenerator
         IncrementalValuesProvider<ImmutableArray<string>> rpcTypes = context.SyntaxProvider
             .CreateSyntaxProvider(
                 predicate: static (node, _) => node is TypeDeclarationSyntax or InvocationExpressionSyntax,
-                transform: static (context, cancellationToken) => RpcJsonTypeDiscovery.GetJsonTypes(context, cancellationToken));
+                transform: static (context, cancellationToken) => RpcJsonTypeDiscovery.GetJsonTypes(context.SemanticModel, context.Node, cancellationToken));
 
         IncrementalValuesProvider<ImmutableArray<string>> rpcMethodNames = context.SyntaxProvider
             .CreateSyntaxProvider(
                 predicate: static (node, _) => node is TypeDeclarationSyntax,
-                transform: static (context, cancellationToken) => RpcJsonTypeDiscovery.GetRpcMethodNames(context, cancellationToken));
+                transform: static (context, cancellationToken) => RpcJsonTypeDiscovery.GetRpcMethodNames(context.SemanticModel, context.Node, cancellationToken));
 
         IncrementalValueProvider<ImmutableArray<ImmutableArray<string>>> collectedTypes = rpcTypes.Collect();
         IncrementalValueProvider<ImmutableArray<ImmutableArray<string>>> collectedMethodNames = rpcMethodNames.Collect();

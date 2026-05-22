@@ -21,12 +21,6 @@ internal static class RpcJsonTypeDiscovery
         genericsOptions: SymbolDisplayGenericsOptions.IncludeTypeParameters,
         miscellaneousOptions: SymbolDisplayMiscellaneousOptions.EscapeKeywordIdentifiers);
 
-    public static ImmutableArray<string> GetJsonTypes(GeneratorSyntaxContext context, CancellationToken cancellationToken) =>
-        GetJsonTypes(context.SemanticModel, context.Node, cancellationToken);
-
-    public static ImmutableArray<string> GetRpcMethodNames(GeneratorSyntaxContext context, CancellationToken cancellationToken) =>
-        GetRpcMethodNames(context.SemanticModel, context.Node, cancellationToken);
-
     public static ImmutableArray<string> GetJsonTypes(SemanticModel semanticModel, SyntaxNode node, CancellationToken cancellationToken)
     {
         ImmutableArray<ITypeSymbol> typeSymbols = GetJsonTypeSymbols(semanticModel, node, cancellationToken);
