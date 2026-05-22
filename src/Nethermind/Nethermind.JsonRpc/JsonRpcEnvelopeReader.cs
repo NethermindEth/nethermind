@@ -177,5 +177,4 @@ internal ref struct JsonRpcEnvelopeReader
             reader.Skip();
         }
     }
-
 }

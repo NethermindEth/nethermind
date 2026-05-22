@@ -217,5 +217,4 @@ internal sealed class HttpJsonRpcResponseSink(
         JsonRpcResponseWriter.IsResourceUnavailableError(response)
             ? StatusCodes.Status503ServiceUnavailable
             : StatusCodes.Status200OK;
-
 }
