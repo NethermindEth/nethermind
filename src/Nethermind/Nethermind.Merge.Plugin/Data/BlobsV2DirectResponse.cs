@@ -44,45 +44,8 @@ public sealed class BlobsV2DirectResponse : IStreamableResult, IReadOnlyList<Blo
         }
     }
 
-    public async ValueTask WriteToAsync(PipeWriter writer, CancellationToken cancellationToken)
-    {
-        writer.Write("["u8);
-
-        for (int i = 0; i < _count; i++)
-        {
-            if (i > 0) writer.Write(","u8);
-
-            byte[]? blob = _blobs[i];
-            if (blob is null)
-            {
-                writer.Write("null"u8);
-            }
-            else
-            {
-                writer.Write("{\"blob\":\"0x"u8);
-                HexWriter.WriteHexChunked(writer, blob);
-                writer.Write("\",\"proofs\":["u8);
-
-                ReadOnlySpan<byte[]> proofs = _proofs[i].Span;
-                for (int p = 0; p < proofs.Length; p++)
-                {
-                    if (p > 0) writer.Write(","u8);
-                    writer.Write("\"0x"u8);
-                    HexWriter.WriteHexSmall(writer, proofs[p]);
-                    writer.Write("\""u8);
-                }
-
-                writer.Write("]}"u8);
-            }
-
-            if (await StreamableResultWriter.FlushIfNeededAsync(writer, cancellationToken))
-            {
-                return;
-            }
-        }
-
-        writer.Write("]"u8);
-    }
+    public ValueTask WriteToAsync(PipeWriter writer, CancellationToken cancellationToken) =>
+        StreamableResultWriter.WriteArrayAsync(writer, _count, new ItemWriter(_blobs, _proofs), cancellationToken);
 
     // Explicit interface implementation: only used by tests via IEnumerable<T> cast.
     // Production serialization goes through IStreamableResult.WriteToAsync.
@@ -101,4 +64,32 @@ public sealed class BlobsV2DirectResponse : IStreamableResult, IReadOnlyList<Blo
     }
 
     IEnumerator IEnumerable.GetEnumerator() => ((IEnumerable<BlobAndProofV2?>)this).GetEnumerator();
+
+    private readonly struct ItemWriter(byte[]?[] blobs, ReadOnlyMemory<byte[]>[] proofsByBlob) : IJsonArrayItemWriter
+    {
+        public void WriteItem(PipeWriter writer, int index)
+        {
+            byte[]? blob = blobs[index];
+            if (blob is null)
+            {
+                writer.Write("null"u8);
+                return;
+            }
+
+            writer.Write("{\"blob\":\"0x"u8);
+            HexWriter.WriteHexChunked(writer, blob);
+            writer.Write("\",\"proofs\":["u8);
+
+            ReadOnlySpan<byte[]> proofs = proofsByBlob[index].Span;
+            for (int p = 0; p < proofs.Length; p++)
+            {
+                if (p > 0) writer.Write(","u8);
+                writer.Write("\"0x"u8);
+                HexWriter.WriteHexSmall(writer, proofs[p]);
+                writer.Write("\""u8);
+            }
+
+            writer.Write("]}"u8);
+        }
+    }
 }

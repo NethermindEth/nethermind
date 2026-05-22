@@ -36,33 +36,8 @@ public sealed class PayloadBodiesV2DirectResponse : IStreamableResult, IReadOnly
         }
     }
 
-    public async ValueTask WriteToAsync(PipeWriter writer, CancellationToken cancellationToken)
-    {
-        writer.Write("["u8);
-
-        int count = _items.Length;
-        for (int i = 0; i < count; i++)
-        {
-            if (i > 0) writer.Write(","u8);
-
-            PayloadBody? item = _items[i];
-            if (item is null)
-            {
-                writer.Write("null"u8);
-            }
-            else
-            {
-                item.GetValueOrDefault().WriteTo(writer);
-            }
-
-            if (await StreamableResultWriter.FlushIfNeededAsync(writer, cancellationToken))
-            {
-                return;
-            }
-        }
-
-        writer.Write("]"u8);
-    }
+    public ValueTask WriteToAsync(PipeWriter writer, CancellationToken cancellationToken) =>
+        StreamableResultWriter.WriteArrayAsync(writer, _items.Length, new ItemWriter(_items), cancellationToken);
 
     public IEnumerator<ExecutionPayloadBodyV2Result?> GetEnumerator()
     {
@@ -117,6 +92,21 @@ public sealed class PayloadBodiesV2DirectResponse : IStreamableResult, IReadOnly
             {
                 item.Dispose();
             }
+        }
+    }
+
+    private readonly struct ItemWriter(PayloadBody?[] items) : IJsonArrayItemWriter
+    {
+        public void WriteItem(PipeWriter writer, int index)
+        {
+            PayloadBody? item = items[index];
+            if (item is null)
+            {
+                writer.Write("null"u8);
+                return;
+            }
+
+            item.GetValueOrDefault().WriteTo(writer);
         }
     }
 

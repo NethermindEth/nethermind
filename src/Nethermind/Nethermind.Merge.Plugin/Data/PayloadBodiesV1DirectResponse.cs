@@ -26,39 +26,29 @@ public sealed class PayloadBodiesV1DirectResponse(IReadOnlyList<ExecutionPayload
 
     public ExecutionPayloadBodyV1Result? this[int index] => _items[index];
 
-    public async ValueTask WriteToAsync(PipeWriter writer, CancellationToken cancellationToken)
-    {
-        writer.Write("["u8);
-
-        int count = _items.Count;
-        for (int i = 0; i < count; i++)
-        {
-            if (i > 0) writer.Write(","u8);
-
-            ExecutionPayloadBodyV1Result? item = _items[i];
-            if (item is null)
-            {
-                writer.Write("null"u8);
-            }
-            else
-            {
-                PayloadBodiesDirectResponseWriter.WritePayloadBodyV1(writer, item.Transactions, item.Withdrawals);
-            }
-
-            if (await StreamableResultWriter.FlushIfNeededAsync(writer, cancellationToken))
-            {
-                return;
-            }
-        }
-
-        writer.Write("]"u8);
-    }
+    public ValueTask WriteToAsync(PipeWriter writer, CancellationToken cancellationToken) =>
+        StreamableResultWriter.WriteArrayAsync(writer, _items.Count, new ItemWriter(_items), cancellationToken);
 
     public IEnumerator<ExecutionPayloadBodyV1Result?> GetEnumerator() => _items.GetEnumerator();
 
     IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
 
     public void Dispose() { }
+
+    private readonly struct ItemWriter(IReadOnlyList<ExecutionPayloadBodyV1Result?> items) : IJsonArrayItemWriter
+    {
+        public void WriteItem(PipeWriter writer, int index)
+        {
+            ExecutionPayloadBodyV1Result? item = items[index];
+            if (item is null)
+            {
+                writer.Write("null"u8);
+                return;
+            }
+
+            PayloadBodiesDirectResponseWriter.WritePayloadBodyV1(writer, item.Transactions, item.Withdrawals);
+        }
+    }
 }
 
 internal static class PayloadBodiesDirectResponseWriter
