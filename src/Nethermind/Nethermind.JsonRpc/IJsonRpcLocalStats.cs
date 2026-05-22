@@ -15,29 +15,13 @@ public class MethodStats
     private long _maxTimeOfError;
     private long _totalSizeBytes;
 
-    public long Successes
-    {
-        get => Volatile.Read(ref _successes);
-        set => Volatile.Write(ref _successes, value);
-    }
+    public long Successes { get => Volatile.Read(ref _successes); set => Volatile.Write(ref _successes, value); }
 
-    public long Errors
-    {
-        get => Volatile.Read(ref _errors);
-        set => Volatile.Write(ref _errors, value);
-    }
+    public long Errors { get => Volatile.Read(ref _errors); set => Volatile.Write(ref _errors, value); }
 
-    public long TotalTimeOfSuccessesMicros
-    {
-        get => Volatile.Read(ref _totalTimeOfSuccessesMicros);
-        set => Volatile.Write(ref _totalTimeOfSuccessesMicros, value);
-    }
+    public long TotalTimeOfSuccessesMicros { get => Volatile.Read(ref _totalTimeOfSuccessesMicros); set => Volatile.Write(ref _totalTimeOfSuccessesMicros, value); }
 
-    public long TotalTimeOfErrorsMicros
-    {
-        get => Volatile.Read(ref _totalTimeOfErrorsMicros);
-        set => Volatile.Write(ref _totalTimeOfErrorsMicros, value);
-    }
+    public long TotalTimeOfErrorsMicros { get => Volatile.Read(ref _totalTimeOfErrorsMicros); set => Volatile.Write(ref _totalTimeOfErrorsMicros, value); }
 
     public decimal AvgTimeOfErrors
     {
@@ -57,23 +41,11 @@ public class MethodStats
         }
     }
 
-    public long MaxTimeOfError
-    {
-        get => Volatile.Read(ref _maxTimeOfError);
-        set => Volatile.Write(ref _maxTimeOfError, value);
-    }
+    public long MaxTimeOfError { get => Volatile.Read(ref _maxTimeOfError); set => Volatile.Write(ref _maxTimeOfError, value); }
 
-    public long MaxTimeOfSuccess
-    {
-        get => Volatile.Read(ref _maxTimeOfSuccess);
-        set => Volatile.Write(ref _maxTimeOfSuccess, value);
-    }
+    public long MaxTimeOfSuccess { get => Volatile.Read(ref _maxTimeOfSuccess); set => Volatile.Write(ref _maxTimeOfSuccess, value); }
 
-    public long TotalSizeBytes
-    {
-        get => Volatile.Read(ref _totalSizeBytes);
-        set => Volatile.Write(ref _totalSizeBytes, value);
-    }
+    public long TotalSizeBytes { get => Volatile.Read(ref _totalSizeBytes); set => Volatile.Write(ref _totalSizeBytes, value); }
 
     public decimal TotalSize => TotalSizeBytes;
 
