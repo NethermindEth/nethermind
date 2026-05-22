@@ -52,7 +52,7 @@ public class CompositeTxSourceTests
 
         BlockHeader parentHeader = Build.A.BlockHeader.TestObject;
         int gasLimit = 1000;
-        List<Transaction> expected = new();
+        List<Transaction> expected = [];
 
         ITxSource innerPendingTxSelector = Substitute.For<ITxSource>();
 

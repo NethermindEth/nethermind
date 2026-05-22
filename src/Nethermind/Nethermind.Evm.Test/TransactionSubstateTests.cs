@@ -32,7 +32,7 @@ namespace Nethermind.Evm.Test
             TransactionSubstate transactionSubstate = new(readOnlyMemory,
                 0,
                 new JournalSet<Address>(Address.EqualityComparer),
-                new JournalCollection<LogEntry>(),
+                [],
                 true,
                 true);
             Assert.That(transactionSubstate.Error, Is.EqualTo(TransactionSubstate.Revert));
@@ -47,7 +47,7 @@ namespace Nethermind.Evm.Test
             TransactionSubstate transactionSubstate = new(readOnlyMemory,
                 0,
                 new JournalSet<Address>(Address.EqualityComparer),
-                new JournalCollection<LogEntry>(),
+                [],
                 true,
                 true);
             Assert.That(transactionSubstate.Error, Is.EqualTo(TransactionSubstate.Revert));
@@ -63,7 +63,7 @@ namespace Nethermind.Evm.Test
             TransactionSubstate transactionSubstate = new(readOnlyMemory,
                 0,
                 new JournalSet<Address>(Address.EqualityComparer),
-                new JournalCollection<LogEntry>(),
+                [],
                 true,
                 true);
             Assert.That(transactionSubstate.Error, Is.EqualTo(TransactionSubstate.Revert));
@@ -81,7 +81,7 @@ namespace Nethermind.Evm.Test
                 readOnlyMemory,
                 0,
                 new JournalSet<Address>(Address.EqualityComparer),
-                new JournalCollection<LogEntry>(),
+                [],
                 true,
                 true);
             Assert.That(transactionSubstate.Error, Is.EqualTo(TransactionSubstate.Revert));
@@ -154,7 +154,7 @@ namespace Nethermind.Evm.Test
                 readOnlyMemory,
                 0,
                 new JournalSet<Address>(Address.EqualityComparer),
-                new JournalCollection<LogEntry>(),
+                [],
                 true,
                 true);
 
@@ -179,7 +179,7 @@ namespace Nethermind.Evm.Test
                 readOnlyMemory,
                 0,
                 new JournalSet<Address>(Address.EqualityComparer),
-                new JournalCollection<LogEntry>(),
+                [],
                 true,
                 true);
             Assert.That(transactionSubstate.Error, Is.EqualTo(TransactionSubstate.Revert));

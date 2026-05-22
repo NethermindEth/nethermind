@@ -227,7 +227,7 @@ namespace Nethermind.Network
 
         private void CleanupPersistedPeers(ICollection<Peer> activePeers, NetworkNode[] storedNodes)
         {
-            HashSet<PublicKey> activeNodeIds = new(activePeers.Select(x => x.Node.Id));
+            HashSet<PublicKey> activeNodeIds = [.. activePeers.Select(x => x.Node.Id)];
             NetworkNode[] nonActiveNodes = storedNodes.Where(x => !activeNodeIds.Contains(x.NodeId))
                 .OrderBy(x => x.Reputation).ToArray();
             int countToRemove = storedNodes.Length - _networkConfig.MaxPersistedPeerCount;

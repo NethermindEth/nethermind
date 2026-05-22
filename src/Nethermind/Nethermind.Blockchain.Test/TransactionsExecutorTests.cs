@@ -238,7 +238,7 @@ namespace Nethermind.Blockchain.Test
                     ReleaseSpec = Shanghai.Instance,
                     BaseFee = 5,
                     AccountStates = { { TestItem.AddressA, (30000000.Ether, 1) } },
-                    Transactions = new List<Transaction>() { txAboveTheLimit, txAboveTheLimitNoContract, txBelowTheLimit },
+                    Transactions = [txAboveTheLimit, txAboveTheLimitNoContract, txBelowTheLimit],
                     GasLimit = 10000000
                 };
                 shanghai3860Scenarios.ExpectedSelectedTransactions.AddRange(
@@ -250,7 +250,7 @@ namespace Nethermind.Blockchain.Test
                     ReleaseSpec = London.Instance,
                     BaseFee = 5,
                     AccountStates = { { TestItem.AddressA, (30000000.Ether, 1) } },
-                    Transactions = new List<Transaction>() { txAboveTheLimit },
+                    Transactions = [txAboveTheLimit],
                     GasLimit = 10000000
                 };
                 london3860Scenarios.ExpectedSelectedTransactions.AddRange(

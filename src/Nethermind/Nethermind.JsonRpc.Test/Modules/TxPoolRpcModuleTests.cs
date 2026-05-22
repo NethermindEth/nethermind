@@ -159,7 +159,7 @@ public class TxPoolRpcModuleTests
                     }
                 }
             },
-            queued: new()
+            queued: []
         ));
 
         ISpecProvider specProvider = Substitute.For<ISpecProvider>();
@@ -191,7 +191,7 @@ public class TxPoolRpcModuleTests
                     }
                 }
             },
-            queued: new()
+            queued: []
         ));
 
         ISpecProvider specProvider = Substitute.For<ISpecProvider>();

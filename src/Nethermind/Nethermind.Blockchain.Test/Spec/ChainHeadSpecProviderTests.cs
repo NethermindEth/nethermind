@@ -105,7 +105,7 @@ public class ChainHeadSpecProviderTests
         IReleaseSpec[] specs = { Cancun.Instance, Prague.Instance, Osaka.Instance };
 
         ISpecProvider specProvider = Substitute.For<ISpecProvider>();
-        HashSet<IReleaseSpec> validSpecs = new();
+        HashSet<IReleaseSpec> validSpecs = [];
         for (int i = 0; i < headers.Length; i++)
         {
             specProvider.GetSpec(headers[i]).Returns(specs[i]);

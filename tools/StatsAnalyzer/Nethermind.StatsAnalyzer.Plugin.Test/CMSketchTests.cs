@@ -156,7 +156,7 @@ public class CmSketchTests
         for (int trial = 0; trial < trials; trial++)
         {
             sketch.Reset();
-            actualCounts = new Dictionary<ulong, ulong>();
+            actualCounts = [];
 
             for (int i = 0; i < numberOfItemsInStream; i++)
             {

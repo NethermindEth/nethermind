@@ -218,7 +218,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
         /// </summary>
         public ResultWrapper<IEnumerable<ParityTxTraceFromStore>> trace_filter(TraceFilterForRpc traceFilterForRpc)
         {
-            List<ParityLikeTxTrace> txTraces = new();
+            List<ParityLikeTxTrace> txTraces = [];
             IEnumerable<SearchResult<Block>> blocksSearch = blockFinder.SearchForBlocksOnMainChain(
                 traceFilterForRpc.FromBlock ?? BlockParameter.Latest,
                 traceFilterForRpc.ToBlock ?? BlockParameter.Latest);
@@ -301,7 +301,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
 
         public static List<ParityTxTraceFromStore> ExtractPositionsFromTxTrace(long[] positions, ResultWrapper<IEnumerable<ParityTxTraceFromStore>> traceTransaction)
         {
-            List<ParityTxTraceFromStore> traces = new();
+            List<ParityTxTraceFromStore> traces = [];
             ParityTxTraceFromStore[] transactionTraces = traceTransaction.Data.ToArray();
             for (int index = 0; index < positions.Length; index++)
             {

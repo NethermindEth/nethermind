@@ -33,7 +33,7 @@ public class GethLikeTxFileTracerTests : VirtualMachineTestsBase
     [Test]
     public void Should_return_memory_size_with_memory_disabled()
     {
-        List<GethTxFileTraceEntry> entries = new();
+        List<GethTxFileTraceEntry> entries = [];
         GethLikeTxTrace trace = ExecuteAndTraceToFile(e => entries.Add(CloneTraceEntry(e)), GetBytecode(), GethTraceOptions.Default);
 
         Assert.That(entries[0].MemorySize, Is.EqualTo(0));
@@ -50,7 +50,7 @@ public class GethLikeTxFileTracerTests : VirtualMachineTestsBase
     [Test]
     public void Should_return_memory_when_enabled()
     {
-        List<GethTxFileTraceEntry> entries = new();
+        List<GethTxFileTraceEntry> entries = [];
         GethLikeTxTrace trace = ExecuteAndTraceToFile(e => entries.Add(CloneTraceEntry(e)), GetBytecode(), GethTraceOptions.Default with { EnableMemory = true });
 
         Assert.That(entries[0].Memory.Length, Is.EqualTo(0));
@@ -65,7 +65,7 @@ public class GethLikeTxFileTracerTests : VirtualMachineTestsBase
     [Test]
     public void Should_return_stack_when_enabled()
     {
-        List<GethTxFileTraceEntry> entries = new();
+        List<GethTxFileTraceEntry> entries = [];
         GethLikeTxTrace trace = ExecuteAndTraceToFile(e => entries.Add(CloneTraceEntry(e)), GetBytecode(), GethTraceOptions.Default);
 
         Assert.That(entries[0].Stack.Length, Is.EqualTo(0));
@@ -80,7 +80,7 @@ public class GethLikeTxFileTracerTests : VirtualMachineTestsBase
     [Test]
     public void Should_not_return_stack_when_disabled()
     {
-        List<GethTxFileTraceEntry> entries = new();
+        List<GethTxFileTraceEntry> entries = [];
         GethLikeTxTrace trace = ExecuteAndTraceToFile(e => entries.Add(CloneTraceEntry(e)), GetBytecode(), GethTraceOptions.Default with { DisableStack = true });
 
         Assert.That(entries.All(e => e.Stack is null), Is.True);

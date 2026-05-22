@@ -74,8 +74,8 @@ public class SnapServerTest
 
         private class WriteBatch(TrieSnapServerContext ctx) : IWriteBatch
         {
-            private readonly List<(Hash256 Path, Account Account)> _pendingAccounts = new();
-            private readonly Dictionary<Hash256, StorageTree> _storageTrees = new();
+            private readonly List<(Hash256 Path, Account Account)> _pendingAccounts = [];
+            private readonly Dictionary<Hash256, StorageTree> _storageTrees = [];
 
             public void SetAccount(Address address, Account account) =>
                 _pendingAccounts.Add((address.ToAccountPath.ToCommitment(), account));
@@ -95,7 +95,7 @@ public class SnapServerTest
 
             public void Dispose()
             {
-                Dictionary<Hash256, Hash256> storageRoots = new();
+                Dictionary<Hash256, Hash256> storageRoots = [];
                 foreach ((Hash256? path, StorageTree? st) in _storageTrees)
                 {
                     st.Commit();
@@ -475,7 +475,7 @@ public class SnapServerTest
                 batch.SetAccount(TestItem.GetRandomAddress(), TestItem.GenerateRandomAccount());
         }
 
-        List<PathWithAccount> accountWithStorage = new();
+        List<PathWithAccount> accountWithStorage = [];
         using (IWriteBatch batch = context.BeginWriteBatch())
         {
             for (int i = 1000; i < 10000; i += 1000)

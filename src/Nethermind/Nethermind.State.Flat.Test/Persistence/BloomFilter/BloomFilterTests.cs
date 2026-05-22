@@ -59,7 +59,7 @@ public class BloomFilterTests
         int threadsCount = 10;
         int itemsPerThread = 50;
         using Barrier barrier = new(threadsCount);
-        System.Collections.Concurrent.ConcurrentBag<ulong> addedHashes = new();
+        System.Collections.Concurrent.ConcurrentBag<ulong> addedHashes = [];
 
         // Act - Multiple threads adding concurrently
         Task[] tasks = Enumerable.Range(0, threadsCount).Select(threadId => Task.Run(() =>

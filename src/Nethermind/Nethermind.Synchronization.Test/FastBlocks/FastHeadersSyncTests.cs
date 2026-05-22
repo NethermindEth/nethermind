@@ -762,7 +762,7 @@ public class FastHeadersSyncTests
             Substitute.For<IHeaderStore>());
         feed.InitializeFeed();
 
-        List<HeadersSyncBatch> batches = new();
+        List<HeadersSyncBatch> batches = [];
         while (true)
         {
             HeadersSyncBatch? batch = await feed.PrepareRequest();

@@ -64,7 +64,7 @@ namespace Nethermind.AuRa.Test.Reward
         [TestCase(1, 0ul)]
         public void calculates_rewards_correctly_for_empty_dictionary(long blockNumber, ulong expectedReward)
         {
-            Dictionary<long, UInt256> blockReward = new() { };
+            Dictionary<long, UInt256> blockReward = [];
             _block.Header.Number = blockNumber;
             StaticRewardCalculator calculator = new(blockReward);
             BlockReward[] result = calculator.CalculateRewards(_block);

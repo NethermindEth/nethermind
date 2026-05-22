@@ -182,7 +182,7 @@ namespace Nethermind.JsonRpc.Test
 
         private sealed class RecordingMetricObserver : IMetricObserver
         {
-            public List<(double Value, string[] Labels)> Observations { get; } = new();
+            public List<(double Value, string[] Labels)> Observations { get; } = [];
 
             public void Observe(double value, IMetricLabels? labels = null) =>
                 Observations.Add((value, labels?.Labels ?? Array.Empty<string>()));

@@ -73,7 +73,7 @@ public class AddressFilterTests
     [Test]
     public void Accepts_any_address_when_set_is_empty()
     {
-        HashSet<AddressAsKey> addresses = new();
+        HashSet<AddressAsKey> addresses = [];
         AddressFilter filter = new(addresses);
 
         Assert.That(filter.Accepts(TestItem.AddressA), Is.True);
@@ -84,7 +84,7 @@ public class AddressFilterTests
     [Test]
     public void Accepts_any_address_when_set_is_empty_by_ref()
     {
-        HashSet<AddressAsKey> addresses = new();
+        HashSet<AddressAsKey> addresses = [];
         AddressFilter filter = new(addresses);
 
         AddressStructRef addressARef = TestItem.AddressA.ToStructRef();
@@ -181,7 +181,7 @@ public class AddressFilterTests
     [Test]
     public void Matches_any_bloom_when_set_is_empty()
     {
-        HashSet<AddressAsKey> addresses = new();
+        HashSet<AddressAsKey> addresses = [];
         AddressFilter filter = new(addresses);
 
         Assert.That(filter.Matches(BloomFromAddress(TestItem.AddressA)), Is.True);
@@ -192,7 +192,7 @@ public class AddressFilterTests
     [Test]
     public void Matches_any_bloom_when_set_is_empty_by_ref()
     {
-        HashSet<AddressAsKey> addresses = new();
+        HashSet<AddressAsKey> addresses = [];
         AddressFilter filter = new(addresses);
 
         BloomStructRef bloomARef = BloomFromAddress(TestItem.AddressA).ToStructRef();

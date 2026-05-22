@@ -46,7 +46,7 @@ public class VisitingTests
 
         patriciaTree.Accept(visitor, patriciaTree.RootHash, options);
 
-        HashSet<int> setNibbles = new(Enumerable.Range(0, 64));
+        HashSet<int> setNibbles = [.. Enumerable.Range(0, 64)];
 
         foreach (byte[] path in visitor.LeafPaths)
         {

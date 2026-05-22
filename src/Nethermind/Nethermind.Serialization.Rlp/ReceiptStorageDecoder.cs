@@ -62,7 +62,7 @@ namespace Nethermind.Serialization.Rlp
             txReceipt.Bloom = decoderContext.DecodeBloom();
 
             int lastCheck = decoderContext.ReadSequenceLength() + decoderContext.Position;
-            List<LogEntry> logEntries = new();
+            List<LogEntry> logEntries = [];
 
             while (decoderContext.Position < lastCheck)
             {

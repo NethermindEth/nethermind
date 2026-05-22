@@ -13,8 +13,7 @@ namespace Nethermind.Core.Test.Collections
         [Test]
         public void Can_restore_snapshot()
         {
-            JournalCollection<int> journal = new();
-            journal.AddRange(Enumerable.Range(0, 10));
+            JournalCollection<int> journal = [.. Enumerable.Range(0, 10)];
             int snapshot = journal.TakeSnapshot();
             journal.AddRange(Enumerable.Range(10, 10));
             journal.Restore(snapshot);
@@ -24,7 +23,7 @@ namespace Nethermind.Core.Test.Collections
         [Test]
         public void Can_restore_empty_snapshot()
         {
-            JournalCollection<int> journal = new() { };
+            JournalCollection<int> journal = [];
             int snapshot = journal.TakeSnapshot();
             journal.Restore(snapshot);
             journal.Restore(snapshot);

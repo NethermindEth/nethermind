@@ -18,7 +18,7 @@ namespace Nethermind.Network.Test;
 
 public class MessageDictionaryTests
 {
-    private readonly List<Eth66Message<GetBlockHeadersMessage>> _recordedRequests = new();
+    private readonly List<Eth66Message<GetBlockHeadersMessage>> _recordedRequests = [];
     private MessageDictionary<Eth66Message<GetBlockHeadersMessage>, IOwnedReadOnlyList<BlockHeader>>
         _testMessageDictionary;
 

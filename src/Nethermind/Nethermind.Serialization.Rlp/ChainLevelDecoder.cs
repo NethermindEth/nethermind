@@ -51,7 +51,7 @@ namespace Nethermind.Serialization.Rlp
             int lastCheck = decoderContext.ReadSequenceLength() + decoderContext.Position;
             bool hasMainChainBlock = decoderContext.DecodeBool();
 
-            List<BlockInfo> blockInfos = new();
+            List<BlockInfo> blockInfos = [];
 
             decoderContext.ReadSequenceLength();
             while (decoderContext.Position < lastCheck)

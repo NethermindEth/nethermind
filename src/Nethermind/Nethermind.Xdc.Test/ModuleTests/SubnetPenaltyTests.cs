@@ -217,8 +217,8 @@ internal class SubnetPenaltyTests
 
         XdcSubnetBlockHeader[] headers = new XdcSubnetBlockHeader[chainLength];
         Block[] blocks = new Block[chainLength];
-        Dictionary<Hash256, XdcSubnetBlockHeader> hashToHeader = new();
-        Dictionary<Hash256, Block> hashToBlock = new();
+        Dictionary<Hash256, XdcSubnetBlockHeader> hashToHeader = [];
+        Dictionary<Hash256, Block> hashToBlock = [];
 
         for (int i = 0; i < chainLength; i++)
         {

@@ -182,7 +182,7 @@ public class PeerManagerFilteringIntegrationTests
     /// </summary>
     private class FilterRejectingRlpxMock : IRlpxHost
     {
-        public ConcurrentBag<PublicKey> ConnectedNodeIds { get; } = new();
+        public ConcurrentBag<PublicKey> ConnectedNodeIds { get; } = [];
 
         public bool ShouldContact(IPAddress ip, bool exactOnly = false) => exactOnly;
 
@@ -206,8 +206,8 @@ public class PeerManagerFilteringIntegrationTests
 
     private class CallOrderTrackingMock : IRlpxHost
     {
-        public ConcurrentBag<IPAddress> CallsToShouldContact { get; } = new();
-        public ConcurrentBag<Node> CallsToConnectAsync { get; } = new();
+        public ConcurrentBag<IPAddress> CallsToShouldContact { get; } = [];
+        public ConcurrentBag<Node> CallsToConnectAsync { get; } = [];
 
         public bool ShouldContact(IPAddress ip, bool exactOnly = false)
         {

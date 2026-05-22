@@ -63,8 +63,8 @@ public class EthSimulateTestsBlocksAndTransactions
 
         return new()
         {
-            BlockStateCalls = new List<BlockStateCall<TransactionForRpc>>
-            {
+            BlockStateCalls =
+            [
                 new()
                 {
                     BlockOverrides =
@@ -89,7 +89,7 @@ public class EthSimulateTestsBlocksAndTransactions
                         },
                     Calls = [ToRpcForInput(txAtoB3), ToRpcForInput(txAtoB4)]
                 }
-            },
+            ],
             TraceTransfers = true
         };
     }
@@ -120,8 +120,8 @@ public class EthSimulateTestsBlocksAndTransactions
 
         return new()
         {
-            BlockStateCalls = new List<BlockStateCall<TransactionForRpc>>
-            {
+            BlockStateCalls =
+            [
                 new()
                 {
                     BlockOverrides =
@@ -146,7 +146,7 @@ public class EthSimulateTestsBlocksAndTransactions
                         },
                     Calls = new[] { transactionForRpc }
                 }
-            },
+            ],
             TraceTransfers = true,
             Validation = true
         };

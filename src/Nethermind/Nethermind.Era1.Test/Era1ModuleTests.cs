@@ -92,7 +92,7 @@ public class Era1ModuleTests
 
         foreach (string era in eraFiles)
         {
-            List<(Block b, TxReceipt[] r)> readFromFile = new();
+            List<(Block b, TxReceipt[] r)> readFromFile = [];
 
             using TempPath tmpFile = TempPath.GetTempFile();
             {
@@ -183,7 +183,7 @@ public class Era1ModuleTests
     {
         BasicTestBlockchain testBlockchain = await BasicTestBlockchain.Create();
         using TempPath tmpFile = TempPath.GetTempFile();
-        List<(Block, TxReceipt[])> toAddBlocks = new();
+        List<(Block, TxReceipt[])> toAddBlocks = [];
         testBlockchain.BranchProcessor.BlockProcessed += (sender, blockArgs) =>
         {
             toAddBlocks.Add((blockArgs.Block, blockArgs.TxReceipts));
@@ -238,10 +238,10 @@ public class Era1ModuleTests
         int numOfBlocks = 16;
         int numOfTx = 1000;
         UInt256 nonce = 0;
-        List<Block> blocks = new()
-        {
+        List<Block> blocks =
+        [
             genesis
-        };
+        ];
         for (int i = 0; i < numOfBlocks; i++)
         {
             Transaction[] transactions = new Transaction[numOfTx];

@@ -17,7 +17,7 @@ namespace Nethermind.Network.Test;
 
 public class MessageQueueTests
 {
-    private readonly List<GetBlockHeadersMessage> _recordedSends = new();
+    private readonly List<GetBlockHeadersMessage> _recordedSends = [];
     private MessageQueue<GetBlockHeadersMessage, IOwnedReadOnlyList<BlockHeader>> _queue;
 
     [SetUp]

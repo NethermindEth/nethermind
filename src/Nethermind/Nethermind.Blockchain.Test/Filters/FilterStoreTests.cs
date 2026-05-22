@@ -156,7 +156,7 @@ public class FilterStoreTests
     [Parallelizable(ParallelScope.None)]
     public async Task CleanUps_filters()
     {
-        List<int> removedFilterIds = new();
+        List<int> removedFilterIds = [];
         FilterStore store = new(new TimerFactory(), 500, 100);
         store.FilterRemoved += (_, e) => removedFilterIds.Add(e.FilterId);
         store.SaveFilter(store.CreateBlockFilter());

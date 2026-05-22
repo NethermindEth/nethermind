@@ -54,7 +54,7 @@ public class TraceRpcModuleTests
             Hash256 stateRoot = Blockchain.BlockTree.Head!.StateRoot!;
             for (int i = 1; i < 10; i++)
             {
-                List<Transaction> transactions = new();
+                List<Transaction> transactions = [];
                 for (int j = 0; j < i; j++)
                 {
                     transactions.Add(Core.Test.Builders.Build.A.Transaction

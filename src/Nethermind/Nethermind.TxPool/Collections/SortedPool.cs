@@ -58,8 +58,8 @@ namespace Nethermind.TxPool.Collections
             // ReSharper disable VirtualMemberCallInConstructor
             _sortedComparer = GetUniqueComparer(comparer ?? throw new ArgumentNullException(nameof(comparer)));
             _groupComparer = GetGroupComparer(comparer ?? throw new ArgumentNullException(nameof(comparer)));
-            _cacheMap = new Dictionary<TKey, TValue>(); // do not initialize it at the full capacity
-            _buckets = new Dictionary<TGroupKey, EnhancedSortedSet<TValue>>();
+            _cacheMap = []; // do not initialize it at the full capacity
+            _buckets = [];
             _worstSortedValues = new DictionarySortedSet<TValue, TKey>(_sortedComparer);
             _logger = logManager?.GetClassLogger(typeof(SortedPool<,,>)) ?? throw new ArgumentNullException(nameof(logManager));
         }
@@ -325,7 +325,7 @@ namespace Nethermind.TxPool.Collections
                         break;
                     }
 
-                    list ??= new List<TValue>();
+                    list ??= [];
                     list.Add(enumerator.Current);
                 }
 

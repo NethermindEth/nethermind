@@ -405,8 +405,8 @@ namespace Nethermind.Db.Test.LogIndex
             await using ILogIndexStorage logIndexStorage = CreateLogIndexStorage();
 
             Random random = new(42);
-            List<BlockReceipts> allReorgBlocks = new();
-            List<BlockReceipts> allAddedBlocks = new();
+            List<BlockReceipts> allReorgBlocks = [];
+            List<BlockReceipts> allAddedBlocks = [];
 
             foreach (BlockReceipts[][] batches in testData.Batches.GroupBy(b => b[0].BlockNumber / reorgFrequency).Select(g => g.ToArray()))
             {
@@ -892,8 +892,8 @@ namespace Nethermind.Db.Test.LogIndex
             private readonly Lazy<IEnumerable<(int from, int to)>> _ranges;
             public IEnumerable<(int from, int to)> Ranges => _ranges.Value;
 
-            public Dictionary<Address, HashSet<int>> AddressMap { get; private set; } = new();
-            public Dictionary<int, Dictionary<Hash256, HashSet<int>>> TopicMap { get; private set; } = new();
+            public Dictionary<Address, HashSet<int>> AddressMap { get; private set; } = [];
+            public Dictionary<int, Dictionary<Hash256, HashSet<int>>> TopicMap { get; private set; } = [];
 
             public List<Address> Addresses
             {
@@ -983,8 +983,8 @@ namespace Nethermind.Db.Test.LogIndex
             public static (Dictionary<Address, HashSet<int>> address, Dictionary<int, Dictionary<Hash256, HashSet<int>>> topic) GenerateMaps(
                 IEnumerable<BlockReceipts> blocks)
             {
-                Dictionary<Address, HashSet<int>> address = new();
-                Dictionary<int, Dictionary<Hash256, HashSet<int>>> topic = new();
+                Dictionary<Address, HashSet<int>> address = [];
+                Dictionary<int, Dictionary<Hash256, HashSet<int>>> topic = [];
 
                 foreach (BlockReceipts block in blocks)
                 {
@@ -1023,7 +1023,7 @@ namespace Nethermind.Db.Test.LogIndex
                         ).TestObject
                     ).ToArray();
 
-                List<TxReceipt> receipts = new();
+                List<TxReceipt> receipts = [];
                 for (int i = 0; i < logs.Length;)
                 {
                     int count = random.Next(logsPerTx.min, Math.Min(logsPerTx.max, logs.Length - i) + 1);
@@ -1044,7 +1044,7 @@ namespace Nethermind.Db.Test.LogIndex
 
             private static HashSet<(int from, int to)> GenerateExtendedRanges(int min, int max)
             {
-                HashSet<(int, int)> ranges = new();
+                HashSet<(int, int)> ranges = [];
 
                 int[] edges = [min - 1, min, min + 1, max - 1, max + 1];
                 ranges.AddRange(edges.SelectMany(_ => edges, static (x, y) => (x, y)));

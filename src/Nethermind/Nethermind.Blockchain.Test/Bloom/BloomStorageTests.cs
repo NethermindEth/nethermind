@@ -90,7 +90,7 @@ public class BloomStorageTests
         long bloomsChecked = 0;
 
         IBloomEnumeration bloomEnumeration = storage.GetBlooms(from, to);
-        IList<long> ranges = new List<long>();
+        IList<long> ranges = [];
         foreach (Core.Bloom unused in bloomEnumeration)
         {
             bloomsChecked++;

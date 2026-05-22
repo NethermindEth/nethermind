@@ -698,8 +698,8 @@ namespace Nethermind.Synchronization.ParallelSync
 
         private void LogDetailedSyncModeChecks(string syncType, params (string Name, bool IsSatisfied)[] checks)
         {
-            List<string> matched = new();
-            List<string> failed = new();
+            List<string> matched = [];
+            List<string> failed = [];
 
             foreach ((string name, bool isSatisfied) in checks)
             {

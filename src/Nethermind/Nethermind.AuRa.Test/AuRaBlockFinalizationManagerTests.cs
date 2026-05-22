@@ -96,7 +96,7 @@ namespace Nethermind.AuRa.Test
             _validatorStore.GetValidators(Arg.Any<long?>()).Returns(blockCreators);
 
             BlockTreeBuilder blockTreeBuilder = Build.A.BlockTree();
-            HashSet<BlockHeader> finalizedBlocks = new();
+            HashSet<BlockHeader> finalizedBlocks = [];
 
             AuRaBlockFinalizationManager finalizationManager = new(blockTreeBuilder.TestObject, blockTreeBuilder.ChainLevelInfoRepository, _validatorStore, _logManager, twoThirdsMajorityTransition);
             finalizationManager.SetMainBlockBranchProcessor(_blockProcessor);

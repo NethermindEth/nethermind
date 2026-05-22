@@ -31,7 +31,7 @@ public class TotalDifficultyFixMigrationTest
         long firstBlock = 3;
         // Setup headers
         BlockHeader[] headers = new BlockHeader[numberOfBlocks];
-        Dictionary<Hash256, BlockHeader> hashesToHeaders = new();
+        Dictionary<Hash256, BlockHeader> hashesToHeaders = [];
         headers[0] = Core.Test.Builders.Build.A.BlockHeader.WithDifficulty(1).TestObject;
         for (int i = 1; i < numberOfBlocks; ++i)
         {
@@ -90,7 +90,7 @@ public class TotalDifficultyFixMigrationTest
     [Test]
     public async Task should_fix_non_canonical()
     {
-        Dictionary<Hash256, BlockHeader> hashesToHeaders = new();
+        Dictionary<Hash256, BlockHeader> hashesToHeaders = [];
         BlockHeader g = Core.Test.Builders.Build.A.BlockHeader.WithDifficulty(1).TestObject;
 
         // Canonical

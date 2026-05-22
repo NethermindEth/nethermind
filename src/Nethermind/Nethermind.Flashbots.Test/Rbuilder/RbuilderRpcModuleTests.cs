@@ -86,15 +86,17 @@ public class RbuilderRpcModuleTests
     [Test]
     public async Task Test_calculateStateRoot()
     {
-        Dictionary<Address, AccountChange> accountDiff = new();
-        accountDiff[TestItem.AddressA] = new AccountChange()
+        Dictionary<Address, AccountChange> accountDiff = new()
         {
-            Nonce = 10,
-            Balance = 20,
-            SelfDestructed = true,
-            ChangedSlots = new Dictionary<UInt256, UInt256>()
+            [TestItem.AddressA] = new AccountChange()
+            {
+                Nonce = 10,
+                Balance = 20,
+                SelfDestructed = true,
+                ChangedSlots = new Dictionary<UInt256, UInt256>()
             {
                 {0,0}
+            }
             }
         };
 

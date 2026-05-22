@@ -20,7 +20,7 @@ namespace Nethermind.Config.Test;
 public abstract class ConfigFileTestsBase
 {
     private readonly IDictionary<string, TestConfigProvider> _cachedProviders = new ConcurrentDictionary<string, TestConfigProvider>();
-    private readonly Dictionary<string, IEnumerable<string>> _configGroups = new();
+    private readonly Dictionary<string, IEnumerable<string>> _configGroups = [];
 
     [OneTimeSetUp]
     public void Setup()
@@ -109,7 +109,7 @@ public abstract class ConfigFileTestsBase
         Dictionary<string, IEnumerable<string>> groups = BuildConfigGroups();
         string[] configWildcards = configWildcard.Split(" ");
 
-        List<IEnumerable<string>> toIntersect = new();
+        List<IEnumerable<string>> toIntersect = [];
         foreach (string singleWildcard in configWildcards)
         {
             string singleWildcardBase = singleWildcard.Replace("^", string.Empty);

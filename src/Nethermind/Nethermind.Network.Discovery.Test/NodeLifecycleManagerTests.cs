@@ -263,7 +263,7 @@ public class NodeLifecycleManagerTests
     public void EvictCandidateStateWonEvictionTest()
     {
         //adding 3 active nodes
-        List<INodeLifecycleManager> managers = new();
+        List<INodeLifecycleManager> managers = [];
         for (int i = 0; i < 3; i++)
         {
             string host = "192.168.1." + i;
@@ -327,7 +327,7 @@ public class NodeLifecycleManagerTests
     public void EvictCandidateStateLostEvictionTest()
     {
         //adding 3 active nodes
-        List<INodeLifecycleManager> managers = new();
+        List<INodeLifecycleManager> managers = [];
         for (int i = 0; i < 3; i++)
         {
             string host = "192.168.1." + i;

@@ -295,7 +295,7 @@ public partial class EngineModuleTests
         MergeTestBlockchain chain,
         int count, ExecutionPayload startingParentBlock, bool setHead, Hash256? random = null, bool withRequests = false)
     {
-        List<ExecutionPayload> blocks = new();
+        List<ExecutionPayload> blocks = [];
         ExecutionPayload parentBlock = startingParentBlock;
         Block? block = parentBlock.TryGetBlock().Data;
         UInt256? startingTotalDifficulty = block!.IsGenesis
