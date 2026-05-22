@@ -222,13 +222,13 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
                                 isCompleted &&
                                 buffer.IsSingleSegment)
                             {
-                                if (TryReadSingleObjectRequest(buffer.First, out JsonRpcRequest? directRequest, out JsonDocument? directParamsDocument))
+                                if (TryReadSingleObjectRequest(buffer.First, out JsonRpcRequest? directRequest))
                                 {
                                     shouldExit = true;
 
                                     try
                                     {
-                                        await ProcessSingleRequestToSink(directRequest, directParamsDocument, context, sink, cancellationToken);
+                                        await ProcessSingleRequestToSink(directRequest, context, sink, cancellationToken);
                                     }
                                     finally
                                     {
@@ -342,9 +342,9 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
         long startTime = Stopwatch.GetTimestamp();
         try
         {
-            if (TryReadSingleObjectRequest(requestBody, out JsonRpcRequest? directRequest, out JsonDocument? directParamsDocument))
+            if (TryReadSingleObjectRequest(requestBody, out JsonRpcRequest? directRequest))
             {
-                await ProcessSingleRequestToSink(directRequest, directParamsDocument, context, sink, cancellationToken);
+                await ProcessSingleRequestToSink(directRequest, context, sink, cancellationToken);
                 return;
             }
 
@@ -364,14 +364,12 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
 
     private static bool TryReadSingleObjectRequest(
         ReadOnlyMemory<byte> memory,
-        [NotNullWhen(true)] out JsonRpcRequest? request,
-        out JsonDocument? paramsDocument)
+        [NotNullWhen(true)] out JsonRpcRequest? request)
     {
         request = null;
-        paramsDocument = null;
 
         return TryGetSingleDocumentBody(memory, JsonTokenType.StartObject, out ReadOnlyMemory<byte> objectBody)
-            && TryReadObjectRequest(objectBody, out request, out paramsDocument);
+            && TryReadObjectRequest(objectBody, out request);
     }
 
     private static bool TryGetSingleDocumentBody(
@@ -406,11 +404,9 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
 
     private static bool TryReadObjectRequest(
         ReadOnlyMemory<byte> objectBody,
-        [NotNullWhen(true)] out JsonRpcRequest? request,
-        out JsonDocument? paramsDocument)
+        [NotNullWhen(true)] out JsonRpcRequest? request)
     {
         request = null;
-        paramsDocument = null;
 
         JsonRpcEnvelopeReader envelopeReader = new(objectBody.Span);
         if (!envelopeReader.TryRead(out JsonRpcEnvelope envelope))
@@ -551,7 +547,6 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
 
     private async ValueTask ProcessSingleRequestToSink(
         JsonRpcRequest request,
-        JsonDocument? paramsDocument,
         JsonRpcContext context,
         IJsonRpcResponseSink sink,
         CancellationToken cancellationToken)
@@ -566,7 +561,6 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
         finally
         {
             request.DisposeParsedParamsDocument();
-            paramsDocument?.Dispose();
         }
     }
 
@@ -723,9 +717,9 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
 
     private JsonRpcRequest DeserializeBatchItem(ReadOnlyMemory<byte> itemBody, out JsonDocument? requestDocument)
     {
-        if (TryReadObjectRequest(itemBody, out JsonRpcRequest? directRequest, out JsonDocument? paramsDocument))
+        if (TryReadObjectRequest(itemBody, out JsonRpcRequest? directRequest))
         {
-            requestDocument = paramsDocument;
+            requestDocument = null;
             return directRequest;
         }
 
