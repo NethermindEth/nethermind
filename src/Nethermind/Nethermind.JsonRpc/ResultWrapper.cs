@@ -70,11 +70,7 @@ namespace Nethermind.JsonRpc
         {
             ResultWrapper<T> response = (ResultWrapper<T>)MemberwiseClone();
             response.Id = id;
-            if (disposableAction is not null)
-            {
-                response.AddDisposable(disposableAction);
-            }
-
+            if (disposableAction is not null) response.AddDisposable(disposableAction);
             return response;
         }
 
@@ -97,13 +93,9 @@ namespace Nethermind.JsonRpc
 
         internal override bool TryGetStreamableResult(out IStreamableResult? streamable)
         {
-            if (Result.ResultType != ResultType.Success || !RpcPayloadTypeShape<T>.CanBeStreamable)
-            {
-                streamable = null;
-                return false;
-            }
-
-            streamable = Data as IStreamableResult;
+            streamable = Result.ResultType == ResultType.Success && RpcPayloadTypeShape<T>.CanBeStreamable
+                ? Data as IStreamableResult
+                : null;
             return streamable is not null;
         }
 
@@ -193,12 +185,7 @@ namespace Nethermind.JsonRpc
 
         protected static void DisposeIfReferenceType<TValue>(TValue value)
         {
-            if (typeof(TValue).IsValueType)
-            {
-                return;
-            }
-
-            ((object?)value).TryDispose();
+            if (!typeof(TValue).IsValueType) ((object?)value).TryDispose();
         }
     }
 

@@ -18,7 +18,7 @@ internal static class RpcPayloadTypeInfo
     public static JsonTypeInfo Get(JsonSerializerOptions options, Type type) =>
         ReferenceEquals(options, EthereumJsonSerializer.JsonOptions)
             ? GetCanonical(type)
-            : GetCached(options, type);
+            : _cache.GetOrAdd((options, type), static key => key.Options.GetTypeInfo(key.Type));
 
     private static JsonTypeInfo GetCanonical(Type type)
     {
@@ -34,9 +34,6 @@ internal static class RpcPayloadTypeInfo
 
         return EthereumJsonSerializer.JsonOptions.GetTypeInfo(type);
     }
-
-    private static JsonTypeInfo GetCached(JsonSerializerOptions options, Type type) =>
-        _cache.GetOrAdd((options, type), static key => key.Options.GetTypeInfo(key.Type));
 }
 
 internal static class RpcPayloadTypeInfo<T>
@@ -47,7 +44,7 @@ internal static class RpcPayloadTypeInfo<T>
     public static JsonTypeInfo<T> Get(JsonSerializerOptions options) =>
         ReferenceEquals(options, EthereumJsonSerializer.JsonOptions)
             ? GetCanonical()
-            : GetCached(options);
+            : _cache.GetOrAdd(options, static options => (JsonTypeInfo<T>)options.GetTypeInfo(typeof(T)));
 
     private static JsonTypeInfo<T> GetCanonical()
     {
@@ -64,9 +61,6 @@ internal static class RpcPayloadTypeInfo<T>
 
         return (JsonTypeInfo<T>)EthereumJsonSerializer.JsonOptions.GetTypeInfo(typeof(T));
     }
-
-    private static JsonTypeInfo<T> GetCached(JsonSerializerOptions options) =>
-        _cache.GetOrAdd(options, static options => (JsonTypeInfo<T>)options.GetTypeInfo(typeof(T)));
 }
 
 internal static class RpcPayloadTypeShape
