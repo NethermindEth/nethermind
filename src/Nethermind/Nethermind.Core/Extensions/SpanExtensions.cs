@@ -158,21 +158,20 @@ namespace Nethermind.Core.Extensions
 
         /// <summary>
         /// Returns whether <paramref name="a"/>[aStart..aStart+length] sequence-equals
-        /// <paramref name="b"/>[bStart..bStart+length]. Shortcut for the
-        /// <c>new ReadOnlySpan&lt;T&gt;(a, aStart, length).SequenceEqual(new ReadOnlySpan&lt;T&gt;(b, bStart, length))</c>
-        /// boilerplate.
+        /// <paramref name="b"/>[bStart..bStart+length]. Shorthand for the
+        /// <c>a.Slice(aStart, length).SequenceEqual(b.Slice(bStart, length))</c> pattern.
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static bool SliceEqual<T>(this T[] a, int aStart, T[] b, int bStart, int length) where T : IEquatable<T>
-            => new ReadOnlySpan<T>(a, aStart, length).SequenceEqual(new ReadOnlySpan<T>(b, bStart, length));
+        public static bool SliceEqual<T>(this ReadOnlySpan<T> a, int aStart, ReadOnlySpan<T> b, int bStart, int length) where T : IEquatable<T>
+            => a.Slice(aStart, length).SequenceEqual(b.Slice(bStart, length));
 
         /// <summary>
         /// Copy <paramref name="src"/>[srcStart..srcStart+length] into
         /// <paramref name="dst"/>[dstStart..dstStart+length].
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static void CopySlice<T>(this T[] src, int srcStart, T[] dst, int dstStart, int length)
-            => src.AsSpan(srcStart, length).CopyTo(dst.AsSpan(dstStart, length));
+        public static void CopySlice<T>(this Span<T> src, int srcStart, Span<T> dst, int dstStart, int length)
+            => src.Slice(srcStart, length).CopyTo(dst.Slice(dstStart, length));
 
         /// <summary>
         /// Computes a very fast, non-cryptographic 32-bit hash of the supplied bytes.
