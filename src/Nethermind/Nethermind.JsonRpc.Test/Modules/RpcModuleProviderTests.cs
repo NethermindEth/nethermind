@@ -290,10 +290,7 @@ public class RpcModuleProviderTests
     public void ModuleFactory_FromDI_IsLazy(bool preload)
     {
         IContainer container = new ContainerBuilder()
-            .AddModule(new TestNethermindModule(new JsonRpcConfig()
-            {
-                PreloadRpcModules = preload
-            }))
+            .AddModule(new TestNethermindModule(new JsonRpcConfig { PreloadRpcModules = preload }))
             .AddSingleton<TestRpcModuleDependencies>()
             .RegisterSingletonJsonRpcModule<ITestRpcModule, TestRpcModule>()
             .Build();
@@ -496,14 +493,11 @@ public class RpcModuleProviderTests
     }
 
     [RpcModule(ModuleType.Eth)]
-    private interface ITestRpcModule : IRpcModule
-    {
-
-    }
+    private interface ITestRpcModule : IRpcModule { }
 
     private class TestRpcModuleDependencies
     {
-        internal bool WasRequested = false;
+        internal bool WasRequested;
     }
 
     private class TestRpcModule : ITestRpcModule
@@ -516,9 +510,7 @@ public class RpcModuleProviderTests
         public string? Value { get; set; }
     }
 
-    private class PolymorphicPayload
-    {
-    }
+    private class PolymorphicPayload { }
 
     private sealed class TestModulePool<T>(T module) : IRpcModulePool<T> where T : IRpcModule
     {
