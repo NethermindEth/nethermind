@@ -67,4 +67,11 @@ namespace Nethermind.JsonRpc
         [Description("Individual rpc latency metric calls (microseconds)")]
         public static IMetricObserver JsonRpcCallLatencyMicros = NoopMetricObserver.Instance;
     }
+
+    internal sealed class JsonRpcMetricLabels(string method, bool success) : IMetricLabels
+    {
+        private readonly string[] _labels = [method, success ? "success" : "fail"];
+
+        public string[] Labels => _labels;
+    }
 }
