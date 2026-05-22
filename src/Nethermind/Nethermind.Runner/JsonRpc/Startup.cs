@@ -58,7 +58,6 @@ public class Startup : IStartup
 
     public Startup() { }
 
-    // for tests
     internal Startup(
         JsonRpcProcessor jsonRpcProcessor,
         JsonRpcService jsonRpcService,
@@ -113,7 +112,6 @@ public class Startup : IStartup
     }
 
     private static ServiceProvider Build(IServiceCollection services) => services.BuildServiceProvider();
-
 
     public void Configure(IApplicationBuilder app)
     {
@@ -249,10 +247,6 @@ public class Startup : IStartup
         }
     }
 
-    /// <summary>
-    /// Check for IPv4 localhost (127.0.0.1) and IPv6 localhost (::1)
-    /// </summary>
-    /// <param name="remoteIp">Request source</param>
     private static bool IsLocalhost(IPAddress remoteIp)
         => IPAddress.IsLoopback(remoteIp) || remoteIp.Equals(IPAddress.IPv6Loopback);
 
@@ -282,8 +276,7 @@ public class Startup : IStartup
             return next();
         }
 
-        bool isJson = IsJsonContentType(ctx.Request.ContentType);
-        if (!isJson)
+        if (!IsJsonContentType(ctx.Request.ContentType))
         {
             return next();
         }
@@ -375,10 +368,7 @@ public class Startup : IStartup
         return parsed.ToArray();
     }
 
-    private sealed class TrustedSourceFeature(bool isTrusted)
-    {
-        public bool IsTrusted { get; } = isTrusted;
-    }
+    private sealed class TrustedSourceFeature(bool isTrusted) { public bool IsTrusted { get; } = isTrusted; }
 
     internal readonly struct TrustedCidr
     {
