@@ -150,7 +150,7 @@ internal static class Program
         List<string> filteredTypes = new(candidatesByDisplayName.Count);
         foreach (JsonTypeCandidate candidate in candidatesByDisplayName.Values)
         {
-            if (!candidate.UsesAnyGeneratedTypeName(collidingGeneratedTypeNames))
+            if (!collidingGeneratedTypeNames.Overlaps(candidate.GeneratedTypeNames.Keys))
             {
                 filteredTypes.Add(candidate.DisplayName);
             }
@@ -187,11 +187,7 @@ internal static class Program
         return collisions;
     }
 
-    private sealed record JsonTypeCandidate(string DisplayName, Dictionary<string, string> GeneratedTypeNames)
-    {
-        public bool UsesAnyGeneratedTypeName(HashSet<string> generatedTypeNames) =>
-            generatedTypeNames.Overlaps(GeneratedTypeNames.Keys);
-    }
+    private sealed record JsonTypeCandidate(string DisplayName, Dictionary<string, string> GeneratedTypeNames);
 
     private sealed class JsonContextEligibility(IAssemblySymbol currentAssembly)
     {

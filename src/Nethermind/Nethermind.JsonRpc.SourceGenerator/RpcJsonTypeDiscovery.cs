@@ -98,9 +98,6 @@ internal static class RpcJsonTypeDiscovery
         return sortedTypes;
     }
 
-    public static string[] GetSortedUniqueMethodNames(ImmutableArray<ImmutableArray<string>> methodNameGroups) =>
-        GetSortedUniqueTypes(methodNameGroups);
-
     private static ImmutableArray<ITypeSymbol> GetRpcModuleJsonTypeSymbols(
         SemanticModel semanticModel,
         TypeDeclarationSyntax typeDeclaration,

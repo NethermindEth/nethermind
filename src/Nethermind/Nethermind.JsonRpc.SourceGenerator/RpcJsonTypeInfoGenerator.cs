@@ -37,7 +37,7 @@ public sealed class RpcJsonTypeInfoGenerator : IIncrementalGenerator
         ImmutableArray<ImmutableArray<string>> methodNameGroups)
     {
         string[] sortedTypes = RpcJsonTypeDiscovery.GetSortedUniqueTypes(typeGroups);
-        string[] sortedMethodNames = RpcJsonTypeDiscovery.GetSortedUniqueMethodNames(methodNameGroups);
+        string[] sortedMethodNames = RpcJsonTypeDiscovery.GetSortedUniqueTypes(methodNameGroups);
         if (sortedTypes.Length == 0 && sortedMethodNames.Length == 0)
         {
             return;
