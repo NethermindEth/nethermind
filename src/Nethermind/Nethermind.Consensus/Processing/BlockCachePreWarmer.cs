@@ -392,7 +392,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
                     }
                 }
 
-                if (Bal is not null && Bal.AccountChanges.Count > 0)
+                if (Bal is not null && !Bal.AccountChangesAsSpan.IsEmpty)
                 {
                     WarmupFromBal(parallelOptions, envPool);
                 }
@@ -423,7 +423,9 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
 
         private void WarmupFromBal(ParallelOptions parallelOptions, ObjectPool<IReadOnlyTxProcessorSource> envPool)
         {
-            using ArrayPoolList<ReadOnlyAccountChanges> accounts = Bal!.AccountChanges.ToPooledList(Bal!.AccountChanges.Count);
+            // Span-construct avoids the boxed enumerator that AccountChanges.ToPooledList would
+            // walk, and the underlying array is reused via the array pool.
+            using ArrayPoolList<ReadOnlyAccountChanges> accounts = new(Bal!.AccountChangesAsSpan);
 
             WarmingState<ArrayPoolList<ReadOnlyAccountChanges>> baseState = new(envPool, accounts, parent);
 

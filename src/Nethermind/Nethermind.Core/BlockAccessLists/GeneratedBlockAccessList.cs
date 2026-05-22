@@ -23,6 +23,14 @@ public class GeneratedBlockAccessList
         => new(_accountChanges.Values, _accountChanges.Values.Count);
 
     /// <summary>
+    /// Typed value-collection view. Iterating this with <c>foreach</c> uses the dictionary's
+    /// struct enumerator and avoids the <see cref="System.Collections.Generic.IEnumerator{T}"/>
+    /// box that <see cref="AccountChanges"/> incurs.
+    /// </summary>
+    public Dictionary<Address, GeneratedAccountChanges>.ValueCollection AccountChangesValues
+        => _accountChanges.Values;
+
+    /// <summary>
     /// Address-sorted snapshot; pooled, dispose after use.
     /// </summary>
     public ArrayPoolListRef<GeneratedAccountChanges> GetSortedAccountChanges()

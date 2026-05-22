@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Numerics;
@@ -96,17 +97,22 @@ internal sealed class BlockAccessListValidationIndex
     {
         uint lastIndex = GetLastIndex(txCount);
         int rowCount = checked((int)lastIndex + 1);
-        Counts counts = new(rowCount);
-        Count(blockAccessList, counts, lastIndex);
+        ReadOnlySpan<ReadOnlyAccountChanges> accounts = blockAccessList.AccountChangesAsSpan;
 
-        Lane<UInt256> balance = Lane<UInt256>.CreateImmutable(counts.Balance);
-        Lane<ulong> nonce = Lane<ulong>.CreateImmutable(counts.Nonce);
-        Lane<ValueHash256> code = Lane<ValueHash256>.CreateImmutable(counts.Code);
-        StorageLane storage = StorageLane.CreateImmutable(counts.Storage);
+        // Pool the four per-row counter arrays so a 30k-tx block doesn't allocate 4 fresh int[]
+        // for every block validated. Cleared on rent so we don't pick up the previous block's
+        // counts; returned via the disposing Counts wrapper even if the rest of Build throws.
+        using PooledCounts counts = PooledCounts.Rent(rowCount);
+        Count(accounts, counts.AsCountsView(), lastIndex);
 
-        ulong[] hasAccountWords = new ulong[WordCount(blockAccessList.AccountChanges.Count)];
+        Lane<UInt256> balance = Lane<UInt256>.CreateImmutable(counts.BalanceSpan);
+        Lane<ulong> nonce = Lane<ulong>.CreateImmutable(counts.NonceSpan);
+        Lane<ValueHash256> code = Lane<ValueHash256>.CreateImmutable(counts.CodeSpan);
+        StorageLane storage = StorageLane.CreateImmutable(counts.StorageSpan);
 
-        FillAndMark(blockAccessList, addressIndex, lastIndex, balance, nonce, code, storage, hasAccountWords);
+        ulong[] hasAccountWords = new ulong[WordCount(accounts.Length)];
+
+        FillAndMark(accounts, addressIndex, lastIndex, balance, nonce, code, storage, hasAccountWords);
 
         balance.SortAllRows();
         nonce.SortAllRows();
@@ -246,7 +252,8 @@ internal sealed class BlockAccessListValidationIndex
         mismatchAddress = null;
         generatedAccountCount = MarkedAccountCount;
 
-        if (suggested.AccountChanges.Count != generatedAccountCount)
+        ReadOnlySpan<ReadOnlyAccountChanges> suggestedAccounts = suggested.AccountChangesAsSpan;
+        if (suggestedAccounts.Length != generatedAccountCount)
         {
             return StructuralMismatchKind.AccountCountMismatch;
         }
@@ -267,7 +274,7 @@ internal sealed class BlockAccessListValidationIndex
         int writesCursor = 0;
         int lastOrdinal = -1;
 
-        foreach (ReadOnlyAccountChanges suggestedAccount in suggested.AccountChanges)
+        foreach (ReadOnlyAccountChanges suggestedAccount in suggestedAccounts)
         {
             if (!_addressIndex.TryGet(suggestedAccount.Address, out int ordinal) || !HasAccountOrdinal(ordinal))
             {
@@ -452,9 +459,9 @@ internal sealed class BlockAccessListValidationIndex
 
     public bool HasAccount(int ordinal) => HasAccountOrdinal(ordinal);
 
-    private static void Count(ReadOnlyBlockAccessList blockAccessList, Counts counts, uint lastIndex)
+    private static void Count(ReadOnlySpan<ReadOnlyAccountChanges> accounts, CountsView counts, uint lastIndex)
     {
-        foreach (ReadOnlyAccountChanges accountChanges in blockAccessList.AccountChanges)
+        foreach (ReadOnlyAccountChanges accountChanges in accounts)
         {
             Count(accountChanges.BalanceChanges, counts.Balance, lastIndex);
             Count(accountChanges.NonceChanges, counts.Nonce, lastIndex);
@@ -467,7 +474,7 @@ internal sealed class BlockAccessListValidationIndex
         }
     }
 
-    private static void Count<TChange>(ReadOnlySpan<TChange> changes, int[] counts, uint lastIndex)
+    private static void Count<TChange>(ReadOnlySpan<TChange> changes, Span<int> counts, uint lastIndex)
         where TChange : struct, IIndexedChange
     {
         for (int i = 0; i < changes.Length; i++)
@@ -480,7 +487,7 @@ internal sealed class BlockAccessListValidationIndex
     }
 
     private static void FillAndMark(
-        ReadOnlyBlockAccessList blockAccessList,
+        ReadOnlySpan<ReadOnlyAccountChanges> accounts,
         AddressIndex addressIndex,
         uint lastIndex,
         Lane<UInt256> balance,
@@ -494,7 +501,7 @@ internal sealed class BlockAccessListValidationIndex
         int[] codeCursors = code.CreateFillCursors();
         int[] storageCursors = storage.CreateFillCursors();
 
-        foreach (ReadOnlyAccountChanges accountChanges in blockAccessList.AccountChanges)
+        foreach (ReadOnlyAccountChanges accountChanges in accounts)
         {
             int accountOrdinal = addressIndex.GetOrAdd(accountChanges.Address);
             SetBit(hasAccountWords, accountOrdinal);
@@ -587,12 +594,89 @@ internal sealed class BlockAccessListValidationIndex
         public Address GetAddress(int ordinal) => _addresses[ordinal];
     }
 
-    private sealed class Counts(int rowCount)
+    /// <summary>
+    /// Span-based view over four per-row counter buffers. Used by <see cref="Count"/> so it can
+    /// fill counters without taking a dependency on whether the buffers came from
+    /// <see cref="System.Buffers.ArrayPool{T}"/> or were freshly allocated.
+    /// </summary>
+    private readonly ref struct CountsView(Span<int> balance, Span<int> nonce, Span<int> code, Span<int> storage)
     {
-        public readonly int[] Balance = new int[rowCount];
-        public readonly int[] Nonce = new int[rowCount];
-        public readonly int[] Code = new int[rowCount];
-        public readonly int[] Storage = new int[rowCount];
+        public readonly Span<int> Balance = balance;
+        public readonly Span<int> Nonce = nonce;
+        public readonly Span<int> Code = code;
+        public readonly Span<int> Storage = storage;
+    }
+
+    /// <summary>
+    /// Rents four pooled <c>int[]</c> buffers for the lane row-count counters used by
+    /// <see cref="Build"/>. Cleared on rent so prior block tallies don't leak in.
+    /// </summary>
+    private readonly ref struct PooledCounts
+    {
+        private readonly int _rowCount;
+        public readonly int[] Balance;
+        public readonly int[] Nonce;
+        public readonly int[] Code;
+        public readonly int[] Storage;
+
+        private PooledCounts(int rowCount, int[] balance, int[] nonce, int[] code, int[] storage)
+        {
+            _rowCount = rowCount;
+            Balance = balance;
+            Nonce = nonce;
+            Code = code;
+            Storage = storage;
+        }
+
+        public static PooledCounts Rent(int rowCount)
+        {
+            ArrayPool<int> pool = SafeArrayPool<int>.Shared;
+            int[]? balance = null;
+            int[]? nonce = null;
+            int[]? code = null;
+            int[]? storage = null;
+            try
+            {
+                balance = pool.Rent(rowCount);
+                nonce = pool.Rent(rowCount);
+                code = pool.Rent(rowCount);
+                storage = pool.Rent(rowCount);
+                // Pool buffers come back dirty; the counter loops below assume zero start.
+                balance.AsSpan(0, rowCount).Clear();
+                nonce.AsSpan(0, rowCount).Clear();
+                code.AsSpan(0, rowCount).Clear();
+                storage.AsSpan(0, rowCount).Clear();
+                return new PooledCounts(rowCount, balance, nonce, code, storage);
+            }
+            catch
+            {
+                if (balance is not null) pool.Return(balance);
+                if (nonce is not null) pool.Return(nonce);
+                if (code is not null) pool.Return(code);
+                if (storage is not null) pool.Return(storage);
+                throw;
+            }
+        }
+
+        public CountsView AsCountsView() => new(
+            Balance.AsSpan(0, _rowCount),
+            Nonce.AsSpan(0, _rowCount),
+            Code.AsSpan(0, _rowCount),
+            Storage.AsSpan(0, _rowCount));
+
+        public ReadOnlySpan<int> BalanceSpan => Balance.AsSpan(0, _rowCount);
+        public ReadOnlySpan<int> NonceSpan => Nonce.AsSpan(0, _rowCount);
+        public ReadOnlySpan<int> CodeSpan => Code.AsSpan(0, _rowCount);
+        public ReadOnlySpan<int> StorageSpan => Storage.AsSpan(0, _rowCount);
+
+        public void Dispose()
+        {
+            ArrayPool<int> pool = SafeArrayPool<int>.Shared;
+            pool.Return(Balance);
+            pool.Return(Nonce);
+            pool.Return(Code);
+            pool.Return(Storage);
+        }
     }
 
     private sealed class Lane<TValue>
@@ -625,7 +709,7 @@ internal sealed class BlockAccessListValidationIndex
             _rowOverflow = rowOverflow;
         }
 
-        public static Lane<TValue> CreateImmutable(int[] counts)
+        public static Lane<TValue> CreateImmutable(ReadOnlySpan<int> counts)
         {
             int[] rowStarts = CreateRowStarts(counts);
             return new(rowStarts, null, new int[rowStarts[^1]], new TValue[rowStarts[^1]], null, null, null);
@@ -835,7 +919,7 @@ internal sealed class BlockAccessListValidationIndex
             _rowOverflow = rowOverflow;
         }
 
-        public static StorageLane CreateImmutable(int[] counts)
+        public static StorageLane CreateImmutable(ReadOnlySpan<int> counts)
         {
             int[] rowStarts = CreateRowStarts(counts);
             return new(rowStarts, null, new int[rowStarts[^1]], new UInt256[rowStarts[^1]], new EvmWord[rowStarts[^1]], null, null, null);
@@ -1111,7 +1195,7 @@ internal sealed class BlockAccessListValidationIndex
         }
     }
 
-    private static int[] CreateRowStarts(int[] counts)
+    private static int[] CreateRowStarts(ReadOnlySpan<int> counts)
     {
         int[] rowStarts = new int[counts.Length + 1];
         for (int i = 0; i < counts.Length; i++)

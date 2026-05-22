@@ -137,7 +137,7 @@ public partial class BlockAccessListManager(
                 _suggestedValidationIndex = BlockAccessListValidationIndex.Build(suggested, suggestedBlock.Transactions.Length, addressIndex);
                 _generatedValidationIndex = new(suggestedBlock.Transactions.Length, addressIndex, _suggestedValidationIndex, suggested.TotalStorageReads, suggested.TotalStorageChangeEvents);
                 int suggestedReads = 0;
-                foreach (ReadOnlyAccountChanges ac in suggested.AccountChanges)
+                foreach (ReadOnlyAccountChanges ac in suggested.AccountChangesAsSpan)
                 {
                     if (!IsSystemContract(ac.Address)) suggestedReads += ac.StorageReads.Length;
                 }

@@ -34,7 +34,7 @@ public partial class BlockAccessListManager
     /// </remarks>
     public static void ApplyStateChanges(ReadOnlyBlockAccessList suggestedBlockAccessList, IWorldState stateProvider, IReleaseSpec spec, bool shouldComputeStateRoot)
     {
-        foreach (ReadOnlyAccountChanges accountChanges in suggestedBlockAccessList.AccountChanges)
+        foreach (ReadOnlyAccountChanges accountChanges in suggestedBlockAccessList.AccountChangesAsSpan)
         {
             if (accountChanges.BalanceChanges.Length > 0)
             {
