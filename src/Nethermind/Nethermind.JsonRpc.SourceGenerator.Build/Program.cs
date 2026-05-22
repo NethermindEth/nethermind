@@ -205,27 +205,16 @@ internal static class Program
                 : null;
         }
 
-        private bool IsRootOwnedByCurrentAssembly(ITypeSymbol type)
-        {
-            if (type is IArrayTypeSymbol arrayType)
+        private bool IsRootOwnedByCurrentAssembly(ITypeSymbol type) =>
+            type switch
             {
-                return IsRootOwnedByCurrentAssembly(arrayType.ElementType);
-            }
-
-            if (type is not INamedTypeSymbol namedType)
-            {
-                return false;
-            }
-
-            if (namedType.SpecialType != SpecialType.None ||
-                IsSystemType(namedType))
-            {
-                return namedType.TypeArguments.Length == 0 || HasCurrentAssemblyTypeArgument(namedType);
-            }
-
-            return SymbolEqualityComparer.Default.Equals(namedType.ContainingAssembly, _currentAssembly) ||
-                namedType.IsGenericType && HasCurrentAssemblyTypeArgument(namedType);
-        }
+                IArrayTypeSymbol arrayType => IsRootOwnedByCurrentAssembly(arrayType.ElementType),
+                INamedTypeSymbol namedType when namedType.SpecialType != SpecialType.None || IsSystemType(namedType) =>
+                    namedType.TypeArguments.Length == 0 || HasCurrentAssemblyTypeArgument(namedType),
+                INamedTypeSymbol namedType => SymbolEqualityComparer.Default.Equals(namedType.ContainingAssembly, _currentAssembly) ||
+                    namedType.IsGenericType && HasCurrentAssemblyTypeArgument(namedType),
+                _ => false
+            };
 
         private bool HasCurrentAssemblyTypeArgument(INamedTypeSymbol type)
         {
