@@ -269,19 +269,6 @@ public class JsonRpcSocketsClientTests
         [TestCase(2)]
         public async Task Can_process_complete_messages_without_delimiter(int messageCount)
         {
-            using UnixSocketPair pair = await UnixSocketPair.CreateAsync();
-
-            int processedRequests = 0;
-            List<string> processedPayloads = [];
-            IJsonRpcProcessor jsonRpcProcessor = CreateCapturingProcessor(buf =>
-            {
-                processedPayloads.Add(Encoding.UTF8.GetString(buf.ToArray()));
-                Interlocked.Increment(ref processedRequests);
-            });
-
-            Task receiver = StartReceiver(pair.Listener, jsonRpcProcessor, pair.Cts.Token);
-
-            await using IpcSocketMessageStream sendStream = new(pair.SendSocket);
             List<string> expectedPayloads = [];
             string[] requests =
             {
@@ -293,14 +280,7 @@ public class JsonRpcSocketsClientTests
             {
                 expectedPayloads.Add(requests[i]);
             }
-            byte[] combinedRequests = Encoding.UTF8.GetBytes(string.Concat(expectedPayloads));
-
-            await sendStream.WriteAsync(combinedRequests, pair.Cts.Token);
-
-            Assert.That(() => processedRequests, Is.EqualTo(messageCount).After(5000, 10));
-            processedPayloads.Should().Equal(expectedPayloads);
-
-            await ShutdownAndWait(pair.SendSocket, receiver);
+            await SendAndAssertPayloads(string.Concat(expectedPayloads), expectedPayloads);
         }
 
         [Test]
@@ -319,43 +299,15 @@ public class JsonRpcSocketsClientTests
         [TestCase(10)]
         public async Task Can_process_large_chunked_json_without_delimiter(int messageCount)
         {
-            using UnixSocketPair pair = await UnixSocketPair.CreateAsync();
-
-            int processedRequests = 0;
-            List<string> processedPayloads = [];
-            IJsonRpcProcessor jsonRpcProcessor = CreateCapturingProcessor(buf =>
-            {
-                processedPayloads.Add(Encoding.UTF8.GetString(buf.ToArray()));
-                Interlocked.Increment(ref processedRequests);
-            });
-
-            Task receiver = StartReceiver(pair.Listener, jsonRpcProcessor, pair.Cts.Token);
-
-            await using IpcSocketMessageStream sendStream = new(pair.SendSocket);
-
-            // Build large JSON messages (~10KB each) to exercise incremental parsing across many 4KB chunks
             List<string> expectedPayloads = [];
             for (int i = 0; i < messageCount; i++)
             {
                 string payload = new((char)('a' + i % 26), 10_000);
                 string request = $"{{\"jsonrpc\":\"2.0\",\"id\":{i},\"method\":\"eth_call\",\"params\":[\"{payload}\"]}}";
                 expectedPayloads.Add(request);
-
-                // Send each message in small pieces to force multi-chunk parsing
-                byte[] requestBytes = Encoding.UTF8.GetBytes(request);
-                int chunkSize = 4096;
-                for (int offset = 0; offset < requestBytes.Length; offset += chunkSize)
-                {
-                    int len = Math.Min(chunkSize, requestBytes.Length - offset);
-                    await sendStream.WriteAsync(requestBytes.AsMemory(offset, len), pair.Cts.Token);
-                    await Task.Delay(1);
-                }
             }
 
-            Assert.That(() => processedRequests, Is.EqualTo(messageCount).After(10000, 10));
-            processedPayloads.Should().Equal(expectedPayloads);
-
-            await ShutdownAndWait(pair.SendSocket, receiver);
+            await SendAndAssertPayloads(string.Concat(expectedPayloads), expectedPayloads, timeout: 10000, chunkSize: 4096);
         }
 
         [Test]
@@ -498,7 +450,7 @@ public class JsonRpcSocketsClientTests
             Assert.That(sentMessages, Is.EqualTo(receivedMessages).AsCollection);
         }
 
-        private static async Task SendAndAssertPayloads(string wireData, IReadOnlyList<string> expectedPayloads, int timeout = 5000)
+        private static async Task SendAndAssertPayloads(string wireData, IReadOnlyList<string> expectedPayloads, int timeout = 5000, int chunkSize = 0)
         {
             using UnixSocketPair pair = await UnixSocketPair.CreateAsync();
 
@@ -513,7 +465,20 @@ public class JsonRpcSocketsClientTests
             Task receiver = StartReceiver(pair.Listener, jsonRpcProcessor, pair.Cts.Token);
 
             await using IpcSocketMessageStream sendStream = new(pair.SendSocket);
-            await sendStream.WriteAsync(Encoding.UTF8.GetBytes(wireData), pair.Cts.Token);
+            byte[] wireBytes = Encoding.UTF8.GetBytes(wireData);
+            if (chunkSize <= 0)
+            {
+                await sendStream.WriteAsync(wireBytes, pair.Cts.Token);
+            }
+            else
+            {
+                for (int offset = 0; offset < wireBytes.Length; offset += chunkSize)
+                {
+                    int length = Math.Min(chunkSize, wireBytes.Length - offset);
+                    await sendStream.WriteAsync(wireBytes.AsMemory(offset, length), pair.Cts.Token);
+                    await Task.Delay(1, pair.Cts.Token);
+                }
+            }
 
             Assert.That(() => processedRequests, Is.EqualTo(expectedPayloads.Count).After(timeout, 10));
             processedPayloads.Should().Equal(expectedPayloads);
