@@ -90,13 +90,6 @@ public class DoubleEndedLru<TNode>(int capacity) where TNode : notnull
 
     public bool Contains(in ValueHash256 hash) => _hashMapping.ContainsKey(hash);
 
-    public TNode? GetByHash(ValueHash256 hash)
-    {
-        if (_hashMapping.TryGetValue(hash, out LinkedListNode<(ValueHash256, TNode)>? listNode))
-        {
-            return listNode.Value.Item2;
-        }
-
-        return default;
-    }
+    public TNode? GetByHash(ValueHash256 hash) =>
+        _hashMapping.TryGetValue(hash, out LinkedListNode<(ValueHash256, TNode)>? listNode) ? listNode.Value.Item2 : default;
 }

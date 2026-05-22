@@ -44,8 +44,6 @@ public class KademliaDiscv4Adapter(
     private readonly ConcurrentDictionary<(ValueHash256, MsgType), IMessageHandler[]> _incomingMessageHandlers = new();
     private readonly LruCache<ValueHash256, NodeSession> _sessions = new(discoveryConfig.MaxNodeLifecycleManagersCount, "node_sessions");
 
-    #region Authentication and utils
-
     public NodeSession GetSession(Node node) => _sessions.SetOrGet(
         node.IdHash.ValueHash256,
         (node, nodeStatsManager, timestamper),
@@ -167,8 +165,6 @@ public class KademliaDiscv4Adapter(
     }
 
     private long CalculateExpirationTime() => (long)(_expirationTime.TotalSeconds + timestamper.UnixTime.SecondsLong);
-
-    #endregion
 
     public async Task Ping(Node receiver, CancellationToken token)
     {

@@ -10,12 +10,6 @@ public class PongMsgHandler(PingMsg ping) : ITaskCompleter<PongMsg>
 {
     public TaskCompletionSource<PongMsg> TaskCompletionSource { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
-    public bool Handle(DiscoveryMsg msg)
-    {
-        if (msg is PongMsg pong && Bytes.AreEqual(pong.PingMdc, ping.Mdc) && TaskCompletionSource.TrySetResult(pong))
-        {
-            return true;
-        }
-        return false;
-    }
+    public bool Handle(DiscoveryMsg msg) =>
+        msg is PongMsg pong && Bytes.AreEqual(pong.PingMdc, ping.Mdc) && TaskCompletionSource.TrySetResult(pong);
 }

@@ -9,12 +9,5 @@ public class EnrResponseHandler : ITaskCompleter<EnrResponseMsg>
 {
     public TaskCompletionSource<EnrResponseMsg> TaskCompletionSource { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
-    public bool Handle(DiscoveryMsg msg)
-    {
-        if (msg is EnrResponseMsg resp && TaskCompletionSource.TrySetResult(resp))
-        {
-            return true;
-        }
-        return false;
-    }
+    public bool Handle(DiscoveryMsg msg) => msg is EnrResponseMsg resp && TaskCompletionSource.TrySetResult(resp);
 }

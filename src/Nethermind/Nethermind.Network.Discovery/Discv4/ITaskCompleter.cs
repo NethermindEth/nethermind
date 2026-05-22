@@ -1,11 +1,9 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using Nethermind.Network.Discovery.Messages;
-
 namespace Nethermind.Network.Discovery.Discv4;
 
-internal interface IMessageHandler
+internal interface ITaskCompleter<T> : IMessageHandler
 {
-    bool Handle(DiscoveryMsg msg);
+    TaskCompletionSource<T> TaskCompletionSource { get; }
 }
