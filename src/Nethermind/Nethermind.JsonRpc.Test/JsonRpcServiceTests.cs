@@ -159,10 +159,10 @@ public class JsonRpcServiceTests
         string serializedCall = new EthereumJsonSerializer().Serialize(payload);
         IEthRpcModule ethRpcModule = Substitute.For<IEthRpcModule>();
         ethRpcModule.eth_simulateV1(payload).ReturnsForAnyArgs(static _ =>
-            ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>>.Success(Array.Empty<SimulateBlockResult<SimulateCallResult>>()));
+            ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>>.Success([]));
         IReadOnlyList<SimulateBlockResult<SimulateCallResult>> result =
             RpcTest.AssertSuccess<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>>(TestRequest(ethRpcModule, "eth_simulateV1", serializedCall));
-        Assert.That(result, Is.EqualTo(Array.Empty<SimulateBlockResult<SimulateCallResult>>()));
+        Assert.That(result, Is.Empty);
     }
 
     [Test]
