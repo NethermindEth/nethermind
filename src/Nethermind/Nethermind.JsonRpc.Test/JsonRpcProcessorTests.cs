@@ -135,7 +135,7 @@ public class JsonRpcProcessorTests(bool returnErrors)
         string? methodName = KnownRpcMethodNames.Intern(ref reader);
 
         methodName.Should().Be("engine_newPayloadV4");
-        methodName.Should().BeSameAs(GetKnownMethodName("engine_newPayloadV4"));
+        methodName.Should().BeSameAs(TryGetKnownMethodName("engine_newPayloadV4"));
     }
 
     [Test]
@@ -181,9 +181,6 @@ public class JsonRpcProcessorTests(bool returnErrors)
 
         return null;
     }
-
-    private static string GetKnownMethodName(string methodName) =>
-        TryGetKnownMethodName(methodName) ?? throw new InvalidOperationException($"Missing generated method name {methodName}.");
 
     private static IEnumerable<TestCaseData> MultipleDocumentRequestCases()
     {
