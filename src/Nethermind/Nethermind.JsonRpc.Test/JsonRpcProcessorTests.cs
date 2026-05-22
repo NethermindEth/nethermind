@@ -250,48 +250,6 @@ public class JsonRpcProcessorTests(bool returnErrors)
     }
 
     [Test]
-    public async Task Sink_processor_entry_point_rejects_oversized_unauthenticated_batch_without_dispatching()
-    {
-        IJsonRpcService service = CreateEchoService();
-        JsonRpcProcessor processor = CreateProcessor(service, new JsonRpcConfig { RpcRecorderState = RpcRecorderState.None, MaxBatchSize = 1 });
-        CollectingJsonRpcResponseSink sink = new();
-
-        await processor.ProcessAsync(
-            CreateReader("[{\"id\":1,\"jsonrpc\":\"2.0\",\"method\":\"eth_getTransactionCount\",\"params\":[]},{\"id\":2,\"jsonrpc\":\"2.0\",\"method\":\"eth_blockNumber\",\"params\":[]}]"),
-            new JsonRpcContext(RpcEndpoint.Http),
-            sink,
-            new JsonRpcProcessingOptions(JsonRpcInputMode.SingleDocument));
-
-        sink.Singles.Should().HaveCount(1);
-        JsonRpcErrorResponse response = sink.Singles[0].Should().BeOfType<JsonRpcErrorResponse>().Subject;
-        response.Error!.Code.Should().Be(ErrorCodes.LimitExceeded);
-        sink.BatchItems.Should().BeEmpty();
-        await service.DidNotReceive().SendRequestAsync(Arg.Any<JsonRpcRequest>(), Arg.Any<JsonRpcContext>());
-    }
-
-    [Test]
-    public async Task Sink_processor_entry_point_authenticated_batch_bypasses_max_batch_size()
-    {
-        IJsonRpcService service = CreateEchoService();
-        JsonRpcProcessor processor = CreateProcessor(service, new JsonRpcConfig { RpcRecorderState = RpcRecorderState.None, MaxBatchSize = 1 });
-        CollectingJsonRpcResponseSink sink = new();
-        JsonRpcUrl url = new(string.Empty, string.Empty, 0, RpcEndpoint.Http, true, []);
-        using JsonRpcContext context = new(RpcEndpoint.Http, url: url);
-
-        await processor.ProcessAsync(
-            CreateReader("[{\"id\":1,\"jsonrpc\":\"2.0\",\"method\":\"eth_getTransactionCount\",\"params\":[]},{\"id\":2,\"jsonrpc\":\"2.0\",\"method\":\"eth_blockNumber\",\"params\":[]}]"),
-            context,
-            sink,
-            new JsonRpcProcessingOptions(JsonRpcInputMode.SingleDocument));
-
-        sink.Singles.Should().BeEmpty();
-        sink.BatchItems.Should().HaveCount(2);
-        sink.BatchItems[0].Id.Should().Be(1);
-        sink.BatchItems[1].Id.Should().Be(2);
-        await service.Received(2).SendRequestAsync(Arg.Any<JsonRpcRequest>(), Arg.Any<JsonRpcContext>());
-    }
-
-    [Test]
     public async Task Sink_processor_entry_point_propagates_stop_requested_to_inline_batch_processing()
     {
         IJsonRpcService service = CreateEchoService();
@@ -356,72 +314,6 @@ public class JsonRpcProcessorTests(bool returnErrors)
         inspected.Should().BeTrue();
         sink.Singles.Should().HaveCount(1);
         sink.Singles[0].Id.Should().Be(67);
-    }
-
-    [TestCase(50, false, TestName = "Sink input below the 64-depth limit is accepted")]
-    [TestCase(65, true, TestName = "Sink input above the 64-depth limit is rejected as parse error")]
-    public async Task Sink_processor_entry_point_preserves_reader_default_max_depth(int paramNestingDepth, bool expectParseError)
-    {
-        JsonRpcRequest? captured = null;
-        bool capturedParamsWasArray = false;
-        IJsonRpcService service = Substitute.For<IJsonRpcService>();
-        service.SendRequestAsync(Arg.Any<JsonRpcRequest>(), Arg.Any<JsonRpcContext>())
-            .Returns(ci =>
-            {
-                captured = ci.Arg<JsonRpcRequest>();
-                capturedParamsWasArray = captured.Params.ValueKind == JsonValueKind.Array;
-                return new JsonRpcSuccessResponse { Id = captured.Id };
-            });
-        service.GetErrorResponse(0, null!).ReturnsForAnyArgs(_errorResponse);
-        service.GetErrorResponse(0, null!, null!, null!).ReturnsForAnyArgs(_errorResponse);
-
-        JsonRpcProcessor processor = CreateProcessor(service, new JsonRpcConfig { RpcRecorderState = RpcRecorderState.None });
-        CollectingJsonRpcResponseSink sink = new();
-
-        string nested = BuildNestedArrayParams(paramNestingDepth);
-        await processor.ProcessAsync(
-            CreateReader($"{{\"id\":1,\"jsonrpc\":\"2.0\",\"method\":\"eth_getTransactionCount\",\"params\":[{nested}]}}"),
-            new JsonRpcContext(RpcEndpoint.Http),
-            sink,
-            new JsonRpcProcessingOptions(JsonRpcInputMode.SingleDocument));
-
-        sink.Singles.Should().HaveCount(1);
-        if (expectParseError)
-        {
-            sink.Singles[0].Should().BeSameAs(_errorResponse);
-            captured.Should().BeNull("a depth-rejected request must never reach the service");
-        }
-        else
-        {
-            sink.Singles[0].Should().BeOfType<JsonRpcSuccessResponse>();
-            captured.Should().NotBeNull();
-            capturedParamsWasArray.Should().BeTrue();
-        }
-    }
-
-    [Test]
-    public async Task Sink_processor_entry_point_stops_when_shutdown_requested()
-    {
-        IJsonRpcService service = Substitute.For<IJsonRpcService>();
-        service.GetErrorResponse(Arg.Any<int>(), Arg.Any<string>())
-            .Returns(new JsonRpcErrorResponse { Error = new Error { Code = ErrorCodes.ResourceUnavailable, Message = "Shutting down" } });
-
-        IProcessExitSource processExitSource = Substitute.For<IProcessExitSource>();
-        processExitSource.Token.Returns(new CancellationToken(canceled: true));
-
-        JsonRpcProcessor processor = CreateProcessor(service, new JsonRpcConfig { RpcRecorderState = RpcRecorderState.None }, processExitSource: processExitSource);
-        CollectingJsonRpcResponseSink sink = new();
-
-        await processor.ProcessAsync(
-            CreateReader("{\"id\":67,\"jsonrpc\":\"2.0\",\"method\":\"eth_getTransactionCount\",\"params\":[]}"),
-            new JsonRpcContext(RpcEndpoint.Http),
-            sink,
-            new JsonRpcProcessingOptions(JsonRpcInputMode.SingleDocument));
-
-        sink.Singles.Should().HaveCount(1);
-        sink.Singles[0].Should().BeOfType<JsonRpcErrorResponse>();
-        ((JsonRpcErrorResponse)sink.Singles[0]).Error!.Code.Should().Be(ErrorCodes.ResourceUnavailable);
-        await service.DidNotReceive().SendRequestAsync(Arg.Any<JsonRpcRequest>(), Arg.Any<JsonRpcContext>());
     }
 
     private static PipeReader CreateReader(string request) =>
@@ -820,26 +712,32 @@ public class JsonRpcProcessorTests(bool returnErrors)
         }
     }
 
-    [TestCase(false, TestName = "Unauthenticated batch over limit is rejected")]
-    [TestCase(true, TestName = "Authenticated batch over limit is processed")]
-    public async Task Batch_size_limit_respects_authentication(bool isAuthenticated)
+    [TestCase(false, 0, TestName = "Unauthenticated batch over limit is rejected")]
+    [TestCase(true, 2, TestName = "Authenticated batch over limit is processed")]
+    public async Task Batch_size_limit_respects_authentication(bool isAuthenticated, int expectedDispatchCount)
     {
-        int maxBatchSize = new JsonRpcConfig().MaxBatchSize;
-        JsonRpcContext context = isAuthenticated
-            ? new JsonRpcContext(RpcEndpoint.Http, url: new JsonRpcUrl(string.Empty, string.Empty, 0, RpcEndpoint.Http, true, []))
-            : new JsonRpcContext(RpcEndpoint.Http);
+        IJsonRpcService service = CreateEchoService();
+        JsonRpcProcessor processor = CreateProcessor(service, new JsonRpcConfig { RpcRecorderState = RpcRecorderState.None, MaxBatchSize = 1 });
+        using JsonRpcContext context = CreateHttpContext(isAuthenticated);
 
-        using CollectedJsonRpcResponses result = await ProcessAsync(CreateTransactionCountBatchRequest(maxBatchSize + 1), context, new JsonRpcConfig() { MaxBatchResponseBodySize = 1 });
+        using CollectedJsonRpcResponses result = await ProcessAsync(processor, CreateReader(CreateTransactionCountBatchRequest(2)), context);
+
         result.Should().HaveCount(1);
         if (!isAuthenticated)
         {
-            result[0].Response.Should().BeAssignableTo<JsonRpcErrorResponse>();
+            JsonRpcErrorResponse response = result[0].Response.Should().BeOfType<JsonRpcErrorResponse>().Subject;
+            response.Error!.Code.Should().Be(ErrorCodes.LimitExceeded);
+            result[0].BatchItems.Should().BeNull();
+            await service.DidNotReceive().SendRequestAsync(Arg.Any<JsonRpcRequest>(), Arg.Any<JsonRpcContext>());
             return;
         }
 
-        result[0].BatchItems.Should().HaveCount(maxBatchSize + 1);
-        result[0].BatchItems.Should().AllSatisfy(rpcResult =>
-            rpcResult.Should().BeOfType(returnErrors ? typeof(JsonRpcErrorResponse) : typeof(JsonRpcSuccessResponse)));
+        result[0].Response.Should().BeNull();
+        List<JsonRpcResponse> batchItems = result[0].BatchItems!;
+        batchItems.Should().HaveCount(expectedDispatchCount);
+        batchItems[0].Id.Should().Be(67);
+        batchItems[1].Id.Should().Be(67);
+        await service.Received(expectedDispatchCount).SendRequestAsync(Arg.Any<JsonRpcRequest>(), Arg.Any<JsonRpcContext>());
     }
 
     [Test]
@@ -1068,6 +966,11 @@ public class JsonRpcProcessorTests(bool returnErrors)
         for (int i = 0; i < depth; i++) sb.Append(']');
         return sb.ToString();
     }
+
+    private static JsonRpcContext CreateHttpContext(bool isAuthenticated = false) =>
+        isAuthenticated
+            ? new JsonRpcContext(RpcEndpoint.Http, url: new JsonRpcUrl(string.Empty, string.Empty, 0, RpcEndpoint.Http, true, []))
+            : new JsonRpcContext(RpcEndpoint.Http);
 
     private sealed class CollectingJsonRpcResponseSink : IJsonRpcResponseSink
     {
