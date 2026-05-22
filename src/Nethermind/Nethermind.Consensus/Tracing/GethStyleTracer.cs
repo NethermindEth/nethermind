@@ -74,11 +74,11 @@ public class GethStyleTracer(
 
     public GethLikeTxTrace? Trace(Hash256 txHash, GethTraceOptions traceOptions, CancellationToken cancellationToken, Utf8JsonWriter? writer = null, PipeWriter? pipeWriter = null)
     {
-        Hash256 blockHash = receiptStorage.FindBlockHash(txHash)
-                            ?? throw new InvalidOperationException($"Cannot find transactionTrace for hash: {txHash}");
+        Hash256? blockHash = receiptStorage.FindBlockHash(txHash);
+        if (blockHash is null) return null;
 
-        Block block = blockTree.FindBlock(blockHash, BlockTreeLookupOptions.RequireCanonical)
-                      ?? throw new InvalidOperationException($"Cannot find transactionTrace for hash: {txHash}");
+        Block? block = blockTree.FindBlock(blockHash, BlockTreeLookupOptions.RequireCanonical);
+        if (block is null) return null;
 
         return TraceImpl(block, txHash, cancellationToken, traceOptions, writer: writer, pipeWriter: pipeWriter);
     }

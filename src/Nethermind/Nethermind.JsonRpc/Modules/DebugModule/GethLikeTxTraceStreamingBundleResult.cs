@@ -18,8 +18,15 @@ using Nethermind.Logging;
 namespace Nethermind.JsonRpc.Modules.DebugModule;
 
 /// <summary>
-/// Streaming result for <c>debug_traceCallMany</c> (no overrides).
-/// <see cref="Count"/> is always 0; iteration is empty.
+/// Streaming result for <c>debug_traceCallMany</c>. Carries the bundle inputs and writes
+/// trace JSON directly to the response via <see cref="WriteToAsync"/> / the JSON converter.
+/// <para>
+/// <b>Warning — in-process consumers:</b> this type's <see cref="IEnumerable{T}"/> implementation
+/// is intentionally empty (<see cref="Count"/> always 0). Iterating it in-process yields nothing.
+/// HTTP/JSON-RPC clients work correctly because they consume the value through the registered
+/// <see cref="JsonConverter"/> / <see cref="IStreamableResult"/> path. Programmatic in-process
+/// callers must NOT enumerate this type — use the buffered <c>GetBundleTraces</c> path instead.
+/// </para>
 /// </summary>
 [JsonConverter(typeof(GethLikeTxTraceStreamingBundleResultConverter))]
 public sealed class GethLikeTxTraceStreamingBundleResult : StreamingResultBase, IEnumerable<IEnumerable<GethLikeTxTrace>>

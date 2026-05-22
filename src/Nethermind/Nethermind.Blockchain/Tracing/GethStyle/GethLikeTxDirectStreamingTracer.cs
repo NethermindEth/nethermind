@@ -23,8 +23,9 @@ namespace Nethermind.Blockchain.Tracing.GethStyle;
 /// </summary>
 public sealed class GethLikeTxDirectStreamingTracer : GethLikeTxTracer
 {
-    private const int DefaultFlushIntervalEntries = 256;
+    private const int DefaultFlushIntervalEntries = 2048;
     private const int EvmWordSize = 32;
+    private static readonly JsonEncodedText ZeroMemoryWord = JsonEncodedText.Encode(new string('0', EvmWordSize * 2));
     private const int InitialStorageMapCapacity = 8;
     private const int InitialDepthStackCapacity = 4;
 
@@ -238,10 +239,24 @@ public sealed class GethLikeTxDirectStreamingTracer : GethLikeTxTracer
         Span<byte> hexBuffer = stackalloc byte[EvmWordSize * 2];
         for (int offset = 0; offset < _memoryByteCount; offset += EvmWordSize)
         {
-            int written = FormatHexAscii(_memoryBuffer!.AsSpan(offset, EvmWordSize), hexBuffer, withPrefix: false, trimLeadingZeros: false);
-            _writer.WriteStringValue(hexBuffer[..written]);
+            ReadOnlySpan<byte> slot = _memoryBuffer!.AsSpan(offset, EvmWordSize);
+            if (IsAllZero(slot))
+            {
+                _writer.WriteStringValue(ZeroMemoryWord);
+            }
+            else
+            {
+                int written = FormatHexAscii(slot, hexBuffer, withPrefix: false, trimLeadingZeros: false);
+                _writer.WriteStringValue(hexBuffer[..written]);
+            }
         }
         _writer.WriteEndArray();
+    }
+
+    private static bool IsAllZero(ReadOnlySpan<byte> slot)
+    {
+        for (int i = 0; i < slot.Length; i++) if (slot[i] != 0) return false;
+        return true;
     }
 
     private void WriteStorageObjectIfPresent()

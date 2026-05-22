@@ -49,8 +49,23 @@ internal static class StructLogEnvelopeWriter
         finally
         {
             writer.WriteEndArray();
-            string? errorMessage = failure is null ? null : FormatErrorMessage(failure);
-            int errorCode = failure is null ? default : ResolveErrorCode(failure);
+            string? errorMessage;
+            int errorCode;
+            if (failure is not null)
+            {
+                errorMessage = FormatErrorMessage(failure);
+                errorCode = ResolveErrorCode(failure);
+            }
+            else if (trace is null)
+            {
+                errorMessage = "tracing failed: trace not found";
+                errorCode = ErrorCodes.ResourceNotFound;
+            }
+            else
+            {
+                errorMessage = null;
+                errorCode = default;
+            }
             WriteFooter(writer, trace, errorMessage, errorCode, fallbackGas);
         }
 
@@ -77,7 +92,7 @@ internal static class StructLogEnvelopeWriter
 
         for (Exception? current = failure; current is not null; current = current.InnerException)
         {
-            if (current is InsufficientBalanceException or InvalidBlockException) return ErrorCodes.InvalidInput;
+            if (current is InsufficientBalanceException or InvalidBlockException or InvalidTransactionException) return ErrorCodes.InvalidInput;
         }
 
         return ErrorCodes.InternalError;
