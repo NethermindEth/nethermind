@@ -10,7 +10,7 @@ using Nethermind.Trie.Pruning;
 
 namespace Nethermind.State;
 
-public interface IWorldStateManager : IStateBoundary
+public interface IWorldStateManager : IStateBoundary, IStateBoundaryWriter
 {
     IWorldStateScopeProvider GlobalWorldState { get; }
     IStateReader GlobalStateReader { get; }

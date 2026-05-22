@@ -22,7 +22,7 @@ public sealed class StateBoundaryStore(IKeyValueStore kv)
     /// and HalfPath-keyed nodes, and matches the existing flat metadata-column convention
     /// (<c>Keccak.Compute("CurrentState")</c>, <c>Keccak.Compute("Layout")</c>).
     /// </summary>
-    private static readonly byte[] OldestStateBlockKey = Keccak.Compute("OldestStateBlock").BytesToArray();
+    internal static readonly byte[] OldestStateBlockKey = Keccak.Compute("OldestStateBlock").BytesToArray();
 
     private readonly Lock _lock = new();
     private long? _value = kv[OldestStateBlockKey]?.AsRlpValueContext().DecodeLong();
@@ -38,13 +38,9 @@ public sealed class StateBoundaryStore(IKeyValueStore kv)
             lock (_lock)
             {
                 if (_value == value) return;
-                // The floor is monotonically non-decreasing: state sync writes the pivot, then
-                // full pruning writes the (later) copied block. Reject backward non-null writes
-                // so a stale caller can't regress the reported availability. Null reset is allowed
-                // for explicit recovery (e.g. wiping a corrupt state DB).
+                // Reject backward non-null writes; null reset is permitted for recovery.
                 if (value.HasValue && _value.HasValue && value.Value < _value.Value) return;
-                // Persist before caching so the in-memory value can never diverge from disk
-                // (a thrown kv write leaves both at the previous value).
+                // Persist before caching so a thrown kv write doesn't desync memory from disk.
                 if (value.HasValue)
                     kv[OldestStateBlockKey] = Rlp.Encode(value.Value).Bytes;
                 else

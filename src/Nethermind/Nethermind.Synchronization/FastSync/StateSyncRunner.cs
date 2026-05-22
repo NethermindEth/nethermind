@@ -25,7 +25,7 @@ public class StateSyncRunner(
     ISyncProgressResolver syncProgressResolver,
     IBeaconSyncStrategy beaconSyncStrategy,
     ISyncPeerPool syncPeerPool,
-    IStateBoundary stateBoundary,
+    IStateBoundaryWriter stateBoundary,
     [KeyFilter(DbNames.State)] ITunableDb? stateDb,
     [KeyFilter(DbNames.Code)] ITunableDb? codeDb,
     ILogManager logManager,
@@ -109,7 +109,6 @@ public class StateSyncRunner(
         treeSync.VerifyPostSyncCleanUp();
         treeSync.FinalizeSync(finalPivot);
 
-        // Records the pivot as the oldest block for which we now have state.
         // Reported through eth_capabilities.
         stateBoundary.OldestStateBlock = finalPivot.Number;
 

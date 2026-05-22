@@ -14,7 +14,6 @@ using Nethermind.Api;
 using Nethermind.Blockchain.FullPruning;
 using Nethermind.Config;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Test.IO;
@@ -117,7 +116,7 @@ public class FullPruningDiskTest
             IPruningTrigger pruningTrigger,
             IPruningConfig pruningConfig,
             IBlockTree blockTree,
-            IStateBoundary stateBoundary,
+            IStateBoundaryWriter stateBoundary,
             IStateReader stateReader,
             IProcessExitSource processExitSource,
             IDriveInfo driveInfo,
@@ -208,10 +207,8 @@ public class FullPruningDiskTest
                 );
 
             HashSet<byte[]> currentItems = chain.DbProvider.StateDb.GetAllValues().ToHashSet(Bytes.EqualityComparer);
-            // FullPruner records the OldestStateBlock floor (StateBoundaryStore) in the new state DB on commit.
-            // Verify it was written, then exclude that metadata value from the subset check against the
-            // pre-pruning snapshot (which doesn't yet contain it).
-            byte[]? boundaryValue = chain.DbProvider.StateDb[Keccak.Compute("OldestStateBlock").BytesToArray()];
+            // Exclude the boundary marker FullPruner writes on commit — it's absent from the pre-prune snapshot.
+            byte[]? boundaryValue = chain.DbProvider.StateDb[StateBoundaryStore.OldestStateBlockKey];
             boundaryValue.Should().NotBeNull("FullPruner should record the OldestStateBlock floor on a successful prune");
             currentItems.Remove(boundaryValue!);
             currentItems.IsSubsetOf(allItems).Should().BeTrue();
