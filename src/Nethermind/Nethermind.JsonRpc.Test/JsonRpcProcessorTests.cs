@@ -571,15 +571,7 @@ public class JsonRpcProcessorTests(bool returnErrors)
     {
         result.Response.Should().NotBeNull();
         result.BatchItems.Should().BeNull();
-        if (shouldBeParseError)
-        {
-            result.Response.Should().BeSameAs(_errorResponse);
-        }
-        else
-        {
-            result.Response.Should().NotBeSameAs(_errorResponse);
-        }
-
+        ReferenceEquals(result.Response, _errorResponse).Should().Be(shouldBeParseError);
         return result;
     }
 
