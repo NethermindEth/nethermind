@@ -13,9 +13,7 @@ using System.Threading.Tasks;
 
 namespace Nethermind.JsonRpc;
 
-/// <summary>
-/// Writes server-side JSON-RPC response objects to transport-owned buffers.
-/// </summary>
+/// <summary>Writes server-side JSON-RPC response objects to transport-owned buffers.</summary>
 public static class JsonRpcResponseWriter
 {
     private static ReadOnlySpan<byte> SuccessEnvelopeStart => "{\"jsonrpc\":\"2.0\",\"result\":"u8;
@@ -27,9 +25,7 @@ public static class JsonRpcResponseWriter
         Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping
     };
 
-    /// <summary>
-    /// Writes <paramref name="response"/> as a JSON-RPC response envelope.
-    /// </summary>
+    /// <summary>Writes <paramref name="response"/> as a JSON-RPC response envelope.</summary>
     public static void Write(IBufferWriter<byte> writer, JsonRpcResponse response, JsonSerializerOptions options)
     {
         if (!options.WriteIndented && response is IJsonRpcRawResponse rawResponse)
@@ -42,9 +38,7 @@ public static class JsonRpcResponseWriter
         response.WriteTo(jsonWriter, options);
     }
 
-    /// <summary>
-    /// Writes <paramref name="response"/>, using the streamable result path when required.
-    /// </summary>
+    /// <summary>Writes <paramref name="response"/>, using the streamable result path when required.</summary>
     public static ValueTask WriteAsync(PipeWriter writer, JsonRpcResponse response, JsonSerializerOptions options, CancellationToken cancellationToken)
     {
         if (TryGetStreamableResult(response, out IStreamableResult? streamable))
@@ -56,23 +50,17 @@ public static class JsonRpcResponseWriter
         return ValueTask.CompletedTask;
     }
 
-    /// <summary>
-    /// Returns whether <paramref name="response"/> should map to HTTP 503 on HTTP transports.
-    /// </summary>
+    /// <summary>Returns whether <paramref name="response"/> should map to HTTP 503 on HTTP transports.</summary>
     public static bool IsResourceUnavailableError(JsonRpcResponse? response) =>
         response?.IsResourceUnavailableError == true;
 
-    /// <summary>
-    /// Gets a streamable success payload when the response must bypass normal JSON serialization.
-    /// </summary>
+    /// <summary>Gets a streamable success payload when the response must bypass normal JSON serialization.</summary>
     public static bool TryGetStreamableResult(
         JsonRpcResponse response,
         [NotNullWhen(true)] out IStreamableResult? streamable) =>
         response.TryGetStreamableResult(out streamable);
 
-    /// <summary>
-    /// Writes a JSON-RPC success envelope whose result is supplied by <paramref name="streamable"/>.
-    /// </summary>
+    /// <summary>Writes a JSON-RPC success envelope whose result is supplied by <paramref name="streamable"/>.</summary>
     public static async ValueTask WriteStreamableAsync(
         PipeWriter writer,
         JsonRpcResponse response,
