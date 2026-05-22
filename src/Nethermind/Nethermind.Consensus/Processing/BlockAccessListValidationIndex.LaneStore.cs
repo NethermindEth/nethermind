@@ -30,8 +30,10 @@ internal sealed partial class BlockAccessListValidationIndex
         public readonly Span<int> Storage = storage;
     }
 
-    /// <summary>Carve <paramref name="source"/> into four equal <paramref name="chunkSize"/>-sized
-    /// per-lane spans.</summary>
+    /// <summary>
+    /// Carve <paramref name="source"/> into four equal <paramref name="chunkSize"/>-sized
+    /// per-lane spans.
+    /// </summary>
     private static LaneSpans PartitionInQuarters(Span<int> source, int chunkSize) => new(
         source.Slice(0, chunkSize),
         source.Slice(chunkSize, chunkSize),
@@ -51,15 +53,8 @@ internal sealed partial class BlockAccessListValidationIndex
         private readonly Lane<ValueHash256> _code;
         private readonly StorageLane _storage;
 
-        private LaneStore(Lane<UInt256> balance, Lane<ulong> nonce, Lane<ValueHash256> code, StorageLane storage)
-        {
-            _balance = balance;
-            _nonce = nonce;
-            _code = code;
-            _storage = storage;
-        }
-
-        public static LaneStore CreateImmutable(LaneSpans counts)
+        /// <summary>Build the immutable lane storage from per-row counters.</summary>
+        public LaneStore(LaneSpans counts)
         {
             Lane<UInt256>? b = null; Lane<ulong>? n = null; Lane<ValueHash256>? c = null; StorageLane? s = null;
             try
@@ -68,16 +63,20 @@ internal sealed partial class BlockAccessListValidationIndex
                 n = Lane<ulong>.CreateImmutable(counts.Nonce);
                 c = Lane<ValueHash256>.CreateImmutable(counts.Code);
                 s = StorageLane.CreateImmutable(counts.Storage);
-                return new LaneStore(b, n, c, s);
             }
             catch
             {
                 s?.Dispose(); c?.Dispose(); n?.Dispose(); b?.Dispose();
                 throw;
             }
+            _balance = b;
+            _nonce = n;
+            _code = c;
+            _storage = s;
         }
 
-        public static LaneStore CreateMutableLike(LaneStore other)
+        /// <summary>Build mutable lane storage that mirrors <paramref name="other"/>'s layout.</summary>
+        public LaneStore(LaneStore other)
         {
             Lane<UInt256>? b = null; Lane<ulong>? n = null; Lane<ValueHash256>? c = null; StorageLane? s = null;
             try
@@ -86,13 +85,16 @@ internal sealed partial class BlockAccessListValidationIndex
                 n = Lane<ulong>.CreateMutableLike(other._nonce);
                 c = Lane<ValueHash256>.CreateMutableLike(other._code);
                 s = StorageLane.CreateMutableLike(other._storage);
-                return new LaneStore(b, n, c, s);
             }
             catch
             {
                 s?.Dispose(); c?.Dispose(); n?.Dispose(); b?.Dispose();
                 throw;
             }
+            _balance = b;
+            _nonce = n;
+            _code = c;
+            _storage = s;
         }
 
         public void SortAllRows()
@@ -176,8 +178,6 @@ internal sealed partial class BlockAccessListValidationIndex
 
         public void Dispose()
         {
-            // Null-tolerant because `default(LaneStore)` is a legal sentinel — Build seats `lanes`
-            // before any factory runs, and the catch path may see a still-default value.
             _balance?.Dispose();
             _nonce?.Dispose();
             _code?.Dispose();
@@ -286,8 +286,10 @@ internal sealed partial class BlockAccessListValidationIndex
             mutable?.Return();
         }
 
-        /// <summary>Pool-rents and fills the row-starts prefix-sum array; returns the total
-        /// entry count via <paramref name="total"/>.</summary>
+        /// <summary>
+        /// Pool-rents and fills the row-starts prefix-sum array; returns the total
+        /// entry count via <paramref name="total"/>.
+        /// </summary>
         protected static int[] RentRowStarts(ReadOnlySpan<int> counts, out int total)
         {
             int[] rowStarts = PooledArrays.Rent<int>(counts.Length + 1);
@@ -296,9 +298,11 @@ internal sealed partial class BlockAccessListValidationIndex
             return rowStarts;
         }
 
-        /// <summary>Pool-rents a row-starts buffer and copies the first <paramref name="length"/>
+        /// <summary>
+        /// Pool-rents a row-starts buffer and copies the first <paramref name="length"/>
         /// entries from <paramref name="source"/> — used when cloning the immutable layout into
-        /// a mutable lane.</summary>
+        /// a mutable lane.
+        /// </summary>
         protected static int[] CloneRowStarts(int[] source, int length)
         {
             int[] dest = PooledArrays.Rent<int>(length);
@@ -402,7 +406,6 @@ internal sealed partial class BlockAccessListValidationIndex
 
         public readonly void Return()
         {
-            // Skip empty sentinels — ArrayPool.Return on Array.Empty is harmless but wasteful.
             if (Order.Length > 0) PooledArrays.Return(Order);
             if (Account.Length > 0) PooledArrays.Return(Account);
             if (Keys.Length > 0) PooledArrays.Return(Keys);
@@ -498,7 +501,7 @@ internal sealed partial class BlockAccessListValidationIndex
             if (length <= 1) return;
             int start = RowStarts[row];
             if (length <= 8) InsertionSort(start, length);
-            else Array.Sort(AccountOrdinals, _values, start, length);
+            else AccountOrdinals.AsSpan(start, length).Sort(_values.AsSpan(start, length));
         }
 
         private void InsertionSort(int start, int length)

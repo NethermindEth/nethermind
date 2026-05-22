@@ -56,7 +56,7 @@ internal sealed partial class BlockAccessListValidationIndex : IDisposable
         if (_lastIndex != suggested._lastIndex)
             throw new ArgumentException("Suggested validation index has a different row count.", nameof(suggested));
         _isMutable = true;
-        _lanes = LaneStore.CreateMutableLike(suggested._lanes);
+        _lanes = new LaneStore(suggested._lanes);
         // Slack covers per-tx duplication before dedup on reads, and invalid wire BALs that push
         // generated past suggested before lane overflow trips.
         _generatedStorageReads = new(WithSlack(storageReadsCapacity));
@@ -100,7 +100,7 @@ internal sealed partial class BlockAccessListValidationIndex : IDisposable
         ulong[]? hasAccountWords = null;
         try
         {
-            lanes = LaneStore.CreateImmutable(counts);
+            lanes = new LaneStore(counts);
             int wordCount = WordCount(accounts.Length);
             hasAccountWords = wordCount == 0 ? [] : PooledArrays.RentCleared<ulong>(wordCount);
             lanes.FillFromAccounts(accounts, addressIndex, lastIndex, hasAccountWords);
@@ -502,16 +502,11 @@ internal sealed partial class BlockAccessListValidationIndex : IDisposable
         public Address GetAddress(int ordinal) => _addresses[ordinal];
     }
 
-    // LaneSpans / LaneStore / Lane<TValue> / StorageLane / LaneBase / MutableBookkeeping /
-    // StorageScratch / PooledArrays live in BlockAccessListValidationIndex.LaneStore.cs.
-
     public void Dispose()
     {
         if (_disposed) return;
         _disposed = true;
         _lanes.Dispose();
-        // Empty on the mutable side if MarkAccount was never called; on the immutable side if
-        // the block had zero accounts. ArrayPool.Return on Array.Empty is invalid usage.
         if (_hasAccountWords.Length > 0) PooledArrays.Return(_hasAccountWords);
         _hasAccountWords = [];
     }
