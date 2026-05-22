@@ -643,7 +643,9 @@ public class JsonRpcProcessorTests(bool returnErrors)
     {
         IJsonRpcService service = CreateEchoService();
         JsonRpcProcessor processor = CreateProcessor(service, new JsonRpcConfig { MaxBatchSize = 1 });
-        using JsonRpcContext context = CreateHttpContext(isAuthenticated);
+        using JsonRpcContext context = isAuthenticated
+            ? new JsonRpcContext(RpcEndpoint.Http, url: new JsonRpcUrl(string.Empty, string.Empty, 0, RpcEndpoint.Http, true, []))
+            : new JsonRpcContext(RpcEndpoint.Http);
 
         using CollectedJsonRpcResponses result = await ProcessAsync(processor, CreateTransactionCountBatchRequest(2), context);
 
@@ -858,11 +860,6 @@ public class JsonRpcProcessorTests(bool returnErrors)
         for (int i = 0; i < depth; i++) sb.Append(']');
         return sb.ToString();
     }
-
-    private static JsonRpcContext CreateHttpContext(bool isAuthenticated = false) =>
-        isAuthenticated
-            ? new JsonRpcContext(RpcEndpoint.Http, url: new JsonRpcUrl(string.Empty, string.Empty, 0, RpcEndpoint.Http, true, []))
-            : new JsonRpcContext(RpcEndpoint.Http);
 
     private sealed class CollectingJsonRpcResponseSink : IJsonRpcResponseSink
     {
