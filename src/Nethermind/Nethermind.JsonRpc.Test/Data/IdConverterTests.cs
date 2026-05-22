@@ -24,8 +24,11 @@ namespace Nethermind.JsonRpc.Test.Data
             Converters = { new JsonRpcIdConverter() }
         };
 
-        [Test]
-        public void Can_do_roundtrip_big() => TestRoundtrip<SomethingWithId>("{\"id\":123498132871289317239813219}");
+        [TestCase("{\"id\":1234}", TestName = "Long")]
+        [TestCase("{\"id\":123498132871289317239813219}", TestName = "BigInteger")]
+        [TestCase("{\"id\":\"test\"}", TestName = "String")]
+        [TestCase("{\"id\":null}", TestName = "Null")]
+        public void Can_do_roundtrip_object_id(string json) => TestRoundtrip<SomethingWithId>(json);
 
         [Test]
         public void Can_handle_int()
@@ -62,12 +65,6 @@ namespace Nethermind.JsonRpc.Test.Data
             IdConverter converter = new();
             converter.CanConvert(type).Should().Be(true);
         }
-
-        [Test]
-        public void Can_do_roundtrip_long() => TestRoundtrip<SomethingWithId>("{\"id\":1234}");
-
-        [Test]
-        public void Can_do_roundtrip_string() => TestRoundtrip<SomethingWithId>("{\"id\":\"test\"}");
 
         [TestCase("{\"id\":1234}")]
         [TestCase("{\"id\":123498132871289317239813219}")]
@@ -127,9 +124,6 @@ namespace Nethermind.JsonRpc.Test.Data
 
             TestToJson(response, $"{{\"jsonrpc\":\"2.0\",\"result\":\"0x1\",\"id\":{expectedIdJson}}}");
         }
-
-        [Test]
-        public void Can_do_roundtrip_null() => TestRoundtrip<SomethingWithId>("{\"id\":null}");
 
         [Test]
         public void Decimal_not_supported()
