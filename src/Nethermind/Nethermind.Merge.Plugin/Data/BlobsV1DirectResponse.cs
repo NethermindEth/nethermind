@@ -10,6 +10,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core.Collections;
 using Nethermind.JsonRpc;
+using Nethermind.Serialization.Json;
 
 namespace Nethermind.Merge.Plugin.Data;
 
@@ -43,9 +44,9 @@ public sealed class BlobsV1DirectResponse(ArrayPoolList<BlobAndProofV1?> items) 
             }
 
             writer.Write("{\"blob\":"u8);
-            PayloadBodiesDirectResponseWriter.WriteHexString(writer, item.Blob, chunked: true);
+            HexWriter.WriteHexString(writer, item.Blob, chunked: true);
             writer.Write(",\"proof\":"u8);
-            PayloadBodiesDirectResponseWriter.WriteHexString(writer, item.Proof, chunked: false);
+            HexWriter.WriteHexString(writer, item.Proof, chunked: false);
             writer.Write("}"u8);
         }
     }

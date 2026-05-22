@@ -10,6 +10,7 @@ using System.IO.Pipelines;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.JsonRpc;
+using Nethermind.Serialization.Json;
 
 namespace Nethermind.Merge.Plugin.Data;
 
@@ -67,14 +68,14 @@ public sealed class BlobsV2DirectResponse : IStreamableResult, IReadOnlyList<Blo
             }
 
             writer.Write("{\"blob\":"u8);
-            PayloadBodiesDirectResponseWriter.WriteHexString(writer, blob, chunked: true);
+            HexWriter.WriteHexString(writer, blob, chunked: true);
             writer.Write(",\"proofs\":["u8);
 
             ReadOnlySpan<byte[]> proofs = proofsByBlob[index].Span;
             for (int p = 0; p < proofs.Length; p++)
             {
                 if (p > 0) writer.Write(","u8);
-                PayloadBodiesDirectResponseWriter.WriteHexString(writer, proofs[p], chunked: false);
+                HexWriter.WriteHexString(writer, proofs[p], chunked: false);
             }
 
             writer.Write("]}"u8);

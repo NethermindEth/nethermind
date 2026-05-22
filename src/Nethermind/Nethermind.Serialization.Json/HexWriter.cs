@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.Buffers.Binary;
 using System.IO.Pipelines;
 using System.Numerics;
@@ -338,6 +339,15 @@ public static class HexWriter
         int inputLen = Math.Min(data.Length, hex.Length / 2);
         EncodeToHex(data[..inputLen], ref MemoryMarshal.GetReference(hex));
         writer.Advance(inputLen * 2);
+    }
+
+    /// <summary>Writes a JSON string containing a <c>0x</c>-prefixed lowercase hex byte sequence.</summary>
+    public static void WriteHexString(PipeWriter writer, ReadOnlySpan<byte> data, bool chunked)
+    {
+        writer.Write("\"0x"u8);
+        if (chunked) WriteHexChunked(writer, data);
+        else WriteHexSmall(writer, data);
+        writer.Write("\""u8);
     }
 
     private static void EncodeToHex(ReadOnlySpan<byte> src, ref byte dest)

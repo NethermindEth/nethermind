@@ -77,7 +77,7 @@ internal static class PayloadBodiesDirectResponseWriter
         if (blockAccessList is not null)
         {
             writer.Write(",\"blockAccessList\":"u8);
-            WriteHexString(writer, blockAccessList.Memory.Span, chunked: true);
+            HexWriter.WriteHexString(writer, blockAccessList.Memory.Span, chunked: true);
         }
 
         writer.Write("}"u8);
@@ -91,7 +91,7 @@ internal static class PayloadBodiesDirectResponseWriter
         {
             if (i > 0) writer.Write(","u8);
 
-            WriteHexString(writer, transactions[i], chunked: true);
+            HexWriter.WriteHexString(writer, transactions[i], chunked: true);
         }
 
         writer.Write("]"u8);
@@ -116,22 +116,6 @@ internal static class PayloadBodiesDirectResponseWriter
         writer.Write("]"u8);
     }
 
-    public static void WriteHexString(PipeWriter writer, ReadOnlySpan<byte> bytes, bool chunked)
-    {
-        writer.Write("\"0x"u8);
-
-        if (chunked)
-        {
-            HexWriter.WriteHexChunked(writer, bytes);
-        }
-        else
-        {
-            HexWriter.WriteHexSmall(writer, bytes);
-        }
-
-        writer.Write("\""u8);
-    }
-
     private static void WriteWithdrawal(PipeWriter writer, Withdrawal withdrawal)
     {
         writer.Write("{\"index\":"u8);
@@ -147,7 +131,7 @@ internal static class PayloadBodiesDirectResponseWriter
         }
         else
         {
-            WriteHexString(writer, address.Bytes, chunked: false);
+            HexWriter.WriteHexString(writer, address.Bytes, chunked: false);
         }
 
         writer.Write(",\"amount\":"u8);
