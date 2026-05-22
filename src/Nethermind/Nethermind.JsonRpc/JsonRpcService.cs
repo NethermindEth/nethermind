@@ -115,7 +115,6 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
         IResultWrapper? resultWrapper = null;
         try
         {
-            // Execute method
             object? invocationResult;
             try
             {
@@ -549,32 +548,15 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
 
             int paramsLength = 0;
             int paramsCount = 0;
-            const string separator = ", ";
 
             if (providedParameters.ValueKind == JsonValueKind.Array)
             {
                 foreach (JsonElement param in providedParameters.EnumerateArray())
                 {
-                    string? parameter = (uint)paramsCount < (uint)expectedParameters.Length && expectedParameters[paramsCount].Info?.Name == "passphrase"
+                    string? parameter = IsPassphraseParameter(paramsCount, expectedParameters)
                         ? "{passphrase}"
                         : param.GetRawText();
-
-                    if (paramsLength > _maxLoggedRequestParametersCharacters)
-                    {
-                        int toRemove = paramsLength - _maxLoggedRequestParametersCharacters;
-                        builder.Remove(builder.Length - toRemove, toRemove);
-                        builder.Append("...");
-                        break;
-                    }
-
-                    if (paramsCount != 0)
-                    {
-                        builder.Append(separator);
-                        paramsLength += separator.Length;
-                    }
-
-                    builder.Append(parameter);
-                    paramsLength += (parameter?.Length ?? 0);
+                    if (!AppendLogParameter(builder, parameter, ref paramsLength, paramsCount)) break;
                     paramsCount++;
                 }
             }
@@ -595,32 +577,15 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
 
             int paramsLength = 0;
             int paramsCount = 0;
-            const string separator = ", ";
             JsonReaderState readerState = default;
             int offset = 0;
             bool started = false;
             while (JsonRpcArrayReader.TryReadNextItem(providedParameters, ref offset, ref readerState, ref started, out ReadOnlyMemory<byte> param))
             {
-                string parameter = (uint)paramsCount < (uint)expectedParameters.Length && expectedParameters[paramsCount].Info?.Name == "passphrase"
+                string parameter = IsPassphraseParameter(paramsCount, expectedParameters)
                     ? "{passphrase}"
                     : Encoding.UTF8.GetString(param.Span);
-
-                if (paramsLength > _maxLoggedRequestParametersCharacters)
-                {
-                    int toRemove = paramsLength - _maxLoggedRequestParametersCharacters;
-                    builder.Remove(builder.Length - toRemove, toRemove);
-                    builder.Append("...");
-                    break;
-                }
-
-                if (paramsCount != 0)
-                {
-                    builder.Append(separator);
-                    paramsLength += separator.Length;
-                }
-
-                builder.Append(parameter);
-                paramsLength += parameter.Length;
+                if (!AppendLogParameter(builder, parameter, ref paramsLength, paramsCount)) break;
                 paramsCount++;
             }
 
@@ -629,6 +594,31 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
             _logger.Trace(log);
         }
     }
+
+    private bool AppendLogParameter(StringBuilder builder, string? parameter, ref int paramsLength, int paramsCount)
+    {
+        const string separator = ", ";
+        if (paramsLength > _maxLoggedRequestParametersCharacters)
+        {
+            int toRemove = paramsLength - _maxLoggedRequestParametersCharacters;
+            builder.Remove(builder.Length - toRemove, toRemove);
+            builder.Append("...");
+            return false;
+        }
+
+        if (paramsCount != 0)
+        {
+            builder.Append(separator);
+            paramsLength += separator.Length;
+        }
+
+        builder.Append(parameter);
+        paramsLength += parameter?.Length ?? 0;
+        return true;
+    }
+
+    private static bool IsPassphraseParameter(int paramsCount, ExpectedParameter[] expectedParameters) =>
+        (uint)paramsCount < (uint)expectedParameters.Length && expectedParameters[paramsCount].Info?.Name == "passphrase";
 
     private static string GetParamsForLog(JsonRpcRequest request)
     {
