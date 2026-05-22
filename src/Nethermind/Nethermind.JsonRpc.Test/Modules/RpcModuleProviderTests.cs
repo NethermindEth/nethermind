@@ -25,7 +25,6 @@ using Nethermind.Merge.Plugin.Data;
 using Nethermind.Serialization.Json;
 using NSubstitute;
 using NUnit.Framework;
-using Testably.Abstractions;
 
 namespace Nethermind.JsonRpc.Test.Modules;
 
@@ -41,19 +40,21 @@ public class RpcModuleProviderTests
     public void Initialize()
     {
         _fileSystem = Substitute.For<IFileSystem>();
-        _moduleProvider = new RpcModuleProvider(_fileSystem, new JsonRpcConfig(), new EthereumJsonSerializer(), LimboLogs.Instance);
+        _moduleProvider = CreateProvider(fileSystem: _fileSystem);
         _context = new JsonRpcContext(RpcEndpoint.Http);
     }
 
     [TearDown]
     public void TearDown() => _context?.Dispose();
 
+    private static RpcModuleProvider CreateProvider(IJsonRpcConfig? config = null, IFileSystem? fileSystem = null, IReadOnlyList<RpcModuleInfo>? rpcModules = null) =>
+        new(fileSystem ?? Substitute.For<IFileSystem>(), config ?? new JsonRpcConfig(), new EthereumJsonSerializer(), rpcModules ?? [], LimboLogs.Instance);
+
     [Test]
     public void Module_provider_will_recognize_disabled_modules()
     {
-        JsonRpcConfig jsonRpcConfig = new();
-        jsonRpcConfig.EnabledModules = [];
-        _moduleProvider = new RpcModuleProvider(new RealFileSystem(), jsonRpcConfig, new EthereumJsonSerializer(), LimboLogs.Instance);
+        JsonRpcConfig jsonRpcConfig = new() { EnabledModules = [] };
+        _moduleProvider = CreateProvider(jsonRpcConfig);
         _moduleProvider.Register(new SingletonModulePool<IProofRpcModule>(Substitute.For<IProofRpcModule>(), false));
         ModuleResolution resolution = _moduleProvider.Check("proof_call", _context);
         Assert.That(resolution, Is.EqualTo(ModuleResolution.Disabled));
@@ -78,7 +79,7 @@ public class RpcModuleProviderTests
         JsonRpcConfig config = new();
         _fileSystem.File.Exists(Arg.Any<string>()).Returns(true);
         _fileSystem.File.ReadLines(Arg.Any<string>()).Returns(new[] { regex });
-        _moduleProvider = new RpcModuleProvider(_fileSystem, config, new EthereumJsonSerializer(), LimboLogs.Instance);
+        _moduleProvider = CreateProvider(config, _fileSystem);
 
         SingletonModulePool<INetRpcModule> pool = new(new NetRpcModule(LimboLogs.Instance, Substitute.For<INetBridge>()), true);
         _moduleProvider.Register(pool);
@@ -255,19 +256,12 @@ public class RpcModuleProviderTests
         module.FourParameterCalls.Should().Be(1);
     }
 
-    [Test]
-    public void Generated_rpc_type_info_includes_rpc_result_and_parameter_payloads()
-    {
-        GeneratedRpcTypeInfo.TryGet<FeeHistoryResults>(out _).Should().BeTrue();
-        GeneratedRpcTypeInfo.TryGet<TransactionForRpc>(out _).Should().BeTrue();
-    }
-
-    [Test]
-    public void Generated_rpc_type_info_includes_subscription_payloads()
-    {
-        GeneratedRpcTypeInfo.TryGet<PeerEventResponse>(out _).Should().BeTrue();
-        GeneratedRpcTypeInfo.TryGet<SyncingSubscription.SubscriptionSyncingResult>(out _).Should().BeTrue();
-    }
+    [TestCase(typeof(FeeHistoryResults))]
+    [TestCase(typeof(TransactionForRpc))]
+    [TestCase(typeof(PeerEventResponse))]
+    [TestCase(typeof(SyncingSubscription.SubscriptionSyncingResult))]
+    public void Generated_rpc_type_info_includes_rpc_payloads(Type payloadType) =>
+        GeneratedRpcTypeInfo.TryGet(payloadType, out _).Should().BeTrue();
 
     [Test]
     public void Rpc_payload_type_info_caches_generated_metadata_and_resolves_fallbacks()
@@ -315,11 +309,7 @@ public class RpcModuleProviderTests
     [Test]
     public void Can_register_via_constructor()
     {
-        JsonRpcConfig jsonRpcConfig = new();
-        jsonRpcConfig.EnabledModules = [ModuleType.Admin];
-        IRpcModuleProvider moduleProvider = new RpcModuleProvider(new RealFileSystem(), jsonRpcConfig, new EthereumJsonSerializer(), [
-            new RpcModuleInfo(typeof(IEraAdminRpcModule), new SingletonModulePool<IEraAdminRpcModule>(Substitute.For<IEraAdminRpcModule>()))
-        ], LimboLogs.Instance);
+        IRpcModuleProvider moduleProvider = CreateEraAdminModuleProvider();
         ModuleResolution resolution = moduleProvider.Check("admin_exportHistory", _context);
         Assert.That(resolution, Is.EqualTo(ModuleResolution.Enabled));
     }
@@ -327,11 +317,7 @@ public class RpcModuleProviderTests
     [Test]
     public async Task Can_register_multiple_module_interface_of_same_rpc_module()
     {
-        JsonRpcConfig jsonRpcConfig = new();
-        jsonRpcConfig.EnabledModules = [ModuleType.Admin];
-        IRpcModuleProvider moduleProvider = new RpcModuleProvider(new RealFileSystem(), jsonRpcConfig, new EthereumJsonSerializer(), [
-            new RpcModuleInfo(typeof(IEraAdminRpcModule), new SingletonModulePool<IEraAdminRpcModule>(Substitute.For<IEraAdminRpcModule>()))
-        ], LimboLogs.Instance);
+        IRpcModuleProvider moduleProvider = CreateEraAdminModuleProvider();
 
         moduleProvider.RegisterBounded<IAdminRpcModule>(new SingletonFactory<IAdminRpcModule>(Substitute.For<IAdminRpcModule>()), 1, Int32.MaxValue);
 
@@ -362,10 +348,18 @@ public class RpcModuleProviderTests
         container.Resolve<TestRpcModuleDependencies>().WasRequested.Should().Be(preload);
     }
 
+    private static IRpcModuleProvider CreateEraAdminModuleProvider() =>
+        CreateProvider(
+            new JsonRpcConfig { EnabledModules = [ModuleType.Admin] },
+            rpcModules:
+            [
+                new RpcModuleInfo(typeof(IEraAdminRpcModule), new SingletonModulePool<IEraAdminRpcModule>(Substitute.For<IEraAdminRpcModule>()))
+            ]);
+
     private void RegisterHotModules()
     {
         JsonRpcConfig config = new() { EnabledModules = [ModuleType.Engine, ModuleType.Eth] };
-        _moduleProvider = new RpcModuleProvider(_fileSystem, config, new EthereumJsonSerializer(), LimboLogs.Instance);
+        _moduleProvider = CreateProvider(config, _fileSystem);
         _moduleProvider.Register(new TestModulePool<HotEngineRpcModule>(new HotEngineRpcModule()));
         _moduleProvider.Register(new TestModulePool<HotEthRpcModule>(new HotEthRpcModule()));
     }
