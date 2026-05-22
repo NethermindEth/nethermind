@@ -87,12 +87,7 @@ public class StartupTests
         const string injId = "x\"\\\n\u0001";
         string response = await ProcessJsonRpcRequest(CreateJsonRpcRequest(idJson: JsonSerializer.Serialize(injId)));
 
-        using JsonDocument doc = JsonDocument.Parse(response);
-
-        Assert.That(
-            doc.RootElement.GetProperty("id").GetString(),
-            Is.EqualTo(injId)
-        );
+        AssertJsonResponse(response, root => Assert.That(root.GetProperty("id").GetString(), Is.EqualTo(injId)));
     }
 
     [TestCase(false)]
@@ -106,9 +101,7 @@ public class StartupTests
         string response = await ProcessJsonRpcRequest(request, setContentLength: setContentLength);
         long receivedBytes = JsonRpcMetrics.JsonRpcBytesReceivedHttp - receivedBefore;
 
-        using JsonDocument doc = JsonDocument.Parse(response);
-
-        Assert.That(doc.RootElement.GetProperty("result").ValueKind, Is.EqualTo(JsonValueKind.Array));
+        AssertArrayResultResponse(response);
         Assert.That(receivedBytes, Is.EqualTo(Encoding.UTF8.GetByteCount(request)));
     }
 
@@ -123,8 +116,7 @@ public class StartupTests
             CreateJsonRpcRequest(),
             startup: startup);
 
-        using JsonDocument doc = JsonDocument.Parse(response);
-        Assert.That(doc.RootElement.GetProperty("result").ValueKind, Is.EqualTo(JsonValueKind.Array));
+        AssertArrayResultResponse(response);
 
         jsonRpcLocalStats.Received(1).ReportCall(
             Arg.Is<RpcReport>(static report => report.Method == GetBlobsV1Method),
@@ -141,9 +133,7 @@ public class StartupTests
 
         string response = await ProcessJsonRpcRequest(request);
 
-        using JsonDocument doc = JsonDocument.Parse(response);
-
-        Assert.That(doc.RootElement.GetProperty("error").GetProperty("code").GetInt32(), Is.EqualTo(ErrorCodes.ParseError));
+        AssertErrorCodeResponse(response, ErrorCodes.ParseError);
     }
 
     [Test]
@@ -153,10 +143,7 @@ public class StartupTests
 
         string response = await ProcessJsonRpcRequest(request);
 
-        using JsonDocument doc = JsonDocument.Parse(response);
-
-        Assert.That(doc.RootElement.GetProperty("id").GetInt64(), Is.EqualTo(1));
-        Assert.That(doc.RootElement.GetProperty("result").ValueKind, Is.EqualTo(JsonValueKind.Array));
+        AssertArrayResultResponse(response, expectedId: 1);
     }
 
     [Test]
@@ -185,10 +172,8 @@ public class StartupTests
             CreateJsonRpcRequest(),
             maxRequestBodySize: 1);
 
-        using JsonDocument doc = JsonDocument.Parse(response);
-
         Assert.That(statusCode, Is.EqualTo(StatusCodes.Status413PayloadTooLarge));
-        Assert.That(doc.RootElement.GetProperty("error").GetProperty("code").GetInt32(), Is.EqualTo(ErrorCodes.LimitExceeded));
+        AssertErrorCodeResponse(response, ErrorCodes.LimitExceeded);
     }
 
     [Test]
@@ -202,10 +187,8 @@ public class StartupTests
             startup: CreateStartup(rpcAuthentication),
             isAuthenticated: true);
 
-        using JsonDocument doc = JsonDocument.Parse(response);
-
         Assert.That(statusCode, Is.EqualTo(StatusCodes.Status401Unauthorized));
-        Assert.That(doc.RootElement.GetProperty("error").GetProperty("code").GetInt32(), Is.EqualTo(ErrorCodes.InvalidRequest));
+        AssertErrorCodeResponse(response, ErrorCodes.InvalidRequest);
     }
 
     [TestCase(false, 1)]
@@ -238,11 +221,12 @@ public class StartupTests
 
         string response = await ProcessJsonRpcRequest(request);
 
-        using JsonDocument doc = JsonDocument.Parse(response);
-        JsonElement error = doc.RootElement.GetProperty("error");
-
-        Assert.That(error.GetProperty("code").GetInt32(), Is.EqualTo(ErrorCodes.InvalidInput));
-        Assert.That(error.GetProperty("data").ValueKind, Is.EqualTo(JsonValueKind.Array));
+        AssertJsonResponse(response, static root =>
+        {
+            JsonElement error = root.GetProperty("error");
+            Assert.That(error.GetProperty("code").GetInt32(), Is.EqualTo(ErrorCodes.InvalidInput));
+            Assert.That(error.GetProperty("data").ValueKind, Is.EqualTo(JsonValueKind.Array));
+        });
     }
 
     [Test]
@@ -258,10 +242,12 @@ public class StartupTests
             CreateJsonRpcRequest(GetBlobsV2Method),
             startup: CreateStartup(engineModule: engineModule));
 
-        using JsonDocument doc = JsonDocument.Parse(response);
-
-        Assert.That(doc.RootElement.GetProperty("result").GetArrayLength(), Is.EqualTo(1));
-        Assert.That(doc.RootElement.GetProperty("result")[0].ValueKind, Is.EqualTo(JsonValueKind.Null));
+        AssertJsonResponse(response, static root =>
+        {
+            JsonElement result = root.GetProperty("result");
+            Assert.That(result.GetArrayLength(), Is.EqualTo(1));
+            Assert.That(result[0].ValueKind, Is.EqualTo(JsonValueKind.Null));
+        });
         Assert.That(streamableResult.WriteCount, Is.EqualTo(1));
         Assert.That(streamableResult.DisposeCount, Is.EqualTo(1));
     }
@@ -314,14 +300,9 @@ public class StartupTests
             Result = new FlushingStreamableResult()
         };
 
-        await fixture.Sink.WriteSingleAsync(response, new RpcReport(GetBlobsV2Method, 0, true), CancellationToken.None);
-        await fixture.Sink.CompleteAsync(CancellationToken.None);
+        await WriteHttpJsonRpcResponseAndAssertReported(fixture, response, GetBlobsV2Method);
 
         Assert.That(fixture.Context.Response.ContentType, Is.EqualTo("application/json"));
-        jsonRpcLocalStats.Received(1).ReportCall(
-            Arg.Is<RpcReport>(static report => report.Method == GetBlobsV2Method),
-            Arg.Any<long>(),
-            Arg.Any<long?>());
     }
 
     [Test]
@@ -332,16 +313,9 @@ public class StartupTests
         jsonRpcLocalStats.IsEnabled.Returns(true);
         HttpJsonRpcResponseSinkFixture fixture = CreateHttpJsonRpcResponseSink(new JsonRpcConfig { BufferResponses = true }, jsonRpcLocalStats: jsonRpcLocalStats);
 
-        await fixture.Sink.WriteSingleAsync(
+        await WriteHttpJsonRpcResponseAndAssertReported(fixture,
             new JsonRpcSuccessResponse { Id = JsonRpcId.FromObject(1), Result = new string('x', 8 * 1024) },
-            new RpcReport("eth_chainId", 0, true),
-            CancellationToken.None);
-        await fixture.Sink.CompleteAsync(CancellationToken.None);
-
-        jsonRpcLocalStats.Received(1).ReportCall(
-            Arg.Is<RpcReport>(static report => report.Method == "eth_chainId"),
-            Arg.Any<long>(),
-            Arg.Any<long?>());
+            "eth_chainId");
     }
 
     [TestCase("127.0.0.1", true)]
@@ -497,6 +471,37 @@ public class StartupTests
         await fixture.Sink.CompleteAsync(CancellationToken.None);
 
         return Encoding.UTF8.GetString(fixture.ResponseBody.ToArray());
+    }
+
+    private static async Task WriteHttpJsonRpcResponseAndAssertReported(HttpJsonRpcResponseSinkFixture fixture, JsonRpcResponse response, string method)
+    {
+        await fixture.Sink.WriteSingleAsync(response, new RpcReport(method, 0, true), CancellationToken.None);
+        await fixture.Sink.CompleteAsync(CancellationToken.None);
+
+        fixture.LocalStats.Received(1).ReportCall(
+            Arg.Is<RpcReport>(report => report.Method == method),
+            Arg.Any<long>(),
+            Arg.Any<long?>());
+    }
+
+    private static void AssertArrayResultResponse(string response, long? expectedId = null) =>
+        AssertJsonResponse(response, root =>
+        {
+            if (expectedId is not null)
+            {
+                Assert.That(root.GetProperty("id").GetInt64(), Is.EqualTo(expectedId.Value));
+            }
+
+            Assert.That(root.GetProperty("result").ValueKind, Is.EqualTo(JsonValueKind.Array));
+        });
+
+    private static void AssertErrorCodeResponse(string response, int expectedCode) =>
+        AssertJsonResponse(response, root => Assert.That(root.GetProperty("error").GetProperty("code").GetInt32(), Is.EqualTo(expectedCode)));
+
+    private static void AssertJsonResponse(string response, Action<JsonElement> assert)
+    {
+        using JsonDocument doc = JsonDocument.Parse(response);
+        assert(doc.RootElement);
     }
 
     private static HttpJsonRpcResponseSinkFixture CreateHttpJsonRpcResponseSink(
