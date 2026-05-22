@@ -6,7 +6,6 @@ using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.BeaconBlockRoot;
-using Nethermind.Consensus.Stateless;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
@@ -29,9 +28,6 @@ public class BranchProcessor(
 {
     private readonly ILogger _logger = logManager.GetClassLogger<BranchProcessor>();
     private Task _clearTask = Task.CompletedTask;
-
-    // Non-null only when the main-processing scope installs the witness-capturing decorator.
-    private readonly WitnessCapturingWorldStateProxy? _witnessProxy = stateProvider as WitnessCapturingWorldStateProxy;
 
     private const int MaxUncommittedBlocks = 64;
     private readonly Action<Task> _clearCaches = _ => preWarmer?.ClearCaches();
@@ -134,10 +130,6 @@ public class BranchProcessor(
                     }
                 }
 
-                using WitnessCaptureSession witness = _witnessProxy is null
-                    ? default
-                    : _witnessProxy.BeginCapture(suggestedBlock.Hash, options);
-
                 (Block processedBlock, TxReceipt[] receipts) = blockProcessor.ProcessOne(suggestedBlock, options, blockTracer, spec, token);
 
                 // Block is processed, ensure background tasks are cancelled (may already be via TransactionsExecuted event)
@@ -147,9 +139,6 @@ public class BranchProcessor(
 
                 // be cautious here as AuRa depends on processing
                 PreCommitBlock(suggestedBlock.Header);
-
-                witness.Drain(preBlockBaseBlock);
-
                 QueueClearCaches(preWarmTask);
 
                 if (notReadOnly)

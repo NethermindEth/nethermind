@@ -2,21 +2,25 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Threading;
+using System.Threading.Tasks;
 using Collections.Pooled;
+using Nethermind.Blockchain.Headers;
+using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
-using Nethermind.Consensus.Processing;
 using Nethermind.Core.Eip2930;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing.State;
 using Nethermind.Int256;
+using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.State.Proofs;
 
@@ -25,16 +29,80 @@ namespace Nethermind.Consensus.Stateless;
 /// <summary>
 /// Transparent <see cref="IWorldState"/> decorator that records touched addresses, storage slots,
 /// and bytecodes during block execution to build a <see cref="Witness"/> without a second execution.
+/// Also owns the cross-thread rendezvous between the JSON-RPC handler (which awaits a witness)
+/// and the block-processing thread (which produces one when a block matching the requested hash
+/// is processed).
 /// </summary>
-public sealed class WitnessCapturingWorldStateProxy(IWorldState inner, IWitnessCaptureRegistry registry) : IWorldState
+public class WitnessCapturingWorldStateProxy(
+    IWorldState inner,
+    IStateReader stateReader,
+    IHeaderFinder headerFinder,
+    ILogManager logManager) : IWorldState
 {
-    /// <summary>
-    /// Arms capture for <paramref name="blockHash"/> if the registry has a pending entry and
-    /// processing is not read-only; returns a no-op session otherwise.
-    /// </summary>
-    public WitnessCaptureSession BeginCapture(Hash256? blockHash, ProcessingOptions options) =>
-        WitnessCaptureSession.TryArm(registry, this, blockHash, options);
+    private readonly ILogger _logger = logManager.GetClassLogger<WitnessCapturingWorldStateProxy>();
+    private readonly ConcurrentDictionary<Hash256AsKey, TaskCompletionSource<Witness?>> _pending = new();
 
+    /// <summary>
+    /// Handler-side: register a pending witness request for <paramref name="blockHash"/> and return
+    /// a <see cref="Task{T}"/> that completes when the block is processed (or is cancelled).
+    /// </summary>
+    public virtual Task<Witness?> RequestWitness(Hash256 blockHash)
+    {
+        // RunContinuationsAsynchronously: completion fires from the block-processing thread; we must
+        // not run the handler's continuation inline there.
+        TaskCompletionSource<Witness?> tcs = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource<Witness?> effective = _pending.AddOrUpdate(
+            blockHash,
+            tcs,
+            (_, existing) =>
+            {
+                if (_logger.IsWarn) _logger.Warn($"{nameof(WitnessCapturingWorldStateProxy)}: duplicate RequestWitness for {blockHash}. Replacing previous entry.");
+                existing.TrySetCanceled();
+                return tcs;
+            });
+        return effective.Task;
+    }
+
+    /// <summary>Handler-side: cancel a pending request (e.g. on exception path before drain).</summary>
+    public virtual void CancelWitnessRequest(Hash256 blockHash)
+    {
+        if (_pending.TryRemove(blockHash, out TaskCompletionSource<Witness?>? tcs))
+        {
+            tcs.TrySetCanceled();
+            if (_logger.IsTrace) _logger.Trace($"{nameof(WitnessCapturingWorldStateProxy)}: capture cancelled for {blockHash}");
+        }
+    }
+
+    /// <summary>
+    /// Decorator-side: arms capture if a request is pending and processing isn't read-only.
+    /// Returns a no-op session otherwise.
+    /// </summary>
+    public WitnessCaptureSession BeginCapture(Hash256? blockHash, Hash256? parentHash, long blockNumber, ProcessingOptions options) =>
+        WitnessCaptureSession.TryArm(this, blockHash, parentHash, blockNumber, options);
+
+    /// <summary>Decorator-side: true iff a witness has been requested for this hash.</summary>
+    internal bool HasPendingRequest(Hash256 blockHash) => _pending.ContainsKey(blockHash);
+
+    /// <summary>Decorator-side: invoked from <see cref="WitnessCaptureSession.Drain"/>.</summary>
+    internal void DrainTo(Hash256 blockHash, Hash256 parentStateRoot, Hash256 parentHash, long parentBlockNumber)
+    {
+        if (!_pending.TryRemove(blockHash, out TaskCompletionSource<Witness?>? tcs))
+            return;
+
+        Witness? witness = null;
+        try
+        {
+            witness = BuildWitness(parentStateRoot, parentHash, parentBlockNumber);
+        }
+        catch (Exception ex)
+        {
+            if (_logger.IsError) _logger.Error($"{nameof(WitnessCapturingWorldStateProxy)}: witness build failed for block {blockHash}", ex);
+        }
+        finally
+        {
+            tcs.SetResult(witness);
+        }
+    }
 
     private Dictionary<Address, HashSet<UInt256>>? _storageSlots;
     private Dictionary<ValueHash256, byte[]>? _bytecodes;
@@ -45,7 +113,6 @@ public sealed class WitnessCapturingWorldStateProxy(IWorldState inner, IWitnessC
     /// <exception cref="InvalidOperationException">Thrown if already armed; state is left unchanged.</exception>
     internal void Arm()
     {
-        // CompareExchange leaves the tracking dicts intact on double-arm so the in-flight capture survives.
         if (Interlocked.CompareExchange(ref _armed, 1, 0) != 0)
             throw new InvalidOperationException(
                 $"{nameof(WitnessCapturingWorldStateProxy)} is already armed. Nested arming is not supported.");
@@ -54,6 +121,8 @@ public sealed class WitnessCapturingWorldStateProxy(IWorldState inner, IWitnessC
         _bytecodes = [];
     }
 
+    internal bool IsArmed => _armed != 0;
+
     internal void Disarm()
     {
         Interlocked.Exchange(ref _storageSlots, null);
@@ -61,11 +130,11 @@ public sealed class WitnessCapturingWorldStateProxy(IWorldState inner, IWitnessC
         Interlocked.Exchange(ref _armed, 0);
     }
 
+    /// <summary>The state root the inner world state is anchored at — captured by the session at arm time.</summary>
+    internal Hash256 InnerStateRoot => inner.StateRoot;
+
     /// <summary>Consumes the tracking collections to produce a <see cref="Witness"/>; null if not armed.</summary>
-    internal Witness? BuildWitness(
-        BlockHeader parentHeader,
-        IStateReader stateReader,
-        WitnessGeneratingHeaderFinder perBlockHeaderFinder)
+    internal Witness? BuildWitness(Hash256 parentStateRoot, Hash256 parentHash, long parentBlockNumber)
     {
         Dictionary<Address, HashSet<UInt256>>? slots = Interlocked.Exchange(ref _storageSlots, null);
         Dictionary<ValueHash256, byte[]>? bytecodes = Interlocked.Exchange(ref _bytecodes, null);
@@ -73,15 +142,22 @@ public sealed class WitnessCapturingWorldStateProxy(IWorldState inner, IWitnessC
         if (slots is null || bytecodes is null)
             return null;
 
+        // Construct the minimal BlockHeader IStateReader needs: number + StateRoot (StateReader uses
+        // StateRoot only; FlatStateReader uses StateId(number, StateRoot) for snapshot lookup).
+        BlockHeader parentView = new(Keccak.Zero, Keccak.Zero, Address.Zero, 0, parentBlockNumber, 0, 0, [])
+        {
+            StateRoot = parentStateRoot,
+        };
+
         // AccountProofCollector also covers reverted write paths missed by raw node interception.
         using PooledSet<byte[]> stateNodes = new(Bytes.EqualityComparer);
-        WitnessProofCollector.CollectAccountProofs(slots, stateReader, parentHeader, stateNodes);
+        WitnessProofCollector.CollectAccountProofs(slots, stateReader, parentView, stateNodes);
 
         // Stateless verifiers expect at least the state root node when no account was touched.
         if (stateNodes.Count == 0)
         {
             AccountProofCollector emptyCollector = new(Address.Zero, (byte[][])[]);
-            stateReader.RunTreeVisitor(emptyCollector, parentHeader);
+            stateReader.RunTreeVisitor(emptyCollector, parentView);
             (IReadOnlyList<byte[]> emptyProof, _) = emptyCollector.GetRawResult();
             stateNodes.AddRange(emptyProof);
         }
@@ -94,7 +170,8 @@ public sealed class WitnessCapturingWorldStateProxy(IWorldState inner, IWitnessC
         foreach (byte[] node in stateNodes)
             state.Add(node);
 
-        IOwnedReadOnlyList<byte[]> rawHeaders = perBlockHeaderFinder.GetWitnessHeaders(parentHeader.Hash!);
+        WitnessGeneratingHeaderFinder perBlockHeaderFinder = new(headerFinder);
+        IOwnedReadOnlyList<byte[]> rawHeaders = perBlockHeaderFinder.GetWitnessHeaders(parentHash);
         ArrayPoolList<byte[]> headers = new(rawHeaders.Count);
         foreach (byte[] h in rawHeaders)
             headers.Add(h);

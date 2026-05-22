@@ -47,10 +47,10 @@ public partial class EngineModuleTests
         public IEngineRpcModule EngineModule { get; set; }
             = SucceedingEngineModule(new PayloadStatusV1 { Status = PayloadStatus.Valid, LatestValidHash = TestItem.KeccakA });
 
-        public IWitnessCaptureRegistry Registry { get; set; } = RegistryReturning(MakeStubWitness());
+        public WitnessCapturingWorldStateProxy? Proxy { get; set; } = MakeUnarmedProxy();
 
         public NewPayloadWithWitnessHandler Build() =>
-            new(new Lazy<IEngineRpcModule>(() => EngineModule), Registry);
+            new(new Lazy<IEngineRpcModule>(() => EngineModule), new WitnessProxyResolver(Proxy));
 
         public static IEngineRpcModule SucceedingEngineModule(PayloadStatusV1 status)
         {
@@ -69,132 +69,60 @@ public partial class EngineModuleTests
                 .Returns(ResultWrapper<PayloadStatusV1>.Fail(error, errorCode));
             return module;
         }
-
-        public static IWitnessCaptureRegistry RegistryReturning(Witness? witness)
-        {
-            IWitnessCaptureRegistry registry = Substitute.For<IWitnessCaptureRegistry>();
-            registry.ArmCapture(Arg.Any<Hash256>()).Returns(Task.FromResult(witness));
-            return registry;
-        }
-
-        public static IWitnessCaptureRegistry RegistryNoop()
-        {
-            IWitnessCaptureRegistry registry = Substitute.For<IWitnessCaptureRegistry>();
-            registry.ArmCapture(Arg.Any<Hash256>()).Returns(new TaskCompletionSource<Witness?>().Task);
-            return registry;
-        }
     }
 
     [Test]
     [Category("WitnessCapture")]
-    public void Registry_ArmCapture_returns_incomplete_task_before_drain()
+    public void Proxy_RequestWitness_returns_incomplete_task_before_drain()
     {
-        WitnessCaptureRegistry registry = MakeRegistry();
+        WitnessCapturingWorldStateProxy proxy = MakeUnarmedProxy();
 
-        Task<Witness?> task = registry.ArmCapture(TestItem.KeccakA);
+        Task<Witness?> task = proxy.RequestWitness(TestItem.KeccakA);
 
         task.IsCompleted.Should().BeFalse(
-            "the task must remain pending until BranchProcessor calls TryDrainCapture");
+            "the task must remain pending until the block-processor decorator drains the capture");
     }
 
     [Test]
     [Category("WitnessCapture")]
-    public void Registry_HasPendingCapture_true_after_arm_false_after_drain()
+    public void Proxy_CancelWitnessRequest_cancels_TCS_and_removes_entry()
     {
-        WitnessCaptureRegistry registry = MakeRegistry();
-        Hash256 hash = TestItem.KeccakB;
-
-        registry.ArmCapture(hash);
-        registry.HasPendingCapture(hash).Should().BeTrue("entry was just armed");
-
-        WitnessCapturingWorldStateProxy proxy = MakeArmedProxy();
-        registry.TryDrainCapture(hash, Build.A.BlockHeader.TestObject, proxy);
-
-        registry.HasPendingCapture(hash).Should().BeFalse("drain removes the entry");
-    }
-
-    [Test]
-    [Category("WitnessCapture")]
-    public void Registry_TryDrainCapture_completes_task_even_when_BuildWitness_throws()
-    {
-        IStateReader throwingReader = Substitute.For<IStateReader>();
-        throwingReader
-            .When(r => r.RunTreeVisitor(
-                Arg.Any<AccountProofCollector>(),
-                Arg.Any<BlockHeader?>(),
-                Arg.Any<VisitingOptions?>()))
-            .Do(_ => throw new InvalidOperationException("trie store failure"));
-
-        WitnessCaptureRegistry registry = MakeRegistry(stateReader: throwingReader);
-        Hash256 hash = TestItem.KeccakC;
-        Task<Witness?> captureTask = registry.ArmCapture(hash);
-
-        WitnessCapturingWorldStateProxy proxy = MakeArmedProxy();
-        registry.TryDrainCapture(hash, Build.A.BlockHeader.TestObject, proxy);
-
-        captureTask.IsCompletedSuccessfully.Should().BeTrue(
-            "SetResult(null) must be called in the finally block even when BuildWitness throws");
-        captureTask.Result.Should().BeNull(
-            "a witness build failure yields null, not an exception propagated to the handler");
-    }
-
-    [Test]
-    [Category("WitnessCapture")]
-    public void Registry_DisarmCapture_cancels_TCS_and_removes_entry()
-    {
-        WitnessCaptureRegistry registry = MakeRegistry();
+        WitnessCapturingWorldStateProxy proxy = MakeUnarmedProxy();
         Hash256 hash = TestItem.KeccakD;
 
-        Task<Witness?> captureTask = registry.ArmCapture(hash);
-        registry.HasPendingCapture(hash).Should().BeTrue();
+        Task<Witness?> captureTask = proxy.RequestWitness(hash);
+        proxy.HasPendingRequest(hash).Should().BeTrue();
 
-        registry.DisarmCapture(hash);
+        proxy.CancelWitnessRequest(hash);
 
-        registry.HasPendingCapture(hash).Should().BeFalse(
-            "DisarmCapture must remove the entry from the registry");
+        proxy.HasPendingRequest(hash).Should().BeFalse(
+            "CancelWitnessRequest must remove the entry");
         captureTask.IsCanceled.Should().BeTrue(
-            "DisarmCapture must cancel the TCS so any code that awaits it gets OperationCanceledException");
+            "CancelWitnessRequest must cancel the TCS so any awaiter gets OperationCanceledException");
     }
 
     [Test]
     [Category("WitnessCapture")]
-    public void Registry_DisarmCapture_noop_when_no_entry_exists()
+    public void Proxy_CancelWitnessRequest_noop_when_no_entry_exists()
     {
-        WitnessCaptureRegistry registry = MakeRegistry();
-
-        Action disarm = () => registry.DisarmCapture(Keccak.Zero);
-        disarm.Should().NotThrow("disarming a non-existent entry is a valid no-op");
+        WitnessCapturingWorldStateProxy proxy = MakeUnarmedProxy();
+        Action cancel = () => proxy.CancelWitnessRequest(Keccak.Zero);
+        cancel.Should().NotThrow("cancelling a non-existent request is a valid no-op");
     }
 
     [Test]
     [Category("WitnessCapture")]
-    public void Registry_duplicate_ArmCapture_replaces_TCS_with_warning()
+    public void Proxy_duplicate_RequestWitness_cancels_previous_TCS()
     {
-        WitnessCaptureRegistry registry = MakeRegistry();
+        WitnessCapturingWorldStateProxy proxy = MakeUnarmedProxy();
         Hash256 hash = TestItem.KeccakE;
 
-        Task<Witness?> first = registry.ArmCapture(hash);
-        Task<Witness?> second = registry.ArmCapture(hash);
+        Task<Witness?> first = proxy.RequestWitness(hash);
+        Task<Witness?> second = proxy.RequestWitness(hash);
 
-        WitnessCapturingWorldStateProxy proxy = MakeArmedProxy();
-        registry.TryDrainCapture(hash, Build.A.BlockHeader.TestObject, proxy);
-
-        second.IsCompletedSuccessfully.Should().BeTrue("the replacement TCS is completed by drain");
         first.IsCanceled.Should().BeTrue(
             "the orphaned TCS must be cancelled so any awaiter gets OperationCanceledException rather than hanging forever");
-    }
-
-    [Test]
-    [Category("WitnessCapture")]
-    public void Registry_TryDrainCapture_returns_false_when_no_entry_exists()
-    {
-        WitnessCaptureRegistry registry = MakeRegistry();
-        WitnessCapturingWorldStateProxy proxy = MakeArmedProxy();
-
-        bool drained = registry.TryDrainCapture(
-            Keccak.Zero, Build.A.BlockHeader.TestObject, proxy);
-
-        drained.Should().BeFalse("no entry was armed for this hash");
+        second.IsCompleted.Should().BeFalse("the replacement TCS is still pending");
     }
 
     [Test]
@@ -202,10 +130,7 @@ public partial class EngineModuleTests
     public void Proxy_unarmed_BuildWitness_returns_null()
     {
         WitnessCapturingWorldStateProxy proxy = MakeUnarmedProxy();
-        IStateReader reader = Substitute.For<IStateReader>();
-        WitnessGeneratingHeaderFinder hf = MakeHeaderFinder();
-
-        Witness? result = proxy.BuildWitness(Build.A.BlockHeader.TestObject, reader, hf);
+        Witness? result = proxy.BuildWitness(Keccak.EmptyTreeHash, TestItem.KeccakA, 0);
         result.Should().BeNull("BuildWitness must return null when the proxy was never armed");
     }
 
@@ -224,15 +149,11 @@ public partial class EngineModuleTests
     [Category("WitnessCapture")]
     public void Proxy_BuildWitness_Disarm_then_second_Arm_succeeds()
     {
-        // Mirrors the production order: BuildWitness runs inside TryDrainCapture,
-        // and Disarm runs in the finally block after. The proxy must be reusable
-        // after this sequence so the next block can re-arm.
-        IStateReader reader = Substitute.For<IStateReader>();
         WitnessCapturingWorldStateProxy proxy = MakeUnarmedProxy();
 
         proxy.Arm();
         proxy.TryGetAccount(TestItem.AddressA, out _);
-        proxy.BuildWitness(Build.A.BlockHeader.TestObject, reader, MakeHeaderFinder());
+        proxy.BuildWitness(Keccak.EmptyTreeHash, TestItem.KeccakA, 0);
         proxy.Disarm();
 
         Action secondArm = () => proxy.Arm();
@@ -243,10 +164,8 @@ public partial class EngineModuleTests
     [Category("WitnessCapture")]
     public void Proxy_storage_slot_writes_and_reads_are_recorded()
     {
-        IWorldState inner = Substitute.For<IWorldState>();
-        inner.TryGetAccount(Arg.Any<Address>(), out Arg.Any<AccountStruct>()).Returns(false);
-
-        WitnessCapturingWorldStateProxy proxy = new(inner, Substitute.For<IWitnessCaptureRegistry>());
+        IStateReader reader = Substitute.For<IStateReader>();
+        WitnessCapturingWorldStateProxy proxy = MakeUnarmedProxy(stateReader: reader);
         proxy.Arm();
 
         StorageCell writeCell = new(TestItem.AddressA, UInt256.One);
@@ -254,8 +173,7 @@ public partial class EngineModuleTests
         proxy.Set(writeCell, [0x01]);
         proxy.Set(readCell, [0x02]);
 
-        IStateReader reader = Substitute.For<IStateReader>();
-        Witness? witness = proxy.BuildWitness(Build.A.BlockHeader.TestObject, reader, MakeHeaderFinder());
+        Witness? witness = proxy.BuildWitness(Keccak.EmptyTreeHash, TestItem.KeccakA, 0);
         proxy.Disarm();
 
         reader.Received(3).RunTreeVisitor(
@@ -272,13 +190,16 @@ public partial class EngineModuleTests
         byte[] code = [0x60, 0x00, 0x56];
         IWorldState inner = Substitute.For<IWorldState>();
         inner.GetCode(Arg.Any<Address>()).Returns(code);
+        inner.StateRoot.Returns(Keccak.EmptyTreeHash);
 
-        WitnessCapturingWorldStateProxy proxy = new(inner, Substitute.For<IWitnessCaptureRegistry>());
+        IHeaderFinder finder = Substitute.For<IHeaderFinder>();
+        finder.Get(Arg.Any<Hash256>(), Arg.Any<long?>()).Returns(Build.A.BlockHeader.TestObject);
+
+        WitnessCapturingWorldStateProxy proxy = new(inner, Substitute.For<IStateReader>(), finder, LimboLogs.Instance);
         proxy.Arm();
         proxy.GetCode(TestItem.AddressA);
 
-        IStateReader reader = Substitute.For<IStateReader>();
-        Witness? witness = proxy.BuildWitness(Build.A.BlockHeader.TestObject, reader, MakeHeaderFinder());
+        Witness? witness = proxy.BuildWitness(Keccak.EmptyTreeHash, TestItem.KeccakA, 0);
         proxy.Disarm();
 
         witness.Should().NotBeNull();
@@ -291,19 +212,13 @@ public partial class EngineModuleTests
     [Category("WitnessCapture")]
     public void Proxy_unarmed_state_accesses_do_not_record_anything()
     {
-        IWorldState inner = Substitute.For<IWorldState>();
-        inner.TryGetAccount(Arg.Any<Address>(), out Arg.Any<AccountStruct>()).Returns(false);
-
-        WitnessCapturingWorldStateProxy proxy = new(inner, Substitute.For<IWitnessCaptureRegistry>());
+        WitnessCapturingWorldStateProxy proxy = MakeUnarmedProxy();
 
         proxy.TryGetAccount(TestItem.AddressA, out _);
         proxy.IsContract(TestItem.AddressA);
         proxy.Set(new StorageCell(TestItem.AddressA, UInt256.One), [0xFF]);
 
-        Witness? w = proxy.BuildWitness(
-            Build.A.BlockHeader.TestObject,
-            Substitute.For<IStateReader>(),
-            MakeHeaderFinder());
+        Witness? w = proxy.BuildWitness(Keccak.EmptyTreeHash, TestItem.KeccakA, 0);
         w.Should().BeNull("BuildWitness must return null because collections were never allocated");
     }
 
@@ -312,12 +227,12 @@ public partial class EngineModuleTests
     public async Task BranchProcessor_registry_task_is_complete_before_newPayloadV5_returns()
     {
         using MergeTestBlockchain chain = await CreateBlockchain(Amsterdam.Instance);
-        IWitnessCaptureRegistry registry = chain.Container.Resolve<IWitnessCaptureRegistry>();
+        WitnessCapturingWorldStateProxy proxy = (WitnessCapturingWorldStateProxy)chain.MainWorldState;
 
         (ExecutionPayloadV4 payload, byte[][]? requests) = await BuildAmsterdamPayload(chain);
         Hash256 hash = payload.BlockHash!;
 
-        Task<Witness?> captureTask = registry.ArmCapture(hash);
+        Task<Witness?> captureTask = proxy.RequestWitness(hash);
 
         await chain.EngineRpcModule.engine_newPayloadV5(payload, [], TestItem.KeccakE, requests ?? []);
 
@@ -342,10 +257,8 @@ public partial class EngineModuleTests
 
         await chain.EngineRpcModule.engine_newPayloadV5(payload, [], TestItem.KeccakE, requests ?? []);
 
-        Witness? stray = proxy.BuildWitness(
-            chain.BlockTree.Head!.Header,
-            chain.StateReader,
-            MakeHeaderFinder());
+        BlockHeader head = chain.BlockTree.Head!.Header;
+        Witness? stray = proxy.BuildWitness(head.StateRoot!, head.Hash!, head.Number);
         stray.Should().BeNull(
             "without arming, BuildWitness must return null — tracking collections were never allocated");
     }
@@ -356,17 +269,17 @@ public partial class EngineModuleTests
     {
         using MergeTestBlockchain chain = await CreateBlockchain(Amsterdam.Instance);
         IEngineRpcModule rpc = chain.EngineRpcModule;
-        IWitnessCaptureRegistry registry = chain.Container.Resolve<IWitnessCaptureRegistry>();
+        WitnessCapturingWorldStateProxy proxy = (WitnessCapturingWorldStateProxy)chain.MainWorldState;
 
         (ExecutionPayloadV4 p1, byte[][]? r1) = await BuildAmsterdamPayload(chain);
-        Task<Witness?> t1 = registry.ArmCapture(p1.BlockHash!);
+        Task<Witness?> t1 = proxy.RequestWitness(p1.BlockHash!);
         await rpc.engine_newPayloadV5(p1, [], TestItem.KeccakE, r1 ?? []);
         await rpc.engine_forkchoiceUpdatedV4(
             new ForkchoiceStateV1(p1.BlockHash!, p1.BlockHash!, p1.BlockHash!), null);
         (await t1)?.Dispose();
 
         (ExecutionPayloadV4 p2, byte[][]? r2) = await BuildAmsterdamPayload(chain);
-        Task<Witness?> t2 = registry.ArmCapture(p2.BlockHash!);
+        Task<Witness?> t2 = proxy.RequestWitness(p2.BlockHash!);
         await rpc.engine_newPayloadV5(p2, [], TestItem.KeccakE, r2 ?? []);
 
         t1.IsCompletedSuccessfully.Should().BeTrue("block-1 task was completed during block-1");
@@ -382,10 +295,10 @@ public partial class EngineModuleTests
     {
         using MergeTestBlockchain chain = await CreateBlockchain(Amsterdam.Instance);
         IEngineRpcModule rpc = chain.EngineRpcModule;
-        IWitnessCaptureRegistry registry = chain.Container.Resolve<IWitnessCaptureRegistry>();
+        WitnessCapturingWorldStateProxy proxy = (WitnessCapturingWorldStateProxy)chain.MainWorldState;
 
         (ExecutionPayloadV4 p1, byte[][]? r1) = await BuildAmsterdamPayload(chain);
-        Task<Witness?> t1 = registry.ArmCapture(p1.BlockHash!);
+        Task<Witness?> t1 = proxy.RequestWitness(p1.BlockHash!);
         await rpc.engine_newPayloadV5(p1, [], TestItem.KeccakE, r1 ?? []);
         await rpc.engine_forkchoiceUpdatedV4(new ForkchoiceStateV1(p1.BlockHash!, p1.BlockHash!, p1.BlockHash!), null);
         (await t1)?.Dispose();
@@ -395,7 +308,7 @@ public partial class EngineModuleTests
         await rpc.engine_forkchoiceUpdatedV4(new ForkchoiceStateV1(p2.BlockHash!, p2.BlockHash!, p2.BlockHash!), null);
 
         (ExecutionPayloadV4 p3, byte[][]? r3) = await BuildAmsterdamPayload(chain);
-        Task<Witness?> t3 = registry.ArmCapture(p3.BlockHash!);
+        Task<Witness?> t3 = proxy.RequestWitness(p3.BlockHash!);
         await rpc.engine_newPayloadV5(p3, [], TestItem.KeccakE, r3 ?? []);
 
         t3.IsCompletedSuccessfully.Should().BeTrue(
@@ -406,13 +319,13 @@ public partial class EngineModuleTests
 
     [Test]
     [Category("WitnessCapture")]
-    public async Task Handler_returns_witness_from_registry_on_valid_status()
+    public async Task Handler_returns_witness_from_proxy_on_valid_status()
     {
         using Witness expectedWitness = MakeStubWitness();
 
         NewPayloadWithWitnessHandler handler = new WitnessHandlerBuilder
         {
-            Registry = WitnessHandlerBuilder.RegistryReturning(expectedWitness),
+            Proxy = MakeMockProxyReturning(expectedWitness),
             EngineModule = WitnessHandlerBuilder.SucceedingEngineModule(
                 new PayloadStatusV1 { Status = PayloadStatus.Valid, LatestValidHash = TestItem.KeccakA }),
         }.Build();
@@ -427,11 +340,11 @@ public partial class EngineModuleTests
 
     [Test]
     [Category("WitnessCapture")]
-    public async Task Handler_valid_status_with_null_witness_from_registry_yields_null_witness()
+    public async Task Handler_valid_status_with_null_witness_from_proxy_yields_null_witness()
     {
         NewPayloadWithWitnessHandler handler = new WitnessHandlerBuilder
         {
-            Registry = WitnessHandlerBuilder.RegistryReturning(null),
+            Proxy = MakeMockProxyReturning(null),
             EngineModule = WitnessHandlerBuilder.SucceedingEngineModule(
                 new PayloadStatusV1 { Status = PayloadStatus.Valid, LatestValidHash = TestItem.KeccakB }),
         }.Build();
@@ -459,29 +372,29 @@ public partial class EngineModuleTests
 
     [TestCaseSource(nameof(NonValidOutcomes))]
     [Category("WitnessCapture")]
-    public async Task Handler_calls_DisarmCapture_when_not_valid(Func<IEngineRpcModule> moduleFactory)
+    public async Task Handler_calls_CancelWitnessRequest_when_not_valid(Func<IEngineRpcModule> moduleFactory)
     {
-        IWitnessCaptureRegistry registry = Substitute.For<IWitnessCaptureRegistry>();
-        registry.ArmCapture(Arg.Any<Hash256>())
+        WitnessCapturingWorldStateProxy proxy = MakeMockProxy();
+        proxy.RequestWitness(Arg.Any<Hash256>())
             .Returns(new TaskCompletionSource<Witness?>().Task);
 
-        NewPayloadWithWitnessHandler handler = new(new Lazy<IEngineRpcModule>(moduleFactory), registry);
+        NewPayloadWithWitnessHandler handler = new(new Lazy<IEngineRpcModule>(moduleFactory), new WitnessProxyResolver(proxy));
 
         await handler.HandleAsync(new ExecutionPayloadV4 { BlockHash = TestItem.KeccakA }, [], TestItem.KeccakA, []);
 
-        registry.Received(1).DisarmCapture(Arg.Any<Hash256>());
+        proxy.Received(1).CancelWitnessRequest(Arg.Any<Hash256>());
     }
 
     [Test]
     [Category("WitnessCapture")]
     public async Task Handler_rejects_null_blockHash_with_InvalidParams_and_does_not_arm()
     {
-        IWitnessCaptureRegistry registry = Substitute.For<IWitnessCaptureRegistry>();
+        WitnessCapturingWorldStateProxy proxy = MakeMockProxy();
 
         NewPayloadWithWitnessHandler handler = new(
             new Lazy<IEngineRpcModule>(() => WitnessHandlerBuilder.SucceedingEngineModule(
                 new PayloadStatusV1 { Status = PayloadStatus.Valid, LatestValidHash = TestItem.KeccakA })),
-            registry);
+            new WitnessProxyResolver(proxy));
 
         ExecutionPayloadV4 payload = new()
         {
@@ -490,7 +403,7 @@ public partial class EngineModuleTests
         ResultWrapper<NewPayloadWithWitnessV1Result> result =
             await handler.HandleAsync(payload, [], TestItem.KeccakA, []);
 
-        await registry.DidNotReceive().ArmCapture(Arg.Any<Hash256>());
+        _ = proxy.DidNotReceive().RequestWitness(Arg.Any<Hash256>());
         result.Result.ResultType.Should().Be(ResultType.Failure,
             "a null blockHash is a malformed payload — return InvalidParams instead of forwarding");
         result.ErrorCode.Should().Be(ErrorCodes.InvalidParams);
@@ -606,7 +519,7 @@ public partial class EngineModuleTests
     public async Task E2E_non_VALID_response_has_null_witness_and_no_registry_leak()
     {
         using MergeTestBlockchain chain = await CreateBlockchain(Amsterdam.Instance);
-        IWitnessCaptureRegistry registry = chain.Container.Resolve<IWitnessCaptureRegistry>();
+        WitnessCapturingWorldStateProxy proxy = (WitnessCapturingWorldStateProxy)chain.MainWorldState;
 
         (ExecutionPayloadV4 good, byte[][]? requests) = await BuildAmsterdamPayload(chain);
         ExecutionPayloadV4 bad = new()
@@ -643,7 +556,7 @@ public partial class EngineModuleTests
         result.Data.ExecutionWitness.Should().BeNull(
             "spec: witness must be None when status is not VALID");
 
-        registry.HasPendingCapture(Keccak.Zero).Should().BeFalse(
+        proxy.HasPendingRequest(Keccak.Zero).Should().BeFalse(
             "DisarmCapture must be called on non-VALID paths, leaving no orphaned TCS in the registry");
     }
 
@@ -679,7 +592,7 @@ public partial class EngineModuleTests
     public async Task Regression_plain_engine_newPayloadV5_unaffected_by_witness_infrastructure()
     {
         using MergeTestBlockchain chain = await CreateBlockchain(Amsterdam.Instance);
-        IWitnessCaptureRegistry registry = chain.Container.Resolve<IWitnessCaptureRegistry>();
+        WitnessCapturingWorldStateProxy proxy = (WitnessCapturingWorldStateProxy)chain.MainWorldState;
 
         (ExecutionPayloadV4 payload, byte[][]? requests) = await BuildAmsterdamPayload(chain);
         Hash256 hash = payload.BlockHash!;
@@ -689,7 +602,7 @@ public partial class EngineModuleTests
 
         result.Data.Status.Should().Be(PayloadStatus.Valid,
             "the witness infrastructure must be completely transparent to the normal path");
-        registry.HasPendingCapture(hash).Should().BeFalse(
+        proxy.HasPendingRequest(hash).Should().BeFalse(
             "no registry entry should exist for a plain engine_newPayloadV5 call");
     }
 
@@ -801,40 +714,40 @@ public partial class EngineModuleTests
         return (getPayload.Data!.ExecutionPayload, getPayload.Data!.ExecutionRequests);
     }
 
-    private static WitnessCapturingWorldStateProxy MakeUnarmedProxy()
-    {
-        IWorldState inner = Substitute.For<IWorldState>();
-        inner.TryGetAccount(Arg.Any<Address>(), out Arg.Any<AccountStruct>()).Returns(false);
-        return new WitnessCapturingWorldStateProxy(inner, Substitute.For<IWitnessCaptureRegistry>());
-    }
-
-    private static WitnessCapturingWorldStateProxy MakeArmedProxy()
-    {
-        WitnessCapturingWorldStateProxy proxy = MakeUnarmedProxy();
-        proxy.Arm();
-        return proxy;
-    }
-
-    private static WitnessCaptureRegistry MakeRegistry(
+    private static WitnessCapturingWorldStateProxy MakeUnarmedProxy(
         IStateReader? stateReader = null,
         IHeaderFinder? headerFinder = null)
     {
-        IHeaderFinder finder = headerFinder ?? Substitute.For<IHeaderFinder>();
-        finder.Get(Arg.Any<Hash256>(), Arg.Any<long?>())
-              .Returns(Build.A.BlockHeader.TestObject);
+        IWorldState inner = Substitute.For<IWorldState>();
+        inner.TryGetAccount(Arg.Any<Address>(), out Arg.Any<AccountStruct>()).Returns(false);
+        inner.StateRoot.Returns(Keccak.EmptyTreeHash);
 
-        return new WitnessCaptureRegistry(
+        IHeaderFinder finder = headerFinder ?? Substitute.For<IHeaderFinder>();
+        finder.Get(Arg.Any<Hash256>(), Arg.Any<long?>()).Returns(Build.A.BlockHeader.TestObject);
+
+        return new WitnessCapturingWorldStateProxy(
+            inner,
             stateReader ?? Substitute.For<IStateReader>(),
             finder,
             LimboLogs.Instance);
     }
 
-    private static WitnessGeneratingHeaderFinder MakeHeaderFinder()
+    private static WitnessCapturingWorldStateProxy MakeMockProxy()
     {
-        IHeaderFinder inner = Substitute.For<IHeaderFinder>();
-        inner.Get(Arg.Any<Hash256>(), Arg.Any<long?>())
-             .Returns(Build.A.BlockHeader.TestObject);
-        return new WitnessGeneratingHeaderFinder(inner);
+        IWorldState inner = Substitute.For<IWorldState>();
+        inner.StateRoot.Returns(Keccak.EmptyTreeHash);
+        return Substitute.For<WitnessCapturingWorldStateProxy>(
+            inner,
+            Substitute.For<IStateReader>(),
+            Substitute.For<IHeaderFinder>(),
+            LimboLogs.Instance);
+    }
+
+    private static WitnessCapturingWorldStateProxy MakeMockProxyReturning(Witness? witness)
+    {
+        WitnessCapturingWorldStateProxy proxy = MakeMockProxy();
+        proxy.RequestWitness(Arg.Any<Hash256>()).Returns(Task.FromResult(witness));
+        return proxy;
     }
 
     private sealed class CountingBranchProcessorDecorator(IBranchProcessor inner, Action onProcess)

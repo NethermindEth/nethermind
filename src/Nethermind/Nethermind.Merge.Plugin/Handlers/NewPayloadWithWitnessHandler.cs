@@ -14,14 +14,17 @@ namespace Nethermind.Merge.Plugin.Handlers;
 
 /// <remarks>
 /// <see cref="IEngineRpcModule"/> is taken via <see cref="Lazy{T}"/> to break the construction
-/// cycle (the module composes this handler).
+/// cycle (the module composes this handler). The <see cref="WitnessCapturingWorldStateProxy"/>
+/// is null on pre-Amsterdam chains where the capability is gated off; a well-behaved CL won't
+/// call this method then.
 /// </remarks>
 public sealed class NewPayloadWithWitnessHandler(
     Lazy<IEngineRpcModule> engineModule,
-    IWitnessCaptureRegistry witnessCaptureRegistry,
+    WitnessProxyResolver proxyResolver,
     ILogManager? logManager = null) : INewPayloadWithWitnessHandler
 {
     private readonly ILogger _logger = (logManager ?? LimboLogs.Instance).GetClassLogger<NewPayloadWithWitnessHandler>();
+    private readonly WitnessCapturingWorldStateProxy? proxy = proxyResolver.Proxy;
 
     public async Task<ResultWrapper<NewPayloadWithWitnessV1Result>> HandleAsync(
         ExecutionPayloadV4 executionPayload,
@@ -38,7 +41,8 @@ public sealed class NewPayloadWithWitnessHandler(
                 "executionPayload.blockHash is required", ErrorCodes.InvalidParams);
         }
 
-        Task<Witness?> captureTask = witnessCaptureRegistry.ArmCapture(blockHash);
+        // Pre-Amsterdam: no proxy installed, forward to V5 and return witness-less success.
+        Task<Witness?>? captureTask = proxy?.RequestWitness(blockHash);
 
         ResultWrapper<PayloadStatusV1> statusResult;
         try
@@ -48,8 +52,8 @@ public sealed class NewPayloadWithWitnessHandler(
         }
         catch
         {
-            // Prevent the armed TCS from outliving the request as a registry leak.
-            witnessCaptureRegistry.DisarmCapture(blockHash);
+            // Prevent the armed TCS from outliving the request.
+            proxy?.CancelWitnessRequest(blockHash);
             throw;
         }
 
@@ -57,7 +61,7 @@ public sealed class NewPayloadWithWitnessHandler(
         {
             if (statusResult.Result.ResultType != ResultType.Success)
             {
-                witnessCaptureRegistry.DisarmCapture(blockHash);
+                proxy?.CancelWitnessRequest(blockHash);
                 return ResultWrapper<NewPayloadWithWitnessV1Result>.Fail(
                     statusResult.Result.Error ?? "engine_newPayloadV5 failed",
                     statusResult.ErrorCode);
@@ -66,13 +70,13 @@ public sealed class NewPayloadWithWitnessHandler(
             PayloadStatusV1 payloadStatus = statusResult.Data!;
             Witness? witness = null;
 
-            if (payloadStatus.Status == PayloadStatus.Valid)
+            if (payloadStatus.Status == PayloadStatus.Valid && captureTask is not null)
             {
-                // BranchProcessor normally completes the TCS synchronously inside ProcessOne.
+                // BlockProcessor normally completes the TCS synchronously inside ProcessOne.
                 // If it didn't, the block took an early-return path (already known, etc.) and
-                // was never processed — disarm so the await below doesn't block forever.
+                // was never processed — cancel so the await below doesn't block forever.
                 if (!captureTask.IsCompleted)
-                    witnessCaptureRegistry.DisarmCapture(blockHash);
+                    proxy!.CancelWitnessRequest(blockHash);
 
                 try
                 {
@@ -83,9 +87,9 @@ public sealed class NewPayloadWithWitnessHandler(
                     if (_logger.IsWarn) _logger.Warn($"engine_newPayloadWithWitness: witness capture cancelled for {blockHash}. Returning VALID with no witness.");
                 }
             }
-            else
+            else if (captureTask is not null)
             {
-                witnessCaptureRegistry.DisarmCapture(blockHash);
+                proxy!.CancelWitnessRequest(blockHash);
                 if (captureTask.IsCompletedSuccessfully)
                     (await captureTask)?.Dispose();
             }

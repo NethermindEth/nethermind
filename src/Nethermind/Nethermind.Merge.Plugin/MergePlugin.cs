@@ -292,10 +292,11 @@ public class BaseMergePluginModule : Module
             .AddSingleton<IPoSSwitcher, PoSSwitcher>()
             .AddDecorator<IBetterPeerStrategy, MergeBetterPeerStrategy>()
 
-            // Single-execution witness capture — BranchProcessor arms/disarms the proxy
-            // around ProcessOne; the proxy decorator is installed only when EIP-7928 is on.
-            .AddSingleton<IWitnessCaptureRegistry, WitnessCaptureRegistry>()
             .AddSingleton<IMainProcessingModule, WitnessCapturingMainProcessingModule>()
+            // Surface the inner-scope proxy to the root-scope handler via a stable holder type
+            // (Autofac rejects null factory returns, so we can't register WitnessCapturingWorldStateProxy directly).
+            .AddSingleton<WitnessProxyResolver>(ctx =>
+                new WitnessProxyResolver(ctx.Resolve<IMainProcessingContext>().WorldState as WitnessCapturingWorldStateProxy))
 
             .AddSingleton<IPeerRefresher, PeerRefresher>()
             .ResolveOnServiceActivation<IPeerRefresher, ISynchronizer>()
