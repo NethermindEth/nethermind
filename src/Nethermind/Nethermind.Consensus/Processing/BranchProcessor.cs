@@ -8,7 +8,6 @@ using System.Threading.Tasks;
 using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Consensus.Stateless;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
@@ -39,7 +38,9 @@ public class BranchProcessor(
     private readonly Action<Task> _clearCaches = _ => preWarmer?.ClearCaches();
 
     public event EventHandler<BlockProcessedEventArgs>? BlockProcessed;
+
     public event EventHandler<BlocksProcessingEventArgs>? BlocksProcessing;
+
     public event EventHandler<BlockEventArgs>? BlockProcessing;
 
     private void PreCommitBlock(BlockHeader block)
@@ -116,8 +117,7 @@ public class BranchProcessor(
 
                 if (blocksCount > 64 && i % 8 == 0)
                 {
-                    if (_logger.IsInfo)
-                        _logger.Info($"Processing part of a long blocks branch {i}/{blocksCount}. Block: {suggestedBlock}");
+                    if (_logger.IsInfo) _logger.Info($"Processing part of a long blocks branch {i}/{blocksCount}. Block: {suggestedBlock}");
                 }
 
                 if (notReadOnly)
@@ -135,34 +135,20 @@ public class BranchProcessor(
                     }
                 }
 
-                bool witnessArmed = ArmWitnessCapture(suggestedBlock.Hash, options);
-                bool witnessConsumed = false;
-                Block processedBlock;
-                TxReceipt[] receipts;
-                try
-                {
-                    (processedBlock, receipts) = blockProcessor.ProcessOne(
-                        suggestedBlock, options, blockTracer, spec, token);
-                    CancellationTokenExtensions.CancelDisposeAndClear(ref backgroundCancellation);
+                using WitnessCaptureSession witness = WitnessCaptureSession.TryArm(
+                    witnessCaptureRegistry, _witnessProxy, suggestedBlock.Hash, options);
 
-                    processedBlocks[i] = processedBlock;
+                (Block processedBlock, TxReceipt[] receipts) = blockProcessor.ProcessOne(suggestedBlock, options, blockTracer, spec, token);
 
-                    PreCommitBlock(suggestedBlock.Header);
+                // Block is processed, ensure background tasks are cancelled (may already be via TransactionsExecuted event)
+                CancellationTokenExtensions.CancelDisposeAndClear(ref backgroundCancellation);
 
-                    if (witnessArmed)
-                    {
-                        DrainWitnessCapture(suggestedBlock.Hash, preBlockBaseBlock);
-                        witnessConsumed = true;
-                    }
-                }
-                finally
-                {
-                    if (witnessArmed && !witnessConsumed)
-                    {
-                        witnessCaptureRegistry?.DisarmCapture(suggestedBlock.Hash!);
-                        _witnessProxy?.Disarm();
-                    }
-                }
+                processedBlocks[i] = processedBlock;
+
+                // be cautious here as AuRa depends on processing
+                PreCommitBlock(suggestedBlock.Header);
+
+                witness.Drain(preBlockBaseBlock);
 
                 QueueClearCaches(preWarmTask);
 
@@ -178,8 +164,7 @@ public class BranchProcessor(
                 bool isCommitPoint = i % MaxUncommittedBlocks == 0 && isNotAtTheEdge;
                 if (isCommitPoint && notReadOnly)
                 {
-                    if (_logger.IsInfo)
-                        _logger.Info($"Commit part of a long blocks branch {i}/{blocksCount}");
+                    if (_logger.IsInfo) _logger.Info($"Commit part of a long blocks branch {i}/{blocksCount}");
                     BlockHeader previousBranchStateRoot = suggestedBlock.Header;
 
                     worldStateCloser?.Dispose();
@@ -201,7 +186,7 @@ public class BranchProcessor(
 
             return processedBlocks;
         }
-        catch (Exception ex)
+        catch (Exception ex) // try to restore at all cost
         {
             if (_logger.IsWarn) _logger.Warn($"Encountered exception {ex} while processing blocks.");
             CancellationTokenExtensions.CancelDisposeAndClear(ref backgroundCancellation);
@@ -222,55 +207,14 @@ public class BranchProcessor(
         }
     }
 
-    private bool ArmWitnessCapture(Hash256? blockHash, ProcessingOptions options)
-    {
-        if (witnessCaptureRegistry is null || _witnessProxy is null || blockHash is null)
-            return false;
-
-        if (options.ContainsFlag(ProcessingOptions.ReadOnlyChain))
-            return false;
-
-        if (!witnessCaptureRegistry.HasPendingCapture(blockHash))
-            return false;
-
-        _witnessProxy.Arm();
-
-        if (_logger.IsTrace)
-            _logger.Trace($"Witness capture armed for block {blockHash}");
-
-        return true;
-    }
-
-    private void DrainWitnessCapture(Hash256? blockHash, BlockHeader? parentHeader)
-    {
-        if (_witnessProxy is null || blockHash is null || witnessCaptureRegistry is null)
-            return;
-
-        try
-        {
-            if (parentHeader is not null)
-            {
-                witnessCaptureRegistry.TryDrainCapture(blockHash, parentHeader, _witnessProxy);
-            }
-            else
-            {
-                witnessCaptureRegistry.DisarmCapture(blockHash);
-            }
-        }
-        finally
-        {
-            _witnessProxy.Disarm();
-        }
-    }
-
-    private Task? PreWarmTransactions(
-        Block suggestedBlock,
-        BlockHeader preBlockBaseBlock,
-        IReleaseSpec spec,
-        CancellationToken token) =>
+    private Task? PreWarmTransactions(Block suggestedBlock, BlockHeader preBlockBaseBlock, IReleaseSpec spec, CancellationToken token) =>
         ShouldSkipPreWarming(suggestedBlock, spec)
             ? null
-            : preWarmer?.PreWarmCaches(suggestedBlock, preBlockBaseBlock, spec, token, beaconBlockRootHandler);
+            : preWarmer?.PreWarmCaches(suggestedBlock,
+                preBlockBaseBlock,
+                spec,
+                token,
+                beaconBlockRootHandler);
 
     // Tiny blocks normally don't justify prewarming overhead — except when the prewarmer
     // would run in BAL read-warming mode, which is cheap and worthwhile regardless of tx count.
