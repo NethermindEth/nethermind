@@ -864,12 +864,9 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
         long startTime = Stopwatch.GetTimestamp();
 
         ValueTask<JsonRpcResponse> responseTask = _jsonRpcService.SendRequestAsync(request, context);
-        if (responseTask.IsCompletedSuccessfully)
-        {
-            return ValueTask.FromResult(CreateSingleRequestEntry(request, responseTask.Result, startTime));
-        }
-
-        return AwaitAndCreateEntryAsync(responseTask, request, startTime);
+        return responseTask.IsCompletedSuccessfully
+            ? ValueTask.FromResult(CreateSingleRequestEntry(request, responseTask.Result, startTime))
+            : AwaitAndCreateEntryAsync(responseTask, request, startTime);
 
         async ValueTask<JsonRpcResult.Entry> AwaitAndCreateEntryAsync(
             ValueTask<JsonRpcResponse> responseTask,
