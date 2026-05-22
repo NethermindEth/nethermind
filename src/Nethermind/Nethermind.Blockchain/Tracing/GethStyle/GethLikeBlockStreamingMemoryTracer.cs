@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.IO.Pipelines;
 using System.Text.Json;
 using System.Threading;
@@ -19,10 +20,25 @@ public sealed class GethLikeBlockStreamingMemoryTracer(
     Utf8JsonWriter writer,
     PipeWriter? pipeWriter,
     CancellationToken cancellationToken)
-    : BlockTracerBase<GethLikeTxTrace, GethLikeTxDirectStreamingTracer>(options.TxHash)
+    : BlockTracerBase<GethLikeTxTrace, GethLikeTxDirectStreamingTracer>(options.TxHash), IDisposable
 {
-    protected override GethLikeTxDirectStreamingTracer OnStart(Transaction? tx)
-        => new(tx, options, writer, pipeWriter, cancellationToken);
+    private GethLikeTxDirectStreamingTracer? _currentTxTracer;
 
-    protected override GethLikeTxTrace OnEnd(GethLikeTxDirectStreamingTracer txTracer) => txTracer.BuildResult();
+    protected override GethLikeTxDirectStreamingTracer OnStart(Transaction? tx)
+    {
+        _currentTxTracer = new GethLikeTxDirectStreamingTracer(tx, options, writer, pipeWriter, cancellationToken);
+        return _currentTxTracer;
+    }
+
+    protected override GethLikeTxTrace OnEnd(GethLikeTxDirectStreamingTracer txTracer)
+    {
+        try { return txTracer.BuildResult(); }
+        finally { _currentTxTracer = null; }
+    }
+
+    public void Dispose()
+    {
+        _currentTxTracer?.Dispose();
+        _currentTxTracer = null;
+    }
 }

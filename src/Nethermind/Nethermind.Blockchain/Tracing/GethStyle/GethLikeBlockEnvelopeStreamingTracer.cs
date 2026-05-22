@@ -26,6 +26,7 @@ public sealed class GethLikeBlockEnvelopeStreamingTracer : BlockTracerBase<GethL
     private readonly CancellationToken _cancellationToken;
     private bool _innerEnvelopeOpen;
     private Hash256? _currentTxHash;
+    private GethLikeTxDirectStreamingTracer? _currentTxTracer;
 
     public GethLikeBlockEnvelopeStreamingTracer(
         GethTraceOptions options,
@@ -51,12 +52,14 @@ public sealed class GethLikeBlockEnvelopeStreamingTracer : BlockTracerBase<GethL
         _writer.WriteStartArray();
         _innerEnvelopeOpen = true;
         _currentTxHash = tx?.Hash;
-        return new GethLikeTxDirectStreamingTracer(tx, _options, _writer, _pipeWriter, _cancellationToken);
+        _currentTxTracer = new GethLikeTxDirectStreamingTracer(tx, _options, _writer, _pipeWriter, _cancellationToken);
+        return _currentTxTracer;
     }
 
     protected override GethLikeTxTrace OnEnd(GethLikeTxDirectStreamingTracer txTracer)
     {
         GethLikeTxTrace trace = txTracer.BuildResult();
+        _currentTxTracer = null;
 
         _writer.WriteEndArray();
         ForcedNumberConversion.WriteRawLong(_writer, "gas"u8, trace.Gas);
@@ -80,6 +83,9 @@ public sealed class GethLikeBlockEnvelopeStreamingTracer : BlockTracerBase<GethL
 
     public void Dispose()
     {
+        _currentTxTracer?.Dispose();
+        _currentTxTracer = null;
+
         if (!_innerEnvelopeOpen) return;
 
         _writer.WriteEndArray();

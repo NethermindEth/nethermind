@@ -9,6 +9,7 @@ using System.Text.Json;
 using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
@@ -246,8 +247,8 @@ public sealed class GethLikeTxDirectStreamingTracer : GethLikeTxTracer
             }
             else
             {
-                int written = FormatHexAscii(slot, hexBuffer, withPrefix: false, trimLeadingZeros: false);
-                _writer.WriteStringValue(hexBuffer[..written]);
+                slot.OutputBytesToByteHex(hexBuffer, extraNibble: false);
+                _writer.WriteStringValue(hexBuffer);
             }
         }
         _writer.WriteEndArray();
@@ -272,12 +273,12 @@ public sealed class GethLikeTxDirectStreamingTracer : GethLikeTxTracer
         foreach (KeyValuePair<UInt256, UInt256> kv in top)
         {
             kv.Key.ToBigEndian(keyBytes);
-            int keyLen = FormatHexAscii(keyBytes, keyHex, withPrefix: false, trimLeadingZeros: false);
-            _writer.WritePropertyName(keyHex[..keyLen]);
+            ((ReadOnlySpan<byte>)keyBytes).OutputBytesToByteHex(keyHex, extraNibble: false);
+            _writer.WritePropertyName(keyHex);
 
             kv.Value.ToBigEndian(valueBytes);
-            int valueLen = FormatHexAscii(valueBytes, valueHex, withPrefix: false, trimLeadingZeros: false);
-            _writer.WriteStringValue(valueHex[..valueLen]);
+            ((ReadOnlySpan<byte>)valueBytes).OutputBytesToByteHex(valueHex, extraNibble: false);
+            _writer.WriteStringValue(valueHex);
         }
         _writer.WriteEndObject();
     }
@@ -291,7 +292,7 @@ public sealed class GethLikeTxDirectStreamingTracer : GethLikeTxTracer
         _entriesSinceLastFlush = 0;
     }
 
-    private static int FormatHexAscii(ReadOnlySpan<byte> source, Span<byte> destination, bool withPrefix, bool trimLeadingZeros)
+    internal static int FormatHexAscii(ReadOnlySpan<byte> source, Span<byte> destination, bool withPrefix, bool trimLeadingZeros)
     {
         int outIdx = 0;
         int start = 0;
