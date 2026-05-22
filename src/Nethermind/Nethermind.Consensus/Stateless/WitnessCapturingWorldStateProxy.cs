@@ -34,17 +34,17 @@ public sealed class WitnessCapturingWorldStateProxy(IWorldState inner) : IWorldS
     private volatile int _armed;
 
     /// <summary>Allocates fresh tracking collections before a block execution.</summary>
-    /// <exception cref="InvalidOperationException">Thrown if already armed.</exception>
+    /// <exception cref="InvalidOperationException">Thrown if already armed; state is left unchanged.</exception>
     internal void Arm()
     {
-        // Allocate first, then publish via _armed = 1, so any thread observing the armed flag
-        // can rely on the collections being non-null.
-        _storageSlots = new Dictionary<Address, HashSet<UInt256>>();
-        _bytecodes = new Dictionary<ValueHash256, byte[]>();
-
-        if (Interlocked.Exchange(ref _armed, 1) == 1)
+        // CompareExchange so the double-arm exception case leaves the tracking collections
+        // intact; only after we successfully claim the flag do we allocate fresh dicts.
+        if (Interlocked.CompareExchange(ref _armed, 1, 0) != 0)
             throw new InvalidOperationException(
                 $"{nameof(WitnessCapturingWorldStateProxy)} is already armed. Nested arming is not supported.");
+
+        _storageSlots = [];
+        _bytecodes = [];
     }
 
     /// <summary>
