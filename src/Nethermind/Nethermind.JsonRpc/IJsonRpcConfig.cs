@@ -121,6 +121,11 @@ public interface IJsonRpcConfig : IConfig
     public int MaxLogsPerResponse { get; set; }
 
     [ConfigItem(
+        Description = "Whether to stream `debug_trace*` responses as the EVM executes (lower TTFB and bounded memory). Can be overridden per-call via `GethTraceOptions.StreamMode`.",
+        DefaultValue = "true")]
+    public bool EnableTracingStreamMode { get; set; }
+
+    [ConfigItem(
         Description = """
             The number of concurrent instances for non-sharable calls:
 

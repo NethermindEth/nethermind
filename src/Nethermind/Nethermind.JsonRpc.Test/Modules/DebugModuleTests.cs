@@ -68,10 +68,6 @@ public class DebugModuleTests
         DebugRpcModule rpcModule = CreateDebugRpcModule(_debugBridge);
         TransactionBundle bundle = new() { Transactions = [new LegacyTransactionForRpc { To = TestItem.AddressC }] };
 
-        // Non-empty Tracer keeps debug_traceCallMany on the lazy-IEnumerable buffered path
-        // (the streaming default-tracer path defers iteration into WriteToAsync, which this
-        // test isn't exercising). The cancellation-token lifecycle contract being verified
-        // is the buffered path's StreamBundleTraces wrapper.
         ResultWrapper<IEnumerable<IEnumerable<GethLikeTxTrace>>> result =
             rpcModule.debug_traceCallMany([bundle, bundle], BlockParameter.Latest, new GethTraceOptions { Tracer = "callTracer" });
 

@@ -78,7 +78,7 @@ public class DebugRpcModule(
             GethTraceOptions effective = options ?? GethTraceOptions.Default;
             return ResultWrapper<GethLikeTxTrace>.Success(BuildStreamingResult(
                 (writer, pipeWriter, token) =>
-                    debugBridge.GetTransactionTraceStreaming(transactionHash, writer, pipeWriter, token, effective)));
+                    debugBridge.GetTransactionTrace(transactionHash, token, effective, writer, pipeWriter)));
         }
 
         using CancellationTokenSource timeout = BuildTimeoutCancellationTokenSource();
@@ -114,7 +114,7 @@ public class DebugRpcModule(
             GethTraceOptions effective = options ?? GethTraceOptions.Default;
             return ResultWrapper<GethLikeTxTrace>.Success(BuildStreamingResult(
                 (writer, pipeWriter, token) =>
-                    debugBridge.GetTransactionTraceStreaming(tx, blockParameter, writer, pipeWriter, token, effective)));
+                    debugBridge.GetTransactionTrace(tx, blockParameter, token, effective, writer, pipeWriter)));
         }
 
         using CancellationTokenSource timeout = BuildTimeoutCancellationTokenSource();
@@ -139,7 +139,11 @@ public class DebugRpcModule(
         return ResultWrapper<GethLikeTxTrace>.Success(transactionTrace);
     }
 
-    private static bool CanStreamStructLogs(GethTraceOptions? options) => string.IsNullOrEmpty(options?.Tracer);
+    private bool CanStreamStructLogs(GethTraceOptions? options)
+    {
+        if (!string.IsNullOrEmpty(options?.Tracer)) return false;
+        return options?.StreamMode ?? jsonRpcConfig.EnableTracingStreamMode;
+    }
 
     private GethLikeTxTraceStreamingSingleResult BuildStreamingResult(
         Func<Utf8JsonWriter, PipeWriter?, CancellationToken, GethLikeTxTrace?> runTrace)
@@ -184,7 +188,7 @@ public class DebugRpcModule(
             GethTraceOptions effective = options ?? GethTraceOptions.Default;
             return ResultWrapper<GethLikeTxTrace>.Success(BuildStreamingResult(
                 (writer, pipeWriter, token) =>
-                    debugBridge.GetTransactionTraceStreaming(blockhash, index, writer, pipeWriter, token, effective)));
+                    debugBridge.GetTransactionTrace(blockhash, index, token, effective, writer, pipeWriter)));
         }
 
         using CancellationTokenSource timeout = BuildTimeoutCancellationTokenSource();
@@ -219,7 +223,7 @@ public class DebugRpcModule(
             long resolvedBlockNo = blockNo.Value;
             return ResultWrapper<GethLikeTxTrace>.Success(BuildStreamingResult(
                 (writer, pipeWriter, token) =>
-                    debugBridge.GetTransactionTraceStreaming(resolvedBlockNo, index, writer, pipeWriter, token, effective)));
+                    debugBridge.GetTransactionTrace(resolvedBlockNo, index, token, effective, writer, pipeWriter)));
         }
 
         using CancellationTokenSource timeout = BuildTimeoutCancellationTokenSource();
@@ -248,7 +252,7 @@ public class DebugRpcModule(
             GethTraceOptions effective = options ?? GethTraceOptions.Default;
             return ResultWrapper<GethLikeTxTrace>.Success(BuildStreamingResult(
                 (writer, pipeWriter, token) =>
-                    debugBridge.GetTransactionTraceStreaming(block!, transactionHash, writer, pipeWriter, token, effective)));
+                    debugBridge.GetTransactionTrace(block!, transactionHash, token, effective, writer, pipeWriter)));
         }
 
         using CancellationTokenSource timeout = BuildTimeoutCancellationTokenSource();
@@ -281,7 +285,7 @@ public class DebugRpcModule(
             GethTraceOptions effective = options ?? GethTraceOptions.Default;
             return ResultWrapper<GethLikeTxTrace>.Success(BuildStreamingResult(
                 (writer, pipeWriter, token) =>
-                    debugBridge.GetTransactionTraceStreaming(block, targetTxHash!, writer, pipeWriter, token, effective)));
+                    debugBridge.GetTransactionTrace(block, targetTxHash!, token, effective, writer, pipeWriter)));
         }
 
         using CancellationTokenSource timeout = BuildTimeoutCancellationTokenSource();
@@ -318,7 +322,7 @@ public class DebugRpcModule(
             GethTraceOptions effective = options ?? GethTraceOptions.Default;
             return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Success(BuildStreamingBlockResult(
                 (writer, pipeWriter, token) =>
-                    debugBridge.GetBlockTraceStreaming(block!, writer, pipeWriter, token, effective)));
+                    debugBridge.GetBlockTrace(block!, token, effective, writer, pipeWriter)));
         }
 
         using CancellationTokenSource? timeout = BuildTimeoutCancellationTokenSource();
@@ -363,7 +367,7 @@ public class DebugRpcModule(
             GethTraceOptions effective = options ?? GethTraceOptions.Default;
             return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Success(BuildStreamingBlockResult(
                 (writer, pipeWriter, token) =>
-                    debugBridge.GetBlockTraceStreaming(resolvedBlock, writer, pipeWriter, token, effective)));
+                    debugBridge.GetBlockTrace(resolvedBlock, token, effective, writer, pipeWriter)));
         }
 
         using CancellationTokenSource? timeout = BuildTimeoutCancellationTokenSource();
@@ -405,7 +409,7 @@ public class DebugRpcModule(
             GethTraceOptions effective = options ?? GethTraceOptions.Default;
             return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Success(BuildStreamingBlockResult(
                 (writer, pipeWriter, token) =>
-                    debugBridge.GetBlockTraceStreaming(resolvedBlock, writer, pipeWriter, token, effective)));
+                    debugBridge.GetBlockTrace(resolvedBlock, token, effective, writer, pipeWriter)));
         }
 
         using CancellationTokenSource? timeout = BuildTimeoutCancellationTokenSource();

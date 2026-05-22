@@ -100,7 +100,7 @@ public sealed class GethLikeTxTraceStreamingBundleResult : StreamingResultBase, 
         }
 
         StructLogEnvelopeWriter.EmitTraceObject(writer, pipeWriter, cancellationToken,
-            (w, pw, t) => _bridge.GetTransactionTraceStreaming(tx, _blockParameter, w, pw, t, _options),
+            (w, pw, t) => _bridge.GetTransactionTrace(tx, _blockParameter, t, _options, w, pw),
             Logger,
             fallbackGas: tx.GasLimit);
     }

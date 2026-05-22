@@ -15,44 +15,27 @@ namespace Nethermind.Consensus.Tracing;
 
 public interface IGethStyleTracer
 {
-    GethLikeTxTrace Trace(Hash256 txHash, GethTraceOptions options, CancellationToken cancellationToken);
-    GethLikeTxTrace Trace(long blockNumber, Transaction transaction, GethTraceOptions options, CancellationToken cancellationToken);
-    GethLikeTxTrace Trace(long blockNumber, int txIndex, GethTraceOptions options, CancellationToken cancellationToken);
-    GethLikeTxTrace Trace(Hash256 blockHash, int txIndex, GethTraceOptions options, CancellationToken cancellationToken);
-    GethLikeTxTrace Trace(Rlp blockRlp, Hash256 txHash, GethTraceOptions options, CancellationToken cancellationToken);
-    GethLikeTxTrace Trace(Block block, Hash256 txHash, GethTraceOptions options, CancellationToken cancellationToken);
-    GethLikeTxTrace? Trace(BlockParameter blockParameter, Transaction tx, GethTraceOptions options, CancellationToken cancellationToken);
+    /// <summary>
+    /// Trace a single transaction. When <paramref name="writer"/> is non-null and the selected
+    /// tracer supports streaming, struct-log entries are serialised into the writer as they are
+    /// produced (returned value contains only the header fields).
+    /// </summary>
+    GethLikeTxTrace? Trace(Hash256 txHash, GethTraceOptions options, CancellationToken cancellationToken, Utf8JsonWriter? writer = null, PipeWriter? pipeWriter = null);
+    GethLikeTxTrace? Trace(long blockNumber, Transaction transaction, GethTraceOptions options, CancellationToken cancellationToken);
+    GethLikeTxTrace? Trace(long blockNumber, int txIndex, GethTraceOptions options, CancellationToken cancellationToken, Utf8JsonWriter? writer = null, PipeWriter? pipeWriter = null);
+    GethLikeTxTrace? Trace(Hash256 blockHash, int txIndex, GethTraceOptions options, CancellationToken cancellationToken, Utf8JsonWriter? writer = null, PipeWriter? pipeWriter = null);
+    GethLikeTxTrace? Trace(Rlp blockRlp, Hash256 txHash, GethTraceOptions options, CancellationToken cancellationToken, Utf8JsonWriter? writer = null, PipeWriter? pipeWriter = null);
+    GethLikeTxTrace? Trace(Block block, Hash256 txHash, GethTraceOptions options, CancellationToken cancellationToken, Utf8JsonWriter? writer = null, PipeWriter? pipeWriter = null);
+    GethLikeTxTrace? Trace(BlockParameter blockParameter, Transaction tx, GethTraceOptions options, CancellationToken cancellationToken, Utf8JsonWriter? writer = null, PipeWriter? pipeWriter = null);
 
     /// <summary>
-    /// Streaming variant of <see cref="Trace(Hash256, GethTraceOptions, CancellationToken)"/>.
-    /// Struct-log entries are serialised into <paramref name="writer"/> as the EVM produces them,
-    /// then discarded; only the header fields (gas / failed / returnValue) are returned.
+    /// Trace all transactions in a block. When <paramref name="writer"/> is non-null, each per-tx
+    /// envelope is written directly into the writer as the block executes and the return value is
+    /// an empty collection (nothing is buffered).
     /// </summary>
-    GethLikeTxTrace? TraceStreaming(Hash256 txHash, GethTraceOptions options, Utf8JsonWriter writer, PipeWriter? pipeWriter, CancellationToken cancellationToken);
-
-    /// <summary>
-    /// Streaming variant of <see cref="Trace(BlockParameter, Transaction, GethTraceOptions, CancellationToken)"/>.
-    /// See <see cref="TraceStreaming(Hash256, GethTraceOptions, Utf8JsonWriter, PipeWriter, CancellationToken)"/>.
-    /// </summary>
-    GethLikeTxTrace? TraceStreaming(BlockParameter blockParameter, Transaction tx, GethTraceOptions options, Utf8JsonWriter writer, PipeWriter? pipeWriter, CancellationToken cancellationToken);
-
-    GethLikeTxTrace? TraceStreaming(long blockNumber, int txIndex, GethTraceOptions options, Utf8JsonWriter writer, PipeWriter? pipeWriter, CancellationToken cancellationToken);
-    GethLikeTxTrace? TraceStreaming(Hash256 blockHash, int txIndex, GethTraceOptions options, Utf8JsonWriter writer, PipeWriter? pipeWriter, CancellationToken cancellationToken);
-    GethLikeTxTrace? TraceStreaming(Rlp blockRlp, Hash256 txHash, GethTraceOptions options, Utf8JsonWriter writer, PipeWriter? pipeWriter, CancellationToken cancellationToken);
-    GethLikeTxTrace? TraceStreaming(Block block, Hash256 txHash, GethTraceOptions options, Utf8JsonWriter writer, PipeWriter? pipeWriter, CancellationToken cancellationToken);
-
-    IReadOnlyCollection<GethLikeTxTrace> TraceBlock(BlockParameter blockParameter, GethTraceOptions options, CancellationToken cancellationToken);
-    IReadOnlyCollection<GethLikeTxTrace> TraceBlock(Rlp blockRlp, GethTraceOptions options, CancellationToken cancellationToken);
-    IReadOnlyCollection<GethLikeTxTrace> TraceBlock(Block block, GethTraceOptions options, CancellationToken cancellationToken);
-
-    /// <summary>
-    /// Streaming variant of <see cref="TraceBlock(BlockParameter, GethTraceOptions, CancellationToken)"/>.
-    /// Each per-tx envelope and its struct-log entries are written directly into the supplied
-    /// <see cref="Utf8JsonWriter"/> as the block executes; nothing is buffered.
-    /// </summary>
-    void TraceBlockStreaming(BlockParameter blockParameter, GethTraceOptions options, Utf8JsonWriter writer, PipeWriter? pipeWriter, CancellationToken cancellationToken);
-    void TraceBlockStreaming(Rlp blockRlp, GethTraceOptions options, Utf8JsonWriter writer, PipeWriter? pipeWriter, CancellationToken cancellationToken);
-    void TraceBlockStreaming(Block block, GethTraceOptions options, Utf8JsonWriter writer, PipeWriter? pipeWriter, CancellationToken cancellationToken);
+    IReadOnlyCollection<GethLikeTxTrace> TraceBlock(BlockParameter blockParameter, GethTraceOptions options, CancellationToken cancellationToken, Utf8JsonWriter? writer = null, PipeWriter? pipeWriter = null);
+    IReadOnlyCollection<GethLikeTxTrace> TraceBlock(Rlp blockRlp, GethTraceOptions options, CancellationToken cancellationToken, Utf8JsonWriter? writer = null, PipeWriter? pipeWriter = null);
+    IReadOnlyCollection<GethLikeTxTrace> TraceBlock(Block block, GethTraceOptions options, CancellationToken cancellationToken, Utf8JsonWriter? writer = null, PipeWriter? pipeWriter = null);
     /// <summary>
     /// Replays <paramref name="blockHash"/> and returns the world-state root after each transaction
     /// in execution order. EIP-4788/EIP-2935 system calls and withdrawals do not produce an entry.
