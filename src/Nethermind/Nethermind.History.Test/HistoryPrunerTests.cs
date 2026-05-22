@@ -183,6 +183,18 @@ public class HistoryPrunerTests
         CheckOldestAndCutoff(expectedPruneBelow, finalCutoff, historyPruner);
     }
 
+    [TestCase(0L, 0L)]
+    [TestCase(1L, 32L)]
+    [TestCase(82125L, 2_628_000L)] // mainnet EIP-4444 default
+    public async Task GetRetentionBlocks_converts_epochs_to_blocks(long retentionEpochs, long expected)
+    {
+        IHistoryConfig historyConfig = new HistoryConfig { Pruning = PruningModes.Disabled, PruningInterval = 0 };
+        using BasicTestBlockchain testBlockchain = await CreateBlockchainWithBlocks(historyConfig, blocks: 0);
+        IHistoryPruner historyPruner = testBlockchain.Container.Resolve<IHistoryPruner>();
+
+        Assert.That(historyPruner.GetRetentionBlocks(retentionEpochs), Is.EqualTo(expected));
+    }
+
     [Test]
     public async Task Can_find_oldest_block()
     {
