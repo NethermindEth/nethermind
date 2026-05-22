@@ -15,23 +15,23 @@ namespace Nethermind.Core.BlockAccessLists;
 /// </summary>
 public class AccountChangesAtIndex(Address address)
 {
-    public Address Address { get; } = address;
+    public Address Address { get; private set; } = address;
 
-    public BalanceChange? BalanceChange { get; set; }
-    public NonceChange? NonceChange { get; set; }
-    public CodeChange? CodeChange { get; set; }
+    public BalanceChange? BalanceChange { get; internal set; }
+    public NonceChange? NonceChange { get; internal set; }
+    public CodeChange? CodeChange { get; internal set; }
 
-    public UInt256? PreTxBalance { get; set; }
-    public byte[]? PreTxCode { get; set; }
+    public UInt256? PreTxBalance { get; internal set; }
+    public byte[]? PreTxCode { get; internal set; }
     private Dictionary<UInt256, UInt256>? _preTxStorage;
 
     private readonly Dictionary<UInt256, StorageChange> _storageChanges = new(GenericEqualityComparer.GetOptimized<UInt256>());
     private readonly HashSet<UInt256> _storageReads = new(GenericEqualityComparer.GetOptimized<UInt256>());
 
-    public IReadOnlyCollection<UInt256> ChangedSlots => _storageChanges.Keys;
-    public IEnumerable<KeyValuePair<UInt256, StorageChange>> StorageChanges => _storageChanges;
+    public Dictionary<UInt256, StorageChange>.KeyCollection ChangedSlots => _storageChanges.Keys;
+    public Dictionary<UInt256, StorageChange> StorageChanges => _storageChanges;
     public int StorageChangeCount => _storageChanges.Count;
-    public IReadOnlyCollection<UInt256> StorageReads => _storageReads;
+    public HashSet<UInt256> StorageReads => _storageReads;
 
     public bool HasStorageChange(UInt256 key) => _storageChanges.ContainsKey(key);
 
@@ -51,6 +51,17 @@ public class AccountChangesAtIndex(Address address)
 
     public bool RemoveStorageChange(UInt256 key) => _storageChanges.Remove(key);
 
+    public bool TryRemoveStorageChange(UInt256 key, [NotNullWhen(true)] out StorageChange? storageChange)
+    {
+        if (_storageChanges.Remove(key, out StorageChange existing))
+        {
+            storageChange = existing;
+            return true;
+        }
+        storageChange = null;
+        return false;
+    }
+
     public void AddStorageRead(UInt256 key) => _storageReads.Add(key);
 
     public bool RemoveStorageRead(UInt256 key) => _storageReads.Remove(key);
@@ -68,5 +79,18 @@ public class AccountChangesAtIndex(Address address)
         _storageChanges.Clear();
         _storageReads.Clear();
         _preTxStorage?.Clear();
+    }
+
+    public void Reset(Address address)
+    {
+        Address = address;
+        BalanceChange = null;
+        NonceChange = null;
+        CodeChange = null;
+        PreTxBalance = null;
+        PreTxCode = null;
+        _preTxStorage?.Clear();
+        _storageChanges.Clear();
+        _storageReads.Clear();
     }
 }

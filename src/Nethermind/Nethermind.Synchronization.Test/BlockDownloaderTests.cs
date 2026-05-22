@@ -1157,6 +1157,8 @@ public partial class BlockDownloaderTests
 
     private class ResponseBuilder(IBlockTree blockTree, Dictionary<long, Hash256> testHeaderMapping)
     {
+        private static readonly ReceiptMessageDecoder ReceiptDecoder = new();
+
         private readonly IBlockTree _blockTree = blockTree;
         private readonly Dictionary<long, Hash256> _testHeaderMapping = testHeaderMapping;
 
@@ -1310,7 +1312,7 @@ public partial class BlockDownloaderTests
 
                 _headers[blockHashes[i]].ReceiptsRoot = flags.HasFlag(Response.IncorrectReceiptRoot)
                     ? Keccak.EmptyTreeHash
-                    : ReceiptTrie.CalculateRoot(MainnetSpecProvider.Instance.GetSpec((ForkActivation)_headers[blockHashes[i]].Number), receipts[i], Rlp.GetStreamEncoder<TxReceipt>()!);
+                    : ReceiptTrie.CalculateRoot(MainnetSpecProvider.Instance.GetSpec((ForkActivation)_headers[blockHashes[i]].Number), receipts[i], ReceiptDecoder);
             }
 
             using ReceiptsMessage message = new(receipts.ToPooledList());

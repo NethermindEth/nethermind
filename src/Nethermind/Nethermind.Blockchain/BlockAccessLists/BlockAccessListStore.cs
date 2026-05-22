@@ -22,7 +22,7 @@ public class BlockAccessListStore(
 
     public void Insert(Hash256 blockHash, ReadOnlyBlockAccessList bal)
     {
-        using NettyRlpStream rlpStream = BlockAccessListDecoder.Instance.EncodeToNewNettyStream(bal);
+        using NettyRlpStream rlpStream = _balDecoder.EncodeToNewNettyStream(bal);
         balDb.Set(blockHash, rlpStream.AsSpan());
     }
 
