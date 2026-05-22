@@ -95,8 +95,7 @@ internal static class Program
     private static string GenerateContextSource(string[] sortedTypes)
     {
         StringBuilder builder = new();
-        builder.AppendLine(GeneratedSourceHeader);
-        builder.AppendLine(
+        builder.AppendLine(GeneratedSourceHeader).AppendLine(
             """
             using System.Runtime.CompilerServices;
             using System.Text.Json.Serialization;
