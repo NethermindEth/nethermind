@@ -18,7 +18,6 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
 using Nethermind.JsonRpc;
-using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Specs.Forks;
