@@ -101,6 +101,24 @@ public class DbTrackerTests
         Assert.That(Metrics.DbReads["TestDb"], Is.EqualTo(10));
     }
 
+    [Parallelizable(ParallelScope.None)]
+    [Test]
+    public void DoesNotThrowOrRepeatErrorAfterContainerDisposed()
+    {
+        TestLogger testLogger = new();
+        (IContainer container, Action updateAction, FakeDb _) = ConfigureMetricUpdater(builder =>
+            builder.AddSingleton<ILogManager>(new OneLoggerLogManager(new(testLogger))));
+        container.Resolve<IDbFactory>().CreateDb(new DbSettings("TestDb", "TestDb"));
+
+        container.Dispose();
+
+        Action invoke = () => updateAction!();
+        invoke.Should().NotThrow();
+        invoke.Should().NotThrow();
+
+        testLogger.LogList.Should().BeEmpty();
+    }
+
     private (IContainer, Action, FakeDb) ConfigureMetricUpdater(Action<ContainerBuilder>? configurer = null)
     {
         IDbFactory fakeDbFactory = Substitute.For<IDbFactory>();

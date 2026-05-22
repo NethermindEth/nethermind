@@ -49,6 +49,7 @@ public class DbMonitoringModule : Module
         private readonly int _intervalSec;
         private readonly Lazy<HyperClockCacheWrapper> _sharedBlockCache;
         private long _lastDbMetricsUpdate = 0;
+        private bool _stopped;
 
         private ILogger _logger;
 
@@ -72,6 +73,7 @@ public class DbMonitoringModule : Module
 
         private void UpdateDbMetrics()
         {
+            if (_stopped) return;
             try
             {
                 if (Paused) return;
@@ -97,6 +99,12 @@ public class DbMonitoringModule : Module
                 Db.Metrics.DbBlockCacheSize["Shared"] = _sharedBlockCache.Value.GetUsage();
 
                 _lastDbMetricsUpdate = Environment.TickCount64;
+            }
+            catch (ObjectDisposedException)
+            {
+                // The DI scope or the shared cache handle has been disposed; stop updating
+                // metrics so the same exception isn't re-thrown on every interval tick.
+                _stopped = true;
             }
             catch (Exception e)
             {
