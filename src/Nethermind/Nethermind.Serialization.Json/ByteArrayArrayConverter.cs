@@ -11,13 +11,8 @@ using Nethermind.Core.Collections;
 
 namespace Nethermind.Serialization.Json;
 
-/// <summary>
-/// Converts byte-array arrays as JSON arrays of hex strings.
-/// </summary>
-/// <remarks>
-/// Reuses <see cref="ByteArrayConverter"/> for each element while avoiding the generic
-/// System.Text.Json collection converter pipeline for hot engine payload fields.
-/// </remarks>
+/// <summary>Converts byte-array arrays as JSON arrays of hex strings.</summary>
+/// <remarks>Reuses <see cref="ByteArrayConverter"/> for each element while avoiding the generic collection converter pipeline for hot engine payload fields.</remarks>
 public sealed class ByteArrayArrayConverter : JsonConverter<byte[][]>
 {
     private const int InitialCapacity = 4;
@@ -40,20 +35,15 @@ public sealed class ByteArrayArrayConverter : JsonConverter<byte[][]>
             ThrowJsonException();
         }
 
-        if (reader.TokenType == JsonTokenType.EndArray)
-        {
-            return [];
-        }
-
-        using ArrayPoolListRef<byte[]> values = new(InitialCapacity);
-        do
+        using ArrayPoolListRef<byte[]> values = new(reader.TokenType == JsonTokenType.EndArray ? 0 : InitialCapacity);
+        while (reader.TokenType != JsonTokenType.EndArray)
         {
             values.Add(ByteArrayConverter.Convert(ref reader)!);
             if (!reader.Read())
             {
                 ThrowJsonException();
             }
-        } while (reader.TokenType != JsonTokenType.EndArray);
+        }
 
         return values.ToArray();
     }
