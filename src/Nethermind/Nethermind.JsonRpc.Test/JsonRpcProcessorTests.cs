@@ -550,8 +550,7 @@ public class JsonRpcProcessorTests(bool returnErrors)
     public async Task Request_recorder_captures_payload(RpcEndpoint endpoint)
     {
         List<string> records = [];
-        IFileSystem fileSystem = CreateRecordingFileSystem(records);
-        JsonRpcProcessor processor = CreateProcessor(CreateEchoService(), CreateRecorderConfig(RpcRecorderState.Request), fileSystem);
+        JsonRpcProcessor processor = CreateRecordingProcessor(RpcRecorderState.Request, records);
 
         string request = endpoint == RpcEndpoint.Http
             ? "{\"id\":1,\"jsonrpc\":\"2.0\",\"method\":\"eth_blockNumber\",\"params\":[]}"
@@ -566,33 +565,24 @@ public class JsonRpcProcessorTests(bool returnErrors)
         }
     }
 
-    [Test]
-    public async Task Response_recorder_captures_single_response()
+    [TestCase(false, 1)]
+    [TestCase(true, 2)]
+    public async Task Response_recorder_captures_responses(bool isBatch, int expectedRecordCount)
     {
         List<string> records = [];
-        IFileSystem fileSystem = CreateRecordingFileSystem(records);
-        JsonRpcProcessor processor = CreateProcessor(CreateEchoService(), CreateRecorderConfig(RpcRecorderState.Response), fileSystem);
+        JsonRpcProcessor processor = CreateRecordingProcessor(RpcRecorderState.Response, records);
+        string request = isBatch
+            ? "[{\"id\":1,\"jsonrpc\":\"2.0\",\"method\":\"eth_blockNumber\",\"params\":[]},{\"id\":2,\"jsonrpc\":\"2.0\",\"method\":\"net_version\",\"params\":[]}]"
+            : "{\"id\":1,\"jsonrpc\":\"2.0\",\"method\":\"eth_blockNumber\",\"params\":[]}";
 
-        using CollectedJsonRpcResponses result = await ProcessAsync(processor, CreateReader("{\"id\":1,\"jsonrpc\":\"2.0\",\"method\":\"eth_blockNumber\",\"params\":[]}"), new JsonRpcContext(RpcEndpoint.Http));
+        using CollectedJsonRpcResponses result = await ProcessAsync(processor, CreateReader(request), new JsonRpcContext(RpcEndpoint.Http));
 
-        records.Should().ContainSingle(record => record.Contains("eth_blockNumber"));
-    }
-
-    [Test]
-    public async Task Response_recorder_captures_batch_responses()
-    {
-        List<string> records = [];
-        IFileSystem fileSystem = CreateRecordingFileSystem(records);
-        JsonRpcProcessor processor = CreateProcessor(CreateEchoService(), CreateRecorderConfig(RpcRecorderState.Response), fileSystem);
-
-        using CollectedJsonRpcResponses result = await ProcessAsync(
-            processor,
-            CreateReader("[{\"id\":1,\"jsonrpc\":\"2.0\",\"method\":\"eth_blockNumber\",\"params\":[]},{\"id\":2,\"jsonrpc\":\"2.0\",\"method\":\"net_version\",\"params\":[]}]"),
-            new JsonRpcContext(RpcEndpoint.Http));
-
-        records.Should().HaveCount(2);
+        records.Should().HaveCount(expectedRecordCount);
         records.Should().Contain(record => record.Contains("eth_blockNumber"));
-        records.Should().Contain(record => record.Contains("net_version"));
+        if (isBatch)
+        {
+            records.Should().Contain(record => record.Contains("net_version"));
+        }
     }
 
     [Test]
@@ -683,6 +673,9 @@ public class JsonRpcProcessorTests(bool returnErrors)
             RpcRecorderState = recorderState,
             RpcRecorderBaseFilePath = "rpc.{counter}.txt"
         };
+
+    private static JsonRpcProcessor CreateRecordingProcessor(RpcRecorderState recorderState, List<string> records) =>
+        CreateProcessor(CreateEchoService(), CreateRecorderConfig(recorderState), CreateRecordingFileSystem(records));
 
     private static IFileSystem CreateRecordingFileSystem(List<string> records)
     {
