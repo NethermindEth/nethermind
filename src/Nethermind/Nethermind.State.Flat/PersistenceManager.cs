@@ -113,7 +113,12 @@ public class PersistenceManager(
             long b = s.BlockNumber;
             if (b == 0) continue;
 
-            if (b % _compactSize == 0) boundaries.Add(s);
+            // Only a boundary whose highest power of two exceeds CompactSize is worth handing
+            // to the boundary compactor (band [2*CompactSize, ...]). One whose highest power of
+            // two is exactly CompactSize can only yield a CompactSize-wide merge — the
+            // persistable, already produced by the batched compactor below — so queueing it
+            // would just be a no-op hop through the boundary channel.
+            if ((b & -b) > _compactSize) boundaries.Add(s);
 
             // Bucket every state by its power-of-2 alignment, capped at CompactSize so a
             // boundary block lands in the last (CompactSize) bucket — the batched compactor's

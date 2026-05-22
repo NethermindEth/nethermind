@@ -64,8 +64,8 @@ public sealed class PersistedSnapshotRepository(
     private readonly Lock _catalogLock = new();
     // Ordered StateId set + tip — both guarded by `_catalogLock`. Lookups (TryLeaseSnapshotTo,
     // TryLeaseCompactedSnapshotTo, HasBaseSnapshot) stay on the concurrent dictionaries; the
-    // ordered set exists purely to expose a self-seed for backward walks
-    // (see <see cref="TryGetSnapshotFrom(StateId)"/>).
+    // ordered set exposes a self-seed for backward walks (see TryGetSnapshotFrom) and lets
+    // PruneBefore drop the block-ordered prefix without scanning every bucket end to end.
     private readonly SortedSet<StateId> _orderedStateIds = [];
     private StateId? _lastRegisteredState;
 
@@ -497,72 +497,21 @@ public sealed class PersistedSnapshotRepository(
         {
             int pruned = 0;
 
-            using ArrayPoolList<StateId> baseToRemove = new(0);
-            foreach (KeyValuePair<StateId, PersistedSnapshot> kv in _baseSnapshots)
+            // `_orderedStateIds` holds every bucket's To key in block order, so the entries to
+            // prune form a prefix — walk it until the first surviving block instead of scanning
+            // all three dictionaries end to end. Materialise the prefix first: the removal loop
+            // mutates `_orderedStateIds` via UnregisterStateIdLocked.
+            using ArrayPoolList<StateId> toRemove = new(0);
+            foreach (StateId to in _orderedStateIds)
             {
-                if (kv.Value.To.BlockNumber < stateId.BlockNumber)
-                    baseToRemove.Add(kv.Key);
-            }
-            foreach (StateId key in baseToRemove)
-            {
-                if (_baseSnapshots.TryRemove(key, out PersistedSnapshot? snapshot))
-                {
-                    Interlocked.Add(ref _baseSnapshotMemoryBytes, -snapshot.Size);
-                    Interlocked.Decrement(ref _baseSnapshotCount);
-                    Interlocked.Add(ref Metrics._persistedSnapshotMemory, -snapshot.Size);
-                    Interlocked.Decrement(ref Metrics._persistedSnapshotCount);
-                    Interlocked.Increment(ref Metrics._persistedSnapshotPrunes);
-                    RemoveFromCatalog(snapshot.To);
-                    UnregisterStateIdLocked(snapshot.To);
-                    snapshot.Dispose();
-                    pruned++;
-                }
+                if (to.BlockNumber >= stateId.BlockNumber) break;
+                toRemove.Add(to);
             }
 
-            // Prune compacted snapshots
-            using ArrayPoolList<StateId> compactedToRemove = new(0);
-            foreach (KeyValuePair<StateId, PersistedSnapshot> kv in _compactedSnapshots)
+            foreach (StateId to in toRemove)
             {
-                if (kv.Value.To.BlockNumber < stateId.BlockNumber)
-                    compactedToRemove.Add(kv.Key);
-            }
-            foreach (StateId key in compactedToRemove)
-            {
-                if (_compactedSnapshots.TryRemove(key, out PersistedSnapshot? snapshot))
-                {
-                    Interlocked.Add(ref _compactedSnapshotMemoryBytes, -snapshot.Size);
-                    Interlocked.Decrement(ref _compactedSnapshotCount);
-                    Interlocked.Add(ref Metrics._compactedPersistedSnapshotMemory, -snapshot.Size);
-                    Interlocked.Decrement(ref Metrics._persistedSnapshotCount);
-                    Interlocked.Increment(ref Metrics._persistedSnapshotPrunes);
-                    RemoveFromCatalog(snapshot.To);
-                    UnregisterStateIdLocked(snapshot.To);
-                    snapshot.Dispose();
-                    pruned++;
-                }
-            }
-
-            // Prune persistable compacted snapshots
-            using ArrayPoolList<StateId> persistableToRemove = new(0);
-            foreach (KeyValuePair<StateId, PersistedSnapshot> kv in _persistableCompactedSnapshots)
-            {
-                if (kv.Value.To.BlockNumber < stateId.BlockNumber)
-                    persistableToRemove.Add(kv.Key);
-            }
-            foreach (StateId key in persistableToRemove)
-            {
-                if (_persistableCompactedSnapshots.TryRemove(key, out PersistedSnapshot? snapshot))
-                {
-                    Interlocked.Add(ref _persistableSnapshotMemoryBytes, -snapshot.Size);
-                    Interlocked.Decrement(ref _persistableSnapshotCount);
-                    Interlocked.Add(ref Metrics._compactedPersistedSnapshotMemory, -snapshot.Size);
-                    Interlocked.Decrement(ref Metrics._persistedSnapshotCount);
-                    Interlocked.Increment(ref Metrics._persistedSnapshotPrunes);
-                    RemoveFromCatalog(snapshot.To);
-                    UnregisterStateIdLocked(snapshot.To);
-                    snapshot.Dispose();
-                    pruned++;
-                }
+                pruned += TryRemovePruned(to);
+                UnregisterStateIdLocked(to);
             }
 
             _bloomManager.PruneBefore(stateId);
@@ -570,6 +519,53 @@ public sealed class PersistedSnapshotRepository(
             if (pruned > 0) _catalog.Save();
             return pruned;
         }
+    }
+
+    /// <summary>
+    /// Remove the snapshot(s) keyed by <paramref name="to"/> from every bucket that holds it —
+    /// a base and a compacted/persistable snapshot can share a <c>To</c> — updating the
+    /// matching counters and metrics, the catalog, and disposing each. Returns the number of
+    /// snapshots removed. Caller holds <see cref="_catalogLock"/>.
+    /// </summary>
+    private int TryRemovePruned(in StateId to)
+    {
+        int removed = 0;
+        if (_baseSnapshots.TryRemove(to, out PersistedSnapshot? baseSnap))
+        {
+            Interlocked.Add(ref _baseSnapshotMemoryBytes, -baseSnap.Size);
+            Interlocked.Decrement(ref _baseSnapshotCount);
+            Interlocked.Add(ref Metrics._persistedSnapshotMemory, -baseSnap.Size);
+            FinishPrune(baseSnap);
+            removed++;
+        }
+        if (_compactedSnapshots.TryRemove(to, out PersistedSnapshot? compacted))
+        {
+            Interlocked.Add(ref _compactedSnapshotMemoryBytes, -compacted.Size);
+            Interlocked.Decrement(ref _compactedSnapshotCount);
+            Interlocked.Add(ref Metrics._compactedPersistedSnapshotMemory, -compacted.Size);
+            FinishPrune(compacted);
+            removed++;
+        }
+        if (_persistableCompactedSnapshots.TryRemove(to, out PersistedSnapshot? persistable))
+        {
+            Interlocked.Add(ref _persistableSnapshotMemoryBytes, -persistable.Size);
+            Interlocked.Decrement(ref _persistableSnapshotCount);
+            Interlocked.Add(ref Metrics._compactedPersistedSnapshotMemory, -persistable.Size);
+            FinishPrune(persistable);
+            removed++;
+        }
+        return removed;
+    }
+
+    /// <summary>
+    /// Global-metric, catalog and disposal bookkeeping shared by every pruned snapshot.
+    /// </summary>
+    private void FinishPrune(PersistedSnapshot snapshot)
+    {
+        Interlocked.Decrement(ref Metrics._persistedSnapshotCount);
+        Interlocked.Increment(ref Metrics._persistedSnapshotPrunes);
+        RemoveFromCatalog(snapshot.To);
+        snapshot.Dispose();
     }
 
     public bool HasBaseSnapshot(in StateId stateId) => _baseSnapshots.ContainsKey(stateId);
