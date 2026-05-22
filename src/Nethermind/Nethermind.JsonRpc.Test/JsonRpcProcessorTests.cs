@@ -76,8 +76,7 @@ public class JsonRpcProcessorTests(bool returnErrors)
     public async Task Can_process_guid_ids()
     {
         using CollectedJsonRpcResponses result = await ProcessAsync("{\"id\":\"840b55c4-18b0-431c-be1d-6d22198b53f2\",\"jsonrpc\":\"2.0\",\"method\":\"eth_getTransactionCount\",\"params\":[\"0x7f01d9b227593e033bf8d6fc86e634d27aa85568\",\"0x668c24\"]}");
-        result.Should().HaveCount(1);
-        Assert.That(result[0].Response!.Id, Is.EqualTo(new JsonRpcId("840b55c4-18b0-431c-be1d-6d22198b53f2")));
+        Assert.That(AssertSingleResponse(result).Response!.Id, Is.EqualTo(new JsonRpcId("840b55c4-18b0-431c-be1d-6d22198b53f2")));
     }
 
     [Test]
@@ -266,8 +265,7 @@ public class JsonRpcProcessorTests(bool returnErrors)
 
         await ProcessAsync(processor, "{\"id\":67,\"jsonrpc\":\"2.0\",\"method\":\"eth_getTransactionCount\",\"params\":[]}", new JsonRpcContext(RpcEndpoint.Http), sink);
 
-        sink.Responses.Should().HaveCount(1);
-        sink.Responses[0].Response!.Id.Should().Be(67);
+        AssertSingleResponse(sink.Responses).Response!.Id.Should().Be(67);
     }
 
     [Test]
@@ -291,8 +289,7 @@ public class JsonRpcProcessorTests(bool returnErrors)
         await ProcessAsync(processor, " \r\n{\"id\":67,\"jsonrpc\":\"2.0\",\"method\":\"eth_getTransactionCount\",\"params\":[{\"a\":2}]}\t ", new JsonRpcContext(RpcEndpoint.Http), sink);
 
         inspected.Should().BeTrue();
-        sink.Responses.Should().HaveCount(1);
-        sink.Responses[0].Response!.Id.Should().Be(67);
+        AssertSingleResponse(sink.Responses).Response!.Id.Should().Be(67);
     }
 
     private static PipeReader CreateReader(string request) =>
@@ -339,10 +336,7 @@ public class JsonRpcProcessorTests(bool returnErrors)
     [Test]
     public void JsonRpcEnvelopeReader_reads_envelope_and_params_range()
     {
-        byte[] body = Encoding.UTF8.GetBytes("{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"engine_newPayloadV3\",\"params\":[1,{\"a\":2}],\"extra\":{\"ignored\":true}}");
-        JsonRpcEnvelopeReader reader = new(body);
-
-        reader.TryRead(out JsonRpcEnvelope envelope).Should().BeTrue();
+        JsonRpcEnvelope envelope = ReadEnvelope("{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"engine_newPayloadV3\",\"params\":[1,{\"a\":2}],\"extra\":{\"ignored\":true}}", out byte[] body);
 
         envelope.JsonRpc.Should().Be("2.0");
         envelope.Id.Should().Be(new JsonRpcId(1));
@@ -355,10 +349,7 @@ public class JsonRpcProcessorTests(bool returnErrors)
     [Test]
     public void JsonRpcEnvelopeReader_reads_unknown_method_and_missing_params()
     {
-        byte[] body = Encoding.UTF8.GetBytes("{\"id\":12345678901234567890,\"method\":\"eth_unknown\"}");
-        JsonRpcEnvelopeReader reader = new(body);
-
-        reader.TryRead(out JsonRpcEnvelope envelope).Should().BeTrue();
+        JsonRpcEnvelope envelope = ReadEnvelope("{\"id\":12345678901234567890,\"method\":\"eth_unknown\"}", out _);
 
         envelope.Id.Should().Be(new JsonRpcId(decimal.Parse("12345678901234567890")));
         envelope.Method.Should().Be("eth_unknown");
@@ -369,10 +360,7 @@ public class JsonRpcProcessorTests(bool returnErrors)
     [Test]
     public void JsonRpcEnvelopeReader_echoes_validated_raw_string_id_token()
     {
-        byte[] body = Encoding.UTF8.GetBytes("{\"id\":\"\\u0041\\n\",\"method\":\"eth_blockNumber\"}");
-        JsonRpcEnvelopeReader reader = new(body);
-
-        reader.TryRead(out JsonRpcEnvelope envelope).Should().BeTrue();
+        JsonRpcEnvelope envelope = ReadEnvelope("{\"id\":\"\\u0041\\n\",\"method\":\"eth_blockNumber\"}", out _);
 
         JsonRpcId expectedId = new("A\n");
         envelope.Id.Should().Be(expectedId);
@@ -389,10 +377,7 @@ public class JsonRpcProcessorTests(bool returnErrors)
     [Test]
     public void JsonRpcEnvelopeReader_keeps_numeric_ids_typed()
     {
-        byte[] body = Encoding.UTF8.GetBytes("{\"id\":1e2,\"method\":\"eth_blockNumber\"}");
-        JsonRpcEnvelopeReader reader = new(body);
-
-        reader.TryRead(out JsonRpcEnvelope envelope).Should().BeTrue();
+        JsonRpcEnvelope envelope = ReadEnvelope("{\"id\":1e2,\"method\":\"eth_blockNumber\"}", out _);
 
         envelope.Id.TryGetDecimal(out decimal id).Should().BeTrue();
         id.Should().Be(100m);
@@ -408,9 +393,7 @@ public class JsonRpcProcessorTests(bool returnErrors)
     [Test]
     public void JsonRpcEnvelopeReader_returns_false_for_non_object_root()
     {
-        byte[] body = Encoding.UTF8.GetBytes("[{\"id\":1}]");
-        JsonRpcEnvelopeReader reader = new(body);
-
+        JsonRpcEnvelopeReader reader = new(Encoding.UTF8.GetBytes("[{\"id\":1}]"));
         reader.TryRead(out JsonRpcEnvelope envelope).Should().BeFalse();
         envelope.Should().Be(default(JsonRpcEnvelope));
     }
@@ -418,15 +401,17 @@ public class JsonRpcProcessorTests(bool returnErrors)
     [Test]
     public void JsonRpcEnvelopeReader_rejects_fractional_numeric_ids()
     {
-        byte[] body = Encoding.UTF8.GetBytes("{\"id\":1.1,\"method\":\"eth_blockNumber\"}");
-
-        Action read = () =>
-        {
-            JsonRpcEnvelopeReader reader = new(body);
-            reader.TryRead(out _);
-        };
+        Action read = () => ReadEnvelope("{\"id\":1.1,\"method\":\"eth_blockNumber\"}", out _);
 
         read.Should().Throw<JsonException>();
+    }
+
+    private static JsonRpcEnvelope ReadEnvelope(string request, out byte[] body)
+    {
+        body = Encoding.UTF8.GetBytes(request);
+        JsonRpcEnvelopeReader reader = new(body);
+        reader.TryRead(out JsonRpcEnvelope envelope).Should().BeTrue();
+        return envelope;
     }
 
     private static IJsonRpcService CreateEchoService()
@@ -570,19 +555,23 @@ public class JsonRpcProcessorTests(bool returnErrors)
         return fileSystem;
     }
 
-    private void AssertBatchResponse(CollectedJsonRpcResult result, int expectedCount)
+    private CollectedJsonRpcResult AssertBatchResponse(CollectedJsonRpcResult result, int expectedCount)
     {
         result.Response.Should().BeNull();
         result.BatchItems.Should().NotBeNull();
         result.BatchItems.Should().HaveCount(expectedCount);
         result.BatchItems.Should().AllSatisfy(AssertResponseTypeMatchesFixtureMode);
         result.BatchItems.Should().NotContain(_errorResponse);
+        return result;
     }
+
+    private CollectedJsonRpcResult AssertBatchResponse(CollectedJsonRpcResponses responses, int expectedCount) =>
+        AssertBatchResponse(AssertOnlyResult(responses), expectedCount);
 
     private void AssertResponseTypeMatchesFixtureMode(JsonRpcResponse response) =>
         response.Should().BeOfType(returnErrors ? typeof(JsonRpcErrorResponse) : typeof(JsonRpcSuccessResponse));
 
-    private void AssertSingleResponse(CollectedJsonRpcResult result, bool shouldBeParseError = false)
+    private CollectedJsonRpcResult AssertSingleResponse(CollectedJsonRpcResult result, bool shouldBeParseError = false)
     {
         result.Response.Should().NotBeNull();
         result.BatchItems.Should().BeNull();
@@ -594,23 +583,33 @@ public class JsonRpcProcessorTests(bool returnErrors)
         {
             result.Response.Should().NotBeSameAs(_errorResponse);
         }
+
+        return result;
+    }
+
+    private CollectedJsonRpcResult AssertSingleResponse(CollectedJsonRpcResponses responses, bool shouldBeParseError = false) =>
+        AssertSingleResponse(AssertOnlyResult(responses), shouldBeParseError);
+
+    private static CollectedJsonRpcResult AssertOnlyResult(CollectedJsonRpcResponses responses)
+    {
+        responses.Should().HaveCount(1);
+        return responses[0];
     }
 
     [TestCaseSource(nameof(JsonRpcIdCases))]
     public async Task Can_process_ids(string idJson, JsonRpcId expectedId)
     {
         using CollectedJsonRpcResponses result = await ProcessAsync(CreateTransactionCountRequest(idJson));
-        result.Should().HaveCount(1);
-        Assert.That(result[0].Response!.Id, Is.EqualTo(expectedId));
+        Assert.That(AssertSingleResponse(result).Response!.Id, Is.EqualTo(expectedId));
     }
 
     [Test]
     public async Task Can_process_uppercase_params()
     {
         using CollectedJsonRpcResponses result = await ProcessAsync(CreateTransactionCountRequest("67", "Params"));
-        result.Should().HaveCount(1);
-        Assert.That(result[0].Response!.Id, Is.EqualTo(new JsonRpcId(67)));
-        AssertResponseTypeMatchesFixtureMode(result[0].Response!);
+        JsonRpcResponse response = AssertSingleResponse(result).Response!;
+        Assert.That(response.Id, Is.EqualTo(new JsonRpcId(67)));
+        AssertResponseTypeMatchesFixtureMode(response);
     }
 
     [TestCase(TransactionCountObjectParamsJson, TransactionCountObjectParamsJson, TestName = "Nested object params")]
@@ -619,17 +618,16 @@ public class JsonRpcProcessorTests(bool returnErrors)
     public async Task Can_process_batch_request_with_nonstandard_params(string firstParamsJson, string secondParamsJson)
     {
         using CollectedJsonRpcResponses result = await ProcessAsync(CreateTransactionCountBatchRequest(firstParamsJson, secondParamsJson));
-        result.Should().HaveCount(1);
-        AssertBatchResponse(result[0], 2);
+        AssertBatchResponse(result, 2);
     }
 
     [Test]
     public async Task Can_process_batch_request_with_invalid_object_params()
     {
         using CollectedJsonRpcResponses result = await ProcessAsync(CreateTransactionCountBatchRequest(TransactionCountInvalidObjectParamsJson, TransactionCountInvalidObjectParamsJson));
-        result.Should().HaveCount(1);
-        result[0].Response.Should().NotBeNull();
-        result[0].Response.Should().BeOfType<JsonRpcErrorResponse>();
+        CollectedJsonRpcResult response = AssertOnlyResult(result);
+        response.Response.Should().NotBeNull();
+        response.Response.Should().BeOfType<JsonRpcErrorResponse>();
     }
 
     [TestCase(false, TestName = "All params present")]
@@ -637,8 +635,7 @@ public class JsonRpcProcessorTests(bool returnErrors)
     public async Task Can_process_batch_request(bool omitLastParams)
     {
         using CollectedJsonRpcResponses result = await ProcessAsync(CreateTransactionCountBatchRequest(4, omitLastParams));
-        result.Should().HaveCount(1);
-        AssertBatchResponse(result[0], 4);
+        AssertBatchResponse(result, 4);
     }
 
     [TestCaseSource(nameof(MultipleDocumentRequestCases))]
@@ -667,18 +664,18 @@ public class JsonRpcProcessorTests(bool returnErrors)
 
         using CollectedJsonRpcResponses result = await ProcessAsync(processor, CreateTransactionCountBatchRequest(2), context);
 
-        result.Should().HaveCount(1);
+        CollectedJsonRpcResult response = AssertOnlyResult(result);
         if (!isAuthenticated)
         {
-            JsonRpcErrorResponse response = result[0].Response.Should().BeOfType<JsonRpcErrorResponse>().Subject;
-            response.Error!.Code.Should().Be(ErrorCodes.LimitExceeded);
-            result[0].BatchItems.Should().BeNull();
+            JsonRpcErrorResponse errorResponse = response.Response.Should().BeOfType<JsonRpcErrorResponse>().Subject;
+            errorResponse.Error!.Code.Should().Be(ErrorCodes.LimitExceeded);
+            response.BatchItems.Should().BeNull();
             await service.DidNotReceive().SendRequestAsync(Arg.Any<JsonRpcRequest>(), Arg.Any<JsonRpcContext>());
             return;
         }
 
-        result[0].Response.Should().BeNull();
-        List<JsonRpcResponse> batchItems = result[0].BatchItems!;
+        response.Response.Should().BeNull();
+        List<JsonRpcResponse> batchItems = response.BatchItems!;
         batchItems.Should().HaveCount(expectedDispatchCount);
         batchItems[0].Id.Should().Be(67);
         batchItems[1].Id.Should().Be(67);
@@ -694,9 +691,10 @@ public class JsonRpcProcessorTests(bool returnErrors)
             CreateTransactionCountBatchRequest(TransactionCountParamsJson, TransactionCountParamsJson),
             new JsonRpcContext(RpcEndpoint.Http),
             sink);
-        result[0].IsCollection.Should().BeTrue();
-        result[0].BatchItems.Should().NotBeNull();
-        IReadOnlyList<JsonRpcResponse> batchItems = result[0].BatchItems!;
+        CollectedJsonRpcResult response = AssertOnlyResult(result);
+        response.IsCollection.Should().BeTrue();
+        response.BatchItems.Should().NotBeNull();
+        IReadOnlyList<JsonRpcResponse> batchItems = response.BatchItems!;
         batchItems[0].Should().BeOfType(returnErrors ? typeof(JsonRpcErrorResponse) : typeof(JsonRpcSuccessResponse));
         batchItems[1].Should().BeOfType(limit || returnErrors ? typeof(JsonRpcErrorResponse) : typeof(JsonRpcSuccessResponse));
     }
@@ -707,8 +705,7 @@ public class JsonRpcProcessorTests(bool returnErrors)
     public async Task Can_handle_invalid_or_value_request(string request)
     {
         using CollectedJsonRpcResponses result = await ProcessAsync(request);
-        result.Should().HaveCount(1);
-        result[0].Response.Should().BeSameAs(_errorResponse);
+        AssertSingleResponse(result, shouldBeParseError: true);
     }
 
     [TestCase("[]", 0, TestName = "Empty array")]
@@ -716,21 +713,18 @@ public class JsonRpcProcessorTests(bool returnErrors)
     public async Task Can_handle_empty_batch_requests(string request, int expectedBatchItems)
     {
         using CollectedJsonRpcResponses result = await ProcessAsync(request);
-        result.Should().HaveCount(1);
-        result[0].Response.Should().BeNull();
-        result[0].BatchItems.Should().NotBeNull();
-        result[0].BatchItems.Should().HaveCount(expectedBatchItems);
-        Assert.That(result[0].BatchItems!.All(r => r != _errorResponse), Is.True);
+        CollectedJsonRpcResult response = AssertOnlyResult(result);
+        response.Response.Should().BeNull();
+        response.BatchItems.Should().NotBeNull();
+        response.BatchItems.Should().HaveCount(expectedBatchItems);
+        Assert.That(response.BatchItems!.All(r => r != _errorResponse), Is.True);
     }
 
     [Test]
     public async Task Can_handle_empty_object_request()
     {
         using CollectedJsonRpcResponses result = await ProcessAsync("{}");
-        result.Should().HaveCount(1);
-        result[0].Response.Should().NotBeNull();
-        result[0].BatchItems.Should().BeNull();
-        result[0].Response.Should().NotBeSameAs(_errorResponse);
+        AssertSingleResponse(result);
     }
 
     [Test]
@@ -740,9 +734,9 @@ public class JsonRpcProcessorTests(bool returnErrors)
         string request = CreateTransactionCountRequest("67");
         using CollectedJsonRpcResponses results = await ProcessAsync(processor, request, new JsonRpcContext(RpcEndpoint.Http));
 
-        results.Should().HaveCount(1);
-        results[0].Response.Should().BeOfType<JsonRpcErrorResponse>();
-        ((JsonRpcErrorResponse)results[0].Response!).Error!.Code.Should().Be(ErrorCodes.ResourceUnavailable);
+        JsonRpcResponse response = AssertSingleResponse(results).Response!;
+        response.Should().BeOfType<JsonRpcErrorResponse>();
+        ((JsonRpcErrorResponse)response).Error!.Code.Should().Be(ErrorCodes.ResourceUnavailable);
         await service.DidNotReceive().SendRequestAsync(Arg.Any<JsonRpcRequest>(), Arg.Any<JsonRpcContext>());
     }
 
@@ -755,8 +749,7 @@ public class JsonRpcProcessorTests(bool returnErrors)
 
         using CollectedJsonRpcResponses results = await ProcessAsync(processor, pipe.Reader, new JsonRpcContext(RpcEndpoint.Http));
 
-        results.Should().HaveCount(1);
-        results[0].Response.Should().BeOfType<JsonRpcErrorResponse>();
+        AssertSingleResponse(results).Response.Should().BeOfType<JsonRpcErrorResponse>();
 
         await FluentActions.Invoking(async () => await pipe.Reader.ReadAsync())
             .Should().ThrowAsync<InvalidOperationException>();
@@ -833,10 +826,10 @@ public class JsonRpcProcessorTests(bool returnErrors)
         JsonRpcProcessor processor = CreateProcessor(service);
         using CollectedJsonRpcResponses result = await ProcessAsync(processor, $$"""{"id":1,"jsonrpc":"2.0","method":"{{methodName}}","params":[]}""", new JsonRpcContext(RpcEndpoint.Http));
 
-        result.Should().HaveCount(1);
-        result[0].Report.Should().NotBeNull();
-        result[0].Report!.Value.Method.Should().Be(expectedReportMethod);
-        result[0].Report!.Value.Success.Should().Be(expectedSuccess);
+        RpcReport? report = AssertOnlyResult(result).Report;
+        report.Should().NotBeNull();
+        report!.Value.Method.Should().Be(expectedReportMethod);
+        report!.Value.Success.Should().Be(expectedSuccess);
     }
 
     [TestCase(50, false, TestName = "Input below the 64-depth limit is accepted")]
@@ -881,17 +874,17 @@ public class JsonRpcProcessorTests(bool returnErrors)
 
         using CollectedJsonRpcResponses result = await ProcessAsync(processor, request, new JsonRpcContext(RpcEndpoint.Http));
 
-        result.Should().HaveCount(1);
+        CollectedJsonRpcResult response = AssertOnlyResult(result);
 
         if (expectParseError)
         {
-            result[0].Response.Should().BeSameAs(_errorResponse);
+            response.Response.Should().BeSameAs(_errorResponse);
             requestCaptured.Should().BeFalse("a depth-rejected request must never reach the service");
         }
         else
         {
-            result[0].Response.Should().BeOfType<JsonRpcSuccessResponse>();
-            result[0].Response!.Id.Should().Be(1);
+            response.Response.Should().BeOfType<JsonRpcSuccessResponse>();
+            response.Response!.Id.Should().Be(1);
             requestCaptured.Should().BeTrue();
             capturedMethod.Should().Be("eth_getTransactionCount");
             observedDepth.Should().Be(paramNestingDepth);
