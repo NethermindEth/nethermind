@@ -52,6 +52,9 @@ namespace Nethermind.Xdc
         private DateTime _lastActivityTime = DateTime.UtcNow;
         private long _highestSelfMinedRound;
         private long _highestVotedRound;
+        private long _lastStartedRound = -1;
+        private ulong _pendingPrevRound;
+        private TimeSpan? _pendingLastRoundDuration;
 
         public event EventHandler<BlockEventArgs>? BlockProduced;
 
@@ -127,11 +130,10 @@ namespace Nethermind.Xdc
 
             _lastActivityTime = DateTime.UtcNow;
 
-            if (args.LastRoundDuration is { } lastRoundDuration)
-                _logger.Info($"Round {args.PreviousRound} completed in {lastRoundDuration.TotalSeconds:F2}s");
-
             XdcBlockHeader head = (XdcBlockHeader)_blockTree.Head!.Header;
             ulong currentRound = args.NewRound;
+            _pendingPrevRound = args.PreviousRound;
+            _pendingLastRoundDuration = args.LastRoundDuration;
 
             IXdcReleaseSpec spec = _specProvider.GetXdcSpec(head, currentRound);
             _timeoutTimer.Reset(TimeSpan.FromSeconds(spec.TimeoutPeriod));
@@ -160,7 +162,7 @@ namespace Nethermind.Xdc
         {
             try
             {
-                _logger.Info($"Round {round}: Checking header #{head.Number}, hash={head.Hash}, round={(long)head.ExtraConsensusData.BlockRound}");
+                LogRoundAdvance(round, head);
 
                 EpochSwitchInfo? epochInfo = _epochSwitchManager.GetEpochSwitchInfo(head);
                 if (epochInfo?.Masternodes is null || epochInfo.Masternodes.Length == 0) return;
@@ -199,8 +201,6 @@ namespace Nethermind.Xdc
             if (!IsMyTurn(proposalParent, round, proposalSpec)) return;
 
             if (!TryAdvance(ref _highestSelfMinedRound, (long)round)) return;
-
-            _logger.Info($"Round {round}: I am leader, committee={proposalEpochInfo.Masternodes.Length}, parent=#{proposalParent.Number}");
 
             // Gate 1: enforce minimum mine period since parent block was produced
             long now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
@@ -290,7 +290,7 @@ namespace Nethermind.Xdc
             if (!TryAdvance(ref _highestVotedRound, votingRound)) return;
 
             if (_logger.IsInfo)
-                _logger.Info($"Round {votingRound}: Voting for block #{head.Number}, hash={head.Hash}");
+                _logger.Debug($"Round {votingRound}: Voting for block #{head.Number}, hash={head.Hash}");
 
             try
             {
@@ -302,6 +302,31 @@ namespace Nethermind.Xdc
             {
                 _logger.Error($"Round {votingRound}: Failed to cast vote.", ex);
             }
+        }
+
+        private void LogRoundAdvance(ulong round, XdcBlockHeader head)
+        {
+            if (!TryAdvance(ref _lastStartedRound, (long)round)) return;
+
+            Address? leader = null;
+            bool isMyTurn = false;
+            int committee = 0;
+
+            QuorumCertificate? qc = _xdcContext.HighestQC;
+            if (qc is not null
+                && _blockTree.FindHeader(qc.ProposedBlockInfo.Hash, qc.ProposedBlockInfo.BlockNumber) is XdcBlockHeader proposalParent
+                && _epochSwitchManager.GetEpochSwitchInfo(proposalParent) is { Masternodes.Length: > 0 } epochInfo)
+            {
+                IXdcReleaseSpec spec = _specProvider.GetXdcSpec(proposalParent, round);
+                leader = GetLeaderAddress(proposalParent, round, spec);
+                isMyTurn = leader == _signer.Address;
+                committee = epochInfo.Masternodes.Length;
+            }
+
+            string headInfo = $"#{head.Number} round={head.ExtraConsensusData?.BlockRound} ({head.Hash?.ToShortString()})";
+            string roundDuration = _pendingLastRoundDuration.HasValue ? $", prev={_pendingPrevRound} in {_pendingLastRoundDuration.Value.TotalSeconds:F2}s" : "";
+            string myTurn = isMyTurn ? "true " : "false";
+            _logger.Info($"Round {round}{roundDuration}: head={headInfo} | Leader={leader?.ToShortString()}, MyTurn={myTurn}, Committee={committee} nodes");
         }
 
         private static bool TryAdvance(ref long field, long value)
