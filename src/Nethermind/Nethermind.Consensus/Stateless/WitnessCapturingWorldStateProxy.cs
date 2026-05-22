@@ -37,12 +37,14 @@ public sealed class WitnessCapturingWorldStateProxy(IWorldState inner) : IWorldS
     /// <exception cref="InvalidOperationException">Thrown if already armed.</exception>
     internal void Arm()
     {
+        // Allocate first, then publish via _armed = 1, so any thread observing the armed flag
+        // can rely on the collections being non-null.
+        _storageSlots = new Dictionary<Address, HashSet<UInt256>>();
+        _bytecodes = new Dictionary<ValueHash256, byte[]>();
+
         if (Interlocked.Exchange(ref _armed, 1) == 1)
             throw new InvalidOperationException(
                 $"{nameof(WitnessCapturingWorldStateProxy)} is already armed. Nested arming is not supported.");
-
-        _storageSlots = new Dictionary<Address, HashSet<UInt256>>();
-        _bytecodes = new Dictionary<ValueHash256, byte[]>();
     }
 
     /// <summary>
@@ -70,16 +72,7 @@ public sealed class WitnessCapturingWorldStateProxy(IWorldState inner) : IWorldS
         // Proof traversal reads the parent state root (pre-execution), as required by stateless verifiers.
         // AccountProofCollector also covers reverted write paths missed by raw node interception.
         using PooledSet<byte[]> stateNodes = new(Bytes.EqualityComparer);
-
-        foreach ((Address account, HashSet<UInt256> accountSlots) in slots)
-        {
-            AccountProofCollector collector = new(account, accountSlots);
-            stateReader.RunTreeVisitor(collector, parentHeader);
-            (IReadOnlyList<byte[]> accountProof, IReadOnlyList<byte[]>[] storageProof) = collector.GetRawResult();
-            stateNodes.AddRange(accountProof);
-            foreach (IReadOnlyList<byte[]> storage in storageProof)
-                stateNodes.AddRange(storage);
-        }
+        WitnessProofCollector.CollectAccountProofs(slots, stateReader, parentHeader, stateNodes);
 
         // Include the state root node when no accounts were touched so the witness is non-empty.
         if (stateNodes.Count == 0)
@@ -137,11 +130,10 @@ public sealed class WitnessCapturingWorldStateProxy(IWorldState inner) : IWorldS
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private void RecordBytecode(byte[]? code)
+    private void RecordBytecode(in ValueHash256 codeHash, byte[]? code)
     {
         if (_armed == 0 || code is not { Length: > 0 }) return;
-        Hash256 hash = Keccak.Compute(code);
-        _bytecodes!.TryAdd(hash, code);
+        _bytecodes!.TryAdd(codeHash, code);
     }
 
     public bool HasStateForBlock(BlockHeader? baseBlock) => inner.HasStateForBlock(baseBlock);
@@ -185,14 +177,14 @@ public sealed class WitnessCapturingWorldStateProxy(IWorldState inner) : IWorldS
     {
         RecordEmptySlots(address);
         byte[]? code = inner.GetCode(address);
-        RecordBytecode(code);
+        RecordBytecodeWithHashCompute(code);
         return Eip7702Constants.IsDelegatedCode(code);
     }
 
     public bool IsDelegatedCode(in ValueHash256 codeHash)
     {
         byte[]? code = inner.GetCode(in codeHash);
-        RecordBytecode(code);
+        RecordBytecode(in codeHash, code);
         return Eip7702Constants.IsDelegatedCode(code);
     }
 
@@ -200,7 +192,7 @@ public sealed class WitnessCapturingWorldStateProxy(IWorldState inner) : IWorldS
     {
         RecordEmptySlots(address);
         byte[]? code = inner.GetCode(address);
-        RecordBytecode(code);
+        RecordBytecodeWithHashCompute(code);
         return code;
     }
 
@@ -209,8 +201,19 @@ public sealed class WitnessCapturingWorldStateProxy(IWorldState inner) : IWorldS
         // No Address context here; address recording happens on the GetCodeHash(Address) call
         // that precedes every code lookup in CodeInfoRepository.InternalGetCodeInfo.
         byte[]? code = inner.GetCode(in codeHash);
-        RecordBytecode(code);
+        RecordBytecode(in codeHash, code);
         return code;
+    }
+
+    // The address overloads do not surface the code hash; in production the canonical path goes
+    // through GetCode(in ValueHash256) (where the hash is already known and no rehash is needed),
+    // so this slow fallback only fires on the parallel-BAL re-lookup path noted in CodeInfoRepository.
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private void RecordBytecodeWithHashCompute(byte[]? code)
+    {
+        if (_armed == 0 || code is not { Length: > 0 }) return;
+        Hash256 hash = Keccak.Compute(code);
+        _bytecodes!.TryAdd(hash, code);
     }
 
     public bool IsContract(Address address)

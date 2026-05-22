@@ -62,14 +62,7 @@ public class WitnessGeneratingWorldState(IWorldState inner, IStateReader stateRe
         }
 
         using PooledSet<byte[]> stateNodes = new(trieStore.TouchedNodesRlp, Bytes.EqualityComparer);
-        foreach ((Address account, HashSet<UInt256> slots) in _storageSlots)
-        {
-            AccountProofCollector accountProofCollector = new(account, slots);
-            stateReader.RunTreeVisitor(accountProofCollector, parentHeader);
-            (IReadOnlyList<byte[]> accountProof, IReadOnlyList<byte[]>[] storageProof) = accountProofCollector.GetRawResult();
-            stateNodes.AddRange(accountProof);
-            stateNodes.AddRange(storageProof.SelectMany(p => p));
-        }
+        WitnessProofCollector.CollectAccountProofs(_storageSlots, stateReader, parentHeader, stateNodes);
 
         ArrayPoolList<byte[]> codes = new(_bytecodes.Count);
         foreach (byte[] code in _bytecodes.Values)

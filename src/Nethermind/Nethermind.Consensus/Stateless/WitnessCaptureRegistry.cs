@@ -14,9 +14,9 @@ namespace Nethermind.Consensus.Stateless;
 
 /// <summary>
 /// Thread-safe implementation of <see cref="IWitnessCaptureRegistry"/>.
-/// Entries are added by the RPC handler thread and removed by the block-processing thread.
-/// Under normal operation (serialised <c>newPayload</c> queue) there is at most one
-/// armed entry at any point in time.
+/// Entries are added by the RPC handler thread and removed by the block-processing thread;
+/// multiple concurrent armed entries for distinct block hashes are supported. A duplicate
+/// <see cref="ArmCapture"/> for the same hash cancels the prior TCS and replaces it.
 /// </summary>
 public sealed class WitnessCaptureRegistry(
     IStateReader stateReader,
