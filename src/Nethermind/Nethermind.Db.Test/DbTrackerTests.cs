@@ -105,10 +105,9 @@ public class DbTrackerTests
     [Test]
     public void DoesNotThrowOrRepeatErrorAfterContainerDisposed()
     {
-        TestLogger testLogger = new();
+        TestLogger testLogger = new() { IsDebug = false };
         (IContainer container, Action updateAction, FakeDb _) = ConfigureMetricUpdater(builder =>
             builder.AddSingleton<ILogManager>(new OneLoggerLogManager(new(testLogger))));
-        container.Resolve<IDbFactory>().CreateDb(new DbSettings("TestDb", "TestDb"));
 
         container.Dispose();
 

@@ -104,6 +104,7 @@ public class DbMonitoringModule : Module
             {
                 // The DI scope or the shared cache handle has been disposed; stop updating
                 // metrics so the same exception isn't re-thrown on every interval tick.
+                if (_logger.IsDebug) _logger.Debug("DbTracker stopping metrics updates: DI scope or shared cache has been disposed.");
                 _stopped = true;
             }
             catch (Exception e)
