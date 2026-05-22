@@ -25,6 +25,6 @@ public class MainProcessingModuleTests
         (ctx.Resolve<IMainProcessingContext>() as MainProcessingContext)
             .LifetimeScope
             .Resolve<ICodeInfoRepository>()
-            .Should().BeOfType<CachedCodeInfoRepository>();
+            .Should().BeOfType<PrecompileCachedCodeInfoRepository>();
     }
 }

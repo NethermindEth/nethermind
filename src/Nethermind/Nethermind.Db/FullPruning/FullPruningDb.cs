@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.Collections.Generic;
 using System.Threading;
 using Nethermind.Core;
@@ -31,7 +32,7 @@ namespace Nethermind.Db.FullPruning
         // current pruning context, secondary DB that the state will be written to, as well as state trie will be copied to
         // this will be null if no full pruning is in progress
         private PruningContext? _pruningContext;
-        private Lock _startLock = new Lock();
+        private Lock _startLock = new();
 
         public FullPruningDb(DbSettings settings, IDbFactory dbFactory, Action? updateDuplicateWriteMetrics = null)
         {
@@ -69,6 +70,17 @@ namespace Nethermind.Db.FullPruning
             }
 
             return value;
+        }
+
+        public MemoryManager<byte>? GetOwnedMemory(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
+        {
+            MemoryManager<byte>? memoryManager = _currentDb.GetOwnedMemory(key, flags);
+            if (memoryManager is not null && _pruningContext?.DuplicateReads == true && (flags & ReadFlags.SkipDuplicateRead) == 0)
+            {
+                Duplicate(_pruningContext.CloningDb, key, memoryManager.GetSpan(), WriteFlags.None);
+            }
+
+            return memoryManager;
         }
 
         public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None)
@@ -142,6 +154,8 @@ namespace Nethermind.Db.FullPruning
         }
 
         public bool KeyExists(ReadOnlySpan<byte> key) => _currentDb.KeyExists(key);
+
+        public void DangerousReleaseMemory(in ReadOnlySpan<byte> span) => _currentDb.DangerousReleaseMemory(span);
 
         // inner DB's can be deleted in the future and
         // we cannot expose a DB that will potentially be later deleted
@@ -220,10 +234,7 @@ namespace Nethermind.Db.FullPruning
             ClearOldDb(oldDb);
         }
 
-        protected virtual void ClearOldDb(IDb oldDb)
-        {
-            oldDb.Clear();
-        }
+        protected virtual void ClearOldDb(IDb oldDb) => oldDb.Clear();
 
         private void FinishPruning(PruningContext pruningContext, bool success)
         {
@@ -231,35 +242,19 @@ namespace Nethermind.Db.FullPruning
             Interlocked.CompareExchange(ref _pruningContext, null, pruningContext);
         }
 
-        private class PruningContext : IPruningContext
+        private class PruningContext(FullPruningDb db, IDb cloningDb, bool duplicateReads) : IPruningContext
         {
             private bool _committed = false;
             private bool _disposed = false;
-            public IDb CloningDb { get; }
-            public bool DuplicateReads { get; }
-            private readonly FullPruningDb _db;
+            public IDb CloningDb { get; } = cloningDb;
+            public bool DuplicateReads { get; } = duplicateReads;
+            private readonly FullPruningDb _db = db;
 
-            public PruningContext(FullPruningDb db, IDb cloningDb, bool duplicateReads)
-            {
-                CloningDb = cloningDb;
-                DuplicateReads = duplicateReads;
-                _db = db;
-            }
+            public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None) => _db.Duplicate(CloningDb, key, value, flags);
 
-            public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None)
-            {
-                _db.Duplicate(CloningDb, key, value, flags);
-            }
+            public IWriteBatch StartWriteBatch() => CloningDb.StartWriteBatch();
 
-            public IWriteBatch StartWriteBatch()
-            {
-                return CloningDb.StartWriteBatch();
-            }
-
-            public byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
-            {
-                return CloningDb.Get(key, flags);
-            }
+            public byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None) => CloningDb.Get(key, flags);
 
             /// <inheritdoc />
             public void Commit()
@@ -269,10 +264,7 @@ namespace Nethermind.Db.FullPruning
             }
 
             /// <inheritdoc />
-            public void MarkStart()
-            {
-                Metrics.StateDbPruning = 1;
-            }
+            public void MarkStart() => Metrics.StateDbPruning = 1;
 
             public CancellationTokenSource CancellationTokenSource { get; } = new();
 
@@ -298,21 +290,14 @@ namespace Nethermind.Db.FullPruning
         /// <summary>
         /// Batch that duplicates writes to the current DB and the cloned DB batches.
         /// </summary>
-        private class DuplicatingWriteBatch : IWriteBatch
+        private class DuplicatingWriteBatch(
+            IWriteBatch writeBatch,
+            IWriteBatch clonedWriteBatch,
+            FullPruningDb db) : IWriteBatch
         {
-            private readonly IWriteBatch _writeBatch;
-            private readonly IWriteBatch _clonedWriteBatch;
-            private readonly FullPruningDb _db;
-
-            public DuplicatingWriteBatch(
-                IWriteBatch writeBatch,
-                IWriteBatch clonedWriteBatch,
-                FullPruningDb db)
-            {
-                _writeBatch = writeBatch;
-                _clonedWriteBatch = clonedWriteBatch;
-                _db = db;
-            }
+            private readonly IWriteBatch _writeBatch = writeBatch;
+            private readonly IWriteBatch _clonedWriteBatch = clonedWriteBatch;
+            private readonly FullPruningDb _db = db;
 
             public void Dispose()
             {

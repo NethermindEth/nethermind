@@ -1,6 +1,7 @@
 # XDC Module Architecture Overview
 
 ## Table of Contents
+
 1. [Introduction](#introduction)
 2. [High-Level Architecture](#high-level-architecture)
 3. [Core Components](#core-components)
@@ -80,6 +81,7 @@ The Nethermind XDC module implements a Byzantine Fault Tolerant (BFT) consensus 
 **Purpose**: Main consensus loop coordinator
 
 **Key Responsibilities**:
+
 - Round management
 - Leader election
 - Block proposal triggering
@@ -87,6 +89,7 @@ The Nethermind XDC module implements a Byzantine Fault Tolerant (BFT) consensus 
 - Timeout handling
 
 **Key Methods**:
+
 ```csharp
 Task RunRoundChecks(CancellationToken ct)
 Task BuildAndProposeBlock(...)
@@ -95,6 +98,7 @@ Address GetLeaderAddress(...)
 ```
 
 **State Machine**:
+
 ```
      ┌──────────────────────┐
      │   Initialize Round   │
@@ -132,6 +136,7 @@ Address GetLeaderAddress(...)
 **Purpose**: Central state container for consensus
 
 **State Variables**:
+
 ```csharp
 ulong CurrentRound              // Current consensus round
 QuorumCertificate HighestQC     // Highest known QC
@@ -143,6 +148,7 @@ DateTime RoundStarted           // Round start time
 ```
 
 **Events**:
+
 - `NewRoundSetEvent` - Triggered when advancing to new round
 
 ---
@@ -181,10 +187,11 @@ DateTime RoundStarted           // Round start time
 ```
 
 **3-Chain Finalization Rule**:
+
 ```
 Block N-2 (Finalized)  ←─  Block N-1  ←─  Block N (Current)
     QC(N-2)                 QC(N-1)         QC(N)
-    
+
 Finalization requires:
 - 3 consecutive blocks
 - 3 consecutive rounds (no gaps)
@@ -214,7 +221,7 @@ Finalization requires:
 │      ├─▶ Add to XdcPool<Vote>                      │
 │      │                                             │
 │      ├─▶ Check threshold                           │
-│      │    (votes >= masternodes * certThreshold)   │
+│      │    (votes >= masternodes * CertificateThreshold)   │
 │      │                                             │
 │      └─▶ OnVotePoolThresholdReached()              │
 │           │                                        │
@@ -226,6 +233,7 @@ Finalization requires:
 ```
 
 **Voting Rules** (from `VerifyVotingRules`):
+
 ```
 Can vote if ALL of:
 1. CurrentRound > HighestVotedRound (no double voting)
@@ -242,6 +250,7 @@ Can vote if ALL of:
 **Purpose**: Manage validator set transitions at epoch boundaries
 
 **Epoch Structure**:
+
 ```
 Epoch N                    Epoch N+1
 ├────────────────────┤     ├────────────────────┤
@@ -259,6 +268,7 @@ Epoch N                    Epoch N+1
 ```
 
 **Epoch Switch Detection**:
+
 ```csharp
 IsEpochSwitchAtBlock(header):
   - Is it the switch block? → TRUE
@@ -275,6 +285,7 @@ epochStartRound = round - (round % EpochLength)
 **Purpose**: Store and retrieve validator snapshots
 
 **Snapshot Data**:
+
 ```csharp
 class Snapshot {
     long BlockNumber           // Snapshot block
@@ -284,6 +295,7 @@ class Snapshot {
 ```
 
 **Snapshot Storage**:
+
 ```
 Block Number           Snapshot                    Usage
 ─────────────────────────────────────────────────────────
@@ -300,6 +312,7 @@ Block Number           Snapshot                    Usage
 **Purpose**: Handle timeouts and ensure liveness
 
 **Timeout Flow**:
+
 ```
 Node N                      Pool                   Threshold Met
    │                         │                          │
@@ -389,7 +402,7 @@ Phase 4: QC AGGREGATION
 ┌────────────────────────────────┐
 │ Collect Votes in Pool          │
 │ Wait for threshold:            │
-│  votes >= nodes * certThreshold│
+│  votes >= nodes * CertificateThreshold│
 └──────────────┬─────────────────┘
                │
                ▼
@@ -571,12 +584,12 @@ XdcBlockHeader {
     long Number
     ulong Timestamp
     ...
-    
+
     // XDC-specific fields
     byte[] Validators      // Validator addresses (epoch switch blocks)
     byte[] Validator       // Block signer signature
     byte[] Penalties       // Penalized validators
-    
+
     // Consensus data (in ExtraData)
     ExtraFieldsV2 {
         ulong BlockRound          // Consensus round
@@ -604,6 +617,7 @@ QuorumCertificate {
 ```
 
 **QC Formation**:
+
 ```
 Votes (2f+1)  ──────▶  Aggregate Signatures  ──────▶  QC
    Vote₁                                               │
@@ -632,6 +646,7 @@ Vote {
 ```
 
 **Vote Hash Calculation**:
+
 ```
 VoteHash = Keccak256(
     RLP([
@@ -689,6 +704,7 @@ GetLeaderAddress(round, header):
 ```
 
 **Example** (EpochLength=900, 5 validators):
+
 ```
 Round   Leader Index    Leader
 ────────────────────────────────
@@ -710,18 +726,19 @@ Commit grandparent when three consecutive rounds exist:
 CommitBlock(proposedBlock, proposedRound, proposedQC):
   1. parent = proposedBlock.parent
   2. grandparent = parent.parent
-  
+
   3. Check conditions:
      ✓ proposedRound - 1 == parent.round
      ✓ proposedRound - 2 == grandparent.round
      ✓ proposedRound > grandparent.round + 1
-     
+
   4. If all pass:
      HighestCommitBlock = grandparent
      Finalize(grandparent)
 ```
 
 **Visual**:
+
 ```
 Round N-2          Round N-1          Round N
    │                  │                  │
@@ -754,6 +771,7 @@ VerifyVotingRules(block, round, parentQC):
 ```
 
 **Lock-based Safety**:
+
 ```
 Scenario: Node locked on Block A (round 10)
 
@@ -777,12 +795,13 @@ CalculateNextEpochMasternodes(blockNumber, parentHash):
   1. Load previous snapshot (gap block)
   2. Get candidates from snapshot
   3. Calculate penalties (forensics)
-  4. masterodes = candidates - penalties
+  4. masternodes = candidates - penalties
   5. Enforce maximum: Take(MaxMasternodes)
   6. Return (masternodes, penalties)
 ```
 
 **Timeline**:
+
 ```
 Block Number        Action
 ─────────────────────────────────────────
@@ -806,8 +825,8 @@ Total Validators: N
 Byzantine Tolerance: f
 Honest Majority: N ≥ 3f + 1
 
-Quorum Certificate: ⌈N * certThreshold⌉ signatures
-Default: certThreshold = 2/3
+Quorum Certificate: ⌈N * CertificateThreshold⌉ signatures
+Default: CertificateThreshold = 2/3
 Minimum: 2f + 1 = ⌈2N/3⌉
 ```
 
@@ -822,6 +841,7 @@ XdcBlockTree.Suggest():
 ```
 
 **Fork Resistance**:
+
 ```
          Finalized Block
               │
@@ -871,7 +891,7 @@ Time to Finality:
 ─────────────────
 3 blocks × 2s = ~6 seconds
   (with optimal conditions)
-  
+
 Plus: Network delays, vote collection
 Practical: 8-12 seconds
 ```
@@ -898,7 +918,7 @@ EpochLength: 900              // Blocks per epoch
 Gap: 450                      // Snapshot before epoch end
 SwitchBlock: <configured>     // V2 activation block
 MaxMasternodes: 108          // Maximum validators
-CertThreshold: 0.67          // 2/3 quorum
+CertificateThreshold: 0.67          // 2/3 quorum
 TimeoutPeriod: 4000ms        // Round timeout
 MinePeriod: 2000ms           // Minimum block time
 TimeoutSyncThreshold: 3      // SyncInfo after N timeouts
@@ -913,14 +933,14 @@ V2ConfigParams[] {
     {
         SwitchRound: 0,
         MaxMasternodes: 108,
-        CertThreshold: 0.67,
+        CertificateThreshold: 0.67,
         TimeoutPeriod: 4000,
         MinePeriod: 2000
     },
     {
         SwitchRound: 1000000,  // Future upgrade
         MaxMasternodes: 150,
-        CertThreshold: 0.70,
+        CertificateThreshold: 0.70,
         ...
     }
 }
@@ -1064,7 +1084,7 @@ Steps:
 protected override AddBlockResult Suggest(Block block, ...) {
     if (finalizedBlock.BlockNumber >= header.Number)
         return InvalidBlock;
-    
+
     // Search ancestry up to MaxSearchDepth
     for (long i = header.Number; i >= finalized; i--) {
         if (finalizedHash == current.ParentHash)
@@ -1086,9 +1106,9 @@ protected override AddBlockResult Suggest(Block block, ...) {
 public bool VerifyVotingRules(...) {
     if ((long)_ctx.CurrentRound <= _highestVotedRound)
         return false;  // Already voted
-    
+
     // ... other checks
-    
+
     _highestVotedRound = votingRound;  // Update after voting
 }
 ```
@@ -1104,7 +1124,7 @@ public bool VerifyVotingRules(...) {
 ```
 Block 850 (Gap):    Store snapshot with candidates
 Block 900 (Switch): Load snapshot, calculate masternodes
-                    masterodes = snapshot.candidates - penalties
+                    masternodes = snapshot.candidates - penalties
 ```
 
 ---

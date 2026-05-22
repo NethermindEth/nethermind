@@ -16,13 +16,7 @@ public class IdEntry : EnrContentEntry<string>
 
     public override string Key => EnrContentKey.Id;
 
-    protected override int GetRlpLengthOfValue()
-    {
-        return Rlp.LengthOf(Value);
-    }
+    protected override int GetRlpLengthOfValue() => Rlp.LengthOf(Value);
 
-    protected override void EncodeValue(RlpStream rlpStream)
-    {
-        rlpStream.Encode("v4");
-    }
+    protected override void EncodeValue(RlpStream rlpStream) => rlpStream.Encode("v4");
 }

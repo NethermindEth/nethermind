@@ -3,7 +3,9 @@
 
 using System;
 using System.Collections.Concurrent;
+#if DEBUG
 using System.Diagnostics;
+#endif
 using Nethermind.Core;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Int256;
@@ -22,7 +24,7 @@ namespace Nethermind.Evm
         /// <summary>
         /// Parsed bytecode for the current call.
         /// </summary>
-        public ICodeInfo CodeInfo { get; private set; } = null!;
+        public CodeInfo CodeInfo { get; private set; } = null!;
 
         /// <summary>
         /// Currently executing account (in DELEGATECALL this will be equal to caller).
@@ -65,7 +67,7 @@ namespace Nethermind.Evm
         /// Rents an ExecutionEnvironment from the pool and initializes it with the provided values.
         /// </summary>
         public static ExecutionEnvironment Rent(
-            ICodeInfo codeInfo,
+            CodeInfo codeInfo,
             Address executingAccount,
             Address caller,
             Address? codeSource,

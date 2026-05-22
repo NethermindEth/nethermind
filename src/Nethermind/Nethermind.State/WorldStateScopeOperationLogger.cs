@@ -49,10 +49,7 @@ public class WorldStateScopeOperationLogger(IWorldStateScopeProvider baseScopePr
             return res;
         }
 
-        public void HintGet(Address address, Account? account)
-        {
-            innerScope.HintGet(address, account);
-        }
+        public void HintGet(Address address, Account? account) => innerScope.HintGet(address, account);
 
         public IWorldStateScopeProvider.ICodeDb CodeDb => innerScope.CodeDb;
 
@@ -76,7 +73,7 @@ public class WorldStateScopeOperationLogger(IWorldStateScopeProvider baseScopePr
             return bytes;
         }
 
-        public void HintGet(in UInt256 index, byte[]? value) => storageTree.HintGet(in index, value);
+        public void HintSet(in UInt256 index, byte[]? value) => storageTree.HintSet(in index, value);
 
         public byte[] Get(in ValueHash256 hash)
         {

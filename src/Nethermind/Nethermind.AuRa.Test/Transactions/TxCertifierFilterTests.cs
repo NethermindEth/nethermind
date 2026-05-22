@@ -8,24 +8,15 @@ using Autofac;
 using FluentAssertions;
 using Nethermind.Abi;
 using Nethermind.AuRa.Test.Contract;
-using Nethermind.Blockchain;
-using Nethermind.Blockchain.BeaconBlockRoot;
-using Nethermind.Consensus.AuRa;
 using Nethermind.Consensus.AuRa.Contracts;
 using Nethermind.Consensus.AuRa.Transactions;
-using Nethermind.Consensus.ExecutionRequests;
-using Nethermind.Consensus.Processing;
-using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Transactions;
-using Nethermind.Consensus.Validators;
-using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
-using Nethermind.Evm.State;
 using Nethermind.TxPool;
 using NSubstitute;
 using NSubstitute.ExceptionExtensions;
@@ -67,16 +58,12 @@ public class TxCertifierFilterTests
     }
 
     [Test]
-    public void should_not_allow_addresses_from_outside_contract()
-    {
+    public void should_not_allow_addresses_from_outside_contract() =>
         ShouldAllowAddress(TestItem.AddressA, expected: false);
-    }
 
     [Test]
-    public void should_not_allow_null_sender()
-    {
+    public void should_not_allow_null_sender() =>
         ShouldAllowAddress(null, expected: false);
-    }
 
     [Test]
     public void should_not_allow_addresses_on_contract_error()
@@ -96,12 +83,10 @@ public class TxCertifierFilterTests
         ShouldAllowAddress(TestItem.Addresses.First(), 1ul, expected);
     }
 
-    private void ShouldAllowAddress(Address? address, ulong gasPrice = 0ul, bool expected = true)
-    {
+    private void ShouldAllowAddress(Address? address, ulong gasPrice = 0ul, bool expected = true) =>
         _filter.IsAllowed(
             Build.A.Transaction.WithGasPrice(gasPrice).WithSenderAddress(address).TestObject,
-            Build.A.BlockHeader.TestObject, Substitute.For<IReleaseSpec>()).Equals(AcceptTxResult.Accepted).Should().Be(expected);
-    }
+            Build.A.BlockHeader.TestObject, ReleaseSpecSubstitute.Create()).Equals(AcceptTxResult.Accepted).Should().Be(expected);
 
     [Test]
     public async Task should_only_allow_addresses_from_contract_on_chain()

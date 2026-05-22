@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using Autofac;
 using FluentAssertions;
@@ -10,7 +11,6 @@ using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db.Rocks;
@@ -48,7 +48,7 @@ public class DbTrackerTests
         dbFactory.CreateDb(new DbSettings("TestDb", "TestDb"));
 
         tracker.GetAllDbMeta().Count().Should().Be(1);
-        var firstEntry = tracker.GetAllDbMeta().First();
+        KeyValuePair<string, IDbMeta> firstEntry = tracker.GetAllDbMeta().First();
         firstEntry.Key.Should().Be("TestDb");
     }
 
@@ -59,7 +59,7 @@ public class DbTrackerTests
     {
         IBlockProcessingQueue queue = Substitute.For<IBlockProcessingQueue>();
         (IContainer container, Action updateAction, FakeDb fakeDb) = ConfigureMetricUpdater((builder) => builder.AddSingleton<IBlockProcessingQueue>(queue));
-        using var _ = container;
+        using IContainer _ = container;
 
         // Reset
         Metrics.DbReads["TestDb"] = 0;
@@ -82,7 +82,7 @@ public class DbTrackerTests
     public void DoesNotUpdateIfIntervalHasNotPassed()
     {
         (IContainer container, Action updateAction, FakeDb fakeDb) = ConfigureMetricUpdater();
-        using var _ = container;
+        using IContainer _ = container;
 
         container.Resolve<IDbFactory>().CreateDb(new DbSettings("TestDb", "TestDb"));
 
@@ -121,11 +121,11 @@ public class DbTrackerTests
         IContainer container = builder
             .Build();
 
-        IDbMeta.DbMetric metric = new IDbMeta.DbMetric()
+        IDbMeta.DbMetric metric = new()
         {
             TotalReads = 10
         };
-        FakeDb fakeDb = new FakeDb(metric);
+        FakeDb fakeDb = new(metric);
         fakeDbFactory.CreateDb(Arg.Any<DbSettings>()).Returns(fakeDb);
 
         Action updateAction = null;
@@ -145,14 +145,8 @@ public class DbTrackerTests
     {
         private IDbMeta.DbMetric _metric = metric;
 
-        public override IDbMeta.DbMetric GatherMetric()
-        {
-            return _metric;
-        }
+        public override IDbMeta.DbMetric GatherMetric() => _metric;
 
-        internal void SetMetric(IDbMeta.DbMetric metric)
-        {
-            _metric = metric;
-        }
+        internal void SetMetric(IDbMeta.DbMetric metric) => _metric = metric;
     }
 }

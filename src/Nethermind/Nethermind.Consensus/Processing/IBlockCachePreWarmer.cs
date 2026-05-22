@@ -7,12 +7,13 @@ using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Eip2930;
 using Nethermind.Core.Specs;
-using Nethermind.State;
+using Nethermind.Evm.State;
 
 namespace Nethermind.Consensus.Processing;
 
-public interface IBlockCachePreWarmer
+public interface IBlockCachePreWarmer : IDisposable
 {
     Task PreWarmCaches(Block suggestedBlock, BlockHeader? parent, IReleaseSpec spec, CancellationToken cancellationToken = default, params ReadOnlySpan<IHasAccessList> systemAccessLists);
     CacheType ClearCaches();
+    bool IsBalReadWarmingEnabled(IReleaseSpec spec);
 }

@@ -28,11 +28,9 @@ using Nethermind.Evm.State;
 using NSubstitute;
 using NUnit.Framework;
 using BlockTree = Nethermind.Blockchain.BlockTree;
-using Nethermind.Evm;
 using System.Text.Json;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Consensus.Processing;
-using Nethermind.State;
 
 namespace Nethermind.AuRa.Test.Validators;
 
@@ -101,6 +99,7 @@ public class ContractBasedValidatorTests
     public void TearDown()
     {
         _blockFinalizationManager?.Dispose();
+        _readOnlyTxProcessorSource?.Dispose();
     }
 
     [Test]
@@ -217,8 +216,8 @@ public class ContractBasedValidatorTests
                             BlockNumber = 1,
                             ExpectedFinalizationCount = 6,
                             NumberOfSteps = 30,
-                            Validators = new List<ConsecutiveInitiateChangeTestParameters.ValidatorsInfo>()
-                            {
+                            Validators =
+                            [
                                 new()
                                 {
                                     Addresses = GenerateValidators(1),
@@ -255,7 +254,7 @@ public class ContractBasedValidatorTests
                                     InitializeBlock = 20,
                                     FinalizeBlock = 25
                                 },
-                            }
+                            ]
                         }
                     }
                 },
@@ -276,8 +275,8 @@ public class ContractBasedValidatorTests
                             BlockNumber = 1,
                             ExpectedFinalizationCount = 4,
                             NumberOfSteps = 11,
-                            Validators = new List<ConsecutiveInitiateChangeTestParameters.ValidatorsInfo>()
-                            {
+                            Validators =
+                            [
                                 new()
                                 {
                                     Addresses = GenerateValidators(1),
@@ -308,7 +307,7 @@ public class ContractBasedValidatorTests
                                     InitializeBlock = 9,
                                     FinalizeBlock = 10
                                 },
-                            }
+                            ]
                         }
                     }
                 },
@@ -329,8 +328,8 @@ public class ContractBasedValidatorTests
                             BlockNumber = 1,
                             ExpectedFinalizationCount = 2,
                             NumberOfSteps = 11,
-                            Validators = new List<ConsecutiveInitiateChangeTestParameters.ValidatorsInfo>()
-                            {
+                            Validators =
+                            [
                                 new()
                                 {
                                     Addresses = GenerateValidators(1),
@@ -350,7 +349,7 @@ public class ContractBasedValidatorTests
                                     InitializeBlock = 5,
                                     FinalizeBlock = 7
                                 },
-                            }
+                            ]
                         }
                     },
                     {
@@ -379,8 +378,8 @@ public class ContractBasedValidatorTests
                             BlockNumber = 1,
                             ExpectedFinalizationCount = 2,
                             NumberOfSteps = 11,
-                            Validators = new List<ConsecutiveInitiateChangeTestParameters.ValidatorsInfo>()
-                            {
+                            Validators =
+                            [
                                 new()
                                 {
                                     Addresses = GenerateValidators(1),
@@ -393,7 +392,7 @@ public class ContractBasedValidatorTests
                                     InitializeBlock = 3,
                                     FinalizeBlock = 3
                                 },
-                            }
+                            ]
                         }
                     },
                     {
@@ -402,15 +401,15 @@ public class ContractBasedValidatorTests
                             BlockNumber = 6,
                             ExpectedFinalizationCount = 1,
                             NumberOfSteps = 10,
-                            Validators = new  List<ConsecutiveInitiateChangeTestParameters.ValidatorsInfo>()
-                            {
+                            Validators =
+                            [
                                 new()
                                 {
                                     Addresses = GenerateValidators(7),
                                     InitializeBlock = 8,
                                     FinalizeBlock = 10
                                 }
-                            },
+                            ],
                         }
                     }
                 },
@@ -431,8 +430,8 @@ public class ContractBasedValidatorTests
                             BlockNumber = 1,
                             ExpectedFinalizationCount = 2,
                             NumberOfSteps = 11,
-                            Validators = new List<ConsecutiveInitiateChangeTestParameters.ValidatorsInfo>()
-                            {
+                            Validators =
+                            [
                                 new()
                                 {
                                     Addresses = GenerateValidators(1),
@@ -451,7 +450,7 @@ public class ContractBasedValidatorTests
                                     InitializeBlock = 5,
                                     FinalizeBlock = 7
                                 },
-                            }
+                            ]
                         }
                     },
                     {
@@ -460,15 +459,15 @@ public class ContractBasedValidatorTests
                             BlockNumber = 6, //reorganisation to block 6 in order to keep last initiate change
                             ExpectedFinalizationCount = 2,
                             NumberOfSteps = 10,
-                            Validators = new List<ConsecutiveInitiateChangeTestParameters.ValidatorsInfo>()
-                            {
+                            Validators =
+                            [
                                 new()
                                 {
                                     Addresses = GenerateValidators(7),
                                     InitializeBlock = 10,
                                     FinalizeBlock = 11
                                 }
-                            },
+                            ],
                         }
                     }
                 },
@@ -483,7 +482,7 @@ public class ContractBasedValidatorTests
     [TestCaseSource(nameof(ConsecutiveInitiateChangeData))]
     public void consecutive_initiate_change_gets_finalized_and_switch_validators(ConsecutiveInitiateChangeTestParameters test)
     {
-        Dictionary<int, int> hashSeeds = new();
+        Dictionary<int, int> hashSeeds = [];
 
         Address[] currentValidators = GenerateValidators(1);
         SetupInitialValidators(currentValidators);
@@ -614,15 +613,11 @@ public class ContractBasedValidatorTests
     private static Address[] GenerateValidators(int number) =>
         Enumerable.Range(1, number).Select(static i => Address.FromNumber((UInt256)i)).ToArray();
 
-    private void SetupInitialValidators(params Address[] initialValidators)
-    {
+    private void SetupInitialValidators(params Address[] initialValidators) =>
         SetupInitialValidators(_block.Header, initialValidators);
-    }
 
-    private void SetupInitialValidators(BlockHeader header, params Address[] initialValidators)
-    {
+    private void SetupInitialValidators(BlockHeader header, params Address[] initialValidators) =>
         SetupInitialValidators(header, null, initialValidators);
-    }
 
     private void SetupInitialValidators(BlockHeader header, BlockHeader parentHeader, params Address[] initialValidators)
     {
@@ -647,7 +642,7 @@ public class ContractBasedValidatorTests
 
     private byte[] SetupAbiAddresses(Address[] addresses)
     {
-        byte[] data = addresses.SelectMany(static a => a.Bytes).ToArray();
+        byte[] data = addresses.SelectMany(static a => a.Bytes.ToArray()).ToArray();
 
         _abiEncoder.Decode(
             AbiEncodingStyle.None,
@@ -657,10 +652,8 @@ public class ContractBasedValidatorTests
         return data;
     }
 
-    private bool CheckTransaction(Transaction t, (Address Sender, byte[] TransactionData) transactionInfo)
-    {
-        return t.SenderAddress == transactionInfo.Sender && t.To == _contractAddress && t.Data.AsArray() == transactionInfo.TransactionData;
-    }
+    private bool CheckTransaction(Transaction t, (Address Sender, byte[] TransactionData) transactionInfo) =>
+        t.SenderAddress == transactionInfo.Sender && t.To == _contractAddress && t.Data.AsArray() == transactionInfo.TransactionData;
 
     public class ConsecutiveInitiateChangeTestParameters
     {

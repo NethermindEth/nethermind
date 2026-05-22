@@ -34,8 +34,6 @@ on:
 
 permissions:
   contents: read
-  pull-requests: write
-  issues: write
 
 env:
   DOTNET_SYSTEM_CONSOLE_ALLOW_ANSI_COLOR_REDIRECTION: "1"
@@ -59,6 +57,8 @@ jobs:
         env:
           EVENT_NAME: ${{ github.event_name }}
           LABEL_NAME: ${{ github.event.label.name }}
+          PR_HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+          CURRENT_REPO: ${{ github.repository }}
           DISPATCH_RUNS: ${{ inputs.runs }}
           DISPATCH_TEST_PATH: ${{ inputs.testPath }}
           DISPATCH_GENESIS_FILE: ${{ inputs.genesisFile }}
@@ -84,22 +84,26 @@ jobs:
             clients="${DISPATCH_CLIENTS:-nethermind}"
             filter="${DISPATCH_FILTER:-}"
           elif [[ "${EVENT_NAME}" == "pull_request" ]]; then
-            label="${LABEL_NAME:-}"
+            if [[ "${PR_HEAD_REPO:-}" != "${CURRENT_REPO:-}" ]]; then
+              should_run="false"
+            else
+              label="${LABEL_NAME:-}"
 
-            # Only accept labels in the format: gasbench[-<comma-separated-filters>]
-            if [[ "${label}" == "gasbench" ]]; then
-              filter=""
-            elif [[ "${label}" == gasbench-* ]]; then
-              suffix="${label#gasbench-}"
-              if [[ -z "${suffix}" ]]; then
+              # Only accept labels in the format: gasbench[-<comma-separated-filters>]
+              if [[ "${label}" == "gasbench" ]]; then
                 filter=""
-              elif [[ "${suffix}" =~ ^[A-Za-z0-9_.-]+(,[A-Za-z0-9_.-]+)*$ ]]; then
-                filter="${suffix}"
+              elif [[ "${label}" == gasbench-* ]]; then
+                suffix="${label#gasbench-}"
+                if [[ -z "${suffix}" ]]; then
+                  filter=""
+                elif [[ "${suffix}" =~ ^[A-Za-z0-9_.-]+(,[A-Za-z0-9_.-]+)*$ ]]; then
+                  filter="${suffix}"
+                else
+                  should_run="false"
+                fi
               else
                 should_run="false"
               fi
-            else
-              should_run="false"
             fi
           fi
 
@@ -125,6 +129,7 @@ jobs:
         with:
           large-packages: false
           tool-cache: false
+          swap-storage: false
 
       - name: Check out repository
         uses: actions/checkout@v6
@@ -144,12 +149,18 @@ jobs:
     needs: [resolve-inputs]
     if: needs.resolve-inputs.outputs.should-run == 'true' && github.event_name == 'pull_request'
     runs-on: ubuntu-slim
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: write
     steps:
       - name: Post starting comment
         uses: actions/github-script@v7
+        env:
+          FILTER: ${{ needs.resolve-inputs.outputs.filter }}
         with:
           script: |
-            const filter = '${{ needs.resolve-inputs.outputs.filter }}';
+            const filter = process.env.FILTER || '';
             const filterText = filter ? ` with filter: \`${filter}\`` : '';
 
             await github.rest.issues.createComment({
@@ -173,7 +184,7 @@ jobs:
 
       - name: Authenticate App
         id: gh-app
-        uses: actions/create-github-app-token@v2
+        uses: actions/create-github-app-token@v3
         with:
           app-id: ${{ vars.APP_ID }}
           private-key: ${{ secrets.APP_PRIVATE_KEY }}
@@ -181,7 +192,7 @@ jobs:
 
       - name: Authenticate Admin App
         id: gh-admin-app
-        uses: actions/create-github-app-token@v2
+        uses: actions/create-github-app-token@v3
         with:
           app-id: ${{ vars.ADMIN_APP_ID }}
           private-key: ${{ secrets.ADMIN_APP_PRIVATE_KEY }}
@@ -252,13 +263,20 @@ jobs:
     needs: [resolve-inputs, gas-benchmark]
     if: always() && needs.resolve-inputs.outputs.should-run == 'true' && github.event_name == 'pull_request'
     runs-on: ubuntu-slim
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: write
     steps:
       - name: Post results comment
         uses: actions/github-script@v7
+        env:
+          FILTER: ${{ needs.resolve-inputs.outputs.filter }}
+          BENCHMARK_STATUS: ${{ needs.gas-benchmark.result }}
         with:
           script: |
-            const benchmarkStatus = '${{ needs.gas-benchmark.result }}';
-            const filter = '${{ needs.resolve-inputs.outputs.filter }}';
+            const benchmarkStatus = process.env.BENCHMARK_STATUS || '';
+            const filter = process.env.FILTER || '';
             const filterText = filter ? ` with filter: \`${filter}\`` : '';
             const workflowUrl = `${context.payload.repository.html_url}/actions/runs/${context.runId}`;
 
@@ -296,7 +314,7 @@ jobs:
 
       - name: Authenticate App
         id: gh-app
-        uses: actions/create-github-app-token@v2
+        uses: actions/create-github-app-token@v3
         with:
           app-id: ${{ vars.APP_ID }}
           private-key: ${{ secrets.APP_PRIVATE_KEY }}
@@ -304,7 +322,7 @@ jobs:
 
       - name: Authenticate Admin App
         id: gh-admin-app
-        uses: actions/create-github-app-token@v2
+        uses: actions/create-github-app-token@v3
         with:
           app-id: ${{ vars.ADMIN_APP_ID }}
           private-key: ${{ secrets.ADMIN_APP_PRIVATE_KEY }}

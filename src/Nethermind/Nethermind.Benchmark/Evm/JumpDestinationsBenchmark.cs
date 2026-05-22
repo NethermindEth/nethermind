@@ -90,7 +90,7 @@ public class JumpDestinationsBenchmark
 
     private static byte[] CreateCode(int size, byte byte0, byte byte1)
     {
-        var array = new byte[size];
+        byte[] array = new byte[size];
         for (int i = 0; i < array.Length; i++)
         {
             array[i] = i % 2 == 0 ? byte0 : byte1;

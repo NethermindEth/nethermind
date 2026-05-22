@@ -34,8 +34,8 @@ public class OptimismBaseFeeCalculatorTests
             BaseFeeCalculator = new OptimismBaseFeeCalculator(HoloceneTimestamp, null, new DefaultBaseFeeCalculator())
         };
 
-        var parameters = new EIP1559Parameters(0, denominator, elasticity);
-        var extraData = new byte[parameters.ByteLength];
+        EIP1559Parameters parameters = new(0, denominator, elasticity);
+        byte[] extraData = new byte[parameters.ByteLength];
         parameters.WriteTo(extraData);
 
         BlockHeader blockHeader = Build.A.BlockHeader
@@ -90,7 +90,7 @@ public class OptimismBaseFeeCalculatorTests
             ? new(1, JovianTest.Denominator, JovianTest.Elasticity, (ulong)minBaseFee)
             : new(0, JovianTest.Denominator, JovianTest.Elasticity);
 
-        var extraData = new byte[parameters.ByteLength];
+        byte[] extraData = new byte[parameters.ByteLength];
         parameters.WriteTo(extraData);
 
         BlockHeader blockHeader = Build.A.BlockHeader

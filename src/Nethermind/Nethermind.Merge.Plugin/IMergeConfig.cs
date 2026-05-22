@@ -65,7 +65,7 @@ public interface IMergeConfig : IConfig
     public int CollectionsPerDecommit { get; set; }
 
     [ConfigItem(Description = "The timeout, in milliseconds, for the `engine_newPayload` method.", DefaultValue = "7000", HiddenFromDocs = true)]
-    public int NewPayloadBlockProcessingTimeout { get; }
+    public int NewPayloadBlockProcessingTimeout { get; set; }
 
     [ConfigItem(Description = "Cache NewPayload valid or invalid results", DefaultValue = "50", HiddenFromDocs = true)]
     public int NewPayloadCacheSize { get; }

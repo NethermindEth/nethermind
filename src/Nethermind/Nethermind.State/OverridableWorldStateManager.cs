@@ -19,14 +19,12 @@ public class OverridableWorldStateManager : IOverridableWorldScope
         _dbProvider = readOnlyDbProvider;
         OverlayTrieStore overlayTrieStore = new(readOnlyDbProvider.StateDb, trieStore);
         _reader = new(overlayTrieStore, readOnlyDbProvider.CodeDb, logManager);
-        WorldState = new TrieStoreScopeProvider(overlayTrieStore, readOnlyDbProvider.CodeDb, logManager);
+        WorldState = new TrieStoreScopeProvider(overlayTrieStore, readOnlyDbProvider.CodeDb, logManager, codeDbIsPersistent: false);
     }
 
     public IWorldStateScopeProvider WorldState { get; }
 
     public IStateReader GlobalStateReader => _reader;
-    public void ResetOverrides()
-    {
-        _dbProvider.ClearTempChanges();
-    }
+    public void ResetOverrides() => _dbProvider.ClearTempChanges();
+    public void Dispose() => _dbProvider.Dispose();
 }

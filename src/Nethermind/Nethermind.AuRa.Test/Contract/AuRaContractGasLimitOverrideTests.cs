@@ -110,7 +110,7 @@ public class AuRaContractGasLimitOverrideTests
         protected override ChainSpec CreateChainSpec()
         {
             ChainSpec chainSpec = base.CreateChainSpec();
-            var parameters = chainSpec.EngineChainSpecParametersProvider
+            AuRaChainSpecEngineParameters parameters = chainSpec.EngineChainSpecParametersProvider
                 .GetChainSpecParameters<AuRaChainSpecEngineParameters>();
             KeyValuePair<long, Address> blockGasLimitContractTransition = parameters.BlockGasLimitContractTransitions.First();
             parameters.BlockGasLimitContractTransitions = new Dictionary<long, Address>() { { 10, blockGasLimitContractTransition.Value } };

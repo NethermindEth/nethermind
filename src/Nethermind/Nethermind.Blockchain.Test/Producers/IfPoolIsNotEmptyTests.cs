@@ -9,6 +9,7 @@ using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test.Producers;
 
+[Parallelizable(ParallelScope.All)]
 public class IfPoolIsNotEmptyTests
 {
     [MaxTime(Timeout.MaxTestTime)]
@@ -16,7 +17,7 @@ public class IfPoolIsNotEmptyTests
     [TestCase(1, true)]
     public void Does_not_trigger_when_empty(int txCount, bool shouldTrigger)
     {
-        var pool = Substitute.For<ITxPool>();
+        ITxPool pool = Substitute.For<ITxPool>();
         pool.GetPendingTransactionsCount().Returns(txCount);
         bool triggered = false;
         BuildBlocksWhenRequested trigger = new();

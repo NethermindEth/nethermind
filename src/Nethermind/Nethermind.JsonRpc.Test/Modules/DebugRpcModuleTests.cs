@@ -11,10 +11,10 @@ using FluentAssertions.Json;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Int256;
-using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.DebugModule;
 using Newtonsoft.Json.Linq;
 using NUnit.Framework;
@@ -35,9 +35,9 @@ public partial class DebugRpcModuleTests
             Blockchain = blockchain;
         }
 
-        public static async Task<Context> Create(bool isAura = false)
+        public static async Task<Context> Create(ISpecProvider? specProvider = null, bool isAura = false)
         {
-            TestRpcBlockchain blockchain = await TestRpcBlockchain.ForTest(isAura ? SealEngineType.AuRa : SealEngineType.NethDev).Build();
+            TestRpcBlockchain blockchain = await TestRpcBlockchain.ForTest(isAura ? SealEngineType.AuRa : SealEngineType.NethDev).Build(specProvider);
 
             IDebugRpcModule debugRpcModule = blockchain.DebugRpcModule;
 
@@ -53,7 +53,7 @@ public partial class DebugRpcModuleTests
         using Context ctx = await Context.Create();
 
         Address address = Build.An.Address.TestObject;
-        UInt256 balance = 100.Ether(), send = balance / 2;
+        UInt256 balance = 100.Ether, send = balance / 2;
 
         JsonRpcResponse response = await RpcTest.TestRequest(ctx.DebugRpcModule, "debug_traceCall",
             new { from = $"{address}", to = $"{TestItem.AddressC}", value = send.ToString("X") }
@@ -70,7 +70,7 @@ public partial class DebugRpcModuleTests
         TestRpcBlockchain blockchain = ctx.Blockchain;
 
         Address address = Build.An.Address.TestObject;
-        UInt256 balance = 100.Ether();
+        UInt256 balance = 100.Ether;
 
         await blockchain.AddFunds(address, balance / 2);
         await blockchain.AddFunds(address, balance / 2);
@@ -108,8 +108,8 @@ public partial class DebugRpcModuleTests
     )]
     public async Task Debug_traceCall_with_state_override(string name, string transactionJson, string stateOverrideJson, string? expectedValue = null)
     {
-        var transaction = JsonSerializer.Deserialize<object>(transactionJson);
-        var stateOverride = JsonSerializer.Deserialize<object>(stateOverrideJson);
+        object? transaction = JsonSerializer.Deserialize<object>(transactionJson);
+        object? stateOverride = JsonSerializer.Deserialize<object>(stateOverrideJson);
 
         using Context ctx = await Context.Create();
 
@@ -123,6 +123,66 @@ public partial class DebugRpcModuleTests
 
         if (expectedValue != null)
             Convert.ToHexString(trace.ReturnValue).Should().BeEquivalentTo(expectedValue);
+    }
+
+    [Test]
+    public async Task Debug_traceCall_caps_gas_to_gas_cap()
+    {
+        using Context ctx = await Context.Create();
+        long gasCap = 50_000;
+        IJsonRpcConfig config = ctx.Blockchain.Container.Resolve<IJsonRpcConfig>();
+        config.GasCap = gasCap;
+
+        // Contract: GAS PUSH1 0 MSTORE PUSH1 32 PUSH1 0 RETURN
+        // Returns gas available at start of execution as a 32-byte uint256
+        object? stateOverride = JsonSerializer.Deserialize<object>(
+            """{"0xc200000000000000000000000000000000000000":{"code":"0x5a60005260206000f3"}}""");
+
+        // Request 100K gas — should be capped to 50K by GasCap
+        JsonRpcResponse response = await RpcTest.TestRequest(ctx.DebugRpcModule, "debug_traceCall",
+            new { to = "0xc200000000000000000000000000000000000000", gas = "0x186A0" },
+            null,
+            new { stateOverrides = stateOverride }
+        );
+
+        GethLikeTxTrace trace = response.Should().BeOfType<JsonRpcSuccessResponse>()
+            .Which.Result.Should().BeOfType<GethLikeTxTrace>()
+            .Subject;
+
+        long gasAvailable = (long)trace.ReturnValue.ToUInt256();
+        gasAvailable.Should().BeLessThan(gasCap);
+        gasAvailable.Should().BeGreaterThan(0);
+    }
+
+    [Test]
+    public async Task Debug_traceCall_without_gas_defaults_to_gas_cap_not_block_gas_limit()
+    {
+        using Context ctx = await Context.Create();
+
+        long blockGasLimit = ctx.Blockchain.BlockTree.Head!.Header.GasLimit;
+        long gasCap = blockGasLimit * 10;
+        IJsonRpcConfig config = ctx.Blockchain.Container.Resolve<IJsonRpcConfig>();
+        config.GasCap = gasCap;
+
+        // Contract: GAS PUSH1 0 MSTORE PUSH1 32 PUSH1 0 RETURN
+        // Returns gas available at start of execution as a uint256
+        object? stateOverride = JsonSerializer.Deserialize<object>(
+            """{"0xc200000000000000000000000000000000000000":{"code":"0x5a60005260206000f3"}}""");
+
+        // No gas field — should default to gasCap, not blockGasLimit
+        JsonRpcResponse response = await RpcTest.TestRequest(ctx.DebugRpcModule, "debug_traceCall",
+            new { to = "0xc200000000000000000000000000000000000000" },
+            null,
+            new { stateOverrides = stateOverride }
+        );
+
+        GethLikeTxTrace trace = response.Should().BeOfType<JsonRpcSuccessResponse>()
+            .Which.Result.Should().BeOfType<GethLikeTxTrace>()
+            .Subject;
+
+        UInt256 gasAvailable = trace.ReturnValue.ToUInt256();
+        gasAvailable.Should().BeGreaterThan((UInt256)blockGasLimit,
+            "gas available should reflect gasCap ({0}), not block gas limit ({1})", gasCap, blockGasLimit);
     }
 
     [TestCase(
@@ -142,12 +202,12 @@ public partial class DebugRpcModuleTests
     )]
     public async Task Debug_traceCall_with_state_override_does_not_affect_other_calls(string name, string transactionJson, string stateOverrideJson)
     {
-        var transaction = JsonSerializer.Deserialize<object>(transactionJson);
-        var stateOverride = JsonSerializer.Deserialize<object>(stateOverrideJson);
+        object? transaction = JsonSerializer.Deserialize<object>(transactionJson);
+        object? stateOverride = JsonSerializer.Deserialize<object>(stateOverrideJson);
 
         using Context ctx = await Context.Create();
 
-        var resultOverrideBefore = await RpcTest.TestSerializedRequest(ctx.DebugRpcModule, "debug_traceCall", transaction, null, new
+        string resultOverrideBefore = await RpcTest.TestSerializedRequest(ctx.DebugRpcModule, "debug_traceCall", transaction, null, new
         {
             stateOverrides = stateOverride,
             enableMemory = false,
@@ -157,7 +217,7 @@ public partial class DebugRpcModuleTests
             tracerConfig = new { withLog = false }
         });
 
-        var resultNoOverride = await RpcTest.TestSerializedRequest(ctx.DebugRpcModule, "debug_traceCall", transaction, null, new
+        string resultNoOverride = await RpcTest.TestSerializedRequest(ctx.DebugRpcModule, "debug_traceCall", transaction, null, new
         {
             // configuration to minimize number of fields being compared
             enableMemory = false,
@@ -167,7 +227,7 @@ public partial class DebugRpcModuleTests
             tracerConfig = new { withLog = false }
         });
 
-        var resultOverrideAfter = await RpcTest.TestSerializedRequest(ctx.DebugRpcModule, "debug_traceCall", transaction, null, new
+        string resultOverrideAfter = await RpcTest.TestSerializedRequest(ctx.DebugRpcModule, "debug_traceCall", transaction, null, new
         {
             stateOverrides = stateOverride,
             enableMemory = false,
@@ -181,6 +241,43 @@ public partial class DebugRpcModuleTests
         {
             JToken.Parse(resultOverrideBefore).Should().BeEquivalentTo(resultOverrideAfter);
             JToken.Parse(resultNoOverride).Should().NotBeEquivalentTo(resultOverrideAfter);
+        }
+    }
+
+    [Test]
+    public async Task Debug_traceCall_CREATE_replayed_back_to_back_does_not_throw_code_missing()
+    {
+        using Context ctx = await Context.Create();
+
+        // Minimal CREATE init code that deploys a 1-byte STOP runtime:
+        //   PUSH1 1 PUSH1 12 PUSH1 0 CODECOPY  PUSH1 1 PUSH1 0 RETURN  <runtime=0x00>
+        // Picking a non-empty runtime is required so its codeHash != keccak("") and the
+        // codeDb is actually consulted on GetCode — that's the path that exposes the bug.
+        object? transaction = JsonSerializer.Deserialize<object>(
+            """{"from":"0x7f554713be84160fdf0178cc8df86f5aabd33397","data":"0x6001600c60003960016000f300","value":"0x0"}""");
+
+        object? stateOverride = JsonSerializer.Deserialize<object>(
+            """{"0x7f554713be84160fdf0178cc8df86f5aabd33397":{"balance":"0xffffffffffff"}}""");
+
+        object tracerOptions = new
+        {
+            tracer = "prestateTracer",
+            tracerConfig = new { diffMode = true },
+            stateOverrides = stateOverride
+        };
+
+        // Run the same CREATE three times against the same pooled IDebugRpcModule. The bug
+        // (filter survives overlay reset across pooled-instance reuse) only manifests from
+        // the second call onward, so we run a third to make the regression deterministic
+        // rather than relying on internal cache ordering.
+        for (int i = 1; i <= 3; i++)
+        {
+            string result = await RpcTest.TestSerializedRequest(
+                ctx.DebugRpcModule, "debug_traceCall", transaction, null, tracerOptions);
+
+            result.Should().Contain("\"code\":\"0x00\"",
+                $"call #{i} must complete and report the deployed runtime in post.code — " +
+                "the persisted-code hint must not survive overlay reset");
         }
     }
 }

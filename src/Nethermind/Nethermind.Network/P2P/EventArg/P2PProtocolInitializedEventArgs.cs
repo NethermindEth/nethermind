@@ -7,15 +7,11 @@ using Nethermind.Stats.Model;
 
 namespace Nethermind.Network.P2P.EventArg
 {
-    public class P2PProtocolInitializedEventArgs : ProtocolInitializedEventArgs
+    public class P2PProtocolInitializedEventArgs(IProtocolHandler handler) : ProtocolInitializedEventArgs(handler)
     {
         public byte P2PVersion { get; set; }
         public string ClientId { get; set; }
         public IReadOnlyList<Capability> Capabilities { get; set; }
         public int ListenPort { get; set; }
-
-        public P2PProtocolInitializedEventArgs(IProtocolHandler handler) : base(handler)
-        {
-        }
     }
 }

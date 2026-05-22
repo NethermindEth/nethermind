@@ -32,15 +32,16 @@ namespace Nethermind.Monitoring.Metrics
         private readonly int _intervalMilliseconds;
         private static bool _staticLabelsInitialized;
 
-        private readonly Dictionary<Type, IMetricUpdater[]> _metricUpdaters = new();
+        private readonly Dictionary<Type, IMetricUpdater[]> _metricUpdaters = [];
+        private volatile IMetricUpdater[][] _updaterValues = [];
 
         // Largely for testing reason
-        internal readonly Dictionary<string, IMetricUpdater> _individualUpdater = new();
+        internal readonly Dictionary<string, IMetricUpdater> _individualUpdater = [];
 
         private readonly bool _useCounters;
         private readonly bool _enableDetailedMetric;
 
-        private readonly List<Action> _callbacks = new();
+        private volatile Action[] _callbacks = [];
 
         public interface IMetricUpdater
         {
@@ -55,17 +56,17 @@ namespace Nethermind.Monitoring.Metrics
 
         public class GaugePerKeyMetricUpdater(IDictionary dict, string dictionaryName) : IMetricUpdater
         {
-            private readonly Dictionary<string, Gauge> _gauges = new();
+            private readonly Dictionary<string, Gauge> _gauges = [];
             public IReadOnlyDictionary<string, Gauge> Gauges => _gauges;
 
             public void Update()
             {
                 // Its fine that the key here need to call `ToString()`. Better here then in the metrics, where it might
                 // impact the performance of whatever is updating the metrics.
-                foreach (object keyObj in dict.Keys) // Different dictionary seems to iterate to different KV type. So need to use `Keys` here.
+                foreach (DictionaryEntry entry in dict)
                 {
-                    string keyStr = keyObj.ToString()!;
-                    double value = Convert.ToDouble(dict[keyObj]);
+                    string keyStr = entry.Key.ToString()!;
+                    double value = Convert.ToDouble(entry.Value);
                     string gaugeName = GetGaugeNameKey(dictionaryName, keyStr);
                     ref Gauge? gauge = ref CollectionsMarshal.GetValueRefOrAddDefault(_gauges, gaugeName, out _);
                     gauge ??= CreateGauge(BuildGaugeName(keyStr));
@@ -78,9 +79,10 @@ namespace Nethermind.Monitoring.Metrics
         {
             public void Update()
             {
-                foreach (object key in dict.Keys)
+                foreach (DictionaryEntry entry in dict)
                 {
-                    double value = Convert.ToDouble(dict[key]);
+                    object key = entry.Key;
+                    double value = Convert.ToDouble(entry.Value);
                     switch (key)
                     {
                         case IMetricLabels label:
@@ -219,10 +221,15 @@ namespace Nethermind.Monitoring.Metrics
                     meter = new(type.Namespace!);
                 }
 
-                IList<IMetricUpdater> metricUpdaters = new List<IMetricUpdater>();
+                IList<IMetricUpdater> metricUpdaters = [];
                 IEnumerable<MemberInfo> members = type.GetProperties().Concat<MemberInfo>(type.GetFields());
                 foreach (MemberInfo member in members)
                 {
+                    if (member.GetCustomAttribute<DetailedMetricOnFlagAttribute>() is not null)
+                    {
+                        (member as PropertyInfo)?.SetValue(null, _enableDetailedMetric);
+                        continue;
+                    }
                     if (member.GetCustomAttribute<DetailedMetricAttribute>() is not null && !_enableDetailedMetric) continue;
                     if (TryCreateMetricUpdater(type, meter, member, out IMetricUpdater updater))
                     {
@@ -230,6 +237,7 @@ namespace Nethermind.Monitoring.Metrics
                     }
                 }
                 _metricUpdaters[type] = metricUpdaters.ToArray();
+                _updaterValues = [.. _metricUpdaters.Values];
             }
         }
 
@@ -328,7 +336,7 @@ namespace Nethermind.Monitoring.Metrics
 
         public async Task RunTimer(CancellationToken cancellationToken)
         {
-            using var standardTimer = new PeriodicTimer(TimeSpan.FromMilliseconds(_intervalMilliseconds));
+            using PeriodicTimer standardTimer = new(TimeSpan.FromMilliseconds(_intervalMilliseconds));
 
             try
             {
@@ -349,7 +357,7 @@ namespace Nethermind.Monitoring.Metrics
                 callback();
             }
 
-            foreach (IMetricUpdater[] updaters in _metricUpdaters.Values)
+            foreach (IMetricUpdater[] updaters in _updaterValues)
             {
                 foreach (IMetricUpdater metricUpdater in updaters)
                 {
@@ -358,7 +366,7 @@ namespace Nethermind.Monitoring.Metrics
             }
         }
 
-        public void AddMetricsUpdateAction(Action callback) => _callbacks.Add(callback);
+        public void AddMetricsUpdateAction(Action callback) => _callbacks = [.. _callbacks, callback];
 
         private static string GetGaugeNameKey(params string[] par) => string.Join('.', par);
 

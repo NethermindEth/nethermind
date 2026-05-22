@@ -13,35 +13,35 @@ public class MetricsTests
 {
     private static JsonRpc.Request.Single Single(int id, string method = "test")
     {
-        var json = $$"""{ "id": {{id}}, "method": "{{method}}", "params": [] }""";
+        string json = $$"""{ "id": {{id}}, "method": "{{method}}", "params": [] }""";
         return new JsonRpc.Request.Single(JsonNode.Parse(json)!);
     }
 
     private static JsonRpc.Request.Batch Batch(params JsonRpc.Request.Single[] singles)
     {
-        var json = $$"""[{{string.Join(", ", singles.Select(s => s.ToJsonString()))}}]""";
+        string json = $$"""[{{string.Join(", ", singles.Select(s => s.ToJsonString()))}}]""";
         return new JsonRpc.Request.Batch(JsonNode.Parse(json)!);
     }
 
     [Test]
     public async Task MemoryMetricsReporter_GeneratesValidReport()
     {
-        var reporter = new MemoryMetricsReporter();
+        MemoryMetricsReporter reporter = new();
 
-        var totalTimer = new Timer();
+        Timer totalTimer = new();
         using (totalTimer.Time())
         {
-            var single = Single(42, "method1");
-            var batch = Batch(Single(43), Single(44), Single(45));
+            JsonRpc.Request.Single single = Single(42, "method1");
+            JsonRpc.Request.Batch batch = Batch(Single(43), Single(44), Single(45));
 
-            var singleTimer = new Timer();
+            Timer singleTimer = new();
             using (singleTimer.Time())
             {
                 await Task.Delay(TimeSpan.FromMilliseconds(50));
             }
             await reporter.Single(single, singleTimer.Elapsed);
 
-            var batchTimer = new Timer();
+            Timer batchTimer = new();
             using (batchTimer.Time())
             {
                 await Task.Delay(TimeSpan.FromMilliseconds(50));
@@ -51,7 +51,7 @@ public class MetricsTests
 
         await reporter.Total(totalTimer.Elapsed);
 
-        var report = reporter.Report();
+        MetricsReport report = reporter.Report();
 
         report.TotalTime.Should().BeGreaterThan(TimeSpan.FromMilliseconds(90));
         report.TotalTime.Should().BeLessThan(TimeSpan.FromMilliseconds(110));
@@ -68,11 +68,11 @@ public class MetricsTests
     [Test]
     public async Task ComposedMetricsReporter_DelegatesToAllReporters()
     {
-        var A = Substitute.For<IMetricsReporter>();
-        var B = Substitute.For<IMetricsReporter>();
-        var single = Single(1);
-        var batch = Batch(Single(2), Single(3));
-        var reporter = new ComposedMetricsReporter(A, B);
+        IMetricsReporter A = Substitute.For<IMetricsReporter>();
+        IMetricsReporter B = Substitute.For<IMetricsReporter>();
+        JsonRpc.Request.Single single = Single(1);
+        JsonRpc.Request.Batch batch = Batch(Single(2), Single(3));
+        ComposedMetricsReporter reporter = new(A, B);
 
         await reporter.Message();
         await reporter.Response();

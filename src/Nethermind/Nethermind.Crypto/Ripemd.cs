@@ -22,8 +22,5 @@ public static class Ripemd
         return result;
     }
 
-    public static string ComputeString(ReadOnlySpan<byte> input)
-    {
-        return Compute(input).ToHexString(false);
-    }
+    public static string ComputeString(ReadOnlySpan<byte> input) => Compute(input).ToHexString(false);
 }

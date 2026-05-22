@@ -12,7 +12,7 @@ namespace Nethermind.Trie
 {
     public class TrieStatsCollector : ITreeVisitor<TrieStatsCollector.Context>
     {
-        private readonly ClockCache<ValueHash256, int> _existingCodeHash = new ClockCache<ValueHash256, int>(1024 * 8);
+        private readonly ClockCache<ValueHash256, int> _existingCodeHash = new(1024 * 8);
         private readonly IKeyValueStore _codeKeyValueStore;
 
         private readonly ILogger _logger;
@@ -30,43 +30,39 @@ namespace Nethermind.Trie
             public readonly bool IsStorage => OldStyleTrieVisitContext.IsStorage;
             public readonly int Level => OldStyleTrieVisitContext.Level;
 
-            public readonly Context Add(ReadOnlySpan<byte> nibblePath)
+            public readonly Context Add(ReadOnlySpan<byte> nibblePath) => new()
             {
-                return new Context()
-                {
-                    PathContext = PathContext.Add(nibblePath),
-                    OldStyleTrieVisitContext = OldStyleTrieVisitContext.Add(nibblePath)
-                };
-            }
+                PathContext = PathContext.Add(nibblePath),
+                OldStyleTrieVisitContext = OldStyleTrieVisitContext.Add(nibblePath)
+            };
 
-            public readonly Context Add(byte nibble)
+            public readonly Context Add(byte nibble) => new()
             {
-                return new Context()
-                {
-                    PathContext = PathContext.Add(nibble),
-                    OldStyleTrieVisitContext = OldStyleTrieVisitContext.Add(nibble)
-                };
-            }
+                PathContext = PathContext.Add(nibble),
+                OldStyleTrieVisitContext = OldStyleTrieVisitContext.Add(nibble)
+            };
 
-            public readonly Context AddStorage(in ValueHash256 storage)
+            public readonly Context AddStorage(in ValueHash256 storage) => new()
             {
-                return new Context()
-                {
-                    PathContext = PathContext.AddStorage(storage),
-                    OldStyleTrieVisitContext = OldStyleTrieVisitContext.AddStorage(storage)
-                };
-            }
+                PathContext = PathContext.AddStorage(storage),
+                OldStyleTrieVisitContext = OldStyleTrieVisitContext.AddStorage(storage)
+            };
         }
 
         public bool ExpectAccounts { get; }
 
         public TrieStatsCollector(IKeyValueStore codeKeyValueStore, ILogManager logManager, CancellationToken cancellationToken = default, bool expectAccounts = true)
+            : this(codeKeyValueStore, logManager, "Trie Verification", cancellationToken, expectAccounts)
+        {
+        }
+
+        protected TrieStatsCollector(IKeyValueStore codeKeyValueStore, ILogManager logManager, string progressTrackerName, CancellationToken cancellationToken, bool expectAccounts)
         {
             _codeKeyValueStore = codeKeyValueStore ?? throw new ArgumentNullException(nameof(codeKeyValueStore));
-            _logger = logManager.GetClassLogger();
+            _logger = logManager.GetClassLogger<TrieStatsCollector>();
             ExpectAccounts = expectAccounts;
             _cancellationToken = cancellationToken;
-            _progressTracker = new VisitorProgressTracker("Trie Verification", logManager);
+            _progressTracker = new VisitorProgressTracker(progressTrackerName, logManager);
         }
 
         public TrieStats Stats { get; } = new();
@@ -76,10 +72,7 @@ namespace Nethermind.Trie
         {
         }
 
-        public bool ShouldVisit(in Context nodeContext, in ValueHash256 nextNode)
-        {
-            return true;
-        }
+        public bool ShouldVisit(in Context nodeContext, in ValueHash256 nextNode) => true;
 
         public void VisitMissingNode(in Context nodeContext, in ValueHash256 nodeHash)
         {
@@ -131,7 +124,7 @@ namespace Nethermind.Trie
             IncrementLevel(nodeContext, isLeaf: false);
         }
 
-        public void VisitLeaf(in Context nodeContext, TrieNode node)
+        public virtual void VisitLeaf(in Context nodeContext, TrieNode node)
         {
             if (nodeContext.IsStorage)
             {
@@ -186,14 +179,8 @@ namespace Nethermind.Trie
             _progressTracker.OnNodeVisited(context.Path, context.IsStorage, isLeaf);
         }
 
-        private static void IncrementLevel(Context context, long[] levels)
-        {
-            Interlocked.Increment(ref levels[context.Level]);
-        }
+        private static void IncrementLevel(Context context, long[] levels) => Interlocked.Increment(ref levels[context.Level]);
 
-        public void Finish()
-        {
-            _progressTracker.Finish();
-        }
+        public void Finish() => _progressTracker.Finish();
     }
 }

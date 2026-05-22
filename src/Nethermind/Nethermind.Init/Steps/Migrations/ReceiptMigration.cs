@@ -3,13 +3,11 @@
 
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.ObjectPool;
-using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
@@ -49,19 +47,6 @@ namespace Nethermind.Init.Steps.Migrations
         private readonly IDb _receiptsBlockDb;
         private readonly IReceiptsRecovery _recovery;
 
-        public ReceiptMigration(IApiWithNetwork api) : this(
-            api.ReceiptStorage!,
-            api.BlockTree!,
-            api.SyncModeSelector!,
-            api.ChainLevelInfoRepository!,
-            api.Config<IReceiptConfig>(),
-            api.DbProvider?.ReceiptsDb!,
-            new ReceiptsRecovery(api.EthereumEcdsa, api.SpecProvider),
-            api.LogManager
-        )
-        {
-        }
-
         public ReceiptMigration(
             IReceiptStorage receiptStorage,
             IBlockTree blockTree,
@@ -82,7 +67,7 @@ namespace Nethermind.Init.Steps.Migrations
             _receiptsBlockDb = _receiptsDb.GetColumnDb(ReceiptsColumns.Blocks);
             _txIndexDb = _receiptsDb.GetColumnDb(ReceiptsColumns.Transactions);
             _recovery = recovery;
-            _logger = logManager.GetClassLogger();
+            _logger = logManager.GetClassLogger<ReceiptMigration>();
             _progressLogger = new ProgressLogger("Receipts migration", logManager);
         }
 
@@ -222,10 +207,7 @@ namespace Nethermind.Init.Steps.Migrations
             return emptyBlock;
         }
 
-        static void ReturnMissingBlock(Block emptyBlock)
-        {
-            EmptyBlock.Return(emptyBlock);
-        }
+        static void ReturnMissingBlock(Block emptyBlock) => EmptyBlock.Return(emptyBlock);
 
         IEnumerable<(long, Hash256)> GetBlockBodiesForMigration(long from, long to, bool updateReceiptMigrationPointer, CancellationToken token)
         {
@@ -372,15 +354,9 @@ namespace Nethermind.Init.Steps.Migrations
 
         private class EmptyBlockObjectPolicy : IPooledObjectPolicy<Block>
         {
-            public Block Create()
-            {
-                return new Block(new BlockHeader(Keccak.Zero, Keccak.Zero, Address.Zero, UInt256.Zero, 0L, 0L, 0UL, []));
-            }
+            public Block Create() => new(new BlockHeader(Keccak.Zero, Keccak.Zero, Address.Zero, UInt256.Zero, 0L, 0L, 0UL, []));
 
-            public bool Return(Block obj)
-            {
-                return true;
-            }
+            public bool Return(Block obj) => true;
         }
     }
 }

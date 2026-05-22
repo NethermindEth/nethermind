@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
@@ -11,13 +10,14 @@ using NUnit.Framework;
 
 namespace Nethermind.Trie.Test;
 
+[Parallelizable(ParallelScope.All)]
 public class RawTrieStoreTests
 {
     [Test]
     public void SmokeTest()
     {
-        MemDb db = new MemDb();
-        PatriciaTree patriciaTree = new PatriciaTree(new RawTrieStore(db).GetTrieStore(null), LimboLogs.Instance);
+        MemDb db = new();
+        PatriciaTree patriciaTree = new(new RawTrieStore(db).GetTrieStore(null), LimboLogs.Instance);
 
         patriciaTree.Set(TestItem.KeccakA.Bytes, TestItem.KeccakA.BytesToArray());
         patriciaTree.Set(TestItem.KeccakB.Bytes, TestItem.KeccakB.BytesToArray());

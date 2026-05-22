@@ -45,7 +45,7 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
         ExecutionPayload payload = ExecutionPayload.Create(block);
 
         // Create multiple concurrent calls to simulate race condition
-        List<Task<ResultWrapper<PayloadStatusV1>>> tasks = new();
+        List<Task<ResultWrapper<PayloadStatusV1>>> tasks = [];
         const int concurrentCalls = 10;
 
         for (int i = 0; i < concurrentCalls; i++)
@@ -79,7 +79,7 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
         results.Should().OnlyContain(r => r != null);
 
         // The results should be consistent (all should have the same status)
-        var firstResult = results[0];
+        ResultWrapper<PayloadStatusV1> firstResult = results[0];
         results.Should().OnlyContain(r => r.Data.Status == firstResult.Data.Status);
     }
 
@@ -151,7 +151,7 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
 
         ExecutionPayload payload = ExecutionPayload.Create(block);
 
-        List<Task> concurrentTasks = new();
+        List<Task> concurrentTasks = [];
 
         // Launch multiple concurrent operations that might try to complete the same task
         for (int i = 0; i < 5; i++)

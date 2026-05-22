@@ -3,20 +3,16 @@
 
 #nullable enable
 using System;
+using System.Runtime.CompilerServices;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Nethermind.Core.Crypto;
 
 namespace Nethermind.Serialization.Json;
 
-public class ValueHash256Converter : JsonConverter<ValueHash256>
+public class ValueHash256Converter(bool strictHexFormat = false) : JsonConverter<ValueHash256>
 {
-    private readonly bool _strictHexFormat;
-
-    public ValueHash256Converter(bool strictHexFormat = false)
-    {
-        _strictHexFormat = strictHexFormat;
-    }
+    private readonly bool _strictHexFormat = strictHexFormat;
 
     public override ValueHash256 Read(
         ref Utf8JsonReader reader,
@@ -27,11 +23,9 @@ public class ValueHash256Converter : JsonConverter<ValueHash256>
         return bytes is null ? null : new ValueHash256(bytes);
     }
 
+    [SkipLocalsInit]
     public override void Write(
         Utf8JsonWriter writer,
         ValueHash256 keccak,
-        JsonSerializerOptions options)
-    {
-        ByteArrayConverter.Convert(writer, keccak.Bytes, skipLeadingZeros: false);
-    }
+        JsonSerializerOptions options) => Hash256Converter.WriteHashHex(writer, in keccak);
 }

@@ -9,17 +9,12 @@ using System.Linq;
 
 namespace Nethermind.Specs.ChainSpecStyle;
 
-public abstract class SpecProviderBase
+public abstract class SpecProviderBase(ILogger logger = default)
 {
     protected (ForkActivation Activation, IReleaseSpec Spec)[] _blockTransitions;
     private (ForkActivation Activation, IReleaseSpec Spec)[] _timestampTransitions;
     private ForkActivation? _firstTimestampActivation;
-    protected readonly ILogger _logger;
-
-    public SpecProviderBase(ILogger logger = default)
-    {
-        _logger = logger;
-    }
+    protected readonly ILogger _logger = logger;
 
     protected void LoadTransitions((ForkActivation Activation, IReleaseSpec Spec)[] transitions)
     {

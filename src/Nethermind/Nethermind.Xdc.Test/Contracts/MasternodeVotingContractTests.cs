@@ -48,7 +48,7 @@ internal class MasternodeVotingContractTests
         BlockHeader genesis;
         using (IDisposable _ = stateProvider.BeginScope(IWorldState.PreGenesis))
         {
-            stateProvider.CreateAccount(sender.Address, 1.Ether());
+            stateProvider.CreateAccount(sender.Address, 1.Ether);
             byte[] code = XdcContractData.XDCValidatorBin();
             stateProvider.CreateAccountIfNotExists(codeSource, 0);
             stateProvider.InsertCode(codeSource, ValueKeccak.Compute(code), code, Shanghai.Instance);
@@ -70,14 +70,11 @@ internal class MasternodeVotingContractTests
         VirtualMachine virtualMachine = new(new TestBlockhashProvider(specProvider), specProvider, LimboLogs.Instance);
         EthereumTransactionProcessor transactionProcessor = new(BlobBaseFeeCalculator.Instance, specProvider, stateProvider, virtualMachine, codeInfoRepository, LimboLogs.Instance);
 
-        AutoReadOnlyTxProcessingEnv autoReadOnlyTxProcessingEnv = new AutoReadOnlyTxProcessingEnv(transactionProcessor, stateProvider, Substitute.For<ILifetimeScope>());
+        AutoReadOnlyTxProcessingEnv autoReadOnlyTxProcessingEnv = new(transactionProcessor, stateProvider, Substitute.For<ILifetimeScope>());
 
         IReadOnlyTxProcessingEnvFactory readOnlyTxProcessingEnvFactory = Substitute.For<IReadOnlyTxProcessingEnvFactory>();
 
         readOnlyTxProcessingEnvFactory.Create().Returns(autoReadOnlyTxProcessingEnv);
-        //EthereumCodeInfoRepository codeInfoRepository = new(stateProvider);
-        //EthereumVirtualMachine virtualMachine = new(new TestBlockhashProvider(specProvider), specProvider, LimboLogs.Instance);
-        //EthereumTransactionProcessor transactionProcessor = new(BlobBaseFeeCalculator.Instance, specProvider, stateProvider, virtualMachine, codeInfoRepository, LimboLogs.Instance);
 
         MasternodeVotingContract masterVoting = new(new AbiEncoder(), codeSource, readOnlyTxProcessingEnvFactory);
 
@@ -87,12 +84,12 @@ internal class MasternodeVotingContractTests
         foreach (Address candidate in candidates)
         {
             UInt256 stake = masterVoting.GetCandidateStake(genesis, candidate);
-            stake.Should().Be(10_000_000.Ether());
+            stake.Should().Be(10_000_000.Ether);
         }
     }
 
     private static Dictionary<string, string> GenesisAllocation =
-        new Dictionary<string, string>
+        new()
         {
             ["0x0000000000000000000000000000000000000000000000000000000000000007"] = "0x0000000000000000000000000000000000000000000000000000000000000001",
             ["0x0000000000000000000000000000000000000000000000000000000000000008"] = "0x0000000000000000000000000000000000000000000000000000000000000003",

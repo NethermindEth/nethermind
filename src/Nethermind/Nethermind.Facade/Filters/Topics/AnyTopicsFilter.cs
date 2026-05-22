@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -10,6 +12,9 @@ namespace Nethermind.Blockchain.Filters.Topics
 {
     public class AnyTopicsFilter(params TopicExpression[] expressions) : TopicsFilter
     {
+        public override IEnumerable<TopicExpression> Expressions => expressions;
+        public override bool AcceptsAnyBlock => expressions.Length == 0 || expressions.Any(static e => e.AcceptsAnyBlock);
+
         public override bool Accepts(LogEntry entry) => Accepts(entry.Topics);
 
         private bool Accepts(Hash256[] topics)
@@ -36,10 +41,10 @@ namespace Nethermind.Blockchain.Filters.Topics
             }
 
             Span<byte> buffer = stackalloc byte[32];
-            var iterator = new KeccaksIterator(entry.TopicsRlp, buffer);
+            KeccaksIterator iterator = new(entry.TopicsRlp, buffer);
             for (int i = 0; i < expressions.Length; i++)
             {
-                if (iterator.TryGetNext(out var keccak))
+                if (iterator.TryGetNext(out Hash256StructRef keccak))
                 {
                     if (expressions[i].Accepts(ref keccak))
                     {

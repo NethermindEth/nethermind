@@ -23,7 +23,7 @@ public static class JavaScriptConverter
         IArrayBuffer arrayBuffer => arrayBuffer.GetBytes(),
         IArrayBufferView arrayBufferView => arrayBufferView.GetBytes(),
         IList list => list.ToEnumerable().Select(Convert.ToByte).ToArray(),
-        _ => throw new ArgumentException(nameof(input))
+        _ => throw new ArgumentException("Unsupported input type.", nameof(input))
     };
 
     public static byte[] ToWord(this object input) => input switch

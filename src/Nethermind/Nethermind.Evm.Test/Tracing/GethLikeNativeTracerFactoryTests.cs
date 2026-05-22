@@ -19,7 +19,7 @@ public class GethLikeNativeTracerFactoryTests
     [Test]
     public void CreateTracer_NativeTracerExists()
     {
-        var options = new GethTraceOptions { Tracer = Native4ByteTracer.FourByteTracer };
+        GethTraceOptions options = new() { Tracer = Native4ByteTracer.FourByteTracer };
 
         GethLikeNativeTxTracer? nativeTracer = GethLikeNativeTracerFactory.CreateTracer(options, _block, _tx, null!);
 
@@ -29,7 +29,7 @@ public class GethLikeNativeTracerFactoryTests
     [Test]
     public void CreateTracer_NativeTracerDoesNotExist()
     {
-        var options = new GethTraceOptions { Tracer = "nonExistentTracer" };
+        GethTraceOptions options = new() { Tracer = "nonExistentTracer" };
 
         Assert.Throws<ArgumentException>(() => GethLikeNativeTracerFactory.CreateTracer(options, _block, _tx, null!));
     }
@@ -37,7 +37,7 @@ public class GethLikeNativeTracerFactoryTests
     [Test]
     public void IsNativeTracer_TracerNameExists()
     {
-        var isNativeTracer = GethLikeNativeTracerFactory.IsNativeTracer(Native4ByteTracer.FourByteTracer);
+        bool isNativeTracer = GethLikeNativeTracerFactory.IsNativeTracer(Native4ByteTracer.FourByteTracer);
 
         Assert.That(isNativeTracer, Is.True);
     }
@@ -45,7 +45,7 @@ public class GethLikeNativeTracerFactoryTests
     [Test]
     public void IsNativeTracer_TracerNameDoesNotExist()
     {
-        var isNativeTracer = GethLikeNativeTracerFactory.IsNativeTracer("nonExistentTracer");
+        bool isNativeTracer = GethLikeNativeTracerFactory.IsNativeTracer("nonExistentTracer");
 
         Assert.That(isNativeTracer, Is.False);
     }
@@ -53,7 +53,7 @@ public class GethLikeNativeTracerFactoryTests
     [Test]
     public void CreateTracer_TracerNameIsEmpty()
     {
-        var isNativeTracer = GethLikeNativeTracerFactory.IsNativeTracer(string.Empty);
+        bool isNativeTracer = GethLikeNativeTracerFactory.IsNativeTracer(string.Empty);
 
         Assert.That(isNativeTracer, Is.False);
     }
@@ -61,7 +61,7 @@ public class GethLikeNativeTracerFactoryTests
     [Test]
     public void CreateTracer_TracerNameIsNull()
     {
-        var isNativeTracer = GethLikeNativeTracerFactory.IsNativeTracer(null);
+        bool isNativeTracer = GethLikeNativeTracerFactory.IsNativeTracer(null);
 
         Assert.That(isNativeTracer, Is.False);
     }

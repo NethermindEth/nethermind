@@ -2,8 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections;
-using System.Collections.Generic;
 using System.Linq;
 using FluentAssertions;
 using Nethermind.Core.Collections;
@@ -261,7 +259,7 @@ public class ArrayPoolListRefTests
     [Test]
     public void Dispose_ShouldNotHaveAnEffect_OnEmptyPool()
     {
-        var list = new ArrayPoolListRef<int>(0);
+        ArrayPoolListRef<int> list = new(0);
         list.Dispose();
         int _ = list.Count;
     }

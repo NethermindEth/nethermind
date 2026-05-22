@@ -65,7 +65,7 @@ public static class LegacyTransactionForRpcTests
         json.GetProperty("value").GetString().Should().MatchRegex("^0x([1-9a-f]+[0-9a-f]*|0)$");
         json.GetProperty("input").GetString().Should().MatchRegex("^0x[0-9a-f]*$");
         json.GetProperty("gasPrice").GetString().Should().MatchRegex("^0x([1-9a-f]+[0-9a-f]*|0)$");
-        bool hasChainId = json.TryGetProperty("chainId", out var chainId);
+        bool hasChainId = json.TryGetProperty("chainId", out JsonElement chainId);
         if (hasChainId)
         {
             chainId.GetString().Should().MatchRegex("^0x([1-9a-f]+[0-9a-f]*|0)$");

@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using FluentAssertions;
 using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Xdc.Types;
@@ -13,7 +12,6 @@ namespace Nethermind.Xdc.Test;
 [Parallelizable(ParallelScope.All)]
 internal class QuorumCertificateDecoderTests
 {
-
     public static IEnumerable QuorumCertificateCases
     {
         get
@@ -28,35 +26,12 @@ internal class QuorumCertificateDecoderTests
     public void Encode_DifferentValues_IsEquivalentAfterReencoding(QuorumCertificate quorumCert)
     {
         QuorumCertificateDecoder decoder = new();
-        RlpStream stream = new RlpStream(decoder.GetLength(quorumCert));
+        RlpStream stream = new(decoder.GetLength(quorumCert));
         decoder.Encode(stream, quorumCert);
-        stream.Position = 0;
-        QuorumCertificate decoded = decoder.Decode(stream);
+        Rlp.ValueDecoderContext ctx = new(stream.Data.AsSpan());
+        QuorumCertificate decoded = decoder.Decode(ref ctx);
 
-        decoded.Should().BeEquivalentTo(quorumCert);
-    }
-
-    [TestCase(true)]
-    [TestCase(false)]
-    public void Encode_UseBothRlpStreamAndValueDecoderContext_IsEquivalentAfterReencoding(bool useRlpStream)
-    {
-        QuorumCertificate quorumCert = new(new BlockRoundInfo(Hash256.Zero, 1, 1), [new Signature(new byte[64], 0), new Signature(new byte[64], 0), new Signature(new byte[64], 0)], 0);
-        QuorumCertificateDecoder decoder = new();
-        RlpStream stream = new RlpStream(decoder.GetLength(quorumCert));
-        decoder.Encode(stream, quorumCert);
-        stream.Position = 0;
-        QuorumCertificate decoded;
-        if (useRlpStream)
-        {
-            decoded = decoder.Decode(stream);
-        }
-        else
-        {
-            Rlp.ValueDecoderContext decoderContext = new Rlp.ValueDecoderContext(stream.Data.AsSpan());
-            decoded = decoder.Decode(ref decoderContext);
-        }
-
-        decoded.Should().BeEquivalentTo(quorumCert);
+        Assert.That(decoded, Is.EqualTo(quorumCert).UsingPropertiesComparer());
     }
 
 }

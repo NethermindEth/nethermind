@@ -12,12 +12,12 @@ public class AsyncProcessorTests
     [Test]
     public async Task SequentialProcessor_SequentialTasks()
     {
-        var processor = new SequentialProcessor();
-        var taskCount = 4;
-        var source = Enumerable.Range(1, taskCount).ToAsyncEnumerable();
+        SequentialProcessor processor = new();
+        int taskCount = 4;
+        IAsyncEnumerable<int> source = Enumerable.Range(1, taskCount).ToAsyncEnumerable();
 
-        var counter = 0;
-        var t = new Timer();
+        int counter = 0;
+        Timer t = new();
         using (t.Time())
         {
             await processor.Process(source, async (item) =>
@@ -35,12 +35,12 @@ public class AsyncProcessorTests
     [Test]
     public async Task ConcurrentProcessor_ConcurrentTasks()
     {
-        var processor = new ConcurrentProcessor(maxDegreeOfParallelism: 5);
-        var taskCount = 10;
-        var source = Enumerable.Range(1, taskCount).ToAsyncEnumerable();
+        ConcurrentProcessor processor = new(maxDegreeOfParallelism: 5);
+        int taskCount = 10;
+        IAsyncEnumerable<int> source = Enumerable.Range(1, taskCount).ToAsyncEnumerable();
 
-        var counter = 0;
-        var t = new Timer();
+        int counter = 0;
+        Timer t = new();
         using (t.Time())
         {
             await processor.Process(source, async (item) =>

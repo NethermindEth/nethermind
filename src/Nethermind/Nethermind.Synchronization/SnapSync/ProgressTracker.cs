@@ -8,7 +8,6 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using Autofac.Features.AttributeFilters;
-using MathNet.Numerics.Statistics.Mcmc;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
@@ -55,7 +54,7 @@ namespace Nethermind.Synchronization.SnapSync
 
         // Partitions are indexed by its limit keccak/address as they are keep in the request struct and remain the same
         // throughout the sync. So its easy.
-        private Dictionary<ValueHash256, AccountRangePartition> AccountRangePartitions { get; set; } = new();
+        private Dictionary<ValueHash256, AccountRangePartition> AccountRangePartitions { get; set; } = [];
 
         // Using a queue here to evenly distribute request across partitions. Don't want a situation where one really slow
         // partition is taking up most of the time at the end of the sync.
@@ -65,12 +64,12 @@ namespace Nethermind.Synchronization.SnapSync
         private ConcurrentQueue<ValueHash256> CodesToRetrieve { get; set; } = new();
         private ConcurrentQueue<AccountWithStorageStartingHash> AccountsToRefresh { get; set; } = new();
 
-        private readonly FastSync.StateSyncPivot _pivot;
+        private readonly FastSync.IStateSyncPivot _pivot;
         private readonly bool _enableStorageRangeSplit;
 
-        public ProgressTracker([KeyFilter(DbNames.State)] IDb db, ISyncConfig syncConfig, FastSync.StateSyncPivot pivot, ILogManager? logManager)
+        public ProgressTracker([KeyFilter(DbNames.State)] IDb db, ISyncConfig syncConfig, FastSync.IStateSyncPivot pivot, ILogManager? logManager)
         {
-            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+            _logger = logManager?.GetClassLogger<ProgressTracker>() ?? throw new ArgumentNullException(nameof(logManager));
             _db = db ?? throw new ArgumentNullException(nameof(db));
 
             _pivot = pivot;
@@ -93,11 +92,11 @@ namespace Nethermind.Synchronization.SnapSync
             uint curStartingPath = 0;
             uint partitionSize = (uint)(((ulong)uint.MaxValue + 1) / (ulong)_accountRangePartitionCount);
 
-            for (var i = 0; i < _accountRangePartitionCount; i++)
+            for (int i = 0; i < _accountRangePartitionCount; i++)
             {
-                AccountRangePartition partition = new AccountRangePartition();
+                AccountRangePartition partition = new();
 
-                Hash256 startingPath = new Hash256(Keccak.Zero.Bytes);
+                Hash256 startingPath = new(Keccak.Zero.Bytes);
                 BinaryPrimitives.WriteUInt32BigEndian(startingPath.Bytes, curStartingPath);
 
                 partition.NextAccountPath = startingPath;
@@ -105,7 +104,7 @@ namespace Nethermind.Synchronization.SnapSync
 
                 curStartingPath += partitionSize;
 
-                Hash256 limitPath;
+                ValueHash256 limitPath;
 
                 // Special case for the last partition
                 if (i == _accountRangePartitionCount - 1)
@@ -115,7 +114,8 @@ namespace Nethermind.Synchronization.SnapSync
                 else
                 {
                     limitPath = new Hash256(Keccak.Zero.Bytes);
-                    BinaryPrimitives.WriteUInt32BigEndian(limitPath.Bytes, curStartingPath);
+                    BinaryPrimitives.WriteUInt32BigEndian(limitPath.BytesAsSpan, curStartingPath);
+                    limitPath = limitPath.DecrementPath(); // Limit is inclusive
                 }
 
                 partition.AccountPathLimit = limitPath;
@@ -140,10 +140,7 @@ namespace Nethermind.Synchronization.SnapSync
             return true;
         }
 
-        public void UpdatePivot()
-        {
-            _pivot.UpdateHeaderForcefully();
-        }
+        public void UpdatePivot() => _pivot.UpdateHeaderForcefully();
 
         public bool IsFinished(out SnapSyncBatch? nextBatch)
         {
@@ -289,17 +286,14 @@ namespace Nethermind.Synchronization.SnapSync
             return new SnapSyncBatch { AccountsToRefreshRequest = new AccountsToRefreshRequest { RootHash = rootHash, Paths = paths } };
         }
 
-        private bool ShouldRequestAccountRequests()
-        {
-            return _activeAccountRequests < _accountRangePartitionCount
+        private bool ShouldRequestAccountRequests() => _activeAccountRequests < _accountRangePartitionCount
                    && NextSlotRange.Count < 10
                    && StoragesToRetrieve.Count < HIGH_STORAGE_QUEUE_SIZE
                    && CodesToRetrieve.Count < HIGH_CODES_QUEUE_SIZE;
-        }
 
         public void EnqueueCodeHashes(ReadOnlySpan<ValueHash256> codeHashes)
         {
-            foreach (var hash in codeHashes)
+            foreach (ValueHash256 hash in codeHashes)
             {
                 CodesToRetrieve.Enqueue(hash);
             }
@@ -316,7 +310,7 @@ namespace Nethermind.Synchronization.SnapSync
         {
             if (accountsToRefreshRequest is not null)
             {
-                foreach (AccountWithStorageStartingHash path in accountsToRefreshRequest.Paths)
+                foreach (AccountWithStorageStartingHash path in accountsToRefreshRequest.Paths.AsSpan())
                 {
                     AccountsToRefresh.Enqueue(path);
                 }
@@ -325,14 +319,11 @@ namespace Nethermind.Synchronization.SnapSync
             Interlocked.Decrement(ref _activeAccRefreshRequests);
         }
 
-        public void EnqueueAccountStorage(PathWithAccount pwa)
-        {
-            StoragesToRetrieve.Enqueue(pwa);
-        }
+        public void EnqueueAccountStorage(PathWithAccount pwa) => StoragesToRetrieve.Enqueue(pwa);
 
         public void EnqueueAccountRefresh(PathWithAccount pathWithAccount, in ValueHash256? startingHash, in ValueHash256? hashLimit)
         {
-            _pivot.UpdatedStorages.Add(pathWithAccount.Path.ToCommitment());
+            TrackAccountToHeal(pathWithAccount.Path);
             AccountsToRefresh.Enqueue(new AccountWithStorageStartingHash() { PathAndAccount = pathWithAccount, StorageStartingHash = startingHash.GetValueOrDefault(), StorageHashLimit = hashLimit ?? Keccak.MaxValue });
         }
 
@@ -349,6 +340,16 @@ namespace Nethermind.Synchronization.SnapSync
             Interlocked.Add(ref _activeStorageRequests, -originalStorageCount);
         }
 
+        public void ReportFullStorageRequestFinished(int originalStorageCount, ReadOnlySpan<PathWithAccount> storages)
+        {
+            foreach (PathWithAccount pathWithAccount in storages)
+            {
+                EnqueueAccountStorage(pathWithAccount);
+            }
+
+            Interlocked.Add(ref _activeStorageRequests, -originalStorageCount);
+        }
+
         public void EnqueueNextSlot(StorageRange? storageRange)
         {
             if (storageRange is not null)
@@ -357,35 +358,42 @@ namespace Nethermind.Synchronization.SnapSync
             }
         }
 
-        public void EnqueueNextSlot(StorageRange parentRequest, int accountIndex, ValueHash256 lastProcessedHash)
+        public void EnqueueNextSlot(StorageRange parentRequest, int accountIndex, ValueHash256 lastProcessedHash, int slotCount)
         {
             ValueHash256 limitHash = parentRequest.LimitHash ?? Keccak.MaxValue;
             if (lastProcessedHash > limitHash)
                 return;
 
             ValueHash256? startingHash = parentRequest.StartingHash;
-            PathWithAccount account = parentRequest.Accounts[accountIndex];
-            UInt256 limit = new UInt256(limitHash.Bytes, true);
-            UInt256 lastProcessed = new UInt256(lastProcessedHash.Bytes, true);
+            PathWithAccount account = parentRequest.Accounts.AsSpan()[accountIndex];
+            UInt256 limit = new(limitHash.Bytes, true);
+            UInt256 lastProcessed = new(lastProcessedHash.Bytes, true);
             UInt256 start = startingHash.HasValue ? new UInt256(startingHash.Value.Bytes, true) : UInt256.Zero;
+
+            // Splitting storage will cause the storage proof to not get stitched completely, causing more healing time and
+            // causes it to be tracked for healing, also, one more slot range to keep in memory.
+            // So we only split if the estimated remaining slot count is large enough. This is recursive, so large
+            // contract will continue getting split until the remaining slot count is low enough.
+            double slotSize = lastProcessed == start ? 0 : (double)(lastProcessed - start) / slotCount;
+            int estimatedRemainingSlotCount = slotSize == 0 ? 0 : (int)((double)(limit - lastProcessed) / slotSize);
 
             UInt256 fullRange = limit - start;
 
-            if (_enableStorageRangeSplit && lastProcessed < fullRange / StorageRangeSplitFactor + start)
+            if (estimatedRemainingSlotCount > 10_000_000 && _enableStorageRangeSplit && lastProcessed < fullRange / StorageRangeSplitFactor + start)
             {
                 ValueHash256 halfOfLeftHash = ((limit - lastProcessed) / 2 + lastProcessed).ToValueHash();
 
                 NextSlotRange.Enqueue(new StorageRange
                 {
                     Accounts = new ArrayPoolList<PathWithAccount>(1) { account },
-                    StartingHash = lastProcessedHash,
+                    StartingHash = lastProcessedHash.IncrementPath(),
                     LimitHash = halfOfLeftHash
                 });
 
                 NextSlotRange.Enqueue(new StorageRange
                 {
                     Accounts = new ArrayPoolList<PathWithAccount>(1) { account },
-                    StartingHash = halfOfLeftHash,
+                    StartingHash = halfOfLeftHash.IncrementPath(),
                     LimitHash = limitHash
                 });
 
@@ -395,10 +403,10 @@ namespace Nethermind.Synchronization.SnapSync
             else
             {
                 //default - no split
-                var storageRange = new StorageRange
+                StorageRange storageRange = new()
                 {
                     Accounts = new ArrayPoolList<PathWithAccount>(1) { account },
-                    StartingHash = lastProcessedHash,
+                    StartingHash = lastProcessedHash.IncrementPath(),
                     LimitHash = limitHash
                 };
                 NextSlotRange.Enqueue(storageRange);
@@ -414,7 +422,7 @@ namespace Nethermind.Synchronization.SnapSync
             }
             else
             {
-                foreach (PathWithAccount account in storageRange.Accounts)
+                foreach (PathWithAccount account in storageRange.Accounts.AsSpan())
                 {
                     EnqueueAccountStorage(account);
                 }
@@ -445,9 +453,7 @@ namespace Nethermind.Synchronization.SnapSync
             partition.MoreAccountsToRight = moreChildrenToRight && nextPath < hashLimit;
         }
 
-        public bool IsSnapGetRangesFinished()
-        {
-            return AccountRangeReadyForRequest.IsEmpty
+        public bool IsSnapGetRangesFinished() => AccountRangeReadyForRequest.IsEmpty
                    && StoragesToRetrieve.IsEmpty
                    && NextSlotRange.IsEmpty
                    && CodesToRetrieve.IsEmpty
@@ -456,7 +462,6 @@ namespace Nethermind.Synchronization.SnapSync
                    && _activeStorageRequests == 0
                    && _activeCodeRequests == 0
                    && _activeAccRefreshRequests == 0;
-        }
 
         private void GetSyncProgress()
         {
@@ -487,6 +492,12 @@ namespace Nethermind.Synchronization.SnapSync
         {
             _db.PutSpan(ACC_PROGRESS_KEY, ValueKeccak.MaxValue.Bytes, WriteFlags.DisableWAL);
             _db.Flush();
+        }
+
+        public void TrackAccountToHeal(ValueHash256 path)
+        {
+            if (_logger.IsDebug) _logger.Debug($"Tracked {path} for healing");
+            _pivot.UpdatedStorages.Add(path.ToCommitment());
         }
 
         private void LogRequest(string reqType)
@@ -536,7 +547,7 @@ namespace Nethermind.Synchronization.SnapSync
                             double totalAllLargeStorageProgress = 0;
                             // totalLargeStorage changes over time, but thats fine.
                             long totalLargeStorage = queuedStorage;
-                            foreach (var keyValuePair in _largeStorageProgress)
+                            foreach (KeyValuePair<ValueHash256, LargeProgressStatus> keyValuePair in _largeStorageProgress)
                             {
                                 totalAllLargeStorageProgress += keyValuePair.Value.CalculateProgress();
                                 totalLargeStorage++;
@@ -579,7 +590,7 @@ namespace Nethermind.Synchronization.SnapSync
 
             if (item.Accounts.Count == 1)
             {
-                _largeStorageProgress.AddOrUpdate(item.Accounts[0].Path,
+                _largeStorageProgress.AddOrUpdate(item.Accounts.AsSpan()[0].Path,
                     (key, progress) => new LargeProgressStatus().UpdateProgress(progress),
                     (key, progress, range) => progress.UpdateProgress(range),
                     item
@@ -620,7 +631,7 @@ namespace Nethermind.Synchronization.SnapSync
         private class LargeProgressStatus()
         {
             private int _totalPartition = 0;
-            private ConcurrentDictionary<ValueHash256, double> _partitionRemaining = new ConcurrentDictionary<ValueHash256, double>();
+            private ConcurrentDictionary<ValueHash256, double> _partitionRemaining = new();
 
             internal LargeProgressStatus UpdateProgress(StorageRange item)
             {
@@ -649,7 +660,7 @@ namespace Nethermind.Synchronization.SnapSync
             internal double CalculateProgress()
             {
                 double total = 0;
-                foreach (var keyValuePair in _partitionRemaining)
+                foreach (KeyValuePair<ValueHash256, double> keyValuePair in _partitionRemaining)
                 {
                     total += keyValuePair.Value;
                 }
@@ -657,11 +668,9 @@ namespace Nethermind.Synchronization.SnapSync
                 return 1.0 - total;
             }
 
-            internal bool OnCompletedPartition()
-            {
+            internal bool OnCompletedPartition() =>
                 // Determine if this tracker could be removed
-                return Interlocked.Decrement(ref _totalPartition) == 0;
-            }
+                Interlocked.Decrement(ref _totalPartition) == 0;
         }
     }
 }

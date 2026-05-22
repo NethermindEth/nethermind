@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Buffers;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
@@ -13,16 +12,10 @@ public class LongRawJsonConverter : JsonConverter<long>
     public override long Read(
         ref Utf8JsonReader reader,
         Type typeToConvert,
-        JsonSerializerOptions options)
-    {
-        return LongConverter.ReadCore(ref reader);
-    }
+        JsonSerializerOptions options) => LongConverter.ReadCore(ref reader);
 
     public override void Write(
         Utf8JsonWriter writer,
         long value,
-        JsonSerializerOptions options)
-    {
-        writer.WriteNumberValue(value);
-    }
+        JsonSerializerOptions options) => writer.WriteNumberValue(value);
 }

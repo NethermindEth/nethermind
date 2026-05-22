@@ -1,15 +1,16 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Linq;
 using DotNetty.Buffers;
 using FluentAssertions;
-using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages;
 using Nethermind.Serialization.Rlp;
+using Nethermind.Stats.SyncLimits;
 using NUnit.Framework;
 
 namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63;
@@ -17,11 +18,13 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63;
 [Parallelizable(ParallelScope.All)]
 public class ReceiptsMessageSerializerTests
 {
+    private const int DecoderLogsLimit = 270_000;
+
     private static void Test(TxReceipt[][]? txReceipts)
     {
         using ReceiptsMessage message = new(txReceipts?.ToPooledList());
         ReceiptsMessageSerializer serializer = new(MainnetSpecProvider.Instance);
-        var serialized = serializer.Serialize(message);
+        byte[] serialized = serializer.Serialize(message);
         using ReceiptsMessage deserialized = serializer.Deserialize(serialized);
 
         if (txReceipts is null)
@@ -33,35 +36,28 @@ public class ReceiptsMessageSerializerTests
             Assert.That(deserialized.TxReceipts.Count, Is.EqualTo(txReceipts.Length), "length");
             for (int i = 0; i < txReceipts.Length; i++)
             {
-                if (txReceipts[i] is null)
+                if (txReceipts[i] is null || txReceipts[i].Length == 0)
                 {
-                    Assert.That(deserialized.TxReceipts[i], Is.Null, $"receipts[{i}]");
+                    Assert.That(deserialized.TxReceipts[i], Is.Empty, $"receipts[{i}]");
                 }
                 else
                 {
                     for (int j = 0; j < txReceipts[i].Length; j++)
                     {
-                        if (txReceipts[i][j] is null)
-                        {
-                            Assert.That(deserialized.TxReceipts[i][j], Is.Null, $"receipts[{i}][{j}]");
-                        }
-                        else
-                        {
-                            Assert.That(deserialized.TxReceipts[i][j].TxType, Is.EqualTo(txReceipts[i][j].TxType), $"receipts[{i}][{j}].TxType");
-                            Assert.That(deserialized.TxReceipts[i][j].Bloom, Is.EqualTo(txReceipts[i][j].Bloom), $"receipts[{i}][{j}].Bloom");
-                            Assert.That(deserialized.TxReceipts[i][j].Error, Is.Null, $"receipts[{i}][{j}].Error");
-                            Assert.That(deserialized.TxReceipts[i][j].Index, Is.EqualTo(0), $"receipts[{i}][{j}].Index");
-                            Assert.That(deserialized.TxReceipts[i][j].Logs.Length, Is.EqualTo(txReceipts[i][j].Logs.Length), $"receipts[{i}][{j}].Logs.Length");
-                            Assert.That(deserialized.TxReceipts[i][j].Recipient, Is.Null, $"receipts[{i}][{j}].Recipient");
-                            Assert.That(deserialized.TxReceipts[i][j].Sender, Is.Null, $"receipts[{i}][{j}].Sender");
-                            Assert.That(deserialized.TxReceipts[i][j].BlockHash, Is.Null, $"receipts[{i}][{j}].BlockHash");
-                            Assert.That(deserialized.TxReceipts[i][j].BlockNumber, Is.EqualTo(0L), $"receipts[{i}][{j}].BlockNumber");
-                            Assert.That(deserialized.TxReceipts[i][j].ContractAddress, Is.Null, $"receipts[{i}][{j}].ContractAddress");
-                            Assert.That(deserialized.TxReceipts[i][j].GasUsed, Is.EqualTo(0L), $"receipts[{i}][{j}].GasUsed");
-                            Assert.That(deserialized.TxReceipts[i][j].GasUsedTotal, Is.EqualTo(txReceipts[i][j].GasUsedTotal), $"receipts[{i}][{j}].GasUsedTotal");
-                            Assert.That(deserialized.TxReceipts[i][j].StatusCode, Is.EqualTo(txReceipts[i][j].BlockNumber < MainnetSpecProvider.ByzantiumBlockNumber ? 0 : txReceipts[i][j].StatusCode), $"receipts[{i}][{j}].StatusCode");
-                            Assert.That(deserialized.TxReceipts[i][j].PostTransactionState, Is.EqualTo(txReceipts[i][j].BlockNumber < MainnetSpecProvider.ByzantiumBlockNumber ? txReceipts[i][j].PostTransactionState : null), $"receipts[{i}][{j}].PostTransactionState");
-                        }
+                        Assert.That(deserialized.TxReceipts[i][j].TxType, Is.EqualTo(txReceipts[i][j].TxType), $"receipts[{i}][{j}].TxType");
+                        Assert.That(deserialized.TxReceipts[i][j].Bloom, Is.EqualTo(txReceipts[i][j].Bloom), $"receipts[{i}][{j}].Bloom");
+                        Assert.That(deserialized.TxReceipts[i][j].Error, Is.Null, $"receipts[{i}][{j}].Error");
+                        Assert.That(deserialized.TxReceipts[i][j].Index, Is.EqualTo(0), $"receipts[{i}][{j}].Index");
+                        Assert.That(deserialized.TxReceipts[i][j].Logs.Length, Is.EqualTo(txReceipts[i][j].Logs.Length), $"receipts[{i}][{j}].Logs.Length");
+                        Assert.That(deserialized.TxReceipts[i][j].Recipient, Is.Null, $"receipts[{i}][{j}].Recipient");
+                        Assert.That(deserialized.TxReceipts[i][j].Sender, Is.Null, $"receipts[{i}][{j}].Sender");
+                        Assert.That(deserialized.TxReceipts[i][j].BlockHash, Is.Null, $"receipts[{i}][{j}].BlockHash");
+                        Assert.That(deserialized.TxReceipts[i][j].BlockNumber, Is.EqualTo(0L), $"receipts[{i}][{j}].BlockNumber");
+                        Assert.That(deserialized.TxReceipts[i][j].ContractAddress, Is.Null, $"receipts[{i}][{j}].ContractAddress");
+                        Assert.That(deserialized.TxReceipts[i][j].GasUsed, Is.EqualTo(0L), $"receipts[{i}][{j}].GasUsed");
+                        Assert.That(deserialized.TxReceipts[i][j].GasUsedTotal, Is.EqualTo(txReceipts[i][j].GasUsedTotal), $"receipts[{i}][{j}].GasUsedTotal");
+                        Assert.That(deserialized.TxReceipts[i][j].StatusCode, Is.EqualTo(txReceipts[i][j].BlockNumber < MainnetSpecProvider.ByzantiumBlockNumber ? 0 : txReceipts[i][j].StatusCode), $"receipts[{i}][{j}].StatusCode");
+                        Assert.That(deserialized.TxReceipts[i][j].PostTransactionState, Is.EqualTo(txReceipts[i][j].BlockNumber < MainnetSpecProvider.ByzantiumBlockNumber ? txReceipts[i][j].PostTransactionState : null), $"receipts[{i}][{j}].PostTransactionState");
                     }
                 }
             }
@@ -80,12 +76,13 @@ public class ReceiptsMessageSerializerTests
     {
         TxReceipt receipt = Build.A.Receipt.WithAllFieldsFilled.TestObject;
 
-        var decoder = new ReceiptMessageDecoder(skipStateAndStatus: true);
+        ReceiptMessageDecoder decoder = new(skipStateAndStatus: true);
         byte[] encoded = decoder.EncodeNew(receipt);
 
-        var decoded = decoder.Decode(new RlpStream(encoded));
+        Rlp.ValueDecoderContext context = encoded.AsRlpValueContext();
+        TxReceipt decoded = decoder.Decode(ref context);
 
-        var expectedDecoded = new TxReceipt
+        TxReceipt expectedDecoded = new()
         {
             TxType = receipt.TxType,
             GasUsedTotal = receipt.GasUsedTotal,
@@ -104,16 +101,33 @@ public class ReceiptsMessageSerializerTests
     }
 
     [Test]
-    public void Roundtrip_with_null_top_level()
+    public void Roundtrip_with_empty_block()
     {
-        Test(null);
+        TxReceipt[][] data = [[], [Build.A.Receipt.WithAllFieldsFilled.TestObject]];
+        Test(data);
     }
 
     [Test]
-    public void Roundtrip_with_nulls()
+    public void Roundtrip_with_null_top_level() => Test(null);
+
+    [Test]
+    public void Roundtrip_with_null_block()
     {
-        TxReceipt[][] data = [[Build.A.Receipt.WithAllFieldsFilled.TestObject, Build.A.Receipt.WithAllFieldsFilled.TestObject], null, new[] { null, Build.A.Receipt.WithAllFieldsFilled.TestObject }];
+        TxReceipt[][] data = [[Build.A.Receipt.WithAllFieldsFilled.TestObject, Build.A.Receipt.WithAllFieldsFilled.TestObject], null];
         Test(data);
+    }
+
+    [Test]
+    public void Deserialize_Throws_On_Null_Receipt()
+    {
+        TxReceipt[][] data = [new[] { null, Build.A.Receipt.WithAllFieldsFilled.TestObject }];
+        using ReceiptsMessage message = new(data.ToPooledList());
+        ReceiptsMessageSerializer serializer = new(MainnetSpecProvider.Instance);
+
+        byte[] serialized = serializer.Serialize(message);
+
+        RlpException? exception = Assert.Throws<RlpException>(() => serializer.Deserialize(serialized));
+        Assert.That(exception?.Message, Is.EqualTo("Unexpected null receipt payload"));
     }
 
     [Test]
@@ -131,8 +145,8 @@ public class ReceiptsMessageSerializerTests
         using ReceiptsMessage message = new(data.ToPooledList());
         ReceiptsMessageSerializer serializer = new(MainnetSpecProvider.Instance);
 
-        IByteBuffer buffer = Unpooled.Buffer(serializer.GetLength(message, out int _) + 1);
-        buffer.WriteByte(Rlp.OfEmptySequence[0]);
+        using DisposableByteBuffer buffer = Unpooled.Buffer(serializer.GetLength(message, out int _) + 1).AsDisposable();
+        buffer.WriteByte(Rlp.OfEmptyList[0]);
         buffer.ReadByte();
 
         serializer.Serialize(buffer, message);
@@ -163,5 +177,47 @@ public class ReceiptsMessageSerializerTests
     {
         TxReceipt[][] data = [[Build.A.Receipt.WithAllFieldsFilled.TestObject, Build.A.Receipt.WithAllFieldsFilled.WithBlockNumber(0).WithTxType(TxType.AccessList).TestObject], [Build.A.Receipt.WithAllFieldsFilled.WithTxType(TxType.AccessList).TestObject, Build.A.Receipt.WithAllFieldsFilled.TestObject]];
         Test(data);
+    }
+
+    [Test]
+    public void Deserialize_Throws_On_TooMany_Receipts_In_A_Block()
+    {
+        TxReceipt[][] txReceipts = [new TxReceipt[NethermindSyncLimits.MaxHashesFetch + 1]];
+        using ReceiptsMessage message = new(txReceipts.ToPooledList());
+        ReceiptsMessageSerializer serializer = new(MainnetSpecProvider.Instance);
+
+        byte[] serialized = serializer.Serialize(message);
+
+        Assert.Throws<RlpLimitException>(() => serializer.Deserialize(serialized));
+    }
+
+    [Test]
+    public void Deserialize_Allows_Receipt_Log_Count_At_Current_Limit()
+    {
+        TxReceipt receipt = Build.A.Receipt.WithAllFieldsFilled.TestObject;
+        receipt.Logs = Enumerable.Repeat(Build.A.LogEntry.TestObject, DecoderLogsLimit).ToArray();
+
+        TxReceipt[][] txReceipts = [new[] { receipt }];
+        using ReceiptsMessage message = new(txReceipts.ToPooledList());
+        ReceiptsMessageSerializer serializer = new(MainnetSpecProvider.Instance);
+
+        byte[] serialized = serializer.Serialize(message);
+        using ReceiptsMessage deserialized = serializer.Deserialize(serialized);
+        Assert.That(deserialized.TxReceipts[0][0].Logs.Length, Is.EqualTo(DecoderLogsLimit));
+    }
+
+    [Test]
+    public void Deserialize_Throws_On_Receipt_Log_Count_Above_Current_Limit()
+    {
+        TxReceipt receipt = Build.A.Receipt.WithAllFieldsFilled.TestObject;
+        receipt.Logs = Enumerable.Repeat(Build.A.LogEntry.TestObject, DecoderLogsLimit + 1).ToArray();
+
+        TxReceipt[][] txReceipts = [new[] { receipt }];
+        using ReceiptsMessage message = new(txReceipts.ToPooledList());
+        ReceiptsMessageSerializer serializer = new(MainnetSpecProvider.Instance);
+
+        byte[] serialized = serializer.Serialize(message);
+
+        Assert.Throws<RlpLimitException>(() => serializer.Deserialize(serialized));
     }
 }

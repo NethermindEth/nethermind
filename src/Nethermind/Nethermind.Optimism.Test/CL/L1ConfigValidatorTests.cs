@@ -37,21 +37,21 @@ public class L1ConfigValidatorTests
 
     [TestCaseSource(nameof(ConfigurationTestCases))]
     public async Task Validate_ConfigurationMatchesExpected(
-        int expectedChainId,
+        ulong expectedChainId,
         ulong genesisNumber,
         Hash256 expectedGenesisHash,
-        int actualChainId,
+        ulong actualChainId,
         Hash256 actualGenesisHash,
         bool isValid)
     {
-        var ethApi = Substitute.For<IEthApi>();
-        var logManager = NullLogManager.Instance;
-        var validator = new L1ConfigValidator(ethApi, logManager);
+        IEthApi ethApi = Substitute.For<IEthApi>();
+        ILogManager logManager = NullLogManager.Instance;
+        L1ConfigValidator validator = new(ethApi, logManager);
 
-        ethApi.GetChainId().Returns(Task.FromResult((ulong)actualChainId));
+        ethApi.GetChainId().Returns(Task.FromResult(actualChainId));
         ethApi.GetBlockByNumber(genesisNumber, true).Returns(Task.FromResult<L1Block?>(new L1Block { Hash = actualGenesisHash }));
 
-        bool result = await validator.Validate((ulong)expectedChainId, genesisNumber, expectedGenesisHash);
+        bool result = await validator.Validate(expectedChainId, genesisNumber, expectedGenesisHash);
         result.Should().Be(isValid);
     }
 }

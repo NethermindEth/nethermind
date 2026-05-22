@@ -11,32 +11,21 @@ using Nethermind.Logging;
 
 namespace Nethermind.JsonRpc.TraceStore;
 
-public class TraceStoreModuleFactory : ModuleFactoryBase<ITraceRpcModule>
+public class TraceStoreModuleFactory(IRpcModuleFactory<ITraceRpcModule> innerFactory,
+    IDb traceStore,
+    IBlockFinder blockFinder,
+    IReceiptFinder receiptFinder,
+    ITraceSerializer<ParityLikeTxTrace> traceSerializer,
+    ILogManager logManager,
+    int parallelization = 0) : ModuleFactoryBase<ITraceRpcModule>
 {
-    private readonly IRpcModuleFactory<ITraceRpcModule> _innerFactory;
-    private readonly IDb _traceStore;
-    private readonly IBlockFinder _blockFinder;
-    private readonly IReceiptFinder _receiptFinder;
-    private readonly ITraceSerializer<ParityLikeTxTrace> _traceSerializer;
-    private readonly ILogManager _logManager;
-    private readonly int _parallelization;
-
-    public TraceStoreModuleFactory(IRpcModuleFactory<ITraceRpcModule> innerFactory,
-        IDb traceStore,
-        IBlockFinder blockFinder,
-        IReceiptFinder receiptFinder,
-        ITraceSerializer<ParityLikeTxTrace> traceSerializer,
-        ILogManager logManager,
-        int parallelization = 0)
-    {
-        _innerFactory = innerFactory;
-        _traceStore = traceStore;
-        _blockFinder = blockFinder;
-        _receiptFinder = receiptFinder;
-        _traceSerializer = traceSerializer;
-        _logManager = logManager;
-        _parallelization = parallelization;
-    }
+    private readonly IRpcModuleFactory<ITraceRpcModule> _innerFactory = innerFactory;
+    private readonly IDb _traceStore = traceStore;
+    private readonly IBlockFinder _blockFinder = blockFinder;
+    private readonly IReceiptFinder _receiptFinder = receiptFinder;
+    private readonly ITraceSerializer<ParityLikeTxTrace> _traceSerializer = traceSerializer;
+    private readonly ILogManager _logManager = logManager;
+    private readonly int _parallelization = parallelization;
 
     public override ITraceRpcModule Create() => new TraceStoreRpcModule(_innerFactory.Create(), _traceStore, _blockFinder, _receiptFinder, _traceSerializer, _logManager, _parallelization);
 }

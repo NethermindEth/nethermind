@@ -15,25 +15,20 @@ namespace Nethermind.Config
 {
     public static class ConfigSourceHelper
     {
-        public static object ParseValue(Type valueType, string valueString, string category, string name)
+        public static object? ParseValue(Type valueType, string valueString, string? category, string name)
         {
-            if (Nullable.GetUnderlyingType(valueType) is { } nullableType)
-            {
-                return IsNullString(valueString) ? null : ParseValue(nullableType, valueString, category, name);
-            }
-
-            if (!valueType.IsValueType && IsNullString(valueString))
-            {
-                return null;
-            }
-
             try
             {
-                object value;
+                object? value;
                 if (valueType.IsArray || (valueType.IsGenericType && valueType.GetGenericTypeDefinition() == typeof(IEnumerable<>)))
                 {
+                    if (IsNullString(valueString))
+                    {
+                        return null;
+                    }
+
                     //supports Arrays, e.g int[] and generic IEnumerable<T>, IList<T>
-                    var itemType = valueType.IsGenericType ? valueType.GetGenericArguments()[0] : valueType.GetElementType();
+                    Type itemType = (valueType.IsGenericType ? valueType.GetGenericArguments()[0] : valueType.GetElementType())!;
 
                     if (itemType == typeof(byte) && !valueString.AsSpan().TrimStart().StartsWith('['))
                     {
@@ -43,18 +38,18 @@ namespace Nethermind.Config
                     //In case of collection of objects (more complex config models) we parse entire collection
                     else if (itemType.IsClass && typeof(IConfigModel).IsAssignableFrom(itemType))
                     {
-                        var objCollection = JsonSerializer.Deserialize(valueString, valueType);
+                        object? objCollection = JsonSerializer.Deserialize(valueString, valueType);
                         value = objCollection;
                     }
                     else
                     {
                         valueString = valueString.Trim().RemoveStart('[').RemoveEnd(']');
-                        var valueItems = valueString.Split(',').Select(static s => s.Trim()).ToArray();
+                        string[] valueItems = valueString.Split(',').Select(static s => s.Trim()).ToArray();
                         IList collection = (valueType.IsGenericType
-                            ? (IList)Activator.CreateInstance(typeof(List<>).MakeGenericType(itemType))
-                            : (IList)Activator.CreateInstance(valueType, valueItems.Length))!;
+                            ? (IList)Activator.CreateInstance(typeof(List<>).MakeGenericType(itemType))!
+                            : (IList)Activator.CreateInstance(valueType, valueItems.Length)!)!;
 
-                        var i = 0;
+                        int i = 0;
                         foreach (string valueItem in valueItems)
                         {
                             string item = valueItem;
@@ -63,7 +58,7 @@ namespace Nethermind.Config
                                 item = valueItem[1..^1];
                             }
 
-                            var itemValue = GetValue(itemType, item);
+                            object? itemValue = GetValue(itemType, item);
                             if (valueType.IsGenericType)
                             {
                                 collection.Add(itemValue);
@@ -101,9 +96,9 @@ namespace Nethermind.Config
         private static bool IsNullString(string valueString) =>
             valueString?.Equals("null", StringComparison.OrdinalIgnoreCase) ?? true;
 
-        public static object GetDefault(Type type) => type.IsValueType ? (false, Activator.CreateInstance(type)) : (false, null);
+        public static object? GetDefault(Type type) => type.IsValueType ? Activator.CreateInstance(type) : null;
 
-        private static bool TryFromHex(Type type, string itemValue, out object value)
+        private static bool TryFromHex(Type type, string itemValue, out object? value)
         {
             if (!itemValue.StartsWith("0x", StringComparison.Ordinal))
             {
@@ -125,7 +120,7 @@ namespace Nethermind.Config
             return false;
         }
 
-        private static object GetValue(Type valueType, string itemValue)
+        private static object? GetValue(Type valueType, string itemValue)
         {
             if (Nullable.GetUnderlyingType(valueType) is { } nullableType)
             {
@@ -144,7 +139,7 @@ namespace Nethermind.Config
 
             if (valueType == typeof(Address))
             {
-                return Address.TryParse(itemValue, out Address address)
+                return Address.TryParse(itemValue, out Address? address)
                     ? address
                     : throw new FormatException($"Could not parse {itemValue} to {typeof(Address)}");
             }
@@ -161,12 +156,12 @@ namespace Nethermind.Config
 
             if (valueType.IsEnum)
             {
-                return Enum.TryParse(valueType, itemValue, true, out object enumValue)
+                return Enum.TryParse(valueType, itemValue, true, out object? enumValue)
                     ? enumValue
                     : throw new FormatException($"Cannot parse enum value: {itemValue}, type: {valueType.Name}");
             }
 
-            return TryFromHex(valueType, itemValue, out object value) ? value : Convert.ChangeType(itemValue, valueType);
+            return TryFromHex(valueType, itemValue, out object? value) ? value : Convert.ChangeType(itemValue, valueType);
         }
     }
 }

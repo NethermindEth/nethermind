@@ -17,7 +17,6 @@ using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 using Nethermind.Evm.State;
-using Nethermind.State;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -31,6 +30,9 @@ namespace Nethermind.AuRa.Test.Contract
         private ITransactionProcessor _transactionProcessor;
         private IReadOnlyTxProcessorSource _readOnlyTxProcessorSource;
         private IWorldState _stateProvider;
+
+        [TearDown]
+        public void TearDown() => _readOnlyTxProcessorSource?.Dispose();
 
         [SetUp]
         public void SetUp()

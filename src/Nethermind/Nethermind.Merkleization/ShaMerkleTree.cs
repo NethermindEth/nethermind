@@ -3,13 +3,19 @@
 
 using System;
 using System.Collections.ObjectModel;
-using System.Security.Cryptography;
 using Nethermind.Core;
 using Nethermind.Serialization.Ssz;
 
 namespace Nethermind.Merkleization;
 
-public class ShaMerkleTree(IKeyValueStore<ulong, byte[]> keyValueStore) : MerkleTree(keyValueStore)
+using SHA256 =
+#if ZK_EVM
+    ShaMerkleTree.Sha256;
+#else
+    System.Security.Cryptography.SHA256;
+#endif
+
+public class ShaMerkleTree(IKeyValueStore<ulong> keyValueStore) : MerkleTree(keyValueStore)
 {
     private static readonly Bytes32[] _zeroHashes = new Bytes32[32];
 
@@ -38,8 +44,19 @@ public class ShaMerkleTree(IKeyValueStore<ulong, byte[]> keyValueStore) : Merkle
 
     protected override Bytes32[] ZeroHashesInternal => _zeroHashes;
 
-    protected override void Hash(ReadOnlySpan<byte> a, ReadOnlySpan<byte> b, Span<byte> target)
+    protected override void Hash(ReadOnlySpan<byte> a, ReadOnlySpan<byte> b, Span<byte> target) => HashStatic(a, b, target);
+
+#if ZK_EVM
+    internal static class Sha256
     {
-        HashStatic(a, b, target);
+        internal static bool TryHashData(ReadOnlySpan<byte> data, Span<byte> destination, out int bytesWritten)
+        {
+            bytesWritten = System.Security.Cryptography.SHA256.HashSizeInBytes;
+
+            Nethermind.Zkvm.Abstractions.Accelerators.Sha256(data, destination);
+
+            return true;
+        }
     }
+#endif
 }

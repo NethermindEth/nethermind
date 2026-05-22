@@ -1,6 +1,7 @@
 <Solution>
   <Folder Name="/Nethermind/">
     <Project Path="Nethermind.Abi/Nethermind.Abi.csproj" />
+    <Project Path="Nethermind.Analyzers/Nethermind.Analyzers.csproj" />
     <Project Path="Nethermind.Api/Nethermind.Api.csproj" />
     <Project Path="Nethermind.Blockchain/Nethermind.Blockchain.csproj" />
     <Project Path="Nethermind.Config/Nethermind.Config.csproj" />
@@ -14,6 +15,7 @@
     <Project Path="Nethermind.Db.Rpc/Nethermind.Db.Rpc.csproj" />
     <Project Path="Nethermind.Db/Nethermind.Db.csproj" />
     <Project Path="Nethermind.Era1/Nethermind.Era1.csproj" />
+    <Project Path="Nethermind.EraE/Nethermind.EraE.csproj" />
     <Project Path="Nethermind.Evm.Precompiles/Nethermind.Evm.Precompiles.csproj" />
     <Project Path="Nethermind.Evm.Test/Nethermind.Evm.Test.csproj" />
     <Project Path="Nethermind.Evm/Nethermind.Evm.csproj" />
@@ -37,9 +39,11 @@
     <Project Path="Nethermind.Serialization.Json/Nethermind.Serialization.Json.csproj" />
     <Project Path="Nethermind.Serialization.Rlp/Nethermind.Serialization.Rlp.csproj" />
     <Project Path="Nethermind.Serialization.Ssz/Nethermind.Serialization.Ssz.csproj" />
+    <Project Path="Nethermind.Serialization.SszGenerator/Nethermind.Serialization.SszGenerator.csproj" />
     <Project Path="Nethermind.Sockets/Nethermind.Sockets.csproj" />
     <Project Path="Nethermind.Specs.Test/Nethermind.Specs.Test.csproj" />
     <Project Path="Nethermind.Specs/Nethermind.Specs.csproj" />
+    <Project Path="Nethermind.State.Flat/Nethermind.State.Flat.csproj" />
     <Project Path="Nethermind.State/Nethermind.State.csproj" />
     <Project Path="Nethermind.Synchronization/Nethermind.Synchronization.csproj" />
     <Project Path="Nethermind.Trie/Nethermind.Trie.csproj" />
@@ -51,6 +55,7 @@
   <Project Path="Ethereum.Blockchain.Block.Test/Ethereum.Blockchain.Block.Test.csproj" />
   <Project Path="Ethereum.Blockchain.Pyspec.Test/Ethereum.Blockchain.Pyspec.Test.csproj" />
   <Project Path="Ethereum.Difficulty.Test/Ethereum.Difficulty.Test.csproj" />
+  <Project Path="Ethereum.Ssz.Test/Ethereum.Ssz.Test.csproj" />
   <Project Path="Ethereum.HexPrefix.Test/Ethereum.HexPrefix.Test.csproj" />
   <Project Path="Ethereum.KeyAddress.Test/Ethereum.KeyAddress.Test.csproj" />
   <Project Path="Ethereum.KeyStore.Test/Ethereum.KeyStore.Test.csproj" />
@@ -64,7 +69,6 @@
   <Project Path="Ethereum.Transaction.Test/Ethereum.Transaction.Test.csproj" />
   <Project Path="Ethereum.Trie.Test/Ethereum.Trie.Test.csproj" />
   <Project Path="Nethermind.Blockchain.Test.Runner/Nethermind.Blockchain.Test.Runner.csproj" />
-  <Project Path="Nethermind.EofParse.Runner/Nethermind.EofParse.Runner.csproj" />
   <Project Path="Nethermind.State.Test.Runner.Test/Nethermind.State.Test.Runner.Test.csproj" />
   <Project Path="Nethermind.Test.Runner/Nethermind.Test.Runner.csproj" />
 </Solution>

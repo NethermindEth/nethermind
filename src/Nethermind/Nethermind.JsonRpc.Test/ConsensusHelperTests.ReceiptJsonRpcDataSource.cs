@@ -11,12 +11,8 @@ namespace Nethermind.JsonRpc.Test
 {
     public partial class ConsensusHelperTests
     {
-        private class ReceiptJsonRpcDataSource : JsonRpcDataSource<ReceiptForRpc>, IConsensusDataSource<ReceiptForRpc>, IConsensusDataSourceWithParameter<Hash256>
+        private class ReceiptJsonRpcDataSource(Uri uri, IJsonSerializer serializer) : JsonRpcDataSource<ReceiptForRpc>(uri, serializer), IConsensusDataSource<ReceiptForRpc>, IConsensusDataSourceWithParameter<Hash256>
         {
-            public ReceiptJsonRpcDataSource(Uri uri, IJsonSerializer serializer) : base(uri, serializer)
-            {
-            }
-
             public Hash256 Parameter { get; set; } = null!;
 
             public override async Task<string> GetJsonData() =>

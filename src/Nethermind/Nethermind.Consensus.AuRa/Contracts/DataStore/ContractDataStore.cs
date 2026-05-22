@@ -22,7 +22,7 @@ namespace Nethermind.Consensus.AuRa.Contracts.DataStore
         private readonly IReceiptFinder _receiptFinder;
         private readonly IBlockTree _blockTree;
         private Hash256 _lastHash;
-        private readonly Lock _lock = new Lock();
+        private readonly Lock _lock = new();
         private readonly ILogger _logger;
 
         protected internal ContractDataStore(IContractDataStoreCollection<T> collection, IDataContract<T> dataContract, IBlockTree blockTree, IReceiptFinder receiptFinder, ILogManager logManager)
@@ -41,8 +41,7 @@ namespace Nethermind.Consensus.AuRa.Contracts.DataStore
             return Collection.GetSnapshot();
         }
 
-        private void OnNewHead(object sender, BlockEventArgs e)
-        {
+        private void OnNewHead(object sender, BlockEventArgs e) =>
             // we don't want this to be on main processing thread
             Task.Run(() => Refresh(e.Block))
                 .ContinueWith(t =>
@@ -52,12 +51,8 @@ namespace Nethermind.Consensus.AuRa.Contracts.DataStore
                         if (_logger.IsError) _logger.Error($"Couldn't load contract data from block {e.Block.ToString(Block.Format.FullHashAndNumber)}.", t.Exception);
                     }
                 });
-        }
 
-        private void Refresh(Block block)
-        {
-            GetItemsFromContractAtBlock(block.Header, block.Header.ParentHash == _lastHash, _receiptFinder.Get(block));
-        }
+        private void Refresh(Block block) => GetItemsFromContractAtBlock(block.Header, block.Header.ParentHash == _lastHash, _receiptFinder.Get(block));
 
         private void GetItemsFromContractAtBlock(BlockHeader blockHeader, bool isConsecutiveBlock, TxReceipt[] receipts = null)
         {
@@ -125,14 +120,8 @@ namespace Nethermind.Consensus.AuRa.Contracts.DataStore
             if (_logger.IsTrace) _logger.Trace($"{GetType()} changed to {string.Join(", ", Collection.GetSnapshot())} from {source}.");
         }
 
-        protected virtual void RemoveOldContractItemsFromCollection()
-        {
-            Collection.Clear();
-        }
+        protected virtual void RemoveOldContractItemsFromCollection() => Collection.Clear();
 
-        public virtual void Dispose()
-        {
-            _blockTree.NewHeadBlock -= OnNewHead;
-        }
+        public virtual void Dispose() => _blockTree.NewHeadBlock -= OnNewHead;
     }
 }

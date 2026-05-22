@@ -19,10 +19,7 @@ namespace Nethermind.JsonRpc.Test.Data
     public class IdConverterTests : SerializationTestBase
     {
         [Test]
-        public void Can_do_roundtrip_big()
-        {
-            TestRoundtrip<SomethingWithId>("{\"id\":123498132871289317239813219}");
-        }
+        public void Can_do_roundtrip_big() => TestRoundtrip<SomethingWithId>("{\"id\":123498132871289317239813219}");
 
         [Test]
         public void Can_handle_int()
@@ -61,22 +58,13 @@ namespace Nethermind.JsonRpc.Test.Data
         }
 
         [Test]
-        public void Can_do_roundtrip_long()
-        {
-            TestRoundtrip<SomethingWithId>("{\"id\":1234}");
-        }
+        public void Can_do_roundtrip_long() => TestRoundtrip<SomethingWithId>("{\"id\":1234}");
 
         [Test]
-        public void Can_do_roundtrip_string()
-        {
-            TestRoundtrip<SomethingWithId>("{\"id\":\"test\"}");
-        }
+        public void Can_do_roundtrip_string() => TestRoundtrip<SomethingWithId>("{\"id\":\"test\"}");
 
         [Test]
-        public void Can_do_roundtrip_null()
-        {
-            TestRoundtrip<SomethingWithId>("{\"id\":null}");
-        }
+        public void Can_do_roundtrip_null() => TestRoundtrip<SomethingWithId>("{\"id\":null}");
 
         [Test]
         public void Decimal_not_supported()

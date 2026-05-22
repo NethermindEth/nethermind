@@ -159,7 +159,7 @@ namespace Nethermind.Db.Test
             memDb.Set(TestItem.KeccakB, _sampleValue);
             memDb.Set(TestItem.KeccakD, _sampleValue);
 
-            var orderedItems = memDb.GetAll(true);
+            IEnumerable<KeyValuePair<byte[], byte[]?>> orderedItems = memDb.GetAll(true);
 
             orderedItems.Should().HaveCount(5);
 

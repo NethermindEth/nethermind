@@ -6,7 +6,6 @@ using Nethermind.Core.Crypto;
 using Nethermind.Network;
 using Nethermind.Network.P2P;
 using Nethermind.Stats.Model;
-using Nethermind.Serialization.Json;
 using Nethermind.Network.Contract.P2P;
 using Nethermind.Network.P2P.ProtocolHandlers;
 using Nethermind.JsonRpc.Modules.Admin.Utils;
@@ -29,7 +28,7 @@ namespace Nethermind.JsonRpc.Modules.Admin
 
         public NetworkInfo Network { get; set; } = new();
 
-        public Dictionary<string, object> Protocols { get; set; } = new();
+        public Dictionary<string, object> Protocols { get; set; } = [];
 
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public NodeClientType? ClientType { get; set; }
@@ -77,7 +76,7 @@ namespace Nethermind.JsonRpc.Modules.Admin
 
         private void SetProtocols(IReadOnlyList<Capability> capabilities)
         {
-            var protocols = new Dictionary<string, object>();
+            Dictionary<string, object> protocols = [];
 
             int ethVersion = 0;
             int snapVersion = 0;

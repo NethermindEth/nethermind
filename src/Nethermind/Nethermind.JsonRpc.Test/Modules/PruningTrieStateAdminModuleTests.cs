@@ -6,7 +6,6 @@ using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.FullPruning;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.JsonRpc.Modules.Admin;
 using Nethermind.State;

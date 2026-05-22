@@ -48,9 +48,9 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
 
         private const int MaxNumberOfTxsInOneMsg = 256;
 
-        public override void HandleMessage(ZeroPacket message)
+        protected override void HandleMessageCore(ZeroPacket message)
         {
-            base.HandleMessage(message);
+            base.HandleMessageCore(message);
 
             int size = message.Content.ReadableBytes;
             switch (message.PacketType)
@@ -89,22 +89,23 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
             }
         }
 
-        protected virtual void Handle(NewPooledTransactionHashesMessage msg)
-        {
-            RequestPooledTransactions<GetPooledTransactionsMessage>(msg.Hashes);
-        }
+        protected virtual void Handle(NewPooledTransactionHashesMessage msg) => RequestPooledTransactions<GetPooledTransactionsMessage>(msg.Hashes);
 
-        protected void AddNotifiedTransactions(IReadOnlyList<Hash256> hashes)
+        protected void AddNotifiedTransactions(ReadOnlySpan<Hash256> hashes)
         {
-            foreach (Hash256 hash in hashes)
+            for (int i = 0; i < hashes.Length; i++)
             {
-                NotifiedTransactions.Set(hash);
+                Hash256 hash = hashes[i];
+                if (hash is not null)
+                {
+                    NotifiedTransactions.Set(hash.ValueHash256);
+                }
             }
         }
 
         private async ValueTask Handle(GetPooledTransactionsMessage msg, CancellationToken cancellationToken)
         {
-            using var message = msg;
+            using GetPooledTransactionsMessage message = msg;
             long startTime = Stopwatch.GetTimestamp();
             Send(await FulfillPooledTransactionsRequest(message, cancellationToken));
             if (Logger.IsTrace)
@@ -179,7 +180,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
         protected void RequestPooledTransactions<TMessage>(IOwnedReadOnlyList<Hash256> hashes)
             where TMessage : P2PMessage, INew<IOwnedReadOnlyList<Hash256>, TMessage>
         {
-            AddNotifiedTransactions(hashes);
+            AddNotifiedTransactions(hashes.AsSpan());
 
             long startTime = Stopwatch.GetTimestamp();
             TxPool.Metrics.PendingTransactionsHashesReceived += hashes.Count;

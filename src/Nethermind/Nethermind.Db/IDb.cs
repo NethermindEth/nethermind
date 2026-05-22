@@ -21,11 +21,12 @@ namespace Nethermind.Db
     // Some metadata options
     public interface IDbMeta
     {
-        DbMetric GatherMetric() => new DbMetric();
+        DbMetric GatherMetric() => new();
 
         void Flush(bool onlyWal = false);
         void Clear() { }
         void Compact() { }
+        void SetWriteBuffer(long sizeBytes) { }
 
         readonly struct DbMetric
         {

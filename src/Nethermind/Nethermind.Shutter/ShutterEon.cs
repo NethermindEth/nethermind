@@ -22,7 +22,7 @@ public class ShutterEon(
     private IShutterEon.Info? _currentInfo;
     private readonly Address _keyBroadcastContractAddress = new(shutterConfig.KeyBroadcastContractAddress!);
     private readonly Address _keyperSetManagerContractAddress = new(shutterConfig.KeyperSetManagerContractAddress!);
-    private readonly ILogger _logger = logManager.GetClassLogger();
+    private readonly ILogger _logger = logManager.GetClassLogger<ShutterEon>();
 
     public IShutterEon.Info? GetCurrentEonInfo() => _currentInfo;
 

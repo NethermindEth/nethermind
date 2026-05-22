@@ -6,7 +6,6 @@ using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
 using NSubstitute;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.IO;
 
@@ -18,7 +17,7 @@ internal class EraWriterTests
     public void Add_TotalDifficultyIsLowerThanBlock_ThrowsException()
     {
         using MemoryStream stream = new();
-        EraWriter sut = new EraWriter(stream, Substitute.For<ISpecProvider>());
+        EraWriter sut = new(stream, Substitute.For<ISpecProvider>());
 
         Block block = Build.A.Block.WithNumber(1)
             .WithTotalDifficulty(BlockHeaderBuilder.DefaultDifficulty).TestObject;
@@ -33,7 +32,7 @@ internal class EraWriterTests
     public async Task Add_AddOneBlock()
     {
         using MemoryStream stream = new();
-        using EraWriter sut = new EraWriter(stream, Substitute.For<ISpecProvider>());
+        using EraWriter sut = new(stream, Substitute.For<ISpecProvider>());
         Block block1 = Build.A.Block.WithNumber(1)
             .WithTotalDifficulty(BlockHeaderBuilder.DefaultDifficulty).TestObject;
 
@@ -47,7 +46,7 @@ internal class EraWriterTests
         stream.CanWrite.Returns(true);
         stream.WriteAsync(Arg.Any<byte[]>(), Arg.Any<int>(), Arg.Any<int>()).Returns(Task.CompletedTask);
 
-        EraWriter sut = new EraWriter(stream, Substitute.For<ISpecProvider>());
+        EraWriter sut = new(stream, Substitute.For<ISpecProvider>());
         for (int i = 0; i < EraWriter.MaxEra1Size; i++)
         {
             Block block = Build.A.Block.WithNumber(i)
@@ -64,7 +63,7 @@ internal class EraWriterTests
     public async Task Add_FinalizedCalled_ThrowsException()
     {
         using MemoryStream stream = new();
-        EraWriter sut = new EraWriter(stream, Substitute.For<ISpecProvider>());
+        EraWriter sut = new(stream, Substitute.For<ISpecProvider>());
         Block block = Build.A.Block.WithNumber(1)
             .WithTotalDifficulty(BlockHeaderBuilder.DefaultDifficulty).TestObject;
 
@@ -79,7 +78,7 @@ internal class EraWriterTests
     {
         using MemoryStream stream = new();
 
-        EraWriter sut = new EraWriter(stream, Substitute.For<ISpecProvider>());
+        EraWriter sut = new(stream, Substitute.For<ISpecProvider>());
 
         Assert.That(async () => await sut.Finalize(), Throws.TypeOf<EraException>());
     }
@@ -88,7 +87,7 @@ internal class EraWriterTests
     public async Task Finalize_AddOneBlock_WritesAccumulatorEntry()
     {
         using MemoryStream stream = new();
-        EraWriter sut = new EraWriter(stream, Substitute.For<ISpecProvider>());
+        EraWriter sut = new(stream, Substitute.For<ISpecProvider>());
         byte[] buffer = new byte[40];
 
         Block block = Build.A.Block.WithNumber(1)
@@ -106,15 +105,16 @@ internal class EraWriterTests
     public async Task Finalize_AddOneBlock_WritesCorrectBlockIndex()
     {
         using TempPath tmpFile = TempPath.GetTempFile();
-        EraWriter sut = new EraWriter(tmpFile.Path, Substitute.For<ISpecProvider>());
 
-        Block block = Build.A.Block.WithNumber(0)
-            .WithTotalDifficulty(BlockHeaderBuilder.DefaultDifficulty).TestObject;
-        await sut.Add(block, Array.Empty<TxReceipt>());
+        using (EraWriter sut = new(tmpFile.Path, Substitute.For<ISpecProvider>()))
+        {
+            Block block = Build.A.Block.WithNumber(0)
+                .WithTotalDifficulty(BlockHeaderBuilder.DefaultDifficulty).TestObject;
+            await sut.Add(block, Array.Empty<TxReceipt>());
+            await sut.Finalize();
+        }
 
-        await sut.Finalize();
-
-        using E2StoreReader fileReader = new E2StoreReader(tmpFile.Path);
+        using E2StoreReader fileReader = new(tmpFile.Path);
         fileReader.BlockOffset(0).Should().Be(8);
     }
 
@@ -122,7 +122,7 @@ internal class EraWriterTests
     public void Dispose_Disposed_InnerStreamIsDisposed()
     {
         using MemoryStream stream = new();
-        EraWriter sut = new EraWriter(stream, Substitute.For<ISpecProvider>());
+        EraWriter sut = new(stream, Substitute.For<ISpecProvider>());
         sut.Dispose();
 
         Assert.That(() => stream.ReadByte(), Throws.TypeOf<ObjectDisposedException>());

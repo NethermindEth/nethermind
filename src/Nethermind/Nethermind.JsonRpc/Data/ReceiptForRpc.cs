@@ -7,7 +7,6 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Evm;
 using Nethermind.Int256;
-using Nethermind.Serialization.Json;
 
 namespace Nethermind.JsonRpc.Data
 {
@@ -25,7 +24,7 @@ namespace Nethermind.JsonRpc.Data
             BlockNumber = receipt.BlockNumber;
             CumulativeGasUsed = receipt.GasUsedTotal;
             GasUsed = receipt.GasUsed;
-            EffectiveGasPrice = gasInfo.EffectiveGasPrice;
+            EffectiveGasPrice = gasInfo.EffectiveGasPrice ?? receipt.EffectiveGasPrice;
             BlobGasUsed = gasInfo.BlobGasUsed;
             BlobGasPrice = gasInfo.BlobGasPrice;
             From = receipt.Sender;
@@ -35,7 +34,6 @@ namespace Nethermind.JsonRpc.Data
             LogsBloom = receipt.Bloom;
             Root = receipt.PostTransactionState;
             Status = receipt.PostTransactionState is null ? receipt.StatusCode : null;
-            Error = string.IsNullOrEmpty(receipt.Error) ? null : receipt.Error;
             Type = receipt.TxType;
         }
 
@@ -64,7 +62,7 @@ namespace Nethermind.JsonRpc.Data
         public Bloom? LogsBloom { get; set; }
         public Hash256? Root { get; set; }
         public long? Status { get; set; }
-        public string? Error { get; set; }
+
         public TxType Type { get; set; }
 
         public TxReceipt ToReceipt()
@@ -72,7 +70,6 @@ namespace Nethermind.JsonRpc.Data
             TxReceipt receipt = new()
             {
                 Bloom = LogsBloom,
-                Error = Error,
                 Index = (int)TransactionIndex,
                 Logs = Logs.Select(static l => l.ToLogEntry()).ToArray(),
                 Recipient = To,

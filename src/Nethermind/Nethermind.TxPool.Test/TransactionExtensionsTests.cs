@@ -10,6 +10,7 @@ using NUnit.Framework;
 namespace Nethermind.TxPool.Test
 {
     [TestFixture]
+    [Parallelizable(ParallelScope.All)]
     public class TransactionExtensionsTests
     {
         [Test]

@@ -18,7 +18,7 @@ public class WithdrawalProcessor : IWithdrawalProcessor
     {
         ArgumentNullException.ThrowIfNull(logManager);
 
-        _logger = logManager.GetClassLogger();
+        _logger = logManager.GetClassLogger<WithdrawalProcessor>();
         _stateProvider = stateProvider ?? throw new ArgumentNullException(nameof(stateProvider));
     }
 

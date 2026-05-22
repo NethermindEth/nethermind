@@ -43,16 +43,13 @@ namespace Nethermind.Runner.Test
             _memoryHintMan = new MemoryHintMan(LimboLogs.Instance, _mallocHelper);
         }
 
-        private void SetMemoryAllowances(uint cpuCount)
-        {
-            _memoryHintMan.SetMemoryAllowances(
+        private void SetMemoryAllowances(uint cpuCount) => _memoryHintMan.SetMemoryAllowances(
                 _dbConfig,
                 _initConfig,
                 _networkConfig,
                 _syncConfig,
                 _txPoolConfig,
                 cpuCount);
-        }
 
         [TestCase(4 * GB, 2u, 4u, 11)]
         [TestCase(4 * GB, 4u, 8u, 11)]
@@ -82,7 +79,7 @@ namespace Nethermind.Runner.Test
             [Values(true, false)] bool fastSync)
         {
             // OK to throw here
-            if (memoryHint == 256.MB())
+            if (memoryHint == 256.MB)
             {
                 _txPoolConfig.Size = 128;
                 _initConfig.DiagnosticMode = DiagnosticMode.MemDb;
@@ -91,11 +88,11 @@ namespace Nethermind.Runner.Test
             _initConfig.MemoryHint = memoryHint;
             SetMemoryAllowances(cpuCount);
 
-            SyncConfig syncConfig = new SyncConfig();
+            SyncConfig syncConfig = new();
             syncConfig.FastSync = fastSync;
 
-            _memoryHintMan.DbMemory.Should().BeGreaterThan((long)((memoryHint - 100.MB()) * 0.5));
-            _memoryHintMan.DbMemory.Should().BeLessThan((long)((memoryHint - 100.MB()) * 0.9));
+            _memoryHintMan.DbMemory.Should().BeGreaterThan((long)((memoryHint - 100.MB) * 0.5));
+            _memoryHintMan.DbMemory.Should().BeLessThan((long)((memoryHint - 100.MB) * 0.9));
         }
 
         [TestCase(100 * GB, 16u, -1)]

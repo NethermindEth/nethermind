@@ -4,7 +4,6 @@
 using System;
 using NonBlocking;
 using System.Collections.Generic;
-using System.IO;
 using System.Linq;
 using System.Threading;
 
@@ -38,7 +37,7 @@ namespace Nethermind.Blockchain.Filters
         public FilterType GetFilterType(int filterId)
         {
             /* so far ok to use block filter if none */
-            if (!_filters.TryGetValue(filterId, out var filter))
+            if (!_filters.TryGetValue(filterId, out FilterBase filter))
             {
                 return FilterType.BlockFilter;
             }
@@ -96,7 +95,7 @@ namespace Nethermind.Blockchain.Filters
         private IEnumerable<T> GetFiltersEnumerate<T>() where T : FilterBase
         {
             // Reuse the enumerator
-            var enumerator = Interlocked.Exchange(ref _enumerator, null) ?? _filters.GetEnumerator();
+            IEnumerator<KeyValuePair<int, FilterBase>> enumerator = Interlocked.Exchange(ref _enumerator, null) ?? _filters.GetEnumerator();
 
             while (enumerator.MoveNext())
             {
@@ -113,7 +112,7 @@ namespace Nethermind.Blockchain.Filters
             _enumerator = enumerator;
         }
 
-        public T? GetFilter<T>(int filterId) where T : FilterBase => _filters.TryGetValue(filterId, out var filter)
+        public T? GetFilter<T>(int filterId) where T : FilterBase => _filters.TryGetValue(filterId, out FilterBase filter)
                 ? filter as T
                 : null;
 
@@ -172,7 +171,7 @@ namespace Nethermind.Blockchain.Filters
             }
 
             FilterTopic?[]? filterTopics = GetFilterTopics(topics);
-            List<TopicExpression> expressions = new();
+            List<TopicExpression> expressions = [];
 
             for (int i = 0; i < filterTopics?.Length; i++)
             {
@@ -229,9 +228,6 @@ namespace Nethermind.Blockchain.Filters
             public Hash256[]? Topics { get; init; }
         }
 
-        public void Dispose()
-        {
-            _timer.Dispose();
-        }
+        public void Dispose() => _timer.Dispose();
     }
 }

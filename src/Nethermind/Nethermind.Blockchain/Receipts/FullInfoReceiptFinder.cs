@@ -8,24 +8,17 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.Blockchain.Receipts
 {
-    public class FullInfoReceiptFinder : IReceiptFinder
+    public class FullInfoReceiptFinder(IReceiptStorage receiptStorage, IReceiptsRecovery receiptsRecovery, IBlockFinder blockFinder) : IReceiptFinder
     {
-        private readonly IReceiptStorage _receiptStorage;
-        private readonly IReceiptsRecovery _receiptsRecovery;
-        private readonly IBlockFinder _blockFinder;
-
-        public FullInfoReceiptFinder(IReceiptStorage receiptStorage, IReceiptsRecovery receiptsRecovery, IBlockFinder blockFinder)
-        {
-            _receiptStorage = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage));
-            _receiptsRecovery = receiptsRecovery ?? throw new ArgumentNullException(nameof(receiptsRecovery));
-            _blockFinder = blockFinder ?? throw new ArgumentNullException(nameof(blockFinder));
-        }
+        private readonly IReceiptStorage _receiptStorage = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage));
+        private readonly IReceiptsRecovery _receiptsRecovery = receiptsRecovery ?? throw new ArgumentNullException(nameof(receiptsRecovery));
+        private readonly IBlockFinder _blockFinder = blockFinder ?? throw new ArgumentNullException(nameof(blockFinder));
 
         public Hash256 FindBlockHash(Hash256 txHash) => _receiptStorage.FindBlockHash(txHash);
 
         public TxReceipt[] Get(Block block, bool recover = true, bool recoverSender = true)
         {
-            var receipts = _receiptStorage.Get(block);
+            TxReceipt[] receipts = _receiptStorage.Get(block);
             if (recover && _receiptsRecovery.TryRecover(block, receipts, recoverSender) == ReceiptsRecoveryResult.NeedReinsert)
             {
                 _receiptStorage.Insert(block, receipts);
@@ -36,11 +29,11 @@ namespace Nethermind.Blockchain.Receipts
 
         public TxReceipt[] Get(Hash256 blockHash, bool recover = true)
         {
-            var receipts = _receiptStorage.Get(blockHash);
+            TxReceipt[] receipts = _receiptStorage.Get(blockHash);
 
             if (recover && _receiptsRecovery.NeedRecover(receipts))
             {
-                var block = _blockFinder.FindBlock(blockHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
+                Block block = _blockFinder.FindBlock(blockHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
                 if (_receiptsRecovery.TryRecover(block, receipts, forceRecoverSender: false) == ReceiptsRecoveryResult.NeedReinsert)
                 {
                     _receiptStorage.Insert(block, receipts);

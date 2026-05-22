@@ -1,8 +1,6 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
-using System.Collections;
 using System.Collections.Generic;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -11,7 +9,7 @@ namespace Nethermind.Trie.Pruning;
 
 public class CommitSetQueue
 {
-    private SortedSet<BlockCommitSet> _queue = new();
+    private SortedSet<BlockCommitSet> _queue = [];
 
     public int Count
     {
@@ -81,12 +79,12 @@ public class CommitSetQueue
     {
         lock (_queue)
         {
-            BlockCommitSet lowerBound = new BlockCommitSet(blockNumber);
+            BlockCommitSet lowerBound = new(blockNumber);
             lowerBound.Seal(new TrieNode(NodeType.Unknown, Hash256.Zero));
-            BlockCommitSet upperBound = new BlockCommitSet(blockNumber);
+            BlockCommitSet upperBound = new(blockNumber);
             upperBound.Seal(new TrieNode(NodeType.Unknown, Keccak.MaxValue));
 
-            var result = new ArrayPoolListRef<BlockCommitSet>();
+            ArrayPoolListRef<BlockCommitSet> result = new();
             result.AddRange(_queue.GetViewBetween(lowerBound, upperBound));
             return result;
         }
@@ -96,7 +94,7 @@ public class CommitSetQueue
     {
         lock (_queue)
         {
-            var result = new ArrayPoolListRef<BlockCommitSet>();
+            ArrayPoolListRef<BlockCommitSet> result = new();
             while (_queue.Count > 0)
             {
                 BlockCommitSet min = _queue.Min;
@@ -112,5 +110,10 @@ public class CommitSetQueue
     public void Remove(BlockCommitSet blockCommitSet)
     {
         lock (_queue) _queue.Remove(blockCommitSet);
+    }
+
+    public void Clear()
+    {
+        lock (_queue) _queue.Clear();
     }
 }

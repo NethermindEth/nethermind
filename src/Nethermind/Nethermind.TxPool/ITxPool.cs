@@ -36,6 +36,12 @@ namespace Nethermind.TxPool
         /// </summary>
         /// <returns></returns>
         Transaction[] GetPendingTransactionsBySender(Address address);
+
+        /// <summary>
+        /// Blob txs light equivalences from a specific sender, sorted by nonce.
+        /// </summary>
+        Transaction[] GetPendingLightBlobTransactionsBySender(Address address) =>
+            GetPendingLightBlobTransactionsBySender().TryGetValue(address, out Transaction[]? txs) ? txs : [];
         void AddPeer(ITxPoolPeer peer);
         void RemovePeer(PublicKey nodeId);
         bool ContainsTx(Hash256 hash, TxType txType);
@@ -53,7 +59,8 @@ namespace Nethermind.TxPool
         bool TryGetBlobAndProofV1(byte[] blobVersionedHash,
             [NotNullWhen(true)] out byte[]? blob,
             [NotNullWhen(true)] out byte[][]? cellProofs);
-        int GetBlobCounts(byte[][] blobVersionedHashes);
+        int TryGetBlobsAndProofsV1(byte[][] requestedBlobVersionedHashes,
+            byte[]?[] blobs, ReadOnlyMemory<byte[]>[] proofs);
         UInt256 GetLatestPendingNonce(Address address);
         event EventHandler<TxEventArgs> NewDiscovered;
         event EventHandler<TxEventArgs> NewPending;

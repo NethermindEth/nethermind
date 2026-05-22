@@ -31,7 +31,7 @@ namespace Nethermind.Clique.Test
             RlpStream stream = new(decoder.GetLength(expected, RlpBehaviors.None));
             decoder.Encode(stream, expected);
             // Decode snapshot
-            Snapshot actual = decoder.Decode(stream.Data.AsRlpStream());
+            Snapshot actual = decoder.Decode(stream.Data.AsSpan());
             // Validate fields
             Assert.That(actual.Number, Is.EqualTo(expected.Number));
             Assert.That(actual.Hash, Is.EqualTo(expected.Hash));
@@ -54,16 +54,22 @@ namespace Nethermind.Clique.Test
 
         private Snapshot GenerateSnapshot(Hash256 hash, long number, Address candidate)
         {
-            SortedList<Address, long> signers = new(AddressComparer.Instance);
-            signers.Add(_signer1, number - 2);
-            signers.Add(_signer2, number - 1);
-            signers.Add(_signer3, number - 3);
-            List<Vote> votes = new();
-            votes.Add(new Vote(_signer1, number - 2, candidate, true));
-            votes.Add(new Vote(_signer3, number - 3, candidate, true));
-            votes.Add(new Vote(_signer3, number - 6, _signer2, false));
-            Dictionary<Address, Tally> tally = new();
-            tally[candidate] = new Tally(true);
+            SortedList<Address, long> signers = new(GenericComparer.GetOptimized<Address>())
+            {
+                { _signer1, number - 2 },
+                { _signer2, number - 1 },
+                { _signer3, number - 3 }
+            };
+            List<Vote> votes =
+            [
+                new Vote(_signer1, number - 2, candidate, true),
+                new Vote(_signer3, number - 3, candidate, true),
+                new Vote(_signer3, number - 6, _signer2, false),
+            ];
+            Dictionary<Address, Tally> tally = new()
+            {
+                [candidate] = new Tally(true)
+            };
             tally[candidate].Votes = 2;
             tally[_signer2] = new Tally(false);
             tally[_signer2].Votes = 1;

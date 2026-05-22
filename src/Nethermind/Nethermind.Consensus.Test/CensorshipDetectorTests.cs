@@ -18,13 +18,8 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
-using Nethermind.Db;
-using Nethermind.Evm;
 using Nethermind.Logging;
 using Nethermind.Specs;
-using Nethermind.Evm.State;
-using Nethermind.State;
-using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
@@ -242,7 +237,7 @@ public class CensorshipDetectorTests
     {
         if (eip1559Enabled)
         {
-            _specProvider = Substitute.For<ISpecProvider>();
+            _specProvider = SpecProviderSubstitute.Create();
             _specProvider.GetSpec(Arg.Any<ForkActivation>()).IsEip1559Enabled.Returns(true);
         }
         else
@@ -284,12 +279,12 @@ public class CensorshipDetectorTests
     {
         Transaction tx = Build.A.Transaction.
                         WithType(TxType.EIP1559).
-                        WithMaxFeePerGas(20.Wei()).
-                        WithMaxPriorityFeePerGas(maxPriorityFeePerGas.Wei()).
+                        WithMaxFeePerGas(20.Wei).
+                        WithMaxPriorityFeePerGas(maxPriorityFeePerGas.Wei).
                         WithTo(address).
                         SignedAndResolved(_ethereumEcdsa, privateKey).
                         TestObject;
-        _stateProvider.CreateAccount(tx.SenderAddress, 1_000_000.Wei());
+        _stateProvider.CreateAccount(tx.SenderAddress, 1_000_000.Wei);
         AcceptTxResult result = _txPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast);
         result.Should().Be(AcceptTxResult.Accepted);
         return tx;

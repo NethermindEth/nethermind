@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Collections.Generic;
 using FluentAssertions;
 using Nethermind.Core.Collections;
@@ -28,8 +27,10 @@ internal class BlockTests
     public void DisposeAccountChanges_should_dispose_and_null_account_changes()
     {
         Block block = new(new BlockHeader());
-        block.AccountChanges = new ArrayPoolList<AddressAsKey>(10);
-        block.AccountChanges.Add(TestItem.AddressA);
+        block.AccountChanges = new ArrayPoolList<AddressAsKey>(10)
+        {
+            TestItem.AddressA
+        };
 
         block.DisposeAccountChanges();
 

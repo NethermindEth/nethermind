@@ -20,11 +20,14 @@ namespace Nethermind.Consensus.Processing
         public Block[] Process(BlockHeader? baseBlock, IReadOnlyList<Block> suggestedBlocks, ProcessingOptions processingOptions, IBlockTracer blockTracer, CancellationToken token) =>
             suggestedBlocks.ToArray();
 
-        public (Block Block, TxReceipt[] Receipts) ProcessOne(Block suggestedBlock, ProcessingOptions options,
-            IBlockTracer blockTracer, IReleaseSpec spec, CancellationToken token)
+        public event Action? TransactionsExecuted
         {
-            return (suggestedBlock, []);
+            add { }
+            remove { }
         }
+
+        public (Block Block, TxReceipt[] Receipts) ProcessOne(Block suggestedBlock, ProcessingOptions options,
+            IBlockTracer blockTracer, IReleaseSpec spec, CancellationToken token) => (suggestedBlock, []);
 
         public event EventHandler<TxProcessedEventArgs> TransactionProcessed
         {
