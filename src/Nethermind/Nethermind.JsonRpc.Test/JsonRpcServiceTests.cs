@@ -318,9 +318,8 @@ public class JsonRpcServiceTests
         rpcModule.eth_getLogs(Arg.Any<Filter>())
             .Throws(new Exception("test exception"));
 
-        JsonRpcResponse response = TestRequestWithPool(pool, "eth_getLogs", "{}");
+        JsonRpcErrorResponse response = AssertJsonRpcError(TestRequestWithPool(pool, "eth_getLogs", "{}"), ErrorCodes.InternalError);
         rpcModule.Received().eth_getLogs(Arg.Any<Filter>());
-        Assert.That(response, Is.InstanceOf<JsonRpcErrorResponse>());
 
         response.Dispose();
         pool.Received().ReturnModule(rpcModule);
@@ -444,10 +443,8 @@ public class JsonRpcServiceTests
     {
         INetRpcModule netRpcModule = Substitute.For<INetRpcModule>();
         netRpcModule.net_version().ReturnsForAnyArgs(static x => ResultWrapper<string>.Success("1"));
-        JsonRpcResponse response = TestRequest(netRpcModule, "net_version", null);
-        string result = RpcTest.AssertSuccess<string>(response);
+        string result = RpcTest.AssertSuccess<string>(TestRequest(netRpcModule, "net_version", null));
         Assert.That(result, Is.EqualTo("1"));
-        Assert.That(response, Is.Not.InstanceOf<JsonRpcErrorResponse>());
     }
 
     [Test]
@@ -517,34 +514,33 @@ public class JsonRpcServiceTests
     }
 
     [TestCaseSource(nameof(BlockForRpcTestSource))]
-    public void BlockForRpc_should_expose_withdrawals_if_any((bool Expected, Block Block) item)
+    public void BlockForRpc_should_expose_withdrawals_if_any(bool expected, Block block)
     {
         ISpecProvider specProvider = Substitute.For<ISpecProvider>();
-        BlockForRpc rpcBlock = new(item.Block, false, specProvider);
+        BlockForRpc rpcBlock = new(block, false, specProvider);
 
-        Assert.That(rpcBlock.WithdrawalsRoot, Is.EqualTo(item.Block.WithdrawalsRoot));
-        Assert.That(rpcBlock.Withdrawals, Is.EqualTo(item.Block.Withdrawals));
+        Assert.That(rpcBlock.WithdrawalsRoot, Is.EqualTo(block.WithdrawalsRoot));
+        Assert.That(rpcBlock.Withdrawals, Is.EqualTo(block.Withdrawals));
 
         string json = new EthereumJsonSerializer().Serialize(rpcBlock);
 
-        Assert.That(json.Contains("withdrawals\"", StringComparison.Ordinal), Is.EqualTo(item.Expected));
-        Assert.That(json.Contains("withdrawalsRoot", StringComparison.Ordinal), Is.EqualTo(item.Expected));
+        Assert.That(json.Contains("withdrawals\"", StringComparison.Ordinal), Is.EqualTo(expected));
+        Assert.That(json.Contains("withdrawalsRoot", StringComparison.Ordinal), Is.EqualTo(expected));
     }
 
-    // With (Block, bool), tests don't run for some reason. Flipped to (bool, Block).
-    private static IEnumerable<(bool, Block)> BlockForRpcTestSource() =>
-        new[]
-        {
-            (true, Build.A.Block
+    private static IEnumerable<TestCaseData> BlockForRpcTestSource()
+    {
+        yield return new TestCaseData(
+            true,
+            Build.A.Block
                 .WithWithdrawals(Build.A.Withdrawal
                     .WithAmount(1)
                     .WithRecipient(TestItem.AddressA)
                     .TestObject)
-                .TestObject
-            ),
+                .TestObject);
+        yield return new TestCaseData(false, Build.A.Block.WithWithdrawals(null).TestObject);
+    }
 
-            (false, Build.A.Block.WithWithdrawals(null).TestObject)
-        };
     [Test]
     public async Task Unhandled_exception_returns_InternalError()
     {
@@ -555,9 +551,7 @@ public class JsonRpcServiceTests
         JsonRpcRequest request = RpcTest.BuildJsonRequest("eth_test");
         JsonRpcResponse response = await service.SendRequestAsync(request, _context);
 
-        Assert.That(response, Is.InstanceOf<JsonRpcErrorResponse>());
-        JsonRpcErrorResponse errorResponse = (JsonRpcErrorResponse)response;
-        Assert.That(errorResponse.Error!.Code, Is.EqualTo(ErrorCodes.InternalError));
+        AssertJsonRpcError(response, ErrorCodes.InternalError);
     }
 
     [Test]

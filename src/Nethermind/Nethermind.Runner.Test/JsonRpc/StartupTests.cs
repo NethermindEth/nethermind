@@ -52,8 +52,7 @@ public class StartupTests
         engineModule ??= CreateEngineModule();
 
         RpcModuleProvider moduleProvider = new(new RealFileSystem(), rpcConfig, new EthereumJsonSerializer(), LimboLogs.Instance);
-        moduleProvider.Register(new SingletonModulePool<IEngineRpcModule>(
-            new SingletonFactory<IEngineRpcModule>(engineModule), true));
+        moduleProvider.Register(new SingletonModulePool<IEngineRpcModule>(new SingletonFactory<IEngineRpcModule>(engineModule), true));
 
         EthereumJsonSerializer jsonSerializer = new();
         jsonRpcLocalStats ??= Substitute.For<IJsonRpcLocalStats>();
@@ -112,9 +111,7 @@ public class StartupTests
         jsonRpcLocalStats.IsEnabled.Returns(true);
         Startup startup = CreateStartup(jsonRpcLocalStats: jsonRpcLocalStats);
 
-        string response = await ProcessJsonRpcRequest(
-            CreateJsonRpcRequest(),
-            startup: startup);
+        string response = await ProcessJsonRpcRequest(CreateJsonRpcRequest(), startup: startup);
 
         AssertArrayResultResponse(response);
 
@@ -153,15 +150,7 @@ public class StartupTests
 
         string response = await ProcessJsonRpcRequest(request);
 
-        using JsonDocument doc = JsonDocument.Parse(response);
-        JsonElement root = doc.RootElement;
-
-        Assert.That(root.ValueKind, Is.EqualTo(JsonValueKind.Array));
-        Assert.That(root.GetArrayLength(), Is.EqualTo(2));
-        Assert.That(root[0].GetProperty("id").GetInt64(), Is.EqualTo(1));
-        Assert.That(root[0].GetProperty("result").ValueKind, Is.EqualTo(JsonValueKind.Array));
-        Assert.That(root[1].GetProperty("id").GetInt64(), Is.EqualTo(2));
-        Assert.That(root[1].GetProperty("result").ValueKind, Is.EqualTo(JsonValueKind.Array));
+        AssertBatchArrayResultResponse(response, 2);
     }
 
     [Test]
@@ -208,9 +197,7 @@ public class StartupTests
             startup: CreateStartup(rpcAuthentication, engineModule, rpcConfig),
             isAuthenticated: isAuthenticated);
 
-        using JsonDocument doc = JsonDocument.Parse(response);
-
-        Assert.That(doc.RootElement.GetArrayLength(), Is.EqualTo(3));
+        AssertBatchArrayResultResponse(response, 3, assertItemResults: false);
         await engineModule.Received(expectedDispatches).engine_getBlobsV1(Arg.Any<byte[][]>());
     }
 
@@ -290,9 +277,7 @@ public class StartupTests
     [NonParallelizable]
     public async Task HttpJsonRpcResponseSink_ReportsStreamableFlushCount()
     {
-        IJsonRpcLocalStats jsonRpcLocalStats = Substitute.For<IJsonRpcLocalStats>();
-        jsonRpcLocalStats.IsEnabled.Returns(true);
-        HttpJsonRpcResponseSinkFixture fixture = CreateHttpJsonRpcResponseSink(isAuthenticated: true, jsonRpcLocalStats: jsonRpcLocalStats);
+        HttpJsonRpcResponseSinkFixture fixture = CreateHttpJsonRpcResponseSink(isAuthenticated: true, enableLocalStats: true);
 
         JsonRpcSuccessResponse response = new()
         {
@@ -309,9 +294,7 @@ public class StartupTests
     [NonParallelizable]
     public async Task HttpJsonRpcResponseSink_ReportsBufferedSerializedShape()
     {
-        IJsonRpcLocalStats jsonRpcLocalStats = Substitute.For<IJsonRpcLocalStats>();
-        jsonRpcLocalStats.IsEnabled.Returns(true);
-        HttpJsonRpcResponseSinkFixture fixture = CreateHttpJsonRpcResponseSink(new JsonRpcConfig { BufferResponses = true }, jsonRpcLocalStats: jsonRpcLocalStats);
+        HttpJsonRpcResponseSinkFixture fixture = CreateHttpJsonRpcResponseSink(new JsonRpcConfig { BufferResponses = true }, enableLocalStats: true);
 
         await WriteHttpJsonRpcResponseAndAssertReported(fixture,
             new JsonRpcSuccessResponse { Id = JsonRpcId.FromObject(1), Result = new string('x', 8 * 1024) },
@@ -485,15 +468,28 @@ public class StartupTests
     }
 
     private static void AssertArrayResultResponse(string response, long? expectedId = null) =>
+        AssertJsonResponse(response, root => AssertArrayResult(root, expectedId));
+
+    private static void AssertBatchArrayResultResponse(string response, int expectedCount, bool assertItemResults = true) =>
         AssertJsonResponse(response, root =>
         {
-            if (expectedId is not null)
+            Assert.That(root.ValueKind, Is.EqualTo(JsonValueKind.Array));
+            Assert.That(root.GetArrayLength(), Is.EqualTo(expectedCount));
+            for (int i = 0; assertItemResults && i < expectedCount; i++)
             {
-                Assert.That(root.GetProperty("id").GetInt64(), Is.EqualTo(expectedId.Value));
+                AssertArrayResult(root[i], i + 1);
             }
-
-            Assert.That(root.GetProperty("result").ValueKind, Is.EqualTo(JsonValueKind.Array));
         });
+
+    private static void AssertArrayResult(JsonElement root, long? expectedId = null)
+    {
+        if (expectedId is not null)
+        {
+            Assert.That(root.GetProperty("id").GetInt64(), Is.EqualTo(expectedId.Value));
+        }
+
+        Assert.That(root.GetProperty("result").ValueKind, Is.EqualTo(JsonValueKind.Array));
+    }
 
     private static void AssertErrorCodeResponse(string response, int expectedCode) =>
         AssertJsonResponse(response, root => Assert.That(root.GetProperty("error").GetProperty("code").GetInt32(), Is.EqualTo(expectedCode)));
@@ -507,6 +503,7 @@ public class StartupTests
     private static HttpJsonRpcResponseSinkFixture CreateHttpJsonRpcResponseSink(
         JsonRpcConfig? rpcConfig = null,
         bool isAuthenticated = false,
+        bool enableLocalStats = false,
         IJsonRpcLocalStats? jsonRpcLocalStats = null)
     {
         DefaultHttpContext ctx = new();
@@ -514,6 +511,7 @@ public class StartupTests
         ctx.Features.Set<IHttpResponseBodyFeature>(new StreamResponseBodyFeature(responseBody));
 
         jsonRpcLocalStats ??= Substitute.For<IJsonRpcLocalStats>();
+        jsonRpcLocalStats.IsEnabled.Returns(enableLocalStats);
         HttpJsonRpcResponseSink sink = new(
             ctx,
             new JsonRpcUrl("http", "127.0.0.1", 0, RpcEndpoint.Http, isAuthenticated, [ModuleType.Engine]),
