@@ -197,10 +197,6 @@ internal static class EngineBenchmarkHost
 
     private sealed class BenchmarkJsonRpcResponseSink(HttpContext context) : IJsonRpcResponseSink
     {
-        private static readonly byte[] JsonOpeningBracket = [(byte)'['];
-        private static readonly byte[] JsonComma = [(byte)','];
-        private static readonly byte[] JsonClosingBracket = [(byte)']'];
-
         private bool _isFirstBatchItem = true;
 
         public long BytesWritten => 0;
@@ -209,31 +205,46 @@ internal static class EngineBenchmarkHost
         public async ValueTask WriteSingleAsync(JsonRpcResponse response, RpcReport report, CancellationToken cancellationToken)
         {
             EnsureStarted();
-            await Serializer.SerializeAsync(context.Response.BodyWriter, response);
+            await JsonRpcResponseWriter.WriteAsync(
+                context.Response.BodyWriter,
+                response,
+                EthereumJsonSerializer.JsonOptions,
+                cancellationToken);
             await context.Response.CompleteAsync();
         }
 
-        public async ValueTask BeginBatchAsync(CancellationToken cancellationToken)
+        public ValueTask BeginBatchAsync(CancellationToken cancellationToken)
         {
             EnsureStarted();
-            await context.Response.Body.WriteAsync(JsonOpeningBracket, cancellationToken);
+            WriteRaw("["u8);
+            return ValueTask.CompletedTask;
         }
 
-        public async ValueTask WriteBatchItemAsync(JsonRpcResponse response, RpcReport report, CancellationToken cancellationToken)
+        public ValueTask WriteBatchItemAsync(JsonRpcResponse response, RpcReport report, CancellationToken cancellationToken)
         {
             if (!_isFirstBatchItem)
             {
-                await context.Response.Body.WriteAsync(JsonComma, cancellationToken);
+                WriteRaw(","u8);
             }
 
             _isFirstBatchItem = false;
-            await Serializer.SerializeAsync(context.Response.BodyWriter, response);
+            return JsonRpcResponseWriter.WriteAsync(
+                context.Response.BodyWriter,
+                response,
+                EthereumJsonSerializer.JsonOptions,
+                cancellationToken);
         }
 
         public async ValueTask EndBatchAsync(CancellationToken cancellationToken)
         {
-            await context.Response.Body.WriteAsync(JsonClosingBracket, cancellationToken);
+            WriteRaw("]"u8);
             await context.Response.CompleteAsync();
+        }
+
+        private void WriteRaw(ReadOnlySpan<byte> bytes)
+        {
+            bytes.CopyTo(context.Response.BodyWriter.GetSpan(bytes.Length));
+            context.Response.BodyWriter.Advance(bytes.Length);
         }
 
         private void EnsureStarted()
