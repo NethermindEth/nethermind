@@ -370,56 +370,28 @@ public partial class EngineModuleTests
         result.Data.ExecutionWitness.Should().BeSameAs(expectedWitness);
     }
 
-    [Test]
-    [Category("WitnessCapture")]
-    public async Task Handler_calls_DisarmCapture_on_SYNCING_status()
+    private static IEnumerable<TestCaseData> NonValidOutcomes()
     {
-        IWitnessCaptureRegistry registry = Substitute.For<IWitnessCaptureRegistry>();
-        registry.ArmCapture(Arg.Any<Hash256>())
-            .Returns(new TaskCompletionSource<Witness?>().Task);
-
-        NewPayloadWithWitnessHandler handler = new(
-            new Lazy<IEngineRpcModule>(() => WitnessHandlerBuilder.SucceedingEngineModule(new PayloadStatusV1 { Status = PayloadStatus.Syncing })),
-            registry);
-
-        await handler.HandleAsync(new ExecutionPayloadV4 { BlockHash = TestItem.KeccakA }, [], TestItem.KeccakA, []);
-
-        registry.Received(1).DisarmCapture(Arg.Any<Hash256>());
+        yield return new TestCaseData((Func<IEngineRpcModule>)(() => WitnessHandlerBuilder.SucceedingEngineModule(
+            new PayloadStatusV1 { Status = PayloadStatus.Syncing })))
+            .SetName("SYNCING status");
+        yield return new TestCaseData((Func<IEngineRpcModule>)(() => WitnessHandlerBuilder.SucceedingEngineModule(
+            new PayloadStatusV1 { Status = PayloadStatus.Invalid, LatestValidHash = TestItem.KeccakD, ValidationError = "bad block" })))
+            .SetName("INVALID status");
+        yield return new TestCaseData((Func<IEngineRpcModule>)(() => WitnessHandlerBuilder.FailingEngineModule(
+            "Unsupported fork", MergeErrorCodes.UnsupportedFork)))
+            .SetName("RPC failure");
     }
 
-    [Test]
+    [TestCaseSource(nameof(NonValidOutcomes))]
     [Category("WitnessCapture")]
-    public async Task Handler_calls_DisarmCapture_on_INVALID_status()
+    public async Task Handler_calls_DisarmCapture_when_not_valid(Func<IEngineRpcModule> moduleFactory)
     {
         IWitnessCaptureRegistry registry = Substitute.For<IWitnessCaptureRegistry>();
         registry.ArmCapture(Arg.Any<Hash256>())
             .Returns(new TaskCompletionSource<Witness?>().Task);
 
-        NewPayloadWithWitnessHandler handler = new(
-            new Lazy<IEngineRpcModule>(() => WitnessHandlerBuilder.SucceedingEngineModule(new PayloadStatusV1
-            {
-                Status = PayloadStatus.Invalid,
-                LatestValidHash = TestItem.KeccakD,
-                ValidationError = "bad block"
-            })),
-            registry);
-
-        await handler.HandleAsync(new ExecutionPayloadV4 { BlockHash = TestItem.KeccakA }, [], TestItem.KeccakA, []);
-
-        registry.Received(1).DisarmCapture(Arg.Any<Hash256>());
-    }
-
-    [Test]
-    [Category("WitnessCapture")]
-    public async Task Handler_calls_DisarmCapture_on_RPC_failure()
-    {
-        IWitnessCaptureRegistry registry = Substitute.For<IWitnessCaptureRegistry>();
-        registry.ArmCapture(Arg.Any<Hash256>())
-            .Returns(new TaskCompletionSource<Witness?>().Task);
-
-        NewPayloadWithWitnessHandler handler = new(
-            new Lazy<IEngineRpcModule>(() => WitnessHandlerBuilder.FailingEngineModule("Unsupported fork", MergeErrorCodes.UnsupportedFork)),
-            registry);
+        NewPayloadWithWitnessHandler handler = new(new Lazy<IEngineRpcModule>(moduleFactory), registry);
 
         await handler.HandleAsync(new ExecutionPayloadV4 { BlockHash = TestItem.KeccakA }, [], TestItem.KeccakA, []);
 
