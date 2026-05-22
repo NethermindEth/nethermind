@@ -900,7 +900,6 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
 
         if (_logger.IsDebug)
         {
-            // Attempt to get and log the request body from the bytes buffer if Debug logging is enabled
             const int sliceSize = 1000;
             if (Encoding.UTF8.TryGetStringSlice(in buffer, sliceSize, out bool isFullString, out string data))
             {

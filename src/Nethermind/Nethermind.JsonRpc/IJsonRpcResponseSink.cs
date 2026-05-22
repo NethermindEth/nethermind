@@ -16,22 +16,14 @@ public interface IJsonRpcResponseSink
     bool StopRequested { get; }
 
     /// <summary>Writes one non-batch JSON-RPC response.</summary>
-    /// <param name="response">The response to write.</param>
-    /// <param name="report">The RPC report associated with the response.</param>
-    /// <param name="cancellationToken">The cancellation token for transport writes.</param>
     ValueTask WriteSingleAsync(JsonRpcResponse response, RpcReport report, CancellationToken cancellationToken);
 
     /// <summary>Starts a JSON-RPC batch response.</summary>
-    /// <param name="cancellationToken">The cancellation token for transport writes.</param>
     ValueTask BeginBatchAsync(CancellationToken cancellationToken);
 
     /// <summary>Writes one item in the current JSON-RPC batch response.</summary>
-    /// <param name="response">The response item to write.</param>
-    /// <param name="report">The RPC report associated with the response item.</param>
-    /// <param name="cancellationToken">The cancellation token for transport writes.</param>
     ValueTask WriteBatchItemAsync(JsonRpcResponse response, RpcReport report, CancellationToken cancellationToken);
 
     /// <summary>Ends the current JSON-RPC batch response.</summary>
-    /// <param name="cancellationToken">The cancellation token for transport writes.</param>
     ValueTask EndBatchAsync(CancellationToken cancellationToken);
 }
