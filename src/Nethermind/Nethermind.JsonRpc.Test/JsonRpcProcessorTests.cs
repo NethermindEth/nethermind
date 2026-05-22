@@ -69,14 +69,15 @@ public class JsonRpcProcessorTests(bool returnErrors)
         service.GetErrorResponse(0, null!).ReturnsForAnyArgs(_errorResponse);
         service.GetErrorResponse(0, null!, null!, null!).ReturnsForAnyArgs(_errorResponse);
 
-        IFileSystem fileSystem = Substitute.For<IFileSystem>();
-
         // we enable recorder always to have an easy smoke test for recording and this is fine because recorder is a non-critical component
         config ??= new JsonRpcConfig();
         config.RpcRecorderState = recorderState;
 
-        return new JsonRpcProcessor(service, config, fileSystem, LimboLogs.Instance);
+        return CreateProcessor(service, config);
     }
+
+    private static JsonRpcProcessor CreateProcessor(IJsonRpcService service, IJsonRpcConfig? config = null, IFileSystem? fileSystem = null, IProcessExitSource? processExitSource = null) =>
+        new(service, config ?? new JsonRpcConfig(), fileSystem ?? Substitute.For<IFileSystem>(), LimboLogs.Instance, processExitSource);
 
     [Test]
     public async Task Can_process_guid_ids()
@@ -102,11 +103,7 @@ public class JsonRpcProcessorTests(bool returnErrors)
             return new JsonRpcSuccessResponse { Id = request.Id };
         });
 
-        JsonRpcProcessor processor = new(
-            service,
-            new JsonRpcConfig { RpcRecorderState = RpcRecorderState.None },
-            Substitute.For<IFileSystem>(),
-            LimboLogs.Instance);
+        JsonRpcProcessor processor = CreateProcessor(service, new JsonRpcConfig { RpcRecorderState = RpcRecorderState.None });
 
         await ProcessAsync(
             processor,
@@ -130,11 +127,7 @@ public class JsonRpcProcessorTests(bool returnErrors)
             return new JsonRpcSuccessResponse { Id = request.Id };
         });
 
-        JsonRpcProcessor processor = new(
-            service,
-            new JsonRpcConfig { RpcRecorderState = RpcRecorderState.None },
-            Substitute.For<IFileSystem>(),
-            LimboLogs.Instance);
+        JsonRpcProcessor processor = CreateProcessor(service, new JsonRpcConfig { RpcRecorderState = RpcRecorderState.None });
 
         string request = inBatch
             ? $$"""[{"id":1,"jsonrpc":"2.0","method":"{{methodName}}","params":[]}]"""
@@ -244,11 +237,7 @@ public class JsonRpcProcessorTests(bool returnErrors)
     public async Task Sink_processor_entry_point_rejects_oversized_unauthenticated_batch_without_dispatching()
     {
         IJsonRpcService service = CreateEchoService();
-        JsonRpcProcessor processor = new(
-            service,
-            new JsonRpcConfig { RpcRecorderState = RpcRecorderState.None, MaxBatchSize = 1 },
-            Substitute.For<IFileSystem>(),
-            LimboLogs.Instance);
+        JsonRpcProcessor processor = CreateProcessor(service, new JsonRpcConfig { RpcRecorderState = RpcRecorderState.None, MaxBatchSize = 1 });
         CollectingJsonRpcResponseSink sink = new();
 
         await processor.ProcessAsync(
@@ -268,11 +257,7 @@ public class JsonRpcProcessorTests(bool returnErrors)
     public async Task Sink_processor_entry_point_authenticated_batch_bypasses_max_batch_size()
     {
         IJsonRpcService service = CreateEchoService();
-        JsonRpcProcessor processor = new(
-            service,
-            new JsonRpcConfig { RpcRecorderState = RpcRecorderState.None, MaxBatchSize = 1 },
-            Substitute.For<IFileSystem>(),
-            LimboLogs.Instance);
+        JsonRpcProcessor processor = CreateProcessor(service, new JsonRpcConfig { RpcRecorderState = RpcRecorderState.None, MaxBatchSize = 1 });
         CollectingJsonRpcResponseSink sink = new();
         JsonRpcUrl url = new(string.Empty, string.Empty, 0, RpcEndpoint.Http, true, []);
         using JsonRpcContext context = new(RpcEndpoint.Http, url: url);
@@ -294,11 +279,7 @@ public class JsonRpcProcessorTests(bool returnErrors)
     public async Task Sink_processor_entry_point_propagates_stop_requested_to_inline_batch_processing()
     {
         IJsonRpcService service = CreateEchoService();
-        JsonRpcProcessor processor = new(
-            service,
-            new JsonRpcConfig { RpcRecorderState = RpcRecorderState.None },
-            Substitute.For<IFileSystem>(),
-            LimboLogs.Instance);
+        JsonRpcProcessor processor = CreateProcessor(service, new JsonRpcConfig { RpcRecorderState = RpcRecorderState.None });
         CollectingJsonRpcResponseSink sink = new() { StopAfterBatchItems = 1 };
 
         await processor.ProcessAsync(
@@ -347,11 +328,7 @@ public class JsonRpcProcessorTests(bool returnErrors)
                 return new JsonRpcSuccessResponse { Id = request.Id };
             });
 
-        JsonRpcProcessor processor = new(
-            service,
-            new JsonRpcConfig { RpcRecorderState = RpcRecorderState.None },
-            Substitute.For<IFileSystem>(),
-            LimboLogs.Instance);
+        JsonRpcProcessor processor = CreateProcessor(service, new JsonRpcConfig { RpcRecorderState = RpcRecorderState.None });
         CollectingJsonRpcResponseSink sink = new();
 
         await processor.ProcessAsync(
@@ -382,11 +359,7 @@ public class JsonRpcProcessorTests(bool returnErrors)
         service.GetErrorResponse(0, null!).ReturnsForAnyArgs(_errorResponse);
         service.GetErrorResponse(0, null!, null!, null!).ReturnsForAnyArgs(_errorResponse);
 
-        JsonRpcProcessor processor = new(
-            service,
-            new JsonRpcConfig { RpcRecorderState = RpcRecorderState.None },
-            Substitute.For<IFileSystem>(),
-            LimboLogs.Instance);
+        JsonRpcProcessor processor = CreateProcessor(service, new JsonRpcConfig { RpcRecorderState = RpcRecorderState.None });
         CollectingJsonRpcResponseSink sink = new();
 
         string nested = BuildNestedArrayParams(paramNestingDepth);
@@ -420,12 +393,7 @@ public class JsonRpcProcessorTests(bool returnErrors)
         IProcessExitSource processExitSource = Substitute.For<IProcessExitSource>();
         processExitSource.Token.Returns(new CancellationToken(canceled: true));
 
-        JsonRpcProcessor processor = new(
-            service,
-            new JsonRpcConfig { RpcRecorderState = RpcRecorderState.None },
-            Substitute.For<IFileSystem>(),
-            LimboLogs.Instance,
-            processExitSource);
+        JsonRpcProcessor processor = CreateProcessor(service, new JsonRpcConfig { RpcRecorderState = RpcRecorderState.None }, processExitSource: processExitSource);
         CollectingJsonRpcResponseSink sink = new();
 
         await processor.ProcessAsync(
@@ -568,11 +536,7 @@ public class JsonRpcProcessorTests(bool returnErrors)
     {
         List<string> records = [];
         IFileSystem fileSystem = CreateRecordingFileSystem(records);
-        JsonRpcProcessor processor = new(
-            CreateEchoService(),
-            CreateRecorderConfig(RpcRecorderState.Request),
-            fileSystem,
-            LimboLogs.Instance);
+        JsonRpcProcessor processor = CreateProcessor(CreateEchoService(), CreateRecorderConfig(RpcRecorderState.Request), fileSystem);
 
         string request = endpoint == RpcEndpoint.Http
             ? "{\"id\":1,\"jsonrpc\":\"2.0\",\"method\":\"eth_blockNumber\",\"params\":[]}"
@@ -593,11 +557,7 @@ public class JsonRpcProcessorTests(bool returnErrors)
     {
         List<string> records = [];
         IFileSystem fileSystem = CreateRecordingFileSystem(records);
-        JsonRpcProcessor processor = new(
-            CreateEchoService(),
-            CreateRecorderConfig(RpcRecorderState.Response),
-            fileSystem,
-            LimboLogs.Instance);
+        JsonRpcProcessor processor = CreateProcessor(CreateEchoService(), CreateRecorderConfig(RpcRecorderState.Response), fileSystem);
 
         CollectedJsonRpcResponses result = await ProcessAsync(processor, CreateReader("{\"id\":1,\"jsonrpc\":\"2.0\",\"method\":\"eth_blockNumber\",\"params\":[]}"), new JsonRpcContext(RpcEndpoint.Http));
 
@@ -610,11 +570,7 @@ public class JsonRpcProcessorTests(bool returnErrors)
     {
         List<string> records = [];
         IFileSystem fileSystem = CreateRecordingFileSystem(records);
-        JsonRpcProcessor processor = new(
-            CreateEchoService(),
-            CreateRecorderConfig(RpcRecorderState.Response),
-            fileSystem,
-            LimboLogs.Instance);
+        JsonRpcProcessor processor = CreateProcessor(CreateEchoService(), CreateRecorderConfig(RpcRecorderState.Response), fileSystem);
 
         CollectedJsonRpcResponses result = await ProcessAsync(
             processor,
@@ -640,11 +596,7 @@ public class JsonRpcProcessorTests(bool returnErrors)
         {
             OnSingleWrite = (_, _) => capturedParams.ValueKind.Should().Be(JsonValueKind.Array)
         };
-        JsonRpcProcessor processor = new(
-            service,
-            new JsonRpcConfig { RpcRecorderState = RpcRecorderState.None },
-            Substitute.For<IFileSystem>(),
-            LimboLogs.Instance);
+        JsonRpcProcessor processor = CreateProcessor(service, new JsonRpcConfig { RpcRecorderState = RpcRecorderState.None });
 
         await ProcessAsync(
             processor,
@@ -669,11 +621,7 @@ public class JsonRpcProcessorTests(bool returnErrors)
         {
             OnEndBatch = () => capturedParams.ValueKind.Should().Be(JsonValueKind.Array)
         };
-        JsonRpcProcessor processor = new(
-            service,
-            new JsonRpcConfig { RpcRecorderState = RpcRecorderState.None },
-            Substitute.For<IFileSystem>(),
-            LimboLogs.Instance);
+        JsonRpcProcessor processor = CreateProcessor(service, new JsonRpcConfig { RpcRecorderState = RpcRecorderState.None });
 
         await ProcessAsync(
             processor,
@@ -695,11 +643,7 @@ public class JsonRpcProcessorTests(bool returnErrors)
         {
             OnSingleWrite = (_, _) => disposedDuringWrite = disposed
         };
-        JsonRpcProcessor processor = new(
-            service,
-            new JsonRpcConfig { RpcRecorderState = RpcRecorderState.None },
-            Substitute.For<IFileSystem>(),
-            LimboLogs.Instance);
+        JsonRpcProcessor processor = CreateProcessor(service, new JsonRpcConfig { RpcRecorderState = RpcRecorderState.None });
 
         await ProcessAsync(
             processor,
@@ -1054,12 +998,7 @@ public class JsonRpcProcessorTests(bool returnErrors)
         IProcessExitSource processExitSource = Substitute.For<IProcessExitSource>();
         processExitSource.Token.Returns(new CancellationToken(canceled: true));
 
-        JsonRpcProcessor processor = new(
-            service,
-            new JsonRpcConfig(),
-            Substitute.For<IFileSystem>(),
-            LimboLogs.Instance,
-            processExitSource);
+        JsonRpcProcessor processor = CreateProcessor(service, processExitSource: processExitSource);
 
         string request = "{\"id\":67,\"jsonrpc\":\"2.0\",\"method\":\"eth_getTransactionCount\",\"params\":[\"0x7f01d9b227593e033bf8d6fc86e634d27aa85568\",\"0x668c24\"]}";
         CollectedJsonRpcResponses results = await ProcessAsync(processor, CreateReader(request), new JsonRpcContext(RpcEndpoint.Http));
@@ -1081,12 +1020,7 @@ public class JsonRpcProcessorTests(bool returnErrors)
         IProcessExitSource processExitSource = Substitute.For<IProcessExitSource>();
         processExitSource.Token.Returns(new CancellationToken(canceled: true));
 
-        JsonRpcProcessor processor = new(
-            service,
-            new JsonRpcConfig(),
-            Substitute.For<IFileSystem>(),
-            LimboLogs.Instance,
-            processExitSource);
+        JsonRpcProcessor processor = CreateProcessor(service, processExitSource: processExitSource);
 
         Pipe pipe = new();
         await pipe.Writer.WriteAsync(Encoding.UTF8.GetBytes("{\"id\":1,\"jsonrpc\":\"2.0\",\"method\":\"eth_blockNumber\",\"params\":[]}"));
@@ -1178,7 +1112,7 @@ public class JsonRpcProcessorTests(bool returnErrors)
                 Error = new Error { Code = ErrorCodes.MethodNotFound, Message = "Method not found" }
             });
 
-        JsonRpcProcessor processor = new(service, new JsonRpcConfig(), Substitute.For<IFileSystem>(), LimboLogs.Instance);
+        JsonRpcProcessor processor = CreateProcessor(service);
         CollectedJsonRpcResponses result = await ProcessAsync(processor, CreateReader("{\"id\":1,\"jsonrpc\":\"2.0\",\"method\":\"foo_unregistered\",\"params\":[]}"), new JsonRpcContext(RpcEndpoint.Http));
 
         result.Should().HaveCount(1);
@@ -1195,7 +1129,7 @@ public class JsonRpcProcessorTests(bool returnErrors)
         service.SendRequestAsync(Arg.Any<JsonRpcRequest>(), Arg.Any<JsonRpcContext>())
             .Returns(ci => new JsonRpcSuccessResponse { Id = ci.Arg<JsonRpcRequest>().Id });
 
-        JsonRpcProcessor processor = new(service, new JsonRpcConfig(), Substitute.For<IFileSystem>(), LimboLogs.Instance);
+        JsonRpcProcessor processor = CreateProcessor(service);
         CollectedJsonRpcResponses result = await ProcessAsync(processor, CreateReader("{\"id\":1,\"jsonrpc\":\"2.0\",\"method\":\"eth_getTransactionCount\",\"params\":[]}"), new JsonRpcContext(RpcEndpoint.Http));
 
         result.Should().HaveCount(1);
@@ -1239,7 +1173,7 @@ public class JsonRpcProcessorTests(bool returnErrors)
         service.GetErrorResponse(0, null!, null!, null!).ReturnsForAnyArgs(_errorResponse);
 
         JsonRpcConfig config = new() { RpcRecorderState = RpcRecorderState.None };
-        JsonRpcProcessor processor = new(service, config, Substitute.For<IFileSystem>(), LimboLogs.Instance);
+        JsonRpcProcessor processor = CreateProcessor(service, config);
 
         string nested = BuildNestedArrayParams(paramNestingDepth);
         string request = $"{{\"id\":1,\"jsonrpc\":\"2.0\",\"method\":\"eth_getTransactionCount\",\"params\":[{nested}]}}";
