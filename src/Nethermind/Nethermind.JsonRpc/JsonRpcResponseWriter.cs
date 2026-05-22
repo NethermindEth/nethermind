@@ -3,7 +3,6 @@
 
 using System;
 using System.Buffers;
-using System.Diagnostics.CodeAnalysis;
 using System.IO.Pipelines;
 using System.Runtime.CompilerServices;
 using System.Text.Encodings.Web;
@@ -41,7 +40,7 @@ public static class JsonRpcResponseWriter
     /// <summary>Writes <paramref name="response"/>, using the streamable result path when required.</summary>
     public static ValueTask WriteAsync(PipeWriter writer, JsonRpcResponse response, JsonSerializerOptions options, CancellationToken cancellationToken)
     {
-        if (TryGetStreamableResult(response, out IStreamableResult? streamable))
+        if (response.TryGetStreamableResult(out IStreamableResult? streamable))
         {
             return WriteStreamableAsync(writer, response, streamable, cancellationToken);
         }
@@ -54,14 +53,7 @@ public static class JsonRpcResponseWriter
     public static bool IsResourceUnavailableError(JsonRpcResponse? response) =>
         response?.IsResourceUnavailableError == true;
 
-    /// <summary>Gets a streamable success payload when the response must bypass normal JSON serialization.</summary>
-    public static bool TryGetStreamableResult(
-        JsonRpcResponse response,
-        [NotNullWhen(true)] out IStreamableResult? streamable) =>
-        response.TryGetStreamableResult(out streamable);
-
-    /// <summary>Writes a JSON-RPC success envelope whose result is supplied by <paramref name="streamable"/>.</summary>
-    public static async ValueTask WriteStreamableAsync(
+    private static async ValueTask WriteStreamableAsync(
         PipeWriter writer,
         JsonRpcResponse response,
         IStreamableResult streamable,

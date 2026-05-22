@@ -84,11 +84,11 @@ public static class RpcTest
             : new JsonRpcContext(RpcEndpoint.Http);
         using JsonRpcResponse response = await service.SendRequestAsync(request, context).ConfigureAwait(false);
 
-        if (JsonRpcResponseWriter.TryGetStreamableResult(response, out IStreamableResult? streamable))
+        if (response.TryGetStreamableResult(out _))
         {
             using MemoryStream stream = new();
             PipeWriter pipeWriter = PipeWriter.Create(stream, new StreamPipeWriterOptions(leaveOpen: true));
-            await JsonRpcResponseWriter.WriteStreamableAsync(pipeWriter, response, streamable, CancellationToken.None);
+            await JsonRpcResponseWriter.WriteAsync(pipeWriter, response, EthereumJsonSerializer.JsonOptions, CancellationToken.None);
             await pipeWriter.FlushAsync();
             await pipeWriter.CompleteAsync();
 
