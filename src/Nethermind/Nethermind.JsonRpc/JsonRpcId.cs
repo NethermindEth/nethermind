@@ -19,14 +19,8 @@ internal enum JsonRpcIdKind : byte
     String
 }
 
-/// <summary>
-/// Represents a JSON-RPC request or response ID without boxing primitive ID values.
-/// </summary>
-/// <remarks>
-/// The missing and explicit-null states are distinct so parsing can preserve the
-/// request envelope shape. Both states currently serialize as JSON null to keep
-/// existing Nethermind wire behavior.
-/// </remarks>
+/// <summary>Represents a JSON-RPC request or response ID without boxing primitive ID values.</summary>
+/// <remarks>Missing and explicit-null IDs are distinct, but both serialize as JSON null for compatibility.</remarks>
 public readonly struct JsonRpcId : IEquatable<JsonRpcId>
 {
     private readonly byte[]? _rawValue;
@@ -37,19 +31,13 @@ public readonly struct JsonRpcId : IEquatable<JsonRpcId>
 
     private JsonRpcId(JsonRpcIdKind kind) => _kind = kind;
 
-    /// <summary>
-    /// Gets an ID value representing an absent JSON-RPC ID property.
-    /// </summary>
+    /// <summary>Gets an ID value representing an absent JSON-RPC ID property.</summary>
     public static JsonRpcId Missing => default;
 
-    /// <summary>
-    /// Gets an ID value representing an explicit JSON null.
-    /// </summary>
+    /// <summary>Gets an ID value representing an explicit JSON null.</summary>
     public static JsonRpcId Null => new(JsonRpcIdKind.Null);
 
-    /// <summary>
-    /// Initializes an ID from a signed 64-bit integer.
-    /// </summary>
+    /// <summary>Initializes an ID from a signed 64-bit integer.</summary>
     /// <param name="value">The integer ID value.</param>
     public JsonRpcId(long value)
     {
@@ -57,9 +45,7 @@ public readonly struct JsonRpcId : IEquatable<JsonRpcId>
         _longValue = value;
     }
 
-    /// <summary>
-    /// Initializes an ID from an integer decimal value.
-    /// </summary>
+    /// <summary>Initializes an ID from an integer decimal value.</summary>
     /// <param name="value">The decimal ID value. Fractional decimals are not valid JSON-RPC IDs in this compatibility representation.</param>
     /// <exception cref="NotSupportedException">Thrown when <paramref name="value"/> has a fractional component.</exception>
     public JsonRpcId(decimal value)
@@ -77,9 +63,7 @@ public readonly struct JsonRpcId : IEquatable<JsonRpcId>
             throw new NotSupportedException("JSON-RPC decimal IDs must be integer values.");
     }
 
-    /// <summary>
-    /// Initializes an ID from a string.
-    /// </summary>
+    /// <summary>Initializes an ID from a string.</summary>
     /// <param name="value">The string ID value.</param>
     /// <exception cref="ArgumentNullException">Thrown when <paramref name="value"/> is null.</exception>
     public JsonRpcId(string value)
@@ -91,19 +75,13 @@ public readonly struct JsonRpcId : IEquatable<JsonRpcId>
         _rawValue = JsonSerializer.SerializeToUtf8Bytes(value);
     }
 
-    /// <summary>
-    /// Gets whether this value represents an absent JSON-RPC ID property.
-    /// </summary>
+    /// <summary>Gets whether this value represents an absent JSON-RPC ID property.</summary>
     public bool IsMissing => _kind == JsonRpcIdKind.Missing;
 
-    /// <summary>
-    /// Gets whether this value represents an explicit JSON null ID.
-    /// </summary>
+    /// <summary>Gets whether this value represents an explicit JSON null ID.</summary>
     public bool IsNull => _kind == JsonRpcIdKind.Null;
 
-    /// <summary>
-    /// Gets whether this value represents either a missing or explicit-null ID.
-    /// </summary>
+    /// <summary>Gets whether this value represents either a missing or explicit-null ID.</summary>
     public bool IsNullLike => _kind is JsonRpcIdKind.Missing or JsonRpcIdKind.Null;
 
     public bool HasRawToken => _kind == JsonRpcIdKind.String && _rawValue is not null;
@@ -122,9 +100,7 @@ public readonly struct JsonRpcId : IEquatable<JsonRpcId>
             throw new JsonException("Expected JSON-RPC string ID token.");
     }
 
-    /// <summary>
-    /// Converts the legacy boxed ID representation into a typed JSON-RPC ID.
-    /// </summary>
+    /// <summary>Converts the legacy boxed ID representation into a typed JSON-RPC ID.</summary>
     /// <param name="value">The legacy ID value.</param>
     /// <returns>The equivalent typed ID.</returns>
     /// <exception cref="NotSupportedException">Thrown when <paramref name="value"/> is not a supported JSON-RPC ID type.</exception>
@@ -147,9 +123,7 @@ public readonly struct JsonRpcId : IEquatable<JsonRpcId>
             throw new NotSupportedException($"Unsupported JSON-RPC ID type: {value.GetType().FullName}");
     }
 
-    /// <summary>
-    /// Converts this typed ID to the legacy boxed representation.
-    /// </summary>
+    /// <summary>Converts this typed ID to the legacy boxed representation.</summary>
     /// <returns>The boxed ID value, or null for missing and explicit-null IDs.</returns>
     public object? ToObject()
     {
@@ -167,9 +141,7 @@ public readonly struct JsonRpcId : IEquatable<JsonRpcId>
             throw new NotSupportedException("Unsupported JSON-RPC ID kind.");
     }
 
-    /// <summary>
-    /// Writes this ID as a JSON value.
-    /// </summary>
+    /// <summary>Writes this ID as a JSON value.</summary>
     /// <param name="writer">The JSON writer to write to.</param>
     /// <exception cref="ArgumentNullException">Thrown when <paramref name="writer"/> is null.</exception>
     public void WriteTo(Utf8JsonWriter writer)
@@ -210,9 +182,7 @@ public readonly struct JsonRpcId : IEquatable<JsonRpcId>
             throw new NotSupportedException("Unsupported JSON-RPC ID kind.");
     }
 
-    /// <summary>
-    /// Tries to get this ID as a signed 64-bit integer.
-    /// </summary>
+    /// <summary>Tries to get this ID as a signed 64-bit integer.</summary>
     /// <param name="value">The integer ID value when this method returns true.</param>
     /// <returns>True when this ID stores a signed 64-bit integer; otherwise false.</returns>
     public bool TryGetInt64(out long value)
@@ -221,9 +191,7 @@ public readonly struct JsonRpcId : IEquatable<JsonRpcId>
         return _kind == JsonRpcIdKind.Long;
     }
 
-    /// <summary>
-    /// Tries to get this ID as a decimal integer.
-    /// </summary>
+    /// <summary>Tries to get this ID as a decimal integer.</summary>
     /// <param name="value">The decimal ID value when this method returns true.</param>
     /// <returns>True when this ID stores a decimal integer; otherwise false.</returns>
     public bool TryGetDecimal(out decimal value)
@@ -232,9 +200,7 @@ public readonly struct JsonRpcId : IEquatable<JsonRpcId>
         return _kind == JsonRpcIdKind.Decimal;
     }
 
-    /// <summary>
-    /// Tries to get this ID as a string.
-    /// </summary>
+    /// <summary>Tries to get this ID as a string.</summary>
     /// <param name="value">The string ID value when this method returns true.</param>
     /// <returns>True when this ID stores a string; otherwise false.</returns>
     public bool TryGetString(out string? value)
@@ -283,9 +249,7 @@ public readonly struct JsonRpcId : IEquatable<JsonRpcId>
             _ => _kind.GetHashCode()
         };
 
-    /// <summary>
-    /// Returns a diagnostic representation of the ID.
-    /// </summary>
+    /// <summary>Returns a diagnostic representation of the ID.</summary>
     /// <returns>The ID as text, or a marker for missing/null states.</returns>
     public override string ToString() =>
         _kind switch
@@ -298,43 +262,31 @@ public readonly struct JsonRpcId : IEquatable<JsonRpcId>
             _ => string.Empty
         };
 
-    /// <summary>
-    /// Determines whether two IDs are equal.
-    /// </summary>
+    /// <summary>Determines whether two IDs are equal.</summary>
     /// <param name="left">The left ID.</param>
     /// <param name="right">The right ID.</param>
     /// <returns>True when the IDs are equal; otherwise false.</returns>
     public static bool operator ==(JsonRpcId left, JsonRpcId right) => left.Equals(right);
 
-    /// <summary>
-    /// Determines whether two IDs are not equal.
-    /// </summary>
+    /// <summary>Determines whether two IDs are not equal.</summary>
     /// <param name="left">The left ID.</param>
     /// <param name="right">The right ID.</param>
     /// <returns>True when the IDs are not equal; otherwise false.</returns>
     public static bool operator !=(JsonRpcId left, JsonRpcId right) => !left.Equals(right);
 
-    /// <summary>
-    /// Converts an integer to a JSON-RPC ID.
-    /// </summary>
+    /// <summary>Converts an integer to a JSON-RPC ID.</summary>
     /// <param name="value">The integer value.</param>
     public static implicit operator JsonRpcId(int value) => new(value);
 
-    /// <summary>
-    /// Converts a signed 64-bit integer to a JSON-RPC ID.
-    /// </summary>
+    /// <summary>Converts a signed 64-bit integer to a JSON-RPC ID.</summary>
     /// <param name="value">The integer value.</param>
     public static implicit operator JsonRpcId(long value) => new(value);
 
-    /// <summary>
-    /// Converts an integer decimal to a JSON-RPC ID.
-    /// </summary>
+    /// <summary>Converts an integer decimal to a JSON-RPC ID.</summary>
     /// <param name="value">The decimal value.</param>
     public static implicit operator JsonRpcId(decimal value) => new(value);
 
-    /// <summary>
-    /// Converts a string to a JSON-RPC ID.
-    /// </summary>
+    /// <summary>Converts a string to a JSON-RPC ID.</summary>
     /// <param name="value">The string value.</param>
     public static implicit operator JsonRpcId(string value) => new(value);
 
