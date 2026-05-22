@@ -11,10 +11,10 @@ using Nethermind.Evm.State;
 namespace Nethermind.Consensus.Stateless;
 
 /// <summary>
-/// On EIP-7928 chains, installs <see cref="WitnessCapturingWorldStateProxy"/> as the main-processing
-/// <see cref="IWorldState"/> decorator and as a typed singleton (so the JSON-RPC handler can take it
-/// directly), and wraps <see cref="IBlockProcessor"/> with <see cref="WitnessCapturingBlockProcessor"/>
-/// so each <c>ProcessOne</c> arms/drains the proxy.
+/// On EIP-7928 chains, wires up in-flight witness capture for the main processing pipeline:
+/// installs the thin <see cref="WitnessCapturingWorldStateProxy"/> as the <see cref="IWorldState"/>
+/// decorator, registers the <see cref="WitnessRendezvous"/> for handler↔processor coordination,
+/// and decorates <see cref="IBlockProcessor"/> with <see cref="WitnessCapturingBlockProcessor"/>.
 /// </summary>
 public sealed class WitnessCapturingMainProcessingModule(ISpecProvider specProvider) : Module, IMainProcessingModule
 {
@@ -23,7 +23,9 @@ public sealed class WitnessCapturingMainProcessingModule(ISpecProvider specProvi
         if (!specProvider.GetFinalSpec().IsEip7928Enabled) return;
 
         builder.AddDecorator<IWorldState, WitnessCapturingWorldStateProxy>();
-        // Expose the SAME instance as a typed singleton via cast through IWorldState.
+        // Expose the same proxy instance as a typed singleton so the block-processor decorator can
+        // take it directly. Cast through IWorldState because Autofac doesn't model decorator chains
+        // as typed singletons.
         builder.AddSingleton<WitnessCapturingWorldStateProxy>(ctx =>
             (WitnessCapturingWorldStateProxy)ctx.Resolve<IWorldState>());
         builder.AddDecorator<IBlockProcessor, WitnessCapturingBlockProcessor>();

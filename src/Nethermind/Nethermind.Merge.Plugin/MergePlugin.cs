@@ -291,10 +291,9 @@ public class BaseMergePluginModule : Module
             .AddDecorator<IBetterPeerStrategy, MergeBetterPeerStrategy>()
 
             .AddSingleton<IMainProcessingModule, WitnessCapturingMainProcessingModule>()
-            // Surface the inner-scope proxy to the root-scope handler via a stable holder type
-            // (Autofac rejects null factory returns, so we can't register WitnessCapturingWorldStateProxy directly).
-            .AddSingleton<WitnessProxyResolver>(ctx =>
-                new WitnessProxyResolver(ctx.Resolve<IMainProcessingContext>().WorldState as WitnessCapturingWorldStateProxy))
+            // Rendezvous lives in the root scope so the JSON-RPC handler can take it directly; the
+            // main-processing module simply consumes it when EIP-7928 is enabled.
+            .AddSingleton<WitnessRendezvous>()
 
             .AddSingleton<IPeerRefresher, PeerRefresher>()
             .ResolveOnServiceActivation<IPeerRefresher, ISynchronizer>()

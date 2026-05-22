@@ -16,52 +16,90 @@ using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing.State;
 using Nethermind.Int256;
 using Nethermind.State;
+using Nethermind.State.Proofs;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
 
 namespace Nethermind.Consensus.Stateless;
 
-public class WitnessGeneratingWorldState(IWorldState inner, IStateReader stateReader, WitnessCapturingTrieStore trieStore, WitnessGeneratingHeaderFinder headerFinder) : IWorldState
+/// <summary>
+/// <see cref="IWorldState"/> decorator that records every account/slot/bytecode access during block
+/// execution and projects the captured set into a <see cref="Witness"/>.
+/// </summary>
+/// <remarks>
+/// Two recording modes:
+/// <list type="bullet">
+///   <item>
+///   <b>With a <see cref="WitnessCapturingTrieStore"/></b> (legacy <c>debug_executionWitness</c> flow):
+///   the trie store also records raw touched nodes during a re-execution; <see cref="GetWitness"/> unions
+///   those with proofs collected over the recorded addresses/slots.
+///   </item>
+///   <item>
+///   <b>Without a trie store</b> (new <c>engine_newPayloadWithWitness</c> flow): the proxy is attached
+///   to the main pipeline for one <c>ProcessOne</c> call; <see cref="GetWitness"/> builds the witness
+///   purely from <see cref="WitnessProofCollector"/> over the recorded keys, then falls back to fetching
+///   the state root proof if nothing was touched.
+///   </item>
+/// </list>
+/// </remarks>
+public class WitnessGeneratingWorldState(
+    IWorldState inner,
+    IStateReader stateReader,
+    WitnessGeneratingHeaderFinder headerFinder,
+    WitnessCapturingTrieStore? trieStore = null) : IWorldState
 {
     private readonly Dictionary<Address, HashSet<UInt256>> _storageSlots = new();
 
     private readonly Dictionary<ValueHash256, byte[]> _bytecodes = new();
 
-    public Witness GetWitness(BlockHeader parentHeader)
+    /// <summary>
+    /// Projects the recorded addresses/slots/bytecodes (and trie-touched nodes, when a capturing trie store
+    /// was supplied) into a <see cref="Witness"/> rooted at <paramref name="parentHeader"/>.
+    /// </summary>
+    /// <param name="parentHeader">
+    /// Parent block header used to anchor proof collection. Must carry the correct <c>StateRoot</c> and
+    /// <c>Number</c>; the parent's hash is taken from <paramref name="parentHash"/> when supplied so the
+    /// in-flight path can pass a stub header whose RLP-derived <c>Hash</c> would otherwise be wrong.
+    /// </param>
+    /// <param name="parentHash">
+    /// Overrides <c>parentHeader.Hash</c> for the headers-section lookup. Lets the new endpoint avoid a DB
+    /// lookup by passing a minimal header plus the known parent hash.
+    /// </param>
+    public Witness GetWitness(BlockHeader parentHeader, Hash256? parentHash = null)
     {
-        // Build state nodes
-        //
-        // The purpose of adding this tree visitor over the captured keys is for capturing trie nodes
-        // for slots that were never read and yet written to (writes are cached) but transaction reverted.
-        // Transaction reverting implies that cached writes got discarded and trie never got traversed
-        // for those keys, hence the associated trie nodes never got captured.
-        //
-        // We could potentially enforce read-before-write for every function called within this file,
-        // but this tree visitor solution is safer, more defensive and maintainable.
-        //
-        // Notes:
-        // - We wouldn't need to capture those trie nodes for nethermind stateless execution, but we need to
-        // if we want to be compatible with other clients (such as geth, for example) so that our witness
-        // can be used for their stateless execution.
-        // - Trie nodes captured using this additional tree visitor pattern should not add unnecessary trie nodes
-        // as anyway all keys recorded in this file should either be read or written to. In both cases, we want
-        // trie traversal with trie nodes capture along the path to be compatible with other clients.
-        //
-
-        if (!trieStore.TouchedNodesRlp.Any())
+        // Two complementary sources of state nodes:
+        //   1) When a WitnessCapturingTrieStore is wired in (re-execution path), trie nodes touched
+        //      during execution arrive here via TouchedNodesRlp. This catches paths that were
+        //      written-then-reverted (cached writes never round-trip through the trie visitor below).
+        //   2) WitnessProofCollector runs a tree visitor over the recorded (address, slots) set —
+        //      necessary in both modes for client compatibility (e.g. geth stateless verifiers).
+        // When no trie store is supplied (in-flight capture), only source (2) is used; the
+        // empty-state-nodes fallback at the bottom guarantees the root proof is always present.
+        if (trieStore is not null && !trieStore.TouchedNodesRlp.Any())
         {
-            // When there are no storage-slot or account reads, lazy TrieNode handling can leave the root node
-            // unrecorded, especially when recording is skipped for nodes with an unknown type.
-            // To ensure the witness still includes the root node in this case, we explicitly resolve it here.
-            // This usually works because trie nodes, and especially the root node, tend to be cached.
+            // No trie nodes touched: lazy TrieNode handling can leave the root unrecorded for unknown
+            // types. Explicitly resolve the root so the witness is never missing it.
             ITrieNodeResolver stateResolver = trieStore.GetTrieStore(null);
             TreePath path = TreePath.Empty;
             TrieNode node = stateResolver.FindCachedOrUnknown(path, parentHeader.StateRoot!);
             node.ResolveNode(stateResolver, path);
         }
 
-        using PooledSet<byte[]> stateNodes = new(trieStore.TouchedNodesRlp, Bytes.EqualityComparer);
+        using PooledSet<byte[]> stateNodes = trieStore is not null
+            ? new PooledSet<byte[]>(trieStore.TouchedNodesRlp, Bytes.EqualityComparer)
+            : new PooledSet<byte[]>(Bytes.EqualityComparer);
         WitnessProofCollector.CollectAccountProofs(_storageSlots, stateReader, parentHeader, stateNodes);
+
+        // In-flight path with no recorded accesses: stateless verifiers still expect the state root
+        // node, so synthesise an empty-path proof.
+        if (stateNodes.Count == 0)
+        {
+            AccountProofCollector emptyCollector = new(Address.Zero, (byte[][])[]);
+            stateReader.RunTreeVisitor(emptyCollector, parentHeader);
+            (IReadOnlyList<byte[]> emptyProof, _) = emptyCollector.GetRawResult();
+            foreach (byte[] node in emptyProof)
+                stateNodes.Add(node);
+        }
 
         ArrayPoolList<byte[]> codes = new(_bytecodes.Count);
         foreach (byte[] code in _bytecodes.Values)
@@ -94,7 +132,7 @@ public class WitnessGeneratingWorldState(IWorldState inner, IStateReader stateRe
             Codes = codes,
             State = state,
             Keys = keys,
-            Headers = headerFinder.GetWitnessHeaders(parentHeader.Hash!)
+            Headers = headerFinder.GetWitnessHeaders(parentHash ?? parentHeader.Hash!)
         };
     }
 
@@ -107,6 +145,54 @@ public class WitnessGeneratingWorldState(IWorldState inner, IStateReader stateRe
         RecordEmptySlots(address);
         return inner.TryGetAccount(address, out account);
     }
+
+    public UInt256 GetNonce(Address address)
+    {
+        RecordEmptySlots(address);
+        return inner.GetNonce(address);
+    }
+
+    public bool IsStorageEmpty(Address address)
+    {
+        RecordEmptySlots(address);
+        return inner.IsStorageEmpty(address);
+    }
+
+    public bool HasCode(Address address)
+    {
+        RecordEmptySlots(address);
+        return inner.HasCode(address);
+    }
+
+    public bool IsNonZeroAccount(Address address, out bool accountExists)
+    {
+        RecordEmptySlots(address);
+        return inner.IsNonZeroAccount(address, out accountExists);
+    }
+
+    public bool IsDelegatedCode(Address address)
+    {
+        RecordEmptySlots(address);
+        byte[]? code = inner.GetCode(address);
+        RecordBytecode(code);
+        return Eip7702Constants.IsDelegatedCode(code);
+    }
+
+    public bool IsDelegatedCode(in ValueHash256 codeHash)
+    {
+        byte[]? code = inner.GetCode(in codeHash);
+        RecordBytecode(codeHash, code);
+        return Eip7702Constants.IsDelegatedCode(code);
+    }
+
+    public void AddAccountRead(Address address)
+    {
+        RecordEmptySlots(address);
+        inner.AddAccountRead(address);
+    }
+
+    public IDisposable? BeginSystemAccountReadSuppression() =>
+        inner.BeginSystemAccountReadSuppression();
 
     public Hash256 StateRoot => inner.StateRoot;
 
@@ -125,7 +211,7 @@ public class WitnessGeneratingWorldState(IWorldState inner, IStateReader stateRe
     public byte[]? GetCode(in ValueHash256 codeHash)
     {
         byte[] code = inner.GetCode(in codeHash);
-        RecordBytecode(code);
+        RecordBytecode(codeHash, code);
         return code;
     }
 
@@ -298,11 +384,18 @@ public class WitnessGeneratingWorldState(IWorldState inner, IStateReader stateRe
 
     private void RecordBytecode(byte[]? code)
     {
-        // Unnecessary to record empty code
-        if (code?.Length > 0)
+        // Slow path: caller didn't surface the hash, so recompute it.
+        if (code is { Length: > 0 })
         {
             Hash256 codeHash = Keccak.Compute(code);
             _bytecodes.TryAdd(codeHash, code);
         }
+    }
+
+    private void RecordBytecode(in ValueHash256 codeHash, byte[]? code)
+    {
+        // Fast path: hash already known.
+        if (code is { Length: > 0 })
+            _bytecodes.TryAdd(codeHash, code);
     }
 }

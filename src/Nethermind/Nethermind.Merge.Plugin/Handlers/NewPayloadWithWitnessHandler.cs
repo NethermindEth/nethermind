@@ -14,17 +14,17 @@ namespace Nethermind.Merge.Plugin.Handlers;
 
 /// <remarks>
 /// <see cref="IEngineRpcModule"/> is taken via <see cref="Lazy{T}"/> to break the construction
-/// cycle (the module composes this handler). The <see cref="WitnessCapturingWorldStateProxy"/>
-/// is null on pre-Amsterdam chains where the capability is gated off; a well-behaved CL won't
-/// call this method then.
+/// cycle (the module composes this handler). On pre-Amsterdam chains the
+/// <see cref="WitnessCapturingBlockProcessor"/> decorator is not installed, so the rendezvous
+/// TCS for any requested block hash never completes; the cancel-on-non-VALID and
+/// cancel-when-not-completed branches below handle that gracefully.
 /// </remarks>
 public sealed class NewPayloadWithWitnessHandler(
     Lazy<IEngineRpcModule> engineModule,
-    WitnessProxyResolver proxyResolver,
+    WitnessRendezvous rendezvous,
     ILogManager? logManager = null) : INewPayloadWithWitnessHandler
 {
     private readonly ILogger _logger = (logManager ?? LimboLogs.Instance).GetClassLogger<NewPayloadWithWitnessHandler>();
-    private readonly WitnessCapturingWorldStateProxy? proxy = proxyResolver.Proxy;
 
     public async Task<ResultWrapper<NewPayloadWithWitnessV1Result>> HandleAsync(
         ExecutionPayloadV4 executionPayload,
@@ -41,8 +41,7 @@ public sealed class NewPayloadWithWitnessHandler(
                 "executionPayload.blockHash is required", ErrorCodes.InvalidParams);
         }
 
-        // Pre-Amsterdam: no proxy installed, forward to V5 and return witness-less success.
-        Task<Witness?>? captureTask = proxy?.RequestWitness(blockHash);
+        Task<Witness?> captureTask = rendezvous.RequestWitness(blockHash);
 
         ResultWrapper<PayloadStatusV1> statusResult;
         try
@@ -52,8 +51,7 @@ public sealed class NewPayloadWithWitnessHandler(
         }
         catch
         {
-            // Prevent the armed TCS from outliving the request.
-            proxy?.CancelWitnessRequest(blockHash);
+            rendezvous.CancelWitnessRequest(blockHash);
             throw;
         }
 
@@ -61,7 +59,7 @@ public sealed class NewPayloadWithWitnessHandler(
         {
             if (statusResult.Result.ResultType != ResultType.Success)
             {
-                proxy?.CancelWitnessRequest(blockHash);
+                rendezvous.CancelWitnessRequest(blockHash);
                 return ResultWrapper<NewPayloadWithWitnessV1Result>.Fail(
                     statusResult.Result.Error ?? "engine_newPayloadV5 failed",
                     statusResult.ErrorCode);
@@ -70,13 +68,14 @@ public sealed class NewPayloadWithWitnessHandler(
             PayloadStatusV1 payloadStatus = statusResult.Data!;
             Witness? witness = null;
 
-            if (payloadStatus.Status == PayloadStatus.Valid && captureTask is not null)
+            if (payloadStatus.Status == PayloadStatus.Valid)
             {
                 // BlockProcessor normally completes the TCS synchronously inside ProcessOne.
-                // If it didn't, the block took an early-return path (already known, etc.) and
-                // was never processed — cancel so the await below doesn't block forever.
+                // If it didn't, the block either took an early-return path (already known, etc.)
+                // or the decorator isn't installed (pre-Amsterdam) — cancel so the await below
+                // doesn't block forever.
                 if (!captureTask.IsCompleted)
-                    proxy!.CancelWitnessRequest(blockHash);
+                    rendezvous.CancelWitnessRequest(blockHash);
 
                 try
                 {
@@ -87,9 +86,9 @@ public sealed class NewPayloadWithWitnessHandler(
                     if (_logger.IsWarn) _logger.Warn($"engine_newPayloadWithWitness: witness capture cancelled for {blockHash}. Returning VALID with no witness.");
                 }
             }
-            else if (captureTask is not null)
+            else
             {
-                proxy!.CancelWitnessRequest(blockHash);
+                rendezvous.CancelWitnessRequest(blockHash);
                 if (captureTask.IsCompletedSuccessfully)
                     (await captureTask)?.Dispose();
             }
