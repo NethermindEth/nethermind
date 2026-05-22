@@ -56,45 +56,35 @@ internal sealed partial class BlockAccessListValidationIndex
         /// <summary>Build the immutable lane storage from per-row counters.</summary>
         public LaneStore(LaneSpans counts)
         {
-            Lane<UInt256>? b = null; Lane<ulong>? n = null; Lane<ValueHash256>? c = null; StorageLane? s = null;
             try
             {
-                b = Lane<UInt256>.CreateImmutable(counts.Balance);
-                n = Lane<ulong>.CreateImmutable(counts.Nonce);
-                c = Lane<ValueHash256>.CreateImmutable(counts.Code);
-                s = StorageLane.CreateImmutable(counts.Storage);
+                _balance = Lane<UInt256>.CreateImmutable(counts.Balance);
+                _nonce = Lane<ulong>.CreateImmutable(counts.Nonce);
+                _code = Lane<ValueHash256>.CreateImmutable(counts.Code);
+                _storage = StorageLane.CreateImmutable(counts.Storage);
             }
             catch
             {
-                s?.Dispose(); c?.Dispose(); n?.Dispose(); b?.Dispose();
+                Dispose();
                 throw;
             }
-            _balance = b;
-            _nonce = n;
-            _code = c;
-            _storage = s;
         }
 
         /// <summary>Build mutable lane storage that mirrors <paramref name="other"/>'s layout.</summary>
         public LaneStore(LaneStore other)
         {
-            Lane<UInt256>? b = null; Lane<ulong>? n = null; Lane<ValueHash256>? c = null; StorageLane? s = null;
             try
             {
-                b = Lane<UInt256>.CreateMutableLike(other._balance);
-                n = Lane<ulong>.CreateMutableLike(other._nonce);
-                c = Lane<ValueHash256>.CreateMutableLike(other._code);
-                s = StorageLane.CreateMutableLike(other._storage);
+                _balance = Lane<UInt256>.CreateMutableLike(other._balance);
+                _nonce = Lane<ulong>.CreateMutableLike(other._nonce);
+                _code = Lane<ValueHash256>.CreateMutableLike(other._code);
+                _storage = StorageLane.CreateMutableLike(other._storage);
             }
             catch
             {
-                s?.Dispose(); c?.Dispose(); n?.Dispose(); b?.Dispose();
+                Dispose();
                 throw;
             }
-            _balance = b;
-            _nonce = n;
-            _code = c;
-            _storage = s;
         }
 
         public void SortAllRows()
@@ -500,26 +490,7 @@ internal sealed partial class BlockAccessListValidationIndex
         {
             if (length <= 1) return;
             int start = RowStarts[row];
-            if (length <= 8) InsertionSort(start, length);
-            else AccountOrdinals.AsSpan(start, length).Sort(_values.AsSpan(start, length));
-        }
-
-        private void InsertionSort(int start, int length)
-        {
-            for (int i = 1; i < length; i++)
-            {
-                int accountOrdinal = AccountOrdinals[start + i];
-                TValue value = _values[start + i];
-                int j = i - 1;
-                while (j >= 0 && AccountOrdinals[start + j] > accountOrdinal)
-                {
-                    AccountOrdinals[start + j + 1] = AccountOrdinals[start + j];
-                    _values[start + j + 1] = _values[start + j];
-                    j--;
-                }
-                AccountOrdinals[start + j + 1] = accountOrdinal;
-                _values[start + j + 1] = value;
-            }
+            AccountOrdinals.AsSpan(start, length).Sort(_values.AsSpan(start, length));
         }
 
         public override void Dispose()
@@ -647,46 +618,12 @@ internal sealed partial class BlockAccessListValidationIndex
             return lo;
         }
 
-        // Array.Sort has no overload that sorts three parallel arrays without boxing, so we
-        // keep a bespoke sort: insertion-sort for small rows, indirection-array + scratch
-        // gather for larger ones.
+        // Three parallel arrays (ordinals, keys, values) — no BCL overload sorts three at once,
+        // so we sort an indirection array via Span.Sort and gather through scratch buffers.
         protected override void SortRow(int row, int length)
         {
             if (length <= 1) return;
             int start = RowStarts[row];
-            if (length <= 8) InsertionSort(start, length);
-            else SortWithScratch(start, length);
-        }
-
-        private void InsertionSort(int start, int length)
-        {
-            for (int i = 1; i < length; i++)
-            {
-                int accountOrdinal = AccountOrdinals[start + i];
-                UInt256 key = _keys[start + i];
-                EvmWord value = _values[start + i];
-                int j = i - 1;
-                while (j >= 0 && Compare(start + j, accountOrdinal, key) > 0)
-                {
-                    AccountOrdinals[start + j + 1] = AccountOrdinals[start + j];
-                    _keys[start + j + 1] = _keys[start + j];
-                    _values[start + j + 1] = _values[start + j];
-                    j--;
-                }
-                AccountOrdinals[start + j + 1] = accountOrdinal;
-                _keys[start + j + 1] = key;
-                _values[start + j + 1] = value;
-            }
-        }
-
-        private int Compare(int left, int rightAccountOrdinal, UInt256 rightKey)
-        {
-            int accountCompare = AccountOrdinals[left].CompareTo(rightAccountOrdinal);
-            return accountCompare != 0 ? accountCompare : _keys[left].CompareTo(rightKey);
-        }
-
-        private void SortWithScratch(int start, int length)
-        {
             _scratch.EnsureLength(length);
             for (int i = 0; i < length; i++) _scratch.Order[i] = i;
 
