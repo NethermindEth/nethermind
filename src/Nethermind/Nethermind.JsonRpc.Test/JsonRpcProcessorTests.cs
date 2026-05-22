@@ -37,15 +37,15 @@ public class JsonRpcProcessorTests(bool returnErrors)
     private const string TransactionCountInvalidObjectParamsJson = "{\"a\":\"" + TransactionCountAddress + "\",\"" + TransactionCountBlock + "\"}";
 
     private readonly JsonRpcErrorResponse _errorResponse = new();
-    private static readonly object[] JsonRpcIdCases =
+    private static readonly object[][] JsonRpcIdCases =
     [
-        new object[] { "\"840b55c4-18b0-431c-be1d-6d22198b53f2\"", new JsonRpcId("840b55c4-18b0-431c-be1d-6d22198b53f2") },
-        new object[] { "12345678901234567890", new JsonRpcId(decimal.Parse("12345678901234567890")) },
-        new object[] { "\"0xa1aa12434\"", new JsonRpcId("0xa1aa12434") },
-        new object[] { "67", new JsonRpcId(67) },
-        new object[] { "9223372036854775807", new JsonRpcId(long.MaxValue) },
-        new object[] { "\";\\\\\\\"\"", new JsonRpcId(";\\\"") },
-        new object[] { "null", JsonRpcId.Null },
+        ["\"840b55c4-18b0-431c-be1d-6d22198b53f2\"", new JsonRpcId("840b55c4-18b0-431c-be1d-6d22198b53f2")],
+        ["12345678901234567890", new JsonRpcId(decimal.Parse("12345678901234567890"))],
+        ["\"0xa1aa12434\"", new JsonRpcId("0xa1aa12434")],
+        ["67", new JsonRpcId(67)],
+        ["9223372036854775807", new JsonRpcId(long.MaxValue)],
+        ["\";\\\\\\\"\"", new JsonRpcId(";\\\"")],
+        ["null", JsonRpcId.Null],
     ];
 
     static JsonRpcProcessorTests()
