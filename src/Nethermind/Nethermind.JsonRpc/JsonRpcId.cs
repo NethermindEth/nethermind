@@ -24,7 +24,6 @@ internal enum JsonRpcIdKind : byte
 public readonly struct JsonRpcId : IEquatable<JsonRpcId>
 {
     private readonly byte[]? _rawValue;
-    private readonly string? _stringValue;
     private readonly long _longValue;
     private readonly decimal _decimalValue;
     private readonly JsonRpcIdKind _kind;
@@ -71,7 +70,6 @@ public readonly struct JsonRpcId : IEquatable<JsonRpcId>
         ArgumentNullException.ThrowIfNull(value);
 
         _kind = JsonRpcIdKind.String;
-        _stringValue = value;
         _rawValue = JsonSerializer.SerializeToUtf8Bytes(value);
     }
 
@@ -222,7 +220,7 @@ public readonly struct JsonRpcId : IEquatable<JsonRpcId>
         {
             JsonRpcIdKind.Long => _longValue == other._longValue,
             JsonRpcIdKind.Decimal => _decimalValue == other._decimalValue,
-            JsonRpcIdKind.String => string.Equals(_stringValue, other._stringValue, StringComparison.Ordinal),
+            JsonRpcIdKind.String => string.Equals(GetStringValue(), other.GetStringValue(), StringComparison.Ordinal),
             _ => true
         };
 
@@ -245,7 +243,7 @@ public readonly struct JsonRpcId : IEquatable<JsonRpcId>
         {
             JsonRpcIdKind.Long => HashCode.Combine(_kind, _longValue),
             JsonRpcIdKind.Decimal => HashCode.Combine(_kind, _decimalValue),
-            JsonRpcIdKind.String => HashCode.Combine(_kind, _stringValue),
+            JsonRpcIdKind.String => HashCode.Combine(_kind, GetStringValue()),
             _ => _kind.GetHashCode()
         };
 
@@ -292,8 +290,8 @@ public readonly struct JsonRpcId : IEquatable<JsonRpcId>
 
     private string GetStringValue()
     {
-        string? stringValue = _stringValue;
-        return stringValue ?? ThrowMissingStringToken();
+        byte[]? rawValue = _rawValue;
+        return rawValue is not null ? JsonSerializer.Deserialize<string>(rawValue)! : ThrowMissingStringToken();
 
         [DoesNotReturn, StackTraceHidden]
         static string ThrowMissingStringToken() =>
@@ -304,6 +302,5 @@ public readonly struct JsonRpcId : IEquatable<JsonRpcId>
     {
         _kind = JsonRpcIdKind.String;
         _rawValue = rawValue;
-        _stringValue = JsonSerializer.Deserialize<string>(rawValue)!;
     }
 }
