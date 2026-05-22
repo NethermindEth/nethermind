@@ -26,13 +26,10 @@ public static class DisposableExtensions
     /// </remarks>
     public static bool DisposeAndNull<T>(ref T? disposable) where T : class, IDisposable
     {
-        T? current = disposable;
-        if (current is null) return false;
+        T? won = Interlocked.Exchange(ref disposable, null);
+        if (won is null) return false;
 
-        current = Interlocked.CompareExchange(ref disposable, null, current);
-        if (current is null) return false;
-
-        current.Dispose();
+        won.Dispose();
         return true;
     }
 

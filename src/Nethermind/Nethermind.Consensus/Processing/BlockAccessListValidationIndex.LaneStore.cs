@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Collections;
@@ -242,6 +243,9 @@ internal sealed partial class BlockAccessListValidationIndex
         public void SortTouchedRows()
         {
             if (_touchedCount == 0) return;
+            // _touchedCount > 0 implies mutable is set: MarkTouched only increments via
+            // ReserveNextOffset, which throws when mutable is null.
+            Debug.Assert(mutable.HasValue, "SortTouchedRows ran with _touchedCount > 0 but no mutable bookkeeping.");
             MutableBookkeeping book = mutable!.Value;
             for (int i = 0; i < _touchedCount; i++)
             {
