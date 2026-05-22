@@ -14,6 +14,30 @@ internal ref struct JsonRpcEnvelopeReader
 
     public JsonRpcEnvelopeReader(ReadOnlySpan<byte> body) => _body = body;
 
+    public static JsonRpcEnvelope Read(JsonElement element, out JsonElement paramsElement)
+    {
+        string? jsonRpc = null;
+        if (element.TryGetProperty("jsonrpc"u8, out JsonElement versionElement))
+        {
+            jsonRpc = versionElement.ValueKind == JsonValueKind.String && versionElement.ValueEquals("2.0"u8) ? "2.0" : null;
+        }
+
+        JsonRpcId id = JsonRpcId.Missing;
+        if (element.TryGetProperty("id"u8, out JsonElement idElement))
+        {
+            id = ReadId(idElement);
+        }
+
+        string? method = null;
+        if (element.TryGetProperty("method"u8, out JsonElement methodElement))
+        {
+            method = methodElement.ValueKind == JsonValueKind.String ? KnownRpcMethodNames.Intern(methodElement) : null;
+        }
+
+        bool hasParams = element.TryGetProperty("params"u8, out paramsElement);
+        return new JsonRpcEnvelope(jsonRpc, id, method, hasParams, hasParams ? paramsElement.ValueKind : JsonValueKind.Undefined, 0, 0);
+    }
+
     public bool TryRead(out JsonRpcEnvelope envelope)
     {
         Utf8JsonReader reader = new(_body, isFinalBlock: true, state: default);
@@ -109,9 +133,8 @@ internal ref struct JsonRpcEnvelopeReader
             throw new JsonException("Expected JSON-RPC property value.");
     }
 
-    private static JsonRpcId ReadId(ref Utf8JsonReader reader, ReadOnlySpan<byte> rawToken)
-    {
-        return reader.TokenType switch
+    private static JsonRpcId ReadId(ref Utf8JsonReader reader, ReadOnlySpan<byte> rawToken) =>
+        reader.TokenType switch
         {
             JsonTokenType.Null => JsonRpcId.Null,
             JsonTokenType.String => JsonRpcId.FromValidatedRawStringToken(rawToken),
@@ -120,10 +143,19 @@ internal ref struct JsonRpcEnvelopeReader
             _ => ThrowUnsupportedId()
         };
 
-        [DoesNotReturn, StackTraceHidden]
-        static JsonRpcId ThrowUnsupportedId() =>
-            throw new JsonException("Unsupported JSON-RPC ID value.");
-    }
+    private static JsonRpcId ReadId(JsonElement idElement) =>
+        idElement.ValueKind switch
+        {
+            JsonValueKind.Number when idElement.TryGetInt64(out long idNumber) => new JsonRpcId(idNumber),
+            JsonValueKind.Number when idElement.TryGetDecimal(out decimal value) && value.Scale == 0 => new JsonRpcId(value),
+            JsonValueKind.Null => JsonRpcId.Null,
+            JsonValueKind.String => new JsonRpcId(idElement.GetString()!),
+            _ => ThrowUnsupportedId()
+        };
+
+    [DoesNotReturn, StackTraceHidden]
+    private static JsonRpcId ThrowUnsupportedId() =>
+        throw new JsonException("Unsupported JSON-RPC ID value.");
 
     private static JsonValueKind GetValueKind(JsonTokenType tokenType) =>
         tokenType switch

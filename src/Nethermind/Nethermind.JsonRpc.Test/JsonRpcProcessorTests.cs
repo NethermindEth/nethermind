@@ -336,6 +336,22 @@ public class JsonRpcProcessorTests(bool returnErrors)
     }
 
     [Test]
+    public void JsonRpcEnvelopeReader_reads_matching_shape_from_json_element()
+    {
+        JsonRpcEnvelope envelope = ReadEnvelope("{\"jsonrpc\":\"2.0\",\"id\":\"\\u0041\\n\",\"method\":\"engine_newPayloadV4\",\"params\":[{\"a\":2}]}", out byte[] body);
+        using JsonDocument document = JsonDocument.Parse(body);
+
+        JsonRpcEnvelope elementEnvelope = JsonRpcEnvelopeReader.Read(document.RootElement, out JsonElement paramsElement);
+
+        elementEnvelope.JsonRpc.Should().Be(envelope.JsonRpc);
+        elementEnvelope.Id.Should().Be(envelope.Id);
+        elementEnvelope.Method.Should().BeSameAs(envelope.Method);
+        elementEnvelope.HasParams.Should().Be(envelope.HasParams);
+        elementEnvelope.ParamsKind.Should().Be(envelope.ParamsKind);
+        paramsElement.ValueKind.Should().Be(JsonValueKind.Array);
+    }
+
+    [Test]
     public void JsonRpcEnvelopeReader_reads_unknown_method_and_missing_params()
     {
         JsonRpcEnvelope envelope = ReadEnvelope("{\"id\":12345678901234567890,\"method\":\"eth_unknown\"}", out _);

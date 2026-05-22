@@ -54,60 +54,6 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
 
     public CancellationToken ProcessExit => _processExitSource?.Token ?? default;
 
-    private JsonRpcRequest DeserializeObject(JsonElement element)
-    {
-        string? jsonRpc = null;
-        if (element.TryGetProperty("jsonrpc"u8, out JsonElement versionElement))
-        {
-            if (versionElement.ValueEquals("2.0"u8))
-            {
-                jsonRpc = "2.0";
-            }
-        }
-
-        JsonRpcId id = JsonRpcId.Missing;
-        if (element.TryGetProperty("id"u8, out JsonElement idElement))
-        {
-            id = DeserializeId(idElement);
-        }
-
-        string? method = null;
-        if (element.TryGetProperty("method"u8, out JsonElement methodElement))
-        {
-            method = KnownRpcMethodNames.Intern(methodElement);
-        }
-
-        if (!element.TryGetProperty("params"u8, out JsonElement paramsElement))
-        {
-            paramsElement = default;
-        }
-
-        return new JsonRpcRequest
-        {
-            JsonRpc = jsonRpc!,
-            Id = id,
-            Method = method!,
-            Params = paramsElement,
-            ParamsKind = paramsElement.ValueKind
-        };
-    }
-
-    private static JsonRpcId DeserializeId(JsonElement idElement)
-    {
-        return idElement.ValueKind switch
-        {
-            JsonValueKind.Number when idElement.TryGetInt64(out long idNumber) => new JsonRpcId(idNumber),
-            JsonValueKind.Number when idElement.TryGetDecimal(out decimal value) && value.Scale == 0 => new JsonRpcId(value),
-            JsonValueKind.Null => JsonRpcId.Null,
-            JsonValueKind.String => new JsonRpcId(idElement.GetString()!),
-            _ => ThrowUnsupportedId()
-        };
-
-        [DoesNotReturn, StackTraceHidden]
-        static JsonRpcId ThrowUnsupportedId() =>
-            throw new JsonException("Unsupported JSON-RPC ID value.");
-    }
-
     private static readonly JsonReaderOptions _socketJsonReaderOptions = new() { AllowMultipleValues = true };
 
     public ValueTask ProcessAsync(
@@ -541,6 +487,12 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
             ParamsKind = envelope.HasParams ? envelope.ParamsKind : JsonValueKind.Undefined
         };
 
+    private static JsonRpcRequest CreateRequest(JsonElement element)
+    {
+        JsonRpcEnvelope envelope = JsonRpcEnvelopeReader.Read(element, out JsonElement paramsElement);
+        return CreateRequest(envelope, paramsElement, paramsUtf8: default);
+    }
+
     private static int CountLeadingJsonWhitespace(ReadOnlySpan<byte> span)
     {
         if (span.IsEmpty || !IsJsonWhitespace(span[0]))
@@ -625,7 +577,7 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
             switch (rootElement.ValueKind)
             {
                 case JsonValueKind.Object:
-                    JsonRpcRequest request = DeserializeObject(rootElement);
+                    JsonRpcRequest request = CreateRequest(rootElement);
                     if (_logger.IsDebug) _logger.Debug($"JSON RPC request {request.Method}");
 
                     JsonRpcResult.Entry singleResponse = await HandleSingleRequest(request, context);
@@ -691,7 +643,7 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
         {
             foreach (JsonElement item in rootElement.EnumerateArray())
             {
-                JsonRpcRequest jsonRpcRequest = DeserializeObject(item);
+                JsonRpcRequest jsonRpcRequest = CreateRequest(item);
                 JsonRpcResult.Entry response = isStopped
                     ? CreateBatchResponseLimitEntry(jsonRpcRequest)
                     : await HandleSingleRequest(jsonRpcRequest, context);
@@ -830,7 +782,7 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
         requestDocument = JsonDocument.Parse(itemBody);
         try
         {
-            return DeserializeObject(requestDocument.RootElement);
+            return CreateRequest(requestDocument.RootElement);
         }
         catch
         {
