@@ -151,9 +151,8 @@ internal static class Program
             }
         }
 
-        string[] sortedTypes = [.. filteredTypes];
-        Array.Sort(sortedTypes, StringComparer.Ordinal);
-        return sortedTypes;
+        filteredTypes.Sort(StringComparer.Ordinal);
+        return [.. filteredTypes];
     }
 
     private static HashSet<string> GetCollidingGeneratedTypeNames(IEnumerable<JsonTypeCandidate> candidates)
