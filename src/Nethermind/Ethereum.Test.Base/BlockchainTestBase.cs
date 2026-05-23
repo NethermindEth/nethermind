@@ -334,7 +334,11 @@ public abstract class BlockchainTestBase
         .ToDictionary(v => v, v => (typeof(IEngineRpcModule).GetMethod($"engine_newPayloadV{v}")
             ?? throw new NotSupportedException($"engine_newPayloadV{v} not found on IEngineRpcModule")).GetParameters().Length);
 
-    private async static Task RunNewPayloads(TestEngineNewPayloadsJson[]? newPayloads, IJsonRpcService rpcService, JsonRpcContext rpcContext, Hash256 initialHeadHash)
+    /// <summary>
+    /// Submits engine new-payload calls. Override in subclasses (e.g. witness-validating test
+    /// bases) to intercept or replace the default <c>engine_newPayloadVN</c> dispatch.
+    /// </summary>
+    protected virtual async Task RunNewPayloads(TestEngineNewPayloadsJson[]? newPayloads, IJsonRpcService rpcService, JsonRpcContext rpcContext, Hash256 initialHeadHash)
     {
         if (newPayloads is null || newPayloads.Length == 0) return;
 
@@ -350,7 +354,7 @@ public abstract class BlockchainTestBase
             int paramCount = NewPayloadParamCounts[newPayloadVersion];
             string paramsJson = "[" + string.Join(",", enginePayload.Params.Take(paramCount).Select(static p => p.GetRawText())) + "]";
 
-            JsonRpcResponse npResponse = await SendRpc(rpcService, rpcContext, "engine_newPayloadV" + newPayloadVersion, paramsJson);
+            JsonRpcResponse npResponse = await SendPayloadAsync(rpcService, rpcContext, enginePayload, newPayloadVersion, paramsJson);
 
             // RPC-level errors (e.g. wrong payload version) are valid for negative tests
             if (npResponse is JsonRpcErrorResponse errorResponse)
@@ -370,6 +374,18 @@ public abstract class BlockchainTestBase
             }
         }
     }
+
+    /// <summary>
+    /// Dispatches a single new-payload RPC call. Subclasses may override this to substitute
+    /// <c>engine_newPayloadWithWitness</c> for witness-aware testing.
+    /// </summary>
+    protected virtual Task<JsonRpcResponse> SendPayloadAsync(
+        IJsonRpcService rpcService,
+        JsonRpcContext rpcContext,
+        TestEngineNewPayloadsJson enginePayload,
+        int newPayloadVersion,
+        string paramsJson)
+        => SendRpc(rpcService, rpcContext, "engine_newPayloadV" + newPayloadVersion, paramsJson);
 
     private static void AssertExpectedRpcError(JsonRpcErrorResponse errorResponse, string? validationError, int payloadVersion) =>
         Assert.That(validationError, Is.Not.Null, $"engine_newPayloadV{payloadVersion} RPC error: {errorResponse.Error?.Code} {errorResponse.Error?.Message}");
@@ -491,17 +507,17 @@ public abstract class BlockchainTestBase
 
     private static Regex ValidationErrorRegex(string pattern) => new(pattern, ValidationErrorRegexOptions);
 
-    private static async Task<JsonRpcResponse> SendRpc(IJsonRpcService rpcService, JsonRpcContext context, string method, string paramsJson)
+    protected static async Task<JsonRpcResponse> SendRpc(IJsonRpcService rpcService, JsonRpcContext context, string method, string paramsJson)
     {
         using JsonDocument doc = JsonDocument.Parse(paramsJson);
         JsonRpcRequest request = new() { JsonRpc = "2.0", Id = 1, Method = method, Params = doc.RootElement.Clone() };
         return await rpcService.SendRequestAsync(request, context);
     }
 
-    private static Task<JsonRpcResponse> SendFcu(IJsonRpcService rpcService, JsonRpcContext context, int fcuVersion, string blockHash) =>
+    protected static Task<JsonRpcResponse> SendFcu(IJsonRpcService rpcService, JsonRpcContext context, int fcuVersion, string blockHash) =>
         SendRpc(rpcService, context, "engine_forkchoiceUpdatedV" + fcuVersion, $$"""[{"headBlockHash":"{{blockHash}}","safeBlockHash":"{{blockHash}}","finalizedBlockHash":"{{blockHash}}"},null]""");
 
-    private static void AssertRpcSuccess(JsonRpcResponse response) =>
+    protected static void AssertRpcSuccess(JsonRpcResponse response) =>
         Assert.That(response, Is.InstanceOf<JsonRpcSuccessResponse>(), response is JsonRpcErrorResponse err ? $"RPC error: {err.Error?.Code} {err.Error?.Message}" : "unexpected response type");
 
     private static List<(Block Block, string ExpectedException)> DecodeRlps(BlockchainTest test, bool failOnInvalidRlp)

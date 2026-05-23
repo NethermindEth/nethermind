@@ -101,14 +101,22 @@ public class WitnessGeneratingWorldState(
                 stateNodes.Add(node);
         }
 
-        ArrayPoolList<byte[]> codes = new(_bytecodes.Count);
+        byte[][] sortedCodes = new byte[_bytecodes.Count][];
+        int codeIdx = 0;
         foreach (byte[] code in _bytecodes.Values)
+            sortedCodes[codeIdx++] = code;
+        Array.Sort(sortedCodes, Bytes.Comparer);
+
+        ArrayPoolList<byte[]> codes = new(sortedCodes.Length);
+        foreach (byte[] code in sortedCodes)
             codes.Add(code);
 
-        ArrayPoolList<byte[]> state = new(stateNodes.Count);
-        foreach (byte[] node in stateNodes)
-            state.Add(node);
+        byte[][] sortedStateNodes = stateNodes.ToArray();
+        Array.Sort(sortedStateNodes, Bytes.Comparer);
 
+        ArrayPoolList<byte[]> state = new(sortedStateNodes.Length);
+        foreach (byte[] node in sortedStateNodes)
+            state.Add(node);
         // Build keys
         int totalKeysCount = 0;
         foreach (KeyValuePair<Address, HashSet<UInt256>> kvp in _storageSlots)
@@ -161,7 +169,9 @@ public class WitnessGeneratingWorldState(
     public bool HasCode(Address address)
     {
         RecordEmptySlots(address);
-        return inner.HasCode(address);
+        byte[]? code = inner.GetCode(address);
+        RecordBytecode(code);
+        return code is { Length: > 0 };
     }
 
     public bool IsNonZeroAccount(Address address, out bool accountExists)
@@ -218,7 +228,9 @@ public class WitnessGeneratingWorldState(
     public bool IsContract(Address address)
     {
         RecordEmptySlots(address);
-        return inner.IsContract(address);
+        byte[]? code = inner.GetCode(address);
+        RecordBytecode(code);
+        return code is { Length: > 0 };
     }
 
     public bool AccountExists(Address address)
@@ -397,5 +409,17 @@ public class WitnessGeneratingWorldState(
         // Fast path: hash already known.
         if (code is { Length: > 0 })
             _bytecodes.TryAdd(codeHash, code);
+    }
+
+    internal void RecordSystemContractAccess(Address address, UInt256 slotIndex, byte[]? code)
+    {
+        RecordEmptySlots(address).Add(slotIndex);
+        RecordBytecode(code);
+    }
+
+    internal void RecordSystemContractAccountAccess(Address address, byte[]? code)
+    {
+        RecordEmptySlots(address);
+        RecordBytecode(code);
     }
 }

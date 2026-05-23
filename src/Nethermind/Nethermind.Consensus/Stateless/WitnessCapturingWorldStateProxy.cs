@@ -117,4 +117,10 @@ public sealed class WitnessCapturingWorldStateProxy(IWorldState inner) : IWorldS
     public void CreateEmptyAccountIfDeleted(Address address) => Current.CreateEmptyAccountIfDeleted(address);
     public void AddAccountRead(Address address) => Current.AddAccountRead(address);
     public IDisposable? BeginSystemAccountReadSuppression() => Current.BeginSystemAccountReadSuppression();
+
+    internal void RecordSystemContractAccess(Address address, UInt256 slotIndex, byte[]? code)
+        => _active?.RecordSystemContractAccess(address, slotIndex, code);
+
+    internal void RecordSystemContractAccountAccess(Address address, byte[]? code)
+        => _active?.RecordSystemContractAccountAccess(address, code);
 }

@@ -6,6 +6,7 @@ using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Container;
 using Nethermind.Core.Specs;
+using Nethermind.Evm;
 using Nethermind.Evm.State;
 
 namespace Nethermind.Consensus.Stateless;
@@ -28,6 +29,7 @@ public sealed class WitnessCapturingMainProcessingModule(ISpecProvider specProvi
         // as typed singletons.
         builder.AddSingleton<WitnessCapturingWorldStateProxy>(ctx =>
             (WitnessCapturingWorldStateProxy)ctx.Resolve<IWorldState>());
+        builder.AddDecorator<ICodeInfoRepository, WitnessCapturingCodeInfoRepository>();
         builder.AddDecorator<IBlockProcessor, WitnessCapturingBlockProcessor>();
     }
 }

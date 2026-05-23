@@ -34,6 +34,7 @@ namespace Ethereum.Test.Base
 
         public string? SealEngine { get; set; }
         public string? LoadFailure { get; set; }
+        public bool ExecutionWitnessMutated { get; set; }
     }
 
     public class ConfigJson
