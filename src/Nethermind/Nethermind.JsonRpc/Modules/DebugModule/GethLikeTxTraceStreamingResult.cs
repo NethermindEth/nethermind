@@ -11,7 +11,6 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Core.Extensions;
-using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 
 namespace Nethermind.JsonRpc.Modules.DebugModule;
@@ -21,7 +20,7 @@ namespace Nethermind.JsonRpc.Modules.DebugModule;
 /// to avoid buffering the entire (potentially hundreds-of-MB) response in memory.
 /// </summary>
 [JsonConverter(typeof(GethLikeTxTraceStreamingResultConverter))]
-public sealed class GethLikeTxTraceStreamingResult(IReadOnlyCollection<GethLikeTxTrace> traces, ILogger logger = default)
+public sealed class GethLikeTxTraceStreamingResult(IReadOnlyCollection<GethLikeTxTrace> traces)
     : IStreamableResult, IReadOnlyCollection<GethLikeTxTrace>, IDisposable
 {
     public int Count => traces.Count;
@@ -42,33 +41,28 @@ public sealed class GethLikeTxTraceStreamingResult(IReadOnlyCollection<GethLikeT
 
         try
         {
-            try
+            foreach (GethLikeTxTrace trace in traces)
             {
-                foreach (GethLikeTxTrace trace in traces)
-                {
-                    jsonWriter.WriteStartObject();
-                    jsonWriter.WritePropertyName("result"u8);
-                    JsonSerializer.Serialize(jsonWriter, trace, EthereumJsonSerializer.JsonOptions);
-                    jsonWriter.WritePropertyName("txHash"u8);
-                    JsonSerializer.Serialize(jsonWriter, trace.TxHash, EthereumJsonSerializer.JsonOptions);
-                    jsonWriter.WriteEndObject();
-                    jsonWriter.Flush();
-
-                    FlushResult flushResult = await writer.FlushAsync(cancellationToken);
-                    if (flushResult.IsCompleted || flushResult.IsCanceled) return;
-                }
-            }
-            finally
-            {
-                // Always close the array so the response is valid JSON even on early exit,
-                // cancellation, or mid-stream exception.
-                jsonWriter.WriteEndArray();
+                jsonWriter.WriteStartObject();
+                jsonWriter.WritePropertyName("result"u8);
+                JsonSerializer.Serialize(jsonWriter, trace, EthereumJsonSerializer.JsonOptions);
+                jsonWriter.WritePropertyName("txHash"u8);
+                JsonSerializer.Serialize(jsonWriter, trace.TxHash, EthereumJsonSerializer.JsonOptions);
+                jsonWriter.WriteEndObject();
                 jsonWriter.Flush();
+
+                FlushResult flushResult = await writer.FlushAsync(cancellationToken);
+                if (flushResult.IsCompleted || flushResult.IsCanceled) return;
             }
         }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        finally
         {
-            if (logger.IsDebug) logger.Debug("debug_trace streaming cancelled mid-response; client receives a partial body with the JSON envelope closed by the inner finally blocks.");
+            // Always close the array so the response is valid JSON even on early exit,
+            // cancellation, or mid-stream exception. OperationCanceledException from the
+            // pipe writer propagates to Startup.WriteStreamableResponseAsync, which has
+            // its own OCE catch around all streamable results.
+            jsonWriter.WriteEndArray();
+            jsonWriter.Flush();
         }
     }
 }
