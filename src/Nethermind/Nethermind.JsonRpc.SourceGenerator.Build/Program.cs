@@ -56,7 +56,7 @@ internal static class Program
             references,
             new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
 
-        ImmutableArray<ITypeSymbol> typeSymbols = CollectTypeSymbols(compilation, syntaxTrees);
+        List<ITypeSymbol> typeSymbols = CollectTypeSymbols(compilation, syntaxTrees);
         string[] sortedTypes = GetSourceGeneratedTypes(typeSymbols, compilation.Assembly);
         if (sortedTypes.Length == 0)
         {
@@ -69,9 +69,9 @@ internal static class Program
         WriteIfChanged(arguments.OutputPath, output);
     }
 
-    private static ImmutableArray<ITypeSymbol> CollectTypeSymbols(CSharpCompilation compilation, SyntaxTree[] syntaxTrees)
+    private static List<ITypeSymbol> CollectTypeSymbols(CSharpCompilation compilation, SyntaxTree[] syntaxTrees)
     {
-        ImmutableArray<ITypeSymbol>.Builder types = ImmutableArray.CreateBuilder<ITypeSymbol>();
+        List<ITypeSymbol> types = [];
         for (int i = 0; i < syntaxTrees.Length; i++)
         {
             SemanticModel semanticModel = compilation.GetSemanticModel(syntaxTrees[i]);
@@ -85,7 +85,7 @@ internal static class Program
             }
         }
 
-        return types.ToImmutable();
+        return types;
     }
 
     private static string GenerateContextSource(string[] sortedTypes)
@@ -125,12 +125,12 @@ internal static class Program
         return builder.ToString();
     }
 
-    private static string[] GetSourceGeneratedTypes(ImmutableArray<ITypeSymbol> typeSymbols, IAssemblySymbol currentAssembly)
+    private static string[] GetSourceGeneratedTypes(List<ITypeSymbol> typeSymbols, IAssemblySymbol currentAssembly)
     {
         JsonContextEligibility eligibility = new(currentAssembly);
         Dictionary<string, JsonTypeCandidate> candidatesByDisplayName = new(StringComparer.Ordinal);
 
-        for (int i = 0; i < typeSymbols.Length; i++)
+        for (int i = 0; i < typeSymbols.Count; i++)
         {
             ITypeSymbol type = typeSymbols[i];
             string displayName = RpcJsonTypeDiscovery.GetTypeDisplayString(type);
