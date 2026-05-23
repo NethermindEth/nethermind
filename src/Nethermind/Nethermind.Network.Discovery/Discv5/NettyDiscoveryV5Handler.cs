@@ -29,6 +29,8 @@ public class NettyDiscoveryV5Handler(ILogManager loggerManager) : NettyDiscovery
 
     public void InitializeChannel(IChannel channel) => _nettyChannel = channel;
 
+    public override void ChannelActive(IChannelHandlerContext context) => OnChannelActivated?.Invoke(this, EventArgs.Empty);
+
     protected override void ChannelRead0(IChannelHandlerContext ctx, DatagramPacket msg)
     {
         msg.Retain();
@@ -106,4 +108,6 @@ public class NettyDiscoveryV5Handler(ILogManager loggerManager) : NettyDiscovery
     }
 
     public static void Register(IServiceCollection services) => services.AddSingleton<NettyDiscoveryV5Handler>();
+
+    public event EventHandler? OnChannelActivated;
 }

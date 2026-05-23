@@ -25,6 +25,14 @@ public class DiscoveryModule(IInitConfig initConfig, INetworkConfig networkConfi
 {
     protected override void Load(ContainerBuilder builder)
     {
+        builder.RegisterType<NodesLoader>()
+            .AsSelf()
+            .WithAttributeFiltering()
+            .WithParameter(
+                static (parameterInfo, _) => parameterInfo.ParameterType == typeof(bool) && parameterInfo.Name == "loadBootnodesAsPeerCandidates",
+                static (_, context) => (context.Resolve<IDiscoveryConfig>().DiscoveryVersion & DiscoveryVersion.V4) != 0)
+            .SingleInstance();
+
         builder
             // Enr discovery uses DNS to get some bootnodes.
             .AddSingleton<EnrDiscovery, IEthereumEcdsa, ILogManager>((ethereumEcdsa, logManager) =>
@@ -43,8 +51,6 @@ public class DiscoveryModule(IInitConfig initConfig, INetworkConfig networkConfi
             .AddSingleton<IStaticNodesManager, ILogManager>(logManager =>
                 new StaticNodesManager(initConfig.StaticNodesPath.GetApplicationResourcePath(initConfig.DataDir), logManager))
             // This load from file.
-            .AddSingleton<NodesLoader>()
-
             .AddSingleton<ITrustedNodesManager, ILogManager>((logManager) =>
                 new TrustedNodesManager(initConfig.TrustedNodesPath.GetApplicationResourcePath(initConfig.DataDir), logManager))
 

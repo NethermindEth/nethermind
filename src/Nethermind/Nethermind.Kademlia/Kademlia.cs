@@ -52,6 +52,10 @@ public class Kademlia<TKey, TNode> : IKademlia<TKey, TNode> where TNode : notnul
         _timestamper = timestamper;
 
         AddOrRefresh(_currentNodeId);
+        for (int i = 0; i < _bootNodes.Count; i++)
+        {
+            AddOrRefresh(_bootNodes[i]);
+        }
     }
 
     public TNode CurrentNode => _currentNodeId;

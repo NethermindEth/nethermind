@@ -21,6 +21,7 @@ public class DoubleEndedLru<TNode>(int capacity) where TNode : notnull
         if (_hashMapping.TryGetValue(hash, out LinkedListNode<(KademliaHash, TNode)>? listNode))
         {
             _queue.Remove(listNode);
+            listNode.Value = (hash, node);
             _queue.AddFirst(listNode);
             return BucketAddResult.Refreshed;
         }

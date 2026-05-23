@@ -76,6 +76,20 @@ public class KademliaTests
     }
 
     [Test]
+    public void ShouldSeedBootnodes()
+    {
+        ValueHash256 bootNode = ValueKeccak.Compute("bootnode");
+        Kademlia<ValueHash256, ValueHash256> kad = CreateKad(new KademliaConfig<ValueHash256>
+        {
+            KSize = 5,
+            Beta = 0,
+            BootNodes = [bootNode],
+        });
+
+        Assert.That(kad.IterateNodes(), Does.Contain(bootNode));
+    }
+
+    [Test]
     public async Task TestTooManyNode()
     {
         TaskCompletionSource pingSource = new();

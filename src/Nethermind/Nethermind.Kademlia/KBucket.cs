@@ -23,8 +23,10 @@ public class KBucket<TNode>(int k) where TNode : notnull
     /// <returns></returns>
     public BucketAddResult TryAddOrRefresh(in KademliaHash hash, TNode item, out TNode? toRefresh)
     {
+        TNode? previous = _items.GetByHash(hash);
         BucketAddResult addResult = _items.AddOrRefresh(hash, item);
-        if (addResult == BucketAddResult.Added)
+        if (addResult == BucketAddResult.Added ||
+            (addResult == BucketAddResult.Refreshed && ShouldUpdateCachedArray(previous, item)))
         {
             _cachedArray = _items.GetAll();
         }
@@ -68,4 +70,16 @@ public class KBucket<TNode>(int k) where TNode : notnull
     public bool ContainsNode(in KademliaHash hash) => _items.Contains(hash);
 
     public TNode? GetByHash(KademliaHash hash) => _items.GetByHash(hash);
+
+    private static bool ShouldUpdateCachedArray(TNode? previous, TNode item)
+    {
+        if (previous is null)
+        {
+            return false;
+        }
+
+        return typeof(TNode).IsValueType
+            ? !EqualityComparer<TNode>.Default.Equals(previous, item)
+            : !ReferenceEquals(previous, item);
+    }
 }

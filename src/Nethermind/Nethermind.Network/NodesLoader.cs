@@ -24,7 +24,8 @@ namespace Nethermind.Network
         INodeStatsManager stats,
         [KeyFilter(DbNames.PeersDb)] INetworkStorage peerStorage,
         IRlpxHost rlpxHost,
-        ILogManager logManager) : INodeSource
+        ILogManager logManager,
+        bool loadBootnodesAsPeerCandidates = true) : INodeSource
     {
         private readonly INetworkConfig _networkConfig = networkConfig ?? throw new ArgumentNullException(nameof(networkConfig));
         private readonly INodeStatsManager _stats = stats ?? throw new ArgumentNullException(nameof(stats));
@@ -37,7 +38,7 @@ namespace Nethermind.Network
             List<Node> allPeers = [];
             LoadPeersFromDb(allPeers);
 
-            if (!_networkConfig.OnlyStaticPeers)
+            if (!_networkConfig.OnlyStaticPeers && loadBootnodesAsPeerCandidates)
             {
                 LoadConfigPeers(allPeers, _networkConfig.Bootnodes, n =>
                 {

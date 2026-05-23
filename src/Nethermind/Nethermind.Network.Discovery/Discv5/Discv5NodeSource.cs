@@ -27,14 +27,18 @@ public class Discv5NodeSource(
 
         Channel<Node> channel = Channel.CreateBounded<Node>(64);
         ConcurrentDictionary<Hash256, Hash256> writtenNodes = new();
+        int initialNodes = 0;
 
         foreach (Node node in kademlia.IterateNodes())
         {
-            if (!IsSelf(node) && writtenNodes.TryAdd(node.IdHash, node.IdHash))
+            if (!IsExcluded(node) && writtenNodes.TryAdd(node.IdHash, node.IdHash))
             {
+                initialNodes++;
                 yield return node;
             }
         }
+
+        if (_logger.IsDebug) _logger.Debug($"Discv5 node source emitted {initialNodes} initial nodes from the routing table.");
 
         kademlia.OnNodeAdded += Handler;
         try
@@ -51,12 +55,19 @@ public class Discv5NodeSource(
 
         void Handler(object? _, Node node)
         {
-            if (!IsSelf(node) && writtenNodes.TryAdd(node.IdHash, node.IdHash))
+            if (!IsExcluded(node) && writtenNodes.TryAdd(node.IdHash, node.IdHash))
             {
-                channel.Writer.TryWrite(node);
+                if (channel.Writer.TryWrite(node))
+                {
+                    if (_logger.IsDebug) _logger.Debug($"Discv5 node source queued discovered node {node:s}.");
+                }
+                else if (_logger.IsTrace)
+                {
+                    _logger.Trace($"Discv5 node source queue is full, dropping discovered node {node:s}.");
+                }
             }
         }
     }
 
-    private bool IsSelf(Node node) => node.IdHash.Equals(_currentNodeHash);
+    private bool IsExcluded(Node node) => node.IsBootnode || node.IdHash.Equals(_currentNodeHash);
 }

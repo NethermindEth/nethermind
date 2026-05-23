@@ -92,13 +92,16 @@ public class DiscoveryV5AppTests
         _legacyDiscoveryDb.Dispose();
     }
 
-    private static NodeRecord CreateTestEnr(Nethermind.Crypto.PrivateKey privateKey, IPAddress? ipAddress = null, int port = 30303, int? udpPort = null)
+    private static NodeRecord CreateTestEnr(Nethermind.Crypto.PrivateKey privateKey, IPAddress? ipAddress = null, int port = 30303, int? udpPort = null, bool includeTcp = true)
     {
         NodeRecord enr = new();
         enr.SetEntry(IdEntry.Instance);
         enr.SetEntry(new IpEntry(ipAddress ?? IPAddress.Loopback));
         enr.SetEntry(new SecP256k1Entry(privateKey.CompressedPublicKey));
-        enr.SetEntry(new TcpEntry(port));
+        if (includeTcp)
+        {
+            enr.SetEntry(new TcpEntry(port));
+        }
         enr.SetEntry(new UdpEntry(udpPort ?? port));
         enr.EnrSequence = 1;
         new NodeRecordSigner(new EthereumEcdsa(0), privateKey).Sign(enr);
@@ -213,6 +216,29 @@ public class DiscoveryV5AppTests
         Assert.That(result, Is.True);
         Assert.That(node, Is.Not.Null);
         Assert.That(node!.Port, Is.EqualTo(30304));
+    }
+
+    [Test]
+    public void Should_Use_Udp_Port_From_Configured_Enr_Bootnode()
+    {
+        NodeRecord enr = CreateTestEnr(TestItem.PrivateKeyA, IPAddress.Parse("8.8.8.8"), udpPort: 9001, includeTcp: false);
+        NetworkConfig networkConfig = new()
+        {
+            Bootnodes = [new NetworkNode(enr.EnrString)]
+        };
+        DiscoveryConfig discoveryConfig = new()
+        {
+            UseDefaultDiscv5Bootnodes = false
+        };
+
+        List<Node> bootNodes = _discoveryV5App.CreateBootNodes(networkConfig, discoveryConfig);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(bootNodes, Has.Count.EqualTo(1));
+            Assert.That(bootNodes[0].Port, Is.EqualTo(9001));
+            Assert.That(bootNodes[0].Enr, Is.EqualTo(enr.EnrString));
+        }
     }
 
     [Test]

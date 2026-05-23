@@ -61,6 +61,20 @@ public class KBucketTests
     }
 
     [Test]
+    public void TryAddOrRefresh_ShouldReplaceCachedNode_WhenRefreshingSameHashWithNewInstance()
+    {
+        KBucket<string> bucket = new(5);
+        KademliaHash hash = KademliaHash.FromBytes(ValueKeccak.Compute("node").BytesAsSpan);
+
+        bucket.TryAddOrRefresh(hash, "old", out _);
+        bucket.TryAddOrRefresh(hash, "new", out _);
+
+        Assert.That(bucket.GetByHash(hash), Is.EqualTo("new"));
+        Assert.That(bucket.GetAll(), Is.EqualTo(new[] { "new" }));
+        Assert.That(bucket.GetAllWithHash(), Is.EqualTo(new[] { (hash, "new") }));
+    }
+
+    [Test]
     public void RemoveAndReplace_ShouldReplaceNodeWithLatestInReplacementCache()
     {
         KBucket<ValueHash256> bucket = new(5);
