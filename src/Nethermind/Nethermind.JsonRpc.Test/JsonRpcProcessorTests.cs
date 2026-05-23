@@ -360,7 +360,7 @@ public class JsonRpcProcessorTests(bool returnErrors)
     }
 
     [Test]
-    public void JsonRpcEnvelopeReader_keeps_numeric_ids_typed()
+    public void JsonRpcEnvelopeReader_keeps_numeric_ids_typed_and_preserves_raw_decimal_token()
     {
         JsonRpcEnvelope envelope = ReadEnvelope("{\"id\":1e2,\"method\":\"eth_blockNumber\"}", out _);
 
@@ -372,7 +372,7 @@ public class JsonRpcProcessorTests(bool returnErrors)
             envelope.Id.WriteTo(writer);
         }
 
-        Encoding.UTF8.GetString(buffer.WrittenSpan).Should().Be("100");
+        Encoding.UTF8.GetString(buffer.WrittenSpan).Should().Be("1e2");
     }
 
     [Test]

@@ -93,6 +93,23 @@ public readonly struct JsonRpcId : IEquatable<JsonRpcId>
             throw new JsonException("Expected JSON-RPC string ID token.");
     }
 
+    internal static JsonRpcId FromValidatedRawDecimalToken(ReadOnlySpan<byte> rawToken, decimal value)
+        => FromValidatedRawDecimalToken(rawToken.ToArray(), value);
+
+    internal static JsonRpcId FromValidatedRawDecimalToken(byte[] rawToken, decimal value)
+    {
+        if (rawToken.Length == 0 || value.Scale != 0)
+        {
+            ThrowInvalidRawDecimalToken();
+        }
+
+        return new JsonRpcId(JsonRpcIdKind.Decimal, rawToken, value);
+
+        [DoesNotReturn, StackTraceHidden]
+        static void ThrowInvalidRawDecimalToken() =>
+            throw new JsonException("Expected JSON-RPC integer decimal ID token.");
+    }
+
     /// <summary>Converts the legacy boxed ID representation into a typed JSON-RPC ID.</summary>
     /// <param name="value">The legacy ID value.</param>
     /// <returns>The equivalent typed ID.</returns>
@@ -151,6 +168,12 @@ public readonly struct JsonRpcId : IEquatable<JsonRpcId>
                 writer.WriteNumberValue(_longValue);
                 break;
             case JsonRpcIdKind.Decimal:
+                if (_rawValue is not null)
+                {
+                    writer.WriteRawValue(_rawValue, skipInputValidation: true);
+                    break;
+                }
+
                 writer.WriteNumberValue(_decimalValue);
                 break;
             case JsonRpcIdKind.String:
@@ -270,5 +293,12 @@ public readonly struct JsonRpcId : IEquatable<JsonRpcId>
     {
         _kind = JsonRpcIdKind.String;
         _rawValue = rawValue;
+    }
+
+    private JsonRpcId(JsonRpcIdKind kind, byte[] rawValue, decimal decimalValue)
+    {
+        _kind = kind;
+        _rawValue = rawValue;
+        _decimalValue = decimalValue;
     }
 }

@@ -4,6 +4,7 @@
 using System;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
+using System.Text;
 using System.Text.Json;
 
 namespace Nethermind.JsonRpc;
@@ -139,7 +140,7 @@ internal ref struct JsonRpcEnvelopeReader
             JsonTokenType.Null => JsonRpcId.Null,
             JsonTokenType.String => JsonRpcId.FromValidatedRawStringToken(rawToken),
             JsonTokenType.Number when reader.TryGetInt64(out long value) => new JsonRpcId(value),
-            JsonTokenType.Number when reader.TryGetDecimal(out decimal value) && value.Scale == 0 => new JsonRpcId(value),
+            JsonTokenType.Number when reader.TryGetDecimal(out decimal value) && value.Scale == 0 => JsonRpcId.FromValidatedRawDecimalToken(rawToken, value),
             _ => ThrowUnsupportedId()
         };
 
@@ -147,7 +148,7 @@ internal ref struct JsonRpcEnvelopeReader
         idElement.ValueKind switch
         {
             JsonValueKind.Number when idElement.TryGetInt64(out long idNumber) => new JsonRpcId(idNumber),
-            JsonValueKind.Number when idElement.TryGetDecimal(out decimal value) && value.Scale == 0 => new JsonRpcId(value),
+            JsonValueKind.Number when idElement.TryGetDecimal(out decimal value) && value.Scale == 0 => JsonRpcId.FromValidatedRawDecimalToken(Encoding.UTF8.GetBytes(idElement.GetRawText()), value),
             JsonValueKind.Null => JsonRpcId.Null,
             JsonValueKind.String => new JsonRpcId(idElement.GetString()!),
             _ => ThrowUnsupportedId()

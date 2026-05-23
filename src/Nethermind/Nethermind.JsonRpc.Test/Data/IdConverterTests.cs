@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Globalization;
 using System.IO;
 using System.Numerics;
 using System.Text.Json;
@@ -71,6 +72,17 @@ namespace Nethermind.JsonRpc.Test.Data
         [TestCase("{\"id\":null}")]
         public void JsonRpcId_can_do_roundtrip(string json) => TestRoundtrip<SomethingWithJsonRpcId>(json);
 
+        [TestCase("1e2", "100")]
+        [TestCase("12345678901234567890", "12345678901234567890")]
+        public void JsonRpcId_preserves_decimal_raw_writeback(string idJson, string expectedValue)
+        {
+            JsonRpcId id = DeserializeId(idJson);
+
+            id.TryGetDecimal(out decimal value).Should().BeTrue();
+            value.Should().Be(decimal.Parse(expectedValue, CultureInfo.InvariantCulture));
+            Serialize(id).Should().Be(idJson);
+        }
+
         [Test]
         public void JsonRpcId_preserves_missing_and_explicit_null_states()
         {
@@ -114,6 +126,18 @@ namespace Nethermind.JsonRpc.Test.Data
         {
             JsonRpcId.Missing.Equals((object?)null).Should().BeFalse();
             JsonRpcId.Null.Equals((object?)null).Should().BeFalse();
+        }
+
+        [TestCaseSource(nameof(JsonRpcIdEqualityCases))]
+        public void JsonRpcId_equality_and_hashing(JsonRpcId left, JsonRpcId right, bool expected)
+        {
+            left.Equals(right).Should().Be(expected);
+            right.Equals(left).Should().Be(expected);
+
+            if (expected)
+            {
+                left.GetHashCode().Should().Be(right.GetHashCode());
+            }
         }
 
         [TestCaseSource(nameof(JsonRpcResponseIdCases))]
@@ -165,13 +189,28 @@ namespace Nethermind.JsonRpc.Test.Data
 
         private static string Serialize(JsonRpcId id) => JsonSerializer.Serialize(id, _jsonRpcIdOptions);
 
+        private static JsonRpcId DeserializeId(string json) => JsonSerializer.Deserialize<JsonRpcId>(json, _jsonRpcIdOptions);
+
+        private static readonly TestCaseData[] JsonRpcIdEqualityCases =
+        [
+            new TestCaseData(JsonRpcId.Missing, JsonRpcId.Missing, true).SetName("Missing"),
+            new TestCaseData(JsonRpcId.Null, JsonRpcId.Null, true).SetName("ExplicitNull"),
+            new TestCaseData(JsonRpcId.Missing, JsonRpcId.Null, false).SetName("MissingVsNull"),
+            new TestCaseData(DeserializeId("\"\\u0041\\n\""), new JsonRpcId("A\n"), true).SetName("EscapedString"),
+            new TestCaseData(DeserializeId("1e2"), new JsonRpcId(100m), true).SetName("RawDecimal"),
+            new TestCaseData(new JsonRpcId(1), new JsonRpcId(1m), false).SetName("LongVsDecimalKind")
+        ];
+
         private static readonly TestCaseData[] JsonRpcResponseIdCases =
         [
             new TestCaseData(JsonRpcId.Missing, "null").SetName("Missing"),
             new TestCaseData(JsonRpcId.Null, "null").SetName("ExplicitNull"),
             new TestCaseData(new JsonRpcId(1), "1").SetName("Long"),
             new TestCaseData(new JsonRpcId(1234m), "1234").SetName("DecimalInteger"),
+            new TestCaseData(DeserializeId("1e2"), "1e2").SetName("RawDecimalInteger"),
             new TestCaseData(new JsonRpcId(12345678901234567890m), "12345678901234567890").SetName("LargeDecimalInteger"),
+            new TestCaseData(new JsonRpcId("840b55c4-18b0-431c-be1d-6d22198b53f2"), "\"840b55c4-18b0-431c-be1d-6d22198b53f2\"").SetName("GuidString"),
+            new TestCaseData(new JsonRpcId("a\"\\\n\u263A"), "\"a\\u0022\\\\\\n\\u263A\"").SetName("EscapedString"),
             new TestCaseData(new JsonRpcId("test"), "\"test\"").SetName("String")
         ];
     }
