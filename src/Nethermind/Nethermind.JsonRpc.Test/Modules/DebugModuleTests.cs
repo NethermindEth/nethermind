@@ -69,7 +69,7 @@ public class DebugModuleTests
         TransactionBundle bundle = new() { Transactions = [new LegacyTransactionForRpc { To = TestItem.AddressC }] };
 
         ResultWrapper<IEnumerable<IEnumerable<GethLikeTxTrace>>> result =
-            rpcModule.debug_traceCallMany([bundle, bundle], BlockParameter.Latest);
+            rpcModule.debug_traceCallMany([bundle, bundle], BlockParameter.Latest, new GethTraceOptions { Tracer = "callTracer" });
 
         // The first inner sequence touches WaitHandle (throws ObjectDisposedException if the
         // timeout CTS has been disposed). The second bundle throws unconditionally, so the
@@ -328,7 +328,8 @@ public class DebugModuleTests
         };
         trace.Entries.Add(entry);
 
-        GethTraceOptions gtOptions = new();
+        // Non-empty Tracer keeps debug_traceCall on the buffered path; struct-log default streams.
+        GethTraceOptions gtOptions = new() { Tracer = "callTracer" };
 
         Transaction transaction = Build.A.Transaction.WithTo(TestItem.AddressA).WithHash(TestItem.KeccakA).TestObject;
 

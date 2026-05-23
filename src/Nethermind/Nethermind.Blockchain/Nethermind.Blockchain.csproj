@@ -24,6 +24,7 @@
     <PackageReference Include="Microsoft.ClearScript.V8.Native.win-x64" />
   </ItemGroup>
   <ItemGroup>
+    <PackageReference Include="Collections.Pooled" />
     <PackageReference Include="Polly" />
   </ItemGroup>
   <ItemGroup>
