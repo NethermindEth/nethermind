@@ -164,19 +164,26 @@ public static class HexWriter
         }
     }
 
+    /// <summary>Writes a 32-byte big-endian value as a JSON string of 64 lowercase hex chars.</summary>
+    /// <param name="addHexPrefix">Whether to emit the leading <c>0x</c>. Defaults to <see langword="true"/>.</param>
     [SkipLocalsInit]
-    internal static void WriteFixed32HexRawValue(Utf8JsonWriter writer, ReadOnlySpan<byte> data)
+    public static void WriteFixed32HexRawValue(Utf8JsonWriter writer, ReadOnlySpan<byte> data, bool addHexPrefix = true)
     {
         Unsafe.SkipInit(out HexBuffer72 rawBuf);
         ref byte b = ref Unsafe.As<HexBuffer72, byte>(ref rawBuf);
 
         b = (byte)'"';
-        Unsafe.WriteUnaligned(ref Unsafe.Add(ref b, 1), (ushort)0x7830); // "0x" LE
-        Encode32Bytes(ref Unsafe.Add(ref b, 3), data);
-        Unsafe.Add(ref b, 67) = (byte)'"';
+        nint hexOffset = addHexPrefix ? 3 : 1;
+        if (addHexPrefix)
+        {
+            Unsafe.WriteUnaligned(ref Unsafe.Add(ref b, 1), (ushort)0x7830); // "0x" LE
+        }
+        Encode32Bytes(ref Unsafe.Add(ref b, hexOffset), data);
+        int spanLength = addHexPrefix ? 68 : 66;
+        Unsafe.Add(ref b, spanLength - 1) = (byte)'"';
 
         writer.WriteRawValue(
-            MemoryMarshal.CreateReadOnlySpan(ref b, 68),
+            MemoryMarshal.CreateReadOnlySpan(ref b, spanLength),
             skipInputValidation: true);
     }
 
@@ -204,53 +211,65 @@ public static class HexWriter
             skipInputValidation: true);
     }
 
+    /// <summary>Writes a <see cref="UInt256"/> as a JSON string of lowercase hex chars.</summary>
+    /// <param name="addHexPrefix">Whether to emit the leading <c>0x</c>. Defaults to <see langword="true"/>.</param>
     [SkipLocalsInit]
-    internal static void WriteUInt256HexRawValue(Utf8JsonWriter writer, UInt256 value, bool zeroPadded = false)
+    public static void WriteUInt256HexRawValue(Utf8JsonWriter writer, UInt256 value, bool zeroPadded = false, bool addHexPrefix = true)
     {
         Unsafe.SkipInit(out HexBuffer72 rawBuf);
         ref byte buffer = ref Unsafe.As<HexBuffer72, byte>(ref rawBuf);
 
-        BuildUInt256Hex(ref buffer, value, includeQuotes: true, zeroPadded, out nint spanStart, out int spanLength);
+        BuildUInt256Hex(ref buffer, value, includeQuotes: true, zeroPadded, addHexPrefix, out nint spanStart, out int spanLength);
 
         writer.WriteRawValue(
             MemoryMarshal.CreateReadOnlySpan(ref Unsafe.Add(ref buffer, spanStart), spanLength),
             skipInputValidation: true);
     }
 
+    /// <summary>Writes a <see cref="UInt256"/> as a JSON property name of lowercase hex chars.</summary>
+    /// <param name="addHexPrefix">Whether to emit the leading <c>0x</c>. Defaults to <see langword="true"/>.</param>
     [SkipLocalsInit]
-    internal static void WriteUInt256HexPropertyName(Utf8JsonWriter writer, UInt256 value, bool zeroPadded = false)
+    public static void WriteUInt256HexPropertyName(Utf8JsonWriter writer, UInt256 value, bool zeroPadded = false, bool addHexPrefix = true)
     {
         Unsafe.SkipInit(out HexBuffer72 rawBuf);
         ref byte buffer = ref Unsafe.As<HexBuffer72, byte>(ref rawBuf);
 
-        BuildUInt256Hex(ref buffer, value, includeQuotes: false, zeroPadded, out nint spanStart, out int spanLength);
+        BuildUInt256Hex(ref buffer, value, includeQuotes: false, zeroPadded, addHexPrefix, out nint spanStart, out int spanLength);
 
         writer.WritePropertyName(
             MemoryMarshal.CreateReadOnlySpan(ref Unsafe.Add(ref buffer, spanStart), spanLength));
     }
 
+    // Buffer layout (logical): [opening "?][0x?][64 hex chars][closing "?].
+    // EncodeUInt256Hex always writes 64 chars at `hexOffset`; the trimmed significant
+    // nibbles end up at the tail, so `spanStart = 64 - nibbleCount` regardless of
+    // which optional prefixes are present.
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static void BuildUInt256Hex(ref byte buffer, UInt256 value, bool includeQuotes, bool zeroPadded, out nint spanStart, out int spanLength)
+    private static void BuildUInt256Hex(ref byte buffer, UInt256 value, bool includeQuotes, bool zeroPadded, bool addHexPrefix, out nint spanStart, out int spanLength)
     {
-        nint hexOffset = includeQuotes ? 3 : 2;
+        nint hexOffset = (includeQuotes ? 1 : 0) + (addHexPrefix ? 2 : 0);
         EncodeUInt256Hex(ref Unsafe.Add(ref buffer, hexOffset), value);
 
         int nibbleCount = zeroPadded ? 64 : GetSignificantNibbleCount(value);
-        spanStart = zeroPadded ? 0 : 64 - nibbleCount;
+        spanStart = 64 - nibbleCount;
         ref byte spanRef = ref Unsafe.Add(ref buffer, spanStart);
 
+        nint offset = 0;
         if (includeQuotes)
         {
             spanRef = (byte)'"';
-            Unsafe.WriteUnaligned(ref Unsafe.Add(ref spanRef, 1), (ushort)0x7830); // "0x" LE
-            Unsafe.Add(ref spanRef, nibbleCount + 3) = (byte)'"';
-            spanLength = nibbleCount + 4;
+            offset = 1;
         }
-        else
+        if (addHexPrefix)
         {
-            Unsafe.WriteUnaligned(ref spanRef, (ushort)0x7830); // "0x" LE
-            spanLength = nibbleCount + 2;
+            Unsafe.WriteUnaligned(ref Unsafe.Add(ref spanRef, offset), (ushort)0x7830); // "0x" LE
+            offset += 2;
         }
+        if (includeQuotes)
+        {
+            Unsafe.Add(ref spanRef, offset + nibbleCount) = (byte)'"';
+        }
+        spanLength = nibbleCount + (int)offset + (includeQuotes ? 1 : 0);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
