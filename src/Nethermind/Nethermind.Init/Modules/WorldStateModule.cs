@@ -22,7 +22,6 @@ public class WorldStateModule : Module
 
             .Map<IStateReader, IWorldStateManager>((m) => m.GlobalStateReader)
             .Map<IStateBoundary, IWorldStateManager>((m) => m)
-            .Map<IStateBoundaryWriter, IWorldStateManager>((m) => m)
 
             .AddSingleton<PersistedStateWatcher>()
             .ResolveOnServiceActivation<PersistedStateWatcher, IWorldStateManager>()

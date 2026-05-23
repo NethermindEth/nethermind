@@ -12,7 +12,7 @@ using Nethermind.Trie.Pruning;
 
 namespace Nethermind.State;
 
-public class WorldStateManager : IWorldStateManager
+public class WorldStateManager : IWorldStateManager, IStateBoundaryWriter
 {
     private readonly IWorldStateScopeProvider _worldState;
     private readonly IPruningTrieStore _trieStore;

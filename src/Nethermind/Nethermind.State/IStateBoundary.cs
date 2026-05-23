@@ -5,14 +5,9 @@ namespace Nethermind.State;
 
 /// <summary>
 /// Read-only view of the persisted state window. Implemented by <see cref="IWorldStateManager"/>;
-/// each backend (trie / flat) keeps the persisted values co-located with its state DB so
-/// wiping the state directory drops the bounds along with the state.
+/// each backend reports the floor from its own state-tracking layer (trie: a co-located metadata
+/// store; flat: the persistence manager).
 /// </summary>
-/// <remarks>
-/// Consumers that only need to report the window (e.g. <c>eth_capabilities</c>) should depend on
-/// this interface. Components that advance the floor — <c>StateSyncRunner</c>, <c>FullPruner</c> —
-/// depend on <see cref="IStateBoundaryWriter"/> instead so the write surface stays narrow.
-/// </remarks>
 public interface IStateBoundary
 {
     /// <summary>
@@ -31,15 +26,16 @@ public interface IStateBoundary
 }
 
 /// <summary>
-/// Write side of <see cref="IStateBoundary"/>. Held only by the components that legitimately
-/// advance the floor.
+/// Write side of the state-availability floor. Trie-specific — flat state tracking is handled
+/// directly by the persistence manager and exposes no writer.
 /// </summary>
+/// <remarks>
+/// Held by <c>PatriciaTreeSyncStore.FinalizeSync</c> (advancing the floor to the synced pivot)
+/// and <c>FullPruner</c> (advancing it to the copied state's block on a successful prune).
+/// Monotonically non-decreasing while non-null — setting a smaller value is a no-op. Setting to
+/// <c>null</c> is allowed as an explicit reset (e.g. when wiping a corrupt state DB).
+/// </remarks>
 public interface IStateBoundaryWriter
 {
-    /// <summary>
-    /// Absolute lower bound of the persisted state window. Monotonically non-decreasing while
-    /// non-null — setting a smaller value is a no-op. Setting to <c>null</c> is allowed as an
-    /// explicit reset (e.g. when wiping a corrupt state DB).
-    /// </summary>
     long? OldestStateBlock { set; }
 }

@@ -65,7 +65,7 @@ public class FullPruningDiskTest
                 PruningTrigger,
                 PruningConfig,
                 BlockTree,
-                Container.Resolve<IWorldStateManager>(),
+                Container.Resolve<IStateBoundaryWriter>(),
                 StateReader,
                 ProcessExitSource,
                 DriveInfo,

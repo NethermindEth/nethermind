@@ -60,7 +60,7 @@ public class FullPrunerFactory(
             compositePruningTrigger,
             pruningConfig,
             blockTree,
-            worldStateManager,
+            (IStateBoundaryWriter)worldStateManager,
             worldStateManager.GlobalStateReader,
             processExit,
             ChainSizes.CreateChainSizeInfo(chainSpec.ChainId),

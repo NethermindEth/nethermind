@@ -16,13 +16,13 @@ namespace Nethermind.State.Flat.ScopeProvider;
 public class FlatWorldStateManager(
     IFlatDbManager flatDbManager,
     IPersistence persistence,
+    IPersistenceManager persistenceManager,
     IFlatDbConfig configuration,
     FlatStateReader flatStateReader,
     ITrieWarmer trieWarmer,
     Func<FlatOverridableWorldScope> overridableWorldScopeFactory,
     [KeyFilter(DbNames.Code)] IDb codeDb,
     IFlatStateRootIndex flatStateRootIndex,
-    IColumnsDb<FlatDbColumns> flatDb,
     ILogManager logManager)
     : IWorldStateManager
 {
@@ -36,8 +36,6 @@ public class FlatWorldStateManager(
         isReadOnly: false);
 
     private readonly FlatTrieVerifier _trieVerifier = new(flatDbManager, persistence, logManager);
-
-    private readonly StateBoundaryStore _boundaryStore = new(flatDb.GetColumnDb(FlatDbColumns.Metadata));
 
     private FlatSnapServer? _snapServer;
 
@@ -54,8 +52,11 @@ public class FlatWorldStateManager(
 
     public long? OldestStateBlock
     {
-        get => _boundaryStore.OldestStateBlock;
-        set => _boundaryStore.OldestStateBlock = value;
+        get
+        {
+            long blockNumber = persistenceManager.GetCurrentPersistedStateId().BlockNumber;
+            return blockNumber >= 0 ? blockNumber : null;
+        }
     }
 
     public IWorldStateScopeProvider CreateResettableWorldState() =>
