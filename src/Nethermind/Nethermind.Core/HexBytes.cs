@@ -38,12 +38,4 @@ public readonly struct HexBytes : IEquatable<HexBytes>
     /// <inheritdoc/>
     public override string ToString() => "0x" + Convert.ToHexStringLower(Bytes.Span);
 
-    /// <summary>Returns whether two values contain the same byte sequence.</summary>
-    public static bool operator ==(HexBytes left, HexBytes right) => left.Equals(right);
-
-    /// <summary>Returns whether two values contain different byte sequences.</summary>
-    public static bool operator !=(HexBytes left, HexBytes right) => !left.Equals(right);
-
-    /// <summary>Wraps a byte array for hex JSON serialization.</summary>
-    public static implicit operator HexBytes(byte[] bytes) => new(bytes);
 }
