@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections.Generic;
 using System.Text.Json;
 using FluentAssertions;
 using Nethermind.Core.Crypto;
@@ -12,79 +13,46 @@ namespace Nethermind.Core.Test.Json;
 [TestFixture]
 public class Hash256ArrayConverterTests
 {
+    private const string HashA = "0x0123456789abcdeffedcba98765432100123456789abcdeffedcba9876543210";
+    private const string HashB = "0xfedcba9876543210012345678abcdef00fedcba9876543210012345678abcdef";
+
     private static readonly JsonSerializerOptions s_options = new() { Converters = { new Hash256ArrayConverter() } };
 
-    [Test]
-    public void Roundtrip_EmptyArray()
+    public static IEnumerable<TestCaseData> RoundtripCases()
     {
-        const string json = "[]";
-        Hash256?[]? hashes = JsonSerializer.Deserialize<Hash256?[]>(json, s_options);
-        hashes.Should().NotBeNull().And.BeEmpty();
-        JsonSerializer.Serialize(hashes, s_options).Should().Be(json);
+        yield return new TestCaseData("null", null).SetName("Null");
+        yield return new TestCaseData("[]", System.Array.Empty<Hash256?>()).SetName("EmptyArray");
+        yield return new TestCaseData($"[\"{HashA}\"]", new Hash256?[] { new(HashA) }).SetName("SingleHash");
+        yield return new TestCaseData($"[\"{HashA}\",\"{HashB}\"]", new Hash256?[] { new(HashA), new(HashB) }).SetName("MultipleHashes");
+        yield return new TestCaseData($"[null,\"{HashA}\"]", new Hash256?[] { null, new(HashA) }).SetName("LeadingNullElement");
+        yield return new TestCaseData($"[\"{HashA}\",null]", new Hash256?[] { new(HashA), null }).SetName("TrailingNullElement");
     }
 
-    [Test]
-    public void Roundtrip_Null()
+    [TestCaseSource(nameof(RoundtripCases))]
+    public void Roundtrip(string json, Hash256?[]? expected)
     {
-        const string json = "null";
-        Hash256?[]? hashes = JsonSerializer.Deserialize<Hash256?[]>(json, s_options);
-        hashes.Should().BeNull();
-        JsonSerializer.Serialize(hashes, s_options).Should().Be(json);
-    }
-
-    [Test]
-    public void Roundtrip_SingleHash()
-    {
-        const string json = "[\"0x0123456789abcdeffedcba98765432100123456789abcdeffedcba9876543210\"]";
         Hash256?[]? hashes = JsonSerializer.Deserialize<Hash256?[]>(json, s_options);
 
-        hashes.Should().NotBeNull();
-        hashes!.Length.Should().Be(1);
-        hashes[0]!.ToString().Should().Be("0x0123456789abcdeffedcba98765432100123456789abcdeffedcba9876543210");
-
-        JsonSerializer.Serialize(hashes, s_options).Should().Be(json);
-    }
-
-    [Test]
-    public void Roundtrip_MultipleHashes()
-    {
-        const string json = "[\"0x" + "00" + "0123456789abcdeffedcba9876543210" + "0123456789abcdeffedcba98765432" + "\"," +
-                            "\"0x" + "ff" + "0123456789abcdeffedcba9876543210" + "0123456789abcdeffedcba98765432" + "\"]";
-        Hash256?[]? hashes = JsonSerializer.Deserialize<Hash256?[]>(json, s_options);
-
-        hashes.Should().NotBeNull();
-        hashes!.Length.Should().Be(2);
-        hashes[0]!.Bytes[0].Should().Be(0x00);
-        hashes[1]!.Bytes[0].Should().Be(0xff);
+        if (expected is null)
+        {
+            hashes.Should().BeNull();
+        }
+        else
+        {
+            hashes.Should().NotBeNull().And.HaveCount(expected.Length);
+            for (int i = 0; i < expected.Length; i++)
+            {
+                if (expected[i] is null) hashes![i].Should().BeNull();
+                else hashes![i].Should().Be(expected[i]!);
+            }
+        }
 
         JsonSerializer.Serialize(hashes, s_options).Should().Be(json);
     }
 
-    [Test]
-    public void Read_NullElement_PreservedAsNull()
-    {
-        const string json = "[null,\"0x0123456789abcdeffedcba98765432100123456789abcdeffedcba9876543210\"]";
-        Hash256?[]? hashes = JsonSerializer.Deserialize<Hash256?[]>(json, s_options);
-
-        hashes.Should().NotBeNull();
-        hashes!.Length.Should().Be(2);
-        hashes[0].Should().BeNull();
-        hashes[1].Should().NotBeNull();
-    }
-
-    [Test]
-    public void Read_WrongLengthElement_Throws()
-    {
-        const string json = "[\"0xabcd\"]";
+    [TestCase("[\"0xabcd\"]", TestName = "TooShort")]
+    [TestCase("[\"0x" + "00" + "0123456789abcdeffedcba9876543210" + "0123456789abcdeffedcba98765432" + "ff\"]", TestName = "TooLong")]
+    public void Read_WrongLengthElement_Throws(string json) =>
         FluentActions.Invoking(() => JsonSerializer.Deserialize<Hash256?[]>(json, s_options))
             .Should().Throw<JsonException>();
-    }
-
-    [Test]
-    public void Write_NullElement_EmitsJsonNull()
-    {
-        Hash256?[] hashes = [null, new Hash256("0x0123456789abcdeffedcba98765432100123456789abcdeffedcba9876543210")];
-        string json = JsonSerializer.Serialize(hashes, s_options);
-        json.Should().Be("[null,\"0x0123456789abcdeffedcba98765432100123456789abcdeffedcba9876543210\"]");
-    }
 }
