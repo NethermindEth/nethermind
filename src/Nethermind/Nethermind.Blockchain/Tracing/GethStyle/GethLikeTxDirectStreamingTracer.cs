@@ -7,7 +7,9 @@ using System.Collections.Generic;
 using System.IO.Pipelines;
 using System.Text.Json;
 using System.Threading;
+using Collections.Pooled;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Evm;
@@ -28,12 +30,12 @@ public sealed class GethLikeTxDirectStreamingTracer : GethLikeTxTracer
     private const int EvmWordSize = 32;
     private static readonly JsonEncodedText ZeroMemoryWord = JsonEncodedText.Encode(new string('0', EvmWordSize * 2));
     private const int InitialStorageMapCapacity = 8;
-    private const int InitialDepthStackCapacity = 4;
+    private const int InitialDepthStackCapacity = 8;
 
     private readonly Utf8JsonWriter _writer;
     private readonly PipeWriter? _pipeWriter;
     private readonly CancellationToken _cancellationToken;
-    private readonly Transaction? _transaction;
+    private Transaction? _transaction;
     private readonly int _flushIntervalEntries;
 
     private bool _hasPendingOpcode;
@@ -51,7 +53,8 @@ public sealed class GethLikeTxDirectStreamingTracer : GethLikeTxTracer
     private byte[]? _memoryBuffer;
     private int _memoryByteCount;
 
-    private readonly Stack<Dictionary<UInt256, UInt256>> _storageByDepth = new(InitialDepthStackCapacity);
+    private ArrayPoolList<PooledDictionary<UInt256, UInt256>>? _storageByDepth;
+    private int _activeStorageDepth;
 
     private int _entriesSinceLastFlush;
     private bool _disposed;
@@ -74,6 +77,29 @@ public sealed class GethLikeTxDirectStreamingTracer : GethLikeTxTracer
         _cancellationToken = cancellationToken;
         _flushIntervalEntries = flushIntervalEntries;
         IsTracingMemory = IsTracingFullMemory;
+    }
+
+    internal void ResetForNextTx(Transaction? transaction)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        _transaction = transaction;
+        _hasPendingOpcode = false;
+        _pendingPc = 0;
+        _pendingOpcode = default;
+        _pendingGas = 0;
+        _pendingGasCost = 0;
+        _pendingDepth = 0;
+        _pendingError = null;
+        _gasCostAlreadySet = false;
+        _stackByteCount = 0;
+        _memoryByteCount = 0;
+        if (_storageByDepth is not null)
+        {
+            for (int i = 0; i < _activeStorageDepth; i++) _storageByDepth[i].Clear();
+        }
+        _activeStorageDepth = 0;
+        _entriesSinceLastFlush = 0;
+        ResetTrace();
     }
 
     public override void MarkAsSuccess(Address recipient, in GasConsumed gasSpent, byte[] output, LogEntry[] logs, Hash256? stateRoot = null)
@@ -153,33 +179,48 @@ public sealed class GethLikeTxDirectStreamingTracer : GethLikeTxTracer
 
     public override void SetOperationStorage(Address address, UInt256 storageIndex, ReadOnlySpan<byte> newValue, ReadOnlySpan<byte> currentValue)
     {
-        if (!IsTracingOpLevelStorage || _storageByDepth.Count == 0) return;
-        Dictionary<UInt256, UInt256> top = _storageByDepth.Peek();
+        if (!IsTracingOpLevelStorage || _activeStorageDepth == 0) return;
+        PooledDictionary<UInt256, UInt256> top = _storageByDepth![_activeStorageDepth - 1];
         top[storageIndex] = new UInt256(newValue, isBigEndian: true);
     }
 
     public override GethLikeTxTrace BuildResult()
     {
         FinalizePendingOpcode();
-        ReturnPooledBuffers();
         GethLikeTxTrace result = base.BuildResult();
         result.TxHash = _transaction?.Hash;
         return result;
     }
 
-    public override void Dispose()
+    // Dispose is left as a no-op: the per-tx `using` in TransactionProcessorAdapterExtensions
+    // would otherwise release the pooled buffers between txs and defeat reuse. The owning
+    // block tracer drives the real cleanup via ReleaseResources from EndBlockTrace/Dispose.
+
+    internal void ReleaseResources()
     {
         if (_disposed) return;
         ReturnPooledBuffers();
         _disposed = true;
-        base.Dispose();
     }
 
     private void AdjustStorageStackForDepth(int newDepth)
     {
         if (!IsTracingOpLevelStorage) return;
-        while (_storageByDepth.Count > newDepth) _storageByDepth.Pop();
-        while (_storageByDepth.Count < newDepth) _storageByDepth.Push(new Dictionary<UInt256, UInt256>(InitialStorageMapCapacity));
+
+        if (newDepth < _activeStorageDepth)
+        {
+            for (int i = newDepth; i < _activeStorageDepth; i++) _storageByDepth![i].Clear();
+        }
+        else if (newDepth > _activeStorageDepth)
+        {
+            _storageByDepth ??= new ArrayPoolList<PooledDictionary<UInt256, UInt256>>(InitialDepthStackCapacity);
+            while (_storageByDepth.Count < newDepth)
+            {
+                _storageByDepth.Add(new PooledDictionary<UInt256, UInt256>(InitialStorageMapCapacity));
+            }
+        }
+
+        _activeStorageDepth = newDepth;
     }
 
     private void EnsureBuffer(ref byte[]? buffer, int requiredLength)
@@ -193,6 +234,12 @@ public sealed class GethLikeTxDirectStreamingTracer : GethLikeTxTracer
     {
         if (_stackBuffer is not null) { ArrayPool<byte>.Shared.Return(_stackBuffer); _stackBuffer = null; }
         if (_memoryBuffer is not null) { ArrayPool<byte>.Shared.Return(_memoryBuffer); _memoryBuffer = null; }
+        if (_storageByDepth is not null)
+        {
+            for (int i = 0; i < _storageByDepth.Count; i++) _storageByDepth[i].Dispose();
+            _storageByDepth.Dispose();
+            _storageByDepth = null;
+        }
     }
 
     private void FinalizePendingOpcode()
@@ -262,8 +309,8 @@ public sealed class GethLikeTxDirectStreamingTracer : GethLikeTxTracer
 
     private void WriteStorageObjectIfPresent()
     {
-        if (_storageByDepth.Count == 0) return;
-        Dictionary<UInt256, UInt256> top = _storageByDepth.Peek();
+        if (_activeStorageDepth == 0) return;
+        PooledDictionary<UInt256, UInt256> top = _storageByDepth![_activeStorageDepth - 1];
 
         _writer.WriteStartObject("storage"u8);
         Span<byte> keyBytes = stackalloc byte[EvmWordSize];
