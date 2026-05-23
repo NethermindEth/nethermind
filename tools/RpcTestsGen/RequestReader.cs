@@ -10,6 +10,7 @@ public class RequestReader(FilePos[] sources, Filter filter)
 {
     private const int LogPerLines = 1000;
     private int _lineN;
+    private int _requestN;
 
     public async Task ReadIntoAsync(ITargetBlock<RequestInfo> target, CancellationToken ct)
     {
@@ -39,7 +40,7 @@ public class RequestReader(FilePos[] sources, Filter filter)
                 if (data is null) continue;
                 if (!filter.IncludeRequest(data)) continue;
 
-                await target.SendAsync(new RequestInfo(pos, data), ct);
+                await target.SendAsync(new RequestInfo(pos, ++_requestN, data), ct);
             }
         }
 
@@ -47,4 +48,4 @@ public class RequestReader(FilePos[] sources, Filter filter)
     }
 }
 
-public record RequestInfo(FilePos Pos, JsonNode Data);
+public record RequestInfo(FilePos Pos, int Number, JsonNode Data);

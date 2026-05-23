@@ -3,6 +3,8 @@
 
 using System.CommandLine;
 using RpcTestsGen;
+using SmartFormat;
+using SmartFormat.Core.Parsing;
 
 Option<string[]> requestsOption = new("--requests", "-r")
 {
@@ -14,8 +16,7 @@ Option<string[]> requestsOption = new("--requests", "-r")
 Option<string[]> clientsOption = new("--client", "-c")
 {
     Description = "Client URL(s) to fetch responses from",
-    AllowMultipleArgumentsPerToken = true,
-    Required = true
+    AllowMultipleArgumentsPerToken = true
 };
 
 Option<int> parallelismOption = new("--parallelism", "-p")
@@ -49,6 +50,13 @@ Option<int?> minResultLenOption = new("--min-result-len")
     Description = "Minimum number of entries in response `result` array to include"
 };
 
+Option<Format> outputPathFormat = new("--out", "-o")
+{
+    Description = "Output file path, formattable",
+    CustomParser = arg => Smart.Default.Parser.ParseFormat(arg.Tokens.Single().Value),
+    DefaultValueFactory = _ => Smart.Default.Parser.ParseFormat("{FileDir}/{FileName}.test.json")
+};
+
 RootCommand rootCommand = new("Generates RPC test files from JSONL request files")
 {
     requestsOption,
@@ -58,7 +66,8 @@ RootCommand rootCommand = new("Generates RPC test files from JSONL request files
     excludeOption,
     minBlocksOption,
     maxBlocksOption,
-    minResultLenOption
+    minResultLenOption,
+    outputPathFormat
 };
 
 rootCommand.SetAction(async (parseResult, ct) =>
@@ -66,13 +75,14 @@ rootCommand.SetAction(async (parseResult, ct) =>
     Executor executor = new(new ExecutionArgs
     {
         Sources = parseResult.GetRequiredValue(requestsOption).Select(FilePos.Parse).ToArray(),
-        Clients = parseResult.GetRequiredValue(clientsOption).Select(static s => new Uri(s)).ToArray(),
+        Clients = parseResult.GetValue(clientsOption)?.Select(static s => new Uri(s)).ToArray(),
         Parallelism = parseResult.GetValue(parallelismOption),
         Include = parseResult.GetValue(includeOption),
         Exclude = parseResult.GetValue(excludeOption),
         MinBlocks = parseResult.GetValue(minBlocksOption),
         MaxBlocks = parseResult.GetValue(maxBlocksOption),
-        MinResultLen = parseResult.GetValue(minResultLenOption)
+        MinResultLen = parseResult.GetValue(minResultLenOption),
+        OutputPath = parseResult.GetRequiredValue(outputPathFormat)
     });
 
     Console.WriteLine("Starting tests generation...");

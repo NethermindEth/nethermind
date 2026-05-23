@@ -21,15 +21,24 @@ public class ResponseComparer(Uri[] clientUrls)
             Console.Error.WriteLine(
                 $"""
                  Mismatch
-                   Request: {info.Request.Data.ToCompactString()}
+                   Request: {request.ToCompactString()}
                    Clients: {clientUrls[0]}, {clientUrls[i]}
                  """
             );
             yield break;
         }
 
-        yield return new TestCase(info.Request.Pos, request, response0);
+        yield return new TestCase(info.Request, response0);
     }
 }
 
-public record TestCase(FilePos Pos, JsonNode Request, JsonNode Response);
+public record TestCase(RequestInfo RequestInfo, JsonNode Response)
+{
+    public FilePos Pos => RequestInfo.Pos;
+    public JsonNode Request => RequestInfo.Data;
+
+    public string FileDir => field ??= Path.GetDirectoryName(Pos.FilePath) ?? "";
+    public string FileName => field ??= Path.GetFileNameWithoutExtension(Pos.FilePath);
+    public string FileExt => field ??= Path.GetExtension(Pos.FilePath);
+    public int TestN => RequestInfo.Number;
+}

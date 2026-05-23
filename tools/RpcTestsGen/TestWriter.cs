@@ -3,13 +3,15 @@
 
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using SmartFormat;
+using SmartFormat.Core.Parsing;
 
 namespace RpcTestsGen;
 
 // not thread-safe
-public sealed class TestWriter(Filter filter): IAsyncDisposable
+public sealed class TestWriter(Filter filter, Format outputFormat): IAsyncDisposable
 {
-    private string? _currentFile;
+    private string? _currentOutFile;
     private FileStream? _fileStream;
     private Utf8JsonWriter? _jsonWriter;
 
@@ -20,11 +22,11 @@ public sealed class TestWriter(Filter filter): IAsyncDisposable
     {
         if (!filter.IncludeResponse(testCase.Response)) return;
 
-        string testFile = testCase.Pos.FilePath;
-        if (_currentFile != testFile)
+        string outFile = GetOutputPath(testCase);
+        if (outFile != _currentOutFile)
         {
             await CloseCurrentFileAsync();
-            OpenNewFile(testFile);
+            OpenNewFile(outFile);
         }
 
         WriteTest(testCase.Request, testCase.Response);
@@ -32,14 +34,12 @@ public sealed class TestWriter(Filter filter): IAsyncDisposable
 
     public ValueTask DisposeAsync() => CloseCurrentFileAsync();
 
-    private void OpenNewFile(string inputFilePath)
+    private void OpenNewFile(string outputPath)
     {
-        _currentFile = inputFilePath;
-
-        string outputPath = BuildOutputPath(inputFilePath);
+        _currentOutFile = outputPath;
         _outputFiles.Add(outputPath);
 
-        _fileStream = new FileStream(outputPath, FileMode.Create, FileAccess.Write, FileShare.None, 4096, useAsync: true);
+        _fileStream = new FileStream(outputPath, FileMode.Append, FileAccess.Write, FileShare.None, 4096, useAsync: true);
         _jsonWriter = new Utf8JsonWriter(_fileStream, new JsonWriterOptions { Indented = true });
 
         _jsonWriter.WriteStartArray();
@@ -67,13 +67,8 @@ public sealed class TestWriter(Filter filter): IAsyncDisposable
 
         _jsonWriter = null;
         _fileStream = null;
-        _currentFile = null;
+        _currentOutFile = null;
     }
 
-    private static string BuildOutputPath(string inputPath)
-    {
-        string dir = Path.GetDirectoryName(inputPath) ?? string.Empty;
-        string name = Path.ChangeExtension(Path.GetFileName(inputPath), ".test.json");
-        return Path.Combine(dir, name);
-    }
+    private string GetOutputPath(TestCase testCase) => Smart.Default.Format(outputFormat, testCase);
 }

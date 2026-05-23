@@ -16,7 +16,7 @@ public class Executor(ExecutionArgs args)
         RequestReader reader = new(args.Sources, filter);
         RequestSender sender = new(args.Clients, httpClient);
         ResponseComparer comparer = new(args.Clients);
-        await using TestWriter writer = new(filter);
+        await using TestWriter writer = new(filter, args.OutputPath);
 
         BufferBlock<RequestInfo> requestsBuffer = new(new DataflowBlockOptions
         {
