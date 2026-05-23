@@ -1521,7 +1521,7 @@ public partial class EngineModuleTests
 
         ExecutionPayload blockA = CreateBlockRequest(chain, blockX, TestItem.AddressA);
         (await rpc.engine_newPayloadV1(blockA)).Data.Status.Should().Be(PayloadStatus.Valid);
-        (await rpc.engine_forkchoiceUpdatedV1(new(blockA.BlockHash, blockA.BlockHash, blockA.BlockHash)))
+        (await rpc.engine_forkchoiceUpdatedV1(new(blockA.BlockHash, blockA.BlockHash, blockX.BlockHash)))
             .Data.PayloadStatus.Status.Should().Be(PayloadStatus.Valid);
 
         ExecutionPayload blockB = CreateBlockRequest(chain, blockX, TestItem.AddressB);
