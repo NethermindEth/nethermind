@@ -230,7 +230,11 @@ public class GethStyleTracer(
         try
         {
             scope.Component.BlockchainProcessor.Process(block, ProcessingOptions.Trace, tracer.WithCancellation(cancellationToken), cancellationToken);
-            return new GethLikeTxTraceCollection(tracer.BuildResult());
+            // On the streaming path traces are written straight to the writer; the returned collection
+            // is discarded by the caller, so avoid wrapping an empty BuildResult in a fresh collection.
+            return writer is null
+                ? new GethLikeTxTraceCollection(tracer.BuildResult())
+                : Array.Empty<GethLikeTxTrace>();
         }
         catch
         {

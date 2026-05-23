@@ -288,7 +288,7 @@ public sealed class GethLikeTxDirectStreamingTracer : GethLikeTxTracer
         for (int offset = 0; offset < _memoryByteCount; offset += EvmWordSize)
         {
             ReadOnlySpan<byte> slot = _memoryBuffer!.AsSpan(offset, EvmWordSize);
-            if (IsAllZero(slot))
+            if (slot.IndexOfAnyExcept((byte)0) < 0)
             {
                 _writer.WriteStringValue(ZeroMemoryWord);
             }
@@ -299,12 +299,6 @@ public sealed class GethLikeTxDirectStreamingTracer : GethLikeTxTracer
             }
         }
         _writer.WriteEndArray();
-    }
-
-    private static bool IsAllZero(ReadOnlySpan<byte> slot)
-    {
-        for (int i = 0; i < slot.Length; i++) if (slot[i] != 0) return false;
-        return true;
     }
 
     private void WriteStorageObjectIfPresent()
