@@ -38,51 +38,50 @@ public sealed class RpcJsonTypeInfoGenerator : IIncrementalGenerator
     {
         string[] sortedTypes = RpcJsonTypeDiscovery.GetSortedUniqueTypes(typeGroups);
         string[] sortedMethodNames = RpcJsonTypeDiscovery.GetSortedUniqueTypes(methodNameGroups);
-        if (sortedTypes.Length == 0 && sortedMethodNames.Length == 0)
-        {
-            return;
-        }
 
-        StringBuilder builder = new();
-        builder
-            .AppendLine(GeneratedSourceHeader)
-            .AppendLine("using System.Runtime.CompilerServices;")
-            .AppendLine("using System.Text.Json.Serialization.Metadata;")
-            .AppendLine("using Nethermind.Serialization.Json;")
-            .AppendLine()
-            .AppendLine("namespace Nethermind.JsonRpc;")
-            .AppendLine()
-            .AppendLine("internal static class GeneratedRpcJsonTypeInfoProvider")
-            .AppendLine("{")
-            .AppendLine("    [ModuleInitializer]")
-            .AppendLine("    internal static void Register()")
-            .AppendLine("    {")
-            .AppendLine("        RpcGeneratedTypeInfoRegistry.Register(RpcTypes, TryGet);");
-        for (int i = 0; i < sortedTypes.Length; i++)
+        if (sortedTypes.Length != 0)
         {
-            builder.AppendLine($"        RegisterGeneric<{sortedTypes[i]}>();");
-        }
-        builder
-            .AppendLine("    }")
-            .AppendLine()
-            .AppendLine("    private static readonly System.Type[] RpcTypes =")
-            .AppendLine("    {");
-        for (int i = 0; i < sortedTypes.Length; i++)
-        {
-            builder.AppendLine($"        typeof({sortedTypes[i]}),");
-        }
-        builder
-            .AppendLine("    };")
-            .AppendLine()
-            .AppendLine("    private static JsonTypeInfo? TryGet(System.Type type) =>")
-            .AppendLine("        EthereumJsonSerializer.JsonOptions.TryGetTypeInfo(type, out JsonTypeInfo? typeInfo) ? typeInfo : null;")
-            .AppendLine()
-            .AppendLine("    private static void RegisterGeneric<T>() =>")
-            .AppendLine("        RpcGeneratedTypeInfoRegistry.Register(static () =>")
-            .AppendLine("            (JsonTypeInfo<T>)EthereumJsonSerializer.JsonOptions.GetTypeInfo(typeof(T)));")
-            .AppendLine("}");
+            StringBuilder builder = new();
+            builder
+                .AppendLine(GeneratedSourceHeader)
+                .AppendLine("using System.Runtime.CompilerServices;")
+                .AppendLine("using System.Text.Json.Serialization.Metadata;")
+                .AppendLine("using Nethermind.Serialization.Json;")
+                .AppendLine()
+                .AppendLine("namespace Nethermind.JsonRpc;")
+                .AppendLine()
+                .AppendLine("internal static class GeneratedRpcJsonTypeInfoProvider")
+                .AppendLine("{")
+                .AppendLine("    [ModuleInitializer]")
+                .AppendLine("    internal static void Register()")
+                .AppendLine("    {")
+                .AppendLine("        RpcGeneratedTypeInfoRegistry.Register(RpcTypes, TryGet);");
+            for (int i = 0; i < sortedTypes.Length; i++)
+            {
+                builder.AppendLine($"        RegisterGeneric<{sortedTypes[i]}>();");
+            }
+            builder
+                .AppendLine("    }")
+                .AppendLine()
+                .AppendLine("    private static readonly System.Type[] RpcTypes =")
+                .AppendLine("    {");
+            for (int i = 0; i < sortedTypes.Length; i++)
+            {
+                builder.AppendLine($"        typeof({sortedTypes[i]}),");
+            }
+            builder
+                .AppendLine("    };")
+                .AppendLine()
+                .AppendLine("    private static JsonTypeInfo? TryGet(System.Type type) =>")
+                .AppendLine("        EthereumJsonSerializer.JsonOptions.TryGetTypeInfo(type, out JsonTypeInfo? typeInfo) ? typeInfo : null;")
+                .AppendLine()
+                .AppendLine("    private static void RegisterGeneric<T>() =>")
+                .AppendLine("        RpcGeneratedTypeInfoRegistry.Register(static () =>")
+                .AppendLine("            (JsonTypeInfo<T>)EthereumJsonSerializer.JsonOptions.GetTypeInfo(typeof(T)));")
+                .AppendLine("}");
 
-        context.AddSource("GeneratedRpcJsonTypeInfoProvider.g.cs", SourceText.From(builder.ToString(), Encoding.UTF8));
+            context.AddSource("GeneratedRpcJsonTypeInfoProvider.g.cs", SourceText.From(builder.ToString(), Encoding.UTF8));
+        }
 
         if (sortedMethodNames.Length != 0)
         {
