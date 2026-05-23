@@ -39,22 +39,29 @@ public sealed class GethLikeTxTraceStreamingResult(IReadOnlyCollection<GethLikeT
         jsonWriter.WriteStartArray();
         jsonWriter.Flush();
 
-        foreach (GethLikeTxTrace trace in traces)
+        try
         {
-            jsonWriter.WriteStartObject();
-            jsonWriter.WritePropertyName("result"u8);
-            JsonSerializer.Serialize(jsonWriter, trace, EthereumJsonSerializer.JsonOptions);
-            jsonWriter.WritePropertyName("txHash"u8);
-            JsonSerializer.Serialize(jsonWriter, trace.TxHash, EthereumJsonSerializer.JsonOptions);
-            jsonWriter.WriteEndObject();
-            jsonWriter.Flush();
+            foreach (GethLikeTxTrace trace in traces)
+            {
+                jsonWriter.WriteStartObject();
+                jsonWriter.WritePropertyName("result"u8);
+                JsonSerializer.Serialize(jsonWriter, trace, EthereumJsonSerializer.JsonOptions);
+                jsonWriter.WritePropertyName("txHash"u8);
+                JsonSerializer.Serialize(jsonWriter, trace.TxHash, EthereumJsonSerializer.JsonOptions);
+                jsonWriter.WriteEndObject();
+                jsonWriter.Flush();
 
-            FlushResult flushResult = await writer.FlushAsync(cancellationToken);
-            if (flushResult.IsCompleted || flushResult.IsCanceled) return;
+                FlushResult flushResult = await writer.FlushAsync(cancellationToken);
+                if (flushResult.IsCompleted || flushResult.IsCanceled) return;
+            }
         }
-
-        jsonWriter.WriteEndArray();
-        jsonWriter.Flush();
+        finally
+        {
+            // Always close the array so the response is valid JSON even on early exit,
+            // cancellation, or mid-stream exception.
+            jsonWriter.WriteEndArray();
+            jsonWriter.Flush();
+        }
     }
 }
 
