@@ -26,7 +26,7 @@ public class GetPayloadBodiesByRangeV2Handler(IBlockTree blockTree, ILogManager 
         if (start < 1 || count < 1)
         {
             const string error = $"'{nameof(start)}' and '{nameof(count)}' must be positive numbers";
-            if (_logger.IsError) _logger.Error($"{GetType().Name}: ${error}");
+            if (_logger.IsError) _logger.Error($"{GetType().Name}: {error}");
             return ResultWrapper<IReadOnlyList<ExecutionPayloadBodyV2Result?>>.Fail(error, ErrorCodes.InvalidParams);
         }
 
