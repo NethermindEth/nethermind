@@ -34,5 +34,5 @@ public class ValueHash256Converter(bool strictHexFormat = false) : JsonConverter
     public override void Write(
         Utf8JsonWriter writer,
         ValueHash256 keccak,
-        JsonSerializerOptions options) => Hash256Converter.WriteHashHex(writer, in keccak);
+        JsonSerializerOptions options) => HexWriter.WriteFixed32HexRawValue(writer, keccak.Bytes);
 }

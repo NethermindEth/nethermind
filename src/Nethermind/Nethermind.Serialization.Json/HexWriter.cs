@@ -165,6 +165,22 @@ public static class HexWriter
     }
 
     [SkipLocalsInit]
+    internal static void WriteFixed32HexRawValue(Utf8JsonWriter writer, ReadOnlySpan<byte> data)
+    {
+        Unsafe.SkipInit(out HexBuffer72 rawBuf);
+        ref byte b = ref Unsafe.As<HexBuffer72, byte>(ref rawBuf);
+
+        b = (byte)'"';
+        Unsafe.WriteUnaligned(ref Unsafe.Add(ref b, 1), (ushort)0x7830); // "0x" LE
+        Encode32Bytes(ref Unsafe.Add(ref b, 3), data);
+        Unsafe.Add(ref b, 67) = (byte)'"';
+
+        writer.WriteRawValue(
+            MemoryMarshal.CreateReadOnlySpan(ref b, 68),
+            skipInputValidation: true);
+    }
+
+    [SkipLocalsInit]
     internal static void WriteUlongHexRawValue(Utf8JsonWriter writer, ulong value)
     {
         // Use InlineArray to avoid GS cookie overhead from stackalloc
