@@ -77,7 +77,7 @@ internal sealed class SocketJsonRpcResponseSink<TStream>(
 
         _isFirstBatchItem = false;
 
-        _topLevelResponseBytes += await SocketJsonRpcResponseWriter.WriteAsync(stream, response, cancellationToken);
+        _topLevelResponseBytes += await SocketJsonRpcResponseWriter.WriteAsync(stream, response, isBatch: true, _topLevelResponseBytes, cancellationToken);
         if (_reportCalls)
         {
             jsonRpcLocalStats.ReportCall(report);
@@ -132,18 +132,21 @@ internal static class SocketJsonRpcResponseWriter
     public static async ValueTask<long> WriteMessageAsync<TStream>(TStream stream, JsonRpcResponse response, CancellationToken cancellationToken)
         where TStream : Stream, IMessageBorderPreservingStream
     {
-        long responseBytes = await WriteAsync(stream, response, cancellationToken);
+        long responseBytes = await WriteAsync(stream, response, isBatch: false, initialWrittenCount: 0, cancellationToken);
         return responseBytes + await stream.WriteEndOfMessageAsync();
     }
 
-    public static async ValueTask<long> WriteAsync(Stream stream, JsonRpcResponse response, CancellationToken cancellationToken)
+    public static ValueTask<long> WriteAsync(Stream stream, JsonRpcResponse response, CancellationToken cancellationToken) =>
+        WriteAsync(stream, response, isBatch: false, initialWrittenCount: 0, cancellationToken);
+
+    public static async ValueTask<long> WriteAsync(Stream stream, JsonRpcResponse response, bool isBatch, long initialWrittenCount, CancellationToken cancellationToken)
     {
-        CountingStreamPipeWriter writer = new(stream, ResponsePipeWriterOptions);
+        CountingStreamPipeWriter writer = new(stream, ResponsePipeWriterOptions, initialWrittenCount);
         try
         {
-            await JsonRpcResponseWriter.WriteAsync(writer, response, EthereumJsonSerializer.JsonOptions, cancellationToken);
+            await JsonRpcResponseWriter.WriteAsync(writer, response, EthereumJsonSerializer.JsonOptions, isBatch, cancellationToken);
             await writer.FlushAsync(cancellationToken);
-            return writer.WrittenCount;
+            return writer.WrittenCount - initialWrittenCount;
         }
         finally
         {

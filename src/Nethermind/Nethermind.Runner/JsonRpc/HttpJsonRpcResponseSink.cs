@@ -51,7 +51,7 @@ internal sealed class HttpJsonRpcResponseSink(
 
     private ValueTask WriteStartedAsync(JsonRpcResponse response, RpcReport report, bool isBatch, CancellationToken cancellationToken)
     {
-        ValueTask writeTask = JsonRpcResponseWriter.WriteAsync(_writer!, response, EthereumJsonSerializer.JsonOptions, cancellationToken);
+        ValueTask writeTask = JsonRpcResponseWriter.WriteAsync(_writer!, response, EthereumJsonSerializer.JsonOptions, isBatch, cancellationToken);
         if (!writeTask.IsCompletedSuccessfully)
         {
             return WriteAfterWriteAsync(writeTask, report, isBatch);

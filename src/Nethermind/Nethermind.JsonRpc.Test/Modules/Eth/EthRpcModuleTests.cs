@@ -4,7 +4,10 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
+using System.IO;
+using System.IO.Pipelines;
 using System.Linq;
+using System.Text;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
@@ -57,8 +60,13 @@ public partial class EthRpcModuleTests
     private const string BalanceOfCallData = "0x70a082310000000000000000000000006c1f09f6271fbe133db38db9c9280307f5d22160";
     private const string CreateAccessListSender = "0x7f554713be84160fdf0178cc8df86f5aabd33397";
     private const string ExpectedHeadTxRawAtIndex1 = "0xf85f020182520894942921b14f1b1c385cd7e0cc2ef7abe5598c8358018025a0e7c5ff3cba254c4fe8f9f12c3f202150bb9a0aebeee349ff2f4acb23585f56bda0575361bb330bf38b9a89dd8279d42a20d34edeaeede9739a7c2bdcbe3242d7bb";
+    private const string ExpectedFilterLogResponse = """{"jsonrpc":"2.0","result":[{"address":"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099","blockHash":"0x03783fac2efed8fbc9ad443e592ee30e61d65f471140c10ca155e937b435b760","blockNumber":"0x1","blockTimestamp":"0x1","data":"0x010203","logIndex":"0x1","removed":false,"topics":["0x017e667f4b8c174291d1543c466717566e206df1bfd6f30271055ddafdb18f72","0x6c3fd336b49dcb1c57dd4fbeaf5f898320b0da06a5ef64e798c6497600bb79f2"],"transactionHash":"0x1f675bff07515f5df96737194ea945c36c41e7b4fcef307b7cd4d0e602a69111","transactionIndex":"0x1"}],"id":67}""";
+    private const int LogsStreamEnvelopeEndReserveBytes = 128;
 
     private static readonly Address TestAccount = new(TestAccountAddress);
+
+    private static FilterLog CreateTestFilterLog() =>
+        new(1, 1, 1, TestItem.KeccakA, 1, TestItem.KeccakB, TestItem.AddressA, [1, 2, 3], [TestItem.KeccakC, TestItem.KeccakD]);
 
     private static readonly byte[] InfiniteLoopCode = Prepare.EvmCode
         .Op(Instruction.JUMPDEST)
@@ -647,22 +655,84 @@ public partial class EthRpcModuleTests
         Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":false,\"id\":67}"));
     }
 
-    [Test]
-    public async Task Eth_get_filter_logs()
+    private static TestRpcBlockchain.Builder<TestRpcBlockchain> CreateLogsTestBlockchainBuilder(bool enableLogsStreamMode)
+    {
+        TestRpcBlockchain.Builder<TestRpcBlockchain> builder = TestRpcBlockchain.ForTest(SealEngineType.NethDev);
+        if (enableLogsStreamMode)
+        {
+            builder.WithConfig(new JsonRpcConfig { EnableLogsStreamMode = true });
+        }
+
+        return builder;
+    }
+
+    [TestCase(false)]
+    [TestCase(true)]
+    public async Task Eth_get_filter_logs(bool enableLogsStreamMode)
     {
         using Context ctx = await Context.Create();
         IBlockchainBridge bridge = Substitute.For<IBlockchainBridge>();
         bridge.TryGetLogs(1, out Arg.Any<IEnumerable<FilterLog>>(), Arg.Any<CancellationToken>())
             .Returns(static x =>
             {
-                x[1] = new[] { new FilterLog(1, 1, 1, TestItem.KeccakA, 1, TestItem.KeccakB, TestItem.AddressA, new byte[] { 1, 2, 3 }, new[] { TestItem.KeccakC, TestItem.KeccakD }) };
+                x[1] = new[] { CreateTestFilterLog() };
                 return true;
             });
 
-        ctx.Test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).WithBlockchainBridge(bridge).Build();
+        ctx.Test = await CreateLogsTestBlockchainBuilder(enableLogsStreamMode).WithBlockchainBridge(bridge).Build();
         string serialized = await ctx.Test.TestEthRpc("eth_getFilterLogs", "0x01");
 
-        Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":[{\"address\":\"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099\",\"blockHash\":\"0x03783fac2efed8fbc9ad443e592ee30e61d65f471140c10ca155e937b435b760\",\"blockNumber\":\"0x1\",\"blockTimestamp\":\"0x1\",\"data\":\"0x010203\",\"logIndex\":\"0x1\",\"removed\":false,\"topics\":[\"0x017e667f4b8c174291d1543c466717566e206df1bfd6f30271055ddafdb18f72\",\"0x6c3fd336b49dcb1c57dd4fbeaf5f898320b0da06a5ef64e798c6497600bb79f2\"],\"transactionHash\":\"0x1f675bff07515f5df96737194ea945c36c41e7b4fcef307b7cd4d0e602a69111\",\"transactionIndex\":\"0x1\"}],\"id\":67}"));
+        Assert.That(serialized, Is.EqualTo(ExpectedFilterLogResponse));
+    }
+
+    [Test]
+    public async Task Eth_get_filter_logs_respects_max_logs_per_response()
+    {
+        using Context ctx = await Context.Create();
+        IBlockchainBridge bridge = Substitute.For<IBlockchainBridge>();
+        bridge.TryGetLogs(1, out Arg.Any<IEnumerable<FilterLog>>(), Arg.Any<CancellationToken>())
+            .Returns(static x =>
+            {
+                x[1] = new[] { CreateTestFilterLog(), CreateTestFilterLog() };
+                return true;
+            });
+
+        ctx.Test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
+            .WithBlockchainBridge(bridge)
+            .WithConfig(new JsonRpcConfig { MaxLogsPerResponse = 1 })
+            .Build();
+
+        string serialized = await ctx.Test.TestEthRpc("eth_getFilterLogs", "0x01");
+
+        serialized.Should().Be("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32005,\"message\":\"Too many logs requested. Max logs per response is 1.\"},\"id\":67}");
+    }
+
+    [Test]
+    public async Task Eth_get_filter_logs_stream_mode_stops_before_reading_past_max_logs()
+    {
+        using Context ctx = await Context.Create();
+        IBlockchainBridge bridge = Substitute.For<IBlockchainBridge>();
+        bridge.TryGetLogs(1, out Arg.Any<IEnumerable<FilterLog>>(), Arg.Any<CancellationToken>())
+            .Returns(static x =>
+            {
+                x[1] = GetLogs();
+                return true;
+            });
+
+        ctx.Test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
+            .WithBlockchainBridge(bridge)
+            .WithConfig(new JsonRpcConfig { EnableLogsStreamMode = true, MaxLogsPerResponse = 1 })
+            .Build();
+
+        string serialized = await ctx.Test.TestEthRpc("eth_getFilterLogs", "0x01");
+
+        serialized.Should().Be(ExpectedFilterLogResponse);
+
+        static IEnumerable<FilterLog> GetLogs()
+        {
+            yield return CreateTestFilterLog();
+            throw new InvalidOperationException("Stream mode read past MaxLogsPerResponse.");
+        }
     }
 
     [Test]
@@ -692,8 +762,9 @@ public partial class EthRpcModuleTests
         Assert.That(serialized, Is.EqualTo($"{{\"jsonrpc\":\"2.0\",\"error\":{{\"code\":-32603,\"message\":\"Filter with id: {filterId} does not exist.\"}},\"id\":67}}"));
     }
 
-    [Test]
-    public async Task Eth_get_logs_get_filter_logs_same_result()
+    [TestCase(false)]
+    [TestCase(true)]
+    public async Task Eth_get_logs_get_filter_logs_same_result(bool enableLogsStreamMode)
     {
         byte[] logCreateCode = Prepare.EvmCode
                 .PushData(32)
@@ -706,7 +777,7 @@ public partial class EthRpcModuleTests
             .WithCode(logCreateCode)
             .WithNonce(3).WithGasLimit(210200).WithGasPrice(20.GWei).TestObject;
 
-        TestRpcBlockchain? test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build(initialValues: 2.Ether);
+        TestRpcBlockchain? test = await CreateLogsTestBlockchainBuilder(enableLogsStreamMode).Build(initialValues: 2.Ether);
 
         Hash256? blockHash = Keccak.Zero;
 
@@ -728,26 +799,189 @@ public partial class EthRpcModuleTests
         Assert.That(getFilterLogsSerialized, Is.EqualTo(getLogsSerialized));
     }
 
-    [TestCase("{}", """{"jsonrpc":"2.0","result":[{"address":"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099","blockHash":"0x03783fac2efed8fbc9ad443e592ee30e61d65f471140c10ca155e937b435b760","blockNumber":"0x1","blockTimestamp":"0x1","data":"0x010203","logIndex":"0x1","removed":false,"topics":["0x017e667f4b8c174291d1543c466717566e206df1bfd6f30271055ddafdb18f72","0x6c3fd336b49dcb1c57dd4fbeaf5f898320b0da06a5ef64e798c6497600bb79f2"],"transactionHash":"0x1f675bff07515f5df96737194ea945c36c41e7b4fcef307b7cd4d0e602a69111","transactionIndex":"0x1"}],"id":67}""")]
-    [TestCase("""{"fromBlock":"0x2","toBlock":"latest","address":"0x0000000000000000000000000000000000000001","topics":["0x0000000000000000000000000000000000000001"]}""", """{"jsonrpc":"2.0","result":[{"address":"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099","blockHash":"0x03783fac2efed8fbc9ad443e592ee30e61d65f471140c10ca155e937b435b760","blockNumber":"0x1","blockTimestamp":"0x1","data":"0x010203","logIndex":"0x1","removed":false,"topics":["0x017e667f4b8c174291d1543c466717566e206df1bfd6f30271055ddafdb18f72","0x6c3fd336b49dcb1c57dd4fbeaf5f898320b0da06a5ef64e798c6497600bb79f2"],"transactionHash":"0x1f675bff07515f5df96737194ea945c36c41e7b4fcef307b7cd4d0e602a69111","transactionIndex":"0x1"}],"id":67}""")]
-    [TestCase("""{"fromBlock":"earliest","toBlock":"pending","address":["0x0000000000000000000000000000000000000001", "0x0000000000000000000000000000000000000001"],"topics":["0x0000000000000000000000000000000000000001", "0x00000000000000000000000000000002"]}""", """{"jsonrpc":"2.0","result":[{"address":"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099","blockHash":"0x03783fac2efed8fbc9ad443e592ee30e61d65f471140c10ca155e937b435b760","blockNumber":"0x1","blockTimestamp":"0x1","data":"0x010203","logIndex":"0x1","removed":false,"topics":["0x017e667f4b8c174291d1543c466717566e206df1bfd6f30271055ddafdb18f72","0x6c3fd336b49dcb1c57dd4fbeaf5f898320b0da06a5ef64e798c6497600bb79f2"],"transactionHash":"0x1f675bff07515f5df96737194ea945c36c41e7b4fcef307b7cd4d0e602a69111","transactionIndex":"0x1"}],"id":67}""")]
-    [TestCase("""{"topics":[null, ["0x0000000000000000000000000000000000000001", "0x00000000000000000000000000000002"]]}""", """{"jsonrpc":"2.0","result":[{"address":"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099","blockHash":"0x03783fac2efed8fbc9ad443e592ee30e61d65f471140c10ca155e937b435b760","blockNumber":"0x1","blockTimestamp":"0x1","data":"0x010203","logIndex":"0x1","removed":false,"topics":["0x017e667f4b8c174291d1543c466717566e206df1bfd6f30271055ddafdb18f72","0x6c3fd336b49dcb1c57dd4fbeaf5f898320b0da06a5ef64e798c6497600bb79f2"],"transactionHash":"0x1f675bff07515f5df96737194ea945c36c41e7b4fcef307b7cd4d0e602a69111","transactionIndex":"0x1"}],"id":67}""")]
-    [TestCase("""{"fromBlock":"0x10","toBlock":"latest","address":"0x0000000000000000000000000000000000000001","topics":["0x0000000000000000000000000000000000000001"]}""", """{"jsonrpc":"2.0","error":{"code":-32602,"message":"requested block range is in the future"},"id":67}""")]
-    [TestCase("""{"fromBlock":"0x2","toBlock":"0x3","address":"0x0000000000000000000000000000000000000001","topics":["0x0000000000000000000000000000000000000001"]}""", """{"jsonrpc":"2.0","result":[{"address":"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099","blockHash":"0x03783fac2efed8fbc9ad443e592ee30e61d65f471140c10ca155e937b435b760","blockNumber":"0x1","blockTimestamp":"0x1","data":"0x010203","logIndex":"0x1","removed":false,"topics":["0x017e667f4b8c174291d1543c466717566e206df1bfd6f30271055ddafdb18f72","0x6c3fd336b49dcb1c57dd4fbeaf5f898320b0da06a5ef64e798c6497600bb79f2"],"transactionHash":"0x1f675bff07515f5df96737194ea945c36c41e7b4fcef307b7cd4d0e602a69111","transactionIndex":"0x1"}],"id":67}""")]
-    [TestCase("""{"fromBlock":"0x2","toBlock":"0x1","address":"0x0000000000000000000000000000000000000001","topics":["0x0000000000000000000000000000000000000001"]}""", """{"jsonrpc":"2.0","error":{"code":-32602,"message":"invalid block range params"},"id":67}""")]
-    [TestCase("""{"fromBlock":"0x11","toBlock":"0x12","address":"0x0000000000000000000000000000000000000001","topics":["0x0000000000000000000000000000000000000001"]}""", """{"jsonrpc":"2.0","error":{"code":-32602,"message":"requested block range is in the future"},"id":67}""")]
-    public async Task Eth_get_logs(string parameter, string expected)
+    private static IEnumerable<TestCaseData> EthGetLogsCases()
+    {
+        foreach ((string name, string parameter, string expected) in EthGetLogsCaseParameters())
+        {
+            yield return new TestCaseData(parameter, expected, false)
+                .SetName($"{nameof(Eth_get_logs)}_{name}_Buffered");
+            yield return new TestCaseData(parameter, expected, true)
+                .SetName($"{nameof(Eth_get_logs)}_{name}_Stream");
+        }
+    }
+
+    private static IEnumerable<(string Name, string Parameter, string Expected)> EthGetLogsCaseParameters()
+    {
+        yield return ("EmptyFilter", "{}", ExpectedFilterLogResponse);
+        yield return (
+            "ExplicitRangeAddressAndTopic",
+            """{"fromBlock":"0x2","toBlock":"latest","address":"0x0000000000000000000000000000000000000001","topics":["0x0000000000000000000000000000000000000001"]}""",
+            ExpectedFilterLogResponse);
+        yield return (
+            "EarliestToPendingAddressArray",
+            """{"fromBlock":"earliest","toBlock":"pending","address":["0x0000000000000000000000000000000000000001", "0x0000000000000000000000000000000000000001"],"topics":["0x0000000000000000000000000000000000000001", "0x00000000000000000000000000000002"]}""",
+            ExpectedFilterLogResponse);
+        yield return (
+            "NestedTopics",
+            """{"topics":[null, ["0x0000000000000000000000000000000000000001", "0x00000000000000000000000000000002"]]}""",
+            ExpectedFilterLogResponse);
+        yield return (
+            "FutureFromBlock",
+            """{"fromBlock":"0x10","toBlock":"latest","address":"0x0000000000000000000000000000000000000001","topics":["0x0000000000000000000000000000000000000001"]}""",
+            """{"jsonrpc":"2.0","error":{"code":-32602,"message":"requested block range is in the future"},"id":67}""");
+        yield return (
+            "ExplicitBlockRange",
+            """{"fromBlock":"0x2","toBlock":"0x3","address":"0x0000000000000000000000000000000000000001","topics":["0x0000000000000000000000000000000000000001"]}""",
+            ExpectedFilterLogResponse);
+        yield return (
+            "InvalidBlockRange",
+            """{"fromBlock":"0x2","toBlock":"0x1","address":"0x0000000000000000000000000000000000000001","topics":["0x0000000000000000000000000000000000000001"]}""",
+            """{"jsonrpc":"2.0","error":{"code":-32602,"message":"invalid block range params"},"id":67}""");
+        yield return (
+            "FutureBlockRange",
+            """{"fromBlock":"0x11","toBlock":"0x12","address":"0x0000000000000000000000000000000000000001","topics":["0x0000000000000000000000000000000000000001"]}""",
+            """{"jsonrpc":"2.0","error":{"code":-32602,"message":"requested block range is in the future"},"id":67}""");
+    }
+
+    [TestCaseSource(nameof(EthGetLogsCases))]
+    public async Task Eth_get_logs(string parameter, string expected, bool enableLogsStreamMode)
     {
         using Context ctx = await Context.Create();
         IBlockchainBridge bridge = Substitute.For<IBlockchainBridge>();
         bridge.GetLogs(Arg.Any<LogFilter>(), Arg.Any<BlockHeader>(), Arg.Any<BlockHeader>(), Arg.Any<CancellationToken>())
-            .Returns([new FilterLog(1, 1, 1, TestItem.KeccakA, 1, TestItem.KeccakB, TestItem.AddressA, [1, 2, 3], [TestItem.KeccakC, TestItem.KeccakD])]);
+            .Returns([CreateTestFilterLog()]);
         bridge.FilterExists(1).Returns(true);
 
-        ctx.Test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).WithBlockchainBridge(bridge).Build();
+        ctx.Test = await CreateLogsTestBlockchainBuilder(enableLogsStreamMode).WithBlockchainBridge(bridge).Build();
         string serialized = await ctx.Test.TestEthRpc("eth_getLogs", parameter);
 
         Assert.That(serialized, Is.EqualTo(expected));
+    }
+
+    [TestCase("eth_getLogs", "{}")]
+    [TestCase("eth_getFilterLogs", "0x01")]
+    public async Task Eth_logs_ignore_max_logs_response_body_size_when_stream_mode_disabled(string method, string parameter)
+    {
+        using Context ctx = await Context.Create();
+        IBlockchainBridge bridge = Substitute.For<IBlockchainBridge>();
+        bridge.GetLogs(Arg.Any<LogFilter>(), Arg.Any<BlockHeader>(), Arg.Any<BlockHeader>(), Arg.Any<CancellationToken>())
+            .Returns([CreateTestFilterLog()]);
+        bridge.TryGetLogs(1, out Arg.Any<IEnumerable<FilterLog>>(), Arg.Any<CancellationToken>())
+            .Returns(static x =>
+            {
+                x[1] = new[] { CreateTestFilterLog() };
+                return true;
+            });
+
+        ctx.Test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
+            .WithBlockchainBridge(bridge)
+            .WithConfig(new JsonRpcConfig { EnableLogsStreamMode = false, MaxLogsResponseBodySize = 64 })
+            .Build();
+
+        string serialized = await ctx.Test.TestEthRpc(method, parameter);
+
+        serialized.Should().Be(ExpectedFilterLogResponse);
+    }
+
+    [Test]
+    public async Task Eth_get_logs_stream_mode_stops_before_reading_past_max_logs()
+    {
+        using Context ctx = await Context.Create();
+        IBlockchainBridge bridge = Substitute.For<IBlockchainBridge>();
+        bridge.GetLogs(Arg.Any<LogFilter>(), Arg.Any<BlockHeader>(), Arg.Any<BlockHeader>(), Arg.Any<CancellationToken>())
+            .Returns(static _ => GetLogs());
+        bridge.FilterExists(1).Returns(true);
+
+        ctx.Test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
+            .WithBlockchainBridge(bridge)
+            .WithConfig(new JsonRpcConfig { EnableLogsStreamMode = true, MaxLogsPerResponse = 1 })
+            .Build();
+
+        string serialized = await ctx.Test.TestEthRpc("eth_getLogs", "{}");
+
+        serialized.Should().Be(ExpectedFilterLogResponse);
+
+        static IEnumerable<FilterLog> GetLogs()
+        {
+            yield return CreateTestFilterLog();
+            throw new InvalidOperationException("Stream mode read past MaxLogsPerResponse.");
+        }
+    }
+
+    [Test]
+    public async Task Eth_get_logs_stream_mode_stops_before_response_body_limit()
+    {
+        using LogsStreamableResult result = new([CreateTestFilterLog()], 0, enforceMaxLogs: false, maxLogsResponseBodySize: 64, maxBatchResponseBodySize: null, new CancellationTokenSource(), default);
+        using MemoryStream stream = new();
+        CountingPipeWriter writer = new(PipeWriter.Create(stream, new StreamPipeWriterOptions(leaveOpen: true)));
+
+        await result.WriteToAsync(writer, CancellationToken.None);
+        await writer.FlushAsync();
+        await writer.CompleteAsync();
+
+        Encoding.UTF8.GetString(stream.ToArray()).Should().Be("[]");
+    }
+
+    [Test]
+    public async Task Eth_get_logs_stream_mode_estimates_next_log_before_reading_it()
+    {
+        string logJson = JsonSerializer.Serialize(CreateTestFilterLog(), EthereumJsonSerializer.JsonOptions);
+        long maxLogsResponseBodySize = 1 + Encoding.UTF8.GetByteCount(logJson) + LogsStreamEnvelopeEndReserveBytes;
+        using LogsStreamableResult result = new(GetLogs(), 0, enforceMaxLogs: false, maxLogsResponseBodySize, maxBatchResponseBodySize: null, new CancellationTokenSource(), default);
+        using MemoryStream stream = new();
+        CountingPipeWriter writer = new(PipeWriter.Create(stream, new StreamPipeWriterOptions(leaveOpen: true)));
+
+        await result.WriteToAsync(writer, CancellationToken.None);
+        await writer.FlushAsync();
+        await writer.CompleteAsync();
+
+        Encoding.UTF8.GetString(stream.ToArray()).Should().Be($"[{logJson}]");
+
+        static IEnumerable<FilterLog> GetLogs()
+        {
+            yield return CreateTestFilterLog();
+            throw new InvalidOperationException("Stream mode read the next log after the prior-size estimate exceeded MaxLogsResponseBodySize.");
+        }
+    }
+
+    [Test]
+    public async Task Eth_get_logs_stream_mode_uses_batch_remaining_limit_for_batch_items()
+    {
+        string logJson = JsonSerializer.Serialize(CreateTestFilterLog(), EthereumJsonSerializer.JsonOptions);
+        int logBytes = Encoding.UTF8.GetByteCount(logJson);
+        long alreadyWrittenBatchBytes = 32;
+        long maxBatchResponseBodySize = alreadyWrittenBatchBytes + 1 + logBytes + LogsStreamEnvelopeEndReserveBytes;
+        using LogsStreamableResult result = new(GetLogs(), 0, enforceMaxLogs: false, maxLogsResponseBodySize: long.MaxValue, maxBatchResponseBodySize, new CancellationTokenSource(), default);
+        using MemoryStream stream = new();
+        CountingPipeWriter writer = new(PipeWriter.Create(stream, new StreamPipeWriterOptions(leaveOpen: true)), alreadyWrittenBatchBytes);
+
+        await result.WriteToAsync(writer, isBatch: true, cancellationToken: CancellationToken.None);
+        await writer.FlushAsync();
+        await writer.CompleteAsync();
+
+        Encoding.UTF8.GetString(stream.ToArray()).Should().Be($"[{logJson}]");
+
+        static IEnumerable<FilterLog> GetLogs()
+        {
+            yield return CreateTestFilterLog();
+            throw new InvalidOperationException("Stream mode did not use remaining MaxBatchResponseBodySize before reading the next batch item log.");
+        }
+    }
+
+    [Test]
+    public async Task Eth_get_logs_stream_mode_uses_batch_limit_when_logs_body_limit_is_not_specified()
+    {
+        new JsonRpcConfig().MaxLogsResponseBodySize.Should().BeNull();
+
+        using LogsStreamableResult result = new([CreateTestFilterLog()], 0, enforceMaxLogs: false, maxLogsResponseBodySize: null, maxBatchResponseBodySize: 64, new CancellationTokenSource(), default);
+        using MemoryStream stream = new();
+        CountingPipeWriter writer = new(PipeWriter.Create(stream, new StreamPipeWriterOptions(leaveOpen: true)));
+
+        await result.WriteToAsync(writer, CancellationToken.None);
+        await writer.FlushAsync();
+        await writer.CompleteAsync();
+
+        Encoding.UTF8.GetString(stream.ToArray()).Should().Be("[]");
     }
 
     [Test]

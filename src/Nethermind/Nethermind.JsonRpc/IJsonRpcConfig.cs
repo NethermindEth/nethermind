@@ -126,6 +126,16 @@ public interface IJsonRpcConfig : IConfig
     public bool EnableTracingStreamMode { get; set; }
 
     [ConfigItem(
+        Description = "Whether to stream `eth_getLogs` and `eth_getFilterLogs` responses as logs are found. When enabled, unauthenticated responses stop at `MaxLogsPerResponse` or `MaxLogsResponseBodySize` instead of buffering the full result and returning a limit error.",
+        DefaultValue = "false")]
+    public bool EnableLogsStreamMode { get; set; }
+
+    [ConfigItem(
+        Description = "The max response body size, in bytes, for streamed `eth_getLogs` and `eth_getFilterLogs` JSON-RPC responses. Ignored unless `EnableLogsStreamMode` is enabled. `null` to use `MaxBatchResponseBodySize`.",
+        DefaultValue = "null")]
+    public long? MaxLogsResponseBodySize { get; set; }
+
+    [ConfigItem(
         Description = "The number of concurrent instances of the Debug RPC module (`debug_trace*`, `debug_getRawBlock`, etc.). Calls beyond this cap return `LimitExceeded`. Defaults to the number of logical processors.")]
     public int? DebugModuleConcurrentInstances { get; set; }
 

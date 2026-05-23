@@ -15,3 +15,8 @@ public interface IStreamableResult
 {
     ValueTask WriteToAsync(PipeWriter writer, CancellationToken cancellationToken);
 }
+
+internal interface IBatchAwareStreamableResult : IStreamableResult
+{
+    ValueTask WriteToAsync(PipeWriter writer, bool isBatch, CancellationToken cancellationToken);
+}

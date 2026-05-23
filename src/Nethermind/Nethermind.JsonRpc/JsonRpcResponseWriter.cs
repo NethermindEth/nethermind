@@ -39,10 +39,14 @@ public static class JsonRpcResponseWriter
 
     /// <summary>Writes <paramref name="response"/>, using the streamable result path when required.</summary>
     public static ValueTask WriteAsync(PipeWriter writer, JsonRpcResponse response, JsonSerializerOptions options, CancellationToken cancellationToken)
+        => WriteAsync(writer, response, options, isBatch: false, cancellationToken);
+
+    /// <summary>Writes <paramref name="response"/>, using the streamable result path when required.</summary>
+    public static ValueTask WriteAsync(PipeWriter writer, JsonRpcResponse response, JsonSerializerOptions options, bool isBatch, CancellationToken cancellationToken)
     {
         if (response.TryGetStreamableResult(out IStreamableResult? streamable))
         {
-            return WriteStreamableAsync(writer, response, streamable, cancellationToken);
+            return WriteStreamableAsync(writer, response, streamable, isBatch, cancellationToken);
         }
 
         Write(writer, response, options);
@@ -57,10 +61,18 @@ public static class JsonRpcResponseWriter
         PipeWriter writer,
         JsonRpcResponse response,
         IStreamableResult streamable,
+        bool isBatch,
         CancellationToken cancellationToken)
     {
         writer.Write(SuccessEnvelopeStart);
-        await streamable.WriteToAsync(writer, cancellationToken);
+        if (streamable is IBatchAwareStreamableResult batchAwareStreamable)
+        {
+            await batchAwareStreamable.WriteToAsync(writer, isBatch, cancellationToken);
+        }
+        else
+        {
+            await streamable.WriteToAsync(writer, cancellationToken);
+        }
         writer.Write(IdSeparator);
         WriteIdRaw(writer, in response.IdRef);
         writer.Write(EnvelopeEnd);

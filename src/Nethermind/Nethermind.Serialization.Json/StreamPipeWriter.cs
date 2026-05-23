@@ -25,11 +25,12 @@ public sealed class CountingPipeWriter : CountingWriter
 {
     private readonly PipeWriter _writer;
 
-    public CountingPipeWriter(PipeWriter writer)
+    public CountingPipeWriter(PipeWriter writer, long initialWrittenCount = 0)
     {
         ArgumentNullException.ThrowIfNull(writer);
 
         _writer = writer;
+        WrittenCount = initialWrittenCount;
     }
 
     public override void Advance(int count)
@@ -97,7 +98,7 @@ public sealed class CountingStreamPipeWriter : CountingWriter
         }
     }
 
-    public CountingStreamPipeWriter(Stream writingStream, StreamPipeWriterOptions? options = null)
+    public CountingStreamPipeWriter(Stream writingStream, StreamPipeWriterOptions? options = null, long initialWrittenCount = 0)
     {
         if (writingStream is null)
         {
@@ -109,6 +110,7 @@ public sealed class CountingStreamPipeWriter : CountingWriter
         _maxPooledBufferSize = _pool?.MaxBufferSize ?? -1;
         _bufferSegmentPool = new BufferSegmentStack(InitialSegmentPoolSize);
         _leaveOpen = options?.LeaveOpen ?? true;
+        WrittenCount = initialWrittenCount;
     }
 
     /// <summary>
