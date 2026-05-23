@@ -119,9 +119,9 @@ internal static class PayloadBodiesDirectResponseWriter
     private static void WriteWithdrawal(PipeWriter writer, Withdrawal withdrawal)
     {
         writer.Write("{\"index\":"u8);
-        WriteUlongHexString(writer, withdrawal.Index);
+        HexWriter.WriteUlongHexString(writer, withdrawal.Index);
         writer.Write(",\"validatorIndex\":"u8);
-        WriteUlongHexString(writer, withdrawal.ValidatorIndex);
+        HexWriter.WriteUlongHexString(writer, withdrawal.ValidatorIndex);
         writer.Write(",\"address\":"u8);
 
         Address? address = withdrawal.Address;
@@ -135,24 +135,7 @@ internal static class PayloadBodiesDirectResponseWriter
         }
 
         writer.Write(",\"amount\":"u8);
-        WriteUlongHexString(writer, withdrawal.AmountInGwei);
+        HexWriter.WriteUlongHexString(writer, withdrawal.AmountInGwei);
         writer.Write("}"u8);
-    }
-
-    private static void WriteUlongHexString(PipeWriter writer, ulong value)
-    {
-        if (value == 0)
-        {
-            writer.Write("\"0x0\""u8);
-            return;
-        }
-
-        Span<byte> buffer = writer.GetSpan(20);
-        buffer[0] = (byte)'"';
-        buffer[1] = (byte)'0';
-        buffer[2] = (byte)'x';
-        value.TryFormat(buffer[3..], out int bytesWritten, "x");
-        buffer[bytesWritten + 3] = (byte)'"';
-        writer.Advance(bytesWritten + 4);
     }
 }

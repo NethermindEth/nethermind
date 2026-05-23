@@ -366,6 +366,24 @@ public static class HexWriter
         writer.Write("\""u8);
     }
 
+    /// <summary>Writes a JSON string containing a <c>0x</c>-prefixed lowercase hex unsigned integer.</summary>
+    public static void WriteUlongHexString(PipeWriter writer, ulong value)
+    {
+        if (value == 0)
+        {
+            writer.Write("\"0x0\""u8);
+            return;
+        }
+
+        Span<byte> buffer = writer.GetSpan(20);
+        buffer[0] = (byte)'"';
+        buffer[1] = (byte)'0';
+        buffer[2] = (byte)'x';
+        value.TryFormat(buffer[3..], out int bytesWritten, "x");
+        buffer[bytesWritten + 3] = (byte)'"';
+        writer.Advance(bytesWritten + 4);
+    }
+
     private static void EncodeToHex(ReadOnlySpan<byte> src, ref byte dest)
     {
         int offset = 0;
