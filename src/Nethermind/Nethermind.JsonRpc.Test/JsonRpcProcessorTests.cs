@@ -60,6 +60,8 @@ public class JsonRpcProcessorTests(bool returnErrors)
     private static JsonRpcProcessor CreateProcessor(IJsonRpcService service, IJsonRpcConfig? config = null, IFileSystem? fileSystem = null, IProcessExitSource? processExitSource = null) =>
         new(service, config ?? new JsonRpcConfig(), fileSystem ?? Substitute.For<IFileSystem>(), LimboLogs.Instance, processExitSource);
 
+    private static JsonRpcContext CreateHttpContext() => new(RpcEndpoint.Http);
+
     [Test]
     public async Task Http_engine_newPayloadV4_keeps_envelope_and_params_on_direct_utf8_path()
     {
@@ -76,10 +78,7 @@ public class JsonRpcProcessorTests(bool returnErrors)
 
         JsonRpcProcessor processor = CreateProcessor(service);
 
-        await ProcessAsync(
-            processor,
-            CreateReader(CreateRequest("1", "engine_newPayloadV4", "[{\"parentHash\":\"0x0\"},[],null,null]")),
-            new JsonRpcContext(RpcEndpoint.Http));
+        await ProcessAsync(processor, CreateRequest("1", "engine_newPayloadV4", "[{\"parentHash\":\"0x0\"},[],null,null]"), CreateHttpContext());
 
         capturedMethod.Should().Be("engine_newPayloadV4");
         capturedRawParams.Should().BeTrue();
@@ -103,10 +102,7 @@ public class JsonRpcProcessorTests(bool returnErrors)
 
         string request = inBatch ? CreateBatchRequest(CreateRequest("1", methodName)) : CreateRequest("1", methodName);
 
-        await ProcessAsync(
-            processor,
-            CreateReader(request),
-            new JsonRpcContext(RpcEndpoint.Http));
+        await ProcessAsync(processor, request, CreateHttpContext());
 
         capturedMethod.Should().Be(methodName);
         string? knownMethodName = TryGetKnownMethodName(methodName);
@@ -191,7 +187,7 @@ public class JsonRpcProcessorTests(bool returnErrors)
     }
 
     private ValueTask<CollectedJsonRpcResponses> ProcessAsync(string request, JsonRpcContext? context = null, JsonRpcConfig? config = null) =>
-        ProcessAsync(CreateFixtureProcessor(config), CreateReader(request), context ?? new JsonRpcContext(RpcEndpoint.Http));
+        ProcessAsync(CreateFixtureProcessor(config), CreateReader(request), context ?? CreateHttpContext());
 
     private static ValueTask<CollectedJsonRpcResponses> ProcessAsync(JsonRpcProcessor processor, string request, JsonRpcContext context, CollectingJsonRpcResponseSink? sink = null) =>
         ProcessAsync(processor, CreateReader(request), context, sink);
@@ -220,7 +216,7 @@ public class JsonRpcProcessorTests(bool returnErrors)
 
         await ProcessAsync(processor,
             CreateBatchRequest(CreateRequest("1", "eth_getTransactionCount"), CreateRequest("2", "eth_blockNumber"), CreateRequest("3", "net_version")),
-            new JsonRpcContext(RpcEndpoint.Http),
+            CreateHttpContext(),
             sink);
 
         List<JsonRpcResponse> batchItems = sink.Responses[0].BatchItems!;
@@ -239,7 +235,7 @@ public class JsonRpcProcessorTests(bool returnErrors)
         CollectingJsonRpcResponseSink sink = new();
         JsonRpcProcessor processor = CreateFixtureProcessor();
 
-        await ProcessAsync(processor, CreateTransactionCountRequest("67", paramsJson: "[]"), new JsonRpcContext(RpcEndpoint.Http), sink);
+        await ProcessAsync(processor, CreateTransactionCountRequest("67", paramsJson: "[]"), CreateHttpContext(), sink);
 
         AssertSingleResponse(sink.Responses).Response!.Id.Should().Be(67);
     }
@@ -259,7 +255,7 @@ public class JsonRpcProcessorTests(bool returnErrors)
         JsonRpcProcessor processor = CreateProcessor(service);
         CollectingJsonRpcResponseSink sink = new();
 
-        await ProcessAsync(processor, " \r\n" + CreateTransactionCountRequest("67", paramsJson: "[{\"a\":2}]") + "\t ", new JsonRpcContext(RpcEndpoint.Http), sink);
+        await ProcessAsync(processor, " \r\n" + CreateTransactionCountRequest("67", paramsJson: "[{\"a\":2}]") + "\t ", CreateHttpContext(), sink);
 
         inspected.Should().BeTrue();
         AssertSingleResponse(sink.Responses).Response!.Id.Should().Be(67);
@@ -437,7 +433,7 @@ public class JsonRpcProcessorTests(bool returnErrors)
             ? CreateBatchRequest(CreateRequest("1", "eth_blockNumber"), CreateRequest("2", "net_version"))
             : CreateRequest("1", "eth_blockNumber");
 
-        using CollectedJsonRpcResponses result = await ProcessAsync(processor, request, new JsonRpcContext(RpcEndpoint.Http));
+        using CollectedJsonRpcResponses result = await ProcessAsync(processor, request, CreateHttpContext());
 
         records.Should().HaveCount(expectedRecordCount);
         records.Should().Contain(record => record.Contains("eth_blockNumber"));
@@ -465,7 +461,7 @@ public class JsonRpcProcessorTests(bool returnErrors)
             ? CreateBatchRequest(CreateRequest("1", "eth_blockNumber", "[1]"), CreateRequest("2", "net_version", "[2]"))
             : CreateRequest("1", "eth_blockNumber", "[{\"a\":1}]");
 
-        await ProcessAsync(processor, request, new JsonRpcContext(RpcEndpoint.Http), sink);
+        await ProcessAsync(processor, request, CreateHttpContext(), sink);
 
         Action readAfterProcessing = () => _ = capturedParams.ValueKind;
         readAfterProcessing.Should().Throw<ObjectDisposedException>();
@@ -483,7 +479,7 @@ public class JsonRpcProcessorTests(bool returnErrors)
         };
         JsonRpcProcessor processor = CreateProcessor(service);
 
-        await ProcessAsync(processor, CreateRequest("1", "eth_blockNumber"), new JsonRpcContext(RpcEndpoint.Http), sink);
+        await ProcessAsync(processor, CreateRequest("1", "eth_blockNumber"), CreateHttpContext(), sink);
 
         disposedDuringWrite.Should().BeFalse();
         disposed.Should().BeTrue();
@@ -645,7 +641,7 @@ public class JsonRpcProcessorTests(bool returnErrors)
         JsonRpcProcessor processor = CreateProcessor(service, new JsonRpcConfig { MaxBatchSize = 1 });
         using JsonRpcContext context = isAuthenticated
             ? new JsonRpcContext(RpcEndpoint.Http, url: new JsonRpcUrl(string.Empty, string.Empty, 0, RpcEndpoint.Http, true, []))
-            : new JsonRpcContext(RpcEndpoint.Http);
+            : CreateHttpContext();
 
         using CollectedJsonRpcResponses result = await ProcessAsync(processor, CreateTransactionCountBatchRequest(2), context);
 
@@ -674,7 +670,7 @@ public class JsonRpcProcessorTests(bool returnErrors)
         using CollectedJsonRpcResponses result = await ProcessAsync(
             CreateFixtureProcessor(),
             CreateTransactionCountBatchRequest(TransactionCountParamsJson, TransactionCountParamsJson),
-            new JsonRpcContext(RpcEndpoint.Http),
+            CreateHttpContext(),
             sink);
         CollectedJsonRpcResult response = AssertOnlyResult(result);
         response.IsCollection.Should().BeTrue();
@@ -707,7 +703,7 @@ public class JsonRpcProcessorTests(bool returnErrors)
     {
         JsonRpcProcessor processor = CreateShutdownProcessor(out IJsonRpcService service);
         string request = CreateTransactionCountRequest("67");
-        using CollectedJsonRpcResponses results = await ProcessAsync(processor, request, new JsonRpcContext(RpcEndpoint.Http));
+        using CollectedJsonRpcResponses results = await ProcessAsync(processor, request, CreateHttpContext());
 
         JsonRpcResponse response = AssertSingleResponse(results).Response!;
         response.Should().BeOfType<JsonRpcErrorResponse>();
@@ -722,7 +718,7 @@ public class JsonRpcProcessorTests(bool returnErrors)
         Pipe pipe = new();
         await pipe.Writer.WriteAsync(Encoding.UTF8.GetBytes(CreateRequest("1", "eth_blockNumber")));
 
-        using CollectedJsonRpcResponses results = await ProcessAsync(processor, pipe.Reader, new JsonRpcContext(RpcEndpoint.Http));
+        using CollectedJsonRpcResponses results = await ProcessAsync(processor, pipe.Reader, CreateHttpContext());
 
         AssertSingleResponse(results).Response.Should().BeOfType<JsonRpcErrorResponse>();
 
@@ -794,7 +790,7 @@ public class JsonRpcProcessorTests(bool returnErrors)
             : new JsonRpcSuccessResponse { Id = request.Id });
 
         JsonRpcProcessor processor = CreateProcessor(service);
-        using CollectedJsonRpcResponses result = await ProcessAsync(processor, CreateRequest("1", methodName), new JsonRpcContext(RpcEndpoint.Http));
+        using CollectedJsonRpcResponses result = await ProcessAsync(processor, CreateRequest("1", methodName), CreateHttpContext());
 
         RpcReport? report = AssertOnlyResult(result).Report;
         report.Should().NotBeNull();
@@ -835,7 +831,7 @@ public class JsonRpcProcessorTests(bool returnErrors)
         string nested = BuildNestedArrayParams(paramNestingDepth);
         string request = CreateTransactionCountRequest("1", paramsJson: $"[{nested}]");
 
-        using CollectedJsonRpcResponses result = await ProcessAsync(processor, request, new JsonRpcContext(RpcEndpoint.Http));
+        using CollectedJsonRpcResponses result = await ProcessAsync(processor, request, CreateHttpContext());
 
         CollectedJsonRpcResult response = AssertSingleResponse(result, expectParseError);
 
