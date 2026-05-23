@@ -57,10 +57,6 @@ public sealed class GethLikeTxTraceStreamingResult(IReadOnlyCollection<GethLikeT
         }
         finally
         {
-            // Always close the array so the response is valid JSON even on early exit,
-            // cancellation, or mid-stream exception. OperationCanceledException from the
-            // pipe writer propagates to Startup.WriteStreamableResponseAsync, which has
-            // its own OCE catch around all streamable results.
             jsonWriter.WriteEndArray();
             jsonWriter.Flush();
         }
