@@ -680,22 +680,22 @@ public class JsonRpcProcessorTests(bool returnErrors)
         batchItems[1].Should().BeOfType(limit || returnErrors ? typeof(JsonRpcErrorResponse) : typeof(JsonRpcSuccessResponse));
     }
 
-    [TestCase("invalid", true, TestName = "Invalid JSON")]
-    [TestCase("\"aaa\"", true, TestName = "String root")]
-    [TestCase("null", true, TestName = "Null root")]
-    [TestCase("{}", false, TestName = "Empty object")]
-    public async Task Can_handle_single_response_request_shapes(string request, bool shouldBeParseError)
+    [TestCase("invalid", true, null, TestName = "Invalid JSON")]
+    [TestCase("\"aaa\"", true, null, TestName = "String root")]
+    [TestCase("null", true, null, TestName = "Null root")]
+    [TestCase("{}", false, null, TestName = "Empty object")]
+    [TestCase("[]", false, 0, TestName = "Empty array")]
+    [TestCase("[{},{},{}]", false, 3, TestName = "Array of empty requests")]
+    public async Task Can_handle_request_shapes(string request, bool shouldBeParseError, int? expectedBatchItems)
     {
         using CollectedJsonRpcResponses result = await ProcessAsync(request);
-        AssertSingleResponse(result, shouldBeParseError);
-    }
+        if (expectedBatchItems is null)
+        {
+            AssertSingleResponse(result, shouldBeParseError);
+            return;
+        }
 
-    [TestCase("[]", 0, TestName = "Empty array")]
-    [TestCase("[{},{},{}]", 3, TestName = "Array of empty requests")]
-    public async Task Can_handle_empty_batch_requests(string request, int expectedBatchItems)
-    {
-        using CollectedJsonRpcResponses result = await ProcessAsync(request);
-        AssertBatchResponse(result, expectedBatchItems);
+        AssertBatchResponse(result, expectedBatchItems.Value);
     }
 
     [Test]
