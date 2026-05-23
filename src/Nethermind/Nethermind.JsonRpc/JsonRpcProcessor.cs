@@ -773,7 +773,7 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
             _jsonRpcService.GetErrorResponse(
                 ErrorCodes.LimitExceeded,
                 jsonRpcRequest.Method,
-                jsonRpcRequest.Id,
+                in jsonRpcRequest.IdRef,
                 $"{nameof(IJsonRpcConfig.MaxBatchResponseBodySize)} of {_jsonRpcConfig.MaxBatchResponseBodySize / 1.KB}KB exceeded"),
             RpcReport.Error);
 

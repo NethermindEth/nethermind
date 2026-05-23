@@ -62,7 +62,7 @@ public static class JsonRpcResponseWriter
         writer.Write(SuccessEnvelopeStart);
         await streamable.WriteToAsync(writer, cancellationToken);
         writer.Write(IdSeparator);
-        WriteIdRaw(writer, response.Id);
+        WriteIdRaw(writer, in response.IdRef);
         writer.Write(EnvelopeEnd);
     }
 
@@ -72,19 +72,19 @@ public static class JsonRpcResponseWriter
         writer.WriteString("jsonrpc"u8, "2.0"u8);
     }
 
-    internal static void WriteEnvelopeEnd(Utf8JsonWriter writer, JsonRpcId id)
+    internal static void WriteEnvelopeEnd(Utf8JsonWriter writer, in JsonRpcId id)
     {
         writer.WritePropertyName("id"u8);
         id.WriteTo(writer);
         writer.WriteEndObject();
     }
 
-    internal static void WriteRawSuccess(IBufferWriter<byte> writer, ReadOnlySpan<byte> rawResult, JsonRpcId id)
+    internal static void WriteRawSuccess(IBufferWriter<byte> writer, ReadOnlySpan<byte> rawResult, in JsonRpcId id)
     {
         writer.Write(SuccessEnvelopeStart);
         writer.Write(rawResult);
         writer.Write(IdSeparator);
-        WriteIdRaw(writer, id);
+        WriteIdRaw(writer, in id);
         writer.Write(EnvelopeEnd);
     }
 
@@ -145,7 +145,7 @@ public static class JsonRpcResponseWriter
         writer.WriteEndObject();
     }
 
-    private static void WriteIdRaw(IBufferWriter<byte> writer, JsonRpcId id)
+    private static void WriteIdRaw(IBufferWriter<byte> writer, in JsonRpcId id)
     {
         if (id.TryGetInt64(out long longId))
         {
@@ -163,10 +163,10 @@ public static class JsonRpcResponseWriter
             return;
         }
 
-        WriteOther(writer, id);
+        WriteOther(writer, in id);
 
         [MethodImpl(MethodImplOptions.NoInlining)]
-        static void WriteOther(IBufferWriter<byte> writer, JsonRpcId id)
+        static void WriteOther(IBufferWriter<byte> writer, in JsonRpcId id)
         {
             using Utf8JsonWriter jsonWriter = new(writer, _streamableIdWriterOptions);
             id.WriteTo(jsonWriter);

@@ -36,7 +36,7 @@ internal ref struct JsonRpcEnvelopeReader
         }
 
         bool hasParams = element.TryGetProperty("params"u8, out paramsElement);
-        return new JsonRpcEnvelope(jsonRpc, id, method, hasParams, hasParams ? paramsElement.ValueKind : JsonValueKind.Undefined, 0, 0);
+        return new JsonRpcEnvelope(jsonRpc, in id, method, hasParams, hasParams ? paramsElement.ValueKind : JsonValueKind.Undefined, 0, 0);
     }
 
     public bool TryRead(out JsonRpcEnvelope envelope)
@@ -60,7 +60,7 @@ internal ref struct JsonRpcEnvelopeReader
         {
             if (reader.TokenType == JsonTokenType.EndObject)
             {
-                envelope = new JsonRpcEnvelope(jsonRpc, id, method, hasParams, paramsKind, paramsStart, paramsLength);
+                envelope = new JsonRpcEnvelope(jsonRpc, in id, method, hasParams, paramsKind, paramsStart, paramsLength);
                 return true;
             }
 

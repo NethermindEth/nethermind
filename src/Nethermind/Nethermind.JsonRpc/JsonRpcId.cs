@@ -23,6 +23,8 @@ internal enum JsonRpcIdKind : byte
 /// <remarks>Missing and explicit-null IDs are distinct, but both serialize as JSON null for compatibility.</remarks>
 public readonly struct JsonRpcId : IEquatable<JsonRpcId>
 {
+    private static readonly JsonRpcId _null = new(JsonRpcIdKind.Null);
+
     private readonly byte[]? _rawValue;
     private readonly string? _stringValue;
     private readonly long _longValue;
@@ -35,7 +37,7 @@ public readonly struct JsonRpcId : IEquatable<JsonRpcId>
     public static JsonRpcId Missing => default;
 
     /// <summary>Gets an ID value representing an explicit JSON null.</summary>
-    public static JsonRpcId Null => new(JsonRpcIdKind.Null);
+    public static ref readonly JsonRpcId Null => ref _null;
 
     /// <summary>Initializes an ID from a signed 64-bit integer.</summary>
     /// <param name="value">The integer ID value.</param>
@@ -219,7 +221,12 @@ public readonly struct JsonRpcId : IEquatable<JsonRpcId>
     }
 
     /// <inheritdoc/>
-    public bool Equals(JsonRpcId other) =>
+    public bool Equals(JsonRpcId other) => Equals(in other);
+
+    /// <summary>Determines whether this ID and <paramref name="other"/> represent the same JSON-RPC ID.</summary>
+    /// <param name="other">The ID to compare with this instance.</param>
+    /// <returns>True when both IDs are equal; otherwise false.</returns>
+    public bool Equals(in JsonRpcId other) =>
         _kind == other._kind &&
         _kind switch
         {
@@ -235,7 +242,7 @@ public readonly struct JsonRpcId : IEquatable<JsonRpcId>
         obj switch
         {
             null => false,
-            JsonRpcId other => Equals(other),
+            JsonRpcId other => Equals(in other),
             int intValue => _kind == JsonRpcIdKind.Long && _longValue == intValue,
             long longValue => _kind == JsonRpcIdKind.Long && _longValue == longValue,
             decimal decimalValue => _kind == JsonRpcIdKind.Decimal && _decimalValue == decimalValue,

@@ -988,7 +988,7 @@ public partial class EthRpcModule(
         }
 
         void IJsonRpcRawResponse.WriteRaw(IBufferWriter<byte> writer) =>
-            JsonRpcResponseWriter.WriteRawSuccess(writer, _rawResult, Id);
+            JsonRpcResponseWriter.WriteRawSuccess(writer, _rawResult, in IdRef);
     }
 
     protected void RecoverTxSenderIfNeeded(Transaction transaction) => transaction.SenderAddress ??= _blockchainBridge.RecoverTxSender(transaction);

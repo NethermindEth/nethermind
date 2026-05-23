@@ -15,6 +15,11 @@ namespace Nethermind.JsonRpc
     [JsonDerivedType(typeof(JsonRpcSubscriptionResponse))]
     public class JsonRpcResponse(Action? action = null) : IDisposable
     {
+        private protected JsonRpcId _id;
+
+        internal JsonRpcResponse(in JsonRpcId id, Action? action = null)
+            : this(action) => _id = id;
+
         public void AddDisposable(Action disposableAction) => action += disposableAction;
 
         [JsonPropertyName("jsonrpc")]
@@ -24,13 +29,15 @@ namespace Nethermind.JsonRpc
         [JsonConverter(typeof(JsonRpcIdConverter))]
         [JsonPropertyOrder(2)]
         [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
-        public JsonRpcId Id { get; set; }
+        public JsonRpcId Id { get => _id; set => _id = value; }
+
+        internal ref readonly JsonRpcId IdRef => ref _id;
 
         internal virtual bool IsResourceUnavailableError => false;
 
-        internal virtual JsonRpcResponse WithResponseContext(JsonRpcId id, Action? disposableAction)
+        internal virtual JsonRpcResponse WithResponseContext(in JsonRpcId id, Action? disposableAction)
         {
-            Id = id;
+            _id = id;
             if (disposableAction is not null) AddDisposable(disposableAction);
             return this;
         }
@@ -50,7 +57,7 @@ namespace Nethermind.JsonRpc
         internal virtual void WriteTo(Utf8JsonWriter writer, JsonSerializerOptions options)
         {
             JsonRpcResponseWriter.WriteEnvelopeStart(writer);
-            JsonRpcResponseWriter.WriteEnvelopeEnd(writer, Id);
+            JsonRpcResponseWriter.WriteEnvelopeEnd(writer, in _id);
         }
 
         public virtual void Dispose()
@@ -92,7 +99,7 @@ namespace Nethermind.JsonRpc
                     RpcPayloadTypeInfo.Get(options, result.GetType()));
             }
 
-            JsonRpcResponseWriter.WriteEnvelopeEnd(writer, Id);
+            JsonRpcResponseWriter.WriteEnvelopeEnd(writer, in _id);
         }
 
         public override void Dispose()
@@ -112,6 +119,8 @@ namespace Nethermind.JsonRpc
         public JsonRpcErrorResponse() : base(null) { }
 
         public JsonRpcErrorResponse(Action? disposableAction = null) : base(disposableAction) { }
+
+        internal JsonRpcErrorResponse(in JsonRpcId id, Action? disposableAction = null) : base(in id, disposableAction) { }
 
         internal override bool IsResourceUnavailableError => Error is { Code: ErrorCodes.ModuleTimeout or ErrorCodes.LimitExceeded };
 
@@ -135,7 +144,7 @@ namespace Nethermind.JsonRpc
                 JsonRpcResponseWriter.WriteErrorObject(writer, Error, options);
             }
 
-            JsonRpcResponseWriter.WriteEnvelopeEnd(writer, Id);
+            JsonRpcResponseWriter.WriteEnvelopeEnd(writer, in _id);
         }
     }
 }

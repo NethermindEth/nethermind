@@ -496,16 +496,16 @@ public class JsonRpcProcessorTests(bool returnErrors)
         if (errorResponse is not null)
         {
             service.GetErrorResponse(0, null!).ReturnsForAnyArgs(errorResponse);
-            service.GetErrorResponse(0, null!, null!, null!).ReturnsForAnyArgs(errorResponse);
+            service.GetErrorResponse(0, null!, Arg.Any<JsonRpcId>(), null).ReturnsForAnyArgs(errorResponse);
             return service;
         }
 
         service.GetErrorResponse(Arg.Any<int>(), Arg.Any<string>())
             .Returns(static ci => new JsonRpcErrorResponse { Error = new Error { Code = ci.ArgAt<int>(0), Message = ci.ArgAt<string>(1) } });
-        service.GetErrorResponse(Arg.Any<int>(), Arg.Any<string>(), Arg.Any<JsonRpcId?>(), Arg.Any<string?>())
+        service.GetErrorResponse(Arg.Any<int>(), Arg.Any<string>(), Arg.Any<JsonRpcId>(), Arg.Any<string?>())
             .Returns(static ci => new JsonRpcErrorResponse
             {
-                Id = JsonRpcId.FromObject(ci.ArgAt<JsonRpcId?>(2)),
+                Id = ci.ArgAt<JsonRpcId>(2),
                 Error = new Error { Code = ci.ArgAt<int>(0), Message = ci.ArgAt<string>(1) }
             });
         return service;

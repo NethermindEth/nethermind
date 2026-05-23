@@ -11,6 +11,7 @@ namespace Nethermind.JsonRpc
     {
         private JsonElement _params;
         private JsonDocument? _paramsDocument;
+        private JsonRpcId _id;
         private bool _paramsSet;
 
         public string JsonRpc { get; set; }
@@ -53,7 +54,9 @@ namespace Nethermind.JsonRpc
         }
 
         [JsonConverter(typeof(JsonRpcIdConverter))]
-        public JsonRpcId Id { get; set; }
+        public JsonRpcId Id { get => _id; set => _id = value; }
+
+        internal ref readonly JsonRpcId IdRef => ref _id;
 
         public override string ToString() => $"Id:{Id}, {Method}({Params})";
     }

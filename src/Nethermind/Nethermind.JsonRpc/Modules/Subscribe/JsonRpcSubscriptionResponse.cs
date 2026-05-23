@@ -20,7 +20,7 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
         [JsonPropertyOrder(3)]
         [JsonConverter(typeof(JsonRpcIdConverter))]
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
-        public new JsonRpcId Id { get { return base.Id; } set { base.Id = value; } }
+        public new JsonRpcId Id { get { return base.Id; } set { _id = value; } }
 
         internal override void WriteTo(Utf8JsonWriter writer, JsonSerializerOptions options)
         {
@@ -37,10 +37,10 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
                 JsonSerializer.Serialize(writer, Params, RpcPayloadTypeInfo<JsonRpcSubscriptionResult>.Get(options));
             }
 
-            if (!Id.IsMissing)
+            if (!_id.IsMissing)
             {
                 writer.WritePropertyName("id"u8);
-                Id.WriteTo(writer);
+                _id.WriteTo(writer);
             }
 
             writer.WriteEndObject();
@@ -68,10 +68,10 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
                 WriteParams(writer, options);
             }
 
-            if (!Id.IsMissing)
+            if (!_id.IsMissing)
             {
                 writer.WritePropertyName("id"u8);
-                Id.WriteTo(writer);
+                _id.WriteTo(writer);
             }
 
             writer.WriteEndObject();

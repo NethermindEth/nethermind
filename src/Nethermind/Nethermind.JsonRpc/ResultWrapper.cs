@@ -60,10 +60,10 @@ namespace Nethermind.JsonRpc
             Result.ResultType != ResultType.Success &&
             ErrorCode is ErrorCodes.ModuleTimeout or ErrorCodes.LimitExceeded;
 
-        internal override JsonRpcResponse WithResponseContext(JsonRpcId id, Action? disposableAction)
+        internal override JsonRpcResponse WithResponseContext(in JsonRpcId id, Action? disposableAction)
         {
             ResultWrapper<T> response = (ResultWrapper<T>)MemberwiseClone();
-            response.Id = id;
+            response._id = id;
             if (disposableAction is not null) response.AddDisposable(disposableAction);
             return response;
         }
@@ -107,7 +107,7 @@ namespace Nethermind.JsonRpc
                 WriteError(writer, options);
             }
 
-            JsonRpcResponseWriter.WriteEnvelopeEnd(writer, Id);
+            JsonRpcResponseWriter.WriteEnvelopeEnd(writer, in _id);
         }
 
         public override void Dispose()

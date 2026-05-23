@@ -41,7 +41,7 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
         if (errorCode.HasValue)
         {
             if (_logger.IsDebug) _logger.Debug($"Validation error when handling request: {rpcRequest}");
-            return ValueTask.FromResult<JsonRpcResponse>(GetErrorResponse(methodName, errorCode.Value, errorMessage, null, rpcRequest.Id));
+            return ValueTask.FromResult<JsonRpcResponse>(GetErrorResponse(methodName, errorCode.Value, errorMessage, null, in rpcRequest.IdRef));
         }
 
         try
@@ -85,7 +85,7 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
         };
 
         if (_logger.IsError) _logger.Error($"Error during method execution, request: {rpcRequest}", ex);
-        return GetErrorResponse(rpcRequest.Method, errorCode, errorText, ex.ToString(), rpcRequest.Id);
+        return GetErrorResponse(rpcRequest.Method, errorCode, errorText, ex.ToString(), in rpcRequest.IdRef);
     }
 
     private async ValueTask<JsonRpcResponse> ExecuteAsync(JsonRpcRequest request, string methodName, ResolvedMethodInfo method, JsonRpcContext context)
@@ -161,7 +161,7 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
 
         if (resultWrapper is JsonRpcResponse response)
         {
-            return response.WithResponseContext(request.Id, returnAction);
+            return response.WithResponseContext(in request.IdRef, returnAction);
         }
 
         return HandleUnsupportedResultWrapper(request, methodName, returnAction);
@@ -171,7 +171,7 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
         {
             string errorMessage = $"Method {methodName} execution result does not implement IResultWrapper";
             if (_logger.IsError) _logger.Error(errorMessage);
-            return GetErrorResponse(methodName, ErrorCodes.InternalError, errorMessage, null, request.Id, returnAction);
+            return GetErrorResponse(methodName, ErrorCodes.InternalError, errorMessage, null, in request.IdRef, returnAction);
         }
 
         [MethodImpl(MethodImplOptions.NoInlining)]
@@ -179,7 +179,7 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
         {
             string errorMessage = $"Method {methodName} execution result implements IResultWrapper but not JsonRpcResponse";
             if (_logger.IsError) _logger.Error(errorMessage);
-            return GetErrorResponse(methodName, ErrorCodes.InternalError, errorMessage, null, request.Id, returnAction);
+            return GetErrorResponse(methodName, ErrorCodes.InternalError, errorMessage, null, in request.IdRef, returnAction);
         }
     }
 
@@ -223,7 +223,7 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
         {
             if (HasUnexpectedZeroParameterArray(useUtf8Parameters, providedParametersUtf8, providedParameters))
             {
-                return GetErrorResponse(methodName, ErrorCodes.InvalidParams, "Invalid params", null, request.Id);
+                return GetErrorResponse(methodName, ErrorCodes.InvalidParams, "Invalid params", null, in request.IdRef);
             }
 
             parameters = [];
@@ -250,7 +250,7 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
                 JsonRpcErrorResponse? validationError = ValidateMissingParameters(
                     expectedParameters,
                     methodName,
-                    request.Id,
+                    in request.IdRef,
                     providedParametersLength,
                     ref missingParamsCount);
                 if (validationError is not null)
@@ -285,7 +285,7 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
                 JsonRpcErrorResponse? validationError = ValidateMissingParameters(
                     expectedParameters,
                     methodName,
-                    request.Id,
+                    in request.IdRef,
                     providedParametersLength,
                     ref missingParamsCount);
                 if (validationError is not null)
@@ -307,7 +307,7 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
         {
             ReturnParameters(parameters, returnParametersToPool);
             if (_logger.IsWarn) _logger.Warn($"Incorrect JSON RPC parameters when calling {methodName} with params [{GetParamsForLog(request)}] {e}");
-            return GetErrorResponse(methodName, ErrorCodes.InvalidParams, "Invalid params", null, request.Id);
+            return GetErrorResponse(methodName, ErrorCodes.InvalidParams, "Invalid params", null, in request.IdRef);
         }
 
         return null;
@@ -385,7 +385,7 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
     private JsonRpcErrorResponse? ValidateMissingParameters(
         ExpectedParameter[] expectedParameters,
         string methodName,
-        JsonRpcId requestId,
+        in JsonRpcId requestId,
         int providedParametersLength,
         ref int missingParamsCount)
     {
@@ -424,7 +424,7 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
                 string message = firstMissingRequiredIndex >= 0
                     ? $"missing value for required argument {firstMissingRequiredIndex}"
                     : "Invalid params";
-                return GetErrorResponse(methodName, ErrorCodes.InvalidParams, message, null, requestId);
+                return GetErrorResponse(methodName, ErrorCodes.InvalidParams, message, null, in requestId);
             }
         }
 
@@ -483,28 +483,28 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
         return ex switch
         {
             TargetParameterCountException or ArgumentException =>
-                GetErrorResponse(methodName, ErrorCodes.InvalidParams, ex.Message, ex.ToString(), request.Id, returnAction),
+                GetErrorResponse(methodName, ErrorCodes.InvalidParams, ex.Message, ex.ToString(), in request.IdRef, returnAction),
 
             JsonException or TargetInvocationException and { InnerException: JsonException } =>
-                GetErrorResponse(methodName, ErrorCodes.InvalidParams, "Invalid params", GetExceptionText(ex), request.Id, returnAction),
+                GetErrorResponse(methodName, ErrorCodes.InvalidParams, "Invalid params", GetExceptionText(ex), in request.IdRef, returnAction),
 
             OperationCanceledException or { InnerException: OperationCanceledException } =>
                 GetErrorResponse(methodName, ErrorCodes.Timeout,
-                    $"{methodName} request was canceled due to enabled timeout.", null, request.Id, returnAction),
+                    $"{methodName} request was canceled due to enabled timeout.", null, in request.IdRef, returnAction),
 
             LimitExceededException or ConcurrencyLimitReachedException
                 or { InnerException: LimitExceededException }
                 or { InnerException: ConcurrencyLimitReachedException } =>
-                GetErrorResponse(methodName, ErrorCodes.LimitExceeded, "Too many requests", null, request.Id, returnAction),
+                GetErrorResponse(methodName, ErrorCodes.LimitExceeded, "Too many requests", null, in request.IdRef, returnAction),
 
             InsufficientBalanceException or { InnerException: InsufficientBalanceException } =>
-                GetErrorResponse(methodName, ErrorCodes.InvalidInput, GetInsufficientBalanceMessage(ex), ex.ToString(), request.Id, returnAction),
+                GetErrorResponse(methodName, ErrorCodes.InvalidInput, GetInsufficientBalanceMessage(ex), ex.ToString(), in request.IdRef, returnAction),
 
             InvalidTransactionException or { InnerException: InvalidTransactionException } when (ex as InvalidTransactionException ?? ex.InnerException as InvalidTransactionException) is { Reason.ErrorDescription: var description } =>
-                GetErrorResponse(methodName, ErrorCodes.Default, description, null, request.Id, returnAction),
+                GetErrorResponse(methodName, ErrorCodes.Default, description, null, in request.IdRef, returnAction),
 
             InvalidBlockException or { InnerException: InvalidBlockException } =>
-                GetErrorResponse(methodName, ErrorCodes.Default, ex.Message, null, request.Id, returnAction),
+                GetErrorResponse(methodName, ErrorCodes.Default, ex.Message, null, in request.IdRef, returnAction),
 
             MissingTrieNodeException e =>
                 HandleMissingTrieNode(e, methodName, request, returnAction),
@@ -518,7 +518,7 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
         JsonRpcErrorResponse HandleException(Exception ex, string methodName, JsonRpcRequest request, Action? returnAction)
         {
             if (_logger.IsError) _logger.Error($"Error during method execution, request: {request}", ex);
-            return GetErrorResponse(methodName, ErrorCodes.InternalError, "Internal error", ex.ToString(), request.Id, returnAction);
+            return GetErrorResponse(methodName, ErrorCodes.InternalError, "Internal error", ex.ToString(), in request.IdRef, returnAction);
         }
 
         static string GetExceptionText(Exception ex) => (ex as TargetInvocationException)?.InnerException?.ToString() ?? ex.ToString();
@@ -532,7 +532,7 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
             // after a successful guard. Surface as -32000 (Geth wire parity) and warn so operators
             // can investigate whether it's a legitimate pruning gap or a deeper issue.
             if (_logger.IsWarn) _logger.Warn($"Missing trie node during {methodName}: {ex.Message}");
-            return GetErrorResponse(methodName, ErrorCodes.ResourceNotFound, ex.Message, ex.ToString(), request.Id, returnAction);
+            return GetErrorResponse(methodName, ErrorCodes.ResourceNotFound, ex.Message, ex.ToString(), in request.IdRef, returnAction);
         }
     }
 
@@ -828,20 +828,23 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
         return returnToPool ? ArrayPool<object?>.Shared.Rent(length) : new object?[length];
     }
 
-    public JsonRpcErrorResponse GetErrorResponse(int errorCode, string errorMessage, JsonRpcId? id = null, string? methodName = null) =>
-        GetErrorResponse(methodName ?? string.Empty, errorCode, errorMessage, null, id ?? JsonRpcId.Null);
+    public JsonRpcErrorResponse GetErrorResponse(int errorCode, string errorMessage, string? methodName = null)
+        => GetErrorResponse(errorCode, errorMessage, in JsonRpcId.Null, methodName);
+
+    public JsonRpcErrorResponse GetErrorResponse(int errorCode, string errorMessage, in JsonRpcId id, string? methodName = null) =>
+        GetErrorResponse(methodName ?? string.Empty, errorCode, errorMessage, null, in id);
 
     private JsonRpcErrorResponse GetErrorResponse(
         string methodName,
         int errorCode,
         string? errorMessage,
         object? errorData,
-        JsonRpcId id,
+        in JsonRpcId id,
         Action? disposableAction = null,
         bool suppressWarning = false)
     {
         if (_logger.IsDebug) _logger.Debug($"Sending error response, method: {(string.IsNullOrEmpty(methodName) ? "none" : methodName)}, id: {id}, errorType: {errorCode}, message: {errorMessage}, errorData: {errorData}");
-        JsonRpcErrorResponse response = new(disposableAction)
+        JsonRpcErrorResponse response = new(in id, disposableAction)
         {
             Error = new Error
             {
@@ -849,8 +852,7 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
                 Message = errorMessage,
                 Data = errorData,
                 SuppressWarning = suppressWarning
-            },
-            Id = id
+            }
         };
 
         return response;
