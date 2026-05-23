@@ -27,7 +27,7 @@ namespace Nethermind.State.Proofs
         private readonly Nibble[] _fullAccountPath;
         private readonly Nibble[][] _fullStoragePaths;
 
-        private readonly List<byte[]> _accountProofItems = new();
+        private readonly List<byte[]> _accountProofItems = [];
         private readonly List<byte[]>[] _storageProofItems;
 
         private static ValueHash256 ToKey(byte[] index) => ValueKeccak.Compute(index);
@@ -55,7 +55,7 @@ namespace Nethermind.State.Proofs
             _storageProofItems = new List<byte[]>[length];
             for (int i = 0; i < _storageProofItems.Length; i++)
             {
-                _storageProofItems[i] = new List<byte[]>();
+                _storageProofItems[i] = [];
             }
 
             int j = 0;

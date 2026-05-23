@@ -272,7 +272,7 @@ public sealed class EraExporter(
     /// </summary>
     private Dictionary<string, ValueHash256> LoadHashFile(string path)
     {
-        Dictionary<string, ValueHash256> result = new();
+        Dictionary<string, ValueHash256> result = [];
         if (!fileSystem.File.Exists(path))
             return result;
 

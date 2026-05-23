@@ -1,17 +1,20 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
+using Nethermind.Logging;
+using Nethermind.State;
 using Nethermind.Xdc.Contracts;
 using Nethermind.Xdc.Spec;
 using Nethermind.Xdc.Types;
 using NSubstitute;
+using NSubstitute.ExceptionExtensions;
 using NUnit.Framework;
 
 namespace Nethermind.Xdc.Test;
@@ -21,6 +24,9 @@ internal class SnapshotManagerTests
     private ISnapshotManager _snapshotManager;
     private IBlockTree _blockTree;
     private IXdcReleaseSpec _xdcReleaseSpec;
+    private ISpecProvider _specProvider;
+    private IStateReader _stateReader;
+    private IMasternodeVotingContract _votingContract;
     private IDb _snapshotDb;
 
     [SetUp]
@@ -31,9 +37,13 @@ internal class SnapshotManagerTests
         _xdcReleaseSpec.Gap.Returns(450);
 
         _snapshotDb = new MemDb();
-
         _blockTree = Substitute.For<IBlockTree>();
-        _snapshotManager = new SnapshotManager(_snapshotDb, _blockTree, Substitute.For<IMasternodeVotingContract>(), Substitute.For<ISpecProvider>());
+        _stateReader = Substitute.For<IStateReader>();
+        _votingContract = Substitute.For<IMasternodeVotingContract>();
+        _specProvider = Substitute.For<ISpecProvider>();
+        _specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(_xdcReleaseSpec);
+
+        _snapshotManager = new SnapshotManager(_snapshotDb, _blockTree, _votingContract, _specProvider, _stateReader, LimboLogs.Instance);
     }
 
     [Test]
@@ -156,23 +166,94 @@ internal class SnapshotManagerTests
 
     [TestCase(450)]
     [TestCase(1350)]
-    public void BlockAddedToMain_ShouldStoreSnapshot(int gapNumber)
+    public void OnUpdateMainChain_ShouldStoreSnapshot(int gapNumber)
     {
-        IXdcReleaseSpec releaseSpec = Substitute.For<IXdcReleaseSpec>();
-        releaseSpec.EpochLength.Returns(900);
-        releaseSpec.Gap.Returns(450);
         IBlockTree blockTree = Substitute.For<IBlockTree>();
         ISpecProvider specProvider = Substitute.For<ISpecProvider>();
-        specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(releaseSpec);
-        SnapshotManager snapshotManager = new(new MemDb(), blockTree, Substitute.For<IMasternodeVotingContract>(), specProvider);
+        specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(_xdcReleaseSpec);
+        SnapshotManager snapshotManager = new(new MemDb(), blockTree, Substitute.For<IMasternodeVotingContract>(), specProvider, _stateReader, LimboLogs.Instance);
 
         XdcBlockHeader header = Build.A.XdcBlockHeader()
             .WithGeneratedExtraConsensusData(1)
             .WithNumber(gapNumber).TestObject;
         blockTree.FindHeader(Arg.Any<long>()).Returns(header);
-        blockTree.WasProcessed(Arg.Any<long>(), Arg.Any<Hash256>()).Returns(true);
 
-        blockTree.BlockAddedToMain += Raise.EventWith(new BlockReplacementEventArgs(new Block(header)));
+        blockTree.OnUpdateMainChain += Raise.EventWith(new OnUpdateMainChainArgs([new Block(header)], true));
         snapshotManager.GetSnapshotByGapNumber(header.Number)!.HeaderHash.Should().Be(header.Hash!);
+    }
+
+    [Test]
+    public void TryRecoverSnapshot_ReturnsSnapshot_WhenStateAndProcessingAvailable()
+    {
+        XdcBlockHeader header = Build.A.XdcBlockHeader()
+            .WithGeneratedExtraConsensusData(1)
+            .WithNumber(450).TestObject;
+        _blockTree.FindHeader(450).Returns(header);
+        _stateReader.HasStateForBlock(header).Returns(true);
+        _blockTree.WasProcessed(450, header.Hash!).Returns(true);
+
+        Snapshot? result = _snapshotManager.GetSnapshotByGapNumber(450);
+
+        result.Should().NotBeNull();
+        result!.HeaderHash.Should().Be(header.Hash!);
+    }
+
+    [Test]
+    public void TryRecoverSnapshot_ReturnsNull_WhenStateUnavailable()
+    {
+        XdcBlockHeader header = Build.A.XdcBlockHeader()
+            .WithGeneratedExtraConsensusData(1)
+            .WithNumber(450).TestObject;
+        _blockTree.FindHeader(450).Returns(header);
+        _blockTree.WasProcessed(450, header.Hash!).Returns(true);
+        _stateReader.HasStateForBlock(header).Returns(false);
+
+        Snapshot? result = _snapshotManager.GetSnapshotByGapNumber(450);
+
+        result.Should().BeNull();
+    }
+
+    [Test]
+    public void TryRecoverSnapshot_ReturnsNull_WhenBlockNotProcessed()
+    {
+        XdcBlockHeader header = Build.A.XdcBlockHeader()
+            .WithGeneratedExtraConsensusData(1)
+            .WithNumber(450).TestObject;
+        _blockTree.FindHeader(450).Returns(header);
+        _stateReader.HasStateForBlock(header).Returns(true);
+        _blockTree.WasProcessed(450, header.Hash!).Returns(false);
+
+        Snapshot? result = _snapshotManager.GetSnapshotByGapNumber(450);
+
+        result.Should().BeNull();
+    }
+
+    [Test]
+    public void TryRecoverSnapshot_Throws_WhenCreateSnapshotThrows()
+    {
+        XdcBlockHeader header = Build.A.XdcBlockHeader()
+            .WithGeneratedExtraConsensusData(1)
+            .WithNumber(450).TestObject;
+        _blockTree.FindHeader(450).Returns(header);
+        _stateReader.HasStateForBlock(header).Returns(true);
+        _blockTree.WasProcessed(450, header.Hash!).Returns(true);
+        _votingContract.GetCandidatesByStake(header).Throws(new Exception("contract failure"));
+
+        Assert.Throws<Exception>(() => _snapshotManager.GetSnapshotByGapNumber(450));
+    }
+
+    [Test]
+    public void TryRecoverSnapshot_ReturnsNull_WhenNotSnapshotBlock()
+    {
+        // Block 100 is not a snapshot block (100 % 900 != 450)
+        XdcBlockHeader header = Build.A.XdcBlockHeader()
+            .WithGeneratedExtraConsensusData(1)
+            .WithNumber(100).TestObject;
+        _blockTree.FindHeader(100).Returns(header);
+
+        Snapshot? result = _snapshotManager.GetSnapshotByGapNumber(100);
+
+        result.Should().BeNull();
+        _stateReader.DidNotReceiveWithAnyArgs().HasStateForBlock(default);
     }
 }

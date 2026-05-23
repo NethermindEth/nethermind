@@ -268,8 +268,8 @@ namespace Nethermind.Db.Test
             // Get keys between B (inclusive) and E (exclusive)
             ISortedView view = memDb.GetViewBetween(keyB, keyE);
 
-            List<byte[]> keys = new();
-            List<byte[]> values = new();
+            List<byte[]> keys = [];
+            List<byte[]> values = [];
             while (view.MoveNext())
             {
                 keys.Add(view.CurrentKey.ToArray());
@@ -312,7 +312,7 @@ namespace Nethermind.Db.Test
             ISortedKeyValueStore sortedSnapshot = (ISortedKeyValueStore)snapshot;
             ISortedView view = sortedSnapshot.GetViewBetween(keyA, keyE);
 
-            List<byte[]> values = new();
+            List<byte[]> values = [];
             while (view.MoveNext())
             {
                 values.Add(view.CurrentValue.ToArray());

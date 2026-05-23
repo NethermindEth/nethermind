@@ -1004,7 +1004,7 @@ public class BlockProcessorTests
             .WithBlockAccessList(new ReadOnlyBlockAccessList())
             .TestObject;
 
-        ConcurrentBag<(int TxIndex, uint BalIndex)> balIndexes = new();
+        ConcurrentBag<(int TxIndex, uint BalIndex)> balIndexes = [];
         BlockProcessor.ParallelBlockValidationTransactionsExecutor executor = new(
             Substitute.For<IBlockProcessor.IBlockTransactionsExecutor>(),
             stateProvider,
@@ -1358,7 +1358,7 @@ public class BlockProcessorTests
         private readonly ManualResetEventSlim _parallelExecutionStarted = new();
         private int _executedCount;
 
-        public ConcurrentBag<bool> ObservedProcessingThreadFlags { get; } = new();
+        public ConcurrentBag<bool> ObservedProcessingThreadFlags { get; } = [];
         public ConcurrentDictionary<int, byte> ThreadIds { get; } = new();
 
         public TransactionResult Execute(Transaction transaction, ITxTracer txTracer)

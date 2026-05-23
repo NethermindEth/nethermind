@@ -30,7 +30,7 @@ namespace Nethermind.JsonRpc;
 public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogManager logManager, IJsonRpcConfig jsonRpcConfig) : IJsonRpcService
 {
     private readonly static Lock _reparseLock = new();
-    private static Dictionary<TypeAsKey, bool> _reparseReflectionCache = new();
+    private static Dictionary<TypeAsKey, bool> _reparseReflectionCache = [];
 
     private readonly ILogger _logger = logManager.GetClassLogger<JsonRpcService>();
     private readonly IRpcModuleProvider _rpcModuleProvider = rpcModuleProvider;

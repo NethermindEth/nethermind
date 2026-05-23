@@ -17,10 +17,10 @@ namespace Nethermind.Core.Test;
 /// </summary>
 public class TestMemDb : MemDb, ITunableDb, ISortedKeyValueStore
 {
-    private readonly List<(byte[], ReadFlags)> _readKeys = new();
-    private readonly List<((byte[], byte[]?), WriteFlags)> _writes = new();
-    private readonly List<byte[]> _removedKeys = new();
-    private readonly List<ITunableDb.TuneType> _tuneTypes = new();
+    private readonly List<(byte[], ReadFlags)> _readKeys = [];
+    private readonly List<((byte[], byte[]?), WriteFlags)> _writes = [];
+    private readonly List<byte[]> _removedKeys = [];
+    private readonly List<ITunableDb.TuneType> _tuneTypes = [];
 
     public Func<byte[], byte[]>? ReadFunc { get; set; }
     public Func<byte[], byte[]?, bool>? WriteFunc { get; set; }

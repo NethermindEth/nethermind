@@ -140,7 +140,7 @@ internal static class InstructionDbBuilder
 
     private static string BuildOperandPattern(XmlElement instrNode)
     {
-        List<string> parts = new();
+        List<string> parts = [];
         foreach (XmlNode child in instrNode.ChildNodes)
         {
             if (child is not XmlElement operandEl || operandEl.Name != "operand")
@@ -219,8 +219,7 @@ internal static class InstructionDbBuilder
     private static XmlElement? FindMeasurement(XmlElement instrNode, string targetArch, string[] fallbacks)
     {
         // Try target arch first, then fallbacks
-        List<string> archsToTry = new() { targetArch };
-        archsToTry.AddRange(fallbacks);
+        List<string> archsToTry = [targetArch, .. fallbacks];
 
         foreach (string archName in archsToTry)
         {

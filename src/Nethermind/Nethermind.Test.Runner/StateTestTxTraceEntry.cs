@@ -8,7 +8,7 @@ namespace Nethermind.Test.Runner
 {
     public class StateTestTxTraceEntry
     {
-        public StateTestTxTraceEntry() => Stack = new List<string>();
+        public StateTestTxTraceEntry() => Stack = [];
 
         public int Pc { get; set; }
 
