@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
 using System.IO;
 using System.Numerics;
 using System.Text.Json;
@@ -166,14 +165,14 @@ namespace Nethermind.JsonRpc.Test.Data
 
         private static string Serialize(JsonRpcId id) => JsonSerializer.Serialize(id, _jsonRpcIdOptions);
 
-        private static IEnumerable<TestCaseData> JsonRpcResponseIdCases()
-        {
-            yield return new TestCaseData(JsonRpcId.Missing, "null").SetName("Missing");
-            yield return new TestCaseData(JsonRpcId.Null, "null").SetName("ExplicitNull");
-            yield return new TestCaseData(new JsonRpcId(1), "1").SetName("Long");
-            yield return new TestCaseData(new JsonRpcId(1234m), "1234").SetName("DecimalInteger");
-            yield return new TestCaseData(new JsonRpcId(12345678901234567890m), "12345678901234567890").SetName("LargeDecimalInteger");
-            yield return new TestCaseData(new JsonRpcId("test"), "\"test\"").SetName("String");
-        }
+        private static readonly TestCaseData[] JsonRpcResponseIdCases =
+        [
+            new TestCaseData(JsonRpcId.Missing, "null").SetName("Missing"),
+            new TestCaseData(JsonRpcId.Null, "null").SetName("ExplicitNull"),
+            new TestCaseData(new JsonRpcId(1), "1").SetName("Long"),
+            new TestCaseData(new JsonRpcId(1234m), "1234").SetName("DecimalInteger"),
+            new TestCaseData(new JsonRpcId(12345678901234567890m), "12345678901234567890").SetName("LargeDecimalInteger"),
+            new TestCaseData(new JsonRpcId("test"), "\"test\"").SetName("String")
+        ];
     }
 }

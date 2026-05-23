@@ -552,16 +552,16 @@ public class StartupTests
         bool isAuthenticated = false) =>
         new("http", "127.0.0.1", 8551, endpoint, isAuthenticated, [ModuleType.Engine]);
 
-    private static IEnumerable<TestCaseData> SimpleResultCases()
-    {
-        yield return new TestCaseData("ok", "\"ok\"").SetName("string");
-        yield return new TestCaseData("x\"\\\n\u0001", JsonSerializer.Serialize("x\"\\\n\u0001", EthereumJsonSerializer.JsonOptions)).SetName("escaped string");
-        yield return new TestCaseData(false, "false").SetName("false");
-        yield return new TestCaseData(true, "true").SetName("true");
-        yield return new TestCaseData(1, "1").SetName("int");
-        yield return new TestCaseData(1L, "\"0x1\"").SetName("long");
-        yield return new TestCaseData(1UL, "\"0x1\"").SetName("ulong");
-    }
+    private static readonly TestCaseData[] SimpleResultCases =
+    [
+        new TestCaseData("ok", "\"ok\"").SetName("string"),
+        new TestCaseData("x\"\\\n\u0001", JsonSerializer.Serialize("x\"\\\n\u0001", EthereumJsonSerializer.JsonOptions)).SetName("escaped string"),
+        new TestCaseData(false, "false").SetName("false"),
+        new TestCaseData(true, "true").SetName("true"),
+        new TestCaseData(1, "1").SetName("int"),
+        new TestCaseData(1L, "\"0x1\"").SetName("long"),
+        new TestCaseData(1UL, "\"0x1\"").SetName("ulong")
+    ];
 
     private sealed class ProbeBlobStreamableResult : IStreamableResult, IReadOnlyList<BlobAndProofV2?>, IDisposable
     {
