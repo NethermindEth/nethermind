@@ -142,6 +142,38 @@ public class DebugTraceStreamingBenchmarks
         Storage = [],
     };
 
+    [Params(50, 500, 5000)]
+    public int TxCountPerBlock { get; set; }
+
+    [Benchmark(Description = "Tracer lifecycle: fresh GethLikeTxDirectStreamingTracer per tx (pre-#11730 behaviour)")]
+    public int Tracer_PerTxNew()
+    {
+        DiscardingBufferWriter sink = new();
+        using Utf8JsonWriter writer = new(sink);
+        for (int t = 0; t < TxCountPerBlock; t++)
+        {
+            GethLikeTxDirectStreamingTracer tracer = new(null, GethTraceOptions.Default, writer, null, default);
+            GethLikeTxTrace _ = tracer.BuildResult();
+            tracer.ReleaseResources();
+        }
+        return sink.WrittenCount;
+    }
+
+    [Benchmark(Description = "Tracer lifecycle: one tracer reused across N txs via ResetForNextTx (#11730 behaviour)")]
+    public int Tracer_ReusedAcrossTxs()
+    {
+        DiscardingBufferWriter sink = new();
+        using Utf8JsonWriter writer = new(sink);
+        GethLikeTxDirectStreamingTracer tracer = new(null, GethTraceOptions.Default, writer, null, default);
+        for (int t = 0; t < TxCountPerBlock; t++)
+        {
+            if (t > 0) tracer.ResetForNextTx(null);
+            GethLikeTxTrace _ = tracer.BuildResult();
+        }
+        tracer.ReleaseResources();
+        return sink.WrittenCount;
+    }
+
     // Mirrors PipeWriter's drain-immediately behaviour: bytes written via Advance are dropped.
     // Lets us measure entry/serializer overhead without inflating peak heap with accumulated output.
     private sealed class DiscardingBufferWriter : IBufferWriter<byte>
