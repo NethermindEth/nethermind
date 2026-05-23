@@ -145,13 +145,9 @@ internal sealed class HttpJsonRpcResponseSink(
 
         _completed = true;
         ValueTask writerCompleteTask = _writer.CompleteAsync();
-        if (!writerCompleteTask.IsCompletedSuccessfully)
-        {
-            return CompleteAfterWriterAsync(writerCompleteTask, cancellationToken);
-        }
-
-        writerCompleteTask.GetAwaiter().GetResult();
-        return CompleteResponseAsync(cancellationToken);
+        return writerCompleteTask.IsCompletedSuccessfully
+            ? CompleteResponseAsync(cancellationToken)
+            : CompleteAfterWriterAsync(writerCompleteTask, cancellationToken);
     }
 
     private async ValueTask CompleteAfterWriterAsync(ValueTask writerCompleteTask, CancellationToken cancellationToken)
