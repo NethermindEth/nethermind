@@ -656,15 +656,8 @@ public partial class EthRpcModuleTests
     }
 
     private static TestRpcBlockchain.Builder<TestRpcBlockchain> CreateLogsTestBlockchainBuilder(bool enableLogsStreamMode)
-    {
-        TestRpcBlockchain.Builder<TestRpcBlockchain> builder = TestRpcBlockchain.ForTest(SealEngineType.NethDev);
-        if (enableLogsStreamMode)
-        {
-            builder.WithConfig(new JsonRpcConfig { EnableLogsStreamMode = true });
-        }
-
-        return builder;
-    }
+        => TestRpcBlockchain.ForTest(SealEngineType.NethDev)
+            .WithConfig(new JsonRpcConfig { EnableLogsStreamMode = enableLogsStreamMode });
 
     [TestCase(false)]
     [TestCase(true)]
@@ -699,7 +692,7 @@ public partial class EthRpcModuleTests
 
         ctx.Test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
             .WithBlockchainBridge(bridge)
-            .WithConfig(new JsonRpcConfig { MaxLogsPerResponse = 1 })
+            .WithConfig(new JsonRpcConfig { EnableLogsStreamMode = false, MaxLogsPerResponse = 1 })
             .Build();
 
         string serialized = await ctx.Test.TestEthRpc("eth_getFilterLogs", "0x01");
@@ -815,31 +808,31 @@ public partial class EthRpcModuleTests
         yield return ("EmptyFilter", "{}", ExpectedFilterLogResponse);
         yield return (
             "ExplicitRangeAddressAndTopic",
-            """{"fromBlock":"0x2","toBlock":"latest","address":"0x0000000000000000000000000000000000000001","topics":["0x0000000000000000000000000000000000000001"]}""",
+            """{"fromBlock":"0x2","toBlock":"latest","address":"0x0000000000000000000000000000000000000001","topics":["0x0000000000000000000000000000000000000000000000000000000000000001"]}""",
             ExpectedFilterLogResponse);
         yield return (
             "EarliestToPendingAddressArray",
-            """{"fromBlock":"earliest","toBlock":"pending","address":["0x0000000000000000000000000000000000000001", "0x0000000000000000000000000000000000000001"],"topics":["0x0000000000000000000000000000000000000001", "0x00000000000000000000000000000002"]}""",
+            """{"fromBlock":"earliest","toBlock":"pending","address":["0x0000000000000000000000000000000000000001", "0x0000000000000000000000000000000000000001"],"topics":["0x0000000000000000000000000000000000000000000000000000000000000001", "0x0000000000000000000000000000000000000000000000000000000000000002"]}""",
             ExpectedFilterLogResponse);
         yield return (
             "NestedTopics",
-            """{"topics":[null, ["0x0000000000000000000000000000000000000001", "0x00000000000000000000000000000002"]]}""",
+            """{"topics":[null, ["0x0000000000000000000000000000000000000000000000000000000000000001", "0x0000000000000000000000000000000000000000000000000000000000000002"]]}""",
             ExpectedFilterLogResponse);
         yield return (
             "FutureFromBlock",
-            """{"fromBlock":"0x10","toBlock":"latest","address":"0x0000000000000000000000000000000000000001","topics":["0x0000000000000000000000000000000000000001"]}""",
+            """{"fromBlock":"0x10","toBlock":"latest","address":"0x0000000000000000000000000000000000000001","topics":["0x0000000000000000000000000000000000000000000000000000000000000001"]}""",
             """{"jsonrpc":"2.0","error":{"code":-32602,"message":"requested block range is in the future"},"id":67}""");
         yield return (
             "ExplicitBlockRange",
-            """{"fromBlock":"0x2","toBlock":"0x3","address":"0x0000000000000000000000000000000000000001","topics":["0x0000000000000000000000000000000000000001"]}""",
+            """{"fromBlock":"0x2","toBlock":"0x3","address":"0x0000000000000000000000000000000000000001","topics":["0x0000000000000000000000000000000000000000000000000000000000000001"]}""",
             ExpectedFilterLogResponse);
         yield return (
             "InvalidBlockRange",
-            """{"fromBlock":"0x2","toBlock":"0x1","address":"0x0000000000000000000000000000000000000001","topics":["0x0000000000000000000000000000000000000001"]}""",
+            """{"fromBlock":"0x2","toBlock":"0x1","address":"0x0000000000000000000000000000000000000001","topics":["0x0000000000000000000000000000000000000000000000000000000000000001"]}""",
             """{"jsonrpc":"2.0","error":{"code":-32602,"message":"invalid block range params"},"id":67}""");
         yield return (
             "FutureBlockRange",
-            """{"fromBlock":"0x11","toBlock":"0x12","address":"0x0000000000000000000000000000000000000001","topics":["0x0000000000000000000000000000000000000001"]}""",
+            """{"fromBlock":"0x11","toBlock":"0x12","address":"0x0000000000000000000000000000000000000001","topics":["0x0000000000000000000000000000000000000000000000000000000000000001"]}""",
             """{"jsonrpc":"2.0","error":{"code":-32602,"message":"requested block range is in the future"},"id":67}""");
     }
 
