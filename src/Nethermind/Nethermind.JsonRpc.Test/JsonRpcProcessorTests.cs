@@ -747,7 +747,7 @@ public class JsonRpcProcessorTests(bool returnErrors)
         for (int i = 0; i < bytes.Length; i += chunkSize)
         {
             int size = Math.Min(chunkSize, bytes.Length - i);
-            await pipe.Writer.WriteAsync(new ReadOnlyMemory<byte>(bytes, i, size));
+            await pipe.Writer.WriteAsync(bytes.AsMemory(i, size));
             await Task.Yield();
         }
         await pipe.Writer.CompleteAsync();
@@ -762,8 +762,7 @@ public class JsonRpcProcessorTests(bool returnErrors)
 
     private static string CreateLargeRequest(int id, int targetSize)
     {
-        StringBuilder sb = new();
-        sb.Append($"{{\"jsonrpc\":\"2.0\",\"id\":{id},\"method\":\"test_method\",\"params\":[");
+        StringBuilder sb = new($"{{\"jsonrpc\":\"2.0\",\"id\":{id},\"method\":\"test_method\",\"params\":[");
 
         int currentSize = sb.Length + 2; // account for closing ]}
         bool first = true;
