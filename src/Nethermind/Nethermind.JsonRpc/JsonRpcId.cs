@@ -223,7 +223,7 @@ public readonly struct JsonRpcId : IEquatable<JsonRpcId>
         {
             JsonRpcIdKind.Long => _longValue == other._longValue,
             JsonRpcIdKind.Decimal => _decimalValue == other._decimalValue,
-            JsonRpcIdKind.String => string.Equals(GetStringValue(), other.GetStringValue(), StringComparison.Ordinal),
+            JsonRpcIdKind.String => _rawValue.AsSpan().SequenceEqual(other._rawValue),
             _ => true
         };
 
