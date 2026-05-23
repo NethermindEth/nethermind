@@ -240,18 +240,6 @@ public readonly struct JsonRpcId : IEquatable<JsonRpcId>
             _ => string.Empty
         };
 
-    /// <summary>Determines whether two IDs are equal.</summary>
-    /// <param name="left">The left ID.</param>
-    /// <param name="right">The right ID.</param>
-    /// <returns>True when the IDs are equal; otherwise false.</returns>
-    public static bool operator ==(JsonRpcId left, JsonRpcId right) => left.Equals(right);
-
-    /// <summary>Determines whether two IDs are not equal.</summary>
-    /// <param name="left">The left ID.</param>
-    /// <param name="right">The right ID.</param>
-    /// <returns>True when the IDs are not equal; otherwise false.</returns>
-    public static bool operator !=(JsonRpcId left, JsonRpcId right) => !left.Equals(right);
-
     /// <summary>Converts an integer to a JSON-RPC ID.</summary>
     /// <param name="value">The integer value.</param>
     public static implicit operator JsonRpcId(int value) => new(value);
