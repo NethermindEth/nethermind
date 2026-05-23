@@ -23,7 +23,6 @@
     <Project Path="../../src/Nethermind/Nethermind.Grpc/Nethermind.Grpc.csproj" />
     <Project Path="../../src/Nethermind/Nethermind.History/Nethermind.History.csproj" />
     <Project Path="../../src/Nethermind/Nethermind.Init/Nethermind.Init.csproj" />
-    <Project Path="../../src/Nethermind/Nethermind.JsonRpc.SourceGenerator.Build/Nethermind.JsonRpc.SourceGenerator.Build.csproj" />
     <Project Path="../../src/Nethermind/Nethermind.JsonRpc/Nethermind.JsonRpc.csproj" />
     <Project Path="../../src/Nethermind/Nethermind.KeyStore/Nethermind.KeyStore.csproj" />
     <Project Path="../../src/Nethermind/Nethermind.Logging.NLog/Nethermind.Logging.NLog.csproj" />
