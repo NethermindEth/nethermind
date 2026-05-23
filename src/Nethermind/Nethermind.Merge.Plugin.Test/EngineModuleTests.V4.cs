@@ -40,7 +40,7 @@ public partial class EngineModuleTests
 
         parameters.Should().HaveCount(4);
         AssertParameter(parameters[0], "executionPayload", typeof(ExecutionPayloadV3));
-        AssertParameter(parameters[1], "blobVersionedHashes", typeof(byte[][]));
+        AssertParameter(parameters[1], "blobVersionedHashes", typeof(Hash256[]));
         AssertParameter(parameters[2], "parentBeaconBlockRoot", typeof(Hash256));
         AssertParameter(parameters[3], "executionRequests", typeof(byte[][]));
 
