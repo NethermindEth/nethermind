@@ -350,6 +350,9 @@ public class JsonRpcProcessorTests(bool returnErrors)
         JsonRpcId expectedId = new("A\n");
         envelope.Id.Should().Be(expectedId);
         envelope.Id.GetHashCode().Should().Be(expectedId.GetHashCode());
+        object? firstObjectId = envelope.Id.ToObject();
+        envelope.Id.ToObject().Should().BeSameAs(firstObjectId);
+
         ArrayBufferWriter<byte> buffer = new();
         using (Utf8JsonWriter writer = new(buffer))
         {

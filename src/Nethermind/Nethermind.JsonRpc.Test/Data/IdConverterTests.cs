@@ -122,11 +122,13 @@ namespace Nethermind.JsonRpc.Test.Data
         [Test]
         public void JsonRpcId_bridges_legacy_object_values()
         {
+            string stringId = new(['t', 'e', 's', 't']);
+
             JsonRpcId.FromObject(null).Should().Be(JsonRpcId.Null);
             JsonRpcId.FromObject(1).ToObject().Should().Be(1L);
             JsonRpcId.FromObject(2L).ToObject().Should().Be(2L);
             JsonRpcId.FromObject(3m).ToObject().Should().Be(3m);
-            JsonRpcId.FromObject("test").ToObject().Should().Be("test");
+            JsonRpcId.FromObject(stringId).ToObject().Should().BeSameAs(stringId);
         }
 
         [Test]
