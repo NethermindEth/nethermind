@@ -35,20 +35,12 @@ internal static class Program
             .WithLanguageVersion(LanguageVersion.Preview)
             .WithPreprocessorSymbols(GetPreprocessorSymbols(arguments.DefineConstants));
 
-        SyntaxTree[] syntaxTrees = new SyntaxTree[sourcePaths.Length];
-        for (int i = 0; i < sourcePaths.Length; i++)
-        {
-            syntaxTrees[i] = CSharpSyntaxTree.ParseText(
-                File.ReadAllText(sourcePaths[i]),
+        SyntaxTree[] syntaxTrees = Array.ConvertAll(sourcePaths, sourcePath =>
+            CSharpSyntaxTree.ParseText(
+                File.ReadAllText(sourcePath),
                 parseOptions,
-                sourcePaths[i]);
-        }
-
-        MetadataReference[] references = new MetadataReference[referencePaths.Length];
-        for (int i = 0; i < referencePaths.Length; i++)
-        {
-            references[i] = MetadataReference.CreateFromFile(referencePaths[i]);
-        }
+                sourcePath));
+        MetadataReference[] references = Array.ConvertAll<string, MetadataReference>(referencePaths, static referencePath => MetadataReference.CreateFromFile(referencePath));
 
         CSharpCompilation compilation = CSharpCompilation.Create(
             arguments.AssemblyName,
