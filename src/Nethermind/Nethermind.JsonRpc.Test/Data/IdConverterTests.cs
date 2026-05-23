@@ -83,6 +83,14 @@ namespace Nethermind.JsonRpc.Test.Data
             Serialize(id).Should().Be(idJson);
         }
 
+        [TestCase("2.1")]
+        public void JsonRpcId_rejects_fractional_decimal(string idJson)
+        {
+            Action deserialize = () => DeserializeId(idJson);
+
+            deserialize.Should().Throw<NotSupportedException>();
+        }
+
         [Test]
         public void JsonRpcId_preserves_missing_and_explicit_null_states()
         {
