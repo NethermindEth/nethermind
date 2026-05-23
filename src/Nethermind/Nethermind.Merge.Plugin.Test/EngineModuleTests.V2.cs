@@ -901,20 +901,9 @@ public partial class EngineModuleTests
         Block block = Build.A.Block.TestObject;
         ExecutionPayloadBodyV1Result result = new(Array.Empty<Transaction>(), null);
 
-        yield return (
-            _ => null,
-            new ExecutionPayloadBodyV1Result?[] { null, null, null, null, null }
-        );
-
-        yield return (
-            i => i.ArgAt<long>(0) % 2 == 0 ? block : null,
-            new[] { null, result, null, result, null }
-        );
-
-        yield return (
-            _ => block,
-            (IReadOnlyList<ExecutionPayloadBodyV1Result?>)[result, result, result, result, result]
-        );
+        yield return (_ => null, (IReadOnlyList<ExecutionPayloadBodyV1Result?>)[null, null, null, null, null]);
+        yield return (i => i.ArgAt<long>(0) % 2 == 0 ? block : null, (IReadOnlyList<ExecutionPayloadBodyV1Result?>)[null, result, null, result, null]);
+        yield return (_ => block, (IReadOnlyList<ExecutionPayloadBodyV1Result?>)[result, result, result, result, result]);
     }
 
     protected static IEnumerable<(
