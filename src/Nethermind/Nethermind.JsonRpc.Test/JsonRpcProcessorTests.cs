@@ -848,13 +848,7 @@ public class JsonRpcProcessorTests(bool returnErrors)
         observedDepth.Should().Be(paramNestingDepth);
     }
 
-    private static string BuildNestedArrayParams(int depth)
-    {
-        StringBuilder sb = new(depth * 2);
-        for (int i = 0; i < depth; i++) sb.Append('[');
-        for (int i = 0; i < depth; i++) sb.Append(']');
-        return sb.ToString();
-    }
+    private static string BuildNestedArrayParams(int depth) => new string('[', depth) + new string(']', depth);
 
     private sealed class CollectingJsonRpcResponseSink : IJsonRpcResponseSink
     {
