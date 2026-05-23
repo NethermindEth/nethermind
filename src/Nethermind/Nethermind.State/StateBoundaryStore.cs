@@ -9,18 +9,16 @@ using Nethermind.Serialization.Rlp;
 namespace Nethermind.State;
 
 /// <summary>
-/// Persists <see cref="IStateBoundary.OldestStateBlock"/> in a key-value store provided by
-/// the world-state-manager implementation. Trie storage uses the state DB; flat storage uses
-/// the flat DB's metadata column. Either way the floor is co-located with the state itself,
-/// so dropping the state directory drops the floor automatically.
+/// Persists the oldest-state-block floor for the trie backend, co-located with the trie nodes
+/// in the state DB so wiping the state directory drops the floor automatically. Flat does not
+/// use this store — its <see cref="IStateBoundary.OldestStateBlock"/> reads through the
+/// persistence manager directly.
 /// </summary>
 public sealed class StateBoundaryStore(IKeyValueStore kv)
 {
     /// <summary>
-    /// Slot key under which the oldest-state-block floor is persisted. 32-byte keccak makes it
-    /// collision-free against the trie DB's hash-keyed (32 bytes of state-root-hash entropy)
-    /// and HalfPath-keyed nodes, and matches the existing flat metadata-column convention
-    /// (<c>Keccak.Compute("CurrentState")</c>, <c>Keccak.Compute("Layout")</c>).
+    /// 32-byte keccak slot key, collision-free against the trie DB's hash-keyed (32 bytes of
+    /// state-root-hash entropy) and HalfPath-keyed nodes.
     /// </summary>
     internal static readonly byte[] OldestStateBlockKey = Keccak.Compute("OldestStateBlock").BytesToArray();
 
