@@ -259,49 +259,36 @@ public class JsonRpcSocketsClientTests
             await ShutdownAndWait(pair.SendSocket, receiver);
         }
 
-        [TestCase(1)]
-        [TestCase(2)]
-        public async Task Can_process_complete_messages_without_delimiter(int messageCount)
+        private static IEnumerable<TestCaseData> CompleteJsonMessageCases()
         {
-            List<string> expectedPayloads = [];
-            string[] requests =
-            {
-                "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"eth_blockNumber\",\"params\":[]}",
-                "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"eth_chainId\",\"params\":[]}"
-            };
+            string blockNumber = CreateJsonRequest(1, "eth_blockNumber");
+            string chainId = CreateJsonRequest(2, "eth_chainId");
+            yield return CompleteJsonMessageCase([blockNumber], "Single_json_without_delimiter");
+            yield return CompleteJsonMessageCase([blockNumber, chainId], "Two_json_documents_without_delimiter");
 
-            for (int i = 0; i < messageCount; i++)
-            {
-                expectedPayloads.Add(requests[i]);
-            }
-            await SendAndAssertPayloads(string.Concat(expectedPayloads), expectedPayloads);
-        }
-
-        [Test]
-        public async Task Json_parse_state_resets_between_consecutive_messages()
-        {
             // Both messages >4KB to span multiple SocketClient buffer reads, triggering incremental JSON state
-            string payload1 = new('x', 5000);
-            string payload2 = new('y', 5000);
-            string request1 = $"{{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"eth_call\",\"params\":[\"{payload1}\"]}}";
-            string request2 = $"{{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"eth_call\",\"params\":[\"{payload2}\"]}}";
+            string request1 = CreateJsonRequest(1, "eth_call", $"[\"{new string('x', 5000)}\"]");
+            string request2 = CreateJsonRequest(2, "eth_call", $"[\"{new string('y', 5000)}\"]");
+            yield return CompleteJsonMessageCase([request1, request2], "Json_parse_state_resets_between_consecutive_messages");
 
-            await SendAndAssertPayloads(request1 + request2, [request1, request2]);
+            yield return LargeChunkedJsonMessageCase(5);
+            yield return LargeChunkedJsonMessageCase(10);
         }
 
-        [TestCase(5)]
-        [TestCase(10)]
-        public async Task Can_process_large_chunked_json_without_delimiter(int messageCount)
+        [TestCaseSource(nameof(CompleteJsonMessageCases))]
+        public async Task Can_process_complete_json_messages_without_delimiter(string wireData, string[] expectedPayloads, int timeout, int chunkSize) =>
+            await SendAndAssertPayloads(wireData, expectedPayloads, timeout, chunkSize);
+
+        private static TestCaseData LargeChunkedJsonMessageCase(int messageCount)
         {
-            List<string> expectedPayloads = [];
+            string[] expectedPayloads = new string[messageCount];
             for (int i = 0; i < messageCount; i++)
             {
                 string payload = new((char)('a' + i % 26), 10_000);
-                string request = $"{{\"jsonrpc\":\"2.0\",\"id\":{i},\"method\":\"eth_call\",\"params\":[\"{payload}\"]}}";
-                expectedPayloads.Add(request);
+                expectedPayloads[i] = CreateJsonRequest(i, "eth_call", $"[\"{payload}\"]");
             }
 
-            await SendAndAssertPayloads(string.Concat(expectedPayloads), expectedPayloads, timeout: 10000, chunkSize: 4096);
+            return CompleteJsonMessageCase(expectedPayloads, $"Large_chunked_json_without_delimiter_{messageCount}", timeout: 10000, chunkSize: 4096);
         }
 
         [Test]
@@ -317,16 +304,16 @@ public class JsonRpcSocketsClientTests
             // drains part of the overflow. If a boundary is found, the tail must be
             // correctly ordered before the undrained remainder.
             string large2 = new('M', 5000);
-            string msg2 = $"{{\"id\":2,\"method\":\"eth_call\",\"params\":[\"{large2}\"]}}";
-            string msg3 = "{\"id\":3,\"method\":\"eth_call\",\"params\":[]}";
+            string msg2 = CreateJsonRequestWithoutVersion(2, "eth_call", $"[\"{large2}\"]");
+            string msg3 = CreateJsonRequestWithoutVersion(3, "eth_call");
 
             await SendAndAssertPayloads(msg1 + "\n" + msg2 + msg3, [msg1, msg2, msg3], timeout: 10000);
         }
 
         private static IEnumerable<TestCaseData> JsonBoundaryDetectionCases()
         {
-            string json1 = "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"eth_blockNumber\",\"params\":[]}";
-            string json2 = "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"eth_chainId\",\"params\":[]}";
+            string json1 = CreateJsonRequest(1, "eth_blockNumber");
+            string json2 = CreateJsonRequest(2, "eth_chainId");
 
             // JSON without trailing \n followed by newline-delimited message
             yield return new TestCaseData(
@@ -355,6 +342,15 @@ public class JsonRpcSocketsClientTests
         [TestCaseSource(nameof(JsonBoundaryDetectionCases))]
         public async Task Json_boundary_detection(string wireData, string[] expectedPayloads) =>
             await SendAndAssertPayloads(wireData, expectedPayloads);
+
+        private static TestCaseData CompleteJsonMessageCase(string[] expectedPayloads, string name, int timeout = 5000, int chunkSize = 0) =>
+            new TestCaseData(string.Concat(expectedPayloads), expectedPayloads, timeout, chunkSize).SetName(name);
+
+        private static string CreateJsonRequest(int id, string method, string paramsJson = "[]") =>
+            $"{{\"jsonrpc\":\"2.0\",\"id\":{id},\"method\":\"{method}\",\"params\":{paramsJson}}}";
+
+        private static string CreateJsonRequestWithoutVersion(int id, string method, string paramsJson = "[]") =>
+            $"{{\"id\":{id},\"method\":\"{method}\",\"params\":{paramsJson}}}";
 
         [TestCase(10)]
         [TestCase(63)]
