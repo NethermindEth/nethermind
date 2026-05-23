@@ -749,11 +749,7 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
                 }
             }
 
-            for (i = providedParametersLength; i < totalLength; i++)
-            {
-                executionParameters[i] = expectedParameters[i].DefaultValue;
-            }
-
+            FillDefaultParameters(expectedParameters, executionParameters, providedParametersLength, totalLength);
             return executionParameters;
         }
         catch
@@ -806,11 +802,7 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
                 }
             }
 
-            for (i = providedParametersLength; i < totalLength; i++)
-            {
-                executionParameters[i] = expectedParameters[i].DefaultValue;
-            }
-
+            FillDefaultParameters(expectedParameters, executionParameters, providedParametersLength, totalLength);
             return executionParameters;
         }
         catch
@@ -823,6 +815,11 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
         [DoesNotReturn, StackTraceHidden]
         static void ThrowMissingParameterBytes() =>
             throw new JsonException("Missing JSON-RPC parameter bytes.");
+    }
+
+    private static void FillDefaultParameters(ExpectedParameter[] expected, object?[] actual, int start, int count)
+    {
+        for (int i = start; i < count; i++) actual[i] = expected[i].DefaultValue;
     }
 
     private static object?[] RentParameterArray(int length, out bool returnToPool)
