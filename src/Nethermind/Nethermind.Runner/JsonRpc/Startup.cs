@@ -128,12 +128,10 @@ public class Startup : IStartup
 
     public void Configure(IApplicationBuilder app, IWebHostEnvironment env, JsonRpcProcessor jsonRpcProcessor, JsonRpcService jsonRpcService, IJsonRpcLocalStats jsonRpcLocalStats, EthereumJsonSerializer jsonSerializer, ApplicationLifetime lifetime)
     {
-        // Register source-generated type info resolvers before warmup
         EthereumJsonSerializer.AddTypeInfoResolver(FacadeJsonContext.Default, JsonTypeInfoResolverPriority.Facade);
         EthereumJsonSerializer.AddTypeInfoResolver(EthRpcJsonContext.Default, JsonTypeInfoResolverPriority.EthRpc);
         EthereumJsonSerializer.AddTypeInfoResolver(JsonRpcResponseJsonContext.Default, JsonTypeInfoResolverPriority.JsonRpcResponse);
 
-        // Warm up System.Text.Json metadata for hot response types
         EthereumJsonSerializer.WarmupSerializer(
             new JsonRpcSuccessResponse { Id = 0 },
             new JsonRpcErrorResponse { Id = 0, Error = new Error { Code = 0, Message = string.Empty } });
