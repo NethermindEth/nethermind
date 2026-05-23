@@ -135,7 +135,7 @@ public class ReorgTests
     [Retry(3)]
     public void Test()
     {
-        List<Block> events = new();
+        List<Block> events = [];
 
         Block block0 = Build.A.Block.WithHeader(_genesis).WithDifficulty(1).WithTotalDifficulty(1L).TestObject;
         Block block1 = Build.A.Block.WithParent(block0).WithDifficulty(2).WithTotalDifficulty(2L).TestObject;

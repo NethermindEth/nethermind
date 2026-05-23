@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Logstash JSON event layout for —logging-format=logstash.
+     See https://github.com/logstash/logstash-logback-encoder -->
+<nlog xmlns="http://www.nlog-project.org/schemas/NLog.xsd"
+      xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <targets>
+    <target name="json-console" xsi:type="Console">
+      <layout xsi:type="JsonLayout" suppressSpaces="true">
+        <attribute name="@timestamp" layout="${date:universalTime=true:format=yyyy-MM-ddTHH\:mm\:ss.fffffffZ}" />
+        <attribute name="@version" layout="1" encode="false" />
+        <attribute name="message" layout="${replace:searchFor=\x1B\[[0-9;]*m:replaceWith=:regex=true:inner=${message}}" />
+        <attribute name="level" layout="${level:upperCase=true}" />
+        <attribute name="logger_name" layout="${logger}" />
+        <!-- thread_name is a string per Logstash convention; keep default encode=true. -->
+        <attribute name="thread_name" layout="${threadid}" />
+        <attribute name="host" layout="${machinename}" />
+        <attribute name="stack_trace" layout="${exception:format=tostring}" includeEmptyValue="false" />
+      </layout>
+    </target>
+  </targets>
+  <rules>
+    <logger name="*" minlevel="Trace" writeTo="json-console" />
+  </rules>
+</nlog>

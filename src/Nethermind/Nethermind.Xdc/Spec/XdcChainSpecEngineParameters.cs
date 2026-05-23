@@ -39,7 +39,7 @@ public class XdcChainSpecEngineParameters : IChainSpecEngineParameters
     public long LimitPenaltyEpoch { get; set; }           // Epochs in a row that a penalty node needs to be penalized
     public long LimitPenaltyEpochV2 { get; set; }           // Epochs in a row that a penalty node needs to be penalized
 
-    private List<V2ConfigParams> _v2Configs = new();
+    private List<V2ConfigParams> _v2Configs = [];
     public List<V2ConfigParams> V2Configs
     {
         get => _v2Configs;

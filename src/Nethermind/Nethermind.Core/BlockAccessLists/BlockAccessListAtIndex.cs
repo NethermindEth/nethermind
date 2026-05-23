@@ -32,7 +32,7 @@ public class BlockAccessListAtIndex : IJournal<int>, IResettable
     private readonly Dictionary<Address, AccountChangesAtIndex> _accountChanges = new(GenericEqualityComparer.GetOptimized<Address>());
     private readonly List<Change> _changes = new(InitialChangeCapacity);
 
-    private readonly List<CodeChange> _previousCodeChanges = new();
+    private readonly List<CodeChange> _previousCodeChanges = [];
 
     private readonly Stack<AccountChangesAtIndex> _accountChangesPool = new();
 

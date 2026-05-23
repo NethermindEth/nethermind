@@ -281,7 +281,7 @@ internal static partial class InstructionAnnotator
 
         // Split operands by comma, but respect brackets for memory operands
         List<string> operands = SplitOperands(operandsRaw);
-        List<string> parts = new();
+        List<string> parts = [];
 
         for (int i = 0; i < operands.Count; i++)
         {
@@ -305,7 +305,7 @@ internal static partial class InstructionAnnotator
 
     private static List<string> SplitOperands(string operands)
     {
-        List<string> result = new();
+        List<string> result = [];
         int depth = 0;
         int start = 0;
 

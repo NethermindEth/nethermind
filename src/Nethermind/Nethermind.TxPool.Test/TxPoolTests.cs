@@ -2125,7 +2125,7 @@ namespace Nethermind.TxPool.Test
 
         private IDictionary<ITxPoolPeer, PrivateKey> GetPeers(int limit = 100)
         {
-            Dictionary<ITxPoolPeer, PrivateKey> peers = new();
+            Dictionary<ITxPoolPeer, PrivateKey> peers = [];
             for (int i = 0; i < limit; i++)
             {
                 PrivateKey privateKey = Build.A.PrivateKey.TestObject;
@@ -2220,7 +2220,7 @@ namespace Nethermind.TxPool.Test
 
         private Transaction[] GetTransactions(IDictionary<ITxPoolPeer, PrivateKey> peers, bool sameTransactionSenderPerPeer = true, bool sameNoncePerPeer = true, int transactionsPerPeer = 10)
         {
-            List<Transaction> transactions = new();
+            List<Transaction> transactions = [];
             foreach ((_, PrivateKey privateKey) in peers)
             {
                 for (int i = 0; i < transactionsPerPeer; i++)

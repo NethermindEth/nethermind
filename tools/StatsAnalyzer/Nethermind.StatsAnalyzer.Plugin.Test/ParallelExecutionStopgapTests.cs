@@ -140,8 +140,8 @@ public class ParallelExecutionStopgapTests : VirtualMachineTestsBase
             .SetMinSupport(1).SetSketchResetOrReuseThreshold(0.001).SetSketch(sketch).Build();
 
         PatternAnalyzerFileTracer tracer = new(
-            new ResettableList<Instruction>(), 1, 100, analyzer,
-            new HashSet<Instruction>(), _fileSystem, _logger, 1,
+            [], 1, 100, analyzer,
+            [], _fileSystem, _logger, 1,
             ProcessingMode.Sequential, SortOrder.Descending,
             fileName, CancellationToken.None, blocksConfig);
 

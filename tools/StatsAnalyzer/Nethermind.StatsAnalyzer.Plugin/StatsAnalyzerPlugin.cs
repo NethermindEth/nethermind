@@ -78,7 +78,7 @@ public class StatsAnalyzerPlugin(IPatternAnalyzerConfig patternAnalyzerConfig, I
 
         CallStatsAnalyzer analyzer = new(callAnalyzerConfig.TopN);
         CallAnalyzerFileTracer callAnalyzerFileTracer = new(
-            new ResettableList<Address>(),
+            [],
             callAnalyzerConfig.ProcessingQueueSize,
             analyzer,
             _api.FileSystem,
@@ -98,7 +98,7 @@ public class StatsAnalyzerPlugin(IPatternAnalyzerConfig patternAnalyzerConfig, I
 
         PatternStatsAnalyzer analyzer = new(patternAnalyzerConfig.GetStatsAnalyzerConfig());
         PatternAnalyzerFileTracer patternAnalyzerFileTracer = new(
-            new ResettableList<Instruction>(),
+            [],
             patternAnalyzerConfig.ProcessingQueueSize,
             patternAnalyzerConfig.InstructionsQueueSize,
             analyzer,

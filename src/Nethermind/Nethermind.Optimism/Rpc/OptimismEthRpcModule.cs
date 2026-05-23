@@ -210,7 +210,7 @@ public class OptimismEthRpcModule(
         }
 
         Block block = searchResult.Object;
-        if (positionIndex < 0 || positionIndex > block!.Transactions.Length - 1)
+        if (positionIndex >= block!.Transactions.Length)
         {
             return ResultWrapper<TransactionForRpc?>.Success(null);
         }

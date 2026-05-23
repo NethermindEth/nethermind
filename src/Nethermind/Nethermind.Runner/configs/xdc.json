@@ -12,6 +12,9 @@
   "Discovery": {
     "DiscoveryVersion": "V4"
   },
+  "Pruning": {
+    "PruningBoundary": 4096
+  },
   "Blocks": {
     "TargetBlockGasLimit": 420000000
   },

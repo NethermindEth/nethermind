@@ -60,9 +60,9 @@ public class GethLikeTxMemoryTracer : GethLikeTxTracer<GethTxMemoryTraceEntry>
 
         if (CurrentTraceEntry.Depth > previousDepth)
         {
-            CurrentTraceEntry.Storage = new Dictionary<string, string>();
+            CurrentTraceEntry.Storage = [];
 
-            Trace.StoragesByDepth.Push(previousTraceEntry is null ? new() : previousTraceEntry.Storage);
+            Trace.StoragesByDepth.Push(previousTraceEntry is null ? [] : previousTraceEntry.Storage);
         }
         else if (CurrentTraceEntry.Depth < previousDepth)
         {
