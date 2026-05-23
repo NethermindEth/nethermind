@@ -239,13 +239,7 @@ public class ByteArrayConverter : JsonConverter<byte[]>
             ThrowInvalidOperationException();
         }
 
-        ReadOnlySpan<byte> hex = reader.ValueSpan;
-        if (hex.Length >= 2 && Unsafe.As<byte, ushort>(ref MemoryMarshal.GetReference(hex)) == HexPrefix)
-        {
-            hex = hex[2..];
-        }
-
-        Bytes.FromUtf8HexString(hex, span);
+        Bytes.FromUtf8HexString(GetHexValueSpan(reader.ValueSpan, strictHexFormat: false, requireEvenLength: false), span);
     }
 
     [DoesNotReturn, StackTraceHidden]
