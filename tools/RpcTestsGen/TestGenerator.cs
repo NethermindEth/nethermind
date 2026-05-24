@@ -3,7 +3,7 @@
 
 using System.Threading.Tasks.Dataflow;
 
-namespace RpcTestsGen;
+namespace Nethermind.RpcTestsGen;
 
 public static class TestGenerator
 {

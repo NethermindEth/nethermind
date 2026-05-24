@@ -4,7 +4,7 @@
 using System.Text.Json;
 using System.Text.Json.Nodes;
 
-namespace RpcTestsGen;
+namespace Nethermind.RpcTestsGen;
 
 internal static class JsonExtensions
 {

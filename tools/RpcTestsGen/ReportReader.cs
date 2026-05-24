@@ -4,7 +4,7 @@
 using System.Text.Json.Nodes;
 using System.Threading.Tasks.Dataflow;
 
-namespace RpcTestsGen;
+namespace Nethermind.RpcTestsGen;
 
 // TODO: simplify readers, move common code to base class
 public class ReportReader(FilePos[] sources, Filter filter)

@@ -3,7 +3,7 @@
 
 using System.Text.Json.Nodes;
 
-namespace RpcTestsGen;
+namespace Nethermind.RpcTestsGen;
 
 public static class RequestExtensions
 {
