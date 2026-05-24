@@ -8,6 +8,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using Nethermind.Merge.Plugin.Handlers;
+using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Proofs;
 using System.Text.Json.Serialization;
@@ -58,6 +59,7 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
     /// representing <c>TransactionType || TransactionPayload</c> or <c>LegacyTransaction</c> as defined in
     /// <see href="https://eips.ethereum.org/EIPS/eip-2718">EIP-2718</see>.
     /// </summary>
+    [JsonConverter(typeof(TransactionsByteArrayArrayConverter))]
     public byte[][] Transactions
     {
         get => _encodedTransactions;
