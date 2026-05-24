@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Buffers;
 using System.Collections.Generic;
 using System.Text.Json;
 using Nethermind.Core;
@@ -10,7 +9,6 @@ using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Evm;
-using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using Nethermind.Serialization.Json;
@@ -18,22 +16,18 @@ using Nethermind.Serialization.Json;
 namespace Nethermind.Blockchain.Tracing.ParityStyle;
 
 /// <summary>
-/// A <see cref="ParityLikeTxTracer"/> that streams the <c>vmTrace</c> portion of the
-/// trace straight to a <see cref="Utf8JsonWriter"/> as opcodes execute, instead of
-/// accumulating <see cref="ParityVmOperationTrace"/> entries in memory. Peak heap for
-/// the vmTrace tree drops from O(opcodes) to O(call-depth) regardless of trace length.
+/// Streams the <c>vmTrace</c> portion of a parity-style trace straight to a
+/// <see cref="Utf8JsonWriter"/> as opcodes execute, dropping vmTrace peak heap from
+/// O(opcodes) to O(call-depth).
 /// </summary>
 /// <remarks>
-/// The non-vmTrace parts of the trace (action tree, state-diff, output) are still
-/// buffered in memory: their JSON shape requires parent-known fields (<c>subtraces</c>
-/// count, pre-order child enumeration) before children are knowable, so they can't be
-/// emitted incrementally. They're bounded by call-depth × subtraces, typically tens
-/// of KB even for complex transactions.
+/// Action tree, state-diff and output remain buffered: their JSON shape requires
+/// parent-known fields (subtraces count, pre-order child enumeration) before children
+/// are knowable. They are bounded by call-depth × subtraces.
 /// <para>
 /// The streamed <c>vmTrace</c> value is written into a pre-positioned slot: the caller
-/// is responsible for writing the property name <c>"vmTrace":</c> immediately before
-/// constructing this tracer. If <c>vmTrace</c> wasn't requested, the constructor writes
-/// <c>null</c> at that position and behaves as the base tracer for everything else.
+/// writes <c>"vmTrace":</c> immediately before constructing this tracer. If vmTrace was
+/// not requested, the constructor writes <c>null</c> at that position.
 /// </para>
 /// </remarks>
 public class StreamingParityLikeTxTracer : ParityLikeTxTracer
@@ -42,47 +36,21 @@ public class StreamingParityLikeTxTracer : ParityLikeTxTracer
     private readonly bool _streamVmTrace;
     private readonly JsonSerializerOptions _jsonOptions;
 
-    // One streaming frame per active call-frame; mirrors _vmTraceStack but holds
-    // only what's needed for streaming (frame JSON state, pending parent-op flag).
     private readonly Stack<StreamingVmFrame> _streamingFrames = new();
-
-    // Pool of reusable StreamingVmFrame instances. Push/pop rents/returns; growth is
-    // bounded by max call depth (rarely > 1024), keeping per-frame allocations off the
-    // GC heap after the first few transactions.
     private readonly Stack<StreamingVmFrame> _framePool = new();
 
-    // Single reusable ParityVmOperationTrace buffer in streaming mode: only one op is
-    // "live" at a time (the one we're building up before emitting), so we mutate this
-    // instance in place instead of allocating per opcode. For a million-opcode trace
-    // this is the biggest GC pressure we can eliminate.
+    // Single in-flight op buffer: only one op is "live" at a time, so we mutate it in
+    // place instead of allocating per opcode.
     private ParityVmOperationTrace? _opBuffer;
 
-    // Per-opcode payload state, all backed by ArrayPool-rented buffers via PooledByteBuffer.
-    // These live only until the current op is emitted, then Dispose() returns the underlying
-    // arrays to the pool. The base tracer would allocate fresh wrappers + byte[]s for every
-    // memory/storage/stack-push report; we avoid that entirely.
+    // Per-opcode payload buffers, owned by the current op until it is emitted.
     private PooledByteBuffer _memoryData;
     private long _memoryOffset;
-
     private PooledByteBuffer _storageKey;
     private PooledByteBuffer _storageValue;
-
-    // The streaming push list mirrors the base tracer's <c>_currentPushList</c> but stores
-    // pooled buffers so we never allocate per-push byte[]s.
     private readonly List<PooledByteBuffer> _streamingPushList = [];
 
-    // Pool of ParityTraceAction instances reused across every call frame in every
-    // transaction in this block. Each pooled action keeps its non-null Result and its
-    // Subtraces list backing array, so a tx with thousands of nested calls allocates only
-    // as many actions as the deepest historical breadth ever required.
     private readonly Stack<ParityTraceAction> _actionPool = new();
-
-    // Pools for the per-account state-change graph. The top-level Dictionary in
-    // <c>_trace.StateChanges</c> is already reused via <see cref="ParityLikeTxTracer.ResetTracerState"/>,
-    // but the per-account ParityAccountStateChange instances, their Storage dictionaries,
-    // and the per-cell ParityStateChange wrappers used to churn through GC every tx.
-    // These pools let a long-running node accumulate a steady-state working set sized to
-    // the worst-touch tx and then make zero further state-diff allocations.
     private readonly Stack<ParityAccountStateChange> _accountStateChangePool = new();
     private readonly Stack<Dictionary<UInt256, ParityStateChange<byte[]>>> _storageDictPool = new();
     private readonly Stack<ParityStateChange<byte[]>> _byteStateChangePool = new();
@@ -92,28 +60,20 @@ public class StreamingParityLikeTxTracer : ParityLikeTxTracer
     /// Creates a streaming tx tracer.
     /// </summary>
     /// <param name="fillVmTraceSlot">
-    /// Set to <see langword="true"/> when the caller has just written <c>"vmTrace":</c> on
-    /// <paramref name="writer"/> and expects this tracer to populate that JSON slot
-    /// (either by streaming the value per-opcode or by emitting <c>null</c>). Set to
-    /// <see langword="false"/> when no vmTrace slot is open (e.g. Store-mode block tracer
-    /// where vmTrace isn't part of the response) — in that case the tracer behaves like
-    /// the base buffered tracer and writes nothing.
+    /// <see langword="true"/> when the caller has written <c>"vmTrace":</c> and expects
+    /// this tracer to populate that slot (stream per-opcode or write <c>null</c>).
+    /// <see langword="false"/> when no vmTrace slot is open — tracer behaves like the
+    /// base buffered tracer.
     /// </param>
     /// <param name="streamActionsInline">
-    /// When <see langword="true"/>, the tracer emits each action's JSON (in the
-    /// <c>ParityTxTraceFromStore</c> shape) directly to <paramref name="writer"/> at the
-    /// action's <see cref="PopAction"/>, in post-order traversal, instead of building a
-    /// tree in memory for the caller to walk later. Saves the per-tx action-tree buffer
-    /// (working set drops from O(action count) to O(call depth)). Only valid when no
-    /// other field is competing for the writer during execution — i.e. <paramref name="fillVmTraceSlot"/>
-    /// is <see langword="false"/> (Store mode). Replay mode must keep the action tree
-    /// buffered because vmTrace owns the writer during execution.
+    /// When <see langword="true"/>, each action's JSON (in <c>ParityTxTraceFromStore</c>
+    /// shape) is emitted at <see cref="PopAction"/> in post-order, dropping the per-tx
+    /// action-tree buffer. Only valid when <paramref name="fillVmTraceSlot"/> is
+    /// <see langword="false"/>.
     /// </param>
     /// <param name="actionFilter">
-    /// Optional predicate applied to each action at emit time when
-    /// <paramref name="streamActionsInline"/> is <see langword="true"/>. Returning
-    /// <see langword="false"/> drops the item from the output stream; lets
-    /// <c>trace_filter</c> apply its address / after / count filter without buffering.
+    /// Optional emit-time predicate; returning <see langword="false"/> drops the action
+    /// from the output stream.
     /// </param>
     public StreamingParityLikeTxTracer(
         Block block,
@@ -134,7 +94,6 @@ public class StreamingParityLikeTxTracer : ParityLikeTxTracer
 
         if (fillVmTraceSlot && !IsTracingInstructions)
         {
-            // Caller opened the "vmTrace":<here> slot but no vmTrace data will be produced.
             _writer.WriteNullValue();
         }
     }
@@ -143,27 +102,18 @@ public class StreamingParityLikeTxTracer : ParityLikeTxTracer
     private readonly bool _streamActionsInline;
     private readonly Func<ParityTraceAction, bool>? _actionFilter;
 
-    /// <summary>Read-only accessor on the base's protected trace-types field so the block tracer can decide whether the cached instance is compatible with a new tx.</summary>
     public ParityTraceTypes ParityTraceTypes => _parityTraceTypes;
 
     /// <summary>
-    /// Re-init this tracer for the next transaction in the same block. Keeps every
-    /// pooled allocation (action stack, vm-trace stack, push list, streaming frame
-    /// pool, per-opcode buffer) alive across transactions — the block tracer holds
-    /// a single instance and just calls this between txs.
+    /// Re-inits this tracer for the next transaction, keeping every pooled allocation alive.
     /// </summary>
     public void ResetForNextTx(Block block, Transaction? tx)
     {
-        // Return the previous tx's action tree to the pool before ResetTracerState drops
-        // the root reference. Children are returned depth-first; the per-action Reset()
-        // runs on the next RentAction().
         if (_trace?.Action is not null)
         {
             ReturnActionTree(_trace.Action);
         }
 
-        // Same for the state-change graph: return per-account changes, storage maps, and
-        // state-change wrappers to their pools before the base clears the dictionary.
         if (_trace?.StateChanges is not null)
         {
             ReturnStateChanges(_trace.StateChanges);
@@ -171,36 +121,26 @@ public class StreamingParityLikeTxTracer : ParityLikeTxTracer
 
         ResetTracerState(block, tx);
 
-        // The streaming-mode flag is derived from IsTracingInstructions which is set
-        // in the base ctor from the trace types. Trace types don't change across txs
-        // (same block tracer => same types), so _streamVmTrace stays correct.
-
-        // Drain any leftover streaming frames defensively (shouldn't happen for a
-        // well-formed run, but a partial execution from a cancelled tx might leave state).
+        // Defensive drain — a cancelled tx may have left in-flight state.
         while (_streamingFrames.Count > 0)
         {
             ReturnFrame(_streamingFrames.Pop());
         }
-
-        // Return any in-flight pooled buffers; same defensive concern as the frame stack.
         ReleaseOpBuffers();
 
         if (_fillVmTraceSlot && !IsTracingInstructions)
         {
-            // Re-emit the null for the next tx's vmTrace slot.
             _writer.WriteNullValue();
         }
     }
 
     private sealed class StreamingVmFrame
     {
-        /// <summary>Marker for SELFDESTRUCT frames: no JSON is emitted; <see cref="PopVmTraceFrame"/> just pops.</summary>
+        // SELFDESTRUCT frame: no JSON emitted; PopVmTraceFrame just pops.
         public bool IsSuicide;
-        /// <summary>Has <c>{"code":...,"ops":[</c> been written yet?</summary>
         public bool JsonObjectOpened;
-        /// <summary>Bytecode of this frame; buffered until the object opens.</summary>
         public byte[]? Code;
-        /// <summary>True iff this frame is the <c>"sub"</c> value of a parent op whose opening (without the closing <c>}</c>) was already written; the closing brace is written when this frame returns.</summary>
+        // Parent op's opening was written without closing `}`; this frame owes the brace on return.
         public bool HasPendingParentOpToClose;
 
         public void Reset()
@@ -279,8 +219,7 @@ public class StreamingParityLikeTxTracer : ParityLikeTxTracer
 
     private static void ReturnTraceAddress(CappedArray<int> addr)
     {
-        // CappedArray.UnderlyingArray exposes the actual rented buffer (possibly oversized).
-        // Skip the Empty / default sentinel cases — they own no rented memory.
+        // Skip Empty / default sentinels — they own no rented memory.
         if (addr.IsNotNull && addr.UnderlyingLength > 0)
         {
             System.Buffers.ArrayPool<int>.Shared.Return(addr.UnderlyingArray!);
@@ -288,11 +227,30 @@ public class StreamingParityLikeTxTracer : ParityLikeTxTracer
     }
 
     /// <summary>
-    /// Returns the per-account state-change instances, their storage dictionaries, and
-    /// every per-cell <see cref="ParityStateChange{T}"/> wrapper to their pools. The
-    /// top-level dictionary is reused in-place by the base
-    /// <see cref="ParityLikeTxTracer.ResetTracerState"/> via <c>Dictionary.Clear()</c>.
+    /// Returns every pool-rented buffer this tracer still holds. Safe after an
+    /// interrupted run (timeout / client cancel) so ArrayPool buffers do not leak.
     /// </summary>
+    public override void Dispose()
+    {
+        ReleaseOpBuffers();
+
+        while (_streamingFrames.Count > 0)
+        {
+            ReturnFrame(_streamingFrames.Pop());
+        }
+
+        if (_trace?.Action is not null)
+        {
+            ReturnActionTree(_trace.Action);
+            _trace.Action = null;
+        }
+
+        if (_trace?.StateChanges is not null)
+        {
+            ReturnStateChanges(_trace.StateChanges);
+        }
+    }
+
     private void ReturnStateChanges(Dictionary<Address, ParityAccountStateChange> changes)
     {
         foreach (ParityAccountStateChange account in changes.Values)
@@ -318,12 +276,6 @@ public class StreamingParityLikeTxTracer : ParityLikeTxTracer
         }
     }
 
-    /// <summary>
-    /// Recursively returns an action and all of its subtraces to the pool. Called from
-    /// <see cref="ResetForNextTx"/> on the root before the next tx overwrites it; the
-    /// per-action <see cref="ParityTraceAction.Reset"/> happens lazily on the next
-    /// <see cref="RentAction"/> call.
-    /// </summary>
     private void ReturnActionTree(ParityTraceAction action)
     {
         List<ParityTraceAction> subtraces = action.Subtraces;
@@ -337,13 +289,8 @@ public class StreamingParityLikeTxTracer : ParityLikeTxTracer
         _actionPool.Push(action);
     }
 
-    /// <summary>
-    /// In <c>streamActionsInline</c> mode we never use the subtraces list — actions emit
-    /// themselves at <see cref="PopAction"/> and the parent's <see cref="ParityTraceAction.IncludedSubtraceCount"/>
-    /// (maintained by base <c>PushAction</c>) carries everything <c>traceAddress</c>
-    /// indexing and JSON output need. Skipping the <c>List.Add</c> keeps the tree out
-    /// of memory entirely.
-    /// </summary>
+    // Inline mode never uses the subtraces list; PopAction emits the action and the
+    // parent's IncludedSubtraceCount (maintained by base PushAction) carries the count.
     protected override void RegisterSubtrace(ParityTraceAction parent, ParityTraceAction child)
     {
         if (_streamActionsInline) return;
@@ -352,15 +299,9 @@ public class StreamingParityLikeTxTracer : ParityLikeTxTracer
 
     public override void MarkAsSuccess(Address recipient, in GasConsumed gasSpent, byte[] output, LogEntry[] logs, Hash256? stateRoot = null)
     {
-        if (_streamActionsInline)
-        {
-            // Root action was already emitted at its PopAction and returned to the pool;
-            // the base behaviour would re-dereference _trace.Action.Result and write the
-            // output onto a now-pooled instance. The output was already written by the
-            // closing ReportActionEnd before the action emitted, so this is a no-op.
-            // _trace.Output is part of the Replay envelope, not Store, so we skip it too.
-            return;
-        }
+        // Inline mode: root action was emitted at PopAction and is pooled. _trace.Output
+        // belongs to the Replay envelope, not Store.
+        if (_streamActionsInline) return;
         base.MarkAsSuccess(recipient, gasSpent, output, logs, stateRoot);
     }
 
@@ -368,10 +309,8 @@ public class StreamingParityLikeTxTracer : ParityLikeTxTracer
     {
         if (_streamActionsInline)
         {
-            // Quick-fail path: no PushAction ever fired (tx rejected before execution), so
-            // _trace.Action is still null. Build a minimal failure action and emit it inline
-            // so the user still sees the failed call. If PushAction did fire, the action
-            // tree was already emitted; nothing more to do.
+            // Quick-fail: tx rejected before any PushAction. Emit a minimal failure action
+            // so the user still sees the failed call.
             if (_trace.Action is null && _tx is not null)
             {
                 ParityTraceAction action = RentAction();
@@ -395,14 +334,8 @@ public class StreamingParityLikeTxTracer : ParityLikeTxTracer
         base.MarkAsFailed(recipient, gasSpent, output, error, stateRoot);
     }
 
-    /// <summary>
-    /// Post-order action emit: when an action pops, all of its children have already
-    /// emitted (so its <see cref="ParityTraceAction.IncludedSubtraceCount"/> is final)
-    /// and its <see cref="ParityTraceAction.Result"/> / <see cref="ParityTraceAction.Error"/>
-    /// have just been set by the closing <c>ReportActionEnd</c> / <c>ReportActionError</c>.
-    /// Emit the action's JSON now and return it to the pool — the action tree never
-    /// materializes in memory.
-    /// </summary>
+    // Post-order emit: children have already emitted (so IncludedSubtraceCount is final)
+    // and Result/Error have just been set by the closing ReportActionEnd/ReportActionError.
     protected override void OnActionPopped(ParityTraceAction action)
     {
         if (!_streamActionsInline) return;
@@ -418,12 +351,9 @@ public class StreamingParityLikeTxTracer : ParityLikeTxTracer
     }
 
     /// <summary>
-    /// Writes a single action in the <c>ParityTxTraceFromStore</c> JSON shape: action
-    /// fields, block/tx context, result-or-error, subtraces count, traceAddress, type.
-    /// Matches the property order produced by the buffered <c>JsonSerializer.Serialize</c>
-    /// path over <see cref="Nethermind.JsonRpc.Modules.Trace.ParityTxTraceFromStore"/>
-    /// (declaration order under camelCase: action, blockHash, blockNumber, result|error,
-    /// subtraces, traceAddress, transactionHash, transactionPosition, type).
+    /// Writes a single action in the <c>ParityTxTraceFromStore</c> JSON shape.
+    /// Property order matches the buffered <c>JsonSerializer.Serialize</c> path over
+    /// <see cref="Nethermind.JsonRpc.Modules.Trace.ParityTxTraceFromStore"/>.
     /// </summary>
     public static void WriteStoreActionJson(Utf8JsonWriter writer, ParityTraceAction action, ParityLikeTxTrace trace, JsonSerializerOptions options)
     {
@@ -478,9 +408,8 @@ public class StreamingParityLikeTxTracer : ParityLikeTxTracer
 
         if (action.Type == "suicide")
         {
-            // Base would create a frame but not link Sub on the parent op; output JSON omits
-            // suicide sub-trees. Mirror that here: keep the stack symmetric with a marker
-            // frame so PopVmTraceFrame matches up, but emit no JSON.
+            // Suicide sub-trees are omitted from the JSON; keep the stack symmetric with
+            // a marker frame so PopVmTraceFrame matches up.
             frame.IsSuicide = true;
             _streamingFrames.Push(frame);
             return;
@@ -488,20 +417,15 @@ public class StreamingParityLikeTxTracer : ParityLikeTxTracer
 
         if (_currentOperation is not null)
         {
-            // Parent's CALL/CREATE op triggered this sub-frame. Emit its prefix and open the
-            // "sub" slot; the closing brace is written when this sub-frame returns. We don't
-            // hold a reference to the op itself — the buffer is reused for sub-frame opcodes
-            // and would be mutated out from under us; just remember that we owe a `}`.
+            // Parent op triggers a sub-frame: emit its opening and remember we owe a `}`
+            // on frame return. Release the parent op's pooled buffers — sub-frame opcodes
+            // will reuse the slots.
             WriteOperationOpening(_currentOperation);
             frame.HasPendingParentOpToClose = true;
-            // The pooled buffers attached to the parent op (memory / storage / push) have
-            // now been written out; release them so sub-frame opcodes can reuse the slots.
             ReleaseOpBuffers();
         }
-        // else: root frame — the caller has already written the "vmTrace":<here> slot.
 
         _streamingFrames.Push(frame);
-        // Clear so the next StartOperation in this new frame doesn't try to emit the parent op.
         _currentOperation = null;
     }
 
@@ -511,7 +435,6 @@ public class StreamingParityLikeTxTracer : ParityLikeTxTracer
 
         if (frame.IsSuicide)
         {
-            // No JSON written; no _currentOperation change needed.
             ReturnFrame(frame);
             if (_actionStack.Peek().Type != "suicide")
             {
@@ -520,8 +443,7 @@ public class StreamingParityLikeTxTracer : ParityLikeTxTracer
             return;
         }
 
-        // Emit any op left buffered in this frame (its sub is implicitly null — if it had
-        // a sub, PushVmTraceFrame would have consumed it and cleared _currentOperation).
+        // Emit any op left buffered in this frame with an implicit null sub.
         if (_currentOperation is not null)
         {
             WriteOperationOpening(_currentOperation);
@@ -533,13 +455,12 @@ public class StreamingParityLikeTxTracer : ParityLikeTxTracer
 
         if (frame.JsonObjectOpened)
         {
-            _writer.WriteEndArray();   // close "ops"
-            _writer.WriteEndObject();  // close vmTrace frame object
+            _writer.WriteEndArray();
+            _writer.WriteEndObject();
         }
         else
         {
-            // Frame had no opcodes (precompile / empty code). Emit the minimal frame so the
-            // "sub":<here> or "vmTrace":<here> slot has a valid value.
+            // Precompile / empty code: emit a minimal frame to fill the slot.
             WriteEmptyFrame(frame.Code);
         }
 
@@ -548,9 +469,7 @@ public class StreamingParityLikeTxTracer : ParityLikeTxTracer
 
         if (hadPendingParentOp)
         {
-            // Close the parent op whose opening was written when this sub frame started.
             _writer.WriteEndObject();
-            // Parent op is now fully emitted; don't double-emit on next StartOperation in the parent frame.
             _currentOperation = null;
         }
 
@@ -575,11 +494,8 @@ public class StreamingParityLikeTxTracer : ParityLikeTxTracer
             OpenFrameJson(frame);
         }
 
-        // Emit the previous op (no sub — if it had triggered a sub, PushVmTraceFrame would
-        // have already emitted its opening and cleared _currentOperation). The previous op
-        // owns the pooled buffers in _memoryDataBuf / _storageKeyBuf / _storageValueBuf /
-        // _streamingPushList; WriteOperationOpening reads them, then ReleaseOpBuffers
-        // returns them to ArrayPool.
+        // Emit the previous op with an implicit null sub (a sub would have been emitted
+        // by PushVmTraceFrame, clearing _currentOperation).
         if (_currentOperation is not null)
         {
             WriteOperationOpening(_currentOperation);
@@ -588,10 +504,7 @@ public class StreamingParityLikeTxTracer : ParityLikeTxTracer
             ReleaseOpBuffers();
         }
 
-        // Reuse a single ParityVmOperationTrace buffer across every opcode in this tracer.
-        // The base tracer's StartOperation would `new` one per opcode; for million-opcode
-        // traces that's tens-of-MB of GC churn we don't need to pay because in streaming
-        // mode only one op is alive at a time. Reset fields in place rather than allocate.
+        // Reuse a single op buffer per tracer — only one op is alive at a time in streaming mode.
         ParityVmOperationTrace op = _opBuffer ??= new ParityVmOperationTrace();
         op.Pc = pc;
         op.Cost = gas;
@@ -602,7 +515,6 @@ public class StreamingParityLikeTxTracer : ParityLikeTxTracer
         op.Sub = null;
 
         _gasAlreadySetForCurrentOp = false;
-        // _currentPushList stays empty in streaming mode; we feed _streamingPushList instead.
         _currentOperation = op;
     }
 
@@ -622,8 +534,7 @@ public class StreamingParityLikeTxTracer : ParityLikeTxTracer
         // Parity quirk: stipend folded into reported cost.
         if (op.Cost == 7400) op.Cost = 9700;
         op.Used = gas;
-        // Skip op.Push = _currentPushList.ToArray() — we already hold the pushes in
-        // _streamingPushList with pooled buffers, and WriteOperationOpening reads from there.
+        // Pushes live in _streamingPushList; skip the base's op.Push = ToArray().
         _treatGasParityStyle = false;
     }
 
@@ -648,7 +559,6 @@ public class StreamingParityLikeTxTracer : ParityLikeTxTracer
 
         if (data.Length == 0) return;
 
-        // Defensive — should have been released in StartOperation already.
         _memoryData.Dispose();
         _memoryData = PooledByteBuffer.Rent(data);
         _memoryOffset = offset;
@@ -690,8 +600,8 @@ public class StreamingParityLikeTxTracer : ParityLikeTxTracer
             return;
         }
 
-        // Discard the buffered op AND its pooled buffers — those would otherwise leak until
-        // the tracer is disposed, because no later StartOperation will run to release them.
+        // Discard the in-flight op and its pooled buffers — no later StartOperation
+        // will run to release them.
         if (ReferenceEquals(_currentOperation, operationTrace))
         {
             _currentOperation = null;
@@ -707,7 +617,6 @@ public class StreamingParityLikeTxTracer : ParityLikeTxTracer
             return;
         }
 
-        // Buffer the code; it's emitted when the frame's JSON object opens.
         _streamingFrames.Peek().Code = byteCode.ToArray();
     }
 
@@ -733,10 +642,8 @@ public class StreamingParityLikeTxTracer : ParityLikeTxTracer
     }
 
     /// <summary>
-    /// Writes the opening of an operation's JSON object: everything up to and including the
-    /// <c>"sub":</c> property name. Caller is responsible for writing the sub value (null or
-    /// a streamed sub-frame) and the closing <c>}</c>. Mirrors the layout produced by
-    /// <see cref="ParityVmOperationTraceConverter"/>.
+    /// Writes everything up to and including the <c>"sub":</c> property name. Caller writes
+    /// the sub value and the closing <c>}</c>. Layout matches <see cref="ParityVmOperationTraceConverter"/>.
     /// </summary>
     private void WriteOperationOpening(ParityVmOperationTrace op)
     {
@@ -784,10 +691,9 @@ public class StreamingParityLikeTxTracer : ParityLikeTxTracer
         }
 
         _writer.WriteNumber("used"u8, op.Used);
-        _writer.WriteEndObject(); // close "ex"
+        _writer.WriteEndObject();
 
         _writer.WriteNumber("pc"u8, op.Pc);
         _writer.WritePropertyName("sub"u8);
-        // Caller writes the sub value (null or streamed sub-frame) and the closing }.
     }
 }

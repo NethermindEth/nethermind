@@ -22,6 +22,7 @@ using Nethermind.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Modules.Trace;
+using Nethermind.Logging;
 using NSubstitute;
 using NUnit.Framework;
 using Nethermind.Blockchain.Find;
@@ -786,8 +787,8 @@ public class TraceRpcModuleTests
     }
 
     private static readonly IEnumerable<(object, string[], string)> Trace_call_without_blockParameter_test_cases = [
-        (new { from = TestItem.AddressA, to = "0xbe5c953dd0ddb0ce033a98f36c981f1b74d3b33f", value = "0x0", gasPrice = "0x119e04a40a", gas = "0xf4240" }, ["trace"], $"{{\"jsonrpc\":\"2.0\",\"result\":{{\"output\":\"0x\",\"stateDiff\":null,\"trace\":[{{\"action\":{{\"callType\":\"call\",\"from\":\"{TestItem.AddressA}\",\"gas\":\"0xef038\",\"input\":\"0x\",\"to\":\"0xbe5c953dd0ddb0ce033a98f36c981f1b74d3b33f\",\"value\":\"0x0\"}},\"result\":{{\"gasUsed\":\"0x0\",\"output\":\"0x\"}},\"subtraces\":0,\"traceAddress\":[],\"type\":\"call\"}}]}},\"id\":67}}"),
-        (new { from = TestItem.AddressA, to = "0xa760e26aa76747020171fcf8bda108dfde8eb930", value = "0x0", gasPrice = "0x2108eea5bc", gas = "0xf4240" }, ["trace"], $"{{\"jsonrpc\":\"2.0\",\"result\":{{\"output\":\"0x\",\"stateDiff\":null,\"trace\":[{{\"action\":{{\"callType\":\"call\",\"from\":\"{TestItem.AddressA}\",\"gas\":\"0xef038\",\"input\":\"0x\",\"to\":\"0xa760e26aa76747020171fcf8bda108dfde8eb930\",\"value\":\"0x0\"}},\"result\":{{\"gasUsed\":\"0x0\",\"output\":\"0x\"}},\"subtraces\":0,\"traceAddress\":[],\"type\":\"call\"}}]}},\"id\":67}}")
+        (new { from = TestItem.AddressA, to = "0xbe5c953dd0ddb0ce033a98f36c981f1b74d3b33f", value = "0x0", gasPrice = "0x119e04a40a", gas = "0xf4240" }, ["trace"], $"{{\"jsonrpc\":\"2.0\",\"result\":{{\"output\":\"0x\",\"stateDiff\":null,\"trace\":[{{\"action\":{{\"callType\":\"call\",\"from\":\"{TestItem.AddressA}\",\"gas\":\"0xef038\",\"input\":\"0x\",\"to\":\"0xbe5c953dd0ddb0ce033a98f36c981f1b74d3b33f\",\"value\":\"0x0\"}},\"result\":{{\"gasUsed\":\"0x0\",\"output\":\"0x\"}},\"subtraces\":0,\"traceAddress\":[],\"type\":\"call\"}}],\"vmTrace\":null}},\"id\":67}}"),
+        (new { from = TestItem.AddressA, to = "0xa760e26aa76747020171fcf8bda108dfde8eb930", value = "0x0", gasPrice = "0x2108eea5bc", gas = "0xf4240" }, ["trace"], $"{{\"jsonrpc\":\"2.0\",\"result\":{{\"output\":\"0x\",\"stateDiff\":null,\"trace\":[{{\"action\":{{\"callType\":\"call\",\"from\":\"{TestItem.AddressA}\",\"gas\":\"0xef038\",\"input\":\"0x\",\"to\":\"0xa760e26aa76747020171fcf8bda108dfde8eb930\",\"value\":\"0x0\"}},\"result\":{{\"gasUsed\":\"0x0\",\"output\":\"0x\"}},\"subtraces\":0,\"traceAddress\":[],\"type\":\"call\"}}],\"vmTrace\":null}},\"id\":67}}")
     ];
     [TestCaseSource(nameof(Trace_call_without_blockParameter_test_cases))]
     public async Task Trace_call_without_blockParameter_test((object transaction, string[] traceTypes, string expectedResult) testCase)
@@ -1192,7 +1193,8 @@ public class TraceRpcModuleTests
             new JsonRpcConfig(),
             Substitute.For<IBlockchainBridge>(),
             Substitute.For<ISpecProvider>(),
-            Substitute.For<IBlocksConfig>());
+            Substitute.For<IBlocksConfig>(),
+            LimboLogs.Instance);
     }
 
     // AllowTestChainOverride=false prevents TestBlockchain from wrapping this instance and stripping IForkAwareSpecProvider.

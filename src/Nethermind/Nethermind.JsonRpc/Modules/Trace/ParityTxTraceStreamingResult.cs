@@ -15,19 +15,14 @@ namespace Nethermind.JsonRpc.Modules.Trace;
 
 /// <summary>
 /// Streaming result wrapping a deferred execution delegate that drives a
-/// <see cref="StreamingParityLikeBlockTracer"/> (or a multi-block iteration thereof). The
-/// outer JSON array is opened by <see cref="WriteToAsync"/>, the delegate executes the
-/// EVM and emits items per-tx directly to the response, and the array is closed when
-/// execution returns.
+/// <see cref="StreamingParityLikeBlockTracer"/>. <see cref="WriteToAsync"/> opens the
+/// outer JSON array, runs the delegate (which emits items per-tx directly), and closes
+/// the array on return.
 /// </summary>
 /// <remarks>
-/// <para>
-/// <b>In-process consumers:</b> the <see cref="IEnumerable{T}"/> implementation is
-/// intentionally empty — the items don't exist as objects, they only exist as JSON
-/// bytes in the writer. HTTP/JSON-RPC clients work through the registered
-/// <see cref="IStreamableResult"/> path. In-process callers that need to enumerate the
-/// items must use the buffered, non-streaming path instead.
-/// </para>
+/// In-process iteration via <see cref="IEnumerable{T}"/> uses the buffered fallback
+/// (the items only exist as JSON bytes in the streaming writer); HTTP clients go through
+/// <see cref="IStreamableResult.WriteToAsync"/>.
 /// </remarks>
 [JsonConverter(typeof(ParityTxTraceStreamingResultConverterFactory))]
 public sealed class ParityTxTraceStreamingResult<T> : IStreamableResult, IEnumerable<T>, IDisposable
@@ -37,11 +32,8 @@ public sealed class ParityTxTraceStreamingResult<T> : IStreamableResult, IEnumer
     private readonly CancellationTokenSource _timeoutCts;
 
     /// <param name="materializeForInProcess">
-    /// Buffered fallback used when this result is iterated in-process via <see cref="IEnumerable{T}"/>
-    /// (e.g. test code calling <c>resultWrapper.Data.Count()</c>). Production HTTP/JSON-RPC clients
-    /// go through <see cref="IStreamableResult.WriteToAsync"/> and never hit this path; the
-    /// fallback re-runs the trace through the buffered tracer to satisfy in-process consumers.
-    /// If <see langword="null"/>, in-process enumeration yields no items.
+    /// Buffered fallback for in-process enumeration; HTTP clients never hit this. If
+    /// <see langword="null"/>, in-process enumeration yields no items.
     /// </param>
     public ParityTxTraceStreamingResult(
         Action<Utf8JsonWriter, PipeWriter?, CancellationToken> runExecution,
@@ -87,10 +79,7 @@ public sealed class ParityTxTraceStreamingResult<T> : IStreamableResult, IEnumer
         }
     }
 
-    /// <summary>
-    /// In-process fallback used by the JSON converter. Drives execution into the supplied
-    /// writer with no pipe-level flushing; the buffer grows to hold the full response.
-    /// </summary>
+    // In-process fallback used by the JSON converter; no pipe-level flushing.
     internal void WriteAsJson(Utf8JsonWriter writer)
     {
         writer.WriteStartArray();

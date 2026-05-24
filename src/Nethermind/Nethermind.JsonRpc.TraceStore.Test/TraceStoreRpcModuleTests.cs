@@ -13,6 +13,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Blockchain.Tracing.ParityStyle;
 using Nethermind.Facade.Eth.RpcTransaction;
+using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Data;
 using Nethermind.JsonRpc.Modules.Trace;
 using Nethermind.Logging;
@@ -141,7 +142,7 @@ public class TraceStoreRpcModuleTests
             BlockFinder = Build.A.BlockTree().OfChainLength(3).TestObject;
             ReceiptFinder = Substitute.For<IReceiptFinder>();
             ParityLikeTraceSerializer serializer = new(LimboLogs.Instance);
-            Module = new TraceStoreRpcModule(InnerModule, Store, BlockFinder, ReceiptFinder, serializer, LimboLogs.Instance, parallelization);
+            Module = new TraceStoreRpcModule(InnerModule, Store, BlockFinder, ReceiptFinder, serializer, new JsonRpcConfig(), LimboLogs.Instance, parallelization);
             Hash256 dbTransaction = Build.A.Transaction.TestObject.Hash!;
             Hash256 dbBlock = BlockFinder.Head!.Hash!;
             DbTrace = new() { BlockHash = dbBlock, TransactionHash = dbTransaction };

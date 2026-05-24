@@ -28,6 +28,7 @@ using Nethermind.Facade.Simulate;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Data;
 using Nethermind.JsonRpc.Modules.Eth;
+using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.JsonRpc.Modules.Trace
@@ -47,11 +48,13 @@ namespace Nethermind.JsonRpc.Modules.Trace
         IJsonRpcConfig jsonRpcConfig,
         IBlockchainBridge blockchainBridge,
         ISpecProvider specProvider,
-        IBlocksConfig blocksConfig)
+        IBlocksConfig blocksConfig,
+        ILogManager logManager)
         : ITraceRpcModule
     {
         private readonly TxDecoder _txDecoder = TxDecoder.Instance;
         private readonly ulong _secondsPerSlot = blocksConfig.SecondsPerSlot;
+        private readonly ILogger _logger = logManager.GetClassLogger<TraceRpcModule>();
 
         public static ParityTraceTypes GetParityTypes(string[] types) =>
             types.Select(static s => FastEnum.Parse<ParityTraceTypes>(s, true)).Aggregate(static (t1, t2) => t1 | t2);
@@ -114,7 +117,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
             return BuildStreamingReplayResult(
                 runStreaming: (writer, pipeWriter, token) =>
                 {
-                    StreamingParityLikeBlockTracer tracer = new(
+                    using StreamingParityLikeBlockTracer tracer = new(
                         traceTypeByTransaction,
                         defaultTypes: ParityTraceTypes.None,
                         ParityTraceStreamMode.Replay,
@@ -231,7 +234,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
             return BuildStreamingReplayResult(
                 runStreaming: (writer, pipeWriter, token) =>
                 {
-                    StreamingParityLikeBlockTracer tracer = new(
+                    using StreamingParityLikeBlockTracer tracer = new(
                         traceTypes1,
                         ParityTraceStreamMode.Replay,
                         includeTxHash: true,
@@ -253,14 +256,9 @@ namespace Nethermind.JsonRpc.Modules.Trace
             BlockParameter fromBlock = traceFilterForRpc.FromBlock ?? BlockParameter.Latest;
             BlockParameter toBlock = traceFilterForRpc.ToBlock ?? BlockParameter.Latest;
 
-            // Eagerly probe the first block: range/header errors must surface as RPC errors
-            // and can't be conveyed once streaming has started writing. Subsequent block
-            // errors mid-range silently truncate the stream — same trade-off the streaming
-            // architecture imposes generally.
-            // SearchForBlocksOnMainChain surfaces lookup/canonicality errors at position 0
-            // and range errors ("From block N is greater than to block M") at position 1
-            // (after first yielding the resolved start block). Anything beyond is real block
-            // data, which streaming consumes lazily.
+            // Probe positions 0-1 so range/header errors surface as RPC errors; once
+            // streaming starts the only signal we have for later block failures is silent
+            // truncation (logged below).
             using (IEnumerator<SearchResult<Block>> probe = blockFinder.SearchForBlocksOnMainChain(fromBlock, toBlock).GetEnumerator())
             {
                 for (int i = 0; i < 2 && probe.MoveNext(); i++)
@@ -275,8 +273,8 @@ namespace Nethermind.JsonRpc.Modules.Trace
             return BuildStreamingStoreResult(
                 runStreaming: (writer, pipeWriter, token) =>
                 {
-                    // Per-item filter, applied during emission. Each ShouldUseTxTrace call advances
-                    // the After/Count counters, so accumulating items across blocks is unnecessary.
+                    // Per-item filter applied during emission — the After/Count counters
+                    // advance inline, so we never accumulate items.
                     TxTraceFilter streamingFilter = new(traceFilterForRpc.FromAddress, traceFilterForRpc.ToAddress, traceFilterForRpc.After, traceFilterForRpc.Count);
                     StreamingParityLikeBlockTracer.StoreItemPredicate predicate = streamingFilter.ShouldUseTxTrace;
 
@@ -286,17 +284,33 @@ namespace Nethermind.JsonRpc.Modules.Trace
                     foreach (SearchResult<Block> blockSearch in blocksSearch)
                     {
                         if (streamingFilter.IsExhausted) break;
-                        if (blockSearch.IsError) break;
+                        if (blockSearch.IsError)
+                        {
+                            if (_logger.IsWarn) _logger.Warn($"trace_filter stream truncated: block lookup failed mid-stream ({blockSearch.Error}).");
+                            break;
+                        }
 
                         Block block = blockSearch.Object!;
-                        if (!blockchainBridge.HasStateForBlock(block.Header)) break;
+                        if (!blockchainBridge.HasStateForBlock(block.Header))
+                        {
+                            if (_logger.IsWarn) _logger.Warn($"trace_filter stream truncated: missing state for block {block.Number}.");
+                            break;
+                        }
 
                         SearchResult<BlockHeader> parentSearch = blockFinder.SearchForHeader(new BlockParameter(block.Header.ParentHash));
-                        if (parentSearch.IsError) break;
+                        if (parentSearch.IsError)
+                        {
+                            if (_logger.IsWarn) _logger.Warn($"trace_filter stream truncated: parent lookup failed for block {block.Number} ({parentSearch.Error}).");
+                            break;
+                        }
                         BlockHeader parentHeader = parentSearch.Object!;
-                        if (!blockchainBridge.HasStateForBlock(parentHeader)) break;
+                        if (!blockchainBridge.HasStateForBlock(parentHeader))
+                        {
+                            if (_logger.IsWarn) _logger.Warn($"trace_filter stream truncated: missing state for parent of block {block.Number}.");
+                            break;
+                        }
 
-                        StreamingParityLikeBlockTracer tracer = new(
+                        using StreamingParityLikeBlockTracer tracer = new(
                             ParityTraceTypes.Trace | ParityTraceTypes.Rewards,
                             ParityTraceStreamMode.Store,
                             includeTxHash: false,
@@ -307,8 +321,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
                 },
                 runBuffered: () =>
                 {
-                    // Mirrors the pre-streaming buffered semantics so in-process tests still
-                    // see the original behaviour (accumulate every block's traces, then filter).
+                    // In-process iteration uses the original buffered semantics.
                     List<ParityLikeTxTrace> txTraces = [];
                     foreach (SearchResult<Block> blockSearch in blockFinder.SearchForBlocksOnMainChain(fromBlock, toBlock))
                     {
@@ -360,7 +373,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
             return BuildStreamingStoreResult(
                 runStreaming: (writer, pipeWriter, token) =>
                 {
-                    StreamingParityLikeBlockTracer tracer = new(
+                    using StreamingParityLikeBlockTracer tracer = new(
                         ParityTraceTypes.Trace | ParityTraceTypes.Rewards,
                         ParityTraceStreamMode.Store,
                         includeTxHash: false,
@@ -545,12 +558,9 @@ namespace Nethermind.JsonRpc.Modules.Trace
             jsonRpcConfig.BuildTimeoutCancellationToken();
 
         /// <summary>
-        /// Wraps an execution delegate as a streaming Replay-mode JSON-RPC response.
-        /// Ownership of the timeout <see cref="CancellationTokenSource"/> passes to the
-        /// returned <see cref="ParityTxTraceStreamingResult{T}"/>, which disposes it when
-        /// the response is finalised. The <paramref name="runBuffered"/> delegate is the
-        /// fallback used when the result is iterated in-process via <see cref="IEnumerable{T}"/>
-        /// (test code, internal callers); production HTTP/JSON-RPC clients never hit it.
+        /// Wraps an execution delegate as a streaming Replay-mode response. Ownership of
+        /// the timeout CTS passes to the returned result. <paramref name="runBuffered"/>
+        /// is the in-process iteration fallback.
         /// </summary>
         private ResultWrapper<IEnumerable<ParityTxTraceFromReplay>> BuildStreamingReplayResult(
             Action<Utf8JsonWriter, PipeWriter?, CancellationToken> runStreaming,

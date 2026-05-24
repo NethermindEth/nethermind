@@ -29,11 +29,9 @@ public class ParityTraceAction
     public List<ParityTraceAction> Subtraces { get; set; } = [];
 
     /// <summary>
-    /// Cached count of <see cref="Subtraces"/> entries with <see cref="IncludeInTrace"/>
-    /// equal to <see langword="true"/>. Maintained incrementally by the tracer's
-    /// <c>PushAction</c> path so JSON converters and per-call <c>traceAddress</c>
-    /// indexing don't need to do a LINQ <c>Count</c> over the list, and so the
-    /// streaming tracer can read it without holding the list at all.
+    /// Count of <see cref="Subtraces"/> with <see cref="IncludeInTrace"/> = <see langword="true"/>,
+    /// maintained incrementally by <c>PushAction</c>. Lets streaming tracers carry the
+    /// count without holding the list.
     /// </summary>
     [JsonIgnore]
     public int IncludedSubtraceCount { get; set; }
@@ -43,10 +41,8 @@ public class ParityTraceAction
     public string? Error { get; set; }
 
     /// <summary>
-    /// Restores this instance to the state of a freshly-constructed action so it can be
-    /// reused from a pool. Keeps the existing <see cref="Result"/> (resetting its fields)
-    /// and <see cref="Subtraces"/> list backing array intact — callers should have already
-    /// returned any child actions in <see cref="Subtraces"/> to their pool before resetting.
+    /// Restores this instance to its just-constructed state for pool reuse. Keeps the
+    /// existing <see cref="Result"/> object and <see cref="Subtraces"/> backing array.
     /// </summary>
     public void Reset()
     {

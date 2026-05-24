@@ -47,7 +47,7 @@ public class ParityLikeTxTracerTests : VirtualMachineTestsBase
         Assert.That(trace.Action.Gas, Is.EqualTo((long)tx.GasLimit - 21000), "gas");
         Assert.That(trace.Action.Value, Is.EqualTo(tx.Value), "value");
         Assert.That(trace.Action.Input, Is.EqualTo(tx.Data.AsArray()), "input");
-        Assert.That(trace.Action.TraceAddress, Is.EqualTo(Array.Empty<int>()), "trace address");
+        Assert.That(trace.Action.TraceAddress.AsSpan().ToArray(), Is.EqualTo(Array.Empty<int>()), "trace address");
     }
 
     [Test]
@@ -78,7 +78,7 @@ public class ParityLikeTxTracerTests : VirtualMachineTestsBase
             .PushData(SampleHexData1)
             .Done;
         (ParityLikeTxTrace trace, _, _) = ExecuteAndTraceParityCall(code);
-        Assert.That(trace.Action.TraceAddress, Is.EqualTo(Array.Empty<int>()));
+        Assert.That(trace.Action.TraceAddress.AsSpan().ToArray(), Is.EqualTo(Array.Empty<int>()));
     }
 
     [Test]
@@ -235,9 +235,9 @@ public class ParityLikeTxTracerTests : VirtualMachineTestsBase
 
         Assert.That(trace.Action.Subtraces.Count, Is.EqualTo(1), "root subtraces");
         Assert.That(trace.Action.Subtraces[0].Subtraces.Count, Is.EqualTo(1), "[0] subtraces");
-        Assert.That(trace.Action.Subtraces[0].TraceAddress, Is.EqualTo(new[] { 0 }), "[0] address");
+        Assert.That(trace.Action.Subtraces[0].TraceAddress.AsSpan().ToArray(), Is.EqualTo(new[] { 0 }), "[0] address");
         Assert.That(trace.Action.Subtraces[0].Subtraces[0].Subtraces.Count, Is.EqualTo(0), "[0, 0] subtraces");
-        Assert.That(trace.Action.Subtraces[0].Subtraces[0].TraceAddress, Is.EqualTo(new[] { 0, 0 }), "[0, 0] address");
+        Assert.That(trace.Action.Subtraces[0].Subtraces[0].TraceAddress.AsSpan().ToArray(), Is.EqualTo(new[] { 0, 0 }), "[0, 0] address");
     }
 
     [Test]
@@ -639,18 +639,18 @@ public class ParityLikeTxTracerTests : VirtualMachineTestsBase
         Assert.That(trace.Action.CallType, Is.EqualTo("call"), "[] type");
 
         Assert.That(trace.Action.Subtraces[0].Subtraces.Count, Is.EqualTo(1), "[0] subtraces");
-        Assert.That(trace.Action.Subtraces[0].TraceAddress, Is.EqualTo(new[] { 0 }), "[0] address");
+        Assert.That(trace.Action.Subtraces[0].TraceAddress.AsSpan().ToArray(), Is.EqualTo(new[] { 0 }), "[0] address");
         Assert.That(trace.Action.Subtraces[0].CallType, Is.EqualTo("call"), "[0] type");
 
         Assert.That(trace.Action.Subtraces[1].Subtraces.Count, Is.EqualTo(1), "[1] subtraces");
-        Assert.That(trace.Action.Subtraces[1].TraceAddress, Is.EqualTo(new[] { 1 }), "[1] address");
+        Assert.That(trace.Action.Subtraces[1].TraceAddress.AsSpan().ToArray(), Is.EqualTo(new[] { 1 }), "[1] address");
         Assert.That(trace.Action.Subtraces[1].CallType, Is.EqualTo("call"), "[1] type");
 
-        Assert.That(trace.Action.Subtraces[0].Subtraces[0].TraceAddress, Is.EqualTo(new[] { 0, 0 }), "[0, 0] address");
+        Assert.That(trace.Action.Subtraces[0].Subtraces[0].TraceAddress.AsSpan().ToArray(), Is.EqualTo(new[] { 0, 0 }), "[0, 0] address");
         Assert.That(trace.Action.Subtraces[0].Subtraces[0].Subtraces.Count, Is.EqualTo(0), "[0, 0] subtraces");
         Assert.That(trace.Action.Subtraces[1].Subtraces[0].CallType, Is.EqualTo("create"), "[0, 0] type");
 
-        Assert.That(trace.Action.Subtraces[1].Subtraces[0].TraceAddress, Is.EqualTo(new[] { 1, 0 }), "[1, 0] address");
+        Assert.That(trace.Action.Subtraces[1].Subtraces[0].TraceAddress.AsSpan().ToArray(), Is.EqualTo(new[] { 1, 0 }), "[1, 0] address");
         Assert.That(trace.Action.Subtraces[1].Subtraces[0].Subtraces.Count, Is.EqualTo(0), "[1, 0] subtraces");
         Assert.That(trace.Action.Subtraces[1].Subtraces[0].CallType, Is.EqualTo("create"), "[1, 0] type");
     }

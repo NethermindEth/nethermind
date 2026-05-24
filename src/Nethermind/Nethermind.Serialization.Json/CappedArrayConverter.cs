@@ -10,25 +10,14 @@ using Nethermind.Core.Buffers;
 namespace Nethermind.Serialization.Json;
 
 /// <summary>
-/// JSON converter factory for <see cref="CappedArray{T}"/>. Serializes the valid prefix
-/// (<see cref="CappedArray{T}.AsSpan"/>) as a JSON array whose elements go through whatever
-/// converter is registered for <typeparamref name="T"/>. Lets pooling code carry an
-/// oversized <see cref="System.Buffers.ArrayPool{T}"/>-rented buffer plus an explicit
-/// length without leaking the over-allocation into the wire output.
+/// JSON converter factory for <see cref="CappedArray{T}"/>: emits the valid prefix as a
+/// JSON array (per-element converter for <typeparamref name="T"/>) without leaking the
+/// over-allocated rented buffer length.
 /// </summary>
 /// <remarks>
-/// <para>
-/// <see cref="CappedArray{T}"/> requires <c>T : struct</c>, so the factory is restricted
-/// to closed generic types where the element type is a value type.
-/// </para>
-/// <para>
-/// For <c>CappedArray&lt;byte&gt;</c>, this factory produces a JSON array of numbers
-/// (one per byte), <em>not</em> the Ethereum-style <c>"0x..."</c> hex string that
-/// <see cref="ByteArrayConverter"/> produces for <c>byte[]</c>. Today no JSON-serialized
-/// surface uses <c>CappedArray&lt;byte&gt;</c> (the type is internal to Trie/RLP code
-/// paths), but if that changes a dedicated hex-style converter for that closed type
-/// should be added and registered <em>before</em> this factory.
-/// </para>
+/// For <c>CappedArray&lt;byte&gt;</c> this produces a JSON array of numbers, not the
+/// Ethereum <c>"0x..."</c> hex string. Add a dedicated converter before this factory if
+/// that type ever reaches a wire-level surface.
 /// </remarks>
 public class CappedArrayConverter : JsonConverterFactory
 {
@@ -50,9 +39,7 @@ internal sealed class CappedArrayConverter<T> : JsonConverter<CappedArray<T>> wh
         if (reader.TokenType == JsonTokenType.Null) return default;
         if (reader.TokenType != JsonTokenType.StartArray) throw new JsonException("Expected JSON array");
 
-        // CappedArray is most useful for short value-type sequences (e.g. trace-address
-        // arrays sized by EVM call depth, typically < 32). Buffering into a List is fine
-        // at that scale.
+        // Short value-type sequences (e.g. trace-address arrays); List buffering is fine.
         List<T> values = [];
         while (reader.Read() && reader.TokenType != JsonTokenType.EndArray)
         {

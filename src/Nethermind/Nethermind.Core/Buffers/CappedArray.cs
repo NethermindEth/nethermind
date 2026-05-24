@@ -102,10 +102,8 @@ public readonly struct CappedArray<T> : IEquatable<CappedArray<T>> where T : str
     public ArraySegment<T> AsArraySegment(int start, int length) => new(_array!, start, length);
 
     /// <summary>
-    /// Content-based equality: two <see cref="CappedArray{T}"/> values are equal iff their
-    /// valid prefixes (<see cref="AsSpan"/>) contain the same elements in the same order.
-    /// <see cref="UnderlyingArray"/> identity and oversize are not compared — that's the
-    /// whole point of "capped": consumers care about the prefix, not the rental.
+    /// Content-based equality over the valid prefix (<see cref="AsSpan"/>); the underlying
+    /// rental size is not compared.
     /// </summary>
     public bool Equals(CappedArray<T> other)
     {
@@ -119,8 +117,6 @@ public readonly struct CappedArray<T> : IEquatable<CappedArray<T>> where T : str
 
     public override int GetHashCode()
     {
-        // Hash by content over the valid prefix so equal content yields equal hashes
-        // regardless of the underlying rental size.
         HashCode hash = default;
         hash.Add(_length);
         ReadOnlySpan<T> span = AsSpan();

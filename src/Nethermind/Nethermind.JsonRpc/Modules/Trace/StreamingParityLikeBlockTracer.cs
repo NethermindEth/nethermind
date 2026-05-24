@@ -19,8 +19,8 @@ namespace Nethermind.JsonRpc.Modules.Trace;
 
 /// <summary>
 /// Output shape selector for <see cref="StreamingParityLikeBlockTracer"/>:
-/// <see cref="Replay"/> produces one <c>ParityTxTraceFromReplay</c> envelope per transaction;
-/// <see cref="Store"/> produces a flat sequence of <c>ParityTxTraceFromStore</c> action records.
+/// <see cref="Replay"/> emits one <c>ParityTxTraceFromReplay</c> envelope per tx;
+/// <see cref="Store"/> emits a flat sequence of <c>ParityTxTraceFromStore</c> records.
 /// </summary>
 public enum ParityTraceStreamMode
 {
@@ -31,30 +31,20 @@ public enum ParityTraceStreamMode
 /// <summary>
 /// Block tracer that writes parity tx traces straight to the response
 /// <see cref="Utf8JsonWriter"/> as each transaction completes, with the per-tx vmTrace
-/// streamed per-opcode through a <see cref="StreamingParityLikeTxTracer"/>. The full
-/// per-tx <see cref="ParityLikeTxTrace"/> is never accumulated into a block-wide list,
-/// so peak heap is bounded by the largest single transaction's action tree / state diff
-/// (typically tens of KB) regardless of block size.
+/// streamed per-opcode. Peak heap is bounded by the largest single transaction.
 /// </summary>
 /// <remarks>
+/// <b>Field order:</b> In Replay mode the envelope writes <c>"vmTrace"</c> before the
+/// remaining fields because the vmTrace slot has to be opened before EVM execution.
+/// Buffered output orders the fields differently; clients that parse by name are
+/// unaffected. Mirrors the trade-off accepted by the Geth streaming tracer (#11693).
 /// <para>
-/// <b>Field order:</b> In <see cref="ParityTraceStreamMode.Replay"/> mode the streamed
-/// envelope writes <c>"vmTrace"</c> before <c>"output"</c>/<c>"stateDiff"</c>/<c>"trace"</c>/
-/// <c>"transactionHash"</c>, because the vmTrace value has to be opened before EVM
-/// execution begins so opcodes can be emitted per-instruction. The non-streaming buffered
-/// path emits these fields in <c>output, stateDiff, trace, transactionHash, vmTrace</c>
-/// order. Clients that parse by field name are unaffected; byte-for-byte comparators
-/// against the buffered path will see the difference. Mirrors the same trade-off
-/// accepted by the Geth streaming tracer (PR #11693).
-/// </para>
-/// <para>
-/// <b>Reward placeholders:</b> The block processor emits reward "transactions" via
-/// <c>StartNewTxTrace(null)</c> / <c>EndTxTrace</c> followed by <c>ReportReward</c>. We
-/// defer JSON emission for those tx traces until <see cref="ReportReward"/> populates
-/// the placeholder's <c>Action</c>; the in-memory hold-back is exactly one trace.
+/// Reward placeholders arrive as <c>StartNewTxTrace(null) / EndTxTrace</c> followed by
+/// <c>ReportReward</c>; emission is deferred until <see cref="ReportReward"/> populates
+/// the placeholder's Action. The in-memory hold-back is exactly one trace.
 /// </para>
 /// </remarks>
-public sealed class StreamingParityLikeBlockTracer : ParityLikeBlockTracer
+public sealed class StreamingParityLikeBlockTracer : ParityLikeBlockTracer, IDisposable
 {
     private readonly Utf8JsonWriter _writer;
     private readonly PipeWriter? _pipeWriter;
@@ -66,20 +56,14 @@ public sealed class StreamingParityLikeBlockTracer : ParityLikeBlockTracer
     private readonly StoreItemPredicate? _storeFilter;
     private readonly JsonSerializerOptions _jsonOptions;
 
-    // Reward placeholders are added via StartNewTxTrace(null) / EndTxTrace, then ReportReward
-    // is called to populate the Action. We defer JSON emission until ReportReward arrives.
     private ParityLikeTxTrace? _pendingRewardTrace;
     private Block? _block;
 
-    // A single reusable tx tracer for the whole block: every action/vm-trace stack,
-    // push list, streaming-frame pool, and per-opcode buffer it owns is allocated once
-    // and reused across all txs (and reward placeholders) in this block.
+    // Single reusable tx tracer for the whole block; all pooled state is reused across txs.
     private StreamingParityLikeTxTracer? _reusableTxTracer;
 
     /// <summary>
-    /// Predicate applied to each action in <see cref="ParityTraceStreamMode.Store"/> mode.
-    /// Items returning <c>false</c> are dropped; this is how <c>trace_filter</c> applies
-    /// its address / after / count filter without materialising the full action list.
+    /// Per-action predicate in Store mode; items returning <c>false</c> are dropped.
     /// </summary>
     public delegate bool StoreItemPredicate(ParityTraceAction action);
 
@@ -106,8 +90,8 @@ public sealed class StreamingParityLikeBlockTracer : ParityLikeBlockTracer
     }
 
     /// <summary>
-    /// Per-tx trace-types constructor used by <c>trace_callMany</c>. <paramref name="defaultTypes"/>
-    /// is the fallback applied when a tx hash is missing from <paramref name="typesByTransaction"/>.
+    /// Per-tx trace-types constructor for <c>trace_callMany</c>. <paramref name="defaultTypes"/>
+    /// is the fallback when a tx hash is missing from <paramref name="typesByTransaction"/>.
     /// </summary>
     public StreamingParityLikeBlockTracer(
         IDictionary<Hash256, ParityTraceTypes> typesByTransaction,
@@ -150,24 +134,20 @@ public sealed class StreamingParityLikeBlockTracer : ParityLikeBlockTracer
         bool fillVmTraceSlot = _mode == ParityTraceStreamMode.Replay;
         if (fillVmTraceSlot)
         {
-            // Open the Replay envelope and reserve the vmTrace slot before the tracer is
-            // constructed; the StreamingParityLikeTxTracer streams into that slot during
-            // execution (or writes null if vmTrace wasn't requested).
+            // Open the Replay envelope and reserve the vmTrace slot before tracer construction;
+            // the tx tracer streams into that slot during execution.
             _cancellationToken.ThrowIfCancellationRequested();
             _writer.WriteStartObject();
             _writer.WritePropertyName("vmTrace"u8);
         }
 
-        // In Store mode no field competes with actions for the writer during execution,
-        // so we can emit each action's JSON directly at PopAction (post-order) and never
-        // hold the action tree in memory. Replay mode keeps the buffered tree because
-        // vmTrace owns the writer during execution.
+        // Store mode can emit each action at PopAction (post-order) since no field competes
+        // for the writer; Replay must keep the action tree buffered because vmTrace owns it.
         bool streamActionsInline = !fillVmTraceSlot;
         Func<ParityTraceAction, bool>? actionFilter = _storeFilter is null ? null : new(_storeFilter);
 
-        // Reuse the tx tracer across every tx (and reward placeholder) in this block.
-        // Per-tx trace-types can vary in callMany; if they differ from the cached tracer
-        // we allocate a new one (rare — typically all txs share the same types).
+        // Reuse the tx tracer across every tx in this block. callMany may vary per-tx
+        // types — fall back to a fresh tracer in the (rare) mismatch case.
         if (_reusableTxTracer is null || _reusableTxTracer.ParityTraceTypes != resolvedTypes)
         {
             _reusableTxTracer = new StreamingParityLikeTxTracer(_block!, tx, resolvedTypes, _writer, fillVmTraceSlot, streamActionsInline, actionFilter);
@@ -185,15 +165,14 @@ public sealed class StreamingParityLikeBlockTracer : ParityLikeBlockTracer
     {
         _cancellationToken.ThrowIfCancellationRequested();
 
-        // Defer reward placeholders: ReportReward will populate Action and emit them.
+        // Reward placeholder: defer until ReportReward populates Action.
         if (IsTracingRewards && trace.TransactionHash is null && trace.Action is null)
         {
             _pendingRewardTrace = trace;
             return;
         }
 
-        // Store mode with inline action streaming: the tx tracer already emitted every
-        // action's JSON at its PopAction; nothing left to do here beyond flushing.
+        // Store mode: tx tracer already emitted every action at PopAction.
         if (_mode == ParityTraceStreamMode.Store)
         {
             FlushPipe();
@@ -222,9 +201,7 @@ public sealed class StreamingParityLikeBlockTracer : ParityLikeBlockTracer
 
         if (_mode == ParityTraceStreamMode.Store)
         {
-            // Store mode never went through the per-action inline emit path for this
-            // placeholder (it had no PushAction/PopAction lifecycle), so emit the reward
-            // action's JSON ourselves now. The per-tx tracer's PopAction loop has finished.
+            // Reward placeholder had no PushAction/PopAction lifecycle, so emit it ourselves.
             if (_storeFilter is null || _storeFilter(rewardAction))
             {
                 StreamingParityLikeTxTracer.WriteStoreActionJson(_writer, rewardAction, _pendingRewardTrace, _jsonOptions);
@@ -252,8 +229,7 @@ public sealed class StreamingParityLikeBlockTracer : ParityLikeBlockTracer
 
     private void EmitReplayEnvelopeTail(ParityLikeTxTrace trace)
     {
-        // OnStart wrote `{"vmTrace":` and the tx tracer streamed the vmTrace value during
-        // execution. Now write the remaining envelope fields and close.
+        // OnStart wrote `{"vmTrace":` and the tx tracer streamed its value.
         _writer.WritePropertyName("output"u8);
         JsonSerializer.Serialize(_writer, trace.Output, _jsonOptions);
 
@@ -296,10 +272,9 @@ public sealed class StreamingParityLikeBlockTracer : ParityLikeBlockTracer
         _writer.WriteEndObject();
     }
 
+    // Pre-order traversal matching ParityTraceActionFromReplayJsonConverter.
     private void WriteActionRecursively(ParityTraceAction action)
     {
-        // Matches ParityTraceActionFromReplayJsonConverter's pre-order traversal: each
-        // action emits a flat object, then each subtrace emits its own flat object.
         if (!action.IncludeInTrace) return;
 
         _writer.WriteStartObject();
@@ -332,11 +307,9 @@ public sealed class StreamingParityLikeBlockTracer : ParityLikeBlockTracer
         }
     }
 
+    // Fallback path: only reached if the tx tracer did not emit actions inline.
     private void EmitStoreItems(ParityLikeTxTrace trace)
     {
-        // Dead code under post-order inline streaming for Store mode — kept as the fallback
-        // path used when the tx tracer for some reason did not emit inline (today only
-        // executes for the legacy Replay->Store path, but worth keeping symmetric).
         foreach (ParityTxTraceFromStore item in ParityTxTraceFromStore.FromTxTrace(trace))
         {
             if (_storeFilter is not null && !_storeFilter(item.Action))
@@ -352,6 +325,23 @@ public sealed class StreamingParityLikeBlockTracer : ParityLikeBlockTracer
     {
         if (_pipeWriter is null) return;
         _writer.Flush();
+        // Sync-over-async: JSON-RPC runs without a SynchronizationContext (matches #11693).
         _pipeWriter.FlushAsync(_cancellationToken).GetAwaiter().GetResult();
+    }
+
+    public override void EndBlockTrace()
+    {
+        _reusableTxTracer?.Dispose();
+        base.EndBlockTrace();
+    }
+
+    /// <summary>
+    /// Returns every pool-rented buffer held by the inner tx tracer. Safe after a
+    /// cancelled / failed run; otherwise those buffers leak from the pool.
+    /// </summary>
+    public void Dispose()
+    {
+        _reusableTxTracer?.Dispose();
+        _reusableTxTracer = null;
     }
 }

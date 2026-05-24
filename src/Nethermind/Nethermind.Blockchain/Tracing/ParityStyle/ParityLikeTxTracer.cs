@@ -117,11 +117,8 @@ public class ParityLikeTxTracer : TxTracer
     }
 
     /// <summary>
-    /// Reuse this tracer instance for a new transaction in the same block by resetting
-    /// every per-tx field in place. Called by pooled callers (e.g.
-    /// <see cref="StreamingParityLikeTxTracer"/>'s block tracer); keeps the tracer
-    /// allocation, the action/vm-trace stacks, the push list, and the streaming frame
-    /// pool alive across transactions.
+    /// Resets every per-tx field in place to reuse this tracer for another transaction
+    /// in the same block. Used by pooled subclasses.
     /// </summary>
     protected void ResetTracerState(Block block, Transaction? tx)
     {
@@ -160,34 +157,22 @@ public class ParityLikeTxTracer : TxTracer
         _gasAlreadySetForCurrentOp = false;
     }
 
-    /// <summary>
-    /// Provides a <see cref="ParityTraceAction"/> instance for the next call frame. The
-    /// default implementation allocates a fresh one; subclasses (e.g. the streaming
-    /// tracer) may override to hand back a pool-rented + reset instance. The returned
-    /// action is in a "clean" state — every field is the same as a freshly-constructed
-    /// instance.
-    /// </summary>
+    // Allocation hooks: defaults `new` fresh instances; pooling subclasses override.
+
     protected virtual ParityTraceAction RentAction() => new();
 
-    /// <summary>Provides a <see cref="ParityAccountStateChange"/> instance for a newly touched account; default allocates fresh, subclasses may pool.</summary>
     protected virtual ParityAccountStateChange RentAccountStateChange() => new();
 
-    /// <summary>Provides the per-account storage map; default allocates fresh, subclasses may pool.</summary>
     protected virtual Dictionary<UInt256, ParityStateChange<byte[]>> RentStorageDictionary() => [];
 
-    /// <summary>Provides a <see cref="ParityStateChange{T}"/> for byte[] (code, storage) changes. Subclasses may pool.</summary>
     protected virtual ParityStateChange<byte[]> RentByteStateChange(byte[] before, byte[] after) => new(before, after);
 
-    /// <summary>Provides a <see cref="ParityStateChange{T}"/> for nullable UInt256 (balance, nonce) changes. Subclasses may pool.</summary>
     protected virtual ParityStateChange<UInt256?> RentNullableUInt256StateChange(UInt256? before, UInt256? after) => new(before, after);
 
     /// <summary>
-    /// Allocates the <see cref="ParityTraceAction.TraceAddress"/> wrapper for a call frame
-    /// of the given depth. The returned <see cref="CappedArray{Int32}"/> must have
-    /// <see cref="CappedArray{T}.Length"/> equal to <paramref name="length"/>. Default
-    /// implementation allocates a fresh exact-length <c>int[]</c>; the streaming subclass
-    /// overrides to rent an oversized buffer from <see cref="System.Buffers.ArrayPool{Int32}"/>
-    /// and cap it explicitly.
+    /// Allocates the <see cref="ParityTraceAction.TraceAddress"/> wrapper sized for a call
+    /// frame of <paramref name="length"/>. Returned <see cref="CappedArray{T}.Length"/>
+    /// must equal <paramref name="length"/>.
     /// </summary>
     protected virtual CappedArray<int> RentTraceAddress(int length) =>
         length == 0 ? CappedArray<int>.Empty : new CappedArray<int>(new int[length], length);
@@ -226,22 +211,11 @@ public class ParityLikeTxTracer : TxTracer
         }
     }
 
-    /// <summary>
-    /// Records <paramref name="child"/> under <paramref name="parent"/> for later JSON
-    /// emission. The default implementation appends to <see cref="ParityTraceAction.Subtraces"/>
-    /// (required by the buffered <c>ParityTxTraceFromReplay</c> / <c>ParityTxTraceFromStore</c>
-    /// emit paths which iterate the tree). Streaming subclasses override to skip the list
-    /// when they're emitting actions post-order at <see cref="PopAction"/> time and don't
-    /// need to hold the tree in memory.
-    /// </summary>
+    // Default appends to Subtraces (buffered emit paths iterate the tree); streaming
+    // subclasses override to drop the list and emit actions post-order.
     protected virtual void RegisterSubtrace(ParityTraceAction parent, ParityTraceAction child)
         => parent.Subtraces.Add(child);
 
-    /// <summary>
-    /// Pushes a new vmTrace frame onto the stack and links the parent's current operation
-    /// to the new frame's <see cref="ParityVmTrace"/>. Override to redirect frame handling
-    /// (e.g. to emit JSON directly instead of building the tree).
-    /// </summary>
     protected virtual void PushVmTraceFrame(ParityTraceAction action)
     {
         (ParityVmTrace VmTrace, List<ParityVmOperationTrace> Ops) currentVmTrace = (new ParityVmTrace(),
@@ -271,20 +245,9 @@ public class ParityLikeTxTracer : TxTracer
         OnActionPopped(popped);
     }
 
-    /// <summary>
-    /// Called after an action has been popped off the action stack. Default does nothing;
-    /// streaming subclasses use this to emit the popped action's JSON in post-order (the
-    /// action's <see cref="ParityTraceAction.IncludedSubtraceCount"/> and its
-    /// <see cref="ParityTraceAction.Result"/> / <see cref="ParityTraceAction.Error"/> are
-    /// final at this point) and then return it to the pool.
-    /// </summary>
+    // Called after an action pops; streaming subclasses emit its JSON in post-order here.
     protected virtual void OnActionPopped(ParityTraceAction action) { }
 
-    /// <summary>
-    /// Finalizes the current vmTrace frame and pops it. Restores <see cref="_currentOperation"/>
-    /// to the parent frame's last op. Override to redirect frame teardown (e.g. to close a
-    /// streamed JSON envelope rather than materializing the operations array).
-    /// </summary>
     protected virtual void PopVmTraceFrame()
     {
         _currentVmTrace.VmTrace.Operations = _currentVmTrace.Ops.ToArray();
@@ -346,18 +309,13 @@ public class ParityLikeTxTracer : TxTracer
         _gasAlreadySetForCurrentOp = false;
         operationTrace.Pc = pc;
         operationTrace.Cost = gas;
-        // OnOperationStarted runs before _currentOperation is rebound so streaming
-        // overrides can emit/discard the previous op while it is still _currentOperation.
+        // Streaming overrides need the previous op as _currentOperation, so notify before
+        // we rebind.
         OnOperationStarted(operationTrace);
         _currentOperation = operationTrace;
         _currentPushList.Clear();
     }
 
-    /// <summary>
-    /// Called from <see cref="StartOperation"/> after the new <see cref="ParityVmOperationTrace"/>
-    /// has been initialised. Base behavior appends it to the current vmTrace frame's ops list;
-    /// override to emit the previously buffered op as JSON and discard it instead.
-    /// </summary>
     protected virtual void OnOperationStarted(ParityVmOperationTrace operationTrace) => _currentVmTrace.Ops.Add(operationTrace);
 
     public override void ReportOperationError(EvmExceptionType error)
@@ -369,11 +327,6 @@ public class ParityLikeTxTracer : TxTracer
         }
     }
 
-    /// <summary>
-    /// Called when an operation should be discarded (e.g. errors that don't surface as a
-    /// real opcode in the vmTrace). Base removes it from the current frame's ops list;
-    /// override to clear the in-flight streaming buffer instead.
-    /// </summary>
     protected virtual void OnOperationRemoved(ParityVmOperationTrace? operationTrace) => _currentVmTrace.Ops.Remove(operationTrace);
 
     public override void ReportOperationRemainingGas(long gas)
