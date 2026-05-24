@@ -17,16 +17,7 @@ public sealed class ScopedTrieStore(IScopableTrieStore fullTrieStore, Hash256? a
         fullTrieStore.TryGetOrLoadNode(address, in path, in hash, out node, flags);
 
     public bool TryGetCachedNode(in TreePath path, in ValueHash256 hash, [NotNullWhen(true)] out TrieNode? node)
-    {
-        // Forward to the underlying TrieStore's resolved-only cache lookup if available.
-        // For non-TrieStore wrappers, fall back to the default (returns false).
-        if (fullTrieStore is TrieStore trieStore)
-        {
-            return trieStore.TryGetCachedNode(address, in path, in hash, out node);
-        }
-        node = null;
-        return false;
-    }
+        => fullTrieStore.TryGetCachedNode(address, in path, in hash, out node);
 
     public byte[]? LoadRlp(in TreePath path, in ValueHash256 hash, ReadFlags flags = ReadFlags.None) =>
         fullTrieStore.LoadRlp(address, path, in hash, flags);

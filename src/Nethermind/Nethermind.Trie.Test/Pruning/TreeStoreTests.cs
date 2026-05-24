@@ -1012,6 +1012,22 @@ namespace Nethermind.Trie.Test.Pruning
         }
 
         [Test]
+        public void Scoped_trie_store_forwards_cached_node_lookup_through_wrappers()
+        {
+            using TrieStore fullTrieStore = CreateTrieStore();
+            TrieNode node = BuildAndCommitSealedBranch(fullTrieStore);
+            using PreCachedTrieStore preCachedTrieStore = new(fullTrieStore.AsReadOnly(), new NodeStorageCache { Enabled = true });
+            IScopedTrieStore scopedTrieStore = preCachedTrieStore.GetTrieStore(null);
+            TreePath emptyPath = TreePath.Empty;
+            ValueHash256 hash = node.Keccak!.ValueHash256;
+
+            bool found = scopedTrieStore.TryGetCachedNode(emptyPath, in hash, out TrieNode? cachedNode);
+
+            found.Should().BeTrue();
+            cachedNode.Should().BeSameAs(node);
+        }
+
+        [Test]
         [NonParallelizable]
         public void Shared_resolver_returns_sealed_cached_node_with_resolvable_children()
         {
