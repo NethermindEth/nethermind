@@ -44,6 +44,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Trace
             };
             result.Action.TraceAddress = new int[] { 1, 2, 3 };
             result.Action.Subtraces.Add(subtrace);
+            result.Action.IncludedSubtraceCount = result.Action.Subtraces.Count;
 
             ParityAccountStateChange stateChange = new()
             {

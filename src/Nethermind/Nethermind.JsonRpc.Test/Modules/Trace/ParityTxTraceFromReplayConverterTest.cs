@@ -55,6 +55,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Trace
             };
 
             subtrace.Subtraces.Add(innerSubtrace);
+            subtrace.IncludedSubtraceCount = subtrace.Subtraces.Count;
 
             ParityLikeTxTrace result = new()
             {
@@ -75,6 +76,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Trace
             };
             result.Action.TraceAddress = new int[] { 1, 2, 3 };
             result.Action.Subtraces.Add(subtrace);
+            result.Action.IncludedSubtraceCount = result.Action.Subtraces.Count;
 
             ParityAccountStateChange stateChange = new()
             {
@@ -141,6 +143,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Trace
             };
             result.Action.TraceAddress = new int[] { 1, 2, 3 };
             result.Action.Subtraces.Add(subtrace);
+            result.Action.IncludedSubtraceCount = result.Action.Subtraces.Count;
 
             ParityAccountStateChange stateChange = new()
             {

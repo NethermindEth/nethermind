@@ -39,7 +39,11 @@ namespace Nethermind.JsonRpc.Modules.Trace
                 BlockNumber = txTrace.BlockNumber,
                 TransactionHash = txTrace.TransactionHash,
                 TransactionPosition = txTrace.TransactionPosition,
-                TraceAddress = txTraceAction.TraceAddress,
+                // FromTxTrace runs only on the buffered fallback path (in-process consumers
+                // or EnableTracingStreamMode=false); materialise the CappedArray into a fresh
+                // int[] here. The streaming Store path (WriteStoreActionJson) writes from the
+                // CappedArray span directly and never goes through this code.
+                TraceAddress = txTraceAction.TraceAddress.AsSpan().ToArray(),
                 Error = txTraceAction.Error
             };
             yield return result;

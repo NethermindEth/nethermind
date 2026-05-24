@@ -9,6 +9,7 @@ using System.Text.Json;
 using System.Threading;
 using Nethermind.Blockchain.Tracing.ParityStyle;
 using Nethermind.Core;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
@@ -213,7 +214,7 @@ public sealed class StreamingParityLikeBlockTracer : ParityLikeBlockTracer
             Value = rewardValue,
             Author = author,
             CallType = "reward",
-            TraceAddress = [],
+            TraceAddress = CappedArray<int>.Empty,
             Type = "reward",
             Result = null,
         };
@@ -320,14 +321,7 @@ public sealed class StreamingParityLikeBlockTracer : ParityLikeBlockTracer
         _writer.WriteNumber("subtraces"u8, action.IncludedSubtraceCount);
 
         _writer.WritePropertyName("traceAddress"u8);
-        if (action.TraceAddress is null)
-        {
-            _writer.WriteNullValue();
-        }
-        else
-        {
-            JsonSerializer.Serialize(_writer, action.TraceAddress, _jsonOptions);
-        }
+        JsonSerializer.Serialize(_writer, action.TraceAddress, _jsonOptions);
 
         _writer.WriteString("type"u8, action.Type);
         _writer.WriteEndObject();

@@ -15,7 +15,7 @@ namespace Nethermind.Core.Buffers;
 /// underlying array can be null and this struct is meant to be non nullable, checking the `IsNull` property to check
 /// if it represent null.
 /// </summary>
-public readonly struct CappedArray<T> where T : struct
+public readonly struct CappedArray<T> : IEquatable<CappedArray<T>> where T : struct
 {
     private static readonly CappedArray<T> _null = default;
     private static readonly CappedArray<T> _empty = new([]);
@@ -100,4 +100,37 @@ public readonly struct CappedArray<T> where T : struct
 
     public ArraySegment<T> AsArraySegment() => AsArraySegment(0, _length);
     public ArraySegment<T> AsArraySegment(int start, int length) => new(_array!, start, length);
+
+    /// <summary>
+    /// Content-based equality: two <see cref="CappedArray{T}"/> values are equal iff their
+    /// valid prefixes (<see cref="AsSpan"/>) contain the same elements in the same order.
+    /// <see cref="UnderlyingArray"/> identity and oversize are not compared — that's the
+    /// whole point of "capped": consumers care about the prefix, not the rental.
+    /// </summary>
+    public bool Equals(CappedArray<T> other)
+    {
+        if (_length != other._length) return false;
+        if (_array is null) return other._array is null;
+        if (other._array is null) return false;
+        return AsSpan().SequenceEqual(other.AsSpan());
+    }
+
+    public override bool Equals(object? obj) => obj is CappedArray<T> other && Equals(other);
+
+    public override int GetHashCode()
+    {
+        // Hash by content over the valid prefix so equal content yields equal hashes
+        // regardless of the underlying rental size.
+        HashCode hash = default;
+        hash.Add(_length);
+        ReadOnlySpan<T> span = AsSpan();
+        for (int i = 0; i < span.Length; i++)
+        {
+            hash.Add(span[i]);
+        }
+        return hash.ToHashCode();
+    }
+
+    public static bool operator ==(in CappedArray<T> left, in CappedArray<T> right) => left.Equals(right);
+    public static bool operator !=(in CappedArray<T> left, in CappedArray<T> right) => !left.Equals(right);
 }

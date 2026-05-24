@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.InteropServices;
 using Nethermind.Core;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Evm;
@@ -174,19 +175,36 @@ public class ParityLikeTxTracer : TxTracer
     /// <summary>Provides the per-account storage map; default allocates fresh, subclasses may pool.</summary>
     protected virtual Dictionary<UInt256, ParityStateChange<byte[]>> RentStorageDictionary() => [];
 
+    /// <summary>Provides a <see cref="ParityStateChange{T}"/> for byte[] (code, storage) changes. Subclasses may pool.</summary>
+    protected virtual ParityStateChange<byte[]> RentByteStateChange(byte[] before, byte[] after) => new(before, after);
+
+    /// <summary>Provides a <see cref="ParityStateChange{T}"/> for nullable UInt256 (balance, nonce) changes. Subclasses may pool.</summary>
+    protected virtual ParityStateChange<UInt256?> RentNullableUInt256StateChange(UInt256? before, UInt256? after) => new(before, after);
+
+    /// <summary>
+    /// Allocates the <see cref="ParityTraceAction.TraceAddress"/> wrapper for a call frame
+    /// of the given depth. The returned <see cref="CappedArray{Int32}"/> must have
+    /// <see cref="CappedArray{T}.Length"/> equal to <paramref name="length"/>. Default
+    /// implementation allocates a fresh exact-length <c>int[]</c>; the streaming subclass
+    /// overrides to rent an oversized buffer from <see cref="System.Buffers.ArrayPool{Int32}"/>
+    /// and cap it explicitly.
+    /// </summary>
+    protected virtual CappedArray<int> RentTraceAddress(int length) =>
+        length == 0 ? CappedArray<int>.Empty : new CappedArray<int>(new int[length], length);
 
     protected virtual void PushAction(ParityTraceAction action)
     {
         if (_currentAction is not null)
         {
-            int parentLen = _currentAction!.TraceAddress!.Length;
-            action.TraceAddress = new int[parentLen + 1];
+            int parentLen = _currentAction.TraceAddress.Length;
+            CappedArray<int> traceAddress = RentTraceAddress(parentLen + 1);
             for (int i = 0; i < parentLen; i++)
             {
-                action.TraceAddress[i] = _currentAction.TraceAddress[i];
+                traceAddress[i] = _currentAction.TraceAddress[i];
             }
+            traceAddress[parentLen] = _currentAction.IncludedSubtraceCount;
+            action.TraceAddress = traceAddress;
 
-            action.TraceAddress[parentLen] = _currentAction.IncludedSubtraceCount;
             if (action.IncludeInTrace)
             {
                 RegisterSubtrace(_currentAction, action);
@@ -196,7 +214,7 @@ public class ParityLikeTxTracer : TxTracer
         else
         {
             _trace.Action = action;
-            action.TraceAddress = [];
+            action.TraceAddress = CappedArray<int>.Empty;
         }
 
         _actionStack.Push(action);
@@ -286,10 +304,10 @@ public class ParityLikeTxTracer : TxTracer
     {
         if (_currentAction is not null)
         {
-            throw new InvalidOperationException($"Closing trace at level {_currentAction.TraceAddress?.Length ?? 0}");
+            throw new InvalidOperationException($"Closing trace at level {_currentAction.TraceAddress.Length}");
         }
 
-        if (_trace.Action!.TraceAddress!.Length == 0)
+        if (_trace.Action!.TraceAddress.Length == 0)
         {
             _trace.Output = output;
         }
@@ -302,7 +320,7 @@ public class ParityLikeTxTracer : TxTracer
     {
         if (_currentAction is not null)
         {
-            throw new InvalidOperationException($"Closing trace at level {_currentAction!.TraceAddress!.Length}");
+            throw new InvalidOperationException($"Closing trace at level {_currentAction!.TraceAddress.Length}");
         }
 
         _trace.Output = output;
@@ -410,7 +428,7 @@ public class ParityLikeTxTracer : TxTracer
             before = value.Balance?.Before ?? before;
         }
 
-        value.Balance = new ParityStateChange<UInt256?>(before, after);
+        value.Balance = RentNullableUInt256StateChange(before, after);
     }
 
     public override void ReportCodeChange(Address address, byte[] before, byte[] after)
@@ -431,7 +449,7 @@ public class ParityLikeTxTracer : TxTracer
             before = value.Code?.Before ?? before;
         }
 
-        value.Code = new ParityStateChange<byte[]>(before, after);
+        value.Code = RentByteStateChange(before, after);
     }
 
     public override void ReportNonceChange(Address address, UInt256? before, UInt256? after)
@@ -447,7 +465,7 @@ public class ParityLikeTxTracer : TxTracer
             before = value.Nonce?.Before ?? before;
         }
 
-        value.Nonce = new ParityStateChange<UInt256?>(before, after);
+        value.Nonce = RentNullableUInt256StateChange(before, after);
     }
 
     public override void ReportStorageChange(in StorageCell storageCell, byte[] before, byte[] after)
@@ -467,7 +485,7 @@ public class ParityLikeTxTracer : TxTracer
             before = change.Before ?? before;
         }
 
-        change = new ParityStateChange<byte[]>(before, after);
+        change = RentByteStateChange(before, after);
     }
 
     public override void ReportAction(long gas, UInt256 value, Address from, Address to, ReadOnlyMemory<byte> input,

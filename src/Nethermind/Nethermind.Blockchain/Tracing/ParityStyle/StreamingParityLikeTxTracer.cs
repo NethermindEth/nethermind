@@ -6,6 +6,7 @@ using System.Buffers;
 using System.Collections.Generic;
 using System.Text.Json;
 using Nethermind.Core;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Evm;
@@ -84,6 +85,8 @@ public class StreamingParityLikeTxTracer : ParityLikeTxTracer
     // the worst-touch tx and then make zero further state-diff allocations.
     private readonly Stack<ParityAccountStateChange> _accountStateChangePool = new();
     private readonly Stack<Dictionary<UInt256, ParityStateChange<byte[]>>> _storageDictPool = new();
+    private readonly Stack<ParityStateChange<byte[]>> _byteStateChangePool = new();
+    private readonly Stack<ParityStateChange<UInt256?>> _uint256StateChangePool = new();
 
     /// <summary>
     /// Creates a streaming tx tracer.
@@ -249,12 +252,46 @@ public class StreamingParityLikeTxTracer : ParityLikeTxTracer
         return d;
     }
 
+    protected override CappedArray<int> RentTraceAddress(int length)
+    {
+        if (length == 0) return CappedArray<int>.Empty;
+        int[] buffer = System.Buffers.ArrayPool<int>.Shared.Rent(length);
+        return new CappedArray<int>(buffer, length);
+    }
+
+    protected override ParityStateChange<byte[]> RentByteStateChange(byte[] before, byte[] after)
+    {
+        if (_byteStateChangePool.Count == 0) return new ParityStateChange<byte[]>(before, after);
+        ParityStateChange<byte[]> sc = _byteStateChangePool.Pop();
+        sc.Before = before;
+        sc.After = after;
+        return sc;
+    }
+
+    protected override ParityStateChange<UInt256?> RentNullableUInt256StateChange(UInt256? before, UInt256? after)
+    {
+        if (_uint256StateChangePool.Count == 0) return new ParityStateChange<UInt256?>(before, after);
+        ParityStateChange<UInt256?> sc = _uint256StateChangePool.Pop();
+        sc.Before = before;
+        sc.After = after;
+        return sc;
+    }
+
+    private static void ReturnTraceAddress(CappedArray<int> addr)
+    {
+        // CappedArray.UnderlyingArray exposes the actual rented buffer (possibly oversized).
+        // Skip the Empty / default sentinel cases — they own no rented memory.
+        if (addr.IsNotNull && addr.UnderlyingLength > 0)
+        {
+            System.Buffers.ArrayPool<int>.Shared.Return(addr.UnderlyingArray!);
+        }
+    }
+
     /// <summary>
-    /// Returns the per-account state-change instances and their storage dictionaries to
-    /// their pools. The per-cell <see cref="ParityStateChange{T}"/> wrappers themselves
-    /// are left for the GC — they're small (~32B each) and pooling them adds two more
-    /// type-specific Stacks for a modest benefit. The top-level dictionary is reused
-    /// in-place by the base <see cref="ParityLikeTxTracer.ResetTracerState"/>.
+    /// Returns the per-account state-change instances, their storage dictionaries, and
+    /// every per-cell <see cref="ParityStateChange{T}"/> wrapper to their pools. The
+    /// top-level dictionary is reused in-place by the base
+    /// <see cref="ParityLikeTxTracer.ResetTracerState"/> via <c>Dictionary.Clear()</c>.
     /// </summary>
     private void ReturnStateChanges(Dictionary<Address, ParityAccountStateChange> changes)
     {
@@ -262,9 +299,17 @@ public class StreamingParityLikeTxTracer : ParityLikeTxTracer
         {
             if (account.Storage is not null)
             {
+                foreach (KeyValuePair<UInt256, ParityStateChange<byte[]>> kv in account.Storage)
+                {
+                    _byteStateChangePool.Push(kv.Value);
+                }
                 account.Storage.Clear();
                 _storageDictPool.Push(account.Storage);
             }
+            if (account.Balance is not null) _uint256StateChangePool.Push(account.Balance);
+            if (account.Code is not null) _byteStateChangePool.Push(account.Code);
+            if (account.Nonce is not null) _uint256StateChangePool.Push(account.Nonce);
+
             account.Storage = null;
             account.Balance = null;
             account.Code = null;
@@ -287,7 +332,8 @@ public class StreamingParityLikeTxTracer : ParityLikeTxTracer
             ReturnActionTree(subtraces[i]);
         }
         subtraces.Clear();
-        action.TraceAddress = null;
+        ReturnTraceAddress(action.TraceAddress);
+        action.TraceAddress = default;
         _actionPool.Push(action);
     }
 
@@ -336,7 +382,7 @@ public class StreamingParityLikeTxTracer : ParityLikeTxTracer
                 action.Gas = _tx.GasLimit;
                 action.CallType = _tx.IsMessageCall ? "call" : "init";
                 action.Error = error;
-                action.TraceAddress = [];
+                action.TraceAddress = CappedArray<int>.Empty;
 
                 if (action.IncludeInTrace && (_actionFilter is null || _actionFilter(action)))
                 {
@@ -366,7 +412,8 @@ public class StreamingParityLikeTxTracer : ParityLikeTxTracer
             WriteStoreActionJson(_writer, action, _trace, _jsonOptions);
         }
 
-        action.TraceAddress = null;
+        ReturnTraceAddress(action.TraceAddress);
+        action.TraceAddress = default;
         _actionPool.Push(action);
     }
 
@@ -407,7 +454,7 @@ public class StreamingParityLikeTxTracer : ParityLikeTxTracer
         writer.WriteNumber("subtraces"u8, action.IncludedSubtraceCount);
 
         writer.WritePropertyName("traceAddress"u8);
-        JsonSerializer.Serialize(writer, action.TraceAddress ?? [], options);
+        JsonSerializer.Serialize(writer, action.TraceAddress, options);
 
         if (trace.TransactionHash is not null)
         {
