@@ -265,6 +265,7 @@ public class StreamingParityLikeTxTracer : ParityLikeTxTracer
         if (_trace?.StateChanges is not null)
         {
             ReturnStateChanges(_trace.StateChanges);
+            _trace.StateChanges = null;
         }
     }
 

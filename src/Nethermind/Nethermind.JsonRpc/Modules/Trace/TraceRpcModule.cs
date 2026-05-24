@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.IO.Pipelines;
 using System.Linq;
 using System.Text.Json;
@@ -602,9 +603,9 @@ namespace Nethermind.JsonRpc.Modules.Trace
         private bool TryResolveTxBlock<TResult>(
             Hash256 txHash,
             bool traceNonCanonical,
-            out Block? block,
-            out BlockHeader? parentHeader,
-            out ResultWrapper<TResult>? error)
+            [NotNullWhen(true)] out Block? block,
+            [NotNullWhen(true)] out BlockHeader? parentHeader,
+            [NotNullWhen(false)] out ResultWrapper<TResult>? error)
         {
             block = null;
             parentHeader = null;
@@ -626,9 +627,9 @@ namespace Nethermind.JsonRpc.Modules.Trace
         /// </summary>
         private bool TryResolveBlock<TResult>(
             BlockParameter blockParameter,
-            out Block? block,
-            out BlockHeader? parentHeader,
-            out ResultWrapper<TResult>? error)
+            [NotNullWhen(true)] out Block? block,
+            [NotNullWhen(true)] out BlockHeader? parentHeader,
+            [NotNullWhen(false)] out ResultWrapper<TResult>? error)
         {
             block = null;
             parentHeader = null;

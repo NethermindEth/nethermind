@@ -148,6 +148,19 @@ public sealed class ParityTxTraceFromReplayStreamingResult : ParityTxTraceFromRe
     }
 }
 
+/// <summary>
+/// Converter for the streaming envelope. The streaming path is dispatched via STJ's
+/// runtime-type lookup: when <c>JsonRpcSuccessResponse.Result</c> (typed <c>object?</c>)
+/// holds a <see cref="ParityTxTraceFromReplayStreamingResult"/>, STJ resolves the
+/// <see cref="JsonConverterAttribute"/> on the runtime type and routes through
+/// <see cref="ParityTxTraceFromReplayStreamingResult.WriteAsJson"/>. A future
+/// <c>TypeInfoResolver</c> that pins serialization to declared types would silently
+/// dispatch the buffered base <c>ParityTxTraceFromReplayJsonConverter</c> instead — the
+/// streaming hand-rolled emission path would no longer be exercised and
+/// <c>Trace_replayTransaction_vmTrace_streaming_matches_buffered</c> would still pass via
+/// materialisation. If you change <c>EthereumJsonSerializer</c>'s resolver, re-verify
+/// that test actually exercises the streaming write.
+/// </summary>
 internal sealed class ParityTxTraceFromReplayStreamingResultConverter : JsonConverter<ParityTxTraceFromReplayStreamingResult>
 {
     public override ParityTxTraceFromReplayStreamingResult Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)

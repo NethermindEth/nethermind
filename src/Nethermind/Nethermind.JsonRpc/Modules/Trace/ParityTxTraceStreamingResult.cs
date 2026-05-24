@@ -46,6 +46,15 @@ public sealed class ParityTxTraceStreamingResult<T> : StreamingResultBase, IEnum
         _runExecution = runExecution;
     }
 
+    /// <summary>
+    /// Re-enumeration is safe and produces a fresh trace on every call. Unlike the
+    /// single-result variant <see cref="ParityTxTraceFromReplayStreamingResult"/>, which
+    /// pins a worldstate <c>Scope&lt;ITracer&gt;</c> across the deferred trace and therefore
+    /// gates streaming-vs-in-process consumption behind a single <c>_consumed</c> flag,
+    /// the multi-tx endpoints' streaming delegates open their own independent execution
+    /// scope inside <c>TraceBlockWithCancellation</c> / <c>ExecuteBlockWithCancellation</c>
+    /// each time. No shared state across calls, no idempotency guard needed.
+    /// </summary>
     public IEnumerator<T> GetEnumerator() =>
         MaterializeForInProcess is null
             ? Enumerable.Empty<T>().GetEnumerator()
