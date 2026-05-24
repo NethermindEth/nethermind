@@ -40,5 +40,7 @@ public record TestCase(RequestInfo RequestInfo, JsonNode Response)
     public string FileDir => field ??= Path.GetDirectoryName(Pos.FilePath) ?? "";
     public string FileName => field ??= Path.GetFileNameWithoutExtension(Pos.FilePath);
     public string FileExt => field ??= Path.GetExtension(Pos.FilePath);
-    public int TestN => RequestInfo.Number;
+    public int RequestN => RequestInfo.Number;
+    public int RequestId => RequestInfo.Id;
+    public int TestN { get; set; }
 }

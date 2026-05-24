@@ -13,7 +13,7 @@ Option<string[]> requestsOption = new("--requests", "-r")
     Required = true
 };
 
-Option<string[]> clientsOption = new("--client", "-c")
+Option<string[]?> clientsOption = new("--client", "-c")
 {
     Description = "Client URL(s) to fetch responses from",
     AllowMultipleArgumentsPerToken = true
@@ -72,7 +72,7 @@ RootCommand rootCommand = new("Generates RPC test files from JSONL request files
 
 rootCommand.SetAction(async (parseResult, ct) =>
 {
-    Executor executor = new(new ExecutionArgs
+    ExecutionArgs args = new()
     {
         Sources = parseResult.GetRequiredValue(requestsOption).Select(FilePos.Parse).ToArray(),
         Clients = parseResult.GetValue(clientsOption)?.Select(static s => new Uri(s)).ToArray(),
@@ -83,14 +83,14 @@ rootCommand.SetAction(async (parseResult, ct) =>
         MaxBlocks = parseResult.GetValue(maxBlocksOption),
         MinResultLen = parseResult.GetValue(minResultLenOption),
         OutputPath = parseResult.GetRequiredValue(outputPathFormat)
-    });
+    };
 
     Console.WriteLine("Starting tests generation...");
-    string[] result = await executor.RunAsync(ct);
+    int outputCount = await TestGenerator.GenerateAsync(args, ct);
 
-    Console.WriteLine(result.Length == 0
+    Console.WriteLine(outputCount == 0
         ? "No tests generated"
-        : $"Generated test files: {string.Join(", ", result)}"
+        : $"Generated {outputCount} test files"
     );
 });
 

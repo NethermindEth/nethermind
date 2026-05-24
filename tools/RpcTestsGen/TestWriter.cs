@@ -11,12 +11,12 @@ namespace RpcTestsGen;
 // not thread-safe
 public sealed class TestWriter(Filter filter, Format outputFormat): IAsyncDisposable
 {
+    private int _testN;
     private string? _currentOutFile;
     private FileStream? _fileStream;
     private Utf8JsonWriter? _jsonWriter;
 
-    private readonly List<string> _outputFiles = [];
-    public IReadOnlyCollection<string> OutputFiles => _outputFiles;
+    public int OutputCount { get; private set; }
 
     public async Task WriteAsync(TestCase testCase)
     {
@@ -37,9 +37,9 @@ public sealed class TestWriter(Filter filter, Format outputFormat): IAsyncDispos
     private void OpenNewFile(string outputPath)
     {
         _currentOutFile = outputPath;
-        _outputFiles.Add(outputPath);
+        OutputCount++;
 
-        _fileStream = new FileStream(outputPath, FileMode.Append, FileAccess.Write, FileShare.None, 4096, useAsync: true);
+        _fileStream = new FileStream(outputPath, FileMode.CreateNew, FileAccess.Write, FileShare.None, 4096, useAsync: true);
         _jsonWriter = new Utf8JsonWriter(_fileStream, new JsonWriterOptions { Indented = true });
 
         _jsonWriter.WriteStartArray();
@@ -70,5 +70,9 @@ public sealed class TestWriter(Filter filter, Format outputFormat): IAsyncDispos
         _currentOutFile = null;
     }
 
-    private string GetOutputPath(TestCase testCase) => Smart.Default.Format(outputFormat, testCase);
+    private string GetOutputPath(TestCase testCase)
+    {
+        testCase.TestN = ++_testN; // TODO: avoid mutating test case
+        return Smart.Default.Format(outputFormat, testCase);
+    }
 }

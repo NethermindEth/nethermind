@@ -14,7 +14,7 @@ public class RequestSender(Uri[] clientUrls, HttpClient httpClient)
 
     public async Task<ResponseInfo> SendAsync(RequestInfo request)
     {
-        if (++_requestN % LogPerRequests == 0)
+        if (Interlocked.Increment(ref _requestN) % LogPerRequests == 0)
             await Console.Out.WriteLineAsync($"Sending request #{_requestN}");
 
         JsonNode[] responses = await Task.WhenAll(clientUrls.Select(url => SendToClientAsync(url, request.Data)));
