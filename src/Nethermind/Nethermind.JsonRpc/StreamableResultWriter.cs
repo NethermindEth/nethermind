@@ -6,12 +6,19 @@ using System.IO.Pipelines;
 using System.Threading;
 using System.Threading.Tasks;
 
-namespace Nethermind.Merge.Plugin.Data;
+namespace Nethermind.JsonRpc;
 
-internal static class StreamableResultWriter
+/// <summary>Provides low-allocation JSON streaming helpers for RPC results.</summary>
+public static class StreamableResultWriter
 {
     private const long FlushThresholdBytes = 64 * 1024;
 
+    /// <summary>Writes a JSON array by delegating each item to a struct writer.</summary>
+    /// <param name="writer">The destination writer.</param>
+    /// <param name="count">The number of array items to write.</param>
+    /// <param name="itemWriter">The item writer.</param>
+    /// <param name="cancellationToken">The cancellation token used when flushing.</param>
+    /// <typeparam name="TItemWriter">The struct writer type.</typeparam>
     public static async ValueTask WriteArrayAsync<TItemWriter>(
         PipeWriter writer,
         int count,
@@ -36,6 +43,10 @@ internal static class StreamableResultWriter
         writer.Write("]"u8);
     }
 
+    /// <summary>Flushes the writer when the buffered payload reaches the streaming threshold.</summary>
+    /// <param name="writer">The destination writer.</param>
+    /// <param name="cancellationToken">The cancellation token used when flushing.</param>
+    /// <returns><see langword="true"/> when the stream is complete, canceled, or cancellation was requested.</returns>
     public static ValueTask<bool> FlushIfNeededAsync(PipeWriter writer, CancellationToken cancellationToken) =>
         cancellationToken.IsCancellationRequested ? new ValueTask<bool>(true) :
         writer.CanGetUnflushedBytes && writer.UnflushedBytes < FlushThresholdBytes ? new ValueTask<bool>(false) :
@@ -48,7 +59,11 @@ internal static class StreamableResultWriter
     }
 }
 
-internal interface IJsonArrayItemWriter
+/// <summary>Writes an indexed JSON array item into a <see cref="PipeWriter"/>.</summary>
+public interface IJsonArrayItemWriter
 {
+    /// <summary>Writes the array item at <paramref name="index"/>.</summary>
+    /// <param name="writer">The destination writer.</param>
+    /// <param name="index">The item index.</param>
     void WriteItem(PipeWriter writer, int index);
 }

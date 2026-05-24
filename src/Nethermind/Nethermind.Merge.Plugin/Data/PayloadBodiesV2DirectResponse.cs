@@ -57,13 +57,13 @@ public sealed class PayloadBodiesV2DirectResponse : IStreamableResult, IReadOnly
     }
 
     internal static PayloadBody CreatePayloadBody(
-        IReadOnlyList<Transaction> transactions,
-        IReadOnlyList<Withdrawal>? withdrawals,
+        Transaction[] transactions,
+        Withdrawal[]? withdrawals,
         MemoryManager<byte>? blockAccessList)
     {
         try
         {
-            return new PayloadBody(PayloadBodiesDirectResponseWriter.EncodeTransactions(transactions), withdrawals, blockAccessList);
+            return new PayloadBody(transactions, withdrawals, blockAccessList);
         }
         catch
         {
@@ -95,13 +95,13 @@ public sealed class PayloadBodiesV2DirectResponse : IStreamableResult, IReadOnly
         }
     }
 
-    internal readonly struct PayloadBody(IReadOnlyList<byte[]> transactions, IReadOnlyList<Withdrawal>? withdrawals, MemoryManager<byte>? blockAccessList) : IDisposable
+    internal readonly struct PayloadBody(Transaction[] transactions, Withdrawal[]? withdrawals, MemoryManager<byte>? blockAccessList) : IDisposable
     {
         public void WriteTo(PipeWriter writer) =>
             PayloadBodiesDirectResponseWriter.WritePayloadBody(writer, transactions, withdrawals, blockAccessList);
 
         public ExecutionPayloadBodyV2Result ToResult() =>
-            ExecutionPayloadBodyV2Result.FromEncodedTransactions(
+            new(
                 transactions,
                 withdrawals,
                 blockAccessList?.Memory.ToArray());

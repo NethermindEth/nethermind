@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
 using System.Text.Json.Serialization;
 using Nethermind.Core;
 
@@ -10,32 +9,34 @@ namespace Nethermind.Merge.Plugin.Data;
 
 public class ExecutionPayloadBodyV2Result
 {
-    public ExecutionPayloadBodyV2Result(IReadOnlyList<Transaction> transactions, IReadOnlyList<Withdrawal>? withdrawals, byte[]? blockAccessList)
-    {
-        Transactions = PayloadBodiesDirectResponseWriter.EncodeTransactions(transactions);
-        Withdrawals = withdrawals;
-        BlockAccessList = blockAccessList;
-    }
+    private Transaction[]? _sourceTransactions;
+    private byte[][]? _transactions;
 
-    private ExecutionPayloadBodyV2Result(IReadOnlyList<byte[]> transactions, IReadOnlyList<Withdrawal>? withdrawals, byte[]? blockAccessList)
+    public ExecutionPayloadBodyV2Result(Transaction[] transactions, Withdrawal[]? withdrawals, byte[]? blockAccessList)
     {
         ArgumentNullException.ThrowIfNull(transactions);
 
-        Transactions = transactions;
+        _sourceTransactions = transactions;
         Withdrawals = withdrawals;
         BlockAccessList = blockAccessList;
     }
 
-    internal static ExecutionPayloadBodyV2Result FromEncodedTransactions(
-        IReadOnlyList<byte[]> transactions,
-        IReadOnlyList<Withdrawal>? withdrawals,
-        byte[]? blockAccessList) =>
-        new(transactions, withdrawals, blockAccessList);
+    internal byte[][] EncodedTransactions => _transactions ??= PayloadBodiesDirectResponseWriter.EncodeTransactions(_sourceTransactions!);
 
-    public IReadOnlyList<byte[]> Transactions { get; set; }
+    public byte[][] Transactions
+    {
+        get => EncodedTransactions;
+        set
+        {
+            ArgumentNullException.ThrowIfNull(value);
+
+            _transactions = value;
+            _sourceTransactions = null;
+        }
+    }
 
     [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
-    public IReadOnlyList<Withdrawal>? Withdrawals { get; set; }
+    public Withdrawal[]? Withdrawals { get; set; }
 
     public byte[]? BlockAccessList { get; set; }
 }

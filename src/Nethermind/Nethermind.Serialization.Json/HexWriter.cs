@@ -4,7 +4,6 @@
 using System;
 using System.Buffers;
 using System.Buffers.Binary;
-using System.IO.Pipelines;
 using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
@@ -226,6 +225,22 @@ public static class HexWriter
             skipInputValidation: true);
     }
 
+    /// <summary>Writes a JSON string containing a <see cref="UInt256"/> as lowercase hex chars.</summary>
+    /// <param name="writer">The destination writer.</param>
+    /// <param name="value">The value to write.</param>
+    /// <param name="zeroPadded">Whether to pad the value to 64 hex chars.</param>
+    /// <param name="addHexPrefix">Whether to emit the leading <c>0x</c>. Defaults to <see langword="true"/>.</param>
+    [SkipLocalsInit]
+    public static void WriteUInt256HexString(IBufferWriter<byte> writer, UInt256 value, bool zeroPadded = false, bool addHexPrefix = true)
+    {
+        Unsafe.SkipInit(out HexBuffer72 rawBuf);
+        ref byte buffer = ref Unsafe.As<HexBuffer72, byte>(ref rawBuf);
+
+        BuildUInt256Hex(ref buffer, value, includeQuotes: true, zeroPadded, addHexPrefix, out nint spanStart, out int spanLength);
+
+        writer.Write(MemoryMarshal.CreateReadOnlySpan(ref Unsafe.Add(ref buffer, spanStart), spanLength));
+    }
+
     /// <summary>Writes a <see cref="UInt256"/> as a JSON property name of lowercase hex chars.</summary>
     /// <param name="addHexPrefix">Whether to emit the leading <c>0x</c>. Defaults to <see langword="true"/>.</param>
     [SkipLocalsInit]
@@ -345,11 +360,11 @@ public static class HexWriter
 
     private const int MaxHexRequest = (int)Eip4844Constants.GasPerBlob * 2;
 
-    /// <summary>Writes a large byte array as hex directly into a <see cref="PipeWriter"/>.</summary>
-    public static void WriteHexChunked(PipeWriter writer, byte[] data) => WriteHexChunked(writer, (ReadOnlySpan<byte>)data);
+    /// <summary>Writes a large byte array as hex directly into an <see cref="IBufferWriter{T}"/>.</summary>
+    public static void WriteHexChunked(IBufferWriter<byte> writer, byte[] data) => WriteHexChunked(writer, (ReadOnlySpan<byte>)data);
 
-    /// <summary>Writes a large byte span as hex directly into a <see cref="PipeWriter"/>.</summary>
-    public static void WriteHexChunked(PipeWriter writer, ReadOnlySpan<byte> data)
+    /// <summary>Writes a large byte span as hex directly into an <see cref="IBufferWriter{T}"/>.</summary>
+    public static void WriteHexChunked(IBufferWriter<byte> writer, ReadOnlySpan<byte> data)
     {
         ReadOnlySpan<byte> remaining = data;
         while (remaining.Length > 0)
@@ -363,11 +378,11 @@ public static class HexWriter
         }
     }
 
-    /// <summary>Writes a small byte array as hex in a single span into a <see cref="PipeWriter"/>.</summary>
-    public static void WriteHexSmall(PipeWriter writer, byte[] data) => WriteHexSmall(writer, (ReadOnlySpan<byte>)data);
+    /// <summary>Writes a small byte array as hex in a single span into an <see cref="IBufferWriter{T}"/>.</summary>
+    public static void WriteHexSmall(IBufferWriter<byte> writer, byte[] data) => WriteHexSmall(writer, (ReadOnlySpan<byte>)data);
 
-    /// <summary>Writes a small byte span as hex in a single span into a <see cref="PipeWriter"/>.</summary>
-    public static void WriteHexSmall(PipeWriter writer, ReadOnlySpan<byte> data)
+    /// <summary>Writes a small byte span as hex in a single span into an <see cref="IBufferWriter{T}"/>.</summary>
+    public static void WriteHexSmall(IBufferWriter<byte> writer, ReadOnlySpan<byte> data)
     {
         int hexLen = data.Length * 2;
         Span<byte> hex = writer.GetSpan(hexLen);
@@ -377,7 +392,7 @@ public static class HexWriter
     }
 
     /// <summary>Writes a JSON string containing a <c>0x</c>-prefixed lowercase hex byte sequence.</summary>
-    public static void WriteHexString(PipeWriter writer, ReadOnlySpan<byte> data, bool chunked)
+    public static void WriteHexString(IBufferWriter<byte> writer, ReadOnlySpan<byte> data, bool chunked)
     {
         writer.Write("\"0x"u8);
         if (chunked) WriteHexChunked(writer, data);
@@ -386,7 +401,7 @@ public static class HexWriter
     }
 
     /// <summary>Writes a JSON string containing a <c>0x</c>-prefixed lowercase hex unsigned integer.</summary>
-    public static void WriteUlongHexString(PipeWriter writer, ulong value)
+    public static void WriteUlongHexString(IBufferWriter<byte> writer, ulong value)
     {
         if (value == 0)
         {

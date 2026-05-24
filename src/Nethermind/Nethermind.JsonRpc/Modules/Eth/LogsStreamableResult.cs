@@ -24,7 +24,6 @@ internal sealed class LogsStreamableResult(
     CancellationTokenSource timeoutCts,
     ILogger logger) : IBatchAwareStreamableResult, IEnumerable<FilterLog>, IDisposable
 {
-    private const long FlushThresholdBytes = 64 * 1024;
     private const long EnvelopeEndReserveBytes = 128;
     private static readonly JsonWriterOptions _itemWriterOptions = new() { SkipValidation = true };
 
@@ -115,7 +114,7 @@ internal sealed class LogsStreamableResult(
             count++;
             estimatedNextLogBytes = logBytes;
 
-            if (await FlushIfNeededAsync(writer, cancellationToken))
+            if (await StreamableResultWriter.FlushIfNeededAsync(writer, cancellationToken))
             {
                 return;
             }
@@ -134,15 +133,4 @@ internal sealed class LogsStreamableResult(
         maxResponseBodySize is >= 0
         && writer is CountingWriter countingWriter
         && countingWriter.WrittenCount + (count > 0 ? 1 : 0) + logBytes + EnvelopeEndReserveBytes > maxResponseBodySize.Value;
-
-    private static ValueTask<bool> FlushIfNeededAsync(PipeWriter writer, CancellationToken cancellationToken) =>
-        cancellationToken.IsCancellationRequested ? new ValueTask<bool>(true) :
-        writer.CanGetUnflushedBytes && writer.UnflushedBytes < FlushThresholdBytes ? new ValueTask<bool>(false) :
-        FlushAsync(writer, cancellationToken);
-
-    private static async ValueTask<bool> FlushAsync(PipeWriter writer, CancellationToken cancellationToken)
-    {
-        FlushResult flushResult = await writer.FlushAsync(cancellationToken);
-        return flushResult.IsCompleted || flushResult.IsCanceled;
-    }
 }

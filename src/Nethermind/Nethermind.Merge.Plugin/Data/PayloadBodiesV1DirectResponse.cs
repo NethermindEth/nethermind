@@ -43,18 +43,26 @@ public sealed class PayloadBodiesV1DirectResponse(IReadOnlyList<ExecutionPayload
                 return;
             }
 
-            PayloadBodiesDirectResponseWriter.WritePayloadBody(writer, item.Transactions, item.Withdrawals);
+            if (item.SourceTransactions is { } sourceTransactions)
+            {
+                PayloadBodiesDirectResponseWriter.WritePayloadBody(writer, sourceTransactions, item.Withdrawals);
+                return;
+            }
+
+            PayloadBodiesDirectResponseWriter.WritePayloadBody(writer, item.EncodedTransactions, item.Withdrawals);
         }
     }
 }
 
 internal static class PayloadBodiesDirectResponseWriter
 {
-    public static byte[][] EncodeTransactions(IReadOnlyList<Transaction> transactions)
+    internal const int HexChunkThreshold = 64 * 1024;
+
+    public static byte[][] EncodeTransactions(Transaction[] transactions)
     {
         ArgumentNullException.ThrowIfNull(transactions);
 
-        byte[][] encodedTransactions = new byte[transactions.Count][];
+        byte[][] encodedTransactions = new byte[transactions.Length][];
         for (int i = 0, count = encodedTransactions.Length; i < count; i++)
         {
             encodedTransactions[i] = Rlp.Encode(transactions[i], RlpBehaviors.SkipTypedWrapping).Bytes;
@@ -64,16 +72,34 @@ internal static class PayloadBodiesDirectResponseWriter
     }
 
     public static void WritePayloadBody(
-        PipeWriter writer,
-        IReadOnlyList<byte[]> transactions,
-        IReadOnlyList<Withdrawal>? withdrawals,
+        IBufferWriter<byte> writer,
+        byte[][] transactions,
+        Withdrawal[]? withdrawals,
         MemoryManager<byte>? blockAccessList = null)
     {
         writer.Write("{\"transactions\":"u8);
         WriteTransactions(writer, transactions);
+        WritePayloadBodySuffix(writer, withdrawals, blockAccessList);
+    }
+
+    public static void WritePayloadBody(
+        IBufferWriter<byte> writer,
+        Transaction[] transactions,
+        Withdrawal[]? withdrawals,
+        MemoryManager<byte>? blockAccessList = null)
+    {
+        writer.Write("{\"transactions\":"u8);
+        WriteTransactions(writer, transactions);
+        WritePayloadBodySuffix(writer, withdrawals, blockAccessList);
+    }
+
+    private static void WritePayloadBodySuffix(
+        IBufferWriter<byte> writer,
+        Withdrawal[]? withdrawals,
+        MemoryManager<byte>? blockAccessList)
+    {
         writer.Write(",\"withdrawals\":"u8);
         WriteWithdrawals(writer, withdrawals);
-
         if (blockAccessList is not null)
         {
             writer.Write(",\"blockAccessList\":"u8);
@@ -83,11 +109,11 @@ internal static class PayloadBodiesDirectResponseWriter
         writer.Write("}"u8);
     }
 
-    public static void WriteTransactions(PipeWriter writer, IReadOnlyList<byte[]> transactions)
+    public static void WriteTransactions(IBufferWriter<byte> writer, byte[][] transactions)
     {
         writer.Write("["u8);
 
-        for (int i = 0, count = transactions.Count; i < count; i++)
+        for (int i = 0, count = transactions.Length; i < count; i++)
         {
             if (i > 0) writer.Write(","u8);
 
@@ -97,7 +123,37 @@ internal static class PayloadBodiesDirectResponseWriter
         writer.Write("]"u8);
     }
 
-    public static void WriteWithdrawals(PipeWriter writer, IReadOnlyList<Withdrawal>? withdrawals)
+    public static void WriteTransactions(IBufferWriter<byte> writer, Transaction[] transactions)
+    {
+        writer.Write("["u8);
+
+        for (int i = 0, count = transactions.Length; i < count; i++)
+        {
+            if (i > 0) writer.Write(","u8);
+            WriteTransaction(writer, transactions[i]);
+        }
+
+        writer.Write("]"u8);
+    }
+
+    public static void WriteTransaction(IBufferWriter<byte> writer, Transaction transaction)
+    {
+        int length = TxDecoder.Instance.GetLength(transaction, RlpBehaviors.SkipTypedWrapping);
+        byte[] buffer = ArrayPool<byte>.Shared.Rent(length);
+
+        try
+        {
+            RlpStream stream = new(buffer);
+            TxDecoder.Instance.Encode(stream, transaction, RlpBehaviors.SkipTypedWrapping);
+            HexWriter.WriteHexString(writer, buffer.AsSpan(0, length), chunked: length > HexChunkThreshold);
+        }
+        finally
+        {
+            ArrayPool<byte>.Shared.Return(buffer);
+        }
+    }
+
+    public static void WriteWithdrawals(IBufferWriter<byte> writer, Withdrawal[]? withdrawals)
     {
         if (withdrawals is null)
         {
@@ -105,9 +161,14 @@ internal static class PayloadBodiesDirectResponseWriter
             return;
         }
 
+        WriteWithdrawalArray(writer, withdrawals);
+    }
+
+    public static void WriteWithdrawalArray(IBufferWriter<byte> writer, Withdrawal[] withdrawals)
+    {
         writer.Write("["u8);
 
-        for (int i = 0, count = withdrawals.Count; i < count; i++)
+        for (int i = 0, count = withdrawals.Length; i < count; i++)
         {
             if (i > 0) writer.Write(","u8);
             WriteWithdrawal(writer, withdrawals[i]);
@@ -116,7 +177,7 @@ internal static class PayloadBodiesDirectResponseWriter
         writer.Write("]"u8);
     }
 
-    private static void WriteWithdrawal(PipeWriter writer, Withdrawal withdrawal)
+    internal static void WriteWithdrawal(IBufferWriter<byte> writer, Withdrawal withdrawal)
     {
         writer.Write("{\"index\":"u8);
         HexWriter.WriteUlongHexString(writer, withdrawal.Index);

@@ -20,6 +20,7 @@ using Nethermind.Evm;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using Nethermind.State;
 using Nethermind.TxPool;
 using Nethermind.Int256;
@@ -139,11 +140,12 @@ public partial class EngineModuleTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(successResponse, Is.Not.Null);
-            Assert.That(response, Is.EqualTo(chain.JsonSerializer.Serialize(new JsonRpcSuccessResponse
+            string expectedResponse = chain.JsonSerializer.Serialize(new JsonRpcSuccessResponse
             {
                 Id = successResponse.Id,
                 Result = expectedPayload
-            })));
+            });
+            Assert.That(JsonNode.DeepEquals(JsonNode.Parse(response), JsonNode.Parse(expectedResponse)), Is.True);
         }
 
         response = await RpcTest.TestSerializedRequest(rpc, "engine_newPayloadV5",

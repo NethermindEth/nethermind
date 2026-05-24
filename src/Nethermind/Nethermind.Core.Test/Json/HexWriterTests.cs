@@ -29,12 +29,29 @@ public class HexWriterTests
         return Utf8.UTF8.GetString(buffer.WrittenSpan);
     }
 
+    private static string WriteToString(Action<ArrayBufferWriter<byte>> writeAction)
+    {
+        ArrayBufferWriter<byte> buffer = new();
+        writeAction(buffer);
+        return Utf8.UTF8.GetString(buffer.WrittenSpan);
+    }
+
     private static byte[] HexBytes(string hex)
     {
         byte[] bytes = new byte[hex.Length / 2];
         for (int i = 0; i < bytes.Length; i++)
             bytes[i] = byte.Parse(hex.AsSpan(i * 2, 2), System.Globalization.NumberStyles.HexNumber);
         return bytes;
+    }
+
+    private static UInt256 UInt256FromHex(string hex)
+    {
+        if (hex == "max")
+        {
+            return UInt256.MaxValue;
+        }
+
+        return new UInt256(HexBytes((hex.Length & 1) == 0 ? hex : "0" + hex), isBigEndian: true);
     }
 
     [TestCase(ZeroWord, false, "\"" + ZeroWord + "\"", TestName = "Fixed32_NoPrefix_AllZeros")]
@@ -71,6 +88,22 @@ public class HexWriterTests
     {
         string actual = WriteToString(w => HexWriter.WriteUInt256HexRawValue(w, UInt256.MaxValue, zeroPadded: true, addHexPrefix: false));
         actual.Should().Be("\"" + OnesWord + "\"");
+    }
+
+    [TestCase("0", true, true, "0x" + ZeroWord, TestName = "U256Buffer_ZeroPaddedWithPrefix_Zero")]
+    [TestCase("1", true, true, "0x" + "000000000000000000000000000000000000000000000000000000000000000" + "1", TestName = "U256Buffer_ZeroPaddedWithPrefix_One")]
+    [TestCase("5", false, true, "0x5", TestName = "U256Buffer_Trimmed_SingleNibble")]
+    [TestCase("1234567", false, true, "0x1234567", TestName = "U256Buffer_Trimmed_OddNibbles")]
+    [TestCase("ffffffffffffffff", false, true, "0xffffffffffffffff", TestName = "U256Buffer_Trimmed_UlongMax")]
+    [TestCase("max", true, false, OnesWord, TestName = "U256Buffer_ZeroPaddedMaxValue_NoPrefix")]
+    [TestCase("abcd", false, true, "0xabcd", TestName = "U256Buffer_Mid_TrimmedWithPrefix")]
+    [TestCase("abcd", false, false, "abcd", TestName = "U256Buffer_Mid_TrimmedNoPrefix")]
+    [TestCase("abcd", true, true, "0x" + "000000000000000000000000000000000000000000000000000000000000" + "abcd", TestName = "U256Buffer_Mid_ZeroPaddedWithPrefix")]
+    [TestCase("abcd", true, false, "000000000000000000000000000000000000000000000000000000000000abcd", TestName = "U256Buffer_Mid_ZeroPaddedNoPrefix")]
+    public void WriteUInt256HexString_AllVariants(string valueHex, bool zeroPadded, bool addPrefix, string expectedBody)
+    {
+        string actual = WriteToString(w => HexWriter.WriteUInt256HexString(w, UInt256FromHex(valueHex), zeroPadded, addPrefix));
+        actual.Should().Be("\"" + expectedBody + "\"");
     }
 
     [TestCase(0x0UL, true, true, "0x" + ZeroWord, TestName = "U256Prop_ZeroPaddedWithPrefix_Zero")]

@@ -66,7 +66,7 @@ public partial class EngineModuleTests
 
         buildResult.Result.Should().Be(Result.Success);
         buildResult.Data.Should().NotBeNull();
-        buildResult.Data.Should().BeOfType<GetPayloadV5Result>();
+        buildResult.Data.Should().BeAssignableTo<GetPayloadV5Result>();
         GetPayloadV5Result payloadResult = (GetPayloadV5Result)buildResult.Data!;
 
         ExecutionPayloadV3 executionPayload = payloadResult.ExecutionPayload;
