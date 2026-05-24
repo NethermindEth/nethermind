@@ -33,8 +33,8 @@ namespace Nethermind.Specs.ChainSpecStyle
 
         private void BuildTransitions()
         {
-            SortedSet<long> transitionBlockNumbers = new();
-            SortedSet<ulong> transitionTimestamps = new();
+            SortedSet<long> transitionBlockNumbers = [];
+            SortedSet<ulong> transitionTimestamps = [];
             transitionBlockNumbers.Add(0L);
 
             foreach (IChainSpecEngineParameters item in _chainSpec.EngineChainSpecParametersProvider
@@ -224,6 +224,7 @@ namespace Nethermind.Specs.ChainSpecStyle
             releaseSpec.MaximumExtraDataSize = chainSpec.Parameters.MaximumExtraDataSize;
             releaseSpec.MinGasLimit = chainSpec.Parameters.MinGasLimit;
             releaseSpec.MinHistoryRetentionEpochs = chainSpec.Parameters.MinHistoryRetentionEpochs;
+            releaseSpec.MinBalRetentionEpochs = chainSpec.Parameters.MinBalRetentionEpochs;
             releaseSpec.GasLimitBoundDivisor = chainSpec.Parameters.GasLimitBoundDivisor;
             releaseSpec.IsEip170Enabled = (chainSpec.Parameters.MaxCodeSizeTransition ?? long.MaxValue) <= releaseStartBlock ||
                                           (chainSpec.Parameters.MaxCodeSizeTransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;

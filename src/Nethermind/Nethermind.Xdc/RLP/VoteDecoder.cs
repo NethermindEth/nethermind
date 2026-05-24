@@ -9,7 +9,7 @@ using Nethermind.Xdc.Types;
 
 namespace Nethermind.Xdc;
 
-public sealed class VoteDecoder : RlpValueDecoder<Vote>
+public sealed class VoteDecoder : RlpDecoder<Vote>
 {
     private static readonly XdcBlockInfoDecoder _xdcBlockInfoDecoder = new();
 
@@ -57,7 +57,7 @@ public sealed class VoteDecoder : RlpValueDecoder<Vote>
         stream.Encode(item.GapNumber);
     }
 
-    public Rlp Encode(Vote item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public override Rlp Encode(Vote item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (item is null)
             return Rlp.OfEmptyList;

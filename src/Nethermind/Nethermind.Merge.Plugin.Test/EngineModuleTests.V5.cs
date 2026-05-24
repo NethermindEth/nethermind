@@ -74,7 +74,7 @@ public partial class EngineModuleTests
 
         ExecutionPayloadV3 executionPayload = payloadResult.ExecutionPayload;
         executionPayload.ExecutionRequests = payloadResult.ExecutionRequests;
-        executionPayload.TryGetBlock().Block!.CalculateHash().Should().Be(executionPayload.BlockHash);
+        executionPayload.TryGetBlock().Data!.CalculateHash().Should().Be(executionPayload.BlockHash);
 
         ResultWrapper<PayloadStatusV1> newPayloadResult = await chain.EngineRpcModule.engine_newPayloadV4(
             executionPayload,

@@ -9,7 +9,7 @@ namespace Nethermind.Trie.Pruning;
 
 public class CommitSetQueue
 {
-    private SortedSet<BlockCommitSet> _queue = new();
+    private SortedSet<BlockCommitSet> _queue = [];
 
     public int Count
     {
@@ -113,5 +113,10 @@ public class CommitSetQueue
     public void Remove(BlockCommitSet blockCommitSet)
     {
         lock (_queue) _queue.Remove(blockCommitSet);
+    }
+
+    public void Clear()
+    {
+        lock (_queue) _queue.Clear();
     }
 }

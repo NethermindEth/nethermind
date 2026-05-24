@@ -20,8 +20,7 @@ namespace Nethermind.Blockchain.Test.Proofs;
 [Parallelizable(ParallelScope.All)]
 public class ReceiptTrieTests
 {
-    private static readonly IRlpStreamEncoder<TxReceipt> _decoder = Rlp.GetStreamEncoder<TxReceipt>()!;
-    private static readonly IRlpValueDecoder<TxReceipt> _valueDecoder = Rlp.GetValueDecoder<TxReceipt>()!;
+    private static readonly ReceiptMessageDecoder _decoder = new();
 
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void Can_calculate_root_no_eip_658()
@@ -87,7 +86,7 @@ public class ReceiptTrieTests
         TreePath emptyPath = TreePath.Empty;
         TrieNode.ResolveNode(ref node, Substitute.For<ITrieNodeResolver>(), in emptyPath);
         Rlp.ValueDecoderContext ctx = node.Value.ToArray().AsRlpValueContext();
-        TxReceipt receipt = _valueDecoder.Decode(ref ctx);
+        TxReceipt receipt = _decoder.Decode(ref ctx);
         Assert.That(receipt.Bloom, Is.Not.Null);
 
         for (int i = proof.Length; i > 0; i--)

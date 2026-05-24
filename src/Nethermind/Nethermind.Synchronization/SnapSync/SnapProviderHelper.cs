@@ -32,8 +32,8 @@ namespace Nethermind.Synchronization.SnapSync
             if (result != AddRangeResult.OK)
                 return (result, true, null, null, tree.RootHash);
 
-            List<PathWithAccount> accountsWithStorage = new();
-            List<ValueHash256> codeHashes = new();
+            List<PathWithAccount> accountsWithStorage = [];
+            List<ValueHash256> codeHashes = [];
             for (int index = 0; index < accounts.Count; index++)
             {
                 PathWithAccount account = accounts[index];
@@ -142,7 +142,7 @@ namespace Nethermind.Synchronization.SnapSync
             ArgumentNullException.ThrowIfNull(tree);
 
             ValueHash256 effectiveStartingHash = startingHash ?? ValueKeccak.Zero;
-            List<(TrieNode, TreePath)> sortedBoundaryList = new();
+            List<(TrieNode, TreePath)> sortedBoundaryList = [];
 
             Dictionary<ValueHash256, TrieNode> dict = CreateProofDict(proofs);
 
@@ -299,7 +299,7 @@ namespace Nethermind.Synchronization.SnapSync
 
         private static Dictionary<ValueHash256, TrieNode> CreateProofDict(IByteArrayList proofs)
         {
-            Dictionary<ValueHash256, TrieNode> dict = new();
+            Dictionary<ValueHash256, TrieNode> dict = [];
 
             for (int i = 0; i < proofs.Count; i++)
             {

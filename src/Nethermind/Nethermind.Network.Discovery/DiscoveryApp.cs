@@ -294,7 +294,7 @@ public class DiscoveryApp : IDiscoveryApp
             return true;
         }
 
-        List<INodeLifecycleManager> managers = new();
+        List<INodeLifecycleManager> managers = [];
         for (int i = 0; i < bootnodes.Length; i++)
         {
             NetworkNode bootnode = bootnodes[i];

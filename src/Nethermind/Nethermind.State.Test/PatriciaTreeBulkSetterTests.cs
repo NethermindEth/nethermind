@@ -191,15 +191,14 @@ public class PatriciaTreeBulkSetterTests
         ).SetName("replace");
 
         List<(Hash256 key, byte[] value)> reappliedEntry =
-            new()
-            {
+            [
                 (new Hash256("abaa000000000000000000000000000000000000000000000000000000000000"), MakeRandomValue(rng, canBeNull: false)),
                 (new Hash256("aaaadddd00000000000000000000000000000000000000000000000000000000"), MakeRandomValue(rng, canBeNull: false)),
                 (new Hash256("bbbbdddd00000000000000000000000000000000000000000000000000000000"), MakeRandomValue(rng, canBeNull: false)),
                 (new Hash256("bbbbeeee00000000000000000000000000000000000000000000000000000000"), MakeRandomValue(rng, canBeNull: false)),
                 (new Hash256("cccccccc00000000000000000000000000000000000000000000000000000000"), MakeRandomValue(rng, canBeNull: false)),
                 (new Hash256("cccc000000000000000000000000000000000000000000000000000000000000"), MakeRandomValue(rng, canBeNull: false))
-            };
+            ];
         yield return new TestCaseData(reappliedEntry, reappliedEntry).SetName("reapply specific");
 
         yield return new TestCaseData(GenRandomOfLength(100), GenRandomOfLength(100)).SetName("reapply 100");
@@ -247,7 +246,7 @@ public class PatriciaTreeBulkSetterTests
     private static List<(Hash256 key, byte[] value)> GenRandomOfLength(int itemCount, int seed = 0)
     {
         Random rng = new(seed);
-        List<(Hash256 key, byte[] value)> items = new(0);
+        List<(Hash256 key, byte[] value)> items = [];
 
         for (int i = 0; i < itemCount; i++)
         {
@@ -644,7 +643,7 @@ public class PatriciaTreeBulkSetterTests
         {
             byte[] buffer = new byte[32];
             Random rng = new(0);
-            List<ValueHash256> hashes = new();
+            List<ValueHash256> hashes = [];
             for (int i = 0; i < count; i++)
             {
                 rng.NextBytes(buffer);

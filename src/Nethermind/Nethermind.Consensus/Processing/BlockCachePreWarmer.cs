@@ -92,7 +92,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
 
                 // BAL makes speculative tx execution redundant — when BAL-based read warming
                 // is in use, drive warmup directly off the suggested block's access list.
-                BlockAccessList? bal = IsBalReadWarmingEnabled(spec) ? suggestedBlock.BlockAccessList : null;
+                ReadOnlyBlockAccessList? bal = IsBalReadWarmingEnabled(spec) ? suggestedBlock.BlockAccessList : null;
 
                 // Run address warmer ahead of transactions warmer, but queue to ThreadPool so it doesn't block the txs
                 AddressWarmer addressWarmer = new(parallelOptions, suggestedBlock, parent, spec, systemAccessLists, this, bal);
@@ -405,12 +405,12 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         }
     }
 
-    private class AddressWarmer(ParallelOptions parallelOptions, Block block, BlockHeader parent, IReleaseSpec spec, ReadOnlySpan<IHasAccessList> systemAccessLists, BlockCachePreWarmer preWarmer, BlockAccessList? bal = null)
+    private class AddressWarmer(ParallelOptions parallelOptions, Block block, BlockHeader parent, IReleaseSpec spec, ReadOnlySpan<IHasAccessList> systemAccessLists, BlockCachePreWarmer preWarmer, ReadOnlyBlockAccessList? bal = null)
         : IThreadPoolWorkItem, IDisposable
     {
         private readonly Block Block = block;
         private readonly BlockCachePreWarmer PreWarmer = preWarmer;
-        private readonly BlockAccessList? Bal = bal;
+        private readonly ReadOnlyBlockAccessList? Bal = bal;
         private readonly ArrayPoolList<AccessList>? SystemTxAccessLists = GetAccessLists(block, spec, systemAccessLists);
         private readonly ManualResetEventSlim _doneEvent = new(initialState: false);
 
@@ -517,14 +517,14 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
 
         private void WarmupFromBal(ParallelOptions parallelOptions, ObjectPool<IPreBlockCacheWarmupSource> envPool)
         {
-            using ArrayPoolList<AccountChanges> accounts = Bal!.AccountChanges.ToPooledList(Bal!.AccountChanges.Count);
+            using ArrayPoolList<ReadOnlyAccountChanges> accounts = new(Bal!.AccountChanges.AsSpan());
 
             if (TryWarmupFromBalShared(parallelOptions, envPool, accounts))
             {
                 return;
             }
 
-            PreBlockCacheWarmingState<ArrayPoolList<AccountChanges>> baseState = new(envPool, accounts, parent);
+            PreBlockCacheWarmingState<ArrayPoolList<ReadOnlyAccountChanges>> baseState = new(envPool, accounts, parent);
 
             ParallelUnbalancedWork.For(
                 0,
@@ -533,14 +533,14 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
                 baseState.InitThreadState,
                 static (i, state) =>
                 {
-                    AccountChanges ac = state.Payload[i];
+                    ReadOnlyAccountChanges ac = state.Payload[i];
                     IPreBlockCacheWarmupSession warmup = state.Scope!;
 
                     WarmupBalAccount(ac, warmup);
 
                     return state;
                 },
-                PreBlockCacheWarmingState<ArrayPoolList<AccountChanges>>.FinallyAction);
+                PreBlockCacheWarmingState<ArrayPoolList<ReadOnlyAccountChanges>>.FinallyAction);
         }
 
         private bool TryWarmupTransactionAddressesShared(ParallelOptions parallelOptions, ObjectPool<IPreBlockCacheWarmupSource> envPool, Block block) =>
@@ -551,21 +551,21 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
                     WarmupSender(tx.SenderAddress, tx.To, warmup);
                 });
 
-        private bool TryWarmupFromBalShared(ParallelOptions parallelOptions, ObjectPool<IPreBlockCacheWarmupSource> envPool, ArrayPoolList<AccountChanges> accounts) =>
+        private bool TryWarmupFromBalShared(ParallelOptions parallelOptions, ObjectPool<IPreBlockCacheWarmupSource> envPool, ArrayPoolList<ReadOnlyAccountChanges> accounts) =>
             TryWarmupShared(parallelOptions, envPool, parent, accounts, accounts.Count,
                 static (i, payload, warmup) => WarmupBalAccount(payload[i], warmup));
 
-        private static void WarmupBalAccount(AccountChanges ac, IPreBlockCacheWarmupSession warmup)
+        private static void WarmupBalAccount(ReadOnlyAccountChanges ac, IPreBlockCacheWarmupSession warmup)
         {
             try
             {
                 Address address = ac.Address;
                 warmup.WarmUp(address);
 
-                // Merge two sorted sequences (ChangedSlots, SortedStorageReads) into one
+                // Merge two sorted sequences (ChangedSlots, StorageReads) into one
                 // ascending pass for better trie path locality
                 ReadOnlySpan<UInt256> changed = ac.ChangedSlots;
-                ReadOnlySpan<UInt256> reads = ac.SortedStorageReads;
+                ReadOnlySpan<UInt256> reads = ac.StorageReads;
                 int slotIndex = 0;
                 int readIndex = 0;
 

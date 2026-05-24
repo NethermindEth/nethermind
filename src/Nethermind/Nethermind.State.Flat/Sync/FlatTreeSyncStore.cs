@@ -275,7 +275,13 @@ public class FlatTreeSyncStore(IPersistence persistence, IPersistenceManager per
         public Account? GetAccount(Hash256 addressHash)
         {
             ReadOnlySpan<byte> bytes = _stateTree.Get(addressHash.Bytes);
-            return bytes.IsEmpty ? null : _accountDecoder.Decode(bytes);
+            if (bytes.IsEmpty)
+            {
+                return null;
+            }
+
+            Rlp.ValueDecoderContext context = new(bytes);
+            return _accountDecoder.Decode(ref context);
         }
 
         public void Dispose() => _reader.Dispose();

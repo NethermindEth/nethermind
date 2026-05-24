@@ -17,7 +17,7 @@ public class ResettableListTests
     {
         get
         {
-            ResettableList<int> list = new();
+            ResettableList<int> list = [];
             yield return new TestCaseData(list, 200) { ExpectedResult = 256 };
             yield return new TestCaseData(list, 0) { ExpectedResult = 128 };
             yield return new TestCaseData(list, 10) { ExpectedResult = 64 };
