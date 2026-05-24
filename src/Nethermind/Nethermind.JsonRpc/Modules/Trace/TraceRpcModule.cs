@@ -163,11 +163,16 @@ namespace Nethermind.JsonRpc.Modules.Trace
             Block block = new(header, [tx], []);
 
             ParityTraceTypes traceTypes1 = GetParityTypes(traceTypes);
-            // trace_call / trace_rawTransaction stay buffered: deferring execution past the
-            // RPC call boundary loses state-override mutations (e.g. balance overrides) — the
-            // worldstate scope is shared with block-processor setup that runs between the
-            // scope open and the deferred Trace call. Single-tx working sets are small so
-            // the streaming win is marginal here anyway.
+            // trace_call / trace_rawTransaction stay buffered. Streaming would defer the
+            // Trace call to response-serialise time, but the worldstate scope + state
+            // overrides set up by BuildAndOverride don't survive across that boundary
+            // reliably — nonce/code/storage overrides re-apply correctly when re-loaded
+            // from the committed overlay, but a freshly-created account whose only override
+            // is `balance` reads back as 0 by the time tx execution queries it. The mismatch
+            // is in how the EIP-158 emptiness check + tree-commit interact with deferred
+            // state reads through a scope held past its owning DI/lifetime context; couldn't
+            // narrow it further in a reasonable time. Single-tx working sets are small so
+            // the streaming win here is marginal anyway; multi-tx endpoints already stream.
             using Scope<ITracer> env = tracerEnv.BuildAndOverride(header, stateOverride);
             ITracer tracer = env.Component;
 
