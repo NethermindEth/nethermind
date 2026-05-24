@@ -72,6 +72,11 @@ public class MetricsTests
         public readonly string[] Labels => [num1.ToString(), num2.ToString(), num3.ToString()];
     }
 
+    private sealed class RpcMetricLabels(string method, string status) : IMetricLabels
+    {
+        public string[] Labels { get; } = [method, status];
+    }
+
     [Test]
     public async Task Test_update_correct_gauge()
     {
@@ -134,6 +139,27 @@ public class MetricsTests
         scrape.Should().Contain("nethermind_explicit_histogram_observation_sum");
         scrape.Should().Contain("nethermind_explicit_histogram_observation_count");
         scrape.Should().NotContain("nethermind_explicit_histogram_observation{quantile=");
+    }
+
+    [Test]
+    public async Task Json_rpc_duration_histogram_uses_distinct_metric_name()
+    {
+        MetricsConfig metricsConfig = new()
+        {
+            Enabled = true
+        };
+        MetricsController metricsController = new(metricsConfig);
+        metricsController.RegisterMetrics(typeof(JsonRpc.Metrics));
+
+        JsonRpc.Metrics.JsonRpcCallDurationMicros.Observe(100, new RpcMetricLabels("eth_call", "success"));
+
+        using MemoryStream stream = new();
+        await Prometheus.Metrics.DefaultRegistry.CollectAndExportAsTextAsync(stream);
+        string scrape = Encoding.UTF8.GetString(stream.ToArray());
+        scrape.Should().Contain("nethermind_json_rpc_call_duration_micros_bucket");
+        scrape.Should().Contain("nethermind_json_rpc_call_duration_micros_sum");
+        scrape.Should().Contain("nethermind_json_rpc_call_duration_micros_count");
+        scrape.Should().NotContain("nethermind_json_rpc_call_latency_micros");
     }
 
     [TestCase(true)]

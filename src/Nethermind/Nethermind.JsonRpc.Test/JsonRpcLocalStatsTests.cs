@@ -139,8 +139,8 @@ namespace Nethermind.JsonRpc.Test
         public void Records_metric_when_per_method_enabled_even_without_info_logging()
         {
             RecordingMetricObserver observer = new();
-            IMetricObserver previous = Metrics.JsonRpcCallLatencyMicros;
-            Metrics.JsonRpcCallLatencyMicros = observer;
+            IMetricObserver previous = Metrics.JsonRpcCallDurationMicros;
+            Metrics.JsonRpcCallDurationMicros = observer;
             try
             {
                 TestLogger silentLogger = new() { IsInfo = false };
@@ -156,7 +156,7 @@ namespace Nethermind.JsonRpc.Test
             }
             finally
             {
-                Metrics.JsonRpcCallLatencyMicros = previous;
+                Metrics.JsonRpcCallDurationMicros = previous;
             }
         }
 

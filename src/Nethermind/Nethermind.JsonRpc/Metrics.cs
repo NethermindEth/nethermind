@@ -64,8 +64,8 @@ namespace Nethermind.JsonRpc
         [HistogramMetric(
             LabelNames = ["method", "status"],
             Buckets = [10, 50, 100, 250, 500, 1_000, 2_500, 5_000, 10_000, 25_000, 50_000, 100_000, 250_000, 500_000, 1_000_000])]
-        [Description("Individual rpc latency metric calls (microseconds)")]
-        public static IMetricObserver JsonRpcCallLatencyMicros = NoopMetricObserver.Instance;
+        [Description("Individual rpc call duration metric calls (microseconds)")]
+        public static IMetricObserver JsonRpcCallDurationMicros = NoopMetricObserver.Instance;
     }
 
     internal sealed class JsonRpcMetricLabels(string method, bool success) : IMetricLabels
