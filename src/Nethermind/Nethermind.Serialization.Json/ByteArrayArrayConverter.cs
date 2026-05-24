@@ -42,36 +42,30 @@ public class ByteArrayArrayConverter : JsonConverter<byte[][]>
         int seed = (int)BitOperations.RoundUpToPowerOf2((uint)Math.Max(2, Volatile.Read(ref _ewma)));
         byte[][] rented = ArrayPool<byte[]>.Shared.Rent(seed);
         int count = 0;
-        try
+        while (reader.TokenType != JsonTokenType.EndArray)
         {
-            while (reader.TokenType != JsonTokenType.EndArray)
+            if (count == rented.Length)
             {
-                if (count == rented.Length)
-                {
-                    byte[][] bigger = ArrayPool<byte[]>.Shared.Rent(rented.Length << 1);
-                    Array.Copy(rented, bigger, count);
-                    Array.Clear(rented, 0, count); // refs must not leak into the pool
-                    ArrayPool<byte[]>.Shared.Return(rented);
-                    rented = bigger;
-                }
-                rented[count++] = ByteArrayConverter.Convert(ref reader)!;
-                if (!reader.Read()) ThrowJsonException();
+                byte[][] bigger = ArrayPool<byte[]>.Shared.Rent(rented.Length << 1);
+                Array.Copy(rented, bigger, count);
+                Array.Clear(rented, 0, count); // refs must not leak into the pool
+                ArrayPool<byte[]>.Shared.Return(rented);
+                rented = bigger;
             }
-
-            byte[][] result = new byte[count][];
-            Array.Copy(rented, result, count);
-
-            // EMA alpha = 1/8. Race-tolerant: Volatile is enough; lost updates only slow convergence.
-            int prev = Volatile.Read(ref _ewma);
-            Volatile.Write(ref _ewma, ((prev * 7) + count) >> 3);
-
-            return result;
+            rented[count++] = ByteArrayConverter.Convert(ref reader)!;
+            if (!reader.Read()) ThrowJsonException();
         }
-        finally
-        {
-            Array.Clear(rented, 0, count);
-            ArrayPool<byte[]>.Shared.Return(rented);
-        }
+
+        byte[][] result = new byte[count][];
+        Array.Copy(rented, result, count);
+
+        // EMA alpha = 1/8. Race-tolerant: Volatile is enough; lost updates only slow convergence.
+        int prev = Volatile.Read(ref _ewma);
+        Volatile.Write(ref _ewma, ((prev * 7) + count) >> 3);
+
+        Array.Clear(rented, 0, count);
+        ArrayPool<byte[]>.Shared.Return(rented);
+        return result;
     }
 
     /// <inheritdoc/>

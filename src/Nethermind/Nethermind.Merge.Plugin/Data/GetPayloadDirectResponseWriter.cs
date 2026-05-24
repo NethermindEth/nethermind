@@ -188,16 +188,10 @@ internal static class GetPayloadDirectResponseWriter
         int length = decoder.GetLength(blockAccessList, RlpBehaviors.None);
         byte[] buffer = ArrayPool<byte>.Shared.Rent(length);
 
-        try
-        {
-            RlpStream stream = new(buffer);
-            decoder.Encode(stream, blockAccessList);
-            HexWriter.WriteHexString(writer, buffer.AsSpan(0, length), chunked: length > PayloadBodiesDirectResponseWriter.HexChunkThreshold);
-        }
-        finally
-        {
-            ArrayPool<byte>.Shared.Return(buffer);
-        }
+        RlpStream stream = new(buffer);
+        decoder.Encode(stream, blockAccessList);
+        HexWriter.WriteHexString(writer, buffer.AsSpan(0, length), chunked: length > PayloadBodiesDirectResponseWriter.HexChunkThreshold);
+        ArrayPool<byte>.Shared.Return(buffer);
     }
 
     private static async ValueTask<bool> WriteBlobsBundleAsync(

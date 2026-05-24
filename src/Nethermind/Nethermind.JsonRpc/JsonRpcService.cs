@@ -115,20 +115,13 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
         IResultWrapper? resultWrapper = null;
         try
         {
-            object? invocationResult;
-            try
+            object? invocationResult = parameterCount switch
             {
-                invocationResult = parameterCount switch
-                {
-                    0 when method.DirectNoParameterInvoker is { } directInvoker => directInvoker(rpcModule),
-                    > 0 when method.DirectParameterInvoker is { } directInvoker => directInvoker(rpcModule, parameters!),
-                    _ => method.Invoker.Invoke(rpcModule, parameters.AsSpan(0, parameterCount)),
-                };
-            }
-            finally
-            {
-                ReturnParameters(parameters, returnParametersToPool);
-            }
+                0 when method.DirectNoParameterInvoker is { } directInvoker => directInvoker(rpcModule),
+                > 0 when method.DirectParameterInvoker is { } directInvoker => directInvoker(rpcModule, parameters!),
+                _ => method.Invoker.Invoke(rpcModule, parameters.AsSpan(0, parameterCount)),
+            };
+            ReturnParameters(parameters, returnParametersToPool);
 
             switch (invocationResult)
             {
@@ -672,60 +665,51 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
 
         object?[] executionParameters = RentParameterArray(expectedParameters.Length, out returnParametersToPool);
 
-        try
+        Utf8JsonReader reader = new(providedParametersUtf8.Span, isFinalBlock: true, state: default);
+        if (!reader.Read() || reader.TokenType != JsonTokenType.StartArray)
         {
-            Utf8JsonReader reader = new(providedParametersUtf8.Span, isFinalBlock: true, state: default);
-            if (!reader.Read() || reader.TokenType != JsonTokenType.StartArray)
+            ThrowExpectedJsonArray();
+        }
+
+        if (!reader.Read())
+        {
+            ThrowIncompleteJsonArray();
+        }
+
+        int trailingMissingParamsCount = 0;
+        while (reader.TokenType != JsonTokenType.EndArray)
+        {
+            if (providedParametersLength == expectedParameters.Length)
             {
-                ThrowExpectedJsonArray();
+                missingParamsCount = -1;
+                providedParametersLength++;
+                return executionParameters;
             }
+
+            bool isMissing = IsMissingParameterMarker(in reader);
+            trailingMissingParamsCount = isMissing ? trailingMissingParamsCount + 1 : 0;
+            Utf8JsonReader parameterReader = reader;
+            try
+            {
+                executionParameters[providedParametersLength] = DeserializeParameter(ref parameterReader, expectedParameters[providedParametersLength]);
+                reader = parameterReader;
+            }
+            catch (Exception e)
+            {
+                parameterDeserializationException ??= ExceptionDispatchInfo.Capture(e);
+                reader.Skip();
+            }
+
+            providedParametersLength++;
 
             if (!reader.Read())
             {
                 ThrowIncompleteJsonArray();
             }
-
-            int trailingMissingParamsCount = 0;
-            while (reader.TokenType != JsonTokenType.EndArray)
-            {
-                if (providedParametersLength == expectedParameters.Length)
-                {
-                    missingParamsCount = -1;
-                    providedParametersLength++;
-                    return executionParameters;
-                }
-
-                bool isMissing = IsMissingParameterMarker(in reader);
-                trailingMissingParamsCount = isMissing ? trailingMissingParamsCount + 1 : 0;
-                Utf8JsonReader parameterReader = reader;
-                try
-                {
-                    executionParameters[providedParametersLength] = DeserializeParameter(ref parameterReader, expectedParameters[providedParametersLength]);
-                    reader = parameterReader;
-                }
-                catch (Exception e)
-                {
-                    parameterDeserializationException ??= ExceptionDispatchInfo.Capture(e);
-                    reader.Skip();
-                }
-
-                providedParametersLength++;
-
-                if (!reader.Read())
-                {
-                    ThrowIncompleteJsonArray();
-                }
-            }
-
-            missingParamsCount = expectedParameters.Length - providedParametersLength + trailingMissingParamsCount;
-            return executionParameters;
         }
-        catch
-        {
-            ReturnParameters(executionParameters, returnParametersToPool);
-            returnParametersToPool = false;
-            throw;
-        }
+
+        missingParamsCount = expectedParameters.Length - providedParametersLength + trailingMissingParamsCount;
+        return executionParameters;
 
         [DoesNotReturn, StackTraceHidden]
         static void ThrowExpectedJsonArray() =>
@@ -754,39 +738,30 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
 
         int i = 0;
 
-        try
+        if (providedParametersLength > 0)
         {
-            if (providedParametersLength > 0)
+            JsonElement.ArrayEnumerator enumerator = providedParameters.EnumerateArray();
+            bool useUtf8Parameters = !providedParametersUtf8.IsEmpty && providedParameters.ValueKind == JsonValueKind.Array;
+            JsonReaderState readerState = default;
+            int offset = 0;
+            bool started = false;
+            while (enumerator.MoveNext())
             {
-                JsonElement.ArrayEnumerator enumerator = providedParameters.EnumerateArray();
-                bool useUtf8Parameters = !providedParametersUtf8.IsEmpty && providedParameters.ValueKind == JsonValueKind.Array;
-                JsonReaderState readerState = default;
-                int offset = 0;
-                bool started = false;
-                while (enumerator.MoveNext())
+                ExpectedParameter expectedParameter = expectedParameters[i];
+                ReadOnlyMemory<byte> providedParameterUtf8 = default;
+                if (useUtf8Parameters && !JsonRpcArrayReader.TryReadNextItem(providedParametersUtf8, ref offset, ref readerState, ref started, out providedParameterUtf8))
                 {
-                    ExpectedParameter expectedParameter = expectedParameters[i];
-                    ReadOnlyMemory<byte> providedParameterUtf8 = default;
-                    if (useUtf8Parameters && !JsonRpcArrayReader.TryReadNextItem(providedParametersUtf8, ref offset, ref readerState, ref started, out providedParameterUtf8))
-                    {
-                        ThrowMissingParameterBytes();
-                    }
-
-                    object? parameter = DeserializeParameter(enumerator.Current, expectedParameter, providedParameterUtf8);
-                    executionParameters[i] = parameter;
-                    i++;
+                    ThrowMissingParameterBytes();
                 }
-            }
 
-            FillDefaultParameters(expectedParameters, executionParameters, providedParametersLength, totalLength);
-            return executionParameters;
+                object? parameter = DeserializeParameter(enumerator.Current, expectedParameter, providedParameterUtf8);
+                executionParameters[i] = parameter;
+                i++;
+            }
         }
-        catch
-        {
-            ReturnParameters(executionParameters, returnParametersToPool);
-            returnParametersToPool = false;
-            throw;
-        }
+
+        FillDefaultParameters(expectedParameters, executionParameters, providedParametersLength, totalLength);
+        return executionParameters;
 
         [DoesNotReturn, StackTraceHidden]
         static void ThrowMissingParameterBytes() =>
