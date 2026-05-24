@@ -33,7 +33,10 @@ namespace Nethermind.Blockchain.Tracing.ParityStyle;
 public class StreamingParityLikeTxTracer : ParityLikeTxTracer
 {
     private readonly Utf8JsonWriter _writer;
+    private readonly bool _fillVmTraceSlot;
     private readonly bool _streamVmTrace;
+    private readonly bool _streamActionsInline;
+    private readonly Func<ParityTraceAction, bool>? _actionFilter;
     private readonly JsonSerializerOptions _jsonOptions;
 
     private readonly Stack<StreamingVmFrame> _streamingFrames = new();
@@ -98,10 +101,6 @@ public class StreamingParityLikeTxTracer : ParityLikeTxTracer
         }
     }
 
-    private readonly bool _fillVmTraceSlot;
-    private readonly bool _streamActionsInline;
-    private readonly Func<ParityTraceAction, bool>? _actionFilter;
-
     public ParityTraceTypes ParityTraceTypes => _parityTraceTypes;
 
     /// <summary>
@@ -139,7 +138,7 @@ public class StreamingParityLikeTxTracer : ParityLikeTxTracer
         // SELFDESTRUCT frame: no JSON emitted; PopVmTraceFrame just pops.
         public bool IsSuicide;
         public bool JsonObjectOpened;
-        public byte[]? Code;
+        public PooledByteBuffer Code;
         // Parent op's opening was written without closing `}`; this frame owes the brace on return.
         public bool HasPendingParentOpToClose;
 
@@ -147,23 +146,21 @@ public class StreamingParityLikeTxTracer : ParityLikeTxTracer
         {
             IsSuicide = false;
             JsonObjectOpened = false;
-            Code = null;
+            Code.Dispose();
             HasPendingParentOpToClose = false;
         }
     }
 
-    private StreamingVmFrame RentFrame()
-    {
-        if (_framePool.Count > 0)
-        {
-            StreamingVmFrame f = _framePool.Pop();
-            f.Reset();
-            return f;
-        }
-        return new StreamingVmFrame();
-    }
+    private StreamingVmFrame RentFrame() =>
+        _framePool.Count > 0 ? _framePool.Pop() : new StreamingVmFrame();
 
-    private void ReturnFrame(StreamingVmFrame frame) => _framePool.Push(frame);
+    // Reset eagerly on return so any rented Code buffer is given back to ArrayPool
+    // immediately rather than sitting in the frame pool until the next Rent.
+    private void ReturnFrame(StreamingVmFrame frame)
+    {
+        frame.Reset();
+        _framePool.Push(frame);
+    }
 
     protected override ParityTraceAction RentAction()
     {
@@ -348,6 +345,14 @@ public class StreamingParityLikeTxTracer : ParityLikeTxTracer
         ReturnTraceAddress(action.TraceAddress);
         action.TraceAddress = default;
         _actionPool.Push(action);
+
+        // Drop the _trace.Action reference when the root pops; otherwise ResetForNextTx /
+        // Dispose would walk the (already-pooled) tree again and double-push entries into
+        // _actionPool, letting a later RentAction hand out the same instance twice.
+        if (ReferenceEquals(_trace.Action, action))
+        {
+            _trace.Action = null;
+        }
     }
 
     /// <summary>
@@ -470,6 +475,8 @@ public class StreamingParityLikeTxTracer : ParityLikeTxTracer
         if (hadPendingParentOp)
         {
             _writer.WriteEndObject();
+            // _currentOperation was already nulled by PushVmTraceFrame; cleared again
+            // defensively in case a future change widens the path that lands here.
             _currentOperation = null;
         }
 
@@ -617,24 +624,26 @@ public class StreamingParityLikeTxTracer : ParityLikeTxTracer
             return;
         }
 
-        _streamingFrames.Peek().Code = byteCode.ToArray();
+        StreamingVmFrame frame = _streamingFrames.Peek();
+        frame.Code.Dispose();
+        frame.Code = PooledByteBuffer.Rent(byteCode.Span);
     }
 
     private void OpenFrameJson(StreamingVmFrame frame)
     {
         _writer.WriteStartObject();
         _writer.WritePropertyName("code"u8);
-        JsonSerializer.Serialize(_writer, frame.Code ?? [], _jsonOptions);
+        ByteArrayConverter.Convert(_writer, frame.Code.Span, skipLeadingZeros: false);
         _writer.WritePropertyName("ops"u8);
         _writer.WriteStartArray();
         frame.JsonObjectOpened = true;
     }
 
-    private void WriteEmptyFrame(byte[]? code)
+    private void WriteEmptyFrame(in PooledByteBuffer code)
     {
         _writer.WriteStartObject();
         _writer.WritePropertyName("code"u8);
-        JsonSerializer.Serialize(_writer, code ?? [], _jsonOptions);
+        ByteArrayConverter.Convert(_writer, code.Span, skipLeadingZeros: false);
         _writer.WritePropertyName("ops"u8);
         _writer.WriteStartArray();
         _writer.WriteEndArray();

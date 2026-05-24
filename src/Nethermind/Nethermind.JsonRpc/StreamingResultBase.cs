@@ -8,7 +8,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Logging;
 
-namespace Nethermind.JsonRpc.Modules.DebugModule;
+namespace Nethermind.JsonRpc;
 
 /// <summary>
 /// Shared scaffolding for streaming JSON-RPC results that defer trace execution into
@@ -17,9 +17,11 @@ namespace Nethermind.JsonRpc.Modules.DebugModule;
 /// the type-specific JSON content via <see cref="EmitContent"/>.
 /// </summary>
 /// <remarks>
-/// <see cref="GethLikeTxTraceStreamingSingleResult"/> cannot inherit this base because it
-/// already inherits <see cref="Blockchain.Tracing.GethStyle.GethLikeTxTrace"/> to satisfy
-/// the <c>ResultWrapper&lt;GethLikeTxTrace&gt;</c> return-type contract; it keeps its own
+/// Used by both the debug <c>debug_trace*</c> streaming results and the parity
+/// <c>trace_*</c> streaming results. <c>GethLikeTxTraceStreamingSingleResult</c> cannot
+/// inherit this base because it already inherits
+/// <c>Blockchain.Tracing.GethStyle.GethLikeTxTrace</c> to satisfy the
+/// <c>ResultWrapper&lt;GethLikeTxTrace&gt;</c> return-type contract; it keeps its own
 /// matching scaffolding inline.
 /// </remarks>
 public abstract class StreamingResultBase : IStreamableResult, IDisposable
@@ -55,7 +57,7 @@ public abstract class StreamingResultBase : IStreamableResult, IDisposable
         }
         catch (OperationCanceledException) when (combinedToken.IsCancellationRequested)
         {
-            if (Logger.IsDebug) Logger.Debug("debug_trace streaming cancelled mid-response; client receives a partial body with the JSON envelope closed by the inner finally blocks.");
+            if (Logger.IsDebug) Logger.Debug("Streaming JSON-RPC response cancelled mid-emit; client receives a partial body with the JSON envelope closed by the inner finally blocks.");
         }
     }
 

@@ -60,7 +60,7 @@ public class TraceStoreRpcModule(ITraceRpcModule traceModule,
         CancellationTokenSource timeoutCts = _jsonRpcConfig.BuildTimeoutCancellationToken();
         try
         {
-            return ResultWrapper<IEnumerable<T>>.Success(new ParityTxTraceStreamingResult<T>(runStreaming, timeoutCts, runBuffered));
+            return ResultWrapper<IEnumerable<T>>.Success(new ParityTxTraceStreamingResult<T>(runStreaming, timeoutCts, _logger, runBuffered));
         }
         catch
         {

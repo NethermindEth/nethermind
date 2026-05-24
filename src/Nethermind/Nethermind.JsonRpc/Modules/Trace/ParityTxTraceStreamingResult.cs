@@ -9,15 +9,15 @@ using System.Linq;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Threading;
-using System.Threading.Tasks;
+using Nethermind.Logging;
 
 namespace Nethermind.JsonRpc.Modules.Trace;
 
 /// <summary>
 /// Streaming result wrapping a deferred execution delegate that drives a
-/// <see cref="StreamingParityLikeBlockTracer"/>. <see cref="WriteToAsync"/> opens the
-/// outer JSON array, runs the delegate (which emits items per-tx directly), and closes
-/// the array on return.
+/// <see cref="StreamingParityLikeBlockTracer"/>. The outer JSON array is opened by
+/// <see cref="StreamingResultBase.WriteToAsync"/>, the delegate runs the trace and emits
+/// items per-tx directly, and the array is closed on return.
 /// </summary>
 /// <remarks>
 /// In-process iteration via <see cref="IEnumerable{T}"/> uses the buffered fallback
@@ -25,11 +25,10 @@ namespace Nethermind.JsonRpc.Modules.Trace;
 /// <see cref="IStreamableResult.WriteToAsync"/>.
 /// </remarks>
 [JsonConverter(typeof(ParityTxTraceStreamingResultConverterFactory))]
-public sealed class ParityTxTraceStreamingResult<T> : IStreamableResult, IEnumerable<T>, IDisposable
+public sealed class ParityTxTraceStreamingResult<T> : StreamingResultBase, IEnumerable<T>
 {
     private readonly Action<Utf8JsonWriter, PipeWriter?, CancellationToken> _runExecution;
     private readonly Func<IEnumerable<T>>? _materializeForInProcess;
-    private readonly CancellationTokenSource _timeoutCts;
 
     /// <param name="materializeForInProcess">
     /// Buffered fallback for in-process enumeration; HTTP clients never hit this. If
@@ -38,14 +37,14 @@ public sealed class ParityTxTraceStreamingResult<T> : IStreamableResult, IEnumer
     public ParityTxTraceStreamingResult(
         Action<Utf8JsonWriter, PipeWriter?, CancellationToken> runExecution,
         CancellationTokenSource timeoutCts,
+        ILogger logger,
         Func<IEnumerable<T>>? materializeForInProcess = null)
+        : base(timeoutCts, logger)
     {
         ArgumentNullException.ThrowIfNull(runExecution);
-        ArgumentNullException.ThrowIfNull(timeoutCts);
 
         _runExecution = runExecution;
         _materializeForInProcess = materializeForInProcess;
-        _timeoutCts = timeoutCts;
     }
 
     public IEnumerator<T> GetEnumerator() =>
@@ -54,38 +53,12 @@ public sealed class ParityTxTraceStreamingResult<T> : IStreamableResult, IEnumer
             : _materializeForInProcess().GetEnumerator();
     IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
 
-    public void Dispose() => _timeoutCts.Dispose();
-
-    public async ValueTask WriteToAsync(PipeWriter writer, CancellationToken cancellationToken)
-    {
-        using CancellationTokenSource linkedCts =
-            CancellationTokenSource.CreateLinkedTokenSource(_timeoutCts.Token, cancellationToken);
-        CancellationToken token = linkedCts.Token;
-
-        using Utf8JsonWriter jsonWriter = new(writer, new JsonWriterOptions { SkipValidation = true });
-
-        jsonWriter.WriteStartArray();
-        jsonWriter.Flush();
-
-        try
-        {
-            _runExecution(jsonWriter, writer, token);
-        }
-        finally
-        {
-            jsonWriter.WriteEndArray();
-            jsonWriter.Flush();
-            await writer.FlushAsync(token);
-        }
-    }
-
-    // In-process fallback used by the JSON converter; no pipe-level flushing.
-    internal void WriteAsJson(Utf8JsonWriter writer)
+    protected override void EmitContent(Utf8JsonWriter writer, PipeWriter? pipeWriter, CancellationToken cancellationToken)
     {
         writer.WriteStartArray();
         try
         {
-            _runExecution(writer, null, _timeoutCts.Token);
+            _runExecution(writer, pipeWriter, cancellationToken);
         }
         finally
         {

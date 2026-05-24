@@ -575,7 +575,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
             try
             {
                 return ResultWrapper<IEnumerable<ParityTxTraceFromReplay>>.Success(
-                    new ParityTxTraceStreamingResult<ParityTxTraceFromReplay>(runStreaming, timeoutCts, runBuffered));
+                    new ParityTxTraceStreamingResult<ParityTxTraceFromReplay>(runStreaming, timeoutCts, _logger, runBuffered));
             }
             catch
             {
@@ -598,7 +598,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
             try
             {
                 return ResultWrapper<IEnumerable<ParityTxTraceFromStore>>.Success(
-                    new ParityTxTraceStreamingResult<ParityTxTraceFromStore>(runStreaming, timeoutCts, runBuffered));
+                    new ParityTxTraceStreamingResult<ParityTxTraceFromStore>(runStreaming, timeoutCts, _logger, runBuffered));
             }
             catch
             {

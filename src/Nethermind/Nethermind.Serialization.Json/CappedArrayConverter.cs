@@ -15,9 +15,9 @@ namespace Nethermind.Serialization.Json;
 /// over-allocated rented buffer length.
 /// </summary>
 /// <remarks>
-/// For <c>CappedArray&lt;byte&gt;</c> this produces a JSON array of numbers, not the
-/// Ethereum <c>"0x..."</c> hex string. Add a dedicated converter before this factory if
-/// that type ever reaches a wire-level surface.
+/// <c>CappedArray&lt;byte&gt;</c> is routed to <see cref="CappedArrayByteConverter"/> so
+/// it emits the Ethereum <c>"0x..."</c> hex string consistent with <c>byte[]</c>; other
+/// element types use the generic array-of-elements path.
 /// </remarks>
 public class CappedArrayConverter : JsonConverterFactory
 {
@@ -27,6 +27,10 @@ public class CappedArrayConverter : JsonConverterFactory
     public override JsonConverter CreateConverter(Type typeToConvert, JsonSerializerOptions options)
     {
         Type element = typeToConvert.GetGenericArguments()[0];
+        if (element == typeof(byte))
+        {
+            return new CappedArrayByteConverter();
+        }
         Type converter = typeof(CappedArrayConverter<>).MakeGenericType(element);
         return (JsonConverter)Activator.CreateInstance(converter)!;
     }
@@ -65,5 +69,29 @@ internal sealed class CappedArrayConverter<T> : JsonConverter<CappedArray<T>> wh
             JsonSerializer.Serialize(writer, span[i], options);
         }
         writer.WriteEndArray();
+    }
+}
+
+/// <summary>
+/// Hex-string converter for <see cref="CappedArray{Byte}"/> that matches the wire shape of
+/// <see cref="ByteArrayConverter"/> (<c>"0x..."</c>) so callers can swap between
+/// <c>byte[]</c> and <c>CappedArray&lt;byte&gt;</c> without changing the JSON output.
+/// </summary>
+internal sealed class CappedArrayByteConverter : JsonConverter<CappedArray<byte>>
+{
+    public override CappedArray<byte> Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+    {
+        byte[] bytes = ByteArrayConverter.Convert(ref reader);
+        return bytes is null ? default : new CappedArray<byte>(bytes);
+    }
+
+    public override void Write(Utf8JsonWriter writer, CappedArray<byte> value, JsonSerializerOptions options)
+    {
+        if (value.IsNull)
+        {
+            writer.WriteNullValue();
+            return;
+        }
+        ByteArrayConverter.Convert(writer, value.AsSpan(), skipLeadingZeros: false);
     }
 }

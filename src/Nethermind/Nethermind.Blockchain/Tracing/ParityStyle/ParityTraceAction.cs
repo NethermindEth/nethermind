@@ -30,9 +30,15 @@ public class ParityTraceAction
 
     /// <summary>
     /// Count of <see cref="Subtraces"/> with <see cref="IncludeInTrace"/> = <see langword="true"/>,
-    /// maintained incrementally by <c>PushAction</c>. Lets streaming tracers carry the
-    /// count without holding the list.
+    /// maintained incrementally by <c>PushAction</c>.
     /// </summary>
+    /// <remarks>
+    /// This is the canonical subtrace count for JSON emission. In buffered mode it equals
+    /// <c>Subtraces.Count</c>; in <c>streamActionsInline</c> mode (Store-mode streaming)
+    /// <see cref="Subtraces"/> is intentionally not populated to avoid retaining the tree,
+    /// so <c>Subtraces.Count</c> reports <c>0</c> while this field carries the real count.
+    /// Always prefer this field over <c>Subtraces.Count</c> when serialising.
+    /// </remarks>
     [JsonIgnore]
     public int IncludedSubtraceCount { get; set; }
 

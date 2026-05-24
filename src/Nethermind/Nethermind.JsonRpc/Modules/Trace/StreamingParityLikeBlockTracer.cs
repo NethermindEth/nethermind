@@ -54,6 +54,7 @@ public sealed class StreamingParityLikeBlockTracer : ParityLikeBlockTracer, IDis
     private readonly ParityTraceStreamMode _mode;
     private readonly bool _includeTxHash;
     private readonly StoreItemPredicate? _storeFilter;
+    private readonly Func<ParityTraceAction, bool>? _cachedActionFilter;
     private readonly JsonSerializerOptions _jsonOptions;
 
     private ParityLikeTxTrace? _pendingRewardTrace;
@@ -86,6 +87,7 @@ public sealed class StreamingParityLikeBlockTracer : ParityLikeBlockTracer, IDis
         _pipeWriter = pipeWriter;
         _cancellationToken = cancellationToken;
         _storeFilter = storeFilter;
+        _cachedActionFilter = storeFilter is null ? null : new(storeFilter);
         _jsonOptions = EthereumJsonSerializer.JsonOptions;
     }
 
@@ -115,6 +117,7 @@ public sealed class StreamingParityLikeBlockTracer : ParityLikeBlockTracer, IDis
         _pipeWriter = pipeWriter;
         _cancellationToken = cancellationToken;
         _storeFilter = storeFilter;
+        _cachedActionFilter = storeFilter is null ? null : new(storeFilter);
         _jsonOptions = EthereumJsonSerializer.JsonOptions;
     }
 
@@ -131,12 +134,13 @@ public sealed class StreamingParityLikeBlockTracer : ParityLikeBlockTracer, IDis
                 ? perTxTypes
                 : _types;
 
+        _cancellationToken.ThrowIfCancellationRequested();
+
         bool fillVmTraceSlot = _mode == ParityTraceStreamMode.Replay;
         if (fillVmTraceSlot)
         {
             // Open the Replay envelope and reserve the vmTrace slot before tracer construction;
             // the tx tracer streams into that slot during execution.
-            _cancellationToken.ThrowIfCancellationRequested();
             _writer.WriteStartObject();
             _writer.WritePropertyName("vmTrace"u8);
         }
@@ -144,13 +148,14 @@ public sealed class StreamingParityLikeBlockTracer : ParityLikeBlockTracer, IDis
         // Store mode can emit each action at PopAction (post-order) since no field competes
         // for the writer; Replay must keep the action tree buffered because vmTrace owns it.
         bool streamActionsInline = !fillVmTraceSlot;
-        Func<ParityTraceAction, bool>? actionFilter = _storeFilter is null ? null : new(_storeFilter);
 
         // Reuse the tx tracer across every tx in this block. callMany may vary per-tx
-        // types — fall back to a fresh tracer in the (rare) mismatch case.
+        // types — dispose the prior instance before replacing so its ArrayPool rentals
+        // don't leak.
         if (_reusableTxTracer is null || _reusableTxTracer.ParityTraceTypes != resolvedTypes)
         {
-            _reusableTxTracer = new StreamingParityLikeTxTracer(_block!, tx, resolvedTypes, _writer, fillVmTraceSlot, streamActionsInline, actionFilter);
+            _reusableTxTracer?.Dispose();
+            _reusableTxTracer = new StreamingParityLikeTxTracer(_block!, tx, resolvedTypes, _writer, fillVmTraceSlot, streamActionsInline, _cachedActionFilter);
         }
         else
         {
