@@ -46,10 +46,16 @@ public class TraceRpcModuleTests
 {
     private class Context
     {
-        public async Task Build(ISpecProvider? specProvider = null, bool isAura = false)
+        public async Task Build(ISpecProvider? specProvider = null, bool isAura = false, bool enableStreaming = true)
         {
-            JsonRpcConfig = new JsonRpcConfig();
-            Blockchain = await TestRpcBlockchain.ForTest(isAura ? SealEngineType.AuRa : SealEngineType.NethDev).Build(specProvider);
+            JsonRpcConfig = new JsonRpcConfig { EnableTracingStreamMode = enableStreaming };
+            Blockchain = await TestRpcBlockchain.ForTest(isAura ? SealEngineType.AuRa : SealEngineType.NethDev)
+                .WithConfig(JsonRpcConfig)
+                .Build(builder =>
+                {
+                    if (specProvider is not null) builder.AddSingleton<ISpecProvider>(specProvider);
+                    builder.AddSingleton<IJsonRpcConfig>(JsonRpcConfig);
+                });
 
             await Blockchain.AddFunds(TestItem.AddressA, 1000.Ether);
             await Blockchain.AddFunds(TestItem.AddressB, 1000.Ether);
@@ -78,6 +84,20 @@ public class TraceRpcModuleTests
         public IJsonRpcConfig JsonRpcConfig { get; private set; } = null!;
         public TestRpcBlockchain Blockchain { get; set; } = null!;
 
+    }
+
+    // Structural JSON equality used by streaming-aware tests: both buffered and streaming
+    // paths emit the same data with different field order (vmTrace position), so a literal
+    // string match would force duplicating expected JSON per mode. DeepEquals collapses the
+    // expected/actual to the same canonical form and reports a readable diff on mismatch.
+    private static void AssertJsonEquivalent(string actual, string expected)
+    {
+        JToken actualToken = JToken.Parse(actual);
+        JToken expectedToken = JToken.Parse(expected);
+        if (!JToken.DeepEquals(actualToken, expectedToken))
+        {
+            Assert.Fail($"JSON not equivalent.\nActual:   {actual}\nExpected: {expected}");
+        }
     }
 
     [Test]
@@ -538,11 +558,12 @@ public class TraceRpcModuleTests
                          25); //additional second just to show that in this time span timeout should occur if given one for whole class
         Assert.DoesNotThrow(() => traceRpcModule.trace_block(searchParameter));
     }
-    [Test]
-    public async Task Trace_replayTransaction_test()
+    [TestCase(true)]
+    [TestCase(false)]
+    public async Task Trace_replayTransaction_test(bool enableStreaming)
     {
         Context context = new();
-        await context.Build();
+        await context.Build(enableStreaming: enableStreaming);
         TestRpcBlockchain blockchain = context.Blockchain;
         UInt256 currentNonceAddressA = blockchain.ReadOnlyState.GetNonce(TestItem.AddressA);
         UInt256 currentNonceAddressB = blockchain.ReadOnlyState.GetNonce(TestItem.AddressB);
@@ -572,11 +593,12 @@ public class TraceRpcModuleTests
         Assert.That(traces.Result.ResultType == ResultType.Success, Is.True);
     }
 
-    [Test]
-    public async Task Trace_replayTransaction_reward_test()
+    [TestCase(true)]
+    [TestCase(false)]
+    public async Task Trace_replayTransaction_reward_test(bool enableStreaming)
     {
         Context context = new();
-        await context.Build();
+        await context.Build(enableStreaming: enableStreaming);
         TestRpcBlockchain blockchain = context.Blockchain;
         UInt256 currentNonceAddressA = blockchain.ReadOnlyState.GetNonce(TestItem.AddressA);
         UInt256 currentNonceAddressB = blockchain.ReadOnlyState.GetNonce(TestItem.AddressB);
@@ -835,11 +857,12 @@ public class TraceRpcModuleTests
         tr.Data.Should().HaveCount(2);
     }
 
-    [Test]
-    public async Task Trace_callMany_is_blockParameter_optional_test()
+    [TestCase(true)]
+    [TestCase(false)]
+    public async Task Trace_callMany_is_blockParameter_optional_test(bool enableStreaming)
     {
         Context context = new();
-        await context.Build();
+        await context.Build(enableStreaming: enableStreaming);
         string calls = $"[[{{\"from\":\"{TestItem.AddressA}\",\"to\":\"0x8cf85548ae57a91f8132d0831634c0fcef06e505\",\"gas\":\"0xf4240\"}},[\"trace\"]],[{{\"from\":\"{TestItem.AddressB}\",\"to\":\"0xab736519b5433974059da38da74b8db5376942cd\",\"gasPrice\":\"0xb2b29a6dc\",\"gas\":\"0xf4240\"}},[\"trace\"]]]";
 
         string serialized = await RpcTest.TestSerializedRequest(
@@ -850,15 +873,20 @@ public class TraceRpcModuleTests
             context.TraceRpcModule,
             "trace_callMany", calls);
 
-        Assert.That(serialized, Is.EqualTo($"{{\"jsonrpc\":\"2.0\",\"result\":[{{\"vmTrace\":null,\"output\":\"0x\",\"stateDiff\":null,\"trace\":[{{\"action\":{{\"callType\":\"call\",\"from\":\"{TestItem.AddressA}\",\"gas\":\"0xef038\",\"input\":\"0x\",\"to\":\"0x8cf85548ae57a91f8132d0831634c0fcef06e505\",\"value\":\"0x0\"}},\"result\":{{\"gasUsed\":\"0x0\",\"output\":\"0x\"}},\"subtraces\":0,\"traceAddress\":[],\"type\":\"call\"}}]}},{{\"vmTrace\":null,\"output\":\"0x\",\"stateDiff\":null,\"trace\":[{{\"action\":{{\"callType\":\"call\",\"from\":\"{TestItem.AddressB}\",\"gas\":\"0xef038\",\"input\":\"0x\",\"to\":\"0xab736519b5433974059da38da74b8db5376942cd\",\"value\":\"0x0\"}},\"result\":{{\"gasUsed\":\"0x0\",\"output\":\"0x\"}},\"subtraces\":0,\"traceAddress\":[],\"type\":\"call\"}}]}}],\"id\":67}}"), serialized.Replace("\"", "\\\""));
-        Assert.That(serialized_without_blockParameter_param, Is.EqualTo($"{{\"jsonrpc\":\"2.0\",\"result\":[{{\"vmTrace\":null,\"output\":\"0x\",\"stateDiff\":null,\"trace\":[{{\"action\":{{\"callType\":\"call\",\"from\":\"{TestItem.AddressA}\",\"gas\":\"0xef038\",\"input\":\"0x\",\"to\":\"0x8cf85548ae57a91f8132d0831634c0fcef06e505\",\"value\":\"0x0\"}},\"result\":{{\"gasUsed\":\"0x0\",\"output\":\"0x\"}},\"subtraces\":0,\"traceAddress\":[],\"type\":\"call\"}}]}},{{\"vmTrace\":null,\"output\":\"0x\",\"stateDiff\":null,\"trace\":[{{\"action\":{{\"callType\":\"call\",\"from\":\"{TestItem.AddressB}\",\"gas\":\"0xef038\",\"input\":\"0x\",\"to\":\"0xab736519b5433974059da38da74b8db5376942cd\",\"value\":\"0x0\"}},\"result\":{{\"gasUsed\":\"0x0\",\"output\":\"0x\"}},\"subtraces\":0,\"traceAddress\":[],\"type\":\"call\"}}]}}],\"id\":67}}"), serialized_without_blockParameter_param.Replace("\"", "\\\""));
+        // One expected JSON for both modes via structural compare; the streaming path emits
+        // vmTrace first while the buffered path emits it last, so this test cannot rely on
+        // byte-for-byte equality.
+        string expected = $"{{\"jsonrpc\":\"2.0\",\"result\":[{{\"output\":\"0x\",\"stateDiff\":null,\"trace\":[{{\"action\":{{\"callType\":\"call\",\"from\":\"{TestItem.AddressA}\",\"gas\":\"0xef038\",\"input\":\"0x\",\"to\":\"0x8cf85548ae57a91f8132d0831634c0fcef06e505\",\"value\":\"0x0\"}},\"result\":{{\"gasUsed\":\"0x0\",\"output\":\"0x\"}},\"subtraces\":0,\"traceAddress\":[],\"type\":\"call\"}}],\"vmTrace\":null}},{{\"output\":\"0x\",\"stateDiff\":null,\"trace\":[{{\"action\":{{\"callType\":\"call\",\"from\":\"{TestItem.AddressB}\",\"gas\":\"0xef038\",\"input\":\"0x\",\"to\":\"0xab736519b5433974059da38da74b8db5376942cd\",\"value\":\"0x0\"}},\"result\":{{\"gasUsed\":\"0x0\",\"output\":\"0x\"}},\"subtraces\":0,\"traceAddress\":[],\"type\":\"call\"}}],\"vmTrace\":null}}],\"id\":67}}";
+        AssertJsonEquivalent(serialized, expected);
+        AssertJsonEquivalent(serialized_without_blockParameter_param, expected);
     }
 
-    [Test]
-    public async Task Trace_callMany_accumulates_state_changes()
+    [TestCase(true)]
+    [TestCase(false)]
+    public async Task Trace_callMany_accumulates_state_changes(bool enableStreaming)
     {
         Context context = new();
-        await context.Build();
+        await context.Build(enableStreaming: enableStreaming);
 
         string calls = $"[[{{\"from\":\"{TestItem.AddressA}\",\"to\":\"0x0000000000000000000000000000000000000000\",\"value\":\"1\",\"gas\":\"0xf4240\"}},[\"statediff\"]],[{{\"from\":\"{TestItem.AddressA}\",\"to\":\"0x0000000000000000000000000000000000000000\",\"value\":\"1\",\"gas\":\"0xf4240\"}},[\"statediff\"]]]";
 
@@ -867,9 +895,9 @@ public class TraceRpcModuleTests
             "trace_callMany", calls);
 
         string expected =
-            "{\"jsonrpc\":\"2.0\",\"result\":[{\"vmTrace\":null,\"output\":null,\"stateDiff\":{\"0x0000000000000000000000000000000000000000\":{\"balance\":{\"*\":{\"from\":\"0x2d\",\"to\":\"0x2e\"}},\"code\":\"=\",\"nonce\":\"=\",\"storage\":{}},\"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099\":{\"balance\":{\"*\":{\"from\":\"0x3635c9adc5de9f09e5\",\"to\":\"0x3635c9adc5de9f09e4\"}},\"code\":\"=\",\"nonce\":{\"*\":{\"from\":\"0x3\",\"to\":\"0x4\"}},\"storage\":{}}},\"trace\":[]},{\"vmTrace\":null,\"output\":null,\"stateDiff\":{\"0x0000000000000000000000000000000000000000\":{\"balance\":{\"*\":{\"from\":\"0x2e\",\"to\":\"0x2f\"}},\"code\":\"=\",\"nonce\":\"=\",\"storage\":{}},\"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099\":{\"balance\":{\"*\":{\"from\":\"0x3635c9adc5de9f09e4\",\"to\":\"0x3635c9adc5de9f09e3\"}},\"code\":\"=\",\"nonce\":{\"*\":{\"from\":\"0x4\",\"to\":\"0x5\"}},\"storage\":{}}},\"trace\":[]}],\"id\":67}";
+            "{\"jsonrpc\":\"2.0\",\"result\":[{\"output\":null,\"stateDiff\":{\"0x0000000000000000000000000000000000000000\":{\"balance\":{\"*\":{\"from\":\"0x2d\",\"to\":\"0x2e\"}},\"code\":\"=\",\"nonce\":\"=\",\"storage\":{}},\"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099\":{\"balance\":{\"*\":{\"from\":\"0x3635c9adc5de9f09e5\",\"to\":\"0x3635c9adc5de9f09e4\"}},\"code\":\"=\",\"nonce\":{\"*\":{\"from\":\"0x3\",\"to\":\"0x4\"}},\"storage\":{}}},\"trace\":[],\"vmTrace\":null},{\"output\":null,\"stateDiff\":{\"0x0000000000000000000000000000000000000000\":{\"balance\":{\"*\":{\"from\":\"0x2e\",\"to\":\"0x2f\"}},\"code\":\"=\",\"nonce\":\"=\",\"storage\":{}},\"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099\":{\"balance\":{\"*\":{\"from\":\"0x3635c9adc5de9f09e4\",\"to\":\"0x3635c9adc5de9f09e3\"}},\"code\":\"=\",\"nonce\":{\"*\":{\"from\":\"0x4\",\"to\":\"0x5\"}},\"storage\":{}}},\"trace\":[],\"vmTrace\":null}],\"id\":67}";
 
-        Assert.That(serialized, Is.EqualTo(expected), serialized.Replace("\"", "\\\""));
+        AssertJsonEquivalent(serialized, expected);
     }
 
     [Test]
@@ -953,7 +981,7 @@ public class TraceRpcModuleTests
         """{"from":"0x7f554713be84160fdf0178cc8df86f5aabd33397","to":"0xc200000000000000000000000000000000000000","gas":"0xf4240"}""",
         "stateDiff",
         """{"0x7f554713be84160fdf0178cc8df86f5aabd33397":{"nonce":"0x123"}}""",
-        """{"jsonrpc":"2.0","result":{"output":null,"stateDiff":{"0x7f554713be84160fdf0178cc8df86f5aabd33397":{"balance":"=","code":"=","nonce":{"*":{"from":"0x123","to":"0x124"}},"storage":{}}},"trace":[],"vmTrace":null},"id":67}"""
+        """{"jsonrpc":"2.0","result":{"vmTrace":null,"output":null,"stateDiff":{"0x7f554713be84160fdf0178cc8df86f5aabd33397":{"balance":"=","code":"=","nonce":{"*":{"from":"0x123","to":"0x124"}},"storage":{}}},"trace":[]},"id":67}"""
     )]
     [TestCase(
         "Uses account balance from state override",
@@ -994,7 +1022,7 @@ public class TraceRpcModuleTests
             context.TraceRpcModule,
             "trace_call", transaction, new[] { traceType }, "latest", stateOverride);
 
-        JToken.Parse(serialized).Should().BeEquivalentTo(expectedResult);
+        AssertJsonEquivalent(serialized, expectedResult);
     }
 
     [TestCase(
@@ -1028,8 +1056,9 @@ public class TraceRpcModuleTests
 
         using (new AssertionScope())
         {
-            JToken.Parse(resultOverrideBefore).Should().BeEquivalentTo(resultOverrideAfter);
-            JToken.Parse(resultNoOverride).Should().NotBeEquivalentTo(resultOverrideAfter);
+            AssertJsonEquivalent(resultOverrideBefore, resultOverrideAfter);
+            JToken.DeepEquals(JToken.Parse(resultNoOverride), JToken.Parse(resultOverrideAfter))
+                .Should().BeFalse("a no-override call must not produce the same result as the override call");
         }
     }
 

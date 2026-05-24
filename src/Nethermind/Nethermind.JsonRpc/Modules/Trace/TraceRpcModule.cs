@@ -163,6 +163,10 @@ namespace Nethermind.JsonRpc.Modules.Trace
             Block block = new(header, [tx], []);
 
             ParityTraceTypes traceTypes1 = GetParityTypes(traceTypes);
+            // trace_call / trace_rawTransaction stay buffered because state-override scope
+            // closes when the JSON-RPC method returns; deferring execution to serialize-time
+            // would throw MissingTrieNodeException on the now-invalid overlay. Multi-tx
+            // streaming covers the heap savings; single-tx scopes are tiny anyway.
             using Scope<ITracer> env = tracerEnv.BuildAndOverride(header, stateOverride);
             ITracer tracer = env.Component;
 
@@ -202,8 +206,24 @@ namespace Nethermind.JsonRpc.Modules.Trace
                 return GetStateFailureResult<ParityTxTraceFromReplay>(parentSearch.Object);
             }
 
-            IReadOnlyCollection<ParityLikeTxTrace> txTrace = ExecuteBlock(parentSearch.Object, block, new ParityLikeBlockTracer(txHash, GetParityTypes(traceTypes)));
-            return ResultWrapper<ParityTxTraceFromReplay>.Success(new ParityTxTraceFromReplay(txTrace));
+            BlockHeader parentHeader = parentSearch.Object!;
+            ParityTraceTypes parityTypes = GetParityTypes(traceTypes);
+            return BuildStreamingReplaySingleResult(
+                runStreaming: (writer, pipeWriter, token) =>
+                {
+                    using StreamingParityLikeBlockTracer tracer = new(
+                        txHash,
+                        parityTypes,
+                        ParityTraceStreamMode.Replay,
+                        includeTxHash: false,
+                        writer, pipeWriter, token);
+                    ExecuteBlockWithCancellation(parentHeader, block, tracer, specOverride: null, token);
+                },
+                runBuffered: () =>
+                {
+                    IReadOnlyCollection<ParityLikeTxTrace> txTrace = ExecuteBlock(parentHeader, block, new ParityLikeBlockTracer(txHash, parityTypes));
+                    return new ParityTxTraceFromReplay(txTrace);
+                });
         }
 
         /// <summary>
@@ -443,8 +463,23 @@ namespace Nethermind.JsonRpc.Modules.Trace
                 return GetStateFailureResult<IEnumerable<ParityTxTraceFromStore>>(parentSearch.Object);
             }
 
-            IReadOnlyCollection<ParityLikeTxTrace> txTrace = ExecuteBlock(parentSearch.Object!, block, new(txHash, ParityTraceTypes.Trace));
-            return ResultWrapper<IEnumerable<ParityTxTraceFromStore>>.Success(ParityTxTraceFromStore.FromTxTrace(txTrace));
+            BlockHeader parentHeader = parentSearch.Object!;
+            return BuildStreamingStoreResult(
+                runStreaming: (writer, pipeWriter, token) =>
+                {
+                    using StreamingParityLikeBlockTracer tracer = new(
+                        txHash,
+                        ParityTraceTypes.Trace,
+                        ParityTraceStreamMode.Store,
+                        includeTxHash: false,
+                        writer, pipeWriter, token);
+                    ExecuteBlockWithCancellation(parentHeader, block, tracer, specOverride: null, token);
+                },
+                runBuffered: () =>
+                {
+                    IReadOnlyCollection<ParityLikeTxTrace> txTrace = ExecuteBlock(parentHeader, block, new(txHash, ParityTraceTypes.Trace));
+                    return ParityTxTraceFromStore.FromTxTrace(txTrace);
+                });
         }
 
         /// <summary>
@@ -599,6 +634,32 @@ namespace Nethermind.JsonRpc.Modules.Trace
             {
                 return ResultWrapper<IEnumerable<ParityTxTraceFromStore>>.Success(
                     new ParityTxTraceStreamingResult<ParityTxTraceFromStore>(runStreaming, timeoutCts, _logger, runBuffered));
+            }
+            catch
+            {
+                timeoutCts.Dispose();
+                throw;
+            }
+        }
+
+        /// <summary>
+        /// Wraps an execution delegate as a streaming single-envelope Replay response used
+        /// by <c>trace_call</c> / <c>trace_rawTransaction</c> / <c>trace_replayTransaction</c>.
+        /// </summary>
+        private ResultWrapper<ParityTxTraceFromReplay> BuildStreamingReplaySingleResult(
+            Action<Utf8JsonWriter, PipeWriter?, CancellationToken> runStreaming,
+            Func<ParityTxTraceFromReplay> runBuffered)
+        {
+            if (!jsonRpcConfig.EnableTracingStreamMode)
+            {
+                return ResultWrapper<ParityTxTraceFromReplay>.Success(runBuffered());
+            }
+
+            CancellationTokenSource timeoutCts = BuildTimeoutCancellationTokenSource();
+            try
+            {
+                return ResultWrapper<ParityTxTraceFromReplay>.Success(
+                    new ParityTxTraceFromReplayStreamingResult(runStreaming, timeoutCts, _logger, runBuffered));
             }
             catch
             {

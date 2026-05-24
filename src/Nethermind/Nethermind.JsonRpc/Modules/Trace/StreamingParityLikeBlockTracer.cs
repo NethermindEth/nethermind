@@ -92,6 +92,35 @@ public sealed class StreamingParityLikeBlockTracer : ParityLikeBlockTracer, IDis
     }
 
     /// <summary>
+    /// Single-tx-filter constructor for <c>trace_replayTransaction</c> / <c>trace_transaction</c>:
+    /// non-matching transactions in the parent block are skipped via the base
+    /// <c>ShouldTraceTx</c> hook so the stream contains exactly one envelope.
+    /// </summary>
+    public StreamingParityLikeBlockTracer(
+        Hash256 txHash,
+        ParityTraceTypes types,
+        ParityTraceStreamMode mode,
+        bool includeTxHash,
+        Utf8JsonWriter writer,
+        PipeWriter? pipeWriter,
+        CancellationToken cancellationToken,
+        StoreItemPredicate? storeFilter = null)
+        : base(txHash, types)
+    {
+        ArgumentNullException.ThrowIfNull(writer);
+
+        _types = types;
+        _mode = mode;
+        _includeTxHash = includeTxHash;
+        _writer = writer;
+        _pipeWriter = pipeWriter;
+        _cancellationToken = cancellationToken;
+        _storeFilter = storeFilter;
+        _cachedActionFilter = storeFilter is null ? null : new(storeFilter);
+        _jsonOptions = EthereumJsonSerializer.JsonOptions;
+    }
+
+    /// <summary>
     /// Per-tx trace-types constructor for <c>trace_callMany</c>. <paramref name="defaultTypes"/>
     /// is the fallback when a tx hash is missing from <paramref name="typesByTransaction"/>.
     /// </summary>
