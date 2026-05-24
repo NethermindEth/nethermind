@@ -19,6 +19,14 @@ namespace Nethermind.JsonRpc.Modules.Trace
         private int _after = after;
         private int? _count = count;
 
+        /// <summary>
+        /// <see langword="true"/> once <see cref="ShouldUseTxTrace"/> has yielded enough
+        /// matches to satisfy the requested <c>Count</c>; further calls will always return
+        /// <see langword="false"/>. Streaming callers use this to stop iterating blocks
+        /// early instead of probing every action.
+        /// </summary>
+        public bool IsExhausted => _count <= 0;
+
         public IEnumerable<ParityTxTraceFromStore> FilterTxTraces(IEnumerable<ParityTxTraceFromStore> txTraces)
         {
             foreach (ParityTxTraceFromStore? txTrace in txTraces)

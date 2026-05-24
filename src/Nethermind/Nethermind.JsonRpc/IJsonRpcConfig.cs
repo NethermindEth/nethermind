@@ -121,7 +121,7 @@ public interface IJsonRpcConfig : IConfig
     public int MaxLogsPerResponse { get; set; }
 
     [ConfigItem(
-        Description = "Whether to stream `debug_trace*` responses as the EVM executes (lower TTFB and bounded memory). Can be overridden per-call via `GethTraceOptions.StreamMode`.",
+        Description = "Whether to stream `debug_trace*` and `trace_*` responses as the EVM executes (lower TTFB and bounded memory). For `debug_trace*` can be overridden per-call via `GethTraceOptions.StreamMode`. For `trace_*` this is the only switch (no per-call override).",
         DefaultValue = "true")]
     public bool EnableTracingStreamMode { get; set; }
 

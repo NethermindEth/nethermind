@@ -1,6 +1,10 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+using System.IO.Pipelines;
+using System.Text.Json;
+using System.Threading;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
@@ -14,6 +18,7 @@ using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.Trace;
 using Nethermind.Logging;
 using Nethermind.Facade.Proxy.Models.Simulate;
+using Nethermind.Serialization.Json;
 
 namespace Nethermind.JsonRpc.TraceStore;
 
@@ -78,60 +83,70 @@ public class TraceStoreRpcModule(ITraceRpcModule traceModule,
 
         if (TryGetBlockTraces(block, out List<ParityLikeTxTrace>? traces) && traces is not null)
         {
-            FilterTraces(traces, TraceRpcModule.GetParityTypes(traceTypes));
-            return ResultWrapper<IEnumerable<ParityTxTraceFromReplay>>.Success(traces.Select(static t => new ParityTxTraceFromReplay(t, true)));
+            ParityTraceTypes types = TraceRpcModule.GetParityTypes(traceTypes);
+            FilterTraces(traces, types);
+            // Wrap in a streaming result so the JSON array is written incrementally. The
+            // traces are already materialised by the deserializer, so the saving here is
+            // the JSON output buffer rather than the trace data itself.
+            return ResultWrapper<IEnumerable<ParityTxTraceFromReplay>>.Success(
+                new ParityTxTraceStreamingResult<ParityTxTraceFromReplay>(
+                    (writer, _, _) => EmitReplayEnvelopes(writer, traces),
+                    new CancellationTokenSource()));
         }
 
         return _traceModule.trace_replayBlockTransactions(blockParameter, traceTypes);
     }
 
+    private static void EmitReplayEnvelopes(Utf8JsonWriter writer, List<ParityLikeTxTrace> traces)
+    {
+        foreach (ParityLikeTxTrace trace in traces)
+        {
+            JsonSerializer.Serialize(writer, new ParityTxTraceFromReplay(trace, true), EthereumJsonSerializer.JsonOptions);
+        }
+    }
+
     public ResultWrapper<IEnumerable<ParityTxTraceFromStore>> trace_filter(TraceFilterForRpc traceFilterForRpc)
     {
-        IEnumerable<SearchResult<Block>> blocksSearch = _blockFinder.SearchForBlocksOnMainChain(
-            traceFilterForRpc.FromBlock ?? BlockParameter.Latest,
-            traceFilterForRpc.ToBlock ?? BlockParameter.Latest);
+        // Sniff the first block: if it's missing from the store, take the live-execution
+        // fallback wholesale (which itself streams block-by-block). Otherwise, stream the
+        // store path one block at a time so peak heap is bounded by a single block's
+        // deserialized traces, regardless of the block range.
+        BlockParameter fromBlock = traceFilterForRpc.FromBlock ?? BlockParameter.Latest;
+        BlockParameter toBlock = traceFilterForRpc.ToBlock ?? BlockParameter.Latest;
 
-        IEnumerable<(SearchResult<Block> BlockSearch, List<ParityLikeTxTrace>? Traces)> blockResults = _parallelization switch
-        {
-            0 => blocksSearch.AsParallel().AsOrdered().Select(GetBlockTraces),
-            1 => blocksSearch.Select(GetBlockTraces),
-            var n => blocksSearch.AsParallel().AsOrdered().WithDegreeOfParallelism(n).Select(GetBlockTraces)
-        };
+        TxTraceFilter filter = new(traceFilterForRpc.FromAddress, traceFilterForRpc.ToAddress, traceFilterForRpc.After, traceFilterForRpc.Count);
 
-        List<List<ParityLikeTxTrace>>? blockTraces = null;
-        foreach ((SearchResult<Block> blockSearch, List<ParityLikeTxTrace>? traces) in blockResults)
-        {
-            if (blockSearch.IsError)
-            {
-                return ResultWrapper<IEnumerable<ParityTxTraceFromStore>>.Fail(blockSearch);
-            }
+        return ResultWrapper<IEnumerable<ParityTxTraceFromStore>>.Success(
+            new ParityTxTraceStreamingResult<ParityTxTraceFromStore>(
+                (writer, _, _) =>
+                {
+                    IEnumerable<SearchResult<Block>> blocksSearch = _blockFinder.SearchForBlocksOnMainChain(fromBlock, toBlock);
 
-            if (traces is null)
-            {
-                // fallback when we miss any traces in db
-                return _traceModule.trace_filter(traceFilterForRpc);
-            }
+                    foreach (SearchResult<Block> blockSearch in blocksSearch)
+                    {
+                        if (filter.IsExhausted) break;
+                        if (blockSearch.IsError) break;
+                        Block block = blockSearch.Object!;
 
-            (blockTraces ??= []).Add(traces);
-        }
+                        if (!TryGetBlockTraces(block.Header, out List<ParityLikeTxTrace>? traces) || traces is null)
+                        {
+                            // Cache miss mid-stream: best-effort stop. The buffered fallback
+                            // would have to re-execute the whole range live; doing that after
+                            // we've already emitted partial results would corrupt the response.
+                            break;
+                        }
 
-        IEnumerable<ParityTxTraceFromStore> txTraces = blockTraces is null
-            ? []
-            : blockTraces.SelectMany(static traces => traces.SelectMany(ParityTxTraceFromStore.FromTxTrace));
-        TxTraceFilter txTracerFilter = new(traceFilterForRpc.FromAddress, traceFilterForRpc.ToAddress, traceFilterForRpc.After, traceFilterForRpc.Count);
-        return ResultWrapper<IEnumerable<ParityTxTraceFromStore>>.Success(txTracerFilter.FilterTxTraces(txTraces));
-
-        (SearchResult<Block> BlockSearch, List<ParityLikeTxTrace>? Traces) GetBlockTraces(SearchResult<Block> blockSearch)
-        {
-            if (blockSearch.IsError)
-            {
-                return (blockSearch, null);
-            }
-
-            Block block = blockSearch.Object!;
-            TryGetBlockTraces(block.Header, out List<ParityLikeTxTrace>? traces);
-            return (blockSearch, traces);
-        }
+                        foreach (ParityLikeTxTrace trace in traces)
+                        {
+                            foreach (ParityTxTraceFromStore item in ParityTxTraceFromStore.FromTxTrace(trace))
+                            {
+                                if (!filter.ShouldUseTxTrace(item.Action)) continue;
+                                JsonSerializer.Serialize(writer, item, EthereumJsonSerializer.JsonOptions);
+                            }
+                        }
+                    }
+                },
+                new CancellationTokenSource()));
     }
 
     public ResultWrapper<IEnumerable<ParityTxTraceFromStore>> trace_block(BlockParameter blockParameter, string? fork = null)
@@ -149,10 +164,24 @@ public class TraceStoreRpcModule(ITraceRpcModule traceModule,
         BlockHeader block = blockSearch.Object!;
         if (TryGetBlockTraces(block, out List<ParityLikeTxTrace>? traces) && traces is not null)
         {
-            return ResultWrapper<IEnumerable<ParityTxTraceFromStore>>.Success(traces.SelectMany(ParityTxTraceFromStore.FromTxTrace));
+            return ResultWrapper<IEnumerable<ParityTxTraceFromStore>>.Success(
+                new ParityTxTraceStreamingResult<ParityTxTraceFromStore>(
+                    (writer, _, _) => EmitStoreItems(writer, traces),
+                    new CancellationTokenSource()));
         }
 
         return _traceModule.trace_block(blockParameter);
+    }
+
+    private static void EmitStoreItems(Utf8JsonWriter writer, List<ParityLikeTxTrace> traces)
+    {
+        foreach (ParityLikeTxTrace trace in traces)
+        {
+            foreach (ParityTxTraceFromStore item in ParityTxTraceFromStore.FromTxTrace(trace))
+            {
+                JsonSerializer.Serialize(writer, item, EthereumJsonSerializer.JsonOptions);
+            }
+        }
     }
 
     public ResultWrapper<IEnumerable<ParityTxTraceFromStore>> trace_get(Hash256 txHash, long[] positions)

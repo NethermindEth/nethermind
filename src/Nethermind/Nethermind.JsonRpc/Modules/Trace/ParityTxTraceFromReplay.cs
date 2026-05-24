@@ -88,7 +88,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
                 JsonSerializer.Serialize(writer, value.Error, options);
             }
 
-            writer.WriteNumber("subtraces"u8, value.Subtraces.Count(static s => s.IncludeInTrace));
+            writer.WriteNumber("subtraces"u8, value.IncludedSubtraceCount);
 
             writer.WritePropertyName("traceAddress"u8);
             if (value.TraceAddress is null)

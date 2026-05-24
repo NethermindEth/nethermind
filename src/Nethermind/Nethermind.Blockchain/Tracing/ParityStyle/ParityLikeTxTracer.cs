@@ -17,21 +17,21 @@ namespace Nethermind.Blockchain.Tracing.ParityStyle;
 
 public class ParityLikeTxTracer : TxTracer
 {
-    private readonly Transaction? _tx;
-    private readonly ParityTraceTypes _parityTraceTypes;
-    private readonly ParityLikeTxTrace _trace;
+    protected Transaction? _tx;
+    protected readonly ParityTraceTypes _parityTraceTypes;
+    protected ParityLikeTxTrace _trace;
 
-    private readonly Stack<ParityTraceAction> _actionStack = new();
-    private ParityTraceAction? _currentAction;
+    protected readonly Stack<ParityTraceAction> _actionStack = new();
+    protected ParityTraceAction? _currentAction;
 
-    private ParityVmOperationTrace? _currentOperation;
-    private readonly List<byte[]> _currentPushList = [];
+    protected ParityVmOperationTrace? _currentOperation;
+    protected readonly List<byte[]> _currentPushList = [];
 
-    private readonly Stack<(ParityVmTrace VmTrace, List<ParityVmOperationTrace> Ops)> _vmTraceStack = new();
-    private (ParityVmTrace VmTrace, List<ParityVmOperationTrace> Ops) _currentVmTrace;
+    protected readonly Stack<(ParityVmTrace VmTrace, List<ParityVmOperationTrace> Ops)> _vmTraceStack = new();
+    protected (ParityVmTrace VmTrace, List<ParityVmOperationTrace> Ops) _currentVmTrace;
 
-    private bool _treatGasParityStyle; // strange cost calculation from parity
-    private bool _gasAlreadySetForCurrentOp; // workaround for jump destination errors
+    protected bool _treatGasParityStyle; // strange cost calculation from parity
+    protected bool _gasAlreadySetForCurrentOp; // workaround for jump destination errors
 
     public ParityLikeTxTracer(Block block, Transaction? tx, ParityTraceTypes parityTraceTypes)
     {
@@ -115,21 +115,82 @@ public class ParityLikeTxTracer : TxTracer
         return _trace;
     }
 
-    private void PushAction(ParityTraceAction action)
+    /// <summary>
+    /// Reuse this tracer instance for a new transaction in the same block by resetting
+    /// every per-tx field in place. Called by pooled callers (e.g.
+    /// <see cref="StreamingParityLikeTxTracer"/>'s block tracer); keeps the tracer
+    /// allocation, the action/vm-trace stacks, the push list, and the streaming frame
+    /// pool alive across transactions.
+    /// </summary>
+    protected void ResetTracerState(Block block, Transaction? tx)
+    {
+        _tx = tx;
+        _trace.TransactionHash = tx?.Hash;
+        _trace.TransactionPosition = tx is null ? null : Array.IndexOf(block.Transactions!, tx);
+        _trace.BlockNumber = block.Number;
+        _trace.BlockHash = block.Hash!;
+        _trace.Output = null;
+        _trace.Action = null;
+        _trace.VmTrace = null;
+
+        if ((_parityTraceTypes & ParityTraceTypes.StateDiff) != 0)
+        {
+            if (_trace.StateChanges is null)
+            {
+                _trace.StateChanges = [];
+            }
+            else
+            {
+                _trace.StateChanges.Clear();
+            }
+        }
+        else
+        {
+            _trace.StateChanges = null;
+        }
+
+        _actionStack.Clear();
+        _currentAction = null;
+        _currentOperation = null;
+        _currentPushList.Clear();
+        _vmTraceStack.Clear();
+        _currentVmTrace = (null!, null!);
+        _treatGasParityStyle = false;
+        _gasAlreadySetForCurrentOp = false;
+    }
+
+    /// <summary>
+    /// Provides a <see cref="ParityTraceAction"/> instance for the next call frame. The
+    /// default implementation allocates a fresh one; subclasses (e.g. the streaming
+    /// tracer) may override to hand back a pool-rented + reset instance. The returned
+    /// action is in a "clean" state — every field is the same as a freshly-constructed
+    /// instance.
+    /// </summary>
+    protected virtual ParityTraceAction RentAction() => new();
+
+    /// <summary>Provides a <see cref="ParityAccountStateChange"/> instance for a newly touched account; default allocates fresh, subclasses may pool.</summary>
+    protected virtual ParityAccountStateChange RentAccountStateChange() => new();
+
+    /// <summary>Provides the per-account storage map; default allocates fresh, subclasses may pool.</summary>
+    protected virtual Dictionary<UInt256, ParityStateChange<byte[]>> RentStorageDictionary() => [];
+
+
+    protected virtual void PushAction(ParityTraceAction action)
     {
         if (_currentAction is not null)
         {
-            action.TraceAddress = new int[_currentAction!.TraceAddress!.Length + 1];
-            for (int i = 0; i < _currentAction.TraceAddress.Length; i++)
+            int parentLen = _currentAction!.TraceAddress!.Length;
+            action.TraceAddress = new int[parentLen + 1];
+            for (int i = 0; i < parentLen; i++)
             {
                 action.TraceAddress[i] = _currentAction.TraceAddress[i];
             }
 
-            action.TraceAddress[_currentAction.TraceAddress.Length] =
-                _currentAction.Subtraces.Count(static st => st.IncludeInTrace);
+            action.TraceAddress[parentLen] = _currentAction.IncludedSubtraceCount;
             if (action.IncludeInTrace)
             {
-                _currentAction.Subtraces.Add(action);
+                RegisterSubtrace(_currentAction, action);
+                _currentAction.IncludedSubtraceCount++;
             }
         }
         else
@@ -143,40 +204,81 @@ public class ParityLikeTxTracer : TxTracer
 
         if (IsTracingInstructions)
         {
-            (ParityVmTrace VmTrace, List<ParityVmOperationTrace> Ops) currentVmTrace = (new ParityVmTrace(),
-                new List<ParityVmOperationTrace>());
-            if (_currentOperation is not null)
-            {
-                if (action.Type != "suicide")
-                {
-                    _currentOperation.Sub = currentVmTrace.VmTrace;
-                }
-            }
-
-            _vmTraceStack.Push(currentVmTrace);
-            _currentVmTrace = currentVmTrace;
-            _trace.VmTrace ??= _currentVmTrace.VmTrace;
+            PushVmTraceFrame(action);
         }
     }
 
-    private void PopAction()
-    {
-        if (IsTracingInstructions)
-        {
-            _currentVmTrace.VmTrace.Operations = _currentVmTrace.Ops.ToArray();
-            _vmTraceStack.Pop();
-            _currentVmTrace = _vmTraceStack.Count == 0 ? (null, null) : _vmTraceStack.Peek();
-            _currentOperation = _currentVmTrace.Ops?.Last();
-            _gasAlreadySetForCurrentOp = false;
+    /// <summary>
+    /// Records <paramref name="child"/> under <paramref name="parent"/> for later JSON
+    /// emission. The default implementation appends to <see cref="ParityTraceAction.Subtraces"/>
+    /// (required by the buffered <c>ParityTxTraceFromReplay</c> / <c>ParityTxTraceFromStore</c>
+    /// emit paths which iterate the tree). Streaming subclasses override to skip the list
+    /// when they're emitting actions post-order at <see cref="PopAction"/> time and don't
+    /// need to hold the tree in memory.
+    /// </summary>
+    protected virtual void RegisterSubtrace(ParityTraceAction parent, ParityTraceAction child)
+        => parent.Subtraces.Add(child);
 
-            if (_actionStack.Peek().Type != "suicide")
+    /// <summary>
+    /// Pushes a new vmTrace frame onto the stack and links the parent's current operation
+    /// to the new frame's <see cref="ParityVmTrace"/>. Override to redirect frame handling
+    /// (e.g. to emit JSON directly instead of building the tree).
+    /// </summary>
+    protected virtual void PushVmTraceFrame(ParityTraceAction action)
+    {
+        (ParityVmTrace VmTrace, List<ParityVmOperationTrace> Ops) currentVmTrace = (new ParityVmTrace(),
+            new List<ParityVmOperationTrace>());
+        if (_currentOperation is not null)
+        {
+            if (action.Type != "suicide")
             {
-                _treatGasParityStyle = true;
+                _currentOperation.Sub = currentVmTrace.VmTrace;
             }
         }
 
-        _actionStack.Pop();
+        _vmTraceStack.Push(currentVmTrace);
+        _currentVmTrace = currentVmTrace;
+        _trace.VmTrace ??= _currentVmTrace.VmTrace;
+    }
+
+    protected virtual void PopAction()
+    {
+        if (IsTracingInstructions)
+        {
+            PopVmTraceFrame();
+        }
+
+        ParityTraceAction popped = _actionStack.Pop();
         _currentAction = _actionStack.Count == 0 ? null : _actionStack.Peek();
+        OnActionPopped(popped);
+    }
+
+    /// <summary>
+    /// Called after an action has been popped off the action stack. Default does nothing;
+    /// streaming subclasses use this to emit the popped action's JSON in post-order (the
+    /// action's <see cref="ParityTraceAction.IncludedSubtraceCount"/> and its
+    /// <see cref="ParityTraceAction.Result"/> / <see cref="ParityTraceAction.Error"/> are
+    /// final at this point) and then return it to the pool.
+    /// </summary>
+    protected virtual void OnActionPopped(ParityTraceAction action) { }
+
+    /// <summary>
+    /// Finalizes the current vmTrace frame and pops it. Restores <see cref="_currentOperation"/>
+    /// to the parent frame's last op. Override to redirect frame teardown (e.g. to close a
+    /// streamed JSON envelope rather than materializing the operations array).
+    /// </summary>
+    protected virtual void PopVmTraceFrame()
+    {
+        _currentVmTrace.VmTrace.Operations = _currentVmTrace.Ops.ToArray();
+        _vmTraceStack.Pop();
+        _currentVmTrace = _vmTraceStack.Count == 0 ? (null, null) : _vmTraceStack.Peek();
+        _currentOperation = _currentVmTrace.Ops?.Last();
+        _gasAlreadySetForCurrentOp = false;
+
+        if (_actionStack.Peek().Type != "suicide")
+        {
+            _treatGasParityStyle = true;
+        }
     }
 
     public override void MarkAsSuccess(Address recipient, in GasConsumed gasSpent, byte[] output, LogEntry[] logs,
@@ -205,17 +307,19 @@ public class ParityLikeTxTracer : TxTracer
 
         _trace.Output = output;
 
-        // quick tx fail (before execution)
-        _trace.Action ??= new ParityTraceAction
+        if (_trace.Action is null)
         {
-            From = _tx!.SenderAddress,
-            To = _tx.To,
-            Value = _tx.Value,
-            Input = _tx.Data.AsArray(),
-            Gas = _tx.GasLimit,
-            CallType = _tx.IsMessageCall ? "call" : "init",
-            Error = error
-        };
+            // quick tx fail (before execution) — synthesize a minimal action
+            ParityTraceAction action = RentAction();
+            action.From = _tx!.SenderAddress;
+            action.To = _tx.To;
+            action.Value = _tx.Value;
+            action.Input = _tx.Data.AsArray();
+            action.Gas = _tx.GasLimit;
+            action.CallType = _tx.IsMessageCall ? "call" : "init";
+            action.Error = error;
+            _trace.Action = action;
+        }
     }
 
     public override void StartOperation(int pc, Instruction opcode, long gas, in ExecutionEnvironment env)
@@ -224,19 +328,35 @@ public class ParityLikeTxTracer : TxTracer
         _gasAlreadySetForCurrentOp = false;
         operationTrace.Pc = pc;
         operationTrace.Cost = gas;
+        // OnOperationStarted runs before _currentOperation is rebound so streaming
+        // overrides can emit/discard the previous op while it is still _currentOperation.
+        OnOperationStarted(operationTrace);
         _currentOperation = operationTrace;
         _currentPushList.Clear();
-        _currentVmTrace.Ops.Add(operationTrace);
     }
+
+    /// <summary>
+    /// Called from <see cref="StartOperation"/> after the new <see cref="ParityVmOperationTrace"/>
+    /// has been initialised. Base behavior appends it to the current vmTrace frame's ops list;
+    /// override to emit the previously buffered op as JSON and discard it instead.
+    /// </summary>
+    protected virtual void OnOperationStarted(ParityVmOperationTrace operationTrace) => _currentVmTrace.Ops.Add(operationTrace);
 
     public override void ReportOperationError(EvmExceptionType error)
     {
         if (error != EvmExceptionType.InvalidJumpDestination &&
             error != EvmExceptionType.NotEnoughBalance)
         {
-            _currentVmTrace.Ops.Remove(_currentOperation);
+            OnOperationRemoved(_currentOperation);
         }
     }
+
+    /// <summary>
+    /// Called when an operation should be discarded (e.g. errors that don't surface as a
+    /// real opcode in the vmTrace). Base removes it from the current frame's ops list;
+    /// override to clear the in-flight streaming buffer instead.
+    /// </summary>
+    protected virtual void OnOperationRemoved(ParityVmOperationTrace? operationTrace) => _currentVmTrace.Ops.Remove(operationTrace);
 
     public override void ReportOperationRemainingGas(long gas)
     {
@@ -283,7 +403,7 @@ public class ParityLikeTxTracer : TxTracer
             ref CollectionsMarshal.GetValueRefOrAddDefault(_trace.StateChanges, address, out bool exists);
         if (!exists)
         {
-            value = new ParityAccountStateChange();
+            value = RentAccountStateChange();
         }
         else
         {
@@ -304,7 +424,7 @@ public class ParityLikeTxTracer : TxTracer
             ref CollectionsMarshal.GetValueRefOrAddDefault(_trace.StateChanges, address, out bool exists);
         if (!exists)
         {
-            value = new ParityAccountStateChange();
+            value = RentAccountStateChange();
         }
         else
         {
@@ -320,7 +440,7 @@ public class ParityLikeTxTracer : TxTracer
             ref CollectionsMarshal.GetValueRefOrAddDefault(_trace.StateChanges, address, out bool exists);
         if (!exists)
         {
-            value = new ParityAccountStateChange();
+            value = RentAccountStateChange();
         }
         else
         {
@@ -336,10 +456,10 @@ public class ParityLikeTxTracer : TxTracer
             ref CollectionsMarshal.GetValueRefOrAddDefault(_trace.StateChanges, storageCell.Address, out bool exists);
         if (!exists)
         {
-            value = new ParityAccountStateChange();
+            value = RentAccountStateChange();
         }
 
-        Dictionary<UInt256, ParityStateChange<byte[]>> storage = value.Storage ??= [];
+        Dictionary<UInt256, ParityStateChange<byte[]>> storage = value.Storage ??= RentStorageDictionary();
         ref ParityStateChange<byte[]>? change =
             ref CollectionsMarshal.GetValueRefOrAddDefault(storage, storageCell.Index, out exists);
         if (exists)
@@ -353,20 +473,18 @@ public class ParityLikeTxTracer : TxTracer
     public override void ReportAction(long gas, UInt256 value, Address from, Address to, ReadOnlyMemory<byte> input,
         ExecutionType callType, bool isPrecompileCall = false)
     {
-        ParityTraceAction action = new()
-        {
-            IsPrecompiled = isPrecompileCall,
-            // ignore pre compile calls with Zero value that originates from contracts
-            IncludeInTrace = !(isPrecompileCall && callType != ExecutionType.TRANSACTION && value.IsZero),
-            From = from,
-            To = to,
-            Value = value,
-            Input = input.ToArray(),
-            Gas = gas,
-            CallType = GetCallType(callType),
-            Type = GetActionType(callType),
-            CreationMethod = GetCreateMethod(callType)
-        };
+        ParityTraceAction action = RentAction();
+        action.IsPrecompiled = isPrecompileCall;
+        // ignore pre compile calls with Zero value that originates from contracts
+        action.IncludeInTrace = !(isPrecompileCall && callType != ExecutionType.TRANSACTION && value.IsZero);
+        action.From = from;
+        action.To = to;
+        action.Value = value;
+        action.Input = input.ToArray();
+        action.Gas = gas;
+        action.CallType = GetCallType(callType);
+        action.Type = GetActionType(callType);
+        action.CreationMethod = GetCreateMethod(callType);
 
         if (_currentOperation is not null && callType.IsAnyCreate())
         {
@@ -386,7 +504,11 @@ public class ParityLikeTxTracer : TxTracer
 
     public override void ReportSelfDestruct(Address address, UInt256 balance, Address refundAddress)
     {
-        ParityTraceAction action = new() { From = address, To = refundAddress, Value = balance, Type = "suicide" };
+        ParityTraceAction action = RentAction();
+        action.From = address;
+        action.To = refundAddress;
+        action.Value = balance;
+        action.Type = "suicide";
         PushAction(action);
         _currentAction!.Result = null;
         PopAction();
