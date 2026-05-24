@@ -221,16 +221,17 @@ public sealed class StreamingParityLikeBlockTracer : ParityLikeBlockTracer, IDis
     {
         if (_pendingRewardTrace is null) return;
 
-        ParityTraceAction rewardAction = new()
-        {
-            RewardType = rewardType,
-            Value = rewardValue,
-            Author = author,
-            CallType = "reward",
-            TraceAddress = CappedArray<int>.Empty,
-            Type = "reward",
-            Result = null,
-        };
+        // Pool the reward action through the tx tracer's _actionPool for consistency with the
+        // rest of the tracing allocations. Falls back to a fresh instance if the tx tracer
+        // hasn't been initialised yet (defensive — reward placeholder always runs after OnStart).
+        ParityTraceAction rewardAction = _reusableTxTracer?.RentActionExternal() ?? new ParityTraceAction();
+        rewardAction.RewardType = rewardType;
+        rewardAction.Value = rewardValue;
+        rewardAction.Author = author;
+        rewardAction.CallType = "reward";
+        rewardAction.TraceAddress = CappedArray<int>.Empty;
+        rewardAction.Type = "reward";
+        rewardAction.Result = null;
         _pendingRewardTrace.Action = rewardAction;
 
         if (_mode == ParityTraceStreamMode.Store)
@@ -245,6 +246,9 @@ public sealed class StreamingParityLikeBlockTracer : ParityLikeBlockTracer, IDis
         {
             EmitTrace(_pendingRewardTrace);
         }
+        // Done with the action — return to the pool. Skip if the tracer is gone (defensive).
+        _reusableTxTracer?.ReturnActionExternal(rewardAction);
+        _pendingRewardTrace.Action = null;
         _pendingRewardTrace = null;
         FlushPipe();
     }

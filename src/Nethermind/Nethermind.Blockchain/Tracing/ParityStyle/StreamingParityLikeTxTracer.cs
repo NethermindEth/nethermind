@@ -162,7 +162,27 @@ public class StreamingParityLikeTxTracer : ParityLikeTxTracer
         _framePool.Push(frame);
     }
 
-    protected override ParityTraceAction RentAction()
+    protected override ParityTraceAction RentAction() => RentActionInternal();
+
+    /// <summary>
+    /// Public hand-off so the owning block tracer can rent / return reward-action
+    /// allocations through the same pool as in-tx actions, instead of allocating a fresh
+    /// instance per block.
+    /// </summary>
+    public ParityTraceAction RentActionExternal() => RentActionInternal();
+
+    /// <summary>
+    /// Returns an action previously obtained via <see cref="RentActionExternal"/> to the pool.
+    /// </summary>
+    public void ReturnActionExternal(ParityTraceAction action)
+    {
+        if (action is null) return;
+        ReturnTraceAddress(action.TraceAddress);
+        action.TraceAddress = default;
+        _actionPool.Push(action);
+    }
+
+    private ParityTraceAction RentActionInternal()
     {
         if (_actionPool.Count == 0) return new ParityTraceAction();
         ParityTraceAction a = _actionPool.Pop();

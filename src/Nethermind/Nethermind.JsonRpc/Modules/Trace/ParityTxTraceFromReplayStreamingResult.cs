@@ -47,6 +47,13 @@ public sealed class ParityTxTraceFromReplayStreamingResult : ParityTxTraceFromRe
     /// properties (e.g. test code asserting <c>.Data.Action</c>). HTTP/JSON-RPC clients go
     /// through <see cref="WriteToAsync"/> and never trigger materialisation.
     /// </summary>
+    /// <remarks>
+    /// In-process property access and streaming emission are mutually exclusive on a single
+    /// result instance: both paths re-execute the trace and the worldstate scope mutates
+    /// (<c>SkipValidationAndCommit</c>). Whichever path is consumed first wins; a subsequent
+    /// attempt at the other path throws <see cref="InvalidOperationException"/> so a
+    /// silently-corrupted second emission is impossible.
+    /// </remarks>
     public Func<ParityTxTraceFromReplay>? MaterializeForInProcess { get; init; }
 
     /// <summary>
@@ -70,8 +77,20 @@ public sealed class ParityTxTraceFromReplayStreamingResult : ParityTxTraceFromRe
         _logger = logger;
     }
 
-    private ParityTxTraceFromReplay? Materialized =>
-        _materialized ??= MaterializeForInProcess?.Invoke();
+    private ParityTxTraceFromReplay? Materialized
+    {
+        get
+        {
+            if (_materialized is not null) return _materialized;
+            if (MaterializeForInProcess is null) return null;
+            if (Interlocked.Exchange(ref _consumed, 1) != 0)
+            {
+                throw new InvalidOperationException(
+                    "ParityTxTraceFromReplayStreamingResult: property access after the result was already consumed via WriteToAsync/WriteAsJson would re-run the trace on mutated state.");
+            }
+            return _materialized = MaterializeForInProcess();
+        }
+    }
 
     // Setters throw rather than silently no-op: a write attempt on a streaming result is
     // always a bug — the value would never reach the wire (HTTP path bypasses these
@@ -118,7 +137,7 @@ public sealed class ParityTxTraceFromReplayStreamingResult : ParityTxTraceFromRe
         if (Interlocked.Exchange(ref _consumed, 1) != 0)
         {
             throw new InvalidOperationException(
-                "ParityTxTraceFromReplayStreamingResult is single-invocation; a second WriteToAsync/WriteAsJson would re-execute a non-idempotent trace delegate.");
+                "ParityTxTraceFromReplayStreamingResult is single-invocation: a second WriteToAsync/WriteAsJson or post-consume property access would re-execute a non-idempotent trace delegate.");
         }
     }
 
