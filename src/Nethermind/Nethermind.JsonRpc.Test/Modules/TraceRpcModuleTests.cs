@@ -791,11 +791,12 @@ public class TraceRpcModuleTests
         Assert.That(traces.Result.Error, Is.EqualTo("Invalid RLP."));
     }
 
-    [Test]
-    public async Task Trace_call_simple_tx_test()
+    [TestCase(true)]
+    [TestCase(false)]
+    public async Task Trace_call_simple_tx_test(bool enableStreaming)
     {
         Context context = new();
-        await context.Build();
+        await context.Build(enableStreaming: enableStreaming);
         object transaction = new { from = "0xaaaaaaaa8583de65cc752fe3fad5098643244d22", to = "0xd6a8d04cb9846759416457e2c593c99390092df6", gas = 1000000 };
         string[] traceTypes = { "trace" };
         string blockParameter = "latest";
@@ -805,7 +806,7 @@ public class TraceRpcModuleTests
             context.TraceRpcModule,
             "trace_call", transaction, traceTypes, blockParameter);
 
-        Assert.That(serialized, Is.EqualTo(expectedResult), serialized.Replace("\"", "\\\""));
+        AssertJsonEquivalent(serialized, expectedResult);
     }
 
     private static readonly IEnumerable<(object, string[], string)> Trace_call_without_blockParameter_test_cases = [
@@ -821,7 +822,7 @@ public class TraceRpcModuleTests
             context.TraceRpcModule,
             "trace_call", testCase.transaction, testCase.traceTypes);
 
-        Assert.That(serialized, Is.EqualTo(testCase.expectedResult), serialized.Replace("\"", "\\\""));
+        AssertJsonEquivalent(serialized, testCase.expectedResult);
     }
 
     [Test]
