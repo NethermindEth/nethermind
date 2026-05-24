@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text.Json;
+using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
 using FluentAssertions;
@@ -670,6 +671,61 @@ public class TraceRpcModuleTests
         // Both envelopes carry the same vmTrace content; only the field order of the outer
         // result object differs (vmTrace first vs last). DeepEquals collapses both.
         AssertJsonEquivalent(streamed, buffered);
+    }
+
+    [Test]
+    public void StreamingResult_property_access_after_WriteAsJson_throws()
+    {
+        // Locks in the H3 deep guard: WriteAsJson and property access share a single
+        // _consumed flag, so reading .Action after the trace was streamed must throw
+        // rather than silently re-running the trace on post-mutation state.
+        System.Buffers.ArrayBufferWriter<byte> buffer = new();
+        using Utf8JsonWriter writer = new(buffer);
+        CancellationTokenSource cts = new();
+        ParityTxTraceFromReplay materialized = new() { Action = new ParityTraceAction { CallType = "call" } };
+
+        using ParityTxTraceFromReplayStreamingResult result = new(
+            runTrace: static (w, _, _) =>
+            {
+                w.WriteStartObject();
+                w.WriteEndObject();
+            },
+            timeoutCts: cts,
+            logger: LimboLogs.Instance.GetClassLogger<TraceRpcModuleTests>())
+        {
+            MaterializeForInProcess = () => materialized,
+        };
+
+        result.WriteAsJson(writer);
+
+        Assert.Throws<InvalidOperationException>(() => _ = result.Action);
+    }
+
+    [Test]
+    public void StreamingResult_WriteAsJson_after_property_access_throws()
+    {
+        // Inverse direction: property access first, then a write attempt must throw.
+        System.Buffers.ArrayBufferWriter<byte> buffer = new();
+        using Utf8JsonWriter writer = new(buffer);
+        CancellationTokenSource cts = new();
+        ParityTxTraceFromReplay materialized = new() { Action = new ParityTraceAction { CallType = "call" } };
+
+        using ParityTxTraceFromReplayStreamingResult result = new(
+            runTrace: static (w, _, _) =>
+            {
+                w.WriteStartObject();
+                w.WriteEndObject();
+            },
+            timeoutCts: cts,
+            logger: LimboLogs.Instance.GetClassLogger<TraceRpcModuleTests>())
+        {
+            MaterializeForInProcess = () => materialized,
+        };
+
+        // First access materialises and consumes.
+        _ = result.Action;
+
+        Assert.Throws<InvalidOperationException>(() => result.WriteAsJson(writer));
     }
 
     [Test]
