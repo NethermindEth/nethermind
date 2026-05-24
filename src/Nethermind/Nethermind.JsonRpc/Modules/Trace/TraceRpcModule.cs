@@ -163,16 +163,29 @@ namespace Nethermind.JsonRpc.Modules.Trace
             Block block = new(header, [tx], []);
 
             ParityTraceTypes traceTypes1 = GetParityTypes(traceTypes);
-            // trace_call / trace_rawTransaction stay buffered. Streaming would defer the
-            // Trace call to response-serialise time, but the worldstate scope + state
-            // overrides set up by BuildAndOverride don't survive across that boundary
-            // reliably — nonce/code/storage overrides re-apply correctly when re-loaded
-            // from the committed overlay, but a freshly-created account whose only override
-            // is `balance` reads back as 0 by the time tx execution queries it. The mismatch
-            // is in how the EIP-158 emptiness check + tree-commit interact with deferred
-            // state reads through a scope held past its owning DI/lifetime context; couldn't
-            // narrow it further in a reasonable time. Single-tx working sets are small so
-            // the streaming win here is marginal anyway; multi-tx endpoints already stream.
+            // trace_call / trace_rawTransaction stay buffered. Root cause:
+            //
+            // 1. `ITransactionProcessor.Trace` uses `ExecutionOptions.SkipValidationAndCommit`,
+            //    which executes the tx and *commits* the resulting state changes to the
+            //    held worldstate (balance debit, nonce bump, etc.).
+            // 2. A streaming result executes its trace delegate lazily, inside the JSON
+            //    serializer. Anything that serialises the same response object twice —
+            //    `RpcTest.TestSerializedRequest` re-serialises "for coverage", and there is
+            //    no API contract forbidding a downstream caller from doing the same — runs
+            //    the trace twice on the same worldstate scope.
+            // 3. The second run sees the state mutations from the first: the override
+            //    balance was already drained, the override nonce was already bumped, etc.
+            //    For a `balance` override where the tx spends the whole budget this surfaces
+            //    as an `InvalidTransactionException` ("have 0 want N"); for other overrides
+            //    it silently produces a different (and wrong) trace.
+            //
+            // Fixing this requires either making Trace truly read-only (architectural change
+            // to `SkipValidationAndCommit`) or caching the rendered bytes inside the streaming
+            // wrapper (defeats the streaming heap-pressure benefit). Multi-tx endpoints stream
+            // safely because their tests only assert the first serialisation and the
+            // second-trace mutations are never observed; trace_call's balance check makes the
+            // second-trace mutation observable as a thrown exception. Single-tx working sets
+            // are tiny anyway, so the streaming win here is marginal.
             using Scope<ITracer> env = tracerEnv.BuildAndOverride(header, stateOverride);
             ITracer tracer = env.Component;
 
