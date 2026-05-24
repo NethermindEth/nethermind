@@ -17,11 +17,28 @@ public abstract class WrappingTrieStore(ITrieStore inner) : ITrieStore
 {
     protected ITrieStore Inner => inner;
 
-    public virtual TrieNode GetOrLoadNode(Hash256? address, in TreePath path, in ValueHash256 hash, ReadFlags flags = ReadFlags.None) =>
-        inner.GetOrLoadNode(address, in path, in hash, flags);
+    public virtual TrieNode GetOrLoadNode(Hash256? address, in TreePath path, in ValueHash256 hash, ReadFlags flags = ReadFlags.None)
+    {
+        if (TryGetCachedNode(address, in path, in hash, out TrieNode? cached))
+        {
+            return cached;
+        }
 
-    public virtual bool TryGetOrLoadNode(Hash256? address, in TreePath path, in ValueHash256 hash, [NotNullWhen(true)] out TrieNode? node, ReadFlags flags = ReadFlags.None) =>
-        inner.TryGetOrLoadNode(address, in path, in hash, out node, flags);
+        byte[] rlp = LoadRlp(address, in path, in hash, flags)
+            ?? MissingTrieNodeException.ThrowMissing(address, in path, in hash);
+        return TrieNode.DecodeNode(in path, in hash, rlp);
+    }
+
+    public virtual bool TryGetOrLoadNode(Hash256? address, in TreePath path, in ValueHash256 hash, [NotNullWhen(true)] out TrieNode? node, ReadFlags flags = ReadFlags.None)
+    {
+        if (TryGetCachedNode(address, in path, in hash, out node))
+        {
+            return true;
+        }
+
+        byte[]? rlp = TryLoadRlp(address, in path, in hash, flags);
+        return TrieNode.TryDecodeNode(in path, in hash, rlp, out node);
+    }
 
     public virtual bool TryGetCachedNode(Hash256? address, in TreePath path, in ValueHash256 hash, [NotNullWhen(true)] out TrieNode? node) =>
         inner.TryGetCachedNode(address, in path, in hash, out node);

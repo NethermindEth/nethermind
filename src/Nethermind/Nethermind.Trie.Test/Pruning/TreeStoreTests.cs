@@ -974,6 +974,43 @@ namespace Nethermind.Trie.Test.Pruning
             }
         }
 
+        [TestCase(ReadOnlyMissLoadVariant.GetOrLoad)]
+        [TestCase(ReadOnlyMissLoadVariant.TryGetOrLoad)]
+        public void Pre_cached_trie_store_uses_node_storage_cache_for_typed_loads(ReadOnlyMissLoadVariant variant)
+        {
+            MemDb memDb = new();
+            TrieNode persistedNode = BuildAndPersistSealedBranch(memDb);
+            using TrieStore fullTrieStore = CreateTrieStore(kvStore: memDb);
+            using PreCachedTrieStore preCachedTrieStore = new(fullTrieStore.AsReadOnly(), new NodeStorageCache { Enabled = true });
+            IScopedTrieStore scopedTrieStore = preCachedTrieStore.GetTrieStore(null);
+            TreePath emptyPath = TreePath.Empty;
+            ValueHash256 hash = persistedNode.Keccak!.ValueHash256;
+            long readsBefore = memDb.ReadsCount;
+
+            TrieNode firstNode = variant switch
+            {
+                ReadOnlyMissLoadVariant.GetOrLoad => scopedTrieStore.GetOrLoadNode(emptyPath, in hash),
+                ReadOnlyMissLoadVariant.TryGetOrLoad => LoadWithTry(scopedTrieStore, emptyPath, in hash),
+                _ => throw new ArgumentOutOfRangeException(nameof(variant))
+            };
+            TrieNode secondNode = variant switch
+            {
+                ReadOnlyMissLoadVariant.GetOrLoad => scopedTrieStore.GetOrLoadNode(emptyPath, in hash),
+                ReadOnlyMissLoadVariant.TryGetOrLoad => LoadWithTry(scopedTrieStore, emptyPath, in hash),
+                _ => throw new ArgumentOutOfRangeException(nameof(variant))
+            };
+
+            firstNode.FullRlp.AsSpan().ToArray().Should().Equal(persistedNode.FullRlp.AsSpan().ToArray());
+            secondNode.FullRlp.AsSpan().ToArray().Should().Equal(persistedNode.FullRlp.AsSpan().ToArray());
+            memDb.ReadsCount.Should().Be(readsBefore + 1);
+
+            static TrieNode LoadWithTry(IScopedTrieStore trieStore, in TreePath path, in ValueHash256 hash)
+            {
+                trieStore.TryGetOrLoadNode(in path, in hash, out TrieNode? node).Should().BeTrue();
+                return node!;
+            }
+        }
+
         [Test]
         [NonParallelizable]
         public void Shared_resolver_returns_sealed_cached_node_with_resolvable_children()
