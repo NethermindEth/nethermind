@@ -127,7 +127,7 @@ public interface IJsonRpcConfig : IConfig
 
     [ConfigItem(
         Description = "Whether to stream `eth_getLogs` and `eth_getFilterLogs` responses as logs are found. When enabled, unauthenticated responses stop at `MaxLogsPerResponse` or `MaxLogsResponseBodySize` instead of buffering the full result and returning a limit error.",
-        DefaultValue = "false")]
+        DefaultValue = "true")]
     public bool EnableLogsStreamMode { get; set; }
 
     [ConfigItem(
