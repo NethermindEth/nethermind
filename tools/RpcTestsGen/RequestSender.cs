@@ -32,7 +32,7 @@ public class RequestSender(Uri[] clientUrls, HttpClient httpClient)
             JsonNode responseData = await JsonNode.ParseAsync(await response.Content.ReadAsStreamAsync())
                 ?? throw new JsonException("Empty response received.");
 
-            if (responseData["error"] is {} error)
+            if (responseData["error"] is { } error)
                 throw new Exception(error.ToCompactString());
 
             return responseData;

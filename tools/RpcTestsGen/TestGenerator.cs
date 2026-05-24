@@ -8,7 +8,7 @@ namespace Nethermind.RpcTestsGen;
 public static class TestGenerator
 {
     public static Task<int> GenerateAsync(ExecutionArgs args, CancellationToken ct) =>
-        args.Clients is {Length: > 0} clients
+        args.Clients is { Length: > 0 } clients
             ? GenerateViaClientsAsync(args, clients, ct)
             : GenerateFromReportAsync(args, ct);
 
@@ -25,10 +25,10 @@ public static class TestGenerator
 
         ActionBlock<TestCase> writerBlock = new(
             writer.WriteAsync,
-            new ExecutionDataflowBlockOptions {MaxDegreeOfParallelism = 1, BoundedCapacity = 10_000}
+            new ExecutionDataflowBlockOptions { MaxDegreeOfParallelism = 1, BoundedCapacity = 10_000 }
         );
 
-        requestsBuffer.LinkTo(writerBlock, new DataflowLinkOptions {PropagateCompletion = true});
+        requestsBuffer.LinkTo(writerBlock, new DataflowLinkOptions { PropagateCompletion = true });
 
         await reader.ReadIntoAsync(requestsBuffer, ct);
         await writerBlock.Completion;
@@ -54,22 +54,22 @@ public static class TestGenerator
 
         TransformBlock<RequestInfo, ResponseInfo> senderBlock = new(
             sender.SendAsync,
-            new ExecutionDataflowBlockOptions {MaxDegreeOfParallelism = args.Parallelism, BoundedCapacity = args.Parallelism}
+            new ExecutionDataflowBlockOptions { MaxDegreeOfParallelism = args.Parallelism, BoundedCapacity = args.Parallelism }
         );
 
         TransformManyBlock<ResponseInfo, TestCase> comparatorBlock = new(
             comparer.Compare,
-            new ExecutionDataflowBlockOptions {MaxDegreeOfParallelism = 1, BoundedCapacity = 1}
+            new ExecutionDataflowBlockOptions { MaxDegreeOfParallelism = 1, BoundedCapacity = 1 }
         );
 
         ActionBlock<TestCase> writerBlock = new(
             writer.WriteAsync,
-            new ExecutionDataflowBlockOptions {MaxDegreeOfParallelism = 1, BoundedCapacity = 10_000}
+            new ExecutionDataflowBlockOptions { MaxDegreeOfParallelism = 1, BoundedCapacity = 10_000 }
         );
 
-        requestsBuffer.LinkTo(senderBlock, new DataflowLinkOptions {PropagateCompletion = true});
-        senderBlock.LinkTo(comparatorBlock, new DataflowLinkOptions {PropagateCompletion = true});
-        comparatorBlock.LinkTo(writerBlock, new DataflowLinkOptions {PropagateCompletion = true});
+        requestsBuffer.LinkTo(senderBlock, new DataflowLinkOptions { PropagateCompletion = true });
+        senderBlock.LinkTo(comparatorBlock, new DataflowLinkOptions { PropagateCompletion = true });
+        comparatorBlock.LinkTo(writerBlock, new DataflowLinkOptions { PropagateCompletion = true });
 
         await reader.ReadIntoAsync(requestsBuffer, ct);
         await writerBlock.Completion;

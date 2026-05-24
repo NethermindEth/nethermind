@@ -1,4 +1,4 @@
-﻿// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Text.Json.Nodes;
@@ -44,7 +44,7 @@ public class ReportReader(FilePos[] sources, Filter filter)
 
                 if (!filter.IncludeRequest(line)) continue;
 
-                FilePos pos = startLocation with {LineNumber = fileLineN};
+                FilePos pos = startLocation with { LineNumber = fileLineN };
 
                 JsonNode? requestJson = null;
                 try
@@ -58,7 +58,7 @@ public class ReportReader(FilePos[] sources, Filter filter)
 
                 if (requestJson is null) continue;
                 if (!filter.IncludeRequest(requestJson)) continue;
-                if (requestJson.GetId() is not {} requestId) continue;
+                if (requestJson.GetId() is not { } requestId) continue;
 
                 if (!_pendingRequests.TryAdd(requestId, new RequestInfo(pos, ++_requestN, requestJson)))
                     throw new AmbiguousReportException($"Multiple requests with the same id: {requestId}");

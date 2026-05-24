@@ -9,7 +9,7 @@ using SmartFormat.Core.Parsing;
 namespace Nethermind.RpcTestsGen;
 
 // not thread-safe
-public sealed class TestWriter(Filter filter, Format outputFormat): IAsyncDisposable
+public sealed class TestWriter(Filter filter, Format outputFormat) : IAsyncDisposable
 {
     private int _testN;
     private string? _currentOutFile;

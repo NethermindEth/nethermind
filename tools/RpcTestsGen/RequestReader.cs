@@ -25,7 +25,7 @@ public class RequestReader(FilePos[] sources, Filter filter)
                 if (fileLineN++ < startLocation.LineNumber) continue;
                 if (!filter.IncludeRequest(line)) continue;
 
-                FilePos pos = startLocation with {LineNumber = fileLineN};
+                FilePos pos = startLocation with { LineNumber = fileLineN };
 
                 JsonNode? data = null;
                 try
