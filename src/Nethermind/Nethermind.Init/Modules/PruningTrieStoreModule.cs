@@ -99,6 +99,7 @@ public class PruningTrieStoreModule(IInitConfig initConfig) : Module
                 new SnapRangeRecovery(peerPool!, logManager),
                 logManager
             ))
+            .AddSingleton<ICodeRecovery, CodeRecovery>()
             ;
 
         if (initConfig.DiagnosticMode == DiagnosticMode.VerifyTrie)

@@ -22,7 +22,7 @@ public static class Wait
         HashSet<Task<T>> taskSet = [.. tasks];
         while (taskSet.Count != 0)
         {
-            Task<T> resolved = await Task.WhenAny<T>(taskSet);
+            Task<T> resolved = await Task.WhenAny(taskSet);
             taskSet.Remove(resolved);
 
             T result = await resolved;
