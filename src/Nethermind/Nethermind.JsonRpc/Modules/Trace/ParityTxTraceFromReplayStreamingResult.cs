@@ -34,35 +34,41 @@ public sealed class ParityTxTraceFromReplayStreamingResult : ParityTxTraceFromRe
     private static readonly JsonWriterOptions StreamingWriterOptions = new() { SkipValidation = true };
 
     private readonly Action<Utf8JsonWriter, PipeWriter?, CancellationToken> _runTrace;
-    private readonly Func<ParityTxTraceFromReplay>? _materializeForInProcess;
     private readonly CancellationTokenSource _timeoutCts;
     private readonly CancellationToken _timeoutToken;
     private readonly ILogger _logger;
     private ParityTxTraceFromReplay? _materialized;
 
-    /// <param name="materializeForInProcess">
+    /// <summary>
     /// Optional buffered fallback used by in-process consumers that read individual
     /// properties (e.g. test code asserting <c>.Data.Action</c>). HTTP/JSON-RPC clients go
     /// through <see cref="WriteToAsync"/> and never trigger materialisation.
-    /// </param>
+    /// </summary>
+    public Func<ParityTxTraceFromReplay>? MaterializeForInProcess { get; init; }
+
+    /// <summary>
+    /// Optional resource (e.g. an <c>IOverridableEnv</c> scope holding state overrides)
+    /// whose lifetime must span the deferred trace execution. Disposed by
+    /// <see cref="Dispose"/> once the result is consumed.
+    /// </summary>
+    public IDisposable? LifetimeScope { get; init; }
+
     public ParityTxTraceFromReplayStreamingResult(
         Action<Utf8JsonWriter, PipeWriter?, CancellationToken> runTrace,
         CancellationTokenSource timeoutCts,
-        ILogger logger,
-        Func<ParityTxTraceFromReplay>? materializeForInProcess = null)
+        ILogger logger)
     {
         ArgumentNullException.ThrowIfNull(runTrace);
         ArgumentNullException.ThrowIfNull(timeoutCts);
 
         _runTrace = runTrace;
-        _materializeForInProcess = materializeForInProcess;
         _timeoutCts = timeoutCts;
         _timeoutToken = timeoutCts.Token;
         _logger = logger;
     }
 
     private ParityTxTraceFromReplay? Materialized =>
-        _materialized ??= _materializeForInProcess?.Invoke();
+        _materialized ??= MaterializeForInProcess?.Invoke();
 
     public override byte[]? Output { get => Materialized?.Output; set { } }
     public override Hash256? TransactionHash { get => Materialized?.TransactionHash; set { } }
@@ -92,7 +98,11 @@ public sealed class ParityTxTraceFromReplayStreamingResult : ParityTxTraceFromRe
 
     internal void WriteAsJson(Utf8JsonWriter writer) => _runTrace(writer, null, _timeoutToken);
 
-    public void Dispose() => _timeoutCts.Dispose();
+    public void Dispose()
+    {
+        LifetimeScope?.Dispose();
+        _timeoutCts.Dispose();
+    }
 }
 
 internal sealed class ParityTxTraceFromReplayStreamingResultConverter : JsonConverter<ParityTxTraceFromReplayStreamingResult>

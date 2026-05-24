@@ -28,29 +28,28 @@ namespace Nethermind.JsonRpc.Modules.Trace;
 public sealed class ParityTxTraceStreamingResult<T> : StreamingResultBase, IEnumerable<T>
 {
     private readonly Action<Utf8JsonWriter, PipeWriter?, CancellationToken> _runExecution;
-    private readonly Func<IEnumerable<T>>? _materializeForInProcess;
 
-    /// <param name="materializeForInProcess">
+    /// <summary>
     /// Buffered fallback for in-process enumeration; HTTP clients never hit this. If
     /// <see langword="null"/>, in-process enumeration yields no items.
-    /// </param>
+    /// </summary>
+    public Func<IEnumerable<T>>? MaterializeForInProcess { get; init; }
+
     public ParityTxTraceStreamingResult(
         Action<Utf8JsonWriter, PipeWriter?, CancellationToken> runExecution,
         CancellationTokenSource timeoutCts,
-        ILogger logger,
-        Func<IEnumerable<T>>? materializeForInProcess = null)
+        ILogger logger)
         : base(timeoutCts, logger)
     {
         ArgumentNullException.ThrowIfNull(runExecution);
 
         _runExecution = runExecution;
-        _materializeForInProcess = materializeForInProcess;
     }
 
     public IEnumerator<T> GetEnumerator() =>
-        _materializeForInProcess is null
+        MaterializeForInProcess is null
             ? Enumerable.Empty<T>().GetEnumerator()
-            : _materializeForInProcess().GetEnumerator();
+            : MaterializeForInProcess().GetEnumerator();
     IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
 
     protected override void EmitContent(Utf8JsonWriter writer, PipeWriter? pipeWriter, CancellationToken cancellationToken)

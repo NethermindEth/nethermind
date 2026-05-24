@@ -163,10 +163,11 @@ namespace Nethermind.JsonRpc.Modules.Trace
             Block block = new(header, [tx], []);
 
             ParityTraceTypes traceTypes1 = GetParityTypes(traceTypes);
-            // trace_call / trace_rawTransaction stay buffered because state-override scope
-            // closes when the JSON-RPC method returns; deferring execution to serialize-time
-            // would throw MissingTrieNodeException on the now-invalid overlay. Multi-tx
-            // streaming covers the heap savings; single-tx scopes are tiny anyway.
+            // trace_call / trace_rawTransaction stay buffered: deferring execution past the
+            // RPC call boundary loses state-override mutations (e.g. balance overrides) — the
+            // worldstate scope is shared with block-processor setup that runs between the
+            // scope open and the deferred Trace call. Single-tx working sets are small so
+            // the streaming win is marginal here anyway.
             using Scope<ITracer> env = tracerEnv.BuildAndOverride(header, stateOverride);
             ITracer tracer = env.Component;
 
@@ -610,7 +611,10 @@ namespace Nethermind.JsonRpc.Modules.Trace
             try
             {
                 return ResultWrapper<IEnumerable<ParityTxTraceFromReplay>>.Success(
-                    new ParityTxTraceStreamingResult<ParityTxTraceFromReplay>(runStreaming, timeoutCts, _logger, runBuffered));
+                    new ParityTxTraceStreamingResult<ParityTxTraceFromReplay>(runStreaming, timeoutCts, _logger)
+                    {
+                        MaterializeForInProcess = runBuffered,
+                    });
             }
             catch
             {
@@ -633,7 +637,10 @@ namespace Nethermind.JsonRpc.Modules.Trace
             try
             {
                 return ResultWrapper<IEnumerable<ParityTxTraceFromStore>>.Success(
-                    new ParityTxTraceStreamingResult<ParityTxTraceFromStore>(runStreaming, timeoutCts, _logger, runBuffered));
+                    new ParityTxTraceStreamingResult<ParityTxTraceFromStore>(runStreaming, timeoutCts, _logger)
+                    {
+                        MaterializeForInProcess = runBuffered,
+                    });
             }
             catch
             {
@@ -645,24 +652,40 @@ namespace Nethermind.JsonRpc.Modules.Trace
         /// <summary>
         /// Wraps an execution delegate as a streaming single-envelope Replay response used
         /// by <c>trace_call</c> / <c>trace_rawTransaction</c> / <c>trace_replayTransaction</c>.
+        /// <paramref name="lifetimeScope"/> (if supplied) is owned by the returned result and
+        /// disposed once the response is consumed — used to extend the lifetime of an
+        /// eagerly-opened state-override scope across the deferred trace execution.
         /// </summary>
         private ResultWrapper<ParityTxTraceFromReplay> BuildStreamingReplaySingleResult(
             Action<Utf8JsonWriter, PipeWriter?, CancellationToken> runStreaming,
-            Func<ParityTxTraceFromReplay> runBuffered)
+            Func<ParityTxTraceFromReplay> runBuffered,
+            IDisposable? lifetimeScope = null)
         {
             if (!jsonRpcConfig.EnableTracingStreamMode)
             {
-                return ResultWrapper<ParityTxTraceFromReplay>.Success(runBuffered());
+                try
+                {
+                    return ResultWrapper<ParityTxTraceFromReplay>.Success(runBuffered());
+                }
+                finally
+                {
+                    lifetimeScope?.Dispose();
+                }
             }
 
             CancellationTokenSource timeoutCts = BuildTimeoutCancellationTokenSource();
             try
             {
                 return ResultWrapper<ParityTxTraceFromReplay>.Success(
-                    new ParityTxTraceFromReplayStreamingResult(runStreaming, timeoutCts, _logger, runBuffered));
+                    new ParityTxTraceFromReplayStreamingResult(runStreaming, timeoutCts, _logger)
+                    {
+                        MaterializeForInProcess = runBuffered,
+                        LifetimeScope = lifetimeScope,
+                    });
             }
             catch
             {
+                lifetimeScope?.Dispose();
                 timeoutCts.Dispose();
                 throw;
             }
