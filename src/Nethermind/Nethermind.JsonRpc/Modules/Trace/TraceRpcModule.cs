@@ -29,6 +29,7 @@ using Nethermind.Int256;
 using Nethermind.JsonRpc.Data;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.Logging;
+using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.JsonRpc.Modules.Trace
@@ -436,11 +437,63 @@ namespace Nethermind.JsonRpc.Modules.Trace
         /// </summary>
         public ResultWrapper<IEnumerable<ParityTxTraceFromStore>> trace_get(Hash256 txHash, long[] positions)
         {
-            ResultWrapper<IEnumerable<ParityTxTraceFromStore>> traceTransaction = trace_transaction(txHash);
-            List<ParityTxTraceFromStore> traces = ExtractPositionsFromTxTrace(positions, traceTransaction);
-            return ResultWrapper<IEnumerable<ParityTxTraceFromStore>>.Success(traces);
+            SearchResult<Hash256> blockHashSearch = receiptFinder.SearchForReceiptBlockHash(txHash);
+            if (blockHashSearch.IsError)
+            {
+                return ResultWrapper<IEnumerable<ParityTxTraceFromStore>>.Fail(blockHashSearch);
+            }
+
+            SearchResult<Block> blockSearch = blockFinder.SearchForBlock(new BlockParameter(blockHashSearch.Object!, requireCanonical: true));
+            if (blockSearch.IsError)
+            {
+                return ResultWrapper<IEnumerable<ParityTxTraceFromStore>>.Fail(blockSearch);
+            }
+
+            Block block = blockSearch.Object!;
+            SearchResult<BlockHeader> parentSearch = blockFinder.SearchForHeader(new BlockParameter(block.Header.ParentHash));
+            if (parentSearch.IsError)
+            {
+                return ResultWrapper<IEnumerable<ParityTxTraceFromStore>>.Fail(parentSearch);
+            }
+
+            if (!blockchainBridge.HasStateForBlock(parentSearch.Object))
+            {
+                return GetStateFailureResult<IEnumerable<ParityTxTraceFromStore>>(parentSearch.Object);
+            }
+
+            BlockHeader parentHeader = parentSearch.Object!;
+            // Positions are 0-based subtrace indices in the pre-order traversal of the
+            // action tree; ParityTxTraceFromStore.FromTxTrace yields the root at index 0,
+            // so position p maps to absolute index p+1.
+            HashSet<long> wantedAbsoluteIndices = new(positions.Length);
+            foreach (long p in positions) wantedAbsoluteIndices.Add(p + 1);
+
+            return BuildStreamingStoreResult(
+                runStreaming: (writer, pipeWriter, token) =>
+                {
+                    IReadOnlyCollection<ParityLikeTxTrace> txTrace = ExecuteBlock(parentHeader, block, new ParityLikeBlockTracer(txHash, ParityTraceTypes.Trace));
+                    long index = 0;
+                    foreach (ParityTxTraceFromStore item in ParityTxTraceFromStore.FromTxTrace(txTrace))
+                    {
+                        if (wantedAbsoluteIndices.Contains(index))
+                        {
+                            JsonSerializer.Serialize(writer, item, EthereumJsonSerializer.JsonOptions);
+                        }
+                        index++;
+                    }
+                },
+                runBuffered: () =>
+                {
+                    IReadOnlyCollection<ParityLikeTxTrace> txTrace = ExecuteBlock(parentHeader, block, new ParityLikeBlockTracer(txHash, ParityTraceTypes.Trace));
+                    return ParityTxTraceFromStore.FromTxTrace(txTrace).Where((_, index) => wantedAbsoluteIndices.Contains(index));
+                });
         }
 
+        /// <summary>
+        /// Buffered position-extraction used by <c>TraceStoreRpcModule</c>'s in-process
+        /// composition over <c>trace_transaction</c>; the streaming <c>trace_get</c> on this
+        /// module bypasses it and filters inline.
+        /// </summary>
         public static List<ParityTxTraceFromStore> ExtractPositionsFromTxTrace(long[] positions, ResultWrapper<IEnumerable<ParityTxTraceFromStore>> traceTransaction)
         {
             List<ParityTxTraceFromStore> traces = [];
