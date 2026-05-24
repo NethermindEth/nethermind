@@ -365,7 +365,11 @@ public sealed class StreamingParityLikeBlockTracer : ParityLikeBlockTracer, IDis
 
     public override void EndBlockTrace()
     {
+        // Null after dispose so the outer `using`'s Dispose is a true no-op:
+        // ReturnStateChanges in the tx tracer's Dispose is not idempotent (it would
+        // re-push the same ParityAccountStateChange entries into the pool).
         _reusableTxTracer?.Dispose();
+        _reusableTxTracer = null;
         base.EndBlockTrace();
     }
 

@@ -27,6 +27,8 @@ namespace Nethermind.JsonRpc.Modules.Trace;
 /// Inherits <see cref="ParityTxTraceFromReplay"/> so a <c>ResultWrapper&lt;ParityTxTraceFromReplay&gt;</c>
 /// can return either the streaming or the buffered shape transparently — same pattern
 /// used by <c>GethLikeTxTraceStreamingSingleResult</c> for <c>debug_traceTransaction</c>.
+/// Cannot inherit <see cref="StreamingResultBase"/> because of single inheritance; the
+/// <c>WriteToAsync</c> / <c>WriteAsJson</c> scaffolding is duplicated here intentionally.
 /// </remarks>
 [JsonConverter(typeof(ParityTxTraceFromReplayStreamingResultConverter))]
 public sealed class ParityTxTraceFromReplayStreamingResult : ParityTxTraceFromReplay, IStreamableResult, IDisposable
@@ -37,6 +39,7 @@ public sealed class ParityTxTraceFromReplayStreamingResult : ParityTxTraceFromRe
     private readonly CancellationTokenSource _timeoutCts;
     private readonly CancellationToken _timeoutToken;
     private readonly ILogger _logger;
+    private int _consumed;
     private ParityTxTraceFromReplay? _materialized;
 
     /// <summary>
@@ -70,14 +73,22 @@ public sealed class ParityTxTraceFromReplayStreamingResult : ParityTxTraceFromRe
     private ParityTxTraceFromReplay? Materialized =>
         _materialized ??= MaterializeForInProcess?.Invoke();
 
-    public override byte[]? Output { get => Materialized?.Output; set { } }
-    public override Hash256? TransactionHash { get => Materialized?.TransactionHash; set { } }
-    public override ParityVmTrace? VmTrace { get => Materialized?.VmTrace; set { } }
-    public override ParityTraceAction? Action { get => Materialized?.Action; set { } }
-    public override Dictionary<Address, ParityAccountStateChange>? StateChanges { get => Materialized?.StateChanges; set { } }
+    // Setters throw rather than silently no-op: a write attempt on a streaming result is
+    // always a bug — the value would never reach the wire (HTTP path bypasses these
+    // properties) and would be invisibly discarded.
+    public override byte[]? Output { get => Materialized?.Output; set => ThrowReadOnly(); }
+    public override Hash256? TransactionHash { get => Materialized?.TransactionHash; set => ThrowReadOnly(); }
+    public override ParityVmTrace? VmTrace { get => Materialized?.VmTrace; set => ThrowReadOnly(); }
+    public override ParityTraceAction? Action { get => Materialized?.Action; set => ThrowReadOnly(); }
+    public override Dictionary<Address, ParityAccountStateChange>? StateChanges { get => Materialized?.StateChanges; set => ThrowReadOnly(); }
+
+    private static void ThrowReadOnly() =>
+        throw new NotSupportedException("ParityTxTraceFromReplayStreamingResult is read-only; writes are produced by the deferred trace delegate.");
 
     public async ValueTask WriteToAsync(PipeWriter writer, CancellationToken cancellationToken)
     {
+        ThrowIfAlreadyConsumed();
+
         using CancellationTokenSource linkedCts =
             CancellationTokenSource.CreateLinkedTokenSource(_timeoutToken, cancellationToken);
         CancellationToken combinedToken = linkedCts.Token;
@@ -96,7 +107,20 @@ public sealed class ParityTxTraceFromReplayStreamingResult : ParityTxTraceFromRe
         }
     }
 
-    internal void WriteAsJson(Utf8JsonWriter writer) => _runTrace(writer, null, _timeoutToken);
+    internal void WriteAsJson(Utf8JsonWriter writer)
+    {
+        ThrowIfAlreadyConsumed();
+        _runTrace(writer, null, _timeoutToken);
+    }
+
+    private void ThrowIfAlreadyConsumed()
+    {
+        if (Interlocked.Exchange(ref _consumed, 1) != 0)
+        {
+            throw new InvalidOperationException(
+                "ParityTxTraceFromReplayStreamingResult is single-invocation; a second WriteToAsync/WriteAsJson would re-execute a non-idempotent trace delegate.");
+        }
+    }
 
     public void Dispose()
     {

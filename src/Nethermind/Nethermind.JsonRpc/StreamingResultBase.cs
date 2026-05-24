@@ -29,6 +29,7 @@ public abstract class StreamingResultBase : IStreamableResult, IDisposable
     protected static readonly JsonWriterOptions StreamingWriterOptions = new() { SkipValidation = true };
 
     private readonly CancellationTokenSource _timeoutCts;
+    private int _consumed;
     protected readonly CancellationToken TimeoutToken;
     protected readonly ILogger Logger;
 
@@ -43,6 +44,8 @@ public abstract class StreamingResultBase : IStreamableResult, IDisposable
 
     public async ValueTask WriteToAsync(PipeWriter writer, CancellationToken cancellationToken)
     {
+        ThrowIfAlreadyConsumed();
+
         using CancellationTokenSource linkedCts =
             CancellationTokenSource.CreateLinkedTokenSource(TimeoutToken, cancellationToken);
         CancellationToken combinedToken = linkedCts.Token;
@@ -66,7 +69,27 @@ public abstract class StreamingResultBase : IStreamableResult, IDisposable
     /// caller does not detect <see cref="IStreamableResult"/> (e.g. test infrastructure
     /// or batch responses). The supplied writer is fed by the caller's buffer.
     /// </summary>
-    internal void WriteAsJson(Utf8JsonWriter writer) => EmitContent(writer, pipeWriter: null, TimeoutToken);
+    internal void WriteAsJson(Utf8JsonWriter writer)
+    {
+        ThrowIfAlreadyConsumed();
+        EmitContent(writer, pipeWriter: null, TimeoutToken);
+    }
+
+    /// <summary>
+    /// Streaming results wrap deferred trace delegates that mutate worldstate
+    /// (<c>SkipValidationAndCommit</c>) and are therefore single-shot. A second emit would
+    /// re-run the trace on post-mutation state and silently corrupt the output; surface it
+    /// loudly instead. Production HTTP pipelines invoke the result exactly once; this guard
+    /// only fires when test infrastructure or future runner code accidentally re-serialises.
+    /// </summary>
+    private void ThrowIfAlreadyConsumed()
+    {
+        if (Interlocked.Exchange(ref _consumed, 1) != 0)
+        {
+            throw new InvalidOperationException(
+                $"{GetType().Name} is single-invocation; a second WriteToAsync/WriteAsJson would re-execute a non-idempotent trace delegate.");
+        }
+    }
 
     /// <summary>
     /// Concrete subclasses emit the type-specific JSON shape here. <paramref name="pipeWriter"/>

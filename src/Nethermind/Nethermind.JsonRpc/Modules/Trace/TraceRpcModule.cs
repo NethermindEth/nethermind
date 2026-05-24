@@ -417,10 +417,12 @@ namespace Nethermind.JsonRpc.Modules.Trace
             return BuildStreamingMultiResult(
                 runStreaming: (writer, pipeWriter, token) =>
                 {
-                    IReadOnlyCollection<ParityLikeTxTrace> txTrace = ExecuteBlock(parentHeader, block, new ParityLikeBlockTracer(txHash, ParityTraceTypes.Trace));
+                    ParityLikeBlockTracer parityTracer = new(txHash, ParityTraceTypes.Trace);
+                    ExecuteBlockWithCancellation(parentHeader, block, parityTracer, specOverride: null, token);
                     long index = 0;
-                    foreach (ParityTxTraceFromStore item in ParityTxTraceFromStore.FromTxTrace(txTrace))
+                    foreach (ParityTxTraceFromStore item in ParityTxTraceFromStore.FromTxTrace(parityTracer.BuildResult()))
                     {
+                        token.ThrowIfCancellationRequested();
                         if (wantedAbsoluteIndices.Contains(index))
                         {
                             JsonSerializer.Serialize<ParityTxTraceFromStore>(writer, item, EthereumJsonSerializer.JsonOptions);

@@ -49,14 +49,21 @@ public class TraceStoreRpcModule(ITraceRpcModule traceModule,
     };
 
     /// <summary>
-    /// Wraps a store-served trace path as a streaming response. The timeout CTS is created
-    /// from the shared JSON-RPC config. <paramref name="runBuffered"/> is the in-process
-    /// iteration fallback.
+    /// Wraps a store-served trace path as a streaming response, honouring
+    /// <see cref="IJsonRpcConfig.EnableTracingStreamMode"/>. The timeout CTS is created
+    /// from the shared JSON-RPC config. <paramref name="runBuffered"/> is both the
+    /// in-process iteration fallback for streaming and the only path when streaming is
+    /// disabled (callers must supply it in that case).
     /// </summary>
     private ResultWrapper<IEnumerable<T>> BuildStoreStreamingResult<T>(
         Action<Utf8JsonWriter, PipeWriter?, CancellationToken> runStreaming,
         Func<IEnumerable<T>>? runBuffered = null)
     {
+        if (!_jsonRpcConfig.EnableTracingStreamMode)
+        {
+            return ResultWrapper<IEnumerable<T>>.Success(runBuffered?.Invoke() ?? []);
+        }
+
         CancellationTokenSource timeoutCts = _jsonRpcConfig.BuildTimeoutCancellationToken();
         try
         {
