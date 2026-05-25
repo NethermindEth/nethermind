@@ -1456,11 +1456,9 @@ public partial class EngineModuleTests
     [Test]
     public async Task forkchoiceUpdated_accepts_safe_ancestor_when_head_is_main_but_ancestor_level_marker_is_stale()
     {
-        // Discriminator for stale canonical-marker handling:
-        //   1) Build X -> A and X -> B -> C, then set head=C with safe=B (valid ancestry).
-        //   2) Force an inconsistent block-by-number view at level N so A is marked canonical
-        //      while head remains C at N+1.
-        //   3) Repeat FCU(head=C, safe=B, finalized=X).
+        // 1) Build X -> A and X -> B -> C, then set head=C with safe=B (valid ancestry).
+        // 2) Force an inconsistent block-by-number view at level N so A is marked canonical while head remains C at N+1.
+        // 3) Repeat FCU(head=C, safe=B, finalized=X).
         // Expected: VALID, because B is still on C's real parent path.
         using MergeTestBlockchain chain =
             await CreateBlockchain(null, new MergeConfig() { TerminalTotalDifficulty = "0" });
