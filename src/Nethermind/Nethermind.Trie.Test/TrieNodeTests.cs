@@ -1306,6 +1306,43 @@ public class TrieNodeTests
         });
     }
 
+    [TestCase(0)]
+    [TestCase(7)]
+    public void Branch_serial_and_parallel_encoding_are_byte_equal(int seed)
+    {
+        if (Environment.ProcessorCount <= 1)
+        {
+            Assert.Ignore("Parallel branch encoding requires more than one processor.");
+        }
+
+        TrieNode serialNode = CreateBranchForParallelEncoding(seed);
+        TrieNode parallelNode = CreateBranchForParallelEncoding(seed);
+
+        TreePath serialPath = TreePath.Empty;
+        CappedArray<byte> serialRlp = serialNode.RlpEncode(NullTrieNodeResolver.Instance, ref serialPath, canBeParallel: false);
+
+        TreePath parallelPath = TreePath.Empty;
+        CappedArray<byte> parallelRlp = parallelNode.RlpEncode(NullTrieNodeResolver.Instance, ref parallelPath, canBeParallel: true);
+
+        parallelRlp.AsSpan().ToArray().Should().Equal(serialRlp.AsSpan().ToArray());
+    }
+
+    private static TrieNode CreateBranchForParallelEncoding(int seed)
+    {
+        TrieNode node = TrieNode.CreateBranchTyped();
+        for (int i = 0; i < 16; i++)
+        {
+            TrieNode child = TrieNode.CreateLeafTyped();
+            child.Key = [(byte)(seed + i), (byte)i];
+            byte[] value = new byte[i % 3 == 0 ? 48 + seed : 3 + (seed + i) % 5];
+            value.AsSpan().Fill((byte)(seed * 17 + i));
+            child.Value = value;
+            node.SetChild(i, child);
+        }
+
+        return node;
+    }
+
     [Test]
     public void Do_Not_MarkUnpersistedChildAsPersisted()
     {

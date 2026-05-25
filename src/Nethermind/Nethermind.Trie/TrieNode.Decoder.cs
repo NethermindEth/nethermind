@@ -439,8 +439,10 @@ namespace Nethermind.Trie
                             }
                     }
                 }
-
-                Debug.Assert(position == destination.Length);
+                if (position != destination.Length)
+                {
+                    ThrowRecordedBranchLengthMismatch(destination.Length, position);
+                }
             }
 
             private static TrieNode GetRecordedChild(TrieNode item, int childIndex)
@@ -490,6 +492,10 @@ namespace Nethermind.Trie
             [DoesNotReturn, StackTraceHidden]
             private static void ThrowChangedRecordedLength(int expected, int actual) =>
                 throw new TrieException($"Recorded branch child RLP length changed during encoding. Expected {expected}, actual {actual}.");
+
+            [DoesNotReturn, StackTraceHidden]
+            private static void ThrowRecordedBranchLengthMismatch(int expected, int actual) =>
+                throw new TrieException($"Recorded branch RLP length changed during encoding. Expected {expected}, actual {actual}.");
 
             private static void WriteChildrenRlpBranch(ITrieNodeResolver tree, ref TreePath path, TrieNode item, Span<byte> destination, ICappedArrayPool? bufferPool, bool canBeParallel)
             {
