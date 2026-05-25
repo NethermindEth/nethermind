@@ -72,10 +72,10 @@ internal abstract class BaseEpochSwitchManager(ISpecProvider xdcSpecProvider, IB
 
         if (masterNodes.Length != candidates.Length)
         {
-            HashSet<Address> excluded = new(masterNodes);
+            HashSet<Address> excluded = [.. masterNodes];
             excluded.UnionWith(penalties);
 
-            List<Address> result = new();
+            List<Address> result = [];
             foreach (Address candidate in candidates)
             {
                 if (excluded.Add(candidate))

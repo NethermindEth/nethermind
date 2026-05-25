@@ -1,105 +1,150 @@
 using Microsoft.CodeAnalysis;
-using Nethermind.Serialization.Ssz;
 
 class SszType
 {
     private const string SelectorPropertyName = "Selector";
 
-    static SszType()
-    {
-        BasicTypes.Add(new SszType
+    // BCL primitives and Nethermind core types with hand-rolled SSZ encoders.
+    // Add a new entry here when introducing a new fixed-length basic SSZ type.
+    public static List<SszType> BasicTypes { get; } =
+    [
+        Primitive<byte>(),
+        Primitive<ushort>(),
+        Primitive<int>(),
+        Primitive<uint>(),
+        Primitive<long>(),
+        Primitive<ulong>(),
+        Primitive<bool>(),
+        new()
         {
-            Namespace = "System",
-            Name = "Byte",
-            Kind = Kind.Basic,
-            StaticLength = sizeof(byte),
-        });
+            Namespace = "Nethermind.Int256", Name = "UInt256",
+            Kind = Kind.Basic, StaticLength = 32,
+            CustomEncodeTemplate = "{1}.ToLittleEndian({0});",
+            CustomDecodeTemplate = "{1} = new UInt256({0}, isBigEndian: false);",
+        },
+        new() { Namespace = "System.Collections", Name = "BitArray", Kind = Kind.Basic },
+        new() { Namespace = "Nethermind.Serialization.Ssz", Name = "SszBytes32", Kind = Kind.Basic, StaticLength = 32 },
+        FixedRefBytes("Nethermind.Serialization.Ssz", "SszBytes8", 8),
+        FixedRefBytes("Nethermind.Serialization.Ssz", "SszKzgCommitment", 48),
+        BytesRef("Nethermind.Core.Crypto", "Hash256", 32),
+        BytesRef("Nethermind.Core", "Address", 20),
+        BytesRef("Nethermind.Core", "Bloom", 256),
+    ];
 
-        BasicTypes.Add(new SszType
+    /// <summary>
+    /// Factory for BCL primitive numerics (and bool). Pulls Name/Namespace from
+    /// <c>typeof(T)</c>; size is the managed size from
+    /// <see cref="System.Runtime.CompilerServices.Unsafe.SizeOf{T}"/>, which returns
+    /// 1 for <c>bool</c> (matching SSZ's 1-byte encoding) and avoids the
+    /// <c>Marshal.SizeOf&lt;bool&gt;()</c> = 4 native-marshaling quirk.
+    /// </summary>
+    private static SszType Primitive<T>() where T : unmanaged =>
+        new()
         {
-            Namespace = "System",
-            Name = "UInt16",
+            Namespace = typeof(T).Namespace!,
+            Name = typeof(T).Name,
             Kind = Kind.Basic,
-            StaticLength = sizeof(ushort),
-        });
+            StaticLength = System.Runtime.CompilerServices.Unsafe.SizeOf<T>(),
+        };
 
-        BasicTypes.Add(new SszType
+    /// <summary>
+    /// Factory for Nethermind reference types whose SSZ codec is the same shape:
+    /// encode by <c>{value}.Bytes.CopyTo({dest})</c>, decode by <c>new T({src})</c>.
+    /// Covers Hash256, Address, Bloom, and any future fixed-length-byte ref type.
+    /// </summary>
+    private static SszType BytesRef(string @namespace, string name, int byteLength) =>
+        new()
         {
-            Namespace = "System",
-            Name = "Int32",
+            Namespace = @namespace,
+            Name = name,
             Kind = Kind.Basic,
-            StaticLength = sizeof(int),
-        });
+            StaticLength = byteLength,
+            IsRefType = true,
+            CustomEncodeTemplate = "{1}.Bytes.CopyTo({0});",
+            CustomDecodeTemplate = $"{{1}} = new {name}({{0}});",
+        };
 
-        BasicTypes.Add(new SszType
+    /// <summary>
+    /// Factory for fixed-length value-type SSZ wrappers that expose <c>AsSpan()</c> +
+    /// <c>FromSpan(...)</c> (e.g. <c>SszBytes8</c>, <c>SszKzgCommitment</c>). The
+    /// encode/decode templates round-trip through the span helpers.
+    /// </summary>
+    private static SszType FixedRefBytes(string @namespace, string name, int byteLength) =>
+        new()
         {
-            Namespace = "System",
-            Name = "UInt32",
+            Namespace = @namespace,
+            Name = name,
             Kind = Kind.Basic,
-            StaticLength = sizeof(uint),
-        });
-
-        BasicTypes.Add(new SszType
-        {
-            Namespace = "System",
-            Name = "Int64",
-            Kind = Kind.Basic,
-            StaticLength = sizeof(long),
-        });
-
-        BasicTypes.Add(new SszType
-        {
-            Namespace = "System",
-            Name = "UInt64",
-            Kind = Kind.Basic,
-            StaticLength = sizeof(ulong),
-        });
-
-        BasicTypes.Add(new SszType
-        {
-            Namespace = "Nethermind.Int256",
-            Name = "UInt256",
-            Kind = Kind.Basic,
-            StaticLength = 32,
-        });
-
-        BasicTypes.Add(new SszType
-        {
-            Namespace = "System",
-            Name = "Boolean",
-            Kind = Kind.Basic,
-            StaticLength = 1,
-        });
-
-        BasicTypes.Add(new SszType
-        {
-            Namespace = "System.Collections",
-            Name = "BitArray",
-            Kind = Kind.Basic,
-        });
-
-        BasicTypes.Add(new SszType
-        {
-            Namespace = "Nethermind.Serialization.Ssz",
-            Name = "SszBytes32",
-            Kind = Kind.Basic,
-            StaticLength = 32,
-        });
-    }
-
-    public static List<SszType> BasicTypes { get; set; } = [];
+            StaticLength = byteLength,
+            IsRefType = true,
+            CustomEncodeTemplate = "{1}.AsSpan().CopyTo({0});",
+            CustomDecodeTemplate = $"{{1}} = {name}.FromSpan({{0}});",
+        };
 
     public required string Name { get; init; }
     public required string? Namespace { get; init; }
     public required Kind Kind { get; init; }
+
+    private string? _typeReferenceName;
+    /// <summary>
+    /// How this type is spelled at a use site — closed generics like <c>NewPayloadRequest&lt;TExecutionPayload&gt;</c>
+    /// or primitive keywords like <c>int</c>. Defaults to <see cref="Name"/> for hand-registered basic types.
+    /// </summary>
+    public string TypeReferenceName
+    {
+        get => _typeReferenceName ?? Name;
+        init => _typeReferenceName = value;
+    }
+
+    private string? _staticMemberAccess;
+    /// <summary>
+    /// Fully-qualified spelling used as the receiver for static-member access in generated code
+    /// (e.g. <c>global::Ns.Foo.Encode(...)</c>). Must be used at every <c>{Type}.{StaticMethod}(...)</c>
+    /// emission site so the call cannot be shadowed by an instance property of the same simple name
+    /// declared on the enclosing partial.
+    /// </summary>
+    /// <remarks>
+    /// Defaults to a <c>global::</c>-prefixed namespace concatenation for hand-registered basic types
+    /// and falls back to the bare <see cref="TypeReferenceName"/> when no containing namespace is known
+    /// (e.g. open type parameters).
+    /// </remarks>
+    public string StaticMemberAccess
+    {
+        get => _staticMemberAccess ?? (string.IsNullOrEmpty(Namespace) ? TypeReferenceName : $"global::{Namespace}.{TypeReferenceName}");
+        init => _staticMemberAccess = value;
+    }
+
+    /// <summary>Generic constraint clauses (e.g. <c>where T : ...</c>) for the root type declaration. Empty when there are none.</summary>
+    public string TypeParameterConstraints { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Namespaces of types referenced from <see cref="TypeParameterConstraints"/>. The generator emits a
+    /// <c>using</c> for each so the constraint clause resolves in the generated file.
+    /// </summary>
+    public List<string> TypeParameterConstraintNamespaces { get; } = [];
+
+    /// <summary><c>true</c> when this <see cref="SszType"/> represents an open type parameter (forces variable-size encoding).</summary>
+    public bool IsTypeParameter { get; init; }
+
+    /// <summary>Filename-safe form of <see cref="TypeReferenceName"/> used as the <c>AddSource</c> hint.</summary>
+    public string HintName => TypeReferenceName
+        .Replace('<', '_')
+        .Replace('>', '_')
+        .Replace(',', '_')
+        .Replace(' ', '_')
+        .Replace('.', '_');
 
     public SszProperty[]? Members { get; set; }
     public byte[]? ActiveFieldsBytes { get; set; }
     public int ActiveFieldsBitLength { get; set; }
 
     public bool IsStruct { get; set; }
+    public bool IsRefType { get; init; }
     public SszType? EnumType { get; set; }
 
+    public string? CustomEncodeTemplate { get; init; }
+    public string? CustomDecodeTemplate { get; init; }
+    public bool HasCustomInlineCodec => CustomEncodeTemplate is not null;
     public IEnumerable<SszProperty>? CompatibleUnionMembers => Kind == Kind.CompatibleUnion ? Members?.Where(x => x.Name != SelectorPropertyName) : null;
     public SszProperty? Selector => Members?.FirstOrDefault(x => x.Name == SelectorPropertyName);
 
@@ -108,10 +153,10 @@ class SszType
     public int StaticLength
     {
         get => _length ?? Members?.Sum(x => x.StaticLength) ?? 0;
-        set => _length = value;
+        private set => _length = value;
     }
 
-    public bool IsVariable => (Members is not null && Members.Any(x => x.IsVariable)) || Kind is Kind.CompatibleUnion;
+    public bool IsVariable => IsTypeParameter || (Members is not null && Members.Any(x => x.IsVariable)) || Kind is Kind.CompatibleUnion;
 
     public bool IsSszListItself { get; private set; }
 
@@ -121,8 +166,14 @@ class SszType
     {
         string? @namespace = GetNamespace(type);
         string name = GetTypeName(type);
+        string typeReferenceName = GetTypeReferenceName(type);
+        string staticMemberAccess = GetStaticMemberAccess(type, typeReferenceName);
 
-        SszType? existingType = types.FirstOrDefault(t => t.Name == name && t.Namespace == @namespace);
+        // Hand-registered basic types (e.g. byte, Int32) use BCL casing in Name while a
+        // user-site reference comes back in keyword form ("byte", "int") via MinimallyQualifiedFormat —
+        // so reconcile to the basic-type entry by Name in that case.
+        SszType? existingType = types.FirstOrDefault(t => t.Namespace == @namespace
+            && (t.TypeReferenceName == typeReferenceName || (t.Kind == Kind.Basic && t.Name == name)));
         if (existingType is not null)
         {
             return existingType;
@@ -135,7 +186,10 @@ class SszType
         {
             Namespace = @namespace,
             Name = name,
+            TypeReferenceName = typeReferenceName,
+            StaticMemberAccess = staticMemberAccess,
             Kind = kind,
+            IsTypeParameter = type is ITypeParameterSymbol,
         };
         types.Add(result);
 
@@ -153,15 +207,15 @@ class SszType
             _ => null,
         };
 
-        if (result.Kind == Kind.ProgressiveContainer)
+        switch (result.Kind)
         {
-            result.Members = BuildProgressiveContainerMembers(result.Name, result.Members ?? []);
-            (result.ActiveFieldsBytes, result.ActiveFieldsBitLength) = BuildActiveFields(result.Members);
-        }
-
-        if (result.Kind == Kind.CompatibleUnion)
-        {
-            InitializeCompatibleUnion(type, result);
+            case Kind.ProgressiveContainer:
+                result.Members = BuildProgressiveContainerMembers(result.Name, result.Members ?? []);
+                (result.ActiveFieldsBytes, result.ActiveFieldsBitLength) = BuildActiveFields(result.Members);
+                break;
+            case Kind.CompatibleUnion:
+                InitializeCompatibleUnion(type, result);
+                break;
         }
 
         if ((result.Kind & (Kind.Container | Kind.ProgressiveContainer | Kind.CompatibleUnion)) != Kind.None && type.TypeKind == TypeKind.Struct)
@@ -169,7 +223,7 @@ class SszType
             result.IsStruct = true;
         }
 
-        if (result.Kind is Kind.Container && result.Members is { Length: 1 } && result.Members[0] is SszProperty member && (member.Kind == Kind.List || member.Kind == Kind.ProgressiveList))
+        if (result.Kind is Kind.Container && result.Members is { Length: 1 } && result.Members[0] is { Kind: Kind.List or Kind.ProgressiveList })
         {
             result.IsSszListItself = GetIsCollectionItselfValue(type);
         }
@@ -240,30 +294,24 @@ class SszType
 
     private bool HaveCompatibleProgressiveContainerLayout(SszType other, HashSet<(SszType, SszType)> visited)
     {
-        Dictionary<int, SszProperty> leftByIndex = (Members ?? []).ToDictionary(member => member.FieldIndex!.Value);
-        Dictionary<int, SszProperty> rightByIndex = (other.Members ?? []).ToDictionary(member => member.FieldIndex!.Value);
+        SszProperty[] leftMembers = Members ?? [];
+        SszProperty[] rightMembers = other.Members ?? [];
 
-        foreach (KeyValuePair<int, SszProperty> entry in leftByIndex)
+        Dictionary<int, SszProperty> rightByIndex = rightMembers.ToDictionary(m => m.FieldIndex!.Value);
+        Dictionary<string, SszProperty> rightByName = rightMembers.ToDictionary(m => m.Name);
+
+        foreach (SszProperty left in leftMembers)
         {
-            if (rightByIndex.TryGetValue(entry.Key, out SszProperty? rightMember))
+            if (rightByIndex.TryGetValue(left.FieldIndex!.Value, out SszProperty? byIndex)
+                && (left.Name != byIndex.Name || !left.IsCompatibleWith(byIndex, visited)))
             {
-                if (entry.Value.Name != rightMember.Name || !entry.Value.IsCompatibleWith(rightMember, visited))
-                {
-                    return false;
-                }
+                return false;
             }
-        }
 
-        Dictionary<string, SszProperty> leftByName = (Members ?? []).ToDictionary(member => member.Name);
-        Dictionary<string, SszProperty> rightByName = (other.Members ?? []).ToDictionary(member => member.Name);
-        foreach (KeyValuePair<string, SszProperty> entry in leftByName)
-        {
-            if (rightByName.TryGetValue(entry.Key, out SszProperty? rightMember))
+            if (rightByName.TryGetValue(left.Name, out SszProperty? byName)
+                && (left.FieldIndex != byName.FieldIndex || !left.IsCompatibleWith(byName, visited)))
             {
-                if (entry.Value.FieldIndex != rightMember.FieldIndex || !entry.Value.IsCompatibleWith(rightMember, visited))
-                {
-                    return false;
-                }
+                return false;
             }
         }
 
@@ -300,7 +348,7 @@ class SszType
         }
 
         bool isProgressiveContainer = HasAnyFieldIndex(type);
-        bool isCompatibleUnion = HasAttribute(type, nameof(SszCompatibleUnionAttribute));
+        bool isCompatibleUnion = HasAttribute(type, "SszCompatibleUnionAttribute");
         if (isProgressiveContainer && isCompatibleUnion)
         {
             throw new InvalidOperationException($"Type {GetTypeName(type)} cannot be both a progressive container and a compatible union.");
@@ -418,30 +466,90 @@ class SszType
         }
     }
 
-    private static IEnumerable<IPropertySymbol> GetPublicProperties(ITypeSymbol type) =>
+    private static IEnumerable<IPropertySymbol> GetPublicProperties(ITypeSymbol type)
+    {
+        List<ITypeSymbol> typeChain = [];
+        ITypeSymbol? current = type;
+        while (current is not null && current.SpecialType == SpecialType.None)
+        {
+            typeChain.Add(current);
+            current = current.BaseType;
+        }
+        typeChain.Reverse();
+
+        Dictionary<string, IPropertySymbol> mostDerived = new(StringComparer.Ordinal);
+        foreach (ITypeSymbol t in typeChain)
+        {
+            foreach (IPropertySymbol p in GetPublicReadWriteProperties(t))
+            {
+                mostDerived[p.Name] = p;
+            }
+        }
+
+        HashSet<string> seen = new(StringComparer.Ordinal);
+        foreach (ITypeSymbol t in typeChain)
+        {
+            foreach (IPropertySymbol p in GetPublicReadWriteProperties(t))
+            {
+                if (!seen.Add(p.Name))
+                    continue;
+
+                if (!mostDerived.TryGetValue(p.Name, out IPropertySymbol? canonical))
+                    continue;
+
+                if (HasPropertyAttribute(canonical, "SszIgnoreAttribute"))
+                    continue;
+
+                yield return canonical;
+            }
+        }
+    }
+
+    private static IEnumerable<IPropertySymbol> GetPublicReadWriteProperties(ITypeSymbol type) =>
         type.GetMembers().OfType<IPropertySymbol>()
-            .Where(p => p.GetMethod is not null
-                && p.SetMethod is not null
-                && p.GetMethod.DeclaredAccessibility == Accessibility.Public
-                && p.SetMethod.DeclaredAccessibility == Accessibility.Public);
+            .Where(p => p.GetMethod?.DeclaredAccessibility == Accessibility.Public
+                     && p.SetMethod?.DeclaredAccessibility == Accessibility.Public);
 
     private static bool HasAttribute(ITypeSymbol typeSymbol, string attributeName) =>
         typeSymbol.GetAttributes().Any(a => a.AttributeClass?.Name == attributeName);
 
-    private static bool HasAnyFieldIndex(ITypeSymbol typeSymbol) =>
-        GetPublicProperties(typeSymbol).Any(property => property.GetAttributes().Any(a => a.AttributeClass?.Name == nameof(SszFieldAttribute)));
+    private static bool HasPropertyAttribute(IPropertySymbol property, string attributeName) =>
+        property.GetAttributes().Any(a => a.AttributeClass?.Name == attributeName);
 
-    private static string? GetNamespace(ITypeSymbol syntaxNode) => syntaxNode.ContainingNamespace?.ToString();
+    private static bool HasAnyFieldIndex(ITypeSymbol typeSymbol) =>
+        GetPublicProperties(typeSymbol).Any(property => property.GetAttributes().Any(a => a.AttributeClass?.Name == "SszFieldAttribute"));
+
+    private static string? GetNamespace(ITypeSymbol syntaxNode) =>
+        syntaxNode.ContainingNamespace is { IsGlobalNamespace: false } ns ? ns.ToString() : null;
 
     private static string GetTypeName(ITypeSymbol syntaxNode) =>
-        string.IsNullOrEmpty(syntaxNode.ContainingNamespace?.ToString()) ? syntaxNode.ToString() : syntaxNode.Name.Replace(syntaxNode.ContainingNamespace!.ToString() + ".", "");
+        string.IsNullOrEmpty(syntaxNode.ContainingNamespace?.ToString()) ? syntaxNode.ToString() : syntaxNode.Name.Replace(syntaxNode.ContainingNamespace! + ".", "");
+
+    // Strip the nullable reference-type annotation so the resulting name is usable both as a
+    // bare type identifier in static-member access (e.g. `Foo.Encode(...)`) and as a parameter
+    // type where the generator decides nullability contextually (see <see cref="IsStruct"/>).
+    // Leaving `?` baked in would emit invalid syntax like `Foo?.Encode(...)` at static call sites.
+    private static string GetTypeReferenceName(ITypeSymbol typeSymbol) =>
+        typeSymbol.WithNullableAnnotation(NullableAnnotation.NotAnnotated)
+            .ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat);
+
+    // Globally-rooted form (e.g. `global::Ns.Foo<global::Other.Bar>`) used wherever the generator
+    // emits a static-member access on the type. Disambiguates against instance members of the
+    // same simple name on the enclosing partial and qualifies any closed-generic type arguments
+    // embedded in the reference. Type parameters resolve at the use site and degrade to their
+    // declared identifier (e.g. `T`).
+    private static string GetStaticMemberAccess(ITypeSymbol typeSymbol, string typeReferenceName) =>
+        typeSymbol is ITypeParameterSymbol
+            ? typeReferenceName
+            : typeSymbol.WithNullableAnnotation(NullableAnnotation.NotAnnotated)
+                .ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
 
     public override string ToString() => $"type({Kind},{Name},{(IsVariable ? "v" : "f")})";
 
     private static bool GetIsCollectionItselfValue(ITypeSymbol typeSymbol)
     {
         object? attrValue = typeSymbol
-            .GetAttributes().FirstOrDefault(a => a.AttributeClass?.Name == nameof(SszContainerAttribute))?
+            .GetAttributes().FirstOrDefault(a => a.AttributeClass?.Name == "SszContainerAttribute")?
             .ConstructorArguments.FirstOrDefault().Value;
 
         return attrValue is not null && (bool)attrValue;

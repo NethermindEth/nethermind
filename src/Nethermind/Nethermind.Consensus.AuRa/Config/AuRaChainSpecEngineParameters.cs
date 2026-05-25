@@ -24,7 +24,7 @@ public class AuRaChainSpecEngineParameters : IChainSpecEngineParameters
     public string? SealEngineType => Core.SealEngineType.AuRa;
 
     [JsonConverter(typeof(StepDurationJsonConverter))]
-    public SortedDictionary<long, long> StepDuration { get; set; } = new();
+    public SortedDictionary<long, long> StepDuration { get; set; } = [];
 
     [JsonConverter(typeof(BlockRewardConverter))]
     public SortedDictionary<long, UInt256>? BlockReward { get; set; }
@@ -123,7 +123,7 @@ public class AuRaChainSpecEngineParameters : IChainSpecEngineParameters
 
         public override SortedDictionary<long, long> Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
         {
-            SortedDictionary<long, long> value = new();
+            SortedDictionary<long, long> value = [];
             if (reader.TokenType == JsonTokenType.String)
             {
                 value.Add(0, JsonSerializer.Deserialize<long>(ref reader, options));
@@ -173,7 +173,7 @@ public class AuRaChainSpecEngineParameters : IChainSpecEngineParameters
         public Address[]? List { get; set; }
         public Address? Contract { get; set; }
         public Address? SafeContract { get; set; }
-        public Dictionary<long, AuRaValidatorJson> Multi { get; set; } = new();
+        public Dictionary<long, AuRaValidatorJson> Multi { get; set; } = [];
 
         public AuRaParameters.ValidatorType GetValidatorType()
         {

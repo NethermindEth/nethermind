@@ -21,6 +21,11 @@ class SszProperty
             Name = prop.Name,
             Type = type,
             IsArrayProperty = prop.Type is IArrayTypeSymbol,
+            IsSpanLikeProperty = SszTypeHelpers.IsSpanType(prop.Type),
+            IsReadOnlySpanProperty = SszTypeHelpers.IsReadOnlySpanType(prop.Type),
+            IsMemoryLikeProperty = SszTypeHelpers.IsMemoryType(prop.Type),
+            IsReadOnlyMemoryProperty = SszTypeHelpers.IsReadOnlyMemoryType(prop.Type),
+            IsNullable = prop.Type.NullableAnnotation == NullableAnnotation.Annotated,
         };
 
         AttributeData? fieldAttr = GetAttribute(attributes, nameof(SszFieldAttribute));
@@ -57,6 +62,16 @@ class SszProperty
             return array.ElementType!;
         }
 
+        if (SszTypeHelpers.IsSpanType(typeSymbol))
+        {
+            return ((INamedTypeSymbol)typeSymbol).TypeArguments[0];
+        }
+
+        if (SszTypeHelpers.IsMemoryType(typeSymbol))
+        {
+            return ((INamedTypeSymbol)typeSymbol).TypeArguments[0];
+        }
+
         INamedTypeSymbol? iListOfT = compilation.GetTypeByMetadataName("System.Collections.Generic.IList`1");
         INamedTypeSymbol? enumerable = typeSymbol.AllInterfaces.FirstOrDefault(i => SymbolEqualityComparer.Default.Equals(i.OriginalDefinition, iListOfT));
         if (iListOfT != null && enumerable is not null)
@@ -77,6 +92,11 @@ class SszProperty
     public required string Name { get; init; }
     public required SszType Type { get; init; }
     public bool IsArrayProperty { get; init; }
+    public bool IsSpanLikeProperty { get; init; }
+    public bool IsReadOnlySpanProperty { get; init; }
+    public bool IsMemoryLikeProperty { get; init; }
+    public bool IsReadOnlyMemoryProperty { get; init; }
+    public bool IsNullable { get; init; }
     public int? FieldIndex { get; set; }
     public byte? SelectorValue { get; set; }
     public bool IsProgressiveList { get; set; }
@@ -109,7 +129,7 @@ class SszProperty
         }
     }
 
-    public bool HandledByStd => ((Kind & (Kind.Basic | Kind.BitVector | Kind.BitList | Kind.ProgressiveBitList)) != Kind.None) || (((Kind & (Kind.Vector | Kind.List | Kind.ProgressiveList)) != Kind.None) && Type.Kind == Kind.Basic);
+    public bool HandledByStd => ((Kind & (Kind.Basic | Kind.BitVector | Kind.BitList | Kind.ProgressiveBitList)) != Kind.None) || (((Kind & (Kind.Vector | Kind.List | Kind.ProgressiveList)) != Kind.None) && Type.Kind == Kind.Basic && !Type.IsRefType);
     public bool IsCollection => (Kind & Kind.Collection) != Kind.None;
 
     public bool IsVariable => (Kind & (Kind.List | Kind.BitList | Kind.ProgressiveList | Kind.ProgressiveBitList)) != Kind.None || Type.IsVariable;

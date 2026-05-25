@@ -5,14 +5,9 @@ using System.Text.RegularExpressions;
 
 namespace Nethermind.Tools.Kute.JsonRpcMethodFilter;
 
-public sealed class RegexJsonRpcMethodFilter : IJsonRpcMethodFilter
+public sealed class RegexJsonRpcMethodFilter(string pattern) : IJsonRpcMethodFilter
 {
-    private readonly Regex _pattern;
-
-    public RegexJsonRpcMethodFilter(string pattern)
-    {
-        _pattern = new Regex(pattern);
-    }
+    private readonly Regex _pattern = new(pattern, RegexOptions.Compiled);
 
     public bool ShouldSubmit(string methodName) => _pattern.IsMatch(methodName);
 }

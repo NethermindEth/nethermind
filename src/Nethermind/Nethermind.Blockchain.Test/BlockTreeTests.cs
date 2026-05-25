@@ -2,16 +2,19 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Blockchain.Blocks;
+using Nethermind.Blockchain.Headers;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Blockchain.Visitors;
 using Nethermind.Core;
+using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -85,6 +88,46 @@ public class BlockTreeTests
             parent = chain[i];
         }
         return chain;
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void UpdateMainChain_persists_generated_block_access_lists_for_processed_blocks()
+    {
+        _blocksDb = new TestMemDb();
+        _headersDb = new TestMemDb();
+        _blocksInfosDb = new TestMemDb();
+
+        BlockTreeBuilder builder = Build.A.BlockTree()
+            .WithBlocksDb(_blocksDb)
+            .WithHeadersDb(_headersDb)
+            .WithBlockInfoDb(_blocksInfosDb)
+            .WithoutSettingHead;
+        BlockTree blockTree = builder.TestObject;
+        IBlockAccessListStore blockAccessListStore = builder.BlockAccessListStore;
+
+        Block genesis = Build.A.Block.Genesis.TestObject;
+        AddToMain(blockTree, genesis);
+
+        Block block = Build.A.Block
+            .WithNumber(1)
+            .WithParent(genesis)
+            .WithTotalDifficulty(1L)
+            .TestObject;
+
+        blockTree.SuggestBlock(block).Should().Be(AddBlockResult.Added);
+        using MemoryManager<byte>? missingBal = blockAccessListStore.GetRlp(block.Hash!);
+        missingBal.Should().BeNull();
+
+        byte[] encodedBal = Rlp.Encode(new ReadOnlyBlockAccessList()).Bytes;
+        block.GeneratedBlockAccessList = new GeneratedBlockAccessList();
+        block.EncodedBlockAccessList = encodedBal;
+        block.Header.BlockAccessListHash = new Hash256(ValueKeccak.Compute(encodedBal).Bytes);
+
+        blockTree.UpdateMainChain([block], true);
+
+        using MemoryManager<byte>? persistedBal = blockAccessListStore.GetRlp(block.Hash!);
+        persistedBal.Should().NotBeNull();
+        persistedBal!.Memory.ToArray().Should().Equal(encodedBal);
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
@@ -178,6 +221,53 @@ public class BlockTreeTests
 
         newHeadBlockNotifications.Should().Be(1, "new head block");
         blockAddedToMainNotifications.Should().Be(3, "block added to main");
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void UpdateMainChain_fires_main_chain_events_after_chain_level_repository_batch_flushed()
+    {
+        BlockTree blockTree = BuildBlockTree();
+        Block block0 = Build.A.Block.WithNumber(0).WithDifficulty(1).TestObject;
+        Block block1 = Build.A.Block.WithNumber(1).WithDifficulty(2).WithParent(block0).TestObject;
+        Block block2 = Build.A.Block.WithNumber(2).WithDifficulty(3).WithParent(block1).TestObject;
+
+        AddToMain(blockTree, block0);
+        blockTree.SuggestBlock(block1);
+        blockTree.SuggestBlock(block2);
+
+        List<bool> blockAddedDbObservations = [];
+        bool newHeadDbObserved = false;
+        bool onUpdateDbObserved = false;
+
+        // A new ChainLevelInfoRepository instance starts with an empty cache, so HasBlockOnMainChain
+        // can only be observed via the underlying IDb. Pre-fix, UpdateMainChain held its write batch
+        // open across the event invocations, so a fresh repository would miss the new canonical
+        // markers. After the fix, the batch is disposed (and therefore flushed) before any of these
+        // events fires, so each subscriber observes a fully persisted level.
+        blockTree.BlockAddedToMain += (_, e) =>
+        {
+            ChainLevelInfoRepository freshRepo = new(_blocksInfosDb);
+            ChainLevelInfo? level = freshRepo.LoadLevel(e.Block.Number);
+            blockAddedDbObservations.Add(level?.HasBlockOnMainChain == true);
+        };
+        blockTree.NewHeadBlock += (_, e) =>
+        {
+            ChainLevelInfoRepository freshRepo = new(_blocksInfosDb);
+            ChainLevelInfo? level = freshRepo.LoadLevel(e.Block.Number);
+            newHeadDbObserved = level?.HasBlockOnMainChain == true;
+        };
+        blockTree.OnUpdateMainChain += (_, e) =>
+        {
+            ChainLevelInfoRepository freshRepo = new(_blocksInfosDb);
+            ChainLevelInfo? level = freshRepo.LoadLevel(e.Blocks[^1].Number);
+            onUpdateDbObserved = level?.HasBlockOnMainChain == true;
+        };
+
+        blockTree.UpdateMainChain([block1, block2], wereProcessed: true);
+
+        blockAddedDbObservations.Should().Equal(true, true);
+        newHeadDbObserved.Should().BeTrue();
+        onUpdateDbObserved.Should().BeTrue();
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
@@ -1347,7 +1437,7 @@ public class BlockTreeTests
         tree.SuggestBlock(genesis);
         Block parent = genesis;
 
-        List<Block> blocks = new() { genesis };
+        List<Block> blocks = [genesis];
 
         for (long i = 1; i < 100; i++)
         {

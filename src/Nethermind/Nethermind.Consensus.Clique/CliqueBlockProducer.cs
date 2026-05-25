@@ -428,7 +428,7 @@ public class CliqueBlockProducer : IBlockProducer
         if (!isEpochBlock && !_proposals.IsEmpty)
         {
             // Gather all the proposals that make sense voting on
-            List<Address> addresses = new();
+            List<Address> addresses = [];
             foreach ((Address address, bool authorize) in _proposals)
             {
                 if (_snapshotManager.IsValidVote(snapshot, address, authorize))
@@ -476,7 +476,7 @@ public class CliqueBlockProducer : IBlockProducer
             {
                 Address signer = snapshot.Signers.Keys[i];
                 int index = Clique.ExtraVanityLength + 20 * i;
-                Array.Copy(signer.Bytes, 0, header.ExtraData, index, signer.Bytes.Length);
+                signer.Bytes.CopyTo(header.ExtraData.AsSpan(index, signer.Bytes.Length));
             }
         }
 

@@ -61,60 +61,27 @@ public readonly struct TimeInterval(double nanoseconds)
 
     public static TimeInterval FromDays(double value) => Day * value;
 
-    public static double operator /(TimeInterval a, TimeInterval b)
-    {
-        return 1.0 * a.Nanoseconds / b.Nanoseconds;
-    }
+    public static double operator /(TimeInterval a, TimeInterval b) => 1.0 * a.Nanoseconds / b.Nanoseconds;
 
-    public static TimeInterval operator /(TimeInterval a, double k)
-    {
-        return new TimeInterval(a.Nanoseconds / k);
-    }
+    public static TimeInterval operator /(TimeInterval a, double k) => new(a.Nanoseconds / k);
 
-    public static TimeInterval operator /(TimeInterval a, int k)
-    {
-        return new TimeInterval(a.Nanoseconds / (double)k);
-    }
+    public static TimeInterval operator /(TimeInterval a, int k) => new(a.Nanoseconds / (double)k);
 
-    public static TimeInterval operator *(TimeInterval a, double k)
-    {
-        return new TimeInterval(a.Nanoseconds * k);
-    }
+    public static TimeInterval operator *(TimeInterval a, double k) => new(a.Nanoseconds * k);
 
-    public static TimeInterval operator *(TimeInterval a, int k)
-    {
-        return new TimeInterval(a.Nanoseconds * (double)k);
-    }
+    public static TimeInterval operator *(TimeInterval a, int k) => new(a.Nanoseconds * (double)k);
 
-    public static TimeInterval operator *(double k, TimeInterval a)
-    {
-        return new TimeInterval(a.Nanoseconds * k);
-    }
+    public static TimeInterval operator *(double k, TimeInterval a) => new(a.Nanoseconds * k);
 
-    public static TimeInterval operator *(int k, TimeInterval a)
-    {
-        return new TimeInterval(a.Nanoseconds * (double)k);
-    }
+    public static TimeInterval operator *(int k, TimeInterval a) => new(a.Nanoseconds * (double)k);
 
-    public static bool operator <(TimeInterval a, TimeInterval b)
-    {
-        return a.Nanoseconds < b.Nanoseconds;
-    }
+    public static bool operator <(TimeInterval a, TimeInterval b) => a.Nanoseconds < b.Nanoseconds;
 
-    public static bool operator >(TimeInterval a, TimeInterval b)
-    {
-        return a.Nanoseconds > b.Nanoseconds;
-    }
+    public static bool operator >(TimeInterval a, TimeInterval b) => a.Nanoseconds > b.Nanoseconds;
 
-    public static bool operator <=(TimeInterval a, TimeInterval b)
-    {
-        return a.Nanoseconds <= b.Nanoseconds;
-    }
+    public static bool operator <=(TimeInterval a, TimeInterval b) => a.Nanoseconds <= b.Nanoseconds;
 
-    public static bool operator >=(TimeInterval a, TimeInterval b)
-    {
-        return a.Nanoseconds >= b.Nanoseconds;
-    }
+    public static bool operator >=(TimeInterval a, TimeInterval b) => a.Nanoseconds >= b.Nanoseconds;
 
     public string ToString(CultureInfo cultureInfo, string format = "N4", UnitPresentation? unitPresentation = null) => ToString(null, cultureInfo, format, unitPresentation);
 

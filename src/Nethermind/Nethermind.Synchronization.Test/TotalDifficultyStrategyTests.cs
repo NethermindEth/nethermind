@@ -42,6 +42,18 @@ public class TotalDifficultyStrategyTests
     }
 
     [Test]
+    public void ZeroTotalDifficultyStrategy_returns_zero_for_any_header()
+    {
+        ITotalDifficultyStrategy strategy = new ZeroTotalDifficultyStrategy();
+
+        BlockHeader withNonZeroDiff = Build.A.BlockHeader.WithDifficulty(1126457).WithTotalDifficulty(0).TestObject;
+        BlockHeader withZeroDiff = Build.A.BlockHeader.WithDifficulty(0).WithTotalDifficulty(100).TestObject;
+
+        strategy.ParentTotalDifficulty(withNonZeroDiff).Should().Be(UInt256.Zero);
+        strategy.ParentTotalDifficulty(withZeroDiff).Should().Be(UInt256.Zero);
+    }
+
+    [Test]
     public void FixedTotalDifficultyStrategy_fixes_a_block_header_to_specific_total_difficulty()
     {
         ITotalDifficultyStrategy strategy = new FixedTotalDifficultyStrategy(

@@ -30,7 +30,8 @@ public class QuorumCertificateManagerTest
             Substitute.For<IBlockTree>(),
             Substitute.For<ISpecProvider>(),
             Substitute.For<IEpochSwitchManager>(),
-            Substitute.For<ILogManager>());
+            Substitute.For<ILogManager>(),
+            Substitute.For<IForensicsProcessor>());
 
         Assert.That(() => quorumCertificateManager.VerifyCertificate(null!, Build.A.XdcBlockHeader().TestObject, out _), Throws.ArgumentNullException);
     }
@@ -43,7 +44,8 @@ public class QuorumCertificateManagerTest
             Substitute.For<IBlockTree>(),
             Substitute.For<ISpecProvider>(),
             Substitute.For<IEpochSwitchManager>(),
-            Substitute.For<ILogManager>());
+            Substitute.For<ILogManager>(),
+            Substitute.For<IForensicsProcessor>());
 
         Assert.That(() => quorumCertificateManager.VerifyCertificate(Build.A.QuorumCertificate().TestObject, null!, out _), Throws.ArgumentNullException);
     }
@@ -105,9 +107,36 @@ public class QuorumCertificateManagerTest
             Substitute.For<IBlockTree>(),
             specProvider,
             epochSwitchManager,
-            Substitute.For<ILogManager>());
+            Substitute.For<ILogManager>(),
+            Substitute.For<IForensicsProcessor>());
 
         Assert.That(quorumCertificateManager.VerifyCertificate(quorumCert, xdcBlockHeaderBuilder.TestObject, out _), Is.EqualTo(expected));
+    }
+
+    [Test]
+    public void Initialize_GenesisBlockWithNoConsensusData_SetsHighestQCAndRound()
+    {
+        ISpecProvider specProvider = Substitute.For<ISpecProvider>();
+        IXdcReleaseSpec xdcReleaseSpec = Substitute.For<IXdcReleaseSpec>();
+        xdcReleaseSpec.SwitchBlock.Returns(900L);
+        xdcReleaseSpec.Gap.Returns(450);
+        specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(xdcReleaseSpec);
+        XdcConsensusContext context = new();
+        QuorumCertificateManager quorumCertificateManager = new(
+            context,
+            Substitute.For<IBlockTree>(),
+            specProvider,
+            Substitute.For<IEpochSwitchManager>(),
+            Substitute.For<ILogManager>(),
+            Substitute.For<IForensicsProcessor>());
+
+        XdcBlockHeader genesisBlock = Build.A.XdcBlockHeader().WithNumber(0).TestObject;
+
+        Assert.That(() => quorumCertificateManager.Initialize(genesisBlock), Throws.Nothing);
+        Assert.That(context.HighestQC, Is.Not.Null);
+        Assert.That(context.HighestQC.ProposedBlockInfo.BlockNumber, Is.EqualTo(0));
+        Assert.That(context.HighestQC.ProposedBlockInfo.Round, Is.EqualTo(0UL));
+        Assert.That(context.CurrentRound, Is.EqualTo(1UL));
     }
 
     [Test]
@@ -123,7 +152,8 @@ public class QuorumCertificateManagerTest
             Substitute.For<IBlockTree>(),
             specProvider,
             epochSwitchManager,
-            Substitute.For<ILogManager>());
+            Substitute.For<ILogManager>(),
+            Substitute.For<IForensicsProcessor>());
         QuorumCertificate qc = Build.A.QuorumCertificate().WithBlockInfo(new BlockRoundInfo(Hash256.Zero, 1, 0)).TestObject;
 
         Assert.That(() => quorumCertificateManager.CommitCertificate(qc), Throws.TypeOf<IncomingMessageBlockNotFoundException>());
@@ -145,7 +175,8 @@ public class QuorumCertificateManagerTest
             blockTree,
             specProvider,
             epochSwitchManager,
-            Substitute.For<ILogManager>());
+            Substitute.For<ILogManager>(),
+            Substitute.For<IForensicsProcessor>());
         context.HighestQC = Build.A.QuorumCertificate().WithBlockInfo(new BlockRoundInfo(Hash256.Zero, 0, 1)).TestObject;
         QuorumCertificate qc = Build.A.QuorumCertificate().WithBlockInfo(new BlockRoundInfo(targetHeader.Hash!, 1, 0)).TestObject;
         quorumCertificateManager.CommitCertificate(qc);
@@ -169,7 +200,8 @@ public class QuorumCertificateManagerTest
             blockTree,
             specProvider,
             epochSwitchManager,
-            Substitute.For<ILogManager>());
+            Substitute.For<ILogManager>(),
+            Substitute.For<IForensicsProcessor>());
         QuorumCertificate qc = Build.A.QuorumCertificate().WithBlockInfo(new BlockRoundInfo(targetHeader.Hash!, 1, 0)).TestObject;
 
         Assert.That(() => quorumCertificateManager.CommitCertificate(qc), Throws.TypeOf<BlockchainException>());
@@ -192,7 +224,8 @@ public class QuorumCertificateManagerTest
             blockTree,
             specProvider,
             epochSwitchManager,
-            Substitute.For<ILogManager>());
+            Substitute.For<ILogManager>(),
+            Substitute.For<IForensicsProcessor>());
 
         if (lockQcIsNull)
             context.LockQC = null;
@@ -220,7 +253,8 @@ public class QuorumCertificateManagerTest
             blockTree,
             specProvider,
             epochSwitchManager,
-            Substitute.For<ILogManager>());
+            Substitute.For<ILogManager>(),
+            Substitute.For<IForensicsProcessor>());
         context.HighestQC = Build.A.QuorumCertificate().WithBlockInfo(new BlockRoundInfo(Hash256.Zero, 0, 1)).TestObject;
         QuorumCertificate qc = Build.A.QuorumCertificate().WithBlockInfo(new BlockRoundInfo(targetHeader.Hash!, 1, 0)).TestObject;
         quorumCertificateManager.CommitCertificate(qc);
@@ -264,11 +298,65 @@ public class QuorumCertificateManagerTest
             blockTree,
             specProvider,
             epochSwitchManager,
-            Substitute.For<ILogManager>());
+            Substitute.For<ILogManager>(),
+            Substitute.For<IForensicsProcessor>());
         QuorumCertificate qc = Build.A.QuorumCertificate().WithBlockInfo(new BlockRoundInfo(targetHeader.Hash!, 3, 6)).TestObject;
         quorumCertificateManager.CommitCertificate(qc);
 
         Assert.That(context.HighestCommitBlock.Hash, Is.EqualTo(grandParentHeader.Hash));
+    }
+
+    [Test]
+    public void OnUpdateMainChain_GenesisBlock_CallsInitialize()
+    {
+        XdcConsensusContext context = new();
+        IBlockTree blockTree = Substitute.For<IBlockTree>();
+        ISpecProvider specProvider = Substitute.For<ISpecProvider>();
+        IXdcReleaseSpec xdcReleaseSpec = Substitute.For<IXdcReleaseSpec>();
+        xdcReleaseSpec.SwitchBlock.Returns(900L);
+        specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(xdcReleaseSpec);
+        _ = new QuorumCertificateManager(
+            context,
+            blockTree,
+            specProvider,
+            Substitute.For<IEpochSwitchManager>(),
+            Substitute.For<ILogManager>(),
+            Substitute.For<IForensicsProcessor>());
+
+        XdcBlockHeader genesisHeader = Build.A.XdcBlockHeader().WithNumber(0).TestObject;
+
+        blockTree.OnUpdateMainChain += Raise.EventWith(blockTree, new OnUpdateMainChainArgs([new Block(genesisHeader)], true));
+
+        Assert.That(context.HighestQC.ProposedBlockInfo.BlockNumber, Is.EqualTo(0));
+        Assert.That(context.CurrentRound, Is.EqualTo(1UL));
+    }
+
+    [Test]
+    public void OnUpdateMainChain_NonGenesisBlockWithValidQc_UpdatesHighestQc()
+    {
+        XdcConsensusContext context = new();
+        IBlockTree blockTree = Substitute.For<IBlockTree>();
+        ISpecProvider specProvider = Substitute.For<ISpecProvider>();
+        IXdcReleaseSpec xdcReleaseSpec = Substitute.For<IXdcReleaseSpec>();
+        xdcReleaseSpec.SwitchBlock.Returns(100L);
+        specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(xdcReleaseSpec);
+        blockTree.FindHeader(Arg.Any<Hash256>()).Returns(Build.A.XdcBlockHeader().WithNumber(1).TestObject);
+        context.HighestQC = Build.A.QuorumCertificate().WithBlockInfo(new BlockRoundInfo(Hash256.Zero, 0, 0)).TestObject;
+
+        _ = new QuorumCertificateManager(
+            context,
+            blockTree,
+            specProvider,
+            Substitute.For<IEpochSwitchManager>(),
+            Substitute.For<ILogManager>(),
+            Substitute.For<IForensicsProcessor>());
+
+        XdcBlockHeader blockHeader = Build.A.XdcBlockHeader().WithNumber(5).WithGeneratedExtraConsensusData().TestObject;
+        QuorumCertificate qc = blockHeader.ExtraConsensusData!.QuorumCert!;
+
+        blockTree.OnUpdateMainChain += Raise.EventWith(blockTree, new OnUpdateMainChainArgs([new Block(blockHeader)], true));
+
+        Assert.That(context.HighestQC, Is.SameAs(qc));
     }
 
     [Test]
@@ -307,10 +395,12 @@ public class QuorumCertificateManagerTest
             blockTree,
             specProvider,
             epochSwitchManager,
-            Substitute.For<ILogManager>());
+            Substitute.For<ILogManager>(),
+            Substitute.For<IForensicsProcessor>());
         QuorumCertificate qc = Build.A.QuorumCertificate().WithBlockInfo(new BlockRoundInfo(targetHeader.Hash!, 4, 6)).TestObject;
         quorumCertificateManager.CommitCertificate(qc);
 
         Assert.That(context.HighestCommitBlock, Is.EqualTo(startFinalizedBlock));
     }
+
 }

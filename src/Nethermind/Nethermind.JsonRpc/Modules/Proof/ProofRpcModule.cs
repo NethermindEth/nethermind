@@ -30,11 +30,12 @@ namespace Nethermind.JsonRpc.Modules.Proof
         IOverridableEnv<ITracer> tracerEnv,
         IBlockFinder blockFinder,
         IReceiptFinder receiptFinder,
-        ISpecProvider specProvider)
+        ISpecProvider specProvider,
+        IJsonRpcConfig jsonRpcConfig)
         : IProofRpcModule
     {
         private readonly HeaderDecoder _headerDecoder = new();
-        private static readonly IRlpStreamEncoder<TxReceipt> _receiptEncoder = Rlp.GetStreamEncoder<TxReceipt>();
+        private static readonly IRlpDecoder<TxReceipt> _receiptEncoder = Rlp.GetDecoder<TxReceipt>();
 
         public ResultWrapper<CallResultWithProof> proof_call(TransactionForRpc tx, BlockParameter blockParameter)
         {
@@ -65,17 +66,10 @@ namespace Nethermind.JsonRpc.Modules.Proof
             callHeader.TotalDifficulty = sourceHeader.TotalDifficulty + callHeader.Difficulty;
             callHeader.Hash = callHeader.CalculateHash();
 
-            Result<Transaction> txResult = tx.ToTransaction(validateUserInput: true);
+            Result<Transaction> txResult = tx.ToTransaction(validateUserInput: true, gasCap: jsonRpcConfig.GasCap);
             if (!txResult.Success(out Transaction? transaction, out string? error))
             {
                 return ResultWrapper<CallResultWithProof>.Fail(error, ErrorCodes.InvalidInput);
-            }
-
-            transaction.SenderAddress ??= Address.Zero;
-
-            if (transaction.GasLimit == 0)
-            {
-                transaction.GasLimit = callHeader.GasLimit;
             }
 
             Block block = new(callHeader, new[] { transaction }, []);
@@ -183,7 +177,7 @@ namespace Nethermind.JsonRpc.Modules.Proof
 
         private AccountProof[] CollectAccountProofs(ITracer tracer, BlockHeader? baseBlock, ProofTxTracer proofTxTracer)
         {
-            List<AccountProof> accountProofs = new();
+            List<AccountProof> accountProofs = [];
             foreach (Address address in proofTxTracer.Accounts)
             {
                 AccountProofCollector collector = new(address, proofTxTracer.Storages
@@ -199,7 +193,7 @@ namespace Nethermind.JsonRpc.Modules.Proof
 
         private byte[][] CollectHeaderBytes(ProofTxTracer proofTxTracer, BlockHeader tracedBlockHeader)
         {
-            List<BlockHeader> relevantHeaders = new() { tracedBlockHeader };
+            List<BlockHeader> relevantHeaders = [tracedBlockHeader];
             foreach (Hash256 blockHash in proofTxTracer.BlockHashes)
             {
                 relevantHeaders.Add(blockFinder.FindHeader(blockHash));

@@ -12,19 +12,19 @@ public class NativePrestateTracerAccountConverter : JsonConverter<NativePrestate
 {
     public override void Write(Utf8JsonWriter writer, NativePrestateTracerAccount value, JsonSerializerOptions options)
     {
-        NumberConversion? previousValue = ForcedNumberConversion.ForcedConversion.Value;
+        NumberConversion previousValue = ForcedNumberConversion.Value;
         try
         {
             writer.WriteStartObject();
 
-            ForcedNumberConversion.ForcedConversion.Value = NumberConversion.Hex;
+            ForcedNumberConversion.Value = NumberConversion.Hex;
             if (value.Balance is not null)
             {
                 writer.WritePropertyName("balance"u8);
                 JsonSerializer.Serialize(writer, value.Balance, options);
             }
 
-            ForcedNumberConversion.ForcedConversion.Value = NumberConversion.Decimal;
+            ForcedNumberConversion.Value = NumberConversion.Decimal;
             if (value.Nonce is not null)
             {
                 writer.WritePropertyName("nonce"u8);
@@ -37,7 +37,7 @@ public class NativePrestateTracerAccountConverter : JsonConverter<NativePrestate
                 JsonSerializer.Serialize(writer, value.Code, options);
             }
 
-            ForcedNumberConversion.ForcedConversion.Value = NumberConversion.ZeroPaddedHex;
+            ForcedNumberConversion.Value = NumberConversion.ZeroPaddedHex;
             if (value.Storage?.Count > 0)
             {
                 writer.WritePropertyName("storage"u8);
@@ -48,7 +48,7 @@ public class NativePrestateTracerAccountConverter : JsonConverter<NativePrestate
         }
         finally
         {
-            ForcedNumberConversion.ForcedConversion.Value = previousValue;
+            ForcedNumberConversion.Value = previousValue;
         }
     }
 

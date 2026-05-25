@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Serialization.Ssz;
+using System;
 using System.Collections;
 
 namespace Nethermind.Serialization.SszGenerator.Test
@@ -97,6 +98,20 @@ namespace Nethermind.Serialization.SszGenerator.Test
         public FixedC[]? Items { get; set; }
     }
 
+    [SszContainer]
+    public partial struct ReadOnlyMemoryVectorContainer
+    {
+        [SszVector(4)]
+        public ReadOnlyMemory<byte> Bytes { get; set; }
+    }
+
+    [SszContainer]
+    public partial struct MemoryVectorContainer
+    {
+        [SszVector(4)]
+        public Memory<byte> Bytes { get; set; }
+    }
+
     //// Does not compile
     //[SszContainer]
     //public partial struct NoProps
@@ -168,6 +183,19 @@ namespace Nethermind.Serialization.SszGenerator.Test
     {
         PreviousValue = 1,
         CurrentValue = 2,
+    }
+
+    [SszContainer]
+    public partial class ShadowBase
+    {
+        public ulong A { get; set; }
+        public ulong X { get; set; }
+    }
+
+    [SszContainer]
+    public partial class ShadowDerived : ShadowBase
+    {
+        public new uint X { get; set; }
     }
 
 }

@@ -95,9 +95,13 @@ public partial class BlockProcessor(
             throw new InvalidBlockException(suggestedBlock, error);
         }
 
-        // Block is valid, copy the account changes as we use the suggested block not the processed one
+        // Block is valid, copy the execution artifacts back onto the suggested block.
+        // Forward sync suggests blocks without BAL payloads, so the generated BAL needs to
+        // follow the suggested block through main-chain updates and persistence.
         suggestedBlock.AccountChanges = block.AccountChanges;
         suggestedBlock.ExecutionRequests = block.ExecutionRequests;
+        suggestedBlock.GeneratedBlockAccessList = block.GeneratedBlockAccessList;
+        suggestedBlock.EncodedBlockAccessList = block.EncodedBlockAccessList ?? suggestedBlock.EncodedBlockAccessList;
     }
 
     protected bool ShouldComputeStateRoot(BlockHeader header) =>
@@ -239,7 +243,9 @@ public partial class BlockProcessor(
             RequestsHash = bh.RequestsHash,
             IsPostMerge = bh.IsPostMerge,
             ParentBeaconBlockRoot = bh.ParentBeaconBlockRoot,
-            SlotNumber = bh.SlotNumber
+            SlotNumber = bh.SlotNumber,
+            // Carried for the verify-only fast path which doesn't recompute it.
+            BlockAccessListHash = bh.BlockAccessListHash
         };
 
         if (!ShouldComputeStateRoot(bh))

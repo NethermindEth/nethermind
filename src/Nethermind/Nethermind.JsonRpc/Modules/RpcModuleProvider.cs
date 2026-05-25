@@ -28,8 +28,8 @@ namespace Nethermind.JsonRpc.Modules
         private readonly HashSet<string> _modules = new(StringComparer.OrdinalIgnoreCase);
         private readonly HashSet<string> _enabledModules = new(StringComparer.OrdinalIgnoreCase);
 
-        private Dictionary<string, ResolvedMethodInfo> _methods = new();
-        private Dictionary<string, Pool> _pools = new();
+        private Dictionary<string, ResolvedMethodInfo> _methods = [];
+        private Dictionary<string, Pool> _pools = [];
         private FrozenDictionary<string, ResolvedMethodInfo>? _frozenMethods = null;
         private FrozenDictionary<string, Pool>? _frozenPools = null;
 
@@ -267,9 +267,13 @@ namespace Nethermind.JsonRpc.Modules
                     ParameterInfo parameter = parameters[i];
                     ConstructorInvoker? constructor = null;
                     ParameterDetails details = ParameterDetails.None;
-                    if (parameter.ParameterType.IsAssignableTo(typeof(IJsonRpcParam)))
+
+                    Type? paramType = parameter.ParameterType;
+                    if (paramType.IsAssignableTo(typeof(IJsonRpcParam)))
                     {
-                        constructor = ConstructorInvoker.Create(parameter.ParameterType.GetConstructor(BindingFlags.Public | BindingFlags.Instance, []));
+                        ConstructorInfo constructorInfo = paramType.GetConstructor(BindingFlags.Public | BindingFlags.Instance, [])
+                            ?? throw new InvalidOperationException($"{paramType.Name} must have parameterless constructor.");
+                        constructor = ConstructorInvoker.Create(constructorInfo);
                     }
 
                     if (IsNullableParameter(parameter))

@@ -9,7 +9,7 @@
 - Use `?.` null-conditional operator where applicable
 - Use `ArgumentNullException.ThrowIfNull` for null checks
 - Use `ObjectDisposedException.ThrowIf` for disposal checks
-- Use documentation comments with proper structure (`<summary>`, `<param>`, `<returns>`) for all public APIs
+- Use documentation comments with proper structure (`<summary>`, `<remarks>`, `<param>`, `<returns>`, `<exception>`, `<typeparam>`, `<inheritdoc/>`) for all public APIs. See [AGENTS.md](../../AGENTS.md) "Coding guidelines and style" for when to use each tag.
 - Avoid `var` — spell out types (exception: very long nested generic types)
 - Prefer low-allocation code patterns
 - Use `Array.Empty<T>()` or `[]` instead of `new T[0]` — avoids allocating a new empty array each time. In attribute arguments (e.g. `[Attr(new string[0])]`), `new T[0]` is acceptable because `Array.Empty<T>()` is not a compile-time constant.
@@ -22,3 +22,5 @@
 - Follow DRY — extract repeated blocks (5+ lines) into shared methods, but don't over-extract trivial one-liners
 - In generic types, move methods that don't depend on the type parameter to a non-generic base class or static helper to avoid redundant JIT instantiations per closed type
 - Do not use `#region` / `#endregion`
+- Follow linting rules as defined in [`.github/workflows/code-lint.yml`](../../.github/workflows/code-lint.yml), including whitespace formatting, spelling, removing unused `using`
+- Prefer constants to magic numbers where the value is reused or may be changed in future

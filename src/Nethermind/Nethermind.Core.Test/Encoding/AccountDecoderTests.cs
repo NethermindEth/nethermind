@@ -16,8 +16,7 @@ namespace Nethermind.Core.Test.Encoding
         {
             Account account = new Account(100).WithChangedCodeHash(TestItem.KeccakA).WithChangedStorageRoot(TestItem.KeccakB);
             AccountDecoder decoder = new();
-            Rlp rlp = decoder.Encode(account);
-            Rlp.ValueDecoderContext ctx = new(rlp.Bytes);
+            Rlp.ValueDecoderContext ctx = Encode(decoder, account);
             (Hash256 codeHash, Hash256 storageRoot) = decoder.DecodeHashesOnly(ref ctx);
             Assert.That(TestItem.KeccakA, Is.EqualTo(codeHash));
             Assert.That(TestItem.KeccakB, Is.EqualTo(storageRoot));
@@ -28,8 +27,7 @@ namespace Nethermind.Core.Test.Encoding
         {
             Account account = new Account(100).WithChangedCodeHash(TestItem.KeccakA).WithChangedStorageRoot(TestItem.KeccakB);
             AccountDecoder decoder = new();
-            Rlp rlp = decoder.Encode(account);
-            Rlp.ValueDecoderContext ctx = new(rlp.Bytes);
+            Rlp.ValueDecoderContext ctx = Encode(decoder, account);
             Account decoded = decoder.Decode(ref ctx)!;
             Assert.That((int)decoded.Balance, Is.EqualTo(100));
             Assert.That((int)decoded.Nonce, Is.EqualTo(0));
@@ -42,8 +40,7 @@ namespace Nethermind.Core.Test.Encoding
         {
             Account account = new Account(100).WithChangedStorageRoot(TestItem.KeccakB);
             AccountDecoder decoder = new();
-            Rlp rlp = decoder.Encode(account);
-            Rlp.ValueDecoderContext ctx = new(rlp.Bytes);
+            Rlp.ValueDecoderContext ctx = Encode(decoder, account);
 
             int positionBefore = ctx.Position;
             ctx.SkipLength();
@@ -56,6 +53,13 @@ namespace Nethermind.Core.Test.Encoding
 
             Assert.That(storageRoot, Is.EqualTo(TestItem.KeccakB));
             Assert.That(ctx.Position, Is.GreaterThan(positionBeforeStorageRoot));
+        }
+
+        private static Rlp.ValueDecoderContext Encode(AccountDecoder decoder, Account account)
+        {
+            byte[] bytes = new byte[decoder.GetLength(account)];
+            decoder.Encode(new RlpStream(bytes), account);
+            return new Rlp.ValueDecoderContext(bytes);
         }
     }
 }

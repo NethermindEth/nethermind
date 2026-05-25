@@ -11,7 +11,6 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
-using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
@@ -24,8 +23,6 @@ using Nethermind.Synchronization;
 using Nethermind.Synchronization.FastBlocks;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
-using Nethermind.Synchronization.Peers.AllocationStrategies;
-using Nethermind.Synchronization.SnapSync;
 using NSubstitute;
 using NSubstitute.ExceptionExtensions;
 using NUnit.Framework;
@@ -110,29 +107,35 @@ public partial class EngineModuleTests
             .WithPostMergeFlag(true)
             .TestObject;
         // sync has not started yet
-        chain.BeaconSync!.ShouldBeInBeaconHeaders().Should().BeFalse();
-        chain.BeaconPivot!.BeaconPivotExists().Should().BeFalse();
+        Assert.That(chain.BeaconSync!.ShouldBeInBeaconHeaders(), Is.False);
+        Assert.That(chain.BeaconPivot!.BeaconPivotExists(), Is.False);
 
-        ISyncPeer syncPeer = Substitute.For<ISyncPeer>();
-        syncPeer
-            .GetBlockHeaders(Arg.Any<Hash256>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
-            .Returns(Task.FromResult<IOwnedReadOnlyList<BlockHeader>?>(new ArrayPoolList<BlockHeader>(1) { block.Header }));
-        SyncPeerAllocation alloc = new(new PeerInfo(syncPeer), AllocationContexts.All);
+        ISyncPeer peerWithoutHeader = Substitute.For<ISyncPeer>();
+        peerWithoutHeader
+            .GetHeadBlockHeader(Arg.Any<Hash256>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult<BlockHeader?>(null));
+
+        ISyncPeer peerWithHeader = Substitute.For<ISyncPeer>();
+        peerWithHeader
+            .GetHeadBlockHeader(Arg.Any<Hash256>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult<BlockHeader?>(block.Header));
+
         chain.SyncPeerPool
-            .Allocate(
-                Arg.Any<IPeerAllocationStrategy>(),
-                Arg.Any<AllocationContexts>(),
-                Arg.Any<int>(),
-                Arg.Any<CancellationToken>())
-            .Returns(alloc);
+            .InitializedPeers
+            .Returns(
+            [
+                new PeerInfo(peerWithoutHeader),
+                new PeerInfo(peerWithHeader),
+            ]);
 
         ForkchoiceStateV1 forkchoiceStateV1 = new(block.Hash!, startingHead, startingHead);
         ResultWrapper<ForkchoiceUpdatedV1Result> forkchoiceUpdatedResult =
             await rpc.engine_forkchoiceUpdatedV1(forkchoiceStateV1);
-        forkchoiceUpdatedResult.Data.PayloadStatus.Status.Should()
-            .Be(nameof(PayloadStatusV1.Syncing).ToUpper());
+        Assert.That(forkchoiceUpdatedResult.Data.PayloadStatus.Status, Is.EqualTo(nameof(PayloadStatusV1.Syncing).ToUpper()));
 
-        chain.BeaconSync.ShouldBeInBeaconHeaders().Should().BeTrue();
+        await peerWithoutHeader.Received(1).GetHeadBlockHeader(block.Hash!, Arg.Any<CancellationToken>());
+        await peerWithHeader.Received(1).GetHeadBlockHeader(block.Hash!, Arg.Any<CancellationToken>());
+        Assert.That(chain.BeaconSync.ShouldBeInBeaconHeaders(), Is.True);
     }
 
     [Test]
@@ -156,30 +159,24 @@ public partial class EngineModuleTests
             .WithPostMergeFlag(true)
             .TestObject;
         // sync has not started yet
-        chain.BeaconSync!.ShouldBeInBeaconHeaders().Should().BeFalse();
-        chain.BeaconPivot!.BeaconPivotExists().Should().BeFalse();
+        Assert.That(chain.BeaconSync!.ShouldBeInBeaconHeaders(), Is.False);
+        Assert.That(chain.BeaconPivot!.BeaconPivotExists(), Is.False);
 
         ISyncPeer syncPeer = Substitute.For<ISyncPeer>();
         syncPeer
-            .GetBlockHeaders(Arg.Any<Hash256>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
+            .GetHeadBlockHeader(Arg.Any<Hash256>(), Arg.Any<CancellationToken>())
             .Throws(new TimeoutException());
 
-        SyncPeerAllocation alloc = new(new PeerInfo(syncPeer), AllocationContexts.All);
         chain.SyncPeerPool
-            .Allocate(
-                Arg.Any<IPeerAllocationStrategy>(),
-                Arg.Any<AllocationContexts>(),
-                Arg.Any<int>(),
-                Arg.Any<CancellationToken>())
-            .Returns(alloc);
+            .InitializedPeers
+            .Returns([new PeerInfo(syncPeer)]);
 
         ForkchoiceStateV1 forkchoiceStateV1 = new(block.Hash!, startingHead, startingHead);
         ResultWrapper<ForkchoiceUpdatedV1Result> forkchoiceUpdatedResult =
             await rpc.engine_forkchoiceUpdatedV1(forkchoiceStateV1);
-        forkchoiceUpdatedResult.Data.PayloadStatus.Status.Should()
-            .Be(nameof(PayloadStatusV1.Syncing).ToUpper());
+        Assert.That(forkchoiceUpdatedResult.Data.PayloadStatus.Status, Is.EqualTo(nameof(PayloadStatusV1.Syncing).ToUpper()));
 
-        chain.BeaconSync.ShouldBeInBeaconHeaders().Should().BeFalse();
+        Assert.That(chain.BeaconSync.ShouldBeInBeaconHeaders(), Is.False);
     }
 
     [Test]
@@ -313,7 +310,7 @@ public partial class EngineModuleTests
         ExecutionPayload[] invalidRequests = CreateBlockRequestBranch(chain, requests[0], TestItem.AddressD, 1);
         foreach (ExecutionPayload r in invalidRequests)
         {
-            Block? newBlock = r.TryGetBlock().Block;
+            Block? newBlock = r.TryGetBlock().Data;
             newBlock!.Header.GasLimit = long.MaxValue; // incorrect gas limit
             newBlock.Header.Hash = newBlock.CalculateHash();
             ResultWrapper<PayloadStatusV1> payloadStatus = await rpc.engine_newPayloadV1(ExecutionPayload.Create(newBlock));
@@ -342,7 +339,7 @@ public partial class EngineModuleTests
         }
 
         int pivotNum = 3;
-        Block? pivotBlock = requests[pivotNum].TryGetBlock().Block;
+        Block? pivotBlock = requests[pivotNum].TryGetBlock().Data;
         // initiate sync
         ForkchoiceStateV1 forkchoiceStateV1 = new(pivotBlock!.Hash!, startingHead, startingHead);
         ResultWrapper<ForkchoiceUpdatedV1Result> forkchoiceUpdatedResult =
@@ -707,7 +704,7 @@ public partial class EngineModuleTests
                                                      | BlockTreeInsertHeaderOptions.TotalDifficultyNotNeeded;
         for (int i = 0; i < requests.Length - 2; i++)
         {
-            Block? block = requests[i].TryGetBlock().Block;
+            Block? block = requests[i].TryGetBlock().Data;
             chain.BlockTree.Insert(block!.Header, headerOptions);
         }
 
@@ -742,14 +739,14 @@ public partial class EngineModuleTests
         Block[] missingBlocks = new Block[gap];
         for (int i = 0; i < gap; i++)
         {
-            missingBlocks[i] = branchBlocks[i].TryGetBlock().Block!;
+            missingBlocks[i] = branchBlocks[i].TryGetBlock().Data!;
         }
 
         // setting up beacon pivot
         ExecutionPayload pivotRequest = branchBlocks[gap];
         ResultWrapper<PayloadStatusV1> payloadStatus = await rpc.engine_newPayloadV1(pivotRequest);
         payloadStatus.Data.Status.Should().Be(nameof(PayloadStatusV1.Syncing).ToUpper());
-        Block? pivotBlock = pivotRequest.TryGetBlock().Block;
+        Block? pivotBlock = pivotRequest.TryGetBlock().Data;
         // check block tree pointers
         BlockTreePointers pointers = new()
         {
@@ -802,7 +799,7 @@ public partial class EngineModuleTests
         chain.BeaconSync.IsBeaconSyncFinished(chain.BlockTree.BestSuggestedBeaconHeader).Should().BeFalse();
 
         // finish beacon forwards sync
-        Block? bestBeaconBlock = bestBeaconBlockRequest.TryGetBlock().Block;
+        Block? bestBeaconBlock = bestBeaconBlockRequest.TryGetBlock().Data;
         SemaphoreSlim bestBlockProcessed = new(0);
         chain.BranchProcessor.BlockProcessed += (_, e) =>
         {
@@ -918,7 +915,7 @@ public partial class EngineModuleTests
         ExecutionPayload pivotRequest = CreateBlockRequest(chain, requests[^1], Address.Zero);
         ResultWrapper<PayloadStatusV1> payloadStatus = await rpc.engine_newPayloadV1(pivotRequest);
         payloadStatus.Data.Status.Should().Be(nameof(PayloadStatusV1.Syncing).ToUpper());
-        Block? pivotBlock = pivotRequest.TryGetBlock().Block;
+        Block? pivotBlock = pivotRequest.TryGetBlock().Data;
         // check block tree pointers
         BlockTreePointers pointers = new()
         {
@@ -945,12 +942,12 @@ public partial class EngineModuleTests
                                                      BlockTreeInsertHeaderOptions.TotalDifficultyNotNeeded;
         for (int i = requests.Length; i-- > 0;)
         {
-            Block? block = requests[i].TryGetBlock().Block;
+            Block? block = requests[i].TryGetBlock().Data;
             chain.BlockTree.Insert(block!.Header, headerOptions);
         }
 
         // verify correct pointers
-        Block? destinationBlock = requests[0].TryGetBlock().Block;
+        Block? destinationBlock = requests[0].TryGetBlock().Data;
         pointers.LowestInsertedBeaconHeader = destinationBlock!.Header;
         pointers.BestKnownBeaconBlock = 13;
         AssertBlockTreePointers(chain.BlockTree, pointers);
@@ -1043,7 +1040,7 @@ public partial class EngineModuleTests
         syncPeer.TotalDifficulty.Returns(peerHeader.TotalDifficulty ?? 0);
         syncPeer.IsInitialized.Returns(true);
         ISyncPeerPool? syncPeerPool = Substitute.For<ISyncPeerPool>();
-        List<PeerInfo> peerInfos = new() { new(syncPeer) };
+        List<PeerInfo> peerInfos = [new(syncPeer)];
         syncPeerPool.InitializedPeers.Returns(peerInfos);
 
         SyncProgressResolver syncProgressResolver = new(
@@ -1053,7 +1050,7 @@ public partial class EngineModuleTests
             Substitute.For<ISyncFeed<HeadersSyncBatch?>>(),
             Substitute.For<ISyncFeed<BodiesSyncBatch?>>(),
             Substitute.For<ISyncFeed<ReceiptsSyncBatch?>>(),
-            Substitute.For<ISyncFeed<SnapSyncBatch?>>());
+            Substitute.For<ISyncFeed<BlockAccessListsSyncBatch?>>());
 
         MultiSyncModeSelector multiSyncModeSelector = new(syncProgressResolver,
             syncPeerPool, new SyncConfig(), No.BeaconSync,

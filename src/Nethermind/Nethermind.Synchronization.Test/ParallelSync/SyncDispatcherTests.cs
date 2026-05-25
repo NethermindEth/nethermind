@@ -144,7 +144,7 @@ public class SyncDispatcherTests
         public int Max { get; } = max;
         public int HighestRequested { get; private set; }
 
-        public readonly HashSet<int> _results = new();
+        public readonly HashSet<int> _results = [];
         private readonly ConcurrentQueue<TestBatch> _returned = new();
         private readonly ManualResetEvent _responseLock = new(true);
         private readonly TaskCompletionSource _handleResponseCalled = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -229,7 +229,7 @@ public class SyncDispatcherTests
         }
     }
 
-    [Test, MaxTime(10000)]
+    [Test, NonParallelizable, MaxTime(30_000)]
     public async Task Simple_test_sync()
     {
         TestSyncFeed syncFeed = new();

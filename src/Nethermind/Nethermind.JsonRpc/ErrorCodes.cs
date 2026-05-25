@@ -53,6 +53,15 @@ namespace Nethermind.JsonRpc
         public const int ResourceNotFound = -32000;
 
         /// <summary>
+        /// Requested block access list resource not found.
+        /// </summary>
+        /// <remarks>
+        /// The execution-apis block access list methods use a dedicated code while keeping
+        /// <c>Resource not found</c> as the error message.
+        /// </remarks>
+        public const int BlockAccessListResourceNotFound = -32001;
+
+        /// <summary>
         /// Transaction creation failed
         /// </summary>
         public const int TransactionRejected = -32000;
@@ -123,27 +132,42 @@ namespace Nethermind.JsonRpc
         public const int Default = -32000;
 
         /// <summary>
+        /// Transaction nonce is lower than the account's current nonce — eth_simulateV1 spec error
+        /// </summary>
+        public const int NonceTooLow = -38010;
+
+        /// <summary>
+        /// Transaction nonce is higher than the account's current nonce — eth_simulateV1 spec error
+        /// </summary>
+        public const int NonceTooHigh = -38011;
+
+        /// <summary>
         /// Transaction maxFeePerGas is below the block base fee — eth_simulateV1 spec error
         /// </summary>
         public const int FeeCapBelowBaseFee = -38012;
 
         /// <summary>
-        /// Transaction gas limit is below the intrinsic gas cost
+        /// Transaction gas limit is below the intrinsic gas cost — eth_simulateV1 spec error
         /// </summary>
         public const int IntrinsicGas = -38013;
 
         /// <summary>
-        /// Not enough value to cover transaction costs
+        /// Not enough value to cover transaction costs — eth_simulateV1 spec error
         /// </summary>
         public const int InsufficientFunds = -38014;
 
         /// <summary>
-        /// Gas limit reached
+        /// Gas limit reached — eth_simulateV1 spec error
         /// </summary>
         public const int BlockGasLimitReached = -38015;
 
         /// <summary>
-        /// EIP-3860. Code size is to big
+        /// Sender account has deployed code (is not an EOA) — eth_simulateV1 spec error
+        /// </summary>
+        public const int SenderIsNotEoa = -38024;
+
+        /// <summary>
+        /// EIP-3860. Code size is too big — eth_simulateV1 spec error
         /// </summary>
         public const int MaxInitCodeSizeExceeded = -38025;
 

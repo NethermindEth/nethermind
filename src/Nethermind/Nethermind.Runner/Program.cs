@@ -11,6 +11,7 @@ using System.IO;
 using System.Linq;
 using System.Reflection;
 using System.Runtime;
+using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
@@ -186,6 +187,34 @@ async Task<int> RunAsync(ParseResult parseResult, PluginLoader pluginLoader, Can
 
     EthereumJsonSerializer serializer = new();
 
+    if (logger.IsInfo)
+    {
+        StringBuilder nonDefaults = new();
+        int count = 0;
+        Action<Type, Exception> onConfigError = (configType, error) =>
+        {
+            if (logger.IsWarn) logger.Warn($"Skipped {configType.Name} in non-default config diff: {error.Message}");
+        };
+
+        foreach (NonDefaultConfigValue entry in configProvider.GetNonDefaultValues(onConfigError))
+        {
+            nonDefaults.Append("\n  ");
+            if (entry.Category is not null) nonDefaults.Append(entry.Category).Append('.');
+            nonDefaults.Append(entry.Name).Append(" = ").Append(serializer.Serialize(entry.CurrentValue));
+            count++;
+        }
+
+        if (count == 0)
+        {
+            logger.Info("Configuration: all values at defaults.");
+        }
+        else
+        {
+            nonDefaults.Insert(0, $"Configuration: {count} non-default value(s):");
+            logger.Info(nonDefaults.ToString());
+        }
+    }
+
     if (logger.IsDebug)
     {
         logger.Debug($"Nethermind configuration:\n{serializer.Serialize(initConfig, true)}");
@@ -325,6 +354,17 @@ void ConfigureLogger(ParseResult parseResult)
     // TODO: dynamically switch log levels from CLI
     if (logLevel is not null)
         NLogConfigurator.ConfigureLogLevels(logLevel);
+
+    string loggingFormat = parseResult.GetValue(BasicOptions.LoggingFormat)!;
+
+    try
+    {
+        NLogConfigurator.ConfigureConsoleFormat(loggingFormat);
+    }
+    catch (ArgumentException ex)
+    {
+        logger.Error(ex.Message);
+    }
 }
 
 void ConfigureSeqLogger(IConfigProvider configProvider)
@@ -437,6 +477,7 @@ RootCommand CreateRootCommand()
         BasicOptions.ForceResync,
         BasicOptions.LoggerConfigurationSource,
         BasicOptions.LogLevel,
+        BasicOptions.LoggingFormat,
         BasicOptions.PluginsDirectory,
         BasicOptions.PurgeDb
     ];
@@ -558,19 +599,6 @@ static class BasicOptions
         HelpName = "path"
     };
 
-    public static Option<string> LoggerConfigurationSource { get; } =
-        new("--logger-config", "--loggerConfigSource", "-lcs")
-        {
-            Description = "The path to the logging configuration file.",
-            HelpName = "path"
-        };
-
-    public static Option<string> LogLevel { get; } = new("--log", "-l")
-    {
-        Description = "Log level (severity). Allowed values: off, trace, debug, info, warn, error.",
-        HelpName = "level"
-    };
-
     public static Option<bool> ForceResync { get; } = CreateForceResyncOption();
 
     private static Option<bool> CreateForceResyncOption()
@@ -589,6 +617,26 @@ static class BasicOptions
 
         return option;
     }
+
+    public static Option<string> LoggerConfigurationSource { get; } =
+        new("--logger-config", "--loggerConfigSource", "-lcs")
+        {
+            Description = "The path to the logging configuration file.",
+            HelpName = "path"
+        };
+
+    public static Option<string> LoggingFormat { get; } = new("--logging-format")
+    {
+        Description = "Console log output format. Allowed values: plain, ecs, gcp, logstash, gelf.",
+        HelpName = "format",
+        DefaultValueFactory = _ => "plain"
+    };
+
+    public static Option<string> LogLevel { get; } = new("--log", "-l")
+    {
+        Description = "Log level (severity). Allowed values: off, trace, debug, info, warn, error.",
+        HelpName = "level"
+    };
 
     public static Option<string> PluginsDirectory { get; } =
         new("--plugins-dir", "--pluginsDirectory", "-pd")

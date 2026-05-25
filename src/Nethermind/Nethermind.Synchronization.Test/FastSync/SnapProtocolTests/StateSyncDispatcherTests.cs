@@ -9,7 +9,6 @@ using Nethermind.Core.Timers;
 using Nethermind.Logging;
 using Nethermind.Stats;
 using Nethermind.Synchronization.FastSync;
-using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
 using Nethermind.Synchronization.StateSync;
 using NSubstitute;
@@ -18,7 +17,6 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Crypto;
 using System.Net;
 using FluentAssertions;
-using Nethermind.Consensus;
 using Nethermind.Core.Test;
 using Nethermind.Trie;
 using Nethermind.Core.Collections;
@@ -52,11 +50,8 @@ public class StateSyncDispatcherTests
         _pool = new SyncPeerPool(blockTree, new NodeStatsManager(timerFactory, LimboLogs.Instance), new TotalDifficultyBetterPeerStrategy(LimboLogs.Instance), LimboLogs.Instance, 25);
         _pool.Start();
 
-        ISyncFeed<StateSyncBatch>? feed = Substitute.For<ISyncFeed<StateSyncBatch>>();
-        IPoSSwitcher poSSwitcher = Substitute.For<IPoSSwitcher>();
-        poSSwitcher.TransitionFinished.Returns(false);
         _dispatcher =
-            new StateSyncDispatcherTester(feed, new StateSyncDownloader(_logManager), _pool, new StateSyncAllocationStrategyFactory(), _logManager);
+            new StateSyncDispatcherTester(new StateSyncDownloader(_logManager), _pool);
     }
 
     [TearDown]

@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -57,8 +57,6 @@ public static partial class Ssz
         Encode(span.Slice(offset, 1), value);
         offset++;
     }
-
-    public static bool DecodeBool(Span<byte> span, ref int offset) => span[offset++] == 1;
 
     public static void Encode(Span<byte> span, byte value) => span[0] = value;
 
@@ -189,7 +187,30 @@ public static partial class Ssz
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static bool DecodeBool(Span<byte> span) => span[0] != 0;
+    public static bool DecodeBool(Span<byte> span)
+    {
+        const int expectedLength = 1;
+        if (span.Length != expectedLength)
+        {
+            throw new InvalidDataException(
+                $"{nameof(DecodeBool)} expects input of length {expectedLength} and received {span.Length}");
+        }
+
+        return span[0] switch
+        {
+            0 => false,
+            1 => true,
+            var x => throw new InvalidDataException($"SSZ bool must be 0 or 1, got {x}")
+        };
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static bool DecodeBool(Span<byte> span, ref int offset) => span[offset++] switch
+    {
+        0 => false,
+        1 => true,
+        var x => throw new InvalidDataException($"SSZ bool must be 0 or 1, got {x}")
+    };
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static byte DecodeByte(ReadOnlySpan<byte> span)

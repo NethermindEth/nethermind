@@ -60,7 +60,7 @@ namespace Nethermind.Synchronization.FastBlocks
         /// <summary>
         /// Requests sent to peers for which responses have not been received yet
         /// </summary>
-        protected readonly ConcurrentHashSet<HeadersSyncBatch> _sent = new();
+        protected readonly ConcurrentHashSet<HeadersSyncBatch> _sent = [];
 
         /// <summary>
         /// Responses received from peers but waiting in a queue for some other requests to be handled first
@@ -195,7 +195,9 @@ namespace Nethermind.Synchronization.FastBlocks
             }
 
             base.InitializeFeed();
-            HeadersSyncProgressLoggerReport.Reset(_pivotNumber - (LowestInsertedBlockHeader?.Number ?? 0) + 1, TotalBlocks);
+            // null lowest header means nothing inserted yet — without this guard the bar would briefly read 100%.
+            long currentValue = LowestInsertedBlockHeader is null ? 0 : _pivotNumber - LowestInsertedBlockHeader.Number + 1;
+            HeadersSyncProgressLoggerReport.Reset(currentValue, TotalBlocks);
         }
 
         protected virtual void ResetPivot()
@@ -254,7 +256,9 @@ namespace Nethermind.Synchronization.FastBlocks
 
         private bool ShouldBuildANewBatch()
         {
-            bool destinationHeaderRequested = _lowestRequestedHeaderNumber == HeadersDestinationNumber;
+            // `<=` because `HeadersDestinationNumber` (beacon: `PivotDestinationNumber`) can advance
+            // above `_lowestRequestedHeaderNumber` mid-sync; `==` would let `BuildNewBatch` produce a negative `RequestSize`.
+            bool destinationHeaderRequested = _lowestRequestedHeaderNumber <= HeadersDestinationNumber;
 
             bool isImmediateSync = !_syncConfig.DownloadHeadersInFastSync;
 
@@ -284,7 +288,10 @@ namespace Nethermind.Synchronization.FastBlocks
 
         protected void ClearDependencies()
         {
-            _dependencies.Values.DisposeItems();
+            foreach (KeyValuePair<long, HeadersSyncBatch> kvp in _dependencies)
+            {
+                kvp.Value.Dispose();
+            }
             _dependencies.Clear();
             MarkDirty();
         }
@@ -408,7 +415,7 @@ namespace Nethermind.Synchronization.FastBlocks
             return batch;
         }
 
-        private HeadersSyncBatch BuildNewBatch(int requestSize)
+        private HeadersSyncBatch? BuildNewBatch(int requestSize)
         {
             HeadersSyncBatch batch = new();
             batch.StartNumber = Math.Max(HeadersDestinationNumber, _lowestRequestedHeaderNumber - requestSize);
@@ -424,7 +431,7 @@ namespace Nethermind.Synchronization.FastBlocks
             {
                 lock (_handlerLock)
                 {
-                    Dictionary<long, string> all = new();
+                    Dictionary<long, string> all = [];
                     StringBuilder builder = new();
                     builder.AppendLine($"SENT {_sent.Count} PENDING {_pending.Count} DEPENDENCIES {_dependencies.Count}");
                     foreach (KeyValuePair<long, HeadersSyncBatch> headerDependency in _dependencies)
@@ -526,10 +533,9 @@ namespace Nethermind.Synchronization.FastBlocks
             HeadersSyncBatch dependentBatch = new();
             dependentBatch.StartNumber = addedEarliest;
             int count = (int)(addedLast - addedEarliest + 1);
+            ReadOnlySpan<BlockHeader?> response = batch.Response!.AsSpan();
             dependentBatch.RequestSize = count;
-            dependentBatch.Response = batch.Response!
-                .Skip((int)(addedEarliest - batch.StartNumber))
-                .Take(count).ToPooledList(count);
+            dependentBatch.Response = response.Slice((int)(addedEarliest - batch.StartNumber), count).ToPooledList();
             dependentBatch.ResponseSourcePeer = batch.ResponseSourcePeer;
             return dependentBatch;
         }
@@ -563,9 +569,10 @@ namespace Nethermind.Synchronization.FastBlocks
             if (headers.Count == 0) return batch;
 
             int newRequestSize = batch.RequestSize - headers.Count;
+            ReadOnlySpan<BlockHeader> headersSpan = headers.AsSpan();
             using HeadersSyncBatch newBatchToProcess = new();
-            newBatchToProcess.StartNumber = headers[0].Number;
-            newBatchToProcess.RequestSize = headers.Count;
+            newBatchToProcess.StartNumber = headersSpan[0].Number;
+            newBatchToProcess.RequestSize = headersSpan.Length;
             newBatchToProcess.Response = headers;
             if (_logger.IsDebug) _logger.Debug($"Handling header portion {newBatchToProcess.StartNumber} to {newBatchToProcess.EndNumber} with persisted headers.");
             InsertHeaders(newBatchToProcess);
@@ -586,32 +593,33 @@ namespace Nethermind.Synchronization.FastBlocks
                 return 0;
             }
 
-            if (batch.Response.Count > batch.RequestSize)
+            ReadOnlySpan<BlockHeader?> response = batch.Response.AsSpan();
+            if (response.Length > batch.RequestSize)
             {
                 if (_logger.IsDebug)
-                    _logger.Debug($"Peer sent too long response ({batch.Response.Count}) to {batch}");
+                    _logger.Debug($"Peer sent too long response ({response.Length}) to {batch}");
                 if (batch.ResponseSourcePeer is not null)
                 {
                     _syncPeerPool.ReportBreachOfProtocol(
                         batch.ResponseSourcePeer,
                         DisconnectReason.HeaderResponseTooLong,
-                        $"response too long ({batch.Response.Count})");
+                        $"response too long ({response.Length})");
                 }
 
                 EnqueueBatch(batch);
                 return 0;
             }
 
-            using ArrayPoolList<BlockHeader> headersToAdd = new(batch.Response.Count);
+            using ArrayPoolList<BlockHeader> headersToAdd = new(response.Length);
             (Hash256 nextHeaderHash, UInt256? nextHeaderTotalDifficulty) = _expectedNextHeader;
 
             long addedLast = batch.StartNumber - 1;
             long addedEarliest = batch.EndNumber + 1;
             BlockHeader? lowestInsertedHeader = null;
             int skippedAtTheEnd = 0;
-            for (int i = batch.Response.Count - 1; i >= 0; i--)
+            for (int i = response.Length - 1; i >= 0; i--)
             {
-                BlockHeader? header = batch.Response[i];
+                BlockHeader? header = response[i];
                 if (header is null)
                 {
                     skippedAtTheEnd++;
@@ -631,14 +639,14 @@ namespace Nethermind.Synchronization.FastBlocks
                     break;
                 }
 
-                bool isFirst = i == batch.Response.Count - 1 - skippedAtTheEnd;
+                bool isFirst = i == response.Length - 1 - skippedAtTheEnd;
                 if (isFirst)
                 {
-                    if (!ValidateFirstHeader(header)) break;
+                    if (!ValidateFirstHeader(header, response)) break;
                 }
                 else
                 {
-                    if (header.Hash != batch.Response[i + 1]?.ParentHash)
+                    if (header.Hash != response[i + 1]?.ParentHash)
                     {
                         if (batch.ResponseSourcePeer is not null)
                         {
@@ -733,7 +741,7 @@ namespace Nethermind.Synchronization.FastBlocks
             return added;
 
             // Well, its the last in the batch, but first processed.
-            bool ValidateFirstHeader(BlockHeader header)
+            bool ValidateFirstHeader(BlockHeader header, ReadOnlySpan<BlockHeader?> response)
             {
                 BlockHeader lowestInserted = LowestInsertedBlockHeader;
                 // response does not carry expected data
@@ -799,9 +807,9 @@ namespace Nethermind.Synchronization.FastBlocks
                         return false;
                     }
                     long lastNumber = -1;
-                    for (int j = 0; j < batch.Response.Count; j++)
+                    for (int j = 0; j < response.Length; j++)
                     {
-                        BlockHeader? current = batch.Response[j];
+                        BlockHeader? current = response[j];
                         if (current is not null)
                         {
                             if (lastNumber != -1 && lastNumber < current.Number - 1)
@@ -856,7 +864,10 @@ namespace Nethermind.Synchronization.FastBlocks
             {
                 _sent.DisposeItems();
                 _pending.DisposeItems();
-                _dependencies.Values.DisposeItems();
+                foreach (KeyValuePair<long, HeadersSyncBatch> kvp in _dependencies)
+                {
+                    kvp.Value.Dispose();
+                }
                 base.Dispose();
                 _disposed = true;
             }

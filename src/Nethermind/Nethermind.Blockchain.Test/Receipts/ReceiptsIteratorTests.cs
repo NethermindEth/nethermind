@@ -37,15 +37,15 @@ public class ReceiptsIteratorTests
 
         iterator.TryGetNext(out TxReceiptStructRef receipt).Should().BeTrue();
         iterator.RecoverIfNeeded(ref receipt);
-        receipt.Sender.Bytes.ToArray().Should().BeEquivalentTo(TestItem.AddressA.Bytes);
+        receipt.Sender.Bytes.ToArray().Should().BeEquivalentTo(TestItem.AddressA.Bytes.ToArray());
         receipt.TxHash.Bytes.ToArray().Should().BeEquivalentTo(block.Transactions[0].Hash!.BytesToArray());
         iterator.TryGetNext(out receipt).Should().BeTrue();
         iterator.RecoverIfNeeded(ref receipt);
-        receipt.Sender.Bytes.ToArray().Should().BeEquivalentTo(TestItem.AddressB.Bytes);
+        receipt.Sender.Bytes.ToArray().Should().BeEquivalentTo(TestItem.AddressB.Bytes.ToArray());
         receipt.TxHash.Bytes.ToArray().Should().BeEquivalentTo(block.Transactions[1].Hash!.BytesToArray());
         iterator.TryGetNext(out receipt).Should().BeTrue();
         iterator.RecoverIfNeeded(ref receipt);
-        receipt.Sender.Bytes.ToArray().Should().BeEquivalentTo(TestItem.AddressC.Bytes);
+        receipt.Sender.Bytes.ToArray().Should().BeEquivalentTo(TestItem.AddressC.Bytes.ToArray());
         receipt.TxHash.Bytes.ToArray().Should().BeEquivalentTo(block.Transactions[1].Hash!.BytesToArray());
     }
 
@@ -66,14 +66,14 @@ public class ReceiptsIteratorTests
         ReceiptsIterator iterator = CreateIterator(receipts, block);
 
         iterator.TryGetNext(out TxReceiptStructRef receipt).Should().BeTrue();
-        receipt.Sender.Bytes.ToArray().Should().BeEquivalentTo(TestItem.AddressA.Bytes);
+        receipt.Sender.Bytes.ToArray().Should().BeEquivalentTo(TestItem.AddressA.Bytes.ToArray());
         receipt.TxHash.Bytes.Length.Should().Be(0);
         iterator.TryGetNext(out receipt).Should().BeTrue();
-        receipt.Sender.Bytes.ToArray().Should().BeEquivalentTo(TestItem.AddressB.Bytes);
+        receipt.Sender.Bytes.ToArray().Should().BeEquivalentTo(TestItem.AddressB.Bytes.ToArray());
         receipt.TxHash.Bytes.Length.Should().Be(0);
         iterator.TryGetNext(out receipt).Should().BeTrue();
         iterator.RecoverIfNeeded(ref receipt);
-        receipt.Sender.Bytes.ToArray().Should().BeEquivalentTo(TestItem.AddressC.Bytes);
+        receipt.Sender.Bytes.ToArray().Should().BeEquivalentTo(TestItem.AddressC.Bytes.ToArray());
         receipt.TxHash.Bytes.ToArray().Should().BeEquivalentTo(block.Transactions[1].Hash!.BytesToArray());
     }
 
@@ -94,11 +94,11 @@ public class ReceiptsIteratorTests
         ReceiptsIterator iterator = CreateIterator(receipts, block);
 
         iterator.TryGetNext(out TxReceiptStructRef receipt).Should().BeTrue();
-        receipt.Sender.Bytes.ToArray().Should().BeEquivalentTo(TestItem.AddressA.Bytes);
+        receipt.Sender.Bytes.ToArray().Should().BeEquivalentTo(TestItem.AddressA.Bytes.ToArray());
         iterator.TryGetNext(out receipt).Should().BeTrue();
-        receipt.Sender.Bytes.ToArray().Should().BeEquivalentTo(TestItem.AddressB.Bytes);
+        receipt.Sender.Bytes.ToArray().Should().BeEquivalentTo(TestItem.AddressB.Bytes.ToArray());
         iterator.TryGetNext(out receipt).Should().BeTrue();
-        receipt.Sender.Bytes.ToArray().Should().BeEquivalentTo(TestItem.AddressC.Bytes);
+        receipt.Sender.Bytes.ToArray().Should().BeEquivalentTo(TestItem.AddressC.Bytes.ToArray());
     }
 
     private ReceiptsIterator CreateIterator(TxReceipt[] receipts, Block block)

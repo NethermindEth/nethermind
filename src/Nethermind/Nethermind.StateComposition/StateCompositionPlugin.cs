@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
@@ -98,14 +97,9 @@ public class StateCompositionPlugin(IStateCompositionConfig config) : INethermin
     public Task InitRpcModules() => Task.CompletedTask;
 
     /// <summary>
-    /// Fire-and-forget the bootstrap scan against the current chain head. This is
-    /// the only call site that originates from the plugin (the other legal caller
-    /// of <see cref="StateCompositionService.AnalyzeAsync"/> is the
-    /// MissingTrieNodeException recovery path inside the service itself). If the
-    /// block tree has no head yet (very early init), log a warning — operators
-    /// must restart the node once the consensus client has driven the head past
-    /// genesis. <see cref="StateCompositionService.AnalyzeAsync"/> already
-    /// serialises via its scan semaphore, so the dispatched task is safe.
+    /// Fire-and-forget the startup bootstrap scan against the current chain head.
+    /// If the block tree has no head yet, fall through to the deferred bootstrap
+    /// in <see cref="StateCompositionService.OnNewHeadBlock"/> on the first new head.
     /// </summary>
     private static void ScheduleBootstrapScan(
         StateCompositionService service,
@@ -120,24 +114,15 @@ public class StateCompositionPlugin(IStateCompositionConfig config) : INethermin
             return;
         }
 
-        _ = Task.Run(async () =>
-        {
-            try
+        FireAndForget.Run(
+            async () =>
             {
                 Result<StateCompositionStats> result =
                     await service.AnalyzeAsync(head, CancellationToken.None).ConfigureAwait(false);
-
                 if (!result.IsSuccess && logger.IsWarn)
                     logger.Warn($"StateComposition: bootstrap scan skipped: {result.Error}");
-            }
-            catch (Exception ex)
-            {
-                // Guard the log call itself, not the catch: a `when (IsError)`
-                // filter would let the exception escape into the unobserved-task
-                // pipeline whenever Error logging is off.
-                if (logger.IsError)
-                    logger.Error("StateComposition: bootstrap scan failed", ex);
-            }
-        });
+            },
+            logger,
+            "StateComposition: bootstrap scan failed");
     }
 }

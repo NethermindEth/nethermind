@@ -96,7 +96,7 @@ public partial class DebugRpcModuleTests
         BlockHeader parent = blockchain.BlockTree.Head!.Header;
 
         // Construct witness-generating infrastructure manually to demonstrate the tree visitor pattern.
-        IReadOnlyTrieStore readOnlyTrieStore = blockchain.Container.Resolve<IReadOnlyTrieStore>();
+        IReadOnlyTrieStore readOnlyTrieStore = blockchain.Container.Resolve<IWorldStateManager>().CreateReadOnlyTrieStore();
         IReadOnlyDbProvider readOnlyDbProvider = new ReadOnlyDbProvider(blockchain.DbProvider, true);
         WitnessCapturingTrieStore capturingTrieStore = new(readOnlyTrieStore);
         StateReader stateReader = new(capturingTrieStore, readOnlyDbProvider.CodeDb, blockchain.LogManager);
@@ -244,6 +244,52 @@ public partial class DebugRpcModuleTests
 
         witness.State.Should().NotBeEmpty();
         witness.Codes.Should().NotBeEmpty("calling a contract should capture its bytecode");
+    }
+
+    [Test]
+    public async Task Debug_executionWitnessCall_without_gas_field_still_records_full_witness()
+    {
+        // Regression guard: the handler advertises that `gas` is optional via
+        // `callRequest.Gas ??= header.GasLimit;` — callers reasonably assume the
+        // witness is recorded the same whether or not they pass gas explicitly. If that
+        // symmetry breaks again the caller ends up with a near-empty witness (just the
+        // state-root node) that silently succeeds but fails stateless re-execution
+        // downstream. Seen in the wild with surge-raiko's L1STATICCALL preflight.
+        using Context ctx = await Context.Create();
+        TestRpcBlockchain blockchain = ctx.Blockchain;
+
+        Block transferBlock = await CreateTransferTx(blockchain);
+        Address contractAddress = await CreateDeployTx(blockchain, transferBlock.Number);
+
+        long blockNumber = blockchain.BlockTree.Head!.Number;
+
+        // With gas explicitly passed — the control case.
+        JsonRpcResponse withGas = await RpcTest.TestRequest(ctx.DebugRpcModule, "debug_executionWitnessCall",
+            new { to = contractAddress.ToString(), gas = "0x30D40" },
+            $"0x{blockNumber:x}");
+
+        // Without gas — what most call sites end up sending. `{to, data}` is the natural
+        // shape for a view call, and users don't want to have to know the block's gas limit.
+        JsonRpcResponse withoutGas = await RpcTest.TestRequest(ctx.DebugRpcModule, "debug_executionWitnessCall",
+            new { to = contractAddress.ToString() },
+            $"0x{blockNumber:x}");
+
+        using Witness witnessWithGas = withGas.Should().BeOfType<JsonRpcSuccessResponse>()
+            .Which.Result.Should().BeOfType<Witness>().Subject;
+        using Witness witnessWithoutGas = withoutGas.Should().BeOfType<JsonRpcSuccessResponse>()
+            .Which.Result.Should().BeOfType<Witness>().Subject;
+
+        // The two paths must produce witnesses of the same shape.
+        witnessWithoutGas.State.Should().NotBeEmpty(
+            "omitting gas must not empty the state node set");
+        witnessWithoutGas.Codes.Should().NotBeEmpty(
+            "omitting gas must still capture called-contract bytecode");
+        witnessWithoutGas.State.Count.Should().Be(witnessWithGas.State.Count,
+            "state-node count should match between with-gas and without-gas calls");
+        witnessWithoutGas.Codes.Count.Should().Be(witnessWithGas.Codes.Count,
+            "code count should match between with-gas and without-gas calls");
+        witnessWithoutGas.Keys.Count.Should().Be(witnessWithGas.Keys.Count,
+            "key count should match between with-gas and without-gas calls");
     }
 
     private static IEnumerable<TestCaseData> ExecutionWitnessSource()

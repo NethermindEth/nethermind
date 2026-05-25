@@ -28,7 +28,7 @@ namespace Nethermind.Core.Test.Collections
         [Test]
         public void try_peek_should_return_false_if_empty()
         {
-            StackList<int> stack = new();
+            StackList<int> stack = [];
             stack.TryPeek(out _).Should().Be(false);
         }
 
@@ -56,10 +56,10 @@ namespace Nethermind.Core.Test.Collections
         [Test]
         public void try_pop_should_return_false_if_empty()
         {
-            StackList<int> stack = new();
+            StackList<int> stack = [];
             stack.TryPop(out _).Should().Be(false);
         }
 
-        private static StackList<int> GetStackList() => new() { 1, 2, 5 };
+        private static StackList<int> GetStackList() => [1, 2, 5];
     }
 }
