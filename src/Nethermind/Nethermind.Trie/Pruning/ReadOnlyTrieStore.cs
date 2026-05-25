@@ -21,8 +21,11 @@ namespace Nethermind.Trie.Pruning
         public bool TryGetOrLoadNode(Hash256? address, in TreePath treePath, in ValueHash256 hash, [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out TrieNode? node, ReadFlags flags = ReadFlags.None) =>
             _trieStore.TryGetOrLoadNode(address, in treePath, in hash, isReadOnly: true, out node, flags);
 
-        public bool TryGetCachedNode(Hash256? address, in TreePath treePath, in ValueHash256 hash, [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out TrieNode? node) =>
-            _trieStore.TryGetCachedNode(address, in treePath, in hash, out node);
+        public bool TryGetCachedNode(Hash256? address, in TreePath treePath, in ValueHash256 hash, [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out TrieNode? node)
+        {
+            node = _trieStore.GetSharedCachedNode(address, in treePath, in hash);
+            return node is not null;
+        }
 
         public byte[] LoadRlp(Hash256? address, in TreePath treePath, in ValueHash256 hash, ReadFlags flags) =>
             _trieStore.LoadRlp(address, treePath, in hash, flags);

@@ -530,23 +530,15 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
     public bool IsNodeCached(Hash256? address, in TreePath path, in ValueHash256 hash) => DirtyNodesIsNodeCached(new TrieStoreDirtyNodesCache.Key(address, path, in hash));
 
     /// <summary>
-    /// Cache-only lookup used by the typed-resolver contract (<see cref="IScopableTrieStore.TryGetCachedNode"/>).
+    /// Cache-only lookup used by the typed-resolver contract (<see cref="IScopableTrieStore.TryGetCachedNode"/>),
+    /// using the same mutable dirty/commit-buffer path as <see cref="GetOrLoadNode(Hash256?, in TreePath, in ValueHash256, ReadFlags)"/>.
     /// Returns the cached node only if it is already structurally resolved (not an
-    /// <see cref="NodeType.Unknown"/> placeholder). Never allocates, never loads RLP.
+    /// <see cref="NodeType.Unknown"/> placeholder). Never loads RLP.
     /// </summary>
     public bool TryGetCachedNode(Hash256? address, in TreePath path, in ValueHash256 hash, [NotNullWhen(true)] out TrieNode? node)
     {
-        // Cache-only lookup: returns the typed resolved node if one is in the dirty cache.
-        // Does NOT consult _commitBuffer; the typed-resolver default impl falls back to
-        // FindCachedOrUnknown + ResolveNode on miss, which already honors commit-buffer mode.
-        TrieStoreDirtyNodesCache.Key key = new(address, path, in hash);
-        if (DirtyNodesTryGetValue(key, out TrieNode? cached) && cached!.NodeType != NodeType.Unknown && cached.IsSealed)
-        {
-            node = cached;
-            return true;
-        }
-        node = null;
-        return false;
+        node = GetCachedNode(address, in path, in hash, isReadOnly: false);
+        return node is not null;
     }
 
     public TrieNode GetOrLoadNode(Hash256? address, in TreePath path, in ValueHash256 hash, ReadFlags flags = ReadFlags.None) =>

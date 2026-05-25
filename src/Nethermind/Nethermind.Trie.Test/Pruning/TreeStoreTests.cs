@@ -911,6 +911,19 @@ namespace Nethermind.Trie.Test.Pruning
             return node;
         }
 
+        private static TrieNode BuildAndCommitDirtyBranchWithoutRlp(TrieStore fullTrieStore)
+        {
+            TreePath emptyPath = TreePath.Empty;
+            TrieNode node = TrieNode.CreateBranchTyped();
+            node.Keccak = TestItem.KeccakB;
+
+            using (fullTrieStore.BeginBlockCommit(0))
+            using (ICommitter committer = fullTrieStore.GetTrieStore(null).BeginCommit(null))
+            {
+                return committer.CommitNode(ref emptyPath, node);
+            }
+        }
+
         private TrieNode BuildAndPersistSealedBranch(IKeyValueStoreWithBatching kvStore)
         {
             TrieNode node = TrieNode.CreateBranchTyped();
@@ -1091,6 +1104,22 @@ namespace Nethermind.Trie.Test.Pruning
             cachedNode.Should().BeSameAs(node);
         }
 
+        [Test]
+        public void Pre_cached_typed_lookup_uses_inner_dirty_cache_before_rlp()
+        {
+            using TrieStore fullTrieStore = CreateTrieStore();
+            TrieNode node = BuildAndCommitDirtyBranchWithoutRlp(fullTrieStore);
+            using PreCachedTrieStore preCachedTrieStore = new(fullTrieStore, new NodeStorageCache { Enabled = true });
+            IScopedTrieStore scopedTrieStore = preCachedTrieStore.GetTrieStore(null);
+            TreePath emptyPath = TreePath.Empty;
+
+            TrieNode loadedNode = scopedTrieStore.GetOrLoadNode(emptyPath, node.Keccak!.ValueHash256);
+
+            node.IsSealed.Should().BeFalse();
+            node.HasRlp.Should().BeFalse();
+            loadedNode.Should().BeSameAs(node);
+        }
+
         private sealed class MinimalScopableTrieStore(ValueHash256 expectedHash, byte[] rlp) : IScopableTrieStore
         {
             public int LoadCount { get; private set; }
@@ -1173,22 +1202,17 @@ namespace Nethermind.Trie.Test.Pruning
         }
 
         [Test]
-        public void Cache_only_typed_lookup_does_not_return_unsealed_nodes()
+        public void Cache_only_typed_lookup_returns_dirty_nodes_for_mutable_store()
         {
             using TrieStore fullTrieStore = CreateTrieStore();
             TreePath emptyPath = TreePath.Empty;
-            TrieNode node = TrieNode.CreateBranchTyped();
-            node.Keccak = TestItem.KeccakB;
+            TrieNode node = BuildAndCommitDirtyBranchWithoutRlp(fullTrieStore);
             node.IsSealed.Should().BeFalse();
-
-            using IBlockCommitter blockCommitter = fullTrieStore.BeginBlockCommit(0);
-            using ICommitter committer = fullTrieStore.GetTrieStore(null).BeginCommit(null);
-            committer.CommitNode(ref emptyPath, node);
 
             bool found = fullTrieStore.TryGetCachedNode(null, emptyPath, node.Keccak!.ValueHash256, out TrieNode? cachedNode);
 
-            found.Should().BeFalse();
-            cachedNode.Should().BeNull();
+            found.Should().BeTrue();
+            cachedNode.Should().BeSameAs(node);
         }
 
         [Test]
