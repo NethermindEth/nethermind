@@ -294,80 +294,94 @@ public class SnapshotRepository(ILogManager logManager) : ISnapshotRepository
         }
     }
 
+    private const int PruneBatchSize = 1000;
+
     public void RemoveSiblingAndDescendents(in StateId canonicalStateId)
     {
-        // A consistent point-in-time set of the states above the persisted block. Sourcing it from
-        // the locked `_sortedSnapshotStateIds` (rather than enumerating the lock-free `_snapshots`)
-        // guarantees that whenever a state is present so is its parent - `AddStateId` runs in block
-        // order - an invariant the disjoint-set below relies on.
-        using ArrayPoolListRef<StateId> aboveStates = GetStatesAbove(canonicalStateId.BlockNumber);
-        if (aboveStates.Count == 0) return;
+        // Walk blocks above the persisted state in batches of `PruneBatchSize`. For each state
+        // probe a DFS path back to `canonicalStateId`; states with no such path are orphaned
+        // descendants of a non-canonical sibling and must be dropped. Processing ascending lets the
+        // DFS for higher states short-circuit cheaply: once a non-canonical state is removed its
+        // descendants' edges lead into an empty entry and the search returns immediately. Compacted
+        // snapshots are followed too - their wider jumps make the canonical probe terminate fast.
+        StateId? lastStateId = GetLastSnapshotId();
+        if (lastStateId is null || lastStateId.Value.BlockNumber <= canonicalStateId.BlockNumber) return;
 
-        // Disjoint-set over those states. Only the non-compacted snapshot of each state is unioned:
-        // its `From` is a single block back, so no edge crosses the persisted-block boundary and
-        // each fork stays in the component anchored at its own block-`persistBlockNumber` state.
-        // Compacted snapshots are excluded because they can span the boundary and would wrongly
-        // merge the canonical and non-canonical components.
-        using PooledDictionary<StateId, StateId> parent = new();
+        long maxBlock = lastStateId.Value.BlockNumber;
+        long batchStart = canonicalStateId.BlockNumber + 1;
+        int totalPruned = 0;
 
-        StateId Find(StateId node)
+        using PooledStack<StateId> stack = new();
+        using PooledSet<StateId> seen = new();
+
+        while (batchStart <= maxBlock)
         {
-            StateId root = parent[node];
-            while (root != node)
+            long batchEnd = Math.Min(batchStart + PruneBatchSize - 1, maxBlock);
+            using ArrayPoolListRef<StateId> batch = GetStatesInRange(batchStart, batchEnd);
+            foreach (StateId stateId in batch)
             {
-                StateId grandparent = parent[root];
-                parent[node] = grandparent; // Path halving
-                node = root;
-                root = grandparent;
+                if (!CanReachState(stateId, canonicalStateId, stack, seen))
+                {
+                    RemoveAndReleaseCompactedKnownState(stateId);
+                    RemoveAndReleaseKnownState(stateId);
+                    totalPruned++;
+                }
             }
-            return root;
+            batchStart = batchEnd + 1;
         }
 
-        void Union(StateId a, StateId b)
+        if (totalPruned > 0 && _logger.IsInfo)
         {
-            parent.TryAdd(a, a);
-            parent.TryAdd(b, b);
-            StateId rootA = Find(a);
-            StateId rootB = Find(b);
-            if (rootA != rootB) parent[rootA] = rootB;
-        }
-
-        foreach (StateId stateId in aboveStates)
-        {
-            if (_snapshots.TryGetValue(stateId, out Snapshot? snapshot))
-            {
-                Union(snapshot.To, snapshot.From);
-            }
-        }
-
-        parent.TryAdd(canonicalStateId, canonicalStateId);
-        StateId canonicalRoot = Find(canonicalStateId);
-
-        int pruned = 0;
-        foreach (StateId stateId in aboveStates)
-        {
-            // A state with no entry was never unioned (its snapshot vanished mid-pass); leave it.
-            if (parent.ContainsKey(stateId) && Find(stateId) != canonicalRoot)
-            {
-                RemoveAndReleaseCompactedKnownState(stateId);
-                RemoveAndReleaseKnownState(stateId);
-                pruned++;
-            }
-        }
-
-        if (pruned > 0 && _logger.IsInfo)
-        {
-            _logger.Info($"Pruned {pruned} orphaned non-canonical snapshot(s) above persisted state {canonicalStateId}.");
+            _logger.Info($"Pruned {totalPruned} orphaned non-canonical snapshot(s) above persisted state {canonicalStateId}.");
         }
     }
 
-    private ArrayPoolListRef<StateId> GetStatesAbove(long blockNumber)
+    private bool CanReachState(in StateId from, in StateId target, PooledStack<StateId> stack, PooledSet<StateId> seen)
+    {
+        if (from == target) return true;
+        if (from.BlockNumber <= target.BlockNumber) return false;
+
+        stack.Clear();
+        seen.Clear();
+        stack.Push(from);
+        seen.Add(from);
+
+        while (stack.Count > 0)
+        {
+            StateId current = stack.Pop();
+
+            for (int edge = 0; edge < 2; edge++)
+            {
+                Snapshot? snapshot;
+                if (edge == 0)
+                {
+                    if (!TryLeaseCompactedState(current, out snapshot)) continue;
+                }
+                else
+                {
+                    if (!TryLeaseState(current, out snapshot)) continue;
+                }
+
+                StateId parent = snapshot.From;
+                snapshot.Dispose();
+
+                if (parent == target) return true;
+                if (parent.BlockNumber > target.BlockNumber && seen.Add(parent))
+                {
+                    stack.Push(parent);
+                }
+            }
+        }
+        return false;
+    }
+
+    private ArrayPoolListRef<StateId> GetStatesInRange(long blockStartInclusive, long blockEndInclusive)
     {
         using ReadWriteLockBox<SortedSet<StateId>>.Lock _ = _sortedSnapshotStateIds.EnterReadLock(out SortedSet<StateId> sortedSnapshots);
 
         SortedSet<StateId> view = sortedSnapshots.GetViewBetween(
-            new StateId(blockNumber + 1, Hash256.Zero),
-            new StateId(long.MaxValue, Keccak.MaxValue));
+            new StateId(blockStartInclusive, Hash256.Zero),
+            new StateId(blockEndInclusive, Keccak.MaxValue));
 
         ArrayPoolListRef<StateId> result = new(view.Count);
         foreach (StateId stateId in view) result.Add(stateId);
