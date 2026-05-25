@@ -432,6 +432,8 @@ namespace Nethermind.Trie
             {
                 if (data.TryGetKeccak(out ValueHash256 childKeccak))
                 {
+                    Debug.Assert(expectedInlineRlpLength < 0,
+                        "Recorded inline branch child gained a keccak during RLP encoding.");
                     return Rlp.Encode(destination, position, in childKeccak);
                 }
 
