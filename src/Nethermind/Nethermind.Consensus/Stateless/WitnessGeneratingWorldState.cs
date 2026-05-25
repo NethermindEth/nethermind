@@ -53,7 +53,7 @@ public class WitnessGeneratingWorldState(
 
     private readonly Dictionary<ValueHash256, byte[]> _bytecodes = new();
 
-    private readonly HashSet<Address> _deployedAddresses = new();
+    private readonly HashSet<Address> _deployedAddresses = [];
 
     /// <summary>
     /// Projects the recorded addresses/slots/bytecodes (and trie-touched nodes, when a capturing trie store
