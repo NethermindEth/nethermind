@@ -130,7 +130,7 @@ public class ReadOnlySnapshotBundleTests
     public void TryFindStateNodes_ReturnsTrueWhenPresentInSnapshot()
     {
         TreePath path = TreePath.FromHexString("12");
-        TrieNode node = new(NodeType.Leaf, [0xc1, 0x01]);
+        TrieNode node = TrieNode.CreateLeafTyped([0xc1, 0x01]);
 
         using ReadOnlySnapshotBundle bundle = Bundle(FlatTestHelpers.SnapshotList(
             MakeSnapshot(c => c.StateNodes[new HashedKey<TreePath>(path)] = node)),
@@ -154,7 +154,7 @@ public class ReadOnlySnapshotBundleTests
     {
         Hash256 address = TestItem.KeccakA;
         TreePath path = TreePath.FromHexString("ab");
-        TrieNode node = new(NodeType.Leaf, [0xc1, 0x02]);
+        TrieNode node = TrieNode.CreateLeafTyped([0xc1, 0x02]);
 
         using ReadOnlySnapshotBundle bundle = Bundle(FlatTestHelpers.SnapshotList(
             MakeSnapshot(c => c.StorageNodes[new HashedKey<(Hash256, TreePath)>((address, path))] = node)),
