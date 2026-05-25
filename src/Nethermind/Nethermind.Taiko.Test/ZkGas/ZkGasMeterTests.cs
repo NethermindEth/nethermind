@@ -213,20 +213,36 @@ public class ZkGasMeterTests
     }
 
     [Test]
-    public void CommitTransaction_Treats_Block_AccumulationOverflow_As_Failure()
+    public void ChargeOpcode_Rejects_Charge_Whose_Magnitude_Exceeds_Block_Limit()
     {
-        // Pre-fill block to near ulong.MaxValue via direct commit, bypassing per-charge limit.
-        // We do this by committing many max-budget chunks… instead, we exercise via
-        // the overflow in accumulated block total.
-        // Simplest path: charge opcode with multiplier 1 up to BlockZkGasLimit once,
-        // then attempt a second commit that would overflow ulong.
-        // Actually ZkGasMeter guards against > BlockZkGasLimit before overflow, so test
-        // the tx-accumulation add overflow path instead.
+        // Under the default 100M block limit, a single raw-gas charge with magnitude
+        // ulong.MaxValue/2+1 (multiplied by the multiplier-1 CREATE opcode) projects far past
+        // the block limit and is rejected by the projectedBlock > _blockZkGasLimit branch in
+        // ChargeAmount — not the tx-accumulation overflow path, which has its own dedicated
+        // test below.
         ZkGasMeter meter = new();
-        // Two charges each near ulong.MaxValue/2 — their *sum* overflows before the block check
         ulong halfMax = ulong.MaxValue / 2 + 1;
-        meter.ChargeOpcode(0xf0, halfMax); // multiplier 1 → charge = halfMax, but exceeds block limit already
-        // Meter will flag IsLimitExceeded because halfMax >> BlockZkGasLimit
+        bool charged = meter.ChargeOpcode(0xf0, halfMax);
+        Assert.That(charged, Is.False);
+        Assert.That(meter.IsLimitExceeded, Is.True);
+    }
+
+    [Test]
+    public void ChargeOpcode_Treats_Tx_Accumulation_Overflow_As_Failure()
+    {
+        // With block limit pinned at ulong.MaxValue, the block-bound branch in ChargeAmount
+        // cannot fire; the only way ChargeAmount returns false is via the
+        // nextTx < _txZkGasUsed wraparound check. Two halfMax charges to a multiplier-1
+        // opcode put _txZkGasUsed at halfMax then wrap on the second add.
+        ZkGasMeter meter = new(blockZkGasLimit: ulong.MaxValue);
+        ulong halfMax = ulong.MaxValue / 2 + 1;
+
+        bool first = meter.ChargeOpcode(0xf0, halfMax);
+        Assert.That(first, Is.True);
+        Assert.That(meter.TxZkGasUsed, Is.EqualTo(halfMax));
+
+        bool second = meter.ChargeOpcode(0xf0, halfMax);
+        Assert.That(second, Is.False);
         Assert.That(meter.IsLimitExceeded, Is.True);
     }
 
