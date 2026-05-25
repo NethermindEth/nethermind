@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Runtime.InteropServices;
 using System.Text.Json;
 using Nethermind.Core;
 using Nethermind.Core.Buffers;
@@ -39,8 +40,11 @@ public class StreamingParityLikeTxTracer : ParityLikeTxTracer
     private readonly Func<ParityTraceAction, bool>? _actionFilter;
     private readonly JsonSerializerOptions _jsonOptions;
 
-    private readonly Stack<StreamingVmFrame> _streamingFrames = new();
-    private readonly Stack<StreamingVmFrame> _framePool = new();
+    private const int FramePoolInitialCapacity = 16;
+    private const int StateChangePoolInitialCapacity = 8;
+
+    private readonly Stack<StreamingVmFrame> _streamingFrames = new(FramePoolInitialCapacity);
+    private readonly Stack<StreamingVmFrame> _framePool = new(FramePoolInitialCapacity);
 
     // Single in-flight op buffer: only one op is "live" at a time, so we mutate it in
     // place instead of allocating per opcode.
@@ -53,11 +57,11 @@ public class StreamingParityLikeTxTracer : ParityLikeTxTracer
     private PooledByteBuffer _storageValue;
     private readonly List<PooledByteBuffer> _streamingPushList = [];
 
-    private readonly Stack<ParityTraceAction> _actionPool = new();
-    private readonly Stack<ParityAccountStateChange> _accountStateChangePool = new();
-    private readonly Stack<Dictionary<UInt256, ParityStateChange<byte[]>>> _storageDictPool = new();
-    private readonly Stack<ParityStateChange<byte[]>> _byteStateChangePool = new();
-    private readonly Stack<ParityStateChange<UInt256?>> _uint256StateChangePool = new();
+    private readonly Stack<ParityTraceAction> _actionPool = new(FramePoolInitialCapacity);
+    private readonly Stack<ParityAccountStateChange> _accountStateChangePool = new(StateChangePoolInitialCapacity);
+    private readonly Stack<Dictionary<UInt256, ParityStateChange<byte[]>>> _storageDictPool = new(StateChangePoolInitialCapacity);
+    private readonly Stack<ParityStateChange<byte[]>> _byteStateChangePool = new(StateChangePoolInitialCapacity);
+    private readonly Stack<ParityStateChange<UInt256?>> _uint256StateChangePool = new(StateChangePoolInitialCapacity);
 
     /// <summary>
     /// Creates a streaming tx tracer.
@@ -613,9 +617,11 @@ public class StreamingParityLikeTxTracer : ParityLikeTxTracer
         _storageKey.Dispose();
         _storageValue.Dispose();
 
-        for (int i = 0; i < _streamingPushList.Count; i++)
+        // AsSpan: indexer returns a struct copy, so dispose via it leaves stale _buffer refs until Clear.
+        Span<PooledByteBuffer> pushSpan = CollectionsMarshal.AsSpan(_streamingPushList);
+        for (int i = 0; i < pushSpan.Length; i++)
         {
-            _streamingPushList[i].Dispose();
+            pushSpan[i].Dispose();
         }
         _streamingPushList.Clear();
     }

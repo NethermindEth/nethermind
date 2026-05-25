@@ -2,9 +2,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.Collections.Generic;
 using System.IO.Pipelines;
-using System.Linq;
 using System.Text.Json;
 using System.Threading;
 using Nethermind.Blockchain.Tracing.ParityStyle;
@@ -275,16 +275,35 @@ public sealed class StreamingParityLikeBlockTracer : ParityLikeBlockTracer, IDis
         if (trace.StateChanges is not null)
         {
             _writer.WriteStartObject();
-            Span<byte> addressBytes = stackalloc byte[Address.Size * 2 + 2];
-            addressBytes[0] = (byte)'0';
-            addressBytes[1] = (byte)'x';
-            Span<byte> hex = addressBytes[2..];
-            foreach ((Address address, ParityAccountStateChange stateChange) in
-                trace.StateChanges.OrderBy(static sc => sc.Key, GenericComparer.GetOptimized<Address>()))
+            int count = trace.StateChanges.Count;
+            if (count > 0)
             {
-                address.Bytes.OutputBytesToByteHex(hex, false);
-                _writer.WritePropertyName(addressBytes);
-                JsonSerializer.Serialize(_writer, stateChange, _jsonOptions);
+                Address[] rentedKeys = ArrayPool<Address>.Shared.Rent(count);
+                try
+                {
+                    int idx = 0;
+                    foreach (Address key in trace.StateChanges.Keys)
+                    {
+                        rentedKeys[idx++] = key;
+                    }
+                    Span<Address> keys = rentedKeys.AsSpan(0, count);
+                    keys.Sort(GenericComparer.GetOptimized<Address>());
+
+                    Span<byte> addressBytes = stackalloc byte[Address.Size * 2 + 2];
+                    addressBytes[0] = (byte)'0';
+                    addressBytes[1] = (byte)'x';
+                    Span<byte> hex = addressBytes[2..];
+                    foreach (Address address in keys)
+                    {
+                        address.Bytes.OutputBytesToByteHex(hex, false);
+                        _writer.WritePropertyName(addressBytes);
+                        JsonSerializer.Serialize(_writer, trace.StateChanges[address], _jsonOptions);
+                    }
+                }
+                finally
+                {
+                    ArrayPool<Address>.Shared.Return(rentedKeys, clearArray: true);
+                }
             }
             _writer.WriteEndObject();
         }
