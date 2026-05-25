@@ -71,7 +71,7 @@ namespace Nethermind.Network.P2P.Messages
                 int length = c.ReadSequenceLength();
                 int checkPosition = c.Position + length;
 
-                ReadOnlySpan<byte> protocolSpan = c.DecodeByteArraySpan(RlpLimit.L8);
+                ReadOnlySpan<byte> protocolSpan = c.DecodeByteArraySpan(RlpLimit.L32);
                 if (!Contract.P2P.ProtocolParser.TryGetProtocolCode(protocolSpan, out string? protocolCode))
                 {
                     protocolCode = Encoding.UTF8.GetString(protocolSpan);
