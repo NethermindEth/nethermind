@@ -1043,6 +1043,27 @@ namespace Nethermind.Trie.Test.Pruning
         }
 
         [Test]
+        [NonParallelizable]
+        public void Pre_cached_read_only_traversal_miss_uses_node_storage_cache()
+        {
+            MemDb memDb = new();
+            TrieNode persistedNode = BuildAndPersistSealedBranch(memDb);
+            using TrieStore fullTrieStore = CreateTrieStore(kvStore: memDb);
+            using PreCachedTrieStore preCachedTrieStore = new(fullTrieStore.AsReadOnly(), new NodeStorageCache { Enabled = true });
+            TreePath emptyPath = TreePath.Empty;
+            ValueHash256 hash = persistedNode.Keccak!.ValueHash256;
+
+            preCachedTrieStore.TryLoadRlp(null, in emptyPath, in hash).Should().Equal(persistedNode.FullRlp.AsSpan().ToArray());
+            long readsAfterCacheWarmup = memDb.ReadsCount;
+            ITrieNodeResolver readOnlyResolver = ((ITrieNodeResolverSource)preCachedTrieStore.GetTrieStore(null)).GetReadOnlyTraversalResolver()!;
+
+            TrieNode node = readOnlyResolver.GetOrLoadNode(in emptyPath, in hash);
+
+            node.FullRlp.AsSpan().ToArray().Should().Equal(persistedNode.FullRlp.AsSpan().ToArray());
+            memDb.ReadsCount.Should().Be(readsAfterCacheWarmup);
+        }
+
+        [Test]
         public void Node_storage_cache_does_not_cache_rlp_misses()
         {
             NodeStorageCache cache = new() { Enabled = true };

@@ -10,7 +10,12 @@ namespace Nethermind.Trie.Pruning
     /// <summary>
     /// Safe to be reused for the same wrapped store.
     /// </summary>
-    public class ReadOnlyTrieStore(TrieStore trieStore) : IReadOnlyTrieStore, IScopedReadOnlyTraversalProvider
+    internal interface ISharedReadOnlyTrieStore
+    {
+        TrieNode PublishSharedReadOnly(Hash256? address, in TreePath path, in ValueHash256 hash, TrieNode node);
+    }
+
+    public class ReadOnlyTrieStore(TrieStore trieStore) : IReadOnlyTrieStore, IScopedReadOnlyTraversalProvider, ISharedReadOnlyTrieStore
     {
         private readonly TrieStore _trieStore = trieStore ?? throw new ArgumentNullException(nameof(trieStore));
         public INodeStorage.KeyScheme Scheme => _trieStore.Scheme;
@@ -45,6 +50,9 @@ namespace Nethermind.Trie.Pruning
         public bool HasRoot(Hash256 stateRoot, long blockNumber) => _trieStore.HasRoot(stateRoot, blockNumber);
 
         public void Dispose() { }
+
+        TrieNode ISharedReadOnlyTrieStore.PublishSharedReadOnly(Hash256? address, in TreePath path, in ValueHash256 hash, TrieNode node) =>
+            _trieStore.PublishSharedReadOnly(address, in path, in hash, node);
 
         public ITrieNodeResolver? GetReadOnlyTraversalResolver(Hash256? address) =>
             new SharedReadOnlyTraversalResolver(this, address);
