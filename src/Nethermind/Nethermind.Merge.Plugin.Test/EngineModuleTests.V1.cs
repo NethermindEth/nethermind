@@ -457,6 +457,41 @@ public partial class EngineModuleTests
     }
 
     [Test]
+    public async Task executePayloadV1_invalid_suggested_records_bad_block()
+    {
+        using MergeTestBlockchain chain = await CreateBlockchain();
+        IEngineRpcModule rpc = chain.EngineRpcModule;
+
+        // Build parent + child on top of head, then insert only the parent header (BeaconBlockInsert).
+        // Because the parent header is known but never processed, `ShouldProcessBlock` returns `false`
+        // for the child, routing it through the `ValidateSuggestedBlock` branch. Break a parent-relative
+        // header invariant (`Timestamp <= parent.Timestamp`) so suggested-block validation fails and
+        // `RecordBadBlock` is invoked.
+        ExecutionPayload headPayload = ExecutionPayload.Create(chain.BlockTree.Head!);
+        ExecutionPayload[] branch = CreateBlockRequestBranch(chain, headPayload, Address.Zero, 2);
+        ExecutionPayload parentPayload = branch[0];
+        ExecutionPayload childPayload = branch[1];
+
+        chain.BlockTree.Insert(
+            parentPayload.TryGetBlock().Data!.Header,
+            BlockTreeInsertHeaderOptions.BeaconBlockInsert | BlockTreeInsertHeaderOptions.MoveToBeaconMainChain);
+
+        childPayload.Timestamp = parentPayload.Timestamp;
+        if (TryCalculateHash(childPayload, out Hash256? childHash))
+        {
+            childPayload.BlockHash = childHash;
+        }
+        long childNumber = childPayload.BlockNumber;
+
+        ResultWrapper<PayloadStatusV1> result = await rpc.engine_newPayloadV1(childPayload);
+
+        result.Data.Status.Should().Be(PayloadStatus.Invalid);
+        IBadBlockStore badBlockStore = chain.Container.Resolve<IBadBlockStore>();
+        badBlockStore.GetAll().Should().ContainSingle()
+            .Which.Number.Should().Be(childNumber);
+    }
+
+    [Test]
     public async Task executePayloadV1_rejects_block_with_invalid_timestamp()
     {
         using MergeTestBlockchain chain = await CreateBlockchain();
