@@ -775,6 +775,51 @@ public class TrieNodeTests
     }
 
     [Test]
+    public void Can_set_unresolved_child_hash_when_hash_matches_parent_rlp()
+    {
+        ValueHash256 hash = TestItem.KeccakA.ValueHash256;
+        TrieNode trieNode = CreateMutableBranchWithByHashChild(in hash);
+        TrieNode child = TrieNode.CreateLeafTyped(new Hash256(hash));
+        ITrieNodeResolver resolver = Substitute.For<ITrieNodeResolver>();
+        resolver.GetOrLoadNode(Arg.Any<TreePath>(), Arg.Any<ValueHash256>(), Arg.Any<ReadFlags>()).Returns(child);
+        TreePath emptyPath = TreePath.Empty;
+
+        trieNode.GetChild(resolver, ref emptyPath, 0).Should().BeSameAs(child);
+        trieNode.SetUnresolvedChildHashAt(0, in hash);
+
+        trieNode.GetRawChildRef(0).Should().BeNull();
+    }
+
+    [Test]
+    public void Cannot_set_unresolved_child_hash_when_hash_differs_from_parent_rlp()
+    {
+        ValueHash256 retainedHash = TestItem.KeccakA.ValueHash256;
+        ValueHash256 differentHash = TestItem.KeccakB.ValueHash256;
+        TrieNode trieNode = CreateMutableBranchWithByHashChild(in retainedHash);
+        TrieNode child = TrieNode.CreateLeafTyped(new Hash256(retainedHash));
+        ITrieNodeResolver resolver = Substitute.For<ITrieNodeResolver>();
+        resolver.GetOrLoadNode(Arg.Any<TreePath>(), Arg.Any<ValueHash256>(), Arg.Any<ReadFlags>()).Returns(child);
+        TreePath emptyPath = TreePath.Empty;
+
+        trieNode.GetChild(resolver, ref emptyPath, 0).Should().BeSameAs(child);
+
+        Assert.Throws<InvalidOperationException>(() => trieNode.SetUnresolvedChildHashAt(0, in differentHash));
+        trieNode.GetRawChildRef(0).Should().BeSameAs(child);
+    }
+
+    private static TrieNode CreateMutableBranchWithByHashChild(in ValueHash256 hash)
+    {
+        TrieNode source = TrieNode.CreateBranchTyped();
+        source.SetChildHash(0, new Hash256(hash));
+
+        TreePath emptyPath = TreePath.Empty;
+        CappedArray<byte> canonicalRlp = source.RlpEncode(NullTrieNodeResolver.Instance, ref emptyPath);
+        TrieNode trieNode = new TrieSyncNode(canonicalRlp.AsSpan().ToArray(), isDirty: true);
+        TrieNode.ResolveNode(ref trieNode, NullTrieNodeResolver.Instance, in emptyPath);
+        return trieNode;
+    }
+
+    [Test]
     public void Pruning_regression()
     {
         TrieNode child = new TrieSyncNode(Keccak.Zero);

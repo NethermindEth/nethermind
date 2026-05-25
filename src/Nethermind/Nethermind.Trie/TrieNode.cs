@@ -1443,7 +1443,7 @@ namespace Nethermind.Trie
         /// state. The canonical hash lives in the parent's retained <c>_rlpArray</c>;
         /// the next read will decode it on demand. Used by snap-sync boundary stitching
         /// to release the typed child once it falls outside the proven range.
-        /// Asserts the node is a branch.
+        /// Verifies the supplied hash matches the by-hash child already retained in the parent RLP.
         /// </summary>
         public void SetUnresolvedChildHashAt(int childIndex, in ValueHash256 hash)
         {
@@ -1453,10 +1453,18 @@ namespace Nethermind.Trie
                 ThrowAlreadySealed();
             }
 
+            if (!TryGetChildHash(childIndex, out ValueHash256 retainedHash))
+            {
+                ThrowMissingRetainedChildHash(in hash);
+            }
+
+            if (retainedHash != hash)
+            {
+                ThrowUnexpectedChildHash(in hash, in retainedHash);
+            }
+
             // The hash already lives in the parent RLP at this slot; clearing the
             // resolved reference is enough — the next read decodes it on demand.
-            // The hash argument is preserved for caller introspection / future asserts.
-            _ = hash;
             InvalidateRlpAndKeccak();
             Volatile.Write(ref GetSlotRef(childIndex), null);
             InvalidateRlpAndKeccak();
@@ -1468,6 +1476,16 @@ namespace Nethermind.Trie
             [DoesNotReturn, StackTraceHidden]
             void ThrowAlreadySealed() => throw new InvalidOperationException(
                 $"{nameof(TrieNode)} {this} is already sealed when setting a child.");
+
+            [DoesNotReturn, StackTraceHidden]
+            void ThrowMissingRetainedChildHash(in ValueHash256 expected) =>
+                throw new InvalidOperationException(
+                    $"{nameof(SetUnresolvedChildHashAt)} expected child hash {expected}, but the parent RLP slot is not a by-hash child.");
+
+            [DoesNotReturn, StackTraceHidden]
+            void ThrowUnexpectedChildHash(in ValueHash256 expected, in ValueHash256 actual) =>
+                throw new InvalidOperationException(
+                    $"{nameof(SetUnresolvedChildHashAt)} expected child hash {expected} but parent RLP retained {actual}.");
         }
 
         public TrieNode? this[int i]
