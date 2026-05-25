@@ -952,13 +952,6 @@ namespace Nethermind.Trie
 
             if (onlyChildIdx == -1) return null; // No child at all.
 
-            if (node.GetRawChildRef(onlyChildIdx) is null
-                && node.TryGetChildHash(onlyChildIdx, out ValueHash256 unresolvedChildHash))
-            {
-                byte[] extensionKey = HexPrefix.SingleNibble((byte)onlyChildIdx);
-                return TrieNodeFactory.CreateExtensionWithChildHash(extensionKey, in unresolvedChildHash);
-            }
-
             path.AppendMut(onlyChildIdx);
             TrieNode? onlyChildNode = node.GetChildWithChildPath(TrieStore, ref path, onlyChildIdx);
             TrieNode.ResolveNode(ref onlyChildNode, TrieStore, in path);

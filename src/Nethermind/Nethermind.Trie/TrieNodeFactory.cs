@@ -35,23 +35,6 @@ public static class TrieNodeFactory
         return TrieNode.CreateBranchTyped(rlp, isDirty: true);
     }
 
-    internal static TrieNode CreateExtensionWithChildHash(byte[] hexPrefixedPath, in ValueHash256 childHash)
-    {
-        int hexLength = HexPrefix.ByteLength(hexPrefixedPath);
-        byte[] keyBytes = new byte[hexLength];
-        HexPrefix.CopyToSpan(hexPrefixedPath, isLeaf: false, keyBytes);
-        int contentLength = Rlp.LengthOf(keyBytes) + Rlp.LengthOfKeccakRlp;
-        byte[] rlp = new byte[Rlp.LengthOfSequence(contentLength)];
-        Span<byte> destination = rlp;
-        int position = Rlp.StartSequence(destination, 0, contentLength);
-        position = Rlp.Encode(destination, position, keyBytes);
-        Rlp.Encode(destination, position, in childHash);
-
-        TrieNode extension = TrieNode.CreateExtensionTyped(hexPrefixedPath);
-        extension.WriteRlp(rlp);
-        return extension;
-    }
-
     public static TrieNode CreateLeaf(ReadOnlySpan<byte> path, CappedArray<byte> value)
     {
         byte[] pathArray = HexPrefix.GetArray(path);

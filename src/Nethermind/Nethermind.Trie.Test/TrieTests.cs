@@ -150,9 +150,12 @@ namespace Nethermind.Trie.Test
         }
 
         [Test]
-        public void Delete_combining_branch_preserves_unresolved_child_hash()
+        public void Delete_combining_branch_loads_unresolved_child_before_compressing()
         {
-            ValueHash256 childHash = TestItem.Keccaks[0].ValueHash256;
+            TrieNode child = TrieNodeFactory.CreateLeaf([0], new byte[] { 7 });
+            TreePath childPath = TreePath.Empty;
+            CappedArray<byte> childRlp = child.RlpEncode(NullTrieNodeResolver.Instance, ref childPath);
+            ValueHash256 childHash = ValueKeccak.Compute(childRlp.AsSpan());
 
             TrieNode branch = TrieNode.CreateBranchTyped();
             branch.SetChildHash(1, new Hash256(childHash));
@@ -161,20 +164,18 @@ namespace Nethermind.Trie.Test
             TreePath rootPath = TreePath.Empty;
             CappedArray<byte> rootRlp = branch.RlpEncode(NullTrieNodeResolver.Instance, ref rootPath);
             ValueHash256 rootHash = ValueKeccak.Compute(rootRlp.AsSpan());
-            MissingChildScopedTrieStore trieStore = new(rootHash, rootRlp.AsSpan().ToArray(), childHash);
+            MissingChildScopedTrieStore trieStore = new(rootHash, rootRlp.AsSpan().ToArray(), childHash, childRlp.AsSpan().ToArray());
 
             PatriciaTree tree = new(trieStore, new Hash256(rootHash), true, LimboLogs.Instance);
             tree.Set(Bytes.FromHexString("20"), []);
             tree.UpdateRootHash(canBeParallel: false);
 
-            trieStore.MissingChildLoads.Should().Be(0);
+            trieStore.MissingChildLoads.Should().Be(1);
 
             TrieNode root = tree.RootRef!;
-            root.IsExtension.Should().BeTrue();
-            root.Key.Should().Equal(HexPrefix.GetArray([1]));
-            root.GetRawChildRef(0).Should().BeNull();
-            root.TryGetChildHash(0, out ValueHash256 preservedHash).Should().BeTrue();
-            preservedHash.Should().Be(childHash);
+            root.IsLeaf.Should().BeTrue();
+            root.Key.Should().Equal(HexPrefix.GetArray([1, 0]));
+            root.Value.ToArray().Should().Equal([7]);
         }
 
         [Test]
@@ -1434,7 +1435,8 @@ namespace Nethermind.Trie.Test
         private sealed class MissingChildScopedTrieStore(
             ValueHash256 rootHash,
             byte[] rootRlp,
-            ValueHash256 missingChildHash) : IScopedTrieStore
+            ValueHash256 missingChildHash,
+            byte[]? childRlp = null) : IScopedTrieStore
         {
             public int MissingChildLoads { get; private set; }
 
@@ -1448,6 +1450,7 @@ namespace Nethermind.Trie.Test
                 if (hash == missingChildHash)
                 {
                     MissingChildLoads++;
+                    return childRlp;
                 }
 
                 return null;
