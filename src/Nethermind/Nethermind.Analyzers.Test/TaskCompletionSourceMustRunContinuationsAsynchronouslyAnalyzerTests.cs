@@ -39,6 +39,10 @@ public class TaskCompletionSourceMustRunContinuationsAsynchronouslyAnalyzerTests
             """));
 
     [Test]
+    public Task TargetTyped_new_reports_diagnostic() =>
+        Verify(WrapMethodBody("TaskCompletionSource<int> t = {|#0:new()|};"), Diagnostic().WithLocation(0));
+
+    [Test]
     public async Task Other_type_named_TaskCompletionSource_no_diagnostic()
     {
         string source = """
