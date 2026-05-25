@@ -31,106 +31,100 @@ public class FlatStateRootIndexTests
         return blocks;
     }
 
+    private static (BlockTree tree, List<Block> blocks, FlatStateRootIndex index) BuildIndex(int chainLength, int lastN = 10)
+    {
+        List<Block> blocks = BuildChain(chainLength);
+        BlockTree tree = Build.A.BlockTree().WithBlocks(blocks.ToArray()).TestObject;
+        return (tree, blocks, new FlatStateRootIndex(tree, lastN));
+    }
+
+    private static void AppendBlock(BlockTree tree, Block parent, int rootSeed)
+    {
+        Block next = Build.A.Block
+            .WithParent(parent)
+            .WithStateRoot(Keccak.Compute(rootSeed.ToBigEndianByteArray()))
+            .TestObject;
+        tree.SuggestBlock(next);
+        tree.UpdateMainChain(new[] { next }, true);
+    }
+
     [Test]
     public void HasStateRoot_TracksLastN_OnConstruction()
     {
-        BlockTree tree = Build.A.BlockTree().WithBlocks(BuildChain(20).ToArray()).TestObject;
-        using FlatStateRootIndex index = new(tree, lastN: 10);
-
-        for (int i = 0; i < 30; i++)
+        (_, _, FlatStateRootIndex index) = BuildIndex(20);
+        using (index)
         {
-            index.HasStateRoot(Keccak.Compute(i.ToBigEndianByteArray()))
-                .Should().Be(i is >= 10 and < 20, $"state root index {i}");
+            for (int i = 0; i < 30; i++)
+            {
+                index.HasStateRoot(Keccak.Compute(i.ToBigEndianByteArray()))
+                    .Should().Be(i is >= 10 and < 20, $"state root index {i}");
+            }
         }
     }
 
     [Test]
     public void TryGetStateId_ReturnsStateIdForKnownRoot()
     {
-        List<Block> blocks = BuildChain(5);
-        BlockTree tree = Build.A.BlockTree().WithBlocks(blocks.ToArray()).TestObject;
-        using FlatStateRootIndex index = new(tree, lastN: 10);
-
-        Hash256 root = blocks[^1].StateRoot!;
-        index.TryGetStateId(root, out StateId stateId).Should().BeTrue();
-        stateId.StateRoot.Should().Be(root);
-        stateId.BlockNumber.Should().Be(blocks[^1].Number);
+        (_, List<Block> blocks, FlatStateRootIndex index) = BuildIndex(5);
+        using (index)
+        {
+            Hash256 root = blocks[^1].StateRoot!;
+            index.TryGetStateId(root, out StateId stateId).Should().BeTrue();
+            stateId.StateRoot.Should().Be(root);
+            stateId.BlockNumber.Should().Be(blocks[^1].Number);
+        }
     }
 
     [Test]
     public void TryGetStateId_ReturnsFalseForUnknownRoot()
     {
-        BlockTree tree = Build.A.BlockTree().WithBlocks(BuildChain(5).ToArray()).TestObject;
-        using FlatStateRootIndex index = new(tree, lastN: 10);
-
-        index.TryGetStateId(Keccak.Compute(Bytes.FromHexString("deadbeef")), out _).Should().BeFalse();
+        (_, _, FlatStateRootIndex index) = BuildIndex(5);
+        using (index)
+        {
+            index.TryGetStateId(Keccak.Compute(Bytes.FromHexString("deadbeef")), out _).Should().BeFalse();
+        }
     }
 
     [Test]
     public void NewHeadAppendingToTip_KeepsQueueIntact_AndEvictsOldestBeyondLastN()
     {
-        // Build a base chain of 20 blocks, init tracker with lastN=10 (covers blocks 10..19).
-        List<Block> blocks = BuildChain(20);
-        BlockTree tree = Build.A.BlockTree().WithBlocks(blocks.ToArray()).TestObject;
-        using FlatStateRootIndex index = new(tree, lastN: 10);
-
-        // Append a new block whose parent is the current head — exercises the "queue intact" branch.
-        Block next = Build.A.Block
-            .WithParent(blocks[^1])
-            .WithStateRoot(Keccak.Compute(20.ToBigEndianByteArray()))
-            .TestObject;
-        tree.SuggestBlock(next);
-        tree.UpdateMainChain(new[] { next }, true);
-
-        // Window has shifted: now covers indexes 11..20.
-        for (int i = 0; i < 30; i++)
+        (BlockTree tree, List<Block> blocks, FlatStateRootIndex index) = BuildIndex(20);
+        using (index)
         {
-            index.HasStateRoot(Keccak.Compute(i.ToBigEndianByteArray()))
-                .Should().Be(i is >= 11 and < 21, $"state root index {i}");
+            AppendBlock(tree, blocks[^1], 20);
+
+            for (int i = 0; i < 30; i++)
+            {
+                index.HasStateRoot(Keccak.Compute(i.ToBigEndianByteArray()))
+                    .Should().Be(i is >= 11 and < 21, $"state root index {i}");
+            }
         }
     }
 
     [Test]
     public void NewHeadOnReorg_RebuildsQueueFromAncestors()
     {
-        // Base chain: 20 blocks. Reorg by suggesting a new block with parent at height 15.
-        List<Block> blocks = BuildChain(20);
-        BlockTree tree = Build.A.BlockTree().WithBlocks(blocks.ToArray()).TestObject;
-        using FlatStateRootIndex index = new(tree, lastN: 10);
-
-        Block reorgBlock = Build.A.Block
-            .WithParent(tree.FindBlock(15, BlockTreeLookupOptions.All)!)
-            .WithStateRoot(Keccak.Compute(100.ToBigEndianByteArray()))
-            .TestObject;
-        tree.SuggestBlock(reorgBlock);
-        tree.UpdateMainChain(new[] { reorgBlock }, true);
-
-        // After reorg, queue is rebuilt walking parents from the new head — covers blocks 6..14 plus the reorg root.
-        for (int i = 0; i < 30; i++)
+        (BlockTree tree, _, FlatStateRootIndex index) = BuildIndex(20);
+        using (index)
         {
-            index.HasStateRoot(Keccak.Compute(i.ToBigEndianByteArray()))
-                .Should().Be(i is >= 6 and < 15, $"state root index {i}");
+            AppendBlock(tree, tree.FindBlock(15, BlockTreeLookupOptions.All)!, 100);
+
+            for (int i = 0; i < 30; i++)
+            {
+                index.HasStateRoot(Keccak.Compute(i.ToBigEndianByteArray()))
+                    .Should().Be(i is >= 6 and < 15, $"state root index {i}");
+            }
+            index.HasStateRoot(Keccak.Compute(100.ToBigEndianByteArray())).Should().BeTrue();
         }
-        index.HasStateRoot(Keccak.Compute(100.ToBigEndianByteArray())).Should().BeTrue();
     }
 
     [Test]
     public void Dispose_UnsubscribesFromBlockTreeEvent()
     {
-        List<Block> blocks = BuildChain(5);
-        BlockTree tree = Build.A.BlockTree().WithBlocks(blocks.ToArray()).TestObject;
-        FlatStateRootIndex index = new(tree, lastN: 10);
-
+        (BlockTree tree, List<Block> blocks, FlatStateRootIndex index) = BuildIndex(5);
         index.Dispose();
 
-        // After dispose, new heads should not affect the (now-stale) index. We assert no exception is thrown
-        // and that an unrelated state root added after dispose is not tracked.
-        Block next = Build.A.Block
-            .WithParent(blocks[^1])
-            .WithStateRoot(Keccak.Compute(999.ToBigEndianByteArray()))
-            .TestObject;
-        tree.SuggestBlock(next);
-        tree.UpdateMainChain(new[] { next }, true);
+        AppendBlock(tree, blocks[^1], 999);
 
         index.HasStateRoot(Keccak.Compute(999.ToBigEndianByteArray())).Should().BeFalse();
     }

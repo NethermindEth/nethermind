@@ -20,46 +20,43 @@ public class FlatReadOnlyTrieStoreTests
 {
     private IFlatDbManager _flatDbManager = null!;
     private ResourcePool _pool = null!;
+    private FlatReadOnlyTrieStore _store = null!;
 
     [SetUp]
     public void SetUp()
     {
         _flatDbManager = Substitute.For<IFlatDbManager>();
         _pool = new ResourcePool(new FlatDbConfig { CompactSize = 2 });
+        _store = new FlatReadOnlyTrieStore(_flatDbManager);
     }
 
+    [TearDown]
+    public void TearDown() => _store.Dispose();
+
     [Test]
-    public void HasRoot_StateRootOnly_AlwaysTrue()
-    {
-        FlatReadOnlyTrieStore store = new(_flatDbManager);
-        store.HasRoot(TestItem.KeccakA).Should().BeTrue();
-    }
+    public void HasRoot_StateRootOnly_AlwaysTrue() =>
+        _store.HasRoot(TestItem.KeccakA).Should().BeTrue();
 
     [Test]
     public void HasRoot_WithBlockNumber_DelegatesToFlatDbManager()
     {
         _flatDbManager.HasStateForBlock(Arg.Any<StateId>()).Returns(true);
-        FlatReadOnlyTrieStore store = new(_flatDbManager);
 
-        store.HasRoot(TestItem.KeccakA, 42).Should().BeTrue();
+        _store.HasRoot(TestItem.KeccakA, 42).Should().BeTrue();
         _flatDbManager.Received(1).HasStateForBlock(Arg.Any<StateId>());
     }
 
     [Test]
-    public void Resolve_BeforeBeginScope_Throws()
-    {
-        FlatReadOnlyTrieStore store = new(_flatDbManager);
-        Assert.That(() => store.FindCachedOrUnknown(null, TreePath.Empty, TestItem.KeccakA),
+    public void Resolve_BeforeBeginScope_Throws() =>
+        Assert.That(() => _store.FindCachedOrUnknown(null, TreePath.Empty, TestItem.KeccakA),
             Throws.InvalidOperationException);
-    }
 
     [Test]
     public void BeginScope_NullBundle_Throws()
     {
         _flatDbManager.GatherReadOnlySnapshotBundle(Arg.Any<StateId>()).Returns((ReadOnlySnapshotBundle)null!);
-        FlatReadOnlyTrieStore store = new(_flatDbManager);
 
-        Assert.That(() => store.BeginScope(Build.A.BlockHeader.TestObject), Throws.InvalidOperationException);
+        Assert.That(() => _store.BeginScope(Build.A.BlockHeader.TestObject), Throws.InvalidOperationException);
     }
 
     [Test]
@@ -70,55 +67,45 @@ public class FlatReadOnlyTrieStoreTests
         Hash256 storageAddress = TestItem.KeccakA;
         TrieNode storageNode = new(NodeType.Leaf, [0xc1, 0x02]);
 
-        ReadOnlySnapshotBundle bundle = FlatTestHelpers.MakeBundle(_pool, c =>
+        _flatDbManager.GatherReadOnlySnapshotBundle(Arg.Any<StateId>()).Returns(FlatTestHelpers.MakeBundle(_pool, c =>
         {
             c.StateNodes[new HashedKey<TreePath>(path)] = stateNode;
             c.StorageNodes[new HashedKey<(Hash256, TreePath)>((storageAddress, path))] = storageNode;
-        });
-        _flatDbManager.GatherReadOnlySnapshotBundle(Arg.Any<StateId>()).Returns(bundle);
+        }));
 
-        FlatReadOnlyTrieStore store = new(_flatDbManager);
-        using IDisposable scope = store.BeginScope(Build.A.BlockHeader.TestObject);
+        using IDisposable scope = _store.BeginScope(Build.A.BlockHeader.TestObject);
 
-        store.FindCachedOrUnknown(null, path, Keccak.Zero).Should().BeSameAs(stateNode);
-        store.FindCachedOrUnknown(storageAddress, path, Keccak.Zero).Should().BeSameAs(storageNode);
+        _store.FindCachedOrUnknown(null, path, Keccak.Zero).Should().BeSameAs(stateNode);
+        _store.FindCachedOrUnknown(storageAddress, path, Keccak.Zero).Should().BeSameAs(storageNode);
     }
 
     [Test]
     public void Scope_DisposesBundle_AndPreventsResolve()
     {
-        ReadOnlySnapshotBundle bundle = FlatTestHelpers.MakeBundle(_pool);
-        _flatDbManager.GatherReadOnlySnapshotBundle(Arg.Any<StateId>()).Returns(bundle);
+        _flatDbManager.GatherReadOnlySnapshotBundle(Arg.Any<StateId>()).Returns(FlatTestHelpers.MakeBundle(_pool));
 
-        FlatReadOnlyTrieStore store = new(_flatDbManager);
-        IDisposable scope = store.BeginScope(Build.A.BlockHeader.TestObject);
+        IDisposable scope = _store.BeginScope(Build.A.BlockHeader.TestObject);
         scope.Dispose();
 
-        Assert.That(() => store.FindCachedOrUnknown(null, TreePath.Empty, TestItem.KeccakA),
+        Assert.That(() => _store.FindCachedOrUnknown(null, TreePath.Empty, TestItem.KeccakA),
             Throws.InvalidOperationException);
     }
 
     [Test]
     public void BeginCommit_ReturnsNullCommitter_NoOps()
     {
-        FlatReadOnlyTrieStore store = new(_flatDbManager);
-
-        store.BeginBlockCommit(1).Should().NotBeNull();
-        store.BeginCommit(null, null, WriteFlags.None).Should().NotBeNull();
+        _store.BeginBlockCommit(1).Should().NotBeNull();
+        _store.BeginCommit(null, null, WriteFlags.None).Should().NotBeNull();
     }
 
     [Test]
     public void GetTrieStore_ReturnsScopedAdapter()
     {
-        FlatReadOnlyTrieStore store = new(_flatDbManager);
-        store.GetTrieStore(TestItem.KeccakA).Should().NotBeNull();
-        store.GetTrieStore(null).Should().NotBeNull();
+        _store.GetTrieStore(TestItem.KeccakA).Should().NotBeNull();
+        _store.GetTrieStore(null).Should().NotBeNull();
     }
 
     [Test]
-    public void Dispose_BeforeBeginScope_DoesNothing()
-    {
-        FlatReadOnlyTrieStore store = new(_flatDbManager);
-        Assert.DoesNotThrow(() => store.Dispose());
-    }
+    public void Dispose_BeforeBeginScope_DoesNothing() =>
+        Assert.DoesNotThrow(() => _store.Dispose());
 }
