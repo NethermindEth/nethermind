@@ -373,7 +373,7 @@ public class ForkchoiceUpdatedHandler(
             if (_blockTree.FindParentHeader(cursor, BlockTreeLookupOptions.TotalDifficultyNotNeeded) is not { } parent) return true;
 
             // Candidate on main chain: any main-chain ancestor proves ancestry. Checked after the
-            // parent step so we don't re-probe newHeadHeader itself (already known non-main above).
+            // parent step so we don't re-probe newHeadHeader itself.
             if (candidateIsMain && _blockTree.IsMainChain(parent)) return false;
             cursor = parent;
         }
