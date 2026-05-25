@@ -385,9 +385,6 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
                 TxReceipt[]? blockTxReceipts = SyncServer.GetReceipts(blockHash);
                 if (blockTxReceipts is null)
                 {
-                    // Receipts not (yet) known locally for this block — stop the response
-                    // so the requester asks another peer rather than receiving [] which a
-                    // strict receiver may treat as a count mismatch.
                     break;
                 }
                 sizeEstimate += MessageSizeEstimator.EstimateSize(blockTxReceipts);

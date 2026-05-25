@@ -142,8 +142,6 @@ public class Eth70ProtocolHandlerTests
     [Test]
     public void Should_return_empty_receipts_block_when_local_block_has_no_transactions()
     {
-        // SyncServer.GetReceipts returns [] only for blocks that legitimately have zero
-        // transactions. The handler emits [] on the wire as a real receipt slot.
         using GetReceiptsMessage70 request = new(1111, 0, new[] { Keccak.Zero }.ToPooledList());
         _syncManager.GetReceipts(Arg.Any<Hash256>()).Returns(Array.Empty<TxReceipt>());
 
@@ -157,11 +155,6 @@ public class Eth70ProtocolHandlerTests
     [Test]
     public void Should_stop_response_when_receipts_are_not_known_locally()
     {
-        // SyncServer.GetReceipts returns null when receipts aren't materialized for the
-        // requested block (block not found, body missing, or receipts not stored yet).
-        // Emitting [] in this case would trip the eth/70 receiver's receipt-count
-        // validator and get us disconnected. The handler must stop the response early
-        // so the requester asks another peer.
         using GetReceiptsMessage70 request = new(1111, 0, new[] { Keccak.Zero }.ToPooledList());
         _syncManager.GetReceipts(Arg.Any<Hash256>()).Returns((TxReceipt[]?)null);
 
