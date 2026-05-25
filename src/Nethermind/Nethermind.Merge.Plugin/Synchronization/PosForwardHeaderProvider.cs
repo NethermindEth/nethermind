@@ -30,7 +30,6 @@ public class PosForwardHeaderProvider(
 ) : PowForwardHeaderProvider(sealValidator, blockTree, syncPeerPool, syncReport, logManager)
 {
     private const int CacheBatchMultiplier = 4;
-    private const int MinCachedHeaderBatchSize = 32;
 
     private readonly ILogger _logger = logManager.GetClassLogger<PosForwardHeaderProvider>();
     private readonly IBlockTree _blockTree = blockTree;
@@ -52,14 +51,14 @@ public class PosForwardHeaderProvider(
 
         _syncReport.FullSyncBlocksDownloaded.TargetValue = Math.Max(beaconPivot.PivotNumber, beaconPivot.PivotDestinationNumber);
 
-        BlockHeader?[]? slice = TryServeFromCache(maxHeader, skipLastN);
+        ArrayPoolList<BlockHeader?>? slice = TryServeFromCache(maxHeader, skipLastN);
         if (slice is not null)
         {
             // Re-validate per slice so terminal-block / random-index checks run on the served window
             // rather than only at fill time.
-            ValidateSeals(slice!, cancellation);
-            if (_logger.IsTrace) _logger.Trace($"Served {slice.Length} headers from forward-header cache");
-            return Task.FromResult<IOwnedReadOnlyList<BlockHeader?>?>(slice.ToPooledList(slice.Length));
+            ValidateSeals(slice, cancellation);
+            if (_logger.IsTrace) _logger.Trace($"Served {slice.Count} headers from forward-header cache");
+            return Task.FromResult<IOwnedReadOnlyList<BlockHeader?>?>(slice);
         }
 
         // Fetch a larger batch than asked so subsequent peer allocations can be served from the cache.
@@ -83,7 +82,7 @@ public class PosForwardHeaderProvider(
         return Task.FromResult<IOwnedReadOnlyList<BlockHeader?>?>(BuildSlice(fresh!, maxHeader, skipLastN: 0));
     }
 
-    private BlockHeader?[]? TryServeFromCache(int maxHeader, int skipLastN)
+    private ArrayPoolList<BlockHeader?>? TryServeFromCache(int maxHeader, int skipLastN)
     {
         BlockHeader[]? cached;
         Hash256? cachedHash;
@@ -95,7 +94,7 @@ public class PosForwardHeaderProvider(
             cachedNumber = _cachedProcessDestinationNumber;
         }
 
-        if (cached is null || cached.Length == 0) return null;
+        if (cached is null) return null;
 
         BlockHeader? processDestination = beaconPivot.ProcessDestination;
         Hash256? currentHash = processDestination?.Hash;
@@ -116,8 +115,8 @@ public class PosForwardHeaderProvider(
         if (available <= 1) return null;
 
         int take = Math.Min(available, maxHeader);
-        BlockHeader?[] slice = new BlockHeader[take];
-        Array.Copy(cached, offset, slice!, 0, take);
+        ArrayPoolList<BlockHeader?> slice = new(take);
+        for (int i = 0; i < take; i++) slice.Add(cached[offset + i]);
         return slice;
     }
 
