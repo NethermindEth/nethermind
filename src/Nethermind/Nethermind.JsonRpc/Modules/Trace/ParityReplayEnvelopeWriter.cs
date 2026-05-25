@@ -8,7 +8,6 @@ using Nethermind.Blockchain.Tracing.ParityStyle;
 using Nethermind.Core;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Extensions;
-using Nethermind.Serialization.Json;
 
 namespace Nethermind.JsonRpc.Modules.Trace;
 
