@@ -1030,6 +1030,33 @@ namespace Nethermind.Trie.Test.Pruning
         }
 
         [Test]
+        public void Node_storage_cache_does_not_cache_rlp_misses()
+        {
+            NodeStorageCache cache = new() { Enabled = true };
+            NodeKey key = new(null, TreePath.Empty, TestItem.KeccakA.ValueHash256);
+            int loadCount = 0;
+
+            byte[]? first = cache.GetOrAdd(in key, LoadMissing);
+            byte[]? second = cache.GetOrAdd(in key, LoadPresent);
+
+            first.Should().BeNull();
+            second.Should().Equal([0x01]);
+            loadCount.Should().Be(2);
+
+            byte[]? LoadMissing(in NodeKey _)
+            {
+                loadCount++;
+                return null;
+            }
+
+            byte[]? LoadPresent(in NodeKey _)
+            {
+                loadCount++;
+                return [0x01];
+            }
+        }
+
+        [Test]
         public void Minimal_scopable_trie_store_typed_load_uses_rlp_methods()
         {
             MemDb memDb = new();

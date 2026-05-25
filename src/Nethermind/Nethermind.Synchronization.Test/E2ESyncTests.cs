@@ -428,20 +428,23 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
         string progressLabel)
     {
         SyncTestContext serverCtx = server.Resolve<SyncTestContext>();
-        await serverCtx.StartBlockProcessing(cancellationToken);
-
-        TestContext.Progress.WriteLine($"{progressLabel}: building {chainLength} storage blocks.");
-        for (int i = 0; i < chainLength; i++)
+        await serverCtx.WatchForBlockProcessingFailure(async token =>
         {
-            await serverCtx.BuildBlockWithStorage(i, cancellationToken);
+            await serverCtx.StartBlockProcessing(token);
 
-            if ((i + 1) % BalSyncBuildProgressInterval == 0 || i == chainLength - 1)
+            TestContext.Progress.WriteLine($"{progressLabel}: building {chainLength} storage blocks.");
+            for (int i = 0; i < chainLength; i++)
             {
-                TestContext.Progress.WriteLine($"{progressLabel}: built {i + 1}/{chainLength} blocks.");
-            }
-        }
+                await serverCtx.BuildBlockWithStorage(i, token);
 
-        await serverCtx.StartNetwork(cancellationToken);
+                if ((i + 1) % BalSyncBuildProgressInterval == 0 || i == chainLength - 1)
+                {
+                    TestContext.Progress.WriteLine($"{progressLabel}: built {i + 1}/{chainLength} blocks.");
+                }
+            }
+
+            await serverCtx.StartNetwork(token);
+        }, cancellationToken);
     }
 
     [OneTimeSetUp]
@@ -878,6 +881,9 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
 
         public Task StartNetwork(CancellationToken cancellationToken) =>
             runner.StartNetwork(cancellationToken);
+
+        public Task WatchForBlockProcessingFailure(Func<CancellationToken, Task> act, CancellationToken cancellationToken) =>
+            blockProcessorExceptionDetector.WatchForFailure(act, cancellationToken);
 
         private async Task ConnectTo(IContainer server, CancellationToken cancellationToken)
         {

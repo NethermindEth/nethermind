@@ -23,7 +23,19 @@ public sealed class NodeStorageCache
         {
             return tryLoadRlp(in nodeKey);
         }
-        return _cache.GetOrAdd(in nodeKey, tryLoadRlp);
+
+        if (_cache.TryGetValue(in nodeKey, out byte[]? value))
+        {
+            return value;
+        }
+
+        value = tryLoadRlp(in nodeKey);
+        if (value is not null)
+        {
+            _cache.Set(in nodeKey, value);
+        }
+
+        return value;
     }
 
     public bool ClearCaches()
