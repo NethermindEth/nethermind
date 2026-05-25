@@ -370,7 +370,7 @@ namespace Nethermind.Trie
             private static int ResolveAndGetBranchChildRlpLength(ITrieNodeResolver tree, ref TreePath path, int childIndex, TrieNode data, ICappedArrayPool? bufferPool, bool canBeParallel, out bool hasKeccak)
             {
                 ResolveBranchChildKey(tree, ref path, childIndex, data, bufferPool, canBeParallel);
-                hasKeccak = data.HasKeccak;
+                hasKeccak = data.HasFreshKeccak;
                 return hasKeccak ? Rlp.LengthOfKeccakRlp : data.FullRlp.Length;
             }
 

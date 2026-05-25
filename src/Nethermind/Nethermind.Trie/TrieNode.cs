@@ -196,9 +196,59 @@ namespace Nethermind.Trie
 
         internal bool IsRlpStale => (Volatile.Read(ref _flagsAndKeccakSeq) & _rlpStaleMask) != 0;
 
-        private void MarkRlpStale() => Interlocked.Or(ref _flagsAndKeccakSeq, _rlpStaleMask);
-
         private void MarkRlpFresh() => Interlocked.And(ref _flagsAndKeccakSeq, ~_rlpStaleMask);
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private void InvalidateRlpAndKeccak()
+        {
+            uint current = Volatile.Read(ref _flagsAndKeccakSeq);
+            if ((current & _keccakSeqLock) == 0)
+            {
+                uint next = GetInvalidatedRlpAndKeccakFlags(current);
+                if (next == current || Interlocked.CompareExchange(ref _flagsAndKeccakSeq, next, current) == current)
+                {
+                    return;
+                }
+            }
+
+            InvalidateRlpAndKeccakSlow();
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static uint GetInvalidatedRlpAndKeccakFlags(uint current)
+        {
+            uint next = current | _rlpStaleMask;
+            if ((current & _hasKeccakMask) == 0)
+            {
+                return next;
+            }
+
+            uint nextSeq = ((current & _keccakSeqMask) + _keccakSeqStep) & _keccakSeqMask;
+            return (next & ~_keccakStateMask) | nextSeq;
+        }
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private void InvalidateRlpAndKeccakSlow()
+        {
+            SpinWait spin = default;
+            while (true)
+            {
+                uint current = Volatile.Read(ref _flagsAndKeccakSeq);
+                if ((current & _keccakSeqLock) != 0)
+                {
+                    spin.SpinOnce();
+                    continue;
+                }
+
+                uint next = GetInvalidatedRlpAndKeccakFlags(current);
+                if (next == current || Interlocked.CompareExchange(ref _flagsAndKeccakSeq, next, current) == current)
+                {
+                    return;
+                }
+
+                spin.SpinOnce();
+            }
+        }
 
         /// <summary>Node will no longer be mutable.</summary>
         public void Seal()
@@ -218,9 +268,19 @@ namespace Nethermind.Trie
         /// </summary>
         public bool HasKeccak => (Volatile.Read(ref _flagsAndKeccakSeq) & _hasKeccakMask) != 0;
 
+        private bool HasFreshKeccak
+        {
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            get
+            {
+                uint flags = Volatile.Read(ref _flagsAndKeccakSeq);
+                return (flags & (_hasKeccakMask | _rlpStaleMask | _keccakSeqLock)) == _hasKeccakMask;
+            }
+        }
+
         /// <summary>
         /// Reads the inline node keccak under the packed <c>_flagsAndKeccakSeq</c> seqlock. Returns <c>false</c>
-        /// when the node has no keccak set or when a concurrent clear is observed mid-read.
+        /// when the node has no fresh keccak set or when a concurrent clear is observed mid-read.
         /// </summary>
         /// <remarks>
         /// Hot trie paths must use this (or <see cref="KeccakValue"/>) instead of the public
@@ -232,7 +292,7 @@ namespace Nethermind.Trie
             while (true)
             {
                 uint flags = Volatile.Read(ref _flagsAndKeccakSeq);
-                if ((flags & _hasKeccakMask) == 0)
+                if ((flags & (_hasKeccakMask | _rlpStaleMask)) != _hasKeccakMask)
                 {
                     keccak = default;
                     return false;
@@ -260,7 +320,7 @@ namespace Nethermind.Trie
                 // A concurrent ClearKeccak bumps the seq; the loop above catches it. A
                 // re-check of the bit covers the rare case of clear+set producing matching
                 // seq values across iterations.
-                if ((flagsAfter & _hasKeccakMask) == 0)
+                if ((flagsAfter & (_hasKeccakMask | _rlpStaleMask)) != _hasKeccakMask)
                 {
                     keccak = default;
                     return false;
@@ -312,12 +372,22 @@ namespace Nethermind.Trie
         /// at the multiple call sites that resolve hashes.
         /// </summary>
         [MethodImpl(MethodImplOptions.NoInlining)]
-        internal void SetKeccak(in ValueHash256 keccak)
+        internal void SetKeccak(in ValueHash256 keccak) => SetKeccak(in keccak, requireFreshRlp: false);
+
+        private void SetKeccakIfRlpFresh(in ValueHash256 keccak) => SetKeccak(in keccak, requireFreshRlp: true);
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private void SetKeccak(in ValueHash256 keccak, bool requireFreshRlp)
         {
             SpinWait spin = default;
             while (true)
             {
                 uint current = Volatile.Read(ref _flagsAndKeccakSeq);
+                if (requireFreshRlp && (current & _rlpStaleMask) != 0)
+                {
+                    return;
+                }
+
                 if ((current & _keccakSeqLock) != 0)
                 {
                     spin.SpinOnce();
@@ -448,9 +518,9 @@ namespace Nethermind.Trie
                     ThrowAlreadySealed();
                 }
 
+                InvalidateRlpAndKeccak();
                 KeyInternal = value;
-                MarkRlpStale();
-                ClearKeccak();
+                InvalidateRlpAndKeccak();
 
                 [DoesNotReturn, StackTraceHidden]
                 void ThrowDoesNotSupportKey() => throw new InvalidOperationException(
@@ -493,9 +563,9 @@ namespace Nethermind.Trie
                     ThrowAlreadySealed();
                 }
 
+                InvalidateRlpAndKeccak();
                 leafNode._value = value;
-                MarkRlpStale();
-                ClearKeccak();
+                InvalidateRlpAndKeccak();
 
                 [DoesNotReturn, StackTraceHidden]
                 void ThrowAlreadySealed() => throw new InvalidOperationException(
@@ -1085,7 +1155,7 @@ namespace Nethermind.Trie
         public void ResolveKey(ITrieNodeResolver tree, ref TreePath path,
             ICappedArrayPool? bufferPool = null, bool canBeParallel = true)
         {
-            if (HasKeccak)
+            if (HasFreshKeccak)
             {
                 // please note it is totally fine to leave the RLP null here
                 // this node will simply act as a ref only node (a ref to some node with unresolved data in the DB)
@@ -1094,7 +1164,7 @@ namespace Nethermind.Trie
 
             if (TryGenerateKey(tree, ref path, out ValueHash256 keccak, bufferPool, canBeParallel))
             {
-                SetKeccak(in keccak);
+                SetKeccakIfRlpFresh(in keccak);
             }
         }
 
@@ -1108,6 +1178,7 @@ namespace Nethermind.Trie
         {
             bool isRoot = path.Length == 0;
             CappedArray<byte> rlp = ReadRlp();
+            bool regeneratedRlp = false;
             if (rlp.IsNull || IsRlpStale)
             {
                 CappedArray<byte> oldRlp = rlp.IsNotNull ? rlp : CappedArray<byte>.Empty;
@@ -1116,12 +1187,13 @@ namespace Nethermind.Trie
                         canBeParallel: isRoot && canBeParallel)
                     : RlpEncode(tree, ref path, bufferPool, canBeParallel);
 
+                WriteRlp(rlp = fullRlp);
                 if (oldRlp.IsNotNullOrEmpty)
                 {
                     bufferPool.SafeReturn(oldRlp);
                 }
 
-                WriteRlp(rlp = fullRlp);
+                regeneratedRlp = true;
             }
 #if DEBUG
             else if (rlp.IsNotNull && IsDirty)
@@ -1135,7 +1207,7 @@ namespace Nethermind.Trie
              * */
             if (rlp.Length >= 32 || isRoot)
             {
-                if (TryGetKeccak(out keccak))
+                if (!regeneratedRlp && TryGetKeccak(out keccak))
                 {
                     return true;
                 }
@@ -1380,9 +1452,9 @@ namespace Nethermind.Trie
             // resolved reference is enough — the next read decodes it on demand.
             // The hash argument is preserved for caller introspection / future asserts.
             _ = hash;
+            InvalidateRlpAndKeccak();
             Volatile.Write(ref GetSlotRef(childIndex), null);
-            MarkRlpStale();
-            ClearKeccak();
+            InvalidateRlpAndKeccak();
 
             [DoesNotReturn, StackTraceHidden]
             static void ThrowNotABranch() => throw new TrieException(
@@ -1462,9 +1534,9 @@ namespace Nethermind.Trie
                 throw new InvalidOperationException();
             }
 
+            InvalidateRlpAndKeccak();
             SetItem(i, child);
-            MarkRlpStale();
-            ClearKeccak();
+            InvalidateRlpAndKeccak();
         }
 
         public void SetChild(int i, TrieNode? node)
@@ -1474,9 +1546,9 @@ namespace Nethermind.Trie
                 ThrowAlreadySealed();
             }
 
+            InvalidateRlpAndKeccak();
             SetItem(i, node);
-            MarkRlpStale();
-            ClearKeccak();
+            InvalidateRlpAndKeccak();
 
             [DoesNotReturn, StackTraceHidden]
             void ThrowAlreadySealed() => throw new InvalidOperationException(
@@ -1505,9 +1577,9 @@ namespace Nethermind.Trie
             // a known-by-hash child rather than a dirty leaf to re-encode.
             TrieNodeLeaf placeholder = new(in hash.ValueHash256);
             placeholder.IsPersisted = true;
+            InvalidateRlpAndKeccak();
             Volatile.Write(ref GetSlotRef(i), placeholder);
-            MarkRlpStale();
-            ClearKeccak();
+            InvalidateRlpAndKeccak();
 
             [DoesNotReturn, StackTraceHidden]
             void ThrowAlreadySealed() => throw new InvalidOperationException(
@@ -1515,11 +1587,8 @@ namespace Nethermind.Trie
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private void SetItem(int i, TrieNode? node)
-        {
-            int index = IsExtension ? i + 1 : i;
-            GetSlotRef(i) = node ?? NullNode;
-        }
+        private void SetItem(int i, TrieNode? node) =>
+            Volatile.Write(ref GetSlotRef(i), node ?? NullNode);
 
         public long GetMemorySize(bool recursive)
         {

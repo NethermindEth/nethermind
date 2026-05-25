@@ -1152,6 +1152,29 @@ public class TrieNodeTests
     }
 
     [Test]
+    public void ResolveKey_regenerates_stale_rlp_even_when_keccak_bit_is_set()
+    {
+        Context ctx = new();
+        TrieNode trieNode = ctx.HeavyLeaf;
+        TreePath emptyPath = TreePath.Empty;
+        trieNode.ResolveKey(NullTrieNodeResolver.Instance, ref emptyPath);
+        trieNode.TryGetKeccak(out ValueHash256 staleKeccak).Should().BeTrue();
+
+        trieNode.Value = new byte[] { 1, 2, 3 };
+        trieNode.IsRlpStale.Should().BeTrue();
+        trieNode.SetKeccak(in staleKeccak);
+        trieNode.HasKeccak.Should().BeTrue();
+        trieNode.TryGetKeccak(out _).Should().BeFalse();
+
+        trieNode.ResolveKey(NullTrieNodeResolver.Instance, ref emptyPath);
+
+        trieNode.IsRlpStale.Should().BeFalse();
+        trieNode.TryGetKeccak(out ValueHash256 freshKeccak).Should().BeTrue();
+        freshKeccak.Should().Be(ValueKeccak.Compute(trieNode.FullRlp.AsSpan()));
+        freshKeccak.Should().NotBe(staleKeccak);
+    }
+
+    [Test]
     public void Rlp_is_cloned_when_cloning()
     {
         // Hash key scheme so child lookup at any path resolves by keccak alone:
