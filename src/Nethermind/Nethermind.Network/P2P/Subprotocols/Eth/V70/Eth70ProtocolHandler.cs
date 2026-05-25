@@ -110,6 +110,10 @@ public class Eth70ProtocolHandler : Eth69ProtocolHandler, IStaticProtocolInfo
                     break;
                 }
 
+                // ISyncServer.GetReceipts disambiguates "unknown" (null) from "legitimate
+                // zero-tx block" ([]). On unknown, stop the response early so the requester
+                // asks another peer — emitting [] here would trip the eth/70 receiver's
+                // receipt-count validator and get us disconnected.
                 TxReceipt[]? receipts = SyncServer.GetReceipts(blockHash);
                 if (receipts is null)
                 {
