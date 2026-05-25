@@ -18,8 +18,7 @@ internal static class FlatTestHelpers
         SnapshotContent content = pool.GetSnapshotContent(ResourcePool.Usage.MainBlockProcessing);
         populate?.Invoke(content);
         Snapshot snap = new(StateId.PreGenesis, StateId.PreGenesis, content, pool, ResourcePool.Usage.MainBlockProcessing);
-        SnapshotPooledList list = new(1);
-        list.Add(snap);
+        SnapshotPooledList list = new(1) { snap };
         return new ReadOnlySnapshotBundle(list, Substitute.For<IPersistence.IPersistenceReader>(), recordDetailedMetrics: false);
     }
 }
