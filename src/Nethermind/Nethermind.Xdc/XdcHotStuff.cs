@@ -160,7 +160,14 @@ namespace Nethermind.Xdc
                 _roundCts = new CancellationTokenSource();
                 token = _roundCts.Token;
             }
-            _roundTask = RunRound(head, round, token);
+
+            Task newTask = RunRound(head, round, token);
+
+            lock (_lockObject)
+            {
+                if (_running)
+                    _roundTask = newTask;
+            }
         }
 
         private async Task RunRound(XdcBlockHeader head, ulong round, CancellationToken ct)
