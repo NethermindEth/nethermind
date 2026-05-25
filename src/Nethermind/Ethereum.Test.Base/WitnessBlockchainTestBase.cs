@@ -131,7 +131,7 @@ public abstract class WitnessBlockchainTestBase : BlockchainTestBase
         List<byte[]> actualCodes = [.. actual.Codes];
         List<byte[]> actualHeaders = [.. actual.Headers];
 
-        List<string> mismatches = new();
+        List<string> mismatches = [];
 
         CheckOrderedField("state", expectedState, actualState, mismatches);
         CheckOrderedField("codes", expectedCodes, actualCodes, mismatches);
