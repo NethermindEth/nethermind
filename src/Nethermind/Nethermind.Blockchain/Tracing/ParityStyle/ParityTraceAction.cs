@@ -4,13 +4,15 @@
 using System.Collections.Generic;
 using System.Text.Json.Serialization;
 using Nethermind.Core;
+using Nethermind.Core.Buffers;
 using Nethermind.Int256;
 
 namespace Nethermind.Blockchain.Tracing.ParityStyle;
 
 public class ParityTraceAction
 {
-    public int[]? TraceAddress { get; set; }
+    [JsonConverter(typeof(CappedArrayIntJsonConverter))]
+    public CappedArray<int> TraceAddress { get; set; }
     public string? CallType { get; set; }
     public bool IncludeInTrace { get; set; } = true;
     public bool IsPrecompiled { get; set; }
@@ -29,4 +31,34 @@ public class ParityTraceAction
     public Address? Author { get; set; }
     public string? RewardType { get; set; }
     public string? Error { get; set; }
+
+    public void Reset()
+    {
+        TraceAddress = default;
+        CallType = null;
+        IncludeInTrace = true;
+        IsPrecompiled = false;
+        Type = null;
+        CreationMethod = null;
+        From = null;
+        To = null;
+        Gas = 0;
+        Value = default;
+        Input = null;
+        if (Result is null)
+        {
+            Result = new ParityTraceResult();
+        }
+        else
+        {
+            Result.GasUsed = 0;
+            Result.Output = null;
+            Result.Address = null;
+            Result.Code = null;
+        }
+        Subtraces.Clear();
+        Author = null;
+        RewardType = null;
+        Error = null;
+    }
 }

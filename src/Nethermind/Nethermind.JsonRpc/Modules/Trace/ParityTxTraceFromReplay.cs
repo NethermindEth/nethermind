@@ -88,17 +88,10 @@ namespace Nethermind.JsonRpc.Modules.Trace
                 JsonSerializer.Serialize(writer, value.Error, options);
             }
 
-            writer.WriteNumber("subtraces"u8, value.Subtraces.Count(static s => s.IncludeInTrace));
+            writer.WriteNumber("subtraces"u8, value.Subtraces.Count);
 
             writer.WritePropertyName("traceAddress"u8);
-            if (value.TraceAddress is null)
-            {
-                writer.WriteNullValue();
-            }
-            else
-            {
-                JsonSerializer.Serialize(writer, value.TraceAddress, options);
-            }
+            ParityReplayEnvelopeWriter.WriteTraceAddress(writer, value.TraceAddress);
 
             writer.WriteString("type"u8, value.Type);
             writer.WriteEndObject();

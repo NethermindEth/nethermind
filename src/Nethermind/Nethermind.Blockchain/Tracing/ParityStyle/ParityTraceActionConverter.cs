@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Nethermind.Core;
+using Nethermind.Core.Buffers;
 using Nethermind.Int256;
 
 namespace Nethermind.Blockchain.Tracing.ParityStyle;
@@ -117,7 +118,8 @@ public class ParityTraceActionConverter : JsonConverter<ParityTraceAction>
             else if (reader.ValueTextEquals("traceAddress"u8))
             {
                 reader.Read();
-                value.TraceAddress = JsonSerializer.Deserialize<int[]?>(ref reader, options);
+                int[]? raw = JsonSerializer.Deserialize<int[]?>(ref reader, options);
+                value.TraceAddress = raw is null ? default : new CappedArray<int>(raw, raw.Length);
             }
             else if (reader.ValueTextEquals("includeInTrace"u8))
             {

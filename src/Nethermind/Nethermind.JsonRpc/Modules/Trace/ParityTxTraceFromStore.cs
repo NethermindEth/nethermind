@@ -4,6 +4,7 @@
 using System.Collections.Generic;
 using System.Text.Json.Serialization;
 
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Blockchain.Tracing.ParityStyle;
 using Nethermind.Serialization.Json;
@@ -71,7 +72,8 @@ namespace Nethermind.JsonRpc.Modules.Trace
 
         public int Subtraces { get; set; }
 
-        public int[] TraceAddress { get; set; }
+        [JsonConverter(typeof(CappedArrayIntJsonConverter))]
+        public CappedArray<int> TraceAddress { get; set; } = default;
 
         public Hash256 TransactionHash { get; set; }
 
