@@ -150,6 +150,33 @@ namespace Nethermind.Trie.Test
         }
 
         [Test]
+        public void Delete_combining_branch_preserves_unresolved_child_hash()
+        {
+            ValueHash256 childHash = TestItem.Keccaks[0].ValueHash256;
+
+            TrieNode branch = TrieNode.CreateBranchTyped();
+            branch.SetChildHash(1, new Hash256(childHash));
+            branch.SetChild(2, TrieNodeFactory.CreateLeaf([0], new byte[] { 1, 2, 3 }));
+
+            TreePath rootPath = TreePath.Empty;
+            CappedArray<byte> rootRlp = branch.RlpEncode(NullTrieNodeResolver.Instance, ref rootPath);
+            ValueHash256 rootHash = ValueKeccak.Compute(rootRlp.AsSpan());
+            MissingChildScopedTrieStore trieStore = new(rootHash, rootRlp.AsSpan().ToArray(), childHash);
+
+            PatriciaTree tree = new(trieStore, new Hash256(rootHash), true, LimboLogs.Instance);
+            tree.Set(Bytes.FromHexString("20"), []);
+            tree.UpdateRootHash(canBeParallel: false);
+
+            trieStore.MissingChildLoads.Should().Be(0);
+
+            TrieNode root = tree.RootRef!;
+            root.IsExtension.Should().BeTrue();
+            root.Key.Should().Equal(HexPrefix.GetArray([1]));
+            root.TryGetChildHash(0, out ValueHash256 preservedHash).Should().BeTrue();
+            preservedHash.Should().Be(childHash);
+        }
+
+        [Test]
         public void Single_leaf_delete_same_block()
         {
             MemDb memDb = new();
