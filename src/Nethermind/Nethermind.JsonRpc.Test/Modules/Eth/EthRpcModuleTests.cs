@@ -63,6 +63,7 @@ public partial class EthRpcModuleTests
     private const string ExpectedHeadTxRawAtIndex1 = "0xf85f020182520894942921b14f1b1c385cd7e0cc2ef7abe5598c8358018025a0e7c5ff3cba254c4fe8f9f12c3f202150bb9a0aebeee349ff2f4acb23585f56bda0575361bb330bf38b9a89dd8279d42a20d34edeaeede9739a7c2bdcbe3242d7bb";
     private const string ExpectedFilterLogResponse = """{"jsonrpc":"2.0","result":[{"address":"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099","blockHash":"0x03783fac2efed8fbc9ad443e592ee30e61d65f471140c10ca155e937b435b760","blockNumber":"0x1","blockTimestamp":"0x1","data":"0x010203","logIndex":"0x1","removed":false,"topics":["0x017e667f4b8c174291d1543c466717566e206df1bfd6f30271055ddafdb18f72","0x6c3fd336b49dcb1c57dd4fbeaf5f898320b0da06a5ef64e798c6497600bb79f2"],"transactionHash":"0x1f675bff07515f5df96737194ea945c36c41e7b4fcef307b7cd4d0e602a69111","transactionIndex":"0x1"}],"id":67}""";
     private const int LogsStreamEnvelopeEndReserveBytes = 128;
+    private const int TimeoutCancellationTokenPoolSize = 64;
 
     private static string ExpectedFilterLogStreamResponse(string status) =>
         ExpectedFilterLogResponse.Replace(",\"id\":67}", $",\"_streamStatus\":\"{status}\",\"id\":67}}");
@@ -665,9 +666,15 @@ public partial class EthRpcModuleTests
 
     private static async Task<string> WriteLogsStreamableResponseAsync(LogsStreamableResult result, CancellationToken cancellationToken = default)
     {
+        using JsonRpcSuccessResponse response = new() { Id = new JsonRpcId(67L), Result = result };
+
+        return await WriteJsonRpcResponseAsync(response, cancellationToken);
+    }
+
+    private static async Task<string> WriteJsonRpcResponseAsync(JsonRpcResponse response, CancellationToken cancellationToken = default)
+    {
         Pipe pipe = new();
         CountingPipeWriter writer = new(pipe.Writer);
-        using JsonRpcSuccessResponse response = new() { Id = new JsonRpcId(67L), Result = result };
 
         await JsonRpcResponseWriter.WriteAsync(writer, response, EthereumJsonSerializer.JsonOptions, cancellationToken);
         await writer.CompleteAsync();
@@ -677,6 +684,50 @@ public partial class EthRpcModuleTests
         pipe.Reader.AdvanceTo(read.Buffer.End);
         await pipe.Reader.CompleteAsync();
         return serialized;
+    }
+
+    private static TrackingCancellationTokenSource RentTrackingTimeoutSourceForNextRequest()
+    {
+        JsonRpcConfig config = new();
+        List<CancellationTokenSource> rentedTimeouts = new(TimeoutCancellationTokenPoolSize);
+        for (int i = 0; i < TimeoutCancellationTokenPoolSize; i++)
+        {
+            rentedTimeouts.Add(config.BuildTimeoutCancellationToken());
+        }
+
+        for (int i = 0; i < rentedTimeouts.Count; i++)
+        {
+            rentedTimeouts[i].Dispose();
+        }
+
+        TrackingCancellationTokenSource timeout = new();
+        JsonRpcConfigExtension.ReturnTimeoutCancellationToken(timeout);
+        return timeout;
+    }
+
+    private static void DisposeIfNotAlreadyObserved(TrackingCancellationTokenSource timeout)
+    {
+        if (timeout.DisposeCount == 0)
+        {
+            timeout.Dispose();
+        }
+    }
+
+    private sealed class TrackingCancellationTokenSource : CancellationTokenSource
+    {
+        private int _disposeCount;
+
+        public int DisposeCount => Volatile.Read(ref _disposeCount);
+
+        protected override void Dispose(bool disposing)
+        {
+            if (disposing)
+            {
+                Interlocked.Increment(ref _disposeCount);
+            }
+
+            base.Dispose(disposing);
+        }
     }
 
     [TestCase(false)]
@@ -922,6 +973,132 @@ public partial class EthRpcModuleTests
         {
             yield return CreateTestFilterLog();
             throw new InvalidOperationException("Stream mode read past MaxLogsPerResponse.");
+        }
+    }
+
+    [Test]
+    [NonParallelizable]
+    public async Task Eth_get_logs_stream_mode_transfers_timeout_until_response_disposal()
+    {
+        using Context ctx = await Context.Create();
+        IBlockchainBridge bridge = Substitute.For<IBlockchainBridge>();
+        CancellationToken observedToken = default;
+        bridge.GetLogs(Arg.Any<LogFilter>(), Arg.Any<BlockHeader>(), Arg.Any<BlockHeader>(), Arg.Any<CancellationToken>())
+            .Returns(call =>
+            {
+                observedToken = call.ArgAt<CancellationToken>(3);
+                return new[] { CreateTestFilterLog() };
+            });
+
+        ctx.Test = await CreateLogsTestBlockchainBuilder(enableLogsStreamMode: true).WithBlockchainBridge(bridge).Build();
+        TrackingCancellationTokenSource timeout = RentTrackingTimeoutSourceForNextRequest();
+
+        try
+        {
+            CancellationToken expectedToken = timeout.Token;
+            ResultWrapper<IEnumerable<FilterLog>> response = ctx.Test.EthRpcModule.eth_getLogs(new Filter());
+
+            try
+            {
+                observedToken.Should().Be(expectedToken);
+                response.Data.Should().BeOfType<LogsStreamableResult>();
+                timeout.DisposeCount.Should().Be(0);
+            }
+            finally
+            {
+                response.Dispose();
+            }
+
+            timeout.DisposeCount.Should().Be(1);
+        }
+        finally
+        {
+            DisposeIfNotAlreadyObserved(timeout);
+        }
+    }
+
+    [Test]
+    [NonParallelizable]
+    public async Task Eth_get_logs_stream_mode_disposes_timeout_when_returning_before_transfer()
+    {
+        using Context ctx = await Context.Create();
+        ctx.Test = await CreateLogsTestBlockchainBuilder(enableLogsStreamMode: true).Build();
+        TrackingCancellationTokenSource timeout = RentTrackingTimeoutSourceForNextRequest();
+
+        try
+        {
+            ResultWrapper<IEnumerable<FilterLog>> response = ctx.Test.EthRpcModule.eth_getLogs(new Filter
+            {
+                FromBlock = new BlockParameter(2),
+                ToBlock = new BlockParameter(1)
+            });
+
+            try
+            {
+                response.Result.ResultType.Should().Be(ResultType.Failure);
+                response.Result.Error.Should().Be("invalid block range params");
+                timeout.DisposeCount.Should().Be(1);
+            }
+            finally
+            {
+                response.Dispose();
+            }
+
+            timeout.DisposeCount.Should().Be(1);
+        }
+        finally
+        {
+            DisposeIfNotAlreadyObserved(timeout);
+        }
+    }
+
+    [Test]
+    [NonParallelizable]
+    public async Task Eth_get_logs_stream_mode_disposes_timeout_after_enumeration_failure()
+    {
+        using Context ctx = await Context.Create();
+        IBlockchainBridge bridge = Substitute.For<IBlockchainBridge>();
+        CancellationToken observedToken = default;
+        bridge.GetLogs(Arg.Any<LogFilter>(), Arg.Any<BlockHeader>(), Arg.Any<BlockHeader>(), Arg.Any<CancellationToken>())
+            .Returns(call =>
+            {
+                observedToken = call.ArgAt<CancellationToken>(3);
+                return GetLogs();
+            });
+
+        ctx.Test = await CreateLogsTestBlockchainBuilder(enableLogsStreamMode: true).WithBlockchainBridge(bridge).Build();
+        TrackingCancellationTokenSource timeout = RentTrackingTimeoutSourceForNextRequest();
+
+        try
+        {
+            CancellationToken expectedToken = timeout.Token;
+            ResultWrapper<IEnumerable<FilterLog>> response = ctx.Test.EthRpcModule.eth_getLogs(new Filter());
+            response.Id = new JsonRpcId(67L);
+            string serialized;
+
+            try
+            {
+                observedToken.Should().Be(expectedToken);
+                serialized = await WriteJsonRpcResponseAsync(response);
+                timeout.DisposeCount.Should().Be(0);
+            }
+            finally
+            {
+                response.Dispose();
+            }
+
+            serialized.Should().Be(ExpectedFilterLogStreamResponse("failed"));
+            timeout.DisposeCount.Should().Be(1);
+        }
+        finally
+        {
+            DisposeIfNotAlreadyObserved(timeout);
+        }
+
+        static IEnumerable<FilterLog> GetLogs()
+        {
+            yield return CreateTestFilterLog();
+            throw new InvalidOperationException("Stream mode failed after a complete log item.");
         }
     }
 
