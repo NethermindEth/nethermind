@@ -129,7 +129,8 @@ class SszProperty
         }
     }
 
-    public bool HandledByStd => ((Kind & (Kind.Basic | Kind.BitVector | Kind.BitList | Kind.ProgressiveBitList)) != Kind.None) || (((Kind & (Kind.Vector | Kind.List | Kind.ProgressiveList)) != Kind.None) && Type.Kind == Kind.Basic && !Type.IsRefType);
+    public bool HandledByStd => ((Kind & (Kind.BitVector | Kind.BitList | Kind.ProgressiveBitList)) != Kind.None)
+        || (((Kind & (Kind.Vector | Kind.List | Kind.ProgressiveList)) != Kind.None) && Type.Kind == Kind.Basic && Type.IsSszPrimitive);
     public bool IsCollection => (Kind & Kind.Collection) != Kind.None;
 
     public bool IsVariable => (Kind & (Kind.List | Kind.BitList | Kind.ProgressiveList | Kind.ProgressiveBitList)) != Kind.None || Type.IsVariable;

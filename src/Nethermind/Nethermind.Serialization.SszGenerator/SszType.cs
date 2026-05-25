@@ -4,82 +4,31 @@ class SszType
 {
     private const string SelectorPropertyName = "Selector";
 
-    // BCL primitives and Nethermind core types with hand-rolled SSZ encoders.
-    // Add a new entry here when introducing a new fixed-length basic SSZ type.
-    public static List<SszType> BasicTypes { get; } =
-    [
-        Primitive<byte>(),
-        Primitive<ushort>(),
-        Primitive<int>(),
-        Primitive<uint>(),
-        Primitive<long>(),
-        Primitive<ulong>(),
-        Primitive<bool>(),
-        new()
-        {
-            Namespace = "Nethermind.Int256", Name = "UInt256",
-            Kind = Kind.Basic, StaticLength = 32,
-            CustomEncodeTemplate = "{1}.ToLittleEndian({0});",
-            CustomDecodeTemplate = "{1} = new UInt256({0}, isBigEndian: false);",
-        },
-        new() { Namespace = "System.Collections", Name = "BitArray", Kind = Kind.Basic },
-        new() { Namespace = "Nethermind.Serialization.Ssz", Name = "SszBytes32", Kind = Kind.Basic, StaticLength = 32 },
-        FixedRefBytes("Nethermind.Serialization.Ssz", "SszBytes8", 8),
-        FixedRefBytes("Nethermind.Serialization.Ssz", "SszKzgCommitment", 48),
-        BytesRef("Nethermind.Core.Crypto", "Hash256", 32),
-        BytesRef("Nethermind.Core", "Address", 20),
-        BytesRef("Nethermind.Core", "Bloom", 256),
-    ];
+    public static List<SszType> CreateBasicTypes(IEnumerable<SszVectorConverterInfo> converters)
+    {
+        List<SszType> types =
+        [
+            new() { Namespace = "System.Collections", Name = "BitArray", Kind = Kind.Basic },
+        ];
 
-    /// <summary>
-    /// Factory for BCL primitive numerics (and bool). Pulls Name/Namespace from
-    /// <c>typeof(T)</c>; size is the managed size from
-    /// <see cref="System.Runtime.CompilerServices.Unsafe.SizeOf{T}"/>, which returns
-    /// 1 for <c>bool</c> (matching SSZ's 1-byte encoding) and avoids the
-    /// <c>Marshal.SizeOf&lt;bool&gt;()</c> = 4 native-marshaling quirk.
-    /// </summary>
-    private static SszType Primitive<T>() where T : unmanaged =>
-        new()
+        foreach (SszVectorConverterInfo converter in converters)
         {
-            Namespace = typeof(T).Namespace!,
-            Name = typeof(T).Name,
-            Kind = Kind.Basic,
-            StaticLength = System.Runtime.CompilerServices.Unsafe.SizeOf<T>(),
-        };
+            types.Add(new()
+            {
+                Namespace = converter.TargetNamespace,
+                Name = converter.TargetName,
+                TypeReferenceName = converter.TargetTypeReferenceName,
+                Kind = Kind.Basic,
+                StaticLength = converter.Length,
+                IsRefType = !converter.IsSszPrimitive,
+                IsSszPrimitive = converter.IsSszPrimitive,
+                CustomEncodeTemplate = $"{converter.ConverterStaticMemberAccess}.ToSpan({{0}}, {{1}});",
+                CustomDecodeTemplate = $"{{1}} = {converter.ConverterStaticMemberAccess}.FromSpan({{0}});",
+            });
+        }
 
-    /// <summary>
-    /// Factory for Nethermind reference types whose SSZ codec is the same shape:
-    /// encode by <c>{value}.Bytes.CopyTo({dest})</c>, decode by <c>new T({src})</c>.
-    /// Covers Hash256, Address, Bloom, and any future fixed-length-byte ref type.
-    /// </summary>
-    private static SszType BytesRef(string @namespace, string name, int byteLength) =>
-        new()
-        {
-            Namespace = @namespace,
-            Name = name,
-            Kind = Kind.Basic,
-            StaticLength = byteLength,
-            IsRefType = true,
-            CustomEncodeTemplate = "{1}.Bytes.CopyTo({0});",
-            CustomDecodeTemplate = $"{{1}} = new {name}({{0}});",
-        };
-
-    /// <summary>
-    /// Factory for fixed-length value-type SSZ wrappers that expose <c>AsSpan()</c> +
-    /// <c>FromSpan(...)</c> (e.g. <c>SszBytes8</c>, <c>SszKzgCommitment</c>). The
-    /// encode/decode templates round-trip through the span helpers.
-    /// </summary>
-    private static SszType FixedRefBytes(string @namespace, string name, int byteLength) =>
-        new()
-        {
-            Namespace = @namespace,
-            Name = name,
-            Kind = Kind.Basic,
-            StaticLength = byteLength,
-            IsRefType = true,
-            CustomEncodeTemplate = "{1}.AsSpan().CopyTo({0});",
-            CustomDecodeTemplate = $"{{1}} = {name}.FromSpan({{0}});",
-        };
+        return types;
+    }
 
     public required string Name { get; init; }
     public required string? Namespace { get; init; }
@@ -140,6 +89,7 @@ class SszType
 
     public bool IsStruct { get; set; }
     public bool IsRefType { get; init; }
+    public bool IsSszPrimitive { get; set; }
     public SszType? EnumType { get; set; }
 
     public string? CustomEncodeTemplate { get; init; }
@@ -195,8 +145,10 @@ class SszType
 
         if (enumType is not null)
         {
-            result.EnumType = BasicTypes.First(x => x.Name == enumType.Name);
+            string? enumNamespace = GetNamespace(enumType);
+            result.EnumType = types.First(x => x.Namespace == enumNamespace && x.Name == enumType.Name);
             result.StaticLength = result.EnumType.StaticLength;
+            result.IsSszPrimitive = result.EnumType.IsSszPrimitive;
         }
 
         result.Members = kind switch
@@ -347,8 +299,14 @@ class SszType
             return Kind.Basic;
         }
 
+        if (type is ITypeParameterSymbol)
+        {
+            return Kind.Container;
+        }
+
         bool isProgressiveContainer = HasAnyFieldIndex(type);
         bool isCompatibleUnion = HasAttribute(type, "SszCompatibleUnionAttribute");
+        bool isContainer = HasAttribute(type, "SszContainerAttribute");
         if (isProgressiveContainer && isCompatibleUnion)
         {
             throw new InvalidOperationException($"Type {GetTypeName(type)} cannot be both a progressive container and a compatible union.");
@@ -357,6 +315,11 @@ class SszType
         if (isCompatibleUnion)
         {
             return Kind.CompatibleUnion;
+        }
+
+        if (!isContainer)
+        {
+            throw new InvalidOperationException($"Type {type.ToDisplayString()} is not SSZ serializable. Mark it with SszContainer or SszCompatibleUnion, or provide a SszVectorConverter<{type.ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat)}>.");
         }
 
         return isProgressiveContainer ? Kind.ProgressiveContainer : Kind.Container;

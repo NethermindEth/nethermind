@@ -12,39 +12,23 @@ namespace Nethermind.EraE.Proofs;
 partial struct HistoricalBatch
 {
     [SszVector(8192)] // SLOTS_PER_HISTORICAL_ROOT
-    public SszBytes32[] BlockRoots { get; set; }
+    public ValueHash256[] BlockRoots { get; set; }
 
     [SszVector(8192)] // SLOTS_PER_HISTORICAL_ROOT
-    public SszBytes32[] StateRoots { get; set; }
+    public ValueHash256[] StateRoots { get; set; }
 
-    public static HistoricalBatch From(ReadOnlySpan<ValueHash256> blockRoots, ReadOnlySpan<ValueHash256> stateRoots)
-    {
-        SszBytes32[] blockRootsData = new SszBytes32[blockRoots.Length];
-        for (int i = 0; i < blockRoots.Length; i++) blockRootsData[i] = SszBytes32.From(blockRoots[i]);
-        SszBytes32[] stateRootsData = new SszBytes32[stateRoots.Length];
-        for (int i = 0; i < stateRoots.Length; i++) stateRootsData[i] = SszBytes32.From(stateRoots[i]);
-        return new() { BlockRoots = blockRootsData, StateRoots = stateRootsData };
-    }
+    public static HistoricalBatch From(ReadOnlySpan<ValueHash256> blockRoots, ReadOnlySpan<ValueHash256> stateRoots) =>
+        new() { BlockRoots = blockRoots.ToArray(), StateRoots = stateRoots.ToArray() };
 }
 
 [SszContainer]
 partial struct ValueHash256Vector
 {
     [SszVector(8192)] // SLOTS_PER_HISTORICAL_ROOT
-    public SszBytes32[] Data { get; set; }
+    public ValueHash256[] Data { get; set; }
 
-    public static ValueHash256Vector From(ReadOnlySpan<ValueHash256> hashesAccumulator)
-    {
-        SszBytes32[] data = new SszBytes32[hashesAccumulator.Length];
-        for (int i = 0; i < hashesAccumulator.Length; i++) data[i] = SszBytes32.From(hashesAccumulator[i]);
-        return new() { Data = data };
-    }
+    public static ValueHash256Vector From(ReadOnlySpan<ValueHash256> hashesAccumulator) =>
+        new() { Data = hashesAccumulator.ToArray() };
 
-    public readonly ValueHash256[] Hashes()
-    {
-        ValueHash256[] result = new ValueHash256[Data.Length];
-        for (int i = 0; i < Data.Length; i++) result[i] = Data[i].Hash;
-        return result;
-    }
+    public readonly ValueHash256[] Hashes() => Data.ToArray();
 }
-

@@ -8,6 +8,7 @@ using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
+using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 using Nethermind.Merkleization;
 using Nethermind.Serialization.Ssz;
@@ -296,6 +297,30 @@ public class EncodingTest
 
         Assert.That(encoded, Is.EqualTo(original.Bytes.ToArray()));
         Assert.That(decoded.Bytes.ToArray(), Is.EqualTo(original.Bytes.ToArray()));
+    }
+
+    [Test]
+    public void Vector_converters_encode_and_decode_custom_type_and_value_hash()
+    {
+        ValueHash256 firstHash = new(Enumerable.Range(0, ValueHash256.MemorySize).Select(i => (byte)i).ToArray());
+        ValueHash256 secondHash = new(Enumerable.Range(0, ValueHash256.MemorySize).Select(i => (byte)(255 - i)).ToArray());
+        ConverterContainer original = new()
+        {
+            FixedBytes = new TestBytes4(0x01020304),
+            FixedBytesVector = [new TestBytes4(0x05060708), new TestBytes4(0x11121314)],
+            Hash = firstHash,
+            HashVector = [firstHash, secondHash],
+        };
+
+        byte[] encoded = Encode(original);
+        Decode(encoded, out ConverterContainer decoded);
+
+        Assert.That(encoded.Length, Is.EqualTo(108));
+        Assert.That(encoded.AsSpan(0, 4).ToArray(), Is.EqualTo([0x04, 0x03, 0x02, 0x01]));
+        Assert.That(decoded.FixedBytes.Value, Is.EqualTo(original.FixedBytes.Value));
+        Assert.That(decoded.FixedBytesVector!.Select(x => x.Value), Is.EqualTo(original.FixedBytesVector!.Select(x => x.Value)));
+        Assert.That(decoded.Hash, Is.EqualTo(original.Hash));
+        Assert.That(decoded.HashVector, Is.EqualTo(original.HashVector));
     }
 
     [TestCaseSource(nameof(InvalidInputCases))]

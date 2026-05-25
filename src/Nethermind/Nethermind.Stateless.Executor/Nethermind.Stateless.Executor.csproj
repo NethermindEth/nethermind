@@ -22,6 +22,7 @@
     <Compile Include="..\Nethermind.Merge.Plugin\Handlers\IForkValidator.cs" Link="IO\EngineApiDto\IForkValidator.cs" />
     <Compile Include="..\Nethermind.Merge.Plugin\SszRest\SszExecutionPayload.cs" Link="IO\EngineApiDto\SszExecutionPayload.cs" />
     <Compile Include="..\Nethermind.Merge.Plugin\SszRest\SszNumericChecks.cs" Link="IO\EngineApiDto\SszNumericChecks.cs" />
+    <Compile Include="..\Nethermind.Merge.Plugin\SszRest\SszVectorConverters.cs" Link="IO\EngineApiDto\SszVectorConverters.cs" />
     <Compile Include="..\Nethermind.Merge.Plugin\SszRest\SszWireTypes.cs" Link="IO\EngineApiDto\SszWireTypes.cs" />
   </ItemGroup>
 
