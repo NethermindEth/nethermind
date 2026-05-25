@@ -1072,6 +1072,25 @@ namespace Nethermind.Trie.Test.Pruning
         }
 
         [Test]
+        public void Cache_only_typed_lookup_does_not_return_unsealed_nodes()
+        {
+            using TrieStore fullTrieStore = CreateTrieStore();
+            TreePath emptyPath = TreePath.Empty;
+            TrieNode node = TrieNode.CreateBranchTyped();
+            node.Keccak = TestItem.KeccakB;
+            node.IsSealed.Should().BeFalse();
+
+            using IBlockCommitter blockCommitter = fullTrieStore.BeginBlockCommit(0);
+            using ICommitter committer = fullTrieStore.GetTrieStore(null).BeginCommit(null);
+            committer.CommitNode(ref emptyPath, node);
+
+            bool found = fullTrieStore.TryGetCachedNode(null, emptyPath, node.Keccak!.ValueHash256, out TrieNode? cachedNode);
+
+            found.Should().BeFalse();
+            cachedNode.Should().BeNull();
+        }
+
+        [Test]
         [NonParallelizable]
         [TestCase(ReadOnlyMissLoadVariant.GetOrLoad)]
         [TestCase(ReadOnlyMissLoadVariant.TryGetOrLoad)]

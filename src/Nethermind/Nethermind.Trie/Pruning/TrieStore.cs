@@ -538,7 +538,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
         // Does NOT consult _commitBuffer; the typed-resolver default impl falls back to
         // FindCachedOrUnknown + ResolveNode on miss, which already honors commit-buffer mode.
         TrieStoreDirtyNodesCache.Key key = new(address, path, in hash);
-        if (DirtyNodesTryGetValue(key, out TrieNode? cached) && cached!.NodeType != NodeType.Unknown)
+        if (DirtyNodesTryGetValue(key, out TrieNode? cached) && cached!.NodeType != NodeType.Unknown && cached.IsSealed)
         {
             node = cached;
             return true;
