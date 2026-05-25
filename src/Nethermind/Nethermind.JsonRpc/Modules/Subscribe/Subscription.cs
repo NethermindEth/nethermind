@@ -39,7 +39,7 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
         public IJsonRpcDuplexClient JsonRpcDuplexClient { get; }
         private Channel<Func<Task>> SendChannel { get; } = Channel.CreateUnbounded<Func<Task>>(new UnboundedChannelOptions { SingleReader = true });
 
-        public virtual void Dispose() => SendChannel.Writer.Complete();
+        public virtual void Dispose() => SendChannel.Writer.TryComplete();
 
         protected JsonRpcResult CreateSubscriptionMessage(object result, string methodName = SubscriptionMethodName.EthSubscription) => JsonRpcResult.Single(
                 new JsonRpcSubscriptionResponse()
@@ -56,6 +56,9 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
 
         protected string GetErrorMsg() => $"{Type} subscription with ID {Id} failed.";
 
+        // Task.Factory.StartNew with an async lambda returns Task<Task>; the outer task completes
+        // at the first await, so without Unwrap() the continuation runs immediately and never observes
+        // faults from the processing loop.
         private void ProcessMessages() => Task.Factory.StartNew(async () =>
         {
             while (await SendChannel.Reader.WaitToReadAsync())
@@ -72,12 +75,12 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
                     }
                 }
             }
-        }, TaskCreationOptions.LongRunning).ContinueWith(t =>
+        }, TaskCreationOptions.LongRunning).Unwrap().ContinueWith(t =>
         {
             if (t.IsFaulted)
             {
                 if (_logger.IsError) _logger.Error($"{GetErrorMsg()} {nameof(ProcessMessages)} encountered an exception.", t.Exception);
             }
-        });
+        }, TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously);
     }
 }
