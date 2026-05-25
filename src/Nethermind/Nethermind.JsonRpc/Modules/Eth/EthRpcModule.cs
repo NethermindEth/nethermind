@@ -1007,10 +1007,12 @@ public partial class EthRpcModule(
 
         if (_rpcConfig.EnableLogsStreamMode && verifyLogsResponse is null)
         {
-            timeoutTransferred = true;
             long? maxLogsResponseBodySize = enforceLogsLimits ? _rpcConfig.MaxLogsResponseBodySize : null;
             long? maxBatchResponseBodySize = enforceLogsLimits ? _rpcConfig.MaxBatchResponseBodySize : null;
-            return ResultWrapper<IEnumerable<FilterLog>>.Success(new LogsStreamableResult(filterLogs, _rpcConfig.MaxLogsPerResponse, enforceMaxLogs, maxLogsResponseBodySize, maxBatchResponseBodySize, timeout, _logger));
+            ResultWrapper<IEnumerable<FilterLog>> response = ResultWrapper<IEnumerable<FilterLog>>.Success(
+                new LogsStreamableResult(filterLogs, _rpcConfig.MaxLogsPerResponse, enforceMaxLogs, maxLogsResponseBodySize, maxBatchResponseBodySize, timeout, _logger));
+            timeoutTransferred = true;
+            return response;
         }
 
         ArrayPoolList<FilterLog> logs = new(_rpcConfig.MaxLogsPerResponse);
