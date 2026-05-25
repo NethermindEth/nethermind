@@ -361,10 +361,13 @@ public class ForkchoiceUpdatedHandler(
         if (candidateHeader is null) return false;
         if (candidateHeader.Number > newHeadHeader.Number) return true;
 
+        bool headIsMain = _blockTree.IsMainChain(newHeadHeader);
         bool candidateIsMain = _blockTree.IsMainChain(candidateHeader);
-        if (_blockTree.IsMainChain(newHeadHeader)) return !candidateIsMain;
+        if (headIsMain && candidateIsMain) return false;
 
-        // newHead is not main; walk parents. Depth bounded by (newHead.Number - candidate.Number).
+        // Fallback to real parent-walk ancestry when newHead is off-main, or when newHead is main
+        // but candidate's canonical marker is stale/off-main. Depth bounded by
+        // (newHead.Number - candidate.Number).
         BlockHeader cursor = newHeadHeader;
         while (cursor.Number > candidateHeader.Number)
         {
