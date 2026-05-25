@@ -1012,6 +1012,25 @@ namespace Nethermind.Trie.Test.Pruning
         }
 
         [Test]
+        public void Scopable_trie_store_default_typed_load_uses_rlp_methods()
+        {
+            MemDb memDb = new();
+            TrieNode persistedNode = BuildAndPersistSealedBranch(memDb);
+            TreePath emptyPath = TreePath.Empty;
+            ValueHash256 hash = persistedNode.Keccak!.ValueHash256;
+            MinimalScopableTrieStore trieStore = new(hash, persistedNode.FullRlp.AsSpan().ToArray());
+            IScopableTrieStore scopableTrieStore = trieStore;
+
+            TrieNode node = scopableTrieStore.GetOrLoadNode(null, emptyPath, in hash);
+            bool found = scopableTrieStore.TryGetOrLoadNode(null, emptyPath, in hash, out TrieNode? tryNode);
+
+            node.FullRlp.AsSpan().ToArray().Should().Equal(persistedNode.FullRlp.AsSpan().ToArray());
+            found.Should().BeTrue();
+            tryNode!.FullRlp.AsSpan().ToArray().Should().Equal(persistedNode.FullRlp.AsSpan().ToArray());
+            trieStore.LoadCount.Should().Be(2);
+        }
+
+        [Test]
         public void Scoped_trie_store_forwards_cached_node_lookup_through_wrappers()
         {
             using TrieStore fullTrieStore = CreateTrieStore();
@@ -1025,6 +1044,24 @@ namespace Nethermind.Trie.Test.Pruning
 
             found.Should().BeTrue();
             cachedNode.Should().BeSameAs(node);
+        }
+
+        private sealed class MinimalScopableTrieStore(ValueHash256 expectedHash, byte[] rlp) : IScopableTrieStore
+        {
+            public int LoadCount { get; private set; }
+
+            public ICommitter BeginCommit(Hash256? address, TrieNode? root, WriteFlags writeFlags) => NullCommitter.Instance;
+
+            public byte[]? LoadRlp(Hash256? address, in TreePath path, in ValueHash256 hash, ReadFlags flags = ReadFlags.None) =>
+                TryLoadRlp(address, in path, in hash, flags) ?? MissingTrieNodeException.ThrowMissing(address, in path, in hash);
+
+            public byte[]? TryLoadRlp(Hash256? address, in TreePath path, in ValueHash256 hash, ReadFlags flags = ReadFlags.None)
+            {
+                LoadCount++;
+                return hash == expectedHash ? rlp : null;
+            }
+
+            public INodeStorage.KeyScheme Scheme => INodeStorage.KeyScheme.Hash;
         }
 
         [Test]
