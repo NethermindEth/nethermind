@@ -106,4 +106,20 @@ public class OverlayTrieStoreTests
         existingStore.SharedNodeHitCount.Should().BeGreaterThan(sharedHitsBefore);
         existingStore.CloneForReadOnlyCount.Should().Be(clonesBefore);
     }
+
+    [Test]
+    public void TryGetCachedNode_reads_overlay_before_base_cache()
+    {
+        using TestRawTrieStore baseStore = new(new MemDb());
+        using ITrieStore overlayStore = new OverlayTrieStore(new MemDb(), baseStore.AsReadOnly());
+        PatriciaTree overlaidTree = new(overlayStore, LimboLogs.Instance);
+        overlaidTree.Set(TestItem.Keccaks[0].Bytes, TestItem.Keccaks[0].BytesToArray());
+        overlaidTree.Commit();
+        Hash256 overlayRoot = overlaidTree.RootHash;
+
+        bool found = overlayStore.TryGetCachedNode(null, TreePath.Empty, overlayRoot.ValueHash256, out TrieNode? node);
+
+        found.Should().BeTrue();
+        node!.Keccak.Should().Be(overlayRoot);
+    }
 }

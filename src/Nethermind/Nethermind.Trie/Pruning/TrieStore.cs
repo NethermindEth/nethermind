@@ -656,6 +656,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
 
         if (cached.IsSealed)
         {
+            Debug.Assert(!cached.IsRlpStale, "Shared read-only sealed node should not have stale RLP.");
             if (!cached.FullRlp.IsUncapped)
             {
                 IncrementFallbackNotShareableCount();

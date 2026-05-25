@@ -56,6 +56,13 @@ public class WitnessCapturingTrieStore(IReadOnlyTrieStore baseStore)
         return true;
     }
 
+    public override bool TryGetCachedNode(Hash256? address, in TreePath path, in ValueHash256 hash, [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out TrieNode? node)
+    {
+        if (!_baseStore.TryGetCachedNode(address, in path, in hash, out node)) return false;
+        CaptureNode(node);
+        return true;
+    }
+
     public override IBlockCommitter BeginBlockCommit(long blockNumber) => NullCommitter.Instance;
 
     public override ICommitter BeginCommit(Hash256? address, TrieNode? root, WriteFlags writeFlags) => NullCommitter.Instance;

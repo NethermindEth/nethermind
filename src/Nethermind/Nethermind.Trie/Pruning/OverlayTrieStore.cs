@@ -37,6 +37,10 @@ public class OverlayTrieStore(IKeyValueStoreWithBatching keyValueStore, IReadOnl
         return _baseStore.TryGetOrLoadNode(address, in path, in hash, out node, flags);
     }
 
+    public override bool TryGetCachedNode(Hash256? address, in TreePath path, in ValueHash256 hash, [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out TrieNode? node) =>
+        TryGetOverlayNode(address, in path, in hash, out node, ReadFlags.None) ||
+        _baseStore.TryGetCachedNode(address, in path, in hash, out node);
+
     public override bool HasRoot(Hash256 stateRoot) =>
         _nodeStorage.Get(null, TreePath.Empty, stateRoot) is not null || _baseStore.HasRoot(stateRoot);
 
