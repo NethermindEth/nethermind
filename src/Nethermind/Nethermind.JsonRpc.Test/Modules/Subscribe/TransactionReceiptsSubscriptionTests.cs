@@ -47,25 +47,31 @@ namespace Nethermind.JsonRpc.Test.Modules.Subscribe
             _receiptCanonicalityMonitor?.Dispose();
         }
 
-        private JsonRpcResult GetTransactionReceiptsSubscriptionResult(
+        // The producer (`TransactionReceiptsSubscription.TryPublishReceipts`) wraps each result in a
+        // `using JsonRpcResult` and disposes it on scope exit, which recycles ArrayPool buffers backing
+        // the response payload. In tests the `SendJsonRpcResult` substitute returns synchronously, so
+        // dispose runs immediately after the callback. Capturing the raw `JsonRpcResult` and serializing
+        // it later races against that recycling and intermittently crashes the test host. Serialize
+        // inside the callback, return the safe string snapshot.
+        private string? GetTransactionReceiptsSubscriptionResult(
             TransactionHashesFilter? filter,
             ReceiptsEventArgs receiptsEventArgs,
             out string subscriptionId,
             bool shouldReceiveResult = true)
         {
-            TransactionReceiptsSubscription subscription = new(
+            using TransactionReceiptsSubscription subscription = new(
                 _jsonRpcDuplexClient,
                 _receiptCanonicalityMonitor,
                 _blockTree,
                 _logManager,
                 filter);
 
-            JsonRpcResult jsonRpcResult = new();
+            string? serialized = null;
             ManualResetEvent manualResetEvent = new(false);
 
             subscription.JsonRpcDuplexClient.SendJsonRpcResult(Arg.Do<JsonRpcResult>(j =>
             {
-                jsonRpcResult = j;
+                serialized = _jsonSerializer.Serialize(j.Response);
                 manualResetEvent.Set();
             }));
 
@@ -73,35 +79,35 @@ namespace Nethermind.JsonRpc.Test.Modules.Subscribe
             manualResetEvent.WaitOne(TimeSpan.FromMilliseconds(1000)).Should().Be(shouldReceiveResult);
 
             subscriptionId = subscription.Id;
-            return jsonRpcResult;
+            return serialized;
         }
 
-        private List<JsonRpcResult> GetMultipleTransactionReceiptsResults(
+        private List<string> GetMultipleTransactionReceiptsResults(
             TransactionHashesFilter? filter,
             ReceiptsEventArgs receiptsEventArgs,
             out string subscriptionId,
             int expectedCount)
         {
-            TransactionReceiptsSubscription subscription = new(
+            using TransactionReceiptsSubscription subscription = new(
                 _jsonRpcDuplexClient,
                 _receiptCanonicalityMonitor,
                 _blockTree,
                 _logManager,
                 filter);
 
-            List<JsonRpcResult> jsonRpcResults = [];
+            List<string> serializedResults = [];
             SemaphoreSlim semaphoreSlim = new(0, 1);
 
             subscription.JsonRpcDuplexClient.SendJsonRpcResult(Arg.Do<JsonRpcResult>(j =>
             {
-                jsonRpcResults.Add(j);
+                serializedResults.Add(_jsonSerializer.Serialize(j.Response));
             }));
 
             _receiptCanonicalityMonitor.ReceiptsInserted += Raise.EventWith(new object(), receiptsEventArgs);
             semaphoreSlim.Wait(TimeSpan.FromMilliseconds(500));
 
             subscriptionId = subscription.Id;
-            return jsonRpcResults;
+            return serializedResults;
         }
 
         [TestCase(200, false, TestName = "Exactly 200 hashes succeeds")]
@@ -147,17 +153,15 @@ namespace Nethermind.JsonRpc.Test.Modules.Subscribe
             TxReceipt[] receipts = [receipt1, receipt2];
             ReceiptsEventArgs eventArgs = new(blockHeader, receipts, false);
 
-            List<JsonRpcResult> results = GetMultipleTransactionReceiptsResults(null, eventArgs, out string subscriptionId, 2);
+            List<string> results = GetMultipleTransactionReceiptsResults(null, eventArgs, out string subscriptionId, 2);
 
             results.Count.Should().Be(2);
 
-            string serialized1 = _jsonSerializer.Serialize(results[0].Response);
-            serialized1.Should().Contain(subscriptionId);
-            serialized1.Should().Contain(TestItem.KeccakA.ToString());
+            results[0].Should().Contain(subscriptionId);
+            results[0].Should().Contain(TestItem.KeccakA.ToString());
 
-            string serialized2 = _jsonSerializer.Serialize(results[1].Response);
-            serialized2.Should().Contain(subscriptionId);
-            serialized2.Should().Contain(TestItem.KeccakB.ToString());
+            results[1].Should().Contain(subscriptionId);
+            results[1].Should().Contain(TestItem.KeccakB.ToString());
         }
 
         [Test]
@@ -177,10 +181,9 @@ namespace Nethermind.JsonRpc.Test.Modules.Subscribe
             TxReceipt[] receipts = [receipt1, receipt2];
             ReceiptsEventArgs eventArgs = new(blockHeader, receipts, false);
 
-            JsonRpcResult result = GetTransactionReceiptsSubscriptionResult(filter, eventArgs, out string subscriptionId);
+            string? serialized = GetTransactionReceiptsSubscriptionResult(filter, eventArgs, out string subscriptionId);
 
-            result.Response.Should().NotBeNull();
-            string serialized = _jsonSerializer.Serialize(result.Response);
+            serialized.Should().NotBeNullOrEmpty();
             serialized.Should().Contain(subscriptionId);
             serialized.Should().Contain(TestItem.KeccakA.ToString());
             serialized.Should().NotContain(TestItem.KeccakB.ToString());
@@ -204,15 +207,11 @@ namespace Nethermind.JsonRpc.Test.Modules.Subscribe
             TxReceipt[] receipts = [receipt1, receipt2, receipt3];
             ReceiptsEventArgs eventArgs = new(blockHeader, receipts, false);
 
-            List<JsonRpcResult> results = GetMultipleTransactionReceiptsResults(filter, eventArgs, out string subscriptionId, 2);
+            List<string> results = GetMultipleTransactionReceiptsResults(filter, eventArgs, out string subscriptionId, 2);
 
             results.Count.Should().Be(2);
-
-            string serialized1 = _jsonSerializer.Serialize(results[0].Response);
-            serialized1.Should().Contain(TestItem.KeccakA.ToString());
-
-            string serialized2 = _jsonSerializer.Serialize(results[1].Response);
-            serialized2.Should().Contain(TestItem.KeccakC.ToString());
+            results[0].Should().Contain(TestItem.KeccakA.ToString());
+            results[1].Should().Contain(TestItem.KeccakC.ToString());
         }
 
         [Test]
@@ -232,7 +231,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Subscribe
             TxReceipt[] receipts = [receipt1, receipt2];
             ReceiptsEventArgs eventArgs = new(blockHeader, receipts, false);
 
-            List<JsonRpcResult> results = GetMultipleTransactionReceiptsResults(filter, eventArgs, out string subscriptionId, 0);
+            List<string> results = GetMultipleTransactionReceiptsResults(filter, eventArgs, out string subscriptionId, 0);
 
             results.Count.Should().Be(0);
         }
@@ -255,10 +254,9 @@ namespace Nethermind.JsonRpc.Test.Modules.Subscribe
             TxReceipt[] receipts = [receipt1, receipt2, receipt3];
             ReceiptsEventArgs eventArgs = new(blockHeader, receipts, false);
 
-            JsonRpcResult result = GetTransactionReceiptsSubscriptionResult(filter, eventArgs, out string subscriptionId);
+            string? serialized = GetTransactionReceiptsSubscriptionResult(filter, eventArgs, out string subscriptionId);
 
-            result.Response.Should().NotBeNull();
-            string serialized = _jsonSerializer.Serialize(result.Response);
+            serialized.Should().NotBeNullOrEmpty();
             serialized.Should().Contain(TestItem.KeccakA.ToString());
             serialized.Should().NotContain(TestItem.KeccakB.ToString());
             serialized.Should().NotContain(TestItem.KeccakC.ToString());
@@ -285,11 +283,9 @@ namespace Nethermind.JsonRpc.Test.Modules.Subscribe
             TxReceipt[] receipts = [receipt];
             ReceiptsEventArgs eventArgs = new(blockHeader, receipts, false);
 
-            JsonRpcResult result = GetTransactionReceiptsSubscriptionResult(null, eventArgs, out string subscriptionId);
+            string? serialized = GetTransactionReceiptsSubscriptionResult(null, eventArgs, out string subscriptionId);
 
-            result.Response.Should().NotBeNull();
-            string serialized = _jsonSerializer.Serialize(result.Response);
-
+            serialized.Should().NotBeNullOrEmpty();
             serialized.Should().Contain("transactionHash");
             serialized.Should().Contain(TestItem.KeccakA.ToString());
             serialized.Should().Contain("blockHash");
@@ -319,18 +315,16 @@ namespace Nethermind.JsonRpc.Test.Modules.Subscribe
             TxReceipt[] receipts = [receipt1, receipt2];
             ReceiptsEventArgs eventArgs = new(blockHeader, receipts, false);
 
-            List<JsonRpcResult> results = GetMultipleTransactionReceiptsResults(null, eventArgs, out string subscriptionId, 2);
+            List<string> results = GetMultipleTransactionReceiptsResults(null, eventArgs, out string subscriptionId, 2);
 
             results.Count.Should().Be(2);
 
             // First receipt should have logs with indices 0 and 1
-            string serialized1 = _jsonSerializer.Serialize(results[0].Response);
-            serialized1.Should().Contain("\"logIndex\":\"0x0\"");
-            serialized1.Should().Contain("\"logIndex\":\"0x1\"");
+            results[0].Should().Contain("\"logIndex\":\"0x0\"");
+            results[0].Should().Contain("\"logIndex\":\"0x1\"");
 
             // Second receipt should have log with index 2 (cumulative)
-            string serialized2 = _jsonSerializer.Serialize(results[1].Response);
-            serialized2.Should().Contain("\"logIndex\":\"0x2\"");
+            results[1].Should().Contain("\"logIndex\":\"0x2\"");
         }
 
         [Test]
@@ -342,7 +336,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Subscribe
             TxReceipt[] receipts = [];
             ReceiptsEventArgs eventArgs = new(blockHeader, receipts, false);
 
-            List<JsonRpcResult> results = GetMultipleTransactionReceiptsResults(null, eventArgs, out string subscriptionId, 0);
+            List<string> results = GetMultipleTransactionReceiptsResults(null, eventArgs, out string subscriptionId, 0);
 
             results.Count.Should().Be(0);
         }
@@ -364,10 +358,9 @@ namespace Nethermind.JsonRpc.Test.Modules.Subscribe
             TxReceipt[] receipts = [receipt];
             ReceiptsEventArgs eventArgs = new(blockHeader, receipts, false);
 
-            JsonRpcResult result = GetTransactionReceiptsSubscriptionResult(null, eventArgs, out string subscriptionId);
+            string? serialized = GetTransactionReceiptsSubscriptionResult(null, eventArgs, out string subscriptionId);
 
-            result.Response.Should().NotBeNull();
-            string serialized = _jsonSerializer.Serialize(result.Response);
+            serialized.Should().NotBeNullOrEmpty();
             serialized.Should().Contain(TestItem.KeccakA.ToString());
             serialized.Should().Contain("0x0"); // status 0 for failed tx
         }
@@ -383,7 +376,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Subscribe
             TxReceipt[] receipts = [receipt];
             ReceiptsEventArgs eventArgs = new(blockHeader, receipts, wasRemoved: true); // wasRemoved=true indicates reorg
 
-            List<JsonRpcResult> results = GetMultipleTransactionReceiptsResults(null, eventArgs, out string subscriptionId, 0);
+            List<string> results = GetMultipleTransactionReceiptsResults(null, eventArgs, out string subscriptionId, 0);
 
             results.Count.Should().Be(0);
         }
