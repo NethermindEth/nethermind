@@ -81,6 +81,20 @@ public class TrieNodeTests
     }
 
     [Test]
+    public void Rlp_seqlock_sequence_does_not_publish_slice_flag()
+    {
+        TrieNode trieNode = TrieNode.CreateBranchTyped();
+        FieldInfo metadataField = typeof(TrieNode).GetField("_rlpSeqAndLength", BindingFlags.Instance | BindingFlags.NonPublic)!;
+        metadataField.SetValue(trieNode, 0x7FFFFFFEUL << 32);
+
+        trieNode.WriteRlp(new CappedArray<byte>([0x80]));
+
+        ulong metadata = (ulong)metadataField.GetValue(trieNode)!;
+        (metadata & (1UL << 63)).Should().Be(0);
+        (metadata & 0xFFFFFFFFUL).Should().Be(1);
+    }
+
+    [Test]
     public void Forward_read_flags_on_resolve()
     {
         ITrieNodeResolver resolver = Substitute.For<ITrieNodeResolver>();

@@ -58,14 +58,14 @@ namespace Nethermind.Trie
         // Access only via TryGetKeccak / KeccakValue / HasKeccak.
         private ValueHash256 _keccakValue;
 
-        // In normal mode, the sequence counter shares bit 63 with the slice flag. After about
-        // 2^30 completed writes to one node, doneSeq reaches 0x80000000 and IsRlpSlice returns
-        // true for a normal value. Readers still get offset 0 and the real length, and WriteRlp
-        // resets the sequence on the next write so it cannot advance to a wrong non-zero offset.
         private const ulong RlpSliceFlag = 1UL << 63;
         private const ulong RlpSliceLengthMask = 0xFFFFFFFFUL;
         private const int RlpSliceOffsetShift = 32;
         private const ulong RlpSliceOffsetMask = 0x7FFFFFFFUL;
+        // Normal-mode RLP metadata stores the lock in sequence bit 0 and the sequence in bits
+        // 1-30. Bit 31 maps to bit 63 of _rlpSeqAndLength and is reserved for RlpSliceFlag.
+        private const uint RlpNormalSeqMask = 0x7FFFFFFE;
+        private const uint RlpNormalSeqLock = 1;
 
         private static bool IsRlpSlice(ulong value) => (value & RlpSliceFlag) != 0;
 
@@ -115,7 +115,7 @@ namespace Nethermind.Trie
         /// Atomically write _rlp using seqlock: odd sequence signals write-in-progress.
         /// CAS on even sequences only — if another writer is active (odd), spin until it completes.
         /// Last writer wins: all writers write the same resolved data for a given node.
-        /// Sequence uses bits 1-31; bit 0 is the lock flag and bit 31 overlaps the slice flag.
+        /// Sequence uses bits 1-30; bit 0 is the lock flag and bit 31 is reserved for the slice flag.
         /// </summary>
         [MethodImpl(MethodImplOptions.NoInlining)] // CAS dominates latency; avoid code bloat at 5+ call sites
         internal void WriteRlp(CappedArray<byte> value)
@@ -127,19 +127,19 @@ namespace Nethermind.Trie
                 // If a normal-mode sequence reached the slice flag bit, reset before the next
                 // completed write can publish a non-zero slice offset.
                 uint seq = IsRlpSlice(current) ? 0 : (uint)(current >> 32);
-                if ((seq & 1) != 0)
+                if ((seq & RlpNormalSeqLock) != 0)
                 {
                     // Another writer is active — spin until it completes
                     spin.SpinOnce();
                     continue;
                 }
                 // Set lock bit (odd) — seq | 1 is always odd regardless of overflow
-                ulong writing = (ulong)(seq | 1) << 32;
+                ulong writing = (ulong)(seq | RlpNormalSeqLock) << 32;
                 if (Interlocked.CompareExchange(ref _rlpSeqAndLength, writing, current) == current)
                 {
                     Volatile.Write(ref _rlpArray, value.UnderlyingArray);
                     // Advance sequence by 2 and clear lock bit (even), store final length
-                    uint doneSeq = (seq + 2) & 0xFFFFFFFE;
+                    uint doneSeq = (seq + 2) & RlpNormalSeqMask;
                     Volatile.Write(ref _rlpSeqAndLength, CreateRlpMetadata(value, doneSeq));
                     MarkRlpFresh();
                     return;
