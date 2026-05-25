@@ -52,7 +52,7 @@ public static class BlockTestAssertions
 
         Assert.Multiple(() =>
         {
-            actual.Transactions.EqualToTransactions(expected.Transactions);
+            Assert.That(actual.Transactions, Is.EqualTo(expected.Transactions).UsingTransactionComparer());
             Assert.That(actual.Uncles, Has.Length.EqualTo(expected.Uncles.Length));
             Assert.That(actual.Withdrawals, Is.EqualTo(expected.Withdrawals)
                 .UsingPropertiesComparer<Withdrawal>(

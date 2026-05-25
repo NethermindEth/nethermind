@@ -1145,12 +1145,11 @@ public partial class EngineModuleTests
 
         Transaction[] txsReceived = executionPayload.TryGetTransactions().Data!;
 
-        txsReceived.EqualToTransactions(
-            txsSource,
+        Assert.That(txsReceived, Is.EqualTo(txsSource).UsingTransactionComparer(
             nameof(Transaction.ChainId),
             nameof(Transaction.Data),
             nameof(Transaction.SenderAddress),
-            nameof(Transaction.Timestamp));
+            nameof(Transaction.Timestamp)));
     }
 
     [Test]

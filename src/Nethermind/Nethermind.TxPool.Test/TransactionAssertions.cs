@@ -42,5 +42,5 @@ internal static class TransactionAssertions
         Transaction actual,
         Transaction expected,
         params string[] excludedProperties) =>
-        actual.EqualToTransaction(expected, excludedProperties);
+        Assert.That(actual, Is.EqualTo(expected).UsingTransactionComparer(excludedProperties));
 }

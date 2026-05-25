@@ -114,7 +114,7 @@ public class BlockStoreTests
         for (int i = 0; i < retrieved.TransactionCount; i++)
         {
             block.Transactions[i].Data = Array.Empty<byte>();
-            retrieved.GetNextTransaction().EqualToTransaction(block.Transactions[i]);
+            Assert.That(retrieved.GetNextTransaction(), Is.EqualTo(block.Transactions[i]).UsingTransactionComparer());
         }
     }
 

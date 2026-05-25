@@ -57,7 +57,7 @@ internal static class XdcTestAssertions
         Assert.Multiple(() =>
         {
             AssertXdcHeader((XdcBlockHeader)actual.Header, (XdcBlockHeader)expected.Header);
-            actual.Transactions.EqualToTransactions(expected.Transactions);
+            Assert.That(actual.Transactions, Is.EqualTo(expected.Transactions).UsingTransactionComparer());
             Assert.That(actual.Uncles, Has.Length.EqualTo(expected.Uncles.Length));
         });
 

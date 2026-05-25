@@ -129,13 +129,12 @@ public partial class EngineModuleTests
         Assert.That(getPayloadResult.StateRoot, Is.Not.EqualTo(chain.BlockTree.Genesis!.StateRoot!));
 
         Transaction[] transactionsInBlock = getPayloadResult.TryGetTransactions().Data!;
-        transactionsInBlock.EqualToTransactions(
-            transactions,
+        Assert.That(transactionsInBlock, Is.EqualTo(transactions).UsingTransactionComparer(
             nameof(Transaction.ChainId),
             nameof(Transaction.SenderAddress),
             nameof(Transaction.Timestamp),
             nameof(Transaction.PoolIndex),
-            nameof(Transaction.GasBottleneck));
+            nameof(Transaction.GasBottleneck)));
 
         ResultWrapper<PayloadStatusV1> executePayloadResult = await rpc.engine_newPayloadV1(getPayloadResult);
         Assert.That(executePayloadResult.Data.Status, Is.EqualTo(PayloadStatus.Valid));

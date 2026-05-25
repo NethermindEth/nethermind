@@ -270,7 +270,7 @@ public class DepositTransactionBuilderTest
             .TestObject;
 
         Assert.That(depositTransactions.Length, Is.EqualTo(1));
-        depositTransactions[0].EqualToTransaction(expectedTransaction);
+        Assert.That(depositTransactions[0], Is.EqualTo(expectedTransaction).UsingTransactionComparer());
     }
 
     [Test]
@@ -333,7 +333,7 @@ public class DepositTransactionBuilderTest
 
         Assert.That(depositTransactions.Length, Is.EqualTo(1));
 
-        depositTransactions[0].EqualToTransaction(expectedTransaction);
+        Assert.That(depositTransactions[0], Is.EqualTo(expectedTransaction).UsingTransactionComparer());
     }
 
     [Test]
@@ -420,7 +420,7 @@ public class DepositTransactionBuilderTest
 
         Assert.That(depositTransactions.Length, Is.EqualTo(1));
 
-        depositTransactions[0].EqualToTransaction(expectedTransaction);
+        Assert.That(depositTransactions[0], Is.EqualTo(expectedTransaction).UsingTransactionComparer());
     }
 
     [Test]
@@ -521,9 +521,9 @@ public class DepositTransactionBuilderTest
             .TestObject;
 
         Assert.That(depositTransactions.Length, Is.EqualTo(2));
-        depositTransactions[0].EqualToTransaction(expectedTransaction_0);
+        Assert.That(depositTransactions[0], Is.EqualTo(expectedTransaction_0).UsingTransactionComparer());
 
-        depositTransactions[1].EqualToTransaction(expectedTransaction_1);
+        Assert.That(depositTransactions[1], Is.EqualTo(expectedTransaction_1).UsingTransactionComparer());
     }
 
     [Test]
@@ -707,8 +707,8 @@ public class DepositTransactionBuilderTest
             .TestObject;
 
         Assert.That(depositTransactions.Length, Is.EqualTo(2));
-        depositTransactions[0].EqualToTransaction(expectedTransaction_0);
+        Assert.That(depositTransactions[0], Is.EqualTo(expectedTransaction_0).UsingTransactionComparer());
 
-        depositTransactions[1].EqualToTransaction(expectedTransaction_1);
+        Assert.That(depositTransactions[1], Is.EqualTo(expectedTransaction_1).UsingTransactionComparer());
     }
 }

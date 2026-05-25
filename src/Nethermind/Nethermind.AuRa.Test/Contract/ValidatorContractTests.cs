@@ -95,7 +95,7 @@ namespace Nethermind.AuRa.Test.Contract
         {
             try
             {
-                item.EqualToTransaction(expected);
+                Assert.That(item, Is.EqualTo(expected).UsingTransactionComparer());
                 return true;
             }
             catch

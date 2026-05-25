@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Core.Eip2930;
 using Nethermind.Int256;
@@ -45,16 +44,6 @@ public class TransactionTests
 
 public static class TransactionTestExtensions
 {
-    public static void EqualToTransactions(this IEnumerable<Transaction> subjects, IEnumerable<Transaction> expectations, params string[] excludedProperties)
-    {
-        Transaction[] actual = subjects.ToArray();
-        Transaction[] expected = expectations.ToArray();
-        Assert.That(actual, Is.EqualTo(expected).UsingTransactionComparer(excludedProperties));
-    }
-
-    public static void EqualToTransaction(this Transaction? subject, Transaction? expectation, params string[] excludedProperties) =>
-        Assert.That(subject, Is.EqualTo(expectation).UsingTransactionComparer(excludedProperties));
-
     public static EqualConstraint UsingTransactionComparer(this EqualConstraint constraint, params string[] excludedProperties)
     {
         string[] excluded =

@@ -278,7 +278,7 @@ namespace Nethermind.AuRa.Test.Transactions
             const int DefaultGasLimit = 36_000_000;
 
             Transaction[] orderedTransactions = TxPoolTxSource.Order(txBySender, comparer, _ => true, DefaultGasLimit).ToArray();
-            orderedTransactions.EqualToTransactions(expectation);
+            Assert.That(orderedTransactions, Is.EqualTo(expectation).UsingTransactionComparer());
         }
 
         private static void SetPriority(

@@ -96,7 +96,7 @@ namespace Nethermind.Core.Test.Encoding
             decoded!.SenderAddress =
                 new EthereumEcdsa(TestBlockchainIds.ChainId).RecoverAddress(decoded);
             decoded.Hash = decoded.CalculateHash();
-            decoded.EqualToTransaction(testCase.Tx);
+            Assert.That(decoded, Is.EqualTo(testCase.Tx).UsingTransactionComparer());
         }
 
         [TestCaseSource(nameof(TestCaseSource))]
@@ -112,7 +112,7 @@ namespace Nethermind.Core.Test.Encoding
             decoded!.SenderAddress =
                 new EthereumEcdsa(TestBlockchainIds.ChainId).RecoverAddress(decoded);
             decoded.Hash = decoded.CalculateHash();
-            decoded.EqualToTransaction(testCase.Tx);
+            Assert.That(decoded, Is.EqualTo(testCase.Tx).UsingTransactionComparer());
         }
 
         [TestCaseSource(nameof(TestCaseSource))]
@@ -127,7 +127,7 @@ namespace Nethermind.Core.Test.Encoding
             decoded!.SenderAddress =
                 new EthereumEcdsa(TestBlockchainIds.ChainId).RecoverAddress(decoded);
             decoded.Hash = decoded.CalculateHash();
-            decoded.EqualToTransaction(testCase.Tx);
+            Assert.That(decoded, Is.EqualTo(testCase.Tx).UsingTransactionComparer());
         }
 
         [TestCaseSource(nameof(TestCaseSource))]
