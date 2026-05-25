@@ -10,7 +10,7 @@ namespace Nethermind.BalRecorder.Test;
 /// <summary>In-memory <see cref="IRecordedBalStore"/> for decorator tests.</summary>
 internal sealed class FakeRecordedBalStore : IRecordedBalStore
 {
-    private readonly Dictionary<long, ReadOnlyBlockAccessList> _seeded = new();
+    private readonly Dictionary<long, ReadOnlyBlockAccessList> _seeded = [];
 
     public bool ReplayEnabled { get; init; }
     public bool RecordingEnabled { get; init; }
