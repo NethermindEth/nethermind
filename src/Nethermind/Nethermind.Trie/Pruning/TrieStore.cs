@@ -100,6 +100,8 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
         _pastKeyTrackingEnabled = pruningConfig.TrackPastKeys && nodeStorage.RequirePath;
         _pruneDelayMs = pruningConfig.PruneDelayMilliseconds;
         _deleteOldNodes = _pruningStrategy.DeleteObsoleteKeys && _pastKeyTrackingEnabled;
+        ArgumentOutOfRangeException.ThrowIfLessThan(pruningConfig.DirtyNodeShardBit, 1, nameof(IPruningConfig.DirtyNodeShardBit));
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(pruningConfig.DirtyNodeShardBit, 30, nameof(IPruningConfig.DirtyNodeShardBit));
         _shardBit = pruningConfig.DirtyNodeShardBit;
         _shardedDirtyNodeCount = 1 << _shardBit;
         _dirtyNodes = new TrieStoreDirtyNodesCache[_shardedDirtyNodeCount];

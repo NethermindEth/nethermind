@@ -77,6 +77,22 @@ namespace Nethermind.Trie.Test.Pruning
             trieStore.MemoryUsedByDirtyCache.Should().Be(0);
         }
 
+        [TestCase(0)]
+        [TestCase(31)]
+        public void Constructor_rejects_unsupported_dirty_node_shard_bit(int shardBit)
+        {
+            IPruningConfig pruningConfig = Substitute.For<IPruningConfig>();
+            pruningConfig.DirtyNodeShardBit.Returns(shardBit);
+
+            Action act = () =>
+            {
+                using TrieStore _ = CreateTrieStore(pruningConfig: pruningConfig);
+            };
+
+            act.Should().Throw<ArgumentOutOfRangeException>()
+                .WithParameterName(nameof(IPruningConfig.DirtyNodeShardBit));
+        }
+
         [Test]
         public void Memory_with_one_node_is_288()
         {
