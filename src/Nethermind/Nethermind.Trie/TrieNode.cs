@@ -140,7 +140,10 @@ namespace Nethermind.Trie
                     Volatile.Write(ref _rlpArray, value.UnderlyingArray);
                     // Advance sequence by 2 and clear lock bit (even), store final length
                     uint doneSeq = (seq + 2) & RlpNormalSeqMask;
-                    Volatile.Write(ref _rlpSeqAndLength, CreateRlpMetadata(value, doneSeq));
+                    ulong metadata = CreateRlpMetadata(value, doneSeq);
+                    Debug.Assert(value.Offset == 0 || IsRlpSlice(metadata),
+                        "Sliced RLP writes must publish slice metadata.");
+                    Volatile.Write(ref _rlpSeqAndLength, metadata);
                     MarkRlpFresh();
                     return;
                 }
@@ -459,6 +462,7 @@ namespace Nethermind.Trie
         /// </summary>
         internal void CopyFlagsFrom(TrieNode source, bool markPersisted)
         {
+            Debug.Assert((_copyableFlagsMask & _keccakSeqMask) == 0, "Copyable flags must not overlap the keccak seqlock bits.");
             uint sourceFlags = Volatile.Read(ref source._flagsAndKeccakSeq) & _copyableFlagsMask;
             if (markPersisted) sourceFlags |= _persistedMask;
 
@@ -491,11 +495,11 @@ namespace Nethermind.Trie
         // contracts that have not yet been migrated to typed load / decode.
         public virtual NodeType NodeType => NodeType.Unknown;
 
-        public bool IsLeaf => NodeType == NodeType.Leaf;
+        public bool IsLeaf => this is TrieNodeLeaf;
 
-        public bool IsBranch => NodeType == NodeType.Branch;
+        public bool IsBranch => this is TrieNodeBranch;
 
-        public bool IsExtension => NodeType == NodeType.Extension;
+        public bool IsExtension => this is TrieNodeExtension;
 
         public byte[]? Key
         {
@@ -1972,7 +1976,7 @@ namespace Nethermind.Trie
             {
                 if (leafNode._storageRoot?.IsPersisted == true)
                 {
-                    leafNode._storageRoot = null;
+                    Volatile.Write(ref leafNode._storageRoot, null);
                 }
             }
 

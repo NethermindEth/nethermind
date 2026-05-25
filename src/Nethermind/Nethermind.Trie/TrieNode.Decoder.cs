@@ -149,6 +149,9 @@ namespace Nethermind.Trie
             {
                 Metrics.TreeNodeRlpEncodings++;
 
+                Debug.Assert(!item.HasRlp || IsValidRetainedBranchRlp(item.FullRlp),
+                    "Retained branch RLP should already be validated before branch encoding.");
+
                 if (!UseParallel(canBeParallel, item))
                 {
                     return RlpEncodeBranchSerial(item, tree, ref path, pool, canBeParallel);
@@ -184,6 +187,30 @@ namespace Nethermind.Trie
                         }
                     }
 
+                    return false;
+                }
+            }
+
+            private static bool IsValidRetainedBranchRlp(CappedArray<byte> parentRlp)
+            {
+                try
+                {
+                    ValueRlpStream rlpStream = new(parentRlp);
+                    int contentEnd = rlpStream.ReadSequenceLength() + rlpStream.Position;
+                    for (int i = 0; i < BranchesCount; i++)
+                    {
+                        rlpStream.SkipItem();
+                        if (rlpStream.Position > contentEnd)
+                        {
+                            return false;
+                        }
+                    }
+
+                    rlpStream.SkipItem();
+                    return rlpStream.Position == contentEnd && contentEnd == rlpStream.Length;
+                }
+                catch (Exception exception) when (exception is RlpException or ArgumentException or IndexOutOfRangeException)
+                {
                     return false;
                 }
             }

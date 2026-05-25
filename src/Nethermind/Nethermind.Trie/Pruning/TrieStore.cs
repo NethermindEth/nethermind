@@ -312,7 +312,8 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
         // (only path was hashed). Preserve that behavior: pass default if missing so the
         // shard select still works in that mode; the dirty-cache key with default keccak will
         // be an orphan but matches the original (best-effort) behavior.
-        node.TryGetKeccak(out ValueHash256 nodeKeccak);
+        bool hasKeccak = node.TryGetKeccak(out ValueHash256 nodeKeccak);
+        Debug.Assert(hasKeccak, "Commit path must reject nodes without a fresh keccak before dirty-cache insertion.");
         TrieStoreDirtyNodesCache shard = _dirtyNodes[GetNodeShardIdx(path, in nodeKeccak)];
         return SaveOrReplaceInDirtyNodesCache(shard, address, ref path, node, blockNumber);
     }
@@ -325,6 +326,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
         long blockNumber
     )
     {
+        Debug.Assert(node.TryGetKeccak(out _), "Dirty-cache insertion requires a fresh keccak.");
         TrieStoreDirtyNodesCache.Key key = new(address, path, node.Keccak);
         TrieNode cachedNodeCopy = shard.GetOrAdd(in key, new TrieStoreDirtyNodesCache.NodeRecord(node, blockNumber)).Node;
         if (!ReferenceEquals(cachedNodeCopy, node))
@@ -1845,6 +1847,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
 
         public TrieNode SaveOrReplaceInDirtyNodesCache(Hash256? address, ref TreePath path, in TrieNode node, long blockNumber)
         {
+            Debug.Assert(node.TryGetKeccak(out _), "Commit-buffer dirty-cache insertion requires a fresh keccak.");
             // Change the shard to the one from commit buffer.
             TrieStoreDirtyNodesCache shard = GetDirtyNodeShard(path, node.Keccak);
             return _trieStore.SaveOrReplaceInDirtyNodesCache(shard, address, ref path, node, blockNumber);
