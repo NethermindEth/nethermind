@@ -26,14 +26,11 @@ using NUnit.Framework;
 
 namespace Nethermind.Store.Test
 {
-    [TestFixture("Standard")]
-    [TestFixture("Flat")]
+    [TestFixture(false)]
+    [TestFixture(true)]
     [Parallelizable(ParallelScope.All)]
-    public class StateReaderTests(string backend)
+    public class StateReaderTests(bool useFlat)
     {
-        private const string Standard = "Standard";
-        private const string Flat = "Flat";
-
         private static readonly Hash256 Hash1 = Keccak.Compute("1");
         private readonly Address _address1 = new(Hash1);
         private static readonly ILogManager Logger = LimboLogs.Instance;
@@ -44,18 +41,15 @@ namespace Nethermind.Store.Test
             public IStateReader Reader { get; }
             private readonly IContainer? _container;
 
-            public Context(string backend)
+            public Context(bool useFlat)
             {
-                switch (backend)
+                if (useFlat)
                 {
-                    case Flat:
-                        (WorldState, Reader, _container) = TestWorldStateFactory.CreateFlatForTestWithStateReader();
-                        break;
-                    case Standard:
-                        (WorldState, Reader) = TestWorldStateFactory.CreateForTestWithStateReader();
-                        break;
-                    default:
-                        throw new ArgumentOutOfRangeException(nameof(backend), backend, null);
+                    (WorldState, Reader, _container) = TestWorldStateFactory.CreateFlatForTestWithStateReader();
+                }
+                else
+                {
+                    (WorldState, Reader) = TestWorldStateFactory.CreateForTestWithStateReader();
                 }
             }
 
@@ -75,13 +69,13 @@ namespace Nethermind.Store.Test
         public void Can_ask_about_balance_in_parallel()
         {
             IReleaseSpec spec = MainnetSpecProvider.Instance.GetSpec((ForkActivation)MainnetSpecProvider.ConstantinopleFixBlockNumber);
-            using Context ctx = new(backend);
+            using Context ctx = new(useFlat);
             IWorldState provider = ctx.WorldState;
             IStateReader reader = ctx.Reader;
 
             using IDisposable _ = provider.BeginScope(IWorldState.PreGenesis);
 
-            provider.CreateAccount(_address1, 0);
+            provider.CreateAccount(_address1, 0, nonce: 7);
             provider.AddToBalance(_address1, 1, spec);
             provider.Commit(spec);
             provider.CommitTree(0);
@@ -117,7 +111,7 @@ namespace Nethermind.Store.Test
         {
             StorageCell storageCell = new(_address1, UInt256.One);
             IReleaseSpec spec = MuirGlacier.Instance;
-            using Context ctx = new(backend);
+            using Context ctx = new(useFlat);
             IWorldState provider = ctx.WorldState;
             IStateReader reader = ctx.Reader;
             using IDisposable _ = provider.BeginScope(IWorldState.PreGenesis);
@@ -169,7 +163,7 @@ namespace Nethermind.Store.Test
             StorageCell storageCell = new(_address1, UInt256.One);
             IReleaseSpec spec = MuirGlacier.Instance;
 
-            using Context ctx = new(backend);
+            using Context ctx = new(useFlat);
             IWorldState provider = ctx.WorldState;
             IStateReader reader = ctx.Reader;
             using IDisposable _ = provider.BeginScope(IWorldState.PreGenesis);
@@ -193,8 +187,9 @@ namespace Nethermind.Store.Test
                 {
                     for (int i = 0; i < 10000; i++)
                     {
-                        UInt256 balance = reader.GetBalance(baseBlock, _address1);
-                        Assert.That(balance, Is.EqualTo(value));
+                        Assert.That(reader.TryGetAccount(baseBlock, _address1, out AccountStruct account), Is.True);
+                        Assert.That(account.Balance, Is.EqualTo(value));
+                        Assert.That(account.Nonce, Is.EqualTo((UInt256)7));
                     }
                 });
 
@@ -214,7 +209,7 @@ namespace Nethermind.Store.Test
             /* all testing will be touching just a single storage cell */
             StorageCell storageCell = new(_address1, UInt256.One);
 
-            using Context ctx = new(backend);
+            using Context ctx = new(useFlat);
             IWorldState state = ctx.WorldState;
             IStateReader reader = ctx.Reader;
             byte[] initialValue = new byte[] { 1, 2, 3 };
@@ -270,7 +265,7 @@ namespace Nethermind.Store.Test
         [Test]
         public void Can_collect_stats()
         {
-            using Context ctx = new(backend);
+            using Context ctx = new(useFlat);
             IWorldState provider = ctx.WorldState;
             IStateReader stateReader = ctx.Reader;
 
@@ -293,7 +288,7 @@ namespace Nethermind.Store.Test
             IReleaseSpec releaseSpec = ReleaseSpecSubstitute.Create();
             releaseSpec.IsEip3607Enabled.Returns(eip3607Enabled);
             releaseSpec.IsEip7702Enabled.Returns(eip7702Enabled);
-            Context ctx = new(backend);
+            Context ctx = new(useFlat);
             IWorldState sut = ctx.WorldState;
             IDisposable scope = sut.BeginScope(IWorldState.PreGenesis);
             sut.CreateAccount(TestItem.AddressA, 0);
@@ -375,7 +370,7 @@ namespace Nethermind.Store.Test
         [Test]
         public void Can_accepts_visitors()
         {
-            using Context ctx = new(backend);
+            using Context ctx = new(useFlat);
             IWorldState provider = ctx.WorldState;
             IStateReader reader = ctx.Reader;
             Hash256 stateRoot;
@@ -394,7 +389,7 @@ namespace Nethermind.Store.Test
         [Test]
         public void Can_dump_state()
         {
-            using Context ctx = new(backend);
+            using Context ctx = new(useFlat);
             IWorldState provider = ctx.WorldState;
             IStateReader reader = ctx.Reader;
 
@@ -412,23 +407,9 @@ namespace Nethermind.Store.Test
         }
 
         [Test]
-        public void TryGetAccount_ExistingAccount_ReturnsTrue()
-        {
-            using Context ctx = new(backend);
-            Account expected = TestItem.GenerateIndexedAccount(7);
-            BlockHeader header = ctx.CommitAndCapture(state => state.CreateAccount(TestItem.AddressA, expected.Balance, expected.Nonce));
-
-            bool result = ctx.Reader.TryGetAccount(header, TestItem.AddressA, out AccountStruct account);
-
-            result.Should().BeTrue();
-            account.Balance.Should().Be(expected.Balance);
-            account.Nonce.Should().Be(expected.Nonce);
-        }
-
-        [Test]
         public void TryGetAccount_NonExistentAccount_ReturnsFalse()
         {
-            using Context ctx = new(backend);
+            using Context ctx = new(useFlat);
             BlockHeader header = ctx.CommitAndCapture(state => state.CreateAccount(TestItem.AddressA, 1, 1));
 
             // The out parameter is intentionally not asserted: the IStateReader contract leaves it
@@ -440,26 +421,9 @@ namespace Nethermind.Store.Test
         }
 
         [Test]
-        public void GetStorage_ExistingSlot_ReturnsValue()
-        {
-            using Context ctx = new(backend);
-            StorageCell cell = new(TestItem.AddressA, (UInt256)42);
-            byte[] value = [0xab, 0xcd];
-            BlockHeader header = ctx.CommitAndCapture(state =>
-            {
-                state.CreateAccount(TestItem.AddressA, 1);
-                state.Set(cell, value);
-            });
-
-            byte[] result = ctx.Reader.GetStorage(header, cell.Address, cell.Index).ToArray();
-
-            result.Should().Equal(value);
-        }
-
-        [Test]
         public void GetCode_EmptyHash_ReturnsEmpty()
         {
-            using Context ctx = new(backend);
+            using Context ctx = new(useFlat);
 
             ctx.Reader.GetCode(Keccak.OfAnEmptyString).Should().BeEmpty();
             ctx.Reader.GetCode(Keccak.OfAnEmptyString.ValueHash256).Should().BeEmpty();
@@ -468,7 +432,7 @@ namespace Nethermind.Store.Test
         [Test]
         public void GetCode_KnownCode_ReturnsCode()
         {
-            using Context ctx = new(backend);
+            using Context ctx = new(useFlat);
             byte[] code = [0x60, 0x80];
             ValueHash256 codeHash = ValueKeccak.Compute(code);
             ctx.CommitAndCapture(state =>
@@ -484,7 +448,7 @@ namespace Nethermind.Store.Test
         [Test]
         public void HasStateForBlock_CommittedBlock_ReturnsTrue()
         {
-            using Context ctx = new(backend);
+            using Context ctx = new(useFlat);
             BlockHeader header = ctx.CommitAndCapture(state => state.CreateAccount(TestItem.AddressA, 1));
 
             ctx.Reader.HasStateForBlock(header).Should().BeTrue();
