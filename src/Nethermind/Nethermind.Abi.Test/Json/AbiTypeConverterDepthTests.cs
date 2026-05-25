@@ -10,8 +10,8 @@ namespace Nethermind.Abi.Test.Json;
 
 public class AbiTypeConverterDepthTests
 {
-    [TestCase(32, false)]
-    [TestCase(33, true)]
+    [TestCase(1024, false)]
+    [TestCase(1025, true)]
     public void Enforces_array_nesting_limit(int depth, bool shouldThrow)
     {
         string payload = new StringBuilder("uint256").Insert("uint256".Length, "[]", depth).ToString();
