@@ -260,6 +260,7 @@ namespace Nethermind.Trie
             // Passing true would invalidate it back to the unresolved sentinel and force the
             // next RootRef read to lazy-load through the read resolver, which during genesis
             // processing cannot yet see the committed dirty nodes through that path.
+            // Keeping it is safe because the root was just committed and sealed by this method.
             SetRootHash(newRoot?.Keccak, resetObjects: false);
         }
 
