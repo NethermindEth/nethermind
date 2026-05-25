@@ -14,8 +14,11 @@ public class TaskCompletionSourceMustRunContinuationsAsynchronouslyAnalyzerTests
     [TestCase("new System.Threading.Tasks.TaskCompletionSource((object?)null)")]
     [TestCase("new System.Threading.Tasks.TaskCompletionSource(System.Threading.Tasks.TaskCreationOptions.None)")]
     [TestCase("new System.Threading.Tasks.TaskCompletionSource(System.Threading.Tasks.TaskCreationOptions.LongRunning)")]
+    [TestCase("new System.Threading.Tasks.TaskCompletionSource(creationOptions: System.Threading.Tasks.TaskCreationOptions.None)")]
     [TestCase("new System.Threading.Tasks.TaskCompletionSource<int>()")]
+    [TestCase("new System.Threading.Tasks.TaskCompletionSource<int>((object?)null)")]
     [TestCase("new System.Threading.Tasks.TaskCompletionSource<int>(System.Threading.Tasks.TaskCreationOptions.None)")]
+    [TestCase("new System.Threading.Tasks.TaskCompletionSource<int>(creationOptions: System.Threading.Tasks.TaskCreationOptions.None)")]
     public async Task Construction_without_run_continuations_async_reports_diagnostic(string expression)
     {
         string source = $$"""
