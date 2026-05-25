@@ -303,8 +303,6 @@ public class PersistenceManagerTests
         TrieNode node = new(NodeType.Leaf, Keccak.Zero);
         snapshot.Content.StateNodes[path] = node;
 
-        // Hand-rolled fake — NSubstitute proxies fail at runtime when SetStateTrieNode is invoked
-        // (Castle DynamicProxy can't proxy methods with scoped ReadOnlySpan<byte> parameters).
         FakeWriteBatch writeBatch = new();
         _persistence.CreateWriteBatch(from, to).Returns(writeBatch);
 

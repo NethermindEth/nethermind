@@ -95,8 +95,6 @@ public class PreimageRecordingPersistenceTests
     {
         StateId from = StateId.PreGenesis;
         StateId to = new(1, TestItem.KeccakA);
-        // Hand-rolled capturing fake — NSubstitute proxies fail at runtime on methods with
-        // scoped ReadOnlySpan<byte> parameters (Castle DynamicProxy can't proxy ref structs).
         FakeWriteBatch innerBatch = new();
         _innerPersistence.CreateWriteBatch(from, to, WriteFlags.None).Returns(innerBatch);
 
