@@ -33,7 +33,7 @@ public class MCSLockTests
     {
         int counter = 0;
         int numberOfThreads = 10;
-        List<Thread> threads = new();
+        List<Thread> threads = [];
 
         for (int i = 0; i < numberOfThreads; i++)
         {
@@ -60,8 +60,8 @@ public class MCSLockTests
     public void LockFairnessTest()
     {
         int numberOfThreads = 10;
-        List<int> executionOrder = new();
-        List<Thread> threads = new();
+        List<int> executionOrder = [];
+        List<Thread> threads = [];
 
         for (int i = 0; i < numberOfThreads; i++)
         {

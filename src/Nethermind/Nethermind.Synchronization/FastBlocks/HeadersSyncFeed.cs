@@ -60,7 +60,7 @@ namespace Nethermind.Synchronization.FastBlocks
         /// <summary>
         /// Requests sent to peers for which responses have not been received yet
         /// </summary>
-        protected readonly ConcurrentHashSet<HeadersSyncBatch> _sent = new();
+        protected readonly ConcurrentHashSet<HeadersSyncBatch> _sent = [];
 
         /// <summary>
         /// Responses received from peers but waiting in a queue for some other requests to be handled first
@@ -431,7 +431,7 @@ namespace Nethermind.Synchronization.FastBlocks
             {
                 lock (_handlerLock)
                 {
-                    Dictionary<long, string> all = new();
+                    Dictionary<long, string> all = [];
                     StringBuilder builder = new();
                     builder.AppendLine($"SENT {_sent.Count} PENDING {_pending.Count} DEPENDENCIES {_dependencies.Count}");
                     foreach (KeyValuePair<long, HeadersSyncBatch> headerDependency in _dependencies)

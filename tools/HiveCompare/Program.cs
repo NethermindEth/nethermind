@@ -98,7 +98,7 @@ internal class Program
             }
         }
 
-        List<TestCase> newInTest1 = new();
+        List<TestCase> newInTest1 = [];
 
         foreach (string key in testCases1.Keys)
         {

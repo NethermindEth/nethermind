@@ -24,7 +24,7 @@ namespace Nethermind.Consensus.Stateless;
 
 public class WitnessGeneratingWorldState(IWorldState inner, IStateReader stateReader, WitnessCapturingTrieStore trieStore, WitnessGeneratingHeaderFinder headerFinder) : IWorldState
 {
-    private readonly Dictionary<Address, HashSet<UInt256>> _storageSlots = new();
+    private readonly Dictionary<Address, HashSet<UInt256>> _storageSlots = [];
 
     private readonly Dictionary<ValueHash256, byte[]> _bytecodes = new(GenericEqualityComparer.GetOptimized<ValueHash256>());
 
@@ -300,7 +300,7 @@ public class WitnessGeneratingWorldState(IWorldState inner, IStateReader stateRe
     private HashSet<UInt256> RecordEmptySlots(Address address)
     {
         ref HashSet<UInt256>? slot = ref CollectionsMarshal.GetValueRefOrAddDefault(_storageSlots, address, out _);
-        slot ??= new HashSet<UInt256>();
+        slot ??= [];
         return slot;
     }
 

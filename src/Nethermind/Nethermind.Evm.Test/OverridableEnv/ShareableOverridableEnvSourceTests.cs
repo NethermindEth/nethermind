@@ -91,7 +91,7 @@ public class ShareableOverridableEnvSourceTests
     private sealed class FakeEnvFactory(bool throwOnBuild = false)
     {
         private bool _throwOnBuild = throwOnBuild;
-        private readonly List<FakeEnv> _envs = new();
+        private readonly List<FakeEnv> _envs = [];
 
         public int Created => _envs.Count;
         public int DisposedCount

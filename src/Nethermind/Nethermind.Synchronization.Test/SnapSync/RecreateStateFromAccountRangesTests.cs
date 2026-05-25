@@ -65,7 +65,7 @@ public class RecreateStateFromAccountRangesTests
         IScopedTrieStore store = new RawScopedTrieStore(db);
         StateTree tree = new(store, LimboLogs.Instance);
 
-        IList<TrieNode> nodes = new List<TrieNode>();
+        IList<TrieNode> nodes = [];
         TreePath emptyPath = TreePath.Empty;
 
         for (int i = 0; i < (firstProof!).Length; i++)
@@ -406,7 +406,7 @@ public class RecreateStateFromAccountRangesTests
         TestItem.Tree.FillStateTreeMultipleAccount(inputTree, 100);
         Hash256 rootHash = inputTree.RootHash;
 
-        List<PathWithAccount> allAccounts = new();
+        List<PathWithAccount> allAccounts = [];
         for (int i = 0; i < 100; i++)
         {
             Hash256 path = Keccak.Compute(i.ToBigEndianByteArray());
@@ -450,7 +450,7 @@ public class RecreateStateFromAccountRangesTests
         TestItem.Tree.FillStateTreeMultipleAccount(inputTree, 50);
         Hash256 rootHash = inputTree.RootHash;
 
-        List<PathWithAccount> allAccounts = new();
+        List<PathWithAccount> allAccounts = [];
         for (int i = 0; i < 50; i++)
         {
             Hash256 path = Keccak.Compute(i.ToBigEndianByteArray());
@@ -485,7 +485,7 @@ public class RecreateStateFromAccountRangesTests
         TestItem.Tree.FillStateTreeMultipleAccount(inputTree, 80);
         Hash256 rootHash = inputTree.RootHash;
 
-        List<PathWithAccount> allAccounts = new();
+        List<PathWithAccount> allAccounts = [];
         for (int i = 0; i < 80; i++)
         {
             Hash256 path = Keccak.Compute(i.ToBigEndianByteArray());

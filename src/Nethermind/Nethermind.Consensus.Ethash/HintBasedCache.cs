@@ -15,10 +15,10 @@ namespace Nethermind.Consensus.Ethash
 {
     internal class HintBasedCache(Func<uint, IEthashDataSet> createDataSet, ILogManager logManager)
     {
-        private readonly Dictionary<Guid, HashSet<uint>> _epochsPerGuid = new();
-        private readonly Dictionary<uint, int> _epochRefs = new();
-        private readonly Dictionary<uint, Task<IEthashDataSet>> _cachedSets = new();
-        private readonly Dictionary<uint, DataSetWithTime> _recent = new();
+        private readonly Dictionary<Guid, HashSet<uint>> _epochsPerGuid = [];
+        private readonly Dictionary<uint, int> _epochRefs = [];
+        private readonly Dictionary<uint, Task<IEthashDataSet>> _cachedSets = [];
+        private readonly Dictionary<uint, DataSetWithTime> _recent = [];
 
         private struct DataSetWithTime(DateTimeOffset timestamp, Task<IEthashDataSet> dataSet)
         {
@@ -47,7 +47,7 @@ namespace Nethermind.Consensus.Ethash
             ref HashSet<uint>? value = ref CollectionsMarshal.GetValueRefOrAddDefault(_epochsPerGuid, guid, out bool exists);
             if (!exists)
             {
-                value = new HashSet<uint>();
+                value = [];
             }
 
             HashSet<uint> epochForGuid = value;

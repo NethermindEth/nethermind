@@ -16,6 +16,7 @@ using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Modules.DebugModule;
 using Nethermind.State;
+using Newtonsoft.Json.Linq;
 using NUnit.Framework;
 
 namespace Nethermind.JsonRpc.Test.Modules;
@@ -60,9 +61,10 @@ public partial class DebugRpcModuleTests
         using Context ctx = await CreateContext();
         TransactionBundle bundle = CreateBundle(CreateTransaction());
 
-        ResultWrapper<IEnumerable<IEnumerable<GethLikeTxTrace>>> result = ctx.DebugRpcModule.debug_traceCallMany([bundle], BlockParameter.Latest);
+        JArray result = await RunTraceCallManyAsJson(ctx, [bundle]);
 
-        result.Data.First().First().Should().NotBeNull();
+        result.Should().HaveCount(1);
+        ((JArray)result[0]).Should().HaveCount(1);
     }
 
     [Test]
@@ -70,9 +72,9 @@ public partial class DebugRpcModuleTests
     {
         using Context ctx = await CreateContext();
 
-        ResultWrapper<IEnumerable<IEnumerable<GethLikeTxTrace>>> result = ctx.DebugRpcModule.debug_traceCallMany([CreateBundle(CreateTransaction()), CreateBundle(CreateTransaction(to: TestItem.AddressD))], BlockParameter.Latest);
+        JArray result = await RunTraceCallManyAsJson(ctx, [CreateBundle(CreateTransaction()), CreateBundle(CreateTransaction(to: TestItem.AddressD))]);
 
-        result.Data.Select(r => r.Count()).Should().BeEquivalentTo([1, 1]);
+        result.Select(r => ((JArray)r).Count).Should().BeEquivalentTo([1, 1]);
     }
 
     [Test]
@@ -81,9 +83,9 @@ public partial class DebugRpcModuleTests
         using Context ctx = await CreateContext();
         TransactionBundle bundle = CreateBundle(CreateTransaction(), CreateTransaction(to: TestItem.AddressD));
 
-        ResultWrapper<IEnumerable<IEnumerable<GethLikeTxTrace>>> result = ctx.DebugRpcModule.debug_traceCallMany([bundle], BlockParameter.Latest);
+        JArray result = await RunTraceCallManyAsJson(ctx, [bundle]);
 
-        result.Data.Select(r => r.Count()).Should().BeEquivalentTo([2]);
+        result.Select(r => ((JArray)r).Count).Should().BeEquivalentTo([2]);
     }
 
     [Test]
@@ -92,11 +94,15 @@ public partial class DebugRpcModuleTests
         using Context ctx = await CreateContext();
         TransactionBundle bundle = CreateBundle(CreateTransaction(value: 200.Ether));
 
-        ResultWrapper<IEnumerable<IEnumerable<GethLikeTxTrace>>> result = ctx.DebugRpcModule.debug_traceCallMany([bundle], BlockParameter.Latest);
-        result.Data.Select(r => r.Count()).Should().BeEquivalentTo([1]);
+        JArray result = await RunTraceCallManyAsJson(ctx, [bundle]);
 
-        GethLikeTxTrace trace = result.Data.First().First();
-        trace.Gas.Should().BeGreaterThan(0);
+        result.Select(r => ((JArray)r).Count).Should().BeEquivalentTo([1]);
+
+        JToken trace = result[0][0]!;
+        ((bool)trace["failed"]!).Should().BeTrue("insufficient balance must surface as failed:true");
+        ((long)trace["gas"]!).Should().BeGreaterThan(0, "failed trace gas reflects the tx gas limit");
+        ((string)trace["error"]!).Should().Contain("insufficient funds", "Nethermind wording is translated to Geth's wording for compat");
+        ((int)trace["errorCode"]!).Should().Be(ErrorCodes.InvalidInput, "tracing-failure errorCode mirrors the buffered ErrorCodes.InvalidInput");
     }
 
     [Test]
@@ -105,9 +111,9 @@ public partial class DebugRpcModuleTests
         using Context ctx = await CreateContext();
         TransactionBundle bundle = CreateBundle(CreateTransaction(gas: long.MaxValue));
 
-        ResultWrapper<IEnumerable<IEnumerable<GethLikeTxTrace>>> result = ctx.DebugRpcModule.debug_traceCallMany([bundle], BlockParameter.Latest);
+        JArray result = await RunTraceCallManyAsJson(ctx, [bundle]);
 
-        result.Data.Should().HaveCount(1);
+        result.Should().HaveCount(1);
     }
 
     [Test]
@@ -118,9 +124,17 @@ public partial class DebugRpcModuleTests
 
         GethTraceOptions options = new() { DisableStorage = true, DisableStack = true };
 
-        ResultWrapper<IEnumerable<IEnumerable<GethLikeTxTrace>>> result = ctx.DebugRpcModule.debug_traceCallMany([bundle], BlockParameter.Latest, options);
+        JArray result = await RunTraceCallManyAsJson(ctx, [bundle], options);
 
-        result.Data.Select(r => r.Count()).Should().BeEquivalentTo([1]);
+        result.Select(r => ((JArray)r).Count).Should().BeEquivalentTo([1]);
+    }
+
+    private static async Task<JArray> RunTraceCallManyAsJson(Context ctx, TransactionBundle[] bundles, GethTraceOptions? options = null)
+    {
+        string response = options is null
+            ? await RpcTest.TestSerializedRequest(ctx.DebugRpcModule, "debug_traceCallMany", bundles, "latest")
+            : await RpcTest.TestSerializedRequest(ctx.DebugRpcModule, "debug_traceCallMany", bundles, "latest", options);
+        return (JArray)JToken.Parse(response)["result"]!;
     }
 
     [Test]
@@ -225,10 +239,10 @@ public partial class DebugRpcModuleTests
 
         TransactionBundle bundle = CreateBundle(CreateTransaction(to: contractAddress, value: 0, gas: 100_000));
 
-        ResultWrapper<IEnumerable<IEnumerable<GethLikeTxTrace>>> result = ctx.DebugRpcModule.debug_traceCallMany([bundle], BlockParameter.Latest);
+        JArray result = await RunTraceCallManyAsJson(ctx, [bundle]);
 
-        GethLikeTxTrace trace = result.Data.First().First();
-        long gasAvailable = (long)trace.ReturnValue.ToUInt256();
+        byte[] returnValue = Bytes.FromHexString((string)result[0][0]!["returnValue"]!);
+        long gasAvailable = (long)returnValue.ToUInt256();
         gasAvailable.Should().BeLessThan(gasCap);
         gasAvailable.Should().BeGreaterThan(0);
     }

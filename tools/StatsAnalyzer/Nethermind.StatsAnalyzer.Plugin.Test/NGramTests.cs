@@ -155,7 +155,7 @@ public class NGramTests
     [TestCaseSource(nameof(SubsequenceTestCases))]
     public void validate_ngram_subsequece_generation(Instruction[] testcase, Instruction[][] expectedSubsequences)
     {
-        Dictionary<ulong, ulong> counts = new();
+        Dictionary<ulong, ulong> counts = [];
         NGram ngram = new(testcase);
 
 
@@ -179,7 +179,7 @@ public class NGramTests
         Instruction[][] expectedSubsequences)
     {
         CmSketch[] sketchBuffer = new CmSketch[1];
-        Dictionary<ulong, ulong> topNMap = new();
+        Dictionary<ulong, ulong> topNMap = [];
         PriorityQueue<ulong, ulong> topNQueue = new();
         NGram ngram = new(testcase);
 

@@ -10,7 +10,6 @@ using System.Runtime.InteropServices;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Collections;
-using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 
 namespace Nethermind.Consensus.Processing;
@@ -29,16 +28,14 @@ namespace Nethermind.Consensus.Processing;
 //     against the suggested index. _hasOutOfRangeChange flips when a generated
 //     change targets an index past the suggested last index — in that case
 //     full-slow validation is required.
-internal sealed class BlockAccessListValidationIndex
+internal sealed partial class BlockAccessListValidationIndex : IDisposable
 {
     private readonly AddressIndex _addressIndex;
     private readonly uint _lastIndex;
     private readonly bool _isMutable;
-    private readonly Lane<UInt256> _balance;
-    private readonly Lane<ulong> _nonce;
-    private readonly Lane<ValueHash256> _code;
-    private readonly StorageLane _storage;
-    private ulong[] _hasAccountWords = [];
+    private readonly LaneStore _lanes;
+    private ulong[] _hasAccountWords;
+    private bool _disposed;
     private bool _hasOutOfRangeChange;
     // Generated-side accumulators (mutable index only). Flat (ordinal, slot) lists sorted
     // lazily on first structural-equivalence query. Writes mirror StorageChanges and gate
@@ -59,14 +56,14 @@ internal sealed class BlockAccessListValidationIndex
         if (_lastIndex != suggested._lastIndex)
             throw new ArgumentException("Suggested validation index has a different row count.", nameof(suggested));
         _isMutable = true;
-        _balance = Lane<UInt256>.CreateMutableLike(suggested._balance);
-        _nonce = Lane<ulong>.CreateMutableLike(suggested._nonce);
-        _code = Lane<ValueHash256>.CreateMutableLike(suggested._code);
-        _storage = StorageLane.CreateMutableLike(suggested._storage);
+        _lanes = new LaneStore(suggested._lanes);
         // Slack covers per-tx duplication before dedup on reads, and invalid wire BALs that push
         // generated past suggested before lane overflow trips.
         _generatedStorageReads = new(WithSlack(storageReadsCapacity));
         _generatedStorageWrites = new(WithSlack(storageWritesCapacity));
+        // Start with an empty bitmap; MarkAccount grows it through the pool on first use, so
+        // blocks that never call MarkAccount don't rent anything.
+        _hasAccountWords = [];
     }
 
     /// <summary>Capacity hint plus headroom so the lists don't immediately resize on the first
@@ -77,18 +74,12 @@ internal sealed class BlockAccessListValidationIndex
     private BlockAccessListValidationIndex(
         AddressIndex addressIndex,
         uint lastIndex,
-        Lane<UInt256> balance,
-        Lane<ulong> nonce,
-        Lane<ValueHash256> code,
-        StorageLane storage,
+        LaneStore lanes,
         ulong[] hasAccountWords)
     {
         _addressIndex = addressIndex;
         _lastIndex = lastIndex;
-        _balance = balance;
-        _nonce = nonce;
-        _code = code;
-        _storage = storage;
+        _lanes = lanes;
         _hasAccountWords = hasAccountWords;
     }
 
@@ -96,24 +87,32 @@ internal sealed class BlockAccessListValidationIndex
     {
         uint lastIndex = GetLastIndex(txCount);
         int rowCount = checked((int)lastIndex + 1);
-        Counts counts = new(rowCount);
-        Count(blockAccessList, counts, lastIndex);
+        ReadOnlySpan<ReadOnlyAccountChanges> accounts = blockAccessList.AccountChanges.AsSpan();
 
-        Lane<UInt256> balance = Lane<UInt256>.CreateImmutable(counts.Balance);
-        Lane<ulong> nonce = Lane<ulong>.CreateImmutable(counts.Nonce);
-        Lane<ValueHash256> code = Lane<ValueHash256>.CreateImmutable(counts.Code);
-        StorageLane storage = StorageLane.CreateImmutable(counts.Storage);
+        // One pooled buffer carved into four per-row counter spans, instead of four separate
+        // rents — each lane occupies a contiguous rowCount-sized window.
+        using ArrayPoolListRef<int> counters = new(rowCount * 4, rowCount * 4);
+        LaneSpans counts = PartitionInQuarters(counters.AsSpan(), rowCount);
 
-        ulong[] hasAccountWords = new ulong[WordCount(blockAccessList.AccountChanges.Count)];
+        Count(accounts, counts, lastIndex);
 
-        FillAndMark(blockAccessList, addressIndex, lastIndex, balance, nonce, code, storage, hasAccountWords);
-
-        balance.SortAllRows();
-        nonce.SortAllRows();
-        code.SortAllRows();
-        storage.SortAllRows();
-
-        return new(addressIndex, lastIndex, balance, nonce, code, storage, hasAccountWords);
+        LaneStore lanes = default;
+        ulong[]? hasAccountWords = null;
+        try
+        {
+            lanes = new LaneStore(counts);
+            int wordCount = WordCount(accounts.Length);
+            hasAccountWords = wordCount == 0 ? [] : PooledArrays.RentCleared<ulong>(wordCount);
+            lanes.FillFromAccounts(accounts, addressIndex, lastIndex, hasAccountWords);
+            lanes.SortAllRows();
+            return new(addressIndex, lastIndex, lanes, hasAccountWords);
+        }
+        catch
+        {
+            if (hasAccountWords is { Length: > 0 }) PooledArrays.Return(hasAccountWords);
+            lanes.Dispose();
+            throw;
+        }
     }
 
     /// <summary>
@@ -135,19 +134,19 @@ internal sealed class BlockAccessListValidationIndex
 
             if (accountChanges.BalanceChange is { } balance)
             {
-                if (TryGetRow(balance.Index, _lastIndex, out int row)) RecordIfOverflow(_balance.Add(row, accountOrdinal, balance.Value), balance.Index, accountChanges.Address);
+                if (TryGetRow(balance.Index, _lastIndex, out int row)) RecordIfOverflow(_lanes.TryAddBalance(row, accountOrdinal, balance.Value), balance.Index, accountChanges.Address);
                 else _hasOutOfRangeChange = true;
             }
 
             if (accountChanges.NonceChange is { } nonce)
             {
-                if (TryGetRow(nonce.Index, _lastIndex, out int row)) RecordIfOverflow(_nonce.Add(row, accountOrdinal, nonce.Value), nonce.Index, accountChanges.Address);
+                if (TryGetRow(nonce.Index, _lastIndex, out int row)) RecordIfOverflow(_lanes.TryAddNonce(row, accountOrdinal, nonce.Value), nonce.Index, accountChanges.Address);
                 else _hasOutOfRangeChange = true;
             }
 
             if (accountChanges.CodeChange is { } code)
             {
-                if (TryGetRow(code.Index, _lastIndex, out int row)) RecordIfOverflow(_code.Add(row, accountOrdinal, code.CodeHash), code.Index, accountChanges.Address);
+                if (TryGetRow(code.Index, _lastIndex, out int row)) RecordIfOverflow(_lanes.TryAddCode(row, accountOrdinal, code.CodeHash), code.Index, accountChanges.Address);
                 else _hasOutOfRangeChange = true;
             }
 
@@ -155,7 +154,7 @@ internal sealed class BlockAccessListValidationIndex
             int writesCountBefore = writes.Count;
             foreach (KeyValuePair<UInt256, StorageChange> kv in accountChanges.StorageChanges)
             {
-                if (TryGetRow(kv.Value.Index, _lastIndex, out int row)) RecordIfOverflow(_storage.Add(row, accountOrdinal, kv.Key, kv.Value.Value), kv.Value.Index, accountChanges.Address);
+                if (TryGetRow(kv.Value.Index, _lastIndex, out int row)) RecordIfOverflow(_lanes.TryAddStorage(row, accountOrdinal, kv.Key, kv.Value.Value), kv.Value.Index, accountChanges.Address);
                 else _hasOutOfRangeChange = true;
                 writes.Add((accountOrdinal, kv.Key));
             }
@@ -169,10 +168,7 @@ internal sealed class BlockAccessListValidationIndex
             }
         }
 
-        _balance.SortTouchedRows();
-        _nonce.SortTouchedRows();
-        _code.SortTouchedRows();
-        _storage.SortTouchedRows();
+        _lanes.SortTouchedRows();
     }
 
     private void RecordIfOverflow(bool added, uint index, Address address)
@@ -246,7 +242,8 @@ internal sealed class BlockAccessListValidationIndex
         mismatchAddress = null;
         generatedAccountCount = MarkedAccountCount;
 
-        if (suggested.AccountChanges.Count != generatedAccountCount)
+        ReadOnlySpan<ReadOnlyAccountChanges> suggestedAccounts = suggested.AccountChanges.AsSpan();
+        if (suggestedAccounts.Length != generatedAccountCount)
         {
             return StructuralMismatchKind.AccountCountMismatch;
         }
@@ -267,7 +264,7 @@ internal sealed class BlockAccessListValidationIndex
         int writesCursor = 0;
         int lastOrdinal = -1;
 
-        foreach (ReadOnlyAccountChanges suggestedAccount in suggested.AccountChanges)
+        foreach (ReadOnlyAccountChanges suggestedAccount in suggestedAccounts)
         {
             if (!_addressIndex.TryGet(suggestedAccount.Address, out int ordinal) || !HasAccountOrdinal(ordinal))
             {
@@ -361,52 +358,16 @@ internal sealed class BlockAccessListValidationIndex
             return false;
         }
 
-        int row = (int)index;
-        return _balance.ChangesEqual(other._balance, row) &&
-               _nonce.ChangesEqual(other._nonce, row) &&
-               _code.ChangesEqual(other._code, row) &&
-               _storage.ChangesEqual(other._storage, row);
+        return _lanes.ChangesEqual(other._lanes, (int)index);
     }
 
     /// <summary>
-    /// True iff any of the four lanes has data at (<paramref name="row"/>, <paramref name="ordinal"/>).
+    /// The bundled-lane storage. Exposed so the validation slow path in
+    /// <c>BlockAccessListManager</c> can issue <see cref="LaneStore.HasAt"/> and
+    /// <see cref="LaneStore.ChangesAtRowEqualForOrdinal"/> queries against the typed lanes
+    /// without going through one-line wrappers on the index.
     /// </summary>
-    public bool HasChangesAtRow(int row, int ordinal) =>
-        _balance.HasAt(row, ordinal) || _nonce.HasAt(row, ordinal) ||
-        _code.HasAt(row, ordinal) || _storage.HasAt(row, ordinal);
-
-    /// <summary>
-    /// True iff both indexes have the same per-lane data at (<paramref name="row"/>, <paramref name="ordinal"/>).
-    /// </summary>
-    public bool ChangesAtRowEqualForOrdinal(BlockAccessListValidationIndex other, int row, int ordinal)
-    {
-        // Each scalar lane: presence must match; if both present, value must match.
-        if (_balance.HasAt(row, ordinal))
-        {
-            if (!other._balance.TryGetAt(row, ordinal, out UInt256 otherBal)) return false;
-            _balance.TryGetAt(row, ordinal, out UInt256 thisBal);
-            if (!thisBal.Equals(otherBal)) return false;
-        }
-        else if (other._balance.HasAt(row, ordinal)) return false;
-
-        if (_nonce.HasAt(row, ordinal))
-        {
-            if (!other._nonce.TryGetAt(row, ordinal, out ulong otherN)) return false;
-            _nonce.TryGetAt(row, ordinal, out ulong thisN);
-            if (thisN != otherN) return false;
-        }
-        else if (other._nonce.HasAt(row, ordinal)) return false;
-
-        if (_code.HasAt(row, ordinal))
-        {
-            if (!other._code.TryGetAt(row, ordinal, out ValueHash256 otherC)) return false;
-            _code.TryGetAt(row, ordinal, out ValueHash256 thisC);
-            if (!thisC.Equals(otherC)) return false;
-        }
-        else if (other._code.HasAt(row, ordinal)) return false;
-
-        return _storage.SlotsEqualAt(other._storage, row, ordinal);
-    }
+    internal LaneStore Lanes => _lanes;
 
     /// <summary>
     /// True iff this index has accumulated any storage_reads for the given ordinal.
@@ -452,9 +413,9 @@ internal sealed class BlockAccessListValidationIndex
 
     public bool HasAccount(int ordinal) => HasAccountOrdinal(ordinal);
 
-    private static void Count(ReadOnlyBlockAccessList blockAccessList, Counts counts, uint lastIndex)
+    private static void Count(ReadOnlySpan<ReadOnlyAccountChanges> accounts, LaneSpans counts, uint lastIndex)
     {
-        foreach (ReadOnlyAccountChanges accountChanges in blockAccessList.AccountChanges)
+        foreach (ReadOnlyAccountChanges accountChanges in accounts)
         {
             Count(accountChanges.BalanceChanges, counts.Balance, lastIndex);
             Count(accountChanges.NonceChanges, counts.Nonce, lastIndex);
@@ -467,7 +428,7 @@ internal sealed class BlockAccessListValidationIndex
         }
     }
 
-    private static void Count<TChange>(ReadOnlySpan<TChange> changes, int[] counts, uint lastIndex)
+    private static void Count<TChange>(ReadOnlySpan<TChange> changes, Span<int> counts, uint lastIndex)
         where TChange : struct, IIndexedChange
     {
         for (int i = 0; i < changes.Length; i++)
@@ -479,58 +440,12 @@ internal sealed class BlockAccessListValidationIndex
         }
     }
 
-    private static void FillAndMark(
-        ReadOnlyBlockAccessList blockAccessList,
-        AddressIndex addressIndex,
-        uint lastIndex,
-        Lane<UInt256> balance,
-        Lane<ulong> nonce,
-        Lane<ValueHash256> code,
-        StorageLane storage,
-        ulong[] hasAccountWords)
-    {
-        int[] balanceCursors = balance.CreateFillCursors();
-        int[] nonceCursors = nonce.CreateFillCursors();
-        int[] codeCursors = code.CreateFillCursors();
-        int[] storageCursors = storage.CreateFillCursors();
-
-        foreach (ReadOnlyAccountChanges accountChanges in blockAccessList.AccountChanges)
-        {
-            int accountOrdinal = addressIndex.GetOrAdd(accountChanges.Address);
-            SetBit(hasAccountWords, accountOrdinal);
-
-            foreach (BalanceChange change in accountChanges.BalanceChanges)
-            {
-                if (TryGetRow(change.Index, lastIndex, out int row)) balance.Fill(row, balanceCursors, accountOrdinal, change.Value);
-            }
-
-            foreach (NonceChange change in accountChanges.NonceChanges)
-            {
-                if (TryGetRow(change.Index, lastIndex, out int row)) nonce.Fill(row, nonceCursors, accountOrdinal, change.Value);
-            }
-
-            foreach (CodeChange change in accountChanges.CodeChanges)
-            {
-                if (TryGetRow(change.Index, lastIndex, out int row)) code.Fill(row, codeCursors, accountOrdinal, change.CodeHash);
-            }
-
-            foreach (ReadOnlySlotChanges slotChanges in accountChanges.StorageChanges)
-            {
-                foreach (StorageChange change in slotChanges.Changes)
-                {
-                    if (TryGetRow(change.Index, lastIndex, out int row)) storage.Fill(row, storageCursors, accountOrdinal, slotChanges.Key, change.Value);
-                }
-            }
-        }
-    }
-
     private bool HasAccountOrdinal(int accountOrdinal) => TestBit(_hasAccountWords, accountOrdinal);
 
     private static void MarkAccount(ref ulong[] words, int accountOrdinal)
     {
         int word = accountOrdinal >> WordShift;
-        if ((uint)word >= (uint)words.Length)
-            Array.Resize(ref words, Math.Max(word + 1, words.Length == 0 ? 1 : words.Length * 2));
+        if ((uint)word >= (uint)words.Length) PooledArrays.Grow(ref words, word + 1);
         words[word] |= 1UL << (accountOrdinal & BitMask);
     }
 
@@ -587,538 +502,12 @@ internal sealed class BlockAccessListValidationIndex
         public Address GetAddress(int ordinal) => _addresses[ordinal];
     }
 
-    private sealed class Counts(int rowCount)
+    public void Dispose()
     {
-        public readonly int[] Balance = new int[rowCount];
-        public readonly int[] Nonce = new int[rowCount];
-        public readonly int[] Code = new int[rowCount];
-        public readonly int[] Storage = new int[rowCount];
-    }
-
-    private sealed class Lane<TValue>
-        where TValue : IEquatable<TValue>
-    {
-        private readonly int[] _rowStarts;
-        private readonly int[]? _rowFilled;
-        private readonly int[] _accountOrdinals;
-        private readonly TValue[] _values;
-        private readonly bool[]? _rowTouched;
-        private readonly int[]? _touchedRows;
-        private readonly bool[]? _rowOverflow;
-        private int _touchedCount;
-
-        private Lane(
-            int[] rowStarts,
-            int[]? rowFilled,
-            int[] accountOrdinals,
-            TValue[] values,
-            bool[]? rowTouched,
-            int[]? touchedRows,
-            bool[]? rowOverflow)
-        {
-            _rowStarts = rowStarts;
-            _rowFilled = rowFilled;
-            _accountOrdinals = accountOrdinals;
-            _values = values;
-            _rowTouched = rowTouched;
-            _touchedRows = touchedRows;
-            _rowOverflow = rowOverflow;
-        }
-
-        public static Lane<TValue> CreateImmutable(int[] counts)
-        {
-            int[] rowStarts = CreateRowStarts(counts);
-            return new(rowStarts, null, new int[rowStarts[^1]], new TValue[rowStarts[^1]], null, null, null);
-        }
-
-        public static Lane<TValue> CreateMutableLike(Lane<TValue> other)
-        {
-            int rowCount = other.RowCount;
-            int[] rowStarts = (int[])other._rowStarts.Clone();
-            return new(rowStarts, new int[rowCount], new int[other._accountOrdinals.Length], new TValue[other._values.Length], new bool[rowCount], new int[rowCount], new bool[rowCount]);
-        }
-
-        public int RowCount => _rowStarts.Length - 1;
-
-        public int[] CreateFillCursors() =>
-            (int[])_rowStarts.Clone();
-
-        public void Fill(int row, int[] cursors, int accountOrdinal, TValue value)
-        {
-            int offset = cursors[row]++;
-            _accountOrdinals[offset] = accountOrdinal;
-            _values[offset] = value;
-        }
-
-        public bool Add(int row, int accountOrdinal, TValue value)
-        {
-            int[] rowFilled = _rowFilled ?? throw new InvalidOperationException("Cannot append to immutable lane.");
-            int filled = rowFilled[row];
-            if ((uint)filled >= (uint)Capacity(row))
-            {
-                _rowOverflow![row] = true;
-                return false;
-            }
-
-            int offset = _rowStarts[row] + filled;
-            _accountOrdinals[offset] = accountOrdinal;
-            _values[offset] = value;
-            rowFilled[row] = filled + 1;
-            MarkTouched(row);
-            return true;
-        }
-
-        public bool ChangesEqual(Lane<TValue> other, int row)
-        {
-            if (HasOverflow(row) || other.HasOverflow(row))
-            {
-                return false;
-            }
-
-            int length = RowLength(row);
-            if (length != other.RowLength(row))
-            {
-                return false;
-            }
-
-            int start = _rowStarts[row];
-            int otherStart = other._rowStarts[row];
-            return new ReadOnlySpan<int>(_accountOrdinals, start, length)
-                       .SequenceEqual(new ReadOnlySpan<int>(other._accountOrdinals, otherStart, length)) &&
-                   new ReadOnlySpan<TValue>(_values, start, length)
-                       .SequenceEqual(new ReadOnlySpan<TValue>(other._values, otherStart, length));
-        }
-
-        /// <summary>
-        /// True iff this lane has an entry at (<paramref name="row"/>, <paramref name="ordinal"/>).
-        /// Row data is sorted by ordinal so this is a binary search.
-        /// </summary>
-        public bool HasAt(int row, int ordinal)
-        {
-            if (HasOverflow(row)) return false;
-            int start = _rowStarts[row];
-            int length = RowLength(row);
-            ReadOnlySpan<int> ordinals = new(_accountOrdinals, start, length);
-            return ordinals.BinarySearch(ordinal) >= 0;
-        }
-
-        public bool TryGetAt(int row, int ordinal, out TValue value)
-        {
-            if (HasOverflow(row)) { value = default!; return false; }
-            int start = _rowStarts[row];
-            int length = RowLength(row);
-            ReadOnlySpan<int> ordinals = new(_accountOrdinals, start, length);
-            int idx = ordinals.BinarySearch(ordinal);
-            if (idx < 0) { value = default!; return false; }
-            value = _values[start + idx];
-            return true;
-        }
-
-        public void SortAllRows()
-        {
-            for (int row = 0; row < RowCount; row++)
-            {
-                SortRow(row, Capacity(row));
-            }
-        }
-
-        public void SortTouchedRows()
-        {
-            if (_touchedCount == 0)
-            {
-                return;
-            }
-
-            bool[] rowTouched = _rowTouched!;
-            int[] touchedRows = _touchedRows!;
-            int[] rowFilled = _rowFilled!;
-            for (int i = 0; i < _touchedCount; i++)
-            {
-                int row = touchedRows[i];
-                SortRow(row, rowFilled[row]);
-                rowTouched[row] = false;
-            }
-            _touchedCount = 0;
-        }
-
-        private int Capacity(int row) =>
-            _rowStarts[row + 1] - _rowStarts[row];
-
-        private int RowLength(int row) =>
-            _rowFilled is null ? Capacity(row) : _rowFilled[row];
-
-        private bool HasOverflow(int row) =>
-            _rowOverflow is not null && _rowOverflow[row];
-
-        private void MarkTouched(int row)
-        {
-            bool[] rowTouched = _rowTouched!;
-            if (rowTouched[row])
-            {
-                return;
-            }
-
-            rowTouched[row] = true;
-            _touchedRows![_touchedCount++] = row;
-        }
-
-        private void SortRow(int row, int length)
-        {
-            if (length <= 1)
-            {
-                return;
-            }
-
-            int start = _rowStarts[row];
-            if (length <= 8)
-            {
-                InsertionSort(start, length);
-                return;
-            }
-
-            Array.Sort(_accountOrdinals, _values, start, length);
-        }
-
-        private void InsertionSort(int start, int length)
-        {
-            for (int i = 1; i < length; i++)
-            {
-                int accountOrdinal = _accountOrdinals[start + i];
-                TValue value = _values[start + i];
-                int j = i - 1;
-                while (j >= 0 && _accountOrdinals[start + j] > accountOrdinal)
-                {
-                    _accountOrdinals[start + j + 1] = _accountOrdinals[start + j];
-                    _values[start + j + 1] = _values[start + j];
-                    j--;
-                }
-
-                _accountOrdinals[start + j + 1] = accountOrdinal;
-                _values[start + j + 1] = value;
-            }
-        }
-    }
-
-    private sealed class StorageLane
-    {
-        private readonly int[] _rowStarts;
-        private readonly int[]? _rowFilled;
-        private readonly int[] _accountOrdinals;
-        private readonly UInt256[] _keys;
-        private readonly EvmWord[] _values;
-        private readonly bool[]? _rowTouched;
-        private readonly int[]? _touchedRows;
-        private readonly bool[]? _rowOverflow;
-        private int[] _orderScratch = [];
-        private int[] _accountScratch = [];
-        private UInt256[] _keyScratch = [];
-        private EvmWord[] _valueScratch = [];
-        private int _touchedCount;
-
-        private StorageLane(
-            int[] rowStarts,
-            int[]? rowFilled,
-            int[] accountOrdinals,
-            UInt256[] keys,
-            EvmWord[] values,
-            bool[]? rowTouched,
-            int[]? touchedRows,
-            bool[]? rowOverflow)
-        {
-            _rowStarts = rowStarts;
-            _rowFilled = rowFilled;
-            _accountOrdinals = accountOrdinals;
-            _keys = keys;
-            _values = values;
-            _rowTouched = rowTouched;
-            _touchedRows = touchedRows;
-            _rowOverflow = rowOverflow;
-        }
-
-        public static StorageLane CreateImmutable(int[] counts)
-        {
-            int[] rowStarts = CreateRowStarts(counts);
-            return new(rowStarts, null, new int[rowStarts[^1]], new UInt256[rowStarts[^1]], new EvmWord[rowStarts[^1]], null, null, null);
-        }
-
-        public static StorageLane CreateMutableLike(StorageLane other)
-        {
-            int rowCount = other.RowCount;
-            int[] rowStarts = (int[])other._rowStarts.Clone();
-            return new(rowStarts, new int[rowCount], new int[other._accountOrdinals.Length], new UInt256[other._keys.Length], new EvmWord[other._values.Length], new bool[rowCount], new int[rowCount], new bool[rowCount]);
-        }
-
-        public int RowCount => _rowStarts.Length - 1;
-
-        public int[] CreateFillCursors() =>
-            (int[])_rowStarts.Clone();
-
-        public void Fill(int row, int[] cursors, int accountOrdinal, UInt256 key, EvmWord value)
-        {
-            int offset = cursors[row]++;
-            _accountOrdinals[offset] = accountOrdinal;
-            _keys[offset] = key;
-            _values[offset] = value;
-        }
-
-        public bool Add(int row, int accountOrdinal, UInt256 key, EvmWord value)
-        {
-            int[] rowFilled = _rowFilled ?? throw new InvalidOperationException("Cannot append to immutable lane.");
-            int filled = rowFilled[row];
-            if ((uint)filled >= (uint)Capacity(row))
-            {
-                _rowOverflow![row] = true;
-                return false;
-            }
-
-            int offset = _rowStarts[row] + filled;
-            _accountOrdinals[offset] = accountOrdinal;
-            _keys[offset] = key;
-            _values[offset] = value;
-            rowFilled[row] = filled + 1;
-            MarkTouched(row);
-            return true;
-        }
-
-        public bool ChangesEqual(StorageLane other, int row)
-        {
-            if (HasOverflow(row) || other.HasOverflow(row))
-            {
-                return false;
-            }
-
-            int length = RowLength(row);
-            if (length != other.RowLength(row))
-            {
-                return false;
-            }
-
-            int start = _rowStarts[row];
-            int otherStart = other._rowStarts[row];
-            return new ReadOnlySpan<int>(_accountOrdinals, start, length)
-                       .SequenceEqual(new ReadOnlySpan<int>(other._accountOrdinals, otherStart, length)) &&
-                   new ReadOnlySpan<UInt256>(_keys, start, length)
-                       .SequenceEqual(new ReadOnlySpan<UInt256>(other._keys, otherStart, length)) &&
-                   new ReadOnlySpan<EvmWord>(_values, start, length)
-                       .SequenceEqual(new ReadOnlySpan<EvmWord>(other._values, otherStart, length));
-        }
-
-        /// <summary>
-        /// True iff this lane has any (slot, value) entry for <paramref name="ordinal"/> at <paramref name="row"/>.
-        /// </summary>
-        public bool HasAt(int row, int ordinal)
-        {
-            if (HasOverflow(row)) return false;
-            GetOrdinalRange(row, ordinal, out _, out int length);
-            return length > 0;
-        }
-
-        /// <summary>
-        /// True iff both lanes have identical (slot, value) sequences for <paramref name="ordinal"/> at <paramref name="row"/>.
-        /// </summary>
-        public bool SlotsEqualAt(StorageLane other, int row, int ordinal)
-        {
-            if (HasOverflow(row) || other.HasOverflow(row)) return false;
-
-            GetOrdinalRange(row, ordinal, out int thisStart, out int thisLen);
-            other.GetOrdinalRange(row, ordinal, out int otherStart, out int otherLen);
-
-            if (thisLen != otherLen) return false;
-
-            return new ReadOnlySpan<UInt256>(_keys, thisStart, thisLen)
-                       .SequenceEqual(new ReadOnlySpan<UInt256>(other._keys, otherStart, thisLen)) &&
-                   new ReadOnlySpan<EvmWord>(_values, thisStart, thisLen)
-                       .SequenceEqual(new ReadOnlySpan<EvmWord>(other._values, otherStart, thisLen));
-        }
-
-        // Row data is sorted by (ordinal, key); locates the contiguous range with the given ordinal.
-        private void GetOrdinalRange(int row, int ordinal, out int start, out int length)
-        {
-            int rowStart = _rowStarts[row];
-            int rowLength = RowLength(row);
-            ReadOnlySpan<int> ordinals = new(_accountOrdinals, rowStart, rowLength);
-            int lo = LowerBound(ordinals, ordinal);
-            int hi = LowerBound(ordinals, ordinal + 1);
-            start = rowStart + lo;
-            length = hi - lo;
-        }
-
-        /// <summary>Smallest index <c>i</c> such that <c>span[i] &gt;= value</c>, or
-        /// <c>span.Length</c> if no such index exists. O(log n).</summary>
-        private static int LowerBound(ReadOnlySpan<int> span, int value)
-        {
-            int lo = 0;
-            int hi = span.Length;
-            while (lo < hi)
-            {
-                int mid = (int)((uint)(lo + hi) >> 1);
-                if (span[mid] < value) lo = mid + 1;
-                else hi = mid;
-            }
-            return lo;
-        }
-
-        public void SortAllRows()
-        {
-            for (int row = 0; row < RowCount; row++)
-            {
-                SortRow(row, Capacity(row));
-            }
-        }
-
-        public void SortTouchedRows()
-        {
-            if (_touchedCount == 0)
-            {
-                return;
-            }
-
-            bool[] rowTouched = _rowTouched!;
-            int[] touchedRows = _touchedRows!;
-            int[] rowFilled = _rowFilled!;
-            for (int i = 0; i < _touchedCount; i++)
-            {
-                int row = touchedRows[i];
-                SortRow(row, rowFilled[row]);
-                rowTouched[row] = false;
-            }
-            _touchedCount = 0;
-        }
-
-        private int Capacity(int row) =>
-            _rowStarts[row + 1] - _rowStarts[row];
-
-        private int RowLength(int row) =>
-            _rowFilled is null ? Capacity(row) : _rowFilled[row];
-
-        private bool HasOverflow(int row) =>
-            _rowOverflow is not null && _rowOverflow[row];
-
-        private void MarkTouched(int row)
-        {
-            bool[] rowTouched = _rowTouched!;
-            if (rowTouched[row])
-            {
-                return;
-            }
-
-            rowTouched[row] = true;
-            _touchedRows![_touchedCount++] = row;
-        }
-
-        // The sort needs to keep three parallel arrays in lock-step, keyed on
-        // (accountOrdinal, key) but moving the value alongside. Array.Sort has
-        // no overload that sorts three parallel arrays without either boxing
-        // (object[] keys) or an indirection array, so we keep a bespoke sort
-        // here. Small rows use a stable in-place insertion sort; larger rows
-        // sort an index array via Array.Sort + a custom comparer and then
-        // gather into scratch buffers (SortWithScratch).
-        private void SortRow(int row, int length)
-        {
-            if (length <= 1)
-            {
-                return;
-            }
-
-            int start = _rowStarts[row];
-            if (length <= 8)
-            {
-                InsertionSort(start, length);
-                return;
-            }
-
-            SortWithScratch(start, length);
-        }
-
-        private void InsertionSort(int start, int length)
-        {
-            for (int i = 1; i < length; i++)
-            {
-                int accountOrdinal = _accountOrdinals[start + i];
-                UInt256 key = _keys[start + i];
-                EvmWord value = _values[start + i];
-                int j = i - 1;
-                while (j >= 0 && Compare(start + j, accountOrdinal, key) > 0)
-                {
-                    _accountOrdinals[start + j + 1] = _accountOrdinals[start + j];
-                    _keys[start + j + 1] = _keys[start + j];
-                    _values[start + j + 1] = _values[start + j];
-                    j--;
-                }
-
-                _accountOrdinals[start + j + 1] = accountOrdinal;
-                _keys[start + j + 1] = key;
-                _values[start + j + 1] = value;
-            }
-        }
-
-        private int Compare(int left, int rightAccountOrdinal, UInt256 rightKey)
-        {
-            int accountCompare = _accountOrdinals[left].CompareTo(rightAccountOrdinal);
-            return accountCompare != 0 ? accountCompare : _keys[left].CompareTo(rightKey);
-        }
-
-        private void SortWithScratch(int start, int length)
-        {
-            EnsureScratch(length);
-            for (int i = 0; i < length; i++)
-            {
-                _orderScratch[i] = i;
-            }
-
-            _orderScratch.AsSpan(0, length).Sort(new StorageOrderComparer(_accountOrdinals, _keys, start));
-
-            for (int i = 0; i < length; i++)
-            {
-                int source = start + _orderScratch[i];
-                _accountScratch[i] = _accountOrdinals[source];
-                _keyScratch[i] = _keys[source];
-                _valueScratch[i] = _values[source];
-            }
-
-            _accountScratch.AsSpan(0, length).CopyTo(_accountOrdinals.AsSpan(start, length));
-            _keyScratch.AsSpan(0, length).CopyTo(_keys.AsSpan(start, length));
-            _valueScratch.AsSpan(0, length).CopyTo(_values.AsSpan(start, length));
-        }
-
-        private void EnsureScratch(int length)
-        {
-            if (_orderScratch.Length >= length)
-            {
-                return;
-            }
-
-            _orderScratch = new int[length];
-            _accountScratch = new int[length];
-            _keyScratch = new UInt256[length];
-            _valueScratch = new EvmWord[length];
-        }
-
-        private readonly struct StorageOrderComparer(int[] accountOrdinals, UInt256[] keys, int start) : IComparer<int>
-        {
-            private readonly int[] _accountOrdinals = accountOrdinals;
-            private readonly UInt256[] _keys = keys;
-            private readonly int _start = start;
-
-            [MethodImpl(MethodImplOptions.AggressiveInlining)]
-            public int Compare(int leftOffset, int rightOffset)
-            {
-                int left = _start + leftOffset;
-                int right = _start + rightOffset;
-                int accountCompare = _accountOrdinals[left].CompareTo(_accountOrdinals[right]);
-                return accountCompare != 0 ? accountCompare : _keys[left].CompareTo(_keys[right]);
-            }
-        }
-    }
-
-    private static int[] CreateRowStarts(int[] counts)
-    {
-        int[] rowStarts = new int[counts.Length + 1];
-        for (int i = 0; i < counts.Length; i++)
-        {
-            rowStarts[i + 1] = checked(rowStarts[i] + counts[i]);
-        }
-
-        return rowStarts;
+        if (_disposed) return;
+        _disposed = true;
+        _lanes.Dispose();
+        if (_hasAccountWords.Length > 0) PooledArrays.Return(_hasAccountWords);
+        _hasAccountWords = [];
     }
 }

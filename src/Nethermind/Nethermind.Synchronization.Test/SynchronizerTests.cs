@@ -63,7 +63,7 @@ public class SynchronizerTests(SynchronizerType synchronizerType)
         private readonly bool _causeTimeoutOnInit;
         private readonly bool _causeTimeoutOnBlocks;
         private readonly bool _causeTimeoutOnHeaders;
-        private List<Block> Blocks { get; } = new();
+        private List<Block> Blocks { get; } = [];
 
         public Block HeadBlock => Blocks.Last();
 

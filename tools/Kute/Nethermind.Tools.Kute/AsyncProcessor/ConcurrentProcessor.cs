@@ -9,7 +9,7 @@ public sealed class ConcurrentProcessor(int maxDegreeOfParallelism) : IAsyncProc
 
     public async Task Process<T>(IAsyncEnumerable<T> source, Func<T, Task> process, CancellationToken token = default)
     {
-        List<Task> tasks = new();
+        List<Task> tasks = [];
         SemaphoreSlim semaphore = new(_maxDegreeOfParallelism);
         await foreach (T? t in source)
         {

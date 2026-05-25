@@ -35,5 +35,10 @@ public record GethTraceOptions
 
     public BlockOverride? BlockOverrides { get; set; }
 
+    /// <summary>
+    /// When set, overrides <c>JsonRpc.EnableTracingStreamMode</c> for this single call.
+    /// </summary>
+    public bool? StreamMode { get; init; }
+
     public static GethTraceOptions Default { get; } = new();
 }

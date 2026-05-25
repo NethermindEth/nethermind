@@ -24,7 +24,7 @@ namespace Nethermind.Consensus.AuRa
         ILogManager logManager,
         long twoThirdsMajorityTransition = long.MaxValue) : IAuRaBlockFinalizationManager
     {
-        private static readonly List<BlockHeader> Empty = new();
+        private static readonly List<BlockHeader> Empty = [];
         private readonly IBlockTree _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
         private readonly IChainLevelInfoRepository _chainLevelInfoRepository = chainLevelInfoRepository ?? throw new ArgumentNullException(nameof(chainLevelInfoRepository));
         private readonly ILogger _logger = logManager?.GetClassLogger<AuRaBlockFinalizationManager>() ?? throw new ArgumentNullException(nameof(logManager));
@@ -168,12 +168,12 @@ namespace Nethermind.Consensus.AuRa
             else
             {
                 _consecutiveValidatorsForNotYetFinalizedBlocks.Clear();
-                validators = new HashSet<Address>();
+                validators = [];
             }
 
             if (iterateThroughBlocks)
             {
-                finalizedBlocks = new List<BlockHeader>();
+                finalizedBlocks = [];
                 Address originalBlockSealer = originalBlock.Beneficiary;
                 bool ancestorsNotYetRemoved = true;
 
@@ -291,7 +291,7 @@ namespace Nethermind.Consensus.AuRa
         public long GetLastLevelFinalizedBy(Hash256 blockHash)
         {
             BlockHeader block = _blockTree.FindHeader(blockHash, BlockTreeLookupOptions.None)!;
-            HashSet<Address> validators = new();
+            HashSet<Address> validators = [];
             int minSealersForFinalization = GetMinSealersForFinalization(block.Number);
             while (block!.Number > 0)
             {
@@ -310,7 +310,7 @@ namespace Nethermind.Consensus.AuRa
         public long? GetFinalizationLevel(long level)
         {
             BlockHeader? block = _blockTree.FindHeader(level, BlockTreeLookupOptions.None);
-            HashSet<Address> validators = new();
+            HashSet<Address> validators = [];
             int minSealersForFinalization = GetMinSealersForFinalization(level);
 
             // this can only happen when we are fast syncing headers before pivot
@@ -426,7 +426,7 @@ namespace Nethermind.Consensus.AuRa
 
             public BlockHeader? GetBlockThatWillBeFinalized(out HashSet<Address> validators, int minSealersForFinalization)
             {
-                validators = new HashSet<Address>();
+                validators = [];
                 for (int i = 0; i < _blocks.Count; i++)
                 {
                     BlockHeader? block = _blocks[i];
