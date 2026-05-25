@@ -28,12 +28,33 @@ public class SyncedTxGossipPolicyTests
     public bool can_gossip(SyncMode mode) =>
         ((ITxGossipPolicy)new SyncedTxGossipPolicy(new StaticSelector(mode))).ShouldListenToGossipedTransactions;
 
+    [TestCase(SyncMode.FastHeaders, ExpectedResult = true)]
+    [TestCase(SyncMode.FastBodies, ExpectedResult = true)]
+    [TestCase(SyncMode.FastReceipts, ExpectedResult = true)]
+    [TestCase(SyncMode.FastBlockAccessLists, ExpectedResult = false)]
+    public bool receipts_unsynced_ignores_block_access_lists_only_mode(SyncMode mode) =>
+        mode.HaveNotSyncedReceiptsYet();
+
+    [TestCase(SyncMode.FastHeaders, ExpectedResult = true)]
+    [TestCase(SyncMode.FastBodies, ExpectedResult = false)]
+    [TestCase(SyncMode.FastReceipts, ExpectedResult = false)]
+    [TestCase(SyncMode.FastBlockAccessLists, ExpectedResult = true)]
+    [TestCase(SyncMode.FastBodies | SyncMode.FastBlockAccessLists, ExpectedResult = true)]
+    [TestCase(SyncMode.FastSync, ExpectedResult = true)]
+    [TestCase(SyncMode.StateNodes, ExpectedResult = true)]
+    [TestCase(SyncMode.BeaconHeaders, ExpectedResult = true)]
+    [TestCase(SyncMode.UpdatingPivot, ExpectedResult = true)]
+    [TestCase(SyncMode.Full, ExpectedResult = false)]
+    [TestCase(SyncMode.WaitingForBlock, ExpectedResult = false)]
+    public bool block_access_lists_unsynced_tracks_headers_state_and_bal_phases(SyncMode mode) =>
+        mode.HaveNotSyncedBlockAccessListsYet();
+
     [Test]
     public void Composite_reflects_sync_mode_transitions()
     {
         MutableSelector selector = new(SyncMode.FastSync);
         SyncedTxGossipPolicy syncPolicy = new(selector);
-        CompositeTxGossipPolicy composite = new(new Lazy<ITxGossipPolicy[]>([syncPolicy]));
+        CompositeTxGossipPolicy composite = new(new FixedTxGossipPolicySource([syncPolicy]));
 
         // During sync: gossip disabled
         Assert.That(composite.ShouldListenToGossipedTransactions, Is.False);
@@ -69,5 +90,10 @@ public class SyncedTxGossipPolicyTests
         public Task StopAsync() => Task.CompletedTask;
         public void Update() { }
         public void Dispose() { }
+    }
+
+    private class FixedTxGossipPolicySource(ITxGossipPolicy[] policies) : ITxGossipPolicySource
+    {
+        public ITxGossipPolicy[] Policies => policies;
     }
 }

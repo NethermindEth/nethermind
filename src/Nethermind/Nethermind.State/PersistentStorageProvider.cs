@@ -69,7 +69,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
     /// </summary>
     /// <param name="storageCell"></param>
     /// <returns></returns>
-    public byte[] GetOriginal(in StorageCell storageCell)
+    public ReadOnlySpan<byte> GetOriginal(in StorageCell storageCell)
     {
         if (!_originalValues.TryGetValue(storageCell, out byte[] value))
         {
@@ -452,6 +452,12 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
             else
             {
                 valueChanges = new StorageChangeTrace(valueChanges.Before, value);
+            }
+
+            if (!storageCell.IsHash)
+            {
+                EnsureStorageTree();
+                _backend.HintSet(storageCell.Index, value);
             }
         }
 

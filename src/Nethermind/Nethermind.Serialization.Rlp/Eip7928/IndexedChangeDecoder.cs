@@ -9,13 +9,13 @@ namespace Nethermind.Serialization.Rlp.Eip7928;
 /// Base class for RLP decoders of <see cref="IIndexedChange"/> types that share the pattern:
 /// sequence of (Index, value). Subclasses provide the value field operations.
 /// </summary>
-public abstract class IndexedChangeDecoder<T> : IRlpValueDecoder<T>, IRlpStreamEncoder<T>
+public abstract class IndexedChangeDecoder<T> : RlpDecoder<T>
     where T : struct, IIndexedChange
 {
-    public int GetLength(T item, RlpBehaviors rlpBehaviors)
+    public override int GetLength(T item, RlpBehaviors rlpBehaviors)
         => Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors));
 
-    public T Decode(ref Rlp.ValueDecoderContext ctx, RlpBehaviors rlpBehaviors)
+    protected override T DecodeInternal(ref Rlp.ValueDecoderContext ctx, RlpBehaviors rlpBehaviors)
     {
         int length = ctx.ReadSequenceLength();
         int check = length + ctx.Position;
@@ -30,8 +30,9 @@ public abstract class IndexedChangeDecoder<T> : IRlpValueDecoder<T>, IRlpStreamE
         return result;
     }
 
-    public void Encode(RlpStream stream, T item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public override void Encode(RlpStream stream, T item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
+        // EIP-7928 v5.7.0 widened BlockAccessIndex to uint32 (commit 645099785a).
         stream.StartSequence(GetContentLength(item, rlpBehaviors));
         stream.Encode(item.Index);
         EncodeValue(stream, item);
@@ -40,12 +41,18 @@ public abstract class IndexedChangeDecoder<T> : IRlpValueDecoder<T>, IRlpStreamE
     public int GetContentLength(T item, RlpBehaviors rlpBehaviors)
         => Rlp.LengthOf(item.Index) + GetValueLength(item);
 
-    /// <summary>Decode Index + value field and return a new T.</summary>
+    /// <summary>
+    /// Decode Index + value field and return a new T.
+    /// </summary>
     protected abstract T DecodeFields(ref Rlp.ValueDecoderContext ctx);
 
-    /// <summary>Encode only the value field (Index is handled by the base).</summary>
+    /// <summary>
+    /// Encode only the value field (Index is handled by the base).
+    /// </summary>
     protected abstract void EncodeValue(RlpStream stream, T item);
 
-    /// <summary>Return the RLP length of the value field.</summary>
+    /// <summary>
+    /// Return the RLP length of the value field.
+    /// </summary>
     protected abstract int GetValueLength(T item);
 }

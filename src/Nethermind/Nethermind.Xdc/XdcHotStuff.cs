@@ -27,12 +27,10 @@ namespace Nethermind.Xdc
         IEpochSwitchManager epochSwitchManager,
         ISnapshotManager snapshotManager,
         IMasternodesCalculator masternodesCalculator,
-        IQuorumCertificateManager quorumCertificateManager,
         IVotesManager votesManager,
         ISigner signer,
         ITimeoutTimer timeoutTimer,
         IProcessExitSource processExit,
-        ISignTransactionManager signTransactionManager,
         ILogManager logManager) : IBlockProducerRunner
     {
         private readonly IBlockTree _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
@@ -42,13 +40,11 @@ namespace Nethermind.Xdc
         private readonly IEpochSwitchManager _epochSwitchManager = epochSwitchManager ?? throw new ArgumentNullException(nameof(epochSwitchManager));
         private readonly ISnapshotManager _snapshotManager = snapshotManager ?? throw new ArgumentNullException(nameof(snapshotManager));
         private readonly IMasternodesCalculator _masternodesCalculator = masternodesCalculator ?? throw new ArgumentNullException(nameof(masternodesCalculator));
-        private readonly IQuorumCertificateManager _quorumCertificateManager = quorumCertificateManager ?? throw new ArgumentNullException(nameof(quorumCertificateManager));
         private readonly IVotesManager _votesManager = votesManager ?? throw new ArgumentNullException(nameof(votesManager));
         private readonly ISigner _signer = signer ?? throw new ArgumentNullException(nameof(signer));
         private readonly ITimeoutTimer _timeoutTimer = timeoutTimer;
         private readonly IProcessExitSource _processExit = processExit;
         private readonly ILogger _logger = logManager?.GetClassLogger<XdcHotStuff>() ?? throw new ArgumentNullException(nameof(logManager));
-        private readonly ISignTransactionManager _signTransactionManager = signTransactionManager ?? throw new ArgumentNullException(nameof(signTransactionManager));
 
         private CancellationTokenSource? _cancellationTokenSource;
         private Task? _runTask;
@@ -60,7 +56,6 @@ namespace Nethermind.Xdc
         private ulong _highestSelfMinedRound;
         private ulong _highestVotedRound;
         private bool _writeRoundInfo = true;
-        private long _highestSignTxNumber = 0;
 
         /// <summary>
         /// Starts the consensus runner.
@@ -145,7 +140,7 @@ namespace Nethermind.Xdc
         private async Task WaitForBlockTreeHead(CancellationToken cancellationToken)
         {
             _logger.Debug("Waiting for blockTree.Head to initialize...");
-            while (_blockTree.Head == null)
+            while (_blockTree.Head == null || _blockTree.IsSyncing().isSyncing)
             {
                 await Task.Delay(100, cancellationToken);
             }
@@ -159,8 +154,6 @@ namespace Nethermind.Xdc
         {
             if (_blockTree.Head.Header is not XdcBlockHeader xdcHead)
                 throw new InvalidBlockException(_blockTree.Head, "Head is not XdcBlockHeader.");
-
-            _quorumCertificateManager.Initialize(xdcHead);
             _logger.Info($"Initialized round {_xdcContext.CurrentRound} from head.");
         }
 
@@ -219,7 +212,7 @@ namespace Nethermind.Xdc
 
             if (spec.SwitchBlock < roundParent.Number)
             {
-                await CommitCertificateAndVote(roundParent, epochInfo);
+                await CastVote(roundParent, epochInfo);
             }
 
             bool isMyTurn = IsMyTurn(roundParent, currentRound, spec);
@@ -231,17 +224,6 @@ namespace Nethermind.Xdc
             {
                 _highestSelfMinedRound = currentRound;
                 Task blockBuilder = BuildAndProposeBlock(roundParent, currentRound, spec, ct);
-            }
-
-            if (_highestSignTxNumber < roundParent.Number
-                && ((roundParent.Number % spec.MergeSignRange == 0)))
-            {
-                Snapshot snapshot = _snapshotManager.GetSnapshotByBlockNumber(roundParent.Number, spec);
-                if (snapshot is not null && snapshot.NextEpochCandidates.AsSpan().IndexOf(_signer.Address) != -1)
-                {
-                    _highestSignTxNumber = roundParent.Number;
-                    await _signTransactionManager.SubmitTransactionSign(roundParent, spec);
-                }
             }
 
             _writeRoundInfo = false;
@@ -310,9 +292,9 @@ namespace Nethermind.Xdc
         }
 
         /// <summary>
-        /// Voter path - commit received QC, check voting rule, cast vote.
+        /// Voter path - check voting rule, cast vote.
         /// </summary>
-        private async Task CommitCertificateAndVote(XdcBlockHeader head, EpochSwitchInfo epochInfo)
+        private async Task CastVote(XdcBlockHeader head, EpochSwitchInfo epochInfo)
         {
             if (head.ExtraConsensusData?.QuorumCert is null)
                 throw new InvalidOperationException("Head block missing consensus data.");
@@ -320,12 +302,6 @@ namespace Nethermind.Xdc
             ulong votingRound = head.ExtraConsensusData.BlockRound;
             if (_highestVotedRound >= votingRound)
                 return;
-
-            if (head.ExtraConsensusData.QuorumCert.Hash != _xdcContext.HighestQC?.Hash)
-            {
-                // Commit/record the header's QC
-                _quorumCertificateManager.CommitCertificate(head.ExtraConsensusData.QuorumCert);
-            }
 
             // Check if we are in the masternode set
             if (!IsMasternode(epochInfo, _signer.Address))

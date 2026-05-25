@@ -186,7 +186,7 @@ public class PeerManagerFilteringIntegrationTests
     /// </summary>
     private class FilterRejectingRlpxMock : IRlpxHost
     {
-        public ConcurrentBag<PublicKey> ConnectedNodeIds { get; } = new();
+        public ConcurrentBag<PublicKey> ConnectedNodeIds { get; } = [];
 
         public bool ShouldContact(IPAddress ip, bool exactOnly = false) => exactOnly;
 
@@ -204,13 +204,14 @@ public class PeerManagerFilteringIntegrationTests
         public PublicKey LocalNodeId { get; } = TestItem.PublicKeyA;
         public int LocalPort => 30303;
         public event EventHandler<SessionEventArgs>? SessionCreated;
+        public event SessionDisconnectedEventHandler? SessionDisconnected { add { } remove { } }
         public ISessionMonitor SessionMonitor => Substitute.For<ISessionMonitor>();
     }
 
     private class CallOrderTrackingMock : IRlpxHost
     {
-        public ConcurrentBag<IPAddress> CallsToShouldContact { get; } = new();
-        public ConcurrentBag<Node> CallsToConnectAsync { get; } = new();
+        public ConcurrentBag<IPAddress> CallsToShouldContact { get; } = [];
+        public ConcurrentBag<Node> CallsToConnectAsync { get; } = [];
 
         public bool ShouldContact(IPAddress ip, bool exactOnly = false)
         {
@@ -229,6 +230,7 @@ public class PeerManagerFilteringIntegrationTests
         public PublicKey LocalNodeId { get; } = TestItem.PublicKeyA;
         public int LocalPort => 30303;
         public event EventHandler<SessionEventArgs>? SessionCreated { add { } remove { } }
+        public event SessionDisconnectedEventHandler? SessionDisconnected { add { } remove { } }
         public ISessionMonitor SessionMonitor => Substitute.For<ISessionMonitor>();
     }
 
@@ -237,7 +239,7 @@ public class PeerManagerFilteringIntegrationTests
         private readonly ConcurrentDictionary<PublicKey, NetworkNode> _nodes = new();
         private bool _pendingChanges;
 
-        public NetworkNode[] GetPersistedNodes() => _nodes.Values.ToArray();
+        public NetworkNode[] GetPersistedNodes() => _nodes.Select(static kvp => kvp.Value).ToArray();
         public int PersistedNodesCount => _nodes.Count;
 
         public void UpdateNode(NetworkNode node)

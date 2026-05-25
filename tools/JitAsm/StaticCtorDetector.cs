@@ -43,12 +43,12 @@ internal static partial class StaticCtorDetector
 
     public static IReadOnlyList<string> DetectStaticCtors(string disassemblyOutput)
     {
-        var detectedTypes = new HashSet<string>(StringComparer.Ordinal);
+        HashSet<string> detectedTypes = new(StringComparer.Ordinal);
 
         // Detect direct .cctor calls
         foreach (Match match in CctorCallPattern().Matches(disassemblyOutput))
         {
-            var typeName = NormalizeTypeName(match.Groups["type"].Value);
+            string typeName = NormalizeTypeName(match.Groups["type"].Value);
             if (!string.IsNullOrEmpty(typeName))
             {
                 detectedTypes.Add(typeName);
@@ -61,7 +61,7 @@ internal static partial class StaticCtorDetector
             int typesBeforeHelperScan = detectedTypes.Count;
 
             // Look for type references near the helper calls (±3 lines)
-            var lines = disassemblyOutput.Split('\n');
+            string[] lines = disassemblyOutput.Split('\n');
             for (int i = 0; i < lines.Length; i++)
             {
                 if (StaticHelperPattern().IsMatch(lines[i]))
@@ -72,7 +72,7 @@ internal static partial class StaticCtorDetector
                         Match typeMatch = TypeCommentPattern().Match(lines[j]);
                         if (typeMatch.Success)
                         {
-                            var typeName = NormalizeTypeName(typeMatch.Groups["type"].Value);
+                            string typeName = NormalizeTypeName(typeMatch.Groups["type"].Value);
                             if (!string.IsNullOrEmpty(typeName) && IsValidTypeName(typeName))
                             {
                                 detectedTypes.Add(typeName);
@@ -82,7 +82,7 @@ internal static partial class StaticCtorDetector
                         Match fieldMatch = StaticFieldAccessPattern().Match(lines[j]);
                         if (fieldMatch.Success)
                         {
-                            var typeName = NormalizeTypeName(fieldMatch.Groups["type"].Value);
+                            string typeName = NormalizeTypeName(fieldMatch.Groups["type"].Value);
                             if (!string.IsNullOrEmpty(typeName) && IsValidTypeName(typeName))
                             {
                                 detectedTypes.Add(typeName);
@@ -103,14 +103,14 @@ internal static partial class StaticCtorDetector
             {
                 for (int i = 0; i < lines.Length; i++)
                 {
-                    var line = lines[i];
+                    string line = lines[i];
                     // Check current line and continuation lines after bare "call" instructions
                     if (line.TrimStart().StartsWith("call") || (i > 0 && lines[i - 1].TrimEnd().EndsWith("call")))
                     {
                         Match callMatch = CallTargetTypePattern().Match(line);
                         if (callMatch.Success)
                         {
-                            var typeName = NormalizeTypeName(callMatch.Groups["type"].Value);
+                            string typeName = NormalizeTypeName(callMatch.Groups["type"].Value);
                             if (!string.IsNullOrEmpty(typeName) && IsValidTypeName(typeName))
                             {
                                 detectedTypes.Add(typeName);
@@ -121,7 +121,7 @@ internal static partial class StaticCtorDetector
             }
         }
 
-        var result = new List<string>(detectedTypes);
+        List<string> result = [.. detectedTypes];
         result.Sort(StringComparer.Ordinal);
         return result;
     }
@@ -129,11 +129,11 @@ internal static partial class StaticCtorDetector
     private static string NormalizeTypeName(string typeName)
     {
         // Remove generic arity suffix if present (e.g., `1, `2)
-        var tickIndex = typeName.IndexOf('`');
+        int tickIndex = typeName.IndexOf('`');
         if (tickIndex > 0)
         {
             // Keep up to and including the backtick and number for proper type resolution
-            var endIndex = tickIndex + 1;
+            int endIndex = tickIndex + 1;
             while (endIndex < typeName.Length && char.IsDigit(typeName[endIndex]))
             {
                 endIndex++;
@@ -163,7 +163,7 @@ internal static partial class StaticCtorDetector
             return false;
 
         // Should not be just a keyword or register name
-        var lowered = typeName.ToLowerInvariant();
+        string lowered = typeName.ToLowerInvariant();
         string[] invalidNames = ["rax", "rbx", "rcx", "rdx", "rsi", "rdi", "rsp", "rbp",
                                  "eax", "ebx", "ecx", "edx", "esi", "edi", "esp", "ebp",
                                  "ptr", "dword", "qword", "byte", "word"];

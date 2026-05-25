@@ -38,8 +38,8 @@ namespace Nethermind.Network
         public ConcurrentDictionary<PublicKeyAsKey, Peer> Peers { get; } = new();
         private readonly ConcurrentDictionary<PublicKeyAsKey, Peer> _staticPeers = new();
 
-        public IEnumerable<Peer> NonStaticPeers => Peers.Values.Where(static p => !p.Node.IsStatic);
-        public IEnumerable<Peer> StaticPeers => _staticPeers.Values;
+        public IEnumerable<Peer> NonStaticPeers => Peers.Select(static kvp => kvp.Value).Where(static p => !p.Node.IsStatic);
+        public IEnumerable<Peer> StaticPeers => _staticPeers.Select(static kvp => kvp.Value);
 
         public int PeerCount => Peers.Count;
         public int ActivePeerCount => ActivePeers.Count;
@@ -220,14 +220,14 @@ namespace Nethermind.Network
             //if we have more persisted nodes then the threshold, we run cleanup process
             if (storedNodes.Length > _networkConfig.PersistedPeerCountCleanupThreshold)
             {
-                ICollection<Peer> activePeers = ActivePeers.Values;
+                Peer[] activePeers = ActivePeers.Select(static kvp => kvp.Value).ToArray();
                 CleanupPersistedPeers(activePeers, storedNodes);
             }
         }
 
         private void CleanupPersistedPeers(ICollection<Peer> activePeers, NetworkNode[] storedNodes)
         {
-            HashSet<PublicKey> activeNodeIds = new(activePeers.Select(x => x.Node.Id));
+            HashSet<PublicKey> activeNodeIds = [.. activePeers.Select(x => x.Node.Id)];
             NetworkNode[] nonActiveNodes = storedNodes.Where(x => !activeNodeIds.Contains(x.NodeId))
                 .OrderBy(x => x.Reputation).ToArray();
             int countToRemove = storedNodes.Length - _networkConfig.MaxPersistedPeerCount;

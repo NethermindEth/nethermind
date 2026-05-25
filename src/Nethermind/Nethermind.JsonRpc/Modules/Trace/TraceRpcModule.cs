@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
@@ -108,7 +108,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
             }
 
             Block block = new(header, new BlockBody(txs, []));
-            IReadOnlyCollection<ParityLikeTxTrace>? traces = TraceBlock(block, new(traceTypeByTransaction));
+            IReadOnlyCollection<ParityLikeTxTrace> traces = TraceBlock(block, new(traceTypeByTransaction));
             return ResultWrapper<IEnumerable<ParityTxTraceFromReplay>>.Success(traces.Select(static t => new ParityTxTraceFromReplay(t)));
         }
 
@@ -117,10 +117,17 @@ namespace Nethermind.JsonRpc.Modules.Trace
         /// </summary>
         public ResultWrapper<ParityTxTraceFromReplay> trace_rawTransaction(byte[] data, string[] traceTypes)
         {
-            Rlp.ValueDecoderContext ctx = data.AsRlpValueContext();
-            Transaction tx = _txDecoder.DecodeCompleteNotNull(ref ctx, RlpBehaviors.SkipTypedWrapping);
-            tx.CapGasLimit(jsonRpcConfig.GasCap);
-            return TraceTx(tx, traceTypes, BlockParameter.Latest);
+            try
+            {
+                Rlp.ValueDecoderContext ctx = data.AsRlpValueContext();
+                Transaction tx = _txDecoder.DecodeCompleteNotNull(ref ctx, RlpBehaviors.SkipTypedWrapping);
+                tx.CapGasLimit(jsonRpcConfig.GasCap);
+                return TraceTx(tx, traceTypes, BlockParameter.Latest);
+            }
+            catch (RlpException)
+            {
+                return ResultWrapper<ParityTxTraceFromReplay>.Fail("Invalid RLP.", ErrorCodes.TransactionRejected);
+            }
         }
 
         private ResultWrapper<ParityTxTraceFromReplay> TraceTx(Transaction tx, string[] traceTypes, BlockParameter blockParameter,
@@ -135,10 +142,10 @@ namespace Nethermind.JsonRpc.Modules.Trace
             BlockHeader header = headerSearch.Object!.Clone();
             Block block = new(header, [tx], []);
 
+            ParityTraceTypes traceTypes1 = GetParityTypes(traceTypes);
             using Scope<ITracer> env = tracerEnv.BuildAndOverride(header, stateOverride);
             ITracer tracer = env.Component;
 
-            ParityTraceTypes traceTypes1 = GetParityTypes(traceTypes);
             IReadOnlyCollection<ParityLikeTxTrace> result = TraceBlockDirect(tracer, block, new(traceTypes1));
             return ResultWrapper<ParityTxTraceFromReplay>.Success(new ParityTxTraceFromReplay(result.SingleOrDefault()));
         }
@@ -172,7 +179,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
                 return GetStateFailureResult<ParityTxTraceFromReplay>(parentSearch.Object);
             }
 
-            IReadOnlyCollection<ParityLikeTxTrace>? txTrace = ExecuteBlock(parentSearch.Object, block, new ParityLikeBlockTracer(txHash, GetParityTypes(traceTypes)));
+            IReadOnlyCollection<ParityLikeTxTrace> txTrace = ExecuteBlock(parentSearch.Object, block, new ParityLikeBlockTracer(txHash, GetParityTypes(traceTypes)));
             return ResultWrapper<ParityTxTraceFromReplay>.Success(new ParityTxTraceFromReplay(txTrace));
         }
 
@@ -211,7 +218,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
         /// </summary>
         public ResultWrapper<IEnumerable<ParityTxTraceFromStore>> trace_filter(TraceFilterForRpc traceFilterForRpc)
         {
-            List<ParityLikeTxTrace> txTraces = new();
+            List<ParityLikeTxTrace> txTraces = [];
             IEnumerable<SearchResult<Block>> blocksSearch = blockFinder.SearchForBlocksOnMainChain(
                 traceFilterForRpc.FromBlock ?? BlockParameter.Latest,
                 traceFilterForRpc.ToBlock ?? BlockParameter.Latest);
@@ -250,7 +257,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
             return ResultWrapper<IEnumerable<ParityTxTraceFromStore>>.Success(txTracerFilter.FilterTxTraces(txTracesResult));
         }
 
-        public ResultWrapper<IEnumerable<ParityTxTraceFromStore>> trace_block(BlockParameter blockParameter)
+        public ResultWrapper<IEnumerable<ParityTxTraceFromStore>> trace_block(BlockParameter blockParameter, string? fork = null)
         {
             SearchResult<Block> blockSearch = blockFinder.SearchForBlock(blockParameter);
             if (blockSearch.IsError)
@@ -275,7 +282,10 @@ namespace Nethermind.JsonRpc.Modules.Trace
                 return GetStateFailureResult<IEnumerable<ParityTxTraceFromStore>>(parentSearch.Object);
             }
 
-            IReadOnlyCollection<ParityLikeTxTrace> txTraces = ExecuteBlock(parentSearch.Object, block, new(ParityTraceTypes.Trace | ParityTraceTypes.Rewards));
+            if (!TryResolveForkSpec(fork, out IReleaseSpec? forkSpec, out ResultWrapper<IEnumerable<ParityTxTraceFromStore>>? forkError))
+                return forkError!;
+
+            IReadOnlyCollection<ParityLikeTxTrace> txTraces = ExecuteBlock(parentSearch.Object, block, new(ParityTraceTypes.Trace | ParityTraceTypes.Rewards), forkSpec);
             return ResultWrapper<IEnumerable<ParityTxTraceFromStore>>.Success(txTraces.SelectMany(ParityTxTraceFromStore.FromTxTrace));
         }
 
@@ -291,7 +301,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
 
         public static List<ParityTxTraceFromStore> ExtractPositionsFromTxTrace(long[] positions, ResultWrapper<IEnumerable<ParityTxTraceFromStore>> traceTransaction)
         {
-            List<ParityTxTraceFromStore> traces = new();
+            List<ParityTxTraceFromStore> traces = [];
             ParityTxTraceFromStore[] transactionTraces = traceTransaction.Data.ToArray();
             for (int index = 0; index < positions.Length; index++)
             {
@@ -355,19 +365,87 @@ namespace Nethermind.JsonRpc.Modules.Trace
             return parityTracer.BuildResult();
         }
 
-        private IReadOnlyCollection<ParityLikeTxTrace> ExecuteBlock(BlockHeader baseBlock, Block block, ParityLikeBlockTracer tracer)
+        private IReadOnlyCollection<ParityLikeTxTrace> ExecuteBlock(BlockHeader baseBlock, Block block, ParityLikeBlockTracer tracer, IReleaseSpec? specOverride = null)
         {
-            using Scope<ITracer> env = tracerEnv.BuildAndOverride(baseBlock);
+            Block blockToExecute = block;
+            if (specOverride is not null)
+            {
+                BlockHeader adjustedHeader = AdjustHeaderForSpec(block.Header, baseBlock, specOverride);
+                blockToExecute = block.WithReplacedHeader(adjustedHeader);
+            }
+
+            using Scope<ITracer> env = tracerEnv.BuildAndOverride(baseBlock, specOverride: specOverride);
             ITracer tracer2 = env.Component;
 
             using CancellationTokenSource timeout = BuildTimeoutCancellationTokenSource();
             CancellationToken cancellationToken = timeout.Token;
-            tracer2.Execute(block, tracer.WithCancellation(cancellationToken));
+            tracer2.Execute(blockToExecute, tracer.WithCancellation(cancellationToken));
             return tracer.BuildResult();
         }
 
+        /// <summary>
+        /// Adjusts a block header to the minimum needed for execution under a different spec:
+        /// fills in <see cref="BlockHeader.BaseFeePerGas"/> when activating EIP-1559 and
+        /// <see cref="BlockHeader.ExcessBlobGas"/> when activating EIP-4844.
+        /// </summary>
+        /// <remarks>
+        /// Known limitation: <c>WithdrawalsRoot</c> (EIP-4895), <c>ParentBeaconBlockRoot</c>
+        /// (EIP-4788), and <c>RequestsHash</c> (EIP-7685) are not synthesized. When a block is
+        /// re-executed under a spec that activates those features for the first time, system
+        /// calls (e.g. the beacon-root contract update) will see <c>null</c>/zero inputs and
+        /// produce side-effects that don't match a real chain — acceptable for tracing
+        /// (NoValidation path) but trace consumers should be aware. The intended use is
+        /// pre-merge fork comparison (e.g. Istanbul ↔ Berlin precompile gas), where these
+        /// fields are inherently absent.
+        /// </remarks>
+        private static BlockHeader AdjustHeaderForSpec(BlockHeader header, BlockHeader parentHeader, IReleaseSpec spec)
+        {
+            BlockHeader adjusted = header.Clone();
+
+            adjusted.BaseFeePerGas = spec.IsEip1559Enabled
+                ? adjusted.BaseFeePerGas.IsZero
+                    ? BaseFeeCalculator.Calculate(parentHeader, spec)
+                    : adjusted.BaseFeePerGas
+                : UInt256.Zero;
+
+            adjusted.ExcessBlobGas = spec.IsEip4844Enabled
+                ? BlobGasCalculator.CalculateExcessBlobGas(parentHeader, spec)
+                : null;
+
+            return adjusted;
+        }
+
+        private bool TryResolveForkSpec<TResult>(string? fork, out IReleaseSpec? forkSpec, out ResultWrapper<TResult>? error)
+        {
+            forkSpec = null;
+            error = null;
+
+            if (fork is null)
+                return true;
+
+            if (specProvider is not IForkAwareSpecProvider forkAwareProvider)
+            {
+                error = ResultWrapper<TResult>.Fail("Spec provider does not support fork overrides", ErrorCodes.InvalidParams);
+                return false;
+            }
+
+            if (string.IsNullOrEmpty(fork))
+            {
+                error = ResultWrapper<TResult>.Fail("Fork name must not be null or empty", ErrorCodes.InvalidParams);
+                return false;
+            }
+
+            if (!forkAwareProvider.TryGetForkSpec(fork, out forkSpec))
+            {
+                error = ResultWrapper<TResult>.Fail($"Unknown fork: '{fork}'. Available: {string.Join(", ", forkAwareProvider.AvailableForks)}", ErrorCodes.InvalidParams);
+                return false;
+            }
+
+            return true;
+        }
+
         private static ResultWrapper<TResult> GetStateFailureResult<TResult>(BlockHeader header) =>
-        ResultWrapper<TResult>.Fail($"No state available for block {header.ToString(BlockHeader.Format.FullHashAndNumber)}", ErrorCodes.ResourceUnavailable);
+            ResultWrapper<TResult>.Fail($"No state available for block {header.ToString(BlockHeader.Format.FullHashAndNumber)}", ErrorCodes.ResourceUnavailable);
 
         private CancellationTokenSource BuildTimeoutCancellationTokenSource() =>
             jsonRpcConfig.BuildTimeoutCancellationToken();

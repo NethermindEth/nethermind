@@ -9,6 +9,8 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
+using Nethermind.Logging;
+using Nethermind.State;
 using Nethermind.Xdc.Contracts;
 using Nethermind.Xdc.Spec;
 using Nethermind.Xdc.Types;
@@ -36,8 +38,10 @@ internal class SubnetSnapshotManagerTests
         _snapshotDb = new MemDb();
 
         IPenaltyHandler penaltyHandler = Substitute.For<IPenaltyHandler>();
+        ISpecProvider specProvider = Substitute.For<ISpecProvider>();
+        specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(_xdcReleaseSpec);
         _blockTree = Substitute.For<IBlockTree>();
-        _snapshotManager = new SubnetSnapshotManager(_snapshotDb, _blockTree, Substitute.For<IMasternodeVotingContract>(), Substitute.For<ISpecProvider>(), penaltyHandler);
+        _snapshotManager = new SubnetSnapshotManager(_snapshotDb, _blockTree, Substitute.For<IMasternodeVotingContract>(), specProvider, Substitute.For<IStateReader>(), LimboLogs.Instance, penaltyHandler);
     }
 
     [Test]
@@ -80,7 +84,7 @@ internal class SubnetSnapshotManagerTests
 
     [TestCase(450)]
     [TestCase(1350)]
-    public void BlockAddedToMainStoresSnapshot(int gapNumber)
+    public void OnUpdateMainChain_StoresSnapshot(int gapNumber)
     {
         IXdcReleaseSpec releaseSpec = Substitute.For<IXdcReleaseSpec>();
         releaseSpec.EpochLength.Returns(900);
@@ -93,15 +97,14 @@ internal class SubnetSnapshotManagerTests
         IPenaltyHandler penaltyHandler = Substitute.For<IPenaltyHandler>();
         penaltyHandler.HandlePenalties(Arg.Any<long>(), Arg.Any<Hash256>(), Arg.Any<Address[]>()).Returns(penalties);
 
-        SubnetSnapshotManager snapshotManager = new(new MemDb(), blockTree, Substitute.For<IMasternodeVotingContract>(), specProvider, penaltyHandler);
+        SubnetSnapshotManager snapshotManager = new(new MemDb(), blockTree, Substitute.For<IMasternodeVotingContract>(), specProvider, Substitute.For<IStateReader>(), LimboLogs.Instance, penaltyHandler);
 
         XdcBlockHeader header = Build.A.XdcBlockHeader()
             .WithGeneratedExtraConsensusData(1)
             .WithNumber(gapNumber).TestObject;
         blockTree.FindHeader(Arg.Any<long>()).Returns(header);
-        blockTree.WasProcessed(Arg.Any<long>(), Arg.Any<Hash256>()).Returns(true);
 
-        blockTree.BlockAddedToMain += Raise.EventWith(new BlockReplacementEventArgs(new Block(header)));
+        blockTree.OnUpdateMainChain += Raise.EventWith(new OnUpdateMainChainArgs([new Block(header)], true));
         Snapshot? result = snapshotManager.GetSnapshotByGapNumber(gapNumber);
 
         SubnetSnapshot subnetSnapshot = result.Should().BeOfType<SubnetSnapshot>().Subject;

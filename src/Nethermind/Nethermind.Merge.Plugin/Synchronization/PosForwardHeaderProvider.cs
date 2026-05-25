@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
@@ -71,16 +70,23 @@ public class PosForwardHeaderProvider(
     {
         // Override PoW's RequestHeaders so that it won't request beyond PoW.
         // This fixes `Incremental Sync` hive test.
-        if (response.Count > 0)
+        ReadOnlySpan<BlockHeader> responseSpan = response.AsSpan();
+        if (responseSpan.Length > 0)
         {
-            BlockHeader lastBlockHeader = response[^1];
-            bool lastBlockIsPostMerge = poSSwitcher.GetBlockConsensusInfo(response[^1]).IsPostMerge;
+            BlockHeader lastBlockHeader = responseSpan[^1];
+            bool lastBlockIsPostMerge = poSSwitcher.GetBlockConsensusInfo(responseSpan[^1]).IsPostMerge;
             if (lastBlockIsPostMerge) // Initial check to prevent creating new array every time
             {
+                int preMergeHeadersCount = 0;
+                while (preMergeHeadersCount < responseSpan.Length && !poSSwitcher.GetBlockConsensusInfo(responseSpan[preMergeHeadersCount]).IsPostMerge)
+                {
+                    preMergeHeadersCount++;
+                }
+
                 using IOwnedReadOnlyList<BlockHeader> oldResponse = response;
-                response = response
-                    .TakeWhile(header => !poSSwitcher.GetBlockConsensusInfo(header).IsPostMerge)
-                    .ToPooledList(response.Count);
+                ArrayPoolList<BlockHeader> trimmedResponse = new(preMergeHeadersCount);
+                trimmedResponse.AddRange(responseSpan[..preMergeHeadersCount]);
+                response = trimmedResponse;
                 if (_logger.IsInfo) _logger.Info($"Last block is post merge. {lastBlockHeader.Hash}. Trimming to {response.Count} sized batch.");
             }
         }

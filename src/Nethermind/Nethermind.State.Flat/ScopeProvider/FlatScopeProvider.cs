@@ -19,7 +19,10 @@ public class FlatScopeProvider(
     bool isReadOnly)
     : IWorldStateScopeProvider
 {
-    private readonly TrieStoreScopeProvider.KeyValueWithBatchingBackedCodeDb _codeDb = new(codeDb);
+    // Write paths (block processing) wrap the durable production codeDb directly and benefit
+    // from the cross-block persisted-code hint cache. Read-only paths wrap a ReadOnlyDb temp
+    // buffer (writes are transient) and must NOT populate the hint cache — see TrieStoreScopeProvider.
+    private readonly TrieStoreScopeProvider.KeyValueWithBatchingBackedCodeDb _codeDb = new(codeDb, isPersistent: !isReadOnly);
 
     public bool HasRoot(BlockHeader? baseBlock) => flatDbManager.HasStateForBlock(new StateId(baseBlock));
 
