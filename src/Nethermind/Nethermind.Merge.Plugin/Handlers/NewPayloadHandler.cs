@@ -271,13 +271,15 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
     /// </remarks>
     private void RecordBadBlock(Block block)
     {
+        if (block.Hash is null) return;
+
         Nethermind.Blockchain.Metrics.BadBlocks++;
         if (block.IsByNethermindNode())
         {
             Nethermind.Blockchain.Metrics.BadBlocksByNethermindNodes++;
         }
 
-        _invalidChainTracker.OnInvalidBlock(block.Hash!, block.ParentHash);
+        _invalidChainTracker.OnInvalidBlock(block.Hash, block.ParentHash);
         _blockTree.ReportBadBlock(block);
     }
 
