@@ -122,6 +122,20 @@ public class Eth70ProtocolHandler : Eth69ProtocolHandler, IStaticProtocolInfo
 
                 if (receipts.Length == 0)
                 {
+                    // GetReceipts returning [] is ambiguous: it can mean either "block has
+                    // zero transactions" (legitimate empty receipts) or "I have the header
+                    // but receipts aren't materialized yet" (e.g. we're still syncing
+                    // receipts ourselves). The eth/70 receiver validates segment-complete
+                    // responses against its own transaction count and disconnects on
+                    // mismatch, so we must only emit [] when we know the block really has
+                    // zero transactions. Otherwise stop the response early and let the
+                    // requester try another peer.
+                    Block? block = SyncServer.Find(blockHash);
+                    if (block is null || block.IsBodyMissing || block.Transactions.Length > 0)
+                    {
+                        break;
+                    }
+
                     ulong emptyBlockSize = GetBlockReceiptsSize(0);
                     ulong responseSize = GetEth70ReceiptsResponseSize(
                         responseReceiptsContentSize + emptyBlockSize,
