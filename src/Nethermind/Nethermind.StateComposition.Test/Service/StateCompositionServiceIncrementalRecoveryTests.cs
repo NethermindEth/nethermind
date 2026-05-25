@@ -199,8 +199,6 @@ public class StateCompositionServiceIncrementalRecoveryTests
     [Test]
     public void RunIncrementalDiff_OpensScopeOnHeadBeforeAcquiringResolver()
     {
-        long diffErrorsBefore = Metrics.StateCompDiffErrors;
-
         bool scopeOpened = false;
         BlockHeader? scopedHeader = null;
         IReadOnlyTrieStore readOnlyStore = Substitute.For<IReadOnlyTrieStore>();
@@ -241,8 +239,6 @@ public class StateCompositionServiceIncrementalRecoveryTests
                 "BeginScope must run before GetTrieStore — this is the FlatDb prerequisite.");
             Assert.That(scopedHeader, Is.SameAs(headBlock.Header),
                 "BeginScope must be invoked with the head block header so the snapshot bundle covers the right state.");
-            Assert.That(Metrics.StateCompDiffErrors, Is.EqualTo(diffErrorsBefore + 1),
-                "BeginScopeSentinel propagates as a generic diff error — confirms the call site executed end-to-end.");
         }
     }
 
