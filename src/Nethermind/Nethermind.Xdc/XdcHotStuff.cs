@@ -44,6 +44,7 @@ namespace Nethermind.Xdc
         private readonly object _lockObject = new();
         private volatile bool _running;
         private CancellationTokenSource? _roundCts;
+        private Task? _roundTask;
 
         private DateTime _lastActivityTime = DateTime.UtcNow;
         private long _highestSelfMinedRound;
@@ -79,11 +80,12 @@ namespace Nethermind.Xdc
             }
         }
 
-        public Task StopAsync()
+        public async Task StopAsync()
         {
+            Task? runningTask;
             lock (_lockObject)
             {
-                if (!_running) return Task.CompletedTask;
+                if (!_running) return;
 
                 _running = false;
                 _blockTree.NewHeadBlock -= OnNewHeadBlock;
@@ -92,10 +94,17 @@ namespace Nethermind.Xdc
                 _roundCts?.Cancel();
                 _roundCts?.Dispose();
                 _roundCts = null;
+                runningTask = _roundTask;
+                _roundTask = null;
+            }
+
+            if (runningTask is not null)
+            {
+                try { await runningTask; }
+                catch (OperationCanceledException) { }
             }
 
             _logger.Info("XdcHotStuff consensus runner stopped");
-            return Task.CompletedTask;
         }
 
         public bool IsProducingBlocks(ulong? maxProducingInterval)
@@ -151,7 +160,7 @@ namespace Nethermind.Xdc
                 _roundCts = new CancellationTokenSource();
                 token = _roundCts.Token;
             }
-            _ = RunRound(head, round, token); // fire-and-forget: runs as background round task
+            _roundTask = RunRound(head, round, token);
         }
 
         private async Task RunRound(XdcBlockHeader head, ulong round, CancellationToken ct)
@@ -321,7 +330,7 @@ namespace Nethermind.Xdc
 
             string headInfo = $"#{head.Number} round={head.ExtraConsensusData?.BlockRound} ({head.Hash?.ToShortString()})";
             string roundDuration = _pendingLastRoundDuration.HasValue ? $", prev={_pendingPrevRound} in {_pendingLastRoundDuration.Value.TotalSeconds:F2}s" : "";
-            string myTurn = isMyTurn ? "true " : "false";
+            string myTurn = isMyTurn ? "true" : "false";
             _logger.Info($"Round {round}{roundDuration}: head={headInfo} | Leader={leader?.ToShortString()}, MyTurn={myTurn}, Committee={committee} nodes");
         }
 
@@ -369,6 +378,6 @@ namespace Nethermind.Xdc
             epochInfo.Masternodes.AsSpan().IndexOf(node) != -1;
 
         // TODO: consider using a another sync indicator
-        private bool IsSynced() => !_blockTree.IsSyncing().isSyncing;
+        private bool IsSynced() => !_blockTree.IsSyncing().isSyncing && _blockTree.Head is not null;
     }
 }
