@@ -285,7 +285,7 @@ namespace Nethermind.Xdc
 
             if (!TryAdvance(ref _highestVotedRound, votingRound)) return;
 
-            if (_logger.IsInfo)
+            if (_logger.IsDebug)
                 _logger.Debug($"Round {votingRound}: Voting for block #{head.Number}, hash={head.Hash}");
 
             try
