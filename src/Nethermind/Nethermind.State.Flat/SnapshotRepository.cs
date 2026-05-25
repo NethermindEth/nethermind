@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Concurrent;
+using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using Collections.Pooled;
 using Nethermind.Core.Collections;
@@ -90,7 +91,11 @@ public class SnapshotRepository(ILogManager logManager) : ISnapshotRepository
             SnapshotPooledList result = new(estimatedSize);
             for (int walk = winnerIndex; walk >= 0; walk = visited[walk].ParentIndex)
             {
-                visited[walk].Snapshot.TryAcquire();
+                // `visited` still holds the BFS lease, so the ref-count is at least 1 and
+                // re-acquisition cannot fail. Asserted to flag any future Snapshot lifecycle change
+                // (e.g. a "closing" sentinel) that could invalidate the invariant.
+                bool acquired = visited[walk].Snapshot.TryAcquire();
+                Debug.Assert(acquired, "TryAcquire failed despite held lease");
                 result.Add(visited[walk].Snapshot);
             }
             return result;

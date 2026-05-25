@@ -264,7 +264,7 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
             {
                 if (Stopwatch.GetElapsedTime(sw) > GatherGiveUpDeadline)
                 {
-                    throw new InvalidOperationException($"Unable to gather {nameof(ReadOnlySnapshotBundle)} for block {baseBlock} in {Stopwatch.GetElapsedTime(sw)}");
+                    throw new InvalidOperationException($"Timed out gathering {nameof(ReadOnlySnapshotBundle)} for block {baseBlock} after {attempt} retries over {Stopwatch.GetElapsedTime(sw)}");
                 }
 
                 int delayMs = Math.Min(1 << Math.Min(attempt, 30), 100);  // 1, 2, 4, 8, 16, 32, 64, 100ms max
