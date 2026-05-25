@@ -132,7 +132,7 @@ public class HelloMessageSerializerTests
     {
         yield return new TestCaseData(1, false).SetName("1 char protocol code - accepted");
         yield return new TestCaseData(8, false).SetName("Longest known protocol code - accepted");
-        yield return new TestCaseData(13, false).SetName("Unknown protocol code beyond known set - accepted (UTF-8 fallback)");
+        yield return new TestCaseData(13, false).SetName("13 char protocol code - accepted");
         yield return new TestCaseData(32, false).SetName("Max protocol code length - accepted");
         yield return new TestCaseData(33, true).SetName("Max+1 protocol code length - rejected");
     }
