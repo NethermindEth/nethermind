@@ -43,13 +43,14 @@ public class DbMonitoringModule : Module
             ;
     }
 
-    public class DbTracker
+    public class DbTracker : IDisposable
     {
         private readonly ConcurrentDictionary<string, IDbMeta> _createdDbs = new();
         private readonly HashSet<string> _failingDbs = [];
         private readonly int _intervalSec;
         private readonly Lazy<HyperClockCacheWrapper> _sharedBlockCache;
         private long _lastDbMetricsUpdate = 0;
+        private volatile bool _stopped;
 
         private ILogger _logger;
 
@@ -71,8 +72,18 @@ public class DbMonitoringModule : Module
 
         public bool Paused { get; set; } = false;
 
+        /// <summary>
+        /// Disposed by Autofac when the owning lifetime scope is torn down. Setting
+        /// <c>_stopped</c> here short-circuits any subsequent monitoring tick before it
+        /// touches disposed resources (<c>_sharedBlockCache.Value</c>, etc.). The
+        /// <c>catch (ObjectDisposedException)</c> in <see cref="UpdateDbMetrics"/> remains
+        /// as a backstop for the race where a tick is already executing when Dispose runs.
+        /// </summary>
+        public void Dispose() => _stopped = true;
+
         private void UpdateDbMetrics()
         {
+            if (_stopped) return;
             try
             {
                 if (Paused) return;
@@ -111,6 +122,11 @@ public class DbMonitoringModule : Module
                 Db.Metrics.DbBlockCacheSize["Shared"] = _sharedBlockCache.Value.GetUsage();
 
                 _lastDbMetricsUpdate = Environment.TickCount64;
+            }
+            catch (ObjectDisposedException)
+            {
+                if (_logger.IsDebug) _logger.Debug("DbTracker stopping metrics updates: DI scope or shared cache has been disposed.");
+                _stopped = true;
             }
             catch (Exception e)
             {
