@@ -1221,6 +1221,39 @@ namespace Nethermind.Trie.Test.Pruning
 
         [Test]
         [NonParallelizable]
+        public void Shared_read_only_db_miss_publishes_single_decoded_node_for_concurrent_readers()
+        {
+            TestMemDb memDb = new();
+            TrieNode persistedNode = BuildAndPersistSealedBranch(memDb);
+            using TrieStore fullTrieStore = CreateTrieStore(kvStore: memDb);
+
+            IScopedTrieStore readOnlyScopedTrieStore = fullTrieStore.AsReadOnly().GetTrieStore(null);
+            ITrieNodeResolver sharedResolver = ((ITrieNodeResolverSource)readOnlyScopedTrieStore).GetReadOnlyTraversalResolver()!;
+            ValueHash256 hash = persistedNode.Keccak!.ValueHash256;
+            TrieNode?[] results = new TrieNode[128];
+
+            long sharedHitsBefore = fullTrieStore.SharedNodeHitCount;
+            long clonesBefore = fullTrieStore.CloneForReadOnlyCount;
+
+            Parallel.For(0, results.Length, i =>
+            {
+                TreePath path = TreePath.Empty;
+                ValueHash256 localHash = hash;
+                results[i] = sharedResolver.GetOrLoadNode(path, in localHash);
+            });
+
+            TrieNode firstNode = results[0]!;
+            firstNode.Should().NotBeNull();
+            foreach (TrieNode? node in results)
+            {
+                node.Should().BeSameAs(firstNode);
+            }
+            fullTrieStore.SharedNodeHitCount.Should().BeGreaterThan(sharedHitsBefore);
+            fullTrieStore.CloneForReadOnlyCount.Should().Be(clonesBefore);
+        }
+
+        [Test]
+        [NonParallelizable]
         public async Task PatriciaTree_read_only_lookup_uses_shared_cached_nodes_in_commit_buffer()
         {
             ManualResetEvent writeBlocker = new(false);
