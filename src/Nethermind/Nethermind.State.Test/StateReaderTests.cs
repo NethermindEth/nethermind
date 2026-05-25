@@ -1,8 +1,11 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+#nullable enable
+
 using System;
 using System.Threading.Tasks;
+using Autofac;
 using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -10,7 +13,6 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Core.Test.Db;
 using Nethermind.Db;
 using Nethermind.Specs;
 using Nethermind.Int256;
@@ -24,19 +26,58 @@ using NUnit.Framework;
 
 namespace Nethermind.Store.Test
 {
-    [TestFixture, Parallelizable(ParallelScope.All)]
-    public class StateReaderTests
+    [TestFixture("Standard")]
+    [TestFixture("Flat")]
+    [Parallelizable(ParallelScope.All)]
+    public class StateReaderTests(string backend)
     {
+        private const string Standard = "Standard";
+        private const string Flat = "Flat";
+
         private static readonly Hash256 Hash1 = Keccak.Compute("1");
         private readonly Address _address1 = new(Hash1);
         private static readonly ILogManager Logger = LimboLogs.Instance;
+
+        private sealed class Context : IDisposable
+        {
+            public IWorldState WorldState { get; }
+            public IStateReader Reader { get; }
+            private readonly IContainer? _container;
+
+            public Context(string backend)
+            {
+                switch (backend)
+                {
+                    case Flat:
+                        (WorldState, Reader, _container) = TestWorldStateFactory.CreateFlatForTestWithStateReader();
+                        break;
+                    case Standard:
+                        (WorldState, Reader) = TestWorldStateFactory.CreateForTestWithStateReader();
+                        break;
+                    default:
+                        throw new ArgumentOutOfRangeException(nameof(backend), backend, null);
+                }
+            }
+
+            public BlockHeader CommitAndCapture(Action<IWorldState> populate, long blockNumber = 0)
+            {
+                using IDisposable _ = WorldState.BeginScope(IWorldState.PreGenesis);
+                populate(WorldState);
+                WorldState.Commit(MuirGlacier.Instance);
+                WorldState.CommitTree(blockNumber);
+                return Build.A.BlockHeader.WithNumber(blockNumber).WithStateRoot(WorldState.StateRoot).TestObject;
+            }
+
+            public void Dispose() => _container?.Dispose();
+        }
 
         [Test]
         public void Can_ask_about_balance_in_parallel()
         {
             IReleaseSpec spec = MainnetSpecProvider.Instance.GetSpec((ForkActivation)MainnetSpecProvider.ConstantinopleFixBlockNumber);
-            IDbProvider dbProvider = TestMemDbProvider.Init();
-            (IWorldState provider, IStateReader reader) = TestWorldStateFactory.CreateForTestWithStateReader(dbProvider, LimboLogs.Instance);
+            using Context ctx = new(backend);
+            IWorldState provider = ctx.WorldState;
+            IStateReader reader = ctx.Reader;
 
             using IDisposable _ = provider.BeginScope(IWorldState.PreGenesis);
 
@@ -76,8 +117,9 @@ namespace Nethermind.Store.Test
         {
             StorageCell storageCell = new(_address1, UInt256.One);
             IReleaseSpec spec = MuirGlacier.Instance;
-            IDbProvider dbProvider = TestMemDbProvider.Init();
-            (IWorldState provider, IStateReader reader) = TestWorldStateFactory.CreateForTestWithStateReader(dbProvider, LimboLogs.Instance);
+            using Context ctx = new(backend);
+            IWorldState provider = ctx.WorldState;
+            IStateReader reader = ctx.Reader;
             using IDisposable _ = provider.BeginScope(IWorldState.PreGenesis);
 
             void UpdateStorageValue(byte[] newValue) => provider.Set(storageCell, newValue);
@@ -127,7 +169,9 @@ namespace Nethermind.Store.Test
             StorageCell storageCell = new(_address1, UInt256.One);
             IReleaseSpec spec = MuirGlacier.Instance;
 
-            (IWorldState provider, IStateReader reader) = TestWorldStateFactory.CreateForTestWithStateReader();
+            using Context ctx = new(backend);
+            IWorldState provider = ctx.WorldState;
+            IStateReader reader = ctx.Reader;
             using IDisposable _ = provider.BeginScope(IWorldState.PreGenesis);
 
             void CommitEverything()
@@ -170,8 +214,9 @@ namespace Nethermind.Store.Test
             /* all testing will be touching just a single storage cell */
             StorageCell storageCell = new(_address1, UInt256.One);
 
-            IDbProvider dbProvider = TestMemDbProvider.Init();
-            (IWorldState state, IStateReader reader) = TestWorldStateFactory.CreateForTestWithStateReader(dbProvider, LimboLogs.Instance);
+            using Context ctx = new(backend);
+            IWorldState state = ctx.WorldState;
+            IStateReader reader = ctx.Reader;
             byte[] initialValue = new byte[] { 1, 2, 3 };
             BlockHeader baseBlock;
             using (IDisposable _ = state.BeginScope(IWorldState.PreGenesis))
@@ -225,8 +270,9 @@ namespace Nethermind.Store.Test
         [Test]
         public void Can_collect_stats()
         {
-            IDbProvider dbProvider = TestMemDbProvider.Init();
-            (IWorldState provider, IStateReader stateReader) = TestWorldStateFactory.CreateForTestWithStateReader(dbProvider, LimboLogs.Instance);
+            using Context ctx = new(backend);
+            IWorldState provider = ctx.WorldState;
+            IStateReader stateReader = ctx.Reader;
 
             Hash256 stateRoot;
             using (IDisposable _ = provider.BeginScope(IWorldState.PreGenesis))
@@ -241,14 +287,14 @@ namespace Nethermind.Store.Test
             stats.AccountCount.Should().Be(1);
         }
 
-        private static (IWorldState sut, IReleaseSpec releaseSpec, IDisposable scope) SetupContractSenderTest(
-            bool eip3607Enabled, bool eip7702Enabled, byte[] code = null)
+        private (Context ctx, IReleaseSpec releaseSpec, IDisposable scope) SetupContractSenderTest(
+            bool eip3607Enabled, bool eip7702Enabled, byte[]? code = null)
         {
             IReleaseSpec releaseSpec = ReleaseSpecSubstitute.Create();
             releaseSpec.IsEip3607Enabled.Returns(eip3607Enabled);
             releaseSpec.IsEip7702Enabled.Returns(eip7702Enabled);
-            IDbProvider dbProvider = TestMemDbProvider.Init();
-            (IWorldState sut, IStateReader _) = TestWorldStateFactory.CreateForTestWithStateReader(dbProvider, LimboLogs.Instance);
+            Context ctx = new(backend);
+            IWorldState sut = ctx.WorldState;
             IDisposable scope = sut.BeginScope(IWorldState.PreGenesis);
             sut.CreateAccount(TestItem.AddressA, 0);
             if (code is not null)
@@ -257,18 +303,19 @@ namespace Nethermind.Store.Test
             }
             sut.Commit(MuirGlacier.Instance);
             sut.CommitTree(0);
-            return (sut, releaseSpec, scope);
+            return (ctx, releaseSpec, scope);
         }
 
         [TestCase(true, true, null, false, Description = "No code returns false")]
         [TestCase(true, true, new byte[] { 1 }, true, Description = "Has code returns true")]
         [TestCase(true, false, null, false, Description = "No code, 7702 disabled returns false")]
-        public void IsInvalidContractSender_BasicCases(bool eip3607, bool eip7702, byte[] code, bool expected)
+        public void IsInvalidContractSender_BasicCases(bool eip3607, bool eip7702, byte[]? code, bool expected)
         {
-            (IWorldState sut, IReleaseSpec releaseSpec, IDisposable scope) = SetupContractSenderTest(eip3607, eip7702, code);
+            (Context ctx, IReleaseSpec releaseSpec, IDisposable scope) = SetupContractSenderTest(eip3607, eip7702, code);
+            using (ctx)
             using (scope)
             {
-                bool result = sut.IsInvalidContractSender(releaseSpec, TestItem.AddressA);
+                bool result = ctx.WorldState.IsInvalidContractSender(releaseSpec, TestItem.AddressA);
                 Assert.That(result, Is.EqualTo(expected));
             }
         }
@@ -277,10 +324,11 @@ namespace Nethermind.Store.Test
         public void IsInvalidContractSender_AccountHasDelegatedCode_ReturnsFalse()
         {
             byte[] code = [.. Eip7702Constants.DelegationHeader, .. new byte[20]];
-            (IWorldState sut, IReleaseSpec releaseSpec, IDisposable scope) = SetupContractSenderTest(eip3607Enabled: true, eip7702Enabled: true, code);
+            (Context ctx, IReleaseSpec releaseSpec, IDisposable scope) = SetupContractSenderTest(eip3607Enabled: true, eip7702Enabled: true, code);
+            using (ctx)
             using (scope)
             {
-                bool result = sut.IsInvalidContractSender(releaseSpec, TestItem.AddressA);
+                bool result = ctx.WorldState.IsInvalidContractSender(releaseSpec, TestItem.AddressA);
                 Assert.That(result, Is.False);
             }
         }
@@ -289,10 +337,11 @@ namespace Nethermind.Store.Test
         public void IsInvalidContractSender_AccountHasCodeButDelegateReturnsTrue_ReturnsFalse()
         {
             byte[] code = new byte[20];
-            (IWorldState sut, IReleaseSpec releaseSpec, IDisposable scope) = SetupContractSenderTest(eip3607Enabled: true, eip7702Enabled: true, code);
+            (Context ctx, IReleaseSpec releaseSpec, IDisposable scope) = SetupContractSenderTest(eip3607Enabled: true, eip7702Enabled: true, code);
+            using (ctx)
             using (scope)
             {
-                bool result = sut.IsInvalidContractSender(releaseSpec, TestItem.AddressA, static (_) => true);
+                bool result = ctx.WorldState.IsInvalidContractSender(releaseSpec, TestItem.AddressA, static (_) => true);
                 Assert.That(result, Is.False);
             }
         }
@@ -301,10 +350,11 @@ namespace Nethermind.Store.Test
         public void IsInvalidContractSender_AccountHasDelegatedCodeBut7702IsNotEnabled_ReturnsTrue()
         {
             byte[] code = [.. Eip7702Constants.DelegationHeader, .. new byte[20]];
-            (IWorldState sut, IReleaseSpec releaseSpec, IDisposable scope) = SetupContractSenderTest(eip3607Enabled: true, eip7702Enabled: false, code);
+            (Context ctx, IReleaseSpec releaseSpec, IDisposable scope) = SetupContractSenderTest(eip3607Enabled: true, eip7702Enabled: false, code);
+            using (ctx)
             using (scope)
             {
-                bool result = sut.IsInvalidContractSender(releaseSpec, TestItem.AddressA);
+                bool result = ctx.WorldState.IsInvalidContractSender(releaseSpec, TestItem.AddressA);
                 Assert.That(result, Is.True);
             }
         }
@@ -313,10 +363,11 @@ namespace Nethermind.Store.Test
         public void IsInvalidContractSender_AccountHasDelegatedCodeBut3607IsNotEnabled_ReturnsFalse()
         {
             byte[] code = [.. Eip7702Constants.DelegationHeader, .. new byte[20]];
-            (IWorldState sut, IReleaseSpec releaseSpec, IDisposable scope) = SetupContractSenderTest(eip3607Enabled: false, eip7702Enabled: true, code);
+            (Context ctx, IReleaseSpec releaseSpec, IDisposable scope) = SetupContractSenderTest(eip3607Enabled: false, eip7702Enabled: true, code);
+            using (ctx)
             using (scope)
             {
-                bool result = sut.IsInvalidContractSender(releaseSpec, TestItem.AddressA);
+                bool result = ctx.WorldState.IsInvalidContractSender(releaseSpec, TestItem.AddressA);
                 Assert.That(result, Is.False);
             }
         }
@@ -324,7 +375,9 @@ namespace Nethermind.Store.Test
         [Test]
         public void Can_accepts_visitors()
         {
-            (IWorldState provider, IStateReader reader) = TestWorldStateFactory.CreateForTestWithStateReader();
+            using Context ctx = new(backend);
+            IWorldState provider = ctx.WorldState;
+            IStateReader reader = ctx.Reader;
             Hash256 stateRoot;
             using (IDisposable _ = provider.BeginScope(IWorldState.PreGenesis))
             {
@@ -341,7 +394,9 @@ namespace Nethermind.Store.Test
         [Test]
         public void Can_dump_state()
         {
-            (IWorldState provider, IStateReader reader) = TestWorldStateFactory.CreateForTestWithStateReader();
+            using Context ctx = new(backend);
+            IWorldState provider = ctx.WorldState;
+            IStateReader reader = ctx.Reader;
 
             Hash256 stateRoot;
             using (IDisposable _ = provider.BeginScope(IWorldState.PreGenesis))
@@ -354,6 +409,85 @@ namespace Nethermind.Store.Test
 
             string state = reader.DumpState(Build.A.BlockHeader.WithStateRoot(stateRoot).WithNumber(0).TestObject);
             state.Should().NotBeEmpty();
+        }
+
+        [Test]
+        public void TryGetAccount_ExistingAccount_ReturnsTrue()
+        {
+            using Context ctx = new(backend);
+            Account expected = TestItem.GenerateIndexedAccount(7);
+            BlockHeader header = ctx.CommitAndCapture(state => state.CreateAccount(TestItem.AddressA, expected.Balance, expected.Nonce));
+
+            bool result = ctx.Reader.TryGetAccount(header, TestItem.AddressA, out AccountStruct account);
+
+            result.Should().BeTrue();
+            account.Balance.Should().Be(expected.Balance);
+            account.Nonce.Should().Be(expected.Nonce);
+        }
+
+        [Test]
+        public void TryGetAccount_NonExistentAccount_ReturnsFalse()
+        {
+            using Context ctx = new(backend);
+            BlockHeader header = ctx.CommitAndCapture(state => state.CreateAccount(TestItem.AddressA, 1, 1));
+
+            // The out parameter is intentionally not asserted: the IStateReader contract leaves it
+            // undefined when result is false, and the two implementations diverge
+            // (StateReader => AccountStruct.TotallyEmpty, FlatStateReader => default).
+            bool result = ctx.Reader.TryGetAccount(header, TestItem.AddressB, out _);
+
+            result.Should().BeFalse();
+        }
+
+        [Test]
+        public void GetStorage_ExistingSlot_ReturnsValue()
+        {
+            using Context ctx = new(backend);
+            StorageCell cell = new(TestItem.AddressA, (UInt256)42);
+            byte[] value = [0xab, 0xcd];
+            BlockHeader header = ctx.CommitAndCapture(state =>
+            {
+                state.CreateAccount(TestItem.AddressA, 1);
+                state.Set(cell, value);
+            });
+
+            byte[] result = ctx.Reader.GetStorage(header, cell.Address, cell.Index).ToArray();
+
+            result.Should().Equal(value);
+        }
+
+        [Test]
+        public void GetCode_EmptyHash_ReturnsEmpty()
+        {
+            using Context ctx = new(backend);
+
+            ctx.Reader.GetCode(Keccak.OfAnEmptyString).Should().BeEmpty();
+            ctx.Reader.GetCode(Keccak.OfAnEmptyString.ValueHash256).Should().BeEmpty();
+        }
+
+        [Test]
+        public void GetCode_KnownCode_ReturnsCode()
+        {
+            using Context ctx = new(backend);
+            byte[] code = [0x60, 0x80];
+            ValueHash256 codeHash = ValueKeccak.Compute(code);
+            ctx.CommitAndCapture(state =>
+            {
+                state.CreateAccount(TestItem.AddressA, 1);
+                state.InsertCode(TestItem.AddressA, codeHash, code, MuirGlacier.Instance);
+            });
+
+            ctx.Reader.GetCode((Hash256)codeHash).Should().Equal(code);
+            ctx.Reader.GetCode(codeHash).Should().Equal(code);
+        }
+
+        [Test]
+        public void HasStateForBlock_CommittedBlock_ReturnsTrue()
+        {
+            using Context ctx = new(backend);
+            BlockHeader header = ctx.CommitAndCapture(state => state.CreateAccount(TestItem.AddressA, 1));
+
+            ctx.Reader.HasStateForBlock(header).Should().BeTrue();
         }
     }
 }
