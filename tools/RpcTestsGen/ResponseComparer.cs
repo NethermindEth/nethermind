@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Diagnostics.CodeAnalysis;
 using System.Text.Json.Nodes;
 
 namespace Nethermind.RpcTestsGen;
@@ -32,6 +33,7 @@ public class ResponseComparer(Uri[] clientUrls)
     }
 }
 
+[SuppressMessage("ReSharper", "UnusedMember.Global", Justification = "Used by dynamic formatter")]
 public record TestCase(RequestInfo RequestInfo, JsonNode Response)
 {
     public FilePos Pos => RequestInfo.Pos;
@@ -41,6 +43,6 @@ public record TestCase(RequestInfo RequestInfo, JsonNode Response)
     public string FileName => field ??= Path.GetFileNameWithoutExtension(Pos.FilePath);
     public string FileExt => field ??= Path.GetExtension(Pos.FilePath);
     public int RequestN => RequestInfo.Number;
-    public int RequestId => RequestInfo.Id;
+    public string RequestId => RequestInfo.Id;
     public int TestN { get; set; }
 }

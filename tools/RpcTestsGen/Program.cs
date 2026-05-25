@@ -74,7 +74,7 @@ rootCommand.SetAction(async (parseResult, ct) =>
 {
     ExecutionArgs args = new()
     {
-        Sources = parseResult.GetRequiredValue(requestsOption).Select(FilePos.Parse).ToArray(),
+        Sources = [.. parseResult.GetRequiredValue(requestsOption).Select(FilePos.Parse)],
         Clients = parseResult.GetValue(clientsOption)?.Select(static s => new Uri(s)).ToArray(),
         Parallelism = parseResult.GetValue(parallelismOption),
         Include = parseResult.GetValue(includeOption),

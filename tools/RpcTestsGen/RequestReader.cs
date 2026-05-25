@@ -50,5 +50,5 @@ public class RequestReader(FilePos[] sources, Filter filter)
 
 public record RequestInfo(FilePos Pos, int Number, JsonNode Data)
 {
-    public int Id => Data.GetIntId() ?? Number;
+    public string Id => Data.GetId() ?? $"{Number}";
 }
