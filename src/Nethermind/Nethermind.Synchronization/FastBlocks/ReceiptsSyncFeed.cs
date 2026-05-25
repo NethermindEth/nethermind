@@ -234,15 +234,10 @@ namespace Nethermind.Synchronization.FastBlocks
         }
 
         /// <summary>
-        /// Recomputes <see cref="TxReceipt.Bloom"/> from <see cref="TxReceipt.Logs"/> when a peer
-        /// ships an all-zero bloom alongside non-empty logs.
+        /// Recomputes a receipt's bloom from its logs when a peer ships an all-zero bloom for a
+        /// receipt that has logs. A non-zero but wrong bloom is left alone and caught later by the
+        /// receipts-root comparison.
         /// </summary>
-        /// <remarks>
-        /// Erigon ships <c>Bloom.Empty</c> on the wire for old receipts with logs; the getter only
-        /// falls back to <see cref="TxReceipt.CalculateBloom"/> on null, so the receipts-trie root
-        /// diverges from the header (issue #8508). Recompute only on exact-empty bloom — a non-zero
-        /// but wrong bloom is still caught by the root comparison.
-        /// </remarks>
         internal static void NormalizeZeroBlooms(TxReceipt[] receipts)
         {
             for (int i = 0; i < receipts.Length; i++)

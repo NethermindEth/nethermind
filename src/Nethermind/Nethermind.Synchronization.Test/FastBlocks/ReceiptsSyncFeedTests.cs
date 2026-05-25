@@ -497,9 +497,6 @@ public class ReceiptsSyncFeedTests
         Assert.That(feed.IsFinished, Is.True);
     }
 
-    // Regression for #8508: Erigon ships an all-zero bloom for old receipts with logs; the
-    // TxReceipt.Bloom getter only falls back to CalculateBloom on null, so the locally computed
-    // receipts-trie root used to diverge from the header and we rejected the peer.
     [TestCase(true, true, true, TestName = "NormalizeZeroBlooms recomputes when logs present and bloom empty")]
     [TestCase(false, true, false, TestName = "NormalizeZeroBlooms leaves legitimately empty receipts alone")]
     [TestCase(true, false, false, TestName = "NormalizeZeroBlooms does not overwrite a non-empty bloom")]
