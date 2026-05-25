@@ -46,11 +46,16 @@ public static class StreamableResultWriter
     /// <summary>Flushes the writer when the buffered payload reaches the streaming threshold.</summary>
     /// <param name="writer">The destination writer.</param>
     /// <param name="cancellationToken">The cancellation token used when flushing.</param>
-    /// <returns><see langword="true"/> when the stream is complete, canceled, or cancellation was requested.</returns>
-    public static ValueTask<bool> FlushIfNeededAsync(PipeWriter writer, CancellationToken cancellationToken) =>
-        cancellationToken.IsCancellationRequested ? new ValueTask<bool>(true) :
-        writer.CanGetUnflushedBytes && writer.UnflushedBytes < FlushThresholdBytes ? new ValueTask<bool>(false) :
-        FlushAsync(writer, cancellationToken);
+    /// <returns><see langword="true"/> when the destination is complete or the flush operation is canceled by the writer.</returns>
+    /// <exception cref="OperationCanceledException">Thrown when <paramref name="cancellationToken"/> is canceled.</exception>
+    public static ValueTask<bool> FlushIfNeededAsync(PipeWriter writer, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+
+        return writer.CanGetUnflushedBytes && writer.UnflushedBytes < FlushThresholdBytes
+            ? new ValueTask<bool>(false)
+            : FlushAsync(writer, cancellationToken);
+    }
 
     private static async ValueTask<bool> FlushAsync(PipeWriter writer, CancellationToken cancellationToken)
     {

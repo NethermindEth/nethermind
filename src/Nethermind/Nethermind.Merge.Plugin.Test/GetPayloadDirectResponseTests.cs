@@ -7,6 +7,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.IO.Pipelines;
 using System.Reflection;
+using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Threading;
@@ -168,6 +169,33 @@ public class GetPayloadDirectResponseTests
             : await WriteResponseAsync(ResultWrapper<GetPayloadV6Result?>.Success((GetPayloadV6Result)CreateDirectResult(version, block, blobsBundle, executionRequests)));
 
         JsonNode.DeepEquals(JsonNode.Parse(expected), JsonNode.Parse(actual)).Should().BeTrue();
+    }
+
+    [Test]
+    public async Task Json_rpc_envelope_cancellation_does_not_complete_partial_direct_response()
+    {
+        (Block block, BlobsBundleV2 blobsBundle, byte[][]? executionRequests) = CreatePayloadInputs(1, 1, withdrawals: true, requests: true, BalKind.Encoded, slotNumber: 42);
+        JsonRpcResponse response = ResultWrapper<GetPayloadV5Result?>.Success((GetPayloadV5Result)CreateDirectResult(5, block, blobsBundle, executionRequests));
+        using MemoryStream stream = new();
+        PipeWriter writer = PipeWriter.Create(stream, new StreamPipeWriterOptions(leaveOpen: true));
+        using CancellationTokenSource cancellationTokenSource = new();
+        cancellationTokenSource.Cancel();
+
+        try
+        {
+            Func<Task> act = async () => await JsonRpcResponseWriter.WriteAsync(writer, response, EthereumJsonSerializer.JsonOptions, cancellationTokenSource.Token);
+
+            await act.Should().ThrowAsync<OperationCanceledException>();
+            await writer.FlushAsync(CancellationToken.None);
+
+            string partialResponse = Encoding.UTF8.GetString(stream.ToArray());
+            partialResponse.Should().Contain("\"result\":");
+            partialResponse.Should().NotContain(",\"id\":");
+        }
+        finally
+        {
+            await writer.CompleteAsync();
+        }
     }
 
     [TestCase(typeof(GetPayloadV5Result), true)]

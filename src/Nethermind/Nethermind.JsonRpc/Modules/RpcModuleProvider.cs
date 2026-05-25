@@ -35,8 +35,7 @@ namespace Nethermind.JsonRpc.Modules
         ];
 
         private Dictionary<string, ResolvedMethodInfo> _methods = [];
-        private FrozenDictionary<string, ResolvedMethodInfo>? _frozenMethods = null;
-        private readonly ResolvedMethodInfo?[] _hotMethods = new ResolvedMethodInfo?[HotMethodNames.Length];
+        private MethodCache? _methodCache;
 
         private readonly IRpcMethodFilter _filter = NullRpcMethodFilter.Instance;
 
@@ -90,6 +89,7 @@ namespace Nethermind.JsonRpc.Modules
             string moduleType = attribute.ModuleType;
             lock (_updateRegistrationsLock)
             {
+                Dictionary<string, ResolvedMethodInfo> methodsByName = new(_methods, StringComparer.Ordinal);
                 KeyValuePair<string, ResolvedMethodInfo>[] methods = GetMethods<T>(moduleType).ToArray();
                 Func<bool, ValueTask<IRpcModule>> rentModule = canBeShared => RentModule(pool, canBeShared);
                 Action<IRpcModule> returnModule = m => pool.ReturnModule((T)m);
@@ -98,9 +98,8 @@ namespace Nethermind.JsonRpc.Modules
                     .ForEach((method) =>
                     {
                         method.Value.SetPool(rentModule, returnModule, pool);
-                        _methods[method.Key] = method.Value;
+                        methodsByName[method.Key] = method.Value;
                     });
-                ClearMethodCache();
 
                 _modules.Add(moduleType);
 
@@ -108,6 +107,9 @@ namespace Nethermind.JsonRpc.Modules
                 {
                     _enabledModules.Add(moduleType);
                 }
+
+                _methods = methodsByName;
+                Volatile.Write(ref _methodCache, null);
             }
         }
 
@@ -134,40 +136,52 @@ namespace Nethermind.JsonRpc.Modules
             }
         }
 
-        private void EnsureFrozenCollection()
+        private MethodCache EnsureMethodCache()
         {
-            if (_frozenMethods is not null)
+            MethodCache? cache = Volatile.Read(ref _methodCache);
+            if (cache is not null)
             {
-                return;
+                return cache;
             }
 
-            FrozenDictionary<string, ResolvedMethodInfo> frozenMethods = _methods.ToFrozenDictionary(StringComparer.Ordinal);
-            for (int i = 0; i < HotMethodNames.Length; i++)
+            lock (_updateRegistrationsLock)
             {
-                _hotMethods[i] = Resolve(frozenMethods, HotMethodNames[i]);
+                cache = Volatile.Read(ref _methodCache);
+                if (cache is not null)
+                {
+                    return cache;
+                }
+
+                cache = BuildMethodCache(_methods);
+                Volatile.Write(ref _methodCache, cache);
+                return cache;
             }
 
-            _frozenMethods = frozenMethods;
+            static MethodCache BuildMethodCache(Dictionary<string, ResolvedMethodInfo> methods)
+            {
+                FrozenDictionary<string, ResolvedMethodInfo> frozenMethods = methods.ToFrozenDictionary(StringComparer.Ordinal);
+                ResolvedMethodInfo?[] hotMethods = new ResolvedMethodInfo?[HotMethodNames.Length];
+                for (int i = 0; i < HotMethodNames.Length; i++)
+                {
+                    hotMethods[i] = Resolve(frozenMethods, HotMethodNames[i]);
+                }
+
+                return new MethodCache(frozenMethods, hotMethods);
+            }
 
             static ResolvedMethodInfo? Resolve(FrozenDictionary<string, ResolvedMethodInfo> methods, string methodName) =>
                 methods.TryGetValue(methodName, out ResolvedMethodInfo result) ? result : null;
         }
 
-        private void ClearMethodCache()
+        private static bool TryGetResolvedMethod(MethodCache cache, string methodName, [NotNullWhen(true)] out ResolvedMethodInfo? method)
         {
-            _frozenMethods = null;
-            Array.Clear(_hotMethods);
-        }
-
-        private bool TryGetResolvedMethod(string methodName, [NotNullWhen(true)] out ResolvedMethodInfo? method)
-        {
-            method = TryGetInternedHotMethod(methodName);
+            method = TryGetInternedHotMethod(cache, methodName);
             if (method is not null)
             {
                 return true;
             }
 
-            if (_frozenMethods!.TryGetValue(methodName, out ResolvedMethodInfo result))
+            if (cache.Methods.TryGetValue(methodName, out ResolvedMethodInfo result))
             {
                 method = result;
                 return true;
@@ -177,13 +191,13 @@ namespace Nethermind.JsonRpc.Modules
             return false;
         }
 
-        private ResolvedMethodInfo? TryGetInternedHotMethod(string methodName)
+        private static ResolvedMethodInfo? TryGetInternedHotMethod(MethodCache cache, string methodName)
         {
             for (int i = 0; i < HotMethodNames.Length; i++)
             {
                 if (ReferenceEquals(methodName, HotMethodNames[i]))
                 {
-                    return _hotMethods[i];
+                    return cache.HotMethods[i];
                 }
             }
 
@@ -192,11 +206,11 @@ namespace Nethermind.JsonRpc.Modules
 
         public ModuleResolution Check(string methodName, JsonRpcContext context, out string? module, out ResolvedMethodInfo? method)
         {
-            EnsureFrozenCollection();
+            MethodCache cache = EnsureMethodCache();
             module = null;
             method = null;
 
-            if (!TryGetResolvedMethod(methodName, out ResolvedMethodInfo? result))
+            if (!TryGetResolvedMethod(cache, methodName, out ResolvedMethodInfo? result))
             {
                 return ModuleResolution.Unknown;
             }
@@ -221,16 +235,16 @@ namespace Nethermind.JsonRpc.Modules
 
         public ResolvedMethodInfo? Resolve(string methodName)
         {
-            EnsureFrozenCollection();
-            if (!TryGetResolvedMethod(methodName, out ResolvedMethodInfo? result)) return null;
+            MethodCache cache = EnsureMethodCache();
+            if (!TryGetResolvedMethod(cache, methodName, out ResolvedMethodInfo? result)) return null;
 
             return result;
         }
 
         public ValueTask<IRpcModule> Rent(string methodName, bool canBeShared)
         {
-            EnsureFrozenCollection();
-            if (!TryGetResolvedMethod(methodName, out ResolvedMethodInfo? result)) return ValueTask.FromResult<IRpcModule>(null!);
+            MethodCache cache = EnsureMethodCache();
+            if (!TryGetResolvedMethod(cache, methodName, out ResolvedMethodInfo? result)) return ValueTask.FromResult<IRpcModule>(null!);
 
             return result.RentModule(canBeShared);
         }
@@ -239,8 +253,8 @@ namespace Nethermind.JsonRpc.Modules
 
         public void Return(string methodName, IRpcModule rpcModule)
         {
-            EnsureFrozenCollection();
-            if (!TryGetResolvedMethod(methodName, out ResolvedMethodInfo? result))
+            MethodCache cache = EnsureMethodCache();
+            if (!TryGetResolvedMethod(cache, methodName, out ResolvedMethodInfo? result))
                 throw new InvalidOperationException("Not possible to return an unresolved module");
 
             result.ReturnModule(rpcModule);
@@ -250,8 +264,16 @@ namespace Nethermind.JsonRpc.Modules
 
         public IRpcModulePool? GetPoolForMethod(string methodName)
         {
-            EnsureFrozenCollection();
-            return TryGetResolvedMethod(methodName, out ResolvedMethodInfo? result) ? result.ModulePool : null;
+            MethodCache cache = EnsureMethodCache();
+            return TryGetResolvedMethod(cache, methodName, out ResolvedMethodInfo? result) ? result.ModulePool : null;
+        }
+
+        private sealed class MethodCache(
+            FrozenDictionary<string, ResolvedMethodInfo> methods,
+            ResolvedMethodInfo?[] hotMethods)
+        {
+            public FrozenDictionary<string, ResolvedMethodInfo> Methods { get; } = methods;
+            public ResolvedMethodInfo?[] HotMethods { get; } = hotMethods;
         }
 
         private static IDictionary<string, (MethodInfo, bool, RpcEndpoint)> GetMethodDict(Type type)
