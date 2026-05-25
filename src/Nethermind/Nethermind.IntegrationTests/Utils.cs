@@ -23,9 +23,12 @@ namespace Nethermind.IntegrationTests;
 public static class Utils
 {
     private const string DefaultLocalImageTag = "nethermind:integration-tests";
+    private const string DefaultProxyImageTag = "engine-api-proxy:integration-tests";
 
     private static readonly SemaphoreSlim s_imageBuildLock = new(1, 1);
+    private static readonly SemaphoreSlim s_proxyImageBuildLock = new(1, 1);
     private static IFutureDockerImage s_builtImage;
+    private static IFutureDockerImage s_builtProxyImage;
 
     /// <summary>
     /// Resolves the Nethermind container image to use for integration tests.
@@ -64,6 +67,59 @@ public static class Utils
         }
 
         return s_builtImage.FullName;
+    }
+
+    /// <summary>
+    /// Resolves the EngineApiProxy container image to use for integration tests.
+    /// If <c>ENGINE_API_PROXY_IMAGE</c> is set, it takes precedence and is used as-is.
+    /// Otherwise the repository's <c>tools/EngineApiProxy/Dockerfile</c> is built (once per
+    /// test process) and tagged with <c>ENGINE_API_PROXY_IMAGE_TAG</c>
+    /// (default <c>engine-api-proxy:integration-tests</c>).
+    /// </summary>
+    public static async Task<string> GetEngineApiProxyImageAsync()
+    {
+        string overrideImage = Environment.GetEnvironmentVariable("ENGINE_API_PROXY_IMAGE");
+        if (!string.IsNullOrWhiteSpace(overrideImage))
+        {
+            return overrideImage;
+        }
+
+        string tag = Environment.GetEnvironmentVariable("ENGINE_API_PROXY_IMAGE_TAG") ?? DefaultProxyImageTag;
+
+        await s_proxyImageBuildLock.WaitAsync();
+        try
+        {
+            if (s_builtProxyImage is null)
+            {
+                IFutureDockerImage image = new ImageFromDockerfileBuilder()
+                    .WithDockerfileDirectory(CommonDirectoryPath.GetGitDirectory(), string.Empty)
+                    .WithDockerfile("tools/EngineApiProxy/Dockerfile")
+                    .WithName(tag)
+                    .WithCleanUp(false)
+                    .Build();
+                await image.CreateAsync();
+                s_builtProxyImage = image;
+            }
+        }
+        finally
+        {
+            s_proxyImageBuildLock.Release();
+        }
+
+        return s_builtProxyImage.FullName;
+    }
+
+    /// <summary>
+    /// Builds a <see cref="ContainerBuilder"/> pre-configured for an EngineApiProxy container:
+    /// uses the resolved proxy image and passes <paramref name="command"/> as the proxy CLI args.
+    /// Callers add networks, port bindings, and wait strategies as needed for their scenario.
+    /// </summary>
+    public static async Task<ContainerBuilder> BuildEngineApiProxyContainerAsync(string[] command)
+    {
+        string image = await GetEngineApiProxyImageAsync();
+        return new ContainerBuilder()
+            .WithImage(image)
+            .WithCommand(command);
     }
 
     /// <summary>
@@ -234,8 +290,8 @@ public static class Utils
 
         for (int i = 0; i < count; i++)
         {
-            JsonNode latestBlock = await SendEngineRequestAsync(httpClient, "eth_getBlockByNumber", "latest", false);
-            if (latestBlock == null) throw new Exception("Latest block is null.");
+            JsonNode latestBlock = await SendEngineRequestAsync(httpClient, "eth_getBlockByNumber", "latest", false)
+                ?? throw new Exception("Latest block is null.");
             string parentHash = latestBlock["hash"].GetValue<string>();
             string parentTimestampStr = latestBlock["timestamp"].GetValue<string>();
             long parentTimestamp = Convert.ToInt64(parentTimestampStr.Substring(2), 16);
