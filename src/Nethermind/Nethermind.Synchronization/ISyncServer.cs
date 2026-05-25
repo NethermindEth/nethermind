@@ -18,6 +18,14 @@ namespace Nethermind.Synchronization
         void HintBlock(Hash256 hash, long number, ISyncPeer receivedFrom);
         void AddNewBlock(Block block, ISyncPeer node);
         void StopNotifyingPeersAboutNewBlocks();
+        /// <summary>
+        /// Returns receipts for the given block hash, with explicit semantics:
+        /// <list type="bullet">
+        /// <item><description><c>null</c> — receipts are not (yet) known locally (block missing, body missing, or receipts not stored); callers MUST NOT claim "empty" on the wire.</description></item>
+        /// <item><description>empty array — block exists locally and legitimately has zero transactions.</description></item>
+        /// <item><description>non-empty array — receipts for an executed block.</description></item>
+        /// </list>
+        /// </summary>
         TxReceipt[]? GetReceipts(Hash256 blockHashes);
         MemoryManager<byte>? GetBlockAccessListRlp(Hash256 blockHash);
         Block? Find(Hash256 hash);
