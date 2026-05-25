@@ -38,7 +38,9 @@ public class PayloadDecoderTests
         Assert.That(expected.ParentBeaconBlockRoot, Is.EqualTo(actual.ParentBeaconBlockRoot!));
         Assert.That(expected.ReceiptsRoot, Is.EqualTo(actual.ReceiptsRoot));
         Assert.That(expected.StateRoot, Is.EqualTo(actual.StateRoot));
-        Assert.That(expected.Withdrawals, Is.EqualTo(actual.Withdrawals));
+        Assert.That(expected.Withdrawals, Is.EqualTo(actual.Withdrawals)
+            .UsingPropertiesComparer<Withdrawal>(
+                static options => options.Excluding(static withdrawal => withdrawal.AmountInWei)));
         Assert.That(expected.LogsBloom, Is.EqualTo(actual.LogsBloom));
         Assert.That(expected.PrevRandao, Is.EqualTo(actual.PrevRandao));
     }

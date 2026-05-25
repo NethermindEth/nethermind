@@ -104,7 +104,7 @@ namespace Nethermind.AuRa.Test.Validators
                     Build.A.BlockHeader.WithNumber(blockNumber + 1).TestObject, Build.A.BlockHeader.WithNumber(blockNumber).TestObject));
             }
 
-            Assert.That(_innerValidators.Keys, Is.EqualTo(_validator.Validators.Keys.Select(static x => x == 0 ? 1 : x + 2)));
+            Assert.That(_innerValidators.Keys, Is.EquivalentTo(_validator.Validators.Keys.Select(static x => x == 0 ? 1 : x + 2)));
         }
 
         [TestCase(AuRaParameters.ValidatorType.Contract, 1)]

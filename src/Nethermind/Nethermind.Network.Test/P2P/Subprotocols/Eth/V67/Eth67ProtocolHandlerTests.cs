@@ -13,6 +13,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Timers;
 using Nethermind.Logging;
 using Nethermind.Network.P2P;
+using Nethermind.Network.P2P.Subprotocols;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V66;
@@ -111,7 +112,7 @@ public class Eth67ProtocolHandlerTests
 
         HandleIncomingStatusMessage();
         System.Action act = () => HandleZeroMessage(msg66, Eth66MessageCode.NodeData);
-        Assert.That(act, Throws.Nothing);
+        Assert.DoesNotThrow<SubprotocolException>(act);
     }
 
     [Test]

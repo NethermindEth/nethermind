@@ -215,9 +215,8 @@ namespace Nethermind.TxPool.Test
                 .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
 
             Assert.That(_txPool.SubmitTx(blobTxAdded, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
-            _txPool.TryGetPendingTransaction(blobTxAdded.Hash!, out Transaction blobTxReturned);
-
-            Assert.That(blobTxReturned, Is.EqualTo(blobTxAdded));
+            Assert.That(_txPool.TryGetPendingTransaction(blobTxAdded.Hash!, out Transaction blobTxReturned), Is.True);
+            AssertTransactionsEquivalent(blobTxReturned, blobTxAdded);
 
             Assert.That(blobTxStorage.TryGet(blobTxAdded.Hash, blobTxAdded.SenderAddress!, blobTxAdded.Timestamp, out Transaction blobTxFromDb), Is.EqualTo(isPersistentStorage)); // additional check for persistent db
             if (isPersistentStorage)
@@ -381,14 +380,14 @@ namespace Nethermind.TxPool.Test
             Assert.That(_txPool.SubmitTx(oldTx, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
             Assert.That(_txPool.GetPendingBlobTransactionsCount(), Is.EqualTo(1));
             Assert.That(_txPool.TryGetPendingTransaction(oldTx.Hash!, out Transaction blobTxReturned), Is.True);
-            Assert.That(blobTxReturned, Is.EqualTo(oldTx));
+            AssertTransactionsEquivalent(blobTxReturned, oldTx);
             Assert.That(blobTxStorage.TryGet(oldTx.Hash, oldTx.SenderAddress!, oldTx.Timestamp, out Transaction blobTxFromDb), Is.True);
             AssertTransactionsEquivalent(blobTxFromDb, oldTx, nameof(Transaction.GasBottleneck), nameof(Transaction.PoolIndex));
 
             Assert.That(_txPool.SubmitTx(newTx, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
             Assert.That(_txPool.GetPendingBlobTransactionsCount(), Is.EqualTo(1));
             Assert.That(_txPool.TryGetPendingTransaction(newTx.Hash!, out blobTxReturned), Is.True);
-            Assert.That(blobTxReturned, Is.EqualTo(newTx));
+            AssertTransactionsEquivalent(blobTxReturned, newTx);
             Assert.That(blobTxStorage.TryGet(oldTx.Hash, oldTx.SenderAddress, oldTx.Timestamp, out blobTxFromDb), Is.False);
             Assert.That(blobTxStorage.TryGet(newTx.Hash, newTx.SenderAddress!, newTx.Timestamp, out blobTxFromDb), Is.True);
             AssertTransactionsEquivalent(blobTxFromDb, newTx, nameof(Transaction.GasBottleneck), nameof(Transaction.PoolIndex));
@@ -456,8 +455,8 @@ namespace Nethermind.TxPool.Test
             }
             else
             {
-                _txPool.TryGetPendingTransaction(tx.Hash!, out Transaction eip1559Tx);
-                Assert.That(eip1559Tx, Is.EqualTo(tx));
+                Assert.That(_txPool.TryGetPendingTransaction(tx.Hash!, out Transaction eip1559Tx), Is.True);
+                AssertTransactionsEquivalent(eip1559Tx, tx);
                 Assert.That(eip1559Tx.GasBottleneck, Is.EqualTo(1.GWei));
             }
         }
@@ -493,8 +492,16 @@ namespace Nethermind.TxPool.Test
             Assert.That(_txPool.GetPendingBlobTransactionsCount(), Is.EqualTo(1));
             Assert.That(_txPool.TryGetPendingTransaction(firstTx.Hash!, out Transaction returnedFirstTx), Is.EqualTo(!shouldReplace));
             Assert.That(_txPool.TryGetPendingTransaction(secondTx.Hash!, out Transaction returnedSecondTx), Is.EqualTo(shouldReplace));
-            Assert.That(returnedFirstTx, Is.EqualTo(shouldReplace ? null : firstTx));
-            Assert.That(returnedSecondTx, Is.EqualTo(shouldReplace ? secondTx : null));
+            if (shouldReplace)
+            {
+                Assert.That(returnedFirstTx, Is.Null);
+                AssertTransactionsEquivalent(returnedSecondTx, secondTx);
+            }
+            else
+            {
+                AssertTransactionsEquivalent(returnedFirstTx, firstTx);
+                Assert.That(returnedSecondTx, Is.Null);
+            }
         }
 
         [Test]
@@ -537,7 +544,7 @@ namespace Nethermind.TxPool.Test
             Assert.That(_txPool.TryGetPendingTransaction(firstTx.Hash!, out Transaction returnedFirstTx), Is.False);
             Assert.That(_txPool.TryGetPendingTransaction(secondTx.Hash!, out Transaction returnedSecondTx), Is.True);
             Assert.That(returnedFirstTx, Is.Null);
-            Assert.That(returnedSecondTx, Is.EqualTo(secondTx));
+            AssertTransactionsEquivalent(returnedSecondTx, secondTx);
         }
 
         [Test]
@@ -888,11 +895,11 @@ namespace Nethermind.TxPool.Test
 
             AcceptTxResult result = _txPool.SubmitTx(blobTxAdded, TxHandlingOptions.None);
             Assert.That(result, Is.EqualTo(isTxValid ? AcceptTxResult.Accepted : AcceptTxResult.Invalid));
-            _txPool.TryGetPendingTransaction(blobTxAdded.Hash!, out Transaction blobTxReturned);
-            Assert.That(blobTxReturned, Is.EqualTo(isTxValid ? blobTxAdded : null));
+            Assert.That(_txPool.TryGetPendingTransaction(blobTxAdded.Hash!, out Transaction blobTxReturned), Is.EqualTo(isTxValid));
 
             if (isTxValid)
             {
+                AssertTransactionsEquivalent(blobTxReturned, blobTxAdded);
                 ShardBlobNetworkWrapper wrapper = (ShardBlobNetworkWrapper)blobTxReturned.NetworkWrapper;
                 Assert.That(wrapper.Proofs.Length, Is.EqualTo(isOsakaActivated ? Ckzg.CellsPerExtBlob : 1));
                 Assert.That(wrapper.Version, Is.EqualTo(hasTxCellProofs ? ProofVersion.V1 : ProofVersion.V0));
@@ -902,6 +909,10 @@ namespace Nethermind.TxPool.Test
                 {
                     AssertTransactionsEquivalent(blobTxFromDb, blobTxAdded, nameof(Transaction.GasBottleneck), nameof(Transaction.PoolIndex));
                 }
+            }
+            else
+            {
+                Assert.That(blobTxReturned, Is.Null);
             }
         }
 
@@ -937,11 +948,11 @@ namespace Nethermind.TxPool.Test
 
             AcceptTxResult result = _txPool.SubmitTx(blobTxAdded, TxHandlingOptions.None);
             Assert.That(result, Is.EqualTo(isTxValid ? AcceptTxResult.Accepted : AcceptTxResult.Invalid));
-            _txPool.TryGetPendingTransaction(blobTxAdded.Hash!, out Transaction blobTxReturned);
-            Assert.That(blobTxReturned, Is.EqualTo(isTxValid ? blobTxAdded : null));
+            Assert.That(_txPool.TryGetPendingTransaction(blobTxAdded.Hash!, out Transaction blobTxReturned), Is.EqualTo(isTxValid));
 
             if (isTxValid)
             {
+                AssertTransactionsEquivalent(blobTxReturned, blobTxAdded);
                 ShardBlobNetworkWrapper wrapper = (ShardBlobNetworkWrapper)blobTxReturned.NetworkWrapper;
                 Assert.That(wrapper.Proofs.Length, Is.EqualTo(isOsakaActivated ? Ckzg.CellsPerExtBlob : 1));
                 Assert.That(wrapper.Version, Is.EqualTo(isOsakaActivated ? ProofVersion.V1 : ProofVersion.V0));
@@ -951,6 +962,10 @@ namespace Nethermind.TxPool.Test
                 {
                     AssertTransactionsEquivalent(blobTxFromDb, blobTxAdded, nameof(Transaction.GasBottleneck), nameof(Transaction.PoolIndex));
                 }
+            }
+            else
+            {
+                Assert.That(blobTxReturned, Is.Null);
             }
         }
 

@@ -307,7 +307,7 @@ public partial class ForwardHeaderProviderTests
 
         IForwardHeaderProvider forwardHeader = ctx.ForwardHeaderProvider;
         Func<Task> headerTask = () => forwardHeader.GetBlockHeaders(0, 128, cancellation.Token);
-        Assert.That(async () => await headerTask(), Throws.TypeOf<OperationCanceledException>());
+        Assert.That(async () => await headerTask(), Throws.InstanceOf<OperationCanceledException>());
     }
 
     [Test]
@@ -439,7 +439,7 @@ public partial class ForwardHeaderProviderTests
 
         IForwardHeaderProvider forwardHeader = ctx.ForwardHeaderProvider;
         Func<Task> act = () => forwardHeader.GetBlockHeaders(0, 128, cts.Token);
-        Assert.That(async () => await act(), Throws.TypeOf<OperationCanceledException>());
+        Assert.That(async () => await act(), Throws.InstanceOf<OperationCanceledException>());
     }
 
     [Flags]

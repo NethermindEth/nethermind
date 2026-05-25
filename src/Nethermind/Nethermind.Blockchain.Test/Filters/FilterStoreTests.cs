@@ -149,7 +149,19 @@ public class FilterStoreTests
         BlockParameter to = new(BlockParameterType.Latest);
         FilterStore store = new(new TimerFactory());
         LogFilter filter = store.CreateLogFilter(from, to, null, topics);
-        Assert.That(filter.TopicsFilter, Is.EqualTo(expected));
+        Assert.That(filter.TopicsFilter, Is.EqualTo(expected).Using<TopicsFilter>(TopicsFiltersEqual));
+    }
+
+    private static bool TopicsFiltersEqual(TopicsFilter? actual, TopicsFilter? expected)
+    {
+        if (actual is null || expected is null)
+        {
+            return actual is null && expected is null;
+        }
+
+        return actual.GetType() == expected.GetType()
+            && actual.AcceptsAnyBlock == expected.AcceptsAnyBlock
+            && actual.Expressions.SequenceEqual(expected.Expressions);
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]

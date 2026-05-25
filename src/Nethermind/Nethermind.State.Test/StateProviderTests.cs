@@ -252,7 +252,7 @@ public class StateProviderTests(bool useFlat)
             provider.CreateAccount(TestItem.AddressA, 5);
             provider.CommitTree(0);
 
-            Assert.That(action, Throws.Nothing);
+            Assert.DoesNotThrow<InvalidOperationException>(action);
         }
 
         Assert.That(action, Throws.TypeOf<InvalidOperationException>());

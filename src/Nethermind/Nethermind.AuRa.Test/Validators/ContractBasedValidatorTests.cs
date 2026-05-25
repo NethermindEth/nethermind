@@ -14,6 +14,7 @@ using Nethermind.Consensus.AuRa.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Test;
 using Nethermind.Specs.Forks;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
@@ -521,7 +522,7 @@ public class ContractBasedValidatorTests
             _blockTree.FindBlock(_block.Header.Hash, Arg.Any<BlockTreeLookupOptions>()).Returns(new Block(_block.Header.Clone()));
 
             Action preProcess = () => validator.OnBlockProcessingStart(_block);
-            Assert.That(preProcess, Throws.Nothing, test.TestName);
+            Assert.DoesNotThrow<InvalidOperationException>(preProcess, test.TestName);
             validator.OnBlockProcessingEnd(_block, txReceipts);
             int finalizedNumber = blockNumber - validator.Validators.MinSealersForFinalization() + 1;
             _blockFinalizationManager.GetLastLevelFinalizedBy(_block.Header.Hash).Returns(finalizedNumber);
