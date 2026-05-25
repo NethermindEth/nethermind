@@ -497,48 +497,26 @@ public class ReceiptsSyncFeedTests
         Assert.That(feed.IsFinished, Is.True);
     }
 
-    // Regression for #8508: Erigon ships an all-zero bloom for old receipts even when the receipt
-    // has logs. `TxReceipt.Bloom` only falls back to `CalculateBloom` on null, so the locally
-    // computed receipts-trie root diverges from the header and we previously rejected the peer.
-    [Test]
-    public void NormalizeZeroBlooms_recomputes_bloom_when_logs_present_and_bloom_empty()
+    // Regression for #8508: Erigon ships an all-zero bloom for old receipts with logs; the
+    // TxReceipt.Bloom getter only falls back to CalculateBloom on null, so the locally computed
+    // receipts-trie root used to diverge from the header and we rejected the peer.
+    [TestCase(true, true, true, TestName = "NormalizeZeroBlooms recomputes when logs present and bloom empty")]
+    [TestCase(false, true, false, TestName = "NormalizeZeroBlooms leaves legitimately empty receipts alone")]
+    [TestCase(true, false, false, TestName = "NormalizeZeroBlooms does not overwrite a non-empty bloom")]
+    public void NormalizeZeroBlooms(bool hasLogs, bool startBloomEmpty, bool expectRecompute)
     {
-        LogEntry log = Build.A.LogEntry.WithAddress(TestItem.AddressA).TestObject;
-        TxReceipt receipt = Build.A.Receipt.WithLogs(log).TestObject;
-        Bloom expectedBloom = new(receipt.Logs);
-        expectedBloom.Should().NotBe(Bloom.Empty);
-
-        // Simulate the wire payload from Erigon: bloom flattened to zero, logs intact.
-        receipt.Bloom = Bloom.Empty;
+        LogEntry[] logs = hasLogs
+            ? [Build.A.LogEntry.WithAddress(TestItem.AddressA).TestObject]
+            : [];
+        TxReceipt receipt = Build.A.Receipt.WithLogs(logs).TestObject;
+        Bloom initialBloom = startBloomEmpty
+            ? Bloom.Empty
+            : new Bloom([Build.A.LogEntry.WithAddress(TestItem.AddressB).TestObject]);
+        receipt.Bloom = initialBloom;
+        Bloom expectedBloom = expectRecompute ? new Bloom(receipt.Logs) : initialBloom;
 
         ReceiptsSyncFeed.NormalizeZeroBlooms([receipt]);
 
         receipt.Bloom.Should().Be(expectedBloom);
-    }
-
-    [Test]
-    public void NormalizeZeroBlooms_leaves_legitimately_empty_receipts_alone()
-    {
-        TxReceipt emptyReceipt = Build.A.Receipt.WithLogs().TestObject; // no logs
-        emptyReceipt.Bloom = Bloom.Empty;
-
-        ReceiptsSyncFeed.NormalizeZeroBlooms([emptyReceipt]);
-
-        emptyReceipt.Bloom.Should().Be(Bloom.Empty);
-    }
-
-    [Test]
-    public void NormalizeZeroBlooms_does_not_overwrite_a_non_empty_bloom()
-    {
-        // A peer that sends a non-zero but wrong bloom must still be caught later by the
-        // receipts-root comparison — we must not mask that by recomputing here.
-        LogEntry log = Build.A.LogEntry.WithAddress(TestItem.AddressA).TestObject;
-        TxReceipt receipt = Build.A.Receipt.WithLogs(log).TestObject;
-        Bloom tamperedBloom = new(new[] { Build.A.LogEntry.WithAddress(TestItem.AddressB).TestObject });
-        receipt.Bloom = tamperedBloom;
-
-        ReceiptsSyncFeed.NormalizeZeroBlooms([receipt]);
-
-        receipt.Bloom.Should().Be(tamperedBloom);
     }
 }
