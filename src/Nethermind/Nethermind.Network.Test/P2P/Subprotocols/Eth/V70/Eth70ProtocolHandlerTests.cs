@@ -140,16 +140,40 @@ public class Eth70ProtocolHandlerTests
     }
 
     [Test]
-    public void Should_return_empty_receipts_block_when_local_block_has_no_receipts()
+    public void Should_return_empty_receipts_block_when_local_block_has_no_transactions()
     {
+        // Block legitimately has zero transactions — the empty receipts array is real.
         using GetReceiptsMessage70 request = new(1111, 0, new[] { Keccak.Zero }.ToPooledList());
         _syncManager.GetReceipts(Arg.Any<Hash256>()).Returns(Array.Empty<TxReceipt>());
+        _syncManager.Find(Arg.Any<Hash256>()).Returns(_genesisBlock);
 
         HandleIncomingStatusMessage();
         HandleZeroMessage(request, Eth70MessageCode.GetReceipts);
 
         _session.Received().DeliverMessage(Arg.Is<ReceiptsMessage70>(m =>
             m.TxReceipts.Count == 1 && m.TxReceipts[0].Length == 0 && !m.LastBlockIncomplete));
+    }
+
+    [Test]
+    public void Should_stop_response_when_local_block_has_transactions_but_no_receipts()
+    {
+        // Block has transactions but we don't have receipts yet (e.g. we're still
+        // syncing receipts, or our receipt store is pruned for this block). Emitting
+        // [] would mislead the requester — the eth/70 validator would treat the empty
+        // array as "complete" and disconnect on the tx-count mismatch. The correct
+        // behaviour is to stop the response early so the requester asks another peer.
+        using GetReceiptsMessage70 request = new(1111, 0, new[] { Keccak.Zero }.ToPooledList());
+        Block blockWithTxs = Build.A.Block
+            .WithTransactions(Build.A.Transaction.TestObject)
+            .TestObject;
+        _syncManager.GetReceipts(Arg.Any<Hash256>()).Returns(Array.Empty<TxReceipt>());
+        _syncManager.Find(Arg.Any<Hash256>()).Returns(blockWithTxs);
+
+        HandleIncomingStatusMessage();
+        HandleZeroMessage(request, Eth70MessageCode.GetReceipts);
+
+        _session.Received().DeliverMessage(Arg.Is<ReceiptsMessage70>(m =>
+            m.TxReceipts.Count == 0 && !m.LastBlockIncomplete));
     }
 
     [Test]
@@ -711,6 +735,8 @@ public class Eth70ProtocolHandlerTests
         _syncManager.GetReceipts(Keccak.Zero).Returns(block1Receipts);
         _syncManager.GetReceipts(TestItem.KeccakA).Returns(Array.Empty<TxReceipt>());
         _syncManager.GetReceipts(TestItem.KeccakB).Returns(block3Receipts);
+        // Empty-receipts middle block is a legitimately empty block (0 transactions).
+        _syncManager.Find(TestItem.KeccakA).Returns(_genesisBlock);
 
         HandleIncomingStatusMessage();
         HandleZeroMessage(request, Eth70MessageCode.GetReceipts);
@@ -735,6 +761,8 @@ public class Eth70ProtocolHandlerTests
 
         _syncManager.GetReceipts(Keccak.Zero).Returns(Array.Empty<TxReceipt>());
         _syncManager.GetReceipts(TestItem.KeccakA).Returns(block2Receipts);
+        // Empty-receipts first block is a legitimately empty block (0 transactions).
+        _syncManager.Find(Keccak.Zero).Returns(_genesisBlock);
 
         HandleIncomingStatusMessage();
         HandleZeroMessage(request, Eth70MessageCode.GetReceipts);
