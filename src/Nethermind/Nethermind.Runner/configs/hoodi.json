@@ -33,6 +33,7 @@
     "Enabled": true
   },
   "Discovery": {
+    "DiscoveryVersion": "V5",
     "UseDefaultDiscv5Bootnodes": false,
     "Bootnodes": [
       "enode://2112dd3839dd752813d4df7f40936f06829fc54c0e051a93967c26e5f5d27d99d886b57b4ffcc3c475e930ec9e79c56ef1dbb7d86ca5ee83a9d2ccf36e5c240c@134.209.138.84:30303",
