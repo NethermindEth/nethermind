@@ -18,15 +18,10 @@ public sealed class BeaconApiRootsProvider(
 {
     private readonly BeaconApiHttpClient _client = new(httpClient, requestTimeout ?? TimeSpan.FromSeconds(30), logManager?.GetClassLogger<BeaconApiHttpClient>() ?? default);
     private readonly BeaconApiRetry<(ValueHash256, ValueHash256)?> _beaconApiRetry = new(maxAttempts);
-    private readonly SemaphoreSlim _fetchLock = new(1, 1);
     private readonly LruCache<long, (ValueHash256 BeaconBlockRoot, ValueHash256 StateRoot)> _cache =
         new(HistoricalRootConstants.SlotsPerHistoricalRoot, nameof(BeaconApiRootsProvider));
 
-    public void Dispose()
-    {
-        _client.Dispose();
-        _fetchLock.Dispose();
-    }
+    public void Dispose() => _client.Dispose();
 
     public async Task<(ValueHash256 BeaconBlockRoot, ValueHash256 StateRoot)?> GetBeaconRoots(
         long slot, CancellationToken cancellationToken = default)
@@ -34,22 +29,11 @@ public sealed class BeaconApiRootsProvider(
         if (_cache.TryGet(slot, out (ValueHash256 BeaconBlockRoot, ValueHash256 StateRoot) cached))
             return cached;
 
-        await _fetchLock.WaitAsync(cancellationToken).ConfigureAwait(false);
-        try
-        {
-            if (_cache.TryGet(slot, out cached))
-                return cached;
+        (ValueHash256 BeaconBlockRoot, ValueHash256 StateRoot)? roots = await FetchWithRetryAsync(slot, cancellationToken).ConfigureAwait(false);
+        if (roots.HasValue)
+            _cache.Set(slot, roots.Value);
 
-            (ValueHash256 BeaconBlockRoot, ValueHash256 StateRoot)? roots = await FetchWithRetryAsync(slot, cancellationToken).ConfigureAwait(false);
-            if (roots.HasValue)
-                _cache.Set(slot, roots.Value);
-
-            return roots;
-        }
-        finally
-        {
-            _fetchLock.Release();
-        }
+        return roots;
     }
 
     private Task<(ValueHash256, ValueHash256)?> FetchWithRetryAsync(
