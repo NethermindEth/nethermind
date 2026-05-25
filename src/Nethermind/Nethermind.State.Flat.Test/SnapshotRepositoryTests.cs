@@ -441,11 +441,11 @@ public class SnapshotRepositoryTests
     }
 
     [Test]
-    public void RemoveNonCanonicalStates_LinearChain_RemovesNothing()
+    public void RemoveSiblingAndDescendents_LinearChain_RemovesNothing()
     {
         BuildSnapshotChain(0, 10);
 
-        _repository.RemoveNonCanonicalStates(CreateStateId(5));
+        _repository.RemoveSiblingAndDescendents(CreateStateId(5));
 
         for (long block = 1; block <= 10; block++)
         {
@@ -454,7 +454,7 @@ public class SnapshotRepositoryTests
     }
 
     [Test]
-    public void RemoveNonCanonicalStates_OrphanedFork_PrunesUnreachableDescendantsAbovePersistedBlock()
+    public void RemoveSiblingAndDescendents_OrphanedFork_PrunesUnreachableDescendantsAbovePersistedBlock()
     {
         // Common chain 0->1->2->3, then a canonical branch and a non-canonical branch both
         // diverging at block 3. Persisting canonical block 5 orphans the non-canonical
@@ -470,7 +470,7 @@ public class SnapshotRepositoryTests
             AddSnapshotToRepository(from, CreateStateId(block + 1, rootByte: 1));
         }
 
-        _repository.RemoveNonCanonicalStates(CreateStateId(5));
+        _repository.RemoveSiblingAndDescendents(CreateStateId(5));
 
         Assert.That(_repository.HasState(CreateStateId(6, rootByte: 1)), Is.False, "orphan NC(6) should be pruned");
         Assert.That(_repository.HasState(CreateStateId(7, rootByte: 1)), Is.False, "orphan NC(7) should be pruned");
@@ -481,7 +481,7 @@ public class SnapshotRepositoryTests
     }
 
     [Test]
-    public void RemoveNonCanonicalStates_ForkAbovePersistedBlock_KeepsBothBranches()
+    public void RemoveSiblingAndDescendents_ForkAbovePersistedBlock_KeepsBothBranches()
     {
         // A fork that diverges above the persisted block is still reachable from the
         // canonical state and must be kept.
@@ -489,7 +489,7 @@ public class SnapshotRepositoryTests
         AddSnapshotToRepository(CreateStateId(6), CreateStateId(7));
         AddSnapshotToRepository(CreateStateId(6), CreateStateId(7, rootByte: 1));
 
-        _repository.RemoveNonCanonicalStates(CreateStateId(3));
+        _repository.RemoveSiblingAndDescendents(CreateStateId(3));
 
         Assert.That(_repository.HasState(CreateStateId(7)), Is.True);
         Assert.That(_repository.HasState(CreateStateId(7, rootByte: 1)), Is.True);

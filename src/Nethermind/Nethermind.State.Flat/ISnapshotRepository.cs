@@ -35,5 +35,5 @@ public interface ISnapshotRepository
     /// persist commits so no reader observes an advanced persisted state alongside such orphans.
     /// </remarks>
     /// <param name="canonicalStateId">The canonical state being persisted.</param>
-    void RemoveNonCanonicalStates(in StateId canonicalStateId);
+    void RemoveSiblingAndDescendents(in StateId canonicalStateId);
 }

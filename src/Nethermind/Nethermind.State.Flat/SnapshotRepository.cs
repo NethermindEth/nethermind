@@ -286,7 +286,7 @@ public class SnapshotRepository(ILogManager logManager) : ISnapshotRepository
         }
     }
 
-    public void RemoveNonCanonicalStates(in StateId canonicalStateId)
+    public void RemoveSiblingAndDescendents(in StateId canonicalStateId)
     {
         // A consistent point-in-time set of the states above the persisted block. Sourcing it from
         // the locked `_sortedSnapshotStateIds` (rather than enumerating the lock-free `_snapshots`)
