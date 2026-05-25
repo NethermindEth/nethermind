@@ -41,11 +41,7 @@ public sealed class UInt16SszVectorConverter : SszVectorConverter<ushort>
 
     private UInt16SszVectorConverter() { }
 
-    public static ushort FromSpan(ReadOnlySpan<byte> span)
-    {
-        SszVectorConverterHelpers.ValidateLength(span, Length, nameof(UInt16SszVectorConverter));
-        return BinaryPrimitives.ReadUInt16LittleEndian(span);
-    }
+    public static ushort FromSpan(ReadOnlySpan<byte> span) => BinaryPrimitives.ReadUInt16LittleEndian(span);
 
     public static void ToSpan(Span<byte> span, ushort value) => Ssz.Encode(span, value);
 }
@@ -82,11 +78,7 @@ public sealed class Int64SszVectorConverter : SszVectorConverter<long>
 
     private Int64SszVectorConverter() { }
 
-    public static long FromSpan(ReadOnlySpan<byte> span)
-    {
-        SszVectorConverterHelpers.ValidateLength(span, Length, nameof(Int64SszVectorConverter));
-        return BinaryPrimitives.ReadInt64LittleEndian(span);
-    }
+    public static long FromSpan(ReadOnlySpan<byte> span) => BinaryPrimitives.ReadInt64LittleEndian(span);
 
     public static void ToSpan(Span<byte> span, long value) => Ssz.Encode(span, value);
 }
@@ -108,16 +100,13 @@ public sealed class BooleanSszVectorConverter : SszVectorConverter<bool>
 
     private BooleanSszVectorConverter() { }
 
-    public static bool FromSpan(ReadOnlySpan<byte> span)
-    {
-        SszVectorConverterHelpers.ValidateLength(span, Length, nameof(BooleanSszVectorConverter));
-        return span[0] switch
+    public static bool FromSpan(ReadOnlySpan<byte> span) =>
+        span[0] switch
         {
             0 => false,
             1 => true,
             byte value => throw new InvalidDataException($"SSZ bool must be 0 or 1, got {value}")
         };
-    }
 
     public static void ToSpan(Span<byte> span, bool value) => Ssz.Encode(span, value);
 }
@@ -131,15 +120,4 @@ public sealed class UInt256SszVectorConverter : SszVectorConverter<UInt256>
     public static UInt256 FromSpan(ReadOnlySpan<byte> span) => Ssz.DecodeUInt256(span);
 
     public static void ToSpan(Span<byte> span, UInt256 value) => Ssz.Encode(span, value);
-}
-
-internal static class SszVectorConverterHelpers
-{
-    public static void ValidateLength(ReadOnlySpan<byte> span, int expectedLength, string converterName)
-    {
-        if (span.Length != expectedLength)
-        {
-            throw new InvalidDataException($"{converterName} expects input of length {expectedLength} and received {span.Length}");
-        }
-    }
 }
