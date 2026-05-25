@@ -182,6 +182,23 @@ public class DbTrackerTests
         Assert.That(Metrics.DbReads["TestDb"], Is.EqualTo(10));
     }
 
+    [Parallelizable(ParallelScope.None)]
+    [Test]
+    public void DoesNotThrowOrRepeatErrorAfterContainerDisposed()
+    {
+        TestLogger testLogger = new() { IsDebug = false };
+        (IContainer container, Action updateAction, FakeDb _) = ConfigureMetricUpdater(builder =>
+            builder.AddSingleton<ILogManager>(new OneLoggerLogManager(new(testLogger))));
+
+        container.Dispose();
+
+        Action invoke = () => updateAction!();
+        invoke.Should().NotThrow();
+        invoke.Should().NotThrow();
+
+        testLogger.LogList.Should().BeEmpty();
+    }
+
     /// <summary>
     /// Builds a container wired with <see cref="DbMonitoringModule.DbTracker"/> and a captured
     /// metrics-update action. By default the <c>DbFactoryInterceptor</c> decorator is registered
