@@ -326,6 +326,8 @@ namespace Nethermind.Trie
 
                 if (Interlocked.CompareExchange(ref _flagsAndKeccakSeq, current | _keccakSeqLock, current) == current)
                 {
+                    // ValueHash256 is 32 bytes, so readers rely on the seqlock before
+                    // returning this plain struct assignment.
                     _keccakValue = keccak;
                     PublishKeccakState(current, hasKeccak: true);
                     return;
