@@ -300,7 +300,7 @@ public class SnapshotRepository(ILogManager logManager) : ISnapshotRepository
         // the locked `_sortedSnapshotStateIds` (rather than enumerating the lock-free `_snapshots`)
         // guarantees that whenever a state is present so is its parent - `AddStateId` runs in block
         // order - an invariant the disjoint-set below relies on.
-        using ArrayPoolList<StateId> aboveStates = GetStatesAbove(canonicalStateId.BlockNumber);
+        using ArrayPoolListRef<StateId> aboveStates = GetStatesAbove(canonicalStateId.BlockNumber);
         if (aboveStates.Count == 0) return;
 
         // Disjoint-set over those states. Only the non-compacted snapshot of each state is unioned:
@@ -354,12 +354,16 @@ public class SnapshotRepository(ILogManager logManager) : ISnapshotRepository
         }
     }
 
-    private ArrayPoolList<StateId> GetStatesAbove(long blockNumber)
+    private ArrayPoolListRef<StateId> GetStatesAbove(long blockNumber)
     {
         using ReadWriteLockBox<SortedSet<StateId>>.Lock _ = _sortedSnapshotStateIds.EnterReadLock(out SortedSet<StateId> sortedSnapshots);
 
-        return sortedSnapshots
-            .GetViewBetween(new StateId(blockNumber + 1, Hash256.Zero), new StateId(long.MaxValue, Keccak.MaxValue))
-            .ToPooledList(0);
+        SortedSet<StateId> view = sortedSnapshots.GetViewBetween(
+            new StateId(blockNumber + 1, Hash256.Zero),
+            new StateId(long.MaxValue, Keccak.MaxValue));
+
+        ArrayPoolListRef<StateId> result = new(view.Count);
+        foreach (StateId stateId in view) result.Add(stateId);
+        return result;
     }
 }
