@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.IO;
@@ -62,6 +63,9 @@ public partial class EthRpcModuleTests
     private const string ExpectedHeadTxRawAtIndex1 = "0xf85f020182520894942921b14f1b1c385cd7e0cc2ef7abe5598c8358018025a0e7c5ff3cba254c4fe8f9f12c3f202150bb9a0aebeee349ff2f4acb23585f56bda0575361bb330bf38b9a89dd8279d42a20d34edeaeede9739a7c2bdcbe3242d7bb";
     private const string ExpectedFilterLogResponse = """{"jsonrpc":"2.0","result":[{"address":"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099","blockHash":"0x03783fac2efed8fbc9ad443e592ee30e61d65f471140c10ca155e937b435b760","blockNumber":"0x1","blockTimestamp":"0x1","data":"0x010203","logIndex":"0x1","removed":false,"topics":["0x017e667f4b8c174291d1543c466717566e206df1bfd6f30271055ddafdb18f72","0x6c3fd336b49dcb1c57dd4fbeaf5f898320b0da06a5ef64e798c6497600bb79f2"],"transactionHash":"0x1f675bff07515f5df96737194ea945c36c41e7b4fcef307b7cd4d0e602a69111","transactionIndex":"0x1"}],"id":67}""";
     private const int LogsStreamEnvelopeEndReserveBytes = 128;
+
+    private static string ExpectedFilterLogStreamResponse(string status) =>
+        ExpectedFilterLogResponse.Replace(",\"id\":67}", $",\"_streamStatus\":\"{status}\",\"id\":67}}");
 
     private static readonly Address TestAccount = new(TestAccountAddress);
 
@@ -659,6 +663,22 @@ public partial class EthRpcModuleTests
         => TestRpcBlockchain.ForTest(SealEngineType.NethDev)
             .WithConfig(new JsonRpcConfig { EnableLogsStreamMode = enableLogsStreamMode });
 
+    private static async Task<string> WriteLogsStreamableResponseAsync(LogsStreamableResult result, CancellationToken cancellationToken = default)
+    {
+        Pipe pipe = new();
+        CountingPipeWriter writer = new(pipe.Writer);
+        using JsonRpcSuccessResponse response = new() { Id = new JsonRpcId(67L), Result = result };
+
+        await JsonRpcResponseWriter.WriteAsync(writer, response, EthereumJsonSerializer.JsonOptions, cancellationToken);
+        await writer.CompleteAsync();
+
+        System.IO.Pipelines.ReadResult read = await pipe.Reader.ReadAsync();
+        string serialized = Encoding.UTF8.GetString(read.Buffer.ToArray());
+        pipe.Reader.AdvanceTo(read.Buffer.End);
+        await pipe.Reader.CompleteAsync();
+        return serialized;
+    }
+
     [TestCase(false)]
     [TestCase(true)]
     public async Task Eth_get_filter_logs(bool enableLogsStreamMode)
@@ -675,7 +695,8 @@ public partial class EthRpcModuleTests
         ctx.Test = await CreateLogsTestBlockchainBuilder(enableLogsStreamMode).WithBlockchainBridge(bridge).Build();
         string serialized = await ctx.Test.TestEthRpc("eth_getFilterLogs", "0x01");
 
-        Assert.That(serialized, Is.EqualTo(ExpectedFilterLogResponse));
+        string expected = enableLogsStreamMode ? ExpectedFilterLogStreamResponse("complete") : ExpectedFilterLogResponse;
+        Assert.That(serialized, Is.EqualTo(expected));
     }
 
     [Test]
@@ -719,7 +740,7 @@ public partial class EthRpcModuleTests
 
         string serialized = await ctx.Test.TestEthRpc("eth_getFilterLogs", "0x01");
 
-        serialized.Should().Be(ExpectedFilterLogResponse);
+        serialized.Should().Be(ExpectedFilterLogStreamResponse("truncated"));
 
         static IEnumerable<FilterLog> GetLogs()
         {
@@ -848,7 +869,10 @@ public partial class EthRpcModuleTests
         ctx.Test = await CreateLogsTestBlockchainBuilder(enableLogsStreamMode).WithBlockchainBridge(bridge).Build();
         string serialized = await ctx.Test.TestEthRpc("eth_getLogs", parameter);
 
-        Assert.That(serialized, Is.EqualTo(expected));
+        string expectedResponse = enableLogsStreamMode && expected == ExpectedFilterLogResponse
+            ? ExpectedFilterLogStreamResponse("complete")
+            : expected;
+        Assert.That(serialized, Is.EqualTo(expectedResponse));
     }
 
     [TestCase("eth_getLogs", "{}")]
@@ -892,7 +916,7 @@ public partial class EthRpcModuleTests
 
         string serialized = await ctx.Test.TestEthRpc("eth_getLogs", "{}");
 
-        serialized.Should().Be(ExpectedFilterLogResponse);
+        serialized.Should().Be(ExpectedFilterLogStreamResponse("truncated"));
 
         static IEnumerable<FilterLog> GetLogs()
         {
@@ -913,6 +937,44 @@ public partial class EthRpcModuleTests
         await writer.CompleteAsync();
 
         Encoding.UTF8.GetString(stream.ToArray()).Should().Be("[]");
+    }
+
+    [Test]
+    public async Task Eth_get_logs_stream_mode_response_body_limit_writes_truncated_status()
+    {
+        LogsStreamableResult result = new([CreateTestFilterLog()], 0, enforceMaxLogs: false, maxLogsResponseBodySize: 64, maxBatchResponseBodySize: null, new CancellationTokenSource(), default);
+
+        string serialized = await WriteLogsStreamableResponseAsync(result);
+
+        serialized.Should().Be("""{"jsonrpc":"2.0","result":[],"_streamStatus":"truncated","id":67}""");
+    }
+
+    [Test]
+    public async Task Eth_get_logs_stream_mode_timeout_writes_timeout_status()
+    {
+        CancellationTokenSource timeout = new();
+        timeout.Cancel();
+        LogsStreamableResult result = new([CreateTestFilterLog()], 0, enforceMaxLogs: false, maxLogsResponseBodySize: null, maxBatchResponseBodySize: null, timeout, default);
+
+        string serialized = await WriteLogsStreamableResponseAsync(result);
+
+        serialized.Should().Be("""{"jsonrpc":"2.0","result":[],"_streamStatus":"timeout","id":67}""");
+    }
+
+    [Test]
+    public async Task Eth_get_logs_stream_mode_failure_between_items_writes_failed_status()
+    {
+        LogsStreamableResult result = new(GetLogs(), 0, enforceMaxLogs: false, maxLogsResponseBodySize: null, maxBatchResponseBodySize: null, new CancellationTokenSource(), default);
+
+        string serialized = await WriteLogsStreamableResponseAsync(result);
+
+        serialized.Should().Be(ExpectedFilterLogStreamResponse("failed"));
+
+        static IEnumerable<FilterLog> GetLogs()
+        {
+            yield return CreateTestFilterLog();
+            throw new InvalidOperationException("Stream mode failed after a complete log item.");
+        }
     }
 
     [Test]
@@ -976,6 +1038,10 @@ public partial class EthRpcModuleTests
 
         Encoding.UTF8.GetString(stream.ToArray()).Should().Be("[]");
     }
+
+    [Test]
+    public void Json_rpc_config_disables_logs_stream_mode_by_default() =>
+        new JsonRpcConfig().EnableLogsStreamMode.Should().BeFalse();
 
     [Test]
     public async Task Eth_get_logs_cancellation()

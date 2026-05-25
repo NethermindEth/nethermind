@@ -16,8 +16,10 @@ namespace Nethermind.JsonRpc;
 public static class JsonRpcResponseWriter
 {
     private static ReadOnlySpan<byte> SuccessEnvelopeStart => "{\"jsonrpc\":\"2.0\",\"result\":"u8;
+    private static ReadOnlySpan<byte> StreamStatusSeparator => ",\"_streamStatus\":\""u8;
     private static ReadOnlySpan<byte> IdSeparator => ",\"id\":"u8;
     private static ReadOnlySpan<byte> EnvelopeEnd => "}"u8;
+    private static ReadOnlySpan<byte> Quote => "\""u8;
     private static readonly JsonWriterOptions _streamableIdWriterOptions = new()
     {
         SkipValidation = true,
@@ -65,7 +67,16 @@ public static class JsonRpcResponseWriter
         CancellationToken cancellationToken)
     {
         writer.Write(SuccessEnvelopeStart);
-        if (streamable is IBatchAwareStreamableResult batchAwareStreamable)
+        StreamableResultStatus? status = null;
+        if (streamable is IBatchAwareStreamableResultWithStatus batchAwareStatusStreamable)
+        {
+            status = await batchAwareStatusStreamable.WriteToWithStatusAsync(writer, isBatch, cancellationToken);
+        }
+        else if (streamable is IStreamableResultWithStatus statusStreamable)
+        {
+            status = await statusStreamable.WriteToWithStatusAsync(writer, cancellationToken);
+        }
+        else if (streamable is IBatchAwareStreamableResult batchAwareStreamable)
         {
             await batchAwareStreamable.WriteToAsync(writer, isBatch, cancellationToken);
         }
@@ -73,10 +84,27 @@ public static class JsonRpcResponseWriter
         {
             await streamable.WriteToAsync(writer, cancellationToken);
         }
+        if (status is not null)
+        {
+            writer.Write(StreamStatusSeparator);
+            writer.Write(GetStreamStatusBytes(status.GetValueOrDefault()));
+            writer.Write(Quote);
+        }
         writer.Write(IdSeparator);
         WriteIdRaw(writer, in response.IdRef);
         writer.Write(EnvelopeEnd);
     }
+
+    private static ReadOnlySpan<byte> GetStreamStatusBytes(StreamableResultStatus status) =>
+        status switch
+        {
+            StreamableResultStatus.Complete => "complete"u8,
+            StreamableResultStatus.Timeout => "timeout"u8,
+            StreamableResultStatus.Truncated => "truncated"u8,
+            StreamableResultStatus.Cancelled => "cancelled"u8,
+            StreamableResultStatus.Failed => "failed"u8,
+            _ => "failed"u8
+        };
 
     internal static void WriteEnvelopeStart(Utf8JsonWriter writer)
     {

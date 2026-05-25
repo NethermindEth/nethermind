@@ -22,35 +22,50 @@ internal sealed class LogsStreamableResult(
     long? maxLogsResponseBodySize,
     long? maxBatchResponseBodySize,
     CancellationTokenSource timeoutCts,
-    ILogger logger) : IBatchAwareStreamableResult, IEnumerable<FilterLog>, IDisposable
+    ILogger logger) : IBatchAwareStreamableResultWithStatus, IEnumerable<FilterLog>, IDisposable
 {
     private const long EnvelopeEndReserveBytes = 128;
     private static readonly JsonWriterOptions _itemWriterOptions = new() { SkipValidation = true };
 
-    public ValueTask WriteToAsync(PipeWriter writer, CancellationToken cancellationToken) =>
-        WriteToAsync(writer, isBatch: false, cancellationToken);
+    public async ValueTask WriteToAsync(PipeWriter writer, CancellationToken cancellationToken) =>
+        await WriteToWithStatusAsync(writer, isBatch: false, cancellationToken);
 
-    public async ValueTask WriteToAsync(PipeWriter writer, bool isBatch, CancellationToken cancellationToken)
+    public async ValueTask WriteToAsync(PipeWriter writer, bool isBatch, CancellationToken cancellationToken) =>
+        await WriteToWithStatusAsync(writer, isBatch, cancellationToken);
+
+    public ValueTask<StreamableResultStatus> WriteToWithStatusAsync(PipeWriter writer, CancellationToken cancellationToken) =>
+        WriteToWithStatusAsync(writer, isBatch: false, cancellationToken);
+
+    public async ValueTask<StreamableResultStatus> WriteToWithStatusAsync(PipeWriter writer, bool isBatch, CancellationToken cancellationToken)
     {
         using CancellationTokenSource linkedCts =
             CancellationTokenSource.CreateLinkedTokenSource(timeoutCts.Token, cancellationToken);
         CancellationToken combinedToken = linkedCts.Token;
         long? maxResponseBodySize = GetMaxResponseBodySize(isBatch);
+        StreamableResultStatus status;
 
         writer.Write("["u8);
 
         try
         {
-            await WriteLogsAsync(writer, maxResponseBodySize, combinedToken);
+            status = await WriteLogsAsync(writer, maxResponseBodySize, combinedToken);
         }
-        catch (OperationCanceledException) when (combinedToken.IsCancellationRequested)
+        catch (OperationCanceledException) when (timeoutCts.IsCancellationRequested)
         {
+            status = StreamableResultStatus.Timeout;
+            if (logger.IsDebug) logger.Debug("eth_getLogs streaming timed out mid-response; client receives a partial result with the JSON envelope closed.");
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            status = StreamableResultStatus.Cancelled;
             if (logger.IsDebug) logger.Debug("eth_getLogs streaming cancelled mid-response; client receives a partial result with the JSON envelope closed.");
         }
         finally
         {
             writer.Write("]"u8);
         }
+
+        return status;
     }
 
     public IEnumerator<FilterLog> GetEnumerator()
@@ -72,37 +87,37 @@ internal sealed class LogsStreamableResult(
 
     public void Dispose() => timeoutCts.Dispose();
 
-    private async ValueTask WriteLogsAsync(PipeWriter writer, long? maxResponseBodySize, CancellationToken cancellationToken)
+    private async ValueTask<StreamableResultStatus> WriteLogsAsync(PipeWriter writer, long? maxResponseBodySize, CancellationToken cancellationToken)
     {
         using IEnumerator<FilterLog> enumerator = logs.GetEnumerator();
         ArrayBufferWriter<byte> itemBuffer = new();
         int count = 0;
         int estimatedNextLogBytes = 0;
 
-        while (!ReachedLogLimit(count))
+        while (true)
         {
             cancellationToken.ThrowIfCancellationRequested();
 
+            if (ReachedLogLimit(count))
+            {
+                return StreamableResultStatus.Truncated;
+            }
+
             if (estimatedNextLogBytes > 0 && ReachedResponseBodyLimit(writer, maxResponseBodySize, estimatedNextLogBytes, count))
             {
-                return;
+                return StreamableResultStatus.Truncated;
             }
 
-            if (!enumerator.MoveNext())
+            StreamableResultStatus? terminalStatus = TryBufferNextLog(enumerator, itemBuffer);
+            if (terminalStatus is not null)
             {
-                return;
-            }
-
-            itemBuffer.Clear();
-            using (Utf8JsonWriter itemWriter = new(itemBuffer, _itemWriterOptions))
-            {
-                JsonSerializer.Serialize(itemWriter, enumerator.Current, EthereumJsonSerializer.JsonOptions);
+                return terminalStatus.GetValueOrDefault();
             }
 
             int logBytes = itemBuffer.WrittenCount;
             if (ReachedResponseBodyLimit(writer, maxResponseBodySize, logBytes, count))
             {
-                return;
+                return StreamableResultStatus.Truncated;
             }
 
             if (count > 0)
@@ -116,7 +131,32 @@ internal sealed class LogsStreamableResult(
 
             if (await StreamableResultWriter.FlushIfNeededAsync(writer, cancellationToken))
             {
-                return;
+                return StreamableResultStatus.Cancelled;
+            }
+        }
+
+        StreamableResultStatus? TryBufferNextLog(IEnumerator<FilterLog> enumerator, ArrayBufferWriter<byte> itemBuffer)
+        {
+            try
+            {
+                if (!enumerator.MoveNext())
+                {
+                    return StreamableResultStatus.Complete;
+                }
+
+                itemBuffer.Clear();
+                using Utf8JsonWriter itemWriter = new(itemBuffer, _itemWriterOptions);
+                JsonSerializer.Serialize(itemWriter, enumerator.Current, EthereumJsonSerializer.JsonOptions);
+                return null;
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                if (logger.IsWarn) logger.Warn($"eth_getLogs streaming failed mid-response: {ex}");
+                return StreamableResultStatus.Failed;
             }
         }
     }
@@ -133,4 +173,5 @@ internal sealed class LogsStreamableResult(
         maxResponseBodySize is >= 0
         && writer is CountingWriter countingWriter
         && countingWriter.WrittenCount + (count > 0 ? 1 : 0) + logBytes + EnvelopeEndReserveBytes > maxResponseBodySize.Value;
+
 }
