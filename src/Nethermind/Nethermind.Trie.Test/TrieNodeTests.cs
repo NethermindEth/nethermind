@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
@@ -61,6 +62,22 @@ public class TrieNodeTests
         TrieNode trieNode = new TrieSyncNode();
         TreePath emptyPath = TreePath.Empty;
         Assert.Throws<TrieException>(() => TrieNode.ResolveNode(ref trieNode, NullTrieNodeResolver.Instance, in emptyPath));
+    }
+
+    [Test]
+    public void Keccak_seqlock_sequence_does_not_wrap_after_128_writes()
+    {
+        TrieNode trieNode = TrieNode.CreateBranchTyped();
+
+        for (int i = 0; i < 128; i++)
+        {
+            trieNode.Keccak = (i & 1) == 0 ? TestItem.KeccakA : TestItem.KeccakB;
+        }
+
+        FieldInfo flagsField = typeof(TrieNode).GetField("_blockAndFlags", BindingFlags.Instance | BindingFlags.NonPublic)!;
+        uint blockAndFlags = (uint)flagsField.GetValue(trieNode)!;
+        const uint bitsAboveOldByteSequence = 0xFFFF0000u;
+        (blockAndFlags & bitsAboveOldByteSequence).Should().NotBe(0);
     }
 
     [Test]

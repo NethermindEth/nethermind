@@ -44,9 +44,9 @@ namespace Nethermind.Trie
         private const uint _rlpStaleMask = 0b1_0000;
         private const uint _copyableFlagsMask = _dirtyMask | _persistedMask | _boundaryProof | _rlpStaleMask;
 
-        // Bits 8-15 store the inline-keccak seqlock sequence. Bit 8 set means a write is in progress.
+        // Bits 8-31 store the inline-keccak seqlock sequence. Bit 8 set means a write is in progress.
         private const int _keccakSeqShift = 8;
-        private const uint _keccakSeqMask = 0xFFu << _keccakSeqShift;
+        private const uint _keccakSeqMask = 0xFFFFFFu << _keccakSeqShift;
         private const uint _keccakSeqLock = 1u << _keccakSeqShift;
         private const uint _keccakSeqStep = 2u << _keccakSeqShift;
         private const uint _keccakStateMask = _hasKeccakMask | _keccakSeqMask;
