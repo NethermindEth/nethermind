@@ -51,7 +51,7 @@ namespace Nethermind.Trie
         private const uint _keccakSeqStep = 2u << _keccakSeqShift;
         private const uint _keccakStateMask = _hasKeccakMask | _keccakSeqMask;
 
-        private uint _blockAndFlags = 0;
+        private uint _flagsAndKeccakSeq = 0;
         // Seqlock for _rlpArray + _rlpSeqAndLength (CappedArray is 12 B, not atomic).
         private byte[]? _rlpArray;
         private ulong _rlpSeqAndLength; // normal: bits 0-31 length, 32-63 seq. slice: bit 63, bits 0-31 length, bits 32-62 offset.
@@ -182,30 +182,30 @@ namespace Nethermind.Trie
 
         public bool IsPersisted
         {
-            get => (Volatile.Read(ref _blockAndFlags) & _persistedMask) != 0;
-            set { if (value) Interlocked.Or(ref _blockAndFlags, _persistedMask); else Interlocked.And(ref _blockAndFlags, ~_persistedMask); }
+            get => (Volatile.Read(ref _flagsAndKeccakSeq) & _persistedMask) != 0;
+            set { if (value) Interlocked.Or(ref _flagsAndKeccakSeq, _persistedMask); else Interlocked.And(ref _flagsAndKeccakSeq, ~_persistedMask); }
         }
 
         public bool IsBoundaryProofNode
         {
-            get => (Volatile.Read(ref _blockAndFlags) & _boundaryProof) != 0;
-            set { if (value) Interlocked.Or(ref _blockAndFlags, _boundaryProof); else Interlocked.And(ref _blockAndFlags, ~_boundaryProof); }
+            get => (Volatile.Read(ref _flagsAndKeccakSeq) & _boundaryProof) != 0;
+            set { if (value) Interlocked.Or(ref _flagsAndKeccakSeq, _boundaryProof); else Interlocked.And(ref _flagsAndKeccakSeq, ~_boundaryProof); }
         }
 
-        public bool IsDirty => (Volatile.Read(ref _blockAndFlags) & _dirtyMask) != 0;
+        public bool IsDirty => (Volatile.Read(ref _flagsAndKeccakSeq) & _dirtyMask) != 0;
 
-        internal bool IsRlpStale => (Volatile.Read(ref _blockAndFlags) & _rlpStaleMask) != 0;
+        internal bool IsRlpStale => (Volatile.Read(ref _flagsAndKeccakSeq) & _rlpStaleMask) != 0;
 
-        private void MarkRlpStale() => Interlocked.Or(ref _blockAndFlags, _rlpStaleMask);
+        private void MarkRlpStale() => Interlocked.Or(ref _flagsAndKeccakSeq, _rlpStaleMask);
 
-        private void MarkRlpFresh() => Interlocked.And(ref _blockAndFlags, ~_rlpStaleMask);
+        private void MarkRlpFresh() => Interlocked.And(ref _flagsAndKeccakSeq, ~_rlpStaleMask);
 
         /// <summary>Node will no longer be mutable.</summary>
         public void Seal()
         {
             // Dirty -> sealed is one-shot; Interlocked.And returns the OLD value so we can
             // detect double-seal even if a race cleared the bit first.
-            uint previous = Interlocked.And(ref _blockAndFlags, ~_dirtyMask);
+            uint previous = Interlocked.And(ref _flagsAndKeccakSeq, ~_dirtyMask);
             if ((previous & _dirtyMask) == 0) ThrowAlreadySealed();
 
             [DoesNotReturn, StackTraceHidden]
@@ -216,10 +216,10 @@ namespace Nethermind.Trie
         /// Cheap presence check for the inline keccak; see <see cref="TryGetKeccak(out ValueHash256)"/>
         /// for safe value access.
         /// </summary>
-        public bool HasKeccak => (Volatile.Read(ref _blockAndFlags) & _hasKeccakMask) != 0;
+        public bool HasKeccak => (Volatile.Read(ref _flagsAndKeccakSeq) & _hasKeccakMask) != 0;
 
         /// <summary>
-        /// Reads the inline node keccak under the packed <c>_blockAndFlags</c> seqlock. Returns <c>false</c>
+        /// Reads the inline node keccak under the packed <c>_flagsAndKeccakSeq</c> seqlock. Returns <c>false</c>
         /// when the node has no keccak set or when a concurrent clear is observed mid-read.
         /// </summary>
         /// <remarks>
@@ -231,7 +231,7 @@ namespace Nethermind.Trie
             SpinWait spin = default;
             while (true)
             {
-                uint flags = Volatile.Read(ref _blockAndFlags);
+                uint flags = Volatile.Read(ref _flagsAndKeccakSeq);
                 if ((flags & _hasKeccakMask) == 0)
                 {
                     keccak = default;
@@ -249,7 +249,7 @@ namespace Nethermind.Trie
                 ValueHash256 value = _keccakValue;
                 if (!Sse.IsSupported) Interlocked.MemoryBarrier();
 
-                uint flagsAfter = Volatile.Read(ref _blockAndFlags);
+                uint flagsAfter = Volatile.Read(ref _flagsAndKeccakSeq);
                 uint seqAfter = flagsAfter & _keccakSeqMask;
                 if (seqBefore != seqAfter)
                 {
@@ -317,14 +317,14 @@ namespace Nethermind.Trie
             SpinWait spin = default;
             while (true)
             {
-                uint current = Volatile.Read(ref _blockAndFlags);
+                uint current = Volatile.Read(ref _flagsAndKeccakSeq);
                 if ((current & _keccakSeqLock) != 0)
                 {
                     spin.SpinOnce();
                     continue;
                 }
 
-                if (Interlocked.CompareExchange(ref _blockAndFlags, current | _keccakSeqLock, current) == current)
+                if (Interlocked.CompareExchange(ref _flagsAndKeccakSeq, current | _keccakSeqLock, current) == current)
                 {
                     _keccakValue = keccak;
                     PublishKeccakState(current, hasKeccak: true);
@@ -345,14 +345,14 @@ namespace Nethermind.Trie
             SpinWait spin = default;
             while (true)
             {
-                uint current = Volatile.Read(ref _blockAndFlags);
+                uint current = Volatile.Read(ref _flagsAndKeccakSeq);
                 if ((current & _keccakSeqLock) != 0)
                 {
                     spin.SpinOnce();
                     continue;
                 }
 
-                if (Interlocked.CompareExchange(ref _blockAndFlags, current | _keccakSeqLock, current) == current)
+                if (Interlocked.CompareExchange(ref _flagsAndKeccakSeq, current | _keccakSeqLock, current) == current)
                 {
                     PublishKeccakState(current, hasKeccak: false);
                     return;
@@ -365,7 +365,7 @@ namespace Nethermind.Trie
         private void PublishKeccakState(uint flagsBeforeLock, bool hasKeccak)
         {
             uint nextSeq = ((flagsBeforeLock & _keccakSeqMask) + _keccakSeqStep) & _keccakSeqMask;
-            uint previous = Volatile.Read(ref _blockAndFlags);
+            uint previous = Volatile.Read(ref _flagsAndKeccakSeq);
             uint current;
             do
             {
@@ -373,7 +373,7 @@ namespace Nethermind.Trie
                 Debug.Assert((current & _keccakSeqLock) != 0);
                 uint next = (current & ~_keccakStateMask) | nextSeq;
                 if (hasKeccak) next |= _hasKeccakMask;
-                previous = Interlocked.CompareExchange(ref _blockAndFlags, next, current);
+                previous = Interlocked.CompareExchange(ref _flagsAndKeccakSeq, next, current);
             } while (previous != current);
         }
 
@@ -387,17 +387,17 @@ namespace Nethermind.Trie
         /// </summary>
         internal void CopyFlagsFrom(TrieNode source, bool markPersisted)
         {
-            uint sourceFlags = Volatile.Read(ref source._blockAndFlags) & _copyableFlagsMask;
+            uint sourceFlags = Volatile.Read(ref source._flagsAndKeccakSeq) & _copyableFlagsMask;
             if (markPersisted) sourceFlags |= _persistedMask;
 
-            uint previous = Volatile.Read(ref _blockAndFlags);
+            uint previous = Volatile.Read(ref _flagsAndKeccakSeq);
             uint current;
             do
             {
                 current = previous;
                 uint next = (current & _keccakStateMask) | sourceFlags;
                 if (next == current) return;
-                previous = Interlocked.CompareExchange(ref _blockAndFlags, next, current);
+                previous = Interlocked.CompareExchange(ref _flagsAndKeccakSeq, next, current);
             } while (previous != current);
         }
 
@@ -529,7 +529,7 @@ namespace Nethermind.Trie
         // Copy constructor shared by the typed CloneTyped overrides. Sets the
         // dirty flag; subclasses copy their own shape fields after the base ctor runs.
         private protected TrieNode(TrieNode node) =>
-            _blockAndFlags = _dirtyMask | (Volatile.Read(ref node._blockAndFlags) & _rlpStaleMask);
+            _flagsAndKeccakSeq = _dirtyMask | (Volatile.Read(ref node._flagsAndKeccakSeq) & _rlpStaleMask);
 
         // Internal-only constructors used by the typed subclasses to plumb the
         // initial Keccak and / or RLP through the seqlocked fields. The shape
@@ -538,7 +538,7 @@ namespace Nethermind.Trie
         // Dirty by default — typed nodes that are being constructed in-memory before
         // RLP encoding need IsDirty=true so that mutation paths (key/value setters)
         // do not see them as sealed.
-        private protected TrieNode() => _blockAndFlags = _dirtyMask;
+        private protected TrieNode() => _flagsAndKeccakSeq = _dirtyMask;
 
         private protected TrieNode(in ValueHash256 keccak) => SetKeccak(in keccak);
 
@@ -546,7 +546,7 @@ namespace Nethermind.Trie
         {
             if (isDirty)
             {
-                _blockAndFlags |= _dirtyMask;
+                _flagsAndKeccakSeq |= _dirtyMask;
             }
             InitRlp(rlp);
         }
@@ -1521,7 +1521,7 @@ namespace Nethermind.Trie
 
         public long GetMemorySize(bool recursive)
         {
-            // Inline ValueHash256 (32 B); the keccak seqlock sequence is packed into _blockAndFlags.
+            // Inline ValueHash256 (32 B); the keccak seqlock sequence is packed into _flagsAndKeccakSeq.
             int keccakSize = ValueHash256.MemorySize;
             CappedArray<byte> rlp = ReadRlp();
             bool isRlpSlice = IsRlpSlice(Volatile.Read(ref _rlpSeqAndLength));

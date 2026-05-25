@@ -74,10 +74,10 @@ public class TrieNodeTests
             trieNode.Keccak = (i & 1) == 0 ? TestItem.KeccakA : TestItem.KeccakB;
         }
 
-        FieldInfo flagsField = typeof(TrieNode).GetField("_blockAndFlags", BindingFlags.Instance | BindingFlags.NonPublic)!;
-        uint blockAndFlags = (uint)flagsField.GetValue(trieNode)!;
+        FieldInfo flagsField = typeof(TrieNode).GetField("_flagsAndKeccakSeq", BindingFlags.Instance | BindingFlags.NonPublic)!;
+        uint flagsAndKeccakSeq = (uint)flagsField.GetValue(trieNode)!;
         const uint bitsAboveOldByteSequence = 0xFFFF0000u;
-        (blockAndFlags & bitsAboveOldByteSequence).Should().NotBe(0);
+        (flagsAndKeccakSeq & bitsAboveOldByteSequence).Should().NotBe(0);
     }
 
     [Test]
