@@ -63,8 +63,8 @@ public class DbPersistingBlockTracerTests
             }
         );
 
-        traces.Should().BeEquivalentTo(new ParityLikeTxTrace[]
-        {
+        ParityLikeTxTrace[] expected =
+        [
             new()
             {
                 BlockHash = hash,
@@ -101,7 +101,10 @@ public class DbPersistingBlockTracerTests
                     ]
                 }
             }
-        });
+        ];
+
+        Serialization.Json.EthereumJsonSerializer serializer = new();
+        serializer.Serialize(traces).Should().Be(serializer.Serialize(expected));
     }
 
     [TestCase(510)]
