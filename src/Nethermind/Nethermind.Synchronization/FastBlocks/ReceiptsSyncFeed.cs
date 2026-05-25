@@ -220,6 +220,7 @@ namespace Nethermind.Synchronization.FastBlocks
                 }
                 else
                 {
+                    NormalizeZeroBlooms(receipts);
                     // BlockInfo has no timestamp
                     IReceiptSpec releaseSpec = _specProvider.GetReceiptSpec(blockInfo.BlockNumber);
                     // TODO: Optimism use op root calculator
@@ -230,6 +231,32 @@ namespace Nethermind.Synchronization.FastBlocks
             }
 
             return preparedReceipts is not null;
+        }
+
+        /// <summary>
+        /// Recomputes <see cref="TxReceipt.Bloom"/> from <see cref="TxReceipt.Logs"/> when a peer
+        /// ships an all-zero bloom alongside non-empty logs.
+        /// </summary>
+        /// <remarks>
+        /// Erigon historically sends <c>Bloom.Empty</c> on the wire for old receipts even when the
+        /// receipt has logs. The <see cref="TxReceipt.Bloom"/> getter only falls back to
+        /// <see cref="TxReceipt.CalculateBloom"/> when the stored bloom is null, not when it has been
+        /// explicitly set to zero, so the receipts trie root computed locally diverges from the
+        /// header's <see cref="BlockHeader.ReceiptsRoot"/> and we treat the peer as having sent
+        /// invalid receipts (issue #8508). Regenerate only when the stored bloom is exactly empty
+        /// and the receipt actually has logs — a peer that ships a non-zero but wrong bloom is still
+        /// rejected.
+        /// </remarks>
+        internal static void NormalizeZeroBlooms(TxReceipt[] receipts)
+        {
+            for (int i = 0; i < receipts.Length; i++)
+            {
+                TxReceipt receipt = receipts[i];
+                if ((receipt.Logs?.Length ?? 0) > 0 && receipt.Bloom == Bloom.Empty)
+                {
+                    receipt.Bloom = receipt.CalculateBloom();
+                }
+            }
         }
 
         private int InsertReceipts(ReceiptsSyncBatch batch)
