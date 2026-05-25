@@ -26,6 +26,7 @@ public sealed class GethLikeBlockEnvelopeStreamingTracer : BlockTracerBase<GethL
     private readonly PipeWriter? _pipeWriter;
     private readonly CancellationToken _cancellationToken;
     private bool _innerEnvelopeOpen;
+    private bool _isDisposed;
     private Hash256? _currentTxHash;
     private GethLikeTxDirectStreamingTracer? _reusableTxTracer;
 
@@ -95,10 +96,17 @@ public sealed class GethLikeBlockEnvelopeStreamingTracer : BlockTracerBase<GethL
 
     public void Dispose()
     {
+        if (_isDisposed) return;
+        _isDisposed = true;
+
         _reusableTxTracer?.ReleaseResources();
         DisposableExtensions.DisposeAndNull(ref _reusableTxTracer);
 
         if (!_innerEnvelopeOpen) return;
+
+        Hash256? currentTxHash = _currentTxHash;
+        _innerEnvelopeOpen = false;
+        _currentTxHash = null;
 
         _writer.WriteEndArray();
         _writer.WriteNumber("gas"u8, 0L);
@@ -109,10 +117,8 @@ public sealed class GethLikeBlockEnvelopeStreamingTracer : BlockTracerBase<GethL
         _writer.WriteEndObject();
 
         _writer.WritePropertyName("txHash"u8);
-        WriteTxHashOrNull(_currentTxHash);
+        WriteTxHashOrNull(currentTxHash);
         _writer.WriteEndObject();
-        _innerEnvelopeOpen = false;
-        _currentTxHash = null;
     }
 
     private void WriteTxHashOrNull(Hash256? hash)
