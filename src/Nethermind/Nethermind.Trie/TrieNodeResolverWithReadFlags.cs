@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Trie.Pruning;
 
@@ -14,7 +15,7 @@ public class TrieNodeResolverWithReadFlags(ITrieNodeResolver baseResolver, ReadF
 
     public TrieNode FindCachedOrUnknown(in TreePath treePath, Hash256 hash) => _baseResolver.FindCachedOrUnknown(treePath, hash);
 
-    public byte[]? TryLoadRlp(in TreePath treePath, Hash256 hash, ReadFlags flags = ReadFlags.None)
+    public CappedArray<byte> TryLoadRlp(in TreePath treePath, Hash256 hash, ReadFlags flags = ReadFlags.None)
     {
         if (flags != ReadFlags.None)
         {
@@ -24,7 +25,7 @@ public class TrieNodeResolverWithReadFlags(ITrieNodeResolver baseResolver, ReadF
         return _baseResolver.TryLoadRlp(treePath, hash, _defaultFlags);
     }
 
-    public byte[]? LoadRlp(in TreePath treePath, Hash256 hash, ReadFlags flags = ReadFlags.None)
+    public CappedArray<byte> LoadRlp(in TreePath treePath, Hash256 hash, ReadFlags flags = ReadFlags.None)
     {
         if (flags != ReadFlags.None)
         {

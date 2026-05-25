@@ -3,6 +3,7 @@
 
 using System;
 using Nethermind.Core;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
 
 namespace Nethermind.Trie.Pruning;
@@ -16,9 +17,9 @@ public class EmptyTrieNodeResolver : ITrieNodeResolver
 
     public TrieNode FindCachedOrUnknown(in TreePath path, Hash256 hash) => throw new InvalidOperationException("Empty node resolver should not be called");
 
-    public byte[]? LoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) => throw new InvalidOperationException("Empty node resolver should not be called");
+    public CappedArray<byte> LoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) => throw new InvalidOperationException("Empty node resolver should not be called");
 
-    public byte[]? TryLoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) => throw new InvalidOperationException("Empty node resolver should not be called");
+    public CappedArray<byte> TryLoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) => throw new InvalidOperationException("Empty node resolver should not be called");
 
     public ITrieNodeResolver GetStorageTrieNodeResolver(Hash256? address) => throw new InvalidOperationException("Empty node resolver should not be called");
 

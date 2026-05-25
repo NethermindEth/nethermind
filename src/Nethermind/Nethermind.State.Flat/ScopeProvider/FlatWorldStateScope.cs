@@ -6,6 +6,7 @@ using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using Nethermind.Core;
+using Nethermind.Core.Attributes;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Threading;
 using Nethermind.Db;
@@ -17,15 +18,18 @@ namespace Nethermind.State.Flat.ScopeProvider;
 
 public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrieWarmer.IAddressWarmer
 {
+    private static readonly StringLabel _stateWarmerLabel = new("state");
+    private static readonly StringLabel _stateWarmerSkippedLabel = new("state_skipped");
+
     private readonly SnapshotBundle _snapshotBundle;
     private readonly IFlatCommitTarget _commitTarget;
     private readonly IFlatDbConfig _configuration;
     private readonly ITrieWarmer _warmer;
     private readonly ILogManager _logManager;
     private readonly bool _isReadOnly;
+    private readonly bool _recordDetailedMetrics;
 
     private readonly ConcurrencyController _concurrencyQuota;
-    private readonly PatriciaTree _warmupStateTree;
     private readonly StateTree _stateTree;
     private readonly Dictionary<AddressAsKey, FlatStorageTree> _storages = [];
     private bool _isDisposed = false;
@@ -55,15 +59,8 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         _concurrencyQuota = new ConcurrencyController(Environment.ProcessorCount); // Used during tree commit.
         _stateTree = new(
             new StateTrieStoreAdapter(snapshotBundle, _concurrencyQuota),
-            logManager
-        )
-        {
-            RootHash = currentStateId.StateRoot.ToCommitment()
-        };
-
-        _warmupStateTree = new(
-            new StateTrieStoreWarmerAdapter(snapshotBundle),
-            logManager
+            logManager,
+            snapshotBundle.BufferPool
         )
         {
             RootHash = currentStateId.StateRoot.ToCommitment()
@@ -72,6 +69,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         _configuration = configuration;
         _logManager = logManager;
         _warmer = trieCacheWarmer;
+        _recordDetailedMetrics = Nethermind.Db.Metrics.DetailedMetricsEnabled;
 
         _warmer.OnEnterScope();
         _isReadOnly = isReadOnly;
@@ -147,11 +145,26 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     {
         try
         {
-            if (_hintSequenceId != sequenceId || _pausePrewarmer) return false;
+            if (_hintSequenceId != sequenceId || _pausePrewarmer)
+            {
+                if (_recordDetailedMetrics)
+                    Metrics.TrieWarmerJobTime.Observe(0, _stateWarmerSkippedLabel);
+                return false;
+            }
+
+            Hash256 rootHash = _stateTree.RootHash;
+            if (rootHash == Keccak.EmptyTreeHash) return true;
 
             // Note: tree root not changed after writing batch. Also, not cleared. So the result is not correct.
             // this is just for warming up
-            _warmupStateTree.WarmUpPath(address.ToAccountPath.Bytes);
+            long sw = _recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
+
+            RefCountingTrieNode? StateLoader(TreePath p, in ValueHash256 h) =>
+                _snapshotBundle.LoadAndCacheStateNodeForWarmer(p, h);
+
+            RlpTrieTraversal.WarmUpPath(StateLoader, rootHash, address.ToAccountPath.Bytes);
+            if (_recordDetailedMetrics)
+                Metrics.TrieWarmerJobTime.Observe(Stopwatch.GetTimestamp() - sw, _stateWarmerLabel);
 
             return true;
         }
@@ -181,7 +194,8 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
             _concurrencyQuota,
             storageRoot,
             address,
-            _logManager);
+            _logManager,
+            _snapshotBundle.BufferPool);
 
         return storage;
     }
@@ -197,6 +211,10 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         // StorageTreeBulkWriteBatch(commit: true). Only the state tree needs committing here.
         _stateTree.Commit();
 
+        // Clear tree node references before TransientResource is returned — their CappedArray byte[]
+        // are backed by the lease pool which gets reset when the TransientResource is returned.
+        // Re-setting RootHash re-resolves RootRef via FindCachedOrUnknown, dropping the old tree graph.
+        _stateTree.RootHash = _stateTree.RootHash;
         _storages.Clear();
 
         StateId newStateId = new(blockNumber, RootHash);

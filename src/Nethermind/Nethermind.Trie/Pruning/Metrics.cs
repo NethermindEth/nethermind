@@ -1,8 +1,10 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections.Concurrent;
 using System.ComponentModel;
 using Nethermind.Core.Attributes;
+using Nethermind.Core.Metric;
 
 namespace Nethermind.Trie.Pruning
 {
@@ -83,5 +85,27 @@ namespace Nethermind.Trie.Pruning
         [GaugeMetric]
         [Description("Estimated memory used by cache.")]
         public static long MemoryUsedByCache { get; set; }
+
+        [GaugeMetric]
+        [Description("Number of active (rented but not returned) pooled trie nodes.")]
+        public static long ActivePooledNodeCount { get; set; }
+
+        [GaugeMetric]
+        [KeyIsLabel("node_type")]
+        [Description("Number of active pooled trie nodes by type.")]
+        public static ConcurrentDictionary<string, long> ActivePooledNodeCountByType { get; set; } = new();
+
+        [CounterMetric]
+        [Description("Total number of RefCountingTrieNode instances created (not reused from pool).")]
+        public static long CreatedPooledNodeCount;
+
+        [CounterMetric]
+        [KeyIsLabel("node_type")]
+        [Description("Total number of RefCountingTrieNode rented from pool by type.")]
+        public static ConcurrentDictionary<string, long> RentedPooledNodeCountByType { get; set; } = new();
+
+        [Description("Number of RefCountingTrieNode rented per block (observed at ChildCache reset).")]
+        [ExponentialPowerHistogramMetric(Start = 1, Factor = 2, Count = 20)]
+        public static IMetricObserver RentedPooledNodeCountPerBlock { get; set; } = NoopMetricObserver.Instance;
     }
 }

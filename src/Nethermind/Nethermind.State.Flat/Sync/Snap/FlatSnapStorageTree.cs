@@ -1,7 +1,10 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+using System.Collections.Generic;
 using Nethermind.Core;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
@@ -44,8 +47,9 @@ public class FlatSnapStorageTree : ISnapTree<PathWithStorageSlot>
 
     public bool IsPersisted(in TreePath path, in ValueHash256 keccak)
     {
-        byte[]? rlp = _reader.TryLoadStorageRlp(_addressHash, path, ReadFlags.None);
-        return rlp is not null && ValueKeccak.Compute(rlp) == keccak;
+        byte[] buffer = new byte[RefCountingTrieNode.MaxEthereumBranchRlpLength];
+        int len = _reader.TryLoadStorageRlp(_addressHash, path, buffer, ReadFlags.None);
+        return len > 0 && ValueKeccak.Compute(buffer.AsSpan(0, len)) == keccak;
     }
 
     public void BulkSetAndUpdateRootHash(IReadOnlyList<PathWithStorageSlot> entries)
@@ -98,8 +102,12 @@ public class FlatSnapStorageTree : ISnapTree<PathWithStorageSlot>
     {
         public override TrieNode FindCachedOrUnknown(in TreePath path, Hash256 hash) => new(NodeType.Unknown, hash);
 
-        public override byte[]? TryLoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) =>
-            reader.TryLoadStorageRlp(addressHash, path, flags);
+        public override CappedArray<byte> TryLoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None)
+        {
+            byte[] buffer = new byte[RefCountingTrieNode.MaxEthereumBranchRlpLength];
+            int len = reader.TryLoadStorageRlp(addressHash, path, buffer, flags);
+            return len > 0 ? new CappedArray<byte>(buffer, len) : default;
+        }
 
         public override ICommitter BeginCommit(TrieNode? root, WriteFlags writeFlags = WriteFlags.None) =>
             new StorageCommitter(writeBatch, reader, addressHash, enableDoubleWriteCheck);
@@ -108,11 +116,13 @@ public class FlatSnapStorageTree : ISnapTree<PathWithStorageSlot>
         {
             public TrieNode CommitNode(ref TreePath path, TrieNode node)
             {
-                if (enableDoubleWriteCheck && reader.TryLoadStorageRlp(address, path, ReadFlags.None) != null)
+                if (enableDoubleWriteCheck)
                 {
-                    throw new Exception($"Double storage rlp write. {address} {path}");
+                    byte[] checkBuf = new byte[RefCountingTrieNode.MaxEthereumBranchRlpLength];
+                    if (reader.TryLoadStorageRlp(address, path, checkBuf, ReadFlags.None) > 0)
+                        throw new Exception($"Double storage rlp write. {address} {path}");
                 }
-                writeBatch.SetStorageTrieNode(address, path, node);
+                writeBatch.SetStorageTrieNode(address, path, node.FullRlp.AsSpan());
                 return node;
             }
 

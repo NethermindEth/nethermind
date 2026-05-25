@@ -3,6 +3,7 @@
 
 using System;
 using Nethermind.Core;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
 
 namespace Nethermind.Trie.Pruning
@@ -18,9 +19,9 @@ namespace Nethermind.Trie.Pruning
         public TrieNode FindCachedOrUnknown(Hash256? address, in TreePath treePath, Hash256 hash) =>
             _trieStore.FindCachedOrUnknown(address, treePath, hash, true);
 
-        public byte[] LoadRlp(Hash256? address, in TreePath treePath, Hash256 hash, ReadFlags flags) =>
+        public CappedArray<byte> LoadRlp(Hash256? address, in TreePath treePath, Hash256 hash, ReadFlags flags) =>
             _trieStore.LoadRlp(address, treePath, hash, flags);
-        public byte[]? TryLoadRlp(Hash256? address, in TreePath treePath, Hash256 hash, ReadFlags flags) =>
+        public CappedArray<byte> TryLoadRlp(Hash256? address, in TreePath treePath, Hash256 hash, ReadFlags flags) =>
             _trieStore.TryLoadRlp(address, treePath, hash, flags);
 
         public ICommitter BeginCommit(Hash256? address, TrieNode? root, WriteFlags writeFlags) => NullCommitter.Instance;
@@ -42,10 +43,10 @@ namespace Nethermind.Trie.Pruning
             public TrieNode FindCachedOrUnknown(in TreePath path, Hash256 hash) =>
                 fullTrieStore.FindCachedOrUnknown(address, path, hash);
 
-            public byte[]? LoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) =>
+            public CappedArray<byte> LoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) =>
                 fullTrieStore.LoadRlp(address, path, hash, flags);
 
-            public byte[]? TryLoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) => fullTrieStore.TryLoadRlp(address, path, hash, flags);
+            public CappedArray<byte> TryLoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) => fullTrieStore.TryLoadRlp(address, path, hash, flags);
 
             public ITrieNodeResolver GetStorageTrieNodeResolver(Hash256? address1) =>
                 address1 == address ? this : new ScopedReadOnlyTrieStore(fullTrieStore, address1);

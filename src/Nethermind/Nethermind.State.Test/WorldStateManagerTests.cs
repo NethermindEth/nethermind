@@ -8,6 +8,7 @@ using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Db;
@@ -166,8 +167,8 @@ public class WorldStateManagerTests
 
         if (rootNode.NodeType == NodeType.Unknown)
         {
-            byte[] rlp = scopedStore.TryLoadRlp(TreePath.Empty, stateRoot);
-            rlp.Should().NotBeNull("state root trie node should be resolvable from read-only trie store");
+            CappedArray<byte> rlp = scopedStore.TryLoadRlp(TreePath.Empty, stateRoot);
+            rlp.IsNull.Should().BeFalse("state root trie node should be resolvable from read-only trie store");
         }
         else
         {

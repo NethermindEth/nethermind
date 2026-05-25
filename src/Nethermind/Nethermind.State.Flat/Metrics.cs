@@ -84,4 +84,9 @@ public static class Metrics
     [ExponentialPowerHistogramMetric(Start = 1, Factor = 1.5, Count = 1, LabelNames = [])]
     public static IMetricObserver CompactTime { get; set; } = new NoopMetricObserver();
 
+    [DetailedMetric]
+    [Description("Trie warmer job execution time")]
+    [ExponentialPowerHistogramMetric(Start = 1, Factor = 1.5, Count = 30, LabelNames = ["type"])]
+    public static IMetricObserver TrieWarmerJobTime { get; set; } = new NoopMetricObserver();
+
 }

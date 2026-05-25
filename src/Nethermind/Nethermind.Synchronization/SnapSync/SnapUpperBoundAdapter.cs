@@ -3,6 +3,7 @@
 
 using System;
 using Nethermind.Core;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
@@ -20,9 +21,9 @@ public class SnapUpperBoundAdapter(IScopedTrieStore baseTrieStore) : IScopedTrie
 
     public TrieNode FindCachedOrUnknown(in TreePath path, Hash256 hash) => baseTrieStore.FindCachedOrUnknown(in path, hash);
 
-    public byte[]? LoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) => baseTrieStore.LoadRlp(in path, hash, flags);
+    public CappedArray<byte> LoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) => baseTrieStore.LoadRlp(in path, hash, flags);
 
-    public byte[]? TryLoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) => baseTrieStore.TryLoadRlp(in path, hash, flags);
+    public CappedArray<byte> TryLoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) => baseTrieStore.TryLoadRlp(in path, hash, flags);
 
     public ITrieNodeResolver GetStorageTrieNodeResolver(Hash256? address) => throw new NotSupportedException("Get storage trie node resolver not supported");
 

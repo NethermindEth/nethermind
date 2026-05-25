@@ -4,6 +4,7 @@
 using System;
 using System.Threading;
 using Nethermind.Core;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
 
 namespace Nethermind.Trie.Pruning
@@ -39,8 +40,8 @@ namespace Nethermind.Trie.Pruning
     {
         ICommitter BeginCommit(Hash256? address, TrieNode? root, WriteFlags writeFlags);
         TrieNode FindCachedOrUnknown(Hash256? address, in TreePath path, Hash256 hash);
-        byte[]? LoadRlp(Hash256? address, in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None);
-        byte[]? TryLoadRlp(Hash256? address, in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None);
+        CappedArray<byte> LoadRlp(Hash256? address, in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None);
+        CappedArray<byte> TryLoadRlp(Hash256? address, in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None);
         INodeStorage.KeyScheme Scheme { get; }
     }
 

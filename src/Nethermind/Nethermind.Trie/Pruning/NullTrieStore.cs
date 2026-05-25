@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
 
 namespace Nethermind.Trie.Pruning
@@ -14,9 +15,9 @@ namespace Nethermind.Trie.Pruning
 
         public TrieNode FindCachedOrUnknown(in TreePath treePath, Hash256 hash) => new(NodeType.Unknown, hash);
 
-        public byte[] LoadRlp(in TreePath treePath, Hash256 hash, ReadFlags flags = ReadFlags.None) => [];
+        public CappedArray<byte> LoadRlp(in TreePath treePath, Hash256 hash, ReadFlags flags = ReadFlags.None) => new([]);
 
-        public byte[]? TryLoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) => [];
+        public CappedArray<byte> TryLoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) => new([]);
 
         public ICommitter BeginCommit(TrieNode? root, WriteFlags writeFlags = WriteFlags.None) => NullCommitter.Instance;
 

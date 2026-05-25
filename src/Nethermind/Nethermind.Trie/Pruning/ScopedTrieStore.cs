@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
 
 namespace Nethermind.Trie.Pruning;
@@ -11,10 +12,10 @@ public sealed class ScopedTrieStore(IScopableTrieStore fullTrieStore, Hash256? a
     public TrieNode FindCachedOrUnknown(in TreePath path, Hash256 hash) =>
         fullTrieStore.FindCachedOrUnknown(address, path, hash);
 
-    public byte[]? LoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) =>
+    public CappedArray<byte> LoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) =>
         fullTrieStore.LoadRlp(address, path, hash, flags);
 
-    public byte[]? TryLoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) =>
+    public CappedArray<byte> TryLoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) =>
         fullTrieStore.TryLoadRlp(address, path, hash, flags);
 
     public ITrieNodeResolver GetStorageTrieNodeResolver(Hash256? address1) =>

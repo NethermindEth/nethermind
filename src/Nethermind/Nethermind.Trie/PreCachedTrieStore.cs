@@ -5,6 +5,7 @@ using System;
 using System.Numerics;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -25,8 +26,8 @@ public sealed class PreCachedTrieStore : ITrieStore
         _preBlockCache = cache;
 
         // Capture the delegate once for default path to avoid the allocation of the lambda per call
-        _loadRlp = (in NodeKey key) => _inner.LoadRlp(key.Address, in key.Path, key.Hash, flags: ReadFlags.None);
-        _tryLoadRlp = (in NodeKey key) => _inner.TryLoadRlp(key.Address, in key.Path, key.Hash, flags: ReadFlags.None);
+        _loadRlp = (in NodeKey key) => _inner.LoadRlp(key.Address, in key.Path, key.Hash, flags: ReadFlags.None).ToArray();
+        _tryLoadRlp = (in NodeKey key) => _inner.TryLoadRlp(key.Address, in key.Path, key.Hash, flags: ReadFlags.None).ToArray();
     }
 
     public void Dispose() => _inner.Dispose();
@@ -45,15 +46,15 @@ public sealed class PreCachedTrieStore : ITrieStore
 
     public TrieNode FindCachedOrUnknown(Hash256? address, in TreePath path, Hash256 hash) => _inner.FindCachedOrUnknown(address, in path, hash);
 
-    public byte[]? LoadRlp(Hash256? address, in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) =>
+    public CappedArray<byte> LoadRlp(Hash256? address, in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) =>
         _preBlockCache.GetOrAdd(new(address, in path, hash),
             flags == ReadFlags.None ? _loadRlp :
-            (in NodeKey key) => _inner.LoadRlp(key.Address, in key.Path, key.Hash, flags));
+            (in NodeKey key) => _inner.LoadRlp(key.Address, in key.Path, key.Hash, flags).ToArray());
 
-    public byte[]? TryLoadRlp(Hash256? address, in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) =>
+    public CappedArray<byte> TryLoadRlp(Hash256? address, in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) =>
         _preBlockCache.GetOrAdd(new(address, in path, hash),
             flags == ReadFlags.None ? _tryLoadRlp :
-            (in key) => _inner.TryLoadRlp(key.Address, in key.Path, key.Hash, flags));
+            (in key) => _inner.TryLoadRlp(key.Address, in key.Path, key.Hash, flags).ToArray());
 
     public INodeStorage.KeyScheme Scheme => _inner.Scheme;
 }

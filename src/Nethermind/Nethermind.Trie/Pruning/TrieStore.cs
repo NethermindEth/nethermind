@@ -489,7 +489,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
 
     public event EventHandler<ReorgBoundaryReached>? ReorgBoundaryReached;
 
-    public byte[]? TryLoadRlp(Hash256? address, in TreePath path, Hash256 keccak, ReadFlags readFlags = ReadFlags.None)
+    public CappedArray<byte> TryLoadRlp(Hash256? address, in TreePath path, Hash256 keccak, ReadFlags readFlags = ReadFlags.None)
     {
         byte[]? rlp = _nodeStorage.Get(address, path, keccak, readFlags);
 
@@ -501,10 +501,10 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
         return rlp;
     }
 
-    public byte[] LoadRlp(Hash256? address, in TreePath path, Hash256 keccak, ReadFlags readFlags = ReadFlags.None)
+    public CappedArray<byte> LoadRlp(Hash256? address, in TreePath path, Hash256 keccak, ReadFlags readFlags = ReadFlags.None)
     {
-        byte[]? rlp = TryLoadRlp(address, path, keccak, readFlags);
-        if (rlp is null)
+        CappedArray<byte> rlp = TryLoadRlp(address, path, keccak, readFlags);
+        if (rlp.IsNull)
         {
             ThrowMissingNode(address, path, keccak);
         }
@@ -1415,7 +1415,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
         TrieNode node = FindCachedOrUnknown(null, TreePath.Empty, stateRoot, true);
         if (node.NodeType == NodeType.Unknown)
         {
-            return TryLoadRlp(null, TreePath.Empty, node.Keccak!) is not null;
+            return TryLoadRlp(null, TreePath.Empty, node.Keccak!).IsNotNull;
         }
 
         return true;
@@ -1755,9 +1755,9 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
 
         public ICommitter BeginCommit(Hash256? address, TrieNode? root, WriteFlags writeFlags) => NullCommitter.Instance;
 
-        public byte[]? LoadRlp(Hash256? address, in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) => baseTrieStore.LoadRlp(address, in path, hash, flags);
+        public CappedArray<byte> LoadRlp(Hash256? address, in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) => baseTrieStore.LoadRlp(address, in path, hash, flags);
 
-        public byte[]? TryLoadRlp(Hash256? address, in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) => baseTrieStore.TryLoadRlp(address, in path, hash, flags);
+        public CappedArray<byte> TryLoadRlp(Hash256? address, in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) => baseTrieStore.TryLoadRlp(address, in path, hash, flags);
 
         public INodeStorage.KeyScheme Scheme => baseTrieStore.Scheme;
     }

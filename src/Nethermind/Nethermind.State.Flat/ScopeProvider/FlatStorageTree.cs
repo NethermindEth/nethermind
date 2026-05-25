@@ -1,7 +1,10 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Diagnostics;
 using Nethermind.Core;
+using Nethermind.Core.Attributes;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Threading;
@@ -15,14 +18,17 @@ namespace Nethermind.State.Flat.ScopeProvider;
 
 public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITrieWarmer.IStorageWarmer
 {
+    private static readonly StringLabel _storageWarmerLabel = new("storage");
+    private static readonly StringLabel _storageWarmerSkippedLabel = new("storage_skipped");
+
     private readonly StorageTree _tree;
-    private readonly StorageTree _warmupStorageTree;
     private readonly Address _address;
     private readonly IFlatDbConfig _config;
     private readonly ITrieWarmer _trieCacheWarmer;
     private readonly FlatWorldStateScope _scope;
     private readonly SnapshotBundle _bundle;
     private readonly Hash256 _addressHash;
+    private readonly bool _recordDetailedMetrics;
 
     // This number is the idx of the snapshot in the SnapshotBundle where a clear for this account was found.
     // This is passed to TryGetSlot which prevent it from reading before self destruct.
@@ -36,7 +42,8 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITr
         ConcurrencyController concurrencyQuota,
         Hash256 storageRoot,
         Address address,
-        ILogManager logManager)
+        ILogManager logManager,
+        ICappedArrayPool? bufferPool = null)
     {
         _scope = scope;
         _trieCacheWarmer = trieCacheWarmer;
@@ -46,19 +53,14 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITr
         _selfDestructKnownStateIdx = bundle.DetermineSelfDestructSnapshotIdx(address);
 
         StorageTrieStoreAdapter storageTrieAdapter = new(bundle, concurrencyQuota, _addressHash);
-        StorageTrieStoreWarmerAdapter warmerStorageTrieAdapter = new(bundle, _addressHash);
 
-        _tree = new StorageTree(storageTrieAdapter, storageRoot, logManager)
+        _tree = new StorageTree(storageTrieAdapter, storageRoot, logManager, bufferPool)
         {
             RootHash = storageRoot
         };
 
-        // Set the rootref manually. Cut the call to find nodes by about 1/4th.
-        _warmupStorageTree = new StorageTree(warmerStorageTrieAdapter, logManager);
-        _warmupStorageTree.SetRootHash(storageRoot, false);
-        _warmupStorageTree.RootRef = _tree.RootRef;
-
         _config = config;
+        _recordDetailedMetrics = Nethermind.Db.Metrics.DetailedMetricsEnabled;
     }
 
     public Hash256 RootHash => _tree.RootHash;
@@ -104,15 +106,28 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITr
         {
             if (_scope.HintSequenceId != sequenceId || _scope._pausePrewarmer)
             {
+                if (_recordDetailedMetrics)
+                    Metrics.TrieWarmerJobTime.Observe(0, _storageWarmerSkippedLabel);
                 return false;
             }
 
+            Hash256 rootHash = _tree.RootHash;
+            if (rootHash == Keccak.EmptyTreeHash) return true;
+
             // Note: storage tree root not changed after write batch. Also not cleared. So the result is not correct.
             // this is just to warm up the nodes.
+            long sw = _recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
             ValueHash256 key = ValueKeccak.Zero;
             StorageTree.ComputeKeyWithLookup(index, ref key);
 
-            _warmupStorageTree.WarmUpPath(key.BytesAsSpan);
+            Hash256AsKey addressHash = _addressHash;
+
+            RefCountingTrieNode? StorageLoader(TreePath p, in ValueHash256 h) =>
+                _bundle.LoadAndCacheStorageNodeForWarmer(addressHash, p, h);
+
+            RlpTrieTraversal.WarmUpPath(StorageLoader, rootHash, key.BytesAsSpan);
+            if (_recordDetailedMetrics)
+                Metrics.TrieWarmerJobTime.Observe(Stopwatch.GetTimestamp() - sw, _storageWarmerLabel);
             return true;
         }
         finally

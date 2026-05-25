@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Diagnostics.CodeAnalysis;
 using System.IO.Hashing;
 using System.Numerics;
 using Nethermind.Core;
@@ -14,7 +13,7 @@ using IResettable = Nethermind.Core.Resettables.IResettable;
 namespace Nethermind.State.Flat;
 
 /// <summary>
-/// Contains some large variable used by <see cref="SnapshotBundle"/> but not committed into <see cref="IFlatDbManager"/>
+/// Contains some large variables used by <see cref="SnapshotBundle"/> but not committed into <see cref="IFlatDbManager"/>
 /// as part of a <see cref="Snapshot"/>. Pooling this is largely for performance reason.
 /// </summary>
 /// <param name="size"></param>
@@ -29,8 +28,13 @@ public record TransientResource(TransientResource.Size size) : IDisposable, IRes
 
     public int CachedNodes => Nodes.Count;
 
+    public PreallocatedCappedArrayPool BufferPool = new();
+    public RefCountingNodeLeasePool LeasePool = new();
+
     public void Reset()
     {
+        LeasePool.Reset();
+        BufferPool.Reset();
         Nodes.Reset();
 
         if (PrewarmedAddresses.Count > PrewarmedAddresses.Capacity)
@@ -69,17 +73,27 @@ public record TransientResource(TransientResource.Size size) : IDisposable, IRes
         return true;
     }
 
-    public void Dispose() => PrewarmedAddresses.Dispose();
+    public void Dispose()
+    {
+        Reset();
+        PrewarmedAddresses.Dispose();
+    }
 
-    public bool TryGetStateNode(in TreePath path, Hash256 hash, [NotNullWhen(true)] out TrieNode? node) => Nodes.TryGet(null, path, hash, out node);
+    public RefCountingTrieNode? TryGetStateNode(in TreePath path, in ValueHash256 hash) =>
+        Nodes.TryGet(null, path, hash);
 
-    public TrieNode GetOrAddStateNode(in TreePath path, TrieNode trieNode) => Nodes.GetOrAdd(null, path, trieNode);
+    public void UpdateStateRlp(in TreePath path, in ValueHash256 hash, ReadOnlySpan<byte> rlp) =>
+        Nodes.SetAndLease(null, path, hash, rlp).Dispose();
 
-    public void UpdateStateNode(in TreePath path, TrieNode node) => Nodes.Set(null, path, node);
+    public RefCountingTrieNode? TryGetStorageNode(Hash256AsKey address, in TreePath path, in ValueHash256 hash) =>
+        Nodes.TryGet(address, path, hash);
 
-    public bool TryGetStorageNode(Hash256AsKey address, in TreePath path, Hash256 hash, [NotNullWhen(true)] out TrieNode? node) => Nodes.TryGet(address, path, hash, out node);
+    public void UpdateStorageRlp(Hash256AsKey address, in TreePath path, in ValueHash256 hash, ReadOnlySpan<byte> rlp) =>
+        Nodes.SetAndLease(address, path, hash, rlp).Dispose();
 
-    public TrieNode GetOrAddStorageNode(Hash256AsKey address, in TreePath path, TrieNode trieNode) => Nodes.GetOrAdd(address, path, trieNode);
+    public RefCountingTrieNode SetAndLeaseStateNode(in TreePath path, in ValueHash256 hash, ReadOnlySpan<byte> rlp) =>
+        Nodes.SetAndLease(null, path, hash, rlp);
 
-    public void UpdateStorageNode(Hash256AsKey address, in TreePath path, TrieNode node) => Nodes.Set(address, path, node);
+    public RefCountingTrieNode SetAndLeaseStorageNode(Hash256AsKey address, in TreePath path, in ValueHash256 hash, ReadOnlySpan<byte> rlp) =>
+        Nodes.SetAndLease(address, path, hash, rlp);
 }

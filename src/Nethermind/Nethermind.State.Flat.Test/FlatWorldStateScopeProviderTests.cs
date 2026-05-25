@@ -269,7 +269,7 @@ public class FlatWorldStateScopeProviderTests
         Assert.That(committedAccount!.Balance, Is.EqualTo(testAccount.Balance));
         Assert.That(committedAccount!.Nonce, Is.EqualTo(testAccount.Nonce));
 
-        ctx.LastCommittedSnapshot!.TryGetStorage((testAddress, slotIndex), out SlotValue? committedSlot);
+        ctx.LastCommittedSnapshot!.TryGetStorage(testAddress, slotIndex, out SlotValue? committedSlot);
         Assert.That(committedSlot!.Value.ToEvmBytes(), Is.EqualTo(slotValue));
     }
 
@@ -581,7 +581,7 @@ public class FlatWorldStateScopeProviderTests
         ctx.LastCommittedSnapshot!.TryGetAccount(addr2, out Account? committedAcc2);
         Assert.That(committedAcc2!.Balance, Is.EqualTo(acc2.Balance));
 
-        ctx.LastCommittedSnapshot!.TryGetStorage((addr1, slot1), out SlotValue? committedSlot);
+        ctx.LastCommittedSnapshot!.TryGetStorage(addr1, slot1, out SlotValue? committedSlot);
         Assert.That(committedSlot!.Value.ToEvmBytes(), Is.EqualTo(val1));
     }
 
@@ -672,8 +672,9 @@ public class FlatWorldStateScopeProviderTests
             content.Storages[(addr1, slot1)] = SlotValue.FromSpanWithoutLeadingZero(value1);
 
             // Also add a storage trie node for addr1 at root path
-            TrieNode storageNode = new(NodeType.Leaf, Keccak.Zero);
-            content.StorageNodes[(addr1Hash, TreePath.Empty)] = storageNode;
+            byte[] rlp = [0xc1, 0x01];
+            RefCountingRlpNodePoolTracker tracker = new(new RefCountingTrieNodePool());
+            content.StorageNodes[(addr1Hash, TreePath.Empty)] = tracker.Rent(ValueKeccak.Compute(rlp), rlp);
         });
 
         // Create local commits for addr2 (NOT addr1) - this creates local _snapshots

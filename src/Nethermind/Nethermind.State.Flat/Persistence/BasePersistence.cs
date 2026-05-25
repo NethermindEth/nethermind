@@ -3,6 +3,7 @@
 
 using System.Buffers.Binary;
 using Nethermind.Core;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Exceptions;
 using Nethermind.Core.Extensions;
@@ -224,15 +225,15 @@ public static class BasePersistence
 
     public interface ITrieReader
     {
-        public byte[]? TryLoadStateRlp(in TreePath path, ReadFlags flags);
-        public byte[]? TryLoadStorageRlp(Hash256 address, in TreePath path, ReadFlags flags);
+        public int TryLoadStateRlp(in TreePath path, Span<byte> destination, ReadFlags flags);
+        public int TryLoadStorageRlp(Hash256 address, in TreePath path, Span<byte> destination, ReadFlags flags);
     }
 
     public interface ITrieWriteBatch
     {
         public void SelfDestruct(in ValueHash256 address);
-        public void SetStateTrieNode(in TreePath path, TrieNode tnValue);
-        public void SetStorageTrieNode(Hash256 address, in TreePath path, TrieNode tnValue);
+        public void SetStateTrieNode(in TreePath path, ReadOnlySpan<byte> rlp);
+        public void SetStorageTrieNode(Hash256 address, in TreePath path, ReadOnlySpan<byte> rlp);
         public void DeleteStateTrieNodeRange(in TreePath fromPath, in TreePath toPath);
         public void DeleteStorageTrieNodeRange(in ValueHash256 addressHash, in TreePath fromPath, in TreePath toPath);
     }
@@ -355,11 +356,11 @@ public static class BasePersistence
         public bool TryGetSlot(Address address, in UInt256 slot, ref SlotValue outValue) =>
             _flatReader.TryGetSlot(address, in slot, ref outValue);
 
-        public byte[]? TryLoadStateRlp(in TreePath path, ReadFlags flags) =>
-            _trieReader.TryLoadStateRlp(path, flags);
+        public int TryLoadStateRlp(in TreePath path, Span<byte> destination, ReadFlags flags) =>
+            _trieReader.TryLoadStateRlp(path, destination, flags);
 
-        public byte[]? TryLoadStorageRlp(Hash256 address, in TreePath path, ReadFlags flags) =>
-            _trieReader.TryLoadStorageRlp(address, path, flags);
+        public int TryLoadStorageRlp(Hash256 address, in TreePath path, Span<byte> destination, ReadFlags flags) =>
+            _trieReader.TryLoadStorageRlp(address, path, destination, flags);
 
         public byte[]? GetAccountRaw(in ValueHash256 addrHash) =>
             _flatReader.GetAccountRaw(addrHash);
@@ -401,11 +402,11 @@ public static class BasePersistence
         public void SetStorage(Address addr, in UInt256 slot, in SlotValue? value) =>
             _flatWriter.SetStorage(addr, slot, value);
 
-        public void SetStateTrieNode(in TreePath path, TrieNode tnValue) =>
-            _trieWriteBatch.SetStateTrieNode(path, tnValue);
+        public void SetStateTrieNode(in TreePath path, ReadOnlySpan<byte> rlp) =>
+            _trieWriteBatch.SetStateTrieNode(path, rlp);
 
-        public void SetStorageTrieNode(Hash256 address, in TreePath path, TrieNode tnValue) =>
-            _trieWriteBatch.SetStorageTrieNode(address, path, tnValue);
+        public void SetStorageTrieNode(Hash256 address, in TreePath path, ReadOnlySpan<byte> rlp) =>
+            _trieWriteBatch.SetStorageTrieNode(address, path, rlp);
 
         public void SetStorageRaw(in ValueHash256 addrHash, in ValueHash256 slotHash, in SlotValue? value) =>
             _flatWriter.SetStorageRaw(addrHash, slotHash, value);

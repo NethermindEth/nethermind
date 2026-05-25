@@ -3,6 +3,7 @@
 
 using System;
 using Nethermind.Core;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Trie.Pruning;
 
@@ -22,10 +23,10 @@ public class CachedTrieStore(IScopedTrieStore @base) : IScopedTrieStore
     public TrieNode FindCachedOrUnknown(in TreePath path, Hash256 hash) =>
         _cachedNode.GetOrAdd((path, hash), (key) => @base.FindCachedOrUnknown(key.path, key.hash));
 
-    public byte[]? LoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) =>
+    public CappedArray<byte> LoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) =>
         @base.LoadRlp(in path, hash, flags);
 
-    public byte[]? TryLoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) =>
+    public CappedArray<byte> TryLoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) =>
         @base.TryLoadRlp(in path, hash, flags);
 
     public ITrieNodeResolver GetStorageTrieNodeResolver(Hash256? address) =>

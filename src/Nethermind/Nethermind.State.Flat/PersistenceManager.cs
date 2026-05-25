@@ -30,7 +30,7 @@ public class PersistenceManager(
     private readonly int _minReorgDepth = configuration.MinReorgDepth;
     private readonly int _maxReorgDepth = configuration.MaxReorgDepth;
     private readonly int _compactSize = configuration.CompactSize;
-    private readonly List<(Hash256, TreePath)> _trieNodesSortBuffer = []; // Presort make it faster
+    private readonly List<(Hash256AsKey, TreePath)> _trieNodesSortBuffer = []; // Presort make it faster
     private readonly Lock _persistenceLock = new();
 
     private StateId _currentPersistedStateId = StateId.PreGenesis;
@@ -237,24 +237,25 @@ public class PersistenceManager(
         long sw = Stopwatch.GetTimestamp();
         using (IPersistence.IWriteBatch batch = persistence.CreateWriteBatch(snapshot.From, snapshot.To))
         {
-            foreach (KeyValuePair<HashedKey<Address>, bool> toSelfDestructStorage in snapshot.SelfDestructedStorageAddresses)
+            foreach (KeyValuePair<AddressAsKey, bool> toSelfDestructStorage in snapshot.SelfDestructedStorageAddresses)
             {
                 if (toSelfDestructStorage.Value)
                 {
                     continue;
                 }
 
-                batch.SelfDestruct(toSelfDestructStorage.Key.Key);
+                batch.SelfDestruct(toSelfDestructStorage.Key.Value);
             }
 
-            foreach (KeyValuePair<HashedKey<Address>, Account?> kv in snapshot.Accounts)
+            foreach (KeyValuePair<AddressAsKey, Account?> kv in snapshot.Accounts)
             {
-                batch.SetAccount(kv.Key.Key, kv.Value);
+                (AddressAsKey addr, Account? account) = kv;
+                batch.SetAccount(addr, account);
             }
 
-            foreach (KeyValuePair<HashedKey<(Address, UInt256)>, SlotValue?> kv in snapshot.Storages)
+            foreach (KeyValuePair<(AddressAsKey, UInt256), SlotValue?> kv in snapshot.Storages)
             {
-                (Address addr, UInt256 slot) = kv.Key.Key;
+                (AddressAsKey addr, UInt256 slot) = kv.Key;
 
                 batch.SetStorage(addr, slot, kv.Value);
             }
@@ -267,27 +268,15 @@ public class PersistenceManager(
             _trieNodesSortBuffer.Sort();
 
             long stateNodesSize = 0;
-            // foreach (var tn in snapshot.TrieNodes)
-            foreach ((Hash256, TreePath) k in _trieNodesSortBuffer)
+            foreach ((Hash256AsKey, TreePath) k in _trieNodesSortBuffer)
             {
                 (_, TreePath path) = k;
 
-                snapshot.TryGetStateNode(new HashedKey<TreePath>(path), out TrieNode? node);
+                snapshot.TryGetStateNode(path, out RefCountingTrieNode? node);
+                if (node!.RlpLength == 0) continue;
 
-                if (node!.FullRlp.Length == 0)
-                {
-                    // TODO: Need to double check this case. Does it need a rewrite or not?
-                    if (node.NodeType == NodeType.Unknown)
-                    {
-                        continue;
-                    }
-                }
-
-                stateNodesSize += node.FullRlp.Length;
-                // Note: Even if the node already marked as persisted, we still re-persist it
-                batch.SetStateTrieNode(path, node);
-
-                node.IsPersisted = true;
+                stateNodesSize += node.RlpLength;
+                batch.SetStateTrieNode(path, node.RlpSpan);
             }
 
             _trieNodesSortBuffer.Clear();
@@ -295,26 +284,15 @@ public class PersistenceManager(
             _trieNodesSortBuffer.Sort();
 
             long storageNodesSize = 0;
-            // foreach (var tn in snapshot.TrieNodes)
-            foreach ((Hash256, TreePath) k in _trieNodesSortBuffer)
+            foreach ((Hash256AsKey, TreePath) k in _trieNodesSortBuffer)
             {
-                (Hash256 address, TreePath path) = k;
+                (Hash256AsKey address, TreePath path) = k;
 
-                snapshot.TryGetStorageNode(new HashedKey<(Hash256, TreePath)>((address, path)), out TrieNode? node);
+                snapshot.TryGetStorageNode(address, path, out RefCountingTrieNode? node);
+                if (node!.RlpLength == 0) continue;
 
-                if (node!.FullRlp.Length == 0)
-                {
-                    // TODO: Need to double check this case. Does it need a rewrite or not?
-                    if (node.NodeType == NodeType.Unknown)
-                    {
-                        continue;
-                    }
-                }
-
-                storageNodesSize += node.FullRlp.Length;
-                // Note: Even if the node already marked as persisted, we still re-persist it
-                batch.SetStorageTrieNode(address, path, node);
-                node.IsPersisted = true;
+                storageNodesSize += node.RlpLength;
+                batch.SetStorageTrieNode(address, path, node.RlpSpan);
             }
 
             Metrics.FlatPersistenceSnapshotSize.Observe(stateNodesSize, labels: new StringLabel("state_nodes"));

@@ -3,6 +3,7 @@
 
 using System;
 using Nethermind.Core;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
@@ -22,10 +23,10 @@ internal sealed class UnknownNodeResolver : ITrieNodeResolver
     public TrieNode FindCachedOrUnknown(in TreePath path, Hash256 hash) =>
         new(NodeType.Unknown, hash);
 
-    public byte[]? LoadRlp(in TreePath path, Hash256 hash, ReadFlags flags) =>
+    public CappedArray<byte> LoadRlp(in TreePath path, Hash256 hash, ReadFlags flags) =>
         throw new NotSupportedException("Proof nodes have RLP embedded");
 
-    public byte[]? TryLoadRlp(in TreePath path, Hash256 hash, ReadFlags flags) => null;
+    public CappedArray<byte> TryLoadRlp(in TreePath path, Hash256 hash, ReadFlags flags) => default;
 
     public ITrieNodeResolver GetStorageTrieNodeResolver(Hash256? address) => this;
 

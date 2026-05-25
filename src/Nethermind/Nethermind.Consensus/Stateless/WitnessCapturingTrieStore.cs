@@ -6,6 +6,7 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Core;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
@@ -31,14 +32,17 @@ public class WitnessCapturingTrieStore(IReadOnlyTrieStore baseStore) : ITrieStor
         return node;
     }
 
-    public byte[]? LoadRlp(Hash256? address, in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) =>
-        TryLoadRlp(address, in path, hash, flags)
-        ?? throw new MissingTrieNodeException("Missing RLP node", address, path, hash);
-
-    public byte[]? TryLoadRlp(Hash256? address, in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None)
+    public CappedArray<byte> LoadRlp(Hash256? address, in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None)
     {
-        byte[]? rlp = baseStore.TryLoadRlp(address, in path, hash, flags);
-        if (rlp is not null) _rlpCollector.TryAdd(hash, rlp);
+        CappedArray<byte> rlp = TryLoadRlp(address, in path, hash, flags);
+        if (rlp.IsNull) throw new MissingTrieNodeException("Missing RLP node", address, path, hash);
+        return rlp;
+    }
+
+    public CappedArray<byte> TryLoadRlp(Hash256? address, in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None)
+    {
+        CappedArray<byte> rlp = baseStore.TryLoadRlp(address, in path, hash, flags);
+        if (rlp.IsNotNull) _rlpCollector.TryAdd(hash, rlp.ToArray()!);
         return rlp;
     }
 

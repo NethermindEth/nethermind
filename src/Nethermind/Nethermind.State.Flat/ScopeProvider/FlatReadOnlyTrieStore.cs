@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
@@ -23,10 +24,10 @@ internal sealed class FlatReadOnlyTrieStore(IFlatDbManager flatDbManager) : IRea
     public TrieNode FindCachedOrUnknown(Hash256? address, in TreePath path, Hash256 hash) =>
         Resolve(address).FindCachedOrUnknown(in path, hash);
 
-    public byte[]? LoadRlp(Hash256? address, in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) =>
+    public CappedArray<byte> LoadRlp(Hash256? address, in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) =>
         Resolve(address).LoadRlp(in path, hash, flags);
 
-    public byte[]? TryLoadRlp(Hash256? address, in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) =>
+    public CappedArray<byte> TryLoadRlp(Hash256? address, in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) =>
         Resolve(address).TryLoadRlp(in path, hash, flags);
 
     public INodeStorage.KeyScheme Scheme =>

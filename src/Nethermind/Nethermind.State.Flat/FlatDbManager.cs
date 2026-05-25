@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Concurrent;
+using Nethermind.Core.Buffers;
 using System.Diagnostics;
 using System.Threading.Channels;
 using Nethermind.Config;
@@ -333,6 +334,8 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
         if (endBlock.BlockNumber <= persistedStateId.BlockNumber)
         {
             if (_logger.IsWarn) _logger.Warn($"Cannot register snapshot earlier than bigcache. Snapshot number {endBlock.BlockNumber}, bigcache number: {persistedStateId}");
+            _resourcePool.ReturnCachedResource(ResourcePool.Usage.MainBlockProcessing, transientResource);
+            snapshot.Dispose();
             return;
         }
 
