@@ -20,9 +20,9 @@ namespace Nethermind.Wallet
         private const string AnyPassword = "#DEV_ACCOUNT_NETHERMIND_ANY_PASSWORD#";
         private static readonly byte[] _keySeed = new byte[32];
         private readonly ILogger _logger;
-        private readonly Dictionary<Address, bool> _isUnlocked = new();
-        private readonly Dictionary<Address, PrivateKey> _keys = new();
-        private readonly Dictionary<Address, string> _passwords = new();
+        private readonly Dictionary<Address, bool> _isUnlocked = [];
+        private readonly Dictionary<Address, PrivateKey> _keys = [];
+        private readonly Dictionary<Address, string> _passwords = [];
         public event EventHandler<AccountLockedEventArgs> AccountLocked;
         public event EventHandler<AccountUnlockedEventArgs> AccountUnlocked;
 

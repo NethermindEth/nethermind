@@ -80,7 +80,7 @@ public class BlobHashComputer(ILogManager logManager)
     /// <returns>A JsonArray of versioned hash hex strings</returns>
     public JsonArray ComputeVersionedHashes(JsonObject? blobsBundle)
     {
-        JsonArray result = new();
+        JsonArray result = [];
 
         if (blobsBundle is null)
         {
@@ -129,7 +129,7 @@ public class BlobHashComputer(ILogManager logManager)
         // blobVersionedHashes is the second parameter (index 1) in newPayloadV3/V4
         if (requestParams is null || requestParams.Count < 2)
         {
-            return new JsonArray();
+            return [];
         }
 
         JsonNode? blobHashes = requestParams[1];
@@ -137,7 +137,7 @@ public class BlobHashComputer(ILogManager logManager)
         // Handle null or JsonValueKind.Null
         if (blobHashes is null || blobHashes.GetValueKind() == JsonValueKind.Null)
         {
-            return new JsonArray();
+            return [];
         }
 
         // Should be a JsonArray
@@ -146,7 +146,7 @@ public class BlobHashComputer(ILogManager logManager)
             return hashArray;
         }
 
-        return new JsonArray();
+        return [];
     }
 
     /// <summary>

@@ -69,7 +69,7 @@ public class AccessListForRpc
             const int maxStorageKeysPerItem = 1000;
             const int maxStorageKeys = 10000;
 
-            List<Item> items = new();
+            List<Item> items = [];
             int itemCount = 0;
             int totalItemStorageItemsCount = 0;
 
@@ -111,7 +111,7 @@ public class AccessListForRpc
                         }
                         else if (reader.TokenType == JsonTokenType.StartArray)
                         {
-                            storageKeys = new List<UInt256>();
+                            storageKeys = [];
                             int currentItemStorageItemsCount = 0;
 
                             while (reader.Read())

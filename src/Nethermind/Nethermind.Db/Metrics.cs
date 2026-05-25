@@ -97,14 +97,14 @@ namespace Nethermind.Db
         public static int StateDbPruning { get; set; }
 
 #if ZK_EVM
-        public static Dictionary<string, long> DbReads { get; } = new Dictionary<string, long>();
-        public static Dictionary<string, long> DbWrites { get; } = new Dictionary<string, long>();
-        public static Dictionary<string, long> DbSize { get; } = new Dictionary<string, long>();
-        public static Dictionary<string, long> DbMemtableSize { get; } = new Dictionary<string, long>();
-        public static Dictionary<string, long> DbBlockCacheSize { get; } = new Dictionary<string, long>();
-        public static Dictionary<string, long> DbIndexFilterSize { get; } = new Dictionary<string, long>();
-        public static Dictionary<(string, string), double> DbStats { get; } = new Dictionary<(string, string), double>();
-        public static Dictionary<(string, int, string), double> DbCompactionStats { get; } = new Dictionary<(string, int, string), double>();
+        public static Dictionary<string, long> DbReads { get; } = [];
+        public static Dictionary<string, long> DbWrites { get; } = [];
+        public static Dictionary<string, long> DbSize { get; } = [];
+        public static Dictionary<string, long> DbMemtableSize { get; } = [];
+        public static Dictionary<string, long> DbBlockCacheSize { get; } = [];
+        public static Dictionary<string, long> DbIndexFilterSize { get; } = [];
+        public static Dictionary<(string, string), double> DbStats { get; } = [];
+        public static Dictionary<(string, int, string), double> DbCompactionStats { get; } = [];
 #else
         [GaugeMetric]
         [Description("Database reads per database")]

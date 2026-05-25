@@ -5,7 +5,6 @@ using System;
 using System.Collections.Generic;
 using System.Text;
 using System.Text.Json.Serialization;
-using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 
 namespace Nethermind.Core.BlockAccessLists;
@@ -46,15 +45,12 @@ public class ReadOnlyBlockAccessList : IEquatable<ReadOnlyBlockAccessList>
     [JsonIgnore]
     public Hash256? WireHash { get; }
 
-    public EnumerableWithCount<ReadOnlyAccountChanges> AccountChanges
-        => new(_accountChanges.Values, _accountChanges.Count);
-
     /// <summary>
-    /// Span over the address-sorted accounts (same data as <see cref="AccountChanges"/>, but
-    /// skips the dictionary's enumerator for hot walks).
+    /// Address-sorted view over the BAL's accounts. <c>foreach</c> walks the underlying array
+    /// via <see cref="ReadOnlySpan{T}"/> with no enumerator allocation; <see cref="ReadOnlyAccountChangesView.AsSpan"/>
+    /// exposes the raw span for span-only call sites.
     /// </summary>
-    [JsonIgnore]
-    public ReadOnlySpan<ReadOnlyAccountChanges> AccountChangesAsSpan => _orderedAccounts;
+    public ReadOnlyAccountChangesView AccountChanges => new(_orderedAccounts);
 
     public bool HasAccount(Address address) => _accountChanges.ContainsKey(address);
 

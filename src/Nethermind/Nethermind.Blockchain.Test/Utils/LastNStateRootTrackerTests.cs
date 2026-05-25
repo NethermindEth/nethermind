@@ -17,7 +17,7 @@ public class LastNStateRootTrackerTests
     [Test]
     public void Test_trackLastN()
     {
-        System.Collections.Generic.List<Block> blocks = new();
+        System.Collections.Generic.List<Block> blocks = [];
         Block currentBlock = Build.A.Block.Genesis.TestObject;
         blocks.Add(currentBlock);
         for (int i = 0; i < 20; i++)
@@ -43,7 +43,7 @@ public class LastNStateRootTrackerTests
     [Test]
     public void Test_ContinueTrackingAsWeGetNewHead()
     {
-        System.Collections.Generic.List<Block> blocks = new();
+        System.Collections.Generic.List<Block> blocks = [];
         Block currentBlock = Build.A.Block.Genesis.TestObject;
         blocks.Add(currentBlock);
         for (int i = 0; i < 20; i++)
@@ -76,7 +76,7 @@ public class LastNStateRootTrackerTests
     [Test]
     public void Test_OnReorg_RebuildSet()
     {
-        System.Collections.Generic.List<Block> blocks = new();
+        System.Collections.Generic.List<Block> blocks = [];
         Block currentBlock = Build.A.Block.Genesis.TestObject;
         blocks.Add(currentBlock);
         for (int i = 0; i < 20; i++)
@@ -111,7 +111,7 @@ public class LastNStateRootTrackerTests
     [Test]
     public void Test_TrackLastN_WithCustomDepth()
     {
-        System.Collections.Generic.List<Block> blocks = new();
+        System.Collections.Generic.List<Block> blocks = [];
         Block currentBlock = Build.A.Block.Genesis.TestObject;
         blocks.Add(currentBlock);
         for (int i = 0; i < 300; i++)

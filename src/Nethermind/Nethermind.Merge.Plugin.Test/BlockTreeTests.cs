@@ -408,8 +408,8 @@ public partial class BlockTreeTests
 
             public ScenarioBuilder InsertFork(long low, long high, bool moveToBeaconMainChain = false, bool moveSyncedTree = true, ulong nonce = 0)
             {
-                List<BlockInfo> blockInfos = new();
-                List<Block> blocks = new();
+                List<BlockInfo> blockInfos = [];
+                List<Block> blocks = [];
                 Block? parent = null;
                 for (long i = low; i <= high; i++)
                 {
@@ -437,7 +437,7 @@ public partial class BlockTreeTests
             public ScenarioBuilder InsertOtherChainToMain(BlockTree blockTree, long low, long high)
             {
                 Block? parent = null;
-                List<Block> newBlocks = new();
+                List<Block> newBlocks = [];
                 for (long i = low; i <= high; i++)
                 {
                     parent ??= blockTree.FindBlock(i - 1, BlockTreeLookupOptions.None)!;
