@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Text.Json;
+using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
 
@@ -17,10 +18,9 @@ public sealed class BeaconApiRootsProvider(
 {
     private readonly BeaconApiHttpClient _client = new(httpClient, requestTimeout ?? TimeSpan.FromSeconds(30), logManager?.GetClassLogger<BeaconApiHttpClient>() ?? default);
     private readonly BeaconApiRetry<(ValueHash256, ValueHash256)?> _beaconApiRetry = new(maxAttempts);
-    private readonly Lock _cacheLock = new();
     private readonly SemaphoreSlim _fetchLock = new(1, 1);
-    private readonly Dictionary<long, (ValueHash256 BeaconBlockRoot, ValueHash256 StateRoot)> _cache = [];
-    private readonly Queue<long> _cacheOrder = [];
+    private readonly LruCache<long, (ValueHash256 BeaconBlockRoot, ValueHash256 StateRoot)> _cache =
+        new(HistoricalRootConstants.SlotsPerHistoricalRoot, nameof(BeaconApiRootsProvider));
 
     public void Dispose()
     {
@@ -31,18 +31,18 @@ public sealed class BeaconApiRootsProvider(
     public async Task<(ValueHash256 BeaconBlockRoot, ValueHash256 StateRoot)?> GetBeaconRoots(
         long slot, CancellationToken cancellationToken = default)
     {
-        if (TryGetFromCache(slot, out (ValueHash256 BeaconBlockRoot, ValueHash256 StateRoot) cached))
+        if (_cache.TryGet(slot, out (ValueHash256 BeaconBlockRoot, ValueHash256 StateRoot) cached))
             return cached;
 
         await _fetchLock.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            if (TryGetFromCache(slot, out cached))
+            if (_cache.TryGet(slot, out cached))
                 return cached;
 
             (ValueHash256 BeaconBlockRoot, ValueHash256 StateRoot)? roots = await FetchWithRetryAsync(slot, cancellationToken).ConfigureAwait(false);
             if (roots.HasValue)
-                AddToCache(slot, roots.Value);
+                _cache.Set(slot, roots.Value);
 
             return roots;
         }
@@ -66,35 +66,6 @@ public sealed class BeaconApiRootsProvider(
 
             return (blockRoot.Value, stateRoot.Value);
         }, cancellationToken);
-
-    private bool TryGetFromCache(long slot, out (ValueHash256 BeaconBlockRoot, ValueHash256 StateRoot) roots)
-    {
-        lock (_cacheLock)
-        {
-            return _cache.TryGetValue(slot, out roots);
-        }
-    }
-
-    private void AddToCache(long slot, (ValueHash256 BeaconBlockRoot, ValueHash256 StateRoot) roots)
-    {
-        lock (_cacheLock)
-        {
-            if (!_cache.TryAdd(slot, roots))
-                return;
-
-            _cacheOrder.Enqueue(slot);
-            TrimCache();
-        }
-    }
-
-    private void TrimCache()
-    {
-        while (_cache.Count > HistoricalRootConstants.SlotsPerHistoricalRoot && _cacheOrder.Count > 0)
-        {
-            long oldestSlot = _cacheOrder.Dequeue();
-            _cache.Remove(oldestSlot);
-        }
-    }
 
     private async Task<ValueHash256?> FetchBlockRootAsync(long slot, CancellationToken cancellationToken)
     {

@@ -79,13 +79,10 @@ public sealed class Validator
 
     private bool TrustedAccumulatorsProvided() => _trustedAccumulators is { Count: > 0 };
 
-    private ValueHash256? GetAccumulatorForEpoch(long epochIdx)
-    {
-        if (_trustedAccumulators is null || epochIdx < 0 || epochIdx >= _trustedAccumulators.Count)
-            return null;
-
-        return _trustedAccumulators[(int)epochIdx];
-    }
+    private ValueHash256? GetAccumulatorForEpoch(long epochIdx) =>
+        _trustedAccumulators is null || epochIdx < 0 || epochIdx >= _trustedAccumulators.Count
+            ? default(ValueHash256?)
+            : _trustedAccumulators[(int)epochIdx];
 
     private ValueHash256? GetHistoricalRoot(long slotNumber)
     {
