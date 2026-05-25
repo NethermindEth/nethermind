@@ -31,7 +31,6 @@ namespace Nethermind.Xdc
         ISigner signer,
         ITimeoutTimer timeoutTimer,
         IProcessExitSource processExit,
-        ISignTransactionManager signTransactionManager,
         ILogManager logManager) : IBlockProducerRunner
     {
         private readonly IBlockTree _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
@@ -46,7 +45,6 @@ namespace Nethermind.Xdc
         private readonly ITimeoutTimer _timeoutTimer = timeoutTimer;
         private readonly IProcessExitSource _processExit = processExit;
         private readonly ILogger _logger = logManager?.GetClassLogger<XdcHotStuff>() ?? throw new ArgumentNullException(nameof(logManager));
-        private readonly ISignTransactionManager _signTransactionManager = signTransactionManager ?? throw new ArgumentNullException(nameof(signTransactionManager));
 
         private CancellationTokenSource? _cancellationTokenSource;
         private Task? _runTask;
@@ -58,7 +56,6 @@ namespace Nethermind.Xdc
         private ulong _highestSelfMinedRound;
         private ulong _highestVotedRound;
         private bool _writeRoundInfo = true;
-        private long _highestSignTxNumber = 0;
 
         /// <summary>
         /// Starts the consensus runner.
@@ -227,17 +224,6 @@ namespace Nethermind.Xdc
             {
                 _highestSelfMinedRound = currentRound;
                 Task blockBuilder = BuildAndProposeBlock(roundParent, currentRound, spec, ct);
-            }
-
-            if (_highestSignTxNumber < roundParent.Number
-                && ((roundParent.Number % spec.MergeSignRange == 0)))
-            {
-                Snapshot snapshot = _snapshotManager.GetSnapshotByBlockNumber(roundParent.Number, spec);
-                if (snapshot is not null && snapshot.NextEpochCandidates.AsSpan().IndexOf(_signer.Address) != -1)
-                {
-                    _highestSignTxNumber = roundParent.Number;
-                    await _signTransactionManager.SubmitTransactionSign(roundParent, spec);
-                }
             }
 
             _writeRoundInfo = false;

@@ -1,15 +1,17 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+#nullable enable
+
 using System;
 using System.Threading.Tasks;
+using Autofac;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Core.Test.Db;
 using Nethermind.Db;
 using Nethermind.Specs;
 using Nethermind.Int256;
@@ -23,23 +25,56 @@ using NUnit.Framework;
 
 namespace Nethermind.Store.Test
 {
-    [TestFixture, Parallelizable(ParallelScope.All)]
-    public class StateReaderTests
+    [TestFixture(false)]
+    [TestFixture(true)]
+    [Parallelizable(ParallelScope.All)]
+    public class StateReaderTests(bool useFlat)
     {
         private static readonly Hash256 Hash1 = Keccak.Compute("1");
         private readonly Address _address1 = new(Hash1);
         private static readonly ILogManager Logger = LimboLogs.Instance;
 
+        private sealed class Context : IDisposable
+        {
+            public IWorldState WorldState { get; }
+            public IStateReader Reader { get; }
+            private readonly IContainer? _container;
+
+            public Context(bool useFlat)
+            {
+                if (useFlat)
+                {
+                    (WorldState, Reader, _container) = TestWorldStateFactory.CreateFlatForTestWithStateReader();
+                }
+                else
+                {
+                    (WorldState, Reader) = TestWorldStateFactory.CreateForTestWithStateReader();
+                }
+            }
+
+            public BlockHeader CommitAndCapture(Action<IWorldState> populate, long blockNumber = 0)
+            {
+                using IDisposable _ = WorldState.BeginScope(IWorldState.PreGenesis);
+                populate(WorldState);
+                WorldState.Commit(MuirGlacier.Instance);
+                WorldState.CommitTree(blockNumber);
+                return Build.A.BlockHeader.WithNumber(blockNumber).WithStateRoot(WorldState.StateRoot).TestObject;
+            }
+
+            public void Dispose() => _container?.Dispose();
+        }
+
         [Test]
         public void Can_ask_about_balance_in_parallel()
         {
             IReleaseSpec spec = MainnetSpecProvider.Instance.GetSpec((ForkActivation)MainnetSpecProvider.ConstantinopleFixBlockNumber);
-            IDbProvider dbProvider = TestMemDbProvider.Init();
-            (IWorldState provider, IStateReader reader) = TestWorldStateFactory.CreateForTestWithStateReader(dbProvider, LimboLogs.Instance);
+            using Context ctx = new(useFlat);
+            IWorldState provider = ctx.WorldState;
+            IStateReader reader = ctx.Reader;
 
             using IDisposable _ = provider.BeginScope(IWorldState.PreGenesis);
 
-            provider.CreateAccount(_address1, 0);
+            provider.CreateAccount(_address1, 0, nonce: 7);
             provider.AddToBalance(_address1, 1, spec);
             provider.Commit(spec);
             provider.CommitTree(0);
@@ -75,8 +110,9 @@ namespace Nethermind.Store.Test
         {
             StorageCell storageCell = new(_address1, UInt256.One);
             IReleaseSpec spec = MuirGlacier.Instance;
-            IDbProvider dbProvider = TestMemDbProvider.Init();
-            (IWorldState provider, IStateReader reader) = TestWorldStateFactory.CreateForTestWithStateReader(dbProvider, LimboLogs.Instance);
+            using Context ctx = new(useFlat);
+            IWorldState provider = ctx.WorldState;
+            IStateReader reader = ctx.Reader;
             using IDisposable _ = provider.BeginScope(IWorldState.PreGenesis);
 
             void UpdateStorageValue(byte[] newValue) => provider.Set(storageCell, newValue);
@@ -126,7 +162,9 @@ namespace Nethermind.Store.Test
             StorageCell storageCell = new(_address1, UInt256.One);
             IReleaseSpec spec = MuirGlacier.Instance;
 
-            (IWorldState provider, IStateReader reader) = TestWorldStateFactory.CreateForTestWithStateReader();
+            using Context ctx = new(useFlat);
+            IWorldState provider = ctx.WorldState;
+            IStateReader reader = ctx.Reader;
             using IDisposable _ = provider.BeginScope(IWorldState.PreGenesis);
 
             void CommitEverything()
@@ -148,8 +186,9 @@ namespace Nethermind.Store.Test
                 {
                     for (int i = 0; i < 10000; i++)
                     {
-                        UInt256 balance = reader.GetBalance(baseBlock, _address1);
-                        Assert.That(balance, Is.EqualTo(value));
+                        Assert.That(reader.TryGetAccount(baseBlock, _address1, out AccountStruct account), Is.True);
+                        Assert.That(account.Balance, Is.EqualTo(value));
+                        Assert.That(account.Nonce, Is.EqualTo((UInt256)7));
                     }
                 });
 
@@ -169,8 +208,9 @@ namespace Nethermind.Store.Test
             /* all testing will be touching just a single storage cell */
             StorageCell storageCell = new(_address1, UInt256.One);
 
-            IDbProvider dbProvider = TestMemDbProvider.Init();
-            (IWorldState state, IStateReader reader) = TestWorldStateFactory.CreateForTestWithStateReader(dbProvider, LimboLogs.Instance);
+            using Context ctx = new(useFlat);
+            IWorldState state = ctx.WorldState;
+            IStateReader reader = ctx.Reader;
             byte[] initialValue = new byte[] { 1, 2, 3 };
             BlockHeader baseBlock;
             using (IDisposable _ = state.BeginScope(IWorldState.PreGenesis))
@@ -221,33 +261,38 @@ namespace Nethermind.Store.Test
         }
 
 
-        [Test]
-        public void Can_collect_stats()
+        public static System.Collections.Generic.IEnumerable<TestCaseData> ReaderApiSmokeCases
         {
-            IDbProvider dbProvider = TestMemDbProvider.Init();
-            (IWorldState provider, IStateReader stateReader) = TestWorldStateFactory.CreateForTestWithStateReader(dbProvider, LimboLogs.Instance);
-
-            Hash256 stateRoot;
-            using (IDisposable _ = provider.BeginScope(IWorldState.PreGenesis))
+            get
             {
-                provider.CreateAccount(TestItem.AddressA, 1.Ether);
-                provider.Commit(MuirGlacier.Instance);
-                provider.CommitTree(0);
-                stateRoot = provider.StateRoot;
+                yield return new TestCaseData((Action<IStateReader, BlockHeader>)((r, h) =>
+                    Assert.That(r.CollectStats(h, new MemDb(), Logger).AccountCount, Is.EqualTo(1)))).SetName("CollectStats");
+                yield return new TestCaseData((Action<IStateReader, BlockHeader>)((r, h) =>
+                    r.RunTreeVisitor(new TrieStatsCollector(new MemDb(), LimboLogs.Instance), h))).SetName("RunTreeVisitor");
+                yield return new TestCaseData((Action<IStateReader, BlockHeader>)((r, h) =>
+                    Assert.That(r.DumpState(h), Is.Not.Empty))).SetName("DumpState");
+                yield return new TestCaseData((Action<IStateReader, BlockHeader>)((r, h) =>
+                    Assert.That(r.HasStateForBlock(h), Is.True))).SetName("HasStateForBlock");
             }
-
-            TrieStats stats = stateReader.CollectStats(Build.A.BlockHeader.WithStateRoot(stateRoot).WithNumber(0).TestObject, new MemDb(), Logger);
-            Assert.That(stats.AccountCount, Is.EqualTo(1));
         }
 
-        private static (IWorldState sut, IReleaseSpec releaseSpec, IDisposable scope) SetupContractSenderTest(
-            bool eip3607Enabled, bool eip7702Enabled, byte[] code = null)
+        [TestCaseSource(nameof(ReaderApiSmokeCases))]
+        public void Reader_OnCommittedAccount(Action<IStateReader, BlockHeader> verify)
+        {
+            using Context ctx = new(useFlat);
+            BlockHeader header = ctx.CommitAndCapture(state => state.CreateAccount(TestItem.AddressA, 1.Ether));
+
+            verify(ctx.Reader, header);
+        }
+
+        private (Context ctx, IReleaseSpec releaseSpec, IDisposable scope) SetupContractSenderTest(
+            bool eip3607Enabled, bool eip7702Enabled, byte[]? code = null)
         {
             IReleaseSpec releaseSpec = ReleaseSpecSubstitute.Create();
             releaseSpec.IsEip3607Enabled.Returns(eip3607Enabled);
             releaseSpec.IsEip7702Enabled.Returns(eip7702Enabled);
-            IDbProvider dbProvider = TestMemDbProvider.Init();
-            (IWorldState sut, IStateReader _) = TestWorldStateFactory.CreateForTestWithStateReader(dbProvider, LimboLogs.Instance);
+            Context ctx = new(useFlat);
+            IWorldState sut = ctx.WorldState;
             IDisposable scope = sut.BeginScope(IWorldState.PreGenesis);
             sut.CreateAccount(TestItem.AddressA, 0);
             if (code is not null)
@@ -256,103 +301,74 @@ namespace Nethermind.Store.Test
             }
             sut.Commit(MuirGlacier.Instance);
             sut.CommitTree(0);
-            return (sut, releaseSpec, scope);
+            return (ctx, releaseSpec, scope);
         }
 
-        [TestCase(true, true, null, false, Description = "No code returns false")]
-        [TestCase(true, true, new byte[] { 1 }, true, Description = "Has code returns true")]
-        [TestCase(true, false, null, false, Description = "No code, 7702 disabled returns false")]
-        public void IsInvalidContractSender_BasicCases(bool eip3607, bool eip7702, byte[] code, bool expected)
+        [TestCase(true, true, null, false, false, Description = "No code returns false")]
+        [TestCase(true, true, new byte[] { 1 }, false, true, Description = "Has code returns true")]
+        [TestCase(true, false, null, false, false, Description = "No code, 7702 disabled returns false")]
+        [TestCase(true, true, null, true, false, Description = "Has delegated code returns false")]
+        [TestCase(true, false, null, true, true, Description = "Has delegated code but 7702 disabled returns true")]
+        [TestCase(false, true, null, true, false, Description = "Has delegated code but 3607 disabled returns false")]
+        public void IsInvalidContractSender_BasicCases(bool eip3607, bool eip7702, byte[]? code, bool delegated, bool expected)
         {
-            (IWorldState sut, IReleaseSpec releaseSpec, IDisposable scope) = SetupContractSenderTest(eip3607, eip7702, code);
+            byte[]? effectiveCode = delegated ? [.. Eip7702Constants.DelegationHeader, .. new byte[20]] : code;
+            (Context ctx, IReleaseSpec releaseSpec, IDisposable scope) = SetupContractSenderTest(eip3607, eip7702, effectiveCode);
+            using (ctx)
             using (scope)
             {
-                bool result = sut.IsInvalidContractSender(releaseSpec, TestItem.AddressA);
-                Assert.That(result, Is.EqualTo(expected));
-            }
-        }
-
-        [Test]
-        public void IsInvalidContractSender_AccountHasDelegatedCode_ReturnsFalse()
-        {
-            byte[] code = [.. Eip7702Constants.DelegationHeader, .. new byte[20]];
-            (IWorldState sut, IReleaseSpec releaseSpec, IDisposable scope) = SetupContractSenderTest(eip3607Enabled: true, eip7702Enabled: true, code);
-            using (scope)
-            {
-                bool result = sut.IsInvalidContractSender(releaseSpec, TestItem.AddressA);
-                Assert.That(result, Is.False);
+                Assert.That(ctx.WorldState.IsInvalidContractSender(releaseSpec, TestItem.AddressA), Is.EqualTo(expected));
             }
         }
 
         [Test]
         public void IsInvalidContractSender_AccountHasCodeButDelegateReturnsTrue_ReturnsFalse()
         {
-            byte[] code = new byte[20];
-            (IWorldState sut, IReleaseSpec releaseSpec, IDisposable scope) = SetupContractSenderTest(eip3607Enabled: true, eip7702Enabled: true, code);
+            (Context ctx, IReleaseSpec releaseSpec, IDisposable scope) = SetupContractSenderTest(eip3607Enabled: true, eip7702Enabled: true, new byte[20]);
+            using (ctx)
             using (scope)
             {
-                bool result = sut.IsInvalidContractSender(releaseSpec, TestItem.AddressA, static (_) => true);
-                Assert.That(result, Is.False);
+                Assert.That(ctx.WorldState.IsInvalidContractSender(releaseSpec, TestItem.AddressA, static _ => true), Is.False);
             }
         }
 
         [Test]
-        public void IsInvalidContractSender_AccountHasDelegatedCodeBut7702IsNotEnabled_ReturnsTrue()
+        public void TryGetAccount_NonExistentAccount_ReturnsFalse()
         {
-            byte[] code = [.. Eip7702Constants.DelegationHeader, .. new byte[20]];
-            (IWorldState sut, IReleaseSpec releaseSpec, IDisposable scope) = SetupContractSenderTest(eip3607Enabled: true, eip7702Enabled: false, code);
-            using (scope)
-            {
-                bool result = sut.IsInvalidContractSender(releaseSpec, TestItem.AddressA);
-                Assert.That(result, Is.True);
-            }
+            using Context ctx = new(useFlat);
+            BlockHeader header = ctx.CommitAndCapture(state => state.CreateAccount(TestItem.AddressA, 1, 1));
+
+            // The out parameter is intentionally not asserted: the IStateReader contract leaves it
+            // undefined when result is false, and the two implementations diverge
+            // (StateReader => AccountStruct.TotallyEmpty, FlatStateReader => default).
+            bool result = ctx.Reader.TryGetAccount(header, TestItem.AddressB, out _);
+
+            Assert.That(result, Is.False);
         }
 
         [Test]
-        public void IsInvalidContractSender_AccountHasDelegatedCodeBut3607IsNotEnabled_ReturnsFalse()
+        public void GetCode_EmptyHash_ReturnsEmpty()
         {
-            byte[] code = [.. Eip7702Constants.DelegationHeader, .. new byte[20]];
-            (IWorldState sut, IReleaseSpec releaseSpec, IDisposable scope) = SetupContractSenderTest(eip3607Enabled: false, eip7702Enabled: true, code);
-            using (scope)
-            {
-                bool result = sut.IsInvalidContractSender(releaseSpec, TestItem.AddressA);
-                Assert.That(result, Is.False);
-            }
+            using Context ctx = new(useFlat);
+
+            Assert.That(ctx.Reader.GetCode(Keccak.OfAnEmptyString), Is.Empty);
+            Assert.That(ctx.Reader.GetCode(Keccak.OfAnEmptyString.ValueHash256), Is.Empty);
         }
 
         [Test]
-        public void Can_accepts_visitors()
+        public void GetCode_KnownCode_ReturnsCode()
         {
-            (IWorldState provider, IStateReader reader) = TestWorldStateFactory.CreateForTestWithStateReader();
-            Hash256 stateRoot;
-            using (IDisposable _ = provider.BeginScope(IWorldState.PreGenesis))
+            using Context ctx = new(useFlat);
+            byte[] code = [0x60, 0x80];
+            ValueHash256 codeHash = ValueKeccak.Compute(code);
+            ctx.CommitAndCapture(state =>
             {
-                provider.CreateAccount(TestItem.AddressA, 1.Ether);
-                provider.Commit(MuirGlacier.Instance);
-                provider.CommitTree(0);
-                stateRoot = provider.StateRoot;
-            }
+                state.CreateAccount(TestItem.AddressA, 1);
+                state.InsertCode(TestItem.AddressA, codeHash, code, MuirGlacier.Instance);
+            });
 
-            TrieStatsCollector visitor = new(new MemDb(), LimboLogs.Instance);
-            reader.RunTreeVisitor(visitor, Build.A.BlockHeader.WithStateRoot(stateRoot).WithNumber(0).TestObject);
-        }
-
-        [Test]
-        public void Can_dump_state()
-        {
-            (IWorldState provider, IStateReader reader) = TestWorldStateFactory.CreateForTestWithStateReader();
-
-            Hash256 stateRoot;
-            using (IDisposable _ = provider.BeginScope(IWorldState.PreGenesis))
-            {
-                provider.CreateAccount(TestItem.AddressA, 1.Ether);
-                provider.Commit(MuirGlacier.Instance);
-                provider.CommitTree(0);
-                stateRoot = provider.StateRoot;
-            }
-
-            string state = reader.DumpState(Build.A.BlockHeader.WithStateRoot(stateRoot).WithNumber(0).TestObject);
-            Assert.That(state, Is.Not.Empty);
+            Assert.That(ctx.Reader.GetCode((Hash256)codeHash), Is.EqualTo(code));
+            Assert.That(ctx.Reader.GetCode(codeHash), Is.EqualTo(code));
         }
     }
 }

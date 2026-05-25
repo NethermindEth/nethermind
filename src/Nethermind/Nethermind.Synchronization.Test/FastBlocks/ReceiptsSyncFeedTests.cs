@@ -496,4 +496,23 @@ public class ReceiptsSyncFeedTests
         Assert.That(feed.IsFinished, Is.True);
     }
 
+    [TestCase(true, true, true, TestName = "NormalizeZeroBlooms recomputes when logs present and bloom empty")]
+    [TestCase(false, true, false, TestName = "NormalizeZeroBlooms leaves legitimately empty receipts alone")]
+    [TestCase(true, false, false, TestName = "NormalizeZeroBlooms does not overwrite a non-empty bloom")]
+    public void NormalizeZeroBlooms(bool hasLogs, bool startBloomEmpty, bool expectRecompute)
+    {
+        LogEntry[] logs = hasLogs
+            ? [Build.A.LogEntry.WithAddress(TestItem.AddressA).TestObject]
+            : [];
+        TxReceipt receipt = Build.A.Receipt.WithLogs(logs).TestObject;
+        Bloom initialBloom = startBloomEmpty
+            ? Bloom.Empty
+            : new Bloom([Build.A.LogEntry.WithAddress(TestItem.AddressB).TestObject]);
+        receipt.Bloom = initialBloom;
+        Bloom expectedBloom = expectRecompute ? new Bloom(receipt.Logs) : initialBloom;
+
+        ReceiptsSyncFeed.NormalizeZeroBlooms([receipt]);
+
+        Assert.That(receipt.Bloom, Is.EqualTo(expectedBloom));
+    }
 }

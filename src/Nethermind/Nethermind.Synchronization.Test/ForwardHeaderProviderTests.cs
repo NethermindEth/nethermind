@@ -283,7 +283,6 @@ public partial class ForwardHeaderProviderTests
     }
 
     [Test, MaxTime(7000)]
-    [Ignore("Fails OneLoggerLogManager Travis only")]
     public async Task Can_cancel_seal_validation()
     {
         await using IContainer node = CreateNode(builder => builder.AddSingleton<ISealValidator>(new SlowSealValidator()));
