@@ -5,6 +5,7 @@ using System;
 using System.Text;
 using DotNetty.Buffers;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Stats.Model;
 
@@ -13,6 +14,8 @@ namespace Nethermind.Network.P2P.Messages
     public class HelloMessageSerializer : IZeroMessageSerializer<HelloMessage>
     {
         private static readonly RlpLimit ClientIdRlpLimit = RlpLimit.For<HelloMessage>(1_024, nameof(HelloMessage.ClientId));
+        private const int SpecMaxCapabilityCodeLength = 8;
+        private static readonly RlpLimit CapabilityCodeReadLimit = RlpLimit.L32;
 
         public void Serialize(IByteBuffer byteBuffer, HelloMessage msg)
         {
@@ -66,12 +69,19 @@ namespace Nethermind.Network.P2P.Messages
             helloMessage.P2PVersion = ctx.DecodeByte();
             helloMessage.ClientId = ctx.DecodeString(ClientIdRlpLimit);
 
-            helloMessage.Capabilities = ctx.DecodeArrayPoolList(static (ref Rlp.ValueDecoderContext c) =>
+            string clientId = helloMessage.ClientId;
+            helloMessage.Capabilities = ctx.DecodeArrayPoolList((ref Rlp.ValueDecoderContext c) =>
             {
                 int length = c.ReadSequenceLength();
                 int checkPosition = c.Position + length;
 
-                ReadOnlySpan<byte> protocolSpan = c.DecodeByteArraySpan(RlpLimit.L8);
+                ReadOnlySpan<byte> protocolSpan = c.DecodeByteArraySpan(CapabilityCodeReadLimit);
+                if (protocolSpan.Length > SpecMaxCapabilityCodeLength)
+                {
+                    throw new RlpLimitException(
+                        $"Hello capability protocol code longer than the {SpecMaxCapabilityCodeLength}-byte devp2p spec limit: " +
+                        $"ClientId='{clientId}', length={protocolSpan.Length}, hex=0x{protocolSpan.ToHexString()}, utf8='{Encoding.UTF8.GetString(protocolSpan)}'");
+                }
                 if (!Contract.P2P.ProtocolParser.TryGetProtocolCode(protocolSpan, out string? protocolCode))
                 {
                     protocolCode = Encoding.UTF8.GetString(protocolSpan);

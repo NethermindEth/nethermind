@@ -104,20 +104,34 @@ public class P2PProtocolHandler(
         {
             case P2PMessageCode.Hello:
                 {
-                    using HelloMessage helloMessage = Deserialize<HelloMessage>(msg.Data);
-                    HandleHello(helloMessage);
-                    ReportIn(helloMessage, size);
-
-                    // We need to initialize subprotocols in alphabetical order. Protocols are using AdaptiveId,
-                    // which should be constant for the whole session. Some protocols (like Eth) are sending messages
-                    // on initialization and we need to avoid changing theirs AdaptiveId by initializing protocols,
-                    // which are alphabetically before already initialized ones.
-                    string? previousProtocolCode = null;
-                    while (TryGetNextAgreedCapability(previousProtocolCode, out Capability? capability))
+                    HelloMessage helloMessage;
+                    try
                     {
-                        previousProtocolCode = capability.ProtocolCode;
-                        if (Logger.IsTrace) TraceStartingProtocolHandler(capability);
-                        NotifySubprotocolRequested(capability.ProtocolCode, capability.Version);
+                        helloMessage = Deserialize<HelloMessage>(msg.Data);
+                    }
+                    catch (Nethermind.Serialization.Rlp.RlpException ex)
+                    {
+                        if (Logger.IsWarn)
+                            Logger.Warn($"Rejecting Hello from peer {Session.RemoteNodeId}@{Session.RemoteHost}:{Session.RemotePort}: {ex.Message}");
+                        throw;
+                    }
+
+                    using (helloMessage)
+                    {
+                        HandleHello(helloMessage);
+                        ReportIn(helloMessage, size);
+
+                        // We need to initialize subprotocols in alphabetical order. Protocols are using AdaptiveId,
+                        // which should be constant for the whole session. Some protocols (like Eth) are sending messages
+                        // on initialization and we need to avoid changing theirs AdaptiveId by initializing protocols,
+                        // which are alphabetically before already initialized ones.
+                        string? previousProtocolCode = null;
+                        while (TryGetNextAgreedCapability(previousProtocolCode, out Capability? capability))
+                        {
+                            previousProtocolCode = capability.ProtocolCode;
+                            if (Logger.IsTrace) TraceStartingProtocolHandler(capability);
+                            NotifySubprotocolRequested(capability.ProtocolCode, capability.Version);
+                        }
                     }
 
                     break;
