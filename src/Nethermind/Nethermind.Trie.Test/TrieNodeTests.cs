@@ -1058,6 +1058,17 @@ public class TrieNodeTests
     }
 
     [Test]
+    public void Missing_trie_node_exception_preserves_null_address()
+    {
+        TreePath emptyPath = TreePath.Empty;
+
+        MissingTrieNodeException exception = Assert.Throws<MissingTrieNodeException>(
+            () => MissingTrieNodeException.ThrowMissing(null, in emptyPath, in TestItem.KeccakA.ValueHash256))!;
+
+        exception.Address.Should().BeNull();
+    }
+
+    [Test]
     public async Task Trie_node_concurrent_child_hash_reads_are_safe()
     {
         TrieNode trieNode = TrieNode.CreateBranchTyped();
