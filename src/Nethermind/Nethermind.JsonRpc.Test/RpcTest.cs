@@ -48,9 +48,12 @@ public static class RpcTest
         Stream stream = new MemoryStream();
         long size = await serializer.SerializeAsync(stream, response, cts.Token).ConfigureAwait(false);
 
-        // for coverage (and to prove that it does not throw)
-        Stream indentedStream = new MemoryStream();
-        await serializer.SerializeAsync(indentedStream, response, cts.Token, true).ConfigureAwait(false);
+        // IStreamableResult delegates run the trace; re-serialising would double-execute.
+        if (response is not JsonRpcSuccessResponse { Result: IStreamableResult })
+        {
+            Stream indentedStream = new MemoryStream();
+            await serializer.SerializeAsync(indentedStream, response, cts.Token, true).ConfigureAwait(false);
+        }
 
         stream.Seek(0, SeekOrigin.Begin);
         string serialized = await new StreamReader(stream).ReadToEndAsync().ConfigureAwait(false);
