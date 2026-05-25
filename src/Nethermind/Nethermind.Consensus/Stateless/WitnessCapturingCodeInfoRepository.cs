@@ -29,9 +29,8 @@ public sealed class WitnessCapturingCodeInfoRepository(
 
         if (proxy.IsActive && codeInfo.Code.Length > 0)
         {
-            proxy.GetCode(delegationAddress ?? codeSource);
+            proxy.RecordCodeBytes(codeInfo.Code);
         }
-
         return codeInfo;
     }
 

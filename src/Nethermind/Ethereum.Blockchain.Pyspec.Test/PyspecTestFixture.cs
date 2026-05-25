@@ -3,7 +3,7 @@
 
 using System;
 using System.Collections.Generic;
-using System.Runtime.InteropServices;
+using System.Linq;
 using System.Threading.Tasks;
 using Ethereum.Test.Base;
 using Nethermind.Core;
@@ -74,7 +74,7 @@ public abstract class PyspecAmsterdamBlockchainTestFixture(bool parallel, bool b
     public async Task Test(BlockchainTest test) => Assert.That((await RunTest(test)).Pass, Is.True);
 
     public static IEnumerable<BlockchainTest> LoadTests() =>
-        new TestsSourceLoader(new LoadPyspecTestsStrategy(), "fixtures/blockchain_tests/for_amsterdam")
+        new TestsSourceLoader(Constants.Strategy, "fixtures/blockchain_tests/for_amsterdam")
             .LoadTests<BlockchainTest>();
 }
 
@@ -85,7 +85,7 @@ public abstract class PyspecAmsterdamEngineBlockchainTestFixture(bool parallel, 
     public async Task Test(BlockchainTest test) => Assert.That((await RunTest(test)).Pass, Is.True);
 
     public static IEnumerable<BlockchainTest> LoadTests() =>
-        new TestsSourceLoader(new LoadPyspecTestsStrategy(), "fixtures/blockchain_tests_engine/for_amsterdam")
+        new TestsSourceLoader(Constants.Strategy, "fixtures/blockchain_tests_engine/for_amsterdam")
             .LoadTests<BlockchainTest>();
 }
 
@@ -125,33 +125,6 @@ public abstract class PyspecTransactionTestFixture<TSelf> : TransactionTestBase
 internal static class PyspecLoader
 {
     public static IEnumerable<T> Load<T, TSelf>(string root, string suffix) where T : EthereumTest =>
-        new TestsSourceLoader(new LoadPyspecTestsStrategy(),
+        new TestsSourceLoader(Constants.Strategy,
             $"fixtures/{root}/for_{TestDirectoryHelper.GetDirectoryByConvention<TSelf>(suffix)}").LoadTests<T>();
-}
-
-// Skips heavy tests in CI on runners that are too slow or running variant builds.
-// Local runs always execute. Set TEST_SKIP_HEAVY=1 in CI for checked/no-intrinsics variants.
-internal static class CiRunnerGuard
-{
-    private static readonly bool s_isCi = IsCi();
-    private static readonly bool s_isLinuxX64 = OperatingSystem.IsLinux() && RuntimeInformation.ProcessArchitecture == Architecture.X64;
-    private static readonly bool s_skipHeavy = Environment.GetEnvironmentVariable("TEST_SKIP_HEAVY") == "1";
-
-    public static void SkipIfNotLinuxX64Ci()
-    {
-        if (s_isCi && !s_isLinuxX64)
-            Assert.Ignore("Skipped in CI - Pyspec generated fixture shards only run on Linux x64 runners");
-    }
-
-    public static void SkipIfNotLinuxX64()
-    {
-        if (s_isCi && s_skipHeavy)
-            Assert.Ignore("Skipped - TEST_SKIP_HEAVY is set");
-        if (s_isCi && !s_isLinuxX64)
-            Assert.Ignore("Skipped in CI - engine/Amsterdam tests only run on Linux x64");
-    }
-
-    private static bool IsCi() =>
-        string.Equals(Environment.GetEnvironmentVariable("CI"), "true", StringComparison.OrdinalIgnoreCase) ||
-        string.Equals(Environment.GetEnvironmentVariable("GITHUB_ACTIONS"), "true", StringComparison.OrdinalIgnoreCase);
 }

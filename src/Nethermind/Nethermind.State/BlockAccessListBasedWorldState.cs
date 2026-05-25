@@ -82,10 +82,15 @@ public class BlockAccessListBasedWorldState(IWorldState innerWorldState, ILogMan
 
     public class InvalidBlockLevelAccessListException(BlockHeader block, string message) : InvalidBlockException(block, "InvalidBlockLevelAccessList: " + message);
 
-    public void AddToBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec, out UInt256 oldBalance) => oldBalance = GetBalance(address);
+    public void AddToBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec, out UInt256 oldBalance)
+    {
+        if (balanceChange.IsZero) { oldBalance = UInt256.Zero; return; }
+        oldBalance = GetBalance(address);
+    }
 
     public bool AddToBalanceAndCreateIfNotExists(Address address, in UInt256 balanceChange, IReleaseSpec spec, out UInt256 oldBalance)
     {
+        if (balanceChange.IsZero) { oldBalance = UInt256.Zero; return false; }
         oldBalance = GetBalance(address);
         return !AccountExists(address);
     }
@@ -188,7 +193,11 @@ public class BlockAccessListBasedWorldState(IWorldState innerWorldState, ILogMan
     public byte[]? GetCode(in ValueHash256 codeHash)
         => TryGetDeclaredCode(in codeHash, out byte[]? code) ? code : null;
 
-    public void SubtractFromBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec, out UInt256 oldBalance) => oldBalance = GetBalance(address);
+    public void SubtractFromBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec, out UInt256 oldBalance)
+    {
+        if (balanceChange.IsZero) { oldBalance = UInt256.Zero; return; }
+        oldBalance = GetBalance(address);
+    }
 
     public void DeleteAccount(Address address) { }
 

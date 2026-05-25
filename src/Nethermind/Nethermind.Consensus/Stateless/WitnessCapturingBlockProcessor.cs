@@ -7,6 +7,7 @@ using System.Threading.Tasks;
 using Nethermind.Blockchain.Headers;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
+using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.Tracing;
@@ -80,6 +81,12 @@ public sealed class WitnessCapturingBlockProcessor(
         try
         {
             (Block Block, TxReceipt[] Receipts) result = inner.ProcessOne(suggestedBlock, options, blockTracer, spec, token);
+
+            ReadOnlyBlockAccessList? blockAccessList = result.Block.BlockAccessList;
+            if (blockAccessList is not null)
+            {
+                proxy.RecordBlockAccessList(blockAccessList);
+            }
 
             if (!rendezvous.TryClaim(blockHash!, out TaskCompletionSource<Witness?>? tcs))
                 return result; // request was cancelled while we were processing — nothing to publish.

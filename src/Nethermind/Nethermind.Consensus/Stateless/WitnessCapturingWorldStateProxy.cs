@@ -4,6 +4,7 @@
 using System;
 using System.Threading;
 using Nethermind.Core;
+using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Eip2930;
@@ -123,4 +124,10 @@ public sealed class WitnessCapturingWorldStateProxy(IWorldState inner) : IWorldS
 
     internal void RecordSystemContractAccountAccess(Address address, byte[]? code)
         => _active?.RecordSystemContractAccountAccess(address, code);
+
+    internal void RecordCodeBytes(ReadOnlyMemory<byte> code)
+        => _active?.RecordCodeBytes(code);
+
+    internal void RecordBlockAccessList(ReadOnlyBlockAccessList bal)
+        => _active?.RecordBlockAccessList(bal);
 }

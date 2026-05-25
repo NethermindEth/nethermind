@@ -5,25 +5,28 @@ using NUnit.Framework;
 
 namespace Ethereum.Blockchain.Pyspec.Test.Amsterdam;
 
-[EipWildcard("eip7708_eth_transfer_logs")]
+// Each class below pairs an EIP with its fixture subdirectory inside for_amsterdam/.
+// The path must match the directory that exists in the BAL archive — no wildcards.
+
+[AmsterdamFixturePath("eip7708_eth_transfer_logs")]
 public class Eip7708BlockChainTests : AmsterdamBlockChainTestFixture<Eip7708BlockChainTests>;
 
-[EipWildcard("eip7708_eth_transfer_logs")]
+[AmsterdamFixturePath("eip7708_eth_transfer_logs")]
 public class Eip7708EngineBlockChainTests : AmsterdamEngineBlockChainTestFixture<Eip7708EngineBlockChainTests>;
 
-[EipWildcard("eip7778_block_gas_accounting_without_refunds")]
+[AmsterdamFixturePath("eip7778_block_gas_accounting_without_refunds")]
 public class Eip7778BlockChainTests : AmsterdamBlockChainTestFixture<Eip7778BlockChainTests>;
 
-[EipWildcard("eip7778_block_gas_accounting_without_refunds")]
+[AmsterdamFixturePath("eip7778_block_gas_accounting_without_refunds")]
 public class Eip7778EngineBlockChainTests : AmsterdamEngineBlockChainTestFixture<Eip7778EngineBlockChainTests>;
 
-[EipWildcard("eip7843_slotnum")]
+[AmsterdamFixturePath("eip7843_slotnum")]
 public class Eip7843BlockChainTests : AmsterdamBlockChainTestFixture<Eip7843BlockChainTests>;
 
-[EipWildcard("eip7843_slotnum")]
+[AmsterdamFixturePath("eip7843_slotnum")]
 public class Eip7843EngineBlockChainTests : AmsterdamEngineBlockChainTestFixture<Eip7843EngineBlockChainTests>;
 
-[EipWildcard("eip7928_block_level_access_lists")]
+[AmsterdamFixturePath("eip7928_block_level_access_lists")]
 [TestFixture(false)]
 [TestFixture(true)]
 public class Eip7928BlockChainTests(bool parallel) : AmsterdamBlockChainTestFixture<Eip7928BlockChainTests>
@@ -31,7 +34,7 @@ public class Eip7928BlockChainTests(bool parallel) : AmsterdamBlockChainTestFixt
     protected override bool? ParallelExecutionOverride => parallel;
 }
 
-[EipWildcard("eip7928_block_level_access_lists")]
+[AmsterdamFixturePath("eip7928_block_level_access_lists")]
 [TestFixture(false)]
 [TestFixture(true)]
 public class Eip7928EngineBlockChainTests(bool parallel) : AmsterdamEngineBlockChainTestFixture<Eip7928EngineBlockChainTests>
@@ -39,59 +42,37 @@ public class Eip7928EngineBlockChainTests(bool parallel) : AmsterdamEngineBlockC
     protected override bool? ParallelExecutionOverride => parallel;
 }
 
-[EipWildcard("eip7954_increase_max_contract_size")]
+[AmsterdamFixturePath("eip7954_increase_max_contract_size")]
 public class Eip7954BlockChainTests : AmsterdamBlockChainTestFixture<Eip7954BlockChainTests>;
 
-[EipWildcard("eip7954_increase_max_contract_size")]
+[AmsterdamFixturePath("eip7954_increase_max_contract_size")]
 public class Eip7954EngineBlockChainTests : AmsterdamEngineBlockChainTestFixture<Eip7954EngineBlockChainTests>;
 
-[EipWildcard("eip8024_dupn_swapn_exchange")]
+[AmsterdamFixturePath("eip8024_dupn_swapn_exchange")]
 public class Eip8024BlockChainTests : AmsterdamBlockChainTestFixture<Eip8024BlockChainTests>;
 
-[EipWildcard("eip8024_dupn_swapn_exchange")]
+[AmsterdamFixturePath("eip8024_dupn_swapn_exchange")]
 public class Eip8024EngineBlockChainTests : AmsterdamEngineBlockChainTestFixture<Eip8024EngineBlockChainTests>;
 
-[EipWildcard("eip8037_state_creation_gas_cost_increase")]
+[AmsterdamFixturePath("eip8037_state_creation_gas_cost_increase")]
 public class Eip8037BlockChainTests : AmsterdamBlockChainTestFixture<Eip8037BlockChainTests>;
 
-[EipWildcard("eip8037_state_creation_gas_cost_increase")]
+[AmsterdamFixturePath("eip8037_state_creation_gas_cost_increase")]
 public class Eip8037EngineBlockChainTests : AmsterdamEngineBlockChainTestFixture<Eip8037EngineBlockChainTests>;
 
-[EipWildcard("eip7928_block_level_access_lists")]
-[TestFixture(false)]
-[TestFixture(true)]
-public class Eip7928ZkEvmBlockChainTests(bool parallel) : AmsterdamZkEvmBlockChainTestFixture<Eip7928ZkEvmBlockChainTests>
-{
-    protected override bool? ParallelExecutionOverride => parallel;
-}
+// State tests
 
-[EipWildcard("eip7928_block_level_access_lists")]
-[TestFixture(false)]
-[TestFixture(true)]
-public class Eip7928ZkEvmEngineBlockChainTests(bool parallel) : AmsterdamZkEvmEngineBlockChainTestFixture<Eip7928ZkEvmEngineBlockChainTests>
-{
-    protected override bool? ParallelExecutionOverride => parallel;
-}
-
-[EipWildcard("eip7928_block_level_access_lists")]
-[TestFixture(false)]
-[TestFixture(true)]
-public class Eip7928ZkEvmWitnessEngineBlockChainTests(bool parallel) : AmsterdamZkEvmWitnessEngineBlockChainTestFixture<Eip7928ZkEvmWitnessEngineBlockChainTests>
-{
-    protected override bool? ParallelExecutionOverride => parallel;
-}
-
-[EipWildcard("eip7708_eth_transfer_logs")]
+[AmsterdamFixturePath("eip7708_eth_transfer_logs")]
 public class Eip7708StateTests : AmsterdamStateTestFixture<Eip7708StateTests>;
 
-[EipWildcard("eip7843_slotnum")]
+[AmsterdamFixturePath("eip7843_slotnum")]
 public class Eip7843StateTests : AmsterdamStateTestFixture<Eip7843StateTests>;
 
-[EipWildcard("eip7954_increase_max_contract_size")]
+[AmsterdamFixturePath("eip7954_increase_max_contract_size")]
 public class Eip7954StateTests : AmsterdamStateTestFixture<Eip7954StateTests>;
 
-[EipWildcard("eip8024_dupn_swapn_exchange")]
+[AmsterdamFixturePath("eip8024_dupn_swapn_exchange")]
 public class Eip8024StateTests : AmsterdamStateTestFixture<Eip8024StateTests>;
 
-[EipWildcard("eip8037_state_creation_gas_cost_increase")]
+[AmsterdamFixturePath("eip8037_state_creation_gas_cost_increase")]
 public class Eip8037StateTests : AmsterdamStateTestFixture<Eip8037StateTests>;

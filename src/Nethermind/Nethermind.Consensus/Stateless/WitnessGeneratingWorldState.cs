@@ -7,6 +7,7 @@ using System.Linq;
 using System.Runtime.InteropServices;
 using Collections.Pooled;
 using Nethermind.Core;
+using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Eip2930;
@@ -51,6 +52,8 @@ public class WitnessGeneratingWorldState(
     private readonly Dictionary<Address, HashSet<UInt256>> _storageSlots = new();
 
     private readonly Dictionary<ValueHash256, byte[]> _bytecodes = new();
+
+    private readonly HashSet<Address> _deployedAddresses = new();
 
     /// <summary>
     /// Projects the recorded addresses/slots/bytecodes (and trie-touched nodes, when a capturing trie store
@@ -320,6 +323,10 @@ public class WitnessGeneratingWorldState(
     public bool InsertCode(Address address, in ValueHash256 codeHash, ReadOnlyMemory<byte> code, IReleaseSpec spec, bool isGenesis = false)
     {
         RecordEmptySlots(address);
+        if (!isGenesis)
+        {
+            _deployedAddresses.Add(address);
+        }
         return inner.InsertCode(address, in codeHash, code, spec, isGenesis);
     }
 
@@ -409,6 +416,32 @@ public class WitnessGeneratingWorldState(
         // Fast path: hash already known.
         if (code is { Length: > 0 })
             _bytecodes.TryAdd(codeHash, code);
+    }
+
+    internal void RecordBlockAccessList(ReadOnlyBlockAccessList bal)
+    {
+        foreach (ReadOnlyAccountChanges accountChanges in bal.AccountChanges)
+        {
+            HashSet<UInt256> slots = RecordEmptySlots(accountChanges.Address);
+            foreach (ReadOnlySlotChanges slotChanges in accountChanges.StorageChanges)
+            {
+                slots.Add(slotChanges.Key);
+            }
+            foreach (UInt256 readSlot in accountChanges.StorageReads)
+            {
+                slots.Add(readSlot);
+            }
+        }
+    }
+
+    internal void RecordCodeBytes(ReadOnlyMemory<byte> code)
+    {
+        if (code.Length > 0)
+        {
+            byte[] codeBytes = code.ToArray();
+            Hash256 codeHash = Keccak.Compute(codeBytes);
+            _bytecodes.TryAdd(codeHash, codeBytes);
+        }
     }
 
     internal void RecordSystemContractAccess(Address address, UInt256 slotIndex, byte[]? code)
