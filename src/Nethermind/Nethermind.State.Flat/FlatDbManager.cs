@@ -289,11 +289,19 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
 
             // The BFS assembly returns a non-empty list only when it reaches the persisted state
             // exactly. An empty list while the target is not already the persisted state means the
-            // chain was removed concurrently (or is not yet complete) - retry until the deadline.
+            // chain was removed concurrently (or is not yet complete) - retry until the deadline,
+            // unless `baseBlock` itself has been pruned (orphaned non-canonical state), in which
+            // case no retry will recover it.
             if (snapshots.Count == 0 && persistenceReader.CurrentState != baseBlock)
             {
                 snapshots.Dispose();
                 persistenceReader.Dispose();
+
+                if (!_snapshotRepository.HasState(baseBlock))
+                {
+                    throw new InvalidOperationException($"State {baseBlock} no longer exists; concurrently removed.");
+                }
+
                 attempt++;
                 continue;
             }
