@@ -376,6 +376,15 @@ public class GethGenesisLoaderTests
         Assert.That(chainSpec.Parameters.Eip6110TransitionTimestamp, Is.EqualTo(1800000000));
     }
 
+    [Test]
+    public void Defaults_deposit_contract_to_zero_when_unspecified()
+    {
+        ChainSpec chainSpec = LoadStandardGethGenesis(chainId: 12345, configExtra: "\"pragueTime\": 1800000000");
+
+        Assert.That(chainSpec.Parameters.DepositContractAddress, Is.EqualTo(Address.Zero));
+        Assert.That(chainSpec.Parameters.Eip6110TransitionTimestamp, Is.EqualTo(1800000000));
+    }
+
     /// <summary>
     /// Returns EIP numbers newly enabled by <paramref name="fork"/> compared to its <paramref name="parent"/>.
     /// </summary>

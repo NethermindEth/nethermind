@@ -9,6 +9,7 @@ using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
 using Nethermind.Evm.State;
@@ -211,6 +212,8 @@ public partial class BlockAccessListManager(
         {
             _parallelTxProcessorWithWorldStateManager.Value.Dispose();
         }
+        DisposableExtensions.DisposeAndNull(ref _suggestedValidationIndex);
+        DisposableExtensions.DisposeAndNull(ref _generatedValidationIndex);
     }
 
     /// <summary>
@@ -244,8 +247,8 @@ public partial class BlockAccessListManager(
         _gasRemaining = null;
         _parentStateRoot = null;
         GeneratedBlockAccessList.Reset();
-        _suggestedValidationIndex = null;
-        _generatedValidationIndex = null;
+        DisposableExtensions.DisposeAndNull(ref _suggestedValidationIndex);
+        DisposableExtensions.DisposeAndNull(ref _generatedValidationIndex);
         _suggestedChargeableStorageReads = 0;
         _generatedChargeableStorageReads = 0;
         _hasGeneratedValidationIndexUpdates = false;
