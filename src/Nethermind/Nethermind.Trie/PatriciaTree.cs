@@ -79,9 +79,9 @@ namespace Nethermind.Trie
         /// explicit clear via the setter). Sticks; no re-resolve.</item>
         /// <item>typed <see cref="TrieNode"/> - resolved root.</item>
         /// </list>
-        /// All state transitions are single atomic reference writes; the sentinel
-        /// collapses what used to be a (field, flag) pair so there is no torn-state
-        /// window between the two values and the setter/invalidate paths need no lock.
+        /// Root-hash changes that invalidate a resolved root are published under
+        /// <see cref="_rootRefLock"/> so the sentinel and backing hash cannot be observed
+        /// in opposite orders by the lazy resolver.
         /// </summary>
         public TrieNode? RootRef
         {
@@ -168,7 +168,7 @@ namespace Nethermind.Trie
 
         public Hash256 RootHash
         {
-            get => _rootHash;
+            get => Volatile.Read(ref _rootHash);
             set => SetRootHash(value, true);
         }
 
@@ -443,30 +443,34 @@ namespace Nethermind.Trie
         public void SetRootHash(Hash256? value, bool resetObjects)
         {
             Hash256 rootHash = value ?? Keccak.EmptyTreeHash; // nulls were allowed before so for now we leave it this way
-            if (resetObjects && _rootHash == rootHash)
+
+            lock (_rootRefLock)
             {
-                TrieNode? rootRef = Volatile.Read(ref _rootRef);
-                if (!ReferenceEquals(rootRef, _unresolvedSentinel)
-                    && rootRef is not null
-                    && !rootRef.IsDirty
-                    && rootRef.TryGetKeccak(out ValueHash256 rootKeccak)
-                    && rootKeccak == rootHash.ValueHash256)
+                if (resetObjects && _rootHash == rootHash)
                 {
+                    TrieNode? rootRef = Volatile.Read(ref _rootRef);
+                    if (!ReferenceEquals(rootRef, _unresolvedSentinel)
+                        && rootRef is not null
+                        && !rootRef.IsDirty
+                        && rootRef.TryGetKeccak(out ValueHash256 rootKeccak)
+                        && rootKeccak == rootHash.ValueHash256)
+                    {
+                        return;
+                    }
+                }
+
+                if (rootHash == Keccak.EmptyTreeHash)
+                {
+                    Volatile.Write(ref _rootHash, rootHash);
+                    Volatile.Write(ref _rootRef, null);
                     return;
                 }
-            }
 
-            _rootHash = rootHash;
-            if (_rootHash == Keccak.EmptyTreeHash)
-            {
-                RootRef = null;
-            }
-            else if (resetObjects)
-            {
-                // Publish the unresolved sentinel atomically; the next RootRef read
-                // lazily resolves the new root hash via _readResolver.GetOrLoadNode.
-                // No lock needed - the sentinel transition is a single atomic ref write.
-                Volatile.Write(ref _rootRef, _unresolvedSentinel);
+                if (resetObjects)
+                {
+                    Volatile.Write(ref _rootRef, _unresolvedSentinel);
+                }
+                Volatile.Write(ref _rootHash, rootHash);
             }
         }
 
