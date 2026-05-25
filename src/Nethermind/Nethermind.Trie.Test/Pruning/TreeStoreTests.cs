@@ -1129,6 +1129,34 @@ namespace Nethermind.Trie.Test.Pruning
 
         [Test]
         [NonParallelizable]
+        public void Shared_read_only_cached_node_with_sliced_rlp_is_cloned()
+        {
+            using TrieStore fullTrieStore = CreateTrieStore();
+            TrieNode node = BuildAndCommitSealedBranch(fullTrieStore);
+            TreePath emptyPath = TreePath.Empty;
+            byte[] rlp = node.FullRlp.AsSpan().ToArray();
+            byte[] backing = new byte[rlp.Length + 2];
+            rlp.CopyTo(backing.AsSpan(1));
+            node.WriteRlp(new CappedArray<byte>(backing, 1, rlp.Length));
+            node.FullRlp.IsUncapped.Should().BeFalse();
+
+            long sharedHitsBefore = fullTrieStore.SharedNodeHitCount;
+            long fallbacksBefore = fullTrieStore.FallbackNotShareableCount;
+            long clonesBefore = fullTrieStore.CloneForReadOnlyCount;
+
+            TrieNode? readOnlyNode = fullTrieStore.GetSharedCachedNode(null, emptyPath, node.Keccak!.ValueHash256);
+
+            readOnlyNode.Should().NotBeNull();
+            readOnlyNode.Should().NotBeSameAs(node);
+            readOnlyNode!.FullRlp.IsUncapped.Should().BeTrue();
+            readOnlyNode.FullRlp.AsSpan().ToArray().Should().Equal(rlp);
+            fullTrieStore.SharedNodeHitCount.Should().Be(sharedHitsBefore);
+            fullTrieStore.FallbackNotShareableCount.Should().Be(fallbacksBefore + 1);
+            fullTrieStore.CloneForReadOnlyCount.Should().Be(clonesBefore + 1);
+        }
+
+        [Test]
+        [NonParallelizable]
         [TestCase(ReadOnlyMissLoadVariant.GetOrLoad)]
         [TestCase(ReadOnlyMissLoadVariant.TryGetOrLoad)]
         public void Shared_read_only_db_miss_publishes_decoded_node(ReadOnlyMissLoadVariant variant)

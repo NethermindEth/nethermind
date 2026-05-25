@@ -662,6 +662,12 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
 
         if (cached.IsSealed)
         {
+            if (!cached.FullRlp.IsUncapped)
+            {
+                IncrementFallbackNotShareableCount();
+                return CloneForReadOnly(key, cached);
+            }
+
             IncrementSharedNodeHitCount();
             return cached;
         }
