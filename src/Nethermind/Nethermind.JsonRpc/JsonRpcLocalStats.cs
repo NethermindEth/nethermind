@@ -161,10 +161,7 @@ public class JsonRpcLocalStats : IJsonRpcLocalStats
             reportStringBuilder.AppendLine(PrepareReportLine("TOTAL", total));
             reportStringBuilder.AppendLine(_divider);
 
-            lock (_logger.UnderlyingLogger)
-            {
-                _logger.Info(reportStringBuilder.ToString());
-            }
+            _logger.Info(reportStringBuilder.ToString());
         }
         catch (Exception ex)
         {
