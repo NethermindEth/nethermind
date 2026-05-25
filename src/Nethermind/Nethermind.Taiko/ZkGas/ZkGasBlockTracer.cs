@@ -20,10 +20,11 @@ public sealed class ZkGasBlockTracer : IBlockTracer
 
     public ZkGasBlockTracer(IBlockTracer inner, ZkGasMeterHolder? holder = null,
         ulong blockZkGasLimit = ZkGasSchedule.BlockZkGasLimit,
-        ulong txIntrinsicZkGas = ZkGasSchedule.TxIntrinsicZkGas)
+        ulong txIntrinsicZkGas = ZkGasSchedule.TxIntrinsicZkGas,
+        ulong chainId = 0)
     {
         _inner = inner;
-        _meter = new ZkGasMeter(blockZkGasLimit, txIntrinsicZkGas);
+        _meter = new ZkGasMeter(blockZkGasLimit, txIntrinsicZkGas, chainId);
         // Publish once: the meter reference is stable across blocks (we Reset it in
         // StartNewBlockTrace rather than reallocating), so the holder never needs
         // re-pointing for the lifetime of this tracer.

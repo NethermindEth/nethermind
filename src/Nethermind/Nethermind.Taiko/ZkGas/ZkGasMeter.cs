@@ -9,12 +9,21 @@ namespace Nethermind.Taiko.ZkGas;
 /// </summary>
 /// <param name="blockZkGasLimit">Maximum ZK gas permitted within a single block.</param>
 /// <param name="txIntrinsicZkGas">Flat ZK gas charged once per transaction before any opcode runs.</param>
-public class ZkGasMeter(ulong blockZkGasLimit = ZkGasSchedule.BlockZkGasLimit, ulong txIntrinsicZkGas = ZkGasSchedule.TxIntrinsicZkGas)
+/// <param name="chainId">Chain id used to dispatch between the recalibrated default multiplier
+/// tables and the Masaya-frozen tables (see <see cref="ZkGasSchedule.OpcodeMultipliersFor"/>).
+/// Defaults to 0 — i.e. the recalibrated default schedule used by Devnet / Hoodi / Mainnet.</param>
+public class ZkGasMeter(
+    ulong blockZkGasLimit = ZkGasSchedule.BlockZkGasLimit,
+    ulong txIntrinsicZkGas = ZkGasSchedule.TxIntrinsicZkGas,
+    ulong chainId = 0)
 {
     /// <summary>Per-block ZK gas ceiling captured at construction time.</summary>
     private readonly ulong _blockZkGasLimit = blockZkGasLimit;
 
     private readonly ulong _txIntrinsicZkGas = txIntrinsicZkGas;
+
+    private readonly ushort[] _opcodeMultipliers = ZkGasSchedule.OpcodeMultipliersFor(chainId);
+    private readonly ushort[] _precompileMultipliers = ZkGasSchedule.PrecompileMultipliersFor(chainId);
 
     /// <summary>Finalized ZK gas accumulated from fully committed transactions.</summary>
     private ulong _blockZkGasUsed;
@@ -103,7 +112,7 @@ public class ZkGasMeter(ulong blockZkGasLimit = ZkGasSchedule.BlockZkGasLimit, u
     /// </summary>
     public bool ChargeOpcode(byte opcode, ulong rawGas)
     {
-        ulong multiplier = ZkGasSchedule.OpcodeMultipliers[opcode];
+        ulong multiplier = _opcodeMultipliers[opcode];
         return ChargeAmount(rawGas, multiplier);
     }
 
@@ -113,7 +122,7 @@ public class ZkGasMeter(ulong blockZkGasLimit = ZkGasSchedule.BlockZkGasLimit, u
     /// </summary>
     public bool ChargePrecompile(byte addressLowByte, ulong gasUsed)
     {
-        ulong multiplier = ZkGasSchedule.PrecompileMultipliers[addressLowByte];
+        ulong multiplier = _precompileMultipliers[addressLowByte];
         return ChargeAmount(gasUsed, multiplier);
     }
 

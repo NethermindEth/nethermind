@@ -19,27 +19,59 @@ public class ZkGasMeterTests
     [Test]
     public void OpcodeMultipliers_Spot_Check_Spec_Values()
     {
-        // keccak256 (0x20) = 85
-        Assert.That(ZkGasSchedule.OpcodeMultipliers[0x20], Is.EqualTo((ushort)85));
-        // call (0xf1) = 25
-        Assert.That(ZkGasSchedule.OpcodeMultipliers[0xf1], Is.EqualTo((ushort)25));
-        // invalid (0xfe) = 0
-        Assert.That(ZkGasSchedule.OpcodeMultipliers[0xfe], Is.EqualTo((ushort)0));
-        // unlisted opcode (0xac) = ushort.MaxValue (fail-safe)
-        Assert.That(ZkGasSchedule.OpcodeMultipliers[0xac], Is.EqualTo(ushort.MaxValue));
+        // Recalibrated default schedule (taiko-mono#21720 / alethia-reth#187).
+        Assert.That(ZkGasSchedule.OpcodeMultipliers[0x20], Is.EqualTo((ushort)31)); // keccak256
+        Assert.That(ZkGasSchedule.OpcodeMultipliers[0xf1], Is.EqualTo((ushort)20)); // call
+        Assert.That(ZkGasSchedule.OpcodeMultipliers[0xfe], Is.EqualTo((ushort)0));  // invalid (terminal)
+        Assert.That(ZkGasSchedule.OpcodeMultipliers[0xac], Is.EqualTo(ushort.MaxValue)); // unlisted -> failsafe
     }
 
     [Test]
     public void PrecompileMultipliers_Spot_Check_Spec_Values()
     {
-        // modexp (0x05) = 1363
-        Assert.That(ZkGasSchedule.PrecompileMultipliers[0x05], Is.EqualTo((ushort)1363));
-        // ecrecover (0x01) = 81
-        Assert.That(ZkGasSchedule.PrecompileMultipliers[0x01], Is.EqualTo((ushort)81));
-        // identity (0x04) = 2
-        Assert.That(ZkGasSchedule.PrecompileMultipliers[0x04], Is.EqualTo((ushort)2));
-        // unlisted precompile (0x14) = ushort.MaxValue (fail-safe)
-        Assert.That(ZkGasSchedule.PrecompileMultipliers[0x14], Is.EqualTo(ushort.MaxValue));
+        // Recalibrated default schedule (taiko-mono#21720 / alethia-reth#187).
+        Assert.That(ZkGasSchedule.PrecompileMultipliers[0x05], Is.EqualTo((ushort)923)); // modexp
+        Assert.That(ZkGasSchedule.PrecompileMultipliers[0x01], Is.EqualTo((ushort)47));  // ecrecover
+        Assert.That(ZkGasSchedule.PrecompileMultipliers[0x04], Is.EqualTo((ushort)6));   // identity
+        Assert.That(ZkGasSchedule.PrecompileMultipliers[0x14], Is.EqualTo(ushort.MaxValue)); // unlisted -> failsafe
+    }
+
+    [Test]
+    public void MasayaOpcodeMultipliers_Are_Frozen_At_Pre_Recalibration_Values()
+    {
+        // The recalibration changes the default tables but Masaya stays frozen at the
+        // pre-recalibration values to preserve consensus on its already-finalized Unzen blocks.
+        // Spot-check: keccak256 went 85 -> 31 (default), Masaya stays at 85;
+        // modexp went 1363 -> 923 (default), Masaya stays at 1363.
+        Assert.That(ZkGasSchedule.MasayaOpcodeMultipliers[0x20], Is.EqualTo((ushort)85));
+        Assert.That(ZkGasSchedule.MasayaOpcodeMultipliers[0xf1], Is.EqualTo((ushort)25));
+        Assert.That(ZkGasSchedule.MasayaPrecompileMultipliers[0x05], Is.EqualTo((ushort)1363));
+        Assert.That(ZkGasSchedule.MasayaPrecompileMultipliers[0x01], Is.EqualTo((ushort)81));
+        Assert.That(ZkGasSchedule.MasayaPrecompileMultipliers[0x04], Is.EqualTo((ushort)2));
+
+        // Guardrails: the two tables must differ. If they ever realign, that's either a
+        // mistaken revert of the recalibration or a Masaya-policy change that needs review.
+        Assert.That(
+            ZkGasSchedule.MasayaOpcodeMultipliers[0x20],
+            Is.Not.EqualTo(ZkGasSchedule.OpcodeMultipliers[0x20]));
+        Assert.That(
+            ZkGasSchedule.MasayaPrecompileMultipliers[0x05],
+            Is.Not.EqualTo(ZkGasSchedule.PrecompileMultipliers[0x05]));
+    }
+
+    [Test]
+    public void Meter_With_Masaya_ChainId_Uses_Frozen_Tables()
+    {
+        ZkGasMeter masayaMeter = new(chainId: ZkGasSchedule.TaikoMasayaChainId);
+        ZkGasMeter defaultMeter = new();
+
+        // ChargeOpcode(0x20, 1) gives 1 * multiplier per table.
+        masayaMeter.ChargeOpcode(0x20, 1);
+        defaultMeter.ChargeOpcode(0x20, 1);
+
+        Assert.That(masayaMeter.TxZkGasUsed, Is.EqualTo((ulong)ZkGasSchedule.MasayaOpcodeMultipliers[0x20]));
+        Assert.That(defaultMeter.TxZkGasUsed, Is.EqualTo((ulong)ZkGasSchedule.OpcodeMultipliers[0x20]));
+        Assert.That(masayaMeter.TxZkGasUsed, Is.Not.EqualTo(defaultMeter.TxZkGasUsed));
     }
 
     [Test]
@@ -59,7 +91,7 @@ public class ZkGasMeterTests
     public void CommitTransaction_Promotes_TxGas_Into_BlockGas()
     {
         ZkGasMeter meter = new();
-        byte addOpcode = 0x01; // multiplier = 12
+        byte addOpcode = 0x01; // multiplier = 19 (recalibrated)
         meter.ChargeOpcode(addOpcode, 3);
         meter.CommitTransaction();
 
@@ -148,7 +180,7 @@ public class ZkGasMeterTests
     public void ChargePrecompile_Rejects_When_Charge_Exceeds_Block_Budget()
     {
         ZkGasMeter meter = new();
-        // ecrecover multiplier = 81; feed enough raw gas to exceed the block limit
+        // ecrecover multiplier = 47 (recalibrated); feed enough raw gas to exceed the block limit
         bool result = meter.ChargePrecompile(0x01, ZkGasSchedule.BlockZkGasLimit);
         Assert.That(result, Is.False);
         Assert.That(meter.IsLimitExceeded, Is.True);
@@ -160,7 +192,7 @@ public class ZkGasMeterTests
     public void ChargeOpcode_Treats_Multiplication_Overflow_As_LimitExceeded()
     {
         ZkGasMeter meter = new();
-        byte opcode = 0x01; // add, multiplier = 12
+        byte opcode = 0x01; // add, multiplier = 19 (recalibrated)
         ulong overflowRawGas = ulong.MaxValue / ZkGasSchedule.OpcodeMultipliers[opcode] + 1;
 
         bool result = meter.ChargeOpcode(opcode, overflowRawGas);
@@ -172,7 +204,7 @@ public class ZkGasMeterTests
     public void ChargePrecompile_Treats_Multiplication_Overflow_As_LimitExceeded()
     {
         ZkGasMeter meter = new();
-        byte precompile = 0x01; // ecrecover, multiplier = 81
+        byte precompile = 0x01; // ecrecover, multiplier = 47 (recalibrated)
         ulong overflowRawGas = ulong.MaxValue / ZkGasSchedule.PrecompileMultipliers[precompile] + 1;
 
         bool result = meter.ChargePrecompile(precompile, overflowRawGas);
