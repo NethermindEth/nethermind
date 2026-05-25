@@ -497,7 +497,13 @@ public static class ZkGasSchedule
         return a;
     }
 
-    // Recalibrated precompile multipliers from taiko-mono#21720.
+    // Recalibrated precompile multipliers from taiko-mono#21720. BLS12-381 entries follow
+    // the address scheme defined in packages/protocol/docs/zk_gas_spec.md (Appendix B), which
+    // assigns G2Add=0x0e, G2Msm=0x0f, Pairing=0x11, MapFpToG1=0x12, MapFp2ToG2=0x13 — i.e. the
+    // spec leaves 0x0d and 0x10 unset. The same indices appear in alethia-reth (crates/evm/src/
+    // zk_gas/unzen.rs) and taiko-geth, so all clients tabulate against the same byte. Whether
+    // the underlying EVM precompile registration uses canonical EIP-2537 addresses or the
+    // spec's offset scheme is an orthogonal question — out of scope for this recalibration PR.
     private static ushort[] BuildPrecompileMultipliers()
     {
         ushort[] a = new ushort[256];
