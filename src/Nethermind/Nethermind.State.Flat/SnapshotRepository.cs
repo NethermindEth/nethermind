@@ -343,6 +343,7 @@ public class SnapshotRepository(ILogManager logManager) : ISnapshotRepository
         parent.TryAdd(canonicalStateId, canonicalStateId);
         StateId canonicalRoot = Find(canonicalStateId);
 
+        int pruned = 0;
         foreach (StateId stateId in aboveStates)
         {
             // A state with no entry was never unioned (its snapshot vanished mid-pass); leave it.
@@ -350,7 +351,13 @@ public class SnapshotRepository(ILogManager logManager) : ISnapshotRepository
             {
                 RemoveAndReleaseCompactedKnownState(stateId);
                 RemoveAndReleaseKnownState(stateId);
+                pruned++;
             }
+        }
+
+        if (pruned > 0 && _logger.IsInfo)
+        {
+            _logger.Info($"Pruned {pruned} orphaned non-canonical snapshot(s) above persisted state {canonicalStateId}.");
         }
     }
 
