@@ -5,9 +5,14 @@ using System;
 using System.Buffers;
 using System.Collections.Generic;
 using System.Text.Json;
+using System.Threading;
 using BenchmarkDotNet.Attributes;
 using Nethermind.Blockchain.Tracing.ParityStyle;
 using Nethermind.Core;
+using Nethermind.Core.Test.Builders;
+using Nethermind.Evm;
+using Nethermind.Evm.CodeAnalysis;
+using Nethermind.Int256;
 using Nethermind.JsonRpc.Modules.Trace;
 using Nethermind.Serialization.Json;
 
@@ -18,6 +23,20 @@ public class TraceStreamingBenchmarks
 {
     [Params(1_000, 10_000, 100_000)]
     public int OpcodeCount { get; set; }
+
+    private Block _block = null!;
+    private Transaction _tx = null!;
+    private ExecutionEnvironment _env;
+    private byte[] _value32 = null!;
+
+    [GlobalSetup]
+    public void Setup()
+    {
+        _tx = Build.A.Transaction.WithTo(TestItem.AddressA).TestObject;
+        _block = Build.A.Block.WithTransactions(_tx).TestObject;
+        _env = ExecutionEnvironment.Rent(CodeInfo.Empty, Address.Zero, Address.Zero, null, 1, default, default, default);
+        _value32 = new byte[32];
+    }
 
     [Benchmark(Baseline = true, Description = "Throughput: buffered — accumulate N opcode entries, serialize the full vmTrace envelope")]
     public int Throughput_Buffered()
@@ -91,6 +110,82 @@ public class TraceStreamingBenchmarks
         long peak = GC.GetTotalMemory(false);
         GC.KeepAlive(live);
         return peak - baseline;
+    }
+
+    [Benchmark(Description = "PeakHeap (real tracer): 16 concurrent buffered ParityLikeTxTracer instances driven through N opcodes")]
+    public long PeakHeap_BufferedWithTracer()
+    {
+        const int Concurrency = 16;
+        GC.Collect();
+        GC.WaitForPendingFinalizers();
+        long baseline = GC.GetTotalMemory(true);
+
+        List<ParityLikeTxTracer> live = new(Concurrency);
+        for (int n = 0; n < Concurrency; n++)
+        {
+            ParityLikeTxTracer tracer = new(_block, _tx, ParityTraceTypes.Trace | ParityTraceTypes.VmTrace);
+            DriveOpcodes(tracer, OpcodeCount);
+            DiscardingBufferWriter sink = new();
+            using Utf8JsonWriter writer = new(sink);
+            JsonSerializer.Serialize(writer, new ParityTxTraceFromReplay(tracer.BuildResult(), true), EthereumJsonSerializer.JsonOptions);
+            live.Add(tracer);
+        }
+
+        long peak = GC.GetTotalMemory(false);
+        GC.KeepAlive(live);
+        return peak - baseline;
+    }
+
+    [Benchmark(Description = "PeakHeap (real tracer): 16 concurrent StreamingParityLikeTxTracer instances driven through N opcodes")]
+    public long PeakHeap_StreamingWithTracer()
+    {
+        const int Concurrency = 16;
+        JsonSerializerOptions opts = EthereumJsonSerializer.JsonOptions;
+        GC.Collect();
+        GC.WaitForPendingFinalizers();
+        long baseline = GC.GetTotalMemory(true);
+
+        List<StreamingParityLikeTxTracer> live = new(Concurrency);
+        List<DiscardingBufferWriter> sinks = new(Concurrency);
+        List<Utf8JsonWriter> writers = new(Concurrency);
+        for (int n = 0; n < Concurrency; n++)
+        {
+            DiscardingBufferWriter sink = new();
+            Utf8JsonWriter writer = new(sink);
+            writer.WriteStartObject();
+            writer.WritePropertyName("vmTrace"u8);
+            StreamingParityLikeTxTracer tracer = new(
+                _block, _tx, ParityTraceTypes.Trace | ParityTraceTypes.VmTrace,
+                writer, pipeWriter: null, CancellationToken.None,
+                fillVmTraceSlot: true);
+            DriveOpcodes(tracer, OpcodeCount);
+            ParityLikeTxTrace trace = tracer.BuildResult();
+            ParityReplayEnvelopeWriter.WriteTail(writer, trace, includeTxHash: true, opts);
+            live.Add(tracer);
+            sinks.Add(sink);
+            writers.Add(writer);
+        }
+
+        long peak = GC.GetTotalMemory(false);
+        GC.KeepAlive(live);
+        GC.KeepAlive(sinks);
+        foreach (Utf8JsonWriter w in writers) w.Dispose();
+        return peak - baseline;
+    }
+
+    private void DriveOpcodes(ParityLikeTxTracer tracer, int opcodeCount)
+    {
+        ReadOnlySpan<byte> value = _value32;
+        tracer.ReportAction(1_000_000, UInt256.Zero, Address.Zero, Address.Zero, default, ExecutionType.CALL);
+        for (int op = 0; op < opcodeCount; op++)
+        {
+            tracer.StartOperation(op, Instruction.SSTORE, 1_000_000 - op, _env);
+            tracer.ReportStackPush(value);
+            tracer.ReportStorageChange(value, value);
+            tracer.ReportOperationRemainingGas(900_000 - op);
+        }
+        tracer.ReportActionEnd(0, default);
+        tracer.MarkAsSuccess(Address.Zero, default, [], []);
     }
 
     private static void WriteStreamingEnvelope(Utf8JsonWriter writer, int opcodeCount)
