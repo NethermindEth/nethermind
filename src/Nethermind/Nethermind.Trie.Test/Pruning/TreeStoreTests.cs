@@ -5,6 +5,7 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
+using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
@@ -2194,6 +2195,36 @@ namespace Nethermind.Trie.Test.Pruning
             TreePath path = TreePath.FromHexString("ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff");
             int shard = TrieStore.GetPathPrefixShardIdx(in path, shardBit);
             shard.Should().BeInRange(0, (1 << shardBit) - 1);
+        }
+
+        [Test]
+        public void Hash_mode_uses_hash_code_for_shard_index()
+        {
+            const int shardBit = 4;
+            PruningConfig pruningConfig = new()
+            {
+                DirtyNodeShardBit = shardBit,
+                TrackPastKeys = true
+            };
+            using TrieStore trieStore = new(
+                new NodeStorage(new TestMemDb(), INodeStorage.KeyScheme.Hash, requirePath: false),
+                No.Pruning,
+                No.Persistence,
+                new TestFinalizedStateProvider(pruningConfig.PruningBoundary),
+                pruningConfig,
+                LimboLogs.Instance);
+            ValueHash256 hash = TestItem.KeccakA.ValueHash256;
+            int expectedHashShard = (int)((uint)hash.GetHashCode() & ((1u << shardBit) - 1));
+            string pathHex = expectedHashShard == 0 ? "f" : "0";
+            TreePath path = TreePath.FromHexString(pathHex);
+            MethodInfo getNodeShardIdx = typeof(TrieStore).GetMethod(
+                "GetNodeShardIdx",
+                BindingFlags.Instance | BindingFlags.NonPublic)!;
+
+            int shard = (int)getNodeShardIdx.Invoke(trieStore, [path, hash])!;
+
+            TrieStore.GetPathPrefixShardIdx(in path, shardBit).Should().NotBe(expectedHashShard);
+            shard.Should().Be(expectedHashShard);
         }
     }
 
