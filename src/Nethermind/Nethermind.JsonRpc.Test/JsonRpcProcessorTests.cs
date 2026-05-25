@@ -684,6 +684,8 @@ public class JsonRpcProcessorTests(bool returnErrors)
     }
 
     [TestCase("invalid", true, null, TestName = "Invalid JSON")]
+    [TestCase("", true, null, TestName = "Empty input")]
+    [TestCase(" \r\n\t", true, null, TestName = "Whitespace-only input")]
     [TestCase("\"aaa\"", true, null, TestName = "String root")]
     [TestCase("null", true, null, TestName = "Null root")]
     [TestCase("{}", false, null, TestName = "Empty object")]

@@ -128,8 +128,19 @@ public class StartupTests
         string secondValue = secondValueIsArray ? "[" + CreateJsonRpcRequest(idJson: "2") + "]" : CreateJsonRpcRequest(idJson: "2");
         string request = CreateJsonRpcRequest() + secondValue;
 
-        string response = await ProcessJsonRpcRequest(request);
+        (string response, int statusCode) = await ProcessJsonRpcRequestWithStatus(request);
 
+        Assert.That(statusCode, Is.EqualTo(StatusCodes.Status400BadRequest));
+        AssertErrorCodeResponse(response, ErrorCodes.ParseError);
+    }
+
+    [TestCase("", TestName = "Empty input")]
+    [TestCase(" \r\n\t", TestName = "Whitespace-only input")]
+    public async Task ProcessJsonRpcRequest_EmptyInput_ReturnsParseErrorBadRequest(string request)
+    {
+        (string response, int statusCode) = await ProcessJsonRpcRequestWithStatus(request);
+
+        Assert.That(statusCode, Is.EqualTo(StatusCodes.Status400BadRequest));
         AssertErrorCodeResponse(response, ErrorCodes.ParseError);
     }
 

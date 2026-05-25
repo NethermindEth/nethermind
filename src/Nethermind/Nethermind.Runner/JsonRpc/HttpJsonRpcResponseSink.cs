@@ -208,7 +208,10 @@ internal sealed class HttpJsonRpcResponseSink(
     }
 
     private static int GetStatusCode(JsonRpcResponse? response) =>
-        JsonRpcResponseWriter.IsResourceUnavailableError(response)
-            ? StatusCodes.Status503ServiceUnavailable
-            : StatusCodes.Status200OK;
+        response switch
+        {
+            _ when JsonRpcResponseWriter.IsResourceUnavailableError(response) => StatusCodes.Status503ServiceUnavailable,
+            JsonRpcErrorResponse { Error: { Code: ErrorCodes.ParseError } } => StatusCodes.Status400BadRequest,
+            _ => StatusCodes.Status200OK
+        };
 }

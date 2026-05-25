@@ -36,6 +36,7 @@ public static class StreamableResultWriter
 
             if (await FlushIfNeededAsync(writer, cancellationToken))
             {
+                writer.Write("]"u8);
                 return;
             }
         }

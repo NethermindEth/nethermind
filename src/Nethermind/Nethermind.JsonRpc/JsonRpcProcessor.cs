@@ -214,7 +214,12 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
                         buffer = buffer.TrimStart();
                     }
 
-                    if (!buffer.IsEmpty)
+                    if (buffer.IsEmpty && readResult.IsCompleted && options.InputMode == JsonRpcInputMode.SingleDocument)
+                    {
+                        result = GetParsingError(startTime, in buffer, "Error during parsing/validation: empty request.");
+                        shouldExit = true;
+                    }
+                    else if (!buffer.IsEmpty)
                     {
                         try
                         {
