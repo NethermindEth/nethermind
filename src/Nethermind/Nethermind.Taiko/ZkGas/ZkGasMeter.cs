@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+
 namespace Nethermind.Taiko.ZkGas;
 
 /// <summary>
@@ -22,8 +24,8 @@ public class ZkGasMeter(
 
     private readonly ulong _txIntrinsicZkGas = txIntrinsicZkGas;
 
-    private readonly ushort[] _opcodeMultipliers = ZkGasSchedule.OpcodeMultipliersFor(chainId);
-    private readonly ushort[] _precompileMultipliers = ZkGasSchedule.PrecompileMultipliersFor(chainId);
+    private readonly ReadOnlyMemory<ushort> _opcodeMultipliers = ZkGasSchedule.OpcodeMultipliersFor(chainId);
+    private readonly ReadOnlyMemory<ushort> _precompileMultipliers = ZkGasSchedule.PrecompileMultipliersFor(chainId);
 
     /// <summary>Finalized ZK gas accumulated from fully committed transactions.</summary>
     private ulong _blockZkGasUsed;
@@ -112,7 +114,7 @@ public class ZkGasMeter(
     /// </summary>
     public bool ChargeOpcode(byte opcode, ulong rawGas)
     {
-        ulong multiplier = _opcodeMultipliers[opcode];
+        ulong multiplier = _opcodeMultipliers.Span[opcode];
         return ChargeAmount(rawGas, multiplier);
     }
 
@@ -122,7 +124,7 @@ public class ZkGasMeter(
     /// </summary>
     public bool ChargePrecompile(byte addressLowByte, ulong gasUsed)
     {
-        ulong multiplier = _precompileMultipliers[addressLowByte];
+        ulong multiplier = _precompileMultipliers.Span[addressLowByte];
         return ChargeAmount(gasUsed, multiplier);
     }
 

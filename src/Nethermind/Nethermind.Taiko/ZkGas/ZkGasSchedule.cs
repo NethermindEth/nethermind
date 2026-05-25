@@ -85,8 +85,10 @@ public static class ZkGasSchedule
     /// <summary>Fail-safe multiplier for any opcode or precompile not explicitly listed.</summary>
     public const ushort FailsafeMultiplier = ushort.MaxValue;
 
-    // Backing arrays are kept private so they cannot be mutated in-place by external code;
-    // the public surface exposes them as ReadOnlySpan<ushort> for index-based reads.
+    // Backing arrays are kept private so they cannot be mutated in-place by external code.
+    // The public surface returns ReadOnlySpan<ushort> for index-based reads and
+    // ReadOnlyMemory<ushort> from the chain-id resolvers so callers can stash a stable handle
+    // without exposing the underlying array.
     private static readonly ushort[] _opcodeMultipliers = BuildOpcodeMultipliers();
     private static readonly ushort[] _precompileMultipliers = BuildPrecompileMultipliers();
     private static readonly ushort[] _masayaOpcodeMultipliers = BuildMasayaOpcodeMultipliers();
@@ -121,7 +123,12 @@ public static class ZkGasSchedule
     /// pre-recalibration table; every other network gets the recalibrated default.
     /// </summary>
     /// <param name="chainId">Chain id from <see cref="Nethermind.Core.Specs.ISpecProvider.ChainId"/>.</param>
-    public static ushort[] OpcodeMultipliersFor(ulong chainId) =>
+    /// <remarks>
+    /// Returns <see cref="ReadOnlyMemory{T}"/> rather than the raw array so callers that stash
+    /// the handle in a field cannot mutate the shared singleton table; index via
+    /// <c>.Span[opcode]</c>.
+    /// </remarks>
+    public static ReadOnlyMemory<ushort> OpcodeMultipliersFor(ulong chainId) =>
         chainId == TaikoMasayaChainId ? _masayaOpcodeMultipliers : _opcodeMultipliers;
 
     /// <summary>
@@ -129,7 +136,12 @@ public static class ZkGasSchedule
     /// frozen pre-recalibration table; every other network gets the recalibrated default.
     /// </summary>
     /// <param name="chainId">Chain id from <see cref="Nethermind.Core.Specs.ISpecProvider.ChainId"/>.</param>
-    public static ushort[] PrecompileMultipliersFor(ulong chainId) =>
+    /// <remarks>
+    /// Returns <see cref="ReadOnlyMemory{T}"/> rather than the raw array so callers that stash
+    /// the handle in a field cannot mutate the shared singleton table; index via
+    /// <c>.Span[addressLowByte]</c>.
+    /// </remarks>
+    public static ReadOnlyMemory<ushort> PrecompileMultipliersFor(ulong chainId) =>
         chainId == TaikoMasayaChainId ? _masayaPrecompileMultipliers : _precompileMultipliers;
 
     // Fixed raw-gas estimates for spawn opcodes (used when the opcode actually opens a child frame).
