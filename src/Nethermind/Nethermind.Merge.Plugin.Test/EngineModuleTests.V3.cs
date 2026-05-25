@@ -729,9 +729,11 @@ public partial class EngineModuleTests
         byte[] proof = new byte[48];
         Random.Shared.NextBytes(proof);
 
-        ArrayPoolList<BlobAndProofV1?> items = new(2);
-        items.Add(new BlobAndProofV1(blob, proof));
-        items.Add(null);
+        ArrayPoolList<BlobAndProofV1?> items = new(2)
+        {
+            new BlobAndProofV1(blob, proof),
+            null
+        };
 
         using BlobsV1DirectResponse response = new(items);
 

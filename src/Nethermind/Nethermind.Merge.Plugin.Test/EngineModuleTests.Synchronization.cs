@@ -1040,7 +1040,7 @@ public partial class EngineModuleTests
         syncPeer.TotalDifficulty.Returns(peerHeader.TotalDifficulty ?? 0);
         syncPeer.IsInitialized.Returns(true);
         ISyncPeerPool? syncPeerPool = Substitute.For<ISyncPeerPool>();
-        List<PeerInfo> peerInfos = new() { new(syncPeer) };
+        List<PeerInfo> peerInfos = [new(syncPeer)];
         syncPeerPool.InitializedPeers.Returns(peerInfos);
 
         SyncProgressResolver syncProgressResolver = new(

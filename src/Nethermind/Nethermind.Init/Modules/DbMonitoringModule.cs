@@ -46,6 +46,7 @@ public class DbMonitoringModule : Module
     public class DbTracker
     {
         private readonly ConcurrentDictionary<string, IDbMeta> _createdDbs = new();
+        private readonly HashSet<string> _failingDbs = [];
         private readonly int _intervalSec;
         private readonly Lazy<HyperClockCacheWrapper> _sharedBlockCache;
         private long _lastDbMetricsUpdate = 0;
@@ -86,14 +87,27 @@ public class DbMonitoringModule : Module
 
                 foreach (KeyValuePair<string, IDbMeta> kv in GetAllDbMeta())
                 {
-                    // Note: At the moment, the metric for a columns db is combined across column.
-                    IDbMeta.DbMetric dbMetric = kv.Value.GatherMetric();
-                    Db.Metrics.DbSize[kv.Key] = dbMetric.Size;
-                    Db.Metrics.DbBlockCacheSize[kv.Key] = dbMetric.CacheSize;
-                    Db.Metrics.DbMemtableSize[kv.Key] = dbMetric.MemtableSize;
-                    Db.Metrics.DbIndexFilterSize[kv.Key] = dbMetric.IndexSize;
-                    Db.Metrics.DbReads[kv.Key] = dbMetric.TotalReads;
-                    Db.Metrics.DbWrites[kv.Key] = dbMetric.TotalWrites;
+                    try
+                    {
+                        // Note: At the moment, the metric for a columns db is combined across column.
+                        IDbMeta.DbMetric dbMetric = kv.Value.GatherMetric();
+                        Db.Metrics.DbSize[kv.Key] = dbMetric.Size;
+                        Db.Metrics.DbBlockCacheSize[kv.Key] = dbMetric.CacheSize;
+                        Db.Metrics.DbMemtableSize[kv.Key] = dbMetric.MemtableSize;
+                        Db.Metrics.DbIndexFilterSize[kv.Key] = dbMetric.IndexSize;
+                        Db.Metrics.DbReads[kv.Key] = dbMetric.TotalReads;
+                        Db.Metrics.DbWrites[kv.Key] = dbMetric.TotalWrites;
+                        if (_failingDbs.Remove(kv.Key) && _logger.IsInfo)
+                            _logger.Info($"DB metric collection recovered for '{kv.Key}'");
+                    }
+                    catch (Exception e)
+                    {
+                        // Remove stale entries so Prometheus does not report old values indefinitely.
+                        RemoveStaleMetricEntry(kv.Key);
+                        // Log only on the first failure of a streak; recovery is logged when GatherMetric succeeds again.
+                        if (_failingDbs.Add(kv.Key) && _logger.IsWarn)
+                            _logger.Warn($"Failed to gather metrics for DB '{kv.Key}': {e.Message}");
+                    }
                 }
 
                 Db.Metrics.DbBlockCacheSize["Shared"] = _sharedBlockCache.Value.GetUsage();
@@ -113,12 +127,26 @@ public class DbMonitoringModule : Module
             }
         }
 
+        // Cast to IDictionary<string, long> so this works for both the default NonBlocking.ConcurrentDictionary
+        // and the plain Dictionary used under the ZK_EVM compile flag.
+        private static readonly IDictionary<string, long>[] _perDbMetricMaps =
+        {
+            Db.Metrics.DbReads, Db.Metrics.DbWrites, Db.Metrics.DbSize,
+            Db.Metrics.DbMemtableSize, Db.Metrics.DbBlockCacheSize, Db.Metrics.DbIndexFilterSize,
+        };
+
+        private static void RemoveStaleMetricEntry(string name)
+        {
+            foreach (IDictionary<string, long> map in _perDbMetricMaps)
+                map.Remove(name);
+        }
+
         public class DbFactoryInterceptor(DbTracker tracker, IDbFactory baseFactory) : IDbFactory
         {
             public IDb CreateDb(DbSettings dbSettings)
             {
                 IDb db = baseFactory.CreateDb(dbSettings);
-                if (db is IDbMeta dbMeta)
+                if (!dbSettings.SkipMetricsTracking && db is IDbMeta dbMeta)
                 {
                     tracker.AddDb(dbSettings.DbName, dbMeta);
                 }
@@ -128,7 +156,7 @@ public class DbMonitoringModule : Module
             public IColumnsDb<T> CreateColumnsDb<T>(DbSettings dbSettings) where T : struct, Enum
             {
                 IColumnsDb<T> db = baseFactory.CreateColumnsDb<T>(dbSettings);
-                if (db is IDbMeta dbMeta)
+                if (!dbSettings.SkipMetricsTracking && db is IDbMeta dbMeta)
                 {
                     tracker.AddDb(dbSettings.DbName, dbMeta);
                 }

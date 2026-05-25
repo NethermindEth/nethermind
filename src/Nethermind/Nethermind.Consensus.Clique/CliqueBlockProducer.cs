@@ -428,7 +428,7 @@ public class CliqueBlockProducer : IBlockProducer
         if (!isEpochBlock && !_proposals.IsEmpty)
         {
             // Gather all the proposals that make sense voting on
-            List<Address> addresses = new();
+            List<Address> addresses = [];
             foreach ((Address address, bool authorize) in _proposals)
             {
                 if (_snapshotManager.IsValidVote(snapshot, address, authorize))

@@ -333,7 +333,7 @@ public class StartBlockProducerAuRa(
             return false;
         }
 
-        IList<ITxSource> txSources = new List<ITxSource> { CreateStandardTxSourceForProducer() };
+        IList<ITxSource> txSources = [CreateStandardTxSourceForProducer()];
         bool needSigner = false;
 
         needSigner |= CheckAddPosdaoTransactions(txSources, _parameters.PosdaoTransition);

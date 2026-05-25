@@ -263,7 +263,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
 
     private static Dictionary<AddressAsKey, ArrayPoolList<(int Index, Transaction Tx)>> GroupTransactionsBySender(Block block)
     {
-        Dictionary<AddressAsKey, ArrayPoolList<(int, Transaction)>> groups = new();
+        Dictionary<AddressAsKey, ArrayPoolList<(int, Transaction)>> groups = [];
 
         for (int i = 0; i < block.Transactions.Length; i++)
         {
@@ -423,7 +423,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
 
         private void WarmupFromBal(ParallelOptions parallelOptions, ObjectPool<IReadOnlyTxProcessorSource> envPool)
         {
-            using ArrayPoolList<ReadOnlyAccountChanges> accounts = Bal!.AccountChanges.ToPooledList(Bal!.AccountChanges.Count);
+            using ArrayPoolList<ReadOnlyAccountChanges> accounts = new(Bal!.AccountChanges.AsSpan());
 
             WarmingState<ArrayPoolList<ReadOnlyAccountChanges>> baseState = new(envPool, accounts, parent);
 

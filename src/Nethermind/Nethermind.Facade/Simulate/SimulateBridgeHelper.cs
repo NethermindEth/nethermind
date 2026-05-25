@@ -59,7 +59,7 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
         long gasCapLimit,
         CancellationToken cancellationToken)
     {
-        List<SimulateBlockResult<TTrace>> list = new();
+        List<SimulateBlockResult<TTrace>> list = [];
         SimulateOutput<TTrace> result = new()
         {
             Items = list
@@ -108,7 +108,7 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
 
         if (payload.BlockStateCalls is not null)
         {
-            Dictionary<Address, ulong> nonceCache = new();
+            Dictionary<Address, ulong> nonceCache = [];
             IBlockTracer cancellationBlockTracer = tracer.WithCancellation(cancellationToken);
 
             foreach (BlockStateCall<TransactionWithSourceDetails> blockCall in payload.BlockStateCalls)

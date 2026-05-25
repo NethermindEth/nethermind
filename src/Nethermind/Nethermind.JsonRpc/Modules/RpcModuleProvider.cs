@@ -28,8 +28,8 @@ namespace Nethermind.JsonRpc.Modules
         private readonly HashSet<string> _modules = new(StringComparer.OrdinalIgnoreCase);
         private readonly HashSet<string> _enabledModules = new(StringComparer.OrdinalIgnoreCase);
 
-        private Dictionary<string, ResolvedMethodInfo> _methods = new();
-        private Dictionary<string, Pool> _pools = new();
+        private Dictionary<string, ResolvedMethodInfo> _methods = [];
+        private Dictionary<string, Pool> _pools = [];
         private FrozenDictionary<string, ResolvedMethodInfo>? _frozenMethods = null;
         private FrozenDictionary<string, Pool>? _frozenPools = null;
 

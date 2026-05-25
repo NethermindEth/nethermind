@@ -84,7 +84,7 @@ namespace Nethermind.Trie.Test
             pruningContext = pruningContext.WithMaxDepth(maxDepth).TurnOnPrune();
 
             // Generate random accounts and operations
-            List<int> accounts = new();
+            List<int> accounts = [];
             for (int i = 0; i < accountsCount; i++)
             {
                 accounts.Add(i);
@@ -194,7 +194,7 @@ namespace Nethermind.Trie.Test
         public class PruningContext
         {
             private BlockHeader? _baseBlock = Build.A.EmptyBlockHeader;
-            private readonly Dictionary<string, BlockHeader?> _branchingPoints = new();
+            private readonly Dictionary<string, BlockHeader?> _branchingPoints = [];
             private readonly ManualResetEvent _stateDbBlocker = new(true);
             private readonly ManualResetEventSlim _writeReached = new(false);
             private readonly TestMemDb _stateDb;

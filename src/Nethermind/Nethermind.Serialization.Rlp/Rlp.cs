@@ -707,21 +707,31 @@ namespace Nethermind.Serialization.Rlp
                 return data;
             }
 
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
             public readonly void Check(int nextCheck)
             {
                 if (Position != nextCheck)
                 {
-                    throw new RlpException($"Data checkpoint failed. Expected {nextCheck} and is {Position}");
+                    ThrowCheckpointFailed(nextCheck, Position);
                 }
             }
 
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
             public readonly void CheckEnd()
             {
                 if (Position != Length)
                 {
-                    throw new RlpException($"Data checkpoint failed. Expected to reach the end of the sequence, but is at {Position}");
+                    ThrowCheckEndFailed(Position);
                 }
             }
+
+            [DoesNotReturn, StackTraceHidden]
+            private static void ThrowCheckpointFailed(int expected, int position) =>
+                throw new RlpException($"Data checkpoint failed. Expected {expected} and is {position}");
+
+            [DoesNotReturn, StackTraceHidden]
+            private static void ThrowCheckEndFailed(int position) =>
+                throw new RlpException($"Data checkpoint failed. Expected to reach the end of the sequence, but is at {position}");
 
             // This class was introduce to reduce allocations when deserializing receipts. In order to deserialize receipts we first try to deserialize it in new format and then in old format.
             // If someone didn't do migration this will result in excessive allocations and GC of the not needed strings.
@@ -1535,11 +1545,13 @@ namespace Nethermind.Serialization.Rlp
                 => throw new DecodeKeccakRlpException(prefix, Position, Data.Length);
 
             [StackTraceHidden]
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
             public readonly void GuardLimit(int count, RlpLimit? limit = null) =>
                 Rlp.GuardLimit(count, Length - Position, limit);
 
             // ReSharper disable once MemberHidesStaticFromOuterClass
             [StackTraceHidden]
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
             public static void GuardSize(int actual, int expected) =>
                 Rlp.GuardSize(actual, expected);
         }
@@ -1804,18 +1816,22 @@ namespace Nethermind.Serialization.Rlp
         private static ILogger _logger = Static.LogManager.GetClassLogger<Rlp>();
 
         [StackTraceHidden]
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void GuardLimit(int count, int bytesLeft, RlpLimit? limit = null)
         {
             RlpLimit l = limit ?? RlpLimit.DefaultLimit;
-            if (count < 0 || count > bytesLeft || count > l.Limit)
+            // First test rejects either bound being negative.
+            if ((bytesLeft | l.Limit) < 0 || (uint)count > (uint)bytesLeft || (uint)count > (uint)l.Limit)
             {
                 ThrowCountOverLimit((uint)count, bytesLeft, l);
             }
         }
 
         [StackTraceHidden]
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void GuardSize(int actual, int expected)
         {
+            // expected == -1 is the sentinel for "no constraint".
             if (expected >= 0 && actual != expected)
             {
                 ThrowUnexpectedCount(actual, expected);

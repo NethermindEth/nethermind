@@ -133,7 +133,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         {
             LogsSubscription logsSubscription = new(_jsonRpcDuplexClient, _receiptCanonicalityMonitor, _filterStore, _blockTree, _logManager, filter);
 
-            List<JsonRpcResult> jsonRpcResults = new();
+            List<JsonRpcResult> jsonRpcResults = [];
 
             SemaphoreSlim semaphoreSlim = new(0, 1);
             logsSubscription.JsonRpcDuplexClient.SendJsonRpcResult(Arg.Do<JsonRpcResult>(j =>
@@ -400,7 +400,7 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             Block block0 = Build.A.Block.Genesis.WithDifficulty(0).WithTotalDifficulty(0L).TestObject;
 
-            List<Block> blocks = new() { block0 };
+            List<Block> blocks = [block0];
 
             for (int i = 1; i < 21; i++)
             {
@@ -759,7 +759,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             Block block = Build.A.Block.WithHeader(blockHeader).TestObject;
             _receiptStorage.Get(Arg.Any<Block>()).Returns(txReceipts);
 
-            List<JsonRpcResult> jsonRpcResults = new();
+            List<JsonRpcResult> jsonRpcResults = [];
 
             ManualResetEvent manualResetEvent = new(false);
             ReceiptsEventArgs receiptsEventArgs = new(blockHeader, txReceipts, false);
@@ -1203,7 +1203,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             Block block = Build.A.Block.TestObject;
             Block previousBlock = Build.A.Block.WithHeader(blockHeader).WithBloom(new Bloom(txReceipts.Select(r => r.Bloom).ToArray())).TestObject;
             _receiptStorage.Get(Arg.Any<Block>()).Returns(txReceipts);
-            List<JsonRpcResult> jsonRpcResults = new();
+            List<JsonRpcResult> jsonRpcResults = [];
 
             ManualResetEvent manualResetEvent = new(false);
             BlockReplacementEventArgs blockEventArgs = new(block, previousBlock);

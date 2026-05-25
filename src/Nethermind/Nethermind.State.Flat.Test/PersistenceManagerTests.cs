@@ -510,7 +510,7 @@ public class PersistenceManagerTests
     private class TestFinalizedStateProvider : IFinalizedStateProvider
     {
         private long _finalizedBlockNumber;
-        private readonly Dictionary<long, Hash256> _finalizedStateRoots = new();
+        private readonly Dictionary<long, Hash256> _finalizedStateRoots = [];
 
         public long FinalizedBlockNumber => _finalizedBlockNumber;
 

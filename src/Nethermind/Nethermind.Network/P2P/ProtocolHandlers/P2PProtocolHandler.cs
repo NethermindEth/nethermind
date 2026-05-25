@@ -42,8 +42,8 @@ public class P2PProtocolHandler(
     private TaskCompletionSource<Packet> _pongCompletionSource;
     private readonly INodeStatsManager _nodeStatsManager = nodeStatsManager ?? throw new ArgumentNullException(nameof(nodeStatsManager));
     private bool _sentHello;
-    private readonly List<Capability> _agreedCapabilities = new();
-    private List<Capability> _availableCapabilities = new();
+    private readonly List<Capability> _agreedCapabilities = [];
+    private List<Capability> _availableCapabilities = [];
 
     private byte _protocolVersion = 5;
 
@@ -57,7 +57,7 @@ public class P2PProtocolHandler(
 
     public IReadOnlyList<Capability> AgreedCapabilities { get { return _agreedCapabilities; } }
     public IReadOnlyList<Capability> AvailableCapabilities { get { return _availableCapabilities; } }
-    private readonly List<Capability> _supportedCapabilities = new();
+    private readonly List<Capability> _supportedCapabilities = [];
 
     public int ListenPort { get; } = session.LocalPort;
     public PublicKey LocalNodeId { get; } = localNodeId;
