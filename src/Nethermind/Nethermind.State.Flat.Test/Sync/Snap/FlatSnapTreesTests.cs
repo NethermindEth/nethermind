@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using FluentAssertions;
 using Nethermind.Core;
@@ -22,55 +23,31 @@ public class FlatSnapTreesTests
     private static IPersistence.IPersistenceReader Reader() => Substitute.For<IPersistence.IPersistenceReader>();
     private static IPersistence.IWriteBatch WriteBatch() => Substitute.For<IPersistence.IWriteBatch>();
 
-    [Test]
-    public void StateTree_IsPersisted_TrueWhenStoredRlpHashMatches()
+    private static FlatSnapStateTree NewStateTree(IPersistence.IPersistenceReader reader, IPersistence.IWriteBatch? writer = null, bool enableDoubleWriteCheck = false) =>
+        new(reader, writer ?? WriteBatch(), enableDoubleWriteCheck, LimboLogs.Instance);
+
+    private static FlatSnapStorageTree NewStorageTree(IPersistence.IPersistenceReader reader, Hash256 addressHash, IPersistence.IWriteBatch? writer = null) =>
+        new(reader, writer ?? WriteBatch(), addressHash, enableDoubleWriteCheck: false, LimboLogs.Instance);
+
+    private static ValueHash256 PathHash(string prefix) => new(Bytes.FromHexString(prefix + new string('0', 64 - prefix.Length)));
+
+    private static IEnumerable<TestCaseData> StateIsPersistedCases()
     {
-        IPersistence.IPersistenceReader reader = Reader();
-        IPersistence.IWriteBatch writer = WriteBatch();
         byte[] rlp = [0xc1, 0x42];
-        ValueHash256 expectedHash = ValueKeccak.Compute(rlp);
-        reader.TryLoadStateRlp(Arg.Any<TreePath>(), Arg.Any<ReadFlags>()).Returns(rlp);
-
-        FlatSnapStateTree tree = new(reader, writer, enableDoubleWriteCheck: false, LimboLogs.Instance);
-
-        TreePath path = TreePath.FromHexString("12");
-        tree.IsPersisted(path, expectedHash).Should().BeTrue();
+        yield return new TestCaseData(rlp, (ValueHash256?)ValueKeccak.Compute(rlp), true).SetName("match");
+        yield return new TestCaseData((byte[]?)null, (ValueHash256?)null, false).SetName("missing rlp");
+        yield return new TestCaseData(rlp, (ValueHash256?)new ValueHash256(Bytes.FromHexString("11" + new string('0', 62))), false).SetName("hash mismatch");
     }
 
-    [Test]
-    public void StateTree_IsPersisted_FalseWhenRlpMissing()
+    [TestCaseSource(nameof(StateIsPersistedCases))]
+    public void StateTree_IsPersisted(byte[]? storedRlp, ValueHash256? expectedHash, bool expected)
     {
         IPersistence.IPersistenceReader reader = Reader();
-        reader.TryLoadStateRlp(Arg.Any<TreePath>(), Arg.Any<ReadFlags>()).Returns((byte[]?)null);
+        reader.TryLoadStateRlp(Arg.Any<TreePath>(), Arg.Any<ReadFlags>()).Returns(storedRlp);
 
-        FlatSnapStateTree tree = new(reader, WriteBatch(), enableDoubleWriteCheck: false, LimboLogs.Instance);
+        using FlatSnapStateTree tree = NewStateTree(reader);
 
-        tree.IsPersisted(TreePath.FromHexString("12"), default).Should().BeFalse();
-    }
-
-    [Test]
-    public void StateTree_IsPersisted_FalseWhenHashMismatch()
-    {
-        IPersistence.IPersistenceReader reader = Reader();
-        reader.TryLoadStateRlp(Arg.Any<TreePath>(), Arg.Any<ReadFlags>()).Returns([0xc1, 0x42]);
-
-        FlatSnapStateTree tree = new(reader, WriteBatch(), enableDoubleWriteCheck: false, LimboLogs.Instance);
-
-        ValueHash256 wrongHash = new(Bytes.FromHexString("11" + new string('0', 62)));
-        tree.IsPersisted(TreePath.FromHexString("12"), wrongHash).Should().BeFalse();
-    }
-
-    [Test]
-    public void StateTree_Dispose_DisposesReaderAndWriteBatch()
-    {
-        IPersistence.IPersistenceReader reader = Reader();
-        IPersistence.IWriteBatch writer = WriteBatch();
-        FlatSnapStateTree tree = new(reader, writer, enableDoubleWriteCheck: false, LimboLogs.Instance);
-
-        tree.Dispose();
-
-        reader.Received(1).Dispose();
-        writer.Received(1).Dispose();
+        tree.IsPersisted(TreePath.FromHexString("12"), expectedHash ?? default).Should().Be(expected);
     }
 
     [Test]
@@ -81,21 +58,27 @@ public class FlatSnapTreesTests
         Hash256 addressHash = Keccak.Compute(Bytes.FromHexString("aa"));
         reader.TryLoadStorageRlp(addressHash, Arg.Any<TreePath>(), Arg.Any<ReadFlags>()).Returns(rlp);
 
-        FlatSnapStorageTree tree = new(reader, WriteBatch(), addressHash, enableDoubleWriteCheck: false, LimboLogs.Instance);
+        using FlatSnapStorageTree tree = NewStorageTree(reader, addressHash);
 
-        ValueHash256 expectedHash = ValueKeccak.Compute(rlp);
-        tree.IsPersisted(TreePath.FromHexString("ab"), expectedHash).Should().BeTrue();
+        tree.IsPersisted(TreePath.FromHexString("ab"), ValueKeccak.Compute(rlp)).Should().BeTrue();
         tree.IsPersisted(TreePath.FromHexString("ab"), default).Should().BeFalse();
     }
 
-    [Test]
-    public void StorageTree_Dispose_DisposesReaderAndWriteBatch()
+    private static IEnumerable<TestCaseData> DisposeCases()
+    {
+        yield return new TestCaseData((Func<IPersistence.IPersistenceReader, IPersistence.IWriteBatch, IDisposable>)
+            ((r, w) => new FlatSnapStateTree(r, w, enableDoubleWriteCheck: false, LimboLogs.Instance))).SetName("state tree");
+        yield return new TestCaseData((Func<IPersistence.IPersistenceReader, IPersistence.IWriteBatch, IDisposable>)
+            ((r, w) => new FlatSnapStorageTree(r, w, Keccak.Zero, enableDoubleWriteCheck: false, LimboLogs.Instance))).SetName("storage tree");
+    }
+
+    [TestCaseSource(nameof(DisposeCases))]
+    public void Dispose_DisposesReaderAndWriteBatch(Func<IPersistence.IPersistenceReader, IPersistence.IWriteBatch, IDisposable> build)
     {
         IPersistence.IPersistenceReader reader = Reader();
         IPersistence.IWriteBatch writer = WriteBatch();
-        FlatSnapStorageTree tree = new(reader, writer, Keccak.Zero, enableDoubleWriteCheck: false, LimboLogs.Instance);
 
-        tree.Dispose();
+        build(reader, writer).Dispose();
 
         reader.Received(1).Dispose();
         writer.Received(1).Dispose();
@@ -107,20 +90,15 @@ public class FlatSnapTreesTests
         IPersistence.IPersistenceReader reader = Reader();
         reader.GetAccountRaw(Arg.Any<ValueHash256>()).Returns((byte[]?)null);
         IPersistence.IWriteBatch writer = WriteBatch();
-
-        FlatSnapStateTree tree = new(reader, writer, enableDoubleWriteCheck: false, LimboLogs.Instance);
+        using FlatSnapStateTree tree = NewStateTree(reader, writer);
 
         Account account = new(1, 100);
-        ValueHash256 lowPath = new(Bytes.FromHexString("11" + new string('0', 62)));
-        ValueHash256 highPath = new(Bytes.FromHexString("99" + new string('0', 62)));
-        ValueHash256 upperBound = new(Bytes.FromHexString("55" + new string('0', 62)));
+        ValueHash256 lowPath = PathHash("11");
+        ValueHash256 highPath = PathHash("99");
 
-        List<PathWithAccount> entries = [new PathWithAccount(lowPath, account), new PathWithAccount(highPath, account)];
-        tree.BulkSetAndUpdateRootHash(entries);
+        tree.BulkSetAndUpdateRootHash([new PathWithAccount(lowPath, account), new PathWithAccount(highPath, account)]);
+        tree.Commit(PathHash("55"));
 
-        tree.Commit(upperBound);
-
-        // Only the in-bound entry should be written.
         writer.Received(1).SetAccountRaw(lowPath, account);
         writer.DidNotReceive().SetAccountRaw(highPath, Arg.Any<Account>());
     }
@@ -129,15 +107,10 @@ public class FlatSnapTreesTests
     public void StateTree_DoubleWriteCheck_ThrowsWhenAccountAlreadyPresent()
     {
         IPersistence.IPersistenceReader reader = Reader();
-        IPersistence.IWriteBatch writer = WriteBatch();
-        // Simulate the slot already being persisted.
         reader.GetAccountRaw(Arg.Any<ValueHash256>()).Returns([0x01]);
+        using FlatSnapStateTree tree = NewStateTree(reader, enableDoubleWriteCheck: true);
 
-        FlatSnapStateTree tree = new(reader, writer, enableDoubleWriteCheck: true, LimboLogs.Instance);
-
-        ValueHash256 path = new(Bytes.FromHexString("11" + new string('0', 62)));
-        List<PathWithAccount> entries = [new PathWithAccount(path, new Account(1, 100))];
-        tree.BulkSetAndUpdateRootHash(entries);
+        tree.BulkSetAndUpdateRootHash([new PathWithAccount(PathHash("11"), new Account(1, 100))]);
 
         Assert.That(() => tree.Commit(new ValueHash256(Bytes.FromHexString("ff" + new string('f', 62)))),
             Throws.Exception.With.Message.Contain("Double account flat write"));

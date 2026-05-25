@@ -262,14 +262,28 @@ namespace Nethermind.Store.Test
         }
 
 
-        [Test]
-        public void Can_collect_stats()
+        public static System.Collections.Generic.IEnumerable<TestCaseData> ReaderApiSmokeCases
+        {
+            get
+            {
+                yield return new TestCaseData((Action<IStateReader, BlockHeader>)((r, h) =>
+                    r.CollectStats(h, new MemDb(), Logger).AccountCount.Should().Be(1))).SetName("CollectStats");
+                yield return new TestCaseData((Action<IStateReader, BlockHeader>)((r, h) =>
+                    r.RunTreeVisitor(new TrieStatsCollector(new MemDb(), LimboLogs.Instance), h))).SetName("RunTreeVisitor");
+                yield return new TestCaseData((Action<IStateReader, BlockHeader>)((r, h) =>
+                    r.DumpState(h).Should().NotBeEmpty())).SetName("DumpState");
+                yield return new TestCaseData((Action<IStateReader, BlockHeader>)((r, h) =>
+                    r.HasStateForBlock(h).Should().BeTrue())).SetName("HasStateForBlock");
+            }
+        }
+
+        [TestCaseSource(nameof(ReaderApiSmokeCases))]
+        public void Reader_OnCommittedAccount(Action<IStateReader, BlockHeader> verify)
         {
             using Context ctx = new(useFlat);
             BlockHeader header = ctx.CommitAndCapture(state => state.CreateAccount(TestItem.AddressA, 1.Ether));
 
-            TrieStats stats = ctx.Reader.CollectStats(header, new MemDb(), Logger);
-            stats.AccountCount.Should().Be(1);
+            verify(ctx.Reader, header);
         }
 
         private (Context ctx, IReleaseSpec releaseSpec, IDisposable scope) SetupContractSenderTest(
@@ -320,25 +334,6 @@ namespace Nethermind.Store.Test
         }
 
         [Test]
-        public void Can_accepts_visitors()
-        {
-            using Context ctx = new(useFlat);
-            BlockHeader header = ctx.CommitAndCapture(state => state.CreateAccount(TestItem.AddressA, 1.Ether));
-
-            TrieStatsCollector visitor = new(new MemDb(), LimboLogs.Instance);
-            ctx.Reader.RunTreeVisitor(visitor, header);
-        }
-
-        [Test]
-        public void Can_dump_state()
-        {
-            using Context ctx = new(useFlat);
-            BlockHeader header = ctx.CommitAndCapture(state => state.CreateAccount(TestItem.AddressA, 1.Ether));
-
-            ctx.Reader.DumpState(header).Should().NotBeEmpty();
-        }
-
-        [Test]
         public void TryGetAccount_NonExistentAccount_ReturnsFalse()
         {
             using Context ctx = new(useFlat);
@@ -377,13 +372,5 @@ namespace Nethermind.Store.Test
             ctx.Reader.GetCode(codeHash).Should().Equal(code);
         }
 
-        [Test]
-        public void HasStateForBlock_CommittedBlock_ReturnsTrue()
-        {
-            using Context ctx = new(useFlat);
-            BlockHeader header = ctx.CommitAndCapture(state => state.CreateAccount(TestItem.AddressA, 1));
-
-            ctx.Reader.HasStateForBlock(header).Should().BeTrue();
-        }
     }
 }

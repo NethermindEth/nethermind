@@ -10,6 +10,15 @@ namespace Nethermind.State.Flat.Test;
 [TestFixture]
 public class SlotValueTests
 {
+    private const string FullSlotHex = "0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20";
+
+    private static byte[] IncrementingBytes(int length)
+    {
+        byte[] data = new byte[length];
+        for (int i = 0; i < length; i++) data[i] = (byte)(i + 1);
+        return data;
+    }
+
     [TestCase(0)]
     [TestCase(1)]
     [TestCase(16)]
@@ -17,14 +26,12 @@ public class SlotValueTests
     [TestCase(32)]
     public void Test_Ctor_AcceptsLengthsUpTo32(int length)
     {
-        byte[] data = new byte[length];
-        for (int i = 0; i < length; i++) data[i] = (byte)(i + 1);
+        byte[] data = IncrementingBytes(length);
 
         SlotValue value = new(data);
         ReadOnlySpan<byte> bytes = value.AsReadOnlySpan;
 
         Assert.That(bytes.Length, Is.EqualTo(32));
-        // Ctor copies to the start of the buffer; trailing bytes are zero-padded.
         for (int i = 0; i < length; i++) Assert.That(bytes[i], Is.EqualTo(data[i]));
         for (int i = length; i < 32; i++) Assert.That(bytes[i], Is.EqualTo(0));
     }
@@ -41,7 +48,7 @@ public class SlotValueTests
     [Test]
     public void Test_FromSpanWithoutLeadingZero_FastPath_For32Bytes()
     {
-        byte[] data = Bytes.FromHexString("0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20");
+        byte[] data = Bytes.FromHexString(FullSlotHex);
         SlotValue value = SlotValue.FromSpanWithoutLeadingZero(data);
         Assert.That(value.AsReadOnlySpan.ToArray(), Is.EqualTo(data));
     }
@@ -52,8 +59,7 @@ public class SlotValueTests
     [TestCase(31)]
     public void Test_FromSpanWithoutLeadingZero_PadsLeadingZeros(int length)
     {
-        byte[] data = new byte[length];
-        for (int i = 0; i < length; i++) data[i] = (byte)(i + 1);
+        byte[] data = IncrementingBytes(length);
 
         SlotValue value = SlotValue.FromSpanWithoutLeadingZero(data);
         ReadOnlySpan<byte> bytes = value.AsReadOnlySpan;
@@ -69,7 +75,7 @@ public class SlotValueTests
     [Test]
     public void Test_FromBytes_WrapsNonNull()
     {
-        byte[] data = Bytes.FromHexString("0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20");
+        byte[] data = Bytes.FromHexString(FullSlotHex);
         SlotValue? value = SlotValue.FromBytes(data);
         Assert.That(value, Is.Not.Null);
         Assert.That(value!.Value.AsReadOnlySpan.ToArray(), Is.EqualTo(data));
@@ -85,8 +91,7 @@ public class SlotValueTests
     [TestCase("01", "01")]
     [TestCase("0102", "0102")]
     [TestCase("00ff", "ff")]
-    [TestCase("0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20",
-              "0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20")]
+    [TestCase(FullSlotHex, FullSlotHex)]
     public void Test_ToEvmBytes_StripsLeadingZerosForNonZeroValue(string inputHex, string expectedHex)
     {
         SlotValue value = SlotValue.FromSpanWithoutLeadingZero(Bytes.FromHexString(inputHex));
