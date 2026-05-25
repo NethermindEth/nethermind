@@ -56,31 +56,31 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
 
         protected string GetErrorMsg() => $"{Type} subscription with ID {Id} failed.";
 
-        // Task.Factory.StartNew with an async lambda returns Task<Task>; the outer task completes
-        // at the first await, so without Unwrap() the continuation runs immediately and never observes
-        // faults from the processing loop.
-        private void ProcessMessages() => Task.Factory.StartNew(async () =>
+        private void ProcessMessages() => _ = ProcessMessagesAsync();
+
+        private async Task ProcessMessagesAsync()
         {
-            while (await SendChannel.Reader.WaitToReadAsync())
+            try
             {
-                while (SendChannel.Reader.TryRead(out Func<Task> action))
+                while (await SendChannel.Reader.WaitToReadAsync())
                 {
-                    try
+                    while (SendChannel.Reader.TryRead(out Func<Task> action))
                     {
-                        await action();
-                    }
-                    catch (Exception e)
-                    {
-                        if (_logger.IsDebug) _logger.Debug($"{GetErrorMsg()} With exception {e}");
+                        try
+                        {
+                            await action();
+                        }
+                        catch (Exception e)
+                        {
+                            if (_logger.IsDebug) _logger.Debug($"{GetErrorMsg()} With exception {e}");
+                        }
                     }
                 }
             }
-        }, TaskCreationOptions.LongRunning).Unwrap().ContinueWith(t =>
-        {
-            if (t.IsFaulted)
+            catch (Exception e)
             {
-                if (_logger.IsError) _logger.Error($"{GetErrorMsg()} {nameof(ProcessMessages)} encountered an exception.", t.Exception);
+                if (_logger.IsError) _logger.Error($"{GetErrorMsg()} {nameof(ProcessMessages)} encountered an exception.", e);
             }
-        }, TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously);
+        }
     }
 }
