@@ -759,6 +759,22 @@ public class TrieNodeTests
     }
 
     [Test]
+    public void Cannot_replace_child_ref_on_sealed()
+    {
+        TrieNode child = TrieNode.CreateLeafTyped(Keccak.Zero);
+        TrieNode trieNode = TrieNode.CreateBranchTyped(Keccak.Zero);
+        Assert.Throws<InvalidOperationException>(() => trieNode.ReplaceChildRef(0, child));
+    }
+
+    [Test]
+    public void Cannot_set_unresolved_child_hash_on_sealed()
+    {
+        TrieNode trieNode = TrieNode.CreateBranchTyped(Keccak.Zero);
+        ValueHash256 hash = TestItem.KeccakA.ValueHash256;
+        Assert.Throws<InvalidOperationException>(() => trieNode.SetUnresolvedChildHashAt(0, in hash));
+    }
+
+    [Test]
     public void Pruning_regression()
     {
         TrieNode child = new TrieSyncNode(Keccak.Zero);

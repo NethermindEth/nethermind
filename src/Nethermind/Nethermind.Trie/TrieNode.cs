@@ -1448,6 +1448,11 @@ namespace Nethermind.Trie
         public void SetUnresolvedChildHashAt(int childIndex, in ValueHash256 hash)
         {
             if (!IsBranch) ThrowNotABranch();
+            if (IsSealed)
+            {
+                ThrowAlreadySealed();
+            }
+
             // The hash already lives in the parent RLP at this slot; clearing the
             // resolved reference is enough — the next read decodes it on demand.
             // The hash argument is preserved for caller introspection / future asserts.
@@ -1459,6 +1464,10 @@ namespace Nethermind.Trie
             [DoesNotReturn, StackTraceHidden]
             static void ThrowNotABranch() => throw new TrieException(
                 $"{nameof(SetUnresolvedChildHashAt)} called on a non-branch node.");
+
+            [DoesNotReturn, StackTraceHidden]
+            void ThrowAlreadySealed() => throw new InvalidOperationException(
+                $"{nameof(TrieNode)} {this} is already sealed when setting a child.");
         }
 
         public TrieNode? this[int i]
@@ -1534,9 +1543,18 @@ namespace Nethermind.Trie
                 throw new InvalidOperationException();
             }
 
+            if (IsSealed)
+            {
+                ThrowAlreadySealed();
+            }
+
             InvalidateRlpAndKeccak();
             SetItem(i, child);
             InvalidateRlpAndKeccak();
+
+            [DoesNotReturn, StackTraceHidden]
+            void ThrowAlreadySealed() => throw new InvalidOperationException(
+                $"{nameof(TrieNode)} {this} is already sealed when setting a child.");
         }
 
         public void SetChild(int i, TrieNode? node)
