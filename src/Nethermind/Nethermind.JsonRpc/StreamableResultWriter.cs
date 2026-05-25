@@ -11,7 +11,7 @@ namespace Nethermind.JsonRpc;
 /// <summary>Provides low-allocation JSON streaming helpers for RPC results.</summary>
 public static class StreamableResultWriter
 {
-    private const long FlushThresholdBytes = 64 * 1024;
+    private const long FlushThresholdBytes = 16 * 1024;
 
     /// <summary>Writes a JSON array by delegating each item to a struct writer.</summary>
     /// <param name="writer">The destination writer.</param>

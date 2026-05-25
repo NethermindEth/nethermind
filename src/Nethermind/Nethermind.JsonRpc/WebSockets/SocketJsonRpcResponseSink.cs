@@ -127,7 +127,7 @@ internal sealed class SocketJsonRpcResponseSink<TStream>(
 
 internal static class SocketJsonRpcResponseWriter
 {
-    private static readonly StreamPipeWriterOptions ResponsePipeWriterOptions = new(leaveOpen: true);
+    private static readonly StreamPipeWriterOptions ResponsePipeWriterOptions = new(minimumBufferSize: 32 * 1024, leaveOpen: true);
 
     public static async ValueTask<long> WriteMessageAsync<TStream>(TStream stream, JsonRpcResponse response, CancellationToken cancellationToken)
         where TStream : Stream, IMessageBorderPreservingStream
