@@ -94,7 +94,7 @@ public class ProofRpcModuleMetaTests
     public void Returns_proof_payload_alongside_meta()
     {
         ResultWrapper<AccountProofWithMeta> result = _proofRpcModule.proof_getProofWithMeta(
-            TestItem.AddressA, new HashSet<UInt256>(), BlockParameter.Earliest);
+            TestItem.AddressA, [], BlockParameter.Earliest);
 
         result.Result.ResultType.Should().Be(ResultType.Success);
         AccountProofWithMeta payload = result.Data;
@@ -111,7 +111,7 @@ public class ProofRpcModuleMetaTests
     public void Meta_counters_have_sane_values()
     {
         AccountProofWithMeta payload = _proofRpcModule.proof_getProofWithMeta(
-            TestItem.AddressA, new HashSet<UInt256>(), BlockParameter.Earliest).Data;
+            TestItem.AddressA, [], BlockParameter.Earliest).Data;
 
         payload.Meta.Should().NotBeNull();
         payload.Meta.NodeLookups.Should().BeGreaterThan(0,
@@ -124,9 +124,9 @@ public class ProofRpcModuleMetaTests
     public void Identical_queries_produce_identical_diagnostics()
     {
         AccountProofWithMeta first = _proofRpcModule.proof_getProofWithMeta(
-            TestItem.AddressA, new HashSet<UInt256>(), BlockParameter.Earliest).Data;
+            TestItem.AddressA, [], BlockParameter.Earliest).Data;
         AccountProofWithMeta second = _proofRpcModule.proof_getProofWithMeta(
-            TestItem.AddressA, new HashSet<UInt256>(), BlockParameter.Earliest).Data;
+            TestItem.AddressA, [], BlockParameter.Earliest).Data;
 
         second.Meta.NodeLookups.Should().Be(first.Meta.NodeLookups);
         second.Meta.CacheHits.Should().Be(first.Meta.CacheHits);
@@ -137,9 +137,9 @@ public class ProofRpcModuleMetaTests
     public void MaxDepth_grows_when_storage_trie_is_traversed()
     {
         AccountProofWithMeta withoutStorage = _proofRpcModule.proof_getProofWithMeta(
-            TestItem.AddressB, new HashSet<UInt256>(), BlockParameter.Earliest).Data;
+            TestItem.AddressB, [], BlockParameter.Earliest).Data;
 
-        HashSet<UInt256> storageKeys = new();
+        HashSet<UInt256> storageKeys = [];
         for (int i = 0; i < StorageSlotCount; i++)
         {
             storageKeys.Add((UInt256)i);
@@ -156,7 +156,7 @@ public class ProofRpcModuleMetaTests
     [Test]
     public void Rejects_too_many_storage_keys()
     {
-        HashSet<UInt256> storageKeys = new();
+        HashSet<UInt256> storageKeys = [];
         for (int i = 0; i <= EthRpcModule.GetProofStorageKeyLimit; i++)
         {
             storageKeys.Add((UInt256)i);
