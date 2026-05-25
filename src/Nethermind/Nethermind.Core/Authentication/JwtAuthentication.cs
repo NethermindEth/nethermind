@@ -238,7 +238,8 @@ public sealed partial class JwtAuthentication : IRpcAuthentication
             return false;
 
         Span<byte> computedHash = stackalloc byte[SHA256HashBytes];
-        (_hmac ??= new HMACSHA256(_secretBytes)).TryComputeHash(signedBytes, computedHash, out _);
+        if (!(_hmac ??= new HMACSHA256(_secretBytes)).TryComputeHash(signedBytes, computedHash, out _))
+            return false;
 
         Span<byte> sigBytes = stackalloc byte[SHA256HashBytes];
         if (Base64Url.DecodeFromChars(signature, sigBytes, out _, out int sigBytesWritten) != OperationStatus.Done

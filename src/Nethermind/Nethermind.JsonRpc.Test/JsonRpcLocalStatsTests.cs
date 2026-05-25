@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Threading;
 using FluentAssertions;
 using Nethermind.Core;
@@ -133,6 +134,29 @@ namespace Nethermind.JsonRpc.Test
             WaitForLog();
             _testLogger.LogList[0].IndexOf("A   ", StringComparison.Ordinal).Should().BeLessThan(_testLogger.LogList[0].IndexOf("B   ", StringComparison.Ordinal));
             _testLogger.LogList[0].IndexOf("B   ", StringComparison.Ordinal).Should().BeLessThan(_testLogger.LogList[0].IndexOf("C   ", StringComparison.Ordinal));
+        }
+
+        [Test]
+        public void Orders_methods_ordinally()
+        {
+            CultureInfo originalCulture = CultureInfo.CurrentCulture;
+            try
+            {
+                CultureInfo.CurrentCulture = CultureInfo.InvariantCulture;
+
+                _localStats.ReportCall("_", 1, true);
+                _localStats.ReportCall("A", 2, true);
+                MakeTimePass();
+                _localStats.ReportCall("trigger", 300, true);
+                WaitForLog();
+
+                _testLogger.LogList[0].IndexOf("A   ", StringComparison.Ordinal)
+                    .Should().BeLessThan(_testLogger.LogList[0].IndexOf("_   ", StringComparison.Ordinal));
+            }
+            finally
+            {
+                CultureInfo.CurrentCulture = originalCulture;
+            }
         }
 
         [Test]

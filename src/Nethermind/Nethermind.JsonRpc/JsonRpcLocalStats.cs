@@ -144,7 +144,7 @@ public class JsonRpcLocalStats : IJsonRpcLocalStats
             reportStringBuilder.AppendLine(ReportHeader);
             reportStringBuilder.AppendLine(_divider);
             MethodStats total = new();
-            foreach (KeyValuePair<string, MethodStats> methodStats in stats.OrderBy(static kv => kv.Key))
+            foreach (KeyValuePair<string, MethodStats> methodStats in stats.OrderBy(static kv => kv.Key, StringComparer.Ordinal))
             {
                 MethodStats snapshot = methodStats.Value.Snapshot();
                 total.Successes += snapshot.Successes;
