@@ -131,10 +131,10 @@ public class HelloMessageSerializerTests
     private static IEnumerable<TestCaseData> ProtocolCodeLimitCases()
     {
         yield return new TestCaseData(1, false).SetName("1 char protocol code - accepted");
-        yield return new TestCaseData(8, false).SetName("Longest known protocol code - accepted");
-        yield return new TestCaseData(13, false).SetName("13 char protocol code - accepted");
-        yield return new TestCaseData(32, false).SetName("Max protocol code length - accepted");
-        yield return new TestCaseData(33, true).SetName("Max+1 protocol code length - rejected");
+        yield return new TestCaseData(8, false).SetName("Longest spec-legal protocol code - accepted");
+        yield return new TestCaseData(9, true).SetName("9 char protocol code - rejected (over spec)");
+        yield return new TestCaseData(13, true).SetName("13 char protocol code - rejected (over spec)");
+        yield return new TestCaseData(33, true).SetName("33 char protocol code - rejected (over diagnostic read limit)");
     }
 
     [TestCaseSource(nameof(ProtocolCodeLimitCases))]

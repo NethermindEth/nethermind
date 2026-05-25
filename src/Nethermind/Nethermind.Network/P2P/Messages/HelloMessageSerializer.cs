@@ -5,14 +5,25 @@ using System;
 using System.Text;
 using DotNetty.Buffers;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
+using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Stats.Model;
 
 namespace Nethermind.Network.P2P.Messages
 {
-    public class HelloMessageSerializer : IZeroMessageSerializer<HelloMessage>
+    public class HelloMessageSerializer(ILogManager? logManager = null) : IZeroMessageSerializer<HelloMessage>
     {
         private static readonly RlpLimit ClientIdRlpLimit = RlpLimit.For<HelloMessage>(1_024, nameof(HelloMessage.ClientId));
+
+        // devp2p spec: "A capability is identified by a short ASCII name (max eight
+        // characters)". Reads are bounded above by L32 so an over-spec code can still
+        // be captured for the diagnostic log; the spec-strict 8-byte rejection happens
+        // explicitly below.
+        private const int SpecMaxCapabilityCodeLength = 8;
+        private static readonly RlpLimit CapabilityCodeReadLimit = RlpLimit.L32;
+
+        private readonly ILogger _logger = (logManager ?? LimboLogs.Instance).GetClassLogger<HelloMessageSerializer>();
 
         public void Serialize(IByteBuffer byteBuffer, HelloMessage msg)
         {
@@ -58,7 +69,7 @@ namespace Nethermind.Network.P2P.Messages
         public HelloMessage Deserialize(IByteBuffer msgBytes) =>
             msgBytes.DeserializeRlp(Deserialize);
 
-        private static HelloMessage Deserialize(ref Rlp.ValueDecoderContext ctx)
+        private HelloMessage Deserialize(ref Rlp.ValueDecoderContext ctx)
         {
             ctx.ReadSequenceLength();
 
@@ -66,12 +77,26 @@ namespace Nethermind.Network.P2P.Messages
             helloMessage.P2PVersion = ctx.DecodeByte();
             helloMessage.ClientId = ctx.DecodeString(ClientIdRlpLimit);
 
-            helloMessage.Capabilities = ctx.DecodeArrayPoolList(static (ref Rlp.ValueDecoderContext c) =>
+            ILogger logger = _logger;
+            string clientId = helloMessage.ClientId;
+            helloMessage.Capabilities = ctx.DecodeArrayPoolList((ref Rlp.ValueDecoderContext c) =>
             {
                 int length = c.ReadSequenceLength();
                 int checkPosition = c.Position + length;
 
-                ReadOnlySpan<byte> protocolSpan = c.DecodeByteArraySpan(RlpLimit.L32);
+                ReadOnlySpan<byte> protocolSpan = c.DecodeByteArraySpan(CapabilityCodeReadLimit);
+                if (protocolSpan.Length > SpecMaxCapabilityCodeLength)
+                {
+                    if (logger.IsWarn)
+                    {
+                        logger.Warn(
+                            $"Rejecting Hello capability with protocol code longer than the {SpecMaxCapabilityCodeLength}-byte devp2p spec limit. " +
+                            $"ClientId='{clientId}', length={protocolSpan.Length}, hex=0x{protocolSpan.ToHexString()}, utf8='{Encoding.UTF8.GetString(protocolSpan)}'");
+                    }
+                    throw new RlpLimitException(
+                        $"Hello capability protocol code length {protocolSpan.Length} exceeds devp2p spec limit of {SpecMaxCapabilityCodeLength}");
+                }
+
                 if (!Contract.P2P.ProtocolParser.TryGetProtocolCode(protocolSpan, out string? protocolCode))
                 {
                     protocolCode = Encoding.UTF8.GetString(protocolSpan);
