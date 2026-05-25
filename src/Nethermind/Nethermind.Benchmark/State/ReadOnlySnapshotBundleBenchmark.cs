@@ -64,7 +64,7 @@ public class ReadOnlySnapshotBundleBenchmark
         int maxSlotsPerStorageAccount = 0;
 
         // Track storage account ranges per snapshot for hit distribution
-        List<(int AddressStart, int StorageCount, int SlotsPerAccount)> storageRanges = new();
+        List<(int AddressStart, int StorageCount, int SlotsPerAccount)> storageRanges = [];
 
         for (int block = 0; block < SnapshotCount; block++)
         {

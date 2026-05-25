@@ -27,6 +27,8 @@ namespace Nethermind.Core.Test.Builders
 {
     public class BlockTreeBuilder(Block genesisBlock, ISpecProvider specProvider) : BuilderBase<BlockTree>
     {
+        private static readonly ReceiptMessageDecoder ReceiptDecoder = new();
+
         private ISpecProvider _specProvider = specProvider;
         private IReceiptStorage? _receiptStorage;
         private IEthereumEcdsa? _ecdsa;
@@ -335,7 +337,7 @@ namespace Nethermind.Core.Test.Builders
                     .WithBloom(new Bloom())
                     .TestObject;
 
-                List<TxReceipt> receipts = new();
+                List<TxReceipt> receipts = [];
                 foreach (Transaction transaction in currentBlock.Transactions)
                 {
                     LogEntry[] logEntries = _logCreationFunction?.Invoke(currentBlock, transaction).ToArray() ?? [];
@@ -355,7 +357,7 @@ namespace Nethermind.Core.Test.Builders
                 currentBlock.Header.TxRoot = TxTrie.CalculateRoot(currentBlock.Transactions);
                 TxReceipt[] txReceipts = receipts.ToArray();
                 currentBlock.Header.ReceiptsRoot =
-                    ReceiptTrie.CalculateRoot(_specProvider.GetSpec(currentBlock.Header), txReceipts, Rlp.GetStreamEncoder<TxReceipt>()!);
+                    ReceiptTrie.CalculateRoot(_specProvider.GetSpec(currentBlock.Header), txReceipts, ReceiptDecoder);
                 currentBlock.Header.Hash = currentBlock.CalculateHash();
                 foreach (TxReceipt txReceipt in txReceipts)
                 {

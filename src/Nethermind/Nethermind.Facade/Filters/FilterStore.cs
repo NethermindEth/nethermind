@@ -171,7 +171,7 @@ namespace Nethermind.Blockchain.Filters
             }
 
             FilterTopic?[]? filterTopics = GetFilterTopics(topics);
-            List<TopicExpression> expressions = new();
+            List<TopicExpression> expressions = [];
 
             for (int i = 0; i < filterTopics?.Length; i++)
             {

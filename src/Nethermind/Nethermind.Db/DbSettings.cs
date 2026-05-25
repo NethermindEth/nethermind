@@ -12,6 +12,8 @@ namespace Nethermind.Db
 
         public bool DeleteOnStart { get; set; }
         public bool CanDeleteFolder { get; set; } = true;
+        /// <summary>When <c>true</c>, this database will not be registered with the metrics tracker.</summary>
+        public bool SkipMetricsTracking { get; set; }
 
         public IMergeOperator? MergeOperator { get; set; }
         public Dictionary<string, IMergeOperator>? ColumnsMergeOperators { get; set; }

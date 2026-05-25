@@ -297,9 +297,9 @@ public partial class EngineModuleTests
         MergeTestBlockchain chain,
         int count, ExecutionPayload startingParentBlock, bool setHead, Hash256? random = null, bool withRequests = false)
     {
-        List<ExecutionPayload> blocks = new();
+        List<ExecutionPayload> blocks = [];
         ExecutionPayload parentBlock = startingParentBlock;
-        Block? block = parentBlock.TryGetBlock().Block;
+        Block? block = parentBlock.TryGetBlock().Data;
         UInt256? startingTotalDifficulty = block!.IsGenesis
             ? block.Difficulty : chain.BlockFinder.FindHeader(block!.Header!.ParentHash!)!.TotalDifficulty;
         BlockHeader parentHeader = block!.Header;
@@ -323,7 +323,7 @@ public partial class EngineModuleTests
 
             blocks.Add(getPayloadResult);
             parentBlock = getPayloadResult;
-            block = parentBlock.TryGetBlock().Block!;
+            block = parentBlock.TryGetBlock().Data!;
             block.Header.TotalDifficulty = parentHeader.TotalDifficulty + block.Header.Difficulty;
             parentHeader = block.Header;
         }

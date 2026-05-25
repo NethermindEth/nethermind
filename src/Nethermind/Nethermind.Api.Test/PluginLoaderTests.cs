@@ -39,15 +39,15 @@ public class PluginLoaderTests
             typeof(TestPlugin));
         loader.Load();
         loader.OrderPlugins(new PluginConfig { PluginOrder = [] });
-        List<Type> expected = new()
-        {
+        List<Type> expected =
+        [
             typeof(AuRaPlugin),
             typeof(CliquePlugin),
             typeof(EthashPlugin),
             typeof(HivePlugin),
             typeof(NethDevPlugin),
             typeof(TestPlugin)
-        };
+        ];
         Assert.That(expected, Is.EqualTo(loader.PluginTypes).AsCollection);
     }
 
@@ -67,15 +67,15 @@ public class PluginLoaderTests
             new PluginConfig { PluginOrder = ["Hive", "Test", "NethDev", "Ethash", "Clique", "Aura"] };
         loader.OrderPlugins(pluginConfig);
 
-        List<Type> expected = new()
-        {
+        List<Type> expected =
+        [
             typeof(HivePlugin),
             typeof(TestPlugin),
             typeof(NethDevPlugin),
             typeof(EthashPlugin),
             typeof(CliquePlugin),
             typeof(AuRaPlugin),
-        };
+        ];
         Assert.That(expected, Is.EqualTo(loader.PluginTypes).AsCollection);
     }
 
@@ -115,15 +115,15 @@ public class PluginLoaderTests
             new PluginConfig() { PluginOrder = ["Hive", "NethDev", "Ethash"] };
         loader.OrderPlugins(pluginConfig);
 
-        List<Type> expected = new()
-        {
+        List<Type> expected =
+        [
             typeof(HivePlugin),
             typeof(NethDevPlugin),
             typeof(EthashPlugin),
             typeof(AuRaPlugin),
             typeof(CliquePlugin),
             typeof(TestPlugin)
-        };
+        ];
         Assert.That(expected, Is.EqualTo(loader.PluginTypes).AsCollection);
     }
 
@@ -138,14 +138,14 @@ public class PluginLoaderTests
             new PluginConfig();
         loader.OrderPlugins(pluginConfig);
 
-        List<Type> expected = new()
-        {
+        List<Type> expected =
+        [
             typeof(HealthChecksPlugin),
             typeof(EthashPlugin),
             typeof(MergePlugin),
             typeof(HivePlugin),
             typeof(NethDevPlugin)
-        };
+        ];
         Assert.That(expected, Is.EqualTo(loader.PluginTypes).AsCollection);
     }
 

@@ -121,6 +121,15 @@ public interface IJsonRpcConfig : IConfig
     public int MaxLogsPerResponse { get; set; }
 
     [ConfigItem(
+        Description = "Whether to stream `debug_trace*` responses as the EVM executes (lower TTFB and bounded memory). Can be overridden per-call via `GethTraceOptions.StreamMode`.",
+        DefaultValue = "true")]
+    public bool EnableTracingStreamMode { get; set; }
+
+    [ConfigItem(
+        Description = "The number of concurrent instances of the Debug RPC module (`debug_trace*`, `debug_getRawBlock`, etc.). Calls beyond this cap return `LimitExceeded`. Defaults to the number of logical processors.")]
+    public int? DebugModuleConcurrentInstances { get; set; }
+
+    [ConfigItem(
         Description = """
             The number of concurrent instances for non-sharable calls:
 

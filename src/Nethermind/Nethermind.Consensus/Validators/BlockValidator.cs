@@ -548,13 +548,14 @@ public class BlockValidator(
     public static bool ValidateBlockLevelAccessListHashMatches(Block block, out Hash256? balRoot)
     {
         BlockHeader header = block.Header;
-        if (block.BlockAccessList is null)
+        ReadOnlyBlockAccessList? bal = block.BlockAccessList;
+        if (bal is null)
         {
             balRoot = null;
             return header.BlockAccessListHash is null;
         }
 
-        balRoot = new(ValueKeccak.Compute(block.EncodedBlockAccessList!).Bytes);
+        balRoot = bal.WireHash ?? new Hash256(ValueKeccak.Compute(block.EncodedBlockAccessList!));
 
         return balRoot == header.BlockAccessListHash;
     }

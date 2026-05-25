@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Merge.Plugin.Data;
 using NUnit.Framework;
@@ -25,9 +26,9 @@ public class ExecutionPayloadV4Tests
             StateRoot = Keccak.EmptyTreeHash,
         };
 
-        BlockDecodingResult result = payload.TryGetBlock();
+        Result<Block> result = payload.TryGetBlock();
 
-        Assert.That(result.Block, Is.Null);
+        Assert.That(result.Data, Is.Null);
         Assert.That(result.Error, Does.StartWith("Error decoding block access list:"));
     }
 
