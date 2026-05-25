@@ -1241,9 +1241,11 @@ namespace Nethermind.Trie
                 }
             }
 
-            ITrieNodeResolver resolver = flags != ReadFlags.None
-                ? new TrieNodeResolverWithReadFlags(TrieStore, flags)
-                : TrieStore;
+            ITrieNodeResolver resolver = _readResolver;
+            if (flags != ReadFlags.None)
+            {
+                resolver = new TrieNodeResolverWithReadFlags(resolver, flags);
+            }
 
             if (storageAddr is not null)
             {

@@ -911,6 +911,32 @@ namespace Nethermind.Trie.Test.Pruning
             return node;
         }
 
+        private static TrieNode BuildAndCommitSealedBranchWithHashedLeafChild(TrieStore fullTrieStore)
+        {
+            TrieNode child = TrieNodeFactory.CreateLeaf([], new CappedArray<byte>(new byte[64]));
+            TrieNode root = TrieNode.CreateBranchTyped();
+            root.SetChild(0, child);
+
+            IScopedTrieStore scoped = fullTrieStore.GetTrieStore(null);
+            TreePath emptyPath = TreePath.Empty;
+            TreePath childPath = TreePath.FromNibble([0]);
+            child.ResolveKey(scoped, ref childPath);
+            child.Seal();
+            root.ResolveKey(scoped, ref emptyPath);
+            root.Seal();
+            TrieNode cachedRoot = TrieNode.CreateBranchTyped(root.FullRlp.AsSpan().ToArray());
+            cachedRoot.Keccak = root.Keccak;
+
+            using (ICommitter committer = fullTrieStore.BeginStateBlockCommit(0, cachedRoot))
+            {
+                TreePath commitChildPath = TreePath.FromNibble([0]);
+                committer.CommitNode(ref commitChildPath, child);
+                committer.CommitNode(ref emptyPath, cachedRoot);
+            }
+
+            return cachedRoot;
+        }
+
         private static TrieNode BuildAndCommitDirtyBranchWithoutRlp(TrieStore fullTrieStore)
         {
             TreePath emptyPath = TreePath.Empty;
@@ -966,6 +992,22 @@ namespace Nethermind.Trie.Test.Pruning
             Nethermind.Trie.Pruning.Metrics.LoadedFromCacheNodesCount.Should().BeGreaterThan(loadedFromCacheBefore);
         }
 
+        private sealed class CountingVisitor : ITreeVisitor<EmptyContext>
+        {
+            public int BranchVisits { get; private set; }
+            public int LeafVisits { get; private set; }
+            public bool IsFullDbScan => false;
+            public bool ExpectAccounts => false;
+
+            public bool ShouldVisit(in EmptyContext nodeContext, in ValueHash256 nextNode) => true;
+            public void VisitTree(in EmptyContext nodeContext, in ValueHash256 rootHash) { }
+            public void VisitMissingNode(in EmptyContext nodeContext, in ValueHash256 nodeHash) => throw new TrieException($"Missing node {nodeHash}");
+            public void VisitBranch(in EmptyContext nodeContext, TrieNode node) => BranchVisits++;
+            public void VisitExtension(in EmptyContext nodeContext, TrieNode node) { }
+            public void VisitLeaf(in EmptyContext nodeContext, TrieNode node) => LeafVisits++;
+            public void VisitAccount(in EmptyContext nodeContext, TrieNode node, in AccountStruct account) { }
+        }
+
         [Test]
         [NonParallelizable]
         [TestCase(ReadOnlyVariant.Direct)]
@@ -1003,6 +1045,29 @@ namespace Nethermind.Trie.Test.Pruning
             {
                 extra?.Dispose();
             }
+        }
+
+        [Test]
+        [NonParallelizable]
+        public void Read_only_accept_uses_shared_cached_nodes()
+        {
+            using TrieStore fullTrieStore = CreateTrieStore();
+            TrieNode root = BuildAndCommitSealedBranchWithHashedLeafChild(fullTrieStore);
+            IScopedTrieStore scoped = fullTrieStore.AsReadOnly().GetTrieStore(null);
+            PatriciaTree readOnlyTree = new(scoped, LimboLogs.Instance)
+            {
+                RootHash = root.Keccak
+            };
+            CountingVisitor visitor = new();
+            long sharedHitsBefore = fullTrieStore.SharedNodeHitCount;
+            long clonesBefore = fullTrieStore.CloneForReadOnlyCount;
+
+            readOnlyTree.Accept(visitor, root.Keccak!);
+
+            visitor.BranchVisits.Should().Be(1);
+            visitor.LeafVisits.Should().Be(1);
+            fullTrieStore.SharedNodeHitCount.Should().BeGreaterThan(sharedHitsBefore + 1);
+            fullTrieStore.CloneForReadOnlyCount.Should().Be(clonesBefore);
         }
 
         [TestCase(ReadOnlyMissLoadVariant.GetOrLoad)]
