@@ -22,6 +22,7 @@ public interface ISnapshotRepository
     SnapshotPooledList AssembleSnapshotsUntil(in StateId stateId, long minBlockNumber, int estimatedSize);
     StateId? GetLastSnapshotId();
     ArrayPoolList<StateId> GetStatesAtBlockNumber(long blockNumber);
+    bool HasForkAt(long blockNumber);
     void RemoveStatesUntil(in StateId currentPersistedStateId);
 
     /// <summary>

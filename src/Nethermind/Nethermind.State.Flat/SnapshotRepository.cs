@@ -37,7 +37,7 @@ public class SnapshotRepository(ILogManager logManager) : ISnapshotRepository
         // first - the in-memory compacted snapshot, then the in-memory base snapshot. Finds a path
         // from `baseBlock` back to exactly `targetState`. `visited` owns a lease on every leased
         // snapshot; the winning path is re-leased before the finally releases all of them.
-        using ArrayPoolList<(Snapshot Snapshot, int ParentIndex)> visited = new(estimatedSize);
+        using ArrayPoolListRef<(Snapshot Snapshot, int ParentIndex)> visited = new(estimatedSize);
         using PooledQueue<(StateId Current, int ParentIndex)> queue = new();
         using PooledSet<StateId> seen = new();
         try
@@ -64,8 +64,6 @@ public class SnapshotRepository(ILogManager logManager) : ISnapshotRepository
 
                     StateId from = snapshot.From;
 
-                    // In-memory snapshots are persistence-granular, so an edge that lands below the
-                    // target cannot be part of a valid path; a cycle (incl. `from == current`) likewise.
                     if (from.BlockNumber < targetState.BlockNumber || !seen.Add(from))
                     {
                         snapshot.Dispose();
@@ -217,6 +215,16 @@ public class SnapshotRepository(ILogManager logManager) : ISnapshotRepository
         StateId max = new(blockNumber, ValueKeccak.MaxValue);
 
         return sortedSnapshots.GetViewBetween(min, max).ToPooledList(0);
+    }
+
+    public bool HasForkAt(long blockNumber)
+    {
+        using ReadWriteLockBox<SortedSet<StateId>>.Lock _ = _sortedSnapshotStateIds.EnterReadLock(out SortedSet<StateId> sortedSnapshots);
+
+        StateId min = new(blockNumber, ValueKeccak.Zero);
+        StateId max = new(blockNumber, ValueKeccak.MaxValue);
+
+        return sortedSnapshots.GetViewBetween(min, max).Count > 1;
     }
 
     public StateId? GetLastSnapshotId()

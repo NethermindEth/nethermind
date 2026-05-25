@@ -162,7 +162,10 @@ public class PersistenceManager(
 
             // Prune non-canonical forks orphaned by this persist before committing it, so no reader
             // can observe an advanced persisted state alongside now-unreachable in-memory snapshots.
-            snapshotRepository.RemoveSiblingAndDescendents(snapshotToSave.To);
+            if (snapshotRepository.HasForkAt(snapshotToSave.To.BlockNumber))
+            {
+                snapshotRepository.RemoveSiblingAndDescendents(snapshotToSave.To);
+            }
 
             // Add the canon snapshot
             PersistSnapshot(snapshotToSave);
@@ -218,7 +221,10 @@ public class PersistenceManager(
 
             using Snapshot _ = snapshotToPersist;
 
-            snapshotRepository.RemoveSiblingAndDescendents(snapshotToPersist.To);
+            if (snapshotRepository.HasForkAt(snapshotToPersist.To.BlockNumber))
+            {
+                snapshotRepository.RemoveSiblingAndDescendents(snapshotToPersist.To);
+            }
 
             PersistSnapshot(snapshotToPersist);
             _currentPersistedStateId = snapshotToPersist.To;
