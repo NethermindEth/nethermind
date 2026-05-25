@@ -54,6 +54,13 @@ public class TraceStoreRpcModule(ITraceRpcModule traceModule,
     private static IEnumerable<ParityTxTraceFromStore> FlattenStoreItems(List<ParityLikeTxTrace> traces) =>
         traces.SelectMany(ParityTxTraceFromStore.FromTxTrace);
 
+    private static void FlushPipe(Utf8JsonWriter writer, PipeWriter? pipeWriter, CancellationToken ct)
+    {
+        if (pipeWriter is null) return;
+        writer.Flush();
+        pipeWriter.FlushAsync(ct).GetAwaiter().GetResult();
+    }
+
     private ResultWrapper<IEnumerable<T>> BuildStoreStreamingResult<T>(
         Action<Utf8JsonWriter, PipeWriter?, CancellationToken> runStreaming,
         Func<IEnumerable<T>> runBuffered)
@@ -124,6 +131,7 @@ public class TraceStoreRpcModule(ITraceRpcModule traceModule,
                     {
                         ct.ThrowIfCancellationRequested();
                         ParityReplayEnvelopeWriter.WriteFromTrace(writer, t, includeTxHash: true, opts);
+                        FlushPipe(writer, pipeWriter, ct);
                     }
                 },
                 runBuffered: () => localTraces.Select(static t => new ParityTxTraceFromReplay(t, true)));
@@ -176,11 +184,18 @@ public class TraceStoreRpcModule(ITraceRpcModule traceModule,
             {
                 JsonSerializerOptions opts = EthereumJsonSerializer.JsonOptions;
                 TxTraceFilter filter = new(localFilter.FromAddress, localFilter.ToAddress, localFilter.After, localFilter.Count);
-                foreach (ParityTxTraceFromStore item in FlattenStoreItems(localBlockTraces))
+                foreach (List<ParityLikeTxTrace> blockTracesOne in localBlockTraces)
                 {
-                    ct.ThrowIfCancellationRequested();
-                    if (!filter.ShouldUseTxTrace(item.Action)) continue;
-                    JsonSerializer.Serialize(writer, item, opts);
+                    foreach (ParityLikeTxTrace trace in blockTracesOne)
+                    {
+                        ct.ThrowIfCancellationRequested();
+                        foreach (ParityTxTraceFromStore item in ParityTxTraceFromStore.FromTxTrace(trace))
+                        {
+                            if (!filter.ShouldUseTxTrace(item.Action)) continue;
+                            JsonSerializer.Serialize(writer, item, opts);
+                        }
+                        FlushPipe(writer, pipeWriter, ct);
+                    }
                 }
             },
             runBuffered: () =>
@@ -222,10 +237,14 @@ public class TraceStoreRpcModule(ITraceRpcModule traceModule,
                 runStreaming: (writer, pipeWriter, ct) =>
                 {
                     JsonSerializerOptions opts = EthereumJsonSerializer.JsonOptions;
-                    foreach (ParityTxTraceFromStore item in FlattenStoreItems(localTraces))
+                    foreach (ParityLikeTxTrace trace in localTraces)
                     {
                         ct.ThrowIfCancellationRequested();
-                        JsonSerializer.Serialize(writer, item, opts);
+                        foreach (ParityTxTraceFromStore item in ParityTxTraceFromStore.FromTxTrace(trace))
+                        {
+                            JsonSerializer.Serialize(writer, item, opts);
+                        }
+                        FlushPipe(writer, pipeWriter, ct);
                     }
                 },
                 runBuffered: () => FlattenStoreItems(localTraces));

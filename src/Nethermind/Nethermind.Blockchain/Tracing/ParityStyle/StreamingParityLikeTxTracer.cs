@@ -30,6 +30,8 @@ public class StreamingParityLikeTxTracer : ParityLikeTxTracer
 {
     private const int DefaultFlushIntervalEntries = 8192;
     private const int InitialFrameStackCapacity = 8;
+    private const long ParityCallCostBeforeStipend = 7400;
+    private const long ParityCallCostAfterStipend = 9700;
 
     private readonly Utf8JsonWriter _writer;
     private readonly PipeWriter? _pipeWriter;
@@ -270,7 +272,7 @@ public class StreamingParityLikeTxTracer : ParityLikeTxTracer
         _gasAlreadySetForCurrentOp = true;
 
         _pendingCost -= _treatGasParityStyle ? 0 : gas;
-        if (_pendingCost == 7400) _pendingCost = 9700;
+        if (_pendingCost == ParityCallCostBeforeStipend) _pendingCost = ParityCallCostAfterStipend;
         _pendingUsed = gas;
         _pushAssigned = true;
         _treatGasParityStyle = false;

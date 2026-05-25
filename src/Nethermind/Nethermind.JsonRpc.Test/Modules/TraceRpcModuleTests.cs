@@ -1229,6 +1229,27 @@ public class TraceRpcModuleTests
         }
     }
 
+    [Test]
+    public async Task Streaming_vmTrace_matches_buffered_with_real_opcodes()
+    {
+        Context context = new();
+        await context.Build();
+        IJsonRpcConfig config = context.Blockchain.Container.Resolve<IJsonRpcConfig>();
+
+        // Contract creation with init code that exercises PUSH1, PUSH1, SSTORE, PUSH1, MSTORE, RETURN.
+        // Produces 6 opcodes in the vmTrace + 1 storage write + memory write.
+        string bytecode = "0x60016000556020600060f3";
+        string calls = $"[[{{\"from\":\"{TestItem.AddressA}\",\"to\":null,\"data\":\"{bytecode}\",\"gas\":\"0xf4240\"}},[\"vmTrace\",\"trace\",\"stateDiff\"]]]";
+
+        config.EnableTracingStreamMode = false;
+        string buffered = await RpcTest.TestSerializedRequest(context.TraceRpcModule, "trace_callMany", calls);
+
+        config.EnableTracingStreamMode = true;
+        string streamed = await RpcTest.TestSerializedRequest(context.TraceRpcModule, "trace_callMany", calls);
+
+        JToken.Parse(streamed).Should().BeEquivalentTo(JToken.Parse(buffered));
+    }
+
     private static IEnumerable<TestCaseData> StreamingResourceSafetyCases()
     {
         yield return new TestCaseData((Func<Task>)(async () =>
