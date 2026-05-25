@@ -956,9 +956,7 @@ namespace Nethermind.Trie
                 && node.TryGetChildHash(onlyChildIdx, out ValueHash256 unresolvedChildHash))
             {
                 byte[] extensionKey = HexPrefix.SingleNibble((byte)onlyChildIdx);
-                TrieNode extension = TrieNode.CreateExtensionTyped(extensionKey);
-                extension.SetChildHash(0, new Hash256(unresolvedChildHash));
-                return extension;
+                return TrieNodeFactory.CreateExtensionWithChildHash(extensionKey, in unresolvedChildHash);
             }
 
             path.AppendMut(onlyChildIdx);

@@ -172,6 +172,7 @@ namespace Nethermind.Trie.Test
             TrieNode root = tree.RootRef!;
             root.IsExtension.Should().BeTrue();
             root.Key.Should().Equal(HexPrefix.GetArray([1]));
+            root.GetRawChildRef(0).Should().BeNull();
             root.TryGetChildHash(0, out ValueHash256 preservedHash).Should().BeTrue();
             preservedHash.Should().Be(childHash);
         }
