@@ -50,8 +50,7 @@ public class ProcessedTransactionsDbCleanerTests
         ProcessedTransactionsDbCleaner dbCleaner = new(finalizationManager, columnsDb.GetColumnDb(BlobTxsColumns.ProcessedTxs), _logManager);
 
         finalizationManager.BlocksFinalized += Raise.EventWith(
-            new FinalizeEventArgs(Build.A.BlockHeader.TestObject,
-                Build.A.BlockHeader.WithNumber(finalizedBlock).TestObject));
+            new FinalizeEventArgs(Build.A.BlockHeader.WithNumber(finalizedBlock).TestObject));
 
         await dbCleaner.CleaningTask;
 

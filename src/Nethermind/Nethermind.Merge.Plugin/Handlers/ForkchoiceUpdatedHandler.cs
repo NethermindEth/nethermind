@@ -268,7 +268,7 @@ public class ForkchoiceUpdatedHandler(
         bool nonZeroFinalizedBlockHash = finalizedBlockHash != Keccak.Zero;
         if (nonZeroFinalizedBlockHash)
         {
-            _manualBlockFinalizationManager.MarkFinalized(newHeadHeader, finalizedHeader!);
+            _manualBlockFinalizationManager.MarkFinalized(finalizedHeader!);
         }
 
         if (shouldUpdateHead)

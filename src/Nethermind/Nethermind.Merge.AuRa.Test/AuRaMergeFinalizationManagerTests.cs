@@ -4,7 +4,6 @@
 using Nethermind.Blockchain;
 using Nethermind.Consensus;
 using Nethermind.Consensus.AuRa;
-using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Merge.Plugin;
@@ -61,19 +60,6 @@ public class AuRaMergeFinalizationManagerTests
         _auRaFinalizationManager.Received(1).Dispose();
     }
 
-    [TestCase(true, 0, Description = "Post-merge: skipped so the inner never subscribes or walks")]
-    [TestCase(false, 1, Description = "Pre-merge: forwarded so the inner initializes normally")]
-    public void SetMainBlockBranchProcessor_forwards_only_pre_merge(bool alreadyPostMerge, int expectedForwards)
-    {
-        SetHead(alreadyPostMerge);
-        AuRaMergeFinalizationManager wrapper = new(_manualFinalizationManager, _auRaFinalizationManager, _poSSwitcher, _blockTree);
-
-        IBranchProcessor branchProcessor = Substitute.For<IBranchProcessor>();
-        wrapper.SetMainBlockBranchProcessor(branchProcessor);
-
-        _auRaFinalizationManager.Received(expectedForwards).SetMainBlockBranchProcessor(branchProcessor);
-    }
-
     [Test]
     public void Terminal_block_handler_unsubscribes_itself()
     {
@@ -93,21 +79,17 @@ public class AuRaMergeFinalizationManagerTests
     }
 
     [Test]
-    public void Fresh_archive_with_FinalTotalDifficulty_in_config_still_wires_pre_merge_finalization()
+    public void Fresh_archive_with_FinalTotalDifficulty_in_config_does_not_dispose_pre_merge_aura()
     {
         // Regression: HasEverReachedTerminalBlock() is true on fresh archive DB with FTD in config,
-        // but head is still genesis — must not skip or dispose in that case.
+        // but head is still genesis — must not dispose in that case.
         Block genesis = Build.A.Block.Genesis.TestObject;
         _blockTree.Head.Returns(genesis);
         _poSSwitcher.HasEverReachedTerminalBlock().Returns(true);
         _poSSwitcher.IsPostMerge(genesis.Header).Returns(false);
 
-        AuRaMergeFinalizationManager wrapper = new(_manualFinalizationManager, _auRaFinalizationManager, _poSSwitcher, _blockTree);
+        AuRaMergeFinalizationManager _ = new(_manualFinalizationManager, _auRaFinalizationManager, _poSSwitcher, _blockTree);
 
         _auRaFinalizationManager.DidNotReceive().Dispose();
-
-        IBranchProcessor branchProcessor = Substitute.For<IBranchProcessor>();
-        wrapper.SetMainBlockBranchProcessor(branchProcessor);
-        _auRaFinalizationManager.Received(1).SetMainBlockBranchProcessor(branchProcessor);
     }
 }

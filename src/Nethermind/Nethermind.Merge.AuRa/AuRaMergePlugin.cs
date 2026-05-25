@@ -60,8 +60,8 @@ namespace Nethermind.Merge.AuRa
         }
 
         protected override IBlockFinalizationManager InitializeMergeFinalizationManager() => new AuRaMergeFinalizationManager(_api.Context.Resolve<IManualBlockFinalizationManager>(),
-                _auraApi!.FinalizationManager ??
-                throw new ArgumentNullException(nameof(_auraApi.FinalizationManager),
+                _auraApi!.AuRaFinalizationManager ??
+                throw new ArgumentNullException(nameof(_auraApi.AuRaFinalizationManager),
                     "Cannot instantiate AuRaMergeFinalizationManager when AuRaFinalizationManager is null!"),
                 _poSSwitcher,
                 _api.BlockTree!);

@@ -5,25 +5,20 @@ using System;
 using Nethermind.Blockchain;
 using Nethermind.Consensus;
 using Nethermind.Consensus.AuRa;
-using Nethermind.Consensus.Processing;
-using Nethermind.Core.Crypto;
 using Nethermind.Merge.AuRa;
 
 namespace Nethermind.Merge.Plugin;
 
-public class AuRaMergeFinalizationManager : MergeFinalizationManager, IAuRaBlockFinalizationManager
+public class AuRaMergeFinalizationManager : MergeFinalizationManager
 {
     private readonly IAuRaBlockFinalizationManager _auRaBlockFinalizationManager;
     private readonly IPoSSwitcher _poSSwitcher;
-    private readonly IBlockTree _blockTree;
 
     public AuRaMergeFinalizationManager(IManualBlockFinalizationManager manualBlockFinalizationManager, IAuRaBlockFinalizationManager blockFinalizationManager, IPoSSwitcher poSSwitcher, IBlockTree blockTree)
-        : base(manualBlockFinalizationManager, blockFinalizationManager, poSSwitcher)
+        : base(manualBlockFinalizationManager, poSSwitcher)
     {
         _auRaBlockFinalizationManager = blockFinalizationManager;
         _poSSwitcher = poSSwitcher;
-        _blockTree = blockTree;
-        _auRaBlockFinalizationManager.BlocksFinalized += OnBlockFinalized;
 
         if (poSSwitcher.IsHeadPostMerge(blockTree))
         {
@@ -44,16 +39,6 @@ public class AuRaMergeFinalizationManager : MergeFinalizationManager, IAuRaBlock
         _auRaBlockFinalizationManager.Dispose();
     }
 
-    public long GetLastLevelFinalizedBy(Hash256 blockHash) => _auRaBlockFinalizationManager.GetLastLevelFinalizedBy(blockHash);
-
-    public long? GetFinalizationLevel(long level) => _auRaBlockFinalizationManager.GetFinalizationLevel(level);
-
-    public void SetMainBlockBranchProcessor(IBranchProcessor branchProcessor)
-    {
-        if (_poSSwitcher.IsHeadPostMerge(_blockTree)) return;
-        _auRaBlockFinalizationManager.SetMainBlockBranchProcessor(branchProcessor);
-    }
-
     public override long LastFinalizedBlockLevel => IsPostMerge
         ? _manualBlockFinalizationManager.LastFinalizedBlockLevel
         : _auRaBlockFinalizationManager.LastFinalizedBlockLevel;
@@ -61,9 +46,7 @@ public class AuRaMergeFinalizationManager : MergeFinalizationManager, IAuRaBlock
     public override void Dispose()
     {
         _poSSwitcher.TerminalBlockReached -= OnTerminalBlock;
-        _auRaBlockFinalizationManager.BlocksFinalized -= OnBlockFinalized;
         _auRaBlockFinalizationManager.Dispose();
         base.Dispose();
     }
-
 }

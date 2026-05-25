@@ -223,7 +223,7 @@ namespace Nethermind.Consensus.AuRa.Validators
         }
 
         // NOTE: this is only added to `_blockFinalizationManager.BlocksFinalized` when `!ForSealing`
-        private void OnBlocksFinalized(object sender, FinalizeEventArgs e)
+        private void OnBlocksFinalized(object sender, AuRaFinalizeEventArgs e)
         {
             if (e.FinalizedBlocks.Any(header => header.Hash == _currentPendingValidators?.BlockHash))
             {

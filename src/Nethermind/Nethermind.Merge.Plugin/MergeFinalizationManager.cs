@@ -17,8 +17,7 @@ namespace Nethermind.Merge.Plugin
 
         public event EventHandler<FinalizeEventArgs>? BlocksFinalized;
 
-        public MergeFinalizationManager(IManualBlockFinalizationManager manualBlockFinalizationManager,
-            IBlockFinalizationManager? blockFinalizationManager, IPoSSwitcher poSSwitcher)
+        public MergeFinalizationManager(IManualBlockFinalizationManager manualBlockFinalizationManager, IPoSSwitcher poSSwitcher)
         {
             _manualBlockFinalizationManager = manualBlockFinalizationManager;
             _poSSwitcher = poSSwitcher;
@@ -36,7 +35,7 @@ namespace Nethermind.Merge.Plugin
 
         protected void OnBlockFinalized(object? sender, FinalizeEventArgs e) => BlocksFinalized?.Invoke(this, e);
 
-        public void MarkFinalized(BlockHeader finalizingBlock, BlockHeader finalizedBlock) => _manualBlockFinalizationManager.MarkFinalized(finalizingBlock, finalizedBlock);
+        public void MarkFinalized(BlockHeader finalizedBlock) => _manualBlockFinalizationManager.MarkFinalized(finalizedBlock);
 
         public Hash256 LastFinalizedHash { get => _manualBlockFinalizationManager.LastFinalizedHash; }
 

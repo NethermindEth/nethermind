@@ -28,7 +28,7 @@ public class TestMergeModule(ITxPoolConfig txPoolConfig) : Module
         builder
             .AddModule(new MergePluginModule())
 
-            .AddSingleton<IBlockFinalizationManager, ManualBlockFinalizationManager>()
+            .Bind<IBlockFinalizationManager, IManualBlockFinalizationManager>()
             .AddDecorator<IRewardCalculatorSource, MergeRewardCalculatorSource>()
 
             // Validators

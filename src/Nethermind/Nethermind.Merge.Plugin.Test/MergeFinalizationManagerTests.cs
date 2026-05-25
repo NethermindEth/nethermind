@@ -20,7 +20,7 @@ public class MergeFinalizationManagerTests
     {
         _inner = Substitute.For<IManualBlockFinalizationManager>();
         _poSSwitcher = Substitute.For<IPoSSwitcher>();
-        _manager = new MergeFinalizationManager(_inner, null, _poSSwitcher);
+        _manager = new MergeFinalizationManager(_inner, _poSSwitcher);
     }
 
     [Test]
@@ -42,12 +42,12 @@ public class MergeFinalizationManagerTests
         int count = 0;
         _manager.BlocksFinalized += (_, _) => count++;
 
-        _inner.BlocksFinalized += Raise.EventWith(new FinalizeEventArgs(null!, null!));
+        _inner.BlocksFinalized += Raise.EventWith(new FinalizeEventArgs(null!));
         Assert.That(count, Is.EqualTo(1), "Event should propagate before Dispose");
 
         _manager.Dispose();
 
-        _inner.BlocksFinalized += Raise.EventWith(new FinalizeEventArgs(null!, null!));
+        _inner.BlocksFinalized += Raise.EventWith(new FinalizeEventArgs(null!));
         Assert.That(count, Is.EqualTo(1), "Event should NOT propagate after Dispose");
     }
 

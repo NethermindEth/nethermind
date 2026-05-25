@@ -223,7 +223,7 @@ public class MergePlugin(ChainSpec chainSpec, IMergeConfig mergeConfig) : INethe
         _api.ProtocolsManager!.AddSupportedCapability(new(Protocol.Eth, 71));
     }
 
-    protected virtual IBlockFinalizationManager InitializeMergeFinalizationManager() => new MergeFinalizationManager(_api.Context.Resolve<IManualBlockFinalizationManager>(), _api.FinalizationManager, _poSSwitcher);
+    protected virtual IBlockFinalizationManager InitializeMergeFinalizationManager() => new MergeFinalizationManager(_api.Context.Resolve<IManualBlockFinalizationManager>(), _poSSwitcher);
 
     public bool MustInitialize { get => true; }
 
@@ -285,7 +285,6 @@ public class BaseMergePluginModule : Module
 
             .AddSingleton<StartingSyncPivotUpdater>()
             .ResolveOnServiceActivation<StartingSyncPivotUpdater, ISyncModeSelector>()
-            .AddSingleton<IManualBlockFinalizationManager, ManualBlockFinalizationManager>()
 
             // Invalid chain tracker wrapper should be after other validator.
             .AddDecorator<IHeaderValidator, InvalidHeaderInterceptor>()

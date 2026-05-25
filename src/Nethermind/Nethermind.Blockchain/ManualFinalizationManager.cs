@@ -17,11 +17,11 @@ namespace Nethermind.Blockchain
 
         public event EventHandler<FinalizeEventArgs>? BlocksFinalized;
 
-        public void MarkFinalized(BlockHeader finalizingBlock, BlockHeader finalizedBlock)
+        public void MarkFinalized(BlockHeader finalizedBlock)
         {
             LastFinalizedHash = finalizedBlock.Hash!;
             LastFinalizedBlockLevel = finalizedBlock.Number;
-            BlocksFinalized?.Invoke(this, new FinalizeEventArgs(finalizingBlock, finalizedBlock));
+            BlocksFinalized?.Invoke(this, new FinalizeEventArgs(finalizedBlock));
         }
 
         public void Dispose() { }
@@ -30,6 +30,6 @@ namespace Nethermind.Blockchain
     public interface IManualBlockFinalizationManager : IBlockFinalizationManager
     {
         Hash256 LastFinalizedHash { get; }
-        void MarkFinalized(BlockHeader finalizingBlock, BlockHeader finalizedBlock);
+        void MarkFinalized(BlockHeader finalizedBlock);
     }
 }
